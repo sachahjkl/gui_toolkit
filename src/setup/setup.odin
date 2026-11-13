@@ -16,6 +16,7 @@ import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import desktop "../desktop"
+import i18n "../i18n"
 import process "../process"
 import "../ui"
 import base "../base"
@@ -47,7 +48,7 @@ Config :: struct {
 
 // An option of the program's install (Config.choices).
 Choice :: struct {
-	label: string,
+	label: string,   // English, shown in the language in use (i18n.later)
 	on:    bool,
 }
 
@@ -154,7 +155,7 @@ install :: proc(c: Config, desktop_shortcut: bool, choices: []bool = nil, folder
 		if why := desktop.check_install_dir(folder, c.identity.name, probe = true); why != "" { return false, why }
 		o.install_dir = folder
 	}
-	if o.install_dir == "" { return false, "the install folder is unknown" }
+	if o.install_dir == "" { return false, i18n.tr("the install folder is unknown") }
 	exe_name := desktop.exe_name_of(o.identity)
 	plan := desktop.Install_Plan{
 		identity = o.identity, src_exe = process.executable_path(), dir = o.install_dir, exe_name = exe_name,

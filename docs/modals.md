@@ -70,8 +70,8 @@ button, Escape, a press outside) or `.None` while it waits.
 
 - Enter answers what is safe: Cancel, and the act only with `enter_confirms` (an act that is safe and was asked for). The
   button Enter presses says so: "Cancel (Enter)".
-- Its words other than the caller's (`Confirm_Labels`: Cancel, "and %d more", "%s (Enter)") are set once by a program
-  that translates them.
+- Its words other than the caller's (Cancel, "and %d more", "%s (Enter)") are the toolkit's, in the language in use
+  (`confirm_default_labels`); `Confirm_Options.labels` gives a program's own.
 
 ## A prompt (`src/ui/confirm.odin`)
 
@@ -80,7 +80,8 @@ field, Cancel (intent `.Cancel`) and OK (`act`, else `Prompt_Labels.ok`). The fi
 in it answers `.Confirmed` (the text is the field's); Escape, Cancel or a press outside `.Cancelled`; `.None` while it
 waits. `secret` makes it a password field (`reveal`: the caller's bool for the eye that shows it); once the answer is
 used or given up, `ui.field_wipe(&field)` leaves nothing of it in memory. Its words other than the caller's
-(`Prompt_Labels`: Cancel, OK) are set once by a program that translates them.
+(Cancel, OK) are the toolkit's, in the language in use (`prompt_default_labels`); `Prompt_Options.labels` gives a
+program's own.
 
 ```odin
 switch ui.prompt("unlock", &app.asking, &app.pin, {title = "Unlock", note = "Type the PIN of the key.", secret = true}) {

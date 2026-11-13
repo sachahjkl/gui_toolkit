@@ -14,6 +14,7 @@ import "core:fmt"
 import "core:strings"
 import "../ascii"
 import config "../config"
+import i18n "../i18n"
 import "../fsx"
 import "../platform"
 import "../ui"
@@ -54,8 +55,8 @@ export_ask :: proc(p: ^Page) {
 	toml := [?]string{"*.toml"}
 	ini := [?]string{"*.ini"}
 	own := [?]string{"*.txt"}
-	filters := [?]platform.File_Filter{{name = "JSON", patterns = json[:]}, {name = "TOML", patterns = toml[:]}, {name = "INI", patterns = ini[:]}, {name = "This program's settings (to import)", patterns = own[:]}}
-	ui.file_dialog(p.state, .Save, {title = "Export the settings", filters = filters[:], suggested_name = "settings.json", default_ext = "json", overwrite_prompt = true, remember_id = "prefs_page.export"},
+	filters := [?]platform.File_Filter{{name = "JSON", patterns = json[:]}, {name = "TOML", patterns = toml[:]}, {name = "INI", patterns = ini[:]}, {name = i18n.tr("This program's settings (to import)"), patterns = own[:]}}
+	ui.file_dialog(p.state, .Save, {title = i18n.tr("Export the settings"), filters = filters[:], suggested_name = "settings.json", default_ext = "json", overwrite_prompt = true, remember_id = "prefs_page.export"},
 		proc(r: platform.Dialog_Result, user: rawptr) {
 			p := (^Page)(user)
 			if r.status != .Chosen || len(r.paths) == 0 { return }
@@ -86,7 +87,7 @@ export_to :: proc(p: ^Page, path: string, format: Export_Format) {
 	done :: proc(d: rawptr, _: u64) {
 		j := (^Write_Job)(d)
 		shown := home_short(j.path, context.temp_allocator)
-		note_set(j.page, j.ok ? fmt.tprintf("Exported to %s.", shown) : fmt.tprintf("%s could not be written.", shown), !j.ok)
+		note_set(j.page, j.ok ? fmt.tprintf(i18n.tr("Exported to %s."), shown) : fmt.tprintf(i18n.tr("%s could not be written."), shown), !j.ok)
 		write_job_free(d)
 	}
 	ui.task(p.state, work, done, j, write_job_free)
@@ -106,8 +107,8 @@ write_job_free :: proc(d: rawptr) {
 import_ask :: proc(p: ^Page) {
 	if p.state == nil { return }
 	own := [?]string{"*.txt"}
-	filters := [?]platform.File_Filter{{name = "This program's settings", patterns = own[:]}}
-	ui.file_dialog(p.state, .Open, {title = "Import settings", filters = filters[:], all_files = true, remember_id = "prefs_page.export"},
+	filters := [?]platform.File_Filter{{name = i18n.tr("This program's settings"), patterns = own[:]}}
+	ui.file_dialog(p.state, .Open, {title = i18n.tr("Import settings"), filters = filters[:], all_files = true, remember_id = "prefs_page.export"},
 		proc(r: platform.Dialog_Result, user: rawptr) {
 			p := (^Page)(user)
 			if r.status != .Chosen || len(r.paths) == 0 { return }
@@ -140,7 +141,7 @@ import_from :: proc(p: ^Page, path: string) {
 		p := j.page
 		shown := home_short(j.path, context.temp_allocator)
 		if !j.ok {
-			note_set(p, fmt.tprintf("%s could not be read.", shown), true)
+			note_set(p, fmt.tprintf(i18n.tr("%s could not be read."), shown), true)
 		} else {
 			// (what each value was, to tell the program of those that changed)
 			before := make([]string, len(p.prefs.entries), context.temp_allocator)
@@ -150,10 +151,14 @@ import_from :: proc(p: ^Page, path: string) {
 				if p.changed == nil { break }
 				if config.value_string(p.prefs, config.Ref(i)) != before[i] { p.changed(p.user, p.prefs.entries[i].def.name) }
 			}
+			// (each count takes its own form: two forms of one sentence cannot follow two counts)
+			imported := fmt.tprintf(i18n.tr(applied, "Imported %d settings from %s", "Imported %d settings from %s"), applied, shown)
 			switch {
 			case applied == 0 && len(problems) > 0: note_set(p, problems[0], true)
-			case len(problems) > 0:                 note_set(p, fmt.tprintf("Imported %d settings from %s; %d refused (%s).", applied, shown, len(problems), problems[0]), true)
-			case:                                   note_set(p, fmt.tprintf("Imported %d settings from %s.", applied, shown), false)
+			case len(problems) > 0:
+				refused := fmt.tprintf(i18n.tr(len(problems), "%d refused (%s)", "%d refused (%s)"), len(problems), problems[0])
+				note_set(p, fmt.tprintf(i18n.tr("%s; %s."), imported, refused), true)
+			case: note_set(p, fmt.tprintf("%s.", imported), false)
 			}
 		}
 		import_job_free(d)

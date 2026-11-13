@@ -7,6 +7,7 @@ import "core:strings"
 import "core:unicode/utf8"
 import "../draw"
 import "../font"
+import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
 
@@ -540,18 +541,18 @@ field_menu :: proc(key: Key, target: Edit_Target, owner: Key, secret := false, r
 		buf, cursor, mark := edit_target_text(target)
 		sel := cursor != mark
 		if !read_only {
-			if menu_item("Undo", "Ctrl+Z", icon = lucide.UNDO_2, icon_font = ico, enabled = edit_target_can(target, true)).clicked { edit_target_step(target, true) }
-			if menu_item("Redo", "Ctrl+Y", icon = lucide.REDO_2, icon_font = ico, enabled = edit_target_can(target, false)).clicked { edit_target_step(target, false) }
+			if menu_item(i18n.tr("Undo"), "Ctrl+Z", icon = lucide.UNDO_2, icon_font = ico, enabled = edit_target_can(target, true)).clicked { edit_target_step(target, true) }
+			if menu_item(i18n.tr("Redo"), "Ctrl+Y", icon = lucide.REDO_2, icon_font = ico, enabled = edit_target_can(target, false)).clicked { edit_target_step(target, false) }
 			menu_separator()
-			if menu_item("Cut", "Ctrl+X", icon = lucide.SCISSORS, icon_font = ico, enabled = sel && !secret).clicked { edit_target_cut(target) }
+			if menu_item(i18n.tr("Cut"), "Ctrl+X", icon = lucide.SCISSORS, icon_font = ico, enabled = sel && !secret).clicked { edit_target_cut(target) }
 		}
-		if menu_item("Copy", "Ctrl+C", icon = lucide.COPY, icon_font = ico, enabled = sel && !secret).clicked { edit_target_copy(target) }
+		if menu_item(i18n.tr("Copy"), "Ctrl+C", icon = lucide.COPY, icon_font = ico, enabled = sel && !secret).clicked { edit_target_copy(target) }
 		if !read_only {
-			if menu_item("Paste", "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { field_paste(owner) }
-			if menu_item("Delete", "Del", icon = lucide.TRASH_2, icon_font = ico, enabled = sel).clicked { edit_target_delete(target) }
+			if menu_item(i18n.tr("Paste"), "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { field_paste(owner) }
+			if menu_item(i18n.tr("Delete"), i18n.tr("key", "Del"), icon = lucide.TRASH_2, icon_font = ico, enabled = sel).clicked { edit_target_delete(target) }
 		}
 		menu_separator()
-		if menu_item("Select all", "Ctrl+A", icon = lucide.TEXT_CURSOR_INPUT, icon_font = ico, enabled = len(buf) > 0).clicked { edit_target_select_all(target) }
+		if menu_item(i18n.tr("Select all"), "Ctrl+A", icon = lucide.TEXT_CURSOR_INPUT, icon_font = ico, enabled = len(buf) > 0).clicked { edit_target_select_all(target) }
 	}
 }
 
@@ -639,7 +640,7 @@ reveal_button :: proc(field: ^Box, reveal: ^bool, w: f32) {
 	eye := build_box({.Clickable, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###reveal", shown ? lucide.EYE_OFF : lucide.EYE))
 	if !shown { pop_tags() }
 	eye.cursor = .Hand
-	a11y_default(eye, {role = .Button, name = shown ? "Hide the password" : "Show the password"})
+	a11y_default(eye, {role = .Button, name = shown ? i18n.tr("Hide the password") : i18n.tr("Show the password")})
 	// (the field keeps the keyboard: one looks at what was typed, then goes on typing)
 	if signal(eye).clicked { reveal^ = !shown; gs().focus_key = field.key }
 }
@@ -656,7 +657,7 @@ clear_button :: proc(field: ^Box, f: ^Text_Field, w: f32) -> bool {
 	x := build_box({.Clickable, .Draw_Text, .No_Text_Trunc, .Draw_Hot_Effects}, fmt.tprintf("%s###clear", lucide.X))
 	pop_tags()
 	x.cursor = .Hand
-	a11y_default(x, {role = .Button, name = "Clear"})
+	a11y_default(x, {role = .Button, name = i18n.tr("Clear")})
 	if !signal(x).clicked { return false }
 	// (through the edit history: Undo brings it back; the field keeps the keyboard, to type the next search)
 	field_select_all(f)

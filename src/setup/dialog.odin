@@ -29,6 +29,7 @@ import "core:strings"
 import "core:sync"
 import "core:thread"
 import desktop "../desktop"
+import i18n "../i18n"
 import "../draw"
 import lucide "../lucide"
 import "../platform"
@@ -232,7 +233,7 @@ job_run :: proc(data: rawptr) {
 		ok, leftovers, why := uninstall(j.c, j.choices)
 		j.ok, j.leftovers, j.text = ok, leftovers, strings.clone(why)
 	case .Pick_Folder:
-		res := platform.pick_folder_dialog({title = "Install folder", start_dir = j.folder}, context.temp_allocator)
+		res := platform.pick_folder_dialog({title = i18n.tr("Install folder"), start_dir = j.folder}, context.temp_allocator)
 		if res.status == .Chosen && len(res.paths) > 0 { j.ok, j.text = true, strings.clone(res.paths[0]) }
 		return
 	}
@@ -271,9 +272,9 @@ job_collect :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
 		if j.ok {
 			ev = .Installed
 			if desktop.same_path(j.text, j.facts.running) {
-				say(d, true, "Done: everything is in place.")
+				say(d, true, i18n.tr("Done: everything is in place."))
 			} else {
-				say(d, true, fmt.tprintf("Installed. Start it from the %s, or now:", WORDS_MENU))
+				say(d, true, words_installed())
 				delete(d.installed)
 				d.installed = strings.clone(j.text)
 			}
@@ -288,7 +289,7 @@ job_collect :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
 			delete(d.installed)
 			d.installed = ""
 			d.removed = len(d.leftovers) > 0
-			say(d, true, d.removed ? "Removed. The program is deleted when this window closes." : "Removed.")
+			say(d, true, d.removed ? i18n.tr("Removed. The program is deleted when this window closes.") : i18n.tr("Removed."))
 			ev = .Uninstalled
 		} else {
 			say(d, false, j.text)
@@ -308,35 +309,50 @@ job_collect :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
 // What the state is, in a sentence, and its tone ("good", "warn", "bad", "accent").
 state_words :: proc(f: Facts, c: Config) -> (words, tone: string) {
 	switch f.state {
-	case .Not_Installed: return "Not installed: this copy runs on its own.", "warn"
-	case .This_Copy:     return "Installed: this is the installed copy.", "good"
+	case .Not_Installed: return i18n.tr("Not installed: this copy runs on its own."), "warn"
+	case .This_Copy:     return i18n.tr("Installed: this is the installed copy."), "good"
 	case .Repair:
 		switch {
-		case !f.exe_there: return "The installed program is missing: what is left of it can be repaired or removed.", "bad"
-		case !f.manifest:  return "A copy is installed by an earlier setup: Repair puts this copy in its place.", "accent"
+		case !f.exe_there: return i18n.tr("The installed program is missing: what is left of it can be repaired or removed."), "bad"
+		case !f.manifest:  return i18n.tr("A copy is installed by an earlier setup: Repair puts this copy in its place."), "accent"
 		}
-		return fmt.tprintf("Installed, but %s is missing.", WORDS_PIECES_MISSING), "bad"
+		return words_pieces_missing(), "bad"
 	case .Other_Copy:
-		if is_upgrade(f, c.version) { return fmt.tprintf("An older copy is installed (%s): upgrade it to %s?", f.version, c.version), "accent" }
-		if is_downgrade(f, c.version) { return fmt.tprintf("A newer copy is installed (%s): this one (%s) is older.", f.version, c.version), "warn" }
-		return fmt.tprintf("A copy is installed (%s): this one runs on its own.", f.version != "" ? f.version : "?"), "warn"
-	case .Removal_Scheduled: return "Uninstalled: the program is deleted when this window closes.", "warn"
+		if is_upgrade(f, c.version) { return fmt.tprintf(i18n.tr("An older copy is installed (%s): upgrade it to %s?"), f.version, c.version), "accent" }
+		if is_downgrade(f, c.version) { return fmt.tprintf(i18n.tr("A newer copy is installed (%s): this one (%s) is older."), f.version, c.version), "warn" }
+		return fmt.tprintf(i18n.tr("A copy is installed (%s): this one runs on its own."), f.version != "" ? f.version : "?"), "warn"
+	case .Removal_Scheduled: return i18n.tr("Uninstalled: the program is deleted when this window closes."), "warn"
 	case .Nix_Package:
-		if leftover(f) { return "Installed by Nix. An earlier install left files here: they can be removed.", "accent" }
-		return "Installed by Nix: the Nix package has the menu entry and the icon.", "good"
+		if leftover(f) { return i18n.tr("Installed by Nix. An earlier install left files here: they can be removed."), "accent" }
+		return i18n.tr("Installed by Nix: the Nix package has the menu entry and the icon."), "good"
 	}
 	return "", ""
 }
 
-// The words of this system for the pieces of an install.
-when ODIN_OS == .Windows {
-	WORDS_MENU           :: "Start menu"
-	WORDS_RECORD         :: "Settings > Apps"
-	WORDS_PIECES_MISSING :: "a shortcut, the Settings entry or a file"
-} else {
-	WORDS_MENU           :: "applications menu"
-	WORDS_RECORD         :: "icons"
-	WORDS_PIECES_MISSING :: "the menu entry, an icon or a file"
+// The words of this system for the pieces of an install, in the language in use (whole sentences: a language puts the
+// pieces' words where its grammar wants them).
+@(private = "file")
+words_menu :: proc() -> string {
+	when ODIN_OS == .Windows { return i18n.tr("Start menu") } else { return i18n.tr("applications menu") }
+}
+
+@(private = "file")
+words_record :: proc() -> string {
+	when ODIN_OS == .Windows { return i18n.tr("Settings > Apps") } else { return i18n.tr("icons") }
+}
+
+@(private = "file")
+words_installed :: proc() -> string {
+	when ODIN_OS == .Windows { return i18n.tr("Installed. Start it from the Start menu, or now:") } else { return i18n.tr("Installed. Start it from the applications menu, or now:") }
+}
+
+@(private = "file")
+words_pieces_missing :: proc() -> string {
+	when ODIN_OS == .Windows {
+		return i18n.tr("Installed, but a shortcut, the Settings entry or a file is missing.")
+	} else {
+		return i18n.tr("Installed, but the menu entry, an icon or a file is missing.")
+	}
 }
 
 // The dialog, while it is open (a modal over the window); called each frame, open or not. What happened, if anything.
@@ -402,14 +418,14 @@ install_label :: proc(d: ^Dialog, c: Config) -> string {
 	#partial switch f.state {
 	case .Other_Copy:
 		switch {
-		case is_upgrade(f^, c.version):   return fmt.tprintf("Upgrade to %s", c.version)
-		case is_downgrade(f^, c.version): return fmt.tprintf("Go back to %s", c.version)
+		case is_upgrade(f^, c.version):   return fmt.tprintf(i18n.tr("Upgrade to %s"), c.version)
+		case is_downgrade(f^, c.version): return fmt.tprintf(i18n.tr("Go back to %s"), c.version)
 		}
-		return "Replace the installed copy"
-	case .Repair:    return "Repair"
-	case .This_Copy: return "Update the shortcuts"
+		return i18n.tr("Replace the installed copy")
+	case .Repair:    return i18n.tr("Repair")
+	case .This_Copy: return i18n.tr("Update the shortcuts")
 	}
-	return "Install"
+	return i18n.tr("Install")
 }
 
 // Uninstall is offered: something of an install is there.
@@ -441,7 +457,7 @@ pick_folder :: proc(d: ^Dialog, c: Config) { if d.job == nil { job_start(d, c, .
 // Starts the copy just installed (Dialog.installed): Launched, the program then ends; None when it does not start.
 open_installed :: proc(d: ^Dialog) -> Event {
 	if d.installed != "" && launch(d.installed) { return .Launched }
-	say(d, false, fmt.tprintf("%s does not start", d.installed))
+	say(d, false, fmt.tprintf(i18n.tr("%s does not start"), d.installed))
 	return .None
 }
 
@@ -474,7 +490,7 @@ rad :: proc(c: Config, em, k: f32) -> f32 { return c.square ? 0 : math.round(em 
 // which closes the dialog through its `open`).
 @(private = "file")
 title_bar :: proc(d: ^Dialog, c: Config, em: f32) {
-	if ui.dialog_header("setup_title_bar", fmt.tprintf("%s Setup", c.identity.name), {close = true}) {
+	if ui.dialog_header("setup_title_bar", fmt.tprintf(i18n.tr("%s Setup"), c.identity.name), {close = true}) {
 		if c.close != nil {
 			if c.close("###setup_close_x", em, c.user) { d.open = false }
 		}
@@ -505,15 +521,15 @@ panel_end :: proc() {
 headline :: proc(f: Facts, c: Config) -> (title, badge: string) {
 	name := c.identity.name
 	switch f.state {
-	case .Not_Installed:     return fmt.tprintf("Install %s", name), "Not installed"
-	case .This_Copy:         return fmt.tprintf("%s is installed", name), "Installed"
-	case .Repair:            return fmt.tprintf("Repair %s", name), "To repair"
+	case .Not_Installed:     return fmt.tprintf(i18n.tr("Install %s"), name), i18n.tr("Not installed")
+	case .This_Copy:         return fmt.tprintf(i18n.tr("%s is installed"), name), i18n.tr("Installed")
+	case .Repair:            return fmt.tprintf(i18n.tr("Repair %s"), name), i18n.tr("To repair")
 	case .Other_Copy:
-		if is_upgrade(f, c.version) { return fmt.tprintf("Upgrade %s", name), "Older installed" }
-		if is_downgrade(f, c.version) { return fmt.tprintf("Replace %s", name), "Newer installed" }
-		return fmt.tprintf("Replace %s", name), "Other copy"
-	case .Removal_Scheduled: return fmt.tprintf("%s is uninstalled", name), "Removed"
-	case .Nix_Package:       return fmt.tprintf("%s from Nix", name), "Nix package"
+		if is_upgrade(f, c.version) { return fmt.tprintf(i18n.tr("Upgrade %s"), name), i18n.tr("Older installed") }
+		if is_downgrade(f, c.version) { return fmt.tprintf(i18n.tr("Replace %s"), name), i18n.tr("Newer installed") }
+		return fmt.tprintf(i18n.tr("Replace %s"), name), i18n.tr("Other copy")
+	case .Removal_Scheduled: return fmt.tprintf(i18n.tr("%s is uninstalled"), name), i18n.tr("Removed")
+	case .Nix_Package:       return fmt.tprintf(i18n.tr("%s from Nix"), name), i18n.tr("Nix package")
 	}
 	return name, ""
 }
@@ -533,7 +549,7 @@ head :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo)) {
 			b.custom, b.custom_user = logo_draw, p
 			ui.spacer(ui.px(em * 0.8))
 		}
-		title, badge := "Reading the install…", ""
+		title, badge := i18n.tr("Reading the install…"), ""
 		if d.known { title, badge = headline(f^, c) }
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###setup_words") {
@@ -541,11 +557,11 @@ head :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo)) {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.7)), font_size = math.round(em * 1.25), text_pad = 0})
 			ui.label(fmt.tprintf("%s###setup_name", title))
 			if ui.tags("weak") {
-				installed := "not installed"
-				if d.known && f.state != .Not_Installed && f.state != .Nix_Package { installed = f.version != "" ? fmt.tprintf("v%s installed", f.version) : "installed" }
+				installed := i18n.tr("not installed")
+				if d.known && f.state != .Not_Installed && f.state != .Nix_Package { installed = f.version != "" ? fmt.tprintf(i18n.tr("v%s installed"), f.version) : i18n.tr("installed") }
 				vendor := c.identity.vendor != "" ? fmt.tprintf("  ·  %s", c.identity.vendor) : ""
 				ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.35)), font_size = math.round(em * 0.9), text_pad = 0})
-				ui.label(fmt.tprintf("This copy: v%s → %s%s###setup_version", c.version, installed, vendor))
+				ui.label(fmt.tprintf("%s%s###setup_version", fmt.tprintf(i18n.tr("This copy: v%s → %s"), c.version, installed), vendor))
 			}
 			ui.spacer(ui.px(em * 0.55))
 		}
@@ -573,7 +589,7 @@ location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 		ui.spacer(ui.px(em * MARGIN_EM))
 		if ui.tags("weak") {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.5)), text_pad = 0})
-			ui.label(choose ? "Install location###setup_loc" : "Installed program###setup_loc")
+			ui.label(fmt.tprintf("%s###setup_loc", choose ? i18n.tr("Install location") : i18n.tr("Installed program")))
 		}
 	}
 	line_next()
@@ -583,7 +599,7 @@ location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), radius = rad(c, em, 0.3)})
 			_ = ui.line_edit("###setup_folder", &d.folder)
 			ui.spacer(ui.px(em * 0.4))
-			if button(c, "###setup_pick", "Choose…", lucide.FOLDER_OPEN, .Primary, em) && !busy { pick_folder(d, c) }
+			if button(c, "###setup_pick", i18n.tr("Choose…"), lucide.FOLDER_OPEN, .Primary, em) && !busy { pick_folder(d, c) }
 		} else {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), axis = .X, cross = .Center, radius = rad(c, em, 0.3)})
 			well: ^ui.Box
@@ -616,7 +632,7 @@ options_grid :: proc(d: ^Dialog, c: Config, em: f32) {
 		ui.build_box({.Draw_Background}, "###setup_options_bar")
 		ui.spacer(ui.px(em * 0.7))
 		ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.9)), text_pad = 0})
-		ui.label("Options###setup_options_label")
+		ui.label(fmt.tprintf("%s###setup_options_label", i18n.tr("Options")))
 	}
 	n := 1 + min(len(c.choices), len(d.choices))
 	// (one per line, as wide as the dialog: a long label wraps in its tile, never past it)
@@ -632,9 +648,9 @@ options_grid :: proc(d: ^Dialog, c: Config, em: f32) {
 				ui.spacer(ui.px(em * 0.5))
 				ui.next({width = ui.fill()})
 				if k == 0 {
-					ui.checkbox("###setup_shortcut", "Shortcut on the Desktop", &d.shortcut, wrap = true)
+					ui.checkbox("###setup_shortcut", i18n.tr("Shortcut on the Desktop"), &d.shortcut, wrap = true)
 				} else {
-					ui.checkbox(fmt.tprintf("###setup_choice_%d", k - 1), c.choices[k - 1].label, &d.choices[k - 1], wrap = true)
+					ui.checkbox(fmt.tprintf("###setup_choice_%d", k - 1), i18n.tr(c.choices[k - 1].label), &d.choices[k - 1], wrap = true)
 				}
 				ui.spacer(ui.px(em * 0.5))
 			}
@@ -660,16 +676,16 @@ info :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 			}
 			ui.spacer(ui.px(em * 0.9))
 		}
-		where_row(d, "###w2", WORDS_MENU, f.start_lnk ? c.identity.name : "-", false, em)
-		where_row(d, "###w3", WORDS_RECORD, f.record ? c.identity.name : "-", false, em)
-		where_row(d, "###w4", "this copy", f.running, true, em)
+		where_row(d, "###w2", words_menu(), f.start_lnk ? c.identity.name : "-", false, em)
+		where_row(d, "###w3", words_record(), f.record ? c.identity.name : "-", false, em)
+		where_row(d, "###w4", i18n.tr("this copy"), f.running, true, em)
 		if f.nixos && f.state != .Nix_Package && f.state != .This_Copy {
 			line_next()
 			if ui.row(id = "###setup_nixos_row") {
 				ui.spacer(ui.px(em * 0.9))
 				if ui.tags("weak") {
 					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-					ui.paragraph("On NixOS, a Nix package is the better install: Nix updates it. An install here makes this copy run by itself (nix-build makes the libraries it needs).###setup_nixos")
+					ui.paragraph(fmt.tprintf("%s###setup_nixos", i18n.tr("On NixOS, a Nix package is the better install: Nix updates it. An install here makes this copy run by itself (nix-build makes the libraries it needs).")))
 				}
 				ui.spacer(ui.px(em * 0.9))
 			}
@@ -681,7 +697,7 @@ info :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 				ui.spacer(ui.px(em * 0.9))
 				if ui.tags(busy ? "weak" : d.note_good ? "good" : "bad") {
 					ui.next({width = ui.fill(), text_pad = 0})
-					ui.paragraph(fmt.tprintf("%s###setup_note", busy ? "Working…" : d.note))
+					ui.paragraph(fmt.tprintf("%s###setup_note", busy ? i18n.tr("Working…") : d.note))
 				}
 				ui.spacer(ui.px(em * 0.9))
 			}
@@ -715,13 +731,13 @@ where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, em: f32) {
 			ui.label(fmt.tprintf("%s###v", value))
 		} else {
 			ui.next(mono)
-			ui.a11y({role = .Button, name = fmt.tprintf("Copy %s", value)})
+			ui.a11y({role = .Button, name = fmt.tprintf(i18n.tr("Copy %s"), value)})
 			text := ui.build_box({.Clickable, .Draw_Text}, fmt.tprintf("%s###v", value))
 			sig := ui.signal(text)
 			ui.spacer(ui.px(em * 0.4))
 			side := math.round(em * 1.3)
 			ui.next({width = ui.px(side), height = ui.px(side), cursor = .Hand})
-			ui.a11y({role = .Button, name = fmt.tprintf("Copy %s", value)})
+			ui.a11y({role = .Button, name = fmt.tprintf(i18n.tr("Copy %s"), value)})
 			button := ui.build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, "###copy")
 			bsig := ui.signal(button)
 			copied := d.copied == id
@@ -739,7 +755,7 @@ where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, em: f32) {
 			if ui.hovered_for(sig) || ui.hovered_for(bsig) {
 				if ui.tooltip() {
 					ui.next({width = ui.text_size(em * 0.6), height = ui.px(em * 1.8), font = ui.mono_font(), font_size = math.round(em * 0.86)})
-					ui.label(fmt.tprintf("%s###tip", copied ? "Copied" : value))
+					ui.label(fmt.tprintf("%s###tip", copied ? i18n.tr("Copied") : value))
 				}
 			}
 		}
@@ -796,7 +812,7 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 			// (the first click asks; the second uninstalls)
 			// (beside a Nix package, what goes is only what an earlier install left)
 			nix := d.facts.state == .Nix_Package
-			words := d.confirm ? (nix ? "Click again to remove" : "Click again to uninstall") : (nix ? "Remove what is left" : "Uninstall")
+			words := d.confirm ? (nix ? i18n.tr("Click again to remove") : i18n.tr("Click again to uninstall")) : (nix ? i18n.tr("Remove what is left") : i18n.tr("Uninstall"))
 			if button(c, "###setup_uninstall", words, lucide.TRASH_2, .Danger, em) && !busy(d) {
 				if d.confirm { start_uninstall(d, c) } else { d.confirm = true }
 			}
@@ -805,13 +821,13 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 		ui.spacer(ui.fill())
 		just_installed := d.installed != "" && d.facts.state != .This_Copy
 		how := closing(d, c)
-		CLOSING_WORDS := [Closing]string{.Close = "Close", .Not_Now = "Not now", .Keep_Standalone = "Keep standalone"}
+		CLOSING_WORDS := [Closing]string{.Close = i18n.tr("Close"), .Not_Now = i18n.tr("Not now"), .Keep_Standalone = i18n.tr("Keep standalone")}
 		CLOSING_IDS := [Closing]string{.Close = "###setup_close", .Not_Now = "###setup_later", .Keep_Standalone = "###setup_standalone"}
 		if button(c, CLOSING_IDS[how], CLOSING_WORDS[how], lucide.X, .Cancel, em) { ev = close(d, how) }
 		if !just_installed { mark(d, .Secondary, CLOSING_IDS[how]) }
 		if just_installed {
 			ui.spacer(ui.px(em * 0.5))
-			if button(c, "###setup_launch", "Open the installed copy", lucide.EXTERNAL_LINK, .Success, em) { ev = open_installed(d) }
+			if button(c, "###setup_launch", i18n.tr("Open the installed copy"), lucide.EXTERNAL_LINK, .Success, em) { ev = open_installed(d) }
 			mark(d, .Secondary, "###setup_launch")
 		}
 		if label := install_label(d, c); label != "" {

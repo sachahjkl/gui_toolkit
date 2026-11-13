@@ -13,6 +13,7 @@ import "base:runtime"
 import "core:strings"
 import "core:sys/posix"
 import base "../base"
+import i18n "../i18n"
 
 open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc := #caller_location) -> Dialog_Result {
 	base.blocking("platform.open_file_dialog", loc)
@@ -107,7 +108,7 @@ zenity_dialog :: proc(kind: int, d: File_Dialog, allocator := context.allocator)
 		spaced, _ := strings.replace_all(pats, ";", " ", context.temp_allocator)
 		append(&args, strings.concatenate({"--file-filter=", f.name, " | ", spaced}, context.temp_allocator))
 	}
-	if d.all_files { append(&args, "--file-filter=All files | *") }
+	if d.all_files { append(&args, strings.concatenate({"--file-filter=", i18n.tr("All files"), " | *"}, context.temp_allocator)) }
 	out, code := run_capture(args[:])
 	return parse_dialog_output(out, code, d.filter_index, allocator)
 }

@@ -3,6 +3,7 @@ package ui
 import "core:math"
 import "core:slice"
 import "../draw"
+import i18n "../i18n"
 
 // The colour picker: a saturation / value square, a hue bar and an opacity bar beside the colour it was opened with and the
 // new one (a click on the old one takes it back), a switch of the text's format (hex, rgb, hsl, oklch) and the colour as text.
@@ -79,7 +80,7 @@ color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {
 	gap := math.round(em * GAP_EM)
 	next({width = px(w), height = children_sum(), axis = .Y})
 	root := build_box({}, id)
-	a11y_default(root, {role = .Group, name = "Colour picker"})
+	a11y_default(root, {role = .Group, name = i18n.tr("Colour picker")})
 	push_parent(root)
 	defer pop_parent()
 
@@ -99,9 +100,9 @@ color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {
 			if k == 0 {
 				b.cursor = .Hand
 				if signal(b).clicked { color_pick_from(cp, cp.old); changed = true; cp.typed = false }
-				a11y_default(b, {role = .Button, name = "Take back the colour it had"})
+				a11y_default(b, {role = .Button, name = i18n.tr("Take back the colour it had")})
 			} else {
-				a11y_default(b, {role = .Image, name = "New colour"})
+				a11y_default(b, {role = .Image, name = i18n.tr("New colour")})
 			}
 		}
 		spacer(px(gap))
@@ -129,7 +130,7 @@ color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {
 	if focus_key() != key && !cp.typed && field_string(&cp.field) != want { field_set(&cp.field, want) }
 	next({width = px(w), height = px(math.round(em * ROW_EM)), font = mono_font(), radius = em * SWATCH_RADIUS_EM})
 	res := line_edit("###text", &cp.field)
-	a11y_default(res.box, {role = .Text_Input, name = "Colour"})
+	a11y_default(res.box, {role = .Text_Input, name = i18n.tr("Colour")})
 	if res.changed {
 		if c, style, ok := color_parse(field_string(&cp.field)); ok {
 			color_pick_from(cp, c)

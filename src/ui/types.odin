@@ -464,7 +464,7 @@ State :: struct {
 	caption_built:   bool,                  // a box with .Window_Caption was built this build
 	caption_font:    font.Font_Id,
 	caption_font_tried: bool,
-	caption_names:   [4]string,             // what screen readers call the caption buttons (set_window_button_names)
+	caption_names:   [4]string,             // what screen readers call the caption buttons (set_window_button_names; "": the toolkit's)
 	caption_right_down: bool,               // the right button went down on an empty part of the title bar (caption_right_clicked)
 	caption_clicked:    bool,               // ... and came up there this frame, at caption_click_at
 	caption_click_at:   Vec2,

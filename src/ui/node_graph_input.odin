@@ -5,6 +5,7 @@ package ui
 
 import "core:math"
 import "../draw"
+import i18n "../i18n"
 import "../platform"
 
 // A move of the pointer under this (logical px) from its press is a click, not a drag.
@@ -83,7 +84,7 @@ node_graph :: proc(id: string, view: ^Graph_View, nodes: []Graph_Node, links: []
 		if h := node_graph_hit(&f, s.mouse); h.kind == .Link { view.hover = h.link }
 	}
 	node_graph_build(&f)
-	a11y_default(area, {role = .Group, name = "Graph", role_description = "node graph"})
+	a11y_default(area, {role = .Group, name = i18n.tr("Graph"), role_description = i18n.tr("node graph")})
 	return f.events[:]
 }
 

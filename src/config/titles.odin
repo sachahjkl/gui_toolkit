@@ -4,10 +4,12 @@ package tk_config
 // description (the rest goes behind a "details" fold), the groups its name puts it in and their headings, and the
 // search over all of them. Nothing here allocates outside the given allocator, but title_register (the registry's).
 
+import "core:fmt"
 import "core:slice"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
+import i18n "../i18n"
 
 // The title of a preference, derived from its name (the definitions stay one name each: no second label to keep in
 // step, and every preference gets one). Its groups are the name's other segments (path_of), which a settings page shows
@@ -23,8 +25,11 @@ import "core:unicode/utf8"
 //
 // `keep_unit`: the unit word stays ("Max body KB"), for the rare group where two preferences differ by their unit only
 // (about:config asks for it then).
+//
+// A title of the definition's own is English, shown in the language in use (i18n.tr); a title made from the name stays
+// as it is (no catalogue has it).
 title_of :: proc(d: Def, allocator := context.temp_allocator, keep_unit := false) -> string {
-	if d.title != "" { return strings.clone(d.title, allocator) }   // (the program's words: an acronym, a phrase)
+	if d.title != "" { return strings.clone(i18n.tr(d.title), allocator) }   // (the program's words: an acronym, a phrase)
 	words := split_words(leaf_of(d.name), context.temp_allocator)
 	if !keep_unit && len(words) > 1 && is_unit_word(words[len(words) - 1]) { words = words[:len(words) - 1] }
 	if d.kind == .Bool && len(words) > 1 && words[len(words) - 1] == "enabled" { words = words[:len(words) - 1] }
@@ -61,10 +66,10 @@ title_register :: proc(p: ^Prefs, path: string, title: string, order := 0) {
 	p.groups[strings.clone(path, p.allocator)] = {title = strings.clone(title, p.allocator), order = order}
 }
 
-// The title of the group at `path`: the registered one, else made from its last segment ("devtools" -> "DevTools",
-// "web_platform" -> "Web platform").
+// The title of the group at `path`: the registered one, in the language in use (i18n.tr), else made from its last
+// segment ("devtools" -> "DevTools", "web_platform" -> "Web platform").
 group_title :: proc(p: ^Prefs, path: string, allocator := context.temp_allocator) -> string {
-	if g, ok := p.groups[path]; ok { return strings.clone(g.title, allocator) }
+	if g, ok := p.groups[path]; ok { return strings.clone(i18n.tr(g.title), allocator) }
 	return phrase(split_words(leaf_of(path), context.temp_allocator), allocator)
 }
 
@@ -126,14 +131,30 @@ summary_of :: proc(description: string) -> (summary, more: string) {
 	return strings.trim_space(s), ""
 }
 
+// The description a settings page shows: in the language in use (i18n.tr), the program's name in it (Def.program).
+description_of :: proc(d: Def, allocator := context.temp_allocator) -> string {
+	return description_text(d, i18n.tr(d.description), allocator)
+}
+
+// A description, or its format, with the program's name in it.
+@(private = "file")
+description_text :: proc(d: Def, text: string, allocator := context.temp_allocator) -> string {
+	if d.program == "" { return strings.clone(text, allocator) }
+	return fmt.aprintf(text, i18n.tr(d.program), allocator = allocator)
+}
+
 // Whether a preference matches a search: every word of `query` (lower case, separated by spaces) appears in its name,
 // its title, its description, its tags or the titles of its groups ("text gamma" finds "appearance.text.gamma" under
-// "Text and fonts"). An empty query matches everything. An advanced preference matches as any other.
+// "Text and fonts"). An empty query matches everything. An advanced preference matches as any other. The titles and the
+// description are searched as shown and in English: one who knows a setting by its English words finds it too.
 matches :: proc(p: ^Prefs, d: Def, query: string) -> bool {
 	groups := make([dynamic]string, context.temp_allocator)
-	for path in path_of(d.name) { append(&groups, group_title(p, path)) }
-	return words_match(query, d.name, title_of(d), d.description, strings.join(d.tags, " ", context.temp_allocator),
-		strings.join(groups[:], " ", context.temp_allocator))
+	for path in path_of(d.name) {
+		append(&groups, group_title(p, path))
+		if g, ok := p.groups[path]; ok { append(&groups, g.title) }
+	}
+	return words_match(query, d.name, title_of(d), d.title, description_of(d), description_text(d, d.description),
+		strings.join(d.tags, " ", context.temp_allocator), strings.join(groups[:], " ", context.temp_allocator))
 }
 
 @(private = "file")

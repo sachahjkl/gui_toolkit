@@ -21,6 +21,7 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import http "../http"
+import i18n "../i18n"
 
 CHECK_EVERY :: 24 * time.Hour
 RETRY_AFTER :: time.Hour
@@ -134,7 +135,7 @@ set_auto :: proc(u: ^Updater, check, install: bool) {
 // version is being installed or is installed.
 check_now :: proc(u: ^Updater) {
 	sync.guard(&u.mutex)
-	if u.phase == .Managed { u.result, u.failed, u.asked = replace(u.result, "a package manager updates this copy"), false, true; u.serial += 1; return }
+	if u.phase == .Managed { u.result, u.failed, u.asked = replace(u.result, i18n.tr("a package manager updates this copy")), false, true; u.serial += 1; return }
 	if u.phase == .Checking || u.phase == .Downloading || u.phase == .Installed { return }
 	u.want_check, u.want_asked = true, true
 	sync.cond_signal(&u.cond)
@@ -157,18 +158,18 @@ status :: proc(u: ^Updater, allocator := context.temp_allocator) -> Status {
 // The state in a sentence, for a settings line or a status bar.
 status_words :: proc(st: Status, allocator := context.temp_allocator) -> string {
 	switch st.phase {
-	case .Managed:     return "A package manager updates this copy."
-	case .Checking:    return "Checking for a newer version…"
-	case .Downloading: return fmt.aprintf("Downloading version %s…", st.version, allocator = allocator)
-	case .Available:   return fmt.aprintf("Version %s is available.", st.version, allocator = allocator)
-	case .Installed:   return fmt.aprintf("Version %s is installed: it runs at the next start.", st.version, allocator = allocator)
+	case .Managed:     return i18n.tr("A package manager updates this copy.")
+	case .Checking:    return i18n.tr("Checking for a newer version…")
+	case .Downloading: return fmt.aprintf(i18n.tr("Downloading version %s…"), st.version, allocator = allocator)
+	case .Available:   return fmt.aprintf(i18n.tr("Version %s is available."), st.version, allocator = allocator)
+	case .Installed:   return fmt.aprintf(i18n.tr("Version %s is installed: it runs at the next start."), st.version, allocator = allocator)
 	case .Idle:
 	}
 	switch {
-	case st.result == "": return "Not checked yet."
-	case st.failed:       return fmt.aprintf("The last check failed: %s.", st.result, allocator = allocator)
+	case st.result == "": return i18n.tr("Not checked yet.")
+	case st.failed:       return fmt.aprintf(i18n.tr("The last check failed: %s."), st.result, allocator = allocator)
 	}
-	return "Up to date."
+	return i18n.tr("Up to date.")
 }
 
 ////////////////////////////////
@@ -246,14 +247,14 @@ updater_check :: proc(u: ^Updater, asked: bool) {
 		u.phase = before == .Available ? .Available : .Idle   // (a check that failed says nothing against what was on offer)
 		u.next_check = time.time_add(time.now(), o.retry)
 	case nothing_new:
-		u.result, u.failed = replace(u.result, "up to date"), false
+		u.result, u.failed = replace(u.result, i18n.tr("up to date")), false
 		manifest_destroy(&u.offer, heap())
 		u.phase = .Idle
 		u.next_check = time.time_add(time.now(), o.every)
 	case:
 		manifest_destroy(&u.offer, heap())
 		u.offer = m
-		u.result, u.failed = replace(u.result, fmt.tprintf("version %s is available", m.version)), false
+		u.result, u.failed = replace(u.result, fmt.tprintf(i18n.tr("version %s is available"), m.version)), false
 		u.phase = .Available
 		u.next_check = time.time_add(time.now(), o.every)
 	}
@@ -272,22 +273,22 @@ updater_install :: proc(u: ^Updater, asked: bool) {
 	status, data, err := http.get(strings.concatenate({o.folder, m.file}, context.temp_allocator), {max_bytes = int(m.size), user_agent = o.user_agent}, heap())
 	switch {
 	case err != .None: why = http.error_text(err)
-	case status != 200: why = fmt.tprintf("the server answered %d for %s", status, m.file)
+	case status != 200: why = fmt.tprintf(i18n.tr("the server answered %d for %s"), status, m.file)
 	}
 	sync.lock(&u.mutex)
 	if why == "" && !u.stopped {
 		if e := place(o.exe, data, m); e != .None { why = error_text(e) }
 	} else if why == "" {
-		why = "stopped"
+		why = i18n.tr("stopped")
 	}
 	delete(data, heap())
 	u.asked = asked
 	if why != "" {
-		u.result, u.failed = replace(u.result, fmt.tprintf("version %s was not installed: %s", m.version, why)), true
+		u.result, u.failed = replace(u.result, fmt.tprintf(i18n.tr("version %s was not installed: %s"), m.version, why)), true
 		u.phase = .Available
 	} else {
 		u.version = replace(u.version, m.version)
-		u.result, u.failed = replace(u.result, fmt.tprintf("version %s is installed: it runs at the next start", m.version)), false
+		u.result, u.failed = replace(u.result, fmt.tprintf(i18n.tr("version %s is installed: it runs at the next start"), m.version)), false
 		u.phase = .Installed
 	}
 	tell(u)
@@ -301,12 +302,12 @@ fetch_release :: proc(o: Updater_Options) -> (m: Manifest, why: string, nothing_
 	status, manifest, err := http.get(strings.concatenate({o.folder, name}, context.temp_allocator), req, context.temp_allocator)
 	if err != .None { return {}, http.error_text(err), false }
 	if status == 404 { return {}, "", true }   // (no release for this system yet)
-	if status != 200 { return {}, fmt.tprintf("the server answered %d", status), false }
+	if status != 200 { return {}, fmt.tprintf(i18n.tr("the server answered %d"), status), false }
 	sig_req := req
 	sig_req.max_bytes = MAX_SIGNATURE_TEXT
 	sig_status, signature, sig_err := http.get(strings.concatenate({o.folder, name, ".sig"}, context.temp_allocator), sig_req, context.temp_allocator)
 	if sig_err != .None { return {}, http.error_text(sig_err), false }
-	if sig_status != 200 { return {}, "the update has no signature: refused", false }
+	if sig_status != 200 { return {}, i18n.tr("the update has no signature: refused"), false }
 	found, e := check_release(o.product, manifest, strings.trim_space(string(signature)), PLATFORM, o.channel, o.current, "", heap())
 	#partial switch e {
 	case .None:      return found, "", false

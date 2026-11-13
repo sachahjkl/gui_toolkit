@@ -22,6 +22,7 @@ import "core:math"
 import "core:strconv"
 import "core:strings"
 import "../draw"
+import i18n "../i18n"
 import "../platform"
 
 PANE_MIN_EM :: 3            // the smallest open pane, and what the other side keeps (em)
@@ -232,8 +233,13 @@ pane_toggle :: proc(id: string, axis: Axis, p: ^Pane, opts := Pane_Options{}) ->
 		inner.rect = {c - h, c + h}
 		chevron_draw(&inner, user, dc)
 	}, d
-	verb := p.collapsed ? "Show" : "Hide"
-	name := opts.title != "" ? fmt.tprintf("%s %s", verb, opts.title) : verb
+	// (whole sentences: a language puts the pane's title where its grammar wants it)
+	name: string
+	switch {
+	case opts.title == "": name = p.collapsed ? i18n.tr("Show") : i18n.tr("Hide")
+	case p.collapsed:      name = fmt.tprintf(i18n.tr("Show %s"), i18n.tr(opts.title))
+	case:                  name = fmt.tprintf(i18n.tr("Hide %s"), i18n.tr(opts.title))
+	}
 	if hovered_for(sig) { if tooltip() { tooltip_text(name) } }
 	a11y_default(b, {role = .Button, name = name, expanded = !p.collapsed})
 	return sig.clicked
@@ -251,10 +257,13 @@ pane_axis :: proc(place: Pane_Place, room_w: f32, side_min: f32 = 0) -> Axis {
 	return room_w >= lim ? .X : .Y
 }
 
-// Menu items that place the pane (inside a ctx_menu or a menu_submenu): returns whether one was chosen.
-pane_place_menu :: proc(p: ^Pane, labels := [Pane_Place]string{.Auto = "Auto", .Side = "At the side", .Below = "Below"}) -> (changed: bool) {
+// Menu items that place the pane (inside a ctx_menu or a menu_submenu): returns whether one was chosen. `labels`: the
+// program's words (a zero one: the toolkit's, in the language in use).
+pane_place_menu :: proc(p: ^Pane, labels := [Pane_Place]string{}) -> (changed: bool) {
+	words := labels
+	if words == {} { words = {.Auto = i18n.tr("Auto"), .Side = i18n.tr("At the side"), .Below = i18n.tr("Below")} }
 	for pl in Pane_Place {
-		if menu_item(fmt.tprintf("%s###pane_place_%d", labels[pl], int(pl)), checked = p.place == pl).clicked && p.place != pl {
+		if menu_item(fmt.tprintf("%s###pane_place_%d", words[pl], int(pl)), checked = p.place == pl).clicked && p.place != pl {
 			p.place, changed = pl, true
 		}
 	}
@@ -266,7 +275,7 @@ menu_move_to :: proc(hosts: []string, current: int) -> int {
 	to := -1
 	for h, i in hosts {
 		if i == current { continue }
-		if menu_item(fmt.tprintf("Move to %s###move_to_%d", h, i)).clicked { to = i }
+		if menu_item(fmt.tprintf("%s###move_to_%d", fmt.tprintf(i18n.tr("Move to %s"), h), i)).clicked { to = i }
 	}
 	return to
 }

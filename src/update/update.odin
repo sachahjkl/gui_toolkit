@@ -35,6 +35,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import i18n "../i18n"
 
 // What a program says of itself, the same in the program that checks and in the tool that signs.
 Product :: struct {
@@ -96,32 +97,32 @@ Error :: enum {
 
 error_text :: proc(e: Error) -> string {
 	switch e {
-	case .None:             return "no error"
-	case .Too_Long:         return "the update manifest is empty or too large"
-	case .Bad_Encoding:     return "the update signature is not well formed"
-	case .No_Public_Key:    return "this build has no update key: it cannot check an update"
-	case .Bad_Public_Key:   return "the update key built into this build is not valid"
-	case .Bad_Signature:    return "the update is not signed by its publisher (or was altered): refused"
-	case .Bad_Manifest:     return "the update manifest is not understood"
-	case .Wrong_Schema:     return "the update manifest is of another format"
-	case .Wrong_Product:    return "the update manifest is not for this program"
-	case .Wrong_Channel:    return "the update is of another channel"
-	case .Wrong_Platform:   return "the update is for another platform"
-	case .Bad_Version:      return "the update names an invalid version"
-	case .Not_Newer:        return "the update is not newer than the installed version"
-	case .Version_Mismatch: return "the signed manifest is for another version than the release that carried it"
-	case .Bad_File_Name:    return "the update names an unexpected file"
-	case .Bad_Hash:         return "the update manifest carries an invalid checksum"
-	case .Bad_Size:         return "the update manifest carries an invalid size"
-	case .Size_Mismatch:    return "the downloaded file is not the size that was signed: refused"
-	case .Hash_Mismatch:    return "the downloaded file does not match its signed checksum: refused"
-	case .Not_A_Program:    return "the download is not a program of this system: refused"
-	case .Not_Written:      return "the update could not be written beside the program"
-	case .Not_Written_Whole: return "the update was not written whole"
-	case .Not_Moved_Aside:  return "the running program could not be moved aside"
-	case .Not_Placed:       return "the update could not be put in place"
+	case .None:             return i18n.tr("no error")
+	case .Too_Long:         return i18n.tr("the update manifest is empty or too large")
+	case .Bad_Encoding:     return i18n.tr("the update signature is not well formed")
+	case .No_Public_Key:    return i18n.tr("this build has no update key: it cannot check an update")
+	case .Bad_Public_Key:   return i18n.tr("the update key built into this build is not valid")
+	case .Bad_Signature:    return i18n.tr("the update is not signed by its publisher (or was altered): refused")
+	case .Bad_Manifest:     return i18n.tr("the update manifest is not understood")
+	case .Wrong_Schema:     return i18n.tr("the update manifest is of another format")
+	case .Wrong_Product:    return i18n.tr("the update manifest is not for this program")
+	case .Wrong_Channel:    return i18n.tr("the update is of another channel")
+	case .Wrong_Platform:   return i18n.tr("the update is for another platform")
+	case .Bad_Version:      return i18n.tr("the update names an invalid version")
+	case .Not_Newer:        return i18n.tr("the update is not newer than the installed version")
+	case .Version_Mismatch: return i18n.tr("the signed manifest is for another version than the release that carried it")
+	case .Bad_File_Name:    return i18n.tr("the update names an unexpected file")
+	case .Bad_Hash:         return i18n.tr("the update manifest carries an invalid checksum")
+	case .Bad_Size:         return i18n.tr("the update manifest carries an invalid size")
+	case .Size_Mismatch:    return i18n.tr("the downloaded file is not the size that was signed: refused")
+	case .Hash_Mismatch:    return i18n.tr("the downloaded file does not match its signed checksum: refused")
+	case .Not_A_Program:    return i18n.tr("the download is not a program of this system: refused")
+	case .Not_Written:      return i18n.tr("the update could not be written beside the program")
+	case .Not_Written_Whole: return i18n.tr("the update was not written whole")
+	case .Not_Moved_Aside:  return i18n.tr("the running program could not be moved aside")
+	case .Not_Placed:       return i18n.tr("the update could not be put in place")
 	}
-	return "unknown error"
+	return i18n.tr("unknown error")
 }
 
 manifest_destroy :: proc(m: ^Manifest, allocator := context.allocator) {

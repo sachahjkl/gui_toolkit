@@ -901,7 +901,7 @@ a_hotkey_field_records_the_keys_pressed :: proc(t: ^testing.T) { unwatched.run(t
 	testing.expect(t, session.find_text(s, "Ctrl+V") != nil, "the value shows")
 	session.click(s, "keys")
 	testing.expect(t, ui.hotkey_recording(), "armed")
-	testing.expect(t, session.find_text(s, ui.HOTKEY_FIELD_RECORDING) != nil, "it says so")
+	testing.expect(t, session.find_text(s, "Press the keys…") != nil, "it says so")
 	session.key(s, .K)   // (a key alone: no shortcut, it waits)
 	testing.expect(t, ui.hotkey_recording())
 	session.key(s, .F5, {.Ctrl, .Shift})

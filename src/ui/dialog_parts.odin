@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import "../font"
+import i18n "../i18n"
 import lucide "../lucide"
 
 // What a dialog's header shows besides its title.
@@ -39,7 +40,7 @@ dialog_header_begin :: proc(id: string, title: string, opts := Dialog_Header{}) 
 		m.corner_side = math.round(min(em * DIALOG_CLOSE_EM, h))
 		m.corner_inset = border + math.round((h - m.corner_side) * 0.5)
 		m.close = true
-		m.close_label = opts.close_label != "" ? opts.close_label : "Close"
+		m.close_label = opts.close_label != "" ? opts.close_label : i18n.tr("Close")
 	}
 	shade := frame_new(Color)
 	shade^ = srgb_step(panel.bg, {0, 0, 0, panel.bg.a}, DIALOG_HEADER_DARKEN)

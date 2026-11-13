@@ -7,6 +7,7 @@ package tk_shortcuts
 import "core:fmt"
 import "core:strings"
 import "../ascii"
+import i18n "../i18n"
 import "../platform"
 
 // The state in words, for the weak line under the shortcut ("": nothing to say).
@@ -14,13 +15,13 @@ status_text :: proc(asked: string, st: Status, allocator := context.temp_allocat
 	#partial switch st.state {
 	case .Waiting:
 		if asked == "" { return "" }
-		return strings.clone("Waiting for the system's answer…", allocator)
+		return strings.clone(i18n.tr("Waiting for the system's answer…"), allocator)
 	case .Bound:
-		if asked == "" || same_keys(asked, st.trigger) { return fmt.aprintf("Works in every program: %s.", st.trigger, allocator = allocator) }
-		return fmt.aprintf("The system gave other keys: %s. Change them in its shortcut settings.", st.trigger, allocator = allocator)
+		if asked == "" || same_keys(asked, st.trigger) { return fmt.aprintf(i18n.tr("Works in every program: %s."), st.trigger, allocator = allocator) }
+		return fmt.aprintf(i18n.tr("The system gave other keys: %s. Change them in its shortcut settings."), st.trigger, allocator = allocator)
 	case .No_Keys:
-		if asked == "" { return strings.clone("No keys.", allocator) }
-		return strings.clone("The system gave no keys yet: choose them in its shortcut settings.", allocator)
+		if asked == "" { return strings.clone(i18n.tr("No keys."), allocator) }
+		return strings.clone(i18n.tr("The system gave no keys yet: choose them in its shortcut settings."), allocator)
 	}
 	return ""
 }
@@ -29,15 +30,15 @@ status_text :: proc(asked: string, st: Status, allocator := context.temp_allocat
 problem_text :: proc(asked: string, st: Status, allocator := context.temp_allocator) -> string {
 	if asked != "" {
 		if _, parsed := platform.hotkey_parse(asked); !parsed {
-			return fmt.aprintf("%q is not a shortcut: click the field and press the keys.", asked, allocator = allocator)
+			return fmt.aprintf(i18n.tr("%q is not a shortcut: click the field and press the keys."), asked, allocator = allocator)
 		}
 	}
 	#partial switch st.state {
-	case .Taken:   return fmt.aprintf("Another program holds %s: choose other keys.", st.trigger, allocator = allocator)
-	case .Refused: return strings.clone("The system refused this shortcut.", allocator)
+	case .Taken:   return fmt.aprintf(i18n.tr("Another program holds %s: choose other keys."), st.trigger, allocator = allocator)
+	case .Refused: return strings.clone(i18n.tr("The system refused this shortcut."), allocator)
 	case .Unavailable:
 		if asked == "" { return "" }
-		return strings.clone("This desktop gives programs no shortcuts of their own: bind the keys in its own settings.", allocator)
+		return strings.clone(i18n.tr("This desktop gives programs no shortcuts of their own: bind the keys in its own settings."), allocator)
 	}
 	return ""
 }

@@ -14,6 +14,7 @@ package tk_ocr
 import "core:slice"
 import "core:strings"
 import "../ascii"
+import i18n "../i18n"
 
 Format :: enum u8 { RGBA, BGRA }
 
@@ -64,14 +65,14 @@ Error :: enum u8 {
 
 error_text :: proc(e: Error) -> string {
 	switch e {
-	case .None:        return "no error"
-	case .No_Engine:   return "this system has no text recognition (OCR) engine"
-	case .No_Language: return "no text recognition language is installed for the languages asked"
-	case .Bad_Picture: return "the picture's size does not match its pixels"
-	case .Too_Large:   return "the picture is too large for text recognition"
-	case .Failed:      return "text recognition failed"
+	case .None:        return i18n.tr("no error")
+	case .No_Engine:   return i18n.tr("this system has no text recognition (OCR) engine")
+	case .No_Language: return i18n.tr("no text recognition language is installed for the languages asked")
+	case .Bad_Picture: return i18n.tr("the picture's size does not match its pixels")
+	case .Too_Large:   return i18n.tr("the picture is too large for text recognition")
+	case .Failed:      return i18n.tr("text recognition failed")
 	}
-	return "unknown error"
+	return i18n.tr("unknown error")
 }
 
 // Which engine this system has, and whether it can read: its library is there and at least one language is installed.

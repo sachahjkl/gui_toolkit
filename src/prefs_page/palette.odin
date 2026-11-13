@@ -14,6 +14,7 @@ package tk_prefs_page
 import "core:fmt"
 import "core:strings"
 import config "../config"
+import i18n "../i18n"
 import lucide "../lucide"
 import "../ui"
 
@@ -24,7 +25,7 @@ palette_commands :: proc(prefs: ^config.Prefs, o: Options, allocator := context.
 	out := make([dynamic]ui.Command, allocator)
 	ns := make([dynamic]string, allocator)
 	for pg in pages_of(prefs, o) {
-		group := fmt.aprintf("Settings · %s", pg.title, allocator = allocator)
+		group := fmt.aprintf(i18n.tr("Settings · %s"), pg.title, allocator = allocator)
 		icon := pg.icon != "" ? pg.icon : lucide.SLIDERS_HORIZONTAL
 		for name in page_names(prefs, pg) {
 			r := prefs.index[name]

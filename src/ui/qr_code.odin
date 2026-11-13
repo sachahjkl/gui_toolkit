@@ -1,8 +1,10 @@
 package ui
 
+import "core:fmt"
 import "core:math"
 import "core:strings"
 import "../draw"
+import i18n "../i18n"
 import "../qr"
 
 // What a qr_code box keeps between builds: its text's code, encoded again only when the text or the level changes.
@@ -48,7 +50,7 @@ qr_code :: proc(id: string, text: string, size: f32, ecc := qr.Ecc.Medium) -> Si
 	d := frame_new(Qr_Draw)
 	d.code = c.code
 	b.custom, b.custom_user = qr_draw, d
-	a11y_default(b, {role = .Image, name = strings.concatenate({"QR code: ", text}, frame_allocator())})
+	a11y_default(b, {role = .Image, name = fmt.aprintf(i18n.tr("QR code: %s"), text, allocator = frame_allocator())})
 	return signal(b)
 }
 

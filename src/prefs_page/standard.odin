@@ -14,9 +14,11 @@ package tk_prefs_page
 //	a := prefs_page.appearance_read(&prefs); defer prefs_page.appearance_free(&a)
 //	ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 
+import "base:runtime"
 import "core:fmt"
 import "core:log"
 import "core:math"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import config "../config"
@@ -123,10 +125,9 @@ FONT_SIZE_MAX :: 24
 @(private = "file", rodata) UPDATE_TAGS := [?]string{"upgrade", "version", "release"}
 @(private = "file", rodata) VSYNC_TAGS := [?]string{"vsync", "tearing", "latency", "fps"}
 @(private = "file", rodata) LANGUAGE_TAGS := [?]string{"locale", "translation", "language"}
-// English, then each language of the toolkit's catalogues (i18n.TOOLKIT_CATALOGS), by their own names: one reads the name
+// English, then each language of the toolkit's catalogues (i18n.TOOLKIT_CATALOGS); their labels (in the Def) are their own names: one reads the name
 // of one's language in it
 @(private = "file", rodata) LANGUAGE_CHOICES := [?]string{"system", "en", "fr"}
-@(private = "file", rodata) LANGUAGE_LABELS := [?]string{"System", "English", "Français"}
 
 // The order of the standard groups among a program's own (theirs are 0): the session and the look first, the technical
 // ones last.
@@ -144,406 +145,413 @@ FONT_SIZE_MAX :: 24
 
 // Registers the standard preferences of `sets`, in the page's order (before the program's own: the page lists a group's
 // preferences in the order they came), and the titles of their groups (a program that registers a title after gives its
-// own words). The descriptions that name `defaults.app_name` are made in `allocator` and must live as long as `prefs`
-// (the registry keeps them, and frees no description): a program's registry lives as long as the program; a test gives
-// an arena or the temporary allocator.
+// own words). Their words are English, marked for the catalogues (i18n.later): the page shows them in the language in
+// use, which is known only once the settings are read. A description that names the program is a format, filled with
+// `defaults.app_name` where it is shown (Def.program: the registry keeps that string, a literal or as long-lived as
+// `prefs`). The labels of the choices are made in `allocator` and must live as long as `prefs` (the registry keeps them,
+// and frees none): a program's registry lives as long as the program; a test gives an arena or the temporary allocator.
 standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standard_Defaults, allocator := context.allocator) {
 	d := defaults
 	if d.mode == "" { d.mode = "system" }
 	if d.finish == "" { d.finish = "machined" }
 	if d.font_size <= 0 { d.font_size = 14 }
-	name := d.app_name != "" ? d.app_name : "the program"
+	name := d.app_name != "" ? d.app_name : i18n.later("the program")
 	a := allocator
+	// (the launcher's place in the user's words, as gt:desktop's menu_name says it: the page does not import it)
+	menu_description := i18n.later("Put %[0]s in the application menu, with its icon. The desktop then knows %[0]s by its name: its shortcuts and its windows' places come from that.")
+	when ODIN_OS == .Windows {
+		menu_description = i18n.later("Put %[0]s in the Start menu, with its icon. The desktop then knows %[0]s by its name: its shortcuts and its windows' places come from that.")
+	}
 	defs := make([dynamic]config.Def, context.temp_allocator)
 	feel := ui.FEEL_DEFAULT
 	fs := font.DEFAULT_SETTINGS
 	tr := render.TEXT_RENDERING_LINEAR
 	if .Session in sets {
-		config.title_register(prefs, "general", "General", ORDER_GENERAL)
+		config.title_register(prefs, "general", i18n.later("General"), ORDER_GENERAL)
 		append(&defs, config.Def{
-			name = MENU_PREF, title = "In the application menu", kind = .Bool, default = {b = d.menu},
-			description = fmt.aprintf("Put %s in the %s, with its icon. The desktop then knows %s by its name: its shortcuts and its windows' places come from that.", name, menu_words(), name, allocator = a),
+			name = MENU_PREF, title = i18n.later("In the application menu"), kind = .Bool, default = {b = d.menu},
+			description = menu_description, program = name,
 			tags = MENU_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = AUTOSTART_PREF, title = "Start with the session", kind = .Bool, default = {b = d.autostart},
-			description = fmt.aprintf("Start %s with the session, so that its shortcuts work from the start.", name, allocator = a),
+			name = AUTOSTART_PREF, title = i18n.later("Start with the session"), kind = .Bool, default = {b = d.autostart},
+			description = i18n.later("Start %s with the session, so that its shortcuts work from the start."), program = name,
 			tags = AUTOSTART_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = MESSAGES_PREF, title = "Messages", kind = .String, default = {s = "system"},
-			description = fmt.aprintf("Where %s says what it did (copied, saved, deleted). System: the system's notifications, or %s's window where the system has none. Window: only in %s's window. Off: nowhere; a failure is always said.", name, name, name, allocator = a),
-			choices = MESSAGES_CHOICES[:], tags = MESSAGES_TAGS[:],
+			name = MESSAGES_PREF, title = i18n.later("Messages"), kind = .String, default = {s = "system"},
+			description = i18n.later("Where %[0]s says what it did (copied, saved, deleted). System: the system's notifications, or %[0]s's window where the system has none. Window: only in %[0]s's window. Off: nowhere; a failure is always said."), program = name,
+			choices = MESSAGES_CHOICES[:], choice_labels = labels(a, i18n.later("System"), i18n.later("Window"), i18n.later("Off")), tags = MESSAGES_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = LANGUAGE_PREF, title = "Language", kind = .String, default = {s = "system"}, restart = true,
-			description = "The language of the interface. System: the system's, English where the program has no text in it.",
-			choices = LANGUAGE_CHOICES[:], choice_labels = LANGUAGE_LABELS[:], tags = LANGUAGE_TAGS[:],
+			name = LANGUAGE_PREF, title = i18n.later("Language"), kind = .String, default = {s = "system"}, restart = true,
+			description = i18n.later("The language of the interface. System: the system's, English where the program has no text in it."),
+			choices = LANGUAGE_CHOICES[:], choice_labels = labels(a, i18n.later("System"), "English", "Français"), tags = LANGUAGE_TAGS[:],
 		})
 	}
 	if .Appearance in sets {
-		config.title_register(prefs, "appearance", "Appearance", ORDER_APPEARANCE)
+		config.title_register(prefs, "appearance", i18n.later("Appearance"), ORDER_APPEARANCE)
 		append(&defs, config.Def{
-			name = THEME_PREF, title = "Theme", kind = .String, default = {s = d.theme},
-			description = fmt.aprintf("The colours of %s's windows.", name, allocator = a),
+			name = THEME_PREF, title = i18n.later("Theme"), kind = .String, default = {s = d.theme},
+			description = i18n.later("The colours of %s's windows."), program = name,
 			tags = THEME_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = MODE_PREF, title = "Light or dark", kind = .String, default = {s = d.mode},
-			description = "The theme's version: the system's (light or dark, followed as it changes), dark, or light.",
-			choices = MODE_CHOICES[:], tags = MODE_TAGS[:],
+			name = MODE_PREF, title = i18n.later("Light or dark"), kind = .String, default = {s = d.mode},
+			description = i18n.later("The theme's version: the system's (light or dark, followed as it changes), dark, or light."),
+			choices = MODE_CHOICES[:], choice_labels = labels(a, i18n.later("System"), i18n.later("Dark"), i18n.later("Light")), tags = MODE_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = FINISH_PREF, title = "Finish", kind = .String, default = {s = d.finish},
-			description = "How surfaces are drawn. Machined: bevelled buttons, sunken fields, carved lines. Edged: the same reliefs, crisp, with square corners. Flat: plain surfaces and thin lines. Gradient: faces lit from the top. Glass: glossy faces.",
-			choices = FINISH_CHOICES[:], tags = FINISH_TAGS[:],
+			name = FINISH_PREF, title = i18n.later("Finish"), kind = .String, default = {s = d.finish},
+			description = i18n.later("How surfaces are drawn. Machined: bevelled buttons, sunken fields, carved lines. Edged: the same reliefs, crisp, with square corners. Flat: plain surfaces and thin lines. Gradient: faces lit from the top. Glass: glossy faces."),
+			choices = FINISH_CHOICES[:], choice_labels = labels(a, i18n.later("Machined"), i18n.later("Edged"), i18n.later("Flat"), i18n.later("Gradient"), i18n.later("Glass")), tags = FINISH_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = GLOW_PREF, title = "Glow", kind = .Float, default = {f = decimal(d.glow)}, bounded = true, min = 0, max = 1,
-			description = "How much the buttons and fields of the machined finish glow. 0: no halo.",
+			name = GLOW_PREF, title = i18n.later("Glow"), kind = .Float, default = {f = decimal(d.glow)}, bounded = true, min = 0, max = 1,
+			description = i18n.later("How much the buttons and fields of the machined finish glow. 0: no halo."),
 		})
 		append(&defs, config.Def{
-			name = FONT_SIZE_PREF, title = "Text size", kind = .Float, default = {f = decimal(d.font_size)},
-			description = "The size of the text, in logical pixels.", min = FONT_SIZE_MIN, max = FONT_SIZE_MAX, bounded = true, unit = "px",
+			name = FONT_SIZE_PREF, title = i18n.later("Text size"), kind = .Float, default = {f = decimal(d.font_size)},
+			description = i18n.later("The size of the text, in logical pixels."), min = FONT_SIZE_MIN, max = FONT_SIZE_MAX, bounded = true, unit = "px",
 			tags = FONT_SIZE_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.zoom", title = "Zoom", kind = .Float, default = {f = 1}, bounded = true, min = ui.ZOOM_MIN, max = ui.ZOOM_MAX, unit = "×",
-			description = "How large the whole interface is drawn: text, rows and gaps. Ctrl+wheel, Ctrl+= and Ctrl+- change it for the run.",
+			name = "appearance.zoom", title = i18n.later("Zoom"), kind = .Float, default = {f = 1}, bounded = true, min = ui.ZOOM_MIN, max = ui.ZOOM_MAX, unit = "×",
+			description = i18n.later("How large the whole interface is drawn: text, rows and gaps. Ctrl+wheel, Ctrl+= and Ctrl+- change it for the run."),
 			tags = ZOOM_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.density", title = "Density", kind = .Float, default = {f = 1}, bounded = true, min = ui.DENSITY_MIN, max = ui.DENSITY_MAX, unit = "×",
-			description = "The height of rows and the vertical gaps; the text keeps its size. Lower is more compact.",
+			name = "appearance.density", title = i18n.later("Density"), kind = .Float, default = {f = 1}, bounded = true, min = ui.DENSITY_MIN, max = ui.DENSITY_MAX, unit = "×",
+			description = i18n.later("The height of rows and the vertical gaps; the text keeps its size. Lower is more compact."),
 			tags = DENSITY_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.rounding", title = "Rounding", kind = .Float, default = {f = 1}, bounded = true, min = 0, max = 2, unit = "×",
-			description = "How round the corners are. 0: square corners. The edged finish is always square.",
+			name = "appearance.rounding", title = i18n.later("Rounding"), kind = .Float, default = {f = 1}, bounded = true, min = 0, max = 2, unit = "×",
+			description = i18n.later("How round the corners are. 0: square corners. The edged finish is always square."),
 			tags = ROUNDING_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.corner_smoothing", title = "Smooth corners", kind = .Float, default = {f = 1}, bounded = true, min = 0, max = 1,
-			description = "The shape of a rounded corner: 0, a circle's arc; 1, a squircle, whose curve starts gently.",
+			name = "appearance.corner_smoothing", title = i18n.later("Smooth corners"), kind = .Float, default = {f = 1}, bounded = true, min = 0, max = 1,
+			description = i18n.later("The shape of a rounded corner: 0, a circle's arc; 1, a squircle, whose curve starts gently."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.animations", title = "Animations", kind = .String, default = {s = "system"},
-			description = "Whether transitions move: as the system asks (its setting to reduce motion), always, or never.",
-			choices = ANIMATION_CHOICES[:], tags = MOTION_TAGS[:],
+			name = "appearance.animations", title = i18n.later("Animations"), kind = .String, default = {s = "system"},
+			description = i18n.later("Whether transitions move: as the system asks (its setting to reduce motion), always, or never."),
+			choices = ANIMATION_CHOICES[:], choice_labels = labels(a, i18n.later("System"), i18n.later("On"), i18n.later("Off")), tags = MOTION_TAGS[:],
 		})
-		config.title_register(prefs, "window", "Window", ORDER_WINDOW)
+		config.title_register(prefs, "window", i18n.later("Window"), ORDER_WINDOW)
 		append(&defs, config.Def{
-			name = SYSTEM_TITLE_PREF, title = "The system's title bar", kind = .Bool, default = {b = d.system_title},
-			description = fmt.aprintf("The system draws the title bar of %s's windows. Off: %s draws its own, with its tabs and buttons in it.", name, name, allocator = a),
+			name = SYSTEM_TITLE_PREF, title = i18n.later("The system's title bar"), kind = .Bool, default = {b = d.system_title},
+			description = i18n.later("The system draws the title bar of %[0]s's windows. Off: %[0]s draws its own, with its tabs and buttons in it."), program = name,
 		})
 		append(&defs, config.Def{
-			name = "window.toast_position", title = "Where messages show", kind = .String, default = {s = "bottom_right"},
-			description = "Where in the window its short messages show.",
-			choices = TOAST_CHOICES[:], tags = MESSAGES_TAGS[:],
+			name = "window.toast_position", title = i18n.later("Where messages show"), kind = .String, default = {s = "bottom_right"},
+			description = i18n.later("Where in the window its short messages show."),
+			choices = TOAST_CHOICES[:], choice_labels = labels(a, i18n.later("Top left"), i18n.later("Top center"), i18n.later("Top right"), i18n.later("Middle left"), i18n.later("Middle right"), i18n.later("Bottom left"), i18n.later("Bottom center"), i18n.later("Bottom right")), tags = MESSAGES_TAGS[:],
 		})
 	}
 	if .Text in sets {
-		config.title_register(prefs, "appearance.text", "Text and fonts")
+		config.title_register(prefs, "appearance.text", i18n.later("Text and fonts"))
 		append(&defs, config.Def{
-			name = UI_FONT_PREF, title = "Interface font", kind = .String, default = {s = ""}, restart = true,
-			description = "The family of the interface's text, as the system names it (\"Inter\"). Empty: the program's.",
+			name = UI_FONT_PREF, title = i18n.later("Interface font"), kind = .String, default = {s = ""}, restart = true,
+			description = i18n.later("The family of the interface's text, as the system names it (\"Inter\"). Empty: the program's."),
 			tags = FONT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = MONO_FONT_PREF, title = "Monospace font", kind = .String, default = {s = ""}, restart = true,
-			description = "The family of code and of what lines up in columns. Empty: the program's.",
+			name = MONO_FONT_PREF, title = i18n.later("Monospace font"), kind = .String, default = {s = ""}, restart = true,
+			description = i18n.later("The family of code and of what lines up in columns. Empty: the program's."),
 			tags = FONT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = PROSE_FONT_PREF, title = "Reading font", kind = .String, default = {s = ""}, restart = true,
-			description = "The family of long text to read (documents, messages). Empty: the program's.",
+			name = PROSE_FONT_PREF, title = i18n.later("Reading font"), kind = .String, default = {s = ""}, restart = true,
+			description = i18n.later("The family of long text to read (documents, messages). Empty: the program's."),
 			tags = FONT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = EMOJI_FONT_PREF, title = "Emoji font", kind = .String, default = {s = ""}, restart = true,
-			description = "A font file whose emoji are drawn in place of the program's. Empty: the program's.",
+			name = EMOJI_FONT_PREF, title = i18n.later("Emoji font"), kind = .String, default = {s = ""}, restart = true,
+			description = i18n.later("A font file whose emoji are drawn in place of the program's. Empty: the program's."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.system_fallback", title = "The system's fonts as a last resort", kind = .Bool, default = {b = fs.system_fallback},
-			description = "A character no font of the program has comes from a font of the system.",
+			name = "appearance.text.system_fallback", title = i18n.later("The system's fonts as a last resort"), kind = .Bool, default = {b = fs.system_fallback},
+			description = i18n.later("A character no font of the program has comes from a font of the system."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.color_emoji", title = "Emoji in colour", kind = .Bool, default = {b = fs.color_glyphs},
-			description = "Emoji and other colour glyphs in their colours. Off: their outline, in the text's colour.",
+			name = "appearance.text.color_emoji", title = i18n.later("Emoji in colour"), kind = .Bool, default = {b = fs.color_glyphs},
+			description = i18n.later("Emoji and other colour glyphs in their colours. Off: their outline, in the text's colour."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.subpixel", title = "Subpixel text", kind = .String, default = {s = SUBPIXEL_CHOICES[int(fs.subpixel_text)]},
-			description = "Text smoothed per colour stripe of the screen's pixels, in their order (rgb or bgr): sharper at small sizes on a screen with stripes. Off: grey smoothing, right on every screen.",
-			choices = SUBPIXEL_CHOICES[:], tags = TEXT_LOOK_TAGS[:],
+			name = "appearance.text.subpixel", title = i18n.later("Subpixel text"), kind = .String, default = {s = SUBPIXEL_CHOICES[int(fs.subpixel_text)]},
+			description = i18n.later("Text smoothed per colour stripe of the screen's pixels, in their order (rgb or bgr): sharper at small sizes on a screen with stripes. Off: grey smoothing, right on every screen."),
+			choices = SUBPIXEL_CHOICES[:], choice_labels = labels(a, i18n.later("Off"), "Rgb", "Bgr"), tags = TEXT_LOOK_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.gamma", title = "Gamma", kind = .Float, default = {f = decimal(tr.gamma)}, bounded = true, min = 0.25, max = 4,
-			description = "The exponent of the power curve the text and its background are blended through (with the power curve). Higher is lighter text on a dark background.",
+			name = "appearance.text.gamma", title = i18n.later("Gamma"), kind = .Float, default = {f = decimal(tr.gamma)}, bounded = true, min = 0.25, max = 4,
+			description = i18n.later("The exponent of the power curve the text and its background are blended through (with the power curve). Higher is lighter text on a dark background."),
 			tags = TEXT_LOOK_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.contrast", title = "Contrast", kind = .Float, default = {f = decimal(tr.contrast)}, bounded = true, min = 0, max = 1,
-			description = "How much the edges of the letters are boosted against their background (with a curve). 0: none.",
+			name = "appearance.text.contrast", title = i18n.later("Contrast"), kind = .Float, default = {f = decimal(tr.contrast)}, bounded = true, min = 0, max = 1,
+			description = i18n.later("How much the edges of the letters are boosted against their background (with a curve). 0: none."),
 			tags = TEXT_LOOK_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.coverage_exponent", title = "Weight", kind = .Float, default = {f = decimal(tr.coverage_exponent)}, bounded = true, min = 0.1, max = 4,
-			description = "The exponent each pixel's coverage is raised to: below 1 thickens the text, above 1 thins it.",
+			name = "appearance.text.coverage_exponent", title = i18n.later("Weight"), kind = .Float, default = {f = decimal(tr.coverage_exponent)}, bounded = true, min = 0.1, max = 4,
+			description = i18n.later("The exponent each pixel's coverage is raised to: below 1 thickens the text, above 1 thins it."),
 			tags = TEXT_LOOK_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.curve", title = "Blending curve", kind = .String, default = {s = TEXT_CURVE_CHOICES[int(tr.curve)]}, advanced = true,
-			description = "How a letter's colour meets its background. None: as the blending space does. Srgb: in linear light, as Chromium on Windows. Power: through the gamma above, as Chromium on Linux.",
-			choices = TEXT_CURVE_CHOICES[:],
+			name = "appearance.text.curve", title = i18n.later("Blending curve"), kind = .String, default = {s = TEXT_CURVE_CHOICES[int(tr.curve)]}, advanced = true,
+			description = i18n.later("How a letter's colour meets its background. None: as the blending space does. Srgb: in linear light, as Chromium on Windows. Power: through the gamma above, as Chromium on Linux."),
+			choices = TEXT_CURVE_CHOICES[:], choice_labels = labels(a, i18n.later("None"), "Srgb", i18n.later("Power")),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.blend_space", title = "Blending space", kind = .String, default = {s = "linear"}, advanced = true,
-			description = "Where colours are mixed: in linear light (correct mixing, what the toolkit is tuned for), or in sRGB values, as web browsers do.",
-			choices = BLEND_CHOICES[:],
+			name = "appearance.text.blend_space", title = i18n.later("Blending space"), kind = .String, default = {s = "linear"}, advanced = true,
+			description = i18n.later("Where colours are mixed: in linear light (correct mixing, what the toolkit is tuned for), or in sRGB values, as web browsers do."),
+			choices = BLEND_CHOICES[:], choice_labels = labels(a, i18n.later("Linear"), "Srgb"),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.subpixel_steps", title = "Subpixel positions", kind = .Int, default = {i = i64(fs.subpixel_steps)}, bounded = true, min = 1, max = 4, advanced = true,
-			description = "The positions of a letter within a pixel. 1: whole pixels, crisper and rougher spacing; 4: the most even spacing.",
+			name = "appearance.text.subpixel_steps", title = i18n.later("Subpixel positions"), kind = .Int, default = {i = i64(fs.subpixel_steps)}, bounded = true, min = 1, max = 4, advanced = true,
+			description = i18n.later("The positions of a letter within a pixel. 1: whole pixels, crisper and rougher spacing; 4: the most even spacing."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.grid_fit", title = "Grid fitting", kind = .String, default = {s = GRID_FIT_CHOICES[int(fs.grid_fit)]}, advanced = true,
-			description = "Whether outlines are fitted to the pixel grid: crisper stems, shapes a little off. Default: as the font asks.",
-			choices = GRID_FIT_CHOICES[:],
+			name = "appearance.text.grid_fit", title = i18n.later("Grid fitting"), kind = .String, default = {s = GRID_FIT_CHOICES[int(fs.grid_fit)]}, advanced = true,
+			description = i18n.later("Whether outlines are fitted to the pixel grid: crisper stems, shapes a little off. Default: as the font asks."),
+			choices = GRID_FIT_CHOICES[:], choice_labels = labels(a, i18n.later("Default"), i18n.later("Enabled"), i18n.later("Disabled")),
 		})
 		when ODIN_OS == .Windows {
 			// (elsewhere there is no rasterizer of bitmaps: Slug draws every letter)
 			append(&defs, config.Def{
-				name = "appearance.text.renderer", title = "Text renderer", kind = .String, default = {s = RENDERER_CHOICES[int(fs.text_renderer)]}, advanced = true,
-				description = "How letters reach the screen. Atlas: bitmaps the system draws, hinted per size. Slug: the outlines, drawn by the graphics card, sharp at any scale.",
+				name = "appearance.text.renderer", title = i18n.later("Text renderer"), kind = .String, default = {s = RENDERER_CHOICES[int(fs.text_renderer)]}, advanced = true,
+				description = i18n.later("How letters reach the screen. Atlas: bitmaps the system draws, hinted per size. Slug: the outlines, drawn by the graphics card, sharp at any scale."),
 				choices = RENDERER_CHOICES[:],
 			})
 			append(&defs, config.Def{
-				name = "appearance.text.rendering", title = "DirectWrite mode", kind = .String, default = {s = RENDERING_CHOICES[int(fs.rendering)]}, advanced = true,
-				description = "How DirectWrite draws the atlas's letters.",
-				choices = RENDERING_CHOICES[:],
+				name = "appearance.text.rendering", title = i18n.later("DirectWrite mode"), kind = .String, default = {s = RENDERING_CHOICES[int(fs.rendering)]}, advanced = true,
+				description = i18n.later("How DirectWrite draws the atlas's letters."),
+				choices = RENDERING_CHOICES[:], choice_labels = labels(a, i18n.later("Natural symmetric"), i18n.later("Natural"), "Gdi classic", i18n.later("Aliased")),
 			})
 		}
 		append(&defs, config.Def{
-			name = "appearance.text.slug_tolerance", title = "Slug tolerance", kind = .Float, default = {f = f64(fs.slug_tolerance) * SLUG_TOLERANCE_UNIT}, bounded = true,
+			name = "appearance.text.slug_tolerance", title = i18n.later("Slug tolerance"), kind = .Float, default = {f = f64(fs.slug_tolerance) * SLUG_TOLERANCE_UNIT}, bounded = true,
 			min = 1.0 / 65536 * SLUG_TOLERANCE_UNIT, max = 1.0 / 64 * SLUG_TOLERANCE_UNIT, unit = "‰ em", advanced = true,
-			description = "The largest distance between a letter's curve and the simpler curves Slug draws in its place. Lower is truer and heavier.",
+			description = i18n.later("The largest distance between a letter's curve and the simpler curves Slug draws in its place. Lower is truer and heavier."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.color_async", title = "Colour glyphs on a thread", kind = .Bool, default = {b = fs.color_async}, advanced = true,
-			description = "Colour glyphs are drawn on a thread of their own: they show a moment later, and a frame never waits for them.",
+			name = "appearance.text.color_async", title = i18n.later("Colour glyphs on a thread"), kind = .Bool, default = {b = fs.color_async}, advanced = true,
+			description = i18n.later("Colour glyphs are drawn on a thread of their own: they show a moment later, and a frame never waits for them."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.atlas_pages", title = "Atlas pages", kind = .Int, default = {i = i64(fs.max_gray_pages)}, bounded = true, min = 1, max = 64, advanced = true,
-			description = "The pages of letters kept before the least used one is drawn over.",
+			name = "appearance.text.atlas_pages", title = i18n.later("Atlas pages"), kind = .Int, default = {i = i64(fs.max_gray_pages)}, bounded = true, min = 1, max = 64, advanced = true,
+			description = i18n.later("The pages of letters kept before the least used one is drawn over."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.color_pages", title = "Colour atlas pages", kind = .Int, default = {i = i64(fs.max_color_pages)}, bounded = true, min = 1, max = 64, advanced = true,
-			description = "The pages of colour glyphs kept before the least used one is drawn over.",
+			name = "appearance.text.color_pages", title = i18n.later("Colour atlas pages"), kind = .Int, default = {i = i64(fs.max_color_pages)}, bounded = true, min = 1, max = 64, advanced = true,
+			description = i18n.later("The pages of colour glyphs kept before the least used one is drawn over."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.page_size", title = "Atlas page size", kind = .Int, default = {i = i64(fs.page_size)}, bounded = true, min = 256, max = 8192, unit = "px", advanced = true, restart = true,
-			description = "The side of a page of the atlas.",
+			name = "appearance.text.page_size", title = i18n.later("Atlas page size"), kind = .Int, default = {i = i64(fs.page_size)}, bounded = true, min = 256, max = 8192, unit = "px", advanced = true, restart = true,
+			description = i18n.later("The side of a page of the atlas."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.word_cache", title = "Words kept", kind = .Int, default = {i = i64(fs.word_cache)}, bounded = true, min = 0, max = 1 << 20, advanced = true,
-			description = "The shaped words kept, so that a word measured again is not shaped again. 0: none.",
+			name = "appearance.text.word_cache", title = i18n.later("Words kept"), kind = .Int, default = {i = i64(fs.word_cache)}, bounded = true, min = 0, max = 1 << 20, advanced = true,
+			description = i18n.later("The shaped words kept, so that a word measured again is not shaped again. 0: none."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.slug_pages", title = "Slug pages", kind = .Int, default = {i = i64(fs.slug_pages)}, bounded = true, min = 1, max = 2048, advanced = true,
-			description = "The pages of outlines Slug keeps before the least used one is reused.",
+			name = "appearance.text.slug_pages", title = i18n.later("Slug pages"), kind = .Int, default = {i = i64(fs.slug_pages)}, bounded = true, min = 1, max = 2048, advanced = true,
+			description = i18n.later("The pages of outlines Slug keeps before the least used one is reused."),
 		})
 	}
 	if .Scrolling in sets {
 		sc := ui.DEFAULT_SCROLL
 		au := ui.DEFAULT_AUTOSCROLL
-		config.title_register(prefs, "scrolling", "Scrolling", ORDER_SCROLLING)
-		config.title_register(prefs, "scrolling.autoscroll", "Middle-button scrolling")
+		config.title_register(prefs, "scrolling", i18n.later("Scrolling"), ORDER_SCROLLING)
+		config.title_register(prefs, "scrolling.autoscroll", i18n.later("Middle-button scrolling"))
 		append(&defs, config.Def{
-			name = "scrolling.smooth", title = "Smooth scrolling", kind = .String, default = {s = "follow"},
-			description = "Whether a notch of the wheel glides or jumps. Follow: as the animations do.",
-			choices = SMOOTH_CHOICES[:], tags = SCROLL_TAGS[:],
+			name = "scrolling.smooth", title = i18n.later("Smooth scrolling"), kind = .String, default = {s = "follow"},
+			description = i18n.later("Whether a notch of the wheel glides or jumps. Follow: as the animations do."),
+			choices = SMOOTH_CHOICES[:], choice_labels = labels(a, i18n.later("Follow"), i18n.later("On"), i18n.later("Off")), tags = SCROLL_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "scrolling.duration", title = "Glide", kind = .Int, default = {i = i64(sc.duration_ms)}, bounded = true, min = 0, max = 1000, unit = "ms",
-			description = "How long a glide lasts. 0: a jump.",
+			name = "scrolling.duration", title = i18n.later("Glide"), kind = .Int, default = {i = i64(sc.duration_ms)}, bounded = true, min = 0, max = 1000, unit = "ms",
+			description = i18n.later("How long a glide lasts. 0: a jump."),
 			tags = SCROLL_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "scrolling.wheel_lines", title = "Lines per notch", kind = .Float, default = {f = decimal(feel.wheel_lines)}, bounded = true, min = 1, max = 20,
-			description = "The lines a notch of the wheel moves, where the system does not say.",
+			name = "scrolling.wheel_lines", title = i18n.later("Lines per notch"), kind = .Float, default = {f = decimal(feel.wheel_lines)}, bounded = true, min = 1, max = 20,
+			description = i18n.later("The lines a notch of the wheel moves, where the system does not say."),
 			tags = SCROLL_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autohide_scrollbars", title = "Hide the scroll bars", kind = .Bool, default = {b = false},
-			description = "A scroll bar shows only while the pointer is over its view, or for a moment after it scrolled.",
+			name = "scrolling.autohide_scrollbars", title = i18n.later("Hide the scroll bars"), kind = .Bool, default = {b = false},
+			description = i18n.later("A scroll bar shows only while the pointer is over its view, or for a moment after it scrolled."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.scrollbar_arrows", title = "Scroll bar arrows", kind = .Bool, default = {b = false},
-			description = "An arrow button at each end of every scroll bar.",
+			name = "scrolling.scrollbar_arrows", title = i18n.later("Scroll bar arrows"), kind = .Bool, default = {b = false},
+			description = i18n.later("An arrow button at each end of every scroll bar."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.curve", title = "Glide curve", kind = .String, default = {s = CURVE_CHOICES[int(sc.curve)]}, advanced = true,
-			description = "The shape of a glide. Impulse: a strong push then a long slowing, as Chromium. Ease out: a gentle slowing. Exponential: halves the distance each frame.",
-			choices = CURVE_CHOICES[:],
+			name = "scrolling.curve", title = i18n.later("Glide curve"), kind = .String, default = {s = CURVE_CHOICES[int(sc.curve)]}, advanced = true,
+			description = i18n.later("The shape of a glide. Impulse: a strong push then a long slowing, as Chromium. Ease out: a gentle slowing. Exponential: halves the distance each frame."),
+			choices = CURVE_CHOICES[:], choice_labels = labels(a, i18n.later("Impulse"), i18n.later("Ease out"), i18n.later("Exponential")),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.impulse", title = "Impulse", kind = .Float, default = {f = decimal(sc.impulse)}, bounded = true, min = 1, max = 20, advanced = true,
-			description = "The strength of the impulse curve: higher starts faster and slows longer.",
+			name = "scrolling.impulse", title = i18n.later("Impulse"), kind = .Float, default = {f = decimal(sc.impulse)}, bounded = true, min = 1, max = 20, advanced = true,
+			description = i18n.later("The strength of the impulse curve: higher starts faster and slows longer."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.fling_stop_speed", title = "Fling stop speed", kind = .Float, default = {f = decimal(feel.fling_stop_speed)}, bounded = true, min = 0, max = 1000, unit = "px/s", advanced = true,
-			description = "A fling of the finger ends under this speed.",
+			name = "scrolling.fling_stop_speed", title = i18n.later("Fling stop speed"), kind = .Float, default = {f = decimal(feel.fling_stop_speed)}, bounded = true, min = 0, max = 1000, unit = "px/s", advanced = true,
+			description = i18n.later("A fling of the finger ends under this speed."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.enabled", title = "Scroll with the middle button", kind = .Bool, default = {b = true},
-			description = "A press of the wheel on a view drops an anchor; moving the pointer away scrolls, the farther the faster.",
+			name = "scrolling.autoscroll.enabled", title = i18n.later("Scroll with the middle button"), kind = .Bool, default = {b = true},
+			description = i18n.later("A press of the wheel on a view drops an anchor; moving the pointer away scrolls, the farther the faster."),
 			tags = AUTOSCROLL_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.toggle", title = "A click latches it", kind = .Bool, default = {b = au.toggle},
-			description = "A short click of the wheel keeps the mode on until the next click; a press held ends it at its release.",
+			name = "scrolling.autoscroll.toggle", title = i18n.later("A click latches it"), kind = .Bool, default = {b = au.toggle},
+			description = i18n.later("A short click of the wheel keeps the mode on until the next click; a press held ends it at its release."),
 			tags = AUTOSCROLL_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.dead_zone", title = "Dead zone", kind = .Float, default = {f = decimal(au.dead_zone)}, bounded = true, min = 0, max = 100, unit = "px", advanced = true,
-			description = "No scrolling while the pointer is this close to the anchor.",
+			name = "scrolling.autoscroll.dead_zone", title = i18n.later("Dead zone"), kind = .Float, default = {f = decimal(au.dead_zone)}, bounded = true, min = 0, max = 100, unit = "px", advanced = true,
+			description = i18n.later("No scrolling while the pointer is this close to the anchor."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.max_speed", title = "Top speed", kind = .Float, default = {f = decimal(au.max_speed)}, bounded = true, min = 100, max = 50000, unit = "px/s", advanced = true,
-			description = "The fastest it scrolls.",
+			name = "scrolling.autoscroll.max_speed", title = i18n.later("Top speed"), kind = .Float, default = {f = decimal(au.max_speed)}, bounded = true, min = 100, max = 50000, unit = "px/s", advanced = true,
+			description = i18n.later("The fastest it scrolls."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.full_dist", title = "Distance to top speed", kind = .Float, default = {f = decimal(au.full_dist)}, bounded = true, min = 10, max = 2000, unit = "px", advanced = true,
-			description = "How far past the dead zone the top speed is reached.",
+			name = "scrolling.autoscroll.full_dist", title = i18n.later("Distance to top speed"), kind = .Float, default = {f = decimal(au.full_dist)}, bounded = true, min = 10, max = 2000, unit = "px", advanced = true,
+			description = i18n.later("How far past the dead zone the top speed is reached."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.doubling", title = "Doubling distance", kind = .Float, default = {f = decimal(au.doubling)}, bounded = true, min = 1, max = 500, unit = "px", advanced = true,
-			description = "The speed doubles for each this many pixels past the dead zone.",
+			name = "scrolling.autoscroll.doubling", title = i18n.later("Doubling distance"), kind = .Float, default = {f = decimal(au.doubling)}, bounded = true, min = 1, max = 500, unit = "px", advanced = true,
+			description = i18n.later("The speed doubles for each this many pixels past the dead zone."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.tap", title = "Click", kind = .Int, default = {i = i64(au.tap_ms)}, bounded = true, min = 0, max = 2000, unit = "ms", advanced = true,
-			description = "A press shorter than this, that hardly moved, is a click: it latches the mode.",
+			name = "scrolling.autoscroll.tap", title = i18n.later("Click"), kind = .Int, default = {i = i64(au.tap_ms)}, bounded = true, min = 0, max = 2000, unit = "ms", advanced = true,
+			description = i18n.later("A press shorter than this, that hardly moved, is a click: it latches the mode."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.tap_slop", title = "Click movement", kind = .Float, default = {f = decimal(au.tap_slop)}, bounded = true, min = 0, max = 50, unit = "px", advanced = true,
-			description = "A press that moved more than this is a drag, never a click.",
+			name = "scrolling.autoscroll.tap_slop", title = i18n.later("Click movement"), kind = .Float, default = {f = decimal(au.tap_slop)}, bounded = true, min = 0, max = 50, unit = "px", advanced = true,
+			description = i18n.later("A press that moved more than this is a drag, never a click."),
 		})
 	}
 	if .Input in sets {
-		config.title_register(prefs, "input", "Input", ORDER_INPUT)
+		config.title_register(prefs, "input", i18n.later("Input"), ORDER_INPUT)
 		append(&defs, config.Def{
-			name = "input.key_repeat_delay", title = "Key repeat delay", kind = .Int, default = {i = i64(feel.key_repeat_delay_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
-			description = "A held key repeats after this long, where the system does not say (Wayland, until the compositor does).",
+			name = "input.key_repeat_delay", title = i18n.later("Key repeat delay"), kind = .Int, default = {i = i64(feel.key_repeat_delay_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
+			description = i18n.later("A held key repeats after this long, where the system does not say (Wayland, until the compositor does)."),
 			tags = REPEAT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "input.key_repeat_rate", title = "Key repeat rate", kind = .Int, default = {i = i64(feel.key_repeat_rate)}, bounded = true, min = 0, max = 100, unit = "/s",
-			description = "Then this many times a second, likewise. 0: no repeat.",
+			name = "input.key_repeat_rate", title = i18n.later("Key repeat rate"), kind = .Int, default = {i = i64(feel.key_repeat_rate)}, bounded = true, min = 0, max = 100, unit = "/s",
+			description = i18n.later("Then this many times a second, likewise. 0: no repeat."),
 			tags = REPEAT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "input.button_repeat_delay", title = "Button repeat delay", kind = .Int, default = {i = i64(feel.repeat_delay_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
-			description = "A held button (a number's − and +, a scroll bar's arrow) repeats after this long.",
+			name = "input.button_repeat_delay", title = i18n.later("Button repeat delay"), kind = .Int, default = {i = i64(feel.repeat_delay_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
+			description = i18n.later("A held button (a number's − and +, a scroll bar's arrow) repeats after this long."),
 			tags = REPEAT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "input.button_repeat_interval", title = "Button repeat interval", kind = .Int, default = {i = i64(feel.repeat_interval_ms)}, bounded = true, min = 1, max = 1000, unit = "ms",
-			description = "Then once every this much.",
+			name = "input.button_repeat_interval", title = i18n.later("Button repeat interval"), kind = .Int, default = {i = i64(feel.repeat_interval_ms)}, bounded = true, min = 1, max = 1000, unit = "ms",
+			description = i18n.later("Then once every this much."),
 			tags = REPEAT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "input.undo_steps", title = "Undo steps", kind = .Int, default = {i = i64(feel.undo_steps)}, bounded = true, min = 1, max = 10000,
-			description = "The edits a text field remembers to undo.",
+			name = "input.undo_steps", title = i18n.later("Undo steps"), kind = .Int, default = {i = i64(feel.undo_steps)}, bounded = true, min = 1, max = 10000,
+			description = i18n.later("The edits a text field remembers to undo."),
 		})
 		append(&defs, config.Def{
-			name = "input.undo_merge", title = "Undo merge", kind = .Int, default = {i = i64(feel.undo_merge_ms)}, bounded = true, min = 0, max = 10000, unit = "ms",
-			description = "Typing within this much of the previous edit is the same undo step. 0: each edit is a step.",
+			name = "input.undo_merge", title = i18n.later("Undo merge"), kind = .Int, default = {i = i64(feel.undo_merge_ms)}, bounded = true, min = 0, max = 10000, unit = "ms",
+			description = i18n.later("Typing within this much of the previous edit is the same undo step. 0: each edit is a step."),
 		})
 		append(&defs, config.Def{
-			name = "input.typeahead", title = "Type to find", kind = .Int, default = {i = i64(feel.typeahead_ms)}, bounded = true, min = 0, max = 5000, unit = "ms",
-			description = "Keys typed in a list within this much of each other add up to one word, which the list goes to.",
+			name = "input.typeahead", title = i18n.later("Type to find"), kind = .Int, default = {i = i64(feel.typeahead_ms)}, bounded = true, min = 0, max = 5000, unit = "ms",
+			description = i18n.later("Keys typed in a list within this much of each other add up to one word, which the list goes to."),
 		})
 		append(&defs, config.Def{
-			name = "input.zoom_step", title = "Zoom step", kind = .Float, default = {f = decimal(feel.zoom_step)}, bounded = true, min = 1.01, max = 2, unit = "×",
-			description = "Ctrl+wheel, Ctrl+= and Ctrl+- multiply or divide the zoom by this.",
+			name = "input.zoom_step", title = i18n.later("Zoom step"), kind = .Float, default = {f = decimal(feel.zoom_step)}, bounded = true, min = 1.01, max = 2, unit = "×",
+			description = i18n.later("Ctrl+wheel, Ctrl+= and Ctrl+- multiply or divide the zoom by this."),
 		})
 		append(&defs, config.Def{
-			name = "input.step_shift", title = "Shift step", kind = .Float, default = {f = feel.step_shift}, bounded = true, min = 1, max = 1000, unit = "×", advanced = true,
-			description = "Shift multiplies the step of a slider or a number (a key, a notch of the wheel, a button).",
+			name = "input.step_shift", title = i18n.later("Shift step"), kind = .Float, default = {f = feel.step_shift}, bounded = true, min = 1, max = 1000, unit = "×", advanced = true,
+			description = i18n.later("Shift multiplies the step of a slider or a number (a key, a notch of the wheel, a button)."),
 		})
 		append(&defs, config.Def{
-			name = "input.step_ctrl", title = "Ctrl step", kind = .Float, default = {f = feel.step_ctrl}, bounded = true, min = 1, max = 10000, unit = "×", advanced = true,
-			description = "Ctrl multiplies the step of a number in text.",
+			name = "input.step_ctrl", title = i18n.later("Ctrl step"), kind = .Float, default = {f = feel.step_ctrl}, bounded = true, min = 1, max = 10000, unit = "×", advanced = true,
+			description = i18n.later("Ctrl multiplies the step of a number in text."),
 		})
 		append(&defs, config.Def{
-			name = "input.step_alt", title = "Alt step", kind = .Float, default = {f = feel.step_alt}, bounded = true, min = 0.001, max = 1, unit = "×", advanced = true,
-			description = "Alt multiplies the step of a number in text.",
+			name = "input.step_alt", title = i18n.later("Alt step"), kind = .Float, default = {f = feel.step_alt}, bounded = true, min = 0.001, max = 1, unit = "×", advanced = true,
+			description = i18n.later("Alt multiplies the step of a number in text."),
 		})
 		append(&defs, config.Def{
-			name = "input.step_page", title = "Page step", kind = .Float, default = {f = feel.step_page}, bounded = true, min = 1, max = 100, advanced = true,
-			description = "Page Up and Page Down move a slider, or a number in text, this many steps.",
+			name = "input.step_page", title = i18n.later("Page step"), kind = .Float, default = {f = feel.step_page}, bounded = true, min = 1, max = 100, advanced = true,
+			description = i18n.later("Page Up and Page Down move a slider, or a number in text, this many steps."),
 		})
 	}
 	if .Timing in sets {
-		config.title_register(prefs, "timing", "Delays and menus", ORDER_TIMING)
+		config.title_register(prefs, "timing", i18n.later("Delays and menus"), ORDER_TIMING)
 		append(&defs, config.Def{
-			name = "timing.tooltip_delay", title = "Tooltip delay", kind = .Int, default = {i = i64(feel.tooltip_delay_ms)}, bounded = true, min = 0, max = 5000, unit = "ms",
-			description = "The pointer rests this long on something before its tooltip shows.",
+			name = "timing.tooltip_delay", title = i18n.later("Tooltip delay"), kind = .Int, default = {i = i64(feel.tooltip_delay_ms)}, bounded = true, min = 0, max = 5000, unit = "ms",
+			description = i18n.later("The pointer rests this long on something before its tooltip shows."),
 		})
 		append(&defs, config.Def{
-			name = "timing.menu_hover", title = "Submenu delay", kind = .Int, default = {i = i64(feel.menu_hover_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
-			description = "The pointer rests this long on a submenu's item before it opens, or before another closes.",
+			name = "timing.menu_hover", title = i18n.later("Submenu delay"), kind = .Int, default = {i = i64(feel.menu_hover_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
+			description = i18n.later("The pointer rests this long on a submenu's item before it opens, or before another closes."),
 		})
 		append(&defs, config.Def{
-			name = "timing.menu_item_height", title = "Menu item height", kind = .Float, default = {f = decimal(feel.menu_item_em)}, bounded = true, min = 1.2, max = 4, unit = "em",
-			description = "The height of a menu's item, times the density.",
+			name = "timing.menu_item_height", title = i18n.later("Menu item height"), kind = .Float, default = {f = decimal(feel.menu_item_em)}, bounded = true, min = 1.2, max = 4, unit = "em",
+			description = i18n.later("The height of a menu's item, times the density."),
 		})
 		append(&defs, config.Def{
-			name = "timing.palette_fade", title = "Colour fade", kind = .Int, default = {i = i64(feel.palette_fade_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
-			description = "A change of theme fades every colour for this long.",
+			name = "timing.palette_fade", title = i18n.later("Colour fade"), kind = .Int, default = {i = i64(feel.palette_fade_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
+			description = i18n.later("A change of theme fades every colour for this long."),
 		})
 	}
 	if .Update in sets {
-		config.title_register(prefs, "update", "Updates", ORDER_UPDATE)
+		config.title_register(prefs, "update", i18n.later("Updates"), ORDER_UPDATE)
 		append(&defs, config.Def{
-			name = UPDATE_AUTO_PREF, title = "Update by itself", kind = .Bool, default = {b = d.update_auto},
-			description = fmt.aprintf("Look for a new version of %s now and then, and install it: it takes effect at the next start.", name, allocator = a),
+			name = UPDATE_AUTO_PREF, title = i18n.later("Update by itself"), kind = .Bool, default = {b = d.update_auto},
+			description = i18n.later("Look for a new version of %s now and then, and install it: it takes effect at the next start."), program = name,
 			tags = UPDATE_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = UPDATE_CHANNEL_PREF, title = "Channel", kind = .String, default = {s = d.update_channel}, restart = true,
-			description = "The channel the updates come from (stable, beta...). Empty: the only one.",
+			name = UPDATE_CHANNEL_PREF, title = i18n.later("Channel"), kind = .String, default = {s = d.update_channel}, restart = true,
+			description = i18n.later("The channel the updates come from (stable, beta...). Empty: the only one."),
 			tags = UPDATE_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = UPDATE_BASE_URL_PREF, title = "Address", kind = .String, default = {s = d.update_base_url}, restart = true, advanced = true,
-			description = "Where the updates are published (a folder of the web).",
+			name = UPDATE_BASE_URL_PREF, title = i18n.later("Address"), kind = .String, default = {s = d.update_base_url}, restart = true, advanced = true,
+			description = i18n.later("Where the updates are published (a folder of the web)."),
 			tags = UPDATE_TAGS[:],
 		})
 	}
 	if .Rendering in sets {
-		config.title_register(prefs, "rendering", "Rendering", ORDER_RENDERING)
+		config.title_register(prefs, "rendering", i18n.later("Rendering"), ORDER_RENDERING)
 		append(&defs, config.Def{
-			name = "rendering.present", title = "Presentation", kind = .String, default = {s = "vsync"}, advanced = true,
-			description = "Vsync: each picture waits for the screen's refresh, whole. Tearing: it is shown at once, a picture may be cut where the screen was.",
-			choices = PRESENT_CHOICES[:], tags = VSYNC_TAGS[:],
+			name = "rendering.present", title = i18n.later("Presentation"), kind = .String, default = {s = "vsync"}, advanced = true,
+			description = i18n.later("Vsync: each picture waits for the screen's refresh, whole. Tearing: it is shown at once, a picture may be cut where the screen was."),
+			choices = PRESENT_CHOICES[:], choice_labels = labels(a, "Vsync", i18n.later("Tearing")), tags = VSYNC_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "rendering.max_frame_latency", title = "Frames queued", kind = .Int, default = {i = 1}, bounded = true, min = 1, max = 3, advanced = true,
-			description = "The pictures that may wait for the screen. 1: the least delay from a key to the screen; more: steadier under load.",
+			name = "rendering.max_frame_latency", title = i18n.later("Frames queued"), kind = .Int, default = {i = 1}, bounded = true, min = 1, max = 3, advanced = true,
+			description = i18n.later("The pictures that may wait for the screen. 1: the least delay from a key to the screen; more: steadier under load."),
 			tags = VSYNC_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "rendering.partial_redraw", title = "Partial redraw", kind = .Bool, default = {b = false}, advanced = true,
-			description = "Each picture redraws only what changed in the interface.",
+			name = "rendering.partial_redraw", title = i18n.later("Partial redraw"), kind = .Bool, default = {b = false}, advanced = true,
+			description = i18n.later("Each picture redraws only what changed in the interface."),
 		})
 		append(&defs, config.Def{
-			name = "rendering.blur_sigma_limit", title = "Blur limit", kind = .Float, default = {f = render.DEFAULT_BLUR_SIGMA_LIMIT}, bounded = true, min = 2, max = render.MAX_BLUR_SIGMA, unit = "px", advanced = true,
-			description = "A blur wider than this is computed on a smaller picture: faster, softer.",
+			name = "rendering.blur_sigma_limit", title = i18n.later("Blur limit"), kind = .Float, default = {f = render.DEFAULT_BLUR_SIGMA_LIMIT}, bounded = true, min = 2, max = render.MAX_BLUR_SIGMA, unit = "px", advanced = true,
+			description = i18n.later("A blur wider than this is computed on a smaller picture: faster, softer."),
 		})
 		append(&defs, config.Def{
-			name = "rendering.filter_precision", title = "Filter precision", kind = .String, default = {s = "half"}, advanced = true,
-			description = "The pictures of filters (blurs, shadows) in 16-bit floats (half), or in 8 bits (unorm8): half the memory, a little banding.",
+			name = "rendering.filter_precision", title = i18n.later("Filter precision"), kind = .String, default = {s = "half"}, advanced = true,
+			description = i18n.later("The pictures of filters (blurs, shadows) in 16-bit floats (half), or in 8 bits (unorm8): half the memory, a little banding."),
 			choices = FILTER_CHOICES[:],
 		})
 	}
@@ -561,18 +569,19 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	config.register(prefs, defs[:])
 }
 
+// The labels of a preference's choices, in their order, made in `allocator` (the registry keeps the slice). The words are
+// English, translated where the page shows them.
+@(private = "file")
+labels :: proc(allocator: runtime.Allocator, words: ..string) -> []string {
+	return slice.clone(words, allocator)
+}
+
 // An f32 default as the decimal it was written as (f32 1.1 is 1.100000023841858 as an f64; the file and the reset
 // rule read 1.1).
 @(private = "file")
 decimal :: proc(v: f32) -> f64 {
 	d, _ := strconv.parse_f64(fmt.tprintf("%v", v))
 	return d
-}
-
-// The launcher's place in the user's words (gt:desktop's menu_name says the same; the page does not import it).
-@(private = "file")
-menu_words :: proc() -> string {
-	when ODIN_OS == .Windows { return "Start menu" } else { return "application menu" }
 }
 
 // Where the program's messages go (ui.Announcer.mode): general.messages, System when it is not registered.

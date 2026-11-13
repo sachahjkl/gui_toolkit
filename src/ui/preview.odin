@@ -15,6 +15,7 @@ package ui
 import "core:fmt"
 import "core:math"
 import "../draw"
+import i18n "../i18n"
 import "../render"
 
 // A notch of the wheel, a press of + or -: the zoom times this.
@@ -157,7 +158,7 @@ preview :: proc(id: string, p: ^Preview, content: Vec2, fn: Preview_Draw_Proc, u
 	d := frame_new(Preview_Draw)
 	d^ = {fn, user, content, p.zoom, p.pan, o.grow}
 	b.custom, b.custom_user = preview_draw, d
-	a11y_default(b, {role = .Image, name = "Preview"})
+	a11y_default(b, {role = .Image, name = i18n.tr("Preview")})
 	res.changed = p.zoom != before.zoom || p.pan != before.pan
 	res.fit = fit
 	res.percent = fit * p.zoom * 100
@@ -204,11 +205,11 @@ preview_bar :: proc(b: ^Box, view: Vec2, fit, zoom: f32, em: f32) -> (clicked: P
 			}
 			spacer(px(em * 0.3))
 			items := [?]struct { id, text: string, which: Preview_Button }{
-				{"###preview_out", "−", .Out}, {"###preview_in", "+", .In}, {"###preview_native", "1:1", .Native}, {"###preview_fit", "Fit", .Fit},
+				{"###preview_out", "−", .Out}, {"###preview_in", "+", .In}, {"###preview_native", "1:1", .Native}, {"###preview_fit", i18n.tr("Fit"), .Fit},
 			}
 			for it in items {
 				next({width = text_size(em * 0.45), height = px(h - em * 0.5), radius = rad(em * 0.3)})
-				a11y({name = it.which == .Out ? "Zoom out" : it.which == .In ? "Zoom in" : it.which == .Native ? "Actual size" : "Fit"})
+				a11y({name = it.which == .Out ? i18n.tr("Zoom out") : it.which == .In ? i18n.tr("Zoom in") : it.which == .Native ? i18n.tr("Actual size") : i18n.tr("Fit")})
 				if button(fmt.tprintf("%s%s", it.text, it.id), face = .Ghost).clicked { clicked = it.which }
 			}
 			spacer(px(em * 0.3))

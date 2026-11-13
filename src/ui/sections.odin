@@ -14,6 +14,7 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import "../draw"
+import i18n "../i18n"
 import "../font"
 
 // The hues of the theme shown (its palette's), for what a program colours by meaning.
@@ -269,7 +270,7 @@ title_strip :: proc(id, title: string, closable := true) -> (closed: bool) {
 		next({width = px(math.round(h * 1.25)), height = pct(1)})
 		x := build_box({.Clickable}, "###close")
 		x.custom = strip_close_draw
-		a11y_default(x, {role = .Button, name = "Close"})
+		a11y_default(x, {role = .Button, name = i18n.tr("Close")})
 		closed = signal(x).clicked
 	}
 	return

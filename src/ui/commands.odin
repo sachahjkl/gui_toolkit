@@ -23,6 +23,7 @@ import "core:math"
 import "core:slice"
 import "core:strings"
 import "../draw"
+import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
 
@@ -80,27 +81,27 @@ key_name :: proc(k: platform.Key) -> string {
 	case .F1 ..= .F12:
 		functions := KEY_FUNCTIONS
 		return functions[int(k) - int(platform.Key.F1)]
-	case .Escape:     return "Escape"
-	case .Return:     return "Enter"
-	case .Tab:        return "Tab"
-	case .Space:      return "Space"
-	case .Backspace:  return "Backspace"
-	case .Delete:     return "Delete"
-	case .Insert:     return "Insert"
-	case .Left:       return "Left"
-	case .Right:      return "Right"
-	case .Up:         return "Up"
-	case .Down:       return "Down"
-	case .Home:       return "Home"
-	case .End:        return "End"
-	case .Page_Up:    return "Page Up"
-	case .Page_Down:  return "Page Down"
+	case .Escape:     return i18n.tr("key", "Escape")
+	case .Return:     return i18n.tr("key", "Enter")
+	case .Tab:        return i18n.tr("key", "Tab")
+	case .Space:      return i18n.tr("key", "Space")
+	case .Backspace:  return i18n.tr("key", "Backspace")
+	case .Delete:     return i18n.tr("key", "Delete")
+	case .Insert:     return i18n.tr("key", "Insert")
+	case .Left:       return i18n.tr("key", "Left")
+	case .Right:      return i18n.tr("key", "Right")
+	case .Up:         return i18n.tr("key", "Up")
+	case .Down:       return i18n.tr("key", "Down")
+	case .Home:       return i18n.tr("key", "Home")
+	case .End:        return i18n.tr("key", "End")
+	case .Page_Up:    return i18n.tr("key", "Page Up")
+	case .Page_Down:  return i18n.tr("key", "Page Down")
 	case .Comma:      return ","
 	case .Period:     return "."
 	case .Slash:      return "/"
 	case .Minus:      return "-"
 	case .Equal:      return "="
-	case .Menu:       return "Menu"
+	case .Menu:       return i18n.tr("key", "Menu")
 	case .Num_Add:    return "Num +"
 	case .Num_Subtract: return "Num -"
 	}
@@ -124,11 +125,25 @@ command_keys_text :: proc(c: Command, allocator := context.temp_allocator) -> st
 	return strings.join(parts[:], ", ", allocator)
 }
 
-// A tooltip's text: the label and its first key ("Kill (Shift+Delete)"), or the label alone.
+// A tooltip's text: the label and its first key ("Kill (Shift+Delete)"), or the label alone; in the language in use.
 command_tip :: proc(c: Command, allocator := context.temp_allocator) -> string {
 	k := command_shortcut(c)
-	if k == "" { return strings.clone(c.label, allocator) }
-	return fmt.aprintf("%s (%s)", c.label, k, allocator = allocator)
+	label := i18n.tr(c.label)
+	if k == "" { return strings.clone(label, allocator) }
+	return fmt.aprintf("%s (%s)", label, k, allocator = allocator)
+}
+
+// A command as the palette and the sheet show it: its label and its group in the language in use (a program's table holds
+// its English, marked with i18n.later), and the words a search finds it by: its tags, and its English label and group when
+// they read otherwise (one who knows a command by its English finds it too). In English: the command's own strings.
+@(private = "file")
+command_shown :: proc(c: Command) -> (label, group: string, tags: []string) {
+	label, group, tags = i18n.tr(c.label), i18n.tr(c.group), c.tags
+	if raw_data(label) == raw_data(c.label) && raw_data(group) == raw_data(c.group) { return }
+	all := make([]string, len(c.tags) + 2, context.temp_allocator)
+	all[0], all[1] = c.label, c.group
+	copy(all[2:], c.tags)
+	return label, group, all
 }
 
 // Whether one of the command's keys was pressed this frame (the press is taken: nothing else sees it). A command that
@@ -338,7 +353,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 			}
 			next({width = fill(), height = pct(1), font_size = em * 1.05})
 			push_tags("bare")
-			res := line_edit("###palette_field", &p.field, "Type to search")
+			res := line_edit("###palette_field", &p.field, i18n.tr("Type to search"))
 			pop_tags()
 			if p.fresh { set_focus(res.box.key); p.fresh = false }
 			if res.changed { p.sel = 0; p.reveal = true }
@@ -374,7 +389,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 			}
 			if n == 0 {
 				next({width = fill(), height = px(row_h), text_align = .Center})
-				if tags("weak") { label("Nothing matches###palette_none") }
+				if tags("weak") { label(fmt.tprintf("%s###palette_none", i18n.tr("Nothing matches"))) }
 			}
 			// (a column of icons when a command has one and the state has an icon font)
 			icons := false
@@ -387,8 +402,9 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 						build_box({.Draw_Text}, fmt.tprintf("%s###palette_h_%d", line.heading, k))
 					}
 				}
-				text := c.label
-				if query != "" && c.group != "" { text = fmt.tprintf("%s  ·  %s", c.label, c.group) }
+				c_label, c_group, _ := command_shown(c)
+				text := c_label
+				if query != "" && c_group != "" { text = fmt.tprintf("%s  ·  %s", c_label, c_group) }
 				on := can(enabled, line.index)
 				sel := k == p.sel
 				push_tags("menu_item")
@@ -413,7 +429,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 					}
 					// (what the search found in the label lit; its tags, which the line does not show, light nothing)
 					ranges := line.ranges
-					if query != "" && ranges == nil { ranges = word_ranges(c.label, query) }   // (found by its tags or group: its words that are in the label)
+					if query != "" && ranges == nil { ranges = word_ranges(c_label, query) }   // (found by its tags or group: its words that are in the label)
 					next({width = fill(), text_pad = 0})
 					tb := matched_label("###t", text, ranges)
 					// (the palette as narrow as the person made it: a line it cuts says itself whole)
@@ -487,7 +503,7 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, op
 			if i < 0 || i >= len(commands) { continue }
 			heading := ""
 			if recent == 0 {
-				heading = opts.recent_title != "" ? opts.recent_title : "Recent"
+				heading = opts.recent_title != "" ? opts.recent_title : i18n.tr("Recent")
 				headings += 1
 			}
 			append(&out, Palette_Line{i, headings, heading, nil})
@@ -497,7 +513,7 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, op
 		for c, i in commands {
 			heading := ""
 			if c.group != group || (recent > 0 && i == 0) {
-				if c.group != "" { heading = c.group; headings += 1 }
+				if c.group != "" { heading = i18n.tr(c.group); headings += 1 }
 				group = c.group
 			}
 			append(&out, Palette_Line{i, headings, heading, nil})
@@ -511,7 +527,8 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, op
 	has_first = has_first && first >= 0 && first < len(commands)
 	first_ranges: []Fuzzy_Range
 	for c, i in commands {
-		score, ranges, ok := palette_match(needle, palette_entry_cached(&p.search, 3 * i, c.label, c.group, c.tags))
+		c_label, c_group, c_tags := command_shown(c)
+		score, ranges, ok := palette_match(needle, palette_entry_cached(&p.search, 3 * i, c_label, c_group, c_tags))
 		if ok { append(&ranked, Ranked{i, score, ranges}) }
 		if has_first && i == first { first_ranges = ranges }
 	}
@@ -530,12 +547,13 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, op
 
 // The dialog `id` while `open`: every command that has a key, under its group's heading, its keys at the right. It
 // scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close button of its header close it.
-shortcuts_sheet :: proc(id: string, commands: []Command, open: ^bool, title := "Keyboard shortcuts", width_em: f32 = SHEET_WIDTH_EM) {
+// `title` "": "Keyboard shortcuts", in the language in use.
+shortcuts_sheet :: proc(id: string, commands: []Command, open: ^bool, title := "", width_em: f32 = SHEET_WIDTH_EM) {
 	s := gs()
 	em := font_size()
 	w := em * width_em
 	if modal(id, w, open) {
-		if dialog_header("sheet_title", title, {icon = lucide.KEYBOARD, icon_font = lucide_icons(), close = true}) {}
+		if dialog_header("sheet_title", title != "" ? title : i18n.tr("Keyboard shortcuts"), {icon = lucide.KEYBOARD, icon_font = lucide_icons(), close = true}) {}
 		sheet_body(commands, w, em, s.window_size.y)
 	}
 }
@@ -561,14 +579,14 @@ sheet_body :: proc(commands: []Command, w, em, window_h: f32) {
 					if row(.Center, {}, fmt.tprintf("###sheet_group_%d", i)) {
 						spacer(px(pad))
 						next({width = fill(), height = pct(1), text_pad = 0, fg = color("accent")})
-						label(fmt.tprintf("%s###g", group))
+						label(fmt.tprintf("%s###g", i18n.tr(group)))
 					}
 				}
 				next({width = fill(), height = px(dense(em * 1.7))})
 				if row(.Center, {}, fmt.tprintf("###sheet_line_%d", i)) {
 					spacer(px(pad))
 					next({width = fill(), height = pct(1), text_pad = 0})
-					label(fmt.tprintf("%s###l", c.label))
+					label(fmt.tprintf("%s###l", i18n.tr(c.label)))
 					if tags("weak") {
 						next({width = text_size(), height = pct(1), text_pad = 0})
 						label(fmt.tprintf("%s###k", command_keys_text(c)))

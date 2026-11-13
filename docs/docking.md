@@ -100,7 +100,7 @@ press, so it ends with it (the release, the box held going, the user leaving the
 | `strip_last(user, d, leaf)` | boxes after the fold and menu buttons: the strip's last control (a window's close button stays at the far right) |
 | `strip_space(user, d, leaf, box)` | the empty part of a docked stack's strip, once built: the app may make it `Clickable` (a handle that moves its own window) |
 | `on_save(user, d)` | save the layout (`dock_format`) |
-| `labels` | the menus' words (`DOCK_LABELS`) |
+| `labels` | the menus' words (nil: `dock_default_labels`, the toolkit's, in the language in use) |
 | `size`, `tab_height`, `handle` | frame pixels (0: the defaults: `DOCK_TAB_EM`, the splitter's handle) |
 | `close_buttons` | a close button on the tabs of the panels that can be closed (on the shown tab and the one under the pointer) |
 

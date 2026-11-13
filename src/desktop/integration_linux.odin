@@ -28,8 +28,6 @@ import "../platform"
 @(private = "file")
 LINUX_BACKEND := Backend{
 	name = "linux",
-	targets = "application menu, PATH, session start",
-	targets_browser = "application menu, default browser, PATH, session start",
 	parts = {.Launcher, .Desktop_Shortcut, .Icons, .Path, .Autostart},
 	status = linux_status,
 	install = linux_install,
