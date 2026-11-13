@@ -55,6 +55,8 @@ flags count): a program's own draw of a button reads them.
 
 `if ui.well("###facts") { ... }` is a sunken box, carved in the surface (code, a preview, a list of facts): the theme's
 "well" colour, carved in by the machined finish. Its size and corners come from `next`; `axis` lays out its children.
+A well around a field that shows when the field has the keyboard (a composer, a search): `flags = {.Focus_Within,
+.Draw_Focus_Ring}`, the ring of the well lit while any box in it has the keyboard.
 
 `ui.hint_action(id, text, icon, icon_font, intent)` is words that say what can be done and do it, as a link does: weak
 like a hint, lit under the pointer; an intent colours them. It returns its `Signal`.
