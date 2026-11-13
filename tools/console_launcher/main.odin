@@ -1,14 +1,15 @@
 #+build windows
 // console_launcher: a program's console launcher, `<stem>.com` beside `<stem>.exe` (src/console_launcher has what it
-// does and why). A program builds its own, its mark and its rules given at the build:
+// does and why). Every program gets its own from its tool's build (gt:toolbox, build_launcher), its mark and its rules
+// given at the build:
 //
 //   odin build ext/gui_toolkit/tools/console_launcher -subsystem:console -o:size -out:build/<stem>.com
 //       -define:LAUNCHER_MARK="(<stem> console launcher)"   what desktop.install finds in it (Identity.launcher_mark)
 //       -define:LAUNCHER_DEFAULT=wait|detach                 what a command line does
 //       -define:LAUNCHER_OTHERS=<comma-separated>            those that do the other (console_launcher.Rules)
 //
-// and embeds the bytes (#load) to give them to desktop.install (Integration_Options.launcher). It imports the core library and the
-// pure package only: a small console program.
+// and the program embeds the bytes through odin_command (-define:GT_CONSOLE_LAUNCHER): gt:desktop writes them with the PATH
+// entry. It imports the core library and the pure package only: a small console program.
 package console_launcher
 
 import "core:strconv"

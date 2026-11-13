@@ -24,6 +24,7 @@ import "base:runtime"
 import "core:os"
 import "core:strings"
 import "../ascii"
+import "../platform"
 import i18n "../i18n"
 import "../process"
 
@@ -34,7 +35,8 @@ Identity :: struct {
 	name:        string,   // "Wren": the menu entry, the shortcut's file name, the name in the system's lists
 	key:         string,   // "Wren": registry key and ProgID stem (letters and digits)
 	slug:        string,   // "wren": .desktop file, icon name, window class (lower case, hyphens)
-	aumid:       string,   // "FromentSoftware.Wren": Windows AppUserModelID, the same the window declares
+	aumid:       string,   // the Windows AppUserModelID, the same the window declares ("": identity_aumid derives it from the
+	                       // vendor and the name, as the build's GT_AUMID is: set it only for an id of another rule, "...Wren.Dev")
 	description: string,   // one line, for the menu entry
 	vendor:      string,   // "Froment Software"
 	exe_name:    string,   // "wren.exe": the executable's file name in an install folder ("" = slug, with .exe on Windows)
@@ -45,7 +47,7 @@ Identity :: struct {
 	vendor_key:      string,   // Windows: Software\<vendor_key>\<key> keeps the program's own values ("FromentSoftware")
 	manifest_name:   string,   // the installed copy's list of files ("wren_install.txt")
 	manifest_header: string,   // its first line, a comment ("# Written by Wren Setup: ...")
-	launcher_mark:   string,   // Windows: what the console launcher contains ("" = the program has no launcher)
+	launcher_mark:   string,   // Windows: what the console launcher contains ("" = the embedded launcher's, launcher.odin)
 
 	// The program's command line.
 	cli_flag:            string,     // "--desktop-integration": parse_cli
@@ -99,7 +101,7 @@ Integration_Options :: struct {
 	add_to_path:      bool,       // the program on the user's PATH (Windows: its folder; Linux: a link in bin_dir)
 	autostart:        bool,       // the program starts with the user's session
 	autostart_arguments: string,  // what it starts with then ("--hidden": in the notification area; "": nothing)
-	launcher:         []byte,     // Windows: the console launcher (launcher.odin), written beside the executable with the PATH entry and removed with it; none: the program ships without one
+	launcher:         []byte,     // Windows: the console launcher (launcher.odin), written beside the executable with the PATH entry and removed with it; none: the one the build embedded, if any
 
 	// Where things go. The zero value is the user's real desktop; a test (or <env_prefix>* in the environment,
 	// roots_from_env) points each at a scratch place.
@@ -195,6 +197,13 @@ status_destroy :: proc(s: ^Status, allocator := context.allocator) {
 	for &p in s.parts { delete(p.target, allocator) }
 	delete(s.stale_exe, allocator)
 	s^ = {}
+}
+
+// The AppUserModelID of `id`: its own, else the one its vendor and its name make (platform.app_user_model_id: "Froment
+// Software" and "Papier" give "FromentSoftware.Papier"), the same gt:toolbox gives the build (GT_AUMID) from the Project's
+// publisher and title. In the temporary allocator when derived.
+identity_aumid :: proc(id: Identity) -> string {
+	return id.aumid != "" ? id.aumid : platform.app_user_model_id(id.vendor, id.name)
 }
 
 // The options of a program that integrates with the application menu: the running executable, the menu entry, the
@@ -326,7 +335,7 @@ has_default_apps_page :: proc() -> bool {
 @(private)
 validate :: proc(o: ^Integration_Options, need_exe: bool) -> Result {
 	id := o.identity
-	if id.name == "" || id.key == "" || id.slug == "" || id.aumid == "" { return {.Bad_Options, "the identity has an empty field"} }
+	if id.name == "" || id.key == "" || id.slug == "" || identity_aumid(id) == "" { return {.Bad_Options, "the identity has an empty field"} }
 	if !all_of(id.key, letter_or_digit) { return {.Bad_Options, "identity.key is letters and digits only"} }
 	if !all_of(id.slug, slug_char) { return {.Bad_Options, "identity.slug is lower case letters, digits and hyphens"} }
 	if strings.contains_any(id.name, "\\/:*?\"<>|\x00") { return {.Bad_Options, "identity.name is used in a file name"} }
@@ -341,7 +350,7 @@ validate :: proc(o: ^Integration_Options, need_exe: bool) -> Result {
 	for a in id.actions {
 		if a.id == "" || !all_of(a.id, key_char) || a.name == "" { return {.Bad_Options, "identity.actions have an id of letters, digits and '-', and a name"} }
 	}
-	if len(o.launcher) > 0 && id.launcher_mark == "" { return {.Bad_Options, "a launcher needs identity.launcher_mark"} }
+	if len(launcher_bytes(o)) > 0 && launcher_mark_of(id) == "" { return {.Bad_Options, "a launcher needs identity.launcher_mark"} }
 	if o.exe == "" { o.exe = process.executable_path() }
 	if need_exe {
 		if o.exe == "" { return {.No_Executable, error_text(.No_Executable)} }

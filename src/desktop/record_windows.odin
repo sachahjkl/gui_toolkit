@@ -31,7 +31,7 @@ windows_default_install_dir :: proc(o: ^Integration_Options, allocator: runtime.
 @(private)
 windows_locate :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string {
 	key := uninstall_key(o)
-	if mark, _ := reg_get(key, o.identity.registry_mark); mark != o.identity.aumid { return "" }
+	if mark, _ := reg_get(key, o.identity.registry_mark); mark != identity_aumid(o.identity) { return "" }
 	dir, ok := reg_get(key, "InstallLocation")
 	if !ok || dir == "" { return "" }
 	return strings.clone(dir, allocator)
@@ -50,7 +50,7 @@ windows_record :: proc(o: ^Integration_Options, dir, version: string) -> Result 
 	uninstall := strings.concatenate({"\"", exe, "\""}, context.temp_allocator)
 	if o.identity.uninstall_arguments != "" { uninstall = strings.concatenate({uninstall, " ", o.identity.uninstall_arguments}, context.temp_allocator) }
 	ok = ok && reg_set(key, "UninstallString", uninstall)
-	ok = ok && reg_set(key, o.identity.registry_mark, o.identity.aumid)
+	ok = ok && reg_set(key, o.identity.registry_mark, identity_aumid(o.identity))
 	ok = ok && reg_set_dword(key, "NoModify", 1) && reg_set_dword(key, "NoRepair", 1)
 	if !ok { return failed(key) }
 	return {}
@@ -59,7 +59,7 @@ windows_record :: proc(o: ^Integration_Options, dir, version: string) -> Result 
 @(private)
 windows_unrecord :: proc(o: ^Integration_Options) -> Result {
 	key := uninstall_key(o)
-	if mark, _ := reg_get(key, o.identity.registry_mark); mark != o.identity.aumid { return {} }   // not ours (or already gone)
+	if mark, _ := reg_get(key, o.identity.registry_mark); mark != identity_aumid(o.identity) { return {} }   // not ours (or already gone)
 	if !reg_delete_tree(key) { return {.System, strings.concatenate({"cannot delete HKCU\\", key}, context.temp_allocator)} }
 	return {}
 }

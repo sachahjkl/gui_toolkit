@@ -1,6 +1,7 @@
 package ui
 
 import "core:fmt"
+import "core:math"
 
 // A lazy column: a long run of items of any height (messages, cards, paragraphs) inside a scroll box, where only those near
 // the view are built; the others stand as a space of the height they had when last built (one space for a run of them),
@@ -39,6 +40,8 @@ Lazy :: struct {
 	known_h: f32,    // heights known this frame (their sum and count: the next frame's estimate)
 	known_n: int,
 	items:   [dynamic]^Box,   // the items built, in order (lazy_settle)
+	guessed: int,     // the items skipped so far that stand as the estimate (never built)
+	guessed_at: [dynamic]int,   // `guessed` before each item built, parallel to `items`
 	pin:     Key,     // the item the view stays on, whatever moves around it (lazy_pin), 0: none
 	pin_dy:  f32,
 	sweep:   [2]int,  // the items built for a find's sweep, [first, end) by their order
@@ -54,6 +57,10 @@ Lazy_Column :: struct {
 	est:        f32,
 	anchor:     Key,   // the first item visible at the last frame
 	anchor_top: f32,   // where it started in the content
+	// the estimate the last layout gave the items never built, and how many of them stood above the anchor: a new estimate
+	// moves the anchor by the difference times that many, before any layout says so
+	anchor_est:     f32,
+	anchor_guessed: int,
 	seen:       u64,
 	pin_found:  bool,  // the pinned item was built and laid out at the last build
 	pin_moved:  bool,  // ... and the view had to move to stay on it
@@ -74,6 +81,7 @@ lazy_begin :: proc(all := false, sweep := [2]int{}) -> (lz: ^Lazy) {
 	s := gs()
 	lz = new(Lazy, frame_allocator())
 	lz.items.allocator = frame_allocator()
+	lz.guessed_at.allocator = frame_allocator()
 	lz.sweep = sweep
 	col := parent_box()
 	lz.column = col.key
@@ -81,7 +89,7 @@ lazy_begin :: proc(all := false, sweep := [2]int{}) -> (lz: ^Lazy) {
 	c := s.lazy_columns[col.key] or_else {}
 	c.seen = s.build_index
 	s.lazy_columns[col.key] = c
-	lz.est = c.est > 0 ? c.est : font_size() * LAZY_FIRST_ESTIMATE_EM
+	lz.est = c.est > 0 ? c.est : math.round(font_size() * LAZY_FIRST_ESTIMATE_EM)
 	sb := col.parent
 	for sb != nil && (Box_Flag.View_Scroll_Y not_in sb.flags) { sb = sb.parent }
 	lz.scroll = sb
@@ -95,10 +103,17 @@ lazy_begin :: proc(all := false, sweep := [2]int{}) -> (lz: ^Lazy) {
 	lz.on = true
 	s.virtual_depth += 1
 	view := sb.size.y > 0 ? sb.size.y : s.window_size.y   // (the first frame: no layout yet)
-	lz.lo = sb.view_off.y - view * LAZY_MARGIN
-	lz.hi = sb.view_off.y + view * (1 + LAZY_MARGIN)
-	lz.tlo = sb.view_target.y - view * LAZY_MARGIN
-	lz.thi = sb.view_target.y + view * (1 + LAZY_MARGIN)
+	// The items never built above the anchor take the new estimate in this build: they push it down by as much, and lazy_settle
+	// moves the view after it. The band goes where the view will be, or the items it shows are not built (an item measured below
+	// the view, an answer that streams in, moves the estimate of hundreds of items above it: screens).
+	ahead: f32
+	if c.anchor != 0 && c.anchor_est > 0 && sb.view_off.y > 0 && s.active_key[.Left] != scrollbar_key(sb) {
+		ahead = (lz.est - c.anchor_est) * f32(c.anchor_guessed)
+	}
+	lz.lo = sb.view_off.y + ahead - view * LAZY_MARGIN
+	lz.hi = sb.view_off.y + ahead + view * (1 + LAZY_MARGIN)
+	lz.tlo = sb.view_target.y + ahead - view * LAZY_MARGIN
+	lz.thi = sb.view_target.y + ahead + view * (1 + LAZY_MARGIN)
 	return
 }
 
@@ -137,6 +152,7 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	lz.n += 1
 	if lz.on && !always && !swept && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {
 		lz.skip += h
+		if !e.known { lz.guessed += 1 }
 		next_drop(s)
 		return false
 	}
@@ -145,6 +161,7 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	next({width = fill(), height = children_sum(), axis = .Y})
 	lz.last = build_box({}, id)
 	append(&lz.items, lz.last)
+	append(&lz.guessed_at, lz.guessed)
 	if lz.sweep[1] > lz.sweep[0] { append(&s.find.built, lz.last.key) }
 	if swept { append(&s.find.chunk, lz.last.key) }
 	push_parent(lz.last)
@@ -175,7 +192,9 @@ lazy_end :: proc(lz: ^Lazy) {
 	s := gs()
 	if lz.on { s.virtual_depth -= 1 }
 	if lz.sweep[1] > lz.sweep[0] { s.find.total = lz.n }   // (where the sweep ends)
-	if c, ok := &s.lazy_columns[lz.column]; ok && lz.known_n > 0 { c.est = lz.known_h / f32(lz.known_n) }
+	// (on a whole pixel: a fraction moves the view by a fraction at each new estimate, and the rects, rounded at each level of
+	// boxes, show what it reads by a pixel up or down)
+	if c, ok := &s.lazy_columns[lz.column]; ok && lz.known_n > 0 { c.est = max(1, math.round(lz.known_h / f32(lz.known_n))) }
 	append(&s.lazy_frame, lz)   // (a column in no scroll box too: its items' heights are noted there)
 	// every item built and nothing in any: their content was built after each item closed
 	if lz.built >= 2 && lz.empty == lz.built && s.layout_warnings && !(lz.column in s.layout_warned) {
@@ -226,8 +245,9 @@ lazy_settle :: proc(s: ^State) {
 		} else if c.anchor != 0 && !dragging && sb.view_off.y > 0 {
 			for b in lz.items {
 				if b.key != c.anchor { continue }
+				// (any move: one left under a threshold is taken as the next anchor's place, and such moves add up into a drift)
 				moved := content_top(sb, b) - c.anchor_top
-				if abs(moved) > LAZY_ANCHOR_MOVED_PX {
+				if moved != 0 {
 					view_shift(sb, moved, view_limit(sb))
 					layout_positions(sb, .Y)
 				}
@@ -242,11 +262,12 @@ lazy_settle :: proc(s: ^State) {
 			if !covered { s.lazy_more = true }
 		}
 		// the next anchor: the first item whose bottom is below the view's top
-		c.anchor = 0
-		for b in lz.items {
+		c.anchor, c.anchor_guessed, c.anchor_est = 0, 0, lz.est
+		for b, i in lz.items {
 			if b.rect.max.y > sb.rect.min.y + 0.5 {
 				c.anchor = b.key
 				c.anchor_top = content_top(sb, b)
+				c.anchor_guessed = lz.guessed_at[i]
 				break
 			}
 		}

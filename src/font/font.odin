@@ -113,7 +113,8 @@ Rendering :: enum u8 { Natural_Symmetric, Natural, Gdi_Classic, Aliased }
 // Text smoothed per colour stripe of the screen's pixels, in their order: sharper across at few pixels per letter. For a window
 // that is opaque, on a screen with such stripes (OLED panels often have not); see docs/text.md.
 Subpixel_Text :: enum u8 { Off, Rgb, Bgr }
-Grid_Fit :: enum u8 { Default, Enabled, Disabled }
+// Whether outlines are fitted to the pixel grid. Auto: as the font asks (DirectWrite's default).
+Grid_Fit :: enum u8 { Auto, Enabled, Disabled }
 
 Settings :: struct {
 	subpixel_steps:  int,       // horizontal glyph positions per pixel (1: whole pixels, up to 4)
@@ -169,7 +170,7 @@ when DEFAULT_TEXT_RENDERER == "slug" {
 SLUG_STRIPE_WEIGHT_PX :: 0.2
 
 DEFAULT_SETTINGS :: Settings{
-	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Default, color_glyphs = true, color_async = false, system_fallback = true,
+	subpixel_steps = 4, rendering = .Natural_Symmetric, grid_fit = .Auto, color_glyphs = true, color_async = false, system_fallback = true,
 	page_size = ATLAS_SIZE, max_gray_pages = 4, max_color_pages = 2, word_cache = 32768,
 	text_renderer = BUILD_TEXT_RENDERER, slug_pages = 128, slug_tolerance = 1.0 / 4096,
 	slug_hint_ppem = 0, slug_darken = 0, slug_supersample_ppem = 0, slug_stripe_weight = SLUG_STRIPE_WEIGHT_PX,

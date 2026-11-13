@@ -8,8 +8,8 @@
 //	text  := fmt.tprintf(i18n.tr(count, "%d request", "%d requests"), count) // singular, plural, by count
 //
 // The English text is the key. In English (no language in use) each call returns its argument: no lookup, no allocation.
-// A language (load, use) is the toolkit's catalogue and the program's for one language tag, made once at the start into
-// one table; tr looks a text up there by its characters the first time, then by the address of the literal in a small
+// A language (load, use) is the toolkit's catalogue and the program's for one language tag, made once into one table (at
+// the start, or when the user picks it); tr looks a text up there by its characters the first time, then by the address of the literal in a small
 // cache of its thread (the interface is immediate: tr runs for every label at every frame, so it must not hash the
 // text each time). The cache compares the text too: a text made at run time at an address a literal had is never taken
 // for it. See docs/i18n.md.
@@ -26,9 +26,9 @@ tr :: proc{tr_text, tr_context, tr_count}
 // The text to show for `text`, an English sentence or label.
 @(require_results)
 tr_text :: proc "contextless" (text: string) -> string {
-	l := current()
+	gen, l := in_use_now()
 	if l == nil { return text }
-	e := lookup(l, "", text)
+	e := lookup(l, gen, "", text)
 	return e != nil && e.forms[0] != "" ? e.forms[0] : text
 }
 
@@ -36,9 +36,9 @@ tr_text :: proc "contextless" (text: string) -> string {
 // a tab, "Close" a dialog). The context is for the translator and is never shown.
 @(require_results)
 tr_context :: proc "contextless" (context_: string, text: string) -> string {
-	l := current()
+	gen, l := in_use_now()
 	if l == nil { return text }
-	e := lookup(l, context_, text)
+	e := lookup(l, gen, context_, text)
 	return e != nil && e.forms[0] != "" ? e.forms[0] : text
 }
 
@@ -47,9 +47,9 @@ tr_context :: proc "contextless" (context_: string, text: string) -> string {
 // `count == 1`.
 @(require_results)
 tr_count :: proc "contextless" (count: int, one: string, other: string) -> string {
-	l := current()
+	gen, l := in_use_now()
 	if l == nil { return one if count == 1 else other }
-	e := lookup(l, "", one)
+	e := lookup(l, gen, "", one)
 	if e == nil { return one if count == 1 else other }
 	form := l.rule(count)
 	if form < e.form_count && e.forms[form] != "" { return e.forms[form] }
@@ -63,21 +63,42 @@ later :: #force_inline proc "contextless" (text: string) -> string { return text
 ////////////////////////////////
 // The language in use
 
-// The language whose texts tr gives (nil: English). Set by use, at the start (the setting takes effect at the next start):
-// a language in use is never freed while the program runs.
+// The language whose texts tr gives (nil: English). Set by use, at the start and at each change of the language while the
+// program runs: a language once in use is never freed while it runs (a text tr gave may be held by a widget, a thread may
+// be in the middle of a lookup in it).
 @(private = "file") in_use: ^Language
-// Counts the changes of language: a cached answer of another language is not taken.
+// Counts the changes of language: a cached answer of another language is not taken, and what a program made of
+// translated text is made again when it moves (version).
 @(private = "file") generation: u32
 
-// The texts of `l` from now on (nil: English). A language passed here lives until the end of the program (or until a
-// test's last tr of it): the threads' caches point into it.
+// The texts of `l` from now on (nil: English), on every thread at its next tr: each thread's cache sees the new generation.
+// A language passed here lives until the end of the program (or until a test's last tr of it): the threads' caches and
+// the texts tr gave point into it. Using the language already in use changes nothing (the version does not move).
 use :: proc(l: ^Language) {
+	if sync.atomic_load(&in_use) == l { return }
+	// (the language first, then the generation: a thread that reads the new generation reads the new language, see
+	// in_use_now)
 	sync.atomic_store(&in_use, l)
 	sync.atomic_add(&generation, 1)
 }
 
 // The language in use (nil: English).
 current :: proc "contextless" () -> ^Language { return sync.atomic_load(&in_use) }
+
+// Moves each time the language in use changes (use). What a program made once from translated text (a table of commands,
+// a sheet, a cached layout) is made again when this is not the value it was made at; a widget that translates where it
+// shows (i18n.later) needs nothing.
+version :: proc "contextless" () -> u32 { return sync.atomic_load(&generation) }
+
+// The generation, then the language. In this order a slot is never filled with an old language's entry under the new
+// generation (use stores the language before it counts): at worst a new entry is kept under the old generation, and
+// looked up again at the next call.
+@(private = "file")
+in_use_now :: #force_inline proc "contextless" () -> (gen: u32, l: ^Language) {
+	gen = sync.atomic_load(&generation)
+	l = sync.atomic_load(&in_use)
+	return
+}
 
 ////////////////////////////////
 // The thread's cache: the address of a literal to its entry
@@ -93,10 +114,9 @@ Slot :: struct {
 
 @(private = "file", thread_local) cache: [CACHE_SLOTS]Slot
 
-// The entry of `text` in `ctx` (nil: not translated).
+// The entry of `text` in `ctx` (nil: not translated), `l` being the language in use at generation `gen`.
 @(private)
-lookup :: proc "contextless" (l: ^Language, ctx, text: string) -> ^Entry {
-	gen := sync.atomic_load(&generation)
+lookup :: proc "contextless" (l: ^Language, gen: u32, ctx, text: string) -> ^Entry {
 	h := (uintptr(raw_data(text)) >> 3) ~ (uintptr(raw_data(ctx)) >> 5) ~ uintptr(len(text))
 	s := &cache[h & (CACHE_SLOTS - 1)]
 	// (the address alone is not enough: a text made at run time may sit where another was; the characters decide)

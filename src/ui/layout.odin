@@ -170,11 +170,13 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 	if !overflow {
 		avail := b.size[ai] - 2 * border_inset(b)
 		if .Wrap in b.flags {
-			// items keep their size and move to the next line instead; only an item wider than the box shrinks
+			// items keep their size and move to the next line instead; only an item wider than the box shrinks (its words
+			// wrapping when its strictness keeps it wider)
 			for c := b.first; c != nil; c = c.next {
 				if is_floating(c, axis) { continue }
 				violation := c.size[ai] - avail
 				if violation > 0 { c.size[ai] -= min(violation, shrinkable(c, axis)) }
+				if left := c.size[ai] - avail; left > 0 && axis == .X { c.size.x -= min(left, wrap_room(c)) }
 			}
 		} else if axis == b.layout_axis {
 			total, budget: f32
@@ -184,6 +186,25 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 				budget += shrinkable(c, axis)
 			}
 			violation := total - avail
+			// (a fill() share gives what it has beyond what is in it first: two buttons that share a row by halves keep
+			// their words whole when the row holds both, rather than both shrink by the same share)
+			if axis == .X && violation > LAYOUT_VIOLATION_EPS_PX {
+				slack: f32
+				for c := b.first; c != nil; c = c.next { if !is_floating(c, axis) { slack += share_slack(c) } }
+				if slack > 0 {
+					taken := min(slack, violation)
+					for c := b.first; c != nil; c = c.next {
+						if is_floating(c, axis) { continue }
+						give := share_slack(c)
+						if give <= 0 { continue }
+						give = min(give, taken * give / slack)
+						c.size.x -= give
+					}
+					violation -= taken
+					budget = 0
+					for c := b.first; c != nil; c = c.next { if !is_floating(c, axis) { budget += shrinkable(c, axis) } }
+				}
+			}
 			if violation > LAYOUT_VIOLATION_EPS_PX && budget > 0 {
 				for c := b.first; c != nil; c = c.next {
 					if is_floating(c, axis) { continue }
@@ -191,11 +212,15 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 					c.size[ai] = max(0, c.size[ai] - min(give, violation * give / budget))
 				}
 			}
+			// (still too wide once what may shrink did: words wrap onto more lines rather than spill past the edge and be
+			// cut. A second step, so a row's fill() spacers and shares give way first, as they did)
+			if axis == .X { layout_wrap_give(b, avail) }
 		} else {
 			for c := b.first; c != nil; c = c.next {
 				if is_floating(c, axis) { continue }
 				violation := c.size[ai] - avail
 				if violation > 0 { c.size[ai] -= min(violation, shrinkable(c, axis)) }
+				if left := c.size[ai] - avail; left > 0 && axis == .X { c.size.x -= min(left, wrap_room(c)) }
 			}
 		}
 	}
@@ -210,6 +235,96 @@ shrinkable :: proc(c: ^Box, axis: Axis) -> f32 {
 	p := c.pref[axis]
 	if box_scrolls(c, axis) { return max(0, c.size[ai] - p.least) }
 	return max(0, min(c.size[ai] * (1 - p.strictness), c.size[ai] - p.least))
+}
+
+// What a fill() share of a row's width (a box with children) has beyond what is in it (natural_width), and gives first
+// when the row is too narrow; 0 for a box of another size or with nothing in it.
+@(private = "file")
+share_slack :: proc(c: ^Box) -> f32 {
+	if c.pref[.X].kind != .Percent || c.first == nil { return 0 }
+	return max(0, min(c.size.x - natural_width(c), shrinkable(c, .X)))
+}
+
+// A row's children along X still wider together than `avail` after what may shrink did: each gives what its words can
+// by wrapping (wrap_room), in proportion to it.
+@(private = "file")
+layout_wrap_give :: proc(b: ^Box, avail: f32) {
+	total, room: f32
+	for c := b.first; c != nil; c = c.next {
+		if is_floating(c, .X) { continue }
+		total += c.size.x
+		room += wrap_room(c)
+	}
+	violation := total - avail
+	if violation <= LAYOUT_VIOLATION_EPS_PX || room <= 0 { return }
+	for c := b.first; c != nil; c = c.next {
+		if is_floating(c, .X) { continue }
+		r := wrap_room(c)
+		c.size.x = max(0, c.size.x - min(r, violation * r / room))
+	}
+}
+
+// A line of wrapped words is never narrower than this many of its font sizes (its text_pad aside): narrower, each word
+// breaks between letters.
+@(private = "file") WRAP_LEAST_EM :: 3
+
+// How much narrower a box can be, as laid out so far along X, by wrapping the words in it onto more lines: a .Text_Wrap
+// box of a text width gives what is over WRAP_LEAST_EM; a box of boxes, what its children give (in a row, all of them;
+// in a column, as much as the widest can; in a .Wrap box, what its widest item can, the others moving to new lines).
+// Never under the box's least. A box that lets its children overflow, or scrolls them, gives nothing (they already fit).
+@(private)
+wrap_room :: proc(b: ^Box) -> f32 {
+	if .Text_Wrap in b.flags {
+		if b.pref[.X].kind != .Text { return 0 }
+		return max(0, b.size.x - max(b.pref[.X].least, 2 * b.text_pad + b.font_size * WRAP_LEAST_EM))
+	}
+	if b.first == nil || .Allow_Overflow_X in b.flags || .View_Scroll_X in b.flags { return 0 }
+	inner := b.size.x - 2 * border_inset(b)
+	room: f32
+	switch {
+	case .Wrap in b.flags:
+		widest: f32
+		for c := b.first; c != nil; c = c.next {
+			if !is_floating(c, .X) { widest = max(widest, c.size.x - wrap_room(c)) }
+		}
+		room = inner - widest
+	case b.layout_axis == .X:
+		for c := b.first; c != nil; c = c.next {
+			if !is_floating(c, .X) { room += wrap_room(c) }
+		}
+	case:
+		room = math.F32_MAX
+		for c := b.first; c != nil; c = c.next {
+			if !is_floating(c, .X) { room = min(room, wrap_room(c) + inner - c.size.x) }
+		}
+		if room == math.F32_MAX { room = 0 }
+	}
+	return clamp(room, 0, max(0, b.size.x - b.pref[.X].least))
+}
+
+// The width box `b` asks for along X, before any layout: given in pixels, of its text (a .Text_Wrap box's on one line),
+// of its children (in a row their sum, in a column the widest; a .Wrap box all on one line), a fill() share's least
+// and its children's. What a box that scrolls or lets its children overflow holds is not counted, nor what floats.
+// What a panel that grows to its content (a dialog, a popover) measures before its layout: one source, the layout's.
+natural_width :: proc(b: ^Box) -> f32 {
+	p := b.pref[.X]
+	v: f32
+	switch p.kind {
+	case .Pixels: v = p.value
+	case .Text: v = math.ceil(b.text_dim.x + 2 * (b.text_pad + p.value))
+	case .None:
+	case .Percent, .Children_Sum:
+		if .Allow_Overflow_X in b.flags || .View_Scroll_X in b.flags { break }
+		n := 0
+		for c := b.first; c != nil; c = c.next {
+			if is_floating(c, .X) { continue }
+			w := natural_width(c)
+			if b.layout_axis == .X || .Wrap in b.flags { v += w; n += 1 } else { v = max(v, w) }
+		}
+		if .Wrap in b.flags { v += b.gap.x * f32(max(n - 1, 0)) }
+		if b.first != nil { v += 2 * border_inset(b) }
+	}
+	return max(v, p.least)
 }
 
 @(private)
@@ -258,12 +373,24 @@ layout_wrap_positions :: proc(b: ^Box, axis: Axis, off: f32) {
 	if axis == .X {
 		x := inset
 		line := 0
+		ends := make([dynamic]f32, 0, 8, context.temp_allocator)   // each line's right end
 		for c := b.first; c != nil; c = c.next {
 			if is_floating(c, axis) { c.rel_pos.x = c.fixed_pos.x; continue }
 			if x > inset && x + c.size.x > b.size.x - inset + 0.5 { line += 1; x = inset }
 			c.rel_pos.x = x
 			c.wrap_line = line
-			x += c.size.x + b.gap.x
+			x += c.size.x
+			for len(ends) <= line { append(&ends, inset) }
+			ends[line] = x
+			x += b.gap.x
+		}
+		// (its cross alignment says where each line goes: a dialog's buttons at its right, wrapped ones too)
+		if b.cross != .Start {
+			for c := b.first; c != nil; c = c.next {
+				if is_floating(c, axis) { continue }
+				spare := max(0, b.size.x - inset - ends[c.wrap_line])
+				c.rel_pos.x += b.cross == .End ? spare : math.round(spare * 0.5)
+			}
 		}
 	} else {
 		// line tops and heights

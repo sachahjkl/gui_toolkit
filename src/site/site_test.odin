@@ -49,7 +49,7 @@ SAMPLE_HOME :: `<!doctype html>
 <link rel="icon" href="img/logo.png">
 </head>
 <header class="bar"><a class="brand" href="#">x</a>
-<nav id="nav"><a href="#features">Features</a> <a href="changelog.html">Changelog</a></nav></header>
+<nav id="nav"><a href="#features">Features</a> <a href="changelog/">Changelog</a></nav></header>
 <section class="hero"><img class="mark" src="img/logo.png"><h1>The <em>thing</em></h1><p class="lead">It is.</p>
 <div class="actions"><a class="btn" href="https://example.org/get">Get it</a></div><p class="small">MIT</p></section>
 <figure class="shot wide"><a href="img/a.png">a</a></figure>
@@ -139,14 +139,22 @@ anchors_and_links :: proc(t: ^testing.T) {
 	testing.expect_value(t, slug("  One, -- thing É! "), "one-thing")
 	testing.expect_value(t, slug("---"), "")
 	testing.expect_value(t, js_lower("ÉTÉ \u0130"), "été i\u0307")
-	testing.expect_value(t, classic_link("#features"), FEATURES_PAGE)
-	testing.expect_value(t, classic_link("#x"), "index.html#x")
-	testing.expect_value(t, classic_link("#"), "index.html")
-	testing.expect_value(t, classic_link("changelog.html#v1"), "changelog.html#v1")
-	testing.expect_value(t, classic_link("img/a.png"), "../img/a.png")
+	testing.expect_value(t, classic_link("#features"), "/classic/features/")
+	testing.expect_value(t, classic_link("#x"), "/classic/#x")
+	testing.expect_value(t, classic_link("#"), "/classic/")
+	testing.expect_value(t, classic_link("./"), "/classic/")
+	testing.expect_value(t, classic_link("changelog/#v1"), "/classic/changelog/#v1")
+	testing.expect_value(t, classic_link("img/a.png"), "/img/a.png")
+	testing.expect_value(t, classic_link("pricing/"), "/pricing/")
 	testing.expect_value(t, classic_link("MailTo:a"), "MailTo:a")
-	testing.expect_value(t, classic_html(`<a href="img/a.png" data-src="b" xsrc="c">`), `<a href="../img/a.png" data-src="../b" xsrc="c">`)
-	testing.expect_value(t, bar_for_page(`href="#" href="#a" href="#a b"`), `href="index.html" href="index.html#a" href="#a b"`)
+	testing.expect_value(t, classic_html(`<a href="img/a.png" data-src="b" xsrc="c">`), `<a href="/img/a.png" data-src="/b" xsrc="c">`)
+	testing.expect_value(t, from_home(`<a href="#">h</a> <a href="#a">a</a> <img src="img/l.png"> <a href="https://x.y/">x</a>`, "changelog/index.html"),
+		`<a href="../">h</a> <a href="../#a">a</a> <img src="../img/l.png"> <a href="https://x.y/">x</a>`)
+	testing.expect_value(t, relative_links(`<a href="/classic/features/#x"> <a href="/classic/"> <img src="/img/a.png"> <a href="/"> <a href="//cdn.x/a">`, "classic/index.html"),
+		`<a href="features/#x"> <a href="./"> <img src="../img/a.png"> <a href="../"> <a href="//cdn.x/a">`)
+	testing.expect_value(t, relative_links(`<a href="/changelog/"> <a href="/#y"> <a href="/pricing/">`, "classic/changelog/index.html"),
+		`<a href="../../changelog/"> <a href="../../#y"> <a href="../../pricing/">`)
+	testing.expect_value(t, relative_links(`<a href="/"> <a href="/changelog/#v1">`, "index.html"), `<a href="./"> <a href="changelog/#v1">`)
 	m := sample_meta()
 	testing.expect_value(t, page_address(m, "index.html"), m.url)
 	testing.expect_value(t, page_address(m, "classic/index.html"), cat(m.url, "classic/"))
@@ -206,15 +214,26 @@ the_pages_of_a_small_site :: proc(t: ^testing.T) {
 	home := page_text(pages, HOME_PAGE)
 	testing.expect(t, strings.contains(home, `<section id="news" class="news">`) && !strings.contains(home, WHATS_NEW), "the news in place of the mark")
 	testing.expect(t, strings.contains(home, "and 1 more</a>"), "what is not shown is counted")
+	testing.expect(t, strings.contains(home, `<a href="changelog/#v1.2.0">`) && strings.contains(home, `href="changelog/">All versions`), "the news lead to the changelog's folder")
 	changelog := page_text(pages, CHANGELOG_PAGE)
+	testing.expect_value(t, CHANGELOG_PAGE, "changelog/index.html")
 	testing.expect(t, strings.contains(changelog, "<title>Changelog · Thing</title>"), "the page's title")
-	testing.expect(t, strings.contains(changelog, `href="classic/changelog.html">Classic version`), "the footer goes to the classic page")
-	testing.expect(t, strings.contains(changelog, `href="index.html#features"`), "the bar leads home")
+	testing.expect(t, strings.contains(changelog, `href="../classic/changelog/">Classic version`), "the footer goes to the classic page")
+	testing.expect(t, strings.contains(changelog, `href="../#features"`) && strings.contains(changelog, `class="brand" href="../"`), "the bar leads home")
+	testing.expect(t, strings.contains(changelog, `<link rel="icon" href="../img/logo.png">`), "the head's files, from the folder")
+	testing.expect(t, !strings.contains(changelog, "index.html"), "no link names a file")
 	classic := page_text(pages, "classic/index.html")
-	testing.expect(t, strings.contains(classic, `<li><a href="features.html#one-thing">One thing</a>: First</li>`), "a feature, in a line")
-	testing.expect(t, strings.contains(classic, `<a href="features.html">features</a>`), "the nav is in lower case")
+	testing.expect(t, strings.contains(classic, `<li><a href="features/#one-thing">One thing</a>: First</li>`), "a feature, in a line")
+	testing.expect(t, strings.contains(classic, `<a href="features/">features</a>`), "the nav is in lower case")
 	testing.expect(t, strings.contains(classic, `<a href="../">Modern version</a>`), "the way back")
-	testing.expect(t, strings.contains(page_text(pages, "classic/screenshots.html"), `<script src="../gallery.js" defer></script>`), "the viewer's script")
+	testing.expect(t, strings.contains(classic, `<a href="./" aria-current="page">home</a>`), "the classic home is its folder")
+	testing.expect(t, strings.contains(classic, `<link rel="stylesheet" href="classic.css">`), "the classic style")
+	features := page_text(pages, "classic/features/index.html")
+	testing.expect(t, strings.contains(features, `<link rel="stylesheet" href="../classic.css">`) && strings.contains(features, `<a href="../../#features">Modern version</a>`), "a classic page in its folder")
+	testing.expect(t, strings.contains(features, `<a href="../changelog/">changelog</a>`), "the classic changelog")
+	testing.expect(t, strings.contains(page_text(pages, "classic/screenshots/index.html"), `<script src="../../gallery.js" defer></script>`), "the viewer's script")
+	testing.expect(t, strings.contains(page_text(pages, "classic/changelog/index.html"), `<a href="../../changelog/">Modern version</a>`), "the modern changelog")
+	for p in pages { testing.expectf(t, !strings.contains(p.text, `href="index.html`), "%s names no index.html", p.path) }
 }
 
 @(test)
@@ -235,12 +254,14 @@ a_home_page_without_its_parts_is_refused :: proc(t: ^testing.T) {
 what_a_page_says_when_shared :: proc(t: ^testing.T) {
 	m := sample_meta()
 	html := `<title>A &amp; b</title><meta name="description" content="c"></head>`
-	tags := page_tags(m, html, cat(m.url, "a.html"), false)
+	tags := page_tags(m, html, cat(m.url, "a.html"), false, {1200, 630})
 	testing.expect(t, strings.contains(tags, `<meta property="og:title" content="A &amp; b">`), "its own title, already escaped")
 	testing.expect(t, strings.contains(tags, `<meta property="og:type" content="article">`), "not the home")
 	testing.expect(t, strings.contains(tags, `rel="canonical"`), "its address")
 	testing.expect(t, !strings.contains(tags, "ld+json"), "no data")
-	home := page_tags(m, `<link rel="canonical" href="x"></head>`, m.url, true)
+	testing.expect(t, strings.contains(tags, `<meta property="og:image:width" content="1200">`), "the card's width")
+	home := page_tags(m, `<link rel="canonical" href="x"></head>`, m.url, true, {1600, 1000})
+	testing.expect(t, strings.contains(home, `<meta property="og:image:height" content="1000">`), "the card's own height")
 	testing.expect(t, strings.contains(home, cat(`content="`, m.name, `"`)), "no title: the site's name")
 	testing.expect(t, !strings.contains(home, `rel="canonical"`), "one canonical is enough")
 	testing.expect(t, strings.contains(home, "ld+json"), "the home's data")
@@ -309,7 +330,7 @@ a_small_site_is_made :: proc(t: ^testing.T) {
 	m := sample_meta()
 	m.changes = changes
 	testing.expect(t, build_meta(m, out, out), "what they say when shared")
-	for file in ([]string{"index.html", "changelog.html", "classic/index.html", "classic/features.html", "classic/screenshots.html", "classic/changelog.html", "feed.xml", "sitemap.xml", "site.webmanifest", "llms.txt", "404.html"}) {
+	for file in ([]string{"index.html", "changelog/index.html", "classic/index.html", "classic/features/index.html", "classic/screenshots/index.html", "classic/changelog/index.html", "feed.xml", "sitemap.xml", "site.webmanifest", "llms.txt", "404.html"}) {
 		testing.expectf(t, os.exists(cat(out, "/", file)), "%s is made", file)
 	}
 	testing.expect(t, !os.exists(cat(out, "/robots.txt")), "no robots.txt off a domain of its own")
@@ -319,6 +340,11 @@ a_small_site_is_made :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(home, `<meta property="og:type" content="website">`) && strings.contains(home, "ld+json"), "the home's tags and data")
 	sitemap, _ := read_utf8(cat(out, "/sitemap.xml"))
 	testing.expect_value(t, strings.count(sitemap, "<loc>"), 6)
+	testing.expect(t, strings.contains(sitemap, cat("<loc>", m.url, "changelog/</loc>")) && !strings.contains(sitemap, "index.html"), "every address a folder")
+	changelog, _ := read_utf8(cat(out, "/changelog/index.html"))
+	testing.expect(t, strings.contains(changelog, cat(`<link rel="canonical" href="`, m.url, `changelog/">`)), "the canonical address")
+	llms, _ := read_utf8(cat(out, "/llms.txt"))
+	testing.expect(t, strings.contains(llms, cat("(", m.url, "changelog/)")), "llms.txt names the folder")
 	testing.expect(t, !build_changelog(site, out, {changes = cat(root, "/none.md")}), "no CHANGELOG, no pages")
 }
 
@@ -326,7 +352,7 @@ a_small_site_is_made :: proc(t: ^testing.T) {
 @(test)
 a_version_is_told_where_the_site_says :: proc(t: ^testing.T) {
 	m := Meta{url = "https://example.org/"}
-	testing.expect_value(t, version_address(m, "1.2.3"), "https://example.org/changelog.html#v1.2.3")
+	testing.expect_value(t, version_address(m, "1.2.3"), "https://example.org/changelog/#v1.2.3")
 	m.changelog_page = "changelog/"
 	m.version_anchor = proc(v: string) -> string { s, _ := strings.replace_all(v, ".", "-", context.temp_allocator); return cat("v", s) }
 	testing.expect_value(t, version_address(m, "1.2.3"), "https://example.org/changelog/#v1-2-3")
@@ -349,6 +375,9 @@ a_download_for_each_system :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(out, `<span data-download-others="linux" hidden>Also for <a href="w.zip">Windows</a></span>`))
 	testing.expect(t, strings.has_suffix(out, "</script>\n</body>"), "the script last")
 	testing.expect(t, !strings.contains(out, DOWNLOAD_MARK) && !strings.contains(out, DOWNLOAD_OTHERS_MARK))
+
+	one, _ := with_downloads(page, downloads[:1])
+	testing.expect(t, !strings.contains(one, "Also for") && !strings.contains(one, DOWNLOAD_OTHERS_MARK), "one system: no other offered")
 
 	same, none_why := with_downloads("<body></body>", nil)
 	testing.expect_value(t, same, "<body></body>")
@@ -377,7 +406,43 @@ the_site_command_builds_the_project_site :: proc(t: ^testing.T) {
 	defer free(c.user)
 	cs := []toolbox.Command{c}
 	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "build", site, out}), 0)
-	testing.expect(t, os.exists(cat(out, "/changelog.html")) && os.exists(cat(out, "/feed.xml")), "the pages and the feed")
+	testing.expect(t, os.exists(cat(out, "/changelog/index.html")) && os.exists(cat(out, "/feed.xml")), "the pages and the feed")
 	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "build", site}), 2)
 	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "check", "--what"}), 2)
+}
+
+// The home page's nav and footer come from the Meta: the same entries, in the same order, on every site.
+@(test)
+the_nav_and_the_footer_are_the_metas :: proc(t: ^testing.T) {
+	page := "<header class=\"bar\"><a class=\"brand\" href=\"#\">x</a> <!-- site-nav --></header>\n<!-- site-footer -->"
+	m := sample_meta()
+	m.publisher_logo, m.licence, m.footer_note = "img/maker.png", "MIT", "Not <a href=\"https://a.org\">theirs</a>"
+	plain, why := with_frame(page, m)
+	testing.expect_value(t, why, "")
+	testing.expect(t, strings.contains(plain, `<a href="changelog/">Changelog</a>`) && !strings.contains(plain, "Pricing") && !strings.contains(plain, BUY_LABEL), "no shop, no pricing")
+	m.shop = Shop{name = "Thing", home = "../"}
+	framed, _ := with_frame(page, m)
+	nav := between(framed, `<nav id="nav">`, "</nav>")
+	order := [?]string{`href="#features">Features`, `href="#download">Download`, `href="changelog/">Changelog`, `href="https://example.org/repo">GitHub`, `<a href="pricing/" class="btn accent nav-buy">Buy license</a>`}
+	at := -1
+	for o in order {
+		i := strings.index(nav, o)
+		testing.expectf(t, i > at, "%s, after the one before", o)
+		at = i
+	}
+	footer := between(framed, "<footer>", "</footer>")
+	testing.expect(t, strings.contains(footer, `<img src="img/maker.png" alt="" width="16" height="16"><a href="https://example.org">Some Co</a>`), "the maker")
+	testing.expect(t, strings.contains(footer, `<a href="pricing/">Pricing</a> · <a href="privacy/">Privacy</a> · <a href="terms/">Terms</a> · <a href="refunds/">Refunds</a> · <a href="imprint/">Imprint</a> · <a href="https://example.org/repo">GitHub</a>`), "the shop's pages, in Wren's order, and the source")
+	testing.expect(t, strings.contains(footer, `<span>MIT License</span> · <span>Not <a href="https://a.org">theirs</a></span> · `), "the licence and the note")
+	testing.expect(t, strings.contains(footer, CLASSIC_LINK), "the classic version")
+	testing.expect(t, !strings.contains(framed, NAV_MARK) && !strings.contains(framed, FOOTER_MARK), "no mark left")
+	testing.expect(t, strings.contains(llms_txt(m), cat("[Pricing](", m.url, "pricing/)")), "llms.txt names the pricing page")
+	read := nav_links(nav)
+	testing.expect_value(t, len(read), 5)
+	testing.expect_value(t, read[4], Link{"pricing/", BUY_LABEL})   // (the classic nav keeps the shop: its class comes after the href)
+
+	_, why = with_frame(page, Meta{})
+	testing.expect(t, why != "", "a mark and no Meta")
+	same, _ := with_frame("<footer></footer>", Meta{})
+	testing.expect_value(t, same, "<footer></footer>")
 }

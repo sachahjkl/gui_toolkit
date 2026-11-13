@@ -16,7 +16,8 @@ if path, ok := crash.last_report(); ok {     // the last session crashed, or was
 crash.end_session()                          // the clean end
 ```
 
-Importing the package does nothing. A program opts in with the call to `install`.
+Importing the package does nothing. A program opts in with the call to `install`. What the next start shows of
+`last_report` is [crash_bar.md](crash_bar.md): the same bar in every program.
 
 ## Install
 

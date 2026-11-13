@@ -10,10 +10,10 @@ import "../../src/ui"
 
 INTENT_GLYPHS := [ui.Intent]string{
 	.Neutral = lucide.SQUARE, .Primary = lucide.SEND, .Info = lucide.INFO, .Success = lucide.CHECK,
-	.Warning = lucide.ALERT_TRIANGLE, .Danger = lucide.TRASH_2, .Cancel = lucide.X,
+	.Warning = lucide.ALERT_TRIANGLE, .Danger = lucide.TRASH_2,
 }
 INTENT_WORDS := [ui.Intent]string{
-	.Neutral = "Neutral", .Primary = "Send", .Info = "Details", .Success = "Save", .Warning = "Stop", .Danger = "Delete", .Cancel = "Cancel",
+	.Neutral = "Neutral", .Primary = "Send", .Info = "Details", .Success = "Save", .Warning = "Stop", .Danger = "Delete",
 }
 HUE_NAMES := [ui.Hue]string{
 	.Accent = "accent", .Blue = "blue", .Purple = "purple", .Green = "green", .Yellow = "yellow", .Red = "red", .Cyan = "cyan", .Rose = "rose",
@@ -431,8 +431,7 @@ dialog_build :: proc(app: ^App, em: f32) {
 			facts_well("###export_facts", em)
 		}
 		if ui.dialog_buttons("export_buttons") {
-			if ui.button("export_cancel", "Cancel", lucide.X, {intent = .Cancel}).clicked { app.dialog_open = false }
-			ui.spacer(ui.px(em * 0.6))
+			if ui.button("export_cancel", "Cancel", lucide.X).clicked { app.dialog_open = false }
 			if ui.button("export_go", "Export 4 pictures", lucide.DOWNLOAD, {intent = .Primary}).clicked {
 				app.dialog_open = false
 				ui.announce(&app.announcer, .Good, "4 pictures exported", "~/Pictures/Shots")

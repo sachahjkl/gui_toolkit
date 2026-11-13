@@ -55,11 +55,18 @@ window's surface; the compositor decides. A compositor that does not focus a new
 configuration) gives the focus this way: call it after `show_window` when the user asked for the window. A second start of the
 program brings the first one's window up with the token its launcher gave it: `activation_token_from_env()` in the second
 (Wayland's `XDG_ACTIVATION_TOKEN`, X11's `DESKTOP_STARTUP_ID`, taken out of the environment), handed to the first, which
-calls `raise_window_token(w, token)` (Windows: `raise_window`).
+calls `raise_window_token(w, token)` (Windows: `raise_window`). Windows: `raise_window` restores a minimized window, then
+`SetForegroundWindow`, which the system grants when the process may take the foreground: the second start allowed the first
+(`AllowSetForegroundWindow` in `instance`), and a copy started by `setup.launch` was allowed by the one it replaces.
 
 **Identity** — `set_app_id(id)`, once before the first window: on Linux, the windows' Wayland app_id and X11 WM_CLASS.
 The desktop finds the program's `<id>.desktop` by it, for the icon and the name in a task bar. Without a call, the id is
-the executable's file name. On Windows it does nothing: the program declares its AppUserModelID itself.
+the executable's file name. On Windows it does nothing. There, every window of the program (main, secondary, overlay) takes
+the executable's icon (resource 1, at the sizes of the taskbar and of the title: `hIcon` and `hIconSm` of the window
+class), and the process declares the AppUserModelID of its build (`-define:GT_AUMID`, `project_aumid` of gt:toolbox)
+before the first window, unless the program declared one already (`desktop.set_process_identity`, `notify_set_app`). `app_user_model_id(publisher, name)` is
+the rule both derive the id with: each in PascalCase of ASCII letters and digits, joined by a dot (`Froment Software`,
+`opencode native`: `FromentSoftware.OpencodeNative`).
 
 **State** — `minimize`, `toggle_maximize`, `set_fullscreen`, `request_close`, `is_maximized`, `is_minimized`,
 `is_fullscreen`, `set_integrated_title` / `is_integrated_title`, `system_title_available`, `set_chrome_regions`, `show_system_menu`,

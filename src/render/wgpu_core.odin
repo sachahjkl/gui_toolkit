@@ -405,6 +405,24 @@ adapter_description :: proc(r: ^Renderer) -> string {
 	}
 }
 
+// What draws the frames, for a person to send with a report of slowness: the adapter's name, the graphics API, and whether
+// it is a software rasterizer (WARP, llvmpipe), which is slow whatever the program does. Strings in temp memory.
+Adapter_Info :: struct {
+	name:     string,   // "NVIDIA GeForce RTX 4070 SUPER", "Microsoft Basic Render Driver"
+	api:      string,   // "Direct3D 11", "Vulkan", "D3D12"
+	software: bool,
+}
+
+// The adapter of the renderer's device. Asks the driver nothing that waits: the names were read when the device was made
+// (WebGPU), or come from the device's own adapter object (Direct3D).
+adapter_info :: proc(r: ^Renderer) -> Adapter_Info {
+	when USE_WGPU {
+		return {name = strings.clone(string(r.wg.adapter_name[:r.wg.adapter_name_len]), context.temp_allocator), api = fmt.tprintf("%v", r.wg.backend_type), software = r.wg.cpu_adapter}
+	} else {
+		return d3d_adapter_info(r)
+	}
+}
+
 // Whether the frame is stored in half floats: a transparent window blended in linear light, which its compositor takes with its
 // alpha (premultiplied: DirectComposition's panel), on a surface that offers them. A surface composited opaque (Vulkan on X11
 // and Wayland: the alpha mode is Opaque there) is 8 bits a channel, as an opaque window's: in half floats a compositor that has

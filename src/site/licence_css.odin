@@ -1,7 +1,8 @@
 package tk_site
 
 // The style of the shop's pages (licence_pages/*.html put it in their head as {{shop_css}}): the bar, the hero, the offer's
-// card, its button, the facts before buying, the licence card of the thank-you page, the legal pages' column, the foot.
+// card, its button, the facts and the questions before buying, the licence card and the help of the thank-you page, the
+// legal pages' column, the foot.
 //
 // It brings no colour of its own: it reads the site's custom properties, so each program keeps its accent, and a site that
 // switches them for a light theme switches these pages too. Two families are read, each with a fallback to the other and
@@ -54,6 +55,7 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
 .shop-icon { display: block; margin: 0 auto 18px; border-radius: 20px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32); }
 .shop-eyebrow { margin: 0 0 4px; color: var(--shop-accent); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
 .shop-name { margin: 0 0 12px; font-size: clamp(2.6rem, 10vw, 4.2rem); line-height: 1.02; letter-spacing: -0.03em; overflow-wrap: anywhere; }
+.shop-thanks-title { margin: 0 0 12px; font-size: clamp(1.9rem, 6vw, 2.8rem); line-height: 1.1; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .shop-lead { max-width: 560px; margin: 0 auto; color: var(--shop-muted); font-size: 1.08rem; line-height: 1.55; }
 
 /* the offer: one card, the price large, what the licence gives, one button */
@@ -70,6 +72,13 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
 .shop-gets { list-style: none; margin: 22px 0 24px; padding: 0; }
 .shop-gets li { display: flex; align-items: flex-start; gap: 12px; margin: 0; padding: 7px 0; line-height: 1.45; }
 .shop-check { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--shop-accent); }
+/* the "i" after a line of the offer: a small ring that leads to the question telling more */
+.shop-page .shop-info {
+  display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; margin-left: 6px;
+  border: 1px solid var(--shop-line); border-radius: 50%; color: var(--shop-muted); font-size: 0.72rem; font-weight: 700;
+  font-style: italic; line-height: 1; text-decoration: none; vertical-align: 1px;
+}
+.shop-page .shop-info:hover { border-color: var(--shop-accent); color: var(--shop-text); }
 
 /* the button: the accent, full width; while the shop is closed, a dashed outline that says "Coming soon" */
 .shop-buy, .shop-quiet {
@@ -99,11 +108,23 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
 .shop-facts dt { font-weight: 700; font-size: 0.95rem; }
 .shop-facts dd { margin: 3px 0 0; color: var(--shop-muted); font-size: 0.95rem; line-height: 1.55; }
 
+/* the questions under the facts: one line each, the answer under it when opened */
+.shop-faq details { border-top: 1px solid var(--shop-line); }
+.shop-faq details:last-child { border-bottom: 1px solid var(--shop-line); }
+.shop-faq summary { padding: 14px 0; font-weight: 700; cursor: pointer; }
+.shop-faq summary:focus-visible { outline: 2px solid var(--shop-accent); outline-offset: 3px; }
+.shop-faq details > div { padding: 0 0 14px; color: var(--shop-muted); line-height: 1.6; }
+.shop-faq details > div p { margin: 0 0 8px; }
+
 /* a legal page: one readable column */
 .shop-doc { max-width: 720px; padding-top: 48px; line-height: 1.65; }
 .shop-doc h1 { margin: 0 0 6px; font-size: clamp(2rem, 7vw, 2.6rem); letter-spacing: -0.02em; }
 .shop-doc h2 { margin: 32px 0 8px; font-size: 1.2rem; }
-.shop-doc > p { color: var(--shop-muted); }
+.shop-doc > p, .shop-doc > ul { color: var(--shop-muted); }
+.shop-doc > ul { padding-left: 20px; }
+.shop-doc li { margin-bottom: 6px; }
+.shop-doc strong { color: var(--shop-text); }
+.shop-doc .shop-eyebrow { margin: 0 0 4px; }
 .shop-doc .shop-fine { margin: 0 0 24px; }
 
 /* the thank-you page: the status, then the licence card */
@@ -140,6 +161,13 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
 .shop-actions > * { flex: 1 1 200px; width: auto; }
 .shop-thanks .shop-h2 { margin-top: 40px; }
 .shop-thanks > div > p { color: var(--shop-muted); line-height: 1.6; }
+/* the help under the licence: what to do when something is wrong, a button to ask, the way back */
+.shop-help { margin: 40px 0 0; padding: 22px 24px; background: var(--shop-card); border: 1px solid var(--shop-line); border-radius: 14px; }
+.shop-thanks .shop-help .shop-h2 { margin: 0 0 8px; font-size: 1.2rem; }
+.shop-help p { margin: 0 0 14px; color: var(--shop-muted); line-height: 1.6; }
+.shop-help p strong { color: var(--shop-text); }
+.shop-help-links { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+.shop-page .shop-help-links .shop-buy { width: auto; min-height: 42px; padding: 9px 20px; font-size: 0.98rem; color: var(--shop-ink); text-decoration: none; }
 
 /* the foot: the shop's pages and the home */
 .shop-foot { border-top: 1px solid var(--shop-line); padding: 26px 0 40px; }

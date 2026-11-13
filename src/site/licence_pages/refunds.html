@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Refund policy - {{name}}</title>
-  <meta name="description" content="Refunds of the {{product_title}}.">
+  <title>Refunds · {{name}}</title>
+  <meta name="description" content="How refunds and statutory withdrawal work for the {{product_title}}, sold through Paddle.">
   <link rel="stylesheet" href="{{stylesheet}}">
   <style>
 {{shop_css}}  </style>
@@ -21,28 +21,47 @@
 </header>
 <main id="main" class="shop">
 <div class="shop-wrap shop-doc">
-<h1>Refund policy</h1>
-<p class="shop-fine">Last changed on {{updated}}.</p>
-<p>If the licence does not work for you, ask for a refund within {{refund_days}} days of the purchase: you get the whole
-  price back. Paddle, the Merchant of Record, makes the refund: ask from the link of your receipt, or
-  <a href="{{help}}">ask us</a> with your order number.</p>
-<h2>The right of withdrawal</h2>
-<p>If you buy as a consumer in the European Union or the United Kingdom, you have a statutory right of withdrawal of 14 days.
-  The licence is digital content delivered at once: at the checkout you can agree that the delivery starts now and that
-  you then lose this right. The refund window above applies whatever you choose.</p>
-<p>See also Paddle's <a href="https://www.paddle.com/legal/refund-policy">refund policy</a>.</p>
+<p class="shop-eyebrow">Legal</p>
+<h1>Refunds</h1>
+<p class="shop-fine">Last updated: {{updated}}</p>
+
+<h2>Who handles refunds</h2>
+<p>The {{product_title}} is sold through <a href="https://www.paddle.com">Paddle</a>, who act as <strong>Merchant of
+  Record</strong> and authorised reseller. Paddle processes the payment, the taxes, the invoice and the refund.</p>
+<p>{{seller}} supplies the software and issues the license. It does not process card payments and does not refund them
+  itself: when Paddle refunds a purchase, {{seller}} treats the license as ended.</p>
+
+<h2>How to request a refund</h2>
+<p>Contact Paddle with your order:</p>
+<ul>
+  <li>use the “View receipt” or order-management link in your Paddle confirmation e-mail; or</li>
+  <li>open a request at <a href="https://paddle.net">paddle.net</a> and choose the refund option; or</li>
+  <li>follow the support path printed on your Paddle receipt.</li>
+</ul>
+<p>You can also write to <a href="mailto:{{seller_email}}">{{seller_email}}</a> if you need help finding your order.
+  {{seller}} can confirm the product or license details to Paddle; Paddle remains the party that pays the refund.</p>
+
+<h2>Statutory withdrawal</h2>
+<p>If you buy as a consumer, mandatory law can give you a right to withdraw within a set period, often <strong>14
+  days</strong> in the EU, the EEA, Switzerland and the UK for eligible digital purchases. Paddle applies those rules as
+  seller of record. The exceptions, including digital content supplied immediately with your express consent, are
+  described in <a href="https://www.paddle.com/legal/refund-policy">Paddle's refund policy</a>.</p>
+<p>Nothing here shortens or replaces your mandatory consumer rights.</p>
+
+<h2>Outside the statutory period</h2>
+<p>Paddle can grant a refund at its discretion under its own policy. Abuse of the refund process can lead to a refusal.</p>
+<p>If {{name}} has a defect that prevents it from working as described, <a href="{{help}}">ask for help</a> first so that it
+  can be fixed. If it cannot be, contact Paddle with the details.</p>
+
+<h2>Effect on the license</h2>
+<p>When Paddle finally refunds the purchase, the license granted for it ends, subject to mandatory law. The key is not
+  blocked technically: {{name}} checks keys offline and never contacts a server about them. A provisional chargeback alone
+  does not end the license until the payment outcome is final.</p>
 </div>
 </main>
 <footer class="shop-foot">
   <div class="shop-wrap">
-    <nav>
-      <a href="{{home}}">{{name}}</a>
-      <a href="../pricing/">Pricing</a>
-      <a href="../terms/">Terms</a>
-      <a href="../refunds/" aria-current="page">Refunds</a>
-      <a href="../privacy/">Privacy</a>
-      <a href="../imprint/">Imprint</a>
-    </nav>
+    {{footer_nav}}
   </div>
 </footer>
 </body>

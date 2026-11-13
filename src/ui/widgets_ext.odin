@@ -844,7 +844,8 @@ repeat_fires :: proc(s: ^State, key: Key, pressed, held, on: bool) -> bool {
 
 @(private = "file") SEGMENTED_RATE :: 40
 
-Seg_Draw :: struct { t: f32, n: int, accent, face, well: Color, pad, radius: f32 }
+// key_radius: the corners of the chosen segment's key, and of each segment's hover and focus, which have its place and shape
+Seg_Draw :: struct { t: f32, n: int, accent, face, well: Color, pad, radius, key_radius: f32 }
 
 // machined: the key's face toward the accent, its least radius
 @(private = "file") SEG_KEY_ACCENT :: 0.1
@@ -874,15 +875,21 @@ seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		}
 		x := math.round(r.min.x + pad + d.t * iw)
 		key := Rect{{x, r.min.y + pad}, {math.round(x + iw), r.max.y - pad}}
-		// (a radius of its own, near the slot's curve: at 0 its lit rim and its edge met in a notch at the corners)
-		key_radius := math.round(max(d.radius - pad * 0.5, SEG_KEY_RADIUS_PX * scale()))
-		machined_bevel(dc, key, key_radius, draw.mix(d.face, d.accent, SEG_KEY_ACCENT), 0, 0, glow = d.accent)
+		machined_bevel(dc, key, d.key_radius, draw.mix(d.face, d.accent, SEG_KEY_ACCENT), 0, 0, glow = d.accent)
 		return
 	}
 	iw := ((r.max.x - r.min.x) - 2 * d.pad) / f32(d.n)
 	x := r.min.x + d.pad + d.t * iw
 	pill := Rect{{x, r.min.y + d.pad}, {x + iw, r.max.y - d.pad}}
-	paint_rect(dc, pill, d.accent, rad(max(0, b.radius - d.pad * 0.5)))
+	paint_rect(dc, pill, d.accent, d.key_radius)
+}
+
+// The corners of a segmented control's key (seg_draw), as drawn. Flat: concentric with the track's, `pad` inside it.
+// Machined: a radius of its own, near the slot's curve: at 0 its lit rim and its edge met in a notch at the corners.
+@(private = "file")
+seg_key_radius :: proc(track_radius, slot_radius, pad: f32, mach: bool) -> f32 {
+	if mach { return math.round(max(slot_radius - math.max(math.round(pad), px1()) * 0.5, SEG_KEY_RADIUS_PX * scale())) }
+	return concentric_radius(radius_drawn(gs(), track_radius), pad)
 }
 
 // How a segmented control looks: a sliding pill in a track, or words in a line, the chosen one bold and underlined, a
@@ -910,21 +917,28 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 		d.t, d.n, d.accent, d.pad = t, len(labels), accent, math.round(em * 0.25)   // (whole pixels: the key and the labels share it)
 		d.face, d.well = color("background"), color("well")
 		d.radius = max(b.radius, rad(em * 0.4))
+		d.key_radius = seg_key_radius(b.radius, d.radius, d.pad, mach)
 		b.custom, b.custom_user = seg_draw, d
 		a11y_default(b, {role = .Radio_Group, orientation = .X})
 		if parent(b) {
-			// (the labels on the width the key slides on: the track less its padding on each side, as seg_draw divides
-			// it; on the whole width each label sat further right of its key than the one before)
+			// (each segment is where the key stands on it: the track less its padding on every side, as seg_draw divides
+			// it. Its hover, press and focus then take the key's place and shape: as tall as the track, they drew a box
+			// with corners of their own over the rounded track)
 			spacer(px(d.pad))
-			next({width = fill(), height = pct(1), axis = .X})
+			next({width = fill(), height = pct(1), axis = .Y, radius = 0})
+			lane := build_box({}, "###seg_lane")
+			push_parent(lane)
+			spacer(px(d.pad))
+			next({width = pct(1), height = fill(), axis = .X, radius = 0})
 			inner := build_box({}, "###seg_inner")
 			push_parent(inner)
-			defer { pop_parent(); spacer(px(d.pad)) }
+			defer { pop_parent(); spacer(px(d.pad)); pop_parent(); spacer(px(d.pad)) }
 			for label, i in labels {
 				fg := i == selected^ ? text_on : text_off
-				next({width = pct(1 / f32(len(labels))), height = pct(1), text_align = .Center, fg = fg, radius = max(0, b.radius - em * 0.125)})
+				next({width = pct(1 / f32(len(labels))), height = pct(1), text_align = .Center, fg = fg, radius = d.key_radius})
 				push_tags("segment")
-				item := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Hot_Effects}, fmt.tprintf("%s###seg%d", label, i))
+				// (Fixed_Radius: key_radius is as drawn, concentric with the track's drawn corners)
+				item := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Hot_Effects, .Fixed_Radius}, fmt.tprintf("%s###seg%d", label, i))
 				pop_tags()
 				isig := signal(item)
 				if isig.clicked && i != selected^ { selected^ = i; changed = true }

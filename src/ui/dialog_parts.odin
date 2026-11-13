@@ -40,7 +40,10 @@ dialog_header :: proc(id: string, title: string, o := Dialog_Header_Options{}) -
 	}
 	shade := frame_new(Color)
 	shade^ = srgb_step(panel.bg, {0, 0, 0, panel.bg.a}, DIALOG_HEADER_DARKEN)
-	next({width = fill(), height = px(h), radius = 0, axis = .X, cross = .Center})
+	// (as tall as its title: a title longer than the dialog is wide wraps onto more lines, never cut)
+	tall := children_sum()
+	tall.least = h
+	next({width = fill(), height = tall, radius = 0, axis = .X, cross = .Center})
 	b := build_box({}, strings.concatenate({"###", id}, frame_allocator()))
 	b.custom, b.custom_user = top_strip_draw, shade
 	a11y_default(b, {role = .Heading, name = title})
@@ -48,14 +51,19 @@ dialog_header :: proc(id: string, title: string, o := Dialog_Header_Options{}) -
 	spacer(px(em * 1.0))
 	if o.icon != "" {
 		f := o.icon_font != 0 ? o.icon_font : s.icon_font
-		next({width = px(em * 1.4), height = pct(1), font = f, font_size = em * 1.1, text_align = .Center, text_pad = 0, fg = color("accent")})
+		next({width = px(em * 1.4), height = px(h), font = f, font_size = em * 1.1, text_align = .Center, text_pad = 0, fg = color("accent")})
 		build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###%s_icon", o.icon, id))
 		spacer(px(em * 0.55))
 	}
-	next({width = fill(), height = pct(1), font_size = em * 1.05, text_pad = 0})
-	build_box({.Draw_Text}, fmt.tprintf("%s###%s_title", title, id))
+	// (its width is its words on one line: the dialog grows to it (modal_end), up to its most, then it wraps)
+	next({width = text_size(), height = text_size(math.round(em * DIALOG_TITLE_MARGIN_EM)), font_size = em * 1.05, text_pad = 0, text_align = .Left})
+	build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###%s_title", title, id))
+	spacer(fill())
 	return true
 }
+
+// Above and below a title that wraps onto more lines, in ems.
+@(private = "file") DIALOG_TITLE_MARGIN_EM :: 0.45
 
 // The end of dialog_header: its right end, clear of the corner's control when it has one (the control's margin on each
 // side of it: a control of the header never touches it).
@@ -166,21 +174,31 @@ dialog_body_end :: proc() {
 }
 
 // `if dialog_buttons("id") { ... }`: a dialog's row of buttons at its bottom, at its right end (the main act last), with
-// the dialog's margins.
+// the dialog's margins and DIALOG_BUTTON_GAP_EM between buttons (put no spacer between them). Buttons that do not fit
+// on one line go on more, each line at the right end; a button wider than the dialog on its own is as wide as the dialog,
+// its words wrapped. The dialog grows to hold the row on one line, up to its most (modal_end).
 @(require_results, deferred_none = dialog_buttons_end)
 dialog_buttons :: proc(id: string) -> bool {
+	em := font_size()
 	next({width = fill(), height = children_sum(), axis = .X, cross = .Center})
 	push_parent(build_box({}, strings.concatenate({"###", id}, frame_allocator())))
-	spacer(fill())
+	spacer(px(em * DIALOG_MARGIN_EM))
+	gap := math.round(em * DIALOG_BUTTON_GAP_EM)
+	next({width = fill(), height = children_sum(), axis = .X, cross = .End, gap = Vec2{gap, gap}})
+	push_parent(build_box({.Wrap}, "###flow"))
 	return true
 }
 
 dialog_buttons_end :: proc() {
 	em := font_size()
+	pop_parent()
 	spacer(px(em * DIALOG_MARGIN_EM))
 	pop_parent()
 	spacer(px(em * DIALOG_MARGIN_EM))
 }
+
+// Between two buttons of a dialog's row, and between its lines, in ems.
+DIALOG_BUTTON_GAP_EM :: f32(0.6)
 
 // A dialog's margin on each side of its body and under its buttons, and the gap above and below its body, in ems.
 DIALOG_MARGIN_EM :: f32(1.0)

@@ -48,7 +48,7 @@ ui.shortcuts_sheet(&app.sheet, "keys", COMMANDS[:])   // app.sheet.open = true s
 
 The palette keeps its list (`Command_Palette.lines`, its own memory) and matches and ranks the commands again only
 when what the list depends on changes: the query, the commands, `first`, the memory of choices (`Choice_Memory.version`)
-or the language in use (`i18n.current()`: the labels are translated). The commands are known by `Palette_Options.version`
+or the language in use (`i18n.version()`: the labels are translated). The commands are known by `Palette_Options.version`
 and their count: a program bumps `version` when its table changes (labels, groups, tags, icons, `names`). With `version`
 0 the palette knows them by the table's address and its count: a constant table needs nothing, but a table built again
 each frame, or changed in place, must give a version. `disabled` and the keys are read only for the lines built: they

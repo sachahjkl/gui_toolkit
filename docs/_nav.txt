@@ -29,7 +29,7 @@ Widgets and layout
   modals.md           Modal dialogs
   commands.md         Commands, palette, keys
   autoscroll.md       Middle-click autoscroll
-  mark-rail.md        A rail of marks beside a view
+  scroll-marks.md     Marks on a scroll bar
   data-views.md       Tables, graphs and meters
   term.md             term: a terminal's grid
   preview.md          Preview: zoom and pan
@@ -66,6 +66,7 @@ Platform and system
   desktop.md          desktop: the program on the desktop
   process.md          process: the program's process
   crash.md            crash: crash reports
+  crash_bar.md        crash_bar: the last crash, said at the start
   log.md              log: a program's log
   config.md           config: preferences
   store.md            store: small files of keys and values

@@ -36,7 +36,7 @@ Licence_Tool :: struct {
 
 // What the paddle command makes: one product, one one-time price per edition, taxes included.
 Paddle_Catalog :: struct {
-	name:        string,   // the product's name in Paddle ("App User Licence")
+	name:        string,   // the product's name in Paddle ("App User License", as Shop.product_title)
 	description: string,   // what the checkout says of it
 	amounts:     string,   // "supporter=2900,patron=9900": an edition's price in the currency's smallest unit
 	currency:    string,   // "EUR"

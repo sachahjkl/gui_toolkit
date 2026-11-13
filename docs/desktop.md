@@ -29,14 +29,14 @@ them with a job on another thread.
 | `name` | `Wren` | the menu entry, the shortcut's file name (`<name>.lnk`), the name in the system's lists |
 | `key` | `Wren` | the registry key and ProgID stem (letters and digits) |
 | `slug` | `wren` | the `.desktop` file, the icon name, the window class, the default install folder on Linux (lower case, digits, hyphens) |
-| `aumid` | `FromentSoftware.Wren` | the Windows AppUserModelID; `set_process_identity` gives it to the process's windows |
+| `aumid` | `FromentSoftware.Wren.Dev` | the Windows AppUserModelID; `set_process_identity` gives it to the process's windows (`""`: `identity_aumid` derives it from `vendor` and `name`, as gt:toolbox's `project_aumid` derives the build's from the Project's publisher and title: `Froment Software` and `Wren` give `FromentSoftware.Wren`; give one only for an id of another rule) |
 | `description`, `vendor` | | the menu entry's comment; the publisher in Settings > Apps |
 | `exe_name` | `wren.exe` | the executable's name in an install folder (`""`: the slug, with `.exe` on Windows) |
 | `entry_marker` | `X-Wren-Integration` | the key that marks the `.desktop` file (begins with `X-`) |
 | `registry_mark` | `WrenIntegration` | the value that marks a registry key, set to the `aumid` |
 | `vendor_key` | `FromentSoftware` | `Software\<vendor_key>\<key>` keeps the program's own values (the PATH mark) |
 | `manifest_name`, `manifest_header` | `wren_install.txt` | the installed copy's list of files, and its first line |
-| `launcher_mark` | `(Wren console launcher)` | what the console launcher contains (`""`: the program has none) |
+| `launcher_mark` | `(Wren console launcher)` | what the console launcher contains (`""`: the embedded launcher's, which the build gives) |
 | `cli_flag` | `--desktop-integration` | the flag `parse_cli` takes out (`""`: none) |
 | `env_prefix` | `WREN_DESKTOP_` | the prefix of the roots `roots_from_env` reads (`""`: none) |
 | `url_schemes`, `url_flag` | `wren-https`, `--open-url` | the program's own URL schemes, which run `"<exe>" <url_flag> "%1"` |
@@ -50,7 +50,7 @@ them with a job on another thread.
 | `scratch_roots` | `Software\WrenTest_` | the registry keys `delete_scratch_root` may delete (prefixes) |
 
 `install`, `remove` and `status` refuse an identity that could reach another program's files (`Bad_Options`): an empty
-`name`, `key`, `slug`, `aumid`, `registry_mark`, `vendor_key` or `manifest_name`, a malformed one, an `entry_marker` without
+`name`, `key`, `slug`, `registry_mark`, `vendor_key` or `manifest_name`, a malformed one, an `entry_marker` without
 `X-`, a URL scheme that is not lower case, schemes without `url_flag`, a launcher without `launcher_mark`.
 
 ## The options
@@ -108,21 +108,16 @@ A running program's file cannot be deleted: `files_install` renames it to `.old`
 next start, and `cleanup_later` deletes the files a running copy holds after the process ends. `open_default_apps` opens
 `ms-settings:defaultapps`, where the user picks the default browser: a program that is not a browser does not call it.
 
-The console launcher exists because a program with a window gives the prompt back at once and has no console. The program
-provides the launcher's bytes; the launcher must contain `launcher_mark`, which is how removal tells it from another file.
+The console launcher exists because a program with a window gives the prompt back at once and has no console. The
+launcher must contain `launcher_mark`, which is how removal tells it from another file.
 
 The toolkit has the launcher: `tools/console_launcher` (what it does: `src/console_launcher`). For a console command it
 waits for the program, hands it its standard input, output and error, and ends with its exit code; for the rest (a window
-that stays) it lets go of it. A program builds its own, with its mark and its rules, and embeds the bytes:
-
-```sh
-odin build ext/gui_toolkit/tools/console_launcher -subsystem:console -o:size -out:build/<stem>.com \
-    "-define:LAUNCHER_MARK=(<stem> console launcher)" -define:LAUNCHER_DEFAULT=wait "-define:LAUNCHER_OTHERS=(none),--hidden"
-```
-
-```odin
-when ODIN_OS == .Windows { o.launcher = #load("../build/<stem>.com") }
-```
+that stays) it lets go of it. A program writes nothing for it: its tool's build (gt:toolbox, `build_windows`) makes
+`<name>.com` with the mark `(<name> console launcher)` and the rules of `Project.launcher`, and `odin_command` embeds it
+here (`-define:GT_CONSOLE_LAUNCHER=<file>`, `GT_CONSOLE_LAUNCHER_MARK=<mark>`). That launcher and its mark are the
+defaults of `Integration_Options.launcher` and `Identity.launcher_mark` (`launcher_bytes(o)`, `launcher_mark_of(id)`);
+options that give their own bytes and mark (a test) take those.
 
 `LAUNCHER_DEFAULT` is what a command line does (`wait` or `detach`); `LAUNCHER_OTHERS`, comma-separated, names those that
 do the other: a word is the first argument, a flag (`--x`) is anywhere (also as `--x=value`), `(none)` is no argument at
@@ -278,7 +273,7 @@ per file placed; a hand-edited one never reaches outside its folder.
 
 ## The command line
 
-`parse_cli` takes `<cli_flag>=install|remove|status|uninstall` (or the two-word form, or `--install` / `--uninstall`) out of
+`parse_cli` takes `<cli_flag>=install|remove|status|uninstall` (or the two-word form) out of
 the arguments; `cli_run` runs it and writes its report with the procedure it is given (`process.console_write`). Exit codes:
 0 done (`status`: installed), 1 failed (`status`: absent), 2 to repair, 3 unreadable, `CLI_UNINSTALL_LATER` (5) uninstalled
 with files left for after the process ends.

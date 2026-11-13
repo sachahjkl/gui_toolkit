@@ -48,6 +48,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.timers = make(map[Key]Timer)
 	s.tag_sets = make(map[Key][]string)
 	s.qr_codes = make(map[Key]Qr_Cached)
+	s.toolbars = make(map[Key]Toolbar_Memory)
 	s.color_memo = make(map[[2]u64]Color)
 	s.wrap_cache = make(map[Wrap_Key]Wrap_Entry)
 	s.trunc_cache = make(map[Trunc_Key]Trunc_Entry)
@@ -75,6 +76,8 @@ destroy :: proc(s: ^State) {
 	delete(s.wheel_rest)
 	line_edit_destroy(&s.number_edit)
 	delete(s.timers)
+	for _, m in s.toolbars { delete(m.groups) }
+	delete(s.toolbars)
 	press_data_destroy(s)
 	delete(s.tag_sets)
 	delete(s.color_memo)
@@ -874,6 +877,7 @@ update_animations :: proc(s: ^State) {
 		step(&b.focus_t, focus, rate, &s.anim_busy)
 		step(&b.disabled_t, disabled, rate, &s.anim_busy)
 		if s.scrollbar_autohide && b.flags & {.View_Scroll_Y, .View_Scroll_X, .Scroll_Self} != {} { step(&b.bar_t, scrollbar_shown(s, b) ? 1 : 0, rate, &s.anim_busy) }
+		if k := scroll_marks_of(b); k != nil || b.bar_wide_t != 0 { step(&b.bar_wide_t, (k != nil && scroll_marks_wide(s, b, k)) ? 1 : 0, rate, &s.anim_busy) }
 
 		// scrolling: the offset follows the (clamped) target (scroll_anim.odin)
 		for axis in Axis {

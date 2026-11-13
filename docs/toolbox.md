@@ -139,23 +139,25 @@ why := toolbox.write_logo({render = logo_render, dir = "assets", master = 1024, 
 `logo_command(logo) -> Command` is the `logo` command of a project's tool: `write_logo` of `logo` (copied; its slices
 must live as long as the tool).
 
-## A Windows executable's version and icon
+## A Windows executable's resource
 
-`version_header(version)` is a C header of a version of three numbers: `VER_MAJOR`, `VER_MINOR`, `VER_PATCH` (numbers)
-and `VER_STRING` (the text). It is "" when the version is not three numbers. `write_version_header(path, version)`
-writes it, only when it changes (the resource is not compiled again). The `.rc` file includes it for its VERSIONINFO:
+Every program gets the same Windows resource from its `Project`, with no `.rc` file and no manifest of its own.
+`build_windows(p)` (which `build_native` runs first) writes them in `WINDOWS_RESOURCE_DIR` (`build/windows`), each file
+only when it changes, and `odin_command` passes the script to the linker (`-resource:`):
 
-```rc
-#include "../build/version.h"
-1 ICON "..\\assets\\papier.ico"
-1 VERSIONINFO
-FILEVERSION VER_MAJOR, VER_MINOR, VER_PATCH, 0
-...
-VALUE "ProductVersion", VER_STRING
-```
+| Resource | From | What shows it |
+|---|---|---|
+| id 1, `ICON` | `Project.icon` (`""`: `assets/<name>.ico`) | Explorer, the shortcuts, Settings > Apps, the taskbar, every window (the window class loads id 1, big and small) |
+| id 1, `VERSIONINFO` | the version (`version_file`), `title` (`""`: `name`), `description`, `publisher`, `copyright` | Properties > Details; Task Manager names the process by the file's description |
+| id 1, `RT_MANIFEST` | the version, `project_aumid(p)` (the assembly's name; else `name`) | runs as the user who starts it; Windows 10 and 11; per-monitor DPI aware (v2); UTF-8 as the code page of the A functions and the C runtime; paths longer than `MAX_PATH`; the common controls of version 6 |
 
-`exe_has_icon(path)` (Windows) is true when the executable carries an icon group 1: what Explorer, the Start menu's
-shortcut and the window show. A build checks with it that the resource is linked.
+- `write_windows_resource(p, dir = WINDOWS_RESOURCE_DIR)` writes `<dir>/<name>.rc` and `<dir>/<name>.manifest`. `why`
+  says what is wrong: the version is not three numbers of 16 bits, or the icon is not there (the tool's `logo` command
+  writes it).
+- `windows_resource_script(p, version, icon, manifest)` and `windows_manifest(p, version)` are their texts.
+  `version_numbers(version)` reads "x.y.z". `windows_resource_path(p)` is the script, `project_icon(p)` the icon,
+  `project_title(p)` the title.
+- `exe_has_icon(path)` (Windows) is true when the executable carries an icon group 1. `check_launcher` checks it.
 
 ## A program's update files
 
@@ -268,17 +270,30 @@ that are not flags; a lone `-` is plain).
 | `toolkit` | the toolkit's checkout (`""`: `$GT`, else `TOOLKIT_DEFAULT`, `ext/gui_toolkit`) |
 | `collections` | more collections than `gt`: a name and its folder |
 | `linux_defines` | what every odin command of the program gets on Linux |
-| `launcher` | Windows: its console launcher, a `Launcher` (`out` `""`: none) |
+| `launcher` | Windows: the rules of its console launcher, a `Launcher` (below) |
 | `licence` | its licence, for its notices (`""`: MIT) |
 | `features` | what it takes of the toolkit beyond the core, a `Features` (below) |
+| `title`, `description`, `publisher`, `copyright`, `icon` | what Windows shows of it: its resource (above) |
 
 - `version_of(source, line)` is the version in quotes after `line` (`""`: no such line); `version_set(source, line, version)`
   is the source with it replaced (ok = false: no such line). `project_version(p)` reads it from `version_file`.
 - `toolkit_dir(p)` is the toolkit's checkout.
+- `project_aumid(p)` is the AppUserModelID of the program's windows, never written: `publisher` and `title` (`""`: `name`)
+  in PascalCase of ASCII letters and digits, joined by a dot (`platform.app_user_model_id`: `Froment Software` and
+  `opencode native` give `FromentSoftware.OpencodeNative`). `desktop.Identity` derives the same from its `vendor` and its
+  `name`, so the windows group with the shortcuts in the taskbar. No `publisher`: `""`, no id (the taskbar groups by the
+  executable).
 - `odin_command(p, verb, pkg = "", extra = nil)` is `odin <verb> <pkg> -collection:gt=<toolkit>/src <collections> -vet`,
-  the defines of the features, on Linux `linux_defines` and, but for `check`, `LINUX_LINK_FLAG` (the native text backend
-  and wgpu-native carry the same Rust standard library), then `extra`. `pkg` `""`: the program's.
-- `build_native(p)` builds what the features need before an odin command: the toolkit's native libraries this system
+  the defines of the features, on Windows `windows_flags`, on Linux `linux_defines` and, but for `check`,
+  `LINUX_LINK_FLAG` (the native text backend and wgpu-native carry the same Rust standard library), then `extra`. `pkg`
+  `""`: the program's.
+- `windows_flags(p, linked)` is what `build_windows` made, for a Windows odin command: the console launcher
+  (`-define:GT_CONSOLE_LAUNCHER=<file>` and `GT_CONSOLE_LAUNCHER_MARK`: gt:desktop embeds it and writes it with the PATH
+  entry), `-define:GT_AUMID=<project_aumid(p)>` (gt:platform declares it before the first window) and, when `linked`, the resource.
+  A file not made yet is left out: a check from Linux builds without them. A tool that builds the program with its own odin
+  command (opencode native's) runs `build_windows` and appends these.
+- `build_native(p)` builds what the program needs before an odin command: on Windows `build_windows(p)` (the resource and
+  the console launcher), then the toolkit's native libraries this system
   links (`tk build_text` on Linux or with `Native_Text`, `tk build_a11y` on Windows with `Accessibility`,
   `tk build_mermaid` with `Mermaid`), by the toolkit's own tool in the project's checkout of it (nothing when a library is
   up to date), and the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)).
@@ -299,7 +314,8 @@ the crates of the notices (`native_crates(features)`) follow from it. What each 
 | `No_Fallback_Fonts` | `FONT_EMBED_FALLBACK=false` | | |
 
 ```odin
-p := toolbox.Project{name = "classeur", src = "src", program = "build/classeur", features = {.Mermaid, .Lucide_Subset}}
+p := toolbox.Project{name = "classeur", src = "src", program = "build/classeur", features = {.Mermaid, .Lucide_Subset},
+	title = "Classeur", description = "A fast file manager.", publisher = "Froment Software"}
 
 if !toolbox.build_native(p) { return "the native parts failed" }
 if !toolbox.run(toolbox.odin_command(p, "build", extra = {"-o:speed", "-out:build/classeur"})) { return "the build failed" }
@@ -318,9 +334,12 @@ tables, its character map and a glyph's bytes.
 `lucide_subset(p)` writes the program's icons of the Lucide font at `LUCIDE_SUBSET_FILE` (`build/lucide_subset.ttf`, in
 the working directory) and returns its absolute path; `lucide_names_used(dirs)` and `lucide_codes(source, names)` are its
 steps ([lucide.md](lucide.md)).
-- `build_launcher(p)` builds the console launcher on Windows from the toolkit's `tools/console_launcher`, with the
-  `Launcher`'s mark (`LAUNCHER_MARK`), rule (`default_rule`: `wait` or `detach`) and `others`. The program embeds it: it
-  comes before a check or a build. `check_launcher(p)` checks it beside a release build: `<out> version` says
+- Every program with a window has a console launcher on Windows: `launcher_path(p)`, `<name>.com` beside `program`.
+  `build_launcher(p)` (in `build_windows`) builds it from the toolkit's `tools/console_launcher`, with the mark
+  `launcher_mark(p)` (`(<name> console launcher)`: installed launchers carry it) and the `Launcher`'s rules:
+  `default_rule` (`wait` or `detach`; `""`: `detach`) and `others` (`""`: `LAUNCHER_OTHERS_DEFAULT`, the help and the
+  version). The program embeds it with no code of its own (`windows_flags`), and the release's archive has it beside the
+  program (gt:release). `check_launcher(p)` checks a release build: it carries its icon, `<launcher> version` says
   `<name> <version>`, and with `refuses_exit`, an unknown command ends with that code.
 - `check_windows(p)` and `check_darwin(p)` are `odin check` of the program for Windows (`windows_amd64`) and macOS
   (`darwin_arm64`), from any system (`odin_check`).

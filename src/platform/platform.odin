@@ -213,6 +213,19 @@ set_input_defaults :: proc(d: Input_Defaults) { input_defaults_set = d }
 // This thread's input defaults: the last set_input_defaults, else INPUT_DEFAULTS.
 input_defaults :: proc() -> Input_Defaults { return input_defaults_set.? or_else INPUT_DEFAULTS }
 
+// Whether the system lets interfaces animate (Settings > Accessibility on Windows; GNOME's "Reduce animation",
+// org.gnome.desktop.interface enable-animations, on Linux). Asked at every build, so it is a kept value: read once,
+// off the interface thread where it needs the disk, and set again when the system says it changed.
+@(private) animations_off: bool
+
+os_animations_enabled :: proc() -> bool {
+	animations_watch()
+	return !sync.atomic_load(&animations_off)
+}
+
+@(private)
+animations_set :: proc(on: bool) { sync.atomic_store(&animations_off, !on) }
+
 // Bumped each time the system's light / dark preference may have changed (Windows: WM_SETTINGCHANGE "ImmersiveColorSet";
 // Linux: the appearance portal's SettingChanged). An app that follows dark_mode_preferred keeps the last value it saw and
 // reads the preference again when this moves: no event to route, one integer compared per frame.

@@ -24,7 +24,7 @@ dw_rendering :: proc(r: Rendering) -> DWRITE_RENDERING_MODE {
 @(private)
 dw_grid :: proc(g: Grid_Fit) -> DWRITE_GRID_FIT_MODE {
 	switch g {
-	case .Default: return .DEFAULT
+	case .Auto: return .DEFAULT
 	case .Enabled: return .ENABLED
 	case .Disabled: return .DISABLED
 	}

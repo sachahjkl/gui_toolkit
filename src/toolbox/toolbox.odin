@@ -13,13 +13,14 @@
 //	start_group      (Linux) a command in a process group of its own; stop_group stops all of that group
 //	system_program   a program of the system (curl, tar) by its full path on Windows, by its name elsewhere
 //	write_logo       the files of a program's logo, from its drawing: PNG sizes, the .ico, the project's picture
-//	write_version_header  the C header of a version of three numbers, for a Windows executable's VERSIONINFO
+//	write_windows_resource  a program's Windows resource from its Project: icon, VERSIONINFO, manifest
 //	exe_has_icon     (Windows) a Windows executable carries its icon (group 1)
 //	update_command   the update command of a project's tool: keygen, pubkey, the signed manifest of a release, verify
 //	licence_commands the licence and paddle commands of a project's tool: keys, licences, the Worker's secrets, Paddle's catalogue
 //	crash_symbolize  a crash report's frames named from the build's map or executable (crash_symbolize.odin)
 //	tool_main        a project's tool: its commands (Command), the help, the exit codes, the line PowerShell splits joined
-//	Project          a program's project: odin_command, build_native, build_launcher, check_launcher, check_windows; its
+//	Project          a program's project: odin_command, build_native (build_windows: its resource and console launcher),
+//	                 windows_flags, check_launcher, check_windows; its
 //	                 Features (feature_defines, native_crates)
 //	font_subset      a TrueType font with only the glyphs of some characters; lucide_subset: a program's Lucide icons
 //	version_of       the version of the sources after its line's start; version_set writes it

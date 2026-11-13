@@ -323,6 +323,27 @@ create_device :: proc(r: ^Renderer, driver: d3d11.DRIVER_TYPE) -> bool {
 	return true
 }
 
+// The device's adapter (render.adapter_info). WARP is Microsoft's software rasterizer: its vendor 0x1414 and device 0x8C
+// are what DXGI documents for it, whatever its name in the user's language.
+@(private)
+d3d_adapter_info :: proc(r: ^Renderer) -> Adapter_Info {
+	info := Adapter_Info{api = "Direct3D 11", software = r.warp}
+	if r.device == nil { return info }
+	dev: ^dxgi.IDevice
+	if win.FAILED(r.device->QueryInterface(dxgi.IDevice_UUID, (^rawptr)(&dev))) || dev == nil { return info }
+	defer dev->Release()
+	adapter: ^dxgi.IAdapter
+	if win.FAILED(dev->GetAdapter(&adapter)) || adapter == nil { return info }
+	defer adapter->Release()
+	desc: dxgi.ADAPTER_DESC
+	if win.FAILED(adapter->GetDesc(&desc)) { return info }
+	n := 0
+	for n < len(desc.Description) && desc.Description[n] != 0 { n += 1 }
+	if name, err := win.utf16_to_utf8(desc.Description[:n], context.temp_allocator); err == nil { info.name = name }
+	if desc.VendorId == 0x1414 && desc.DeviceId == 0x8C { info.software = true }
+	return info
+}
+
 // Shaders, input layout, constant buffer and fixed states: everything after the device and the frame target.
 @(private)
 init_pipeline :: proc(r: ^Renderer) -> bool {

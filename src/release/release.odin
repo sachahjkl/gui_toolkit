@@ -2,7 +2,8 @@
 // own tool calls them, its Release_Options says what the program is). The package is named tk_release.
 //
 //	package [version]   <dist>/<name>-<version>-linux-x64.tar.gz on Linux, <name>-<version>-windows-x64.zip on Windows:
-//	                    the program and the files beside it, its SHA-256 in <archive>.sha256; the version is the
+//	                    the program (on Windows with its console launcher, <name>.com) and the files beside it, its
+//	                    SHA-256 in <archive>.sha256; the version is the
 //	                    sources' when none is given, and a version given must be theirs (a tag). A program that
 //	                    updates itself (Release_Options.update): the program alone too, and its manifest signed by
 //	                    $UPDATE_SIGNING_KEY (a release, with its tag, needs the key)
@@ -123,6 +124,10 @@ package_ :: proc(o: Release_Options, args: []string) -> int {
 	_ = os.remove_all(o.dist)
 	if !fsx.make_dirs(stage) { fmt.eprintfln("%s: %s cannot be made", o.name, stage); return 1 }
 	if !copy_file(o.name, o.program, fmt.tprintf("%s/%s", stage, exe)) { return 1 }
+	// (its console launcher beside it: typed in cmd or PowerShell, the program gives its output and exit code)
+	when ODIN_OS == .Windows {
+		if !copy_file(o.name, toolbox.launcher_path(o.project), fmt.tprintf("%s/%s.com", stage, o.name)) { return 1 }
+	}
 	for f in o.files {
 		if !copy_file(o.name, f[0], fmt.tprintf("%s/%s", stage, f[1])) { return 1 }
 	}

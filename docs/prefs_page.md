@@ -60,7 +60,7 @@ ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 | `Timing` | `timing` | the tooltip delay, the submenu delay, a menu item's height, the colour fade |
 | `Rendering` | `rendering` | all advanced: presentation (vsync, tearing), frames queued, partial redraw, the blur limit, the filters' precision |
 | `Update` | `update` | `update.auto`, `update.channel`, `update.base_url` (advanced) |
-| `Session` | `general` | `general.menu` (in the application menu), `general.autostart` (with the session), `general.messages` (System, Window, Off; read by `announce_mode` for ui.announce), `general.language` (`system`; read at the start) |
+| `Session` | `general` | `general.menu` (in the application menu), `general.autostart` (with the session), `general.messages` (System, Window, Off; read by `announce_mode` for ui.announce), `general.language` (`system`; at once, `language_start`) |
 
 `STANDARD_ALL` is every set. Start from `STANDARD_DEFAULTS`: a zero `Standard_Defaults` has `menu` and `update_auto` off.
 `Standard_Defaults.values` gives any other standard setting the program's own default, as the file writes it
@@ -93,8 +93,10 @@ What the program applies itself:
 - the theme (`appearance.theme`, `mode`, `finish`, `glow`, `font_size`): `appearance_read`, `appearance_choice`,
   `ui.theme_show`. After a change of `appearance.text.blend_space`, show the theme again with `render.blend_space(r)`;
 - the fonts by name (`appearance.text.ui_font`, `mono_font`, `prose_font`, `emoji_font`), `appearance.text.page_size`,
-  `window.system_title`, `update.channel`, `update.base_url` and `general.language`: read at the start (`Def.restart`:
-  "Takes effect at the next start");
+  `window.system_title`, `update.channel` and `update.base_url`: read at the start (`Def.restart`: "Takes effect at the
+  next start");
+- `general.language`: `language_start(prefs, catalogues)` at the start, which then switches the language at once at each
+  change of it ([i18n.md](i18n.md), "Changing the language");
 - `general.menu` and `general.autostart`, on a worker with `desktop.apply` ([desktop.md](desktop.md)); `update.auto` by
   its Updater.
 
@@ -118,8 +120,9 @@ What the program applies itself:
   program's pages, not two.
 - The sidebar's handle (`ui.splitter`) resizes it with the mouse; a double click puts 14 ems back. Its width is kept in
   the hidden preference `prefs_page.sidebar_width` (`SIDEBAR_PREF`, in ems; the page registers it at its first build),
-  written when the handle is let go. It stays between 9 ems and half of the page. A page narrower than 40 ems shows the
-  pages' icons alone.
+  written when the handle is let go. It stays between 9 ems and half of the page. It is never narrower than its longest
+  page title or heading on one line, in the language in use (`ui.button_width`): the handle does not go under that; at
+  half of the page, a longer title wraps onto two lines. A page narrower than 40 ems shows the pages' icons alone.
 - On the right: the page's title, then a line per preference, in the order the program registered them: its title
   (`config.title_of`) and its description (with "Locked by a policy", "Set on the command line for this run" or "Takes
   effect at the next start" when it applies) on the left, its control on the right, a reset button while the user's
@@ -278,6 +281,61 @@ if app.settings_open {
 was pressed. `escape_leaves(page)` is true when Escape was pressed and no editor of a preference has the keyboard: that
 Escape gives up the editor first.
 
+## The installation
+
+Every program installs itself the same way: one `Install` object holds the setup's `Dialog` ([setup.md](setup.md)), offers
+the install at a start, keeps the user's answer in the settings, and shows the **Installation** page at the end of the
+sidebar. The program declares what it is, as data: a `setup.Setup_Options` (its `desktop.Identity`, its version, its install
+folder, its icons, its own options and `prepare` for its parts: the PATH, the start with the session).
+
+```odin
+prefs_page.install_init(&app.install, &app.prefs, setup_options())   // its settings loaded (registers install.choice)
+prefs_page.install_offer(&app.install, &app.main.state, offer = !app.demo)   // its window open: read on a task
+// each frame
+if prefs_page.install_frame(&app.install, em) == .Launched { quit() }   // the modal while open, the work that ended
+opts.install = &app.install                                          // the settings: the Installation page
+// --setup
+prefs_page.install_open(&app.install)
+// at the end, before the window's State goes; then last, the single instance released
+prefs_page.install_end(&app.install)
+prefs_page.install_launch(&app.install)
+```
+
+- `install_offer(in, state, offer)` reads the install on a task; the installed copy deletes what an update left (`.old` files).
+  When `offer` and `setup.wanted` say so (no install, one to repair, an older one to upgrade) and the user did not answer
+  for this version, the setup's modal opens. `Install.known` and `running_it` say what the reading found (an updater wants
+  to know which copy runs).
+- `install_frame(in, em) -> setup.Event` draws the modal while it is open (`Install.logo` is its mark) and collects the work:
+  the answer goes to `install.choice` (`INSTALL_CHOICE_PREF`, hidden: `installed`, `standalone`, `dismissed:<version>`;
+  a page left answers nothing). It returns what happened: `Launched`, the program ends and `install_launch` starts the
+  installed copy; `Installed` and `Uninstalled`, a program that applies its own desktop settings (`general.menu`) does
+  it again.
+- `install_end(in)` before the window's State goes: what an uninstall left is deleted once the process ends, the dialog's
+  thread is waited for. `install_launch(in)` last, once the program's single instance is released: the installed copy
+  asked for starts (started earlier, it would find this copy running and hand itself over to it).
+- `install_open(in)` shows the modal (`--setup`, Settings > Apps' Uninstall). `install_open_now(in)`: the modal is open,
+  a program leaves the keyboard to it.
+- The page (`Page_Options.install`, category `INSTALL_PAGE`) is `setup.page`: while the modal is open it waits.
+
+The command line is `setup.command_of` and `setup.command_run` (`--install`, `--uninstall`, `--setup`).
+
+## Diagnostics
+
+`Page_Options.diagnostics` (the `host.Host` of the window the settings are in) adds a **Diagnostics** page after the
+installation: what a person on a slow machine copies and sends. One line each: the program (`Page_Options.version`), the
+toolkit (`ui.VERSION`), the system (`core:sys/info`, read once on a task), the graphics adapter and API
+(`render.adapter_info`, with a warning above the lines when it is a software rasterizer), the window's size in pixels and
+its scale, the last frames' total, build and draw times (median and 95th percentile: `host.frame_stats`, kept in every
+build), and partial redraw with the share of the pixels it drew. The lines are made again once a second while the page is
+shown (`DIAGNOSTICS_REFRESH_MS`); **Copy** puts them on the clipboard as `key: value` lines (`diagnostics_text`).
+
+## The toolkit's pages in the palette
+
+A page of its own (`Page_Info.build`) with `Page_Info.tags` is a line of `palette_commands`: its title, the group
+"Settings", its icon and its tags; its name is the page's category, and `show(page, prefs, o, category)` puts that page up,
+the search cleared. The Installation and Diagnostics pages have theirs ("install", "uninstall", "path"; "gpu",
+"performance", "slow"). `Page_Info.user` is what `build` is given (nil: `Page_Options.user`).
+
 ## Keyboard
 
 Tab goes through the search, the pages and the controls. `focus_search(&page)` gives the search the keyboard at the
@@ -295,7 +353,9 @@ options, name)`: the page's search holds the preference's name in quotes, so it 
 page under the search is its own (clearing the search lands there).
 
 The program makes this table when the settings change, not at each frame: a frame then walks no preference, and the
-palette ranks again only when the table's version changes (docs/commands.md).
+palette ranks again only when the table's version changes (docs/commands.md). Its labels and groups are in the language in
+use: a change of `general.language` is a change of the settings (their version moves after the language switched), so the
+table below follows it; a program that switches the language otherwise makes it again when `i18n.version()` moves.
 
 ```odin
 // when the settings change (app.prefs.version): the table in memory of its own

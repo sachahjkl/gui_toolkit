@@ -56,6 +56,8 @@ Dialog :: struct {
 	stale_flag: bool,              // atomic: the watcher (or the program) says the install changed
 	state:     ^ui.State,          // atomic: the State of its last frame, which the threads wake (nil before one)
 	at:        [Button_Role]draw.Rect,   // where the last frame put its buttons ({}: not shown): a program's automation clicks them
+	in_page:   bool,               // open as a page of the settings (page), not as the modal
+	page_build: u64,               // the build that last drew the page: a build without it closes it (update)
 }
 
 // The buttons a program's automation finds in Dialog.at. Secondary: what closes (Keep standalone, Not now, Close) or opens
@@ -68,7 +70,7 @@ Event :: enum u8 {
 	Uninstalled,
 	Kept_Standalone,   // keep CHOICE_STANDALONE
 	Dismissed,         // closed without an answer: keep choice_dismissed(version)
-	Launched,          // the installed copy was started: this one ends
+	Launched,          // the installed copy is to start (Dialog.installed): this one ends, then starts it (launch)
 }
 
 // The program's mark beside its name (a texture of the program's renderer, and its size in pixels).
@@ -79,13 +81,13 @@ Logo :: struct {
 
 @(private = "file") DIALOG_EM       :: [2]f32{46, 34}   // its size at first (a grip of its corner or edges makes it larger or smaller)
 @(private = "file") DIALOG_MIN_EM   :: [2]f32{28, 16}   // ... and at the least (what does not fit scrolls; the buttons stay)
-@(private = "file") MARGIN_EM       :: 1.5
+@(private) MARGIN_EM       :: 1.5
 @(private = "file") LOGO_EM         :: 4.2
 
 // Opens the dialog: the facts are read on its thread, the places of the install are watched.
 open :: proc(d: ^Dialog, o: Setup_Options) {
 	if d.open { return }
-	d.open, d.known, d.confirm = true, false, false
+	d.open, d.known, d.confirm, d.in_page = true, false, false, false
 	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
 	clear(&d.choices)
 	for x in o.choices { append(&d.choices, x.on) }
@@ -331,12 +333,12 @@ state_words :: proc(f: Facts, o: Setup_Options) -> (words, tone: string) {
 
 // The words of this system for the pieces of an install, in the language in use (whole sentences: a language puts the
 // pieces' words where its grammar wants them).
-@(private = "file")
+@(private)
 words_menu :: proc() -> string {
 	when ODIN_OS == .Windows { return i18n.tr("Start menu") } else { return i18n.tr("applications menu") }
 }
 
-@(private = "file")
+@(private)
 words_record :: proc() -> string {
 	when ODIN_OS == .Windows { return i18n.tr("Settings > Apps") } else { return i18n.tr("icons") }
 }
@@ -400,6 +402,12 @@ dialog :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo) = nil) -
 update :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
 	ev = job_collect(d, o)
+	// (a page has no close of its own: the settings showed another page, or closed, when a build went by without it)
+	if d.open && d.in_page {
+		if s := ui.current_state(); s != nil && s.build_index > d.page_build + 1 {
+			d.open, d.in_page, d.confirm = false, false, false
+		}
+	}
 	if !d.open {
 		watch_end(d)
 		return
@@ -454,17 +462,17 @@ start_uninstall :: proc(d: ^Dialog, o: Setup_Options) { if d.known && d.job == n
 // Opens the system's folder picker for the install folder (Dialog.folder takes the answer).
 pick_folder :: proc(d: ^Dialog, o: Setup_Options) { if d.job == nil { job_start(d, o, .Pick_Folder) } }
 
-// Starts the copy just installed (Dialog.installed): Launched, the program then ends; None when it does not start.
+// Asks for the copy just installed (Dialog.installed): Launched, the program then ends and starts it with launch once
+// its window is closed and its single instance released (started now, it would find this one still running and hand
+// itself over to it). None when there is none.
 open_installed :: proc(d: ^Dialog) -> Event {
-	if d.installed != "" && launch(d.installed) { return .Launched }
-	say(d, false, fmt.tprintf(i18n.tr("%s does not start"), d.installed))
-	return .None
+	return d.installed != "" ? .Launched : .None
 }
 
 // Closes the screen by `how`: the event to keep (Kept_Standalone, Dismissed: not again for this version, or None).
 close :: proc(d: ^Dialog, how: Closing) -> Event {
 	if !d.open { return .None }
-	d.open = false
+	d.open, d.in_page = false, false
 	watch_end(d)
 	switch how {
 	case .Keep_Standalone: return .Kept_Standalone
@@ -483,7 +491,7 @@ closed_event :: proc(d: ^Dialog) -> Event {
 }
 
 // A corner's radius: `k` ems, none when the program wants it square.
-@(private = "file")
+@(private)
 rad :: proc(o: Setup_Options, em, k: f32) -> f32 { return o.square ? 0 : math.round(em * k) }
 
 // The dialog's own header: "<name> Setup", and the close control in its corner (the program's, else the toolkit's button,
@@ -498,7 +506,7 @@ title_bar :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 }
 
 // A framed panel across the dialog, inside its margins: `if panel(...) { ... }`.
-@(private = "file", deferred_none = panel_end)
+@(private, deferred_none = panel_end)
 panel :: proc(o: Setup_Options, em: f32, id: string, axis := ui.Axis.Y) -> bool {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	ui.push_parent(ui.build_box({}, fmt.tprintf("%s_line", id)))
@@ -510,7 +518,7 @@ panel :: proc(o: Setup_Options, em: f32, id: string, axis := ui.Axis.Y) -> bool 
 	return true
 }
 
-@(private = "file")
+@(private)
 panel_end :: proc() {
 	ui.pop_parent()
 	ui.spacer(ui.px(ui.font_size() * MARGIN_EM))
@@ -579,7 +587,7 @@ head :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 }
 
 // Where it goes: a field and the system's folder picker before the first install, else where it is.
-@(private = "file")
+@(private)
 location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	f := &d.facts
 	choose := o.folder && f.state == .Not_Installed && !f.from_nix
@@ -624,7 +632,7 @@ location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 }
 
 // "Options": a section header, then the Desktop shortcut and the program's choices, two framed boxes a line.
-@(private = "file")
+@(private)
 options_grid :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 	ui.spacer(ui.px(em * 0.7))
 	if panel(o, em, "###setup_options_head", .X) {
@@ -707,14 +715,14 @@ info :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 }
 
 // A line of the dialog: as wide as it, as tall as what it holds.
-@(private = "file")
+@(private)
 line_next :: proc() {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 }
 
 // A line of the well: what, at a fixed width and weak, then where. A path that does not fit is cut; the pointer over it
 // shows it whole, and a click on it or on the copy button after it puts it on the clipboard.
-@(private = "file")
+@(private)
 where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, em: f32) {
 	ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.55)), axis = .X, cross = .Center})
 	if ui.row(.Center, id = id) {
@@ -763,11 +771,11 @@ where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, em: f32) {
 	}
 }
 
-@(private = "file")
+@(private)
 Copy_Glyph :: struct { color: draw.Color, copied: bool }
 
 // Two sheets, one over the other (copy); a check once copied. Drawn: the icons' font has no such glyph.
-@(private = "file")
+@(private)
 copy_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	g := (^Copy_Glyph)(user)
 	r := b.rect
@@ -823,7 +831,7 @@ buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 		how := closing(d, o)
 		CLOSING_WORDS := [Closing]string{.Close = i18n.tr("Close"), .Not_Now = i18n.tr("Not now"), .Keep_Standalone = i18n.tr("Keep standalone")}
 		CLOSING_IDS := [Closing]string{.Close = "###setup_close", .Not_Now = "###setup_later", .Keep_Standalone = "###setup_standalone"}
-		if button(o, CLOSING_IDS[how], CLOSING_WORDS[how], lucide.X, .Cancel, em) { ev = close(d, how) }
+		if button(o, CLOSING_IDS[how], CLOSING_WORDS[how], lucide.X, .Neutral, em) { ev = close(d, how) }
 		if !just_installed { mark(d, .Secondary, CLOSING_IDS[how]) }
 		if just_installed {
 			ui.spacer(ui.px(em * 0.5))
@@ -842,7 +850,7 @@ buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 }
 
 // A button: the program's (Setup_Options.button), else the toolkit's button with its glyph and the soft pair of its intent.
-@(private = "file")
+@(private)
 button :: proc(o: Setup_Options, id, label, glyph: string, intent: ui.Intent, em: f32) -> bool {
 	if o.button != nil { return o.button(id, label, glyph, intent, em, o.user) }
 	clicked := ui.button(id, label, glyph, {icon_font = ui.lucide_icons(), intent = intent}).clicked

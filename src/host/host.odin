@@ -31,6 +31,7 @@
 package host
 
 import "core:fmt"
+import "core:slice"
 import "core:time"
 import "../draw"
 import "../font"
@@ -105,6 +106,7 @@ Host :: struct {
 	rest_frame:   proc(h: ^Host),   // from the system's loop, no step of a resize to show: the program's whole frame. nil: this window's
 	after_frame:  proc(h: ^Host),   // the picture is out (or held): what the program does between two frames. Not after a frame that found its window closed
 
+	frames:  Frame_Ring,   // the last pictures' times, in every build (frame_stats)
 	slept:   bool,     // the loop slept before this frame (hosts_wait)
 	rested:  bool,     // this frame comes after a sleep: its dt is one refresh (host_picture)
 	times:   Host_Times,   // the last picture's steps
@@ -366,6 +368,67 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	if h.paced { render.paced_present(&h.pacer) }
 	h.times = {draw = time.tick_diff(t_draw, t_present), present = time.tick_since(t_present)}
 	h.shown = h.win.size
+	frame_record(&h.frames, h)
+}
+
+// How many pictures the ring keeps: a few seconds of a busy window, the last ones of a quiet one.
+FRAME_RING :: 128
+
+// The last pictures' times, kept by every host in every build (a release too): a slow machine says it in numbers. A slot
+// per picture, written in place: no allocation, no work but a few stores.
+Frame_Ring :: struct {
+	slots: [FRAME_RING]Frame_Sample,
+	count: int,   // pictures recorded since the window opened
+}
+
+Frame_Sample :: struct {
+	build_ms, draw_ms: f32,   // the interface's builds (ui.build_metrics: build and layout), then the draw up to the present
+	px_drawn, px_window: i32, // with partial redraw on: the pixels drawn and the window's (0, 0 when off)
+}
+
+@(private = "file")
+frame_record :: proc(ring: ^Frame_Ring, h: ^Host) {
+	x := Frame_Sample{build_ms = f32(ui.build_metrics(&h.state).total_ms), draw_ms = f32(time.duration_milliseconds(h.times.draw))}
+	if h.partial_redraw {
+		st := ui.damage_stats(&h.state)
+		x.px_drawn, x.px_window = i32(st.px_drawn), i32(st.px_window)
+	}
+	ring.slots[ring.count % FRAME_RING] = x
+	ring.count += 1
+}
+
+// What the ring says: the median and the 95th percentile of the build, the draw and their sum, and the share of the
+// window's pixels drawn while partial redraw was on (0 when it was off for every picture kept).
+Frame_Stats :: struct {
+	frames:                  int,   // pictures kept (at most FRAME_RING)
+	build_p50, build_p95:    f32,
+	draw_p50, draw_p95:      f32,
+	total_p50, total_p95:    f32,
+	drawn_share:             f32,
+}
+
+// The statistics of the pictures kept. A sort of at most FRAME_RING numbers: call it when they are shown, not each frame.
+frame_stats :: proc(ring: ^Frame_Ring) -> (s: Frame_Stats) {
+	n := min(ring.count, FRAME_RING)
+	s.frames = n
+	if n == 0 { return }
+	build, drawn, total: [FRAME_RING]f32
+	px, window: i64
+	for i in 0 ..< n {
+		x := ring.slots[i]
+		build[i], drawn[i], total[i] = x.build_ms, x.draw_ms, x.build_ms + x.draw_ms
+		px += i64(x.px_drawn)
+		window += i64(x.px_window)
+	}
+	at :: proc(v: []f32, q: f32) -> f32 {
+		slice.sort(v)
+		return v[min(int(f32(len(v)) * q), len(v) - 1)]
+	}
+	s.build_p50, s.build_p95 = at(build[:n], 0.5), at(build[:n], 0.95)
+	s.draw_p50, s.draw_p95 = at(drawn[:n], 0.5), at(drawn[:n], 0.95)
+	s.total_p50, s.total_p95 = at(total[:n], 0.5), at(total[:n], 0.95)
+	if window > 0 { s.drawn_share = f32(f64(px) / f64(window)) }
+	return
 }
 
 // What the window calls from inside the system's loop (platform.Window.on_frame).

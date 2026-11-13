@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Licence terms - {{name}}</title>
-  <meta name="description" content="The terms of the {{product_title}}.">
+  <title>License terms · {{name}}</title>
+  <meta name="description" content="The terms of the {{product_title}}: a one-time purchase, personal and perpetual, that covers {{updates}}.">
   <link rel="stylesheet" href="{{stylesheet}}">
   <style>
 {{shop_css}}  </style>
@@ -21,43 +21,49 @@
 </header>
 <main id="main" class="shop">
 <div class="shop-wrap shop-doc">
-<h1>Licence terms</h1>
-<p class="shop-fine">Last changed on {{updated}}.</p>
-<h2>1. The parties</h2>
-<p>These terms are between you, the buyer, and {{seller}} (the licensor). The licence is sold by Paddle.com, the Merchant of
-  Record, who handles the payment, the invoice and the taxes; its <a href="https://www.paddle.com/legal/buyer-terms">buyer
-  terms</a> apply to the purchase.</p>
-<h2>2. What you get</h2>
-<p>A personal, non-exclusive, non-transferable and perpetual licence of {{name}} for you as one named individual. You may use
-  {{name}} on every computer you use, at home and at work, in your own profession.</p>
-<h2>3. Updates</h2>
-<p>The licence covers {{updates}}. The versions it covers keep working with it for as long as they run on your computer; a
-  version it does not cover needs a licence that covers it.</p>
-<h2>4. The key</h2>
-<p>The licence is a signed key, checked by {{name}} on your computer, without any network access. Keep it private: it bears
-  your name and your e-mail address. Do not share it or publish it.</p>
-<h2>5. The source code</h2>
-<p>The source code of {{name}} is published under its own licence ({{code_licence}}). These terms do not change what that
-  licence allows.</p>
-<h2>6. Refunds</h2>
-<p>See the <a href="../refunds/">refund policy</a>.</p>
-<h2>7. Liability</h2>
-<p>{{name}} is provided as it is, to the extent the law allows. Nothing in these terms limits the rights a consumer has by
-  law.</p>
-<h2>8. Contact</h2>
-<p>{{seller}}, <a href="mailto:{{seller_email}}">{{seller_email}}</a>. See the <a href="../imprint/">imprint</a>.</p>
+<p class="shop-eyebrow">Legal</p>
+<h1>License terms</h1>
+<p class="shop-fine">Last updated: {{updated}}</p>
+
+<h2>What you buy</h2>
+<p>A purchase is a <strong>one-time payment</strong> for a personal, perpetual license for {{name}}. It is not a
+  subscription: there is no renewal and no recurring charge.</p>
+{{updates_terms}}
+<p>The license is <strong>personal</strong>, for you as one named individual. You can use it on all the computers you use,
+  including a work computer, and in your own profession. You must not share it or resell it.</p>
+<p>{{name}}'s source code is public under the {{code_licence}}. The license does not change what that license allows.</p>
+<p>By placing your order you accept these terms.</p>
+
+<h2>Delivery</h2>
+<p>After payment, your key is shown on the page that follows and sent to the e-mail address you gave at the checkout, with a
+  <code>{{extension}}</code> file attached, usually within a few minutes.</p>
+
+<h2>Your key</h2>
+<p>The license is a signed key, checked by {{name}} on your computer, offline. Keep it for yourself: it is personal, it bears
+  your name and your e-mail address, and it works on every computer you use.</p>
+<p>If a purchase is refunded or reversed, the license ends, as described in the <a href="../refunds/">refund policy</a>.</p>
+
+<h2>Seller and payment</h2>
+<p>{{name}} is supplied by <strong>{{seller}}</strong>. Payments are processed by <a href="https://www.paddle.com">Paddle</a>,
+  who act as Merchant of Record: they sell the license on behalf of {{seller}} and handle VAT, invoices and receipts.
+  Paddle's <a href="https://www.paddle.com/legal/buyer-terms">buyer terms</a> apply to the purchase.</p>
+<p>See the <a href="../privacy/">privacy policy</a> for what is stored when you buy, and the
+  <a href="../refunds/">refund policy</a> for refunds and withdrawal.</p>
+
+<h2>Warranty and liability</h2>
+<p>{{name}} is provided <strong>as is</strong>, without warranty of any kind, to the extent permitted by law. The license is
+  a contribution to the development of the software, not a promise of a particular result.</p>
+<p>Nothing in these terms limits the rights that mandatory consumer law gives you, nor any liability that cannot be limited
+  by law.</p>
+
+<h2>Questions</h2>
+<p>Write to <a href="mailto:{{seller_email}}">{{seller_email}}</a> or <a href="{{help}}">ask for help</a>. The seller's
+  details are on the <a href="../imprint/">imprint page</a>.</p>
 </div>
 </main>
 <footer class="shop-foot">
   <div class="shop-wrap">
-    <nav>
-      <a href="{{home}}">{{name}}</a>
-      <a href="../pricing/">Pricing</a>
-      <a href="../terms/" aria-current="page">Terms</a>
-      <a href="../refunds/">Refunds</a>
-      <a href="../privacy/">Privacy</a>
-      <a href="../imprint/">Imprint</a>
-    </nav>
+    {{footer_nav}}
   </div>
 </footer>
 </body>

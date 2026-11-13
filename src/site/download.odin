@@ -11,6 +11,7 @@ import "core:strings"
 
 DOWNLOAD_MARK        :: "<!-- download -->"
 DOWNLOAD_OTHERS_MARK :: "<!-- download-others -->"
+DOWNLOAD_ID          :: "download"   // the home page's download section (<section id="download" class="download">): the nav links it
 
 // A system the program is published for.
 Download :: struct {
@@ -34,7 +35,9 @@ with_downloads :: proc(index: string, downloads: []Download) -> (page: string, w
 	}
 	button := strings.to_string(b)
 	o := strings.builder_make(context.temp_allocator)
+	// (a program for one system has no other to offer: the mark goes, rather than an "Also for" with nothing after it)
 	for d, i in downloads {
+		if len(downloads) < 2 { break }
 		put(&o, `<span data-download-others="`, esc(d.os), `"`, i > 0 ? " hidden" : "", `>Also for `)
 		first := true
 		for other in downloads {

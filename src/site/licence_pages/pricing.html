@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Licence - {{name}}</title>
-  <meta name="description" content="One payment for a personal, perpetual licence of {{name}}. It covers {{updates}}.">
+  <title>Pricing · {{name}}</title>
+  <meta name="description" content="The {{product_title}} is one payment, taxes included: a personal, perpetual license that covers {{updates}}.">
   <link rel="stylesheet" href="{{stylesheet}}">
   <style>
 {{shop_css}}  </style>
@@ -22,10 +22,9 @@
 <main id="main" class="shop">
 <section class="shop-hero">
   {{icon}}
-  <p class="shop-eyebrow">Licence</p>
+  <p class="shop-eyebrow">Pricing</p>
   <h1 class="shop-name">{{name}}</h1>
-  <p class="shop-lead">Pay once and keep it for good. Your licence covers {{updates}}, and keeps the work on {{name}}
-    going.</p>
+  <p class="shop-lead">Pay once. That is all. A license keeps the work on {{name}} going, and covers {{updates}}.</p>
 </section>
 <div class="shop-wrap">
 <!-- licence-buy -->
@@ -33,37 +32,72 @@
 <section class="shop-section shop-wrap" aria-labelledby="before">
   <h2 id="before">Before you buy</h2>
   <dl class="shop-facts">
-    <div><dt>Seller</dt><dd><a href="https://www.paddle.com">Paddle</a> is the seller of record: it sells the licence on
+    <div><dt>Seller</dt><dd><a href="https://www.paddle.com">Paddle</a> is the seller of record: it sells the license on
       behalf of <a href="{{seller_url}}">{{seller}}</a>, and handles VAT, the invoice and the receipt. Paddle shows its legal
       entity, the total price and the withdrawal information before you pay.</dd></div>
-    <div><dt>Licence</dt><dd>Personal, for you as one named individual, on all your computers, at home and at work.
-      Perpetual: it never expires. It covers {{updates}}.</dd></div>
-    <div><dt>Delivery</dt><dd>The key is shown on the next page and sent to the e-mail address you give, with the file
-      attached, usually within a few minutes.</dd></div>
-    <div><dt>Check</dt><dd>{{name}} checks the licence on your computer, offline: it never contacts a server about
-      it.</dd></div>
-    <div><dt>Refunds</dt><dd>Ask within {{refund_days}} days of the purchase and get the whole price back. If you buy as a
-      consumer, the statutory right of withdrawal applies as the <a href="../refunds/">refund policy</a> says.</dd></div>
-    <div><dt>The code</dt><dd>The source code of {{name}} is public under its own licence ({{code_licence}}); a purchase
-      changes nothing about it.</dd></div>
-    <div><dt>Terms</dt><dd><a href="../terms/">Licence terms</a>, <a href="../refunds/">refunds</a>,
+    <div><dt>Platform</dt><dd>{{platform}}</dd></div>
+    <div><dt>License</dt><dd>Personal, for you as one named individual: use it on all your computers, at home and at work,
+      in your own profession. Perpetual: it never expires. It covers {{updates}}.</dd></div>
+    <div><dt>Delivery</dt><dd>One payment for a personal, perpetual license. The key is shown on the next page and sent to
+      the e-mail address you give, with the file attached, usually within a few minutes.</dd></div>
+    <div><dt>Withdrawal</dt><dd>If you buy as a consumer, the statutory right of withdrawal applies as described in the
+      <a href="../refunds/">refund policy</a>; Paddle handles the request from your order page.</dd></div>
+    <div><dt>Checkout</dt><dd>Paddle's checkout is only loaded when you press the button.</dd></div>
+    <div><dt>The code</dt><dd>Public under the {{code_licence}}; the license changes nothing about it.</dd></div>
+    <div><dt>Terms</dt><dd><a href="../terms/">License terms</a>, <a href="../refunds/">refunds</a>,
       <a href="../privacy/">privacy</a>, <a href="../imprint/">imprint</a>.</dd></div>
     <div><dt>Questions</dt><dd><a href="{{help}}">Ask for help</a>: an answer before you buy, or with your
       order.</dd></div>
   </dl>
 </section>
+<section class="shop-section shop-wrap" aria-labelledby="questions">
+  <h2 id="questions">Questions</h2>
+  <div class="shop-faq">
+    <details id="q-versions">
+      <summary>Which versions does it cover?</summary>
+      <div>{{updates_answer}}</div>
+    </details>
+    <details id="q-work">
+      <summary>Can I use it at work?</summary>
+      <div><p>Yes. The license is personal, for you as one named individual: install {{name}} on the computers you use,
+        including a work computer, and use it in your own profession.</p></div>
+    </details>
+    <details id="q-once">
+      <summary>Is it a subscription?</summary>
+      <div><p>No. You pay once: no subscription, no renewal, no expiry.</p></div>
+    </details>
+    <details id="q-offline">
+      <summary>Does {{name}} check the license online?</summary>
+      <div><p>No. A license is a signed key. {{name}} checks the signature itself, offline: it never contacts a server
+        about your license.</p></div>
+    </details>
+    <details id="q-code">
+      <summary>What about the source code?</summary>
+      <div><p>It is public under the {{code_licence}}. A license does not change what anyone can do with the code.</p></div>
+    </details>
+    <details id="q-register">
+      <summary>How do I register it?</summary>
+      <div><p>{{register}}</p>
+        <p>Keep the e-mail, or the downloaded <code>{{extension}}</code> file, in case you change computers.</p></div>
+    </details>
+  </div>
+</section>
 </main>
 <footer class="shop-foot">
   <div class="shop-wrap">
-    <nav>
-      <a href="{{home}}">{{name}}</a>
-      <a href="../pricing/" aria-current="page">Pricing</a>
-      <a href="../terms/">Terms</a>
-      <a href="../refunds/">Refunds</a>
-      <a href="../privacy/">Privacy</a>
-      <a href="../imprint/">Imprint</a>
-    </nav>
+    {{footer_nav}}
   </div>
 </footer>
+<script>
+// The offer's "i" links lead to a question: open it, so the answer shows where the page scrolls.
+(function () {
+  function open() {
+    var d = location.hash && document.getElementById(location.hash.slice(1));
+    if (d && d.tagName === "DETAILS") d.open = true;
+  }
+  addEventListener("hashchange", open);
+  open();
+})();
+</script>
 </body>
 </html>

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Imprint - {{name}}</title>
-  <meta name="description" content="Who sells the {{product_title}}.">
+  <title>Imprint · {{name}}</title>
+  <meta name="description" content="Who publishes {{name}} and sells its license.">
   <link rel="stylesheet" href="{{stylesheet}}">
   <style>
 {{shop_css}}  </style>
@@ -21,24 +21,42 @@
 </header>
 <main id="main" class="shop">
 <div class="shop-wrap shop-doc">
+<p class="shop-eyebrow">Legal</p>
 <h1>Imprint</h1>
-<p>{{seller}}<br>
-{{seller_address}}</p>
-<p>E-mail: <a href="mailto:{{seller_email}}">{{seller_email}}</a><br>
-{{seller_vat}}</p>
-<p>The licences are sold by Paddle.com Market Ltd, the Merchant of Record of the purchases.</p>
+<p class="shop-fine">Last updated: {{updated}}</p>
+
+<h2>Publisher</h2>
+<p>{{name}} is published by {{publisher}}.<br>
+  {{seller_address}}</p>
+<p>Contact: <a href="mailto:{{seller_email}}">{{seller_email}}</a><br>
+  Web: <a href="{{seller_url}}">{{seller_web}}</a></p>
+{{seller_ids}}
+
+<h2>Responsible for the content</h2>
+<p>{{responsible}}, at the address above.</p>
+
+<h2>Hosting</h2>
+<p>This site is hosted by GitHub Pages: GitHub, Inc., 88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, United States.
+  The domain {{seller_domain}} is managed through Cloudflare, Inc., 101 Townsend Street, San Francisco, CA 94107, United
+  States, which also runs the small service that issues licenses after a purchase.</p>
+
+<h2>Payments</h2>
+<p>Licenses are sold through <a href="https://www.paddle.com">Paddle</a>, who act as Merchant of Record. Paddle handles the
+  payment, the applicable taxes, the invoice and the receipt. {{seller}} issues the license itself.</p>
+
+<h2>Software and licenses</h2>
+<p>{{code_source}} The libraries that {{name}} uses keep their own licenses. The terms of the {{product_title}} are on the
+  <a href="../terms/">terms page</a>.</p>
+
+<h2>Consumer disputes</h2>
+<p>Licenses are sold by Paddle, who handle the order, the payment and any dispute about them: contact Paddle's support
+  first. For anything about the software or the license itself, write to
+  <a href="mailto:{{seller_email}}">{{seller_email}}</a>.</p>
 </div>
 </main>
 <footer class="shop-foot">
   <div class="shop-wrap">
-    <nav>
-      <a href="{{home}}">{{name}}</a>
-      <a href="../pricing/">Pricing</a>
-      <a href="../terms/">Terms</a>
-      <a href="../refunds/">Refunds</a>
-      <a href="../privacy/">Privacy</a>
-      <a href="../imprint/" aria-current="page">Imprint</a>
-    </nav>
+    {{footer_nav}}
   </div>
 </footer>
 </body>

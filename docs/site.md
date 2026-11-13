@@ -7,14 +7,23 @@ colours (`Meta`, `Docs`), its home page as the template (`site/index.html`), its
 
 ## The changelog's pages
 
-`build_changelog(site, out, {changes, version_mark})` copies the folder `site` to `out`, then writes:
+`build_changelog(site, out, {changes, version_mark, downloads, meta})` copies the folder `site` to `out`, then writes:
 
 - `index.html`: the home page, the last 3 versions in place of `<!-- whats-new -->` (`news_html`). `version_mark` (for example
   `{{version}}`) is replaced by the last version, so a download link can name the files of that release.
-- `changelog.html`: every version, the last 6 open, with a filter. It wears the home page's head, bar, footer and first script.
-- `classic/`: the same in a classic presentation (`index.html`, `features.html`, `screenshots.html`, `changelog.html`), a line
-  of plain links and a column of text, with `classic/classic.css` of the site. Each modern page's footer links its classic page
-  ("Classic version"), each classic page the modern one ("Modern version").
+- `changelog/index.html`: every version, the last 6 open, with a filter. It wears the home page's head, bar, footer and first
+  script, their links made relative to its folder (`from_home`).
+- `classic/`: the same in a classic presentation (`classic/`, `classic/features/`, `classic/screenshots/`,
+  `classic/changelog/`), a line of plain links and a column of text, with `classic/classic.css` of the site. Each modern page's
+  footer links its classic page ("Classic version"), each classic page the modern one ("Modern version").
+- with `meta.shop`, the shop's six pages (`licence_pages`, below): they are made before `build_meta`, which gives them their
+  canonical address like every other page.
+
+Every page is a folder and its `index.html`, and every link names the folder: `changelog/`, `../`, `./`, never `index.html`.
+The pages' links are written root-absolute, then made relative to each page by the shortest way (`relative_links`: from
+`classic/`, `/classic/features/` is `features/`), so a site served under a path of its own works. GitHub Pages serves a folder
+both as `/x/` and as `/x/index.html`: the canonical tag of each page (`build_meta`) makes them one page for search engines.
+`meta.name` titles the pages ("Changelog · name"); without it, the home page's title does.
 
 CHANGELOG.md follows Keep a Changelog: `## [x.y.z] - date`, `### Added`..., `[x.y.z]: url` at the end. The home page must hold
 these parts, or the step says which one is missing: `<!-- whats-new -->`, `<a href="classic/">Classic version</a>` in its
@@ -24,13 +33,29 @@ a `download` section, a `features` section of `article.card` items, a `nav#nav`.
 The pages were first made by JavaScript and were compared with these byte for byte. The parts that read text say which regular
 expression they match, with what JavaScript gives its whitespace, `.`, UTF-16 lengths and `$` in a replacement (`html.odin`).
 
+## The nav and the footer
+
+Every program's site has the same bar and the same footer: the home page holds two marks, and `build_changelog` puts there
+what `Changelog_Options.meta` says (`with_frame`). A program declares data, not HTML.
+
+- `<!-- site-nav -->` in the bar (after its brand and its menu button) becomes the `nav#nav`: Features (`#features`),
+  Download (`#download`, `DOWNLOAD_ID`), Changelog (`changelog/`), GitHub (`Meta.repository`), and last, with `Meta.shop`,
+  "Buy license" (`BUY_LABEL`, to `pricing/`), drawn as the site's small accent button (`NAV_BUY_CLASS`: `btn accent
+  nav-buy`; the site's style.css makes `.nav-buy` small), as Wren's nav. The home page has the sections those anchors name.
+- `<!-- site-footer -->` becomes the `footer`: "By" the publisher (`Meta.publisher`, `Meta.author_url`, its mark
+  `Meta.publisher_logo`); the shop's pages (`SHOP_LINKS`, in Wren's order: Pricing, Privacy, Terms, Refunds, Imprint) and GitHub; the code's
+  licence (`Meta.licence`: "MIT License"), `Meta.footer_note` (HTML), the toolkit, and `CLASSIC_LINK`.
+
+The shop's pages list the same pages in their own footer, with the home, GitHub (`Shop.repository`) and the seller. A mark and
+no `Meta.repository` is refused. A home page without the marks keeps its own nav and footer (the toolkit's site).
+
 ## The download for the reader's system
 
 `Changelog_Options.downloads` lists the systems the program is published for (`Download`: `os` "windows", "linux" or
 "macos", `label`, `href`, `detail`), the first one shown when the reader's is not known (no JavaScript, a phone). In the home
 page, `<!-- download -->` becomes one button per system (`a.btn.accent.get`, the system's mark in `.get-icon`, "Download
 for <label>" in `.get-main`, the detail in `.get-sub`), and `<!-- download-others -->` a line that offers the other systems
-("Also for Linux"). A script put before `</body>` shows the button and the line of the system the browser says it runs on.
+("Also for Linux"; with one system, nothing). A script put before `</body>` shows the button and the line of the system the browser says it runs on.
 The version mark is replaced after, so `href` and `detail` can name it. The other systems' buttons carry `hidden`: the site's
 stylesheet keeps them hidden even where a `.btn` sets its `display` (`[hidden] { display: none !important; }`).
 
@@ -41,12 +66,15 @@ blocks of its `Shop` (`with_licence(page, shop)`): `<!-- licence-buy -->` the of
 checkout (`licence_buy_block`), `<!-- licence-thanks -->` the licence of the purchase, asked of the licence Worker
 (`licence_thanks_block`). The button says "Coming soon" until the shop has its client token, its price and its Worker
 (`shop_open`). The pages carry their own style (`LICENCE_CSS`), drawn from the site's colours. `licence_pages(shop)` fills the six template pages of `src/site/licence_pages/` (pricing, thanks, terms,
-refunds, privacy, imprint) for a program that keeps none of its own.
+refunds, privacy, imprint) for a program that keeps none of its own; `Meta.shop` makes `build_changelog` write them. Their
+titles say "Pricing · name", "License terms · name", "Refunds · name", "Privacy · name", "Imprint · name": "Pricing" is the
+word of every footer and of the page; the nav's entry is "Buy license", as Wren's.
 
 ## What a page says when shared
 
-`build_meta(m, from, out)` gives each page of `out` its canonical address, its Open Graph and Twitter tags from its own title
-and description, and the home page its structured data (`m.ld_type`, `m.ld_fields`). A redirect or a page marked `noindex` is
+`build_meta(m, from, out)` gives each page of `out` its canonical address (`page_address`: a folder for its `index.html`, so
+`/` and `/index.html` are one page), its Open Graph and Twitter tags from its own title and description (the card's width and
+height read from the picture), and the home page its structured data (`m.ld_type`, `m.ld_fields`). A redirect or a page marked `noindex` is
 left alone. It writes `feed.xml` (Atom, the last 30 versions), `sitemap.xml`, `site.webmanifest`, `llms.txt`, a `404.html`
 when there is none, and with `m.root_domain` also `robots.txt` and `favicon.ico`. The sharing card (`m.card`) must be there:
 `draw_card(m, site)` draws it once, by hand, in a local Chromium (`CHROME`, or the usual places).
@@ -157,7 +185,8 @@ its profile) is removed, and a run that cannot remove it fails.
 
 - `meta`: its `Meta` (its address, names, colours; `Meta.changes` its CHANGELOG.md);
 - `dir`: its sources in the repository (`""`: `site`);
-- `pages`: the `Changelog_Options` of its pages, the home page's version mark and downloads (`changes` `""`: `Meta.changes`);
+- `pages`: the `Changelog_Options` of its pages, the home page's version mark and downloads (`changes` `""`: `Meta.changes`;
+  `meta`: always `Project_Site.meta`, so its nav, footer and shop);
 - `extra`: the project's own checks of `site check` (`s.user` is the `^Project_Site`).
 
 | Line | What it does |

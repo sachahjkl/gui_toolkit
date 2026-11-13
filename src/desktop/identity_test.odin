@@ -39,7 +39,6 @@ identity_is_validated :: proc(t: ^testing.T) {
 		{"a key with a space", proc(id: ^Identity) { id.key = "Sample Dev" }},
 		{"a slug in capitals", proc(id: ^Identity) { id.slug = "Sample" }},
 		{"a name with a slash", proc(id: ^Identity) { id.name = "a/b" }},
-		{"no aumid", proc(id: ^Identity) { id.aumid = "" }},
 		{"a marker without X-", proc(id: ^Identity) { id.entry_marker = "Sample-Integration" }},
 		{"no registry mark", proc(id: ^Identity) { id.registry_mark = "" }},
 		{"a vendor key with a backslash", proc(id: ^Identity) { id.vendor_key = `a\b` }},
@@ -53,6 +52,10 @@ identity_is_validated :: proc(t: ^testing.T) {
 		c.change(&o.identity)
 		testing.expectf(t, validate(&o, false).error == .Bad_Options, "%s is refused", c.what)
 	}
+	o.identity = test_identity()
+	o.identity.aumid = ""
+	testing.expect_value(t, validate(&o, false).error, Error.None)   // (none given: the vendor's and the name's)
+	testing.expect_value(t, identity_aumid(o.identity), "GuiToolkit.Sample")
 	o.identity = test_identity()
 	o.identity.launcher_mark = ""
 	o.launcher = transmute([]byte)string("MZ")
@@ -79,8 +82,8 @@ cli_flag_parsing :: proc(t: ^testing.T) {
 	testing.expect_value(t, m, Cli_Mode.None)
 	testing.expect_value(t, len(rest), 2)
 	m, rest, _ = parse_cli(id, {"--uninstall"})
-	testing.expect_value(t, m, Cli_Mode.Uninstall)
-	testing.expect_value(t, len(rest), 0)
+	testing.expect_value(t, m, Cli_Mode.None)   // (--install and --uninstall are gt:setup's: the whole copy)
+	testing.expect_value(t, len(rest), 1)
 	id.cli_flag = ""
 	m, rest, _ = parse_cli(id, {"--uninstall", "--desktop-integration=install"})
 	testing.expect_value(t, m, Cli_Mode.None)   // (a program without the flag keeps its arguments)

@@ -535,7 +535,7 @@ rewrite_link :: proc(href: string, user: rawptr) -> string {
 	path, frag := href, ""
 	if h := strings.index_byte(href, '#'); h >= 0 { path, frag = href[:h], href[h:] }
 	normalized := path_normalize(path_join(path_dir(rc.cur), path))
-	if strings.has_suffix(path, "/") && normalized != "" { normalized = strings.concatenate({normalized, "/"}) }
+	if strings.has_suffix(path, "/") && normalized != "" { normalized = strings.concatenate({normalized, "/"}, context.temp_allocator) }
 	inside := !strings.has_prefix(normalized, "../")
 
 	if inside && strings.has_suffix(normalized, ".md") { return strings.concatenate({docs_page_url(docs_out_rel(normalized)), frag}) }
@@ -561,7 +561,7 @@ path_dir :: proc(p: string) -> string {
 
 @(private)
 path_join :: proc(dir, rel: string) -> string {
-	return dir == "" ? rel : strings.concatenate({dir, "/", rel})
+	return dir == "" ? rel : strings.concatenate({dir, "/", rel}, context.temp_allocator)
 }
 
 // "a/./b" -> "a/b", "a/b/../c" -> "a/c"; a leading run of ".." stays (it leaves the folder).
@@ -577,7 +577,7 @@ path_normalize :: proc(p: string) -> string {
 			append(&out, part)
 		}
 	}
-	return strings.join(out[:], "/")
+	return strings.join(out[:], "/", context.temp_allocator)
 }
 
 // The site lives under a path of its own (https://<owner>.github.io/<name>/), where an address that starts with "/" leaves it:
@@ -607,8 +607,9 @@ site_relative :: proc(html, page: string) -> string {
 
 // The relative href and src of a piece of a page in the folder `dir` (from the root) made root-absolute: "../img/x.webp"
 // from "gallery" -> "/img/x.webp", "./" -> "/". An address with a scheme, a fragment alone or a root-absolute one stays.
+// The result is on the temp allocator.
 rooted :: proc(html, dir: string) -> string {
-	b := strings.builder_make()
+	b := strings.builder_make(context.temp_allocator)
 	i := 0
 	scan: for i < len(html) {
 		for attr in ([?]string{" href=\"", " src=\""}) {
@@ -635,8 +636,8 @@ root_of :: proc(href, dir: string) -> string {
 	if h := strings.index_byte(href, '#'); h >= 0 { target, frag = href[:h], href[h:] }
 	path := path_normalize(path_join(dir, target))
 	folder := target == "." || target == ".." || strings.has_suffix(target, "/") || strings.has_suffix(target, "/..")
-	if folder && path != "" { path = strings.concatenate({path, "/"}) }
-	return strings.concatenate({"/", path, frag})
+	if folder && path != "" { path = strings.concatenate({path, "/"}, context.temp_allocator) }
+	return strings.concatenate({"/", path, frag}, context.temp_allocator)
 }
 
 // "https:", "mailto:", "data:"...: a ':' before any '/', '?' or '#'.

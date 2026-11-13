@@ -161,10 +161,9 @@ Button_Face :: enum u8 {
 Button_Options :: struct {
 	intent:    Intent,               // what the act means, and so its colour (its soft pair: a tinted fill, its words of the same hue)
 	face:      Maybe(Button_Face),   // how it sits (nil: Raised, a glyph alone a Ghost)
-	width:     Size,                 // over `next`'s: {} as wide as what is in it; fill() a share of the row; px(...) its own
-	height:    f32,                  // over `next`'s, in pixels (0: `next`'s, else the toolkit's line)
+	width:     Size,                 // over `next`'s: {} as wide as what is in it; fill() a share of the row; px(...) its least
+	height:    f32,                  // over `next`'s, in pixels, a least (0: `next`'s, else the toolkit's line)
 	quiet:     bool,                 // a secondary act: smaller words, a Neutral one's weak until the pointer is over it
-	wrap:      bool,                 // words longer than the width go on more lines; the button grows to hold them
 	left:      bool,                 // what is in it at its left, whatever the style's text_align
 	lit:       bool,                 // drawn as under the pointer (while its menu is open)
 	disabled:  bool,                 // shown faded, not clickable
@@ -177,8 +176,10 @@ Button_Options :: struct {
 // "save", or "###save"); what it shows is `text` and `icon`, so changing them keeps its state. How it is laid out:
 //   - words (a glyph before them or not): one row. Its size: `o.width`, `o.height`, else `next`'s, else as wide as
 //     what is in it and a line of the toolkit's height. A text_size(pad) width is its words' and `pad` on each side; a
-//     text_pad given by `next` is the padding beside its words, else the toolkit's. A fill() share is never narrower
-//     than what is in it; in a width of pixels too small, the padding gives way first. What is in a wider row is centred,
+//     text_pad given by `next` is the padding beside its words, else the toolkit's. Its words are never cut: a width or
+//     a height in pixels is a least (it grows to its words on one line), and given less room than its words need (a
+//     fill() share of a narrow row, a dialog, a column), its words wrap onto more lines (its padding stays) and it grows
+//     taller. A height that is a share of its parent's (pct) stays that. What is in a wider row is centred,
 //     or where a style or `next` aligns text (`o.left`: at its left). Its words take the style's font and size, and
 //     what `next` says of them (font, font_size, fg, text_pad). Its corners rounded unless `next` says otherwise. Tags
 //     used: "button", its intent's (intent_tag) or "ghost_button" (+ any tag you pushed). Drawn by the theme's finish
@@ -245,7 +246,7 @@ button_glyph :: proc(id, icon: string, face: Button_Face, o: Button_Options) -> 
 // The toolkit's room beside a button's words (with their own text_pad), its line, its glyph's cell and its corners, in
 // font sizes.
 @(private = "file") BUTTON_PAD_EM :: 0.95
-@(private = "file") BUTTON_LINE_EM :: 2.2
+@(private) BUTTON_LINE_EM :: 2.2   // (a button's line; the tool bar's items too)
 @(private = "file") BUTTON_GLYPH_EM :: 1.5
 @(private = "file") BUTTON_RADIUS_EM :: 0.45
 // A quiet button's words, of the font size.
@@ -266,25 +267,31 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 		w = {}
 	}
 	if w.kind == .Children_Sum { w = {} }
-	if o.wrap && w == {} { w = fill() }
-	line := dense(em * BUTTON_LINE_EM)
-	h := px(line)
-	words_h := pct(1)
-	if o.height > 0 {
-		line = o.height
-		h = px(line)
-	} else if mh, given := m.height.?; given && mh.kind != .Children_Sum && mh.kind != .None {
-		h = mh
-		if mh.kind == .Pixels { line = mh.value }
-		if mh.kind == .Text {   // (its words' line and that padding, the row's border inside it)
-			h, words_h = children_sum(), text_size(mh.value - max(1, math.round(s.scale)), mh.strictness)
-		}
-	}
-	if o.wrap { h = children_sum() }
-	align := Text_Align.Center
-	if o.left { align = .Left } else if a, given := m.text_align.?; given { align = a } else if top_style().text_aligned { align = top_style().text_align }
 	words_size := m.font_size.? or_else em
 	if o.quiet { words_size = math.round(words_size * BUTTON_QUIET_SCALE) }
+	words_font := m.font.? or_else top_style().font
+	lh := math.ceil(font.metrics(s.fonts, words_font, words_size).line_height)
+	// Its height: a line of the toolkit's, or the one asked for, at least: words wrapped onto more lines make it taller.
+	// A share of its parent's height (pct) is the parent's to give.
+	line := dense(em * BUTTON_LINE_EM)
+	words_text_h := true   // (the words as tall as their lines, centred in the row; else as tall as the row)
+	h := children_sum()
+	glyph_h := Size{}
+	if o.height > 0 {
+		line = o.height
+	} else if mh, given := m.height.?; given && mh.kind != .Children_Sum && mh.kind != .None {
+		switch mh.kind {
+		case .Pixels: line = mh.value
+		case .Percent: h, words_text_h = mh, false
+		case .Text:   // (its words' lines and that padding, the row's border inside it)
+			line = lh + 2 * max(0, mh.value - max(1, math.round(s.scale)))
+		case .None, .Children_Sum:
+		}
+	}
+	if h.kind == .Children_Sum { h.least = line }
+	glyph_h = words_text_h ? px(min(line, em * BUTTON_LINE_EM)) : pct(1)
+	align := Text_Align.Center
+	if o.left { align = .Left } else if a, given := m.text_align.?; given { align = a } else if top_style().text_aligned { align = top_style().text_align }
 
 	push_button_tags(o.intent, face)
 	defer pop_tags()
@@ -309,45 +316,42 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 	if parent(b) {
 		if weak { push_tags("weak") }
 		defer if weak { pop_tags() }
-		wide := w != {} && !o.wrap   // (wider than what is in it: that goes where it is aligned)
-		// (the padding gives way first in a width too small for it: the words keep theirs)
-		if pad > 0 { spacer(px(pad, 0)) }
+		wide := w != {}   // (wider than what is in it: that goes where it is aligned)
+		// (the padding stays in a width too small: the words wrap, they are never against the edge)
+		if pad > 0 { spacer(px(pad)) }
 		if wide && align != .Left { spacer(fill()) }
 		glyph_w: f32 = 0
 		if icon != "" {
 			glyph_w = em * BUTTON_GLYPH_EM
-			next({width = px(glyph_w), height = pct(1), font = o.icon_font != 0 ? o.icon_font : s.icon_font, text_align = .Center, fg = o.icon_color != nil ? o.icon_color : ink})
+			next({width = px(glyph_w), height = glyph_h, font = o.icon_font != 0 ? o.icon_font : s.icon_font, text_align = .Center, fg = o.icon_color != nil ? o.icon_color : ink})
 			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon))
 		}
-		words := Style_Mod{fg = fg, font = m.font, font_size = words_size, text_pad = m.text_pad, text_align = align}
-		label: ^Box
-		if o.wrap {
-			// (between margins that make one line `line` tall)
-			lh := math.ceil(font.metrics(s.fonts, m.font.? or_else top_style().font, words_size).line_height)
-			margin := max(math.round((line - lh) * 0.5), 0)
-			next({width = fill(), height = children_sum(), axis = .Y})
-			if column() {
-				spacer(px(margin), exact = true)
-				words.width = fill()
-				next(words)
-				paragraph(fmt.tprintf("%s###t", text_shown(text)))
-				spacer(px(margin), exact = true)
-			}
-		} else {
-			words.width, words.height = text_size(), words_h
-			next(words)
-			label = build_box({.Draw_Text}, fmt.tprintf("%s###t", text_shown(text)))
-		}
+		// The words are never cut: as wide as they are on one line, and when the button is given less room than that (a
+		// dialog, a row too narrow), they wrap onto more lines (the layout's wrap_room) and the button grows taller.
+		next({fg = fg, font = m.font, font_size = words_size, text_pad = m.text_pad, text_align = align, width = text_size(), height = words_text_h ? text_size() : pct(1)})
+		label := build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###t", text_shown(text)))
+		// (its lines alone, not its text_pad above and below: the row's line is the button's height)
+		if words_text_h { label.pref[.Y] = text_size(-label.text_pad) }
 		if wide && align != .Right { spacer(fill()) }
-		if pad > 0 { spacer(px(pad, 0)) }
-		// (a share of the row is never narrower than what is in it, its padding on both sides included: the label,
-		// measured as the layout will (its text and text_pad), is never cut nor drawn against an edge. A width in
-		// pixels is the caller's)
-		if w.kind == .Percent && w.least == 0 && label != nil {
-			b.pref[.X].least = math.ceil(2 * pad + glyph_w + label.text_dim.x + 2 * label.text_pad)
+		if pad > 0 { spacer(px(pad)) }
+		// A width given in pixels is a least: the button grows to its words on one line when they need more. (A share of
+		// the row (fill) gives way to what is beside it; its words wrap then.)
+		if w.kind == .Pixels {
+			border := 2 * max(1, math.round(s.scale))
+			b.pref[.X].value = max(w.value, math.ceil(2 * pad + glyph_w + label.text_dim.x + 2 * label.text_pad + border))
 		}
 	}
 	return
+}
+
+// The width a button of `text` takes on one line in the style in use, with the toolkit's padding (and a glyph's cell
+// with `glyph`): what a column of buttons (a sidebar) measures to be as wide as its longest. The same numbers as button_row.
+button_width :: proc(text: string, glyph := false) -> f32 {
+	st := top_style()
+	em := st.font_size
+	w := 2 * em * BUTTON_PAD_EM + text_width(st.font, em, display_part(text)) + 2 * st.text_pad + 2 * max(1, math.round(gs().scale))
+	if glyph { w += em * BUTTON_GLYPH_EM }
+	return math.ceil(w)
 }
 
 // A link's words, away from the pointer: this much of their colour.
@@ -455,14 +459,17 @@ scroll_y :: proc(id: string) -> bool {
 }
 
 // `if flow({em * 0.5, em * 0.5}) { ... }`: children flow left to right and wrap onto new lines when the row is too
-// narrow, instead of overflowing. Full width and as tall as its lines unless `next` says otherwise.
+// narrow, instead of overflowing. Full width and as tall as its lines unless `next` says otherwise. `align`: where each
+// line goes (.End: at the right, as a dialog's buttons). An item wider than the row on its own is as wide as the row,
+// its words wrapped (a button's).
 @(require_results, deferred_none = pop_parent)
-flow :: proc(gap: Vec2 = {}, id: string = "") -> bool {
+flow :: proc(gap: Vec2 = {}, id: string = "", align := Cross_Align.Start) -> bool {
 	s := gs()
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = children_sum() }
 	m.axis = .X
+	m.cross = align
 	m.gap = gap
 	s.next_mod = m
 	s.has_next = true

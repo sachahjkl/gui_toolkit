@@ -149,13 +149,15 @@ window_class_register :: proc() -> win.HINSTANCE {
 	win.SetProcessDpiAwarenessContext(win.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 	sync.once_do(&window_class, proc() {
 		instance := win.HINSTANCE(win.GetModuleHandleW(nil))
-		icon_res := rawptr(uintptr(1))   // resource id 1 = the app icon, when the exe embeds one
+		app_identity_declare()
+		// (every window of the class, main or secondary: the exe's icon, resource 1, at the taskbar's and the title's size)
 		wc := win.WNDCLASSEXW{
 			cbSize        = size_of(win.WNDCLASSEXW),
 			style         = win.CS_HREDRAW | win.CS_VREDRAW | win.CS_DBLCLKS,
 			lpfnWndProc   = window_proc,
 			hInstance     = instance,
-			hIcon         = win.LoadIconA(instance, cstring(icon_res)),   // resource id 1 = app icon when present
+			hIcon         = app_icon_load(instance, win.GetSystemMetrics(win.SM_CXICON)),
+			hIconSm       = app_icon_load(instance, win.GetSystemMetrics(win.SM_CXSMICON)),
 			hCursor       = nil,
 			lpszClassName = win.L(WINDOW_CLASS_NAME),
 		}
@@ -453,6 +455,10 @@ activation_token_from_env :: proc(allocator := context.allocator) -> string { re
 
 raise_window :: proc(w: ^Window) {
 	if w == nil || w.offscreen { return }
+	// (a second start hands its request to this copy, whose window may be minimized: SetForegroundWindow alone does not
+	// restore it, and the user would see only a flash; the second copy allowed this process the foreground)
+	if win.IsIconic(w.hwnd) { win.ShowWindow(w.hwnd, win.SW_RESTORE) }
+	win.BringWindowToTop(w.hwnd)
 	win.SetForegroundWindow(w.hwnd)
 }
 
@@ -697,8 +703,19 @@ set_clipboard :: proc(w: ^Window, text: string) {
 	if win.SetClipboardData(win.CF_UNICODETEXT, win.HANDLE(mem)) == nil { win.GlobalFree(win.HGLOBAL(mem)) }
 }
 
+// Read at the first ask, then again at each WM_SETTINGCHANGE that says it changed (a user32 call, no disk).
+@(private) animations_watched: bool
+
+@(private)
+animations_watch :: proc() {
+	if animations_watched { return }
+	animations_watched = true
+	animations_set(animations_read())
+}
+
 // Windows "show animations" accessibility setting (Settings > Accessibility > Visual effects).
-os_animations_enabled :: proc() -> bool {
+@(private)
+animations_read :: proc() -> bool {
 	SPI_GETCLIENTAREAANIMATION :: 0x1042
 	on: win.BOOL = true
 	if !win.SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &on, 0) { return true }
@@ -1009,6 +1026,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 			name := win.wstring(rawptr(uintptr(lparam)))
 			if s, err := win.wstring_to_utf8(name, -1, context.temp_allocator); err == nil && s == "ImmersiveColorSet" { color_scheme_bump() }
 		}
+		SPI_SETCLIENTAREAANIMATION :: 0x1043
+		if wparam == SPI_SETCLIENTAREAANIMATION { animations_set(animations_read()) }
 		if wparam == win.SPI_SETCURSORS {   // another pointer size or scheme: drawn cursors are made again
 			cursor_settings_changed()
 			cursor_on_dpi_change(w)

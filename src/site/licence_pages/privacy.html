@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Privacy - {{name}}</title>
-  <meta name="description" content="What the {{product_title}} purchase does with your data.">
+  <title>Privacy · {{name}}</title>
+  <meta name="description" content="What {{name}} and this site do with your data: the program has no telemetry, the site has no analytics, and purchases go through Paddle.">
   <link rel="stylesheet" href="{{stylesheet}}">
   <style>
 {{shop_css}}  </style>
@@ -21,33 +21,46 @@
 </header>
 <main id="main" class="shop">
 <div class="shop-wrap shop-doc">
+<p class="shop-eyebrow">Legal</p>
 <h1>Privacy</h1>
-<p class="shop-fine">Last changed on {{updated}}.</p>
-<h2>The program</h2>
-<p>{{name}} checks its licence on your computer, offline. It sends nothing about your licence to anyone.</p>
-<h2>The purchase</h2>
-<p>Paddle.com, the Merchant of Record, collects what the payment needs (your name, e-mail address, country and payment
-  details) under its own <a href="https://www.paddle.com/legal/privacy">privacy notice</a>.</p>
-<p>{{seller}} receives from Paddle your name, your e-mail address and the order. They are used to sign your licence (the key
-  bears your name and address), to send it to you by e-mail and to answer your questions. They are kept by the licence
-  service (Cloudflare, which processes them for {{seller}}) for {{retention_days}} days after the licence was sent, then
-  removed from it; the order number stays. The page that shows your licence after the purchase reads it with the
-  transaction number of your checkout, which only you and Paddle know.</p>
+<p class="shop-fine">Last updated: {{updated}}</p>
+
+<h2>The program keeps everything local</h2>
+<p>{{name}} has <strong>no telemetry and no analytics</strong>. It does not contact a server about your license: a key is
+  checked on your computer, offline. Your settings and your data stay on your computer.</p>
+<p>{{network}}</p>
+
+<h2>This site</h2>
+<p>This site is plain HTML and CSS. It sets <strong>no cookies</strong>, runs <strong>no analytics</strong> and loads nothing
+  from third parties, with one exception: on the <a href="../pricing/">pricing page</a>, the Paddle checkout script is
+  loaded <strong>only when you press the buy button</strong>.</p>
+
+<h2>When you buy a license</h2>
+<p><a href="https://www.paddle.com">Paddle</a> acts as Merchant of Record and processes the payment. It collects what a
+  payment requires (name, e-mail address, billing details, tax information) under
+  <a href="https://www.paddle.com/legal/privacy">Paddle's privacy policy</a>.</p>
+<p>Once the payment is confirmed, a small service run by {{seller}} (a Cloudflare Worker) stores the <strong>name, e-mail
+  address, order number, transaction id and the license</strong>. That is what the thank-you page shows and what the
+  e-mail with your key is sent from. That e-mail goes out through Cloudflare's own mail service (Cloudflare Email Service),
+  which handles your address and the message to deliver it, under
+  <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a>. The service removes your name and
+  your e-mail address {{retention_days}} days after the license was sent; the order number stays. Its logs hold event
+  names, transaction ids, order numbers, statuses and error codes, never a name, an address or a key.</p>
+<p>Nothing else is stored, and nothing is sold or shared beyond what issuing the license requires.</p>
+<p>The controller of the record kept by that service is {{publisher}} (see the <a href="../imprint/">imprint</a> for the
+  address).</p>
+
 <h2>Your rights</h2>
-<p>You can ask to see, correct or delete your data: write to <a href="mailto:{{seller_email}}">{{seller_email}}</a>. You
-  can also complain to your data protection authority.</p>
+<p>You can ask for a copy of what is stored about your purchase, or for its deletion, by writing to
+  <a href="mailto:{{seller_email}}">{{seller_email}}</a>. A license whose record is deleted can no longer be sent again;
+  the key you already have keeps working.</p>
+<p>You can also contact Paddle about the data it holds for the payment, and your local data-protection authority if you
+  think your rights are not respected.</p>
 </div>
 </main>
 <footer class="shop-foot">
   <div class="shop-wrap">
-    <nav>
-      <a href="{{home}}">{{name}}</a>
-      <a href="../pricing/">Pricing</a>
-      <a href="../terms/">Terms</a>
-      <a href="../refunds/">Refunds</a>
-      <a href="../privacy/" aria-current="page">Privacy</a>
-      <a href="../imprint/">Imprint</a>
-    </nav>
+    {{footer_nav}}
   </div>
 </footer>
 </body>

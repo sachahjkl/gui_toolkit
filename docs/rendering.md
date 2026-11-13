@@ -69,6 +69,11 @@ Everything else — `frame_begin` / `frame_submit` / `frame_end`, textures, pool
 (`src/render/capture.odin`), the blend space, `set_max_frame_latency` (it returns false on wgpu), resize, DPI — is the same call on every
 system; each dispatches to its backend behind `when USE_WGPU`.
 
+`render.adapter_info(&r)` says what draws the frames, for a report of slowness: the adapter's `name`, the graphics `api`
+("Direct3D 11", "Vulkan"), and `software`, true for a software rasterizer (WARP on Windows: DXGI's vendor 0x1414 and device
+0x8C; llvmpipe and the like on WebGPU: a CPU adapter). It waits on nothing: WebGPU's names were read when the device was
+made, Direct3D's come from the device's adapter object. The settings' Diagnostics page shows it ([prefs_page.md](prefs_page.md)).
+
 ## What differs between the backends
 
 - **Present pacing.** Direct3D uses a DXGI waitable swap chain (a frame-latency object) and DWM timing for the frame

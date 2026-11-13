@@ -149,7 +149,7 @@ LICENCE_TOOL :: toolbox.Licence_Tool{
 	product  = LICENCE,
 	dev_seed = "…",   // the development pair's private key: public on purpose (tests, screenshots, the sandbox)
 	hint     = "Open this file with App, or paste the key in Help > Licence.",
-	paddle   = {name = "App User Licence", description = "A personal, perpetual licence of App.", amounts = "standard=2900", currency = "EUR"},
+	paddle   = {name = "App User License", description = "A personal, perpetual licence of App.", amounts = "standard=2900", currency = "EUR"},
 }
 
 main :: proc() {
@@ -219,12 +219,14 @@ licences.
 The pricing and thank-you pages hold marks (`LICENCE_BUY_MARK`, `LICENCE_THANKS_MARK`); `with_licence(page, shop)` puts the
 blocks there, in the site's build. A program sells one licence at one price, so the pages are made for one offer.
 `licence_buy_block(shop)` is the offer's card: the price large with "once, taxes included" beside it, what the licence
-gives as a list with check marks (one payment, the versions that `update_years` covers, the offline check, the code's
-licence, the work it pays for), one button (`data-edition`, `data-price`, `data-label`), the fine print, and the script
+gives as Wren's list with check marks (no subscription, the versions that `update_years` covers, the offline check), each
+line with a small "i" that links the pricing page's question about it (`#q-once`, `#q-versions`, `#q-offline`), one
+button (`data-edition`, `data-price`, `data-label`), the fine print, and the script
 that opens Paddle's checkout (an overlay; Paddle.js is loaded at the first press) and goes to the thank-you page with the
 transaction id. `licence_thanks_block(shop)` asks the Worker for the licence until it is ready, then shows who it is for, the
 order, the key, a download of the file and a copy button; every value is put as text. Its `data-state` (`waiting`,
-`ready`, `failed`) shows a spinner only while it waits.
+`ready`, `failed`) shows a spinner only while it waits. Under it, Wren's help block: "A problem with your license? We are
+here.", an "Ask for help" button (`help`) and the way back to the pricing page.
 
 While the client token, the price id, the Worker's address or the thank-you page is missing, the button says "Coming soon"
 and does nothing (`shop_open` says the same): a site can be published before the shop is open.
@@ -235,27 +237,51 @@ and does nothing (`shop_open` says the same): a site can be published before the
 |---|---|
 | `name` | the program, as it writes its name (`"cliche"`): the pages show it as it is, never mixed into a Title Case heading |
 | `icon` | the program's icon from a template page (`"../img/logo.png"`): the hero and the bar show it; `""`: none |
-| `product_title` | what Paddle sells (`"cliche User Licence"`): the legal pages name it, no heading does |
+| `product_title` | what Paddle sells (`"Cliche User License"`: the name capitalised, each word of it): the legal pages name it, no heading does |
 | `price` | HTML, as shown (`"15&nbsp;&euro;"`) |
 | `price_note` | HTML, an extra line under the price (`"Launch price until 1.0."`); `""`: none |
 | `environment`, `client_token` | Paddle's (`"sandbox"` or `"production"`; `test_...` or `live_...`) |
 | `edition`, `price_id` | the licence's edition id and its Paddle price (`pri_...`, `""` until `paddle -apply` makes it) |
-| `buy_label` | the button's words (`""`: "Buy the licence") |
+| `buy_label` | the button's words (`""`: `BUY_LABEL`, "Buy license") |
 | `worker`, `thanks`, `help` | the licence Worker, the thank-you page (absolute), where a buyer asks for help |
 | `register` | HTML: how to register a licence in the program (the thank-you page says it) |
 | `extension` | the licence file's extension |
-| `seller`, `seller_url`, `seller_address` (HTML), `seller_email`, `seller_vat` | the seller and its imprint |
-| `code_licence`, `update_years`, `refund_days`, `retention_days` | the code's licence, the years of updates, the refund window, the days a buyer's data are kept |
+| `repository` | the program's source: the footer and the imprint link it |
+| `seller` | a `Seller`, below: the imprint's facts |
+| `code_licence` | the licence of the program's source, its whole name (`"MIT License"`) |
+| `platform` | HTML: the systems the program runs on, the pricing page's "Platform" |
+| `network` | HTML: what the program connects to, for the privacy policy (`""`: "name connects to nothing by itself.") |
+| `update_years`, `retention_days` | the years of updates (0: every version), the days the Worker keeps a buyer's name and address (0: 90) |
 | `stylesheet`, `home`, `updated` | from a template page: the site's stylesheet, its home; the day the terms last changed |
+
+`Seller` is the same block in every program of one seller (Froment Software's programs copy Wren's imprint):
+
+| Field | What it is |
+|---|---|
+| `name` | the trade name (`"Froment Software"`) |
+| `owner`, `status` (HTML) | the person who trades under it and the legal form (`"sole proprietor (<em>entrepreneur individuel</em>)"`); `""`: a company |
+| `address` (HTML), `email`, `url` | the address, the contact, the seller's site (the imprint shows it without `https://`, and names its domain as the one Cloudflare manages) |
+| `siren`, `siret`, `ape` | the French company numbers and the activity code with its words (`"6201Z, computer programming"`); `""`: not said |
+| `registry` (HTML), `registered` | the register the seller is in and the day ("Registered with ... on ...") |
+| `vat` (HTML) | what follows "VAT: ", a number or why there is none (`"not applicable, article 293 B of the French General Tax Code (<em>franchise en base de TVA</em>)"`) |
 
 `src/site/licence_pages/` holds six template pages in neutral words: pricing, thanks, terms, refunds, privacy, imprint,
 with `{{placeholders}}` (`licence_values` lists them). A program copies them into its site and adapts them, or
 `licence_pages(shop)` fills them (`fill_placeholders`, one pass) and gives the six `Page`s. Their legal words are a starting
 point: have them checked for your situation.
 
-The pricing page is a hero (the icon, a quiet "Licence" label, the program's name large, one line), the offer's card, then
-"Before you buy" (the seller, the licence, the delivery, the check, refunds, the code, the terms, questions). Every page has
-a bar with the program's name and a foot with the shop's pages. Their style is `LICENCE_CSS` (`src/site/licence_css.odin`),
+Their words are Wren's, the reference for every shop page: what a reader sees writes "license" (US English), the code
+keeps its names. The pricing page is a hero (the icon, a quiet "Pricing" label, the program's name large, one line), the
+offer's card, "Before you buy" (the seller, the platform, the license, the delivery, the withdrawal, the checkout, the
+code, the terms, questions), then the questions (the versions, work, subscription, the offline check, the code, how to
+register). The thank-you page thanks the buyer for supporting the program. The four legal pages are Wren's, with a "Legal"
+label and "Last updated" (`updated`): the license terms (what you buy, delivery, the key, seller and payment, warranty,
+questions), the refunds (Paddle handles them, the statutory withdrawal, the effect on the license), the privacy policy
+(the program, the site, the purchase, the rights) and the imprint (publisher, responsible for the content, hosting,
+payments, software and licenses, consumer disputes). Every page has
+a bar with the program's name and a foot with the home, the shop's pages in the order of the site's footer (`SHOP_LINKS`),
+GitHub (`Shop.repository`) and the seller. Its title is "Pricing · name": the nav's word ([site.md](site.md), "The nav and
+the footer"). A program gives its `Shop` as `Meta.shop`, and `build_changelog` writes the pages. Their style is `LICENCE_CSS` (`src/site/licence_css.odin`),
 put in each page's head by `{{shop_css}}`: it brings no colour of its own and reads the site's custom properties (`--text`,
 `--muted` or `--weak`, `--soft` or `--faint`, `--surface` or `--bg2`, `--surface-2` or `--bg3`, `--line-2` or `--line`,
 `--accent`, `--accent-ink`), so each program keeps its accent and its light theme, and writes no CSS for these pages. A site

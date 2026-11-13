@@ -645,7 +645,7 @@ site_checks :: proc(s: ^Check, pages: []string) -> bool {
 	s.client.session, _ = o["sessionId"].(json.String)
 	if _, enabled := cdp.call(&s.client, "Page.enable"); !enabled { return false }
 	check_view(s, CHECK_DESKTOP)
-	viewers := [?]string{"index.html", CHECK_CLASSIC + "screenshots.html"}
+	viewers := [?]string{HOME_PAGE, CHECK_CLASSIC + SCREENSHOTS + "/" + HOME_PAGE}
 	for path in viewers { site_viewer(s, path) }
 	for path in pages {
 		// (a page left at an old address goes on to the new one while it is checked: check_links reads its one link)

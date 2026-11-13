@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
   <meta name="referrer" content="no-referrer">
-  <title>Thank you - {{name}}</title>
-  <meta name="description" content="Your licence of {{name}}.">
+  <title>Thank you · {{name}}</title>
+  <meta name="description" content="Your license of {{name}}.">
   <link rel="stylesheet" href="{{stylesheet}}">
   <style>
 {{shop_css}}  </style>
@@ -24,22 +24,14 @@
 <main id="main" class="shop">
 <section class="shop-hero">
   {{icon}}
-  <p class="shop-eyebrow">Thank you</p>
-  <h1 class="shop-name">{{name}}</h1>
-  <p class="shop-lead">Your purchase keeps the work on {{name}} going. Here is your licence.</p>
+  <h1 class="shop-thanks-title">Thank you for supporting {{name}}</h1>
+  <p class="shop-lead">You keep an independent program moving forward. It means a lot. Here is your license.</p>
 </section>
 <!-- licence-thanks -->
 </main>
 <footer class="shop-foot">
   <div class="shop-wrap">
-    <nav>
-      <a href="{{home}}">{{name}}</a>
-      <a href="../pricing/">Pricing</a>
-      <a href="../terms/">Terms</a>
-      <a href="../refunds/">Refunds</a>
-      <a href="../privacy/">Privacy</a>
-      <a href="../imprint/">Imprint</a>
-    </nav>
+    {{footer_nav}}
   </div>
 </footer>
 </body>

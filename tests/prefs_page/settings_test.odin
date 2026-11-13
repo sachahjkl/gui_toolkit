@@ -76,6 +76,12 @@ every_standard_set_registers_and_applies :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, config.group_title(&c.prefs, "appearance.text"), "Text and fonts")
 	st := s.state
+	// the defaults a program needs no override for: the glide on, partial redraw on, the system's text smoothing
+	testing.expect_value(t, ui.smooth_scroll(st), ui.Smooth_Scroll.On)
+	testing.expect(t, ui.partial_redraw(st), "partial redraw is on by default")
+	testing.expect_value(t, config.string_of(&c.prefs, "appearance.text.subpixel"), "auto")
+	testing.expect_value(t, config.string_of(&c.prefs, "appearance.text.grid_fit"), "auto")
+	testing.expect_value(t, config.string_of(&c.prefs, "scrolling.smooth"), "on")
 	set :: proc(t: ^testing.T, c: ^Common, name, value: string) {
 		testing.expectf(t, config.set_from_string(&c.prefs, name, value, .User) == .None, "%s = %s is taken", name, value)
 	}
@@ -84,7 +90,7 @@ every_standard_set_registers_and_applies :: proc(t: ^testing.T) {
 	set(t, &c, "appearance.rounding", "0");           testing.expect_value(t, st.rounding, f32(0))
 	set(t, &c, "appearance.animations", "off");       testing.expect_value(t, ui.animations(st), ui.Animations.Off)
 	set(t, &c, "window.toast_position", "bottom_left"); testing.expect_value(t, ui.toast_position(st), ui.Toast_Position.Bottom_Left)
-	set(t, &c, "scrolling.smooth", "on");             testing.expect_value(t, ui.smooth_scroll(st), ui.Smooth_Scroll.On)
+	set(t, &c, "scrolling.smooth", "follow");         testing.expect_value(t, ui.smooth_scroll(st), ui.Smooth_Scroll.Follow)
 	set(t, &c, "scrolling.duration", "0");            testing.expect_value(t, ui.scroll_settings(st).duration_ms, f32(0))
 	set(t, &c, "scrolling.curve", "ease_out");        testing.expect_value(t, ui.scroll_settings(st).curve, ui.Scroll_Curve.Ease_Out)
 	set(t, &c, "scrolling.wheel_lines", "5");         testing.expect_value(t, ui.feel(st).wheel_lines, f32(5))
@@ -95,7 +101,7 @@ every_standard_set_registers_and_applies :: proc(t: ^testing.T) {
 	set(t, &c, "input.step_alt", "0.5");              testing.expect_value(t, ui.feel(st).step_alt, 0.5)
 	set(t, &c, "timing.tooltip_delay", "900");        testing.expect_value(t, ui.feel(st).tooltip_delay_ms, 900)
 	set(t, &c, "timing.menu_item_height", "2.5");     testing.expect_value(t, ui.feel(st).menu_item_em, f32(2.5))
-	set(t, &c, "rendering.partial_redraw", "true");   testing.expect(t, ui.partial_redraw(st), "partial redraw is on")
+	set(t, &c, "rendering.partial_redraw", "false");  testing.expect(t, !ui.partial_redraw(st), "partial redraw is off")
 	// a reset puts the toolkit's default back
 	config.reset(&c.prefs, "timing.tooltip_delay")
 	testing.expect_value(t, ui.feel(st).tooltip_delay_ms, ui.FEEL_DEFAULT.tooltip_delay_ms)

@@ -21,6 +21,7 @@ import "core:math"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
+import "core:sync"
 import config "../config"
 import "../font"
 import i18n "../i18n"
@@ -96,8 +97,9 @@ FONT_SIZE_MAX :: 24
 @(private = "file", rodata) SMOOTH_CHOICES := [?]string{"follow", "on", "off"}
 @(private = "file", rodata) CURVE_CHOICES := [?]string{"impulse", "ease_out", "exponential"}
 @(private = "file", rodata) TOAST_CHOICES := [?]string{"top_left", "top_center", "top_right", "middle_left", "middle_right", "bottom_left", "bottom_center", "bottom_right"}
-@(private = "file", rodata) SUBPIXEL_CHOICES := [?]string{"off", "rgb", "bgr"}
-@(private = "file", rodata) GRID_FIT_CHOICES := [?]string{"default", "enabled", "disabled"}
+// ("auto": the system's, system_stripes; the others are font.Subpixel_Text in its order, one further)
+@(private = "file", rodata) SUBPIXEL_CHOICES := [?]string{"auto", "off", "rgb", "bgr"}
+@(private = "file", rodata) GRID_FIT_CHOICES := [?]string{"auto", "enabled", "disabled"}
 @(private = "file", rodata) RENDERER_CHOICES := [?]string{"atlas", "slug"}
 @(private = "file", rodata) RENDERING_CHOICES := [?]string{"natural_symmetric", "natural", "gdi_classic", "aliased"}
 @(private = "file", rodata) TEXT_CURVE_CHOICES := [?]string{"none", "srgb", "power"}
@@ -143,6 +145,12 @@ FONT_SIZE_MAX :: 24
 // The Slug tolerance's unit: a thousandth of an em (its real values are 1/65536 to 1/64 em).
 @(private = "file") SLUG_TOLERANCE_UNIT :: 1000.0
 
+// What the system does with text (font.system_subpixel_text: ClearType on Windows, fontconfig on Linux), which
+// appearance.text.subpixel's "auto" is. Read once, by standard_register, at the start before the window: a change of the
+// setting later applies on the interface's thread, which must read no system setting (a disk read for fontconfig).
+@(private = "file") system_stripes_once: sync.Once
+@(private = "file") system_stripes: font.Subpixel_Text
+
 // Registers the standard preferences of `sets`, in the page's order (before the program's own: the page lists a group's
 // preferences in the order they came), and the titles of their groups (a program that registers a title after gives its
 // own words). Their words are English, marked for the catalogues (i18n.later): the page shows them in the language in
@@ -162,6 +170,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	when ODIN_OS == .Windows {
 		menu_description = i18n.later("Put %[0]s in the Start menu, with its icon. The desktop then knows %[0]s by its name: its shortcuts and its windows' places come from that.")
 	}
+	if .Text in sets { sync.once_do(&system_stripes_once, proc() { system_stripes = font.system_subpixel_text() }) }
 	defs := make([dynamic]config.Def, context.temp_allocator)
 	feel := ui.FEEL_DEFAULT
 	fs := font.DEFAULT_SETTINGS
@@ -184,7 +193,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			choices = MESSAGES_CHOICES[:], choice_labels = labels(a, i18n.later("System"), i18n.later("Window"), i18n.later("Off")), tags = MESSAGES_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = LANGUAGE_PREF, title = i18n.later("Language"), kind = .String, default = {s = "system"}, restart = true,
+			name = LANGUAGE_PREF, title = i18n.later("Language"), kind = .String, default = {s = "system"},
 			description = i18n.later("The language of the interface. System: the system's, English where the program has no text in it."),
 			choices = LANGUAGE_CHOICES[:], choice_labels = labels(a, i18n.later("System"), "English", "Français"), tags = LANGUAGE_TAGS[:],
 		})
@@ -280,9 +289,9 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			description = i18n.later("Emoji and other colour glyphs in their colours. Off: their outline, in the text's colour."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.subpixel", title = i18n.later("Subpixel text"), kind = .String, default = {s = SUBPIXEL_CHOICES[int(fs.subpixel_text)]},
-			description = i18n.later("Text smoothed per colour stripe of the screen's pixels, in their order (rgb or bgr): sharper at small sizes on a screen with stripes. Off: grey smoothing, right on every screen."),
-			choices = SUBPIXEL_CHOICES[:], choice_labels = labels(a, i18n.later("Off"), "Rgb", "Bgr"), tags = TEXT_LOOK_TAGS[:],
+			name = "appearance.text.subpixel", title = i18n.later("Subpixel text"), kind = .String, default = {s = "auto"},
+			description = i18n.later("Text smoothed per colour stripe of the screen's pixels, in their order (RGB or BGR): sharper at small sizes on a screen with stripes. Off: grey smoothing, right on every screen. Auto: as the system smooths its own text, read at the start."),
+			choices = SUBPIXEL_CHOICES[:], choice_labels = labels(a, i18n.later("Auto"), i18n.later("Off"), "RGB", "BGR"), tags = TEXT_LOOK_TAGS[:],
 		})
 		append(&defs, config.Def{
 			name = "appearance.text.gamma", title = i18n.later("Gamma"), kind = .Float, default = {f = decimal(tr.gamma)}, bounded = true, min = 0.25, max = 4,
@@ -301,13 +310,13 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		})
 		append(&defs, config.Def{
 			name = "appearance.text.curve", title = i18n.later("Blending curve"), kind = .String, default = {s = TEXT_CURVE_CHOICES[int(tr.curve)]}, advanced = true,
-			description = i18n.later("How a letter's colour meets its background. None: as the blending space does. Srgb: in linear light, as Chromium on Windows. Power: through the gamma above, as Chromium on Linux."),
-			choices = TEXT_CURVE_CHOICES[:], choice_labels = labels(a, i18n.later("None"), "Srgb", i18n.later("Power")),
+			description = i18n.later("How a letter's colour meets its background. None: as the blending space does. sRGB: in linear light, as Chromium on Windows. Power: through the gamma above, as Chromium on Linux."),
+			choices = TEXT_CURVE_CHOICES[:], choice_labels = labels(a, i18n.later("None"), "sRGB", i18n.later("Power")),
 		})
 		append(&defs, config.Def{
 			name = "appearance.text.blend_space", title = i18n.later("Blending space"), kind = .String, default = {s = "linear"}, advanced = true,
 			description = i18n.later("Where colours are mixed: in linear light (correct mixing, what the toolkit is tuned for), or in sRGB values, as web browsers do."),
-			choices = BLEND_CHOICES[:], choice_labels = labels(a, i18n.later("Linear"), "Srgb"),
+			choices = BLEND_CHOICES[:], choice_labels = labels(a, i18n.later("Linear"), "sRGB"),
 		})
 		append(&defs, config.Def{
 			name = "appearance.text.subpixel_steps", title = i18n.later("Subpixel positions"), kind = .Int, default = {i = i64(fs.subpixel_steps)}, bounded = true, min = 1, max = 4, advanced = true,
@@ -315,8 +324,8 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		})
 		append(&defs, config.Def{
 			name = "appearance.text.grid_fit", title = i18n.later("Grid fitting"), kind = .String, default = {s = GRID_FIT_CHOICES[int(fs.grid_fit)]}, advanced = true,
-			description = i18n.later("Whether outlines are fitted to the pixel grid: crisper stems, shapes a little off. Default: as the font asks."),
-			choices = GRID_FIT_CHOICES[:], choice_labels = labels(a, i18n.later("Default"), i18n.later("Enabled"), i18n.later("Disabled")),
+			description = i18n.later("Whether outlines are fitted to the pixel grid: crisper stems, shapes a little off. Auto: as the font asks."),
+			choices = GRID_FIT_CHOICES[:], choice_labels = labels(a, i18n.later("Auto"), i18n.later("On"), i18n.later("Off")),
 		})
 		when ODIN_OS == .Windows {
 			// (elsewhere there is no rasterizer of bitmaps: Slug draws every letter)
@@ -328,7 +337,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			append(&defs, config.Def{
 				name = "appearance.text.rendering", title = i18n.later("DirectWrite mode"), kind = .String, default = {s = RENDERING_CHOICES[int(fs.rendering)]}, advanced = true,
 				description = i18n.later("How DirectWrite draws the atlas's letters."),
-				choices = RENDERING_CHOICES[:], choice_labels = labels(a, i18n.later("Natural symmetric"), i18n.later("Natural"), "Gdi classic", i18n.later("Aliased")),
+				choices = RENDERING_CHOICES[:], choice_labels = labels(a, i18n.later("Natural symmetric"), i18n.later("Natural"), "GDI classic", i18n.later("Aliased")),
 			})
 		}
 		append(&defs, config.Def{
@@ -367,7 +376,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		config.title_register(prefs, "scrolling", i18n.later("Scrolling"), ORDER_SCROLLING)
 		config.title_register(prefs, "scrolling.autoscroll", i18n.later("Middle-button scrolling"))
 		append(&defs, config.Def{
-			name = "scrolling.smooth", title = i18n.later("Smooth scrolling"), kind = .String, default = {s = "follow"},
+			name = "scrolling.smooth", title = i18n.later("Smooth scrolling"), kind = .String, default = {s = "on"},
 			description = i18n.later("Whether a notch of the wheel glides or jumps. Follow: as the animations do."),
 			choices = SMOOTH_CHOICES[:], choice_labels = labels(a, i18n.later("Follow"), i18n.later("On"), i18n.later("Off")), tags = SCROLL_TAGS[:],
 		})
@@ -542,7 +551,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			tags = VSYNC_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "rendering.partial_redraw", title = i18n.later("Partial redraw"), kind = .Bool, default = {b = false}, advanced = true,
+			name = "rendering.partial_redraw", title = i18n.later("Partial redraw"), kind = .Bool, default = {b = true}, advanced = true,
 			description = i18n.later("Each picture redraws only what changed in the interface."),
 		})
 		append(&defs, config.Def{
@@ -551,8 +560,8 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		})
 		append(&defs, config.Def{
 			name = "rendering.filter_precision", title = i18n.later("Filter precision"), kind = .String, default = {s = "half"}, advanced = true,
-			description = i18n.later("The pictures of filters (blurs, shadows) in 16-bit floats (half), or in 8 bits (unorm8): half the memory, a little banding."),
-			choices = FILTER_CHOICES[:],
+			description = i18n.later("The pictures of filters (blurs, shadows) in 16-bit floats, or in 8 bits: half the memory, a little banding."),
+			choices = FILTER_CHOICES[:], choice_labels = labels(a, i18n.later("16-bit floats"), i18n.later("8 bits")),
 		})
 	}
 	// (the theme's default must outlive the registry, as every Def's: the program's literal)
@@ -591,14 +600,62 @@ announce_mode :: proc(prefs: ^config.Prefs) -> ui.Announce_Mode {
 }
 
 // The language of general.language ("system": the system's) made from the toolkit's catalogue and the program's, in use
-// from now on (English: no language). At the start, after the settings are read and before the first build: the setting
-// takes effect at the next start. `tag`: the language asked for; a line a catalogue could not read is logged.
+// from now on (English: no language); then again at each change of the setting, at once (config.watch, on the thread that
+// changed it): the widgets that translate where they show follow at the next frame, and what a program made of translated
+// text is made again when i18n.version() moves. At the start, after the settings are read and before the first build: the
+// system's language is read here, once. `tag`: the language asked for; a line a catalogue could not read is logged.
+// `program`'s texts are kept (its catalogues are the program's literals, #load).
 language_start :: proc(prefs: ^config.Prefs, program: []i18n.Catalog) -> (tag: string) {
+	heap := runtime.heap_allocator()
+	delete(languages.program, heap)
+	languages.program = slice.clone(program, heap)
+	delete(languages.system, heap)
+	languages.system = strings.clone(platform.system_language(context.temp_allocator), heap)
+	// (the languages loaded from other catalogues are not these: forgotten, not freed, as a language once in use)
+	for k in languages.loaded { delete(k.primary, heap) }
+	clear(&languages.loaded)
+	if config.ref_of(prefs, LANGUAGE_PREF) != config.NO_REF {
+		// (one watch per call: a second start on the same registry finds the language in use, and changes nothing)
+		config.watch(prefs, LANGUAGE_PREF, proc(_: rawptr, _: string, p: ^config.Prefs) { language_switch(p) }, nil)
+	}
+	return language_switch(prefs)
+}
+
+// What language_start keeps for the changes of general.language: the program's catalogues, the system's language, and
+// each language loaded. A language once in use is never freed (a text tr gave may be held, a thread may be in a lookup in
+// it), so a language picked again is the one loaded before: switching back and forth loads each once. Process-wide as
+// the language in use is (i18n.use); touched by language_start and by the thread that changes the settings, the
+// interface's.
+@(private = "file")
+Languages :: struct {
+	program: []i18n.Catalog,      // heap
+	system:  string,              // heap: platform.system_language at the start
+	loaded:  [dynamic]Loaded_Language,   // heap
+}
+
+@(private = "file")
+Loaded_Language :: struct {
+	primary:  string,           // heap: the primary subtag it was loaded for ("fr")
+	language: ^i18n.Language,   // nil: English, or no catalogue has it
+}
+
+@(private = "file") languages: Languages
+
+// general.language put in use (the language already in use: nothing, i18n.version does not move).
+@(private = "file")
+language_switch :: proc(prefs: ^config.Prefs) -> (tag: string) {
 	tag = "system"
 	if config.ref_of(prefs, LANGUAGE_PREF) != config.NO_REF { tag = config.string_of(prefs, LANGUAGE_PREF) }
-	if tag == "system" { tag = platform.system_language(context.temp_allocator) }
-	l, bad := i18n.load(tag, program)
+	if tag == "system" { tag = languages.system }
+	primary := i18n.primary_of(tag)
+	for k in languages.loaded {
+		if k.primary == primary { i18n.use(k.language); return }
+	}
+	heap := runtime.heap_allocator()
+	l, bad := i18n.load(tag, languages.program, allocator = heap)
 	for b in bad { log.warnf("a catalogue of %s: %s", tag, b) }
+	if languages.loaded.allocator.procedure == nil { languages.loaded.allocator = heap }
+	append(&languages.loaded, Loaded_Language{primary = strings.clone(primary, heap), language = l})
 	i18n.use(l)
 	return
 }
@@ -842,7 +899,7 @@ apply_text :: proc(prefs: ^config.Prefs, t: Standard_Targets, name: string) {
 	case "appearance.text.color_emoji":     if is_bool { st.color_glyphs = b }
 	case "appearance.text.color_async":     if is_bool { st.color_async = b }
 	case "appearance.text.subpixel":
-		if i, ok := choice_value(prefs, name, SUBPIXEL_CHOICES[:]); ok { st.subpixel_text = font.Subpixel_Text(i) }
+		if i, ok := choice_value(prefs, name, SUBPIXEL_CHOICES[:]); ok { st.subpixel_text = i == 0 ? system_stripes : font.Subpixel_Text(i - 1) }
 	case "appearance.text.subpixel_steps":  if num { st.subpixel_steps = n }
 	case "appearance.text.grid_fit":
 		if i, ok := choice_value(prefs, name, GRID_FIT_CHOICES[:]); ok { st.grid_fit = font.Grid_Fit(i) }

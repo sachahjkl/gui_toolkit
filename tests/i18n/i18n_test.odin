@@ -4,7 +4,9 @@ package i18n_test
 
 import "core:fmt"
 import "core:strings"
+import "core:sync"
 import "core:testing"
+import "core:thread"
 import config "../../src/config"
 import i18n "../../src/i18n"
 import prefs_page "../../src/prefs_page"
@@ -140,4 +142,45 @@ the_language_asked_is_in_use :: proc(t: ^testing.T) {
 	_ = config.set_from_string(&prefs, prefs_page.LANGUAGE_PREF, "en", .User)
 	prefs_page.language_start(&prefs, {{"fr", PROGRAM_FR}})
 	testing.expect_value(t, i18n.tr("Open the history"), "Open the history")
+}
+
+// A change of general.language is in use at once, on this thread and on another whose cache holds the old language's
+// answers; i18n.version moves with it (what a program made of translated text is made again), and only then: the same
+// language again changes nothing, and a language picked again is the one loaded before.
+@(test)
+the_language_changes_at_once :: proc(t: ^testing.T) {
+	prefs := config.prefs_make()
+	defer config.prefs_destroy(&prefs)
+	prefs_page.standard_register(&prefs, {.Session}, prefs_page.STANDARD_DEFAULTS, context.temp_allocator)
+	defer i18n.use(nil)
+	_ = config.set_from_string(&prefs, prefs_page.LANGUAGE_PREF, "fr", .User)
+	prefs_page.language_start(&prefs, {{"fr", PROGRAM_FR}})
+	french := i18n.current()
+	testing.expect(t, french != nil, "French in use")
+	testing.expect_value(t, i18n.tr("Open the history"), "Ouvrir l'historique")   // (this thread's cache holds it now)
+	Worker :: struct { sem: sync.Sema, done: sync.Sema, shown: [2]string }
+	w: Worker
+	th := thread.create_and_start_with_poly_data(&w, proc(w: ^Worker) {
+		w.shown[0] = i18n.tr("Open the history")
+		sync.post(&w.done)
+		sync.wait(&w.sem)
+		w.shown[1] = i18n.tr("Open the history")
+		sync.post(&w.done)
+	})
+	defer thread.destroy(th)
+	sync.wait(&w.done)
+	before := i18n.version()
+	_ = config.set_from_string(&prefs, prefs_page.LANGUAGE_PREF, "en", .User)
+	testing.expect_value(t, i18n.tr("Open the history"), "Open the history")
+	testing.expect(t, i18n.version() != before, "the version moved")
+	sync.post(&w.sem)
+	sync.wait(&w.done)
+	testing.expect_value(t, w.shown[0], "Ouvrir l'historique")
+	testing.expect_value(t, w.shown[1], "Open the history")
+	_ = config.set_from_string(&prefs, prefs_page.LANGUAGE_PREF, "fr", .User)
+	testing.expect(t, i18n.current() == french, "the language loaded before")
+	testing.expect_value(t, i18n.tr("Open the history"), "Ouvrir l'historique")
+	same := i18n.version()
+	i18n.use(french)
+	testing.expect_value(t, i18n.version(), same)
 }

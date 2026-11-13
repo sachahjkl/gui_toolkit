@@ -111,7 +111,7 @@ font/shape.odin words_epochs process  # the epochs of the word caches, unique in
 font/shape.odin l1_words thread  # the thread's own cache of short words' widths
 font/slug_dwrite.odin outline_sink_vtable const  # a COM vtable (passed by address)
 font/slug_dwrite.odin IID_ID2D1SimplifiedGeometrySink const  # a COM interface id (passed by address)
-i18n/i18n.odin in_use process  # the language in use, set at the start (atomic); a language in use is never freed
+i18n/i18n.odin in_use process  # the language in use, set at the start and at each change of language (atomic); a language once in use is never freed
 i18n/i18n.odin generation process  # counts the changes of language (atomic): a cached answer of another is not taken
 i18n/i18n.odin cache thread  # the address of a literal to its entry, per thread (tr is contextless and takes no lock)
 instance/instance_linux.odin owners_mu process  # the instance owners started in the process (locked: owners_mu)
@@ -309,6 +309,9 @@ ui/theme_default.odin entries const  # a table
 ui/theme_default.odin state_entries const  # a table
 platform/platform.odin scheme_serial process  # the system's light / dark choice, bumped as it may change (atomic): one system, whatever the number of apps
 platform/theme_linux.odin scheme_watched process  # the portal's SettingChanged subscribed once for the process (the main thread's)
+platform/platform.odin animations_off process  # the system's animations choice, kept (atomic): asked at every build, read once and set again on the system's change
+platform/platform_linux.odin animations_watched process  # its first read started once for the process (a thread reads the GTK settings file)
+platform/platform_win32.odin animations_watched process  # its first read done once for the process (then WM_SETTINGCHANGE sets it)
 platform/toplevels_wl_linux.odin ftl_manager_iface const  # a protocol table, built once (wayland_lib), then read
 platform/toplevels_wl_linux.odin ftl_handle_iface const  # a protocol table, built once (wayland_lib), then read
 platform/toplevels_wl_linux.odin ftl_manager_methods const  # a protocol table, built once (wayland_lib), then read

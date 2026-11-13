@@ -270,6 +270,10 @@ portal_setting_changed :: proc(user: rawptr, msg: ^dbus.Message) {
 	r := dbus.msg_reader(msg)
 	ns := dbus.r_string(&r)
 	key := dbus.r_string(&r)
+	if ns == "org.gnome.desktop.interface" && key == "enable-animations" {
+		animations_set(dbus.read_variant_u32_nested(&r) != 0)   // (os_animations_enabled: no file read on this thread)
+		return
+	}
 	if ns == "org.freedesktop.appearance" && key == "color-scheme" {
 		scheme := dbus.read_variant_u32_nested(&r)
 		if session.theme_changed != nil { session.theme_changed(scheme == 1) }

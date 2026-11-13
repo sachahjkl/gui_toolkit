@@ -153,6 +153,6 @@ says the intent, not the tag:
 | `accent_button` (`.Primary`) | the accent's soft pair | the action a dialog is for |
 | `info_button` (`.Info`), `success_button` (`.Success`) | the blue's, the green's soft pair | to inform, to confirm or save |
 | `warn_button` (`.Warning`) | the warning hue's soft pair | an action done with care (end a task, stop a service) |
-| `danger_button` (`.Danger`), `cancel_button` (`.Cancel`) | the bad hue's soft pair | an action that loses something (kill, delete); giving up |
+| `danger_button` (`.Danger`) | the bad hue's soft pair | an action that loses something (kill, delete); a Cancel is a neutral button |
 | `ghost_button`, `icon_button` (`face = .Ghost`; a glyph alone) | no background until hovered | a tool among many |
 | `well` | the theme's well, carved in | `ui.well`: a sunken box |

@@ -39,22 +39,6 @@ a_logo_writes_its_files :: proc(t: ^testing.T) {
 	testing.expect(t, string(data[dib_at + 1:dib_at + 4]) != "PNG", "16 px: a DIB")
 }
 
-// Three numbers, or nothing; the header written only when it changes.
-@(test)
-a_version_header :: proc(t: ^testing.T) {
-	testing.expect_value(t, version_header("0.9.12"), "#define VER_MAJOR 0\r\n#define VER_MINOR 9\r\n#define VER_PATCH 12\r\n#define VER_STRING \"0.9.12\"\r\n")
-	testing.expect_value(t, version_header("0.9"), "")
-	testing.expect_value(t, version_header("0.9.x"), "")
-	testing.expect_value(t, version_header("1..2"), "")
-	base, _ := os.temp_directory(context.temp_allocator)
-	path := fmt.tprintf("%s/tk_toolbox_version_%d/version.h", base, os.get_pid())
-	defer os.remove_all(filepath.dir(path))
-	testing.expect_value(t, write_version_header(path, "1.2.3"), "")
-	data, _ := os.read_entire_file(path, context.temp_allocator)
-	testing.expect_value(t, string(data), version_header("1.2.3"))
-	testing.expect(t, write_version_header(path, "1.2") != "", "not three numbers")
-}
-
 // A manifest signed by the key of the environment is the one the program reads; a program not named as a release's is refused.
 @(test)
 an_update_manifest_is_signed :: proc(t: ^testing.T) {

@@ -441,6 +441,7 @@ Popover_Side :: enum u8 { Above, Below }
 
 // `if popover("###stats", anchor_rect, width, .Above) { ... }`: a floating panel next to `anchor` (above or below it,
 // on the other side when it does not fit; right-aligned with the anchor when `align_right`), clamped to the window.
+// `width` is its least: it grows to what is in it (natural_width: buttons' words on one line), never past the window.
 // It stays open as long as the app builds it: the app decides when it closes (a toggle, a close button, Escape).
 // It takes the clicks that land on it; `popover_rect` tells the app where it is (input it routes itself).
 @(require_results, deferred_none = popover_end)
@@ -475,7 +476,20 @@ popover :: proc(id: string, anchor: Rect, width: f32, side := Popover_Side.Above
 }
 
 @(private)
-popover_end :: proc() { popup_end() }
+popover_end :: proc() {
+	s := gs()
+	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] {
+		// (what is in it asks for more than its width: it grows, rather than cut a button's words)
+		p := parent_box()
+		need: f32
+		for c := p.first; c != nil; c = c.next {
+			if !is_floating(c, .X) { need = max(need, natural_width(c)) }
+		}
+		need = math.ceil(need + 2 * border_inset(p))
+		if need > p.pref[.X].value { p.pref[.X] = px(min(need, max(s.window_size.x, p.pref[.X].value))) }
+	}
+	popup_end()
+}
 
 // Where the popover `id` was laid out last frame (ok false: it was not built).
 popover_rect :: proc(id: string) -> (r: Rect, ok: bool) {

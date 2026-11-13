@@ -464,6 +464,54 @@ a_lazy_column_builds_where_its_view_jumped :: proc(t: ^testing.T) { unwatched.ru
 	testing.expect(t, r.last_seen, "the build that jumped to the bottom built the last item")
 }) }
 
+// A lazy column read in its middle while its last item grows (an answer that streams in): the items never built above the view
+// stand as the mean height of those built, which the growing item moves at each build, by screens over hundreds of items. What the
+// view shows stays where it is, to the pixel: the band built goes where the view will be, and the view follows its anchor.
+@(test)
+a_lazy_column_keeps_its_view_while_its_last_item_grows :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Run :: struct { jump: f32, grow: int }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if ui.scroll_y("###view") {
+			sb := ui.parent_box()
+			if r.jump > 0 { ui.view_jump(sb, ui.view_limit(sb) * r.jump); r.jump = 0 }
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+			if ui.column() {
+				lz := ui.lazy_begin()
+				for i in 0 ..< 400 {
+					if ui.lazy_item(lz, fmt.tprintf("###it%d", i), always = i == 399) {
+						h := 20 + (i % 7) * 13
+						if i == 399 { h += r.grow * 600 }
+						ui.next({height = ui.px(f32(h))})
+						ui.label(fmt.tprintf("item %d", i))
+					}
+				}
+			}
+		}
+	}})
+	session.frames(s, 3)
+	r.jump = 0.5
+	session.frames(s, 3)
+	sb := session.get(s, "view")
+	name := ""
+	for i in 0 ..< 400 {
+		if b := session.find(s, fmt.tprintf("it%d", i)); b != nil && b.rect.min.y > sb.rect.min.y + 20 {
+			name = fmt.tprintf("it%d", i)
+			break
+		}
+	}
+	if !testing.expect(t, name != "", "an item in the view") { return }
+	y := session.get(s, name).rect.min.y
+	for k in 1 ..= 20 {
+		r.grow = k
+		session.frames(s, 1)
+		b := session.find(s, name)
+		if !testing.expectf(t, b != nil && b.rect.min.y == y, "the last item grown %d times: %s stays at %v (now %v)", k, name, y, b != nil ? b.rect.min.y : -1) { return }
+	}
+}) }
+
 // A menu's heading is no item: the keyboard goes over it.
 @(test)
 a_menu_heading_is_not_an_item :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

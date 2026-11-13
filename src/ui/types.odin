@@ -168,6 +168,9 @@ Box :: struct {
 	hot_t, active_t, disabled_t, focus_t: f32,
 	bar_t:       f32,            // how much its scroll bar shows (set_scrollbar_autohide)
 	bar_until:   f64,            // scrollbar_reveal: shown until then (the build's clock)
+	bar_marks:   ^Scroll_Marks,  // the marks its vertical bar carries (scroll_marks.odin), given at build bar_marks_build
+	bar_marks_build: u64,        // (kept across builds: the marks may be given before the box is built in a build)
+	bar_wide_t:  f32,            // how far a bar with marks has widened, 0..1 (under the pointer, or the marks' keyboard)
 
 	// accessibility (a11y.odin): what it is to screen readers, set by its widget or the app (this build's arena)
 	a11y:        ^A11y_Info,
@@ -373,6 +376,8 @@ State :: struct {
 	lazy_heights:    map[Key]Lazy_Height,
 	lazy_columns:    map[Key]Lazy_Column,
 	qr_codes:        map[Key]Qr_Cached,   // qr_code: each box's encoded text, kept while the box is built
+	toolbars:        map[Key]Toolbar_Memory,   // toolbar: each tool bar's groups, their widths, its panel
+	toolbar:         Toolbar_Build,            // the tool bar being built
 	lazy_frame:      [dynamic]^Lazy,   // this build's lazy columns (lazy_settle; frame memory)
 	lazy_more:       bool,             // a lazy column showed spaces where items stand: one more frame (needs_frame)
 	dt:           f32,
@@ -434,6 +439,7 @@ State :: struct {
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
 	sb_grab:      f32,               // pointer offset inside the thumb while dragging it
 	scrollbar_arrows: bool,          // set_scrollbar_arrows
+	sb_on_mark:   bool,              // the bar's press was on a mark: it went there (scroll_marks), the thumb does not follow
 	sb_arrow:     f32,               // the arrow button held: -1 toward the start, 1 toward the end, 0 none
 	feel:         Feel,              // set_feel: delays, repeats, steps (feel.odin)
 	density:      f32,               // vertical compactness: 1 = comfortable, lower = denser rows and gaps (see `dense`)

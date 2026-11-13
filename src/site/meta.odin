@@ -37,14 +37,23 @@ Meta :: struct {
 	card_size:    int,      // its font size, px
 	card_logo:    int,      // the logo's size on it, px
 	card_font:    string,   // its font-family
-	changelog_page: string,                      // the changelog's page in the site ("": CHANGELOG_PAGE)
+	changelog_page: string,                      // the changelog's address in the site ("": CHANGELOG_ADDRESS)
 	version_anchor: proc(version: string) -> string,   // a version's anchor in it (nil: "v" and the version: "v1.2.3")
+	// The home page's nav and footer (frame.odin), when it holds their marks:
+	publisher_logo: string,       // the publisher's mark beside its name, in the site ("img/froment-software-64.png"; "": none)
+	licence:        string,       // the code's licence, as the footer names it ("MIT": "MIT License"; "": not said)
+	footer_note:    string,       // HTML, one more part of the footer's last line ("": none)
+	shop:           Maybe(Shop),  // the licence the site sells: its pages are made (licence_pages), the nav and the footer link them
 }
+
+// The changelog's address in the site.
+@(private)
+changelog_address :: proc(m: Meta) -> string { return m.changelog_page != "" ? m.changelog_page : CHANGELOG_ADDRESS }
 
 // Where a version is told: the changelog's page and the version's anchor in it.
 @(private)
 version_address :: proc(m: Meta, version: string) -> string {
-	page := m.changelog_page != "" ? m.changelog_page : CHANGELOG_PAGE
+	page := changelog_address(m)
 	anchor := m.version_anchor != nil ? m.version_anchor(version) : cat("v", version)
 	return cat(m.url, page, "#", anchor)
 }
@@ -294,8 +303,9 @@ web_manifest :: proc(m: Meta, logo_size: string) -> string {
 `)
 }
 
-// What goes before a page's </head>. The title and the description are the page's own, already escaped.
-page_tags :: proc(m: Meta, html, address: string, home: bool) -> string {
+// What goes before a page's </head>. The title and the description are the page's own, already escaped. `card`: the sharing
+// card's width and height, in pixels.
+page_tags :: proc(m: Meta, html, address: string, home: bool, card: [2]int) -> string {
 	title := m.name
 	if at, end, ok := title_span(html); ok { title = html[at + len("<title>"):end - len("</title>")] }
 	description, described := quoted_value(html, `<meta name="description" content="`, "")
@@ -318,8 +328,8 @@ page_tags :: proc(m: Meta, html, address: string, home: bool) -> string {
 <meta property="og:image" content="`, image, `">
 <meta property="og:image:secure_url" content="`, image, `">
 <meta property="og:image:type" content="image/png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
+<meta property="og:image:width" content="`, fmt.tprint(card[0]), `">
+<meta property="og:image:height" content="`, fmt.tprint(card[1]), `">
 <meta property="og:image:alt" content="`, alt, `">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="`, title, `">
@@ -391,8 +401,13 @@ sitemap_xml :: proc(listed: []string) -> string {
 }
 
 llms_txt :: proc(m: Meta) -> string {
-	return cat("# ", m.name, "\n\n> ", m.tagline, "\n\n## Pages\n\n- [", m.name, "](", m.url, "): the home page.\n- [Changelog](", m.url, m.changelog_page != "" ? m.changelog_page : CHANGELOG_PAGE,
-		"): every version.\n- [Releases feed](", m.url, FEED_FILE, "): new versions, in Atom.\n- [Source](", m.repository, "): the repository.\n")
+	pricing := ""
+	if _, sells := m.shop.?; sells {
+		links := SHOP_LINKS
+		pricing = cat("- [", links[0].label, "](", m.url, links[0].href, "): the license, its price and its terms.\n")
+	}
+	return cat("# ", m.name, "\n\n> ", m.tagline, "\n\n## Pages\n\n- [", m.name, "](", m.url, "): the home page.\n- [Changelog](", m.url, changelog_address(m),
+		"): every version.\n", pricing, "- [Releases feed](", m.url, FEED_FILE, "): new versions, in Atom.\n- [Source](", m.repository, "): the repository.\n")
 }
 
 not_found_html :: proc(m: Meta) -> string {
@@ -424,13 +439,19 @@ a { color: `, m.accent, `; }
 
 robots_txt :: proc(m: Meta) -> string { return cat("User-agent: *\nAllow: /\n\nSitemap: ", m.url, "sitemap.xml\n") }
 
-png_size :: proc(path: string) -> (size: string, ok: bool) {
+// The width and the height of a PNG, from its header.
+png_dimensions :: proc(path: string) -> (size: [2]int, ok: bool) {
 	data, err := os.read_entire_file(path, context.temp_allocator)
-	if err != nil { fmt.eprintfln("site: %s: %v", path, err); return "", false }
-	if len(data) < PNG_HEIGHT_AT + size_of(u32) { fmt.eprintfln("site: %s is no PNG", path); return "", false }
+	if err != nil { fmt.eprintfln("site: %s: %v", path, err); return {}, false }
+	if len(data) < PNG_HEIGHT_AT + size_of(u32) { fmt.eprintfln("site: %s is no PNG", path); return {}, false }
 	width, _ := endian.get_u32(data[PNG_WIDTH_AT:], .Big)
 	height, _ := endian.get_u32(data[PNG_HEIGHT_AT:], .Big)
-	return fmt.tprintf("%dx%d", width, height), true
+	return {int(width), int(height)}, true
+}
+
+png_size :: proc(path: string) -> (size: string, ok: bool) {
+	d := png_dimensions(path) or_return
+	return fmt.tprintf("%dx%d", d[0], d[1]), true
 }
 
 same_folder :: proc(a, b: string) -> bool {
@@ -443,6 +464,9 @@ same_folder :: proc(a, b: string) -> bool {
 build_meta :: proc(m: Meta, from, out: string) -> bool {
 	if !same_folder(from, out) && !copy_site(from, out) { return false }
 	if !os.exists(cat(out, "/", m.card)) { fmt.eprintfln("site: no %s: draw it (draw_card) first", m.card); return false }
+	// (the card's own size: a program may share a screenshot rather than a card drawn at 1200 x 630)
+	card, card_read := png_dimensions(cat(out, "/", m.card))
+	if !card_read { return false }
 
 	pages, found := html_pages(out)
 	if !found { return false }
@@ -454,7 +478,7 @@ build_meta :: proc(m: Meta, from, out: string) -> bool {
 		head := strings.index(html, "</head>")
 		if head < 0 || not_a_page(html) { continue }
 		address := page_address(m, page)
-		if !write_text(path, cat(html[:head], page_tags(m, html, address, page == HOME_PAGE), "\n", html[head:])) { return false }
+		if !write_text(path, cat(html[:head], page_tags(m, html, address, page == HOME_PAGE, card), "\n", html[head:])) { return false }
 		append(&listed, address)
 	}
 

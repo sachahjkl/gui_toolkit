@@ -50,7 +50,7 @@ platform_backend :: proc() -> ^Backend { return &WINDOWS_BACKEND }
 
 // The name Windows groups this process's windows under: call before the first window exists.
 set_process_identity :: proc(id: Identity) {
-	if id.aumid != "" { SetCurrentProcessExplicitAppUserModelID(wide(id.aumid)) }
+	if aumid := identity_aumid(id); aumid != "" { SetCurrentProcessExplicitAppUserModelID(wide(aumid)) }
 }
 
 ////////////////////////////////
@@ -122,7 +122,7 @@ windows_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) ->
 	// (and, when the program ships a console launcher, the launcher beside it: without it a terminal gets no output)
 	if dir := exe_dir(o.exe); dir != "" && path_contains(o, dir) {
 		s.parts[.Path].present = true
-		s.parts[.Path].partial = o.add_to_path && len(o.launcher) > 0 && !launcher_current(o)
+		s.parts[.Path].partial = o.add_to_path && len(launcher_bytes(o)) > 0 && !launcher_current(o)
 	}
 
 	// the start with the session: the value of Run named by the key (partial: other arguments)
@@ -141,8 +141,8 @@ windows_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) ->
 	registered, registered_ok := reg_get(l.registered, o.identity.key)
 
 	client_prog, progid_prog := command_program(client_cmd), command_program(progid_cmd)
-	client_mine := client_mark == o.identity.aumid || (client_cmd_ok && same_path(client_prog, o.exe))
-	progid_mine := progid_mark == o.identity.aumid || (progid_cmd_ok && same_path(progid_prog, o.exe))
+	client_mine := client_mark == identity_aumid(o.identity) || (client_cmd_ok && same_path(client_prog, o.exe))
+	progid_mine := progid_mark == identity_aumid(o.identity) || (progid_cmd_ok && same_path(progid_prog, o.exe))
 	registered_mine := registered_ok && strings.equal_fold(registered, l.capabilities)
 	links_mine, links_all, links_prog := false, true, ""   // (any of the link schemes is the program's, all of them are, the other program one runs)
 	for key in l.links {
@@ -173,11 +173,11 @@ windows_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) ->
 shortcut_status :: proc(o: ^Integration_Options, lnk: string, allocator: runtime.Allocator) -> (ps: Part_Status) {
 	if !os.is_file(lnk) { return }
 	target, aumid, read := read_shortcut(lnk)
-	if !(read && (aumid == o.identity.aumid || same_path(target, o.exe))) { return }
+	if !(read && (aumid == identity_aumid(o.identity) || same_path(target, o.exe))) { return }
 	ps.present = true
 	ps.target = clone_or_empty(target, allocator)
 	ps.stale = !same_path(target, o.exe)
-	ps.partial = aumid != o.identity.aumid   // a shortcut without the AppUserModelID does not group with the windows
+	ps.partial = aumid != identity_aumid(o.identity)   // a shortcut without the AppUserModelID does not group with the windows
 	return
 }
 
@@ -274,7 +274,7 @@ windows_install :: proc(o: ^Integration_Options) -> Result {
 remove_shortcut :: proc(o: ^Integration_Options, lnk: string) -> Result {
 	if !os.is_file(lnk) { return {} }
 	target, aumid, read := read_shortcut(lnk)
-	if !(read && (aumid == o.identity.aumid || same_path(target, o.exe))) { return {} }
+	if !(read && (aumid == identity_aumid(o.identity) || same_path(target, o.exe))) { return {} }
 	if err := os.remove(lnk); err != nil { return {.Io, strings.concatenate({"cannot delete ", lnk}, context.temp_allocator)} }
 	return {}
 }
@@ -296,7 +296,7 @@ write_shortcut :: proc(o: ^Integration_Options, path: string) -> Result {
 	if link->QueryInterface(&IID_IPropertyStore, cast(^rawptr)&store) < 0 || store == nil { return failed("IPropertyStore") }
 	defer store->Release()
 	pv := Prop_Variant{vt = VT_LPWSTR}
-	pv.pointer = co_string(o.identity.aumid)
+	pv.pointer = co_string(identity_aumid(o.identity))
 	if pv.pointer == nil { return failed("out of memory") }
 	hr := store->SetValue(&PKEY_AppUserModel_ID, &pv)
 	PropVariantClear(&pv)   // frees the string
@@ -340,7 +340,7 @@ write_registration :: proc(o: ^Integration_Options, l: Layout) -> Result {
 	failed :: proc(path: string) -> Result { return {.System, strings.concatenate({"cannot write HKCU\\", path}, context.temp_allocator)} }
 
 	// the browser entry
-	if !reg_set(l.client, "", id.name) || !reg_set(l.client, o.identity.registry_mark, id.aumid) { return failed(l.client) }
+	if !reg_set(l.client, "", id.name) || !reg_set(l.client, o.identity.registry_mark, identity_aumid(id)) { return failed(l.client) }
 	if !reg_set(reg_join(l.client, "DefaultIcon"), "", icon) { return failed(l.client) }
 	if !reg_set(reg_join(l.client, "shell", "open", "command"), "", command) { return failed(l.client) }
 	if !reg_set(caps, "ApplicationName", id.name) || !reg_set(caps, "ApplicationIcon", icon) { return failed(caps) }
@@ -363,13 +363,13 @@ write_registration :: proc(o: ^Integration_Options, l: Layout) -> Result {
 	if !reg_set(reg_join(l.progid, "DefaultIcon"), "", icon) { return failed(l.progid) }
 	if !reg_set(reg_join(l.progid, "shell", "open", "command"), "", open_one) { return failed(l.progid) }
 	app := reg_join(l.progid, "Application")
-	if !reg_set(app, "ApplicationName", id.name) || !reg_set(app, "ApplicationIcon", icon) || !reg_set(app, "AppUserModelId", id.aumid) { return failed(app) }
+	if !reg_set(app, "ApplicationName", id.name) || !reg_set(app, "ApplicationIcon", icon) || !reg_set(app, "AppUserModelId", identity_aumid(id)) { return failed(app) }
 	if id.vendor != "" && !reg_set(app, "ApplicationCompany", id.vendor) { return failed(app) }
 	if id.description != "" && !reg_set(app, "ApplicationDescription", id.description) { return failed(app) }
 
 	// the program's own URL schemes
 	for key in l.links {
-		if !reg_set(key, "", strings.concatenate({"URL:", id.name}, context.temp_allocator)) || !reg_set(key, "URL Protocol", "") || !reg_set(key, o.identity.registry_mark, id.aumid) { return failed(key) }
+		if !reg_set(key, "", strings.concatenate({"URL:", id.name}, context.temp_allocator)) || !reg_set(key, "URL Protocol", "") || !reg_set(key, o.identity.registry_mark, identity_aumid(id)) { return failed(key) }
 		if !reg_set(reg_join(key, "DefaultIcon"), "", icon) || !reg_set(reg_join(key, "shell", "open", "command"), "", open_link) { return failed(key) }
 	}
 
@@ -424,12 +424,12 @@ remove_registration :: proc(o: ^Integration_Options, l: Layout) -> Result {
 
 	client_cmd, client_cmd_ok := reg_get(reg_join(l.client, "shell", "open", "command"), "")
 	client_mark, _ := reg_get(l.client, o.identity.registry_mark)
-	if client_mark == o.identity.aumid || (client_cmd_ok && same_path(command_program(client_cmd), o.exe)) {
+	if client_mark == identity_aumid(o.identity) || (client_cmd_ok && same_path(command_program(client_cmd), o.exe)) {
 		if !reg_delete_tree(l.client) { res = failed(l.client) }
 	}
 	progid_cmd, progid_cmd_ok := reg_get(reg_join(l.progid, "shell", "open", "command"), "")
 	progid_mark, _ := reg_get(reg_join(l.progid, "Application"), "AppUserModelId")
-	if progid_mark == o.identity.aumid || (progid_cmd_ok && same_path(command_program(progid_cmd), o.exe)) {
+	if progid_mark == identity_aumid(o.identity) || (progid_cmd_ok && same_path(command_program(progid_cmd), o.exe)) {
 		if !reg_delete_tree(l.progid) && res.error == .None { res = failed(l.progid) }
 	}
 	if registered, ok := reg_get(l.registered, o.identity.key); ok && strings.equal_fold(registered, l.capabilities) {
@@ -446,7 +446,7 @@ remove_registration :: proc(o: ^Integration_Options, l: Layout) -> Result {
 link_key_status :: proc(o: ^Integration_Options, key: string) -> (command: string, command_ok, mine: bool) {
 	command, command_ok = reg_get(reg_join(key, "shell", "open", "command"), "")
 	mark, _ := reg_get(key, o.identity.registry_mark)
-	mine = mark == o.identity.aumid || (command_ok && same_path(command_program(command), o.exe))
+	mine = mark == identity_aumid(o.identity) || (command_ok && same_path(command_program(command), o.exe))
 	return
 }
 

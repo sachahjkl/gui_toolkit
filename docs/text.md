@@ -240,7 +240,9 @@ samples a third of a pixel apart instead of one, so it is sharper across at few 
 For a window that is opaque, on a screen that has such stripes: many OLED panels have not, and there the colours show. It is the
 application's to set; `system_subpixel_text` says what the system does (on Windows its ClearType setting and order; on Linux
 fontconfig's `antialias` and `rgba`, as other applications read them: grey when it is not smoothed, its stripes unknown, vertical or
-none; macOS grey).
+none; macOS grey). It is a read of the system (fontconfig reads its files): make it at the start or on a worker. The standard
+setting `appearance.text.subpixel` is `auto` by default ([settings.md](settings.md)): `prefs_page.standard_register` reads
+`system_subpixel_text` once, before the window, and `standard_watch` applies it; a program needs nothing of its own.
 
 - **Bitmaps** (the atlas, Windows): DirectWrite's ClearType analysis, its filter applied. A pixel's three coverages sit side by side
   in an ordinary Gray page, the bitmap three times as wide (`Glyph_Image.lcd`, `FLAG_LCD`): nothing changes in the pages, their

@@ -76,9 +76,8 @@ soft_pair_on :: proc(c, page: draw.Color) -> (fill, ink: draw.Color) {
 }
 
 // What an act means, and so its colour: each intent is one of the theme's hues, its button that hue's soft pair (the
-// theme's "<intent>_button" tags). Neutral: the plain button. Cancel (a dialog's Cancel, giving up) has Danger's red
-// for now, under its own tag: a theme may tell them apart.
-Intent :: enum u8 { Neutral, Primary, Info, Success, Warning, Danger, Cancel }
+// theme's "<intent>_button" tags). Neutral: the plain button, and a Cancel's: giving up is never coloured as a danger.
+Intent :: enum u8 { Neutral, Primary, Info, Success, Warning, Danger }
 
 // The hue of an intent.
 intent_hue :: proc(i: Intent) -> Hue {
@@ -87,7 +86,7 @@ intent_hue :: proc(i: Intent) -> Hue {
 	case .Info:    return .Blue
 	case .Success: return .Green
 	case .Warning: return .Yellow
-	case .Danger, .Cancel: return .Red
+	case .Danger:  return .Red
 	}
 	return .Accent
 }
@@ -101,7 +100,6 @@ intent_tag :: proc(i: Intent) -> string {
 	case .Success: return "success_button"
 	case .Warning: return "warn_button"
 	case .Danger:  return "danger_button"
-	case .Cancel:  return "cancel_button"
 	}
 	return ""
 }

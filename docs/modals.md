@@ -6,12 +6,17 @@ sizes in ems of the style where `modal` is called:
 
 | Field | What it says |
 |---|---|
-| `width_em` | its width (0: `DIALOG_WIDTH_EM`, 29) |
+| `width_em` | its width (0: `DIALOG_WIDTH_EM`, 29); not resizable, its least: it grows to what is in it |
 | `height_em` | its height, what is in it filling it (`height = fill()`); 0: as tall as what is in it |
 | `min_width_em`, `min_height_em` | how small the person can make it (with `size`) |
 | `size` | `nil`: not resizable. Else the size the person gave it, in ems, the program's to keep (`{}`: none yet) |
 | `top` | its top held at this fraction of the window's height (a command palette); `nil`: centered |
 
+- A dialog that is not resizable is as wide as what is in it asks (`natural_width`: its title on one line, its row of
+  buttons on one line, what has a width of its own), `width_em` at least, `DIALOG_MAX_WIDTH_EM` (46) at most. Past that,
+  its title and the words of a button wrap onto more lines and its buttons go on more lines (the layout's `wrap_room`):
+  nothing in it is cut with "…", nothing goes past its edge. What is in it takes its width with `fill()`, not a width in
+  pixels computed from `width_em`.
 - It is always within the window however small: narrower than it asks if it must (the window has the last word over the
   least size), and never past its bottom.
 - With `size`, the person resizes it by its edges and corners; it stays centered, so the opposite side moves too, and the
@@ -44,7 +49,8 @@ if ui.modal("files", &open, {width_em = 40, height_em = 28, size = &size}) {
 
 `dialog_header(id, title, o)` is a strip across the dialog's top, a shade darker than the dialog
 (`DIALOG_HEADER_DARKEN`), `DIALOG_HEADER_EM` tall: an icon of the accent at its start (`o.icon`, `o.icon_font`; 0: the
-state's icon font), the title, then what its block builds. Build it first in the dialog, before the body's scroll, so that
+state's icon font), the title, then what its block builds. The title is never cut: the dialog grows to it, and past
+its most it wraps onto more lines, the strip as tall as they are. Build it first in the dialog, before the body's scroll, so that
 it stays on top while the body scrolls.
 
 - `o.close` (`Dialog_Header_Options`): a close button (Lucide's X, a ghost button) in the dialog's top right corner. It is a square of
@@ -68,7 +74,8 @@ it stays on top while the body scrolls.
 
 `ui.confirm(id, &open, o)` is the question before an act that is not taken back: a title, a note in the weak text
 (what comes of it), what it acts on one per line when there is more than one (`CONFIRM_LINES_MAX` shown, the others
-counted), then Cancel (intent `.Cancel`) and the act's button in the danger colours. It answers `.Confirmed`, `.Cancelled` (the Cancel
+counted), then Cancel (a neutral button: giving up is never a danger) and the act's button in the colours of
+`act_intent` (nil: Danger; with `enter_confirms`, Success). It answers `.Confirmed`, `.Cancelled` (the Cancel
 button, Escape, a press outside) or `.None` while it waits.
 
 - Enter answers what is safe: Cancel, and the act only with `enter_confirms` (an act that is safe and was asked for). The
@@ -79,7 +86,7 @@ button, Escape, a press outside) or `.None` while it waits.
 ## A prompt (`src/ui/confirm.odin`)
 
 `ui.prompt(id, &open, &field, o)` asks for an answer typed in: a title, a sentence (`note`: what to type), one
-field, Cancel (intent `.Cancel`) and OK (`act`, else `Prompt_Labels.ok`). The field has the keyboard as it opens. Enter
+field, Cancel (a neutral button) and OK (`act`, else `Prompt_Labels.ok`). The field has the keyboard as it opens. Enter
 in it answers `.Confirmed` (the text is the field's); Escape, Cancel or a press outside `.Cancelled`; `.None` while it
 waits. `secret` makes it a password field (`reveal`: the caller's bool for the eye that shows it); once the answer is
 used or given up, `ui.line_edit_wipe(&field)` leaves nothing of it in memory. Its words other than the caller's
@@ -117,3 +124,7 @@ true when the row is clicked.
 `if dialog_body("id") { ... }` holds what a dialog says and asks, with its margins (`DIALOG_MARGIN_EM`) and gaps
 (`DIALOG_GAP_EM`); `if dialog_buttons("id") { ... }` is its row of buttons, at its right end, the main act last. With
 `dialog_header`, every dialog has the same three parts.
+
+The buttons are a `.Wrap` row aligned at its end (`ui.flow(gap, id, .End)`), `DIALOG_BUTTON_GAP_EM` between them: put no
+spacer between them. Buttons that do not fit on one line go on a second one, each line at the right end; a button wider
+than the dialog on its own is as wide as the dialog, its words wrapped.

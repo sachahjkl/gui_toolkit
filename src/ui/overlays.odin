@@ -230,8 +230,10 @@ Modal_Options :: struct {
 	top:           Maybe(f32),   // its top held at this fraction of the window's height (a command palette; resized, its bottom edge alone follows the pointer); nil: centered
 }
 
-// A dialog's width when its options give none, in ems.
+// A dialog's width when its options give none, in ems: its least. It grows to what is in it (a long title, a row of
+// buttons), up to DIALOG_MAX_WIDTH_EM and the window.
 DIALOG_WIDTH_EM :: 29
+DIALOG_MAX_WIDTH_EM :: 46
 
 @(private)
 Modal_Scope :: struct {
@@ -249,6 +251,9 @@ Modal_Scope :: struct {
 	close:        bool, // dialog_header asked for a close button
 	close_label:  string,
 	corner_built: bool, // modal_corner built the corner's control (the program's own): the toolkit's is not built
+	corner:       Key,  // that control's box (modal_end moves it with the dialog's right edge)
+	fit:          bool, // not resizable: as wide as what is in it needs (modal_fit), `wh.x` at least, `most` at most
+	most:         f32,
 }
 
 // A dialog of this build or the last. `focus`: what had the focus when it opened, and gets it back when it closes.
@@ -344,7 +349,11 @@ modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), y}, wh)
 	m := &s.modal_stack[len(s.modal_stack) - 1]
 	m.em = em
-	if o.size == nil { return true }
+	if o.size == nil {
+		// (a width asked for past the most is the caller's; the window's edge holds both)
+		m.fit, m.most = true, max(wh.x, min(hi.x, math.round(DIALOG_MAX_WIDTH_EM * em)))
+		return true
+	}
 	m.size, m.preferred, m.lo, m.hi, m.top = o.size, pref, lo, hi, o.top != nil
 	// (its resize grip's corner is square, the grip's bevel filling it: a choice of the design, not a corner the rounding
 	// forgot. Keep it square)
@@ -458,6 +467,7 @@ modal_corner :: proc(flags: Box_Flags, id: string) -> ^Box {
 	m := s.modal_stack[len(s.modal_stack) - 1]
 	assert(m.corner_side > 0, "modal_corner: the dialog's header has no close control (dialog_header's `close`)")
 	panel := box_from_key(m.panel)
+	s.modal_stack[len(s.modal_stack) - 1].corner = 0   // (set below, once built)
 	outer: f32 = .Top_Right in panel.square_corners ? 0 : box_drawn_radius(s, panel)
 	side := m.corner_side
 	r, radius := corner_place({{0, 0}, m.wh}, outer, .Top_Right, {side, side}, m.corner_inset)
@@ -465,7 +475,31 @@ modal_corner :: proc(flags: Box_Flags, id: string) -> ^Box {
 	next_merge({fixed_x = r.min.x, fixed_y = r.min.y, width = px(side), height = px(side), radius = radius, flags = {.Fixed_Radius}})
 	push_parent(panel)   // (its place is the dialog's, wherever it is built)
 	defer pop_parent()
-	return build_box(flags, id)
+	b := build_box(flags, id)
+	s.modal_stack[len(s.modal_stack) - 1].corner = b.key
+	return b
+}
+
+// A dialog that is not resized by the person is as wide as what is in it asks (natural_width: a title on one line, a row of
+// buttons on one line, what has a width of its own), its asked width at least, `most` at most; then centred again. In the
+// build that lays it out, before its layout: what is in it fills the width it is given (fill()), and what is wider than
+// that wraps (its words, its buttons' lines). The control in its corner follows its right edge.
+@(private = "file")
+modal_fit :: proc(s: ^State, m: ^Modal_Scope) {
+	panel := box_from_key(m.panel)
+	if panel == nil || !m.fit { return }
+	need: f32
+	for c := panel.first; c != nil; c = c.next {
+		if !is_floating(c, .X) { need = max(need, natural_width(c)) }
+	}
+	need = math.ceil(need + 2 * border_inset(panel))
+	w := math.round(clamp(need, m.wh.x, max(m.most, m.wh.x)))
+	if w == m.wh.x { return }
+	grew := w - m.wh.x
+	panel.pref[.X] = px(w)
+	panel.fixed_pos.x = math.round((s.window_size.x - w) * 0.5)
+	m.wh.x = w
+	if c := box_from_key(m.corner); c != nil && m.corner != 0 { c.fixed_pos.x += grew }
 }
 
 // What the press of a dialog's grip keeps (press_data): the size it started from, and whether it moved yet.
@@ -523,7 +557,9 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 modal_end :: proc() {
 	s := gs()
 	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] {
-		if top := &s.modal_stack[len(s.modal_stack) - 1]; top.close && !top.corner_built { dialog_close_button(top) }
+		top := &s.modal_stack[len(s.modal_stack) - 1]
+		modal_fit(s, top)
+		if top.close && !top.corner_built { dialog_close_button(top) }
 		m := pop(&s.modal_stack)
 		if m.size != nil { modal_grips(s, m) }
 		// closed in this build (a button set its `open` false): it holds no key in the next one, where it is not built

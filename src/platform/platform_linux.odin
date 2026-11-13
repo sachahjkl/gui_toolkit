@@ -12,6 +12,7 @@ package platform
 // file hands them out with the same re-entrancy and drop-what-was-returned rules as Win32.
 
 import "core:os"
+import "core:thread"
 import "core:time"
 import "core:strings"
 import "core:sys/posix"
@@ -762,7 +763,16 @@ set_clipboard :: proc(w: ^Window, text: string) {
 
 // The accessibility "reduce animations" preference (org.freedesktop.appearance, read by theme_linux.odin): true when
 // the user has not asked to reduce them.
-os_animations_enabled :: proc() -> bool { return !reduce_motion_preferred() }
+// The first value is read by a thread of its own (the GTK settings file: the disk); the portal then says each change.
+@(private) animations_watched: bool
+
+@(private)
+animations_watch :: proc() {
+	if animations_watched { return }
+	animations_watched = true
+	color_scheme_watch()
+	thread.run(proc() { animations_set(!reduce_motion_preferred()) })
+}
 
 // What a notch of the wheel moves: the desktops have no one setting for it, so input_defaults' (three lines unless set).
 wheel_lines :: proc(across := false) -> f32 { return input_defaults().wheel_lines }

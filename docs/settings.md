@@ -19,7 +19,7 @@ names every standard preference.
 | `general.menu` | Program (`true`) | | `desktop.apply` |
 | `general.autostart` | Program (`false`) | | `desktop.apply` |
 | `general.messages` | `system` | `system`, `window`, `off` | `announce_mode`, `ui.Announcer` |
-| `general.language` | `system` | a language tag | the program, at the start (i18n to come) |
+| `general.language` | `system` | `system`, `en`, `fr` | `language_start`: at the start, then at once at each change |
 
 ## Appearance (`Appearance`)
 
@@ -53,14 +53,14 @@ names every standard preference.
 | `appearance.text.emoji_font` | "" | a font file | the program, at the start (`font.set_emoji_source`) |
 | `appearance.text.system_fallback` | `true` | | `font.Settings.system_fallback` |
 | `appearance.text.color_emoji` | `true` | | `font.Settings.color_glyphs` |
-| `appearance.text.subpixel` | `off` | `off`, `rgb`, `bgr` | `font.Settings.subpixel_text` |
+| `appearance.text.subpixel` | `auto` | `auto` (the system's: `font.system_subpixel_text`, read once by `standard_register`), `off`, `rgb`, `bgr` | `font.Settings.subpixel_text` |
 | `appearance.text.gamma` | 1.2 | 0.25 to 4 | `render.Text_Rendering.gamma` |
 | `appearance.text.contrast` | 0 | 0 to 1 | `render.Text_Rendering.contrast` |
 | `appearance.text.coverage_exponent` | 0.8 | 0.1 to 4 | `render.Text_Rendering.coverage_exponent` |
 | `appearance.text.curve` | `none` | `none`, `srgb`, `power` | Advanced; `render.Text_Rendering.curve` |
 | `appearance.text.blend_space` | `linear` | `linear`, `srgb` | Advanced; `render.set_blend_space` |
 | `appearance.text.subpixel_steps` | 4 | 1 to 4 | Advanced; `font.Settings.subpixel_steps` |
-| `appearance.text.grid_fit` | `default` | `default`, `enabled`, `disabled` | Advanced; `font.Settings.grid_fit` |
+| `appearance.text.grid_fit` | `auto` | `auto` (as the font asks), `enabled`, `disabled` | Advanced; `font.Settings.grid_fit` |
 | `appearance.text.renderer` | `atlas` (Windows only) | `atlas`, `slug` | Advanced; `font.Settings.text_renderer` |
 | `appearance.text.rendering` | `natural_symmetric` (Windows only) | `natural_symmetric`, `natural`, `gdi_classic`, `aliased` | Advanced; `font.Settings.rendering` |
 | `appearance.text.slug_tolerance` | 0.244 ‰ em | 0.015 to 15.6 ‰ em | Advanced; `font.Settings.slug_tolerance` |
@@ -75,7 +75,7 @@ names every standard preference.
 
 | Name | Default | Range, choices | Applied by |
 |---|---|---|---|
-| `scrolling.smooth` | `follow` | `follow`, `on`, `off` | `ui.set_smooth_scroll` |
+| `scrolling.smooth` | `on` | `follow` (as `appearance.animations`), `on`, `off` | `ui.set_smooth_scroll` |
 | `scrolling.duration` | 180 ms | 0 to 1000 ms | `ui.Scroll_Settings.duration_ms` |
 | `scrolling.wheel_lines` | 3 | 1 to 20 | `ui.Feel.wheel_lines` |
 | `scrolling.autohide_scrollbars` | `false` | | `ui.set_scrollbar_autohide` |
@@ -132,7 +132,7 @@ names every standard preference.
 |---|---|---|---|
 | `rendering.present` | `vsync` | `vsync`, `tearing` | `render.set_present_mode` |
 | `rendering.max_frame_latency` | 1 | 1 to 3 | `render.set_max_frame_latency` |
-| `rendering.partial_redraw` | `false` | | `host.Host.partial_redraw`, else `ui.set_partial_redraw` |
+| `rendering.partial_redraw` | `true` | | `host.Host.partial_redraw`, else `ui.set_partial_redraw` |
 | `rendering.blur_sigma_limit` | 8 px | 2 to 40 px | `render.set_blur_sigma_limit` |
 | `rendering.filter_precision` | `half` | `half`, `unorm8` | `render.set_filter_precision` |
 

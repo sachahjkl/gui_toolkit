@@ -28,8 +28,14 @@ palette_commands :: proc(prefs: ^config.Prefs, o: Page_Options, allocator := con
 	out := make([dynamic]ui.Command, allocator)
 	ns := make([dynamic]string, allocator)
 	for pg in pages_of(prefs, o) {
-		group := fmt.aprintf(i18n.tr("Settings · %s"), pg.title, allocator = allocator)
 		icon := pg.icon != "" ? pg.icon : lucide.SLIDERS_HORIZONTAL
+		// (a page of its own with tags is a command: chosen, `show` puts it up)
+		if pg.build != nil && pg.tags != nil {
+			append(&out, ui.Command{label = strings.clone(pg.title, allocator), group = i18n.tr("Settings"), icon = icon, tags = pg.tags})
+			append(&ns, pg.category)
+			continue
+		}
+		group := fmt.aprintf(i18n.tr("Settings · %s"), pg.title, allocator = allocator)
 		for name in page_names(prefs, pg) {
 			r := prefs.index[name]
 			d := prefs.entries[r].def
@@ -41,8 +47,17 @@ palette_commands :: proc(prefs: ^config.Prefs, o: Page_Options, allocator := con
 }
 
 // The page shows preference `name` alone: its search holds the name (in quotes: that one, not the others it begins), and
-// its page is the one under the search.
+// its page is the one under the search. `name` may also be a page's category (the command of a page of its own): that
+// page, the search cleared.
 show :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
+	// (a page's category, from its own command: the page, the search cleared)
+	for pg in pages_of(prefs, o) {
+		if pg.category != name { continue }
+		delete(p.current)
+		p.current = strings.clone(pg.category)
+		ui.line_edit_clear(&p.query)
+		return
+	}
 	for pg in pages_of(prefs, o) {
 		for n in page_names(prefs, pg) {
 			if n != name { continue }

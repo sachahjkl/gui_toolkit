@@ -39,7 +39,7 @@ what a check finds is downloaded and put in place at once. The phases:
 | `Checking` | the manifest and its signature are being fetched and checked (`check_release`) |
 | `Available` | a newer version, signed and checked: `install_now` installs it |
 | `Downloading` | the program is being downloaded (at most the manifest's size) and put in place (`place`) |
-| `Installed` | the new program is in place: it runs at the next start. The program restarts when it likes |
+| `Installed` | the new program is in place: it runs at the next start. The program restarts when it likes, with `setup.launch` once its window is closed (the new copy comes in front with the keyboard) |
 | `Managed` | the program runs from `/nix/store`: its package manager updates it, nothing is asked |
 
 `news(user)` is called on the updater's thread at each change, never after `updater_stop` returned: the program posts to its

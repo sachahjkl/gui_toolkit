@@ -14,6 +14,7 @@ unless `allocator` says otherwise.
 | `age(ms)` | how old something is, in its largest whole unit: "now" under a minute (or in the future), "3m", "2h", "5d", "1w" |
 | `clock(ms, offset_minutes, Clock_Options{hours12, seconds})` | the local time: "14:32"; `hours12`: "2:32 pm", "12:05 am"; `seconds`: "14:32:05" |
 | `date(ms, offset_minutes)` | the local date: "Nov 10" |
+| `moment(ms, now_ms, offset_minutes, Clock_Options, short)` | when it was, seen from now: "today 14:32", "yesterday 14:32", "Nov 10, 14:32", its year when not this one's ("Nov 10 2024, 14:32"); `short` (a line among others): "14:32", "yesterday", "Nov 10"; `now_ms` 0: date and time |
 | `local_day(ms, offset_minutes)` | days since 1970-01-01 on the local clock: two times are on the same day when their days are equal |
 
 The constants `MS_PER_S`, `SECS_PER_MINUTE`, `SECS_PER_HOUR`, `SECS_PER_DAY`, `SECS_PER_WEEK`, `MINUTES_PER_HOUR` and

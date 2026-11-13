@@ -33,6 +33,7 @@ import "../font"
 import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
+import host "../host"
 import shortcuts "../shortcuts"
 import "../ui"
 import update "../update"
@@ -47,6 +48,10 @@ Page_Info :: struct {
 	// a page of the program's own, with no preference (a server's state, a list it keeps): it builds the page under its
 	// title (a search does not look in it). `category` still names it (Page.current, show)
 	build:                 proc(user: rawptr, em: f32),
+	user:                  rawptr,     // what `build` is given (nil: Page_Options.user)
+	// other words the palette finds the page by: a page with `build` and tags is a command of palette_commands, which
+	// shows it (the toolkit's Installation and Diagnostics pages have theirs)
+	tags:                  []string,
 	// a heading above the page in the sidebar, which starts a group of pages ("CLIENT", "SERVER"; "": none)
 	heading:               string,
 }
@@ -106,6 +111,11 @@ Page_Options :: struct {
 	// service (shortcuts.hold)
 	shortcuts:      ^shortcuts.Service,
 	shortcut_prefs: []Shortcut_Pref,
+	// the toolkit's own pages, after the program's: the installation (install.odin: the state, Install, Repair,
+	// Uninstall) and the diagnostics of the window the settings are in (diagnostics.odin: its graphics adapter, its
+	// frame times, the versions, with a Copy button). nil: not shown
+	install:     ^Install,
+	diagnostics: ^host.Host,
 }
 
 // The page's state, kept by the program between frames (destroy). Keep it as long as the ui.State it is built in: the
@@ -133,6 +143,7 @@ Page :: struct {
 	state:        ^ui.State,
 	changed:      proc(user: rawptr, name: string),
 	user:         rawptr,
+	diagnostics:  Diagnostics_View,    // the Diagnostics page's (diagnostics.odin)
 }
 
 @(private)
@@ -151,6 +162,7 @@ destroy :: proc(p: ^Page) {
 	delete(p.fields)
 	for k in p.unfolded { delete(k) }
 	delete(p.unfolded)
+	diagnostics_destroy(&p.diagnostics)
 	delete(p.file_of)
 	delete(p.file_shown)
 	delete(p.note)
@@ -240,9 +252,29 @@ SIDEBAR_DEFS := [?]config.Def{
 		bounded = true, min = NAV_MIN_EM, max = NAV_MAX_EM, hidden = true},
 }
 
-// The pages of `o`, or each category of the registry by name.
+// The pages of `o`, or each category of the registry by name; then the toolkit's own (Page_Options.install, diagnostics).
+// `p`: the page being built (its Diagnostics page's state; nil for the palette).
 @(private)
-pages_of :: proc(prefs: ^config.Prefs, o: Page_Options) -> []Page_Info {
+pages_of :: proc(prefs: ^config.Prefs, o: Page_Options, p: ^Page = nil) -> []Page_Info {
+	out := program_pages_of(prefs, o)
+	if o.install == nil && o.diagnostics == nil { return out }
+	all := make([dynamic]Page_Info, 0, len(out) + 2, context.temp_allocator)
+	append(&all, ..out)
+	if o.install != nil {
+		pg := install_page_info(o.install)
+		pg.title = i18n.tr(pg.title)
+		append(&all, pg)
+	}
+	if o.diagnostics != nil {
+		pg := diagnostics_page_info(p)
+		pg.title = i18n.tr(pg.title)
+		append(&all, pg)
+	}
+	return all[:]
+}
+
+@(private = "file")
+program_pages_of :: proc(prefs: ^config.Prefs, o: Page_Options) -> []Page_Info {
 	if o.pages != nil {
 		// (a page with no preference in this registry is not shown: a program that registers some only on one system)
 		kept := make([dynamic]Page_Info, context.temp_allocator)
@@ -293,8 +325,9 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 	// (the sidebar's width is the page's own preference: registered at its first build)
 	if config.ref_of(prefs, SIDEBAR_PREF) == config.NO_REF { config.register(prefs, SIDEBAR_DEFS[:]) }
 	p.prefs, p.state, p.changed, p.user = prefs, ui.current_state(), o.changed, o.user
+	p.diagnostics.host, p.diagnostics.version = o.diagnostics, o.version
 	p.number_typed = false
-	pages := pages_of(prefs, o)
+	pages := pages_of(prefs, o, p)
 	if len(pages) == 0 { return }
 	cur := 0
 	for pg, i in pages { if pg.category == p.current { cur = i } }
@@ -307,15 +340,18 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 		icons := narrow && o.icon_font != 0
 		hi: f32 = NAV_MAX_EM
 		if total > 0 { hi = clamp(total / em * NAV_SHARE_MAX, NAV_MIN_EM, NAV_MAX_EM) }
+		// (as wide as its longest page title in the language in use, up to `hi`: past that a title wraps, never cut. The
+		// person's width is kept when it is wider; the handle does not go under it)
+		lo := clamp(nav_need_em(pages, o, em), NAV_MIN_EM, hi)
 		width := p.nav_moving ? p.nav_em : f32(config.float_of(prefs, SIDEBAR_PREF))
-		width = clamp(width, NAV_MIN_EM, hi)
+		width = clamp(width, lo, hi)
 		nav(p, pages, cur, o, icons, icons ? NAV_ICONS_EM : width, em)
 		if icons {
 			ui.next({width = ui.px(max(2, math.round(2 * ui.scale()))), height = ui.fill(), bg = ui.color("border")})
 			ui.build_box({.Draw_Background, .Groove}, "###prefs_div")
 		} else {
 			size := width
-			res := ui.splitter("###prefs_split", .X, &size, NAV_MIN_EM, hi, {default_size = NAV_EM, unit = em, flush = true})
+			res := ui.splitter("###prefs_split", .X, &size, lo, hi, {default_size = max(NAV_EM, lo), unit = em, flush = true})
 			if res.changed { p.nav_em = size; p.nav_moving = true }
 			if p.nav_moving && (res.finished || !res.dragging) {
 				p.nav_moving = false
@@ -347,7 +383,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 						pg := pages[cur]
 						if pg.build != nil {
 							page_title(pg.title, em)
-							pg.build(o.user, em)
+							pg.build(pg.user != nil ? pg.user : o.user, em)
 						} else {
 							names := page_names(prefs, pg)
 							if page_header(pg.title, page_changed(prefs, o, names), o, em) {
@@ -460,9 +496,9 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 					if i > 0 { ui.spacer(ui.px(em * 0.6)) }
 					ui.next({width = ui.fill(), height = ui.px(em * 1.5), axis = .X, cross = .Center})
 					if ui.row(id = fmt.tprintf("###nh%d", i)) {
-						ui.spacer(ui.px(em * 1.1))
+						ui.spacer(ui.px(em * NAV_HEADING_LEAD_EM))
 						if ui.tags("weak") {
-							ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.75), text_pad = 0})
+							ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * NAV_HEADING_SIZE), text_pad = 0})
 							ui.label(fmt.tprintf("%s###nhl%d", pg.heading, i))
 						}
 					}
@@ -471,7 +507,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 				}
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 				if ui.row(id = fmt.tprintf("###nv%d", i)) {
-					ui.spacer(ui.px(em * 0.7))
+					ui.spacer(ui.px(em * NAV_LEAD_EM))
 					shown := i == cur && !config.searching(&p.search)
 					glyph := o.icon_font != 0 ? pg.icon : ""
 					line := ui.Button_Options{face = shown ? .Toggled : .Ghost, width = ui.fill(), height = math.round(em * NAV_LINE_HEIGHT_EM), left = true, icon_font = o.icon_font}
@@ -480,7 +516,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 						p.current = strings.clone(pg.category)
 						ui.line_edit_set(&p.query, "")   // (a page chosen: the search is done)
 					}
-					ui.spacer(ui.px(em * 0.9))
+					ui.spacer(ui.px(em * NAV_TRAIL_EM))
 				}
 				ui.spacer(ui.px(em * 0.2))
 			}
@@ -500,8 +536,27 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 	}
 }
 
-// A line of the sidebar: as tall as this many font sizes.
+// A line of the sidebar: as tall as this many font sizes (at least: a title that wraps makes it taller).
 @(private = "file") NAV_LINE_HEIGHT_EM :: 2.1
+// The sidebar's room beside a page's button: before it, after it (nav's spacers), and before a heading.
+@(private = "file") NAV_LEAD_EM :: 0.7
+@(private = "file") NAV_TRAIL_EM :: 0.9
+@(private = "file") NAV_HEADING_LEAD_EM :: 1.1
+@(private = "file") NAV_HEADING_SIZE :: 0.75
+
+// The width, in ems, the sidebar needs to show each page's title and each heading on one line: its pages' buttons as
+// button_width measures them, the sidebar's room beside them.
+@(private = "file")
+nav_need_em :: proc(pages: []Page_Info, o: Page_Options, em: f32) -> f32 {
+	need: f32
+	for pg in pages {
+		need = max(need, em * (NAV_LEAD_EM + NAV_TRAIL_EM) + ui.button_width(pg.title, o.icon_font != 0 && pg.icon != ""))
+		if pg.heading != "" {
+			need = max(need, em * NAV_HEADING_LEAD_EM + ui.text_width(ui.top_style().font, math.round(em * NAV_HEADING_SIZE), pg.heading))
+		}
+	}
+	return math.ceil(need) / em
+}
 
 // The sidebar's foot: the settings file (a click opens it), Export and Import, and what the last of them did.
 @(private = "file")

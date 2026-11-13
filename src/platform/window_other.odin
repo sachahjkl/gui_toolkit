@@ -109,7 +109,7 @@ set_clipboard :: proc(w: ^Window, text: string) {}
 // toolkit's wheel step.
 dark_mode_preferred :: proc(loc := #caller_location) -> bool { return false }
 @(private) color_scheme_watch :: proc() {}
-os_animations_enabled :: proc() -> bool { return true }
+@(private) animations_watch :: proc() {}   // (no system choice here: animations on)
 wheel_lines :: proc(across := false) -> f32 { return input_defaults().wheel_lines }
 
 // No icon, no launcher token, no font folder is known here.

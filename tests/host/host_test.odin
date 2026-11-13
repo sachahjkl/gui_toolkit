@@ -316,3 +316,24 @@ a_close_asked_leaves_the_window_to_the_program :: proc(t: ^testing.T) {
 	step(h)
 	testing.expect(t, p.builds > built, "its frames go on")
 }
+
+// The ring keeps the last FRAME_RING pictures and says their median and 95th percentile; the share of pixels drawn counts
+// only the pictures drawn with partial redraw on.
+@(test)
+the_frame_ring_says_its_percentiles :: proc(t: ^testing.T) {
+	ring: host.Frame_Ring
+	testing.expect_value(t, host.frame_stats(&ring).frames, 0)
+	for i in 0 ..< host.FRAME_RING + 28 {
+		// (the first 28 are overwritten: their 1000 ms never shows)
+		ms := f32(i < 28 ? 1000 : i - 28)
+		ring.slots[ring.count % host.FRAME_RING] = {build_ms = ms, draw_ms = 1, px_drawn = 25, px_window = 100}
+		ring.count += 1
+	}
+	s := host.frame_stats(&ring)
+	testing.expect_value(t, s.frames, host.FRAME_RING)
+	testing.expect_value(t, s.build_p50, f32(host.FRAME_RING / 2))
+	testing.expect(t, s.build_p95 < 1000, "an overwritten picture still counts")
+	testing.expect_value(t, s.draw_p95, f32(1))
+	testing.expect_value(t, s.total_p50, f32(host.FRAME_RING / 2 + 1))
+	testing.expect_value(t, s.drawn_share, f32(0.25))
+}

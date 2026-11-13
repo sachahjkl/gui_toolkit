@@ -17,6 +17,42 @@ fr hors limites
 en not one of the allowed values
 fr pas une des valeurs permises
 
+en %s did not close normally last time: the system or another program ended it.
+fr %s ne s'est pas fermé normalement la dernière fois : le système ou un autre programme l'a arrêté.
+
+en %s ended unexpectedly last time.
+fr %s s'est arrêté de façon inattendue la dernière fois.
+
+en %s stopped unexpectedly last time (%s).
+fr %s s'est arrêté de façon inattendue la dernière fois (%s).
+
+en %s stopped unexpectedly last time.
+fr %s s'est arrêté de façon inattendue la dernière fois.
+
+en %s %s stopped unexpectedly
+fr %s %s s'est arrêté de façon inattendue
+
+en %s stopped unexpectedly
+fr %s s'est arrêté de façon inattendue
+
+en Open the report
+fr Ouvrir le rapport
+
+en Copied
+fr Copié
+
+en Copy
+fr Copier
+
+en Report on GitHub
+fr Signaler sur GitHub
+
+en Opens a new issue with the report in it; the whole report is also put on the clipboard
+fr Ouvre un nouveau ticket avec le rapport ; le rapport entier est aussi copié dans le presse-papiers
+
+en Dismiss
+fr Fermer
+
 en ok
 fr ok
 
@@ -176,6 +212,72 @@ fr Tous les fichiers
 en All files (*.*)
 fr Tous les fichiers (*.*)
 
+en Diagnostics
+fr Diagnostics
+
+en The frames are drawn by a software rasterizer, not the graphics card: everything is slower. Updating the graphics driver usually brings the card back.
+fr Les images sont dessinées par un rendu logiciel, pas par la carte graphique : tout est plus lent. Mettre à jour le pilote graphique ramène en général la carte.
+
+en Program
+fr Programme
+
+en Toolkit
+fr Boîte à outils
+
+en System
+fr Système
+
+en Graphics adapter
+fr Carte graphique
+
+en %s (software rasterizer)
+fr %s (rendu logiciel)
+
+en Graphics API
+fr API graphique
+
+en Window
+fr Fenêtre
+
+en %d × %d pixels, scale %.2f
+fr %d × %d pixels, échelle %.2f
+
+en Frames
+fr Images
+
+en none drawn yet
+fr aucune dessinée pour l'instant
+
+en the last %d: median %.1f ms, 95th percentile %.1f ms
+fr les %d dernières : médiane %.1f ms, 95e centile %.1f ms
+
+en Build
+fr Construction
+
+en median %.1f ms, 95th percentile %.1f ms
+fr médiane %.1f ms, 95e centile %.1f ms
+
+en Draw
+fr Dessin
+
+en Partial redraw
+fr Redessin partiel
+
+en on: %.0f %% of the pixels drawn
+fr activé : %.0f %% des pixels dessinés
+
+en on
+fr activé
+
+en off
+fr désactivé
+
+en Installation
+fr Installation
+
+en Settings
+fr Réglages
+
 en Settings · %s
 fr Réglages · %s
 
@@ -280,12 +382,6 @@ fr Messages
 
 en Where %[0]s says what it did (copied, saved, deleted). System: the system's notifications, or %[0]s's window where the system has none. Window: only in %[0]s's window. Off: nowhere; a failure is always said.
 fr Là où %[0]s dit ce qu'il a fait (copié, enregistré, supprimé). Système : les notifications du système, ou la fenêtre de %[0]s si le système n'en a pas. Fenêtre : seulement dans la fenêtre de %[0]s. Non : nulle part ; un échec est toujours signalé.
-
-en System
-fr Système
-
-en Window
-fr Fenêtre
 
 en Off
 fr Non
@@ -461,8 +557,11 @@ fr Les emoji et les autres glyphes en couleur, dans leurs couleurs. Non : leur c
 en Subpixel text
 fr Texte sous-pixel
 
-en Text smoothed per colour stripe of the screen's pixels, in their order (rgb or bgr): sharper at small sizes on a screen with stripes. Off: grey smoothing, right on every screen.
-fr Le texte lissé par bande de couleur des pixels de l'écran, dans leur ordre (rgb ou bgr) : plus net aux petites tailles sur un écran à bandes. Non : un lissage en gris, juste sur tout écran.
+en Text smoothed per colour stripe of the screen's pixels, in their order (RGB or BGR): sharper at small sizes on a screen with stripes. Off: grey smoothing, right on every screen. Auto: as the system smooths its own text, read at the start.
+fr Le texte lissé par bande de couleur des pixels de l'écran, dans leur ordre (RGB ou BGR) : plus net aux petites tailles sur un écran à bandes. Non : un lissage en gris, juste sur tout écran. Auto : comme le système lisse son propre texte, lu au démarrage.
+
+en Auto
+fr Auto
 
 en Gamma
 fr Gamma
@@ -485,8 +584,8 @@ fr L'exposant appliqué à la couverture de chaque pixel : en dessous de 1, le t
 en Blending curve
 fr Courbe de mélange
 
-en How a letter's colour meets its background. None: as the blending space does. Srgb: in linear light, as Chromium on Windows. Power: through the gamma above, as Chromium on Linux.
-fr La rencontre de la couleur d'une lettre et de son fond. Aucune : comme le fait l'espace de mélange. Srgb : en lumière linéaire, comme Chromium sous Windows. Puissance : par le gamma ci-dessus, comme Chromium sous Linux.
+en How a letter's colour meets its background. None: as the blending space does. sRGB: in linear light, as Chromium on Windows. Power: through the gamma above, as Chromium on Linux.
+fr La rencontre de la couleur d'une lettre et de son fond. Aucune : comme le fait l'espace de mélange. sRGB : en lumière linéaire, comme Chromium sous Windows. Puissance : par le gamma ci-dessus, comme Chromium sous Linux.
 
 en None
 fr Aucune
@@ -512,17 +611,8 @@ fr Les positions d'une lettre dans un pixel. 1 : pixels entiers, plus net, avec 
 en Grid fitting
 fr Calage sur la grille
 
-en Whether outlines are fitted to the pixel grid: crisper stems, shapes a little off. Default: as the font asks.
-fr Si les contours sont calés sur la grille des pixels : des fûts plus nets, des formes un peu faussées. Par défaut : comme le demande la police.
-
-en Default
-fr Par défaut
-
-en Enabled
-fr Activé
-
-en Disabled
-fr Désactivé
+en Whether outlines are fitted to the pixel grid: crisper stems, shapes a little off. Auto: as the font asks.
+fr Si les contours sont calés sur la grille des pixels : des fûts plus nets, des formes un peu faussées. Auto : comme le demande la police.
 
 en Text renderer
 fr Rendu du texte
@@ -839,9 +929,6 @@ fr Images en file
 en The pictures that may wait for the screen. 1: the least delay from a key to the screen; more: steadier under load.
 fr Les images qui peuvent attendre l'écran. 1 : le moins de délai d'une touche à l'écran ; plus : plus régulier sous la charge.
 
-en Partial redraw
-fr Redessin partiel
-
 en Each picture redraws only what changed in the interface.
 fr Chaque image ne redessine que ce qui a changé dans l'interface.
 
@@ -854,8 +941,14 @@ fr Un flou plus large que cette limite est calculé sur une image plus petite : 
 en Filter precision
 fr Précision des filtres
 
-en The pictures of filters (blurs, shadows) in 16-bit floats (half), or in 8 bits (unorm8): half the memory, a little banding.
-fr Les images des filtres (flous, ombres) en flottants de 16 bits (half), ou en 8 bits (unorm8) : moitié moins de mémoire, un peu d'effet de bandes.
+en The pictures of filters (blurs, shadows) in 16-bit floats, or in 8 bits: half the memory, a little banding.
+fr Les images des filtres (flous, ombres) en flottants de 16 bits, ou en 8 bits : moitié moins de mémoire, un peu d'effet de bandes.
+
+en 16-bit floats
+fr Flottants 16 bits
+
+en 8 bits
+fr 8 bits
 
 en The file could not be written.
 fr Le fichier n'a pas pu être écrit.
@@ -975,9 +1068,6 @@ fr Mettre à jour les raccourcis
 en Install
 fr Installer
 
-en %s does not start
-fr %s ne démarre pas
-
 en %s Setup
 fr Installation de %s
 
@@ -1065,9 +1155,6 @@ fr En cours…
 en Copy %s
 fr Copier %s
 
-en Copied
-fr Copié
-
 en Click again to remove
 fr Cliquez encore pour supprimer
 
@@ -1091,6 +1178,27 @@ fr Garder autonome
 
 en Open the installed copy
 fr Ouvrir la copie installée
+
+en Version installed
+fr Version installée
+
+en %s (the installed copy)
+fr %s (la copie installée)
+
+en This copy
+fr Cette copie
+
+en yes
+fr oui
+
+en With the session
+fr Avec la session
+
+en On the PATH
+fr Dans le PATH
+
+en yes (with its console launcher)
+fr oui (avec son lanceur de console)
 
 en the install folder is unknown
 fr le dossier d'installation est inconnu
@@ -1206,6 +1314,22 @@ fr déc.
 ctx date
 en %s %d
 fr %[1]d %[0]s
+
+en today %s
+fr aujourd'hui %s
+
+en yesterday
+fr hier
+
+en yesterday %s
+fr hier %s
+
+ctx date and year
+en %s %d
+fr %s %d
+
+en %s, %s
+fr %s, %s
 
 en KB
 fr Ko
@@ -1411,9 +1535,6 @@ fr Rétablir
 en Cut
 fr Couper
 
-en Copy
-fr Copier
-
 en Paste
 fr Coller
 
@@ -1436,12 +1557,6 @@ fr Afficher le mot de passe
 en Clear
 fr Effacer
 
-en Filter
-fr Filtrer
-
-en Marks
-fr Repères
-
 en Graph
 fr Graphe
 
@@ -1462,9 +1577,6 @@ fr Afficher %s
 
 en Hide %s
 fr Masquer %s
-
-en Auto
-fr Auto
 
 en At the side
 fr Sur le côté
@@ -1502,6 +1614,12 @@ fr Taille réelle
 en QR code: %s
 fr Code QR : %s
 
+en Filter
+fr Filtrer
+
+en Marks
+fr Repères
+
 en Type to search
 fr Tapez pour chercher
 
@@ -1516,6 +1634,9 @@ fr Colonnes
 
 en Default columns
 fr Colonnes par défaut
+
+en More tools
+fr Plus d'outils
 
 ctx window
 en Minimize

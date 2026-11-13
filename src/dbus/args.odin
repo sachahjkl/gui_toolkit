@@ -29,7 +29,7 @@ read_variant_u32_nested :: proc(r: ^Reader) -> u32 {
 	vs := r_variant_sig(r)
 	for vs == "v" { vs = r_variant_sig(r) }
 	switch vs {
-	case "u", "i": return r_u32(r)
+	case "u", "i", "b": return r_u32(r)   // (a boolean is marshalled as a u32)
 	case "y":      return u32(r_u8(r))
 	case "q", "n": return u32(r_u16(r))
 	case "t", "x": return u32(r_u64(r))

@@ -58,13 +58,12 @@ entries := [?]Entry{
 	{"danger_button background", .Bad_Soft, 1}, {"danger_button text", .Bad_Ink, 1}, {"danger_button border", .Bad_Soft, 1},
 	{"success_button background", .Good_Soft, 1}, {"success_button text", .Good_Ink, 1}, {"success_button border", .Good_Soft, 1},
 	{"info_button background", .Info_Soft, 1}, {"info_button text", .Info_Ink, 1}, {"info_button border", .Info_Soft, 1},
-	{"cancel_button background", .Bad_Soft, 1}, {"cancel_button text", .Bad_Ink, 1}, {"cancel_button border", .Bad_Soft, 1},
 	// a button whose action is undone with care, not lost (end a task, stop a service): amber, dark text on it
 	{"warn_button background", .Warn_Soft, 1}, {"warn_button text", .Warn_Ink, 1}, {"warn_button border", .Warn_Soft, 1},
 	{"ghost_button background", .Panel, 0}, {"ghost_button border", .Panel, 0}, {"ghost_button sheen", .White, 0},
 	{"icon_button background", .Panel, 0}, {"icon_button sheen", .White, 0},
 	{"accent_button sheen", .White, 1}, {"danger_button sheen", .White, 1}, {"warn_button sheen", .White, 1},
-	{"success_button sheen", .White, 1}, {"info_button sheen", .White, 1}, {"cancel_button sheen", .White, 1},
+	{"success_button sheen", .White, 1}, {"info_button sheen", .White, 1},
 	{"button background", .Panel2, 1}, {"button border", .Border, 1}, {"button sheen", .White, 1},
 	// a segmented control's labels: half sit on the sliding pill, half on the track; an engraving (lit below on the pill,
 	// shadowed above on the track) set them a pixel apart to the eye
@@ -113,7 +112,6 @@ state_entries := [?]Entry{
 	{"warn_button hover_fill", .Hover, 0.10}, {"warn_button press_fill", .Hover, 0.18},
 	{"success_button hover_fill", .Hover, 0.10}, {"success_button press_fill", .Hover, 0.18},
 	{"info_button hover_fill", .Hover, 0.10}, {"info_button press_fill", .Hover, 0.18},
-	{"cancel_button hover_fill", .Hover, 0.10}, {"cancel_button press_fill", .Hover, 0.18},
 	{"ghost_button hover_fill", .Hover, 0.08}, {"ghost_button press_fill", .Hover, 0.14},
 	{"icon_button hover_fill", .Hover, 0.08}, {"icon_button press_fill", .Hover, 0.14},
 	{"segment hover_fill", .Hover, 0.07}, {"segment press_fill", .Hover, 0.12},

@@ -55,6 +55,22 @@ a_date_and_its_day_follow_the_offset :: proc(t: ^testing.T) {
 	testing.expect_value(t, local_day(at, 13 * 60), local_day(at, 0) + 1)
 }
 
+// A moment as a list says it: today and yesterday by their names, then the date, the year when it is not this one's.
+@(test)
+a_moment_reads_from_now :: proc(t: ^testing.T) {
+	now := 1794309600000.0   // (2026-11-10 11:20 UTC)
+	testing.expect_value(t, moment(now - 3_600_000, now, 0), "today 10:20")
+	testing.expect_value(t, moment(now - 3_600_000, now, 0, short = true), "10:20")
+	testing.expect_value(t, moment(now - DAY_MS, now, 0), "yesterday 11:20")
+	testing.expect_value(t, moment(now - DAY_MS, now, 0, short = true), "yesterday")
+	testing.expect_value(t, moment(now - 3 * DAY_MS, now, 0), "Nov 7, 11:20")
+	testing.expect_value(t, moment(now - 3 * DAY_MS, now, 0, short = true), "Nov 7")
+	testing.expect_value(t, moment(now - 365 * DAY_MS, now, 0, short = true), "Nov 10 2025")
+	testing.expect_value(t, moment(now, 0, 0), "Nov 10, 11:20")
+	// (yesterday on the local clock, though less than a day ago)
+	testing.expect_value(t, moment(now - 12 * 3_600_000, now, 0, short = true), "yesterday")
+}
+
 @(test)
 a_size_reads_in_powers_of_1024 :: proc(t: ^testing.T) {
 	testing.expect_value(t, size(512), "512 B")

@@ -27,9 +27,9 @@ Cli_Mode :: enum u8 { None, Install, Remove, Status, Uninstall }
 // Exit code of an uninstall that is done but left files in use, deleted when this process ends.
 CLI_UNINSTALL_LATER :: 5
 
-// Takes the identity's flag out of the arguments (its own form `<flag>=mode` or the two-word form, and the shorthands
-// `--uninstall` / `--install` for the two actions a user runs by hand). `bad` is the value when it names no mode (the
-// caller says so and exits). An identity without a flag takes nothing out.
+// Takes the identity's flag out of the arguments (its own form `<flag>=mode` or the two-word form). `bad` is the value
+// when it names no mode (the caller says so and exits). An identity without a flag takes nothing out. The options a user
+// types, --install and --uninstall, are gt:setup's (setup.command_of): they install the copy, not only its integration.
 parse_cli :: proc(id: Identity, args: []string, allocator := context.temp_allocator) -> (mode: Cli_Mode, rest: [dynamic]string, bad: string) {
 	rest = make([dynamic]string, allocator)
 	flag := id.cli_flag
@@ -38,8 +38,6 @@ parse_cli :: proc(id: Identity, args: []string, allocator := context.temp_alloca
 		value := ""
 		switch {
 		case flag == "": append(&rest, a); continue
-		case a == "--uninstall": mode = .Uninstall; continue
-		case a == "--install":   mode = .Install; continue
 		case a == flag && i + 1 < len(args): value = args[i + 1]; i += 1
 		case len(a) > len(flag) && strings.has_prefix(a, flag) && a[len(flag)] == '=': value = a[len(flag) + 1:]
 		case: append(&rest, a); continue

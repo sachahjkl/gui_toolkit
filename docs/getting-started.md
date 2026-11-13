@@ -58,6 +58,11 @@ for !platform.is_closed(app.main.win) {
 host.host_close(&app.main)
 ```
 
+Each host keeps the times of its last pictures (`Host.frames`, `host.FRAME_RING` of them, in every build: a few stores a
+frame, no allocation): the interface's builds and the draw up to the present, and with partial redraw on the pixels drawn.
+`host.frame_stats(&h.frames)` gives their median and 95th percentile and the share of pixels drawn; it sorts at most
+`FRAME_RING` numbers, so call it when they are shown (the settings' Diagnostics page does, once a second).
+
 `build :: proc(h: ^host.Host, size: host.Vec2)` holds the widgets (`h.user` is the `app` given to `host_open`). What it does
 for you, in order:
 
@@ -86,7 +91,8 @@ reads it with `poll_events`); the first frame after the show makes the renderer'
 what every box draws with the last frame and redraws only where something changed (a hover, a caret, an animation, a toast).
 An idle frame redraws nothing; the window shows the same pixels as with whole frames. A program that makes its frames by hand
 calls `ui.set_partial_redraw(&state, true)` before `ui.draw_tree`; `ui.damage_stats(&state)` says what the last frame
-redrew. How it works and what makes a frame whole: docs/draw.md "Automatic damage".
+redrew. How it works and what makes a frame whole: docs/draw.md "Automatic damage". A program with the standard settings
+needs nothing: `rendering.partial_redraw` is on by default, and `prefs_page.standard_watch` sets the flag it is given.
 
 **A window that resizes without stretching.** An ordinary swap chain (`open_window` and `init_window` with their defaults)
 is scaled to the window by the system: while the window is resized, the last frame is shown stretched until one of the new

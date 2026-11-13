@@ -76,6 +76,29 @@ date :: proc(ms: f64, offset_minutes: int, allocator := context.temp_allocator) 
 	return fmt.aprintf(i18n.tr("date", "%s %d"), months[int(month) - 1], d, allocator = allocator)
 }
 
+// When `ms` was, seen at `now_ms`, on the local clock: "today 14:32", "yesterday 14:32", "Nov 10, 14:32", and its year
+// when it is not this one's ("Nov 10 2024, 14:32"). `short` (a line among others): "14:32" today, "yesterday", "Nov 10",
+// "Nov 10 2024". `now_ms` 0 (not known): its date and its time. In the language in use.
+moment :: proc(ms, now_ms: f64, offset_minutes: int, o := Clock_Options{}, short := false, allocator := context.temp_allocator) -> string {
+	at := clock(ms, offset_minutes, o, context.temp_allocator)
+	day := local_day(ms, offset_minutes)
+	if now_ms > 0 {
+		switch local_day(now_ms, offset_minutes) - day {
+		case 0: return short ? fmt.aprint(at, allocator = allocator) : fmt.aprintf(i18n.tr("today %s"), at, allocator = allocator)
+		case 1: return short ? fmt.aprint(i18n.tr("yesterday"), allocator = allocator) : fmt.aprintf(i18n.tr("yesterday %s"), at, allocator = allocator)
+		}
+	}
+	d := date(ms, offset_minutes, context.temp_allocator)
+	year :: proc(ms: f64, offset_minutes: int) -> int {
+		y, _, _ := time.date(time.unix(0, i64((ms + f64(offset_minutes) * SECS_PER_MINUTE * MS_PER_S) * 1e6)))
+		return y
+	}
+	if now_ms > 0 && year(ms, offset_minutes) != year(now_ms, offset_minutes) {
+		d = fmt.tprintf(i18n.tr("date and year", "%s %d"), d, year(ms, offset_minutes))
+	}
+	return short ? fmt.aprint(d, allocator = allocator) : fmt.aprintf(i18n.tr("%s, %s"), d, at, allocator = allocator)
+}
+
 // The local day of `ms`: days since 1970-01-01 on the local clock. Two times are on the same day when their days are equal.
 local_day :: proc(ms: f64, offset_minutes: int) -> int {
 	return int(math.floor((ms / (SECS_PER_MINUTE * MS_PER_S) + f64(offset_minutes)) / MINUTES_PER_DAY))

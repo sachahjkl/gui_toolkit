@@ -211,7 +211,7 @@ Palette_Key :: struct {
 	first:          int,
 	memory:         ^Choice_Memory,
 	memory_version: u64,
-	language:       ^i18n.Language,
+	language:       u32,   // i18n.version
 }
 
 // A command's line: its index, the headings down to it (to place it), whether a heading is just above it (the recent
@@ -552,7 +552,7 @@ heading_lines_band :: proc(lines: []$T, view: ^Box, row_h, heading_h: f32) -> (f
 palette_keep :: proc(p: ^Command_Palette, commands: []Command, query: string, o: Palette_Options) {
 	key := Palette_Key{
 		valid = true, count = len(commands), version = o.version, first = -1,
-		memory = o.memory, language = i18n.current(),
+		memory = o.memory, language = i18n.version(),
 	}
 	if o.version == 0 { key.commands, key.names = raw_data(commands), raw_data(o.names) }
 	if f, ok := o.first.?; ok { key.first = f }

@@ -27,18 +27,21 @@ for decides how it is laid out:
 
 `Button_Options`:
 
-- **`intent`** (`Intent`: Neutral, Primary, Info, Success, Warning, Danger, Cancel): what the act means, and so its
-  colour, the soft pair of its hue (`soft_pair`: a tinted fill, its words of the same hue), the same in every theme.
+- **`intent`** (`Intent`: Neutral, Primary, Info, Success, Warning, Danger): what the act means, and so its
+  colour (a Cancel is Neutral: giving up is never coloured as a danger), the soft pair of its hue (`soft_pair`: a tinted fill, its words of the same hue), the same in every theme.
 - **`face`** (`Maybe(Button_Face)`): how it sits. nil: `.Raised`, a glyph alone `.Ghost`. `.Raised`: a face of its own
   (bevelled by the machined finish). `.Ghost`: no face until the pointer is over it, a tool among many; an intent then
   colours its words. `.Toggled`: held down, the option chosen (the box flag `.Held`; a screen reader reads it pressed).
   `.Link`: no face at all, words that say what can be done and do it; an intent colours them, a little quieter away
   from the pointer.
-- **`width`** (`{}`: as wide as what is in it; `fill()` a share of the row; `px(...)` its own) and **`height`** (of one
-  line, in pixels; 0: the toolkit's). They win over what `next` says.
+- **`width`** (`{}`: as wide as what is in it; `fill()` a share of the row; `px(...)` its least) and **`height`** (of one
+  line, in pixels, its least; 0: the toolkit's). They win over what `next` says. A button's words are never cut: a width
+  or a height in pixels (from `o` or `next`) is a least, the button growing to its words on one line; given less room
+  than that (a share of a narrow row, a dialog, a column), its words wrap onto more lines, its padding kept, and it grows
+  taller. A height that is a share of the parent's (`pct`) stays that. `button_width(text, glyph)` is the width a button
+  takes on one line in the style in use: what a column of buttons measures to be as wide as its longest.
 - **`left`**: what is in a row wider than it at its left, whatever the style's `text_align`.
 - **`quiet`**: a secondary act, smaller; a Neutral one's words weak until the pointer is over it.
-- **`wrap`**: words longer than its width go on more lines; the button grows to hold them.
 - **`disabled`**: shown faded, takes no press and no focus.
 - **`lit`**: drawn as under the pointer while what it opened is open (a menu). The box flag `.Lit`.
 - **`tip`**: a tooltip once the pointer rests on it for `Feel.tooltip_delay_ms`; its description for a screen reader,
@@ -68,7 +71,7 @@ if ui.button("restore", "Restore the defaults", o = {face = .Link}).clicked { re
 `State.icon_font`; `widget_icons()` for the toolkit's own marks, the `ICON_` characters).
 
 The theme's tags of the buttons are named by the intent (`intent_tag`: `accent_button`, `info_button`,
-`success_button`, `warn_button`, `danger_button`, `cancel_button`) and by the ghost face (`ghost_button`;
+`success_button`, `warn_button`, `danger_button`) and by the ghost face (`ghost_button`;
 `icon_button` for a glyph alone): a theme gives them their colours (themes.md, "Button variants"); a program says
 `intent =` and `face =`, not the tags.
 
@@ -105,6 +108,18 @@ if res.committed { open_hit(app) }
 
 `ui.top_strip_draw` is the band's drawing, as a box's custom draw: a dialog's header uses it too, with a colour of its own.
 
+### Words wrap rather than spill
+
+A row whose children are wider together than it, once what may shrink did (its `fill()` spacers and shares, what has a
+strictness under 1), does not let them spill past its edge to be cut: the words of a `.Text_Wrap` box of a text width
+(a button's) wrap onto more lines (`wrap_room`: down to `WRAP_LEAST_EM` of its font size), and the box holding them grows
+taller. The same in a column narrower than a child, and in a `.Wrap` row (`flow`) for an item wider than the row on its
+own. A box that scrolls or lets its children overflow gives nothing: they fit already. `natural_width(b)` is the width a
+box asks for before any layout (its words on one line, its children's): what a dialog and a popover measure to grow to
+what is in them.
+
+`flow(gap, id, align)`: `align` is where each line goes (`.End`: at the right, as a dialog's buttons).
+
 ### Scroll views in scroll views
 
 Two views that scroll the same way, one in the other, show one bar on that axis: the innermost's. A box that scrolls along
@@ -112,6 +127,27 @@ an axis (`View_Scroll_X`, `View_Scroll_Y`) gives up its size along it when the r
 whatever its strictness: it scrolls to what it hides. In a view that scrolls the same way and lets its children overflow
 (`Allow_Overflow_X`, `Allow_Overflow_Y`), it is held to that view's room. A wide table in a page that scrolls sideways
 scrolls in its own box, and the page does not scroll for it.
+
+## Tool bars (`src/ui/toolbar.odin`)
+
+`if ui.toolbar(id) { ... }` is a bar of groups (`next` gives its size). `if ui.toolbar_group(id, o) { ... }` is one group,
+built by the caller's code as anywhere else. When the groups do not fit, the bar folds them, the lowest `o.priority`
+first (of two alike, the later one), until the rest fits with a "…" button; a group with `o.pinned` never folds (the
+bar's end buttons). `o.separator` draws a line before the group in the bar. The "…" button stands before the first
+pinned group; a click opens a panel under it where each folded group is a row, built by the same code: what is in it
+works there as in the bar. A press outside the panel, or Escape, closes it; `ui.toolbar_menu_open(id)` says whether it
+is open (a program's own Escape waits). A group's width is measured where it is built (`natural_width`) and kept.
+
+```odin
+ui.next({width = ui.fill(), height = ui.px(bar_h)})
+if ui.toolbar("editor_bar") {
+    if ui.toolbar_group("tools", {priority = 2}) { ... }
+    if ui.toolbar_group("props", {separator = true}) { ... }   // folds first
+    ui.spacer(ui.fill())
+    if ui.toolbar_group("acts", {priority = 1}) { ... }
+    if ui.toolbar_group("end", {pinned = true}) { ... }        // Cancel, Done: always shown
+}
+```
 
 ## Numbers
 

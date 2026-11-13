@@ -57,3 +57,22 @@ a_start_offers_the_dialog_when_there_is_something_to_do :: proc(t: ^testing.T) {
 	testing.expect(t, !wanted({state = .Not_Installed, from_nix = true}, "0.2.0", ""), "a copy of the Nix store")
 	testing.expect(t, !wanted({state = .Nix_Package}, "0.2.0", ""))
 }
+
+// The install's options come out of the arguments, the others stay in their order; the last one given wins.
+@(test)
+the_command_line_of_the_install :: proc(t: ^testing.T) {
+	c, rest := command_of({"--install"})
+	testing.expect_value(t, c, Command.Install)
+	testing.expect_value(t, len(rest), 0)
+	c, rest = command_of({"a.txt", "--uninstall", "--hidden"})
+	testing.expect_value(t, c, Command.Uninstall)
+	testing.expect_value(t, len(rest), 2)
+	testing.expect_value(t, rest[0], "a.txt")
+	testing.expect_value(t, rest[1], "--hidden")
+	c, rest = command_of({"--setup"})
+	testing.expect_value(t, c, Command.Setup)
+	c, rest = command_of({"--installer", "install"})
+	testing.expect_value(t, c, Command.None)   // (a word, or an option that only begins like one, is not it)
+	testing.expect_value(t, len(rest), 2)
+	testing.expect_value(t, command_run(.None, {}, nil), COMMAND_DONE)
+}

@@ -71,6 +71,8 @@ Facts :: struct {
 	start_lnk:  bool,     // the applications menu's launcher, running the installed copy
 	desk_lnk:   bool,     // the Desktop's shortcut
 	record:     bool,     // the system's record (Settings > Apps; the icons on Linux)
+	autostart:  bool,     // the program starts with the user's session (Setup_Options.prepare asked it)
+	on_path:    bool,     // the program is on the user's PATH (Windows: its folder and the console launcher <name>.com)
 	manifest:   bool,     // the install folder has the manifest
 	missing:    int,      // files the manifest names that are not there
 	version:    string,   // of the installed copy, from its manifest
@@ -133,6 +135,8 @@ facts :: proc(o: Setup_Options, choices: []bool = nil, loc := #caller_location) 
 	f.start_lnk = launcher.present && !launcher.stale && !launcher.partial
 	shortcut := s.parts[.Desktop_Shortcut]
 	f.desk_lnk = shortcut.present && !shortcut.stale
+	f.autostart = s.parts[.Autostart].present && !s.parts[.Autostart].stale
+	f.on_path = s.parts[.Path].present && !s.parts[.Path].stale
 	when ODIN_OS == .Windows {
 		f.record = recorded
 	} else {
@@ -211,13 +215,18 @@ remove_later :: proc(o: Setup_Options, files: []string) -> bool {
 	return desktop.cleanup_later(&integration, files, integration.install_dir, desktop.current_process_id())
 }
 
-// Starts the installed copy (after an install from a downloaded copy).
+// Starts the installed copy (after an install from a downloaded copy, after an update, on Restart). The new process may
+// take the foreground: its first window comes in front of the others with the keyboard, as the one it replaces was.
 launch :: proc(exe: string, args: []string = nil) -> bool {
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, exe)
 	append(&cmd, ..args)
-	_, err := os.process_start({command = cmd[:], working_dir = filepath.dir(exe)})
-	return err == nil
+	p, err := os.process_start({command = cmd[:], working_dir = filepath.dir(exe)})
+	if err != nil { return false }
+	// (Windows: this process had the user's last input, the click on Restart, but its window is gone: without this grant
+	// the new window would open behind the others, its taskbar button flashing)
+	foreground_allow(p.pid)
+	return true
 }
 
 // "0.5.6" before "0.6.0", number by number (a version that does not read as one is not older: nothing to offer).

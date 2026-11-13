@@ -6,14 +6,32 @@ package tk_desktop
 // output nor its exit code. cmd.exe and PowerShell prefer `<stem>.com` to `<stem>.exe` when `<stem>` is typed: the
 // launcher, which the program provides, starts the program and gives its output and code through.
 //
-// The program passes the launcher's bytes in `Integration_Options.launcher` (it can embed them: the release stays one file). It is
-// written only next to the executable of an integration whose PATH part is on: never in another folder, never without the
-// PATH entry that makes it reachable. Removal deletes only a file that carries `Identity.launcher_mark`.
+// The program's build embeds it (gt:toolbox, odin_command on Windows: -define:GT_CONSOLE_LAUNCHER=<file> and
+// GT_CONSOLE_LAUNCHER_MARK=<mark>): it is the default of `Integration_Options.launcher`, and its mark the default of
+// `Identity.launcher_mark`, so the release stays one file and the program writes nothing for it. It is written only next
+// to the executable of an integration whose PATH part is on: never in another folder, never without the PATH entry that
+// makes it reachable. Removal deletes only a file that carries the mark.
 
 import "core:os"
 import "core:strings"
 
 @(private = "file") LAUNCHER_MAX_BYTES :: 16 << 20   // (a file larger than any launcher is not read to be searched)
+
+// The console launcher the build embedded, and its mark ("": none, as in a check from Linux or a test).
+BUILT_LAUNCHER_FILE :: #config(GT_CONSOLE_LAUNCHER, "")
+BUILT_LAUNCHER_MARK :: #config(GT_CONSOLE_LAUNCHER_MARK, "")
+
+when BUILT_LAUNCHER_FILE != "" {
+	@(private = "file") built_launcher :: proc() -> []byte { return #load(BUILT_LAUNCHER_FILE) }
+} else {
+	@(private = "file") built_launcher :: proc() -> []byte { return nil }
+}
+
+// The launcher these options write: theirs, else the one the build embedded.
+launcher_bytes :: proc(o: ^Integration_Options) -> []byte { return len(o.launcher) > 0 ? o.launcher : built_launcher() }
+
+// What a launcher of this identity carries: its own mark, else the embedded launcher's.
+launcher_mark_of :: proc(id: Identity) -> string { return id.launcher_mark != "" ? id.launcher_mark : BUILT_LAUNCHER_MARK }
 
 // `<dir>\<stem>.com` for the executable `<dir>\<stem>.exe`; "" where there is no such thing (not Windows) or `exe` has no
 // extension.
@@ -27,7 +45,7 @@ launcher_file :: proc(exe: string, allocator := context.temp_allocator) -> strin
 
 // Is the file at `path` a launcher of ours (it carries the identity's mark)? Never without a mark.
 launcher_is_ours :: proc(o: ^Integration_Options, path: string) -> bool {
-	mark := o.identity.launcher_mark
+	mark := launcher_mark_of(o.identity)
 	if mark == "" || path == "" || !os.is_file(path) { return false }
 	if info, err := os.stat(path, context.temp_allocator); err != nil || info.size <= 0 || info.size > LAUNCHER_MAX_BYTES { return false }
 	data, err := os.read_entire_file(path, context.temp_allocator)
@@ -43,7 +61,8 @@ launcher_current :: proc(o: ^Integration_Options) -> bool {
 // replaced. One that is the same bytes is left alone (it may be running); another version is renamed aside and replaced,
 // as a running program's file can be renamed, not overwritten.
 launcher_write :: proc(o: ^Integration_Options) -> Result {
-	if len(o.launcher) == 0 { return {} }
+	bytes := launcher_bytes(o)
+	if len(bytes) == 0 { return {} }
 	path := launcher_file(o.exe)
 	if path == "" { return {} }
 	had := os.exists(path)
@@ -51,11 +70,11 @@ launcher_write :: proc(o: ^Integration_Options) -> Result {
 		if !launcher_is_ours(o, path) {
 			return {.Io, strings.concatenate({path, " exists and is not ", o.identity.name, "'s console launcher: it is left as it is, so the program does not run from a terminal through it"}, context.temp_allocator)}
 		}
-		if same, err := os.read_entire_file(path, context.temp_allocator); err == nil && string(same) == string(o.launcher) { return {} }
+		if same, err := os.read_entire_file(path, context.temp_allocator); err == nil && string(same) == string(bytes) { return {} }
 	}
 	fresh := strings.concatenate({path, ".new"}, context.temp_allocator)
 	old := strings.concatenate({path, OLD_SUFFIX}, context.temp_allocator)
-	if err := os.write_entire_file(fresh, o.launcher); err != nil {
+	if err := os.write_entire_file(fresh, bytes); err != nil {
 		_ = os.remove(fresh)
 		return {.Io, strings.concatenate({"cannot write ", fresh}, context.temp_allocator)}
 	}

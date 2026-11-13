@@ -14,7 +14,7 @@ import toolbox "../toolbox"
 Project_Site :: struct {
 	meta:  Meta,                // its address, names and colours (Meta.changes: its CHANGELOG.md)
 	dir:   string,              // its sources in the repository ("": "site")
-	pages: Changelog_Options,   // the home page's version mark and downloads (changes "": Meta.changes)
+	pages: Changelog_Options,   // the home page's version mark and downloads (changes "": Meta.changes; meta: `meta`)
 	extra: proc(s: ^Check),     // the project's own checks of `site check` (nil: none); s.user is the ^Project_Site
 }
 
@@ -37,6 +37,7 @@ project_pages :: proc(site, out: string, user: rawptr) -> bool {
 	s := (^Project_Site)(user)
 	o := s.pages
 	if o.changes == "" { o.changes = s.meta.changes }
+	o.meta = s.meta   // (its name, nav, footer and shop)
 	return build_changelog(site, out, o)
 }
 

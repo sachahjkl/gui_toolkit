@@ -24,7 +24,7 @@ switch setup.dialog(&d, cfg, em, logo) {
 case .Installed:       saved_choice = setup.CHOICE_INSTALLED
 case .Kept_Standalone: saved_choice = setup.CHOICE_STANDALONE
 case .Dismissed:       saved_choice = setup.choice_dismissed(APP_VERSION)
-case .Launched:        quit()   // the installed copy runs
+case .Launched:        quit()   // then setup.launch(d.installed) once the window and the instance are gone
 case .Uninstalled, .None:
 }
 
@@ -39,6 +39,44 @@ the clipboard.
 
 The dialog opens at 36 by 27 em; its edges and its corner resize it (`Dialog.size`, logical pixels: the program may keep it
 between starts). What it says scrolls when it is made small; its buttons stay under it.
+
+A program does not drive the dialog by hand: `prefs_page.Install` ([prefs_page.md](prefs_page.md), "The installation")
+holds it, opens it at a start, keeps the answer and shows the Installation page of the settings. The calls below are
+what that object makes.
+
+## The page of the settings
+
+`page(d, o, em) -> Event` draws the same `Dialog` in the flow of a page (the settings' Installation page): the program and
+its state as a badge, the state in a sentence, a well that says where everything is (the installed program, the version
+installed, this copy and whether it is the installed one, the menu's entry, Settings > Apps on Windows, the start with the
+session, the PATH with its console launcher on Windows), before an install its folder and options, what the last action
+said, then Install (Repair, Upgrade…), Open the installed copy and Uninstall (a second click does it). The first build
+of the page opens the `Dialog` (its facts read on its thread, the places watched); `update` closes it again, with no
+event, after a build that did not draw it (`Dialog.in_page`, `page_build`): leaving a page answers nothing.
+
+`Facts.autostart` and `Facts.on_path` say whether the start with the session and the PATH are in place (what
+`Setup_Options.prepare` asked).
+
+## The command line
+
+The same options in every program, listed in its table of options (`setup.COMMAND_OPTIONS` for [cli.md](cli.md)):
+
+| Option | What it does |
+|---|---|
+| `--install` | installs this copy for the user, as the Install button does (`install`): no window |
+| `--uninstall` | removes the installed copy (`uninstall`, then `remove_later` for what the running copy holds); the user's settings and data stay: no window |
+| `--setup` | starts the program with the install shown (`prefs_page.install_open`); Settings > Apps' Uninstall runs it (`Identity.uninstall_arguments = "--setup"`) |
+
+```odin
+cmd, rest := setup.command_of(os.args[1:])
+if cmd == .Install || cmd == .Uninstall { os.exit(setup.command_run(cmd, setup_options(), process.console_write)) }
+// ... the window; then for .Setup: prefs_page.install_open(&app.install)
+```
+
+`command_run` says what happened on one line, in English (a script reads it): `<name>: installed: <exe>`, `<name>:
+uninstalled (your settings and data stay)`, or why it failed; its exit code is `COMMAND_DONE` (0) or `COMMAND_FAILED`
+(1). It reads and writes the disk: call it before the window, never from a frame. The flag of `desktop.parse_cli`
+(`Identity.cli_flag`) stays for scripts and tests that want the integration alone.
 
 ## A screen of the program's own
 
@@ -69,7 +107,7 @@ if d.open && ui.modal("my_setup", &d.open, {...}) {
 | `can_uninstall(d)`, `busy(d)` | something of an install is there; Install, Uninstall or the picker is at work |
 | `closing(d, o) -> Closing` | `Close`, `Not_Now` (an upgrade) or `Keep_Standalone` (no install, another copy) |
 | `start_install`, `start_uninstall`, `pick_folder` | the work, on the dialog's thread (nothing while work is out) |
-| `open_installed(d)` | starts `Dialog.installed`: `Launched`, the program then ends |
+| `open_installed(d)` | `Launched` when there is a `Dialog.installed`: the program ends, then starts it with `launch` once its window is closed and its single instance released (`prefs_page.install_launch` does) |
 | `close(d, how)` | closes it: `Kept_Standalone`, `Dismissed` (Not now, or no answer), or `None` (nothing to remember) |
 
 `Dialog.facts`, `known` (read once), `shortcut`, `choices`, `folder`, `note` / `note_good`, `installed` and `confirm`
@@ -109,10 +147,15 @@ it is made to run by itself), writes its launchers and `Setup_Options.prepare`'s
 record (`desktop.record_install`: on Windows, Settings > Apps, whose Uninstall runs `<exe> <uninstall_arguments>`).
 `uninstall(o)` takes it all away; what the running copy holds (Windows) is in its leftovers, which `finish` hands to
 `desktop.cleanup_later` at the end of the process. After an install from another copy, the dialog offers to open the
-installed one (`Launched`): the program ends then.
+installed one (`Launched`): the program ends, then starts it (`prefs_page.install_launch`).
 
 ## After an update
 
 When `update.Updater` has put a new program in place of the installed copy (`docs/update.md`), `updated(o, version)`
 makes the install say it: the install manifest names the new version, and so does the system's record (Settings > Apps on
 Windows). For a program that is not the installed copy (a build, an unzipped folder), it does nothing and returns ok.
+
+`launch(exe, args)` starts a copy of the program (the installed one after an install, the new one after an update or on
+Restart), in its folder. Call it once the window is closed and the single instance released, as the process ends. On Windows
+it allows the new process the foreground (`AllowSetForegroundWindow`): the click on Restart was this process's input, but its
+window is gone, and without that grant the new window would open behind the others with its taskbar button flashing.
