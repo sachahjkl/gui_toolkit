@@ -20,6 +20,9 @@
 //   make_logo [-out:file]                     draws the logo, 512 px (default .project/image.png)
 //   ppm_diff a.ppm b.ppm [-tolerance:2]       two P6 PPM files (tools/render_probe): the largest and mean difference of a channel, and
 //                                             how many pixels differ by more than the tolerance
+//   crash_symbolize <report> <symbols>        a crash report (gt:crash) with the program's frames named: <symbols> is the build's
+//                                             map (Windows, <exe stem>-<build>.map), a folder of maps, or the executable that
+//                                             crashed (Linux, through addr2line); the report's text again, on standard output
 //   emoji_board [-size:32] [-scale:1] [-step:37] [-font:ttf] [-out-dir:dir]
 //                                             the COLR interpreter against a headless Edge on the same font (tools/colrboard): every
 //                                             step-th emoji of emoji-test.txt and a few hard ones -> <out-dir>/side.png and the numbers
@@ -90,6 +93,7 @@ COMMANDS := []Command {
 	{name = "make_icon", flags = {"png:", "out:"}, run = run_make_icon},
 	{name = "make_logo", flags = {"out:"}, run = run_make_logo},
 	{name = "ppm_diff", flags = {"tolerance:"}, positionals = 2, run = run_ppm_diff},
+	{name = "crash_symbolize", positionals = 2, run = run_crash_symbolize},
 	{name = "emoji_board", flags = {"size:", "scale:", "step:", "font:", "out-dir:"}, run = run_emoji_board},
 	{name = "gen_lucide", run = run_gen_lucide},
 	{name = "release", flags = {"summary:", "no-push"}, positionals = 1, run = run_release},

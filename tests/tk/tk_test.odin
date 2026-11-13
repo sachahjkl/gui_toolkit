@@ -31,6 +31,12 @@ the_command_line :: proc(t: ^testing.T) {
 	testing.expect_value(t, tk.flag_value(&a, "odin", "odin"), "odin")
 	testing.expect(t, tk.has_flag(&a, "no-dxc"))
 
+	a, why = tk.parse({"crash_symbolize", "crash-20261113-170300-1.txt", "build/x-5F00000012345.map"})
+	testing.expect_value(t, why, "")
+	testing.expect_value(t, len(a.positionals), 2)
+	_, why = tk.parse({"crash_symbolize", "crash-20261113-170300-1.txt"})
+	testing.expect(t, why != "", "a report and its symbols")
+
 	a, why = tk.parse({"ppm_diff", "a.ppm", "b.ppm", "-tolerance:5"})
 	testing.expect_value(t, why, "")
 	testing.expect_value(t, len(a.positionals), 2)
