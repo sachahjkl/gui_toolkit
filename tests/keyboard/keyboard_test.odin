@@ -397,7 +397,7 @@ row_shown :: proc(idx: int) -> bool {
 	return ok && a.min.y >= panel.min.y && a.max.y <= panel.max.y
 }
 
-// Rows are MENU_ITEM_EM tall (29 px for 15 px text), times the density: 22 px compact, 34 px at the roomiest (DENSITY_MAX).
+// Rows are Feel.menu_item_em tall (29 px for 15 px text), times the density: 22 px compact, 34 px at the roomiest (DENSITY_MAX).
 @(test)
 menu_rows_follow_the_density :: proc(t: ^testing.T) {
 	sync.mutex_lock(&ui_state_lock)

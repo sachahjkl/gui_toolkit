@@ -16,7 +16,7 @@ import "../../src/ui"
 // examples/todo as a user meets it: a task added, its box ticked, the filters, a tooltip, the context menu, the theme, a deletion, each read back from the
 // application and from the file it saves.
 
-// Longer than a hovered_for of the example (0.4 s).
+// Longer than a tooltip's delay (ui.FEEL_DEFAULT.tooltip_delay_ms, 500 ms).
 @(private = "file") TOOLTIP_WAIT_MS :: 600
 // A point of the page's background.
 @(private = "file") BACKGROUND_AT :: 4

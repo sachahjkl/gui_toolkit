@@ -64,6 +64,7 @@ Wl_Conn :: struct {
 	pointer_focus:  ^Window,
 	keyboard_focus: ^Window,
 	key_repeat:     Key_Repeat,   // the compositor leaves the repeat of a held key to the client
+	key_repeat_told: bool,        // the compositor gave its rate and delay (kb_repeat): input_defaults' no more
 	pointer_pos:    [2]f32,
 	// the clipboard text another client offered, and the fd/offer plumbing (clipboard_linux.odin uses the richer parts)
 	clip_text:  string,
@@ -184,7 +185,6 @@ wl_connect_now :: proc() -> bool {
 	sigpipe_ignored()
 	wlc.fd = l.display_get_fd(wlc.display)
 	wlc.output_scale = 1
-	wlc.key_repeat.rate, wlc.key_repeat.delay_ms = KEY_REPEAT_DEFAULT_RATE, KEY_REPEAT_DEFAULT_DELAY_MS
 	// the registry, and bind the globals it advertises
 	wlc.registry = l.proxy_marshal_flags(Wl_Proxy(wlc.display), 1 /*get_registry*/, l.registry_interface, l.proxy_get_version(Wl_Proxy(wlc.display)), 0, nil)
 	if wlc.registry == nil { return false }
@@ -602,6 +602,10 @@ kb_key :: proc "c" (data: rawptr, kb: Wl_Proxy, serial, time, key, state: u32) {
 	if !press {
 		key_repeat_release(&wlc.key_repeat, keycode)
 	} else if wl_key_repeats(keycode) {
+		if !wlc.key_repeat_told {   // (the compositor said nothing yet: the thread's input defaults, as they are now)
+			d := input_defaults()
+			wlc.key_repeat.rate, wlc.key_repeat.delay_ms = d.key_repeat_rate, d.key_repeat_delay_ms
+		}
 		key_repeat_press(&wlc.key_repeat, keycode, wl_now_ms())
 	}
 }
@@ -666,6 +670,7 @@ kb_modifiers :: proc "c" (data: rawptr, kb: Wl_Proxy, serial, dep, latched, lock
 @(private)
 kb_repeat :: proc "c" (data: rawptr, kb: Wl_Proxy, rate, delay: i32) {
 	wlc.key_repeat.rate, wlc.key_repeat.delay_ms = int(rate), int(delay)
+	wlc.key_repeat_told = true
 	if rate <= 0 { wlc.key_repeat.held = false }
 }
 

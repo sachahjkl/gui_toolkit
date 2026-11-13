@@ -96,7 +96,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mods = e.mods        // (what a wheel steps by: field_num_step)
 			if zoom_keys && .Ctrl in e.mods && !ctrl_wheel_taken(s, e.pos, e.delta) {
 				// Ctrl+wheel zooms (wheel up = delta.y < 0 = bigger) instead of scrolling
-				s.zoom = clamp(s.zoom * math.pow(ZOOM_STEP, -e.delta.y), ZOOM_MIN, ZOOM_MAX)
+				s.zoom = clamp(s.zoom * math.pow(s.feel.zoom_step, -e.delta.y), ZOOM_MIN, ZOOM_MAX)
 			} else {
 				s.scroll_delta += e.delta
 			}
@@ -115,8 +115,8 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			if e.key != .None { s.keys_held += {e.key} }
 			if zoom_keys && .Ctrl in e.mods && .Alt not_in e.mods {
 				#partial switch e.key {
-				case .Equal, .Num_Add: s.zoom = clamp(s.zoom * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX); continue
-				case .Minus, .Num_Subtract: s.zoom = clamp(s.zoom / ZOOM_STEP, ZOOM_MIN, ZOOM_MAX); continue
+				case .Equal, .Num_Add: s.zoom = clamp(s.zoom * s.feel.zoom_step, ZOOM_MIN, ZOOM_MAX); continue
+				case .Minus, .Num_Subtract: s.zoom = clamp(s.zoom / s.feel.zoom_step, ZOOM_MIN, ZOOM_MAX); continue
 				case .N0:    s.zoom = 1; continue
 				case:
 				}

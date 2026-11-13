@@ -166,7 +166,7 @@ build_header :: proc(app: ^App, em: f32, done, total: int) {
 		ui.next({width = ui.px(em * 2.4), height = ui.px(em * 2.4)})
 		sig := ui.icon_button("toggle_theme", ICON_PALETTE)
 		if sig.clicked { app.dark = !app.dark; app.dirty = true }
-		if ui.hovered_for(sig, 0.4) {
+		if ui.hovered_for(sig) {
 			if ui.tooltip() {
 				ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 2))})
 				ui.label("Toggle light / dark")
@@ -251,7 +251,7 @@ build_list :: proc(app: ^App, em: f32) {
 					ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2)})
 					del := ui.icon_button(fmt.tprintf("del_%d", t.id), ICON_TRASH)
 					if del.clicked { remove_id = t.id }
-					if ui.hovered_for(del, 0.4) {
+					if ui.hovered_for(del) {
 						if ui.tooltip() {
 							ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 2))})
 							ui.label("Delete task")

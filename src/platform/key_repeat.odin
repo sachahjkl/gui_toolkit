@@ -8,9 +8,6 @@ package platform
 //   for key_repeat_take(&r, now) { ... }    // each repeat that is due
 //   key_repeat_wait_ms(&r, now)             // how long the loop may sleep (-1: nothing is held)
 
-KEY_REPEAT_DEFAULT_RATE :: 25       // repeats per second, until the system says
-KEY_REPEAT_DEFAULT_DELAY_MS :: 600  // before the first repeat
-
 Key_Repeat :: struct {
 	rate:     int,    // repeats per second (0: no repeat)
 	delay_ms: int,

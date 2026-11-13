@@ -48,10 +48,6 @@ Field_Snapshot :: Edit_Snapshot
 
 Field_Edit :: enum u8 { None, Typing, Deleting, Other }
 
-// Steps kept by the edit history of a field; typing within this many ms of the previous key is the same step.
-FIELD_UNDO_STEPS :: 100
-FIELD_UNDO_MERGE_MS :: 1000.0
-
 // The caret of fields: solid this long after an edit, then on and off, a wake at each flip and none between. Its width is the
 // font size over CARET_WIDTH_DIVISOR.
 @(private) CARET_SOLID_MS :: 500
@@ -98,9 +94,10 @@ field_forget_history :: proc(f: ^Text_Field) {
 @(private)
 field_checkpoint :: proc(f: ^Text_Field, kind: Field_Edit) {
 	now := build_now_ms()
-	merge := kind != .Other && kind == f.last_edit && now - f.last_edit_ms < FIELD_UNDO_MERGE_MS && len(f.undo) > 0
+	cfg := feel_now()
+	merge := kind != .Other && kind == f.last_edit && now - f.last_edit_ms < f64(cfg.undo_merge_ms) && len(f.undo) > 0
 	f.last_edit, f.last_edit_ms = kind, now
-	edit_history_record(&f.undo, &f.redo, f.buf[:], f.cursor, f.mark, FIELD_UNDO_STEPS, merge)
+	edit_history_record(&f.undo, &f.redo, f.buf[:], f.cursor, f.mark, cfg.undo_steps, merge)
 }
 
 @(private)

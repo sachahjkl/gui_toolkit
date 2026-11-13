@@ -115,7 +115,7 @@ page_controls :: proc(app: ^App) {
 						for g, i in icons {
 							ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2)})
 							sig := ui.icon_button(fmt.tprintf("ib_%d", i), g)
-							if ui.hovered_for(sig, 0.4) {
+							if ui.hovered_for(sig) {
 								if ui.tooltip() {
 									ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 2))})
 									ui.label(tips[i])
@@ -163,7 +163,7 @@ page_controls :: proc(app: ^App) {
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###tiprow") {
 						sig := ui.button_icon("###b_tip", ui.ICON_INFO, "Hover for a rich tooltip")
-						if ui.hovered_for(sig, 0.4) {
+						if ui.hovered_for(sig) {
 							if ui.tooltip() {
 								if ui.style({width = ui.text_size(em * 0.5), height = ui.px(ui.dense(em * 2))}) {
 									if ui.style({font_size = math.round(em * 1.1)}) { ui.label("Rich tooltip") }

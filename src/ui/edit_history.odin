@@ -24,7 +24,7 @@ edit_history_forget :: proc(undo, redo: ^[dynamic]Edit_Snapshot) {
 @(private)
 edit_history_record :: proc(undo, redo: ^[dynamic]Edit_Snapshot, text: []u8, cursor, mark, max_steps: int, merge: bool) {
 	if !merge {
-		if len(undo) >= max_steps { delete(undo[0].text); ordered_remove(undo, 0) }
+		for len(undo) > 0 && len(undo) >= max_steps { delete(undo[0].text); ordered_remove(undo, 0) }   // (a lower limit set meanwhile trims)
 		append(undo, Edit_Snapshot{text = strings.clone(string(text)), cursor = cursor, mark = mark})
 	}
 	for s in redo { delete(s.text) }

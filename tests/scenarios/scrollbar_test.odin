@@ -232,3 +232,35 @@ arrow_buttons_step_and_repeat :: proc(t: ^testing.T) { unwatched.run(t, proc(t: 
 	session.wait_idle(s)
 	testing.expect_value(t, session.get(s, "view").view_off.y, held - step)
 }) }
+
+// A held arrow repeats by Feel: one step at the press, none more before Feel.repeat_delay_ms (the default delay, 420 ms,
+// would have repeated by then), then one every Feel.repeat_interval_ms.
+@(test)
+a_held_arrow_repeats_with_the_feel_s_timing :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	REPEAT_DELAY_MS :: 1000
+	REPEAT_INTERVAL_MS :: 100
+	MARGIN_MS :: 200
+	REPEATS :: 5   // after the one at the delay, in the REPEATS * REPEAT_INTERVAL_MS that follow
+	sc := Scroller{rows = ROWS}
+	s := session.start(t, {build = scroller_build, user = &sc, no_renderer = true})
+	ui.set_scrollbar_arrows(s.state, true)
+	f := ui.feel(s.state)
+	f.repeat_delay_ms, f.repeat_interval_ms = REPEAT_DELAY_MS, REPEAT_INTERVAL_MS
+	ui.set_feel(s.state, f)
+	session.frames(s, 2)
+	_, end, has := ui.scrollbar_arrow_rects(session.get(s, "view"))
+	if !testing.expect(t, has, "a bar with arrows") { return }
+	down := (end.min + end.max) * 0.5
+
+	session.press(s, down)
+	step := session.get(s, "view").view_target.y
+	testing.expect(t, step > 0, "the press steps")
+	session.advance(s, REPEAT_DELAY_MS - MARGIN_MS)
+	testing.expect_value(t, session.get(s, "view").view_target.y, step)
+	session.advance(s, MARGIN_MS + REPEATS * REPEAT_INTERVAL_MS)
+	steps := int(session.get(s, "view").view_target.y / step + 0.5)
+	// (a repeat comes at the first frame past its time: each may be late by a frame)
+	testing.expectf(t, steps >= 1 + REPEATS && steps <= 1 + REPEATS + 1, "held, it repeats by the interval: %d steps", steps)
+	session.release(s, down)
+	session.wait_idle(s)
+}) }

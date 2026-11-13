@@ -154,7 +154,7 @@ back_bar :: proc(p: ^Page, o: Options, title, back_tip: string, em: f32) -> (bac
 		sig: ui.Signal
 		if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###prefs_back", icon ? lucide.ARROW_LEFT : "Back")) }
 		ui.a11y_default(sig.box, {name = back_tip})
-		if ui.hovered_for(sig, 0.4) {
+		if ui.hovered_for(sig) {
 			if ui.tooltip() {
 				ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 1.8))})
 				ui.label(fmt.tprintf("%s###tip", back_tip))
@@ -520,7 +520,7 @@ reset_button :: proc(o: Options, em: f32) -> bool {
 	sig: ui.Signal
 	if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###reset", label)) }
 	ui.a11y_default(sig.box, {name = "Back to the default"})
-	if ui.hovered_for(sig, 0.4) {
+	if ui.hovered_for(sig) {
 		if ui.tooltip() {
 			ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 1.8))})
 			ui.label("Back to the default###tip")

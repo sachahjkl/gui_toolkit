@@ -10,7 +10,7 @@ import "../../src/testkit/session"
 import "../../src/testkit/unwatched"
 import "../../src/ui"
 
-// A stretch of the clock longer than what merges typing into one undo step (ui FIELD_UNDO_MERGE_MS).
+// A stretch of the clock longer than what merges typing into one undo step (ui.Feel.undo_merge_ms).
 @(private = "file") PAUSE_OVER_MERGE_MS :: 2000
 // The frames a caret takes to blink off, at most, once it is solid no longer (1200 ms).
 @(private = "file") CARET_FRAMES :: 72
@@ -462,4 +462,33 @@ a_new_field_is_not_scrolled :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^t
 	n.shown = true
 	session.frames(s, 1)
 	testing.expect_value(t, n.field.scroll_x, 0)
+}) }
+
+// Feel.undo_steps bounds the history of a line edit and of a text area alike: each keeps the last steps, the oldest go.
+@(test)
+undo_steps_bound_a_field_and_an_area_alike :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	UNDO_LIMIT :: 3
+	TYPED :: "abcdef"
+	KEPT :: "abc"   // what undoing every step kept gives back: the text before the last UNDO_LIMIT edits
+	s, e := editors_start(t)
+	f := ui.feel(s.state)
+	f.undo_steps = UNDO_LIMIT
+	f.undo_merge_ms = 0   // (each character its own step)
+	ui.set_feel(s.state, f)
+
+	session.click(s, "field")
+	session.type_slowly(s, TYPED)
+	testing.expect_value(t, ui.field_string(&e.field), TYPED)
+	undone := 0
+	for ui.field_undo(&e.field) { undone += 1 }
+	testing.expect_value(t, undone, UNDO_LIMIT)
+	testing.expect_value(t, ui.field_string(&e.field), KEPT)
+
+	session.click(s, "area")
+	session.type_slowly(s, TYPED)
+	testing.expect_value(t, ui.area_string(&e.area), TYPED)
+	undone = 0
+	for ui.area_undo(&e.area) { undone += 1 }
+	testing.expect_value(t, undone, UNDO_LIMIT)
+	testing.expect_value(t, ui.area_string(&e.area), KEPT)
 }) }

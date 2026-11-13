@@ -94,4 +94,4 @@ computer has, as the CSS media features `pointer` / `any-pointer` / `hover` / `a
 `Touch_Gesture` (pure: give it positions and times): `touch_gesture_down / move / up / cancel` and, every frame while a
 finger is down, `touch_gesture_tick` return `Tap`, `Pan` (`pan`: how far the content follows), `Pinch` (`scale` about
 `pos`, plus `pan`), `Long_Press`, `Fling` (`velocity`, px/s) or `End`. `touch_fling(velocity, friction)` gives where
-a fling glides to and for how long.
+a fling glides to and for how long (until its speed falls under `input_defaults().fling_stop_speed`, [feel.md](feel.md)).

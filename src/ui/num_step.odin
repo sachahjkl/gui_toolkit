@@ -5,7 +5,8 @@ import "core:strconv"
 import "../platform"
 
 // Numbers in a text stepped from the keyboard and the wheel, as the style editors of browsers' developer tools step them: Up /
-// Down add or take 1 to the number at the caret (Page Up / Page Down 10), Ctrl makes it 100, Shift 10, Alt 0.1; its unit and the
+// Down add or take 1 to the number at the caret (Page Up / Page Down Feel.step_page), Ctrl multiplies it by Feel.step_ctrl (100),
+// Shift by Feel.step_shift (10), Alt by Feel.step_alt (0.1); its unit and the
 // text around it stay ("margin: 10px 5px", "rgba(10, 20, 30, 0.5)", "calc(100% - 12px)"). A number is digits with a point and
 // a sign; one that is part of a word or a hex colour (h1, translate3d, #10f) is not one.
 //
@@ -15,20 +16,16 @@ import "../platform"
 //   field_num_step(f, box)              the steps of this build in field `f` (its line_edit `box`) while it has the keyboard:
 //                                       its keys, and the wheel over it (with the keys' modifiers); the number stays selected
 
-NUM_STEP_PAGE :: 10
-NUM_STEP_CTRL :: 100
-NUM_STEP_SHIFT :: 10
-NUM_STEP_ALT :: 0.1
 // A result is rounded to this many decimals: steps of 0.1 add no noise (10.1, not 10.100000000000001).
 NUM_STEP_DECIMALS :: 6
 
-// What a press of `key` with `mods` steps a number by.
+// What a press of `key` with `mods` steps a number by (the current state's Feel; FEEL_DEFAULT outside any).
 num_step_delta :: proc(key: platform.Key, mods: platform.Modifiers) -> (delta: f64, ok: bool) {
 	#partial switch key {
 	case .Up:        delta = 1
 	case .Down:      delta = -1
-	case .Page_Up:   delta = NUM_STEP_PAGE
-	case .Page_Down: delta = -NUM_STEP_PAGE
+	case .Page_Up:   delta = feel_now().step_page
+	case .Page_Down: delta = -feel_now().step_page
 	case: return
 	}
 	return delta * num_step_scale(mods), true
@@ -36,10 +33,11 @@ num_step_delta :: proc(key: platform.Key, mods: platform.Modifiers) -> (delta: f
 
 @(private = "file")
 num_step_scale :: proc(mods: platform.Modifiers) -> f64 {
+	f := feel_now()
 	switch {
-	case .Ctrl in mods:  return NUM_STEP_CTRL
-	case .Shift in mods: return NUM_STEP_SHIFT
-	case .Alt in mods:   return NUM_STEP_ALT
+	case .Ctrl in mods:  return f.step_ctrl
+	case .Shift in mods: return f.step_shift
+	case .Alt in mods:   return f.step_alt
 	}
 	return 1
 }

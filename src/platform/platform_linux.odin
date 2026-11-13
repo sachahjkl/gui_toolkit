@@ -764,8 +764,8 @@ set_clipboard :: proc(w: ^Window, text: string) {
 // the user has not asked to reduce them.
 os_animations_enabled :: proc() -> bool { return !reduce_motion_preferred() }
 
-// What a notch of the wheel moves: the desktops have no one setting for it, so the usual three lines.
-wheel_lines :: proc(across := false) -> f32 { return WHEEL_LINES_DEFAULT }
+// What a notch of the wheel moves: the desktops have no one setting for it, so input_defaults' (three lines unless set).
+wheel_lines :: proc(across := false) -> f32 { return input_defaults().wheel_lines }
 
 // Path of a font the system ships, by its file name (e.g. "DejaVuSans.ttf"), searched under the usual font folders.
 // font_system_linux.odin in the font package is the richer lookup; this is the Win32 system_font_path's counterpart.

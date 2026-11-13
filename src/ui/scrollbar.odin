@@ -75,11 +75,10 @@ shape_rad :: proc(r: f32) -> f32 { return r * gs().rounding }
 @(private = "file") SCROLLBAR_REVEAL_MS :: 900
 @(private) SCROLLBAR_HIDDEN_ALPHA :: 0.01   // no more than this: not drawn
 // Arrow buttons (set_scrollbar_arrows): each as long as the bar is broad (its width and margins), the triangle this much
-// of the bar's width; a press scrolls a step, held it steps again after a delay and then at a rate (Chromium's timings).
+// of the bar's width; a press scrolls a step, held it repeats as any held button (repeat_pressed: Feel.repeat_delay_ms,
+// then Feel.repeat_interval_ms).
 @(private = "file") SCROLLBAR_ARROW_GLYPH_FRACTION :: 0.7
 @(private = "file") SCROLLBAR_ARROW_STEP_EM :: 3
-@(private = "file") SCROLLBAR_ARROW_DELAY_MS :: 250
-@(private = "file") SCROLLBAR_ARROW_REPEAT_MS :: 50
 
 @(private)
 scrollbar_key :: proc(b: ^Box, axis := Axis.Y) -> Key { return key_from_u64(b.key, axis == .Y ? SCROLLBAR_KEY_SALT : SCROLLBAR_X_KEY_SALT) }
@@ -216,9 +215,7 @@ scrollbar_press :: proc(s: ^State, sbk: Key, p: Vec2) {
 	if !has { return }
 	if start, end, arrows := scrollbar_arrow_rects(b); arrows && (contains(start, p) || contains(end, p)) {
 		s.sb_arrow = contains(start, p) ? -1 : 1
-		s.sb_arrow_next_ms = s.time_ms + SCROLLBAR_ARROW_DELAY_MS
-		scrollbar_arrow_step(b, s.sb_arrow)
-		wake_within(s, SCROLLBAR_ARROW_DELAY_MS)
+		if repeat_fires(s, sbk, true, true, true) { scrollbar_arrow_step(b, s.sb_arrow) }
 		return
 	}
 	if p.y >= thumb.min.y && p.y < thumb.max.y { s.sb_grab = p.y - thumb.min.y } else { s.sb_grab = (thumb.max.y - thumb.min.y) * 0.5 }
@@ -247,12 +244,7 @@ scrollbar_drag :: proc(s: ^State) {
 	if !has { return }
 	if s.sb_arrow != 0 {
 		start, end, _ := scrollbar_arrow_rects(b)
-		if !contains(s.sb_arrow < 0 ? start : end, s.mouse) { return }
-		if s.time_ms >= s.sb_arrow_next_ms {
-			scrollbar_arrow_step(b, s.sb_arrow)
-			s.sb_arrow_next_ms = s.time_ms + SCROLLBAR_ARROW_REPEAT_MS
-		}
-		wake_within(s, int(s.sb_arrow_next_ms - s.time_ms) + 1)
+		if repeat_fires(s, sbk, false, true, contains(s.sb_arrow < 0 ? start : end, s.mouse)) { scrollbar_arrow_step(b, s.sb_arrow) }
 		return
 	}
 	span := (track.max.y - track.min.y) - (thumb.max.y - thumb.min.y)
