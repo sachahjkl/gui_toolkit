@@ -221,7 +221,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			description = fmt.aprintf("The system draws the title bar of %s's windows. Off: %s draws its own, with its tabs and buttons in it.", name, name, allocator = a),
 		})
 		append(&defs, config.Def{
-			name = "window.toast_position", title = "Where messages show", kind = .String, default = {s = "top_right"},
+			name = "window.toast_position", title = "Where messages show", kind = .String, default = {s = "bottom_right"},
 			description = "Where in the window its short messages show.",
 			choices = TOAST_CHOICES[:], tags = MESSAGES_TAGS[:],
 		})

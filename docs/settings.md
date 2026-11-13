@@ -41,7 +41,7 @@ names every standard preference.
 | Name | Default | Range, choices | Applied by |
 |---|---|---|---|
 | `window.system_title` | Program (`false`) | | the program, at the start (`platform.open_window`'s `integrated_title`) |
-| `window.toast_position` | `top_right` | the eight `ui.Toast_Position` | `ui.set_toast_position` |
+| `window.toast_position` | `bottom_right` | the eight `ui.Toast_Position` | `ui.set_toast_position` |
 
 ## Text and fonts (`Text`)
 

@@ -37,7 +37,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.zoom = 1
 	s.layout_warnings = ODIN_DEBUG
 	s.scale = 1
-	s.toast_pos = .Top_Right
+	s.toast_pos = .Bottom_Right   // (a toast at the top covers a window's toolbar: a press meant for it lands on the toast)
 	s.caption_names = WINDOW_BUTTON_NAMES
 	s.rounding = 1
 	s.density = 1
