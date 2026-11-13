@@ -9,14 +9,14 @@ package ui
 //   shortcuts_sheet   a dialog that lists every command's keys, grouped
 //
 // A program keeps its commands in a table of its own (an enum of its commands indexing an array of Command) and says
-// each frame which ones can act now (the `enabled` of palette): one place names a command and its keys, and its menus,
+// each frame which ones can act now (the `disabled` of palette): one place names a command and its keys, and its menus,
 // tooltips, palette and sheet all say the same.
 //
 //   COMMANDS := [Cmd]ui.Command{.Kill = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}, {}}}, ...}
 //   if ui.command_pressed(COMMANDS[.Kill]) { kill() }
 //   ui.menu_item(COMMANDS[.Kill].label, ui.command_shortcut(COMMANDS[.Kill]))
 //   if ui.key_press(.K, {.Ctrl}) { ui.palette_open(&palette) }
-//   if i, _ := ui.palette(&palette, COMMANDS[:], enabled[:]); i >= 0 { run(Cmd(i)) }
+//   if i, _ := ui.palette(&palette, COMMANDS[:], disabled[:]); i >= 0 { run(Cmd(i)) }
 
 import "core:fmt"
 import "core:math"
@@ -308,19 +308,19 @@ palette_open :: proc(p: ^Command_Palette) {
 // The palette while it is open: every command, under its group's heading, with its keys. What is typed keeps the
 // commands whose label (or label and group) holds it whole or in pieces that begin words (fuzzy_words), the best matches
 // first (the headings go then; each line says its group); the first one is selected. Up, Down, Page Up, Page Down move
-// the selection, Enter runs it, Escape closes the palette. A command that cannot act now (`enabled[i]` false; nil: all
+// the selection, Enter runs it, Escape closes the palette. A command that cannot act now (`disabled[i]` true; nil: none
 // can) is greyed and is not chosen. Returns the index of the command chosen (-1: none), and `resized` when the user
 // changed its size this frame (`p.size`: keep it). Enter with Ctrl, Alt or Shift chooses too: `p.chosen_mods` says which.
 // `opts`: the recent commands on top, a command first, the keys' texts, a foot line (Palette_Options).
-palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil, opts := Palette_Options{}) -> (chosen: int, resized: bool) {
+palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil, o := Palette_Options{}) -> (chosen: int, resized: bool) {
 	chosen = -1
 	p.chosen_mods = {}
 	if !p.open { return }
 	em := font_size()
 	query := strings.trim_space(line_edit_string(&p.field))
-	list := palette_list(p, commands, query, opts)
+	list := palette_list(p, commands, query, o)
 	n := len(list)
-	can :: proc(enabled: []bool, i: int) -> bool { return enabled == nil || (i < len(enabled) && enabled[i]) }
+	can :: proc(disabled: []bool, i: int) -> bool { return i >= len(disabled) || !disabled[i] }
 	row_h := math.round(dense(em * PALETTE_ROW_EM))
 	if n > 0 {
 		page := max(int(p_view_h(p) / row_h), 1)
@@ -339,7 +339,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 		// (the strip, the gaps and the foot in whole pixels: the list's height is what is left, cut to whole lines below)
 		top_h := math.round(dense(em * 2.6))
 		gap_h := math.round(em * 0.3)
-		foot_h := math.round(opts.foot != "" ? dense(em * 2) : em * 0.4)
+		foot_h := math.round(o.foot != "" ? dense(em * 2) : em * 0.4)
 		// (the field from edge to edge, its strip and a line under it: no frame of its own inside the dialog's, but the
 		// darker background of a field, so that it reads as the place to type: dialog_top_draw)
 		next({width = fill(), height = px(top_h), axis = .X, cross = .Center, radius = em * DIALOG_RADIUS_EM})
@@ -359,10 +359,10 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 			if p.fresh { set_focus(res.box.key); p.fresh = false }
 			if res.changed { p.sel = 0; p.reveal = true }
 			if res.cancelled { p.open = false }   // (Escape in the field: the field takes it before the dialog)
-			if res.committed && n > 0 && list[p.sel].index >= 0 && can(enabled, list[p.sel].index) { chosen = list[p.sel].index }
+			if res.committed && n > 0 && list[p.sel].index >= 0 && can(disabled, list[p.sel].index) { chosen = list[p.sel].index }
 			// (Enter with a modifier: the program's other use of the command chosen)
 			for m in ([]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}) {
-				if n > 0 && can(enabled, list[p.sel].index) && key_press_any(.Return, m) { chosen, p.chosen_mods = list[p.sel].index, m }
+				if n > 0 && can(disabled, list[p.sel].index) && key_press_any(.Return, m) { chosen, p.chosen_mods = list[p.sel].index, m }
 			}
 			found := 0
 			for line in list { if line.index >= 0 { found += 1 } }
@@ -406,7 +406,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 				c_label, c_group, _ := command_shown(c)
 				text := c_label
 				if query != "" && c_group != "" { text = fmt.tprintf("%s  ·  %s", c_label, c_group) }
-				on := can(enabled, line.index)
+				on := can(disabled, line.index)
 				sel := k == p.sel
 				push_tags("menu_item")
 				if sel { push_tags("selected") }
@@ -435,7 +435,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 					tb := matched_label("###t", text, ranges)
 					// (the palette as narrow as the person made it: a line it cuts says itself whole)
 					if label_cut(tb, text) && hovered_for(rs) { if tooltip() { tooltip_text(text) } }
-					keys := line.index < len(opts.keys) ? opts.keys[line.index] : command_shortcut(c)
+					keys := line.index < len(o.keys) ? o.keys[line.index] : command_shortcut(c)
 					if keys != "" {
 						if tags("weak") {
 							next({width = text_size(), height = pct(1), text_pad = 0, font_size = em * 0.9})
@@ -451,13 +451,13 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 			}
 		}
 		spacer(px(rest))
-		if opts.foot != "" {
+		if o.foot != "" {
 			next({width = fill(), height = px(foot_h), axis = .X, cross = .Center})
 			if row(.Center, {.Draw_Side_Top}, "###palette_foot") {
 				spacer(px(em * 0.7))
 				if tags("weak") {
 					next({width = fill(), height = pct(1), font_size = em * 0.85})
-					label(fmt.tprintf("%s###palette_foot_text", opts.foot))
+					label(fmt.tprintf("%s###palette_foot_text", o.foot))
 				}
 				spacer(px(em * 1.4))   // (the corner's grip)
 			}
@@ -495,16 +495,16 @@ Palette_Line :: struct { index, headings: int, heading: string, ranges: []Fuzzy_
 // them.
 // The query and each command are folded once, kept in `p.search` from one frame to the next.
 @(private = "file")
-palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, opts: Palette_Options) -> []Palette_Line {
+palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, o: Palette_Options) -> []Palette_Line {
 	out := make([dynamic]Palette_Line, 0, len(commands), context.temp_allocator)
 	if query == "" {
 		headings := 0
 		recent := 0
-		for i in opts.recent {
+		for i in o.recent {
 			if i < 0 || i >= len(commands) { continue }
 			heading := ""
 			if recent == 0 {
-				heading = opts.recent_title != "" ? opts.recent_title : i18n.tr("Recent")
+				heading = o.recent_title != "" ? o.recent_title : i18n.tr("Recent")
 				headings += 1
 			}
 			append(&out, Palette_Line{i, headings, heading, nil})
@@ -524,7 +524,7 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, op
 	Ranked :: struct { index, score: int, ranges: []Fuzzy_Range }
 	ranked := make([dynamic]Ranked, 0, len(commands), context.temp_allocator)
 	needle := fuzzy_cache_needle(&p.search, query)
-	first, has_first := opts.first.?
+	first, has_first := o.first.?
 	has_first = has_first && first >= 0 && first < len(commands)
 	first_ranges: []Fuzzy_Range
 	for c, i in commands {

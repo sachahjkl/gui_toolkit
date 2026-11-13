@@ -67,7 +67,7 @@ Line_Series :: struct {
 	color:  Color,
 }
 
-Line_Graph_Opts :: struct {
+Line_Graph_Options :: struct {
 	top:     f32,    // the value at the top; 0: graph_top of the largest value shown, at least `floor`
 	floor:   f32,    // what the top is at least when it is found (0: 1)
 	points:  int,    // values across the width, the newest at the right edge (0: the longest series'): a history
@@ -93,22 +93,22 @@ Line_Graph_Opts :: struct {
 Line_Graph_Draw :: struct {
 	series: [LINE_GRAPH_SERIES]Line_Series,   // values copied to the frame's memory
 	count:  int,
-	opts:   Line_Graph_Opts,
+	o:      Line_Graph_Options,
 	line:   Color,   // the grid's and the frame's
 	well:   Color,   // machined: a graph with a grid is a well of this colour (a screen set in the surface)
 	scale:  f32,
 }
 
-// The top a graph of `series` with `opts` shows (what its caption says).
-line_graph_top :: proc(series: []Line_Series, opts: Line_Graph_Opts) -> f32 {
-	if opts.top > 0 { return opts.top }
+// The top a graph of `series` with `o` shows (what its caption says).
+line_graph_top :: proc(series: []Line_Series, o: Line_Graph_Options) -> f32 {
+	if o.top > 0 { return o.top }
 	m: f32
 	for s in series { for v in s.values { m = max(m, v) } }
-	return graph_top(m, opts.floor > 0 ? opts.floor : 1)
+	return graph_top(m, o.floor > 0 ? o.floor : 1)
 }
 
 // A graph in a box of the size `next` gives it.
-line_graph :: proc(id: string, series: []Line_Series, opts: Line_Graph_Opts) -> ^Box {
+line_graph :: proc(id: string, series: []Line_Series, o: Line_Graph_Options) -> ^Box {
 	d := frame_new(Line_Graph_Draw)
 	d.count = min(len(series), LINE_GRAPH_SERIES)
 	for s, i in series[:d.count] {
@@ -116,9 +116,9 @@ line_graph :: proc(id: string, series: []Line_Series, opts: Line_Graph_Opts) -> 
 		copy(values, s.values)
 		d.series[i] = {values, s.color}
 	}
-	d.opts = opts
-	d.opts.top = line_graph_top(series, opts)
-	if d.opts.points <= 0 { for s in series { d.opts.points = max(d.opts.points, len(s.values)) } }
+	d.o = o
+	d.o.top = line_graph_top(series, o)
+	if d.o.points <= 0 { for s in series { d.o.points = max(d.o.points, len(s.values)) } }
 	d.line = color("border")
 	d.well = color("well")
 	d.scale = scale()
@@ -137,13 +137,13 @@ line_graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	w, h := r.max.x - r.min.x, r.max.y - r.min.y
 	if w <= 2 || h <= 2 { return }
 	px := max(1, math.round(d.scale))
-	sunk := d.opts.grid && machined()
+	sunk := d.o.grid && machined()
 	if sunk { machined_well(dc, r, 0, d.well) }
-	if d.opts.grid {
+	if d.o.grid {
 		grid := d.line
 		grid.a *= LINE_GRAPH_GRID_ALPHA
-		cols := d.opts.columns > 0 ? d.opts.columns : LINE_GRAPH_COLUMNS
-		rows := d.opts.rows > 0 ? d.opts.rows : LINE_GRAPH_ROWS
+		cols := d.o.columns > 0 ? d.o.columns : LINE_GRAPH_COLUMNS
+		rows := d.o.rows > 0 ? d.o.rows : LINE_GRAPH_ROWS
 		for i in 1 ..< cols {
 			x := math.round(r.min.x + w * f32(i) / f32(cols))
 			draw.rect(dc, {{x, r.min.y}, {x + px, r.max.y}}, grid)
@@ -153,15 +153,15 @@ line_graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 			draw.rect(dc, {{r.min.x, y}, {r.max.x, y + px}}, grid)
 		}
 	}
-	step := w / f32(max(d.opts.points - 1, 1))
-	points := make([dynamic]Vec2, 0, d.opts.points + 2, context.temp_allocator)
+	step := w / f32(max(d.o.points - 1, 1))
+	points := make([dynamic]Vec2, 0, d.o.points + 2, context.temp_allocator)
 	for s in d.series[:d.count] {
-		n := min(len(s.values), d.opts.points)
+		n := min(len(s.values), d.o.points)
 		if n < 2 { continue }
 		clear(&points)
 		values := s.values[len(s.values) - n:]
 		for v, i in values {
-			t := clamp(v / max(d.opts.top, 1e-6), 0, 1)
+			t := clamp(v / max(d.o.top, 1e-6), 0, 1)
 			append(&points, Vec2{r.max.x - f32(n - 1 - i) * step, r.max.y - t * (h - px)})
 		}
 		// the area: the line, then down to the bottom; a gradient from under the line to the bottom
@@ -173,9 +173,9 @@ line_graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.push_clip_polygon(dc, points[:])
 		draw.rect_corners(dc, {{points[0].x, r.min.y}, r.max}, {top_c, bottom_c, top_c, bottom_c}, {})
 		draw.pop_clip(dc)
-		draw.polyline(dc, points[:line_len], (d.opts.grid ? LINE_GRAPH_LINE_PX : SPARKLINE_LINE_PX) * d.scale, s.color)
+		draw.polyline(dc, points[:line_len], (d.o.grid ? LINE_GRAPH_LINE_PX : SPARKLINE_LINE_PX) * d.scale, s.color)
 	}
-	if d.opts.grid && !sunk { draw.rect(dc, r, d.line, border = px) }   // (a well has its own edge)
+	if d.o.grid && !sunk { draw.rect(dc, r, d.line, border = px) }   // (a well has its own edge)
 }
 
 ////////////////////////////////

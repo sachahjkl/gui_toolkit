@@ -97,20 +97,16 @@ relief_face :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32) {
 	draw.rect(dc, r, relief_shade(0.55), radius, p)
 }
 
-// A tile of colour `c` with `text` on it, as wide as its words (in a `flow`: a wall of tiles). `clickable`: it answers the
-// pointer. Its face is `c` over what is under it; its text light.
-tile :: proc(id, text: string, c: Color, clickable := false) -> Signal {
+// A tile of colour `c` with `text` on it, as wide as its words (in a `flow`: a wall of tiles). Its face is `c` over what
+// is under it; its text light.
+tile :: proc(id, text: string, c: Color) {
 	em := font_size()
 	next({width = text_size(em * 0.45), height = px(dense(em * 1.6)), text_align = .Center, font = mono_font(), radius = rad(em * 0.15), fg = draw.mix(c, Color{1, 1, 1, 1}, TILE_TEXT)})
-	flags: Box_Flags = {.No_Text_Trunc}
-	if clickable { flags += {.Clickable} }
-	b := build_box(flags, fmt.tprintf("%s###%s", text, id))
+	b := build_box({.No_Text_Trunc}, fmt.tprintf("%s###%s", text, id))
 	d := frame_new(Tile_Draw)
 	d.face = srgb_mix(box_under(b.parent != nil ? b.parent : b), c, TILE_TINT)
 	d.face.a = 1
 	b.custom, b.custom_user = tile_draw, d
-	if clickable { a11y_default(b, {role = .Button, name = text}) }
-	return signal(b)
 }
 
 // A part of a stacked bar: its share (any unit: the parts are their shares of the sum), its colour, its words ("": none;
@@ -250,7 +246,7 @@ close_block :: proc(dc: ^draw.Context, r: Rect, hot, held: f32) {
 
 // `if title_strip(id, "Boot") { open = false }`: a dialog's or a floating panel's title, white and bold on a strip of the
 // accent fading to the bar's colour, a red block at its right that closes it (true when clicked). Full width, 2.2 lines.
-title_strip :: proc(id, title: string, closable := true) -> (closed: bool) {
+title_strip :: proc(id, title: string) -> (closed: bool) {
 	s := gs()
 	em := font_size()
 	h := dense(em * 2.2)
@@ -266,12 +262,10 @@ title_strip :: proc(id, title: string, closable := true) -> (closed: bool) {
 	spacer(px(em * 0.8))
 	next({width = fill(), height = pct(1), font = styled_face(top_style().font, true, false), fg = {1, 1, 1, 1}})
 	build_box({.Draw_Text}, fmt.tprintf("%s###title", title))
-	if closable {
-		next({width = px(math.round(h * 1.25)), height = pct(1)})
-		x := build_box({.Clickable}, "###close")
-		x.custom = strip_close_draw
-		a11y_default(x, {role = .Button, name = i18n.tr("Close")})
-		closed = signal(x).clicked
-	}
+	next({width = px(math.round(h * 1.25)), height = pct(1)})
+	x := build_box({.Clickable}, "###close")
+	x.custom = strip_close_draw
+	a11y_default(x, {role = .Button, name = i18n.tr("Close")})
+	closed = signal(x).clicked
 	return
 }

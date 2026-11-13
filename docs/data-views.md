@@ -29,7 +29,7 @@ ui.line_graph("###disk", {
 }, {floor = 1e6, points = 60, grid = true})
 ```
 
-| `Line_Graph_Opts` | |
+| `Line_Graph_Options` | |
 |---|---|
 | `top` | the value at the top. 0: `graph_top` of the largest value shown, at least `floor` |
 | `floor` | what the found top is at least (0: 1). A disk at rest with a floor of 1 MB/s does not fill the graph with noise |
@@ -243,9 +243,9 @@ if ui.title_strip("###boot", "Boot") { open = false }
 | Procedure | What it is |
 |---|---|
 | `section_header(id, title, color, note, value, inline)` | a stripe of the colour, the title in capitals and bold in it, a weak note, a large value at the right; full width, or as wide as its words (`inline`: in a row with other things) |
-| `tile(id, text, color, clickable)` | a tile of the colour over what is under it, its words light; as wide as they are |
+| `tile(id, text, color)` | a tile of the colour over what is under it, its words light; as wide as they are |
 | `stacked_bar(id, parts)` | a well cut in `Bar_Part`s (share, colour, words), the words of each in it when they fit; full width, 1.9 lines |
-| `title_strip(id, title, closable)` | a title, white and bold, on the accent fading to the bar's colour; a red block closes (true) |
+| `title_strip(id, title)` | a title, white and bold, on the accent fading to the bar's colour; a red block closes (true) |
 
 In the machined and edged finishes a tile, a part and the strip are lit along their top and shaded along their bottom.
 

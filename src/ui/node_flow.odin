@@ -103,15 +103,16 @@ flow_state :: proc(s: flowgraph.Node_State) -> Graph_Node_State {
 }
 
 // The add palette's commands, one per kind of the catalog in its order (the index chosen is the kind), and which are
-// enabled: a kind under its max_count, and with `from` (a link let go on nothing) one with a port that fits it
-// (flowgraph.fit_port). Temp allocator.
-flow_palette :: proc(g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, from: Maybe(flowgraph.Port_Ref) = nil) -> (commands: []Command, enabled: []bool) {
+// disabled (ui.palette's `disabled`): a kind at its max_count, and with `from` (a link let go on nothing) one with no
+// port that fits it (flowgraph.fit_port). Temp allocator.
+flow_palette :: proc(g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, from: Maybe(flowgraph.Port_Ref) = nil) -> (commands: []Command, disabled: []bool) {
 	commands = make([]Command, len(cat.nodes), context.temp_allocator)
-	enabled = make([]bool, len(cat.nodes), context.temp_allocator)
+	disabled = make([]bool, len(cat.nodes), context.temp_allocator)
 	for def, k in cat.nodes {
 		commands[k] = {label = def.title, group = def.group, tags = def.tags, icon = def.icon}
-		enabled[k] = flowgraph.can_add(g, cat, k)
-		if f, has := from.?; has { enabled[k] &&= flowgraph.fit_port(g, cat, f, k) >= 0 }
+		fits := flowgraph.can_add(g, cat, k)
+		if f, has := from.?; has { fits &&= flowgraph.fit_port(g, cat, f, k) >= 0 }
+		disabled[k] = !fits
 	}
 	return
 }

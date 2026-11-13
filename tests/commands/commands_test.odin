@@ -67,7 +67,7 @@ PALETTE_COMMANDS := [?]ui.Command{
 
 Palette_Run :: struct {
 	pal:     ui.Command_Palette,
-	enabled: [len(PALETTE_COMMANDS)]bool,
+	disabled: [len(PALETTE_COMMANDS)]bool,
 	chosen:  int,
 	mods:    platform.Modifiers,
 	pressed: [len(PALETTE_COMMANDS)]bool,
@@ -77,13 +77,13 @@ Palette_Run :: struct {
 @(private = "file")
 build_palette :: proc(f: ^Fx, user: rawptr) {
 	r := (^Palette_Run)(user)
-	if i, _ := ui.palette(&r.pal, PALETTE_COMMANDS[:], r.enabled[:], r.opts); i >= 0 { r.chosen, r.mods = i, r.pal.chosen_mods }
+	if i, _ := ui.palette(&r.pal, PALETTE_COMMANDS[:], r.disabled[:], r.opts); i >= 0 { r.chosen, r.mods = i, r.pal.chosen_mods }
 }
 
 @(private = "file")
 build_command_keys :: proc(f: ^Fx, user: rawptr) {
 	r := (^Palette_Run)(user)
-	for c, i in PALETTE_COMMANDS { r.pressed[i] = ui.command_pressed(c, !r.enabled[i]) }
+	for c, i in PALETTE_COMMANDS { r.pressed[i] = ui.command_pressed(c, r.disabled[i]) }
 }
 
 @(test)
@@ -108,7 +108,7 @@ command_keys_and_palette :: proc(t: ^testing.T) {
 	defer close(&f)
 	r := Palette_Run{chosen = -1}
 	defer ui.palette_destroy(&r.pal)
-	r.enabled = {true, true, false, true}
+	r.disabled = {false, false, true, false}
 
 	// a command's keys, and only when it can act
 	frame(&f, {key(.Delete, {.Shift})}, build_command_keys, &r)
@@ -308,7 +308,7 @@ palette_options :: proc(t: ^testing.T) {
 	defer close(&f)
 	r := Palette_Run{chosen = -1}
 	defer ui.palette_destroy(&r.pal)
-	r.enabled = {true, true, true, true}
+	r.disabled = {}
 	recent := []int{2}
 	keys := []string{"", "", "Ctrl+M, T", ""}
 	r.opts = {recent = recent, keys = keys, foot = "Enter: run   Ctrl+Enter: its keys"}
@@ -343,7 +343,7 @@ the_palettes_list_ends_on_a_whole_line :: proc(t: ^testing.T) {
 	defer close(&f)
 	r := Palette_Run{chosen = -1}
 	defer ui.palette_destroy(&r.pal)
-	r.enabled = {true, true, true, true}
+	r.disabled = {}
 	r.opts = {foot = "Enter: run"}
 	for h in ([]f32{300, 317, 331}) {
 		r.pal.size = ui.Vec2{500, h} / 15   // (in ems)

@@ -175,7 +175,7 @@ events := ui.node_graph("###flow", &app.view, app.flow.nodes[:], app.flow.links[
   its kind: `subtitle`, `color`, `state`, `message`, `thumbnail` (copied).
 - `flow_link(l)` is a widget's link as the model's; `flow_state(s)` a run's state as the widget's (`Cancelled` is shown
   `Skipped`).
-- `flow_palette(g, cat, from) -> (commands, enabled)` is the add palette for `ui.palette`: a command per kind, the index
+- `flow_palette(g, cat, from) -> (commands, disabled)` is the add palette for `ui.palette`: a command per kind, the index
   chosen is the kind; off at its `max_count`, and with `from` (`Graph_Dropped_Link.from`) off without a port that fits.
   Then `flowgraph.node_add_linked(g, cat, kind, at, {from.node, from.port, flowgraph.Side(from.side)})`.
 

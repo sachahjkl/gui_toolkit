@@ -6,7 +6,7 @@ package tk_prefs_page
 //
 //	settings, names := prefs_page.palette_commands(&app.prefs, opts)
 //	all := slice.concatenate([][]ui.Command{app_commands, settings}, context.temp_allocator)
-//	if i, _ := ui.palette(&app.palette, all, enabled); i >= len(app_commands) {
+//	if i, _ := ui.palette(&app.palette, all, disabled); i >= len(app_commands) {
 //		app.settings_open = true
 //		prefs_page.show(&app.page, &app.prefs, opts, names[i - len(app_commands)])
 //	}
