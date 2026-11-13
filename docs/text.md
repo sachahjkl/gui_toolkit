@@ -78,7 +78,7 @@ test's), is read at once and its text given in the next build. A field reached a
 `field_key`, `field_paste(owner)` and `field_menu(key, f, owner)`, and inserts the answer with
 `field_paste_answer(f, owner)` in each build (the menu's search does). See [clipboard.md](clipboard.md).
 
-**The clipboard's keys** are one set wherever text is typed (`ui.line_edit`, `ui.text_area`, `term`): Ctrl+C or Ctrl+Insert
+**The clipboard's keys** are one set wherever text is typed (`ui.line_edit`, `ui.text_edit`, `term`): Ctrl+C or Ctrl+Insert
 copies, Ctrl+X or Shift+Delete cuts, Ctrl+V or Shift+Insert pastes.
 
 **Editing wrapped text** (`src/ui/text_lines.odin`, `src/ui/text_edit.odin`). `ui.text_visual_lines(fonts, font, size, text,

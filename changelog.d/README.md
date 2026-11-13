@@ -21,5 +21,5 @@ toolkit keeps its own the same way, and `release.ship` assembles them.
 
 `odin run tools/changelog -- -new -type:Added -subject:thing "-text:**...**: ..."` writes one;
 `-Check` (CI) says whether they are all well formed and none was already released; `-Assemble` prints what the next
-version brings. `odin run tools/tk -- release <version>` assembles them into a `## [<version>]` section, writes the version and
+version brings. `odin run tools/tk -- release <patch|minor|major|x.y.z>` assembles them into a `## [<version>]` section, writes the version and
 deletes them.

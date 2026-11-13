@@ -2,7 +2,7 @@
 
 `import "gt:markdown"`. Shows Markdown as people and models write it in a chat, a note or a reply: headings,
 paragraphs, bullet and numbered lists (nested by indent), quotes, rules, tables, fenced code, and inline `**bold**`,
-`*italic*`, `` `code` ``, `~~strike~~`, `[links](target)` and bare web addresses. Each block is a `ui.rich_paragraph`
+`*italic*`, `` `code` ``, `~~strike~~`, `[links](https://example.org)` and bare web addresses. Each block is a `ui.rich_paragraph`
 (selectable, its links answer the pointer and the keyboard). For Markdown to HTML (a site), see `site.render_markdown`.
 
 ```odin

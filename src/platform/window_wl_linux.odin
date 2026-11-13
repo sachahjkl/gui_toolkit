@@ -1409,6 +1409,9 @@ test_show_plain :: proc(w: ^Window) {
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_ATTACH, nil, wl.proxy_get_version(st.surface), 0, buffer, i32(0), i32(0))
 	wl.proxy_marshal_flags(st.surface, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(st.surface), 0)
 	wl.display_roundtrip(wlc.display)
+	// (a picture is on the surface: the window is mapped, as a present makes it; an activation asked waits for that)
+	st.presented = true
+	wl_activation_flush(w, st)
 }
 @(private = "file") WL_SHM_CREATE_POOL :: 0
 @(private = "file") WL_SHM_POOL_CREATE_BUFFER :: 0

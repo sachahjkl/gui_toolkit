@@ -5,7 +5,6 @@
 package window_test
 
 import "core:os"
-import "core:strings"
 import "core:thread"
 import "core:testing"
 import "core:time"

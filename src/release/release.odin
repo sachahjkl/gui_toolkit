@@ -7,10 +7,10 @@
 //	                    updates itself (Config.update): the program alone too, and its manifest signed by
 //	                    $UPDATE_SIGNING_KEY (a release, with its tag, needs the key)
 //	notes <version>     the changelog's section of that version (a GitHub release's notes)
-//	ship <version> [--dry-run]
-//	                    from a clean master: the fragments of changelog.d/ assembled into the changelog's section
-//	                    [<version>] with today's date, the sources' version becomes <version>, the project's checks, a
-//	                    commit, the tag v<version>, the push
+//	ship <patch|minor|major|x.y.z> [--dry-run]
+//	                    from a clean checkout: the next number after the last tag (publish), the fragments of
+//	                    changelog.d/ assembled into the changelog's section with today's date, the sources' version
+//	                    set, the project's checks, a commit, the tag v<version>, master and the tag pushed at once
 //
 // The changelog is made of fragments, one file per change in changelog.d/ beside CHANGELOG.md (gt:changelog,
 // docs/changelog.md); CHANGELOG.md follows Keep a Changelog: `## [x.y.z] - yyyy-mm-dd` sections, the versions' links at
@@ -177,49 +177,50 @@ copy_file :: proc(who, from, to: string) -> bool {
 	return true
 }
 
-// `ship <version> [--dry-run]`: the release made from a clean master, tagged and pushed (the release workflow builds it).
+// `ship <patch|minor|major|x.y.z> [--dry-run]`: the release made from a clean checkout (any branch, a worktree), its
+// number the next after the last tag, committed, tagged and pushed to master with its tag at once (publish); the
+// release workflow builds it.
 ship :: proc(c: Config, args: []string) -> int {
-	if len(args) == 0 { fmt.eprintfln("%s: ship <version> [--dry-run]", c.name); return 2 }
-	version := strings.trim_prefix(args[0], "v")
+	if len(args) == 0 { fmt.eprintfln("%s: ship <patch|minor|major|x.y.z> [--dry-run]", c.name); return 2 }
+	asked := strings.trim_prefix(args[0], "v")
 	dry := len(args) > 1 && args[1] == "--dry-run"
-	if _, ok := semver(version); !ok { fmt.eprintfln("%s: %s is not x.y.z", c.name, version); return 2 }
 	source, _ := read_text(c.version_file)
 	current := version_of(source, c.version_line)
-	if !semver_newer(current, version) && current != version { fmt.eprintfln("%s: %s does not come after %s", c.name, version, current); return 1 }
-	branch, _ := toolbox.capture({"git", "rev-parse", "--abbrev-ref", "HEAD"})
-	if strings.trim_space(branch) != "master" { fmt.eprintfln("%s: ship from master", c.name); return 1 }
-	if status, _ := toolbox.capture({"git", "status", "--porcelain"}); strings.trim_space(status) != "" {
-		fmt.eprintfln("%s: the working tree is not clean", c.name)
-		return 1
-	}
+	if _, ok := version_next(current, asked); !ok { fmt.eprintfln("%s: %s is not patch, minor, major or a version after %s", c.name, asked, current); return 2 }
 	o := changelog_options(c)
-	problems, fragments := changelog.check(o)
+	problems, _ := changelog.check(o)
 	for p in problems { fmt.eprintfln("%s: %s", c.name, p) }
 	if len(problems) > 0 { return 1 }
 	section, _ := changelog.preview(o.root)
 	if section == "" { fmt.eprintfln("%s: nothing to release: no fragment in changelog.d/ (and nothing under [Unreleased] in %s)", c.name, c.changelog); return 1 }
-	new_source, sok := version_set(source, c.version_line, version)
-	if !sok { fmt.eprintfln("%s: %s has no %s line", c.name, c.version_file, c.version_line); return 1 }
 	if dry {
-		fmt.printfln("ship %s (dry run): the section it releases\n%s", version, section)
+		fmt.printfln("ship %s (dry run, after %s): the section it releases\n%s", asked, current, section)
 		return 0
 	}
-	_, errors := changelog.assemble(o, version)
-	for e in errors { fmt.eprintfln("%s: %s", c.name, e) }
-	if len(errors) > 0 { return 1 }
-	if os.write_entire_file(c.version_file, new_source) != nil { return 1 }
-	if c.check != nil && c.check() != 0 { fmt.eprintfln("%s: the checks failed: nothing is committed (git checkout . takes the changes back)", c.name); return 1 }
-	add := make([dynamic]string, context.temp_allocator)
-	append(&add, "git", "add", "-A", "--", c.changelog, c.version_file)
-	// (the fragments deleted: a project with only an [Unreleased] section may have no changelog.d/ to add)
-	if fragments > 0 { append(&add, fmt.tprintf("%s/changelog.d", o.root)) }
-	steps := [][]string{
-		add[:],
-		{"git", "commit", "-m", fmt.tprintf("%s %s", c.name, version)},
-		{"git", "tag", "-a", fmt.tprintf("v%s", version), "-m", fmt.tprintf("%s %s", c.name, version)},
-		{"git", "push", "origin", "master", fmt.tprintf("v%s", version)},
-	}
-	for s in steps { if !toolbox.run(s, {echo = true}) { return 1 } }
+	c := c
+	version, why := publish({asked = asked, floor = current, write = ship_write, user = &c})
+	if why != "" { fmt.eprintfln("%s: %s", c.name, why); return 1 }
 	fmt.printfln("shipped v%s: the release workflow builds and publishes it (%s/actions)", version, c.repository)
 	return 0
+}
+
+// The files of a program's release: the changelog's section, the version in the sources, then the project's checks.
+@(private = "file")
+ship_write :: proc(version: string, user: rawptr) -> (paths: []string, subject: string, why: string) {
+	c := (^Config)(user)^
+	o := changelog_options(c)
+	source, _ := read_text(c.version_file)
+	new_source, sok := version_set(source, c.version_line, version)
+	if !sok { return nil, "", fmt.tprintf("%s has no %s line", c.version_file, c.version_line) }
+	_, fragments := changelog.check(o)
+	_, errors := changelog.assemble(o, version)
+	for e in errors { fmt.eprintfln("%s: %s", c.name, e) }
+	if len(errors) > 0 { return nil, "", "assembling the changelog failed" }
+	if os.write_entire_file(c.version_file, new_source) != nil { return nil, "", fmt.tprintf("%s cannot be written", c.version_file) }
+	if c.check != nil && c.check() != 0 { return nil, "", "the checks failed: nothing is committed" }
+	add := make([dynamic]string, context.temp_allocator)
+	append(&add, c.changelog, c.version_file)
+	// (the fragments deleted: a project with only an [Unreleased] section may have no changelog.d/ to add)
+	if fragments > 0 { append(&add, fmt.tprintf("%s/changelog.d", o.root)) }
+	return add[:], fmt.tprintf("%s %s", c.name, version), ""
 }

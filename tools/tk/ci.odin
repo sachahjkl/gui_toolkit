@@ -2,6 +2,7 @@ package tk
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import toolbox "../../src/toolbox"
 
@@ -18,8 +19,26 @@ CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", 
 // are the same code.
 LINUX_FLAGS :: [?]string{"-extra-linker-flags:-Wl,--allow-multiple-definition"}
 
-// The packages of the library, under src/.
-PACKAGES :: [?]string{"arena", "ascii", "base", "capture", "cdp", "changelog", "config", "dbus", "desktop", "devtools", "diff", "draw", "flate", "font", "fsx", "gif", "h264", "host", "i18n", "image", "instance", "markdown", "mermaid", "mux", "notices", "ocr", "paint", "platform", "png", "process", "qr", "remote", "render", "shortcuts", "site", "store", "svg", "term", "testkit", "timefmt", "toolbox", "ui", "update"}
+// The packages of the library: every folder under src/ that holds Odin files (a list written by hand forgot ten).
+library_packages :: proc(root: string) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	walk :: proc(dir, rel: string, out: ^[dynamic]string) {
+		entries, err := os.read_all_directory_by_path(dir, context.temp_allocator)
+		if err != nil { return }
+		has_odin := false
+		for e in entries {
+			if e.type == .Directory {
+				walk(e.fullpath, rel == "" ? e.name : fmt.tprintf("%s/%s", rel, e.name), out)
+			} else if strings.has_suffix(e.name, ".odin") {
+				has_odin = true
+			}
+		}
+		if has_odin && rel != "" { append(out, rel) }
+	}
+	walk(join({root, "src"}), "", &out)
+	slice.sort(out[:])
+	return out[:]
+}
 
 // build [example] [-debug]: an example (default fidget) -> build/<example>[.exe], optimized (-o:speed) or with debug information
 // (Windows: the D3D11 debug layer). Windows: no console (-subsystem:windows), and examples/<example>/<example>.rc as its resource
@@ -64,7 +83,8 @@ run_ci :: proc(a: ^Args) -> string {
 		if why := build_rust_lib(root, TEXT_LIB, false); why != "" { return why }
 		if why := build_rust_lib(root, MERMAID_LIB, false); why != "" { return why }   // (tests/mermaid)
 	}
-	for p in PACKAGES {
+	packages := library_packages(root)
+	for p in packages {
 		cmd := make([dynamic]string, context.temp_allocator)
 		append(&cmd, "odin", "check", join({root, "src", p}), "-no-entry-point", "-vet")
 		when ODIN_OS != .Windows { append(&cmd, "-target:linux_amd64") }
@@ -75,12 +95,30 @@ run_ci :: proc(a: ^Args) -> string {
 			append(&failed, fmt.tprintf("check %s", p))
 		}
 	}
+	when ODIN_OS != .Windows {
+		// (the Windows code, which only a Windows job compiled before: every package checked for it from here)
+		scratch := join({root, toolbox.CHECK_ROOT_DEFAULT})
+		for p in packages {
+			if toolbox.odin_check(join({root, "src", p}), "windows_amd64", {"-no-entry-point"}, scratch) {
+				fmt.printfln("check ok   %s (windows)", p)
+			} else {
+				fmt.printfln("check FAIL %s (windows)", p)
+				append(&failed, fmt.tprintf("check %s (windows)", p))
+			}
+		}
+	}
 	examples := CI_EXAMPLES_WINDOWS when ODIN_OS == .Windows else CI_EXAMPLES_LINUX
 	for e in examples {
 		if why := build_example(root, e, false); why != "" { append(&failed, why) }
 	}
 	if !toolbox.run({"odin", "run", join({root, "tools", "run_tests"}), "-vet", fmt.tprintf("-out:%s", join({root, "build", fmt.tprintf("run_tests%s", EXE)}))}, {dir = root}) {
 		append(&failed, "tools/run_tests")
+	}
+	when ODIN_OS != .Windows {
+		// (the Windows tests and programs, compiled for Windows from here: their own defines, nothing run)
+		if !toolbox.run({join({root, "build", fmt.tprintf("run_tests%s", EXE)}), "-check:windows_amd64"}, {dir = root}) {
+			append(&failed, "tools/run_tests -check:windows_amd64")
+		}
 	}
 	if len(failed) > 0 { return fmt.tprintf("failed: %s", strings.join(failed[:], ", ", context.temp_allocator)) }
 	fmt.println("ci: all passed")

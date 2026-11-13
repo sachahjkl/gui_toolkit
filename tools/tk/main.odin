@@ -47,9 +47,10 @@
 //                                             the timelines of src/cdp against examples/whatsnew --headless over a real socket
 //   doc_check [--root folder] [--extra folder]...
 //                                             the files, flags and names the documentation cites exist (doc_check.odin)
-//   release <version> [-summary:text] [-no-push]
-//                                             publishes a version, on Windows or Linux (release.odin, CONTRIBUTING.md): the CHANGELOG
-//                                             section, the version, the commit, the tag, the push and the GitHub release
+//   release <patch|minor|major|x.y.z> [-summary:text] [-no-push]
+//                                             publishes a version, on Windows or Linux, from any clean checkout (release.odin,
+//                                             CONTRIBUTING.md): the next number after the last tag, the CHANGELOG section, the
+//                                             version, the commit, the tag, master and the tag pushed at once, the GitHub release
 // A relative path given is the working directory's; the defaults are in the toolkit's checkout (two folders above this file), from
 // wherever tk runs, except emoji_board's, which runs in the checkout. Every download is checked against its SHA-256 before it is used.
 // Exit code 0 when the work is done, 1 when it failed, 2 for a command line it does not understand. tests/tk calls the procedures below.

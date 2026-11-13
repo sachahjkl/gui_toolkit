@@ -30,13 +30,15 @@
 
 ## Publishing a version
 
-`odin run tools/tk -- release <version> "-summary:one-line summary"`, on a clean `master`, on Windows or Linux:
+`odin run tools/tk -- release <patch|minor|major|x.y.z> "-summary:one-line summary"`, from any clean checkout (a branch,
+a worktree, a detached HEAD), on Windows or Linux. It fetches origin, rebases on `master` and takes the next number after
+the last tag (`release.publish`, [docs/release.md](docs/release.md)), then:
 
 1. `tools/changelog -assemble -version:<version>` makes the `## [<version>] - <date>` section from the fragments
    (by type, newest first), writes the version in `src/ui/version.odin` and the README's badge, and deletes the fragments;
 2. on Windows, the About picture (it shows the version) is taken again from fidget; elsewhere it stays;
-3. it commits that as `<version>: <summary>`, tags it `v<version>` (annotated), pushes `master` and the tag,
-   and creates the GitHub release with the section as its notes (`tools/changelog -section -version:<version>`).
+3. it commits that as `<version>: <summary>`, tags it `v<version>` (annotated), pushes `master` and the tag at once
+   (`--atomic`; when origin moved meanwhile, it starts again with the next number), and creates the GitHub release with the section as its notes (`tools/changelog -section -version:<version>`).
 
 `-no-push` stops after the tag, to look at the commit first. Semantic versioning: while the version is `0.x`, a minor
 bump may change the API.

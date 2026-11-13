@@ -4,6 +4,8 @@
 //   odin run tools/run_tests -- text keyboard               those packages
 //   odin run tools/run_tests -- -backend:wgpu -group:ci1    one group of the WebGPU backend (ci1..ci4 are all of them, sample a pull request's)
 //   odin run tools/run_tests -- -list                       the names, and the groups
+//   odin run tools/run_tests -- -check:windows_amd64        every package of that system checked (odin check, its defines), not run:
+//                                                           Windows' code compiled from Linux (toolbox.check_env)
 // Other flags: -jobs:N, -timeout:seconds (of one package's run), -define:NAME=value (to every package). (PowerShell 7 splits a `-name:value` typed after
 // `--` into `-name:` and `value`: tools/cmdline joins them again.) Needs what the CI's steps build first: the native
 // libraries (tools/tk build_text, build_a11y), the emoji font (tools/tk fetch_emoji -unicode), wgpu-native and DXC (tools/tk fetch_wgpu). A log of each step
@@ -20,6 +22,7 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import "../../src/ascii"
+import toolbox "../../src/toolbox"
 
 // What a step does.
 Kind :: enum {
@@ -229,6 +232,8 @@ Options :: struct {
 	jobs:    int,
 	limit:   int,
 	list:    bool,
+	check:   string,     // -check:<target>: every step of that system checked for it, nothing run
+	env:     []string,   // the check's environment (toolbox.check_env); nil: this process's
 }
 
 Result :: struct {
@@ -258,6 +263,7 @@ main :: proc() {
 		case strings.has_prefix(a, "-group:"): o.group = a[len("-group:"):]
 		case strings.has_prefix(a, "-define:"): append(&o.defines, a[len("-define:"):])
 		case strings.has_prefix(a, "-jobs:"): o.jobs, _ = strconv.parse_int(a[len("-jobs:"):])
+		case strings.has_prefix(a, "-check:"): o.check = a[len("-check:"):]
 		case strings.has_prefix(a, "-timeout:"): o.limit, _ = strconv.parse_int(a[len("-timeout:"):])
 		case strings.has_prefix(a, "-"):
 			fmt.eprintfln("unknown flag %s", a)
@@ -271,6 +277,11 @@ main :: proc() {
 		return
 	}
 	if len(chosen) == 0 { fmt.eprintln("nothing to run"); os.exit(2) }
+	if o.check != "" {
+		why: string
+		o.env, why = toolbox.check_env(o.check)
+		if why != "" { fmt.eprintfln("-check:%s: %s", o.check, why); os.exit(1) }
+	}
 	_ = os.make_directory_all(BUILD_DIR)
 	_ = os.make_directory_all(LOG_DIR)
 	pool := Pool{steps = chosen, results = make([]Result, len(chosen)), o = &o}
@@ -297,6 +308,14 @@ choose :: proc(o: ^Options) -> []^Step {
 	for &s in STEPS {
 		if s.path == "" { s.path = fmt.aprintf("tests/%s", s.name) }
 		oses := s.oses == {} ? WINDOWS_ONLY : s.oses
+		if o.check != "" {
+			// (a check of another system: its tests and programs, compiled for it)
+			target_os := strings.has_prefix(o.check, "windows") ? Os.Windows : Os.Linux
+			if s.kind == .Check || target_os not_in oses { continue }
+			if len(o.only) > 0 && !slice.contains(o.only[:], s.name) { continue }
+			append(&out, &s)
+			continue
+		}
 		if s.kind != .Test && THIS_OS == .Linux { continue }   // (what compiles for Linux is the Linux job's own check: tk ci)
 		if THIS_OS not_in oses { continue }
 		if len(o.only) > 0 && !slice.contains(o.only[:], s.name) { continue }
@@ -354,6 +373,7 @@ run_step :: proc(s: ^Step, o: ^Options) -> Result {
 	r := Result{step = s}
 	need := s.need
 	if s.text && ODIN_OS == .Linux && need == .None { need = .Text_Lib }
+	if o.check != "" { need = .None }   // (a check links nothing)
 	if why := missing_need(need); why != "" {
 		r.why = why
 	} else {
@@ -377,6 +397,20 @@ carry_out :: proc(s: ^Step, o: ^Options, r: ^Result) {
 	exe := fmt.tprintf("%s/%s%s%s", on_wgpu ? "build" : BUILD_DIR, s.name, suffix, EXE_SUFFIX)
 	here, _ := os.get_working_directory(context.temp_allocator)
 	exe_path := fmt.tprintf("%s/%s", here, exe)
+	if o.check != "" {
+		append(&cmd, "odin", "check", s.path, "-vet", fmt.tprintf("-target:%s", o.check))
+		// (odin check has no test mode, so ODIN_TEST is false: the hooks a test build turns on, turned on by name)
+		if s.kind == .Test { append(&cmd, "-no-entry-point", "-define:FONT_FAILURE_HOOKS=true", "-define:DRAW_FAILURE_HOOKS=true") }
+		if s.one { append(&cmd, "-define:ODIN_TEST_THREADS=1") }
+		for d in s.defines { append(&cmd, fmt.tprintf("-define:%s", d)) }
+		for d in o.defines { append(&cmd, fmt.tprintf("-define:%s", d)) }
+		if !run_to_log(cmd[:], log_file, 0, r, o.env) {
+			if r.why == "" { r.why = "it does not compile" }
+			return
+		}
+		r.ok = true
+		return
+	}
 	switch s.kind {
 	case .Test:
 		append(&cmd, "odin", "build", s.path, "-build-mode:test", "-vet", "-debug", fmt.tprintf("-out:%s", exe))
@@ -411,8 +445,8 @@ carry_out :: proc(s: ^Step, o: ^Options, r: ^Result) {
 }
 
 // Runs a command, its output in the log. `limit`: seconds, 0 none. False: it failed; `r.why` when it says more than its exit code does.
-run_to_log :: proc(cmd: []string, log: ^os.File, limit: int, r: ^Result) -> bool {
-	p, err := os.process_start({command = cmd, stdout = log, stderr = log})
+run_to_log :: proc(cmd: []string, log: ^os.File, limit: int, r: ^Result, env: []string = nil) -> bool {
+	p, err := os.process_start({command = cmd, stdout = log, stderr = log, env = env})
 	if err != nil { r.why = fmt.tprintf("%s cannot start: %v", cmd[0], err); return false }
 	began := time.tick_now()
 	for {
