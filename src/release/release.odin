@@ -24,6 +24,7 @@ import "core:strings"
 import changelog "../changelog"
 import toolbox "../toolbox"
 import update "../update"
+import "../fsx"
 
 Config :: struct {
 	// the program: its name (the archive's, the commit's and the tag's message), its repository (the versions' links), its
@@ -120,7 +121,7 @@ package_ :: proc(c: Config, args: []string) -> int {
 	}
 	stage := fmt.tprintf("%s/%s", c.dist, name)
 	_ = os.remove_all(c.dist)
-	if os.make_directory_all(stage) != nil { fmt.eprintfln("%s: %s cannot be made", c.name, stage); return 1 }
+	if !fsx.make_dirs(stage) { fmt.eprintfln("%s: %s cannot be made", c.name, stage); return 1 }
 	if !copy_file(c.name, c.program, fmt.tprintf("%s/%s", stage, exe)) { return 1 }
 	for f in c.files {
 		if !copy_file(c.name, f[0], fmt.tprintf("%s/%s", stage, f[1])) { return 1 }

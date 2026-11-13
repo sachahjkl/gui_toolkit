@@ -110,3 +110,13 @@ read_all_never_gives_a_part :: proc(t: ^testing.T) {
 	thread.join(th)
 	thread.destroy(th)
 }
+
+// A folder made twice: the second call finds it and says so (Odin's make_directory_all says Exist then).
+@(test)
+a_folder_made_again_is_there :: proc(t: ^testing.T) {
+	root := fmt.tprintf("build/fsx_make_dirs_%d", os.get_pid())
+	defer fsx.remove_tree(root)
+	dir := fmt.tprintf("%s/a/b", root)
+	testing.expect(t, fsx.make_dirs(dir), "made")
+	testing.expect(t, fsx.make_dirs(dir), "already there")
+}

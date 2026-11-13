@@ -118,9 +118,12 @@ read_at :: proc(path: string, offset: i64, buf: []byte, loc := #caller_location)
 	return n, true
 }
 
-make_dirs :: proc(dir: string, loc := #caller_location) {
+// The folder and its parents, those missing made. True when it is a folder now (one already there is no failure: Odin's
+// make_directory_all says Exist for it).
+make_dirs :: proc(dir: string, loc := #caller_location) -> bool {
 	base.blocking("fsx.make_dirs", loc)
 	_ = os.make_directory_all(dir)
+	return os.is_dir(dir)
 }
 
 list_files :: proc(dir: string, allocator := context.temp_allocator, loc := #caller_location) -> []Dir_File {

@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import "../fsx"
 
 // What a stamp file ends with (the ones PowerShell's Set-Content wrote end so on Windows, and stay valid).
 STAMP_NEWLINE :: "\r\n" when ODIN_OS == .Windows else "\n"
@@ -45,7 +46,7 @@ build_c_lib :: proc(name: string, sources: []string, out: string, cflags: []stri
 	stamp, ok := c_lib_stamp(sources, cflags)
 	if !ok { fmt.eprintfln("%s: a source cannot be read", name); return false }
 	if stamp_holds(lib, stamp_file, stamp) { return true }
-	if os.make_directory_all(out) != nil { fmt.eprintfln("%s cannot be made", out); return false }
+	if !fsx.make_dirs(out) { fmt.eprintfln("%s cannot be made", out); return false }
 	objects := make([dynamic]string, context.temp_allocator)
 	for s in sources {
 		if !strings.has_suffix(s, ".c") { continue }

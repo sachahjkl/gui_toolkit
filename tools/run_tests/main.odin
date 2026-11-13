@@ -98,7 +98,7 @@ STEPS := []Step{
 	{name = "deferred", oses = EVERYWHERE},
 	{name = "frame_gate"},
 	{name = "frame_slots", oses = EVERYWHERE},
-	{name = "fsx"},
+	{name = "fsx", oses = EVERYWHERE},
 	{name = "store", oses = EVERYWHERE},
 	{name = "crash", oses = EVERYWHERE},   // (the crashing process is the test program itself, started again)
 	{name = "log", oses = EVERYWHERE},

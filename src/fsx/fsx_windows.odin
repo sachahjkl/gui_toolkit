@@ -101,13 +101,16 @@ read_at :: proc(path: string, offset: i64, buf: []byte, loc := #caller_location)
 	return n, true
 }
 
-make_dirs :: proc(dir: string, loc := #caller_location) {
+// The folder and its parents, those missing made. True when it is a folder now.
+make_dirs :: proc(dir: string, loc := #caller_location) -> bool {
 	base.blocking("fsx.make_dirs", loc)
 	// every level, from the root (CreateDirectory fails harmlessly on the ones that exist)
 	for i in 0 ..< len(dir) {
 		if (dir[i] == '\\' || dir[i] == '/') && i > 0 && dir[i - 1] != ':' { win.CreateDirectoryW(wide(dir[:i]), nil) }
 	}
 	win.CreateDirectoryW(wide(dir), nil)
+	attrs := win.GetFileAttributesW(wide(dir))
+	return attrs != win.INVALID_FILE_ATTRIBUTES && attrs & win.FILE_ATTRIBUTE_DIRECTORY != 0
 }
 
 list_files :: proc(dir: string, allocator := context.temp_allocator, loc := #caller_location) -> []Dir_File {
