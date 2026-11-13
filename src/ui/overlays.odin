@@ -240,15 +240,20 @@ Modal_Scope :: struct {
 	wh:      Vec2,      // its size in this frame
 	lo, hi:  Vec2,      // how small and how large it may be, in this window
 	top:     bool,      // modal_sized with `top`: its top stays where it is; its bottom follows the pointer (no grips at its top)
-	corner_side:  f32,  // modal_header: the side of the control in its top right corner (0: none)
+	corner_side:  f32,  // dialog_header with `close`: the side of the control in its top right corner (0: none)
 	corner_inset: f32,  // and its margin from the dialog's top and right edges
+	close:        bool, // dialog_header asked for a close button
+	close_label:  string,
+	corner_built: bool, // modal_corner built the corner's control (the program's own): the toolkit's is not built
 }
 
 // A dialog of this build or the last. `focus`: what had the focus when it opened, and gets it back when it closes.
+// `shown`: it was drawn (its first build measures it unseen): what had the focus loses it then, as the dialog appears.
 @(private)
 Modal_Open :: struct {
 	panel: Key,
 	focus: Key,
+	shown: bool,
 }
 
 // Where a dialog is, from the last build: not in it (the focus leaves the page for it), under another one, or the
@@ -257,11 +262,11 @@ Modal_Open :: struct {
 Modal_Phase :: enum u8 { Opening, Below, Top }
 
 @(private)
-modal_phase :: proc(s: ^State, panel: Key) -> (phase: Modal_Phase, focus: Key) {
+modal_phase :: proc(s: ^State, panel: Key) -> (phase: Modal_Phase, last: Modal_Open) {
 	for m, i in s.modals_open {
-		if m.panel == panel { return i == len(s.modals_open) - 1 ? .Top : .Below, m.focus }
+		if m.panel == panel { return i == len(s.modals_open) - 1 ? .Top : .Below, m }
 	}
-	return .Opening, 0
+	return .Opening, {}
 }
 
 // Escape was this dialog's in the last build (modals_settle): it closes now, by the `open` of this build.
@@ -312,14 +317,16 @@ modal :: proc(id: string, width: f32, open: ^bool, y_fraction: f32 = 0.28) -> bo
 	margin := font_size() * MODAL_MARGIN_EM
 	w := max(min(width, s.window_size.x - 2 * margin), 1)
 	y := s.window_size.y * y_fraction
-	// (from the height of the last frame: nothing is laid out yet)
-	if b := box_from_key(key_from_string(s.root.key, fmt.tprintf("###modal_%s", id))); b != nil {
+	// (from the height of the last frame: nothing is laid out yet. Its first build is not drawn (modal_begin): the frame
+	// that shows it is already where it stays)
+	if b := box_from_key(modal_key(s, id)); b != nil {
 		y = max(min(y, s.window_size.y - b.size.y - margin), min(margin, y))
 	}
 	modal_begin(s, id, open, {(s.window_size.x - w) * 0.5, y}, {w, 0})
 	return true
 }
 
+// `preferred.y` 0: as tall as what is in it (modal_content_height), within `min_size` and the window.
 @(deferred_none = modal_end)
 modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_size: Vec2 = {}, top: f32 = -1) -> bool {
 	s := gs()
@@ -332,7 +339,15 @@ modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_s
 	margin := font_size() * MODAL_MARGIN_EM
 	hi := Vec2{max(s.window_size.x - 2 * margin, 1), max(s.window_size.y - 2 * margin, 1)}
 	lo := Vec2{min(min_size.x, hi.x), min(min_size.y, hi.y)}
-	want := size^ != {} ? size^ * s.scale : preferred
+	pref := preferred
+	if pref.y <= 0 {
+		// (its first build, unseen, lays what is in it out in all the room there is; then it is as tall as that was)
+		key := modal_key(s, id)
+		phase, _ := modal_phase(s, key)
+		panel := box_from_key(key)
+		pref.y = phase != .Opening && panel != nil ? modal_content_height(panel) : hi.y
+	}
+	want := size^ != {} ? size^ * s.scale : pref
 	wh := Vec2{math.round(clamp(want.x, lo.x, hi.x)), math.round(clamp(want.y, lo.y, hi.y))}
 	y := math.round((s.window_size.y - wh.y) * 0.5)
 	if top >= 0 {
@@ -341,17 +356,60 @@ modal_sized :: proc(id: string, preferred: Vec2, size: ^Vec2, open: ^bool, min_s
 	}
 	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), y}, wh)
 	m := &s.modal_stack[len(s.modal_stack) - 1]
-	m.size, m.preferred, m.wh, m.lo, m.hi, m.top = size, preferred, wh, lo, hi, top >= 0
+	m.size, m.preferred, m.wh, m.lo, m.hi, m.top = size, pref, wh, lo, hi, top >= 0
 	// (its resize grip's corner is square, the grip's bevel filling it: a choice of the design, not a corner the rounding
 	// forgot. Keep it square)
 	if panel := box_from_key(m.panel); panel != nil { panel.square_corners = {.Bottom_Right} }
 	return true
 }
 
-// The scrim and the panel at `at`, `wh` its size (a height of 0: that of what is in it).
+// The key of the panel of dialog `id`.
+@(private = "file")
+modal_key :: proc(s: ^State, id: string) -> Key { return key_from_string(s.root.key, fmt.tprintf("###modal_%s", id)) }
+
+// The height of what is in a dialog (as the last build laid it out), its border counted: what fills it (`fill()`) counts as
+// what it holds, a region that scrolls as all of its content. A modal_sized of `preferred.y` 0 is that tall.
+@(private)
+modal_content_height :: proc(panel: ^Box) -> f32 {
+	natural :: proc(b: ^Box) -> f32 {
+		if .View_Scroll_Y in b.flags { return b.view_bounds.y + border_inset(b) }   // (view_bounds has its top inset)
+		if b.pref[.Y].kind != .Percent { return b.size.y }
+		v: f32
+		for c := b.first; c != nil; c = c.next {
+			if is_floating(c, .Y) { continue }
+			h := natural(c)
+			if b.layout_axis == .Y { v += h } else { v = max(v, h) }
+		}
+		return v + 2 * border_inset(b)
+	}
+	v: f32
+	for c := panel.first; c != nil; c = c.next {
+		if !is_floating(c, .Y) { v += natural(c) }
+	}
+	return math.ceil(v + 2 * border_inset(panel))
+}
+
+// How long a dialog takes to appear: its scrim and its panel fade in together.
+@(private = "file") MODAL_FADE_MS :: 120
+
+// The scrim and the panel at `at`, `wh` its size (a height of 0: that of what is in it). The build that opens it lays it out
+// unseen and asks for the next frame at once: the first frame that shows it has it at its size and place, and what is in it
+// laid out (a tall dialog moved up on its second frame, its content's own measures settled one frame late). Then the scrim
+// and the panel fade in together (MODAL_FADE_MS; at once with animations off).
 @(private = "file")
 modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	em := font_size()
+	key := modal_key(s, id)
+	phase, last := modal_phase(s, key)
+	fade_key := key_from_string(key, "fade")
+	shown: f32
+	if phase == .Opening {
+		_ = tween(fade_key, 0, 0)               // (from nothing, each time it opens)
+		_ = tween(fade_key, 1, MODAL_FADE_MS)   // (its fade starts with the frame that shows it)
+		s.anim_busy = true                      // (that frame now)
+	} else {
+		shown = tween(fade_key, 1, MODAL_FADE_MS)
+	}
 	push_parent(s.root)
 	push_tags_isolated("floating")   // (a dialog is a dialog, whatever the tags where it is built)
 	push_style_copy()
@@ -361,7 +419,7 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	s.a11y.has_next = false
 	// scrim first, panel second: the panel is later in the tree, so it is on top and takes its own clicks
 	push_tags("scrim")
-	next({fixed_x = 0, fixed_y = 0, fixed_w = s.window_size.x, fixed_h = s.window_size.y, bg = color("background")})
+	next({fixed_x = 0, fixed_y = 0, fixed_w = s.window_size.x, fixed_h = s.window_size.y, bg = color("background"), transparency = 1 - shown})
 	scrim := build_box({.Clickable, .Draw_Background}, fmt.tprintf("###modal_scrim_%s", id))
 	scrim.cursor = .Arrow
 	a11y_default(scrim, {ignore = true})
@@ -375,71 +433,41 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	s.next_mod.width = px(wh.x)
 	s.next_mod.height = wh.y > 0 ? px(wh.y) : children_sum()
 	s.next_mod.radius = DIALOG_RADIUS_EM * em
+	s.next_mod.transparency = 1 - shown
 	panel := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate}, fmt.tprintf("###modal_%s", id))
 	panel.cursor = .Arrow
 	_ = signal(panel)
 	a11y_default(panel, {role = .Dialog, modal = true})
 	push_parent(panel)
 	append(&s.popup_stack, true)
-	// keyboard: Tab cycles inside the dialog; what had the focus loses it while the dialog is open
-	phase, focus := modal_phase(s, panel.key)
+	// keyboard: Tab cycles inside the dialog; what had the focus loses it while the dialog is open. Lost when the dialog
+	// shows, not in its unseen build: the focus ring behind went one frame before the dialog came. (What the dialog's own
+	// first build focused keeps it.)
+	cur := last
 	if phase == .Opening {
-		focus = s.focus_key
-		s.focus_key = 0
+		cur = {panel = panel.key, focus = s.focus_key}
+	} else if !cur.shown {
+		if s.focus_key == cur.focus { s.focus_key = 0 }
+		cur.shown = true
 	}
-	append(&s.modals_built, Modal_Open{panel = panel.key, focus = focus})
+	append(&s.modals_built, cur)
 	append(&s.modal_stack, Modal_Scope{panel = panel.key, order = len(s.modals_built), open = open, wh = wh})
 }
 
 // A dialog's corners (before the rounding), in ems: what a strip across its top (dialog_top_draw) takes too.
 DIALOG_RADIUS_EM :: 0.8
 
-// `if modal_header("###head", side, inset) { ... }`: the row across the top of the dialog being built, with a control in its
-// top right corner (modal_corner). The row is `side` tall and `inset` below the dialog's top, so what is in it is centered
-// with the control; its right end (`inset + side + inset`) is left free for the control. Build it first in a box whose top
-// right corner is the dialog's: the dialog itself, or a column along its top and right edges.
-@(deferred_none = modal_header_end)
-modal_header :: proc(id: string, side, inset: f32) -> bool { return modal_header_begin(id, side, inset) }
-
-// modal_header's start, for a program's own `if` form (its side and margin given once): `@(deferred_none =
-// ui.modal_header_end)` on a procedure that returns this. (Wrapping modal_header itself would end the header twice: its
-// end is deferred to the scope it is called in.)
-modal_header_begin :: proc(id: string, side, inset: f32) -> bool {
-	s := gs()
-	assert(len(s.modal_stack) > 0, "modal_header: outside a dialog")
-	m := &s.modal_stack[len(s.modal_stack) - 1]
-	m.corner_side, m.corner_inset = side, inset
-	// (the control's margin is from the dialog's edge, its border's outside; the header is inside the border. exact: the
-	// margin is not the density's)
-	spacer(px(max(inset - modal_border(m^), 0)), exact = true)
-	next({width = fill(), height = px(side), axis = .X, cross = .Center})
-	push_parent(build_box({}, id))
-	return true
-}
-
-// The end of modal_header and of modal_header_begin.
-modal_header_end :: proc() {
-	m := gs().modal_stack[len(gs().modal_stack) - 1]
-	spacer(px(max(m.corner_inset + m.corner_side + m.corner_inset - modal_border(m), 0)), exact = true)
-	pop_parent()
-}
-
-// The width of the border of the dialog `m` (what its content is inside of).
-@(private = "file")
-modal_border :: proc(m: Modal_Scope) -> f32 {
-	panel := box_from_key(m.panel)
-	return panel != nil ? border_inset(panel) : 0
-}
-
-// The control in the top right corner of the dialog being built, declared by its modal_header: a box of `flags`, a square of
-// the header's height, the same margin from the dialog's top and from its right edge, its corners concentric with the dialog's
-// (corner_place; Fixed_Radius: `radius` is as drawn, its look draws it with that). The program gives it its look (its
-// children, a custom draw); what `next` said is kept, but for its place, its size and its radius.
+// The control in the top right corner of the dialog being built, whose dialog_header asked for one (`close`): a box of
+// `flags`, a square, the same margin from the dialog's top and from its right edge, centered on the header, its corners
+// concentric with the dialog's (corner_place; Fixed_Radius: `radius` is as drawn, its look draws it with that). The
+// dialog's close button is one; a program's own look of it is another, built in the header's block (the toolkit's then
+// is not built). What `next` said is kept, but for its place, its size and its radius.
 modal_corner :: proc(flags: Box_Flags, id: string) -> ^Box {
 	s := gs()
 	assert(len(s.modal_stack) > 0, "modal_corner: outside a dialog")
+	s.modal_stack[len(s.modal_stack) - 1].corner_built = true
 	m := s.modal_stack[len(s.modal_stack) - 1]
-	assert(m.corner_side > 0, "modal_corner: the dialog has no modal_header")
+	assert(m.corner_side > 0, "modal_corner: the dialog's header has no close control (dialog_header's `close`)")
 	panel := box_from_key(m.panel)
 	outer: f32 = .Top_Right in panel.square_corners ? 0 : box_drawn_radius(s, panel)
 	side := m.corner_side
@@ -506,6 +534,7 @@ modal_grips :: proc(s: ^State, m: Modal_Scope) {
 modal_end :: proc() {
 	s := gs()
 	if len(s.popup_stack) > 0 && s.popup_stack[len(s.popup_stack) - 1] {
+		if top := &s.modal_stack[len(s.modal_stack) - 1]; top.close && !top.corner_built { dialog_close_button(top) }
 		m := pop(&s.modal_stack)
 		if m.size != nil { modal_grips(s, m) }
 		// closed in this build (a button set its `open` false): it holds no key in the next one, where it is not built

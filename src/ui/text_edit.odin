@@ -193,6 +193,36 @@ area_redo :: proc(a: ^Text_Area) -> bool {
 @(private="file")
 sel :: proc(a: ^Text_Area) -> (lo, hi: int) { return min(a.cursor, a.mark), max(a.cursor, a.mark) }
 
+// The edits of the keys and of the field's menu (field_menu), one of each: through the edit history, the clipboard the one
+// given to begin_build. False: nothing to do (no selection, no clipboard).
+@(private)
+area_select_all :: proc(a: ^Text_Area) { a.mark, a.cursor, a.upstream = 0, len(a.buf), false }
+
+@(private)
+area_copy :: proc(a: ^Text_Area) -> bool {
+	lo, hi := sel(a)
+	if lo == hi || current == nil || current.clipboard_set == nil { return false }
+	gs().clipboard_set(string(a.buf[lo:hi]))
+	return true
+}
+
+// (with no clipboard, a cut still cuts: what was asked is that the text goes)
+@(private)
+area_cut :: proc(a: ^Text_Area) -> bool {
+	_ = area_copy(a)
+	return area_delete(a)
+}
+
+@(private)
+area_delete :: proc(a: ^Text_Area) -> bool {
+	lo, hi := sel(a)
+	if lo == hi { return false }
+	begin_edit(a, .Other, gs().time_ms)
+	delete_range(a, lo, hi)
+	a.upstream = false
+	return true
+}
+
 @(private="file")
 delete_range :: proc(a: ^Text_Area, lo, hi: int) {
 	if hi <= lo { return }
@@ -409,8 +439,10 @@ fmt_int :: proc(v: int) -> string {
 //   auto_height: the box is as tall as its (visual) lines, `min_lines` at least and `max_lines` at most (0: no
 //                limit); past that it scrolls. (A wrapped editor lays out at the width it had in the last frame.)
 // The caret's rectangle is in the result (`caret`, box coordinates) and, as drawn, from text_edit_caret_rect.
+// A right press on it opens its menu (field_menu: Undo, Cut, Copy, Paste...), as on a line_edit; `menu` false: the program
+// has its own.
 text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := false, tab_indents := false,
-	wrap := false, auto_height := false, min_lines := 1, max_lines := 0, highlight: ^Text_Highlight = nil) -> (res: Edit_Result) {
+	wrap := false, auto_height := false, min_lines := 1, max_lines := 0, highlight: ^Text_Highlight = nil, menu := true) -> (res: Edit_Result) {
 	s := gs()
 	if tags("input") {
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Scroll_Self, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken}, id)
@@ -466,6 +498,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		}
 		content := edit_follow_caret(&e, auto_height, cursor_moved)
 		edit_fill_draw(&e, content, placeholder, mono, highlight)
+		if menu { field_context_menu(b, a, false, false) }
 	}
 	return
 }
@@ -707,23 +740,12 @@ edit_keys_deleting :: proc(e: ^Edit_Build) {
 // (Ctrl+Insert, Shift+Delete, Shift+Insert), as a line edit and a terminal have: one set of keys wherever text is typed.
 @(private="file")
 edit_keys_clipboard :: proc(e: ^Edit_Build) {
-	s, a := e.s, e.a
+	a := e.a
 	ctrl := Mods{.Ctrl}
 	shift := Mods{.Shift}
-	if key_press(.A, ctrl) { a.mark = 0; a.cursor = len(a.buf); a.upstream = false }
-	if key_press(.C, ctrl) || key_press(.Insert, ctrl) {
-		lo, hi := sel(a)
-		if lo != hi && s.clipboard_set != nil { s.clipboard_set(string(a.buf[lo:hi])) }
-	}
-	if key_press(.X, ctrl) || key_press(.Delete, shift) {
-		lo, hi := sel(a)
-		if lo != hi {
-			if s.clipboard_set != nil { s.clipboard_set(string(a.buf[lo:hi])) }
-			begin_edit(a, .Other, e.now)
-			delete_range(a, lo, hi)
-			a.upstream = false
-		}
-	}
+	if key_press(.A, ctrl) { area_select_all(a) }
+	if key_press(.C, ctrl) || key_press(.Insert, ctrl) { _ = area_copy(a) }
+	if key_press(.X, ctrl) || key_press(.Delete, shift) { _ = area_cut(a) }
 	// (the text comes in a later build: edit_paste_answer)
 	if key_press(.V, ctrl) || key_press(.Insert, {.Shift}) { paste_request(e.b.key) }
 }

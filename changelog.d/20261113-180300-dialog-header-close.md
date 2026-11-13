@@ -1,0 +1,3 @@
+type: Changed
+
+**One dialog header, with its close button**: `ui.dialog_header(id, title, opts) -> bool` takes a `ui.Dialog_Header` (its icon, `close`) and a block for its own controls; with `close`, a close button (Lucide's X) sits in the dialog's corner at the same margin from its top and right edges, its corners concentric with the dialog's, and the header's controls stay clear of it. `ui.dialog_header_begin` and `ui.dialog_header_end` are its `if` form; `ui.modal_corner` builds a program's own look of the control in the header's block. The confirmation, the shortcuts sheet and the Setup dialog have it (the sheet's Close button at its foot is gone).
