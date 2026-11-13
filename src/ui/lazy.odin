@@ -85,7 +85,13 @@ lazy_begin :: proc(all := false, sweep := [2]int{}) -> (lz: ^Lazy) {
 	sb := col.parent
 	for sb != nil && (Box_Flag.View_Scroll_Y not_in sb.flags) { sb = sb.parent }
 	lz.scroll = sb
-	if sb == nil || all { return }
+	if sb == nil { return }
+	// the column's top in the content, from the last layout. Not from its rect: that was placed at the offset of the last layout,
+	// and the view may have moved since (a jump to the bottom of a conversation just read, before this build): the rect and the
+	// new offset together put every item off by the jump, and the ones in view were not built. (With `all` too: `y` says where
+	// each item starts, a rail of marks reads it)
+	lz.y = c.top_known ? c.top : col.rect.min.y - sb.rect.min.y + sb.view_off.y
+	if all { return }
 	lz.on = true
 	s.virtual_depth += 1
 	view := sb.size.y > 0 ? sb.size.y : s.window_size.y   // (the first frame: no layout yet)
@@ -93,10 +99,6 @@ lazy_begin :: proc(all := false, sweep := [2]int{}) -> (lz: ^Lazy) {
 	lz.hi = sb.view_off.y + view * (1 + LAZY_MARGIN)
 	lz.tlo = sb.view_target.y - view * LAZY_MARGIN
 	lz.thi = sb.view_target.y + view * (1 + LAZY_MARGIN)
-	// the column's top in the content, from the last layout. Not from its rect: that was placed at the offset of the last layout,
-	// and the view may have moved since (a jump to the bottom of a conversation just read, before this build): the rect and the
-	// new offset together put every item off by the jump, and the ones in view were not built
-	lz.y = c.top_known ? c.top : col.rect.min.y - sb.rect.min.y + sb.view_off.y
 	return
 }
 
