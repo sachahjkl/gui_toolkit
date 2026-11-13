@@ -75,9 +75,8 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 		status_line(app, em)
 	}
 	overlays(app, em)
-	// (between the bars: a toast never hides the status line)
+	// (between the bars: a toast never hides the status line; end_build shows them there)
 	ui.set_toast_area({{0, ui.dense(em * 2.8)}, {size.x, size.y - ui.dense(em * 2)}})
-	ui.toasts_build()
 }
 
 @(private = "file")

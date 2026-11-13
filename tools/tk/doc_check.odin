@@ -188,8 +188,8 @@ check_line :: proc(d: ^Docs, doc, line: string, n: int, out: ^[dynamic]string) {
 		for k < len(after) && (after[k] == '.' || after[k] == '*') { star ||= after[k] == '*'; k += 1 }
 		first := p[:strings.index_any(p, "/\\")]
 		if star || !exists_in(d, first) { continue }   // (a pattern; a folder of the reader's project)
-		// (docs/index.html is the page tk site_docs makes, the home page's link to the Docs section)
-		once(&seen, out, doc, n, fmt.tprintf("path %s", p), exists_in(d, p) || exists_in(d, fmt.tprintf("%s.exe", p)) || p == "docs/index.html")
+		// (docs/index.html and docs/<name>/ are the pages tk site_docs makes, the home page's links to the Docs section)
+		once(&seen, out, doc, n, fmt.tprintf("path %s", p), exists_in(d, p) || exists_in(d, fmt.tprintf("%s.exe", p)) || p == "docs/index.html" || (strings.has_prefix(p, "docs/") && exists_in(d, fmt.tprintf("%s.md", p))))
 	}
 
 	// flags and names, in code spans only
