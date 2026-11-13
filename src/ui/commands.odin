@@ -62,9 +62,10 @@ Command :: struct {
 chord_text :: proc(c: Chord, allocator := context.temp_allocator) -> string {
 	if c.key == .None { return "" }
 	b := strings.builder_make(allocator)
-	if .Ctrl in c.mods { strings.write_string(&b, "Ctrl+") }
-	if .Shift in c.mods { strings.write_string(&b, "Shift+") }
-	if .Alt in c.mods { strings.write_string(&b, "Alt+") }
+	// (the modifiers as the keyboards of the language say them: Shift is "Maj" on a French one)
+	if .Ctrl in c.mods { strings.write_string(&b, i18n.tr("key", "Ctrl")); strings.write_byte(&b, '+') }
+	if .Shift in c.mods { strings.write_string(&b, i18n.tr("key", "Shift")); strings.write_byte(&b, '+') }
+	if .Alt in c.mods { strings.write_string(&b, i18n.tr("key", "Alt")); strings.write_byte(&b, '+') }
 	strings.write_string(&b, key_name(c.key))
 	return strings.to_string(b)
 }

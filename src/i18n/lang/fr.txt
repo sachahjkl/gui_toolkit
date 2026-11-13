@@ -1238,6 +1238,18 @@ en Colour
 fr Couleur
 
 ctx key
+en Ctrl
+fr Ctrl
+
+ctx key
+en Shift
+fr Maj
+
+ctx key
+en Alt
+fr Alt
+
+ctx key
 en Escape
 fr Échap
 

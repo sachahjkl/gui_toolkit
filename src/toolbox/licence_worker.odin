@@ -7,6 +7,7 @@ package tk_toolbox
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "../ascii"
 import licence "../licence"
 
 // What the Worker's file says besides the product: the shop's.
@@ -55,7 +56,7 @@ worker_vars :: proc(b: ^strings.Builder, p: licence.Product, editions_text, year
 	line(b, indent, "VERSION_TAG", p.version_tag)
 	line(b, indent, "SIGN_CONTEXT", p.sign_context)
 	line(b, indent, "FILE_EXTENSION", p.file_extension)
-	line(b, indent, "ORDER_PREFIX", strings.to_upper(p.name, context.temp_allocator))
+	line(b, indent, "ORDER_PREFIX", ascii.upper(p.name))   // (a product's name: ASCII)
 	line(b, indent, "EDITIONS", editions_text)
 	line(b, indent, "UPDATE_YEARS", years)
 	line(b, indent, "UPDATES_FROM", p.updates_from)
