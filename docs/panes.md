@@ -12,25 +12,25 @@ r := ui.splitter("###side_split", .X, &app.sidebar, 140, 480, {default_size = 24
 if r.finished { save_settings(app) }
 ```
 
-`splitter(id, axis, &size, min, max, opts) -> Splitter_Result`
+`splitter(id, axis, &size, min, max, o) -> Splitter_Result`
 
 - `axis`: `.X` is a vertical bar between side-by-side panes, `.Y` a horizontal bar between stacked panes. Its length
   fills the parent unless `next` says otherwise.
-- `size` is in logical pixels by default; `opts.unit` gives the frame pixels per unit (a pane's room in pixels makes
+- `size` is in logical pixels by default; `o.unit` gives the frame pixels per unit (a pane's room in pixels makes
   `size` a fraction of it).
-- Limits: `min` and `max` for the pane; with `opts.total` (both panes, in units of `size`), the other pane keeps
-  `opts.min_other`. When the limits cross, the smaller one wins (`splitter_limits`). A size outside them at rest (the
+- Limits: `min` and `max` for the pane; with `o.total` (both panes, in units of `size`), the other pane keeps
+  `o.min_other`. When the limits cross, the smaller one wins (`splitter_limits`). A size outside them at rest (the
   window shrank) is left alone: the app draws the pane clamped, and the user's size comes back when there is room.
-- `opts.after`: the pane sized is after the handle (right of it, below it); dragging towards it shrinks it.
-- Double click, or Enter with the keyboard focus: back to `opts.default_size` (none when 0).
-- Keyboard: a Tab stop unless `opts.no_keyboard`; the arrow keys of its axis move it by `opts.step` (default 10 logical
+- `o.after`: the pane sized is after the handle (right of it, below it); dragging towards it shrinks it.
+- Double click, or Enter with the keyboard focus: back to `o.default_size` (none when 0).
+- Keyboard: a Tab stop unless `o.no_keyboard`; the arrow keys of its axis move it by `o.step` (default 10 logical
   pixels; Ctrl: a fifth), Home and End go to the limits.
 - Resize cursor over it and while it is held, even when the pointer runs ahead of it.
-- Drawn as a rule along the middle of the grab area (`opts.thickness` frame pixels, default 5 logical pixels), twice as
+- Drawn as a rule along the middle of the grab area (`o.thickness` frame pixels, default 5 logical pixels), twice as
   thick and in the accent colour while hot, held or focused from the keyboard. Nothing animates: no frame at rest.
-- `opts.fill` paints the grab area (a pane's colour: the handle looks part of it); `opts.line_at` puts the rule at its
+- `o.fill` paints the grab area (a pane's colour: the handle looks part of it); `o.line_at` puts the rule at its
   `Start` or `End` instead of its `Middle`, where it is the edge of the next pane: one line, not two side by side.
-- `opts.flush` makes the handle its rule alone: the panes meet at it, so their own rules and a selected row reach it,
+- `o.flush` makes the handle its rule alone: the panes meet at it, so their own rules and a selected row reach it,
   with no strip of the handle beside it. It is grabbed as wide as `thickness` all the same: its hit area
   (`Box.hit_outset`) reaches over the panes' edges, where nothing of theirs is clickable.
 - Result: the signal (`dragging` while held), `changed` (the size changed this frame), `finished` (a drag, a reset or a
@@ -117,26 +117,26 @@ if r.size > 0 {
 
 | Procedure | |
 |---|---|
-| `pane_split(id, axis, &pane, opts) -> Pane_Result` | the handle; folded, the strip |
-| `pane_extent(&pane, axis, opts)` | the size to lay the pane out (0: folded), for a pane built before its handle |
-| `pane_limits(opts)` | its smallest and largest size |
-| `pane_toggle(id, axis, &pane, opts)` | a chevron button that folds the pane and brings it back (for a header) |
+| `pane_split(id, axis, &pane, o) -> Pane_Result` | the handle; folded, the strip |
+| `pane_extent(&pane, axis, o)` | the size to lay the pane out (0: folded), for a pane built before its handle |
+| `pane_limits(o)` | its smallest and largest size |
+| `pane_toggle(id, axis, &pane, o)` | a chevron button that folds the pane and brings it back (for a header) |
 | `pane_axis(place, room_w, side_min)` | `.X` (at the side) or `.Y` (below); `.Auto`: at the side from `side_min` (default `PANE_SIDE_MIN_EM`) |
 | `pane_place_menu(&pane)` | menu items Auto / At the side / Below |
 | `menu_move_to(hosts, current)` | "Move to <host>" items for a tab that may go to another strip: the host chosen, or -1 |
 | `pane_format(pane)`, `pane_parse(text)` | the pane as text, and back |
 
-- Limits: from `opts.min_size` (default `PANE_MIN_EM`, 3 em) to the room (`opts.total`) less `opts.min_other` (3 em):
+- Limits: from `o.min_size` (default `PANE_MIN_EM`, 3 em) to the room (`o.total`) less `o.min_other` (3 em):
   nearly all of it. Without `total`, no upper limit (`PANE_NO_LIMIT`).
-- `opts.side`: the pane is before the handle (left, top) or after it (right, bottom).
-- Folding (`opts.collapsible`): dragged under half its minimum (`PANE_SNAP_FRACTION`), a double click, Enter, the
+- `o.side`: the pane is before the handle (left, top) or after it (right, bottom).
+- Folding (`o.collapsible`): dragged under half its minimum (`PANE_SNAP_FRACTION`), a double click, Enter, the
   button. It keeps its size; dragged back past half the minimum within the same drag, it opens at the pointer. Not
-  collapsible, a double click puts `opts.default_size` back.
+  collapsible, a double click puts `o.default_size` back.
 - Folded, the handle is a strip (`PANE_STRIP_EM`) along the edge with a chevron pointing where the pane comes from, and
-  `opts.title` as its tooltip: a click or Enter brings the pane back at its size, a drag pulls it out to the pointer.
-- Keyboard: a Tab stop unless `opts.no_keyboard`; the arrows of its axis move it by 10 logical pixels (Ctrl: 2), Home and
+  `o.title` as its tooltip: a click or Enter brings the pane back at its size, a drag pulls it out to the pointer.
+- Keyboard: a Tab stop unless `o.no_keyboard`; the arrows of its axis move it by 10 logical pixels (Ctrl: 2), Home and
   End go to the limits, Enter folds and unfolds.
-- Accessibility: a separator (`Splitter`) named `opts.title`, the size as its value with its limits, `expanded` when
+- Accessibility: a separator (`Splitter`) named `o.title`, the size as its value with its limits, `expanded` when
   collapsible; assistive technologies can set the value. The button is a Button named "Hide <title>" / "Show <title>".
 - No frame at rest: nothing animates.
 

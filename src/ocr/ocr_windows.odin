@@ -253,7 +253,7 @@ bitmap_of :: proc(p: Prepared) -> rawptr {
 }
 
 @(private)
-system_recognize :: proc(p: Prepared, options: Options, lines: ^[dynamic]Line, allocator := context.allocator) -> (engine: Engine, language: string, err: Error) {
+system_recognize :: proc(p: Prepared, o: Recognize_Options, lines: ^[dynamic]Line, allocator := context.allocator) -> (engine: Engine, language: string, err: Error) {
 	leave, entered := enter()
 	if !entered { return .None, "", .No_Engine }
 	defer if leave { winrt.uninit() }
@@ -261,7 +261,7 @@ system_recognize :: proc(p: Prepared, options: Options, lines: ^[dynamic]Line, a
 	if statics == nil { return .None, "", .No_Engine }
 	defer winrt.release(statics)
 
-	ocr := engine_for(statics, options.languages)
+	ocr := engine_for(statics, o.languages)
 	if ocr == nil { return .Windows, "", .No_Language }
 	defer winrt.release(ocr)
 	e := winrt.vtable(ocr, IOcrEngine_Vtbl)

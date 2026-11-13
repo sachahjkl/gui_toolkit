@@ -57,7 +57,7 @@ Owner_State :: enum u8 {
 }
 
 // What a second start hands over, and the trust token of the sender.
-Config :: struct {
+Instance_Options :: struct {
 	name:     string,   // the unique key (letters, digits and dots): build one with `key`
 	identity: string,   // the owner hands over only to a sender with this same identity; "" means any sender is trusted
 	wait_ms:  int,      // how long to keep trying while the owner is starting or closing (a silent owner ends it at once)

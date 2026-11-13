@@ -19,9 +19,9 @@ tk_log.close(logger)    // at the end: writes what waits
 
 ## Install
 
-`install(o: Options, allocator) -> runtime.Logger` makes the log and starts its writer.
+`install(o: Install_Options, allocator) -> runtime.Logger` makes the log and starts its writer.
 
-| `Options` | |
+| `Install_Options` | |
 |---|---|
 | `program` | the file's name: `<program>.log` |
 | `dir` | "": `default_dir(program)`, that is `platform.user_dir(.State, program)/logs` |

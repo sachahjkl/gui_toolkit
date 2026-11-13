@@ -20,14 +20,14 @@ Colors :: struct {
 	rail:         ui.Color,   // the rail along a quote (the marker's, a little faint)
 	inline_code:  ui.Color,   // `code` in a paragraph (the text around it)
 	code_text:    ui.Color,   // a code block's plain text (the text's)
-	code_frame:   ui.Color,   // behind a code block, when Config.frame is nil (the theme's "code_bg")
+	code_frame:   ui.Color,   // behind a code block, when View_Options.frame is nil (the theme's "code_bg")
 	table_header: ui.Color,   // a table's header row (the heading's)
-	table_frame:  ui.Color,   // behind a table, when Config.frame is nil (the theme's "well")
+	table_frame:  ui.Color,   // behind a table, when View_Options.frame is nil (the theme's "well")
 	table_stripe: ui.Color,   // every other row of a table (the text's, faint)
 	table_rule:   ui.Color,   // under a table's header (the marker's, faint)
 }
 
-// What a fenced code block gives Config.code.
+// What a fenced code block gives View_Options.code.
 Code :: struct {
 	lang:    string,          // the word after its fence ("" for none)
 	text:    string,          // its lines
@@ -37,12 +37,12 @@ Code :: struct {
 	fence:   int,             // its number among the text's fenced blocks, from 0 (what a program laid out ahead, a diagram, is found by it)
 }
 
-// What Config.frame paints.
+// What View_Options.frame paints.
 Frame_Kind :: enum u8 { Table, Code }
 
 // How a program shows Markdown: its faces and sizes, its colours, and what it does with what is not text (a link
 // clicked, a code block, the box around a table, a rule, the tools on a table). Every field may stay zero.
-Config :: struct {
+View_Options :: struct {
 	prose:       font.Font_Id,   // the text's face (0: the current one)
 	face:        font.Font_Id,   // the tables' face (0: prose)
 	mono:        font.Font_Id,   // the code blocks' face (0: ui.mono_font)
@@ -65,16 +65,16 @@ Config :: struct {
 }
 
 // Shows `src` as Markdown in the current column (full width), its blocks read into `d` (read again only as `src`
-// changes: read). `id` keys its boxes. `size`: the text's size (0: the current one; Config scales it).
-view :: proc(d: ^Doc, id: string, src: string, cfg: Config, size: f32 = 0) {
-	cfg := cfg
+// changes: read). `id` keys its boxes. `size`: the text's size (0: the current one; View_Options scales it).
+view :: proc(d: ^Doc, id: string, src: string, o: View_Options, size: f32 = 0) {
+	o := o
 	em := ui.font_size()
 	fs := size > 0 ? size : em
-	prose := cfg.prose != 0 ? cfg.prose : ui.top_style().font
-	c := colors_of(cfg.colors)
+	prose := o.prose != 0 ? o.prose : ui.top_style().font
+	c := colors_of(o.colors)
 	// every line the same height, inline code or not; tables stay in their own face
-	prose_fs := math.round(fs * (cfg.prose_scale > 0 ? cfg.prose_scale : 1))
-	line_h := cfg.line_ratio > 0 ? math.round(prose_fs * cfg.line_ratio) : 0
+	prose_fs := math.round(fs * (o.prose_scale > 0 ? o.prose_scale : 1))
+	line_h := o.line_ratio > 0 ? math.round(prose_fs * o.line_ratio) : 0
 	read(d, src)
 	measure :: proc(face: font.Font_Id, s: string, size: f32) -> f32 { return ui.text_width(face, size, s) }
 	// (a marker's column holds its text, the gap and the padding on both sides of a box: LIST_MARKER_EM in all at least)
@@ -88,21 +88,21 @@ view :: proc(d: ^Doc, id: string, src: string, cfg: Config, size: f32 = 0) {
 		if n > 0 { ui.spacer(ui.px(math.round(em * (bl.kind == .Bullet || bl.kind == .Number ? 0.25 : 0.6)))) }
 		switch bl.kind {
 		case .Rule:
-			if cfg.rule != nil { cfg.rule(cfg.user, bid) } else { ui.hline(ui.fill()) }
+			if o.rule != nil { o.rule(o.user, bid) } else { ui.hline(ui.fill()) }
 		case .Code:
-			mono := cfg.mono != 0 ? cfg.mono : ui.mono_font()
+			mono := o.mono != 0 ? o.mono : ui.mono_font()
 			code := Code{lang = bl.lang, text = block_text(d, n), runs = code_runs(d, n, {font = mono, color = c.code_text}), closed = bl.closed,
 				version = len(lines) > 0 ? source_version(lines[0], lines[len(lines) - 1], em) : 0, fence = fence}
 			fence += 1
-			if cfg.code != nil { cfg.code(cfg.user, bid, code) } else { code_block(bid, code, cfg) }
+			if o.code != nil { o.code(o.user, bid, code) } else { code_block(bid, code, o) }
 		case .Table:
-			table_block(bid, d, n, &cfg, c, fs)
+			table_block(bid, d, n, &o, c, fs)
 		case .Heading:
 			k := [HEADING_LEVEL_MAX + 1]f32{1, 1.45, 1.25, 1.1, 1, 1, 1}
 			runs := block_runs(d, n, {bold = true, color = bl.level <= 2 ? c.heading : c.text}, {code_color = c.inline_code})
 			if bl.level >= 2 { ui.spacer(ui.px(em * 0.3)) }
 			ui.next({width = ui.fill(), font = prose, font_size = math.round(prose_fs * k[bl.level]), flags = {.Selectable}})
-			link_clicked(&cfg, ui.rich_paragraph(bid, runs, version = source_version(lines[0], lines[0], fs)))
+			link_clicked(&o, ui.rich_paragraph(bid, runs, version = source_version(lines[0], lines[0], fs)))
 		case .Para, .Quote:
 			runs := block_runs(d, n, {color = bl.kind == .Quote ? c.quote : c.text}, {code_size = fs, code_color = c.inline_code})
 			if bl.kind == .Quote {
@@ -110,11 +110,11 @@ view :: proc(d: ^Doc, id: string, src: string, cfg: Config, size: f32 = 0) {
 				if rail_row(fmt.tprintf("%s_q", bid), c.rail) {
 					ui.spacer(ui.px(em * 0.9))
 					ui.next({width = ui.fill(), font = prose, font_size = prose_fs, flags = {.Selectable}})
-					link_clicked(&cfg, ui.rich_paragraph(bid, runs, version = lines_version, line_height = line_h))
+					link_clicked(&o, ui.rich_paragraph(bid, runs, version = lines_version, line_height = line_h))
 				}
 			} else {
 				ui.next({width = ui.fill(), font = prose, font_size = prose_fs, flags = {.Selectable}})
-				link_clicked(&cfg, ui.rich_paragraph(bid, runs, version = lines_version, line_height = line_h))
+				link_clicked(&o, ui.rich_paragraph(bid, runs, version = lines_version, line_height = line_h))
 			}
 		case .Bullet, .Number:
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
@@ -129,18 +129,18 @@ view :: proc(d: ^Doc, id: string, src: string, cfg: Config, size: f32 = 0) {
 				ui.rich_paragraph(fmt.tprintf("%s_mk", bid), mark[:], line_height = line_h)
 				runs := block_runs(d, n, {color = c.text}, {code_size = fs, code_color = c.inline_code})
 				ui.next({width = ui.fill(), font = prose, font_size = prose_fs, flags = {.Selectable}})
-				link_clicked(&cfg, ui.rich_paragraph(bid, runs, version = lines_version, line_height = line_h))
+				link_clicked(&o, ui.rich_paragraph(bid, runs, version = lines_version, line_height = line_h))
 			}
 		}
 	}
 }
 
-// A code block as the package shows it when Config.code is nil: its highlighted text in its frame, in the current size.
-// A program's Config.code may build it too, for the languages it has nothing of its own for.
-code_block :: proc(id: string, c: Code, cfg: Config) {
-	cfg := cfg
+// A code block as the package shows it when View_Options.code is nil: its highlighted text in its frame, in the current size.
+// A program's View_Options.code may build it too, for the languages it has nothing of its own for.
+code_block :: proc(id: string, c: Code, o: View_Options) {
+	o := o
 	em := ui.font_size()
-	frame_open(id, &cfg, .Code, colors_of(cfg.colors).code_frame)
+	frame_open(id, &o, .Code, colors_of(o.colors).code_frame)
 	ui.spacer(ui.px(math.round(em * CODE_PAD_Y_EM)))
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	if ui.row(id = "###body") {
@@ -171,22 +171,22 @@ colors_of :: proc(in_c: Colors) -> Colors {
 // Builds the box a table or a code block sits in, full width and as tall as what it holds, and makes it the parent (the
 // caller pops it).
 @(private)
-frame_open :: proc(id: string, cfg: ^Config, kind: Frame_Kind, bg: ui.Color) {
+frame_open :: proc(id: string, o: ^View_Options, kind: Frame_Kind, bg: ui.Color) {
 	m := ui.Style_Mod{width = ui.fill(), height = ui.children_sum(), axis = .Y}
 	flags := ui.Box_Flags{}
-	if cfg.frame == nil {
+	if o.frame == nil {
 		m.bg, m.radius = bg, math.round(TABLE_RADIUS_PX * ui.scale())
 		flags = {.Draw_Background}
 	}
 	ui.next(m)
 	b := ui.build_box(flags, id)
-	if cfg.frame != nil { cfg.frame(cfg.user, b, kind) }
+	if o.frame != nil { o.frame(o.user, b, kind) }
 	ui.push_parent(b)
 }
 
 @(private)
-link_clicked :: proc(cfg: ^Config, res: ui.Rich_Result) {
-	if res.link_clicked >= 0 && cfg.link != nil { cfg.link(cfg.user, res.link) }
+link_clicked :: proc(o: ^View_Options, res: ui.Rich_Result) {
+	if res.link_clicked >= 0 && o.link != nil { o.link(o.user, res.link) }
 }
 
 @(private)

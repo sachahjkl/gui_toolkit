@@ -5,11 +5,11 @@ user from a dialog of its own: Install, Repair, Upgrade, Update the shortcuts, U
 the layer over [desktop.md](desktop.md): the state of the install, what Install and Uninstall do, and the dialog.
 
 ```odin
-cfg := setup.Config{
+cfg := setup.Setup_Options{
 	identity = identity(),          // desktop.Identity: names, marks, manifest, uninstall_arguments ("--setup")
 	version  = APP_VERSION,
 	install_folder = "papier",      // beside the default parent ("": the desktop package's default)
-	prepare  = proc(o: ^desktop.Options, user: rawptr) {   // the program's own parts of an install
+	prepare  = proc(o: ^desktop.Integration_Options, user: rawptr) {   // the program's own parts of an install
 		o.autostart, o.autostart_arguments = true, "--hidden"
 		o.add_to_path = true
 	},
@@ -51,7 +51,7 @@ ev := setup.update(&d, cfg)                       // each frame, open or not: th
 if d.open && ui.modal("my_setup", &d.open, {...}) {
 	title, badge := setup.headline(d.facts, cfg)   // "Install Classeur", "Not installed"
 	words, tone := setup.state_words(d.facts, cfg) // the state in a sentence, its tone
-	ui.checkbox("###shortcut", "Shortcut on the Desktop", &d.shortcut)   // d.choices[i]: Config.choices
+	ui.checkbox("###shortcut", "Shortcut on the Desktop", &d.shortcut)   // d.choices[i]: Setup_Options.choices
 	if setup.can_uninstall(&d) && my_button("Uninstall") && !setup.busy(&d) { setup.start_uninstall(&d, cfg) }
 	how := setup.closing(&d, cfg)                  // Close, Not_Now or Keep_Standalone
 	if my_button(...) { ev = setup.close(&d, how) }
@@ -63,11 +63,11 @@ if d.open && ui.modal("my_setup", &d.open, {...}) {
 
 | | |
 |---|---|
-| `update(d, c) -> Event` | each frame: collects the work that ended, reads the install again when it changed, stops watching once closed |
-| `headline(f, c)`, `state_words(f, c)` | what the screen offers and the state in a word; the state in a sentence and its tone |
-| `install_label(d, c)` | Install, Repair, Upgrade to …, Go back to …, Replace the installed copy, Update the shortcuts; "": none |
+| `update(d, o) -> Event` | each frame: collects the work that ended, reads the install again when it changed, stops watching once closed |
+| `headline(f, o)`, `state_words(f, o)` | what the screen offers and the state in a word; the state in a sentence and its tone |
+| `install_label(d, o)` | Install, Repair, Upgrade to …, Go back to …, Replace the installed copy, Update the shortcuts; "": none |
 | `can_uninstall(d)`, `busy(d)` | something of an install is there; Install, Uninstall or the picker is at work |
-| `closing(d, c) -> Closing` | `Close`, `Not_Now` (an upgrade) or `Keep_Standalone` (no install, another copy) |
+| `closing(d, o) -> Closing` | `Close`, `Not_Now` (an upgrade) or `Keep_Standalone` (no install, another copy) |
 | `start_install`, `start_uninstall`, `pick_folder` | the work, on the dialog's thread (nothing while work is out) |
 | `open_installed(d)` | starts `Dialog.installed`: `Launched`, the program then ends |
 | `close(d, how)` | closes it: `Kept_Standalone`, `Dismissed` (Not now, or no answer), or `None` (nothing to remember) |
@@ -77,8 +77,8 @@ are what such a screen shows and sets.
 
 ## The program's look
 
-The dialog is drawn with the theme's widgets. A program with a look of its own gives `Config` three procedures (each may be
-nil, and `Config.user` is passed to them):
+The dialog is drawn with the theme's widgets. A program with a look of its own gives `Setup_Options` three procedures (each may be
+nil, and `Setup_Options.user` is passed to them):
 
 | | |
 |---|---|
@@ -104,15 +104,15 @@ Nix store. The program keeps the choice between starts: `CHOICE_INSTALLED`, `CHO
 
 ## Install and Uninstall
 
-`install(cfg, desktop_shortcut)` copies the running program into the install folder (`desktop.files_install`; on NixOS
-it is made to run by itself), writes its launchers and `Config.prepare`'s parts (`desktop.install`) and the system's
+`install(o, desktop_shortcut)` copies the running program into the install folder (`desktop.files_install`; on NixOS
+it is made to run by itself), writes its launchers and `Setup_Options.prepare`'s parts (`desktop.install`) and the system's
 record (`desktop.record_install`: on Windows, Settings > Apps, whose Uninstall runs `<exe> <uninstall_arguments>`).
-`uninstall(cfg)` takes it all away; what the running copy holds (Windows) is in its leftovers, which `finish` hands to
+`uninstall(o)` takes it all away; what the running copy holds (Windows) is in its leftovers, which `finish` hands to
 `desktop.cleanup_later` at the end of the process. After an install from another copy, the dialog offers to open the
 installed one (`Launched`): the program ends then.
 
 ## After an update
 
-When `update.Updater` has put a new program in place of the installed copy (`docs/update.md`), `updated(cfg, version)`
+When `update.Updater` has put a new program in place of the installed copy (`docs/update.md`), `updated(o, version)`
 makes the install say it: the install manifest names the new version, and so does the system's record (Settings > Apps on
 Windows). For a program that is not the installed copy (a build, an unzipped folder), it does nothing and returns ok.

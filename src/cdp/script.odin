@@ -10,13 +10,13 @@ import "core:strconv"
 import "core:strings"
 import "core:time"
 
-Options :: struct {
+Command_Options :: struct {
 	rest:  [dynamic]string,       // the words that are no option
 	named: map[string]string,     // an option alone has the value ""
 }
 
 // The options of a command's words: "--name value", "--name" alone when the next word is an option or there is none.
-options :: proc(words: []string, allocator := context.temp_allocator) -> (o: Options) {
+options :: proc(words: []string, allocator := context.temp_allocator) -> (o: Command_Options) {
 	o.rest = make([dynamic]string, allocator)
 	o.named = make(map[string]string, allocator)
 	for i := 0; i < len(words); i += 1 {
@@ -32,10 +32,10 @@ options :: proc(words: []string, allocator := context.temp_allocator) -> (o: Opt
 	return
 }
 
-has_option :: proc(o: ^Options, name: string) -> bool { return name in o.named }
+has_option :: proc(o: ^Command_Options, name: string) -> bool { return name in o.named }
 
 // The value of an option; `default` when it is not given or has none.
-option :: proc(o: ^Options, name: string, default := "") -> string {
+option :: proc(o: ^Command_Options, name: string, default := "") -> string {
 	v := o.named[name] or_else ""
 	return v != "" ? v : default
 }
@@ -94,13 +94,13 @@ quoted_end :: proc(s: string, at: int) -> int {
 
 // A box by its name (--name) or by its text (the other words).
 @(private)
-query :: proc(o: ^Options) -> string {
+query :: proc(o: ^Command_Options) -> string {
 	if name := option(o, "name"); name != "" { return fmt.tprintf(`"name":%s`, quote(name)) }
 	return fmt.tprintf(`"text":%s`, quote(strings.join(o.rest[:], " ", context.temp_allocator)))
 }
 
 @(private)
-arg :: proc(o: ^Options, i: int) -> f64 { return i < len(o.rest) ? word_number(o.rest[i]) : 0 }
+arg :: proc(o: ^Command_Options, i: int) -> f64 { return i < len(o.rest) ? word_number(o.rest[i]) : 0 }
 
 // The commands that act on the window (what a script holds). !known: `command` is not one of them. !ok: it failed (said).
 act :: proc(c: ^Client, command: string, args: []string) -> (known, ok: bool) {

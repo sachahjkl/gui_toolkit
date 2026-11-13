@@ -46,7 +46,7 @@ diff.doc_destroy(&doc)
 ## Showing it
 
 ```odin
-o := diff.Options{font = mono, size = 13, number_size = 11, row_height = 17, language = lang, selectable = true}
+o := diff.View_Options{font = mono, size = 13, number_size = 11, row_height = 17, language = lang, selectable = true}
 
 diff.lines_view("###excerpt", p.lines[:min(len(p.lines), 16)], p.numbered, o)   // every row built: an excerpt
 diff.view("###full", &doc, .Split, o)                                        // fills its parent, scrolls; only the rows in view built
@@ -56,7 +56,7 @@ diff.view("###full", &doc, .Split, o)                                        // 
 `view` builds a box that fills its parent and scrolls (it returns it): `.Stacked` shows the lines as the patch has them, `.Split`
 the old on the left and the new on the right. Every row has one height, so what is built is a sum, whatever the length.
 
-`Options` (pixels; 0: the default):
+`View_Options` (pixels; 0: the default):
 
 | Field | What |
 |---|---|

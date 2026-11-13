@@ -2,7 +2,7 @@ package tk_crash
 
 // Windows: an exception no one handles (an access violation, an illegal instruction, a stack overflow, a heap the system found
 // corrupted) writes the report on standard error and into "<dir>\crash-<date>-<pid>.txt" (and "<report>.dmp" with
-// Options.minidump), then the process dies as it would have (its exit code, the Application Error event).
+// Install_Options.minidump), then the process dies as it would have (its exit code, the Application Error event).
 //
 // The report is written by a thread of its own, made at install and parked on an event, while the faulting thread waits: the
 // faulting thread may have no stack left. Each stack is unwound with the modules' unwind tables (RtlVirtualUnwind) in a copy of it:

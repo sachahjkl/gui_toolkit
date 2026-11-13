@@ -165,14 +165,14 @@ table_cells :: proc(line: string) -> []string {
 // shaded. Its columns: each as wide as its widest cell on one line, no wider than TABLE_COL_MAX_EM (past that its words
 // wrap in it), never under its longest word: a table wider than its place scrolls sideways in its frame.
 @(private)
-table_block :: proc(id: string, d: ^Doc, n: int, cfg: ^Config, c: Colors, fs: f32) {
+table_block :: proc(id: string, d: ^Doc, n: int, o: ^View_Options, c: Colors, fs: f32) {
 	em := ui.font_size()
 	header := c.table_header.a > 0 ? c.table_header : c.heading
 	t := table_of(d, n, {bold = true, color = header}, {color = c.text}, {code_color = c.inline_code})
 	if t.rows == 0 { return }
 	pad := math.round(em * TABLE_CELL_PAD_X_EM)
-	cell_size := math.round(fs * (cfg.cell_scale > 0 ? cfg.cell_scale : 1))
-	face := cfg.face != 0 ? cfg.face : cfg.prose
+	cell_size := math.round(fs * (o.cell_scale > 0 ? o.cell_scale : 1))
+	face := o.face != 0 ? o.face : o.prose
 	st := ui.current_state()
 	if face == 0 { face = ui.top_style().font }
 	rc := ui.Rich_Context{fonts = st.fonts, base_font = face, base_size = cell_size, mono = st.mono_font, faces = &st.families}
@@ -191,7 +191,7 @@ table_block :: proc(id: string, d: ^Doc, n: int, cfg: ^Config, c: Colors, fs: f3
 	rule := c.table_rule.a > 0 ? c.table_rule : with_alpha(c.marker, TABLE_RULE_ALPHA)
 	edge := 2 * max(1, math.round(ui.scale()))
 	overflow := room > 0 && total > room - 2 * edge
-	frame_open(id, cfg, .Table, c.table_frame)
+	frame_open(id, o, .Table, c.table_frame)
 	ui.spacer(ui.px(em * 0.3))
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	if ui.row(id = "###in") {
@@ -213,7 +213,7 @@ table_block :: proc(id: string, d: ^Doc, n: int, cfg: ^Config, c: Colors, fs: f3
 							if ui.column(id = "###v") {   // (the room around the words is the spacers': measured so)
 								ui.spacer(ui.px(math.round(em * TABLE_CELL_PAD_Y_EM)))
 								ui.next({width = ui.fill(), font = face, font_size = cell_size, flags = {.Selectable}, text_align = t.aligns[ci], text_pad = 0})
-								link_clicked(cfg, ui.rich_paragraph("###p", table_cell(t, ri, ci), version = source_version(text, text, cell_size)))
+								link_clicked(o, ui.rich_paragraph("###p", table_cell(t, ri, ci), version = source_version(text, text, cell_size)))
 								ui.spacer(ui.px(math.round(em * TABLE_CELL_PAD_Y_EM)))
 							}
 							ui.spacer(ui.px(pad))
@@ -229,14 +229,14 @@ table_block :: proc(id: string, d: ^Doc, n: int, cfg: ^Config, c: Colors, fs: f3
 		ui.spacer(ui.px(edge))
 	}
 	ui.spacer(ui.px(em * 0.3))
-	if cfg.table_corner != nil { table_corner(cfg, t, block_lines(d, n), em) }
+	if o.table_corner != nil { table_corner(o, t, block_lines(d, n), em) }
 	ui.pop_parent()   // (the frame)
 }
 
 // Under the pointer, the program's tools for the table (a copy button, say) in its top right corner. Built last, over the
 // rows (built before them, the rows hid it and took its clicks).
 @(private = "file")
-table_corner :: proc(cfg: ^Config, t: ^Table, lines: []string, em: f32) {
+table_corner :: proc(o: ^View_Options, t: ^Table, lines: []string, em: f32) {
 	table_box := ui.parent_box()
 	over := draw.rect_contains(table_box.rect, ui.mouse_pos())   // (its cells are no buttons: the pointer anywhere on it)
 	tw := table_box.rect.max.x - table_box.rect.min.x
@@ -244,7 +244,7 @@ table_corner :: proc(cfg: ^Config, t: ^Table, lines: []string, em: f32) {
 	sz := math.round(em * 1.6)
 	m := math.round(em * 0.25)
 	ui.next({fixed_x = tw - sz - m, fixed_y = m, width = ui.px(sz), height = ui.px(sz), axis = .X})
-	if ui.row(id = "###tcorner") { cfg.table_corner(cfg.user, t, lines, sz) }
+	if ui.row(id = "###tcorner") { o.table_corner(o.user, t, lines, sz) }
 }
 
 // The box a table's rows scroll sideways in (its parent until the caller pops it): the width it has, its content `total`

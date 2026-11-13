@@ -8,7 +8,7 @@ import paint "../paint"
 // viewBox, on `background` (sRGB, straight; transparent: {}), its colours through `o.recolor` as draw_doc has them. Texts are
 // filled from the outlines of `o`'s faces in `fonts` (a glyph without one, a colour emoji, is left out). The canvas is the
 // caller's: paint.canvas_destroy, paint.png_encode or paint.to_rgba8 for its bytes.
-raster :: proc(doc: ^Document, scale: f32, fonts: ^font.State, o: Options, background := Color{}, allocator := context.allocator) -> paint.Canvas {
+raster :: proc(doc: ^Document, scale: f32, fonts: ^font.State, o: Draw_Options, background := Color{}, allocator := context.allocator) -> paint.Canvas {
 	sz := size(doc, scale)
 	c := paint.canvas_make(max(1, int(math.ceil(sz.x))), max(1, int(math.ceil(sz.y))), allocator)
 	if background.a > 0 { paint.clear(&c, background) }
@@ -119,4 +119,4 @@ raster_path :: proc() -> paint.Path {
 }
 
 @(private = "file")
-tint :: proc(c: Color, o: Options) -> paint.Color { return o.recolor != nil ? o.recolor(c, o.user) : c }
+tint :: proc(c: Color, o: Draw_Options) -> paint.Color { return o.recolor != nil ? o.recolor(c, o.user) : c }

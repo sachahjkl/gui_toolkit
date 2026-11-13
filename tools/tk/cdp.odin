@@ -187,7 +187,7 @@ cdp_command :: proc(c: ^cdp.Client, command: string, args: []string) -> string {
 }
 
 @(private = "file")
-record :: proc(c: ^cdp.Client, o: ^cdp.Options) -> string {
+record :: proc(c: ^cdp.Client, o: ^cdp.Command_Options) -> string {
 	pressed: bool
 	if dir := cdp.option(o, "timeline"); dir != "" {
 		fmt.println("recording what is done in the window, with its pictures and typed text: Enter here to stop")
@@ -220,7 +220,7 @@ record :: proc(c: ^cdp.Client, o: ^cdp.Options) -> string {
 }
 
 @(private = "file")
-play :: proc(c: ^cdp.Client, o: ^cdp.Options) -> string {
+play :: proc(c: ^cdp.Client, o: ^cdp.Command_Options) -> string {
 	if len(o.rest) == 0 { return "play <file> [--timeline <dir> ...]" }
 	if dir := cdp.option(o, "timeline"); dir != "" {
 		r := cdp.play_timeline(c, {source = o.rest[0], dir = dir, against = cdp.option(o, "against"), realtime = cdp.has_option(o, "realtime"), max_diff = cdp.word_number(cdp.option(o, "max-diff", "0"))})

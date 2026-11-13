@@ -242,9 +242,9 @@ same :: proc(p: Picture, rgb: []u8) -> bool {
 }
 
 @(private = "file")
-encode :: proc(t: ^testing.T, frames: []Picture, delays: []int = nil, options := gif.Options{}, loop_count := 0) -> []u8 {
+encode :: proc(t: ^testing.T, frames: []Picture, delays: []int = nil, o := gif.Encoder_Options{}, loop_count := 0) -> []u8 {
 	e: gif.Encoder
-	testing.expect(t, gif.begin(&e, frames[0].w, frames[0].h, loop_count, options, allocator = context.temp_allocator))
+	testing.expect(t, gif.begin(&e, frames[0].w, frames[0].h, loop_count, o, allocator = context.temp_allocator))
 	for f, i in frames {
 		testing.expect(t, gif.add_frame(&e, f.bgra, 0, delays == nil ? 10 : delays[i]))
 	}
@@ -281,15 +281,15 @@ sequence :: proc(w, h, count, colors: int, seed: u64) -> []Picture {
 }
 
 @(private = "file")
-expect_round_trip :: proc(t: ^testing.T, frames: []Picture, options := gif.Options{}, label := "") {
-	data := encode(t, frames, nil, options)
+expect_round_trip :: proc(t: ^testing.T, frames: []Picture, o := gif.Encoder_Options{}, label := "") {
+	data := encode(t, frames, nil, o)
 	d, ok := decode(data)
 	if !testing.expectf(t, ok, "%s: the file does not decode", label) { return }
 	testing.expectf(t, d.width == frames[0].w && d.height == frames[0].h, "%s: %d x %d", label, d.width, d.height)
 	// (an unchanged frame is merged into the one before: compare each shown frame with the last input it stands for)
 	k := 0
 	for f, i in frames {
-		if i > 0 && string(f.bgra) == string(frames[i - 1].bgra) && !options.full_frames { continue }
+		if i > 0 && string(f.bgra) == string(frames[i - 1].bgra) && !o.full_frames { continue }
 		if !testing.expectf(t, k < len(d.frames), "%s: frame %d is missing", label, i) { return }
 		testing.expectf(t, same(f, d.frames[k].rgb), "%s: frame %d differs", label, i)
 		testing.expectf(t, d.frames[k].disposal == 1, "%s: frame %d: disposal %d", label, i, d.frames[k].disposal)
@@ -441,7 +441,7 @@ many_colours_come_close :: proc(t: ^testing.T) {
 	for y in 0 ..< 64 {
 		for x in 0 ..< 256 { set(p, x, y, u32(x) << 16 | u32(y * 4) << 8 | u32(255 - x)) }
 	}
-	for options in ([?]gif.Options{{}, {quantizer = .Fixed}, {dither = true}, {quantizer = .Fixed, dither = true}}) {
+	for options in ([?]gif.Encoder_Options{{}, {quantizer = .Fixed}, {dither = true}, {quantizer = .Fixed, dither = true}}) {
 		d, ok := decode(encode(t, []Picture{p}, nil, options))
 		if !testing.expectf(t, ok && len(d.frames) == 1, "%v", options) { continue }
 		total, worst := 0, 0

@@ -14,7 +14,7 @@ _, err = mux.finalize(m)   // (a memory muxer gives its bytes here)
 
 | Procedure | |
 |---|---|
-| `mp4_open_memory(options)`, `mp4_open_file(path, options)`, `mp4_open_stream(write, user, options)` (`mp4_open`) | an MP4 muxer. |
+| `mp4_open_memory(o)`, `mp4_open_file(path, o)`, `mp4_open_stream(write, user, o)` (`mp4_open`) | an MP4 muxer. |
 | `webm_open_memory`, `webm_open_file`, `webm_open_stream` (`webm_open`) | a WebM muxer. |
 | `add_video_track(m, Video_Track)`, `add_audio_track(m, Audio_Track)` | before the first packet. |
 | `add_packet(m, track, data, timestamp, duration, key)` | times in seconds; a track's first packet is a key frame. |

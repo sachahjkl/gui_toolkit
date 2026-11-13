@@ -16,12 +16,12 @@ import "core:strings"
 import win "core:sys/windows"
 
 @(private = "file")
-uninstall_key :: proc(o: ^Options) -> string {
+uninstall_key :: proc(o: ^Integration_Options) -> string {
 	return reg_join(registry_root_of(o), "Microsoft", "Windows", "CurrentVersion", "Uninstall", o.identity.key)
 }
 
 @(private)
-windows_default_install_dir :: proc(o: ^Options, allocator: runtime.Allocator) -> string {
+windows_default_install_dir :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string {
 	base := known_folder(win.FOLDERID_LocalAppData)
 	if base == "" { return "" }
 	return strings.concatenate({base, "\\Programs\\", o.identity.name}, allocator)
@@ -29,7 +29,7 @@ windows_default_install_dir :: proc(o: ^Options, allocator: runtime.Allocator) -
 
 // The folder of the recorded installation, when the record is ours and the executable is there.
 @(private)
-windows_locate :: proc(o: ^Options, allocator: runtime.Allocator) -> string {
+windows_locate :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string {
 	key := uninstall_key(o)
 	if mark, _ := reg_get(key, o.identity.registry_mark); mark != o.identity.aumid { return "" }
 	dir, ok := reg_get(key, "InstallLocation")
@@ -38,7 +38,7 @@ windows_locate :: proc(o: ^Options, allocator: runtime.Allocator) -> string {
 }
 
 @(private)
-windows_record :: proc(o: ^Options, dir, version: string) -> Result {
+windows_record :: proc(o: ^Integration_Options, dir, version: string) -> Result {
 	key := uninstall_key(o)
 	exe := strings.concatenate({strings.trim_right(dir, "\\/"), "\\", exe_name_of(o.identity)}, context.temp_allocator)
 	failed :: proc(key: string) -> Result { return {.System, strings.concatenate({"cannot write HKCU\\", key}, context.temp_allocator)} }
@@ -57,7 +57,7 @@ windows_record :: proc(o: ^Options, dir, version: string) -> Result {
 }
 
 @(private)
-windows_unrecord :: proc(o: ^Options) -> Result {
+windows_unrecord :: proc(o: ^Integration_Options) -> Result {
 	key := uninstall_key(o)
 	if mark, _ := reg_get(key, o.identity.registry_mark); mark != o.identity.aumid { return {} }   // not ours (or already gone)
 	if !reg_delete_tree(key) { return {.System, strings.concatenate({"cannot delete HKCU\\", key}, context.temp_allocator)} }
@@ -72,7 +72,7 @@ windows_unrecord :: proc(o: ^Options) -> Result {
 // itself. The caller has already renamed the files out of the way where it could; this is for the ones a running program
 // holds. False when the helper could not be started.
 @(private)
-windows_cleanup_later :: proc(o: ^Options, files: []string, folder: string, pid: u32) -> bool {
+windows_cleanup_later :: proc(o: ^Integration_Options, files: []string, folder: string, pid: u32) -> bool {
 	tmp, err := os.temp_dir(context.temp_allocator)
 	if err != nil || tmp == "" { return false }
 	stem := o.identity.cleanup_name != "" ? o.identity.cleanup_name : o.identity.slug

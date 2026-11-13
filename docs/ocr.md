@@ -7,7 +7,7 @@ Windows.Media.Ocr on Windows, Tesseract on Linux. A program starts without eithe
 Every call blocks: a program calls them on a thread of its own, never on the interface's thread.
 
 ```odin
-r, err := ocr.recognize(pixels, width, height, stride, .RGBA)   // or .BGRA; Options{languages} to choose
+r, err := ocr.recognize(pixels, width, height, stride, .RGBA)   // or .BGRA; Recognize_Options{languages} to choose
 if err != .None { show(ocr.error_text(err)); return }            // No_Engine, No_Language...
 defer ocr.result_destroy(&r)
 if len(r.lines) == 0 { show("No text"); return }
@@ -18,11 +18,11 @@ clipboard_set(r.text)
 |---|---|
 | `available() -> (Engine, bool)` | the system's engine (`.Tesseract`, `.Windows`, `.None`), and whether it can read: its library is there and a language is installed |
 | `languages(allocator) -> []string` | the languages installed, in the engine's codes: Tesseract's (`eng`, `fra`, `chi_sim`), Windows' BCP-47 tags (`en-US`) |
-| `recognize(pixels, width, height, stride, format, options, allocator) -> (Result, Error)` | the text of a picture of 4 bytes a pixel (alpha not read) |
+| `recognize(pixels, width, height, stride, format, o, allocator) -> (Result, Error)` | the text of a picture of 4 bytes a pixel (alpha not read) |
 | `result_destroy(&r, allocator)` | frees a Result |
 | `error_text(err) -> string` | an Error in words, for a notification |
 
-`Options.languages`: the languages to read, in the codes `languages` gives. Tesseract reads all of them at once (`eng+fra`).
+`Recognize_Options.languages`: the languages to read, in the codes `languages` gives. Tesseract reads all of them at once (`eng+fra`).
 Windows reads one: the first one installed. If the list is empty, the package uses the user's languages:
 
 - On Windows, it takes the languages of the user's profile (`TryCreateFromUserProfileLanguages`).

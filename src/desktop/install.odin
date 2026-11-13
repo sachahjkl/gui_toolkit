@@ -66,7 +66,7 @@ exe_name_of :: proc(id: Identity) -> string {
 }
 
 // Where the installed copy of these options is: the folder they name, else the one the system recorded, else the default.
-install_target :: proc(o: ^Options, allocator := context.temp_allocator) -> string {
+install_target :: proc(o: ^Integration_Options, allocator := context.temp_allocator) -> string {
 	if o.install_dir != "" { return strings.clone(o.install_dir, allocator) }
 	if b := platform_backend(); b != nil {
 		if b.locate != nil {
@@ -79,19 +79,19 @@ install_target :: proc(o: ^Options, allocator := context.temp_allocator) -> stri
 
 // The folder of the recorded install alone: "" when the system has no record of it (no default in its place, unlike
 // install_target: a record of the default folder is a record all the same).
-install_recorded :: proc(o: ^Options, allocator := context.temp_allocator) -> string {
+install_recorded :: proc(o: ^Integration_Options, allocator := context.temp_allocator) -> string {
 	if b := platform_backend(); b != nil && b.locate != nil { return b.locate(o, allocator) }
 	return ""
 }
 
 // The platform's default install folder ("" when it has none).
-default_install_dir :: proc(o: ^Options, allocator := context.temp_allocator) -> string {
+default_install_dir :: proc(o: ^Integration_Options, allocator := context.temp_allocator) -> string {
 	if b := platform_backend(); b != nil && b.default_install_dir != nil { return b.default_install_dir(o, allocator) }
 	return ""
 }
 
 // Reads the installed copy in `dir` (the manifest, the executable). `dir` "" reads nothing.
-installed_info :: proc(o: ^Options, dir: string, allocator := context.allocator) -> Install_Info {
+installed_info :: proc(o: ^Integration_Options, dir: string, allocator := context.allocator) -> Install_Info {
 	i: Install_Info
 	if dir == "" { return i }
 	i.dir = strings.clone(dir, allocator)
@@ -341,7 +341,7 @@ place_file :: proc(src, dst: string) -> Result {
 }
 
 // Removes the `.old` files an earlier replacement left in `dir` (those of the manifest's files only).
-clean_old :: proc(o: ^Options, dir: string) {
+clean_old :: proc(o: ^Integration_Options, dir: string) {
 	m, ok := manifest_read(join_path(dir, o.identity.manifest_name), context.temp_allocator)
 	if !ok { return }
 	for f in m.files {
@@ -363,7 +363,7 @@ Remove_Files_Result :: struct {
 // Deletes what the manifest of `dir` names (and what a replacement left as `.old`), then the folders that are empty, then
 // the manifest, then `dir` when it is empty. A file that cannot be deleted (the running program's own, a loaded DLL) goes
 // to `leftovers`, renamed to `.old` when it can be so that the name is free. Without a manifest only the executable goes.
-files_remove :: proc(o: ^Options, dir: string) -> Remove_Files_Result {
+files_remove :: proc(o: ^Integration_Options, dir: string) -> Remove_Files_Result {
 	r: Remove_Files_Result
 	r.leftovers = make([dynamic]string, context.temp_allocator)
 	if dir == "" || !os.is_dir(dir) { return r }
@@ -486,7 +486,7 @@ Uninstall_Result :: struct {
 // system's record, else the default. Keeps going past the first error so a missing key does not leave the files behind.
 // `running_exe` is this process's executable: when it is the copy being removed, its own file cannot be deleted and is
 // returned in `leftovers` for the caller to schedule (cleanup_later). The user's profile is not touched.
-uninstall :: proc(o: ^Options, running_exe: string, allocator := context.temp_allocator) -> Uninstall_Result {
+uninstall :: proc(o: ^Integration_Options, running_exe: string, allocator := context.temp_allocator) -> Uninstall_Result {
 	ur := Uninstall_Result{leftovers = make([dynamic]string, allocator)}
 	b := platform_backend()
 	if b == nil { ur.result = {.Unsupported, error_text(.Unsupported)}; return ur }
@@ -527,14 +527,14 @@ uninstall_result_destroy :: proc(ur: ^Uninstall_Result, allocator := context.tem
 // The system's record, the deferred deletion, the PATH of a folder that goes away
 
 // Records the installed copy in `dir` with the system (Windows: the Apps list). Nothing to do where there is no record.
-record_install :: proc(o: ^Options, dir, version: string) -> Result {
+record_install :: proc(o: ^Integration_Options, dir, version: string) -> Result {
 	b := platform_backend()
 	if b == nil { return {.Unsupported, error_text(.Unsupported)} }
 	if b.record == nil { return {} }
 	return b.record(o, dir, version)
 }
 
-unrecord_install :: proc(o: ^Options) -> Result {
+unrecord_install :: proc(o: ^Integration_Options) -> Result {
 	b := platform_backend()
 	if b == nil || b.unrecord == nil { return {} }
 	return b.unrecord(o)
@@ -542,14 +542,14 @@ unrecord_install :: proc(o: ^Options) -> Result {
 
 // Deletes `files` (and `folder`, when it is empty) after process `pid` ends: for what a running program holds. False
 // when there is no way to schedule it here.
-cleanup_later :: proc(o: ^Options, files: []string, folder: string, pid: u32) -> bool {
+cleanup_later :: proc(o: ^Integration_Options, files: []string, folder: string, pid: u32) -> bool {
 	b := platform_backend()
 	return b != nil && b.cleanup_later != nil && b.cleanup_later(o, files, folder, pid)
 }
 
 // Takes `dir` out of the user's PATH whatever put it there (a folder that is about to be deleted or moved). Nothing on
 // platforms that have no PATH to edit.
-forget_path :: proc(o: ^Options, dir: string) -> Result {
+forget_path :: proc(o: ^Integration_Options, dir: string) -> Result {
 	b := platform_backend()
 	if b == nil || b.path_remove == nil { return {} }
 	return b.path_remove(o, dir)

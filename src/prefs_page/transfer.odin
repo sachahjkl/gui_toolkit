@@ -7,7 +7,7 @@ package tk_prefs_page
 //
 // The dialogs and the disk are tasks: the system's file dialog (ui.file_dialog), then the text made here (it reads the
 // registry, which is this thread's) and written by a task; a file imported is read by a task, then its values set here
-// (config.load_text), each change told to Options.changed as a change of the page.
+// (config.load_text), each change told to Page_Options.changed as a change of the page.
 
 import "base:runtime"
 import "core:fmt"
@@ -112,7 +112,7 @@ Import_Job :: struct {
 }
 
 // Reads settings exported in this program's own format (config.Export_Format.Own) from `path`: a task reads the file, then its
-// values are the user's, as if set on the page (Options.changed for each that changed; the loop's writer saves them).
+// values are the user's, as if set on the page (Page_Options.changed for each that changed; the loop's writer saves them).
 // What came of it shows at the foot of the sidebar.
 import_from :: proc(p: ^Page, path: string) {
 	if p.state == nil || p.prefs == nil { return }

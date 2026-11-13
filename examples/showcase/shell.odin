@@ -219,7 +219,7 @@ Palette_Table :: struct {
 	version:  u64,        // the settings' version it was made for, plus one (0: not made); the palette's version
 }
 
-palette_table_make :: proc(table: ^Palette_Table, prefs: ^config.Prefs, o: prefs_page.Options) {
+palette_table_make :: proc(table: ^Palette_Table, prefs: ^config.Prefs, o: prefs_page.Page_Options) {
 	virtual.arena_destroy(&table.arena)
 	table^ = {}
 	a := virtual.arena_allocator(&table.arena)

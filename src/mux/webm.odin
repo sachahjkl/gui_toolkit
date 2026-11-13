@@ -246,10 +246,10 @@ master_end :: proc(b: ^[dynamic]u8, size_at: int, width := MASTER_SIZE_BYTES) {
 // Start and tracks
 
 @(private)
-webm_start :: proc(m: ^Muxer, options: Webm_Options) -> Error {
+webm_start :: proc(m: ^Muxer, o: Webm_Options) -> Error {
 	wm := &m.webm
-	wm.append_only = options.append_only
-	wm.minimum_cluster = options.minimum_cluster_duration > 0 ? options.minimum_cluster_duration : 1
+	wm.append_only = o.append_only
+	wm.minimum_cluster = o.minimum_cluster_duration > 0 ? o.minimum_cluster_duration : 1
 	wm.start_ms, wm.end_ms = math.inf_f64(1), math.inf_f64(-1)
 	wm.cue_points = make([dynamic]u8, m.allocator)
 	wm.blocks = make([dynamic]Cluster_Block, m.allocator)

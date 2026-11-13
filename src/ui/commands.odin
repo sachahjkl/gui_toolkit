@@ -370,7 +370,7 @@ palette_open :: proc(p: ^Command_Palette) {
 // the selection, Enter runs it, Escape closes the palette. A command that cannot act now (`disabled[i]` true; nil: none
 // can) is greyed and is not chosen. Returns the index of the command chosen (-1: none), and `resized` when the user
 // changed its size this frame (`p.size`: keep it). Enter with Ctrl, Alt or Shift chooses too: `p.chosen_mods` says which.
-// `opts`: the choices remembered, a command first, the keys' texts, a foot line, the commands' version (Palette_Options).
+// `o`: the choices remembered, a command first, the keys' texts, a foot line, the commands' version (Palette_Options).
 // The list is kept (palette_keep), and only the lines near the view are built.
 palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil, o := Palette_Options{}) -> (chosen: int, resized: bool) {
 	chosen = -1
@@ -612,7 +612,7 @@ palette_keep :: proc(p: ^Command_Palette, commands: []Command, query: string, o:
 
 // The commands the palette lists for `query`, in p.lines: every one in the table's order (with no query; the recent ones
 // first, under their heading), else the matches, the best first (the label's letters matter more than the group's),
-// `opts.first` before them.
+// `o.first` before them.
 // The query and each command are folded once, kept in `p.search` from one frame to the next.
 @(private = "file")
 palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, o: Palette_Options) {

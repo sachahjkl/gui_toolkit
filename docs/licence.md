@@ -91,7 +91,7 @@ ui.task(&app.ui, proc(d: rawptr) {
 
 | Procedure | What it does |
 |---|---|
-| `store_init(s, options)`, `store_destroy(s)` | the store; it copies the options' strings |
+| `store_init(s, o)`, `store_destroy(s)` | the store; it copies the options' strings |
 | `store_read(s, allocator)` | the `Status`: `stored`, `registered`, `covered`, `err`, the `licence` (`status_destroy` frees it) |
 | `store_install(s, text)` | checks the key and keeps it, normalized; nothing is written when it does not check out |
 | `store_install_file(s, path)` | reads a licence file (dropped, given on the command line, chosen in a dialog) and installs it |

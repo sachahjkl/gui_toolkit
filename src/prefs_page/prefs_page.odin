@@ -2,7 +2,7 @@
 // look of opencode native's settings.
 //
 //   * On the left, a sidebar the mouse resizes (its width kept: prefs_page.sidebar_width): the search in a well, then
-//     the pages (a page is a top group of the registry: its title and its icon from Options.pages), the one shown
+//     the pages (a page is a top group of the registry: its title and its icon from Page_Options.pages), the one shown
 //     pressed in; at its foot, the program's version, the settings file (a click opens it) and Export / Import. A narrow
 //     page shows the pages' icons alone.
 //   * On the right: the page's title, then a line per preference: its title and its description on the left, its
@@ -12,13 +12,13 @@
 //     the page under "Advanced", folded until a click.
 //   * While a search is typed: what matches in every page, under each page's title (config.Search).
 //
-// A preference can get a control of the program's own (Options.custom): a font picker. The standard preferences
-// (standard.odin) need none: Options.themes shows appearance.theme as cards (and the user's themes file:
-// Options.themes_file), Options.shortcut_prefs shows global shortcuts with what the system said of them. A program shows
+// A preference can get a control of the program's own (Page_Options.custom): a font picker. The standard preferences
+// (standard.odin) need none: Page_Options.themes shows appearance.theme as cards (and the user's themes file:
+// Page_Options.themes_file), Page_Options.shortcut_prefs shows global shortcuts with what the system said of them. A program shows
 // the page in place of its main view with back_bar and escape_leaves.
 //
 // A change goes through config.set_from_string at the User layer, so every observer of the registry runs; then
-// Options.changed, where the program applies what changed (its loop writes the file: config.user_writer_save).
+// Page_Options.changed, where the program applies what changed (its loop writes the file: config.user_writer_save).
 package tk_prefs_page
 
 import "core:fmt"
@@ -38,7 +38,7 @@ import "../ui"
 import update "../update"
 
 // A page: a category of the registry, its title (English, shown translated: i18n.later) and its icon (a glyph of
-// Options.icon_font; "": none). `names`: the preferences it shows, in this order, whatever their category (nil: those of
+// Page_Options.icon_font; "": none). `names`: the preferences it shows, in this order, whatever their category (nil: those of
 // `category`, in the registry's order); a program whose pages are not its registry's categories keeps those for its other
 // views (an editor of every preference).
 Page_Info :: struct {
@@ -56,7 +56,7 @@ Page_Info :: struct {
 Shortcut_Pref :: struct { pref, id: string }
 
 // What a program gives the page.
-Options :: struct {
+Page_Options :: struct {
 	user:      rawptr,
 	// after a value was set or reset (it was valid): save the file, apply it
 	changed:   proc(user: rawptr, name: string),
@@ -125,7 +125,7 @@ Page :: struct {
 	nav_em:       f32,                 // the sidebar's width while its handle moves (ems)
 	nav_moving:   bool,
 	file_of:      string,              // the file `file_shown` was made for (owned)
-	file_shown:   string,              // Options.file shortened with ~ (owned)
+	file_shown:   string,              // Page_Options.file shortened with ~ (owned)
 	note:         string,              // what the last export or import did, at the sidebar's foot (owned; "": nothing)
 	note_bad:     bool,
 	// (what the answers of the tasks need: the last build's)
@@ -176,10 +176,10 @@ escape_leaves :: proc(p: ^Page) -> bool {
 	return ui.key_press(.Escape) && !editing(p)
 }
 
-// A bar above the page shown in place of the main view: a back arrow (Lucide's in Options.icon_font, else the word),
+// A bar above the page shown in place of the main view: a back arrow (Lucide's in Page_Options.icon_font, else the word),
 // whose tooltip is `back_tip` ("Back to the history (Escape)"), then `title`; as wide as its parent, 2.6 ems high. True
 // when the arrow was pressed. `p`: the page it leaves.
-back_bar :: proc(p: ^Page, o: Options, title, back_tip: string, em: f32) -> (back: bool) {
+back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) -> (back: bool) {
 	ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.6)), axis = .X, cross = .Center})
 	if ui.row(id = "###prefs_back_bar") {
 		ui.spacer(ui.px(em * 0.5))
@@ -242,7 +242,7 @@ SIDEBAR_DEFS := [?]config.Def{
 
 // The pages of `o`, or each category of the registry by name.
 @(private)
-pages_of :: proc(prefs: ^config.Prefs, o: Options) -> []Page_Info {
+pages_of :: proc(prefs: ^config.Prefs, o: Page_Options) -> []Page_Info {
 	if o.pages != nil {
 		// (a page with no preference in this registry is not shown: a program that registers some only on one system)
 		kept := make([dynamic]Page_Info, context.temp_allocator)
@@ -288,7 +288,7 @@ names_of :: proc(prefs: ^config.Prefs, category: string) -> []string {
 }
 
 // Builds the page, as large as its parent gives (`next` before it). `prefs` is the registry.
-build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
+build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 	em := ui.font_size()
 	// (the sidebar's width is the page's own preference: registered at its first build)
 	if config.ref_of(prefs, SIDEBAR_PREF) == config.NO_REF { config.register(prefs, SIDEBAR_DEFS[:]) }
@@ -377,7 +377,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 // The preferences of a page in sections: those of its own group first, then each inner group's under its title, in
 // the order their first preference came.
 @(private = "file")
-sections :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, category: string, names: []string, em: f32) {
+sections :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, category: string, names: []string, em: f32) {
 	order := make([dynamic]string, context.temp_allocator)
 	append(&order, category)
 	for name in names {
@@ -412,7 +412,7 @@ section_heading :: proc(title, id: string, em: f32) {
 
 // The page's advanced preferences, folded under "Advanced" until a click (the page keeps it open).
 @(private = "file")
-advanced_part :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, category: string, names: []string, em: f32) {
+advanced_part :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, category: string, names: []string, em: f32) {
 	open := p.unfolded[category]
 	was := open
 	ui.spacer(ui.px(em * 0.8))
@@ -427,7 +427,7 @@ advanced_part :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, category: stri
 // The pages: the search above them, each page a button (its icon, its title), the one shown pressed in; at the foot the
 // program's version, its settings file, Export and Import. `width`: in ems.
 @(private = "file")
-nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, width: f32, em: f32) {
+nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool, width: f32, em: f32) {
 	ui.next({width = ui.px(math.round(em * width)), height = ui.fill(), axis = .Y})
 	if ui.column(id = "###prefs_nav") {
 		ui.spacer(ui.px(em * 1.1))
@@ -505,7 +505,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, wid
 
 // The sidebar's foot: the settings file (a click opens it), Export and Import, and what the last of them did.
 @(private = "file")
-nav_foot :: proc(p: ^Page, o: Options, em: f32) {
+nav_foot :: proc(p: ^Page, o: Page_Options, em: f32) {
 	if o.file != "" {
 		if p.file_of != o.file {
 			delete(p.file_of); delete(p.file_shown)
@@ -582,7 +582,7 @@ link :: proc(id, text, tip: string, em: f32, mono := false) -> bool {
 
 // Whether a preference of the page is the user's and not its default.
 @(private = "file")
-page_changed :: proc(prefs: ^config.Prefs, o: Options, names: []string) -> bool {
+page_changed :: proc(prefs: ^config.Prefs, o: Page_Options, names: []string) -> bool {
 	for name in names {
 		if differs_from_default(prefs, name, is_hotkey(o, name)) { return true }
 	}
@@ -591,21 +591,21 @@ page_changed :: proc(prefs: ^config.Prefs, o: Options, names: []string) -> bool 
 
 // Whether the preference holds a key combination: a field that records the keys.
 @(private = "file")
-is_hotkey :: proc(o: Options, name: string) -> bool {
+is_hotkey :: proc(o: Page_Options, name: string) -> bool {
 	if slice.contains(o.hotkeys, name) { return true }
 	_, ok := shortcut_of(o, name)
 	return ok
 }
 
 @(private = "file")
-shortcut_of :: proc(o: Options, name: string) -> (id: string, ok: bool) {
+shortcut_of :: proc(o: Page_Options, name: string) -> (id: string, ok: bool) {
 	for sp in o.shortcut_prefs { if sp.pref == name { return sp.id, true } }
 	return
 }
 
 // Whether the preference's control goes under its words, drawn by control_under: the themes' cards, the program's own.
 @(private = "file")
-is_custom :: proc(o: Options, name: string) -> bool {
+is_custom :: proc(o: Page_Options, name: string) -> bool {
 	if len(o.themes) > 0 && name == THEME_PREF { return true }
 	return o.custom != nil && slice.contains(o.custom_names, name)
 }
@@ -613,7 +613,7 @@ is_custom :: proc(o: Options, name: string) -> bool {
 // The page's title, and while a preference of it is the user's, a button that puts them all back to their defaults.
 // True: it was pressed.
 @(private = "file")
-page_header :: proc(title: string, changed: bool, o: Options, em: f32) -> (restore: bool) {
+page_header :: proc(title: string, changed: bool, o: Page_Options, em: f32) -> (restore: bool) {
 	ui.next({width = ui.fill(), height = ui.px(em * 2), axis = .X, cross = .Center})
 	if ui.row(id = "###prefs_head") {
 		ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 1.3), text_pad = 0})
@@ -640,7 +640,7 @@ page_title :: proc(title: string, em: f32) {
 // A preference's line: its title and its description, its control, a reset button while it is not at its default, a
 // carved line under it. Nothing when a search hides it; the page's title before its first match in a search.
 @(private = "file")
-setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f32) {
+setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, em: f32) {
 	show, heading := config.search_shows(&p.search, prefs, name)
 	if !show { return }
 	if heading != "" {
@@ -758,7 +758,7 @@ note_of :: proc(e: ^config.Entry) -> string {
 }
 
 @(private = "file")
-reset_button :: proc(o: Options, em: f32) -> bool {
+reset_button :: proc(o: Page_Options, em: f32) -> bool {
 	sz := math.round(em * 1.6)
 	if o.icon_font != 0 && o.reset_icon != "" {
 		ui.next({width = ui.px(sz), height = ui.px(sz), font = o.icon_font, radius = em * 0.35})
@@ -781,7 +781,7 @@ reset_button :: proc(o: Options, em: f32) -> bool {
 // The width a preference's control asks on its line, and the share of the line it may take at most (a segmented
 // choice: WIDE_SHARE); 0: it goes under the words (the themes' cards, the program's own).
 @(private = "file")
-control_width :: proc(o: Options, e: ^config.Entry, em: f32) -> (w: f32, share: f32) {
+control_width :: proc(o: Page_Options, e: ^config.Entry, em: f32) -> (w: f32, share: f32) {
 	name := e.def.name
 	share = 1
 	if is_custom(o, name) { return 0, share }
@@ -807,7 +807,7 @@ control_width :: proc(o: Options, e: ^config.Entry, em: f32) -> (w: f32, share: 
 
 // The control of a preference, `width` wide: on its line, or under its words when the line has no room.
 @(private = "file")
-control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
+control :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
 	name := e.def.name
 	h := ui.px(math.round(em * CONTROL_H_EM))
 	switch e.def.kind {
@@ -841,9 +841,9 @@ control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^c
 }
 
 // A control under the words: the themes' cards (and the line of the user's themes file), or the program's own
-// (Options.custom).
+// (Page_Options.custom).
 @(private = "file")
-control_under :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32) {
+control_under :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, em: f32) {
 	if len(o.themes) > 0 && e.def.name == THEME_PREF && e.def.kind == .String {
 		// (the cards in the version the look shows: appearance.mode's, or the one the program shows for the system's)
 		light := o.themes_light
@@ -886,7 +886,7 @@ themes_file_line :: proc(p: ^Page, tf: ^Themes_File, em: f32) {
 // A String preference's choices: its own (their labels, else the values capitalised, in the language in use), or the
 // program's.
 @(private = "file")
-choices_of :: proc(o: Options, e: ^config.Entry) -> (labels, values: []string) {
+choices_of :: proc(o: Page_Options, e: ^config.Entry) -> (labels, values: []string) {
 	if len(e.def.choices) > 0 {
 		own := len(e.def.choice_labels) == len(e.def.choices)
 		out := make([]string, len(e.def.choices), context.temp_allocator)
@@ -926,10 +926,10 @@ float_step :: proc(span: f64) -> f64 {
 @(private = "file") FLOAT_STEPS_MAX :: 200
 
 // A bounded number: ui.number with its slider. A drag is written when it is let go (the file is not rewritten at the
-// pointer's rate; while held, the page keeps the value and Options.preview shows it); a key, a click, the wheel, a
+// pointer's rate; while held, the page keeps the value and Page_Options.preview shows it); a key, a click, the wheel, a
 // button or what is typed, at once.
 @(private = "file")
-number :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
+number :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
 	d := e.def
 	name := d.name
 	held := p.held != "" && p.held == name
@@ -964,7 +964,7 @@ number :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^co
 
 // A free field, its unit after it: Enter or leaving it applies the text; a refused one says why under the line.
 @(private = "file")
-field :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
+field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
 	name := e.def.name
 	f, ok := p.fields[name]
 	if !ok {
@@ -1001,7 +1001,7 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^con
 
 // Sets a preference from text. "" when it was set; else why not (owned), with what is allowed ("out of range: 1 to 64").
 @(private)
-apply :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name, text: string) -> string {
+apply :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name, text: string) -> string {
 	err := config.set_from_string(prefs, name, text, .User)
 	if err == .None {
 		if o.changed != nil { o.changed(o.user, name) }
@@ -1021,7 +1021,7 @@ apply :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name, text: string) ->
 }
 
 @(private)
-reset :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string) {
+reset :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
 	config.reset(prefs, name)
 	if f, ok := p.fields[name]; ok { delete(f.synced); f.synced = ""; delete(f.error); f.error = "" }
 	if o.changed != nil { o.changed(o.user, name) }
@@ -1099,7 +1099,7 @@ card_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 
 // The Updater's state, in words, and what can be done with it.
 @(private = "file")
-updater_under :: proc(o: Options, em: f32) {
+updater_under :: proc(o: Page_Options, em: f32) {
 	st := update.status(o.updater)
 	if ui.tags("weak") {
 		ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})

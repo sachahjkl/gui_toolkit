@@ -2,7 +2,7 @@ package tk_setup
 
 // The Setup dialog: the program, its version, the state of its install in a sentence, where its files are, and what can
 // be done: Install (or Repair, Upgrade, Update the shortcuts), Uninstall, Open the installed copy, Keep standalone; the
-// program's own options (Config.choices), and the install folder before the first install (Config.folder).
+// program's own options (Setup_Options.choices), and the install folder before the first install (Setup_Options.folder).
 //
 //   d: setup.Dialog                          kept by the program, at a place that does not move while it is open
 //   setup.open(&d, cfg)                      at a start when setup.wanted(...), from a menu, from `--setup`
@@ -41,8 +41,8 @@ Dialog :: struct {
 	known:     bool,               // the facts were read at least once since it opened
 	facts:     Facts,              // as last read (strings owned)
 	shortcut:  bool,               // the Desktop's shortcut, asked of Install
-	choices:   [dynamic]bool,      // the program's options (Config.choices), as ticked
-	folder:    ui.Line_Edit,      // the install folder (Config.folder): set from the facts when they first come
+	choices:   [dynamic]bool,      // the program's options (Setup_Options.choices), as ticked
+	folder:    ui.Line_Edit,      // the install folder (Setup_Options.folder): set from the facts when they first come
 	size:      [2]f32,             // what the user made it, in ems ({}: DIALOG_EM; the program may keep it)
 	note:      string,             // what the last action said (owned)
 	note_good: bool,
@@ -83,16 +83,16 @@ Logo :: struct {
 @(private = "file") LOGO_EM         :: 4.2
 
 // Opens the dialog: the facts are read on its thread, the places of the install are watched.
-open :: proc(d: ^Dialog, c: Config) {
+open :: proc(d: ^Dialog, o: Setup_Options) {
 	if d.open { return }
 	d.open, d.known, d.confirm = true, false, false
 	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
 	clear(&d.choices)
-	for x in c.choices { append(&d.choices, x.on) }
+	for x in o.choices { append(&d.choices, x.on) }
 	ui.line_edit_clear(&d.folder)
 	say(d, true, "")
-	watch_begin(d, c)
-	job_start(d, c, .Read)
+	watch_begin(d, o)
+	job_start(d, o, .Read)
 }
 
 // The install may have changed (the program's own reason: its window came back, a place no watcher sees): read again.
@@ -109,8 +109,8 @@ wake :: proc(d: ^Dialog) {
 
 // At the end of the process: what an uninstall left because this process held it goes then (a helper of the system's
 // waits for the process).
-finish :: proc(d: ^Dialog, c: Config) {
-	if len(d.leftovers) > 0 { _ = remove_later(c, d.leftovers[:]) }
+finish :: proc(d: ^Dialog, o: Setup_Options) {
+	if len(d.leftovers) > 0 { _ = remove_later(o, d.leftovers[:]) }
 	for l in d.leftovers { delete(l) }
 	delete(d.leftovers)
 	d.leftovers = nil
@@ -154,10 +154,10 @@ say :: proc(d: ^Dialog, good: bool, text: string) {
 // The watch
 
 @(private = "file")
-watch_begin :: proc(d: ^Dialog, c: Config) {
+watch_begin :: proc(d: ^Dialog, o: Setup_Options) {
 	if d.watcher != nil { return }
-	o, _ := options(c, d.choices[:])
-	d.watcher = desktop.watch_start(&o, proc(user: rawptr) {
+	integration, _ := options(o, d.choices[:])
+	d.watcher = desktop.watch_start(&integration, proc(user: rawptr) {
 		d := (^Dialog)(user)
 		sync.atomic_store(&d.stale_flag, true)
 		wake(d)
@@ -181,7 +181,7 @@ Job_Kind :: enum u8 { Read, Install, Uninstall, Pick_Folder }
 Job :: struct {
 	kind:      Job_Kind,
 	d:         ^Dialog,             // (it does not move while the work is out: destroy waits for it)
-	c:         Config,              // (its strings and procedures are the program's: they outlive the work)
+	c:         Setup_Options,   // (its strings and procedures are the program's: they outlive the work)
 	shortcut:  bool,
 	choices:   []bool,              // owned
 	folder:    string,              // owned
@@ -197,11 +197,11 @@ Job :: struct {
 }
 
 @(private = "file")
-job_start :: proc(d: ^Dialog, c: Config, kind: Job_Kind) {
+job_start :: proc(d: ^Dialog, o: Setup_Options, kind: Job_Kind) {
 	if d.job != nil { return }
 	sync.atomic_store(&d.stale_flag, false)
 	j := new(Job)
-	j.kind, j.d, j.c, j.shortcut, j.removed = kind, d, c, d.shortcut, d.removed
+	j.kind, j.d, j.c, j.shortcut, j.removed = kind, d, o, d.shortcut, d.removed
 	j.choices = make([]bool, len(d.choices))
 	copy(j.choices, d.choices[:])
 	j.folder = strings.clone(strings.trim_space(ui.line_edit_string(&d.folder)))
@@ -256,7 +256,7 @@ job_free :: proc(j: ^Job) {
 
 // The work that ended: its facts, its words and its event.
 @(private = "file")
-job_collect :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
+job_collect :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 	j := d.job
 	if j == nil || !sync.atomic_load(&j.done) { return }
 	job_join(j)
@@ -307,7 +307,7 @@ job_collect :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
 }
 
 // What the state is, in a sentence, and its tone ("good", "warn", "bad", "accent").
-state_words :: proc(f: Facts, c: Config) -> (words, tone: string) {
+state_words :: proc(f: Facts, o: Setup_Options) -> (words, tone: string) {
 	switch f.state {
 	case .Not_Installed: return i18n.tr("Not installed: this copy runs on its own."), "warn"
 	case .This_Copy:     return i18n.tr("Installed: this is the installed copy."), "good"
@@ -318,8 +318,8 @@ state_words :: proc(f: Facts, c: Config) -> (words, tone: string) {
 		}
 		return words_pieces_missing(), "bad"
 	case .Other_Copy:
-		if is_upgrade(f, c.version) { return fmt.tprintf(i18n.tr("An older copy is installed (%s): upgrade it to %s?"), f.version, c.version), "accent" }
-		if is_downgrade(f, c.version) { return fmt.tprintf(i18n.tr("A newer copy is installed (%s): this one (%s) is older."), f.version, c.version), "warn" }
+		if is_upgrade(f, o.version) { return fmt.tprintf(i18n.tr("An older copy is installed (%s): upgrade it to %s?"), f.version, o.version), "accent" }
+		if is_downgrade(f, o.version) { return fmt.tprintf(i18n.tr("A newer copy is installed (%s): this one (%s) is older."), f.version, o.version), "warn" }
 		return fmt.tprintf(i18n.tr("A copy is installed (%s): this one runs on its own."), f.version != "" ? f.version : "?"), "warn"
 	case .Removal_Scheduled: return i18n.tr("Uninstalled: the program is deleted when this window closes."), "warn"
 	case .Nix_Package:
@@ -359,32 +359,32 @@ words_pieces_missing :: proc() -> string {
 //
 // Laid out dense, as a tool's panel: a title bar (the name, the close control); a header (what the dialog offers, the
 // versions, the state as a badge); the install location; the options as a grid of boxes; what the disk says (where the
-// files are, a note); the buttons. Config.square: every corner square.
-dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: Event) {
-	ev = update(d, c)
+// files are, a note); the buttons. Setup_Options.square: every corner square.
+dialog :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo) = nil) -> (ev: Event) {
+	ev = update(d, o)
 	if !d.open { return }
 	was_open := d.open
 	busy := d.job != nil && d.job.kind != .Read
 	if ui.modal("setup", &d.open, {width_em = DIALOG_EM.x, height_em = DIALOG_EM.y, min_width_em = DIALOG_MIN_EM.x, min_height_em = DIALOG_MIN_EM.y, size = &d.size}) {
 		f := &d.facts
-		if c.square { ui.parent_box().radius = 0 }
-		if c.backdrop != nil { c.backdrop(c.user) }
-		title_bar(d, c, em)
+		if o.square { ui.parent_box().radius = 0 }
+		if o.backdrop != nil { o.backdrop(o.user) }
+		title_bar(d, o, em)
 		// what the dialog says scrolls when it is made small; its buttons stay under it
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if ui.scroll_y("###setup_scroll") {
 			ui.spacer(ui.px(em * 0.5))
-			head(d, c, em, logo)
+			head(d, o, em, logo)
 			if d.known {
-				location(d, c, em, busy)
-				if !f.from_nix { options_grid(d, c, em) }
+				location(d, o, em, busy)
+				if !f.from_nix { options_grid(d, o, em) }
 				ui.spacer(ui.px(em * 0.6))
-				info(d, c, em, busy)
+				info(d, o, em, busy)
 			}
 			ui.spacer(ui.px(em * 0.5))
 		}
 		ui.spacer(ui.px(em * 0.4))
-		if bev := buttons(d, c, em); bev != .None { ev = bev }
+		if bev := buttons(d, o, em); bev != .None { ev = bev }
 		ui.spacer(ui.px(em * 0.8))
 	}
 	if was_open && !d.open && ev == .None { ev = closed_event(d) }
@@ -397,14 +397,14 @@ dialog :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo) = nil) -> (ev: 
 
 // Each frame, open or not: collects the work that ended (its event), reads the install again when it changed, stops
 // watching once closed.
-update :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
+update :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
-	ev = job_collect(d, c)
+	ev = job_collect(d, o)
 	if !d.open {
 		watch_end(d)
 		return
 	}
-	if d.job == nil && sync.atomic_load(&d.stale_flag) { job_start(d, c, .Read) }
+	if d.job == nil && sync.atomic_load(&d.stale_flag) { job_start(d, o, .Read) }
 	return
 }
 
@@ -412,14 +412,14 @@ update :: proc(d: ^Dialog, c: Config) -> (ev: Event) {
 busy :: proc(d: ^Dialog) -> bool { return d.job != nil && d.job.kind != .Read }
 
 // What the install button says for the state ("": none is offered: not read yet, just installed, removed, from Nix).
-install_label :: proc(d: ^Dialog, c: Config) -> string {
+install_label :: proc(d: ^Dialog, o: Setup_Options) -> string {
 	f := &d.facts
 	if !d.known || d.installed != "" && f.state != .This_Copy || f.state == .Removal_Scheduled || f.from_nix { return "" }
 	#partial switch f.state {
 	case .Other_Copy:
 		switch {
-		case is_upgrade(f^, c.version):   return fmt.tprintf(i18n.tr("Upgrade to %s"), c.version)
-		case is_downgrade(f^, c.version): return fmt.tprintf(i18n.tr("Go back to %s"), c.version)
+		case is_upgrade(f^, o.version):   return fmt.tprintf(i18n.tr("Upgrade to %s"), o.version)
+		case is_downgrade(f^, o.version): return fmt.tprintf(i18n.tr("Go back to %s"), o.version)
 		}
 		return i18n.tr("Replace the installed copy")
 	case .Repair:    return i18n.tr("Repair")
@@ -436,23 +436,23 @@ can_uninstall :: proc(d: ^Dialog) -> bool {
 // What closes the screen without installing: Close, Not now (an upgrade), Keep standalone (no install, another copy).
 Closing :: enum u8 { Close, Not_Now, Keep_Standalone }
 
-closing :: proc(d: ^Dialog, c: Config) -> Closing {
+closing :: proc(d: ^Dialog, o: Setup_Options) -> Closing {
 	switch {
 	case d.installed != "" && d.facts.state != .This_Copy: return .Close
-	case is_upgrade(d.facts, c.version):                   return .Not_Now
+	case is_upgrade(d.facts, o.version):                   return .Not_Now
 	case d.known && (d.facts.state == .Not_Installed || d.facts.state == .Other_Copy): return .Keep_Standalone
 	}
 	return .Close
 }
 
 // Starts Install (with Dialog.shortcut, choices and folder) on the dialog's thread; nothing while work is out.
-start_install :: proc(d: ^Dialog, c: Config) { if d.known && d.job == nil { job_start(d, c, .Install) } }
+start_install :: proc(d: ^Dialog, o: Setup_Options) { if d.known && d.job == nil { job_start(d, o, .Install) } }
 
 // Starts Uninstall on the dialog's thread (a screen asks first: Dialog.confirm); nothing while work is out.
-start_uninstall :: proc(d: ^Dialog, c: Config) { if d.known && d.job == nil { job_start(d, c, .Uninstall) } }
+start_uninstall :: proc(d: ^Dialog, o: Setup_Options) { if d.known && d.job == nil { job_start(d, o, .Uninstall) } }
 
 // Opens the system's folder picker for the install folder (Dialog.folder takes the answer).
-pick_folder :: proc(d: ^Dialog, c: Config) { if d.job == nil { job_start(d, c, .Pick_Folder) } }
+pick_folder :: proc(d: ^Dialog, o: Setup_Options) { if d.job == nil { job_start(d, o, .Pick_Folder) } }
 
 // Starts the copy just installed (Dialog.installed): Launched, the program then ends; None when it does not start.
 open_installed :: proc(d: ^Dialog) -> Event {
@@ -484,26 +484,26 @@ closed_event :: proc(d: ^Dialog) -> Event {
 
 // A corner's radius: `k` ems, none when the program wants it square.
 @(private = "file")
-rad :: proc(c: Config, em, k: f32) -> f32 { return c.square ? 0 : math.round(em * k) }
+rad :: proc(o: Setup_Options, em, k: f32) -> f32 { return o.square ? 0 : math.round(em * k) }
 
 // The dialog's own header: "<name> Setup", and the close control in its corner (the program's, else the toolkit's button,
 // which closes the dialog through its `open`).
 @(private = "file")
-title_bar :: proc(d: ^Dialog, c: Config, em: f32) {
-	if ui.dialog_header("setup_title_bar", fmt.tprintf(i18n.tr("%s Setup"), c.identity.name), {close = true}) {
-		if c.close != nil {
-			if c.close("###setup_close_x", em, c.user) { d.open = false }
+title_bar :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
+	if ui.dialog_header("setup_title_bar", fmt.tprintf(i18n.tr("%s Setup"), o.identity.name), {close = true}) {
+		if o.close != nil {
+			if o.close("###setup_close_x", em, o.user) { d.open = false }
 		}
 	}
 }
 
 // A framed panel across the dialog, inside its margins: `if panel(...) { ... }`.
 @(private = "file", deferred_none = panel_end)
-panel :: proc(c: Config, em: f32, id: string, axis := ui.Axis.Y) -> bool {
+panel :: proc(o: Setup_Options, em: f32, id: string, axis := ui.Axis.Y) -> bool {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	ui.push_parent(ui.build_box({}, fmt.tprintf("%s_line", id)))
 	ui.spacer(ui.px(em * MARGIN_EM))
-	ui.next({width = ui.fill(), height = ui.children_sum(), axis = axis, cross = .Center, radius = rad(c, em, 0.4)})
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = axis, cross = .Center, radius = rad(o, em, 0.4)})
 	box: ^ui.Box
 	if ui.tags("input") { box = ui.build_box({.Draw_Background, .Draw_Border}, id) }
 	ui.push_parent(box)
@@ -518,15 +518,15 @@ panel_end :: proc() {
 }
 
 // What the screen offers for this state ("Install Classeur", "Repair Classeur"...), and the state in a word.
-headline :: proc(f: Facts, c: Config) -> (title, badge: string) {
-	name := c.identity.name
+headline :: proc(f: Facts, o: Setup_Options) -> (title, badge: string) {
+	name := o.identity.name
 	switch f.state {
 	case .Not_Installed:     return fmt.tprintf(i18n.tr("Install %s"), name), i18n.tr("Not installed")
 	case .This_Copy:         return fmt.tprintf(i18n.tr("%s is installed"), name), i18n.tr("Installed")
 	case .Repair:            return fmt.tprintf(i18n.tr("Repair %s"), name), i18n.tr("To repair")
 	case .Other_Copy:
-		if is_upgrade(f, c.version) { return fmt.tprintf(i18n.tr("Upgrade %s"), name), i18n.tr("Older installed") }
-		if is_downgrade(f, c.version) { return fmt.tprintf(i18n.tr("Replace %s"), name), i18n.tr("Newer installed") }
+		if is_upgrade(f, o.version) { return fmt.tprintf(i18n.tr("Upgrade %s"), name), i18n.tr("Older installed") }
+		if is_downgrade(f, o.version) { return fmt.tprintf(i18n.tr("Replace %s"), name), i18n.tr("Newer installed") }
 		return fmt.tprintf(i18n.tr("Replace %s"), name), i18n.tr("Other copy")
 	case .Removal_Scheduled: return fmt.tprintf(i18n.tr("%s is uninstalled"), name), i18n.tr("Removed")
 	case .Nix_Package:       return fmt.tprintf(i18n.tr("%s from Nix"), name), i18n.tr("Nix package")
@@ -536,9 +536,9 @@ headline :: proc(f: Facts, c: Config) -> (title, badge: string) {
 
 // The header: the logo, what is offered and the versions, the state as a badge.
 @(private = "file")
-head :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo)) {
+head :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 	f := &d.facts
-	if panel(c, em, "###setup_head", .X) {
+	if panel(o, em, "###setup_head", .X) {
 		ui.spacer(ui.px(em * 0.9))
 		if l, has := logo.?; has {
 			side := math.round(em * 2.6)
@@ -550,7 +550,7 @@ head :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo)) {
 			ui.spacer(ui.px(em * 0.8))
 		}
 		title, badge := i18n.tr("Reading the install…"), ""
-		if d.known { title, badge = headline(f^, c) }
+		if d.known { title, badge = headline(f^, o) }
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###setup_words") {
 			ui.spacer(ui.px(em * 0.55))
@@ -559,16 +559,16 @@ head :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo)) {
 			if ui.tags("weak") {
 				installed := i18n.tr("not installed")
 				if d.known && f.state != .Not_Installed && f.state != .Nix_Package { installed = f.version != "" ? fmt.tprintf(i18n.tr("v%s installed"), f.version) : i18n.tr("installed") }
-				vendor := c.identity.vendor != "" ? fmt.tprintf("  ·  %s", c.identity.vendor) : ""
+				vendor := o.identity.vendor != "" ? fmt.tprintf("  ·  %s", o.identity.vendor) : ""
 				ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.35)), font_size = math.round(em * 0.9), text_pad = 0})
-				ui.label(fmt.tprintf("%s%s###setup_version", fmt.tprintf(i18n.tr("This copy: v%s → %s"), c.version, installed), vendor))
+				ui.label(fmt.tprintf("%s%s###setup_version", fmt.tprintf(i18n.tr("This copy: v%s → %s"), o.version, installed), vendor))
 			}
 			ui.spacer(ui.px(em * 0.55))
 		}
 		if badge != "" {
-			_, tone := state_words(f^, c)
+			_, tone := state_words(f^, o)
 			ui.spacer(ui.px(em * 0.6))
-			ui.next({width = ui.text_size(em * 1.2), height = ui.px(math.round(em * 2)), radius = rad(c, em, 0.3), text_pad = 0, text_align = .Center})
+			ui.next({width = ui.text_size(em * 1.2), height = ui.px(math.round(em * 2)), radius = rad(o, em, 0.3), text_pad = 0, text_align = .Center})
 			if ui.tags("button", tone) {
 				b := ui.build_box({.Draw_Background, .Draw_Border, .Draw_Text}, fmt.tprintf("%s###setup_badge", badge))
 				b.text_align = .Center
@@ -580,9 +580,9 @@ head :: proc(d: ^Dialog, c: Config, em: f32, logo: Maybe(Logo)) {
 
 // Where it goes: a field and the system's folder picker before the first install, else where it is.
 @(private = "file")
-location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
+location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	f := &d.facts
-	choose := c.folder && f.state == .Not_Installed && !f.from_nix
+	choose := o.folder && f.state == .Not_Installed && !f.from_nix
 	ui.spacer(ui.px(em * 0.6))
 	line_next()
 	if ui.row(id = "###setup_location_label") {
@@ -596,12 +596,12 @@ location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 	if ui.row(.Center, id = "###setup_location_row") {
 		ui.spacer(ui.px(em * MARGIN_EM))
 		if choose {
-			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), radius = rad(c, em, 0.3)})
+			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), radius = rad(o, em, 0.3)})
 			_ = ui.line_edit("###setup_folder", &d.folder)
 			ui.spacer(ui.px(em * 0.4))
-			if button(c, "###setup_pick", i18n.tr("Choose…"), lucide.FOLDER_OPEN, .Primary, em) && !busy { pick_folder(d, c) }
+			if button(o, "###setup_pick", i18n.tr("Choose…"), lucide.FOLDER_OPEN, .Primary, em) && !busy { pick_folder(d, o) }
 		} else {
-			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), axis = .X, cross = .Center, radius = rad(c, em, 0.3)})
+			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), axis = .X, cross = .Center, radius = rad(o, em, 0.3)})
 			well: ^ui.Box
 			if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border}, "###setup_where") }
 			if ui.parent(well) { where_row(d, "###w1", "", f.exe, true, em) }
@@ -609,7 +609,7 @@ location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 		ui.spacer(ui.px(em * MARGIN_EM))
 	}
 	if choose {
-		if why := desktop.check_install_dir(strings.trim_space(ui.line_edit_string(&d.folder)), c.identity.name); why != "" {
+		if why := desktop.check_install_dir(strings.trim_space(ui.line_edit_string(&d.folder)), o.identity.name); why != "" {
 			line_next()
 			if ui.row(id = "###setup_folder_why_row") {
 				ui.spacer(ui.px(em * MARGIN_EM))
@@ -625,23 +625,23 @@ location :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 
 // "Options": a section header, then the Desktop shortcut and the program's choices, two framed boxes a line.
 @(private = "file")
-options_grid :: proc(d: ^Dialog, c: Config, em: f32) {
+options_grid :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 	ui.spacer(ui.px(em * 0.7))
-	if panel(c, em, "###setup_options_head", .X) {
+	if panel(o, em, "###setup_options_head", .X) {
 		ui.next({width = ui.px(max(math.round(em * 0.22), 2)), height = ui.px(math.round(em * 1.9)), bg = ui.color("accent")})
 		ui.build_box({.Draw_Background}, "###setup_options_bar")
 		ui.spacer(ui.px(em * 0.7))
 		ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.9)), text_pad = 0})
 		ui.label(fmt.tprintf("%s###setup_options_label", i18n.tr("Options")))
 	}
-	n := 1 + min(len(c.choices), len(d.choices))
+	n := 1 + min(len(o.choices), len(d.choices))
 	// (one per line, as wide as the dialog: a long label wraps in its tile, never past it)
 	for k in 0 ..< n {
 		ui.spacer(ui.px(em * 0.4))
 		line_next()
 		if ui.row(.Center, id = fmt.tprintf("###setup_options_%d", k)) {
 			ui.spacer(ui.px(em * MARGIN_EM))
-			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = rad(c, em, 0.4)})
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = rad(o, em, 0.4)})
 			tile: ^ui.Box
 			if ui.tags("input") { tile = ui.build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###setup_tile_%d", k)) }
 			if ui.parent(tile) {
@@ -650,7 +650,7 @@ options_grid :: proc(d: ^Dialog, c: Config, em: f32) {
 				if k == 0 {
 					ui.checkbox("###setup_shortcut", i18n.tr("Shortcut on the Desktop"), &d.shortcut, wrap = true)
 				} else {
-					ui.checkbox(fmt.tprintf("###setup_choice_%d", k - 1), i18n.tr(c.choices[k - 1].label), &d.choices[k - 1], wrap = true)
+					ui.checkbox(fmt.tprintf("###setup_choice_%d", k - 1), i18n.tr(o.choices[k - 1].label), &d.choices[k - 1], wrap = true)
 				}
 				ui.spacer(ui.px(em * 0.5))
 			}
@@ -662,11 +662,11 @@ options_grid :: proc(d: ^Dialog, c: Config, em: f32) {
 // What the disk says, in a framed box: the state in a sentence, the launcher and the record, this copy, the note of
 // NixOS, and what the last action said.
 @(private = "file")
-info :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
+info :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	f := &d.facts
-	if panel(c, em, "###setup_info") {
+	if panel(o, em, "###setup_info") {
 		ui.spacer(ui.px(em * 0.45))
-		words, tone := state_words(f^, c)
+		words, tone := state_words(f^, o)
 		line_next()
 		if ui.row(.Center, id = "###setup_state_row") {
 			ui.spacer(ui.px(em * 0.9))
@@ -676,8 +676,8 @@ info :: proc(d: ^Dialog, c: Config, em: f32, busy: bool) {
 			}
 			ui.spacer(ui.px(em * 0.9))
 		}
-		where_row(d, "###w2", words_menu(), f.start_lnk ? c.identity.name : "-", false, em)
-		where_row(d, "###w3", words_record(), f.record ? c.identity.name : "-", false, em)
+		where_row(d, "###w2", words_menu(), f.start_lnk ? o.identity.name : "-", false, em)
+		where_row(d, "###w3", words_record(), f.record ? o.identity.name : "-", false, em)
 		where_row(d, "###w4", i18n.tr("this copy"), f.running, true, em)
 		if f.nixos && f.state != .Nix_Package && f.state != .This_Copy {
 			line_next()
@@ -801,7 +801,7 @@ logo_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 // Uninstall on the left; on the right, what closes, and what installs (or the installed copy to open). While the work
 // runs, a click does nothing.
 @(private = "file")
-buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
+buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 	d.at = {}
 	// (keys are made under the row: the box of a button is looked for there, right after it)
 	mark :: proc(d: ^Dialog, role: Button_Role, id: string) { if b := ui.prev_box(id); b != nil { d.at[role] = b.rect } }
@@ -813,26 +813,26 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 			// (beside a Nix package, what goes is only what an earlier install left)
 			nix := d.facts.state == .Nix_Package
 			words := d.confirm ? (nix ? i18n.tr("Click again to remove") : i18n.tr("Click again to uninstall")) : (nix ? i18n.tr("Remove what is left") : i18n.tr("Uninstall"))
-			if button(c, "###setup_uninstall", words, lucide.TRASH_2, .Danger, em) && !busy(d) {
-				if d.confirm { start_uninstall(d, c) } else { d.confirm = true }
+			if button(o, "###setup_uninstall", words, lucide.TRASH_2, .Danger, em) && !busy(d) {
+				if d.confirm { start_uninstall(d, o) } else { d.confirm = true }
 			}
 			mark(d, .Uninstall, "###setup_uninstall")
 		}
 		ui.spacer(ui.fill())
 		just_installed := d.installed != "" && d.facts.state != .This_Copy
-		how := closing(d, c)
+		how := closing(d, o)
 		CLOSING_WORDS := [Closing]string{.Close = i18n.tr("Close"), .Not_Now = i18n.tr("Not now"), .Keep_Standalone = i18n.tr("Keep standalone")}
 		CLOSING_IDS := [Closing]string{.Close = "###setup_close", .Not_Now = "###setup_later", .Keep_Standalone = "###setup_standalone"}
-		if button(c, CLOSING_IDS[how], CLOSING_WORDS[how], lucide.X, .Cancel, em) { ev = close(d, how) }
+		if button(o, CLOSING_IDS[how], CLOSING_WORDS[how], lucide.X, .Cancel, em) { ev = close(d, how) }
 		if !just_installed { mark(d, .Secondary, CLOSING_IDS[how]) }
 		if just_installed {
 			ui.spacer(ui.px(em * 0.5))
-			if button(c, "###setup_launch", i18n.tr("Open the installed copy"), lucide.EXTERNAL_LINK, .Success, em) { ev = open_installed(d) }
+			if button(o, "###setup_launch", i18n.tr("Open the installed copy"), lucide.EXTERNAL_LINK, .Success, em) { ev = open_installed(d) }
 			mark(d, .Secondary, "###setup_launch")
 		}
-		if label := install_label(d, c); label != "" {
+		if label := install_label(d, o); label != "" {
 			ui.spacer(ui.px(em * 0.5))
-			if button(c, "###setup_install", label, d.facts.state == .Repair ? lucide.WRENCH : lucide.DOWNLOAD, .Success, em) && !busy(d) { start_install(d, c) }
+			if button(o, "###setup_install", label, d.facts.state == .Repair ? lucide.WRENCH : lucide.DOWNLOAD, .Success, em) && !busy(d) { start_install(d, o) }
 			mark(d, .Install, "###setup_install")
 		}
 		ui.spacer(ui.px(em * MARGIN_EM))
@@ -841,12 +841,12 @@ buttons :: proc(d: ^Dialog, c: Config, em: f32) -> (ev: Event) {
 	return
 }
 
-// A button: the program's (Config.button), else the toolkit's button with its glyph and the soft pair of its intent.
+// A button: the program's (Setup_Options.button), else the toolkit's button with its glyph and the soft pair of its intent.
 @(private = "file")
-button :: proc(c: Config, id, label, glyph: string, intent: ui.Intent, em: f32) -> bool {
-	if c.button != nil { return c.button(id, label, glyph, intent, em, c.user) }
+button :: proc(o: Setup_Options, id, label, glyph: string, intent: ui.Intent, em: f32) -> bool {
+	if o.button != nil { return o.button(id, label, glyph, intent, em, o.user) }
 	clicked := ui.button(id, label, glyph, {icon_font = ui.lucide_icons(), intent = intent}).clicked
 	// (ui.button rounds its own corners: a square dialog squares them after, before they are drawn)
-	if c.square { if b := ui.prev_box(id); b != nil { b.radius = 0 } }
+	if o.square { if b := ui.prev_box(id); b != nil { b.radius = 0 } }
 	return clicked
 }

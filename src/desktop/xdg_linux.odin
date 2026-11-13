@@ -2,7 +2,7 @@ package tk_desktop
 
 // The XDG places the integration reads and writes that are not a program's standard folders (platform.user_dir) (freedesktop.org "basedir-spec"). An XDG_* variable is
 // used only when it is an absolute path (the specification says a relative value is ignored and the default used); the
-// defaults are under the user's home. `Options` overrides each of them for the tests.
+// defaults are under the user's home. `Integration_Options` overrides each of them for the tests.
 
 import "core:os"
 import "core:path/filepath"
@@ -10,7 +10,7 @@ import "core:strings"
 import "../platform"
 
 // Where a user's executables go so the launcher and the shell find them by name (~/.local/bin, on the default PATH of
-// systemd and most distributions). The PATH part of Linux is a link to the program here (`Options.bin_dir` overrides it).
+// systemd and most distributions). The PATH part of Linux is a link to the program here (`Integration_Options.bin_dir` overrides it).
 xdg_bin_dir :: proc(allocator := context.temp_allocator) -> string {
 	home, err := os.user_home_dir(allocator)
 	if err != nil || home == "" { return "" }

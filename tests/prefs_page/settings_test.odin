@@ -24,7 +24,7 @@ Common :: struct {
 	page:    prefs_page.Page,
 	watch:   prefs_page.Standard_Watch,
 	changed: [dynamic]string,
-	shown:   f64,   // the last value Options.preview showed
+	shown:   f64,   // the last value Page_Options.preview showed
 	previews: int,
 }
 

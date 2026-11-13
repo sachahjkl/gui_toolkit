@@ -17,7 +17,7 @@ ui.value_history_values(&cpu)                     // a copy, oldest first (temp 
 ui.value_history_clear(&cpu)
 ```
 
-`line_graph(id, series, opts)` draws one or more series in the box that `next` gives. Each series is an area under its
+`line_graph(id, series, o)` draws one or more series in the box that `next` gives. Each series is an area under its
 line, filled with its colour fading to the bottom. The newest value is at the right edge. The grid and the frame use the
 theme's border colour; in the machined finish a graph with a grid is a well (a screen set in the surface).
 
@@ -37,7 +37,7 @@ ui.line_graph("###disk", {
 | `grid` | grid lines and a frame |
 | `columns`, `rows` | spaces of the grid (0: 10 and 4) |
 
-`line_graph_top(series, opts)` is the top the graph shows: the caption of the graph says it. `graph_top(v, floor)` is a
+`line_graph_top(series, o)` is the top the graph shows: the caption of the graph says it. `graph_top(v, floor)` is a
 round value at or above `v`: 1, 2 or 5 times a power of ten, at least `floor`.
 
 `sparkline(id, series, top, points, floor)` is a line graph with no grid and no frame, for a list of devices.
@@ -80,7 +80,7 @@ direction. A program saves it and reads it back.
 | `table_layout_reset(l)` | the columns' own widths, visibility and order back (the "Default columns" of a menu) |
 | `table_layout_move(l, k, to)` | moves column `k` to place `to` of `order` (from 1: the first column stays first) |
 | `table_layout_toggle(l, k)` | shows or hides column `k` (never the first); true when the sort moved to the first column |
-| `table_header(id, l, lead_em, opts)` | the titles: a click sorts by a column, a second click reverses it, a third leaves the rows in the data's own order (`table_sort_click`, `TABLE_UNSORTED`); a title dragged sideways moves its column (not the first), a line in the accent's colour where it will go, and its release is no click; the rule at a column's right edge, dragged, resizes that column and moves those after it (the fill column takes its width of the moment at the first drag: then the table scrolls when wider than its room); the sort's arrow at the title's end. Returns `sorted`, `resized` (a rule let go: save the layout), `moved` (a column moved: save the layout) and `menu` (a right click on the header). `next` may set the header's background and height. `opts` (`Table_Header_Options`): `lead` builds in the room before the first title (a box that checks every row), `title` in each title after its words (a filter's funnel; `hot`: the pointer is on the title); a column with `unsorted` sorts nothing when its title is clicked; one with `descending_first` (a date) sorts from the largest at its first click, as a number does |
+| `table_header(id, l, lead_em, o)` | the titles: a click sorts by a column, a second click reverses it, a third leaves the rows in the data's own order (`table_sort_click`, `TABLE_UNSORTED`); a title dragged sideways moves its column (not the first), a line in the accent's colour where it will go, and its release is no click; the rule at a column's right edge, dragged, resizes that column and moves those after it (the fill column takes its width of the moment at the first drag: then the table scrolls when wider than its room); the sort's arrow at the title's end. Returns `sorted`, `resized` (a rule let go: save the layout), `moved` (a column moved: save the layout) and `menu` (a right click on the header). `next` may set the header's background and height. `opts` (`Table_Header_Options`): `lead` builds in the room before the first title (a box that checks every row), `title` in each title after its words (a filter's funnel; `hot`: the pointer is on the title); a column with `unsorted` sorts nothing when its title is clicked; one with `descending_first` (a date) sorts from the largest at its first click, as a number does |
 | `table_widths_text(l, keys)`, `table_widths_apply(l, keys, text)` | the widths that are not the columns' own, as a preference's text (`pid=6.5,command=30`, in ems; `keys[k]` names column k), and back (bounded; a name it does not know is skipped) |
 | `table_order_text(l, keys)`, `table_order_apply(l, keys, text)` | the columns' order as a text (`name,cpu,pid`), and back: the columns it names take their places in its order, the others stay where they are, a name it does not know is skipped |
 | `table_sort_text(l, keys)`, `table_sort_apply(l, keys, text)` | the sort as a text (`memory`, `-memory` when descending, `none` unsorted), and back (only to a column shown) |

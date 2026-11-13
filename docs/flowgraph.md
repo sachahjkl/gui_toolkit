@@ -170,7 +170,7 @@ events := ui.node_graph("###flow", &app.view, app.flow.nodes[:], app.flow.links[
 })
 ```
 
-- `Flow_Nodes` holds the widget's nodes, ports and links (owned); `flow_nodes_make(out, g, cat, opts)` makes them again,
+- `Flow_Nodes` holds the widget's nodes, ports and links (owned); `flow_nodes_make(out, g, cat, o)` makes them again,
   `flow_nodes_destroy` frees them. `Flow_Options.look(user, node, def) -> Flow_Node_Look` gives what a node shows beyond
   its kind: `subtitle`, `color`, `state`, `message`, `thumbnail` (copied).
 - `flow_link(l)` is a widget's link as the model's; `flow_state(s)` a run's state as the widget's (`Cancelled` is shown
@@ -183,10 +183,10 @@ events := ui.node_graph("###flow", &app.view, app.flow.nodes[:], app.flow.links[
 
 ### node_inspector
 
-`node_inspector(id, ins, cat, node, opts) -> Node_Inspector_Result` draws a node's parameters from its kind's schema:
+`node_inspector(id, ins, cat, node, o) -> Node_Inspector_Result` draws a node's parameters from its kind's schema:
 `ui.number` with its slider for `Int` and `Float` (bounded), a toggle for `Bool`, a segmented choice (three choices or
 fewer) or a dropdown for `Choice`, a colour button and its picker for `Color`, a text field for `Text`, a text field and
-"Choose…" for `Folder`, a dropdown of the names `opts.lists(user, node, param)` gives for `List` (its first entry, the
+"Choose…" for `Folder`, a dropdown of the names `o.lists(user, node, param)` gives for `List` (its first entry, the
 empty value, says `placeholder`).
 
 It changes nothing. Its result says `changed` (the parameter, -1: none) and its new `value`; `new_step` when the change

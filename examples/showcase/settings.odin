@@ -50,7 +50,7 @@ settings_close :: proc(app: ^App) {
 	config.prefs_destroy(&app.prefs)
 }
 
-settings_options :: proc(app: ^App) -> prefs_page.Options {
+settings_options :: proc(app: ^App) -> prefs_page.Page_Options {
 	return {
 		user = app,
 		pages = SETTINGS_PAGES[:],

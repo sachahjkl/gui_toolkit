@@ -15,7 +15,7 @@ Quantizer :: enum u8 {
 }
 
 // The zero value is the defaults.
-Options :: struct {
+Encoder_Options :: struct {
 	quantizer:   Quantizer,
 	dither:      bool,   // ordered (Bayer 4 x 4) dithering of colours the palette lacks; off: text stays crisp
 	full_frames: bool,   // every frame whole: no changed rectangle, no transparency, no merging of unchanged frames
@@ -27,7 +27,7 @@ Write_Proc :: #type proc(user: rawptr, data: []u8) -> bool
 // begin, add_frame for each frame, end. The fields are the encoder's own.
 Encoder :: struct {
 	width, height: int,
-	options:       Options,
+	options:       Encoder_Options,
 	write:         Write_Proc,
 	user:          rawptr,
 	allocator:     runtime.Allocator,
@@ -63,24 +63,24 @@ MAX_DELAY :: 65535
 // times after the first (browsers' reading), -1 writes no loop extension (played once). With `write`, the bytes go to it
 // as the frames come (a frame is held until the next one, which may add to its delay) and end returns nil; else end
 // returns the file. False when a side is not in 1 ..= MAX_SIDE or the writer fails.
-begin :: proc(e: ^Encoder, width, height: int, loop_count := 0, options := Options{}, write: Write_Proc = nil, user: rawptr = nil,
+begin :: proc(e: ^Encoder, width, height: int, loop_count := 0, o := Encoder_Options{}, write: Write_Proc = nil, user: rawptr = nil,
 	allocator := context.allocator) -> bool {
 	e^ = {}
 	if width < 1 || height < 1 || width > MAX_SIDE || height > MAX_SIDE { return false }
-	e.width, e.height, e.options, e.write, e.user, e.allocator = width, height, options, write, user, allocator
+	e.width, e.height, e.options, e.write, e.user, e.allocator = width, height, o, write, user, allocator
 	e.pending = -1
 	n := width * height
 	e.out = make([dynamic]u8, 0, 1024, allocator)
-	if !options.full_frames { e.previous = make([]u8, n * PIXEL, allocator) }
+	if !o.full_frames { e.previous = make([]u8, n * PIXEL, allocator) }
 	e.pixels = make([]u32, n, allocator)
 	e.indices = make([]u8, n, allocator)
-	quantize_init(&e.quantize, options.quantizer, allocator)
+	quantize_init(&e.quantize, o.quantizer, allocator)
 	lzw_init(&e.lzw, allocator)
 
 	append(&e.out, "GIF89a")
 	put_u16(&e.out, width)
 	put_u16(&e.out, height)
-	if options.quantizer == .Fixed {
+	if o.quantizer == .Fixed {
 		append(&e.out, HAS_TABLE | COLOR_RESOLUTION | 7, 0, 0)   // (7: 2^(7+1) entries)
 		for c in e.quantize.fixed.rgb { append(&e.out, c[0], c[1], c[2]) }
 	} else {

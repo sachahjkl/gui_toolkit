@@ -6,7 +6,7 @@ import font "../font"
 
 // How a drawing is drawn: in the program's fonts (a text says only bold or not), its colours through `recolor` (sRGB in,
 // sRGB out: a program's theme), nil: as they are.
-Options :: struct {
+Draw_Options :: struct {
 	regular, bold: font.Font_Id,
 	recolor:       proc(c: Color, user: rawptr) -> Color,
 	user:          rawptr,
@@ -17,7 +17,7 @@ size :: proc(doc: ^Document, scale: f32) -> Vec2 { return {doc.view[2], doc.view
 
 // Draws it with its top left corner at `at`, `scale` screen pixels per unit of its viewBox. The paths are built in screen
 // space: curves are as smooth and strokes as wide as the scale makes them.
-draw_doc :: proc(dc: ^draw.Context, doc: ^Document, at: Vec2, scale: f32, o: Options) {
+draw_doc :: proc(dc: ^draw.Context, doc: ^Document, at: Vec2, scale: f32, o: Draw_Options) {
 	to :: proc(doc: ^Document, at: Vec2, scale: f32, p: Vec2) -> Vec2 { return at + (p - Vec2{doc.view[0], doc.view[1]}) * scale }
 	for item in doc.items {
 		switch it in item {
@@ -58,7 +58,7 @@ draw_doc :: proc(dc: ^draw.Context, doc: ^Document, at: Vec2, scale: f32, o: Opt
 @(private) MIN_TEXT_PX :: 3
 
 @(private)
-linear :: proc(c: Color, o: Options) -> draw.Color {
+linear :: proc(c: Color, o: Draw_Options) -> draw.Color {
 	v := o.recolor != nil ? o.recolor(c, o.user) : c
 	return draw.srgb(v.r, v.g, v.b, v.a)
 }

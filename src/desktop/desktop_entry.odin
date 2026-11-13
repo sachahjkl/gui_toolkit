@@ -223,7 +223,7 @@ group_value :: proc(text, group, key: string) -> (value: string, found: bool) {
 // The desktop entry of an integration of `o`. Lines are LF-terminated and in the order the specification's own examples
 // use; every value is escaped, the Exec line quoted. A program that opens addresses (a browser, URL schemes of its own)
 // takes them as `%U`.
-desktop_entry_text :: proc(o: ^Options, allocator := context.temp_allocator) -> string {
+desktop_entry_text :: proc(o: ^Integration_Options, allocator := context.temp_allocator) -> string {
 	id := o.identity
 	sb := strings.builder_make(allocator)
 	line :: proc(sb: ^strings.Builder, key, value: string) { fmt.sbprintf(sb, "%s=%s\n", key, value) }
@@ -268,7 +268,7 @@ desktop_entry_text :: proc(o: ^Options, allocator := context.temp_allocator) -> 
 
 // The autostart entry of `o` (the XDG Autostart specification): the program with `autostart_arguments`, at the start of
 // the session, marked as the program's as its desktop entry is.
-autostart_entry_text :: proc(o: ^Options, allocator := context.temp_allocator) -> string {
+autostart_entry_text :: proc(o: ^Integration_Options, allocator := context.temp_allocator) -> string {
 	id := o.identity
 	sb := strings.builder_make(allocator)
 	line :: proc(sb: ^strings.Builder, key, value: string) { fmt.sbprintf(sb, "%s=%s\n", key, value) }

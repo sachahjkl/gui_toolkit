@@ -17,9 +17,9 @@ Reply :: enum u8 { No_Window, Accepted, Other_Instance, Refused, Timeout }
 @(private)
 forward_once :: proc(name, identity: string, message: []byte, timeout_ms: int) -> Reply { return .No_Window }
 
-send :: proc(cfg: Config, message: []byte) -> Outcome { return .Unresponsive }
+send :: proc(o: Instance_Options, message: []byte) -> Outcome { return .Unresponsive }
 
-acquire :: proc(cfg: Config, message: []byte) -> (Outcome, Owner) { return .First, Owner{name = cfg.name, identity = cfg.identity, state = .Claimed} }
+acquire :: proc(o: Instance_Options, message: []byte) -> (Outcome, Owner) { return .First, Owner{name = o.name, identity = o.identity, state = .Claimed} }
 
 owner_start :: proc(o: ^Owner, handler: Handler, user: rawptr) -> bool {
 	if o.state != .Claimed { return false }

@@ -89,7 +89,7 @@ capture.stream_close(st)
 - **Size.** The frames of an output or a region keep one size while the output's mode does not change. A window's
   frames keep the size it had at the start on Windows and on X11 (cut or padded with black); on Wayland they follow the
   window's size.
-- **The pointer.** `options.cursor` asks for the pointer in the frames; `Stream.cursor` says whether the backend draws it.
+- **The pointer.** `o.cursor` asks for the pointer in the frames; `Stream.cursor` says whether the backend draws it.
 - **Threads.** Call the three procedures on the session's thread, and no other procedure of the session while a stream
   is open. A recorder opens a session of its own on its own thread.
 

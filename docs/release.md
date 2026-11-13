@@ -1,10 +1,10 @@
 # release: a program's release
 
 `import release "gt:release"` (the package is named `tk_release`). The steps of a release, the same on a laptop and in a
-release workflow; a project's own tool (`tools/<tool>`) gives them its `Config` and calls them as its commands.
+release workflow; a project's own tool (`tools/<tool>`) gives them its `Release_Options` and calls them as its commands.
 
 ```odin
-config :: proc() -> release.Config {
+config :: proc() -> release.Release_Options {
 	@(static) files := [?][2]string{{"README.md", "README.md"}, {"LICENSE", "LICENSE"}}
 	return {project = project(), dist = "build/dist", files = files[:], check = proc() -> int { return run_check(nil) }}
 }
@@ -13,11 +13,11 @@ release.notes(config(), args)      // <tool> notes <version>
 release.ship(config(), args)       // <tool> ship <patch|minor|major|x.y.z> [--dry-run]
 ```
 
-`Config.project` is the project's `toolbox.Project` ([toolbox.md](toolbox.md)): its name, repository, changelog, version file
-and line, and release build; its fields read as the Config's (`c.name`).
+`Release_Options.project` is the project's `toolbox.Project` ([toolbox.md](toolbox.md)): its name, repository, changelog, version file
+and line, and release build; its fields read as the Release_Options's (`o.name`).
 
-`commands(config) -> [3]toolbox.Command` gives the three as commands of the project's tool (`package`, `notes`, `ship`), for
-`toolbox.tool_main`; the Config is copied, its slices must live as long as the tool (a `@(static)` table, or main's frame):
+`commands(o) -> [3]toolbox.Command` gives the three as commands of the project's tool (`package`, `notes`, `ship`), for
+`toolbox.tool_main`; the Release_Options is copied, its slices must live as long as the tool (a `@(static)` table, or main's frame):
 
 ```odin
 release_commands := release.commands(config())
@@ -31,11 +31,11 @@ toolbox.tool_main("classeurtool", {build, test, check, release_commands[0], rele
 | `ship` | From a clean checkout (any branch, a worktree, a detached HEAD): the fragments checked (a malformed one stops it, and so does nothing to release), then `publish` (below): the number, the fragments assembled into `## [<version>] - <today>` with the version's link, the sources' version set, `check` run, a commit (the changelog, `changelog.d/` and the version file), the annotated tag `v<version>`, master and the tag pushed at once. `--dry-run` shows the section it would release. |
 
 The changelog is made of fragments ([changelog.md](changelog.md)): a change adds its file to `changelog.d/`, beside
-`Config.changelog`, and never edits the changelog. `ship` assembles them: the version's section, its link
+`Release_Options.changelog`, and never edits the changelog. `ship` assembles them: the version's section, its link
 (`<repository>/releases/tag/v<version>`), the fragments deleted. A changelog that still has an `## [Unreleased]` section
 written by hand gets its entries in the version too, after the fragments', and loses the section.
 
-A program that updates itself ([update.md](update.md)) gives its product in `Config.update`: `package_` then writes, beside
+A program that updates itself ([update.md](update.md)) gives its product in `Release_Options.update`: `package_` then writes, beside
 the archive, the program alone (`expected_file_name`, stripped on Linux as in the archive), what an installed copy downloads,
 and its manifest and `.sig` (`manifest_name`), signed by `$UPDATE_SIGNING_KEY` ([toolbox.md](toolbox.md)). A release (a
 version given) without the key is refused; a package without a version is not signed. The release workflow gives the key

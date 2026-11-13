@@ -68,7 +68,7 @@ ROOT_NAMES :: [?]string{"MENU_DIR", "DESKTOP_DIR", "ENVIRONMENT_ROOT", "INSTALL_
 //     <prefix>AUTOSTART_DIR                               (Linux: where the autostart entry goes)
 //     <prefix>INSTALL_DIR                                 (where the installed copy is)
 // An identity without a prefix reads nothing.
-roots_from_env :: proc(o: ^Options, lookup: proc(name: string) -> string) {
+roots_from_env :: proc(o: ^Integration_Options, lookup: proc(name: string) -> string) {
 	prefix := o.identity.env_prefix
 	if prefix == "" { return }
 	dsts := [len(ROOT_NAMES)]^string{&o.menu_dir, &o.desktop_dir, &o.environment_root, &o.install_dir, &o.registry_root, &o.applications_dir, &o.icons_dir, &o.bin_dir, &o.autostart_dir}
@@ -81,7 +81,7 @@ roots_from_env :: proc(o: ^Options, lookup: proc(name: string) -> string) {
 }
 
 // Runs `mode`, writing its report with `out`. Returns the exit code.
-cli_run :: proc(mode: Cli_Mode, o: ^Options, out: proc(text: string)) -> int {
+cli_run :: proc(mode: Cli_Mode, o: ^Integration_Options, out: proc(text: string)) -> int {
 	switch mode {
 	case .None: return 0
 	case .Install:

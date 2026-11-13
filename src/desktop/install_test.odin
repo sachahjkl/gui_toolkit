@@ -16,7 +16,7 @@ Tree :: struct {
 	root: string,   // the scratch folder
 	src:  string,   // a folder standing for the unpacked package: sample.exe, vcruntime140.dll, licenses\, demos\
 	dst:  string,   // the install folder (not made)
-	opts: Options,
+	opts: Integration_Options,
 }
 
 // A name no other test of this run has: tests on other threads start within one tick of the clock (Windows' is coarse), and
@@ -45,7 +45,7 @@ tree_make :: proc() -> Tree {
 	put(fmt.tprintf("%s/licenses/sub/b.txt", t.src), "licence b")
 	put(fmt.tprintf("%s/demos/index.html", t.src), "<p>demos")
 	put(fmt.tprintf("%s/notes.txt", t.src), "not in the payload")
-	t.opts = Options{identity = test_identity()}
+	t.opts = Integration_Options{identity = test_identity()}
 	t.opts.identity.exe_name = "sample.exe"
 	return t
 }

@@ -30,7 +30,7 @@ Scratch :: struct {
 	root: string,   // Software\TkDesktopTest_<id>
 	desk: string,   // its "Desktop"
 	env:  string,   // Software\TkDesktopTest_<id>\Environment: what stands for HKCU\Environment
-	opts: Options,
+	opts: Integration_Options,
 }
 
 @(private = "file")
@@ -50,7 +50,7 @@ scratch_make :: proc() -> Scratch {
 		_ = os.make_directory_all(dir)
 		_ = os.write_entire_file(p, "MZ not a program")
 	}
-	s.opts = Options{
+	s.opts = Integration_Options{
 		identity = test_identity(),
 		exe = s.exe, register_browser = true, start_menu = true, file_types = split_list(".htm,.html,.svg,.webp", context.temp_allocator),
 		menu_dir = s.menu, desktop_dir = s.desk, environment_root = s.env, registry_root = s.root, notify_system = false,
@@ -71,7 +71,7 @@ scratch_destroy :: proc(s: ^Scratch) {
 }
 
 @(private = "file")
-state_of :: proc(o: ^Options) -> (State, Status) {
+state_of :: proc(o: ^Integration_Options) -> (State, Status) {
 	st := status(o, context.temp_allocator)
 	return st.state, st
 }
@@ -327,7 +327,7 @@ windows_command_program :: proc(t: ^testing.T) {
 windows_real_desktop :: proc(t: ^testing.T) {
 	if v, ok := os.lookup_env("TK_TEST_DESKTOP_REAL", context.temp_allocator); !ok || v != "1" { return }
 	exe := process.executable_path()
-	o := Options{
+	o := Integration_Options{
 		identity = real_identity(),
 		exe = exe, register_browser = true, start_menu = true, file_types = {".html"}, notify_system = true,
 	}

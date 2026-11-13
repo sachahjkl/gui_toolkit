@@ -22,10 +22,10 @@ foreign user32_env {
 @(private = "file") SMTO_ABORTIFHUNG :: 0x0002
 
 @(private)
-env_key :: proc(o: ^Options) -> string { return o.environment_root != "" ? o.environment_root : "Environment" }
+env_key :: proc(o: ^Integration_Options) -> string { return o.environment_root != "" ? o.environment_root : "Environment" }
 
 @(private = "file")
-mark_key :: proc(o: ^Options) -> string { return reg_join(registry_root_of(o), o.identity.vendor_key, o.identity.key) }
+mark_key :: proc(o: ^Integration_Options) -> string { return reg_join(registry_root_of(o), o.identity.vendor_key, o.identity.key) }
 
 @(private = "file")
 MARK_PATH :: "PathDir"
@@ -54,7 +54,7 @@ entries_of :: proc(value: string) -> []string {
 
 // Is `dir` one of the entries of the user's PATH?
 @(private)
-path_contains :: proc(o: ^Options, dir: string) -> bool {
+path_contains :: proc(o: ^Integration_Options, dir: string) -> bool {
 	value, _, ok := reg_get_any(env_key(o), "Path")
 	if !ok { return false }
 	want := strings.trim_right(dir, "\\/")
@@ -64,7 +64,7 @@ path_contains :: proc(o: ^Options, dir: string) -> bool {
 
 // Puts `dir` at the end of the user's PATH (nothing when it is there), and marks it as ours.
 @(private)
-path_add :: proc(o: ^Options, dir: string) -> Result {
+path_add :: proc(o: ^Integration_Options, dir: string) -> Result {
 	key := env_key(o)
 	value, _, ok := reg_get_any(key, "Path")
 	want := strings.trim_right(dir, "\\/")
@@ -82,7 +82,7 @@ path_add :: proc(o: ^Options, dir: string) -> Result {
 
 // Takes `dir` out of the user's PATH. `force`: whatever the mark says; else only when the mark names this folder.
 @(private)
-path_take_out :: proc(o: ^Options, dir: string, force: bool) -> Result {
+path_take_out :: proc(o: ^Integration_Options, dir: string, force: bool) -> Result {
 	want := strings.trim_right(dir, "\\/")
 	marked, has_mark := reg_get(mark_key(o), MARK_PATH)
 	ours := has_mark && same_path(marked, want)
@@ -114,7 +114,7 @@ broadcast_environment :: proc() {
 }
 
 @(private)
-windows_path_remove :: proc(o: ^Options, dir: string) -> Result {
+windows_path_remove :: proc(o: ^Integration_Options, dir: string) -> Result {
 	r := path_take_out(o, dir, force = true)
 	if o.notify_system { broadcast_environment() }
 	return r

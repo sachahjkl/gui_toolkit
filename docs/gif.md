@@ -26,7 +26,7 @@ With a writer (`begin(..., write = proc(user, data) -> bool, user = ...)`), the 
 - **Exact colours when they fit.** Screen content often has fewer than 256 colours in a changed rectangle: they are kept
   exactly.
 
-## Options
+## Encoder_Options
 
 | Field | Default | What it does |
 |---|---|---|

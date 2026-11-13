@@ -24,7 +24,7 @@ import "../ui"
 // One command per preference the pages show (temp memory), and the preference each names. Its label is the title the
 // page gives it; its group "Settings · <page>"; its icon the page's, else Lucide's sliders (the palette draws it in the
 // state's icon_font).
-palette_commands :: proc(prefs: ^config.Prefs, o: Options, allocator := context.temp_allocator) -> (commands: []ui.Command, names: []string) {
+palette_commands :: proc(prefs: ^config.Prefs, o: Page_Options, allocator := context.temp_allocator) -> (commands: []ui.Command, names: []string) {
 	out := make([dynamic]ui.Command, allocator)
 	ns := make([dynamic]string, allocator)
 	for pg in pages_of(prefs, o) {
@@ -42,7 +42,7 @@ palette_commands :: proc(prefs: ^config.Prefs, o: Options, allocator := context.
 
 // The page shows preference `name` alone: its search holds the name (in quotes: that one, not the others it begins), and
 // its page is the one under the search.
-show :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string) {
+show :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
 	for pg in pages_of(prefs, o) {
 		for n in page_names(prefs, pg) {
 			if n != name { continue }

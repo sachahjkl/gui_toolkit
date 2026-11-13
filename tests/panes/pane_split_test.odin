@@ -26,10 +26,10 @@ frame_pane :: proc(f: ^Fx) {
 }
 
 @(private = "file")
-pane_setup :: proc(t: ^testing.T, opts: ui.Pane_Options, drawing := false) -> ^Fx {
+pane_setup :: proc(t: ^testing.T, o: ui.Pane_Options, drawing := false) -> ^Fx {
 	f := setup(t, drawing)
 	if f == nil { return nil }
-	f.pane_mode, f.popts = true, opts
+	f.pane_mode, f.popts = true, o
 	f.pane.size[.X] = 100
 	return f
 }

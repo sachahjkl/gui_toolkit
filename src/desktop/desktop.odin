@@ -2,7 +2,7 @@
 // copy of the program. Everything is in the user's own profile: never system-wide, never with administrator rights.
 // docs/desktop.md says what a program gets and how it configures it.
 //
-// The package is the interface (`Identity`, `Options`, `Status`, `status`, `install`, `remove`, `uninstall`) and one
+// The package is the interface (`Identity`, `Integration_Options`, `Status`, `status`, `install`, `remove`, `uninstall`) and one
 // backend per platform in its own files:
 //
 //     integration_windows.odin   Start menu and desktop shortcuts (IShellLink, with the AppUserModelID), the user's PATH
@@ -13,7 +13,7 @@
 //     integration_other.odin     every other target: unsupported
 //
 // Nothing here is a preference of the user: the state is read from the disk (the registry) every time it is asked, so
-// a box that shows it is always true. Every location is a field of `Options` (an injectable root), which is how the
+// a box that shows it is always true. Every location is a field of `Integration_Options` (an injectable root), which is how the
 // tests work on a scratch folder and a scratch registry key and never touch the real desktop.
 //
 // Removal deletes only what carries the mark of the program: a shortcut with its AppUserModelID, a key or a .desktop
@@ -86,7 +86,7 @@ Icon :: struct {
 	png:  []byte,
 }
 
-Options :: struct {
+Integration_Options :: struct {
 	identity:         Identity,
 	exe:              string,     // the program to integrate (absolute); "" = the running executable
 	register_browser: bool,       // also register as a browser: http(s) addresses, the file types, the program's URL schemes
@@ -173,22 +173,22 @@ error_text :: proc(e: Error) -> string {
 	return ""
 }
 
-// What one platform implements. A backend reads and changes the disk only through the roots of `Options`.
+// What one platform implements. A backend reads and changes the disk only through the roots of `Integration_Options`.
 Backend :: struct {
 	name:            string,
 	parts:           Parts,
-	status:          proc(o: ^Options, allocator: runtime.Allocator) -> Status,   // fills parts and error only (classify does the rest)
-	install:         proc(o: ^Options) -> Result,
-	remove:          proc(o: ^Options) -> Result,
+	status:          proc(o: ^Integration_Options, allocator: runtime.Allocator) -> Status,   // fills parts and error only (classify does the rest)
+	install:         proc(o: ^Integration_Options) -> Result,
+	remove:          proc(o: ^Integration_Options) -> Result,
 	open_defaults:   proc() -> bool,   // the system's page where the user picks the default programs
 
 	// The installed copy (install.odin). All optional (nil: the platform has no such thing; the folder is then the default).
-	default_install_dir: proc(o: ^Options, allocator: runtime.Allocator) -> string,   // where a copy is installed unless told otherwise
-	locate:              proc(o: ^Options, allocator: runtime.Allocator) -> string,   // the folder the system recorded for it ("" = none)
-	record:              proc(o: ^Options, dir, version: string) -> Result,           // the system's record (Windows: the Apps list)
-	unrecord:            proc(o: ^Options) -> Result,
-	cleanup_later:       proc(o: ^Options, files: []string, folder: string, pid: u32) -> bool,   // deletes files after process `pid` ends
-	path_remove:         proc(o: ^Options, dir: string) -> Result,                    // takes one folder out of the user's PATH
+	default_install_dir: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string,   // where a copy is installed unless told otherwise
+	locate:              proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string,   // the folder the system recorded for it ("" = none)
+	record:              proc(o: ^Integration_Options, dir, version: string) -> Result,           // the system's record (Windows: the Apps list)
+	unrecord:            proc(o: ^Integration_Options) -> Result,
+	cleanup_later:       proc(o: ^Integration_Options, files: []string, folder: string, pid: u32) -> bool,   // deletes files after process `pid` ends
+	path_remove:         proc(o: ^Integration_Options, dir: string) -> Result,                    // takes one folder out of the user's PATH
 }
 
 status_destroy :: proc(s: ^Status, allocator := context.allocator) {
@@ -199,8 +199,8 @@ status_destroy :: proc(s: ^Status, allocator := context.allocator) {
 
 // The options of a program that integrates with the application menu: the running executable, the menu entry, the
 // system told. A browser sets `register_browser` and its `file_types`; the other parts are off.
-options_make :: proc(identity: Identity, allocator := context.temp_allocator) -> Options {
-	return Options{
+options_make :: proc(identity: Identity, allocator := context.temp_allocator) -> Integration_Options {
+	return Integration_Options{
 		identity = identity,
 		exe = process.executable_path(allocator),
 		start_menu = true,
@@ -210,7 +210,7 @@ options_make :: proc(identity: Identity, allocator := context.temp_allocator) ->
 
 // A copy of `o` that owns its strings (for a job on another thread). The identity, the icons and the launcher are
 // shared: they are the program's own constants and embedded data.
-options_clone :: proc(o: Options, allocator := context.allocator) -> Options {
+options_clone :: proc(o: Integration_Options, allocator := context.allocator) -> Integration_Options {
 	c := o
 	c.exe = clone_or_empty(o.exe, allocator)
 	c.menu_dir = clone_or_empty(o.menu_dir, allocator)
@@ -227,7 +227,7 @@ options_clone :: proc(o: Options, allocator := context.allocator) -> Options {
 	return c
 }
 
-options_destroy :: proc(o: ^Options, allocator := context.allocator) {
+options_destroy :: proc(o: ^Integration_Options, allocator := context.allocator) {
 	delete(o.exe, allocator); delete(o.menu_dir, allocator); delete(o.registry_root, allocator)
 	delete(o.desktop_dir, allocator); delete(o.environment_root, allocator); delete(o.install_dir, allocator)
 	delete(o.applications_dir, allocator); delete(o.icons_dir, allocator); delete(o.bin_dir, allocator)
@@ -244,7 +244,7 @@ ensure_dir :: proc(path: string) -> bool {
 }
 
 // Every part of the backend that these options ask for.
-parts_wanted :: proc(b: ^Backend, o: ^Options) -> Parts {
+parts_wanted :: proc(b: ^Backend, o: ^Integration_Options) -> Parts {
 	w := b.parts
 	if !o.start_menu { w -= {.Launcher} }
 	if !o.desktop_shortcut { w -= {.Desktop_Shortcut} }
@@ -256,7 +256,7 @@ parts_wanted :: proc(b: ^Backend, o: ^Options) -> Parts {
 }
 
 // What the platform's integration of `o` looks like on the disk. `o.exe` is the program it should run.
-status :: proc(o: ^Options, allocator := context.allocator) -> Status {
+status :: proc(o: ^Integration_Options, allocator := context.allocator) -> Status {
 	b := platform_backend()
 	if b == nil { return Status{error = .Unsupported} }
 	if e := validate(o, need_exe = false); e.error != .None { return Status{error = e.error} }
@@ -265,14 +265,14 @@ status :: proc(o: ^Options, allocator := context.allocator) -> Status {
 	return s
 }
 
-install :: proc(o: ^Options) -> Result {
+install :: proc(o: ^Integration_Options) -> Result {
 	b := platform_backend()
 	if b == nil { return {.Unsupported, error_text(.Unsupported)} }
 	if e := validate(o, need_exe = true); e.error != .None { return e }
 	return b.install(o)
 }
 
-remove :: proc(o: ^Options) -> Result {
+remove :: proc(o: ^Integration_Options) -> Result {
 	b := platform_backend()
 	if b == nil { return {.Unsupported, error_text(.Unsupported)} }
 	if e := validate(o, need_exe = false); e.error != .None { return e }
@@ -324,7 +324,7 @@ has_default_apps_page :: proc() -> bool {
 // The identity's fields are what the backends build paths, keys and marks from: a malformed one could reach another
 // program's files.
 @(private)
-validate :: proc(o: ^Options, need_exe: bool) -> Result {
+validate :: proc(o: ^Integration_Options, need_exe: bool) -> Result {
 	id := o.identity
 	if id.name == "" || id.key == "" || id.slug == "" || id.aumid == "" { return {.Bad_Options, "the identity has an empty field"} }
 	if !all_of(id.key, letter_or_digit) { return {.Bad_Options, "identity.key is letters and digits only"} }

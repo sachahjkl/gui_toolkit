@@ -24,10 +24,10 @@ the system fallback, the whole cluster goes with it (emoji ZWJ sequences: ðŸ‘©â€
 
 ## Shaping
 
-`shape(s, id, size, text, opts, allocator) -> Shaped`: one line of UTF-8 text to glyphs.
+`shape(s, id, size, text, o, allocator) -> Shaped`: one line of UTF-8 text to glyphs.
 
 - **Bidi**: the line is split into directional runs (UAX #9, `IDWriteTextAnalyzer::AnalyzeBidi`) with
-  `opts.direction` as the paragraph direction (`Auto`: the first strong character), and the runs are put in visual
+  `o.direction` as the paragraph direction (`Auto`: the first strong character), and the runs are put in visual
   order (L2). A caller that resolved bidi itself (a layout engine, per line) passes `one_run = true`: the text is one
   run in `direction`.
 - **Words**: each run is cut into words at U+0020 and each word is shaped on its own and cached (as Blink's word
@@ -132,7 +132,7 @@ selectable text, the selection is drawn in the theme's "selection" colour behind
 `has_selection`, `selection_serial` (moves with every change) and `selection_changed` (this build), `clear_selection`,
 `select_box`. Example: `examples/markdown`.
 
-`measure(s, id, size, text, opts)` is `shape(...).width` without building the glyph list: what a layout engine calls.
+`measure(s, id, size, text, o)` is `shape(...).width` without building the glyph list: what a layout engine calls.
 `text_width(s, id, size, text)` is `measure` with default options.
 
 **Threads.** Loading faces, shaping, measuring and the analyses may run on any thread at once. The word cache is sharded
@@ -188,7 +188,7 @@ The draw layer (`src/draw/text.odin`):
   [draw.md](draw.md), Retained drawing).
 - `draw.glyph_run_stroke(dc, size, pos, color, glyphs, width)`: the outlines of the same run as a line of `width`, half inside and half outside, its joins round (CSS `-webkit-text-stroke`).
 - `font.glyph_ink_extent(s, face, gid, lo, hi, across)`: where a glyph has ink inside a band, in ems, from its outline, kept per glyph and band; `font.run_ink_spans(s, glyphs, size, top, bottom, gap)`: the same for a run, left to right, joined by their gap (the gaps of a skipping underline).
-- `draw.text(dc, id, size, pos, color, s)`, `draw.text_ex(..., opts)`: shape then `glyph_run`.
+- `draw.text(dc, id, size, pos, color, s)`, `draw.text_ex(..., o)`: shape then `glyph_run`.
 
 The coverage is raw (linear) coverage, as DirectWrite gives it before Direct2D applies its gamma: the renderer's text
 correction (`render.Text_Rendering`, Skia's) applies to it as it did to stb_truetype's.

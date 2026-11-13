@@ -44,7 +44,7 @@ platform_backend :: proc() -> ^Backend { return &LINUX_BACKEND }
 // shortcut or Apps-list part (those are Windows parts: docs/desktop.md). Nothing records the install: the manifest in the
 // folder is the record.
 @(private = "file")
-linux_default_install_dir :: proc(o: ^Options, allocator: runtime.Allocator) -> string {
+linux_default_install_dir :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string {
 	data_home := platform.user_dir(.Data, "", context.temp_allocator)
 	if data_home == "" { return "" }
 	return strings.concatenate({data_home, "/", o.identity.slug}, allocator)
@@ -65,7 +65,7 @@ Layout :: struct {
 }
 
 @(private = "file")
-layout_of :: proc(o: ^Options) -> (l: Layout, ok: bool) {
+layout_of :: proc(o: ^Integration_Options) -> (l: Layout, ok: bool) {
 	data_home := ""
 	if o.applications_dir == "" || o.icons_dir == "" {
 		data_home = platform.user_dir(.Data, "", context.temp_allocator)
@@ -88,7 +88,7 @@ icon_path :: proc(l: Layout, slug: string, size: int) -> string {
 // Status
 
 @(private = "file")
-linux_status :: proc(o: ^Options, allocator: runtime.Allocator) -> Status {
+linux_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> Status {
 	s: Status
 	l, ok := layout_of(o)
 	if !ok { s.error = .System; return s }
@@ -157,7 +157,7 @@ linux_status :: proc(o: ^Options, allocator: runtime.Allocator) -> Status {
 
 // <autostart_dir>/<slug>.desktop ($XDG_CONFIG_HOME/autostart): the entry that starts the program with the session.
 @(private = "file")
-autostart_path :: proc(o: ^Options) -> string {
+autostart_path :: proc(o: ^Integration_Options) -> string {
 	dir := o.autostart_dir
 	if dir == "" {
 		config := platform.user_dir(.Config, "", context.temp_allocator)
@@ -169,7 +169,7 @@ autostart_path :: proc(o: ^Options) -> string {
 
 // The desktop entry at `path` (the autostart one, the desktop's copy) when it is the program's (its mark, or an Exec that runs it), and the program it runs.
 @(private = "file")
-entry_ours :: proc(o: ^Options, path: string) -> (ours: bool, target, text: string) {
+entry_ours :: proc(o: ^Integration_Options, path: string) -> (ours: bool, target, text: string) {
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil { return }
 	text = string(data)
@@ -181,7 +181,7 @@ entry_ours :: proc(o: ^Options, path: string) -> (ours: bool, target, text: stri
 
 // <desktop folder>/<slug>.desktop: the copy of the entry on the desktop ("" when there is no home).
 @(private = "file")
-desktop_shortcut_path :: proc(o: ^Options) -> string {
+desktop_shortcut_path :: proc(o: ^Integration_Options) -> string {
 	dir := o.desktop_dir != "" ? o.desktop_dir : xdg_desktop_dir()
 	if dir == "" { return "" }
 	return strings.concatenate({dir, "/", o.identity.slug, ".desktop"}, context.temp_allocator)
@@ -189,7 +189,7 @@ desktop_shortcut_path :: proc(o: ^Options) -> string {
 
 // <bin_dir>/<slug> (~/.local/bin/<slug>): the symlink that puts the program on the user's PATH (the "Add to PATH" of Linux).
 @(private = "file")
-bin_link_path :: proc(o: ^Options) -> string {
+bin_link_path :: proc(o: ^Integration_Options) -> string {
 	bin := o.bin_dir != "" ? o.bin_dir : xdg_bin_dir()
 	if bin == "" { return "" }
 	return strings.concatenate({bin, "/", o.identity.slug}, context.temp_allocator)
@@ -199,7 +199,7 @@ bin_link_path :: proc(o: ^Options) -> string {
 // Install
 
 @(private = "file")
-linux_install :: proc(o: ^Options) -> Result {
+linux_install :: proc(o: ^Integration_Options) -> Result {
 	l, ok := layout_of(o)
 	if !ok { return {.System, "neither $XDG_DATA_HOME nor the home directory is known"} }
 	if !ensure_dir(l.applications) { return {.Io, strings.concatenate({"cannot create ", l.applications}, context.temp_allocator)} }
@@ -267,7 +267,7 @@ linux_install :: proc(o: ^Options) -> Result {
 // Remove
 
 @(private = "file")
-linux_remove :: proc(o: ^Options) -> Result {
+linux_remove :: proc(o: ^Integration_Options) -> Result {
 	l, ok := layout_of(o)
 	if !ok { return {.System, "neither $XDG_DATA_HOME nor the home directory is known"} }
 	res: Result
@@ -315,7 +315,7 @@ linux_remove :: proc(o: ^Options) -> Result {
 // Takes one folder's symlink out of the bin directory (install.odin calls this when a copy is uninstalled). `dir` is the
 // folder whose executable the link points into; the link is removed when it resolves to a program in that folder.
 @(private = "file")
-linux_path_remove :: proc(o: ^Options, dir: string) -> Result {
+linux_path_remove :: proc(o: ^Integration_Options, dir: string) -> Result {
 	link := bin_link_path(o)
 	if link == "" { return {} }
 	target, err := os.read_link(link, context.temp_allocator)

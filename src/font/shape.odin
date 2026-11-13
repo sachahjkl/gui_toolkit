@@ -92,22 +92,22 @@ shaped_destroy :: proc(sh: ^Shaped, allocator := context.allocator) {
 }
 
 // Shapes one line of text.
-shape :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Options = {}, allocator := context.allocator) -> Shaped {
+shape :: proc(s: ^State, id: Font_Id, size: f32, text: string, o: Shape_Options = {}, allocator := context.allocator) -> Shaped {
 	if len(text) == 0 || size <= 0 { return {} }
 	glyphs := make([dynamic]Glyph_Pos, 0, len(text), allocator)
 	clusters := make([dynamic]Cluster, 0, len(text), allocator)
 	pen: f32
-	if opts.one_run || (opts.direction != .Rtl && !maybe_rtl(text)) {
-		rtl := opts.direction == .Rtl || (opts.direction == .Auto && opts.one_run && first_strong_rtl(text))
-		pen = shape_run(s, id, size, text, 0, len(text), rtl, opts, &glyphs, &clusters, pen)
+	if o.one_run || (o.direction != .Rtl && !maybe_rtl(text)) {
+		rtl := o.direction == .Rtl || (o.direction == .Auto && o.one_run && first_strong_rtl(text))
+		pen = shape_run(s, id, size, text, 0, len(text), rtl, o, &glyphs, &clusters, pen)
 		// a right-to-left run places its words from the last one: clusters back to logical order
 		if rtl { sort_clusters(clusters[:]) }
 	} else {
-		runs := bidi_runs(s, text, opts.direction, context.temp_allocator)
+		runs := bidi_runs(s, text, o.direction, context.temp_allocator)
 		order := visual_order(runs, context.temp_allocator)
 		for k in order {
 			r := runs[k]
-			pen = shape_run(s, id, size, text, r.start, r.end, r.level & 1 == 1, opts, &glyphs, &clusters, pen)
+			pen = shape_run(s, id, size, text, r.start, r.end, r.level & 1 == 1, o, &glyphs, &clusters, pen)
 		}
 		// clusters back to logical order (runs were visited in visual order)
 		sort_clusters(clusters[:])
@@ -116,10 +116,10 @@ shape :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Optio
 }
 
 // Advance width of one line of text (as `shape(...).width`, without making the glyph list): what layout measures.
-measure :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Options = {}) -> f32 {
+measure :: proc(s: ^State, id: Font_Id, size: f32, text: string, o: Shape_Options = {}) -> f32 {
 	if len(text) == 0 || size <= 0 { return 0 }
-	no_liga := opts.letter_spacing != 0
-	if !no_liga && opts.word_spacing == 0 && opts.justify == 0 {
+	no_liga := o.letter_spacing != 0
+	if !no_liga && o.word_spacing == 0 && o.justify == 0 {
 		// one word (what layout asks for): one pass over the bytes
 		hi: u8
 		single := true
@@ -129,7 +129,7 @@ measure :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Opt
 			hi = max(hi, b)
 		}
 		if single {
-			rtl := opts.one_run && opts.direction != .Auto ? opts.direction == .Rtl : (hi >= UTF8_RTL_LEAD_MIN && first_strong_rtl(text))
+			rtl := o.one_run && o.direction != .Auto ? o.direction == .Rtl : (hi >= UTF8_RTL_LEAD_MIN && first_strong_rtl(text))
 			return word_width(s, id, size, text, rtl, false)
 		}
 	}
@@ -139,16 +139,16 @@ measure :: proc(s: ^State, id: Font_Id, size: f32, text: string, opts: Shape_Opt
 		j := i
 		if text[i] == ' ' || text[i] == '\t' { j = i + 1 } else { for j < len(text) && text[j] != ' ' && text[j] != '\t' { j += 1 } }
 		piece := text[i:j]
-		rtl := opts.one_run && opts.direction != .Auto ? opts.direction == .Rtl : piece_rtl(piece)
+		rtl := o.one_run && o.direction != .Auto ? o.direction == .Rtl : piece_rtl(piece)
 		w += word_width(s, id, size, piece, rtl, no_liga)
 		i = j
 	}
-	if opts.letter_spacing != 0 || opts.word_spacing != 0 || opts.justify != 0 {
+	if o.letter_spacing != 0 || o.word_spacing != 0 || o.justify != 0 {
 		for k := 0; k < len(text); k += 1 {
 			b := text[k]
-			if b & 0xC0 != 0x80 { w += opts.letter_spacing }
-			if b == ' ' { w += opts.word_spacing + opts.justify }
-			if b == NBSP_LEAD && k + 1 < len(text) && text[k + 1] == NBSP_TRAIL { w += opts.word_spacing }
+			if b & 0xC0 != 0x80 { w += o.letter_spacing }
+			if b == ' ' { w += o.word_spacing + o.justify }
+			if b == NBSP_LEAD && k + 1 < len(text) && text[k + 1] == NBSP_TRAIL { w += o.word_spacing }
 		}
 	}
 	return w
@@ -273,9 +273,9 @@ x_spans_of_range :: proc(s: ^State, id: Font_Id, size: f32, text: string, lo, hi
 
 // One directional run [start, end) of `text`: words shaped (cached) and laid out from `pen`, right to left when `rtl`.
 @(private)
-shape_run :: proc(s: ^State, id: Font_Id, size: f32, text: string, start, end: int, rtl: bool, opts: Shape_Options,
+shape_run :: proc(s: ^State, id: Font_Id, size: f32, text: string, start, end: int, rtl: bool, o: Shape_Options,
 	glyphs: ^[dynamic]Glyph_Pos, clusters: ^[dynamic]Cluster, pen: f32) -> f32 {
-	no_liga := opts.letter_spacing != 0
+	no_liga := o.letter_spacing != 0
 	// words in logical order
 	Piece :: struct { a, b: int }
 	pieces := make([dynamic]Piece, 0, RUN_WORDS_HINT, context.temp_allocator)
@@ -289,20 +289,20 @@ shape_run :: proc(s: ^State, id: Font_Id, size: f32, text: string, start, end: i
 	x := pen
 	for k in 0 ..< len(pieces) {
 		p := pieces[rtl ? len(pieces) - 1 - k : k]
-		x = place_word(s, id, size, text, p.a, p.b, rtl, no_liga, opts, glyphs, clusters, x)
+		x = place_word(s, id, size, text, p.a, p.b, rtl, no_liga, o, glyphs, clusters, x)
 	}
 	return x
 }
 
 // Copies the shaped word text[a:b] at `x`, adding letter / word spacing per cluster. Returns the pen after it.
 @(private)
-place_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, a, b: int, rtl, no_liga: bool, opts: Shape_Options,
+place_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, a, b: int, rtl, no_liga: bool, o: Shape_Options,
 	glyphs: ^[dynamic]Glyph_Pos, clusters: ^[dynamic]Cluster, x: f32) -> f32 {
 	piece := text[a:b]
 	g0, c0 := len(glyphs), len(clusters)
 	w := word_copy(s, id, size, piece, rtl, no_liga, glyphs, clusters)
 	ng, nc := len(glyphs) - g0, len(clusters) - c0
-	spacing := opts.letter_spacing != 0 || opts.word_spacing != 0 || opts.justify != 0
+	spacing := o.letter_spacing != 0 || o.word_spacing != 0 || o.justify != 0
 	if !spacing {
 		for gi in g0 ..< g0 + ng { glyphs[gi].x += x; glyphs[gi].cluster += i32(a) }
 		for ci in c0 ..< c0 + nc { clusters[ci].x0 += x; clusters[ci].x1 += x; clusters[ci].start += i32(a); clusters[ci].end += i32(a) }
@@ -315,9 +315,9 @@ place_word :: proc(s: ^State, id: Font_Id, size: f32, text: string, a, b: int, r
 		c := clusters[c0 + ci]
 		for j in c.start ..< c.end {
 			ch := piece[j]
-			if ch & 0xC0 != 0x80 { sp[ci] += opts.letter_spacing }
-			if ch == ' ' { sp[ci] += opts.word_spacing + opts.justify }
-			if ch == NBSP_LEAD && int(j) + 1 < len(piece) && piece[j + 1] == NBSP_TRAIL { sp[ci] += opts.word_spacing }
+			if ch & 0xC0 != 0x80 { sp[ci] += o.letter_spacing }
+			if ch == ' ' { sp[ci] += o.word_spacing + o.justify }
+			if ch == NBSP_LEAD && int(j) + 1 < len(piece) && piece[j + 1] == NBSP_TRAIL { sp[ci] += o.word_spacing }
 		}
 		total += sp[ci]
 	}

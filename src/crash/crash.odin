@@ -49,7 +49,7 @@ Source :: struct {
 	user: rawptr,
 }
 
-Options :: struct {
+Install_Options :: struct {
 	program:    string,   // the program's name: its report folder and the report's "program" line
 	version:    string,
 	commit:     string,   // the source's commit ("": not known)
@@ -97,7 +97,7 @@ write_source :: proc "contextless" (o: ^Out, name: string, s: Source) {
 
 // Installs the handler of crashes, once for the process (a second call does nothing and returns false). False too where this system
 // has no handler (crash_other.odin): begin_session and last_report still work there.
-install :: proc(o: Options) -> bool {
+install :: proc(o: Install_Options) -> bool {
 	if intrinsics.atomic_exchange(&kept.installed, 1) != 0 { return false }
 	kept.program_len = keep(kept.program[:], o.program)
 	kept.version_len = keep(kept.version[:], o.version)
@@ -111,7 +111,7 @@ install :: proc(o: Options) -> bool {
 	return install_handler()
 }
 
-// The folder where `program`'s reports go when Options.report_dir is "": platform.user_dir(.State, program)/crashes ("": the system
+// The folder where `program`'s reports go when Install_Options.report_dir is "": platform.user_dir(.State, program)/crashes ("": the system
 // has no such folder).
 default_report_dir :: proc(program: string, allocator := context.allocator) -> string {
 	state := platform.user_dir(.State, program, context.temp_allocator)

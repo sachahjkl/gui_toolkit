@@ -82,10 +82,10 @@ twice counts once. The panels the text does not name are the app's to place: `do
 
 ## The dock space
 
-`dock_begin(d, id, opts)` lays the dock out in the space's room (`opts.size`, else the box's last layout, the window's at
+`dock_begin(d, id, o)` lays the dock out in the space's room (`o.size`, else the box's last layout, the window's at
 first; `next` sizes the box, `fill` by default), takes the input (a drop, the drag's targets, Escape, Ctrl+Tab, the
 corners of floating panels) and builds the strips, the handles and the floating panels' frames. `dock_end` draws the drop
-targets while something is dragged, builds the menu, and calls `opts.on_save` when the user is done changing the layout
+targets while something is dragged, builds the menu, and calls `o.on_save` when the user is done changing the layout
 (not in the middle of a drag); it returns `changed`, `finished`, `dragging` and the panel the user `closed`.
 `dock_held(d)` says whether the left button holds one of the dock's own controls (a tab or a floating panel's title,
 pressed or dragged, a handle, a floating panel's corner; not what a panel's content holds). It holds no state: it asks the

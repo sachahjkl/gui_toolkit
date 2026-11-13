@@ -7,7 +7,7 @@ paragraphs, bullet and numbered lists (nested by indent), quotes, rules, tables,
 
 ```odin
 doc: markdown.Doc                                   // the program keeps it: one per text shown
-cfg := markdown.Config{prose = my_font, link = proc(user: rawptr, url: string) { platform.open_url(url) }}
+cfg := markdown.View_Options{prose = my_font, link = proc(user: rawptr, url: string) { platform.open_url(url) }}
 markdown.view(&doc, "note", text, cfg)              // at each build
 markdown.doc_destroy(&doc)                          // when the text is no longer shown (none needed in an arena)
 ```
@@ -28,7 +28,7 @@ once read does not move: the program keeps it where it made it (a `new` one in a
 
 | Procedure | What |
 |---|---|
-| `view(doc, id, src, cfg, size = 0)` | shows `src` in the current column; `id` keys its boxes; `size` the text's (0: the current one) |
+| `view(doc, id, src, o, size = 0)` | shows `src` in the current column; `id` keys its boxes; `size` the text's (0: the current one) |
 | `read(doc, src)` | the blocks of `src`, read only when it changed |
 | `block_lines(doc, n)`, `block_text(doc, n)` | a block's lines as written, its text as shown |
 | `block_runs(doc, n, base, inline)` | its inline runs (`inline_runs` of its text), kept |
@@ -40,7 +40,7 @@ once read does not move: the program keeps it where it made it (a `new` one in a
 | `inline_runs(text, base, &runs, inline)` | the inline Markdown of one text as `ui.Rich_Run`s (no copy of the text) |
 | `doc_destroy(doc)` | frees what the doc holds |
 
-## What the program decides: Config
+## What the program decides: View_Options
 
 Every field may stay zero.
 

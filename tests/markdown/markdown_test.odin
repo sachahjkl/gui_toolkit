@@ -119,7 +119,7 @@ start :: proc(t: ^testing.T, r: ^Run, text: string) -> ^session.Session {
 	return session.start(t, {size = {700, 500}, user = r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		r.keyword = ui.code_color(.Keyword)
-		cfg := markdown.Config{user = r, link = proc(user: rawptr, url: string) {
+		cfg := markdown.View_Options{user = r, link = proc(user: rawptr, url: string) {
 			r := (^Run)(user)
 			r.clicked = url
 			r.clicks += 1

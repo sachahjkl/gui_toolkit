@@ -21,7 +21,7 @@ LINK :: "https://github.com/sachahjkl/gui_toolkit/releases/tag/v%s"
 VERSION_FILE :: "src/ui/version.odin"
 
 // The toolkit's checkout at `root`, for the package.
-options :: proc(root: string) -> changelog.Options {
+options :: proc(root: string) -> changelog.Project_Options {
 	return {root = root, link = LINK, version = source_version, set_version = write_source_version}
 }
 

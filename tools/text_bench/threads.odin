@@ -133,7 +133,7 @@ bench_work :: proc(b: ^Bench, warm: bool) {
 		reqs := make([]font.Glyph_Request, len(b.glyphs) * BENCH_SUBPIXELS, context.temp_allocator)
 		out := make([]font.Glyph_Image, len(reqs), context.temp_allocator)
 		for g, i in b.glyphs {
-			for sub in 0 ..< BENCH_SUBPIXELS { reqs[i * BENCH_SUBPIXELS + sub] = {g.face, g.id, u8(sub)} }
+			for sub in 0 ..< BENCH_SUBPIXELS { reqs[i * BENCH_SUBPIXELS + sub] = {face = g.face, id = g.id, sub = u8(sub)} }
 		}
 		for _ in 0 ..< rounds {
 			font.glyph_images(s, BENCH_SIZE, reqs, out)
