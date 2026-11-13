@@ -11,6 +11,12 @@ box_text :: proc(b: ^Box) -> string {
 	if b.custom == rich_draw && b.custom_user != nil {
 		return rich_text((^Rich_Draw)(b.custom_user).runs)
 	}
+	// (a field: its text as shown, else the hint it shows)
+	if b.custom == line_edit_draw && b.custom_user != nil {
+		d := (^Line_Edit_Draw)(b.custom_user)
+		if d.text != "" { return d.text }
+		return !d.focused || d.placeholder_focused ? d.placeholder : ""
+	}
 	return b.text
 }
 

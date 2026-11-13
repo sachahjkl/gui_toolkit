@@ -19,7 +19,7 @@ Dialog_Header_Options :: struct {
 }
 
 // `if dialog_header(id, title, {icon = ..., close = true}) { ... }`: the header of a dialog: a strip across its top, a shade
-// darker than the dialog (dialog_top_draw: the dialog's top corners, a groove under it), its title and an icon at its
+// darker than the dialog (top_strip_draw: the dialog's top corners, a groove under it), its title and an icon at its
 // start, then what the block builds (the header's own controls, a toolbar), and the close button in the corner. Build it
 // first in the dialog, before its body, so that it stays on top while the body scrolls.
 @(require_results, deferred_none = dialog_header_end)
@@ -40,9 +40,9 @@ dialog_header :: proc(id: string, title: string, o := Dialog_Header_Options{}) -
 	}
 	shade := frame_new(Color)
 	shade^ = srgb_step(panel.bg, {0, 0, 0, panel.bg.a}, DIALOG_HEADER_DARKEN)
-	next({width = fill(), height = px(h), radius = DIALOG_RADIUS_EM * em, axis = .X, cross = .Center})
+	next({width = fill(), height = px(h), radius = 0, axis = .X, cross = .Center})
 	b := build_box({}, strings.concatenate({"###", id}, frame_allocator()))
-	b.custom, b.custom_user = dialog_top_draw, shade
+	b.custom, b.custom_user = top_strip_draw, shade
 	a11y_default(b, {role = .Heading, name = title})
 	push_parent(b)
 	spacer(px(em * 1.0))

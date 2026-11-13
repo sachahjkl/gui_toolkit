@@ -223,27 +223,6 @@ Palette_Line :: struct {
 	range_first, range_count: int,
 }
 
-// A strip across the top of a dialog (a title, a search field), as a box's custom draw: its background (`custom_user`, a
-// ^Color; nil: a field's, the theme's "input background", as a menu's search band has it: one look for every place that
-// searches), its top corners the dialog's as they are drawn, a line under it. A raised dialog (machined, edged) has a lit
-// rim just inside its border: the strip begins inside it, and the dialog's frame is drawn over it (machined_plate_over).
-// Give the box the dialog's radius (`next({radius = ...})`, the dialog's own). (Not the box's `bg`: inside a dialog every
-// box has the dialog's, and the strip was the dialog's colour.)
-dialog_top_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
-	r := b.rect
-	if machined() {
-		p := px1()
-		r = {{r.min.x + p, r.min.y + p}, {r.max.x - p, r.max.y}}
-	}
-	// (the dialog's corners as they are drawn: a window with little rounding, or none, has a strip with as little)
-	radius := max(0, box_drawn_radius(gs(), b) - (r.min.y - b.rect.min.y))
-	well := user != nil ? (^Color)(user)^ : color_from_tags(gs(), b.tags_key, "input background")
-	draw.rect_corners(dc, r, {well, well, well, well}, {radius, 0, radius, 0})
-	// the line that parts the field from the results: carved (machined, edged), the border's colour (flat)
-	y := b.rect.max.y - (machined() ? 2 : 1) * px1()
-	machined_groove(dc, {r.min.x, y}, {r.max.x, y})
-}
-
 // The selected line: sunk in a well with a bar of the accent at its left, its text in the theme's own colour. A raised
 // face of the accent (a button's) put the text, and what the search found in it, on a colour too close to theirs.
 @(private)
@@ -399,38 +378,17 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 	before := p.size
 	if modal("palette", &p.open, {width_em = PALETTE_WIDTH_EM, height_em = PALETTE_HEIGHT_EM, min_width_em = PALETTE_MIN_EM.x, min_height_em = PALETTE_MIN_EM.y, size = &p.size, top = PALETTE_TOP}) {
 		// (the strip, the gaps and the foot in whole pixels: the list's height is what is left, cut to whole lines below)
-		top_h := math.round(dense(em * 2.6))
+		top_h := math.round(dense(em * SEARCH_BAND_EM))   // (search_band's)
 		gap_h := math.round(em * 0.3)
 		foot_h := math.round(o.foot != "" ? dense(em * 2) : em * 0.4)
-		// (the field from edge to edge, its strip and a line under it: no frame of its own inside the dialog's, but the
-		// darker background of a field, so that it reads as the place to type: dialog_top_draw)
-		next({width = fill(), height = px(top_h), axis = .X, cross = .Center, radius = em * DIALOG_RADIUS_EM})
-		if row(.Center, {}, "###palette_top") {
-			parent_box().custom = dialog_top_draw
-			spacer(px(em * 0.8))
-			// (a magnifier before the field and the number of results after it, faint: what the strip is for, and what it
-			// found)
-			if tags("weak") {
-				next({width = px(em * 1.2), height = pct(1), font = lucide_icons(), font_size = em * 1.05, text_align = .Center, text_pad = 0})
-				build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###palette_search_icon", lucide.SEARCH))
-			}
-			next({width = fill(), height = pct(1), font_size = em * 1.05})
-			push_tags("bare")
-			res := line_edit("###palette_field", &p.field, {placeholder = i18n.tr("Type to search")})
-			pop_tags()
-			if p.fresh { set_focus(res.box.key); p.fresh = false }
-			if res.changed { p.sel = 0; p.reveal = true }
-			if res.cancelled { p.open = false }   // (Escape in the field: the field takes it before the dialog)
-			if res.committed && n > 0 && list[p.sel].index >= 0 && can(disabled, list[p.sel].index) { chosen = list[p.sel].index }
-			// (Enter with a modifier: the program's other use of the command chosen)
-			for m in ([]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}) {
-				if n > 0 && can(disabled, list[p.sel].index) && key_press_any(.Return, m) { chosen, p.chosen_mods = list[p.sel].index, m }
-			}
-			if tags("weak") {
-				next({width = text_size(), height = pct(1), font_size = em * 0.85, text_pad = em * 0.4})
-				label(fmt.tprintf("%d###palette_count", p.found))
-			}
-			spacer(px(em * 0.8))
+		res := search_band("palette_top", &p.field, {count = p.found})
+		if p.fresh { set_focus(res.box.key); p.fresh = false }
+		if res.changed { p.sel = 0; p.reveal = true }
+		if res.cancelled { p.open = false }   // (Escape in the field: the field takes it before the dialog)
+		if res.committed && n > 0 && list[p.sel].index >= 0 && can(disabled, list[p.sel].index) { chosen = list[p.sel].index }
+		// (Enter with a modifier: the program's other use of the command chosen)
+		for m in ([]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}) {
+			if n > 0 && can(disabled, list[p.sel].index) && key_press_any(.Return, m) { chosen, p.chosen_mods = list[p.sel].index, m }
 		}
 		spacer(px(gap_h))
 		// The list ends on a whole line: what a line short of it is left goes under the list, so that the foot never

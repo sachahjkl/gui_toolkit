@@ -86,6 +86,33 @@ A well around a field that shows when the field has the keyboard (a composer, a 
 commands" that opens the palette): sunken with an input's border, its magnifying glass, the hint in weak words, the keys
 at its end. It holds no text; a click, Enter or Space is its `clicked`. Its size comes from `next` (19 ems wide).
 
+### Search bands
+
+`ui.search_band(id, &field, {placeholder, count, clearable})` is the search over a list that it filters: a band from edge
+to edge in a field's background, a line under it, a magnifier, the field, and `count` (the number of results, weak) at its
+end. The command palette, a menu that searches and a sidebar's filter all use it: one look wherever a list is searched.
+Build it first in its box: its top corners are that box's (a dialog's, a menu's, a popover's). Its size comes from `next`
+(the whole width, `SEARCH_BAND_EM` high). It returns the field's `Edit_Result`; focus the field with
+`set_focus(res.box.key)`. The hint stays while the field is empty and has the keyboard. With `owner_keys`, the keys reach
+the field through its owner (a menu keeps the keys that move in its items): the field is drawn with its caret and takes
+neither the keyboard nor a click.
+
+```odin
+res := ui.search_band("find", &app.query, {placeholder = "Search the files", count = len(app.hits)})
+if app.opened { ui.set_focus(res.box.key) }
+if res.committed { open_hit(app) }
+```
+
+`ui.top_strip_draw` is the band's drawing, as a box's custom draw: a dialog's header uses it too, with a colour of its own.
+
+### Scroll views in scroll views
+
+Two views that scroll the same way, one in the other, show one bar on that axis: the innermost's. A box that scrolls along
+an axis (`View_Scroll_X`, `View_Scroll_Y`) gives up its size along it when the room runs short, down to its `least`,
+whatever its strictness: it scrolls to what it hides. In a view that scrolls the same way and lets its children overflow
+(`Allow_Overflow_X`, `Allow_Overflow_Y`), it is held to that view's room. A wide table in a page that scrolls sideways
+scrolls in its own box, and the page does not scroll for it.
+
 ## Numbers
 
 ![ui.number with its track, ui.range_slider, ui.slider, a well of facts (examples/showcase)](screenshots/showcase_controls.webp)
@@ -156,6 +183,7 @@ and what goes with it (getting-started.md).
 `Line_Edit_Options`:
 
 - **`placeholder`**: weak words while the field is empty and has no keyboard.
+- **`placeholder_focused`**: the placeholder stays while the field has the keyboard (a search opened with the keyboard in it).
 - **`kind`** (`Line_Edit_Kind`): `.Plain`; `.Secret`, a password (bullets, neither copied nor cut); `.Read_Only`, shown,
   selected and copied, never changed.
 - **`reveal`** (`^bool`, with `.Secret`): an eye at its end shows the text and hides it again.

@@ -5,9 +5,7 @@ import "core:math"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
-import "../draw"
 import "../font"
-import i18n "../i18n"
 import "../platform"
 
 // Popups (menus, dropdowns, tooltips) are floating boxes appended to the ROOT, so they draw above everything built so
@@ -110,7 +108,7 @@ Menu_Level :: struct {
 	reveal:       bool,      // the keyboard moved the selection: scroll its row into view
 	search:       bool,      // typing searches its items (menu_open's `search`)
 	query:        Line_Edit,   // what was typed (search): a field's text, edited by a field's keys (line_edit_key)
-	typed_ms:     f64,       // when the query last changed (or the menu opened): its caret is solid, then blinks
+	                           // (its edited_ms: when it changed or the menu opened: the caret solid, then blinking)
 	pick_first:   bool,      // the query changed: the first item that matches is selected when it is built
 	// a menu that searches stays where it was first laid out and never narrows: what is typed takes items away, and the
 	// menu that flipped or moved, narrower at each letter, ran from under the pointer
@@ -138,7 +136,7 @@ menu_query_key :: proc(lv: ^Menu_Level, e: platform.Event) -> bool {
 	c0, m0 := lv.query.cursor, lv.query.mark
 	if !line_edit_key(&lv.query, lv.key, e.key, e.mods) { return false }
 	if menu_query(lv) != before { lv.pick_first, lv.sel = true, -1 }
-	if menu_query(lv) != before || lv.query.cursor != c0 || lv.query.mark != m0 { lv.typed_ms = now_ms() }
+	if menu_query(lv) != before || lv.query.cursor != c0 || lv.query.mark != m0 { lv.query.edited_ms = now_ms() }
 	return true
 }
 
@@ -170,7 +168,7 @@ menu_open :: proc(id: string, at: Menu_At, anchor: Key = 0, from_keyboard := fal
 	case Vec2: pos = v
 	case Rect: pos, around = {v.min.x, v.max.y}, v
 	}
-	lv := Menu_Level{key = menu_key(id), pos = pos, around = around, nested = nested, open_build = gs().build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, search = search, typed_ms = now_ms()}
+	lv := Menu_Level{key = menu_key(id), pos = pos, around = around, nested = nested, open_build = gs().build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, search = search, query = {edited_ms = now_ms()}}
 	if nested { menu_nest(lv) } else { lv.anchor = anchor; menu_push(lv) }
 }
 
@@ -472,7 +470,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 		// (a paste in the search, asked in an earlier build: its text came)
 		if lv.search && line_edit_paste_answer(&lv.query, lv.key) {
 			lv.pick_first, lv.sel = true, -1
-			lv.typed_ms = now_ms()
+			lv.query.edited_ms = now_ms()
 		}
 		keys: for e, i in s.menu_keys.list {
 			if s.menu_keys.consumed[i] { continue }
@@ -484,7 +482,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 					line_edit_checkpoint(&lv.query, .Insert)
 					insert_text(&lv.query, string(buf[:n]))
 					lv.pick_first, lv.sel = true, -1
-					lv.typed_ms = now_ms()
+					lv.query.edited_ms = now_ms()
 				}
 				continue
 			}
@@ -570,7 +568,10 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	append(&s.popup_stack, true)
 	append(&s.menu_build, depth)
 	// (a menu that searches has its field at its very top, from edge to edge)
-	if lv.search { menu_search_field(s, lv, w, em) }
+	if lv.search {
+		next({width = px(w)})
+		search_band("menu_search", &lv.query, {owner_keys = true})
+	}
 	spacer(px(em * MENU_PAD_EM))
 	return true
 }
@@ -919,63 +920,3 @@ tooltip_open :: proc(pos: Vec2, em: f32) {
 tooltip_end :: proc() { popup_end() }
 
 
-// The search of a menu opened with `search`: a band from edge to edge at its top, in a field's background with the
-// menu's separator under it (no frame of its own: the menu's border is its border), a magnifier, what is typed and a caret that blinks
-// as a field's does, so that the person sees the keys go there. The menu keeps the keys: the field is drawn, not focused.
-@(private = "file")
-menu_search_field :: proc(s: ^State, lv: ^Menu_Level, w, em: f32) {
-	q := menu_query(lv)
-	// (no rounding of its own, not an input's: the corners it fills are the menu's, box_drawn_radii)
-	next({width = px(w), height = px(dense(em * 2.3)), radius = 0})
-	set_next_axis(.X, .Center)
-	push_tags("input")
-	band := build_box({.Draw_Background}, "###menu_search")
-	pop_tags()
-	if parent(band) {
-		spacer(px(em * 0.5))
-		// the magnifier, in the weak text's colour
-		next({width = px(em * 1.7), height = pct(1)})
-		ink := frame_new(Color)
-		ink^ = color("weak text")
-		custom("###menu_search_icon", menu_magnifier_draw, ink)
-		// what is typed, the caret after it (before the hint while nothing is)
-		since := now_ms() - lv.typed_ms
-		caret_on := !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0)
-		caret_wake(s, since)
-		if q != "" {
-			// (drawn as a field draws itself: the caret where it is, the selection; its text the box's, for what reads it)
-			next({width = fill(), height = pct(1), text_pad = 0})
-			b := build_box({.Clip}, fmt.tprintf("%s###menu_query", text_shown(q)))
-			d := frame_new(Line_Edit_Draw)
-			d^ = {text = strings.clone(q, frame_allocator()), cursor = lv.query.cursor, mark = lv.query.mark, focused = true,
-				caret_on = caret_on, selection = color("selection"), caret = color("cursor")}
-			b.custom, b.custom_user = line_edit_draw, d
-		} else {
-			next({width = px(max(1, math.round(em / CARET_WIDTH_DIVISOR))), height = px(math.round(em * 1.25)), bg = caret_on ? color("cursor") : Color{}})
-			build_box({.Draw_Background}, "###menu_caret")
-			spacer(px(em * 0.2))
-			if tags("weak") {
-				next({width = fill(), height = pct(1), text_pad = 0})
-				label(fmt.tprintf("%s###menu_query", i18n.tr("Type to search")))
-			}
-		}
-	}
-	// (the line under it is the menu's separator, not a field's border)
-	hline(px(w))
-}
-
-// A magnifier: a ring and its handle, sized to the box's height.
-@(private = "file")
-menu_magnifier_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
-	r := b.rect
-	h := min(r.max.y - r.min.y, r.max.x - r.min.x)
-	k := h * 0.2                          // the ring's radius
-	c := Vec2{(r.min.x + r.max.x) * 0.5 - k * 0.3, (r.min.y + r.max.y) * 0.5 - k * 0.3}
-	stroke := max(1, h * 0.065)
-	p := draw.path_make(allocator = context.temp_allocator)
-	draw.path_arc(&p, c, {k, k}, 0, 2 * math.PI)
-	ink := (^Color)(user)^
-	draw.path_stroke(dc, &p, stroke, ink)
-	d := k * 0.7071
-	draw.line(dc, c + {d, d}, c + {d, d} * 2.1, stroke, ink)
-}

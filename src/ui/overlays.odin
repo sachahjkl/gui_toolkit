@@ -443,7 +443,7 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	append(&s.modal_stack, Modal_Scope{panel = panel.key, order = len(s.modals_built), open = open, wh = wh})
 }
 
-// A dialog's corners (before the rounding), in ems: what a strip across its top (dialog_top_draw) takes too.
+// A dialog's corners (before the rounding), in ems: what a strip across its top (top_strip_draw) takes too.
 DIALOG_RADIUS_EM :: 0.8
 
 // The control in the top right corner of the dialog being built, whose dialog_header asked for one (`close`): a box of

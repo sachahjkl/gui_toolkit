@@ -1313,9 +1313,6 @@ ctx key
 en Menu
 fr Menu
 
-en Type to search
-fr Tapez pour chercher
-
 en Nothing matches
 fr Aucun résultat
 
@@ -1498,6 +1495,9 @@ fr Taille réelle
 
 en QR code: %s
 fr Code QR : %s
+
+en Type to search
+fr Tapez pour chercher
 
 en Reset %s
 fr Réinitialiser %s

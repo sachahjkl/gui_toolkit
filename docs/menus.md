@@ -50,7 +50,7 @@ label cut.
 ## The menu of a text field
 
 `edit_menu(id, target, owner, kind)` builds the menu of a text field, `id` its menu: Undo, Redo, Cut, Copy,
-Paste, Delete and Select all, each with its keys and its Lucide icon, and the search band of every context menu. `target`
+Paste, Delete and Select all, each with its keys and its Lucide icon, and the search band of every context menu (`search_band`, as the palette's: [widgets](widgets.md)). `target`
 is an `Edit_Target`: a `line_edit`'s `^Line_Edit` or a `text_edit`'s `^Text_Edit`; each edit goes through its own edit
 history, as its keys do. `owner` is the field's widget, which a paste's text comes to (`edit_paste`). `kind`
 (`Line_Edit_Kind`): a `.Secret` is neither copied nor cut; a `.Read_Only` field is only copied and selected.

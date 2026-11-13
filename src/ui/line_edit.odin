@@ -181,6 +181,7 @@ Edit_Result :: struct {
 Line_Edit_Draw :: struct {
 	text:        string,
 	placeholder: string,
+	placeholder_focused: bool,   // the placeholder shows under the caret too (Line_Edit_Options)
 	cursor, mark: int,
 	scroll_x:    f32,
 	focused:     bool,
@@ -282,9 +283,9 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	x0 := b.rect.min.x + d.pad - d.scroll_x
 	if d.end > 0 { draw.push_clip(dc, {b.rect.min, {b.rect.max.x - d.end, b.rect.max.y}}) }
 	defer if d.end > 0 { draw.pop_clip(dc) }
-	if d.text == "" && !d.focused {
+	if d.text == "" && (!d.focused || d.placeholder_focused) {
 		draw.text(dc, b.font, b.font_size, {math.round(b.rect.min.x + d.pad), baseline}, d.weak, d.placeholder)
-		return
+		if !d.focused { return }
 	}
 	lo, hi := min(d.cursor, d.mark), max(d.cursor, d.mark)
 	if lo != hi && d.focused {
@@ -395,6 +396,8 @@ Line_Edit_Kind :: enum u8 { Plain, Secret, Read_Only }
 
 Line_Edit_Options :: struct {
 	placeholder: string,          // shown, weak, while the field is empty and has no keyboard
+	// The placeholder stays while the field has the keyboard (a search opened with the keyboard in it: what to type there).
+	placeholder_focused: bool,
 	kind:        Line_Edit_Kind,
 	// .Secret: a button at the field's end (an eye) shows the text and hides it again; `reveal^` says which, and is the
 	// caller's to keep. nil: no button.
@@ -515,7 +518,7 @@ line_edit :: proc(id: string, f: ^Line_Edit, o := Line_Edit_Options{}) -> (res: 
 
 		d := frame_new(Line_Edit_Draw)
 		d.text = strings.clone(shown, frame_allocator())
-		d.placeholder = o.placeholder
+		d.placeholder, d.placeholder_focused = o.placeholder, o.placeholder_focused
 		d.cursor, d.mark, d.scroll_x = cursor, mark, f.scroll_x
 		d.focused = focused
 		since := now - f.edited_ms

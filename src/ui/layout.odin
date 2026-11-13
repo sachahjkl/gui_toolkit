@@ -147,6 +147,26 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 			c.size[ai] = max(0, avail * c.pref[axis].value, c.pref[axis].least)
 		}
 	}
+	// A view inside a view that scrolls the same way gives up what passes the outer one's room, and scrolls to it itself:
+	// one bar on that axis, the innermost's. (The outer view kept it whole: two bars, one under the other, for one content.)
+	if overflow && box_scrolls(b, axis) && b.pref[axis].kind != .Children_Sum {
+		avail := b.size[ai] - 2 * border_inset(b)
+		if axis == b.layout_axis {
+			violation := -avail
+			for c := b.first; c != nil; c = c.next { if !is_floating(c, axis) { violation += c.size[ai] } }
+			for c := b.first; c != nil && violation > LAYOUT_VIOLATION_EPS_PX; c = c.next {
+				if is_floating(c, axis) || !box_scrolls(c, axis) { continue }
+				give := min(shrinkable(c, axis), violation)
+				c.size[ai] -= give
+				violation -= give
+			}
+		} else {
+			for c := b.first; c != nil; c = c.next {
+				if is_floating(c, axis) || !box_scrolls(c, axis) { continue }
+				if violation := c.size[ai] - avail; violation > 0 { c.size[ai] -= min(violation, shrinkable(c, axis)) }
+			}
+		}
+	}
 	if !overflow {
 		avail := b.size[ai] - 2 * border_inset(b)
 		if .Wrap in b.flags {
@@ -183,10 +203,12 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 }
 
 // How much of its size a box gives up when its parent is too small: (1 - strictness) of it, never going under its least.
+// A box that scrolls that way gives all of it down to its least, whatever its strictness: it scrolls to what it hides.
 @(private = "file")
 shrinkable :: proc(c: ^Box, axis: Axis) -> f32 {
 	ai := int(axis)
 	p := c.pref[axis]
+	if box_scrolls(c, axis) { return max(0, c.size[ai] - p.least) }
 	return max(0, min(c.size[ai] * (1 - p.strictness), c.size[ai] - p.least))
 }
 
@@ -268,3 +290,7 @@ layout_wrap_positions :: proc(b: ^Box, axis: Axis, off: f32) {
 // Layout warnings (printed once per box, on stderr): the percentage of a box sized by its children that went past it to a
 // distant ancestor. On in debug builds; an application may turn them on in a release build to look for mistakes.
 set_layout_warnings :: proc(s: ^State, on: bool) { s.layout_warnings = on }
+
+// Whether a box scrolls its content along `axis` (View_Scroll_X, View_Scroll_Y).
+@(private)
+box_scrolls :: proc(b: ^Box, axis: Axis) -> bool { return axis == .X ? .View_Scroll_X in b.flags : .View_Scroll_Y in b.flags }

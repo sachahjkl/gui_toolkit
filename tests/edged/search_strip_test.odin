@@ -4,7 +4,7 @@ import "core:testing"
 import "../../src/testkit/session"
 import "../../src/ui"
 
-// A dialog's search strip (dialog_top_draw with no colour of its own: a palette's) is a field's background, as a menu's
+// A dialog's search strip (top_strip_draw with no colour of its own: search_band's) is a field's background, as a menu's
 // search band is (a box under the "input" tag): one look wherever one searches. It was the dialog's own background: it took
 // the box's, which every box in a dialog has.
 @(test)
@@ -21,7 +21,7 @@ strip_is_band :: proc(t: ^testing.T, name: string) {
 		defer ui.pop_tags()
 		ui.next({fixed_x = 20, fixed_y = 10, width = ui.px(200), height = ui.px(40)})
 		strip := ui.build_box({}, "###strip")
-		strip.custom = ui.dialog_top_draw
+		strip.custom = ui.top_strip_draw
 		ui.push_tags("input")
 		ui.next({fixed_x = 20, fixed_y = 70, width = ui.px(200), height = ui.px(40)})
 		ui.build_box({.Draw_Background}, "###band")

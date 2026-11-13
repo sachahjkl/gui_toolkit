@@ -507,7 +507,7 @@ a_menu_that_searches :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.
 	}})
 	session.frames(s, 2)
 	testing.expect(t, session.find_text(s, "Type to search") != nil, "what typing does")
-	testing.expect(t, session.find(s, "menu_search") != nil && session.find(s, "menu_caret") != nil, "a field, its caret")
+	testing.expect(t, session.find(s, "menu_search") != nil && session.find(s, "field") != nil, "a band, its field")
 	session.type_text(s, "dmx")
 	session.frames(s, 2)
 	testing.expect(t, session.find_text(s, "dmx") != nil && session.find_text(s, "Type to search") == nil, "the field shows what is typed")
