@@ -11,9 +11,9 @@ import "../../src/ui"
 @(private = "file") WINDOW :: [2]int{400, 300}
 
 @(private = "file")
-width_of :: proc(s: ^session.Session, name: string, loc := #caller_location) -> f32 { b := session.get(s, name, loc); return b.rect.max.x - b.rect.min.x }
+width_of :: proc(s: ^session.Session, name: string, loc := #caller_location) -> f32 { b := session.get(s, name, loc = loc); return b.rect.max.x - b.rect.min.x }
 @(private = "file")
-height_of :: proc(s: ^session.Session, name: string, loc := #caller_location) -> f32 { b := session.get(s, name, loc); return b.rect.max.y - b.rect.min.y }
+height_of :: proc(s: ^session.Session, name: string, loc := #caller_location) -> f32 { b := session.get(s, name, loc = loc); return b.rect.max.y - b.rect.min.y }
 
 // A row of a fixed box, a firm share, and what fills the rest.
 @(test)

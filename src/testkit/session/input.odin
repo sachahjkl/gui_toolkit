@@ -66,7 +66,7 @@ click_at :: proc(s: ^Session, at: [2]f32, button := platform.Mouse_Button.Left, 
 
 // A click on the box with this name (the deepest clickable box around it, its middle). No such box ends the test.
 click :: proc(s: ^Session, name: string, button := platform.Mouse_Button.Left, count := 1, loc := #caller_location) {
-	click_at(s, center(acts_on(get(s, name, loc))), button, count)
+	click_at(s, center(acts_on(get(s, name, loc = loc))), button, count)
 }
 
 // A click on the box that shows this text.
@@ -77,7 +77,7 @@ click_text :: proc(s: ^Session, text: string, button := platform.Mouse_Button.Le
 }
 
 // The pointer comes over the box with this name.
-hover :: proc(s: ^Session, name: string, loc := #caller_location) { move(s, center(get(s, name, loc))) }
+hover :: proc(s: ^Session, name: string, loc := #caller_location) { move(s, center(get(s, name, loc = loc))) }
 
 // The pointer leaves the window.
 leave :: proc(s: ^Session) {
@@ -168,7 +168,7 @@ walk_find :: proc(state: ^ui.State, b: ^ui.Box, name, ltext: string, index: int,
 }
 
 // The box with this name (`within`: under that box): none ends the test.
-get :: proc(s: ^Session, name: string, loc := #caller_location, within: ^ui.Box = nil) -> ^ui.Box {
+get :: proc(s: ^Session, name: string, within: ^ui.Box = nil, loc := #caller_location) -> ^ui.Box {
 	b := find(s, name, 0, within)
 	if b == nil { failed(s, fmt.tprintf("no box is named %q", name), loc) }
 	return b
