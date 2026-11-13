@@ -78,7 +78,7 @@ Offer_Job :: struct {
 install_offer :: proc(in_: ^Install, state: ^ui.State, offer: bool) {
 	if !desktop.supported() || in_.reading { return }
 	j := new(Offer_Job)
-	j^ = {in_ = in_, o = in_.options, choice = strings.clone(config.string_of(in_.prefs, INSTALL_CHOICE_PREF)), offer = offer}
+	j^ = {in_ = in_, o = in_.options, choice = strings.clone(install_choice(in_)), offer = offer}
 	in_.reading = true
 	ui.task(state, proc(data: rawptr) {
 		j := (^Offer_Job)(data)
@@ -153,25 +153,43 @@ install_launch :: proc(in_: ^Install) {
 // The modal or the page is open: a program leaves the keyboard to it.
 install_open_now :: proc(in_: ^Install) -> bool { return in_.dialog.open && !in_.dialog.in_page }
 
-// What an event leaves as the user's answer. Closed without one, the offer does not come again for this version; an
-// earlier "standalone" or "installed" stays then, unless what was declined is an upgrade.
+// The answer the offer obeys: install.choice's value for this run, whichever layer gives it (a policy, the command line,
+// the user's file: config's order), "" when none.
+install_choice :: proc(in_: ^Install) -> string {
+	return config.string_of(in_.prefs, INSTALL_CHOICE_PREF)
+}
+
+// The answer an event leaves (`set`: there is one to keep), from the answer in force (`saved`).
+//   Installed         installed
+//   Kept_Standalone   standalone
+//   Uninstalled       standalone: the person took the install away on purpose; offering it again at the next start
+//                     would undo that
+//   Dismissed         not again for this version; an earlier "standalone" or "installed" stays, unless an upgrade was
+//                     declined
+choice_after :: proc(ev: setup.Event, upgrade: bool, saved, version: string) -> (choice: string, set: bool) {
+	#partial switch ev {
+	case .Installed:                    return setup.CHOICE_INSTALLED, true
+	case .Kept_Standalone, .Uninstalled: return setup.CHOICE_STANDALONE, true
+	case .Dismissed:
+		if upgrade || (saved != setup.CHOICE_STANDALONE && saved != setup.CHOICE_INSTALLED) { return setup.choice_dismissed(version), true }
+	}
+	return "", false
+}
+
+// What an event leaves: the answer in the user's layer (a higher layer for this run, the command line's, still wins:
+// config keeps the user's value for the file), and the installed copy to start.
 @(private)
 install_event :: proc(in_: ^Install, ev: setup.Event) {
-	saved := config.string_of(in_.prefs, INSTALL_CHOICE_PREF)
-	choice := saved
-	#partial switch ev {
-	case .Installed:       choice = setup.CHOICE_INSTALLED
-	case .Kept_Standalone: choice = setup.CHOICE_STANDALONE
-	case .Dismissed:
-		if setup.is_upgrade(in_.dialog.facts, in_.options.version) || (saved != setup.CHOICE_STANDALONE && saved != setup.CHOICE_INSTALLED) {
-			choice = setup.choice_dismissed(in_.options.version)
-		}
-	case .Launched:
+	if ev == .Launched {
 		delete(in_.launch)
 		in_.launch = strings.clone(in_.dialog.installed)
+		return
 	}
-	if choice != saved { _ = config.set_from_string(in_.prefs, INSTALL_CHOICE_PREF, choice, .User) }
-	return
+	upgrade := setup.is_upgrade(in_.dialog.facts, in_.options.version)
+	if choice, set := choice_after(ev, upgrade, install_choice(in_), in_.options.version); set {
+		// (set even when the value in force is the same: it may be the command line's, and the user's file must have it)
+		_ = config.set_from_string(in_.prefs, INSTALL_CHOICE_PREF, choice, .User)
+	}
 }
 
 // The Installation page (Page_Options.install): its sidebar's entry, built by setup.page.

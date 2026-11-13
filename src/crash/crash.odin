@@ -22,6 +22,7 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
+import "core:thread"
 import "core:time"
 import "../fsx"
 import "../platform"
@@ -160,10 +161,22 @@ begin_session :: proc() {
 }
 
 // The session ends cleanly: its file goes, and the clean end is noted (a report older than it was the previous sessions').
+// A thread of its own does the files, and the call waits for it (as config.user_writer_stop waits for its writer): the
+// thread that calls it at the end of the program is often the one that ran the interface, which makes no disk call, and
+// the files must be there before the process ends.
 end_session :: proc() {
 	intrinsics.atomic_store(&kept.session_open, 0)
 	dir := kept_dir()
 	if dir == "" { return }
+	t := thread.create_and_start_with_data(rawptr(&dir), session_close)
+	if t == nil { session_close(&dir); return }   // (no thread to be had: the files all the same)
+	thread.join(t)
+	thread.destroy(t)
+}
+
+@(private = "file")
+session_close :: proc(data: rawptr) {
+	dir := (^string)(data)^
 	_ = fsx.delete_file(strings.concatenate({dir, "/", SESSION_FILE}, context.temp_allocator))
 	_ = fsx.write_atomic(strings.concatenate({dir, "/", CLEAN_END_FILE}, context.temp_allocator), transmute([]u8)string("clean end\n"))
 }

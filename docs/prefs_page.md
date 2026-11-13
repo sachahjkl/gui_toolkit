@@ -307,7 +307,9 @@ prefs_page.install_launch(&app.install)
   to know which copy runs).
 - `install_frame(in, em) -> setup.Event` draws the modal while it is open (`Install.logo` is its mark) and collects the work:
   the answer goes to `install.choice` (`INSTALL_CHOICE_PREF`, hidden: `installed`, `standalone`, `dismissed:<version>`;
-  a page left answers nothing). It returns what happened: `Launched`, the program ends and `install_launch` starts the
+  a page left answers nothing; an Uninstall is `standalone`: the next start offers nothing). `choice_after(ev, upgrade,
+  saved, version)` says what each event leaves; the offer obeys `install_choice(in)`, the value for the run (a
+  `--pref install.choice=…` over the user's file). It returns what happened: `Launched`, the program ends and `install_launch` starts the
   installed copy; `Installed` and `Uninstalled`, a program that applies its own desktop settings (`general.menu`) does
   it again.
 - `install_end(in)` before the window's State goes: what an uninstall left is deleted once the process ends, the dialog's

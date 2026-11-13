@@ -65,8 +65,9 @@ report: the process was killed (the out-of-memory killer, `kill -9`, a watchdog)
 `last_report(allocator) -> (path: string, ok: bool)` is the newest report written after `clean-end.txt`: the last session
 crashed, was killed or ended itself. After the next clean end, `last_report` gives nothing for it again.
 
-`begin_session`, `end_session` and `last_report` read and write files on the calling thread: call them at the start and at the
-end, not in a frame.
+`begin_session` and `last_report` read and write files on the calling thread: call them at the start, before the interface's
+loop, not in a frame. `end_session` writes on a thread of its own and waits for it (as `config.user_writer_stop` waits for
+its writer): the thread that ran the interface calls it at the end and makes no disk call itself.
 
 ## The report
 
