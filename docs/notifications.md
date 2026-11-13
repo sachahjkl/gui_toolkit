@@ -98,6 +98,8 @@ uses the server's activation token, so the compositor gives the window the focus
 
 ## Saying what was done: ui.announce
 
+![Toasts of the window (Announcer.mode Window): a line, a title and its words, each kind's colour (examples/showcase)](screenshots/showcase_toasts.webp)
+
 A program says what it just did (copied, saved, deleted) with `ui.announce(&announcer, kind, title, body)`: a
 notification of the system (`notify_async`: nothing waits on the interface's thread; the next one replaces the last), a
 toast of the window where the system shows none, or where the person chose it. `Announcer.mode` comes from

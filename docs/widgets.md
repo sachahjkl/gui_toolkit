@@ -6,6 +6,8 @@ and keeps its value in the caller's variables.
 
 ## Buttons
 
+![Every intent in the raised, ghost and toggled faces; the hues in their shades and soft pairs (examples/showcase)](screenshots/showcase_intents.webp)
+
 Three buttons, one concept each:
 
 | Procedure | What it is |
@@ -62,6 +64,8 @@ A well around a field that shows when the field has the keyboard (a composer, a 
 like a hint, lit under the pointer; an intent colours them. It returns its `Signal`.
 
 ## Numbers
+
+![ui.number with its track, ui.range_slider, ui.slider, a well of facts (examples/showcase)](screenshots/showcase_controls.webp)
 
 `ui.number(id, &value, lo, hi, step, format, unit, track, disabled, tip)` is the one widget for a number one sets, of
 any integer or float type: − and + around a field where its exact value is typed, then its unit; with `track = true`

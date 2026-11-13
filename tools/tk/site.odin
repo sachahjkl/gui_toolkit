@@ -2,7 +2,8 @@ package tk
 
 // The toolkit's site, made when it is deployed (.github/workflows/pages.yml) so that it cannot be behind a release. The steps are
 // src/site's; this file says what the toolkit's site is (its address, names, colours).
-//   site_build <site> <out>        the three steps below, in order, then the links of <out> (site.check_links): <out> is what is published
+//   site_build <site> <out>        the three steps below, in order, the pictures made light (site.build_images, cwebp), then the
+//                                  links of <out> (site.check_links): <out> is what is published
 //   site_changelog <site> <out>    <out> gets a copy of <site>, the history and the classic pages (site.build_changelog)
 //   site_meta <site> <out>         what a page says when it is shared, the feed, the sitemap, the files around the pages (site.build_meta)
 //   site_docs <site> <out>         docs/*.md as pages, docs/_nav.txt their menu (site.build_docs; site_docs.odin)
@@ -68,11 +69,19 @@ run_site_card :: proc(args: []string) -> string {
 	return tk_site.draw_card(site_meta(root), join({root, "site"})) ? "" : "no card"
 }
 
+// The pictures of the site made light (tk_site.build_images): the narrower copies a phone or the carousel's thumbnails take,
+// the PNGs as WebP; what other sites read stays PNG.
+@(private = "file") SITE_IMAGE_WIDTHS := []int{360, 720, 1100}
+@(private = "file") SITE_IMAGES_KEPT := []string{"card.png", "logo.png"}
+
 // The site as it is published.
 site_build :: proc(site, out: string) -> string {
 	if !site_changelog(site, out) { return "the changelog's pages were not made" }
 	if !tk_site.build_meta(site_meta(toolkit_root()), out, out) { return "what the pages say when shared was not made" }
 	if why := build_docs(join({toolkit_root(), "docs"}), site, out); why != "" { return why }
+	encoder, why := toolbox.webp_encoder(join({toolkit_root(), "build"}))
+	if why != "" { return why }
+	if !tk_site.build_images(out, {dir = "img", widths = SITE_IMAGE_WIDTHS, keep = SITE_IMAGES_KEPT, encoder = encoder}) { return "the pictures were not made light" }
 	dead, pages := tk_site.check_links(out, {})
 	for d in dead { fmt.println(d) }
 	if len(dead) > 0 { return fmt.tprintf("%d dead links or anchors in %s", len(dead), out) }

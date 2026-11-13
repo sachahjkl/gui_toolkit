@@ -179,6 +179,8 @@ events := ui.node_graph("###flow", &app.view, app.flow.nodes[:], app.flow.links[
   chosen is the kind; off at its `max_count`, and with `from` (`Graph_Dropped_Link.from`) off without a port that fits.
   Then `flowgraph.node_add_linked(g, cat, kind, at, from.node, from.port, from.side == .Out)`.
 
+![The same graph and its inspector in Glacier's light version, edged (examples/showcase, graph.odin: a whole program of this)](screenshots/showcase_graph_light.webp)
+
 ### node_inspector
 
 `node_inspector(id, ins, cat, node, opts) -> Node_Inspector_Result` draws a node's parameters from its kind's schema:

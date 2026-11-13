@@ -3,6 +3,8 @@ package tk
 // screenshots [-build] [-only:name,name] [-width:px]: docs/screenshots/*.png, and the copies of them in site/img, from the examples,
 // over the Chrome DevTools Protocol (src/cdp): the picture is the frame the program rendered, so the mouse, the keyboard and the
 // windows in front are left alone. Each program runs with an empty settings folder: the user's settings are neither read nor changed.
+// The showcase's scenes (examples/showcase, SHOWCASE_SHOTS) run with no window at all (--headless) and are kept as WebP
+// (toolbox.webp_encode, cwebp): docs/screenshots/showcase_*.webp and site/img/showcase_*.webp, a tenth of their PNG.
 //   -build   builds the examples first
 //   -only    just these pictures
 //   -width   the width of the pictures (default 1400; 0: as rendered); a wider picture is made smaller, a narrower one stays
@@ -30,28 +32,55 @@ SHOTS_WIDTH       :: 1400
 @(private = "file") END_LIMIT :: 5 * time.Second
 @(private = "file") IDLE_LIMIT :: 5 * time.Second
 
-// What a picture shows: the program, its arguments, how long its animations are given (ms).
+// What a picture shows: the program, its arguments, how long its animations are given (ms; 0: until the program is at rest,
+// IDLE_LIMIT at most), the text typed then (a menu's search; "": none), and whether it is kept as WebP.
 Shot :: struct {
 	name, example: string,
 	args:          []string,
 	ms:            int,
+	typed:         string,
+	webp:          bool,
+}
+
+// The showcase's scenes, each a picture: its scene, its theme and finish where they show it off.
+SHOWCASE_SHOTS := []Shot {
+	{name = "showcase_intents", example = "showcase", args = {"--headless", "--scene=intents", "--theme=Graphite", "--size=1280x680"}, webp = true},
+	{name = "showcase_intents_light", example = "showcase", args = {"--headless", "--scene=intents", "--theme=Midnight", "--light", "--size=1280x680"}, webp = true},
+	{name = "showcase_controls", example = "showcase", args = {"--headless", "--scene=controls", "--theme=Midnight", "--size=1280x680"}, webp = true},
+	{name = "showcase_controls_light", example = "showcase", args = {"--headless", "--scene=controls", "--theme=Champagne", "--light", "--size=1280x680"}, webp = true},
+	{name = "showcase_controls_edged", example = "showcase", args = {"--headless", "--scene=controls", "--theme=Kernel", "--finish=edged", "--size=1280x680"}, webp = true},
+	{name = "showcase_controls_glass", example = "showcase", args = {"--headless", "--scene=controls", "--theme=Aero", "--size=1280x680"}, webp = true},
+	{name = "showcase_controls_gradient", example = "showcase", args = {"--headless", "--scene=controls", "--theme=Bootstrap", "--size=1280x680"}, webp = true},
+	{name = "showcase_palette", example = "showcase", args = {"--headless", "--scene=palette", "--theme=Tokyo Night", "--size=1280x680"}, webp = true},
+	{name = "showcase_menus", example = "showcase", args = {"--headless", "--scene=menus", "--theme=Nord", "--size=1280x720"}, webp = true},
+	{name = "showcase_menu_search", example = "showcase", args = {"--headless", "--scene=menus", "--theme=Nord", "--light", "--size=1280x720"}, typed = "co", webp = true},
+	{name = "showcase_dialog", example = "showcase", args = {"--headless", "--scene=dialog", "--theme=Graphite", "--size=1280x680"}, webp = true},
+	{name = "showcase_confirm", example = "showcase", args = {"--headless", "--scene=confirm", "--theme=Gruvbox", "--size=1280x680"}, webp = true},
+	{name = "showcase_prompt", example = "showcase", args = {"--headless", "--scene=prompt", "--theme=Catppuccin", "--light", "--size=1280x680"}, webp = true},
+	{name = "showcase_settings", example = "showcase", args = {"--headless", "--scene=settings", "--theme=Graphite", "--page=appearance", "--size=1280x1180"}, webp = true},
+	{name = "showcase_settings_advanced", example = "showcase", args = {"--headless", "--scene=settings", "--theme=Midnight", "--page=scrolling", "--advanced"}, webp = true},
+	{name = "showcase_settings_search", example = "showcase", args = {"--headless", "--scene=settings", "--theme=Silver", "--light"}, typed = "scroll", webp = true},
+	{name = "showcase_graph", example = "showcase", args = {"--headless", "--scene=graph", "--theme=Graphite"}, webp = true},
+	{name = "showcase_graph_light", example = "showcase", args = {"--headless", "--scene=graph", "--theme=Glacier", "--light", "--finish=edged"}, webp = true},
+	{name = "showcase_toasts", example = "showcase", args = {"--headless", "--scene=toasts", "--theme=Dracula"}, ms = 1500, webp = true},
+	{name = "showcase_themes", example = "showcase", args = {"--headless", "--scene=themes", "--theme=Graphite", "--size=1280x590"}, webp = true},
 }
 
 SHOTS := []Shot {
-	{"controls",   "fidget",     {"--page=0", "--anim=on"}, 1500},
-	{"inputs",     "fidget",     {"--page=1", "--anim=on"}, 1500},
-	{"data",       "fidget",     {"--page=2", "--anim=on"}, 1500},
-	{"playground", "fidget",     {"--page=3", "--anim=on"}, 3200},
-	{"palette",    "fidget",     {"--palette_query=theme", "--theme=3", "--anim=on"}, 1500},
-	{"settings",   "fidget",     {"--settings", "--anim=on"}, 1500},
-	{"toasts",     "fidget",     {"--page=2", "--toasts", "--toast_pos=2", "--anim=on"}, 1800},
-	{"about",      "fidget",     {"--about", "--theme=4", "--anim=on"}, 1500},
-	{"light",      "fidget",     {"--page=0", "--theme=2", "--anim=on"}, 1500},
-	{"bootstrap",  "fidget",     {"--page=0", "--theme=7", "--anim=on"}, 1500},
-	{"compact",    "fidget",     {"--page=2", "--compact", "--anim=on"}, 1500},
-	{"todo",       "todo",       {}, 1500},
-	{"transforms", "transforms", {"--time=2.0"}, 1500},
-	{"effects",    "effects",    {"--time=2.0"}, 1500},
+	{"controls",   "fidget",     {"--page=0", "--anim=on"}, 1500, "", false},
+	{"inputs",     "fidget",     {"--page=1", "--anim=on"}, 1500, "", false},
+	{"data",       "fidget",     {"--page=2", "--anim=on"}, 1500, "", false},
+	{"playground", "fidget",     {"--page=3", "--anim=on"}, 3200, "", false},
+	{"palette",    "fidget",     {"--palette_query=theme", "--theme=3", "--anim=on"}, 1500, "", false},
+	{"settings",   "fidget",     {"--settings", "--anim=on"}, 1500, "", false},
+	{"toasts",     "fidget",     {"--page=2", "--toasts", "--toast_pos=2", "--anim=on"}, 1800, "", false},
+	{"about",      "fidget",     {"--about", "--theme=4", "--anim=on"}, 1500, "", false},
+	{"light",      "fidget",     {"--page=0", "--theme=2", "--anim=on"}, 1500, "", false},
+	{"bootstrap",  "fidget",     {"--page=0", "--theme=7", "--anim=on"}, 1500, "", false},
+	{"compact",    "fidget",     {"--page=2", "--compact", "--anim=on"}, 1500, "", false},
+	{"todo",       "todo",       {}, 1500, "", false},
+	{"transforms", "transforms", {"--time=2.0"}, 1500, "", false},
+	{"effects",    "effects",    {"--time=2.0"}, 1500, "", false},
 }
 
 Shots_Options :: struct {
@@ -83,6 +112,7 @@ wanted :: proc(only: []string, name: string) -> bool {
 screenshots :: proc(root: string, o: Shots_Options) -> string {
 	shots := make([dynamic]Shot, context.temp_allocator)
 	for s in SHOTS { if wanted(o.only, s.name) { append(&shots, s) } }
+	for s in SHOWCASE_SHOTS { if wanted(o.only, s.name) { append(&shots, s) } }
 	if o.build {
 		built := make(map[string]bool, context.temp_allocator)
 		for s in shots {
@@ -149,9 +179,18 @@ capture_shot :: proc(root: string, s: Shot, width: int, out_dir := "") -> string
 	if why != "" { return why }
 	defer end_program(p)
 	defer cdp.close(&c)
-	time.sleep(time.Duration(s.ms) * time.Millisecond)
+	if s.ms > 0 {
+		time.sleep(time.Duration(s.ms) * time.Millisecond)
+	} else if _, ok := cdp.wait_idle(&c, IDLE_LIMIT); !ok {   // (still moving at the limit, a spinner: the picture all the same)
+		return fmt.tprintf("%s: %s", s.name, c.failure)
+	}
+	if s.typed != "" {
+		if !cdp.type_text(&c, s.typed) { return fmt.tprintf("%s: %s", s.name, c.failure) }
+		if _, ok := cdp.wait_idle(&c, IDLE_LIMIT); !ok { return fmt.tprintf("%s: %s", s.name, c.failure) }
+	}
 	png, ok := cdp.screenshot(&c, nil, context.temp_allocator)
 	if !ok { return fmt.tprintf("%s: %s", s.name, c.failure) }
+	if s.webp && out_dir == "" { return write_webp(root, s.name, png, width, settings) }
 	out := join({out_dir != "" ? out_dir : join({root, "docs", "screenshots"}), fmt.tprintf("%s.png", s.name)})
 	if why = write_picture(out, png, width); why != "" { return why }
 	if out_dir != "" { fmt.println("saved", out); return "" }
@@ -172,6 +211,22 @@ write_picture :: proc(path: string, png: []byte, width: int) -> string {
 	if !ok { return fmt.tprintf("%s: the window's picture is no PNG", path) }
 	small := cdp.shrink(pic, width, context.temp_allocator)
 	if !cdp.png_write(path, small) { return fmt.tprintf("%s cannot be written", path) }
+	return ""
+}
+
+// A picture as WebP, `width` wide when it is wider: docs/screenshots/<name>.webp and its copy in site/img. Its PNG goes through
+// `scratch` (a folder of the caller's): cwebp reads a file.
+@(private = "file")
+write_webp :: proc(root, name: string, png: []byte, width: int, scratch: string) -> string {
+	encoder, why := toolbox.webp_encoder(join({root, "build"}))
+	if why != "" { return why }
+	from := join({scratch, fmt.tprintf("%s.png", name)})
+	if why = write_picture(from, png, width); why != "" { return why }
+	out := join({root, "docs", "screenshots", fmt.tprintf("%s.webp", name)})
+	if !toolbox.webp_encode(encoder, from, out) { return fmt.tprintf("%s was not encoded", out) }
+	site := join({root, "site", "img", fmt.tprintf("%s.webp", name)})
+	if os.copy_file(site, out) != nil { return fmt.tprintf("%s cannot be written", site) }
+	fmt.println("saved", name)
 	return ""
 }
 
@@ -254,7 +309,7 @@ run_finish_shots :: proc(args: []string) -> string {
 	page := toolbox.flag_value(args, "page", "0")
 	theme := toolbox.flag_value(args, "theme", "0")
 	for f in FINISHES {
-		s := Shot{fmt.tprintf("page%s_%s", page, f), "fidget", {fmt.tprintf("--page=%s", page), fmt.tprintf("--theme=%s", theme), fmt.tprintf("--finish=%s", f), "--anim=off"}, 1200}
+		s := Shot{fmt.tprintf("page%s_%s", page, f), "fidget", {fmt.tprintf("--page=%s", page), fmt.tprintf("--theme=%s", theme), fmt.tprintf("--finish=%s", f), "--anim=off"}, 1200, "", false}
 		if why := capture_shot(root, s, 0, out); why != "" { return why }
 	}
 	return ""

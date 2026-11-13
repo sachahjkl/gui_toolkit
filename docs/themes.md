@@ -37,6 +37,8 @@ cross-fade, the glow jumps.
 (`finish`: Aero is `Glass`, Bootstrap `Gradient`), let the page show the system's backdrop (`translucent`), and name the
 text on its accent (`accent_text`; 0 picks the darkest step or the brightest text, whichever reads better on it).
 
+![Every theme of ui.THEMES as a card in its own colours, then two of a user's (examples/showcase)](screenshots/showcase_themes.webp)
+
 `ui.THEMES` lists the toolkit's themes; the first is the default. A program puts its own first and appends
 `ui.THEMES[:]`, or shows only its own.
 
@@ -82,6 +84,12 @@ commented template, opens it in the system's editor and reads it again when it c
 ([prefs_page.md](prefs_page.md), "Themes of the user's own").
 
 ## Finishes
+
+| Machined, light (Champagne) | Edged (Kernel) |
+|---|---|
+| ![The machined finish on Champagne's light version](screenshots/showcase_controls_light.webp) | ![The edged finish on Kernel](screenshots/showcase_controls_edged.webp) |
+| **Glass** (Aero) | **Gradient** (Bootstrap) |
+| ![The glass finish of Aero](screenshots/showcase_controls_glass.webp) | ![The gradient finish of Bootstrap](screenshots/showcase_controls_gradient.webp) |
 
 | Finish | Raised surfaces (buttons, bars) | Sunken ones (fields) | Separators |
 |---|---|---|---|
