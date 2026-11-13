@@ -200,6 +200,7 @@ App :: struct {
 	slider:  [3]f32,
 	range_lo, range_hi: f32,
 	stepper: int,
+	size:    f32,
 	seg:     int,
 	chips:   u32,
 	dd:      [2]int,

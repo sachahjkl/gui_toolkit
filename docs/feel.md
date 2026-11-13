@@ -27,9 +27,9 @@ the platform its part through `platform.set_input_defaults`. The other settings 
 | `typeahead_ms` | ms | 900 | Keys typed in a `list` within this much of each other add up to one prefix. |
 | `undo_steps` | steps | 200 | The edit history a `line_edit` and a `text_edit` keep. A lower value set later trims the history at the next edit. At least 1. |
 | `undo_merge_ms` | ms | 1000 | Typing (or deleting) within this much of the previous edit of the same kind is the same undo step. 0: each edit is a step. |
-| `repeat_delay_ms` | ms | 420 | A held button repeats after this long: `repeat_pressed` (a stepper's and a slider field's buttons) and a scroll bar's arrows. |
+| `repeat_delay_ms` | ms | 420 | A held button repeats after this long: `repeat_pressed` (a `number`'s buttons) and a scroll bar's arrows. |
 | `repeat_interval_ms` | ms | 55 | Then once every this much. At least 1. |
-| `step_shift` | factor | 10 | Shift multiplies a step: a `slider`'s arrow and Page keys and wheel notch, a `slider_field`'s buttons and wheel, a `stepper`'s buttons (rounded to a whole number), a number in text (`num_step_delta`). |
+| `step_shift` | factor | 10 | Shift multiplies a step: a `slider`'s arrow and Page keys and wheel notch, a `number`'s buttons and wheel, a number in text (`num_step_delta`). |
 | `step_ctrl` | factor | 100 | Ctrl multiplies the step of a number in text. |
 | `step_alt` | factor | 0.1 | Alt multiplies the step of a number in text. |
 | `step_page` | steps | 10 | Page Up and Page Down move this many steps: a `slider`, a number in text. |

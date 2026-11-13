@@ -55,11 +55,13 @@ What the widgets say:
 
 | Widget | Role | Name, states |
 |---|---|---|
-| `button`, `button_icon` | Button | its text |
-| `icon_button` | Button | the id until the app names it (`ui.a11y({name = ...})`) |
+| `button`, `button_icon` | Button | its text (a Toggled face: pressed); its tip as description |
+| `icon_button` | Button | its `name`, else its `tip`, else the id |
 | `checkbox`, `radio`, `toggle` | CheckBox, RadioButton, Switch | label, checked |
-| `slider`, `range_slider`, `rating` | Slider | value, min, max, step, value text |
-| `stepper` | SpinButton | value, min, max |
+| `slider`, `rating` | Slider | value, min, max, step, value text |
+| `range_slider` | Group of two Sliders (its thumbs) | each: value, min, max (the other thumb), step, value text |
+| `number` | SpinButton (its field; and a Slider with `slider`) | value, min, max, step, value text with its unit |
+| `spinner` | ProgressIndicator | busy |
 | `sat_val_picker`, `hue_picker`, `alpha_picker` | Slider | the saturation and value as text; the hue in degrees, the opacity in percent |
 | `color_picker` | Group of the pickers, a Button (the old colour), a RadioGroup (the format) and a TextInput | `Colour picker` |
 | `qr_code` | Image | `QR code: ` and its text |
@@ -116,7 +118,7 @@ They come back as the same signals as the mouse and keyboard give, in the build 
   (a page or a few lines), Set scroll offset: scroll boxes.
 - Show context menu: `right_clicked`.
 - Set value, Replace selected text, Set text selection: `line_edit` and `text_edit`; Set value, Increment,
-  Decrement: `slider`, `stepper`, `rating`, `splitter`. A widget of the app asks with `a11y_request(key, action)`
+  Decrement: `slider`, `range_slider`, `number`, `rating`, `splitter`. A widget of the app asks with `a11y_request(key, action)`
   (`a11y_numeric_request` for numbers).
 - The rest (and every request for a grafted tree) waits in `a11y_requests()` for the app.
 

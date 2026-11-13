@@ -92,6 +92,7 @@ direction. A program saves it and reads it back.
 | `table_cell_tip(row, text)` | the cut text, in a tooltip beside the pointer after `Feel.tooltip_delay_ms` ([feel.md](feel.md)) |
 | `table_row_end()` | the room of the scroll bar at the end of a row |
 | `text_cut_under_mouse(b, text, pad)` | the test of `table_cell`, for a cell a program builds itself |
+| `label_tip(text)` | a label outside a table that does the same: its whole text in a tooltip when it is cut (widgets.md) |
 | `text_shown(text)` | a text with a zero-width space between two `#`: a `##` would end the shown part of an id |
 
 ### More than one row (`src/ui/list.odin`)

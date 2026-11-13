@@ -19,6 +19,7 @@ Drawing and text
   diagrams.md         Diagrams: svg and mermaid
 
 Widgets and layout
+  widgets.md          Buttons and numbers
   themes.md           Themes and finishes
   feel.md             Feel: delays, repeats, steps
   docking.md          Docking

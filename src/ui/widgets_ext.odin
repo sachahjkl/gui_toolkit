@@ -1,9 +1,10 @@
 package ui
 
-// The widget set beyond the basics: toggles, sliders, steppers, segmented controls, chips, rating, progress,
+// The widget set beyond the basics: toggles, sliders, numbers, segmented controls, chips, rating, progress,
 // dropdowns, tabs, key caps, cards and form rows. Every widget takes a stable `id` string (see key.odin) and keeps its
 // state in the caller's variables; hover/press/animation state lives in the box tree.
 
+import "base:intrinsics"
 import "core:fmt"
 import "core:math"
 import "core:strconv"
@@ -359,7 +360,7 @@ Slider_Draw :: struct {
 	track, accent, text: Color,
 	value_text: string,
 	mono:       font.Font_Id,
-	no_text:    bool,   // no value at the right end: the track runs to it (a slider_field's number is its field)
+	no_text:    bool,   // no value at the right end: the track runs to it (a number's value is its field)
 }
 
 @(private)
@@ -520,7 +521,7 @@ nav_item :: proc(id, title, icon: string, icon_font: font.Font_Id, pressed: bool
 }
 
 // What a step is multiplied by with these modifiers: Feel.step_shift with Shift, else 1. The step of a slider, a slider
-// field, a stepper, by key, notch or button.
+// field, a number, by key, notch or button.
 @(private)
 shift_steps :: proc(mods: platform.Modifiers) -> f32 { return .Shift in mods ? f32(gs().feel.step_shift) : 1 }
 
@@ -544,56 +545,151 @@ wheel_steps :: proc(b: ^Box, focused: bool) -> f32 {
 	return n
 }
 
-// The field of a slider_field: kept by the program between frames (slider_field_destroy).
-Slider_Field :: struct {
-	text:  Text_Field,
-	box:   Key,   // the field's box, to know whether it has the keyboard
+// A number one sets: − and + around a field where its exact value is typed, then its unit (`unit`; "" none); with
+// `track` and both bounds, a slider before them. T: int, f32 or f64. `lo`, `hi`: its bounds (nil: none on
+// that side). Every way it moves clamps it to them and rounds it to `step` (0: an integer's 1; a float's as it comes).
+// One step of the keys, the wheel and the buttons is `step` (0: 1, or a hundredth of a float's bounded range).
+// The field shows the value (`format`: a printf format of T, "": its digits, a float's as many after the point as
+// `step` has; text without a % is shown as it is). While the field has the keyboard, what is typed applies at Enter or
+// when the keyboard goes elsewhere; Escape, or text that is no number, gives the value back. Up / Down step it, Page Up / Page Down ten steps; Shift ten
+// times as much, Ctrl a hundred, Alt a tenth (num_step_delta). The wheel over the field or the slider steps it (Shift:
+// ten); in a view that scrolls, once it has the keyboard (wheel_steps). The buttons step it (Shift: ten), held they
+// repeat (repeat_pressed); at a bound its button is disabled. A screen reader sees a spin button (and the slider).
+// `disabled`: shown faded, not changed. `tip`: the field's tooltip. Its size: `next` (the slider takes the room the rest
+// leaves; without one, as wide as what is in it). True when the value changed this frame.
+//
+//   ui.number("###width", &app.width, lo = 1, hi = 40, unit = "px", track = true)
+//   ui.number("###count", &app.count, lo = 0)
+number :: proc{number_int, number_f32, number_f64}
+
+number_int :: proc(id: string, value: ^int, lo: Maybe(int) = nil, hi: Maybe(int) = nil, step := 0, format := "", unit := "", track := false, disabled := false, tip := "") -> bool {
+	return number_of(id, value, lo, hi, step, format, unit, track, disabled, tip)
+}
+number_f32 :: proc(id: string, value: ^f32, lo: Maybe(f32) = nil, hi: Maybe(f32) = nil, step: f32 = 0, format := "", unit := "", track := false, disabled := false, tip := "") -> bool {
+	return number_of(id, value, lo, hi, step, format, unit, track, disabled, tip)
+}
+number_f64 :: proc(id: string, value: ^f64, lo: Maybe(f64) = nil, hi: Maybe(f64) = nil, step: f64 = 0, format := "", unit := "", track := false, disabled := false, tip := "") -> bool {
+	return number_of(id, value, lo, hi, step, format, unit, track, disabled, tip)
 }
 
-// A slider, then − and + around a field where the exact value is typed, then its unit (`unit`; "" none). The field
-// shows the value while it does not have the keyboard; Enter, or the keyboard going elsewhere, applies what was typed:
-// clamped to [lo, hi], rounded to `step` (0: as typed); Escape or text that is not a number gives the value back. The
-// wheel over the slider or the field, and the buttons (held: they repeat), move it a step (Shift: Feel.step_shift); `step` 0: a
-// hundredth of the range. `decimals`: the field's digits after the point. Its size: the parent's `next` (the slider
-// takes the room the rest leaves). True when the value changed this frame.
-slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, step: f32 = 0, decimals := 0, unit := "") -> (changed: bool) {
+// (one body for every type: an Odin default of a parameter of a polymorphic type cannot be had, so the group above gives them)
+@(private = "file")
+number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, format, unit: string, slider, disabled: bool, tip: string) -> (changed: bool) where intrinsics.type_is_integer(T) || intrinsics.type_is_float(T) {
 	s := gs()
 	em := font_size()
-	k := step > 0 ? step : (hi - lo) / SLIDER_FINE_DIVISIONS
-	text_of :: proc(v: f32, decimals: int) -> string { return fmt.tprintf(fmt.tprintf("%%.%df", decimals), v) }
-	move :: proc(value: ^f32, by, lo, hi, step: f32) {
-		v := value^ + by
-		if step > 0 { v = math.round(v / step) * step }
-		value^ = clamp(v, lo, hi)
+	low, has_lo := lo.?
+	high, has_hi := hi.?
+	track := slider && has_lo && has_hi && high > low
+	k := f64(step)
+	if k <= 0 {
+		k = 1
+		when intrinsics.type_is_float(T) { if has_lo && has_hi && high > low { k = (f64(high) - f64(low)) / SLIDER_FINE_DIVISIONS } }
+	}
+	before := value^
+	moved := false   // by anything but what is typed: the text being typed shows it
+	push_disabled(disabled)
+	defer pop_disabled()
+	if !track {
+		if !s.has_next { s.next_mod, s.has_next = {}, true }
+		if s.next_mod.width == nil { s.next_mod.width = children_sum() }
 	}
 	if row(.Center, {}, id) {
-		before := value^
-		next({width = fill(), height = pct(1)})
-		slider("###slider", value, lo, hi, step, "")   // (no value text on the knob: the field says it; the wheel is its own)
-		spacer(px(math.round(em * 0.4)))
-		typing := f.box != 0 && focus_key() == f.box
-		side := math.round(em * 1.6)
-		for dir in ([2]f32{-1, 1}) {
-			if dir > 0 {
-				if !typing && field_string(&f.text) != text_of(value^, decimals) { field_set(&f.text, text_of(value^, decimals)) }
-				next({width = px(math.round(em * (3 + f32(decimals) * 0.6))), height = pct(1)})
-				res := line_edit("###value", &f.text, "", menu = false)
-				f.box = res.box.key
-				// (the wheel over the field moves the value as over the slider: it is one line, nothing in it scrolls)
-				if n := wheel_steps(res.box, res.focused || typing); n != 0 { move(value, n * k * shift_steps(s.mods), lo, hi, step) }
-				left := !res.focused && typing   // (the keyboard went elsewhere this frame)
-				if res.committed || left {
-					if v, ok := strconv.parse_f32(strings.trim_space(field_string(&f.text))); ok { move(value, v - value^, lo, hi, step) }
-					field_set(&f.text, text_of(value^, decimals))
-				}
-				if res.cancelled { field_set(&f.text, text_of(value^, decimals)) }
-			}
-			next({width = px(side), height = px(side), font = widget_icons(), font_size = math.round(em * 0.9)})
-			sig := icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD)
-			if repeat_pressed(sig) { move(value, dir * k * shift_steps(sig.mods), lo, hi, step) }
+		fkey := key_from_string(parent_box().key, "###value")
+		typing := !disabled && s.focus_key == fkey
+		f := &s.number_edit
+		// (the keyboard went elsewhere: what was typed applies)
+		if s.number_key == fkey && !typing {
+			number_parse(value, field_string(f), lo, hi, step)
+			s.number_key = 0
 		}
-		changed = value^ != before
-		if changed && !typing { field_set(&f.text, text_of(value^, decimals)) }
+		came := false
+		if typing && s.number_key != fkey {
+			// the keyboard came: the field holds the value, all of it selected to be typed over (another number's text not
+			// applied yet is first applied by its own build, unless it is gone)
+			other := s.boxes[s.number_key] or_else nil
+			if s.number_key == 0 || other == nil || other.last_build + 1 < s.build_index {
+				field_set(f, number_text(value^, format, step))
+				s.number_key = fkey
+				came = true
+			}
+		}
+		editing := typing && s.number_key == fkey
+
+		if track {
+			v := f32(value^)
+			// (an integer's slider moves by whole steps: a hundredth of a short range rounded back to where it was)
+			slider_step := f32(step)
+			when !intrinsics.type_is_float(T) { if slider_step <= 0 { slider_step = 1 } }
+			next({width = fill(), height = pct(1)})
+			// (no value text on the knob: the field says it; its keys and its wheel are its own)
+			slider_widget("###slider", &v, f32(low), f32(high), slider_step, "")
+			if v != f32(value^) { number_set(value, f64(v), lo, hi, step); moved = true }
+			spacer(px(math.round(em * 0.4)))
+		}
+		side := math.round(em * 1.6)
+		for dir in ([2]f64{-1, 1}) {
+			if dir > 0 {
+				text := number_text(value^, format, step)
+				st := top_style()
+				widest := text_width(st.font, st.font_size, text)
+				if has_lo { widest = max(widest, text_width(st.font, st.font_size, number_text(low, format, step))) }
+				if has_hi { widest = max(widest, text_width(st.font, st.font_size, number_text(high, format, step))) }
+				info := A11y_Info{role = .Spin_Button, numeric = f64(value^), step = k, value = unit != "" ? fmt.tprintf("%s %s", text, unit) : text, description = tip}
+				if has_lo { info.min = f64(low) }
+				if has_hi { info.max = f64(high) }
+				if editing && !keys_held_by_dialog(s) {
+					// (the step keys move the value from what is typed, when it is a number)
+					for e, i in s.events.list {
+						if s.events.consumed[i] || e.mods - {.Ctrl, .Shift, .Alt} != {} { continue }
+						d := num_step_delta(e.key, e.mods) or_continue
+						s.events.consumed[i] = true
+						base := f64(value^)
+						if v, ok := strconv.parse_f64(strings.trim_space(field_string(f))); ok { base = v }
+						number_set(value, base + d * k, lo, hi, step)
+						moved = true
+					}
+				}
+				if v, ok := a11y_numeric_request(fkey, f32(value^), f32(k)); ok && !disabled { number_set(value, f64(v), lo, hi, step); moved = true }
+				next({width = px(math.ceil(max(em * NUMBER_FIELD_MIN_EM, widest + 2 * st.text_pad + em * 0.4))), height = pct(1)})
+				a11y(info)
+				fsig: Signal
+				if editing {
+					res := line_edit("###value", f, "", menu = false)
+					// (after the field's first build: the press that gave it the keyboard placed its caret there)
+					if came { field_select_all(f) }
+					fsig = res.signal
+					if res.committed { number_parse(value, field_string(f), lo, hi, step); moved = true }
+					if res.cancelled { s.number_key = 0 }   // (and the keyboard goes: the value stays)
+				} else {
+					// (the field while nobody types in it: the value, as the field shows its text; the key is the field's, so
+					// a press gives it the keyboard and the next build types in it)
+					push_tags("input")
+					fb := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###value", text_shown(text)))
+					pop_tags()
+					fb.cursor = .Text
+					fsig = signal(fb)
+				}
+				// (the wheel over the field moves the value as over the slider: it is one line, nothing in it scrolls)
+				if n := wheel_steps(fsig.box, typing); n != 0 && !disabled {
+					number_set(value, f64(value^) + f64(n) * k * f64(shift_steps(s.mods)), lo, hi, step)
+					moved = true
+				}
+				button_tip(fsig, tip)
+			}
+			at_end := dir < 0 ? has_lo && value^ <= low : has_hi && value^ >= high
+			next({width = px(side), height = px(side), font_size = math.round(em * 0.9)})
+			sig: Signal
+			// (one Tab stop, the field: the buttons are the pointer's)
+			if tab_stops(false) { sig = icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD, icon_font = widget_icons(), disabled = at_end || disabled) }
+			if repeat_pressed(sig) {
+				number_set(value, f64(value^) + dir * k * f64(shift_steps(sig.mods)), lo, hi, step)
+				moved = true
+			}
+		}
+		if editing && moved && s.number_key == fkey {
+			field_set(f, number_text(value^, format, step))
+			field_select_all(f)
+		}
 		if unit != "" {
 			spacer(px(math.round(em * 0.3)))
 			if tags("weak") {
@@ -602,10 +698,52 @@ slider_field :: proc(id: string, f: ^Slider_Field, value: ^f32, lo, hi: f32, ste
 			}
 		}
 	}
-	return
+	return value^ != before
 }
 
-slider_field_destroy :: proc(f: ^Slider_Field) { field_destroy(&f.text) }
+// The least width of a number's field, in ems.
+@(private = "file") NUMBER_FIELD_MIN_EM :: 3
+// The most digits after the point a float's step asks for.
+@(private = "file") NUMBER_DECIMALS_MAX :: 6
+
+// (`number` has a parameter of this name)
+
+// `v` clamped to the bounds that are given and rounded to `step` (0: an integer's 1, a float as it is).
+@(private = "file")
+number_set :: proc(value: ^$T, v: f64, lo, hi: Maybe(T), step: T) {
+	v := v
+	if step > 0 { v = math.round(v / f64(step)) * f64(step) }
+	when !intrinsics.type_is_float(T) { v = math.round(v) }
+	if l, ok := lo.?; ok { v = max(v, f64(l)) }
+	if h, ok := hi.?; ok { v = min(v, f64(h)) }
+	when !intrinsics.type_is_float(T) { v = clamp(v, f64(min(T)), f64(max(T))) }
+	value^ = T(v)
+}
+
+// What is typed, when it is a number, as the value (number_set); else the value stays.
+@(private = "file")
+number_parse :: proc(value: ^$T, text: string, lo, hi: Maybe(T), step: T) {
+	if v, ok := strconv.parse_f64(strings.trim_space(text)); ok { number_set(value, v, lo, hi, step) }
+}
+
+// The text of a number: `format` (a printf format of T; without a %, as it is), else its digits: a float's, as many after
+// the point as its `step` has (step 0: as many as it needs).
+@(private = "file")
+number_text :: proc(v: $T, format: string, step: T) -> string {
+	if format != "" { return strings.index_byte(format, '%') >= 0 ? fmt.tprintf(format, v) : format }
+	when intrinsics.type_is_float(T) {
+		if step <= 0 { return fmt.tprintf("%v", v) }
+		decimals := 0
+		x := f64(step)
+		for decimals < NUMBER_DECIMALS_MAX && abs(x - math.round(x)) > 1e-6 * max(1, abs(x)) {
+			x *= 10
+			decimals += 1
+		}
+		return fmt.tprintf(fmt.tprintf("%%.%df", decimals), v)
+	} else {
+		return fmt.tprintf("%d", v)
+	}
+}
 
 // A request of a screen reader for a numeric widget `key` this build (set the value, increment, decrement by `step`):
 // the value it asks for.
@@ -625,21 +763,84 @@ a11y_numeric_request :: proc(key: Key, value, step: f32) -> (f32, bool) {
 @(private = "file")
 Range_Press :: struct { high, taken: bool }
 
-// Two thumbs on one track: the one closest to the pointer moves.
-range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal) {
+// Two thumbs on one track, `lo_v` at most `hi_v`: a press takes the thumb closest to the pointer, which then follows it.
+// Each thumb is a Tab stop and a slider for a screen reader; the active thumb (the one a press took, or Tab reached)
+// moves as ui.slider does: Left / Down and Right / Up a step (`step`, or 1 % of the range), Home / End to its ends (the
+// other thumb is one), Page Up / Page Down ten steps. The wheel over the track moves the active thumb (none: the one
+// nearest the pointer) a step a notch, Shift ten; in a view that scrolls, once a thumb has the keyboard. step 0 =
+// continuous. `format`: a printf format of each value ("%.0f": "20-80"); "": no value text, the track runs to the right
+// end.
+range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32, step: f32 = 0, format := "%.0f") -> (sig: Signal) {
+	s := gs()
+	em := font_size()
 	b := build_box({.Clickable}, id)
 	b.cursor = .Hand
 	sig = signal(b)
+	room := format != ""
+	k := step > 0 ? step : (hi - lo) / SLIDER_FINE_DIVISIONS
+	thumbs := [2]Key{key_from_string(b.key, "###lo"), key_from_string(b.key, "###hi")}
+	values := [2]^f32{lo_v, hi_v}
+	active := -1
+	for t, i in thumbs { if s.focus_key == t { active = i } }
+	set :: proc(which: int, v: f32, lo_v, hi_v: ^f32, lo, hi, step: f32) {
+		v := v
+		if step > 0 { v = math.round(v / step) * step }
+		if which == 0 { lo_v^ = clamp(v, lo, hi_v^) } else { hi_v^ = clamp(v, lo_v^, hi) }
+	}
 	press := press_data(Range_Press, b.key)
 	if press != nil && !press.taken {
-		p := slider_pct(b)
+		p := slider_pct(b, room)
 		pl, ph := (lo_v^ - lo) / (hi - lo), (hi_v^ - lo) / (hi - lo)
 		press^ = {high = abs(p - pl) >= abs(p - ph), taken = true}
 		if abs(pl - ph) < RANGE_SLIDER_SAME_EPS { press.high = p >= pl }
+		// (the thumb taken is the active one: the keys and the wheel move it next)
+		active = press.high ? 1 : 0
+		s.focus_key = thumbs[active]
 	}
 	if sig.dragging && press != nil {
-		v := lo + slider_pct(b) * (hi - lo)
-		if !press.high { lo_v^ = clamp(v, lo, hi_v^) } else { hi_v^ = clamp(v, lo_v^, hi) }
+		set(press.high ? 1 : 0, lo + slider_pct(b, room) * (hi - lo), lo_v, hi_v, lo, hi, step)
+	}
+	if n := wheel_steps(b, active >= 0); n != 0 {
+		which := active
+		if which < 0 {
+			p := slider_pct(b, room)
+			which = abs(p - (lo_v^ - lo) / (hi - lo)) <= abs(p - (hi_v^ - lo) / (hi - lo)) ? 0 : 1
+		}
+		set(which, values[which]^ + n * k * shift_steps(s.mods), lo_v, hi_v, lo, hi, step)
+	}
+	text_of :: proc(format: string, v: f32) -> string {
+		return strings.index_byte(format, '%') >= 0 ? fmt.aprintf(format, v, allocator = frame_allocator()) : format
+	}
+	// the thumbs: boxes over the knobs, where the keyboard's focus is (laid out from the last frame's track)
+	x0, x1 := slider_geom(b.rect, em, room)
+	kr := em * SLIDER_KNOB_EM
+	cy := (b.rect.max.y - b.rect.min.y) * 0.5
+	if parent(b) {
+		for i in 0 ..< 2 {
+			v := values[i]
+			if s.focus_key == thumbs[i] {
+				w := v^
+				// (as slider's keys: Shift multiplies a move by Feel.step_shift, a page is Feel.step_page steps)
+				by := k * shift_steps(s.mods)
+				page := f32(s.feel.step_page)
+				if key_press(.Left, s.mods) || key_press(.Down, s.mods) { w -= by }
+				if key_press(.Right, s.mods) || key_press(.Up, s.mods) { w += by }
+				if key_press(.Page_Down, s.mods) { w -= page * by }
+				if key_press(.Page_Up, s.mods) { w += page * by }
+				if key_press(.Home) { w = i == 0 ? lo : lo_v^ }
+				if key_press(.End) { w = i == 0 ? hi_v^ : hi }
+				if w != v^ { set(i, w, lo_v, hi_v, lo, hi, step) }
+			}
+			if r, ok := a11y_numeric_request(thumbs[i], v^, k); ok { set(i, r, lo_v, hi_v, lo, hi, step) }
+			t := clamp((v^ - lo) / (hi - lo), 0, 1)
+			kx := math.lerp(x0, x1, t) - b.rect.min.x
+			next({fixed_x = kx - kr, fixed_y = cy - kr, width = px(2 * kr), height = px(2 * kr), radius = kr})
+			thumb := build_box({.Focusable}, i == 0 ? "###lo" : "###hi")
+			info := A11y_Info{role = .Slider, numeric = f64(v^), min = f64(i == 0 ? lo : lo_v^), max = f64(i == 0 ? hi_v^ : hi), orientation = .X}
+			if step > 0 { info.step = f64(step) }
+			if room { info.value = text_of(format, v^) }
+			a11y_default(thumb, info)
+		}
 	}
 	d := frame_new(Slider_Draw)
 	d.range = true
@@ -648,17 +849,18 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32) -> (sig: Signal)
 	d.t1 = anim(key_from_string(b.key, "t1"), t1, SLIDER_RATE, t1)
 	d.hot, d.active = b.hot_t, b.active_t
 	d.track, d.accent, d.text = off_track(), color("accent"), color("text")
-	d.value_text = fmt.aprintf("%.0f-%.0f", lo_v^, hi_v^, allocator = frame_allocator())
+	if room { d.value_text = fmt.aprintf("%s-%s", text_of(format, lo_v^), text_of(format, hi_v^), allocator = frame_allocator()) }
 	d.mono = mono_font()
+	d.no_text = !room
 	b.custom, b.custom_user = slider_draw, d
-	a11y_default(b, {role = .Slider, value = d.value_text, min = f64(lo), max = f64(hi), orientation = .X})
+	a11y_default(b, {role = .Group, value = d.value_text})
 	return
 }
 
 ////////////////////////////////
-// Stepper, segmented control, chips, rating
+// Repeat, segmented control, chips, rating
 
-// A button that repeats while it is held (a stepper's − and +, a slider field's): true at the press, then again every
+// A button that repeats while it is held (a number's − and +): true at the press, then again every
 // Feel.repeat_interval_ms after Feel.repeat_delay_ms while the pointer stays on it (off the button it waits). It wakes
 // the loop at the next repeat, not at every refresh while the button is held. A scroll bar's arrow repeats by the same rule.
 repeat_pressed :: proc(sig: Signal) -> bool { return repeat_fires(gs(), sig.box.key, sig.pressed, sig.dragging, sig.hovering) }
@@ -683,37 +885,6 @@ repeat_fires :: proc(s: ^State, key: Key, pressed, held, on: bool) -> bool {
 		if t, ok := s.timers[key]; ok { wake_within(s, max(1, int(t.next_ms - s.time_ms + WAKE_ROUND_UP_MS))) }
 	}
 	return fire
-}
-
-// [-] value [+]: hold a button to repeat, Shift = Feel.step_shift times. Returns true when the value changed.
-stepper :: proc(id: string, value: ^int, lo, hi: int) -> (changed: bool) {
-	em := font_size()
-	set_next_axis(.X, .Center)
-	row_box := build_box({}, id)
-	if v, ok := a11y_numeric_request(row_box.key, f32(value^), 1); ok {
-		old := value^
-		value^ = clamp(int(math.round(v)), lo, hi)
-		changed = value^ != old
-	}
-	a11y_default(row_box, {role = .Spin_Button, numeric = f64(value^), min = f64(lo), max = f64(hi), step = 1})
-	if parent(row_box) {
-		for dir in ([2]int{-1, 1}) {
-			if dir == 1 {
-				if style({font = mono_font(), text_align = .Center}) {
-					next({width = px(em * 4.2), height = pct(1)})
-					build_box({.Draw_Text}, fmt.tprintf("%d###val", value^))
-				}
-			}
-			next({width = px(em * 2.2), height = px(em * 2.2), font = widget_icons()})
-			sig := icon_button(dir < 0 ? "dec" : "inc", dir < 0 ? ICON_MINUS : ICON_ADD)
-			amount := int(math.round(shift_steps(sig.mods)))
-			old := value^
-			if repeat_pressed(sig) { value^ += dir * amount }
-			value^ = clamp(value^, lo, hi)
-			if value^ != old { changed = true }
-		}
-	}
-	return
 }
 
 @(private = "file") SEGMENTED_RATE :: 40
@@ -774,7 +945,7 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 	mach := machined()
 	text_on, text_off: Color
 	// (machined: the chosen label on a metal key, in the text's colour; flat: on the accent)
-	if mach { text_on = color("text") } else if tags("accent_button") { text_on = color("text") }
+	if mach { text_on = color("text") } else if tags(intent_tag(.Primary)) { text_on = color("text") }
 	if tags("weak") { text_off = color("text") }
 	if tags("button") {
 		set_next_axis(.X)
@@ -881,7 +1052,7 @@ chips :: proc(id: string, labels: []string, mask: ^u32) {
 	if flow({em * 0.45, em * 0.45}) {
 		for label, i in labels {
 			on := mask^ & (1 << u32(i)) != 0
-			push_tags(on ? "accent_button" : "button")
+			push_button_tags(on ? .Primary : .Neutral, .Raised)
 			next({width = text_size(em * 0.5, 0.6), height = px(dense(em * 1.9)), radius = em * 0.95, text_align = .Center})
 			b := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}, fmt.tprintf("%s###%s_%d", label, id, i))
 			pop_tags()
@@ -963,6 +1134,73 @@ progress :: proc(id: string, t: f32, indeterminate := false) {
 		a11y_default(b, {role = .Progress_Indicator, numeric = f64(clamp(t, 0, 1) * 100), min = 0, max = 100, read_only = true,
 			value = fmt.aprintf("%.0f %%", clamp(t, 0, 1) * 100, allocator = frame_allocator())})
 	}
+}
+
+@(private = "file") SPINNER_TURN_MS :: 900
+@(private = "file") SPINNER_ARC :: 0.75               // of a turn
+@(private = "file") SPINNER_SIZE_EM :: 1.2
+@(private = "file") SPINNER_THICKNESS :: 0.13         // of its size
+
+@(private = "file")
+Spinner_Draw :: struct { phase: f32, color: Color }
+
+// An arc drawn as round dots that overlap (there is no arc primitive; a polyline's thick segments showed their joins).
+@(private = "file")
+spinner_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	d := (^Spinner_Draw)(user)
+	r := b.rect
+	size := min(r.max.x - r.min.x, r.max.y - r.min.y)
+	c := draw.rect_center(r)
+	th := max(size * SPINNER_THICKNESS, 1.5 * scale())
+	radius := size * 0.5 - th * 0.5
+	steps := max(int(radius * math.TAU * SPINNER_ARC / max(th * 0.35, 0.5)), 12)
+	start := d.phase * math.TAU
+	for k in 0 ..= steps {
+		a := start + f32(k) / f32(steps) * math.TAU * SPINNER_ARC
+		p := c + Vec2{math.cos(a), math.sin(a)} * radius
+		draw.rect(dc, {p - th * 0.5, p + th * 0.5}, d.color, th * 0.5)
+	}
+}
+
+// A busy mark: three quarters of a circle that turns, `size` across (0: a little more than the font size), in the
+// accent. While it is shown it asks for the next frames itself (with animations off, a still arc that asks for none). A
+// screen reader hears a busy progress indicator.
+spinner :: proc(id: string, size: f32 = 0) {
+	s := gs()
+	side := size > 0 ? size : math.round(font_size() * SPINNER_SIZE_EM)
+	next_default({width = px(side), height = px(side)})
+	b := build_box({}, id)
+	d := frame_new(Spinner_Draw)
+	d.phase = s.anim_rate != 0 ? f32(math.mod(s.time_ms, SPINNER_TURN_MS) / SPINNER_TURN_MS) : 0
+	d.color = color("accent")
+	b.custom, b.custom_user = spinner_draw, d
+	if s.anim_rate != 0 { s.anim_busy = true }
+	a11y_default(b, {role = .Progress_Indicator, busy = true})
+}
+
+// A filled disc `size` across (0: half the font size), of the hue of `intent` (a recording, a state): the icon fonts
+// have no filled circle. Its colour says nothing to a screen reader: give it a name with `a11y` when it means something.
+dot :: proc(id: string, size: f32 = 0, intent := Intent.Primary) {
+	side := size > 0 ? size : math.round(font_size() * 0.5)
+	c := hue_color(intent_hue(intent))
+	c.a = 1
+	next_default({width = px(side), height = px(side)})
+	b := build_box({}, id)
+	d := frame_new(Color)
+	d^ = c
+	b.custom, b.custom_user = dot_draw, d
+	if b.a11y == nil { a11y_default(b, {ignore = true}) }
+}
+
+// (a circle, not the rounded square of a box's corners)
+@(private = "file")
+dot_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	r := b.rect
+	w := min(r.max.x - r.min.x, r.max.y - r.min.y)
+	c := draw.rect_center(r)
+	prev := draw.set_circular_corners(dc, true)
+	draw.rect(dc, {c - w * 0.5, c + w * 0.5}, (^Color)(user)^, w * 0.5)
+	draw.set_circular_corners(dc, prev)
 }
 
 ////////////////////////////////
@@ -1169,64 +1407,150 @@ form_row_end :: proc() {
 }
 
 
-// Button with an icon-font glyph and a label. Push a kind tag first ("accent_button", "danger_button", "ghost_button").
-// `width`: {} as wide as what is in it; fill() a share of the row, as flex: 1 (two buttons side by side, or one across
-// the whole width), px(...) a width of its own: what is in it stays centred. `icon_font`: the glyph's font (0:
-// State.icon_font; lucide_icons() for Lucide's). `hue`: filled with one of the theme's hues (hue()), its words in
-// ink_on of it: a colour by meaning that every theme has (a green Unlock, a red Delete), whatever the theme. `intent`:
-// what the act means (Intent), its hue: prefer it to a hue when the act has one. Both are soft (soft_pair: a tinted
-// fill, its words of the same hue) unless `solid`: the hue itself, its words dark or light, whichever reads (ink_on).
-button_icon :: proc(id: string, glyph, text: string, disabled := false, width: Size = {}, icon_font: font.Font_Id = 0, hue: Maybe(Hue) = nil, solid := false, intent := Intent.Neutral) -> (sig: Signal) {
+// A labelled button: a glyph of an icon font ("" none) and its words. `intent`: what the act means, and so its colour
+// (its soft pair: a tinted fill, its words of the same hue). `face`: how it sits (a ghost has no face until the pointer
+// is over it; an intent then colours its words; Toggled: held down, the option chosen). `width`: {} as wide as what is
+// in it; fill() a share of the row, as flex: 1 (two buttons side by side, or one across the whole width), px(...) a width
+// of its own: what is in it stays centred, or at its left with `left`. `height`: of one line, in pixels (0: the
+// toolkit's). `icon_font`: the glyph's font (0: State.icon_font; lucide_icons() for Lucide's); `icon_color`: the glyph's
+// own colour (a state it says; the words stay the button's). `hue`: filled with one of the theme's hues (hue()), its
+// words in it: a colour by meaning that every theme has; prefer `intent` when the act has one. Both are soft unless
+// `solid`: the hue itself, its words dark or light, whichever reads (ink_on). `quiet`: a secondary act, smaller; a
+// Neutral one's words are weak until the pointer is over it. `lit`: drawn as under the pointer (while its menu is open).
+// `wrap`: words longer than the button's width go on more lines and the button grows to hold them (with a `width`; none:
+// fill()). `tip`: a tooltip when the pointer rests on it. Drawn by the theme's finish (bevelled in the machined one).
+button_icon :: proc(id: string, glyph, text: string, intent := Intent.Neutral, face := Button_Face.Raised, disabled := false,
+	width: Size = {}, height: f32 = 0, icon_font: font.Font_Id = 0, icon_color: Maybe(Color) = nil, hue: Maybe(Hue) = nil,
+	solid := false, quiet := false, lit := false, wrap := false, left := false, tip := "") -> (sig: Signal) {
 	s := gs()
 	em := font_size()
 	// a disabled scope, so the label and icon inside go neutral too
 	push_disabled(disabled)
 	defer pop_disabled()
 	// (soft, an intent is its theme's button; solid, its hue as any hue)
-	tag := solid ? "" : intent_tag(intent)
 	h := hue
 	if solid && intent != .Neutral && h == nil { h = intent_hue(intent) }
-	if tag != "" { push_tags(tag) }
-	defer if tag != "" { pop_tags() }
-	if tags("button") {
-		set_next_axis(.X, .Center)
-		s.next_mod.width = width == {} ? children_sum() : width
-		ink: Maybe(Color)
-		if hh, tinted := h.?; tinted {
-			base := hue_color(hh)
-			base.a = 1
-			fill_c, words := soft_pair(base)
-			if solid { fill_c, words = base, ink_on(base) }
-			s.next_mod.bg, s.next_mod.border = fill_c, fill_c
-			ink = words
+	push_button_tags(solid ? .Neutral : intent, face)
+	defer pop_tags()
+	w := width
+	if wrap && w == {} { w = fill() }
+	set_next_axis(.X, .Center)
+	s.next_mod.width = w == {} ? children_sum() : w
+	line := height > 0 ? height : dense(em * 2.2)
+	s.next_mod.height = wrap ? children_sum() : px(line)
+	if s.next_mod.radius == nil { s.next_mod.radius = em * 0.45 }
+	ink: Maybe(Color)
+	if hh, tinted := h.?; tinted {
+		base := hue_color(hh)
+		base.a = 1
+		fill_c, words := soft_pair(base)
+		if solid { fill_c, words = base, ink_on(base) }
+		s.next_mod.bg, s.next_mod.border = fill_c, fill_c
+		ink = words
+	} else if face == .Ghost {
+		ink = button_ink(intent)
+	}
+	flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
+	if face == .Toggled { flags += {.Held} }
+	if lit { flags += {.Lit} }
+	b := build_box(flags, id)
+	b.squish = press_squish(b)
+	sig = signal(b)
+	button_a11y(b, face, text == "" ? tip : "", tip)
+	button_tip(sig, tip)
+	// (a secondary act's words: weak until the pointer is over it, unless they say an intent)
+	weak := quiet && intent == .Neutral && h == nil && !sig.hovering && !lit
+	fs := quiet ? math.round(em * BUTTON_QUIET_SCALE) : em
+	if parent(b) {
+		if weak { push_tags("weak") }
+		defer if weak { pop_tags() }
+		pad := text != "" ? em * 0.95 : em * 0.55
+		centred := w != {} && !left
+		spacer(px(pad))
+		if centred && !wrap { spacer(fill()) }   // (wider than what is in it: that stays in the middle)
+		if glyph != "" {
+			face_font := icon_font != 0 ? icon_font : s.icon_font
+			next({width = px(em * 1.5), height = pct(1), font = face_font, text_align = .Center, fg = icon_color != nil ? icon_color : ink})
+			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", glyph))
 		}
-		s.next_mod.height = px(dense(em * 2.2))
-		s.next_mod.radius = em * 0.45
-		flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
-		b := build_box(flags, id)
-		b.squish = press_squish(b)
-		sig = signal(b)
-		a11y_default(b, {role = .Button})
-		if parent(b) {
-			spacer(px(em * 0.95))
-			if width != {} { spacer(fill()) }   // (wider than what is in it: that stays in the middle)
-			if glyph != "" {
-				face := icon_font != 0 ? icon_font : s.icon_font
-				next({width = px(em * 1.5), height = pct(1), font = face, text_align = .Center, fg = ink})
-				build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", glyph))
+		label: ^Box
+		if text != "" && wrap {
+			// (between margins that make one line `line` tall)
+			st := top_style()
+			lh := math.ceil(font.metrics(s.fonts, st.font, fs).line_height)
+			margin := max(math.round((line - lh) * 0.5), 0)
+			next({width = fill(), height = children_sum(), axis = .Y})
+			if column() {
+				spacer(px(margin), exact = true)
+				next({width = fill(), fg = ink, font_size = fs})
+				paragraph(text)
+				spacer(px(margin), exact = true)
 			}
-			next({width = text_size(), height = pct(1), fg = ink})
-			label := build_box({.Draw_Text}, text)
-			if width != {} { spacer(fill()) }
-			spacer(px(em * 0.95))
-			// (a share of the row is never narrower than what is in it, its padding on both sides included: the label,
-			// measured as the layout will (its text and text_pad), is never cut nor drawn against an edge)
-			if width != {} && width.least == 0 {
-				b.pref[.X].least = math.ceil(em * 0.95 * 2 + (glyph != "" ? em * 1.5 : 0) + label.text_dim.x + 2 * label.text_pad)
-			}
+		} else if text != "" {
+			next({width = text_size(), height = pct(1), fg = ink, font_size = fs})
+			label = build_box({.Draw_Text}, text)
+		}
+		if centred && !wrap { spacer(fill()) }
+		spacer(px(pad))
+		// (a share of the row is never narrower than what is in it, its padding on both sides included: the label,
+		// measured as the layout will (its text and text_pad), is never cut nor drawn against an edge)
+		if w != {} && w.least == 0 && label != nil {
+			b.pref[.X].least = math.ceil(2 * pad + (glyph != "" ? em * 1.5 : 0) + label.text_dim.x + 2 * label.text_pad)
 		}
 	}
 	return
+}
+
+// A quiet button's words, of the font size.
+@(private = "file") BUTTON_QUIET_SCALE :: 0.9
+
+// `if well("###id") { ... }`: a sunken box, carved in the surface (code, a preview, a list of facts): the theme's well
+// (its "well" colour; the machined finish carves it in, with a lit lower lip). Its size and corners from `next`; `axis`:
+// how its children are laid out. Tags used: "well".
+@(deferred_none = pop_parent)
+well :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}) -> bool {
+	set_next_axis(axis)
+	push_tags("well")
+	b := build_box({.Draw_Background, .Draw_Border, .Sunken} + flags, id)
+	pop_tags()
+	push_parent(b)
+	return true
+}
+
+// A hint's words that say an act, away from the pointer: this much of their colour.
+@(private = "file") HINT_ACTION_REST_ALPHA :: 0.75
+
+// Words that say what can be done and do it, as a link does: weak like a hint, lit under the pointer. `icon`: a glyph of
+// `icon_font` (0: State.icon_font) before them ("" none). `intent`: their colour (its soft pair's words, which read on
+// the page), a little quieter away from the pointer. As wide as they are, unless `next` says otherwise.
+hint_action :: proc(id, text: string, icon := "", icon_font: font.Font_Id = 0, intent := Intent.Neutral) -> Signal {
+	s := gs()
+	em := font_size()
+	set_next_axis(.X, .Center)
+	if s.next_mod.width == nil { s.next_mod.width = children_sum() }
+	if s.next_mod.height == nil { s.next_mod.height = px(math.round(em * 1.4)) }
+	if s.next_mod.cursor == nil { s.next_mod.cursor = .Hand }
+	b := build_box({.Clickable, .Focusable}, id)
+	sig := signal(b)
+	a11y_default(b, {role = .Button, name = text})
+	col := button_ink(intent)
+	if c, ok := col.?; ok && !sig.hovering {
+		c.a *= HINT_ACTION_REST_ALPHA
+		col = c
+	}
+	weak := intent == .Neutral && !sig.hovering
+	if parent(b) {
+		if weak { push_tags("weak") }
+		defer if weak { pop_tags() }
+		if icon != "" {
+			next({width = px(math.round(em * 1.2)), height = pct(1), font = icon_font != 0 ? icon_font : s.icon_font, text_align = .Center, text_pad = 0, fg = col})
+			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon))
+			spacer(px(math.round(em * 0.3)))
+		}
+		next({width = text_size(0), height = pct(1), text_pad = 0, fg = col})
+		build_box({.Draw_Text}, fmt.tprintf("%s###t", text_shown(text)))
+	}
+	return sig
 }
 
 ////////////////////////////////
@@ -1288,11 +1612,13 @@ strip_grid_end :: proc(id: string, open: ^bool, gap: Vec2, show_all, show_fewer:
 		next({width = fill(), height = children_sum(), axis = .X})
 		if row(id = "###strip_more") {
 			spacer(fill())
-			push_tags("ghost_button")
 			next({width = text_size(em * 0.6), height = px(dense(em * 1.8)), font_size = math.round(em * 0.9)})
-			if button(fmt.tprintf("%s###strip_toggle", open^ ? show_fewer : show_all)).clicked { open^ = !open^ }
-			pop_tags()
+			if button(fmt.tprintf("%s###strip_toggle", open^ ? show_fewer : show_all), face = .Ghost).clicked { open^ = !open^ }
 		}
 	}
 	pop_parent()   // the strip
 }
+
+// (number_of's parameter `slider` hides the widget)
+@(private = "file")
+slider_widget :: proc(id: string, v: ^f32, lo, hi, step: f32, format: string) { slider(id, v, lo, hi, step, format) }

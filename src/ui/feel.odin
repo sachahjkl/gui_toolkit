@@ -17,9 +17,9 @@ Feel :: struct {
 	typeahead_ms:        int,   // keys typed in a list within this much of each other add up to one prefix. 900
 	undo_steps:          int,   // the steps of edit history a line_edit and a text_edit keep. 200
 	undo_merge_ms:       int,   // typing (or deleting) within this much of the previous edit is the same undo step. 1000
-	repeat_delay_ms:     int,   // a held button (a stepper's, a scroll bar's arrow) repeats after this long. 420
+	repeat_delay_ms:     int,   // a held button (a number's − and +, a scroll bar's arrow) repeats after this long. 420
 	repeat_interval_ms:  int,   // then once every this much. 55
-	step_shift:          f64,   // Shift multiplies a step (a slider's key or notch, a stepper's button, a number's key). 10
+	step_shift:          f64,   // Shift multiplies a step (a slider's key or notch, a number's button, key or notch). 10
 	step_ctrl:           f64,   // Ctrl multiplies the step of a number in text (num_step_delta). 100
 	step_alt:            f64,   // Alt multiplies the step of a number in text. 0.1
 	step_page:           f64,   // Page Up / Page Down move this many steps (a slider, a number in text). 10

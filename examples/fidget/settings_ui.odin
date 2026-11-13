@@ -213,25 +213,21 @@ build_settings :: proc(app: ^App) {
 					ui.spacer(ui.px(em * 1.2))
 					ui.next({width = ui.px(inner), height = ui.px(ui.dense(em * 2.6))})
 					if ui.row(.Center, id = "###st_foot") {
-						if ui.tags("ghost_button") {
-							if ui.button_icon("###st_reset", ICON_UNDO, "Restore defaults").clicked {
-								set_palette(app, palette_index(DEFAULT_PALETTE))
-								app.anim_mode = .System
-								app.os_anim_checked_ms = 0
-								app.show_status = true
-								ui.set_zoom(&app.ui_state, 1)
-								ui.set_toast_position(&app.ui_state, .Top_Right)
-								ui.set_rounding(&app.ui_state, 1)
-								ui.set_density(&app.ui_state, 1)
-								app.corner_smoothing = 1
-								render.set_blend_space(&app.r, .Linear)
-								ui.toast(.Good, "Settings restored to defaults")
-							}
+						if ui.button_icon("###st_reset", ICON_UNDO, "Restore defaults", face = .Ghost).clicked {
+							set_palette(app, palette_index(DEFAULT_PALETTE))
+							app.anim_mode = .System
+							app.os_anim_checked_ms = 0
+							app.show_status = true
+							ui.set_zoom(&app.ui_state, 1)
+							ui.set_toast_position(&app.ui_state, .Top_Right)
+							ui.set_rounding(&app.ui_state, 1)
+							ui.set_density(&app.ui_state, 1)
+							app.corner_smoothing = 1
+							render.set_blend_space(&app.r, .Linear)
+							ui.toast(.Good, "Settings restored to defaults")
 						}
 						ui.spacer(ui.fill())
-						if ui.tags("accent_button") {
-							if ui.button_icon("###st_done", "", "Done").clicked { app.settings_open = false }
-						}
+						if ui.button_icon("###st_done", "", "Done", intent = .Primary).clicked { app.settings_open = false }
 					}
 				}
 				ui.spacer(ui.px(pad))

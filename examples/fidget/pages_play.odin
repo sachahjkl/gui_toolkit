@@ -195,16 +195,12 @@ page_playground :: proc(app: ^App) {
 					if ui.form_row("Bounce") { ui.slider("###ph_b", &app.bounce, 0.1, 1, 0, "%.2f") }
 					ui.spacer(ui.px(em * 0.3))
 					if ui.flow({em * 0.5, em * 0.5}, "###spawnrow") {
-						if ui.tags("accent_button") {
-							if ui.button_icon("###ph_add", ui.ICON_ADD, "25 balls").clicked { spawn_balls(app, 25) }
-						}
+						if ui.button_icon("###ph_add", ui.ICON_ADD, "25 balls", intent = .Primary).clicked { spawn_balls(app, 25) }
 						if ui.button_icon("###ph_shake", "", "Shake").clicked {
 							for &b in app.balls { if b.alive { b.v += {rand_range(-900, 900), -rand_range(300, 1400)} } }
 						}
 						if ui.button_icon("###ph_conf", ICON_TARGET, "Confetti").clicked { run_cmd(app, .Confetti) }
-						if ui.tags("ghost_button") {
-							if ui.button_icon("###ph_clear", ICON_TRASH, "Clear").clicked { run_cmd(app, .Clear_Balls) }
-						}
+						if ui.button_icon("###ph_clear", ICON_TRASH, "Clear", face = .Ghost).clicked { run_cmd(app, .Clear_Balls) }
 					}
 					ui.spacer(ui.px(em * 0.3))
 
@@ -378,7 +374,8 @@ note_body :: proc(app: ^App, n: ^Note, em: f32) {
 		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 		if ui.row(.Center, id = "###note_cnt") {
 			ui.spacer(ui.px(em * 0.5))
-			ui.stepper("###note_step", &app.note_counter, -99, 999)
+			ui.next({height = ui.pct(1)})
+			ui.number("###note_step", &app.note_counter, lo = -99, hi = 999)
 		}
 	case 2:
 		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.1))})

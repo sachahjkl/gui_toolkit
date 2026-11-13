@@ -196,10 +196,8 @@ build_input_row :: proc(app: ^App, em: f32) {
 		res := ui.line_edit("###new_task", &app.input, "What needs doing?")
 		submit := res.committed
 		ui.spacer(ui.px(em * 0.6))
-		if ui.tags("accent_button") {
-			ui.next({width = ui.text_size(em * 1.2), height = ui.px(ui.dense(em * 2.6))})
-			if ui.button("Add###add").clicked { submit = true }
-		}
+		ui.next({width = ui.text_size(em * 1.2), height = ui.px(ui.dense(em * 2.6))})
+		if ui.button("Add###add", intent = .Primary).clicked { submit = true }
 		if submit && len(app.input.buf) > 0 {
 			add_task(app, ui.field_string(&app.input))
 			ui.field_clear(&app.input)
@@ -215,10 +213,8 @@ build_filters :: proc(app: ^App, em: f32, total, done: int) {
 		counts := [Filter]int{.All = total, .Active = total - done, .Done = done}
 		for f in Filter {
 			selected := app.filter == f
-			if selected { ui.push_tags("accent_button") }
 			ui.next({width = ui.text_size(em * 1.0), height = ui.px(ui.dense(em * 2.2))})
-			if ui.button(fmt.tprintf("%s %d###filter_%d", names[f], counts[f], int(f))).clicked { app.filter = f }
-			if selected { ui.pop_tags() }
+			if ui.button(fmt.tprintf("%s %d###filter_%d", names[f], counts[f], int(f)), intent = selected ? .Primary : .Neutral).clicked { app.filter = f }
 			ui.spacer(ui.px(em * 0.4))
 		}
 		ui.spacer(ui.fill())

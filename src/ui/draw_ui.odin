@@ -195,13 +195,13 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if .Draw_Background in flags && !machined_face {
 		paint_rect_corners(dc, r, b.bg, radii, box_sheen(s, b))
 	}
-	if .Draw_Hot_Effects in flags && b.hot_t > DRAW_INVISIBLE_EPS && !machined_face {
+	hot, held := box_hot(b), box_held(b)
+	if .Draw_Hot_Effects in flags && (hot > DRAW_INVISIBLE_EPS || held > DRAW_INVISIBLE_EPS) && !machined_face {
 		// the theme's step toward its tint, over what is actually under the box (theme_default.odin: state_entries)
 		hover := color_from_tags(s, b.tags_key, "hover_fill")
 		press := color_from_tags(s, b.tags_key, "press_fill")
-		held := b.active_t * b.hot_t   // pressed, and the pointer still on it
 		h := draw.mix(hover, press, held)
-		h.a = math.lerp(hover.a * b.hot_t, press.a, held)
+		h.a = math.lerp(hover.a * hot, press.a, held)
 		if h.a > DRAW_INVISIBLE_EPS {
 			h.a = draw.alpha_like_srgb(s.space, h, h.a, box_under(b))
 			draw.rect_corners(dc, r, colors4(h), radii)
@@ -259,6 +259,13 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if fade { draw.pop_alpha(dc) }
 	if b.transparency != 0 { draw.pop_alpha(dc) }
 }
+
+// How much a box is drawn as under the pointer: all of it while .Lit (its menu is open).
+box_hot :: proc(b: ^Box) -> f32 { return .Lit in b.flags ? 1 : b.hot_t }
+
+// How much a box is drawn pressed in: all of it while .Held (toggled), else while the button is held on it and the
+// pointer is still there.
+box_held :: proc(b: ^Box) -> f32 { return .Held in b.flags ? 1 : b.active_t * b.hot_t }
 
 // The radii of a box's corners (draw.rect_corners' order): `radius`, or 0 for its square corners.
 box_radii :: proc(radius: f32, square: Corners) -> (radii: [4]f32) {

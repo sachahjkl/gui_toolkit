@@ -43,9 +43,7 @@ build_column :: proc(app: ^App, em: f32) {
 		name := ui.field_string(&app.name)
 		ui.label(fmt.tprintf("Hello, %s!###greeting", name if name != "" else "world"))
 		ui.spacer(ui.px(em * 0.5))
-		if ui.tags("accent_button") {
-			if ui.button(fmt.tprintf("Clicked %d times###count", app.clicks)).clicked { app.clicks += 1 }
-		}
+		if ui.button(fmt.tprintf("Clicked %d times###count", app.clicks), intent = .Primary).clicked { app.clicks += 1 }
 	}
 }
 
