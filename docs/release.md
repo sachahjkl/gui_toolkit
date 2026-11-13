@@ -51,7 +51,8 @@ with `notes`' output (classeur's and papier's `.github/workflows/release.yml`).
 
 `release.publish(Publish)` is the end of every release, `ship`'s and the toolkit's own (`tk release`):
 
-1. `git fetch --tags origin master`, then HEAD rebased on `origin/master` (a worktree or a detached HEAD works);
+1. `git fetch --tags origin master`, then `origin/master` merged into HEAD when HEAD lacks some of it (a worktree or a
+   detached HEAD works; a branch's own merges stay as they are);
 2. the version: `version_next(last, asked)`, `last` the highest tag `v<x.y.z>` (or `Publish.floor`, the sources' version, when
    no tag says more); `asked` is `patch`, `minor`, `major` or an exact `x.y.z`, which must come after `last`;
 3. `Publish.write(version)` writes the release's files and gives the paths to commit and the subject (the checkout is reset

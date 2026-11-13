@@ -47,7 +47,7 @@ Publish :: struct {
 	tries:   int,            // how many times origin may move under it; 0: 3
 }
 
-// Publishes a release: fetches origin, rebases HEAD on its branch, takes the next number, writes and commits the
+// Publishes a release: fetches origin, merges its branch into HEAD when HEAD lacks some of it, takes the next number, writes and commits the
 // release, tags it v<version> (annotated) and pushes the commit to the branch with the tag in one atomic push, so a
 // tag never goes out without its commit. When origin moved meanwhile, the push is refused: the commit and the tag
 // are undone and it starts again from the fetch, with the next number. The working tree must be clean.
@@ -60,6 +60,10 @@ publish :: proc(p: Publish) -> (version: string, why: string) {
 		append(&command, ..args)
 		return toolbox.run(command[:])
 	}
+	git_quiet :: proc(dir: string, args: ..string) -> bool {
+		_, ok := git_out(dir, ..args)
+		return ok
+	}
 	git_out :: proc(dir: string, args: ..string) -> (string, bool) {
 		command := make([dynamic]string, context.temp_allocator)
 		append(&command, "git", "-C", dir != "" ? dir : ".")
@@ -71,9 +75,14 @@ publish :: proc(p: Publish) -> (version: string, why: string) {
 	if out, ok := git_out(p.dir, "status", "--porcelain"); !ok || strings.trim_space(out) != "" { return "", "the working tree is not clean" }
 	for attempt in 0 ..< tries {
 		if !git(p.dir, "fetch", "-q", "--tags", "origin", branch) { return "", "git fetch failed" }
-		if !git(p.dir, "rebase", "-q", fmt.tprintf("origin/%s", branch)) {
-			_ = git(p.dir, "rebase", "--abort")
-			return "", fmt.tprintf("HEAD does not rebase on origin/%s: resolve that first", branch)
+		// (HEAD has origin's commits already: nothing to do; else they are merged in, so a branch's own merges stay as they
+		// are, which a rebase would flatten and conflict on again)
+		upstream := fmt.tprintf("origin/%s", branch)
+		if !git_quiet(p.dir, "merge-base", "--is-ancestor", upstream, "HEAD") {
+			if !git(p.dir, "merge", "-q", "--no-edit", upstream) {
+				_ = git(p.dir, "merge", "--abort")
+				return "", fmt.tprintf("HEAD does not merge with %s: resolve that first", upstream)
+			}
 		}
 		tags, _ := git_out(p.dir, "tag", "--list", "v*")
 		last := version_highest(tags)

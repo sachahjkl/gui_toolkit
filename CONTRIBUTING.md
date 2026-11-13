@@ -31,7 +31,7 @@
 ## Publishing a version
 
 `odin run tools/tk -- release <patch|minor|major|x.y.z> "-summary:one-line summary"`, from any clean checkout (a branch,
-a worktree, a detached HEAD), on Windows or Linux. It fetches origin, rebases on `master` and takes the next number after
+a worktree, a detached HEAD), on Windows or Linux. It fetches origin, merges `master` in when HEAD lacks some of it and takes the next number after
 the last tag (`release.publish`, [docs/release.md](docs/release.md)), then:
 
 1. `tools/changelog -assemble -version:<version>` makes the `## [<version>] - <date>` section from the fragments

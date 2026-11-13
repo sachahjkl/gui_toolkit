@@ -7,7 +7,7 @@ import release "../../src/release"
 
 // Publishes a version of gui_toolkit, on Windows or Linux (CONTRIBUTING.md, "Publishing a version"), from a clean checkout:
 // any branch, a worktree or a detached HEAD. The version is "patch", "minor", "major" (the next after the last tag on
-// origin) or an exact x.y.z. release.publish fetches origin, rebases on master and takes the number, then:
+// origin) or an exact x.y.z. release.publish fetches origin, merges master in when HEAD lacks some of it and takes the number, then:
 //   1. tools/changelog assembles the fragments of changelog.d into the version's CHANGELOG.md section, and writes the version in
 //      ui/version.odin and the README's badge;
 //   2. on Windows, the About picture (docs/screenshots/about.png shows the version) is taken again from fidget; elsewhere it stays;
