@@ -290,6 +290,7 @@ end_build :: proc() {
 	assert(len(s.list_stack) == 0, "ui: unbalanced list scopes")
 	assert(len(s.menu_build) == 0, "ui: unbalanced menu scopes")
 
+	toasts_build()   // (over everything the program built, under its menus)
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }
 	t_layout := real_ms()

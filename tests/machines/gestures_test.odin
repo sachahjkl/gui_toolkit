@@ -491,14 +491,13 @@ a_toast_that_stands_sleeps :: proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, user = &r, animations = true, build = proc(s: ^session.Session) {
 		r := (^Toasts)(s.user)
 		if !r.said { r.said = true; ui.toast(.Info, "Hello") }
-		ui.toasts_build()
 	}})
 	session.advance(s, LONG_TIME_MS)
 	testing.expect(t, !ui.needs_frame(s.state), "no frames while nothing moves")
 	testing.expect(t, ui.wake_ms(s.state) > 0, "a wake for its fade")
 }
 
-// An area given for one frame is that frame's, whether toasts_build ran or not.
+// An area given for one frame is that frame's, whether its toasts were built or not.
 @(test)
 a_toast_area_lasts_a_frame :: proc(t: ^testing.T) {
 	Toasts :: struct { set: bool }

@@ -25,7 +25,7 @@ set_toast_position :: proc(s: ^State, p: Toast_Position) { s.toast_pos = p }
 toast_position :: proc(s: ^State) -> Toast_Position { return s.toast_pos }
 
 // Rectangle (window pixels) the toasts are placed in, e.g. the content area between a menu bar and a status bar.
-// Call it every frame before `toasts_build`; the default is the whole window.
+// Call it every frame it applies (the toasts are built at the end of the build); the default is the whole window.
 set_toast_area :: proc(r: Rect) { gs().toast_area = r; gs().toast_area_set = true }
 
 @(private = "file") TOAST_LIFE_MS :: 3800
@@ -80,9 +80,11 @@ toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, ms
 
 toasts_clear :: proc() { for &t in gs().toasts { t.alive = false } }
 
-// Builds the toast stack. Look: panel background, a 1.5 px border all around tinted by the kind
-// (info = accent, good / warn / bad), the icon in the same tint. Newest toast is nearest to the anchored edge;
-// the others glide to their new place when one leaves.
+// Builds the toast stack, at the end of every build (end_build): a program never forgets it, and a message it says
+// (ui.announce) always shows. Look: panel background, a 1.5 px border all around tinted by the kind (info = accent,
+// good / warn / bad), the icon in the same tint. Newest toast is nearest to the anchored edge; the others glide to
+// their new place when one leaves.
+@(private)
 toasts_build :: proc() {
 	s := gs()
 	em := font_size()

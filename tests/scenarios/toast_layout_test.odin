@@ -25,7 +25,6 @@ a_toast_is_as_tall_as_its_words :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 			ui.toast(.Info, "Saved")
 			ui.toast_titled(.Warn, "Session 12 about the project's frame pacing and its very long title that goes on", LONG_BODY)
 		}
-		ui.toasts_build()
 	}})
 	session.frames(s, 30)
 	boxes := make([dynamic]^ui.Box, context.temp_allocator)
@@ -68,7 +67,6 @@ a_toast_title_is_the_familys_bold :: proc(t: ^testing.T) { unwatched.run(t, proc
 			r.fired = true
 			ui.toast_titled(.Warn, "Custom ShojiWM Desktop", "Permission: shell rm -rf /tmp/x")
 		}
-		ui.toasts_build()
 		ui.section_header("###sec", "Memory", "a note", "", {1, 0, 0, 1})
 	}})
 	session.frames(s, 3)

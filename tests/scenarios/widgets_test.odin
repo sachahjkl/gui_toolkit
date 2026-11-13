@@ -69,7 +69,6 @@ a_toast_goes_by_the_clock :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^tes
 			r.say = false
 		}
 		if r.clear { ui.toasts_clear() }
-		ui.toasts_build()
 	}})
 	ui.set_toast_position(s.state, .Top_Left)
 	r.say = true
@@ -98,7 +97,6 @@ a_toast_with_an_action_does_it_when_clicked :: proc(t: ^testing.T) { unwatched.r
 			ui.toast_action(.Good, proc(user: rawptr) { (^Run)(user).done += 1 }, r, "Version %d: click to install", 2)
 			r.say = false
 		}
-		ui.toasts_build()
 	}})
 	r.say = true
 	session.frames(s, 2)

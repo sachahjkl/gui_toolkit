@@ -114,7 +114,6 @@ build_ui :: proc(app: ^App) {
 		top := em * (2.6 + 2.9)
 		bottom := f32(app.win.size.y) - (app.show_status ? em * 2.1 : 0)
 		ui.set_toast_area({{0, top}, {f32(app.win.size.x), bottom}})
-		ui.toasts_build()
 	}
 }
 

@@ -84,7 +84,6 @@ app_build :: proc(s: ^session.Session) {
 		ui.toast(.Good, "Saved %d files", 3)
 		app.toast_now = false
 	}
-	ui.toasts_build()
 }
 
 // A session of the app with partial redraw on and every partial frame checked against the whole one.

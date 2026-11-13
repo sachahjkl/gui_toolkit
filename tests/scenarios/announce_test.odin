@@ -18,7 +18,6 @@ said_build :: proc(s: ^session.Session) {
 		r.said = true
 		ui.announce(&r.announcer, r.kind, "Copied to the clipboard")
 	}
-	ui.toasts_build()
 }
 
 @(private = "file")
@@ -57,8 +56,8 @@ announce_off_still_says_a_failure :: proc(t: ^testing.T) { unwatched.run(t, proc
 // announcer's own state.
 @(test)
 announce_between_builds_goes_to_its_state :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	s := session.start(t, {size = {600, 300}, build = proc(s: ^session.Session) { ui.toasts_build() }})
-	other := session.start(t, {size = {300, 200}, build = proc(s: ^session.Session) { ui.toasts_build() }})
+	s := session.start(t, {size = {600, 300}, build = proc(s: ^session.Session) {}})
+	other := session.start(t, {size = {300, 200}, build = proc(s: ^session.Session) {}})
 	a := ui.Announcer{mode = .Window, state = s.state}
 	ui.use(other.state)
 	ui.announce(&a, .Good, "Copied to the clipboard")
