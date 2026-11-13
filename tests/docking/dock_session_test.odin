@@ -114,10 +114,10 @@ the_menu_of_a_closed_panel_closes :: proc(t: ^testing.T) {
 	s := setup(t, &app)
 	ui.dock_open_menu(&app.dock, 1, {100, 100})
 	session.frames(s, 2)
-	testing.expect(t, ui.ctx_menu_any_open(), "open")
+	testing.expect(t, ui.menu_any_open(), "open")
 	ui.dock_close(&app.dock, 1)
 	session.frames(s, 2)
-	testing.expect(t, !ui.ctx_menu_any_open(), "closed")
+	testing.expect(t, !ui.menu_any_open(), "closed")
 }
 
 // The stack a drag was over goes before the drop: the panel stays where it is, nothing drops on a slot soon something else.
@@ -381,7 +381,7 @@ the_keyboard_goes_along_the_strip_and_through_the_menu :: proc(t: ^testing.T) {
 	testing.expect_value(t, layout(&app), "dock1 x0.500([b,*a] [*c])")
 	// the menu: every target, from the keyboard
 	session.key(s, .Menu)
-	testing.expect(t, ui.ctx_menu_any_open())
+	testing.expect(t, ui.menu_any_open())
 	session.click_text(s, "Float")
 	testing.expect_value(t, len(app.dock.floats), 1)
 	testing.expect(t, ui.dock_is_floating(&app.dock, ui.dock_leaf_of(&app.dock, 1)))

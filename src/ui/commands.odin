@@ -148,9 +148,9 @@ command_shown :: proc(c: Command) -> (label, group: string, tags: []string) {
 }
 
 // Whether one of the command's keys was pressed this frame (the press is taken: nothing else sees it). A command that
-// cannot act now (`enabled` false) takes no key: the key stays for what else wants it.
-command_pressed :: proc(c: Command, enabled := true) -> bool {
-	if !enabled { return false }
+// cannot act now (`disabled`) takes no key: the key stays for what else wants it.
+command_pressed :: proc(c: Command, disabled := false) -> bool {
+	if disabled { return false }
 	for k in c.keys {
 		if k.key != .None && key_press(k.key, k.mods) { return true }
 	}
@@ -160,9 +160,9 @@ command_pressed :: proc(c: Command, enabled := true) -> bool {
 ////////////////////////////////
 // The palette
 
-// The palette: a dialog at the top centre of the window (modal_sized: its edges and its corner resize it), a field that
-// searches what is typed, and the commands under it. The program keeps it between frames; `size` is the size the user
-// gave it (logical pixels; {} the default), for the program to keep between starts.
+// The palette: a dialog at the top centre of the window (a modal of a `size`: its edges and its corner resize it), a field
+// that searches what is typed, and the commands under it. The program keeps it between frames; `size` is the size the
+// user gave it (in ems; {} the default), for the program to keep between starts.
 Command_Palette :: struct {
 	open:   bool,
 	size:   Vec2,
@@ -335,7 +335,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, enabled: []bool = nil,
 	moved := abs(mouse.x - p.mouse.x) + abs(mouse.y - p.mouse.y) > 0.5
 	p.mouse = mouse
 	before := p.size
-	if modal_sized("palette", {em * PALETTE_WIDTH_EM, em * PALETTE_HEIGHT_EM}, &p.size, &p.open, {em * PALETTE_MIN_EM.x, em * PALETTE_MIN_EM.y}, top = PALETTE_TOP) {
+	if modal("palette", &p.open, {width_em = PALETTE_WIDTH_EM, height_em = PALETTE_HEIGHT_EM, min_width_em = PALETTE_MIN_EM.x, min_height_em = PALETTE_MIN_EM.y, size = &p.size, top = PALETTE_TOP}) {
 		// (the strip, the gaps and the foot in whole pixels: the list's height is what is left, cut to whole lines below)
 		top_h := math.round(dense(em * 2.6))
 		gap_h := math.round(em * 0.3)
@@ -549,11 +549,11 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, op
 // The dialog `id` while `open`: every command that has a key, under its group's heading, its keys at the right. It
 // scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close button of its header close it.
 // `title` "": "Keyboard shortcuts", in the language in use.
-shortcuts_sheet :: proc(id: string, commands: []Command, open: ^bool, title := "", width_em: f32 = SHEET_WIDTH_EM) {
+shortcuts_sheet :: proc(id: string, commands: []Command, open: ^bool, title := "") {
 	s := gs()
 	em := font_size()
-	w := em * width_em
-	if modal(id, w, open) {
+	w := em * SHEET_WIDTH_EM
+	if modal(id, open, {width_em = SHEET_WIDTH_EM}) {
 		if dialog_header("sheet_title", title != "" ? title : i18n.tr("Keyboard shortcuts"), {icon = lucide.KEYBOARD, icon_font = lucide_icons(), close = true}) {}
 		sheet_body(commands, w, em, s.window_size.y)
 	}

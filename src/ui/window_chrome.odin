@@ -55,10 +55,11 @@ title_bar :: proc(id: string, flags: Box_Flags = {}) -> bool {
 	return true
 }
 
-// What screen readers call the current State's caption buttons: minimize, maximize, restore, close (the strings must outlive
-// the builds; "": the toolkit's words, in the language in use). Each window's State has its own: set them after each `init`.
-set_window_button_names :: proc(minimize, maximize, restore, close: string) {
-	gs().caption_names = {minimize, maximize, close, restore}
+// What screen readers call the caption buttons of the window of `s`: minimize, maximize, restore, close (the strings must
+// outlive the builds; "": the toolkit's words, in the language in use). Each window's State has its own: set them after
+// each `init`.
+set_window_button_names :: proc(s: ^State, minimize, maximize, restore, close: string) {
+	s.caption_names = {minimize, maximize, close, restore}
 }
 
 @(private)

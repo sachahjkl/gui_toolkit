@@ -167,9 +167,9 @@ fidget_overlays_by_the_keyboard :: proc(t: ^testing.T) {
 fidget_menu_closes_on_a_click_outside :: proc(t: ^testing.T) {
 	s, _ := start_fidget(t, INPUTS_ARGS)
 	session.click(s, "menu_file")
-	testing.expect(t, ui.ctx_menu_any_open(), "File opens its menu")
+	testing.expect(t, ui.menu_any_open(), "File opens its menu")
 	session.click(s, "statusbar")
-	testing.expect(t, !ui.ctx_menu_any_open(), "a click on the status bar closes it")
+	testing.expect(t, !ui.menu_any_open(), "a click on the status bar closes it")
 }
 
 // The widgets of the first page by the mouse: each changes what it says it changes.
@@ -202,10 +202,10 @@ fidget_tooltip_menu_and_wheel :: proc(t: ^testing.T) {
 	session.advance(s, TOOLTIP_WAIT_MS)
 	testing.expect(t, session.find_text(s, "floating boxes") != nil, "the tooltip, after its delay")
 	session.click_text(s, "Right-click", .Right)
-	testing.expect(t, ui.ctx_menu_any_open(), "the right button opens the menu")
+	testing.expect(t, ui.menu_any_open(), "the right button opens the menu")
 	testing.expect(t, session.find_text(s, "Duplicate") != nil, "with its items")
 	session.key(s, .Escape)
-	testing.expect(t, !ui.ctx_menu_any_open(), "Esc closes it")
+	testing.expect(t, !ui.menu_any_open(), "Esc closes it")
 	page := session.get(s, "pg_controls")
 	session.wheel(s, session.center(page), {0, WHEEL_NOTCHES})
 	session.wait_idle(s)

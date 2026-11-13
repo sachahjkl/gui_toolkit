@@ -211,8 +211,7 @@ dock_end :: proc(d: ^Dock) -> (res: Dock_Result) {
 		dock_build_overlay(d)
 		pop_parent()
 	}
-	menu := key_from_string(d.space_key, "###dock_menu")
-	if ctx_menu(menu, font_size() * DOCK_MENU_WIDTH_EM) { dock_menu_items(d, d.menu_panel) }
+	if menu(dock_menu_id(d), font_size() * DOCK_MENU_WIDTH_EM) { dock_menu_items(d, d.menu_panel) }
 	dock_do_pending(d)   // (the menu's Close)
 	res.closed, res.windowed = d.closed, d.windowed
 	res.dragging = d.drag.state == .Dragging
@@ -244,13 +243,17 @@ dock_held :: proc(d: ^Dock) -> bool {
 @(private)
 dock_menu_of_gone :: proc(d: ^Dock, panel: u32) {
 	if d.menu_panel != panel || current == nil { return }
-	if ctx_menu_is_open(key_from_string(d.space_key, "###dock_menu")) { ctx_menu_close() }
+	if menu_is_open(dock_menu_id(d)) { menu_close() }
 }
+
+// The id of the dock's menu: its space's, one per dock.
+@(private = "file")
+dock_menu_id :: proc(d: ^Dock) -> string { return fmt.tprintf("###dock_menu_%x", u64(d.space_key)) }
 
 // Opens the stack's menu for `panel` (at `pos`, window px; `from_keyboard`: its first item is selected).
 dock_open_menu :: proc(d: ^Dock, panel: u32, pos: Vec2, from_keyboard := false) {
 	d.menu_panel = panel
-	ctx_menu_open(key_from_string(d.space_key, "###dock_menu"), pos, 0, from_keyboard)
+	menu_open(dock_menu_id(d), pos, from_keyboard = from_keyboard)
 }
 
 ////////////////////////////////
@@ -843,8 +846,8 @@ dock_menu_items :: proc(d: ^Dock, p: u32) {
 	at := 0
 	for q, k in tabs { if q == p { at = k } }
 	if len(tabs) > 1 {
-		if menu_item(fmt.tprintf("%s###dock_m_ml", lb.move_left), chord_text({.Left, {.Ctrl, .Shift}}), enabled = at > 0).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at - 1}) }
-		if menu_item(fmt.tprintf("%s###dock_m_mr", lb.move_right), chord_text({.Right, {.Ctrl, .Shift}}), enabled = at + 1 < len(tabs)).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at + 2}) }
+		if menu_item(fmt.tprintf("%s###dock_m_ml", lb.move_left), chord_text({.Left, {.Ctrl, .Shift}}), disabled = at <= 0).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at - 1}) }
+		if menu_item(fmt.tprintf("%s###dock_m_mr", lb.move_right), chord_text({.Right, {.Ctrl, .Shift}}), disabled = at + 1 >= len(tabs)).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at + 2}) }
 	}
 	if dock_closable(d, p) {
 		menu_separator()
@@ -881,7 +884,7 @@ dock_to_items :: proc(d: ^Dock, p: u32) {
 	for pl, k in edges {
 		if menu_item(fmt.tprintf("%s###dock_m_e%d", edge_names[k], k)).clicked { dock_move(d, p, {place = pl}) }
 	}
-	if menu_item(fmt.tprintf("%s###dock_m_fl", lb.floating), enabled = !dock_is_floating(d, own) || dock_tab_count(d, own) > 1).clicked {
+	if menu_item(fmt.tprintf("%s###dock_m_fl", lb.floating), disabled = dock_is_floating(d, own) && dock_tab_count(d, own) <= 1).clicked {
 		dock_float(d, p, dock_float_place(d))
 	}
 }

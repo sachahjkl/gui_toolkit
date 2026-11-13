@@ -174,7 +174,7 @@ shown_build :: proc(s: ^session.Session) {
 }
 
 @(private = "file")
-port_at :: proc(r: ^Shown, node: int, side: ui.Graph_Port_Side, index: int) -> [2]f32 {
+port_at :: proc(r: ^Shown, node: int, side: flowgraph.Side, index: int) -> [2]f32 {
 	return ui.graph_to_screen(&r.view, ui.graph_port_pos(&r.view, &r.flow.nodes[node], side, index))
 }
 
@@ -217,7 +217,7 @@ the_palette_follows_the_catalog :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 	testing.expect_value(t, commands[SAVE].group, "Outputs")
 	testing.expect(t, !enabled[CAPTURE], "one Capture at most")
 	testing.expect(t, enabled[SAVE] && enabled[COPY_TEXT])
-	_, enabled = ui.flow_palette(&g, &CATALOG, ui.Graph_Port_Ref{node = capture, port = 0, side = .Out})
+	_, enabled = ui.flow_palette(&g, &CATALOG, flowgraph.Port_Ref{node = capture, port = 0, side = .Out})
 	testing.expect(t, enabled[SAVE], "Save takes a picture")
 	testing.expect(t, !enabled[COPY_TEXT], "Copy text does not")
 	testing.expect_value(t, ui.flow_state(.Cancelled), ui.Graph_Node_State.Skipped)

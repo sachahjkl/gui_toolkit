@@ -62,7 +62,7 @@ is ever left of a half emoji.
 **A field's keys** (`ui.field_key(f, owner, key, mods)`): what a key does to a `Text_Field`, as `ui.line_edit` does it (the
 caret by clusters and by words, Shift for the selection, Backspace and Delete with Ctrl for a word, Ctrl+A, the clipboard,
 undo and redo). A field the keyboard reaches another way gives it its keys: the search of a menu opened with
-`ctx_menu_open(..., search = true)` is a `Text_Field` edited by it, the menu keeping the arrows, Enter and Escape. That menu
+`menu_open(..., search = true)` is a `Text_Field` edited by it, the menu keeping the arrows, Enter and Escape. That menu
 keeps the corner and the width of its first layout while it filters.
 
 **Its scroll bars** are the toolkit's: a `text_edit` scrolls itself and places its bars, which `ui.scrollbar_paint` draws as

@@ -52,7 +52,7 @@ few lines (`examples/hello`), the backends and options, the tests, the versions,
 | ![The settings page: the themes as cards, the user's own under them](docs/screenshots/showcase_settings_advanced.webp) | ![A node graph and its inspector, Glacier light, edged](docs/screenshots/showcase_graph_light.webp) |
 | **Settings**: `prefs_page` with the standard sets, groups, the folded Advanced part, search, export | **Node graph**: `gt:flowgraph`, `ui.node_graph`, `ui.node_inspector` |
 | ![Toasts over the graph: saved, copied, slow, failed](docs/screenshots/showcase_toasts.webp) | ![Every theme as a card, the finishes and versions](docs/screenshots/showcase_themes.webp) |
-| **Toasts**: `ui.announce`, `toast_titled` | **26 themes** and a user's own, five finishes, dark and light |
+| **Toasts**: `ui.announce` | **26 themes** and a user's own, five finishes, dark and light |
 | ![The edged finish on Kernel](docs/screenshots/showcase_controls_edged.webp) | ![Data: 20,000-row virtualized table and file tree](docs/screenshots/data.png) |
 | **Edged**: the machined reliefs drawn crisp, square corners | **Data** (`examples/fidget`): a 20,000-row virtualized table (groups with totals, sort, filter, resize), a tree |
 
@@ -216,7 +216,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - **Status bars and frame statistics** (`status.odin`): `status_bar` (a bar along the bottom, smaller text),
   `status_fill` (its flexible, clipped part), `status_item` (compact text, tones, monospace digits, clickable),
   `status_separator`; `Frame_History` (a ring of samples of up to 8 stacked series: `history_push`, `history_at`,
-  `history_find_tag` for values that arrive late, `history_stats` with mean / p50 / p95 / p99 / over-budget,
+  `history_find_tag` for values that arrive late, `history_stats` with mean / p50 / p95 / p99,
   `history_rate`) and `frame_graph` (stacked bars, newest at the right, dashed budget line, rare spikes cut and marked,
   the bar under the pointer in the result); `stat_row` / `stat_heading` / `swatch` for detail panels and legends;
   `popover` (a panel anchored above or below a widget that stays open while the app builds it). Nothing asks for
@@ -240,7 +240,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   palette** (`palette`: fuzzy, grouped, resizable, recent commands) and the sheet of the keys
   ([docs/commands.md](docs/commands.md)). A menu is as wide as its widest row, and typing searches it: a band shows what
   is typed, a submenu's rows come up ([docs/menus.md](docs/menus.md)).
-- **Dialogs**: `modal` and `modal_sized` (resized by its edges, kept in the window, laid out before its first frame, fading
+- **Dialogs**: `modal` (sized in ems, resized by its edges when it has a `size`, kept in the window, laid out before its first frame, fading
   in); `dialog_header` with the close button in its corner, `dialog_body`, `dialog_buttons`; `confirm` before an act not
   taken back; `prompt` for an answer typed in, a secret wiped after use ([docs/modals.md](docs/modals.md)).
 - **Settings**: `prefs_page` builds a program's settings page from its `config` registry with no code per preference,

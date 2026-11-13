@@ -257,7 +257,7 @@ pane_axis :: proc(place: Pane_Place, room_w: f32, side_min: f32 = 0) -> Axis {
 	return room_w >= lim ? .X : .Y
 }
 
-// Menu items that place the pane (inside a ctx_menu or a menu_submenu): returns whether one was chosen. `labels`: the
+// Menu items that place the pane (inside a menu or a menu_submenu): returns whether one was chosen. `labels`: the
 // program's words (a zero one: the toolkit's, in the language in use).
 pane_place_menu :: proc(p: ^Pane, labels := [Pane_Place]string{}) -> (changed: bool) {
 	words := labels

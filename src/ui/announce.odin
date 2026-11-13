@@ -2,10 +2,13 @@ package ui
 
 // What a program says of what it just did (copied, saved, deleted): a notification of the system, which stays out of
 // the window and goes to the system's own list; a toast of the window only where the system shows none, or where the
-// person chose it (prefs_page's general.messages). A failure is always said, even with messages off.
+// person chose it (prefs_page's general.messages). A failure is always said, even with messages off. It is the one way
+// a program says something: a toast is announce's, never the program's.
 //
-//   app.announcer = {mode = ui.announce_mode_of(...), window = app.anchor, state = &app.ui}
+//   app.announcer = {mode = prefs_page.announce_mode(&app.prefs), window = app.anchor, state = &app.ui}
 //   ui.announce(&app.announcer, .Good, "Copied to the clipboard")
+//   ui.announce(&app.announcer, .Good, "Saved", path)
+//   ui.announce(&app.announcer, .Info, "Version 2 is ready", "Click to install it", install, app)
 //
 // The notification goes out without waiting for the system (platform.notify_async): nothing waits on the interface's
 // thread. The next one replaces the last rather than piling up. A toast goes to Announcer.state (nil: the ui state in
@@ -34,9 +37,12 @@ Announcer :: struct {
 	missing: bool,                        // the system has no notifications: toasts from now on
 }
 
-// Says `title` (and `body`, a second line: a path, an address). kind .Bad: always said, whatever the mode.
-announce :: proc(a: ^Announcer, kind: Toast_Kind, title: string, body := "") {
+// Says `title` (and `body`, a second line: a path, an address). kind .Bad: always said, whatever the mode. `action`:
+// what a click on it does (an update to install, a report to open): such a message is a toast of the window, whatever
+// the mode (a notification of the system does not call back here), and `user` must still be good when it is clicked.
+announce :: proc(a: ^Announcer, kind: Toast_Kind, title: string, body := "", action: proc(user: rawptr) = nil, user: rawptr = nil) {
 	mode := a.mode
+	if action != nil { mode = .Window }
 	if mode == .Off && kind == .Bad { mode = .System }
 	switch mode {
 	case .Off:
@@ -51,7 +57,8 @@ announce :: proc(a: ^Announcer, kind: Toast_Kind, title: string, body := "") {
 		prev := current
 		if a.state != nil { use(a.state) }
 		defer if a.state != nil { use(prev) }
-		if body != "" { toast(kind, "%s: %s", title, body) } else { toast(kind, "%s", title) }
+		// (a title and its words: the title in bold on its line, the words under it)
+		if body != "" { toast_add(kind, action, user, body, title) } else { toast_add(kind, action, user, title) }
 	}
 }
 

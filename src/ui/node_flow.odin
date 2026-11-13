@@ -105,13 +105,13 @@ flow_state :: proc(s: flowgraph.Node_State) -> Graph_Node_State {
 // The add palette's commands, one per kind of the catalog in its order (the index chosen is the kind), and which are
 // enabled: a kind under its max_count, and with `from` (a link let go on nothing) one with a port that fits it
 // (flowgraph.fit_port). Temp allocator.
-flow_palette :: proc(g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, from: Maybe(Graph_Port_Ref) = nil) -> (commands: []Command, enabled: []bool) {
+flow_palette :: proc(g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, from: Maybe(flowgraph.Port_Ref) = nil) -> (commands: []Command, enabled: []bool) {
 	commands = make([]Command, len(cat.nodes), context.temp_allocator)
 	enabled = make([]bool, len(cat.nodes), context.temp_allocator)
 	for def, k in cat.nodes {
 		commands[k] = {label = def.title, group = def.group, tags = def.tags, icon = def.icon}
 		enabled[k] = flowgraph.can_add(g, cat, k)
-		if f, has := from.?; has { enabled[k] &&= flowgraph.fit_port(g, cat, {f.node, f.port, flowgraph.Side(f.side)}, k) >= 0 }
+		if f, has := from.?; has { enabled[k] &&= flowgraph.fit_port(g, cat, f, k) >= 0 }
 	}
 	return
 }

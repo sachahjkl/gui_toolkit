@@ -145,6 +145,7 @@ App :: struct {
 	fonts:    font.State,
 	dc:       draw.Context,
 	ui_state: ui.State,
+	announcer: ui.Announcer,   // what the demo says: toasts of the window (a demo of them)
 	theme:    ui.Theme,
 	ui_font, mono, icons: font.Font_Id,
 	last_tick: time.Tick,

@@ -71,17 +71,17 @@ app_build :: proc(s: ^session.Session) {
 			ui.label(fmt.tprintf("Row %d###row%d", i, i))
 		}
 	}
-	menu := ui.key_from_string(0, "menu")
+	menu := "menu"
 	if app.menu_now {
-		ui.ctx_menu_open(menu, {400, 60})
+		ui.menu_open(menu, ui.Vec2{400, 60})
 		app.menu_now = false
 	}
-	if ui.ctx_menu(menu) {
+	if ui.menu(menu) {
 		_ = ui.menu_item("First")
 		_ = ui.menu_item("Second")
 	}
 	if app.toast_now {
-		ui.toast(.Good, "Saved %d files", 3)
+		ui.announce(&ui.Announcer{mode = .Window}, .Good, fmt.tprintf("Saved %d files", 3))
 		app.toast_now = false
 	}
 }

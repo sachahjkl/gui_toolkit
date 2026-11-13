@@ -93,15 +93,15 @@ angle (no perspective, no alignment pattern search). A mirrored symbol is not re
 ui.qr_code("###pair", url, math.round(160 * ui.scale()))   // a square of 160 logical pixels
 ```
 
-`qr_code(id, text, size, ecc = .Medium) -> Signal` builds a square box of `size` device pixels (as `px`; a `next` before
-it can place it or change its size). It draws:
+`qr_code(id, text, size) -> Signal` builds a square box of `size` device pixels (as `px`; a `next` before
+it can place it or change its size), its code at `.Medium`. It draws:
 
 - a white square on the whole box, then black modules, whatever the theme: a scanner needs dark on light;
 - the quiet zone of 4 modules, inside the box;
 - each module as a whole number of device pixels: the most that fit the box's shorter side (at least 1), the code centred
   on a whole pixel. If one pixel a module does not fit, the box clips the code.
 
-The box keeps its code between builds (`State.qr_codes`, by the box's key): a build with the same text and level does
+The box keeps its code between builds (`State.qr_codes`, by the box's key): a build with the same text does
 not encode again, and a box that is not built drops its code at the end of the build. A text too long for version 40
 draws the white square alone. Partial redraw needs nothing more: the modules are in the custom draw's digest.
 

@@ -65,7 +65,7 @@ a_toast_goes_by_the_clock :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^tes
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		if r.say {
-			ui.toast(.Good, "Saved %d files", 3)
+			ui.announce(&ui.Announcer{mode = .Window}, .Good, fmt.tprintf("Saved %d files", 3))
 			r.say = false
 		}
 		if r.clear { ui.toasts_clear() }
@@ -94,7 +94,7 @@ a_toast_with_an_action_does_it_when_clicked :: proc(t: ^testing.T) { unwatched.r
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		if r.say {
-			ui.toast_action(.Good, proc(user: rawptr) { (^Run)(user).done += 1 }, r, "Version %d: click to install", 2)
+			ui.announce(&ui.Announcer{mode = .Off}, .Good, "Version 2: click to install", action = proc(user: rawptr) { (^Run)(user).done += 1 }, user = r)
 			r.say = false
 		}
 	}})
@@ -326,7 +326,7 @@ text_selected_in_a_dialog_is_copied :: proc(t: ^testing.T) { unwatched.run(t, pr
 		ui.next({width = ui.fill(), flags = {.Selectable}})
 		ui.label("Words behind it###behind")
 		if r.behind { return }
-		if ui.modal("dialog", 400, &r.open) {
+		if ui.modal("dialog", &r.open, {width_em = 400 / ui.font_size()}) {
 			ui.next({width = ui.fill(), flags = {.Selectable}})
 			ui.label("/home/sacha/.local/bin/a-path###path")
 		}
@@ -471,9 +471,9 @@ a_menu_heading_is_not_an_item :: proc(t: ^testing.T) { unwatched.run(t, proc(t: 
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		key := ui.key_from_string(0, "menu")
-		if s.frames == 1 { ui.ctx_menu_open(key, {50, 50}, from_keyboard = true) }
-		if ui.ctx_menu(key) {
+		key := "menu"
+		if s.frames == 1 { ui.menu_open(key, ui.Vec2{50, 50}, from_keyboard = true) }
+		if ui.menu(key) {
 			ui.menu_heading("Section")
 			if ui.menu_item("First").clicked { r.chosen = "first" }
 			if ui.menu_item("Second").clicked { r.chosen = "second" }
@@ -493,9 +493,9 @@ a_menu_that_searches :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		key := ui.key_from_string(0, "menu")
-		if s.frames == 1 { ui.ctx_menu_open(key, {50, 50}, search = true) }
-		if ui.ctx_menu(key) {
+		key := "menu"
+		if s.frames == 1 { ui.menu_open(key, ui.Vec2{50, 50}) }
+		if ui.menu(key) {
 			if ui.menu_item("Open").clicked { r.chosen = "open" }
 			if ui.menu_item("Rename").clicked { r.chosen = "rename" }
 			ui.menu_separator()
@@ -528,9 +528,9 @@ a_menu_s_search_edits_as_a_field :: proc(t: ^testing.T) { unwatched.run(t, proc(
 	r: Run
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		key := ui.key_from_string(0, "menu")
-		if s.frames == 1 { ui.ctx_menu_open(key, {50, 50}, search = true) }
-		if ui.ctx_menu(key) {
+		key := "menu"
+		if s.frames == 1 { ui.menu_open(key, ui.Vec2{50, 50}) }
+		if ui.menu(key) {
 			if ui.menu_item("Open").clicked { r.chosen = "open" }
 			if ui.menu_item("Rename the selected files").clicked { r.chosen = "rename" }
 			if ui.menu_item("Copy path").clicked { r.chosen = "copy" }
@@ -574,9 +574,9 @@ a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) { unwatche
 	defer ui.field_destroy(&r.field)
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		key := ui.key_from_string(0, "panel")
-		if s.frames == 1 { ui.ctx_menu_open_rect(key, {{40, 20}, {80, 40}}) }
-		if ui.ctx_menu(key) {
+		key := "panel"
+		if s.frames == 1 { ui.menu_open(key, ui.Rect{{40, 20}, {80, 40}}, search = false) }
+		if ui.menu(key) {
 			ui.next({width = ui.px(200), height = ui.px(30)})
 			_ = ui.line_edit("###panel_search", &r.field, "Search")
 			if ui.menu_item("Item").clicked {}
@@ -588,7 +588,7 @@ a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) { unwatche
 	session.type_text(s, "abc")
 	session.frames(s, 2)
 	testing.expect_value(t, ui.field_string(&r.field), "abc")
-	testing.expect(t, ui.ctx_menu_any_open(), "the menu stays open")
+	testing.expect(t, ui.menu_any_open(), "the menu stays open")
 }) }
 
 // A menu opened against the window's right edge (a burger menu) shows in its place from its first visible frame: its
@@ -596,9 +596,9 @@ a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) { unwatche
 @(test)
 a_menu_at_the_right_edge_shows_in_its_place :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = {800, 600}, no_renderer = true, build = proc(s: ^session.Session) {
-		key := ui.key_from_string(0, "burger")
-		if s.frames == 2 { ui.ctx_menu_open_rect(key, {{760, 10}, {790, 40}}) }
-		if ui.ctx_menu(key) {
+		key := "burger"
+		if s.frames == 2 { ui.menu_open(key, ui.Rect{{760, 10}, {790, 40}}, search = false) }
+		if ui.menu(key) {
 			_ = ui.menu_item("New tab", "Ctrl+T")
 			_ = ui.menu_item("New window with a long name", "Ctrl+N")
 			_ = ui.menu_item("Settings")
@@ -979,7 +979,7 @@ a_dialog_holds_the_keys :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testi
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		if ui.key_press(.Escape) { r.outside = true }
-		if ui.modal("###keys_dialog", 300, &r.open) {
+		if ui.modal("###keys_dialog", &r.open, {width_em = 300 / ui.font_size()}) {
 			if ui.key_pressed_peek(.Escape) { r.inside = true }
 			ui.label("A dialog###d")
 		}
@@ -1003,7 +1003,7 @@ a_dialog_closed_by_a_button_holds_no_key :: proc(t: ^testing.T) { unwatched.run(
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		if ui.key_press(.Escape) { r.outside = true }
-		if ui.modal("###closed_dialog", 300, &r.open) {
+		if ui.modal("###closed_dialog", &r.open, {width_em = 300 / ui.font_size()}) {
 			if ui.button("close", "Close").clicked { r.open = false }
 		}
 	}})

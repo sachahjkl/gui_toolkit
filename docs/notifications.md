@@ -103,14 +103,20 @@ uses the server's activation token, so the compositor gives the window the focus
 A program says what it just did (copied, saved, deleted) with `ui.announce(&announcer, kind, title, body)`: a
 notification of the system (`notify_async`: nothing waits on the interface's thread; the next one replaces the last), a
 toast of the window where the system shows none, or where the person chose it. `Announcer.mode` comes from
-prefs_page's standard preference `general.messages` (`prefs_page.messages_mode`): System, Window or Off. A failure
+prefs_page's standard preference `general.messages` (`prefs_page.announce_mode`): System, Window or Off. A failure
 (kind .Bad) is said even with Off.
 
 ```odin
-app.announcer = {mode = prefs_page.messages_mode(&app.prefs), window = app.anchor}
+app.announcer = {mode = prefs_page.announce_mode(&app.prefs), window = app.anchor}
 ui.announce(&app.announcer, .Good, "Copied to the clipboard")
 ui.announce(&app.announcer, .Good, "Saved", path)
+ui.announce(&app.announcer, .Info, "Version 2 is ready", "Click to install it", action = install, user = app)
 ```
+
+`announce` is the one call a program says something with: a toast of the window is always announce's.
+A toast with a `body` has its title in bold on its line and the body under it. A message with an `action` (an update to
+install, a report to open) is a toast of the window whatever the mode, since a notification of the system does not call
+back here: a click on it does `action(user)` and dismisses it.
 
 ## Limits
 

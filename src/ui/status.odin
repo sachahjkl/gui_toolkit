@@ -85,9 +85,9 @@ history_last :: proc(h: ^Frame_History) -> ^History_Sample { return history_at(h
 
 HISTORY_TAG_LOOKBACK :: 16
 
-// The most recent sample with this tag, looking back at most `within` samples (nil: none).
-history_find_tag :: proc(h: ^Frame_History, tag: u64, within := HISTORY_TAG_LOOKBACK) -> ^History_Sample {
-	for k in 0 ..< min(within, h.count) {
+// The most recent sample with this tag, looking back at most HISTORY_TAG_LOOKBACK samples (nil: none).
+history_find_tag :: proc(h: ^Frame_History, tag: u64) -> ^History_Sample {
+	for k in 0 ..< min(HISTORY_TAG_LOOKBACK, h.count) {
 		s := history_at(h, h.count - 1 - k)
 		if s.tag == tag { return s }
 	}
@@ -105,13 +105,12 @@ History_Stats :: struct {
 	n:              int,
 	mean, min, max: f32,                  // of the totals
 	p50, p95, p99:  f32,
-	over:           int,                  // totals above `budget`
 	series_mean:    [HISTORY_SERIES]f32,
 	series_max:     [HISTORY_SERIES]f32,
 	span_ms:        f64,                  // newest t_ms - oldest t_ms of the samples counted
 }
 
-history_stats :: proc(h: ^Frame_History, since_ms: f64 = 0, budget: f32 = 0) -> (st: History_Stats) {
+history_stats :: proc(h: ^Frame_History, since_ms: f64 = 0) -> (st: History_Stats) {
 	totals := make([dynamic]f32, 0, h.count, context.temp_allocator)
 	first, last: f64
 	for i in 0 ..< h.count {
@@ -123,7 +122,6 @@ history_stats :: proc(h: ^Frame_History, since_ms: f64 = 0, budget: f32 = 0) -> 
 		append(&totals, t)
 		st.n += 1
 		st.mean += t
-		if budget > 0 && t > budget { st.over += 1 }
 		for k in 0 ..< h.series {
 			st.series_mean[k] += s.v[k]
 			st.series_max[k] = max(st.series_max[k], s.v[k])
@@ -155,7 +153,7 @@ history_rate :: proc(h: ^Frame_History, now_ms: f64, window_ms: f64 = 1000) -> f
 // Frame graph
 
 // What `frame_graph` draws. Lengths are logical pixels (scaled like every other size), values in the samples' unit.
-Frame_Graph_Opts :: struct {
+Frame_Graph_Options :: struct {
 	colors:    []Color,   // per series, bottom first (missing: the theme's accent)
 	series:    int,       // series stacked (0: the history's); more than the history's draws values it does not count
 	                      // (a GPU time over the CPU phases a history's statistics are about)
@@ -176,7 +174,7 @@ Frame_Graph_Result :: struct {
 @(private)
 Graph_Draw :: struct {
 	h:        Frame_History,   // a view: the samples are drawn this frame, after the build
-	opts:     Frame_Graph_Opts,
+	options: Frame_Graph_Options,
 	colors:   [HISTORY_SERIES]Color,
 	track, budget_c, warn_c, bad_c, hover_c: Color,
 	hovered:  int,
@@ -185,8 +183,8 @@ Graph_Draw :: struct {
 
 // Layout of the bars of a graph box: how many slots, how wide, and the history index in slot 0.
 @(private)
-graph_slots :: proc(h: ^Frame_History, opts: Frame_Graph_Opts, width: f32) -> (slots: int, w: f32, first: int) {
-	slots = opts.bars > 0 ? opts.bars : max(history_capacity(h), 1)
+graph_slots :: proc(h: ^Frame_History, o: Frame_Graph_Options, width: f32) -> (slots: int, w: f32, first: int) {
+	slots = o.bars > 0 ? o.bars : max(history_capacity(h), 1)
 	w = width / f32(slots)
 	first = history_len(h) - slots   // may be negative: the left slots are empty until the history fills
 	return
@@ -202,10 +200,10 @@ graph_slots :: proc(h: ^Frame_History, opts: Frame_Graph_Opts, width: f32) -> (s
 // Height the graph's top stands for: at least `scale` (else the budget), enough for most bars shown (90 % of them
 // with some room); a rare spike far above them is cut and marked rather than flattening every other bar. At most
 // `max_scale`.
-graph_scale :: proc(h: ^Frame_History, opts: Frame_Graph_Opts) -> f32 {
-	top := opts.scale > 0 ? opts.scale : opts.budget
-	n := opts.bars > 0 ? min(opts.bars, h.count) : h.count
-	series := opts.series > 0 ? opts.series : h.series
+graph_scale :: proc(h: ^Frame_History, o: Frame_Graph_Options) -> f32 {
+	top := o.scale > 0 ? o.scale : o.budget
+	n := o.bars > 0 ? min(o.bars, h.count) : h.count
+	series := o.series > 0 ? o.series : h.series
 	if n > 0 {
 		totals := make([]f32, n, context.temp_allocator)
 		for k in 0 ..< n { totals[k] = sample_total(history_at(h, h.count - n + k), series) }
@@ -214,29 +212,29 @@ graph_scale :: proc(h: ^Frame_History, opts: Frame_Graph_Opts) -> f32 {
 		most := totals[clamp(int(math.ceil(GRAPH_SCALE_QUANTILE * f32(n))) - 1, 0, n - 1)] * GRAPH_SCALE_HEADROOM
 		top = max(top, tallest <= most * GRAPH_SPIKE_RATIO ? tallest * GRAPH_TOP_MARGIN : most)
 	}
-	if opts.max_scale > 0 { top = min(top, opts.max_scale) }
+	if o.max_scale > 0 { top = min(top, o.max_scale) }
 	return top > 0 ? top : 1
 }
 
 // A bar graph of `h`: one stacked bar per sample, newest at the right; the size comes from the style (`next`).
 // Clickable: the result says which sample is under the pointer, and whether the graph was clicked.
-frame_graph :: proc(id: string, h: ^Frame_History, opts: Frame_Graph_Opts) -> (res: Frame_Graph_Result) {
+frame_graph :: proc(id: string, h: ^Frame_History, o: Frame_Graph_Options) -> (res: Frame_Graph_Result) {
 	b := build_box({.Clickable, .Draw_Hot_Effects}, id)
 	b.cursor = .Hand
 	res.sig = signal(b)
 	res.hovered = -1
 	if res.hovering {
-		slots, w, first := graph_slots(h, opts, b.rect.max.x - b.rect.min.x)
+		slots, w, first := graph_slots(h, o, b.rect.max.x - b.rect.min.x)
 		if w > 0 {
 			k := int(res.mouse.x / w)
 			if k >= 0 && k < slots && first + k >= 0 && first + k < h.count { res.hovered = first + k }
 		}
 	}
 	d := frame_new(Graph_Draw)
-	d.h, d.opts, d.hovered = h^, opts, res.hovered
-	d.opts.colors = nil   // copied below: the caller's slice may not outlive the build
-	d.scale = graph_scale(h, opts)
-	for i in 0 ..< HISTORY_SERIES { d.colors[i] = i < len(opts.colors) ? opts.colors[i] : color("accent") }
+	d.h, d.options, d.hovered = h^, o, res.hovered
+	d.options.colors = nil   // copied below: the caller's slice may not outlive the build
+	d.scale = graph_scale(h, o)
+	for i in 0 ..< HISTORY_SERIES { d.colors[i] = i < len(o.colors) ? o.colors[i] : color("accent") }
 	d.track = color("track")
 	d.budget_c = color("weak text")
 	if tags("warn") { d.warn_c = color("text") }
@@ -267,7 +265,7 @@ graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	sc := scale()
 	draw.rect(dc, r, tuned(Color{d.track.r, d.track.g, d.track.b, d.track.a * GRAPH_TRACK_ALPHA_FACTOR}), rad(b.font_size * 0.2))
 	height := r.max.y - r.min.y
-	slots, w, first := graph_slots(h, d.opts, r.max.x - r.min.x)
+	slots, w, first := graph_slots(h, d.options, r.max.x - r.min.x)
 	gap: f32 = w >= GRAPH_GAP_MIN_BAR_PX * sc ? max(1, math.floor(sc)) : 0
 	y_of :: proc(v, top, height: f32, bottom: f32) -> f32 { return bottom - clamp(v / top, 0, 1) * height }
 	cap_h := max(1, math.round(GRAPH_CAP_PX * sc))
@@ -280,8 +278,8 @@ graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		if x1 <= x0 { x1 = x0 + 1 }
 		acc, counted: f32
 		lit := i == d.hovered
-		if hl, ok := d.opts.highlight.?; ok && hl == i { lit = true }
-		for c in 0 ..< clamp(d.opts.series > 0 ? d.opts.series : h.series, 0, HISTORY_SERIES) {
+		if hl, ok := d.options.highlight.?; ok && hl == i { lit = true }
+		for c in 0 ..< clamp(d.options.series > 0 ? d.options.series : h.series, 0, HISTORY_SERIES) {
 			v := s.v[c]
 			if c < h.series { counted += max(v, 0) }
 			if v <= 0 { continue }
@@ -295,7 +293,7 @@ graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		}
 		// over a threshold (the history's own series), or past the top: a cap mark
 		mark: Color
-		if d.opts.bad > 0 && counted > d.opts.bad { mark = d.bad_c } else if d.opts.warn > 0 && counted > d.opts.warn { mark = d.warn_c }
+		if d.options.bad > 0 && counted > d.options.bad { mark = d.bad_c } else if d.options.warn > 0 && counted > d.options.warn { mark = d.warn_c }
 		if acc > d.scale && mark.a == 0 { mark = d.bad_c }
 		if mark.a > 0 {
 			top := y_of(acc, d.scale, height, r.max.y)
@@ -306,8 +304,8 @@ graph_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		}
 	}
 	// the budget: a dashed line
-	if d.opts.budget > 0 && d.opts.budget < d.scale {
-		y := math.round(y_of(d.opts.budget, d.scale, height, r.max.y))
+	if d.options.budget > 0 && d.options.budget < d.scale {
+		y := math.round(y_of(d.options.budget, d.scale, height, r.max.y))
 		dash, space := GRAPH_DASH_PX * sc, GRAPH_DASH_GAP_PX * sc
 		lw := max(1, math.round(sc))
 		c := d.budget_c
@@ -477,7 +475,7 @@ popover :: proc(id: string, anchor: Rect, width: f32, side := Popover_Side.Above
 }
 
 @(private)
-popover_end :: proc() { ctx_menu_end() }
+popover_end :: proc() { popup_end() }
 
 // Where the popover `id` was laid out last frame (ok false: it was not built).
 popover_rect :: proc(id: string) -> (r: Rect, ok: bool) {

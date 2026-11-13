@@ -112,7 +112,7 @@ theme_edited_before_the_palette :: proc(t: ^testing.T) {
 }
 
 build_toast :: proc(f: ^Fx, user: rawptr) {
-	ui.toast(.Info, "%s", (^string)(user)^)
+	ui.announce(&ui.Announcer{mode = .Window}, .Info, (^string)(user)^)
 }
 
 @(test)

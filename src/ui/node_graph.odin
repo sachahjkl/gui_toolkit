@@ -20,6 +20,7 @@ package ui
 import "core:fmt"
 import "core:math"
 import "../draw"
+import "../flowgraph"
 import "../font"
 import "../platform"
 import "../render"
@@ -41,13 +42,11 @@ GRAPH_DETAIL_ZOOM :: 0.5
 @(private) GRAPH_THUMB_MAX_EM    :: 8      // a thumbnail's height at most
 @(private) GRAPH_RADIUS_EM       :: 0.45
 
-Graph_Port_Side :: enum u8 { In, Out }
-
 Graph_Port :: struct {
 	id:       u32,
 	name:     string,           // shown beside the port
 	kind:     u8,               // the program's type of what flows (its colour: Graph_Options.kind_colors[kind])
-	side:     Graph_Port_Side,
+	side:     flowgraph.Side,
 	multiple: bool,             // an In port: takes several links (else a new link replaces the old one)
 }
 
@@ -74,13 +73,6 @@ Graph_Link :: struct {
 	from_port: u32,
 	to_node:   u64,
 	to_port:   u32,
-}
-
-// A port of a node, where a gesture or an event is.
-Graph_Port_Ref :: struct {
-	node: u64,
-	port: u32,
-	side: Graph_Port_Side,
 }
 
 // What the program keeps between frames: where the view is and how close (its own to set: graph_fit), and the gesture in
@@ -130,10 +122,10 @@ Graph_Gesture_Move :: struct {
 
 // A link being drawn from a port; `detached` was taken off an in port to go elsewhere (dropped on nothing: removed).
 Graph_Gesture_Wire :: struct {
-	from:     Graph_Port_Ref,
+	from:     flowgraph.Port_Ref,
 	detached: Maybe(Graph_Link),
 	at:       [2]f32,                // the free end, graph units
-	target:   Maybe(Graph_Port_Ref), // the port it would link to if let go now
+	target:   Maybe(flowgraph.Port_Ref), // the port it would link to if let go now
 }
 
 // A box drawn from a press on nothing: the nodes it touches are selected.
@@ -201,7 +193,7 @@ Graph_Deleted :: struct {
 Graph_Context :: struct {
 	at:   [2]f32,
 	node: u64,
-	port: Maybe(Graph_Port_Ref),
+	port: Maybe(flowgraph.Port_Ref),
 }
 
 // A double click on a node.
@@ -211,7 +203,7 @@ Graph_Opened :: struct {
 
 // A link let go on the background: the program can offer to add a node there, linked to `from`.
 Graph_Dropped_Link :: struct {
-	from: Graph_Port_Ref,
+	from: flowgraph.Port_Ref,
 	at:   [2]f32,
 }
 
@@ -319,7 +311,7 @@ node_graph_geometry :: proc(n: ^Graph_Node, em: f32, body: f32, detail: bool) ->
 
 // The centre of a port, graph units.
 @(private)
-node_graph_port_at :: proc(g: ^Node_Graph_Geometry, side: Graph_Port_Side, index: int) -> [2]f32 {
+node_graph_port_at :: proc(g: ^Node_Graph_Geometry, side: flowgraph.Side, index: int) -> [2]f32 {
 	y := g.rect.min.y + g.ports_top + (f32(index) + 0.5) * g.row
 	return {side == .In ? g.rect.min.x : g.rect.max.x, y}
 }
@@ -350,7 +342,7 @@ graph_node_rect :: proc(view: ^Graph_View, n: ^Graph_Node) -> Rect {
 
 // The centre of a node's port in graph units (`index` among the ports of its side), by the last build's sizes: where a
 // program shows something by a port, where a test presses.
-graph_port_pos :: proc(view: ^Graph_View, n: ^Graph_Node, side: Graph_Port_Side, index: int) -> [2]f32 {
+graph_port_pos :: proc(view: ^Graph_View, n: ^Graph_Node, side: flowgraph.Side, index: int) -> [2]f32 {
 	em := view.em > 0 ? view.em : 16
 	detail := graph_zoom(view) >= GRAPH_DETAIL_ZOOM
 	g := node_graph_geometry(n, em, detail ? node_graph_body_height(view, n.id) : 0, detail)

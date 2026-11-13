@@ -1172,13 +1172,11 @@ dot_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 ////////////////////////////////
 // Dropdown and tabs
 
-@(private = "file") DROPDOWN_MENU_KEY_SALT :: 0xd0d0
-
 // Button showing the current item; opens a menu of `items`. Returns true when the selection changed.
 dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool) {
 	em := font_size()
-	menu_key := key_from_u64(key_from_string(parent_box().key, id), DROPDOWN_MENU_KEY_SALT)
-	open := ctx_menu_is_open(menu_key)
+	menu_id := fmt.tprintf("###dropdown_menu_%x", u64(key_from_string(parent_box().key, id)))
+	open := menu_is_open(menu_id)
 	btn: ^Box
 	sig: Signal
 	if tags("button") {
@@ -1197,12 +1195,12 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 	// Down / Alt+Down on the focused button opens the list from the keyboard too
 	kb := sig.focused && !open && (key_press(.Down, {.Alt}) || key_press(.Down) || key_press(.F4))
 	if sig.clicked || kb {
-		if open { ctx_menu_close() } else {
-			ctx_menu_open_rect(menu_key, btn.rect, btn.key, from_keyboard = kb)
+		if open { menu_close() } else {
+			menu_open(menu_id, btn.rect, btn.key, from_keyboard = kb, search = false)
 			menu_select(selected^)   // keyboard starts from the current value
 		}
 	}
-	if ctx_menu(menu_key, max(btn.size.x, em * MENU_MIN_WIDTH_EM)) {
+	if menu(menu_id, max(btn.size.x, em * MENU_MIN_WIDTH_EM)) {
 		for item, i in items {
 			if menu_item(item, "", i == selected^).clicked { selected^ = i; changed = true }
 		}

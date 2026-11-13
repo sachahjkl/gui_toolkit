@@ -5,6 +5,7 @@ package ui
 
 import "core:math"
 import "../draw"
+import "../flowgraph"
 import i18n "../i18n"
 import "../platform"
 
@@ -49,7 +50,7 @@ Node_Graph_Hit_Kind :: enum u8 { None, Node, Port, Link, Minimap }
 Node_Graph_Hit :: struct {
 	kind: Node_Graph_Hit_Kind,
 	node: int,              // the node's index (Node, Port)
-	port: Graph_Port_Ref,   // Port
+	port: flowgraph.Port_Ref,   // Port
 	link: Graph_Link,       // Link
 }
 
@@ -140,7 +141,7 @@ node_graph_visible :: proc(f: ^Node_Graph_Frame, i: int, area: Rect) -> bool {
 
 // The port of `ref` and its index on its side; ok false: no such port.
 @(private)
-node_graph_port :: proc(f: ^Node_Graph_Frame, ref: Graph_Port_Ref) -> (port: Graph_Port, index: int, ok: bool) {
+node_graph_port :: proc(f: ^Node_Graph_Frame, ref: flowgraph.Port_Ref) -> (port: Graph_Port, index: int, ok: bool) {
 	i, found := f.index[ref.node]
 	if !found { return }
 	ports := ref.side == .In ? f.nodes[i].inputs : f.nodes[i].outputs
@@ -150,7 +151,7 @@ node_graph_port :: proc(f: ^Node_Graph_Frame, ref: Graph_Port_Ref) -> (port: Gra
 
 // A port's centre on the screen (frame px).
 @(private)
-node_graph_port_screen :: proc(f: ^Node_Graph_Frame, ref: Graph_Port_Ref) -> (at: [2]f32, ok: bool) {
+node_graph_port_screen :: proc(f: ^Node_Graph_Frame, ref: flowgraph.Port_Ref) -> (at: [2]f32, ok: bool) {
 	_, k, found := node_graph_port(f, ref)
 	if !found { return }
 	return f.view.origin + node_graph_local(f, node_graph_port_at(&f.geo[f.index[ref.node]], ref.side, k)), true
@@ -158,7 +159,7 @@ node_graph_port_screen :: proc(f: ^Node_Graph_Frame, ref: Graph_Port_Ref) -> (at
 
 // The link that joins two ports of opposite sides, from the out one to the in one.
 @(private)
-node_graph_link_of :: proc(a, b: Graph_Port_Ref) -> Graph_Link {
+node_graph_link_of :: proc(a, b: flowgraph.Port_Ref) -> Graph_Link {
 	o, i := a, b
 	if a.side == .In { o, i = b, a }
 	return {from_node = o.node, from_port = o.port, to_node = i.node, to_port = i.port}
@@ -167,7 +168,7 @@ node_graph_link_of :: proc(a, b: Graph_Port_Ref) -> Graph_Link {
 // Whether a link from port `from` may end on port `to`: another node, the other side, and the program's can_link (else
 // the same kind).
 @(private)
-node_graph_compatible :: proc(f: ^Node_Graph_Frame, from, to: Graph_Port_Ref) -> bool {
+node_graph_compatible :: proc(f: ^Node_Graph_Frame, from, to: flowgraph.Port_Ref) -> bool {
 	if from.side == to.side || from.node == to.node { return false }
 	if f.o.can_link != nil { return f.o.can_link(f.o.user, node_graph_link_of(from, to)) }
 	a, _, ok_a := node_graph_port(f, from)
@@ -203,7 +204,7 @@ node_graph_hit :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> (h: Node_Graph_Hit) {
 		n := &f.nodes[i]
 		r := node_graph_screen_rect(f, i)
 		if !node_graph_overlaps(draw.rect_pad(r, reach), {p, p + 1}) { continue }
-		for side in Graph_Port_Side {
+		for side in flowgraph.Side {
 			for port, k in (side == .In ? n.inputs : n.outputs) {
 				c := f.view.origin + node_graph_local(f, node_graph_port_at(&f.geo[i], side, k))
 				if node_graph_length(p - c) <= reach { return {kind = .Port, node = i, port = {n.id, port.id, side}} }
@@ -513,17 +514,17 @@ node_graph_moved_ids :: proc(f: ^Node_Graph_Frame, g: Graph_Gesture_Move) -> []u
 
 // The port a wire from `from` would link to with the pointer at `p`: the nearest one it may link to, within reach.
 @(private)
-node_graph_wire_target :: proc(f: ^Node_Graph_Frame, from: Graph_Port_Ref, p: [2]f32) -> (target: Maybe(Graph_Port_Ref)) {
+node_graph_wire_target :: proc(f: ^Node_Graph_Frame, from: flowgraph.Port_Ref, p: [2]f32) -> (target: Maybe(flowgraph.Port_Ref)) {
 	reach := node_graph_port_reach(f) * GRAPH_WIRE_REACH
 	best := reach
-	side: Graph_Port_Side = from.side == .Out ? .In : .Out
+	side: flowgraph.Side = from.side == .Out ? .In : .Out
 	for &n, i in f.nodes {
 		if n.id == from.node { continue }
 		if !node_graph_overlaps(draw.rect_pad(node_graph_screen_rect(f, i), reach), {p, p + 1}) { continue }
 		for port, k in (side == .In ? n.inputs : n.outputs) {
 			c := f.view.origin + node_graph_local(f, node_graph_port_at(&f.geo[i], side, k))
 			d := node_graph_length(p - c)
-			ref := Graph_Port_Ref{n.id, port.id, side}
+			ref := flowgraph.Port_Ref{n.id, port.id, side}
 			if d <= best && node_graph_compatible(f, from, ref) {
 				best = d
 				target = ref

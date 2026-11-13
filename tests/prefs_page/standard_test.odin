@@ -143,11 +143,11 @@ the_themes_show_as_cards :: proc(t: ^testing.T) {
 
 // Where the messages go: the system's by default, as the preference says once set.
 @(test)
-the_messages_mode_reads_back :: proc(t: ^testing.T) {
+the_announce_mode_reads_back :: proc(t: ^testing.T) {
 	p := standard_prefs()
 	defer config.prefs_destroy(&p)
-	testing.expect_value(t, prefs_page.messages_mode(&p), ui.Announce_Mode.System)
+	testing.expect_value(t, prefs_page.announce_mode(&p), ui.Announce_Mode.System)
 	config.set_from_string(&p, "general.messages", "window", .User)
-	testing.expect_value(t, prefs_page.messages_mode(&p), ui.Announce_Mode.Window)
+	testing.expect_value(t, prefs_page.announce_mode(&p), ui.Announce_Mode.Window)
 	testing.expect(t, config.set_from_string(&p, "general.messages", "loud", .User) != .None, "a value of its choices only")
 }

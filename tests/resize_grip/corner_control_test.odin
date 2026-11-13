@@ -29,12 +29,11 @@ an_inset_corner_is_concentric :: proc(t: ^testing.T) {
 @(private = "file")
 Corner_Dialog :: struct {
 	open:          bool,
-	sized:         bool,     // modal_sized, else modal
+	sized:         bool,     // resizable (a `size`), else as tall as what is in it
 	square:        bool,     // the dialog's corners square
 	size:          ui.Vec2,
 	outer:         f32,      // the dialog's radius as drawn
 	panel, corner: ui.Rect,
-	own_header:    bool,     // the header through a program's own `if` form
 	own_control:   bool,     // the corner's control of the program's own look (modal_corner), not the toolkit's button
 }
 
@@ -44,18 +43,14 @@ wide :: proc() {
 	ui.build_box({.Draw_Background}, "###wide")   // (a header control as wide as it may be)
 }
 
-// A program's own header: its options given once.
-@(private = "file", deferred_none = ui.dialog_header_end)
-own_header :: proc() -> bool { return ui.dialog_header_begin("head", "Files", {close = true}) }
-
 @(private = "file")
 corner_dialog :: proc(t: ^testing.T, d: ^Corner_Dialog) -> ^session.Session {
 	return session.start(t, {size = {500, 360}, user = d, build = proc(s: ^session.Session) {
 		d := (^Corner_Dialog)(s.user)
 		if d.sized {
-			if ui.modal_sized("corner", {320, 200}, &d.size, &d.open) { corner_content(s, d) }
+			if ui.modal("corner", &d.open, {width_em = 320 / ui.font_size(), height_em = 200 / ui.font_size(), size = &d.size}) { corner_content(s, d) }
 		} else {
-			if ui.modal("corner", 320, &d.open) { corner_content(s, d) }
+			if ui.modal("corner", &d.open, {width_em = 320 / ui.font_size()}) { corner_content(s, d) }
 		}
 	}})
 }
@@ -65,15 +60,11 @@ corner_content :: proc(s: ^session.Session, d: ^Corner_Dialog) {
 	if d.square { ui.parent_box().radius = 0 }
 	d.outer = ui.box_drawn_radius(s.state, ui.parent_box())
 	d.panel = ui.parent_box().rect   // (of the last layout: the test reads it after a few frames)
-	if d.own_header {
-		if own_header() { wide() }
-	} else {
-		if ui.dialog_header("head", "Files", {close = true}) {
-			wide()
-			if d.own_control {
-				b := ui.modal_corner({.Clickable}, "###own_close")
-				if ui.signal(b).clicked { d.open = false }
-			}
+	if ui.dialog_header("head", "Files", {close = true}) {
+		wide()
+		if d.own_control {
+			b := ui.modal_corner({.Clickable}, "###own_close")
+			if ui.signal(b).clicked { d.open = false }
 		}
 	}
 	ui.next({width = ui.fill(), height = ui.px(120)})
@@ -119,21 +110,17 @@ the_corner_control_is_inset_alike_from_the_top_and_the_right :: proc(t: ^testing
 the_corner_control_of_a_square_dialog_is_square :: proc(t: ^testing.T) { inset_alike(t, true) }
 
 @(test)
-the_header_leaves_the_corner_to_its_control :: proc(t: ^testing.T) { header_clear(t, false, false) }
-
-// A program's own `if` form of the header ends it once: wrapping dialog_header ended it twice, and the build's parents with it.
-@(test)
-a_program_s_own_header_is_the_same :: proc(t: ^testing.T) { header_clear(t, true, false) }
+the_header_leaves_the_corner_to_its_control :: proc(t: ^testing.T) { header_clear(t, false) }
 
 // A control of the program's own look in the corner takes the place of the toolkit's button: one control there, placed alike.
 @(test)
 a_program_s_own_corner_control_replaces_the_close_button :: proc(t: ^testing.T) {
-	header_clear(t, false, true)
+	header_clear(t, true)
 }
 
 @(private = "file")
-header_clear :: proc(t: ^testing.T, own, own_control: bool) {
-	d := Corner_Dialog{open = true, sized = true, own_header = own, own_control = own_control}
+header_clear :: proc(t: ^testing.T, own_control: bool) {
+	d := Corner_Dialog{open = true, sized = true, own_control = own_control}
 	s := corner_dialog(t, &d)
 	session.frames(s, 3)
 	corner, wide := corner_box(s, &d), session.find(s, "wide")

@@ -212,6 +212,7 @@ open :: proc(o: Open_Options) -> ^App {
 	if !ok { fmt.eprintln("cannot load the icon font"); return nil }
 	draw.init(&app.dc, &app.r, &app.fonts)
 	ui.init(&app.ui_state, &app.fonts, &app.theme)
+	app.announcer = {mode = .Window, state = &app.ui_state}
 	app.ui_state.icon_font = app.icons
 	app.ui_state.mono_font = app.mono
 

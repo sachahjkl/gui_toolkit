@@ -33,6 +33,7 @@ App :: struct {
 	fonts:    font.State,
 	dc:       draw.Context,
 	ui_state: ui.State,
+	announcer: ui.Announcer,   // the links clicked: toasts of the window
 	theme:    ui.Theme,
 	ui_font, mono, bold: font.Font_Id,
 	frames:   int,
@@ -110,7 +111,7 @@ build_ui :: proc(app: ^App) {
 			// selectable: a drag selects across the blocks, Ctrl+C copies, double / triple click: a word / a block
 			ui.next({width = ui.fill(), font_size = size, flags = {.Selectable}})
 			res := ui.rich_paragraph(fmt.tprintf("###b%d", n), runs[:])
-			if res.link_clicked >= 0 { ui.toast(.Info, "Link: %s", res.link) }
+			if res.link_clicked >= 0 { ui.announce(&app.announcer, .Info, fmt.tprintf("Link: %s", res.link)) }
 			ui.spacer(ui.px(em * 0.6))
 			n += 1
 		}
@@ -169,6 +170,7 @@ main :: proc() {
 	app.mono, _, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("consola.ttf"), font.FALLBACK_MONO_DATA)
 	draw.init(&app.dc, &app.r, &app.fonts)
 	ui.init(&app.ui_state, &app.fonts, &app.theme)
+	app.announcer = {mode = .Window, state = &app.ui_state}
 	app.ui_state.mono_font = app.mono
 	// the family's real bold and italic faces (else they are simulated)
 	if bold, bok := font.load_system(&app.fonts, "Segoe UI", 700); bok {

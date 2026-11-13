@@ -33,7 +33,7 @@ form_build :: proc(s: ^session.Session) {
 		ui.next({width = ui.px(100)})
 		if ui.button("save", "Save").clicked { f.saves += 1 }
 	}
-	if ui.modal("dialog", 300, &f.modal) {
+	if ui.modal("dialog", &f.modal, {width_em = 300 / ui.font_size()}) {
 		ui.next({width = ui.px(100)})
 		ui.button("m_one", "One")
 		ui.next({width = ui.px(100)})

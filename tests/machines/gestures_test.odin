@@ -16,7 +16,7 @@ import "../../src/ui"
 @(private = "file") ROWS :: 200
 @(private = "file") ROW_HEIGHT :: 30
 @(private = "file") SETTLE_FRAMES :: 4
-@(private = "file") PREFERRED :: ui.Vec2{420, 320}
+@(private = "file") PREFERRED :: ui.Vec2{28, 20}   // the dialog's size, in ems (Modal_Options)
 @(private = "file") GRIP_MOVE_PX :: 20
 @(private = "file") HOLD_MS :: 2000
 @(private = "file") LONG_TIME_MS :: 1200
@@ -32,7 +32,7 @@ Sized :: struct { open: bool, size: ui.Vec2 }
 @(private = "file")
 sized_build :: proc(s: ^session.Session) {
 	r := (^Sized)(s.user)
-	if ui.modal_sized("sized", PREFERRED, &r.size, &r.open) { ui.label("Hello") }
+	if ui.modal("sized", &r.open, {width_em = PREFERRED.x, height_em = PREFERRED.y, size = &r.size}) { ui.label("Hello") }
 }
 
 // A press on an edge that does not move leaves the person's size alone: the size this small window clamps it to is not theirs.
@@ -50,7 +50,7 @@ a_press_on_a_dialog_edge_chooses_no_size :: proc(t: ^testing.T) {
 // A double click goes back to the preferred size, and stays there with a frame made while the button is down.
 @(test)
 a_double_click_on_a_dialog_edge_holds :: proc(t: ^testing.T) {
-	r := Sized{open = true, size = PREFERRED + {40, 0}}
+	r := Sized{open = true, size = PREFERRED + {3, 0}}
 	s := session.start(t, {size = WINDOW, user = &r, build = sized_build})
 	session.frames(s, SETTLE_FRAMES)
 	at := session.center(session.get(s, "modal_grip3"))
@@ -138,7 +138,7 @@ a_number_held_off_its_button_waits :: proc(t: ^testing.T) {
 
 @(private = "file")
 Menus :: struct {
-	key, other: ui.Key,
+	key, other: string,
 	sub_on:   bool,
 	open_other: bool,
 	stray:    int,   // rows of the old menu found in the new one
@@ -149,21 +149,21 @@ Menus :: struct {
 menu_build :: proc(s: ^session.Session) {
 	r := (^Menus)(s.user)
 	ui.button("page", "Page")
-	if ui.ctx_menu(r.key) {
-		if ui.menu_submenu("Sub###sub", enabled = r.sub_on) { ui.menu_item("Inner###inner") }
-		if ui.menu_item("Plain###plain", enabled = false).clicked {}
-		if ui.menu_item("Second###second", keep_open = true).clicked { ui.ctx_menu_open(r.other, {200, 200}) }
+	if ui.menu(r.key) {
+		if ui.menu_submenu("Sub###sub", disabled = !r.sub_on) { ui.menu_item("Inner###inner") }
+		if ui.menu_item("Plain###plain", disabled = true).clicked {}
+		if ui.menu_item("Second###second", keep_open = true).clicked { ui.menu_open(r.other, ui.Vec2{200, 200}) }
 		ui.menu_item("After###after")
 	}
-	if ui.ctx_menu_is_open(r.other) && s.state.menus[0].open_build == s.state.build_index { r.stray = len(s.state.menus[0].items) }
-	if ui.ctx_menu(r.other) { ui.menu_item("Other###other") }
+	if ui.menu_is_open(r.other) && s.state.menus[0].open_build == s.state.build_index { r.stray = len(s.state.menus[0].items) }
+	if ui.menu(r.other) { ui.menu_item("Other###other") }
 	ui.next({width = ui.px(FIELD_WIDTH)})
 	ui.line_edit("###f", &r.field)
 }
 
 @(private = "file")
 menus_start :: proc(t: ^testing.T, r: ^Menus) -> ^session.Session {
-	r.key, r.other = ui.key_from_string(0, "m"), ui.key_from_string(0, "o")
+	r.key, r.other = "m", "o"
 	r.sub_on = true
 	s := session.start(t, {size = WINDOW, user = r, build = menu_build})
 	return s
@@ -174,10 +174,10 @@ menus_start :: proc(t: ^testing.T, r: ^Menus) -> ^session.Session {
 a_side_button_outside_closes_a_menu :: proc(t: ^testing.T) {
 	r: Menus
 	s := menus_start(t, &r)
-	ui.ctx_menu_open(r.key, {200, 200})
+	ui.menu_open(r.key, ui.Vec2{200, 200})
 	session.frames(s, SETTLE_FRAMES)
 	session.click_at(s, {500, 450}, .Back)
-	testing.expect(t, !ui.ctx_menu_any_open(), "closed")
+	testing.expect(t, !ui.menu_any_open(), "closed")
 }
 
 // Right on a submenu that turned disabled opens nothing, then or later.
@@ -185,7 +185,7 @@ a_side_button_outside_closes_a_menu :: proc(t: ^testing.T) {
 open_sub_ends_with_its_frame :: proc(t: ^testing.T) {
 	r: Menus
 	s := menus_start(t, &r)
-	ui.ctx_menu_open(r.key, {200, 200}, from_keyboard = true)
+	ui.menu_open(r.key, ui.Vec2{200, 200}, from_keyboard = true)
 	session.frames(s, SETTLE_FRAMES)
 	r.sub_on = false
 	session.event(s, {kind = .Key_Press, key = .Right})
@@ -200,13 +200,13 @@ open_sub_ends_with_its_frame :: proc(t: ^testing.T) {
 a_menu_opened_in_a_block_opens_after_it :: proc(t: ^testing.T) {
 	r: Menus
 	s := menus_start(t, &r)
-	ui.ctx_menu_open(r.key, {200, 200})
+	ui.menu_open(r.key, ui.Vec2{200, 200})
 	session.frames(s, SETTLE_FRAMES)
 	row, found := ui.menu_item_rect(0, 2)
 	testing.expect(t, found, "the row is there")
 	session.click_at(s, (row.min + row.max) * 0.5)
 	session.frames(s, SETTLE_FRAMES)
-	testing.expect(t, ui.ctx_menu_is_open(r.other), "the other menu is open")
+	testing.expect(t, ui.menu_is_open(r.other), "the other menu is open")
 	testing.expect_value(t, r.stray, 0)   // (the rows of the old block stayed in it)
 }
 
@@ -218,12 +218,12 @@ a_press_in_a_menu_keeps_the_focus :: proc(t: ^testing.T) {
 	s := menus_start(t, &r)
 	session.click(s, "f")
 	want := s.state.focus_key
-	ui.ctx_menu_open(r.key, {200, 200})
+	ui.menu_open(r.key, ui.Vec2{200, 200})
 	session.frames(s, SETTLE_FRAMES)
 	row, found := ui.menu_item_rect(0, 3)
 	testing.expect(t, found, "the row is there")
 	session.click_at(s, (row.min + row.max) * 0.5)
-	testing.expect(t, !ui.ctx_menu_any_open(), "chosen")
+	testing.expect(t, !ui.menu_any_open(), "chosen")
 	testing.expect_value(t, s.state.focus_key, want)
 }
 
@@ -232,7 +232,7 @@ a_press_in_a_menu_keeps_the_focus :: proc(t: ^testing.T) {
 from_keyboard_selects_once :: proc(t: ^testing.T) {
 	r: Menus
 	s := menus_start(t, &r)
-	ui.ctx_menu_open(r.key, {200, 200}, from_keyboard = true)
+	ui.menu_open(r.key, ui.Vec2{200, 200}, from_keyboard = true)
 	session.frames(s, SETTLE_FRAMES)
 	_, sel, _ := ui.menu_rect(0)
 	testing.expect_value(t, sel, 0)
@@ -490,7 +490,7 @@ a_toast_that_stands_sleeps :: proc(t: ^testing.T) {
 	r: Toasts
 	s := session.start(t, {size = WINDOW, user = &r, animations = true, build = proc(s: ^session.Session) {
 		r := (^Toasts)(s.user)
-		if !r.said { r.said = true; ui.toast(.Info, "Hello") }
+		if !r.said { r.said = true; ui.announce(&ui.Announcer{mode = .Window}, .Info, "Hello") }
 	}})
 	session.advance(s, LONG_TIME_MS)
 	testing.expect(t, !ui.needs_frame(s.state), "no frames while nothing moves")

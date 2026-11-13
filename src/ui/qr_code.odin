@@ -7,11 +7,10 @@ import "../draw"
 import i18n "../i18n"
 import "../qr"
 
-// What a qr_code box keeps between builds: its text's code, encoded again only when the text or the level changes.
+// What a qr_code box keeps between builds: its text's code, encoded again only when the text changes.
 @(private)
 Qr_Cached :: struct {
 	text: string,   // owned (the map's allocator)
-	ecc:  qr.Ecc,
 	code: qr.Code,  // empty when the text is too long (err)
 	err:  qr.Error,
 	seen: u64,      // the last build that built the box: the others are dropped at its end (qr_trim)
@@ -28,10 +27,10 @@ QR_FRAME_GAP_EM :: f32(0.3)
 QR_FRAME_ALPHA :: f32(0.35)
 
 // A QR Code of `text` in a square of `size` pixels (like `px`), its quiet zone included. Dark modules on white, whatever
-// the theme: scanners need dark on light. Each module is a whole number of device pixels, the code centred in the box; a
+// the theme: scanners need dark on light. Its correction is Medium (15% of the code can be lost). Each module is a whole number of device pixels, the code centred in the box; a
 // box too small for one pixel a module is clipped. A text too long for version 40 shows the white square alone. To a
 // screen reader it is an image named "QR code: <text>". See docs/qr.md.
-qr_code :: proc(id: string, text: string, size: f32, ecc := qr.Ecc.Medium) -> Signal {
+qr_code :: proc(id: string, text: string, size: f32) -> Signal {
 	s := gs()
 	// (a rounded border of the theme, a gap inside it, then the white square: a frame around the code, which on a dark
 	// dialog reads as drawn, not cut out)
@@ -40,11 +39,11 @@ qr_code :: proc(id: string, text: string, size: f32, ecc := qr.Ecc.Medium) -> Si
 	next_merge({width = px(size), height = px(size), radius = font_size() * QR_RADIUS_EM, border = edge})
 	b := build_box({.Draw_Border}, id)
 	c, kept := &s.qr_codes[b.key]
-	if !kept || c.text != text || c.ecc != ecc {
+	if !kept || c.text != text {
 		allocator := s.qr_codes.allocator
 		if kept { qr_cached_free(c, allocator) } else { s.qr_codes[b.key] = {}; c = &s.qr_codes[b.key] }
-		c.text, c.ecc = strings.clone(text, allocator), ecc
-		c.code, c.err = qr.encode(text, ecc, allocator)
+		c.text = strings.clone(text, allocator)
+		c.code, c.err = qr.encode(text, .Medium, allocator)
 	}
 	c.seen = s.build_index
 	d := frame_new(Qr_Draw)

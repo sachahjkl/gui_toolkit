@@ -48,7 +48,7 @@ thread, the install watched) are the same as in the dialog, which calls the same
 
 ```odin
 ev := setup.update(&d, cfg)                       // each frame, open or not: the work that ended, the install read again
-if d.open && ui.modal_sized("my_setup", ...) {
+if d.open && ui.modal("my_setup", &d.open, {...}) {
 	title, badge := setup.headline(d.facts, cfg)   // "Install Classeur", "Not installed"
 	words, tone := setup.state_words(d.facts, cfg) // the state in a sentence, its tone
 	ui.checkbox("###shortcut", "Shortcut on the Desktop", &d.shortcut)   // d.choices[i]: Config.choices

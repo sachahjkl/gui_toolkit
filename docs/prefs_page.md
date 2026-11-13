@@ -60,7 +60,7 @@ ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 | `Timing` | `timing` | the tooltip delay, the submenu delay, a menu item's height, the colour fade |
 | `Rendering` | `rendering` | all advanced: presentation (vsync, tearing), frames queued, partial redraw, the blur limit, the filters' precision |
 | `Update` | `update` | `update.auto`, `update.channel`, `update.base_url` (advanced) |
-| `Session` | `general` | `general.menu` (in the application menu), `general.autostart` (with the session), `general.messages` (System, Window, Off; read by `messages_mode` for ui.announce), `general.language` (`system`; read at the start) |
+| `Session` | `general` | `general.menu` (in the application menu), `general.autostart` (with the session), `general.messages` (System, Window, Off; read by `announce_mode` for ui.announce), `general.language` (`system`; read at the start) |
 
 `STANDARD_ALL` is every set. Start from `STANDARD_DEFAULTS`: a zero `Standard_Defaults` has `menu` and `update_auto` off.
 `Standard_Defaults.values` gives any other standard setting the program's own default, as the file writes it

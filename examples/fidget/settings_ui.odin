@@ -80,7 +80,7 @@ position_picker :: proc(app: ^App, size: ui.Vec2) -> (changed: bool) {
 						sig := ui.signal(b)
 						if sig.clicked && !selected {
 							ui.set_toast_position(&app.ui_state, p)
-							ui.toast(.Info, "Toasts: %s", ui.toast_position_names[p])
+							ui.announce(&app.announcer, .Info, fmt.tprintf("Toasts: %s", ui.toast_position_names[p]))
 							changed = true
 						}
 						if ui.hovered_for(sig) {
@@ -104,7 +104,7 @@ build_settings :: proc(app: ^App) {
 	w := min(em * 34, f32(app.win.size.x) * 0.92)
 	pad := em * 1.5
 	inner := w - 2 * pad
-	if ui.modal("settings", w, &app.settings_open, 0.10) {
+	if ui.modal("settings", &app.settings_open, {width_em = w / em, top = 0.10}) {
 		if ui.style({width = ui.px(w)}) {
 			ui.spacer(ui.px(em * 1.1))
 			// header
@@ -204,7 +204,7 @@ build_settings :: proc(app: ^App) {
 									kinds := [?]ui.Toast_Kind{.Info, .Good, .Warn, .Bad}
 									texts := [?]string{"Heads up: an info toast", "Saved successfully", "Careful: disk almost full", "Something went wrong"}
 									k := int(rand_u64() % 4)
-									ui.toast(kinds[k], "%s", texts[k])
+									ui.announce(&app.announcer, kinds[k], texts[k])
 								}
 							}
 						}
@@ -224,7 +224,7 @@ build_settings :: proc(app: ^App) {
 							ui.set_density(&app.ui_state, 1)
 							app.corner_smoothing = 1
 							render.set_blend_space(&app.r, .Linear)
-							ui.toast(.Good, "Settings restored to defaults")
+							ui.announce(&app.announcer, .Good, "Settings restored to defaults")
 						}
 						ui.spacer(ui.fill())
 						if ui.button("###st_done", "Done", o = {intent = .Primary}).clicked { app.settings_open = false }

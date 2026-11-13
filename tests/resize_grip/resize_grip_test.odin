@@ -19,7 +19,7 @@ grip_dialog :: proc(t: ^testing.T, light: bool) {
 	d := Grip_Dialog{open = true}
 	s := session.start(t, {size = GRIP_WINDOW, dpi_scale = 2, palette = ui.palette_of("Midnight", light = light), user = &d, build = proc(s: ^session.Session) {
 		d := (^Grip_Dialog)(s.user)
-		if ui.modal_sized("grip", {200, 150}, &d.size, &d.open) {
+		if ui.modal("grip", &d.open, {width_em = 200 / ui.font_size(), height_em = 150 / ui.font_size(), size = &d.size}) {
 			d.panel = ui.parent_box().rect
 			ui.label("Hello")
 		}
@@ -49,7 +49,7 @@ a_dialog_s_resize_grip_is_a_square_bevelled_corner :: proc(t: ^testing.T) {
 	grip_dialog(t, false)
 }
 
-// A dialog held at the top of the window (modal_sized's `top`): its top stays where it is, its bottom edge follows the pointer, one
+// A dialog held at the top of the window (Modal_Options.top): its top stays where it is, its bottom edge follows the pointer, one
 // to one, and it has no grips at its top.
 @(private = "file")
 Top_Dialog :: struct { size: ui.Vec2, open: bool, panel: ui.Rect }
@@ -59,7 +59,7 @@ a_dialog_held_at_the_top_grows_downward :: proc(t: ^testing.T) {
 	d := Top_Dialog{open = true}
 	s := session.start(t, {size = {400, 300}, user = &d, build = proc(s: ^session.Session) {
 		d := (^Top_Dialog)(s.user)
-		if ui.modal_sized("top", {200, 120}, &d.size, &d.open, {100, 60}, top = 0.1) {
+		if ui.modal("top", &d.open, {width_em = 200 / ui.font_size(), height_em = 120 / ui.font_size(), min_width_em = 100 / ui.font_size(), min_height_em = 60 / ui.font_size(), top = 0.1, size = &d.size}) {
 			d.panel = ui.parent_box().rect
 			ui.label("Hello")
 		}
@@ -88,7 +88,7 @@ the_whole_bevel_has_the_corner_cursor :: proc(t: ^testing.T) {
 	d := Grip_Dialog{open = true}
 	s := session.start(t, {size = GRIP_WINDOW, user = &d, build = proc(s: ^session.Session) {
 		d := (^Grip_Dialog)(s.user)
-		if ui.modal_sized("grip", {200, 150}, &d.size, &d.open) {
+		if ui.modal("grip", &d.open, {width_em = 200 / ui.font_size(), height_em = 150 / ui.font_size(), size = &d.size}) {
 			d.panel = ui.parent_box().rect
 			d.em = ui.font_size()
 			ui.label("Hello")

@@ -168,7 +168,7 @@ menu_frame :: proc(f: ^Fx, m: ^Menu_Rows, events: []platform.Event) {
 		window_size = WINDOW, events = events, dt = 1.0 / 60, animations = true, dpi_scale = 1,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
 	})
-	if ui.ctx_menu(ui.Key(0x4242)) {
+	if ui.menu("menu_4242") {
 		for label, i in ([?]string{"First", "Second", "Third"}) { m.rows[i] = ui.menu_item(label).box }
 	}
 	ui.end_build()
@@ -186,7 +186,7 @@ menu_hover_selects_in_the_same_frame :: proc(t: ^testing.T) {
 	defer close(&f)
 	m: Menu_Rows
 	menu_frame(&f, &m, {move(700, 500)})
-	ui.ctx_menu_open(ui.Key(0x4242), {100, 100})
+	ui.menu_open("menu_4242", ui.Vec2{100, 100})
 	for _ in 0 ..< 4 { menu_frame(&f, &m, nil) }
 	center :: proc(b: ^ui.Box) -> [2]f32 { return (b.rect.min + b.rect.max) * 0.5 }
 	selected :: proc(b, plain: ^ui.Box) -> bool { return b.tags_key != plain.tags_key }

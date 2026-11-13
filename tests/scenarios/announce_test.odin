@@ -64,3 +64,24 @@ announce_between_builds_goes_to_its_state :: proc(t: ^testing.T) { unwatched.run
 	testing.expect_value(t, toasts_alive(s), 1)
 	testing.expect_value(t, toasts_alive(other), 0)
 }) }
+
+// A title and its words: the title on its line, the words under it (a titled toast), not one line of both.
+@(test)
+announce_keeps_the_title_and_the_body_apart :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {600, 300}, build = proc(s: ^session.Session) {}})
+	a := ui.Announcer{mode = .Window, state = s.state}
+	ui.announce(&a, .Good, "Saved", "~/Pictures/a.png")
+	session.frames(s, 3)
+	title, body := session.find_text(s, "Saved"), session.find_text(s, "~/Pictures/a.png")
+	if !testing.expect(t, title != nil && body != nil, "the title and the body, each its own line") { return }
+	testing.expect(t, body.rect.min.y >= title.rect.max.y, "the body under the title")
+}) }
+
+// A message with an action is a toast whatever the mode: a click on it does it (a notification of the system cannot).
+@(test)
+announce_with_an_action_is_a_toast_even_off :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {600, 300}, build = proc(s: ^session.Session) {}})
+	a := ui.Announcer{mode = .Off, state = s.state}
+	ui.announce(&a, .Info, "Version 2 is ready", action = proc(user: rawptr) {})
+	testing.expect_value(t, toasts_alive(s), 1)
+}) }

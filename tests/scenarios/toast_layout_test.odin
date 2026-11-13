@@ -22,8 +22,8 @@ a_toast_is_as_tall_as_its_words :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 		r := (^Toasts)(s.user)
 		if !r.fired {
 			r.fired = true
-			ui.toast(.Info, "Saved")
-			ui.toast_titled(.Warn, "Session 12 about the project's frame pacing and its very long title that goes on", LONG_BODY)
+			ui.announce(&ui.Announcer{mode = .Window}, .Info, "Saved")
+			ui.announce(&ui.Announcer{mode = .Window}, .Warn, "Session 12 about the project's frame pacing and its very long title that goes on", LONG_BODY)
 		}
 	}})
 	session.frames(s, 30)
@@ -65,7 +65,7 @@ a_toast_title_is_the_familys_bold :: proc(t: ^testing.T) { unwatched.run(t, proc
 		ui.set_family(s.state, ui.top_style().font, s.state.mono_font, 0, 0)
 		if !r.fired {
 			r.fired = true
-			ui.toast_titled(.Warn, "Custom ShojiWM Desktop", "Permission: shell rm -rf /tmp/x")
+			ui.announce(&ui.Announcer{mode = .Window}, .Warn, "Custom ShojiWM Desktop", "Permission: shell rm -rf /tmp/x")
 		}
 		ui.section_header("###sec", "Memory", "a note", "", {1, 0, 0, 1})
 	}})

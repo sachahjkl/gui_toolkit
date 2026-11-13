@@ -29,21 +29,20 @@ Confirm_Options :: struct {
 	lines:          []string,   // what it acts on, a line each, when there is more than one (CONFIRM_LINES_MAX shown)
 	act:            string,     // the act's button: "Delete", "Kill"
 	enter_confirms: bool,       // Enter acts (a safe act, asked for); else Enter cancels
-	width_em:       f32,        // 0: CONFIRM_WIDTH_EM
+	width_em:       f32,        // 0: DIALOG_WIDTH_EM
 	labels:         Confirm_Labels,   // zero: confirm_default_labels()
 }
 
 Confirm_Answer :: enum u8 { None, Confirmed, Cancelled }
 
-CONFIRM_WIDTH_EM :: 29
 CONFIRM_LINES_MAX :: 8
 
 confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm_Answer) {
 	was := open^
 	labels := o.labels == {} ? confirm_default_labels() : o.labels
 	em := font_size()
-	w := em * (o.width_em > 0 ? o.width_em : CONFIRM_WIDTH_EM)
-	if modal(id, w, open) {
+	w := em * (o.width_em > 0 ? o.width_em : DIALOG_WIDTH_EM)
+	if modal(id, open, {width_em = o.width_em}) {
 		pad := em * 1.2
 		// (a safe act is a plain question; the others warn before they act)
 		if dialog_header("confirm_title", text_shown(o.title), {icon = o.enter_confirms ? lucide.INFO : lucide.ALERT_TRIANGLE, icon_font = lucide_icons(), close = true}) {}
@@ -127,7 +126,7 @@ Prompt_Options :: struct {
 	secret:      bool,            // a password: bullets, neither copied nor cut
 	reveal:      ^bool,           // with `secret`: the eye that shows it, and whether it is shown (nil: no eye)
 	act:         string,          // the OK button's word ("": labels.ok)
-	width_em:    f32,             // 0: CONFIRM_WIDTH_EM
+	width_em:    f32,             // 0: DIALOG_WIDTH_EM
 	labels:      Prompt_Labels,   // zero: prompt_default_labels()
 }
 
@@ -136,8 +135,8 @@ prompt :: proc(id: string, open: ^bool, f: ^Text_Field, o: Prompt_Options) -> (a
 	was := open^
 	labels := o.labels == {} ? prompt_default_labels() : o.labels
 	em := font_size()
-	w := em * (o.width_em > 0 ? o.width_em : CONFIRM_WIDTH_EM)
-	if modal(id, w, open) {
+	w := em * (o.width_em > 0 ? o.width_em : DIALOG_WIDTH_EM)
+	if modal(id, open, {width_em = o.width_em}) {
 		pad := em * 1.2
 		if dialog_header("prompt_title", text_shown(o.title), {icon = o.secret ? lucide.KEY_ROUND : lucide.PENCIL, icon_font = lucide_icons(), close = true}) {}
 		if style({width = px(w)}) {

@@ -80,7 +80,7 @@ temp allocator too.
 | `Graph_Unlinked` | `link` | removes it |
 | `Graph_Selected` | `nodes` | replaces its selection |
 | `Graph_Deleted` | `nodes`, `links` | removes them |
-| `Graph_Context` | `at`, `node`, `port` | opens a menu (`ui.ctx_menu_open`) |
+| `Graph_Context` | `at`, `node`, `port` | opens a menu (`ui.menu_open`) |
 | `Graph_Opened` | `node` | opens the node's settings |
 | `Graph_Dropped_Link` | `from`, `at` | offers a node to add at `at`, linked to `from` |
 

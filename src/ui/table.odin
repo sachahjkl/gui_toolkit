@@ -439,7 +439,7 @@ table_menu_default_labels :: proc() -> Table_Menu_Labels {
 	return {reset = i18n.tr("Reset %s"), unsorted = i18n.tr("Unsorted"), columns = i18n.tr("Columns"), defaults = i18n.tr("Default columns")}
 }
 
-// The menu of a table's header (in the caller's ctx_menu, opened on Table_Header_Events.menu): the column whose title was
+// The menu of a table's header (in the caller's menu, opened on Table_Header_Events.menu): the column whose title was
 // right-clicked back to its own width and unsorted (table_column_reset), the rows unsorted, each column shown or not
 // (table_column_items), every column as at first (table_layout_reset: widths, shown, order). `changed`: the layout to
 // save; `sort_changed`: the rows to sort again. `labels`: the program's words (zero: table_menu_default_labels).
@@ -447,12 +447,12 @@ table_menu_items :: proc(l: ^Table_Layout, labels := Table_Menu_Labels{}) -> (ch
 	labels := labels == {} ? table_menu_default_labels() : labels
 	if k := l.menu_column; k >= 0 && k < len(l.columns) {
 		own := l.width[k] == l.columns[k].width && l.sort != k
-		if menu_item(fmt.tprintf(labels.reset, i18n.tr(l.columns[k].title)), enabled = !own).clicked {
+		if menu_item(fmt.tprintf(labels.reset, i18n.tr(l.columns[k].title)), disabled = own).clicked {
 			if table_column_reset(l, k) { sort_changed = true }
 			changed = true
 		}
 	}
-	if menu_item(labels.unsorted, checked = l.sort == TABLE_UNSORTED, enabled = l.sort != TABLE_UNSORTED).clicked {
+	if menu_item(labels.unsorted, checked = l.sort == TABLE_UNSORTED, disabled = l.sort == TABLE_UNSORTED).clicked {
 		l.sort, l.descending = TABLE_UNSORTED, false
 		changed, sort_changed = true, true
 	}
@@ -471,7 +471,7 @@ table_menu_items :: proc(l: ^Table_Layout, labels := Table_Menu_Labels{}) -> (ch
 	return
 }
 
-// The menu items of the columns (in the caller's ctx_menu): each column but the first, checked when shown; a click
+// The menu items of the columns (in the caller's menu): each column but the first, checked when shown; a click
 // shows or hides it and keeps the menu open. True when the sort changed (a hidden column was sorted by).
 table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
 	for k in l.order {
