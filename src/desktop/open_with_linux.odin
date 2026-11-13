@@ -28,15 +28,15 @@ import "../ascii"
 import "../platform"
 
 // Where the specifications are read: the data directories and the configuration ones, most important first, and the
-// names of the current desktop.
-@(private)
+// names of the current desktop (Linux: the XDG Base Directory specification).
 Xdg_Roots :: struct {
 	data:     []string,
 	config:   []string,
 	desktops: []string,
 }
 
-@(private)
+// The roots, from $XDG_DATA_HOME / $XDG_DATA_DIRS, $XDG_CONFIG_HOME / $XDG_CONFIG_DIRS and $XDG_CURRENT_DESKTOP, in the
+// temporary allocator. A program reads what the specifications place there through it, not through the variables.
 xdg_roots :: proc() -> Xdg_Roots {
 	data := make([dynamic]string, context.temp_allocator)
 	config := make([dynamic]string, context.temp_allocator)

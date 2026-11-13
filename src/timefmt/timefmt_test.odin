@@ -54,3 +54,11 @@ a_date_and_its_day_follow_the_offset :: proc(t: ^testing.T) {
 	testing.expect(t, local_day(at, 0) != local_day(at + 13 * 3_600_000, 0), "past midnight UTC")
 	testing.expect_value(t, local_day(at, 13 * 60), local_day(at, 0) + 1)
 }
+
+@(test)
+a_size_reads_in_powers_of_1024 :: proc(t: ^testing.T) {
+	testing.expect_value(t, size(512), "512 B")
+	testing.expect_value(t, size(7 * 1024), "7.0 KB")
+	testing.expect_value(t, size(12 * 1024 * 1024), "12 MB")
+	testing.expect_value(t, size(1288490188), "1.2 GB")
+}

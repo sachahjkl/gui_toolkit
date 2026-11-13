@@ -24,6 +24,8 @@ Common :: struct {
 	page:    prefs_page.Page,
 	watch:   prefs_page.Standard_Watch,
 	changed: [dynamic]string,
+	shown:   f64,   // the last value Options.preview showed
+	previews: int,
 }
 
 @(private = "file")
@@ -32,6 +34,10 @@ common_build :: proc(s: ^session.Session) {
 	ui.next({width = ui.fill(), height = ui.fill()})
 	prefs_page.build(&c.page, &c.prefs, {user = c, changed = proc(user: rawptr, name: string) {
 		append(&(^Common)(user).changed, strings.clone(name))
+	}, preview = proc(user: rawptr, name: string, value: f64) {
+		c := (^Common)(user)
+		c.shown = value
+		c.previews += 1
 	}})
 }
 
@@ -247,4 +253,40 @@ the_settings_doc_lists_every_standard_preference :: proc(t: ^testing.T) {
 	for e in p.entries {
 		testing.expectf(t, strings.contains(SETTINGS_DOC, fmt.tprintf("`%s`", e.def.name)), "docs/settings.md lists %s", e.def.name)
 	}
+}
+
+// A number's slider held: each value it moves to is previewed, nothing is written until it is let go; then it is.
+@(test)
+a_held_number_is_previewed_then_written :: proc(t: ^testing.T) {
+	c: Common
+	defer common_end(&c)
+	s := common_start(t, &c)
+	prefs_page.show(&c.page, &c.prefs, {}, "appearance.rounding")
+	session.frames(s, 2)
+	sl := session.get(s, "slider", within = session.get(s, "set_appearance.rounding"))
+	from := session.center(sl)
+	to := [2]f32{sl.rect.min.x + 1, from.y}
+	session.press(s, from)
+	session.move(s, to)
+	session.frames(s, 2)
+	testing.expect(t, c.previews > 0 && c.shown < 0.2, "previewed while held")
+	testing.expect_value(t, config.float_of(&c.prefs, "appearance.rounding"), 1)
+	session.release(s, to)
+	session.frames(s, 2)
+	testing.expect(t, config.float_of(&c.prefs, "appearance.rounding") < 0.2, "written when let go")
+}
+
+// A program's own default for a standard setting: registered as the default, so a reset comes back to it.
+@(test)
+a_program_s_own_default_is_the_default :: proc(t: ^testing.T) {
+	prefs := config.prefs_make()
+	defer config.prefs_destroy(&prefs)
+	d := prefs_page.STANDARD_DEFAULTS
+	d.app_name = "Sample"
+	own := []prefs_page.Standard_Value{{"appearance.rounding", "0.25"}, {"rendering.partial_redraw", "true"}}
+	d.values = own
+	prefs_page.standard_register(&prefs, prefs_page.STANDARD_ALL, d, context.temp_allocator)
+	testing.expect_value(t, config.float_of(&prefs, "appearance.rounding"), 0.25)
+	testing.expect_value(t, config.default_string(&prefs, config.ref_of(&prefs, "appearance.rounding")), "0.25")
+	if config.ref_of(&prefs, "rendering.partial_redraw") != config.NO_REF { testing.expect(t, config.bool_of(&prefs, "rendering.partial_redraw")) }
 }

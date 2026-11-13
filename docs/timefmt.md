@@ -10,6 +10,7 @@ unless `allocator` says otherwise.
 | Procedure | Result |
 |---|---|
 | `duration(ms, days_after_hours = 48)` | a span to the second, in its two largest units: "45s", "4m 12s", "1h 03m", from `days_after_hours` hours on "2d 05h"; a negative span is "0s" |
+| `size(bytes)` | a size as file managers say it, in powers of 1024: "512 B", "7.0 KB", "12 MB", "1.2 GB" (one decimal under 10) |
 | `age(ms)` | how old something is, in its largest whole unit: "now" under a minute (or in the future), "3m", "2h", "5d", "1w" |
 | `clock(ms, offset_minutes, Clock_Options{hours12, seconds})` | the local time: "14:32"; `hours12`: "2:32 pm", "12:05 am"; `seconds`: "14:32:05" |
 | `date(ms, offset_minutes)` | the local date: "Nov 10" |

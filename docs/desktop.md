@@ -294,3 +294,11 @@ scratch key, and turns `notify_system` off. `roots_from_env` reads them from `<e
 The package's tests (`odin run tools/run_tests -- desktop_pkg`) use an identity of their own (`Sample`): the Linux backend on
 scratch folders, the Windows backend on `HKCU\Software\TkDesktopTest_<id>`, and on NixOS a copy of bash adapted with a real
 runtime. `TK_TEST_DESKTOP_REAL=1` adds one round trip on the real Windows desktop.
+
+## The XDG roots (Linux)
+
+`xdg_roots()` gives the data directories (`$XDG_DATA_HOME`, then `$XDG_DATA_DIRS`), the configuration ones
+(`$XDG_CONFIG_HOME`, then `$XDG_CONFIG_DIRS`) and the current desktop's names (`$XDG_CURRENT_DESKTOP`), most important
+first, absolute paths only (the specification ignores a relative one), in the temporary allocator: a program reads
+what the specifications place there (the applications' entries, the autostart folder) through it, not through the
+variables.

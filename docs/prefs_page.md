@@ -61,6 +61,9 @@ ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 | `Session` | `general` | `general.menu` (in the application menu), `general.autostart` (with the session), `general.messages` (System, Window, Off; read by `messages_mode` for ui.announce), `general.language` (`system`; read at the start) |
 
 `STANDARD_ALL` is every set. Start from `STANDARD_DEFAULTS`: a zero `Standard_Defaults` has `menu` and `update_auto` off.
+`Standard_Defaults.values` gives any other standard setting the program's own default, as the file writes it
+(`{{"appearance.rounding", "0.25"}, {"rendering.partial_redraw", "true"}}`): registered as the default, a reset comes back
+to the program's look.
 `app_name` goes in the descriptions ("Start cliche with the session"); those texts are made in the `allocator` argument
 and must live as long as the registry. The names are fixed: the programs' files hold them. The groups come in this
 order among a program's own (theirs have the order 0): General, Appearance and Window before them, the others after.

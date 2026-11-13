@@ -110,6 +110,7 @@ when it writes there.
 | `.Data` (what it made and keeps) | `$XDG_DATA_HOME/<program>` (`~/.local/share`) | `%LOCALAPPDATA%\<program>` |
 | `.State` (logs, crash reports, what it remembers between runs) | `$XDG_STATE_HOME/<program>` (`~/.local/state`) | `%LOCALAPPDATA%\<program>\state` |
 | `.Cache` (what it can make again) | `$XDG_CACHE_HOME/<program>` (`~/.cache`) | `%LOCALAPPDATA%\<program>\cache` |
+| `.Runtime` (sockets, pipes, what lasts a session) | `$XDG_RUNTIME_DIR/<program>` (else `$TMPDIR`, else `/tmp`) | `%TEMP%\<program>` |
 
 A variable counts only when it is an absolute path, as the XDG specification says, on Windows too (`%APPDATA%`, `%LOCALAPPDATA%`):
 a test or a portable copy points them elsewhere. Without them, Windows' known folders (`SHGetKnownFolderPath`).

@@ -77,3 +77,17 @@ local_day :: proc(ms: f64, offset_minutes: int) -> int {
 
 @(private = "file")
 floor_mod :: proc(a, b: int) -> int { return ((a % b) + b) % b }
+
+// A size in bytes as the systems' file managers say it, in powers of 1024: "512 B", "7.0 KB", "12 MB", "1.2 GB" (one
+// decimal under 10, none above).
+size :: proc(bytes: i64, allocator := context.temp_allocator) -> string {
+	units := [?]string{"KB", "MB", "GB", "TB", "PB"}
+	if bytes < 1024 { return fmt.aprintf("%d B", bytes, allocator = allocator) }
+	v := f64(bytes) / 1024
+	u := 0
+	for v >= 1024 && u < len(units) - 1 {
+		v /= 1024
+		u += 1
+	}
+	return v < 10 ? fmt.aprintf("%.1f %s", v, units[u], allocator = allocator) : fmt.aprintf("%.0f %s", v, units[u], allocator = allocator)
+}

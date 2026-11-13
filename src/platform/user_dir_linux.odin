@@ -16,6 +16,10 @@ user_dir_base :: proc(kind: User_Dir) -> string {
 	case .Data:   name, fallback = "XDG_DATA_HOME", "/.local/share"
 	case .State:  name, fallback = "XDG_STATE_HOME", "/.local/state"
 	case .Cache:  name, fallback = "XDG_CACHE_HOME", "/.cache"
+	case .Runtime:
+		if v, ok := os.lookup_env("XDG_RUNTIME_DIR", context.temp_allocator); ok && filepath.is_abs(v) { return v }
+		if v, ok := os.lookup_env("TMPDIR", context.temp_allocator); ok && filepath.is_abs(v) { return v }
+		return "/tmp"
 	}
 	if v, ok := os.lookup_env(name, context.temp_allocator); ok && filepath.is_abs(v) { return v }
 	home, ok := os.lookup_env("HOME", context.temp_allocator)

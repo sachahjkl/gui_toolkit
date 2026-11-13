@@ -53,7 +53,12 @@ Standard_Defaults :: struct {
 	update_channel:  string,   // the channel updates come from ("": a product without channels; a literal)
 	update_base_url: string,   // where they come from (a literal)
 	app_name:     string,   // "Start <app_name> with the session"
+	// any other standard setting's default, as the program wants it (its rounding, its partial redraw...): a name and its
+	// value as the settings file writes it. A reset then comes back to the program's look. (Literals: the registry keeps them.)
+	values:       []Standard_Value,
 }
+
+Standard_Value :: struct { name, value: string }
 
 // The defaults a program changes only where it differs: its theme and its name.
 STANDARD_DEFAULTS :: Standard_Defaults{mode = "system", finish = "machined", font_size = 14, glow = 1, menu = true, update_auto = true}
@@ -219,7 +224,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		})
 		config.title_register(prefs, "window", "Window", ORDER_WINDOW)
 		append(&defs, config.Def{
-			name = SYSTEM_TITLE_PREF, title = "The system's title bar", kind = .Bool, default = {b = d.system_title}, restart = true,
+			name = SYSTEM_TITLE_PREF, title = "The system's title bar", kind = .Bool, default = {b = d.system_title},
 			description = fmt.aprintf("The system draws the title bar of %s's windows. Off: %s draws its own, with its tabs and buttons in it.", name, name, allocator = a),
 		})
 		append(&defs, config.Def{
@@ -534,6 +539,18 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		})
 	}
 	// (the theme's default must outlive the registry, as every Def's: the program's literal)
+	// (the program's own defaults over the toolkit's, before the registry reads them)
+	for v in d.values {
+		for &def in defs {
+			if def.name != v.name { continue }
+			switch def.kind {
+			case .Bool:   def.default.b = v.value == "true" || v.value == "1"
+			case .Int:    if n, ok := strconv.parse_i64(v.value); ok { def.default.i = n }
+			case .Float:  if f, ok := strconv.parse_f64(v.value); ok { def.default.f = f }
+			case .String: def.default.s = v.value
+			}
+		}
+	}
 	config.register(prefs, defs[:])
 }
 
