@@ -634,7 +634,7 @@ list_keyboard :: proc(t: ^testing.T) {
 ////////////////////////////////
 // Line edit history and wrapped text
 
-Edit_Run :: struct { field: ui.Text_Field }
+Edit_Run :: struct { field: ui.Line_Edit }
 
 @(private = "file")
 build_edit :: proc(f: ^Fx, user: rawptr) {
@@ -653,7 +653,7 @@ line_edit_caret_only_in_the_users_window :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r: Edit_Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	frame(&f, nil, build_edit, &r)
 	k := ui.key_from_string(ui.key_from_string(0, "root"), "###e")
 	ui.set_focus(k)
@@ -681,32 +681,32 @@ line_edit_history :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r: Edit_Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	frame(&f, nil, build_edit, &r)
 	ui.set_focus(ui.box_from_key(ui.key_from_string(ui.key_from_string(0, "root"), "###e")).key)
 	frame(&f, {typed('a'), typed('b'), typed('c')}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "abc")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "abc")
 	frame(&f, {key(.A, {.Ctrl}), key(.X, {.Ctrl})}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "")
 	testing.expect_value(t, f.clip, "abc")
 	frame(&f, {key(.Z, {.Ctrl})}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "abc")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "abc")
 	frame(&f, {key(.Z, {.Ctrl})}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "")   // the typing was one step
+	testing.expect_value(t, ui.line_edit_string(&r.field), "")   // the typing was one step
 	frame(&f, {key(.Y, {.Ctrl})}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "abc")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "abc")
 	frame(&f, {key(.End), key(.V, {.Ctrl})}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "abc")   // (asked: the text comes in the next build)
+	testing.expect_value(t, ui.line_edit_string(&r.field), "abc")   // (asked: the text comes in the next build)
 	frame(&f, nil, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "abcabc")
-	testing.expect(t, ui.field_can_undo(&r.field), "paste is undoable")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "abcabc")
+	testing.expect(t, ui.line_edit_can_undo(&r.field), "paste is undoable")
 }
 
 @(private = "file")
 build_secret :: proc(f: ^Fx, user: rawptr) {
 	r := (^Edit_Run)(user)
 	ui.next({width = ui.px(300), height = ui.px(30)})
-	ui.line_edit("###e", &r.field, secret = true)
+	ui.line_edit("###e", &r.field, {kind = .Secret})
 }
 
 // A secret field takes what is typed, is never copied or cut, and its caret moves by characters (not by the bytes of the
@@ -719,19 +719,19 @@ line_edit_secret :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r: Edit_Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	frame(&f, nil, build_secret, &r)
 	ui.set_focus(ui.box_from_key(ui.key_from_string(ui.key_from_string(0, "root"), "###e")).key)
 	frame(&f, {typed('p'), typed('é'), typed('w')}, build_secret, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "péw")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "péw")
 	f.clip = ""
 	frame(&f, {key(.A, {.Ctrl}), key(.C, {.Ctrl}), key(.X, {.Ctrl})}, build_secret, &r)
 	testing.expect_value(t, f.clip, "")
-	testing.expect_value(t, ui.field_string(&r.field), "péw")   // not cut
+	testing.expect_value(t, ui.line_edit_string(&r.field), "péw")   // not cut
 	frame(&f, {key(.End)}, build_secret, &r)   // (one key a frame: a frame applies its keys in the widget's order)
 	frame(&f, {key(.Left)}, build_secret, &r)
 	frame(&f, {key(.Backspace)}, build_secret, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "pw")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "pw")
 }
 
 // Arrows, Backspace and Delete work on grapheme clusters: an emoji family (5 code points), a letter and its combining
@@ -744,20 +744,20 @@ line_edit_clusters :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r: Edit_Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	FAMILY :: "\U0001F468\u200D\U0001F469\u200D\U0001F467"
 	frame(&f, nil, build_edit, &r)
 	ui.set_focus(ui.box_from_key(ui.key_from_string(ui.key_from_string(0, "root"), "###e")).key)
 	events := make([dynamic]platform.Event, context.temp_allocator)
 	for c in "a" + FAMILY + "e\u0301\U0001F1EB\U0001F1F7" { append(&events, typed(c)) }
 	frame(&f, events[:], build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "a" + FAMILY + "e\u0301\U0001F1EB\U0001F1F7")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "a" + FAMILY + "e\u0301\U0001F1EB\U0001F1F7")
 	frame(&f, {key(.Backspace)}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "a" + FAMILY + "e\u0301")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "a" + FAMILY + "e\u0301")
 	frame(&f, {key(.Backspace)}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "a" + FAMILY)
+	testing.expect_value(t, ui.line_edit_string(&r.field), "a" + FAMILY)
 	frame(&f, {key(.Backspace)}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "a")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "a")
 	// the arrows step over a family in one press, and Delete takes it whole
 	clear(&events)
 	for c in FAMILY + "y" { append(&events, typed(c)) }
@@ -765,10 +765,10 @@ line_edit_clusters :: proc(t: ^testing.T) {
 	frame(&f, {key(.Left)}, build_edit, &r)
 	frame(&f, {key(.Left)}, build_edit, &r)
 	frame(&f, {key(.Delete)}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "ay")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "ay")
 	frame(&f, {key(.Right)}, build_edit, &r)
 	frame(&f, {key(.Backspace)}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "a")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "a")
 }
 
 @(private = "file")
@@ -1610,7 +1610,7 @@ list_select_ahead_of_the_rows :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
-Modal_Run :: struct { outer, inner: bool, field: ui.Text_Field, res: ui.Edit_Result, with_field: bool }
+Modal_Run :: struct { outer, inner: bool, field: ui.Line_Edit, res: ui.Edit_Result, with_field: bool }
 
 @(private = "file")
 build_nested_modals :: proc(f: ^Fx, user: rawptr) {
@@ -1640,7 +1640,7 @@ modal_escape_goes_to_what_is_on_top :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r := Modal_Run{outer = true, inner = true}
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	frame(&f, nil, build_nested_modals, &r)
 	frame(&f, nil, build_nested_modals, &r)
 	frame(&f, {key(.Escape)}, build_nested_modals, &r)
@@ -1693,7 +1693,7 @@ autoscroll_ending_click_does_nothing_else :: proc(t: ^testing.T) {
 	defer close(&f)
 	// (on by default: nothing to turn on)
 	r: Edit_Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	frame(&f, nil, build_auto, &r)
 	frame(&f, nil, build_auto, &r)
 	field := ui.box_at("###auto_e")
@@ -1713,7 +1713,7 @@ autoscroll_ending_click_does_nothing_else :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
-Auto_Edit_Run :: struct { area: ui.Text_Area, in_region: bool }
+Auto_Edit_Run :: struct { area: ui.Text_Edit, in_region: bool }
 
 @(private = "file")
 build_auto_edit :: proc(f: ^Fx, user: rawptr) {
@@ -1741,7 +1741,7 @@ autoscroll_starts_on_what_it_can_scroll :: proc(t: ^testing.T) {
 	defer close(&f)
 	ui.set_autoscroll_enabled(&f.s, true)
 	r: Auto_Edit_Run
-	defer ui.area_destroy(&r.area)
+	defer ui.text_edit_destroy(&r.area)
 	frame(&f, nil, build_auto_edit, &r)
 	frame(&f, nil, build_auto_edit, &r)
 	press := []platform.Event{{kind = .Mouse_Press, pos = {100, 100}, button = .Middle}}
@@ -1799,25 +1799,25 @@ line_edit_deleting_nothing_is_no_edit :: proc(t: ^testing.T) {
 	defer close(&f)
 	f.clip = clone("x")
 	r: Edit_Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	frame(&f, nil, build_edit, &r)
 	ui.set_focus(ui.box_at("###e").key)
 	frame(&f, {typed('a')}, build_edit, &r)
 	frame(&f, {key(.V, {.Ctrl})}, build_edit, &r)
 	frame(&f, nil, build_edit, &r)   // (the paste's text comes in the build after the key)
-	testing.expect_value(t, ui.field_string(&r.field), "ax")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "ax")
 	frame(&f, {key(.Z, {.Ctrl})}, build_edit, &r)
 	frame(&f, {key(.End), key(.Delete)}, build_edit, &r)
 	frame(&f, {key(.Delete, {.Ctrl})}, build_edit, &r)
 	frame(&f, {key(.Home), key(.Backspace)}, build_edit, &r)
 	frame(&f, {key(.Backspace, {.Ctrl})}, build_edit, &r)
-	testing.expect(t, ui.field_can_redo(&r.field), "redo kept")
+	testing.expect(t, ui.line_edit_can_redo(&r.field), "redo kept")
 	frame(&f, {key(.Y, {.Ctrl})}, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "ax")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "ax")
 }
 
 @(private = "file")
-Area_Run :: struct { area: ui.Text_Area }
+Area_Run :: struct { area: ui.Text_Edit }
 
 @(private = "file")
 build_area :: proc(f: ^Fx, user: rawptr) {
@@ -1835,7 +1835,7 @@ text_edit_deleting_nothing_is_no_edit :: proc(t: ^testing.T) {
 	defer close(&f)
 	f.clip = clone("x")
 	r: Area_Run
-	defer ui.area_destroy(&r.area)
+	defer ui.text_edit_destroy(&r.area)
 	frame(&f, nil, build_area, &r)
 	ui.set_focus(ui.box_at("###a").key)
 	frame(&f, {typed('a')}, build_area, &r)
@@ -1848,7 +1848,7 @@ text_edit_deleting_nothing_is_no_edit :: proc(t: ^testing.T) {
 	frame(&f, {key(.Backspace, {.Ctrl})}, build_area, &r)
 	testing.expect(t, len(r.area.history.redo) == 1, "redo kept")
 	frame(&f, {key(.Y, {.Ctrl})}, build_area, &r)
-	testing.expect_value(t, ui.area_string(&r.area), "ax")
+	testing.expect_value(t, ui.text_edit_string(&r.area), "ax")
 }
 
 // What a screen reader sets can be undone; a selection asked in the same build is on the new text.
@@ -1860,33 +1860,33 @@ a11y_edits_of_fields_are_edits :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r: Edit_Run
-	defer ui.field_destroy(&r.field)
-	ui.field_set(&r.field, "ab")
+	defer ui.line_edit_destroy(&r.field)
+	ui.line_edit_set(&r.field, "ab")
 	frame(&f, nil, build_edit, &r)
 	b := ui.box_at("###e")
 	ui.a11y_inject(&f.s, {action = .Set_Value, data = .Value, value = "Grace Hopper", target = u64(b.key)})
 	run := ui.a11y_run_id(b, 0)
 	ui.a11y_inject(&f.s, {action = .Set_Text_Selection, data = .Text_Selection, sel = {run, 2, run, 5}, target = u64(b.key)})
 	frame(&f, nil, build_edit, &r)
-	testing.expect_value(t, ui.field_string(&r.field), "Grace Hopper")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "Grace Hopper")
 	testing.expect_value(t, r.field.mark, 2)
 	testing.expect_value(t, r.field.cursor, 5)
-	testing.expect(t, ui.field_undo(&r.field), "undoable")
-	testing.expect_value(t, ui.field_string(&r.field), "ab")
+	testing.expect(t, ui.line_edit_undo(&r.field), "undoable")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "ab")
 
 	a: Area_Run
-	defer ui.area_destroy(&a.area)
-	ui.area_set(&a.area, "ab")
+	defer ui.text_edit_destroy(&a.area)
+	ui.text_edit_set(&a.area, "ab")
 	frame(&f, nil, build_area, &a)
 	ab := ui.box_at("###a")
 	ui.a11y_inject(&f.s, {action = .Set_Value, data = .Value, value = "Grace Hopper", target = u64(ab.key)})
 	arun := ui.a11y_run_id(ab, 0)
 	ui.a11y_inject(&f.s, {action = .Set_Text_Selection, data = .Text_Selection, sel = {arun, 2, arun, 5}, target = u64(ab.key)})
 	frame(&f, nil, build_area, &a)
-	testing.expect_value(t, ui.area_string(&a.area), "Grace Hopper")
+	testing.expect_value(t, ui.text_edit_string(&a.area), "Grace Hopper")
 	testing.expect_value(t, a.area.cursor, 5)
-	testing.expect(t, ui.area_undo(&a.area), "undoable")
-	testing.expect_value(t, ui.area_string(&a.area), "ab")
+	testing.expect(t, ui.text_edit_undo(&a.area), "undoable")
+	testing.expect_value(t, ui.text_edit_string(&a.area), "ab")
 }
 
 @(private = "file")
@@ -1938,7 +1938,7 @@ autoscroll_turned_off :: proc(t: ^testing.T) {
 	defer close(&f)
 	ui.set_autoscroll_enabled(&f.s, false)
 	r: Edit_Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	frame(&f, nil, build_auto, &r)
 	frame(&f, nil, build_auto, &r)
 	tap := middle_tap({100, 100})

@@ -66,10 +66,10 @@ App :: struct {
 	palette:      ui.Command_Palette,
 	dialog_open:  bool,
 	dialog_size:  ui.Vec2,
-	file_name:    ui.Text_Field,
+	file_name:    ui.Line_Edit,
 	confirm_open: bool,
 	prompt_open:  bool,
-	pin:          ui.Text_Field,
+	pin:          ui.Line_Edit,
 	reveal:       bool,
 	announcer:    ui.Announcer,
 
@@ -151,9 +151,9 @@ close :: proc(app: ^App) {
 	graph_destroy(app)
 	settings_close(app)
 	ui.palette_destroy(&app.palette)
-	ui.field_destroy(&app.file_name)
-	ui.field_wipe(&app.pin)
-	ui.field_destroy(&app.pin)
+	ui.line_edit_destroy(&app.file_name)
+	ui.line_edit_wipe(&app.pin)
+	ui.line_edit_destroy(&app.pin)
 	host.host_close(&app.main)
 	delete(app.themes)
 	ui.themes_destroy(&app.users)
@@ -212,8 +212,8 @@ values_reset :: proc(app: ^App) {
 	app.dialog_open = app.scene == .Dialog
 	app.confirm_open = app.scene == .Confirm
 	app.prompt_open = app.scene == .Prompt
-	ui.field_set(&app.file_name, "harbour-at-dusk")
-	ui.field_set(&app.pin, "472913")
+	ui.line_edit_set(&app.file_name, "harbour-at-dusk")
+	ui.line_edit_set(&app.pin, "472913")
 	if app.scene == .Palette { ui.palette_open(&app.palette) }   // (nothing typed: every command under its group, with its keys)
 }
 

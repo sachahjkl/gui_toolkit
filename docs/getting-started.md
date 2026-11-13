@@ -116,12 +116,12 @@ the head of `examples/showcase/main.odin` lists its flags. Its code is the place
 
 ![examples/showcase: the intents and hues](screenshots/showcase_intents.webp)
 
-A password is `ui.line_edit(id, &field, secret = true)`: bullets in place of its characters, and it is neither copied nor cut.
-Once it is used, `ui.field_wipe(&field)` leaves nothing of it in memory (widgets.md, "A secret's memory").
-Give it `reveal = &shown` (a `bool` the program keeps) and an eye at its end shows the text and hides it again; shown, it is
+A password is `ui.line_edit(id, &field, {kind = .Secret})`: bullets in place of its characters, and it is neither copied nor cut.
+Once it is used, `ui.line_edit_wipe(&field)` leaves nothing of it in memory (widgets.md, "A secret's memory").
+Give it `{kind = .Secret, reveal = &shown}` (a `bool` the program keeps) and an eye at its end shows the text and hides it again; shown, it is
 text like any other. The field keeps the keyboard when the eye is clicked.
 
-A field with things beside it in one surface (a search icon, the field, a count) is an `if ui.field_frame(id) { ... }`.
+A field with things beside it in one surface (a search icon, the field, a count) is an `if ui.input_frame(id) { ... }`.
 The frame draws an input's background, border and corners (its radius from `next`), and one focus ring around all of
 it while a box inside has the keyboard focus (the box flag `.Focus_Within`). Build the field inside under the tag
 `"bare"` (`if ui.tags("bare") { ui.line_edit(...) }`): the default theme makes a bare field's background, border and
@@ -133,10 +133,10 @@ is `paint_rect` with a radius per corner).
 
 ```odin
 ui.next({width = ui.fill(), height = ui.px(em * 2), radius = em * 0.45})
-if ui.field_frame("###search") {
+if ui.input_frame("###search") {
 	glyph(ICO_SEARCH)
 	ui.next({width = ui.fill(), height = ui.pct(1)})
-	if ui.tags("bare") { ui.line_edit("###field", &field, "Search") }
+	if ui.tags("bare") { ui.line_edit("###field", &field, {placeholder = "Search"}) }
 }
 ```
 
@@ -252,7 +252,7 @@ known; a new one gets `?` until it is classified, or moved into its struct.
   a panel under a floating one) is not under the pointer, the box in front is. A `.Clickable` box's own `right_clicked`
   already goes to what is in front.
 - **Free the frame's temporaries**: `free_all(context.temp_allocator)` at the end of each frame (the `fmt.tprintf`
-  strings of labels live there). `ui.field_destroy` the `Text_Field`s you made.
+  strings of labels live there). `ui.line_edit_destroy` the `Line_Edit`s you made.
 - **`expect_assert` in tests**: on Windows the test runner's handling of an assertion races the system's end of the
   process; a test program can end without a word. Catch an expected assertion on a thread of your own
   (`tests/ui_robust/nested_build_test.odin`).

@@ -33,13 +33,13 @@ count_build :: proc(s: ^session.Session) {
 width_build :: proc(s: ^session.Session) {
 	r := (^Run)(s.user)
 	ui.next({width = ui.px(ROW_WIDTH), height = ui.px(ROW_HEIGHT)})
-	ui.number("###width", &r.x, lo = 1, hi = 40, step = 0.5, unit = "px", track = true)
+	ui.number("###width", &r.x, lo = 1, hi = 40, step = 0.5, unit = "px", slider = true)
 }
 
 // The text of the field: what is typed while it has the keyboard, else what it shows.
 @(private = "file")
 field_text :: proc(s: ^session.Session) -> string {
-	if session.focused_name(s) == "value" { return ui.field_string(&s.state.number_edit) }
+	if session.focused_name(s) == "value" { return ui.line_edit_string(&s.state.number_edit) }
 	return ui.box_text(session.get(s, "value"))
 }
 

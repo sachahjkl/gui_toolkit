@@ -142,7 +142,7 @@ Menus :: struct {
 	sub_on:   bool,
 	open_other: bool,
 	stray:    int,   // rows of the old menu found in the new one
-	field:    ui.Text_Field,
+	field:    ui.Line_Edit,
 }
 
 @(private = "file")
@@ -214,7 +214,7 @@ a_menu_opened_in_a_block_opens_after_it :: proc(t: ^testing.T) {
 @(test)
 a_press_in_a_menu_keeps_the_focus :: proc(t: ^testing.T) {
 	r: Menus
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	s := menus_start(t, &r)
 	session.click(s, "f")
 	want := s.state.focus_key
@@ -246,9 +246,9 @@ from_keyboard_selects_once :: proc(t: ^testing.T) {
 // Type, move the caret, type: two undo steps, in a field and in a text area.
 @(test)
 a_caret_move_ends_an_undo_step :: proc(t: ^testing.T) {
-	Texts :: struct { f: ui.Text_Field, a: ui.Text_Area }
+	Texts :: struct { f: ui.Line_Edit, a: ui.Text_Edit }
 	r: Texts
-	defer { ui.field_destroy(&r.f); ui.area_destroy(&r.a) }
+	defer { ui.line_edit_destroy(&r.f); ui.text_edit_destroy(&r.a) }
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Texts)(s.user)
 		ui.next({width = ui.px(FIELD_WIDTH)})
@@ -260,26 +260,26 @@ a_caret_move_ends_an_undo_step :: proc(t: ^testing.T) {
 	session.type_text(s, "ab")
 	session.key(s, .Left)
 	session.type_text(s, "c")
-	testing.expect_value(t, ui.field_string(&r.f), "acb")
+	testing.expect_value(t, ui.line_edit_string(&r.f), "acb")
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&r.f), "ab")
+	testing.expect_value(t, ui.line_edit_string(&r.f), "ab")
 
 	session.click(s, "a")
 	session.type_text(s, "ab")
 	session.key(s, .Left)
 	session.type_text(s, "c")
-	testing.expect_value(t, ui.area_string(&r.a), "acb")
+	testing.expect_value(t, ui.text_edit_string(&r.a), "acb")
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.area_string(&r.a), "ab")
+	testing.expect_value(t, ui.text_edit_string(&r.a), "ab")
 }
 
 // Arrow keys show the caret of a field at once: it is not caught in the off half of its blink.
 @(test)
 a_caret_moved_by_a_key_shows :: proc(t: ^testing.T) {
-	Texts :: struct { f: ui.Text_Field }
+	Texts :: struct { f: ui.Line_Edit }
 	r: Texts
-	defer ui.field_destroy(&r.f)
-	ui.field_set(&r.f, "hello")
+	defer ui.line_edit_destroy(&r.f)
+	ui.line_edit_set(&r.f, "hello")
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Texts)(s.user)
 		ui.next({width = ui.px(FIELD_WIDTH)})
@@ -294,10 +294,10 @@ a_caret_moved_by_a_key_shows :: proc(t: ^testing.T) {
 // Select all, then Up: the column of the last Up or Down is over; the move starts from where the caret is.
 @(test)
 the_column_ends_with_any_other_move :: proc(t: ^testing.T) {
-	Texts :: struct { a: ui.Text_Area }
+	Texts :: struct { a: ui.Text_Edit }
 	r: Texts
-	defer ui.area_destroy(&r.a)
-	ui.area_set(&r.a, "aaaaaaaa\nb\ncccccccc")
+	defer ui.text_edit_destroy(&r.a)
+	ui.text_edit_set(&r.a, "aaaaaaaa\nb\ncccccccc")
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Texts)(s.user)
 		ui.next({width = ui.px(AREA_SIZE), height = ui.px(AREA_SIZE)})
@@ -320,9 +320,9 @@ the_column_ends_with_any_other_move :: proc(t: ^testing.T) {
 // The rects of an editor that went are gone with it.
 @(test)
 caret_rects_end_with_the_editor :: proc(t: ^testing.T) {
-	Texts :: struct { a: ui.Text_Area, show: bool }
+	Texts :: struct { a: ui.Text_Edit, show: bool }
 	r := Texts{show = true}
-	defer ui.area_destroy(&r.a)
+	defer ui.text_edit_destroy(&r.a)
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Texts)(s.user)
 		if !r.show { return }
@@ -341,10 +341,10 @@ caret_rects_end_with_the_editor :: proc(t: ^testing.T) {
 // A click of a screen reader on a field is no pointer: the caret stays where it was.
 @(test)
 a_screen_readers_click_leaves_the_caret :: proc(t: ^testing.T) {
-	Texts :: struct { f: ui.Text_Field }
+	Texts :: struct { f: ui.Line_Edit }
 	r: Texts
-	defer ui.field_destroy(&r.f)
-	ui.field_set(&r.f, "hello world")
+	defer ui.line_edit_destroy(&r.f)
+	ui.line_edit_set(&r.f, "hello world")
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Texts)(s.user)
 		ui.next({width = ui.px(FIELD_WIDTH)})
@@ -446,10 +446,10 @@ vlist_scroll_to_waits_for_its_box :: proc(t: ^testing.T) {
 // A focused field whose row left the built range has only left the view: the focus is its own again when it comes back.
 @(test)
 a_focus_waits_for_its_row_of_a_virtual_list :: proc(t: ^testing.T) {
-	Run :: struct { st: ui.Virtual_List, ids: [ROWS]u64, f: ui.Text_Field }
+	Run :: struct { st: ui.Virtual_List, ids: [ROWS]u64, f: ui.Line_Edit }
 	r: Run
 	for &id, i in r.ids { id = u64(i + 1) }
-	defer { ui.vlist_destroy(&r.st); ui.field_destroy(&r.f) }
+	defer { ui.vlist_destroy(&r.st); ui.line_edit_destroy(&r.f) }
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.px(LIST_SIZE), height = ui.px(LIST_SIZE)})
@@ -468,7 +468,7 @@ a_focus_waits_for_its_row_of_a_virtual_list :: proc(t: ^testing.T) {
 	ui.vlist_scroll_to(&r.st, 0)
 	session.frames(s, SETTLE_FRAMES)
 	session.type_text(s, "back")
-	testing.expect_value(t, ui.field_string(&r.f), "back")
+	testing.expect_value(t, ui.line_edit_string(&r.f), "back")
 }
 
 // Rows of no height are never measured: the view does not wait for them, build after build.

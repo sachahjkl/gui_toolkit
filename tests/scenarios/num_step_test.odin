@@ -1,6 +1,6 @@
 package scenarios_test
 
-// Numbers stepped in a text (ui.num_step_text, ui.field_num_step): each modifier on values of several shapes, the number at the
+// Numbers stepped in a text (ui.num_step_text, ui.line_edit_num_step): each modifier on values of several shapes, the number at the
 // caret (or the next one) moved with its unit and the text around it kept, words and hex colours left alone; in a field, the
 // keys and the wheel while it has the keyboard, the number selected after.
 
@@ -56,31 +56,31 @@ the_number_at_the_caret_steps_with_its_unit :: proc(t: ^testing.T) { unwatched.r
 
 @(test)
 a_field_steps_its_number_by_keys_and_wheel :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { f: ui.Text_Field, changed: int }
+	Run :: struct { f: ui.Line_Edit, changed: int }
 	r: Run
-	defer ui.field_destroy(&r.f)
-	ui.field_set(&r.f, "margin: 10px 5px")
+	defer ui.line_edit_destroy(&r.f)
+	ui.line_edit_set(&r.f, "margin: 10px 5px")
 	s := session.start(t, {user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.px(300)})
 		res := ui.line_edit("###f", &r.f)
-		if ui.field_num_step(&r.f, res.box) { r.changed += 1 }
+		if ui.line_edit_num_step(&r.f, res.box) { r.changed += 1 }
 	}})
 	session.key(s, .Up)
-	testing.expect_value(t, ui.field_string(&r.f), "margin: 10px 5px")   // not focused: nothing
+	testing.expect_value(t, ui.line_edit_string(&r.f), "margin: 10px 5px")   // not focused: nothing
 	session.click(s, "f")
 	session.key(s, .Home)
 	session.key(s, .Right, repeat = len("margin: 1"))
 	session.key(s, .Up, {.Shift})
-	testing.expect_value(t, ui.field_string(&r.f), "margin: 20px 5px")
-	testing.expect_value(t, ui.field_selection(&r.f), "20")
+	testing.expect_value(t, ui.line_edit_string(&r.f), "margin: 20px 5px")
+	testing.expect_value(t, ui.line_edit_selection(&r.f), "20")
 	session.key(s, .Down, {.Alt})
-	testing.expect_value(t, ui.field_string(&r.f), "margin: 19.9px 5px")
+	testing.expect_value(t, ui.line_edit_string(&r.f), "margin: 19.9px 5px")
 	session.wheel(s, session.center(session.get(s, "f")), {0, -1})
-	testing.expect_value(t, ui.field_string(&r.f), "margin: 20.9px 5px")
+	testing.expect_value(t, ui.line_edit_string(&r.f), "margin: 20.9px 5px")
 	session.wheel(s, session.center(session.get(s, "f")), {0, 1}, {.Shift})
-	testing.expect_value(t, ui.field_string(&r.f), "margin: 10.9px 5px")
+	testing.expect_value(t, ui.line_edit_string(&r.f), "margin: 10.9px 5px")
 	session.key(s, .Z, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&r.f), "margin: 20.9px 5px")   // a step is an edit of the field's history
+	testing.expect_value(t, ui.line_edit_string(&r.f), "margin: 20.9px 5px")   // a step is an edit of the field's history
 	testing.expect(t, r.changed == 4, "each step says it changed")
 }) }

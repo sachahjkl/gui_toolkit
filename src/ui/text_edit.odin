@@ -1,12 +1,12 @@
 package ui
 
-// Multi-line text editor. The caller owns the `Text_Area` (text, caret, scroll, undo history) like any other value.
+// Multi-line text editor. The caller owns the `Text_Edit` (text, caret, scroll, undo history) like any other value.
 //
 // Keys when focused:
 //   typing, Enter (new line), Backspace / Delete (Ctrl = word), arrows (Ctrl = word), Up / Down keep the column,
 //   Home / End (line), Ctrl+Home / Ctrl+End (document), Page Up / Page Down, Shift + any move selects,
 //   Ctrl+A / C / X / V (Shift+Insert pastes too; the clipboard's text comes in a later build, paste.odin), Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo, Ctrl+Enter = committed, Escape = leave the field.
-//   Tab moves the focus to the next widget, unless `tab_indents` (then Tab inserts 4 spaces, Ctrl+Tab... leaves).
+//   Tab moves the focus to the next widget, unless its options' `tab_indents` (then Tab inserts 4 spaces, Ctrl+Tab... leaves).
 // Mouse: click places the caret, drag selects, Shift+click extends, double-click selects a word, wheel scrolls.
 
 import "core:math"
@@ -33,7 +33,7 @@ import "../platform"
 // A scrollbar of a text_edit, or none.
 Text_Scrollbar :: enum u8 { None, Vertical, Horizontal }
 
-Text_Area :: struct {
+Text_Edit :: struct {
 	buf:        [dynamic]u8,
 	cursor:     int,       // byte index of the caret
 	mark:       int,       // other end of the selection
@@ -59,7 +59,7 @@ Text_Area :: struct {
 // The caret and the other end of the selection of a text_edit as last drawn, in window coordinates (a line-tall bar
 // each): where a completion popover or an input method window goes. false before the editor was first drawn, and once it
 // is built no more.
-text_edit_caret_rect :: proc(a: ^Text_Area) -> (caret, mark: Rect, ok: bool) {
+text_edit_caret_rect :: proc(a: ^Text_Edit) -> (caret, mark: Rect, ok: bool) {
 	s := gs()
 	shown := a.built == s.build_index || (build_of == s && a.built + 1 == s.build_index)   // (in a build: the last one's)
 	return a.caret_rect, a.mark_rect, a.rects_ok && shown
@@ -115,7 +115,7 @@ editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll:
 }
 
 @(private="file")
-content_extent :: proc(a: ^Text_Area, text: string, b: ^Box, lh: f32, lines: []Visual_Line, wrap_w: f32) -> Vec2 {
+content_extent :: proc(a: ^Text_Edit, text: string, b: ^Box, lh: f32, lines: []Visual_Line, wrap_w: f32) -> Vec2 {
 	if wrap_w > 0 { return {wrap_w - end_slack(), f32(len(lines)) * lh} }   // wrapped: no horizontal scrolling
 	key := hash_bytes(transmute([]u8)text) ~ (u64(transmute(u32)b.font_size) << 20) ~ u64(b.font) ~ u64(transmute(u32)lh)
 	if key != a.ext_key || key == 0 {
@@ -141,66 +141,62 @@ content_extent_measure :: proc(text: string, b: ^Box, lh: f32) -> Vec2 {
 	return {w, f32(lines) * lh}
 }
 
-Text_Snapshot :: Edit_Snapshot
+text_edit_string :: proc(a: ^Text_Edit) -> string { return string(a.buf[:]) }
 
-Edit_Kind :: enum u8 { None, Insert, Delete, Other }
-
-area_string :: proc(a: ^Text_Area) -> string { return string(a.buf[:]) }
-
-area_set :: proc(a: ^Text_Area, text: string) {
+text_edit_set :: proc(a: ^Text_Edit, text: string) {
 	clear(&a.buf)
 	append(&a.buf, text)
 	a.cursor, a.mark, a.scroll, a.has_pref = len(a.buf), len(a.buf), {}, false
-	area_clear_history(a)
+	text_edit_clear_history(a)
 }
 
-area_clear_history :: proc(a: ^Text_Area) {
+text_edit_clear_history :: proc(a: ^Text_Edit) {
 	edit_history_forget(&a.history)
 	a.group = .None
 }
 
-area_destroy :: proc(a: ^Text_Area) {
+text_edit_destroy :: proc(a: ^Text_Edit) {
 	edit_history_destroy(&a.history)
 	a.group = .None
 	delete(a.buf)
 }
 
-area_line_count :: proc(a: ^Text_Area) -> int { return strings.count(area_string(a), "\n") + 1 }
+text_edit_line_count :: proc(a: ^Text_Edit) -> int { return strings.count(text_edit_string(a), "\n") + 1 }
 
 ////////////////////////////////
 // editing primitives
 
 // Records an undo step before an edit (grouping same-kind edits made within Feel.undo_merge_ms of each other, as a field's).
 @(private="file")
-begin_edit :: proc(a: ^Text_Area, kind: Edit_Kind, now: f64) {
+begin_edit :: proc(a: ^Text_Edit, kind: Edit_Kind, now: f64) {
 	cfg := feel_now()
 	merge := kind == a.group && kind != .Other && now - a.group_ms < f64(cfg.undo_merge_ms)
 	edit_history_record(&a.history, a.buf[:], a.cursor, a.mark, cfg.undo_steps, merge)
 	a.group, a.group_ms = kind, now
 }
 
-area_undo :: proc(a: ^Text_Area) -> bool {
+text_edit_undo :: proc(a: ^Text_Edit) -> bool {
 	if !edit_history_step(&a.history, true, &a.buf, &a.cursor, &a.mark) { return false }
 	a.group = .None
 	return true
 }
 
-area_redo :: proc(a: ^Text_Area) -> bool {
+text_edit_redo :: proc(a: ^Text_Edit) -> bool {
 	if !edit_history_step(&a.history, false, &a.buf, &a.cursor, &a.mark) { return false }
 	a.group = .None
 	return true
 }
 
 @(private="file")
-sel :: proc(a: ^Text_Area) -> (lo, hi: int) { return min(a.cursor, a.mark), max(a.cursor, a.mark) }
+sel :: proc(a: ^Text_Edit) -> (lo, hi: int) { return min(a.cursor, a.mark), max(a.cursor, a.mark) }
 
-// The edits of the keys and of the field's menu (field_menu), one of each: through the edit history, the clipboard the one
+// The edits of the keys and of the field's menu (edit_menu), one of each: through the edit history, the clipboard the one
 // given to begin_build. False: nothing to do (no selection, no clipboard).
 @(private)
-area_select_all :: proc(a: ^Text_Area) { a.mark, a.cursor, a.upstream = 0, len(a.buf), false }
+text_edit_select_all :: proc(a: ^Text_Edit) { a.mark, a.cursor, a.upstream = 0, len(a.buf), false }
 
 @(private)
-area_copy :: proc(a: ^Text_Area) -> bool {
+text_edit_copy :: proc(a: ^Text_Edit) -> bool {
 	lo, hi := sel(a)
 	if lo == hi || current == nil || current.clipboard_set == nil { return false }
 	gs().clipboard_set(string(a.buf[lo:hi]))
@@ -209,13 +205,13 @@ area_copy :: proc(a: ^Text_Area) -> bool {
 
 // (with no clipboard, a cut still cuts: what was asked is that the text goes)
 @(private)
-area_cut :: proc(a: ^Text_Area) -> bool {
-	_ = area_copy(a)
-	return area_delete(a)
+text_edit_cut :: proc(a: ^Text_Edit) -> bool {
+	_ = text_edit_copy(a)
+	return text_edit_delete(a)
 }
 
 @(private)
-area_delete :: proc(a: ^Text_Area) -> bool {
+text_edit_delete :: proc(a: ^Text_Edit) -> bool {
 	lo, hi := sel(a)
 	if lo == hi { return false }
 	begin_edit(a, .Other, gs().time_ms)
@@ -225,14 +221,14 @@ area_delete :: proc(a: ^Text_Area) -> bool {
 }
 
 @(private="file")
-delete_range :: proc(a: ^Text_Area, lo, hi: int) {
+delete_range :: proc(a: ^Text_Edit, lo, hi: int) {
 	if hi <= lo { return }
 	remove_range(&a.buf, lo, hi)
 	a.cursor, a.mark = lo, lo
 }
 
 @(private="file")
-insert :: proc(a: ^Text_Area, text: string) {
+insert :: proc(a: ^Text_Edit, text: string) {
 	lo, hi := sel(a)
 	delete_range(a, lo, hi)
 	inject_at_elems(&a.buf, a.cursor, ..transmute([]u8)text)
@@ -261,7 +257,7 @@ caret_x_on :: proc(text: string, l: Visual_Line, b: ^Box, index: int) -> f32 {
 // widget
 
 Text_Edit_Draw :: struct {
-	area:        ^Text_Area,   // the caret rectangles are written back (text_edit_caret_rect)
+	area:        ^Text_Edit,   // the caret rectangles are written back (text_edit_caret_rect)
 	text:        string,
 	lines:       []Visual_Line,
 	placeholder: string,
@@ -433,17 +429,28 @@ fmt_int :: proc(v: int) -> string {
 	return string(buf[i:])
 }
 
+Text_Edit_Options :: struct {
+	placeholder:  string,          // shown, weak, while the editor is empty and has no keyboard
+	line_numbers: bool,            // a gutter with the number of each paragraph
+	tab_indents:  bool,            // Tab inserts 4 spaces (Ctrl+Tab... leaves); false: Tab moves the focus on
+	// Long lines break at the box's width (at the backend's line break opportunities, between grapheme clusters for a
+	// word wider than the box): no horizontal scrolling; Up / Down / Home / End and the mouse follow the visual lines.
+	wrap:         bool,
+	// The box is as tall as its (visual) lines, `min_lines` at least (0: 1) and `max_lines` at most (0: no limit); past
+	// that it scrolls. (A wrapped editor lays out at the width it had in the last frame.)
+	auto_height:  bool,
+	min_lines, max_lines: int,
+	highlight:    ^Text_Highlight, // syntax colouring; nil: plain text
+	// The program builds its own menu on a right press (edit_menu); false: a right press opens edit_menu (Undo, Cut, Copy,
+	// Paste...), as on a line_edit.
+	own_menu:     bool,
+}
+
 // Multi-line editor. Its size comes from the style stack or `next`; it scrolls when its content is larger.
-//   wrap:        long lines break at the box's width (at the backend's line break opportunities, between grapheme
-//                clusters for a word wider than the box): no horizontal scrolling; Up / Down / Home / End and the mouse
-//                follow the visual lines.
-//   auto_height: the box is as tall as its (visual) lines, `min_lines` at least and `max_lines` at most (0: no
-//                limit); past that it scrolls. (A wrapped editor lays out at the width it had in the last frame.)
 // The caret's rectangle is in the result (`caret`, box coordinates) and, as drawn, from text_edit_caret_rect.
-// A right press on it opens its menu (field_menu: Undo, Cut, Copy, Paste...), as on a line_edit; `menu` false: the program
-// has its own.
-text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := false, tab_indents := false,
-	wrap := false, auto_height := false, min_lines := 1, max_lines := 0, highlight: ^Text_Highlight = nil, menu := true) -> (res: Edit_Result) {
+//
+//   ui.text_edit("###notes", &app.notes, {placeholder = "Notes", wrap = true})
+text_edit :: proc(id: string, a: ^Text_Edit, o := Text_Edit_Options{}) -> (res: Edit_Result) {
 	s := gs()
 	if tags("input") {
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Scroll_Self, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken}, id)
@@ -455,12 +462,12 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		mono := s.mono_font != 0 ? s.mono_font : b.font
 		m := font.metrics(s.fonts, b.font, b.font_size)
 		e := Edit_Build{s = s, a = a, b = b, res = &res, now = s.time_ms, pad = pad, lh = math.round(m.line_height * TEXT_EDIT_LINE_HEIGHT)}
-		if line_numbers {
-			digits := len(fmt_int(area_line_count(a)))
+		if o.line_numbers {
+			digits := len(fmt_int(text_edit_line_count(a)))
 			e.gutter = math.round(font.text_width(s.fonts, mono, math.round(b.font_size * TEXT_EDIT_GUTTER_FONT_SCALE), "0") * f32(max(digits, 2)) + pad * 1.8)
 		}
 		// the width lines wrap at: the box's from the last layout (none yet in its first frame: one more frame)
-		if wrap {
+		if o.wrap {
 			if b.size.x > 0 { e.wrap_w = max(TEXT_VIEW_MIN_PX * s.scale, b.size.x - e.gutter - 2 * pad) } else { wake_within(s, 1) }
 		}
 		e.lines = edit_lines(&e)
@@ -472,12 +479,12 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		edit_pointer(&e)
 		if res.focused {
 			edit_paste_answer(&e)
-			edit_keys_typing(&e, tab_indents)
+			edit_keys_typing(&e, o.tab_indents)
 			edit_keys_moves(&e)
 			edit_keys_deleting(&e)
 			edit_keys_clipboard(&e)
-			if key_press(.Z, {.Ctrl}) { area_undo(a); a.upstream = false }
-			if key_press(.Y, {.Ctrl}) || key_press(.Z, {.Ctrl, .Shift}) { area_redo(a); a.upstream = false }
+			if key_press(.Z, {.Ctrl}) { text_edit_undo(a); a.upstream = false }
+			if key_press(.Y, {.Ctrl}) || key_press(.Z, {.Ctrl, .Shift}) { text_edit_redo(a); a.upstream = false }
 			if key_press(.Escape) { res.cancelled = true; s.focus_key = 0 }
 			a.cursor = clamp(a.cursor, 0, len(a.buf))
 			a.mark = clamp(a.mark, 0, len(a.buf))
@@ -491,15 +498,15 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 		if res.changed || cursor_moved { e.lines = edit_lines(&e) }
 
 		// height: as tall as the lines, within the limits (the next layout uses it)
-		if auto_height {
+		if o.auto_height {
 			n := len(e.lines)
-			n = max(n, max(min_lines, 1))
-			if max_lines > 0 { n = min(n, max_lines) }
+			n = max(n, max(o.min_lines, 1))
+			if o.max_lines > 0 { n = min(n, o.max_lines) }
 			b.pref[.Y] = px(f32(n) * e.lh + 2 * pad)
 		}
-		content := edit_follow_caret(&e, auto_height, cursor_moved)
-		edit_fill_draw(&e, content, placeholder, mono, highlight)
-		if menu { field_context_menu(b, a, false, false) }
+		content := edit_follow_caret(&e, o.auto_height, cursor_moved)
+		edit_fill_draw(&e, content, o.placeholder, mono, o.highlight)
+		if !o.own_menu { edit_context_menu(b, a, .Plain) }
 	}
 	return
 }
@@ -508,7 +515,7 @@ text_edit :: proc(id: string, a: ^Text_Area, placeholder := "", line_numbers := 
 @(private="file")
 Edit_Build :: struct {
 	s:      ^State,
-	a:      ^Text_Area,
+	a:      ^Text_Edit,
 	b:      ^Box,
 	res:    ^Edit_Result,
 	now:    f64,
@@ -521,7 +528,7 @@ Edit_Build :: struct {
 
 @(private="file")
 edit_lines :: proc(e: ^Edit_Build) -> []Visual_Line {
-	return text_visual_lines(gs().fonts, e.b.font, e.b.font_size, area_string(e.a), e.wrap_w, context.temp_allocator)
+	return text_visual_lines(gs().fonts, e.b.font, e.b.font_size, text_edit_string(e.a), e.wrap_w, context.temp_allocator)
 }
 
 // A screen reader sets the text, types over the selection, or moves the caret.
@@ -538,9 +545,9 @@ edit_requests :: proc(e: ^Edit_Build) {
 		insert(a, r.value)
 	}
 	if r, ok := a11y_request(b.key, .Set_Text_Selection); ok && r.data == .Text_Selection {
-		runs := a11y_text_lines(area_string(a), edit_lines(e))
-		a.mark = a11y_run_byte(area_string(a), runs, b, r.sel[0], int(r.sel[1]))
-		a.cursor = a11y_run_byte(area_string(a), runs, b, r.sel[2], int(r.sel[3]))
+		runs := a11y_text_lines(text_edit_string(a), edit_lines(e))
+		a.mark = a11y_run_byte(text_edit_string(a), runs, b, r.sel[0], int(r.sel[1]))
+		a.cursor = a11y_run_byte(text_edit_string(a), runs, b, r.sel[2], int(r.sel[3]))
 		a.upstream = false
 		e.moved = true
 	}
@@ -550,7 +557,7 @@ edit_requests :: proc(e: ^Edit_Build) {
 @(private="file")
 edit_point_to_index :: proc(e: ^Edit_Build, p: Vec2) -> (int, bool) {
 	a, b := e.a, e.b
-	text := area_string(a)
+	text := text_edit_string(a)
 	li := clamp(int((p.y - e.pad + a.scroll.y) / e.lh), 0, len(e.lines) - 1)
 	l := e.lines[li]
 	i := l.start + font.index_from_x(gs().fonts, b.font, b.font_size, text[l.start:l.end], p.x - e.gutter - e.pad + a.scroll.x)
@@ -562,7 +569,7 @@ edit_point_to_index :: proc(e: ^Edit_Build, p: Vec2) -> (int, bool) {
 edit_pointer :: proc(e: ^Edit_Build) {
 	a, b, res := e.a, e.b, e.res
 	gutter, pad, lh, wrap_w := e.gutter, e.pad, e.lh, e.wrap_w
-	text := area_string(a)
+	text := text_edit_string(a)
 	bars := editor_bars(b.rect, gutter, pad, b.font_size, content_extent(a, text, b, lh, e.lines, wrap_w), a.scroll, wrap_w > 0)
 	mp := b.rect.min + res.mouse
 	if res.pointer_pressed {
@@ -622,7 +629,7 @@ edit_keys_typing :: proc(e: ^Edit_Build, tab_indents: bool) {
 	if key_press(.Return) {
 		begin_edit(a, .Other, e.now)
 		// keep the indentation of the current line
-		ls, _ := line_bounds(area_string(a), a.cursor)
+		ls, _ := line_bounds(text_edit_string(a), a.cursor)
 		indent := 0
 		for ls + indent < len(a.buf) && a.buf[ls + indent] == ' ' && ls + indent < a.cursor { indent += 1 }
 		insert(a, "\n")
@@ -634,7 +641,7 @@ edit_keys_typing :: proc(e: ^Edit_Build, tab_indents: bool) {
 }
 
 @(private="file")
-edit_move :: proc(a: ^Text_Area, to: int, extend: bool, upstream := false) {
+edit_move :: proc(a: ^Text_Edit, to: int, extend: bool, upstream := false) {
 	a.cursor = to
 	a.upstream = upstream
 	a.has_pref = false   // (edit_vertical sets it again)
@@ -645,7 +652,7 @@ edit_move :: proc(a: ^Text_Area, to: int, extend: bool, upstream := false) {
 @(private="file")
 edit_vertical :: proc(e: ^Edit_Build, lines: int, extend: bool) {
 	a, b := e.a, e.b
-	text := area_string(a)
+	text := text_edit_string(a)
 	vl := edit_lines(e)
 	li := visual_line_of(vl, a.cursor, a.upstream)
 	x := a.pref_x
@@ -674,7 +681,7 @@ edit_keys_moves :: proc(e: ^Edit_Build) {
 	shift := Mods{.Shift}
 	for mods in ([?]Mods{{}, shift}) {
 		ext := mods == shift
-		t := area_string(a)
+		t := text_edit_string(a)
 		lo, hi := sel(a)
 		if key_press(.Left, mods)  { edit_move(a, (lo != hi && !ext) ? lo : prev_index(t, a.cursor), ext) }
 		if key_press(.Right, mods) { edit_move(a, (lo != hi && !ext) ? hi : next_index(t, a.cursor), ext) }
@@ -699,7 +706,7 @@ edit_keys_moves :: proc(e: ^Edit_Build) {
 	cs := Mods{.Ctrl, .Shift}
 	for mods in ([?]Mods{{.Ctrl}, cs}) {
 		ext := mods == cs
-		t := area_string(a)
+		t := text_edit_string(a)
 		if key_press(.Left, mods)  { edit_move(a, word_left(t, a.cursor), ext) }
 		if key_press(.Right, mods) { edit_move(a, word_right(t, a.cursor), ext) }
 		if key_press(.Home, mods)  { edit_move(a, 0, ext) }
@@ -714,25 +721,25 @@ edit_keys_deleting :: proc(e: ^Edit_Build) {
 	if (key_press(.Backspace) || key_press(.Backspace, {.Shift})) && (a.cursor != a.mark || a.cursor > 0) {
 		lo, hi := sel(a)
 		begin_edit(a, .Delete, e.now)
-		if lo != hi { delete_range(a, lo, hi) } else { p := prev_index(area_string(a), a.cursor); delete_range(a, p, a.cursor) }
+		if lo != hi { delete_range(a, lo, hi) } else { p := prev_index(text_edit_string(a), a.cursor); delete_range(a, p, a.cursor) }
 		a.upstream = false
 	}
 	if key_press(.Delete) && (a.cursor != a.mark || a.cursor < len(a.buf)) {
 		lo, hi := sel(a)
 		begin_edit(a, .Delete, e.now)
-		if lo != hi { delete_range(a, lo, hi) } else { n := next_index(area_string(a), a.cursor); delete_range(a, a.cursor, n) }
+		if lo != hi { delete_range(a, lo, hi) } else { n := next_index(text_edit_string(a), a.cursor); delete_range(a, a.cursor, n) }
 		a.upstream = false
 	}
 	if key_press(.Backspace, {.Ctrl}) && (a.cursor != a.mark || a.cursor > 0) {
 		lo, hi := sel(a)
 		begin_edit(a, .Other, e.now)
-		if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, word_left(area_string(a), a.cursor), a.cursor) }
+		if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, word_left(text_edit_string(a), a.cursor), a.cursor) }
 		a.upstream = false
 	}
 	if key_press(.Delete, {.Ctrl}) && (a.cursor != a.mark || a.cursor < len(a.buf)) {
 		lo, hi := sel(a)
 		begin_edit(a, .Other, e.now)
-		if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, a.cursor, word_right(area_string(a), a.cursor)) }
+		if lo != hi { delete_range(a, lo, hi) } else { delete_range(a, a.cursor, word_right(text_edit_string(a), a.cursor)) }
 		a.upstream = false
 	}
 }
@@ -744,9 +751,9 @@ edit_keys_clipboard :: proc(e: ^Edit_Build) {
 	a := e.a
 	ctrl := Mods{.Ctrl}
 	shift := Mods{.Shift}
-	if key_press(.A, ctrl) { area_select_all(a) }
-	if key_press(.C, ctrl) || key_press(.Insert, ctrl) { _ = area_copy(a) }
-	if key_press(.X, ctrl) || key_press(.Delete, shift) { _ = area_cut(a) }
+	if key_press(.A, ctrl) { text_edit_select_all(a) }
+	if key_press(.C, ctrl) || key_press(.Insert, ctrl) { _ = text_edit_copy(a) }
+	if key_press(.X, ctrl) || key_press(.Delete, shift) { _ = text_edit_cut(a) }
 	// (the text comes in a later build: edit_paste_answer)
 	if key_press(.V, ctrl) || key_press(.Insert, {.Shift}) { paste_request(e.b.key) }
 }
@@ -771,7 +778,7 @@ edit_follow_caret :: proc(e: ^Edit_Build, auto_height, cursor_moved: bool) -> Ve
 	a, b, s := e.a, e.b, e.s
 	gutter, pad, lh, wrap_w := e.gutter, e.pad, e.lh, e.wrap_w
 	lines := e.lines
-	text := area_string(a)
+	text := text_edit_string(a)
 	cur_line := visual_line_of(lines, a.cursor, a.upstream)
 	if !(lines[cur_line].soft && lines[cur_line].end == a.cursor) { a.upstream = false }   // only the end of a wrapped line has two places
 	view_w := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - gutter - 2 * pad)
@@ -802,7 +809,7 @@ edit_fill_draw :: proc(e: ^Edit_Build, content: Vec2, placeholder: string, mono:
 	lines := e.lines
 	d := frame_new(Text_Edit_Draw)
 	d.area = a
-	d.text = strings.clone(area_string(a), frame_allocator())
+	d.text = strings.clone(text_edit_string(a), frame_allocator())
 	d.lines = make([]Visual_Line, len(lines), frame_allocator())
 	copy(d.lines, lines)
 	d.placeholder = placeholder

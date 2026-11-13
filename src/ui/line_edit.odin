@@ -12,15 +12,15 @@ import lucide "../lucide"
 import "../platform"
 
 // Single-line text field state. The caller owns it (like any other value); the widget edits it in place.
-Text_Field :: struct {
+Line_Edit :: struct {
 	buf:       [dynamic]u8,
 	cursor:    int,           // byte index of the caret
 	mark:      int,           // other end of the selection (== cursor when nothing is selected)
 	scroll_x:  f32,           // horizontal scroll in pixels, keeps the caret visible
 	edited_ms: f64,           // time of the last edit/move (caret stays solid right after)
-	history:    Edit_History, // edit history (Ctrl+Z / Ctrl+Y, field_undo / field_redo)
-	last_edit:  Field_Edit,   // what the last recorded edit was: consecutive typing is one undo step
-	last_edit_ms: f64,
+	history:    Edit_History, // edit history (Ctrl+Z / Ctrl+Y, line_edit_undo / line_edit_redo)
+	group:      Edit_Kind,    // what the last recorded edit was: consecutive typing is one undo step
+	group_ms:   f64,
 	word:       Word_Drag,    // the word a double click took, while its button is held
 }
 
@@ -46,10 +46,6 @@ word_drag_to :: proc(w: Word_Drag, text: string, at: int) -> (mark, cursor: int)
 	return w.lo, w.hi
 }
 
-Field_Snapshot :: Edit_Snapshot
-
-Field_Edit :: enum u8 { None, Typing, Deleting, Other }
-
 // The caret of fields: solid this long after an edit, then on and off, a wake at each flip and none between. Its width is the
 // font size over CARET_WIDTH_DIVISOR.
 @(private) CARET_SOLID_MS :: 500
@@ -67,109 +63,109 @@ caret_wake :: proc(s: ^State, since: f64) {
 // A field's text area is at least this wide (and tall), whatever its box.
 @(private) TEXT_VIEW_MIN_PX :: 8
 
-field_destroy :: proc(f: ^Text_Field) {
+line_edit_destroy :: proc(f: ^Line_Edit) {
 	delete(f.buf)
 	edit_history_destroy(&f.history)
-	f.last_edit = .None
+	f.group = .None
 }
 
-field_string :: proc(f: ^Text_Field) -> string { return string(f.buf[:]) }
+line_edit_string :: proc(f: ^Line_Edit) -> string { return string(f.buf[:]) }
 
 // Replaces the text (caret at the end). The edit history starts over: the new text is not an edit of the old one.
-field_set :: proc(f: ^Text_Field, text: string) {
+line_edit_set :: proc(f: ^Line_Edit, text: string) {
 	clear(&f.buf)
 	append(&f.buf, text)
 	f.cursor, f.mark, f.scroll_x = len(f.buf), len(f.buf), 0
-	field_forget_history(f)
+	line_edit_clear_history(f)
 }
 
-field_clear :: proc(f: ^Text_Field) { field_set(f, "") }
+line_edit_clear :: proc(f: ^Line_Edit) { line_edit_set(f, "") }
 
 // Empties a field and leaves nothing of its text in memory: its bytes (all its capacity: what a shorter text left after
 // it too) and every step of its undo and redo history are zeroed before they go. For a secret (a password, a PIN) once it
 // is used or given up. What it held before its buffer last grew was in a block freed then, out of reach: reserve the
 // capacity of a secret's field before it is typed in (`reserve(&f.buf, n)`).
-field_wipe :: proc(f: ^Text_Field) {
+line_edit_wipe :: proc(f: ^Line_Edit) {
 	if cap(f.buf) > 0 { mem.zero_explicit(raw_data(f.buf), cap(f.buf)) }
 	clear(&f.buf)
 	f.cursor, f.mark, f.scroll_x = 0, 0, 0
 	f.word = {}
-	field_forget_history(f)   // (each step zeroed: snapshot_free)
+	line_edit_clear_history(f)   // (each step zeroed: snapshot_free)
 }
 
-@(private)
-field_forget_history :: proc(f: ^Text_Field) {
+// Forgets every step of the edit history (each step's text zeroed: it may be a secret's).
+line_edit_clear_history :: proc(f: ^Line_Edit) {
 	edit_history_forget(&f.history)
-	f.last_edit = .None
+	f.group = .None
 }
 
 // Records the state before an edit of kind `kind` (typing and deleting merge with the previous step of the same kind).
 @(private)
-field_checkpoint :: proc(f: ^Text_Field, kind: Field_Edit) {
+line_edit_checkpoint :: proc(f: ^Line_Edit, kind: Edit_Kind) {
 	now := build_now_ms()
 	cfg := feel_now()
-	merge := kind != .Other && kind == f.last_edit && now - f.last_edit_ms < f64(cfg.undo_merge_ms) && len(f.history.undo) > 0
-	f.last_edit, f.last_edit_ms = kind, now
+	merge := kind != .Other && kind == f.group && now - f.group_ms < f64(cfg.undo_merge_ms) && len(f.history.undo) > 0
+	f.group, f.group_ms = kind, now
 	edit_history_record(&f.history, f.buf[:], f.cursor, f.mark, cfg.undo_steps, merge)
 }
 
 @(private)
-field_restore :: proc(f: ^Text_Field, back: bool) -> bool {
+line_edit_restore :: proc(f: ^Line_Edit, back: bool) -> bool {
 	if !edit_history_step(&f.history, back, &f.buf, &f.cursor, &f.mark) { return false }
-	f.last_edit = .None
+	f.group = .None
 	return true
 }
 
-field_can_undo :: proc(f: ^Text_Field) -> bool { return len(f.history.undo) > 0 }
-field_can_redo :: proc(f: ^Text_Field) -> bool { return len(f.history.redo) > 0 }
-field_undo :: proc(f: ^Text_Field) -> bool { return field_restore(f, true) }
-field_redo :: proc(f: ^Text_Field) -> bool { return field_restore(f, false) }
+line_edit_can_undo :: proc(f: ^Line_Edit) -> bool { return len(f.history.undo) > 0 }
+line_edit_can_redo :: proc(f: ^Line_Edit) -> bool { return len(f.history.redo) > 0 }
+line_edit_undo :: proc(f: ^Line_Edit) -> bool { return line_edit_restore(f, true) }
+line_edit_redo :: proc(f: ^Line_Edit) -> bool { return line_edit_restore(f, false) }
 
-field_has_selection :: proc(f: ^Text_Field) -> bool { return f.cursor != f.mark }
-field_selection :: proc(f: ^Text_Field) -> string { lo, hi := sel_range(f); return string(f.buf[lo:hi]) }
-field_select_all :: proc(f: ^Text_Field) { f.mark, f.cursor = 0, len(f.buf) }
+line_edit_has_selection :: proc(f: ^Line_Edit) -> bool { return f.cursor != f.mark }
+line_edit_selection :: proc(f: ^Line_Edit) -> string { lo, hi := sel_range(f); return string(f.buf[lo:hi]) }
+line_edit_select_all :: proc(f: ^Line_Edit) { f.mark, f.cursor = 0, len(f.buf) }
 
 // Edit commands for menus (they go through the edit history; the clipboard is the one given to begin_build). A paste asks
-// the clipboard for the field `owner` (field_paste): the text comes in a later build.
-field_copy :: proc(f: ^Text_Field) -> bool {
-	if !field_has_selection(f) || current == nil || current.clipboard_set == nil { return false }
-	gs().clipboard_set(field_selection(f))
+// the clipboard for the field `owner` (edit_paste): the text comes in a later build.
+line_edit_copy :: proc(f: ^Line_Edit) -> bool {
+	if !line_edit_has_selection(f) || current == nil || current.clipboard_set == nil { return false }
+	gs().clipboard_set(line_edit_selection(f))
 	return true
 }
 
-field_cut :: proc(f: ^Text_Field) -> bool {
-	if !field_copy(f) { return false }
-	field_checkpoint(f, .Other)
+line_edit_cut :: proc(f: ^Line_Edit) -> bool {
+	if !line_edit_copy(f) { return false }
+	line_edit_checkpoint(f, .Other)
 	delete_selection(f)
 	return true
 }
 
-field_delete :: proc(f: ^Text_Field) -> bool {
-	if !field_has_selection(f) { return false }
-	field_checkpoint(f, .Other)
+line_edit_delete :: proc(f: ^Line_Edit) -> bool {
+	if !line_edit_has_selection(f) { return false }
+	line_edit_checkpoint(f, .Other)
 	delete_selection(f)
 	return true
 }
 
 // Inserts text over the selection (line breaks become spaces: the field is one line).
-field_insert :: proc(f: ^Text_Field, text: string) {
+line_edit_insert :: proc(f: ^Line_Edit, text: string) {
 	clean, _ := strings.replace_all(text, "\r\n", " ", context.temp_allocator)
 	clean, _ = strings.replace_all(clean, "\n", " ", context.temp_allocator)
 	clean, _ = strings.replace_all(clean, "\r", " ", context.temp_allocator)
-	field_checkpoint(f, .Other)
+	line_edit_checkpoint(f, .Other)
 	insert_text(f, clean)
 }
 
 // Asks the clipboard's text for the field whose widget is `owner` (line_edit's box: its result's box.key). line_edit
 // inserts it over its selection when it comes, if it still has the focus; a field the keyboard reaches another way
-// takes it with field_paste_answer. False: there is no clipboard to ask.
-field_paste :: proc(owner: Key) -> bool { return paste_request(owner) }
+// takes it with line_edit_paste_answer. False: there is no clipboard to ask.
+edit_paste :: proc(owner: Key) -> bool { return paste_request(owner) }
 
-// Inserts the text a field_paste of `owner` asked for, in the build it came (one undo step). True: it was inserted.
-field_paste_answer :: proc(f: ^Text_Field, owner: Key) -> bool {
+// Inserts the text a edit_paste of `owner` asked for, in the build it came (one undo step). True: it was inserted.
+line_edit_paste_answer :: proc(f: ^Line_Edit, owner: Key) -> bool {
 	text, ok := paste_answer(owner)
 	if !ok { return false }
-	field_insert(f, text)
+	line_edit_insert(f, text)
 	return true
 }
 
@@ -196,7 +192,7 @@ Line_Edit_Draw :: struct {
 	end:         f32,   // room kept at the right end (the reveal button): the text is cut before it
 }
 
-// The reveal button of a secret field (line_edit's `reveal`), in font sizes: its width.
+// The button at a field's end (line_edit's `reveal` and `clearable`), in font sizes: its width.
 REVEAL_EM :: 1.9
 
 // The caret position before / after the grapheme cluster at `i` (an emoji sequence, a flag, a letter with its marks
@@ -257,10 +253,10 @@ word_right :: proc(s: string, i: int) -> int {
 }
 
 @(private)
-sel_range :: proc(f: ^Text_Field) -> (lo, hi: int) { return min(f.cursor, f.mark), max(f.cursor, f.mark) }
+sel_range :: proc(f: ^Line_Edit) -> (lo, hi: int) { return min(f.cursor, f.mark), max(f.cursor, f.mark) }
 
 @(private)
-delete_selection :: proc(f: ^Text_Field) -> bool {
+delete_selection :: proc(f: ^Line_Edit) -> bool {
 	lo, hi := sel_range(f)
 	if lo == hi { return false }
 	remove_range(&f.buf, lo, hi)
@@ -269,7 +265,7 @@ delete_selection :: proc(f: ^Text_Field) -> bool {
 }
 
 @(private)
-insert_text :: proc(f: ^Text_Field, text: string) {
+insert_text :: proc(f: ^Line_Edit, text: string) {
 	delete_selection(f)
 	inject_at_elems(&f.buf, f.cursor, ..transmute([]u8)text)
 	f.cursor += len(text)
@@ -307,12 +303,13 @@ line_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 // Shift: the selection with it); Backspace and Delete take a letter (Ctrl: a word) or the selection; Ctrl+A selects all;
 // Ctrl+C, X, V copy, cut and paste (Ctrl+Insert, Shift+Delete, Shift+Insert too); Ctrl+Z undoes, Ctrl+Y and Ctrl+Shift+Z
 // redo. True when the key is one of those (applied to `f`, whether it changed it or not): the caller takes it. Return,
-// Escape and typed text are the caller's. `owner`: the key a paste is asked for (field_paste; its text comes in a later
-// build, field_paste_answer). `masked`: a secret, neither copied nor cut. line_edit reads its keys with it; a field the
-// keyboard reaches another way (a menu's search) gives it its own.
-field_key :: proc(f: ^Text_Field, owner: Key, key: platform.Key, mods: platform.Modifiers, masked := false, read_only := false) -> bool {
+// Escape and typed text are the caller's. `owner`: the key a paste is asked for (edit_paste; its text comes in a later
+// build, line_edit_paste_answer). `kind` .Secret: a secret as shown, neither copied nor cut; .Read_Only: the caret moves and
+// the text is selected and copied, nothing changes it. line_edit reads its keys with it; a field the keyboard reaches
+// another way (a menu's search) gives it its own.
+line_edit_key :: proc(f: ^Line_Edit, owner: Key, key: platform.Key, mods: platform.Modifiers, kind := Line_Edit_Kind.Plain) -> bool {
 	ctrl, shift, cs := platform.Modifiers{.Ctrl}, platform.Modifiers{.Shift}, platform.Modifiers{.Ctrl, .Shift}
-	// (read only: the caret moves, the text is selected and copied; nothing changes it)
+	masked, read_only := kind == .Secret, kind == .Read_Only
 	if read_only {
 		#partial switch key {
 		case .Left, .Right, .Home, .End, .A, .C: // below
@@ -320,16 +317,16 @@ field_key :: proc(f: ^Text_Field, owner: Key, key: platform.Key, mods: platform.
 		case: return false
 		}
 	}
-	move :: proc(f: ^Text_Field, to: int, extend: bool) {
+	move :: proc(f: ^Line_Edit, to: int, extend: bool) {
 		f.cursor = to
 		if !extend { f.mark = to }
 	}
-	deleting :: proc(f: ^Text_Field, back: bool) -> bool {
+	deleting :: proc(f: ^Line_Edit, back: bool) -> bool {
 		can := f.cursor != f.mark || (back ? f.cursor > 0 : f.cursor < len(f.buf))
-		if can { field_checkpoint(f, .Deleting) }
+		if can { line_edit_checkpoint(f, .Delete) }
 		return can
 	}
-	text := field_string(f)
+	text := line_edit_string(f)
 	lo, hi := sel_range(f)
 	#partial switch key {
 	case .Left, .Right, .Home, .End:
@@ -356,33 +353,33 @@ field_key :: proc(f: ^Text_Field, owner: Key, key: platform.Key, mods: platform.
 		switch mods {
 		case {}:    if deleting(f, false) && !delete_selection(f) { remove_range(&f.buf, f.cursor, next_index(text, f.cursor)) }
 		case ctrl:  if deleting(f, false) && !delete_selection(f) { remove_range(&f.buf, f.cursor, word_right(text, f.cursor)) }
-		case shift: if masked { return false }; field_cut(f)
+		case shift: if masked { return false }; line_edit_cut(f)
 		case: return false
 		}
 	case .A:
 		if mods != ctrl { return false }
-		field_select_all(f)
+		line_edit_select_all(f)
 	case .C, .X:
 		if mods != ctrl || masked { return false }
-		if key == .C { field_copy(f) } else { field_cut(f) }
+		if key == .C { line_edit_copy(f) } else { line_edit_cut(f) }
 	case .Insert:
 		switch mods {
-		case ctrl:  if masked { return false }; field_copy(f)
-		case shift: field_paste(owner)
+		case ctrl:  if masked { return false }; line_edit_copy(f)
+		case shift: edit_paste(owner)
 		case: return false
 		}
 	case .V:
 		if mods != ctrl { return false }
-		field_paste(owner)
+		edit_paste(owner)
 	case .Z:
 		switch mods {
-		case ctrl: field_undo(f)
-		case cs:   field_redo(f)
+		case ctrl: line_edit_undo(f)
+		case cs:   line_edit_redo(f)
 		case: return false
 		}
 	case .Y:
 		if mods != ctrl { return false }
-		field_redo(f)
+		line_edit_redo(f)
 	case:
 		return false
 	}
@@ -391,21 +388,39 @@ field_key :: proc(f: ^Text_Field, owner: Key, key: platform.Key, mods: platform.
 	return true
 }
 
+// What a line_edit's text is: typed in; a secret (a password: bullets are shown in place of its characters, and it is
+// neither copied nor cut); or read only (shown, selected and copied by keys, a drag and the menu's Copy, never changed: a
+// value made for the person to take, a generated password, a key).
+Line_Edit_Kind :: enum u8 { Plain, Secret, Read_Only }
+
+Line_Edit_Options :: struct {
+	placeholder: string,          // shown, weak, while the field is empty and has no keyboard
+	kind:        Line_Edit_Kind,
+	// .Secret: a button at the field's end (an eye) shows the text and hides it again; `reveal^` says which, and is the
+	// caller's to keep. nil: no button.
+	reveal:      ^bool,
+	// While the field holds text, a cross at its end empties it (a search's field; Undo brings the text back). Not with
+	// .Read_Only, nor when the end holds the eye of `reveal`.
+	clearable:   bool,
+	// The program builds its own menu on a right press (edit_menu); false: a right press opens edit_menu (Undo, Cut, Copy,
+	// Paste...).
+	own_menu:    bool,
+}
+
 // Single-line editor. Tags used: "input" (+ whatever the caller pushed, e.g. "bad" for an invalid value).
 // Supports: typing, selection (shift, mouse drag, double-click word), Home/End, ctrl+arrows (words),
 // Backspace/Delete (ctrl = word), ctrl+A/C/X/V, Enter (committed), Escape (cancelled, drops focus).
-// `secret`: a password: bullets are shown in place of the characters, and it is neither copied nor cut. With `reveal`, a button
-// at its end (an eye) shows it as text and hides it again; `reveal^` says which, and is the caller's to keep.
-// A right press on it opens its menu (field_menu: Undo, Cut, Copy, Paste...); `menu` false: the program has its own.
-// `clearable`: while it holds text, a cross at its end empties it (a search's field; Undo brings the text back).
-// `read_only`: its text is shown, selected and copied (keys, a drag, the menu's Copy), never changed (a value made for the
-// person to take: a generated password, a key).
-line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false, reveal: ^bool = nil, menu := true, clearable := false, read_only := false) -> (res: Edit_Result) {
+//
+//   ui.line_edit("###name", &app.name, {placeholder = "Your name"})
+//   ui.line_edit("###password", &app.password, {kind = .Secret, reveal = &app.shown})
+line_edit :: proc(id: string, f: ^Line_Edit, o := Line_Edit_Options{}) -> (res: Edit_Result) {
 	s := gs()
-	revealable := secret && reveal != nil
-	clears := clearable && !revealable && len(f.buf) > 0
+	read_only := o.kind == .Read_Only
+	revealable := o.kind == .Secret && o.reveal != nil
+	clears := o.clearable && !read_only && !revealable && len(f.buf) > 0
 	// (revealed, it is text: shown, copied, its words selected; the person chose to see it)
-	masked := secret && !(revealable && reveal^)
+	masked := o.kind == .Secret && !(revealable && o.reveal^)
+	shown_kind := masked ? Line_Edit_Kind.Secret : (read_only ? Line_Edit_Kind.Read_Only : Line_Edit_Kind.Plain)
 	if tags("input") {
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken}, id)
 		b.cursor = .Text
@@ -421,20 +436,20 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 
 		// a screen reader sets the text, types over the selection, or moves the caret
 		if r, ok := a11y_request(b.key, .Set_Value); ok && r.data == .Value {
-			field_checkpoint(f, .Other)
-			field_select_all(f)
+			line_edit_checkpoint(f, .Other)
+			line_edit_select_all(f)
 			insert_text(f, r.value)
 		}
 		if r, ok := a11y_request(b.key, .Replace_Selected_Text); ok && r.data == .Value {
-			field_checkpoint(f, .Other)
+			line_edit_checkpoint(f, .Other)
 			insert_text(f, r.value)
 		}
 		if r, ok := a11y_request(b.key, .Set_Text_Selection); ok && r.data == .Text_Selection {
-			f.mark = a11y_run_byte(field_string(f), nil, b, r.sel[0], int(r.sel[1]))
-			f.cursor = a11y_run_byte(field_string(f), nil, b, r.sel[2], int(r.sel[3]))
+			f.mark = a11y_run_byte(line_edit_string(f), nil, b, r.sel[0], int(r.sel[1]))
+			f.cursor = a11y_run_byte(line_edit_string(f), nil, b, r.sel[2], int(r.sel[3]))
 			f.edited_ms = now
 		}
-		text := field_string(f)
+		text := line_edit_string(f)
 
 		// mouse: click places the caret, drag selects, double-click selects the word
 		if res.pointer_pressed || res.dragging {
@@ -459,16 +474,16 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		if focused {
 			// (a paste asked in an earlier build: before what was typed since)
 			if !read_only {
-				field_paste_answer(f, b.key)
+				line_edit_paste_answer(f, b.key)
 				for r in s.typed {
-					field_checkpoint(f, .Typing)
+					line_edit_checkpoint(f, .Insert)
 					insert_text(f, utf8.runes_to_string({r}, context.temp_allocator))
 				}
 			}
 			// (the keys in the order they came; a dialog open over the field holds them)
 			if !keys_held_by_dialog(s) {
 				for e, i in s.events.list {
-					if !s.events.consumed[i] && field_key(f, b.key, e.key, e.mods, masked, read_only) { s.events.consumed[i] = true }
+					if !s.events.consumed[i] && line_edit_key(f, b.key, e.key, e.mods, shown_kind) { s.events.consumed[i] = true }
 				}
 			}
 			if key_press(.Return) { res.committed = true }
@@ -480,9 +495,9 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 		res.changed = before != len(f.buf) || before_hash != after_hash
 		moved := f.cursor != c0 || f.mark != m0
 		if res.changed || moved { f.edited_ms = now }
-		if moved && !res.changed { f.last_edit = .None }   // (what is typed after a move of the caret is another step)
+		if moved && !res.changed { f.group = .None }   // (what is typed after a move of the caret is another step)
 		if focused { caret_wake(s, now - f.edited_ms) }
-		text = field_string(f)
+		text = line_edit_string(f)
 		// what is shown, and where the caret and the selection's end are in it
 		shown, cursor, mark := text, f.cursor, f.mark
 		if masked { shown, cursor, mark = secret_mask(text), secret_index(text, f.cursor), secret_index(text, f.mark) }
@@ -500,7 +515,7 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 
 		d := frame_new(Line_Edit_Draw)
 		d.text = strings.clone(shown, frame_allocator())
-		d.placeholder = placeholder
+		d.placeholder = o.placeholder
 		d.cursor, d.mark, d.scroll_x = cursor, mark, f.scroll_x
 		d.focused = focused
 		since := now - f.edited_ms
@@ -516,27 +531,28 @@ line_edit :: proc(id: string, f: ^Text_Field, placeholder := "", secret := false
 			t := frame_new(A11y_Text)
 			t^ = {text = d.text, cursor = cursor, mark = mark, font = b.font, size = b.font_size, line_height = lh,
 				origin = {b.rect.min.x + pad, (b.rect.min.y + b.rect.max.y - lh) * 0.5}, scroll = {f.scroll_x, 0}, password = masked}
-			a11y_default(b, {role = .Text_Input, placeholder = placeholder, text = t})
+			a11y_default(b, {role = .Text_Input, placeholder = o.placeholder, text = t})
 		} else {
-			a11y_default(b, {role = .Text_Input, placeholder = placeholder})
+			a11y_default(b, {role = .Text_Input, placeholder = o.placeholder})
 		}
-		if revealable { reveal_button(b, reveal, end) }
+		if revealable { reveal_button(b, o.reveal, end) }
 		if clears && clear_button(b, f, end) { res.changed = true }
-		if menu { field_context_menu(b, f, masked, read_only) }
+		if !o.own_menu { edit_context_menu(b, f, shown_kind) }
 	}
 	return
 }
 
-// What a field's menu edits: a line_edit's Text_Field or a text_edit's Text_Area. Each edit goes through its own edit
+// What a field's menu edits: a line_edit's Line_Edit or a text_edit's Text_Edit. Each edit goes through its own edit
 // history, as its keys do.
-Edit_Target :: union { ^Text_Field, ^Text_Area }
+Edit_Target :: union { ^Line_Edit, ^Text_Edit }
 
 // The menu of a text field, `key` its menu (ctx_menu_open opens it): Undo, Redo, Cut, Copy, Paste, Delete and Select all,
 // each with its keys and its icon (Lucide's: lucide_icons), on a line_edit's field or a text_edit's area. `owner`: the
-// field's widget, which a paste's text comes to (field_paste). A secret is neither copied nor cut; a field `read_only` is
-// only copied and selected. line_edit and text_edit open it on a right press (their `menu`).
-field_menu :: proc(key: Key, target: Edit_Target, owner: Key, secret := false, read_only := false) {
+// field's widget, which a paste's text comes to (edit_paste). `kind` .Secret: neither copied nor cut; .Read_Only: only
+// copied and selected. line_edit and text_edit open it on a right press (unless their options' `own_menu`).
+edit_menu :: proc(key: Key, target: Edit_Target, owner: Key, kind := Line_Edit_Kind.Plain) {
 	if ctx_menu(key) {
+		secret, read_only := kind == .Secret, kind == .Read_Only
 		ico := lucide_icons()
 		buf, cursor, mark := edit_target_text(target)
 		sel := cursor != mark
@@ -548,7 +564,7 @@ field_menu :: proc(key: Key, target: Edit_Target, owner: Key, secret := false, r
 		}
 		if menu_item(i18n.tr("Copy"), "Ctrl+C", icon = lucide.COPY, icon_font = ico, enabled = sel && !secret).clicked { edit_target_copy(target) }
 		if !read_only {
-			if menu_item(i18n.tr("Paste"), "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { field_paste(owner) }
+			if menu_item(i18n.tr("Paste"), "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { edit_paste(owner) }
 			if menu_item(i18n.tr("Delete"), i18n.tr("key", "Del"), icon = lucide.TRASH_2, icon_font = ico, enabled = sel).clicked { edit_target_delete(target) }
 		}
 		menu_separator()
@@ -559,21 +575,21 @@ field_menu :: proc(key: Key, target: Edit_Target, owner: Key, secret := false, r
 // A right press on the field's box `b` opens its menu there (the field takes the keyboard: its edits are the menu's), and the
 // menu is built while it is open.
 @(private)
-field_context_menu :: proc(b: ^Box, target: Edit_Target, secret, read_only: bool) {
+edit_context_menu :: proc(b: ^Box, target: Edit_Target, kind: Line_Edit_Kind) {
 	s := gs()
-	key := key_from_string(b.key, "field_menu")
+	key := key_from_string(b.key, "edit_menu")
 	if s.pressed_any[.Right] && s.pressed_key[.Right] == b.key && !ctx_menu_any_open() {
 		s.focus_key = b.key
 		ctx_menu_open(key, s.mouse)
 	}
-	field_menu(key, target, b.key, secret, read_only)
+	edit_menu(key, target, b.key, kind)
 }
 
 @(private = "file")
 edit_target_text :: proc(t: Edit_Target) -> (buf: []u8, cursor, mark: int) {
 	switch v in t {
-	case ^Text_Field: return v.buf[:], v.cursor, v.mark
-	case ^Text_Area:  return v.buf[:], v.cursor, v.mark
+	case ^Line_Edit: return v.buf[:], v.cursor, v.mark
+	case ^Text_Edit:  return v.buf[:], v.cursor, v.mark
 	}
 	return
 }
@@ -581,8 +597,8 @@ edit_target_text :: proc(t: Edit_Target) -> (buf: []u8, cursor, mark: int) {
 @(private = "file")
 edit_target_can :: proc(t: Edit_Target, undo: bool) -> bool {
 	switch v in t {
-	case ^Text_Field: return undo ? field_can_undo(v) : field_can_redo(v)
-	case ^Text_Area:  return len(undo ? v.history.undo : v.history.redo) > 0
+	case ^Line_Edit: return undo ? line_edit_can_undo(v) : line_edit_can_redo(v)
+	case ^Text_Edit:  return len(undo ? v.history.undo : v.history.redo) > 0
 	}
 	return false
 }
@@ -590,40 +606,40 @@ edit_target_can :: proc(t: Edit_Target, undo: bool) -> bool {
 @(private = "file")
 edit_target_step :: proc(t: Edit_Target, undo: bool) {
 	switch v in t {
-	case ^Text_Field: _ = undo ? field_undo(v) : field_redo(v)
-	case ^Text_Area:  _ = undo ? area_undo(v) : area_redo(v)
+	case ^Line_Edit: _ = undo ? line_edit_undo(v) : line_edit_redo(v)
+	case ^Text_Edit:  _ = undo ? text_edit_undo(v) : text_edit_redo(v)
 	}
 }
 
 @(private = "file")
 edit_target_copy :: proc(t: Edit_Target) {
 	switch v in t {
-	case ^Text_Field: _ = field_copy(v)
-	case ^Text_Area:  _ = area_copy(v)
+	case ^Line_Edit: _ = line_edit_copy(v)
+	case ^Text_Edit:  _ = text_edit_copy(v)
 	}
 }
 
 @(private = "file")
 edit_target_cut :: proc(t: Edit_Target) {
 	switch v in t {
-	case ^Text_Field: _ = field_cut(v)
-	case ^Text_Area:  _ = area_cut(v)
+	case ^Line_Edit: _ = line_edit_cut(v)
+	case ^Text_Edit:  _ = text_edit_cut(v)
 	}
 }
 
 @(private = "file")
 edit_target_delete :: proc(t: Edit_Target) {
 	switch v in t {
-	case ^Text_Field: _ = field_delete(v)
-	case ^Text_Area:  _ = area_delete(v)
+	case ^Line_Edit: _ = line_edit_delete(v)
+	case ^Text_Edit:  _ = text_edit_delete(v)
 	}
 }
 
 @(private = "file")
 edit_target_select_all :: proc(t: Edit_Target) {
 	switch v in t {
-	case ^Text_Field: field_select_all(v)
-	case ^Text_Area:  area_select_all(v)
+	case ^Line_Edit: line_edit_select_all(v)
+	case ^Text_Edit:  text_edit_select_all(v)
 	}
 }
 
@@ -647,7 +663,7 @@ reveal_button :: proc(field: ^Box, reveal: ^bool, w: f32) {
 
 // The cross at the end of a clearable field: its child, over its right end. True: it emptied the field.
 @(private)
-clear_button :: proc(field: ^Box, f: ^Text_Field, w: f32) -> bool {
+clear_button :: proc(field: ^Box, f: ^Line_Edit, w: f32) -> bool {
 	field.layout_axis = .X
 	push_parent(field)
 	defer pop_parent()
@@ -660,8 +676,8 @@ clear_button :: proc(field: ^Box, f: ^Text_Field, w: f32) -> bool {
 	a11y_default(x, {role = .Button, name = i18n.tr("Clear")})
 	if !signal(x).clicked { return false }
 	// (through the edit history: Undo brings it back; the field keeps the keyboard, to type the next search)
-	field_select_all(f)
-	field_delete(f)
+	line_edit_select_all(f)
+	line_edit_delete(f)
 	gs().focus_key = field.key
 	return true
 }

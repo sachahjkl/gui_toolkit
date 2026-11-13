@@ -47,6 +47,6 @@ show :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string) {
 			p.current = strings.clone(pg.category)
 		}
 	}
-	ui.field_set(&p.query, fmt.tprintf("\"%s\"", name))
+	ui.line_edit_set(&p.query, fmt.tprintf("\"%s\"", name))
 	p.focus_search = true
 }

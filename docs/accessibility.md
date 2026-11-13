@@ -57,7 +57,7 @@ What the widgets say:
 |---|---|---|
 | `button` | Button | its words (a Toggled face: pressed); its tip as description; a glyph alone: its `tip`, else its id |
 | `checkbox`, `radio`, `toggle` | CheckBox, RadioButton, Switch | label, checked |
-| `slider`, `rating` | Slider | value, min, max, step, value text |
+| `slider` | Slider | value, min, max, step, value text |
 | `range_slider` | Group of two Sliders (its thumbs) | each: value, min, max (the other thumb), step, value text |
 | `number` | SpinButton (its field; and a Slider with `slider`) | value, min, max, step, value text with its unit |
 | `spinner` | ProgressIndicator | busy |
@@ -66,7 +66,6 @@ What the widgets say:
 | `qr_code` | Image | `QR code: ` and its text |
 | `progress` | ProgressIndicator | percent (busy when indeterminate) |
 | `segmented` | RadioGroup of RadioButtons | selected, "2 of 3" |
-| `chips` | Buttons | toggled |
 | `dropdown` | ComboBox | value, expanded, has popup |
 | `tabs` | TabList of Tabs | selected, "2 of 3" |
 | `line_edit`, `text_edit` | TextInput, MultilineTextInput | value, placeholder, text runs (caret, selection) |
@@ -117,7 +116,7 @@ They come back as the same signals as the mouse and keyboard give, in the build 
   (a page or a few lines), Set scroll offset: scroll boxes.
 - Show context menu: `right_clicked`.
 - Set value, Replace selected text, Set text selection: `line_edit` and `text_edit`; Set value, Increment,
-  Decrement: `slider`, `range_slider`, `number`, `rating`, `splitter`. A widget of the app asks with `a11y_request(key, action)`
+  Decrement: `slider`, `range_slider`, `number`, `splitter`. A widget of the app asks with `a11y_request(key, action)`
   (`a11y_numeric_request` for numbers).
 - The rest (and every request for a grafted tree) waits in `a11y_requests()` for the app.
 

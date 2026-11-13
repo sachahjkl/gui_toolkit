@@ -231,7 +231,7 @@ open :: proc(o: Open_Options) -> ^App {
 		if strings.has_prefix(a, "--page=") { if v, vok := strconv.parse_int(a[7:]); vok { app.page = Page(clamp(v, 0, len(Page) - 1)) } }
 		if strings.has_prefix(a, "--theme=") { if v, vok := strconv.parse_int(a[8:]); vok { set_palette(app, v) } }
 		if a == "--palette" { app.palette_open = true; app.palette_focus = true }
-		if strings.has_prefix(a, "--palette_query=") { app.palette_open = true; app.palette_focus = true; ui.field_set(&app.palette_field, a[16:]) }
+		if strings.has_prefix(a, "--palette_query=") { app.palette_open = true; app.palette_focus = true; ui.line_edit_set(&app.palette_field, a[16:]) }
 		if a == "--modal" { app.modal_open = true }
 		if a == "--about" { app.about_open = true }
 		if a == "--settings" { app.settings_open = true }
@@ -245,7 +245,7 @@ open :: proc(o: Open_Options) -> ^App {
 		if a == "--long_text" {
 			sb := strings.builder_make(context.temp_allocator)
 			for i in 1 ..= 60 { fmt.sbprintf(&sb, "line %d: the quick brown fox jumps over the lazy dog, then keeps running far to the right %d\n", i, i * i) }
-			ui.area_set(&app.editor, strings.to_string(sb))
+			ui.text_edit_set(&app.editor, strings.to_string(sb))
 		}
 		if strings.has_prefix(a, "--toast_pos=") { if v, vok := strconv.parse_int(a[12:]); vok { ui.set_toast_position(&app.ui_state, ui.Toast_Position(clamp(v, 0, len(ui.Toast_Position) - 1))) } }
 		if a == "--anim=off" { app.anim_mode = .Off }

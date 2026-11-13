@@ -29,8 +29,8 @@ COLUMNS := [?]ui.Table_Column{
 App :: struct {
 	t:          ui.Table,
 	d:          ui.Table_Data,
-	search:     ui.Text_Field,
-	other:      ui.Text_Field,
+	search:     ui.Line_Edit,
+	other:      ui.Line_Edit,
 	search_key: ui.Key,
 	ev:         ui.Table_Events,
 	seg:        int,
@@ -59,25 +59,25 @@ app_init :: proc(app: ^App) {
 app_destroy :: proc(app: ^App) {
 	ui.table_destroy(&app.t)
 	ui.table_data_destroy(&app.d)
-	ui.field_destroy(&app.search)
-	ui.field_destroy(&app.other)
+	ui.line_edit_destroy(&app.search)
+	ui.line_edit_destroy(&app.other)
 }
 
 @(private = "file")
 build :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
 	ui.type_to_field(app.search_key)
-	if app.space_free && ui.focus_key() == app.search_key && ui.field_string(&app.search) == "" && ui.typed_take(' ') { app.spaces += 1 }
+	if app.space_free && ui.focus_key() == app.search_key && ui.line_edit_string(&app.search) == "" && ui.typed_take(' ') { app.spaces += 1 }
 	ui.next({width = ui.px(200), height = ui.px(30)})
 	app.search_key = ui.line_edit("###search", &app.search).box.key
-	if app.t.query != ui.field_string(&app.search) { ui.table_apply(&app.t, &app.d, ui.field_string(&app.search)) }
+	if app.t.query != ui.line_edit_string(&app.search) { ui.table_apply(&app.t, &app.d, ui.line_edit_string(&app.search)) }
 	ui.next({width = ui.px(200), height = ui.px(30)})
 	ui.line_edit("###other", &app.other)
 	ui.next({width = ui.px(300), height = ui.px(30)})
 	ui.segmented("###mode", {"System", "User"}, &app.seg, {"The system's services", ""})
 	ui.next({width = ui.px(TABLE_W), height = ui.px(300)})
 	ev := ui.table_build("###table", &app.t, &app.d, "Nothing here")
-	if ev.sorted { ui.table_apply(&app.t, &app.d, ui.field_string(&app.search)) }
+	if ev.sorted { ui.table_apply(&app.t, &app.d, ui.line_edit_string(&app.search)) }
 	if ev.sorted || ev.resized || ev.moved { app.ev = ev }
 }
 
@@ -113,7 +113,7 @@ a_table_sorts_filters_and_keeps_its_selection :: proc(t: ^testing.T) {
 	testing.expect(t, session.focused_name(s) != "search")
 	session.type_text(s, "BR")
 	testing.expect_value(t, session.focused_name(s), "search")
-	testing.expect_value(t, ui.field_string(&app.search), "BR")
+	testing.expect_value(t, ui.line_edit_string(&app.search), "BR")
 	testing.expect_value(t, len(app.t.rows), 1)
 	testing.expect_value(t, ui.table_data_text(&app.d, ui.table_selected(&app.t), 0), "bravo")
 	// a shortcut's letter is not typing: Alt+P gives the text "p" too, the filter does not take it
@@ -123,17 +123,17 @@ a_table_sorts_filters_and_keeps_its_selection :: proc(t: ^testing.T) {
 	session.event(s, {kind = .Key_Release, key = .P, mods = {.Alt}})
 	session.frames(s, 2)
 	testing.expect(t, session.focused_name(s) != "search", "Alt+P does not go to the filter")
-	testing.expect_value(t, ui.field_string(&app.search), "BR")
+	testing.expect_value(t, ui.line_edit_string(&app.search), "BR")
 	// text with no key press after a shortcut (an input method's) is typing again
 	session.key(s, .U, {.Ctrl})
 	session.type_text(s, "o")
 	testing.expect_value(t, session.focused_name(s), "search")
-	testing.expect_value(t, ui.field_string(&app.search), "BRo")
+	testing.expect_value(t, ui.line_edit_string(&app.search), "BRo")
 	// another field keeps what is typed in it
 	session.click(s, "other")
 	session.type_text(s, "x")
-	testing.expect_value(t, ui.field_string(&app.other), "x")
-	testing.expect_value(t, ui.field_string(&app.search), "BRo")
+	testing.expect_value(t, ui.line_edit_string(&app.other), "x")
+	testing.expect_value(t, ui.line_edit_string(&app.search), "BRo")
 }
 
 @(test)
@@ -646,8 +646,8 @@ a_character_taken_before_the_field_never_reaches_it :: proc(t: ^testing.T) {
 	testing.expect_value(t, session.focused_name(s), "search")
 	session.type_text(s, " ")
 	testing.expect_value(t, app.spaces, 1)
-	testing.expect_value(t, ui.field_string(&app.search), "")
+	testing.expect_value(t, ui.line_edit_string(&app.search), "")
 	session.type_text(s, "b r")
 	testing.expect_value(t, app.spaces, 1)
-	testing.expect_value(t, ui.field_string(&app.search), "b r")
+	testing.expect_value(t, ui.line_edit_string(&app.search), "b r")
 }

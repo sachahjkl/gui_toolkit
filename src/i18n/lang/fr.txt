@@ -1511,12 +1511,6 @@ fr Colonnes
 en Default columns
 fr Colonnes par défaut
 
-en Show fewer
-fr Afficher moins
-
-en Show all
-fr Tout afficher
-
 ctx window
 en Minimize
 fr Réduire

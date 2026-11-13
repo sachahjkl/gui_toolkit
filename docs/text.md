@@ -59,10 +59,10 @@ code point or a cluster), `is_grapheme_boundary`, `grapheme_count`. The arrows, 
 `ui.text_edit`, clicks (`hit_index`), the cut of a toast and the line breaks of `ui.wrap_lines` work on clusters: nothing
 is ever left of a half emoji.
 
-**A field's keys** (`ui.field_key(f, owner, key, mods)`): what a key does to a `Text_Field`, as `ui.line_edit` does it (the
+**A field's keys** (`ui.line_edit_key(f, owner, key, mods)`): what a key does to a `Line_Edit`, as `ui.line_edit` does it (the
 caret by clusters and by words, Shift for the selection, Backspace and Delete with Ctrl for a word, Ctrl+A, the clipboard,
 undo and redo). A field the keyboard reaches another way gives it its keys: the search of a menu opened with
-`ctx_menu_open(..., search = true)` is a `Text_Field` edited by it, the menu keeping the arrows, Enter and Escape. That menu
+`ctx_menu_open(..., search = true)` is a `Line_Edit` edited by it, the menu keeping the arrows, Enter and Escape. That menu
 keeps the corner and the width of its first layout while it filters.
 
 **Its scroll bars** are the toolkit's: a `text_edit` scrolls itself and places its bars, which `ui.scrollbar_paint` draws as
@@ -75,8 +75,8 @@ widget inserts it in a later build, when the answer has come (`ui.paste_answer(k
 if it is still built and still has the focus. Otherwise the answer is dropped. The window's clipboard is asked with
 `platform.clipboard_request`; `Build_Params.clipboard_get`, when a program gives one (its own clipboard in memory, a
 test's), is read at once and its text given in the next build. A field reached another way names its `owner` for
-`field_key`, `field_paste(owner)` and `field_menu(key, target, owner)` ([menus](menus.md)), and inserts the answer with
-`field_paste_answer(f, owner)` in each build (the menu's search does). See [clipboard.md](clipboard.md).
+`line_edit_key`, `edit_paste(owner)` and `edit_menu(key, target, owner)` ([menus](menus.md)), and inserts the answer with
+`line_edit_paste_answer(f, owner)` in each build (the menu's search does). See [clipboard.md](clipboard.md).
 
 **The clipboard's keys** are one set wherever text is typed (`ui.line_edit`, `ui.text_edit`, `term`): Ctrl+C or Ctrl+Insert
 copies, Ctrl+X or Shift+Delete cuts, Ctrl+V or Shift+Insert pastes.
@@ -85,14 +85,14 @@ copies, Ctrl+X or Shift+Delete cuts, Ctrl+V or Shift+Insert pastes.
 width)` gives the visual lines of edited text: each paragraph ("\n") breaks at the backend's line break opportunities
 (`line_breaks` on the whole paragraph: spaces, hyphens, CJK, Thai / Lao / Khmer / Myanmar words), a word wider than the
 line between grapheme clusters; trailing spaces stay on their line. A wrapped line's end is also the next line's start:
-`visual_line_of(lines, index, upstream)` says which line the caret is on (`Text_Area.upstream`: after End, or a click
-past a line's end). `ui.text_edit(..., wrap = true, auto_height = true, min_lines, max_lines)`: lines wrap at the box's
+`visual_line_of(lines, index, upstream)` says which line the caret is on (`Text_Edit.upstream`: after End, or a click
+past a line's end). `ui.text_edit(id, &edit, {wrap = true, auto_height = true, min_lines = n, max_lines = m})`: lines wrap at the box's
 width (no horizontal scrolling; Up / Down / Home / End and the mouse follow visual lines; line numbers per paragraph), the
 box is as tall as its lines within the limits, then scrolls. `Edit_Result.caret` is the caret in box coordinates (this
 build); `ui.text_edit_caret_rect(a)` gives the caret and the selection's other end in window coordinates as last drawn
 (completion popovers, input method windows). Example: the composer of `examples/fidget`.
 
-**Syntax colouring** (`src/ui/text_edit.odin`). `ui.text_edit(..., highlight = &hl)` with a `ui.Text_Highlight` draws coloured
+**Syntax colouring** (`src/ui/text_edit.odin`). `ui.text_edit(id, &edit, {highlight = &hl})` with a `ui.Text_Highlight` draws coloured
 runs the caller classifies; the editor itself knows no language. `hl.spans(user, line_text, para, &out)` is called per
 *visible* paragraph (never the whole document) and appends `ui.Text_Span{start, end, color}` byte ranges into `line_text`
 (in order, non-overlapping); a byte no span covers uses the box's text colour, and a zero colour `{0,0,0,0}` falls back to

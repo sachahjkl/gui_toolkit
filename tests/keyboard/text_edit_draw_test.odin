@@ -21,7 +21,7 @@ Dfx :: struct {
 	theme: ui.Theme,
 	s:     ui.State,
 	ui_font: font.Font_Id,
-	area:  ui.Text_Area,
+	area:  ui.Text_Edit,
 	clock_ms: f64,
 }
 
@@ -39,7 +39,7 @@ frame :: proc(f: ^Dfx, events: []platform.Event) -> []u8 {
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.ui_font, font_size = 15, text_pad = 6},
 	})
 	ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(200)})
-	ui.text_edit("###d", &f.area, wrap = true, auto_height = true, max_lines = 4)
+	ui.text_edit("###d", &f.area, {wrap = true, auto_height = true, max_lines = 4})
 	ui.end_build()
 	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
 	render.frame_begin(&f.r, {1, 1, 1, 1})
@@ -65,7 +65,7 @@ caret_rect_is_where_the_caret_is_drawn :: proc(t: ^testing.T) {
 	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	defer {
-		ui.area_destroy(&f.area)
+		ui.text_edit_destroy(&f.area)
 		ui.destroy(&f.s); ui.theme_destroy(&f.theme)
 		draw.destroy(&f.dc); render.destroy(&f.r); font.destroy(&f.fonts)
 	}
@@ -73,7 +73,7 @@ caret_rect_is_where_the_caret_is_drawn :: proc(t: ^testing.T) {
 	delete(frame(f, nil))
 	delete(frame(f, nil))
 	ui.set_focus(ui.box_from_key(ui.key_from_string(ui.key_from_string(0, "root"), "###d")).key)
-	ui.area_set(&f.area, "the caret moves along a line that wraps in this narrow box")
+	ui.text_edit_set(&f.area, "the caret moves along a line that wraps in this narrow box")
 	f.area.cursor, f.area.mark = 0, 0
 	delete(frame(f, nil))
 	a := frame(f, {{kind = .Key_Press, key = .Home}})

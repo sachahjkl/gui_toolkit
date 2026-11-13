@@ -68,8 +68,8 @@ Screenshots are regenerated with `odin run tools/tk -- screenshots -build` (defa
 ```odin
 if ui.style({width = ui.fill(), radius = em * 0.45}) {
 	if ui.row(.Center) {
-		res := ui.line_edit("###new_task", &app.input, "What needs doing?")
-		if ui.button("add", "Add", o = {intent = .Primary}).clicked || res.committed { add_task(app, ui.field_string(&app.input)) }
+		res := ui.line_edit("###new_task", &app.input, {placeholder = "What needs doing?"})
+		if ui.button("add", "Add", o = {intent = .Primary}).clicked || res.committed { add_task(app, ui.line_edit_string(&app.input)) }
 	}
 	if ui.scroll_y("###list") {
 		for &t in app.tasks {
@@ -155,13 +155,13 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - **Animations** follow the OS "show animations" setting (`Build_Params.animations`); when off, every transition jumps.
 - **Widgets**: label, button (`button`: words, a glyph or both; an intent; a face: raised, ghost, toggled, link),
   checkbox, radio, switch, slider, number (a typed value, − and +, a slider, a unit: `number`), range slider, spinner,
-  segmented control, chips, rating, progress bar, dropdown, tabs, key caps, cards, form rows, single-line text field
+  segmented control, progress bar, dropdown, tabs, key caps, cards, form rows, single-line text field
   (selection, word moves, clipboard, mouse), **multi-line editor** (`text_edit`: undo / redo, line numbers,
   indentation, Up / Down keep the column), scroll region, **menus** (context menus, dropdowns, menu bar: submenus,
   separators, disabled items, shortcuts, full keyboard, kept on screen), **keyboard lists** (`List_State`: active row,
   Page Up / Down, type-ahead, Enter / Escape, kept in view), wrapped text (`paragraph`), tooltip with hover delay,
   toasts (8 anchor positions, bordered, stacked with a glide), modal dialogs, wells (`well`), actions said in words
-  (a button of the Link face), a busy arc (`spinner`), dots of an intent (`dot`), count badges (`badge`), a **colour picker** (`color_picker`: sat/val square, hue and opacity bars, old and new colour, hex / rgb / hsl / oklch text; the parts on their own too), numbers stepped in a field (`field_num_step`: Up / Down with Shift, Alt, Ctrl, and the wheel), fuzzy-match helper + highlighted labels, QR Codes (`qr_code`, [docs/qr.md](docs/qr.md)), custom-draw boxes.
+  (a button of the Link face), a busy arc (`spinner`), dots of an intent (`dot`), count badges (`badge`), a **colour picker** (`color_picker`: sat/val square, hue and opacity bars, old and new colour, hex / rgb / hsl / oklch text; the parts on their own too), numbers stepped in a field (`line_edit_num_step`: Up / Down with Shift, Alt, Ctrl, and the wheel), fuzzy-match helper + highlighted labels, QR Codes (`qr_code`, [docs/qr.md](docs/qr.md)), custom-draw boxes.
 - **2D transforms and images** (draw layer): `draw.push_transform` with a CSS-style `Affine` matrix (rotate, skew,
   scale, nested) applies to rects, borders, shadows, gradients, text and images, antialiased in local space; scaled
   text is re-rasterized at its screen size. `draw.push_clip_rounded` clips to a rounded rect under any transform.
@@ -210,7 +210,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   keyboard (Up / Down / Home / End over enabled items, Right / Left through submenus, letters jump, Escape closes one
   level); lists keep an active row; `tab_stops(false)` scopes leave widgets out of the Tab order; `tab_direction` and
   `focus_step` let an app hand the focus to content of its own (a document view) and back. Line edits keep an edit
-  history (Ctrl+Z / Ctrl+Y) and expose their edit commands for menus (`field_cut`, `field_paste`, `field_undo`...); a paste
+  history (Ctrl+Z / Ctrl+Y) and expose their edit commands for menus (`line_edit_cut`, `edit_paste`, `line_edit_undo`...); a paste
   asks the clipboard without waiting and inserts its text when it comes ([docs/clipboard.md](docs/clipboard.md)).
 - **Disabled / muted** scopes: `if ui.disabled(cond) { ... }` disables a whole subtree with a neutral look.
 - **Status bars and frame statistics** (`status.odin`): `status_bar` (a bar along the bottom, smaller text),

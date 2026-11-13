@@ -137,7 +137,7 @@ table_measure :: proc(t: ^Table, rc: ui.Rich_Context, em, pad: f32) {
 	for ri in 0 ..< t.rows {
 		for ci in 0 ..< t.cols {
 			runs := table_cell(t, ri, ci)
-			l := ui.rich_layout(rc, runs, TABLE_MEASURE_W, allocator = context.temp_allocator)
+			l := ui.rich_layout(runs, rc, TABLE_MEASURE_W, allocator = context.temp_allocator)
 			t.widths[ci] = max(t.widths[ci], math.ceil(l.size.x) + 2 * pad)
 			for run in runs {
 				face, size := ui.rich_face(rc, run.style)

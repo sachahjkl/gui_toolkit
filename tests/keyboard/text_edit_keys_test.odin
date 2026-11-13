@@ -15,7 +15,7 @@ Fx :: struct {
 	theme: ui.Theme,
 	s:     ui.State,
 	ui_font: font.Font_Id,
-	area:  ui.Text_Area,
+	area:  ui.Text_Edit,
 	res:   ui.Edit_Result,
 	tabs, numbers, no_clipboard: bool,
 	highlight: ^ui.Text_Highlight,
@@ -40,7 +40,7 @@ open :: proc(f: ^Fx) -> bool {
 
 @(private = "file")
 close :: proc(f: ^Fx) {
-	ui.area_destroy(&f.area)
+	ui.text_edit_destroy(&f.area)
 	ui.destroy(&f.s)
 	ui.theme_destroy(&f.theme)
 	font.destroy(&f.fonts)
@@ -61,7 +61,7 @@ frame :: proc(f: ^Fx, events: []platform.Event = nil) {
 	}
 	ui.begin_build(&f.s, p)
 	ui.next({width = ui.px(300), height = ui.px(200)})
-	f.res = ui.text_edit("###k", &f.area, tab_indents = f.tabs, line_numbers = f.numbers, highlight = f.highlight)
+	f.res = ui.text_edit("###k", &f.area, {line_numbers = f.numbers, tab_indents = f.tabs, highlight = f.highlight})
 	ui.end_build()
 	free_all(context.temp_allocator)
 }
@@ -69,7 +69,7 @@ frame :: proc(f: ^Fx, events: []platform.Event = nil) {
 // The editor with `text`, focused and laid out.
 @(private = "file")
 start :: proc(f: ^Fx, text: string) {
-	ui.area_set(&f.area, text)
+	ui.text_edit_set(&f.area, text)
 	frame(f)
 	ui.set_focus(f.res.box.key)
 	frame(f)
@@ -77,7 +77,7 @@ start :: proc(f: ^Fx, text: string) {
 
 @(private = "file") key :: proc(k: platform.Key, mods: platform.Modifiers = {}) -> platform.Event { return {kind = .Key_Press, key = k, mods = mods} }
 @(private = "file") tap :: proc(f: ^Fx, k: platform.Key, mods: platform.Modifiers = {}) { frame(f, {key(k, mods)}) }
-@(private = "file") text :: proc(f: ^Fx) -> string { return ui.area_string(&f.area) }
+@(private = "file") text :: proc(f: ^Fx) -> string { return ui.text_edit_string(&f.area) }
 
 @(private = "file")
 expect_caret :: proc(t: ^testing.T, f: ^Fx, cursor, mark: int, loc := #caller_location) {

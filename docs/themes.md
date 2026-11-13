@@ -121,7 +121,7 @@ with (`box_drawn_radius`), and draw the control with the radius it returns. A bo
 the same rule (`box_drawn_radii`); a dialog's close button is placed by it (`dialog_header`'s `close`, `modal_corner`, [modals](modals.md)).
 
 A box gets the machined drawing from its flags and its theme: `.Groove` is a groove (`hline`); `.Sunken` with a
-background is a well (`line_edit`, `text_edit`, `field_frame`, the track of `segmented`; a clear background sits in a
+background is a well (`line_edit`, `text_edit`, `input_frame`, the track of `segmented`; a clear background sits in a
 well, as a bare field does); `.Plate` with an opaque background is a raised panel (`card`, `modal`, menus, tooltips); an
 opaque background with a sheen is raised (bevelled when it is `.Clickable`). An accent fill a widget paints itself
 (`paint_rect`) is a lit face, as in `Gradient` but a little stronger.

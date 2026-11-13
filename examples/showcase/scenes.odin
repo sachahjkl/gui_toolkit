@@ -238,8 +238,8 @@ controls_build :: proc(app: ^App, em: f32) {
 @(private = "file")
 export_card :: proc(app: ^App, em: f32) {
 	if ui.card("Export", lucide.DOWNLOAD) {
-		if ui.form_row("Quality") { ui.number("###quality", &app.quality, lo = 1, hi = 100, unit = "%", track = true) }
-		if ui.form_row("Width") { ui.number("###width", &app.width, lo = 1, hi = 40, step = 0.5, unit = "px", track = true) }
+		if ui.form_row("Quality") { ui.number("###quality", &app.quality, lo = 1, hi = 100, unit = "%", slider = true) }
+		if ui.form_row("Width") { ui.number("###width", &app.width, lo = 1, hi = 40, step = 0.5, unit = "px", slider = true) }
 		if ui.form_row("Copies") { ui.number("###copies", &app.copies, lo = 1) }
 		if ui.form_row("Hours") { ui.range_slider("###hours", &app.from, &app.to, 0, 24, 1, "%.0f h") }
 		if ui.form_row("Volume") { ui.slider("###volume", &app.volume, 0, 1, 0.01, "%.2f") }
@@ -419,13 +419,13 @@ dialog_build :: proc(app: ^App, em: f32) {
 	if ui.modal_sized("export", {em * 31, 0}, &app.dialog_size, &app.dialog_open) {
 		if ui.dialog_header("export_head", "Export pictures", {icon = lucide.DOWNLOAD, icon_font = ui.lucide_icons(), close = true}) {}
 		if ui.dialog_body("export_body") {
-			if ui.form_row("Name") { ui.line_edit("###export_name", &app.file_name, "The file's name") }
+			if ui.form_row("Name") { ui.line_edit("###export_name", &app.file_name, {placeholder = "The file's name"}) }
 			if ui.form_row("Format") {
 				formats := [3]string{"PNG", "JPEG", "WebP"}
 				ui.segmented("###export_format", formats[:], &app.format)
 			}
-			if ui.form_row("Quality") { ui.number("###export_quality", &app.quality, lo = 1, hi = 100, unit = "%", track = true) }
-			if ui.form_row("Width") { ui.number("###export_width", &app.width, lo = 1, hi = 40, step = 0.5, unit = "px", track = true) }
+			if ui.form_row("Quality") { ui.number("###export_quality", &app.quality, lo = 1, hi = 100, unit = "%", slider = true) }
+			if ui.form_row("Width") { ui.number("###export_width", &app.width, lo = 1, hi = 40, step = 0.5, unit = "px", slider = true) }
 			ui.next({width = ui.fill(), height = ui.px(em * 2.1)})
 			ui.toggle("###export_open", "Open the folder after", &app.switches[0])
 			ui.spacer(ui.px(em * 0.5))

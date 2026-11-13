@@ -8,7 +8,7 @@ import "../../src/platform"
 import "../../src/testkit/session"
 import "../../src/ui"
 
-@(private = "file") App :: struct { clicks: int, field: ui.Text_Field, typed: string }
+@(private = "file") App :: struct { clicks: int, field: ui.Line_Edit, typed: string }
 
 @(private = "file")
 counter_app :: proc(s: ^session.Session) {
@@ -20,7 +20,7 @@ counter_app :: proc(s: ^session.Session) {
 @(test)
 a_click_goes_through_the_event_path :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := session.start(t, {build = counter_app, user = &app})
 	session.click(s, "add")
 	testing.expect_value(t, app.clicks, 1)
@@ -32,14 +32,14 @@ a_click_goes_through_the_event_path :: proc(t: ^testing.T) {
 @(test)
 keys_and_text_reach_the_focused_field :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := session.start(t, {build = counter_app, user = &app})
 	session.click(s, "field")
 	testing.expect_value(t, session.focused_name(s), "field")
 	session.type_text(s, "hello")
-	testing.expect_value(t, ui.field_string(&app.field), "hello")
+	testing.expect_value(t, ui.line_edit_string(&app.field), "hello")
 	session.key(s, .Backspace, repeat = 2)
-	testing.expect_value(t, ui.field_string(&app.field), "hel")
+	testing.expect_value(t, ui.line_edit_string(&app.field), "hel")
 	session.key(s, .A, {.Ctrl})
 	session.key(s, .C, {.Ctrl})
 	testing.expect_value(t, session.clipboard(s), "hel")
@@ -48,12 +48,12 @@ keys_and_text_reach_the_focused_field :: proc(t: ^testing.T) {
 @(test)
 the_clipboard_is_the_process_s_own :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := session.start(t, {build = counter_app, user = &app})
 	session.set_clipboard(s, "from the test")
 	session.click(s, "field")
 	session.key(s, .V, {.Ctrl})
-	testing.expect_value(t, ui.field_string(&app.field), "from the test")
+	testing.expect_value(t, ui.line_edit_string(&app.field), "from the test")
 	testing.expect(t, .Text in platform.clipboard_formats())
 }
 
@@ -89,7 +89,7 @@ the_clock_is_moved_not_waited_for :: proc(t: ^testing.T) {
 @(test)
 a_second_window_on_the_same_screen :: proc(t: ^testing.T) {
 	a_app, b_app: App
-	defer { ui.field_destroy(&a_app.field); ui.field_destroy(&b_app.field) }
+	defer { ui.line_edit_destroy(&a_app.field); ui.line_edit_destroy(&b_app.field) }
 	a := session.start(t, {build = counter_app, user = &a_app, size = {300, 200}})
 	b := session.start(t, {build = counter_app, user = &b_app, size = {400, 300}})
 	session.click(b, "add")
@@ -121,7 +121,7 @@ the_virtual_screen_answers_for_the_machine :: proc(t: ^testing.T) {
 @(test)
 the_pointer_comes_and_leaves :: proc(t: ^testing.T) {
 	app: App
-	defer ui.field_destroy(&app.field)
+	defer ui.line_edit_destroy(&app.field)
 	s := session.start(t, {build = counter_app, user = &app, no_renderer = true})
 	session.hover(s, "add")
 	testing.expect_value(t, session.hot_name(s), "add")

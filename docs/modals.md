@@ -79,14 +79,14 @@ button, Escape, a press outside) or `.None` while it waits.
 field, Cancel (intent `.Cancel`) and OK (`act`, else `Prompt_Labels.ok`). The field has the keyboard as it opens. Enter
 in it answers `.Confirmed` (the text is the field's); Escape, Cancel or a press outside `.Cancelled`; `.None` while it
 waits. `secret` makes it a password field (`reveal`: the caller's bool for the eye that shows it); once the answer is
-used or given up, `ui.field_wipe(&field)` leaves nothing of it in memory. Its words other than the caller's
+used or given up, `ui.line_edit_wipe(&field)` leaves nothing of it in memory. Its words other than the caller's
 (Cancel, OK) are the toolkit's, in the language in use (`prompt_default_labels`); `Prompt_Options.labels` gives a
 program's own.
 
 ```odin
 switch ui.prompt("unlock", &app.asking, &app.pin, {title = "Unlock", note = "Type the PIN of the key.", secret = true}) {
-case .Confirmed: unlock(app, ui.field_string(&app.pin)); ui.field_wipe(&app.pin)
-case .Cancelled: ui.field_wipe(&app.pin)
+case .Confirmed: unlock(app, ui.line_edit_string(&app.pin)); ui.line_edit_wipe(&app.pin)
+case .Cancelled: ui.line_edit_wipe(&app.pin)
 case .None:
 }
 ```

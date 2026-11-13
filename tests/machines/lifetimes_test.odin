@@ -25,7 +25,7 @@ import "../../src/ui"
 @(private = "file")
 Run :: struct {
 	show:   bool,
-	field:  ui.Text_Field,
+	field:  ui.Line_Edit,
 	clicks: int,
 	size:   f32,
 	finished: int,
@@ -64,7 +64,7 @@ a_press_ends_with_its_box :: proc(t: ^testing.T) {
 @(test)
 the_focus_ends_with_its_box :: proc(t: ^testing.T) {
 	r := Run{show = true}
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		if r.show { ui.next({width = ui.px(FIELD_WIDTH)}); ui.line_edit("###f", &r.field) }
@@ -83,7 +83,7 @@ the_focus_ends_with_its_box :: proc(t: ^testing.T) {
 @(test)
 a_focus_given_ahead_of_its_box_stands :: proc(t: ^testing.T) {
 	r: Run
-	defer ui.field_destroy(&r.field)
+	defer ui.line_edit_destroy(&r.field)
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		if r.show { ui.next({width = ui.px(FIELD_WIDTH)}); ui.line_edit("###f", &r.field) }

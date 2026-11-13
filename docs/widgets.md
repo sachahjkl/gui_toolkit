@@ -89,20 +89,19 @@ at its end. It holds no text; a click, Enter or Space is its `clicked`. Its size
 
 ![ui.number with its track, ui.range_slider, ui.slider, a well of facts (examples/showcase)](screenshots/showcase_controls.webp)
 
-`ui.number(id, &value, lo, hi, step, format, unit, track, disabled, tip)` is the one widget for a number one sets, of
-any integer or float type: − and + around a field where its exact value is typed, then its unit; with `track = true`
-and both bounds, a slider before them.
+`ui.number(id, &value, lo, hi, step, unit, slider, disabled)` is the one widget for a number one sets, of any integer
+or float type: − and + around a field where its exact value is typed, then its unit; with `slider = true` and both
+bounds, a slider before them. It returns whether the value changed this frame.
 
 ```odin
 ui.number("###count", &app.count, lo = 0)                                   // an int, no upper bound
-ui.number("###width", &app.width, lo = 1, hi = 40, step = 0.5, unit = "px", track = true)
+ui.number("###width", &app.width, lo = 1, hi = 40, step = 0.5, unit = "px", slider = true)
 ```
 
 - **Bounds**: `lo` and `hi` are optional (`nil`: none on that side). Every change is clamped to them and rounded to
   `step` (an integer to a whole number). At a bound, its button is disabled.
 - **Step**: one step of the keys, the wheel and the buttons (0: 1; a float with both bounds: a hundredth of the range).
-- **Field**: shows the value (`format`, a printf format of the type; "": its digits, a float's as many after the point
-  as `step` has). Given the keyboard, the field holds the value, all selected; what is typed applies at Enter or when
+- **Field**: shows the value (its digits, a float's as many after the point as `step` has). Given the keyboard, the field holds the value, all selected; what is typed applies at Enter or when
   the keyboard goes elsewhere. Escape, or text that is no number, gives the value back. The text being typed lives in
   `ui.State` (`number_edit`): one field has the keyboard at a time, so a number keeps nothing of the caller's.
 - **Keys** (the field has the keyboard): Up / Down a step, Page Up / Page Down ten; Shift ten times as much, Ctrl a
@@ -114,12 +113,61 @@ ui.number("###width", &app.width, lo = 1, hi = 40, step = 0.5, unit = "px", trac
   slider.
 
 `ui.slider(id, &value, lo, hi, step, format)` is the track alone, the lowest widget: its keys (arrows a step, Home / End,
-Page Up / Page Down ten steps), its wheel, its screen reader's requests.
+Page Up / Page Down ten steps), its wheel, its screen reader's requests. `format` is a printf format of the value's text
+at its right end ("": none, the track runs to it).
 
 `ui.range_slider(id, &lo_v, &hi_v, lo, hi, step, format)` has two thumbs on one track. Each thumb is a Tab stop and a
 slider for a screen reader; the active thumb (the one a press took, or the one Tab reached) moves as `slider` does:
 arrows a step, Home / End to its ends (the other thumb is one), Page Up / Page Down ten steps. The wheel over the track
 moves the active thumb (none: the one nearest the pointer). `format` is each value's ("%.0f": "20-80"; "": no text).
+It shares its keys, its rounding and its drawing with `slider`.
+
+## What a value widget returns
+
+Every widget that edits a value of the caller's returns `changed: bool`, true in the frame the value changed:
+`checkbox`, `radio`, `toggle`, `slider`, `range_slider`, `number`, `segmented`, `dropdown`, `tabs`, the colour pickers
+(`color_picker`, `hue_picker`, `alpha_picker`, `sat_val_picker`), `hotkey_field`.
+
+```odin
+if ui.toggle("###dark", "Dark", &app.dark) { apply_theme(app) }
+```
+
+What else its box says (hovered for a tooltip, a right click, its key for a test or a screen reader) is the signal of
+its box, read right after it with `prev_box`:
+
+```odin
+if ui.checkbox("###done", task.title, &task.done) { app.dirty = true }
+if ui.signal(ui.prev_box("###done")).right_clicked { open_menu(app, task) }
+```
+
+`hue_picker(id, &hue, axis)` and `alpha_picker(id, hue, sat, val, &alpha, axis)` lay their bar along `axis` (`.X`:
+left to right, `.Y`: top to bottom).
+
+## Text fields
+
+A single-line field is a `Line_Edit` (the program keeps it), edited by `line_edit(id, &edit, Line_Edit_Options{...})`; a
+multi-line one is a `Text_Edit`, edited by `text_edit(id, &edit, Text_Edit_Options{...})`. Their procedures carry the
+type's name: `line_edit_string`, `line_edit_set`, `line_edit_clear`, `line_edit_wipe`, `line_edit_clear_history`,
+`line_edit_undo`, `line_edit_select_all`...; `text_edit_string`, `text_edit_set`, `text_edit_clear_history`,
+`text_edit_destroy`... `edit_menu` is the menu of either ([menus](menus.md)); `input_frame` is one surface for a field
+and what goes with it (getting-started.md).
+
+`Line_Edit_Options`:
+
+- **`placeholder`**: weak words while the field is empty and has no keyboard.
+- **`kind`** (`Line_Edit_Kind`): `.Plain`; `.Secret`, a password (bullets, neither copied nor cut); `.Read_Only`, shown,
+  selected and copied, never changed.
+- **`reveal`** (`^bool`, with `.Secret`): an eye at its end shows the text and hides it again.
+- **`clearable`**: a cross at its end empties it while it holds text (not `.Read_Only`, nor beside the eye).
+- **`own_menu`**: the program builds its own menu on a right press; else the field opens `edit_menu`.
+
+`Text_Edit_Options`: `placeholder`, `line_numbers`, `tab_indents` (Tab inserts spaces), `wrap`, `auto_height` with
+`min_lines` and `max_lines`, `highlight` (syntax colouring, text.md), `own_menu`.
+
+```odin
+ui.line_edit("###password", &app.password, {kind = .Secret, reveal = &app.shown})
+ui.text_edit("###notes", &app.notes, {placeholder = "Notes", wrap = true, auto_height = true, max_lines = 8})
+```
 
 ## Small widgets
 
@@ -131,7 +179,7 @@ moves the active thumb (none: the one nearest the pointer). `format` is each val
 
 ## A secret's memory
 
-`ui.field_wipe(&f)` empties a `Text_Field` and leaves nothing of its text in memory: its buffer (all its capacity) and
+`ui.line_edit_wipe(&f)` empties a `Line_Edit` and leaves nothing of its text in memory: its buffer (all its capacity) and
 every step of its undo and redo history are zeroed before they go. Call it once a password or a PIN is used or given
 up. A step the history drops on its own (the oldest, a redo replaced) is zeroed too. What the buffer held before it last
 grew is out of reach: reserve the capacity of a secret's field before it is typed in (`reserve(&f.buf, n)`).

@@ -61,7 +61,7 @@ App :: struct {
 	warnings:   int,   // layout warnings shown
 	found:      int,   // find in page matches shown
 	versions:   bool,
-	needle:     ui.Text_Field,
+	needle:     ui.Line_Edit,
 	smooth:     int,
 	under:      [2]int,   // the wheel page's row under the pointer: this build, the last one
 }
@@ -336,8 +336,8 @@ page_find :: proc(app: ^App, em: f32) {
 	para("ui.find(needle, scope) every build while searching, ui.find_matches() for the rects of the last layout, ui.find_set_current(i) for the one painted as current. Matches span the runs of a rich paragraph; not across boxes, and text the build did not make is not searched.")
 	gap(em * 0.6)
 	ui.next({width = ui.px(em * 20)})
-	ui.line_edit("###needle", &app.needle, "Find in the text below")
-	needle := ui.field_string(&app.needle)
+	ui.line_edit("###needle", &app.needle, {placeholder = "Find in the text below"})
+	needle := ui.line_edit_string(&app.needle)
 	scope := ui.box_at("###main", "###page", "###content", "###text")   // the column below, found by its path
 	ui.find(needle, scope != nil ? scope.key : 0)
 	ui.find_set_current(0)
@@ -494,7 +494,7 @@ open :: proc(args: []string, headless_default := false) -> ^App {
 	ui.apply_palette(&app.theme, ui.palette_of("Midnight"), render.blend_space(&app.r))
 	ui.init(&app.s, &app.fonts, &app.theme)
 	app.s.mono_font = app.mono
-	ui.field_set(&app.needle, "the")
+	ui.line_edit_set(&app.needle, "the")
 	platform.set_dark_title(app.win, true)
 	app.devtools = devtools.start_from_env(app.win, title)
 	app.win.user = app
@@ -505,7 +505,7 @@ open :: proc(args: []string, headless_default := false) -> ^App {
 // The end of what `open` made.
 close :: proc(app: ^App) {
 	devtools.stop(app.devtools)
-	ui.field_destroy(&app.needle)
+	ui.line_edit_destroy(&app.needle)
 	ui.destroy(&app.s)
 	ui.theme_destroy(&app.theme)
 	draw.destroy(&app.dc)

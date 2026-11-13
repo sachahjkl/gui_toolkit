@@ -83,7 +83,7 @@ entries := [?]Entry{
 	{"input background", .Bg_Solid, 1}, {"input border", .Border, 1},
 	// a sunken box (well): the surface carved in
 	{"well background", .Well, 1}, {"well border", .Border, 1},
-	// a field inside a field_frame (tag "bare"): the frame is its surface, its border and its focus ring
+	// a field inside an input_frame (tag "bare"): the frame is its surface, its border and its focus ring
 	{"bare input background", .Bg_Solid, 0}, {"bare input border", .Border, 0}, {"bare focus border", .Accent, 0},
 	{"bare background", .Bg_Solid, 0}, {"bare border", .Border, 0},
 	{"kbd background", .Panel2, 1}, {"kbd text", .Weak, 1}, {"kbd border", .Border, 1},

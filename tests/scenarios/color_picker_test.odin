@@ -105,7 +105,7 @@ the_colour_picker_reads_and_writes_each_format :: proc(t: ^testing.T) { unwatche
 	testing.expect(t, strings.has_prefix(r.text, "hsl("), r.text)
 	back, _, ok := ui.color_parse(r.text)
 	testing.expectf(t, ok && near(back, ui.color_pick_rgba(&r.cp)), "%s reads back as the colour", r.text)
-	testing.expect_value(t, ui.field_string(&r.cp.field), r.text)
+	testing.expect_value(t, ui.line_edit_string(&r.cp.field), r.text)
 }) }
 
 @(test)

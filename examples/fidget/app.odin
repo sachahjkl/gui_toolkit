@@ -180,7 +180,7 @@ App :: struct {
 
 	// overlays
 	palette_open: bool,
-	palette_field: ui.Text_Field,
+	palette_field: ui.Line_Edit,
 	palette_sel, palette_scroll: int,
 	palette_focus: bool,
 	palette_mouse: [2]f32,
@@ -210,10 +210,10 @@ App :: struct {
 	ctx_check: bool,
 
 	// inputs page
-	name, email, number, search, tag_input, bio, filter: ui.Text_Field,
-	editor:  ui.Text_Area,
+	name, email, number, search, tag_input, bio, filter: ui.Line_Edit,
+	editor:  ui.Text_Edit,
 	editor_tab_indents: bool,
-	composer: ui.Text_Area,   // a chat composer: wraps, grows from 1 to 5 lines
+	composer: ui.Text_Edit,   // a chat composer: wraps, grows from 1 to 5 lines
 	settings_in: string,   // Open_Options.settings_dir
 	integrated:  bool,   // --integrated: the menu bar is the window's title bar (ui.title_bar, ui.window_buttons)
 	tags:    [dynamic]string,

@@ -4,8 +4,8 @@ import "core:mem"
 import "core:strings"
 import undo_stack "../undo"
 
-// The undo and redo steps of a text being edited (Text_Field, Text_Area), on the toolkit's one undo stack (gt:undo).
-// When an edit merges with the step before it is the owner's rule (field_checkpoint, begin_edit).
+// The undo and redo steps of a text being edited (Line_Edit, Text_Edit), on the toolkit's one undo stack (gt:undo).
+// When an edit merges with the step before it is the owner's rule (line_edit_checkpoint, begin_edit).
 
 // The text and selection before an edit. `text` is a heap copy the stack owns.
 Edit_Snapshot :: struct {
@@ -14,6 +14,9 @@ Edit_Snapshot :: struct {
 }
 
 Edit_History :: undo_stack.Stack(Edit_Snapshot)
+
+// What an edit was: consecutive inserts (typing), or consecutive deletes, made within Feel.undo_merge_ms are one undo step.
+Edit_Kind :: enum u8 { None, Insert, Delete, Other }
 
 // Frees a step's text, zeroed first: a field may hold a secret, and freed memory keeps what was in it.
 @(private)

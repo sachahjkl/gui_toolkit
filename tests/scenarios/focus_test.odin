@@ -10,7 +10,7 @@ import "../../src/ui"
 
 @(private = "file")
 Form :: struct {
-	name, mail:  ui.Text_Field,
+	name, mail:  ui.Line_Edit,
 	agree:       bool,
 	saves:       int,
 	show_mail:   bool,
@@ -47,8 +47,8 @@ form_start :: proc(t: ^testing.T, loc := #caller_location) -> (^session.Session,
 	f.show_mail = true
 	testing.cleanup(t, proc(p: rawptr) {
 		f := (^Form)(p)
-		ui.field_destroy(&f.name)
-		ui.field_destroy(&f.mail)
+		ui.line_edit_destroy(&f.name)
+		ui.line_edit_destroy(&f.mail)
 		free(f)
 	}, f)
 	return session.start(t, {build = form_build, user = f, no_renderer = true}, loc), f
@@ -117,8 +117,8 @@ the_focus_goes_with_its_box :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^t
 	session.frames(s, 2)
 	testing.expect_value(t, session.focused_name(s), "")
 	session.type_text(s, "b")
-	testing.expect_value(t, ui.field_string(&f.mail), "a")
-	testing.expect_value(t, ui.field_string(&f.name), "")
+	testing.expect_value(t, ui.line_edit_string(&f.mail), "a")
+	testing.expect_value(t, ui.line_edit_string(&f.name), "")
 }) }
 
 // In a modal, Tab stays inside; Esc closes it; the page's stops come back.

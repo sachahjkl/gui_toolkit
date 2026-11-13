@@ -61,13 +61,14 @@ rows_frame :: proc(f: ^Rows, events: []platform.Event) {
 	ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(600), height = ui.px(80)})
 	if ui.column(id = "###form") {
 		ui.next({width = ui.fill(), height = ui.px(40)})
-		if ui.row(id = "###r1") { f.check = ui.checkbox("###chk", "Remember me", &f.on).box }
+		if ui.row(id = "###r1") { ui.checkbox("###chk", "Remember me", &f.on); f.check = ui.prev_box("###chk") }
 		ui.next({width = ui.fill(), height = ui.px(40)})
-		if ui.row(id = "###r2") { f.toggle = ui.toggle("###sw", "Dark", &f.sw).box }
+		if ui.row(id = "###r2") { ui.toggle("###sw", "Dark", &f.sw); f.toggle = ui.prev_box("###sw") }
 	}
 	f.label = f.check.last
 	ui.next({fixed_x = 20, fixed_y = 100, width = ui.px(400), height = ui.px(30)})
-	f.sized = ui.checkbox("###sized", "Sized", &f.on).box
+	ui.checkbox("###sized", "Sized", &f.on)
+	f.sized = ui.prev_box("###sized")
 	// a centred row and a centred column, asked for through `next`
 	ui.next({fixed_x = 20, fixed_y = 200, width = ui.px(300), height = ui.px(100), cross = .Center})
 	if ui.row(id = "###row") {

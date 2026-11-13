@@ -168,7 +168,7 @@ styled_face_of :: proc(s: ^State, face: font.Font_Id, bold, italic: bool) -> fon
 
 // Lays the runs out at `width` (<= 0: no wrapping, only "\n" breaks), at most `max_lines` lines (0: no limit; the last
 // one ends with "…" when the text goes on), aligned. Everything is in `allocator`.
-rich_layout :: proc(c: Rich_Context, runs: []Rich_Run, width: f32, max_lines := 0, align := Text_Align.Left, allocator := context.allocator) -> Rich_Layout {
+rich_layout :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines := 0, align := Text_Align.Left, allocator := context.allocator) -> Rich_Layout {
 	l := Rich_Layout{alloc = allocator}
 	run_start := make([]int, len(runs) + 1, allocator)
 	faces := make([]font.Font_Id, len(runs), context.temp_allocator)
@@ -500,7 +500,7 @@ rich_layout_cached :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_li
 		delete_key(&s.rich_cache, k)
 	}
 	l := new(Rich_Layout, runtime.heap_allocator())
-	l^ = rich_layout(c, runs, width, max_lines, align, runtime.heap_allocator())
+	l^ = rich_layout(runs, c, width, max_lines, align, runtime.heap_allocator())
 	s.rich_cache[k] = {layout = l, last_build = s.build_index}
 	return l
 }

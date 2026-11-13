@@ -111,7 +111,7 @@ Options :: struct {
 // The page's state, kept by the program between frames (destroy). Keep it as long as the ui.State it is built in: the
 // answers of its tasks (an export written, an import read) come in that state's builds.
 Page :: struct {
-	query:        ui.Text_Field,
+	query:        ui.Line_Edit,
 	current:      string,   // the category shown (owned; "": the first page)
 	focus_search: bool,
 	search:       config.Search,
@@ -137,17 +137,17 @@ Page :: struct {
 
 @(private)
 Field :: struct {
-	text:   ui.Text_Field,
+	text:   ui.Line_Edit,
 	box:    ui.Key,   // the field's box (last frame)
 	synced: string,   // the value the field shows (owned)
 	error:  string,   // why the last text was refused (owned)
 }
 
 destroy :: proc(p: ^Page) {
-	ui.field_destroy(&p.query)
+	ui.line_edit_destroy(&p.query)
 	delete(p.current)
 	delete(p.held)
-	for k, f in p.fields { ui.field_destroy(&f.text); delete(f.synced); delete(f.error); free(f); delete(k) }
+	for k, f in p.fields { ui.line_edit_destroy(&f.text); delete(f.synced); delete(f.error); free(f); delete(k) }
 	delete(p.fields)
 	for k in p.unfolded { delete(k) }
 	delete(p.unfolded)
@@ -300,7 +300,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 	for pg, i in pages { if pg.category == p.current { cur = i } }
 	// (Windows would take the very keys a field records: the shortcuts let them go meanwhile)
 	if o.shortcuts != nil && len(o.shortcut_prefs) > 0 { shortcuts.hold(o.shortcuts, ui.hotkey_recording()) }
-	config.search_begin(&p.search, ui.field_string(&p.query))
+	config.search_begin(&p.search, ui.line_edit_string(&p.query))
 	if ui.row(.Start, {.Draw_Background}, "###prefs_page") {
 		total := ui.parent_box().size.x
 		narrow := total > 0 && total < em * NARROW_EM
@@ -436,7 +436,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, wid
 			if ui.row(id = "###prefs_search_row") {
 				ui.spacer(ui.px(em * 0.7))
 				ui.next({width = ui.fill(), height = ui.px(math.round(em * CONTROL_H_EM)), radius = em * 0.45})
-				if ui.field_frame("###prefs_search") {
+				if ui.input_frame("###prefs_search") {
 					if o.icon_font != 0 && o.search_icon != "" {
 						ui.next({width = ui.px(em * 1.8), height = ui.pct(1), font = o.icon_font, text_align = .Center})
 						if ui.tags("weak") { ui.build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###sic", o.search_icon)) }
@@ -445,7 +445,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, wid
 					}
 					ui.next({width = ui.fill(), height = ui.pct(1), text_pad = em * 0.2})
 					if ui.tags("bare") {
-						res := ui.line_edit("###prefs_query", &p.query, i18n.tr("Search settings"))
+						res := ui.line_edit("###prefs_query", &p.query, {placeholder = i18n.tr("Search settings")})
 						if p.focus_search { p.focus_search = false; ui.set_focus(res.box.key) }
 					}
 				}
@@ -478,7 +478,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, wid
 					if ui.button(fmt.tprintf("###nav%d", i), icons ? "" : pg.title, glyph, line).clicked {
 						delete(p.current)
 						p.current = strings.clone(pg.category)
-						ui.field_set(&p.query, "")   // (a page chosen: the search is done)
+						ui.line_edit_set(&p.query, "")   // (a page chosen: the search is done)
 					}
 					ui.spacer(ui.px(em * 0.9))
 				}
@@ -662,7 +662,7 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 			if ui.column(id = "###words") {
 				// (a search: its words lit in the title and the description)
-				query := ui.field_string(&p.query)
+				query := ui.line_edit_string(&p.query)
 				title := config.title_of(e.def)
 				ui.next({width = ui.fill(), height = ui.px(em * 1.5), font_size = math.round(em * 0.92), text_pad = 0})
 				ui.matched_label("###t", title, ui.word_ranges(title, query))
@@ -815,7 +815,7 @@ control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^c
 		v := e.value.b
 		ui.next({width = width, height = h})
 		ui.a11y({name = config.title_of(e.def)})
-		if ui.toggle("###sw", "", &v).clicked { apply(p, prefs, o, name, v ? "true" : "false") }
+		if ui.toggle("###sw", "", &v) { apply(p, prefs, o, name, v ? "true" : "false") }
 	case .String:
 		if is_hotkey(o, name) {
 			hk, _ := platform.hotkey_parse(e.value.s)
@@ -933,11 +933,11 @@ number :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^co
 	value: f64
 	if d.kind == .Int {
 		v := held ? int(math.round(p.held_value)) : int(e.value.i)
-		ui.number("###num", &v, lo = int(d.min), hi = int(d.max), unit = i18n.tr(d.unit), track = true)
+		ui.number("###num", &v, lo = int(d.min), hi = int(d.max), unit = i18n.tr(d.unit), slider = true)
 		value = f64(v)
 	} else {
 		v := held ? p.held_value : e.value.f
-		ui.number("###num", &v, lo = d.min, hi = d.max, step = float_step(d.max - d.min), unit = i18n.tr(d.unit), track = true)
+		ui.number("###num", &v, lo = d.min, hi = d.max, step = float_step(d.max - d.min), unit = i18n.tr(d.unit), slider = true)
 		value = v
 	}
 	if ui.focus_key() == ui.key_from_string(nk, "###value") { p.number_typed = true }
@@ -967,18 +967,18 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^con
 	}
 	current := config.value_string(prefs, r)
 	typing := f.box != 0 && ui.focus_key() == f.box
-	if f.synced != current && !typing { ui.field_set(&f.text, current); delete(f.synced); f.synced = strings.clone(current) }
+	if f.synced != current && !typing { ui.line_edit_set(&f.text, current); delete(f.synced); f.synced = strings.clone(current) }
 	numeric := e.def.kind != .String
 	// (a number's field: its width less its unit's, which follows it)
 	fw := width
 	if numeric && e.def.unit != "" && width.kind == .Pixels { fw = ui.px(math.round(em * NUMBER_FIELD_EM)) }
 	ui.next({width = fw, height = ui.px(math.round(em * CONTROL_H_EM))})
 	ui.a11y({name = config.title_of(e.def)})
-	res := ui.line_edit("###field", &f.text, "")
+	res := ui.line_edit("###field", &f.text)
 	f.box = res.box.key
 	left := !res.focused && typing   // (the keyboard went elsewhere this frame)
-	if res.committed || (left && ui.field_string(&f.text) != current) {
-		err := apply(p, prefs, o, name, ui.field_string(&f.text))
+	if res.committed || (left && ui.line_edit_string(&f.text) != current) {
+		err := apply(p, prefs, o, name, ui.line_edit_string(&f.text))
 		delete(f.error)
 		f.error = err
 		delete(f.synced); f.synced = ""
