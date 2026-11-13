@@ -53,6 +53,7 @@ Pool :: struct {
 	extras:   int,                // threads added that run
 	moved:    time.Tick,          // the last time a thread took or ended a work
 	stopping: bool,
+	alive:    int,                // worker threads not ended (a bounded stop waits for 0)
 	looks:    int,                // times a thread looked at what is due (a test sees that it looked)
 	origin:   time.Tick,
 	watch:    ^thread.Thread,     // starts the threads added (nil: the pool does not grow)
@@ -67,6 +68,7 @@ start :: proc(p: ^Pool, o: Options) {
 	p.o, p.origin, p.moved = o, time.tick_now(), time.tick_now()
 	if p.o.stuck <= 0 { p.o.stuck = STUCK_DEFAULT }
 	if p.o.extra_idle <= 0 { p.o.extra_idle = EXTRA_IDLE_DEFAULT }
+	p.alive = o.threads
 	for _ in 0 ..< o.threads { append(&p.threads, thread.create_and_start_with_poly_data(p, worker, context)) }
 	if o.threads > 0 && o.grow > 0 { p.watch = thread.create_and_start_with_poly_data(p, watcher, context) }
 }
@@ -112,8 +114,11 @@ pump :: proc(p: ^Pool, all_timed := false) -> (ran: int) {
 }
 
 // Ends the pool. Without `drop`, every work waiting runs first (timed work too, its time not waited for); with `drop`,
-// the work waiting does not run and `drop` gets its data. The threads are joined: a work that hangs holds the stop.
-stop :: proc(p: ^Pool, drop: Work = nil) {
+// the work waiting does not run and `drop` gets its data. `bound` 0: the threads are joined, a work that hangs holds the
+// stop. `bound` > 0 (a program that quits): the stop waits that long at most; when a work still runs (a disk asleep), it
+// returns false and leaves the pool as it is, its threads and memory to the process's end (a later stop, bound 0,
+// joins them).
+stop :: proc(p: ^Pool, drop: Work = nil, bound: time.Duration = 0) -> (all: bool) {
 	sync.lock(&p.lock)
 	p.stopping = true
 	if drop != nil {
@@ -126,6 +131,17 @@ stop :: proc(p: ^Pool, drop: Work = nil) {
 	sync.cond_broadcast(&p.watch_wake)
 	sync.unlock(&p.lock)
 	if p.watch != nil { thread.join(p.watch); thread.destroy(p.watch); p.watch = nil }
+	if bound > 0 {
+		// (a work that hangs holds its thread for good: its thread and the pool's memory are left to the process's end)
+		began := time.tick_now()
+		sync.lock(&p.lock)
+		for p.alive > 0 {
+			left := bound - time.tick_since(began)
+			if left <= 0 { sync.unlock(&p.lock); return false }
+			_ = sync.cond_wait_with_timeout(&p.rested, &p.lock, left)
+		}
+		sync.unlock(&p.lock)
+	}
 	// (an added thread may still be starting: the list is read under the lock)
 	for {
 		sync.lock(&p.lock)
@@ -138,6 +154,7 @@ stop :: proc(p: ^Pool, drop: Work = nil) {
 	if p.o.threads == 0 { pump(p, all_timed = true) }
 	delete(p.threads); delete(p.ready); delete(p.timed)
 	p.threads, p.ready, p.timed = nil, nil, nil
+	return true
 }
 
 state :: proc(p: ^Pool) -> State {
@@ -310,6 +327,7 @@ work_loop :: proc(p: ^Pool, extra: bool) {
 		if extra && !woke && len(p.ready) == 0 && len(p.timed) == 0 { break }
 	}
 	if extra { p.extras -= 1 }
+	p.alive -= 1
 	sync.cond_broadcast(&p.rested)
 	sync.unlock(&p.lock)
 }
@@ -325,6 +343,7 @@ watcher :: proc(p: ^Pool) {
 		held := len(p.ready) > 0 && p.waiting == 0 && time.tick_since(p.moved) >= p.o.stuck
 		if held && p.extras < p.o.grow {
 			p.extras += 1
+			p.alive += 1
 			p.moved = time.tick_now()
 			append(&p.threads, thread.create_and_start_with_poly_data(p, extra_worker, context))
 		}

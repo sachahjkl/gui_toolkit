@@ -27,7 +27,7 @@ ui.task(&app.ui, save_work, save_done, new_clone(Save{path = path, text = text})
 |---|---|
 | `task(s, work, done, data, lost = nil)` | `work(data)` on the chores, then `done(data, 0)` on `s`'s thread at its next build (ui.post; the window wakes). Called on the interface's thread. When `s` is destroyed by then, `done` never runs and `lost(data)` does, on the thread that found it out. `done` nil: nothing comes back |
 | `chores()` | the program's pool for that: `CHORES_THREADS` threads, up to `CHORES_GROW` more while some hang; started at its first use |
-| `chores_stop()` | at the program's end, before `ui.destroy`: the work waiting runs (its results are posted), then the threads are joined |
+| `chores_stop(bound = CHORES_STOP_BOUND)` | at the program's end, before `ui.destroy`: the work waiting runs (its results are posted), then the threads are joined, within `bound` (2 s; 0: no bound). False: a chore that hangs was left to the process's end |
 
 The data of a task is the caller's until `done` or `lost` runs: allocate it with an allocator other threads may use
 (the heap), not the frame's temporary memory.
@@ -65,7 +65,7 @@ own order (a pool per connection; the pictures last asked for first).
 |---|---|
 | `start(p, Options)` | `threads` started now (0: none, see below), `grow` more while all are held for `stuck` (1 s), an added one ending after `extra_idle` (5 s) with nothing to do; `newest_first`; `clock` a test's clock |
 | `add(p, work, data, Add{after_ms, urgent})` | work for a thread: in the order it came (or the newest first), `urgent` before all that waits, `after_ms` from now with no thread asleep for it. False once `stop` began |
-| `stop(p, drop = nil)` | without `drop`, what waits runs first (timed work too); with it, what waits does not run and `drop` gets its data. The threads are joined: work that hangs holds the stop |
+| `stop(p, drop = nil, bound = 0)` | without `drop`, what waits runs first (timed work too); with it, what waits does not run and `drop` gets its data. The threads are joined: work that hangs holds the stop, unless `bound` > 0: then it returns false after that long and leaves the pool to the process's end (a later `stop` joins it) |
 | `ask(p, &job)` | a run of a `Job{work, data}`: asked while one waits, nothing more; asked while it runs, one more run after it |
 | `busy(p, &job)` | a run waits or goes on |
 | `state(p)`, `wait_rest(p, bound)` | for tests: what waits and runs; until it rests |

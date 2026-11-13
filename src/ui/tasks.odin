@@ -12,6 +12,7 @@ package ui
 import "base:runtime"
 import "core:strings"
 import "core:sync"
+import "core:time"
 import "../platform"
 import "../tasks"
 
@@ -33,13 +34,18 @@ chores :: proc() -> ^tasks.Pool {
 	return &chores_pool
 }
 
-// At the program's end (or a test's): the chores waiting run, then the threads are joined. A task asked after it runs
+// How long a program's end waits for its chores: a chore that hangs (a disk asleep, a share that does not answer) must
+// not keep a closed program alive.
+CHORES_STOP_BOUND :: 2 * time.Second
+
+// At the program's end (or a test's): the chores waiting run, then the threads are joined, within `bound` (0: for as
+// long as they take). False: a chore still ran, its thread left to the process's end. A task asked after it runs
 // nothing (its `lost` gets the data).
-chores_stop :: proc() {
-	if sync.atomic_load(&chores_stopped) { return }
+chores_stop :: proc(bound := CHORES_STOP_BOUND) -> (all: bool) {
+	if sync.atomic_load(&chores_stopped) { return true }
 	_ = chores()
 	sync.atomic_store(&chores_stopped, true)
-	tasks.stop(&chores_pool)
+	return tasks.stop(&chores_pool, bound = bound)
 }
 
 // Where the tasks of a State post their results: shared by the State and its tasks (counted), so that a task ending after

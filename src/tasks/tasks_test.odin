@@ -227,3 +227,24 @@ a_stop_hands_back_what_waits :: proc(t: ^testing.T) {
 	testing.expect_value(t, run.dropped, 2)
 	testing.expect_value(t, len(log.order), 1)   // (only the work that ran)
 }
+
+// A work that hangs: a stop with a bound gives up after it and says so; the work let go, a stop joins its thread.
+@(test)
+a_bounded_stop_leaves_a_hung_work :: proc(t: ^testing.T) {
+	Hang :: struct { go: sync.Sema, started: sync.Sema }
+	h: Hang
+	p := new(Pool)
+	defer free(p)
+	start(p, {threads = 1})
+	add(p, proc(data: rawptr) {
+		h := (^Hang)(data)
+		sync.sema_post(&h.started)
+		sync.sema_wait(&h.go)
+	}, &h)
+	testing.expect(t, sync.sema_wait_with_timeout(&h.started, 5 * time.Second), "the work started")
+	began := time.tick_now()
+	testing.expect(t, !stop(p, bound = 50 * time.Millisecond), "gave up")
+	testing.expect(t, time.tick_since(began) < 5 * time.Second, "within its bound")
+	sync.sema_post(&h.go)
+	testing.expect(t, stop(p), "joined once let go")
+}
