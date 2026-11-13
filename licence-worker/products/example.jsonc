@@ -1,0 +1,99 @@
+// The licence Worker of ONE product. Copy this file to products/<program>.jsonc and set every value marked SET (README.md).
+// `wrangler -c products/<program>.jsonc` reads it as it is; `cf` reads it through cloudflare.config.ts
+// (LICENCE_PRODUCT=<program>). Keep the product's values the same as the program's licence.Product.
+//
+// Secrets are NOT written here (this file is committed): LICENSE_PRIVATE_KEY, PADDLE_WEBHOOK_SECRET, PADDLE_API_KEY,
+// optional ADMIN_TOKEN and MAIL_BOUNCE_SECRET. They come from the program's sops file (`<tool> licence secrets`).
+//
+// The top level is production (live Paddle). `env.sandbox` is a second Worker with its own KV and its own Durable
+// Objects, for Paddle's sandbox: other price ids, other keys, another webhook secret, the development pair.
+{
+	"name": "example-licence",                 // SET: <program>-licence, the Worker's name (its workers.dev address)
+	"main": "../src/index.ts",
+	"compatibility_date": "2026-10-01",
+	"workers_dev": true,
+	"observability": { "enabled": true },
+
+	// No id: the first deploy creates the namespace (or create it and add "id").
+	"kv_namespaces": [{ "binding": "LICENSES" }],
+
+	// One LicenseOrder Durable Object per transaction serialises a purchase. SQLite-backed: needs the Workers Paid plan.
+	"durable_objects": { "bindings": [{ "name": "ORDERS", "class_name": "LicenseOrder" }] },
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["LicenseOrder"] }],
+
+	// Cloudflare Email Service. Sending to buyers (anyone) needs the Workers Paid plan.
+	"send_email": [{ "name": "EMAIL" }],
+
+	"vars": {
+		// the product: the program's licence.Product
+		"PRODUCT": "example",                     // SET: Product.name
+		"PRODUCT_TITLE": "Example",               // SET: Product.title
+		"VERSION_TAG": "EXAMPLE1",                // SET: Product.version_tag
+		"SIGN_CONTEXT": "example-licence-v1\n",   // SET: Product.sign_context
+		"FILE_EXTENSION": ".examplelicence",      // SET: Product.file_extension
+		"ORDER_PREFIX": "EXAMPLE",                // SET: the order numbers' start
+		"EDITIONS": "[{\"id\":\"standard\",\"title\":\"Standard\"}]",   // SET: Product.editions, lowest rank first
+		"UPDATE_YEARS": "",                       // "2" when the terms promise two years of updates (Product.update_years)
+		"UPDATES_FROM": "",                       // Product.updates_from
+		"LICENSE_PUBLIC_KEY": "",                 // SET: Product.public_key (`<tool> licence pubkey`)
+
+		// the shop
+		"PRICES": "{}",                           // SET: {"pri_...":"standard"}, what `<tool> paddle -apply -environment:live` prints
+		"PADDLE_API_BASE": "https://api.paddle.com",
+		"ALLOWED_ORIGIN": "https://example.org",  // SET: the site of the thank-you page (comma separated)
+		"MAIL_FROM": "Example <licence@mail.example.org>",   // SET: a domain onboarded in Email Service > Email Sending
+		"MAIL_REPLY_TO": "",
+		"MAIL_SUBJECT": "",                       // "": "Your {title} licence (order {order})"
+		"MAIL_TEXT": "",                          // "": the neutral text of src/mail.ts (its placeholders are listed there)
+		"FILE_HINT": "Open this file with Example, or paste the key where it asks for a licence.",
+
+		"WEBHOOK_TOLERANCE_SECONDS": "300",
+		"RESEND_ENABLED": "false",
+		"RESEND_MAX_PER_HOUR": "3",
+		"RESEND_REQUIRE_TOKEN": "false",
+		"MAIL_BACKOFF_MINUTES": "1,5,30,120,720,2880",
+		"MAIL_MAX_ATTEMPTS": "7",
+		"PII_RETENTION_DAYS": "90"
+	},
+
+	"env": {
+		"sandbox": {
+			"name": "example-licence-sandbox",    // SET: <program>-licence-sandbox
+			"workers_dev": true,
+			"observability": { "enabled": true },
+			"kv_namespaces": [{ "binding": "LICENSES" }],
+			"durable_objects": { "bindings": [{ "name": "ORDERS", "class_name": "LicenseOrder" }] },
+			"migrations": [{ "tag": "v1", "new_sqlite_classes": ["LicenseOrder"] }],
+			"send_email": [{ "name": "EMAIL" }],
+			"vars": {
+				"PRODUCT": "example",
+				"PRODUCT_TITLE": "Example",
+				"VERSION_TAG": "EXAMPLE1",
+				"SIGN_CONTEXT": "example-licence-v1\n",
+				"FILE_EXTENSION": ".examplelicence",
+				"ORDER_PREFIX": "EXAMPLE",
+				"EDITIONS": "[{\"id\":\"standard\",\"title\":\"Standard\"}]",
+				"UPDATE_YEARS": "",
+				"UPDATES_FROM": "",
+				"LICENSE_PUBLIC_KEY": "",             // SET: Product.dev_public_key (the development pair signs the sandbox's licences)
+
+				"PRICES": "{}",                       // SET: the sandbox's price ids (`<tool> paddle -apply`)
+				"PADDLE_API_BASE": "https://sandbox-api.paddle.com",
+				"ALLOWED_ORIGIN": "https://example.org,http://localhost:8765",
+				"MAIL_FROM": "Example <licence-sandbox@mail.example.org>",
+				"MAIL_REPLY_TO": "",
+				"MAIL_SUBJECT": "",
+				"MAIL_TEXT": "",
+				"FILE_HINT": "Open this file with Example, or paste the key where it asks for a licence.",
+
+				"WEBHOOK_TOLERANCE_SECONDS": "300",
+				"RESEND_ENABLED": "false",
+				"RESEND_MAX_PER_HOUR": "3",
+				"RESEND_REQUIRE_TOKEN": "false",
+				"MAIL_BACKOFF_MINUTES": "1,5,30,120,720,2880",
+				"MAIL_MAX_ATTEMPTS": "7",
+				"PII_RETENTION_DAYS": "90"
+			}
+		}
+	}
+}

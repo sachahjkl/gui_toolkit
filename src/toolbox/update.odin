@@ -76,8 +76,14 @@ update_seed :: proc() -> (seed: [32]byte, ok: bool) {
 // Whether `path` is in a git work tree: a signing key there could be committed.
 @(private)
 in_git_tree :: proc(path: string) -> bool {
-	// (the folder's: the key's file does not exist yet, and abs reads the file system)
-	dir, err := filepath.abs(filepath.dir(path), context.temp_allocator)
+	// (from the nearest folder that exists: the key's file, and maybe its folder, do not exist yet, and abs reads the file system)
+	start := filepath.dir(path)
+	for !os.exists(start) {
+		parent := filepath.dir(start)
+		if parent == start { break }
+		start = parent
+	}
+	dir, err := filepath.abs(start, context.temp_allocator)
 	if err != nil { return true }
 	for {
 		if os.exists(fmt.tprintf("%s/.git", dir)) { return true }
@@ -95,6 +101,7 @@ update_keygen :: proc(path: string) -> int {
 	crypto.rand_bytes(seed[:])
 	text := update.seed_encode(seed[:], context.temp_allocator)
 	pub, _ := update.public_key_of(seed[:], context.temp_allocator)
+	if dir := filepath.dir(path); dir != "" { _ = os.make_directory_all(dir) }
 	if os.write_entire_file(path, transmute([]u8)text) != nil { fmt.eprintfln("update: cannot write %s", path); return 1 }
 	fmt.println(pub)   // (the public half only: the private one stays in the file)
 	return 0
