@@ -74,6 +74,12 @@ config.load_file(&p, profile_path, .User)    // missing file = no changes
 config.save_user(&p, profile_path)           // export_own then write_user_file, on the calling thread
 ```
 
+`load_text(p, text, source, origin := "", change := false)` reads the text of such a file, read elsewhere: a task reads the
+file (the disk is not the interface's thread's), the interface's thread sets the values (the registry is its own). It
+answers as `load_file`, whose `origin` names the file in the problems. With `change`, what it sets is a change of the
+user's layer and `user_version` moves, so the program saves it: an import of settings exported on another machine
+(`prefs_page`'s Import). Without it, as `load_file`: the profile file already holds what it reads.
+
 A program writes its file off its loop with a `User_Writer`: a disk write there froze the window at each change.
 
 ```odin

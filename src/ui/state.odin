@@ -139,8 +139,8 @@ Build_Params :: struct {
 	window_size:    Vec2,
 	events:         []platform.Event,
 	dt:             f32,       // seconds since the previous frame
-	animations:     bool,      // false = every transition jumps to its end value
-	smooth_scroll:  Smooth_Scroll,   // whether scrolling glides (Follow: as `animations` says)
+	animations:     bool,      // what the system asks (platform.os_animations_enabled); false = every transition jumps to
+	                           // its end value. set_animations can override it
 	dpi_scale:      f32,       // OS scale (dpi / 96); 0 is treated as 1
 	base:           Style,     // root style in LOGICAL pixels: font_size, text_pad, radius and pixel sizes are multiplied by dpi_scale * zoom
 	disable_zoom:   bool,      // true: ignore Ctrl+wheel and Ctrl +/-/0
@@ -216,8 +216,14 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.next_mod = {}
 	s.window_size = p.window_size
 	s.dt = p.dt
-	s.anim_rate = p.animations ? 1 : 0
-	s.scroll_smooth = p.smooth_scroll == .On || (p.smooth_scroll == .Follow && p.animations)
+	animate := p.animations
+	switch s.animations {
+	case .System:
+	case .On:     animate = true
+	case .Off:    animate = false
+	}
+	s.anim_rate = animate ? 1 : 0
+	s.scroll_smooth = s.smooth_scroll == .On || (s.smooth_scroll == .Follow && animate)
 	s.anim_busy = false
 	s.wake_ms = 0
 	s.menu_close_pending = false
@@ -795,9 +801,17 @@ tween :: proc(key: Key, target: f32, ms: f32, initial: Maybe(f32) = nil) -> f32 
 	return a.value
 }
 
-// Whether the window animates: false when the desktop asks for less motion (Build_Params.animations). A program's own
-// motion (a row that flashes, a value that pulses) asks it first.
+// Whether the window animates: false when the desktop asks for less motion (Build_Params.animations) and the setting
+// follows it, or when the setting is Off (set_animations). A program's own motion (a row that flashes, a value that
+// pulses) asks it first.
 animations_on :: proc() -> bool { return gs().anim_rate != 0 }
+
+// Whether transitions animate: as the system asks (Build_Params.animations), or always, or never, whatever it asks.
+Animations :: enum u8 { System, On, Off }
+
+// The user's word on motion, over the system's (a preference: appearance.animations). From the next build on.
+set_animations :: proc(s: ^State, a: Animations) { s.animations = a }
+animations :: proc(s: ^State) -> Animations { return s.animations }
 
 // Asks for the next frame: a program's own animation, drawn from the clock (now_ms), is still moving.
 keep_animating :: proc() { gs().anim_busy = true }

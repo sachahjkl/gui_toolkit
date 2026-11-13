@@ -1,17 +1,21 @@
 // Package prefs_page: a program's settings, built from its preferences (gt:config) with no code per preference, in the
 // look of opencode native's settings.
 //
-//   * On the left: the search in a well, then the pages (a page is a category of the registry: its title and its icon
-//     from Options.pages), the one shown pressed in. A narrow page shows their icons alone.
+//   * On the left, a sidebar the mouse resizes (its width kept: prefs_page.sidebar_width): the search in a well, then
+//     the pages (a page is a top group of the registry: its title and its icon from Options.pages), the one shown
+//     pressed in; at its foot, the program's version, the settings file (a click opens it) and Export / Import. A narrow
+//     page shows the pages' icons alone.
 //   * On the right: the page's title, then a line per preference: its title and its description on the left, its
-//     control on the right (a switch, a segmented choice or a list, a slider, a field with its unit), a reset button
-//     while it is not at its default, a carved line under it.
+//     control on the right (a switch, a segmented choice or a list, a number, a field with its unit), a reset button
+//     while it is not at its default, a carved line under it. A control the line has no room for goes under the words.
+//     The preferences of an inner group (appearance.text) follow under its title; the advanced ones (Def.advanced) of
+//     the page under "Advanced", folded until a click.
 //   * While a search is typed: what matches in every page, under each page's title (config.Search).
 //
 // A preference can get a control of the program's own (Options.custom): a font picker. The standard preferences
-// (standard.odin) need none: Options.themes shows appearance.theme as cards, Options.shortcut_prefs shows global
-// shortcuts with what the system said of them. A program shows the page in place of its main view with back_bar and
-// escape_leaves.
+// (standard.odin) need none: Options.themes shows appearance.theme as cards (and the user's themes file:
+// Options.themes_file), Options.shortcut_prefs shows global shortcuts with what the system said of them. A program shows
+// the page in place of its main view with back_bar and escape_leaves.
 //
 // A change goes through config.set_from_string at the User layer, so every observer of the registry runs; then
 // Options.changed, where the program applies what changed (its loop writes the file: config.user_writer_save).
@@ -19,6 +23,7 @@ package tk_prefs_page
 
 import "core:fmt"
 import "core:math"
+import "core:os"
 import "core:slice"
 import "core:strings"
 import "../ascii"
@@ -65,8 +70,8 @@ Options :: struct {
 	// what the program shows under a page's preferences (not in a search): its own buttons, a list
 	page_foot: proc(user: rawptr, category: string, em: f32),
 	custom:    proc(user: rawptr, name: string, em: f32),
-	// the program's Updater (gt:update): under the line of update_pref ("update.auto"), its state and its buttons (Check
-	// now; Install when a version is on offer; Restart now, by `restart`, when one is installed)
+	// the program's Updater (gt:update): under the line of update_pref ("": update.auto), its state and its buttons
+	// (Check now; Install when a version is on offer; Restart now, by `restart`, when one is installed)
 	updater:     ^update.Updater,
 	update_pref: string,
 	restart:     proc(user: rawptr),
@@ -75,7 +80,9 @@ Options :: struct {
 	pages:     []Page_Info,
 	icon_font: font.Font_Id,   // the font of the pages' icons, and of the two below (0: none, words instead)
 	search_icon, reset_icon: string,
-	foot:      string,         // a faint line under the pages ("prefs: prefs.txt")
+	// the program's preferences file: at the foot of the sidebar, shortened with ~, a click opens it with the system's
+	// program (ui.open) ("": none shown)
+	file:      string,
 	// the program and its version ("Papier 0.15.0"): a line at the bottom of the pages, above the foot ("" none)
 	version:   string,
 	// the program's themes: appearance.theme shows as their cards (theme_cards), in the version appearance.mode asks
@@ -83,6 +90,10 @@ Options :: struct {
 	// which version the program shows now (its ui.Theme_Shown.light: the page does not ask the system each frame)
 	themes:       []ui.Theme_Def,
 	themes_light: bool,
+	// the user's own themes (themes_file.odin): under the cards, a line that says they can be made, and the file, which a
+	// click makes from its template when needed and opens in the system's editor (nil: no such line). Its `all` is
+	// what `themes` is given
+	themes_file:  ^Themes_File,
 	// the program's global shortcuts: each preference of shortcut_prefs records keys, and says under its line what the
 	// system made of them (shortcuts.status_text, shortcuts.problem_text); while a field records, the page holds the
 	// service (shortcuts.hold)
@@ -90,17 +101,31 @@ Options :: struct {
 	shortcut_prefs: []Shortcut_Pref,
 }
 
-// The page's state, kept by the program between frames (destroy).
+// The page's state, kept by the program between frames (destroy). Keep it as long as the ui.State it is built in: the
+// answers of its tasks (an export written, an import read) come in that state's builds.
 Page :: struct {
 	query:        ui.Text_Field,
 	current:      string,   // the category shown (owned; "": the first page)
 	focus_search: bool,
 	search:       config.Search,
 	fields:       map[string]^Field,   // the free fields' text while typed
-	// the slider held (its preference's name, owned; "": none) and where it is: ui.slider moves its value only while the
-	// button is down, so the value is kept here between frames and written on the release
+	// the number held by its slider (its preference's name, owned; "": none) and where it is: the value is written when
+	// the slider is let go (not at the pointer's rate), the page shows it meanwhile
 	held:         string,
-	held_value:   f32,
+	held_value:   f64,
+	number_typed: bool,                // a number's field had the keyboard at the last build (editing)
+	unfolded:     map[string]bool,     // the pages whose Advanced part is open (keys owned)
+	nav_em:       f32,                 // the sidebar's width while its handle moves (ems)
+	nav_moving:   bool,
+	file_of:      string,              // the file `file_shown` was made for (owned)
+	file_shown:   string,              // Options.file shortened with ~ (owned)
+	note:         string,              // what the last export or import did, at the sidebar's foot (owned; "": nothing)
+	note_bad:     bool,
+	// (what the answers of the tasks need: the last build's)
+	prefs:        ^config.Prefs,
+	state:        ^ui.State,
+	changed:      proc(user: rawptr, name: string),
+	user:         rawptr,
 }
 
 @(private)
@@ -117,6 +142,11 @@ destroy :: proc(p: ^Page) {
 	delete(p.held)
 	for k, f in p.fields { ui.field_destroy(&f.text); delete(f.synced); delete(f.error); free(f); delete(k) }
 	delete(p.fields)
+	for k in p.unfolded { delete(k) }
+	delete(p.unfolded)
+	delete(p.file_of)
+	delete(p.file_shown)
+	delete(p.note)
 	p^ = {}
 }
 
@@ -126,6 +156,7 @@ focus_search :: proc(p: ^Page) { p.focus_search = true }
 // Whether a field of a preference has the keyboard: its Escape is the field's, not the program's.
 editing :: proc(p: ^Page) -> bool {
 	if ui.hotkey_recording() { return true }   // (its Escape gives the recording up)
+	if p.number_typed { return true }
 	k := ui.focus_key()
 	if k == 0 { return false }
 	for _, f in p.fields { if f.box == k { return true } }
@@ -168,21 +199,39 @@ back_bar :: proc(p: ^Page, o: Options, title, back_tip: string, em: f32) -> (bac
 	return
 }
 
-// Sizes, in ems: the pages' column (with its icons alone, and the page width under which it is), the margins of the
-// page, a control's height, a segmented choice's room around its longest label and the share of its line past which it
-// goes under its words, a theme's card.
+// Sizes, in ems: the sidebar (its default, least and most width, and the share of the page it may take), its icons
+// alone and the page width under which it shows them, the margins of the page, a control's height, the least width of
+// the words beside a control, a segmented choice's room around its longest label and the share of its line past which
+// it goes under its words, a theme's card.
 @(private = "file") NAV_EM          :: 14
+@(private = "file") NAV_MIN_EM      :: 9
+@(private = "file") NAV_MAX_EM      :: 30
+@(private = "file") NAV_SHARE_MAX   :: 0.5
 @(private = "file") NAV_ICONS_EM    :: 4
 @(private = "file") NARROW_EM       :: 40
 @(private = "file") MARGIN_EM       :: 1.4
 @(private = "file") CONTROL_H_EM    :: 2
+@(private = "file") WORDS_MIN_EM    :: 12
 @(private = "file") SEGMENT_PAD_EM  :: 1.8
 @(private = "file") WIDE_SHARE      :: 0.45
 @(private = "file") SEGMENTS_MAX    :: 4      // more choices: a list
-@(private = "file") SLIDER_STEPS_MAX :: 200   // a bounded number with more steps than this: a field
+@(private = "file") NUMBER_EM       :: 15
+@(private = "file") LIST_EM         :: 13
+@(private = "file") FIELD_EM        :: 15
+@(private = "file") NUMBER_FIELD_EM :: 9
+@(private = "file") SWITCH_EM       :: 3.6
 @(private = "file") CARD_H_EM       :: 3.6
 @(private = "file") CARD_RADIUS_PX  :: 8
 @(private = "file") CARDS_PER_ROW   :: 3
+
+// The sidebar's width, in ems: the page's own state, kept with the settings (hidden: no page shows it).
+SIDEBAR_PREF :: "prefs_page.sidebar_width"
+
+@(private = "file", rodata)
+SIDEBAR_DEFS := [?]config.Def{
+	{name = SIDEBAR_PREF, description = "The width of the settings' sidebar, in ems.", kind = .Float, default = {f = NAV_EM},
+		bounded = true, min = NAV_MIN_EM, max = NAV_MAX_EM, hidden = true},
+}
 
 // The pages of `o`, or each category of the registry by name.
 @(private)
@@ -227,6 +276,10 @@ names_of :: proc(prefs: ^config.Prefs, category: string) -> []string {
 // Builds the page, as large as its parent gives (`next` before it). `prefs` is the registry.
 build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 	em := ui.font_size()
+	// (the sidebar's width is the page's own preference: registered at its first build)
+	if config.ref_of(prefs, SIDEBAR_PREF) == config.NO_REF { config.register(prefs, SIDEBAR_DEFS[:]) }
+	p.prefs, p.state, p.changed, p.user = prefs, ui.current_state(), o.changed, o.user
+	p.number_typed = false
 	pages := pages_of(prefs, o)
 	if len(pages) == 0 { return }
 	cur := 0
@@ -235,10 +288,27 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 	if o.shortcuts != nil && len(o.shortcut_prefs) > 0 { shortcuts.hold(o.shortcuts, ui.hotkey_recording()) }
 	config.search_begin(&p.search, ui.field_string(&p.query))
 	if ui.row(.Start, {.Draw_Background}, "###prefs_page") {
-		narrow := ui.parent_box().size.x > 0 && ui.parent_box().size.x < em * NARROW_EM
-		nav(p, pages, cur, o, narrow, em)
-		ui.next({width = ui.px(max(2, math.round(2 * ui.scale()))), height = ui.fill(), bg = ui.color("border")})
-		ui.build_box({.Draw_Background, .Groove}, "###prefs_div")
+		total := ui.parent_box().size.x
+		narrow := total > 0 && total < em * NARROW_EM
+		icons := narrow && o.icon_font != 0
+		hi: f32 = NAV_MAX_EM
+		if total > 0 { hi = clamp(total / em * NAV_SHARE_MAX, NAV_MIN_EM, NAV_MAX_EM) }
+		width := p.nav_moving ? p.nav_em : f32(config.float_of(prefs, SIDEBAR_PREF))
+		width = clamp(width, NAV_MIN_EM, hi)
+		nav(p, pages, cur, o, icons, icons ? NAV_ICONS_EM : width, em)
+		if icons {
+			ui.next({width = ui.px(max(2, math.round(2 * ui.scale()))), height = ui.fill(), bg = ui.color("border")})
+			ui.build_box({.Draw_Background, .Groove}, "###prefs_div")
+		} else {
+			size := width
+			res := ui.splitter("###prefs_split", .X, &size, NAV_MIN_EM, hi, {default_size = NAV_EM, unit = em, flush = true})
+			if res.changed { p.nav_em = size; p.nav_moving = true }
+			if p.nav_moving && (res.finished || !res.dragging) {
+				p.nav_moving = false
+				// (written once, when the handle is let go: the file is not rewritten at the pointer's rate)
+				_ = config.set_from_string(prefs, SIDEBAR_PREF, fmt.tprintf("%v", p.nav_em), .User)
+			}
+		}
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if ui.scroll_y("###prefs_scroll") {
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
@@ -260,15 +330,22 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 							}
 						}
 					} else {
-						names := page_names(prefs, pages[cur])
-						if page_header(pages[cur].title, page_changed(prefs, o, names), o, em) {
+						pg := pages[cur]
+						names := page_names(prefs, pg)
+						if page_header(pg.title, page_changed(prefs, o, names), o, em) {
 							for name in names {
 								e := config.entry(prefs, config.ref_of(prefs, name))
 								if e.source == .User { reset(p, prefs, o, name) }
 							}
 						}
-						for name in names { setting(p, prefs, o, name, em) }
-						if o.page_foot != nil { o.page_foot(o.user, pages[cur].category, em) }
+						basic := make([dynamic]string, context.temp_allocator)
+						advanced := make([dynamic]string, context.temp_allocator)
+						for name in names {
+							if config.entry(prefs, config.ref_of(prefs, name)).def.advanced { append(&advanced, name) } else { append(&basic, name) }
+						}
+						sections(p, prefs, o, pg.category, basic[:], em)
+						if len(advanced) > 0 { advanced_part(p, prefs, o, pg.category, advanced[:], em) }
+						if o.page_foot != nil { o.page_foot(o.user, pg.category, em) }
 					}
 					ui.spacer(ui.px(em * 1.5))
 				}
@@ -278,11 +355,61 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 	}
 }
 
-// The pages: the search above them, each page a button (its icon, its title), the one shown pressed in.
+// The preferences of a page in sections: those of its own group first, then each inner group's under its title, in
+// the order their first preference came.
 @(private = "file")
-nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, narrow: bool, em: f32) {
-	icons := narrow && o.icon_font != 0
-	ui.next({width = ui.px(em * (icons ? NAV_ICONS_EM : NAV_EM)), height = ui.fill(), axis = .Y})
+sections :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, category: string, names: []string, em: f32) {
+	order := make([dynamic]string, context.temp_allocator)
+	append(&order, category)
+	for name in names {
+		g := group_of(name)
+		if !slice.contains(order[:], g) { append(&order, g) }
+	}
+	for g in order {
+		first := true
+		for name in names {
+			if group_of(name) != g { continue }
+			if first && g != category { section_heading(config.group_title(prefs, g), g, em) }
+			first = false
+			setting(p, prefs, o, name, em)
+		}
+	}
+}
+
+// The group a preference is directly in ("" for a name of one segment).
+@(private = "file")
+group_of :: proc(name: string) -> string {
+	path := config.path_of(name)
+	return len(path) > 0 ? path[len(path) - 1] : ""
+}
+
+@(private = "file")
+section_heading :: proc(title, id: string, em: f32) {
+	ui.spacer(ui.px(em * 1.2))
+	ui.next({width = ui.fill(), height = ui.px(em * 1.6), font_size = math.round(em * 1.02), text_pad = 0})
+	ui.label(fmt.tprintf("%s###sec_%s", title, id))
+	ui.spacer(ui.px(em * 0.2))
+}
+
+// The page's advanced preferences, folded under "Advanced" until a click (the page keeps it open).
+@(private = "file")
+advanced_part :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, category: string, names: []string, em: f32) {
+	open := p.unfolded[category]
+	was := open
+	ui.spacer(ui.px(em * 0.8))
+	if ui.accordion("###advanced", "Advanced", &open) {
+		sections(p, prefs, o, category, names, em)
+	}
+	if open != was {
+		if category in p.unfolded { p.unfolded[category] = open } else { p.unfolded[strings.clone(category)] = open }
+	}
+}
+
+// The pages: the search above them, each page a button (its icon, its title), the one shown pressed in; at the foot the
+// program's version, its settings file, Export and Import. `width`: in ems.
+@(private = "file")
+nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, width: f32, em: f32) {
+	ui.next({width = ui.px(math.round(em * width)), height = ui.fill(), axis = .Y})
 	if ui.column(id = "###prefs_nav") {
 		ui.spacer(ui.px(em * 1.1))
 		if !icons {
@@ -333,20 +460,87 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, narrow: bool, em
 					ui.label(fmt.tprintf("%s###version", o.version))
 				}
 			}
-			if o.foot == "" || icons { ui.spacer(ui.px(em * 0.6)) }
 		}
-		if o.foot != "" && !icons {
-			ui.next({width = ui.fill(), height = ui.px(em * 1.6), axis = .X, cross = .Center})
-			if ui.row(id = "###prefs_foot") {
-				ui.spacer(ui.px(em * 0.9))
-				if ui.tags("weak") {
-					ui.next({width = ui.fill(), height = ui.pct(1), font = ui.mono_font(), font_size = math.round(em * 0.72), text_pad = 0})
-					ui.label(fmt.tprintf("%s###foot", o.foot))
-				}
+		if !icons { nav_foot(p, o, em) }
+		ui.spacer(ui.px(em * 0.6))
+	}
+}
+
+// The sidebar's foot: the settings file (a click opens it), Export and Import, and what the last of them did.
+@(private = "file")
+nav_foot :: proc(p: ^Page, o: Options, em: f32) {
+	if o.file != "" {
+		if p.file_of != o.file {
+			delete(p.file_of); delete(p.file_shown)
+			p.file_of = strings.clone(o.file)
+			p.file_shown = home_short(o.file)
+		}
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+		if ui.row(id = "###prefs_file") {
+			ui.spacer(ui.px(em * 0.9))
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+			if ui.column(id = "###prefs_file_col") {
+				if link("###prefs_file_link", p.file_shown, "Open the settings file", em, mono = true) { ui.open(o.file) }
 			}
-			ui.spacer(ui.px(em * 0.6))
+			ui.spacer(ui.px(em * 0.9))
 		}
 	}
+	ui.spacer(ui.px(em * 0.3))
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
+	if ui.row(id = "###prefs_transfer") {
+		ui.spacer(ui.px(em * 0.7))
+		h := ui.px(math.round(em * 1.7))
+		ui.next({width = ui.text_size(em * 0.6), height = h, radius = em * 0.35, font_size = math.round(em * 0.86)})
+		export_sig, import_sig: ui.Signal
+		if ui.tags("ghost_button") { export_sig = ui.button("Export…###prefs_export") }
+		ui.a11y_default(export_sig.box, {name = "Export the settings to a file (JSON, TOML, INI or this program's own)"})
+		ui.spacer(ui.px(em * 0.3))
+		ui.next({width = ui.text_size(em * 0.6), height = h, radius = em * 0.35, font_size = math.round(em * 0.86)})
+		if ui.tags("ghost_button") { import_sig = ui.button("Import…###prefs_import") }
+		ui.a11y_default(import_sig.box, {name = "Import settings exported by this program"})
+		if export_sig.clicked { export_ask(p) }
+		if import_sig.clicked { import_ask(p) }
+	}
+	if p.note != "" {
+		ui.spacer(ui.px(em * 0.3))
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+		if ui.row(id = "###prefs_note") {
+			ui.spacer(ui.px(em * 0.9))
+			if ui.tags(p.note_bad ? "bad" : "weak") {
+				ui.next({width = ui.fill(), font_size = math.round(em * 0.8), text_pad = 0})
+				ui.paragraph(fmt.tprintf("%s###note", p.note))
+			}
+			ui.spacer(ui.px(em * 0.9))
+		}
+	}
+}
+
+// A path with the user's home folder written ~ (owned).
+@(private)
+home_short :: proc(path: string, allocator := context.allocator) -> string {
+	key := ODIN_OS == .Windows ? "USERPROFILE" : "HOME"
+	home, ok := os.lookup_env(key, context.temp_allocator)
+	if ok && home != "" && len(path) > len(home) && strings.has_prefix(path, home) && (path[len(home)] == '/' || path[len(home)] == '\\') {
+		return strings.concatenate({"~", path[len(home):]}, allocator)
+	}
+	return strings.clone(path, allocator)
+}
+
+// Words that act as a link: the theme's link colour, a hand over them, a screen reader's link; they wrap. True when
+// clicked. `tip`: what a click does.
+@(private)
+link :: proc(id, text, tip: string, em: f32, mono := false) -> bool {
+	ui.next({width = ui.fill(), height = ui.text_size(), font = mono ? ui.mono_font() : ui.top_style().font, font_size = math.round(em * (mono ? 0.78 : 0.86)), text_pad = 0, fg = ui.color("link"), cursor = .Hand})
+	ui.a11y({role = .Link, name = text, description = tip})
+	// (a long path wraps: the sidebar is as narrow as the user makes it)
+	sig := ui.signal(ui.build_box({.Clickable, .Focusable, .Draw_Focus_Ring, .Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s%s", text, id)))
+	if ui.hovered_for(sig) {
+		if ui.tooltip() {
+			ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 1.8))})
+			ui.label(fmt.tprintf("%s###tip", tip))
+		}
+	}
+	return sig.clicked
 }
 
 // Whether a preference of the page is the user's and not its default.
@@ -453,13 +647,29 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 				if reset_button(o, em) { reset(p, prefs, o, name) }
 				ui.spacer(ui.px(em * 0.3))
 			}
-			if ui.disabled(locked) { under = !control(p, prefs, o, r, e, em) }
+			// (the line of the last build says the room: a control that leaves the words too little goes under them)
+			w, share := control_width(o, e, em)
+			line := ui.parent_box()
+			room := line.rect.max.x - line.rect.min.x
+			inline := w > 0 && (room <= 0 || (w <= room * share && room - w >= em * WORDS_MIN_EM))
+			if inline {
+				if ui.disabled(locked) { control(p, prefs, o, r, e, em, ui.px(math.round(w))) }
+			} else {
+				under = true
+			}
 		}
 		if under {
 			ui.spacer(ui.px(em * 0.4))
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 			if ui.column(id = "###under") {
-				if ui.disabled(locked) { control_under(p, prefs, o, r, e, em) }
+				if ui.disabled(locked) {
+					if is_custom(o, name) {
+						control_under(p, prefs, o, r, e, em)
+					} else {
+						ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+						if ui.row(id = "###under_row") { control(p, prefs, o, r, e, em, e.def.kind == .Bool ? ui.px(math.round(em * SWITCH_EM)) : ui.fill()) }
+					}
+				}
 			}
 		}
 		if f, ok := p.fields[name]; ok && f.error != "" {
@@ -468,7 +678,7 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 				ui.paragraph(fmt.tprintf("%s###err", f.error))
 			}
 		}
-		if o.updater != nil && name == o.update_pref { updater_under(o, em) }
+		if o.updater != nil && name == (o.update_pref != "" ? o.update_pref : UPDATE_AUTO_PREF) { updater_under(o, em) }
 		// (a global shortcut's lines are the toolkit's words of what the system said; the others', the program's)
 		said, why: string
 		if id, ok := shortcut_of(o, name); ok {
@@ -531,68 +741,70 @@ reset_button :: proc(o: Options, em: f32) -> bool {
 	return sig.clicked
 }
 
-// The control of a preference, on its line. False when it goes under the words instead (control_under draws it then).
+// The width a preference's control asks on its line, and the share of the line it may take at most (a segmented
+// choice: WIDE_SHARE); 0: it goes under the words (the themes' cards, the program's own).
 @(private = "file")
-control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32) -> bool {
+control_width :: proc(o: Options, e: ^config.Entry, em: f32) -> (w: f32, share: f32) {
 	name := e.def.name
-	if is_custom(o, name) { return false }   // (under the words: control_under)
+	share = 1
+	if is_custom(o, name) { return 0, share }
+	switch e.def.kind {
+	case .Bool: return em * SWITCH_EM, share
+	case .String:
+		if is_hotkey(o, name) { return em * LIST_EM, share }
+		labels, values := choices_of(o, e)
+		if len(values) == 0 { return em * FIELD_EM, share }
+		if len(values) <= SEGMENTS_MAX {
+			widest: f32
+			for l in labels { widest = max(widest, ui.text_width(ui.top_style().font, em, l)) }
+			return f32(len(labels)) * (widest + em * SEGMENT_PAD_EM), WIDE_SHARE
+		}
+		return em * LIST_EM, share
+	case .Int, .Float:
+		if is_number(e.def) { return em * NUMBER_EM, share }
+		unit: f32 = e.def.unit != "" ? em * 0.4 + ui.text_width(ui.top_style().font, math.round(em * 0.86), e.def.unit) : 0
+		return em * NUMBER_FIELD_EM + unit, share
+	}
+	return
+}
+
+// The control of a preference, `width` wide: on its line, or under its words when the line has no room.
+@(private = "file")
+control :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
+	name := e.def.name
+	h := ui.px(math.round(em * CONTROL_H_EM))
 	switch e.def.kind {
 	case .Bool:
 		v := e.value.b
-		ui.next({width = ui.px(em * 3.6), height = ui.px(math.round(em * CONTROL_H_EM))})
+		ui.next({width = width, height = h})
 		ui.a11y({name = config.title_of(e.def)})
 		if ui.toggle("###sw", "", &v).clicked { apply(p, prefs, o, name, v ? "true" : "false") }
 	case .String:
 		if is_hotkey(o, name) {
 			hk, _ := platform.hotkey_parse(e.value.s)
-			ui.next({width = ui.px(em * 13), height = ui.px(math.round(em * CONTROL_H_EM))})
+			ui.next({width = width, height = h})
 			if ui.hotkey_field("###keys", &hk) { apply(p, prefs, o, name, platform.hotkey_text(hk)) }
-			return true
+			return
 		}
 		labels, values := choices_of(o, e)
-		if len(values) == 0 { field(p, prefs, o, r, e, em); return true }
+		if len(values) == 0 { field(p, prefs, o, r, e, em, width); return }
 		sel := -1
 		for c, i in values { if c == e.value.s { sel = i } }
 		if len(values) <= SEGMENTS_MAX {
-			widest: f32
-			for l in labels { widest = max(widest, ui.text_width(ui.top_style().font, em, l)) }
-			w := f32(len(labels)) * (widest + em * SEGMENT_PAD_EM)
-			line := ui.parent_box()
-			if room := line.rect.max.x - line.rect.min.x; room > 0 && w > room * WIDE_SHARE { return false }
-			ui.next({width = ui.px(math.round(w)), height = ui.px(math.round(em * CONTROL_H_EM))})
+			ui.next({width = width, height = h})
 			if ui.segmented("###seg", labels, &sel) && sel >= 0 { apply(p, prefs, o, name, values[sel]) }
 		} else {
-			ui.next({width = ui.px(em * 13), height = ui.px(math.round(em * CONTROL_H_EM))})
+			ui.next({width = width, height = h})
 			if sel < 0 { sel = 0 }
 			if ui.dropdown("###dd", labels, &sel) { apply(p, prefs, o, name, values[sel]) }
 		}
 	case .Int, .Float:
-		if lo, hi, step, ok := slider_of(e.def); ok {
-			held := p.held != "" && p.held == name
-			v := held ? p.held_value : (e.def.kind == .Int ? f32(e.value.i) : f32(e.value.f))
-			ui.next({width = ui.px(em * 15), height = ui.px(math.round(em * CONTROL_H_EM))})
-			ui.a11y({name = config.title_of(e.def)})
-			sig := ui.slider("###sl", &v, lo, hi, step, slider_format(e.def))
-			// written when the button comes up (the file is not rewritten at the pointer's rate), or at once for a key or a
-			// click; while it is down, the value is the page's (held), the preference's when it is up again
-			if sig.pointer_pressed || sig.dragging {
-				moved := !held || v != p.held_value
-				if !held { delete(p.held); p.held = strings.clone(name) }
-				p.held_value = v
-				if moved && o.preview != nil { o.preview(o.user, name, f64(v)) }
-			} else {
-				if held { delete(p.held); p.held = "" }
-				text := e.def.kind == .Int ? fmt.tprintf("%d", i64(math.round(v))) : fmt.tprintf("%g", v)
-				if text != config.value_string(prefs, r) { apply(p, prefs, o, name, text) }
-			}
-		} else {
-			field(p, prefs, o, r, e, em)
-		}
+		if is_number(e.def) { number(p, prefs, o, r, e, em, width) } else { field(p, prefs, o, r, e, em, width) }
 	}
-	return true
 }
 
-// A control under the words: the themes' cards, the program's own (Options.custom), or a choice too wide for the line.
+// A control under the words: the themes' cards (and the line of the user's themes file), or the program's own
+// (Options.custom).
 @(private = "file")
 control_under :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32) {
 	if len(o.themes) > 0 && e.def.name == THEME_PREF && e.def.kind == .String {
@@ -607,17 +819,29 @@ control_under :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref,
 		if at := theme_cards(o.themes, e.value.s, light, em); at >= 0 {
 			apply(p, prefs, o, THEME_PREF, o.themes[at].name)
 		}
+		if o.themes_file != nil { themes_file_line(p, o.themes_file, em) }
 		return
 	}
-	if o.custom != nil && slice.contains(o.custom_names, e.def.name) { o.custom(o.user, e.def.name, em); return }
-	if e.def.kind == .String {
-		labels, values := choices_of(o, e)
-		if len(values) > 0 && len(values) <= SEGMENTS_MAX {
-			sel := -1
-			for c, i in values { if c == e.value.s { sel = i } }
-			ui.next({width = ui.fill(), height = ui.px(math.round(em * CONTROL_H_EM))})
-			if ui.segmented("###seg", labels, &sel) && sel >= 0 { apply(p, prefs, o, e.def.name, values[sel]) }
-			return
+	if o.custom != nil && slice.contains(o.custom_names, e.def.name) { o.custom(o.user, e.def.name, em) }
+}
+
+// Under the themes' cards: that one can make one's own, and the file (a click makes it when needed and opens it).
+@(private = "file")
+themes_file_line :: proc(p: ^Page, tf: ^Themes_File, em: f32) {
+	ui.spacer(ui.px(em * 0.2))
+	if ui.tags("weak") {
+		ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
+		ui.paragraph("Make themes of your own: each is a few lines in this file, which explains how. They show here as soon as it is saved.###themes_own")
+	}
+	ui.spacer(ui.px(em * 0.2))
+	shown := home_short(tf.path, context.temp_allocator)
+	if link("###themes_file", shown, "Open the themes file in the system's editor (made at the first click)", em, mono = true) && p.state != nil {
+		themes_file_open(tf, p.state)
+	}
+	if tf.error != "" {
+		if ui.tags("bad") {
+			ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
+			ui.paragraph(fmt.tprintf("%s###themes_error", tf.error))
 		}
 	}
 }
@@ -634,45 +858,68 @@ choices_of :: proc(o: Options, e: ^config.Entry) -> (labels, values: []string) {
 	return
 }
 
+// A value as a label: its first letter upper case, its underscores spaces ("top_right": "Top right").
 @(private = "file")
 capitalised :: proc(s: string) -> string {
-	if s == "" || s[0] < 'a' || s[0] > 'z' { return s }
-	return strings.concatenate({ascii.upper(s[:1]), s[1:]}, context.temp_allocator)   // (a value: ASCII)
+	if s == "" { return s }
+	t, _ := strings.replace_all(s, "_", " ", context.temp_allocator)
+	if t[0] < 'a' || t[0] > 'z' { return t }
+	return strings.concatenate({ascii.upper(t[:1]), t[1:]}, context.temp_allocator)   // (a value: ASCII)
 }
 
-// A bounded number with few steps is a slider; the others, and a size in bytes, are fields.
+// A bounded number is a ui.number (its slider, its field, − and +); the others, and a size in bytes, are fields.
 @(private = "file")
-slider_of :: proc(d: config.Def) -> (lo, hi, step: f32, ok: bool) {
-	if !d.bounded || d.bytes { return }
-	span := d.max - d.min
-	if span <= 0 { return }
-	if d.kind == .Int {
-		if span > SLIDER_STEPS_MAX { return }
-		return f32(d.min), f32(d.max), 1, true
-	}
-	return f32(d.min), f32(d.max), f32(float_step(span)), true
+is_number :: proc(d: config.Def) -> bool {
+	return d.bounded && !d.bytes && d.max > d.min
 }
 
-// A round step that cuts `span` in at most SLIDER_STEPS_MAX: 0.1, 1, 10...
+// A float's step: round, and cutting its range in at most a few hundred (0.1, 1, 10...).
 @(private = "file")
 float_step :: proc(span: f64) -> f64 {
-	return math.pow(10, math.ceil(math.log10(span / SLIDER_STEPS_MAX)))
+	return math.pow(10, math.ceil(math.log10(span / FLOAT_STEPS_MAX)))
 }
+@(private = "file") FLOAT_STEPS_MAX :: 200
 
-// The value as the slider writes it: as many decimals as its step has, its unit after it. A format of fmt: a "%" of
-// the unit is written "%%", or fmt reads it as a verb.
-@(private)
-slider_format :: proc(d: config.Def) -> string {
-	unit_text, _ := strings.replace_all(d.unit, "%", "%%", context.temp_allocator)
-	unit := d.unit != "" ? strings.concatenate({" ", unit_text}, context.temp_allocator) : ""
-	decimals := 0
-	if d.kind == .Float { decimals = max(0, int(-math.log10(float_step(d.max - d.min)) + 0.5)) }
-	return fmt.tprintf("%%.%df%s", decimals, unit)
+// A bounded number: ui.number with its slider. A drag is written when it is let go (the file is not rewritten at the
+// pointer's rate; while held, the page keeps the value and Options.preview shows it); a key, a click, the wheel, a
+// button or what is typed, at once.
+@(private = "file")
+number :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
+	d := e.def
+	name := d.name
+	held := p.held != "" && p.held == name
+	nk := ui.key_from_string(ui.parent_box().key, "###num")
+	ui.next({width = width, height = ui.px(math.round(em * CONTROL_H_EM))})
+	ui.a11y({name = config.title_of(d)})
+	value: f64
+	if d.kind == .Int {
+		v := held ? int(math.round(p.held_value)) : int(e.value.i)
+		ui.number("###num", &v, lo = int(d.min), hi = int(d.max), unit = d.unit, track = true)
+		value = f64(v)
+	} else {
+		v := held ? p.held_value : e.value.f
+		ui.number("###num", &v, lo = d.min, hi = d.max, step = float_step(d.max - d.min), unit = d.unit, track = true)
+		value = v
+	}
+	if ui.focus_key() == ui.key_from_string(nk, "###value") { p.number_typed = true }
+	if ui.active_key() == ui.key_from_string(nk, "###slider") {
+		moved := !held || value != p.held_value
+		if !held { delete(p.held); p.held = strings.clone(name) }
+		p.held_value = value
+		if moved && o.preview != nil { o.preview(o.user, name, value) }
+		return
+	}
+	if held { delete(p.held); p.held = "" }
+	if d.kind == .Int {
+		if i64(math.round(value)) != e.value.i { apply(p, prefs, o, name, fmt.tprintf("%d", i64(math.round(value)))) }
+	} else if value != e.value.f {
+		apply(p, prefs, o, name, fmt.tprintf("%v", value))
+	}
 }
 
 // A free field, its unit after it: Enter or leaving it applies the text; a refused one says why under the line.
 @(private = "file")
-field :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32) {
+field :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
 	name := e.def.name
 	f, ok := p.fields[name]
 	if !ok {
@@ -682,8 +929,11 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^con
 	current := config.value_string(prefs, r)
 	typing := f.box != 0 && ui.focus_key() == f.box
 	if f.synced != current && !typing { ui.field_set(&f.text, current); delete(f.synced); f.synced = strings.clone(current) }
-	number := e.def.kind != .String
-	ui.next({width = ui.px(em * (number ? 9 : 15)), height = ui.px(math.round(em * CONTROL_H_EM))})
+	numeric := e.def.kind != .String
+	// (a number's field: its width less its unit's, which follows it)
+	fw := width
+	if numeric && e.def.unit != "" && width.kind == .Pixels { fw = ui.px(math.round(em * NUMBER_FIELD_EM)) }
+	ui.next({width = fw, height = ui.px(math.round(em * CONTROL_H_EM))})
 	ui.a11y({name = config.title_of(e.def)})
 	res := ui.line_edit("###field", &f.text, "")
 	f.box = res.box.key
@@ -695,7 +945,7 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^con
 		delete(f.synced); f.synced = ""
 	}
 	if res.cancelled { delete(f.synced); f.synced = ""; delete(f.error); f.error = "" }
-	if number && e.def.unit != "" {
+	if numeric && e.def.unit != "" {
 		ui.spacer(ui.px(em * 0.4))
 		if ui.tags("weak") {
 			ui.next({width = ui.text_size(0), height = ui.px(math.round(em * CONTROL_H_EM)), text_pad = 0, font_size = math.round(em * 0.86)})

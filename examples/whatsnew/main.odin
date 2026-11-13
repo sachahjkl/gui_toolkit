@@ -357,7 +357,7 @@ page_find :: proc(app: ^App, em: f32) {
 
 page_smooth :: proc(app: ^App, em: f32) {
 	heading("Smooth scrolling", em)
-	para("Build_Params.smooth_scroll: Follow (as animations do: the system's setting), On, or Off: the wheel jumps a step at once, even with animations on.")
+	para("ui.set_smooth_scroll: Follow (as animations do: the system's setting), On, or Off: the wheel jumps a step at once, even with animations on.")
 	gap(em * 0.6)
 	labels := [?]string{"Follow the system", "Glide", "Jump"}
 	ui.next({width = ui.px(em * 24)})
@@ -431,9 +431,9 @@ frame :: proc(app: ^App, inner := false) {
 	}
 	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
 	t0 := time.tick_now()
+	ui.set_smooth_scroll(&app.s, ui.Smooth_Scroll(app.smooth))
 	ui.begin_build(&app.s, {
 		window_size = size, events = events, dt = 1.0 / 60, animations = platform.os_animations_enabled(),
-		smooth_scroll = ui.Smooth_Scroll(app.smooth),
 		dpi_scale = app.win.dpi_scale, window = app.win,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = app.font, font_size = 15, text_pad = 6, cursor = .Arrow},
 		clipboard_set = proc(text: string) { platform.set_clipboard(the_app.win, text) },

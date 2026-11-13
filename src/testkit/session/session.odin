@@ -129,7 +129,6 @@ Own :: struct {
 	mono_font:  font.Font_Id,
 	icon_font:  font.Font_Id,
 	animations: bool,
-	smooth_scroll: ui.Smooth_Scroll,
 	no_renderer: bool,
 }
 
@@ -147,7 +146,6 @@ start :: proc(t: ^testing.T, o: Options, loc := #caller_location) -> ^Session {
 	s.own = own
 	own.build = o.build
 	own.animations = o.animations
-	own.smooth_scroll = o.smooth_scroll
 	own.no_renderer = o.no_renderer
 	context = s.ctx
 	size := o.size.x > 0 ? o.size : DEFAULT_SIZE
@@ -176,6 +174,7 @@ start :: proc(t: ^testing.T, o: Options, loc := #caller_location) -> ^Session {
 	ui.init(&own.state, &own.fonts, &own.theme)
 	own.state.icon_font = own.icon_font
 	own.state.mono_font = own.mono_font
+	ui.set_smooth_scroll(&own.state, o.smooth_scroll)
 	s.state = &own.state
 	ui.set_clock(s.state, &s.clock)
 	frame(s)   // (a test begins with the interface there: boxes to look for)
@@ -316,7 +315,7 @@ own_frame :: proc(s: ^Session) {
 	if s.renderer != nil { render.resize(s.renderer, s.win.size) }
 	size := ui.Vec2{f32(s.win.size.x), f32(s.win.size.y)}
 	ui.begin_build(s.state, {
-		window_size = size, events = events, dt = FRAME_MS / 1000, animations = own.animations, smooth_scroll = own.smooth_scroll,
+		window_size = size, events = events, dt = FRAME_MS / 1000, animations = own.animations,
 		dpi_scale = s.win.dpi_scale, window = s.win,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(BASE_ROW_HEIGHT)}, font = own.ui_font, font_size = BASE_FONT_SIZE, text_pad = BASE_TEXT_PAD, cursor = .Arrow},
 		clipboard_set = set_clipboard_of_current,   // (a paste asks the window: the store answers at the next poll)

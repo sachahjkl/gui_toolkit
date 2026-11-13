@@ -74,3 +74,22 @@ a_slider_s_arrow_key_with_shift_moves_ten_steps :: proc(t: ^testing.T) { unwatch
 	session.key(s, .Up, {.Shift})
 	testing.expect_value(t, sl.value, SLIDER_START + 4)
 }) }
+
+@(private = "file")
+Motion :: struct { on: bool }
+
+// The user's word on motion goes over the system's (Build_Params.animations, the session's `animations`): Off stills a
+// window whose system animates, On animates one whose system asks for less motion; System follows it again.
+@(test)
+the_animations_setting_goes_over_the_system :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	m := Motion{}
+	s := session.start(t, {build = proc(s: ^session.Session) { (^Motion)(s.user).on = ui.animations_on() }, user = &m, no_renderer = true, animations = true})
+	testing.expect(t, m.on, "the system's word: it animates")
+	ui.set_animations(s.state, .Off)
+	session.frame(s)
+	testing.expect_value(t, ui.animations(s.state), ui.Animations.Off)
+	testing.expect(t, !m.on, "Off: still")
+	ui.set_animations(s.state, .System)
+	session.frame(s)
+	testing.expect(t, m.on, "System: as the system says again")
+})}

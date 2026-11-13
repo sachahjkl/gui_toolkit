@@ -364,7 +364,9 @@ State :: struct {
 	has_next:     bool,
 	overlay_root: ^Box,
 	anim_rate:    f32,                // exponential rate multiplier: 0 disables animation (values jump)
-	scroll_smooth: bool,              // scrolling glides (Build_Params.smooth_scroll)
+	scroll_smooth: bool,              // scrolling glides this build (smooth_scroll, with the animations)
+	smooth_scroll: Smooth_Scroll,     // the setting (set_smooth_scroll)
+	animations:    Animations,        // the setting (set_animations): the system's word, or the user's over it
 	layout_warnings: bool,            // print the layout mistakes it can see (layout_warn); default: debug builds
 	layout_warned:   map[Key]string,   // the layout warnings given, by box (owned messages)
 	// lazy columns (lazy.odin): the heights items had when last built, the width each column was measured at
