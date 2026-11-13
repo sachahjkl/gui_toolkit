@@ -21,6 +21,7 @@ DEFS := [?]config.Def{
 	{name = "net.max_body", description = "The largest response kept.", kind = .Int, default = {i = 1000}, bounded = true, min = 1, max = 100000, unit = "KB"},
 	{name = "look.style", description = "How surfaces are drawn.", kind = .String, default = {s = "flat"}, choices = {"flat", "machined"}},
 	{name = "look.zoom", description = "How large the interface is drawn.", kind = .Float, default = {f = 1}, bounded = true, min = 0.5, max = 2},
+	{name = "look.shade", description = "How dark the screen is around a choice.", kind = .Int, default = {i = 45}, bounded = true, min = 0, max = 90, unit = "%"},
 	{name = "look.keys", description = "What shows the window.", kind = .String, default = {s = "Ctrl+Shift+U"}},
 	{name = "net.window_size", description = "The size the window was given.", kind = .String, default = {s = ""}, hidden = true},
 }
@@ -233,6 +234,17 @@ a_slider_keeps_where_it_was_let_go :: proc(t: ^testing.T) {
 	testing.expect(t, len(app.changed) > 0 && app.changed[len(app.changed) - 1] == "look.zoom", "the program is told")
 }
 
+// A slider's unit is written as it is, "%" too (the slider's text is a format of fmt: its unit's "%" is not a verb).
+@(test)
+a_slider_writes_its_unit :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app, "dark the screen")
+	sl := session.get(s, "sl")
+	testing.expect(t, sl.a11y != nil, "the slider says its value")
+	if sl.a11y != nil { testing.expect_value(t, sl.a11y.value, "45 %") }
+}
+
 // A slider held shows its value at once (Options.preview: the program applies it), the preference written at the release.
 @(test)
 a_held_slider_previews_its_value :: proc(t: ^testing.T) {
@@ -261,8 +273,8 @@ a_setting_from_the_palette :: proc(t: ^testing.T) {
 	defer app_end(&app)
 	s := app_start(t, &app)
 	commands, names := prefs_page.palette_commands(&app.prefs, {pages = PAGES[:]})
-	testing.expect_value(t, len(commands), 5)   // (the six of DEFS but the hidden one)
-	testing.expect_value(t, len(names), 5)
+	testing.expect_value(t, len(commands), 6)   // (the seven of DEFS but the hidden one)
+	testing.expect_value(t, len(names), 6)
 	at := -1
 	for n, i in names { if n == "look.style" { at = i } }
 	testing.expect(t, at >= 0, "look.style is there")

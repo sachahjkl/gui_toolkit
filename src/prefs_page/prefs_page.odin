@@ -657,10 +657,12 @@ float_step :: proc(span: f64) -> f64 {
 	return math.pow(10, math.ceil(math.log10(span / SLIDER_STEPS_MAX)))
 }
 
-// The value as the slider writes it: as many decimals as its step has, its unit after it.
-@(private = "file")
+// The value as the slider writes it: as many decimals as its step has, its unit after it. A format of fmt: a "%" of
+// the unit is written "%%", or fmt reads it as a verb.
+@(private)
 slider_format :: proc(d: config.Def) -> string {
-	unit := d.unit != "" ? strings.concatenate({" ", d.unit}, context.temp_allocator) : ""
+	unit_text, _ := strings.replace_all(d.unit, "%", "%%", context.temp_allocator)
+	unit := d.unit != "" ? strings.concatenate({" ", unit_text}, context.temp_allocator) : ""
 	decimals := 0
 	if d.kind == .Float { decimals = max(0, int(-math.log10(float_step(d.max - d.min)) + 0.5)) }
 	return fmt.tprintf("%%.%df%s", decimals, unit)
