@@ -1436,6 +1436,12 @@ fr Afficher le mot de passe
 en Clear
 fr Effacer
 
+en Filter
+fr Filtrer
+
+en Marks
+fr Repères
+
 en Graph
 fr Graphe
 

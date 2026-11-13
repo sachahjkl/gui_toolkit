@@ -29,6 +29,7 @@ Widgets and layout
   modals.md           Modal dialogs
   commands.md         Commands, palette, keys
   autoscroll.md       Middle-click autoscroll
+  mark-rail.md        A rail of marks beside a view
   data-views.md       Tables, graphs and meters
   term.md             term: a terminal's grid
   preview.md          Preview: zoom and pan
