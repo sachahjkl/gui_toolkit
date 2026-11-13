@@ -111,6 +111,9 @@ font/shape.odin words_epochs process  # the epochs of the word caches, unique in
 font/shape.odin l1_words thread  # the thread's own cache of short words' widths
 font/slug_dwrite.odin outline_sink_vtable const  # a COM vtable (passed by address)
 font/slug_dwrite.odin IID_ID2D1SimplifiedGeometrySink const  # a COM interface id (passed by address)
+i18n/i18n.odin in_use process  # the language in use, set at the start (atomic); a language in use is never freed
+i18n/i18n.odin generation process  # counts the changes of language (atomic): a cached answer of another is not taken
+i18n/i18n.odin cache thread  # the address of a literal to its entry, per thread (tr is contextless and takes no lock)
 instance/instance_linux.odin owners_mu process  # the instance owners started in the process (locked: owners_mu)
 instance/instance_linux.odin owners process  # the instance owners started in the process (locked: owners_mu)
 ocr/ocr.odin LANGUAGE_CODES const  # a table: ISO 639-1 to Tesseract's codes

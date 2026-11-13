@@ -1,0 +1,3 @@
+# The toolkit's texts in French: its menus, dialogs and settings (docs/i18n.md). Written by `tk i18n`: a text the code no
+# longer has is said by it; a translation left empty is the English.
+language fr
