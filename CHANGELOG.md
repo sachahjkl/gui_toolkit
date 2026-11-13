@@ -5,6 +5,24 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.251.0] - 2026-11-13
+
+### Added
+- **`image.webp_decode`**: reads a WebP file (lossy or lossless, alpha kept) into an `Image`, by the libwebp that `webp_encode` already loads at run time; `ok` is false on a system without libwebp or for bytes that are not WebP.
+
+### Changed
+- **A licence file names its edition only when the product sells several**: the first line of the file and the e-mail of the licence Worker read "# papier licence for Name" when the product has one edition (they read "# papier licence (Supporter) for Name"). The edition stays in the signed key, so a product that adds editions later reads it from every licence already sold. The e-mail template has `{edition_note}` (" (Supporter)" or nothing); `{edition_title}` is still there.
+- **The shop's pages have a design**: the pricing page is a hero (the program's icon, a quiet "Licence" label, the program's name as it writes it, one line), one card with the price large and "once, taxes included" beside it, what the licence gives as a list with check marks, one button in the site's accent (a dashed "Coming soon" while the shop is closed, with no second line saying it), the fine print, then "Before you buy" in two columns. The thank-you page has the same hero, a spinner while the licence is made, and a licence card. Every template page has a bar with the program's name and a foot with the shop's pages, and reads well on a 360 px phone. Their style is the new `site.LICENCE_CSS`, put in each page by `{{shop_css}}`: it reads the site's own colour variables (`--accent`, `--text`, `--muted`/`--weak`, `--surface`/`--bg2`...), so a program keeps its accent and its light theme and writes no CSS for these pages. A program sells one licence: the pages are made for one price and one button.
+  - `Shop.prices: []Shop_Price` is removed, and `Shop_Price` with it: set `edition`, `price_id` and `buy_label` on the `Shop` itself (`prices = {{edition = "standard", price_id = "pri_…", label = "Buy the licence"}}` → `edition = "standard", price_id = "pri_…", buy_label = "Buy the licence"`; an empty `buy_label` says "Buy the licence"). A `Shop` is now a constant whole: no `SHOP_PRICES` array and no `shop.prices = …` before the build.
+  - `Shop.icon` is new: the program's icon from a template page (`"../img/logo.png"`), shown in the hero and the bar; empty shows none.
+  - `Shop.price_note` is now an extra line under the price (HTML, empty for none): the page says "once, taxes included" itself. `price_note = "Once. Taxes included. Patron: 45&nbsp;&euro;."` → `price_note = ""`.
+  - `product_title` is no longer the pricing page's heading (the program's name is): it stays what Paddle sells, named by the legal pages.
+  - `shop_open` also needs `thanks`, as the page's script did.
+  - The blocks' markup changed: the buy block is `div.shop-offer#buy` with one `button.shop-buy` (`data-edition`, `data-price`, `data-label`) and a hidden `#buy-note` for errors; the thank-you block is `div.shop-thanks#licence-thanks` with `data-state` (`waiting`, `ready`, `failed`) and no edition row. A program that keeps its own pages puts `LICENCE_CSS` in its stylesheet and `class="shop-page"` on their body.
+
+### Fixed
+- **`site.Shop.price_note` is HTML**, as its comment said and as `price` is: an entity such as `45&nbsp;&euro;` now shows as "45 €" on the pricing page instead of its source text.
+
 ## [0.250.0] - 2026-11-13
 
 ### Added
@@ -3344,6 +3362,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.251.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.251.0
 [0.250.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.250.0
 [0.249.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.249.0
 [0.248.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.248.0
