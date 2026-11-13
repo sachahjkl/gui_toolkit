@@ -74,7 +74,8 @@ for you, in order:
 
 What a frame of yours does besides is a hook of the Host (`src/host/host.odin`): `params` (the style, the animations of each
 build), `input` (events the interface does not see), `builds` (several builds in a frame: `host.host_build` again),
-`hold` (no picture this frame), `after_build`, `before_input`, `dragging`, `rest_frame`. A window hidden with
+`hold` (no picture this frame), `after_build`, `before_input`, `dragging`, `rest_frame`, `close_asked` (the title bar's
+close or the compositor's: the window stays, the program hides it or asks first). A window hidden with
 `host.host_hide` gets no `host_frame` until `host.host_show` (the program waits on it with `platform.wait_event` and
 reads it with `poll_events`); the first frame after the show makes the renderer's surface again. Another window is another
 `host_open` with the same `Shared`: a surface on the same renderer, built in turn, `hosts_wait({&a, &b})` for both

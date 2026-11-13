@@ -95,6 +95,9 @@ Host :: struct {
 	still:        proc(h: ^Host, events: []platform.Event) -> bool,   // nothing it shows changed: no build, no picture (the last one stays)
 	dragging:     proc(h: ^Host) -> bool,                              // the pacer paces as a drag. nil: a press is held
 	input:        proc(h: ^Host, events: []platform.Event) -> []platform.Event,   // what is left of the input for the interface
+	// the system or the user asked the window to close (its title bar, the compositor, Alt+F4): the window stays, the
+	// program decides (hides it, asks first, closes it with platform.close_window). nil: the window closes
+	close_asked:  proc(h: ^Host),
 	params:       proc(h: ^Host, p: ^ui.Build_Params),                 // what each build is given
 	builds:       proc(h: ^Host, size: Vec2, events: []platform.Event, dt: f32),  // the frame's builds. nil: one host_build
 	after_build:  proc(h: ^Host),                                      // the interface is built, nothing is drawn
@@ -252,6 +255,13 @@ host_frame :: proc(h: ^Host, inner := false) {
 	h.slept = false
 	if h.before_input != nil { h.before_input(h) }
 	events := platform.poll_events(h.win, false)
+	if h.close_asked != nil && platform.is_closed(h.win) {
+		platform.cancel_close(h.win)
+		kept := make([dynamic]platform.Event, 0, len(events), context.temp_allocator)
+		for e in events { if e.kind != .Close { append(&kept, e) } }
+		events = kept[:]
+		h.close_asked(h)
+	}
 	// (the user's input: they look at the window, whatever the compositor says. Drawn at once, when that cannot wait)
 	if !shown && free && len(events) > 0 {
 		platform.frame_shown_forget(h.win)

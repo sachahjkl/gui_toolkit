@@ -287,3 +287,32 @@ a_resize_step_is_the_window_s_own :: proc(t: ^testing.T) {
 }
 
 _ :: render
+
+// A close asked of a window whose program decides: the window stays open, its frames go on, the program is told once and
+// the interface never sees the Close.
+@(test)
+a_close_asked_leaves_the_window_to_the_program :: proc(t: ^testing.T) {
+	p: Probe
+	defer delete(p.seen)
+	sh: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	open_main(t, &sh, h, &p)
+	defer host.host_close(h)
+	h.close_asked = proc(h: ^host.Host) { note(h, "close_asked") }
+	h.input = proc(h: ^host.Host, e: []platform.Event) -> []platform.Event {
+		for ev in e { if ev.kind == .Close { note(h, "close seen") } }
+		return e
+	}
+	step(h)
+	platform.inject_event(h.win, {kind = .Close})
+	step(h)
+	testing.expect(t, !platform.is_closed(h.win), "still open")
+	asked, seen := 0, 0
+	for s in p.seen { if s == "close_asked" { asked += 1 }; if s == "close seen" { seen += 1 } }
+	testing.expect_value(t, asked, 1)
+	testing.expect_value(t, seen, 0)
+	built := p.builds
+	step(h)
+	testing.expect(t, p.builds > built, "its frames go on")
+}
