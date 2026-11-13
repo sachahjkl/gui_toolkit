@@ -11,7 +11,7 @@ import "gt:capture"
 s, err := capture.open()                  // the system's capture, once
 outs := capture.outputs(s)                // the screens, in desktop coordinates
 wins := capture.windows(s)                // the windows, front to back
-d, _ := capture.desktop(s)                // every screen in one picture: what a region is cut from
+d, _ := capture.desktop(s)                // every screen in one picture, at the highest scale
 part, _ := capture.crop(d, {x, y, w, h})  // a region, logical
 w := capture.window_at(wins, pointer)     // the window under the pointer (when windows_have_rects)
 capture.frame_free(&d)
@@ -33,6 +33,28 @@ opened it.
 The desktop's, in logical pixels (what a window's size is given in), the outputs side by side as the system places them.
 A `Frame` is in physical pixels, `scale` of them per logical pixel, and says where on the desktop its first pixel is
 (`origin`, logical). Pixels are BGRA, 8 bits a channel, straight alpha (opaque for a screen).
+
+## Outputs at different scales
+
+`desktop` is one picture at the highest scale of the outputs. An output at a lower scale is enlarged into it by the
+nearest pixel: beside a screen at 1.33, a screen at 1 gets one row and one column in four twice, and its text looks
+uneven once cut, or once shown on that screen again. A program that cuts a region or shows one screen at a time keeps
+each output's own picture instead:
+
+```odin
+parts, err := capture.desktop_parts(s)          // each output's picture, at its own scale, taken together
+defer capture.frames_free(parts)
+cut, ok := capture.crop_parts(parts, region)    // inside one output: its pixels as they are
+i := capture.part_holding(parts, outs[0].rect)  // the part that shows that output (-1: none holds it all)
+```
+
+- `desktop_parts` gives a frame per output, each with its `origin` and `scale`. Wayland and Windows capture each output
+  on its own; the portal and X11 read the desktop as one picture, and give that one.
+- `crop_parts` cuts a region from the part that holds all of it, at that part's scale. A region across outputs is cut
+  from the parts it meets composed (`compose`, at the highest of their scales), as `desktop` would give it.
+- `part_holding` is the part that holds a rectangle, or -1.
+
+`tests/capture/capture_parts_test.odin` checks them with made-up frames: an output at 4/3 beside one at 1.
 
 ## The pointer
 

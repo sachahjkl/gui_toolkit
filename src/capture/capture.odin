@@ -166,12 +166,30 @@ window :: proc(s: ^Session, id: u64, allocator := context.allocator) -> (f: Fram
 }
 
 // Every output in one picture, at the highest scale of them, the desktop's bounding rectangle (what is outside every
-// output, transparent). What a region is cut from, and what a selection is drawn over.
+// output, transparent). An output at a lower scale is enlarged into it by the nearest pixel: to cut a region or show one
+// output, desktop_parts and crop_parts keep each output's own pixels.
 desktop :: proc(s: ^Session, allocator := context.allocator) -> (f: Frame, err: Error) {
 	if !revive(s) { return {}, .Failed }
 	f = platform_desktop(s, allocator) or_return
 	frame_order_set(&f, s.order)
 	return
+}
+
+// Every output's own picture, taken together, each at its own scale and placed on the desktop (`origin`, `scale`): what
+// `desktop` composes into one. A program that cuts a region (crop_parts) or shows one output keeps these instead, so an
+// output at a lower scale than another is never enlarged. A backend that reads the desktop as one picture (the portal,
+// X11) gives that one. Free them with frames_free.
+desktop_parts :: proc(s: ^Session, allocator := context.allocator) -> (parts: []Frame, err: Error) {
+	if !revive(s) { return nil, .Failed }
+	parts = platform_desktop_parts(s, allocator) or_return
+	for &p in parts { frame_order_set(&p, s.order) }
+	return
+}
+
+// The frames of desktop_parts, and their slice.
+frames_free :: proc(parts: []Frame, allocator := context.allocator) {
+	for &p in parts { frame_free(&p) }
+	delete(parts, allocator)
 }
 
 // `r` (logical, on the desktop) cut from `f`, in a new frame.

@@ -1248,17 +1248,20 @@ wl_output_frame :: proc(st: ^Wl_State, id: u64, allocator: runtime.Allocator) ->
 	return frames[0], .None
 }
 
+// Every output with a mode, captured together, each at its own scale.
 @(private)
-wl_desktop :: proc(st: ^Wl_State, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
+wl_desktop_parts :: proc(st: ^Wl_State, allocator: runtime.Allocator) -> (frames: []Frame, err: Error) {
 	st.lib.display_roundtrip(st.display)
 	ids := make([dynamic]u64, context.temp_allocator)
 	for o in st.outputs { if o.mode.x > 0 && o.mode.y > 0 { append(&ids, u64(o.global)) } }
-	if len(ids) == 0 { return {}, .Failed }
-	frames := wl_capture_outputs(st, ids[:], allocator) or_return
-	defer {
-		for &p in frames { frame_free(&p) }
-		delete(frames, allocator)
-	}
+	if len(ids) == 0 { return nil, .Failed }
+	return wl_capture_outputs(st, ids[:], allocator)
+}
+
+@(private)
+wl_desktop :: proc(st: ^Wl_State, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
+	frames := wl_desktop_parts(st, allocator) or_return
+	defer frames_free(frames, allocator)
 	if len(frames) == 1 {
 		f = frames[0]
 		frames[0] = {}

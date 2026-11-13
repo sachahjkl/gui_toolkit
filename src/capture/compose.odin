@@ -60,6 +60,37 @@ compose :: proc(parts: []Frame, allocator := context.allocator) -> (out: Frame, 
 	return out, true
 }
 
+// The index of the part (desktop_parts') that holds all of `r` (logical); -1: none does (it spans parts, or is off them).
+part_holding :: proc(parts: []Frame, r: Rect) -> int {
+	for p, i in parts {
+		if !frame_has_pixels(p) { continue }
+		f := frame_rect(p)
+		if r.x >= f.x && r.y >= f.y && r.x + r.w <= f.x + f.w && r.y + r.h <= f.y + f.h { return i }
+	}
+	return -1
+}
+
+// `r` (logical) cut from `parts` (desktop_parts'), in a new frame. Inside one part it is cut from that part at the part's
+// own scale: a screen at a lower scale than another keeps its pixels as they are. Across parts, the parts it meets are
+// composed (at the highest of their scales, as `desktop`), then cut. ok is false when it meets none.
+crop_parts :: proc(parts: []Frame, r: Rect, allocator := context.allocator) -> (out: Frame, ok: bool) {
+	if r.w <= 0 || r.h <= 0 { return {}, false }
+	if i := part_holding(parts, r); i >= 0 { return crop(parts[i], r, allocator) }
+	met := make([dynamic]Frame, context.temp_allocator)
+	for p in parts {
+		if !frame_has_pixels(p) { continue }
+		f := frame_rect(p)
+		if r.x < f.x + f.w && f.x < r.x + r.w && r.y < f.y + f.h && f.y < r.y + r.h { append(&met, p) }
+	}
+	if len(met) == 0 { return {}, false }
+	whole := compose(met[:], allocator) or_return
+	defer frame_free(&whole)
+	return crop(whole, r, allocator)
+}
+
+@(private = "file")
+frame_has_pixels :: proc(f: Frame) -> bool { return f.width > 0 && f.height > 0 && f.scale > 0 }
+
 // Where a frame is on the desktop, logical.
 @(private)
 frame_rect :: proc(f: Frame) -> Rect {
