@@ -279,6 +279,7 @@ testkit/folders.odin temp_folder.serial test  # the test folders' names (atomic)
 testkit/session/session.odin current test  # the session a test runs (one test at a time: owner_thread checks it)
 testkit/session/session.odin owner_thread test  # the session a test runs (one test at a time: owner_thread checks it)
 testkit/session/session.odin live_sessions test  # the session a test runs (one test at a time: owner_thread checks it)
+toolbox/licence.odin PADDLE_FLAGS const  # the paddle command's flags, a table
 toolbox/group_linux.odin running_groups process  # the process groups started, for the signal handler (the thread that starts them writes it)
 toolbox/group_linux.odin running_count process  # how many of them (written after the slot)
 toolbox/logo.odin ICO_SIZES const  # the sizes Windows asks an .ico for

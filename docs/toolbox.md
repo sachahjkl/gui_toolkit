@@ -170,6 +170,18 @@ shortcut and the window show. A build checks with it that the resource is linked
 
 `update_manifest(product, program, version, channel, out)` is the manifest step alone, for a tool's release step.
 
+## A program's licences
+
+`licence_commands(tool)` gives the `licence` and `paddle` commands of a project's tool, for its `Licence_Tool` (its
+`licence.Product`, the folder of its private key, its development pair, the hint of its files, its Paddle catalogue):
+
+- `licence keygen`, `licence pubkey`, `licence issue`, `licence verify`: the signing key pair (outside any git work tree, in
+  `licence_key_dir(tool)`), a licence signed by hand, a check;
+- `licence secrets <secrets.yaml> <out.env>`: the Worker's secrets decrypted by sops (`sops_dotenv`), to a file git ignores;
+- `paddle [-apply]`: the product and its prices in Paddle's catalogue, over `gt:http`.
+
+[licence.md](licence.md) says the whole flow and each command.
+
 ## Crash reports
 
 A program's crash reports ([crash.md](crash.md)) give each frame as a module and an offset. These name the offsets of the

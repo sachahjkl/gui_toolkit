@@ -1,0 +1,17 @@
+{
+	"name": "gt-licence-worker",
+	"private": true,
+	"version": "1.0.0",
+	"description": "Signs a program's licences when Paddle reports a paid transaction, keeps them in KV and mails them with Cloudflare Email Service. One deploy per product.",
+	"type": "module",
+	"license": "MIT",
+	"scripts": {
+		"test": "node --test \"test/*.test.ts\"",
+		"test:bun": "bun test test/",
+		"dev": "cf dev"
+	},
+	"devDependencies": {
+		"cf": "1.0.0-beta.17",
+		"wrangler": "^4.136.0"
+	}
+}

@@ -34,6 +34,15 @@ for <label>" in `.get-main`, the detail in `.get-sub`), and `<!-- download-other
 The version mark is replaced after, so `href` and `detail` can name it. The other systems' buttons carry `hidden`: the site's
 stylesheet keeps them hidden even where a `.btn` sets its `display` (`[hidden] { display: none !important; }`).
 
+## The shop's pages
+
+A program that sells a licence ([licence.md](licence.md)) has a pricing page and a thank-you page. Their marks become the
+blocks of its `Shop` (`with_licence(page, shop)`): `<!-- licence-buy -->` the offer and the script that opens Paddle's
+checkout (`licence_buy_block`), `<!-- licence-thanks -->` the licence of the purchase, asked of the licence Worker
+(`licence_thanks_block`). The buttons say "Coming soon" until the shop has its client token, its prices and its Worker
+(`shop_open`). `licence_pages(shop)` fills the six template pages of `src/site/licence_pages/` (pricing, thanks, terms,
+refunds, privacy, imprint) for a program that keeps none of its own.
+
 ## What a page says when shared
 
 `build_meta(m, from, out)` gives each page of `out` its canonical address, its Open Graph and Twitter tags from its own title

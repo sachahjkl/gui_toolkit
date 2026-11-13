@@ -1,0 +1,9 @@
+node_modules/
+.wrangler/
+.cf/
+# decrypted secrets: written by `<tool> licence secrets`, never committed
+secrets*.env
+!secrets.example.env
+.dev.vars
+.dev.vars.*
+.cloudflare/

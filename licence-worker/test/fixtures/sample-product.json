@@ -1,0 +1,30 @@
+{
+	"comment": "The sample product of the tests: the same constants as src/licence/licence_test.odin (cross.test.ts checks they agree).",
+	"vars": {
+		"PRODUCT": "sample",
+		"PRODUCT_TITLE": "Sample",
+		"VERSION_TAG": "SAMPLE1",
+		"SIGN_CONTEXT": "sample-licence-v1\n",
+		"FILE_EXTENSION": ".samplelicence",
+		"ORDER_PREFIX": "SAMPLE",
+		"EDITIONS": "[{\"id\":\"supporter\",\"title\":\"Supporter\"},{\"id\":\"patron\",\"title\":\"Patron\"}]",
+		"PRICES": "{\"pri_01hsxyh9a1fnwv3xbg2zykm4sj\":\"supporter\",\"pri_01hsxyk2m7c4e8r5t3w9q6z1pd\":\"patron\"}",
+		"FILE_HINT": "Open this file with Sample."
+	},
+	"dev_seed": "Z3QtbGljZW5jZS1zYW1wbGUtZGV2LXNlZWQtMDAwMSE",
+	"dev_public_key": "zHs7wxUEefqH37-vN5cKoTnZOCCFBnmcoQGrw6i3UAk",
+	"other_seed": "Z3QtbGljZW5jZS1vdGhlci1zYW1wbGUtc2VlZC0wMiE",
+	"vector": {
+		"fields": { "edition": "supporter", "name": "Jeanne Dupont", "email": "jeanne@example.org", "date": "2026-10-22", "order": "SAMPLE-0001" },
+		"text": "SAMPLE1.eyJwcm9kdWN0Ijoic2FtcGxlIiwiZWRpdGlvbiI6InN1cHBvcnRlciIsIm5hbWUiOiJKZWFubmUgRHVwb250IiwiZW1haWwiOiJqZWFubmVAZXhhbXBsZS5vcmciLCJkYXRlIjoiMjAyNi0xMC0yMiIsIm9yZGVyIjoiU0FNUExFLTAwMDEifQ._1saqlbzGri15FPx4Bcul5NC2IDUxv6xaNGLCBqKAvayX9yZK_zvwfSYbwGHo-2Vt279B3lZRABDIQniVgzzCQ",
+		"text_with_updates": "SAMPLE1.eyJwcm9kdWN0Ijoic2FtcGxlIiwiZWRpdGlvbiI6InN1cHBvcnRlciIsIm5hbWUiOiJKZWFubmUgRHVwb250IiwiZW1haWwiOiJqZWFubmVAZXhhbXBsZS5vcmciLCJkYXRlIjoiMjAyNi0xMC0yMiIsIm9yZGVyIjoiU0FNUExFLTAwMDEiLCJ1cGRhdGVzX3VudGlsIjoiMjAyOC0xMC0yMiJ9.umls9XeZduIng1jj-slTJ3SARm60Je9TJngrYRDjkbYkVHK1DgcBa3rlI152izIAJBHbHEJZmOZS7NyK9GiiCw"
+	},
+	"wren": {
+		"comment": "Wren's licences, as Wren's worker made them before this codebase was shared: the same text from these settings.",
+		"vars": { "PRODUCT": "wren", "PRODUCT_TITLE": "Wren", "VERSION_TAG": "WREN1", "SIGN_CONTEXT": "wren-license-v1\n", "FILE_EXTENSION": ".wrenlicense", "PRICES": "{\"pri_x\":\"supporter\"}" },
+		"dev_seed": "d3Jlbi1kZXYtbGljZW5zZS10ZXN0LXNlZWQtMDAwMSE",
+		"dev_public_key": "NLbdwv2jpoDIMu5pVxyjYBUMEu2Lvfd8StzxR0PGqs8",
+		"fields": { "edition": "supporter", "name": "Jeanne Dupont", "email": "jeanne@example.org", "date": "2026-10-22", "order": "WREN-0001" },
+		"text": "WREN1.eyJwcm9kdWN0Ijoid3JlbiIsImVkaXRpb24iOiJzdXBwb3J0ZXIiLCJuYW1lIjoiSmVhbm5lIER1cG9udCIsImVtYWlsIjoiamVhbm5lQGV4YW1wbGUub3JnIiwiZGF0ZSI6IjIwMjYtMTAtMjIiLCJvcmRlciI6IldSRU4tMDAwMSJ9.dws8E6hZSTQQ9ONP84BMYChi5P9LRY9APBq3zukrwi8i-sPguPrDWM7aJEVrDv0SHGRT6WrFhxD6k0kWQrRaBQ"
+	}
+}

@@ -9,3 +9,7 @@ native/*/target/
 .pre-commit-config.yaml
 /tk
 /run_tests
+# licences: a private signing key, an issued licence and a decrypted secret never belong here (docs/licence.md)
+private.key
+*.samplelicence
+secrets/*.plain.*

@@ -56,6 +56,7 @@ Platform and system
   winrt.md            winrt: Windows Runtime APIs
   setup.md            setup: a program installs itself
   update.md           update: signed updates
+  licence.md          licence: a paid licence
   http.md             http: requests
   desktop.md          desktop: the program on the desktop
   process.md          process: the program's process
