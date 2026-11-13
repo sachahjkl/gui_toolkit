@@ -129,7 +129,7 @@ jobs:
         shell: pwsh
         timeout-minutes: 3
         run: |
-          odin build examples/whatsnew -vet -out:build/whatsnew.exe
+          odin build examples/whatsnew -vet -define:TOOLKIT_DEVTOOLS=true -out:build/whatsnew.exe
           if ($LASTEXITCODE) { exit 1 }
           ./build/tk.exe timeline_test
           if ($LASTEXITCODE) { exit 1 }
