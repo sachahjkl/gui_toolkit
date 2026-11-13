@@ -48,13 +48,12 @@ i18n_run :: proc(args: []string, user: rawptr) -> int {
 i18n_catalogue :: proc(dirs: []string, path, language: string, check: bool) -> string {
 	texts := make([dynamic]I18n_Text, context.temp_allocator)
 	seen := make(map[string]bool, allocator = context.temp_allocator)
-	odd := make([dynamic]string, context.temp_allocator)
 	for d in dirs {
 		for f in odin_files(d) {
 			if strings.has_suffix(f, "_test.odin") { continue }
 			data, err := os.read_entire_file(f, context.temp_allocator)
 			if err != nil { return fmt.tprintf("%s: %v", f, err) }
-			i18n_texts_of(string(data), f, &texts, &seen, &odd)
+			i18n_texts_of(string(data), f, &texts, &seen)
 		}
 	}
 	old_text, _ := os.read_entire_file(path, context.temp_allocator)
@@ -66,7 +65,6 @@ i18n_catalogue :: proc(dirs: []string, path, language: string, check: bool) -> s
 		if e, ok := old[key]; !ok || e.forms[0] == "" { untranslated += 1 }
 	}
 	for k in old { if !seen[k] { gone += 1 } }
-	for o in odd { fmt.eprintln(o) }
 	if check {
 		if untranslated > 0 || gone > 0 || made != string(old_text) {
 			return fmt.tprintf("%s: %d texts not translated, %d no longer in the code, not up to date: run `i18n %s`", path, untranslated, gone, language)
@@ -84,10 +82,9 @@ i18n_catalogue :: proc(dirs: []string, path, language: string, check: bool) -> s
 @(private = "file")
 i18n_key :: proc(ctx, english: string) -> string { return fmt.tprintf("%s\x04%s", ctx, english) }
 
-// The tr calls of a file whose texts are literals, in their order; a call with a text that is not one is said in `odd`
-// (it cannot be translated from a catalogue).
+// The tr calls of a file whose texts are literals, and its i18n.later texts, in their order.
 @(private)
-i18n_texts_of :: proc(src, file: string, texts: ^[dynamic]I18n_Text, seen: ^map[string]bool, odd: ^[dynamic]string) {
+i18n_texts_of :: proc(src, file: string, texts: ^[dynamic]I18n_Text, seen: ^map[string]bool) {
 	t: tokenizer.Tokenizer
 	tokenizer.init(&t, src, file)
 	toks := make([dynamic]tokenizer.Token, context.temp_allocator)
@@ -145,11 +142,8 @@ i18n_texts_of :: proc(src, file: string, texts: ^[dynamic]I18n_Text, seen: ^map[
 			p, ok2 := literal(args[2])
 			text.english, text.plural, ok = o, p, ok1 && ok2
 		}
-		if !ok {
-			// (a text that is a variable cannot come from a catalogue: it is said, and stays English)
-			append(odd, fmt.tprintf("%s: a tr call whose text is not a literal: it stays English", at))
-			continue
-		}
+		// (a tr of a variable shows a text marked where it is declared, i18n.later: nothing to read here)
+		if !ok { continue }
 		if text.english == "" { continue }
 		key := i18n_key(text.ctx, text.english)
 		if seen[key] { continue }
