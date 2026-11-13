@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import ascii "../../src/ascii"
 
 // gen_lucide: src/lucide/lucide.odin from src/lucide/lucide.ttf, one constant per icon of the font, named after the
 // glyph's name in its 'post' table ("arrow-up-down" is ARROW_UP_DOWN), its character from the 'cmap' table. Every icon
@@ -123,7 +124,7 @@ DATA :: #load("lucide.ttf")
 	width := 0
 	for ic in icons { width = max(width, len(ic.name)) }
 	for ic in icons {
-		upper, _ := strings.to_upper(ic.name, context.temp_allocator)
+		upper := ascii.upper(ic.name)
 		constant, _ := strings.replace_all(upper, "-", "_", context.temp_allocator)
 		if len(constant) > 0 && constant[0] >= '0' && constant[0] <= '9' { constant = fmt.tprintf("N%s", constant) }
 		fmt.sbprintf(&b, "%-*s :: \"\\u%04x\"   // %s\n", width, constant, int(ic.code), ic.name)
