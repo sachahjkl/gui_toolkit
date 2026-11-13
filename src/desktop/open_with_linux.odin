@@ -17,6 +17,7 @@ package tk_desktop
 // read has changed; checking that is a stat of each.
 
 import "base:runtime"
+import "core:fmt"
 import "core:mem/virtual"
 import "core:os"
 import "core:path/filepath"
@@ -25,6 +26,7 @@ import "core:strings"
 import "core:sync"
 import "core:sys/linux"
 import "../ascii"
+import i18n "../i18n"
 import "../platform"
 
 // Where the specifications are read: the data directories and the configuration ones, most important first, and the
@@ -59,36 +61,56 @@ xdg_roots :: proc() -> Xdg_Roots {
 type_name_native :: proc(name: string, allocator: runtime.Allocator) -> string {
 	sync.mutex_guard(&mime_cache.mutex)
 	roots := xdg_roots()
-	return type_name_of(mime_cache_get(&mime_cache, roots), roots, name, allocator)
+	l := i18n.current()
+	return type_name_of(mime_cache_get(&mime_cache, roots), roots, name, l != nil ? l.tag : "", allocator)
 }
 
-// The comment of the type `name` says, in the database of `roots` (kept in it once read).
+// The comment of the type `name` says, in the database of `roots` (kept in it once read), in `language` (a tag: "fr",
+// "pt-BR", "fr_FR.UTF-8"; "" English): the comment of that language, else of its primary subtag, else the English one.
 @(private)
-type_name_of :: proc(db: ^Mime_Database, roots: Xdg_Roots, name: string, allocator: runtime.Allocator) -> string {
+type_name_of :: proc(db: ^Mime_Database, roots: Xdg_Roots, name, language: string, allocator: runtime.Allocator) -> string {
 	mime := mime_of_name(db, name)
 	if mime == "application/octet-stream" { return "" }
-	comment, known := db.comments[mime]
+	// (kept by language and type: a change of the language reads the type's file again)
+	key := strings.concatenate({language, "\x00", mime}, context.temp_allocator)
+	comment, known := db.comments[key]
 	if !known {
 		// (the first of the data directories that has the type's file, as update-mime-database writes it)
 		for d in roots.data {
 			path, _ := filepath.join({d, "mime", strings.concatenate({mime, ".xml"}, context.temp_allocator)}, context.temp_allocator)
 			text, err := os.read_entire_file(path, context.temp_allocator)
 			if err != nil { continue }
-			comment = mime_comment(string(text))
+			comment = mime_comment(string(text), language)
 			if comment != "" { break }
 		}
-		db.comments[strings.clone(mime, db.allocator)] = strings.clone(comment, db.allocator)
+		db.comments[strings.clone(key, db.allocator)] = strings.clone(comment, db.allocator)
 	}
 	return strings.clone(comment, allocator)
 }
 
-// The first <comment> of a type's file with no language (the English one), its entities read.
+// The <comment> of a type's file in `language` (shared-mime-info writes xml:lang="fr", "pt_BR"): the one of its language
+// and region, else of its language, else the one with no language (the English one); its entities read.
 @(private)
-mime_comment :: proc(xml: string) -> string {
-	OPEN :: "<comment>"
-	i := strings.index(xml, OPEN)
+mime_comment :: proc(xml, language: string) -> string {
+	tag := language
+	if i := strings.index_any(tag, ".@"); i >= 0 { tag = tag[:i] }   // (a POSIX locale's encoding and modifier)
+	tag, _ = strings.replace_all(tag, "-", "_", context.temp_allocator)
+	primary := i18n.primary_of(tag)
+	if tag != "" && primary != "en" {
+		if text := mime_comment_of(xml, fmt.tprintf("<comment xml:lang=\"%s\">", tag)); text != "" { return text }
+		if primary != tag {
+			if text := mime_comment_of(xml, fmt.tprintf("<comment xml:lang=\"%s\">", primary)); text != "" { return text }
+		}
+	}
+	return mime_comment_of(xml, "<comment>")
+}
+
+// The text of the first element that opens with `open` (a <comment ...> tag), its entities read; "" when there is none.
+@(private = "file")
+mime_comment_of :: proc(xml, open: string) -> string {
+	i := strings.index(xml, open)
 	if i < 0 { return "" }
-	rest := xml[i + len(OPEN):]
+	rest := xml[i + len(open):]
 	j := strings.index(rest, "</comment>")
 	if j < 0 { return "" }
 	text := strings.trim_space(rest[:j])
@@ -170,7 +192,7 @@ Mime_Database :: struct {
 	globs:     [dynamic]Mime_Glob,
 	parents:   map[string][dynamic]string,
 	icons:     map[string]string,   // mime/icons: a type's own icon name
-	comments:  map[string]string,   // a type's comment, read from mime/<type>.xml when first asked (type_name)
+	comments:  map[string]string,   // "<language>\x00<type>": its comment, read from mime/<type>.xml when first asked (type_name)
 	generic:   map[string]string,   // mime/generic-icons: the icon of its family (image-x-generic)
 	stamps:    [dynamic]File_Stamp,
 }

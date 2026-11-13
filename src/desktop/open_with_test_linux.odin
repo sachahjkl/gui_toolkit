@@ -223,21 +223,24 @@ an_exec_line_expanded :: proc(t: ^testing.T) {
 	testing.expect(t, ok && len(e) == 2 && e[1] == "a;rm -rf ~.txt", "one argument")
 }
 
-// A type's name, as shared-mime-info's file of the type says it in English (the languages' comments after it); a name of
-// no known type has none.
+// A type's name, as shared-mime-info's file of the type says it in the language asked (its region's, else its language's,
+// else the English one); a name of no known type has none.
 @(test)
 the_name_of_a_type :: proc(t: ^testing.T) {
 	files := [?][2]string{
 		MIME_FILES[0], MIME_FILES[1],
-		{"sysdata/mime/text/plain.xml", "<?xml version=\"1.0\"?>\n<mime-type type=\"text/plain\">\n  <comment>Plain text document</comment>\n  <comment xml:lang=\"fr\">document texte brut</comment>\n</mime-type>\n"},
+		{"sysdata/mime/text/plain.xml", "<?xml version=\"1.0\"?>\n<mime-type type=\"text/plain\">\n  <comment>Plain text document</comment>\n  <comment xml:lang=\"fr\">document texte brut</comment>\n  <comment xml:lang=\"pt_BR\">documento de texto sem formatação</comment>\n</mime-type>\n"},
 		{"sysdata/mime/image/png.xml", "<mime-type type=\"image/png\"><comment>PNG image &amp; more</comment></mime-type>"},
 	}
 	roots, base := roots_make(t, "type_names", files[:])
 	defer os.remove_all(base)
 	db := mime_database(roots, context.temp_allocator)
-	testing.expect_value(t, type_name_of(&db, roots, "notes.txt", context.temp_allocator), "Plain text document")
-	testing.expect_value(t, type_name_of(&db, roots, "a.PNG", context.temp_allocator), "PNG image & more")
-	testing.expect_value(t, type_name_of(&db, roots, "a.zzz", context.temp_allocator), "")
-	testing.expect_value(t, type_name_of(&db, roots, "main.c", context.temp_allocator), "")   // (no file for it: nothing)
-	testing.expect_value(t, type_name_of(&db, roots, "notes.txt", context.temp_allocator), "Plain text document")   // (kept)
+	testing.expect_value(t, type_name_of(&db, roots, "notes.txt", "", context.temp_allocator), "Plain text document")
+	testing.expect_value(t, type_name_of(&db, roots, "a.PNG", "", context.temp_allocator), "PNG image & more")
+	testing.expect_value(t, type_name_of(&db, roots, "a.zzz", "", context.temp_allocator), "")
+	testing.expect_value(t, type_name_of(&db, roots, "main.c", "", context.temp_allocator), "")   // (no file for it: nothing)
+	testing.expect_value(t, type_name_of(&db, roots, "notes.txt", "", context.temp_allocator), "Plain text document")   // (kept)
+	testing.expect_value(t, type_name_of(&db, roots, "notes.txt", "fr_FR.UTF-8", context.temp_allocator), "document texte brut")
+	testing.expect_value(t, type_name_of(&db, roots, "notes.txt", "pt-BR", context.temp_allocator), "documento de texto sem formatação")
+	testing.expect_value(t, type_name_of(&db, roots, "a.PNG", "fr", context.temp_allocator), "PNG image & more")   // (no French: English)
 }

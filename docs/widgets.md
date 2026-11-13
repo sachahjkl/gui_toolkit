@@ -38,7 +38,7 @@ for decides how it is laid out:
   line, in pixels, its least; 0: the toolkit's). They win over what `next` says. A button's words are never cut: a width
   or a height in pixels (from `o` or `next`) is a least, the button growing to its words on one line; given less room
   than that (a share of a narrow row, a dialog, a column), its words wrap onto more lines, its padding kept, and it grows
-  taller. A height that is a share of the parent's (`pct`) stays that. `button_width(text, glyph)` is the width a button
+  taller. Its lines break only between words: a word wider than the room makes the button wider, never split. A height that is a share of the parent's (`pct`) stays that. `button_width(text, glyph)` is the width a button
   takes on one line in the style in use: what a column of buttons measures to be as wide as its longest.
 - **`left`**: what is in a row wider than it at its left, whatever the style's `text_align`.
 - **`quiet`**: a secondary act, smaller; a Neutral one's words weak until the pointer is over it.
@@ -112,8 +112,8 @@ if res.committed { open_hit(app) }
 
 A row whose children are wider together than it, once what may shrink did (its `fill()` spacers and shares, what has a
 strictness under 1), does not let them spill past its edge to be cut: the words of a `.Text_Wrap` box of a text width
-(a button's) wrap onto more lines (`wrap_room`: down to `WRAP_LEAST_EM` of its font size), and the box holding them grows
-taller. The same in a column narrower than a child, and in a `.Wrap` row (`flow`) for an item wider than the row on its
+(a button's) wrap onto more lines (`wrap_room`: down to `WRAP_LEAST_EM` of its font size; a text that is never cut,
+`.No_Text_Trunc`, down to its widest word, `widest_word_cached`), and the box holding them grows taller. The same in a column narrower than a child, and in a `.Wrap` row (`flow`) for an item wider than the row on its
 own. A box that scrolls or lets its children overflow gives nothing: they fit already. `natural_width(b)` is the width a
 box asks for before any layout (its words on one line, its children's): what a dialog and a popover measure to grow to
 what is in them.

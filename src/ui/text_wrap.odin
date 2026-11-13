@@ -81,6 +81,7 @@ Wrap_Key :: struct {
 Wrap_Entry :: struct {
 	lines:      [][2]int,   // heap
 	last_build: u64,
+	widest:     f32,        // an entry of width 0 (widest_word_cached): the widest word
 }
 
 // Lines of `text` at `width` from the cache (wrapped and remembered the first time).
@@ -95,6 +96,40 @@ wrap_lines_cached :: proc(f: font.Font_Id, size: f32, text: string, width: f32) 
 	lines := wrap_lines(f, size, text, width, runtime.heap_allocator())
 	s.wrap_cache[k] = {lines = lines, last_build = s.build_index}
 	return lines
+}
+
+// The width of the widest word of `text` (words are between spaces and line ends), measured as wrap_lines measures a line
+// (cluster by cluster): at this width or more, wrap_lines breaks only between words. Kept in the wrap cache (width 0).
+widest_word_cached :: proc(f: font.Font_Id, size: f32, text: string) -> f32 {
+	s := gs()
+	if text == "" { return 0 }
+	k := Wrap_Key{text_hash = hash_bytes(transmute([]u8)text), text_len = len(text), font = f, size = size, width = 0}
+	if e, ok := &s.wrap_cache[k]; ok {
+		e.last_build = s.build_index
+		return e.widest
+	}
+	widest := widest_word(f, size, text)
+	s.wrap_cache[k] = {last_build = s.build_index, widest = widest}
+	return widest
+}
+
+@(private = "file")
+widest_word :: proc(f: font.Font_Id, size: f32, text: string) -> f32 {
+	widest, x: f32
+	it := utf8.decode_grapheme_iterator_make(text)
+	for {
+		cl, _, more := utf8.decode_grapheme_iterate(&it)
+		if !more { break }
+		if cl == " " || cl == "\n" || cl == "\r\n" { x = 0; continue }
+		if len(cl) == 1 {
+			r, _ := utf8.decode_rune_in_string(cl)
+			x += font.glyph(gs().fonts, f, size, r).advance
+		} else {
+			x += font.text_width(gs().fonts, f, size, cl)
+		}
+		widest = max(widest, x)
+	}
+	return widest
 }
 
 @(private)

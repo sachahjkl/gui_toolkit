@@ -251,12 +251,15 @@ share_slack :: proc(c: ^Box) -> f32 {
 layout_wrap_give :: proc(b: ^Box, avail: f32) {
 	total, room: f32
 	for c := b.first; c != nil; c = c.next {
-		if is_floating(c, .X) { continue }
-		total += c.size.x
-		room += wrap_room(c)
+		if !is_floating(c, .X) { total += c.size.x }
 	}
 	violation := total - avail
-	if violation <= LAYOUT_VIOLATION_EPS_PX || room <= 0 { return }
+	// (what fits asks nothing of its words: they are measured only when the row is too narrow)
+	if violation <= LAYOUT_VIOLATION_EPS_PX { return }
+	for c := b.first; c != nil; c = c.next {
+		if !is_floating(c, .X) { room += wrap_room(c) }
+	}
+	if room <= 0 { return }
 	for c := b.first; c != nil; c = c.next {
 		if is_floating(c, .X) { continue }
 		r := wrap_room(c)
@@ -269,14 +272,20 @@ layout_wrap_give :: proc(b: ^Box, avail: f32) {
 @(private = "file") WRAP_LEAST_EM :: 3
 
 // How much narrower a box can be, as laid out so far along X, by wrapping the words in it onto more lines: a .Text_Wrap
-// box of a text width gives what is over WRAP_LEAST_EM; a box of boxes, what its children give (in a row, all of them;
-// in a column, as much as the widest can; in a .Wrap box, what its widest item can, the others moving to new lines).
-// Never under the box's least. A box that lets its children overflow, or scrolls them, gives nothing (they already fit).
+// box of a text width gives what is over WRAP_LEAST_EM, and a text that is never cut (.No_Text_Trunc: a button's words)
+// what is over its widest word (its lines break only between words: the box stays wider, the never-cut rule); a box of
+// boxes, what its children give (in a row, all of them; in a column, as much as the widest can; in a .Wrap box, what its
+// widest item can, the others moving to new lines). Never under the box's least. A box that lets its children overflow,
+// or scrolls them, gives nothing (they already fit).
 @(private)
 wrap_room :: proc(b: ^Box) -> f32 {
 	if .Text_Wrap in b.flags {
 		if b.pref[.X].kind != .Text { return 0 }
-		return max(0, b.size.x - max(b.pref[.X].least, 2 * b.text_pad + b.font_size * WRAP_LEAST_EM))
+		least := max(b.pref[.X].least, 2 * b.text_pad + b.font_size * WRAP_LEAST_EM)
+		if .No_Text_Trunc in b.flags && b.size.x > least {
+			least = max(least, math.ceil(2 * b.text_pad + widest_word_cached(b.font, b.font_size, b.text)))
+		}
+		return max(0, b.size.x - least)
 	}
 	if b.first == nil || .Allow_Overflow_X in b.flags || .View_Scroll_X in b.flags { return 0 }
 	inner := b.size.x - 2 * border_inset(b)

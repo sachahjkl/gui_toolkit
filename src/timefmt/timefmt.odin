@@ -108,7 +108,7 @@ local_day :: proc(ms: f64, offset_minutes: int) -> int {
 floor_mod :: proc(a, b: int) -> int { return ((a % b) + b) % b }
 
 // A size in bytes as the systems' file managers say it, in powers of 1024: "512 B", "7.0 KB", "12 MB", "1.2 GB" (one
-// decimal under 10, none above).
+// decimal under 10, none above), the decimal mark and the units of the language in use ("7,8 Go" in French).
 size :: proc(bytes: i64, allocator := context.temp_allocator) -> string {
 	units := [?]string{i18n.tr("KB"), i18n.tr("MB"), i18n.tr("GB"), i18n.tr("TB"), i18n.tr("PB")}
 	if bytes < 1024 { return fmt.aprintf(i18n.tr("%d B"), bytes, allocator = allocator) }
@@ -118,5 +118,6 @@ size :: proc(bytes: i64, allocator := context.temp_allocator) -> string {
 		v /= 1024
 		u += 1
 	}
-	return v < 10 ? fmt.aprintf("%.1f %s", v, units[u], allocator = allocator) : fmt.aprintf("%.0f %s", v, units[u], allocator = allocator)
+	// (a no-break space: the number and its unit stay on one line)
+	return fmt.aprintf("%s %s", i18n.decimal(v, v < 10 ? 1 : 0), units[u], allocator = allocator)
 }

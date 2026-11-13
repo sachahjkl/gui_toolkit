@@ -102,7 +102,7 @@ diagnostics_build :: proc(user: rawptr, em: f32) {
 	if v.software {
 		if ui.tags("warn") {
 			ui.next({width = ui.fill(), text_pad = 0})
-			ui.paragraph(fmt.tprintf("%s###diag_software", i18n.tr("The frames are drawn by a software rasterizer, not the graphics card: everything is slower. Updating the graphics driver usually brings the card back.")))
+			ui.paragraph(fmt.tprintf("%s###diag_software", i18n.tr("The frames are drawn by a software rasterizer, not the graphics card: everything is slower. Updating the graphics driver usually lets the program use the card again.")))
 		}
 		ui.spacer(ui.px(em * 0.6))
 	}
@@ -151,18 +151,19 @@ diagnostics_make :: proc(v: ^Diagnostics_View) {
 	add(v, i18n.tr("Graphics adapter"), a.software ? fmt.tprintf(i18n.tr("%s (software rasterizer)"), adapter) : adapter)
 	add(v, i18n.tr("Graphics API"), fmt.tprintf("%s (%s)", a.api, render.backend_name()))
 	if h.win != nil {
-		add(v, i18n.tr("Window"), fmt.tprintf(i18n.tr("%d × %d pixels, scale %.2f"), h.win.size.x, h.win.size.y, h.win.dpi_scale))
+		add(v, i18n.tr("Window"), fmt.tprintf(i18n.tr("%d × %d pixels, scale %s"), h.win.size.x, h.win.size.y, i18n.decimal(f64(h.win.dpi_scale), 2)))
 	}
 	s := host.frame_stats(&h.frames)
+	ms :: proc(v: f64) -> string { return i18n.decimal(v, 1) }
 	if s.frames == 0 {
 		add(v, i18n.tr("Frames"), i18n.tr("none drawn yet"))
 	} else {
-		add(v, i18n.tr("Frames"), fmt.tprintf(i18n.tr("the last %d: median %.1f ms, 95th percentile %.1f ms"), s.frames, s.total_p50, s.total_p95))
-		add(v, i18n.tr("Build"), fmt.tprintf(i18n.tr("median %.1f ms, 95th percentile %.1f ms"), s.build_p50, s.build_p95))
-		add(v, i18n.tr("Draw"), fmt.tprintf(i18n.tr("median %.1f ms, 95th percentile %.1f ms"), s.draw_p50, s.draw_p95))
+		add(v, i18n.tr("Frames"), fmt.tprintf(i18n.tr("the last %d: median %s ms, 95th percentile %s ms"), s.frames, ms(f64(s.total_p50)), ms(f64(s.total_p95))))
+		add(v, i18n.tr("Build"), fmt.tprintf(i18n.tr("median %s ms, 95th percentile %s ms"), ms(f64(s.build_p50)), ms(f64(s.build_p95))))
+		add(v, i18n.tr("Draw"), fmt.tprintf(i18n.tr("median %s ms, 95th percentile %s ms"), ms(f64(s.draw_p50)), ms(f64(s.draw_p95))))
 	}
 	if h.partial_redraw {
-		add(v, i18n.tr("Partial redraw"), s.drawn_share > 0 ? fmt.tprintf(i18n.tr("on: %.0f %% of the pixels drawn"), s.drawn_share * 100) : i18n.tr("on"))
+		add(v, i18n.tr("Partial redraw"), s.drawn_share > 0 ? fmt.tprintf(i18n.tr("on: %s of the pixels drawn"), i18n.percent(f64(s.drawn_share))) : i18n.tr("on"))
 	} else {
 		add(v, i18n.tr("Partial redraw"), i18n.tr("off"))
 	}

@@ -17,17 +17,17 @@ fr hors limites
 en not one of the allowed values
 fr pas une des valeurs permises
 
-en %s did not close normally last time: the system or another program ended it.
-fr %s ne s'est pas fermé normalement la dernière fois : le système ou un autre programme l'a arrêté.
+en Last time, %s did not close normally: the system or another program ended it.
+fr La dernière fois, %s ne s'est pas fermé normalement : le système ou un autre programme l'a arrêté.
 
-en %s ended unexpectedly last time.
-fr %s s'est arrêté de façon inattendue la dernière fois.
+en Last time, %s ended unexpectedly.
+fr La dernière fois, %s s'est arrêté de façon inattendue.
 
-en %s stopped unexpectedly last time (%s).
-fr %s s'est arrêté de façon inattendue la dernière fois (%s).
+en Last time, %s stopped unexpectedly (%s).
+fr La dernière fois, %s s'est arrêté de façon inattendue (%s).
 
-en %s stopped unexpectedly last time.
-fr %s s'est arrêté de façon inattendue la dernière fois.
+en Last time, %s stopped unexpectedly.
+fr La dernière fois, %s s'est arrêté de façon inattendue.
 
 en %s %s stopped unexpectedly
 fr %s %s s'est arrêté de façon inattendue
@@ -215,8 +215,8 @@ fr Tous les fichiers (*.*)
 en Diagnostics
 fr Diagnostics
 
-en The frames are drawn by a software rasterizer, not the graphics card: everything is slower. Updating the graphics driver usually brings the card back.
-fr Les images sont dessinées par un rendu logiciel, pas par la carte graphique : tout est plus lent. Mettre à jour le pilote graphique ramène en général la carte.
+en The frames are drawn by a software rasterizer, not the graphics card: everything is slower. Updating the graphics driver usually lets the program use the card again.
+fr Les images sont dessinées par un rendu logiciel, pas par la carte graphique : tout est plus lent. En général, une mise à jour du pilote graphique permet au programme d'utiliser de nouveau la carte.
 
 en Program
 fr Programme
@@ -239,8 +239,8 @@ fr API graphique
 en Window
 fr Fenêtre
 
-en %d × %d pixels, scale %.2f
-fr %d × %d pixels, échelle %.2f
+en %d × %d pixels, scale %s
+fr %d × %d pixels, échelle %s
 
 en Frames
 fr Images
@@ -248,14 +248,14 @@ fr Images
 en none drawn yet
 fr aucune dessinée pour l'instant
 
-en the last %d: median %.1f ms, 95th percentile %.1f ms
-fr les %d dernières : médiane %.1f ms, 95e centile %.1f ms
+en the last %d: median %s ms, 95th percentile %s ms
+fr les %d dernières : médiane %s ms, 95e centile %s ms
 
 en Build
 fr Construction
 
-en median %.1f ms, 95th percentile %.1f ms
-fr médiane %.1f ms, 95e centile %.1f ms
+en median %s ms, 95th percentile %s ms
+fr médiane %s ms, 95e centile %s ms
 
 en Draw
 fr Dessin
@@ -263,8 +263,8 @@ fr Dessin
 en Partial redraw
 fr Redessin partiel
 
-en on: %.0f %% of the pixels drawn
-fr activé : %.0f %% des pixels dessinés
+en on: %s of the pixels drawn
+fr activé : %s des pixels dessinés
 
 en on
 fr activé
@@ -274,6 +274,66 @@ fr désactivé
 
 en Installation
 fr Installation
+
+en Licence registered: thank you.
+fr Licence enregistrée : merci.
+
+en Licence removed.
+fr Licence retirée.
+
+en Licence
+fr Licence
+
+en Reading the licence…
+fr Lecture de la licence…
+
+en Registered
+fr Enregistré
+
+en Holder: %s
+fr Titulaire : %s
+
+en Edition: %s
+fr Édition : %s
+
+en Thank you for supporting %s.
+fr Merci de soutenir %s.
+
+en Unregistered
+fr Non enregistré
+
+en %s is free; a licence supports its development.
+fr %s est gratuit ; une licence soutient son développement.
+
+en The licence stored here is not valid: %s
+fr La licence enregistrée ici n'est pas valide : %s
+
+en Buy a licence
+fr Acheter une licence
+
+en Paste a licence key
+fr Coller une clé de licence
+
+en Register
+fr Enregistrer la clé
+
+en Choose a licence file…
+fr Choisir un fichier de licence…
+
+en The key is checked on this computer, with no network: %s never sends it anywhere.
+fr La clé est vérifiée sur cet ordinateur, sans réseau : %s ne l'envoie nulle part.
+
+en Click again to remove the licence
+fr Cliquez encore pour retirer la licence
+
+en Remove the licence
+fr Retirer la licence
+
+en Choose a licence file
+fr Choisir un fichier de licence
+
+en %s licence
+fr Licence %s
 
 en Settings
 fr Réglages
@@ -294,7 +354,7 @@ en Advanced
 fr Avancé
 
 en Search settings
-fr Chercher dans les réglages
+fr Chercher un réglage
 
 en Open the settings file
 fr Ouvrir le fichier des réglages
@@ -381,7 +441,7 @@ en Messages
 fr Messages
 
 en Where %[0]s says what it did (copied, saved, deleted). System: the system's notifications, or %[0]s's window where the system has none. Window: only in %[0]s's window. Off: nowhere; a failure is always said.
-fr Là où %[0]s dit ce qu'il a fait (copié, enregistré, supprimé). Système : les notifications du système, ou la fenêtre de %[0]s si le système n'en a pas. Fenêtre : seulement dans la fenêtre de %[0]s. Non : nulle part ; un échec est toujours signalé.
+fr Là où %[0]s dit ce qu'il a fait (copié, enregistré, supprimé). Système : les notifications du système, ou sa propre fenêtre si le système n'en a pas. Fenêtre : seulement dans sa propre fenêtre. Non : nulle part ; un échec est toujours signalé.
 
 en Off
 fr Non
@@ -399,7 +459,7 @@ en Theme
 fr Thème
 
 en The colours of %s's windows.
-fr Les couleurs des fenêtres de %s.
+fr Les couleurs dans lesquelles %s affiche ses fenêtres.
 
 en Light or dark
 fr Clair ou sombre
@@ -483,7 +543,7 @@ en The system's title bar
 fr La barre de titre du système
 
 en The system draws the title bar of %[0]s's windows. Off: %[0]s draws its own, with its tabs and buttons in it.
-fr Le système dessine la barre de titre des fenêtres de %[0]s. Non : %[0]s dessine la sienne, avec ses onglets et ses boutons.
+fr Le système dessine la barre de titre des fenêtres. Non : %[0]s dessine la sienne, avec ses onglets et ses boutons.
 
 en Where messages show
 fr Position des messages
@@ -897,13 +957,13 @@ en Update by itself
 fr Mise à jour automatique
 
 en Look for a new version of %s now and then, and install it: it takes effect at the next start.
-fr Chercher de temps en temps une nouvelle version de %s, et l'installer : elle prend effet au prochain démarrage.
+fr %s cherche de temps en temps une nouvelle version et l'installe : elle prend effet au prochain démarrage.
 
 en Channel
 fr Canal
 
 en The releases %s installs. Each channel publishes its own, signed for that channel.
-fr Les versions que %s installe. Chaque canal publie les siennes, signées pour ce canal.
+fr Les versions installées par %s. Chaque canal publie les siennes, signées pour ce canal.
 
 en Address
 fr Adresse
@@ -918,10 +978,13 @@ en Presentation
 fr Présentation
 
 en Vsync: each picture waits for the screen's refresh, whole. Tearing: it is shown at once, a picture may be cut where the screen was.
-fr Vsync : chaque image attend le rafraîchissement de l'écran, entière. Arrachement : elle s'affiche tout de suite, une image peut être coupée là où en était l'écran.
+fr Synchronisation verticale : chaque image attend le rafraîchissement de l'écran et s'affiche entière. Sans synchronisation : elle s'affiche tout de suite ; une image peut être coupée en deux là où l'écran en était (déchirure).
+
+en Vsync
+fr Synchronisation verticale
 
 en Tearing
-fr Arrachement
+fr Sans synchronisation (déchirures possibles)
 
 en Frames queued
 fr Images en file
@@ -1000,7 +1063,7 @@ en Removed.
 fr Supprimé.
 
 en Not installed: this copy runs on its own.
-fr Pas installé : cette copie fonctionne seule.
+fr Non installé : cette copie fonctionne seule.
 
 en Installed: this is the installed copy.
 fr Installé : c'est la copie installée.
@@ -1029,14 +1092,18 @@ fr Installé par Nix. Une installation antérieure a laissé des fichiers ici : 
 en Installed by Nix: the Nix package has the menu entry and the icon.
 fr Installé par Nix : le paquet Nix a l'entrée du menu et l'icône.
 
-en applications menu
-fr menu des applications
+ctx setup key
+en Start menu
+fr Menu Démarrer
+
+en Applications menu
+fr Menu des applications
 
 en Settings > Apps
 fr Paramètres > Applications
 
-en icons
-fr icônes
+en Icons
+fr Icônes
 
 en Installed. Start it from the Start menu, or now:
 fr Installé. Lancez-le depuis le menu Démarrer, ou maintenant :
@@ -1069,10 +1136,10 @@ en Install
 fr Installer
 
 en %s Setup
-fr Installation de %s
+fr Installation : %s
 
 en Not installed
-fr Pas installé
+fr Non installé
 
 en %s is installed
 fr %s est installé
@@ -1117,13 +1184,13 @@ en Reading the install…
 fr Lecture de l'installation…
 
 en not installed
-fr pas installée
+fr non installé
 
 en v%s installed
-fr v%s installée
+fr v%s installé
 
 en installed
-fr installée
+fr installé
 
 en This copy: v%s → %s
 fr Cette copie : v%s → %s
@@ -1143,11 +1210,11 @@ fr Options
 en Shortcut on the Desktop
 fr Raccourci sur le Bureau
 
-en this copy
-fr cette copie
+en This copy
+fr Cette copie
 
 en On NixOS, a Nix package is the better install: Nix updates it. An install here makes this copy run by itself (nix-build makes the libraries it needs).
-fr Sous NixOS, un paquet Nix est la meilleure installation : Nix le met à jour. Une installation ici fait fonctionner cette copie seule (nix-build crée les bibliothèques dont elle a besoin).
+fr Sous NixOS, un paquet Nix est la meilleure installation : Nix le met à jour. Installé ici, ce programme fonctionne sans Nix : nix-build crée les bibliothèques dont il a besoin.
 
 en Working…
 fr En cours…
@@ -1173,8 +1240,8 @@ fr Fermer
 en Not now
 fr Pas maintenant
 
-en Keep standalone
-fr Garder autonome
+en Do not install
+fr Ne pas installer
 
 en Open the installed copy
 fr Ouvrir la copie installée
@@ -1182,20 +1249,20 @@ fr Ouvrir la copie installée
 en Version installed
 fr Version installée
 
-en %s (the installed copy)
-fr %s (la copie installée)
-
-en This copy
-fr Cette copie
-
-en yes
-fr oui
+en Location of this copy
+fr Emplacement de cette copie
 
 en With the session
 fr Avec la session
 
 en On the PATH
 fr Dans le PATH
+
+en %s (the installed copy)
+fr %s (la copie installée)
+
+en yes
+fr oui
 
 en yes (with its console launcher)
 fr oui (avec son lanceur de console)

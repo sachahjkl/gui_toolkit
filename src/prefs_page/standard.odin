@@ -551,7 +551,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		append(&defs, config.Def{
 			name = "rendering.present", title = i18n.later("Presentation"), kind = .String, default = {s = "vsync"}, advanced = true,
 			description = i18n.later("Vsync: each picture waits for the screen's refresh, whole. Tearing: it is shown at once, a picture may be cut where the screen was."),
-			choices = PRESENT_CHOICES[:], choice_labels = labels(a, "Vsync", i18n.later("Tearing")), tags = VSYNC_TAGS[:],
+			choices = PRESENT_CHOICES[:], choice_labels = labels(a, i18n.later("Vsync"), i18n.later("Tearing")), tags = VSYNC_TAGS[:],
 		})
 		append(&defs, config.Def{
 			name = "rendering.max_frame_latency", title = i18n.later("Frames queued"), kind = .Int, default = {i = 1}, bounded = true, min = 1, max = 3, advanced = true,

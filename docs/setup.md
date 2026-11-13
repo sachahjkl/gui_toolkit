@@ -129,10 +129,10 @@ nil, and `Setup_Options.user` is passed to them):
 
 | State | When | The dialog offers |
 |---|---|---|
-| `Not_Installed` | nothing of an install | Install, Keep standalone |
+| `Not_Installed` | nothing of an install | Install, Do not install |
 | `This_Copy` | the running program is the installed copy, every piece there | Update the shortcuts, Uninstall, Close |
 | `Repair` | a launcher, the record, the manifest or a file is missing | Repair, Uninstall |
-| `Other_Copy` | a copy is installed elsewhere (`is_upgrade`: an older one) | Replace (Upgrade to …), Uninstall, Keep standalone (Not now) |
+| `Other_Copy` | a copy is installed elsewhere (`is_upgrade`: an older one) | Replace (Upgrade to …), Uninstall, Do not install (Not now) |
 | `Removal_Scheduled` | uninstalled while it runs | Close: the file goes when the process ends |
 | `Nix_Package` | the copy runs from the Nix store | nothing: Nix installs it |
 

@@ -73,14 +73,15 @@ kind_of :: proc(path: string) -> Kind {
 	return .Crash
 }
 
-// What happened, in a sentence (temp memory).
+// What happened, in a sentence (temp memory). The sentence never starts with the program's name: a name written in lower
+// case ("cliche") would start it in lower case.
 words :: proc(b: ^Bar, name: string) -> string {
 	switch b.kind {
-	case .Unclean: return fmt.tprintf(i18n.tr("%s did not close normally last time: the system or another program ended it."), name)
-	case .Exit:    return fmt.tprintf(i18n.tr("%s ended unexpectedly last time."), name)
+	case .Unclean: return fmt.tprintf(i18n.tr("Last time, %s did not close normally: the system or another program ended it."), name)
+	case .Exit:    return fmt.tprintf(i18n.tr("Last time, %s ended unexpectedly."), name)
 	case .Crash:
-		if b.reason != "" { return fmt.tprintf(i18n.tr("%s stopped unexpectedly last time (%s)."), name, b.reason) }
-		return fmt.tprintf(i18n.tr("%s stopped unexpectedly last time."), name)
+		if b.reason != "" { return fmt.tprintf(i18n.tr("Last time, %s stopped unexpectedly (%s)."), name, b.reason) }
+		return fmt.tprintf(i18n.tr("Last time, %s stopped unexpectedly."), name)
 	}
 	return ""
 }
@@ -95,12 +96,20 @@ bar :: proc(b: ^Bar, o: Options) -> bool {
 	em := ui.font_size()
 	now := ui.now_ms()
 	do_open, do_copy, do_report, close := false, false, false, false
-	ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.6))})
+	// (as tall as its sentence: it wraps onto more lines, read whole, rather than be cut)
+	bar_h := ui.children_sum()
+	bar_h.least = ui.dense(em * 2.6)
+	ui.next({width = ui.fill(), height = bar_h, axis = .X, cross = .Center})
 	if ui.row(.Center, {.Draw_Background, .Draw_Side_Bottom}, "###crash_bar") {
 		ui.spacer(ui.px(em * 0.8))
 		if ui.tags("warn") {
-			ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2)), text_pad = 0})
-			ui.label(fmt.tprintf("%s###crash_bar_text", words(b, o.name)))
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+			if ui.column(id = "###crash_bar_words") {
+				ui.spacer(ui.px(em * 0.4))
+				ui.next({width = ui.fill(), text_pad = 0})
+				ui.paragraph(fmt.tprintf("%s###crash_bar_text", words(b, o.name)))
+				ui.spacer(ui.px(em * 0.4))
+			}
 		}
 		ui.spacer(ui.px(em * 0.6))
 		do_open = ui.button("crash_bar_open", i18n.tr("Open the report"), lucide.FILE_TEXT, {icon_font = ui.lucide_icons(), intent = .Info}).clicked

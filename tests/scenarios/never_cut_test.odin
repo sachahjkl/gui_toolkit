@@ -9,7 +9,7 @@ import "../../src/testkit/session"
 import "../../src/testkit/unwatched"
 import "../../src/ui"
 
-@(private = "file") NARROW :: 90   // a column narrower than a button's words
+@(private = "file") NARROW :: 170   // a column narrower than a button's words, wider than its longest word
 @(private = "file") SMALL :: 40    // a width in pixels smaller than a button's words
 @(private = "file") LONG_TITLE :: "Fermer l'éditeur et abandonner les modifications ?"
 @(private = "file") LONG_ACT :: "Abandonner les modifications"
@@ -41,6 +41,27 @@ a_button_grows_to_its_words_or_wraps_them :: proc(t: ^testing.T) { unwatched.run
 	testing.expectf(t, wraps.size.x <= col.size.x + 1, "within the column: %v in %v", wraps.size.x, col.size.x)
 	testing.expectf(t, wraps.size.y > session.get(s, "plain").size.y, "taller: its words on more lines (%v)", wraps.size.y)
 	testing.expect(t, holds(wraps, session.get(s, "t", within = wraps)), "its words inside it")
+}) }
+
+// A word wider than the room is never split ("Vérifie / r / maint / enant"): the button grows past the column, its lines
+// break only between words, each line a whole word.
+@(test)
+a_word_is_never_split :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {500, 400}, no_renderer = true, build = proc(s: ^session.Session) {
+		ui.next({width = ui.px(SMALL), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###tiny") { ui.button("check", "Vérifier maintenant") }
+	}})
+	session.frames(s, 2)
+	b := session.get(s, "check")
+	words := session.get(s, "t", within = b)
+	text := ui.box_text(words)
+	lines := ui.wrap_lines_cached(words.font, words.font_size, text, words.size.x - 2 * words.text_pad)
+	testing.expectf(t, len(lines) >= 1 && len(lines) <= 2, "one line or two: %d", len(lines))
+	for l in lines {
+		line := text[l[0]:l[1]]
+		testing.expectf(t, line == "Vérifier" || line == "maintenant" || line == text, "a whole word a line: %q", line)
+	}
+	testing.expect(t, holds(b, words), "its words inside it")
 }) }
 
 // A confirmation grows to its title and its buttons; in a narrow window its title and its buttons wrap, all of them

@@ -58,19 +58,22 @@ page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 			if ui.parent(well) {
 				ui.spacer(ui.px(em * 0.35))
 				installed := f.state != .Not_Installed && f.state != .Nix_Package
-				where_row(d, "###p_exe", i18n.tr("Installed program"), installed ? f.exe : "-", installed, em)
-				where_row(d, "###p_version", i18n.tr("Version installed"), installed && f.version != "" ? f.version : "-", false, em)
+				// (one column for the keys, as wide as the widest in the language in use)
+				kw := keys_width(em, i18n.tr("Installed program"), i18n.tr("Version installed"), i18n.tr("This copy"),
+					i18n.tr("Location of this copy"), words_menu(), words_record(), i18n.tr("With the session"), i18n.tr("On the PATH"))
+				where_row(d, "###p_exe", i18n.tr("Installed program"), installed ? f.exe : "-", installed, kw, em)
+				where_row(d, "###p_version", i18n.tr("Version installed"), installed && f.version != "" ? f.version : "-", false, kw, em)
 				here := f.running_it ? fmt.tprintf(i18n.tr("%s (the installed copy)"), o.version) : o.version
-				where_row(d, "###p_this_version", i18n.tr("This copy"), here, false, em)
-				if !f.running_it { where_row(d, "###p_this", "", f.running, true, em) }
+				where_row(d, "###p_this_version", i18n.tr("This copy"), here, false, kw, em)
+				if !f.running_it { where_row(d, "###p_this", i18n.tr("Location of this copy"), f.running, true, kw, em) }
 				yes_no :: proc(on: bool) -> string { return on ? i18n.tr("yes") : "-" }
-				where_row(d, "###p_menu", words_menu(), yes_no(f.start_lnk), false, em)
-				when ODIN_OS == .Windows { where_row(d, "###p_record", words_record(), yes_no(f.record), false, em) }
-				where_row(d, "###p_autostart", i18n.tr("With the session"), yes_no(f.autostart), false, em)
+				where_row(d, "###p_menu", words_menu(), yes_no(f.start_lnk), false, kw, em)
+				when ODIN_OS == .Windows { where_row(d, "###p_record", words_record(), yes_no(f.record), false, kw, em) }
+				where_row(d, "###p_autostart", i18n.tr("With the session"), yes_no(f.autostart), false, kw, em)
 				when ODIN_OS == .Windows {
-					where_row(d, "###p_path", i18n.tr("On the PATH"), f.on_path ? i18n.tr("yes (with its console launcher)") : "-", false, em)
+					where_row(d, "###p_path", i18n.tr("On the PATH"), f.on_path ? i18n.tr("yes (with its console launcher)") : "-", false, kw, em)
 				} else {
-					where_row(d, "###p_path", i18n.tr("On the PATH"), yes_no(f.on_path), false, em)
+					where_row(d, "###p_path", i18n.tr("On the PATH"), yes_no(f.on_path), false, kw, em)
 				}
 				ui.spacer(ui.px(em * 0.35))
 			}

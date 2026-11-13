@@ -209,7 +209,7 @@ preview_bar :: proc(b: ^Box, view: Vec2, fit, zoom: f32, em: f32) -> (clicked: P
 			if tags("weak") {
 				// (its own width: a fill beside the buttons' text sizes had none left)
 				next({width = text_size(em * 0.2), height = pct(1), font_size = em * 0.85})
-				label(fmt.tprintf("%.0f %%###preview_zoom", fit * zoom * 100))
+				label(fmt.tprintf("%s###preview_zoom", i18n.percent(f64(fit * zoom))))
 			}
 			spacer(px(em * 0.3))
 			items := [?]struct { id, text: string, which: Preview_Button }{

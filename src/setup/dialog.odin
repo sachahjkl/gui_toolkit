@@ -1,7 +1,7 @@
 package tk_setup
 
 // The Setup dialog: the program, its version, the state of its install in a sentence, where its files are, and what can
-// be done: Install (or Repair, Upgrade, Update the shortcuts), Uninstall, Open the installed copy, Keep standalone; the
+// be done: Install (or Repair, Upgrade, Update the shortcuts), Uninstall, Open the installed copy, Do not install; the
 // program's own options (Setup_Options.choices), and the install folder before the first install (Setup_Options.folder).
 //
 //   d: setup.Dialog                          kept by the program, at a place that does not move while it is open
@@ -60,7 +60,7 @@ Dialog :: struct {
 	page_build: u64,               // the build that last drew the page: a build without it closes it (update)
 }
 
-// The buttons a program's automation finds in Dialog.at. Secondary: what closes (Keep standalone, Not now, Close) or opens
+// The buttons a program's automation finds in Dialog.at. Secondary: what closes (Do not install, Not now, Close) or opens
 // the installed copy.
 Button_Role :: enum u8 { Install, Uninstall, Secondary }
 
@@ -335,12 +335,13 @@ state_words :: proc(f: Facts, o: Setup_Options) -> (words, tone: string) {
 // pieces' words where its grammar wants them).
 @(private)
 words_menu :: proc() -> string {
-	when ODIN_OS == .Windows { return i18n.tr("Start menu") } else { return i18n.tr("applications menu") }
+	// (a key of a line, capitalised: desktop.menu_name says the same place inside a sentence)
+	when ODIN_OS == .Windows { return i18n.tr("setup key", "Start menu") } else { return i18n.tr("Applications menu") }
 }
 
 @(private)
 words_record :: proc() -> string {
-	when ODIN_OS == .Windows { return i18n.tr("Settings > Apps") } else { return i18n.tr("icons") }
+	when ODIN_OS == .Windows { return i18n.tr("Settings > Apps") } else { return i18n.tr("Icons") }
 }
 
 @(private = "file")
@@ -441,7 +442,7 @@ can_uninstall :: proc(d: ^Dialog) -> bool {
 	return d.known && (d.facts.state == .This_Copy || d.facts.state == .Repair || d.facts.state == .Other_Copy || d.facts.state == .Nix_Package && leftover(d.facts))
 }
 
-// What closes the screen without installing: Close, Not now (an upgrade), Keep standalone (no install, another copy).
+// What closes the screen without installing: Close, Not now (an upgrade), Do not install (no install, another copy).
 Closing :: enum u8 { Close, Not_Now, Keep_Standalone }
 
 closing :: proc(d: ^Dialog, o: Setup_Options) -> Closing {
@@ -612,7 +613,7 @@ location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), axis = .X, cross = .Center, radius = rad(o, em, 0.3)})
 			well: ^ui.Box
 			if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border}, "###setup_where") }
-			if ui.parent(well) { where_row(d, "###w1", "", f.exe, true, em) }
+			if ui.parent(well) { where_row(d, "###w1", "", f.exe, true, 0, em) }
 		}
 		ui.spacer(ui.px(em * MARGIN_EM))
 	}
@@ -684,9 +685,10 @@ info :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 			}
 			ui.spacer(ui.px(em * 0.9))
 		}
-		where_row(d, "###w2", words_menu(), f.start_lnk ? o.identity.name : "-", false, em)
-		where_row(d, "###w3", words_record(), f.record ? o.identity.name : "-", false, em)
-		where_row(d, "###w4", i18n.tr("this copy"), f.running, true, em)
+		key_w := keys_width(em, words_menu(), words_record(), i18n.tr("This copy"))
+		where_row(d, "###w2", words_menu(), f.start_lnk ? o.identity.name : "-", false, key_w, em)
+		where_row(d, "###w3", words_record(), f.record ? o.identity.name : "-", false, key_w, em)
+		where_row(d, "###w4", i18n.tr("This copy"), f.running, true, key_w, em)
 		if f.nixos && f.state != .Nix_Package && f.state != .This_Copy {
 			line_next()
 			if ui.row(id = "###setup_nixos_row") {
@@ -720,16 +722,30 @@ line_next :: proc() {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 }
 
-// A line of the well: what, at a fixed width and weak, then where. A path that does not fit is cut; the pointer over it
-// shows it whole, and a click on it or on the copy button after it puts it on the clipboard.
+// The width of the keys' column of a well: its widest key in the language in use and a gap after it, so that a key is
+// never cut nor against its value.
 @(private)
-where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, em: f32) {
+keys_width :: proc(em: f32, keys: ..string) -> f32 {
+	widest: f32
+	st := ui.top_style()
+	for k in keys { widest = max(widest, ui.text_width(st.font, st.font_size, k)) }
+	return math.ceil(widest + em * KEY_GAP_EM)
+}
+
+// The room between a well's key and its value, in font sizes.
+@(private = "file") KEY_GAP_EM :: 1.2
+
+// A line of the well: what, weak, in a column `key_w` wide (keys_width of the well's keys), then where ("" key: the value
+// alone, the line under a label). A path that does not fit is cut; the pointer over it shows it whole, and a click on it
+// or on the copy button after it puts it on the clipboard.
+@(private)
+where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, key_w: f32, em: f32) {
 	ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.55)), axis = .X, cross = .Center})
 	if ui.row(.Center, id = id) {
 		ui.spacer(ui.px(em * 0.9))
 		if key != "" {
 			if ui.tags("weak") {
-				ui.next({width = ui.px(em * 9), height = ui.pct(1), text_pad = 0})
+				ui.next({width = ui.px(key_w), height = ui.pct(1), text_pad = 0})
 				ui.label(fmt.tprintf("%s###k", key))
 			}
 		}
@@ -829,7 +845,7 @@ buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 		ui.spacer(ui.fill())
 		just_installed := d.installed != "" && d.facts.state != .This_Copy
 		how := closing(d, o)
-		CLOSING_WORDS := [Closing]string{.Close = i18n.tr("Close"), .Not_Now = i18n.tr("Not now"), .Keep_Standalone = i18n.tr("Keep standalone")}
+		CLOSING_WORDS := [Closing]string{.Close = i18n.tr("Close"), .Not_Now = i18n.tr("Not now"), .Keep_Standalone = i18n.tr("Do not install")}
 		CLOSING_IDS := [Closing]string{.Close = "###setup_close", .Not_Now = "###setup_later", .Keep_Standalone = "###setup_standalone"}
 		if button(o, CLOSING_IDS[how], CLOSING_WORDS[how], lucide.X, .Neutral, em) { ev = close(d, how) }
 		if !just_installed { mark(d, .Secondary, CLOSING_IDS[how]) }

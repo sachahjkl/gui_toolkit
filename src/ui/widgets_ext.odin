@@ -13,6 +13,7 @@ import "../draw"
 import "../font"
 import "../platform"
 import lucide "../lucide"
+import i18n "../i18n"
 
 // The icon font (raddebugger's icons.ttf), compiled into every app that uses the toolkit: load it with
 // `font.load_embedded(&fonts, ui.ICON_FONT_DATA)`.
@@ -466,7 +467,8 @@ slider_snap :: proc(v, step: f32) -> f32 { return step > 0 ? math.round(v / step
 // `format` a printf format of the value; without a %, shown as it is.
 @(private = "file")
 slider_text :: proc(format: string, v: f32) -> string {
-	return strings.index_byte(format, '%') >= 0 ? fmt.aprintf(format, v, allocator = frame_allocator()) : format
+	// (the decimal mark of the language in use: "0,50" in French)
+	return strings.index_byte(format, '%') >= 0 ? i18n.decimal_marks(fmt.aprintf(format, v, allocator = frame_allocator()), frame_allocator()) : format
 }
 
 // The keys of a focused thumb at `v`: Left / Down and Right / Up a step `k`, Page Up / Page Down Feel.step_page steps
@@ -621,7 +623,7 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 						d := num_step_delta(e.key, e.mods) or_continue
 						s.events.consumed[i] = true
 						base := f64(value^)
-						if v, ok := strconv.parse_f64(strings.trim_space(line_edit_string(f))); ok { base = v }
+						if v, ok := i18n.parse_decimal(line_edit_string(f)); ok { base = v }
 						number_set(value, base + d * k, lo, hi, step)
 						moved = true
 					}
@@ -697,21 +699,23 @@ number_set :: proc(value: ^$T, v: f64, lo, hi: Maybe(T), step: T) {
 // What is typed, when it is a number, as the value (number_set); else the value stays.
 @(private = "file")
 number_parse :: proc(value: ^$T, text: string, lo, hi: Maybe(T), step: T) {
-	if v, ok := strconv.parse_f64(strings.trim_space(text)); ok { number_set(value, v, lo, hi, step) }
+	// (either decimal mark: "7,8" as the language writes it, "7.8" as a person may type it)
+	if v, ok := i18n.parse_decimal(text); ok { number_set(value, v, lo, hi, step) }
 }
 
-// The text of a number: its digits, a float's as many after the point as its `step` has (step 0: as many as it needs).
+// The text of a number: its digits, a float's as many after the language's decimal mark as its `step` has (step 0: as
+// many as it needs).
 @(private = "file")
 number_text :: proc(v: $T, step: T) -> string {
 	when intrinsics.type_is_float(T) {
-		if step <= 0 { return fmt.tprintf("%v", v) }
+		if step <= 0 { return i18n.decimal_marks(fmt.tprintf("%v", v)) }
 		decimals := 0
 		x := f64(step)
 		for decimals < NUMBER_DECIMALS_MAX && abs(x - math.round(x)) > 1e-6 * max(1, abs(x)) {
 			x *= 10
 			decimals += 1
 		}
-		return fmt.tprintf(fmt.tprintf("%%.%df", decimals), v)
+		return i18n.decimal(f64(v), decimals)
 	} else {
 		return fmt.tprintf("%d", v)
 	}
@@ -1059,7 +1063,7 @@ progress :: proc(id: string, t: f32, indeterminate := false) {
 		a11y_default(b, {role = .Progress_Indicator, busy = true})
 	} else {
 		a11y_default(b, {role = .Progress_Indicator, numeric = f64(clamp(t, 0, 1) * 100), min = 0, max = 100, read_only = true,
-			value = fmt.aprintf("%.0f %%", clamp(t, 0, 1) * 100, allocator = frame_allocator())})
+			value = i18n.percent(f64(clamp(t, 0, 1)), allocator = frame_allocator())})
 	}
 }
 

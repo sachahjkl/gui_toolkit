@@ -111,9 +111,11 @@ Page_Options :: struct {
 	// service (shortcuts.hold)
 	shortcuts:      ^shortcuts.Service,
 	shortcut_prefs: []Shortcut_Pref,
-	// the toolkit's own pages, after the program's: the installation (install.odin: the state, Install, Repair,
-	// Uninstall) and the diagnostics of the window the settings are in (diagnostics.odin: its graphics adapter, its
-	// frame times, the versions, with a Copy button). nil: not shown
+	// the toolkit's own pages, after the program's: the licence (licence.odin: its state, Buy, a key, a file, Remove),
+	// the installation (install.odin: the state, Install, Repair, Uninstall) and the diagnostics of the window the
+	// settings are in (diagnostics.odin: its graphics adapter, its frame times, the versions, with a Copy button). nil:
+	// not shown
+	licence:     ^Licence,
 	install:     ^Install,
 	diagnostics: ^host.Host,
 }
@@ -252,14 +254,19 @@ SIDEBAR_DEFS := [?]config.Def{
 		bounded = true, min = NAV_MIN_EM, max = NAV_MAX_EM, hidden = true},
 }
 
-// The pages of `o`, or each category of the registry by name; then the toolkit's own (Page_Options.install, diagnostics).
-// `p`: the page being built (its Diagnostics page's state; nil for the palette).
+// The pages of `o`, or each category of the registry by name; then the toolkit's own (Page_Options.licence, install,
+// diagnostics). `p`: the page being built (its Diagnostics page's state; nil for the palette).
 @(private)
 pages_of :: proc(prefs: ^config.Prefs, o: Page_Options, p: ^Page = nil) -> []Page_Info {
 	out := program_pages_of(prefs, o)
-	if o.install == nil && o.diagnostics == nil { return out }
-	all := make([dynamic]Page_Info, 0, len(out) + 2, context.temp_allocator)
+	if o.licence == nil && o.install == nil && o.diagnostics == nil { return out }
+	all := make([dynamic]Page_Info, 0, len(out) + 3, context.temp_allocator)
 	append(&all, ..out)
+	if o.licence != nil {
+		pg := licence_page_info(o.licence)
+		pg.title = i18n.tr(pg.title)
+		append(&all, pg)
+	}
 	if o.install != nil {
 		pg := install_page_info(o.install)
 		pg.title = i18n.tr(pg.title)
@@ -544,11 +551,15 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 @(private = "file") NAV_HEADING_LEAD_EM :: 1.1
 @(private = "file") NAV_HEADING_SIZE :: 0.75
 
-// The width, in ems, the sidebar needs to show each page's title and each heading on one line: its pages' buttons as
-// button_width measures them, the sidebar's room beside them.
+// The width, in ems, the sidebar needs to show each page's title and each heading on one line, and the search's
+// placeholder whole: its pages' buttons as button_width measures them, the sidebar's room beside them; the search field's
+// glyph, padding and border around its placeholder (nav builds them).
 @(private = "file")
 nav_need_em :: proc(pages: []Page_Info, o: Page_Options, em: f32) -> f32 {
-	need: f32
+	glyph := o.icon_font != 0 && o.search_icon != "" ? em * 1.8 : em * 0.4
+	border := 2 * max(1, math.round(ui.scale()))
+	need := em * (0.7 + 0.9) + glyph + 2 * em * 0.2 + border + em * 0.5 +
+		ui.text_width(ui.top_style().font, em, i18n.tr("Search settings"))
 	for pg in pages {
 		need = max(need, em * (NAV_LEAD_EM + NAV_TRAIL_EM) + ui.button_width(pg.title, o.icon_font != 0 && pg.icon != ""))
 		if pg.heading != "" {
@@ -1026,10 +1037,12 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 		f = new(Field)
 		p.fields[strings.clone(name)] = f
 	}
+	numeric := e.def.kind != .String
+	// (a number as the language writes it: "1,5" in French; apply reads either mark)
 	current := config.value_string(prefs, r)
+	if numeric { current = i18n.decimal_marks(current) }
 	typing := f.box != 0 && ui.focus_key() == f.box
 	if f.synced != current && !typing { ui.line_edit_set(&f.text, current); delete(f.synced); f.synced = strings.clone(current) }
-	numeric := e.def.kind != .String
 	// (a number's field: its width less its unit's, which follows it)
 	fw := width
 	if numeric && e.def.unit != "" && width.kind == .Pixels { fw = ui.px(math.round(em * NUMBER_FIELD_EM)) }
@@ -1057,6 +1070,11 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 // Sets a preference from text. "" when it was set; else why not (owned), with what is allowed ("out of range: 1 to 64").
 @(private)
 apply :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name, text: string) -> string {
+	text := text
+	// (a decimal typed with the language's mark, "1,5": the registry reads "1.5")
+	if r := config.ref_of(prefs, name); r != config.NO_REF && config.entry(prefs, r).def.kind == .Float {
+		if v, ok := i18n.parse_decimal(text); ok { text = fmt.tprintf("%v", v) }
+	}
 	err := config.set_from_string(prefs, name, text, .User)
 	if err == .None {
 		if o.changed != nil { o.changed(o.user, name) }
@@ -1066,7 +1084,7 @@ apply :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name, text: strin
 	if r := config.ref_of(prefs, name); r != config.NO_REF {
 		d := config.entry(prefs, r).def
 		unit := d.unit != "" ? strings.concatenate({" ", i18n.tr(d.unit)}, context.temp_allocator) : ""
-		num :: proc(v: f64, kind: config.Kind) -> string { return kind == .Int ? fmt.tprintf("%d", i64(v)) : fmt.tprintf("%g", v) }
+		num :: proc(v: f64, kind: config.Kind) -> string { return kind == .Int ? fmt.tprintf("%d", i64(v)) : i18n.decimal_marks(fmt.tprintf("%g", v)) }
 		#partial switch err {
 		case .Out_Of_Range: if d.bounded { msg = fmt.tprintf(i18n.tr("%s: %s to %s%s"), msg, num(d.min, d.kind), num(d.max, d.kind), unit) }
 		case .Not_A_Choice: msg = fmt.tprintf("%s: %s", msg, strings.join(d.choices, ", ", context.temp_allocator))

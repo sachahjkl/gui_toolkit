@@ -157,7 +157,7 @@ i18n_texts_of :: proc(src, file: string, texts: ^[dynamic]I18n_Text, seen: ^map[
 @(private)
 i18n_entries_of :: proc(text, language: string) -> map[string]i18n.Entry {
 	out := make(map[string]i18n.Entry, allocator = context.temp_allocator)
-	l, _ := i18n.load(language, {{i18n.primary_of(language), text}}, with_toolkit = false, allocator = context.temp_allocator)
+	l, _ := i18n.load(language, {{i18n.primary_of(language), text}}, with_toolkit = false, as_written = true, allocator = context.temp_allocator)
 	if l == nil { return out }
 	for e in l.entries { out[i18n_key(e.ctx, e.english)] = e }
 	return out

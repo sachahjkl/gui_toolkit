@@ -2,6 +2,7 @@
 // language in use is one for the process.
 package i18n_test
 
+import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import "core:sync"
@@ -118,6 +119,79 @@ the_forms_by_count :: proc(t: ^testing.T) {
 	testing.expect_value(t, pl(5), 2)
 	testing.expect_value(t, pl(22), 1)
 	testing.expect_value(t, i18n.escape("a\nb\\c", context.temp_allocator), "a\\nb\\\\c")
+}
+
+@(private = "file")
+OWN_PASTE :: `language fr
+
+en Paste
+fr Collage
+`
+
+// A program's catalogue never changes the toolkit's words: the toolkit's code (a file under its src/) finds the toolkit's
+// "Paste" though the program says "Collage"; the program's code finds its own; a text only the other has is found there.
+@(test)
+each_catalogue_is_its_domain :: proc(t: ^testing.T) {
+	root := i18n.toolkit_root()
+	toolkit_file := fmt.tprintf("%s/ui/field_menu.odin", root)
+	testing.expect_value(t, i18n.domain_of(toolkit_file), i18n.Domain.Toolkit)
+	testing.expect_value(t, i18n.domain_of(#file), i18n.Domain.Program)
+	testing.expect_value(t, i18n.domain_of(fmt.tprintf("%s_other/a.odin", root)), i18n.Domain.Program)   // (a folder beside it)
+	testing.expect_value(t, i18n.domain_of(root), i18n.Domain.Program)
+	l, bad := i18n.load("fr", {{"fr", OWN_PASTE}, {"fr", PROGRAM_FR}})
+	defer { i18n.use(nil); i18n.destroy(l) }
+	testing.expect_value(t, len(bad), 0)
+	i18n.use(l)
+	toolkit := runtime.Source_Code_Location{file_path = toolkit_file}
+	testing.expect_value(t, i18n.tr("Paste"), "Collage")
+	testing.expect_value(t, i18n.tr_text("Paste", toolkit), "Coller")
+	// (twice: the thread's cache keeps the two answers of one literal apart)
+	testing.expect_value(t, i18n.tr("Paste"), "Collage")
+	testing.expect_value(t, i18n.tr_text("Paste", toolkit), "Coller")
+	// the other domain's text: the program's in the toolkit's widgets, the toolkit's in the program
+	testing.expect_value(t, i18n.tr_text("Open the history", toolkit), "Ouvrir l'historique")
+	testing.expect_value(t, i18n.tr("Search settings"), "Chercher un réglage")
+}
+
+// French typography is set at load: the space before : ; ? ! % » and after « never ends a line; a format verb, a time, an
+// address are left alone; the tool reads the catalogue as written.
+@(test)
+french_typography_at_load :: proc(t: ^testing.T) {
+	NB :: i18n.NO_BREAK_SPACE
+	testing.expect_value(t, i18n.typeset("fr", "Fichier : %s ; prêt ? oui ! « a » 34 % et 12 %% de %s à 12:30 http://x"),
+		"Fichier" + NB + ": %s" + NB + "; prêt" + NB + "? oui" + NB + "! «" + NB + "a" + NB + "» 34" + NB + "% et 12" + NB + "%% de %s à 12:30 http://x")
+	testing.expect_value(t, i18n.typeset("en", "Name : x"), "Name : x")
+	l, _ := i18n.load("fr", {{"fr", "language fr\n\nen A: b\nfr A : b\n"}}, with_toolkit = false)
+	defer { i18n.use(nil); i18n.destroy(l) }
+	i18n.use(l)
+	testing.expect_value(t, i18n.tr("A: b"), "A" + NB + ": b")
+	raw, _ := i18n.load("fr", {{"fr", "language fr\n\nen A: b\nfr A : b\n"}}, with_toolkit = false, as_written = true)
+	defer i18n.destroy(raw)
+	testing.expect_value(t, raw.entries[0].forms[0], "A : b")
+}
+
+// Numbers as the language writes them: "7.8" and "34%" in English, "7,8" and "34 %" in French; either mark is read.
+@(test)
+numbers_follow_the_language :: proc(t: ^testing.T) {
+	testing.expect_value(t, i18n.decimal(7.84, 1), "7.8")
+	testing.expect_value(t, i18n.percent(0.34), "34%")
+	testing.expect_value(t, i18n.decimal_marks("2.2 ms, v1.2"), "2.2 ms, v1.2")
+	l, _ := i18n.load("fr", {{"fr", SAMPLE}})
+	defer { i18n.use(nil); i18n.destroy(l) }
+	i18n.use(l)
+	testing.expect_value(t, i18n.decimal_mark(), u8(','))
+	testing.expect_value(t, i18n.decimal(7.84, 1), "7,8")
+	testing.expect_value(t, i18n.decimal(1, 2), "1,00")
+	testing.expect_value(t, i18n.decimal(-0.5, 1), "-0,5")
+	testing.expect_value(t, i18n.percent(0.34), "34" + i18n.NO_BREAK_SPACE + "%")
+	testing.expect_value(t, i18n.percent(0.125, 1), "12,5" + i18n.NO_BREAK_SPACE + "%")
+	testing.expect_value(t, i18n.decimal_marks("2.2 ms. 26.3 Mbit/s"), "2,2 ms. 26,3 Mbit/s")
+	for text in ([]string{"7,8", " 7.8 ", "7,80"}) {
+		v, ok := i18n.parse_decimal(text)
+		testing.expectf(t, ok && abs(v - 7.8) < 1e-9, "%q: %v %v", text, v, ok)
+	}
+	_, ok := i18n.parse_decimal("sept")
+	testing.expect(t, !ok, "not a number")
 }
 
 @(private = "file")

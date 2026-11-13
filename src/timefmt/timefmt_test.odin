@@ -74,7 +74,8 @@ a_moment_reads_from_now :: proc(t: ^testing.T) {
 @(test)
 a_size_reads_in_powers_of_1024 :: proc(t: ^testing.T) {
 	testing.expect_value(t, size(512), "512 B")
-	testing.expect_value(t, size(7 * 1024), "7.0 KB")
-	testing.expect_value(t, size(12 * 1024 * 1024), "12 MB")
-	testing.expect_value(t, size(1288490188), "1.2 GB")
+	// (a no-break space between the number and its unit)
+	testing.expect_value(t, size(7 * 1024), "7.0 KB")
+	testing.expect_value(t, size(12 * 1024 * 1024), "12 MB")
+	testing.expect_value(t, size(1288490188), "1.2 GB")
 }

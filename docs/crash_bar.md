@@ -4,9 +4,10 @@
 [gt:crash](crash.md) left a report; the next start shows this bar across the window, under its title bar or toolbar, the
 same in every program:
 
-- what happened, from the report's name and its `reason:` line: "Papier stopped unexpectedly last time (segmentation
-  fault…)", "… did not close normally last time: the system or another program ended it" (`unclean-`), "… ended
-  unexpectedly last time" (`exit-`);
+- what happened, from the report's name and its `reason:` line: "Last time, Papier stopped unexpectedly (segmentation
+  fault…)", "Last time, … did not close normally: the system or another program ended it" (`unclean-`), "Last time, …
+  ended unexpectedly" (`exit-`). The sentence never starts with the name (it may be written in lower case), and it wraps
+  onto more lines, the bar taller, rather than be cut;
 - **Open the report**: the file with the system's program;
 - **Copy**: the whole report on the clipboard;
 - **Report on GitHub** (with `Options.repository`): the whole report on the clipboard, and a new issue of the program's

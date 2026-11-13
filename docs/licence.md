@@ -68,6 +68,13 @@ LICENCE :: licence.Product{
 `edition_title` read it. A licence of an edition the build does not know is still read: an older build keeps working with a
 newer licence.
 
+### The settings' Licence page
+
+A program with a settings page (gt:prefs_page) does not build its own licence interface: `prefs_page.Licence` holds the
+store, runs its reads and changes as tasks and shows the **Licence** page, with one wording in every program (Unregistered,
+Buy a licence, Paste a licence key, Choose a licence file…, Remove the licence). See [prefs_page.md](prefs_page.md#the-licence).
+The store below is what it uses, and what a program without that page calls itself.
+
 ### The store
 
 A `Store` keeps the licence in a small file: `licence<ext>` in `platform.user_dir(.Config, program)`. Every procedure of

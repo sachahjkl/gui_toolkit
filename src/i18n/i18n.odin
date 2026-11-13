@@ -8,11 +8,16 @@
 //	text  := fmt.tprintf(i18n.tr(count, "%d request", "%d requests"), count) // singular, plural, by count
 //
 // The English text is the key. In English (no language in use) each call returns its argument: no lookup, no allocation.
-// A language (load, use) is the toolkit's catalogue and the program's for one language tag, made once into one table (at
-// the start, or when the user picks it); tr looks a text up there by its characters the first time, then by the address of the literal in a small
-// cache of its thread (the interface is immediate: tr runs for every label at every frame, so it must not hash the
-// text each time). The cache compares the text too: a text made at run time at an address a literal had is never taken
-// for it. See docs/i18n.md.
+// A language (load, use) is the toolkit's catalogue and the program's for one language tag, made once (at the start, or
+// when the user picks it); tr looks a text up there by its characters the first time, then by the address of the literal
+// in a small cache of its thread (the interface is immediate: tr runs for every label at every frame, so it must not hash
+// the text each time). The cache compares the text too: a text made at run time at an address a literal had is never
+// taken for it.
+//
+// Each catalogue is a domain: a tr called from the toolkit's code (its file under the toolkit's src/) looks in the
+// toolkit's catalogue first, a tr of a program's code in the program's first; each then in the other (a program's text
+// that the toolkit's widgets show, a toolkit's text a program shows). A program's catalogue never changes the toolkit's
+// words. See docs/i18n.md.
 //
 // The package name is `tk_i18n` (the directory is `i18n`): an application that keeps a thin `i18n` alias package of its
 // own needs the two names to differ, because Odin package names are unique within a build.
@@ -23,22 +28,23 @@ import "core:sync"
 
 tr :: proc{tr_text, tr_context, tr_count}
 
-// The text to show for `text`, an English sentence or label.
+// The text to show for `text`, an English sentence or label. `loc` (the caller's file) picks the catalogue looked in
+// first: the toolkit's for the toolkit's code, the program's for a program's.
 @(require_results)
-tr_text :: proc "contextless" (text: string) -> string {
+tr_text :: proc "contextless" (text: string, loc := #caller_location) -> string {
 	gen, l := in_use_now()
 	if l == nil { return text }
-	e := lookup(l, gen, "", text)
+	e := lookup(l, gen, domain_of(loc.file_path), "", text)
 	return e != nil && e.forms[0] != "" ? e.forms[0] : text
 }
 
 // The text to show for `text` in the place named by `context_`, to tell apart two meanings of the same English word ("Close"
 // a tab, "Close" a dialog). The context is for the translator and is never shown.
 @(require_results)
-tr_context :: proc "contextless" (context_: string, text: string) -> string {
+tr_context :: proc "contextless" (context_: string, text: string, loc := #caller_location) -> string {
 	gen, l := in_use_now()
 	if l == nil { return text }
-	e := lookup(l, gen, context_, text)
+	e := lookup(l, gen, domain_of(loc.file_path), context_, text)
 	return e != nil && e.forms[0] != "" ? e.forms[0] : text
 }
 
@@ -46,10 +52,10 @@ tr_context :: proc "contextless" (context_: string, text: string) -> string {
 // Arabic have several; French reads 0 as singular): the choice belongs to the language, which is why a caller never writes
 // `count == 1`.
 @(require_results)
-tr_count :: proc "contextless" (count: int, one: string, other: string) -> string {
+tr_count :: proc "contextless" (count: int, one: string, other: string, loc := #caller_location) -> string {
 	gen, l := in_use_now()
 	if l == nil { return one if count == 1 else other }
-	e := lookup(l, gen, "", one)
+	e := lookup(l, gen, domain_of(loc.file_path), "", one)
 	if e == nil { return one if count == 1 else other }
 	form := l.rule(count)
 	if form < e.form_count && e.forms[form] != "" { return e.forms[form] }
@@ -59,6 +65,42 @@ tr_count :: proc "contextless" (count: int, one: string, other: string) -> strin
 // A text translated later, where it is shown (`tr(def.title)`): the English as it is, marked for the catalogue's tool.
 // For a text kept before the language is known (a setting's title, registered before the settings are read).
 later :: #force_inline proc "contextless" (text: string) -> string { return text }
+
+////////////////////////////////
+// The domains: whose catalogue a tr looks in first
+
+// The catalogue a text is looked up in first: the program's, or the toolkit's. A program's catalogue may hold a text the
+// toolkit also has ("Paste", "Off") in its own sense: the toolkit's words stay the toolkit's.
+Domain :: enum u8 { Program, Toolkit }
+
+// This file's folder: src/i18n of the toolkit. The compiler gives #directory and #caller_location from the same path of a
+// file, so the toolkit's other files start with its parent.
+@(private = "file") I18N_DIRECTORY :: #directory
+
+// The toolkit's src folder, as the compiler names its files (no separator at its end).
+toolkit_root :: proc "contextless" () -> string {
+	d := I18N_DIRECTORY
+	for len(d) > 0 && is_separator(d[len(d) - 1]) { d = d[:len(d) - 1] }
+	for i := len(d) - 1; i >= 0; i -= 1 {
+		if is_separator(d[i]) { return d[:i] }
+	}
+	return d
+}
+
+// The domain of the code in `file` (a #caller_location's file_path): the toolkit's when it is under the toolkit's src/.
+domain_of :: proc "contextless" (file: string) -> Domain {
+	root := toolkit_root()
+	if len(file) <= len(root) || !is_separator(file[len(root)]) { return .Program }
+	// (from the end: two paths share their long start; the separators may be written either way on Windows)
+	for i := len(root) - 1; i >= 0; i -= 1 {
+		a, b := file[i], root[i]
+		if a != b && !(is_separator(a) && is_separator(b)) { return .Program }
+	}
+	return .Toolkit
+}
+
+@(private = "file")
+is_separator :: #force_inline proc "contextless" (c: u8) -> bool { return c == '/' || c == '\\' }
 
 ////////////////////////////////
 // The language in use
@@ -110,22 +152,24 @@ Slot :: struct {
 	text, ctx:  rawptr,   // the addresses the caller passed
 	entry:      ^Entry,
 	generation: u32,
+	domain:     Domain,   // (one literal may serve both: the linker merges equal literals of the toolkit and a program)
 }
 
 @(private = "file", thread_local) cache: [CACHE_SLOTS]Slot
 
-// The entry of `text` in `ctx` (nil: not translated), `l` being the language in use at generation `gen`.
+// The entry of `text` in `ctx` (nil: not translated) for code of `domain`, `l` being the language in use at generation
+// `gen`.
 @(private)
-lookup :: proc "contextless" (l: ^Language, gen: u32, ctx, text: string) -> ^Entry {
-	h := (uintptr(raw_data(text)) >> 3) ~ (uintptr(raw_data(ctx)) >> 5) ~ uintptr(len(text))
+lookup :: proc "contextless" (l: ^Language, gen: u32, domain: Domain, ctx, text: string) -> ^Entry {
+	h := (uintptr(raw_data(text)) >> 3) ~ (uintptr(raw_data(ctx)) >> 5) ~ uintptr(len(text)) ~ uintptr(domain)
 	s := &cache[h & (CACHE_SLOTS - 1)]
 	// (the address alone is not enough: a text made at run time may sit where another was; the characters decide)
-	if s.generation == gen && s.text == raw_data(text) && s.ctx == raw_data(ctx) && s.entry != nil &&
+	if s.generation == gen && s.text == raw_data(text) && s.ctx == raw_data(ctx) && s.domain == domain && s.entry != nil &&
 	   s.entry.english == text && s.entry.ctx == ctx {
 		return s.entry
 	}
-	e := find(l, ctx, text)
-	if e != nil { s^ = {raw_data(text), raw_data(ctx), e, gen} }
+	e := find(l, domain, ctx, text)
+	if e != nil { s^ = {raw_data(text), raw_data(ctx), e, gen, domain} }
 	return e
 }
 
@@ -140,24 +184,33 @@ Entry :: struct {
 	ctx, english: string,
 	forms:        [MAX_FORMS]string,
 	form_count:   int,
+	domain:       Domain,   // whose catalogue it comes from
 }
 
 // The texts of one language, from the catalogues given to load. Made once; read by every thread.
 Language :: struct {
-	tag:     string,                    // "fr", "fr-CA": the tag it was loaded for
-	rule:    proc "contextless" (count: int) -> int,   // the form for a count
-	entries: [dynamic]Entry,
-	table:   []i32,                     // open addressing: the index of an entry + 1, 0 empty
-	arena:   runtime.Arena,             // the texts, unescaped
+	tag:          string,                    // "fr", "fr-CA": the tag it was loaded for
+	rule:         proc "contextless" (count: int) -> int,   // the form for a count
+	entries:      [dynamic]Entry,
+	tables:       [Domain][]i32,             // by domain, open addressing: the index of an entry + 1, 0 empty
+	arena:        runtime.Arena,             // the texts, unescaped
+	decimal_mark: u8,                        // '.' or ',' (decimal, percent)
+	percent_gap:  bool,                      // "34 %" (a no-break space before the sign) rather than "34%"
 }
 
-// The entry of `text` in `ctx`, by its characters (nil: none).
+// The entry of `text` in `ctx`, by its characters (nil: none): in the catalogue of `domain`, else in the other.
 @(private)
-find :: proc "contextless" (l: ^Language, ctx, text: string) -> ^Entry {
-	if len(l.table) == 0 { return nil }
-	mask := u64(len(l.table) - 1)
+find :: proc "contextless" (l: ^Language, domain: Domain, ctx, text: string) -> ^Entry {
+	if e := find_in(l, l.tables[domain], ctx, text); e != nil { return e }
+	return find_in(l, l.tables[domain == .Toolkit ? .Program : .Toolkit], ctx, text)
+}
+
+@(private = "file")
+find_in :: proc "contextless" (l: ^Language, table: []i32, ctx, text: string) -> ^Entry {
+	if len(table) == 0 { return nil }
+	mask := u64(len(table) - 1)
 	for i := key_hash(ctx, text) & mask; ; i = (i + 1) & mask {
-		at := l.table[i]
+		at := table[i]
 		if at == 0 { return nil }
 		e := &l.entries[at - 1]
 		if e.english == text && e.ctx == ctx { return e }

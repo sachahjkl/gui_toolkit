@@ -121,7 +121,8 @@ What the program applies itself:
 - The sidebar's handle (`ui.splitter`) resizes it with the mouse; a double click puts 14 ems back. Its width is kept in
   the hidden preference `prefs_page.sidebar_width` (`SIDEBAR_PREF`, in ems; the page registers it at its first build),
   written when the handle is let go. It stays between 9 ems and half of the page. It is never narrower than its longest
-  page title or heading on one line, in the language in use (`ui.button_width`): the handle does not go under that; at
+  page title or heading on one line, nor than the search's placeholder whole, in the language in use (`ui.button_width`):
+  the handle does not go under that; at
   half of the page, a longer title wraps onto two lines. A page narrower than 40 ems shows the pages' icons alone.
 - On the right: the page's title, then a line per preference, in the order the program registered them: its title
   (`config.title_of`) and its description (with "Locked by a policy", "Set on the command line for this run" or "Takes
@@ -281,6 +282,34 @@ if app.settings_open {
 was pressed. `escape_leaves(page)` is true when Escape was pressed and no editor of a preference has the keyboard: that
 Escape gives up the editor first.
 
+## The licence
+
+A program that sells a licence ([licence.md](licence.md)) shows it on the toolkit's **Licence** page, worded the same in
+every program, after the program's pages. The program gives its product and where it keeps the key
+(`licence.Store_Options`), its name as people read it and its site's pricing page:
+
+```odin
+prefs_page.licence_init(&app.licence, &app.main.state, {
+	store = {product = PRODUCT, program = APP_NAME, accept_dev = ODIN_DEBUG},
+	name = "Inspecteur", pricing_url = "https://inspecteur.froment.software/pricing/", owner = app.main.win,
+})                                                         // at the start: the store, its first read (a task)
+opts.licence = &app.licence                                // the settings: the Licence page
+prefs_page.licence_install_file(&app.licence, path)        // a licence file dropped, or given on the command line
+prefs_page.licence_end(&app.licence)                       // at the end, the window's State closed
+```
+
+- The page says the state: **Unregistered** with "`<name>` is free; a licence supports its development.", a key stored
+  that is not valid (`licence.error_text`), or **Registered** with its holder (and its edition when the product sells
+  several) and a thank-you. Then what can be done: **Buy a licence** (opens `pricing_url`; none when it is ""), a field to
+  paste a key and **Register**, **Choose a licence file…** (the system's dialog), **Remove the licence** (a second click
+  removes; Escape gives the question up). Under them, a line says the key is checked on this computer with no network.
+- Every read and write of the key's file is a task of the `ui.State` given to `licence_init` (`ui.task`): the answer comes
+  at its next build. One task at a time; a file given meanwhile waits for its turn (`Licence.pending`).
+- `licence_registered(l)` says whether the last read found a valid licence (false until it came); `Licence.status` is
+  that read (`licence.Status`).
+- `licence_end` frees what the page holds; a task still on the chores keeps the store, left to the process's end.
+- The page's category is `LICENCE_PAGE`; the palette finds it by "licence", "license", "key", "register", "buy".
+
 ## The installation
 
 Every program installs itself the same way: one `Install` object holds the setup's `Dialog` ([setup.md](setup.md)), offers
@@ -335,8 +364,8 @@ shown (`DIAGNOSTICS_REFRESH_MS`); **Copy** puts them on the clipboard as `key: v
 
 A page of its own (`Page_Info.build`) with `Page_Info.tags` is a line of `palette_commands`: its title, the group
 "Settings", its icon and its tags; its name is the page's category, and `show(page, prefs, o, category)` puts that page up,
-the search cleared. The Installation and Diagnostics pages have theirs ("install", "uninstall", "path"; "gpu",
-"performance", "slow"). `Page_Info.user` is what `build` is given (nil: `Page_Options.user`).
+the search cleared. The Licence, Installation and Diagnostics pages have theirs ("licence", "key", "buy"; "install",
+"uninstall", "path"; "gpu", "performance", "slow"). `Page_Info.user` is what `build` is given (nil: `Page_Options.user`).
 
 ## Keyboard
 
