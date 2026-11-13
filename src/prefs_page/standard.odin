@@ -543,12 +543,10 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	for v in d.values {
 		for &def in defs {
 			if def.name != v.name { continue }
-			switch def.kind {
-			case .Bool:   def.default.b = v.value == "true" || v.value == "1"
-			case .Int:    if n, ok := strconv.parse_i64(v.value); ok { def.default.i = n }
-			case .Float:  if f, ok := strconv.parse_f64(v.value); ok { def.default.f = f }
-			case .String: def.default.s = v.value
-			}
+			val, err := config.parse_value(def, v.value)
+			assert(err == .None, "a program's own default refused")
+			if def.kind == .String { val.s = v.value }   // (a literal: the definition keeps it)
+			def.default = val
 		}
 	}
 	config.register(prefs, defs[:])
