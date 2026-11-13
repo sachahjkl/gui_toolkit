@@ -12,7 +12,7 @@ package ui
 // each frame which ones can act now (the `disabled` of palette): one place names a command and its keys, and its menus,
 // tooltips, palette and sheet all say the same.
 //
-//   COMMANDS := [Cmd]ui.Command{.Kill = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}, {}}}, ...}
+//   COMMANDS := [Cmd]ui.Command{.Kill = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}}, ...}
 //   if ui.command_pressed(COMMANDS[.Kill]) { kill() }
 //   ui.menu_item(COMMANDS[.Kill].label, ui.command_shortcut(COMMANDS[.Kill]))
 //   if ui.key_press(.K, {.Ctrl}) { ui.palette_open(&palette) }
@@ -54,7 +54,10 @@ Command :: struct {
 	group: string,     // "Processes": the palette's and the sheet's heading ("" none)
 	// other words the palette finds it by, that its label does not say ("exit", "close" for Quit)
 	tags:  []string,
-	keys:  [2]Chord,   // its keys, the first one shown in menus and tooltips; {} none
+	// its keys, as many as it has, the first one shown in menus and tooltips (a zero Chord among them: none). A table
+	// built at run time keeps them in memory of its own, as its tags. The keys in effect are the table the program
+	// passes: one the user rebinds is a copy of its constant table with these slices replaced.
+	keys:  []Chord,
 	icon:  string,     // a glyph of the state's icon_font (Lucide's): the palette's line shows it ("" none)
 }
 
@@ -117,7 +120,17 @@ KEY_DIGITS :: [10]string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
 KEY_FUNCTIONS :: [12]string{"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"}
 
 // The text of a command's first key, for a menu's line ("" when it has none).
-command_shortcut :: proc(c: Command) -> string { return chord_text(c.keys[0]) }
+command_shortcut :: proc(c: Command) -> string {
+	for k in c.keys { if k.key != .None { return chord_text(k) } }
+	return ""
+}
+
+// Whether the command has a key (the sheet lists it).
+@(private = "file")
+command_has_key :: proc(c: Command) -> bool {
+	for k in c.keys { if k.key != .None { return true } }
+	return false
+}
 
 // Every key of a command, apart by commas ("Ctrl+K, Ctrl+Shift+P").
 command_keys_text :: proc(c: Command, allocator := context.temp_allocator) -> string {
@@ -175,6 +188,39 @@ Command_Palette :: struct {
 	// command chosen; {} plain Enter or a click)
 	chosen_mods: platform.Modifiers,
 	search:      Fuzzy_Cache,   // the query and the commands folded, from one frame to the next (palette_entry_cached)
+	// The list for the query, kept: made again only when what it depends on changes (palette_keep). A frame that changes
+	// nothing builds the lines in view and walks no command.
+	lines:    [dynamic]Palette_Line,
+	ranges:   [dynamic]Fuzzy_Range,   // the lines' ranges, one after the other
+	found:    int,                    // the lines that are commands (the count the strip shows)
+	icons:    bool,                   // a command has an icon
+	kept:     Palette_Key,            // what the list was made for (valid: it was)
+	query:    string,                 // the query it was made for (owned)
+	rankings: int,                    // how many times the list was made (a test reads it)
+}
+
+// What the palette's list depends on, apart from the query: the commands (their version, or their address while it is
+// 0, and their count), the command put first, the memory of choices and its version, the language in use.
+@(private)
+Palette_Key :: struct {
+	valid:          bool,
+	commands:       rawptr,
+	count:          int,
+	version:        u64,
+	names:          rawptr,
+	first:          int,
+	memory:         ^Choice_Memory,
+	memory_version: u64,
+	language:       ^i18n.Language,
+}
+
+// A command's line: its index, the headings down to it (to place it), whether a heading is just above it (the recent
+// choices' when `recent`, else its group's), and its ranges in Command_Palette.ranges.
+@(private)
+Palette_Line :: struct {
+	index, headings:          int,
+	heading, recent:          bool,
+	range_first, range_count: int,
 }
 
 // A strip across the top of a dialog (a title, a search field), as a box's custom draw: its background (`custom_user`, a
@@ -217,10 +263,19 @@ palette_selected_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 
 // What a program adds to its palette (every field optional).
 Palette_Options :: struct {
-	recent:       []int,       // commands run last (their indices, the last first): a group of their own on top while nothing is typed
-	recent_title: string,      // that group's heading ("": "Recent")
+	// what the user chose before (choices.odin), and each command's key in it (by index; "": not remembered): the
+	// heaviest choices (choice_recent) a group of their own on top while nothing is typed, and a match raised by its
+	// choice's weight (choice_bonus) while something is. The program notes each choice (choice_note).
+	memory:       ^Choice_Memory,
+	names:        []string,
+	recent_title: string,      // the group of the choices' heading ("": "Recent")
 	first:        Maybe(int),  // a command put first while something is typed (an alias typed whole: its command)
 	keys:         []string,    // per command (by index): the text of its keys, as the program shows them ("Ctrl+M, T", one's own keys), instead of its first chord
+	// the commands' version as the program counts their changes (labels, groups, tags, icons, `names`): the palette ranks
+	// them again only when it, their count, the query, `first`, the memory's version or the language changes. 0: the
+	// table and `names` do not change in place, and the palette keys on their addresses (a table built again each frame
+	// gives a version)
+	version:      u64,
 	foot:         string,      // a line under the list (its keys' help)
 }
 
@@ -297,6 +352,10 @@ palette_entry_cached :: proc(c: ^Fuzzy_Cache, first: int, label, group: string, 
 palette_destroy :: proc(p: ^Command_Palette) {
 	line_edit_destroy(&p.field)
 	fuzzy_cache_destroy(&p.search)
+	delete(p.lines)
+	delete(p.ranges)
+	delete(p.query)
+	p.lines, p.ranges, p.query, p.kept = nil, nil, "", {}
 }
 
 // Opens the palette, its field empty and its first command selected.
@@ -311,17 +370,20 @@ palette_open :: proc(p: ^Command_Palette) {
 // the selection, Enter runs it, Escape closes the palette. A command that cannot act now (`disabled[i]` true; nil: none
 // can) is greyed and is not chosen. Returns the index of the command chosen (-1: none), and `resized` when the user
 // changed its size this frame (`p.size`: keep it). Enter with Ctrl, Alt or Shift chooses too: `p.chosen_mods` says which.
-// `opts`: the recent commands on top, a command first, the keys' texts, a foot line (Palette_Options).
+// `opts`: the choices remembered, a command first, the keys' texts, a foot line, the commands' version (Palette_Options).
+// The list is kept (palette_keep), and only the lines near the view are built.
 palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil, o := Palette_Options{}) -> (chosen: int, resized: bool) {
 	chosen = -1
 	p.chosen_mods = {}
 	if !p.open { return }
 	em := font_size()
 	query := strings.trim_space(line_edit_string(&p.field))
-	list := palette_list(p, commands, query, o)
+	palette_keep(p, commands, query, o)
+	list := p.lines[:]
 	n := len(list)
 	can :: proc(disabled: []bool, i: int) -> bool { return i >= len(disabled) || !disabled[i] }
 	row_h := math.round(dense(em * PALETTE_ROW_EM))
+	heading_h := em * PALETTE_HEADING_EM
 	if n > 0 {
 		page := max(int(p_view_h(p) / row_h), 1)
 		// (the palette's own keys, read before its dialog is built)
@@ -364,11 +426,9 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 			for m in ([]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}) {
 				if n > 0 && can(disabled, list[p.sel].index) && key_press_any(.Return, m) { chosen, p.chosen_mods = list[p.sel].index, m }
 			}
-			found := 0
-			for line in list { if line.index >= 0 { found += 1 } }
 			if tags("weak") {
 				next({width = text_size(), height = pct(1), font_size = em * 0.85, text_pad = em * 0.4})
-				label(fmt.tprintf("%d###palette_count", found))
+				label(fmt.tprintf("%d###palette_count", p.found))
 			}
 			spacer(px(em * 0.8))
 		}
@@ -384,7 +444,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 			lb := parent_box()
 			view_h := lb.rect.max.y - lb.rect.min.y
 			if p.reveal && view_h > row_h && n > 0 {   // (a search that keeps nothing: no line to show)
-				top := palette_line_top(list, p.sel, row_h, em)
+				top := heading_line_top(list, p.sel, row_h, heading_h)
 				lb.view_target.y = view_reveal_offset(lb.view_target.y, top, top + row_h, view_h)
 				p.reveal = false
 			}
@@ -393,14 +453,18 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 				if tags("weak") { label(fmt.tprintf("%s###palette_none", i18n.tr("Nothing matches"))) }
 			}
 			// (a column of icons when a command has one and the state has an icon font)
-			icons := false
-			if gs().icon_font != 0 { for c in commands { if c.icon != "" { icons = true; break } } }
-			for line, k in list {
+			icons := p.icons && gs().icon_font != 0
+			first, last, above, below := heading_lines_band(list, lb, row_h, heading_h)
+			if above > 0 { spacer(px(above)) }
+			for k in first ..< last {
+				line := list[k]
+				if line.index >= len(commands) { continue }   // (a table that shrank without a version: ranked again next frame)
 				c := commands[line.index]
-				if line.heading != "" {
+				if line.heading {
+					heading := line.recent ? (o.recent_title != "" ? o.recent_title : i18n.tr("Recent")) : i18n.tr(c.group)
 					if tags("weak") {
-						next({width = fill(), height = px(em * PALETTE_HEADING_EM), font_size = em * 0.9, text_pad = em * 0.7})
-						build_box({.Draw_Text}, fmt.tprintf("%s###palette_h_%d", line.heading, k))
+						next({width = fill(), height = px(heading_h), font_size = em * 0.9, text_pad = em * 0.7})
+						build_box({.Draw_Text}, fmt.tprintf("%s###palette_h_%d", heading, k))
 					}
 				}
 				c_label, c_group, _ := command_shown(c)
@@ -429,8 +493,8 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 						spacer(px(em * 0.5))
 					}
 					// (what the search found in the label lit; its tags, which the line does not show, light nothing)
-					ranges := line.ranges
-					if query != "" && ranges == nil { ranges = word_ranges(c_label, query) }   // (found by its tags or group: its words that are in the label)
+					ranges := p.ranges[line.range_first:][:line.range_count]
+					if query != "" && len(ranges) == 0 { ranges = word_ranges(c_label, query) }   // (found by its tags or group: its words that are in the label)
 					next({width = fill(), text_pad = 0})
 					tb := matched_label("###t", text, ranges)
 					// (the palette as narrow as the person made it: a line it cuts says itself whole)
@@ -449,6 +513,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 				if sel { pop_tags() }
 				pop_tags()
 			}
+			if below > 0 { spacer(px(below)) }
 		}
 		spacer(px(rest))
 		if o.foot != "" {
@@ -479,50 +544,106 @@ p_view_h :: proc(p: ^Command_Palette) -> f32 {
 	return b.rect.max.y - b.rect.min.y
 }
 
-// The top of line `k` in the list, the headings counted (a list with no search has one before each group).
+////////////////////////////////
+// A list of lines under headings, built near its view only
+
+// The top of line `k` in a list whose lines are `row_h` high, a heading of `heading_h` above some of them (`heading`;
+// `headings`: the headings down to it, its own counted).
 @(private = "file")
-palette_line_top :: proc(list: []Palette_Line, k: int, row_h, em: f32) -> f32 {
-	return f32(k) * row_h + f32(list[k].headings) * (em * PALETTE_HEADING_EM)
+heading_line_top :: proc(lines: []$T, k: int, row_h, heading_h: f32) -> f32 {
+	return f32(k) * row_h + f32(lines[k].headings) * heading_h
 }
 
-// A command's line, the headings above it (to place it), the heading shown just above it ("": none), and what the search
-// found in its label (palette_match's ranges).
+// The lines to build in the scroll box `view`: those that meet its view, where it is heading (a jump, a reveal), and a
+// screen each side ([first, last)); `above` and `below`: the room of the lines not built. Two searches by halves: a
+// frame does not walk the lines.
 @(private = "file")
-Palette_Line :: struct { index, headings: int, heading: string, ranges: []Fuzzy_Range }
+heading_lines_band :: proc(lines: []$T, view: ^Box, row_h, heading_h: f32) -> (first, last: int, above, below: f32) {
+	n := len(lines)
+	if n == 0 { return }
+	view_h := view.rect.max.y - view.rect.min.y
+	if view_h <= 0 { view_h = gs().window_size.y }   // (not laid out yet: a window's height of lines)
+	lo := min(view.view_off.y, view.view_target.y) - view_h
+	hi := max(view.view_off.y, view.view_target.y) + 2 * view_h
+	// (the first line whose bottom is past lo; then the first whose heading starts at hi or past it)
+	a, b := 0, n
+	for a < b {
+		m := (a + b) / 2
+		if heading_line_top(lines, m, row_h, heading_h) + row_h <= lo { a = m + 1 } else { b = m }
+	}
+	first = a
+	b = n
+	for a < b {
+		m := (a + b) / 2
+		if heading_line_top(lines, m, row_h, heading_h) - (lines[m].heading ? heading_h : 0) < hi { a = m + 1 } else { b = m }
+	}
+	last = a
+	total := heading_line_top(lines, n - 1, row_h, heading_h) + row_h
+	above = first < n ? heading_line_top(lines, first, row_h, heading_h) - (lines[first].heading ? heading_h : 0) : total
+	end := last > first ? heading_line_top(lines, last - 1, row_h, heading_h) + row_h : above
+	below = total - end
+	return
+}
 
-// The commands the palette lists for `query`: every one in the table's order (with no query; the recent ones first, under
-// their heading), else the matches, the best first (the label's letters matter more than the group's), `opts.first` before
-// them.
+////////////////////////////////
+// The palette's list
+
+// Makes the list for `query` again when it, the commands or what else it depends on (Palette_Key) changed since the
+// last; else keeps it. Every command is matched and ranked only here.
+@(private = "file")
+palette_keep :: proc(p: ^Command_Palette, commands: []Command, query: string, o: Palette_Options) {
+	key := Palette_Key{
+		valid = true, count = len(commands), version = o.version, first = -1,
+		memory = o.memory, language = i18n.current(),
+	}
+	if o.version == 0 { key.commands, key.names = raw_data(commands), raw_data(o.names) }
+	if f, ok := o.first.?; ok { key.first = f }
+	if o.memory != nil { key.memory_version = o.memory.version }
+	if key == p.kept && query == p.query { return }
+	p.kept = key
+	delete(p.query)
+	p.query = strings.clone(query)
+	p.rankings += 1
+	palette_list(p, commands, query, o)
+	p.found = len(p.lines)
+	p.icons = false
+	for c in commands { if c.icon != "" { p.icons = true; break } }
+}
+
+// The commands the palette lists for `query`, in p.lines: every one in the table's order (with no query; the recent ones
+// first, under their heading), else the matches, the best first (the label's letters matter more than the group's),
+// `opts.first` before them.
 // The query and each command are folded once, kept in `p.search` from one frame to the next.
 @(private = "file")
-palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, o: Palette_Options) -> []Palette_Line {
-	out := make([dynamic]Palette_Line, 0, len(commands), context.temp_allocator)
+palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, o: Palette_Options) {
+	clear(&p.lines)
+	clear(&p.ranges)
+	remembered := o.memory != nil && len(o.names) > 0
 	if query == "" {
 		headings := 0
 		recent := 0
-		for i in o.recent {
+		recent_choices: []int
+		if remembered { recent_choices = choice_recent(o.memory, o.names) }
+		for i in recent_choices {
 			if i < 0 || i >= len(commands) { continue }
-			heading := ""
-			if recent == 0 {
-				heading = o.recent_title != "" ? o.recent_title : i18n.tr("Recent")
-				headings += 1
-			}
-			append(&out, Palette_Line{i, headings, heading, nil})
+			if recent == 0 { headings += 1 }
+			append(&p.lines, Palette_Line{index = i, headings = headings, heading = recent == 0, recent = true})
 			recent += 1
 		}
 		group := ""
 		for c, i in commands {
-			heading := ""
+			heading := false
 			if c.group != group || (recent > 0 && i == 0) {
-				if c.group != "" { heading = i18n.tr(c.group); headings += 1 }
+				if c.group != "" { heading = true; headings += 1 }
 				group = c.group
 			}
-			append(&out, Palette_Line{i, headings, heading, nil})
+			append(&p.lines, Palette_Line{index = i, headings = headings, heading = heading})
 		}
-		return out[:]
+		return
 	}
-	Ranked :: struct { index, score: int, ranges: []Fuzzy_Range }
+	Ranked :: struct { index: int, score: f64, ranges: []Fuzzy_Range }
 	ranked := make([dynamic]Ranked, 0, len(commands), context.temp_allocator)
+	now := remembered ? choice_now() : 0
 	needle := fuzzy_cache_needle(&p.search, query)
 	first, has_first := o.first.?
 	has_first = has_first && first >= 0 && first < len(commands)
@@ -530,61 +651,123 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, o:
 	for c, i in commands {
 		c_label, c_group, c_tags := command_shown(c)
 		score, ranges, ok := palette_match(needle, palette_entry_cached(&p.search, 3 * i, c_label, c_group, c_tags))
-		if ok { append(&ranked, Ranked{i, score, ranges}) }
+		if ok {
+			s := f64(score)
+			if remembered && i < len(o.names) && o.names[i] != "" { s += choice_bonus(o.memory, o.names[i], query, now) }
+			append(&ranked, Ranked{i, s, ranges})
+		}
 		if has_first && i == first { first_ranges = ranges }
 	}
 	fuzzy_cache_keep(&p.search, 3 * len(commands))
 	slice.stable_sort_by(ranked[:], proc(a, b: Ranked) -> bool { return a.score > b.score })
-	if has_first { append(&out, Palette_Line{first, 0, "", first_ranges}) }
+	add :: proc(p: ^Command_Palette, index: int, ranges: []Fuzzy_Range) {
+		append(&p.lines, Palette_Line{index = index, range_first = len(p.ranges), range_count = len(ranges)})
+		append(&p.ranges, ..ranges)
+	}
+	if has_first { add(p, first, first_ranges) }
 	for r in ranked {
 		if has_first && r.index == first { continue }
-		append(&out, Palette_Line{r.index, 0, "", r.ranges})
+		add(p, r.index, r.ranges)
 	}
-	return out[:]
 }
 
 ////////////////////////////////
 // The sheet of the keys
 
-// The dialog `id` while `open`: every command that has a key, under its group's heading, its keys at the right. It
+// The sheet: the program keeps it between frames. `open` shows it; the rest is the list it keeps (its commands that have
+// a key, made again only when the commands change).
+Shortcuts_Sheet :: struct {
+	open:     bool,
+	lines:    [dynamic]Sheet_Line,
+	kept:     Sheet_Key,
+	listings: int,   // how many times the list was made (a test reads it)
+}
+
+// What the sheet's list depends on: the commands (their version, or their address while it is 0) and their count.
+@(private)
+Sheet_Key :: struct {
+	valid:    bool,
+	commands: rawptr,
+	count:    int,
+	version:  u64,
+}
+
+// A command that has a key: its index, the group headings down to it, whether its group's heading is just above it.
+@(private)
+Sheet_Line :: struct {
+	index, headings: int,
+	heading:         bool,
+}
+
+shortcuts_sheet_destroy :: proc(sheet: ^Shortcuts_Sheet) {
+	delete(sheet.lines)
+	sheet.lines, sheet.kept = nil, {}
+}
+
+// The dialog `id` while `sheet.open`: every command that has a key, under its group's heading, its keys at the right. It
 // scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close button of its header close it.
-// `title` "": "Keyboard shortcuts", in the language in use.
-shortcuts_sheet :: proc(id: string, commands: []Command, open: ^bool, title := "") {
+// `title` "": "Keyboard shortcuts", in the language in use. `version`: the commands' version as the program counts
+// their changes (their keys too: a table rebound in place gives one); 0: the table does not change in place. The list
+// of the commands that have a key is kept, and only the lines near the view are built.
+shortcuts_sheet :: proc(sheet: ^Shortcuts_Sheet, id: string, commands: []Command, title := "", version: u64 = 0) {
 	s := gs()
 	em := font_size()
 	w := em * SHEET_WIDTH_EM
-	if modal(id, open, {width_em = SHEET_WIDTH_EM}) {
+	key := Sheet_Key{valid = true, count = len(commands), version = version}
+	if version == 0 { key.commands = raw_data(commands) }
+	if sheet.open && key != sheet.kept {
+		sheet.kept = key
+		sheet.listings += 1
+		sheet_list(sheet, commands)
+	}
+	if modal(id, &sheet.open, {width_em = SHEET_WIDTH_EM}) {
 		if dialog_header("sheet_title", title != "" ? title : i18n.tr("Keyboard shortcuts"), {icon = lucide.KEYBOARD, icon_font = lucide_icons(), close = true}) {}
-		sheet_body(commands, w, em, s.window_size.y)
+		sheet_body(sheet, commands, w, em, s.window_size.y)
 	}
 }
 
 @(private = "file")
-sheet_body :: proc(commands: []Command, w, em, window_h: f32) {
+sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command) {
+	clear(&sheet.lines)
+	group := ""
+	headings := 0
+	for c, i in commands {
+		if !command_has_key(c) { continue }
+		heading := c.group != group
+		if heading { headings += 1 }
+		group = c.group
+		append(&sheet.lines, Sheet_Line{index = i, headings = headings, heading = heading})
+	}
+}
+
+@(private = "file")
+sheet_body :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, w, em, window_h: f32) {
 	pad := em * 1.2
+	line_h := dense(em * 1.7)
+	heading_h := em * 2.2   // (a gap of em * 0.5 and the heading)
+	lines := sheet.lines[:]
 	next({width = px(w), height = children_sum(), axis = .Y})
 	if column(id = "###sheet") {
 		spacer(px(em * 0.5))
-		lines := 0
-		for c in commands { if c.keys[0].key != .None { lines += 1 } }
-		height := min(window_h * SHEET_HEIGHT, f32(lines) * em * 2.2 + em * 6)
+		height := min(window_h * SHEET_HEIGHT, f32(len(lines)) * em * 2.2 + em * 6)
 		next({width = px(w), height = px(height)})
 		if scroll_y("###sheet_list") {
-			group := ""
-			for c, i in commands {
-				if c.keys[0].key == .None { continue }
-				if c.group != group {
-					group = c.group
+			first, last, above, below := heading_lines_band(lines, parent_box(), line_h, heading_h)
+			if above > 0 { spacer(px(above)) }
+			for line in lines[first:last] {
+				if line.index >= len(commands) { continue }   // (a table that shrank without a version: listed again next frame)
+				c := commands[line.index]
+				if line.heading {
 					spacer(px(em * 0.5))
 					next({width = fill(), height = px(em * 1.7)})
-					if row(.Center, {}, fmt.tprintf("###sheet_group_%d", i)) {
+					if row(.Center, {}, fmt.tprintf("###sheet_group_%d", line.index)) {
 						spacer(px(pad))
 						next({width = fill(), height = pct(1), text_pad = 0, fg = color("accent")})
-						label(fmt.tprintf("%s###g", i18n.tr(group)))
+						label(fmt.tprintf("%s###g", i18n.tr(c.group)))
 					}
 				}
-				next({width = fill(), height = px(dense(em * 1.7))})
-				if row(.Center, {}, fmt.tprintf("###sheet_line_%d", i)) {
+				next({width = fill(), height = px(line_h)})
+				if row(.Center, {}, fmt.tprintf("###sheet_line_%d", line.index)) {
 					spacer(px(pad))
 					next({width = fill(), height = pct(1), text_pad = 0})
 					label(fmt.tprintf("%s###l", i18n.tr(c.label)))
@@ -595,6 +778,7 @@ sheet_body :: proc(commands: []Command, w, em, window_h: f32) {
 					spacer(px(pad))
 				}
 			}
+			if below > 0 { spacer(px(below)) }
 			spacer(px(em * 0.5))
 		}
 	}

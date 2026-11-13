@@ -294,12 +294,22 @@ them after its own commands in `ui.palette`; when one is chosen, it opens its se
 options, name)`: the page's search holds the preference's name in quotes, so it shows alone with its control, and the
 page under the search is its own (clearing the search lands there).
 
+The program makes this table when the settings change, not at each frame: a frame then walks no preference, and the
+palette ranks again only when the table's version changes (docs/commands.md).
+
 ```odin
-settings, names := prefs_page.palette_commands(&app.prefs, opts)
-all := slice.concatenate([][]ui.Command{app_commands, settings}, context.temp_allocator)
-if i, _ := ui.palette(&app.palette, all, disabled); i >= len(app_commands) {
+// when the settings change (app.prefs.version): the table in memory of its own
+if app.table_version != app.prefs.version + 1 {
+    virtual.arena_free_all(&app.table_arena)
+    a := virtual.arena_allocator(&app.table_arena)
+    settings, names := prefs_page.palette_commands(&app.prefs, opts, a)
+    app.table = slice.concatenate([][]ui.Command{app_commands, settings}, a)
+    app.setting_names = names
+    app.table_version = app.prefs.version + 1
+}
+if i, _ := ui.palette(&app.palette, app.table, disabled, {version = app.table_version}); i >= len(app_commands) {
     app.settings_open = true
-    prefs_page.show(&app.page, &app.prefs, opts, names[i - len(app_commands)])
+    prefs_page.show(&app.page, &app.prefs, opts, app.setting_names[i - len(app_commands)])
 }
 ```
 

@@ -5,7 +5,10 @@ package showcase
 
 import "core:fmt"
 import "core:math"
+import "core:mem/virtual"
 import "core:slice"
+import "core:strings"
+import config "../../src/config"
 import "../../src/host"
 import lucide "../../src/lucide"
 import prefs_page "../../src/prefs_page"
@@ -38,19 +41,19 @@ page_of :: proc(s: Scene) -> Scene {
 
 // The commands of the palette: the program's own, then one per preference of its settings (prefs_page.palette_commands).
 COMMANDS := [?]ui.Command{
-	{label = "New window", group = "File", keys = {{.N, {.Ctrl, .Shift}}, {}}, icon = lucide.PLUS},
-	{label = "Open…", group = "File", keys = {{.O, {.Ctrl}}, {}}, icon = lucide.FOLDER_OPEN},
-	{label = "Save", group = "File", keys = {{.S, {.Ctrl}}, {}}, icon = lucide.SAVE},
-	{label = "Export pictures…", group = "File", keys = {{.E, {.Ctrl, .Shift}}, {}}, icon = lucide.DOWNLOAD},
-	{label = "Theme: next", group = "View", tags = {"colours", "look"}, keys = {{.T, {.Ctrl}}, {}}, icon = lucide.PALETTE},
-	{label = "Theme: light or dark", group = "View", tags = {"mode", "night", "day"}, keys = {{.L, {.Ctrl, .Shift}}, {}}, icon = lucide.MOON},
+	{label = "New window", group = "File", keys = {{.N, {.Ctrl, .Shift}}}, icon = lucide.PLUS},
+	{label = "Open…", group = "File", keys = {{.O, {.Ctrl}}}, icon = lucide.FOLDER_OPEN},
+	{label = "Save", group = "File", keys = {{.S, {.Ctrl}}}, icon = lucide.SAVE},
+	{label = "Export pictures…", group = "File", keys = {{.E, {.Ctrl, .Shift}}}, icon = lucide.DOWNLOAD},
+	{label = "Theme: next", group = "View", tags = {"colours", "look"}, keys = {{.T, {.Ctrl}}}, icon = lucide.PALETTE},
+	{label = "Theme: light or dark", group = "View", tags = {"mode", "night", "day"}, keys = {{.L, {.Ctrl, .Shift}}}, icon = lucide.MOON},
 	{label = "Theme: open the themes file", group = "View", tags = {"colours", "custom"}, icon = lucide.FILE_TEXT},
 	{label = "Finish: machined", group = "View", tags = {"bevel", "relief"}, icon = lucide.SPARKLES},
-	{label = "Zoom in", group = "View", keys = {{.Equal, {.Ctrl}}, {}}, icon = lucide.PLUS},
-	{label = "Zoom out", group = "View", keys = {{.Minus, {.Ctrl}}, {}}, icon = lucide.MINUS},
-	{label = "Node graph: fit the view", group = "Graph", keys = {{.F, {}}, {}}, icon = lucide.SCAN},
-	{label = "Settings…", group = "General", keys = {{.Comma, {.Ctrl}}, {}}, icon = lucide.SETTINGS},
-	{label = "Keyboard shortcuts", group = "General", keys = {{.F1, {}}, {}}, icon = lucide.KEYBOARD},
+	{label = "Zoom in", group = "View", keys = {{.Equal, {.Ctrl}}}, icon = lucide.PLUS},
+	{label = "Zoom out", group = "View", keys = {{.Minus, {.Ctrl}}}, icon = lucide.MINUS},
+	{label = "Node graph: fit the view", group = "Graph", keys = {{.F, {}}}, icon = lucide.SCAN},
+	{label = "Settings…", group = "General", keys = {{.Comma, {.Ctrl}}}, icon = lucide.SETTINGS},
+	{label = "Keyboard shortcuts", group = "General", keys = {{.F1, {}}}, icon = lucide.KEYBOARD},
 }
 
 build :: proc(h: ^host.Host, size: host.Vec2) {
@@ -205,15 +208,48 @@ status_line :: proc(app: ^App, em: f32) {
 	}
 }
 
+// The palette's table: the program's commands, then one per preference (prefs_page.palette_commands), and each line's
+// key in the memory of choices (a command's label, "pref:" and a preference's name). Made again only when the settings
+// change (a frame does not walk the preferences), in an arena of its own.
+Palette_Table :: struct {
+	arena:    virtual.Arena,
+	commands: []ui.Command,
+	keys:     []string,
+	names:    []string,   // the preferences' names, the lines after COMMANDS
+	version:  u64,        // the settings' version it was made for, plus one (0: not made); the palette's version
+}
+
+palette_table_make :: proc(table: ^Palette_Table, prefs: ^config.Prefs, o: prefs_page.Options) {
+	virtual.arena_destroy(&table.arena)
+	table^ = {}
+	a := virtual.arena_allocator(&table.arena)
+	settings, names := prefs_page.palette_commands(prefs, o, a)
+	table.commands = slice.concatenate([][]ui.Command{COMMANDS[:], settings}, a)
+	table.keys = make([]string, len(table.commands), a)
+	for c, i in COMMANDS { table.keys[i] = c.label }
+	for n, i in names { table.keys[len(COMMANDS) + i] = fmt.aprintf("pref:%s", n, allocator = a) }
+	table.names = make([]string, len(names), a)
+	for n, i in names { table.names[i] = strings.clone(n, a) }
+	table.version = prefs.version + 1
+}
+
+palette_table_destroy :: proc(table: ^Palette_Table) {
+	virtual.arena_destroy(&table.arena)
+	table^ = {}
+}
+
 // The overlays of the scene: the palette, the dialogs; the menu is the menus scene's own.
 @(private = "file")
 overlays :: proc(app: ^App, em: f32) {
 	o := settings_options(app)
-	settings, names := prefs_page.palette_commands(&app.prefs, o)
-	all := slice.concatenate([][]ui.Command{COMMANDS[:], settings}, context.temp_allocator)
-	if i, _ := ui.palette(&app.palette, all); i >= len(COMMANDS) {
-		app.scene = .Settings
-		prefs_page.show(&app.page, &app.prefs, o, names[i - len(COMMANDS)])
+	table := &app.palette_table
+	if app.palette.open && table.version != app.prefs.version + 1 { palette_table_make(table, &app.prefs, o) }
+	if i, _ := ui.palette(&app.palette, table.commands, nil, {memory = &app.choices, names = table.keys, version = table.version}); i >= 0 {
+		ui.choice_note(&app.choices, table.keys[i])
+		if i >= len(COMMANDS) {
+			app.scene = .Settings
+			prefs_page.show(&app.page, &app.prefs, o, table.names[i - len(COMMANDS)])
+		}
 	}
 	dialog_build(app, em)
 	switch ui.confirm("delete", &app.confirm_open, {
