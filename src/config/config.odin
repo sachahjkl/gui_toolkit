@@ -42,7 +42,9 @@ Value :: struct {
 }
 
 Def :: struct {
-	name:        string,      // dotted, lower case: "network.max_connections_per_host"
+	// dotted, lower case: "appearance.text.gamma". The segments but the last are its groups (path_of): the group
+	// "appearance", in it "appearance.text"; a settings page shows them as headings (group_title)
+	name:        string,
 	title:       string,      // what a settings page calls it ("": made from the name, title_of)
 	description: string,
 	kind:        Kind,
@@ -53,8 +55,8 @@ Def :: struct {
 	unit:        string,      // shown by about:config: "ms", "bytes", ...
 	restart:     bool,        // takes effect at the next start
 	bytes:       bool,        // Int: accepts K / M / G suffixes when typed
-	category:    string,      // grouping in about:config; defaults to the first name segment
-	hidden:      bool,        // the program's own (a layout, a last choice): no settings page shows it, nor what lists the settings
+	advanced:    bool,        // a technical setting: shown, folded under an "Advanced" part of its group, found by a search
+	hidden:      bool,        // the program's state, no setting (a layout, a last choice): no settings page shows it, nor an export
 	// other words a search finds it by, that its name, title and description do not say ("colours", "dark" for a theme)
 	tags:        []string,
 }
@@ -89,9 +91,10 @@ Prefs :: struct {
 	next_observer: int,
 	version:   u64,                  // bumped on every change
 	// bumped on every change of the user's layer that its file does not have: a change under a higher layer counts,
-	// reading a file does not. A program keeps the value it last wrote (serialize_user) and saves when it differs, so a
+	// reading a file does not. A program keeps the value it last wrote (export_own) and saves when it differs, so a
 	// write done on another thread needs no flag that the loop and the writer would share.
 	user_version: u64,
+	groups:    map[string]Group,     // titles of the groups, by path (title_register); keys owned
 	allocator: runtime.Allocator,
 }
 
@@ -125,7 +128,8 @@ set_error_text :: proc(e: Set_Error) -> string {
 prefs_make :: proc(allocator := context.allocator) -> Prefs {
 	return Prefs{
 		entries = make([dynamic]Entry, allocator), index = make(map[string]int, allocator),
-		pending = make(map[string]Pending, allocator), observers = make([dynamic]Observer, allocator), allocator = allocator,
+		pending = make(map[string]Pending, allocator), observers = make([dynamic]Observer, allocator),
+		groups = make(map[string]Group, allocator), allocator = allocator,
 	}
 }
 
@@ -138,6 +142,8 @@ prefs_destroy :: proc(p: ^Prefs) {
 	delete(p.pending)
 	for o in p.observers { delete(o.prefix, a) }
 	delete(p.observers)
+	for k, g in p.groups { delete(k, a); delete(g.title, a) }
+	delete(p.groups)
 	p^ = {}
 }
 
@@ -145,17 +151,15 @@ prefs_destroy :: proc(p: ^Prefs) {
 // Registration
 
 // Adds definitions. Registering a name again with the same kind is a no-op; a different kind is a programming error.
-// `category`: the about:config category of the definitions that name none (else their name's first segment).
 // `refused`: how many values waiting for these definitions they do not accept. The default stays; a user's value is kept
 // for the profile file all the same, as is one load_file refuses: another version may take it.
-register :: proc(p: ^Prefs, defs: []Def, category := "") -> (refused: int) {
+register :: proc(p: ^Prefs, defs: []Def) -> (refused: int) {
 	for d in defs {
 		if i, exists := p.index[d.name]; exists {
 			assert(p.entries[i].def.kind == d.kind, "preference registered twice with different kinds")
 			continue
 		}
 		e := Entry{def = d, value = d.default}
-		if e.def.category == "" { e.def.category = category != "" ? category : first_segment(d.name) }
 		e.value.s = strings.clone(d.default.s, p.allocator)
 		idx := len(p.entries)
 		append(&p.entries, e)
@@ -181,12 +185,6 @@ register :: proc(p: ^Prefs, defs: []Def, category := "") -> (refused: int) {
 		}
 	}
 	return
-}
-
-@(private)
-first_segment :: proc(name: string) -> string {
-	if i := strings.index_byte(name, '.'); i >= 0 { return name[:i] }
-	return name
 }
 
 ref_of :: proc(p: ^Prefs, name: string) -> Ref {
@@ -428,30 +426,7 @@ apply_args :: proc(p: ^Prefs, args: []string, allocator := context.allocator) ->
 USER_MAGIC :: "wbprefs 1"
 POLICY_MAGIC :: "wbpolicy 1"
 
-// The text of the user's file: the user's changes (and only those), with the values a higher layer hides and those no
-// definition registers in this run, so a round trip loses none. Pure and cheap (a few KiB): the loop calls it, then hands
-// the text to write_user_file on any thread. The caller records `p.user_version` as the version this text has.
-serialize_user :: proc(p: ^Prefs, allocator := context.allocator) -> string {
-	sb := strings.builder_make(allocator)
-	strings.write_string(&sb, USER_MAGIC)
-	strings.write_byte(&sb, '\n')
-	for name in sorted_names(p) {
-		e := &p.entries[p.index[name]]
-		switch {
-		case e.source == .User: fmt.sbprintf(&sb, "%s\t%s\n", name, escape(value_text(e.def, e.value)))
-		case e.has_user:        fmt.sbprintf(&sb, "%s\t%s\n", name, escape(e.user_text))
-		}
-	}
-	// values for preferences that are not registered in this run must survive a round trip; sorted, so the same layer
-	// gives the same bytes whatever the map's order
-	waiting := make([dynamic]string, context.temp_allocator)
-	for name, pv in p.pending { if pv.has[.User] { append(&waiting, name) } }
-	slice.sort(waiting[:])
-	for name in waiting { fmt.sbprintf(&sb, "%s\t%s\n", name, escape(p.pending[name].value[.User])) }
-	return strings.to_string(sb)
-}
-
-// Writes `text` (from serialize_user) to `path`, on the disk when it returns. Atomic: a crash or a failure leaves the
+// Writes `text` (from export_own) to `path`, on the disk when it returns. Atomic: a crash or a failure leaves the
 // previous file intact, and a failure no temporary file. Its folder is made when it is not there (the first save of a
 // program). It reads no registry state, so a worker thread may call it while the loop changes preferences.
 write_user_file :: proc(path: string, text: string, loc := #caller_location) -> bool {
@@ -464,7 +439,7 @@ write_user_file :: proc(path: string, text: string, loc := #caller_location) -> 
 // does not matter (a settings page's Save). A program that saves often serializes on its loop and writes on a worker.
 save_user :: proc(p: ^Prefs, path: string, loc := #caller_location) -> bool {
 	base.blocking("config.save_user", loc)
-	return write_user_file(path, serialize_user(p, context.temp_allocator))
+	return write_user_file(path, export_own(p, allocator = context.temp_allocator))
 }
 
 // Reads a preference file as `source` (User for the profile, Policy for the enterprise file), whose first line must be that
@@ -510,7 +485,7 @@ value_text :: proc(d: Def, v: Value) -> string {
 	switch d.kind {
 	case .Bool:   return v.b ? "true" : "false"
 	case .Int:    return fmt.tprintf("%d", v.i)
-	case .Float:  return fmt.tprintf("%v", v.f)
+	case .Float:  return float_text(v.f)
 	case .String: return v.s
 	}
 	return ""

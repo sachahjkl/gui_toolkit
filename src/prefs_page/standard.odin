@@ -80,39 +80,39 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	defs := make([dynamic]config.Def, context.temp_allocator)
 	if .Session in sets {
 		append(&defs, config.Def{
-			name = MENU_PREF, title = "In the application menu", category = "general", kind = .Bool, default = {b = d.menu},
+			name = MENU_PREF, title = "In the application menu", kind = .Bool, default = {b = d.menu},
 			description = fmt.aprintf("Put %s in the %s, with its icon. The desktop then knows %s by its name: its shortcuts and its windows' places come from that.", name, menu_words(), name, allocator = a),
 			tags = MENU_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = AUTOSTART_PREF, title = "Start with the session", category = "general", kind = .Bool, default = {b = d.autostart},
+			name = AUTOSTART_PREF, title = "Start with the session", kind = .Bool, default = {b = d.autostart},
 			description = fmt.aprintf("Start %s with the session, so that its shortcuts work from the start.", name, allocator = a),
 			tags = AUTOSTART_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = MESSAGES_PREF, title = "Messages", category = "general", kind = .String, default = {s = "system"},
+			name = MESSAGES_PREF, title = "Messages", kind = .String, default = {s = "system"},
 			description = fmt.aprintf("Where %s says what it did (copied, saved, deleted). System: the system's notifications, or %s's window where the system has none. Window: only in %s's window. Off: nowhere; a failure is always said.", name, name, name, allocator = a),
 			choices = MESSAGES_CHOICES[:], tags = MESSAGES_TAGS[:],
 		})
 	}
 	if .Appearance in sets {
 		append(&defs, config.Def{
-			name = THEME_PREF, title = "Theme", category = "appearance", kind = .String, default = {s = d.theme},
+			name = THEME_PREF, title = "Theme", kind = .String, default = {s = d.theme},
 			description = fmt.aprintf("The colours of %s's windows.", name, allocator = a),
 			tags = THEME_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = MODE_PREF, title = "Light or dark", category = "appearance", kind = .String, default = {s = d.mode},
+			name = MODE_PREF, title = "Light or dark", kind = .String, default = {s = d.mode},
 			description = "The theme's version: the system's (light or dark, followed as it changes), dark, or light.",
 			choices = MODE_CHOICES[:], tags = MODE_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = FINISH_PREF, title = "Finish", category = "appearance", kind = .String, default = {s = d.finish},
+			name = FINISH_PREF, title = "Finish", kind = .String, default = {s = d.finish},
 			description = "How surfaces are drawn. Machined: bevelled buttons, sunken fields, carved lines. Edged: the same reliefs, crisp, with square corners. Flat: plain surfaces and thin lines. Gradient: faces lit from the top. Glass: glossy faces.",
 			choices = FINISH_CHOICES[:], tags = FINISH_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = FONT_SIZE_PREF, title = "Text size", category = "appearance", kind = .Float, default = {f = f64(d.font_size)},
+			name = FONT_SIZE_PREF, title = "Text size", kind = .Float, default = {f = f64(d.font_size)},
 			description = "The size of the text, in logical pixels.", min = FONT_SIZE_MIN, max = FONT_SIZE_MAX, bounded = true, unit = "px",
 			tags = FONT_SIZE_TAGS[:],
 		})

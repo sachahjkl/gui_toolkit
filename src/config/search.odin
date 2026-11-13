@@ -14,7 +14,8 @@ import "core:strings"
 //           if show { draw the row }
 //   if searching(&s) && s.found == 0 { say that nothing matches }
 //
-// A preference matches when every word of the query is in its name, its title or its description (matches).
+// A preference matches when every word of the query is in its name, its title, its description, its tags or the titles of
+// its groups (matches). An advanced preference shows as any other: the UI unfolds its group's "Advanced" part to show it.
 Search :: struct {
 	query:      string,   // lower case, trimmed (temp memory)
 	page_whole: bool,     // the current page's title matches: all of it shows
@@ -44,7 +45,7 @@ search_shows :: proc(s: ^Search, p: ^Prefs, name: string) -> (show: bool, headin
 	if s.query == "" { return true, "" }
 	if !s.page_whole {
 		r := ref_of(p, name)
-		if r == NO_REF || !matches(entry(p, r).def, s.query) { return false, "" }
+		if r == NO_REF || !matches(p, entry(p, r).def, s.query) { return false, "" }
 	}
 	s.found += 1
 	heading, s.heading = s.heading, ""

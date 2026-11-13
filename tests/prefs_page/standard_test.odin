@@ -24,8 +24,8 @@ the_standard_preferences_register :: proc(t: ^testing.T) {
 	defer config.prefs_destroy(&p)
 	names := [?]string{"appearance.theme", "appearance.mode", "appearance.finish", "appearance.font_size", "general.menu", "general.autostart"}
 	for n in names { testing.expectf(t, config.ref_of(&p, n) != config.NO_REF, "%s is registered", n) }
-	testing.expect_value(t, config.entry(&p, config.ref_of(&p, "appearance.theme")).def.category, "appearance")
-	testing.expect_value(t, config.entry(&p, config.ref_of(&p, "general.menu")).def.category, "general")
+	testing.expect_value(t, config.path_of("appearance.theme")[0], "appearance")
+	testing.expect_value(t, config.group_title(&p, "general"), "General")
 	testing.expect(t, config.bool_of(&p, "general.menu"), "in the menu by default")
 	testing.expect(t, !config.bool_of(&p, "general.autostart"), "not started with the session by default")
 	// (every finish offered is one ui knows by its name)

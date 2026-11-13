@@ -18,7 +18,7 @@ DEFS := [?]Def{
 
 // What a program does on one thread: the text, then the file.
 @(private = "file")
-save :: proc(p: ^Prefs, path: string) -> bool { return write_user_file(path, serialize_user(p, context.temp_allocator)) }
+save :: proc(p: ^Prefs, path: string) -> bool { return write_user_file(path, export_own(p, allocator = context.temp_allocator)) }
 
 @(private = "file")
 Seen :: struct { names: [dynamic]string, calls: int }
@@ -39,7 +39,6 @@ defaults_and_typed_reads :: proc(t: ^testing.T) {
 	testing.expect_value(t, bool_of(&p, "net.enabled"), true)
 	testing.expect_value(t, string_of(&p, "net.agent"), "wb/1")
 	testing.expect_value(t, float_of(&p, "ui.scale"), 1.0)
-	testing.expect_value(t, entry(&p, ref_of(&p, "net.max_conns")).def.category, "net")
 	testing.expect(t, ref_of(&p, "nope") == NO_REF)
 	register(&p, DEFS[:])   // idempotent
 	testing.expect_value(t, len(p.entries), 6)
@@ -201,6 +200,7 @@ persistence :: proc(t: ^testing.T) {
 @(test)
 policy_file_locks :: proc(t: ^testing.T) {
 	path := "build/policy_test.txt"
+	_ = os.make_directory_all("build")   // (a fresh checkout has none)
 	defer os.remove(path)
 	testing.expect(t, os.write_entire_file(path, transmute([]byte)string("wbpolicy 1\nnet.max_conns\t3\n# comment\nui.mode\tbogus\n") ) == nil)
 	p := prefs_make()
@@ -381,7 +381,7 @@ a_change_during_a_write_is_saved_next :: proc(t: ^testing.T) {
 	defer prefs_destroy(&p)
 	register(&p, DEFS[:])
 	set_from_string(&p, "net.max_conns", "9", .User)
-	text := serialize_user(&p)
+	text := export_own(&p)
 	defer delete(text)
 	written := p.user_version
 	set_from_string(&p, "net.max_conns", "10", .User)   // (on the loop, while the worker writes)
@@ -403,7 +403,7 @@ the_same_layer_gives_the_same_text :: proc(t: ^testing.T) {
 	names := [?]string{"zz.one", "aa.two", "mm.three", "bb.four"}
 	for name in names { set_from_string(&p, name, "1", .User) }
 	set_from_string(&p, "net.max_conns", "9", .User)
-	testing.expect_value(t, serialize_user(&p, context.temp_allocator),
+	testing.expect_value(t, export_own(&p, allocator = context.temp_allocator),
 		"wbprefs 1\nnet.max_conns\t9\naa.two\t1\nbb.four\t1\nmm.three\t1\nzz.one\t1\n")
 }
 
