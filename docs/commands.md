@@ -4,6 +4,8 @@ A program names each of its commands once, in a table of `ui.Command`: its label
 gives the key handling, the shortcut of a menu's line, a tooltip's text, the command palette and the sheet of the keys:
 they cannot disagree.
 
+![The palette: the program's commands under their groups with their keys, then one per preference of its settings (examples/showcase)](screenshots/showcase_palette.webp)
+
 ```odin
 Cmd :: enum u8 { End_Task, Kill, Palette, Shortcuts }
 

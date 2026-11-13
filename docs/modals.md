@@ -24,6 +24,8 @@ Several dialogs may be open, one in another or one after the other; the one buil
 
 ## A dialog's header and its close button (`src/ui/dialog_parts.odin`)
 
+![A dialog of modal_sized: dialog_header with its close button in the corner, dialog_body, dialog_buttons (examples/showcase)](screenshots/showcase_dialog.webp)
+
 ```odin
 if ui.modal_sized("files", preferred, &size, &open) {
     if ui.dialog_header("files_head", "Files", {icon = lucide.FOLDER, icon_font = ui.lucide_icons(), close = true}) {
@@ -56,6 +58,10 @@ it stays on top while the body scrolls.
 `confirm`, `shortcuts_sheet` and the Setup dialog have this header and its close button.
 
 ## A confirmation (`src/ui/confirm.odin`)
+
+| `ui.confirm` | `ui.prompt`, a secret |
+|---|---|
+| ![A confirmation: what it deletes, a line each; Cancel answers Enter](screenshots/showcase_confirm.webp) | ![A prompt for a PIN, its eye at the end of the field](screenshots/showcase_prompt.webp) |
 
 `ui.confirm(id, &open, options)` is the question before an act that is not taken back: a title, a note in the weak text
 (what comes of it), what it acts on one per line when there is more than one (`CONFIRM_LINES_MAX` shown, the others

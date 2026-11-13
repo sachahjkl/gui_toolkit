@@ -32,11 +32,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Debian's packages
-        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl clang lld zstd >/dev/null
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl clang lld zstd webp >/dev/null
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
       # the site, made by tk (Odin, the same pinned archive as the Linux job of ci.yml): the changelog's pages, what each page says
-      # when shared, the Docs section
+      # when shared, the Docs section, the pictures in WebP (webp: cwebp)
       - name: Odin dev-2026-11a
         env:
           ODIN_TAG: dev-2026-11a

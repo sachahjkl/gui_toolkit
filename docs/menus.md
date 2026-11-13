@@ -13,6 +13,10 @@ if ui.ctx_menu(key) {
 }
 ```
 
+| A context menu | The same, `co` typed |
+|---|---|
+| ![A context menu: icons, words, keys, two submenus, a check, a row disabled](screenshots/showcase_menus.webp) | ![The menu searched: its band shows what is typed, a submenu's row comes up](screenshots/showcase_menu_search.webp) |
+
 ## Its width
 
 A menu is as wide as its widest row: the icon column, the label, the shortcut or a submenu's arrow, and their padding. One

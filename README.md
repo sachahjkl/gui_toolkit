@@ -12,11 +12,12 @@ frames and draws with its own renderer: Direct3D 11 on Windows, Vulkan on Linux 
 The design (box tree, keyed persistence, size-kind layout, signals, tag-based themes) follows the UI layers of the
 [RAD Debugger](https://github.com/EpicGamesExt/raddebugger); this project is the toolkit and the apps built on it, not a port of the debugger.
 
-![fidget, the widget gallery](docs/screenshots/controls.png)
+![examples/showcase: a node graph of a workflow and the inspector of its selected node](docs/screenshots/showcase_graph.webp)
 
 On Windows it needs nothing beyond Odin's `core:` and `vendor:` packages and the system (Direct3D 11, DirectWrite). On Linux, wgpu-native and a small Rust library for text are linked into the program. Programs are one file (icon font and fallback text fonts compiled in): the widget gallery is
 2.4 MB, the todo example 2 MB. They idle at 0 % CPU, and a frame of the gallery takes under 1 ms of CPU (`fidget --bench=300`).
 
+    odin run tools/tk -- build showcase     # a scene per feature, every theme and finish  ->  build/showcase(.exe)
     odin run tools/tk -- build fidget       # the widget gallery  ->  build/fidget(.exe)
     odin run tools/tk -- build todo         # a todo app
     odin run tools/tk -- build smoke        # renderer / font / draw smoke test (no UI layer)
@@ -38,25 +39,29 @@ few lines (`examples/hello`), the backends and options, the tests, the versions,
 
 ## Screenshots
 
+`examples/showcase`, a scene per feature (`tk screenshots` draws each with no window):
+
 | | |
 |---|---|
-| ![Inputs: validation, multi-line editor, fuzzy search, tags, form](docs/screenshots/inputs.png) | ![Data: 20,000-row virtualized table and file tree](docs/screenshots/data.png) |
-| **Inputs**: validated fields, multi-line editor, live fuzzy search, tag input, form | **Data**: 20,000-row virtualized table (groups with totals, sort, filter, resize), file tree |
-| ![Playground: physics, spinner, live accent picker](docs/screenshots/playground.png) | ![Command palette with fuzzy matching](docs/screenshots/palette.png) |
-| **Playground**: physics balls, fidget spinner, live accent color picker | **Command palette** (Ctrl+K), fuzzy matches highlighted, Nord theme |
-| ![Settings dialog](docs/screenshots/settings.png) | ![Toasts](docs/screenshots/toasts.png) |
-| **Settings**: theme, zoom, animations, toast position (click a cell) | **Toasts**: 8 anchor positions, border tinted by kind |
-| ![About dialog](docs/screenshots/about.png) | ![Light theme](docs/screenshots/light.png) |
-| **About** (F1), Dracula theme | **Daylight** theme (19 themes, cross-fading) |
-| ![Bootstrap theme](docs/screenshots/bootstrap.png) | ![Compact density](docs/screenshots/compact.png) |
-| **Bootstrap** theme: gradient finish, embossed text, focus glow | **Compact** density: more rows, same text size |
+| ![Buttons of every intent in three faces, the hues in their shades and soft pairs](docs/screenshots/showcase_intents.webp) | ![ui.number with its track, a range, switches, a well, in Champagne light](docs/screenshots/showcase_controls_light.webp) |
+| **Intents and hues**: `intent =` and `face =` (raised, ghost, toggled), `ui.shade`, `ui.soft_pair`, dots, a spinner, hint actions, a well | **Numbers and ranges**: `ui.number` with its track, `ui.range_slider`; the machined finish on a light palette |
+| ![The command palette with the program's commands and the settings](docs/screenshots/showcase_palette.webp) | ![A context menu searched: its band, the rows that match](docs/screenshots/showcase_menu_search.webp) |
+| **Command palette**: one table of commands, then one command per preference (`prefs_page.palette_commands`) | **Menus**: as wide as their rows; typing searches them |
+| ![An export dialog: its header and the close button in its corner](docs/screenshots/showcase_dialog.webp) | ![A confirmation: four files deleted for good](docs/screenshots/showcase_confirm.webp) |
+| **Dialogs**: `dialog_header` with its close button, `dialog_body`, `dialog_buttons`; it fades in | **`ui.confirm`**, and `ui.prompt` for an answer typed in |
+| ![The settings page: the themes as cards, the user's own under them](docs/screenshots/showcase_settings_advanced.webp) | ![A node graph and its inspector, Glacier light, edged](docs/screenshots/showcase_graph_light.webp) |
+| **Settings**: `prefs_page` with the standard sets, groups, the folded Advanced part, search, export | **Node graph**: `gt:flowgraph`, `ui.node_graph`, `ui.node_inspector` |
+| ![Toasts over the graph: saved, copied, slow, failed](docs/screenshots/showcase_toasts.webp) | ![Every theme as a card, the finishes and versions](docs/screenshots/showcase_themes.webp) |
+| **Toasts**: `ui.announce`, `toast_titled` | **26 themes** and a user's own, five finishes, dark and light |
+| ![The edged finish on Kernel](docs/screenshots/showcase_controls_edged.webp) | ![Data: 20,000-row virtualized table and file tree](docs/screenshots/data.png) |
+| **Edged**: the machined reliefs drawn crisp, square corners | **Data** (`examples/fidget`): a 20,000-row virtualized table (groups with totals, sort, filter, resize), a tree |
 
 <p align="center"><img src="docs/screenshots/todo.png" width="420" alt="todo example"><br><b>examples/todo</b></p>
 
 ![examples/transforms: rotated, skewed and scaled shapes, text and images, rounded clips](docs/screenshots/transforms.png)
 <p align="center"><b>examples/transforms</b>: the draw layer's affine transforms, rounded clips and images</p>
 
-Screenshots are regenerated with `odin run tools/tk -- screenshots -build` (default settings, over the DevTools protocol: the mouse and the windows in front are left alone).
+Screenshots are regenerated with `odin run tools/tk -- screenshots -build` (default settings, over the DevTools protocol: the mouse and the windows in front are left alone; the showcase's as WebP, which needs `cwebp`: `nix develop` has it). The rest of `examples/fidget`'s pictures are in [docs/screenshots](docs/screenshots).
 
 ## What it looks like
 
@@ -106,6 +111,7 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 | `store` | A program's small files of keys and values (`key<separator>value` lines): read once at the start, kept in memory, written later by a worker of their own once the changes rest, atomically; a `Writer` does the same for a file the program formats. Pure Odin, any target. See [docs/store.md](docs/store.md). |
 | `notices` | A program's log of what its user missed (a run ended, a question waits): one open entry per key counted as it comes again, New, Seen and Acknowledged, a history of what was acknowledged in a cap, kept across restarts in a `store` file; its groups made again only after a change. `ui.badge` shows a count on a button's corner. See [docs/notices.md](docs/notices.md). |
 | `prefs_page` | A program's settings page, built from its `config` registry with no code per preference: the pages with their icons, the search, a line per preference with its title, its description and its control (a switch, a choice, a slider, a field with its unit), reset, the themes as cards. See [docs/prefs_page.md](docs/prefs_page.md). |
+| `flowgraph` | Graphs a person edits and runs (a workflow, a pipeline): a catalog of node kinds as data, edits that keep the graph valid (no cycle, kinds that agree, counts), a run as one state machine per node with action ports, values counted and shared, the graph set as JSON. `ui.node_graph` draws it, `ui.node_inspector` edits a node. See [docs/flowgraph.md](docs/flowgraph.md). |
 | `diff` | A unified diff read once into its lines (hunks, numbers, what changed in a line), two texts compared, and its rows: stacked or split, the code in its colours, only the rows in view built. See [docs/diff.md](docs/diff.md). |
 | `remote` | How the reading of a value from a server stands (idle, loading, ready, refused, failed), with a ticket that drops the answer of a reading given up. See [docs/remote.md](docs/remote.md). |
 | `winrt` | Windows Runtime APIs from Odin with no projection: HSTRINGs, factories, the IDs of generic instances, `await` for an asynchronous operation, event handlers, vectors. See [docs/winrt.md](docs/winrt.md). |
@@ -129,13 +135,17 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   (at the right edge, or at the left one with `.Scrollbar_Left`; `set_scrollbar_autohide` shows them only under the pointer).
 - **State survives rebuilds**: hover/press/focus animation, scroll offsets and text-field state are keyed by id strings
   (`"Label##hidden"`, `"Label###stable_id"`, `"###id"` as in raddebugger).
-- **Themes**: 25 themes, most with a dark and a light version, the system's light or dark followed (`theme_show`); a
+- **Themes**: 26 themes, most with a dark and a light version, the system's light or dark followed (`theme_show`); a
   program's own colours moved to the theme shown (`theme_recolor`); a user's themes from a file of theirs. See
   [docs/themes.md](docs/themes.md). `(tags -> color)` patterns, `apply_palette` expands a palette; colors cross-fade
   when it changes. Interaction states (hover, press, focus, selection) show at once, as visible steps per role
   (`hover_fill`, `press_fill`: a fraction of the way to the tint in sRGB values, right in both blend spaces);
   `Theme.transition_ms` brings back short fades. Finishes: flat, gradient (Bootstrap 2), glass (Aero), optionally over
-  a translucent window with the Windows 11 acrylic backdrop, or machined (bevelled buttons, sunken wells, carved lines).
+  a translucent window with the Windows 11 acrylic backdrop, machined (bevelled buttons, sunken wells, carved lines,
+  raised plates; the default of the standard settings), or edged (the same reliefs drawn crisp, square corners).
+- **Colours by meaning**: a button says its `intent` (Primary, Info, Success, Warning, Danger, Cancel) and its `face`
+  (raised, ghost, toggled); an intent is one of the theme's hues, drawn as its soft pair (`soft_pair`: a tinted fill and
+  words of the same hue that read on it), in every theme. `shade` gives a hue's eleven shades (S50 to S950, OKLCH).
 - **Look controls**: corner rounding (square to very round, squircle or circular corners) and density
   (comfortable / compact), both live.
 - **Zoom, built in**: Ctrl+wheel, Ctrl +, Ctrl -, Ctrl 0 scale every size and the font (`ui.zoom`, `ui.set_zoom`;
@@ -149,7 +159,8 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   indentation, Up / Down keep the column), scroll region, **menus** (context menus, dropdowns, menu bar: submenus,
   separators, disabled items, shortcuts, full keyboard, kept on screen), **keyboard lists** (`List_State`: active row,
   Page Up / Down, type-ahead, Enter / Escape, kept in view), wrapped text (`paragraph`), tooltip with hover delay,
-  toasts (8 anchor positions, bordered, stacked with a glide), modal dialogs, a **colour picker** (`color_picker`: sat/val square, hue and opacity bars, old and new colour, hex / rgb / hsl / oklch text; the parts on their own too), numbers stepped in a field (`field_num_step`: Up / Down with Shift, Alt, Ctrl, and the wheel), fuzzy-match helper + highlighted labels, QR Codes (`qr_code`, [docs/qr.md](docs/qr.md)), custom-draw boxes.
+  toasts (8 anchor positions, bordered, stacked with a glide), modal dialogs, wells (`well`), actions said in words
+  (`hint_action`), a busy arc (`spinner`), dots of an intent (`dot`), count badges (`badge`), a **colour picker** (`color_picker`: sat/val square, hue and opacity bars, old and new colour, hex / rgb / hsl / oklch text; the parts on their own too), numbers stepped in a field (`field_num_step`: Up / Down with Shift, Alt, Ctrl, and the wheel), fuzzy-match helper + highlighted labels, QR Codes (`qr_code`, [docs/qr.md](docs/qr.md)), custom-draw boxes.
 - **2D transforms and images** (draw layer): `draw.push_transform` with a CSS-style `Affine` matrix (rotate, skew,
   scale, nested) applies to rects, borders, shadows, gradients, text and images, antialiased in local space; scaled
   text is re-rasterized at its screen size. `draw.push_clip_rounded` clips to a rounded rect under any transform.
@@ -224,6 +235,24 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   others (grab, grabbing, zoom, cell, copy, alias...) drawn in the user's pointer scheme and size; custom cursors from
   RGBA images with a hotspot (`custom_cursor_create`, scaled per dpi, shared, released); the cursor changes at once,
   also during a drag. Try `examples/cursors`.
+- **Commands and menus**: one table of commands gives the keys, the menus' shortcuts, the tooltips, the **command
+  palette** (`palette`: fuzzy, grouped, resizable, recent commands) and the sheet of the keys
+  ([docs/commands.md](docs/commands.md)). A menu is as wide as its widest row, and typing searches it: a band shows what
+  is typed, a submenu's rows come up ([docs/menus.md](docs/menus.md)).
+- **Dialogs**: `modal` and `modal_sized` (resized by its edges, kept in the window, laid out before its first frame, fading
+  in); `dialog_header` with the close button in its corner, `dialog_body`, `dialog_buttons`; `confirm` before an act not
+  taken back; `prompt` for an answer typed in, a secret wiped after use ([docs/modals.md](docs/modals.md)).
+- **Settings**: `prefs_page` builds a program's settings page from its `config` registry with no code per preference,
+  and the toolkit's standard sets give every program the same settings (Appearance, Text, Scrolling, Input, Timing,
+  Rendering, Update, Session), applied as they change (`standard_watch`): pages, groups, a folded Advanced part, search,
+  reset, export to JSON / TOML / INI, the themes as cards and the user's own themes file
+  ([docs/prefs_page.md](docs/prefs_page.md), [docs/settings.md](docs/settings.md)).
+- **Node graphs**: `gt:flowgraph` holds a graph a person edits and runs (a catalog of kinds, edits that keep it valid,
+  a run as a state machine per node, JSON); `ui.node_graph` draws and edits it (ports by kind, links, band selection,
+  zoom, minimap, a run's states) and `ui.node_inspector` edits a node from its kind's schema
+  ([docs/flowgraph.md](docs/flowgraph.md), [docs/node_graph.md](docs/node_graph.md)).
+- **What was done**: `ui.announce` says it as a notification of the system, or a toast where there is none or where the
+  person chose it ([docs/notifications.md](docs/notifications.md)).
 - **Panes**: splitters, accordions and lists reordered by dragging ([docs/panes.md](docs/panes.md)).
 - **Docking**: the app's panels in stacks of tabs the user drags to split, join, float and dock back, every drop target
   also in a menu for the keyboard, the layout saved as one line of text ([docs/docking.md](docs/docking.md)).

@@ -26,6 +26,8 @@ prefs_page.build(&page, &prefs, {
 })
 ```
 
+![The Appearance page: the themes as cards with two of the user's own, light or dark, the finish, the glow (examples/showcase)](screenshots/showcase_settings.webp)
+
 ## The standard settings
 
 Every program has the same look, the same text, the same hand and the same place on the desktop: the toolkit declares
@@ -95,6 +97,10 @@ What the program applies itself:
 `appearance_read` reads a preference that is not registered as its standard default.
 
 ## What it shows
+
+| A page, its group and its Advanced part | A search |
+|---|---|
+| ![The Scrolling page: the middle button's group, then Advanced unfolded](screenshots/showcase_settings_advanced.webp) | ![The settings searched for "scroll": what matches in every page](screenshots/showcase_settings_search.webp) |
 
 - On the left, the sidebar: the search in a well, then the pages, each a button with its icon and its title; the page
   shown is pressed in. A page is a top group of the registry (the first segment of the name). `Options.pages` gives

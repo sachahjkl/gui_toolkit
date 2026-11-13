@@ -107,6 +107,14 @@ surface (`set_fixed_surface` returns false), so the recipe does not help there (
 The widgets are calls in `build` (`ui.label`, `ui.button(...).clicked`, `ui.line_edit`, `if ui.row() { ... }`):
 README.md ("What it looks like", "Features") and `examples/fidget` (the gallery of every widget) show the rest.
 
+`examples/showcase` shows what a program gets from the toolkit, one scene each: the intents and the hues, the numbers
+and ranges, the command palette, a menu that searches, the dialogs, the settings page, a node graph and its inspector,
+the toasts, every theme and finish. Its data is fixed, so each scene is the same picture at each run.
+`odin run tools/tk -- build showcase`, then `build/showcase --scene=graph --theme=Nord --light` opens a scene in a theme;
+the head of `examples/showcase/main.odin` lists its flags. Its code is the place to copy a scene from.
+
+![examples/showcase: the intents and hues](screenshots/showcase_intents.webp)
+
 A password is `ui.line_edit(id, &field, secret = true)`: bullets in place of its characters, and it is neither copied nor cut.
 Once it is used, `ui.field_wipe(&field)` leaves nothing of it in memory (widgets.md, "A secret's memory").
 Give it `reveal = &shown` (a `bool` the program keeps) and an eye at its end shows the text and hides it again; shown, it is

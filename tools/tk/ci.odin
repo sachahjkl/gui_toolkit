@@ -10,9 +10,9 @@ import toolbox "../../src/toolbox"
 EXE :: ".exe" when ODIN_OS == .Windows else ""
 
 // The examples, and the ones the CI builds on each system.
-EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "stream", "panes", "docking", "cursors", "markdown", "whatsnew"}
-CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking"}
-CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", "docking", "whatsnew"}
+EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "stream", "panes", "docking", "cursors", "markdown", "whatsnew", "showcase"}
+CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking", "showcase"}
+CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", "docking", "whatsnew", "showcase"}
 
 
 // The packages of the library: every folder under src/ that holds Odin files (a list written by hand forgot ten).

@@ -107,7 +107,8 @@
     devShells.${system}.default = pkgs.mkShell {
       # (dbus: dbus-daemon, the notifications' tests start a session bus of their own; curl: the shell's own, a system's curl
       # loads the shell's glibc through LD_LIBRARY_PATH and stops)
-      packages = [odin] ++ (with pkgs; [cargo rustc dbus curl]) ++ desktops ++ preCommitCheck.enabledPackages;
+      # (libwebp: cwebp, which tk screenshots and tk site_build make the site's pictures light with)
+      packages = [odin] ++ (with pkgs; [cargo rustc dbus curl libwebp]) ++ desktops ++ preCommitCheck.enabledPackages;
       buildInputs = [pkgs.fontconfig];
       # (nix develop clears LD_LIBRARY_PATH when it is an attribute)
       shellHook =
