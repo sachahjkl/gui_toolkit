@@ -69,3 +69,22 @@ the_wheel_scrolls_a_strip_sideways :: proc(t: ^testing.T) {
 	view := session.get(s2, "strip_view")
 	testing.expect(t, .Scroll_Self not_in view.flags, "all on the line: the wheel is the page's")
 }
+
+// A line that is cut has its bar under its cells, not over them, and a fade at the side that hides cells: at the right while
+// it is at its start, at the left once at its end.
+@(test)
+a_cut_strip_has_its_bar_under_it_and_fades_where_it_goes_on :: proc(t: ^testing.T) {
+	st := Strip{count = 9}
+	s := session.start(t, {size = {400, 400}, user = &st, build = strip_build})
+	session.frames(s, 3)
+	view, c0 := session.get(s, "strip_view"), session.get(s, "c0")
+	bar, _, ok := ui.scrollbar_rects(view, .X)
+	if testing.expect(t, ok, "a bar") {
+		testing.expectf(t, bar.min.y >= c0.rect.max.y - 0.5, "the bar %v under the cells %v", bar, c0.rect)
+	}
+	testing.expectf(t, view.edge_fade[0] == 0 && view.edge_fade[2] > 0, "at its start: a fade at the right only, %v", view.edge_fade)
+	view.view_target.x = ui.view_limit(view, .X)
+	session.wait_idle(s)
+	view = session.get(s, "strip_view")
+	testing.expectf(t, view.edge_fade[0] > 0 && view.edge_fade[2] == 0, "at its end: a fade at the left only, %v", view.edge_fade)
+}

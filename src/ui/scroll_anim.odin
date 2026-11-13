@@ -93,6 +93,16 @@ view_limit :: proc(b: ^Box, axis := Axis.Y) -> f32 {
 	return max(0, b.view_bounds[int(axis)] - b.size[int(axis)])
 }
 
+// The edges of a box that scrolls along `axis` fade over `width` where they hide content (by the last layout's offset and
+// bounds): a subtle sign that it scrolls that way, where a bar alone says little. The box must clip (.Clip): edge_fade.
+scroll_fades :: proc(b: ^Box, axis: Axis, width: f32) {
+	i := int(axis)
+	off, limit := b.view_off[i], view_limit(b, axis)
+	before := off > 0.5 ? width : 0
+	after := off < limit - 0.5 ? width : 0
+	b.edge_fade = axis == .X ? {before, 0, after, 0} : {0, before, 0, after}
+}
+
 // The offset closest to `offset` that shows `top` .. `bottom` in `view`; what is longer than the view keeps its top.
 // `margin`: how much room is left around it when the offset has to move (what already shows stays as it is).
 view_reveal_offset :: proc(offset, top, bottom, view: f32, margin: f32 = 0) -> f32 {

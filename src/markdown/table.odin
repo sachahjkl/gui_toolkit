@@ -254,10 +254,7 @@ table_scroller :: proc(overflow: bool, total, em: f32) -> ^ui.Box {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	hs := ui.build_box(overflow ? {.View_Scroll_X, .Clip} : {}, "###hs")
 	if overflow {
-		w := hs.rect.max.x - hs.rect.min.x
-		limit := max(total - w, 0)
-		fade := math.round(em * TABLE_FADE_EM)
-		hs.edge_fade = {hs.view_off.x > 0.5 ? fade : 0, 0, hs.view_off.x < limit - 0.5 ? fade : 0, 0}
+		ui.scroll_fades(hs, .X, math.round(em * TABLE_FADE_EM))
 		_ = ui.signal(hs)   // (the wheel sideways, or Shift+wheel, scrolls it in its signal)
 	} else {
 		hs.view_off, hs.view_target = {}, {}

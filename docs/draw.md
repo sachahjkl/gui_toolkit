@@ -224,7 +224,9 @@ the same fields and returns false likewise: the kept result has its mask in it (
 live only when they commute with the mask (every CSS filter function does); others run before the mask.
 `mask_edge_fade(dc, r, {left, top, right, bottom})`, after the content of a `push_mask`, draws the mask that fades the
 content out over those widths at the edges of `r` (0: that edge stays opaque). A `ui` box gets it with `edge_fade` in
-`ui.next` (with `.Clip`): a list that scrolls fades out where it goes on.
+`ui.next` (with `.Clip`): a list that scrolls fades out where it goes on. `ui.scroll_fades(box, axis, width)` sets it on a
+box that scrolls, at each build, from the last layout: a fade at the edge that hides content, none at an edge reached (a
+strip_grid's line, a wide Markdown table).
 
 **GPU profile** (`src/render/gpu_profile.odin`): `render.set_gpu_profile(r, true)` puts a timestamp after each step of
 `frame_submit` (a run of draw calls into one target, a clear, a copy, a filter pass); `render.gpu_profile(r)` gives,

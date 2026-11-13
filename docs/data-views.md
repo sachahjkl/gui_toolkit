@@ -251,7 +251,8 @@ In the machined and edged finishes a tile, a part and the strip are lit along th
 ## A strip that opens into a grid
 
 `if ui.strip_grid("###themes", &open, {gap, gap}) { cells... }`: the cells (each its own width) on one line that scrolls
-sideways (the wheel, either way, and the bar under it); "Show all" under it lays them out as a grid wrapped to the width,
+sideways (the wheel, either way, and the bar under it, in room of its own: never over the cells; a fade at a side that
+hides cells, `STRIP_FADE_EM` wide); "Show all" under it lays them out as a grid wrapped to the width,
 "Show fewer" folds them back. The button is there only when the line does not hold them all, or when open. `open` is the
 program's to keep (a preference, if it should last).
 
