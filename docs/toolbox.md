@@ -258,16 +258,54 @@ that are not flags; a lone `-` is plain).
 | `linux_defines` | what every odin command of the program gets on Linux |
 | `launcher` | Windows: its console launcher, a `Launcher` (`out` `""`: none) |
 | `licence` | its licence, for its notices (`""`: MIT) |
-| `native_crates` | the toolkit's crates it links statically (nil: `native/text`) |
+| `features` | what it takes of the toolkit beyond the core, a `Features` (below) |
 
 - `version_of(source, line)` is the version in quotes after `line` (`""`: no such line); `version_set(source, line, version)`
   is the source with it replaced (ok = false: no such line). `project_version(p)` reads it from `version_file`.
 - `toolkit_dir(p)` is the toolkit's checkout.
 - `odin_command(p, verb, pkg = "", extra = nil)` is `odin <verb> <pkg> -collection:gt=<toolkit>/src <collections> -vet`,
-  on Linux the defines and, but for `check`, `LINUX_LINK_FLAG` (the native text backend and wgpu-native carry the same
-  Rust standard library), then `extra`. `pkg` `""`: the program's.
-- `build_native_text(p)` builds the toolkit's native text backend on Linux, by the toolkit's own `tk build_text` in the
-  project's checkout of it (nothing when it is up to date); elsewhere it does nothing.
+  the defines of the features, on Linux `linux_defines` and, but for `check`, `LINUX_LINK_FLAG` (the native text backend
+  and wgpu-native carry the same Rust standard library), then `extra`. `pkg` `""`: the program's.
+- `build_native(p)` builds what the features need before an odin command: the toolkit's native libraries this system
+  links (`tk build_text` on Linux or with `Native_Text`, `tk build_a11y` on Windows with `Accessibility`,
+  `tk build_mermaid` with `Mermaid`), by the toolkit's own tool in the project's checkout of it (nothing when a library is
+  up to date), and the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)).
+
+### Features
+
+A program declares once what it takes of the toolkit beyond its core: `Project.features`, a `Features`
+(`bit_set[Feature]`). The defines (`feature_defines(features, target, lucide)`), the native builds (`build_native`) and
+the crates of the notices (`native_crates(features)`) follow from it. What each one gives (sizes: [builds.md](builds.md)):
+
+| `Feature` | Define | Native build | Crates of the notices |
+|---|---|---|---|
+| `Native_Text` | Windows: `FONT_BACKEND=native` (the default elsewhere) | `tk build_text` (Linux: always) | `native/text` (always) |
+| `Accessibility` | Windows: `A11Y_ACCESSKIT=true` | Windows: `tk build_a11y` | `native/a11y` |
+| `Mermaid` | | `tk build_mermaid` | `native/mermaid` |
+| `Devtools` | `TOOLKIT_DEVTOOLS=true`: the CDP endpoint in a release build ([devtools.md](devtools.md)) | | |
+| `Lucide_Subset` | `LUCIDE_SUBSET=<path>`, once the file is made, but for `check` | `lucide_subset(p)` | |
+| `No_Fallback_Fonts` | `FONT_EMBED_FALLBACK=false` | | |
+
+```odin
+p := toolbox.Project{name = "classeur", src = "src", program = "build/classeur", features = {.Mermaid, .Lucide_Subset}}
+
+if !toolbox.build_native(p) { return "the native parts failed" }
+if !toolbox.run(toolbox.odin_command(p, "build", extra = {"-o:speed", "-out:build/classeur"})) { return "the build failed" }
+```
+
+## Font subsets
+
+`font_subset(data, codes, allocator)` is a TrueType font (glyf outlines) with only the glyphs of the characters `codes`
+(those the font has), `.notdef`, and the glyphs a kept composite glyph is made of. The outlines and advances are the
+original's; the glyphs are numbered anew in their old order, the character map holds only `codes` (format 4, or 12 past
+the BMP), `post` has no glyph names, and only `OS/2`, `cmap`, `glyf`, `head`, `hhea`, `hmtx`, `loca`, `maxp`, `name` and
+`post` are kept (no ligatures, kerning or hinting). why: the font cannot be read (CFF outlines, a collection).
+`sfnt_tables(data)`, `sfnt_table(tables, tag)`, `sfnt_cmap(cmap)` and `sfnt_glyph(glyf, loca, long, gid)` read a font's
+tables, its character map and a glyph's bytes.
+
+`lucide_subset(p)` writes the program's icons of the Lucide font at `LUCIDE_SUBSET_FILE` (`build/lucide_subset.ttf`, in
+the working directory) and returns its absolute path; `lucide_names_used(dirs)` and `lucide_codes(source, names)` are its
+steps ([lucide.md](lucide.md)).
 - `build_launcher(p)` builds the console launcher on Windows from the toolkit's `tools/console_launcher`, with the
   `Launcher`'s mark (`LAUNCHER_MARK`), rule (`default_rule`: `wait` or `detach`) and `others`. The program embeds it: it
   comes before a check or a build. `check_launcher(p)` checks it beside a release build: `<out> version` says
@@ -303,7 +341,7 @@ own code at `out` (`NOTICES_FILE`, `THIRD-PARTY-NOTICES`), or with `check_only` 
 - gui_toolkit (MIT) and its attributions (`NOTICE.md`), Roboto, Inconsolata and Lucide's icons, from the toolkit's checkout;
 - Odin's core library (`<odin root>/LICENSE`, BSD-3-Clause);
 - wgpu-native (MIT or Apache-2.0), whose texts the toolbox keeps (`src/toolbox/licences`: its release archive has none);
-- the Rust crates of `Project.native_crates`: `cargo metadata` of each (`--locked --offline`, for `NOTICES_TARGET`, this
+- the Rust crates of the project's features (`native_crates(p.features)`): `cargo metadata` of each (`--locked --offline`, for `NOTICES_TARGET`, this
   system's), the crates the library links (`notices_crates(metadata)`: the normal dependencies from its package, crate after
   crate; never a build script's, a test's or a procedural macro), each with its licence files (`LICENSE*`, `LICENCE*`,
   `COPYING*`, `NOTICE*`, and its manifest's `license-file`). A crate with no licence file is an error.

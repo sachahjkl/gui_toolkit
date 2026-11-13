@@ -22,6 +22,26 @@ dropdown's arrow, a submenu's arrow, a number's − and +, a toast's sign) are c
 (`ui.ICON_FONT_DATA`), which `ui.widget_icons()` loads the first time a widget draws one: they stay right whatever the
 program's icon font is.
 
+## Only the icons a program uses
+
+The whole font is 900 KB, and a program that loads `DATA` (the toolkit does, for a text field's menu and the command
+palette) carries all of it. A program draws about 25 to 90 of its 1876 icons. Built with
+`-define:LUCIDE_SUBSET=<absolute path>`, `DATA` is the font at that path instead (`#load` of the define); the constants
+do not change, and one whose icon the font does not hold draws nothing.
+
+`toolbox.lucide_subset(project)` writes that font at `build/lucide_subset.ttf` in the project (`LUCIDE_SUBSET_FILE`)
+and returns its absolute path. It holds the icons named in the Odin sources of the program (`Project.src`) and of the
+toolkit's `src` (the widgets' own): every `<alias>.NAME` of a file that imports the lucide package as `<alias>`
+(`tk_lucide` without an alias), the names mapped to their characters through `src/lucide/lucide.odin`
+(`toolbox.lucide_names_used(dirs)`, `toolbox.lucide_codes(source, names)`). An icon reached any other way (its
+character written out, `""`) is not seen: name it by its constant. `toolbox.font_subset(data, codes)` makes the
+font: the glyphs of the characters, `.notdef` and the parts of a composite glyph, the outlines and advances unchanged,
+a new character map, no glyph names, no ligatures (GSUB).
+
+A program's tool does both with `.Lucide_Subset` in `Project.features`: `build_native` writes the file, and
+`odin_command` passes the define to every command but `check` once the file is there. whatsnew: 25 icons, 10 KB
+instead of 917 KB.
+
 ## A program's own icons
 
 A program needs no icon of the toolkit: any icon font it loads can be its icon font, and an icon is a character of it

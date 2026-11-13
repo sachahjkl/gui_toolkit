@@ -4,6 +4,7 @@ package tk_toolbox
 // tool's commands build their odin commands from it, and the standard commands (changelog.command, release.commands,
 // site.command, notices_command) read it.
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -30,8 +31,20 @@ Project :: struct {
 	linux_defines: []string,      // what every odin command of the program gets on Linux ("-define:FONT_BACKEND=native")
 	launcher:      Launcher,      // Windows: the console launcher beside the program (out "": none)
 	licence:       string,        // the program's licence, for its notices ("": "MIT")
-	native_crates: []string,      // the toolkit's crates the program links statically, in the toolkit ("": {"native/text"})
+	features:      Features,      // what it takes of the toolkit beyond the core: its defines, native builds and crates
 }
+
+// What a program takes of the toolkit beyond its core, declared once in its Project: each gives the program's odin
+// commands their defines (feature_defines), build_native its steps and the notices their crates (native_crates).
+Feature :: enum u8 {
+	Native_Text,        // the native text backend on Windows too (FONT_BACKEND=native); elsewhere it is the only one
+	Accessibility,      // Windows: screen readers through AccessKit (A11Y_ACCESSKIT=true, native/a11y)
+	Mermaid,            // Mermaid diagrams (gt:mermaid, native/mermaid)
+	Devtools,           // the CDP endpoint in a release build too (TOOLKIT_DEVTOOLS=true); a -debug build has it anyway
+	Lucide_Subset,      // only the Lucide icons the sources name are compiled in (lucide_subset, LUCIDE_SUBSET)
+	No_Fallback_Fonts,  // no Roboto or Inconsolata compiled in (FONT_EMBED_FALLBACK=false): the system's fonts only
+}
+Features :: bit_set[Feature; u8]
 
 // A program's console launcher (the toolkit's tools/console_launcher): its file, its mark and its rules.
 Launcher :: struct {
@@ -87,12 +100,13 @@ collection_flags :: proc(p: Project, out: ^[dynamic]string) {
 	append(out, "-vet")
 }
 
-// `odin <verb> <package> <collections> -vet`, on Linux the project's defines and (but for check, which links nothing)
-// LINUX_LINK_FLAG, then `extra`. `pkg` "": the program's.
+// `odin <verb> <package> <collections> -vet`, the defines of the project's features (feature_defines), on Linux the
+// project's defines and (but for check, which links nothing) LINUX_LINK_FLAG, then `extra`. `pkg` "": the program's.
 odin_command :: proc(p: Project, verb: string, pkg := "", extra: []string = nil) -> []string {
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", verb, pkg != "" ? pkg : project_src(p))
 	collection_flags(p, &cmd)
+	append(&cmd, ..feature_defines(p.features, ODIN_OS, verb != "check" ? lucide_subset_path() : ""))
 	when ODIN_OS == .Linux {
 		append(&cmd, ..p.linux_defines)
 		if verb != "check" { append(&cmd, LINUX_LINK_FLAG) }
@@ -101,19 +115,62 @@ odin_command :: proc(p: Project, verb: string, pkg := "", extra: []string = nil)
 	return cmd[:]
 }
 
-@(private = "file")
+// The defines `features` give a program built for `target`. lucide: the subset's absolute path ("": none given, the
+// whole font: a check reads no font, and builds before build_native made it).
+feature_defines :: proc(features: Features, target: runtime.Odin_OS_Type, lucide: string) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	if .Native_Text in features && target == .Windows { append(&out, "-define:FONT_BACKEND=native") }
+	if .Accessibility in features && target == .Windows { append(&out, "-define:A11Y_ACCESSKIT=true") }
+	if .Devtools in features { append(&out, "-define:TOOLKIT_DEVTOOLS=true") }
+	if .Lucide_Subset in features && lucide != "" { append(&out, fmt.tprintf("-define:LUCIDE_SUBSET=%s", lucide)) }
+	if .No_Fallback_Fonts in features { append(&out, "-define:FONT_EMBED_FALLBACK=false") }
+	return out[:]
+}
+
+// The absolute path of LUCIDE_SUBSET_FILE, with forward slashes ("": it is not there yet).
+@(private)
+lucide_subset_path :: proc() -> string {
+	if !os.exists(LUCIDE_SUBSET_FILE) { return "" }
+	abs, err := os.get_absolute_path(LUCIDE_SUBSET_FILE, context.temp_allocator)
+	if err != nil { return "" }
+	slashed, _ := strings.replace_all(abs, "\\", "/", context.temp_allocator)
+	return slashed
+}
+
+// The toolkit's crates a program of `features` links, for its notices: the native text backend's always (it is the text
+// on Linux), and those of its features.
+native_crates :: proc(features: Features) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	append(&out, "native/text")
+	if .Accessibility in features { append(&out, "native/a11y") }
+	if .Mermaid in features { append(&out, "native/mermaid") }
+	return out[:]
+}
+
+@(private)
 project_src :: proc(p: Project) -> string { return p.src != "" ? p.src : "src" }
 
-// Linux: the toolkit's native text backend, built by the toolkit's own tool in the project's checkout of it (it does
-// nothing when the library is up to date). Elsewhere the system's text is the default: nothing to build.
-build_native_text :: proc(p: Project) -> bool {
-	when ODIN_OS == .Linux {
-		gt := toolkit_dir(p)
+// What the program's features need built before an odin command of it: the toolkit's native libraries this system
+// links (the text backend on Linux, or with Native_Text; AccessKit on Windows; Mermaid), each by the toolkit's own tool
+// in the project's checkout of it (nothing when it is up to date), and the Lucide subset (lucide_subset).
+build_native :: proc(p: Project) -> bool {
+	gt := toolkit_dir(p)
+	steps := make([dynamic]string, context.temp_allocator)
+	if ODIN_OS != .Windows || .Native_Text in p.features { append(&steps, "build_text") }
+	if ODIN_OS == .Windows && .Accessibility in p.features { append(&steps, "build_a11y") }
+	if .Mermaid in p.features { append(&steps, "build_mermaid") }
+	if len(steps) > 0 {
 		_ = os.make_directory_all(fmt.tprintf("%s/build", gt))   // (a fresh checkout has none: the linker writes tk there)
-		return run({"odin", "run", "tools/tk", "-out:build/tk", "--", "build_text"}, {dir = gt, echo = true})
-	} else {
-		return true
+		root, err := os.get_absolute_path(gt, context.temp_allocator)
+		if err != nil { fmt.eprintfln("%s: no such folder", gt); return false }
+		tk := fmt.tprintf("%s/build/tk%s", root, ODIN_OS == .Windows ? ".exe" : "")
+		if !run({"odin", "build", "tools/tk", fmt.tprintf("-out:%s", tk)}, {dir = gt, echo = true}) { return false }
+		for s in steps { if !run({tk, s}, {dir = gt, echo = true}) { return false } }
 	}
+	if .Lucide_Subset in p.features {
+		if _, why := lucide_subset(p); why != "" { fmt.eprintln(why); return false }
+	}
+	return true
 }
 
 // Windows: the program's console launcher (Project.launcher), built from the toolkit's tools/console_launcher; the
@@ -167,7 +224,7 @@ check_other :: proc(p: Project, target: string) -> bool {
 	return odin_check(project_src(p), target, extra[:], how = {echo = true})
 }
 
-@(private = "file")
+@(private)
 dir_of :: proc(path: string) -> string {
 	i := strings.last_index_any(path, "/\\")
 	return i > 0 ? path[:i] : "."

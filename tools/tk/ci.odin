@@ -37,8 +37,9 @@ library_packages :: proc(root: string) -> []string {
 }
 
 // build [example] [-debug]: an example (default fidget) -> build/<example>[.exe], optimized (-o:speed) or with debug information
-// (Windows: the D3D11 debug layer). Windows: no console (-subsystem:windows), and examples/<example>/<example>.rc as its resource
-// when there is one. Linux: the native text backend first (build_text).
+// (Windows: the D3D11 debug layer), with the devtools endpoint (TOOLKIT_DEVTOOLS: tk cdp and tk screenshots drive the release
+// builds). Windows: no console (-subsystem:windows), and examples/<example>/<example>.rc as its resource when there is one.
+// Linux: the native text backend first (build_text).
 run_build :: proc(args: []string) -> string {
 	example := len(toolbox.plain_args(args)) > 0 ? toolbox.plain_args(args)[0] : "fidget"
 	known := false
@@ -55,7 +56,7 @@ build_example :: proc(root, example: string, debug: bool) -> string {
 	out := join({root, "build", fmt.tprintf("%s%s", example, EXE)})
 	_ = os.make_directory_all(join({root, "build"}))
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "build", join({root, "examples", example}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed")
+	append(&cmd, "odin", "build", join({root, "examples", example}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed", "-define:TOOLKIT_DEVTOOLS=true")
 	when ODIN_OS == .Windows {
 		append(&cmd, "-subsystem:windows")
 		rc := join({root, "examples", example, fmt.tprintf("%s.rc", example)})
