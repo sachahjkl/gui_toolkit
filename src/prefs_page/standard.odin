@@ -98,6 +98,7 @@ FONT_SIZE_MAX :: 24
 @(private = "file", rodata) AUTOSTART_TAGS := [?]string{"login", "startup", "boot", "session"}
 @(private = "file", rodata) MESSAGES_TAGS := [?]string{"notifications", "toasts", "messages", "feedback", "copied", "saved"}
 @(private = "file", rodata) THEME_TAGS := [?]string{"colours", "colors", "palette", "dark", "light", "look"}
+@(private = "file", rodata) ROUNDING_TAGS := [?]string{"corners", "round", "square", "radius"}
 @(private = "file", rodata) MODE_TAGS := [?]string{"dark", "light", "night", "day"}
 @(private = "file", rodata) FINISH_TAGS := [?]string{"style", "look", "bevel", "flat"}
 @(private = "file", rodata) FONT_SIZE_TAGS := [?]string{"text size", "zoom", "bigger", "smaller"}
@@ -205,6 +206,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		append(&defs, config.Def{
 			name = "appearance.rounding", title = "Rounding", kind = .Float, default = {f = 1}, bounded = true, min = 0, max = 2, unit = "×",
 			description = "How round the corners are. 0: square corners. The edged finish is always square.",
+			tags = ROUNDING_TAGS[:],
 		})
 		append(&defs, config.Def{
 			name = "appearance.corner_smoothing", title = "Smooth corners", kind = .Float, default = {f = 1}, bounded = true, min = 0, max = 1,

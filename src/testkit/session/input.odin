@@ -140,9 +140,10 @@ type_slowly :: proc(s: ^Session, text: string) {
 // The tree of boxes. Between frames: what the last build made.
 
 // The box with this name (the part of its id after ###), nil when there is none. `index`: the nth of them, in the order of the tree.
-find :: proc(s: ^Session, name: string, index := 0) -> ^ui.Box {
+// `within`: only under that box (a row of a page whose rows share their parts' names).
+find :: proc(s: ^Session, name: string, index := 0, within: ^ui.Box = nil) -> ^ui.Box {
 	found := 0
-	return walk_find(s.state, s.state.root, name, "", index, &found)
+	return walk_find(s.state, within != nil ? within : s.state.root, name, "", index, &found)
 }
 
 // The box that shows this text (letter case does not count), the innermost first of the tree. nil: none.
@@ -166,9 +167,9 @@ walk_find :: proc(state: ^ui.State, b: ^ui.Box, name, ltext: string, index: int,
 	return nil
 }
 
-// The box with this name: none ends the test.
-get :: proc(s: ^Session, name: string, loc := #caller_location) -> ^ui.Box {
-	b := find(s, name)
+// The box with this name (`within`: under that box): none ends the test.
+get :: proc(s: ^Session, name: string, loc := #caller_location, within: ^ui.Box = nil) -> ^ui.Box {
+	b := find(s, name, 0, within)
 	if b == nil { failed(s, fmt.tprintf("no box is named %q", name), loc) }
 	return b
 }
