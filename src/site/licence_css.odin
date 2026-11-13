@@ -62,7 +62,6 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
   background: var(--shop-card); border: 1px solid var(--shop-line); border-radius: 18px;
   box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.5); font-variant-numeric: tabular-nums;
 }
-.shop-offer::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--shop-accent); }
 .shop-offer-label { margin: 0 0 10px; color: var(--shop-muted); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .shop-price { display: flex; align-items: center; gap: 14px; margin: 0 0 6px; }
 .shop-amount { font-size: 3.6rem; font-weight: 750; line-height: 1; letter-spacing: -0.04em; white-space: nowrap; }
@@ -126,7 +125,6 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
   position: relative; overflow: hidden; padding: 26px; background: var(--shop-card); border: 1px solid var(--shop-line);
   border-radius: 18px; box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.5);
 }
-.shop-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--shop-accent); }
 .shop-who { margin: 0 0 14px; font-size: 1.25rem; overflow-wrap: anywhere; }
 .shop-meta { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 18px; }
 .shop-meta > div { flex: 1 1 140px; padding: 10px 12px; background: var(--shop-well); border-radius: 10px; }
