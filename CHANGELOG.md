@@ -5,6 +5,39 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.249.0] - 2026-11-13
+
+### Added
+- **`ui.Announcer.state`**: the window whose toasts the messages are; a message said between two builds (a command, a task's result) shows in that window whatever state is in use.
+- **`config.load_text`**: reads a preference file's text read elsewhere (by a task); with `change`, what it sets counts as the user's change (an import).
+- **Themes of your own in every program**: `prefs_page.Themes_File` and `Options.themes_file` show under the themes' cards how to make one, with the file as a link; it is made from a commented template, opened in the system's editor and read again when it changes, all off the interface's thread.
+- **Export and Import on the settings page**: the settings export to JSON, TOML, INI or the program's own format, and import back from the program's own (`prefs_page.export_to`, `import_from`, `export_text`, `export_format_of`).
+- **`gt:undo`: one undo and redo stack for any model.** `undo.Stack(T)` keeps snapshots of a graph, a drawing or a text, with a limit, and drops the redo steps a new change makes useless.
+- **Builds without the fallback fonts**: `-define:FONT_EMBED_FALLBACK=false` leaves Roboto and Inconsolata out of the executable (244 KB), for a program that loads its fonts itself; `font.FALLBACK_UI_DATA` and `font.FALLBACK_MONO_DATA` are then empty.
+- **`prefs_page.standard_watch` and `standard_apply`**: one call applies every standard setting to the toolkit (feel, zoom, density, rounding, motion, scrolling, toasts; the renderer's and the fonts' with `Standard_Targets`), then each change again as it happens.
+- **`ui.node_inspector`, `ui.flow_nodes_make`, `ui.flow_palette`: a flowgraph in a window.** The inspector draws a node's parameters from its kind's schema (numbers with their sliders, toggles, choices, colours, texts, folders, lists the program gives) and returns the change for the program to apply after its undo step; `flow_nodes_make` makes `node_graph`'s nodes and links of a graph, and `flow_palette` the add palette of its catalog.
+- **Common settings for every program**: `prefs_page.standard_register` registers, besides the look and the session, the text and fonts, scrolling, input, delays and menus, rendering and updates (`STANDARD_ALL`; `appearance.glow`, `appearance.zoom`, `appearance.density`, `appearance.rounding`, `window.system_title`, `general.language`...), each with the toolkit's default and the title of its group; technical ones are advanced, never hidden. docs/settings.md lists them all.
+- **Only the Lucide icons a program uses**: built with `-define:LUCIDE_SUBSET=<path>`, `lucide.DATA` is a font of the program's icons instead of the whole one (whatsnew: 10 KB instead of 917 KB). `toolbox.lucide_subset` writes it from the icons the program's sources and the toolkit's name, with `toolbox.font_subset`, which cuts any TrueType font down to some characters.
+- **`gt:flowgraph`: graphs a person edits and runs.** A program describes its node kinds as data (ports, parameters, at most so many of a kind); the edits refuse a loop and a link of kinds that disagree; a run gives the nodes that are ready, shares their values counted, and skips what an input never reaches. Action ports put conditions between nodes: a node linked to an editor's "done" runs only when the person confirms, one linked to its "cancelled" only when they give up. A set of graphs reads and writes as JSON.
+- **`site.with_licence`: the pricing and thank-you pages of a program's shop.** The marks `<!-- licence-buy -->` and `<!-- licence-thanks -->` become the buy block (Paddle's checkout overlay, "Coming soon" until the shop is configured) and the block that shows the licence just bought. `site.licence_pages` fills six template pages in neutral words: pricing, thanks, terms, refunds, privacy and imprint.
+- **`licence-worker/`: the Worker that sells a program's licences.** One Cloudflare Worker codebase for every program, one deploy per product: Paddle's webhook becomes a signed licence, kept, mailed and shown on the thank-you page. Everything that names a program is a setting of its file `products/<program>.jsonc` (product, editions, prices, years of updates, mail templates); `products/example.jsonc` is the template.
+- **`toolbox.licence_commands`: the `licence` and `paddle` commands of a project's tool.** `licence keygen` makes the signing key pair outside any git work tree, `licence issue` signs a licence by hand, `licence verify` checks one, `licence secrets` decrypts the licence Worker's secrets with sops into a file git ignores, and `paddle` makes the product and its prices in Paddle's catalogue (a dry run without `-apply`).
+- **`gt:licence`: a program's paid licence, checked offline.** A program describes its licence once (`licence.Product`: its name, tag, signing context, file extension, public keys, editions, and optional years of updates) and checks a pasted key or a licence file with no network. Its `Store` keeps the licence in the user's configuration folder, or in memory only, puts a build's own licence in place once, and does every read and write in a task, off the interface's thread. `licence.file_dialog` gives the Open dialog of a licence file for `ui.file_dialog`.
+
+### Changed
+- **Toasts** are built at the end of every build: a program that never called `ui.toasts_build` showed none, so a message said in its window (`ui.announce`) went nowhere. `ui.toasts_build` is no longer public: remove its call.
+- **`ui.dot`** with no intent takes the colour of the text where it stands (a dot in a button's words reads as its words); an intent still gives its hue.
+- **The settings' sidebar is resized with the mouse**, and keeps its width (`prefs_page.sidebar_width`). `Options.file` replaces `Options.foot`: the settings file shows shortened with ~, and a click opens it.
+- **A program declares what it takes of the toolkit once**: `toolbox.Project.features` (`Native_Text`, `Accessibility`, `Mermaid`, `Devtools`, `Lucide_Subset`, `No_Fallback_Fonts`) gives `odin_command` its defines, `build_native` its steps (the native libraries, the Lucide subset) and the notices their crates. `build_native` replaces `build_native_text`, and `features` replaces `Project.native_crates`.
+- **The settings page in sections**: the settings of an inner group show under its title, the advanced ones under a folded Advanced part; a bounded number is a `ui.number` (slider, field, − and +); a control with no room beside its words goes under them.
+- **A text field's history is a `gt:undo` stack.** `Text_Field.history` and `Text_Area.history` (`ui.Edit_History`) replace their `undo` and `redo` arrays; `field_undo`, `area_undo` and the keys work as before.
+- **`ui.set_animations` and `ui.set_smooth_scroll`**: the user's word on motion goes over the system's; `Build_Params.smooth_scroll` is gone, set it with `ui.set_smooth_scroll`.
+- **The devtools endpoint is left out of release builds**: `devtools.start_from_env` returns nil and none of the server is linked (350 KB less) unless the build has `-define:TOOLKIT_DEVTOOLS=true`; a `-debug` build and a test have it as before. A tool that drives a release build over CDP builds it with the define (`toolbox.Feature.Devtools`); `tk build` does for the examples.
+
+### Fixed
+- **`fsx.make_dirs`** says whether the folder is there afterwards (one already there included), and `toolbox.build_c_lib` and `release.package_` use it: a second build of a C library no longer fails on its existing folder.
+- **`update keygen` writes a key into a folder that does not exist yet.** It refused such a path as if it were in a git work tree; it now checks from the nearest folder that exists, and makes the folder.
+
 ## [0.248.0] - 2026-11-13
 
 ### Added
@@ -3209,6 +3242,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.249.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.249.0
 [0.248.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.248.0
 [0.247.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.247.0
 [0.246.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.246.0
