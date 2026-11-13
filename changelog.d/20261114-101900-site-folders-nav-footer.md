@@ -1,0 +1,3 @@
+type: Changed
+
+**`tk_site`: every page a folder, one nav and one footer for every site**: the changelog is `changelog/`, the classic pages `classic/features/`, `classic/screenshots/` and `classic/changelog/`, and every link names the folder by the shortest way (`relative_links`), never `index.html`; the feed, `sitemap.xml` and `llms.txt` do the same. A home page's `<!-- site-nav -->` and `<!-- site-footer -->` become the same nav (Features, Download, Changelog, Pricing, GitHub, Buy license) and footer from its `Meta` (`with_frame`; new `Meta.publisher_logo`, `licence`, `footer_note`, `shop`; `Changelog_Options.meta`). `og:image:width` and `height` are the card's own; a download for one system offers no "Also for".
