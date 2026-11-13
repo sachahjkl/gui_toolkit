@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.243.0] - 2026-11-13
+
+### Added
+- **`ui.dialog_header` and `ui.choice_row`**: `ui.dialog_header` puts a dialog's title and icon in a strip across its top, darker than its body. `ui.choice_row` is a row of a list to choose from in a dialog (an icon, a title, a detail) with the command palette's selected look; the pointer that moves over a row selects it. `ui.confirm` shows its title in the header.
+- **`ui.dialog_body` and `ui.dialog_buttons`**: a dialog's body with its margins, and its row of buttons at its right end: with `ui.dialog_header`, every dialog has the same three parts.
+
 ## [0.242.0] - 2026-11-13
 
 ### Fixed
@@ -3118,6 +3124,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.243.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.243.0
 [0.242.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.242.0
 [0.241.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.241.1
 [0.241.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.241.0
