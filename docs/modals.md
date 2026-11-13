@@ -62,3 +62,30 @@ field's, `input background`, the colour of a menu's search band: every place tha
 corners are the dialog's as drawn, it begins inside the dialog's rim, and a line parts it from what is under it. A raised
 dialog's rim and edge are drawn over what is in it (`machined_plate_frame`): a child's background or line never covers
 them.
+
+## A dialog's header (`src/ui/dialog_parts.odin`)
+
+`dialog_header(id, title, icon, icon_font)` is that strip with a title: a shade darker than the dialog
+(`DIALOG_HEADER_DARKEN`), `DIALOG_HEADER_EM` tall, an icon of the accent at its start. Build it first in the dialog,
+before the body's scroll, so that it stays on top while the body scrolls. A program that sizes its dialog from its body
+adds the header's height (`dense(em * DIALOG_HEADER_EM)`).
+
+## A list to choose from (`src/ui/dialog_parts.odin`)
+
+`choice_row(id, index, &sel, title, detail, icon, icon_font)` is one row of a list a dialog asks to choose from (the
+accounts of a security key, the passkeys of a site). The row `index == sel` is drawn as the command palette's selected
+line: sunk in a well with a bar of the accent, its words in the theme's own colours. The pointer moving over a row
+selects it: the highlight follows the pointer, and Enter takes what it shows. Up and Down are the caller's. It returns
+true when the row is clicked.
+
+## A dialog's body and buttons (`src/ui/dialog_parts.odin`)
+
+`if dialog_body("id") { ... }` holds what a dialog says and asks, with its margins (`DIALOG_MARGIN_EM`) and gaps
+(`DIALOG_GAP_EM`); `if dialog_buttons("id") { ... }` is its row of buttons, at its right end, the main act last. With
+`dialog_header`, every dialog has the same three parts.
+
+## A dialog's body and buttons (`src/ui/dialog_parts.odin`)
+
+`if dialog_body("id") { ... }` holds what a dialog says and asks, with its margins (`DIALOG_MARGIN_EM`) and gaps
+(`DIALOG_GAP_EM`); `if dialog_buttons("id") { ... }` is its row of buttons, at its right end, the main act last. With
+`dialog_header`, every dialog has the same three parts.

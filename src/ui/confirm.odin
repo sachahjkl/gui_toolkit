@@ -40,6 +40,8 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 	w := em * (o.width_em > 0 ? o.width_em : CONFIRM_WIDTH_EM)
 	if modal(id, w, open) {
 		pad := em * 1.2
+		// (a safe act is a plain question; the others warn before they act)
+		dialog_header("confirm_title", text_shown(o.title), o.enter_confirms ? lucide.INFO : lucide.TRIANGLE_ALERT, lucide_icons())
 		if style({width = px(w)}) {
 			spacer(px(pad))
 			next({width = px(w), height = children_sum()})
@@ -47,10 +49,7 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 				spacer(px(pad))
 				next({width = px(w - 2 * pad), height = children_sum(), axis = .Y})
 				if column() {
-					next({width = fill(), font_size = em * 1.15})
-					paragraph(fmt.tprintf("%s###confirm_title", text_shown(o.title)))
 					if o.note != "" {
-						spacer(px(em * 0.4))
 						if tags("weak") {
 							next({width = fill()})
 							paragraph(fmt.tprintf("%s###confirm_note", text_shown(o.note)))

@@ -592,6 +592,31 @@ a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) {
 	testing.expect(t, ui.ctx_menu_any_open(), "the menu stays open")
 }
 
+// A list to choose from in a dialog: the pointer moving over a row selects it, a click chooses it.
+@(test)
+a_choice_follows_the_pointer :: proc(t: ^testing.T) {
+	Run :: struct { sel, chosen: int }
+	r := Run{chosen = -1}
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.px(300), height = ui.children_sum(), axis = .Y})
+		if ui.parent(ui.build_box({}, "###list")) {
+			for name, i in ([]string{"one", "two", "three"}) {
+				if ui.choice_row(fmt.tprintf("choice_%d", i), i, &r.sel, name, "detail") { r.chosen = i }
+			}
+		}
+	}})
+	session.frames(s, 2)
+	testing.expect_value(t, r.sel, 0)
+	session.hover(s, "choice_2")
+	session.frames(s, 2)
+	testing.expect_value(t, r.sel, 2)
+	session.click(s, "choice_1")
+	session.frames(s, 1)
+	testing.expect_value(t, r.chosen, 1)
+	testing.expect_value(t, r.sel, 1)
+}
+
 // A confirmation: Enter cancels an act that is not safe, the act's button acts; what it acts on is named, the rest counted.
 @(test)
 a_confirmation_answers :: proc(t: ^testing.T) {

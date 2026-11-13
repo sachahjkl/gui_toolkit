@@ -184,7 +184,7 @@ dialog_top_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 
 // The selected line: sunk in a well with a bar of the accent at its left, its text in the theme's own colour. A raised
 // face of the accent (a button's) put the text, and what the search found in it, on a colour too close to theirs.
-@(private = "file")
+@(private)
 palette_selected_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
 	s := gs()
 	p := px1()
