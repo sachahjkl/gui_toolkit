@@ -50,7 +50,7 @@ In a debug build (`TOOLKIT_BLOCKING_CHECK`, on with `-debug`), every procedure o
 standard error, once per call site of the program:
 
 ```
-toolkit: fsx.write_atomic on the interface's thread (src/prefs.odin:88): it can freeze the window; make it a task (ui.task)
+toolkit: fsx.write_atomic on the interface's thread (<program>/prefs.odin:88): it can freeze the window; make it a task (ui.task)
 ```
 
 `base.blocking_count()` counts them (a test of a program can expect 0 after a scenario). `ui.begin_build` marks its

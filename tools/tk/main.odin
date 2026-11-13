@@ -14,6 +14,7 @@
 //                                             wgpu_native.dll and puts DXC's dxcompiler.dll + dxil.dll in -dest (default build/; -no-dxc: not DXC).
 //                                             Linux: puts the static wgpu-native in Odin's vendor/wgpu/lib/wgpu-linux-x86_64-release.
 //                                             -odin: the compiler whose vendor folder it is (default: odin on the PATH)
+//   gen_lucide                                src/lucide/lucide.odin from lucide.ttf: a constant per icon, named after its glyph
 //   gen_emoji_data [-data:file]               font/emoji_data.odin from Unicode's emoji-data.txt (default build/emoji/emoji-data.txt)
 //   make_icon -png:file -out:file             a multi-size .ico (PNG, 16 to 256 px) from the 512 px logo
 //   make_logo [-out:file]                     draws the logo, 512 px (default .project/image.png)
@@ -90,6 +91,7 @@ COMMANDS := []Command {
 	{name = "make_logo", flags = {"out:"}, run = run_make_logo},
 	{name = "ppm_diff", flags = {"tolerance:"}, positionals = 2, run = run_ppm_diff},
 	{name = "emoji_board", flags = {"size:", "scale:", "step:", "font:", "out-dir:"}, run = run_emoji_board},
+	{name = "gen_lucide", run = run_gen_lucide},
 	{name = "release", flags = {"summary:", "no-push"}, positionals = 1, run = run_release},
 	{name = "build", flags = {"debug"}, positionals = -1, run = run_build},
 	{name = "site_docs", positionals = 2, run = run_site_docs},

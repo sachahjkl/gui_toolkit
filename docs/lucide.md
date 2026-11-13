@@ -10,9 +10,11 @@ draw.text(dc, icons, size, pos, color, lucide.SEARCH)
 ```
 
 The `prefs_page` icons of the pages (`Page_Info.icon`), the buttons of a toolbar, a menu's icons: any text drawn in that
-face. One set for every program of the toolkit. When a program needs an icon that has no constant yet, add it to
-`src/lucide/lucide.odin`: its code point is in the font's character map, under the icon's name. A constant is only a
-name: a program may as well name a character of the face itself (`MY_ICON :: "\ue0ef"`) and use it at once.
+face. One set for every program of the toolkit. Every icon of the font has its constant: `src/lucide/lucide.odin` is
+generated from `lucide.ttf` by `odin run tools/tk -- gen_lucide`, a constant per glyph, UPPER_SNAKE of the glyph's name
+in the font (`arrow-up-down` is `ARROW_UP_DOWN`; a name that starts with a digit takes an `N`). Do not edit it: a newer
+font, then the command again. The names are the font's own, which are older than lucide.dev's for a few icons
+(`ALERT_TRIANGLE` for triangle-alert, `SEND_HORIZONAL` for send-horizontal).
 
 A program may make it its icon font (`ui.State.icon_font = icons`): `ui.icon`, `ui.icon_button`, a menu item's `icon`
 and `ui.button_icon` then draw Lucide's characters. The widgets' own marks (a menu's or a check box's check, a

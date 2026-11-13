@@ -107,6 +107,12 @@ run_ci :: proc(a: ^Args) -> string {
 			}
 		}
 	}
+	// (a generated file as its source makes it)
+	if ttf, err := os.read_entire_file(join({root, "src", "lucide", "lucide.ttf"}), context.temp_allocator); err == nil {
+		icons, why := lucide_icons(ttf)
+		have, _ := os.read_entire_file(join({root, "src", "lucide", "lucide.odin"}), context.temp_allocator)
+		if why != "" || string(have) != lucide_source(icons) { append(&failed, "src/lucide/lucide.odin is not what gen_lucide makes of lucide.ttf") }
+	}
 	examples := CI_EXAMPLES_WINDOWS when ODIN_OS == .Windows else CI_EXAMPLES_LINUX
 	for e in examples {
 		if why := build_example(root, e, false); why != "" { append(&failed, why) }
