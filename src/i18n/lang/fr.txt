@@ -1,3 +1,1642 @@
 # The toolkit's texts in French: its menus, dialogs and settings (docs/i18n.md). Written by `tk i18n`: a text the code no
 # longer has is said by it; a translation left empty is the English.
 language fr
+
+en unknown preference
+fr réglage inconnu
+
+en set by policy or on the command line for this run
+fr fixé par une règle ou par la ligne de commande pour cette exécution
+
+en not a valid value for this type
+fr pas une valeur valide pour ce type
+
+en out of range
+fr hors limites
+
+en not one of the allowed values
+fr pas une des valeurs permises
+
+en ok
+fr ok
+
+en desktop integration is not available on this platform
+fr l'intégration au bureau n'est pas disponible sur ce système
+
+en the program's executable is unknown
+fr l'exécutable du programme est inconnu
+
+en invalid options
+fr options non valides
+
+en a file could not be written or removed
+fr un fichier n'a pas pu être écrit ou supprimé
+
+en the system refused
+fr le système a refusé
+
+en Start menu
+fr menu Démarrer
+
+en application menu
+fr menu des applications
+
+en Default apps
+fr Applications par défaut
+
+en the default browser setting
+fr le réglage du navigateur par défaut
+
+en Start menu, default apps, session start
+fr menu Démarrer, applications par défaut, démarrage de la session
+
+en Start menu, session start
+fr menu Démarrer, démarrage de la session
+
+en application menu, default browser, PATH, session start
+fr menu des applications, navigateur par défaut, PATH, démarrage de la session
+
+en application menu, PATH, session start
+fr menu des applications, PATH, démarrage de la session
+
+en Enter the folder to install into.
+fr Indiquez le dossier d'installation.
+
+en The folder name has characters that Windows does not allow.
+fr Le nom du dossier a des caractères que Windows refuse.
+
+en The folder name has a control character.
+fr Le nom du dossier a un caractère de contrôle.
+
+en Use a full path on a local drive, such as C:\\Users\\you\\AppData\\Local\\Programs\\%s.
+fr Indiquez un chemin complet sur un disque local, comme C:\\Users\\vous\\AppData\\Local\\Programs\\%s.
+
+en The folder name has a colon after the drive letter.
+fr Le nom du dossier a un deux-points après la lettre du disque.
+
+en Pick a folder, not the root of a drive.
+fr Choisissez un dossier, pas la racine d'un disque.
+
+en Use a full path.
+fr Indiquez un chemin complet.
+
+en Pick a folder, not the root.
+fr Choisissez un dossier, pas la racine.
+
+en The path is too long (the files inside need room too).
+fr Le chemin est trop long (les fichiers qu'il contiendra ont besoin de place aussi).
+
+en A folder name cannot be only dots or spaces.
+fr Un nom de dossier ne peut pas être fait que de points ou d'espaces.
+
+en Not inside %s: that is the system's.
+fr Pas dans %s : ce dossier est celui du système.
+
+en No such drive or folder.
+fr Ce disque ou ce dossier n'existe pas.
+
+en %s is a file, not a folder.
+fr %s est un fichier, pas un dossier.
+
+en Cannot write in %s.
+fr Impossible d'écrire dans %s.
+
+en no error
+fr aucune erreur
+
+en this system has no HTTP client (libcurl)
+fr ce système n'a pas de client HTTP (libcurl)
+
+en the address is not an http or https URL
+fr l'adresse n'est pas une URL http ou https
+
+en the request's method or a header is not valid
+fr la méthode ou un en-tête de la requête n'est pas valide
+
+en the server could not be reached
+fr le serveur est injoignable
+
+en the answer is larger than expected
+fr la réponse est plus grande que prévu
+
+en unknown error
+fr erreur inconnue
+
+en The licence is empty.
+fr La licence est vide.
+
+en That is too long to be a licence key.
+fr C'est trop long pour une clé de licence.
+
+en That is not a licence key of this program: it must start with its tag and have three parts separated by dots.
+fr Ce n'est pas une clé de licence de ce programme : elle doit commencer par son étiquette et avoir trois parties séparées par des points.
+
+en The licence key is damaged: it is not valid base64url text.
+fr La clé de licence est abîmée : ce n'est pas un texte base64url valide.
+
+en The licence key is damaged: its content is not a licence.
+fr La clé de licence est abîmée : son contenu n'est pas une licence.
+
+en This licence is for another product.
+fr Cette licence est pour un autre produit.
+
+en The signature does not match: the key was altered or was not issued by the seller.
+fr La signature ne correspond pas : la clé a été modifiée ou n'a pas été émise par le vendeur.
+
+en This build has no key to check licences with.
+fr Cette version n'a pas de clé pour vérifier les licences.
+
+en The public key for licences is not valid.
+fr La clé publique des licences n'est pas valide.
+
+en The licence file could not be read.
+fr Le fichier de licence n'a pas pu être lu.
+
+en The licence could not be saved.
+fr La licence n'a pas pu être enregistrée.
+
+en this system has no text recognition (OCR) engine
+fr ce système n'a pas de moteur de reconnaissance de texte (OCR)
+
+en no text recognition language is installed for the languages asked
+fr aucune langue de reconnaissance de texte n'est installée pour les langues demandées
+
+en the picture's size does not match its pixels
+fr la taille de l'image ne correspond pas à ses pixels
+
+en the picture is too large for text recognition
+fr l'image est trop grande pour la reconnaissance de texte
+
+en text recognition failed
+fr la reconnaissance de texte a échoué
+
+en All files
+fr Tous les fichiers
+
+en All files (*.*)
+fr Tous les fichiers (*.*)
+
+en Settings · %s
+fr Réglages · %s
+
+en Back
+fr Retour
+
+en Search
+fr Recherche
+
+en No setting matches.
+fr Aucun réglage ne correspond.
+
+en Advanced
+fr Avancé
+
+en Search settings
+fr Chercher dans les réglages
+
+en Open the settings file
+fr Ouvrir le fichier des réglages
+
+en Export…
+fr Exporter…
+
+en Export the settings to a file (JSON, TOML, INI or this program's own)
+fr Exporter les réglages dans un fichier (JSON, TOML, INI ou le format de ce programme)
+
+en Import…
+fr Importer…
+
+en Import settings exported by this program
+fr Importer des réglages exportés par ce programme
+
+en Restore defaults
+fr Rétablir les valeurs par défaut
+
+en Put every setting of this page back to its default
+fr Remettre chaque réglage de cette page à sa valeur par défaut
+
+en Set on the command line for this run.
+fr Fixé par la ligne de commande pour cette exécution.
+
+en Locked by a policy.
+fr Verrouillé par une règle.
+
+en Takes effect at the next start.
+fr Prend effet au prochain démarrage.
+
+en Reset
+fr Réinitialiser
+
+en Back to the default
+fr Revenir à la valeur par défaut
+
+en Make themes of your own: each is a few lines in this file, which explains how. They show here as soon as it is saved.
+fr Créez vos propres thèmes : chacun tient en quelques lignes de ce fichier, qui explique comment faire. Ils s'affichent ici dès qu'il est enregistré.
+
+en Open the themes file in the system's editor (made at the first click)
+fr Ouvrir le fichier des thèmes dans l'éditeur du système (créé au premier clic)
+
+en %s: %s to %s%s
+fr %s : de %s à %s%s
+
+en Check now
+fr Vérifier maintenant
+
+en Install %s
+fr Installer %s
+
+en Restart now
+fr Redémarrer maintenant
+
+en Downloading %s…
+fr Téléchargement de %s…
+
+en Restart to update to %s
+fr Redémarrer pour passer à %s
+
+en the program
+fr le programme
+
+en Put %[0]s in the application menu, with its icon. The desktop then knows %[0]s by its name: its shortcuts and its windows' places come from that.
+fr Mettre %[0]s dans le menu des applications, avec son icône. Le bureau connaît alors %[0]s par son nom : ses raccourcis et la place de ses fenêtres en dépendent.
+
+en Put %[0]s in the Start menu, with its icon. The desktop then knows %[0]s by its name: its shortcuts and its windows' places come from that.
+fr Mettre %[0]s dans le menu Démarrer, avec son icône. Le bureau connaît alors %[0]s par son nom : ses raccourcis et la place de ses fenêtres en dépendent.
+
+en General
+fr Général
+
+en In the application menu
+fr Dans le menu des applications
+
+en Start with the session
+fr Démarrer avec la session
+
+en Start %s with the session, so that its shortcuts work from the start.
+fr Démarrer %s avec la session, pour que ses raccourcis marchent dès le début.
+
+en Messages
+fr Messages
+
+en Where %[0]s says what it did (copied, saved, deleted). System: the system's notifications, or %[0]s's window where the system has none. Window: only in %[0]s's window. Off: nowhere; a failure is always said.
+fr Là où %[0]s dit ce qu'il a fait (copié, enregistré, supprimé). Système : les notifications du système, ou la fenêtre de %[0]s si le système n'en a pas. Fenêtre : seulement dans la fenêtre de %[0]s. Non : nulle part ; un échec est toujours signalé.
+
+en System
+fr Système
+
+en Window
+fr Fenêtre
+
+en Off
+fr Non
+
+en Language
+fr Langue
+
+en The language of the interface. System: the system's, English where the program has no text in it.
+fr La langue de l'interface. Système : celle du système, l'anglais là où le programme n'a pas de texte dans cette langue.
+
+en Appearance
+fr Apparence
+
+en Theme
+fr Thème
+
+en The colours of %s's windows.
+fr Les couleurs des fenêtres de %s.
+
+en Light or dark
+fr Clair ou sombre
+
+en The theme's version: the system's (light or dark, followed as it changes), dark, or light.
+fr La version du thème : celle du système (claire ou sombre, suivie quand elle change), sombre ou claire.
+
+en Dark
+fr Sombre
+
+en Light
+fr Clair
+
+en Finish
+fr Finition
+
+en How surfaces are drawn. Machined: bevelled buttons, sunken fields, carved lines. Edged: the same reliefs, crisp, with square corners. Flat: plain surfaces and thin lines. Gradient: faces lit from the top. Glass: glossy faces.
+fr Le dessin des surfaces. Usinée : boutons biseautés, champs en creux, lignes gravées. Nette : les mêmes reliefs, francs, aux coins carrés. Plate : surfaces unies et lignes fines. Dégradé : faces éclairées par le haut. Verre : faces brillantes.
+
+en Machined
+fr Usinée
+
+en Edged
+fr Nette
+
+en Flat
+fr Plate
+
+en Gradient
+fr Dégradé
+
+en Glass
+fr Verre
+
+en Glow
+fr Halo
+
+en How much the buttons and fields of the machined finish glow. 0: no halo.
+fr L'intensité du halo des boutons et des champs de la finition usinée. 0 : aucun halo.
+
+en Text size
+fr Taille du texte
+
+en The size of the text, in logical pixels.
+fr La taille du texte, en pixels logiques.
+
+en Zoom
+fr Zoom
+
+en How large the whole interface is drawn: text, rows and gaps. Ctrl+wheel, Ctrl+= and Ctrl+- change it for the run.
+fr La taille de toute l'interface : texte, lignes et espaces. Ctrl+molette, Ctrl+= et Ctrl+- la changent jusqu'à la fermeture du programme.
+
+en Density
+fr Densité
+
+en The height of rows and the vertical gaps; the text keeps its size. Lower is more compact.
+fr La hauteur des lignes et les espaces verticaux ; le texte garde sa taille. Plus bas, plus compact.
+
+en Rounding
+fr Arrondi
+
+en How round the corners are. 0: square corners. The edged finish is always square.
+fr L'arrondi des coins. 0 : coins carrés. La finition nette est toujours carrée.
+
+en Smooth corners
+fr Coins adoucis
+
+en The shape of a rounded corner: 0, a circle's arc; 1, a squircle, whose curve starts gently.
+fr La forme d'un coin arrondi : 0, un arc de cercle ; 1, une superellipse, dont la courbe commence en douceur.
+
+en Animations
+fr Animations
+
+en Whether transitions move: as the system asks (its setting to reduce motion), always, or never.
+fr Si les transitions bougent : comme le demande le système (son réglage de réduction des animations), toujours, ou jamais.
+
+en On
+fr Oui
+
+en The system's title bar
+fr La barre de titre du système
+
+en The system draws the title bar of %[0]s's windows. Off: %[0]s draws its own, with its tabs and buttons in it.
+fr Le système dessine la barre de titre des fenêtres de %[0]s. Non : %[0]s dessine la sienne, avec ses onglets et ses boutons.
+
+en Where messages show
+fr Position des messages
+
+en Where in the window its short messages show.
+fr L'endroit de la fenêtre où ses messages courts s'affichent.
+
+en Top left
+fr En haut à gauche
+
+en Top center
+fr En haut au centre
+
+en Top right
+fr En haut à droite
+
+en Middle left
+fr Au milieu à gauche
+
+en Middle right
+fr Au milieu à droite
+
+en Bottom left
+fr En bas à gauche
+
+en Bottom center
+fr En bas au centre
+
+en Bottom right
+fr En bas à droite
+
+en Text and fonts
+fr Texte et polices
+
+en Interface font
+fr Police de l'interface
+
+en The family of the interface's text, as the system names it ("Inter"). Empty: the program's.
+fr La famille du texte de l'interface, telle que le système la nomme (« Inter »). Vide : celle du programme.
+
+en Monospace font
+fr Police à chasse fixe
+
+en The family of code and of what lines up in columns. Empty: the program's.
+fr La famille du code et de ce qui s'aligne en colonnes. Vide : celle du programme.
+
+en Reading font
+fr Police de lecture
+
+en The family of long text to read (documents, messages). Empty: the program's.
+fr La famille des longs textes à lire (documents, messages). Vide : celle du programme.
+
+en Emoji font
+fr Police des emoji
+
+en A font file whose emoji are drawn in place of the program's. Empty: the program's.
+fr Un fichier de police dont les emoji remplacent ceux du programme. Vide : ceux du programme.
+
+en The system's fonts as a last resort
+fr Les polices du système en dernier recours
+
+en A character no font of the program has comes from a font of the system.
+fr Un caractère qu'aucune police du programme n'a vient d'une police du système.
+
+en Emoji in colour
+fr Emoji en couleur
+
+en Emoji and other colour glyphs in their colours. Off: their outline, in the text's colour.
+fr Les emoji et les autres glyphes en couleur, dans leurs couleurs. Non : leur contour, dans la couleur du texte.
+
+en Subpixel text
+fr Texte sous-pixel
+
+en Text smoothed per colour stripe of the screen's pixels, in their order (rgb or bgr): sharper at small sizes on a screen with stripes. Off: grey smoothing, right on every screen.
+fr Le texte lissé par bande de couleur des pixels de l'écran, dans leur ordre (rgb ou bgr) : plus net aux petites tailles sur un écran à bandes. Non : un lissage en gris, juste sur tout écran.
+
+en Gamma
+fr Gamma
+
+en The exponent of the power curve the text and its background are blended through (with the power curve). Higher is lighter text on a dark background.
+fr L'exposant de la courbe de puissance par laquelle le texte et son fond se mélangent (avec la courbe Puissance). Plus haut, le texte est plus clair sur un fond sombre.
+
+en Contrast
+fr Contraste
+
+en How much the edges of the letters are boosted against their background (with a curve). 0: none.
+fr Le renforcement des bords des lettres contre leur fond (avec une courbe). 0 : aucun.
+
+en Weight
+fr Graisse
+
+en The exponent each pixel's coverage is raised to: below 1 thickens the text, above 1 thins it.
+fr L'exposant appliqué à la couverture de chaque pixel : en dessous de 1, le texte s'épaissit ; au-dessus de 1, il s'affine.
+
+en Blending curve
+fr Courbe de mélange
+
+en How a letter's colour meets its background. None: as the blending space does. Srgb: in linear light, as Chromium on Windows. Power: through the gamma above, as Chromium on Linux.
+fr La rencontre de la couleur d'une lettre et de son fond. Aucune : comme le fait l'espace de mélange. Srgb : en lumière linéaire, comme Chromium sous Windows. Puissance : par le gamma ci-dessus, comme Chromium sous Linux.
+
+en None
+fr Aucune
+
+en Power
+fr Puissance
+
+en Blending space
+fr Espace de mélange
+
+en Where colours are mixed: in linear light (correct mixing, what the toolkit is tuned for), or in sRGB values, as web browsers do.
+fr L'endroit où les couleurs se mélangent : en lumière linéaire (un mélange juste, celui pour lequel la boîte à outils est réglée), ou en valeurs sRGB, comme le font les navigateurs web.
+
+en Linear
+fr Linéaire
+
+en Subpixel positions
+fr Positions sous-pixel
+
+en The positions of a letter within a pixel. 1: whole pixels, crisper and rougher spacing; 4: the most even spacing.
+fr Les positions d'une lettre dans un pixel. 1 : pixels entiers, plus net, avec un espacement moins régulier ; 4 : l'espacement le plus régulier.
+
+en Grid fitting
+fr Calage sur la grille
+
+en Whether outlines are fitted to the pixel grid: crisper stems, shapes a little off. Default: as the font asks.
+fr Si les contours sont calés sur la grille des pixels : des fûts plus nets, des formes un peu faussées. Par défaut : comme le demande la police.
+
+en Default
+fr Par défaut
+
+en Enabled
+fr Activé
+
+en Disabled
+fr Désactivé
+
+en Text renderer
+fr Rendu du texte
+
+en How letters reach the screen. Atlas: bitmaps the system draws, hinted per size. Slug: the outlines, drawn by the graphics card, sharp at any scale.
+fr Le chemin des lettres jusqu'à l'écran. Atlas : des images que le système dessine, ajustées à chaque taille. Slug : les contours, dessinés par la carte graphique, nets à toute échelle.
+
+en DirectWrite mode
+fr Mode DirectWrite
+
+en How DirectWrite draws the atlas's letters.
+fr La façon dont DirectWrite dessine les lettres de l'atlas.
+
+en Natural symmetric
+fr Naturel symétrique
+
+en Natural
+fr Naturel
+
+en Aliased
+fr Crénelé
+
+en Slug tolerance
+fr Tolérance de Slug
+
+en The largest distance between a letter's curve and the simpler curves Slug draws in its place. Lower is truer and heavier.
+fr La plus grande distance entre la courbe d'une lettre et les courbes plus simples que Slug dessine à sa place. Plus bas, plus fidèle et plus lourd.
+
+en Colour glyphs on a thread
+fr Glyphes en couleur sur un fil
+
+en Colour glyphs are drawn on a thread of their own: they show a moment later, and a frame never waits for them.
+fr Les glyphes en couleur sont dessinés sur un fil à eux : ils s'affichent un instant plus tard, et une image ne les attend jamais.
+
+en Atlas pages
+fr Pages de l'atlas
+
+en The pages of letters kept before the least used one is drawn over.
+fr Les pages de lettres gardées avant que la moins utilisée soit redessinée.
+
+en Colour atlas pages
+fr Pages de l'atlas en couleur
+
+en The pages of colour glyphs kept before the least used one is drawn over.
+fr Les pages de glyphes en couleur gardées avant que la moins utilisée soit redessinée.
+
+en Atlas page size
+fr Taille d'une page de l'atlas
+
+en The side of a page of the atlas.
+fr Le côté d'une page de l'atlas.
+
+en Words kept
+fr Mots gardés
+
+en The shaped words kept, so that a word measured again is not shaped again. 0: none.
+fr Les mots mis en forme qui sont gardés, pour qu'un mot mesuré à nouveau ne soit pas remis en forme. 0 : aucun.
+
+en Slug pages
+fr Pages de Slug
+
+en The pages of outlines Slug keeps before the least used one is reused.
+fr Les pages de contours que Slug garde avant que la moins utilisée soit réutilisée.
+
+en Scrolling
+fr Défilement
+
+en Middle-button scrolling
+fr Défilement au bouton du milieu
+
+en Smooth scrolling
+fr Défilement fluide
+
+en Whether a notch of the wheel glides or jumps. Follow: as the animations do.
+fr Si un cran de la molette glisse ou saute. Suivre : comme les animations.
+
+en Follow
+fr Suivre
+
+en Glide
+fr Glissement
+
+en How long a glide lasts. 0: a jump.
+fr La durée d'un glissement. 0 : un saut.
+
+en Lines per notch
+fr Lignes par cran
+
+en The lines a notch of the wheel moves, where the system does not say.
+fr Les lignes qu'un cran de la molette fait défiler, là où le système ne le dit pas.
+
+en Hide the scroll bars
+fr Masquer les barres de défilement
+
+en A scroll bar shows only while the pointer is over its view, or for a moment after it scrolled.
+fr Une barre de défilement ne s'affiche que quand le pointeur est sur sa vue, ou un instant après un défilement.
+
+en Scroll bar arrows
+fr Flèches des barres de défilement
+
+en An arrow button at each end of every scroll bar.
+fr Un bouton fléché à chaque bout de chaque barre de défilement.
+
+en Glide curve
+fr Courbe du glissement
+
+en The shape of a glide. Impulse: a strong push then a long slowing, as Chromium. Ease out: a gentle slowing. Exponential: halves the distance each frame.
+fr La forme d'un glissement. Impulsion : une forte poussée puis un long ralentissement, comme Chromium. Ralenti : un ralentissement doux. Exponentielle : la distance divisée par deux à chaque image.
+
+en Impulse
+fr Impulsion
+
+en Ease out
+fr Ralenti
+
+en Exponential
+fr Exponentielle
+
+en The strength of the impulse curve: higher starts faster and slows longer.
+fr La force de la courbe Impulsion : plus haut, elle part plus vite et ralentit plus longtemps.
+
+en Fling stop speed
+fr Vitesse d'arrêt du lancer
+
+en A fling of the finger ends under this speed.
+fr Un lancer du doigt s'arrête sous cette vitesse.
+
+en Scroll with the middle button
+fr Défiler avec le bouton du milieu
+
+en A press of the wheel on a view drops an anchor; moving the pointer away scrolls, the farther the faster.
+fr Un appui sur la molette dans une vue pose une ancre ; éloigner le pointeur fait défiler, d'autant plus vite qu'il est loin.
+
+en A click latches it
+fr Un clic le verrouille
+
+en A short click of the wheel keeps the mode on until the next click; a press held ends it at its release.
+fr Un clic bref de la molette garde le mode actif jusqu'au clic suivant ; un appui maintenu le termine au relâchement.
+
+en Dead zone
+fr Zone morte
+
+en No scrolling while the pointer is this close to the anchor.
+fr Aucun défilement tant que le pointeur est aussi près de l'ancre.
+
+en Top speed
+fr Vitesse maximale
+
+en The fastest it scrolls.
+fr La plus grande vitesse de défilement.
+
+en Distance to top speed
+fr Distance jusqu'à la vitesse maximale
+
+en How far past the dead zone the top speed is reached.
+fr La distance après la zone morte à laquelle la vitesse maximale est atteinte.
+
+en Doubling distance
+fr Distance de doublement
+
+en The speed doubles for each this many pixels past the dead zone.
+fr La vitesse double à chaque fois que le pointeur dépasse la zone morte de ce nombre de pixels.
+
+en Click
+fr Clic
+
+en A press shorter than this, that hardly moved, is a click: it latches the mode.
+fr Un appui plus court que ce délai, presque immobile, est un clic : il verrouille le mode.
+
+en Click movement
+fr Mouvement d'un clic
+
+en A press that moved more than this is a drag, never a click.
+fr Un appui qui a bougé de plus que cette distance est un glissé, jamais un clic.
+
+en Input
+fr Saisie
+
+en Key repeat delay
+fr Délai de répétition des touches
+
+en A held key repeats after this long, where the system does not say (Wayland, until the compositor does).
+fr Une touche maintenue se répète après ce délai, là où le système ne le dit pas (Wayland, tant que le compositeur ne le dit pas).
+
+en Key repeat rate
+fr Vitesse de répétition des touches
+
+en Then this many times a second, likewise. 0: no repeat.
+fr Puis autant de fois par seconde, de même. 0 : aucune répétition.
+
+en Button repeat delay
+fr Délai de répétition des boutons
+
+en A held button (a number's − and +, a scroll bar's arrow) repeats after this long.
+fr Un bouton maintenu (le − et le + d'un nombre, la flèche d'une barre de défilement) se répète après ce délai.
+
+en Button repeat interval
+fr Intervalle de répétition des boutons
+
+en Then once every this much.
+fr Puis une fois à chaque intervalle.
+
+en Undo steps
+fr Étapes d'annulation
+
+en The edits a text field remembers to undo.
+fr Les modifications qu'un champ de texte retient pour les annuler.
+
+en Undo merge
+fr Regroupement des annulations
+
+en Typing within this much of the previous edit is the same undo step. 0: each edit is a step.
+fr Une saisie faite moins de ce délai après la modification précédente est la même étape d'annulation. 0 : chaque modification est une étape.
+
+en Type to find
+fr Taper pour trouver
+
+en Keys typed in a list within this much of each other add up to one word, which the list goes to.
+fr Les touches tapées dans une liste à moins de ce délai les unes des autres forment un mot, vers lequel la liste va.
+
+en Zoom step
+fr Pas du zoom
+
+en Ctrl+wheel, Ctrl+= and Ctrl+- multiply or divide the zoom by this.
+fr Ctrl+molette, Ctrl+= et Ctrl+- multiplient ou divisent le zoom par ce nombre.
+
+en Shift step
+fr Pas avec Maj
+
+en Shift multiplies the step of a slider or a number (a key, a notch of the wheel, a button).
+fr Maj multiplie le pas d'un curseur ou d'un nombre (une touche, un cran de la molette, un bouton).
+
+en Ctrl step
+fr Pas avec Ctrl
+
+en Ctrl multiplies the step of a number in text.
+fr Ctrl multiplie le pas d'un nombre dans un texte.
+
+en Alt step
+fr Pas avec Alt
+
+en Alt multiplies the step of a number in text.
+fr Alt multiplie le pas d'un nombre dans un texte.
+
+en Page step
+fr Pas d'une page
+
+en Page Up and Page Down move a slider, or a number in text, this many steps.
+fr Pg préc et Pg suiv déplacent un curseur, ou un nombre dans un texte, de ce nombre de pas.
+
+en Delays and menus
+fr Délais et menus
+
+en Tooltip delay
+fr Délai des infobulles
+
+en The pointer rests this long on something before its tooltip shows.
+fr Le pointeur reste ce temps sur un élément avant que son infobulle s'affiche.
+
+en Submenu delay
+fr Délai des sous-menus
+
+en The pointer rests this long on a submenu's item before it opens, or before another closes.
+fr Le pointeur reste ce temps sur l'élément d'un sous-menu avant qu'il s'ouvre, ou avant qu'un autre se ferme.
+
+en Menu item height
+fr Hauteur des éléments de menu
+
+en The height of a menu's item, times the density.
+fr La hauteur d'un élément de menu, multipliée par la densité.
+
+en Colour fade
+fr Fondu des couleurs
+
+en A change of theme fades every colour for this long.
+fr Un changement de thème fait passer chaque couleur en fondu pendant cette durée.
+
+en Updates
+fr Mises à jour
+
+en Update by itself
+fr Mise à jour automatique
+
+en Look for a new version of %s now and then, and install it: it takes effect at the next start.
+fr Chercher de temps en temps une nouvelle version de %s, et l'installer : elle prend effet au prochain démarrage.
+
+en Channel
+fr Canal
+
+en The channel the updates come from (stable, beta...). Empty: the only one.
+fr Le canal d'où viennent les mises à jour (stable, beta...). Vide : le seul.
+
+en Address
+fr Adresse
+
+en Where the updates are published (a folder of the web).
+fr L'endroit où les mises à jour sont publiées (un dossier du web).
+
+en Rendering
+fr Rendu
+
+en Presentation
+fr Présentation
+
+en Vsync: each picture waits for the screen's refresh, whole. Tearing: it is shown at once, a picture may be cut where the screen was.
+fr Vsync : chaque image attend le rafraîchissement de l'écran, entière. Arrachement : elle s'affiche tout de suite, une image peut être coupée là où en était l'écran.
+
+en Tearing
+fr Arrachement
+
+en Frames queued
+fr Images en file
+
+en The pictures that may wait for the screen. 1: the least delay from a key to the screen; more: steadier under load.
+fr Les images qui peuvent attendre l'écran. 1 : le moins de délai d'une touche à l'écran ; plus : plus régulier sous la charge.
+
+en Partial redraw
+fr Redessin partiel
+
+en Each picture redraws only what changed in the interface.
+fr Chaque image ne redessine que ce qui a changé dans l'interface.
+
+en Blur limit
+fr Limite du flou
+
+en A blur wider than this is computed on a smaller picture: faster, softer.
+fr Un flou plus large que cette limite est calculé sur une image plus petite : plus rapide, plus doux.
+
+en Filter precision
+fr Précision des filtres
+
+en The pictures of filters (blurs, shadows) in 16-bit floats (half), or in 8 bits (unorm8): half the memory, a little banding.
+fr Les images des filtres (flous, ombres) en flottants de 16 bits (half), ou en 8 bits (unorm8) : moitié moins de mémoire, un peu d'effet de bandes.
+
+en The file could not be written.
+fr Le fichier n'a pas pu être écrit.
+
+en This program's settings (to import)
+fr Réglages de ce programme (pour les importer)
+
+en Export the settings
+fr Exporter les réglages
+
+en Exported to %s.
+fr Exporté dans %s.
+
+en %s could not be written.
+fr %s n'a pas pu être écrit.
+
+en This program's settings
+fr Réglages de ce programme
+
+en Import settings
+fr Importer des réglages
+
+en %s could not be read.
+fr %s n'a pas pu être lu.
+
+en Imported %d settings from %s
+en+ Imported %d settings from %s
+fr %d réglage importé de %s
+fr+ %d réglages importés de %s
+
+en %d refused (%s)
+en+ %d refused (%s)
+fr %d refusé (%s)
+fr+ %d refusés (%s)
+
+en %s; %s.
+fr %s ; %s.
+
+en Install folder
+fr Dossier d'installation
+
+en Done: everything is in place.
+fr Terminé : tout est en place.
+
+en Removed. The program is deleted when this window closes.
+fr Supprimé. Le programme est effacé à la fermeture de cette fenêtre.
+
+en Removed.
+fr Supprimé.
+
+en Not installed: this copy runs on its own.
+fr Pas installé : cette copie fonctionne seule.
+
+en Installed: this is the installed copy.
+fr Installé : c'est la copie installée.
+
+en The installed program is missing: what is left of it can be repaired or removed.
+fr Le programme installé manque : ce qu'il en reste peut être réparé ou supprimé.
+
+en A copy is installed by an earlier setup: Repair puts this copy in its place.
+fr Une copie est installée par une installation antérieure : Réparer met cette copie à sa place.
+
+en An older copy is installed (%s): upgrade it to %s?
+fr Une copie plus ancienne est installée (%s) : la mettre à niveau vers %s ?
+
+en A newer copy is installed (%s): this one (%s) is older.
+fr Une copie plus récente est installée (%s) : celle-ci (%s) est plus ancienne.
+
+en A copy is installed (%s): this one runs on its own.
+fr Une copie est installée (%s) : celle-ci fonctionne seule.
+
+en Uninstalled: the program is deleted when this window closes.
+fr Désinstallé : le programme est effacé à la fermeture de cette fenêtre.
+
+en Installed by Nix. An earlier install left files here: they can be removed.
+fr Installé par Nix. Une installation antérieure a laissé des fichiers ici : ils peuvent être supprimés.
+
+en Installed by Nix: the Nix package has the menu entry and the icon.
+fr Installé par Nix : le paquet Nix a l'entrée du menu et l'icône.
+
+en applications menu
+fr menu des applications
+
+en Settings > Apps
+fr Paramètres > Applications
+
+en icons
+fr icônes
+
+en Installed. Start it from the Start menu, or now:
+fr Installé. Lancez-le depuis le menu Démarrer, ou maintenant :
+
+en Installed. Start it from the applications menu, or now:
+fr Installé. Lancez-le depuis le menu des applications, ou maintenant :
+
+en Installed, but a shortcut, the Settings entry or a file is missing.
+fr Installé, mais il manque un raccourci, l'entrée des Paramètres ou un fichier.
+
+en Installed, but the menu entry, an icon or a file is missing.
+fr Installé, mais il manque l'entrée du menu, une icône ou un fichier.
+
+en Upgrade to %s
+fr Passer à %s
+
+en Go back to %s
+fr Revenir à %s
+
+en Replace the installed copy
+fr Remplacer la copie installée
+
+en Repair
+fr Réparer
+
+en Update the shortcuts
+fr Mettre à jour les raccourcis
+
+en Install
+fr Installer
+
+en %s does not start
+fr %s ne démarre pas
+
+en %s Setup
+fr Installation de %s
+
+en Not installed
+fr Pas installé
+
+en %s is installed
+fr %s est installé
+
+en Installed
+fr Installé
+
+en Repair %s
+fr Réparer %s
+
+en To repair
+fr À réparer
+
+en Upgrade %s
+fr Mettre à niveau %s
+
+en Older installed
+fr Plus ancien installé
+
+en Replace %s
+fr Remplacer %s
+
+en Newer installed
+fr Plus récent installé
+
+en Other copy
+fr Autre copie
+
+en %s is uninstalled
+fr %s est désinstallé
+
+en Removed
+fr Supprimé
+
+en %s from Nix
+fr %s par Nix
+
+en Nix package
+fr Paquet Nix
+
+en Reading the install…
+fr Lecture de l'installation…
+
+en not installed
+fr pas installée
+
+en v%s installed
+fr v%s installée
+
+en installed
+fr installée
+
+en This copy: v%s → %s
+fr Cette copie : v%s → %s
+
+en Install location
+fr Emplacement de l'installation
+
+en Installed program
+fr Programme installé
+
+en Choose…
+fr Choisir…
+
+en Options
+fr Options
+
+en Shortcut on the Desktop
+fr Raccourci sur le Bureau
+
+en this copy
+fr cette copie
+
+en On NixOS, a Nix package is the better install: Nix updates it. An install here makes this copy run by itself (nix-build makes the libraries it needs).
+fr Sous NixOS, un paquet Nix est la meilleure installation : Nix le met à jour. Une installation ici fait fonctionner cette copie seule (nix-build crée les bibliothèques dont elle a besoin).
+
+en Working…
+fr En cours…
+
+en Copy %s
+fr Copier %s
+
+en Copied
+fr Copié
+
+en Click again to remove
+fr Cliquez encore pour supprimer
+
+en Click again to uninstall
+fr Cliquez encore pour désinstaller
+
+en Remove what is left
+fr Supprimer ce qui reste
+
+en Uninstall
+fr Désinstaller
+
+en Close
+fr Fermer
+
+en Not now
+fr Pas maintenant
+
+en Keep standalone
+fr Garder autonome
+
+en Open the installed copy
+fr Ouvrir la copie installée
+
+en the install folder is unknown
+fr le dossier d'installation est inconnu
+
+en Waiting for the system's answer…
+fr En attente de la réponse du système…
+
+en Works in every program: %s.
+fr Marche dans tous les programmes : %s.
+
+en The system gave other keys: %s. Change them in its shortcut settings.
+fr Le système a donné d'autres touches : %s. Changez-les dans ses réglages de raccourcis.
+
+en No keys.
+fr Aucune touche.
+
+en The system gave no keys yet: choose them in its shortcut settings.
+fr Le système n'a encore donné aucune touche : choisissez-les dans ses réglages de raccourcis.
+
+en %q is not a shortcut: click the field and press the keys.
+fr %q n'est pas un raccourci : cliquez dans le champ et appuyez sur les touches.
+
+en Another program holds %s: choose other keys.
+fr Un autre programme utilise %s : choisissez d'autres touches.
+
+en The system refused this shortcut.
+fr Le système a refusé ce raccourci.
+
+en This desktop gives programs no shortcuts of their own: bind the keys in its own settings.
+fr Ce bureau ne donne pas de raccourcis propres aux programmes : associez les touches dans ses propres réglages.
+
+en %ds
+fr %d s
+
+en %dm %02ds
+fr %d min %02d s
+
+en %dh %02dm
+fr %d h %02d min
+
+en %dd %02dh
+fr %d j %02d h
+
+en now
+fr maintenant
+
+en %dm
+fr %d min
+
+en %dh
+fr %d h
+
+en %dd
+fr %d j
+
+en %dw
+fr %d sem.
+
+en am
+fr am
+
+en pm
+fr pm
+
+ctx month
+en Jan
+fr janv.
+
+ctx month
+en Feb
+fr févr.
+
+ctx month
+en Mar
+fr mars
+
+ctx month
+en Apr
+fr avr.
+
+ctx month
+en May
+fr mai
+
+ctx month
+en Jun
+fr juin
+
+ctx month
+en Jul
+fr juil.
+
+ctx month
+en Aug
+fr août
+
+ctx month
+en Sep
+fr sept.
+
+ctx month
+en Oct
+fr oct.
+
+ctx month
+en Nov
+fr nov.
+
+ctx month
+en Dec
+fr déc.
+
+ctx date
+en %s %d
+fr %[1]d %[0]s
+
+en KB
+fr Ko
+
+en MB
+fr Mo
+
+en GB
+fr Go
+
+en TB
+fr To
+
+en PB
+fr Po
+
+en %d B
+fr %d o
+
+en Colour picker
+fr Sélecteur de couleur
+
+en Take back the colour it had
+fr Reprendre la couleur d'avant
+
+en New colour
+fr Nouvelle couleur
+
+en Colour
+fr Couleur
+
+ctx key
+en Escape
+fr Échap
+
+ctx key
+en Enter
+fr Entrée
+
+ctx key
+en Tab
+fr Tab
+
+ctx key
+en Space
+fr Espace
+
+ctx key
+en Backspace
+fr Retour arrière
+
+ctx key
+en Delete
+fr Suppr
+
+ctx key
+en Insert
+fr Inser
+
+ctx key
+en Left
+fr Gauche
+
+ctx key
+en Right
+fr Droite
+
+ctx key
+en Up
+fr Haut
+
+ctx key
+en Down
+fr Bas
+
+ctx key
+en Home
+fr Début
+
+ctx key
+en End
+fr Fin
+
+ctx key
+en Page Up
+fr Pg préc
+
+ctx key
+en Page Down
+fr Pg suiv
+
+ctx key
+en Menu
+fr Menu
+
+en Type to search
+fr Tapez pour chercher
+
+en Nothing matches
+fr Aucun résultat
+
+en Recent
+fr Récents
+
+en Keyboard shortcuts
+fr Raccourcis clavier
+
+en Cancel
+fr Annuler
+
+en %s (Enter)
+fr %s (Entrée)
+
+en and %d more
+en+ and %d more
+fr et %d autre
+fr+ et %d autres
+
+en OK
+fr OK
+
+en Dock %s to
+fr Ancrer %s
+
+en Into this stack
+fr Dans cette pile
+
+en At its left
+fr À sa gauche
+
+en At its right
+fr À sa droite
+
+en Above it
+fr Au-dessus
+
+en Below it
+fr En dessous
+
+en At the left edge
+fr Au bord gauche
+
+en At the right edge
+fr Au bord droit
+
+en At the top edge
+fr Au bord haut
+
+en At the bottom edge
+fr Au bord bas
+
+en Float
+fr Détacher
+
+en Dock back
+fr Ré-ancrer
+
+en Move the tab left
+fr Déplacer l'onglet à gauche
+
+en Move the tab right
+fr Déplacer l'onglet à droite
+
+en Close %s
+fr Fermer %s
+
+en Stack menu
+fr Menu de la pile
+
+en (empty)
+fr (vide)
+
+en Open in a window
+fr Ouvrir dans une fenêtre
+
+en floating panel
+fr panneau flottant
+
+en Press the keys…
+fr Appuyez sur les touches…
+
+en Click, then press the keys
+fr Cliquez, puis appuyez sur les touches
+
+en Shortcut: %s
+fr Raccourci : %s
+
+en Undo
+fr Annuler
+
+en Redo
+fr Rétablir
+
+en Cut
+fr Couper
+
+en Copy
+fr Copier
+
+en Paste
+fr Coller
+
+en Delete
+fr Supprimer
+
+ctx key
+en Del
+fr Suppr
+
+en Select all
+fr Tout sélectionner
+
+en Hide the password
+fr Masquer le mot de passe
+
+en Show the password
+fr Afficher le mot de passe
+
+en Clear
+fr Effacer
+
+en Graph
+fr Graphe
+
+en node graph
+fr graphe de nœuds
+
+en The default
+fr Par défaut
+
+en Show
+fr Afficher
+
+en Hide
+fr Masquer
+
+en Show %s
+fr Afficher %s
+
+en Hide %s
+fr Masquer %s
+
+en Auto
+fr Auto
+
+en At the side
+fr Sur le côté
+
+en Below
+fr En dessous
+
+en Move to %s
+fr Déplacer vers %s
+
+en Saturation and value
+fr Saturation et valeur
+
+en Hue
+fr Teinte
+
+en Opacity
+fr Opacité
+
+en Preview
+fr Aperçu
+
+en Fit
+fr Ajuster
+
+en Zoom out
+fr Zoom arrière
+
+en Zoom in
+fr Zoom avant
+
+en Actual size
+fr Taille réelle
+
+en QR code: %s
+fr Code QR : %s
+
+en Reset %s
+fr Réinitialiser %s
+
+en Unsorted
+fr Non trié
+
+en Columns
+fr Colonnes
+
+en Default columns
+fr Colonnes par défaut
+
+en Show fewer
+fr Afficher moins
+
+en Show all
+fr Tout afficher
+
+ctx window
+en Minimize
+fr Réduire
+
+ctx window
+en Maximize
+fr Agrandir
+
+ctx window
+en Close
+fr Fermer
+
+ctx window
+en Restore
+fr Restaurer
+
+en the update manifest is empty or too large
+fr le manifeste de la mise à jour est vide ou trop grand
+
+en the update signature is not well formed
+fr la signature de la mise à jour est mal formée
+
+en this build has no update key: it cannot check an update
+fr cette version n'a pas de clé de mise à jour : elle ne peut pas vérifier une mise à jour
+
+en the update key built into this build is not valid
+fr la clé de mise à jour de cette version n'est pas valide
+
+en the update is not signed by its publisher (or was altered): refused
+fr la mise à jour n'est pas signée par son éditeur (ou a été modifiée) : refusée
+
+en the update manifest is not understood
+fr le manifeste de la mise à jour n'est pas compris
+
+en the update manifest is of another format
+fr le manifeste de la mise à jour est d'un autre format
+
+en the update manifest is not for this program
+fr le manifeste de la mise à jour n'est pas pour ce programme
+
+en the update is of another channel
+fr la mise à jour est d'un autre canal
+
+en the update is for another platform
+fr la mise à jour est pour un autre système
+
+en the update names an invalid version
+fr la mise à jour indique une version non valide
+
+en the update is not newer than the installed version
+fr la mise à jour n'est pas plus récente que la version installée
+
+en the signed manifest is for another version than the release that carried it
+fr le manifeste signé est pour une autre version que la publication qui le porte
+
+en the update names an unexpected file
+fr la mise à jour indique un fichier inattendu
+
+en the update manifest carries an invalid checksum
+fr le manifeste de la mise à jour porte une somme de contrôle non valide
+
+en the update manifest carries an invalid size
+fr le manifeste de la mise à jour porte une taille non valide
+
+en the downloaded file is not the size that was signed: refused
+fr le fichier téléchargé n'a pas la taille signée : refusé
+
+en the downloaded file does not match its signed checksum: refused
+fr le fichier téléchargé ne correspond pas à sa somme de contrôle signée : refusé
+
+en the download is not a program of this system: refused
+fr le téléchargement n'est pas un programme de ce système : refusé
+
+en the update could not be written beside the program
+fr la mise à jour n'a pas pu être écrite à côté du programme
+
+en the update was not written whole
+fr la mise à jour n'a pas été écrite en entier
+
+en the running program could not be moved aside
+fr le programme en cours n'a pas pu être mis de côté
+
+en the update could not be put in place
+fr la mise à jour n'a pas pu être mise en place
+
+en a package manager updates this copy
+fr un gestionnaire de paquets met à jour cette copie
+
+en A package manager updates this copy.
+fr Un gestionnaire de paquets met à jour cette copie.
+
+en Checking for a newer version…
+fr Recherche d'une version plus récente…
+
+en Downloading version %s…
+fr Téléchargement de la version %s…
+
+en Version %s is available.
+fr La version %s est disponible.
+
+en Version %s is installed: it runs at the next start.
+fr La version %s est installée : elle sera lancée au prochain démarrage.
+
+en Not checked yet.
+fr Pas encore vérifié.
+
+en The last check failed: %s.
+fr La dernière vérification a échoué : %s.
+
+en Up to date.
+fr À jour.
+
+en up to date
+fr à jour
+
+en version %s is available
+fr la version %s est disponible
+
+en the server answered %d for %s
+fr le serveur a répondu %d pour %s
+
+en stopped
+fr arrêté
+
+en version %s was not installed: %s
+fr la version %s n'a pas été installée : %s
+
+en version %s is installed: it runs at the next start
+fr la version %s est installée : elle sera lancée au prochain démarrage
+
+en the server answered %d
+fr le serveur a répondu %d
+
+en the update has no signature: refused
+fr la mise à jour n'a pas de signature : refusée

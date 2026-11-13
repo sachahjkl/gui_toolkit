@@ -30,15 +30,17 @@ import "../ascii"
 import config "../config"
 import "../draw"
 import "../font"
+import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
 import shortcuts "../shortcuts"
 import "../ui"
 import update "../update"
 
-// A page: a category of the registry, its title and its icon (a glyph of Options.icon_font; "": none). `names`: the
-// preferences it shows, in this order, whatever their category (nil: those of `category`, in the registry's order); a
-// program whose pages are not its registry's categories keeps those for its other views (an editor of every preference).
+// A page: a category of the registry, its title (English, shown translated: i18n.later) and its icon (a glyph of
+// Options.icon_font; "": none). `names`: the preferences it shows, in this order, whatever their category (nil: those of
+// `category`, in the registry's order); a program whose pages are not its registry's categories keeps those for its other
+// views (an editor of every preference).
 Page_Info :: struct {
 	category, title, icon: string,
 	names:                 []string,
@@ -188,7 +190,7 @@ back_bar :: proc(p: ^Page, o: Options, title, back_tip: string, em: f32) -> (bac
 			ui.next({width = ui.text_size(em * 0.6), height = ui.px(math.round(em * 2.1)), radius = em * 0.4})
 		}
 		sig: ui.Signal
-		if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###prefs_back", icon ? lucide.ARROW_LEFT : "Back")) }
+		if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###prefs_back", icon ? lucide.ARROW_LEFT : i18n.tr("Back"))) }
 		ui.a11y_default(sig.box, {name = back_tip})
 		if ui.hovered_for(sig) {
 			if ui.tooltip() {
@@ -244,7 +246,13 @@ pages_of :: proc(prefs: ^config.Prefs, o: Options) -> []Page_Info {
 	if o.pages != nil {
 		// (a page with no preference in this registry is not shown: a program that registers some only on one system)
 		kept := make([dynamic]Page_Info, context.temp_allocator)
-		for pg in o.pages { if pg.build != nil || len(page_names(prefs, pg)) > 0 { append(&kept, pg) } }
+		for pg in o.pages {
+			if pg.build == nil && len(page_names(prefs, pg)) == 0 { continue }
+			// (a program's words are English, marked with i18n.later: shown in the language in use)
+			shown := pg
+			shown.title, shown.heading = i18n.tr(pg.title), i18n.tr(pg.heading)
+			append(&kept, shown)
+		}
 		return kept[:]
 	}
 	cats := make([dynamic]string, context.temp_allocator)
@@ -324,7 +332,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 				if ui.column(id = "###prefs_body") {
 					ui.spacer(ui.px(em * 1.1))
 					if config.searching(&p.search) {
-						page_title("Search", em)
+						page_title(i18n.tr("Search"), em)
 						for pg in pages {
 							config.search_page(&p.search, pg.title)
 							for name in page_names(prefs, pg) { setting(p, prefs, o, name, em) }
@@ -332,7 +340,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Options) {
 						if p.search.found == 0 {
 							if ui.tags("weak") {
 								ui.next({width = ui.fill(), text_pad = 0})
-								ui.paragraph("No setting matches.###prefs_none")
+								ui.paragraph(fmt.tprintf("%s###prefs_none", i18n.tr("No setting matches.")))
 							}
 						}
 					} else {
@@ -408,7 +416,7 @@ advanced_part :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, category: stri
 	open := p.unfolded[category]
 	was := open
 	ui.spacer(ui.px(em * 0.8))
-	if ui.accordion("###advanced", "Advanced", &open) {
+	if ui.accordion("###advanced", i18n.tr("Advanced"), &open) {
 		sections(p, prefs, o, category, names, em)
 	}
 	if open != was {
@@ -437,7 +445,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Options, icons: bool, wid
 					}
 					ui.next({width = ui.fill(), height = ui.pct(1), text_pad = em * 0.2})
 					if ui.tags("bare") {
-						res := ui.line_edit("###prefs_query", &p.query, "Search settings")
+						res := ui.line_edit("###prefs_query", &p.query, i18n.tr("Search settings"))
 						if p.focus_search { p.focus_search = false; ui.set_focus(res.box.key) }
 					}
 				}
@@ -504,7 +512,7 @@ nav_foot :: proc(p: ^Page, o: Options, em: f32) {
 			ui.spacer(ui.px(em * 0.9))
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 			if ui.column(id = "###prefs_file_col") {
-				if link("###prefs_file_link", p.file_shown, "Open the settings file", em, mono = true) { ui.open(o.file) }
+				if link("###prefs_file_link", p.file_shown, i18n.tr("Open the settings file"), em, mono = true) { ui.open(o.file) }
 			}
 			ui.spacer(ui.px(em * 0.9))
 		}
@@ -516,12 +524,12 @@ nav_foot :: proc(p: ^Page, o: Options, em: f32) {
 		h := ui.px(math.round(em * 1.7))
 		ui.next({width = ui.text_size(em * 0.6), height = h, radius = em * 0.35, font_size = math.round(em * 0.86)})
 		export_sig, import_sig: ui.Signal
-		if ui.tags("ghost_button") { export_sig = ui.button("Export…###prefs_export") }
-		ui.a11y_default(export_sig.box, {name = "Export the settings to a file (JSON, TOML, INI or this program's own)"})
+		if ui.tags("ghost_button") { export_sig = ui.button(fmt.tprintf("%s###prefs_export", i18n.tr("Export…"))) }
+		ui.a11y_default(export_sig.box, {name = i18n.tr("Export the settings to a file (JSON, TOML, INI or this program's own)")})
 		ui.spacer(ui.px(em * 0.3))
 		ui.next({width = ui.text_size(em * 0.6), height = h, radius = em * 0.35, font_size = math.round(em * 0.86)})
-		if ui.tags("ghost_button") { import_sig = ui.button("Import…###prefs_import") }
-		ui.a11y_default(import_sig.box, {name = "Import settings exported by this program"})
+		if ui.tags("ghost_button") { import_sig = ui.button(fmt.tprintf("%s###prefs_import", i18n.tr("Import…"))) }
+		ui.a11y_default(import_sig.box, {name = i18n.tr("Import settings exported by this program")})
 		if export_sig.clicked { export_ask(p) }
 		if import_sig.clicked { import_ask(p) }
 	}
@@ -608,8 +616,8 @@ page_header :: proc(title: string, changed: bool, o: Options, em: f32) -> (resto
 		if changed {
 			ui.next({width = ui.text_size(em * 0.6), height = ui.px(math.round(em * 1.7)), radius = em * 0.35, font_size = math.round(em * 0.86)})
 			sig: ui.Signal
-			if ui.tags("ghost_button") { sig = ui.button("Restore defaults###restore") }
-			ui.a11y_default(sig.box, {name = "Put every setting of this page back to its default"})
+			if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###restore", i18n.tr("Restore defaults"))) }
+			ui.a11y_default(sig.box, {name = i18n.tr("Put every setting of this page back to its default")})
 			restore = sig.clicked
 		}
 	}
@@ -735,12 +743,12 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name: string, em: f3
 @(private = "file")
 note_of :: proc(e: ^config.Entry) -> string {
 	parts := make([dynamic]string, context.temp_allocator)
-	append(&parts, e.def.description)
+	append(&parts, config.description_of(e.def))
 	#partial switch e.source {
-	case .Command_Line: append(&parts, "Set on the command line for this run.")
-	case .Policy:       append(&parts, "Locked by a policy.")
+	case .Command_Line: append(&parts, i18n.tr("Set on the command line for this run."))
+	case .Policy:       append(&parts, i18n.tr("Locked by a policy."))
 	}
-	if e.def.restart { append(&parts, "Takes effect at the next start.") }
+	if e.def.restart { append(&parts, i18n.tr("Takes effect at the next start.")) }
 	return strings.join(parts[:], " ", context.temp_allocator)
 }
 
@@ -752,14 +760,14 @@ reset_button :: proc(o: Options, em: f32) -> bool {
 	} else {
 		ui.next({width = ui.text_size(em * 0.5), height = ui.px(sz), radius = em * 0.35, font_size = math.round(em * 0.86)})
 	}
-	label := o.icon_font != 0 && o.reset_icon != "" ? o.reset_icon : "Reset"
+	label := o.icon_font != 0 && o.reset_icon != "" ? o.reset_icon : i18n.tr("Reset")
 	sig: ui.Signal
 	if ui.tags("ghost_button") { sig = ui.button(fmt.tprintf("%s###reset", label)) }
-	ui.a11y_default(sig.box, {name = "Back to the default"})
+	ui.a11y_default(sig.box, {name = i18n.tr("Back to the default")})
 	if ui.hovered_for(sig) {
 		if ui.tooltip() {
 			ui.next({width = ui.text_size(em * 0.6), height = ui.px(ui.dense(em * 1.8))})
-			ui.label("Back to the default###tip")
+			ui.label(fmt.tprintf("%s###tip", i18n.tr("Back to the default")))
 		}
 	}
 	return sig.clicked
@@ -786,7 +794,7 @@ control_width :: proc(o: Options, e: ^config.Entry, em: f32) -> (w: f32, share: 
 		return em * LIST_EM, share
 	case .Int, .Float:
 		if is_number(e.def) { return em * NUMBER_EM, share }
-		unit: f32 = e.def.unit != "" ? em * 0.4 + ui.text_width(ui.top_style().font, math.round(em * 0.86), e.def.unit) : 0
+		unit: f32 = e.def.unit != "" ? em * 0.4 + ui.text_width(ui.top_style().font, math.round(em * 0.86), i18n.tr(e.def.unit)) : 0
 		return em * NUMBER_FIELD_EM + unit, share
 	}
 	return
@@ -855,11 +863,11 @@ themes_file_line :: proc(p: ^Page, tf: ^Themes_File, em: f32) {
 	ui.spacer(ui.px(em * 0.2))
 	if ui.tags("weak") {
 		ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-		ui.paragraph("Make themes of your own: each is a few lines in this file, which explains how. They show here as soon as it is saved.###themes_own")
+		ui.paragraph(fmt.tprintf("%s###themes_own", i18n.tr("Make themes of your own: each is a few lines in this file, which explains how. They show here as soon as it is saved.")))
 	}
 	ui.spacer(ui.px(em * 0.2))
 	shown := home_short(tf.path, context.temp_allocator)
-	if link("###themes_file", shown, "Open the themes file in the system's editor (made at the first click)", em, mono = true) && p.state != nil {
+	if link("###themes_file", shown, i18n.tr("Open the themes file in the system's editor (made at the first click)"), em, mono = true) && p.state != nil {
 		themes_file_open(tf, p.state)
 	}
 	if tf.error != "" {
@@ -870,13 +878,14 @@ themes_file_line :: proc(p: ^Page, tf: ^Themes_File, em: f32) {
 	}
 }
 
-// A String preference's choices: its own (their labels capitalised), or the program's.
+// A String preference's choices: its own (their labels, else the values capitalised, in the language in use), or the
+// program's.
 @(private = "file")
 choices_of :: proc(o: Options, e: ^config.Entry) -> (labels, values: []string) {
 	if len(e.def.choices) > 0 {
-		if len(e.def.choice_labels) == len(e.def.choices) { return e.def.choice_labels, e.def.choices }
+		own := len(e.def.choice_labels) == len(e.def.choices)
 		out := make([]string, len(e.def.choices), context.temp_allocator)
-		for c, i in e.def.choices { out[i] = capitalised(c) }
+		for c, i in e.def.choices { out[i] = i18n.tr(own ? e.def.choice_labels[i] : capitalised(c)) }
 		return out, e.def.choices
 	}
 	if o.choices != nil { return o.choices(o.user, e.def.name) }
@@ -919,11 +928,11 @@ number :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^co
 	value: f64
 	if d.kind == .Int {
 		v := held ? int(math.round(p.held_value)) : int(e.value.i)
-		ui.number("###num", &v, lo = int(d.min), hi = int(d.max), unit = d.unit, track = true)
+		ui.number("###num", &v, lo = int(d.min), hi = int(d.max), unit = i18n.tr(d.unit), track = true)
 		value = f64(v)
 	} else {
 		v := held ? p.held_value : e.value.f
-		ui.number("###num", &v, lo = d.min, hi = d.max, step = float_step(d.max - d.min), unit = d.unit, track = true)
+		ui.number("###num", &v, lo = d.min, hi = d.max, step = float_step(d.max - d.min), unit = i18n.tr(d.unit), track = true)
 		value = v
 	}
 	if ui.focus_key() == ui.key_from_string(nk, "###value") { p.number_typed = true }
@@ -974,7 +983,7 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, r: config.Ref, e: ^con
 		ui.spacer(ui.px(em * 0.4))
 		if ui.tags("weak") {
 			ui.next({width = ui.text_size(0), height = ui.px(math.round(em * CONTROL_H_EM)), text_pad = 0, font_size = math.round(em * 0.86)})
-			ui.label(fmt.tprintf("%s###unit", e.def.unit))
+			ui.label(fmt.tprintf("%s###unit", i18n.tr(e.def.unit)))
 		}
 	}
 }
@@ -990,10 +999,10 @@ apply :: proc(p: ^Page, prefs: ^config.Prefs, o: Options, name, text: string) ->
 	msg := config.set_error_text(err)
 	if r := config.ref_of(prefs, name); r != config.NO_REF {
 		d := config.entry(prefs, r).def
-		unit := d.unit != "" ? strings.concatenate({" ", d.unit}, context.temp_allocator) : ""
+		unit := d.unit != "" ? strings.concatenate({" ", i18n.tr(d.unit)}, context.temp_allocator) : ""
 		num :: proc(v: f64, kind: config.Kind) -> string { return kind == .Int ? fmt.tprintf("%d", i64(v)) : fmt.tprintf("%g", v) }
 		#partial switch err {
-		case .Out_Of_Range: if d.bounded { msg = fmt.tprintf("%s: %s to %s%s", msg, num(d.min, d.kind), num(d.max, d.kind), unit) }
+		case .Out_Of_Range: if d.bounded { msg = fmt.tprintf(i18n.tr("%s: %s to %s%s"), msg, num(d.min, d.kind), num(d.max, d.kind), unit) }
 		case .Not_A_Choice: msg = fmt.tprintf("%s: %s", msg, strings.join(d.choices, ", ", context.temp_allocator))
 		}
 	}
@@ -1090,18 +1099,18 @@ updater_under :: proc(o: Options, em: f32) {
 	ui.next({height = ui.children_sum()})
 	if ui.row() {
 		busy := st.phase == .Checking || st.phase == .Downloading || st.phase == .Installed
-		if ui.button_icon("update_check", lucide.REFRESH_CW, "Check now", disabled = busy, icon_font = ui.lucide_icons(), intent = .Primary).clicked && !busy {
+		if ui.button_icon("update_check", lucide.REFRESH_CW, i18n.tr("Check now"), disabled = busy, icon_font = ui.lucide_icons(), intent = .Primary).clicked && !busy {
 			update.check_now(o.updater)
 		}
 		if st.phase == .Available {
 			ui.spacer(ui.px(em * 0.5))
-			if ui.button_icon("update_install", lucide.DOWNLOAD, fmt.tprintf("Install %s", st.version), icon_font = ui.lucide_icons(), intent = .Success).clicked {
+			if ui.button_icon("update_install", lucide.DOWNLOAD, fmt.tprintf(i18n.tr("Install %s"), st.version), icon_font = ui.lucide_icons(), intent = .Success).clicked {
 				update.install_now(o.updater)
 			}
 		}
 		if st.phase == .Installed && o.restart != nil {
 			ui.spacer(ui.px(em * 0.5))
-			if ui.button_icon("update_restart", lucide.POWER, "Restart now", icon_font = ui.lucide_icons(), intent = .Success).clicked { o.restart(o.user) }
+			if ui.button_icon("update_restart", lucide.POWER, i18n.tr("Restart now"), icon_font = ui.lucide_icons(), intent = .Success).clicked { o.restart(o.user) }
 		}
 	}
 }
@@ -1116,9 +1125,9 @@ update_badge :: proc(u: ^update.Updater, restart: proc(user: rawptr), user: rawp
 	st := update.status(u)
 	words, glyph: string
 	#partial switch st.phase {
-	case .Available:   words, glyph = fmt.tprintf("Install %s", st.version), lucide.DOWNLOAD
-	case .Downloading: words = fmt.tprintf("Downloading %s…", st.version)
-	case .Installed:   words, glyph = fmt.tprintf("Restart to update to %s", st.version), lucide.POWER
+	case .Available:   words, glyph = fmt.tprintf(i18n.tr("Install %s"), st.version), lucide.DOWNLOAD
+	case .Downloading: words = fmt.tprintf(i18n.tr("Downloading %s…"), st.version)
+	case .Installed:   words, glyph = fmt.tprintf(i18n.tr("Restart to update to %s"), st.version), lucide.POWER
 	case:              return false
 	}
 	if st.phase == .Downloading {

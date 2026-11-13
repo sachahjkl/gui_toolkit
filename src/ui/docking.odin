@@ -30,6 +30,7 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import "../draw"
+import i18n "../i18n"
 import "../platform"
 
 DOCK_TAB_EM :: 2             // a stack's strip of tabs (em)
@@ -53,7 +54,7 @@ DOCK_MARKER_UNLIT_ALPHA :: 0.55     // ... in the squares the pointer is not on
 DOCK_GHOST_OFFSET_EM :: 0.8         // the dragged tab's title, this far right of and below the pointer
 DOCK_FOCUS_DEPTH_MAX :: 64          // boxes looked up from the focus for the stack it is in
 
-// What the menus say (Dock_Options.labels: nil is these).
+// What the menus say (Dock_Options.labels: nil is dock_default_labels, the toolkit's words in the language in use).
 Dock_Labels :: struct {
 	dock_to, join, left, right, above, below: string,
 	edge_left, edge_right, edge_top, edge_bottom: string,
@@ -61,12 +62,18 @@ Dock_Labels :: struct {
 	window: string,
 }
 
-DOCK_LABELS :: Dock_Labels{
-	dock_to = "Dock %s to", join = "Into this stack", left = "At its left", right = "At its right", above = "Above it", below = "Below it",
-	edge_left = "At the left edge", edge_right = "At the right edge", edge_top = "At the top edge", edge_bottom = "At the bottom edge",
-	floating = "Float", dock_back = "Dock back", move_left = "Move the tab left", move_right = "Move the tab right",
-	close = "Close", close_panel = "Close %s", menu = "Stack menu", empty = "(empty)",
-	window = "Open in a window",
+// The toolkit's words of the dock's menus, in the language in use (asked at each build: the language is known only once
+// the settings are read).
+dock_default_labels :: proc() -> Dock_Labels {
+	return {
+		dock_to = i18n.tr("Dock %s to"), join = i18n.tr("Into this stack"), left = i18n.tr("At its left"), right = i18n.tr("At its right"),
+		above = i18n.tr("Above it"), below = i18n.tr("Below it"),
+		edge_left = i18n.tr("At the left edge"), edge_right = i18n.tr("At the right edge"), edge_top = i18n.tr("At the top edge"),
+		edge_bottom = i18n.tr("At the bottom edge"),
+		floating = i18n.tr("Float"), dock_back = i18n.tr("Dock back"), move_left = i18n.tr("Move the tab left"), move_right = i18n.tr("Move the tab right"),
+		close = i18n.tr("Close"), close_panel = i18n.tr("Close %s"), menu = i18n.tr("Stack menu"), empty = i18n.tr("(empty)"),
+		window = i18n.tr("Open in a window"),
+	}
 }
 
 // A tab being built (Dock_Options.tab builds its content inside `box`, whose width is that of what it builds).
@@ -116,7 +123,7 @@ Dock_Result :: struct {
 @(private) dock_split_id :: proc(split: i32) -> string { return fmt.tprintf("###dock_split_%d", split) }
 
 @(private)
-dock_labels :: proc(d: ^Dock) -> Dock_Labels { return d.opts.labels != nil ? d.opts.labels^ : DOCK_LABELS }
+dock_labels :: proc(d: ^Dock) -> Dock_Labels { return d.opts.labels != nil ? d.opts.labels^ : dock_default_labels() }
 
 dock_title :: proc(d: ^Dock, panel: u32) -> string {
 	if d.opts.title == nil { return fmt.tprintf("%d", panel) }
@@ -639,7 +646,7 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 	frame: ^Box
 	if tags("floating") { frame = build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate}, fmt.tprintf("###dock_float_%d", root)) }   // (Clickable: what is under it gets no press)
 	frame.square_corners = {.Bottom_Right}   // (the grip's corner, its bevel filling it: square by choice of the design, kept so)
-	a11y_set(frame, {role = .Group, name = dock_stack_label(d, dock_leaves(d, root)[0]), role_description = "floating panel"})
+	a11y_set(frame, {role = .Group, name = dock_stack_label(d, dock_leaves(d, root)[0]), role_description = i18n.tr("floating panel")})
 	// The panels are not its children, and are drawn after it, square: within its corners from here to the box that closes it, whose
 	// border goes over them.
 	frame.custom = dock_float_clip
@@ -836,8 +843,8 @@ dock_menu_items :: proc(d: ^Dock, p: u32) {
 	at := 0
 	for q, k in tabs { if q == p { at = k } }
 	if len(tabs) > 1 {
-		if menu_item(fmt.tprintf("%s###dock_m_ml", lb.move_left), "Ctrl+Shift+Left", enabled = at > 0).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at - 1}) }
-		if menu_item(fmt.tprintf("%s###dock_m_mr", lb.move_right), "Ctrl+Shift+Right", enabled = at + 1 < len(tabs)).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at + 2}) }
+		if menu_item(fmt.tprintf("%s###dock_m_ml", lb.move_left), chord_text({.Left, {.Ctrl, .Shift}}), enabled = at > 0).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at - 1}) }
+		if menu_item(fmt.tprintf("%s###dock_m_mr", lb.move_right), chord_text({.Right, {.Ctrl, .Shift}}), enabled = at + 1 < len(tabs)).clicked { dock_move(d, p, {place = .Tab, node = leaf, index = at + 2}) }
 	}
 	if dock_closable(d, p) {
 		menu_separator()

@@ -32,8 +32,6 @@ import "../process"
 @(private = "file")
 WINDOWS_BACKEND := Backend{
 	name = "windows",
-	targets = "Start menu, session start",
-	targets_browser = "Start menu, default apps, session start",
 	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart},
 	status = windows_status,
 	install = windows_install,

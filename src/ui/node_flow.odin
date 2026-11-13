@@ -7,6 +7,7 @@ package ui
 import "core:strings"
 import "../draw"
 import flowgraph "../flowgraph"
+import i18n "../i18n"
 import "../render"
 
 // What a node shows beyond its kind (Flow_Options.look): a summary of its parameters, its accent, what the last run did.
@@ -33,7 +34,8 @@ Flow_Nodes :: struct {
 	texts: [dynamic]string,       // the subtitles and messages (owned: the nodes outlive a frame)
 }
 
-// `out` made again from `g`: a port's id is its place in its kind's list, its kind the flowgraph's (kind_colors[kind]).
+// `out` made again from `g`: a port's id is its place in its kind's list, its kind the flowgraph's (kind_colors[kind]). The
+// catalog's titles and port names (the program's English, i18n.later) in the language in use.
 flow_nodes_make :: proc(out: ^Flow_Nodes, g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, opts: Flow_Options = {}) {
 	clear(&out.nodes)
 	clear(&out.ports)
@@ -50,15 +52,15 @@ flow_nodes_make :: proc(out: ^Flow_Nodes, g: ^flowgraph.Graph, cat: ^flowgraph.C
 		def := flowgraph.node_def(cat, &n)
 		if def == nil { continue }
 		first := len(out.ports)
-		for p, i in def.inputs { append(&out.ports, Graph_Port{id = u32(i), name = p.name, kind = p.kind, side = .In, multiple = p.multiple}) }
+		for p, i in def.inputs { append(&out.ports, Graph_Port{id = u32(i), name = i18n.tr(p.name), kind = p.kind, side = .In, multiple = p.multiple}) }
 		middle := len(out.ports)
-		for p, i in def.outputs { append(&out.ports, Graph_Port{id = u32(i), name = p.name, kind = p.kind, side = .Out}) }
+		for p, i in def.outputs { append(&out.ports, Graph_Port{id = u32(i), name = i18n.tr(p.name), kind = p.kind, side = .Out}) }
 		look: Flow_Node_Look
 		if opts.look != nil { look = opts.look(opts.user, &n, def) }
 		subtitle := flow_text(out, look.subtitle)
 		message := flow_text(out, look.message)
 		append(&out.nodes, Graph_Node{
-			id = n.id, title = def.title, subtitle = subtitle, icon = def.icon, color = look.color, pos = n.pos,
+			id = n.id, title = i18n.tr(def.title), subtitle = subtitle, icon = def.icon, color = look.color, pos = n.pos,
 			inputs = out.ports[first:middle], outputs = out.ports[middle:len(out.ports)],
 			state = look.state, message = message, thumbnail = look.thumbnail, thumbnail_size = look.thumbnail_size,
 		})

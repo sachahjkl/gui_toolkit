@@ -2,7 +2,8 @@ package ui
 
 // The parameters of a flowgraph node as controls, drawn from its kind's schema (flowgraph.Param_Def) with no code per
 // kind: a number (Int, Float), a toggle (Bool), a colour and its picker (Color), a segmented choice or a list (Choice), a
-// text field (Text), a path and its "Choose…" (Folder), a list the program gives (List).
+// text field (Text), a path and its "Choose…" (Folder), a list the program gives (List). The schema's words (titles, units,
+// choices, placeholders) are the program's English (i18n.later), shown in the language in use; the List's names are data.
 //
 // The widget changes nothing: it returns the parameter changed and its new value, and the program applies it
 // (flowgraph.param_set) after its undo step, which the result says when to take (`new_step`: a slider dragged is one).
@@ -17,6 +18,7 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import flowgraph "../flowgraph"
+import i18n "../i18n"
 import lucide "../lucide"
 
 // What the inspector keeps between frames. Its fields are made for one node: another node (or `node` set to 0, after the
@@ -73,7 +75,7 @@ node_inspector :: proc(id: string, ins: ^Node_Inspector, cat: ^flowgraph.Catalog
 			if column(id = fmt.tprintf("###param_%d", i)) {
 				if d.type != .Bool {
 					next({width = fill(), height = px(math.round(em * 1.6))})
-					label(fmt.tprintf("%s###title", d.title))
+					label(fmt.tprintf("%s###title", i18n.tr(d.title)))
 				}
 				value, changed := node_param_control(ins, n, i, d, em, opts, &res)
 				if changed {
@@ -100,7 +102,7 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 		lo, hi: Maybe(int)
 		if d.hi > d.lo { lo, hi = int(d.lo), int(d.hi) }
 		next({width = fill(), height = row_height})
-		if number("###number", &v, lo, hi, max(int(d.step), 0), unit = d.unit, track = d.hi > d.lo) {
+		if number("###number", &v, lo, hi, max(int(d.step), 0), unit = i18n.tr(d.unit), track = d.hi > d.lo) {
 			value.number, changed = f64(v), true
 		}
 	case .Float:
@@ -108,19 +110,21 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 		lo, hi: Maybe(f64)
 		if d.hi > d.lo { lo, hi = d.lo, d.hi }
 		next({width = fill(), height = row_height})
-		if number("###number", &v, lo, hi, d.step, unit = d.unit, track = d.hi > d.lo) {
+		if number("###number", &v, lo, hi, d.step, unit = i18n.tr(d.unit), track = d.hi > d.lo) {
 			value.number, changed = v, true
 		}
 	case .Bool:
 		on := p.number != 0
 		next({width = fill(), height = row_height})
-		toggle("###toggle", d.title, &on)
+		toggle("###toggle", i18n.tr(d.title), &on)
 		if on != (p.number != 0) { value.number, changed = on ? 1 : 0, true }
 	case .Choice:
 		chosen := clamp(int(p.number), 0, max(len(d.choices) - 1, 0))
 		was := chosen
 		next({width = fill(), height = row_height})
-		if len(d.choices) <= 3 { segmented("choice", d.choices, &chosen) } else { dropdown("###choice", d.choices, &chosen) }
+		words := make([]string, len(d.choices), context.temp_allocator)
+		for c, k in d.choices { words[k] = i18n.tr(c) }
+		if len(words) <= 3 { segmented("choice", words, &chosen) } else { dropdown("###choice", words, &chosen) }
 		if chosen != was { value.number, changed = f64(chosen), true }
 	case .Color:
 		open := ins.color_open == i + 1
@@ -137,7 +141,7 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 		}
 	case .Text, .Folder:
 		next({width = fill(), height = row_height})
-		r := line_edit("###text", &ins.texts[i], d.placeholder, clearable = true)
+		r := line_edit("###text", &ins.texts[i], i18n.tr(d.placeholder), clearable = true)
 		res.typing ||= r.focused
 		if r.changed {
 			text := strings.trim_space(field_string(&ins.texts[i]))
@@ -146,13 +150,13 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 		if d.type == .Folder {
 			spacer(px(math.round(em * 0.4)))
 			next({width = text_size(em * 0.8), height = row_height})
-			if button("Choose…###choose").clicked { res.pick_folder = i }
+			if button(fmt.tprintf("%s###choose", i18n.tr("Choose…"))).clicked { res.pick_folder = i }
 		}
 	case .List:
 		names: []string
 		if opts.lists != nil { names = opts.lists(opts.user, n, d) }
 		items := make([]string, len(names) + 1, context.temp_allocator)
-		items[0] = d.placeholder != "" ? d.placeholder : (opts.default_text != "" ? opts.default_text : "The default")
+		items[0] = d.placeholder != "" ? i18n.tr(d.placeholder) : (opts.default_text != "" ? i18n.tr(opts.default_text) : i18n.tr("The default"))
 		chosen := 0
 		for name, k in names {
 			items[k + 1] = name

@@ -7,6 +7,7 @@ import "core:unicode"
 import "core:unicode/utf8"
 import "../draw"
 import "../font"
+import i18n "../i18n"
 import "../platform"
 
 // Popups (menus, dropdowns, tooltips) are floating boxes appended to the ROOT, so they draw above everything built so
@@ -941,7 +942,7 @@ menu_search_field :: proc(s: ^State, lv: ^Menu_Level, w, em: f32) {
 			spacer(px(em * 0.2))
 			if tags("weak") {
 				next({width = fill(), height = pct(1), text_pad = 0})
-				label("Type to search###menu_query")
+				label(fmt.tprintf("%s###menu_query", i18n.tr("Type to search")))
 			}
 		}
 	}

@@ -3,6 +3,7 @@ package ui
 import "core:math"
 import "core:unicode/utf8"
 import "../draw"
+import i18n "../i18n"
 import "../font"
 import "../platform"
 
@@ -54,11 +55,8 @@ title_bar :: proc(id: string, flags: Box_Flags = {}) -> bool {
 	return true
 }
 
-// What screen readers call the caption buttons by default (Caption_Button's order, then restore).
-@(private) WINDOW_BUTTON_NAMES :: [4]string{"Minimize", "Maximize", "Close", "Restore"}
-
 // What screen readers call the current State's caption buttons: minimize, maximize, restore, close (the strings must outlive
-// the builds). Each window's State has its own: translate them after each `init`.
+// the builds; "": the toolkit's words, in the language in use). Each window's State has its own: set them after each `init`.
 set_window_button_names :: proc(minimize, maximize, restore, close: string) {
 	gs().caption_names = {minimize, maximize, close, restore}
 }
@@ -104,8 +102,11 @@ window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
 		d^ = {button = b, maxed = maxed, active = active, dark = dark, under = under, glyph_font = s.caption_font, dpi = dpi}
 		box.custom, box.custom_user = caption_draw, d
 		s.caption_keys[b] = box.key
+		// (a name the program did not set is the toolkit's, in the language in use)
 		names := s.caption_names
-		a11y_default(box, {role = .Button, name = b == .Maximize && maxed ? names[3] : names[int(b)]})
+		defaults := [4]string{i18n.tr("window", "Minimize"), i18n.tr("window", "Maximize"), i18n.tr("window", "Close"), i18n.tr("window", "Restore")}
+		at := b == .Maximize && maxed ? 3 : int(b)
+		a11y_default(box, {role = .Button, name = names[at] != "" ? names[at] : defaults[at]})
 		if signal(box).clicked {
 			clicked, ok = b, true
 			if s.window != nil {

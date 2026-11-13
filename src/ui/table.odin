@@ -32,6 +32,7 @@ import "core:strconv"
 import "core:strings"
 import "../ascii"
 import "../draw"
+import i18n "../i18n"
 
 // A column's width, in ems, when dragged.
 TABLE_COLUMN_MIN_EM :: 3
@@ -59,7 +60,7 @@ TABLE_UNSORTED :: -1
 @(private = "file") TABLE_MENU_INSET_EM :: 2.5
 
 Table_Column :: struct {
-	title:  string,
+	title:  string,   // the program's English (i18n.later), shown in the language in use
 	width:  f32,    // in ems; 0: the room the others leave (one column has it)
 	number: bool,   // right-aligned, sorted by its number, largest first at the first click
 	low_first: bool,   // a number sorted from the lowest at the first click (an id)
@@ -285,7 +286,7 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, opts := T
 				if c.number && opts.title != nil { opts.title(opts.user, k, hot, em) }
 				if !sorting { push_tags("weak") }
 				next({width = text_size(), height = pct(1), text_pad = 0})
-				label(fmt.tprintf("%s###t", text_shown(c.title)))
+				label(fmt.tprintf("%s###t", text_shown(i18n.tr(c.title))))
 				if !sorting { pop_tags() }
 				if !c.number { spacer(fill()) }
 				if !c.number && opts.title != nil { opts.title(opts.user, k, hot, em) }
@@ -295,7 +296,7 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, opts := T
 					spacer(px(em * TABLE_NUMBER_PAD_EM))
 				}
 			}
-			a11y_default(sig.box, {role = .Column_Header, name = c.title})
+			a11y_default(sig.box, {role = .Column_Header, name = i18n.tr(c.title)})
 			if sig.box != nil { places[k] = sig.box.rect }
 			// a title dragged sideways moves its column (the first stays): its release is no click then
 			if k > 0 && !l.moving && sig.dragging && abs(sig.drag_delta.x) > em * TABLE_MOVE_EM { l.moving, l.moving_col = true, k }
@@ -432,16 +433,21 @@ table_column_reset :: proc(l: ^Table_Layout, k: int) -> (sort_changed: bool) {
 
 // The words of a table's header menu (table_menu_items); "%s": the column's title.
 Table_Menu_Labels :: struct { reset, unsorted, columns, defaults: string }
-TABLE_MENU_LABELS :: Table_Menu_Labels{reset = "Reset %s", unsorted = "Unsorted", columns = "Columns", defaults = "Default columns"}
+
+// The toolkit's words of a table's header menu, in the language in use.
+table_menu_default_labels :: proc() -> Table_Menu_Labels {
+	return {reset = i18n.tr("Reset %s"), unsorted = i18n.tr("Unsorted"), columns = i18n.tr("Columns"), defaults = i18n.tr("Default columns")}
+}
 
 // The menu of a table's header (in the caller's ctx_menu, opened on Table_Header_Events.menu): the column whose title was
 // right-clicked back to its own width and unsorted (table_column_reset), the rows unsorted, each column shown or not
 // (table_column_items), every column as at first (table_layout_reset: widths, shown, order). `changed`: the layout to
-// save; `sort_changed`: the rows to sort again.
-table_menu_items :: proc(l: ^Table_Layout, labels := TABLE_MENU_LABELS) -> (changed, sort_changed: bool) {
+// save; `sort_changed`: the rows to sort again. `labels`: the program's words (zero: table_menu_default_labels).
+table_menu_items :: proc(l: ^Table_Layout, labels := Table_Menu_Labels{}) -> (changed, sort_changed: bool) {
+	labels := labels == {} ? table_menu_default_labels() : labels
 	if k := l.menu_column; k >= 0 && k < len(l.columns) {
 		own := l.width[k] == l.columns[k].width && l.sort != k
-		if menu_item(fmt.tprintf(labels.reset, l.columns[k].title), enabled = !own).clicked {
+		if menu_item(fmt.tprintf(labels.reset, i18n.tr(l.columns[k].title)), enabled = !own).clicked {
 			if table_column_reset(l, k) { sort_changed = true }
 			changed = true
 		}
@@ -471,7 +477,7 @@ table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
 	for k in l.order {
 		if k == 0 { continue }
 		c := l.columns[k]
-		if menu_item(c.title, checked = l.shown[k], keep_open = true).clicked {
+		if menu_item(i18n.tr(c.title), checked = l.shown[k], keep_open = true).clicked {
 			if table_layout_toggle(l, k) { sort_changed = true }
 			changed = true
 		}

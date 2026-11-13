@@ -24,6 +24,7 @@ import "base:runtime"
 import "core:os"
 import "core:strings"
 import "../ascii"
+import i18n "../i18n"
 import "../process"
 
 // What the program is on the desktop: its names and the marks of what it writes. Everything platform-specific derives
@@ -162,12 +163,12 @@ Result :: struct {
 
 error_text :: proc(e: Error) -> string {
 	switch e {
-	case .None:          return "ok"
-	case .Unsupported:   return "desktop integration is not available on this platform"
-	case .No_Executable: return "the program's executable is unknown"
-	case .Bad_Options:   return "invalid options"
-	case .Io:            return "a file could not be written or removed"
-	case .System:        return "the system refused"
+	case .None:          return i18n.tr("ok")
+	case .Unsupported:   return i18n.tr("desktop integration is not available on this platform")
+	case .No_Executable: return i18n.tr("the program's executable is unknown")
+	case .Bad_Options:   return i18n.tr("invalid options")
+	case .Io:            return i18n.tr("a file could not be written or removed")
+	case .System:        return i18n.tr("the system refused")
 	}
 	return ""
 }
@@ -175,8 +176,6 @@ error_text :: proc(e: Error) -> string {
 // What one platform implements. A backend reads and changes the disk only through the roots of `Options`.
 Backend :: struct {
 	name:            string,
-	targets:         string,   // what the integration adds, for a label: "Start menu"
-	targets_browser: string,   // the same for a browser: "Start menu, default apps"
 	parts:           Parts,
 	status:          proc(o: ^Options, allocator: runtime.Allocator) -> Status,   // fills parts and error only (classify does the rest)
 	install:         proc(o: ^Options) -> Result,
@@ -295,21 +294,25 @@ supported_parts :: proc() -> Parts {
 	return b == nil ? {} : b.parts
 }
 
-// The launcher's place in the user's words: "Start menu" on Windows, "application menu" elsewhere.
+// The launcher's place in the user's words, in the language in use: "Start menu" on Windows, "application menu" elsewhere.
 menu_name :: proc() -> string {
-	when ODIN_OS == .Windows { return "Start menu" } else { return "application menu" }
+	when ODIN_OS == .Windows { return i18n.tr("Start menu") } else { return i18n.tr("application menu") }
 }
 
-// Where the system lists the programs that can be the default browser, in the user's words.
+// Where the system lists the programs that can be the default browser, in the user's words (in the language in use).
 default_apps_name :: proc() -> string {
-	when ODIN_OS == .Windows { return "Default apps" } else { return "the default browser setting" }
+	when ODIN_OS == .Windows { return i18n.tr("Default apps") } else { return i18n.tr("the default browser setting") }
 }
 
-// What the integration adds on this platform, for a label: "Start menu", or "Start menu, default apps" for a browser.
+// What the integration adds on this platform, for a label, in the language in use: "Start menu, session start", or
+// "Start menu, default apps, session start" for a browser ("" where there is no integration).
 targets :: proc(browser: bool) -> string {
-	b := platform_backend()
-	if b == nil { return "" }
-	return browser ? b.targets_browser : b.targets
+	if platform_backend() == nil { return "" }
+	when ODIN_OS == .Windows {
+		return browser ? i18n.tr("Start menu, default apps, session start") : i18n.tr("Start menu, session start")
+	} else {
+		return browser ? i18n.tr("application menu, default browser, PATH, session start") : i18n.tr("application menu, PATH, session start")
+	}
 }
 
 // True when the system has a page where the user picks the default programs.

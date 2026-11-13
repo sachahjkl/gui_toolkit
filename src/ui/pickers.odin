@@ -3,6 +3,7 @@ package ui
 import "core:fmt"
 import "core:math"
 import "../draw"
+import i18n "../i18n"
 import "../platform"
 
 // Color pickers: a saturation/value square, a hue bar and an alpha bar. They edit values owned by the caller (hue, sat, val,
@@ -165,7 +166,7 @@ sat_val_picker :: proc(id: string, hue: f32, sat, val: ^f32) -> (changed: bool) 
 	d := frame_new(Picker_Draw)
 	d.hue, d.sat, d.val = hue, sat^, val^
 	b.custom, b.custom_user = sat_val_draw, d
-	a11y_default(b, {role = .Slider, name = "Saturation and value", orientation = .X,
+	a11y_default(b, {role = .Slider, name = i18n.tr("Saturation and value"), orientation = .X,
 		value = fmt.aprintf("saturation %.0f%%, value %.0f%%", sat^ * PERCENT, val^ * PERCENT, allocator = frame_allocator())})
 	return
 }
@@ -189,7 +190,7 @@ hue_picker :: proc(id: string, hue: ^f32, horizontal := false) -> (changed: bool
 	d := frame_new(Picker_Draw)
 	d.hue, d.horizontal = hue^, horizontal
 	b.custom, b.custom_user = hue_draw, d
-	a11y_default(b, {role = .Slider, name = "Hue", numeric = f64(math.round(hue^ * HUE_DEGREES)), min = 0, max = HUE_DEGREES, step = HUE_KEY_DEGREES, orientation = horizontal ? .X : .Y})
+	a11y_default(b, {role = .Slider, name = i18n.tr("Hue"), numeric = f64(math.round(hue^ * HUE_DEGREES)), min = 0, max = HUE_DEGREES, step = HUE_KEY_DEGREES, orientation = horizontal ? .X : .Y})
 	return
 }
 
@@ -212,7 +213,7 @@ alpha_picker :: proc(id: string, hue, sat, val: f32, alpha: ^f32, horizontal := 
 	d := frame_new(Picker_Draw)
 	d.hue, d.sat, d.val, d.alpha, d.horizontal = hue, sat, val, alpha^, horizontal
 	b.custom, b.custom_user = alpha_draw, d
-	a11y_default(b, {role = .Slider, name = "Opacity", numeric = f64(math.round(alpha^ * PERCENT)), min = 0, max = PERCENT, step = PICKER_KEY_STEP * PERCENT, orientation = horizontal ? .X : .Y})
+	a11y_default(b, {role = .Slider, name = i18n.tr("Opacity"), numeric = f64(math.round(alpha^ * PERCENT)), min = 0, max = PERCENT, step = PICKER_KEY_STEP * PERCENT, orientation = horizontal ? .X : .Y})
 	return
 }
 

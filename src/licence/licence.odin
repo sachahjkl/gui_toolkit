@@ -24,6 +24,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:strconv"
 import "core:strings"
+import i18n "../i18n"
 
 // Longest key text taken, and longest value of a field: a licence is a few hundred bytes.
 MAX_TEXT  :: 8192
@@ -81,17 +82,17 @@ Error :: enum u8 {
 error_text :: proc(e: Error) -> string {
 	switch e {
 	case .None:           return ""
-	case .Empty:          return "The licence is empty."
-	case .Too_Long:       return "That is too long to be a licence key."
-	case .Bad_Format:     return "That is not a licence key of this program: it must start with its tag and have three parts separated by dots."
-	case .Bad_Encoding:   return "The licence key is damaged: it is not valid base64url text."
-	case .Bad_Payload:    return "The licence key is damaged: its content is not a licence."
-	case .Wrong_Product:  return "This licence is for another product."
-	case .Bad_Signature:  return "The signature does not match: the key was altered or was not issued by the seller."
-	case .No_Public_Key:  return "This build has no key to check licences with."
-	case .Bad_Public_Key: return "The public key for licences is not valid."
-	case .Not_Read:       return "The licence file could not be read."
-	case .Not_Written:    return "The licence could not be saved."
+	case .Empty:          return i18n.tr("The licence is empty.")
+	case .Too_Long:       return i18n.tr("That is too long to be a licence key.")
+	case .Bad_Format:     return i18n.tr("That is not a licence key of this program: it must start with its tag and have three parts separated by dots.")
+	case .Bad_Encoding:   return i18n.tr("The licence key is damaged: it is not valid base64url text.")
+	case .Bad_Payload:    return i18n.tr("The licence key is damaged: its content is not a licence.")
+	case .Wrong_Product:  return i18n.tr("This licence is for another product.")
+	case .Bad_Signature:  return i18n.tr("The signature does not match: the key was altered or was not issued by the seller.")
+	case .No_Public_Key:  return i18n.tr("This build has no key to check licences with.")
+	case .Bad_Public_Key: return i18n.tr("The public key for licences is not valid.")
+	case .Not_Read:       return i18n.tr("The licence file could not be read.")
+	case .Not_Written:    return i18n.tr("The licence could not be saved.")
 	}
 	return ""
 }
@@ -119,8 +120,13 @@ edition_rank :: proc(p: Product, id: string) -> int {
 	return -1
 }
 
-// The name of edition `id` for people: its title, or the id itself for an edition this build does not know.
-edition_title :: proc(p: Product, id: string) -> string {
+// The name of edition `id` for people, in the language in use: its title (the program's English, marked with i18n.later),
+// or the id itself for an edition this build does not know.
+edition_title :: proc(p: Product, id: string) -> string { return i18n.tr(edition_english(p, id)) }
+
+// The edition's title in English, as a licence file's comment lines say it (a file is the same in every language).
+@(private = "file")
+edition_english :: proc(p: Product, id: string) -> string {
 	for e in p.editions {
 		if e.id == "" { break }
 		if e.id == id { return e.title != "" ? e.title : e.id }
@@ -284,7 +290,7 @@ sign_payload :: proc(p: Product, seed: []byte, payload: []byte, allocator := con
 file_text :: proc(p: Product, lic: Licence, key: string, hint := "", allocator := context.allocator) -> string {
 	b := strings.builder_make(allocator)
 	title := p.title != "" ? p.title : p.name
-	fmt.sbprintfln(&b, "# %s licence (%s) for %s", title, edition_title(p, lic.edition), one_line(lic.name))
+	fmt.sbprintfln(&b, "# %s licence (%s) for %s", title, edition_english(p, lic.edition), one_line(lic.name))
 	fmt.sbprintfln(&b, "# Order %s, %s.", one_line(lic.order), one_line(lic.date))
 	if lic.updates_until != "" { fmt.sbprintfln(&b, "# Updates until %s.", lic.updates_until) }
 	if hint != "" { fmt.sbprintfln(&b, "# %s", one_line(hint)) }

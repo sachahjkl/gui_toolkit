@@ -12,6 +12,7 @@ import "core:strconv"
 import "core:strings"
 import "core:time"
 import "../ascii"
+import i18n "../i18n"
 
 // One header of a request or of an answer.
 Header :: struct {
@@ -51,14 +52,14 @@ Error :: enum {
 
 error_text :: proc(e: Error) -> string {
 	switch e {
-	case .None:        return "no error"
-	case .No_Client:   return "this system has no HTTP client (libcurl)"
-	case .Bad_Url:     return "the address is not an http or https URL"
-	case .Bad_Request: return "the request's method or a header is not valid"
-	case .Unreachable: return "the server could not be reached"
-	case .Too_Large:   return "the answer is larger than expected"
+	case .None:        return i18n.tr("no error")
+	case .No_Client:   return i18n.tr("this system has no HTTP client (libcurl)")
+	case .Bad_Url:     return i18n.tr("the address is not an http or https URL")
+	case .Bad_Request: return i18n.tr("the request's method or a header is not valid")
+	case .Unreachable: return i18n.tr("the server could not be reached")
+	case .Too_Large:   return i18n.tr("the answer is larger than expected")
 	}
-	return "unknown error"
+	return i18n.tr("unknown error")
 }
 
 // The body of `url` and the status of its last answer (after the redirects). A status that is not 2xx is no Error: the

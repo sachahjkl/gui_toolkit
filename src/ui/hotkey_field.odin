@@ -13,11 +13,8 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import i18n "../i18n"
 import "../platform"
-
-// The words of the field while it records, and when it has no value.
-HOTKEY_FIELD_RECORDING :: "Press the keys…"
-HOTKEY_FIELD_EMPTY     :: "Click, then press the keys"
 
 hotkey_field :: proc(id: string, hk: ^platform.Hotkey) -> (changed: bool) {
 	s := gs()
@@ -38,14 +35,14 @@ hotkey_field :: proc(id: string, hk: ^platform.Hotkey) -> (changed: bool) {
 		}
 	}
 	empty := hk.key == .None && hk.char == 0
-	text := recording ? HOTKEY_FIELD_RECORDING : empty ? HOTKEY_FIELD_EMPTY : platform.hotkey_text(hk^)
+	text := recording ? i18n.tr("Press the keys…") : empty ? i18n.tr("Click, then press the keys") : platform.hotkey_text(hk^)
 	if !s.has_next || s.next_mod.height == nil { next({height = px(math.round(em * 2))}) }
 	push_tags("input")
 	if recording || empty { push_tags("weak") }
 	b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken, .Draw_Text}, fmt.tprintf("%s%s", text, id_part(id)))
 	if recording || empty { pop_tags() }
 	pop_tags()
-	a11y_default(b, {role = .Button, name = fmt.tprintf("Shortcut: %s", text)})
+	a11y_default(b, {role = .Button, name = fmt.tprintf(i18n.tr("Shortcut: %s"), text)})
 	// (a click, or Enter or Space while it has the keyboard, which signal takes as a click)
 	if signal(b).clicked && !recording {
 		s.hotkey_recorder = b.key

@@ -17,8 +17,10 @@ package tk_desktop
 // `.old` files at the next start of the installed copy. Uninstalling the copy that is running cannot delete its own file
 // either: `files_remove` returns what is left and the caller schedules its deletion for after the process ends.
 
+import "core:fmt"
 import "core:os"
 import "core:strings"
+import i18n "../i18n"
 import "../process"
 
 // The longest install folder accepted (the files inside need room too).
@@ -115,24 +117,24 @@ installed_info :: proc(o: ^Options, dir: string, allocator := context.allocator)
 // made there (the nearest folder that exists takes a file).
 check_install_dir :: proc(dir, name: string, probe := false) -> string {
 	d := strings.trim_space(dir)
-	if d == "" { return "Enter the folder to install into." }
-	if strings.contains_any(d, "\x00<>\"|?*") { return "The folder name has characters that Windows does not allow." }
-	for r in d { if r < ' ' { return "The folder name has a control character." } }
+	if d == "" { return i18n.tr("Enter the folder to install into.") }
+	if strings.contains_any(d, "\x00<>\"|?*") { return i18n.tr("The folder name has characters that Windows does not allow.") }
+	for r in d { if r < ' ' { return i18n.tr("The folder name has a control character.") } }
 	when ODIN_OS == .Windows {
 		// a drive path, C:\dir; a colon only after the drive letter; no network share (a program is not installed there)
 		if len(d) < 3 || !is_ascii_letter(d[0]) || d[1] != ':' || (d[2] != '\\' && d[2] != '/') {
-			return strings.concatenate({"Use a full path on a local drive, such as C:\\Users\\you\\AppData\\Local\\Programs\\", name, "."}, context.temp_allocator)
+			return fmt.tprintf(i18n.tr("Use a full path on a local drive, such as C:\\Users\\you\\AppData\\Local\\Programs\\%s."), name)
 		}
-		if strings.contains(d[2:], ":") { return "The folder name has a colon after the drive letter." }
-		if strings.trim_right(d[2:], "\\/") == "" { return "Pick a folder, not the root of a drive." }
+		if strings.contains(d[2:], ":") { return i18n.tr("The folder name has a colon after the drive letter.") }
+		if strings.trim_right(d[2:], "\\/") == "" { return i18n.tr("Pick a folder, not the root of a drive.") }
 	} else {
-		if !strings.has_prefix(d, "/") { return "Use a full path." }
-		if strings.trim_right(d, "/") == "" { return "Pick a folder, not the root." }
+		if !strings.has_prefix(d, "/") { return i18n.tr("Use a full path.") }
+		if strings.trim_right(d, "/") == "" { return i18n.tr("Pick a folder, not the root.") }
 	}
-	if len(d) > INSTALL_PATH_MAX { return "The path is too long (the files inside need room too)." }
+	if len(d) > INSTALL_PATH_MAX { return i18n.tr("The path is too long (the files inside need room too).") }
 	// a name made of dots and spaces cannot be made (Windows trims them)
-	for part in split_path_parts(d) { if part != "" && strings.trim(part, ". ") == "" { return "A folder name cannot be only dots or spaces." } }
-	if sys := system_folder_of(d); sys != "" { return strings.concatenate({"Not inside ", sys, ": that is the system's."}, context.temp_allocator) }
+	for part in split_path_parts(d) { if part != "" && strings.trim(part, ". ") == "" { return i18n.tr("A folder name cannot be only dots or spaces.") } }
+	if sys := system_folder_of(d); sys != "" { return fmt.tprintf(i18n.tr("Not inside %s: that is the system's."), sys) }
 	if probe { return probe_dir(d) }
 	return ""
 }
@@ -152,13 +154,13 @@ probe_dir :: proc(dir: string) -> string {
 	anc := strings.trim_right(dir, "\\/")
 	for !os.exists(anc) {
 		i := max(strings.last_index_byte(anc, '\\'), strings.last_index_byte(anc, '/'))
-		if i <= 0 { return "No such drive or folder." }
+		if i <= 0 { return i18n.tr("No such drive or folder.") }
 		anc = strings.trim_right(anc[:i], "\\/")
 		if anc == "" || (len(anc) == 2 && anc[1] == ':') { anc = strings.concatenate({anc, "\\"}, context.temp_allocator); break }
 	}
-	if !os.is_dir(anc) { return strings.concatenate({anc, " is a file, not a folder."}, context.temp_allocator) }
+	if !os.is_dir(anc) { return fmt.tprintf(i18n.tr("%s is a file, not a folder."), anc) }
 	probe := join_path(anc, PROBE_NAME)
-	if err := os.write_entire_file(probe, "x"); err != nil { return strings.concatenate({"Cannot write in ", anc, "."}, context.temp_allocator) }
+	if err := os.write_entire_file(probe, "x"); err != nil { return fmt.tprintf(i18n.tr("Cannot write in %s."), anc) }
 	_ = os.remove(probe)
 	return ""
 }

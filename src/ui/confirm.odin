@@ -1,6 +1,7 @@
 package ui
 
 import "core:fmt"
+import i18n "../i18n"
 import lucide "../lucide"
 
 // The question before an act that is not taken back (a file deleted for good, a process killed, a service stopped): a
@@ -14,9 +15,13 @@ import lucide "../lucide"
 //   case .Cancelled, .None:
 //   }
 
-// The words of a confirmation that are not the caller's own question (translated: a program sets them once).
-Confirm_Labels :: struct { cancel, more, enter: string }   // more: "%d" the lines not shown; enter: "%s" the button's word
-CONFIRM_LABELS :: Confirm_Labels{cancel = "Cancel", more = "and %d more", enter = "%s (Enter)"}
+// The words of a confirmation that are not the caller's own question (zero: confirm_default_labels).
+Confirm_Labels :: struct { cancel, more, enter: string }   // more: "%d" the lines not shown ("": the toolkit's, by count); enter: "%s" the button's word
+// The toolkit's words of a confirmation, in the language in use.
+confirm_default_labels :: proc() -> Confirm_Labels {
+	// (no `more`: the toolkit's takes the form of its count, which one format cannot)
+	return {cancel = i18n.tr("Cancel"), enter = i18n.tr("%s (Enter)")}
+}
 
 Confirm_Options :: struct {
 	title:          string,
@@ -25,7 +30,7 @@ Confirm_Options :: struct {
 	act:            string,     // the act's button: "Delete", "Kill"
 	enter_confirms: bool,       // Enter acts (a safe act, asked for); else Enter cancels
 	width_em:       f32,        // 0: CONFIRM_WIDTH_EM
-	labels:         Confirm_Labels,   // zero: CONFIRM_LABELS
+	labels:         Confirm_Labels,   // zero: confirm_default_labels()
 }
 
 Confirm_Answer :: enum u8 { None, Confirmed, Cancelled }
@@ -35,7 +40,7 @@ CONFIRM_LINES_MAX :: 8
 
 confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm_Answer) {
 	was := open^
-	labels := o.labels == {} ? CONFIRM_LABELS : o.labels
+	labels := o.labels == {} ? confirm_default_labels() : o.labels
 	em := font_size()
 	w := em * (o.width_em > 0 ? o.width_em : CONFIRM_WIDTH_EM)
 	if modal(id, w, open) {
@@ -66,7 +71,8 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 						if more := len(o.lines) - CONFIRM_LINES_MAX; more > 0 {
 							if tags("weak") {
 								next({width = fill(), height = px(em * 1.5), text_pad = em * 0.6})
-								label(fmt.tprintf("%s###confirm_more", fmt.tprintf(labels.more, more)))
+								more_words := labels.more != "" ? labels.more : i18n.tr(more, "and %d more", "and %d more")
+								label(fmt.tprintf("%s###confirm_more", fmt.tprintf(more_words, more)))
 							}
 						}
 					}
@@ -109,9 +115,10 @@ confirm :: proc(id: string, open: ^bool, o: Confirm_Options) -> (answer: Confirm
 //   case .None:
 //   }
 
-// The words of a prompt that are not the caller's own question (translated: a program sets them once).
+// The words of a prompt that are not the caller's own question (zero: prompt_default_labels).
 Prompt_Labels :: struct { cancel, ok: string }
-PROMPT_LABELS :: Prompt_Labels{cancel = "Cancel", ok = "OK"}
+// The toolkit's words of a prompt, in the language in use.
+prompt_default_labels :: proc() -> Prompt_Labels { return {cancel = i18n.tr("Cancel"), ok = i18n.tr("OK")} }
 
 Prompt_Options :: struct {
 	title:       string,
@@ -121,13 +128,13 @@ Prompt_Options :: struct {
 	reveal:      ^bool,           // with `secret`: the eye that shows it, and whether it is shown (nil: no eye)
 	act:         string,          // the OK button's word ("": labels.ok)
 	width_em:    f32,             // 0: CONFIRM_WIDTH_EM
-	labels:      Prompt_Labels,   // zero: PROMPT_LABELS
+	labels:      Prompt_Labels,   // zero: prompt_default_labels()
 }
 
 prompt :: proc(id: string, open: ^bool, f: ^Text_Field, o: Prompt_Options) -> (answer: Confirm_Answer) {
 	s := gs()
 	was := open^
-	labels := o.labels == {} ? PROMPT_LABELS : o.labels
+	labels := o.labels == {} ? prompt_default_labels() : o.labels
 	em := font_size()
 	w := em * (o.width_em > 0 ? o.width_em : CONFIRM_WIDTH_EM)
 	if modal(id, w, open) {

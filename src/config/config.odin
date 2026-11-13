@@ -31,6 +31,7 @@ import "core:strings"
 import "../ascii"
 import "../fsx"
 import base "../base"
+import i18n "../i18n"
 
 Kind :: enum u8 { Bool, Int, Float, String }
 
@@ -45,8 +46,11 @@ Def :: struct {
 	// dotted, lower case: "appearance.text.gamma". The segments but the last are its groups (path_of): the group
 	// "appearance", in it "appearance.text"; a settings page shows them as headings (group_title)
 	name:        string,
-	title:       string,      // what a settings page calls it ("": made from the name, title_of)
-	description: string,
+	title:       string,      // what a settings page calls it ("": made from the name, title_of); English, shown translated
+	description: string,      // English, shown translated (description_of)
+	// the program's name when `description` says it: the description is then a format, its %s (or %[0]s) this name
+	// (description_of). A literal, or as long-lived as the registry
+	program:     string,
 	kind:        Kind,
 	default:     Value,       // `s` must be a literal or otherwise outlive the registry
 	min, max:    f64,         // Int / Float bounds, only when `bounded`
@@ -117,11 +121,11 @@ Set_Error :: enum u8 {
 set_error_text :: proc(e: Set_Error) -> string {
 	switch e {
 	case .None: return ""
-	case .Unknown: return "unknown preference"
-	case .Locked: return "set by policy or on the command line for this run"
-	case .Bad_Type: return "not a valid value for this type"
-	case .Out_Of_Range: return "out of range"
-	case .Not_A_Choice: return "not one of the allowed values"
+	case .Unknown: return i18n.tr("unknown preference")
+	case .Locked: return i18n.tr("set by policy or on the command line for this run")
+	case .Bad_Type: return i18n.tr("not a valid value for this type")
+	case .Out_Of_Range: return i18n.tr("out of range")
+	case .Not_A_Choice: return i18n.tr("not one of the allowed values")
 	}
 	return ""
 }

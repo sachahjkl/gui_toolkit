@@ -20,6 +20,7 @@ import "core:strings"
 import "core:time"
 import "../ascii"
 import "../fsx"
+import i18n "../i18n"
 import "../platform"
 import "../ui"
 
@@ -123,7 +124,7 @@ themes_file_open :: proc(tf: ^Themes_File, s: ^ui.State) {
 	done :: proc(d: rawptr, _: u64) {
 		j := (^Open_Job)(d)
 		delete(j.tf.error)
-		j.tf.error = j.ok ? "" : strings.clone("The file could not be written.")
+		j.tf.error = j.ok ? "" : strings.clone(i18n.tr("The file could not be written."))
 		if j.ok { j.tf.due_ms = 0 }   // (looked at again at once: it may be new)
 		open_job_free(d)
 	}

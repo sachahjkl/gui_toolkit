@@ -8,6 +8,7 @@ import "core:hash"
 import "core:strings"
 import win "core:sys/windows"
 import base "../base"
+import i18n "../i18n"
 
 open_file_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc := #caller_location) -> Dialog_Result {
 	base.blocking("platform.open_file_dialog", loc)
@@ -90,7 +91,6 @@ File_Dialog_Call :: struct {
 	folder_forced: bool,                        // SetFolder (an explicit folder); else SetDefaultFolder (a known folder)
 }
 
-ALL_FILES_NAME :: "All files (*.*)"
 ALL_FILES_SPEC :: "*.*"
 
 // The call for a dialog (its strings in `allocator`).
@@ -113,7 +113,7 @@ file_dialog_call :: proc(kind: int, d: File_Dialog, allocator := context.temp_al
 			pats := filter_patterns(f, allocator)
 			append(&types, File_Dialog_Type{f.name != "" ? f.name : pats, pats})
 		}
-		if d.all_files || len(types) == 0 { append(&types, File_Dialog_Type{ALL_FILES_NAME, ALL_FILES_SPEC}) }
+		if d.all_files || len(types) == 0 { append(&types, File_Dialog_Type{i18n.tr("All files (*.*)"), ALL_FILES_SPEC}) }
 		c.types = types[:]
 		c.type_index = u32(clamp(d.filter_index, 0, len(types) - 1) + 1)
 	}

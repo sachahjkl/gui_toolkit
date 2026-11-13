@@ -80,7 +80,7 @@ an_open_dialog_call :: proc(t: ^testing.T) {
 	if len(c.types) == 3 {
 		testing.expect_value(t, c.types[0], platform.File_Dialog_Type{"Images", "*.png;*.jpg"})
 		testing.expect_value(t, c.types[1], platform.File_Dialog_Type{"*.txt", "*.txt"})   // no name: its patterns
-		testing.expect_value(t, c.types[2], platform.File_Dialog_Type{platform.ALL_FILES_NAME, platform.ALL_FILES_SPEC})
+		testing.expect_value(t, c.types[2], platform.File_Dialog_Type{"All files (*.*)", platform.ALL_FILES_SPEC})
 	}
 	testing.expect_value(t, c.type_index, u32(3))   // a line past the list: the last one (1-based)
 	testing.expect_value(t, c.title, "Pick")

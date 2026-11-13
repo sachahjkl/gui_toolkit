@@ -10,6 +10,7 @@ import "core:math"
 import "core:strconv"
 import "core:strings"
 import "../draw"
+import i18n "../i18n"
 import "../font"
 import "../platform"
 import lucide "../lucide"
@@ -1570,8 +1571,9 @@ STRIP_FADE_EM :: 2.5
 // `if strip_grid("###themes", &open, {gap, gap}) { cells... }`: its cells (each its own width) on one line that scrolls
 // sideways; "Show all" under it lays them out as a grid, wrapped to the width, and "Show fewer" folds them back. The button
 // is there only when the line does not hold them all (or when open). `open` is the program's to keep.
+// `show_all`, `show_fewer` "": the toolkit's words, in the language in use.
 @(require_results, deferred_in = strip_grid_end)
-strip_grid :: proc(id: string, open: ^bool, gap: Vec2 = {}, show_all := "Show all", show_fewer := "Show fewer") -> bool {
+strip_grid :: proc(id: string, open: ^bool, gap: Vec2 = {}, show_all := "", show_fewer := "") -> bool {
 	next({width = fill(), height = children_sum(), axis = .Y})
 	push_parent(build_box({}, id))
 	if !open^ {
@@ -1621,7 +1623,7 @@ strip_grid_end :: proc(id: string, open: ^bool, gap: Vec2, show_all, show_fewer:
 		if row(id = "###strip_more") {
 			spacer(fill())
 			next({width = text_size(em * 0.6), height = px(dense(em * 1.8)), font_size = math.round(em * 0.9)})
-			if button(fmt.tprintf("%s###strip_toggle", open^ ? show_fewer : show_all), face = .Ghost).clicked { open^ = !open^ }
+			if button(fmt.tprintf("%s###strip_toggle", open^ ? (show_fewer != "" ? show_fewer : i18n.tr("Show fewer")) : (show_all != "" ? show_all : i18n.tr("Show all"))), face = .Ghost).clicked { open^ = !open^ }
 		}
 	}
 	pop_parent()   // the strip
