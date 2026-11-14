@@ -122,6 +122,8 @@ doc_check :: proc(root: string, extra: []string) -> (problems: []string, why: st
 	for f in root_files {
 		if !strings.has_suffix(f, ".md") || strings.has_prefix(f, "CHANGELOG") || strings.has_prefix(f, "changelog.d/") || strings.has_prefix(f, "NOTICE") || strings.has_prefix(f, "docs/changes-") { continue }
 		if strings.contains(f, "/CHANGELOG") || strings.has_prefix(f, "ext/") { continue }
+		// (the intent, srcmd.org: it records the thinking, and names the programs' files and the names an API had before)
+		if strings.has_prefix(f, "src/md/") { continue }
 		append(&docs, f)
 	}
 	for f in root_files { if f == "site/index.html" { append(&docs, f) } }

@@ -4,6 +4,7 @@ package views_test
 // Ctrl+W, taken once; view_close gives none; nothing is drawn before its layout settles; the presentation the user chose
 // survives a quit; the header adds the title, an inactive Detach icon and the close cross, and nothing else.
 
+import "core:os"
 import "core:path/filepath"
 import "core:testing"
 import "../../src/testkit/session"
@@ -197,6 +198,8 @@ the_presentation_is_remembered :: proc(t: ^testing.T) {
 	defer run_end(&r)
 	s := run_start(t, &r)
 	path, _ := filepath.join({s.out, "views.txt"}, context.temp_allocator)
+	// (the session's folder stays between runs: a memory left by the last run would be read as this one's)
+	_ = os.remove(path)
 	ui.views_destroy(&r.views)
 	ui.views_init(&r.views, {path = path})
 	run_register(&r)

@@ -241,7 +241,7 @@ edge are drawn over what is in it (`machined_plate_frame`). A search over a list
 | `ui.prompt(id, &open, &field, o)` | `prompt_open(id, &field, o)`, `prompt_answer(id)` |
 | `ui.palette_open(&p)`, `ui.palette(&p, commands, disabled, o)` | `palette_set(&p, commands, disabled, o)` when they change, `palette_open(&p)`, `palette_chosen(&p)` |
 | `Command_Palette.open`, `.size` | `palette_is_open(&p)`; the size is the views' memory |
-| `sheet.open = true`, `ui.shortcuts_sheet(&sheet, id, commands)` | `shortcuts_sheet_open(&sheet, commands)` |
+| `sheet.open = true`, then the sheet built at each frame | `shortcuts_sheet_open(&sheet, commands)` |
 | `setup.open(&d, cfg)`, `setup.dialog(&d, cfg, em, logo)` | `setup.open(&d, cfg, logo)` in a build, `setup.update(&d, cfg)` |
 | `prefs_page.install_frame(&in, em)` | `install_frame(&in)` |
 | `ui.dialog_open()`, a program's own booleans of dialogs | `views_hold_keys(vs)`, `view_is_open` |
