@@ -193,7 +193,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		draw.rect_corners(dc, draw.rect_pad(r, glow), colors4(tuned(c)), radii_grown(radii, glow), 0, glow)
 	}
 	if .Draw_Background in flags && !machined_face {
-		paint_rect_corners(dc, r, b.bg, radii, box_sheen(s, b))
+		paint_rect_corners(dc, r, b.bg, radii, box_sheen(s, b), rim = box_rimmed(s, b))
 	}
 	hot, held := box_hot(b), box_held(b)
 	if .Draw_Hot_Effects in flags && (hot > DRAW_INVISIBLE_EPS || held > DRAW_INVISIBLE_EPS) && !machined_face {
@@ -438,8 +438,9 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 	paint_rect_corners(dc, r, c, {radius, radius, radius, radius}, k)
 }
 
-// paint_rect with a radius per corner (draw.rect_corners' order).
-paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, k: f32 = 1) {
+// paint_rect with a radius per corner (draw.rect_corners' order). `rim` false: the face alone, no lit line round it
+// (a box that declares its sides, a bar: box_rimmed).
+paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, k: f32 = 1, rim := true) {
 	s := gs()
 	finish := s.theme != nil ? s.theme.finish : .Flat
 	if finish == .Flat || k <= DRAW_INVISIBLE_EPS || c.a <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 2 {
@@ -449,12 +450,13 @@ paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, 
 	white := Color{1, 1, 1, c.a}
 	black := Color{0, 0, 0, c.a}
 	px := max(1, math.round(s.scale))
+	rk: f32 = rim ? k : 0
 	switch finish {
 	case .Flat:
 	case .Machined, .Edged:   // (the reliefs are machined_box's; a surface painted here, an accent fill, is a lit face)
-		lit_face(dc, r, c, radii, MACHINED_TOP_WHITE * k, MACHINED_BOTTOM_BLACK * k, MACHINED_RIM_ALPHA * k)
+		lit_face(dc, r, c, radii, MACHINED_TOP_WHITE * k, MACHINED_BOTTOM_BLACK * k, MACHINED_RIM_ALPHA * rk)
 	case .Gradient:
-		lit_face(dc, r, c, radii, GRADIENT_TOP_WHITE * k, GRADIENT_BOTTOM_BLACK * k, GRADIENT_RIM_ALPHA * k)
+		lit_face(dc, r, c, radii, GRADIENT_TOP_WHITE * k, GRADIENT_BOTTOM_BLACK * k, GRADIENT_RIM_ALPHA * rk)
 	case .Glass:
 		mid := math.round((r.min.y + r.max.y) * 0.5)
 		// saturated fills keep more of their colour so white text stays readable on them
@@ -468,7 +470,7 @@ paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, 
 		rr := [4]f32{min(radii[0], lim), min(radii[1], lim), min(radii[2], lim), min(radii[3], lim)}
 		draw.rect_corners(dc, {r.min, {r.max.x, mid}}, {t0, t1, t0, t1}, {rr[0], 0, rr[2], 0})
 		draw.rect_corners(dc, {{r.min.x, mid}, r.max}, {b0, b1, b0, b1}, {0, rr[1], 0, rr[3]})
-		draw.rect_corners(dc, draw.rect_pad(r, -px), colors4(tuned({1, 1, 1, GLASS_RIM_ALPHA * k * c.a}, Color{c.r, c.g, c.b, 1})), radii_grown(rr, -px), px)
+		if rim { draw.rect_corners(dc, draw.rect_pad(r, -px), colors4(tuned({1, 1, 1, GLASS_RIM_ALPHA * k * c.a}, Color{c.r, c.g, c.b, 1})), radii_grown(rr, -px), px) }
 	}
 }
 
@@ -482,6 +484,19 @@ lit_face :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, up, down, 
 	p := max(1, math.round(gs().scale))
 	lit := tuned({1, 1, 1, rim * c.a}, top)
 	draw.rect_corners(dc, draw.rect_pad(r, -p), {lit, {1, 1, 1, 0}, lit, {1, 1, 1, 0}}, radii_grown(radii, -p), p)
+}
+
+// Whether a finish draws its rim (the lit line round a raised face, glass's white edge) on a box. A box that declares
+// its sides (.Draw_Side_*) has those lines alone: a rim inset by a pixel doubled them, and framed the sides it left
+// open. A box flush with an edge of the window (a bar, a sidebar) has the window's edge there: a rim framed it, and
+// drew a second line under the bar next to it.
+box_rimmed :: proc(s: ^State, b: ^Box) -> bool {
+	if b.flags & {.Draw_Side_Top, .Draw_Side_Bottom, .Draw_Side_Left, .Draw_Side_Right} != {} { return false }
+	if s.root == nil { return true }
+	FLUSH_PX :: 0.5
+	r, w := b.rect, s.root.rect
+	return abs(r.min.x - w.min.x) > FLUSH_PX && abs(r.min.y - w.min.y) > FLUSH_PX &&
+		abs(r.max.x - w.max.x) > FLUSH_PX && abs(r.max.y - w.max.y) > FLUSH_PX
 }
 
 // Sheen of the box's tags (0 when the theme is flat).

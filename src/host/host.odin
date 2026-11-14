@@ -122,6 +122,9 @@ Host :: struct {
 	shown_again: u32,  // the window's count of shows after a hide, as of the last frame (a new one remakes the swap chain)
 	last_ms: f64,      // the clock at the last frame
 	next:    ^Host,    // the next window on the same Shared (Shared.hosts)
+	// a view's window (view_windows): the Host whose view it shows (nil: a window of the program's own). Its `user` is
+	// that Host's, so the program's hooks it is given (`input`) read the program's data as in its own windows
+	owner:   ^Host,
 }
 
 // How long the steps of the last picture took. (The builds are the application's to time: `builds` may make several.)

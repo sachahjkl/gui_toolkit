@@ -514,7 +514,12 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record) {
 		}
 	}
 	pop_parent()
-	if s.pressed_any[.Right] && over { menu_open(view_menu_id(r), mouse_pos(), body.key, search = false) }
+	// (the view's menu only where nothing of the body takes the right press: the box a press there acts on (hot_key, by
+	// the last layout) is none of the body's, and the body opened no menu in this build. A tab in the band with a menu
+	// of its own keeps it: its right click comes at the release, the view's menu would have replaced it at the press)
+	if s.pressed_any[.Right] && over && !view_body_takes(s, body.key) && !menu_opened_now(s) {
+		menu_open(view_menu_id(r), mouse_pos(), body.key, search = false)
+	}
 	if view_focus_inside(s, body.key) && r.flag && r.ending == nil {
 		if key_press(.W, {.Ctrl}) {
 			r.flag = false
@@ -523,6 +528,24 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record) {
 		}
 	}
 	view_build_ended(vs, r)
+}
+
+// Whether the box a press at the pointer acts on (the last layout's hot box) is in the body under `root`, not `root`.
+@(private = "file")
+view_body_takes :: proc(s: ^State, root: Key) -> bool {
+	if s.hot_key == 0 || s.hot_key == root { return false }
+	for b := s.boxes[s.hot_key] or_else nil; b != nil; b = b.parent {
+		if b.key == root { return true }
+	}
+	return false
+}
+
+// Whether a menu opened in this build (a level of it, or one waiting for the block of an open menu to end).
+@(private)
+menu_opened_now :: proc(s: ^State) -> bool {
+	for lv in s.menus { if lv.open_build == s.build_index { return true } }
+	if lv, ok := s.menu_next.?; ok && lv.open_build == s.build_index { return true }
+	return false
 }
 
 @(private)

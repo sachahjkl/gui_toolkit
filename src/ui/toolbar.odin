@@ -182,6 +182,20 @@ toolbar_menu_name :: proc(id: string) -> string { return fmt.tprintf("###toolbar
 // Whether the "…" menu of tool bar `id` is open: Escape is its own (a program's Escape waits).
 toolbar_menu_open :: proc(id: string) -> bool { return menu_is_open(toolbar_menu_name(id)) }
 
+// Opens the "…" menu of tool bar `id` as a click on its "…" button does: under the button, as the last build laid it out.
+// False: the bar shows no "…" button (nothing is folded, or it was not laid out yet): nothing opens. A program that opens
+// it at its start (a picture, a tour) calls it until it is true.
+toolbar_menu_show :: proc(id: string) -> bool {
+	s := gs()
+	mem, ok := s.toolbars[toolbar_key(id)]
+	if !ok || mem.more == 0 { return false }
+	more := s.boxes[mem.more] or_else nil
+	if more == nil || more.first_build == s.build_index || more.rect.max.x <= more.rect.min.x { return false }
+	name := toolbar_menu_name(id)
+	if !menu_is_open(name) { menu_open(name, more.rect, anchor = more.key, search = false) }
+	return true
+}
+
 // Whether the item being built is in the "…" menu (a widget that sizes itself otherwise in a menu row).
 toolbar_in_menu :: proc() -> bool { return gs().toolbar.item_where == .Menu }
 
@@ -636,13 +650,15 @@ toolbar_menu_leave :: proc(s: ^State, tb: ^Toolbar_Build) {
 }
 
 // The menu's section of the group being built, at its first item in the menu: a separator after another section, its
-// title.
+// title. A group of one item has no title in the menu: its one row already says what it is ("Colours" over "Colour",
+// "Insert" over "Insert"), and the separators keep it apart from the others.
 @(private = "file")
 toolbar_menu_section :: proc(tb: ^Toolbar_Build) {
 	if tb.group_section { return }
 	tb.group_section = true
 	if tb.sections > 0 { menu_separator() }
-	if tb.group_title != "" { menu_heading(tb.group_title) }
+	alone := len(gs().toolbars[tb.key].groups[tb.group].items) == 1
+	if tb.group_title != "" && !alone { menu_heading(tb.group_title) }
 	tb.sections += 1
 }
 

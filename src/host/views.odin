@@ -14,12 +14,16 @@ package tk_host
 import "../platform"
 import "../ui"
 
-// A view's window: its Host, and the window whose views it shows.
+// A view's window: its Host (first: a hook's ^Host is the View_Window), and the window whose views it shows.
 View_Window :: struct {
 	host:  Host,
 	owner: ^Host,
 	shown: bool,   // ui's step showed it: from now on its frames draw pictures
 }
+
+// The View_Window of a view's window's Host.
+@(private = "file")
+view_window_of :: proc(h: ^Host) -> ^View_Window { return (^View_Window)(h) }
 
 // The backend of the views' windows of a program's windows, all of them (the hosts on `sh`): a view's window is made
 // after the frames of the Host that owns the view (View_Window_Ask.owner_state). Refused for an offscreen owner (a
@@ -53,17 +57,18 @@ view_window_open :: proc(user: rawptr, ask: ui.View_Window_Ask) -> (state: ^ui.S
 	vw.owner = owner
 	h := &vw.host
 	o := Open_Options{title = ask.title, size = ask.size, under_children = ask.under_children}
-	if !host_open(h, sh, o, proc(h: ^Host, size: Vec2) { ui.views_window_build() }, vw) {
+	// (its user is the owner's: the program's hooks given to it read the program's data, as in its own windows)
+	if !host_open(h, sh, o, proc(h: ^Host, size: Vec2) { ui.views_window_build() }, owner.user) {
 		free(vw)
 		return
 	}
-	h.background = owner.background
-	h.after_input = owner.after_input
-	h.partial_redraw = owner.partial_redraw
+	h.owner = owner
+	view_window_follow(vw)
+	// (its State follows its owner's by itself: ui.State.style_owner, its base style, its zoom, its theme, its fonts)
 	h.params = proc(h: ^Host, p: ^ui.Build_Params) { p.inactive = !h.win.active }
 	// (hidden, its unseen layouts are built and never drawn: a picture would put a buffer on a surface with no role
 	// yet, and on Wayland the role given to it at the show is a protocol error, the end of the connection)
-	h.hold = proc(h: ^Host, size: Vec2) -> int { return (^View_Window)(h.user).shown ? 0 : 1 }
+	h.hold = proc(h: ^Host, size: Vec2) -> int { return view_window_of(h).shown ? 0 : 1 }
 	h.close_asked = proc(h: ^Host) { ui.view_window_close_asked(&h.state) }
 	if at, ok := ask.at.?; ok { platform.move_window(h.win, at.x, at.y) }
 	append(&sh.views, vw)
@@ -89,18 +94,36 @@ view_window_close :: proc(user: rawptr, handle: rawptr) {
 	free(vw)
 }
 
+// What a view's window takes from its owner Host at each frame: its ground (the theme's), the frames owed after an
+// input, partial redraw, and the program's input hook (its terminals take their keys before the interface, in a view's
+// window too). Its title bar's dark or light follows the owner's window (ui.views_windows_step).
+@(private = "file")
+view_window_follow :: proc(vw: ^View_Window) {
+	h, o := &vw.host, vw.owner
+	h.background = o.background
+	h.after_input = o.after_input
+	h.partial_redraw = o.partial_redraw
+	h.input = o.input
+}
+
 // After a frame of `h`, outside any build: the step of its views' windows (ui.views_windows_step), then a frame of each
-// of them, in the order they opened. A window the step closed is not in the list any more.
+// of them, in the order they opened. A window the step closed is not in the list any more. A frame of `h` that came
+// only from the pointer moving over it (ui.pointer_only_build) changed nothing they show: a view's window makes a frame
+// then only when it is due on its own (its input, an animation, posted calls, a wake, frames owed).
 @(private)
 host_views_frames :: proc(h: ^Host) {
 	if ui.building() { return }
 	ui.views_windows_step(&h.state)
 	sh := h.shared
+	quiet := ui.pointer_only_build(&h.state)
 	// (a frame may open or close another: the list is read again each time)
 	for i := 0; i < len(sh.views); i += 1 {
 		vw := sh.views[i]
 		if vw.owner != h || platform.is_closed(vw.host.win) { continue }
-		host_frame(&vw.host)
+		view_window_follow(vw)
+		v := &vw.host
+		if quiet && v.settle == 0 && !platform.events_waiting(v.win) && !ui.view_window_due(&v.state) { continue }
+		host_frame(v)
 	}
 }
 

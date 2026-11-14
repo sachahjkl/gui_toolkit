@@ -215,6 +215,27 @@ pointer_on :: proc(b: ^Box) -> bool {
 	return false
 }
 
+// The box a press at `p` (window pixels) acts on, by the last layout: the topmost clickable box there, enabled, within
+// its clips. nil: none, or a scroll bar (it has no box). A program reads it at an event's own position (each
+// event of a batch), not only at the pointer's last one (hot_key). (`box_at` finds a box by its ids.)
+hit_box_at :: proc(p: Vec2) -> ^Box {
+	s := gs()
+	if s.root == nil { return nil }
+	return box_from_key(hit_test(s, p))
+}
+
+// pointer_on at `p` (an event's own position) instead of the pointer's: whether `p` is on `b` with nothing drawn over it
+// there, by the last layout.
+pointer_on_at :: proc(b: ^Box, p: Vec2) -> bool {
+	s := gs()
+	if b == nil || s.root == nil || !box_contains(b, p) { return false }
+	front := box_from_key(front_test_box(s.root, p, s.root.rect))
+	if front == nil { return true }
+	for x := front; x != nil; x = x.parent { if x == b { return true } }
+	for x := b.parent; x != nil; x = x.parent { if x == front { return true } }
+	return false
+}
+
 // Whether `p` is on the box's shape: its rect, or the trapezoid `slant` makes of it.
 box_contains :: proc(b: ^Box, p: Vec2) -> bool {
 	if b.hit_outset > 0 { return contains(Rect{b.rect.min - b.hit_outset, b.rect.max + b.hit_outset}, p) }

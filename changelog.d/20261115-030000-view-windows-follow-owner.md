@@ -1,0 +1,3 @@
+type: Changed
+
+**A view's window looks and behaves like the program's window**: from its opening and at every change, it takes its owner's font, size, row height, paddings, radius, zoom, theme, fonts and bold/italic families (shared, never copied: `ui.state_families(s)` reads them); its title bar is dark or light as its owner's (`platform.is_dark_title`), and with `host.view_windows` its ground, its frames after input, partial redraw and the program's `input` hook are its owner's (the hook's `h.owner` says it is a view's window). Ctrl+=, Ctrl+-, Ctrl+0 and Ctrl+wheel in it zoom the whole program. A move of the pointer over the main window no longer rebuilds the views' windows (`ui.pointer_only_build`, `ui.view_window_due`).

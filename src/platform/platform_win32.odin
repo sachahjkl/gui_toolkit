@@ -519,12 +519,15 @@ set_border_color :: proc(w: ^Window, rgb: Maybe(u32)) {
 
 // Matches the OS title bar to a dark or light theme.
 set_dark_title :: proc(w: ^Window, dark: bool) {
-	if w.offscreen { return }
 	if w.dark_title == dark { return }
-	w.dark_title = dark
+	w.dark_title = dark   // (an offscreen window records it too: a view's window follows its owner's, a test reads it)
+	if w.offscreen { return }
 	v := win.BOOL(dark)
 	win.DwmSetWindowAttribute(w.hwnd, u32(win.DWMWINDOWATTRIBUTE.DWMWA_USE_IMMERSIVE_DARK_MODE), &v, size_of(v))
 }
+
+// What set_dark_title gave the window last (false: none).
+is_dark_title :: proc(w: ^Window) -> bool { return w.dark_title }
 
 is_closed :: proc(w: ^Window) -> bool { return w.closed }
 

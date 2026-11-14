@@ -103,6 +103,7 @@ view_window_step :: proc(vs: ^Views, r: ^View_Record) {
 	st := r.w_state
 	if st == nil { return }
 	style_follow(st, r.owner)
+	view_window_chrome(r)
 	if title := view_title_shown(r); title != r.w_title {
 		platform.set_title(r.w_win, title)
 		delete(r.w_title, vs.allocator)
@@ -152,10 +153,22 @@ view_window_open :: proc(vs: ^Views, r: ^View_Record) {
 	r.w_title = strings.clone(title, vs.allocator)
 	set_views(st, vs)
 	views_attach_state(vs, st)
+	// (it looks like its owner from its first build on, and at every change of the owner's: begin_build follows it)
+	st.style_owner = r.owner
 	style_follow(st, r.owner)
+	view_window_chrome(r)
 	// (the State in use stays the owner's: a view opened outside a build belongs to it)
 	use(r.owner)
 	if r.owner != nil { r.owner.anim_busy = true }
+}
+
+// Its window's title bar as its owner's: dark or light, as the program set its own (platform.set_dark_title), at its
+// opening and at each step (a change of theme shows in every window). The window's ground is the backend's to follow
+// (host.view_windows: the owner Host's `background`, at each frame).
+@(private = "file")
+view_window_chrome :: proc(r: ^View_Record) {
+	if r.w_win == nil || r.owner == nil || r.owner.window == nil { return }
+	platform.set_dark_title(r.w_win, platform.is_dark_title(r.owner.window))
 }
 
 // Its window goes (the backend's close). `remember`: its size and its place are written first.

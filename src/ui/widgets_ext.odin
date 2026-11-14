@@ -362,9 +362,29 @@ Slider_Draw :: struct {
 	no_text:    bool,   // no value at the right end: the track runs to it (a number's value is its field)
 }
 
+@(private = "file") SLIDER_PAD_EM :: 0.75              // the track's room at each end, for the knob
+@(private = "file") SLIDER_TRACK_LEAST_EM :: 4         // the track a slider keeps, whatever room it is given
+@(private = "file") SLIDER_TRACK_LEAST_BARE_EM :: 2    // ...without a value (a number's track: its field says it, in a narrow row)
+@(private = "file") SLIDER_PREFERRED_EM :: 12          // its width when nothing gives it one (a tool bar's control)
+
+// A slider's width: never less than its pads, a track a hand can use and its value's room (a share of a narrow row, or
+// a width given too small, left only the knob and the value); when nothing gives it a width (in a box as wide as what is
+// in it: a tool bar's control, a menu's control row) its preferred width, as a field has one.
+@(private = "file")
+slider_width :: proc(b: ^Box, value_room: bool) {
+	em := b.font_size
+	track: f32 = value_room ? SLIDER_TRACK_LEAST_EM + SLIDER_VALUE_ROOM_EM : SLIDER_TRACK_LEAST_BARE_EM
+	least := math.ceil(em * (2 * SLIDER_PAD_EM + track))
+	p := &b.pref[.X]
+	#partial switch p.kind {
+	case .Pixels, .Percent, .Text: p.least = max(p.least, least)
+	case: p^ = px(max(least, math.round(em * SLIDER_PREFERRED_EM)))
+	}
+}
+
 @(private)
 slider_geom :: proc(r: Rect, em: f32, value_room := true) -> (x0, x1: f32) {
-	pad := em * 0.75
+	pad := em * SLIDER_PAD_EM
 	x0 = r.min.x + pad
 	x1 = r.max.x - (value_room ? em * SLIDER_VALUE_ROOM_EM : 0) - pad
 	if x1 < x0 + SLIDER_TRACK_MIN_PX * scale() { x1 = x0 + SLIDER_TRACK_MIN_PX * scale() }
@@ -439,6 +459,7 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 	before := value^
 	b := build_box({.Clickable, .Focusable}, id)
 	b.cursor = .Hand
+	slider_width(b, format != "")
 	sig := signal(b)
 	k := slider_unit(lo, hi, step)
 	set :: proc(value: ^f32, v, lo, hi, step: f32) { value^ = clamp(slider_snap(v, step), lo, hi) }

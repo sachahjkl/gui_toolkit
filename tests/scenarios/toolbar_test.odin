@@ -79,6 +79,11 @@ a_folding_toolbar_shows_a_menu_of_sections :: proc(t: ^testing.T) { unwatched.ru
 		if ui.toolbar("fbar", {overflow = .Fold}) {
 			if ui.toolbar_group("draw", {title = "Dessin"}) {
 				if ui.toolbar_tool("pen", {label = "Crayon", shortcut = "P", words = true}) { r.pen += 1 }
+				_ = ui.toolbar_tool("eraser", {label = "Gomme", words = true})
+			}
+			// (a group of one item: no title in the menu, its row says it)
+			if ui.toolbar_group("fill", {title = "Remplissage", separator = true}) {
+				if ui.toolbar_control("fill_on", {label = "Remplir"}) { _ = ui.button("fill_plus", "Oui") }
 			}
 			if ui.toolbar_group("style", {title = "Style", separator = true}) {
 				if ui.toolbar_tool("bold", {label = "Gras", words = true, on = r.bold % 2 == 1}) { r.bold += 1 }
@@ -117,6 +122,7 @@ a_folding_toolbar_shows_a_menu_of_sections :: proc(t: ^testing.T) { unwatched.ru
 	if crayon == nil || gras == nil { return }
 	testing.expect(t, dessin.rect.min.y >= bar.rect.max.y, "the menu under the bar")
 	testing.expect(t, dessin.rect.max.y <= crayon.rect.min.y + 1 && crayon.rect.max.y <= style.rect.min.y + 1 && style.rect.max.y <= gras.rect.min.y + 1, "Dessin, Crayon, then Style, Gras")
+	testing.expect(t, session.find(s, "mc_fill_on") != nil && session.find_text(s, "Remplissage") == nil, "a group of one item: its row, no title")
 	key := session.find(s, "key", within = crayon.parent)
 	testing.expect(t, key != nil && ui.box_text(key) == "P", "the tool's shortcut in its row")
 	// (a control row: its label at the left, its widget at the right, the widgets in one column)
@@ -181,6 +187,32 @@ a_toolbar_tool_has_its_tip_and_its_menu_search :: proc(t: ^testing.T) { unwatche
 	testing.expect(t, session.find(s, "menu_search") != nil, "by default its menu searches")
 }) }
 
+// A slider in a control has its width: its track and its value, not the knob alone, with no width given and with one
+// too small.
+@(test)
+a_toolbar_control_slider_keeps_its_width :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Run :: struct { a, b: f32 }
+	r := Run{4, 4}
+	s := session.start(t, {size = {900, 300}, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.px(40)})
+		if ui.toolbar("sbar", {overflow = .Wrap}) {
+			if ui.toolbar_group("style") {
+				if ui.toolbar_control("free", {label = "Width"}) { _ = ui.slider("###free", &r.a, 1, 20, 1, "%.0f px") }
+				if ui.toolbar_control("small", {label = "Size"}) {
+					ui.next({width = ui.px(ui.font_size() * 3)})
+					_ = ui.slider("###small", &r.b, 1, 20, 1, "%.0f px")
+				}
+			}
+		}
+	}})
+	session.frames(s, 3)
+	for name in ([]string{"free", "small"}) {
+		b := session.get(s, name)
+		testing.expectf(t, b.size.x >= 10 * b.font_size, "%s: its track and its value, %v px at %v px a letter", name, b.size.x, b.font_size)
+	}
+}) }
+
 // Longer than a tooltip's delay (ui.FEEL_DEFAULT.tooltip_delay_ms, 500 ms).
 @(private = "file") TOOLTIP_WAIT_MS :: 600
 
@@ -190,6 +222,7 @@ Menu_Run :: struct {
 	bar_w:    f32,    // the bar's width (0: the window's)
 	inserted: int,    // the rectangles inserted from the tool's menu
 	returned: int,    // the times the tool with a menu said true (never)
+	show:     bool,   // the program opens the "…" menu itself (toolbar_menu_show), until it opened
 }
 
 // A tool bar with a tool that opens a menu, and that menu, built by the program as any menu, outside the bar.
@@ -207,6 +240,7 @@ menu_bar_build :: proc(s: ^session.Session) {
 		if ui.menu_item("Rectangle").clicked { r.inserted += 1 }
 		_ = ui.menu_item("Ellipse")
 	}
+	if r.show && ui.toolbar_menu_show("mbar") { r.show = false }
 }
 
 // In the bar, a tool with a menu opens it under itself and is lit while it is open; what is chosen in it runs.
@@ -275,4 +309,10 @@ a_folded_toolbar_tool_is_a_submenu :: proc(t: ^testing.T) { unwatched.run(t, pro
 	testing.expect_value(t, r.inserted, 2)
 	testing.expect(t, !ui.menu_any_open(), "closed")
 	testing.expect_value(t, r.returned, 0)
+	// (the program opens the "…" menu itself, as a click does: under its button)
+	r.show = true
+	row = session.wait_text(s, "Insérer")
+	testing.expect(t, !r.show && ui.toolbar_menu_open("mbar"), "toolbar_menu_show opens the \"…\" menu")
+	more = session.get(s, "toolbar_more")
+	testing.expect(t, row.rect.min.y >= more.rect.max.y, "under its \"…\" button")
 }) }

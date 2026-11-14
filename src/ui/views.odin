@@ -133,6 +133,7 @@ View_Record :: struct {
 	ending:     Maybe(int),  // view_end in this build
 	size:       Vec2,        // the dialog's size in ems ({}: its first size)
 	size_kept:  Vec2,        // the size the memory has
+	asked:      Vec2,        // view_size's for this opening, in ems (an axis of 0: the kind's)
 	title:      string,      // owned: view_title's (or a ready-made view's), "": the kind's
 	icon:       string,      // a ready-made view's icon for this opening (Lucide's), or view_icon's ("": the kind's)
 	icon_own:   string,      // owned: view_icon's
@@ -503,6 +504,21 @@ view_icon :: proc(v: ^View, icon: string, icon_font: font.Font_Id = 0) {
 	gs().anim_busy = true
 }
 
+// Inside a build: the size of its dialog for this opening, in ems (an axis of 0: the kind's width_em or height_em), as
+// view_title gives a title: a dialog that hugs what it shows (a picture's viewer). It wins over the size the user gave
+// the id's dialog before (the memory's); a resize of this opening by the user wins over it, and is remembered. A
+// non-resizable dialog is that wide even past DIALOG_MAX_WIDTH_EM (the window's edge holds it). Shown from the next
+// build, which comes at once (a dialog that opens is measured unseen: its first frame drawn has it).
+view_size :: proc(v: ^View, width_em, height_em: f32) {
+	r := v.record
+	asked := Vec2{max(width_em, 0), max(height_em, 0)}
+	if r.asked == asked { return }
+	r.asked = asked
+	// (the remembered size gives way for this opening; size_kept with it: nothing is written until the user resizes)
+	if r.kind.o.resizable { r.size, r.size_kept = {}, {} }
+	gs().anim_busy = true
+}
+
 // Inside a build: a title for this frame (a process's name). Temporary memory is enough. The header shows it from the
 // next build, which comes at once (a dialog is measured unseen before it shows: its first frame drawn has it).
 view_title :: proc(v: ^View, title: string) {
@@ -586,6 +602,7 @@ view_record_reset :: proc(r: ^View_Record) {
 	r.title, r.icon = "", ""
 	delete(r.icon_own, r.allocator)
 	r.icon_own, r.icon_font, r.icon_set = "", 0, false
+	r.asked = {}
 	if r.owned != nil && r.owned_free != nil { r.owned_free(r.owned) }
 	r.owned, r.owned_free = nil, nil
 }
@@ -687,6 +704,11 @@ view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 		if next.as != was && r.kind.o.moved != nil {
 			if a, b := view_window_of(r, was), view_window_of(r, next.as); a != b && b != nil { r.kind.o.moved(r.data, b) }
 		}
+	}
+	// (opened straight into a window of its own (first = .External, the memory): it was never in its owner's window,
+	// where the program made its native child; `moved` says where it is, as after a move)
+	if next.state == .Shown && before.state == .Opening && next.as == .External && r.kind.o.moved != nil {
+		if b := view_window_of(r, .External); b != nil && (r.owner == nil || b != r.owner.window) { r.kind.o.moved(r.data, b) }
 	}
 	// its window: wanted while a presentation of it is External, gone at the next step when none is (Open_Window,
 	// Close_Windows, Retire_Old of an External, a drop out of a window)

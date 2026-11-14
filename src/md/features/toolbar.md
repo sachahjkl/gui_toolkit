@@ -46,6 +46,14 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
 - **Refused: the panel that rebuilt the bar's controls in rows.** Each folded group became a row of the bar's own
   glyph buttons: unlabelled icons, ragged rows, no shortcut, no keyboard. The user called it a "soupe moche". A tool
   has a name and often a key; a menu row says both, a glyph alone says neither.
+- **A group of one item has no title in the menu.** Its one row already says what it is: "Colours" over a row
+  "Colour", or "Insert" over a row "Insert", said the same thing twice. The separators keep it apart from the other
+  sections. A group of more items keeps its title: there it names what its rows share.
+- **`toolbar_menu_show(id)` opens the menu as a click does**, under the "…" button as the last build laid it out: a
+  picture or a tour shows it open. It is false while no "…" button is laid out (the program calls it until it is true).
+- **A control's widget has its own width.** In a box as wide as what is in it (the bar's item, the menu's right column)
+  a widget sized by a share of its parent has nothing to share: the widget gives its natural width (a slider: 12 em,
+  never less than its track and its value), not the bar.
 - **Refused: a program that builds the menu itself.** The program would declare each tool twice, once for the bar and
   once for the menu, and the two lists would drift. The item declares its words once; the toolkit draws both looks.
 - **Refused: two APIs, one per mode.** The groups, the items, the separators and the pinned end are the same in both;

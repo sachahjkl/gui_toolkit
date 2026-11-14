@@ -112,6 +112,7 @@ a_toolbar_folds_what_does_not_fit :: proc(t: ^testing.T) { unwatched.run(t, proc
 			}
 			if ui.toolbar_group("middle", {title = "Géométrie", separator = true}) {
 				if ui.toolbar_tool("mid", {label = "Propriétés de la forme", words = true}) { r.clicks += 1 }
+				_ = ui.toolbar_tool("outline", {label = "Contour", words = true})   // (two items: the menu shows its title)
 			}
 			if ui.toolbar_group("end", {pinned = true}) {
 				_ = ui.toolbar_tool("cancel", {label = "Annuler", words = true})

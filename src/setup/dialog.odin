@@ -400,7 +400,7 @@ words_pieces_missing :: proc() -> string {
 view_backdrop :: proc(v: ^ui.View, data: rawptr) {
 	o := (^Dialog)(data).options
 	if o.square { ui.parent_box().radius = 0 }
-	if o.backdrop != nil { o.backdrop(o.user) }
+	if o.backdrop != nil { o.backdrop(v, o.user) }
 }
 
 // The view's body, under the toolkit's header ("<name> Setup", the close cross). Laid out dense, as a tool's panel: a

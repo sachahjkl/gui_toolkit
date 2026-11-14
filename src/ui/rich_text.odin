@@ -156,7 +156,7 @@ rich_face :: proc(c: Rich_Context, r: Rich_Style) -> (font.Font_Id, f32) {
 styled_face :: proc(face: font.Font_Id, bold, italic: bool) -> font.Font_Id {
 	if !bold && !italic { return face }
 	s := gs()
-	if set, ok := s.families[face]; ok {
+	if set, ok := state_families(s)[face]; ok {   // (a view's window: its owner's)
 		if f := set[(bold ? 1 : 0) + (italic ? 2 : 0)]; f != 0 { return f }
 	}
 	return font.styled_face(s.fonts, face, bold, italic)
@@ -416,10 +416,12 @@ rich_link_at :: proc(l: ^Rich_Layout, runs: []Rich_Run, p: Vec2) -> int {
 }
 
 // The faces of a family that its bold and italic take (rich text's runs, styled_face's widgets): `regular` is the family's.
+// Given to a view's window, it goes to the window it follows: the program's families are one map.
 set_family :: proc(s: ^State, regular, bold, italic, bold_italic: font.Font_Id) {
 	set := [4]font.Font_Id{regular, bold, italic, bold_italic}
-	if old, ok := s.families[regular]; ok && old == set { return }
-	s.families[regular] = set
+	families := state_families(s)
+	if old, ok := families[regular]; ok && old == set { return }
+	families[regular] = set
 	rich_cache_clear(s)   // (laid out with the old faces)
 }
 
@@ -571,7 +573,7 @@ rich_inset :: proc(b: ^Box, d: ^Rich_Draw, l: ^Rich_Layout) -> Vec2 {
 @(private)
 rich_ctx :: proc(b: ^Box) -> Rich_Context {
 	s := gs()
-	return {fonts = s.fonts, base_font = b.font, base_size = b.font_size, mono = s.mono_font, faces = &s.families}
+	return {fonts = s.fonts, base_font = b.font, base_size = b.font_size, mono = s.mono_font, faces = state_families(s)}
 }
 
 @(private)

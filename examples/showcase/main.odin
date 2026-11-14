@@ -26,12 +26,13 @@ import "../../src/render"
 import "../../src/ui"
 import "../../src/ascii"
 
-Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes }
+Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar }
 
 // The scenes' names on the command line (--scene=), and their titles in the sidebar.
 SCENE_NAMES := [Scene]string{
 	.Intents = "intents", .Controls = "controls", .Palette = "palette", .Menus = "menus", .Dialog = "dialog",
 	.Confirm = "confirm", .Prompt = "prompt", .Settings = "settings", .Graph = "graph", .Toasts = "toasts", .Themes = "themes",
+	.Toolbar = "toolbar",
 }
 
 WINDOW_SIZE :: [2]int{1280, 800}
@@ -61,6 +62,12 @@ App :: struct {
 	radio:    int,
 	bold, italic: bool,
 	view:     int,
+
+	// the tool bars: the tool chosen, the colour, the width, bold, the dashes; the "…" menu opened at the start
+	bar_tool, bar_colour, bar_dash: int,
+	bar_width: f32,
+	bar_bold:  bool,
+	bar_menu_opened: bool,
 
 	// the overlays: views of the window's own Views, shown as dialogs (in memory only: the showcase keeps no file)
 	palette:      ui.Command_Palette,
@@ -205,6 +212,7 @@ values_reset :: proc(app: ^App) {
 	app.quality, app.width, app.copies = 82, 12.5, 3
 	app.from, app.to = 9, 17
 	app.volume = 0.64
+	app.bar_tool, app.bar_colour, app.bar_width, app.bar_bold, app.bar_dash = 1, 4, 4, true, 0
 	app.format = 2
 	app.switches = {true, false, true}
 	app.checks = {true, false}

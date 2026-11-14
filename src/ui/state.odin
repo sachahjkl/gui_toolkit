@@ -263,14 +263,33 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	post_begin_build(s, p.window)
 	paste_begin_build(s, p.events)
 	selection_begin(s)
-	process_events(s, p.events, !p.disable_zoom, left)
+	// (a view's window looks like its owner, on open and at every change of the owner's: its settings now, before its
+	// keys zoom)
+	if s.style_owner != nil { style_follow(s, s.style_owner) }
+	s.zoom_keys_off = p.disable_zoom
+	zoom_off := style_root(s).zoom_keys_off   // (a view's window: as the program's window, whose zoom it is)
+	// (input that changes nothing in another window: the views' windows of this one need not build for it)
+	s.pointer_only = len(p.events) > 0 && !s.posts_ran
+	for e in p.events {
+		if e.kind != .Mouse_Move && e.kind != .Scroll { s.pointer_only = false; break }
+	}
+	zoom_was := s.zoom
+	process_events(s, p.events, !zoom_off, left)
+	// (its zoom keys are the program's: they zoom the window it follows, which every other window follows)
+	if o := style_root(s); o != s && s.zoom != zoom_was {
+		o.zoom = s.zoom
+		o.anim_busy = true
+	}
+	if s.zoom != zoom_was { s.pointer_only = false }   // (Ctrl+wheel: every window follows the zoom)
 	views_hold_input(s)   // (keys typed for a view that just opened, until its focused field is there: views.odin)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
 	overlay_capture_keys(s, p.events)
 	s.scale = (p.dpi_scale > 0 ? p.dpi_scale : 1) * s.zoom
 
-	// root: fills the window
+	// root: fills the window (a view's window: its owner's base style, the program's font, size, row and paddings)
+	s.base_style = p.base
 	base := p.base
+	if o := style_root(s); o != s && o.base_style.font_size > 0 { base = o.base_style }
 	base.font_size = math.round(base.font_size * s.scale)
 	base.text_pad = math.round(base.text_pad * s.scale)
 	base.radius = math.round(base.radius * s.scale)
@@ -377,6 +396,14 @@ end_build :: proc() {
 // keep rendering.
 needs_frame :: proc(s: ^State) -> bool { return s.anim_busy || s.posts_more || s.lazy_more || s.find.waiting }
 wake_ms :: proc(s: ^State) -> int { return s.wake_ms }
+
+// Whether the last build of `s` came only from the pointer moving or the wheel over it (no key, no press, no posted
+// call, no zoom): it changed nothing that another window shows. A backend skips the frame its views' windows would make
+// after it, unless one of them is due on its own (view_window_due).
+pointer_only_build :: proc(s: ^State) -> bool { return s.pointer_only }
+
+// Whether a view's window `s` has a frame to make of its own: its input, an animation, posted calls, a wake due.
+view_window_due :: proc(s: ^State) -> bool { return needs_frame(s) || posts_pending(s) || wake_due(s) }
 
 // wake_in_ms rounds up to whole milliseconds; wake_due counts a wake this close as due (a sleep rounds to whole ms).
 @(private) WAKE_ROUND_UP_MS :: 0.999

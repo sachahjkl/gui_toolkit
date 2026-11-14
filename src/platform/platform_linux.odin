@@ -510,6 +510,9 @@ set_dark_title :: proc(w: ^Window, dark: bool) {
 	if w.backend == .Wayland { wl_set_dark(w, dark) }
 }
 
+// What set_dark_title gave the window last (false: none).
+is_dark_title :: proc(w: ^Window) -> bool { return w.dark_title }
+
 ////////////////////////////////
 // Event loop
 

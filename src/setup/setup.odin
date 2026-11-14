@@ -42,8 +42,9 @@ Setup_Options :: struct {
 	square:         bool,            // every corner of the dialog square (its panel, frames, fields, the toolkit's buttons)
 	user:           rawptr,
 	// The program's own look of the dialog (nil: the toolkit's): what is drawn behind it first (a blur of the window...),
-	// and its buttons. The header and its close cross are the toolkit's (the views' header).
-	backdrop:       proc(user: rawptr),
+	// and its buttons. The header and its close cross are the toolkit's (the views' header). `v` says where it is: a
+	// scrim belongs only to `v.presentation == .Dialog` (floating, docked or in a window of its own, it has none).
+	backdrop:       proc(v: ^ui.View, user: rawptr),
 	// A button: its words, a Lucide glyph and its intent (what it does: Danger uninstalls, Success installs or opens).
 	button:         proc(id, label, glyph: string, intent: ui.Intent, em: f32, user: rawptr) -> bool,
 }

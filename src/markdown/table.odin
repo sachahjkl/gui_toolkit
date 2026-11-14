@@ -175,7 +175,7 @@ table_block :: proc(id: string, d: ^Doc, n: int, o: ^View_Options, c: Colors, fs
 	face := o.face != 0 ? o.face : o.prose
 	st := ui.current_state()
 	if face == 0 { face = ui.top_style().font }
-	rc := ui.Rich_Context{fonts = st.fonts, base_font = face, base_size = cell_size, mono = st.mono_font, faces = &st.families}
+	rc := ui.Rich_Context{fonts = st.fonts, base_font = face, base_size = cell_size, mono = st.mono_font, faces = ui.state_families(st)}
 	table_measure(t, rc, em, pad)
 	widths := make([]f32, t.cols, context.temp_allocator)
 	col_max := math.round(em * TABLE_COL_MAX_EM)

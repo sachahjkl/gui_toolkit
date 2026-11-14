@@ -20,6 +20,8 @@ import "../../src/ui"
 @(private = "file") OUT :: [2]f32{420, 300}   // (a point of the content, far from the zones and the targets)
 @(private = "file") LOW_FRAC :: f32(0.25)     // the view "low"'s zone: a quarter of the window's height
 @(private = "file") LEFT_FRAC :: f32(0.3)     // the frame's left zone, when the program gives it
+@(private = "file") TAB_W :: 80               // the width of the tab in "tabbed"'s top band (px)
+@(private = "file") VIEW_MENU_TABBED :: "###view_menu_view_tabbed"   // (views_builders.odin's view_menu_id)
 
 @(private = "file")
 Dock :: struct {
@@ -34,6 +36,8 @@ Dock :: struct {
 	own_f6:     bool,              // the program binds F6 itself, read after views_frame (in its content)
 	f6_taken:   int,
 	frame_o:    ui.View_Dock_Options,   // what views_frame is given (its zones' extents at first)
+	side_cover: int,               // the floating views over the panel "side", as its last build saw them (view_occluders)
+	hug_w:      f32,               // the width "hug" asks for this opening (view_size), in ems
 }
 
 @(private = "file")
@@ -61,6 +65,22 @@ side_view :: proc(v: ^ui.View, r: ^Dock) {
 	ui.line_edit("###side_field", &r.field)
 	if ui.key_press(.J) { r.panel_keys += 1 }
 	ui.label("The side's words###side_words")
+	r.side_cover = len(ui.view_occluders(v))
+}
+
+// A panel with a tab of its own in its top band, whose right click opens the tab's menu.
+@(private = "file")
+tabbed_view :: proc(v: ^ui.View, r: ^Dock) {
+	ui.next({width = ui.px(TAB_W), height = ui.px(20)})
+	tab := ui.build_box({.Clickable, .Draw_Background}, "###tab_in_band")
+	if ui.signal(tab).right_clicked { ui.menu_open("tab_menu", ui.mouse_pos()) }
+	if ui.menu("tab_menu") { _ = ui.menu_item("Rename the tab") }
+}
+
+@(private = "file")
+hug_view :: proc(v: ^ui.View, r: ^Dock) {
+	ui.view_size(v, r.hug_w, 0)
+	if ui.dialog_body("hug_body") { ui.label("A picture###hug_words") }
 }
 
 @(private = "file")
@@ -78,6 +98,8 @@ dock_start :: proc(t: ^testing.T, r: ^Dock, want: ..string) -> ^session.Session 
 @(private = "file")
 dock_register :: proc(r: ^Dock) {
 	ui.view_register(&r.views, "log", plain_view, ui.View_Options{title = "Log"})   // (an instance per name)
+	ui.view_register(&r.views, "hug", hug_view, ui.View_Options{title = "Picture"})
+	ui.view_register(&r.views, "tabbed", tabbed_view, ui.View_Options{title = "Tabbed", home = .Panel, home_place = {edge = .Left}, extent_em = 20})
 	ui.view_register(&r.views, "side", side_view, ui.View_Options{title = "Side", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM})
 	ui.view_register(&r.views, "side2", side_view, ui.View_Options{title = "Second", home = .Panel, home_place = {edge = .Left}})
 	ui.view_register(&r.views, "tool", plain_view, ui.View_Options{title = "Tool", home = .Panel, home_place = {space = "tools", edge = .Right}})
@@ -434,6 +456,83 @@ instances_reopen_where_they_were :: proc(t: ^testing.T) {
 	for n in names { ui.view_close(&r.views, "log", n) }
 	restart(&r, path)
 	testing.expect_value(t, len(ui.view_restored_instances(&r.views, "log", context.temp_allocator)), 0)
+}
+
+// A floating window over a panel: the panel's build sees it (view_occluders), and views_floating_rects lists it where
+// it is; once it goes, nothing covers the panel.
+@(test)
+a_panel_knows_what_floats_over_it :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side", "float")
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	frame := wait_built(s, "internal_view_float")
+	if frame == nil { return }
+	session.frames(s, 2)
+	testing.expect_value(t, r.side_cover, 1)
+	rects := ui.views_floating_rects(&r.views, s.state)
+	testing.expect(t, len(rects) == 1 && rects[0] == built(s, "internal_view_float").rect, "the floating window's rect")
+	ui.view_close(&r.views, "float")
+	session.frames(s, 3)
+	testing.expect_value(t, r.side_cover, 0)
+	testing.expect_value(t, len(ui.views_floating_rects(&r.views, s.state)), 0)
+}
+
+// A right click on a tab of the body in the panel's top band opens the tab's menu, not the view's; on an empty part of
+// the band, the view's menu.
+@(test)
+the_band_s_menu_gives_way_to_the_body_s :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "tabbed")
+	panel := wait_built(s, "view_panel_view_tabbed")
+	tab := built(s, "tab_in_band")
+	if panel == nil || tab == nil { testing.expect(t, false, "the panel and its tab"); return }
+	session.click_at(s, session.center(tab), .Right)
+	session.frames(s, 2)
+	testing.expect(t, ui.menu_is_open("tab_menu"), "the tab's menu")
+	testing.expect(t, !ui.menu_is_open(VIEW_MENU_TABBED), "not the view's")
+	session.key(s, .Escape)
+	session.frames(s, 2)
+	empty := [2]f32{panel.rect.min.x + TAB_W + 40, panel.rect.min.y + 8}
+	session.click_at(s, empty, .Right)
+	session.frames(s, 2)
+	testing.expect(t, ui.menu_is_open(VIEW_MENU_TABBED), "the view's menu on the empty band")
+	testing.expect(t, !ui.menu_is_open("tab_menu"))
+}
+
+// hit_box_at and pointer_on_at: what is at a point, by the last layout, wherever the pointer is.
+@(test)
+what_is_at_a_point :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "tabbed")
+	panel := wait_built(s, "view_panel_view_tabbed")
+	tab := built(s, "tab_in_band")
+	if panel == nil || tab == nil { testing.expect(t, false, "the panel and its tab"); return }
+	session.move(s, OUT)   // (the pointer elsewhere: the answers are of the point asked)
+	ui.use(s.state)
+	at := session.center(tab)
+	testing.expect(t, ui.hit_box_at(at) == tab, "the tab takes a press there")
+	testing.expect(t, ui.hit_box_at({panel.rect.min.x + TAB_W + 40, panel.rect.min.y + 8}) == nil, "nothing clickable beside it")
+	testing.expect(t, ui.pointer_on_at(tab, at), "the tab is in front there")
+	testing.expect(t, ui.pointer_on_at(panel, at), "and so is the panel around it")
+	testing.expect(t, !ui.pointer_on_at(tab, OUT), "not elsewhere")
+}
+
+// view_size: this opening's dialog as wide as asked, past DIALOG_MAX_WIDTH_EM (a viewer that hugs its picture).
+@(test)
+a_dialog_takes_the_size_of_its_opening :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	r.hug_w = ui.DIALOG_MAX_WIDTH_EM + 4
+	s := dock_start(t, &r, "hug")
+	b := wait_built(s, "modal_view_hug")
+	if b == nil { return }
+	session.frames(s, 2)
+	b = built(s, "modal_view_hug")
+	w := b != nil ? b.rect.max.x - b.rect.min.x : 0
+	testing.expectf(t, abs(w - r.hug_w * r.em) <= 2, "%v ems wide: %v px at %v px an em", r.hug_w, w, r.em)
 }
 
 // The palette's commands: one per act of each open view, in words; running one does it.

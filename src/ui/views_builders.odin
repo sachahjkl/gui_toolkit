@@ -187,6 +187,69 @@ view_settle :: proc(vs: ^Views, r: ^View_Record) {
 	}
 }
 
+////////////////////////////////
+// What floats over a view
+
+// A view that floats over the window's content: where it is (window px, as the last layout made it), its layer (0: an
+// internal window, 1: a dialog) and its place in that layer (an internal window's z; a dialog's rank, the top last).
+@(private = "file")
+View_Floating :: struct {
+	rect:  Rect,
+	r:     ^View_Record,
+	layer: int,
+	order: u64,
+}
+
+@(private = "file")
+views_floating :: proc(vs: ^Views, s: ^State, allocator := context.temp_allocator) -> [dynamic]View_Floating {
+	out := make([dynamic]View_Floating, 0, 4, allocator)
+	for r, i in vs.records {
+		if r.owner != s || r.machine.state == .Closed { continue }
+		p := view_shown_in(r.machine)
+		if p != .Internal && p != .Dialog { continue }
+		b := s.boxes[r.roots[p]] or_else nil
+		// (built in the last build or this one, and seen: one measured unseen covers nothing yet)
+		if b == nil || r.roots[p] == 0 || b.last_build + 1 < s.build_index || b.transparency >= 1 { continue }
+		append(&out, View_Floating{rect = b.rect, r = r, layer = p == .Dialog ? 1 : 0, order = p == .Dialog ? u64(i) : r.z})
+	}
+	// (bottom to top: a few at most, an insertion)
+	for i in 1 ..< len(out) {
+		x := out[i]
+		j := i - 1
+		for j >= 0 && (out[j].layer > x.layer || (out[j].layer == x.layer && out[j].order > x.order)) { out[j + 1] = out[j]; j -= 1 }
+		out[j + 1] = x
+	}
+	return out
+}
+
+// The rects of the views of `vs` that float over the content of window `s`: its internal windows and its dialogs shown,
+// bottom to top, in window pixels as the last layout made them. A page under a native child window (a web view, which
+// the toolkit cannot draw over) steps aside from them or clips to them.
+views_floating_rects :: proc(vs: ^Views, s: ^State, allocator := context.temp_allocator) -> []Rect {
+	all := views_floating(vs, s, context.temp_allocator)
+	out := make([]Rect, len(all), allocator)
+	for f, i in all { out[i] = f.rect }
+	return out[:]
+}
+
+// Inside a build: the rects of the views that float over `v` where it is now (window pixels of the State it is built
+// in, as the last layout made them): over the content or a panel, every internal window and dialog; over an internal
+// window, those above it and the dialogs; over a dialog, the dialogs above it; in a window of its own, its own window's
+// floating views (its dialogs). A view with a native child window clips or moves it by them.
+view_occluders :: proc(v: ^View, allocator := context.temp_allocator) -> []Rect {
+	r := v.record
+	s := gs()
+	all := views_floating(r.vs, s, context.temp_allocator)
+	out := make([dynamic]Rect, 0, len(all), allocator)
+	at := -1   // (its own place among them: what is above it covers it)
+	for f, i in all { if f.r == r { at = i } }
+	for f, i in all {
+		if at >= 0 && i <= at { continue }
+		append(&out, f.rect)
+	}
+	return out[:]
+}
+
 // It comes to the front of the internal windows.
 @(private)
 view_raise :: proc(vs: ^Views, r: ^View_Record) {
@@ -205,6 +268,9 @@ view_dialog_build :: proc(vs: ^Views, r: ^View_Record) {
 	k := r.kind
 	key := modal_key(s, r.modal_name)
 	o := Modal_Options{width_em = k.o.width_em, height_em = k.o.height_em, min_width_em = k.o.min_width_em, min_height_em = k.o.min_height_em, top = k.o.top}
+	// (view_size of this opening: a non-resizable dialog of a width asked past DIALOG_MAX_WIDTH_EM keeps it, modal's `most`)
+	if r.asked.x > 0 { o.width_em = r.asked.x }
+	if r.asked.y > 0 { o.height_em = r.asked.y }
 	if r.dialog_back {
 		// (a drag of its header cancelled: it was laid out a moment ago, at this rect; it shows in this build, with no
 		// unseen layout, where it was)

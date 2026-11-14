@@ -119,6 +119,10 @@ again.
 | `views_windows_step(s)`, `views_window_build()`, `view_window_close_asked(s)` | a backend's part: between frames, a window's build, its system close |
 | `state_carry(from, from_root, to, to_root)`, `style_follow(dst, src)` | what follows a view to another place; a window's settings from the main one |
 | inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_icon(v, icon, icon_font)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)` | `view_icon`: this opening's icon (one id, an icon per opening) |
+| inside a build: `view_size(v, width_em, height_em)` | this opening's dialog size (an axis of 0: the kind's): a dialog that hugs what it shows; it wins over the remembered size, a resize by the user wins over it; past `DIALOG_MAX_WIDTH_EM` too |
+| inside a build: `view_occluders(v, allocator) -> []Rect`; `views_floating_rects(vs, s, allocator) -> []Rect` | the floating views (internal windows, dialogs) over this view, or over the content of window `s`, bottom to top, window pixels: a native child window (a web view) steps aside or clips |
+| `state_families(s)` | the bold and italic faces' families of `s` (a view's window: its owner's, one map): what `Rich_Context.faces` takes |
+| `pointer_only_build(s)`, `view_window_due(s)` | a backend's: the owner's last frame came only from the pointer moving (its views' windows skip it), a view's window has a frame of its own to make |
 | `focus_next_field()` | inside a build: the next field built (a `line_edit`, a `number`'s value, a `text_edit`) takes the keyboard: a view focuses its field on its first build without rebuilding a widget's keys |
 
 `View_Options`: `title`, `icon`, `icon_font`, `home` (`.Dialog` or `.Panel`), `home_place`, `first` (the presentation
@@ -138,6 +142,9 @@ before.
 - A dialog that is not resizable is as wide as what is in it asks (its title on one line, its row of buttons on one
   line), `width_em` at least, `DIALOG_MAX_WIDTH_EM` (46) at most. Past that, its title and the words of a button wrap.
   Nothing in it is cut, nothing goes past its edge. What is in it takes its width with `fill()`.
+- `view_size(v, width_em, height_em)` sizes this opening's dialog (an image viewer hugs its picture): it wins over the
+  size the user gave the id's dialog, a resize of this opening wins over it and is remembered, and a width past
+  `DIALOG_MAX_WIDTH_EM` holds (the window's edge still does).
 - It stays within the window however small, and never past its bottom.
 - `resizable`: the user resizes it by its edges and corners; it stays centred. A double click on an edge goes back to
   `width_em` × `height_em`. The size is remembered when the grip is let go. Its bottom right corner is square, with the
@@ -201,6 +208,10 @@ ui.views_set_windows(&app.views, session.view_windows(s))        // a test (docs
   its views' windows: what woke the owner (a new sample posted to it, a reading) is in the views that show it, wherever
   they are. A program never wakes a view's window by hand. When nothing is due, the owner makes no frame and neither do
   they; a frame redraws only what changed (partial redraw). A view's window also makes its own frames for its input.
+  A frame of the owner that came only from the pointer moving or the wheel over it (no key, no press, no posted call,
+  no zoom: `pointer_only_build`) changes nothing a view's window shows: the view's windows skip it, unless one is due
+  on its own (its input, an animation, posted calls, a wake, frames owed: `view_window_due`). A frame with no input (an
+  animation, a wake) is not skipped: what woke the owner may be data a view shows.
 - **No flash.** The old place stays drawn until the window's first picture is out; the next frame of the owner takes
   it away. The view is in two places for one frame at most, and never nowhere.
 - Its header: the title, the program's tools, Re-attach, Close view (`View_Labels.close_view`). Escape and Ctrl+W close
@@ -214,8 +225,23 @@ ui.views_set_windows(&app.views, session.view_windows(s))        // a test (docs
 - `View_Options.moved(data, win)`: called when the view is shown in another window of the system than before (a native
   child window follows it). The scroll and the focus of the named boxes follow it (`state_carry`); the program's data
   is the program's.
-- Its style follows the owner's at each step (`ui.style_follow(dst, src)`: zoom, density, rounding, the feel,
-  animations, scrolling, the icon fonts); its scale is its monitor's.
+- **It looks like its owner**, from its first build and at every change of the owner's (`State.style_owner`, at the
+  start of each of its builds): the owner's base style (`Build_Params.base`: the program's font, its size, the row
+  height, the paddings, the radius), zoom, density, rounding, the feel, animations, scrolling, the icon and monospaced
+  fonts, the theme and the fonts (the same ones, shared), and its families (`set_family`: one map, the owner's, read
+  through `state_families`; a copy would be freed twice). Its scale is its monitor's.
+- **Its zoom is the program's.** Ctrl+=, Ctrl+-, Ctrl+0 and Ctrl+wheel in a view's window zoom the window it follows,
+  which every window follows; the owner's `disable_zoom` holds in it too.
+- **Its chrome follows the theme.** Its title bar is dark or light as its owner's window (`platform.set_dark_title`
+  given to the owner: the view's window takes it at its opening and at each step; `platform.is_dark_title(w)` reads
+  it); with `host.view_windows`, its ground (`Host.background`) is the owner Host's at each frame. A program sets them
+  on its own windows only.
+- **The program's input hook applies in it.** With `host.view_windows`, a view's window has its owner Host's `input`
+  (a terminal takes its keys before the interface there too), `after_input` and `partial_redraw`, read at each frame.
+  Its `user` is the owner's: the hook reads the program's data as in its own windows; `h.owner` (nil for the program's
+  own windows) says it is a view's window.
+- **`moved` at its opening too**: a view that opens straight into a window of its own (`first = .External`, the
+  memory) is told its window once it shows, as after a move.
 - A view opened from an external view's build has that window for owner: its dialogs show over the window.
 - `view_window_state(vs, id, instance)`: the State of its window (nil: none).
 
@@ -227,7 +253,16 @@ A backend of your own (a program with its own loop) implements `View_Windows`: `
 handle)` makes a hidden window and a State whose builds call `ui.views_window_build()`; `show` puts it on the screen;
 `hide` takes it off, its State kept; `close` ends it (never from inside its frame); when the owner hides or shows it
 calls `ui.views_windows_follow(owner, shown)`; its system close calls `ui.view_window_close_asked(state)`; after each
-frame of an owner it calls `ui.views_windows_step(owner)` then frames the windows.
+frame of an owner it calls `ui.views_windows_step(owner)` then frames the windows (it may skip them after a frame of
+the owner for which `ui.pointer_only_build(owner)` is true, unless `ui.view_window_due(window)`).
+
+### A native child window under floating views
+
+A view with a native child window (`under_children`: a web view) is drawn over by nothing of the toolkit's: a floating
+window or a dialog over it would be hidden by the page. `view_occluders(v)`, in its build, gives the rects of the
+floating views over it (window pixels, bottom to top: every internal window and dialog over a panel or the content;
+those above it over an internal window; the dialogs above it over a dialog); `views_floating_rects(vs, s)` gives those
+over the content of window `s`. The page steps aside, or is clipped to what they leave.
 
 ## Panels
 
@@ -259,7 +294,8 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   stack are its tabs: a click shows one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out
   as an internal window under the pointer.
 - On the hover of a panel's top area (`VIEW_HOVER_EM`), two icons show at its top right, in the weak colour: Float
-  (an internal window) and Close. A right click there opens its menu.
+  (an internal window) and Close. A right click there opens its menu, unless the body takes it: the press is on a
+  clickable box of the body (a tab of its own there, with its own menu), or the body opened a menu in that build.
 - `view_drag_handle(v, box)` marks the program's title box of a view: a lone panel moves by it (it floats, and a drop
   docks it again). A panel without one shows no grip; it moves by its icon, its menu or the palette.
 - A zone's extent is the space's: its handle resizes it (the content keeps `DOCK_MIN_EM`), and the memory keeps it

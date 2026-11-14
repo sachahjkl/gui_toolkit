@@ -127,7 +127,7 @@ nil, and `Setup_Options.user` is passed to them). The header and its close cross
 
 | | |
 |---|---|
-| `backdrop(user)` | drawn first in the dialog, under its header: what lies behind it (a blur of the window, a dim of its own); nil: the theme's scrim |
+| `backdrop(v, user)` | drawn first in the view, under its header: what lies behind it (a blur of the window, a dim of its own); nil: the theme's scrim. `v.presentation` says where it is: paint a scrim only as `.Dialog` (floating, docked or in a window of its own, it has none) |
 | `button(id, label, glyph, intent, em, user) -> bool` | each button: its words, a Lucide glyph and a `ui.Intent` (`Success`: what installs or opens, `Danger`: Uninstall, `Cancel`: what closes, `Primary`: Choose); clicked: true |
 
 ## The states

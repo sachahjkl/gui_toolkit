@@ -359,6 +359,12 @@ view_title :: proc(v: ^View, title: string)
 // Inside a build: the room of the body in this presentation, from the last layout (a viewer sizes its picture by it).
 view_room :: proc(v: ^View) -> Vec2
 
+// Inside a build: this opening's dialog size in ems (0: the kind's), as view_title gives a title. It wins over the
+// id's remembered size (forgotten for this opening, not rewritten); the user's resize of this opening wins over it.
+// A width past DIALOG_MAX_WIDTH_EM holds: the cap is for a dialog sized by its words, not one sized by its picture.
+// Refused: an option of view_open (the size is known only once the picture is, in a build).
+view_size :: proc(v: ^View, width_em, height_em: f32)
+
 // Inside a build: `if ui.view_header_tools(v) { ... }` builds controls in the header, after the title.
 @(require_results, deferred_none = view_header_tools_end)
 view_header_tools :: proc(v: ^View) -> bool
@@ -435,6 +441,10 @@ draws, except the header that a dialog always had. The rules:
    right, Dock bottom, Close. The same acts are palette commands, made by the toolkit for every registered view:
    "Detach <title>", "Float <title>", "Dock <title> to the left", "Dock <title> to the right", "Dock <title> to the
    bottom", "Close <title>". A program adds them to its palette with `views_commands` (step 3).
+   The top area is the body's too (ocn's sidebar has its server tabs there, each with its own menu): the view's menu
+   opens at the right press only when the box that press acts on (the last layout's hot box) is not one of the body's
+   and the body opened no menu in that build. Refused: opening it after any body's build regardless (it replaced the
+   tab's menu, which opens at the release); a box of the band's own (it would cover the body's controls for clicks).
 4. **Dragging starts from the existing header.** A panel with a title moves by its title. A panel without a title (a
    sidebar) shows no grip: it detaches by the menu, by the palette or by the hover icons.
 5. **Dialogs keep their look.** The header strip, the title and the close cross stay as `dialog_header` drew them. The
@@ -799,7 +809,32 @@ View_Window_Ask :: struct { title: string, size: [2]int, at: Maybe([2]int), owne
     nothing changed: the owner frames only when something is due, and a view's window redraws what changed (partial
     redraw). Refused: a "data changed" signal per view (the program would have to say which view shows what; the
     owner's frame already says that something changed). Its own input or wake also frames it (`hosts_due` counts it).
-    A test pins the rule (`a_view_s_window_builds_with_its_owner`).
+    A test pins the rule (`a_view_s_window_builds_with_its_owner`). One exception, the frame of the owner that came
+    only from the pointer moving or the wheel (no key, no press, no posted call, no zoom: `pointer_only_build`): it
+    changes nothing another window shows, and ocn's main window makes one per pointer move. The view's windows skip it
+    unless due on their own (`view_window_due`). A frame with no input at all is not skipped: a wake or an animation
+    of the owner may be the program's data changing. Refused: a still frame per view window decided by the program
+    (each program would write the same test), and a skip of every frame the view did not ask for (rule 10 again).
+11. **A view's window looks like its owner, by itself.** `State.style_owner` (set when the window opens): at the start
+    of each of its builds it takes the owner's settings (`style_follow`), the owner's base style (the program's
+    `Build_Params.base`, kept as `State.base_style`: font, size, row height, paddings, radius) instead of its backend's,
+    and the owner's theme and fonts (pointers: shared). Its families are not copied: `state_families(s)` reads the
+    root owner's map, and `set_family` given to a view's window writes there (a copied map was freed twice, ocn).
+    Refused: the backend copying the program's `params` hook (its `user` was the backend's, the hook read the wrong
+    data) and the step alone (a change showed one frame late, and nothing of the base style followed).
+12. **Its zoom keys zoom the program.** Ctrl+=/-/0 and Ctrl+wheel in a view's window set the root owner's zoom (every
+    window follows it). Before, the owner's zoom overwrote the window's at the next step: the keys seemed dead. The
+    owner's `disable_zoom` holds in it (`State.zoom_keys_off`).
+13. **Its chrome follows its owner's window.** The title bar's dark or light is what the program gave its own window
+    (`platform.is_dark_title`), taken at the opening and at each step; the host backend gives it the owner Host's
+    `background`, `after_input`, `partial_redraw` and `input` at each frame, and the owner's `user` (the hooks read the
+    program's data; `Host.owner` says it is a view's window). ocn did this by hand after each change of theme.
+14. **`moved` at a direct opening into a window.** Opening → Shown as External calls it as Moving → Shown does: the
+    program's native child (made in the owner's window) goes to the view's window either way.
+15. **Floating views over a native child.** `view_occluders(v)` and `views_floating_rects(vs, s)`: the rects of the
+    internal windows and dialogs shown over the view (or the content), bottom to top, as last laid out. The toolkit
+    cannot draw over a web view; the program moves it aside or clips it. Refused: the toolkit moving the child window
+    itself (it does not own it, and clipping a child window is per system).
 
 `src/host/views.odin` implements it:
 

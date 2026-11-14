@@ -329,6 +329,13 @@ State :: struct {
 	build_index: u64,
 	zoom:        f32,                // user zoom factor (Ctrl+wheel, Ctrl +/-/0); multiplies the DPI scale
 	scale:       f32,                // effective scale = dpi scale * zoom, applied to every logical size
+	base_style:  Style,              // the root style its last build was given (Build_Params.base, logical pixels)
+	// the window it looks like (a view's window: its owner's; nil: its own): its base style, its settings, its theme,
+	// its fonts and its families are that window's at each build, and its zoom keys zoom that window (style_follow)
+	style_owner: ^State,
+	zoom_keys_off: bool,             // Build_Params.disable_zoom of its last build (a view's window reads its owner's)
+	posts_ran:   bool,               // its last build ran posted calls (the program's data changed)
+	pointer_only: bool,              // its last build's input was only the pointer moving or the wheel (pointer_only_build)
 	root:        ^Box,
 	theme:       ^Theme,
 	fonts:       ^font.State,

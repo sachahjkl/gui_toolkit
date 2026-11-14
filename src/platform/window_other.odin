@@ -75,6 +75,7 @@ set_size :: proc(w: ^Window, size: [2]int) {}
 move_window :: proc(w: ^Window, x, y: int) {}
 set_integrated_title :: proc(w: ^Window, on: bool) {}
 set_dark_title :: proc(w: ^Window, dark: bool) {}
+is_dark_title :: proc(w: ^Window) -> bool { return false }
 set_border_color :: proc(w: ^Window, rgb: Maybe(u32)) {}
 set_square_corners :: proc(w: ^Window, square: bool) {}
 set_backdrop :: proc(w: ^Window, on: bool) -> bool { return false }

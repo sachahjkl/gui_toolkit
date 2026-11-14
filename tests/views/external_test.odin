@@ -212,6 +212,63 @@ a_view_s_window_builds_with_its_owner :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(w, "Sample 7") != nil, "the new sample in the window")
 }
 
+// A view's window looks like its owner: the same theme and families (one map, shared), its title bar dark as the
+// owner's, its zoom; a change of the owner's shows at its next frame. Its zoom keys zoom the program (the owner), and
+// the owner's zoom stays (no reset by the owner's next frame).
+@(test)
+a_view_s_window_looks_like_its_owner :: proc(t: ^testing.T) {
+	r: Ext
+	defer ext_end(&r)
+	r.want = "ask"
+	s := ext_start(t, &r, first = .External)
+	platform.set_dark_title(s.win, true)
+	w := shown_as_window(s, &r)
+	if w == nil { return }
+	testing.expect(t, platform.is_dark_title(w.win), "its title bar dark, as its owner's")
+	testing.expect(t, w.state.theme == s.state.theme, "the owner's theme")
+	testing.expect(t, ui.state_families(w.state) == ui.state_families(s.state), "the owner's families: one map")
+	ui.set_zoom(s.state, 1.5)
+	platform.set_dark_title(s.win, false)
+	session.frame(s)
+	testing.expect_value(t, w.state.zoom, f32(1.5))
+	testing.expect(t, !platform.is_dark_title(w.win), "light again with its owner")
+	session.key(w, .Equal, {.Ctrl})
+	session.frames(s, 2)
+	testing.expectf(t, s.state.zoom > 1.5, "Ctrl+= in the view's window zooms the program: %v", s.state.zoom)
+	testing.expect_value(t, w.state.zoom, s.state.zoom)
+}
+
+// A view opened straight into a window of its own: `moved` says which window (its native child goes there).
+@(test)
+moved_is_told_when_it_opens_in_a_window :: proc(t: ^testing.T) {
+	r: Ext
+	defer ext_end(&r)
+	r.want = "ask"
+	s := ext_start(t, &r, first = .External)
+	w := shown_as_window(s, &r)
+	if w == nil { return }
+	session.frames(s, 2)
+	testing.expect(t, len(r.moves) == 1 && r.moves[0] == w.win, "moved: to its window, once")
+}
+
+// A frame of the owner that only the pointer's moves made says so (pointer_only_build): its views' windows need not
+// build for it. A key, or no input at all, is not one.
+@(test)
+a_pointer_only_frame_says_so :: proc(t: ^testing.T) {
+	r: Ext
+	defer ext_end(&r)
+	s := ext_start(t, &r)
+	session.frames(s, 2)
+	session.event(s, {kind = .Mouse_Move, pos = {50, 60}})
+	session.frame(s)
+	testing.expect(t, ui.pointer_only_build(s.state), "a move alone")
+	session.frame(s)
+	testing.expect(t, !ui.pointer_only_build(s.state), "no input: not one (an animation, a wake may change what views show)")
+	session.event(s, {kind = .Key_Press, key = .A})
+	session.frame(s)
+	testing.expect(t, !ui.pointer_only_build(s.state), "a key")
+}
+
 // No window can open: a view that opens as External floats inside its owner, and the owner says why.
 @(test)
 a_refused_window_floats_and_says_so :: proc(t: ^testing.T) {

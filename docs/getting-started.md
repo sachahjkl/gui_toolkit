@@ -141,6 +141,11 @@ A box's `square_corners` (`ui.Corners`: `.Top_Left`, `.Bottom_Left`, `.Top_Right
 radius: its background, border, shadow, hover and focus ring follow (`ui.box_radii`, `ui.radii_grown`; `ui.paint_rect_corners`
 is `paint_rect` with a radius per corner).
 
+A box that declares its sides (`.Draw_Side_Top`, `.Draw_Side_Bottom`, `.Draw_Side_Left`, `.Draw_Side_Right`) has those
+lines alone: no finish draws its rim (the lit line round a raised face) on it. Nor on a box flush with an edge of the
+window, a bar. `ui.box_rimmed(s, b)` says whether a box gets the rim; `ui.paint_rect_corners(..., rim = false)` paints a
+face without it.
+
 ```odin
 ui.next({width = ui.fill(), height = ui.px(em * 2), radius = em * 0.45})
 if ui.input_frame("###search") {
@@ -261,6 +266,9 @@ known; a new one gets `?` until it is classified, or moved into its struct.
   as the last build laid it out: a box that a later sibling covers (a message the conversation scrolls under its composer,
   a panel under a floating one) is not under the pointer, the box in front is. A `.Clickable` box's own `right_clicked`
   already goes to what is in front.
+- **At an event's own position** (each event of a batch, not the pointer's last place): `ui.pointer_on_at(box, p)` is
+  `pointer_on` at `p`, and `ui.hit_box_at(p)` is the box a press at `p` acts on (the topmost enabled clickable box
+  there; nil: none), both by the last layout. A terminal's grid decides per event which ones are its own.
 - **Free the frame's temporaries**: `free_all(context.temp_allocator)` at the end of each frame (the `fmt.tprintf`
   strings of labels live there). `ui.line_edit_destroy` the `Line_Edit`s you made.
 - **`expect_assert` in tests**: on Windows the test runner's handling of an assertion races the system's end of the

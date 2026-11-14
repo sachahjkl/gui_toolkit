@@ -4,6 +4,7 @@ package scenarios_test
 // theme's colours, the blend space, the glow); theme_recolor moves a program's colours to another theme; themes_read
 // reads a user's file; the names of the modes and of the finishes. The machined finish by its pixels: its halos follow
 // Theme.glow, its well is sunken, another finish draws it flat; a light palette keeps it, with light shades and strong lights.
+// A bar that declares its sides gets no frame from any finish.
 
 import "core:testing"
 import "../../src/draw"
@@ -314,6 +315,47 @@ a_machined_rule_keeps_its_lit_line :: proc(t: ^testing.T) { unwatched.run(t, pro
 	dark, lit, pane := session.pixel(img, 100, 40), session.pixel(img, 100, 41), session.pixel(img, 100, 50)
 	testing.expectf(t, int(lit.r) > int(dark.r), "two lines: the dark %v, the lit %v", dark, lit)
 	testing.expectf(t, !session.near(lit, pane, 2), "the lit line %v is not under the pane %v", lit, pane)
+}) }
+
+@(private = "file") BAR_WINDOW :: [2]int{400, 300}
+
+// A bar that declares its sides has those lines alone, in every finish: a sidebar (.Draw_Side_Right) under a top bar
+// (.Draw_Side_Bottom) drew a frame, its finish's rim inset by a pixel on its top, left and right, a second line under
+// the top bar's (box_rimmed). The same for a panel off the window's edges: it declares its sides too.
+@(test)
+a_bar_with_declared_sides_has_no_frame :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	for finish in ([]ui.Finish{.Machined, .Edged, .Gradient, .Glass}) {
+		p := ui.palette_of("Midnight", false)
+		p.finish = finish
+		s := session.start(t, {size = BAR_WINDOW, palette = p, build = proc(s: ^session.Session) {
+			ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+			if ui.column(id = "###window") {
+				if ui.tags("bar") {
+					ui.next({width = ui.fill(), height = ui.px(40), radius = 0})
+					ui.build_box({.Draw_Background, .Draw_Side_Bottom}, "###top")
+					ui.next({width = ui.px(150), height = ui.fill(), radius = 0})
+					ui.build_box({.Draw_Background, .Draw_Side_Right}, "###nav")
+					ui.next({fixed_x = 200, fixed_y = 100, width = ui.px(150), height = ui.px(120), radius = 0})
+					ui.build_box({.Draw_Background, .Draw_Side_Bottom}, "###inset")
+				}
+			}
+		}})
+		img := session.capture(s)
+		for id in ([]string{"nav", "inset"}) {
+			r := session.get(s, id).rect
+			cx, cy := int(r.min.x + r.max.x) / 2, int(r.min.y + r.max.y) / 2
+			// (1 and 2 px in: where the rim was; the face further in, on the same row, or 5 px down: a face lit from
+			// above changes along its height)
+			for d in 1 ..= 2 {
+				top, face := session.pixel(img, cx, int(r.min.y) + d), session.pixel(img, cx, int(r.min.y) + 5)
+				testing.expectf(t, session.near(top, face, 2), "%v %s: no line along its top (%d px in): %v, the face %v", finish, id, d, top, face)
+				left, row := session.pixel(img, int(r.min.x) + d, cy), session.pixel(img, int(r.min.x) + 20, cy)
+				testing.expectf(t, session.near(left, row, 2), "%v %s: no line along its left (%d px in): %v, the face %v", finish, id, d, left, row)
+			}
+			right, row := session.pixel(img, int(r.max.x) - 2, cy), session.pixel(img, int(r.max.x) - 20, cy)
+			testing.expectf(t, session.near(right, row, 2), "%v %s: its right side is its border alone: %v, the face %v", finish, id, right, row)
+		}
+	}
 }) }
 
 // The intents' buttons are soft: a deep fill of their hue on a dark page, words of that hue on it that read (AA).

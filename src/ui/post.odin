@@ -116,7 +116,7 @@ post_begin_build :: proc(s: ^State, w: ^platform.Window) {
 		sync.atomic_store(&w.post_queue, rawptr(&s.posts))
 		if !s.post_wake_own { post_queue_set_wake_user(&s.posts, w) }
 	}
-	drain_posts(s)
+	s.posts_ran = drain_posts(s) > 0
 }
 
 @(private)

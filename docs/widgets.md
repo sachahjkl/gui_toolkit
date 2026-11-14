@@ -168,6 +168,10 @@ declares its items, each once. The program chooses what happens when the window 
 | `toolbar_tool(id, {label, icon, shortcut, command, priority, words, on, disabled, intent, icon_font, menu, menu_search, tip}) -> bool` | an act. The toolkit builds it: a glyph button in the bar (its words with `words`, or with no glyph), a row in the menu. `command` gives the label, icon and first key that the fields leave "". `on`: held down in the bar, checked in the menu. True when clicked, in either place. `menu`: the id of a menu the program builds as always (`if ui.menu(id) { ... }`, outside the bar); the tool opens it under itself and is lit while it is open, and folded it is a submenu row of the "…" menu, built by the same block. Such a tool is never true. `menu_search`: whether typing searches that menu (nil: `menu_open`'s default, yes; `false` for a menu of a few fixed choices, where a typed letter selects). `tip`: its tooltip in the bar, whatever it shows ("": the command's tooltip, else the label and shortcut of a glyph tool, or of words with a shortcut) |
 | `toolbar_control(id, {label, priority, labelled}) -> bool` | `if toolbar_control(...) { ...widget... }`: a property whose widget the block builds, in the bar (its label before it with `labelled`) or in the right column of a menu row |
 | `toolbar_in_menu() -> bool` | the item being built is in the menu (a widget that sizes itself otherwise there) |
+| `toolbar_menu_show(id) -> bool` | opens the bar's "…" menu as a click on its button does (a picture, a tour); false while the bar shows no laid-out "…" button: call it until it is true |
+
+In the "…" menu, a group of one item has no title: its one row already says what it is, and the separators keep it
+apart.
 | `toolbar_separator()` | a vertical line and its room: for a bar a program builds itself (in a tool bar, use the group's `separator`) |
 
 The spacing is the toolkit's, for every program: 0.2 em between two items, 0.15 em more on each side of a control (its
@@ -227,7 +231,9 @@ ui.number("###width", &app.width, lo = 1, hi = 40, step = 0.5, unit = "px", slid
 
 `ui.slider(id, &value, lo, hi, step, format)` is the track alone, the lowest widget: its keys (arrows a step, Home / End,
 Page Up / Page Down ten steps), its wheel, its screen reader's requests. `format` is a printf format of the value's text
-at its right end ("": none, the track runs to it).
+at its right end ("": none, the track runs to it). Its width is never less than its pads, a track of 4 em and its
+value's room (about 10 em with a value; 3.5 em without one, as in `ui.number`): a share of a narrow row or a width given too small does not leave the knob
+alone. With no width given (in a box as wide as what is in it: a tool bar's control, a menu's control row) it is 12 em.
 
 `ui.range_slider(id, &lo_v, &hi_v, lo, hi, step, format)` has two thumbs on one track. Each thumb is a Tab stop and a
 slider for a screen reader; the active thumb (the one a press took, or the one Tab reached) moves as `slider` does:

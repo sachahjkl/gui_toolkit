@@ -15,18 +15,18 @@ import prefs_page "../../src/prefs_page"
 import "../../src/ui"
 
 // The scenes the sidebar lists (the overlays' scenes stand on one of them), their titles and icons.
-NAV := [?]Scene{.Intents, .Controls, .Menus, .Graph, .Themes, .Settings}
+NAV := [?]Scene{.Intents, .Controls, .Menus, .Toolbar, .Graph, .Themes, .Settings}
 
 SCENE_TITLES := [Scene]string{
 	.Intents = "Intents and hues", .Controls = "Numbers and ranges", .Palette = "Command palette", .Menus = "Menus",
 	.Dialog = "Dialogs", .Confirm = "Confirmation", .Prompt = "Prompt", .Settings = "Settings", .Graph = "Node graph",
-	.Toasts = "Toasts", .Themes = "Themes",
+	.Toasts = "Toasts", .Themes = "Themes", .Toolbar = "Tool bars",
 }
 
 SCENE_ICONS := [Scene]string{
 	.Intents = lucide.PALETTE, .Controls = lucide.SLIDERS_HORIZONTAL, .Palette = lucide.COMMAND, .Menus = lucide.FOLDER_OPEN,
 	.Dialog = lucide.DOWNLOAD, .Confirm = lucide.TRASH_2, .Prompt = lucide.KEY_ROUND, .Settings = lucide.SETTINGS,
-	.Graph = lucide.GIT_BRANCH, .Toasts = lucide.BELL, .Themes = lucide.SUN,
+	.Graph = lucide.GIT_BRANCH, .Toasts = lucide.BELL, .Themes = lucide.SUN, .Toolbar = lucide.PENCIL_RULER,
 }
 
 // The page under an overlay's scene.

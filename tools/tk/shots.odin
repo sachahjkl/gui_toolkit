@@ -54,6 +54,8 @@ SHOWCASE_SHOTS := []Shot {
 	{name = "showcase_palette", example = "showcase", args = {"--headless", "--scene=palette", "--theme=Tokyo Night", "--size=1280x680"}, webp = true},
 	{name = "showcase_menus", example = "showcase", args = {"--headless", "--scene=menus", "--theme=Nord", "--size=1280x720"}, webp = true},
 	{name = "showcase_menu_search", example = "showcase", args = {"--headless", "--scene=menus", "--theme=Nord", "--light", "--size=1280x720"}, typed = "co", webp = true},
+	{name = "showcase_toolbar", example = "showcase", args = {"--headless", "--scene=toolbar", "--theme=Graphite", "--size=1280x720"}, webp = true},
+	{name = "showcase_toolbar_light", example = "showcase", args = {"--headless", "--scene=toolbar", "--theme=Silver", "--light", "--size=1280x720"}, webp = true},
 	{name = "showcase_dialog", example = "showcase", args = {"--headless", "--scene=dialog", "--theme=Graphite", "--size=1280x680"}, webp = true},
 	{name = "showcase_confirm", example = "showcase", args = {"--headless", "--scene=confirm", "--theme=Gruvbox", "--size=1280x680"}, webp = true},
 	{name = "showcase_prompt", example = "showcase", args = {"--headless", "--scene=prompt", "--theme=Catppuccin", "--light", "--size=1280x680"}, webp = true},
