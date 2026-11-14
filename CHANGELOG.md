@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.255.1] - 2026-11-14
+
+### Fixed
+- **A Markdown table's stripes run from side to side, square**: a striped row stood off the frame's sides with its own rounded corners, a curve inside the frame's curve. Its rows are square and clipped to the frame's inside, where a row that reaches a corner takes the frame's curve: only the frame is rounded. `ui.clip_inside_open` and `clip_inside_close` clip what a rounded frame holds to its inside (`clip_inside_push` from a custom draw, as a floating dock panel does); a table's or a code block's frame has its radius even when the program draws it.
+
 ## [0.255.0] - 2026-11-14
 
 ### Changed
@@ -3465,6 +3470,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.255.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.1
 [0.255.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.0
 [0.254.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.254.0
 [0.253.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.2
