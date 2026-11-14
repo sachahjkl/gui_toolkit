@@ -75,6 +75,10 @@ the axis, a side is an axis and an end. Refused: a vertical strip as a second wi
 - **The chosen choice is brought into view when it changes** (`strip_reveal`): a tab its "+" opened at the end, or one
   a command showed, is not left hidden behind the arrow. Only when it changes: the person scrolls away freely. The shot
   of the six terminals showed the content of the sixth while its tab was out of view.
+  The move happens in the layout that first shows it (`strips_place`, after the layout, before the draw: the view
+  jumps there and the boxes in it move by as much). Done at the build, it read the last layout's rects, none at a
+  first build: a row of tabs whose chosen tab is not the first showed its start for a frame, then jumped, and a click
+  in that frame landed on another tab. A jump, not a glide: what is shown first, or chosen elsewhere, is where it is.
 - **A strip hugs its choices unless told otherwise.** With no size given along an axis it scrolls, a strip is as long
   as its choices and gives way first (`children_sum(0)`): a "+" built after it stays right after the last tab while
   they fit, and at the strip's end when they do not. A size given (`fill()`, `px`) is kept.

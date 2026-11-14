@@ -87,9 +87,10 @@ strip :: proc(id: string, o := Strip_Options{}) -> bool {
 	return true
 }
 
-// In a strip's block, at each build: `b` is the chosen choice (the tab shown). Each time the chosen one changes, and at the
-// first build, it comes into view along each axis the strip scrolls, clear of its arrows and fades: a tab opened or
-// picked elsewhere (a command, the "+") is not left hidden. Not at every build: the person scrolls away from it freely.
+// In a strip's block, at each build: `b` is the chosen choice (the tab shown). Each time the chosen one changes, and in
+// the strip's first frame, it is in view along each axis the strip scrolls, clear of its arrows and fades, in that very
+// frame (strips_place moves the view after the layout): a tab opened or picked elsewhere (a command, the "+") is not left
+// hidden, and the first frame shows it. Not at every build: the person scrolls away from it freely.
 // The keyboard's focus reveals its choice by itself.
 strip_reveal :: proc(b: ^Box) {
 	s := gs()
@@ -105,7 +106,6 @@ strip_end :: proc() {
 	view := s.boxes[sb.view]
 	outer := s.boxes[sb.outer]
 	choices := strip_choices_of(view)
-	if sb.reveal != 0 && sb.reveal != view.strip_chosen && strip_bring(sb, view, choices) { view.strip_chosen = sb.reveal }
 	// (every arrow, every build: which show is the layout's to say, strips_place)
 	for a in sb.axes {
 		for end in 0 ..< 2 { strip_arrow(&sb, view, outer, choices, a, end) }
@@ -243,22 +243,41 @@ strip_step :: proc(sb: Strip_Build, view: ^Box, choices: []^Box, a: Axis, dir: i
 	view.view_target[i] = clamp(to, 0, limit)
 }
 
-// strip_reveal's choice into the clear part along each axis; false while it has no place yet (new in this build, or not
-// a choice of this strip): it is tried again at the next build.
+// strips_place, by this layout: when the strip is new or its chosen choice (strip_reveal) changed, the view moves to show
+// that choice clear of the arrows and the fades, and the boxes in it move by as much, in this very layout: the first frame
+// drawn shows the chosen tab. Done at the build, the rects were the last layout's, none at a first build: the strip
+// showed its start for a frame, then jumped, and a click in that frame landed on another tab. A jump, no glide: what the
+// person sees first, or a choice made elsewhere (a command, the "+"), is where it is.
 @(private = "file")
-strip_bring :: proc(sb: Strip_Build, view: ^Box, choices: []^Box) -> bool {
-	s := gs()
-	for c in choices {
-		if c.key != sb.reveal { continue }
-		if c.first_build == s.build_index || view.first_build == s.build_index { return false }
-		for a in sb.axes {
-			i := int(a)
-			x0 := c.rect.min[i] - view.rect.min[i] + view.view_off[i]
-			_ = view_reveal(view, x0, x0 + (c.rect.max[i] - c.rect.min[i]), a, sb.arrow + sb.fade)
-		}
-		return true
+strip_bring :: proc(s: ^State, sb: Strip_Build, view: ^Box) {
+	if sb.reveal == 0 || sb.reveal == view.strip_chosen { return }
+	c := s.boxes[sb.reveal]
+	if c == nil || c.last_build != s.build_index { return }
+	inside := false
+	for p := c.parent; p != nil; p = p.parent { if p == view { inside = true; break } }
+	if !inside { return }   // (not a choice of this strip: nothing to show)
+	view.strip_chosen = sb.reveal
+	for a in sb.axes {
+		i := int(a)
+		off := view.view_off[i]
+		x0 := c.rect.min[i] - view.rect.min[i] + off
+		x1 := x0 + (c.rect.max[i] - c.rect.min[i])
+		to := clamp(view_reveal_offset(off, x0, x1, view.size[i], sb.arrow + sb.fade), 0, view_limit(view, a))
+		d := math.round(to - off)   // (whole pixels: the boxes' rects are)
+		if d == 0 { continue }
+		view_jump(view, off + d, a)
+		strip_shift(view, i, d)
 	}
-	return false
+}
+
+// The boxes under `b` laid out again `d` further along axis `i`: the view scrolled by `d` after the layout.
+@(private = "file")
+strip_shift :: proc(b: ^Box, i: int, d: f32) {
+	for c := b.first; c != nil; c = c.next {
+		c.rect.min[i] -= d
+		c.rect.max[i] -= d
+		strip_shift(c, i, d)
+	}
 }
 
 // Right after the build's layout (end_build), before anything reads the rects or draws: by the layout that is drawn,
@@ -271,6 +290,7 @@ strips_place :: proc(s: ^State) {
 		view := s.boxes[sb.view]
 		outer := s.boxes[sb.outer]
 		if view == nil || outer == nil { continue }
+		strip_bring(s, sb, view)   // (before the arrows: they follow the offset it gives)
 		for a in sb.axes {
 			i := int(a)
 			sb.shown[a][0], sb.shown[a][1] = strip_hides(view, a)

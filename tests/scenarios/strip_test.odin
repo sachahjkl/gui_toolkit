@@ -21,7 +21,8 @@ import "../../src/ui"
 @(private = "file") STRIP_MANY :: 8       // 640 px: they do not
 
 @(private = "file")
-Strip_Run :: struct { items: int, axis: ui.Axis, beside: f32 }   // beside: the "+"'s length (STRIP_PLUS by default)
+// beside: the "+"'s length (STRIP_PLUS by default); reveal: the chosen choice + 1 (0: none), given to strip_reveal
+Strip_Run :: struct { items: int, axis: ui.Axis, beside: f32, reveal: int }
 
 // `v` along axis `a` and `across` across it, as [width, height].
 @(private = "file")
@@ -38,7 +39,8 @@ strip_build :: proc(s: ^session.Session) {
 			for i in 0 ..< r.items {
 				it := along(r.axis, STRIP_ITEM, 0)
 				if r.axis == .X { ui.next({width = ui.px(it.x), height = ui.pct(1)}) } else { ui.next({width = ui.pct(1), height = ui.px(it.y)}) }
-				ui.build_box({.Clickable, .Focusable}, fmt.tprintf("###it%d", i))
+				b := ui.build_box({.Clickable, .Focusable}, fmt.tprintf("###it%d", i))
+				if i == r.reveal - 1 { ui.strip_reveal(b) }
 			}
 		}
 		plus := r.beside > 0 ? r.beside : STRIP_PLUS
@@ -328,6 +330,25 @@ the_first_frame_has_the_least_size_and_the_arrow :: proc(t: ^testing.T) { unwatc
 			testing.expectf(t, session.find(s, start_arrow(a)) == nil, "%v: no start arrow", a)
 			testing.expect_value(t, session.get(s, "strip_view").edge_hold[i + 2], arrow.rect.max[i] - arrow.rect.min[i])
 		}
+	}
+}) }
+
+// The first frame (session.start's single frame) of a strip whose chosen choice is its last: that choice is in view,
+// clear of the arrows, the start arrow shows; the offset does not move in the frames after (no jump after the first show).
+@(test)
+the_first_frame_shows_the_chosen_choice :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	for a in ui.Axis {
+		r := Strip_Run{items = STRIP_MANY, axis = a, reveal = STRIP_MANY}
+		s := session.start(t, {build = strip_build, user = &r, no_renderer = true})   // (one frame)
+		last := session.find(s, fmt.tprintf("it%d", STRIP_MANY - 1))
+		if !testing.expectf(t, last != nil, "%v: the last choice laid out in the first frame", a) { continue }
+		expect_clear(t, s, last, a)
+		testing.expectf(t, session.find(s, start_arrow(a)) != nil, "%v: the start arrow in the first frame", a)
+		first := off(s, a)
+		testing.expectf(t, first > 0, "%v: the first frame already scrolled to it", a)
+		session.wait_idle(s)
+		testing.expect_value(t, off(s, a), first)
+		expect_clear(t, s, session.get(s, fmt.tprintf("it%d", STRIP_MANY - 1)), a)
 	}
 }) }
 

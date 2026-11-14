@@ -260,7 +260,6 @@ two_panels_in_a_zone_are_tabs :: proc(t: ^testing.T) {
 	wait_built(s, "view_tabs")
 	testing.expect(t, session.find(s, "view_tab_view_side") != nil && session.find(s, "view_tab_view_side2") != nil, "a tab each")
 	testing.expect(t, built(s, "view_panel_view_side2") != nil, "the last docked shown")
-	session.wait_idle(s)   // (the strip places its arrows by the layout drawn: a click comes once they are where they are)
 	if !click_named(s, "view_tab_view_side") { return }
 	if wait_built(s, "view_panel_view_side") == nil { return }
 	testing.expect(t, built(s, "view_panel_view_side2") == nil, "one shown at a time")
@@ -334,10 +333,8 @@ a_tab_dragged_out_floats :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "side", "side2")
-	if wait_built(s, "view_tab_view_side") == nil { return }
-	session.wait_idle(s)
-	tab := built(s, "view_tab_view_side")
-	if tab == nil { testing.expect(t, false, "the tab once settled"); return }
+	tab := wait_built(s, "view_tab_view_side")
+	if tab == nil { return }
 	session.drag(s, seen_center(s, tab), OUT)
 	if wait_built(s, "internal_view_side") == nil { return }
 	testing.expect_value(t, ui.view_presentation(&r.views, "side"), ui.View_Presentation.Internal)
