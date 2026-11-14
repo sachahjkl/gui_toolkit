@@ -191,10 +191,11 @@ text_edit_redo :: proc(a: ^Text_Edit) -> bool {
 @(private="file")
 sel :: proc(a: ^Text_Edit) -> (lo, hi: int) { return min(a.cursor, a.mark), max(a.cursor, a.mark) }
 
+// Selects the whole text, as line_edit_select_all does a line's (a program that sets a text to be typed over).
+text_edit_select_all :: proc(a: ^Text_Edit) { a.mark, a.cursor, a.upstream = 0, len(a.buf), false }
+
 // The edits of the keys and of the field's menu (edit_menu), one of each: through the edit history, the clipboard the one
 // given to begin_build. False: nothing to do (no selection, no clipboard).
-@(private)
-text_edit_select_all :: proc(a: ^Text_Edit) { a.mark, a.cursor, a.upstream = 0, len(a.buf), false }
 
 @(private)
 text_edit_copy :: proc(a: ^Text_Edit) -> bool {
