@@ -174,25 +174,28 @@ File_Dialog_Job :: struct {
 	user:   rawptr,
 }
 
-// Shows a file dialog of the system with no wait here: the system's dialogs are modal loops (Windows) or another
-// process (zenity, kdialog, the portal) that this thread would wait for, the window frozen meanwhile. It runs on the
-// chores; `done(result, user)` comes at a next build of `s`. The strings of `d` are copied.
-file_dialog :: proc(s: ^State, kind: File_Dialog_Kind, d: platform.File_Dialog, done: File_Dialog_Done, user: rawptr = nil) {
+// Which file dialogs ui.file_dialog shows: the toolkit's own browser (file_browser.odin: the same in every program and
+// every theme, the program's sources too), or the system's (a preference of the person: general.file_dialog).
+File_Dialogs :: enum u8 { Toolkit, System }
+
+set_file_dialogs :: proc(s: ^State, d: File_Dialogs) { s.file_dialogs = d }
+file_dialogs :: proc(s: ^State) -> File_Dialogs { return s.file_dialogs }
+
+// Shows a file dialog with no wait here; `done(result, user)` comes at a next build of `s`, on its thread. The strings
+// of `d` are copied. It is the toolkit's browser (docs/file-browser.md), built by the toolkit at each build until it
+// answers, reading `source` (nil: the computer's files, local_files). With set_file_dialogs(.System) and no source, it
+// is the system's: the system's dialogs are modal loops (Windows) or another process (zenity, kdialog, the portal) that
+// this thread would wait for, the window frozen meanwhile, so it runs on the chores. A dialog asked while the browser
+// shows another one cancels that one. With platform.dialog_test_hook set (a program's end-to-end test), the hook
+// answers for the computer's files, whichever dialog is chosen.
+file_dialog :: proc(s: ^State, kind: File_Dialog_Kind, d: platform.File_Dialog, done: File_Dialog_Done, user: rawptr = nil, source: ^File_Source = nil) {
+	if source != nil || (s.file_dialogs == .Toolkit && platform.dialog_test_hook == nil) {
+		file_browser_open(s, kind, d, done, user, source)
+		return
+	}
 	a := runtime.heap_allocator()
 	j := new(File_Dialog_Job, a)
-	j^ = {kind = kind, d = d, done = done, user = user}
-	j.d.title = strings.clone(d.title, a)
-	j.d.start_dir = strings.clone(d.start_dir, a)
-	j.d.remember_id = strings.clone(d.remember_id, a)
-	j.d.suggested_name = strings.clone(d.suggested_name, a)
-	j.d.default_ext = strings.clone(d.default_ext, a)
-	filters := make([]platform.File_Filter, len(d.filters), a)
-	for f, i in d.filters {
-		patterns := make([]string, len(f.patterns), a)
-		for x, k in f.patterns { patterns[k] = strings.clone(x, a) }
-		filters[i] = platform.File_Filter{name = strings.clone(f.name, a), patterns = patterns}
-	}
-	j.d.filters = filters
+	j^ = {kind = kind, d = file_dialog_options_clone(d, a), done = done, user = user}
 	work :: proc(data: rawptr) {
 		j := (^File_Dialog_Job)(data)
 		switch j.kind {
@@ -214,13 +217,43 @@ file_dialog_free :: proc(data: rawptr) {
 	a := runtime.heap_allocator()
 	j := (^File_Dialog_Job)(data)
 	platform.dialog_result_destroy(&j.result, a)
-	delete(j.d.title, a); delete(j.d.start_dir, a); delete(j.d.remember_id, a)
-	delete(j.d.suggested_name, a); delete(j.d.default_ext, a)
-	for f in j.d.filters {
+	file_dialog_options_free(&j.d, a)
+	free(j, a)
+}
+
+// A copy of a dialog's options, every string and slice in `a` (the owner window is the caller's).
+@(private)
+file_dialog_options_clone :: proc(d: platform.File_Dialog, a: runtime.Allocator) -> platform.File_Dialog {
+	c := d
+	c.title = strings.clone(d.title, a)
+	c.start_dir = strings.clone(d.start_dir, a)
+	c.remember_id = strings.clone(d.remember_id, a)
+	c.suggested_name = strings.clone(d.suggested_name, a)
+	c.default_ext = strings.clone(d.default_ext, a)
+	filters := make([]platform.File_Filter, len(d.filters), a)
+	for f, i in d.filters {
+		patterns := make([]string, len(f.patterns), a)
+		for x, k in f.patterns { patterns[k] = strings.clone(x, a) }
+		filters[i] = platform.File_Filter{name = strings.clone(f.name, a), patterns = patterns}
+	}
+	c.filters = filters
+	places := make([]platform.File_Place, len(d.places), a)
+	for p, i in d.places { places[i] = {name = strings.clone(p.name, a), path = strings.clone(p.path, a), icon = strings.clone(p.icon, a)} }
+	c.places = places
+	return c
+}
+
+@(private)
+file_dialog_options_free :: proc(d: ^platform.File_Dialog, a: runtime.Allocator) {
+	delete(d.title, a); delete(d.start_dir, a); delete(d.remember_id, a)
+	delete(d.suggested_name, a); delete(d.default_ext, a)
+	for f in d.filters {
 		delete(f.name, a)
 		for x in f.patterns { delete(x, a) }
 		delete(f.patterns, a)
 	}
-	delete(j.d.filters, a)
-	free(j, a)
+	delete(d.filters, a)
+	for p in d.places { delete(p.name, a); delete(p.path, a); delete(p.icon, a) }
+	delete(d.places, a)
+	d^ = {}
 }

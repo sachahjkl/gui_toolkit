@@ -37,6 +37,15 @@ File_Dialog :: struct {
 	default_ext:    string,         // save: appended when the user types none ("txt", without the dot)
 	multiple:       bool,           // open: several files
 	overwrite_prompt: bool,         // save: ask before replacing a file (the system's question)
+	places:         []File_Place,   // the program's own places, after the source's (the toolkit's file browser; the
+	                                // system's dialogs do not show them)
+}
+
+// A folder a file dialog lists among its places, to go to at once.
+File_Place :: struct {
+	name: string,   // as shown ("Home"); "": the path's last part
+	path: string,
+	icon: string,   // a glyph of the Lucide icons ("": a folder's)
 }
 
 Dialog_Status :: enum u8 { Chosen, Cancelled, Unsupported, Failed }

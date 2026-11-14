@@ -82,6 +82,7 @@ MENU_PREF      :: "general.menu"
 AUTOSTART_PREF :: "general.autostart"
 MESSAGES_PREF  :: "general.messages"
 LANGUAGE_PREF  :: "general.language"
+FILE_DIALOG_PREF :: "general.file_dialog"
 SYSTEM_TITLE_PREF :: "window.system_title"
 UPDATE_AUTO_PREF  :: "update.auto"
 UPDATE_CHANNEL_PREF  :: "update.channel"
@@ -111,6 +112,9 @@ FONT_SIZE_MAX :: 24
 @(private = "file", rodata) PRESENT_CHOICES := [?]string{"vsync", "tearing"}
 @(private = "file", rodata) FILTER_CHOICES := [?]string{"half", "unorm8"}
 @(private = "file", rodata) MESSAGES_CHOICES := [?]string{"system", "window", "off"}
+// (ui.File_Dialogs in its order)
+@(private = "file", rodata) FILE_DIALOG_CHOICES := [?]string{"toolkit", "system"}
+@(private = "file", rodata) FILE_DIALOG_TAGS := [?]string{"open", "save", "file picker", "browse", "folder"}
 
 @(private = "file", rodata) MENU_TAGS := [?]string{"launcher", "desktop file", "start menu", "icon"}
 @(private = "file", rodata) AUTOSTART_TAGS := [?]string{"login", "startup", "boot", "session"}
@@ -200,6 +204,11 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			name = LANGUAGE_PREF, title = i18n.later("Language"), kind = .String, default = {s = "system"},
 			description = i18n.later("The language of the interface. System: the system's, English where the program has no text in it."),
 			choices = LANGUAGE_CHOICES[:], choice_labels = labels(a, i18n.later("System"), "English", "Français"), tags = LANGUAGE_TAGS[:],
+		})
+		append(&defs, config.Def{
+			name = FILE_DIALOG_PREF, title = i18n.later("File dialogs"), kind = .String, default = {s = "toolkit"},
+			description = i18n.later("How files and folders are chosen to open or to save. Built in: a browser drawn by %s, the same in every theme. System: the system's own dialog."), program = name,
+			choices = FILE_DIALOG_CHOICES[:], choice_labels = labels(a, i18n.later("Built in"), i18n.later("System")), tags = FILE_DIALOG_TAGS[:],
 		})
 	}
 	if .Appearance in sets {
@@ -811,6 +820,8 @@ standard_apply_one :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targe
 	case strings.has_prefix(name, "scrolling."): apply_scrolling(prefs, s, name)
 	case strings.has_prefix(name, "input.") || strings.has_prefix(name, "timing."): apply_feel(prefs, s, name)
 	case strings.has_prefix(name, "rendering."): apply_rendering(prefs, s, t, name)
+	case name == FILE_DIALOG_PREF:
+		if i, ok := choice_value(prefs, name, FILE_DIALOG_CHOICES[:]); ok { ui.set_file_dialogs(s, ui.File_Dialogs(i)) }
 	}
 }
 

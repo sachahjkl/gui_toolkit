@@ -20,6 +20,7 @@ names every standard preference.
 | `general.autostart` | Program (`false`) | | `desktop.apply` |
 | `general.messages` | `system` | `system`, `window`, `off` | `announce_mode`, `ui.Announcer` |
 | `general.language` | `system` | `system`, `en`, `fr` | `language_start`: at the start, then at once at each change |
+| `general.file_dialog` | `toolkit` | `toolkit`, `system` | `standard_apply`: `ui.set_file_dialogs` (docs/file-browser.md) |
 
 ## Appearance (`Appearance`)
 

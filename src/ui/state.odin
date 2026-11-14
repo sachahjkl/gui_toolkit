@@ -68,6 +68,7 @@ destroy :: proc(s: ^State) {
 	draw.damage_memory_destroy(&s.damage)
 	task_box_shut(s)  // (first: a task that ends from now on posts nothing to this State)
 	post_destroy(s)   // (then: the threads still posting get false from now on)
+	file_browser_destroy(s)
 	for _, b in s.boxes { free(b) }
 	for b in s.free_boxes { free(b) }
 	delete(s.boxes)
@@ -295,6 +296,7 @@ end_build :: proc() {
 	assert(len(s.list_stack) == 0, "ui: unbalanced list scopes")
 	assert(len(s.menu_build) == 0, "ui: unbalanced menu scopes")
 
+	file_browser_build(s)   // (the file dialog a program asked: over what it built, as its own dialogs are)
 	toasts_build()   // (over everything the program built, under its menus)
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }

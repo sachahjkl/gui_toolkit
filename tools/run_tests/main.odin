@@ -156,6 +156,7 @@ STEPS := []Step{
 	// the interface with real frames and input: testkit/session
 	{name = "session", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "data_views", one = true, oses = EVERYWHERE, text = true},
+	{name = "file_browser", one = true, oses = EVERYWHERE, text = true},
 	{name = "diff", one = true, oses = EVERYWHERE, text = true},
 	{name = "prefs_page", one = true, oses = EVERYWHERE, text = true},
 	{name = "setup", one = true, oses = EVERYWHERE, text = true},

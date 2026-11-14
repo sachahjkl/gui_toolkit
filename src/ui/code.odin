@@ -28,6 +28,11 @@ code_color :: proc(class: syntax.Class) -> Color {
 code_runs :: proc(text: string, l: syntax.Language, style: Rich_Style, runs: ^[dynamic]Rich_Run) {
 	spans := make([dynamic]syntax.Span, context.temp_allocator)
 	syntax.spans(text, l, &spans)
+	code_runs_of(text, spans[:], style, runs)
+}
+
+// The same with the spans syntax.spans made already (a text kept with its spans: they are not made at each build).
+code_runs_of :: proc(text: string, spans: []syntax.Span, style: Rich_Style, runs: ^[dynamic]Rich_Run) {
 	at := 0
 	for sp in spans {
 		if sp.start > at { append(runs, Rich_Run{text = text[at:sp.start], style = style}) }

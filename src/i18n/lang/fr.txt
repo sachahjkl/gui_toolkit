@@ -532,6 +532,15 @@ fr Langue
 en The language of the interface. System: the system's, English where the program has no text in it.
 fr La langue de l'interface. Système : celle du système, l'anglais là où le programme n'a pas de texte dans cette langue.
 
+en File dialogs
+fr Fenêtres de fichiers
+
+en How files and folders are chosen to open or to save. Built in: a browser drawn by %s, the same in every theme. System: the system's own dialog.
+fr Comment les fichiers et les dossiers sont choisis pour les ouvrir ou les enregistrer. Intégré : un explorateur dessiné par %s, le même dans chaque thème. Système : la fenêtre du système.
+
+en Built in
+fr Intégré
+
 en Appearance
 fr Apparence
 
@@ -1597,6 +1606,183 @@ fr Ouvrir dans une fenêtre
 en floating panel
 fr panneau flottant
 
+en Name
+fr Nom
+
+en Size
+fr Taille
+
+en Modified
+fr Modifié
+
+en Kind
+fr Genre
+
+en This source lists no folder.
+fr Cette source ne liste aucun dossier.
+
+en New folder
+fr Nouveau dossier
+
+en A folder's name has no separator in it.
+fr Le nom d'un dossier ne contient pas de séparateur.
+
+en Folder
+fr Dossier
+
+en File
+fr Fichier
+
+en Image
+fr Image
+
+en Code
+fr Code
+
+en Archive
+fr Archive
+
+en Text
+fr Texte
+
+en Link
+fr Lien
+
+en No preview
+fr Pas d'aperçu
+
+en Select a file to see it here.
+fr Sélectionnez un fichier pour le voir ici.
+
+en Reading…
+fr Lecture…
+
+en Replace %s?
+fr Remplacer %s ?
+
+en A file of this name is in this folder already. Saving replaces it.
+fr Un fichier de ce nom est déjà dans ce dossier. L'enregistrer le remplace.
+
+en Replace
+fr Remplacer
+
+en Open
+fr Ouvrir
+
+en Save as
+fr Enregistrer sous
+
+en Save
+fr Enregistrer
+
+en Choose a folder
+fr Choisir un dossier
+
+en Choose
+fr Choisir
+
+en Back (Alt+Left)
+fr Précédent (Alt+Gauche)
+
+en Forward (Alt+Right)
+fr Suivant (Alt+Droite)
+
+en Up (Backspace)
+fr Dossier parent (Retour arrière)
+
+en A folder's path
+fr Le chemin d'un dossier
+
+en Filter
+fr Filtrer
+
+en The folders above
+fr Les dossiers au-dessus
+
+en Type a path (Ctrl+L)
+fr Taper un chemin (Ctrl+L)
+
+en Preview
+fr Aperçu
+
+en Places
+fr Emplacements
+
+en This folder may not be read
+fr Ce dossier ne peut pas être lu
+
+en This folder could not be read
+fr Ce dossier n'a pas pu être lu
+
+en Try again
+fr Réessayer
+
+en Reading this folder…
+fr Lecture de ce dossier…
+
+en This folder is empty
+fr Ce dossier est vide
+
+en Nothing here matches the filter
+fr Rien ici ne correspond au filtre
+
+en Nothing here to show
+fr Rien à afficher ici
+
+en Files
+fr Fichiers
+
+en The new folder's name
+fr Le nom du nouveau dossier
+
+en Type
+fr Type
+
+en Shift+Ctrl+N
+fr Maj+Ctrl+N
+
+en Hidden files
+fr Fichiers cachés
+
+en Home
+fr Dossier personnel
+
+en Desktop
+fr Bureau
+
+en Documents
+fr Documents
+
+en Downloads
+fr Téléchargements
+
+en Pictures
+fr Images
+
+en Music
+fr Musique
+
+en Videos
+fr Vidéos
+
+en You are not allowed to read it.
+fr Vous n'avez pas le droit de le lire.
+
+en It is not there any more.
+fr Il n'existe plus.
+
+en Something of this name is there already.
+fr Un élément de ce nom existe déjà.
+
+en The folder could not be read: %s.
+fr Le dossier n'a pas pu être lu : %s.
+
+en The file could not be read: %s.
+fr Le fichier n'a pas pu être lu : %s.
+
+en The folder could not be made: %s.
+fr Le dossier n'a pas pu être créé : %s.
+
 en Press the keys…
 fr Appuyez sur les touches…
 
@@ -1679,9 +1865,6 @@ fr Teinte
 en Opacity
 fr Opacité
 
-en Preview
-fr Aperçu
-
 en Fit
 fr Ajuster
 
@@ -1696,9 +1879,6 @@ fr Taille réelle
 
 en QR code: %s
 fr Code QR : %s
-
-en Filter
-fr Filtrer
 
 en Marks
 fr Repères

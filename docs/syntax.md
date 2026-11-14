@@ -89,8 +89,9 @@ an address, a path. A project's languages (with their `signs`) are tried first.
 
 ## In a program's window
 
-The `ui` package colours code with the theme: `code_runs(text, language, style, &runs)` makes runs for `rich_paragraph`,
-each class in its colour (`code_color`: the theme's `code_keyword`, `code_string`, `code_comment` in italics, `code_func`
+The `ui` package colours code with the theme: `code_runs(text, language, style, &runs)` makes runs for `rich_paragraph`
+(`code_runs_of(text, spans, style, &runs)` with spans kept from an earlier `syntax.spans`: a text that does not change
+is not lexed at each build), each class in its colour (`code_color`: the theme's `code_keyword`, `code_string`, `code_comment` in italics, `code_func`
 and `code_type`), and `code_highlight(language)` gives `text_edit` its `highlight`, line by line (a block comment over
 several lines is coloured on its first line only). The theme's colours are its hues: purple, green, the weak text, blue
 and cyan (`Palette.blue`, `purple`, `cyan`, `rose`; the accent when a palette has none).

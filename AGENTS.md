@@ -17,6 +17,11 @@ Every step is a command of `tools/tk` (the head of `tools/tk/main.odin` lists th
   virtual desktop.
 - Linux: `nix develop` first (`flake.nix`: the pinned Odin with wgpu-native, Rust, the servers of the virtual desktops).
 
+## Intent
+
+This project follows https://srcmd.org, with the Markdown in `src/md`. Read `src/md/README.md` first. Change the intent
+there before the code it describes.
+
 ## Key prompts
 
 Apply these to every task, before you write code:

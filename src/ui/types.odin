@@ -508,6 +508,10 @@ State :: struct {
 	post_wake_own:   bool,                  // set_post_wake gave the app's own wake: Build_Params.window does not replace it
 	post_windows:    [dynamic]^platform.Window,   // the windows that hold the queue (they forget it at ui.destroy)
 	task_box:        ^Task_Box,   // where ui.task's results are posted, shut at ui.destroy (nil: no task asked yet)
+	// the file browser ui.file_dialog shows, built at the end of each build while it is open (file_browser.odin; nil:
+	// never asked), and which dialog file_dialog shows (set_file_dialogs)
+	files:           ^File_Browser,
+	file_dialogs:    File_Dialogs,
 	// accessibility: the tree screen readers read, the requests they made (a11y.odin)
 	a11y:            A11y_Data,
 }
