@@ -69,7 +69,30 @@ what a check finds is downloaded and put in place at once. The phases:
 
 `news(user)` is called on the updater's thread at each change, never after `updater_stop` returned: the program posts to its
 interface's thread and reads `status` there. `Status.serial` grows at each change, so a program says each result once;
-`Status.asked` says the result answers `check_now` or `install_now`, which a program says even when it is "up to date".
+`Status.asked` says the result answers `check_now` or `install_now`, which a program says even when it is "up to date";
+`Status.install` says the result is an install's, not a check's (`result` is then the reason of a failure).
+
+### Where the state is shown
+
+One place shows the phase, the same way in every program:
+
+| Where | What |
+|---|---|
+| the program's bar | `prefs_page.update_badge`: "Install 0.16.0", "Downloading 0.16.0…", "Restart to update to 0.16.0" |
+| the Updates page | `status_words(st)`: the whole state in a sentence, with Check now, Install, Restart now |
+| the status line or a toast | `notice(st)` only, once per `serial` |
+
+`notice(st) -> (words, bad)` is what the badge cannot say: a failed install, asked or not ("The update failed: …"),
+and the answer to `check_now` ("Up to date.", "The last check failed: …", a package manager). It is "" for a version
+on offer, its download, a version in place and a check made by itself: the badge shows the first three, and a check
+that failed is made again. `bad`: a failure.
+
+```odin
+if st.serial != app.update_serial {
+    app.update_serial = st.serial
+    if words, bad := update.notice(st); words != "" { say(app, bad, words) }
+}
+```
 Downloads go through `tk_http` (`docs/http.md`): WinHTTP on Windows, libcurl on Linux.
 
 The release publishes the files with `toolbox.update_command` (`docs/toolbox.md`): a manifest and its `.sig` for each

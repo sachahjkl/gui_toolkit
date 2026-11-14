@@ -287,3 +287,24 @@ a_managed_copy_is_left_alone :: proc(t: ^testing.T) {
 	testing.expect_value(t, st.phase, Phase.Managed)
 	testing.expect(t, st.asked && !st.failed && st.result != "", "it says why")
 }
+
+// The notice never says what the badge shows (a version on offer, its download, one in place), nor a check made by
+// itself; it says a failed install, asked or not, and the answers to check_now.
+@(test)
+the_notice_never_repeats_the_badge :: proc(t: ^testing.T) {
+	said :: proc(st: Status) -> bool { words, _ := notice(st); return words != "" }
+	phases := []Phase{.Available, .Downloading, .Installed, .Checking}
+	for phase in phases {
+		testing.expectf(t, !said({phase = phase, version = "2.0.0"}), "%v by itself: the badge", phase)
+		testing.expectf(t, !said({phase = phase, version = "2.0.0", asked = true}), "%v asked: the badge", phase)
+	}
+	testing.expect(t, !said({phase = .Idle, result = "up to date"}), "a check by itself that found nothing")
+	testing.expect(t, !said({phase = .Idle, result = "no network", failed = true}), "a check by itself that failed")
+	words, bad := notice({phase = .Available, version = "2.0.0", result = "no network", failed = true, install = true})
+	testing.expect(t, bad && strings.contains(words, "no network"), "a failed install, by itself")
+	words, bad = notice({phase = .Idle, result = "up to date", asked = true})
+	testing.expect(t, !bad && words != "", "check_now: up to date")
+	words, bad = notice({phase = .Available, version = "2.0.0", result = "no network", failed = true, asked = true})
+	testing.expect(t, bad && strings.contains(words, "no network"), "check_now failed, a version on offer")
+	testing.expect(t, said({phase = .Managed, asked = true}), "check_now: a package manager")
+}

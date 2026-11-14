@@ -75,6 +75,7 @@ Status :: struct {
 	result:  string,   // what the last check or install found ("" none yet): "up to date", a failure's reason...
 	failed:  bool,     // that result is a failure
 	asked:   bool,     // that result answers check_now or install_now: the program says it, even "up to date"
+	install: bool,     // that result is an install's (install_now, or the mode Install), not a check's
 	serial:  int,      // grows at each change: a program says each result once
 }
 
@@ -88,6 +89,7 @@ Updater :: struct {
 	result:    string,            // (owned)
 	failed:    bool,
 	asked:     bool,
+	install:   bool,              // the result is an install's
 	serial:    int,
 	auto:      Auto_Mode,
 	want_check, want_install: bool,
@@ -153,7 +155,7 @@ set_auto :: proc(u: ^Updater, mode: Auto_Mode) {
 // version is being installed or is installed.
 check_now :: proc(u: ^Updater) {
 	sync.guard(&u.mutex)
-	if u.phase == .Managed { u.result, u.failed, u.asked = replace(u.result, i18n.tr("a package manager updates this copy")), false, true; u.serial += 1; return }
+	if u.phase == .Managed { u.result, u.failed, u.asked, u.install = replace(u.result, i18n.tr("a package manager updates this copy")), false, true, false; u.serial += 1; return }
 	if u.phase == .Checking || u.phase == .Downloading || u.phase == .Installed { return }
 	u.want_check, u.want_asked = true, true
 	sync.cond_signal(&u.cond)
@@ -178,7 +180,7 @@ set_channel :: proc(u: ^Updater, channel: string) {
 	if u.phase == .Available {
 		manifest_destroy(&u.offer, heap())
 		u.phase = .Idle
-		u.result, u.failed, u.asked = replace(u.result, ""), false, false
+		u.result, u.failed, u.asked, u.install = replace(u.result, ""), false, false, false
 		tell(u)
 	}
 	if u.auto != .Off { u.next_check = time.now() }
@@ -195,24 +197,45 @@ folder_of :: proc(o: Updater_Options, channel: string) -> string {
 status :: proc(u: ^Updater, allocator := context.temp_allocator) -> Status {
 	sync.guard(&u.mutex)
 	version := u.phase == .Installed ? u.version : (u.phase == .Available || u.phase == .Downloading) ? u.offer.version : ""
-	return {u.phase, strings.clone(version, allocator), strings.clone(u.result, allocator), u.failed, u.asked, u.serial}
+	return {u.phase, strings.clone(version, allocator), strings.clone(u.result, allocator), u.failed, u.asked, u.install, u.serial}
 }
 
-// The state in a sentence, for a settings line or a status bar.
+// The state in a sentence, for the Updates page (prefs_page): the one place that says the whole state. A program's bar
+// shows the state with prefs_page.update_badge, and says only `notice`.
 status_words :: proc(st: Status, allocator := context.temp_allocator) -> string {
 	switch st.phase {
 	case .Managed:     return i18n.tr("A package manager updates this copy.")
 	case .Checking:    return i18n.tr("Checking for a newer version…")
 	case .Downloading: return fmt.aprintf(i18n.tr("Downloading version %s…"), st.version, allocator = allocator)
-	case .Available:   return fmt.aprintf(i18n.tr("Version %s is available."), st.version, allocator = allocator)
+	case .Available:
+		if st.failed && st.install { return fmt.aprintf(i18n.tr("Version %s is available. The update failed: %s."), st.version, st.result, allocator = allocator) }
+		return fmt.aprintf(i18n.tr("Version %s is available."), st.version, allocator = allocator)
 	case .Installed:   return fmt.aprintf(i18n.tr("Version %s is installed: it runs at the next start."), st.version, allocator = allocator)
 	case .Idle:
 	}
 	switch {
-	case st.result == "": return i18n.tr("Not checked yet.")
-	case st.failed:       return fmt.aprintf(i18n.tr("The last check failed: %s."), st.result, allocator = allocator)
+	case st.result == "":           return i18n.tr("Not checked yet.")
+	case st.failed && st.install:   return fmt.aprintf(i18n.tr("The update failed: %s."), st.result, allocator = allocator)
+	case st.failed:                 return fmt.aprintf(i18n.tr("The last check failed: %s."), st.result, allocator = allocator)
 	}
 	return i18n.tr("Up to date.")
+}
+
+// What a program says once of a change of its Updater (its status line, a toast), beside the badge of its bar
+// (prefs_page.update_badge), which shows the phase: a version on offer, its download, a restart. So "" for what the badge
+// shows, and for a check made by itself that found nothing or failed (it is made again). Said: a failed install, asked
+// or not (the badge offers it again, and the user must know why), and the answer to check_now that the badge cannot
+// give ("Up to date.", a failure, a package manager). `bad`: a failure.
+notice :: proc(st: Status, allocator := context.temp_allocator) -> (words: string, bad: bool) {
+	if st.failed && st.install { return fmt.aprintf(i18n.tr("The update failed: %s."), st.result, allocator = allocator), true }
+	if !st.asked { return "", false }
+	#partial switch st.phase {
+	case .Managed: return i18n.tr("A package manager updates this copy."), false
+	case .Idle, .Available:
+		if st.failed { return fmt.aprintf(i18n.tr("The last check failed: %s."), st.result, allocator = allocator), true }
+		if st.phase == .Idle { return i18n.tr("Up to date."), false }
+	}
+	return "", false
 }
 
 ////////////////////////////////
@@ -295,13 +318,13 @@ updater_check :: proc(u: ^Updater, asked: bool) {
 		if why == "" && !nothing_new { manifest_destroy(&m, heap()) }
 		manifest_destroy(&u.offer, heap())
 		u.phase = .Idle
-		u.result, u.failed = replace(u.result, ""), false
+		u.result, u.failed, u.install = replace(u.result, ""), false, false
 		u.want_check = true
 		u.want_asked = u.want_asked || asked
 		tell(u)
 		return
 	}
-	u.asked = asked
+	u.asked, u.install = asked, false
 	switch {
 	case why != "":
 		u.result, u.failed = replace(u.result, why), true
@@ -344,9 +367,10 @@ updater_install :: proc(u: ^Updater, asked: bool) {
 		why = i18n.tr("stopped")
 	}
 	delete(data, heap())
-	u.asked = asked
+	u.asked, u.install = asked, true
 	if why != "" {
-		u.result, u.failed = replace(u.result, fmt.tprintf(i18n.tr("version %s was not installed: %s"), m.version, why)), true
+		// (the reason alone: status_words and notice put it in their sentence)
+		u.result, u.failed = replace(u.result, why), true
 		u.phase = .Available
 		// (the channel changed during the download: its offer is not one of the channel followed now)
 		if m.channel != u.options.channel {
