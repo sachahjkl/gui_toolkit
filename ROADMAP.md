@@ -9,9 +9,6 @@
 
 ## Next
 
-- **The notification test is deterministic.** `linux_desktop_test.a_notification_is_clicked_and_ends` failed once in
-  the CI and passed on the same code: a notification after one that ended replaced it. Find the race between the
-  `Notify` reply and the `NotificationClosed` signal on the test bus, so the CI never fails without a fault.
 - **Wren moves to views.** Wren's bookmark, vault and security-key dialogs become views, as in the other programs.
   Intent: [src/md/features/views.md](src/md/features/views.md), sections 1 and 7.
 - **Every row of tabs on a strip.** The dock's stacks, classeur's tab rows and Wren's tab strip scroll with the

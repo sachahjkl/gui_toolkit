@@ -91,12 +91,15 @@ notify_send :: proc(w: ^Window, n: Notification, tray: ^Tray) -> (id: Notificati
 	name := notify_app.name != "" ? notify_app.name : app_id_or_exe()
 	icon := notify_app.icon_path != "" ? file_uri_of_unix_path(notify_app.icon_path) : ""
 	body := notify_dbus_body(n, name, icon, app_id_or_exe(), caps)
+	// (listened to before the call: the bus handles a connection's messages in order, so the match is in place before
+	// the server sees Notify. Listened to after its answer, a notification the server closed at once lost its
+	// NotificationClosed, and the next one replaced it)
+	notify_listen(w, conn)
 	msg, answered := dbus.call(conn, NOTIFY_SERVICE, NOTIFY_PATH, NOTIFY_SERVICE, "Notify", NOTIFY_SIGNATURE, body, NOTIFY_CALL_MS)
 	if !answered { return 0, false }
 	r := dbus.msg_reader(&msg)
 	id = Notification_Id(dbus.r_u32(&r))
 	if r.err || id == 0 { return 0, false }
-	notify_listen(w, conn)
 	if n.replace != 0 { notify_forget(w, n.replace) }   // (the server's: the same id, or the old one is gone)
 	notify_forget(w, id)
 	append(&w.notify.live, Notify_Live{id = id, tray = tray})
@@ -151,13 +154,13 @@ notify_request_send :: proc(conn: ^dbus.Conn, req: ^Notify_Request) -> bool {
 		r := dbus.msg_reader(msg)
 		id := Notification_Id(dbus.r_u32(&r))
 		if r.err || id == 0 { notify_request_end(req, 0, false); return }
-		// (the window's list, as notify keeps it: its signals are listened to, a replaced one is forgotten)
-		if conn := session_bus(); conn != nil { notify_listen(req.w, conn) }
+		// (the window's list, as notify keeps it: a replaced one is forgotten; its signals are listened to since the call)
 		if req.n.replace != 0 { notify_forget(req.w, req.n.replace) }
 		notify_forget(req.w, id)
 		append(&req.w.notify.live, Notify_Live{id = id})
 		notify_request_end(req, id, true)
 	}
+	notify_listen(req.w, conn)   // (before the call, as notify_send: the match is in place before the server sees Notify)
 	return dbus.call_async(conn, NOTIFY_SERVICE, NOTIFY_PATH, NOTIFY_SERVICE, "Notify", NOTIFY_SIGNATURE, body, handler, req, NOTIFY_CALL_MS)
 }
 
