@@ -5,6 +5,18 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.257.0] - 2026-11-14
+
+### Added
+- **A project's roadmap is checked with its changelog**: `changelog.check` reads `ROADMAP.md` beside `CHANGELOG.md` (`# Roadmap`, then `## Now`, `## Next` and `## Later`, each a list of entries that start with a bold summary, no dates) and names each line that is wrong; a project without one does not pass. Every program's changelog check and the toolkit's release run it.
+- **Search in subfolders in the file browser**: an "In subfolders" toggle beside the filter finds files and folders at any depth under the folder shown, best matches first, their path shown with the matched letters lit; a folder found is entered, a file found is chosen or previewed as any other. A program's source offers it with `File_Source.find` (`ui.file_reply_found`); `File_Dialog.find_deep` turns it on at first, and `File_Dialog.act` gives the act button the program's own word.
+
+### Changed
+- **One local time for every program (`timefmt.local_offset_minutes`)**: the toolkit reads the machine's time zone offset on a thread of its own, again every minute, so dates follow a change of zone or of daylight saving time during a run. `Scroll_Marks_Options.offset_minutes` is gone: the scroll marks and the file browser read the toolkit's.
+
+### Fixed
+- **The file browser keeps the keyboard**: while it is open, the program behind it no longer sees a key first (Escape closed the picker and also did what the program does with Escape). `ui.file_dialog_shown` says whether it is open.
+
 ## [0.256.0] - 2026-11-14
 
 ### Added
@@ -3481,6 +3493,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.257.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.257.0
 [0.256.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.256.0
 [0.255.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.2
 [0.255.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.1
