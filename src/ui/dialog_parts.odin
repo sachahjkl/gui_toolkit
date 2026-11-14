@@ -107,8 +107,9 @@ DIALOG_CLOSE_EM :: f32(1.8)
 // A row of a list to choose from in a dialog (accounts, passkeys): an icon, a title, a detail under it, as the
 // palette's lines. The keyboard's row (`index == sel^`) is sunk in a well with a bar of the accent, its words in the
 // theme's own colours (readable: no text on the accent). The pointer moving over a row selects it, so the highlight
-// follows the pointer; Up and Down are the caller's. True: clicked.
-choice_row :: proc(id: string, index: int, sel: ^int, title, detail: string, icon := "", icon_font: font.Font_Id = 0) -> bool {
+// follows the pointer; Up and Down are the caller's. True: clicked. `ranges`: what a search found in the title, lit
+// (fuzzy_score's). `beside`: the detail on the title's line, at its right, weak (a list under a field: one line a row).
+choice_row :: proc(id: string, index: int, sel: ^int, title, detail: string, icon := "", icon_font: font.Font_Id = 0, ranges: []Fuzzy_Range = nil, beside := false) -> bool {
 	s := gs()
 	em := font_size()
 	selected := sel^ == index
@@ -116,7 +117,7 @@ choice_row :: proc(id: string, index: int, sel: ^int, title, detail: string, ico
 	defer pop_tags()
 	if selected { push_tags("selected") }
 	defer if selected { pop_tags() }
-	h := dense(em * (detail != "" ? CHOICE_ROW_TWO_EM : CHOICE_ROW_ONE_EM))
+	h := dense(em * (detail != "" && !beside ? CHOICE_ROW_TWO_EM : CHOICE_ROW_ONE_EM))
 	next({width = fill(), height = px(h), axis = .X, cross = .Center})
 	rb := build_box({.Clickable, .Draw_Hot_Effects}, strings.concatenate({"###", id}, frame_allocator()))
 	if selected { rb.custom = palette_selected_draw }
@@ -133,13 +134,23 @@ choice_row :: proc(id: string, index: int, sel: ^int, title, detail: string, ico
 			if !selected { pop_tags() }
 			spacer(px(em * 0.6))
 		}
-		next({width = fill(), height = children_sum(), axis = .Y})
-		if parent(build_box({}, "###words")) {
-			next({width = fill(), height = text_size(), text_pad = 0})
-			build_box({.Draw_Text}, fmt.tprintf("%s###t", title))
+		if beside {
+			next({width = fill(), text_pad = 0})
+			matched_label("###t", title, ranges)
 			if detail != "" {
-				next({width = fill(), height = text_size(), text_pad = 0, font_size = em * 0.9})
-				if tags("weak") { build_box({.Draw_Text}, fmt.tprintf("%s###d", detail)) }
+				spacer(px(em * 0.6))
+				next({width = text_size(), height = pct(1), text_pad = 0, font_size = em * 0.9})
+				if tags("weak") { build_box({.Draw_Text}, fmt.tprintf("%s###d", text_shown(detail))) }
+			}
+		} else {
+			next({width = fill(), height = children_sum(), axis = .Y})
+			if parent(build_box({}, "###words")) {
+				next({width = fill(), height = text_size(), text_pad = 0})
+				matched_label("###t", title, ranges)
+				if detail != "" {
+					next({width = fill(), height = text_size(), text_pad = 0, font_size = em * 0.9})
+					if tags("weak") { build_box({.Draw_Text}, fmt.tprintf("%s###d", detail)) }
+				}
 			}
 		}
 		spacer(px(em * 0.9))

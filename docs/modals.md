@@ -121,7 +121,8 @@ this strip.
 accounts of a security key, the passkeys of a site). The row `index == sel` is drawn as the command palette's selected
 line: sunk in a well with a bar of the accent, its words in the theme's own colours. The pointer moving over a row
 selects it: the highlight follows the pointer, and Enter takes what it shows. Up and Down are the caller's. It returns
-true when the row is clicked.
+true when the row is clicked. `ranges` lights what a search found in the title (`fuzzy_score`'s ranges); `beside` puts
+the detail at the right of the title, on its line, weak: one line a row, for a list under a field (the path bar's).
 
 ## A dialog's body and buttons (`src/ui/dialog_parts.odin`)
 

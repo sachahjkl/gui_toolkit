@@ -28,7 +28,7 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 
 ```
 ┌ Title ───────────────────────────────────────────────────────────── × ┐
-│ ← → ↑   home › sacha › Projects › gui_toolkit            [⌕ filter  ] │
+│ ← → ↑  [/home / sacha / Projects / gui_toolkit       ]  [⌕ filter  ] │
 │ ┌────────────┐ ┌───────────────────────────────────────┐ ┌─────────┐ │
 │ │ PLACES     │ │ Name ▲           Size      Modified    │ │ preview │ │
 │ │ ⌂ Home     │ │ 📁 docs                    14:02       │ │         │ │
@@ -41,12 +41,16 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-- **The path bar**: Back, Forward, Up; the folder as a breadcrumb, a button per part (a click goes there; parts that do
-  not fit, by the last layout's width, go into a `…` menu at the left). `Ctrl+L`, or a click on the bar's empty end,
-  turns it into a field with the whole path: Enter goes there (its folder is read, then its last part is looked for in
-  it: a folder is entered, a file chosen in Open mode and named in Save mode), Escape gives the breadcrumb back, and so
-  does the keyboard leaving the field. Tab completes the folder's names (as far as the names that begin with what is
-  typed agree); a field whose folder is not the one shown reads that folder first.
+- **The path bar**: Back, Forward, Up; the folder in the toolkit's path bar ([path-bar.md](path-bar.md)): a breadcrumb
+  whose parts a click enters (parts that do not fit go into a `…` menu at the left). `Ctrl+L`, or a click on the bar's
+  empty end, turns it into a field with the whole path and a dropdown: the folders of the folder typed (and its files in
+  Open and Save mode: Open's of the type chosen), by fuzzy matching on what follows the last separator; then the places
+  and the recent folders, under "Places" and "Recent". The folder shown is answered from its entries; another one is
+  read through the source (`list`, with `File_Reply.bar`: a reading of its own, the list keeps the folder shown). Enter,
+  or a row, goes there: a folder is entered; a path typed or a file is looked for in its folder (a folder is entered, a
+  file chosen in Open mode and named in Save mode). Tab takes the row highlighted, a folder with its separator. Escape
+  closes the dropdown, then gives the breadcrumb back, and so does the keyboard leaving the field. The search in
+  subfolders stays the filter's (the toggle below): the bar lists one folder at a time.
 - **Places**, at the left: what the source gives (local: Home, Desktop, Documents, Downloads, Pictures, Music, Videos
   that exist, then the drives on Windows, `/` elsewhere: read once per State on the chores, `file_local.odin`), then the
   program's own places (`File_Dialog.places`: for ocn, the folders of the latest sessions), then the recent folders of
@@ -94,11 +98,11 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 | Enter | a folder: enter it; a file: choose it (Open), name it (Save) |
 | Backspace (out of a field), Alt+↑ | up, the folder left selected |
 | Alt+← / Alt+→ | back / forward |
-| Ctrl+L | the path as a field |
+| Ctrl+L | the path as a field, with its dropdown (↓ ↑, Tab, Enter, Escape: [path-bar.md](path-bar.md)) |
 | Ctrl+H | hidden files |
 | Ctrl + click, Shift+↑↓, Ctrl+A | several files (Open with `multiple`) |
 | a letter | the filter |
-| Escape | clears the filter, then the path field, then the new folder's row, then cancels |
+| Escape | the path field's while it has the keyboard (its dropdown, then the breadcrumb); else clears the filter, then the new folder's row, then cancels |
 | F5 | reads the folder again |
 | Shift+Ctrl+N | New folder |
 
@@ -141,7 +145,8 @@ the call), on the interface's thread, through the reply: `file_reply_listed(repl
 `find` (nil: no search in subfolders) answers `file_reply_found` with the entries under `folder`, at any depth, that
 match `query`, best first, at most `limit`: each entry's `name` is its path relative to `folder`, with the source's
 separator (`docs/notes.md`). `reply.hidden` is Hidden files: off, the hidden entries and what is in hidden folders are
-not found. The browser shows them in the order given. A reply carries the ticket of its reading
+not found. The browser shows them in the order given. A reply's `bar` says a listing is the path bar's (its dropdown's
+children), not the folder shown's: a source passes the reply back as it is given. A reply carries the ticket of its reading
 (`remote`) and its dialog: the answer of a folder left, of a file no longer selected, or of a dialog closed changes
 nothing. The entries and bytes are copied by the browser: the source frees its own after the call. A source answers
 while the State lives (a program's source stops answering at `ui.destroy`).
@@ -189,4 +194,5 @@ to the entries runs in a frame that did not change them; `-define:FILE_BROWSER_T
 `FILE_BROWSER_BUILD_BUDGET_MS`); a name with every kind of character; Save over an existing file; the dialog closed with
 a reading under way; the keyboard (Enter, Backspace, typing, Escape's order, Shift+↓, Ctrl+A); Folder mode; the
 program's places; New folder; the search in subfolders (a file three folders deep, a hidden folder, a late answer of an
-older query, no request per frame); the program's `key_press` and typed text while the browser is open.
+older query, no request per frame); the program's `key_press` and typed text while the browser is open; the path bar
+(Ctrl+L and a path typed, Tab and its own reading beside the list, a part clicked, Escape's order).

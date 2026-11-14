@@ -1648,6 +1648,9 @@ fr Texte
 en Link
 fr Lien
 
+en Places
+fr Emplacements
+
 en No preview
 fr Pas d'aperçu
 
@@ -1699,17 +1702,8 @@ fr Filtrer
 en In subfolders
 fr Dans les sous-dossiers
 
-en The folders above
-fr Les dossiers au-dessus
-
-en Type a path (Ctrl+L)
-fr Taper un chemin (Ctrl+L)
-
 en Preview
 fr Aperçu
-
-en Places
-fr Emplacements
 
 en This folder may not be read
 fr Ce dossier ne peut pas être lu
@@ -1867,6 +1861,18 @@ fr En dessous
 
 en Move to %s
 fr Déplacer vers %s
+
+en Path
+fr Chemin
+
+en The folders above
+fr Les dossiers au-dessus
+
+en Type a path
+fr Taper un chemin
+
+en %d more: type to narrow them
+fr %d de plus : tapez pour les réduire
 
 en Saturation and value
 fr Saturation et valeur

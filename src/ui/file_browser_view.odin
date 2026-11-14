@@ -24,7 +24,7 @@ FILE_PLACES_EM :: 12
 
 // What a control of the dialog asked in this build, done after it (file_browser_do).
 @(private)
-File_Action_Kind :: enum u8 { None, Go, Up, Back, Forward, Again, Activate, Act, Cancel, Path, Complete, New_Folder, Make }
+File_Action_Kind :: enum u8 { None, Go, Up, Back, Forward, Again, Activate, Act, Cancel, Path, New_Folder, Make }
 
 @(private)
 File_Action :: struct {
@@ -61,7 +61,6 @@ file_browser_do :: proc(fb: ^File_Browser, a: File_Action) {
 	case .Act:        file_browser_act(fb)
 	case .Cancel:     file_browser_finish(fb, .Cancelled)
 	case .Path:       file_browser_path_typed(fb, a.path)
-	case .Complete:   file_browser_complete(fb)
 	case .New_Folder: file_browser_new_folder(fb)
 	case .Make:       file_browser_make(fb)
 	}
@@ -96,7 +95,6 @@ file_browser_words :: proc(kind: File_Dialog_Kind) -> (title, act: string) {
 
 @(private = "file")
 file_browser_dialog :: proc(fb: ^File_Browser) -> (act: File_Action) {
-	s := fb.state
 	em := font_size()
 	title, act_word := file_browser_words(fb.kind)
 	if fb.d.title != "" { title = fb.d.title }
@@ -119,8 +117,6 @@ file_browser_dialog :: proc(fb: ^File_Browser) -> (act: File_Action) {
 	}
 	// (Escape seen by the dialog itself, a press outside it, its close button)
 	if was && !fb.shown && act.kind == .None { act.kind = .Cancel }
-	// (the keyboard left the path field: the breadcrumb again)
-	if fb.path_editing && fb.path_key != 0 && s.focus_key != fb.path_key && act.kind != .Path { fb.path_editing = false }
 	return
 }
 
@@ -130,13 +126,11 @@ file_browser_keys :: proc(fb: ^File_Browser) -> (act: File_Action) {
 	s := fb.state
 	focused := s.boxes[s.focus_key] if s.focus_key != 0 else nil
 	in_field := focused != nil && is_text_field(focused)
-	if key_press(.Escape) {
+	// (the path bar's field has its own: its dropdown closes, then the breadcrumb comes back)
+	if !path_bar_editing(&fb.bar) && key_press(.Escape) {
 		switch {
 		case line_edit_string(&fb.filter) != "":
 			line_edit_clear(&fb.filter)
-			fb.focus_list = true
-		case fb.path_editing:
-			fb.path_editing = false
 			fb.focus_list = true
 		case fb.new_folder:
 			fb.new_folder = false
@@ -146,12 +140,7 @@ file_browser_keys :: proc(fb: ^File_Browser) -> (act: File_Action) {
 		}
 		if fb.focus_list { s.focus_key = 0 }
 	}
-	if key_press(.L, {.Ctrl}) {
-		fb.path_editing = true
-		line_edit_set(&fb.path_edit, fb.folder)
-		line_edit_select_all(&fb.path_edit)
-		fb.path_key = 0   // (the field takes the keyboard when it is built)
-	}
+	if key_press(.L, {.Ctrl}) { path_bar_edit(&fb.bar) }
 	if key_press(.H, {.Ctrl}) { fb.hidden = !fb.hidden }
 	if key_press(.F5) { act.kind = .Again }
 	if key_press(.N, {.Ctrl, .Shift}) { act.kind = .New_Folder }
@@ -159,7 +148,6 @@ file_browser_keys :: proc(fb: ^File_Browser) -> (act: File_Action) {
 	if key_press(.Left, {.Alt}) { act.kind = .Back }
 	if key_press(.Right, {.Alt}) { act.kind = .Forward }
 	if !in_field && key_press(.Backspace) { act.kind = .Up }
-	if fb.path_editing && s.focus_key == fb.path_key && s.focus_key != 0 && key_press(.Tab) { act.kind = .Complete }
 	// (the keyboard in the filter: the arrows and Enter are the list's still)
 	if s.focus_key == fb.filter_key && s.focus_key != 0 {
 		if ev := table_keys(&fb.table); ev.activated { act.kind = .Activate }
@@ -199,15 +187,19 @@ file_browser_bar :: proc(fb: ^File_Browser, act: ^File_Action) {
 		next({width = px(h), height = px(h)})
 		if button("fb_up", icon = lucide.ARROW_UP, o = {icon_font = lucide_icons(), tip = i18n.tr("Up (Backspace)"), disabled = up == "" || up == fb.folder}).clicked { act.kind = .Up }
 		spacer(px(em * 0.5))
-		if fb.path_editing {
-			next({width = fill(), height = px(h)})
-			a11y({name = i18n.tr("Folder")})
-			res := line_edit("###fb_path", &fb.path_edit, {placeholder = i18n.tr("A folder's path")})
-			if fb.path_key == 0 { s.focus_key = res.box.key }
-			fb.path_key = res.box.key
-			if res.committed { act^ = {kind = .Path, path = strings.clone(line_edit_string(&fb.path_edit), context.temp_allocator)} }
-		} else {
-			file_browser_crumbs(fb, act, h)
+		was, field := fb.bar.editing, fb.bar.field_key
+		next({width = fill(), height = px(h)})
+		ev := path_bar("###fb_path", &fb.bar, fb.folder, {separator = fb.sep, name = i18n.tr("Folder"), placeholder = i18n.tr("A folder's path"), edit_shortcut = "Ctrl+L"})
+		if p, ok := ev.go.?; ok {
+			// (a folder is entered at once; a path typed or a file is looked for in its folder: a file or a folder)
+			act^ = {kind = ev.branch ? .Go : .Path, path = p}
+		}
+		if w, ok := ev.wants.?; ok { file_browser_bar_wants(fb, w) }
+		if !was && fb.bar.editing { file_browser_bar_suggest(fb) }
+		// (the field left with the keyboard in it, Escape or Enter: the list takes it)
+		if was && !fb.bar.editing && (s.focus_key == field || s.focus_key == 0) {
+			s.focus_key = 0
+			fb.focus_list = true
 		}
 		spacer(px(em * 0.5))
 		next({width = px(em * 13), height = px(h)})
@@ -226,66 +218,6 @@ file_browser_bar :: proc(fb: ^File_Browser, act: ^File_Action) {
 			_ = checkbox("###fb_deep", fmt.tprintf("%s###fb_deep_text", i18n.tr("In subfolders")), &fb.deep)
 		}
 		spacer(px(em * DIALOG_MARGIN_EM))
-	}
-}
-
-// The folder as a button per part; the parts that do not fit (by the last layout's width) go into a "…" menu at the
-// left. A click on the bar's empty end makes it a field.
-@(private = "file")
-file_browser_crumbs :: proc(fb: ^File_Browser, act: ^File_Action, h: f32) {
-	em := font_size()
-	next({width = fill(), height = px(h), axis = .X, cross = .Center})
-	bar := build_box({.Clip}, "###fb_crumbs")
-	a11y_default(bar, {role = .Navigation, name = i18n.tr("Folder")})
-	push_parent(bar)
-	defer pop_parent()
-	parts := file_path_parts(fb.folder, fb.sep)
-	st := top_style()
-	gap := em * 1.3   // (a chevron between two parts)
-	pad := em * 1.2
-	room := bar.size.x - em * 3   // (the empty end, and the "…" when it shows)
-	first := 0
-	if room > 0 {
-		used: f32
-		first = len(parts)
-		for first > 0 {
-			w := text_width(st.font, st.font_size, parts[first - 1].name) + pad + gap
-			if used + w > room && first < len(parts) { break }
-			used += w
-			first -= 1
-		}
-	}
-	if first > 0 {
-		menu_id := "###fb_crumbs_menu"
-		next({width = px(h), height = px(h)})
-		sig := button("fb_crumbs_more", icon = lucide.ELLIPSIS, o = {icon_font = lucide_icons(), tip = i18n.tr("The folders above")})
-		if sig.clicked { menu_open(menu_id, sig.box.rect, sig.box.key, search = false) }
-		if menu(menu_id) {
-			#reverse for p, i in parts[:first] {
-				if menu_item(fmt.tprintf("%s###fb_crumb_menu_%d", text_shown(p.name), i), icon = lucide.FOLDER, icon_font = lucide_icons()).clicked {
-					act^ = {kind = .Go, path = strings.clone(p.path, context.temp_allocator)}
-				}
-			}
-		}
-		icon(lucide.CHEVRON_RIGHT, em * 1.1, color("weak text"), lucide_icons())
-	}
-	for p, i in parts[first:] {
-		k := first + i
-		if k > first { icon(lucide.CHEVRON_RIGHT, em * 1.1, color("weak text"), lucide_icons()) }
-		last := k == len(parts) - 1
-		next({height = px(h)})
-		if button(fmt.tprintf("fb_crumb_%d", k), text_shown(p.name), o = {face = last ? Button_Face.Toggled : Button_Face.Ghost}).clicked && !last {
-			act^ = {kind = .Go, path = strings.clone(p.path, context.temp_allocator)}
-		}
-	}
-	next({width = fill(), height = pct(1), cursor = .Text})
-	end := build_box({.Clickable}, "###fb_crumbs_end")
-	a11y_default(end, {role = .Button, name = i18n.tr("Type a path (Ctrl+L)")})
-	if signal(end).clicked {
-		fb.path_editing = true
-		line_edit_set(&fb.path_edit, fb.folder)
-		line_edit_select_all(&fb.path_edit)
-		fb.path_key = 0
 	}
 }
 

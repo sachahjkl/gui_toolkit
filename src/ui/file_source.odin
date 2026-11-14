@@ -44,6 +44,7 @@ File_Reply :: struct {
 	ticket: u64,     // the reading (an answer of a reading given up is dropped)
 	kind:   File_Reply_Kind,
 	hidden: bool,    // .Find: Hidden files is on; else the hidden entries, and what is in hidden folders, are not found
+	bar:    bool,    // .List: the path bar's reading (the children its dropdown lists), not the folder shown's
 }
 
 File_Source :: struct {
@@ -67,7 +68,9 @@ File_Source :: struct {
 
 // The entries of the folder asked. They are copied: the source frees its own after the call.
 file_reply_listed :: proc(reply: File_Reply, entries: []File_Entry) {
-	if fb := file_reply_browser(reply); fb != nil && reply.kind == .List { file_browser_listed(fb, reply.ticket, entries) }
+	fb := file_reply_browser(reply)
+	if fb == nil || reply.kind != .List { return }
+	if reply.bar { file_browser_bar_listed(fb, reply.ticket, entries) } else { file_browser_listed(fb, reply.ticket, entries) }
 }
 
 // The start of the file asked (`bytes`, copied) and its whole size (-1: not known).
@@ -90,7 +93,9 @@ file_reply_found :: proc(reply: File_Reply, entries: []File_Entry) {
 // `refused`: the source said no (no right to read it); `missing`: what was asked is not there (a folder deleted since: the
 // browser goes up to the nearest one that is).
 file_reply_failed :: proc(reply: File_Reply, message: string, refused := false, missing := false) {
-	if fb := file_reply_browser(reply); fb != nil { file_browser_failed(fb, reply.kind, reply.ticket, message, refused, missing) }
+	fb := file_reply_browser(reply)
+	if fb == nil { return }
+	if reply.bar { file_browser_bar_failed(fb, reply.ticket, message) } else { file_browser_failed(fb, reply.kind, reply.ticket, message, refused, missing) }
 }
 
 // The browser a reply is for, nil when its dialog closed (or another one opened since).

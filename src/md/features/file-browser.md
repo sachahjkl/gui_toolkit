@@ -27,6 +27,12 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
 - **The path field reads the parent, then looks for the last part in its entries.** One mechanism finds a folder to
   enter or a file to choose, and asks the source nothing more than a listing (no stat call, which a remote source may
   not have).
+- **The path bar is the toolkit's `path_bar`, its dropdown's reading the browser's own** (`bar_listing`,
+  `File_Reply.bar`). The list must not change while a person types a path elsewhere; the folder shown is answered from
+  its entries. A flag on the reply, not a new `File_Reply_Kind`: a source dispatches on the kind (the local one does),
+  and a listing is a listing. A go of the bar's that is a folder (`branch`) is entered at once; a text typed or a file
+  goes through the path field's lookup above. Refused: a search in subfolders in the dropdown: a second find machine
+  beside the filter's, for what the filter's toggle does already.
 - **No work in proportion to the entries in a quiet build.** The rows are made again only when the entries, Hidden
   files or the type change; filtered and sorted again only when the query or the sort change. The table passes a
   version of its ids to the list (`Table.ids_version`), and Open's "can act" is kept by (selection, marks, version).
@@ -77,8 +83,8 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
 - A row's identity is the hash of its name. Two names of one hash share a selection; nothing else breaks.
 - The Windows hidden attribute is not read (`core:os` does not give it): only names that start with "." are hidden.
 - A program's source must not answer after `ui.destroy`: the reply holds the State.
-- Escape is taken by the browser before its fields and its list: the filter, then the path field, then the new folder's
-  row, then the dialog.
+- Escape is taken by the browser before its fields and its list: the filter, then the new folder's row, then the
+  dialog. While the path bar is typed in, Escape is the bar's (its dropdown, then the breadcrumb).
 - The browser takes the keyboard from the build after it opened: the build that opens it gave its keys to the program
   already.
 - A result of a find is named by its path relative to the folder shown. Its row's identity is the hash of that path:

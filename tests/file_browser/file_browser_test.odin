@@ -661,6 +661,88 @@ the_act_says_the_programs_word :: proc(t: ^testing.T) {
 }
 
 ////////////////////////////////
+// The path bar
+
+// Ctrl+L: the path as a field, answered from the folder's entries (no reading); a path typed and Enter go there (its
+// folder read, its last part entered).
+@(test)
+ctrl_l_and_a_path_typed :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/a"] = []ui.File_Entry{F("docs", .Folder), F("top.txt")}
+	app.fake.folders["/a/docs"] = []ui.File_Entry{F("in.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/a"})
+	session.key(s, .L, {.Ctrl})
+	testing.expect_value(t, session.focused_name(s), "pb_field")
+	testing.expect_value(t, len(app.fake.asked), 1)   // (the folder shown: its entries, no reading)
+	session.type_text(s, "/a/docs")
+	session.key(s, .Return)
+	testing.expect_value(t, counts(s).folder, "/a/docs")
+	testing.expect(t, counts(s).open)
+	testing.expect(t, session.find_text(s, "in.txt") != nil)
+}
+
+// Tab takes the folder's child and its separator: the bar reads that folder on its own (the list stays the folder
+// shown's); Enter on a path that ends with a separator enters it.
+@(test)
+tab_reads_the_next_level_beside_the_list :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/a"] = []ui.File_Entry{F("docs", .Folder), F("top.txt")}
+	app.fake.folders["/a/docs"] = []ui.File_Entry{F("in.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/a"})
+	session.key(s, .L, {.Ctrl})
+	session.type_text(s, "/a/d")
+	session.key(s, .Tab)
+	if testing.expect_value(t, len(app.fake.asked), 2) {
+		testing.expect_value(t, app.fake.asked[1].path, "/a/docs")
+		testing.expect(t, app.fake.asked[1].reply.bar, "the bar's reading")
+	}
+	testing.expect_value(t, counts(s).folder, "/a")
+	testing.expect_value(t, counts(s).rows_shown, 2)
+	testing.expect(t, session.find_text(s, "in.txt") != nil, "the next level's child, in the dropdown")
+	session.key(s, .Return)
+	testing.expect_value(t, counts(s).folder, "/a/docs")
+}
+
+// A part of the breadcrumb goes to its folder.
+@(test)
+a_part_of_the_path_is_entered :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/a/docs"] = []ui.File_Entry{F("in.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/a/docs"})
+	session.click(s, "pb_part_1")
+	testing.expect_value(t, counts(s).folder, "/a")
+}
+
+// Escape in the path field is the bar's: it closes the dropdown, then gives the breadcrumb back; only then does Escape
+// cancel the dialog.
+@(test)
+escape_in_the_path_field :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/a"] = []ui.File_Entry{F("top.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/a"})
+	session.key(s, .L, {.Ctrl})
+	session.key(s, .Escape)
+	session.key(s, .Escape)
+	testing.expect(t, counts(s).open, "the bar took both")
+	testing.expect(t, session.find(s, "pb_field") == nil, "the breadcrumb again")
+	session.key(s, .Escape)
+	testing.expect(t, !counts(s).open)
+	testing.expect_value(t, app.status, platform.Dialog_Status.Cancelled)
+}
+
+////////////////////////////////
 // The keyboard is the browser's
 
 // While the browser is open, the program's key_press and typed text get nothing, even with keys behind dialogs: the

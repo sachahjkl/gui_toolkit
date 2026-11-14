@@ -12,6 +12,8 @@ package ui
 //   preview:  the file selected (preview.reading)
 //   finding:  a search in subfolders (File_Source.find): Idle while the query is quiet for less than FILE_FIND_QUIET_MS,
 //             Loading -> Ready | Failed; reset when the query empties, the toggle goes off, the folder changes
+//   bar_listing: the folder the path bar's dropdown wants (Loading -> Ready | Failed: told to the bar); the folder
+//             shown is answered from its entries, with no reading
 // and the dialog's own: closed -> open -> (asking: Save over a file, the confirm) -> closed, `done` called once.
 // The rows show the folder's entries, or the find's (the toggle on and a query typed): File_Rows_Key.found says which.
 
@@ -20,7 +22,9 @@ import "core:mem/virtual"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import "../ascii"
 import i18n "../i18n"
+import lucide "../lucide"
 import "../platform"
 import remote "../remote"
 import timefmt "../timefmt"
@@ -114,9 +118,9 @@ File_Browser :: struct {
 	filter_key:   Key,
 	name:         Line_Edit,  // Save: the file's name
 	name_key:     Key,
-	path_edit:    Line_Edit,  // Ctrl+L: the path as a field
-	path_editing: bool,
-	path_key:     Key,
+	bar:          Path_Bar,   // the folder as a breadcrumb, or typed (Ctrl+L) with its dropdown
+	bar_listing:  remote.Remote,   // the bar's reading of the folder it wants (not the folder shown's)
+	bar_folder:   string,     // ... that folder
 	hidden:       bool,
 	type_index:   int,        // the type line chosen (len(d.filters): "All files")
 	new_folder:   bool,       // the inline row of a new folder's name
@@ -201,9 +205,10 @@ file_browser_destroy :: proc(s: ^State) {
 	virtual.arena_destroy(&fb.entries_arena)
 	virtual.arena_destroy(&fb.found_arena)
 	virtual.arena_destroy(&fb.places_arena)
-	line_edit_destroy(&fb.filter); line_edit_destroy(&fb.name); line_edit_destroy(&fb.path_edit); line_edit_destroy(&fb.new_name)
-	remote.destroy(&fb.listing); remote.destroy(&fb.making); remote.destroy(&fb.finding)
-	delete(fb.find_query, a); delete(fb.find_seen, a)
+	line_edit_destroy(&fb.filter); line_edit_destroy(&fb.name); line_edit_destroy(&fb.new_name)
+	path_bar_destroy(&fb.bar)
+	remote.destroy(&fb.listing); remote.destroy(&fb.making); remote.destroy(&fb.finding); remote.destroy(&fb.bar_listing)
+	delete(fb.find_query, a); delete(fb.find_seen, a); delete(fb.bar_folder, a)
 	// (a walk still on its way holds the stop: it stops, and the last of them frees it)
 	file_find_stop(fb)
 	file_find_stop_release(fb.find_stop)
@@ -330,6 +335,9 @@ file_browser_close :: proc(fb: ^File_Browser) {
 	delete(fb.ask_path, a); fb.ask_path = ""
 	remote.reset(&fb.listing)
 	remote.reset(&fb.making)
+	remote.reset(&fb.bar_listing)
+	delete(fb.bar_folder, a); fb.bar_folder = ""
+	path_bar_destroy(&fb.bar)   // (the breadcrumb at the next dialog; zero is a bar at rest)
 	file_entries_clear(fb)
 	file_browser_sort_back(fb)
 	table_data_reset(&fb.data, len(fb.columns))
@@ -338,7 +346,7 @@ file_browser_close :: proc(fb: ^File_Browser) {
 	table_apply(&fb.table, &fb.data, "")
 	fb.table.highlight = fb.table.query
 	fb.made = false
-	fb.new_folder, fb.path_editing = false, false
+	fb.new_folder = false
 	file_preview_clear(fb)
 	virtual.arena_free_all(&fb.places_arena)
 	clear(&fb.source_places)
@@ -890,8 +898,9 @@ file_browser_with_extension :: proc(fb: ^File_Browser, path: string) -> string {
 	return strings.concatenate({path, ".", ext}, context.temp_allocator)
 }
 
-// The path typed in the path field (Ctrl+L): its folder is read, then its last part is looked for there: a folder is
-// entered, a file chosen (Open) or named (Save). A root, or a path that ends with a separator, is entered at once.
+// A path the path bar goes to (typed, or a row of its dropdown): its folder is read, then its last part is looked for
+// there: a folder is entered, a file chosen (Open) or named (Save). A root, or a path that ends with a separator, is
+// entered at once.
 @(private)
 file_browser_path_typed :: proc(fb: ^File_Browser, typed: string) {
 	text := strings.trim_space(typed)
@@ -902,7 +911,6 @@ file_browser_path_typed :: proc(fb: ^File_Browser, typed: string) {
 	parent := file_path_parent(clean, fb.sep)
 	name := file_path_name(clean, fb.sep)
 	a := runtime.heap_allocator()
-	fb.path_editing = false
 	if ends || parent == clean || name == "" {
 		file_browser_go(fb, clean)
 		return
@@ -914,30 +922,79 @@ file_browser_path_typed :: proc(fb: ^File_Browser, typed: string) {
 	file_browser_go(fb, strings.clone(parent, context.temp_allocator))
 }
 
-// Tab in the path field: the folder's names that begin with what is typed after its last separator, as far as they
-// agree. A field whose folder is not the one shown reads that folder (the next Tab completes in it).
+////////////////////////////////
+// The path bar's dropdown
+
+// The bar wants the children of `folder`: the folder shown is answered from its entries; another is read (its own
+// reading: the list keeps the folder shown).
 @(private)
-file_browser_complete :: proc(fb: ^File_Browser) {
-	text := line_edit_string(&fb.path_edit)
-	cut := strings.last_index_byte(text, fb.sep)
-	if fb.sep == '\\' { cut = max(cut, strings.last_index_byte(text, '/')) }
-	if cut < 0 { return }
-	dir := text[:cut + 1]
-	part := text[cut + 1:]
-	if file_path_trim(file_path_clean(dir, fb.sep), fb.sep) != file_path_trim(fb.folder, fb.sep) {
-		file_browser_go(fb, file_path_clean(dir, fb.sep))
+file_browser_bar_wants :: proc(fb: ^File_Browser, folder: string) {
+	a := runtime.heap_allocator()
+	if file_path_trim(folder, fb.sep) == file_path_trim(fb.folder, fb.sep) && fb.listing.state == .Ready {
+		remote.reset(&fb.bar_listing)
+		path_bar_children(&fb.bar, folder, file_browser_bar_children(fb, fb.entries[:]))
 		return
 	}
-	common := ""
-	found := false
-	for e in fb.entries {
-		if e.kind != .Folder || !strings.has_prefix(e.name, part) { continue }
-		if !found { common, found = e.name, true; continue }
-		n := 0
-		for n < len(common) && n < len(e.name) && common[n] == e.name[n] { n += 1 }
-		common = common[:n]
+	if fb.source.list == nil {
+		path_bar_failed(&fb.bar, folder, i18n.tr("This source lists no folder."))
+		return
 	}
-	if !found || len(common) <= len(part) { return }
-	full := strings.concatenate({dir, common}, context.temp_allocator)
-	line_edit_set(&fb.path_edit, full)
+	delete(fb.bar_folder, a)
+	fb.bar_folder = strings.clone(folder, a)
+	context.allocator = a
+	ticket := remote.begin(&fb.bar_listing)
+	fb.source.list(&fb.source, strings.clone(folder, context.temp_allocator), {state = fb.state, dialog = fb.serial, ticket = ticket, kind = .List, bar = true})
+}
+
+@(private)
+file_browser_bar_listed :: proc(fb: ^File_Browser, ticket: u64, entries: []File_Entry) {
+	context.allocator = runtime.heap_allocator()
+	if !remote.answer(&fb.bar_listing, ticket, .Ready) { return }
+	path_bar_children(&fb.bar, fb.bar_folder, file_browser_bar_children(fb, entries))
+}
+
+@(private)
+file_browser_bar_failed :: proc(fb: ^File_Browser, ticket: u64, message: string) {
+	context.allocator = runtime.heap_allocator()
+	if !remote.answer(&fb.bar_listing, ticket, .Failed, message) { return }
+	path_bar_failed(&fb.bar, fb.bar_folder, message)
+}
+
+// A folder's entries as the bar lists them: its folders, then its files where a file's path can be chosen (Open: of the
+// type chosen; Save), each by name; the hidden ones only with Hidden files. (Temporary memory; once per answer.)
+@(private = "file")
+file_browser_bar_children :: proc(fb: ^File_Browser, entries: []File_Entry) -> []Path_Bar_Entry {
+	out := make([dynamic]Path_Bar_Entry, 0, len(entries), context.temp_allocator)
+	filters := file_browser_type_filters(fb)
+	for e in entries {
+		if file_entry_hidden(e) && !fb.hidden { continue }
+		folder := e.kind == .Folder
+		if !folder {
+			if fb.kind == .Folder { continue }
+			if fb.kind == .Open && filters != nil && !platform.filter_matches(filters, e.name) { continue }
+		}
+		append(&out, Path_Bar_Entry{name = e.name, icon = folder ? "" : file_look_icon(file_entry_look(e)), branch = folder})
+	}
+	slice.sort_by(out[:], proc(a, b: Path_Bar_Entry) -> bool {
+		if a.branch != b.branch { return a.branch }
+		return ascii.compare_fold(a.name, b.name) < 0
+	})
+	return out[:]
+}
+
+// The bar's suggestions: the places (the source's and the program's) and this dialog's recent folders, each a path.
+@(private)
+file_browser_bar_suggest :: proc(fb: ^File_Browser) {
+	places := make([dynamic]Path_Bar_Entry, context.temp_allocator)
+	for list in ([2][]platform.File_Place{fb.source_places[:], fb.d.places}) {
+		for p in list {
+			append(&places, Path_Bar_Entry{name = p.name != "" ? p.name : file_path_name(p.path, fb.sep), icon = p.icon, detail = p.name, path = p.path, branch = true})
+		}
+	}
+	recent := make([dynamic]Path_Bar_Entry, context.temp_allocator)
+	if m := file_memory_of(&fb.memory, fb.d.remember_id); m != nil {
+		for r in m.recent { append(&recent, Path_Bar_Entry{name = file_path_name(r, fb.sep), icon = lucide.HISTORY, path = r, branch = true}) }
+	}
+	groups := [2]Path_Bar_Group{{title = i18n.tr("Places"), entries = places[:]}, {title = i18n.tr("Recent"), entries = recent[:]}}
+	path_bar_suggestions(&fb.bar, groups[:])
 }
