@@ -22,6 +22,9 @@ View_Window_Ask :: struct {
 	owner:          ^platform.Window,
 	owner_state:    ^State,          // the window that owns the view: its backend frames the view's window after its frames
 	under_children: bool,            // View_Options.under_children: it gets a native child window (a web view)
+	// the program's own decorations (its owner's window has an integrated title bar, window.system_title off): it opens
+	// with none of the system's, its header is its title bar (platform.set_integrated_title follows at each step too)
+	integrated_title: bool,
 }
 
 // What opens and closes the views' windows. `open` makes a window, hidden, and a State for it whose builds call
@@ -138,7 +141,8 @@ view_window_open :: proc(vs: ^Views, r: ^View_Record) {
 		return
 	}
 	title := view_title_shown(r)
-	ask := View_Window_Ask{title = title, size = view_window_size(vs, r), at = r.w_at, owner = r.owner.window, owner_state = r.owner, under_children = r.kind.o.under_children}
+	ask := View_Window_Ask{title = title, size = view_window_size(vs, r), at = r.w_at, owner = r.owner.window, owner_state = r.owner, under_children = r.kind.o.under_children,
+		integrated_title = r.owner.window != nil && platform.is_integrated_title(r.owner.window)}
 	if ask.at == nil && views_positions(vs, r.owner.window) { ask.at = views_memory_of(vs, r.kind.id).at }
 	r.w_at = nil
 	st, win, handle := vs.windows.open(vs.windows.user, ask)
@@ -162,13 +166,22 @@ view_window_open :: proc(vs: ^Views, r: ^View_Record) {
 	if r.owner != nil { r.owner.anim_busy = true }
 }
 
-// Its window's title bar as its owner's: dark or light, as the program set its own (platform.set_dark_title), at its
-// opening and at each step (a change of theme shows in every window). The window's ground is the backend's to follow
-// (host.view_windows: the owner Host's `background`, at each frame).
+// Its window's title bar as its owner's, at its opening and at each step (a change shows in every window): dark or
+// light (platform.set_dark_title, as the program set its own), and the program's decorations or the system's (the
+// owner's integrated title bar: window.system_title; Windows changes the frame, Wayland negotiates the decoration
+// again, as for the main window). The window's ground is the backend's to follow (host.view_windows: the owner Host's
+// `background`, at each frame).
 @(private = "file")
 view_window_chrome :: proc(r: ^View_Record) {
 	if r.w_win == nil || r.owner == nil || r.owner.window == nil { return }
 	platform.set_dark_title(r.w_win, platform.is_dark_title(r.owner.window))
+	platform.set_integrated_title(r.w_win, platform.is_integrated_title(r.owner.window))
+}
+
+// Whether the view's window draws its own title bar (the program's decorations): its header is that bar.
+@(private)
+view_window_integrated :: proc(r: ^View_Record) -> bool {
+	return r.w_win != nil && platform.is_integrated_title(r.w_win)
 }
 
 // Its window goes (the backend's close). `remember`: its size and its place are written first.

@@ -80,10 +80,33 @@ Caption_Draw :: struct {
 window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
 	s := gs()
 	if s.window != nil && !platform.is_integrated_title(s.window) { return }
-	dpi := s.zoom > 0 ? s.scale / s.zoom : s.scale   // the system's size: the UI zoom does not apply
-	w := math.round(CAPTION_BUTTON_WIDTH * dpi)
 	maxed := s.window != nil && platform.is_maximized(s.window)
 	active := s.window == nil || s.window.active
+	// (a name the program did not set is the toolkit's, in the language in use)
+	names := s.caption_names
+	defaults := [4]string{i18n.tr("window", "Minimize"), i18n.tr("window", "Maximize"), i18n.tr("window", "Close"), i18n.tr("window", "Restore")}
+	for &n, i in names { if n == "" { n = defaults[i] } }
+	ids := [platform.Caption_Button]string{.Minimize = "###wb_min", .Maximize = "###wb_max", .Close = "###wb_close"}
+	clicked, ok, s.caption_keys = caption_row(ids, {.Minimize, .Maximize, .Close}, maxed, active, names)
+	if ok && s.window != nil {
+		switch clicked {
+		case .Minimize: platform.minimize(s.window)
+		case .Maximize: platform.toggle_maximize(s.window)
+		case .Close:    platform.request_close(s.window)
+		}
+	}
+	return
+}
+
+// Caption buttons in the current row, as tall as it, drawn as the window's (window_buttons) whatever they act on: the
+// window's own, or a stack's of panels (its strip's right end: one look for both). `shown`: the ones built, in
+// the order minimise, maximise or restore (`maxed`), close. `names`: what screen readers call them (minimise, maximise,
+// close, restore). Returns the one clicked and the boxes' keys (0: not built).
+@(private)
+caption_row :: proc(ids: [platform.Caption_Button]string, shown: bit_set[platform.Caption_Button], maxed, active: bool, names: [4]string) -> (clicked: platform.Caption_Button, ok: bool, keys: [platform.Caption_Button]Key) {
+	s := gs()
+	dpi := s.zoom > 0 ? s.scale / s.zoom : s.scale   // the system's size: the UI zoom does not apply
+	w := math.round(CAPTION_BUTTON_WIDTH * dpi)
 	if !s.caption_font_tried {
 		s.caption_font_tried = true
 		// Windows 11's icon font, else Windows 10's; without either the glyphs are drawn as shapes
@@ -94,30 +117,18 @@ window_buttons :: proc() -> (clicked: platform.Caption_Button, ok: bool) {
 	under := parent_box().bg
 	if under.a < 0.5 { under = s.backdrop }
 	dark := color("hover").r > 0.5   // the palette's hover tint is white on dark themes
-	ids := [platform.Caption_Button]string{.Minimize = "###wb_min", .Maximize = "###wb_max", .Close = "###wb_close"}
 	for b in platform.Caption_Button {
+		if b not_in shown { continue }
 		next({width = px(w), height = pct(1)})
 		box := build_box({.Clickable}, ids[b])
 		box.cursor = .Arrow
 		d := frame_new(Caption_Draw)
 		d^ = {button = b, maxed = maxed, active = active, dark = dark, under = under, glyph_font = s.caption_font, dpi = dpi}
 		box.custom, box.custom_user = caption_draw, d
-		s.caption_keys[b] = box.key
-		// (a name the program did not set is the toolkit's, in the language in use)
-		names := s.caption_names
-		defaults := [4]string{i18n.tr("window", "Minimize"), i18n.tr("window", "Maximize"), i18n.tr("window", "Close"), i18n.tr("window", "Restore")}
+		keys[b] = box.key
 		at := b == .Maximize && maxed ? 3 : int(b)
-		a11y_default(box, {role = .Button, name = names[at] != "" ? names[at] : defaults[at]})
-		if signal(box).clicked {
-			clicked, ok = b, true
-			if s.window != nil {
-				switch b {
-				case .Minimize: platform.minimize(s.window)
-				case .Maximize: platform.toggle_maximize(s.window)
-				case .Close:    platform.request_close(s.window)
-				}
-			}
-		}
+		a11y_default(box, {role = .Button, name = names[at]})
+		if signal(box).clicked { clicked, ok = b, true }
 	}
 	return
 }

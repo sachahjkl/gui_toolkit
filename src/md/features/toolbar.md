@@ -85,8 +85,13 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
   side, so two controls stand 0.5 em apart (cliche's spacing between properties), and a control stands a little further
   from a tool than two tools do from each other. One rule, item gap plus what each item carries, reads well for a bar of
   tools and for a bar of properties.
-- Two groups stand 0.8 em apart, more than any two items, or a separator's room when the group has one: a group reads
-  as a group without a line.
+- Two groups on one line stand a separator's room apart (0.9 em), more than any two items; the line is drawn in it when
+  the later group asks for one. A group reads as a group without a line.
+- **A separator never starts a line, nor ends one.** It belongs between two groups the person sees side by side. In
+  `.Wrap` the room is the flow's gap, which the layout puts only between two items of one line, and the flow draws the
+  lines in those gaps after the layout (`toolbar_flow_draw`): a group that wraps starts its line flush. Refused: hiding
+  the separator from the last frame's layout; the group's width would change with it, and a group at the edge of a line
+  would go back and forth between two lines. In `.Fold`, the line is not drawn when every group before it is folded.
 - Every horizontal gap follows the density (`dense`): a dense window tightens its bars as it tightens its lists.
 
 ## Subtle points

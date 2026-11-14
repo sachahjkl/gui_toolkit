@@ -56,7 +56,8 @@ view_window_open :: proc(user: rawptr, ask: ui.View_Window_Ask) -> (state: ^ui.S
 	vw := new(View_Window)
 	vw.owner = owner
 	h := &vw.host
-	o := Open_Options{title = ask.title, size = ask.size, under_children = ask.under_children}
+	// (the program's decorations or the system's, as its owner's window: no frame of the system's flashes first)
+	o := Open_Options{title = ask.title, size = ask.size, under_children = ask.under_children, integrated_title = ask.integrated_title}
 	// (its user is the owner's: the program's hooks given to it read the program's data, as in its own windows)
 	if !host_open(h, sh, o, proc(h: ^Host, size: Vec2) { ui.views_window_build() }, owner.user) {
 		free(vw)

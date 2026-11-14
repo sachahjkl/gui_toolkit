@@ -518,9 +518,12 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	tall := children_sum()
 	tall.least = h
 	next({width = fill(), height = tall, radius = 0, axis = .X, cross = .Center})
-	b := build_box({.Clickable}, "###view_header")   // (Clickable: it is dragged; its right click opens its menu)
+	// (Clickable: it is dragged; its right click opens its menu. In a window of its own with the program's decorations,
+	// it is the window's title bar instead: a caption the system drags and maximises, rule 2c)
+	caption := p == .External && view_window_integrated(r)
+	b := build_box(caption ? Box_Flags{.Window_Caption} : Box_Flags{.Clickable}, "###view_header")
 	b.custom, b.custom_user = top_strip_draw, shade
-	a11y_default(b, {role = .Heading, name = title})
+	a11y_default(b, {role = caption ? A11y_Role.Title_Bar : A11y_Role.Heading, name = title})
 	r.header = b.key
 	push_parent(b)
 	spacer(px(em * 1.0))
@@ -561,11 +564,20 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	case .External:
 		view_window_header_buttons(vs, r, at_home)
 		spacer(px(em * 0.5))
+		// (the program's decorations: the window's minimise, maximise and close at the header's right end, the main
+		// window's code and look; that close is the system's close of the window: it re-attaches, view_window_close_asked)
+		if view_window_integrated(r) { _, _ = window_buttons() }
 		pop_parent()
 	case .Panel:
 		pop_parent()
 	}
 	if p == .External {
+		if view_window_integrated(r) {
+			// (the system drags the caption: the menu opens on a right click of its empty part)
+			if at, ok := caption_right_clicked(); ok { menu_open(view_menu_id(r), at, hb.key, search = false) }
+			view_header_menu(vs, r, p)
+			return
+		}
 		// (its own drag: the window of the system follows the pointer, where the system tells positions)
 		sig := signal(hb)
 		view_window_header_drag(vs, r, hb, sig, em)
@@ -669,6 +681,10 @@ view_header_menu :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 @(private = "file")
 view_header_menu_items :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	labels := view_labels(vs)
+	if r.kind.o.new_tab != nil {
+		if menu_item(fmt.tprintf("%s###vm_new_tab", view_new_tab_label(vs, r.kind)), icon = lucide.PLUS, icon_font = lucide_icons()).clicked { view_new_tab(vs, r) }
+		menu_separator()
+	}
 	if p != .External {
 		if menu_item(fmt.tprintf("%s###vm_window", labels.window), icon = lucide.EXTERNAL_LINK, icon_font = lucide_icons(), disabled = !views_windows_ready(vs)).clicked {
 			view_apply(vs, r, {kind = .Present, as = .External})
@@ -729,7 +745,38 @@ view_labels :: proc(vs: ^Views) -> View_Labels {
 	if l.dock_left == "" { l.dock_left = d.dock_left }
 	if l.dock_right == "" { l.dock_right = d.dock_right }
 	if l.dock_bottom == "" { l.dock_bottom = d.dock_bottom }
+	if l.minimize == "" { l.minimize = d.minimize }
+	if l.maximize == "" { l.maximize = d.maximize }
+	if l.restore == "" { l.restore = d.restore }
+	if l.close_stack == "" { l.close_stack = d.close_stack }
+	if l.new_tab == "" { l.new_tab = d.new_tab }
 	return l
+}
+
+// The words of a kind's "+" (its new_tab_label, else the labels' new_tab).
+@(private)
+view_new_tab_label :: proc(vs: ^Views, k: ^View_Kind) -> string {
+	return k.o.new_tab_label != "" ? k.o.new_tab_label : view_labels(vs).new_tab
+}
+
+// A new tab of `r`'s kind, by the program's new_tab: each instance of that kind it opens joins `r`'s stack (a panel),
+// its tab last and shown. Elsewhere it opens where its memory says.
+@(private)
+view_new_tab :: proc(vs: ^Views, r: ^View_Record) {
+	k := r.kind
+	if k.o.new_tab == nil { return }
+	before := make(map[^View_Record]bool, len(vs.records), context.temp_allocator)
+	for x in vs.records { if x.machine.state != .Closed { before[x] = true } }
+	place, docked := r.machine.place, view_builds_panel(r.machine)
+	k.o.new_tab(r.data)
+	for x in vs.records {
+		if x.kind != k || x in before || x.machine.state != .Opening { continue }
+		if docked {
+			view_apply(vs, x, {kind = .Present, as = .Panel, place = place})
+			view_space_activate(vs, x)
+		}
+	}
+	if r.owner != nil { r.owner.anim_busy = true }
 }
 
 // The side of a header's small icons (Detach, Re-attach, Close of an internal window), in ems: smaller than the close

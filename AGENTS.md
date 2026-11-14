@@ -23,11 +23,6 @@ Every step is a command of `tools/tk` (the head of `tools/tk/main.odin` lists th
   virtual desktop.
 - Linux: `nix develop` first (`flake.nix`: the pinned Odin with wgpu-native, Rust, the servers of the virtual desktops).
 
-## Intent
-
-This project follows https://srcmd.org, with the Markdown in `src/md`. Read `src/md/README.md` first. Change the intent
-there before the code it describes.
-
 ## Roadmap
 
 [ROADMAP.md](ROADMAP.md), beside `CHANGELOG.md`, holds the planned work: the toolkit's own and every work that touches
@@ -62,14 +57,3 @@ Apply these to every task, before you write code:
 - Automation is a command of `tools/tk`, never a shell, batch, PowerShell, Python or Node script.
 - Comments and commit messages are in English. Comments say why.
 - Commits: author and committer `sachahjkl <sacha@sacha.house>`, no attribution trailer, no session link.
-
-## Roadmap
-
-- `ROADMAP.md`, next to `CHANGELOG.md`, holds the planned work of the toolkit, and the work that touches several
-  programs. No plan of the toolkit is kept in a global to-do file.
-- Plain Markdown: `# Roadmap`, then `## Now`, `## Next` and `## Later`, in this order, each a list. No dates, no front
-  matter, no metadata fields.
-- Each entry starts with a short bold summary, then one or two sentences on what it gives the user; it links its intent
-  file in `src/md` when a design exists.
-- When a work is done, its entry goes in the same commit as its changelog fragment. `tools/tk` checks the format of
-  `ROADMAP.md`, as it checks the changelog.

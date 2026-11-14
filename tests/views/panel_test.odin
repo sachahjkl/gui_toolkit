@@ -37,6 +37,7 @@ Dock :: struct {
 	f6_taken:   int,
 	frame_o:    ui.View_Dock_Options,   // what views_frame is given (its zones' extents at first)
 	side_cover: int,               // the floating views over the panel "side", as its last build saw them (view_occluders)
+	terms:      int,               // the terminals the "+" asked for (term_new)
 	hug_w:      f32,               // the width "hug" asks for this opening (view_size), in ems
 }
 
@@ -77,6 +78,19 @@ tabbed_view :: proc(v: ^ui.View, r: ^Dock) {
 	if ui.menu("tab_menu") { _ = ui.menu_item("Rename the tab") }
 }
 
+// A terminal: tabs always, a "+" that opens the next one (as ocn's: the program names the instance).
+@(private = "file")
+term_view :: proc(v: ^ui.View, r: ^Dock) {
+	ui.label(fmt.tprintf("The shell %s###term_words", v.instance))
+}
+
+@(private = "file")
+term_new :: proc(data: rawptr) {
+	r := (^Dock)(data)
+	r.terms += 1
+	ui.view_open(&r.views, "term", r, fmt.tprintf("t%d", r.terms))
+}
+
 @(private = "file")
 hug_view :: proc(v: ^ui.View, r: ^Dock) {
 	ui.view_size(v, r.hug_w, 0)
@@ -99,6 +113,8 @@ dock_start :: proc(t: ^testing.T, r: ^Dock, want: ..string) -> ^session.Session 
 dock_register :: proc(r: ^Dock) {
 	ui.view_register(&r.views, "log", plain_view, ui.View_Options{title = "Log"})   // (an instance per name)
 	ui.view_register(&r.views, "hug", hug_view, ui.View_Options{title = "Picture"})
+	ui.view_register(&r.views, "term", term_view, ui.View_Options{title = "Terminal", home = .Panel, home_place = {edge = .Bottom},
+		extent_em = 12, tabs_always = true, new_tab = term_new, new_tab_label = "New terminal"})
 	ui.view_register(&r.views, "tabbed", tabbed_view, ui.View_Options{title = "Tabbed", home = .Panel, home_place = {edge = .Left}, extent_em = 20})
 	ui.view_register(&r.views, "side", side_view, ui.View_Options{title = "Side", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM})
 	ui.view_register(&r.views, "side2", side_view, ui.View_Options{title = "Second", home = .Panel, home_place = {edge = .Left}})
@@ -518,6 +534,86 @@ what_is_at_a_point :: proc(t: ^testing.T) {
 	testing.expect(t, ui.pointer_on_at(tab, at), "the tab is in front there")
 	testing.expect(t, ui.pointer_on_at(panel, at), "and so is the panel around it")
 	testing.expect(t, !ui.pointer_on_at(tab, OUT), "not elsewhere")
+}
+
+// tabs_always: a lone terminal has its strip. Its "+" calls new_tab; the new tab comes right after the last one, shown,
+// the "+" after it; the moves sit after the "+", the stack's buttons at the right end.
+@(test)
+the_strip_of_a_terminal :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "term")
+	if wait_built(s, "view_panel_view_term") == nil { return }
+	testing.expect(t, built(s, "view_tabs") != nil, "a strip for one tab (tabs_always)")
+	first := built(s, "view_tab_view_term")
+	plus := built(s, "view_new_tab")
+	if first == nil || plus == nil { testing.expect(t, false, "its tab and its +"); return }
+	testing.expect(t, plus.rect.min.x >= first.rect.max.x, "the + after the tab")
+	session.click_at(s, session.center(plus))
+	if wait_built(s, "view_panel_view_term/t1") == nil { return }
+	testing.expect_value(t, r.terms, 1)
+	testing.expect_value(t, ui.view_presentation(&r.views, "term", "t1"), ui.View_Presentation.Panel)
+	session.frames(s, 2)
+	first, plus = built(s, "view_tab_view_term"), built(s, "view_new_tab")
+	second := built(s, "view_tab_view_term/t1")
+	detach, close := built(s, "view_detach"), built(s, "view_stack_close")
+	strip := built(s, "view_tabs")
+	if first == nil || plus == nil || second == nil || detach == nil || close == nil || strip == nil { testing.expect(t, false, "the strip's parts"); return }
+	testing.expect(t, second.rect.min.x >= first.rect.max.x, "the new tab right after the last one")
+	testing.expect(t, plus.rect.min.x >= second.rect.max.x, "the + after it")
+	testing.expect(t, detach.rect.min.x >= plus.rect.max.x, "the moves after the +")
+	testing.expectf(t, abs(close.rect.max.x - strip.rect.max.x) <= 1, "Close at the strip's right end: %v in %v", close.rect, strip.rect)
+	testing.expect(t, built(s, "view_panel_icons") == nil, "no hover icons: the strip has them")
+	// the palette offers it too, in the program's words
+	commands, acts := ui.views_commands(&r.views)
+	found := -1
+	for c, i in commands { if c.label == "New terminal" { found = i } }
+	testing.expect(t, found >= 0, "New terminal in the palette")
+	if found >= 0 {
+		ui.views_command_run(&r.views, acts[found])
+		wait_built(s, "view_panel_view_term/t2")
+	}
+}
+
+// Maximise: the stack fills the dock space, the content is not seen; again restores. Minimise: the zone is its strip
+// only, remembered; a click on a tab restores it. Close: every view of the stack.
+@(test)
+a_stack_maximises_minimises_and_closes :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "term")
+	if wait_built(s, "view_panel_view_term") == nil { return }
+	space := built(s, "views_space_")
+	if space == nil || !click_named(s, "view_stack_max") { return }
+	session.frames(s, 2)
+	_, _, maxed := ui.views_space_maximised(&r.views, "")
+	testing.expect(t, maxed, "maximised")
+	zone := built(s, "view_zone_Bottom")
+	testing.expectf(t, zone != nil && abs((zone.rect.max.y - zone.rect.min.y) - (space.rect.max.y - space.rect.min.y)) <= 1, "the whole space: %v", zone != nil ? zone.rect : ui.Rect{})
+	// (session.find finds only boxes laid out with a width: the content's box at no size is not found. What is in it
+	// keeps its own width, clipped away by it: not a sign)
+	testing.expect(t, session.find(s, "views_content") == nil, "the content laid out at no size: not seen")
+	if !click_named(s, "view_stack_max") { return }
+	session.frames(s, 2)
+	_, _, maxed = ui.views_space_maximised(&r.views, "")
+	testing.expect(t, !maxed, "restored")
+
+	if !click_named(s, "view_stack_min") { return }
+	session.frames(s, 2)
+	zone = built(s, "view_zone_Bottom")
+	testing.expectf(t, zone != nil && abs((zone.rect.max.y - zone.rect.min.y) - ui.DOCK_TAB_EM * r.em) <= 1.5, "its strip only: %v", zone != nil ? zone.rect : ui.Rect{})
+	testing.expect(t, built(s, "view_panel_view_term") == nil, "no body")
+	text, _ := store.get(&r.views.memory, "#")
+	sm, _ := ui.views_space_parse(text)
+	testing.expectf(t, sm.minimised[.Bottom], "remembered: %q", text)
+	if !click_named(s, "view_tab_view_term") { return }
+	if wait_built(s, "view_panel_view_term") == nil { return }
+
+	term_new(&r)
+	if wait_built(s, "view_panel_view_term/t1") == nil { return }
+	if !click_named(s, "view_stack_close") { return }
+	session.frames(s, 3)
+	testing.expect(t, !ui.view_is_open(&r.views, "term") && !ui.view_is_open(&r.views, "term", "t1"), "both tabs closed")
 }
 
 // view_size: this opening's dialog as wide as asked, past DIALOG_MAX_WIDTH_EM (a viewer that hugs its picture).

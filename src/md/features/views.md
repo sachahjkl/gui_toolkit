@@ -431,12 +431,47 @@ from 0 up are the program's. `VIEW_CANCELLED` is the toolkit's.
 The user's rule: the docking machinery must not invade the screens. A view at rest adds nothing to what the program
 draws, except the header that a dialog always had. The rules:
 
-1. **A panel alone in its zone has no tab strip.** A tab strip appears only when two or more views share a zone (a dock
-   leaf). A panel alone adds no strip and no border: its body starts at the zone's top edge. A test checks this
-   (section 7.4, test 17).
-2. **A panel's controls appear only on hover.** While the pointer is over a panel's top area, two small icons show in
-   its top right corner: Detach and Close, in the weak colour. At rest nothing is added. The icons take no room in the
-   layout: they float over the body's corner.
+1. **A panel alone in its stack has no tab strip**, unless its kind says `tabs_always` (ocn's terminals: a strip
+   with one tab and its "+" says that more can come). A tab strip appears when two or more views share a stack, or
+   one of them is `tabs_always`, or its zone is minimised. A panel alone otherwise adds no strip and no border: its
+   body starts at the zone's top edge. A test checks this (section 7.4, test 17).
+2. **A lone panel's controls appear only on hover.** While the pointer is over a strip-less panel's top area, two
+   small icons show in its top right corner: Detach and Close, in the weak colour. At rest nothing is added. The icons
+   take no room in the layout: they float over the body's corner. A panel with a strip has none: the strip holds them.
+2b. **The tab strip, left to right** (`view_stack_strip`): the tabs; the "+" of the shown view's kind (`new_tab`),
+   right after the last tab, where the new tab appears; the shown view's moves (Float, Open in a window, Re-attach when
+   not at home), small and weak, side by side, where the eye already is; the program's tools of the shown view
+   (`view_header_tools`); then, at the right end, Minimise, Maximise and Close of the stack, drawn as the window's
+   caption buttons (one builder, `caption_row`, for both). Refused: the moves at the far right (the eye is on the tabs;
+   the right end is the stack's own, as a window's is).
+   - **"+"** calls `View_Options.new_tab(data)` with the shown view's data: the program opens a new instance
+     (`view_open` with a new name). Every instance of that kind opened during the call goes to this stack, its tab
+     last (after the others: where the "+" was) and shown. The same act is the first item of the band's menu and a
+     palette command ("New terminal": `new_tab_label`, else "New tab"), for each kind with `new_tab` that has a view
+     open. Refused: the toolkit making the instance's name or data (the program's: a shell's id).
+   - **Maximise**: the stack takes the whole dock space for a while: the other zones are not built, the program's
+     content is laid out at no size (built, its state kept, not seen). Maximise again, or Escape with the focus in it,
+     restores. Not remembered across runs: a program that starts with its content hidden looks broken.
+   - **Minimise**: the zone collapses to its strips (each stack's strip, no body, no handle); a click on a tab, or the
+     button again, restores. Offered at the top and the bottom only, where a strip is the zone's height; at the left
+     and the right a strip is no narrower than the zone (the handle makes a side zone narrow). Remembered per zone
+     (`bottom.min=1` in the space's line).
+   - **Close** closes every view of the stack (each ends with `VIEW_CANCELLED`): it is the stack's button, beside the
+     stack's Minimise and Maximise. One tab closes by Ctrl+W in it, its menu's Close or the palette. Refused: closing
+     the shown tab only (two buttons at the right end would act on the stack and one on a tab).
+   - **Every presentation where a strip shows**: a stack of panels only. An internal window and a window of its own
+     hold one view each, with their header; a window holding several views does not exist.
+2c. **A window of its own follows the program's decorations** (`window.system_title`, the program's own title bar or
+   the system's: `platform.is_integrated_title` of the owner's window, read at the opening and at each step, so a
+   change at run time applies to open view windows; on Windows the frame changes as the main window's does, on Wayland
+   the xdg-decoration is negotiated again). With the program's own: the window has no system decoration, and the
+   view's header is its title bar (`.Window_Caption`, not Clickable: the system drags it, a double click maximises it,
+   snap layouts show over its maximise), with the window's minimise, maximise and close at its right end
+   (`window_buttons`: the main window's code and look). That close is the system's close of the window: it
+   re-attaches the view; the view's own Close stays in the header. With the system's: the system's title bar, and the
+   header under it without the window's buttons. Refused: a title bar of the view windows' own (a second code of
+   captions); the drag of the header onto the owner's dock targets with the program's decorations (the system moves
+   the window there; the menu and the palette still dock it).
 3. **A right-click menu on a panel's top area** has: Detach into a window, Open as a floating window, Dock left, Dock
    right, Dock bottom, Close. The same acts are palette commands, made by the toolkit for every registered view:
    "Detach <title>", "Float <title>", "Dock <title> to the left", "Dock <title> to the right", "Dock <title> to the
@@ -460,9 +495,9 @@ cut (today's `dialog_header` rule).
 |---|---|---|
 | Dialog | the strip at the dialog's top (today's `dialog_header`) | icon, title, tools, Detach (small, weak), the close cross in the corner |
 | Internal | the internal window's title strip | icon, title, tools, Re-attach, Detach, Close |
-| External, integrated title | the OS window's title bar (`title_bar`, then `window_buttons` without their close) | icon, title, tools, Re-attach, Close view, minimize, maximize |
-| External, system title | a strip under the system's title bar | icon, title, tools, Re-attach, Close view |
-| Panel | none at rest (rule 1). With two or more views in its zone: the zone's tab strip (icon and title per tab) | on hover of its top area: Detach and Close (rule 2) |
+| External, the program's decorations | the header is the window's title bar (rule 2c) | icon, title, tools, Re-attach, Close view, then the window's minimise, maximise, close (close: re-attach) |
+| External, the system's decorations | a strip under the system's title bar | icon, title, tools, Re-attach, Close view |
+| Panel | none at rest (rule 1). With two views or more in its stack, `tabs_always`, or its zone minimised: the stack's strip (rule 2b) | tabs, "+", moves, tools, then Minimise, Maximise, Close of the stack; a lone panel: on hover, Detach and Close (rule 2) |
 
 The attachment acts. Each is absent where it does nothing:
 
@@ -1050,7 +1085,8 @@ A view docked in a space can be dragged to another space or to the frame's edges
 
 - Views at different places: each has its stack. A view alone in its stack has no tab strip and no border (section
   2.5, rule 1): its body's first box starts at the stack's top edge.
-- Views at the same place (zone and stack): tabs of one stack. The tab strip appears with the second view. The tab shown is the last
+- Views at the same place (zone and stack): tabs of one stack. The tab strip appears with the second view (or the
+  first, `tabs_always`; section 2.5, rule 2b for what it holds). The tab shown is the last
   one opened, docked or clicked. A tab dragged past `DOCK_DRAG_EM` leaves the zone as an internal window under the
   pointer.
 - A lone panel moves by its title when the program marks its title box (`view_drag_handle(v, box)`); one without shows

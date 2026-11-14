@@ -175,8 +175,9 @@ apart.
 | `toolbar_separator()` | a vertical line and its room: for a bar a program builds itself (in a tool bar, use the group's `separator`) |
 
 The spacing is the toolkit's, for every program: 0.2 em between two items, 0.15 em more on each side of a control (its
-widget is seen to its edge, a ghost tool's glyph stands inside its face), 0.8 em between two groups, or a separator's
-room; each follows the density.
+widget is seen to its edge, a ghost tool's glyph stands inside its face), a separator's room (0.9 em) between two groups
+of one line, its line in it when the later group has `separator`; each follows the density. A separator never starts
+a line: a group that wraps starts its line with no room and no line.
 
 An item's `priority` (nil: its group's) places it among every group's parts: a rare tool of a group kept long folds
 before the needed items of a group that folds early. Order a group's items from the most needed to the least. The bar

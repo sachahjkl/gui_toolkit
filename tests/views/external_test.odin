@@ -49,10 +49,10 @@ ext_view :: proc(v: ^ui.View, r: ^Ext) {
 }
 
 @(private = "file")
-ext_start :: proc(t: ^testing.T, r: ^Ext, o := session.Windows_Options{}, first: Maybe(ui.View_Presentation) = nil) -> ^session.Session {
+ext_start :: proc(t: ^testing.T, r: ^Ext, o := session.Windows_Options{}, first: Maybe(ui.View_Presentation) = nil, integrated := false) -> ^session.Session {
 	moved :: proc(data: rawptr, win: ^platform.Window) { append(&(^Ext)(data).moves, win) }
 	ui.view_register(&r.views, "ask", ext_view, ui.View_Options{title = "Question", first = first, moved = moved})
-	s := session.start(t, {size = WINDOW, user = r, build = ext_build})
+	s := session.start(t, {size = WINDOW, user = r, build = ext_build, integrated_title = integrated})
 	ui.views_set_windows(&r.views, session.view_windows(s, o))
 	return s
 }
@@ -236,6 +236,38 @@ a_view_s_window_looks_like_its_owner :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expectf(t, s.state.zoom > 1.5, "Ctrl+= in the view's window zooms the program: %v", s.state.zoom)
 	testing.expect_value(t, w.state.zoom, s.state.zoom)
+}
+
+// The program's own decorations (its window's integrated title bar): the view's window has none of the system's, its
+// header is its title bar (a caption) with the window's buttons at its right end; their close re-attaches the view. The
+// system's decorations at run time: the window follows, its header has no window buttons.
+@(test)
+a_view_s_window_follows_the_program_s_decorations :: proc(t: ^testing.T) {
+	r: Ext
+	defer ext_end(&r)
+	r.want = "ask"
+	s := ext_start(t, &r, first = .External, integrated = true)
+	w := shown_as_window(s, &r)
+	if w == nil { return }
+	testing.expect(t, platform.is_integrated_title(w.win), "no decorations of the system's")
+	header := drawn(w, "view_header")
+	testing.expect(t, header != nil && .Window_Caption in header.flags, "its header is its title bar")
+	testing.expect(t, drawn(w, "wb_close") != nil && drawn(w, "wb_max") != nil, "the window's buttons in it")
+	testing.expect(t, drawn(w, "view_close") != nil, "the view's own Close stays")
+
+	platform.set_integrated_title(s.win, false)
+	session.frames(s, 2)
+	testing.expect(t, !platform.is_integrated_title(w.win), "the system's decorations, as its owner's")
+	testing.expect(t, drawn(w, "wb_close") == nil, "no window buttons under the system's title bar")
+
+	platform.set_integrated_title(s.win, true)
+	session.frames(s, 2)
+	b := drawn(w, "wb_close")
+	if b == nil { testing.expect(t, false, "the window's close again"); return }
+	session.click_at(w, session.center(b))
+	if !wait(s, &r, proc(s: ^session.Session, r: ^Ext) -> bool { return drawn(s, "modal_view_ask") != nil }, "re-attached as a dialog") { return }
+	testing.expect(t, ui.view_is_open(&r.views, "ask"), "still open: the window's close re-attaches")
+	testing.expect_value(t, len(r.answers), 0)
 }
 
 // A view opened straight into a window of its own: `moved` says which window (its native child goes there).

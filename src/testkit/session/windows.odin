@@ -72,6 +72,7 @@ window_open :: proc(user: rawptr, ask: ui.View_Window_Ask) -> (state: ^ui.State,
 	w := platform.open_window_offscreen(ask.title, {int(f32(ask.size.x) * dpi), int(f32(ask.size.y) * dpi)}, dpi)
 	if w == nil { return }
 	if at, ok := ask.at.?; ok { platform.move_window(w, at.x, at.y) }
+	if ask.integrated_title { platform.set_integrated_title(w, true) }   // (the program's decorations, as its owner's)
 	c := new(Session)
 	c.t, c.test, c.ctx, c.thread, c.parent, c.win = p.t, p.test, p.ctx, p.thread, p, w
 	c.name, c.out = strings.clone(p.name), strings.clone(p.out)

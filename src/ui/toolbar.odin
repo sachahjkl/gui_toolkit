@@ -2,6 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "../draw"
 import "../font"
 import i18n "../i18n"
 import lucide "../lucide"
@@ -152,6 +153,23 @@ Toolbar_Build :: struct {
 	item:       int,      // the item being built (its index in its group's memory)
 	item_box:   ^Box,
 	item_where: Toolbar_Where,
+	flow_lines: ^Toolbar_Flow_Lines,   // .Wrap: the separators the flow draws (this build's frame memory)
+}
+
+// The separators of a .Wrap bar's flow: before each of these groups, when the group is not the first of its line.
+@(private)
+Toolbar_Flow_Lines :: struct {
+	groups:        [dynamic]^Box,
+	color:         Color,
+	height, width: f32,
+}
+
+// A separator's line, drawn in the room before a group (.Fold, and the pinned groups of .Wrap): that room exists only
+// between two groups of one line.
+@(private)
+Toolbar_Line :: struct {
+	color:         Color,
+	height, width: f32,
 }
 
 // Beside the "…" button, between a control's label and its widget, a separator's room on each side, a line's room above
@@ -160,12 +178,13 @@ Toolbar_Build :: struct {
 // ghost button of a line's side around a glyph half as tall: its face shows only under the pointer, so its glyph already
 // stands a quarter of the side from its edge, and ITEM_GAP only keeps two lit faces apart. A control's widget (a track,
 // a swatch, a field's frame) is seen to its edge: it carries CONTROL_PAD on each side, two controls standing
-// 2 * CONTROL_PAD + ITEM_GAP = 0.5 em apart. Two groups stand GROUP_GAP apart, more than any two items, or a separator's
-// room when they have one. Each is a horizontal gap of the density (dense): a dense window's bars tighten as its lists do.
+// 2 * CONTROL_PAD + ITEM_GAP = 0.5 em apart. Two groups on one line stand a separator's room apart (2 * SEPARATOR_PAD and
+// its line), more than any two items, its line drawn in it when the later group asks for one; a group that starts a line
+// has no room and no line before it. Each is a horizontal gap of the density (dense): a dense window's bars tighten as
+// its lists do.
 @(private = "file") TOOLBAR_MORE_GAP_EM :: 0.3
 @(private = "file") TOOLBAR_ITEM_GAP_EM :: 0.2
 @(private = "file") TOOLBAR_CONTROL_PAD_EM :: 0.15
-@(private = "file") TOOLBAR_GROUP_GAP_EM :: 0.8
 @(private = "file") TOOLBAR_LABEL_GAP_EM :: 0.4
 @(private = "file") TOOLBAR_SEPARATOR_PAD_EM :: 0.45
 @(private = "file") TOOLBAR_LINE_PAD_EM :: 0.3
@@ -238,9 +257,14 @@ toolbar :: proc(id: string, o := Toolbar_Options{}) -> bool {
 		s.next_mod, s.has_next = m, true
 		tb.bar = build_box({}, fmt.tprintf("###%s", id))
 		push_parent(tb.bar)
-		// (no gap of the flow: each group carries its own before it, as in .Fold)
-		next({width = fill(), height = children_sum(), axis = .X})
-		push_parent(build_box({.Wrap}, "###flow"))
+		// (the room between two groups is the flow's gap: a gap stands only between two groups of one line, so a group
+		// that starts a line has none; the flow draws the separators in it, between two groups of one line only)
+		next({width = fill(), height = children_sum(), axis = .X, gap = Vec2{toolbar_separator_width(em), 0}})
+		flow := build_box({.Wrap}, "###flow")
+		tb.flow_lines = frame_new(Toolbar_Flow_Lines)
+		tb.flow_lines^ = {groups = make([dynamic]^Box, frame_allocator()), color = color("border"), height = math.round(tb.line * TOOLBAR_SEPARATOR_HEIGHT), width = max(math.round(s.scale), 1)}
+		flow.custom, flow.custom_user = toolbar_flow_draw, tb.flow_lines
+		push_parent(flow)
 	}
 	a11y_default(tb.bar, {role = .Toolbar, orientation = .X})
 	s.toolbar = tb
@@ -325,14 +349,22 @@ toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 		mem.groups[idx], mem.groups[tb.order] = mem.groups[tb.order], mem.groups[idx]
 		idx = tb.order
 	}
-	// (a group's gap before it, unless its separator's room stands there: not before the bar's first group, nor before its
-	// first pinned one (a spacer and the "…" button, or the end of the flow, are there))
-	leads := tb.pinned > 0 if o.pinned else tb.order > 0
-	gap: f32 = leads && !o.separator ? dense(em * TOOLBAR_GROUP_GAP_EM) : 0
+	// (the room before it, a separator's, its line in it when it asks for one: only after another group of its line.
+	// Never before the bar's first group, nor before .Fold's first pinned one (the spacer and the "…" button stand there);
+	// in .Wrap's flow the flow's gap is that room (only between two groups of one line); .Wrap's pinned groups follow
+	// the flow's last line)
+	in_flow := tb.overflow == .Wrap && !o.pinned
+	leads: bool
+	switch {
+	case in_flow:  leads = false
+	case o.pinned: leads = tb.pinned > 0 || tb.overflow == .Wrap
+	case:          leads = tb.order > 0
+	}
+	room: f32 = leads ? toolbar_separator_width(em) : 0
 	tb.order += 1
 	g := &mem.groups[idx]
 	g.priority, g.pinned, g.seen = o.priority, o.pinned, s.build_index
-	g.lead = gap + (o.separator ? toolbar_separator_width(em) : 0)
+	g.lead = room
 	tb.group, tb.items, tb.group_title, tb.group_section = idx, 0, o.title, false
 	if o.pinned {
 		if !tb.ended { toolbar_end_begins(s, tb, mem, em) }
@@ -344,8 +376,8 @@ toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 		gb := build_box({}, fmt.tprintf("###tg_%s", id))
 		if o.title != "" { a11y_default(gb, {role = .Group, name = o.title}) }
 		push_parent(gb)
-		if gap > 0 { spacer(px(gap)) }
-		if o.separator { toolbar_separator() }
+		if room > 0 { toolbar_room(room, o.separator, tb.line) }
+		if in_flow && o.separator { append(&tb.flow_lines.groups, gb) }
 		if tb.overflow == .Fold {
 			next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
 			tb.inner = build_box({}, "###in")
@@ -398,8 +430,7 @@ toolbar_end_begins :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, 
 	tb.ended = true
 	switch tb.overflow {
 	case .Wrap:
-		pop_parent()   // the flow
-		spacer(px(dense(em * TOOLBAR_GROUP_GAP_EM)))
+		pop_parent()   // the flow (the first pinned group's room follows it)
 	case .Fold:
 		spacer(fill())
 		if tb.folded { toolbar_more(s, tb, mem, em) }
@@ -683,6 +714,55 @@ toolbar_more :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f3
 @(private = "file")
 toolbar_separator_width :: proc(em: f32) -> f32 {
 	return 2 * dense(em * TOOLBAR_SEPARATOR_PAD_EM) + max(math.round(gs().scale), 1)
+}
+
+// The room before a group in the bar (.Fold, and .Wrap's pinned groups), a separator's, its line drawn in it when the
+// group asks for one (toolbar_line_draw).
+@(private = "file")
+toolbar_room :: proc(room: f32, separator: bool, line: f32) {
+	// (a line's height, not a share of its group's: a .Wrap group is as tall as what is in it, and a share of that went
+	// to a distant ancestor, the page, which made the group, and the bar, as tall as the page)
+	next({width = px(room), height = px(line)})
+	b := build_box({}, "")
+	if !separator { return }
+	d := frame_new(Toolbar_Line)
+	d^ = {color = color("border"), height = math.round(line * TOOLBAR_SEPARATOR_HEIGHT), width = max(math.round(gs().scale), 1)}
+	b.custom, b.custom_user = toolbar_line_draw, d
+}
+
+// A separator's line in the middle of its room, when a group the person sees stands before its own (the groups before it
+// in the bar may all be folded: then its group starts the bar, and a line never starts one).
+@(private = "file")
+toolbar_line_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	d := (^Toolbar_Line)(user)
+	group := b.parent
+	if group == nil { return }
+	seen := false
+	for p := group.prev; p != nil; p = p.prev {
+		if p.rect.max.x > p.rect.min.x { seen = true; break }
+	}
+	if !seen { return }
+	toolbar_line_at(dc, (b.rect.min.x + b.rect.max.x) * 0.5, (group.rect.min.y + group.rect.max.y) * 0.5, d.color, d.height, d.width)
+}
+
+// The separators of a .Wrap bar's flow, each in the gap before its group when the group stands on the line of the group
+// before it: a group that starts a line has no gap there (layout_wrap_positions), and no line.
+@(private = "file")
+toolbar_flow_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	d := (^Toolbar_Flow_Lines)(user)
+	for g in d.groups {
+		prev := g.prev
+		for prev != nil && is_floating(prev, .X) { prev = prev.prev }
+		if prev == nil || prev.wrap_line != g.wrap_line { continue }
+		toolbar_line_at(dc, (prev.rect.max.x + g.rect.min.x) * 0.5, (g.rect.min.y + g.rect.max.y) * 0.5, d.color, d.height, d.width)
+	}
+}
+
+@(private = "file")
+toolbar_line_at :: proc(dc: ^draw.Context, cx, cy: f32, c: Color, height, width: f32) {
+	x := math.round(cx - width * 0.5)
+	y := math.round(cy - height * 0.5)
+	draw.rect(dc, {{x, y}, {x + width, y + height}}, c)
 }
 
 // A vertical line between parts of a bar, its room on each side: in a tool bar a line's height, elsewhere its parent's

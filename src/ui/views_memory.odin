@@ -138,6 +138,7 @@ View_Space_Memory :: struct {
 	frac:   [View_Edge]f32,
 	axis:   [View_Edge]Maybe(Axis),
 	shares: [View_Edge][VIEW_STACKS_MAX]f32,
+	minimised: [View_Edge]bool,   // the zone shows its strips only (a stack's Minimise, at the top and the bottom)
 }
 
 // The line of a dock space (key `#<space>`): a zone of none absent, a share of 0 absent at the end of its list.
@@ -154,6 +155,7 @@ views_space_format :: proc(m: View_Space_Memory, allocator := context.temp_alloc
 			fmt.sbprintf(&b, " %s=%.1f", name, m.extent[e])
 		}
 		if a, ok := m.axis[e].?; ok { fmt.sbprintf(&b, " %s.axis=%s", name, a == .X ? "x" : "y") }
+		if m.minimised[e] { fmt.sbprintf(&b, " %s.min=1", name) }
 		n := 0
 		for x, i in m.shares[e] { if x > 0 { n = i + 1 } }
 		if n == 0 { continue }
@@ -187,6 +189,12 @@ views_space_parse :: proc(text: string) -> (m: View_Space_Memory, ok: bool) {
 				x, xok := strconv.parse_f32(value)
 				if !xok || x <= 0 || x >= 1 { return {}, false }
 				m.frac[e] = x
+			case "min":
+				switch value {
+				case "0": m.minimised[e] = false
+				case "1": m.minimised[e] = true
+				case:     return {}, false
+				}
 			case "axis":
 				switch value {
 				case "x": m.axis[e] = .X

@@ -30,7 +30,26 @@ a_wrapping_toolbar_moves_groups_whole :: proc(t: ^testing.T) { unwatched.run(t, 
 			}
 		}
 	}})
+	// (the bar as tall as its lines, no more, and in the window: its first line's tools at its top, its last line's at its
+	// bottom, a line's room around a tool aside. A box of the bar sized by a share of a box sized by its children took the
+	// page's height: the groups went down out of sight, and the positions alone, compared with each other, still agreed)
+	hugs :: proc(t: ^testing.T, s: ^session.Session, window_h: f32, loc := #caller_location) {
+		bar := session.get(s, "wbar")
+		first, last := max(f32), f32(0)
+		names := make([dynamic]string, context.temp_allocator)
+		for g in 0 ..< WRAP_GROUPS { for i in 0 ..< WRAP_TOOLS { append(&names, fmt.tprintf("g%d_%d", g, i)) } }
+		append(&names, "cancel", "done")
+		for name in names {
+			b := session.get(s, name)
+			first, last = min(first, b.rect.min.y), max(last, b.rect.max.y)
+			testing.expectf(t, b.rect.min.y >= bar.rect.min.y - 1 && b.rect.max.y <= bar.rect.max.y + 1, "%s inside the bar: %v in %v", name, b.rect, bar.rect, loc = loc)
+		}
+		em := session.get(s, "done").font_size
+		testing.expectf(t, first - bar.rect.min.y <= em && bar.rect.max.y - last <= em, "the bar as tall as its lines: %v, its tools from %v to %v", bar.rect, first, last, loc = loc)
+		testing.expectf(t, bar.rect.max.y <= window_h, "the bar in the window: %v", bar.rect, loc = loc)
+	}
 	session.frames(s, 3)
+	hugs(t, s, 400)
 	top := session.get(s, "g0_0").rect.min.y
 	for g in 0 ..< WRAP_GROUPS {
 		testing.expectf(t, session.get(s, fmt.tprintf("g%d_0", g)).rect.min.y == top, "room for all: g%d on the first line", g)
@@ -54,6 +73,21 @@ a_wrapping_toolbar_moves_groups_whole :: proc(t: ^testing.T) { unwatched.run(t, 
 		lowest = max(lowest, first.rect.min.y)
 	}
 	testing.expect(t, lowest > top, "the bar took more lines")
+	hugs(t, s, 400)
+	// (a group's separator only between two groups of one line: a group that starts a line has no room before it)
+	left := session.get(s, "g0_0").rect.min.x
+	starts := 0
+	for g in 1 ..< WRAP_GROUPS {
+		first := session.get(s, fmt.tprintf("g%d_0", g))
+		before := session.get(s, fmt.tprintf("g%d_%d", g - 1, WRAP_TOOLS - 1))
+		if first.rect.min.y != before.rect.min.y {
+			starts += 1
+			testing.expectf(t, abs(first.rect.min.x - left) <= 1, "g%d starts its line with no separator: at %v, the line at %v", g, first.rect.min.x, left)
+		} else {
+			testing.expectf(t, first.rect.min.x - before.rect.max.x >= first.font_size * 0.8, "g%d: a separator's room after the group of its line", g)
+		}
+	}
+	testing.expect(t, starts > 0, "a group starts a line")
 	done, cancel := session.get(s, "done"), session.get(s, "cancel")
 	bar := session.get(s, "wbar")
 	testing.expectf(t, done.rect.max.x <= f32(width) + 1 && done.rect.max.x >= bar.rect.max.x - 2 * done.font_size, "Done at the bar's end: %v of %v", done.rect.max.x, bar.rect.max.x)

@@ -48,6 +48,12 @@ View_Options :: struct {
 	min_height_em:  f32,
 	extent_em:      f32,                        // a panel's width or height (step 3)
 	extent_frac:    f32,                        // ... as a share of its space's width or height instead (0: extent_em)
+	tabs_always:    bool,                       // its stack's tab strip shows even when it is alone there (a terminal)
+	// the "+" after its stack's tabs, the band's menu and the palette: the program opens a new instance of this kind
+	// (view_open with a new name); `data` is the shown view's. Every instance of this kind opened during the call joins
+	// that stack, its tab last and shown. nil: no "+"
+	new_tab:        proc(data: rawptr),
+	new_tab_label:  string,                     // the menu's and the palette's words ("New terminal"; "": "New tab")
 	resizable:      bool,                       // the dialog has grips; its size is remembered
 	top:            Maybe(f32),                 // the dialog's top at this fraction of the window (a palette); nil: centred
 	no_header:      bool,                       // the build draws the top itself (a palette's search band): no header strip
@@ -75,6 +81,8 @@ View_Labels :: struct {
 	close_view:              string,   // an external window's Close button (its system close re-attaches)
 	window, floating:        string,   // "Detach into a window" (External), "Open as a floating window" (Internal)
 	dock_left, dock_right, dock_bottom: string,
+	// a stack's strip: its right end (minimise, maximise, restore either, close every view of the stack), its "+"
+	minimize, maximize, restore, close_stack, new_tab: string,
 }
 
 view_default_labels :: proc() -> View_Labels {
@@ -82,6 +90,8 @@ view_default_labels :: proc() -> View_Labels {
 		detach = i18n.tr("Detach"), close = i18n.tr("Close"), reattach = i18n.tr("Re-attach"), close_view = i18n.tr("Close view"),
 		window = i18n.tr("Detach into a window"), floating = i18n.tr("Open as a floating window"),
 		dock_left = i18n.tr("Dock left"), dock_right = i18n.tr("Dock right"), dock_bottom = i18n.tr("Dock bottom"),
+		minimize = i18n.tr("Minimise the panel"), maximize = i18n.tr("Maximise the panel"), restore = i18n.tr("Restore the panel"),
+		close_stack = i18n.tr("Close the panel"), new_tab = i18n.tr("New tab"),
 	}
 }
 
@@ -142,6 +152,7 @@ View_Record :: struct {
 	tools:      Key,         // the header's box of the program's tools, in this build
 	header:     Key,         // the header strip, in this build (view_room)
 	panel:      Key,         // the dialog's panel, or the internal window's frame (view_room)
+	strip_tools: Key,        // as a panel shown in its stack's strip: the strip's slot of its tools, in this build (0: none)
 	// the internal window: its frame, its rect (window px; a height of 0: as tall as what is in it, until it settles),
 	// the rect the memory has, its unseen layouts (view_settle), its place among the internal windows, the focus to
 	// give back when it closes and whether the focus goes into it at its next build, the press of a dialog's header that
@@ -543,14 +554,16 @@ view_room :: proc(v: ^View) -> Vec2 {
 	return {max(room.x - 2 * inset, 0), max(room.y - 2 * inset, 0)}
 }
 
-// Inside a build: `if ui.view_header_tools(v) { ... }` builds controls in the header, after the title. Its box is made
-// at the first call of a build: a header whose body asks for no tools has none. False in a presentation with no header
-// (the block is skipped).
+// Inside a build: `if ui.view_header_tools(v) { ... }` builds controls in the header, after the title (a panel: in its
+// stack's strip, after the moves, when the strip shows). Its box is made at the first call of a build: a header whose
+// body asks for no tools has none. False in a presentation with no header (the block is skipped).
 @(require_results, deferred_none = view_header_tools_end)
 view_header_tools :: proc(v: ^View) -> bool {
 	r := v.record
-	head := box_from_key(r.header)
-	if head == nil || r.header == 0 {
+	// (a panel has no header: its stack's strip, when it shows one, has the slot)
+	slot := v.presentation == .Panel ? r.strip_tools : r.header
+	head := box_from_key(slot)
+	if head == nil || slot == 0 {
 		push_parent(parent_box())
 		return false
 	}

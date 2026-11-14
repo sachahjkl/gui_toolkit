@@ -111,6 +111,7 @@ again.
 | `view_dialog_size(vs, id, instance)` | the size the user gave its dialog, in ems (`{}`: none) |
 | `views_hold_keys(vs)` | a dialog of `vs` holds the keys of the State being built |
 | `views_frame(vs, o = {})`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels); `o`: `View_Dock_Options` |
+| `views_space_maximised(vs, name) -> (edge, stack, ok)` | the stack of a space that its strip's Maximise shows alone |
 | `views_space_reset(vs, name)` | the layout of a space as at first: its zones, axes and shares the defaults, its views back home (section Panels) |
 | `views_commands(vs, allocator) -> (commands, acts)`, `views_command_run(vs, act)`, `views_version(vs)` | the palette's commands of the views |
 | `views_space_format(m)`, `views_space_parse(text) -> (View_Space_Memory, ok)` | a dock space's line of the memory |
@@ -128,8 +129,8 @@ again.
 `View_Options`: `title`, `icon`, `icon_font`, `home` (`.Dialog` or `.Panel`), `home_place`, `first` (the presentation
 of the first opening), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em`, `min_height_em`,
 `resizable` (grips; the size is remembered), `top` (the dialog's top at this fraction of the window), `no_header`,
-`backdrop` (drawn first, under the header and the body), `extent_em`, `extent_frac`, `under_children` and `moved`
-(the later presentations).
+`backdrop` (drawn first, under the header and the body), `extent_em`, `extent_frac`, `tabs_always`, `new_tab`,
+`new_tab_label`, `under_children` and `moved` (the later presentations).
 
 ## The Dialog presentation
 
@@ -215,7 +216,16 @@ ui.views_set_windows(&app.views, session.view_windows(s))        // a test (docs
 - **No flash.** The old place stays drawn until the window's first picture is out; the next frame of the owner takes
   it away. The view is in two places for one frame at most, and never nowhere.
 - Its header: the title, the program's tools, Re-attach, Close view (`View_Labels.close_view`). Escape and Ctrl+W close
-  the view. The system's close of the window (its title bar's cross, Alt+F4) **re-attaches** it: it stays open. When it
+  the view.
+- **Its decorations are the program's choice**, as its owner window's (`window.system_title`, applied with
+  `platform.set_integrated_title`): read at its opening (`View_Window_Ask.integrated_title`) and at each step, so a
+  change at run time applies to the open view windows. With the program's own title bar, the window has no system
+  decoration and the view's header is its title bar: the system drags it, a double click maximises it, and the
+  window's minimise, maximise and close sit at its right end (`window_buttons`, the main window's code and look). That
+  close is the system's close of the window: it re-attaches the view. The view's Close stays in the header. Its menu
+  opens on a right click of the header's empty part (`caption_right_clicked`); the header's drag onto the owner's dock
+  targets is the system's move there (the menu and the palette dock it). With the system's title bar: the header under
+  it, without the window's buttons. The system's close of the window (its title bar's cross, Alt+F4) **re-attaches** it: it stays open. When it
   shows, the window is activated and the focus goes to its first stop; when it closes, the owner window is activated.
 - **Drags** where the system gives positions (`platform.positions_known`: Windows, X11; not Wayland, asked at run
   time): a floating window's header let go outside the owner opens the view in a window there; an external window's
@@ -290,9 +300,25 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   rank in the zone (0 first; the ranks stay compact as stacks empty).
 - `views_frame` builds the panels and the internal windows before the content, so they read their keys first; it is
   where F6 is read. A program without `views_frame` still has its dialogs and its internal windows; its panels float (internal windows) until a space is built.
-- A panel alone in its stack adds nothing: no tab strip, no border, no background (rule 1). Two panels or more in a
-  stack are its tabs: a click shows one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out
-  as an internal window under the pointer.
+- A panel alone in its stack adds nothing: no tab strip, no border, no background (rule 1), unless its kind says
+  `tabs_always` (a terminal: its strip shows with one tab). Two panels or more in a stack are its tabs: a click shows
+  one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out as an internal window under the pointer.
+- **The strip**, left to right: the tabs; the "+" of the shown view's kind, right after the last tab, where the new
+  tab appears; the shown view's moves (Float, Open in a window, Re-attach), small and weak; the program's tools of the
+  shown view (`view_header_tools`); then at the right end Minimise (zones at the top and the bottom), Maximise and
+  Close of the stack, drawn as a window's caption buttons. A panel with a strip has no hover icons.
+  - `View_Options.new_tab: proc(data: rawptr)`: the "+" calls it with the shown view's data; the program opens a new
+    instance (`view_open` with a name of its own). Every instance of that kind opened during the call joins the stack,
+    its tab last and shown. The same act is the first item of the band's menu and a palette command, in the words of
+    `new_tab_label` ("New terminal"; "": "New tab").
+  - **Maximise**: the stack fills the dock space; the other zones are not built and the program's content is laid out
+    at no size (still built: its state is kept). Maximise again, or Escape with the focus in it, restores. Not
+    remembered across runs. `views_space_maximised(vs, name) -> (edge, stack, ok)` says which.
+  - **Minimise**: the zone shows its strips only; a click on a tab, or Minimise again, restores it. Remembered
+    (`bottom.min=1` in the space's line). Absent at the left and the right, where the handle narrows a zone.
+  - **Close** closes every view of the stack (each ends `VIEW_CANCELLED`). One tab closes by Ctrl+W in it, its menu or
+    the palette.
+  - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.
 - On the hover of a panel's top area (`VIEW_HOVER_EM`), two icons show at its top right, in the weak colour: Float
   (an internal window) and Close. A right click there opens its menu, unless the body takes it: the press is on a
   clickable box of the body (a tab of its own there, with its own menu), or the body opened a menu in that build.
@@ -417,12 +443,12 @@ sidebar	v1 as=panel open=1 dock=:left:18.0
 | `at` | the external window's outer top left, physical pixels | its window closes (where `positions_known`) |
 
 A dock space has a line of its own, under `#<space>` (`#` for the window's frame): the extent of each zone in ems
-(`left=18.0`) or as a share of the space (`bottom.frac=0.250`), its axis, and the share of each of its stacks but the
+(`left=18.0`) or as a share of the space (`bottom.frac=0.250`), whether it is minimised (`bottom.min=1`), its axis, and the share of each of its stacks but the
 last, written when a handle is let go or a drop splits a stack (`views_space_format(View_Space_Memory)`,
 `views_space_parse(text) -> (View_Space_Memory, ok)`):
 
 ```
-#	v1 left=18.0 left.axis=y left.shares=0.400 bottom.frac=0.250
+#	v1 left=18.0 left.axis=y left.shares=0.400 bottom.frac=0.250 bottom.min=1
 ```
 
 A view's `dock` field is `<space>:<edge>:<extent>:<stack>` (`center` for the centre zone of a space without content).
