@@ -44,6 +44,9 @@ pretty := image.background(framed, 48, {from = image.hex(0x6A5ACD), to = image.h
 | `rotate(img, quarter_turns)` | turned clockwise by quarters (negative: counterclockwise) |
 | `flip(img, horizontal)` | mirrored left to right, or top to bottom |
 | `pad(img, left, top, right, bottom, color)` | a margin around it |
+| `cut_out(img, at, size, columns)` | without a band of columns (or rows), the two sides joined |
+| `trim_bounds(img, tolerance)` | the `Rect` left once the edges of the top-left corner's colour are trimmed (auto crop) |
+| `edge_mean(img, r)` | the mean colour of the pixels on the edge of `r`: what surrounds it, to fill it with |
 
 `Filter`:
 
@@ -137,7 +140,7 @@ The procedures run on 4K pictures on a worker. Each one is a few passes, with no
 
 ## Tests
 
-`tests/image`: exact pixels for crop, flip, rotate, pad, border, invert, grayscale, threshold, sepia, draw_over, combine,
+`tests/image`: exact pixels for crop, flip, rotate, pad, cut_out, trim_bounds, edge_mean, border, invert, grayscale, threshold, sepia, draw_over, combine,
 pixelate and the anchors; properties for the rest (blur keeps the sum, resize, blur and sharpen keep a flat colour, round corners
 clear the corners, a shadow grows the picture and keeps it whole, a gradient runs its way); text drawn from the embedded
 face lands at its anchor; a JPEG reads back (core:image/jpeg) close to its picture, a lower quality makes a smaller

@@ -59,6 +59,7 @@ Step :: struct {
 STEPS := []Step{
 	// no interface, no device
 	{name = "affine", wgpu = .Ci1},
+	{name = "path_dash", wgpu = .Ci1},
 	{name = "arena", path = "src/arena"},
 	{name = "ascii", path = "src/ascii", oses = EVERYWHERE},
 	{name = "timefmt", path = "src/timefmt", oses = EVERYWHERE},

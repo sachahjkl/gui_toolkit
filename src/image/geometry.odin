@@ -71,6 +71,85 @@ pad :: proc(img: Image, left, top, right, bottom: int, color := TRANSPARENT, all
 	return out
 }
 
+// `img` without a band: the columns from `at` to `at + size` when `columns`, else those rows; what is on either side of
+// it is joined. The band is cut to the picture; a band that covers all of it gives an empty picture.
+cut_out :: proc(img: Image, at, size: int, columns: bool, allocator := context.allocator) -> Image #no_bounds_check {
+	if !valid(img) { return {} }
+	w, h := img.width, img.height
+	n := columns ? w : h
+	a, b := clamp(at, 0, n), clamp(at + max(size, 0), 0, n)
+	if b - a >= n { return {} }
+	if b == a { return clone(img, allocator) }
+	if columns {
+		out := create(w - (b - a), h, allocator = allocator)
+		for y in 0 ..< h {
+			row := img.pixels[y * w * 4:][:w * 4]
+			dst := out.pixels[y * out.width * 4:][:out.width * 4]
+			copy(dst, row[:a * 4])
+			copy(dst[a * 4:], row[b * 4:])
+		}
+		return out
+	}
+	out := create(w, h - (b - a), allocator = allocator)
+	copy(out.pixels, img.pixels[:a * w * 4])
+	copy(out.pixels[a * w * 4:], img.pixels[b * w * 4:][:(h - b) * w * 4])
+	return out
+}
+
+// The part of `img` that is not its border: the rows and columns at its edges whose every pixel is the colour of the
+// top-left corner (each channel within `tolerance`) are left out. A picture of one colour gives an empty Rect.
+trim_bounds :: proc(img: Image, tolerance := 0) -> Rect #no_bounds_check {
+	if !valid(img) { return {} }
+	w, h := img.width, img.height
+	c := Color{img.pixels[0], img.pixels[1], img.pixels[2], img.pixels[3]}
+	same :: #force_inline proc "contextless" (p: []u8, i: int, c: Color, tolerance: int) -> bool {
+		for k in 0 ..< 4 { if abs(int(p[i * 4 + k]) - int(c[k])) > tolerance { return false } }
+		return true
+	}
+	row_same :: proc(img: Image, y: int, c: Color, tolerance: int) -> bool {
+		for x in 0 ..< img.width { if !same(img.pixels, y * img.width + x, c, tolerance) { return false } }
+		return true
+	}
+	col_same :: proc(img: Image, x, y0, y1: int, c: Color, tolerance: int) -> bool {
+		for y in y0 ..< y1 { if !same(img.pixels, y * img.width + x, c, tolerance) { return false } }
+		return true
+	}
+	top := 0
+	for top < h && row_same(img, top, c, tolerance) { top += 1 }
+	if top == h { return {} }
+	bottom := h
+	for bottom > top && row_same(img, bottom - 1, c, tolerance) { bottom -= 1 }
+	left := 0
+	for left < w && col_same(img, left, top, bottom, c, tolerance) { left += 1 }
+	right := w
+	for right > left && col_same(img, right - 1, top, bottom, c, tolerance) { right -= 1 }
+	return {left, top, right - left, bottom - top}
+}
+
+// The mean colour of the pixels on the edge of `r` (cut to the picture): what is around a rectangle, to fill it with.
+// Transparent when nothing of `r` is inside.
+edge_mean :: proc(img: Image, r: Rect) -> Color #no_bounds_check {
+	if !valid(img) { return {} }
+	c := clip_rect(img, r)
+	if c.w == 0 { return {} }
+	sum: [4]u64
+	n: u64
+	add :: #force_inline proc "contextless" (img: Image, x, y: int, sum: ^[4]u64, n: ^u64) {
+		p := img.pixels[(y * img.width + x) * 4:][:4]
+		for k in 0 ..< 4 { sum[k] += u64(p[k]) }
+		n^ += 1
+	}
+	for x in c.x ..< c.x + c.w {
+		add(img, x, c.y, &sum, &n)
+		if c.h > 1 { add(img, x, c.y + c.h - 1, &sum, &n) }
+	}
+	for y in c.y + 1 ..< c.y + c.h - 1 {
+		add(img, c.x, y, &sum, &n)
+		if c.w > 1 { add(img, c.x + c.w - 1, y, &sum, &n) }
+	}
+	return {u8((sum[0] + n / 2) / n), u8((sum[1] + n / 2) / n), u8((sum[2] + n / 2) / n), u8((sum[3] + n / 2) / n)}
+}
+
 // `src` copied into `dst` with its top-left corner at (x, y), replacing what is there; the part outside `dst` is left out.
 @(private)
 place :: proc(dst, src: Image, x, y: int) #no_bounds_check {

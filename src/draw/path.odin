@@ -188,6 +188,69 @@ path_stroke :: proc(c: ^Context, p: ^Path, width: f32, color: Color) {
 	if layered { pop_layer(c) }
 }
 
+// The dashes of `p`, as a new path (path_stroke draws it): each contour cut along its length by `pattern`, the lengths
+// drawn and skipped in turn (an odd count is read twice, as SVG's stroke-dasharray), starting `offset` into it. A length
+// drawn of 0 is a dot: a contour of one point, which path_stroke draws round, its width across. Every piece is an open
+// contour; a closed contour's last line is dashed too. A pattern of no length gives a copy of `p`.
+path_dash :: proc(p: ^Path, pattern: []f32, offset: f32 = 0, allocator := context.allocator) -> Path {
+	out := path_make(p.tolerance, allocator)
+	cycle: f32
+	for v in pattern { cycle += max(v, 0) }
+	n := len(pattern)
+	if n % 2 == 1 {
+		cycle *= 2
+		n *= 2
+	}
+	if cycle <= 0 {
+		append(&out.points, ..p.points[:])
+		append(&out.contours, ..p.contours[:])
+		return out
+	}
+	entry :: proc(pattern: []f32, i: int) -> f32 { return max(pattern[i % len(pattern)], 0) }
+	// (the end of a dash: a point unless it is where the dash began, so that a dot stays one point)
+	reach :: proc(out: ^Path, q: Vec2) {
+		if out.points[len(out.points) - 1] != q { path_add(out, q) }
+	}
+	for k in p.contours {
+		pts := p.points[k.first:][:k.count]
+		if len(pts) == 0 { continue }
+		// (each contour starts at `offset` into the pattern: the dashes of a rectangle start alike at its corner)
+		i := 0
+		left := entry(pattern, 0)
+		phase := math.mod(offset, cycle)
+		if phase < 0 { phase += cycle }
+		for phase > 0 {
+			if phase < left {
+				left -= phase
+				break
+			}
+			phase -= left
+			i = (i + 1) % n
+			left = entry(pattern, i)
+		}
+		if i % 2 == 0 { path_move_to(&out, pts[0]) }
+		segments := len(pts) - 1
+		if k.closed && len(pts) > 1 { segments += 1 }
+		for s in 0 ..< segments {
+			a, b := pts[s], pts[(s + 1) % len(pts)]
+			d := b - a
+			l := math.sqrt(d.x * d.x + d.y * d.y)
+			t: f32 = 0
+			for l - t > left {
+				t += left
+				q := a + d * (t / l)
+				if i % 2 == 0 { reach(&out, q) }
+				i = (i + 1) % n
+				left = entry(pattern, i)
+				if i % 2 == 0 { path_move_to(&out, q) }
+			}
+			left -= l - t
+			if i % 2 == 0 { reach(&out, b) }
+		}
+	}
+	return out
+}
+
 // A point of a quadratic Bézier curve, `t` from 0 to 1.
 bezier_quad_at :: proc(a, control, b: Vec2, t: f32) -> Vec2 {
 	u := 1 - t

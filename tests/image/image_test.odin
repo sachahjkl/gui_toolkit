@@ -125,6 +125,48 @@ geometry_is_exact :: proc(t: ^testing.T) {
 }
 
 @(test)
+cut_out_joins_the_sides :: proc(t: ^testing.T) {
+	// A B C
+	// D E F
+	img := picture(3, {A, B, C, D, E, F})
+	a := context.temp_allocator
+	expect_pixels(t, image.cut_out(img, 1, 1, true, a), 2, {A, C, D, F}, "the middle column")
+	expect_pixels(t, image.cut_out(img, 0, 1, false, a), 3, {D, E, F}, "the first row")
+	expect_pixels(t, image.cut_out(img, 2, 9, true, a), 2, {A, B, D, E}, "a band past the edge")
+	expect_pixels(t, image.cut_out(img, 1, 0, true, a), 3, {A, B, C, D, E, F}, "no band")
+	testing.expect_value(t, image.cut_out(img, 0, 3, true, a).width, 0)
+}
+
+@(test)
+trim_bounds_finds_what_is_not_the_border :: proc(t: ^testing.T) {
+	// a 5 x 4 picture of A with B and C inside: (1, 1) and (3, 2)
+	img := image.create(5, 4, A, context.temp_allocator)
+	pixel_set(img, 1, 1, B)
+	pixel_set(img, 3, 2, C)
+	testing.expect_value(t, image.trim_bounds(img), image.Rect{1, 1, 3, 2})
+	// (B is 30 from A in each channel: within a tolerance of 30 only C is left)
+	testing.expect_value(t, image.trim_bounds(img, 30), image.Rect{3, 2, 1, 1})
+	testing.expect_value(t, image.trim_bounds(image.create(4, 4, A, context.temp_allocator)), image.Rect{})
+	// (a corner that is not the border's colour: nothing is trimmed)
+	pixel_set(img, 0, 0, B)
+	testing.expect_value(t, image.trim_bounds(img), image.Rect{0, 0, 5, 4})
+}
+
+@(test)
+edge_mean_averages_the_edge :: proc(t: ^testing.T) {
+	// a 4 x 4 picture of A with an inside of RED: the edge of the whole picture is A alone
+	img := image.create(4, 4, A, context.temp_allocator)
+	image.fill_rect(img, {1, 1, 2, 2}, RED)
+	testing.expect_value(t, image.edge_mean(img, {0, 0, 4, 4}), A)
+	// (the edge of the 2 x 2 inside is RED; of a 3 x 3 from the corner: 5 of A, 3 of RED)
+	testing.expect_value(t, image.edge_mean(img, {1, 1, 2, 2}), RED)
+	m := image.edge_mean(img, {0, 0, 3, 3})
+	testing.expect_value(t, m[3], 255)
+	testing.expect_value(t, m[0], u8((5 * 10 + 3 * 255 + 4) / 8))
+	testing.expect_value(t, image.edge_mean(img, {9, 9, 2, 2}), image.TRANSPARENT)
+}
+
+@(test)
 colours_are_exact :: proc(t: ^testing.T) {
 	half_red := image.Color{255, 0, 0, 128}
 	img := picture(2, {RED, half_red, image.WHITE, image.BLACK})

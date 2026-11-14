@@ -110,6 +110,16 @@ draw.path_stroke(dc, &p, 2, outline)    // round ends and joins, even in a trans
 if draw.path_contains(&p, pointer) { ... }
 ```
 
+`draw.path_dash(&p, pattern, offset)` gives a new path of the dashes of `p`: the lengths drawn and skipped in turn, as
+SVG's `stroke-dasharray` (an odd count is read twice). A length drawn of 0 is a dot, round and as wide as the stroke.
+Stroke the result; a closed contour is dashed across its last line too.
+
+```odin
+dashed := draw.path_dash(&p, {3 * w, 2 * w}, allocator = context.temp_allocator)   // dashes
+dotted := draw.path_dash(&p, {0, 2 * w}, allocator = context.temp_allocator)       // dots
+draw.path_stroke(dc, &dashed, w, color)
+```
+
 A contour wound the other way is a hole. A path is built once and drawn at every frame: the curves are not worked out again. `draw.bezier` strokes one cubic curve in a call; `bezier_cubic_at` and `bezier_quad_at` give a point of a curve, for what moves along one.
 
 A filled path is a polygon clip: a pixel's cost grows with its points, up to 4096 points in all. It is for icons, charts and shapes of an interface. A drawing of thousands of shapes belongs on a canvas (`render.canvas_*`, [canvas.md](canvas.md)).
