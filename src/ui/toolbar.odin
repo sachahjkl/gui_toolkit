@@ -26,6 +26,11 @@ import "../platform"
 // A group's width is measured where it is built (natural_width, before the layout: in the bar, or in the panel) and kept;
 // a folded group is measured again each time its panel is open. The bar is a row: `next` gives its size, its children are
 // centred across it.
+//
+// A group may be made of items (`if ui.toolbar_item(id) { ... }` in its block): the bar then folds the group item by
+// item, its last item first, and folds the group whole only once all its items are folded and it still does not fit. A
+// folded item is built in the panel, in a row of its group; the rest of the group stays in the bar, so a wide group of
+// properties loses its last ones, not all of them, and no gap is left where it was.
 
 // What a group of a tool bar is to its folding.
 Toolbar_Group_Options :: struct {
@@ -51,12 +56,23 @@ Toolbar_Memory :: struct {
 @(private)
 Toolbar_Group_Memory :: struct {
 	key:      Key,
-	width:    f32,    // what the caller builds in it, natural (0: not measured yet)
+	width:    f32,    // what the caller builds in it, natural (0: not measured yet), as last built (its folded items not in it)
+	rest:     f32,    // the part of `width` that is not an item
 	sep:      f32,    // its separator's width in the bar (0: none)
 	priority: int,
 	pinned:   bool,
 	folded:   bool,   // in this build
 	seen:     u64,    // the build that last built it
+	items:    [dynamic]Toolbar_Item_Memory,   // in the order the last build built them
+}
+
+// An item of a group (toolbar_item): it folds on its own.
+@(private)
+Toolbar_Item_Memory :: struct {
+	key:    Key,
+	width:  f32,    // natural, where it was last built
+	folded: bool,   // in this build (its group in the bar)
+	seen:   u64,
 }
 
 // The tool bar being built (State.toolbar).
@@ -72,8 +88,14 @@ Toolbar_Build :: struct {
 	side:     f32,    // the "…" button's side
 	order:    int,    // the groups built so far
 	group:    int,    // the group being built (its index in the memory)
+	group_id: string, // ...its id (the caller's, for this build)
 	in_panel: bool,   // ...in the panel
 	inner:    ^Box,   // ...its box of what the caller builds
+	items:    int,    // ...its items built so far
+	row, row_outer: ^Box,   // ...its row of folded items in the panel (what they are built in, and the row), once built
+	item:     int,    // the item being built (its index in its group's memory)
+	item_box: ^Box,
+	item_in_panel: bool,
 }
 
 // Beside the "…" button, a panel row's margin at its ends and above and below, a separator's room on each side, in ems.
@@ -114,16 +136,19 @@ toolbar :: proc(id: string, labels := Toolbar_Labels{}) -> bool {
 	return true
 }
 
-// Folds the groups that do not fit, the lowest priority first (of two alike the later one): the bar's width in the last
-// layout, less what is not a group, less the "…" button once one folds. A bar not laid out yet folds nothing. True: one
-// folded.
+// Folds what does not fit, the lowest priority first (of two alike the later group): a group of items item by item, its
+// last first, then the group whole; a group without items whole. Against the bar's width in the last layout, less what
+// is not a group, less the "…" button once one folds. A bar not laid out yet folds nothing. True: one folded.
 @(private = "file")
 toolbar_fold :: proc(mem: ^Toolbar_Memory, bar: ^Box, more_w: f32) -> bool {
-	for &g in mem.groups { g.folded = false }
+	for &g in mem.groups {
+		g.folded = false
+		for &it in g.items { it.folded = false }
+	}
 	avail := bar.size.x - 2 * border_inset(bar)
 	if bar.first_build == gs().build_index || avail <= 0 { return false }
 	need := mem.fixed
-	for g in mem.groups { need += g.width + g.sep }
+	for g in mem.groups { need += toolbar_group_need(g) }
 	if need <= avail + 0.5 { return false }
 	// (the later first, then by priority, lowest first: an insertion sort keeps the order of equals)
 	n := len(mem.groups)
@@ -139,11 +164,27 @@ toolbar_fold :: proc(mem: ^Toolbar_Memory, bar: ^Box, more_w: f32) -> bool {
 		if need <= avail + 0.5 { break }
 		g := &mem.groups[i]
 		if g.pinned { continue }
+		// (its items, the last first: what stays in the bar is its first ones)
+		#reverse for &it in g.items {
+			if need <= avail + 0.5 { break }
+			it.folded = true
+			need -= it.width
+			if !folded { need += more_w; folded = true }
+		}
+		if need <= avail + 0.5 { break }
 		g.folded = true
-		need -= g.width + g.sep
+		need -= g.rest + g.sep
 		if !folded { need += more_w; folded = true }
 	}
 	return folded
+}
+
+// The room a group takes in the bar with nothing of it folded: its separator, what is not an item, its items.
+@(private = "file")
+toolbar_group_need :: proc(g: Toolbar_Group_Memory) -> f32 {
+	need := g.sep + g.rest
+	for it in g.items { need += it.width }
+	return need
 }
 
 // Escape, or a press outside the panel and its "…" button (as the last build laid them out): the panel closes.
@@ -187,7 +228,7 @@ toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 	g := &mem.groups[idx]
 	g.priority, g.pinned, g.seen = o.priority, o.pinned, s.build_index
 	g.sep = o.separator ? toolbar_separator_width(em) : 0
-	tb.group = idx
+	tb.group, tb.group_id, tb.items, tb.row, tb.row_outer = idx, id, 0, nil, nil
 	if g.pinned && tb.folded && tb.more == nil { toolbar_more(s, tb, mem, em) }
 	if !g.folded {
 		tb.in_panel = false
@@ -225,9 +266,25 @@ toolbar_group_end :: proc(built: bool) {
 	mem := &s.toolbars[tb.key]
 	em := font_size()
 	pop_parent()   // its inner box
-	// (measured as the layout will lay it out, wherever it is: the bar's room for it is that and its separator)
-	mem.groups[tb.group].width = natural_width(tb.inner)
+	// (measured as the layout will lay it out, wherever it is: the bar's room for it is that and its separator; what is
+	// not an item is that less the items built in it)
+	g := &mem.groups[tb.group]
+	g.width = natural_width(tb.inner)
+	inside: f32
+	for i := len(g.items) - 1; i >= 0; i -= 1 {
+		it := g.items[i]
+		if it.seen != s.build_index { ordered_remove(&g.items, i); continue }
+		if tb.in_panel || !it.folded { inside += it.width }
+	}
+	g.rest = max(0, g.width - inside)
 	tb.inner = nil
+	// (the row of its folded items, in the panel: its end's margin)
+	if tb.row_outer != nil {
+		push_parent(tb.row_outer)
+		spacer(px(math.round(em * TOOLBAR_ROW_PAD_EM)))
+		pop_parent()
+		tb.row, tb.row_outer = nil, nil
+	}
 	if !tb.in_panel {
 		pop_parent()   // the group
 		return
@@ -251,7 +308,10 @@ toolbar_end :: proc() {
 	if tb.folded && tb.more == nil { toolbar_more(s, tb, mem, em) }
 	pop_parent()   // the bar
 	for i := len(mem.groups) - 1; i >= 0; i -= 1 {
-		if mem.groups[i].seen != s.build_index { ordered_remove(&mem.groups, i) }
+		if mem.groups[i].seen != s.build_index {
+			delete(mem.groups[i].items)
+			ordered_remove(&mem.groups, i)
+		}
 	}
 	total, groups: f32
 	for c := tb.bar.first; c != nil; c = c.next {
@@ -263,6 +323,95 @@ toolbar_end :: proc() {
 	mem.panel = tb.panel != nil && mem.open ? tb.panel.key : 0
 	if tb.more == nil { mem.more = 0 }
 	s.toolbar = {}
+}
+
+// `if toolbar_item(id) { ... }`, in a toolbar_group's block: a part of the group that folds on its own (toolbar_fold: the
+// group's last item first). Its block builds it in the bar, or in the panel, in its group's row, while the panel is open.
+// False: folded, the panel closed.
+@(require_results, deferred_out = toolbar_item_end)
+toolbar_item :: proc(id: string) -> bool {
+	s := gs()
+	tb := &s.toolbar
+	assert(tb.active && tb.inner != nil, "toolbar_item: outside a tool bar's group")
+	mem := &s.toolbars[tb.key]
+	g := &mem.groups[tb.group]
+	ikey := key_from_string(g.key, id)
+	// (kept in the order the caller builds them: the fold's "the last first" is that order)
+	idx := -1
+	for it, i in g.items { if it.key == ikey { idx = i; break } }
+	if idx < 0 {
+		append(&g.items, Toolbar_Item_Memory{key = ikey})
+		idx = len(g.items) - 1
+	}
+	if idx != tb.items && tb.items < len(g.items) {
+		g.items[idx], g.items[tb.items] = g.items[tb.items], g.items[idx]
+		idx = tb.items
+	}
+	tb.items += 1
+	it := &g.items[idx]
+	it.seen = s.build_index
+	tb.item = idx
+	tb.item_in_panel = false
+	if tb.in_panel || !it.folded {
+		next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
+		tb.item_box = build_box({}, fmt.tprintf("###ti_%s", id))
+		push_parent(tb.item_box)
+		return true
+	}
+	if !mem.open { return false }
+	row := toolbar_item_row(s, tb, mem, font_size())
+	tb.item_in_panel = true
+	push_parent(s.root)
+	push_tags_isolated("floating")
+	push_style_copy()
+	push_parent(row)
+	next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
+	tb.item_box = build_box({}, fmt.tprintf("###ti_%s", id))
+	push_parent(tb.item_box)
+	return true
+}
+
+@(private)
+toolbar_item_end :: proc(built: bool) {
+	if !built { return }
+	s := gs()
+	tb := &s.toolbar
+	mem := &s.toolbars[tb.key]
+	pop_parent()   // the item
+	mem.groups[tb.group].items[tb.item].width = natural_width(tb.item_box)
+	tb.item_box = nil
+	if !tb.item_in_panel { return }
+	pop_parent()   // its group's row
+	pop(&s.style_stack)
+	pop_tags_isolated()
+	pop_parent()   // the root
+	tb.item_in_panel = false
+}
+
+// The panel's row of the folded items of the group being built: made at its first folded item, its start's margin in it
+// (toolbar_group_end adds its end's).
+@(private = "file")
+toolbar_item_row :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f32) -> ^Box {
+	if tb.row != nil { return tb.row }
+	panel := toolbar_panel(s, tb, mem, em)
+	push_parent(s.root)
+	push_tags_isolated("floating")
+	push_style_copy()
+	push_parent(panel)
+	tall := children_sum()
+	tall.least = tb.side + 2 * math.round(em * TOOLBAR_ROW_GAP_EM)
+	next({width = children_sum(), height = tall, axis = .X, cross = .Center})
+	tb.row_outer = build_box({}, fmt.tprintf("###tpi_%s", tb.group_id))
+	push_parent(tb.row_outer)
+	spacer(px(math.round(em * TOOLBAR_ROW_PAD_EM)))
+	next({width = children_sum(), height = px(tb.side), axis = .X, cross = .Center})
+	tb.row = build_box({}, "###in")
+	pop_parent()   // the row
+	pop_parent()   // the panel
+	pop(&s.style_stack)
+	pop_tags_isolated()
+	pop_parent()   // the root
+	return tb.row
 }
 
 // The "…" button: a click opens the panel of the folded groups, or closes it.

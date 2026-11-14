@@ -76,7 +76,10 @@ destroy :: proc(s: ^State) {
 	delete(s.wheel_rest)
 	line_edit_destroy(&s.number_edit)
 	delete(s.timers)
-	for _, m in s.toolbars { delete(m.groups) }
+	for _, m in s.toolbars {
+		for g in m.groups { delete(g.items) }
+		delete(m.groups)
+	}
 	delete(s.toolbars)
 	press_data_destroy(s)
 	delete(s.tag_sets)

@@ -137,6 +137,63 @@ a_toolbar_folds_what_does_not_fit :: proc(t: ^testing.T) { unwatched.run(t, proc
 	testing.expect(t, !ui.toolbar_menu_open("bar"), "Escape closes it")
 }) }
 
+// A group of items folds item by item, its last first: at a width where it fits but for its last items, only those fold,
+// the others stay in the bar, and no room is left that the first folded item would fill. A folded item works in the panel.
+@(test)
+a_toolbar_folds_a_group_item_by_item :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	ITEMS :: 6
+	Run :: struct { clicks: int }
+	r := Run{}
+	s := session.start(t, {size = {1200, 300}, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.px(40)})
+		if ui.toolbar("bar") {
+			if ui.toolbar_group("tools", {priority = 2}) {
+				for i in 0 ..< 3 { ui.button(fmt.tprintf("a%d", i), "Outil") }
+			}
+			if ui.toolbar_group("props", {separator = true}) {
+				for i in 0 ..< ITEMS {
+					if ui.toolbar_item(fmt.tprintf("i%d", i)) {
+						if ui.button(fmt.tprintf("p%d", i), fmt.tprintf("Propriété %d", i)).clicked { r.clicks += 1 }
+					}
+				}
+			}
+			ui.spacer(ui.fill())
+			if ui.toolbar_group("end", {pinned = true}) { ui.button("done", "Terminé") }
+		}
+	}})
+	session.frames(s, 3)
+	for i in 0 ..< ITEMS { testing.expectf(t, session.find(s, fmt.tprintf("p%d", i)) != nil, "room for all: p%d in the bar", i) }
+	testing.expect(t, session.find(s, "toolbar_more") == nil, "no \"…\"")
+	// (narrower by the room left and a item and a half: the last items fold, not the group)
+	last := session.get(s, fmt.tprintf("p%d", ITEMS - 1))
+	slack := session.get(s, "done").rect.min.x - last.rect.max.x
+	session.resize(s, {int(1200 - slack - 1.5 * last.size.x), 300})
+	session.frames(s, 4)
+	bar := session.get(s, "bar")
+	testing.expect(t, session.find(s, "toolbar_more") != nil, "its \"…\" button")
+	testing.expect(t, session.find(s, "a0") != nil && session.find(s, "p0") != nil, "the tools and the first items stay")
+	testing.expect(t, session.find(s, fmt.tprintf("p%d", ITEMS - 1)) == nil, "the last item folded")
+	shown := 0
+	for i in 0 ..< ITEMS {
+		if session.find(s, fmt.tprintf("p%d", i)) == nil { break }
+		shown += 1
+	}
+	for i in shown ..< ITEMS { testing.expectf(t, session.find(s, fmt.tprintf("p%d", i)) == nil, "folded from the last: p%d too", i) }
+	testing.expectf(t, shown >= ITEMS - 3, "only the last items fold: %d shown", shown)
+	if shown == 0 { return }
+	kept := session.get(s, fmt.tprintf("p%d", shown - 1))
+	testing.expect(t, holds(bar, kept), "the items kept are in the bar")
+	gap := session.get(s, "toolbar_more").rect.min.x - kept.rect.max.x
+	testing.expectf(t, gap < last.size.x + 2 * kept.font_size, "no room left that an item would fill: %v px", gap)
+	// (the folded items in the panel, working)
+	session.click(s, "toolbar_more")
+	folded := session.wait_box(s, fmt.tprintf("p%d", ITEMS - 1))
+	testing.expect(t, folded.rect.min.y >= bar.rect.max.y, "built in the panel, under the bar")
+	session.click(s, fmt.tprintf("p%d", ITEMS - 1))
+	testing.expect_value(t, r.clicks, 1)
+}) }
+
 // A popover narrower than what is in it grows to it.
 @(test)
 a_popover_grows_to_what_is_in_it :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

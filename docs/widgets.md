@@ -138,11 +138,20 @@ pinned group; a click opens a panel under it where each folded group is a row, b
 works there as in the bar. A press outside the panel, or Escape, closes it; `ui.toolbar_menu_open(id)` says whether it
 is open (a program's own Escape waits). A group's width is measured where it is built (`natural_width`) and kept.
 
+A group may be made of items: `if ui.toolbar_item(id) { ... }` in its block. The bar then folds that group item by item,
+its last item first, and folds it whole only once all its items are folded and it still does not fit. A folded item is
+built in the panel, in a row of its group, and works there; the group's other items stay in the bar. A wide group of
+properties so loses its last ones, not all of them, and leaves no empty room in the bar. Order the items from the most
+needed to the least.
+
 ```odin
 ui.next({width = ui.fill(), height = ui.px(bar_h)})
 if ui.toolbar("editor_bar") {
     if ui.toolbar_group("tools", {priority = 2}) { ... }
-    if ui.toolbar_group("props", {separator = true}) { ... }   // folds first
+    if ui.toolbar_group("props", {separator = true}) {        // folds first, its last item first
+        if ui.toolbar_item("colours") { ... }
+        if ui.toolbar_item("width") { ... }
+    }
     ui.spacer(ui.fill())
     if ui.toolbar_group("acts", {priority = 1}) { ... }
     if ui.toolbar_group("end", {pinned = true}) { ... }        // Cancel, Done: always shown
