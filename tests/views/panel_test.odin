@@ -685,6 +685,28 @@ a_stack_maximises_minimises_and_closes :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.view_is_open(&r.views, "term") && !ui.view_is_open(&r.views, "term", "t1"), "both tabs closed")
 }
 
+// A floating window with no rect opens centred over the program's content, not over the whole window: with a panel at
+// the left, its middle is the content's middle, across and down, and it does not cover the panel.
+@(test)
+a_floating_window_opens_over_the_content :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side")
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	append(&r.want, "float")
+	frame := wait_built(s, "internal_view_float")
+	if frame == nil { return }
+	session.frames(s, 2)
+	frame = built(s, "internal_view_float")
+	content := built(s, "views_content")
+	zone := built(s, "view_zone_Left")
+	if frame == nil || content == nil || zone == nil { testing.expect(t, false, "the window, the content and the zone"); return }
+	mid :: proc(r: ui.Rect) -> [2]f32 { return (r.min + r.max) * 0.5 }
+	d := mid(frame.rect) - mid(content.rect)
+	testing.expectf(t, abs(d.x) <= 2 && abs(d.y) <= 2, "centred over the content: %v in %v", frame.rect, content.rect)
+	testing.expectf(t, frame.rect.min.x >= zone.rect.max.x, "not over the panel: %v, the zone %v", frame.rect, zone.rect)
+}
+
 // view_size: this opening's dialog as wide as asked, past DIALOG_MAX_WIDTH_EM (a viewer that hugs its picture).
 @(test)
 a_dialog_takes_the_size_of_its_opening :: proc(t: ^testing.T) {

@@ -175,8 +175,9 @@ no scrim, the page stays usable and keeps its keys.
   bottom right corner has the resize grip.
 - It stays inside the window: a window made smaller moves it in, its remembered rect unchanged.
 - Its rect is remembered (`internal=`, logical pixels) when a move or a resize is let go. With none, it opens where the
-  dialog was, else centred, as wide as what is in it asks (`width_em` at least: measured unseen with a dialog's
-  measure, `natural_width`), as tall as what is in it.
+  dialog was, else centred over the program's content (the content of `views_frame`, as its last layout made it: not
+  over the panels; the whole window without a frame), across and down, as wide as what is in it asks (`width_em` at
+  least: measured unseen with a dialog's measure, `natural_width`), as tall as what is in it.
 - **What is in it is never cut across.** Whatever its rect (the memory's, a dialog's, a panel's, the user's resize),
   it is never narrower than what is in it on one line: a label stays whole. Its height is the user's: what does not
   fit is clipped, and the program's scroll regions scroll. A `form_row`'s label is at least its words on one line

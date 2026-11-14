@@ -964,8 +964,12 @@ is the terminal whose view has the focus.
   the remembered rect is not changed.
 - Its rect is in logical pixels from the owner's top left (`internal=` in the memory), written when a move or a resize
   is let go. With no rect remembered, it opens where the dialog was (Detach, or a drag of the dialog's header), else
-  centred, as wide as what is in it asks (`width_em` at least), as tall as what is in it: its height is taken from its
-  first settled layout.
+  centred over the program's content (`view_content_area`: the content leaf of the window's `views_frame`, its last
+  layout; the whole window without a frame), across and down, as wide as what is in it asks (`width_em` at least), as
+  tall as what is in it: its height is taken from its first settled layout. Its unseen builds centre it again once
+  its width and its height are known, so the frame that shows it is where it stays. Refused: a fixed share of the
+  window's height (VIEW_INTERNAL_TOP, 15 %: it covered the page's heading) and the whole window's centre (it covered
+  the panels).
 - **Its least width is what is in it on one line** (`view_internal_fit`, each build before the layout: the dialog's
   measure, `natural_width`, kept as `View_Record.inatural`). One that opened with no rect grows to it, centred, during
   its unseen builds (`ifit`); any other rect (the memory's, the dialog's or the panel's it came from) is widened to it;

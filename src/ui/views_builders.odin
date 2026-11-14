@@ -393,7 +393,8 @@ view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
 }
 
 // Where the internal window is this frame, in window pixels: its rect (what the user made it), else the memory's, else
-// centred at its width, as tall as what is in it (a height of 0). Kept inside the window, the rect itself unchanged.
+// centred over the program's content (view_content_area), as tall as what is in it (a height of 0). Kept inside the
+// window, the rect itself unchanged.
 @(private = "file")
 view_internal_place :: proc(vs: ^Views, r: ^View_Record, em: f32) -> Rect {
 	s := gs()
@@ -407,9 +408,11 @@ view_internal_place :: proc(vs: ^Views, r: ^View_Record, em: f32) -> Rect {
 		} else {
 			w := math.round((r.kind.o.width_em > 0 ? r.kind.o.width_em : DIALOG_WIDTH_EM) * em)
 			hh := math.round(r.kind.o.height_em * em)
-			x := math.round((win.x - w) * 0.5)
-			y := math.round(win.y * VIEW_INTERNAL_TOP)
-			r.irect = {{x, y}, {x + w, y + hh}}
+			// (over the content, not the whole window: the panels stay seen; its unseen builds centre it again once its
+			// width and its height are known, view_internal_fit)
+			r.iarea = view_content_area(vs, s)
+			r.irect = view_centred(r.iarea, w, hh)
+			if hh <= 0 { r.irect.max.y = r.irect.min.y }
 			r.ifit = true   // (width_em is its least: its unseen builds widen it to what is in it)
 		}
 	}
@@ -424,7 +427,7 @@ view_internal_place :: proc(vs: ^Views, r: ^View_Record, em: f32) -> Rect {
 // In the build, before its layout: what is in the window needs `need` on one line (natural_width, the measure of a
 // dialog that grows to what is in it: a label on one line, a row of controls, what has a width of its own). That is its
 // least width: a label the user must read is never cut. A window that opened with no rect of its own (r.ifit, until it
-// shows) grows to it, centred again; any other (the memory's, the dialog's or the panel's rect it came from, the user's
+// shows) grows to it, centred again over the content (r.iarea), at its height once a layout gave it one; any other (the memory's, the dialog's or the panel's rect it came from, the user's
 // resize) is never narrower than it. Its height is the user's: what does not fit is clipped (the program's scroll
 // regions scroll). Returns its width now.
 @(private = "file")
@@ -436,22 +439,47 @@ view_internal_fit :: proc(r: ^View_Record, frame: ^Box, w: f32) -> f32 {
 	}
 	need = min(math.ceil(need + 2 * border_inset(frame)), s.window_size.x)
 	r.inatural = need
-	if w >= need { return w }
 	if r.ifit {
-		// (its first width: centred at the width of what is in it)
-		x := math.round((s.window_size.x - need) * 0.5)
-		r.irect = {{x, r.irect.min.y}, {x + need, r.irect.max.y}}
-		frame.fixed_pos.x = x
-	} else {
-		r.irect.max.x = r.irect.min.x + need
-		frame.fixed_pos.x = min(frame.fixed_pos.x, max(s.window_size.x - need, 0))
+		// (its first place: centred over the content at the width of what is in it, and at its height once a layout
+		// gave it one: the last unseen layout's)
+		nw := max(w, need)
+		hh := r.irect.max.y - r.irect.min.y
+		h := hh > 0 ? hh : frame.rect.max.y - frame.rect.min.y
+		at := view_centred(r.iarea, nw, h)
+		if h <= 0 { at.min.y = r.irect.min.y }   // (no height known yet: where it was put)
+		r.irect = {at.min, {at.min.x + nw, at.min.y + hh}}
+		frame.fixed_pos = at.min
+		frame.pref[.X] = px(nw)
+		return nw
 	}
+	if w >= need { return w }
+	r.irect.max.x = r.irect.min.x + need
+	frame.fixed_pos.x = min(frame.fixed_pos.x, max(s.window_size.x - need, 0))
 	frame.pref[.X] = px(need)
 	return need
 }
 
-// Where an internal window of no rect opens: its top at this share of the window's height.
-@(private = "file") VIEW_INTERNAL_TOP :: 0.15
+// The program's content in window `s` (the frame's content leaf, views_frame, as its last layout made it), where an
+// internal window of no rect opens: over it, not over the panels. No frame built: the whole window.
+@(private = "file")
+view_content_area :: proc(vs: ^Views, s: ^State) -> Rect {
+	whole := Rect{{0, 0}, s.window_size}
+	sp, ok := vs.spaces[""]
+	if !ok || sp.state != s || !sp.has_content || sp.built + 1 < s.build_index { return whole }
+	b := s.boxes[sp.content] or_else nil
+	if b == nil || b.rect.max.x - b.rect.min.x <= 0 || b.rect.max.y - b.rect.min.y <= 0 { return whole }
+	return clip_rect(b.rect, whole)
+}
+
+// A rect of `w` × `h` centred in `area` (its top left at the area's when it does not fit there; h 0: centred as a
+// point). Whole pixels.
+@(private = "file")
+view_centred :: proc(area: Rect, w, h: f32) -> Rect {
+	aw, ah := area.max.x - area.min.x, area.max.y - area.min.y
+	x := math.round(area.min.x + max((aw - w) * 0.5, 0))
+	y := math.round(area.min.y + max((ah - max(h, 0)) * 0.5, 0))
+	return {{x, y}, {x + w, y + max(h, 0)}}
+}
 
 // The edges and corners of an internal window: the side held follows the pointer, the opposite one stays.
 @(private = "file")
