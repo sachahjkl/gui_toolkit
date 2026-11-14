@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.253.1] - 2026-11-14
+
+### Fixed
+- **A program built by the toolkit starts on Windows again, for real this time**: 0.252.1 changed only the manifest's identity, and Windows still refused to start the programs (error 14001). The manifest the builder writes is now, word for word, the one papier and Wren started with: version 1.0.0.0 on amd64, run as the user, Windows 10 and 11, per-monitor DPI. The dependency on Common Controls 6, `longPathAware` and the UTF-8 code page are gone: nothing in the toolkit needs them.
+
 ## [0.253.0] - 2026-11-14
 
 ### Added
@@ -3433,6 +3438,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.253.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.1
 [0.253.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.0
 [0.252.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.252.1
 [0.252.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.252.0
