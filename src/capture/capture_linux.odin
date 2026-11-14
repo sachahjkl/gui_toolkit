@@ -105,7 +105,7 @@ platform_windows_have_rects :: proc(s: ^Session) -> bool {
 @(private)
 platform_output :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
 	impl := (^Linux_Impl)(s.impl)
-	if impl.wl != nil { impl.wl.order = s.order }
+	if impl.wl != nil { impl.wl.order, impl.wl.cursor = s.order, s.cursor }
 	switch s.backend {
 	case .Wayland_Image_Copy, .Wayland_Screencopy: return wl_output_frame(impl.wl, id, allocator)
 	case .Portal, .X11:
@@ -126,7 +126,7 @@ platform_output :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 @(private)
 platform_window :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
 	impl := (^Linux_Impl)(s.impl)
-	if impl.wl != nil { impl.wl.order = s.order }
+	if impl.wl != nil { impl.wl.order, impl.wl.cursor = s.order, s.cursor }
 	switch s.backend {
 	case .Wayland_Image_Copy: return wl_window_frame(impl.wl, id, allocator)
 	case .X11:
@@ -142,7 +142,7 @@ platform_window :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 @(private)
 platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
 	impl := (^Linux_Impl)(s.impl)
-	if impl.wl != nil { impl.wl.order = s.order }
+	if impl.wl != nil { impl.wl.order, impl.wl.cursor = s.order, s.cursor }
 	switch s.backend {
 	case .Wayland_Image_Copy, .Wayland_Screencopy: return wl_desktop(impl.wl, allocator)
 	case .Portal:

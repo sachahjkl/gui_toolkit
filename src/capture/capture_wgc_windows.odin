@@ -167,9 +167,9 @@ window_capture_open :: proc(c: ^Window_Capture) -> bool {
 }
 
 // One frame of the window. .Unsupported: no Windows.Graphics.Capture on this system (the caller then crops the
-// desktop). The frame's scale and origin are the caller's to set.
+// desktop). The frame's scale and origin are the caller's to set. `cursor`: the pointer in the picture (set_cursor).
 @(private)
-window_capture_frame :: proc(c: ^Window_Capture, window: win.HWND, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
+window_capture_frame :: proc(c: ^Window_Capture, window: win.HWND, allocator: runtime.Allocator, cursor: bool) -> (f: Frame, err: Error) {
 	if c.unsupported { return {}, .Unsupported }
 	if c.device == nil && !window_capture_open(c) {
 		window_capture_close(c)
@@ -229,9 +229,10 @@ window_capture_frame :: proc(c: ^Window_Capture, window: win.HWND, allocator: ru
 		closable_close(session)
 		winrt.release(session)
 	}
-	// The pointer is not part of a window's picture (Windows 10 2004 and later; before, it is drawn in).
+	// The pointer is in a window's picture only when the session asked it (Windows 10 2004 and later; before, it is
+	// always drawn in).
 	if session2 := winrt.query(session, IID_IGraphicsCaptureSession2); session2 != nil {
-		winrt.vtable(session2, IGraphicsCaptureSession2_Vtbl).put_IsCursorCaptureEnabled(session2, false)
+		winrt.vtable(session2, IGraphicsCaptureSession2_Vtbl).put_IsCursorCaptureEnabled(session2, b8(cursor))
 		winrt.release(session2)
 	}
 	if !winrt.ok(winrt.vtable(session, IGraphicsCaptureSession_Vtbl).StartCapture(session)) { return {}, .Failed }

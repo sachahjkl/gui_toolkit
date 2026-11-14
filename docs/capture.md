@@ -60,6 +60,29 @@ if ok { o := output_by_id(outs, output) }
 turned as `turn` says, on an output at `place`. The buffer once upright covers `place` exactly, so the scale is the
 ratio of the two. `tests/capture/capture_pointer_test.odin` checks it against `frame_from_buffer` for the eight turns.
 
+## The pointer in a picture
+
+The pictures of `output`, `window` and `desktop` have no pointer. `set_cursor(s, true)` asks for it in the pictures
+that follow; `set_cursor(s, false)` stops it. `cursor_support(s)` says whether the session's backend can draw it
+(`backend_draws_cursor(backend)`): where it cannot, the pictures stay without it and nothing fails.
+
+```odin
+capture.set_cursor(s, true)          // a screenshot "with the pointer"
+d, _ := capture.desktop(s)           // the pointer is in it where cursor_support(s) is true
+```
+
+| Backend | The pointer in a picture |
+|---|---|
+| `ext_image_copy_capture_v1` (Wayland) | yes: the compositor draws it (`create_session`'s `paint_cursors`) |
+| `zwlr_screencopy_v1` (Wayland) | yes: the compositor draws it (`capture_output`'s `overlay_cursor`) |
+| Portal `org.freedesktop.portal.Screenshot` | no: the portal has no option for it (`cursor_mode` is the ScreenCast portal's, for a stream) |
+| X11 | no: the root window's picture has no pointer, and XFixes' cursor image is not read |
+| Windows, an output or the desktop | yes: drawn over the picture (`GetCursorInfo`, then `DrawIconEx` on a copy of the pixels under it, so a cursor that inverts what is under it shows as on the screen) |
+| Windows, a window | yes: Windows.Graphics.Capture's `IsCursorCaptureEnabled` (Windows 10 2004 and later; before, the system always draws it) |
+
+`patch_clip(size, at, patch)` is the pure part of the Windows drawing: the part of a patch put at `at` that a picture of
+`size` holds. `tests/capture/capture_cursor_test.odin` checks it, the table of backends, and the session's choice.
+
 ## Streams
 
 A screen recorder needs frames, not pictures: `stream_open` keeps the capture of one source open, and `stream_next`
@@ -200,7 +223,8 @@ a window's rect gives the window's physical pixels.
 ### A window's picture
 
 `window` uses Windows.Graphics.Capture (Windows 10 1903 and later). It makes a `GraphicsCaptureItem` for the window, a
-free-threaded `Direct3D11CaptureFramePool` with one buffer, and a session without the pointer. It waits up to one second
+free-threaded `Direct3D11CaptureFramePool` with one buffer, and a session with the pointer only when `set_cursor` asked
+it. It waits up to one second
 for the first frame, then closes everything. The picture is the window's own content, even when other windows cover it.
 
 If Windows.Graphics.Capture is not there, `window` crops `desktop` to the window's rect. In that case, what covers the

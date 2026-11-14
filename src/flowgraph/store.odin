@@ -168,7 +168,7 @@ node_write :: proc(b: ^strings.Builder, cat: ^Catalog, n: ^Node) {
 			case .Float:        json_number(b, p.number)
 			case .Bool:         strings.write_string(b, p.number != 0 ? "true" : "false")
 			case .Color:        json_string(b, color_text(p.color))
-			case .Text, .Folder, .List: json_string(b, p.text)
+			case .Text, .Folder, .List, .Hotkey: json_string(b, p.text)
 			}
 		}
 	}
@@ -309,7 +309,7 @@ node_parse :: proc(o: json.Object, cat: ^Catalog) -> (n: Node, known: bool) {
 			if x, is_bool := v.(json.Boolean); is_bool { p.number = x ? 1 : 0 }
 		case .Color:
 			if c, read := color_parse(json_text(v)); read { p.color = c }
-		case .Text, .Folder, .List:
+		case .Text, .Folder, .List, .Hotkey:
 			if x, is_string := v.(json.String); is_string {
 				delete(p.text)
 				p.text = strings.clone(string(x))

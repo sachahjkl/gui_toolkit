@@ -338,6 +338,7 @@ Wl_Capture :: struct {
 @(private)
 Wl_State :: struct {
 	order:          Pixel_Order,   // the frames' (the session's, set before each capture)
+	cursor:         bool,          // the pointer drawn in the stills (the session's, set before each capture)
 	allocator:        runtime.Allocator,
 	lib:              Wl_Lib,
 	tables:           Wl_Tables,
@@ -992,7 +993,8 @@ capture_output_start :: proc(st: ^Wl_State, o: ^Wl_Output, c: ^Wl_Capture) {
 	c.screencopy = true
 	// (screencopy's buffer is the output's, before its transform: the output's own says how it is turned)
 	c.turn = Turn(u8(clamp(o.transform, 0, 7)))
-	c.frame = l.proxy_marshal_flags(st.screencopy, SCREENCOPY_CAPTURE_OUTPUT, &st.tables.screencopy_frame, l.proxy_get_version(st.screencopy), 0, nil, i32(0), o.proxy)
+	// (overlay_cursor: the compositor draws the pointer in when the session asked it)
+	c.frame = l.proxy_marshal_flags(st.screencopy, SCREENCOPY_CAPTURE_OUTPUT, &st.tables.screencopy_frame, l.proxy_get_version(st.screencopy), 0, nil, i32(st.cursor ? 1 : 0), o.proxy)
 	if c.frame == nil { capture_fail(c, .Failed); return }
 	l.proxy_add_listener(c.frame, &st.listeners.screencopy_frame, c)
 }
@@ -1010,8 +1012,9 @@ capture_toplevel_start :: proc(st: ^Wl_State, t: ^Wl_Toplevel, c: ^Wl_Capture) {
 capture_session_start :: proc(st: ^Wl_State, c: ^Wl_Capture) {
 	l := &st.lib
 	if c.source == nil { capture_fail(c, .Failed); return }
-	// (options 0: no pointer drawn in the picture)
-	c.session = l.proxy_marshal_flags(st.copy_manager, COPY_MANAGER_CREATE_SESSION, &st.tables.copy_session, l.proxy_get_version(st.copy_manager), 0, nil, c.source, u32(0))
+	// (paint_cursors: the compositor draws the pointer in when the session asked it; else none)
+	options := u32(st.cursor ? COPY_SESSION_PAINT_CURSORS : 0)
+	c.session = l.proxy_marshal_flags(st.copy_manager, COPY_MANAGER_CREATE_SESSION, &st.tables.copy_session, l.proxy_get_version(st.copy_manager), 0, nil, c.source, options)
 	if c.session == nil { capture_fail(c, .Failed); return }
 	l.proxy_add_listener(c.session, &st.listeners.copy_session, c)
 }

@@ -227,7 +227,9 @@ and what goes with it (getting-started.md).
 - **`own_menu`**: the program builds its own menu on a right press; else the field opens `edit_menu`.
 
 `Text_Edit_Options`: `placeholder`, `line_numbers`, `tab_indents` (Tab inserts spaces), `wrap`, `auto_height` with
-`min_lines` and `max_lines`, `highlight` (syntax colouring, text.md), `own_menu`.
+`min_lines` and `max_lines`, `highlight` (syntax colouring, text.md), `own_menu`, `enter_commits` (Enter is
+`committed` and Shift+Enter breaks the line, as in a chat box or a caption typed in place; without it Enter breaks the
+line and Ctrl+Enter is `committed`).
 
 ```odin
 ui.line_edit("###password", &app.password, {kind = .Secret, reveal = &app.shown})

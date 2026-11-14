@@ -44,6 +44,7 @@ Param_Type :: enum u8 {
 	Text,
 	Folder,   // a path; the inspector offers the system's dialog (the program opens it)
 	List,     // a text chosen from a list the program gives at run time (ui.Node_Inspector_Options.lists); "": the default
+	Hotkey,   // keys, as platform.hotkey_text words them ("Ctrl+Alt+E"); "": none. The inspector records them
 }
 
 Param_Def :: struct {

@@ -29,6 +29,7 @@ CATALOG := flowgraph.Catalog{
 			{name = "name", title = "File name", type = .Text, placeholder = "The default name"},
 			{name = "folder", title = "Folder", type = .Folder},
 			{name = "host", title = "Host", type = .List, placeholder = "The default host"},
+			{name = "keys", title = "Shortcut", type = .Hotkey},
 		}},
 		{name = "copy_text", title = "Copy text", group = "Outputs", inputs = {{name = "text", kind = TEXT}}},
 	},
@@ -139,6 +140,23 @@ the_inspector_edits_a_node_by_its_schema :: proc(t: ^testing.T) { unwatched.run(
 	again, _ := undo.redo(&r.history, r.graph)
 	r.graph = again
 	testing.expect_value(t, param_of(&r, "format").number, 1)
+}) }
+
+// A Hotkey parameter is recorded, not typed: a click arms its field, the next combination is its value (as
+// platform.hotkey_text words it), and its clear button empties it.
+@(test)
+the_inspector_records_keys :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := inspected_make()
+	defer inspected_destroy(&r)
+	s := session.start(t, {size = {520, 900}, user = &r, build = inspect_build})
+	testing.expect_value(t, param_of(&r, "keys").text, "")
+
+	session.click(s, "hotkey")
+	session.key(s, .E, {.Ctrl, .Alt})
+	testing.expect_value(t, param_of(&r, "keys").text, "Ctrl+Alt+E")
+
+	session.click(s, "clear_keys")
+	testing.expect_value(t, param_of(&r, "keys").text, "")
 }) }
 
 @(private = "file")

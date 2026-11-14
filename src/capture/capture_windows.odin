@@ -57,6 +57,7 @@ Impl :: struct {
 	factory:        ^dxgi.IFactory1,             // nil: no DXGI, GDI only
 	monitors:       [dynamic]Monitor,            // as last read (monitors_read)
 	window_capture: Window_Capture,
+	cursor:         bool,                        // the pointer drawn in the stills (the session's, set before each capture)
 }
 
 @(private = "file")
@@ -184,6 +185,7 @@ platform_windows :: proc(s: ^Session) {
 @(private)
 platform_output :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (Frame, Error) {
 	impl := (^Impl)(s.impl)
+	impl.cursor = s.cursor
 	m := monitor_find(impl, id)
 	if m == nil {
 		monitors_read(impl)
@@ -196,6 +198,7 @@ platform_output :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 @(private)
 platform_window :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (Frame, Error) {
 	impl := (^Impl)(s.impl)
+	impl.cursor = s.cursor
 	handle := win.HWND(uintptr(id))
 	if !win.IsWindow(handle) { return {}, .Gone }
 	// A minimized window draws nothing: no capture of it has a picture.
@@ -207,7 +210,7 @@ platform_window :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 	m := impl.monitors[i]
 	logical := physical_to_logical(frame, m.physical, m.logical, m.scale)
 
-	f, err := window_capture_frame(&impl.window_capture, handle, allocator)
+	f, err := window_capture_frame(&impl.window_capture, handle, allocator, impl.cursor)
 	if err == .None {
 		f.scale = m.scale
 		f.origin = {logical.x, logical.y}
@@ -227,6 +230,7 @@ platform_window :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 @(private)
 platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (Frame, Error) {
 	impl := (^Impl)(s.impl)
+	impl.cursor = s.cursor
 	monitors_read(impl)
 	if len(impl.monitors) == 0 { return {}, .Failed }
 	logical := make([]Rect, len(impl.monitors), context.temp_allocator)
@@ -358,6 +362,8 @@ output_frame :: proc(impl: ^Impl, m: ^Monitor, allocator: runtime.Allocator) -> 
 	f, ok := duplication_frame(impl, m, allocator)
 	if !ok { f, ok = gdi_frame(m.physical, allocator) }
 	if !ok { return {}, .Failed }
+	// (neither the duplication nor GDI's copy has the pointer: it is drawn in here when the session asked it)
+	if impl.cursor { pointer_paint(&f, m.physical) }
 	f.scale = m.scale
 	f.origin = {m.logical.x, m.logical.y}
 	return f, .None

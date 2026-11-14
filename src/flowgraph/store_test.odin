@@ -28,6 +28,10 @@ the_text_gives_back_the_graphs :: proc(t: ^testing.T) {
 	filter.number = 2
 	save := graph_node(g, 3)
 	name, tint, open := param(cat, save, "name"), param(cat, save, "tint"), param(cat, save, "open")
+	testing.expect_value(t, param(cat, save, "keys").text, "Ctrl+Alt+S")   // (a Hotkey's default, as a Text's)
+	keys := param(cat, save, "keys")
+	delete(keys.text)
+	keys.text = strings.clone("Ctrl+Shift+Print")
 	name.text = strings.clone("say \"hi\"\n\\ ok\x01")
 	tint.color = {1, 2, 3, 4}
 	open.number = 1

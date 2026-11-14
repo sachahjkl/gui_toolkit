@@ -83,6 +83,7 @@ Session :: struct {
 	backend:   Backend,
 	allocator: runtime.Allocator,
 	order:     Pixel_Order,       // the frames' (set_pixel_order)
+	cursor:    bool,              // the pointer drawn in the pictures, where the backend can (set_cursor)
 	outputs:   [dynamic]Output,   // as last read (outputs)
 	windows:   [dynamic]Window,   // as last read (windows)
 	impl:      rawptr,            // the backend's own state
@@ -148,6 +149,14 @@ windows_have_rects :: proc(s: ^Session) -> bool { return revive(s) && platform_w
 // channels are put in place while the system's buffer is read (Wayland), or swapped once after: a program never swaps
 // them again itself. Streams stay B, G, R, A.
 set_pixel_order :: proc(s: ^Session, order: Pixel_Order) { s.order = order }
+
+// Whether the pictures `output`, `window` and `desktop` give from now on show the pointer, where the backend can draw it
+// in (cursor_support). Off at open: a screenshot shows what is under the pointer. Streams have their own option
+// (Stream_Options.cursor).
+set_cursor :: proc(s: ^Session, on: bool) { s.cursor = on }
+
+// Whether this session's backend draws the pointer in its pictures when set_cursor asks it (backend_draws_cursor).
+cursor_support :: proc(s: ^Session) -> bool { return s != nil && backend_draws_cursor(s.backend) }
 
 // One output's picture.
 output :: proc(s: ^Session, id: u64, allocator := context.allocator) -> (f: Frame, err: Error) {

@@ -1643,6 +1643,9 @@ fr Graphe
 en node graph
 fr graphe de nœuds
 
+en No shortcut
+fr Aucun raccourci
+
 en The default
 fr Par défaut
 

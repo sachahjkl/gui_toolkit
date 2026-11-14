@@ -6,6 +6,7 @@ package ui
 //   typing, Enter (new line), Backspace / Delete (Ctrl = word), arrows (Ctrl = word), Up / Down keep the column,
 //   Home / End (line), Ctrl+Home / Ctrl+End (document), Page Up / Page Down, Shift + any move selects,
 //   Ctrl+A / C / X / V (Shift+Insert pastes too; the clipboard's text comes in a later build, paste.odin), Ctrl+Z undo, Ctrl+Y or Ctrl+Shift+Z redo, Ctrl+Enter = committed, Escape = leave the field.
+//   With its options' `enter_commits`: Enter = committed (Ctrl+Enter too), Shift+Enter = a new line.
 //   Tab moves the focus to the next widget, unless its options' `tab_indents` (then Tab inserts 4 spaces, Ctrl+Tab... leaves).
 // Mouse: click places the caret, drag selects, Shift+click extends, double-click selects a word, wheel scrolls.
 
@@ -444,6 +445,9 @@ Text_Edit_Options :: struct {
 	// The program builds its own menu on a right press (edit_menu); false: a right press opens edit_menu (Undo, Cut, Copy,
 	// Paste...), as on a line_edit.
 	own_menu:     bool,
+	// Enter is `committed` and Shift+Enter breaks the line (a message, a caption typed in place); false: Enter breaks the
+	// line and Ctrl+Enter is `committed`.
+	enter_commits: bool,
 }
 
 // Multi-line editor. Its size comes from the style stack or `next`; it scrolls when its content is larger.
@@ -479,7 +483,7 @@ text_edit :: proc(id: string, a: ^Text_Edit, o := Text_Edit_Options{}) -> (res: 
 		edit_pointer(&e)
 		if res.focused {
 			edit_paste_answer(&e)
-			edit_keys_typing(&e, o.tab_indents)
+			edit_keys_typing(&e, o.tab_indents, o.enter_commits)
 			edit_keys_moves(&e)
 			edit_keys_deleting(&e)
 			edit_keys_clipboard(&e)
@@ -617,16 +621,23 @@ edit_pointer :: proc(e: ^Edit_Build) {
 	}
 }
 
-// Typing, Enter (the indentation stays), Ctrl+Enter, Tab.
+// Typing, Enter (the indentation stays), Ctrl+Enter, Tab. `enter_commits`: Enter commits and Shift+Enter breaks the line.
 @(private="file")
-edit_keys_typing :: proc(e: ^Edit_Build, tab_indents: bool) {
+edit_keys_typing :: proc(e: ^Edit_Build, tab_indents, enter_commits: bool) {
 	s, a := e.s, e.a
 	if len(s.typed) > 0 {
 		begin_edit(a, .Insert, e.now)
 		for r in s.typed { insert(a, utf8.runes_to_string({r}, context.temp_allocator)) }
 		a.upstream = false
 	}
-	if key_press(.Return) {
+	breaks := false
+	if enter_commits {
+		if key_press(.Return) { e.res.committed = true }
+		breaks = key_press(.Return, {.Shift})
+	} else {
+		breaks = key_press(.Return)
+	}
+	if breaks {
 		begin_edit(a, .Other, e.now)
 		// keep the indentation of the current line
 		ls, _ := line_bounds(text_edit_string(a), a.cursor)

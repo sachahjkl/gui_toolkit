@@ -17,7 +17,7 @@ Fx :: struct {
 	ui_font: font.Font_Id,
 	area:  ui.Text_Edit,
 	res:   ui.Edit_Result,
-	tabs, numbers, no_clipboard: bool,
+	tabs, numbers, no_clipboard, enter_commits: bool,
 	highlight: ^ui.Text_Highlight,
 	clock: f64,
 }
@@ -61,7 +61,7 @@ frame :: proc(f: ^Fx, events: []platform.Event = nil) {
 	}
 	ui.begin_build(&f.s, p)
 	ui.next({width = ui.px(300), height = ui.px(200)})
-	f.res = ui.text_edit("###k", &f.area, {line_numbers = f.numbers, tab_indents = f.tabs, highlight = f.highlight})
+	f.res = ui.text_edit("###k", &f.area, {line_numbers = f.numbers, tab_indents = f.tabs, highlight = f.highlight, enter_commits = f.enter_commits})
 	ui.end_build()
 	free_all(context.temp_allocator)
 }
@@ -249,6 +249,27 @@ text_edit_moves :: proc(t: ^testing.T) {
 	expect_caret(t, f, 25, 25)
 	// a move is no edit
 	testing.expect(t, !f.res.changed && len(f.area.history.undo) == 0, "nothing to undo")
+}
+
+// enter_commits: Enter commits and edits nothing, Shift+Enter breaks the line (its indentation kept, as Enter's).
+@(test)
+text_edit_enter_commits :: proc(t: ^testing.T) {
+	sync.mutex_lock(&lock)
+	defer sync.mutex_unlock(&lock)
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f), "fonts") { return }
+	defer close(f)
+	f.enter_commits = true
+	start(f, "  ab")
+	tap(f, .Return)
+	testing.expect(t, f.res.committed && !f.res.changed, "Enter commits")
+	testing.expect_value(t, text(f), "  ab")
+	tap(f, .Return, {.Shift})
+	testing.expect(t, !f.res.committed && f.res.changed, "Shift+Enter edits")
+	testing.expect_value(t, text(f), "  ab\n  ")
+	tap(f, .Return, {.Ctrl})
+	testing.expect(t, f.res.committed && !f.res.changed, "Ctrl+Enter still commits")
 }
 
 @(test)

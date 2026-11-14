@@ -44,7 +44,7 @@ CATALOG := flowgraph.Catalog{
 | `Node_Def` | `name` (the file's word), `title`, `group` and `tags` (the add palette), `icon`, `inputs`, `outputs`, `params`, `place` (the program's id of where its work runs), `effect` (Skipped in a dry run), `max_count` (at most this many in a graph; 0: no limit), `min_count` (a delete leaves this many) |
 | `Port_Def` | `name`, `kind`, `multiple` (an input that takes several links), `on` (an `ACTION` output: the `Outcome` that fires it) |
 | `Param_Def` | `name` (the file's key), `title`, `type`, `lo`, `hi`, `step`, `unit`, `choices`, `default_number`, `default_text`, `default_color`, `placeholder` |
-| `Param_Type` | `Int`, `Float`, `Bool`, `Color`, `Choice` (an index in `choices`), `Text`, `Folder` (a path), `List` (a text chosen from names the program gives at run time) |
+| `Param_Type` | `Int`, `Float`, `Bool`, `Color`, `Choice` (an index in `choices`), `Text`, `Folder` (a path), `List` (a text chosen from names the program gives at run time), `Hotkey` (keys, as `platform.hotkey_text` words them: `"Ctrl+Alt+E"`; `""`: none) |
 
 `Port_Kind` is a `u8`, the same id as `ui.Graph_Port.kind`: `kind_colors[kind]` is its colour. The kind 0 is `ACTION`.
 `port_accepts(cat, from, to)` says whether an input of kind `to` takes a value of kind `from`.
@@ -187,7 +187,8 @@ events := ui.node_graph("###flow", &app.view, app.flow.nodes[:], app.flow.links[
 `ui.number` with its slider for `Int` and `Float` (bounded), a toggle for `Bool`, a segmented choice (three choices or
 fewer) or a dropdown for `Choice`, a colour button and its picker for `Color`, a text field for `Text`, a text field and
 "Choose…" for `Folder`, a dropdown of the names `o.lists(user, node, param)` gives for `List` (its first entry, the
-empty value, says `placeholder`).
+empty value, says `placeholder`), a `ui.hotkey_field` and a button that clears it for `Hotkey`. A program that holds
+global shortcuts lets them go while `ui.hotkey_recording()` (`shortcuts.hold`), or the system takes the keys recorded.
 
 It changes nothing. Its result says `changed` (the parameter, -1: none) and its new `value`; `new_step` when the change
 is of another parameter or node than the last one (a slider dragged is one undo step); `pick_folder` when a Folder's

@@ -47,6 +47,7 @@ SAMPLE := Catalog{
 			{name = "tint", title = "Tint", type = .Color, default_color = {0, 0, 0, 255}},
 			{name = "open", title = "Open it after", type = .Bool},
 			{name = "host", title = "Host", type = .List, placeholder = "The default host"},
+			{name = "keys", title = "Shortcut", type = .Hotkey, default_text = "Ctrl+Alt+S"},
 		}},
 		{name = "read_qr", title = "Read QR code", group = "Outputs", inputs = {{name = "picture", kind = PICTURE}}, outputs = {{name = "text", kind = TEXT}}},
 		{name = "copy_text", title = "Copy text", group = "Outputs", inputs = {{name = "text", kind = TEXT}}, outputs = {{name = "text", kind = TEXT}}, effect = true},

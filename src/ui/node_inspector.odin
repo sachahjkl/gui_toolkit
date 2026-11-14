@@ -2,7 +2,8 @@ package ui
 
 // The parameters of a flowgraph node as controls, drawn from its kind's schema (flowgraph.Param_Def) with no code per
 // kind: a number (Int, Float), a toggle (Bool), a colour and its picker (Color), a segmented choice or a list (Choice), a
-// text field (Text), a path and its "Choose…" (Folder), a list the program gives (List). The schema's words (titles, units,
+// text field (Text), a path and its "Choose…" (Folder), a list the program gives (List), keys recorded (Hotkey: a
+// ui.hotkey_field and a button that clears it). The schema's words (titles, units,
 // choices, placeholders) are the program's English (i18n.later), shown in the language in use; the List's names are data.
 //
 // The widget changes nothing: it returns the parameter changed and its new value, and the program applies it
@@ -20,6 +21,7 @@ import "core:strings"
 import flowgraph "../flowgraph"
 import i18n "../i18n"
 import lucide "../lucide"
+import "../platform"
 
 // What the inspector keeps between frames. Its fields are made for one node: another node (or `node` set to 0, after the
 // program changed the parameters itself: an undo) makes them again.
@@ -151,6 +153,22 @@ node_param_control :: proc(ins: ^Node_Inspector, n: ^flowgraph.Node, i: int, d: 
 			spacer(px(math.round(em * 0.4)))
 			next({width = text_size(em * 0.8), height = row_height})
 			if button("choose", i18n.tr("Choose…")).clicked { res.pick_folder = i }
+		}
+	case .Hotkey:
+		// (recorded, not typed; a program that holds global shortcuts lets them go while ui.hotkey_recording())
+		hk, _ := platform.hotkey_parse(p.text)
+		next({width = fill(), height = children_sum(), axis = .X, cross = .Center})
+		if row(id = "###hotkey_row") {
+			next({width = fill(), height = row_height})
+			if hotkey_field("###hotkey", &hk) {
+				text := platform.hotkey_text(hk)
+				if text != p.text { value.text, changed = text, true }
+			}
+			if p.text != "" {
+				spacer(px(math.round(em * 0.3)))
+				next({width = row_height, height = row_height})
+				if button("clear_keys", icon = lucide.X, o = {tip = i18n.tr("No shortcut")}).clicked { value.text, changed = "", true }
+			}
 		}
 	case .List:
 		names: []string
