@@ -44,7 +44,8 @@ packages, in the toolkit's `src` folder; they import each other by relative path
 `-subsystem:windows` gives no console: what the program prints is lost unless it is redirected
 (`Start-Process build\myapp.exe -RedirectStandardOutput out.txt -Wait`); leave it out while developing to see it.
 
-`examples/hello/main.odin` is a window as an object, `host.Host` (the `gt:host` package, above `ui` and `render`):
+`examples/hello/main.odin` is a window as an object, `host.Host` (the `gt:host` package, above `ui` and `render`; its
+package name is `tk_host`, so a program imports it as `import host "gt:host"`):
 
 ```odin
 App :: struct { shared: host.Shared, main: host.Host }          // what the windows share; one window

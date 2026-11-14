@@ -28,7 +28,10 @@
 // A rich application is no less at home here: the hooks are the parts of a frame that are its own. Several builds in a frame
 // (`builds`), a frame held back (`hold`), input taken before the interface sees it (`input`). None of this is required:
 // the way of docs/getting-started.md, each call by hand, keeps working, and a program may use both.
-package host
+//
+// Its package name is tk_host, as the toolkit's other packages with a common name: a program has its own `host` (Wren's
+// loop and tasks), and Odin wants one name per package in a program. Import it as `import host "gt:host"`.
+package tk_host
 
 import "core:fmt"
 import "core:slice"
