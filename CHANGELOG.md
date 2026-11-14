@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.255.0] - 2026-11-14
+
+### Changed
+- **`gt:host`'s package is `tk_host`**: as the toolkit's other packages with a common name, so that a program with its own `host` package (Wren's loop and tasks) can use `prefs_page`, which imports it; Odin wants one name per package in a program. A program imports it as `import host "gt:host"` (was `import "gt:host"`); nothing else changes.
+
 ## [0.254.0] - 2026-11-14
 
 ### Added
@@ -3460,6 +3465,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.255.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.0
 [0.254.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.254.0
 [0.253.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.2
 [0.253.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.1
