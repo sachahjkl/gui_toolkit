@@ -45,7 +45,7 @@ a_resource_script_from_the_project :: proc(t: ^testing.T) {
 a_manifest_from_the_project :: proc(t: ^testing.T) {
 	m := windows_manifest({name = "opencode-native", title = "opencode native", publisher = "Froment Software"}, {0, 45, 1})
 	for want in ([]string{
-		`name="FromentSoftware.OpencodeNative" version="0.45.1.0"`, "PerMonitorV2", "<activeCodePage", ">UTF-8<",
+		`name="FromentSoftware.OpencodeNative" version="1.0.0.0" processorArchitecture="amd64"`, "PerMonitorV2", "<activeCodePage", ">UTF-8<",
 		"<longPathAware", `name="Microsoft.Windows.Common-Controls" version="6.0.0.0"`, `level="asInvoker"`,
 	}) {
 		testing.expectf(t, strings.contains(m, want), "the manifest has %s", want)

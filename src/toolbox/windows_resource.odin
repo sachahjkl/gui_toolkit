@@ -53,14 +53,16 @@ windows_manifest :: proc(p: Project, v: [3]int, allocator := context.temp_alloca
 	}
 	identity := strings.to_string(b)
 	if identity == "" { identity = "program" }
-	return fmt.aprintf(WINDOWS_MANIFEST, identity, v[0], v[1], v[2], allocator = allocator)
+	return fmt.aprintf(WINDOWS_MANIFEST, identity, allocator = allocator)
 }
 
-// (the assembly's name, then its version's three numbers)
+// (the assembly's name. Its version is 1.0.0.0 and its architecture amd64, as in Wren's manifest: a program's own
+// version there (0.21.0.0) and the "*" architecture made Windows refuse to start the program, error 14001
+// ERROR_SXS_CANT_GEN_ACTCTX. The program's version is in the VERSIONINFO, where Explorer reads it.)
 @(private = "file")
 WINDOWS_MANIFEST :: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="%s" version="%d.%d.%d.0" processorArchitecture="*"/>
+  <assemblyIdentity type="win32" name="%s" version="1.0.0.0" processorArchitecture="amd64"/>
   <dependency>
     <dependentAssembly>
       <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
