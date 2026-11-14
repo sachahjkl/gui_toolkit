@@ -9,6 +9,9 @@
 
 ## Next
 
+- **The notification test is deterministic.** `linux_desktop_test.a_notification_is_clicked_and_ends` failed once in
+  the CI and passed on the same code: a notification after one that ended replaced it. Find the race between the
+  `Notify` reply and the `NotificationClosed` signal on the test bus, so the CI never fails without a fault.
 - **Wren moves to views.** Wren's bookmark, vault and security-key dialogs become views, as in the other programs.
   Intent: [src/md/features/views.md](src/md/features/views.md), sections 1 and 7.
 - **No program blocks its interface's thread.** Each program's tests run its windows with the toolkit's blocking check
@@ -64,11 +67,5 @@
   renderer after a few tests in one process. Freed whole, the tests of a program's windows run on both systems.
 - **Demo states injected.** A demo mode that injects states that need an account (an unlocked vault, a PIN asked), so
   a capture needs no temporary code change.
-- **Test pitfalls written down.** Running `odin test` by hand on a package that draws text fails without the test
-  runner's embedded fonts: the testing guide says so, or the runner makes it impossible to miss.
-- **A naming rule for packages.** The contributing guide states it: a package whose name a core package or a program
-  can take is named with the toolkit's prefix.
-- **Windows hidden files in the file browser.** The file browser hides only names that start with "." on Windows; it
-  reads the system's hidden attribute instead. See [src/md/features/file-browser.md](src/md/features/file-browser.md).
 - **A reduced wgpu-native, only if it comes ready-made.** Studied and declined: WGSL and Vulkan only save about 1 MB for
   a harder build. Revisit only if gfx-rs publishes a reduced build.

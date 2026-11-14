@@ -5,6 +5,26 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.261.1] - 2026-11-14
+
+### Added
+- **`ui.view_dock_line` says where a dock handle's rule is drawn.** A program's line that goes on across its title bar or its status bar takes its place from it, so the two meet on one pixel column during a drag, after it and at every scale. `ui.splitter_line` and `ui.splitter_line_width` give any handle's rule the same way.
+
+### Fixed
+- **A splitter's rule is sharp.** Its middle rule started half a pixel off and was drawn across two pixel columns, so nothing could line up with it; it now starts on a whole pixel.
+- **A panel moved into a window of its own shows its content.** Under the program's own title bar, the window's header took the whole height and left the view nothing (a terminal showed its header alone, in the middle of an empty window); and a docked panel opened in a window of the size of another edge's zone, not its own.
+- **The file browser hides the files that Windows marks hidden**: on Windows, a file or folder with the hidden attribute is now hidden in the folder shown and in the search in subfolders, until Hidden files (Ctrl+H) is on, as in Explorer. Before, only names that start with "." were hidden. A system file without the hidden attribute stays shown. `fsx.read_folder` gives a folder's entries with the system's hidden mark.
+
+## [0.261.0] - 2026-11-14
+
+### Added
+- **The Ember theme**: a near black with a peach accent, and in the light version white with a deeper orange, among the toolkit's themes (`ui.THEMES`), for every program. Its colours are those of opencode native's own theme, which can use this one instead of its copy.
+
+## [0.260.3] - 2026-11-14
+
+### Added
+- **`toolbox.odin_symbol`**: the name of an Odin procedure as the crash reports show it (`pkg::[file.odin]::proc` gives `pkg.proc` and its file), for a program that reads symbols its own way, as Wren's PDB reader does.
+
 ## [0.260.2] - 2026-11-14
 
 ### Fixed
@@ -3596,6 +3616,9 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.261.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.261.1
+[0.261.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.261.0
+[0.260.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.260.3
 [0.260.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.260.2
 [0.260.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.260.1
 [0.260.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.260.0

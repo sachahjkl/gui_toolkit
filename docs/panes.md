@@ -30,6 +30,8 @@ if r.finished { save_settings(app) }
   thick and in the accent colour while hot, held or focused from the keyboard. Nothing animates: no frame at rest.
 - `o.fill` paints the grab area (a pane's colour: the handle looks part of it); `o.line_at` puts the rule at its
   `Start` or `End` instead of its `Middle`, where it is the edge of the next pane: one line, not two side by side.
+- `splitter_line(rect, at, th)` is where a handle of that rect draws its rule, and `splitter_line_width(scale)` its
+  thickness at rest: what must line up with a rule takes its place from them, not from a computation of its own.
 - `o.flush` makes the handle its rule alone: the panes meet at it, so their own rules and a selected row reach it,
   with no strip of the handle beside it. It is grabbed as wide as `thickness` all the same: its hit area
   (`Box.hit_outset`) reaches over the panes' edges, where nothing of theirs is clickable.

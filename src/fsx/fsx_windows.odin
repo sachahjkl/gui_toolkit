@@ -1,6 +1,8 @@
 package fsx
 
 import "base:runtime"
+import "core:io"
+import "core:os"
 import "core:strings"
 import win "core:sys/windows"
 import base "../base"
@@ -131,6 +133,77 @@ list_files :: proc(dir: string, allocator := context.temp_allocator, loc := #cal
 		if !win.FindNextFileW(h, &fd) { break }
 	}
 	return out[:]
+}
+
+// Each entry is made from FindFirstFileW / FindNextFileW's WIN32_FIND_DATAW alone: core:os reads the same records but
+// opens every entry to stat it, and drops the hidden attribute. A link is what core:os calls one (a symbolic link or a
+// junction); another reparse point (a cloud placeholder) is the folder or the file it stands for.
+read_folder :: proc(dir: string, allocator := context.allocator, loc := #caller_location) -> ([]Folder_Entry, os.Error) {
+	base.blocking("fsx.read_folder", loc)
+	out := make([dynamic]Folder_Entry, allocator)
+	fd: win.WIN32_FIND_DATAW
+	sep := len(dir) > 0 && (dir[len(dir) - 1] == '\\' || dir[len(dir) - 1] == '/') ? "" : "\\"
+	h := win.FindFirstFileW(wide(long_path(strings.concatenate({dir, sep, "*"}, context.temp_allocator))), &fd)
+	if h == win.INVALID_HANDLE_VALUE {
+		e := win.GetLastError()
+		// (a drive's root has no "." entry: an empty one finds nothing at all)
+		attrs := win.GetFileAttributesW(wide(long_path(dir)))
+		if e == win.ERROR_FILE_NOT_FOUND && attrs != win.INVALID_FILE_ATTRIBUTES && attrs & win.FILE_ATTRIBUTE_DIRECTORY != 0 {
+			return out[:], nil
+		}
+		delete(out)
+		return nil, folder_error(e)
+	}
+	defer win.FindClose(h)
+	for {
+		n := 0
+		for n < len(fd.cFileName) && fd.cFileName[n] != 0 { n += 1 }
+		dot := (n == 1 && fd.cFileName[0] == '.') || (n == 2 && fd.cFileName[0] == '.' && fd.cFileName[1] == '.')
+		if name, err := win.utf16_to_utf8(fd.cFileName[:n], allocator); dot && err == nil {
+			delete(name, allocator)
+		} else if err == nil {
+			a := fd.dwFileAttributes
+			kind: Path_Kind = .File
+			tag := fd.dwReserved0
+			switch {
+			case a & win.FILE_ATTRIBUTE_REPARSE_POINT != 0 && (tag == win.IO_REPARSE_TAG_SYMLINK || tag == win.IO_REPARSE_TAG_MOUNT_POINT): kind = .Link
+			case a & win.FILE_ATTRIBUTE_DIRECTORY != 0: kind = .Directory
+			}
+			append(&out, Folder_Entry{
+				name     = name,
+				size     = kind == .File ? i64(fd.nFileSizeHigh) << 32 | i64(fd.nFileSizeLow) : 0,
+				modified = win.FILETIME_as_unix_nanoseconds(fd.ftLastWriteTime) / 1_000_000,
+				kind     = kind,
+				hidden   = a & win.FILE_ATTRIBUTE_HIDDEN != 0,
+			})
+		}
+		if !win.FindNextFileW(h, &fd) { break }
+	}
+	return out[:], nil
+}
+
+// The system's reason as core:os gives it, so a caller tells "refused" and "not there" apart as for its other errors.
+@(private = "file")
+folder_error :: proc(e: win.DWORD) -> os.Error {
+	// (the name is a file's; core:sys/windows does not name this code)
+	ERROR_DIRECTORY :: 267
+	switch e {
+	case win.ERROR_ACCESS_DENIED, win.ERROR_SHARING_VIOLATION: return io.Error.Permission_Denied
+	case win.ERROR_FILE_NOT_FOUND, win.ERROR_PATH_NOT_FOUND:   return os.General_Error.Not_Exist
+	case ERROR_DIRECTORY:                                      return os.General_Error.Invalid_Dir
+	}
+	return os.Platform_Error(e)
+}
+
+// A path past MAX_PATH with the "\\?\" prefix that lifts the limit (core:os does the same): a search in subfolders goes
+// deep. The prefix turns off the system's clean-up of the path, so the separators are made '\' first.
+@(private = "file")
+long_path :: proc(path: string) -> string {
+	if len(path) < win.MAX_PATH - 12 || strings.has_prefix(path, `\\?\`) { return path }
+	p, _ := strings.replace_all(path, "/", `\`, context.temp_allocator)
+	if strings.has_prefix(p, `\\`) { return strings.concatenate({`\\?\UNC\`, p[2:]}, context.temp_allocator) }
+	if len(p) >= 3 && p[1] == ':' && p[2] == '\\' { return strings.concatenate({`\\?\`, p}, context.temp_allocator) }
+	return path
 }
 
 path_kind :: proc(path: string, loc := #caller_location) -> Path_Kind {

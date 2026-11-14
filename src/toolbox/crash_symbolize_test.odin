@@ -124,3 +124,17 @@ a_report_is_named_from_the_map :: proc(t: ^testing.T) {
 	_, why = crash_symbolize(report, elf)
 	testing.expect(t, why != "", "an executable of another build is refused")
 }
+
+// An Odin procedure's linker name, as the reports name it: its package and procedure, and its file when the name holds one.
+@(test)
+odin_symbol_names_a_procedure :: proc(t: ^testing.T) {
+	name, file := odin_symbol("browser::[main.odin]::app_turn")
+	testing.expect_value(t, name, "browser.app_turn")
+	testing.expect_value(t, file, "main.odin")
+	name, file = odin_symbol("ui::button")
+	testing.expect_value(t, name, "ui.button")
+	testing.expect_value(t, file, "")
+	name, file = odin_symbol("memcpy")
+	testing.expect_value(t, name, "memcpy")
+	testing.expect_value(t, file, "")
+}
