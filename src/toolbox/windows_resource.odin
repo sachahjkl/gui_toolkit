@@ -56,18 +56,15 @@ windows_manifest :: proc(p: Project, v: [3]int, allocator := context.temp_alloca
 	return fmt.aprintf(WINDOWS_MANIFEST, identity, allocator = allocator)
 }
 
-// (the assembly's name. Its version is 1.0.0.0 and its architecture amd64, as in Wren's manifest: a program's own
-// version there (0.21.0.0) and the "*" architecture made Windows refuse to start the program, error 14001
-// ERROR_SXS_CANT_GEN_ACTCTX. The program's version is in the VERSIONINFO, where Explorer reads it.)
+// (the assembly's name. The manifest is the one papier and Wren started with on Windows, word for word: a version
+// 1.0.0.0 on amd64, run as the user, Windows 10 and 11, per-monitor DPI. With more in it (the program's version,
+// the "*" architecture, a dependency on Common Controls 6, longPathAware, the UTF-8 code page) Windows refused to
+// start the program: error 14001, ERROR_SXS_CANT_GEN_ACTCTX. Nothing of the toolkit needs Common Controls, and it
+// calls the wide (UTF-16) functions; the program's version is in the VERSIONINFO, where Explorer reads it.)
 @(private = "file")
 WINDOWS_MANIFEST :: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity type="win32" name="%s" version="1.0.0.0" processorArchitecture="amd64"/>
-  <dependency>
-    <dependentAssembly>
-      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
-    </dependentAssembly>
-  </dependency>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
@@ -85,8 +82,6 @@ WINDOWS_MANIFEST :: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <windowsSettings>
       <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
       <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
-      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
-      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
     </windowsSettings>
   </application>
 </assembly>

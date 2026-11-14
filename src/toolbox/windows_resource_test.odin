@@ -39,16 +39,19 @@ a_resource_script_from_the_project :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(windows_resource_script({name = "cliche"}, {0, 1, 0}, "i", "m"), `"FileDescription", "cliche"`), "the name as the title")
 }
 
-// The manifest: per-monitor DPI v2, UTF-8, long paths, common controls 6, the version; the assembly named by the
-// AppUserModelID, which the publisher and the title make, else by the name.
+// The manifest: the one Windows starts papier and Wren with (1.0.0.0 on amd64, as the user, per-monitor DPI v2), the
+// assembly named by the AppUserModelID, which the publisher and the title make, else by the name; and nothing that
+// made Windows refuse the program (error 14001).
 @(test)
 a_manifest_from_the_project :: proc(t: ^testing.T) {
 	m := windows_manifest({name = "opencode-native", title = "opencode native", publisher = "Froment Software"}, {0, 45, 1})
 	for want in ([]string{
-		`name="FromentSoftware.OpencodeNative" version="1.0.0.0" processorArchitecture="amd64"`, "PerMonitorV2", "<activeCodePage", ">UTF-8<",
-		"<longPathAware", `name="Microsoft.Windows.Common-Controls" version="6.0.0.0"`, `level="asInvoker"`,
+		`name="FromentSoftware.OpencodeNative" version="1.0.0.0" processorArchitecture="amd64"`, "PerMonitorV2", `level="asInvoker"`,
 	}) {
 		testing.expectf(t, strings.contains(m, want), "the manifest has %s", want)
+	}
+	for refused in ([]string{"<dependency", "<activeCodePage", "<longPathAware", `processorArchitecture="*"`, `version="0.`}) {
+		testing.expectf(t, !strings.contains(m, refused), "the manifest has no %s", refused)
 	}
 	testing.expect(t, strings.contains(windows_manifest({name = "a b"}, {1, 0, 0}), `name="ab"`), "no publisher: the name, without spaces")
 }
