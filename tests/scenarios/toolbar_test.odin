@@ -145,6 +145,45 @@ a_folding_toolbar_shows_a_menu_of_sections :: proc(t: ^testing.T) { unwatched.ru
 	testing.expect_value(t, r.bold, 1)
 }) }
 
+// A tool's `tip` is its tooltip whatever it shows (a zoom's words "100 %" say "Zoom" under the pointer); a tool's menu
+// opens with a search by default, without one when the tool says `menu_search = false` (a typed letter selects there).
+@(test)
+a_toolbar_tool_has_its_tip_and_its_menu_search :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {900, 400}, no_renderer = true, build = proc(s: ^session.Session) {
+		ui.next({width = ui.fill(), height = ui.px(40)})
+		if ui.toolbar("tbar", {overflow = .Wrap}) {
+			if ui.toolbar_group("view") {
+				_ = ui.toolbar_tool("zoom", {label = "100 %", words = true, tip = "Zoom", menu = "zoom_menu", menu_search = false})
+				_ = ui.toolbar_tool("insert", {label = "Insérer", words = true, menu = "insert_menu"})
+				_ = ui.toolbar_tool("plain", {label = "Sans bulle", words = true})
+			}
+		}
+		if ui.menu("zoom_menu") {
+			_ = ui.menu_item("50 %")
+			_ = ui.menu_item("200 %")
+		}
+		if ui.menu("insert_menu") { _ = ui.menu_item("Rectangle") }
+	}})
+	session.frames(s, 3)
+	session.hover(s, "zoom")
+	session.advance(s, TOOLTIP_WAIT_MS)
+	testing.expect(t, session.find_text(s, "Zoom") != nil, "the words tool shows its tip")
+	session.hover(s, "plain")
+	session.advance(s, TOOLTIP_WAIT_MS)
+	testing.expect(t, session.find_text(s, "Zoom") == nil, "words with no tip and no shortcut: no tooltip")
+	session.click(s, "zoom")
+	session.wait_text(s, "200 %")
+	testing.expect(t, session.find(s, "menu_search") == nil, "menu_search = false: no search field")
+	session.key(s, .Escape)
+	session.frames(s, 2)
+	session.click(s, "insert")
+	session.wait_text(s, "Rectangle")
+	testing.expect(t, session.find(s, "menu_search") != nil, "by default its menu searches")
+}) }
+
+// Longer than a tooltip's delay (ui.FEEL_DEFAULT.tooltip_delay_ms, 500 ms).
+@(private = "file") TOOLTIP_WAIT_MS :: 600
+
 @(private = "file")
 Menu_Run :: struct {
 	overflow: ui.Toolbar_Overflow,

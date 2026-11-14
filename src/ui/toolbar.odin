@@ -69,6 +69,13 @@ Toolbar_Tool :: struct {
 	// the id of a menu the program builds as always (`if ui.menu(id) { ... }`, outside the bar): the tool opens it, under
 	// itself in the bar (lit while it is open), as its submenu when it is a row of the "…" menu ("": an act)
 	menu:      string,
+	// whether typing searches its menu, opened from the bar (menu_open's `search`; nil: its default, every menu can be
+	// filtered). false: a menu of a few fixed choices, where a typed letter selects (a zoom's steps). A submenu never
+	// searches.
+	menu_search: Maybe(bool),
+	// its tooltip in the bar, whatever it shows ("": the command's tooltip when it has a command, else its label and its
+	// shortcut for a glyph, or for words with a shortcut; words alone have none)
+	tip:       string,
 }
 
 // A control: a property with a widget of the program (a slider, swatches, a toggle), which the block builds.
@@ -512,16 +519,23 @@ toolbar_tool :: proc(id: string, t: Toolbar_Tool) -> bool {
 @(private = "file")
 toolbar_tool_button :: proc(id: string, t: Toolbar_Tool, label, icon, shortcut: string) -> bool {
 	side := gs().toolbar.side
-	tip := shortcut != "" ? fmt.tprintf("%s (%s)", label, shortcut) : label
+	words := t.words || icon == ""
+	tip := t.tip
+	if tip == "" {
+		switch {
+		case t.command.label != "": tip = command_tip(t.command)
+		case shortcut != "": tip = fmt.tprintf("%s (%s)", label, shortcut)
+		case !words: tip = label
+		}
+	}
 	open := t.menu != "" && menu_is_open(t.menu)
 	sig: Signal
-	if t.words || icon == "" {
-		o := Button_Options{intent = t.intent, disabled = t.disabled, icon_font = t.icon_font, lit = open}
+	if words {
+		o := Button_Options{intent = t.intent, disabled = t.disabled, icon_font = t.icon_font, lit = open, tip = tip}
 		if t.on {
 			o.face = Button_Face.Toggled
 			o.intent = .Primary
 		}
-		if shortcut != "" { o.tip = tip }
 		sig = button(id, label, icon, o)
 	} else {
 		next({width = px(side), height = px(side), radius = math.round(side * 0.22), font_size = math.round(side * 0.5)})
@@ -532,7 +546,7 @@ toolbar_tool_button :: proc(id: string, t: Toolbar_Tool, label, icon, shortcut: 
 	if t.menu == "" || sig.box == nil { return clicked }
 	if sig.box.a11y != nil { sig.box.a11y.popup = .Menu; sig.box.a11y.expanded = open }
 	if clicked {
-		if open { menu_close() } else { menu_open(t.menu, sig.box.rect, anchor = sig.box.key) }
+		if open { menu_close() } else { menu_open(t.menu, sig.box.rect, anchor = sig.box.key, search = t.menu_search.? or_else true) }
 	}
 	return false
 }

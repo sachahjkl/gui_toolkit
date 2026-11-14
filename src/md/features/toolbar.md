@@ -58,6 +58,10 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
   anchor: a second click closes it) and is lit while it is open. Folded, the tool is a submenu row of the "…" menu, and
   the same `ui.menu(id)` block builds that submenu (`menu_submenu_of`: `menu` finds its id open as a level over another
   menu's row). Such a tool never returns true: what is chosen is in its menu's block.
+- Its menu searches, as every menu (`menu_open`'s default), unless the tool says `menu_search = false`: whether a menu is
+  a few fixed choices (a zoom's steps, where a typed letter selects) is the program's knowledge, not the toolkit's; at
+  `menu_open` the toolkit does not know the items yet, so no rule by length can decide it before the menu shows.
+- A tool's `tip` is its tooltip whatever it shows: words like "100 %" do not say what the tool is.
 - **Refused: a control that holds a button and opens the menu itself** (what cliche did first). Folded, the button sat
   in a menu row with no anchor that the program could use, and the menu opened over the "…" menu, not beside its row.
 - **Refused: the tool's block builds the items.** The menu would then be built inside the bar's code, at the tool's
