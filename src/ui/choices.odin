@@ -2,8 +2,8 @@ package ui
 
 // What the user chose in a palette or a picker, and when: each choice's count and last time, kept in a file. A choice
 // weighs its count, halved every half-life since it was last made (frecency): what is chosen often and lately comes
-// first. The command palette owns one (Command_Palette.memory, palette_memory_open) for its "Recent" group and to raise a
-// match, its keys "<source>:<id>"; a list ranked with `rank` reads one in its bonus (choice_bonus). The program names
+// first. The command palette shares one per file (choice_memory_acquire: palette_memory_open) for its "Recent" group and
+// to raise a match, its keys "<source>:<id>"; a list ranked with `rank` reads one in its bonus (choice_bonus). The program names
 // each choice with a stable key ("tab.new", "setting:appearance.theme") and says when one is made (choice_note).
 //
 // The interface's thread never touches the file: the memory is read by a task (ui.task) after choice_memory_open, and
@@ -90,14 +90,133 @@ choice_memory_open :: proc(m: ^Choice_Memory, s: ^State, path: string, o := Choi
 	task(s, choice_read_work, choice_read_done, r, choice_read_lost)
 }
 
+////////////////////////////////
+// One memory per file, shared
+
+// The memories of the process by their file: the palettes of a program's windows that open one file share one memory,
+// so that one write holds every window's choices (each writing the whole file, the last to close won). Counted.
+@(private = "file") choice_shared_lock: sync.Mutex
+@(private = "file") choice_shared: map[string]^Choice_Shared   // (choice_shared_lock)
+
+// (the memory first: a ^Choice_Memory of choice_memory_acquire is a ^Choice_Shared)
+@(private = "file")
+Choice_Shared :: struct {
+	memory: Choice_Memory,
+	path:   string,   // "" : in memory only, not shared
+	refs:   int,      // (choice_shared_lock)
+}
+
+// The memory of the file at `path`, shared by everyone who acquires that path (choice_memory_open on the first, read on
+// `s`'s chores); "": a memory of its own, in memory only. The ones who share it build on one interface thread (a
+// program's windows). Let go of it with choice_memory_release: the last one closes it (written, the disk waited for).
+choice_memory_acquire :: proc(s: ^State, path: string, o := Choice_Memory_Options{}) -> ^Choice_Memory {
+	a := runtime.heap_allocator()
+	if path == "" {
+		sh := new(Choice_Shared, a)
+		sh.refs = 1
+		choice_memory_open(&sh.memory, s, "", o)
+		return &sh.memory
+	}
+	sync.guard(&choice_shared_lock)
+	if choice_shared == nil { choice_shared = make(map[string]^Choice_Shared, 4, a) }
+	if sh, ok := choice_shared[path]; ok {
+		sh.refs += 1
+		return &sh.memory
+	}
+	sh := new(Choice_Shared, a)
+	sh.path, sh.refs = strings.clone(path, a), 1
+	choice_shared[sh.path] = sh
+	choice_memory_open(&sh.memory, s, path, o)
+	return &sh.memory
+}
+
+// Lets go of a memory of choice_memory_acquire; the last one closes it (choice_memory_close: it waits for the disk).
+choice_memory_release :: proc(m: ^Choice_Memory) {
+	if m == nil { return }
+	a := runtime.heap_allocator()
+	sh := (^Choice_Shared)(m)
+	if sh.path != "" {
+		// (closed under the lock: an acquire of the same file meanwhile must read what this one writes)
+		sync.guard(&choice_shared_lock)
+		sh.refs -= 1
+		if sh.refs > 0 { return }
+		delete_key(&choice_shared, sh.path)
+		if len(choice_shared) == 0 { delete(choice_shared); choice_shared = nil }
+		choice_memory_close(&sh.memory)
+		delete(sh.path, a)
+		free(sh, a)
+		return
+	}
+	choice_memory_close(&sh.memory)
+	free(sh, a)
+}
+
+// How long choice_memory_close waits for the file's read it needs (a choice made before the file was read).
+CHOICE_CLOSE_BOUND :: 2 * time.Second
+
+// The read of choice_memory_close: on a chore, the closing thread waiting on `done`; the last of the two frees it.
+@(private = "file")
+Choice_Close_Read :: struct {
+	path:  string,
+	data:  []byte,
+	found: bool,
+	done:  sync.Sema,
+	refs:  int,   // (atomic)
+}
+
+// The file's text read on a chore, the caller waiting within CHOICE_CLOSE_BOUND (ok false: past it, or no chore). A file
+// that is not there is an empty text, ok true. The text is the caller's (heap).
+@(private = "file")
+choice_read_now :: proc(path: string) -> (text: string, ok: bool) {
+	a := runtime.heap_allocator()
+	r := new(Choice_Close_Read, a)
+	r^ = {path = strings.clone(path, a), refs = 2}
+	release :: proc(r: ^Choice_Close_Read) {
+		if sync.atomic_sub(&r.refs, 1) != 1 { return }
+		a := runtime.heap_allocator()
+		delete(r.path, a)
+		delete(r.data, a)
+		free(r, a)
+	}
+	work :: proc(d: rawptr) {
+		r := (^Choice_Close_Read)(d)
+		r.data, r.found = fsx.read_all(r.path, runtime.heap_allocator())
+		sync.sema_post(&r.done)
+		release(r)
+	}
+	if !chore_add(work, r) {
+		r.refs = 1
+		release(r)
+		return "", false
+	}
+	if !sync.sema_wait_with_timeout(&r.done, CHOICE_CLOSE_BOUND) {
+		release(r)
+		return "", false
+	}
+	text = strings.clone(string(r.data), a)
+	release(r)
+	return text, true
+}
+
 // Writes the choices now and waits for the disk: a program's end, a test.
 choice_memory_flush :: proc(m: ^Choice_Memory) {
 	if m.saving { store.writer_flush(&m.writer) }
 }
 
-// Writes what changed (it waits for the disk), ends the writer and frees the memory. It is zero after.
+// Writes what changed (it waits for the disk), ends the writer and frees the memory. It is zero after. A choice made
+// before the file was read (a program that quits at once, a window closed before its next build) is not lost: a chore
+// reads the file now, the closing thread waits for it (CHOICE_CLOSE_BOUND, as it waits for the writer), merges it and
+// writes both. Past the bound the file stays as it is: a write then would lose the choices it holds.
 choice_memory_close :: proc(m: ^Choice_Memory) {
 	if m.read != nil {
+		if m.noted && m.saving {
+			if data, ok := choice_read_now(m.read.path); ok {
+				_ = choice_memory_merge(m, data)
+				delete(data, runtime.heap_allocator())
+				m.loaded, m.noted = true, false
+				choice_save(m)
+			}
+		}
 		m.read.memory = nil
 		choice_read_release(m.read)
 	}

@@ -127,7 +127,7 @@ filter field when `vl.multi`.
 | `list_is_selected(st, i)`, `list_selected_count(st)` | whether row `i` is selected; how many are |
 | `list_selected_ids(st, allocator)` | the identities selected, in the rows' order (a pass over the rows: on an action) |
 | `list_set_selected(st, i, on)`, `list_select_all(st)`, `list_selection_clear(st)` | the program's own changes (its Ctrl+A when another field has the keyboard) |
-| `st.selected_changed`, `st.version` | the build changed the selection; a number that moves with each change (a cache's key) |
+| `st.selected_changed`, `st.version` | the build changed the selection; a number that moves with each change of the rows selected (a swap at the same count too) and of the active row: a cache's key, and the version of a palette's `disabled` that follows the selection (a `Virtual_List`'s and a `Table`'s too: their List_State's) |
 | `list_row_id(st, i)`, `list_rows(st)` | the identity a row is selected by; the rows as the model sees them |
 
 A program that builds its own grid or list (a grid of thumbnails, where Up goes a whole line of columns up) keeps an

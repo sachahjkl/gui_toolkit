@@ -143,3 +143,59 @@ the_memory_reads_and_writes_its_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(gone.entries), 0)
 	_ = os.remove_all(root)
 }
+
+// A choice made just before the program quits, before the file was read (no build ran its read's answer): the close
+// reads the file, adds it and writes both; nothing is lost, the file's choices are not overwritten.
+@(test)
+a_choice_made_before_the_file_was_read_is_written_at_close :: proc(t: ^testing.T) {
+	fx := new(Memory_Fx)
+	defer free(fx)
+	font.init(&fx.fonts)
+	defer font.destroy(&fx.fonts)
+	ui.init(&fx.s, &fx.fonts, &fx.theme)
+	defer ui.destroy(&fx.s)
+	root := fmt.tprintf("%s/gui_toolkit_choices_quit_%d", fsx.temp_dir(context.temp_allocator), os.get_pid())
+	fsx.make_dirs(root)
+	defer { _ = os.remove_all(root) }
+	path := fmt.tprintf("%s/choices.txt", root)
+	testing.expect(t, fsx.write_atomic(path, transmute([]byte)fmt.tprintf("%s\n3\t%d\tkill\n", ui.CHOICE_FILE_HEADER, T0)))
+	m: ui.Choice_Memory
+	ui.choice_memory_open(&m, &fx.s, path)
+	ui.choice_note(&m, "open", T0 + 1)
+	testing.expect(t, !m.loaded, "(no build: the file's read is not merged)")
+	ui.choice_memory_close(&m)
+	data, _ := fsx.read_all(path, context.temp_allocator)
+	testing.expect_value(t, string(data), fmt.tprintf("%s\n3\t%d\tkill\n1\t%d\topen\n", ui.CHOICE_FILE_HEADER, T0, T0 + 1))
+}
+
+// The palettes of a program's windows that give one file share one memory: one write holds both windows' choices (two
+// memories each wrote the whole file, the last to close won).
+@(test)
+two_palettes_of_one_file_share_its_memory :: proc(t: ^testing.T) {
+	fx := new(Memory_Fx)
+	defer free(fx)
+	font.init(&fx.fonts)
+	defer font.destroy(&fx.fonts)
+	ui.init(&fx.s, &fx.fonts, &fx.theme)
+	defer ui.destroy(&fx.s)
+	root := fmt.tprintf("%s/gui_toolkit_choices_shared_%d", fsx.temp_dir(context.temp_allocator), os.get_pid())
+	fsx.make_dirs(root)
+	defer { _ = os.remove_all(root) }
+	path := fmt.tprintf("%s/choices.txt", root)
+	a, b: ui.Command_Palette
+	ui.palette_memory_open(&a, &fx.s, path)
+	ui.palette_memory_open(&b, &fx.s, path)
+	testing.expect(t, a.memory == b.memory, "one memory for the file")
+	other: ui.Command_Palette
+	ui.palette_memory_open(&other, &fx.s, "")
+	testing.expect(t, other.memory != a.memory, "in memory only: a memory of its own")
+	ui.choice_note(a.memory, "command:open", T0)
+	ui.choice_note(b.memory, "command:close", T0 + 1)
+	ui.palette_destroy(&a)   // (the other still has it: not written yet, not freed)
+	testing.expect_value(t, len(b.memory.entries), 2)
+	ui.palette_destroy(&b)   // (the last: written, the disk waited for)
+	ui.palette_destroy(&other)
+	data, _ := fsx.read_all(path, context.temp_allocator)
+	text := string(data)
+	testing.expect(t, strings.contains(text, "command:open") && strings.contains(text, "command:close"), "both windows' choices")
+}

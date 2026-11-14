@@ -4,6 +4,7 @@ package ui
 // the graph changed (not at each frame: the widget reads them every frame); the add palette of a catalog; the links of
 // the widget's events as the model's. Details: docs/flowgraph.md, "In a window".
 
+import "base:runtime"
 import "core:strings"
 import "../draw"
 import flowgraph "../flowgraph"
@@ -102,17 +103,51 @@ flow_state :: proc(s: flowgraph.Node_State) -> Graph_Node_State {
 	return .Idle
 }
 
-// The add palette's commands, one per kind of the catalog in its order (the index chosen is the kind), and which are
-// disabled (palette_commands's `disabled`): a kind at its max_count, and with `from` (a link let go on nothing) one with no
-// port that fits it (flowgraph.fit_port). Temp allocator.
-flow_palette :: proc(g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, from: Maybe(flowgraph.Port_Ref) = nil) -> (commands: []Command, disabled: []bool) {
-	commands = make([]Command, len(cat.nodes), context.temp_allocator)
-	disabled = make([]bool, len(cat.nodes), context.temp_allocator)
+// The add palette's source (src/md/features/palette.md): a chooser's, no prefix. One item per kind of the catalog, in
+// its order (a choice's `index` is the kind, its `id` the kind's name), the catalog's words in the language in use. A kind
+// at its max_count is disabled, and with `from` (a link let go on nothing) one with no port that fits it
+// (flowgraph.fit_port). The program keeps it beside its palette.
+Flow_Palette :: struct {
+	source:  Palette_Source,
+	graph:   ^flowgraph.Graph,             // nil: no graph shown, no item
+	catalog: ^flowgraph.Catalog,
+	from:    Maybe(flowgraph.Port_Ref),
+	version: u64,                          // the program's count of the graph's changes
+	made:    bool,
+}
+
+// Gives the add palette's source what it lists: the graph a step is added to, its catalog, the port a link was let go
+// from (nil: none), the graph's version (the program bumps it when nodes come or go). The first call adds the source to
+// `p`. Call it at each build: it compares these only, and the source reads the kinds again when one changed.
+flow_palette :: proc(p: ^Command_Palette, fp: ^Flow_Palette, g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, from: Maybe(flowgraph.Port_Ref) = nil, version: u64 = 0) {
+	if !palette_has(p, &fp.source) {
+		fp.source = {name = "step", title = i18n.later("Steps"), enter = i18n.later("Add"), remember = true, read = flow_palette_read, user = fp}
+		palette_add(p, &fp.source)
+	}
+	f, has_f := from.?
+	k, has_k := fp.from.?
+	if fp.made && fp.graph == g && fp.catalog == cat && fp.version == version && has_f == has_k && (!has_f || f == k) { return }
+	fp.graph, fp.catalog, fp.from, fp.version, fp.made = g, cat, from, version, true
+	fp.source.version += 1
+}
+
+// The add palette's items, one per kind of `cat` in its order, in `allocator` (an answer's): what flow_palette's source
+// answers, and what a test reads.
+flow_palette_items :: proc(g: ^flowgraph.Graph, cat: ^flowgraph.Catalog, from: Maybe(flowgraph.Port_Ref), allocator: runtime.Allocator) -> []Palette_Item {
+	items := make([]Palette_Item, len(cat.nodes), allocator)
 	for def, k in cat.nodes {
-		commands[k] = {label = def.title, group = def.group, tags = def.tags, icon = def.icon}
 		fits := flowgraph.can_add(g, cat, k)
 		if f, has := from.?; has { fits &&= flowgraph.fit_port(g, cat, f, k) >= 0 }
-		disabled[k] = !fits
+		// (the catalog's words are English: shown in the language in use)
+		items[k] = palette_item_clone({id = def.name, title = i18n.tr(def.title), group = i18n.tr(def.group), tags = def.tags, icon = def.icon, disabled = !fits}, allocator)
 	}
-	return
+	return items
+}
+
+@(private = "file")
+flow_palette_read :: proc(p: ^Command_Palette, src: ^Palette_Source, q: Palette_Question) {
+	fp := (^Flow_Palette)(src.user)
+	a: Palette_Answer
+	if fp.graph != nil && fp.catalog != nil { a.items = flow_palette_items(fp.graph, fp.catalog, fp.from, palette_answer_allocator(&a)) }
+	palette_answer(q, &a)
 }

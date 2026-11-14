@@ -106,6 +106,14 @@ task :: proc(s: ^State, work: tasks.Work, done: Post_Proc, data: rawptr, lost: t
 	if sync.atomic_load(&chores_stopped) || !tasks.add(chores(), task_run, t) { task_end(t, false) }
 }
 
+// `work(data)` on the chores, nothing posted back (the caller waits on its own condition, with a bound). False: the
+// chores stopped, or refused it; `work` does not run.
+@(private)
+chore_add :: proc(work: tasks.Work, data: rawptr) -> bool {
+	context.allocator = runtime.heap_allocator()
+	return !sync.atomic_load(&chores_stopped) && tasks.add(chores(), work, data)
+}
+
 @(private = "file")
 task_run :: proc(d: rawptr) {
 	t := (^Task)(d)

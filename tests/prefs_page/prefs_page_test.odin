@@ -297,6 +297,17 @@ Palette_App :: struct {
 	opened:    int,      // the times the settings source asked the program to show its settings
 	show:      bool,     // open the palette in the next build
 	typed:     string,   // what it opens with
+	pages:     []prefs_page.Page_Info,   // the page options' pages: the source asks for them when it reads
+}
+
+// The page options as they are now (the settings source asks for them each time it reads or acts).
+@(private = "file")
+palette_app_options :: proc(user: rawptr) -> prefs_page.Page_Options {
+	app := (^Palette_App)(user)
+	return {pages = app.pages, user = app, changed = proc(user: rawptr, name: string) {
+		app := (^Palette_App)(user)
+		append(&app.changed, strings.clone(name))
+	}}
 }
 
 // (the window command first, as a program reads its keys before it builds its page; the toolkit's sources act in
@@ -314,10 +325,8 @@ palette_app_build :: proc(s: ^session.Session) {
 palette_app_start :: proc(t: ^testing.T, app: ^Palette_App) -> ^session.Session {
 	app.prefs = config.prefs_make()
 	config.register(&app.prefs, DEFS[:])
-	prefs_page.palette_settings_add(&app.pal, &app.settings, &app.prefs, &app.page, {pages = PAGES[:], user = app, changed = proc(user: rawptr, name: string) {
-		app := (^Palette_App)(user)
-		append(&app.changed, strings.clone(name))
-	}}, proc(user: rawptr) { (^Palette_App)(user).opened += 1 }, app)
+	if app.pages == nil { app.pages = PAGES[:] }
+	prefs_page.palette_settings_add(&app.pal, &app.settings, &app.prefs, &app.page, palette_app_options, proc(user: rawptr) { (^Palette_App)(user).opened += 1 }, app)
 	prefs_page.focus_search(&app.page)
 	return session.start(t, {size = {1200, 700}, build = palette_app_build, user = app})
 }
@@ -379,6 +388,32 @@ a_switch_flips_from_the_palette :: proc(t: ^testing.T) {
 	testing.expect_value(t, app.pal.rankings, rankings)
 	testing.expect(t, slice_has(app.changed[:], "net.cache"), "the program hears of it")
 	testing.expect_value(t, app.opened, 0)
+}
+
+// The settings source is added once: it asks for the page options when it reads, so options made again (a new slice)
+// need no new add; a second add does nothing.
+@(test)
+the_settings_source_reads_its_options_when_it_needs_them :: proc(t: ^testing.T) {
+	app: Palette_App
+	defer app_end(&app.app)
+	defer ui.palette_destroy(&app.pal)
+	app.pages = PAGES[:1]   // (the Network page alone)
+	s := palette_app_start(t, &app)
+	app.show, app.typed = true, ":"
+	palette_wait(s, &app)
+	testing.expect_value(t, ui.palette_row_count(&app.pal), 2)   // (net.cache, net.max_body; not the hidden one)
+	session.key(s, .Escape)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Palette_App) -> bool { return !ui.palette_is_open(&app.pal) }, "the palette closed")
+	// the program's options made again (another slice): no new add, a new version of the pages
+	app.pages = PAGES[:]
+	prefs_page.palette_settings_add(&app.pal, &app.settings, &app.prefs, &app.page, palette_app_options, nil, &app)   // (a second add: nothing)
+	testing.expect(t, app.settings.open != nil, "the first add's still")
+	app.settings.source.version += 1
+	app.show = true
+	// (the list of the last opening stays until the new read is ranked: wait for the new one, not for any list)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Palette_App) -> bool {
+		return !ui.palette_busy(&app.pal) && ui.palette_row_count(&app.pal) == 6
+	}, "the six settings of every page, read again for the new version")
 }
 
 // The settings shown, their search field with the keyboard: the window command's key opens the palette, which finds

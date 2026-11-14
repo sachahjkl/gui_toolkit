@@ -18,7 +18,11 @@ Item_Selection :: struct {
 	anchor:   u64,                // multi: the identity of the row a Shift range starts from
 	anchored: bool,
 	base:     map[u64]struct{},   // multi: the selection when the anchor was set (what Ctrl+Shift adds its range to)
-	version:  u64,                // moves with every change of the selection (compare it, not the set)
+	// moves with every change of the selection: a row selected or no longer, one row for another (the count the same),
+	// and the active row (`sel`, the cursor), which a program's commands often act on. Compare it, not the set: a
+	// palette's `disabled` that follows the selection is made again when it moves (Palette_Commands_Options.version). A
+	// program that sets `sel` itself bumps it.
+	version:  u64,
 	// list_select on a multi list: the active row is selected alone at the next build, when the rows' ids are this build's
 	select_pending: bool,
 }
@@ -117,7 +121,15 @@ item_selection_one :: proc(sel: ^Item_Selection, rows: Item_Rows, i: int) {
 	} else {
 		sel.anchored = false
 	}
-	if !same { sel.version += 1 }
+	if !same || i != before { sel.version += 1 }
+}
+
+// The active row moves to `i`: the version follows it.
+@(private = "file")
+cursor_to :: proc(sel: ^Item_Selection, i: int) {
+	if sel.sel == i { return }
+	sel.sel = i
+	sel.version += 1
 }
 
 // Row `i` toggled; the anchor on it, the base the selection now (Ctrl+click, Ctrl+Space).
@@ -167,7 +179,7 @@ item_selection_click :: proc(sel: ^Item_Selection, rows: Item_Rows, i: int, mods
 // A right click on row `i`: outside the selection, it is selected alone; on it, the selection stays (its menu acts on it).
 item_selection_context :: proc(sel: ^Item_Selection, rows: Item_Rows, i: int) {
 	if !item_rows_selectable(rows, i) { return }
-	if item_selection_has(sel, rows, i) { sel.sel = i; return }
+	if item_selection_has(sel, rows, i) { cursor_to(sel, i); return }
 	item_selection_one(sel, rows, i)
 }
 
@@ -179,7 +191,7 @@ item_selection_move :: proc(sel: ^Item_Selection, rows: Item_Rows, to: int, mods
 	switch {
 	case !sel.multi:    item_selection_one(sel, rows, to)
 	case shift:         item_selection_range(sel, rows, to, ctrl)
-	case ctrl:          sel.sel = to
+	case ctrl:          cursor_to(sel, to)
 	case:               item_selection_one(sel, rows, to)
 	}
 }

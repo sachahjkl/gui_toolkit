@@ -62,7 +62,7 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 	// every command under its group, with its keys)
 	if app.builds == 1 { scene_open(app, app.scene) }
 	views_scene_follow(app)   // (the views scene's panels go with it: their space is built in that scene only)
-	if !ui.palette_is_open(&app.palette) { palette_sources(app) }   // (before the keys open it)
+	palette_sources(app)   // (before the keys open it; O(1) once added)
 	ui.palette_keys(&app.palette)
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 	if ui.column(id = "###app") {
@@ -206,14 +206,14 @@ scene_open :: proc(app: ^App, s: Scene) {
 	}
 }
 
-// The palette's sources given their data: the commands, the settings (with the page options of this build). O(1): the
-// palette reads them when it opens.
+// The palette's sources given their data: the commands (a constant table: O(1)), the settings (added once: the source
+// asks for the page options when it reads, the themes' slice as it is then).
 @(private = "file")
 palette_sources :: proc(app: ^App) {
 	ui.palette_commands(&app.palette, COMMANDS[:], nil)
-	prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page, settings_options(app), proc(user: rawptr) {
-		(^App)(user).scene = .Settings
-	}, app)
+	prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page,
+		proc(user: rawptr) -> prefs_page.Page_Options { return settings_options((^App)(user)) },
+		proc(user: rawptr) { (^App)(user).scene = .Settings }, app)
 }
 
 @(private = "file")

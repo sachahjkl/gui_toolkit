@@ -124,17 +124,20 @@ shortcuts_sheet_lists_the_keys :: proc(t: ^testing.T) {
 	defer ui.shortcuts_sheet_destroy(&r.sheet)
 	sheet :: proc(f: ^Fx, user: rawptr) {
 		r := (^Sheet_Run)(user)
-		if !r.opened { r.opened = true; ui.shortcuts_sheet_open(&r.sheet, PALETTE_COMMANDS[:]) }
+		// (the table without the palette's line: the sheet adds the toolkit's command itself)
+		if !r.opened { r.opened = true; ui.shortcuts_sheet_open(&r.sheet, PALETTE_COMMANDS[:3]) }
 	}
 	frame(&f, nil, sheet, &r)
 	frame(&f, nil, sheet, &r)
-	found := 0
+	found, palettes := 0, 0
 	for _, b in f.s.boxes {
 		if b == nil || b.last_build != f.s.build_index { continue }
 		text := ui.box_text(b)
 		if text == "Ctrl+K, Ctrl+Shift+P" || text == "Shift+Delete" { found += 1 }
+		if text == "Command palette" { palettes += 1 }
 	}
 	testing.expect_value(t, found, 2)
+	testing.expect_value(t, palettes, 1)   // (once: the toolkit's line)
 	frame(&f, {key(.Escape)}, sheet, &r)
 	frame(&f, nil, sheet, &r)   // (a dialog takes Escape at the end of a build: it closes at the next)
 	testing.expect(t, !ui.shortcuts_sheet_is_open(&r.sheet), "Escape closes it")

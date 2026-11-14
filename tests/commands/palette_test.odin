@@ -7,6 +7,7 @@ package commands_test
 import "core:fmt"
 import "core:slice"
 import "core:strings"
+import "core:sync"
 import "core:testing"
 import "core:time"
 import "../../src/font"
@@ -272,13 +273,16 @@ type_and_enter_in_one_frame :: proc(t: ^testing.T) {
 	open_palette(t, &f, &r)
 	type_text(&f, &r, "n")
 	settle(t, &f, &r)
+	testing.expect(t, ui.palette_ranked_for(&r.pal, "n"), "the list on screen is the one of \"n\"")
 	testing.expect_value(t, row_id(&r, 0), "Notes")
 	frame(&f, {typed('f'), key(.Return)}, &r)
+	testing.expect(t, !ui.palette_ranked_for(&r.pal, "nf"), "\"nf\" in flight")
 	settle_closed(t, &f, &r)
 	frame(&f, nil, &r)
 	testing.expect_value(t, r.choices, 1)
 	testing.expect_value(t, chosen_command(&r), 1)
 	testing.expect_value(t, r.chosen.id, "New folder")
+	testing.expect_value(t, r.chosen.query, "nf")   // (the query it was chosen for)
 }
 
 // 2. A stale answer: an answer for "ab" once the query is "abc", or for a former opening, is dropped.
@@ -794,4 +798,114 @@ the_views_moves_source :: proc(t: ^testing.T) {
 	ui.use(&f.s)
 	testing.expect(t, !ui.view_is_open(ui.state_views(&f.s), "files"), "the toolkit ran it")
 	testing.expect_value(t, r.choices, 0)
+}
+
+// What a chore ends: a question, with an answer of `items` or dropped.
+@(private = "file")
+Chore_End :: struct {
+	q:     ui.Palette_Question,
+	items: []ui.Palette_Item,
+	drop:  bool,
+	done:  bool,   // (atomic) the chore ended the question
+}
+
+@(private = "file")
+chore_end :: proc(d: rawptr) {
+	e := (^Chore_End)(d)
+	if e.drop {
+		ui.palette_question_drop(e.q)
+	} else {
+		a := answer_of(e.items)
+		_ = ui.palette_answer(e.q, &a)   // (off the interface's thread: posted there)
+	}
+	sync.atomic_store(&e.done, true)
+}
+
+// A question ended on a chore (its answer, or its drop): posted to the interface's thread, applied at a build; once the
+// palette is gone, an end only lets go of its handle.
+@(test)
+a_question_is_ended_from_a_chore :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	late: Test_Source
+	source_make(&late, "closed", "Closed tabs", .Go_To, LATE_ITEMS[:], later = true)
+	r: Run
+	append(&r.sources, &late)
+	defer source_free(&late)
+	open_palette(t, &f, &r, "@")
+	q := &late.questions[len(late.questions) - 1]
+	q.ended = true
+	answered := Chore_End{q = q.q, items = LATE_ITEMS[:]}
+	ui.task(&f.s, chore_end, nil, &answered)
+	start := time.tick_now()
+	for ui.palette_row_count(&r.pal) == 0 || r.pal.pending != 0 {
+		frame(&f, nil, &r)
+		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the chore's answer did not come") }
+	}
+	testing.expect_value(t, row_id(&r, 0), "a0")
+	// a drop from a chore: the source is asked again
+	late.src.version += 1
+	frame(&f, nil, &r)
+	asks := r.pal.asks
+	q = &late.questions[len(late.questions) - 1]
+	q.ended = true
+	dropped := Chore_End{q = q.q, drop = true}
+	ui.task(&f.s, chore_end, nil, &dropped)
+	start = time.tick_now()
+	for r.pal.asks == asks {
+		frame(&f, nil, &r)
+		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the dropped question was not asked again") }
+	}
+	// the palette destroyed, a question still out: its end on a chore finds no palette
+	q = &late.questions[len(late.questions) - 1]
+	q.ended = true
+	gone := Chore_End{q = q.q, items = LATE_ITEMS[:]}
+	run_free(&r)
+	ui.task(&f.s, chore_end, nil, &gone)
+	start = time.tick_now()
+	for !sync.atomic_load(&gone.done) {
+		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the chore did not run") }
+	}
+	ui.drain_posts(&f.s)   // (its end posted: it finds no palette, lets go of the handle and frees the answer)
+}
+
+// palette_has says whether a source is added; a second add is nothing; an answer never given is freed.
+@(test)
+a_source_is_added_once :: proc(t: ^testing.T) {
+	pal: ui.Command_Palette
+	defer ui.palette_destroy(&pal)
+	tabs: Test_Source
+	source_make(&tabs, "tab", "Tabs", .Go_To, TAB_ITEMS[:])
+	testing.expect(t, !ui.palette_has(&pal, &tabs.src), "not yet")
+	ui.palette_add(&pal, &tabs.src)
+	ui.palette_add(&pal, &tabs.src)
+	testing.expect(t, ui.palette_has(&pal, &tabs.src), "added")
+	testing.expect_value(t, len(ui.palette_prefixes(&pal)), 1)
+	ui.palette_remove(&pal, &tabs.src)
+	testing.expect(t, !ui.palette_has(&pal, &tabs.src), "removed")
+	a := answer_of(TAB_ITEMS[:])
+	ui.palette_answer_free(&a)
+	testing.expect(t, a.items == nil, "freed: zero after")
+}
+
+// A question says where its query was typed: a source in two places (a prefix and the plain search) is asked again in
+// the other place, for the same query.
+@(test)
+a_question_says_its_prefix :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	folders: Test_Source
+	source_make(&folders, "folder", "Folders", .Paths, nil, plain = true, later = true, searches = true)
+	r: Run
+	append(&r.sources, &folders)
+	defer run_free(&r)
+	defer source_free(&folders)
+	open_palette(t, &f, &r, "/do")
+	q := last_question(&folders)
+	testing.expect(t, q.query == "do" && q.q.prefix == .Paths, "under its prefix")
+	open_palette(t, &f, &r, "do")   // (the field replaced: the plain search)
+	q = last_question(&folders)
+	testing.expect(t, q.query == "do" && q.q.prefix == .None, "asked again: the plain search")
 }

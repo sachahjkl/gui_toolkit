@@ -394,7 +394,7 @@ SHORTCUTS_VIEW :: "shortcuts"
 sheet_instance :: proc(sheet: ^Shortcuts_Sheet) -> string { return fmt.tprintf("%x", uintptr(sheet)) }
 
 // Opens the sheet (a view, home Dialog): every command of `commands` that has a key, under its group's heading, its keys
-// at the right. It scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close cross close it.
+// at the right, and the palette's command (palette_command) after them. It scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close cross close it.
 // `title` "": "Keyboard shortcuts", in the language in use. `version`: the commands' version as the program counts
 // their changes (their keys too: a table rebound in place gives one); 0: the table does not change in place. The list
 // of the commands that have a key is kept, and only the lines near the view are built. One open takes these commands.
@@ -429,12 +429,20 @@ sheet_view :: proc(v: ^View, sheet: ^Shortcuts_Sheet) {
 	sheet_body(sheet, sheet.commands, w, em, s.window_size.y)
 }
 
+// The commands the sheet lists: the program's, then the toolkit's palette command (index len(commands)): the sheet
+// lists it itself, as palette_keys reads its keys, so no program's table holds a line for it.
+@(private = "file")
+sheet_command :: proc(commands: []Command, i: int) -> Command {
+	return i < len(commands) ? commands[i] : palette_command()
+}
+
 @(private = "file")
 sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command) {
 	clear(&sheet.lines)
 	group := ""
 	headings := 0
-	for c, i in commands {
+	for i in 0 ..= len(commands) {
+		c := sheet_command(commands, i)
 		if !command_has_key(c) { continue }
 		heading := c.group != group
 		if heading { headings += 1 }
@@ -458,8 +466,8 @@ sheet_body :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, w, em, window_h
 			first, last, above, below := heading_lines_band(lines, parent_box(), line_h, heading_h)
 			if above > 0 { spacer(px(above)) }
 			for line in lines[first:last] {
-				if line.index >= len(commands) { continue }   // (a table that shrank without a version: listed again next frame)
-				c := commands[line.index]
+				if line.index > len(commands) { continue }   // (a table that shrank without a version: listed again next frame)
+				c := sheet_command(commands, line.index)
 				if line.heading {
 					spacer(px(em * 0.5))
 					next({width = fill(), height = px(em * 1.7)})

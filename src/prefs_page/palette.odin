@@ -5,8 +5,8 @@ package tk_prefs_page
 // mark following; choosing another setting puts it alone on its page (`show`) and asks the program to show its settings
 // (`open`). src/md/features/palette.md.
 //
-//	// once, and again when the page options change
-//	prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page, opts, open_settings, app)
+//	// once, at the start: the source asks for the page options each time it reads or acts
+//	prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page, settings_options, open_settings, app)
 
 import "core:fmt"
 import "core:strings"
@@ -20,21 +20,24 @@ Palette_Settings :: struct {
 	source:  ui.Palette_Source,
 	prefs:   ^config.Prefs,
 	page:    ^Page,
-	options: Page_Options,          // the program's: its slices valid while the palette has the source
+	// the page options as they are now, asked when the source reads or acts: their slices (the themes, the pages) can
+	// be made again between two of its reads, so the source keeps none of them
+	options: proc(user: rawptr) -> Page_Options,
 	open:    proc(user: rawptr),    // shows the program's settings, `page` already on the setting chosen (nil: none)
 	user:    rawptr,
 	count:   int,                   // the preferences registered when the items were last read: a new one reads again
 }
 
-// Adds the settings source to the palette, or gives it new options. A program with its own settings model (Wren's
+// Adds the settings source to the palette, once (a second call is the first's: palette_add is idempotent). The pages a
+// program shows change rarely: when they do, it bumps `s.source.version`. A program with its own settings model (Wren's
 // about:config) gives its own source of the prefix Settings instead.
-palette_settings_add :: proc(p: ^ui.Command_Palette, s: ^Palette_Settings, prefs: ^config.Prefs, page: ^Page, o: Page_Options, open: proc(user: rawptr), user: rawptr = nil) {
-	version := s.source.version
-	s.prefs, s.page, s.options, s.open, s.user = prefs, page, o, open, user
+palette_settings_add :: proc(p: ^ui.Command_Palette, s: ^Palette_Settings, prefs: ^config.Prefs, page: ^Page, options: proc(user: rawptr) -> Page_Options, open: proc(user: rawptr), user: rawptr = nil) {
+	if ui.palette_has(p, &s.source) { return }
+	s.prefs, s.page, s.options, s.open, s.user = prefs, page, options, open, user
 	s.source = {
 		name = "setting", title = i18n.later("Settings"), prefix = .Settings, plain = true, remember = true, enter = i18n.later("Show"),
 		read = settings_read, mark = settings_mark, act = settings_act, poll = settings_poll, user = s, toolkit = true,
-		version = version + 1,
+		version = 1,
 	}
 	s.count = len(prefs.entries)
 	ui.palette_add(p, &s.source)
@@ -62,7 +65,7 @@ settings_read :: proc(p: ^ui.Command_Palette, src: ^ui.Palette_Source, q: ui.Pal
 	a: ui.Palette_Answer
 	al := ui.palette_answer_allocator(&a)
 	items := make([dynamic]ui.Palette_Item, al)
-	for pg in pages_of(prefs, s.options) {
+	for pg in pages_of(prefs, s.options(s.user)) {
 		icon := pg.icon != "" ? pg.icon : lucide.SLIDERS_HORIZONTAL
 		if pg.build != nil && pg.tags != nil {
 			append(&items, ui.palette_item_clone({id = pg.category, title = pg.title, group = i18n.tr("Settings"), icon = icon, tags = pg.tags}, al))
@@ -95,13 +98,14 @@ settings_mark :: proc(src: ^ui.Palette_Source, id: string) -> bool {
 @(private = "file")
 settings_act :: proc(p: ^ui.Command_Palette, src: ^ui.Palette_Source, c: ui.Palette_Choice) {
 	s := (^Palette_Settings)(src.user)
+	o := s.options(s.user)
 	if r, ok := s.prefs.index[c.id]; ok && s.prefs.entries[r].def.kind == .Bool {
-		if config.set_bool(s.prefs, c.id, !config.bool_of(s.prefs, c.id)) == .None && s.options.changed != nil {
-			s.options.changed(s.options.user, c.id)
+		if config.set_bool(s.prefs, c.id, !config.bool_of(s.prefs, c.id)) == .None && o.changed != nil {
+			o.changed(o.user, c.id)
 		}
 		return
 	}
-	show(s.page, s.prefs, s.options, c.id)
+	show(s.page, s.prefs, o, c.id)
 	if s.open != nil { s.open(s.user) }
 }
 

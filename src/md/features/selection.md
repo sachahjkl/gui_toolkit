@@ -11,7 +11,11 @@ text in labels (`src/ui/selection.odin`) is another concept, with another name.
 - `selected`: the identities of the selected rows (`multi` only).
 - `anchor`: the identity of the row where a Shift range starts.
 - `base`: the selection when the anchor was set. Ctrl+Shift adds its range to it.
-- `version`: it moves with each change of the selection. A cache compares it, not the set.
+- `version`: it moves with each change of the selection: a row selected or no longer, one row for another at the same
+  count, and the active row. A cache compares it, not the set or the count. A palette's commands source takes it (with
+  the program's own counts) as the version of its `disabled`: a command that acts on the active row, or on the rows
+  selected, is greyed again when it moves. A count compared instead misses a swap of one row for another. The cursor
+  was first left out ("the cursor alone"); a command on the active row then showed a stale `disabled`.
 
 The rows are not in the model. Each call gets an `Item_Rows` view: the count, the identities (nil: the index is the
 identity) and which rows can be selected. The model therefore stays pure: no `State`, no event, no frame. The tests

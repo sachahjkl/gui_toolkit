@@ -408,13 +408,14 @@ its settings. The page's search holds the preference's name in quotes, so it sho
 under the search is its own (clearing the search lands there).
 
 The source reads the preferences again when one is registered, and when the language changes: a frame walks none.
-`Palette_Settings` stays where it is while the palette has it; call `palette_settings_add` again when the page options
-change.
+`options(user) -> Page_Options` is asked each time the source reads or acts, so its slices (the themes, the pages) are
+the program's of that moment: one add at the start is enough, and a second add does nothing. When the pages a program
+shows change, it bumps `palette_settings.source.version`. `Palette_Settings` stays where it is while the palette has it.
 
 ```odin
-prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page, opts, proc(user: rawptr) {
-    (^App)(user).settings_open = true
-}, app)
+prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page,
+    proc(user: rawptr) -> prefs_page.Page_Options { return settings_options((^App)(user)) },
+    proc(user: rawptr) { (^App)(user).settings_open = true }, app)
 ```
 
 ## The update in the status bar

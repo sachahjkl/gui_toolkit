@@ -157,9 +157,10 @@ list_keys :: proc(s: ^State, st: ^List_State) {
 // Makes row `i` active and scrolls it into view (e.g. to restore a position). In a multi list, the row is selected alone
 // at the next build (the list may still hold the last build's ids: a table filtered again).
 list_select :: proc(st: ^List_State, i: int) {
+	if st.sel != i { st.version += 1 }   // (the active row: a multi list's set follows at the next build, its own bump)
 	st.sel = i
 	st.reveal = LIST_REVEAL_FRAMES
-	if st.multi { st.select_pending = true } else { st.version += 1 }
+	if st.multi { st.select_pending = true }
 }
 
 // The next build's rows are known: a list_select waiting for them selects its row (list_end, vlist).

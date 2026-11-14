@@ -1871,6 +1871,12 @@ fr Afficher le mot de passe
 en Clear
 fr Effacer
 
+en Steps
+fr Étapes
+
+en Add
+fr Ajouter
+
 en Graph
 fr Graphe
 

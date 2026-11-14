@@ -230,8 +230,19 @@ the_version_moves_with_each_change_only :: proc(t: ^testing.T) {
 	v := sel.version
 	ui.item_selection_click(&sel, rows, 2, {})
 	testing.expect_value(t, sel.version, v)   // (the same row alone again: no change)
+	// (the cursor alone moves it: a program's commands act on the active row, and their `disabled` follows the version)
 	ui.item_selection_key(&sel, rows, .Down, {.Ctrl})
-	testing.expect_value(t, sel.version, v)   // (the cursor alone)
+	testing.expect(t, sel.version != v, "the active row moved")
+	v = sel.version
 	ui.item_selection_set(&sel, rows, 0)
 	testing.expect(t, sel.version != v && exactly(&sel, 0, 2), "a program's change")
+	// one row for another, the count the same: the version moves
+	v = sel.version
+	ui.item_selection_click(&sel, rows, 4, {})
+	ui.item_selection_click(&sel, rows, 5, {})
+	testing.expect(t, sel.version != v && ui.item_selection_count(&sel, rows) == 1, "a swap")
+	v = sel.version
+	ui.item_selection_set(&sel, rows, 5, false)
+	ui.item_selection_set(&sel, rows, 1)
+	testing.expect(t, sel.version != v && ui.item_selection_count(&sel, rows) == 1, "a program's swap")
 }

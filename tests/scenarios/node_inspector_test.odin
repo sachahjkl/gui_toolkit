@@ -222,22 +222,35 @@ a_flowgraph_is_shown_and_linked :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 	_ = copy_text
 }) }
 
-// The add palette has a command per kind: one at its max_count is off, and from a link let go, the kinds with no port
-// that fits it are off.
+// The add palette's source has an item per kind: one at its max_count is off, and from a link let go, the kinds with no
+// port that fits it are off.
 @(test)
 the_palette_follows_the_catalog :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	g: flowgraph.Graph
 	defer flowgraph.graph_destroy(&g)
 	capture := flowgraph.node_add(&g, &CATALOG, CAPTURE, {})
-	commands, disabled := ui.flow_palette(&g, &CATALOG)
-	testing.expect_value(t, len(commands), 3)
-	testing.expect_value(t, commands[SAVE].label, "Save")
-	testing.expect_value(t, commands[SAVE].group, "Outputs")
-	testing.expect(t, disabled[CAPTURE], "one Capture at most")
-	testing.expect(t, !disabled[SAVE] && !disabled[COPY_TEXT])
-	_, disabled = ui.flow_palette(&g, &CATALOG, flowgraph.Port_Ref{node = capture, port = 0, side = .Out})
-	testing.expect(t, !disabled[SAVE], "Save takes a picture")
-	testing.expect(t, disabled[COPY_TEXT], "Copy text does not")
+	items := ui.flow_palette_items(&g, &CATALOG, nil, context.temp_allocator)
+	testing.expect_value(t, len(items), 3)
+	testing.expect_value(t, items[SAVE].title, "Save")
+	testing.expect_value(t, items[SAVE].group, "Outputs")
+	testing.expect_value(t, items[SAVE].id, CATALOG.nodes[SAVE].name)
+	testing.expect(t, items[CAPTURE].disabled, "one Capture at most")
+	testing.expect(t, !items[SAVE].disabled && !items[COPY_TEXT].disabled)
+	items = ui.flow_palette_items(&g, &CATALOG, flowgraph.Port_Ref{node = capture, port = 0, side = .Out}, context.temp_allocator)
+	testing.expect(t, !items[SAVE].disabled, "Save takes a picture")
+	testing.expect(t, items[COPY_TEXT].disabled, "Copy text does not")
+	// the source: added once, read again when the graph's version moves, a chooser (no prefix)
+	pal: ui.Command_Palette
+	defer ui.palette_destroy(&pal)
+	fp: ui.Flow_Palette
+	ui.flow_palette(&pal, &fp, &g, &CATALOG)
+	testing.expect(t, ui.palette_has(&pal, &fp.source), "added")
+	v := fp.source.version
+	ui.flow_palette(&pal, &fp, &g, &CATALOG)
+	testing.expect_value(t, fp.source.version, v)
+	ui.flow_palette(&pal, &fp, &g, &CATALOG, version = 1)
+	testing.expect(t, fp.source.version != v, "the graph changed: read again")
+	testing.expect_value(t, len(ui.palette_prefixes(&pal)), 0)
 	testing.expect_value(t, ui.flow_state(.Cancelled), ui.Graph_Node_State.Skipped)
 	testing.expect_value(t, ui.flow_state(.Waiting), ui.Graph_Node_State.Idle)
 }) }

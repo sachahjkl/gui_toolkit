@@ -7,13 +7,13 @@ they cannot disagree.
 ![The palette with nothing typed: the program's commands under their groups with their keys, the prefixes at its foot (examples/showcase)](screenshots/showcase_palette.webp)
 
 ```odin
-Cmd :: enum u8 { End_Task, Kill, Palette, Shortcuts }
+Cmd :: enum u8 { End_Task, Kill, Shortcuts }
 
+// (no line for the palette: the toolkit owns its command, ui.palette_command(); palette_keys reads its keys and the
+// sheet lists it)
 COMMANDS := [Cmd]ui.Command{
 	.End_Task  = {label = "End task", group = "Processes", keys = {{.Delete, {}}}},
 	.Kill      = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}},
-	// the keys of ui.palette_command(): the same in every program; read by ui.palette_keys, so the loop below skips it
-	.Palette   = {label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}, scope = .Window},
 	.Shortcuts = {label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}, scope = .Window},
 }
 
@@ -51,7 +51,7 @@ if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 | `command_typing_keys(commands)` | one line per key of the table that types text, `"<label>: <key>"` (`"Rectangle: R"`, `"Add a step…: Shift+A"`), the key by its `platform.Key` name. A program's unit test compares it with the keys it means (below) |
 | `palette_commands(&p, commands, disabled, o)` | the palette's commands source ([palette.md](palette.md)): the program's table (valid while the palette is open), `disabled` and `Palette_Commands_Options` copied when `o.version` changes (0: when their addresses do). `palette_chosen_command(&p, choice)` gives a chosen command's index |
 | `palette_command()`, `palette_keys(&p)`, `palette_toggle(&p)` | the toolkit's window command of the palette (Ctrl+K, Ctrl+Shift+P), for a menu and the sheet; the one reader of its keys; a button's open or close |
-| `shortcuts_sheet_open(&sheet, commands, title, version)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window. `commands` stays valid while it is open; `version` as the palette's |
+| `shortcuts_sheet_open(&sheet, commands, title, version)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key, grouped, its keys at the right, and the toolkit's palette command after them (the sheet adds it: no table holds it); scrolls past `SHEET_HEIGHT` of the window. `commands` stays valid while it is open; `version` as the palette's |
 
 ### A key that types text
 
@@ -172,12 +172,13 @@ ui.choice_memory_close(&app.choices)                 // the program's end: the f
 | | |
 |---|---|
 | `choice_memory_open(&m, s, path, Choice_Memory_Options{half_life_days, most})` | reads `path` on the chores (`ui.task`); the choices are merged at a next build of `s`, the ones made meanwhile kept (their counts added). `most`: the choices kept at most (`CHOICE_MOST`, 500) |
+| `choice_memory_acquire(s, path, o) -> ^Choice_Memory`, `choice_memory_release(m)` | one memory per file for the process, counted: the windows of a program that give one path share it, and one write holds every window's choices. The last release closes it. `""`: a memory of its own, in memory only. The ones who share it build on one interface thread (the command palette's `palette_memory_open` uses it) |
 | `choice_note(&m, key, now_ms = 0)` | the choice `key` was made now. Over `most`, the lightest goes (of equal weights, the oldest). The file follows |
 | `choice_weight(&m, key, now_ms = 0) -> f64` | its count, halved every half-life since it was last made; 0: never made |
 | `choice_bonus(&m, key, query, now_ms = 0) -> f64` | what it adds to a ranked score: with nothing typed, its weight; while typing, its weight times `CHOICE_BONUS_WEIGHT` (6), at most `CHOICE_BONUS_MOST` (30): a good match still beats a frequent poor one |
 | `choice_recent(&m, keys, most = CHOICE_RECENT_MOST) -> []int` | the indices in `keys` of the choices made, the heaviest first, at most `most` (5) |
 | `choice_memory_text(&m)`, `choice_memory_merge(&m, text)` | the file's text; adds a file's choices (a choice in both: counts added, the later time). False: not such a file |
-| `choice_memory_flush(&m)`, `choice_memory_close(&m)` | write now and wait for the disk; that, and free (the memory is zero after) |
+| `choice_memory_flush(&m)`, `choice_memory_close(&m)` | write now and wait for the disk; that, and free (the memory is zero after). A choice made before the file was read (a quick quit) is kept: the close has a chore read the file, waits for it (`CHOICE_CLOSE_BOUND`, 2 s), merges and writes both; past the bound it leaves the file as it is |
 
 The interface's thread never touches the file. A task reads it, and a `store.Writer` writes it on its own thread,
 atomically, once the choices rest one second (five at most): [store.md](store.md). Until the read comes, a choice changes

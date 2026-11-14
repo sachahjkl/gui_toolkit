@@ -246,6 +246,38 @@ program helps all of them. Opencode native changes where the shared palette is m
 - **The ranking always runs on a chore**, a short list too. The price is one frame between a key and its list. One path
   is worth that frame: the tests see the path that ships.
 
+After the first four programs moved to the palette (papier, inspecteur, cliche, classeur), their reports listed what
+the toolkit lacked. The answers, one API per need:
+
+- **The toolkit owns the palette's command whole.** `palette_keys` reads its keys, and the sheet of the keys lists it
+  (after the program's commands). A program's table has no line for it; a menu line reads `palette_command()` at its
+  build. A constant of its keys for a program's const table was refused: it makes two lines of one command, the
+  program's and the sheet's, and every program writes the same line.
+- **The settings source asks for its page options** (`options: proc(user) -> Page_Options`) each time it reads or
+  acts. A copy of the options kept dangling slices (the themes made again): every program had to add the source again
+  at each change. One add at the start is enough.
+- **One usage memory per file for the process** (`choice_memory_acquire`, counted). Two windows of one program each
+  wrote the whole file, and the last to close won. A merge at each write was refused: two writers still race between
+  the read and the write. The windows that share it build on one interface thread.
+- **A choice made before the file was read is not lost** at a quick quit: the close has a chore read the file, waits
+  for it within a bound (it waits for the writer anyway), merges and writes. Past the bound the file is left as it is:
+  a write of the new choice alone would lose the file's.
+- **A question can be ended from any thread.** Off the palette's interface thread, the end is posted there through
+  the link (which holds the window's Task_Box). A window gone refuses the post: the end lets go of the handle and frees
+  the answer where it is, so nothing is left at a program's end. An end that read the palette's state from a chore (a
+  task's `lost`) was a race. `palette_answer_free` frees an answer never given.
+- **A selection's version moves with its active row too**, and with a swap of one row for another at the same count:
+  a command that acts on the active row reads its `disabled` from that version.
+- **The node graph's add palette is a source of the toolkit** (`Flow_Palette`, `flow_palette`), a chooser. Cliche
+  wrapped `flow_palette`'s commands in a source of its own: what helps one program helps all.
+- **`palette_has`**, and `palette_add` idempotent: a program does not test one of a source's fields to know it is added.
+- **A question carries its prefix.** A source in two places (classeur's folders under `/` and in the plain search)
+  tells them apart, and is asked again in the other place for the same query.
+- **A choice carries its query**, without its prefix (classeur's Alt+Enter makes an alias of it): reading the field
+  after the close, and stripping the prefix by hand, was each program's copy of the parse.
+- **`palette_ranked_for(p, text)`** for tests: whether the list shown was ranked for that text. A test reading the
+  palette's private state was refused.
+
 ## Refused alternatives
 
 - **Keep two palettes** (the toolkit's for four programs, their own for opencode native and Wren). It is how they
