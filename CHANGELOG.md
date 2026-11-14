@@ -5,6 +5,43 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.262.0] - 2026-11-14
+
+### Added
+- **Toggle commands and a detail per command in the palette** (docs/palette.md): a command with `ui.Command.toggle` is a switch: its palette row shows its check (`Palette_Commands_Options.checked(user, index)`, the program's state, read for the rows in view) and choosing it leaves the palette open, as a setting's switch does; its menu line takes the same state (`menu_item(..., checked = on)`). `Palette_Commands_Options.details` gives each command a detail shown after its title ("Session · Fix the build"), part of `version`, not searched. The views' moves source reads again only when the moves it lists change, not at each step of a view (the palette's own included): a flip with the palette open ranks nothing again.
+- **`.Scrollbar_Reserve`**: a box that scrolls keeps the room of its scroll bar even while its content fits, so a list that grows past its view does not narrow under the reader (`ui.next({flags = {.Scrollbar_Reserve}})` before `scroll_y`, `list`, `vlist`, `text_edit`). By default the room is kept only while the content overflows.
+- **`ui.strip`**: a row, a column or a block of choices (tabs, chips, a program's server tabs, a sidebar's buttons) that scrolls with arrow buttons when its choices do not fit, never with a scroll bar. An arrow shows only on a side that hides choices, as a small button over the edge with nothing of the content under it, the content fading out beyond it; a click brings the next hidden choice fully into view, held it repeats. The wheel over it scrolls it the way it goes (on one axis every wheel form, on both the wheel Y and Shift+wheel X), and passes through when it fits. `Strip_Options`: `axes` (`{.X}`, `{.Y}`, `{.X, .Y}`), a step of one choice or a page, the fade's length; `ui.strip_reveal` brings the chosen choice into view when it changes; `ui.strip_view`; the box flag `.Strip_Wheel`; `Box.edge_hold`, a band at an edge where a box's content does not show (`draw.mask_edge_fade`'s `hold`).
+
+### Changed
+- **The command palette gives what the first programs lacked** (docs/palette.md): the sheet of the keys lists the palette's command itself, the settings source reads its options when it needs them, one usage memory per file is shared by a program's windows and keeps a choice made just before quitting, a question can be ended from any thread, a list's selection version follows its active row, and the node graph's add palette is a source of the toolkit. Migration:
+  - A table's line for the palette's command (Ctrl+K, Ctrl+Shift+P) → none: `ui.palette_keys` reads its keys and `ui.shortcuts_sheet_open` lists `ui.palette_command()` after the program's commands. A menu line reads `ui.palette_command()` at its build.
+  - `prefs_page.palette_settings_add(&p, &s, &prefs, &page, options, open, user)` with `options: Page_Options` → `options: proc(user: rawptr) -> Page_Options`, asked when the source reads or acts; add it once (a second add does nothing). A change of the pages shown: `s.source.version += 1`.
+  - `Command_Palette.memory: Choice_Memory` → `^Choice_Memory`, shared per file (`ui.choice_memory_acquire(s, path)`, `ui.choice_memory_release(m)`); `ui.palette_memory_open` is unchanged for a program. `ui.choice_memory_close` keeps a choice made before the file was read.
+  - Ending a `Palette_Question` (`palette_answer`, `palette_answer_error`, `palette_question_drop`) is safe from any thread: off the palette's interface thread it is posted there (`palette_answer` then returns false). `ui.palette_answer_free(&a)` frees an answer never given, instead of `virtual.arena_destroy(&a.arena)`.
+  - `Item_Selection.version` (a list's, a `Virtual_List`'s, a `Table`'s) also moves when the active row moves (Ctrl+arrows, a right click on a selected row, `list_select`).
+  - `ui.flow_palette(g, cat, from) -> (commands, disabled)` → `ui.flow_palette(&palette, &fp, g, cat, from, version)`, a `ui.Flow_Palette` source (a chooser; `c.index` is the kind, `c.id` its name); `ui.flow_palette_items(g, cat, from, allocator)` gives its items.
+  - `src.read == nil` to know whether a source is added → `ui.palette_has(&p, &src)`; `ui.palette_add` is idempotent.
+  - `Palette_Question.prefix`: where the query was typed (`.None`: the plain search); a searching source is asked again when only the prefix changed.
+  - `Palette_Choice.query`: the query the item was chosen for, without its prefix (reading the field after the close goes).
+  - `p.ranked.valid` and `p.ranked.text` in a test → `ui.palette_ranked_for(&p, text)`.
+- **Every row of tabs shows its chosen tab as a raised plate**: in `ui.tabs`, a stack of views and a dock's stack, the chosen tab stands on the finish's face of a button, the others are flat in the weak ink with a plate of the hover tint under the pointer; the accent underline and the views' tinted block are gone. Each tab of a stack of views is a Tab stop, and the tab shown is brought into view when it changes.
+- **Rows of tabs scroll with arrows, not a scroll bar**: `ui.tabs` and the tabs of a stack of views no longer show a scroll bar under them when they are too many for their row. The edge that hides tabs fades and a chevron button stands on it: a click brings the next tab fully into view, held it repeats, and the wheel scrolls the row sideways. A tab reached by the keyboard comes into view.
+- **One command palette fed by sources** (docs/palette.md): the palette asks its sources, ranks every item together on a chore (the interface's thread matches none, 10 items or 100 000; a ranking that a newer one replaced stops early), drops an answer or a ranking for an older query, a former opening or a removed source, and keeps the selection on its item when rows arrive. One closed table of prefixes for every program: `>` commands, `@` go to, `/` paths, `#` choose, `:` settings, `$` secrets; a character without a source is text. Every row has one shape (icon, title with what the query lit, detail, mark, keys); with nothing typed, Recent and then the commands, the disabled ones greyed and last, the selection on the first row that acts; a hint row at the foot shows the prefixes and the keys of the selected row; a source that reads says "Sessions: reading…". Enter while a ranking is in flight waits for it: the row the person moved to, else the first that acts. Tab puts an item's completion in the field. A switch flips and the palette stays open. Ctrl+K and Ctrl+Shift+P are the toolkit's window command, `ui.palette_command()`, read by `ui.palette_keys`. Migration:
+  - `ui.palette_set(&p, commands, disabled, {memory, names, first, keys, version})` → `ui.palette_commands(&p, commands, disabled, {names, first, keys, version, alternates})` at each build: it adds the commands source and the views' moves source, and compares `version` only (a change of `disabled` needs a new version; 0: the addresses are compared).
+  - `ui.palette_chosen(&p) -> (index, mods, ok)` → `ui.palette_chosen(&p) -> (Palette_Choice{source, id, index, mods}, ok)`, and `ui.palette_chosen_command(&p, c) -> (index, ok)` for a command. Call it at each build: the toolkit's sources act in it.
+  - The index decoding by ranges (`i < len(own)`, then the settings, then the moves) goes: the settings and the moves act themselves.
+  - `Palette_Options.memory` and `ui.choice_note` for each choice → `ui.palette_memory_open(&p, s, path)`: the palette owns its `Choice_Memory` and notes each choice, the key `<source>:<id>` (`command:<label or name>`, `setting:<name>`).
+  - `prefs_page.palette_commands(&prefs, o)` and `prefs_page.show` after the choice → `prefs_page.palette_settings_add(&p, &settings, &prefs, &page, o, open, user)`.
+  - `ui.views_commands_update` and `ui.views_command_run` for the palette → nothing: the moves source follows the views of the window the palette is over. `View_Commands.serial` goes.
+  - `Palette_Options.recent_title` and `.foot` → gone: "Recent" and the hint row are the toolkit's.
+  - `ui.key_press(.K, {.Ctrl})` → `ui.palette_keys(&p)`, the one reader of the palette's keys; `ui.palette_toggle(&p)` for a button.
+  - A program's own source: `ui.Palette_Source`, `ui.palette_add`; it ends each `Palette_Question` once with `ui.palette_answer(q, &answer)` (a `Palette_Answer` built in its own arena, taken without a copy), `ui.palette_answer_error` or `ui.palette_question_drop`.
+  - `Command_Palette.rankings` still counts the rankings; `.asks` and `.dropped` count the questions and what was dropped; `palette_row_count`, `palette_row`, `palette_selected`, `palette_busy` and `ui.rank_matched()` are for tests. `Search_Band_Options.busy` adds "…" after the count.
+
+### Fixed
+- **A panel's hover icons no longer take a click meant for what is under them**: in a lone docked panel, the Detach and Close icons do not show over a control the pointer is on in their corner (a strip's arrow in a sidebar's top row), and that control takes the click. A click on the server tabs' right arrow at the top of a sidebar floated the sidebar instead of scrolling the tabs.
+- **A notification closed at once is known as closed (Linux).** The program listened for the notification server's "closed" signal only after the server answered, so a notification it closed at once stayed known as shown, and the next one replaced it instead of showing beside it.
+
 ## [0.261.1] - 2026-11-14
 
 ### Added
@@ -3616,6 +3653,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.262.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.262.0
 [0.261.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.261.1
 [0.261.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.261.0
 [0.260.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.260.3

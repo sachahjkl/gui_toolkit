@@ -1,3 +1,0 @@
-type: Added
-
-**Toggle commands and a detail per command in the palette** (docs/palette.md): a command with `ui.Command.toggle` is a switch: its palette row shows its check (`Palette_Commands_Options.checked(user, index)`, the program's state, read for the rows in view) and choosing it leaves the palette open, as a setting's switch does; its menu line takes the same state (`menu_item(..., checked = on)`). `Palette_Commands_Options.details` gives each command a detail shown after its title ("Session · Fix the build"), part of `version`, not searched. The views' moves source reads again only when the moves it lists change, not at each step of a view (the palette's own included): a flip with the palette open ranks nothing again.
