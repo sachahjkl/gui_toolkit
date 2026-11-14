@@ -5,6 +5,23 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.254.0] - 2026-11-14
+
+### Added
+- **File descriptors over D-Bus (gt:dbus)**: `dbus.call_with_fds` passes file descriptors with a call. The connection must ask for them: `connect_bus(bus, unix_fds = true)`; `conn_unix_fds` says whether the bus accepted.
+- **Print a picture (`platform.print_image`)**: the system's print dialog, then the picture on one page, at its natural size, smaller to fit, centred. On Linux it goes through the XDG print portal; on Windows, through the Print dialog and GDI; elsewhere it is `Unsupported`. The call blocks: run it on a worker. `print_fit` lays the picture out and `print_pdf` makes the page. docs/printing.md.
+- **Dashed and dotted paths (`draw.path_dash`)**: the dashes of a path, as a new path to stroke. The pattern gives the lengths drawn and skipped in turn, as SVG's `stroke-dasharray`, with an offset. A length drawn of 0 is a round dot.
+- **Pictures read from files, combined, cut and trimmed (gt:image)**:
+  - `image.decode` gives the RGBA8 picture of a PNG, JPEG (baseline or progressive), WebP or BMP file. `image.file_format` reads the format from the file's first bytes, not from its name.
+  - `image.combine` puts several pictures in one, side by side or stacked, with a gap and a background; each is centred across.
+  - `image.cut_out` removes a band of columns or rows and joins the two sides.
+  - `image.trim_bounds` gives the part of a picture left once its edges of one colour are trimmed (with a tolerance).
+  - `image.edge_mean` gives the mean colour on the edge of a rectangle: what is around it, to fill it with.
+- **A tool bar folds item by item (`ui.toolbar_item`)**: in a `ui.toolbar_group`'s block, `if ui.toolbar_item(id) { ... }` makes a part of the group that folds into the "…" panel on its own, the group's last item first. The rest of the group stays in the bar, and no empty room is left. The group folds whole only once all its items are folded and it still does not fit. An item can take its own `priority` (else its group's): the bar sorts the items of every group together and folds the lowest priority first, so a rare tool of a group kept long folds before the items of a group that folds early. A group without items folds whole, as before.
+- **Enter commits a multi-line field, and its whole text can be selected**: with `Text_Edit_Options.enter_commits`, Enter (and Ctrl+Enter) gives `committed` and Shift+Enter breaks the line: for a caption or a message typed in place. Without it, Enter still breaks the line and Ctrl+Enter commits. `ui.text_edit_select_all` selects a `Text_Edit`'s whole text, as `line_edit_select_all` does a `Line_Edit`'s: for a text put in a field to be typed over.
+- **Keys as a node's parameter (gt:flowgraph)**: `flowgraph.Param_Type.Hotkey` holds keys as `platform.hotkey_text` writes them ("Ctrl+Alt+E"), kept in the file as a text; "" is none. `ui.node_inspector` records them with a `ui.hotkey_field` and a button that clears them. Use it for a shortcut of a workflow's own.
+- **The pointer in still pictures (gt:capture)**: `capture.set_cursor` asks for the pointer in a picture of an output, a window or the desktop; `capture.cursor_support` says whether the backend can draw it. On Wayland, the compositor draws it (`ext_image_copy_capture_v1`, `zwlr_screencopy_v1`). On Windows, the toolkit draws it over an output's picture (`GetCursorInfo`, `DrawIconEx`), and Windows.Graphics.Capture draws it in a window's picture. The screenshot portal and X11 cannot: `cursor_support` is false there. `capture.patch_clip` is the pure clip that the drawing uses. docs/capture.md, "The pointer in a picture".
+
 ## [0.253.2] - 2026-11-14
 
 ### Fixed
@@ -3443,6 +3460,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.254.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.254.0
 [0.253.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.2
 [0.253.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.1
 [0.253.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.0
