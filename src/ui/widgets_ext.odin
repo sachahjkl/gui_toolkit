@@ -1232,64 +1232,68 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 	return
 }
 
-@(private = "file") TAB_RATE :: 34
-@(private = "file") TAB_UNDERLINE_MIN_T :: 0.01
-@(private = "file") TAB_UNDERLINE_PX :: 3
-@(private = "file") TAB_UNDERLINE_RADIUS_PX :: 1.5
+// A tab's plate: its share of its row's height (centred in it: the row's own surface shows around it), and its corners.
+@(private = "file") TAB_PLATE_HEIGHT :: 0.8
+@(private = "file") TAB_RADIUS_EM :: 0.35
 
-Tab_Draw :: struct { t: f32, accent: Color }
-
+// One tab: the look of every row of tabs of the toolkit (tabs, a dock's stack, a stack of views). The chosen tab is a
+// raised plate, the finish's face of a button (a bevel when machined, a sheen with a gradient); the others are flat, in
+// the weak ink, a plate of the theme's "tab" hover under the pointer. A Tab stop, as wide as what the caller builds in it
+// (`if parent(b)`); the caller pushes "weak" around the words of an unchosen tab. `flags` adds to the tab's own.
 @(private)
-tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
-	d := (^Tab_Draw)(user)
-	if d.t < TAB_UNDERLINE_MIN_T { return }
-	r := b.rect
-	w := (r.max.x - r.min.x) * d.t
-	cx := (r.min.x + r.max.x) * 0.5
-	draw.rect(dc, {{cx - w * 0.5, r.max.y - math.round(TAB_UNDERLINE_PX * scale())}, {cx + w * 0.5, r.max.y}}, d.accent, TAB_UNDERLINE_RADIUS_PX * scale())
-}
-
-// Row of tabs with a growing underline. `icons` may be nil. Returns true when the selection changed.
-tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (changed: bool) {
+tab_box :: proc(id: string, on: bool, flags: Box_Flags = {}) -> ^Box {
 	s := gs()
 	em := font_size()
-	a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
-	first_tab: ^Box
-	for label, i in labels {
-		on := selected^ == i
-		tab_id := fmt.tprintf("%s_%d", id, i)
-		key := key_from_string(parent_box().key, tab_id)
-		t := anim(key_from_string(key, "t"), on ? 1 : 0, TAB_RATE)
-		if !on { push_tags("weak") }
-		set_next_axis(.X, .Center)
-		s.next_mod.width = children_sum()
-		s.next_mod.height = pct(1)
-		push_tags("tab")
-		b := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, tab_id)
-		pop_tags()
-		d := frame_new(Tab_Draw)
-		d.t, d.accent = t, color("accent")
-		b.custom, b.custom_user = tab_draw, d
-		if parent(b) {
-			spacer(px(em))
-			if i < len(icons) { icon(icons[i], em * 1.6) }
-			next({width = text_size(), height = pct(1)})
-			build_box({.Draw_Text}, label)
-			spacer(px(em))
-		}
-		if !on { pop_tags() }
-		sig := signal(b)
-		if sig.clicked && !on { selected^ = i; changed = true }
-		a11y_default(b, {role = .Tab, selected = on, position = i + 1, set_size = len(labels)})
-		if first_tab == nil { first_tab = b }
+	set_next_axis(.X, .Center)
+	s.next_mod.width = children_sum()
+	s.next_mod.height = pct(TAB_PLATE_HEIGHT)
+	s.next_mod.radius = math.round(em * TAB_RADIUS_EM)
+	f := Box_Flags{.Clickable, .Focusable, .Draw_Hot_Effects} + flags
+	if on {
+		f += {.Draw_Background, .Draw_Border}
+		push_tags("button")
+	} else {
+		push_tags("tab", "weak")
 	}
-	// (the tab clicked this frame is the selected one: the earlier tabs said otherwise)
-	if changed {
-		i := 0
-		for c := first_tab; c != nil && i < len(labels); c = c.next {
-			if c.a11y == nil || c.a11y.role != .Tab { continue }
-			c.a11y.selected = i == selected^
-			i += 1
+	b := build_box(f, id)
+	pop_tags()
+	return b
+}
+
+// Row of tabs, the chosen one a raised plate (tab_box), on a strip (strip.odin): too many for the row, it scrolls with
+// arrows, never a bar; the chosen tab is brought into view when it changes. With no width given (next), as wide as its tabs, and the first to give way in a short row; `strip_view(id)` is
+// its tab list. `icons` may be nil. Returns true when the selection changed.
+tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (changed: bool) {
+	em := font_size()
+	if strip(id) {
+		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
+		first_tab: ^Box
+		for label, i in labels {
+			on := selected^ == i
+			b := tab_box(fmt.tprintf("%s_%d", id, i), on)
+			if on { strip_reveal(b) }
+			if parent(b) {
+				if !on { push_tags("weak") }
+				spacer(px(em))
+				if i < len(icons) { icon(icons[i], em * 1.6) }
+				next({width = text_size(), height = pct(1)})
+				build_box({.Draw_Text}, label)
+				spacer(px(em))
+				if !on { pop_tags() }
+			}
+			sig := signal(b)
+			if sig.clicked && !on { selected^ = i; changed = true }
+			a11y_default(b, {role = .Tab, selected = on, position = i + 1, set_size = len(labels)})
+			if first_tab == nil { first_tab = b }
+		}
+		// (the tab clicked this frame is the selected one: the earlier tabs said otherwise)
+		if changed {
+			i := 0
+			for c := first_tab; c != nil && i < len(labels); c = c.next {
+				if c.a11y == nil || c.a11y.role != .Tab { continue }
+				c.a11y.selected = i == selected^
+				i += 1
+			}
 		}
 	}
 	return

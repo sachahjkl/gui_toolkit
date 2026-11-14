@@ -12,6 +12,12 @@ scroll, the palette, a terminal's scrollback), a text area, a bar with marks.
 The bar before was a thumb of a few pixels drawn over the content, a tint of the text, which could hide until the
 pointer came. A reader did not see it as a control. The arrow buttons were an option, off by default.
 
+**Which boxes have a bar: content that is read.** A list, a text, a table, a page, a log. A row of choices (tabs, a
+stack's tabs, chips) is not read: it is a strip ([strip.md](strip.md)), which scrolls with arrows over its edges and
+never has a bar nor a bar's room. 0.260 gave every box that scrolls a bar, rows of tabs too; that was the mistake the
+strip corrects. A box that scrolls with no bar for another reason (a table's titles, which follow its rows) says
+`.Scrollbar_None`, the same flag the strip sets: one mechanism.
+
 ## The standard
 
 The form is the scroll bar of the user's desktop, ShojiWM (`shojiwm-desktop`: `crates/shell/src/ui/scroll.rs`), itself
@@ -97,6 +103,16 @@ the bar: it was measured without it first. A content that has the room gives it 
 it fits still. A content that fits only without the bar and overflows beside it keeps the room it has: that band is the
 hysteresis, and the room never goes and comes from one build to the next. Each change of a layout's rooms follows the
 content; at most three layouts in a build (a vertical bar's room can make a horizontal bar come).
+
+**Room only while it overflows, by default; reserved on request.** By default (no flag) a box keeps no room while its
+content fits: a list of three rows uses the whole width. `.Scrollbar_Reserve` on a scroll box (`ui.next({flags =
+{.Scrollbar_Reserve}})` before the widget that builds it, a text area's box too) keeps the room of each bar it can show
+even while the content fits: a list that grows past its view (rows that load, a log that runs) does not narrow under
+the reader at that moment. The default is the content's whole width because most boxes never overflow or overflow
+from their first frame; the jump is a cost only for a content that grows while a person reads it, and that box's
+program knows it. Refused: reserving by default (every short list, every menu that fits, lost a column for a bar it
+never shows); a setting of the person's (it is the content's nature, not a taste). With the overlay option no room is
+kept, reserved or not. A box with `.Scrollbar_None` keeps none.
 
 **With auto-hide, the room stays.** The bar fades in its own room. A bar that took room only while it showed would move
 the content each time the pointer came near: what a person reads would reflow under the pointer.
@@ -190,6 +206,7 @@ Midnight's indigo, Graphite's sky blue, Amber's amber.
 - **A second look for a hidden bar** (a thin overlay line). The bar that comes back under the pointer is the same bar.
 - **A bar over its content by default.** It hides the ends of rows; a person who wants it chooses
   `scrolling.scrollbar_overlay`.
+- **A bar on a row of choices** (0.260's tabs): a strip has arrows instead ([strip.md](strip.md)).
 - **Room left by each widget** (a gutter spacer at the end of a row): a widget that forgets it puts its words under the
   bar, and a widget that has it doubles the room when the layout keeps one.
 - **The room decided before the layout** (from the content's height of the last frame only): the first frame of a bar

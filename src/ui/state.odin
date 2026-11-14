@@ -113,6 +113,8 @@ destroy :: proc(s: ^State) {
 	delete(s.modals_open)
 	delete(s.modals_built)
 	delete(s.list_stack)
+	delete(s.strip_stack)
+	delete(s.strips)
 	menus_destroy(s)
 	platform.chrome_regions_destroy(&s.chrome)
 	wrap_cache_destroy(s)
@@ -240,6 +242,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.scroll_smooth = s.smooth_scroll == .On || (s.smooth_scroll == .Follow && animate)
 	s.anim_busy = false
 	s.wake_ms = 0
+	clear(&s.strips)
 	s.menu_close_pending = false
 	s.toast_area_set = false
 	s.boxes_built = 0
@@ -326,6 +329,7 @@ end_build :: proc() {
 	assert(len(s.modal_stack) == 0, "ui: unbalanced modal scopes")
 	assert(len(s.views_space_stack) == 0, "ui: unbalanced views_frame or views_dock")
 	assert(len(s.list_stack) == 0, "ui: unbalanced list scopes")
+	assert(len(s.strip_stack) == 0, "ui: unbalanced strip scopes")
 	assert(len(s.menu_build) == 0, "ui: unbalanced menu scopes")
 
 	views_build(s)   // (the views shown as dialogs, the file browser among them: over the page, under the toasts and the menus)
@@ -339,6 +343,7 @@ end_build :: proc() {
 	s.metrics.build_ms = t_layout - s.build_start
 	layout(s)
 	lazy_settle(s)   // (the view stays on what it showed: before anything reads the rects)
+	strips_place(s)  // (each strip's arrows by this layout: on their edges or hidden, before anything reads the rects)
 	s.metrics.layout_ms = real_ms() - t_layout
 	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case
 	if s.caption_built || s.caption_keys != {} {
@@ -360,6 +365,7 @@ end_build :: proc() {
 	handle_tab_navigation(s)
 	find_collect(s)     // (the rects are final, with the scroll they were laid out at: update_animations moves it)
 	update_animations(s)
+	strips_settle(s)    // (the views' offsets of the next build are known: the arrows they need)
 	a11y_end_build(s)   // (after the focus moved and the rects are final)
 
 	// drop boxes and animations that were not touched this build
@@ -579,7 +585,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.cross = cross
 	b.gap = {}
 	if has_mod { if v, ok := mod.gap.?; ok { b.gap = v } }
-	b.edge_fade = {}
+	b.edge_fade, b.edge_hold, b.strip_arrow = {}, {}, 0
 	if has_mod { if v, ok := mod.edge_fade.?; ok { b.edge_fade = v } }
 	b.font = st.font
 	b.font_size = st.font_size
@@ -1082,8 +1088,15 @@ scroll_focus_into_view :: proc(s: ^State) {
 	b := s.boxes[s.focus_key]
 	if b == nil { return }
 	for p := b.parent; p != nil; p = p.parent {
-		if .View_Scroll_Y not_in p.flags { continue }
-		view_reveal_box(p, b, margin = b.font_size)
+		// (clear of the faded edges and of what lies over them, a strip's arrows)
+		if .View_Scroll_Y in p.flags {
+			view_reveal_box(p, b, margin = max(b.font_size, p.edge_hold[1] + p.edge_fade[1], p.edge_hold[3] + p.edge_fade[3]))
+		}
+		// (sideways: a box wider than the clear part, a table's row, leaves the view where the reader put it)
+		if .View_Scroll_X in p.flags {
+			margin := max(b.font_size, p.edge_hold[0] + p.edge_fade[0], p.edge_hold[2] + p.edge_fade[2])
+			if b.rect.max.x - b.rect.min.x <= p.size.x - 2 * margin { view_reveal_box(p, b, .X, margin) }
+		}
 	}
 }
 

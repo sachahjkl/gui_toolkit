@@ -3,7 +3,8 @@ package showcase
 // The views scene: a section of a program with its own dock space (views_dock, docs/views.md "Panels"): its content in
 // the centre, two terminals stacked as tabs at the bottom (their strip: the tabs, the "+", the moves, then minimise,
 // maximise and close), a lone inspector at the right (no strip: a panel alone adds nothing), and, by --views=, a
-// floating window over the content or a dialog. The views open when the scene shows and close when it goes: a panel
+// floating window over the content or a dialog, or every terminal open (--views=tabs: in a narrow window their tabs
+// overflow the strip, which scrolls with arrows). The views open when the scene shows and close when it goes: a panel
 // whose space is not built would float over the other scenes. Their memory is the window's own: in memory only.
 
 import "core:fmt"
@@ -17,8 +18,9 @@ Views_Variant :: enum u8 {
 	Docked,     // the panels only
 	Floating,   // the panels and a floating window over the content
 	Dialog,     // the panels and a dialog over all of it (its header: the Detach icon, the close cross)
+	Tabs,       // the panels, every terminal open: in a narrow window their tabs overflow the strip (its arrows)
 }
-VIEWS_VARIANT_NAMES := [Views_Variant]string{.Docked = "docked", .Floating = "floating", .Dialog = "dialog"}
+VIEWS_VARIANT_NAMES := [Views_Variant]string{.Docked = "docked", .Floating = "floating", .Dialog = "dialog", .Tabs = "tabs"}
 
 VIEWS_SPACE :: "views_scene"
 TERMINAL_VIEW :: "terminal"
@@ -73,14 +75,18 @@ views_canvas :: proc(app: ^App, em: f32) {
 	tint := draw.hsv(app.views_hue / 360, app.views_sat, 0.32 + 0.5 * app.views_val)
 	margin := math.round(em * 0.9)
 	ui.next({width = ui.fill(), height = ui.fill(), radius = math.round(em * 0.6), bg = tint, axis = .Y})
-	canvas := ui.build_box({.Draw_Background}, "###views_canvas")
+	// (it clips: nothing of it ever draws over the panels beside it)
+	canvas := ui.build_box({.Draw_Background, .Clip}, "###views_canvas")
 	if ui.parent(canvas) {
 		ui.spacer(ui.fill())
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 		if ui.row(id = "###views_canvas_foot") {
 			ui.spacer(ui.px(margin))
-			ui.next({width = ui.text_size(math.round(em * 0.3)), height = ui.px(math.round(em * 1.9)), radius = math.round(em * 0.4), bg = draw.Color{0, 0, 0, 0.45}, fg = draw.Color{1, 1, 1, 0.92}})
-			ui.build_box({.Draw_Background, .Draw_Text, .No_Text_Trunc}, "harbour-at-dusk.webp · 1920 × 1080###views_canvas_name")
+			// (as wide as its words while the picture has the room, then it gives way: its words cut with "…", the whole
+			// name in a tooltip)
+			ui.next({width = ui.text_size(math.round(em * 0.3), 0), height = ui.px(math.round(em * 1.9)), radius = math.round(em * 0.4), bg = draw.Color{0, 0, 0, 0.45}, fg = draw.Color{1, 1, 1, 0.92}, flags = {.Draw_Background}})
+			_ = ui.label_tip("harbour-at-dusk.webp · 1920 × 1080###views_canvas_name")
+			ui.spacer(ui.px(margin))
 		}
 		ui.spacer(ui.px(margin))
 	}
@@ -100,6 +106,7 @@ views_scene_open :: proc(app: ^App) {
 	case .Docked:
 	case .Floating: ui.view_open(vs, COLOUR_VIEW, app)
 	case .Dialog:   ui.view_open(vs, EXPORT_VIEW, app)
+	case .Tabs:     for app.terminal_count < TERMINALS_MAX { terminal_open(app) }
 	}
 }
 

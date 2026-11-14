@@ -87,8 +87,8 @@ body :: proc(a: ^App) {
 		a.keys.field = ui.line_edit("###name", &a.field, {placeholder = "Your name"}).box.key
 		ui.next({width = ui.px(400), height = ui.px(30)})
 		if ui.row(id = "###tabs") {
-			a.keys.tabs = ui.parent_box().key
 			ui.tabs("t", {"One", "Two", "Three"}, nil, &a.tab)
+			a.keys.tabs = ui.strip_view("t").key   // (the tab list: the strip's view, its arrows outside it)
 		}
 		ui.next({width = ui.px(300), height = ui.px(30)})
 		a.keys.hello = ui.label("Hello###hello").box.key

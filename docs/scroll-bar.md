@@ -6,6 +6,9 @@ lists, menus that scroll, the palette, a terminal's scrollback), a `text_edit`, 
 arrow button at each end, a thumb with a gradient across it and a grip. Why it is so: the intent,
 [src/md/features/scroll-bar.md](../src/md/features/scroll-bar.md).
 
+A row of choices (tabs, chips) has no bar: it is a strip ([strip.md](strip.md)), which scrolls with arrows over its
+edges.
+
 ## What it shows
 
 A bar shows while the content is longer than the view, and only then. By default it never hides. With
@@ -50,13 +53,23 @@ button. The thumb is at least 8 % of the track, and at least as long as the bar 
 
 A vertical bar is at the right edge of its box (`.Scrollbar_Left`: the left one), a horizontal bar at its bottom edge,
 short of the vertical one, both inside the box's border. In a box with rounded corners, the bar keeps the drawn radius
-from each corner. `.Scrollbar_None`: a box that scrolls with no bar (a table's titles, which follow its rows).
+from each corner. `.Scrollbar_None`: a box that scrolls with no bar and no room for one (a table's titles, which follow
+its rows; a strip).
 
 **Nothing is drawn under a bar.** While a bar shows, the scroll box's layout keeps its room: the content is laid out in
 the box less the bar (a `fill()` row ends at the bar, a row's right-aligned words and buttons stay left of it), and a box
 sized by its children grows by it. This holds for every scroll box (lists, tables, menus, the palette, markdown, the
 settings page) and for a `text_edit`; a widget leaves no room for a bar itself. When the content stops overflowing the
-room comes back; a content that overflows only beside the bar does not take it, so the room never flickers. With
+room comes back; a content that overflows only beside the bar does not take it, so the room never flickers.
+
+**The room is kept only while the content overflows, by default.** A box that must not narrow when its content grows
+past the view (a list that loads more rows, a log that runs) keeps the room while it fits too: give it
+`.Scrollbar_Reserve`, as `ui.next({flags = {.Scrollbar_Reserve}})` before the widget (`scroll_y`, `list`, `vlist`,
+`text_edit`, a box of your own). The room of each bar the box can show is kept: a vertical bar's for `.View_Scroll_Y`, a
+horizontal bar's for `.View_Scroll_X` (a `text_edit` that wraps has none). The bar itself shows only on overflow. With
+`scrolling.scrollbar_overlay` no room is kept, reserved or not.
+
+With
 auto-hide the room stays: the bar fades in it. `scrolling.scrollbar_overlay` (off by default, `ui.set_scrollbar_overlay`)
 draws the bars over the edge of the content and keeps no room. A box outside the scroll box that lines up with its
 content (a table's titles) reads `ui.scrollbar_room(box, .X)`.

@@ -206,8 +206,25 @@ click_named :: proc(s: ^session.Session, name: string, button := platform.Mouse_
 		testing.expectf(s.t, false, "%s is inactive", name, loc = loc)
 		return false
 	}
-	session.click_at(s, session.center(b), button)
+	session.click_at(s, seen_center(s, b), button)
 	return true
+}
+
+// The middle of what a person sees of `b`: inside the boxes that clip it, clear of a strip's arrows over it (a tab half
+// under an arrow is clicked on its seen half, as a person does).
+@(private = "file")
+seen_center :: proc(s: ^session.Session, b: ^ui.Box) -> [2]f32 {
+	r := b.rect
+	for p := b.parent; p != nil; p = p.parent {
+		if .Clip not_in p.flags { continue }
+		r = {{max(r.min.x, p.rect.min.x), max(r.min.y, p.rect.min.y)}, {min(r.max.x, p.rect.max.x), min(r.max.y, p.rect.max.y)}}
+	}
+	for name in ([]string{"strip_left", "strip_right"}) {
+		a := built(s, name)
+		if a == nil || a.rect.max.x <= r.min.x || a.rect.min.x >= r.max.x || a.rect.max.y <= r.min.y || a.rect.min.y >= r.max.y { continue }
+		if name == "strip_left" { r.min.x = max(r.min.x, a.rect.max.x) } else { r.max.x = min(r.max.x, a.rect.min.x) }
+	}
+	return (r.min + r.max) * 0.5
 }
 
 // Test 17: a panel alone in its zone adds no tab strip, no border, no icon at rest; its body starts at the zone's top
@@ -318,7 +335,7 @@ a_tab_dragged_out_floats :: proc(t: ^testing.T) {
 	s := dock_start(t, &r, "side", "side2")
 	tab := wait_built(s, "view_tab_view_side")
 	if tab == nil { return }
-	session.drag(s, session.center(tab), OUT)
+	session.drag(s, seen_center(s, tab), OUT)
 	if wait_built(s, "internal_view_side") == nil { return }
 	testing.expect_value(t, ui.view_presentation(&r.views, "side"), ui.View_Presentation.Internal)
 	testing.expect(t, built(s, "view_tabs") == nil, "one left in the zone: no tabs")

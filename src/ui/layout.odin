@@ -133,6 +133,8 @@ layout_downward :: proc(b: ^Box, axis: Axis) {
 		}
 		b.size[ai] = max(v, b.pref[axis].least)
 	}
+	// (a strip's view: its least is its choices' sizes of this layout, so it holds from the first layout it is in)
+	if b.strip_arrow > 0 && box_scrolls(b, axis) { strip_least(b, axis) }
 }
 
 // Height of a .Wrap box: tallest item of each line, plus the gaps between lines (lines come from the X pass).

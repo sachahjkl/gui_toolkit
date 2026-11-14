@@ -438,8 +438,10 @@ draws, except the header that a dialog always had. The rules:
 2. **A lone panel's controls appear only on hover.** While the pointer is over a strip-less panel's top area, two
    small icons show in its top right corner: Detach and Close, in the weak colour. At rest nothing is added. The icons
    take no room in the layout: they float over the body's corner. A panel with a strip has none: the strip holds them.
-2b. **The tab strip, left to right** (`view_stack_strip`): the tabs; the "+" of the shown view's kind (`new_tab`),
-   right after the last tab, where the new tab appears; the shown view's moves (Float, Open in a window, Re-attach when
+2b. **The tab strip, left to right** (`view_stack_strip`): the tabs, in the look of every row of tabs (`tab_box`) and on
+   a strip ([strip.md](strip.md)): too many for the stack, they scroll with arrows over the faded edge, never a bar; the
+   "+" of the shown view's kind (`new_tab`), right after the last tab (outside the strip: at its end when the tabs
+   scroll), where the new tab appears; the shown view's moves (Float, Open in a window, Re-attach when
    not at home), small and weak, side by side, where the eye already is; the program's tools of the shown view
    (`view_header_tools`); then, at the right end, Minimise, Maximise and Close of the stack, drawn as the window's
    caption buttons (one builder, `caption_row`, for both). Refused: the moves at the far right (the eye is on the tabs;

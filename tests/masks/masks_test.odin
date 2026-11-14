@@ -314,3 +314,23 @@ edge_fade :: proc(t: ^testing.T) {
 		testing.expectf(t, close_rgb(px(img2, 100, 50), red_at(1)), "%v: inside %v", current_space, px(img2, 100, 50))
 	})
 }
+
+// mask_edge_fade's hold: a band at the edge where the content does not show at all (a strip's arrow lies there), then
+// the fade beyond it, linear from nothing at the band's inner side.
+@(test)
+edge_fade_hold :: proc(t: ^testing.T) {
+	spaces(t, proc(t: ^testing.T, f: ^Fx) {
+		img := frame(f, proc(f: ^Fx) {
+			dc := &f.dc
+			draw.push_mask(dc, CONTENT)
+			draw.rect(dc, CONTENT, RED)
+			draw.mask_edge_fade(dc, CONTENT, {0, 0, 40, 0}, {0, 0, 24, 0})
+			draw.pop_mask(dc)
+		})
+		// (CONTENT is 160 wide: the band 136 .. 160, the fade 96 .. 136)
+		testing.expectf(t, close_rgb(px(img, 150, 30), red_at(0), 8), "%v: in the band, nothing %v", current_space, px(img, 150, 30))
+		testing.expectf(t, close_rgb(px(img, 137, 30), red_at(0), 16), "%v: at the band's inner side, nothing yet %v", current_space, px(img, 137, 30))
+		testing.expectf(t, close_rgb(px(img, 116, 30), red_at(0.5), 8), "%v: half way through the fade %v", current_space, px(img, 116, 30))
+		testing.expectf(t, close_rgb(px(img, 60, 30), red_at(1)), "%v: before the fade %v", current_space, px(img, 60, 30))
+	})
+}

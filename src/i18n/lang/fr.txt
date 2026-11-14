@@ -1973,6 +1973,18 @@ fr Repères
 en Type to search
 fr Tapez pour rechercher
 
+en Scroll left
+fr Faire défiler vers la gauche
+
+en Scroll right
+fr Faire défiler vers la droite
+
+en Scroll up
+fr Faire défiler vers le haut
+
+en Scroll down
+fr Faire défiler vers le bas
+
 en Reset %s
 fr Réinitialiser %s
 

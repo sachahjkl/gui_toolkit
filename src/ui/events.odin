@@ -18,12 +18,17 @@ WHEEL_LINE_PX :: 100.0 / 3   // a line of the wheel, in logical px: a browser's 
 
 // What a notch of the wheel moves box `b` along `axis`, in px: the lines the system says (characters across), each WHEEL_LINE_PX at the
 // window's scale; a page of the box less a line, where the system says a page. Every view scrolls by this, the text fields too.
-wheel_step :: proc(b: ^Box, axis: Axis = .Y) -> f32 {
+wheel_step :: proc(b: ^Box, axis: Axis = .Y) -> f32 { return wheel_step_turned(b, axis, axis) }
+
+// wheel_step of a wheel that turns along `from` (its own setting: the vertical wheel's lines, or the sideways one's) moving
+// the box along `along` (a strip of one axis turns every wheel along it; its page is the box's length that way).
+@(private)
+wheel_step_turned :: proc(b: ^Box, from, along: Axis) -> f32 {
 	sc := max(gs().scale, 0.01)
 	line := WHEEL_LINE_PX * sc
-	n := platform.wheel_lines(axis == .X)
+	n := platform.wheel_lines(from == .X)
 	if n > 0 { return math.round(n * line) }   // (whole pixels: where a view stops is where a pixel is)
-	page := axis == .X ? b.rect.max.x - b.rect.min.x : b.rect.max.y - b.rect.min.y
+	page := along == .X ? b.rect.max.x - b.rect.min.x : b.rect.max.y - b.rect.min.y
 	return math.round(max(page - line, line))
 }
 
@@ -254,24 +259,37 @@ scroll_view_delta :: proc(s: ^State) -> Vec2 {
 
 // The box the wheel scrolls: the innermost under `p` that scrolls the way `d` goes (mostly sideways: .View_Scroll_X, else
 // .View_Scroll_Y; .Scroll_Self takes both). A box that scrolls only sideways (a wide table) lets a vertical wheel through to
-// the page around it.
+// the page around it. A strip (.Strip_Wheel) takes the wheel only while it overflows the way the wheel scrolls it, and
+// never with Ctrl (the zoom's).
 @(private)
 scroll_hit_test :: proc(s: ^State, p: Vec2, d: Vec2) -> Key {
 	if s.root == nil { return 0 }
-	return scroll_hit_box(s.root, p, s.root.rect, abs(d.x) > abs(d.y))
+	return scroll_hit_box(s.root, p, s.root.rect, abs(d.x) > abs(d.y), .Ctrl in s.mods)
 }
 
 @(private)
-scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways: bool) -> Key {
+scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways, ctrl: bool) -> Key {
 	if !(p.x >= clip.min.x && p.x < clip.max.x && p.y >= clip.min.y && p.y < clip.max.y) { return 0 }
 	child_clip := clip
 	if .Clip in b.flags {
 		child_clip = Rect{{max(clip.min.x, b.rect.min.x), max(clip.min.y, b.rect.min.y)}, {min(clip.max.x, b.rect.max.x), min(clip.max.y, b.rect.max.y)}}
 	}
 	for c := b.last; c != nil; c = c.prev {
-		if k := scroll_hit_box(c, p, child_clip, sideways); k != 0 { return k }
+		if k := scroll_hit_box(c, p, child_clip, sideways, ctrl); k != 0 { return k }
 	}
-	takes := .Scroll_Self in b.flags || (sideways ? .View_Scroll_X in b.flags : .View_Scroll_Y in b.flags)
+	takes: bool
+	if .Strip_Wheel in b.flags {
+		x, y := .View_Scroll_X in b.flags, .View_Scroll_Y in b.flags
+		switch {
+		case ctrl:   takes = false
+		// (both axes: the wheel scrolls Y, Shift+wheel or a sideways touchpad X, as every page does)
+		case x && y: takes = view_limit(b, sideways ? .X : .Y) > 0
+		// (one axis: every wheel scrolls along it: over a row of tabs there is nothing to scroll up and down)
+		case:        takes = view_limit(b, x ? .X : .Y) > 0
+		}
+	} else {
+		takes = .Scroll_Self in b.flags || (sideways ? .View_Scroll_X in b.flags : .View_Scroll_Y in b.flags)
+	}
 	if takes && contains(b.rect, p) { return b.key }
 	return 0
 }
@@ -407,8 +425,18 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 	if .Scroll_Self in b.flags && s.scroll_key == b.key { sig.scrolled = s.scroll_delta }
 	if (.View_Scroll_X in b.flags || .View_Scroll_Y in b.flags) && s.scroll_key == b.key {
 		d := scroll_view_delta(s)
-		if .View_Scroll_X in b.flags { b.view_target.x += d.x * wheel_step(b, .X); sig.scrolled.x = d.x }
-		if .View_Scroll_Y in b.flags { b.view_target.y += d.y * wheel_step(b, .Y); sig.scrolled.y = d.y }
+		if .Strip_Wheel in b.flags && (.View_Scroll_X in b.flags) != (.View_Scroll_Y in b.flags) {
+			// (a strip on one axis: the wheel's main motion, whatever its way, goes along it, by the step of the wheel
+			// that moved; on both axes, the wheel as on a page)
+			to := .View_Scroll_X in b.flags ? Axis.X : Axis.Y
+			from := abs(d.x) > abs(d.y) ? Axis.X : Axis.Y
+			along := d[int(from)]
+			b.view_target[int(to)] += along * wheel_step_turned(b, from, to)
+			sig.scrolled[int(to)] = along
+		} else {
+			if .View_Scroll_X in b.flags { b.view_target.x += d.x * wheel_step(b, .X); sig.scrolled.x = d.x }
+			if .View_Scroll_Y in b.flags { b.view_target.y += d.y * wheel_step(b, .Y); sig.scrolled.y = d.y }
+		}
 		// clamp against last frame's bounds; the animation pass re-clamps with fresh ones
 		b.view_target = {clamp(b.view_target.x, 0, view_limit(b, .X)), clamp(b.view_target.y, 0, view_limit(b))}
 	}

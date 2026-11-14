@@ -560,16 +560,9 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 	em := d.metrics.em
 	title := dock_title(d, p)
 	active := d.nodes[leaf].active == p
-	push_tags("tab")
-	if !active { push_tags("weak") }
-	next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
-	tb := build_box({.Clickable, .Focusable, .Draw_Hot_Effects, .Hot_Within}, dock_tab_id(p))
-	if !active { pop_tags() }
-	pop_tags()
+	// (the look of every row of tabs: tab_box)
+	tb := tab_box(dock_tab_id(p), active, {.Hot_Within})
 	sig := signal(tb)
-	td := frame_new(Tab_Draw)
-	td.t, td.accent = active ? 1 : 0, color("accent")
-	tb.custom, tb.custom_user = tab_draw, td
 	held := d.drag.state == .Dragging && d.drag.panel == p
 	closable := dock_closable(d, p)
 	if parent(tb) {

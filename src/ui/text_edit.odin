@@ -568,8 +568,9 @@ edit_bar_room :: proc(e: ^Edit_Build) {
 		content := content_extent(a, text_edit_string(a), b, e.lh, e.lines, e.wrap_w)
 		view := editor_view(b.rect, e.gutter, e.pad, e.room)
 		w := scrollbar_thickness(s)
-		if content.y > view.y + SCROLLBAR_FIT_SLACK_PX { room.x = w }
-		if e.wrap_w <= 0 && content.x + end_slack() > view.x + SCROLLBAR_FIT_SLACK_PX { room.y = w }
+		reserve := .Scrollbar_Reserve in b.flags   // (the room kept while it fits: text that grows past the view does not rewrap then)
+		if reserve || content.y > view.y + SCROLLBAR_FIT_SLACK_PX { room.x = w }
+		if e.wrap_w <= 0 && (reserve || content.x + end_slack() > view.x + SCROLLBAR_FIT_SLACK_PX) { room.y = w }
 	}
 	a.bar_room = room
 	if room == e.room { return }

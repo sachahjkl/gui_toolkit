@@ -14,6 +14,9 @@
   `Notify` reply and the `NotificationClosed` signal on the test bus, so the CI never fails without a fault.
 - **Wren moves to views.** Wren's bookmark, vault and security-key dialogs become views, as in the other programs.
   Intent: [src/md/features/views.md](src/md/features/views.md), sections 1 and 7.
+- **Every row of tabs on a strip.** The dock's stacks, classeur's tab rows and Wren's tab strip scroll with the
+  toolkit's arrows when their tabs are too many, as `ui.tabs` and the views' stacks do; today they cut or scroll in their
+  own way. Intent: [src/md/features/strip.md](src/md/features/strip.md).
 - **No program blocks its interface's thread.** Each program's tests run its windows with the toolkit's blocking check
   on and fail when a disk, process or D-Bus call happens in a build, so the CI finds it.
 - **The last settings that programs copy.** The toolkit gets standard Desktop, Accessibility and Diagnostics groups
