@@ -551,40 +551,11 @@ wgpu_run_pass :: proc(r: ^Renderer, s: ^Submit, p: ^Pass) {
 ////////////////////////////////
 // Readback
 
+// The offscreen frame as it is stored (read_pixels and read_pixels_float make the pixels of it): rows packed,
+// frame_texel_bytes a texel, B8G8R8A8 or four halves.
 @(private)
-wgpu_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
+wgpu_read_frame_raw :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	g := &r.wg
 	if g.surface != nil || g.frame_tex == nil || r.lost { return nil }
-	w, h := r.size.x, r.size.y
-	row := align_up(w * 4, COPY_ROW_ALIGN_BYTES)
-	buf := wgpu.DeviceCreateBuffer(g.device, &{label = "readback", usage = {.CopyDst, .MapRead}, size = u64(row * h)})
-	if buf == nil { return nil }
-	defer wgpu.BufferRelease(buf)
-	enc := wgpu.DeviceCreateCommandEncoder(g.device)
-	wgpu.CommandEncoderCopyTextureToBuffer(enc,
-		&{texture = g.frame_tex, mipLevel = 0, aspect = .All},
-		&{buffer = buf, layout = {offset = 0, bytesPerRow = u32(row), rowsPerImage = u32(h)}},
-		&{u32(w), u32(h), 1})
-	cb := wgpu.CommandEncoderFinish(enc)
-	submitted := wgpu_submit(r, cb)
-	wgpu.CommandBufferRelease(cb)
-	wgpu.CommandEncoderRelease(enc)
-	if !submitted { return nil }
-	done := false
-	ok := false
-	Map :: struct { done, ok: ^bool }
-	m := Map{&done, &ok}
-	cb_map :: proc "c" (status: wgpu.MapAsyncStatus, message: wgpu.StringView, u1, u2: rawptr) {
-		m := (^Map)(u1)
-		m.done^, m.ok^ = true, status == .Success
-	}
-	wgpu.BufferMapAsync(buf, {.Read}, 0, uint(row * h), {mode = .AllowSpontaneos, callback = cb_map, userdata1 = &m})
-	for tries := 0; !done && !r.lost && tries < READBACK_WAIT_MAX_TRIES; tries += 1 { wgpu_poll(r, true, events = true) }
-	if !ok { return nil }
-	src := wgpu.BufferGetConstMappedRange(buf, 0, uint(row * h))
-	out := make([]u8, w * h * 4, allocator)
-	// the storage is B8G8R8A8 (or R16G16B16A16 float for a translucent linear target, not supported here)
-	for y in 0 ..< h { swap_red_blue(raw_data(out[y * w * 4:]), raw_data(src[y * row:]), w) }
-	wgpu.BufferUnmap(buf)
-	return out
+	return wgpu_read_texture(r, g.frame_tex, allocator)
 }

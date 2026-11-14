@@ -17,7 +17,8 @@ package ui
 //   Table:        the layout, the rows shown (filtered, sorted), the virtual list that builds only those in view
 //   table_apply:  filters and sorts again (new data, a new filter, a new sort); the same row stays selected
 //   table_keys:   Up / Down, Page Up / Page Down, Ctrl+Home / Ctrl+End move the selection while the keyboard is elsewhere
-//                 (a filter field); Enter activates; the Menu key and Shift+F10 ask for the row's menu
+//                 (a filter field), with Shift a range when `vl.multi`; Enter activates; the Menu key and Shift+F10 ask
+//                 for the row's menu
 //   table_build:  the header and the rows; a cut cell shows its whole text in a tooltip; the selection is drawn strong
 //                 while the window is the user's, whatever has the keyboard
 //
@@ -33,6 +34,7 @@ import "core:strings"
 import "../ascii"
 import "../draw"
 import i18n "../i18n"
+import "../platform"
 
 // A column's width, in ems, when dragged.
 TABLE_COLUMN_MIN_EM :: 3
@@ -42,12 +44,9 @@ TABLE_HEADER_EM :: 2.2
 TABLE_ROW_EM :: 1.9
 // The grip of a column's rule, in ems: where a drag takes it.
 @(private = "file") TABLE_RULE_GRIP_EM :: 0.7
-// Room at the right of the last column for the rows' scroll bar, which floats over them: an em, or the bar's thickness
-// when it is wider (table_bar_room).
-@(private = "file") TABLE_SCROLLBAR_EM :: 1
-
-@(private = "file")
-table_bar_room :: proc(em: f32) -> f32 { return max(em * TABLE_SCROLLBAR_EM, scrollbar_gutter()) }
+// Room at the right of the last column, in the titles and in the rows alike: the grip of the last column's rule. The
+// rows' scroll bar has a room of its own, which their list's layout keeps and the titles leave too (Table_Layout.bar_room).
+@(private = "file") TABLE_END_EM :: TABLE_RULE_GRIP_EM
 // The fill column (width 0) never goes narrower: when the window is too narrow, the last columns go past the right edge
 // (cut by the rows) instead of the fill column going to nothing under its neighbours' text.
 TABLE_FILL_MIN_EM :: 10
@@ -92,6 +91,7 @@ Table_Layout :: struct {
 	sort:       int,      // the column the rows are sorted by; TABLE_UNSORTED: none, the data's own order
 	descending: bool,
 	scroll_x:   f32,      // the rows' and the titles' sideways scroll at the last build (table_scroll_sync)
+	bar_room:   f32,      // the room the rows' list keeps for its scroll bar, at its last layout (table_scroll_sync): the titles leave it
 	// a title dragged sideways (table_header): its column
 	moving:     bool,
 	moving_col: int,
@@ -271,7 +271,8 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, o := Tabl
 		ev.view = view.key
 		push_parent(view)
 		defer pop_parent()
-		next({width = fill_least(table_min_width(l)), height = pct(1), axis = .X, cross = .Center})
+		// (as wide as the rows' content: what their list keeps for its bar is left at the end, as there)
+		next({width = fill_least(table_min_width(l) + l.bar_room), height = pct(1), axis = .X, cross = .Center})
 		titles_row := build_box({}, "###hd_row")
 		push_parent(titles_row)
 		defer pop_parent()
@@ -328,7 +329,7 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, o := Tabl
 			next({width = px(em * TABLE_RULE_GRIP_EM), height = pct(1)})
 			if row(id = "###last_rule") { if table_rule(l, prev, em, prev_px) { ev.resized = true } }
 		}
-		spacer(px(max(table_bar_room(em) - em * TABLE_RULE_GRIP_EM, 0)))
+		if l.bar_room > 0 { spacer(px(l.bar_room)) }
 		if l.moving { ev.moved = table_move_drag(l, moving, places, titles_row) }
 	}
 	return
@@ -502,10 +503,11 @@ table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
 }
 
 // The least width of a row of the columns shown, in frame pixels: the columns' own, the fill column's TABLE_FILL_MIN_EM
-// and the room of the scroll bar. A wider room: the fill column takes the rest; a narrower one: the rows scroll sideways.
+// and the room of the last rule's grip (the scroll bar keeps its own: the list's layout). A wider room: the fill column takes
+// the rest; a narrower one: the rows scroll sideways.
 table_min_width :: proc(l: ^Table_Layout) -> f32 {
 	em := font_size()
-	w := table_bar_room(em)
+	w := em * TABLE_END_EM
 	for k in 0 ..< len(l.columns) {
 		if !l.shown[k] { continue }
 		w += em * (l.width[k] > 0 ? l.width[k] : TABLE_FILL_MIN_EM)
@@ -526,6 +528,7 @@ table_scroll_sync :: proc(l: ^Table_Layout, header: Key, list: ^Virtual_List) {
 	hb.view_off.x, hb.view_target.x = lb.view_off.x, lb.view_target.x
 	hb.view_anim.x.active = false
 	l.scroll_x = lb.view_target.x
+	l.bar_room = scrollbar_room(lb, .X)
 }
 
 // The width of column `k`: its own (in ems), or for the fill column (width 0) what the others leave, never under
@@ -570,7 +573,7 @@ table_matched_line :: proc(text: string, ranges: []Fuzzy_Range, fg: Maybe(Color)
 	style: Rich_Style
 	if c, ok := fg.?; ok { style.color = c }
 	match_runs(text, ranges, style, &runs)
-	rich_paragraph("###lit", runs[:], max_lines = 1)
+	rich_paragraph("###lit", runs[:], max_lines = 1, selectable = false)   // (a cell, as its plain label: the row's)
 }
 
 // Text to show as it is in a box's id: a "##" in it would end the shown part (key.odin), so a zero-width space goes
@@ -582,7 +585,7 @@ text_shown :: proc(text: string, allocator := context.temp_allocator) -> string 
 }
 
 // The end of a row's cells: the room of the rows' scroll bar.
-table_row_end :: proc() { spacer(px(table_bar_room(font_size()))) }
+table_row_end :: proc() { spacer(px(font_size() * TABLE_END_EM)) }
 
 // Whether the pointer is on the box and `text` does not fit in it with `pad` on each side (the box as laid out at the
 // last build).
@@ -753,8 +756,8 @@ table_apply :: proc(t: ^Table, d: ^Table_Data, query: string) {
 			if id == keep {
 				t.vl.sel = i
 				// (a cleared filter: the row comes into view; new rows of the same filter scroll nothing: the list stays where
-				// the user scrolled it)
-				if cleared { list_select(&t.vl, i) }
+				// the user scrolled it. Not list_select: the rows selected with it stay selected.)
+				if cleared { t.vl.reveal = LIST_REVEAL_FRAMES }
 				break
 			}
 		}
@@ -821,16 +824,27 @@ Table_Events :: struct {
 table_keys :: proc(t: ^Table) -> (ev: Table_Events) {
 	n := len(t.ids)
 	if n == 0 { return }
-	to := t.vl.sel
+	// (this build's rows: a table_apply since the last build changed them, the list's copy is still the old one)
+	rows := Item_Rows{count = n, ids = t.ids[:]}
 	page := max(t.vl.page_rows - 1, 1)
-	if key_press(.Down) { to = t.vl.sel + 1 }
-	if key_press(.Up) { to = t.vl.sel < 0 ? 0 : t.vl.sel - 1 }
-	if key_press(.Page_Down) { to = t.vl.sel + page }
-	if key_press(.Page_Up) { to = t.vl.sel - page }
-	if key_press(.Home, {.Ctrl}) { to = 0 }
-	if key_press(.End, {.Ctrl}) { to = n - 1 }
-	to = clamp(to, 0, n - 1)
-	if to != t.vl.sel { list_select(&t.vl, to) }
+	// alone, the row the keys go to is selected alone; with Shift (multi), the range from the anchor
+	for mods in ([2]platform.Modifiers{{}, {.Shift}}) {
+		if mods != {} && !t.vl.multi { break }
+		at := t.vl.sel
+		to, moved := at, true
+		switch {
+		case key_press(.Down, mods):              to = at + 1
+		case key_press(.Up, mods):                to = at < 0 ? 0 : at - 1
+		case key_press(.Page_Down, mods):         to = at + page
+		case key_press(.Page_Up, mods):           to = at - page
+		case key_press(.Home, mods + {.Ctrl}):    to = 0
+		case key_press(.End, mods + {.Ctrl}):     to = n - 1
+		case:                                     moved = false
+		}
+		if !moved { continue }
+		item_selection_move(&t.vl.selection, rows, clamp(to, 0, n - 1), mods)
+		t.vl.reveal = LIST_REVEAL_FRAMES
+	}
 	if t.vl.sel >= 0 {
 		if key_press(.Return) { ev.activated = true }
 		if key_press(.Menu) || key_press(.F10, {.Shift}) {
@@ -872,10 +886,8 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 				table_cell_tip(row, tip)
 				if i == t.vl.sel { t.sel_rect = row.box.rect }
 				if row.double_clicked { ev.activated = true }
-				if row.right_clicked {
-					t.vl.sel = i
-					ev.menu, ev.menu_at = true, mouse_pos()
-				}
+				// (list_row made the row the selection, or kept the selection it is in)
+				if row.right_clicked { ev.menu, ev.menu_at = true, mouse_pos() }
 			}
 			if len(t.ids) == 0 && empty != "" {
 				if tags("weak") {

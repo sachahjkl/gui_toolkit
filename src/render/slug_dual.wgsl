@@ -32,7 +32,8 @@ fn ps_slug_dual(i: SlugPS) -> Slug_Dual_Out {
 	var a = i.color.a;
 	if (i.clip != 0u || rp.misc.y != 0u) { a = a * any_clip_coverage(i.pos.xy + g.target_origin, i.clip); }
 	var o: Slug_Dual_Out;
-	o.factor = float4(a * c3, a * (c3.x + c3.y + c3.z) / 3.0);
-	o.color = float4(i.color.rgb, o.factor.a);
+	// (in [0, 1], as an 8-bit target clamps them: a half-float one keeps what is past it)
+	o.factor = saturate(float4(a * c3, a * (c3.x + c3.y + c3.z) / 3.0));
+	o.color = saturate(float4(i.color.rgb, o.factor.a));
 	return o;
 }

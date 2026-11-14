@@ -2,7 +2,8 @@ package tk_prefs_page
 
 // The preferences every program of the toolkit has, declared once here: what changes the look, the text, the scrolling,
 // the hand's feel, the timings, the rendering, the updates and the program on the desktop. Each is a setting of the
-// toolkit with today's default; nothing is blocked: a technical one is `advanced` (shown, folded), never hidden. Their
+// toolkit with today's default; nothing is blocked: a technical one is `advanced` (shown, folded on a page that has
+// ordinary ones; shown on a page of technical ones alone, Rendering), never hidden. Their
 // names are fixed: the programs' files hold them, and the page knows some of them (Page_Options.themes shows
 // appearance.theme as cards). docs/settings.md lists them all.
 //
@@ -10,7 +11,7 @@ package tk_prefs_page
 //	d.theme, d.app_name = "cliche", "cliche"
 //	prefs_page.standard_register(&prefs, prefs_page.STANDARD_ALL, d)
 //	config.register(&prefs, PREF_DEFS[:])   // the program's own
-//	prefs_page.standard_watch(&app.standard, &prefs, &app.state, {renderer = &r, fonts = &fonts})   // applied now, and at each change
+//	prefs_page.standard_watch(&app.standard, &prefs, &app.state, {renderer = &r, fonts = &fonts, faces = {.Mono = mono}})   // applied now, and at each change
 //	a := prefs_page.appearance_read(&prefs); defer prefs_page.appearance_destroy(&a)
 //	ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 
@@ -276,18 +277,18 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	if .Text in sets {
 		config.title_register(prefs, "appearance.text", i18n.later("Text and fonts"))
 		append(&defs, config.Def{
-			name = UI_FONT_PREF, title = i18n.later("Interface font"), kind = .String, default = {s = ""}, restart = true,
-			description = i18n.later("The family of the interface's text, as the system names it (\"Inter\"). Empty: the program's."),
+			name = UI_FONT_PREF, title = i18n.later("Interface font"), kind = .String, default = {s = ""},
+			description = i18n.later("The family of the interface's text. Default: the program's."),
 			tags = FONT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = MONO_FONT_PREF, title = i18n.later("Monospace font"), kind = .String, default = {s = ""}, restart = true,
-			description = i18n.later("The family of code and of what lines up in columns. Empty: the program's."),
+			name = MONO_FONT_PREF, title = i18n.later("Monospace font"), kind = .String, default = {s = ""},
+			description = i18n.later("The family of code and of what lines up in columns. Default: the program's."),
 			tags = FONT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = PROSE_FONT_PREF, title = i18n.later("Reading font"), kind = .String, default = {s = ""}, restart = true,
-			description = i18n.later("The family of long text to read (documents, messages). Empty: the program's."),
+			name = PROSE_FONT_PREF, title = i18n.later("Reading font"), kind = .String, default = {s = ""},
+			description = i18n.later("The family of long text to read (documents, messages). Default: the program's."),
 			tags = FONT_TAGS[:],
 		})
 		append(&defs, config.Def{
@@ -412,6 +413,10 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		append(&defs, config.Def{
 			name = "scrolling.scrollbar_autohide", title = i18n.later("Hide the scroll bars"), kind = .Bool, default = {b = false},
 			description = i18n.later("A scroll bar shows only while its view moves, while the pointer is over the view, or while it is held."),
+		})
+		append(&defs, config.Def{
+			name = "scrolling.scrollbar_overlay", title = i18n.later("Scroll bars over the content"), kind = .Bool, default = {b = false},
+			description = i18n.later("A scroll bar is drawn over the edge of what its view shows, which keeps no room for it."),
 		})
 		append(&defs, config.Def{
 			name = "scrolling.curve", title = i18n.later("Glide curve"), kind = .String, default = {s = CURVE_CHOICES[int(sc.curve)]}, advanced = true,
@@ -597,6 +602,18 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	config.register(prefs, defs[:])
 }
 
+// What a standard group is for, in a sentence the page shows under its title (English, translated where it shows), where
+// its title alone does not say it; "" for the others.
+@(private)
+group_intro :: proc(path: string) -> string {
+	switch path {
+	case "input":     return i18n.later("How held keys and buttons repeat, what an undo takes back, and how far a step of a number goes.")
+	case "timing":    return i18n.later("How long the interface waits before a tooltip or a submenu shows, how tall a menu's items are, and how long a change of theme fades.")
+	case "rendering": return i18n.later("How the interface's pictures are made and sent to the screen: the delay from a key to the screen, the work of the graphics card.")
+	}
+	return ""
+}
+
 // The labels of a preference's choices, in their order, made in `allocator` (the registry keeps the slice). The words are
 // English, translated where the page shows them.
 @(private = "file")
@@ -742,20 +759,27 @@ differs_from_default :: proc(prefs: ^config.Prefs, name: string, keys := false) 
 
 // What standard_apply reaches besides the interface (each nil: what it sets is left alone). The renderer: the corners,
 // how text is blended, the presentation and the filters; the fonts: font.Settings; partial_redraw: a host's flag
-// (host.Host.partial_redraw, which the host gives the interface at each frame; nil: ui.set_partial_redraw).
+// (host.Host.partial_redraw, which the host gives the interface at each frame; nil: ui.set_partial_redraw). `faces`:
+// the program's own text faces, which "Default" draws in (ui.set_text_faces: 0, the interface's is
+// Build_Params.base.font, the monospace one State.mono_font, the reading one the interface's); `font_source`: where the
+// families' faces and their list come from (zero: the system's; a test's fake one).
 Standard_Targets :: struct {
 	renderer:       ^render.Renderer,
 	fonts:          ^font.State,
 	partial_redraw: ^bool,
+	faces:          ui.Text_Faces,
+	font_source:    ui.Font_Source,
 }
 
 // Applies every standard preference that is registered, at its default too (a program's own defaults are
 // Standard_Defaults.values: they reach the interface as the user's do), to the toolkit's setters (ui.set_feel, set_zoom, set_density,
-// set_rounding, set_animations, set_smooth_scroll, the scroll and autoscroll settings, set_toast_position; the renderer's
-// and the fonts' when `t` gives them). What is not registered is left as it is. The theme (appearance.theme, mode,
-// finish, glow, font_size) stays the program's to show (appearance_read, ui.theme_show), as do the fonts by name, the
-// title bar, the updates and the session (read at the start: Def.restart, or by the program's Updater and desktop.apply).
+// set_rounding, set_animations, set_smooth_scroll, the scroll and autoscroll settings, set_toast_position, the text
+// faces of the families named (ui.use_text_family: loaded on a chore, swapped in when they come); the renderer's and the
+// fonts' when `t` gives them). What is not registered is left as it is. The theme (appearance.theme, mode, finish, glow,
+// font_size) stays the program's to show (appearance_read, ui.theme_show), as do the emoji font, the title bar, the
+// updates and the session (read at the start: Def.restart, or by the program's Updater and desktop.apply).
 standard_apply :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets = {}) {
+	ui.set_text_faces(s, t.faces, t.font_source)
 	for e in prefs.entries { standard_apply_one(prefs, s, t, e.def.name) }
 }
 
@@ -817,7 +841,7 @@ bool_value :: proc(prefs: ^config.Prefs, name: string) -> (v: bool, ok: bool) {
 @(private = "file")
 standard_apply_one :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets, name: string) {
 	switch {
-	case strings.has_prefix(name, "appearance.text."): apply_text(prefs, t, name)
+	case strings.has_prefix(name, "appearance.text."): apply_text(prefs, s, t, name)
 	case strings.has_prefix(name, "appearance.") || strings.has_prefix(name, "window."): apply_appearance(prefs, s, t, name)
 	case strings.has_prefix(name, "scrolling."): apply_scrolling(prefs, s, name)
 	case strings.has_prefix(name, "input.") || strings.has_prefix(name, "timing."): apply_feel(prefs, s, name)
@@ -863,6 +887,7 @@ apply_scrolling :: proc(prefs: ^config.Prefs, s: ^ui.State, name: string) {
 		if i, ok := choice_value(prefs, name, SCROLLBAR_SIZE_CHOICES[:]); ok { ui.set_scrollbar_size(s, ui.Scrollbar_Size(i)) }
 		return
 	case "scrolling.scrollbar_autohide": if is_bool { ui.set_scrollbar_autohide(s, b) }; return
+	case "scrolling.scrollbar_overlay":  if is_bool { ui.set_scrollbar_overlay(s, b) }; return
 	case "scrolling.autoscroll.enabled":  if is_bool { ui.set_autoscroll_enabled(s, b) }; return
 	case "scrolling.autoscroll.toggle":    if is_bool { au.toggle = b }
 	case "scrolling.autoscroll.dead_zone": if num { au.dead_zone = f32(v) }
@@ -907,7 +932,15 @@ apply_feel :: proc(prefs: ^config.Prefs, s: ^ui.State, name: string) {
 }
 
 @(private = "file")
-apply_text :: proc(prefs: ^config.Prefs, t: Standard_Targets, name: string) {
+apply_text :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets, name: string) {
+	switch name {
+	case UI_FONT_PREF, MONO_FONT_PREF, PROSE_FONT_PREF:
+		if config.ref_of(prefs, name) == config.NO_REF { return }
+		which := ui.Text_Face.Interface
+		if name == MONO_FONT_PREF { which = .Mono } else if name == PROSE_FONT_PREF { which = .Prose }
+		ui.use_text_family(s, which, strings.trim_space(config.string_of(prefs, name)))
+		return
+	}
 	if r := t.renderer; r != nil {
 		tr := render.text_rendering(r)
 		v, num := number_value(prefs, name)

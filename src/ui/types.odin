@@ -97,6 +97,7 @@ Box_Flag :: enum u8 {
 	Ctrl_Wheel,          // a .Scroll_Self box that zooms with Ctrl+wheel itself (a node graph, a map): over it, the wheel with Ctrl is its own, not the interface's zoom
 	Held,                // drawn pressed in, as while the button is held on it (a toggled button: the option chosen)
 	Lit,                 // drawn as under the pointer (a button whose menu is open)
+	Selection_Block,     // a .Selectable box that starts a block of a document: a copy puts a blank line before it, as the source (Markdown's blocks)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
@@ -166,6 +167,7 @@ Box :: struct {
 
 	// animation (0..1)
 	hot_t, active_t, disabled_t, focus_t: f32,
+	bar_room:    Vec2,           // the room its content area keeps for its bars (scrollbar_rooms_update): x a vertical bar's, y a horizontal bar's
 	bar_t:       f32,            // how much its scroll bar shows (set_scrollbar_autohide)
 	bar_until:   f64,            // scrollbar_reveal: shown until then (the build's clock)
 	bar_marks:   ^Scroll_Marks,  // the marks its vertical bar carries (scroll_marks.odin), given at build bar_marks_build
@@ -344,6 +346,12 @@ State :: struct {
 	widget_icon_font: font.Font_Id,      // the toolkit's own (ICON_FONT_DATA): the widgets' marks, loaded when first needed
 	lucide_font:      font.Font_Id,      // the lucide package's face: the marks the toolkit's own has not (lucide_icons)
 	mono_font:   font.Font_Id,           // optional: used by sliders, key caps and tables (falls back to the UI font)
+	// the text faces (text_faces.odin): the program's own (set_text_faces), where the chosen families come from, the
+	// families chosen (use_text_family: their faces replace the program's once loaded), the changes of text_own
+	text_own:    Text_Faces,
+	text_source: Font_Source,
+	text_chosen: [Text_Face]Family_Face,
+	text_serial: u64,
 	timers:      map[Key]Timer,
 	drag_payload: Drag_Payload,         // data stored at press time for the active drag (see drag_store / drag_load)
 	hotkey_recorder: Key,               // the hotkey_field that records the next combination (0: none)
@@ -430,6 +438,7 @@ State :: struct {
 	damage:       draw.Damage_Memory, // what each box drew last frame (draw.damage_auto)
 	scrollbar_size: Scrollbar_Size,  // set_scrollbar_size
 	scrollbar_autohide: bool,        // set_scrollbar_autohide
+	scrollbar_overlay: bool,         // set_scrollbar_overlay
 	edits:        map[Key]Box_Edit,  // box_edit: what a tool imposes on boxes, build after build
 	focus_key:    Key,
 	focus_visible: bool,             // focus came from the keyboard: draw the focus ring on any focused box
@@ -451,6 +460,8 @@ State :: struct {
 	modal_escape: Key,               // the dialog Escape closed in the last build: the next one takes it (modal_take_escape)
 	modal_escape_taken: bool,        // a dialog took Escape in this build: the one on top at its end is closed
 	keys_behind_dialogs: bool,       // set_keys_behind_dialogs: keys reach code outside an open dialog
+	keys_claim:      Keys_Claim,     // keys_claim of the last build: the chords the widget with the keyboard keeps
+	keys_claim_next: Keys_Claim,     // and of this one
 	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
 	tab_dir_next: int,               // the same asked during a build (focus_step): tab_dir of the next one
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
@@ -503,6 +514,8 @@ State :: struct {
 	auto_cfg:        Autoscroll_Settings,
 	auto_cfg_set:    bool,
 	auto_off:        bool,       // set_autoscroll_enabled(false): on by default, every scroll region takes the wheel's click
+	// a selecting drag held near an edge scrolls the view around it (drag_autoscroll.odin): this build's mark
+	drag_auto:       Drag_Autoscroll,
 
 	// wrapped text: lines by (text, font, size, width), kept while used (text_wrap.odin)
 	wrap_cache:      map[Wrap_Key]Wrap_Entry,

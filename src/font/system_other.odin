@@ -22,6 +22,6 @@ sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: run
 sys_has_family :: proc(family: string) -> bool { return false }
 
 @(private)
-sys_families :: proc(allocator: runtime.Allocator) -> []string { return nil }
+sys_families :: proc(allocator: runtime.Allocator) -> []Family { return nil }
 
 }

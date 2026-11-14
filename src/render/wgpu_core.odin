@@ -446,6 +446,7 @@ wgpu_frame_formats :: proc(r: ^Renderer) {
 		}
 	}
 	fp16 := wgpu_wants_fp16(r.transparent, r.space, wgpu_surface_alpha(r) == .Premultiplied, has_fp16)
+	if r.half_float_offscreen && g.surface == nil { fp16 = true }   // (init_offscreen's half_float: a translucent window's frame, for a test)
 	g.surface_format = fp16 ? .RGBA16Float : .BGRA8Unorm
 	g.view_format = fp16 ? .RGBA16Float : (r.space == .Srgb ? .BGRA8Unorm : .BGRA8UnormSrgb)
 	r.frame_format = fp16 ? dxgi.FORMAT.R16G16B16A16_FLOAT : dxgi.FORMAT.B8G8R8A8_UNORM

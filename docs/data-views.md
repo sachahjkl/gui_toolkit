@@ -86,30 +86,63 @@ direction. A program saves it and reads it back.
 | `table_sort_text(l, keys)`, `table_sort_apply(l, keys, text)` | the sort as a text (`memory`, `-memory` when descending, `none` unsorted), and back (only to a column shown) |
 | `table_column_reset(l, k)`, `table_menu_items(l, labels)` | a column back to its own width, unsorted when the rows went by it; the header's menu, opened on `menu`: the right-clicked column's reset (`Table_Layout.menu_column`), unsorted, the columns shown, the default columns (`table_menu_default_labels`: the toolkit's words, in the language in use). `changed`: save the layout; `sort_changed`: sort again |
 | `table_column_items(l)` | the columns' menu items, in the caller's `menu`: each column but the first, in their order, checked when shown |
-| `table_min_width(l)`, `table_scroll_sync(l, header, list)` | the least width of a row (the columns shown, the fill column's least, the scroll bar's room); the rows' sideways scroll given to the titles in the same build. A table narrower than its columns scrolls sideways (Shift+wheel, a touchpad): `table_build` does it; a program that builds its rows gives its list `View_Scroll_X`, `Allow_Overflow_X` and its rows `fill_least(table_min_width(l))`, then calls `table_scroll_sync` |
+| `table_min_width(l)`, `table_scroll_sync(l, header, list)` | the least width of a row (the columns shown, the fill column's least, the last rule's grip); the rows' sideways scroll given to the titles in the same build, and the room their list keeps for its scroll bar (the titles leave it: the columns line up). A table narrower than its columns scrolls sideways (Shift+wheel, a touchpad): `table_build` does it; a program that builds its rows gives its list `View_Scroll_X`, `Allow_Overflow_X` and its rows `fill_least(table_min_width(l))`, then calls `table_scroll_sync` |
 | `table_width(l, k)` | a column's width: its own, or for the fill column what the others leave, never under `TABLE_FILL_MIN_EM` (`fill_least`, resolved in the same build) (too narrow a window: the last columns go past the edge, cut, instead of the fill column going to nothing). A cell a program builds itself takes it |
 | `table_cell(l, col, text, bg, fg, border)` | a cell under its title, each word of `Table_Layout.highlight` lit where it is (`word_ranges`, the theme's `match` on `match_bg`; `table_apply` sets it to the filter), clipped to the column, on a background `bg` with its text in `fg` and a 1 px outline in `border` (each optional: a busy cell's tint, the text that reads on it, a stronger shade of the tint). True when the pointer is on it and its text is cut |
 | `table_cell_tip(row, text)` | the cut text, in a tooltip beside the pointer after `Feel.tooltip_delay_ms` ([feel.md](feel.md)) |
-| `table_row_end()` | the room of the scroll bar at the end of a row |
+| `table_row_end()` | the room at the end of a row under the last rule's grip, as the titles have (the scroll bar's own room is the list's layout's) |
 | `text_cut_under_mouse(b, text, pad)` | the test of `table_cell`, for a cell a program builds itself |
 | `label_tip(text)` | a label outside a table that does the same: its whole text in a tooltip when it is cut (widgets.md) |
 | `text_shown(text)` | a text with a zero-width space between two `#`: a `##` would end the shown part of an id |
 
-### More than one row (`src/ui/list.odin`)
+### More than one row (`src/ui/item_selection.odin`, `src/ui/list.odin`)
 
-A list (`list`, `vlist`, the rows a program builds with `list_row`) has one active row, `sel`. With `multi` set on its
-state, rows can be marked besides it: a Ctrl click marks a row or unmarks it (the active row joins the marks first), a
-Shift click marks the rows from the last one clicked to this one, a click alone clears the marks, and Ctrl+A marks every
-row while the list has the keyboard (a move with the keys alone clears them). A marked row is drawn as the active one. A
-right click on a row outside the marks clears them; on a marked row, the marks stay (the menu acts on them). A row is
-marked by its identity: a `vlist`'s id (a mark goes when its row is no longer in the ids: gone or filtered out), a
-`list`'s index. The selection a program acts on is the marked rows, or the active row when none is marked.
+Every list (`list`, `vlist`, the rows a program builds with `list_row`, a `Table`'s rows) keeps its selection in an
+`Item_Selection` (`List_State.selection`, its fields promoted): `sel`, the active row (the cursor), and with `multi` the
+rows selected, by identity. The design and its reasons: [src/md/features/selection.md](../src/md/features/selection.md).
+
+With `multi` set:
+
+| Gesture | Selection |
+|---|---|
+| click | the row alone; the anchor goes to it |
+| Ctrl+click | the row toggled; the anchor goes to it |
+| Shift+click | the range from the anchor to the row, alone (a second Shift+click replaces the range) |
+| Ctrl+Shift+click | the range added to what was selected when the anchor was set |
+| right click | outside the selection: the row alone; on a selected row: the selection stays (its menu acts on it) |
+| Up, Down, Page Up, Page Down, Home, End | the cursor moves, its row alone |
+| the same with Shift, with Ctrl+Shift | the range from the anchor to the cursor, alone or added |
+| the same with Ctrl | the cursor moves, the selection stays |
+| Ctrl+Space | the cursor's row toggled |
+| Ctrl+A | every row that can be selected |
+| Escape | several rows selected: the cursor's row alone; one row or none: `cancelled` (the program's Escape) |
+
+A selected row is drawn with the `selected` tags. A row is selected by its identity: a `vlist`'s id (it leaves the
+selection when its row is no longer in the ids: gone or filtered out), a `list`'s index. Without `multi`, the selection
+is the active row; a key with Ctrl or Shift is then the program's. `table_keys` gives Shift+arrows a range from a
+filter field when `vl.multi`.
 
 | Procedure | |
 |---|---|
-| `list_is_marked(st, i)`, `list_mark_count(st)` | whether row `i` is marked; how many are (0: the active row alone) |
-| `list_mark(st, i, on)`, `list_mark_all(st)`, `list_marks_clear(st)` | the program's own changes (its Ctrl+A when another field has the keyboard); `marks_changed` says the frame changed them |
-| `list_row_id(st, i)` | the identity a row is marked by |
+| `list_is_selected(st, i)`, `list_selected_count(st)` | whether row `i` is selected; how many are |
+| `list_selected_ids(st, allocator)` | the identities selected, in the rows' order (a pass over the rows: on an action) |
+| `list_set_selected(st, i, on)`, `list_select_all(st)`, `list_selection_clear(st)` | the program's own changes (its Ctrl+A when another field has the keyboard) |
+| `st.selected_changed`, `st.version` | the build changed the selection; a number that moves with each change (a cache's key) |
+| `list_row_id(st, i)`, `list_rows(st)` | the identity a row is selected by; the rows as the model sees them |
+
+A program that builds its own grid or list (a grid of thumbnails, where Up goes a whole line of columns up) keeps an
+`Item_Selection` and calls the model with its rows (`Item_Rows{count, ids, selectable}`):
+
+| Procedure | |
+|---|---|
+| `item_selection_click(sel, rows, i, mods)`, `item_selection_context(sel, rows, i)` | a press, a right click on row `i` |
+| `item_selection_move(sel, rows, to, mods)` | the cursor goes to `to`, a row the grid computed; the modifiers say what that does to the selection |
+| `item_selection_key(sel, rows, key, mods, page)` | a list's key (the moves by rows, Ctrl+Space, Ctrl+A, Escape); whether it was the selection's |
+| `item_selection_toggle`, `item_selection_range(sel, rows, i, add)`, `item_selection_one`, `item_selection_all`, `item_selection_clear`, `item_selection_set` | the steps the gestures are made of |
+| `item_selection_has`, `item_selection_count`, `item_selection_ids`, `item_selection_keep(sel, rows)` | read it; drop the identities no longer in the rows |
+| `item_selection_escape(sel, rows, mods)` | a program's own Escape (its list without the keyboard): on several rows the cursor's alone and true; else false, the Escape is the program's |
+| `item_selection_rekey(sel, old_id, new_id)` | a row's identity changed (a row unfolded whose id carries its height): its selection, base place and anchor follow |
+| `item_rows_id`, `item_rows_selectable`, `item_rows_next`, `item_rows_find` | the rows: an identity, whether a row can be selected, the next one that can, the row of an identity |
 
 ### A long list's cost (`src/ui/vlist.odin`)
 
@@ -128,7 +161,7 @@ are read elsewhere (a palette's field keeps the keyboard).
 
 Two fields of the list's state (`List_State`, so a `vlist`'s and a `Table`'s `vl` too) set the look of its rows:
 `zebra` shades every second row (the theme's `list_row zebra background`, a step off the page toward the text), `rules`
-draws a hairline under each row (`rule border`). The active and the marked rows keep the selection's colours.
+draws a hairline under each row (`rule border`). The selected rows keep the selection's colours.
 `list_row(st, i, label, selectable, tint)` takes a `tint`: the row's background in place of its stripe (a row that just
 came, a row in alert).
 

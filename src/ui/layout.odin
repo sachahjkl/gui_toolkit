@@ -11,17 +11,40 @@ import "core:math"
 //   5. positions
 // A box with .Draw_Border keeps its border out of the content area (like CSS border-box): its children are laid out
 // inside it, so they never draw under the border (a selection outline in a menu or a bordered list stays visible).
+// A scroll box keeps the room of its bars out of it too (Box.bar_room, src/md/features/scroll-bar.md): nothing is laid
+// out under a bar. The room follows what the layout measured; when it changes, the layout runs again in the same build.
 @(private)
 layout :: proc(s: ^State) {
 	root := s.root
 	root.size = s.window_size
-	for axis in Axis {
-		layout_standalone(root, axis)
-		layout_upward(root, axis)
-		layout_downward(root, axis)
-		layout_violations(root, axis)
-		layout_positions(root, axis)
+	for _ in 0 ..< LAYOUT_BAR_ROOM_PASSES {
+		for axis in Axis {
+			layout_standalone(root, axis)
+			layout_upward(root, axis)
+			layout_downward(root, axis)
+			layout_violations(root, axis)
+			layout_positions(root, axis)
+		}
+		if !scrollbar_rooms_update(s, root) { break }
 	}
+}
+
+// The layouts a build makes at most: one, and again for each change of a bar's room (a vertical bar's room can make a
+// horizontal bar come, whose room can make the vertical one come). A room taken narrows the content, which then overflows
+// still; a room given back widens a content that fit, which fits still: no change undoes another (scrollbar_rooms_update).
+@(private = "file") LAYOUT_BAR_ROOM_PASSES :: 3
+
+// What a box's content area loses along `axis`: its border on both sides and the room of its bars.
+@(private)
+content_pad :: proc(b: ^Box, axis: Axis) -> f32 { return 2 * border_inset(b) + b.bar_room[int(axis)] }
+
+// The room of a box's bars along `axis`, at the start and at the end of its content area: a vertical bar's along X (at
+// the end, at the start with .Scrollbar_Left), a horizontal bar's along Y (at the end).
+@(private)
+bar_room_ends :: proc(b: ^Box, axis: Axis) -> (start, end: f32) {
+	r := b.bar_room[int(axis)]
+	if axis == .X && .Scrollbar_Left in b.flags { return r, 0 }
+	return 0, r
 }
 
 @(private)
@@ -50,7 +73,7 @@ layout_upward :: proc(b: ^Box, axis: Axis) {
 	if b.pref[axis].kind == .Percent {
 		a := b.parent
 		for a != nil && a.pref[axis].kind == .Children_Sum { a = a.parent }
-		b.size[ai] = a != nil ? max(0, a.size[ai] - 2 * border_inset(a)) * b.pref[axis].value : 0
+		b.size[ai] = a != nil ? max(0, a.size[ai] - content_pad(a, axis)) * b.pref[axis].value : 0
 		// the classic mistake: a percentage inside a box sized by its children is of a distant ancestor (often the
 		// window): a label meant to fill its row's height stretches the row, a dialog, a list to the window's
 		if gs().layout_warnings && a != b.parent && b.size[ai] > gs().window_size[ai] * 0.5 { layout_warn(b, axis, a) }
@@ -106,7 +129,7 @@ layout_downward :: proc(b: ^Box, axis: Axis) {
 				for c := b.first; c != nil; c = c.next { if !is_floating(c, axis) { n += 1 } }
 				v += b.gap.x * f32(max(n - 1, 0))
 			}
-			v += 2 * border_inset(b)
+			v += content_pad(b, axis)
 		}
 		b.size[ai] = max(v, b.pref[axis].least)
 	}
@@ -129,7 +152,7 @@ wrap_height :: proc(b: ^Box) -> f32 {
 		line_h = max(line_h, c.size.y)
 	}
 	total += line_h
-	return total + b.gap.y * f32(max(lines - 1, 0)) + 2 * border_inset(b)
+	return total + b.gap.y * f32(max(lines - 1, 0)) + content_pad(b, .Y)
 }
 
 @(private = "file") LAYOUT_VIOLATION_EPS_PX :: 0.01   // children over by less than this are left alone
@@ -141,7 +164,7 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 	// (a percentage is of the box's size now, the violations above it done: the upward pass gave it the box's size
 	// before an ancestor shrank, and a box that lets its children overflow kept them that large)
 	if overflow && b.pref[axis].kind != .Children_Sum {
-		avail := b.size[ai] - 2 * border_inset(b)
+		avail := b.size[ai] - content_pad(b, axis)
 		for c := b.first; c != nil; c = c.next {
 			if is_floating(c, axis) || c.pref[axis].kind != .Percent { continue }
 			c.size[ai] = max(0, avail * c.pref[axis].value, c.pref[axis].least)
@@ -150,7 +173,7 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 	// A view inside a view that scrolls the same way gives up what passes the outer one's room, and scrolls to it itself:
 	// one bar on that axis, the innermost's. (The outer view kept it whole: two bars, one under the other, for one content.)
 	if overflow && box_scrolls(b, axis) && b.pref[axis].kind != .Children_Sum {
-		avail := b.size[ai] - 2 * border_inset(b)
+		avail := b.size[ai] - content_pad(b, axis)
 		if axis == b.layout_axis {
 			violation := -avail
 			for c := b.first; c != nil; c = c.next { if !is_floating(c, axis) { violation += c.size[ai] } }
@@ -168,7 +191,7 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 		}
 	}
 	if !overflow {
-		avail := b.size[ai] - 2 * border_inset(b)
+		avail := b.size[ai] - content_pad(b, axis)
 		if .Wrap in b.flags {
 			// items keep their size and move to the next line instead; only an item wider than the box shrinks (its words
 			// wrapping when its strictness keeps it wider)
@@ -314,7 +337,7 @@ wrap_room :: proc(b: ^Box) -> f32 {
 		return max(0, b.size.x - least)
 	}
 	if b.first == nil || .Allow_Overflow_X in b.flags || .View_Scroll_X in b.flags { return 0 }
-	inner := b.size.x - 2 * border_inset(b)
+	inner := b.size.x - content_pad(b, .X)
 	room: f32
 	switch {
 	case .Wrap in b.flags:
@@ -357,7 +380,7 @@ natural_width :: proc(b: ^Box) -> f32 {
 			if b.layout_axis == .X || .Wrap in b.flags { v += w; n += 1 } else { v = max(v, w) }
 		}
 		if .Wrap in b.flags { v += b.gap.x * f32(max(n - 1, 0)) }
-		if b.first != nil { v += 2 * border_inset(b) }
+		if b.first != nil { v += content_pad(b, .X) }
 	}
 	return max(v, p.least)
 }
@@ -368,7 +391,10 @@ layout_positions :: proc(b: ^Box, axis: Axis) {
 	scrolls := axis == .X ? .View_Scroll_X in b.flags : .View_Scroll_Y in b.flags
 	off := scrolls ? b.view_off[ai] : 0
 	inset := border_inset(b)
-	cursor := inset
+	// (the content area: in from the border, and from the room of the bars)
+	room_start, room_end := bar_room_ends(b, axis)
+	lead, trail := inset + room_start, inset + room_end
+	cursor := lead
 	extent: f32
 	if .Wrap in b.flags {
 		layout_wrap_positions(b, axis, off)
@@ -384,9 +410,9 @@ layout_positions :: proc(b: ^Box, axis: Axis) {
 			extent = max(extent, cursor)
 		} else {
 			switch b.cross {
-			case .Start:  c.rel_pos[ai] = inset
-			case .Center: c.rel_pos[ai] = (b.size[ai] - c.size[ai]) * 0.5
-			case .End:    c.rel_pos[ai] = b.size[ai] - inset - c.size[ai]
+			case .Start:  c.rel_pos[ai] = lead
+			case .Center: c.rel_pos[ai] = room_start + (b.size[ai] - room_start - room_end - c.size[ai]) * 0.5
+			case .End:    c.rel_pos[ai] = b.size[ai] - trail - c.size[ai]
 			}
 			extent = max(extent, c.rel_pos[ai] + c.size[ai])
 		}
@@ -395,7 +421,8 @@ layout_positions :: proc(b: ^Box, axis: Axis) {
 		c.rect.min[ai] = lo
 		c.rect.max[ai] = hi
 	}
-	b.view_bounds[ai] = extent + inset
+	// (the room at the end counts: the content's end scrolls clear of the bar across it)
+	b.view_bounds[ai] = extent + trail
 	for c := b.first; c != nil; c = c.next { layout_positions(c, axis) }
 }
 
@@ -405,17 +432,19 @@ layout_positions :: proc(b: ^Box, axis: Axis) {
 layout_wrap_positions :: proc(b: ^Box, axis: Axis, off: f32) {
 	ai := int(axis)
 	inset := border_inset(b)
+	room_start, room_end := bar_room_ends(b, axis)
 	if axis == .X {
-		x := inset
+		lead, right := inset + room_start, b.size.x - inset - room_end
+		x := lead
 		line := 0
 		ends := make([dynamic]f32, 0, 8, context.temp_allocator)   // each line's right end
 		for c := b.first; c != nil; c = c.next {
 			if is_floating(c, axis) { c.rel_pos.x = c.fixed_pos.x; continue }
-			if x > inset && x + c.size.x > b.size.x - inset + 0.5 { line += 1; x = inset }
+			if x > lead && x + c.size.x > right + 0.5 { line += 1; x = lead }
 			c.rel_pos.x = x
 			c.wrap_line = line
 			x += c.size.x
-			for len(ends) <= line { append(&ends, inset) }
+			for len(ends) <= line { append(&ends, lead) }
 			ends[line] = x
 			x += b.gap.x
 		}
@@ -423,7 +452,7 @@ layout_wrap_positions :: proc(b: ^Box, axis: Axis, off: f32) {
 		if b.cross != .Start {
 			for c := b.first; c != nil; c = c.next {
 				if is_floating(c, axis) { continue }
-				spare := max(0, b.size.x - inset - ends[c.wrap_line])
+				spare := max(0, right - ends[c.wrap_line])
 				c.rel_pos.x += b.cross == .End ? spare : math.round(spare * 0.5)
 			}
 		}
@@ -436,7 +465,7 @@ layout_wrap_positions :: proc(b: ^Box, axis: Axis, off: f32) {
 			for len(heights) <= c.wrap_line { append(&heights, 0) }
 			heights[c.wrap_line] = max(heights[c.wrap_line], c.size.y)
 		}
-		y := inset
+		y := inset + room_start
 		for h in heights { append(&tops, y); y += h + b.gap.y }
 		for c := b.first; c != nil; c = c.next {
 			if is_floating(c, axis) { c.rel_pos.y = c.fixed_pos.y; continue }

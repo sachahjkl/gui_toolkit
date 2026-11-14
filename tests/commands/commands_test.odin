@@ -686,6 +686,157 @@ a_command_has_any_number_of_keys :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
+TYPING_COMMANDS := [?]ui.Command{
+	{label = "Rectangle", keys = {{.R, {}}}},
+	{label = "Add a step…", keys = {{.A, {.Shift}}, {.N, {.Ctrl}}}},
+	{label = "Remove", keys = {{.Delete, {.Shift}}}},
+}
+
+@(private = "file")
+Typing_Run :: struct {
+	field:   ui.Line_Edit,
+	pressed: [len(TYPING_COMMANDS)]bool,
+	focus:   bool,   // give the field the keyboard in this build
+}
+
+// (the commands first, as a program reads its keys before its fields)
+@(private = "file")
+build_typing :: proc(f: ^Fx, user: rawptr) {
+	r := (^Typing_Run)(user)
+	for c, i in TYPING_COMMANDS { r.pressed[i] = ui.command_pressed(c) }
+	res := ui.line_edit("###typing_field", &r.field)
+	if r.focus { ui.set_focus(res.box.key); r.focus = false }
+}
+
+// A key that types text is a command's while no text field has the keyboard, and the field's while one has it: the
+// command does not run and the field gets the character. A key that types nothing stays the command's.
+@(test)
+a_key_that_types_text_is_the_fields :: proc(t: ^testing.T) {
+	testing.expect(t, ui.command_key_types_text({.R, {}}), "a letter")
+	testing.expect(t, ui.command_key_types_text({.D, {.Shift}}), "a capital letter")
+	testing.expect(t, ui.command_key_types_text({.N1, {}}), "a digit")
+	testing.expect(t, ui.command_key_types_text({.Space, {}}), "Space")
+	testing.expect(t, ui.command_key_types_text({.Backspace, {}}), "Backspace edits the field")
+	testing.expect(t, ui.command_key_types_text({.Slash, {.Shift}}), "a punctuation mark")
+	testing.expect(t, ui.command_key_types_text({.Num_Add, {}}), "keypad +")
+	testing.expect(t, !ui.command_key_types_text({.D, {.Ctrl}}), "Ctrl types nothing")
+	testing.expect(t, !ui.command_key_types_text({.D, {.Alt, .Shift}}), "Alt types nothing")
+	testing.expect(t, !ui.command_key_types_text({.Delete, {.Shift}}), "Shift+Delete types nothing")
+	testing.expect(t, !ui.command_key_types_text({.F2, {}}), "a function key")
+	testing.expect(t, !ui.command_key_types_text({.Return, {}}), "Enter")
+	testing.expect(t, !ui.command_key_types_text({.Tab, {.Shift}}), "Shift+Tab")
+	testing.expect(t, !ui.command_key_types_text({.Menu, {}}), "the Menu key")
+	testing.expect(t, !ui.command_key_types_text({}), "no key")
+
+	got := ui.command_typing_keys(TYPING_COMMANDS[:])
+	testing.expectf(t, slice.equal(got, []string{"Rectangle: R", "Add a step…: Shift+A"}), "the table's typing keys: %v", got)
+	testing.expect_value(t, len(ui.command_typing_keys(PALETTE_COMMANDS[:])), 0)
+
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Typing_Run
+	defer ui.line_edit_destroy(&r.field)
+
+	frame(&f, nil, build_typing, &r)
+	frame(&f, {key(.R), typed('r')}, build_typing, &r)
+	testing.expect(t, r.pressed[0], "no field has the keyboard: R is the command's")
+
+	r.focus = true
+	frame(&f, nil, build_typing, &r)
+	frame(&f, nil, build_typing, &r)
+	frame(&f, {key(.A, {.Shift}), typed('A'), key(.R), typed('r')}, build_typing, &r)
+	testing.expect(t, !r.pressed[0] && !r.pressed[1], "the field has the keyboard: R and Shift+A are its own")
+	testing.expect_value(t, ui.line_edit_string(&r.field), "Ar")
+	frame(&f, {key(.N, {.Ctrl})}, build_typing, &r)
+	testing.expect(t, r.pressed[1], "Ctrl+N, the same command's other key, types nothing: the command's")
+	frame(&f, {key(.Delete, {.Shift})}, build_typing, &r)
+	testing.expect(t, r.pressed[2], "Shift+Delete types nothing: the command's, read before the field")
+}
+
+@(private = "file")
+WINDOW_COMMANDS := [?]ui.Command{
+	{label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}}, scope = .Window},
+	{label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}, scope = .Window},
+	{label = "New", group = "File", keys = {{.N, {.Ctrl}}}},
+}
+
+@(private = "file")
+Window_Run :: struct {
+	field:   ui.Line_Edit,
+	pal:     ui.Command_Palette,
+	pressed: [len(WINDOW_COMMANDS)]bool,
+	f2:      bool,   // F2, read alone as a window command's chord (chord_pressed)
+	focus:   bool,   // give the field the keyboard in this build
+	claim:   bool,   // the field claims every chord but F1 (keys_claim)
+	show:    bool,   // open the palette (a view shown as a dialog) in this build
+}
+
+// (the commands first, as a program reads its keys before it builds its page)
+@(private = "file")
+build_window :: proc(f: ^Fx, user: rawptr) {
+	r := (^Window_Run)(user)
+	for c, i in WINDOW_COMMANDS { r.pressed[i] = ui.command_pressed(c) }
+	r.f2 = ui.chord_pressed({.F2, {}}, .Window)
+	res := ui.line_edit("###window_field", &r.field)
+	if r.focus { ui.set_focus(res.box.key); r.focus = false }
+	if r.claim { ui.keys_claim(res.box.key, ui.Chord{.F1, {}}) }
+	ui.palette_set(&r.pal, WINDOW_COMMANDS[:], nil, {})
+	if r.show { ui.palette_open(&r.pal); r.show = false }
+}
+
+// A window command's key works whatever has the keyboard: a text field, and from behind a view shown as a dialog, where
+// a page command's key does not reach. A widget that claims the chords keeps them, but the ones it lets through.
+@(test)
+a_window_command_works_whatever_has_the_keyboard :: proc(t: ^testing.T) {
+	testing.expect_value(t, len(ui.command_window_typing_keys(WINDOW_COMMANDS[:])), 0)
+	typing := [?]ui.Command{{label = "Help", keys = {{.Slash, {.Shift}}}, scope = .Window}, {label = "Tool", keys = {{.R, {}}}}}
+	got := ui.command_window_typing_keys(typing[:])
+	testing.expectf(t, slice.equal(got, []string{"Help: Shift+Slash"}), "a window command's typing key, a page's not: %v", got)
+
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Window_Run
+	defer ui.line_edit_destroy(&r.field)
+	defer ui.palette_destroy(&r.pal)
+
+	r.focus = true
+	frame(&f, nil, build_window, &r)
+	frame(&f, nil, build_window, &r)
+	frame(&f, {key(.K, {.Ctrl})}, build_window, &r)
+	testing.expect(t, r.pressed[0], "the field has the keyboard: Ctrl+K is the palette's")
+	frame(&f, {key(.F1)}, build_window, &r)
+	testing.expect(t, r.pressed[1], "and F1 the sheet's")
+
+	r.show = true
+	frame(&f, nil, build_window, &r)
+	frame(&f, nil, build_window, &r)
+	testing.expect(t, ui.palette_is_open(&r.pal), "the palette, a dialog, is open")
+	frame(&f, {key(.N, {.Ctrl})}, build_window, &r)
+	testing.expect(t, !r.pressed[2], "a page command's key stops at the dialog")
+	frame(&f, {key(.F1)}, build_window, &r)
+	testing.expect(t, r.pressed[1], "a window command's key does not")
+	frame(&f, {key(.F2)}, build_window, &r)
+	testing.expect(t, r.f2, "nor a window command's chord read alone (a program's own table)")
+	ui.palette_close(&r.pal)
+	frame(&f, nil, build_window, &r)
+	frame(&f, nil, build_window, &r)
+
+	r.focus, r.claim = true, true
+	frame(&f, nil, build_window, &r)
+	frame(&f, nil, build_window, &r)
+	frame(&f, {key(.K, {.Ctrl})}, build_window, &r)
+	testing.expect(t, !r.pressed[0], "the field claims the chords: Ctrl+K is its own")
+	frame(&f, {key(.F1)}, build_window, &r)
+	testing.expect(t, r.pressed[1], "but F1, which it lets through")
+	r.claim = false
+	frame(&f, nil, build_window, &r)
+	frame(&f, {key(.K, {.Ctrl})}, build_window, &r)
+	testing.expect(t, r.pressed[0], "no claim at this build nor the last: Ctrl+K is the palette's again")
+}
+
+@(private = "file")
 Keys_Run :: struct {
 	commands: []ui.Command,
 	pressed:  [len(PALETTE_COMMANDS)]bool,

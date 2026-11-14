@@ -139,6 +139,26 @@ the_advanced_part_unfolds :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Blur limit") != nil, "found by a search")
 }
 
+// A page of advanced preferences alone (Rendering) shows them, under a sentence that says they are technical: no fold
+// that would leave the page empty. A page of ordinary ones alone (Delays and menus) says what it is for.
+@(test)
+a_page_of_advanced_settings_alone_shows_them :: proc(t: ^testing.T) {
+	c: Common
+	defer common_end(&c)
+	s := common_start(t, &c, "rendering")
+	testing.expect(t, session.find(s, "accordion_header") == nil, "no Advanced fold")
+	testing.expect(t, session.find(s, "prefs_technical") != nil, "the sentence that says they are technical")
+	testing.expect(t, session.find(s, "prefs_intro") != nil, "what the page is for")
+	for title in ([]string{"Presentation", "Frames queued", "Partial redraw", "Blur limit", "Filter precision"}) {
+		testing.expectf(t, session.find_text(s, title) != nil, "%s shows unfolded", title)
+	}
+	session.click_text(s, "Delays and menus")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Tooltip delay") != nil, "the page shown")
+	testing.expect(t, session.find(s, "prefs_intro") != nil, "Delays and menus says what it is for")
+	testing.expect(t, session.find(s, "prefs_technical") == nil, "and is not technical")
+}
+
 // The sidebar is resized by its handle; its width is a preference, so a page made again has it.
 @(test)
 the_sidebar_width_is_kept :: proc(t: ^testing.T) {

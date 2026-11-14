@@ -190,13 +190,16 @@ draw_wrapped_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 }
 
 // Text that wraps at the width it is given (full width unless `next` says otherwise) and is as tall as its lines.
-paragraph :: proc(id: string) -> Signal {
+// Content, so selectable (src/md/features/text-selection.md); `selectable = false` for a control's part.
+paragraph :: proc(id: string, selectable := true) -> Signal {
 	s := gs()
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = text_size() }
 	s.next_mod = m
 	s.has_next = true
-	b := build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, id)
+	flags := Box_Flags{.Draw_Text, .Text_Wrap, .No_Text_Trunc}
+	if selectable { flags += {.Selectable} }
+	b := build_box(flags, id)
 	return signal(b)
 }

@@ -39,7 +39,6 @@ View_Options :: struct {
 	tab:          string,                 // what a tab shows ("": four spaces)
 	max_bytes:    int,                    // of a line's text shown, cut at a character with "…" (0: all)
 	language:     Maybe(syntax.Language), // the code's colours (tk_syntax)
-	selectable:   bool,                   // the lines' text can be selected and copied
 }
 
 // The options with their defaults resolved, and the colours, read once for a build.
@@ -177,8 +176,9 @@ line_cells :: proc(l: Line, numbers: Numbers, k: ^Look) {
 	ui.build_box({.Draw_Text}, fmt.tprintf("%s###s", glyph))
 	runs := make([dynamic]ui.Rich_Run, context.temp_allocator)
 	line_runs(l, k, &runs)
-	// (one line: the two sides of a split row face each other; a copy has the whole of what is shown)
-	ui.next({width = ui.fill(), font_size = k.size, flags = k.selectable ? ui.Box_Flags{.Selectable} : ui.Box_Flags{}})
+	// (one line: the two sides of a split row face each other; a copy has the whole of what is shown. Content, so
+	// selectable always: a diff is never a control, text-selection.md)
+	ui.next({width = ui.fill(), font_size = k.size})
 	ui.rich_paragraph("###t", runs[:], 1)
 }
 

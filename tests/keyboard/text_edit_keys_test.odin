@@ -436,7 +436,8 @@ text_edit_pointer :: proc(t: ^testing.T) {
 	testing.expect(t, d.bars.has_v && !d.bars.has_h, "a vertical bar")
 	v := d.bars.v
 	testing.expect_value(t, v.bar.max.x - v.bar.min.x, 9)
-	testing.expect_value(t, v.bar.max.x, f.res.box.rect.max.x)
+	testing.expect_value(t, v.bar.max.x, f.res.box.rect.max.x - 1)   // (inside the field's border)
+	testing.expect_value(t, d.room, ui.Vec2{9, 0})   // (the text keeps the bar's room: none of it under the bar)
 	testing.expect(t, v.arrows, "an arrow button at each end")
 	testing.expect_value(t, v.thumb.max.y - v.thumb.min.y, math.round(max((v.track.max.y - v.track.min.y) * 0.08, 9)))   // (the least: the text is far longer than the view)
 	x := (v.bar.min.x + v.bar.max.x) * 0.5

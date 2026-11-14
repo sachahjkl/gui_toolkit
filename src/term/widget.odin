@@ -21,6 +21,11 @@ build :: proc(v: ^View, style: Style, take_focus := false) -> (b: ^ui.Box, sig: 
 	fit(v, b.rect)
 	v.origin = grid_origin(v, b.rect)
 	scroll_sync(v, b)
+	// a selection's drag near or past the top or the bottom scrolls the scrollback, and reaches the rows that come
+	if v.press == .Select {
+		ui.drag_autoscroll(b.key, .Y)
+		select_to(v, cell_at(v, ui.mouse_pos()))
+	}
 	// (the space the box scrolls over: the view its part, the bar's thumb)
 	if ui.parent(b) {
 		ui.next({width = ui.fill(), height = ui.px(scroll_height(v, b))})

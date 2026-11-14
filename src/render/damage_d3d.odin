@@ -98,13 +98,16 @@ d3d_damage_side_swap :: proc(r: ^Renderer) {
 	d.target_ready, d.side_ready = d.side_ready, d.target_ready
 }
 
-// A BGRA8 read-back of a whole texture, tightly packed (size.x * size.y * 4 bytes). nil on failure.
+// A read-back of a whole texture of the frame's size and format (the offscreen image, the kept target), tightly packed:
+// size.x * size.y * frame_texel_bytes bytes, B8G8R8A8 or four halves. nil on failure.
 @(private)
-d3d_read_texture :: proc(r: ^Renderer, tex: ^d3d11.ITexture2D) -> []u8 {
+d3d_read_texture :: proc(r: ^Renderer, tex: ^d3d11.ITexture2D, allocator := context.allocator) -> []u8 {
 	if tex == nil { return nil }
+	half := frame_is_half(r)
+	bpp := frame_texel_bytes(r)
 	staging: ^d3d11.ITexture2D
 	r.device->CreateTexture2D(&{
-		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
+		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = half ? .R16G16B16A16_FLOAT : .B8G8R8A8_TYPELESS,
 		SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ},
 	}, nil, &staging)
 	if staging == nil { return nil }
@@ -113,10 +116,10 @@ d3d_read_texture :: proc(r: ^Renderer, tex: ^d3d11.ITexture2D) -> []u8 {
 	mapped: d3d11.MAPPED_SUBRESOURCE
 	if win.FAILED(r.ctx->Map(staging, 0, .READ, {}, &mapped)) { return nil }
 	defer r.ctx->Unmap(staging, 0)
-	out := make([]u8, r.size.x * r.size.y * 4)
+	out := make([]u8, r.size.x * r.size.y * bpp, allocator)
 	for y in 0 ..< r.size.y {
-		row := mem.slice_ptr((^u8)(uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch))), r.size.x * 4)
-		copy(out[y * r.size.x * 4:], row)
+		row := mem.slice_ptr((^u8)(uintptr(mapped.pData) + uintptr(y * int(mapped.RowPitch))), r.size.x * bpp)
+		copy(out[y * r.size.x * bpp:], row)
 	}
 	return out
 }

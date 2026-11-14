@@ -49,6 +49,8 @@ hotkey_field :: proc(id: string, hk: ^platform.Hotkey) -> (changed: bool) {
 		set_focus(b.key)
 		wake_within(s, 1)
 	}
+	// (it records any combination, a window command's too: Ctrl+K is the value then, not the palette)
+	if s.hotkey_recorder == b.key { keys_claim(b.key) }
 	return
 }
 

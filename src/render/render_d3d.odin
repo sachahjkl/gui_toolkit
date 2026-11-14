@@ -182,7 +182,7 @@ d3d_init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := B
 @(private)
 create_offscreen_target :: proc(r: ^Renderer) -> bool {
 	r.device->CreateTexture2D(&{
-		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
+		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = r.half_float_offscreen ? .R16G16B16A16_FLOAT : .B8G8R8A8_TYPELESS,
 		SampleDesc = {Count = 1}, Usage = .DEFAULT, BindFlags = {.RENDER_TARGET},
 	}, nil, &r.offscreen)
 	if r.offscreen == nil { return false }
@@ -196,6 +196,8 @@ create_offscreen_target :: proc(r: ^Renderer) -> bool {
 create_offscreen_view :: proc(r: ^Renderer) -> bool {
 	r.frame_format = .B8G8R8A8_TYPELESS
 	r.frame_view = r.space == .Srgb ? .B8G8R8A8_UNORM : .B8G8R8A8_UNORM_SRGB
+	// (half floats: the values as the shaders write them, in either space, as a translucent window's buffers)
+	if r.half_float_offscreen { r.frame_format, r.frame_view = .R16G16B16A16_FLOAT, .R16G16B16A16_FLOAT }
 	r.device->CreateRenderTargetView(r.offscreen, &{Format = r.frame_view, ViewDimension = .TEXTURE2D}, &r.rtv)
 	return r.rtv != nil
 }
@@ -276,26 +278,13 @@ retarget :: proc(r: ^Renderer, previous: Maybe(Blend_Space) = nil) {
 	}
 }
 
-// The offscreen image (init_offscreen) after the last frame: RGBA8, sRGB, `size.x * size.y * 4` bytes (whatever the
-// blend space: in Linear the view encodes, in Srgb the values are stored as they are).
-d3d_read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
+// The offscreen image (init_offscreen) after the last frame as it is stored (read_pixels and read_pixels_float make the
+// pixels of it): rows packed, frame_texel_bytes a texel (B8G8R8A8: in Linear the view encoded it, in Srgb the values are
+// stored as they are; or four halves).
+@(private)
+d3d_read_frame_raw :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	if r.offscreen == nil { return nil }
-	staging: ^d3d11.ITexture2D
-	r.device->CreateTexture2D(&{
-		Width = u32(r.size.x), Height = u32(r.size.y), MipLevels = 1, ArraySize = 1, Format = .B8G8R8A8_TYPELESS,
-		SampleDesc = {Count = 1}, Usage = .STAGING, CPUAccessFlags = {.READ},
-	}, nil, &staging)
-	if staging == nil { return nil }
-	defer staging->Release()
-	r.ctx->CopyResource(staging, r.offscreen)
-	mapped: d3d11.MAPPED_SUBRESOURCE
-	if win.FAILED(r.ctx->Map(staging, 0, .READ, {}, &mapped)) { return nil }
-	defer r.ctx->Unmap(staging, 0)
-	out := make([]u8, r.size.x * r.size.y * 4, allocator)
-	for y in 0 ..< r.size.y {
-		swap_red_blue(raw_data(out[y * r.size.x * 4:]), ([^]u8)(mapped.pData)[y * int(mapped.RowPitch):], r.size.x)
-	}
-	return out
+	return d3d_read_texture(r, r.offscreen, allocator)
 }
 
 @(private)

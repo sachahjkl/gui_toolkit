@@ -318,6 +318,11 @@ prev := draw.set_interpolation(dc, .Srgb)              // CSS gradients: sRGB wh
   target's differ (after `set_blend_space`, existing textures keep working). The same flag marks layer composites
   and backdrops of sRGB layers.
 - **`read_pixels`** returns 8-bit sRGB in both spaces; `frame_begin`'s clear color is linear (premultiplied) in both.
+- **Frame formats**: a frame is stored in 8 bits a channel, or in half floats for a translucent window in linear light
+  (`render.frame_is_half`; `render.init_offscreen(..., half_float = true)` makes such a frame offscreen). Half floats are
+  there for precision in linear light, never for range: every shader writes colour and alpha in [0, 1], so both formats
+  hold the same values. `read_pixels` gives a half-float frame as an 8-bit one would hold it; `render.read_pixels_float`
+  gives the values as they are stored (four f32 a pixel, premultiplied, unclamped).
 
 ### Text
 

@@ -12,6 +12,8 @@ struct Dual_Out {
 fn ps_main_dual(i: PSIn) -> Dual_Out {
 	var o: Dual_Out;
 	o.color = rect_shade(i);
-	o.factor = float4(o.color.a * lcd_weight, o.color.a);
+	// (a stripe's weight goes up to 3: its factor past 1 weighed what is under it below zero in a half-float target, which
+	// does not clamp it as an 8-bit one does)
+	o.factor = saturate(float4(o.color.a * lcd_weight, o.color.a));
 	return o;
 }

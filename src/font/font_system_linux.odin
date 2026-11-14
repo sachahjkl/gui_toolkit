@@ -3,7 +3,6 @@ package font
 
 import "base:runtime"
 import "core:c"
-import "core:slice"
 import "core:strings"
 import "core:sync"
 import "../ascii"
@@ -34,6 +33,9 @@ foreign import fontconfig "system:fontconfig"
 @(private) FC_RGBA_BGR :: c.int(2)
 // What FcWeightFromOpenType takes at most.
 @(private) FC_OPENTYPE_WEIGHT_MAX :: 1000
+// fontconfig's `spacing` from which a face is monospace: FC_DUAL (a CJK coding font: its wide letters two cells), FC_MONO,
+// FC_CHARCELL. Proportional faces have none, or FC_PROPORTIONAL (0).
+@(private) FC_DUAL :: c.int(90)
 
 @(default_calling_convention = "c", private)
 foreign fontconfig {
@@ -163,7 +165,7 @@ fc_resolve_family :: proc(family: string) -> (resolved: string, ok: bool) {
 
 @(private)
 fc_installed :: proc(family: string) -> bool {
-	for f in fc_list_families(family, context.temp_allocator) { if ascii.equal_fold(f, family) { return true } }
+	for f in fc_list_families(family, context.temp_allocator) { if ascii.equal_fold(f.name, family) { return true } }
 	return false
 }
 
@@ -210,8 +212,10 @@ sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: run
 	return fc_file(m)
 }
 
+// The installed families (`family`: that one alone), sorted, once each: a family is monospace when one of its faces is
+// (FcFontList gives one pattern per family and spacing; a family's faces agree, but a font set may mix them).
 @(private)
-fc_list_families :: proc(family: string, allocator: runtime.Allocator) -> []string {
+fc_list_families :: proc(family: string, allocator: runtime.Allocator) -> []Family {
 	if !fc_init() { return nil }
 	p := FcPatternCreate()
 	if p == nil { return nil }
@@ -221,23 +225,19 @@ fc_list_families :: proc(family: string, allocator: runtime.Allocator) -> []stri
 	if os == nil { return nil }
 	defer FcObjectSetDestroy(os)
 	FcObjectSetAdd(os, "family")
+	FcObjectSetAdd(os, "spacing")
 	fs := FcFontList(nil, p, os)
 	if fs == nil { return nil }
 	defer FcFontSetDestroy(fs)
-	out := make([dynamic]string, 0, int(fs.nfont), allocator)
+	out := make([dynamic]Family, 0, int(fs.nfont), allocator)
 	for i in 0 ..< int(fs.nfont) {
 		name: cstring
-		if FcPatternGetString(fs.fonts[i], "family", 0, &name) == .Match && name != nil { append(&out, strings.clone(string(name), allocator)) }
+		if FcPatternGetString(fs.fonts[i], "family", 0, &name) != .Match || name == nil { continue }
+		spacing: c.int
+		mono := FcPatternGetInteger(fs.fonts[i], "spacing", 0, &spacing) == .Match && spacing >= FC_DUAL
+		append(&out, Family{name = strings.clone(string(name), allocator), monospace = mono})
 	}
-	slice.sort_by(out[:], proc(a, b: string) -> bool { return strings.compare(a, b) < 0 })
-	k := 0
-	for i in 0 ..< len(out) {
-		if k > 0 && out[k - 1] == out[i] { delete(out[i], allocator); continue }
-		out[k] = out[i]
-		k += 1
-	}
-	resize(&out, k)
-	return out[:]
+	return families_sorted(&out, allocator)
 }
 
 @(private)
@@ -247,4 +247,4 @@ sys_has_family :: proc(family: string) -> bool {
 }
 
 @(private)
-sys_families :: proc(allocator: runtime.Allocator) -> []string { return fc_list_families("", allocator) }
+sys_families :: proc(allocator: runtime.Allocator) -> []Family { return fc_list_families("", allocator) }

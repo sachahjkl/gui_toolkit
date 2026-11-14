@@ -390,7 +390,7 @@ escape_clears_the_filter_then_cancels :: proc(t: ^testing.T) {
 	testing.expect_value(t, app.status, platform.Dialog_Status.Cancelled)
 }
 
-// Open with `multiple`: Ctrl+A marks every file, Open answers them all.
+// Open with `multiple`: Ctrl+A selects every file, Open answers them all.
 @(test)
 several_files_are_opened :: proc(t: ^testing.T) {
 	app: App
@@ -404,7 +404,7 @@ several_files_are_opened :: proc(t: ^testing.T) {
 	session.click(s, "fb_act")
 	testing.expect_value(t, app.answers, 1)
 	testing.expect_value(t, len(app.paths), 3)
-	// Shift+Down marks from the row the keyboard is on
+	// Shift+Down selects from the anchor, the row clicked
 	open(s, &app, .Open, {start_dir = "/f", multiple = true})
 	session.click(s, "lrow_0")
 	session.key(s, .Down, {.Shift})
@@ -740,6 +740,35 @@ escape_in_the_path_field :: proc(t: ^testing.T) {
 	session.key(s, .Escape)
 	testing.expect(t, !counts(s).open)
 	testing.expect_value(t, app.status, platform.Dialog_Status.Cancelled)
+}
+
+////////////////////////////////
+// The preview's text is content
+
+// A text file's preview is selectable (src/md/features/text-selection.md): a drag across its lines selects them, and
+// Ctrl+C copies what is selected.
+@(test)
+the_preview_text_selects_and_copies :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/p"] = []ui.File_Entry{F("notes.txt")}
+	app.fake.at_once = true
+	app.source = fake_source(&app.fake, {.Size, .Modified, .Read})
+	app.source.read = proc(src: ^ui.File_Source, path: string, max: int, reply: ui.File_Reply) {
+		text := "first line\nsecond line\nthird line\n"
+		ui.file_reply_read(reply, transmute([]u8)text, i64(len(text)))
+	}
+	s := session.start(t, {build = build, user = &app, no_renderer = true, size = {1200, 800}})
+	open(s, &app, .Open, {start_dir = "/p"})
+	session.key(s, .Down)   // (the file selected: its preview is read)
+	lines := session.wait_box(s, "fb_preview_lines", BOUND)
+	r := lines.rect
+	from := [2]f32{r.min.x + lines.text_pad + 1, r.min.y + lines.text_pad + 4}
+	session.drag(s, from, {r.max.x - 4, r.max.y - lines.text_pad - 4})
+	got := ui.selected_text(s.state, context.temp_allocator)
+	testing.expectf(t, strings.has_prefix(got, "first line\nsecond line"), "the lines dragged over: %q", got)
+	session.key(s, .C, {.Ctrl})
+	testing.expect_value(t, session.clipboard(s), got)
 }
 
 ////////////////////////////////

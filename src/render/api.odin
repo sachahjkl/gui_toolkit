@@ -55,7 +55,11 @@ destroy :: proc(r: ^Renderer) {
 	when DAMAGE_CHECK { damage_check_report() }
 }
 
-init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear) -> bool {
+// A renderer that draws into an image of `size` (tests, image export). `warp`: the software rasterizer. `half_float`: the
+// frame is stored in half floats, as a translucent window's in linear light is (the same values a window in that format
+// holds, for a test to read with read_pixels_float); else in 8 bits a channel.
+init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear, half_float := false) -> bool {
+	r.half_float_offscreen = half_float
 	ok: bool
 	when USE_WGPU { ok = wgpu_init_offscreen(r, size, warp, space) } else { ok = d3d_init_offscreen(r, size, warp, space) }
 	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 }
@@ -66,8 +70,53 @@ set_blend_space :: proc(r: ^Renderer, space: Blend_Space) {
 	when USE_WGPU { wgpu_set_blend_space(r, space) } else { d3d_set_blend_space(r, space) }
 }
 
+// Whether the frame is stored in half floats (a translucent window in linear light, init_offscreen's `half_float`).
+frame_is_half :: proc(r: ^Renderer) -> bool { return r.frame_format == .R16G16B16A16_FLOAT }
+
+// The bytes a texel of the frame takes: 8 in half floats, 4 in bytes.
+frame_texel_bytes :: proc(r: ^Renderer) -> int { return frame_is_half(r) ? 8 : 4 }
+
+// The offscreen image (init_offscreen) after the last frame: RGBA8, `size.x * size.y * 4` bytes, premultiplied, as an
+// 8-bit frame holds it (its colour sRGB-encoded in a linear blend space). A half-float frame is encoded so, each value
+// clamped to [0, 1] as an 8-bit target clamps it (read_pixels_float gives its values as they are). nil: not offscreen.
 read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
-	when USE_WGPU { return wgpu_read_pixels(r, allocator) } else { return d3d_read_pixels(r, allocator) }
+	raw := read_frame_raw(r, context.allocator)
+	if raw == nil { return nil }
+	defer delete(raw)
+	n := r.size.x * r.size.y
+	out := make([]u8, n * 4, allocator)
+	if frame_is_half(r) {
+		half_texels_to_rgba8(out, raw, n, r.space)
+	} else {
+		swap_red_blue(raw_data(out), raw_data(raw), n)   // (stored B8G8R8A8)
+	}
+	return out
+}
+
+// The offscreen image's values as they are stored: RGBA, four f32 a pixel, premultiplied. A half-float frame: its halves,
+// unclamped (a value past [0, 1], an infinity or a NaN is kept); an 8-bit frame: its bytes / 255. nil: not offscreen.
+read_pixels_float :: proc(r: ^Renderer, allocator := context.allocator) -> [][4]f32 {
+	raw := read_frame_raw(r, context.allocator)
+	if raw == nil { return nil }
+	defer delete(raw)
+	n := r.size.x * r.size.y
+	out := make([][4]f32, n, allocator)
+	if frame_is_half(r) {
+		h := ([^]u16)(raw_data(raw))
+		for i in 0 ..< n { for k in 0 ..< 4 { out[i][k] = f32(transmute(f16)h[i * 4 + k]) } }
+	} else {
+		for i in 0 ..< n {
+			b := raw[i * 4:][:4]
+			out[i] = {f32(b[2]) / 255, f32(b[1]) / 255, f32(b[0]) / 255, f32(b[3]) / 255}
+		}
+	}
+	return out
+}
+
+// The offscreen frame's texels as they are stored, rows packed (frame_texel_bytes each).
+@(private)
+read_frame_raw :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
+	when USE_WGPU { return wgpu_read_frame_raw(r, allocator) } else { return d3d_read_frame_raw(r, allocator) }
 }
 
 // Resize the renderer to `size`. For a windowed renderer this resizes the swap chain (Direct3D) or reconfigures the

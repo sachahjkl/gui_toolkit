@@ -87,11 +87,11 @@ library's `rust_eh_personality` renamed so it links next to other Rust static li
 system's fonts from the platform's font service, no bitmap rasterizer (text is drawn by Slug from the backend's outlines),
 no COLR color glyphs yet.
 
-| Platform | Font service | `load_system` | fallback | `system_families` |
+| Platform | Font service | `load_system` | fallback | `system_families` (monospace) |
 |---|---|---|---|---|
-| Windows | DirectWrite | system collection | IDWriteFontFallback | collection |
-| Linux | fontconfig (`font_system_linux.odin`) | FcFontMatch after the configuration's substitutions (the family must match) | best match whose charset has the character | FcFontList |
-| macOS | CoreText (`font_system_darwin.odin`) | CTFontCreateWithName + symbolic traits (bold, italic) | CTFontCreateForString | CTFontManagerCopyAvailableFontFamilyNames |
+| Windows | DirectWrite | system collection | IDWriteFontFallback | collection (the regular face's `IDWriteFont1::IsMonospacedFont`) |
+| Linux | fontconfig (`font_system_linux.odin`) | FcFontMatch after the configuration's substitutions (the family must match) | best match whose charset has the character | FcFontList (`spacing` dual, mono or charcell) |
+| macOS | CoreText (`font_system_darwin.odin`) | CTFontCreateWithName + symbolic traits (bold, italic) | CTFontCreateForString | CTFontManagerCopyAvailableFontFamilyNames (none marked) |
 | others | none (`system_other.odin`) | fails | none | empty |
 
 The Linux service runs in the CI and on real desktops. The macOS one is written against the documented C API and has

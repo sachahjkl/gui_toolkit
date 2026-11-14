@@ -121,12 +121,14 @@ System_Fonts :: struct {
 	// Faces for the characters of w[a:b] that `faces` leaves at 0, from the system fallback, based on `first`'s family,
 	// weight and style.
 	fallback:  proc(s: ^State, first: Font_Id, w: []u16, a, b: int, faces: []Font_Id),
-	// Family names of the installed fonts.
-	families:  proc(s: ^State, allocator: runtime.Allocator) -> []string,
+	// The installed families (families_sorted).
+	families:  proc(s: ^State, allocator: runtime.Allocator) -> []Family,
 }
 
-// Families of the system's installed fonts (sorted, no duplicates; empty when the platform has none to give).
-system_families :: proc(s: ^State, allocator := context.allocator) -> []string {
+// The families of the system's installed fonts, sorted by name, once each, with their names in `allocator` (empty when
+// the platform has none to give). It reads the system's font service (fontconfig, DirectWrite's collection: the disk):
+// call it on a worker, never on the interface's thread (ui.font_system_source does).
+system_families :: proc(s: ^State, allocator := context.allocator) -> []Family {
 	if s.system_fonts == nil || s.system_fonts.families == nil { return nil }
 	return s.system_fonts.families(s, allocator)
 }

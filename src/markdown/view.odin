@@ -43,7 +43,7 @@ Frame_Kind :: enum u8 { Table, Code }
 // How a program shows Markdown: its faces and sizes, its colours, and what it does with what is not text (a link
 // clicked, a code block, the box around a table, a rule, the tools on a table). Every field may stay zero.
 View_Options :: struct {
-	prose:       font.Font_Id,   // the text's face (0: the current one)
+	prose:       font.Font_Id,   // the text's face (0: ui.text_face(.Prose), else the current one)
 	face:        font.Font_Id,   // the tables' face (0: prose)
 	mono:        font.Font_Id,   // the code blocks' face (0: ui.mono_font)
 	prose_scale: f32,            // the text's size, of the size view is given (0: 1)
@@ -70,7 +70,8 @@ view :: proc(d: ^Doc, id: string, src: string, o: View_Options, size: f32 = 0) {
 	o := o
 	em := ui.font_size()
 	fs := size > 0 ? size : em
-	prose := o.prose != 0 ? o.prose : ui.top_style().font
+	prose := o.prose != 0 ? o.prose : ui.text_face(.Prose)   // (the reading family chosen, else the program's)
+	if prose == 0 { prose = ui.top_style().font }
 	c := colors_of(o.colors)
 	// every line the same height, inline code or not; tables stay in their own face
 	prose_fs := math.round(fs * (o.prose_scale > 0 ? o.prose_scale : 1))
@@ -86,6 +87,10 @@ view :: proc(d: ^Doc, id: string, src: string, o: View_Options, size: f32 = 0) {
 		lines := block_lines(d, n)
 		lines_version := len(lines) > 0 ? source_version(lines[0], lines[len(lines) - 1], fs) : 0
 		if n > 0 { ui.spacer(ui.px(math.round(em * (bl.kind == .Bullet || bl.kind == .Number ? 0.25 : 0.6)))) }
+		// a copy puts a blank line before a block, as the source does; not between two items of a list (one line each)
+		item :: proc(k: Block_Kind) -> bool { return k == .Bullet || k == .Number }
+		sel := ui.Box_Flags{.Selectable}
+		if !(item(bl.kind) && n > 0 && item(d.blocks[n - 1].kind)) { sel += {.Selection_Block} }
 		switch bl.kind {
 		case .Rule:
 			if o.rule != nil { o.rule(o.user, bid) } else { ui.hline(ui.fill()) }
@@ -101,7 +106,7 @@ view :: proc(d: ^Doc, id: string, src: string, o: View_Options, size: f32 = 0) {
 			k := [HEADING_LEVEL_MAX + 1]f32{1, 1.45, 1.25, 1.1, 1, 1, 1}
 			runs := block_runs(d, n, {bold = true, color = bl.level <= 2 ? c.heading : c.text}, {code_color = c.inline_code})
 			if bl.level >= 2 { ui.spacer(ui.px(em * 0.3)) }
-			ui.next({width = ui.fill(), font = prose, font_size = math.round(prose_fs * k[bl.level]), flags = {.Selectable}})
+			ui.next({width = ui.fill(), font = prose, font_size = math.round(prose_fs * k[bl.level]), flags = sel})
 			link_clicked(&o, ui.rich_paragraph(bid, runs, version = source_version(lines[0], lines[0], fs)))
 		case .Para, .Quote:
 			runs := block_runs(d, n, {color = bl.kind == .Quote ? c.quote : c.text}, {code_size = fs, code_color = c.inline_code})
@@ -109,11 +114,11 @@ view :: proc(d: ^Doc, id: string, src: string, o: View_Options, size: f32 = 0) {
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 				if rail_row(fmt.tprintf("%s_q", bid), c.rail) {
 					ui.spacer(ui.px(em * 0.9))
-					ui.next({width = ui.fill(), font = prose, font_size = prose_fs, flags = {.Selectable}})
+					ui.next({width = ui.fill(), font = prose, font_size = prose_fs, flags = sel})
 					link_clicked(&o, ui.rich_paragraph(bid, runs, version = lines_version, line_height = line_h))
 				}
 			} else {
-				ui.next({width = ui.fill(), font = prose, font_size = prose_fs, flags = {.Selectable}})
+				ui.next({width = ui.fill(), font = prose, font_size = prose_fs, flags = sel})
 				link_clicked(&o, ui.rich_paragraph(bid, runs, version = lines_version, line_height = line_h))
 			}
 		case .Bullet, .Number:
@@ -126,9 +131,10 @@ view :: proc(d: ^Doc, id: string, src: string, o: View_Options, size: f32 = 0) {
 				// as wide as the widest marker of the list, its padding on both sides with it)
 				mark := [1]ui.Rich_Run{{text = mk, style = {color = c.marker}}}
 				ui.next({width = ui.px(marker_w[n] + 2 * pad), font = prose, font_size = prose_fs})
-				ui.rich_paragraph(fmt.tprintf("%s_mk", bid), mark[:], line_height = line_h)
+				// (not selectable: a copy of the items has their text, not a "•" on a line of its own)
+				ui.rich_paragraph(fmt.tprintf("%s_mk", bid), mark[:], line_height = line_h, selectable = false)
 				runs := block_runs(d, n, {color = c.text}, {code_size = fs, code_color = c.inline_code})
-				ui.next({width = ui.fill(), font = prose, font_size = prose_fs, flags = {.Selectable}})
+				ui.next({width = ui.fill(), font = prose, font_size = prose_fs, flags = sel})
 				link_clicked(&o, ui.rich_paragraph(bid, runs, version = lines_version, line_height = line_h))
 			}
 		}
@@ -145,7 +151,8 @@ code_block :: proc(id: string, c: Code, o: View_Options) {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	if ui.row(id = "###body") {
 		ui.spacer(ui.px(math.round(em * CODE_PAD_X_EM)))
-		ui.next({width = ui.fill(), flags = {.Selectable}})
+		// (a block: a copy from the text before it has a blank line between, as the source)
+		ui.next({width = ui.fill(), flags = {.Selectable, .Selection_Block}})
 		ui.rich_paragraph("###code", c.runs, version = c.version)
 		ui.spacer(ui.px(math.round(em * CODE_PAD_X_EM)))
 	}

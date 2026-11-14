@@ -49,7 +49,10 @@ ICON_WARN :: "w"
 ICON_WARN_BIG :: "W"
 ICON_X :: "x"
 
-mono_font :: proc() -> font.Font_Id { return gs().mono_font != 0 ? gs().mono_font : top_style().font }
+mono_font :: proc() -> font.Font_Id {
+	if f := text_face(.Mono); f != 0 { return f }   // (the family chosen, else the program's: text_faces.odin)
+	return top_style().font
+}
 
 ////////////////////////////////
 // Small building blocks

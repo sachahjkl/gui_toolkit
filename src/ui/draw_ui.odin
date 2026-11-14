@@ -486,17 +486,36 @@ lit_face :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, up, down, 
 	draw.rect_corners(dc, draw.rect_pad(r, -p), {lit, {1, 1, 1, 0}, lit, {1, 1, 1, 0}}, radii_grown(radii, -p), p)
 }
 
-// Whether a finish draws its rim (the lit line round a raised face, glass's white edge) on a box. A box that declares
-// its sides (.Draw_Side_*) has those lines alone: a rim inset by a pixel doubled them, and framed the sides it left
-// open. A box flush with an edge of the window (a bar, a sidebar) has the window's edge there: a rim framed it, and
-// drew a second line under the bar next to it.
+// Whether a finish draws its rim (the lit line round a raised face, glass's white edge) on a box. The rim belongs to a
+// raised face that stands on its own (a button, a card, a chip, a dialog). A box that declares its sides (.Draw_Side_*)
+// has those lines alone: a rim inset by a pixel doubled them, and framed the sides it left open. A box flush with an
+// edge of the window (a bar, a sidebar) has the window's edge there: a rim framed it, and drew a second line under the
+// bar next to it. A box inside a face that draws (a frame, a card, a well) is part of that face where it meets its inner
+// top edge or runs across its inner width (a header, a row, a stripe): the face's edge is the line there, and a rim drew
+// a second one just under it (a table's header under its frame's border).
 box_rimmed :: proc(s: ^State, b: ^Box) -> bool {
 	if b.flags & {.Draw_Side_Top, .Draw_Side_Bottom, .Draw_Side_Left, .Draw_Side_Right} != {} { return false }
 	if s.root == nil { return true }
 	FLUSH_PX :: 0.5
 	r, w := b.rect, s.root.rect
-	return abs(r.min.x - w.min.x) > FLUSH_PX && abs(r.min.y - w.min.y) > FLUSH_PX &&
-		abs(r.max.x - w.max.x) > FLUSH_PX && abs(r.max.y - w.max.y) > FLUSH_PX
+	if abs(r.min.x - w.min.x) <= FLUSH_PX || abs(r.min.y - w.min.y) <= FLUSH_PX ||
+		abs(r.max.x - w.max.x) <= FLUSH_PX || abs(r.max.y - w.max.y) <= FLUSH_PX {
+		return false
+	}
+	// (the boxes between that draw nothing, rows and columns of the layout, are looked through: a button in a row of a
+	// bar is measured against the bar)
+	face := b.parent
+	for face != nil && face != s.root && !box_draws_face(face) { face = face.parent }
+	if face == nil || face == s.root { return true }
+	q := draw.rect_pad(face.rect, -border_inset(face))
+	if abs(r.min.y - q.min.y) <= FLUSH_PX { return false }
+	return abs(r.min.x - q.min.x) > FLUSH_PX || abs(r.max.x - q.max.x) > FLUSH_PX
+}
+
+// Whether a box draws a face of its own: a background, a border, or a draw of its own (a program's frame, a well).
+@(private = "file")
+box_draws_face :: proc(b: ^Box) -> bool {
+	return (.Draw_Background in b.flags && b.bg.a > DRAW_INVISIBLE_EPS) || .Draw_Border in b.flags || b.custom != nil
 }
 
 // Sheen of the box's tags (0 when the theme is flat).

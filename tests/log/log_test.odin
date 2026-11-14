@@ -24,6 +24,23 @@ file_lines :: proc(path: string) -> []string {
 // The text of a line, after its time and level.
 text_of :: proc(line: string) -> string { return len(line) > LINE_TEXT_AT ? line[LINE_TEXT_AT:] : "" }
 
+// A program shows and opens the log's path: a folder given with "/" (as a person or a test writes it) still gives the
+// system's separator only.
+@(test)
+the_log_path_has_the_systems_separator :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "log_path")
+	given, _ := strings.replace_all(dir, "\\", "/", context.temp_allocator)
+	logger := tk_log.install({program = "sep", dir = given})
+	path := strings.clone(tk_log.path(logger), context.temp_allocator)
+	tk_log.close(logger)
+	when ODIN_OS == .Windows {
+		testing.expectf(t, !strings.contains_rune(path, '/'), "a \"/\" in %q", path)
+		testing.expect(t, strings.has_suffix(path, `\sep.log`))
+	} else {
+		testing.expect(t, strings.has_suffix(path, "/sep.log"))
+	}
+}
+
 @(test)
 a_log_rotates_past_its_size :: proc(t: ^testing.T) {
 	dir := testkit.temp_folder(t, "log_rotate")

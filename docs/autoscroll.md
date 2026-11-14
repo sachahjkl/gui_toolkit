@@ -91,6 +91,40 @@ if ui.autoscroll_click(&auto) { /* swallow it */ }
 ui.autoscroll_cancel(&auto)
 ```
 
+## A selection dragged to an edge (`ui.drag_autoscroll`)
+
+A selection that the person drags near or past the edge of a scroll view scrolls that view, so a selection can span
+several screens. Near means in a band of 1.5 em inside the edge. The speed is the curve above with no dead zone, of the
+distance past the inner edge of the band: about 70 px/s at the edge, 560 px/s 100 px past it, 3000 px/s from 280 px past
+it (`DRAG_AUTOSCROLL`). The view is the innermost one around the dragged box that can still scroll that way, so a list
+in a page scrolls to its end, then the page.
+
+The toolkit's selecting drags already do it: the selection of `.Selectable` text (labels, paragraphs, rich text,
+`markdown`, `diff`), `text_edit`, `line_edit` and the terminal's grid (`gt:term`). A widget of a program marks its own
+selecting drag with one call in each build while the drag is held, then turns the pointer into its selection's moving
+end as usual. The mark lives one build: when the widget stops calling, the scroll stops.
+
+```odin
+sig := ui.signal(b)
+if sig.dragging {
+	ui.drag_autoscroll(b.key)            // .Both by default; .Y or .X for one axis
+	extend_selection(view, ui.mouse_pos())
+}
+```
+
+A widget that scrolls itself (`.Scroll_Self`) moves its own offset with `ui.drag_autoscroll_own`. An axis its own
+offset cannot move that way goes to the views around it:
+
+```odin
+// view: the text's rect in window coordinates; scroll: [2]f32 within 0 .. limit
+if sig.dragging && !sig.pointer_pressed {
+	ui.drag_autoscroll_own(b.key, view, &my.scroll, limit)
+}
+```
+
+`ui.drag_autoscroll_speed(p, lo, hi, band)` is the pure speed of one axis, for a view outside the box tree. Nothing
+scrolls while a middle-click session runs.
+
 ## The cursor (`autoscroll_cursor`)
 
 `All_Scroll` inside the dead zone, then the directional resize cursor nearest the offset (the eight compass directions,

@@ -175,7 +175,7 @@ table_block :: proc(id: string, d: ^Doc, n: int, o: ^View_Options, c: Colors, fs
 	face := o.face != 0 ? o.face : o.prose
 	st := ui.current_state()
 	if face == 0 { face = ui.top_style().font }
-	rc := ui.Rich_Context{fonts = st.fonts, base_font = face, base_size = cell_size, mono = st.mono_font, faces = ui.state_families(st)}
+	rc := ui.Rich_Context{fonts = st.fonts, base_font = face, base_size = cell_size, mono = ui.state_text_face(st, .Mono), faces = ui.state_families(st)}
 	table_measure(t, rc, em, pad)
 	widths := make([]f32, t.cols, context.temp_allocator)
 	col_max := math.round(em * TABLE_COL_MAX_EM)
@@ -223,8 +223,6 @@ table_block :: proc(id: string, d: ^Doc, n: int, o: ^View_Options, c: Colors, fs
 				}
 				if ri == 0 { ui.next({width = ui.fill(), height = ui.px(2), bg = rule}); ui.build_box({.Draw_Background}, "###hl") }
 			}
-			// (the room of the scroll bar under the rows: it is drawn over the box's bottom edge, not over a row)
-			if overflow { ui.spacer(ui.px(ui.scrollbar_gutter())) }
 		}
 		ui.pop_parent()   // (table_scroller's box)
 	}

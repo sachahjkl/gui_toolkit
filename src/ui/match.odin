@@ -74,7 +74,8 @@ matched_label :: proc(id, text: string, ranges: []Fuzzy_Range) -> ^Box {
 	if len(ranges) == 0 { return label(text_with_id(text, id)).box }
 	runs := make([dynamic]Rich_Run, context.temp_allocator)
 	match_runs(text, ranges, {}, &runs)
-	return rich_paragraph(id, runs[:], max_lines = 1).box
+	// (a row's name: the row's press and its list's Ctrl+A, not a selection: text-selection.md)
+	return rich_paragraph(id, runs[:], max_lines = 1, selectable = false).box
 }
 
 // `text` shown, `id` its key ("###k"): the label's own id-string.

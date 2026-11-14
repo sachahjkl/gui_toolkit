@@ -42,9 +42,13 @@ backend_selection :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) 
 	testing.expect_value(t, font.backend(n), font.NATIVE_TEXT ? font.Backend.Native : font.Backend.Dwrite)
 	fams := font.system_families(s, context.temp_allocator)
 	testing.expect(t, len(fams) > 10, "the system lists its families")
-	found := false
-	for f in fams { if f == "Segoe UI" { found = true } }
+	found, mono := false, false
+	for f in fams {
+		if f.name == "Segoe UI" { found = true; testing.expect(t, !f.monospace, "Segoe UI is proportional") }
+		if f.name == "Consolas" { mono = f.monospace }
+	}
 	testing.expect(t, found, "Segoe UI is listed")
+	testing.expect(t, mono, "Consolas is monospace")
 }) }
 
 // Bold of a system family is its own bold face, not the regular one simulated (that is a 0.02 em stroke: hardly bolder).

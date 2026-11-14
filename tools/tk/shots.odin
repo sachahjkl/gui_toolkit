@@ -33,13 +33,15 @@ SHOTS_WIDTH       :: 1400
 @(private = "file") IDLE_LIMIT :: 5 * time.Second
 
 // What a picture shows: the program, its arguments, how long its animations are given (ms; 0: until the program is at rest,
-// IDLE_LIMIT at most), the text typed then (a menu's search; "": none), and whether it is kept as WebP.
+// IDLE_LIMIT at most), the text typed then (a menu's search; "": none), whether it is kept as WebP, and the keys pressed
+// before the text (cdp.key's names: "ctrl+l"; nil: none).
 Shot :: struct {
 	name, example: string,
 	args:          []string,
 	ms:            int,
 	typed:         string,
 	webp:          bool,
+	keys:          []string,
 }
 
 // The showcase's scenes, each a picture: its scene, its theme and finish where they show it off.
@@ -63,6 +65,9 @@ SHOWCASE_SHOTS := []Shot {
 	{name = "showcase_dialog", example = "showcase", args = {"--headless", "--scene=dialog", "--theme=Graphite", "--size=1280x680"}, webp = true},
 	{name = "showcase_confirm", example = "showcase", args = {"--headless", "--scene=confirm", "--theme=Gruvbox", "--size=1280x680"}, webp = true},
 	{name = "showcase_prompt", example = "showcase", args = {"--headless", "--scene=prompt", "--theme=Catppuccin", "--light", "--size=1280x680"}, webp = true},
+	// (eight rows down: the five folders, then CHANGELOG.md, LICENSE, README.md, its text in the preview)
+	{name = "showcase_file_browser", example = "showcase", args = {"--headless", "--scene=files", "--theme=Graphite", "--size=1280x720"}, webp = true, keys = {"down", "down", "down", "down", "down", "down", "down", "down"}},
+	{name = "showcase_path_bar", example = "showcase", args = {"--headless", "--scene=files", "--theme=Tokyo Night", "--size=1280x720"}, webp = true, keys = {"ctrl+l", "end"}, typed = "/s"},
 	{name = "showcase_settings", example = "showcase", args = {"--headless", "--scene=settings", "--theme=Graphite", "--page=appearance", "--size=1280x1180"}, webp = true},
 	{name = "showcase_settings_advanced", example = "showcase", args = {"--headless", "--scene=settings", "--theme=Midnight", "--page=scrolling", "--advanced"}, webp = true},
 	{name = "showcase_settings_search", example = "showcase", args = {"--headless", "--scene=settings", "--theme=Silver", "--light"}, typed = "scroll", webp = true},
@@ -73,20 +78,20 @@ SHOWCASE_SHOTS := []Shot {
 }
 
 SHOTS := []Shot {
-	{"controls",   "fidget",     {"--page=0", "--anim=on"}, 1500, "", false},
-	{"inputs",     "fidget",     {"--page=1", "--anim=on"}, 1500, "", false},
-	{"data",       "fidget",     {"--page=2", "--anim=on"}, 1500, "", false},
-	{"playground", "fidget",     {"--page=3", "--anim=on"}, 3200, "", false},
-	{"palette",    "fidget",     {"--palette_query=theme", "--theme=3", "--anim=on"}, 1500, "", false},
-	{"settings",   "fidget",     {"--settings", "--anim=on"}, 1500, "", false},
-	{"toasts",     "fidget",     {"--page=2", "--toasts", "--toast_pos=2", "--anim=on"}, 1800, "", false},
-	{"about",      "fidget",     {"--about", "--theme=4", "--anim=on"}, 1500, "", false},
-	{"light",      "fidget",     {"--page=0", "--theme=2", "--anim=on"}, 1500, "", false},
-	{"bootstrap",  "fidget",     {"--page=0", "--theme=7", "--anim=on"}, 1500, "", false},
-	{"compact",    "fidget",     {"--page=2", "--compact", "--anim=on"}, 1500, "", false},
-	{"todo",       "todo",       {}, 1500, "", false},
-	{"transforms", "transforms", {"--time=2.0"}, 1500, "", false},
-	{"effects",    "effects",    {"--time=2.0"}, 1500, "", false},
+	{"controls",   "fidget",     {"--page=0", "--anim=on"}, 1500, "", false, nil},
+	{"inputs",     "fidget",     {"--page=1", "--anim=on"}, 1500, "", false, nil},
+	{"data",       "fidget",     {"--page=2", "--anim=on"}, 1500, "", false, nil},
+	{"playground", "fidget",     {"--page=3", "--anim=on"}, 3200, "", false, nil},
+	{"palette",    "fidget",     {"--palette_query=theme", "--theme=3", "--anim=on"}, 1500, "", false, nil},
+	{"settings",   "fidget",     {"--settings", "--anim=on"}, 1500, "", false, nil},
+	{"toasts",     "fidget",     {"--page=2", "--toasts", "--toast_pos=2", "--anim=on"}, 1800, "", false, nil},
+	{"about",      "fidget",     {"--about", "--theme=4", "--anim=on"}, 1500, "", false, nil},
+	{"light",      "fidget",     {"--page=0", "--theme=2", "--anim=on"}, 1500, "", false, nil},
+	{"bootstrap",  "fidget",     {"--page=0", "--theme=7", "--anim=on"}, 1500, "", false, nil},
+	{"compact",    "fidget",     {"--page=2", "--compact", "--anim=on"}, 1500, "", false, nil},
+	{"todo",       "todo",       {}, 1500, "", false, nil},
+	{"transforms", "transforms", {"--time=2.0"}, 1500, "", false, nil},
+	{"effects",    "effects",    {"--time=2.0"}, 1500, "", false, nil},
 }
 
 Shots_Options :: struct {
@@ -189,6 +194,11 @@ capture_shot :: proc(root: string, s: Shot, width: int, out_dir := "") -> string
 		time.sleep(time.Duration(s.ms) * time.Millisecond)
 	} else if _, ok := cdp.wait_idle(&c, IDLE_LIMIT); !ok {   // (still moving at the limit, a spinner: the picture all the same)
 		return fmt.tprintf("%s: %s", s.name, c.failure)
+	}
+	// (at rest after each key: a key that opens a field gives it the keyboard in a later build than its own)
+	for k in s.keys {
+		if !cdp.key(&c, k) { return fmt.tprintf("%s: %s", s.name, c.failure) }
+		if _, ok := cdp.wait_idle(&c, IDLE_LIMIT); !ok { return fmt.tprintf("%s: %s", s.name, c.failure) }
 	}
 	if s.typed != "" {
 		if !cdp.type_text(&c, s.typed) { return fmt.tprintf("%s: %s", s.name, c.failure) }
@@ -315,7 +325,7 @@ run_finish_shots :: proc(args: []string) -> string {
 	page := toolbox.flag_value(args, "page", "0")
 	theme := toolbox.flag_value(args, "theme", "0")
 	for f in FINISHES {
-		s := Shot{fmt.tprintf("page%s_%s", page, f), "fidget", {fmt.tprintf("--page=%s", page), fmt.tprintf("--theme=%s", theme), fmt.tprintf("--finish=%s", f), "--anim=off"}, 1200, "", false}
+		s := Shot{fmt.tprintf("page%s_%s", page, f), "fidget", {fmt.tprintf("--page=%s", page), fmt.tprintf("--theme=%s", theme), fmt.tprintf("--finish=%s", f), "--anim=off"}, 1200, "", false, nil}
 		if why := capture_shot(root, s, 0, out); why != "" { return why }
 	}
 	return ""

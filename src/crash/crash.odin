@@ -18,8 +18,10 @@
 package tk_crash
 
 import "base:intrinsics"
+import "base:runtime"
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import "core:thread"
@@ -145,7 +147,7 @@ begin_session :: proc() {
 	dir := kept_dir()
 	if dir == "" { return }
 	fsx.make_dirs(dir)
-	path := strings.concatenate({dir, "/", SESSION_FILE}, context.temp_allocator)
+	path := in_dir(dir, SESSION_FILE, context.temp_allocator)
 	if prev, ok := fsx.read_all(path, context.temp_allocator); ok {
 		s := parse_session(string(prev))
 		if s.pid != 0 {
@@ -177,8 +179,8 @@ end_session :: proc() {
 @(private = "file")
 session_close :: proc(data: rawptr) {
 	dir := (^string)(data)^
-	_ = fsx.delete_file(strings.concatenate({dir, "/", SESSION_FILE}, context.temp_allocator))
-	_ = fsx.write_atomic(strings.concatenate({dir, "/", CLEAN_END_FILE}, context.temp_allocator), transmute([]u8)string("clean end\n"))
+	_ = fsx.delete_file(in_dir(dir, SESSION_FILE, context.temp_allocator))
+	_ = fsx.write_atomic(in_dir(dir, CLEAN_END_FILE, context.temp_allocator), transmute([]u8)string("clean end\n"))
 }
 
 // The newest report written since the last clean end: the program crashed (or was killed) last time, and can say so ("open the
@@ -186,12 +188,12 @@ session_close :: proc(data: rawptr) {
 last_report :: proc(allocator := context.allocator) -> (path: string, ok: bool) {
 	dir := kept_dir()
 	if dir == "" { return }
-	_, clean, has_clean := fsx.stat(strings.concatenate({dir, "/", CLEAN_END_FILE}, context.temp_allocator))
+	_, clean, has_clean := fsx.stat(in_dir(dir, CLEAN_END_FILE, context.temp_allocator))
 	best_stamp: i64
 	best := ""
 	for f in fsx.list_files(dir, context.temp_allocator) {
 		if !is_report_name(f.name) { continue }
-		full := strings.concatenate({dir, "/", f.name}, context.temp_allocator)
+		full := in_dir(dir, f.name, context.temp_allocator)
 		_, stamp, good := fsx.stat(full)
 		if !good || (has_clean && stamp <= clean) { continue }
 		if best == "" || stamp > best_stamp || (stamp == best_stamp && f.name > best) {
@@ -199,7 +201,15 @@ last_report :: proc(allocator := context.allocator) -> (path: string, ok: bool) 
 		}
 	}
 	if best == "" { return }
-	return strings.concatenate({dir, "/", best}, allocator), true
+	return in_dir(dir, best, allocator), true
+}
+
+// A file of the report folder, with the system's separator only: a program opens and copies last_report's path, and on
+// Windows "C:\...\crash" + "/" + name was a path with both separators.
+@(private = "file")
+in_dir :: proc(dir, name: string, allocator: runtime.Allocator) -> string {
+	p, _ := filepath.join({dir, name}, allocator)
+	return p
 }
 
 @(private)
@@ -244,7 +254,7 @@ write_unclean :: proc(dir: string, s: Session) {
 	}
 	text := report_text(r, context.temp_allocator)
 	name := out_report_name(name_buf[:], UNCLEAN_PREFIX, now, s.pid)
-	_ = fsx.write_atomic(strings.concatenate({dir, "/", name}, context.temp_allocator), transmute([]u8)text)
+	_ = fsx.write_atomic(in_dir(dir, name, context.temp_allocator), transmute([]u8)text)
 }
 
 @(private)

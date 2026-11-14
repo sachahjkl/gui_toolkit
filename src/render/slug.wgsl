@@ -304,5 +304,5 @@ fn ps_slug(i: SlugPS) -> @location(0) float4 {
 	var color = i.color;
 	color.a = color.a * slug_text_coverage(cov, i);
 	if (i.clip != 0u || rp.misc.y != 0u) { color.a = color.a * any_clip_coverage(i.pos.xy + g.target_origin, i.clip); }
-	return color;
+	return saturate(color);   // (as rect.wgsl's ps_main: a half-float target keeps what is past [0, 1])
 }

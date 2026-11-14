@@ -375,8 +375,8 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 		return true, !keyboard_focus   // (a keyboard's focus keeps the theme's ring)
 	}
 	// a raised panel (a bar, a key cap): its face, a lit rim along its top
-	// (a box that declares its sides, or a bar flush with the window: its face alone, box_rimmed; the rim, inset by a
-	// pixel, framed it and doubled the border of the bar next to it)
+	// (a box that declares its sides, a bar flush with the window, a header or a row of a face it sits in: its face alone,
+	// box_rimmed; the rim, inset by a pixel, framed it and doubled the edge next to it)
 	draw.rect_corners(dc, r, colors4(b.bg), radii)
 	if !box_rimmed(s, b) { return true, false }
 	if edged() {

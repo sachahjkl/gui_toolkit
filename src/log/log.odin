@@ -23,6 +23,7 @@ import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 import "core:sync"
 import "core:time"
@@ -84,7 +85,8 @@ install :: proc(o: Install_Options, allocator := context.allocator) -> runtime.L
 	if dir == "" { dir = default_dir(o.program, context.temp_allocator) }
 	l.o.dir = strings.clone(dir, allocator)
 	l.o.program = strings.clone(o.program, allocator)
-	l.path = dir == "" ? "" : strings.concatenate({dir, "/", o.program, EXTENSION}, allocator)
+	// (filepath.join: a program shows and opens this path, which on Windows must have "\" only)
+	if dir != "" { l.path, _ = filepath.join({dir, strings.concatenate({o.program, EXTENSION}, context.temp_allocator)}, allocator) }
 	l.pending = make([dynamic]u8, allocator)
 	l.chunk = make([dynamic]u8, allocator)
 	l.job = tasks.Job{work = drain, data = l}

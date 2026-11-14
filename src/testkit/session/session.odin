@@ -76,6 +76,7 @@ Session_Options :: struct {
 	smooth_scroll: ui.Smooth_Scroll,
 	no_renderer: bool,               // build and layout only: no device is made, `capture` is refused. For what no pixel depends on
 	space:      render.Blend_Space,
+	half_float: bool,                // the frame in half floats, as a translucent window's (render.init_offscreen): capture_float reads its values
 	system_fonts: bool,              // the system's font first, as an application does (false: the fonts compiled in: the same on every machine)
 	integrated_title: bool,          // the interface draws the title bar (platform.set_integrated_title): ui.window_buttons shows
 }
@@ -169,7 +170,7 @@ start :: proc(t: ^testing.T, o: Session_Options, loc := #caller_location) -> ^Se
 	own.icon_font, ok = font.load_embedded(&own.fonts, ui.ICON_FONT_DATA)
 	if !ok { failed(s, "no icon font", loc) }
 	if !o.no_renderer {
-		if !render.init_offscreen(&own.renderer, s.win.size, warp = true, space = o.space) { failed(s, "no offscreen renderer on this machine", loc) }
+		if !render.init_offscreen(&own.renderer, s.win.size, warp = true, space = o.space, half_float = o.half_float) { failed(s, "no offscreen renderer on this machine", loc) }
 		s.renderer = &own.renderer
 		draw.init(&own.dc, &own.renderer, &own.fonts)
 	}

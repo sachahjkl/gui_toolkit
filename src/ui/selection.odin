@@ -2,6 +2,7 @@ package ui
 
 import "base:runtime"
 import "core:math"
+import "core:math/linalg"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
@@ -15,7 +16,9 @@ import "../platform"
 //   press and drag: select; Shift+click: extend; double click: a word; triple click: the box's paragraph;
 //   Shift+arrows / Shift+Home / Shift+End: move its moving end (when no field has the keyboard); Ctrl+C or Ctrl+Insert: copy (boxes
 //   joined by new lines); Ctrl+A on a selectable box: all of it; a press on nothing clickable: no selection (a press on
-//   a button keeps it).
+//   a button keeps it); a press on selectable text inside a clickable box (a history item): the box's click, unless the
+//   pointer drags past SEL_DRAG_SLOP_PX first, which selects (src/md/features/text-selection.md).
+// `paragraph` and `rich_paragraph` are selectable by default (content); `label` is not (a control's name).
 // The pointer is the text cursor over selectable text (not over a link or a clickable box above it). The selection is
 // drawn with the theme's "selection" colour. Apps read it with `selected_text`, and know it changed from
 // `selection_serial` (it moves with every change) or `selection_changed` (this build).
@@ -47,7 +50,17 @@ Selection :: struct {
 	order:         [dynamic]Key,  // selectable boxes of the build, in order
 	pos_of:        map[Key]int,
 	snapshot:      [dynamic]u8,   // the selected text when this build began: what selected_text answers during it
+	// a press on selectable text inside a clickable box: a drag past SEL_DRAG_SLOP_PX selects from here, a click is the box's
+	waiting:       bool,
+	waiting_at:    Sel_Pos,
+	waiting_pos:   Vec2,
+	waiting_taker: Key,
+	// the last press made the selection (no press elsewhere since): Ctrl+C is the selection's, not a program's command
+	copy_keys:     bool,
 }
+
+// How far a press on text in a clickable box moves before it is a selection and no longer the box's click.
+@(private) SEL_DRAG_SLOP_PX :: 4
 
 // The selected text (boxes joined by "\n"), "" for none. During a build, as the last build showed it: the boxes built so
 // far are not all of them (a Copy button above the text), and the others' text is in memory that is gone.
@@ -70,7 +83,8 @@ selected_text_of_boxes :: proc(s: ^State, allocator: runtime.Allocator) -> strin
 		lo := i == ia ? a.index : 0
 		hi := i == ib ? b.index : len(text)
 		lo, hi = clamp(lo, 0, len(text)), clamp(hi, 0, len(text))
-		if i > ia { strings.write_byte(&sb, '\n') }
+		// (a block of a document after another: a blank line between, as its source has)
+		if i > ia { strings.write_string(&sb, .Selection_Block in box.flags ? "\n\n" : "\n") }
 		if hi > lo { strings.write_string(&sb, text[lo:hi]) }
 	}
 	return strings.to_string(sb)
@@ -96,7 +110,17 @@ select_box :: proc(s: ^State, key: Key) {
 	s.sel.anchor = {key, 0}
 	s.sel.focus = {key, len(sel_text(s, b, context.temp_allocator))}
 	s.sel.phase = .Shown
+	s.sel.copy_keys = true
 	sel_bump(s)
+}
+
+// Whether Ctrl+C (Ctrl+Insert) is the text selection's this build: text is selected, the last press made it (no press
+// elsewhere since), and no text field has the keyboard. A program's command on the same chord then does not fire
+// (chord_pressed): a person who selected text in a pane copies the text, not the files of the list.
+selection_takes_copy :: proc(s: ^State) -> bool {
+	if !has_selection(s) || !s.sel.copy_keys { return false }
+	field := s.focus_key != 0 && s.boxes[s.focus_key] != nil && .Text_Input in s.boxes[s.focus_key].flags
+	return !field
 }
 
 // The button will not come up for this selection (the user left the window): it stands where it is.
@@ -315,6 +339,15 @@ sel_open_to :: proc(s: ^State, b: ^Box, taker: Key) -> bool {
 	return surface != nil && surface.key == taker
 }
 
+// Whether box `b` is inside the box `taker` (a selectable text in a clickable row).
+@(private)
+sel_inside :: proc(b: ^Box, taker: Key) -> bool {
+	for p := b.parent; p != nil; p = p.parent {
+		if p.key == taker { return true }
+	}
+	return false
+}
+
 // The selectable box at window point `p` (the last built, which draws on top), 0 for none.
 @(private)
 sel_box_at :: proc(s: ^State, p: Vec2) -> Key {
@@ -340,6 +373,9 @@ sel_nearest :: proc(s: ^State, p: Vec2) -> (Key, Vec2) {
 		b := s.boxes[k]
 		if b == nil || sel_kind(b) == .None || !sel_same_surface(s, k, s.sel.anchor.box) { continue }
 		r := visible_rect(b)
+		// (a box scrolled out of its view: its rect is clamped to the view's edge, and the moving end would jump to a
+		// paragraph that nobody sees)
+		if r.max.x <= r.min.x || r.max.y <= r.min.y { continue }
 		c := Vec2{clamp(p.x, r.min.x, r.max.x - 0.5), clamp(p.y, r.min.y, r.max.y - 0.5)}
 		d := (c.x - p.x) * (c.x - p.x) + (c.y - p.y) * (c.y - p.y) * SEL_ROW_WEIGHT   // rows first
 		if d < best_d { best, best_d, q = k, d, c }
@@ -424,16 +460,24 @@ selection_update :: proc(s: ^State) {
 			b := s.boxes[k] if k != 0 else nil
 			// a clickable box over the text (or a link in it) keeps its press
 			pressed := s.pressed_key[.Left]
-			if b != nil && pressed != 0 && !sel_open_to(s, b, pressed) { b = nil }
+			sel.waiting = false
 			if b != nil && sel_kind(b) == .Rich {
 				d, l, o := rich_of(b)
 				if rich_link_at(l, d.runs, e.pos - o) >= 0 { b = nil }
+			}
+			if b != nil && pressed != 0 && !sel_open_to(s, b, pressed) {
+				// the text is in the box that took the press: its click, unless the pointer drags (text-selection.md)
+				if sel_inside(b, pressed) {
+					sel.waiting, sel.waiting_at, sel.waiting_pos, sel.waiting_taker = true, {k, sel_index_at(s, b, e.pos)}, e.pos, pressed
+				}
+				b = nil
 			}
 			if b == nil {
 				// a press on a button keeps it (a Copy button reads it on release); a surface is no button
 				taker := s.boxes[pressed] if pressed != 0 else nil
 				if taker == nil || .Press_Stop in taker.flags { sel.phase = .None } else { selection_drag_end(s) }
 				sel.clicks, sel.click_ms = 0, 0   // (the next press on the text is a first one)
+				sel.copy_keys = false             // (a row picked since: Ctrl+C is the program's again)
 				continue
 			}
 			now := s.time_ms
@@ -464,8 +508,24 @@ selection_update :: proc(s: ^State) {
 				sel.granularity = .Characters
 			}
 			sel.phase = .Dragging
+			sel.copy_keys = true
 		case .Mouse_Release:
-			if e.button == .Left { selection_drag_end(s) }
+			if e.button == .Left { selection_drag_end(s); sel.waiting = false }
+		}
+	}
+	// a press on text in a clickable box that moved past the slop: a selection, and no click for the box
+	if sel.waiting {
+		_, there := sel.pos_of[sel.waiting_at.box]
+		if !there || s.active_key[.Left] != sel.waiting_taker {
+			sel.waiting = false
+		} else if s.mouse_valid && linalg.length(s.mouse - sel.waiting_pos) > SEL_DRAG_SLOP_PX * s.scale {
+			sel.waiting = false
+			sel.anchor, sel.focus = sel.waiting_at, sel.waiting_at
+			sel.granularity = .Characters
+			sel.phase = .Dragging
+			sel.copy_keys = true
+			sel.clicks, sel.click_ms = 0, 0
+			s.active_key[.Left] = 0   // (its release is then no click, and its drag ends)
 		}
 	}
 	// dragging: the moving end follows the pointer, into the nearest selectable box
@@ -489,6 +549,9 @@ selection_update :: proc(s: ^State) {
 				}
 			}
 		}
+		// near or past an edge, the view around the moving end scrolls; this build's moving end is on what it shows
+		edge := sel.focus.box if sel.focus.box != 0 else sel.anchor.box
+		drag_autoscroll_mark(s, edge, {.X = true, .Y = true})
 	}
 	// keys: when no field has the keyboard
 	field := s.focus_key != 0 && s.boxes[s.focus_key] != nil && .Text_Input in s.boxes[s.focus_key].flags

@@ -54,6 +54,7 @@ font/dwrite.odin IID_IDWriteFactory4 const  # a COM interface id (passed by addr
 font/dwrite.odin IID_IDWriteFontFace2 const  # a COM interface id (passed by address)
 font/dwrite.odin IID_IDWriteFontFace4 const  # a COM interface id (passed by address)
 font/dwrite.odin IID_IDWriteFontFace5 const  # a COM interface id (passed by address)
+font/dwrite.odin IID_IDWriteFont1 const  # a COM interface id (passed by address)
 font/dwrite.odin IID_IDWriteFontFileLoader const  # a COM interface id (passed by address)
 font/dwrite.odin IID_IDWriteFontFileStream const  # a COM interface id (passed by address)
 font/dwrite.odin IID_IDWriteTextAnalysisSource const  # a COM interface id (passed by address)

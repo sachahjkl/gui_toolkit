@@ -76,7 +76,7 @@ file_preview_destroy :: proc(fb: ^File_Browser) {
 file_preview_follow :: proc(fb: ^File_Browser, shown: bool) {
 	want := ""
 	e: ^File_Entry
-	if shown && .Read in fb.source.caps && fb.source.read != nil && list_mark_count(&fb.table.vl) <= 1 {
+	if shown && .Read in fb.source.caps && fb.source.read != nil && list_selected_count(&fb.table.vl) <= 1 {
 		e = file_row_entry(fb, table_selected(&fb.table))
 		if e != nil && e.kind == .File { want = file_path_join(fb.folder, e.name, fb.sep) }
 	}

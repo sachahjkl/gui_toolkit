@@ -140,6 +140,8 @@ STEPS := []Step{
 	{name = "autoscroll", oses = EVERYWHERE},
 	// the interface, with no window
 	{name = "post", one = true, oses = EVERYWHERE, text = true},
+	{name = "drag_autoscroll", one = true, oses = EVERYWHERE, text = true},
+	{name = "text_selection", one = true, oses = EVERYWHERE, text = true},
 	{name = "machines", one = true},
 	{name = "panes", one = true},
 	{name = "docking", one = true},
@@ -159,6 +161,7 @@ STEPS := []Step{
 	{name = "data_views", one = true, oses = EVERYWHERE, text = true},
 	{name = "file_browser", one = true, oses = EVERYWHERE, text = true},
 	{name = "path_bar", one = true, oses = EVERYWHERE, text = true},
+	{name = "font_picker", one = true, oses = EVERYWHERE, text = true},
 	{name = "diff", one = true, oses = EVERYWHERE, text = true},
 	{name = "prefs_page", one = true, oses = EVERYWHERE, text = true},
 	{name = "setup", one = true, oses = EVERYWHERE, text = true},

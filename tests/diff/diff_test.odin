@@ -210,7 +210,7 @@ build :: proc(s: ^session.Session) {
 	// (a program hands its patch at each build: only a new text is read)
 	if diff.doc_set(&app.doc, app.patch) { app.reads += 1 }
 	ui.next({width = ui.px(600), height = ui.px(VIEW_H), axis = .Y})
-	if ui.column(id = "###frame") { diff.view("###view", &app.doc, app.layout, {row_height = 20, selectable = true}) }
+	if ui.column(id = "###frame") { diff.view("###view", &app.doc, app.layout, {row_height = 20}) }
 }
 
 @(private = "file")

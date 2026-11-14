@@ -7,7 +7,8 @@ The widget gallery, built entirely on the `ui` package.
   switches, checkboxes, radios, segmented control (sliding pill), chips, sliders, range slider, numbers
   (hold to repeat), rating, progress bars, toasts, modal dialog, context menu
 - **Inputs**: validated text fields, live fuzzy search with highlighted matches, tag input, a small form,
-  shortcut cheat sheet
+  shortcut cheat sheet, the toolkit's file browser (open, folder, save: the computer's files) and its path bar
+  alone over a project's folders
 - **Data**: 20,000-row virtualized table (sort, filter, resizable columns, keyboard navigation) and a file tree
 - **Playground**: physics balls (collisions, mouse repel, confetti), a fidget spinner, the live accent color
   picker (edits the theme while you drag), draggable sticky notes
@@ -26,7 +27,7 @@ Flags to look at one thing: `--page=N --theme=N --palette --modal --about --sett
 
 Files: `app.odin` (state, palettes, command table), `main.odin` (frame loop, settings), `shell.odin`
 (menu bar, tabs, status bar, palette, modal), `pages.odin` (Controls, Inputs), `pages_data.odin`,
-`pages_play.odin`.
+`pages_play.odin`, `files.odin` (the Files card).
 
 Note: the Controls page renders continuously (the indeterminate "Loading" bar), so it idles at a few percent
 CPU; the other pages idle at ~0 %.

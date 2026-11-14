@@ -20,21 +20,21 @@ NAV := [?]Scene{.Intents, .Controls, .Menus, .Toolbar, .Views, .Graph, .Themes, 
 SCENE_TITLES := [Scene]string{
 	.Intents = "Intents and hues", .Controls = "Numbers and ranges", .Palette = "Command palette", .Menus = "Menus",
 	.Dialog = "Dialogs", .Confirm = "Confirmation", .Prompt = "Prompt", .Settings = "Settings", .Graph = "Node graph",
-	.Toasts = "Toasts", .Themes = "Themes", .Toolbar = "Tool bars", .Views = "Views",
+	.Toasts = "Toasts", .Themes = "Themes", .Toolbar = "Tool bars", .Views = "Views", .Files = "File browser",
 }
 
 SCENE_ICONS := [Scene]string{
 	.Intents = lucide.PALETTE, .Controls = lucide.SLIDERS_HORIZONTAL, .Palette = lucide.COMMAND, .Menus = lucide.FOLDER_OPEN,
 	.Dialog = lucide.DOWNLOAD, .Confirm = lucide.TRASH_2, .Prompt = lucide.KEY_ROUND, .Settings = lucide.SETTINGS,
 	.Graph = lucide.GIT_BRANCH, .Toasts = lucide.BELL, .Themes = lucide.SUN, .Toolbar = lucide.PENCIL_RULER,
-	.Views = lucide.LAYOUT_DASHBOARD,
+	.Views = lucide.LAYOUT_DASHBOARD, .Files = lucide.FOLDER_OPEN,
 }
 
 // The page under an overlay's scene.
 page_of :: proc(s: Scene) -> Scene {
 	#partial switch s {
 	case .Palette:                  return .Intents
-	case .Dialog, .Confirm, .Prompt: return .Controls
+	case .Dialog, .Confirm, .Prompt, .Files: return .Controls
 	case .Toasts:                   return .Graph
 	}
 	return s
@@ -159,6 +159,7 @@ sidebar :: proc(app: ^App, em: f32) {
 			overlay_link(app, "###open_dialog", lucide.DOWNLOAD, "Export dialog", .Dialog, em)
 			overlay_link(app, "###open_confirm", lucide.TRASH_2, "Delete for good…", .Confirm, em)
 			overlay_link(app, "###open_prompt", lucide.KEY_ROUND, "Unlock the key…", .Prompt, em)
+			overlay_link(app, "###open_files", lucide.FOLDER_OPEN, "Open a file…", .Files, em)
 			overlay_link(app, "###open_toasts", lucide.BELL, "Say what was done", .Toasts, em)
 			ui.spacer(ui.fill())
 			ui.next({width = ui.fill(), height = ui.px(em * 2), axis = .X, cross = .Center})
@@ -203,6 +204,7 @@ scene_open :: proc(app: ^App, s: Scene) {
 			secret = true, reveal = &app.reveal, act = "Unlock",
 		})
 	case .Toasts:  toasts_say(app)
+	case .Files:   files_open(app)
 	}
 }
 

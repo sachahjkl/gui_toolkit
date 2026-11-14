@@ -44,7 +44,7 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   beside the filter's, for what the filter's toggle does already.
 - **No work in proportion to the entries in a quiet build.** The rows are made again only when the entries, Hidden
   files or the type change; filtered and sorted again only when the query or the sort change. The table passes a
-  version of its ids to the list (`Table.ids_version`), and Open's "can act" is kept by (selection, marks, version).
+  version of its ids to the list (`Table.ids_version`), and Open's "can act" is kept by (active row, selection's version, ids' version).
 - **The table grew, no second list.** Folders first is `Table_Data.groups`; the fuzzy filter is `Table_Layout.fuzzy`.
   Every table gets them.
 - **The computer's places are read once per State, on the chores** (`File_Local`). `known_folder_path` and the drives

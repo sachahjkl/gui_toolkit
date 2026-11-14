@@ -1,0 +1,3 @@
+type: Added
+
+**A command's key that types text leaves it to a focused field.** `ui.command_pressed` no longer takes a letter, a digit, a punctuation mark, Space or Backspace (alone or with Shift) while a line edit or a text area has the keyboard: the field gets the character, and the command waits until no field has the keyboard. `ui.command_key_types_text(chord)` says whether a chord types text, and `ui.command_typing_keys(table)` lists the keys of a table that do, for a program's unit test. A program whose field always has the keyboard expects none: its menus then never show a key that cannot work.

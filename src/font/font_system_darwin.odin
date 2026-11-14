@@ -2,7 +2,6 @@
 package font
 
 import "base:runtime"
-import "core:slice"
 import "core:strings"
 import "../ascii"
 
@@ -151,17 +150,17 @@ sys_find_for_char :: proc(family: string, weight: int, style: Font_Style, r: run
 }
 
 @(private)
-sys_families :: proc(allocator: runtime.Allocator) -> []string {
+// (none marked monospace: CoreText's names carry no traits, and macOS is not a target the picker is tuned for)
+sys_families :: proc(allocator: runtime.Allocator) -> []Family {
 	arr := CTFontManagerCopyAvailableFontFamilyNames()
 	if arr == nil { return nil }
 	defer CFRelease(arr)
 	n := CFArrayGetCount(arr)
-	out := make([dynamic]string, 0, n, allocator)
+	out := make([dynamic]Family, 0, n, allocator)
 	for i in 0 ..< n {
-		if name := cf_to_string(CFArrayGetValueAtIndex(arr, i), allocator); name != "" { append(&out, name) }
+		if name := cf_to_string(CFArrayGetValueAtIndex(arr, i), allocator); name != "" { append(&out, Family{name = name}) }
 	}
-	slice.sort_by(out[:], proc(a, b: string) -> bool { return strings.compare(a, b) < 0 })
-	return out[:]
+	return families_sorted(&out, allocator)
 }
 
 @(private)

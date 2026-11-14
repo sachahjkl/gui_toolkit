@@ -9,6 +9,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../../examples/fidget"
+import "../../src/platform"
 import "../../src/testkit"
 import "../../src/testkit/session"
 import "../../src/ui"
@@ -16,6 +17,8 @@ import "../../src/ui"
 // The pages, by what the command line says.
 @(private = "file") CONTROLS_ARGS := []string{"--anim=off"}
 @(private = "file") INPUTS_ARGS := []string{"--anim=off", "--page=1"}
+// (tall: the Files card, last of its column, is in the window)
+@(private = "file") FILES_ARGS := []string{"--anim=off", "--page=1", "--size=1180x1600"}
 // What Ctrl + and Ctrl - do to a zoom of 100 %, in whole percents.
 @(private = "file") ZOOM_NORMAL_PCT :: 100
 @(private = "file") ZOOM_IN_PCT :: 110
@@ -167,6 +170,49 @@ fidget_overlays_by_the_keyboard :: proc(t: ^testing.T) {
 wait_closed :: proc(s: ^session.Session, app: ^fidget.App, id: string) {
 	Closing :: struct { app: ^fidget.App, id: string }
 	session.wait_until(s, Closing{app, id}, proc(s: ^session.Session, c: Closing) -> bool { return !fidget.dialog_is_open(c.app, c.id) }, "the dialog to close")
+}
+
+// The Files card: each mode asks a file dialog and says its answer. The test hook answers for the computer's files:
+// the test reads no disk.
+@(test)
+fidget_file_dialogs_answer_in_the_card :: proc(t: ^testing.T) {
+	platform.dialog_test_hook = proc(kind: int, d: platform.File_Dialog, allocator: runtime.Allocator) -> platform.Dialog_Result {
+		if kind == platform.DIALOG_SAVE { return {status = .Cancelled} }
+		paths := make([]string, 1, allocator)
+		paths[0] = strings.clone(kind == platform.DIALOG_FOLDER ? "/srv/photos" : "/srv/photos/pier.png", allocator)
+		return {status = .Chosen, paths = paths}
+	}
+	defer platform.dialog_test_hook = nil
+	s, app := start_fidget(t, FILES_ARGS)
+	testing.expect_value(t, app.files_said, "")
+	session.click(s, "fb_open")
+	wait_said(s, app, "Chosen: /srv/photos/pier.png")
+	session.click(s, "fb_folder")
+	wait_said(s, app, "Chosen: /srv/photos")
+	session.click(s, "fb_save")
+	wait_said(s, app, "Cancelled.")
+}
+
+// The path bar alone: typed in, a fuzzy letter keeps the child that matches, Down and Enter go there.
+@(test)
+fidget_path_bar_goes_to_a_typed_child :: proc(t: ^testing.T) {
+	s, app := start_fidget(t, FILES_ARGS)
+	testing.expect_value(t, fidget.FILES_TREE[app.files_folder], "/harbour/src")
+	ui.path_bar_edit(&app.files_bar)
+	session.frames(s, 2)
+	testing.expect(t, ui.path_bar_editing(&app.files_bar), "the bar is in its address mode")
+	session.type_text(s, "u")
+	session.key(s, .Down)
+	session.key(s, .Return)
+	testing.expect_value(t, fidget.FILES_TREE[app.files_folder], "/harbour/src/ui")
+	testing.expect(t, !ui.path_bar_editing(&app.files_bar), "the breadcrumb again")
+}
+
+// The card says what the dialog answered: it answers on the chores, in a later build.
+@(private = "file")
+wait_said :: proc(s: ^session.Session, app: ^fidget.App, want: string) {
+	Said :: struct { app: ^fidget.App, want: string }
+	session.wait_until(s, Said{app, want}, proc(s: ^session.Session, w: Said) -> bool { return w.app.files_said == w.want }, "the card to say the dialog's answer")
 }
 
 // A menu opens by its button and closes on a click anywhere else.

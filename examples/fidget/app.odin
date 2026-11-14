@@ -219,6 +219,9 @@ App :: struct {
 	integrated:  bool,   // --integrated: the menu bar is the window's title bar (ui.title_bar, ui.window_buttons)
 	tags:    [dynamic]string,
 	agree:   bool,
+	files_said:   string,        // what the last file dialog answered (owned; "": none yet)
+	files_bar:    ui.Path_Bar,   // the path bar over FILES_TREE (files.odin)
+	files_folder: int,           // the folder it shows: an index of FILES_TREE
 
 	// data page
 	rows:    []Data_Row,

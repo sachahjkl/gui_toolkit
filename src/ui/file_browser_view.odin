@@ -214,21 +214,7 @@ file_browser_keys :: proc(fb: ^File_Browser) -> (act: File_Action) {
 	if s.focus_key == fb.filter_key && s.focus_key != 0 {
 		if ev := table_keys(&fb.table); ev.activated { act.kind = .Activate }
 	}
-	// Shift+Up / Down: the marks from where the range started, to the row the keyboard is on
-	vl := &fb.table.vl
-	if vl.multi && s.focus_key == vl.key && s.focus_key != 0 && len(fb.table.ids) > 0 {
-		dir := 0
-		if key_press(.Down, {.Shift}) { dir = 1 }
-		if key_press(.Up, {.Shift}) { dir = -1 }
-		if dir != 0 {
-			if fb.shift_from < 0 || list_mark_count(vl) == 0 { fb.shift_from = max(vl.sel, 0) }
-			to := clamp(vl.sel + dir, 0, len(fb.table.ids) - 1)
-			list_marks_clear(vl)
-			for i in min(fb.shift_from, to) ..= max(fb.shift_from, to) { vl.marks[fb.table.ids[i]] = true }
-			vl.marks_changed = true
-			list_select(vl, to)
-		}
-	}
+	// (Shift+arrows in the list: the list's own selection, item_selection.odin)
 	return
 }
 

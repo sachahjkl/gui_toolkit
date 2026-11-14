@@ -358,6 +358,48 @@ a_bar_with_declared_sides_has_no_frame :: proc(t: ^testing.T) { unwatched.run(t,
 	}
 }) }
 
+// A header at the top of a framed card and a stripe across it are parts of the card, in every finish: no rim just
+// inside their top or their left (a second line under the frame's border, a table's header under its frame). A card on
+// its own keeps its rim (box_rimmed).
+@(test)
+a_row_in_a_framed_face_has_no_rim :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	for finish in ([]ui.Finish{.Machined, .Edged, .Gradient, .Glass}) {
+		p := ui.palette_of("Midnight", false)
+		p.finish = finish
+		s := session.start(t, {size = BAR_WINDOW, palette = p, build = proc(s: ^session.Session) {
+			card :: ui.Color{0.1, 0.1, 0.12, 1}
+			if ui.tags("bar") {
+				ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(240), height = ui.px(220), axis = .Y, radius = 0, bg = card})
+				if ui.column(flags = {.Draw_Background, .Draw_Border}, id = "###card") {
+					ui.next({width = ui.fill(), height = ui.px(100), radius = 0, bg = {0.2, 0.2, 0.22, 1}})
+					ui.build_box({.Draw_Background}, "###head")
+					ui.spacer(ui.px(10))
+					ui.next({width = ui.fill(), height = ui.px(90), radius = 0, bg = {0.16, 0.16, 0.18, 1}})
+					ui.build_box({.Draw_Background}, "###stripe")
+				}
+				ui.next({fixed_x = 290, fixed_y = 40, width = ui.px(90), height = ui.px(120), radius = 0, bg = card})
+				ui.build_box({.Draw_Background, .Draw_Border}, "###lone")
+			}
+		}})
+		img := session.capture(s)
+		for id in ([]string{"head", "stripe"}) {
+			r := session.get(s, id).rect
+			cx := int(r.min.x + r.max.x) / 2
+			// (1 px in: where the rim was; 2 px in, the face: a face lit from above changes little in a pixel)
+			top, face := session.pixel(img, cx, int(r.min.y) + 1), session.pixel(img, cx, int(r.min.y) + 2)
+			testing.expectf(t, session.near(top, face, 2), "%v %s: no line just inside its top: %v, the face %v", finish, id, top, face)
+			left, row := session.pixel(img, int(r.min.x) + 1, int(r.min.y) + 3), session.pixel(img, int(r.min.x) + 20, int(r.min.y) + 3)
+			testing.expectf(t, session.near(left, row, 2), "%v %s: no line just inside its left: %v, the face %v", finish, id, left, row)
+		}
+		if finish == .Machined {
+			r := session.get(s, "lone").rect
+			cx := int(r.min.x + r.max.x) / 2
+			rim, face := session.pixel(img, cx, int(r.min.y) + 1), session.pixel(img, cx, int(r.min.y) + 3)
+			testing.expectf(t, !session.near(rim, face, 2), "a card on its own keeps its rim: %v, the face %v", rim, face)
+		}
+	}
+}) }
+
 // The intents' buttons are soft: a deep fill of their hue on a dark page, words of that hue on it that read (AA).
 @(test)
 an_intent_button_is_a_soft_pair_of_its_hue :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

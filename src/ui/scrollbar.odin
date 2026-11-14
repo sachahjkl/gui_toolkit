@@ -33,6 +33,45 @@ set_scrollbar_size :: proc(s: ^State, size: Scrollbar_Size) { s.scrollbar_size =
 // overflows. A hidden bar is still there to take as soon as the pointer comes.
 set_scrollbar_autohide :: proc(s: ^State, on: bool) { s.scrollbar_autohide = on }
 
+// Scroll bars drawn over the edge of their content, which then keeps no room for them (as macOS draws them). Off by
+// default: a scroll box's content is laid out beside its bars, never under them (layout, Box.bar_room).
+set_scrollbar_overlay :: proc(s: ^State, on: bool) { s.scrollbar_overlay = on }
+
+// The room a scroll box keeps for its bars, from its last layout, pixels: along X a vertical bar's, along Y a
+// horizontal bar's (0: none, it fits or its bars overlay). A box outside the scroll box that lines up with its content
+// (a table's titles over its rows) leaves the same room.
+scrollbar_room :: proc(b: ^Box, axis: Axis) -> f32 { return b == nil ? 0 : b.bar_room[int(axis)] }
+
+// Whether a scroll box's content overflows along `axis` in its last layout, so that it shows a bar there.
+@(private = "file")
+scrollbar_overflows :: proc(s: ^State, b: ^Box, axis: Axis) -> bool {
+	a := int(axis)
+	flag := axis == .Y ? Box_Flag.View_Scroll_Y : Box_Flag.View_Scroll_X
+	if flag not_in b.flags || .Scrollbar_None in b.flags { return false }
+	return b.view_bounds[a] > b.size[a] + SCROLLBAR_FIT_SLACK_PX && b.size[a] >= SCROLLBAR_VIEW_MIN_PX * s.scale
+}
+
+// After a layout: each scroll box keeps its bars' room where its content overflows, and gives it back where it fits.
+// True when a room changed: the layout runs again in the same build. Measured with the room it had, the decision has a
+// hysteresis: a content that overflows only beside a bar never takes the room (it was measured without it), and a
+// content that keeps the room gives it back once it fits beside the bar (it then fits without it too). The room never
+// goes and comes from one build to the next.
+@(private)
+scrollbar_rooms_update :: proc(s: ^State, b: ^Box) -> (changed: bool) {
+	if b.flags & {.View_Scroll_X, .View_Scroll_Y} != {} {
+		want: Vec2
+		if !s.scrollbar_overlay {
+			if scrollbar_overflows(s, b, .Y) { want.x = scroll_marks_of(b) != nil ? scroll_marks_rest_width(b) : scrollbar_thickness(s) }
+			if scrollbar_overflows(s, b, .X) { want.y = scrollbar_thickness(s) }
+		}
+		if want != b.bar_room { b.bar_room, changed = want, true }
+	} else if b.bar_room != {} {
+		b.bar_room, changed = {}, true
+	}
+	for c := b.first; c != nil; c = c.next { if scrollbar_rooms_update(s, c) { changed = true } }
+	return
+}
+
 // Scrolled by something other than the pointer (the keyboard): its bar shows for a moment, wherever the pointer is.
 scrollbar_reveal :: proc(b: ^Box) {
 	if b == nil { return }
@@ -134,8 +173,8 @@ scrollbar_thickness :: proc(s: ^State) -> f32 {
 	return odd_px((s.scrollbar_size == .Wide ? SCROLLBAR_WIDE_PX : SCROLLBAR_THIN_PX) * s.scale)
 }
 
-// What a vertical bar takes at the edge of a scroll box: its thickness. The bar is drawn over what is in the box: content
-// that must stay clear of it (a row's buttons at its right end) leaves this much room there when the box scrolls.
+// A bar's thickness, pixels: the room a scroll box's layout keeps for it (a bar with marks keeps more: scrollbar_room
+// says what a box keeps). Content leaves nothing for the bar itself: the layout does.
 scrollbar_gutter :: proc() -> f32 { return scrollbar_thickness(gs()) }
 
 // How far a bar keeps from the ends of the edge it lies on: the box's drawn corner, so that it stays inside a rounded box.
@@ -175,7 +214,9 @@ scrollbar_parts :: proc(b: ^Box, axis := Axis.Y) -> (p: Scrollbar_Parts, ok: boo
 	flag := axis == .Y ? Box_Flag.View_Scroll_Y : Box_Flag.View_Scroll_X
 	if flag not_in b.flags || .Scrollbar_None in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * s.scale { return }
 	w := scrollbar_thickness(s)
-	inset := scrollbar_inset(s, b)
+	// (inside the box's border, in the room its layout kept; along the edge, clear of its rounded corners too)
+	edge := border_inset(b)
+	inset := max(scrollbar_inset(s, b), edge)
 	bar: Rect
 	if axis == .Y {
 		top := b.rect.min.y + inset
@@ -183,10 +224,10 @@ scrollbar_parts :: proc(b: ^Box, axis := Axis.Y) -> (p: Scrollbar_Parts, ok: boo
 		if k := scroll_marks_of(b); k != nil { w, top = scroll_marks_bar_width(b), top + k.head }
 		bottom := b.rect.max.y - inset
 		if bottom - top < SCROLLBAR_VIEW_MIN_PX * s.scale { return }
-		bar = {{b.rect.max.x - w, top}, {b.rect.max.x, bottom}}
-		if .Scrollbar_Left in b.flags { bar.min.x, bar.max.x = b.rect.min.x, b.rect.min.x + w }
+		bar = {{b.rect.max.x - edge - w, top}, {b.rect.max.x - edge, bottom}}
+		if .Scrollbar_Left in b.flags { bar.min.x, bar.max.x = b.rect.min.x + edge, b.rect.min.x + edge + w }
 	} else {
-		bar = {{b.rect.min.x + inset, b.rect.max.y - w}, {b.rect.max.x - inset, b.rect.max.y}}
+		bar = {{b.rect.min.x + inset, b.rect.max.y - edge - w}, {b.rect.max.x - inset, b.rect.max.y - edge}}
 		// (short of the vertical bar's corner, on whichever side it is)
 		if y, has := scrollbar_parts(b, .Y); has {
 			if .Scrollbar_Left in b.flags { bar.min.x = max(bar.min.x, y.bar.max.x) } else { bar.max.x = min(bar.max.x, y.bar.min.x) }
@@ -216,13 +257,16 @@ scrollbar_arrow_rects :: proc(b: ^Box, axis := Axis.Y) -> (start, end: Rect, ok:
 // none. A program that hears the pointer before the interface (a terminal's grid in a box that scrolls) leaves such a press
 // to it.
 scrollbar_under :: proc(b: ^Box, p: Vec2) -> (axis: Axis, ok: bool) {
-	toward, away := scrollbar_grab()
+	grab_in, away := scrollbar_grab()
+	// (toward the content only over it: a bar in its own room ends where the content starts, whose last pixels are its own)
 	if y, has := scrollbar_parts(b); has {
+		toward := b.bar_room.x > 0 ? 0 : grab_in
 		grab := Rect{{y.bar.min.x - toward, y.bar.min.y}, {y.bar.max.x + away, y.bar.max.y}}
 		if .Scrollbar_Left in b.flags { grab.min.x, grab.max.x = y.bar.min.x - away, y.bar.max.x + toward }
 		if contains(grab, p) { return .Y, true }
 	}
 	if x, has := scrollbar_parts(b, .X); has {
+		toward := b.bar_room.y > 0 ? 0 : grab_in
 		if contains(Rect{{x.bar.min.x, x.bar.min.y - toward}, {x.bar.max.x, x.bar.max.y + away}}, p) { return .X, true }
 	}
 	return

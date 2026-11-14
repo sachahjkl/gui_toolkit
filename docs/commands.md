@@ -12,11 +12,11 @@ Cmd :: enum u8 { End_Task, Kill, Palette, Shortcuts }
 COMMANDS := [Cmd]ui.Command{
 	.End_Task  = {label = "End task", group = "Processes", keys = {{.Delete, {}}}},
 	.Kill      = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}},
-	.Palette   = {label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}},
-	.Shortcuts = {label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}},
+	.Palette   = {label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}, scope = .Window},
+	.Shortcuts = {label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}, scope = .Window},
 }
 
-// each frame, when no menu or dialog has the keys
+// each frame, before the page is built, in every page and mode: a window command's keys work whatever has the focus
 for c in Cmd { if ui.command_pressed(COMMANDS[c], can(c)) { run(c) } }
 
 // a menu's line, a tooltip
@@ -35,16 +35,64 @@ if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 | | |
 |---|---|
 | `Chord{key, mods}` | a key and its modifiers; the zero value is no key |
-| `Command{label, group, keys, icon, tags}` | `keys`: its chords, as many as it has (`[]Chord`; Zoom in: Ctrl+=, Ctrl+Num +, Ctrl+Shift+=), the first one shown in menus and tooltips (a zero chord among them is none); `tags`: other words the palette finds it by ("exit", "close" for Quit), a match of them after one of the label's |
+| `Command{label, group, keys, icon, tags, scope}` | `keys`: its chords, as many as it has (`[]Chord`; Zoom in: Ctrl+=, Ctrl+Num +, Ctrl+Shift+=), the first one shown in menus and tooltips (a zero chord among them is none); `tags`: other words the palette finds it by ("exit", "close" for Quit), a match of them after one of the label's |
 | `chord_text(chord)` | `Ctrl+Shift+P`, `Shift+Delete`, `F5`: modifiers in the order Ctrl, Shift, Alt; in the language in use (`Ctrl+Maj+P`): the words of `platform.key_text`, which names a `Key`, a `Hotkey` and keys written in English (below) |
 | `key_tip(label, chord)` | a tooltip's text for a control that is no command: `Settings (Ctrl+,)`, the label alone with no key |
 | `command_shortcut(c)`, `command_keys_text(c)`, `command_tip(c)` | the first key's text; every key's, apart by commas; `label (key)` |
-| `command_pressed(c, disabled)` | one of its keys was pressed this frame: the press is taken. A command that cannot act (`disabled`) takes no key |
+| `Command.scope` | `.Page` (the default): its keys reach it as any key does, not from behind a dialog. `.Window`: a window command (the palette, the keyboard shortcuts, the settings, close, quit): its keys work whatever has the focus and whatever the page, over a view shown as a dialog too (below) |
+| `command_pressed(c, disabled)` | one of its keys was pressed this frame: the press is taken. A command that cannot act (`disabled`) takes no key. A key that types text is not taken while a text field (a line edit, a text area) has the keyboard: the field gets it. A chord that the widget with the keyboard claims (`keys_claim`) is not taken either |
+| `chord_pressed(chord, scope)` | one chord by `command_pressed`'s rules, for a program that reads its keys with its own table (a sequence of two chords, bindings of its own) |
+| `keys_claim(owner, ..pass)` | a widget that has the keyboard (box `owner`) keeps every chord, a window command's too, but the chords of `pass` (at most `KEYS_CLAIM_PASS_MAX`). Call it at each build while it owns them (a terminal, a shortcut recorder: `hotkey_field` claims while it records). Its claim counts from the build it is made in and the next one |
+| `command_window_typing_keys(commands)` | the window commands' keys that type text, as `command_typing_keys` says them. A program's test expects none |
+| `command_key_types_text(chord)` | whether the chord types text in a field: a letter, a digit, a punctuation mark, Space, Backspace or keypad + and -, with no modifier or with Shift alone. Ctrl or Alt with any key, and F1–F12, Escape, Enter, Tab, Delete, Insert, the arrows, Home, End, Page Up, Page Down, Menu and Print with any modifier: false |
+| `command_typing_keys(commands)` | one line per key of the table that types text, `"<label>: <key>"` (`"Rectangle: R"`, `"Add a step…: Shift+A"`), the key by its `platform.Key` name. A program's unit test compares it with the keys it means (below) |
 | `palette_set(&p, commands, disabled, o)` | what the palette lists: the program's table (valid while the palette is open), `disabled` and `o` copied. Call it when they change |
 | `palette_open(&p)`, `palette_is_open(&p)`, `palette_close(&p)` | the view of the palette (of `ui.views()`, the window being built) (`Command_Palette`, the program's) at the top centre of the window (`PALETTE_TOP` of its height), its field empty; the views remember its size |
 | `palette_chosen(&p) -> (index, mods, ok)` | the command chosen, once, in the build after the choice: its index, and the modifiers of the Enter that chose it (Ctrl, Alt or Shift with Enter chooses too) |
 | `Palette_Options{memory, names, recent_title, first, keys, foot, version}` | what a program adds: `version`, its commands' version (below); what the user chose before (`memory`, a `Choice_Memory`, and each command's key in it, `names`; below), the heaviest choices on top under their heading ("Recent") while nothing is typed and a match raised by its weight while something is; a command first while something is (an alias typed whole); per command the text of its keys as the program shows them (its user's own, a sequence "Ctrl+M, T"); a line under the list |
 | `shortcuts_sheet_open(&sheet, commands, title, version)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window. `commands` stays valid while it is open; `version` as the palette's |
+
+### A key that types text
+
+A letter, a digit, a punctuation mark, Space or Backspace, alone or with Shift, is the key of a text field while one has
+the keyboard: `command_pressed` leaves it to the field. A command on such a key works only while no field has the
+keyboard (a canvas tool, Space for a preview). A program whose field always has the keyboard (a search that keeps it)
+must give its commands no such key: its menus would show a key that never works. A program checks its table in a unit
+test:
+
+```odin
+@(test)
+keys_that_type_text :: proc(t: ^testing.T) {
+	got := ui.command_typing_keys(COMMANDS[:])
+	testing.expect(t, slice.equal(got, []string{"Rectangle: R", "Preview: Space"}), fmt.tprint(got))
+}
+```
+
+A program that reads its keys with its own code checks each chord with `command_key_types_text`. The reasons are in
+[src/md/features/commands.md](../src/md/features/commands.md).
+
+### Window commands
+
+The palette, the keyboard shortcuts, the settings, close the window and quit work in every page and every mode of the
+window: the settings page, a page whose field has the keyboard, a docked or floating view with the focus. Mark them
+`scope = .Window` and read them each frame in every page, before the page is built. Do not guard them with a test of the
+focus or of the page: `command_pressed` takes their keys from a field, a list, a view and from behind a view shown as a
+dialog. Their keys need Ctrl or Alt, or a key that types nothing (F1): a program's test checks it.
+
+```odin
+@(test)
+window_commands_type_nothing :: proc(t: ^testing.T) {
+	testing.expect_value(t, len(ui.command_window_typing_keys(COMMANDS[:])), 0)
+}
+```
+
+A widget that owns every chord while it has the keyboard claims them at each build. The window command then yields.
+Name the reason in a comment:
+
+```odin
+// (a shell takes Ctrl+K, Ctrl+W and the rest; Ctrl+Shift+T hides the shells from inside them)
+ui.keys_claim(grid.key, ui.Chord{.T, {.Ctrl, .Shift}})
+```
 
 ### A key's text
 

@@ -425,7 +425,8 @@ scrollbar_geometry :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.scrollbar_gutter(), 17)
 }
 
-// At 200 % the bar is about twice as wide (odd: 19 px for 2 × 9), and what takes the press beyond it is twice as wide.
+// At 200 % the bar is about twice as wide (odd: 19 px for 2 × 9). In its own room it takes no press beyond it toward the
+// content (the content's last pixels are the content's); drawn over the content (the overlay option), it takes 8 px more.
 @(test)
 scrollbar_follows_the_scale :: proc(t: ^testing.T) {
 	f: Fx
@@ -450,7 +451,11 @@ scrollbar_follows_the_scale :: proc(t: ^testing.T) {
 		owner, ok := f.s.sb_owner[f.s.hot_key]
 		return ok && owner == r.box
 	}
-	testing.expect(t, on_bar(&f, &r, track.min.x - 7), "8 pixels toward the content")
+	testing.expect(t, on_bar(&f, &r, track.min.x), "the bar")
+	testing.expect(t, !on_bar(&f, &r, track.min.x - 1), "in its room: nothing toward the content")
+	ui.set_scrollbar_overlay(&f.s, true)
+	defer ui.set_scrollbar_overlay(&f.s, false)
+	testing.expect(t, on_bar(&f, &r, track.min.x - 7), "over the content: 8 pixels toward it")
 	testing.expect(t, !on_bar(&f, &r, track.min.x - 9), "and no more")
 }
 

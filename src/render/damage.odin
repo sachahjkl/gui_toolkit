@@ -308,10 +308,10 @@ damage_verify_env :: proc(d: ^Damage_State) {
 
 // The frame `f` drawn whole on the side, read back (nil: it could not be): the target the frames compose into changes place with
 // another one for this submit, which runs the frame's steps again. Their pooled textures are all there until the next acquire.
+// In the frame's format, half floats too: the frames compared are what the window holds.
 @(private)
 damage_side_frame :: proc(r: ^Renderer, f: Frame_Data) -> []u8 {
 	d := &r.damage
-	if r.frame_format == .R16G16B16A16_FLOAT { return nil }   // (the comparison reads BGRA8)
 	skip, in_effect := d.skip_present, d.have_region
 	defer d.skip_present, d.have_region = skip, in_effect
 	when USE_WGPU {
@@ -338,10 +338,10 @@ damage_backend_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	when USE_WGPU { wgpu_frame_submit(r, f) } else { d3d_frame_submit(r, f) }
 }
 
-// What the kept target holds, BGRA8, tightly packed. nil: nothing.
+// What the kept target holds, tightly packed, in the frame's format (frame_texel_bytes a texel). nil: nothing.
 @(private)
 damage_read_target :: proc(r: ^Renderer) -> []u8 {
-	when USE_WGPU { return wgpu_damage_readback(r, r.wg.damage_target) } else { return d3d_read_texture(r, r.damage.target) }
+	when USE_WGPU { return wgpu_read_texture(r, r.wg.damage_target) } else { return d3d_read_texture(r, r.damage.target) }
 }
 
 // render.damage.verify: the partial frame just drawn against the frame drawn whole.
@@ -351,7 +351,7 @@ damage_verify_frame :: proc(r: ^Renderer, f: Frame_Data) {
 	defer delete(got)
 	full := damage_side_frame(r, f)
 	defer delete(full)
-	if got != nil && full != nil { damage_compare(&r.damage, full, got, r.size) }
+	if got != nil && full != nil { damage_compare(&r.damage, full, got, r.size, frame_texel_bytes(r)) }
 }
 
 DAMAGE_CHECK :: #config(TOOLKIT_DAMAGE_CHECK, false)
@@ -381,18 +381,19 @@ damage_check_submit :: proc(r: ^Renderer, f: Frame_Data) {
 	got := damage_read_target(r)
 	defer delete(got)
 	before := d.verify_differences
-	if got != nil { damage_compare(d, full, got, r.size) }
+	if got != nil { damage_compare(d, full, got, r.size, frame_texel_bytes(r)) }
 	sync.atomic_add(&damage_check_differences, d.verify_differences - before)
 }
 
 @(private)
 damage_check_mark :: proc(r: ^Renderer, full, last: []u8) {
 	w, h := r.size.x, r.size.y
+	bpp := frame_texel_bytes(r)
 	for ty := 0; ty < h; ty += DAMAGE_CHECK_TILE_PX {
 		for tx := 0; tx < w; tx += DAMAGE_CHECK_TILE_PX {
 			x1, y1 := min(tx + DAMAGE_CHECK_TILE_PX, w), min(ty + DAMAGE_CHECK_TILE_PX, h)
 			for y in ty ..< y1 {
-				a, b := full[(y * w + tx) * 4:(y * w + x1) * 4], last[(y * w + tx) * 4:(y * w + x1) * 4]
+				a, b := full[(y * w + tx) * bpp:(y * w + x1) * bpp], last[(y * w + tx) * bpp:(y * w + x1) * bpp]
 				if string(a) != string(b) {
 					damage_add(r, {i32(tx), i32(ty), i32(x1), i32(y1)})
 					break
@@ -410,15 +411,16 @@ damage_check_report :: proc() {
 	if n > 0 { os.exit(1) }
 }
 
-// Compares two BGRA8 frames and, on the first differing pixel, prints it and the damage rectangle it belongs to (or
-// that it lies outside the region: a dirty rectangle is missing). Backend independent (both verify paths call it).
+// Compares two frames of texels `bpp` bytes each (B8G8R8A8, or four halves: what the frame is stored in) to the bit and,
+// on the first differing pixel, prints it and the damage rectangle it belongs to (or that it lies outside the region: a
+// dirty rectangle is missing). Backend independent (both verify paths call it).
 @(private)
-damage_compare :: proc(d: ^Damage_State, full, partial: []u8, size: [2]int) {
+damage_compare :: proc(d: ^Damage_State, full, partial: []u8, size: [2]int, bpp: int) {
 	n := min(len(full), len(partial))
-	for i := 0; i + 3 < n; i += 4 {
-		if full[i] == partial[i] && full[i + 1] == partial[i + 1] && full[i + 2] == partial[i + 2] && full[i + 3] == partial[i + 3] { continue }
+	for i := 0; i + bpp <= n; i += bpp {
+		if string(full[i:i + bpp]) == string(partial[i:i + bpp]) { continue }
 		d.verify_differences += 1
-		px := i / 4
+		px := i / bpp
 		x, y := px % size.x, px / size.x
 		in_region := false
 		which := -1
@@ -426,9 +428,14 @@ damage_compare :: proc(d: ^Damage_State, full, partial: []u8, size: [2]int) {
 			rr := d.rects[k]
 			if i32(x) >= rr.x0 && i32(x) < rr.x1 && i32(y) >= rr.y0 && i32(y) < rr.y1 { in_region, which = true, k; break }
 		}
+		texel :: proc(b: []u8) -> string {
+			if len(b) == 4 { return fmt.tprintf("BGRA %v", b) }
+			h := ([^]f16)(raw_data(b))
+			return fmt.tprintf("RGBA %v %v %v %v", h[0], h[1], h[2], h[3])
+		}
 		fmt.eprintfln(
-			"render.damage.verify: first difference at pixel (%d, %d): full BGRA %v, partial BGRA %v | %s",
-			x, y, full[i:i + 4], partial[i:i + 4],
+			"render.damage.verify: first difference at pixel (%d, %d): full %s, partial %s | %s",
+			x, y, texel(full[i:i + bpp]), texel(partial[i:i + bpp]),
 			in_region ? fmt.tprintf("inside damage rect %d %v", which, d.rects[which]) : "OUTSIDE every damage rectangle (a dirty rectangle is missing)")
 		return
 	}

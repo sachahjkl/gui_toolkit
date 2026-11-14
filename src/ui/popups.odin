@@ -576,10 +576,11 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	id := fmt.tprintf("###menu_%d", u64(lv.key))
 	panel := s.boxes[key_from_string(s.root.key, id)]
 	first := panel == nil
-	// (its content's height: the last layout's; taller than the window, the rows leave room for the scroll bar)
+	// (its content's height: the last layout's; taller than the window, it scrolls, and its panel, as wide as its rows,
+	// grows by the room its layout keeps for the scroll bar)
 	lv.scrolls = !first && panel.view_bounds.y > s.window_size.y
 	// As wide as its widest row (measured on the last frame), `width` at least: a width given is a minimum, never a cut.
-	w := max(lv.prev_width, width, em * MENU_MIN_WIDTH_EM) + menu_bar_room(lv, em)
+	w := max(lv.prev_width, width, em * MENU_MIN_WIDTH_EM)
 	if lv.search {
 		w = max(w, lv.held_width)
 		lv.held_width = w
@@ -626,13 +627,6 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	}
 	spacer(px(em * MENU_PAD_EM))
 	return true
-}
-
-// The room a level that scrolls leaves its scroll bar at the end of its rows (0 for one that fits).
-@(private = "file")
-menu_bar_room :: proc(lv: ^Menu_Level, em: f32) -> f32 {
-	if !lv.scrolls { return 0 }
-	return scrollbar_gutter()
 }
 
 // Scrolls a level that scrolls so that its row `b` (laid out in the last frame) is in view.
@@ -701,7 +695,7 @@ first_letter :: proc(label: string) -> rune {
 
 // The width a row of `st` needs to show `label`, `shortcut` and a submenu's arrow whole: the columns menu_row lays out, in
 // the same numbers (its border, the lead, the icon column, the label and its padding, the shortcut's box as the layout
-// sizes it, the arrow, the trail). The room of a scroll bar is not in it (menu_bar_room).
+// sizes it, the arrow, the trail). The room of a scroll bar is not in it: the panel's layout keeps it.
 @(private = "file")
 menu_row_width :: proc(st: ^Style, label, shortcut: string, submenu: bool) -> f32 {
 	em, pad := st.font_size, st.text_pad
@@ -773,12 +767,12 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checke
 					next({width = px(em * MENU_ARROW_EM), height = pct(1), font = widget_icons(), text_align = .Center})
 					if tags("weak") { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf(">###ico%d", parent_box().child_count)) }
 				}
-				spacer(px(em * MENU_ROW_TRAIL_EM + menu_bar_room(lv, em)))
+				spacer(px(em * MENU_ROW_TRAIL_EM))
 			}
 		}
 	}
 	// (a row narrower than its content: the window cut the menu; its whole label in a tooltip)
-	if sig.box != nil && natural + menu_bar_room(lv, em) > width + 0.5 && hovered_for(sig) {
+	if sig.box != nil && natural > width + 0.5 && hovered_for(sig) {
 		if tooltip() { tooltip_text(label) }
 	}
 	if sig.hovering {
@@ -904,9 +898,9 @@ menu_control_end :: proc(built: bool) {
 	pop_parent()   // the row
 	lv, _ := menu_current()
 	if lv == nil { return }
-	// (its natural width: its columns as built, its widget's as measured, the trail and a scroll bar's room)
+	// (its natural width: its columns as built, its widget's as measured, the trail)
 	em := font_size()
-	w := em * MENU_ROW_TRAIL_EM + menu_bar_room(lv, em)
+	w := em * MENU_ROW_TRAIL_EM
 	for c := row.first; c != nil; c = c.next { w += natural_width(c) }
 	lv.width = max(lv.width, math.ceil(w))
 }

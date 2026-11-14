@@ -197,6 +197,7 @@ Font :: struct {
 	using platform: Platform_Face,   // what the platform opened the face with (font_windows.odin, font_other.odin)
 	upem:     f32,
 	family:   []u16,                 // NUL-terminated: the base family of system fallback
+	name:     string,                // the family it is, as a person reads it (family_of; heap)
 	color:    bool,                  // has color glyphs (COLR, sbix, CBDT, SVG)
 	cmap:     []u32,                 // BMP coverage, 2 bits per code point (known, present), filled lazily
 	colr:     ^Face_Colr,            // the COLR / CPAL tables of the face the interpreter reads (nil: none)
@@ -347,6 +348,7 @@ release_font :: proc(f: ^Font) {
 	when NATIVE_TEXT { native_face_release(f) }
 	platform_release_face(f)
 	delete(f.family)
+	delete(f.name)
 	delete(f.cmap)
 	for e in f.entries { delete(e.ranges) }
 	delete(f.entries)
@@ -414,6 +416,8 @@ publish_face :: proc(s: ^State, key: string, f: Font, family: string) -> Font_Id
 	f.cmap = make([]u32, CMAP_BMP_CHARS * CMAP_BITS_PER_CHAR / CMAP_WORD_BITS)
 	if !s.tb.face_open(s, &f) { release_font(&f); return 0 }
 	platform_face_opened(s, &f)
+	// (a face from a file or from memory says its family itself; `family` stays empty for it: see family_of)
+	f.name = family != "" ? strings.clone(family) : face_name_family(&f)
 	f.fm = s.tb.face_metrics(s, &f)
 	if f.fm.upem > 0 { f.upem = f32(f.fm.upem) }
 	if f.upem <= 0 { f.upem = FALLBACK_UPEM }   // neither the platform nor the backend said: no division by zero downstream

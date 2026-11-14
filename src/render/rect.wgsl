@@ -1042,7 +1042,9 @@ var<private> lcd_weight: float3 = float3(1.0, 1.0, 1.0);
 		let o = blend_composite(s, d, (i.extra.z >> BLEND_SHIFT) & 0xffu);
 		var cov = 1.0;
 		if (clipped) { cov = any_clip_coverage(screen, i.extra.y); }
-		return mix(d, o, cov);
+		// (every output in [0, 1]: an 8-bit target clamps it, a half-float one keeps it, and what is kept past it made holes;
+		// src/md/infrastructure/frame-formats.md)
+		return saturate(mix(d, o, cov));
 	}
 	let lp = i.lpos;
 	if (kind == KIND_SHADOW) {
@@ -1062,7 +1064,7 @@ var<private> lcd_weight: float3 = float3(1.0, 1.0, 1.0);
 		if ((sflags & SHADOW_INSET) != 0u) { mask = keep * (1.0 - mask); } else { mask = keep * mask; }
 		color.a = color.a * mask;
 		if (clipped) { color.a = color.a * any_clip_coverage(screen, i.extra.y); }
-		return color;
+		return saturate(color);
 	}
 	var dither = false;
 	if (kind == KIND_GRADIENT) {
@@ -1151,5 +1153,5 @@ var<private> lcd_weight: float3 = float3(1.0, 1.0, 1.0);
 		if (g.target_space == SPACE_SRGB) { color = float4(saturate(color.rgb + n), color.a); }
 		else { color = float4(srgb_decode(srgb_encode(color.rgb) + n), color.a); }
 	}
-	return color;
+	return saturate(color);
 }

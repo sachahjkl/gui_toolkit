@@ -21,9 +21,10 @@ import "core:slice"
 // above the view (a row measured for the first time, a width change), the view stays on the row it was showing.
 //
 // Keyboard and mouse as in `list` (Up / Down, Page Up / Down, Home / End, Enter, Escape, type-ahead on `labels`), over
-// all the rows, built or not; the active row is scrolled into view at once. With `multi`, Ctrl and Shift clicks and
-// Ctrl+A mark rows besides the active one (List_State); a mark goes with its row when the row is no longer in `ids`. `labels` / `selectable` may be nil (no
-// type-ahead / every row selectable).
+// all the rows, built or not; the active row is scrolled into view at once. With `multi`, the selection of several rows
+// (List_State's Item_Selection: src/md/features/selection.md) is by `ids`: a row selected stays selected through a sort,
+// and leaves the selection when it is no longer in `ids`. `labels` / `selectable` may be nil (no type-ahead / every row
+// selectable).
 //
 // A build with the same rows and no height measured anew does no work in proportion to the rows: the offsets are made
 // again only when the ids or a measured height change. `ids_version` says when the ids change: a program that keeps
@@ -130,7 +131,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	if y, asked := st.scroll_to.?; asked { view_jump(b, y); st.scroll_to = nil }
 	st.virtual = true
 	st.key = b.key
-	st.activated, st.cancelled, st.changed = false, false, false
+	st.activated, st.cancelled, st.changed, st.selected_changed = false, false, false, false
 	st.focused = s.focus_key == b.key
 	n := len(ids)
 
@@ -174,16 +175,6 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 		st.ids_version = ids_version
 	}
 	st.row_ids = st.ids[:]
-	st.marks_changed = false
-	// (a marked row that is gone, or filtered out, is no longer marked)
-	if !same && len(st.marks) > 0 {
-		live := make(map[u64]struct{}, n, context.temp_allocator)
-		for id in ids { live[id] = {} }
-		gone := make([dynamic]u64, context.temp_allocator)
-		for id in st.marks { if id not_in live { append(&gone, id) } }
-		for id in gone { delete_key(&st.marks, id) }
-		if len(gone) > 0 { st.marks_changed = true }
-	}
 	if !same || st.offsets_due || len(st.offsets) != n + 1 {
 		resize(&st.offsets, n + 1)
 		y: f32
@@ -224,8 +215,11 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 		clear(&st.selectable)
 	}
 	st.count = n
+	// (a row selected that is gone, or filtered out, is no longer selected)
+	if !same { item_selection_keep(&st.selection, list_rows(st)) }
 	old := st.sel
 	if st.sel >= n { st.sel = n - 1 }
+	list_select_resolve(st)
 	if st.sel < 0 { st.reveal = 0 }   // (no row to bring into view)
 	st.seek = false
 	st.page_rows = max(int(view_h / max(st.est, 1)), 1)
@@ -235,7 +229,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 			for i in 0 ..< n { if i >= len(st.selectable) || st.selectable[i] { list_seek_row(st, i, labels[i]) } }
 		}
 		pick := st.seek_after >= 0 ? st.seek_after : st.seek_first
-		if pick >= 0 { st.sel = pick; st.reveal = LIST_REVEAL_FRAMES }
+		if pick >= 0 { item_selection_one(&st.selection, list_rows(st), pick); st.reveal = LIST_REVEAL_FRAMES }
 		st.seek = false
 	}
 	if st.sel != old && b.first_build != s.build_index { st.changed = true }   // (the zero value's row 0 of a list with none is no change)
@@ -290,11 +284,12 @@ vlist_end :: proc(rows: Vlist_Rows, ok: bool) {
 	spacer(px(st.offsets[n] - st.offsets[st.last]), exact = true)
 	// (only the rows in view are built: the set's size tells a screen reader how many there are)
 	b := parent_box()
-	a11y_default(b, {role = .List_Box, active_descendant = st.sel >= 0 ? vlist_row_key(b.key, st.sel) : 0})
+	a11y_default(b, {role = .List_Box, multiselectable = st.multi, active_descendant = st.sel >= 0 ? vlist_row_key(b.key, st.sel) : 0})
 	for c := b.first; c != nil; c = c.next {
-		if c.a11y != nil && c.a11y.role == .List_Box_Option { c.a11y.set_size = n; c.a11y.selected = c.a11y.position - 1 == st.sel }
+		if c.a11y != nil && c.a11y.role == .List_Box_Option { c.a11y.set_size = n; c.a11y.selected = list_is_selected(&st.list, c.a11y.position - 1) }
 	}
 	pop_parent()
+	list_selection_seen(&st.list)
 	// the rows built, measured at the start of the next build
 	resize(&st.prev_ids, st.last - st.first)
 	copy(st.prev_ids[:], st.ids[st.first:st.last])

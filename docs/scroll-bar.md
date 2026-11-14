@@ -49,9 +49,17 @@ button. The thumb is at least 8 % of the track, and at least as long as the bar 
 ## Where it is
 
 A vertical bar is at the right edge of its box (`.Scrollbar_Left`: the left one), a horizontal bar at its bottom edge,
-short of the vertical one. A bar is drawn over the edge of its box's content: what must stay clear of it leaves
-`ui.scrollbar_gutter()` at that edge (the bar's thickness). In a box with rounded corners, the bar keeps the drawn radius
+short of the vertical one, both inside the box's border. In a box with rounded corners, the bar keeps the drawn radius
 from each corner. `.Scrollbar_None`: a box that scrolls with no bar (a table's titles, which follow its rows).
+
+**Nothing is drawn under a bar.** While a bar shows, the scroll box's layout keeps its room: the content is laid out in
+the box less the bar (a `fill()` row ends at the bar, a row's right-aligned words and buttons stay left of it), and a box
+sized by its children grows by it. This holds for every scroll box (lists, tables, menus, the palette, markdown, the
+settings page) and for a `text_edit`; a widget leaves no room for a bar itself. When the content stops overflowing the
+room comes back; a content that overflows only beside the bar does not take it, so the room never flickers. With
+auto-hide the room stays: the bar fades in it. `scrolling.scrollbar_overlay` (off by default, `ui.set_scrollbar_overlay`)
+draws the bars over the edge of the content and keeps no room. A box outside the scroll box that lines up with its
+content (a table's titles) reads `ui.scrollbar_room(box, .X)`.
 
 ## API
 
@@ -61,7 +69,9 @@ from each corner. `.Scrollbar_None`: a box that scrolls with no bar (a table's t
 | `ui.set_scrollbar_autohide(s, on)` | Off (the default): every bar shows while its content overflows. On: bars hide at rest (above). Setting `scrolling.scrollbar_autohide`. |
 | `ui.scrollbar_reveal(box)` | With auto-hide: the box's bar shows for a moment (900 ms), wherever the pointer is. |
 | `ui.scrollbar_opacity(s, box)` | How much the box's bar shows, 0 to 1 (1 without auto-hide). |
-| `ui.scrollbar_gutter()` | The room a bar takes at the edge of its box: its thickness, in pixels. |
+| `ui.set_scrollbar_overlay(s, on)` | Off (the default): a scroll box keeps its bars' room. On: bars over the content's edge. Setting `scrolling.scrollbar_overlay`. |
+| `ui.scrollbar_room(box, axis)` | The room a scroll box keeps for its bars at its last layout: along `.X` a vertical bar's, along `.Y` a horizontal bar's (0: none). |
+| `ui.scrollbar_gutter()` | A bar's thickness, in pixels. |
 | `ui.scrollbar_rects(box, axis)` | The track and the thumb a scroll box shows (`ok` false: everything fits), window pixels. For tests and tools. |
 | `ui.scrollbar_arrow_rects(box, axis)` | Its arrow buttons, at the start and at the end (`ok` false: no bar, or a bar too short for them). |
 | `ui.scrollbar_under(box, point)` | Which bar of a box takes a press at a point: a program that hears the pointer before the interface (a terminal's grid) leaves that press to the bar. |
@@ -75,5 +85,6 @@ setting `scrolling.autohide_scrollbars` is now `scrolling.scrollbar_autohide`.
 `tests/scenarios/scrollbar_test.odin`: by default a bar always shows while the content overflows (by its pixels, the
 pointer away for seconds); with auto-hide it is hidden at rest and shows while its view moves or the pointer is over it, the two sizes, an arrow steps a line, a held arrow repeats by the standard's times on the session's clock
 (`session.advance`, no wait), a press on the track pages, a press on the thumb with no move moves nothing, the states by
-their pixels. `tests/ui_robust` holds the geometry at 100 % and 200 %; `tests/keyboard/text_edit_keys_test.odin` a text
+their pixels, a row's right-aligned button left of the bar, no oscillation at the threshold, the overlay option.
+`tests/ui_robust` holds the geometry at 100 % and 200 %; `tests/keyboard/text_edit_keys_test.odin` a text
 area's bars.

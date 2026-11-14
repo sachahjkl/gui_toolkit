@@ -456,8 +456,20 @@ line_edit :: proc(id: string, f: ^Line_Edit, o := Line_Edit_Options{}) -> (res: 
 
 		// mouse: click places the caret, drag selects, double-click selects the word
 		if res.pointer_pressed || res.dragging {
-			x := res.mouse.x - pad + f.scroll_x
-			idx := font.index_from_x(s.fonts, b.font, b.font_size, masked ? secret_mask(text) : text, x)
+			drawn := masked ? secret_mask(text) : text
+			mx := res.mouse.x
+			if !res.pointer_pressed && b.rect.max.x > b.rect.min.x {
+				// a selecting drag: near or past an end the text scrolls, and the moving end stays on what is shown
+				inner := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - 2 * pad - end)
+				limit := max(0, font.text_width(s.fonts, b.font, b.font_size, drawn) - inner + 2 * s.scale)
+				view := Rect{{b.rect.min.x + pad, b.rect.min.y}, {b.rect.min.x + pad + inner, b.rect.max.y}}
+				scroll := [2]f32{f.scroll_x, 0}
+				_ = drag_autoscroll_own(b.key, view, &scroll, {limit, 0}, .X)
+				f.scroll_x = scroll.x
+				mx = drag_point_in(b, view, s.mouse).x - b.rect.min.x
+			}
+			x := mx - pad + f.scroll_x
+			idx := font.index_from_x(s.fonts, b.font, b.font_size, drawn, x)
 			if masked { idx = secret_unmask_index(text, idx) }
 			if res.pointer_pressed { f.word.on = false }
 			if f.word.on {

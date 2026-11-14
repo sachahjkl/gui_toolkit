@@ -753,6 +753,7 @@ Xdg_Toplevel_Listener :: struct {
 @(private) xdg_toplevel_listener := Xdg_Toplevel_Listener{xdg_toplevel_configure, xdg_toplevel_close, xdg_toplevel_bounds, xdg_toplevel_caps}
 @(private)
 xdg_toplevel_configure :: proc "c" (data: rawptr, t: Wl_Proxy, w, h: i32, states: ^Wl_Array) {
+	context = wl_ctx_real()
 	st := (^Wl_Window_State)(data)
 	if st == nil || st.win == nil { return }
 	st.pending_w, st.pending_h = int(w), int(h)
@@ -760,6 +761,7 @@ xdg_toplevel_configure :: proc "c" (data: rawptr, t: Wl_Proxy, w, h: i32, states
 	// (No state says a toplevel is minimized.)
 	st.toplevel = .Normal
 	st.tiled = false
+	activated := false
 	if states != nil && states.data != nil {
 		n := states.size / size_of(u32)
 		arr := ([^]u32)(states.data)
@@ -767,12 +769,16 @@ xdg_toplevel_configure :: proc "c" (data: rawptr, t: Wl_Proxy, w, h: i32, states
 			switch arr[i] {
 			case 1: if st.toplevel == .Normal { st.toplevel = .Maximized }
 			case 2: st.toplevel = .Fullscreen
+			case 4: activated = true
 			case 5, 6, 7, 8: st.tiled = true
 			}
 		}
 	}
 	st.win.system_frame = st.server_side || st.tiled
 	if st.win.show != .Hidden { st.win.show = st.toplevel }
+	// (the compositor's word that the window is the one in front: a seat with no keyboard sends no wl_keyboard enter or
+	// leave, and `active` would never change. Where both come, they agree)
+	if st.win.show != .Hidden { window_focus(st.win, activated, {}) }
 }
 @(private)
 xdg_toplevel_close :: proc "c" (data: rawptr, t: Wl_Proxy) {

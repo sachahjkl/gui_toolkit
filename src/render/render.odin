@@ -493,6 +493,7 @@ Renderer :: struct {
 	resize_slack: int,                    // set_resize_slack: 0 = DEFAULT_RESIZE_SLACK, < 0 = buffers of the exact size
 	corner_smoothing: f32,                // 0 = circular corners, 1 = full squircle (see set_corner_smoothing)
 	warp:        bool,                   // the device is WARP (software)
+	half_float_offscreen: bool,          // init_offscreen's `half_float`: the offscreen frame in half floats, as a translucent window's
 	wg:          Wgpu_State,             // the wgpu backend (wgpu_*.odin); zero on the Direct3D backend
 	first_present_noted: bool,           // (the program's first, whichever window: a trace of its start)
 	teardown_wait_ms: int,               // set_teardown_wait

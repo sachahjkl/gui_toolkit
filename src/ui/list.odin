@@ -4,7 +4,6 @@ import "core:fmt"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
-import "../platform"
 
 // Keyboard-driven lists and tables: a vertical scroll region that is one Tab stop, with an active row.
 //
@@ -21,7 +20,11 @@ import "../platform"
 // cancels (`cancelled`), typing letters jumps to the next row whose label starts with them (type-ahead: keys typed
 // within Feel.typeahead_ms of each other add up). The active row stays in view. A click makes a row active and gives
 // the list the focus; the wheel scrolls as in any scroll region. The focus ring shows on the list when it came from
-// the keyboard; the active row is drawn with the "selected" tags (strong while the list is focused).
+// the keyboard; the selected rows are drawn with the "selected" tags (strong while the list is focused).
+//
+// The selection is the list's Item_Selection (item_selection.odin, src/md/features/selection.md): with `multi`, Ctrl,
+// Shift and Ctrl+Shift clicks and keys, Ctrl+Space, Ctrl+A and Escape select several rows, by identity (a
+// Virtual_List's id, a `list`'s index).
 
 @(private) LIST_TYPED_MAX_BYTES :: 32
 // Frames the active row keeps being scrolled into view (its rect is the last frame's).
@@ -32,11 +35,13 @@ import "../platform"
 @(private = "file") LIST_LOWER_BYTES_FACTOR :: 4
 
 List_State :: struct {
-	sel:         int,     // active row (-1: none)
-	// (the next three say what `list` saw: read them in a build that made the list, its next call clears them)
+	using selection: Item_Selection,   // `sel`: the active row (-1: none); `multi`: several rows can be selected
+	// (the next four say what `list` saw: read them in a build that made the list, its next call clears them)
 	activated:   bool,    // this frame: Enter or a double click on the active row
-	cancelled:   bool,    // this frame: Escape while the list had the focus
+	cancelled:   bool,    // this frame: Escape while the list had the focus (and not several rows selected)
 	changed:     bool,    // this frame: the active row changed (a key, a click, rows gone from under it)
+	selected_changed: bool,   // this frame: the selection changed (`version` moved)
+	version_seen: u64,    // the selection's version when the list was last built
 	focused:     bool,    // the list has the keyboard focus (as of this frame's input)
 	key:         Key,     // the list's box (give it the focus with set_focus)
 	count:       int,     // rows built last frame
@@ -53,13 +58,6 @@ List_State :: struct {
 	reveal:      int,     // frames left to keep scrolling the active row into view
 	page_rows:   int,     // rows that fit in the view (last frame)
 	virtual:     bool,    // a Virtual_List: the row count and selectability come from the app, not from the rows built
-	// Marks: with `multi`, a Ctrl click marks a row besides the active one (or unmarks it), a Shift click marks the rows
-	// from the last row clicked to this one, a click alone clears them; the list's Ctrl+A marks every row. A row is
-	// marked by its identity (a Virtual_List's id, a `list`'s index): the marks follow the rows through a sort.
-	multi:       bool,
-	marks:       map[u64]bool,
-	marks_changed: bool,  // this frame: the marks changed
-	mark_from:   u64,     // the identity of the row a Shift click's range starts from
 	row_ids:     []u64,   // (a Virtual_List's ids, this build)
 	// The look of the rows (list_row): `zebra` gives every second row the theme's "list_row zebra background" (a table
 	// of numbers reads along its lines), `rules` a hairline under each row ("rule border").
@@ -70,68 +68,36 @@ List_State :: struct {
 list_state_destroy :: proc(st: ^List_State) {
 	delete(st.selectable)
 	delete(st.building)
-	delete(st.marks)
+	item_selection_destroy(&st.selection)
+}
+
+// The rows the list's selection is over (as of the last build; a Virtual_List's, this build's).
+list_rows :: proc(st: ^List_State) -> Item_Rows {
+	return {count = st.count, ids = st.row_ids, selectable = st.selectable[:]}
 }
 
 // The identity of row `i`: a Virtual_List's id, else the index.
-list_row_id :: proc(st: ^List_State, i: int) -> u64 {
-	if i >= 0 && i < len(st.row_ids) { return st.row_ids[i] }
-	return u64(i)
+list_row_id :: proc(st: ^List_State, i: int) -> u64 { return item_rows_id(list_rows(st), i) }
+
+// Whether row `i` is selected (single: it is the active row).
+list_is_selected :: proc(st: ^List_State, i: int) -> bool { return item_selection_has(&st.selection, list_rows(st), i) }
+
+// How many rows are selected.
+list_selected_count :: proc(st: ^List_State) -> int { return item_selection_count(&st.selection, list_rows(st)) }
+
+// The identities of the rows selected, in the rows' order (a pass over the rows: on an action, not per frame).
+list_selected_ids :: proc(st: ^List_State, allocator := context.temp_allocator) -> []u64 {
+	return item_selection_ids(&st.selection, list_rows(st), allocator)
 }
 
-// Whether row `i` is marked.
-list_is_marked :: proc(st: ^List_State, i: int) -> bool {
-	return len(st.marks) > 0 && list_row_id(st, i) in st.marks
-}
+// Nothing selected (a program's own Escape, a folder left).
+list_selection_clear :: proc(st: ^List_State) { item_selection_clear(&st.selection) }
 
-// The rows marked (0: none; the selection is then the active row alone).
-list_mark_count :: proc(st: ^List_State) -> int { return len(st.marks) }
+// Every row that can be selected (multi; as of the last build): the program's Ctrl+A when another field has the keyboard.
+list_select_all :: proc(st: ^List_State) { item_selection_all(&st.selection, list_rows(st)) }
 
-list_marks_clear :: proc(st: ^List_State) {
-	if len(st.marks) > 0 { clear(&st.marks); st.marks_changed = true }
-}
-
-// Marks every row that can be selected (as of the last build).
-list_mark_all :: proc(st: ^List_State) {
-	for i in 0 ..< st.count {
-		if i < len(st.selectable) && !st.selectable[i] { continue }
-		st.marks[list_row_id(st, i)] = true
-	}
-	st.marks_changed = true
-}
-
-// Marks row `i` (`on`) or unmarks it.
-list_mark :: proc(st: ^List_State, i: int, on := true) {
-	id := list_row_id(st, i)
-	if on { st.marks[id] = true } else { delete_key(&st.marks, id) }
-	st.marks_changed = true
-}
-
-// A click on row `i` of a list with `multi`: Ctrl marks it or unmarks it (the active row joins the marks first), Shift
-// marks the range from the last row clicked, a click alone clears the marks.
-@(private = "file")
-list_mark_click :: proc(st: ^List_State, i: int, mods: platform.Modifiers) {
-	id := list_row_id(st, i)
-	switch {
-	case .Ctrl in mods:
-		if len(st.marks) == 0 && st.sel >= 0 && st.sel != i && st.sel < st.count { st.marks[list_row_id(st, st.sel)] = true }
-		if id in st.marks { delete_key(&st.marks, id) } else { st.marks[id] = true }
-		st.mark_from = id
-	case .Shift in mods:
-		from := st.sel
-		for k in 0 ..< st.count { if list_row_id(st, k) == st.mark_from { from = k; break } }
-		if from < 0 { from = i }
-		clear(&st.marks)
-		for k in min(from, i) ..= max(from, i) {
-			if k < len(st.selectable) && !st.selectable[k] { continue }
-			st.marks[list_row_id(st, k)] = true
-		}
-	case:
-		clear(&st.marks)
-		st.mark_from = id
-	}
-	st.marks_changed = true
-}
+// Row `i` selected (`on`) or not, the active row and the anchor where they are.
+list_set_selected :: proc(st: ^List_State, i: int, on := true) { item_selection_set(&st.selection, list_rows(st), i, on) }
 
 // Type-ahead: does row `i`, labelled `label`, match what was typed? Records the first match and the first one at or
 // after the active row (st.seek_first / st.seek_after).
@@ -159,32 +125,21 @@ list_keys :: proc(s: ^State, st: ^List_State) {
 	// (a dialog open over the list holds the keys: its Enter is its own, not the row's behind it)
 	if keys_held_by_dialog(s) { return }
 	page := max(st.page_rows - 1, 1)
-	up :: proc(st: ^List_State) -> int { return st.sel < 0 ? list_next_selectable(st, -1, 1) : list_next_selectable(st, st.sel, -1) }
+	rows := list_rows(st)
 	for e, i in s.events.list {
 		if s.events.consumed[i] { continue }
-		if st.multi && e.key == .A && e.mods == {.Ctrl} {
-			list_mark_all(st)
-			s.events.consumed[i] = true
-			continue
-		}
-		if e.mods != {} { continue }
-		used := true
-		#partial switch e.key {
-		case .Down:      st.sel = list_next_selectable(st, st.sel, 1)
-		case .Up:        st.sel = up(st)
-		case .Home:      st.sel = list_next_selectable(st, -1, 1)
-		case .End:       st.sel = list_next_selectable(st, st.count, -1)
-		case .Page_Down: for _ in 0 ..< page { st.sel = list_next_selectable(st, st.sel, 1) }
-		case .Page_Up:   for _ in 0 ..< page { st.sel = up(st) }
-		case .Return:    if st.sel >= 0 { st.activated = true }
-		case .Escape:    st.cancelled = true
-		case:            used = false
-		}
+		used := item_selection_key(&st.selection, rows, e.key, e.mods, page)
 		if used {
-			s.events.consumed[i] = true
 			st.reveal = LIST_REVEAL_FRAMES
-			if st.multi && e.key != .Return && e.key != .Escape { list_marks_clear(st) }   // (a move alone: the active row is the selection)
+		} else if e.mods == {} {
+			used = true
+			#partial switch e.key {
+			case .Return: if st.sel >= 0 { st.activated = true }
+			case .Escape: st.cancelled = true   // (several rows selected: that Escape was the selection's)
+			case:         used = false
+			}
 		}
+		if used { s.events.consumed[i] = true }
 	}
 	if len(s.typed) > 0 && !st.no_typeahead {
 		if s.time_ms - st.typed_ms > f64(s.feel.typeahead_ms) { st.typed_len = 0 }
@@ -199,22 +154,27 @@ list_keys :: proc(s: ^State, st: ^List_State) {
 	}
 }
 
-// Makes row `i` active and scrolls it into view (e.g. to restore a position).
+// Makes row `i` active and scrolls it into view (e.g. to restore a position). In a multi list, the row is selected alone
+// at the next build (the list may still hold the last build's ids: a table filtered again).
 list_select :: proc(st: ^List_State, i: int) {
 	st.sel = i
 	st.reveal = LIST_REVEAL_FRAMES
+	if st.multi { st.select_pending = true } else { st.version += 1 }
 }
 
+// The next build's rows are known: a list_select waiting for them selects its row (list_end, vlist).
 @(private)
-list_next_selectable :: proc(st: ^List_State, from, dir: int) -> int {
-	n := st.count
-	if n == 0 { return -1 }
-	i := from
-	for {
-		i += dir
-		if i < 0 || i >= n { return from >= 0 && from < n ? from : clamp(i, 0, n - 1) }
-		if i >= len(st.selectable) || st.selectable[i] { return i }
-	}
+list_select_resolve :: proc(st: ^List_State) {
+	if !st.select_pending { return }
+	st.select_pending = false
+	if st.sel >= 0 && st.sel < st.count { item_selection_one(&st.selection, list_rows(st), st.sel) }
+}
+
+// The frame's change of the selection, said once (`selected_changed`).
+@(private)
+list_selection_seen :: proc(st: ^List_State) {
+	if st.version != st.version_seen { st.selected_changed = true }
+	st.version_seen = st.version
 }
 
 // `if list(id, &state) { list_row(...) ... }`: the list's scroll region (fills what `next` / the style give it).
@@ -227,7 +187,7 @@ list :: proc(id: string, st: ^List_State) -> bool {
 	b.cursor = .Arrow
 	_ = signal(b)
 	st.key = b.key
-	st.activated, st.cancelled, st.changed, st.marks_changed = false, false, false, false
+	st.activated, st.cancelled, st.changed, st.selected_changed = false, false, false, false
 	st.focused = s.focus_key == b.key
 	st.selectable, st.building = st.building, st.selectable
 	clear(&st.building)
@@ -248,22 +208,27 @@ list_end :: proc() {
 	st := pop(&s.list_stack)
 	b := parent_box()
 	pop_parent()
+	fewer := len(st.building) < st.count
 	st.count = len(st.building)
 	if st.sel >= st.count {
 		st.sel = st.count - 1
 		if b.first_build != s.build_index { st.changed = true }
 	}
+	// (the identities of a `list` are its indices: the rows past its end are gone)
+	if fewer { item_selection_keep(&st.selection, list_rows(st)) }
+	list_select_resolve(st)
 	if st.sel < 0 { st.reveal = 0 }   // (no row to bring into view)
-	a11y_default(b, {role = .List_Box, active_descendant = st.sel >= 0 ? key_from_string(b.key, fmt.tprintf("###lrow_%d", st.sel)) : 0})
+	a11y_default(b, {role = .List_Box, multiselectable = st.multi, active_descendant = st.sel >= 0 ? key_from_string(b.key, fmt.tprintf("###lrow_%d", st.sel)) : 0})
 	// (a row clicked this frame changed the selection after the rows before it were built)
 	for c := b.first; c != nil; c = c.next {
-		if c.a11y != nil && c.a11y.role == .List_Box_Option { c.a11y.selected = c.a11y.position - 1 == st.sel; c.a11y.set_size = st.count }
+		if c.a11y != nil && c.a11y.role == .List_Box_Option { c.a11y.selected = list_is_selected(st, c.a11y.position - 1); c.a11y.set_size = st.count }
 	}
 	if st.seek {
 		pick := st.seek_after >= 0 ? st.seek_after : st.seek_first
-		if pick >= 0 && pick != st.sel { st.sel = pick; st.changed = true; st.reveal = LIST_REVEAL_FRAMES }
+		if pick >= 0 && pick != st.sel { item_selection_one(&st.selection, list_rows(st), pick); st.changed = true; st.reveal = LIST_REVEAL_FRAMES }
 		st.seek = false
 	}
+	list_selection_seen(st)
 	// rows that fit, from the rows of the previous frame (for Page Up / Page Down)
 	if st.count > 0 && b.size.y > 0 {
 		total, n: f32
@@ -294,8 +259,7 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 		st.building[i] = selectable
 		if selectable { list_seek_row(st, i, label) }
 	}
-	active := selectable && i == st.sel
-	lit := active || (selectable && st.multi && list_is_marked(st, i))   // (a marked row shows as the active one)
+	lit := selectable && list_is_selected(st, i)
 	if lit { push_tags(st.focused ? "selected" : "weak_selected") }
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
@@ -325,20 +289,23 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 	if selectable { pop_tags() }
 	if lit { pop_tags() }
 	sig := signal(b)
-	if selectable && st.multi {
-		if sig.pointer_pressed { list_mark_click(st, i, sig.mods) }
-		// (a right click on a row outside the marks makes it the selection alone; on a marked row, the marks stay)
-		if sig.right_clicked && len(st.marks) > 0 && !list_is_marked(st, i) { list_marks_clear(st) }
-	}
 	if selectable && (sig.pressed || sig.right_clicked) {
 		if st.sel != i { st.changed = true }
-		st.sel = i
+		// (the rows are this build's for a Virtual_List; a `list` counts the row built now, past its last count)
+		rows := list_rows(st)
+		rows.count = max(rows.count, i + 1)
+		if sig.pressed {
+			// (a screen reader's press has no modifiers of its own: the row alone)
+			item_selection_click(&st.selection, rows, i, sig.pointer_pressed ? sig.mods : {})
+		} else {
+			item_selection_context(&st.selection, rows, i)
+		}
 		s.focus_key = st.key
 		s.focus_visible = false
 	}
 	if selectable && sig.double_clicked { st.activated = true }
 	if selectable {
-		a11y_default(b, {role = .List_Box_Option, name = label, selected = i == st.sel, position = i + 1})
+		a11y_default(b, {role = .List_Box_Option, name = label, selected = lit, position = i + 1})
 	} else {
 		a11y_default(b, {role = .Group, name = label})
 	}

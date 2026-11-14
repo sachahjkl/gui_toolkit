@@ -573,7 +573,7 @@ rich_inset :: proc(b: ^Box, d: ^Rich_Draw, l: ^Rich_Layout) -> Vec2 {
 @(private)
 rich_ctx :: proc(b: ^Box) -> Rich_Context {
 	s := gs()
-	return {fonts = s.fonts, base_font = b.font, base_size = b.font_size, mono = s.mono_font, faces = state_families(s)}
+	return {fonts = s.fonts, base_font = b.font, base_size = b.font_size, mono = state_text_face(s, .Mono), faces = state_families(s)}
 }
 
 @(private)
@@ -661,7 +661,8 @@ rich_paint_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 // `runs` (and their strings) need only live through the build: the box keeps a copy for drawing.
 // `version` (not 0): the runs are the same as at an earlier build with the same version (an application's counter of a
 // message's text, say): the layout is found by it, not by hashing every run (what a long document did at each frame).
-rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u64 = 0, line_height: f32 = 0) -> (res: Rich_Result) {
+// Content, so selectable (src/md/features/text-selection.md); `selectable = false` for a control's part (a row's name).
+rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u64 = 0, line_height: f32 = 0, selectable := true) -> (res: Rich_Result) {
 	s := gs()
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
@@ -671,6 +672,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 	has_links := false
 	for r in runs { if r.link != "" { has_links = true; break } }
 	flags := Box_Flags{.No_Text_Trunc}
+	if selectable { flags += {.Selectable} }
 	if has_links { flags += {.Clickable, .Focusable} }
 	b := build_box(flags, id)
 	b.text = ""

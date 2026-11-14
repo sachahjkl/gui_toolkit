@@ -196,7 +196,8 @@ a_segment_has_its_tooltip :: proc(t: ^testing.T) {
 	testing.expect(t, session.find(s, "tooltip_text") == nil, "no tooltip for an empty one")
 }
 
-// A list of rows the program builds (vlist and list_row), with marks: Ctrl and Shift clicks, Ctrl+A, a filter.
+// A list of rows the program builds (vlist and list_row), multi: the clicks, the keys, the rows by identity
+// (src/md/features/selection.md; the model alone: item_selection_test.odin).
 @(private = "file")
 Marks_App :: struct {
 	vl:   ui.Virtual_List,
@@ -229,33 +230,84 @@ row_click :: proc(s: ^session.Session, i: int, mods: platform.Modifiers = {}) {
 	session.frames(s, 3)
 }
 
+// Whether exactly the rows `want` are selected.
+@(private = "file")
+selected_rows :: proc(app: ^Marks_App, want: []int) -> bool {
+	if ui.list_selected_count(&app.vl) != len(want) { return false }
+	for i in want { if !ui.list_is_selected(&app.vl, i) { return false } }
+	return true
+}
+
 @(test)
-rows_are_marked_by_ctrl_and_shift_clicks :: proc(t: ^testing.T) {
+rows_are_selected_by_clicks_and_keys :: proc(t: ^testing.T) {
 	app: Marks_App
 	defer { ui.vlist_destroy(&app.vl); delete(app.ids) }
 	for id in ([]u64{10, 11, 12, 13, 14, 15}) { append(&app.ids, id) }
 	s := session.start(t, {build = marks_build, user = &app, no_renderer = true})
 	row_click(s, 1)
-	testing.expect(t, app.vl.sel == 1 && ui.list_mark_count(&app.vl) == 0, "a click alone: the active row, no mark")
+	testing.expect(t, app.vl.sel == 1 && selected_rows(&app, {1}), "a click: the row alone")
 	row_click(s, 3, {.Ctrl})
-	testing.expect(t, ui.list_is_marked(&app.vl, 1) && ui.list_is_marked(&app.vl, 3) && ui.list_mark_count(&app.vl) == 2, "Ctrl: the active row and this one")
+	testing.expect(t, selected_rows(&app, {1, 3}), "Ctrl: the row added")
 	row_click(s, 1, {.Ctrl})
-	testing.expect(t, !ui.list_is_marked(&app.vl, 1) && ui.list_mark_count(&app.vl) == 1, "Ctrl again: unmarked")
+	testing.expect(t, selected_rows(&app, {3}), "Ctrl again: the row removed")
 	row_click(s, 5, {.Shift})
-	// (the last row clicked is row 1, Ctrl's: rows 1 to 5)
-	testing.expect(t, ui.list_mark_count(&app.vl) == 5 && ui.list_is_marked(&app.vl, 1) && ui.list_is_marked(&app.vl, 5) && !ui.list_is_marked(&app.vl, 0), "Shift: from the last row clicked")
-	// the marks follow the rows' identities: row 13 moved to the end is still marked; a row gone is not
+	// (the anchor is row 1, the last Ctrl click's)
+	testing.expect(t, selected_rows(&app, {1, 2, 3, 4, 5}), "Shift: the range from the anchor")
+	row_click(s, 2, {.Shift})
+	testing.expect(t, selected_rows(&app, {1, 2}), "Shift again: the range replaced")
+	// Ctrl+Shift: the range over what was selected when the anchor was set
+	row_click(s, 0)
+	row_click(s, 2, {.Ctrl})
+	row_click(s, 4, {.Ctrl, .Shift})
+	testing.expect(t, selected_rows(&app, {0, 2, 3, 4}), "Ctrl+Shift: the range added")
+	row_click(s, 3, {.Ctrl, .Shift})
+	testing.expect(t, selected_rows(&app, {0, 2, 3}), "Ctrl+Shift again: its range replaced, the rest kept")
+	// a right click in the selection keeps it; outside, its row alone
+	row_click_button(s, 0, .Right)
+	testing.expect(t, selected_rows(&app, {0, 2, 3}), "right click on a selected row")
+	row_click_button(s, 5, .Right)
+	testing.expect(t, selected_rows(&app, {5}), "right click outside")
+	// the keys
+	row_click(s, 1)
+	session.key(s, .Down, {.Shift})
+	session.key(s, .Down, {.Shift})
+	testing.expect(t, selected_rows(&app, {1, 2, 3}) && app.vl.sel == 3, "Shift+Down: the range")
+	session.key(s, .Up, {.Shift})
+	testing.expect(t, selected_rows(&app, {1, 2}), "Shift+Up: the range made smaller")
+	session.key(s, .Down, {.Ctrl})
+	session.key(s, .Down, {.Ctrl})
+	testing.expect(t, app.vl.sel == 4 && selected_rows(&app, {1, 2}), "Ctrl+Down: the cursor alone")
+	session.key(s, .Space, {.Ctrl})
+	testing.expect(t, selected_rows(&app, {1, 2, 4}), "Ctrl+Space: the cursor's row toggled")
+	session.key(s, .End, {.Shift})
+	testing.expect(t, selected_rows(&app, {4, 5}), "Shift+End: from the anchor, Ctrl+Space's row")
+	session.key(s, .Down)
+	session.key(s, .Home)
+	testing.expect(t, app.vl.sel == 0 && selected_rows(&app, {0}), "Home: the first row alone")
+	session.key(s, .A, {.Ctrl})
+	testing.expect(t, selected_rows(&app, {0, 1, 2, 3, 4, 5}), "Ctrl+A")
+	session.key(s, .Escape)
+	testing.expect(t, selected_rows(&app, {0}) && !app.vl.cancelled, "Escape on several: the cursor's row alone")
+	// (`cancelled` holds for the one build that read the key: one frame, where session.key runs two)
+	session.event(s, {kind = .Key_Press, key = .Escape})
+	session.event(s, {kind = .Key_Release, key = .Escape})
+	session.frames(s, 1)
+	testing.expect(t, selected_rows(&app, {0}) && app.vl.cancelled, "Escape on one: the list's cancel, the row stays")
+	// the selection follows the rows' identities: row 13 moved to the end is still selected; a row gone is not
+	session.key(s, .A, {.Ctrl})
 	ordered_remove(&app.ids, 3)
 	append(&app.ids, 13)
 	ordered_remove(&app.ids, 3)   // (14: gone)
 	session.frames(s, 2)
-	testing.expect(t, ui.list_mark_count(&app.vl) == 4 && ui.list_is_marked(&app.vl, len(app.ids) - 1), "by identity")
-	row_click(s, 0)
-	testing.expect_value(t, ui.list_mark_count(&app.vl), 0)
-	session.key(s, .A, {.Ctrl})
-	testing.expect_value(t, ui.list_mark_count(&app.vl), len(app.ids))
-	session.key(s, .Down)
-	testing.expect_value(t, ui.list_mark_count(&app.vl), 0)
+	testing.expect(t, ui.list_selected_count(&app.vl) == 5 && ui.list_is_selected(&app.vl, len(app.ids) - 1), "by identity")
+	testing.expect_value(t, len(ui.list_selected_ids(&app.vl)), 5)
+}
+
+// A press of `button` on row `i`.
+@(private = "file")
+row_click_button :: proc(s: ^session.Session, i: int, button: platform.Mouse_Button) {
+	session.click(s, fmt.tprintf("lrow_%d", i), button)
+	session.frames(s, 2)
 }
 
 @(test)

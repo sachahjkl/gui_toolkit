@@ -110,7 +110,6 @@ File_Browser :: struct {
 	rows_made:    int,        // the rows made, and filtered or sorted (file_browser_counts)
 	rows_applied: int,
 	select_name:  string,     // the row selected once the rows are made (a new folder, a path typed)
-	shift_from:   int,        // Shift+arrows: where the range of marks starts (-1: none)
 	open_key:     [3]u64,     // what Open's act was last looked at for (file_browser_can_act), and whether it can
 	open_ok:      bool,
 
@@ -171,7 +170,6 @@ file_browser_of :: proc(s: ^State) -> ^File_Browser {
 	fb.rows = make([dynamic]int, a)
 	fb.by_id = make(map[u64]int, a)
 	fb.source_places = make([dynamic]platform.File_Place, a)
-	fb.shift_from = -1
 	// (in the order of FILE_COLUMN_NAME, _SIZE, _MODIFIED, _KIND)
 	fb.columns = {
 		{title = i18n.later("Name"), width = 0},
@@ -262,13 +260,13 @@ file_browser_open :: proc(s: ^State, kind: File_Dialog_Kind, d: platform.File_Di
 	fb.d = file_dialog_options_clone(d, a)
 	fb.source = source != nil ? source^ : local_files()
 	fb.sep = fb.source.separator != 0 ? fb.source.separator : '/'
+	// (cleared as the last dialog's list was: a multi one has its set to empty)
+	list_selection_clear(&fb.table.vl)
 	fb.table.vl.multi = kind == .Open && d.multiple
 	fb.table.vl.sel = -1
-	list_marks_clear(&fb.table.vl)
 	fb.type_index = clamp(d.filter_index, 0, max(len(d.filters) - (d.all_files ? 0 : 1), 0))
 	fb.made = false
 	fb.focus_list = true
-	fb.shift_from = -1
 	fb.listing_ms = clock_ms(s)
 	line_edit_clear(&fb.filter)
 	fb.deep = d.find_deep && fb.source.find != nil
@@ -417,8 +415,7 @@ file_browser_go :: proc(fb: ^File_Browser, path: string, move := File_Move.New) 
 		file_browser_find_drop(fb)   // (what was found is under the folder left)
 		line_edit_clear(&fb.filter)
 		fb.new_folder = false
-		fb.shift_from = -1
-		list_marks_clear(&fb.table.vl)
+		list_selection_clear(&fb.table.vl)
 		fb.table.vl.sel = -1
 		vlist_scroll_to(&fb.table.vl, 0)
 	}
@@ -768,15 +765,15 @@ file_row_entry :: proc(fb: ^File_Browser, r: int) -> ^File_Entry {
 	return &list[fb.rows[r]]
 }
 
-// The entries chosen (indices of file_rows_entries): the rows marked (Open with `multiple`), else the selected one; in
+// The entries chosen (indices of file_rows_entries): the rows selected (Open with `multiple`), else the active one; in
 // the entries' order.
 @(private)
 file_browser_chosen :: proc(fb: ^File_Browser, allocator := context.temp_allocator) -> []int {
 	out := make([dynamic]int, allocator)
 	n := len(file_rows_entries(fb))
 	vl := &fb.table.vl
-	if vl.multi && list_mark_count(vl) > 0 {
-		for id in vl.marks {
+	if vl.multi {
+		for id in vl.selected {
 			if r, ok := fb.by_id[id]; ok && fb.rows[r] < n { append(&out, fb.rows[r]) }
 		}
 		slice.sort(out[:])
@@ -792,9 +789,9 @@ file_browser_chosen :: proc(fb: ^File_Browser, allocator := context.temp_allocat
 file_browser_can_act :: proc(fb: ^File_Browser) -> bool {
 	switch fb.kind {
 	case .Open:
-		// (looked at again when the selection, the marks or the rows change: every file marked is a pass)
+		// (looked at again when the active row, the selection or the rows change: every file selected is a pass)
 		vl := &fb.table.vl
-		key := [3]u64{u64(vl.sel + 1), u64(list_mark_count(vl)), fb.table.ids_version}
+		key := [3]u64{u64(vl.sel + 1), vl.version, fb.table.ids_version}
 		if key != fb.open_key {
 			fb.open_key, fb.open_ok = key, false
 			list := file_rows_entries(fb)

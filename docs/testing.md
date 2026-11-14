@@ -53,6 +53,12 @@ The rules:
 - **A whole application**: `session.attach(t, {win = app.win, state = &app.ui_state, renderer = &app.r, frame = ..., user = app})` drives one that makes its own window (offscreen) and frames (`tests/examples`). Something the application does not let a test see: add it to the application, not to the test.
 - **The devtools protocol without a port**: `devtools.start_local` and `devtools.Local_Client` (`tests/examples/whatsnew_test.odin`).
 - **Pictures**: `session.expect_like(s, path)` against a reference image, `TOOLKIT_TEST_UPDATE=1` writes them: review them like code. Prefer a colour at a point (`pixel`, `count_color`): it says what is wrong.
+- **The frame of a translucent window**: `Options.half_float` stores the session's frame in half floats, as a translucent
+  window's in linear light (`render.init_offscreen(..., half_float = true)`). An 8-bit frame clamps what is drawn to
+  [0, 1]; a half-float one keeps it, as the window gets it. `session.capture` gives it as an 8-bit frame would hold it;
+  `session.capture_float` gives its values as they are stored (`render.read_pixels_float`), and
+  `session.out_of_range(img, least_alpha, margin)` finds a value that is not finite or out of [0, 1], or an alpha under
+  `least_alpha` (`1 - margin` for a scene that must be opaque). `tests/partial_redraw` runs its scenes in both formats.
 - **The globals**: `tests/globals` reads the packages' sources (next to it, not from the working directory) and checks every package-level variable against `tools/globals_allowed.txt` (getting-started.md, "Where state lives").
 - **The case of names**: `tests/unicode_case` reads the sources the same way and fails on a call of `strings.to_lower` / `to_upper` / `equal_fold` or `unicode.to_lower` / `to_upper` that `tools/unicode_case_allowed.txt` does not list with why: they fold by Unicode (the Kelvin sign U+212A is `k` to them), names and protocols take `ascii.lower`, `ascii.equal_fold`...
 - **What needs a real window** stays in `tests/window`, `tests/cursors`, `tests/tray`: hidden windows, fed the system's messages, on the runner's desktop. **What needs a real server** on Linux: `tk desktop_tests`. Each server and the test program run in a process group of their own, stopped whole when they end, on a failure, a time limit or a signal to `tk`; their output goes to files, the test program's printed when it ends.

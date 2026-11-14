@@ -3,8 +3,8 @@
 Each setting of the toolkit that changes how a program looks or answers is a preference the toolkit declares, beside
 the code that uses it, with today's default. Every program inherits them: `prefs_page.standard_register` registers
 them, the settings page ([prefs_page.md](prefs_page.md)) shows them grouped, and `prefs_page.standard_watch` applies
-them. Nothing is blocked: a technical setting is advanced (shown under the page's folded **Advanced** part, found by a
-search), never hidden. Each program keeps its own values, in its own file ([config.md](config.md)); they share the
+them. Nothing is blocked: a technical setting is advanced (shown under the page's folded **Advanced** part, or with no
+fold on a page of technical settings alone, found by a search), never hidden. Each program keeps its own values, in its own file ([config.md](config.md)); they share the
 definitions, not the values.
 
 The columns: the name (what the file holds), the set that registers it (`Standard_Set`), its default, its range or
@@ -48,9 +48,9 @@ names every standard preference.
 
 | Name | Default | Range, choices | Applied by |
 |---|---|---|---|
-| `appearance.text.ui_font` | "" (the program's) | a family | the program, at the start |
-| `appearance.text.mono_font` | "" | a family | the program, at the start |
-| `appearance.text.prose_font` | "" | a family | the program, at the start (`ui.set_family`) |
+| `appearance.text.ui_font` | "" (the program's; the page names it: "Roboto (default)") | a family (the page's font picker) | `ui.use_text_family(.Interface)`, live (loaded on a chore) |
+| `appearance.text.mono_font` | "" | a family (the monospace ones first) | `ui.use_text_family(.Mono)`, live: `ui.mono_font()` |
+| `appearance.text.prose_font` | "" | a family | `ui.use_text_family(.Prose)`, live: `ui.prose_font()`, a markdown view's text |
 | `appearance.text.emoji_font` | "" | a font file | the program, at the start (`font.set_emoji_source`) |
 | `appearance.text.system_fallback` | `true` | | `font.Settings.system_fallback` |
 | `appearance.text.color_emoji` | `true` | | `font.Settings.color_glyphs` |
@@ -81,6 +81,7 @@ names every standard preference.
 | `scrolling.wheel_lines` | 3 | 1 to 20 | `ui.Feel.wheel_lines` |
 | `scrolling.scrollbar_size` | `thin` | `thin` (9 px), `wide` (17 px) | `ui.set_scrollbar_size` ([scroll-bar.md](scroll-bar.md)) |
 | `scrolling.scrollbar_autohide` | `false` | | `ui.set_scrollbar_autohide` |
+| `scrolling.scrollbar_overlay` | `false` | | `ui.set_scrollbar_overlay` |
 | `scrolling.curve` | `impulse` | `impulse`, `ease_out`, `exponential` | Advanced; `ui.Scroll_Settings.curve` |
 | `scrolling.impulse` | 5 | 1 to 20 | Advanced; `ui.Scroll_Settings.impulse` |
 | `scrolling.fling_stop_speed` | 20 px/s | 0 to 1000 px/s | Advanced; `ui.Feel.fling_stop_speed` |

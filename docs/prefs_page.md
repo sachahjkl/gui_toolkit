@@ -21,7 +21,7 @@ prefs_page.build(&page, &prefs, {
 	themes_file = &app.themes_file,                // and the user's own themes under them
 	custom_names = {"look.font"},
 	custom  = proc(user: rawptr, name: string, em: f32) {   // the program's own control, under the words
-		/* a font picker */
+		/* a control of the program's own */
 	},
 })
 ```
@@ -77,12 +77,19 @@ order among a program's own (theirs have the order 0): General, Appearance and W
 the toolkit's setters: `ui.set_feel` (repeats, undo, typeahead, steps, zoom step, tooltips, menus, the fade, the
 wheel's lines, the fling), `set_zoom`, `set_density`, `set_rounding`, `set_animations`, `set_smooth_scroll`,
 `set_scroll_settings`, `set_autoscroll_enabled`, `set_autoscroll_settings`, `set_scrollbar_size`,
-`set_scrollbar_autohide`, `set_toast_position`, `set_partial_redraw`. `Standard_Targets` gives what lies outside the
+`set_scrollbar_autohide`, `set_scrollbar_overlay`, `set_toast_position`, `set_partial_redraw`. `Standard_Targets` gives what lies outside the
 interface (each nil: left alone): `renderer` (`set_corner_smoothing`, `set_text_rendering`, `set_blend_space`,
 `set_present_mode`, `set_max_frame_latency`, `set_blur_sigma_limit`, `set_filter_precision`), `fonts`
 (`font.set_settings`) and `partial_redraw` (a host's flag, `host.Host.partial_redraw`, which the host gives the
 interface at each frame; nil: `ui.set_partial_redraw`). A preference at its default is left alone, so what a program set
 itself stays until the user changes it.
+
+The family settings (`appearance.text.ui_font`, `mono_font`, `prose_font`) apply live, in every window of the program
+(its views' windows too), with no restart: `ui.use_text_family` loads the family's face on a chore and swaps it in when
+it comes ([font-picker.md](font-picker.md), "The text faces"). `Standard_Targets.faces` gives the program's own faces,
+which "Default" draws in (each 0: `Build_Params.base.font`, `State.mono_font`, the interface's for prose); keep giving
+the program's own face as `Build_Params.base.font`: the toolkit puts the chosen one in its place.
+`Standard_Targets.font_source` gives the families another way (a test's; zero: the system's).
 
 `standard_watch(w, prefs, state, targets)` applies them, then watches the registry (`config.watch`): a change of one
 applies that one alone, at once, on the thread that changed it. A zoom by Ctrl+wheel is not undone by a change of the
@@ -92,7 +99,7 @@ What the program applies itself:
 
 - the theme (`appearance.theme`, `mode`, `finish`, `glow`, `font_size`): `appearance_read`, `appearance_choice`,
   `ui.theme_show`. After a change of `appearance.text.blend_space`, show the theme again with `render.blend_space(r)`;
-- the fonts by name (`appearance.text.ui_font`, `mono_font`, `prose_font`, `emoji_font`), `appearance.text.page_size`,
+- the emoji font (`appearance.text.emoji_font`), `appearance.text.page_size`,
   `window.system_title` and `update.base_url`: read at the start (`Def.restart`: "Takes effect at the next start");
 - `update.channel`: at once, by `update.set_channel` on the program's Updater ([update.md](update.md), "Channels");
 - `general.language`: `language_start(prefs, catalogues)` at the start, which then switches the language at once at each
@@ -130,7 +137,11 @@ What the program applies itself:
   value differs from the default, a carved line under it.
 - The preferences of an inner group (`appearance.text` in Appearance) follow those of the page's own group, under the
   group's title (`config.group_title`). The advanced ones (`Def.advanced`) of the page come last, under **Advanced**,
-  folded until a click (`ui.accordion`; the page keeps it open while it lives).
+  folded until a click (`ui.accordion`; the page keeps it open while it lives). The fold is only on a page that has
+  ordinary preferences too. A page of advanced ones alone (Rendering) shows them, under the sentence "These are
+  technical settings: their defaults are right for most people.": a fold would leave the page empty.
+- A standard group whose title does not say what it is for (Input, Delays and menus, Rendering) has a sentence under
+  its title, in the weak text, that says it.
 - While a search is typed (title, name, description, tags or a group's title: `config.matches`): what matches in every
   page, the advanced ones too, under each page's title.
 - Nothing goes past the window or is cut: the descriptions wrap; a control that would leave its words less than 12 ems
@@ -150,6 +161,13 @@ The controls:
 | a name in `Page_Options.hotkeys` (a key combination as text) | a field that records the keys pressed (`ui.hotkey_field`): a click, then the keys |
 | a `pref` of `Page_Options.shortcut_prefs` | the same field, and what the system made of the keys under it (see below) |
 | `appearance.theme`, with `Page_Options.themes` | the themes' cards, under the words |
+| `appearance.text.ui_font`, `mono_font`, `prose_font` | a font picker ([font-picker.md](font-picker.md)): the family in use, its default named ("Roboto (default)"), the system's families drawn in themselves, searched as one types; the monospace ones first for `mono_font` |
+
+The family settings name their default by the program's own face (`ui.program_text_face`): the one it gives in
+`Standard_Targets.faces`, else `Build_Params.base.font`, `State.mono_font`, the interface's for prose. A family chosen
+before does not change that name. The page reads the families from the program's source (`ui.text_font_source`:
+`Standard_Targets.font_source`, a test's; zero: the system's), at a picker's first opening, on a chore, and keeps the
+list for its life.
 
 A locked preference (a policy, the command line) shows its control disabled. `Page_Options.problem(user, name)` gives what
 the program has to say under a line (a shortcut another program holds): it shows in red. `Page_Options.status(user, name)` says a

@@ -36,7 +36,7 @@ Platform_State :: struct {}
 other_system := System_Fonts{
 	name     = SYSTEM_FONT_SERVICE,
 	fallback = other_fallback,
-	families = proc(s: ^State, allocator: runtime.Allocator) -> []string { return sys_families(allocator) },
+	families = proc(s: ^State, allocator: runtime.Allocator) -> []Family { return sys_families(allocator) },
 }
 
 @(private) platform_init :: proc(s: ^State) -> bool { s.system_fonts = &other_system; return true }

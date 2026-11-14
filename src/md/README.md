@@ -40,9 +40,15 @@ and its memory, the views, the texts in the user's language.
 
 ## File Index
 
+- [features/commands.md](features/commands.md): a command's key that types text: why `command_pressed` leaves it to a focused text field, why each program's test lists its typing keys, why they are not refused everywhere; window commands (`scope = .Window`): why their keys work whatever has the focus and whatever the page, and the widgets that claim the chords (`keys_claim`)
+- [features/drag-autoscroll.md](features/drag-autoscroll.md): a selecting drag held near or past the edge of a scroll view scrolls it: one mark per build, the innermost view that can still scroll, the speed curve shared with the middle click
+- [features/font-picker.md](features/font-picker.md): the font picker (`ui.font_picker`): why a default is a named family, why the families are read once on a chore, why each name is drawn in its face only when its row is in view, why the mono setting lists the others too; who applies the families (the toolkit, live, on a chore: `ui.use_text_family`)
 - [features/file-browser.md](features/file-browser.md): the file browser of `ui.file_dialog`: why it reads through sources, how stale answers are dropped, what a quiet build does not do
 - [features/path-bar.md](features/path-bar.md): the path bar (`ui.path_bar`): why it reads nothing itself, why `wants` is said once, why its dropdown is a popover
 - [features/plugins.md](features/plugins.md): plugins in JavaScript over the whole toolkit: the notes taken before the design (the engine Wren already embeds, what to design first)
-- [features/scroll-bar.md](features/scroll-bar.md): the scroll bar of every view: the desktop's standard it takes (numbers, states, gradients), the theme's colours that reproduce it, why it hides only on request, why thin is 9 px
+- [features/selection.md](features/selection.md): the selection of a list's rows (`ui.Item_Selection`): one model for every list, the file manager's rules for Ctrl, Shift and the keys, why the set is always explicit and the range replaces the range
+- [features/text-selection.md](features/text-selection.md): text a person reads is selectable in every program: which text is content and which is a control's label, the widgets selectable by default, why a click on text in a clickable box acts and a drag selects
+- [features/scroll-bar.md](features/scroll-bar.md): the scroll bar of every view: the desktop's standard it takes (numbers, states, gradients), the theme's colours that reproduce it, why it hides only on request, why thin is 9 px, the room every scroll box keeps for it (no content under a bar, no oscillation)
 - [features/toolbar.md](features/toolbar.md): the tool bar: one bar that wraps or folds into an organised menu, why the menu shows rows and not the bar's controls
+- [infrastructure/frame-formats.md](infrastructure/frame-formats.md): a frame in 8 bits or in half floats: why a translucent window's is in half floats, why every shader output is clamped to [0, 1], how the tests and the verify see both formats
 - [features/views.md](features/views.md): views: every dialog and movable pane as one content in four presentations (dialog, floating window, window of the system, docked panel), the state machine, what is remembered, the chrome rules, the migration of the programs

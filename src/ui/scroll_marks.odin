@@ -339,11 +339,16 @@ scroll_marks_of :: proc(b: ^Box) -> ^Scroll_Marks {
 // The width of a bar with marks, as wide as it has widened.
 @(private)
 scroll_marks_bar_width :: proc(b: ^Box) -> f32 {
-	w := scrollbar_thickness(gs())
-	rest := max(w, math.round(b.font_size * SCROLL_MARKS_BAR_EM))
+	rest := scroll_marks_rest_width(b)
 	wide := max(rest, math.round(b.font_size * SCROLL_MARKS_BAR_WIDE_EM))
 	// (odd, as every bar: its triangles' points on a pixel)
 	return odd_px(math.round(math.lerp(rest, wide, clamp(b.bar_wide_t, 0, 1))))
+}
+
+// The width of a bar with marks at rest: the room its view's layout keeps for it (it widens over the content).
+@(private)
+scroll_marks_rest_width :: proc(b: ^Box) -> f32 {
+	return odd_px(max(scrollbar_thickness(gs()), math.round(b.font_size * SCROLL_MARKS_BAR_EM)))
 }
 
 // The bar widens under the pointer, held, and while its marks have the keyboard: its marks are then the thing looked at.

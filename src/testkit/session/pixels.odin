@@ -27,6 +27,36 @@ capture :: proc(s: ^Session, loc := #caller_location) -> Image {
 	return {px, s.renderer.size.x, s.renderer.size.y}
 }
 
+// The values a frame holds as they are stored: RGBA, premultiplied, top row first. In a half-float frame (Options.half_float)
+// nothing is clamped: a value past [0, 1], an infinity or a NaN is there as the window would get it.
+Float_Image :: struct {
+	rgba:          [][4]f32,
+	width, height: int,
+}
+
+// The last frame's values (the test's temporary memory).
+capture_float :: proc(s: ^Session, loc := #caller_location) -> Float_Image {
+	if s.renderer == nil { failed(s, "capture_float: this session has no renderer", loc) }
+	px := render.read_pixels_float(s.renderer, s.test.temp_allocator)
+	if px == nil { failed(s, "capture_float: the frame could not be read", loc) }
+	return {px, s.renderer.size.x, s.renderer.size.y}
+}
+
+// The first pixel of `img` with a value that is not finite or out of [0, 1] by more than `margin` (a half's rounding of a
+// blend), or whose alpha is under `least_alpha` (1 - margin for a frame that must be opaque), and how many there are.
+// at = {-1, -1}: none.
+out_of_range :: proc(img: Float_Image, least_alpha: f32 = 0, margin: f32 = 1e-3) -> (n: int, at: [2]int, value: [4]f32) {
+	at = {-1, -1}
+	for v, i in img.rgba {
+		bad := v[3] < least_alpha
+		for c in v { if c != c || c < -margin || c > 1 + margin { bad = true } }   // (c != c: a NaN; an infinity is out of range)
+		if !bad { continue }
+		if n == 0 { at, value = {i % img.width, i / img.width}, v }
+		n += 1
+	}
+	return
+}
+
 // The colour of a pixel (a point outside the image: all zero).
 pixel :: proc(img: Image, x, y: int) -> Color {
 	if x < 0 || y < 0 || x >= img.width || y >= img.height { return {} }

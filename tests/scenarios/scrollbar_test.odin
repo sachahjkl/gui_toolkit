@@ -156,6 +156,126 @@ an_autohide_bar_shows_while_its_view_moves :: proc(t: ^testing.T) { unwatched.ru
 	ui.set_scrollbar_autohide(s.state, false)
 }) }
 
+@(private = "file")
+Button_Rows :: struct { rows: int }
+
+// Rows with a button at their right end, as a list's ("Open").
+@(private = "file")
+button_rows_build :: proc(s: ^session.Session) {
+	r := (^Button_Rows)(s.user)
+	ui.next({width = ui.px(VIEW_SIZE.x), height = ui.px(VIEW_SIZE.y)})
+	if ui.scroll_y("###view") {
+		for i in 0 ..< r.rows {
+			ui.next({width = ui.fill(), height = ui.px(ROW_HEIGHT), axis = .X})
+			if ui.row(id = fmt.tprintf("###row%d", i)) {
+				ui.label(fmt.tprintf("Row %d###l", i))
+				ui.spacer(ui.fill())
+				ui.next({width = ui.px(60), height = ui.pct(1)})
+				_ = ui.button(fmt.tprintf("Open###open%d", i))
+			}
+		}
+	}
+}
+
+// The layout keeps the bar's room: while the bar shows, a row's right-aligned button ends where the bar starts, not under
+// it; when everything fits again, the room comes back and the button is at the view's edge. With auto-hide on, the room
+// stays (the bar fades in it); with the overlay option, the bar is over the content and the button at the view's edge.
+@(test)
+a_row_s_right_button_stays_left_of_the_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Button_Rows{rows = ROWS}
+	s := session.start(t, {build = button_rows_build, user = &r, no_renderer = true})
+	session.frames(s, 2)
+	view := session.get(s, "view")
+	track, _, ok := ui.scrollbar_rects(view)
+	if !testing.expect(t, ok, "it overflows: a bar") { return }
+	testing.expect_value(t, ui.scrollbar_room(view, .X), track.max.x - track.min.x)
+	open := session.get(s, "open0")
+	testing.expectf(t, open.rect.max.x <= track.min.x, "the button left of the bar: %v, the bar from %v", open.rect.max.x, track.min.x)
+	testing.expect_value(t, open.rect.max.x, track.min.x)
+
+	// auto-hide: the room stays
+	ui.set_scrollbar_autohide(s.state, true)
+	session.frames(s, 2)
+	testing.expect_value(t, session.get(s, "open0").rect.max.x, track.min.x)
+	ui.set_scrollbar_autohide(s.state, false)
+
+	// overlay: no room, the bar over the row's end
+	ui.set_scrollbar_overlay(s.state, true)
+	session.frames(s, 2)
+	view = session.get(s, "view")
+	testing.expect_value(t, ui.scrollbar_room(view, .X), 0)
+	testing.expect_value(t, session.get(s, "open0").rect.max.x, view.rect.max.x)
+	_, _, ok = ui.scrollbar_rects(view)
+	testing.expect(t, ok, "the bar still shows, over the content")
+	ui.set_scrollbar_overlay(s.state, false)
+
+	// it all fits: no bar, no room, the button at the edge, in the same build as the change
+	r.rows = FEW_ROWS
+	session.frames(s, 1)
+	view = session.get(s, "view")
+	_, _, ok = ui.scrollbar_rects(view)
+	testing.expect(t, !ok, "no bar")
+	testing.expect_value(t, ui.scrollbar_room(view, .X), 0)
+	testing.expect_value(t, session.get(s, "open0").rect.max.x, view.rect.max.x)
+}) }
+
+@(private = "file")
+Flow_Run :: struct { items: int }
+
+// Squares of 50 px that flow in lines: 6 a line in the view's whole width (300 px), 5 beside a bar (291 px).
+@(private = "file") FLOW_ITEM :: 50
+@(private = "file")
+flow_build :: proc(s: ^session.Session) {
+	r := (^Flow_Run)(s.user)
+	ui.next({width = ui.px(VIEW_SIZE.x), height = ui.px(VIEW_SIZE.y)})
+	if ui.scroll_y("###view") {
+		ui.next({width = ui.fill()})
+		if ui.flow() {
+			for i in 0 ..< r.items {
+				ui.next({width = ui.px(FLOW_ITEM), height = ui.px(FLOW_ITEM - 10)})
+				ui.build_box({}, fmt.tprintf("###it%d", i))
+			}
+		}
+	}
+}
+
+// At the threshold the room does not flicker: a content that fits in the whole width and would overflow beside the bar
+// (30 squares: 5 lines of 40 px, the view's 200 px; beside the bar, 6) takes no room; one that has the room keeps it while it
+// overflows beside the bar, even when it would fit without it. Frame after frame, nothing changes.
+@(test)
+the_bar_s_room_does_not_oscillate_at_the_threshold :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Flow_Run{items = 30}
+	s := session.start(t, {build = flow_build, user = &r, no_renderer = true})
+	session.frames(s, 2)
+	for _ in 0 ..< 6 {
+		session.frames(s, 1)
+		view := session.get(s, "view")
+		testing.expect_value(t, ui.scrollbar_room(view, .X), 0)
+		_, _, ok := ui.scrollbar_rects(view)
+		testing.expect(t, !ok, "it fits in the whole width: no bar")
+		testing.expect_value(t, session.get(s, "it5").rect.min.y, view.rect.min.y)   // (6 a line)
+	}
+	// one more: it overflows in the whole width, takes the room, and overflows still beside the bar
+	r.items = 31
+	session.frames(s, 1)
+	room := ui.scrollbar_room(session.get(s, "view"), .X)
+	testing.expect(t, room > 0, "the room taken")
+	testing.expect(t, session.get(s, "it5").rect.min.y > session.get(s, "view").rect.min.y, "5 a line, beside the bar")
+	// back to 30: beside the bar it overflows still (6 lines), so the room stays, and stays
+	r.items = 30
+	for _ in 0 ..< 6 {
+		session.frames(s, 1)
+		view := session.get(s, "view")
+		testing.expect_value(t, ui.scrollbar_room(view, .X), room)
+		_, _, ok := ui.scrollbar_rects(view)
+		testing.expect(t, ok, "the bar stays")
+	}
+	// few enough to fit beside the bar: the room comes back
+	r.items = 20
+	session.frames(s, 1)
+	testing.expect_value(t, ui.scrollbar_room(session.get(s, "view"), .X), 0)
+}) }
+
 @(test)
 the_wheel_scrolls_and_stops_at_the_ends :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	sc := Scroller{rows = ROWS}

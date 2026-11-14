@@ -8,6 +8,10 @@ package ui
 //   palette_open      the command palette: a view (home Dialog) the user resizes, that searches (fuzzy_words), every
 //                     command with its keys, grouped
 //   shortcuts_sheet_open   a view that lists every command's keys, grouped
+//   command_key_types_text, command_typing_keys   a key that types text: not a command's while a text field has the
+//                     keyboard; a program's test lists the ones its tables hold (src/md/features/commands.md)
+//   Command.scope .Window, keys_claim   a window command's keys work whatever has the focus and whatever the page; a
+//                     widget that owns every chord (a terminal, a shortcut recorder) claims them while it has the keyboard
 //
 // A program keeps its commands in a table of its own (an enum of its commands indexing an array of Command) and says
 // which ones can act now (the `disabled` of palette_set): one place names a command and its keys, and its menus,
@@ -61,6 +65,57 @@ Command :: struct {
 	// passes: one the user rebinds is a copy of its constant table with these slices replaced.
 	keys:  []Chord,
 	icon:  string,     // a glyph of the state's icon_font (Lucide's): the palette's line shows it ("" none)
+	scope: Command_Scope,
+}
+
+// Where a command's keys work (src/md/features/commands.md, "Window commands").
+Command_Scope :: enum u8 {
+	// The page's: its keys reach it as any key does: not from behind a dialog, not from a view's body that does not have
+	// the focus.
+	Page,
+	// The window's (the palette, the keyboard shortcuts, the settings, close, quit): command_pressed takes its keys
+	// whatever has the focus (a field, a list, a docked or floating view) and whatever the page, over a view shown as a
+	// dialog too. Two things still keep a chord from it: a key that types text while a text field has the keyboard, and a
+	// widget that claims the chords (keys_claim: a terminal, a shortcut recorder).
+	Window,
+}
+
+// The chords a widget keeps while it has the keyboard (keys_claim): its box, and the chords it lets through.
+KEYS_CLAIM_PASS_MAX :: 8
+@(private)
+Keys_Claim :: struct {
+	owner: Key,
+	pass:  [KEYS_CLAIM_PASS_MAX]Chord,
+	count: int,
+}
+
+// A widget that has the keyboard and owns every chord (a terminal's grid, a shortcut recorder, an editor with its own
+// use of Ctrl+K...) says so while it is built, at each build: command_pressed then takes none of the chords, a window
+// command's neither, while `owner` has the keyboard, but the ones of `pass` (at most KEYS_CLAIM_PASS_MAX: the key that
+// hides a terminal works from inside it). The claim of the last build counts too: a program reads its commands before it
+// builds the widget. A claim of a box that does not have the keyboard is no claim. The caller names its reason in a comment.
+keys_claim :: proc(owner: Key, pass: ..Chord) {
+	s := gs()
+	if owner == 0 || owner != s.focus_key { return }
+	c := Keys_Claim{owner = owner}
+	for p in pass {
+		if c.count == KEYS_CLAIM_PASS_MAX { break }
+		c.pass[c.count] = p
+		c.count += 1
+	}
+	s.keys_claim_next = c
+}
+
+// Whether the widget that has the keyboard claimed `k` (keys_claim, in this build or the last).
+@(private)
+keys_claimed :: proc(s: ^State, k: Chord) -> bool {
+	for c in ([]^Keys_Claim{&s.keys_claim_next, &s.keys_claim}) {
+		if c.owner == 0 || c.owner != s.focus_key { continue }
+		passed := false
+		for p in c.pass[:c.count] { if p == k { passed = true; break } }
+		if !passed { return true }
+	}
+	return false
 }
 
 // "Ctrl+Shift+P", "Delete", "F5" ("" for no key), in the language in use ("Ctrl+Maj+P"): platform.key_text's words.
@@ -118,13 +173,67 @@ command_shown :: proc(c: Command) -> (label, group: string, tags: []string) {
 }
 
 // Whether one of the command's keys was pressed this frame (the press is taken: nothing else sees it). A command that
-// cannot act now (`disabled`) takes no key: the key stays for what else wants it.
+// cannot act now (`disabled`) takes no key: the key stays for what else wants it. A key that types text
+// (command_key_types_text) is not taken while a text field has the keyboard: the character is the field's; nor a chord
+// that the widget with the keyboard claims (keys_claim). A window command (scope .Window) takes its keys from behind a
+// dialog and from a view's body without the focus too (src/md/features/commands.md).
 command_pressed :: proc(c: Command, disabled := false) -> bool {
 	if disabled { return false }
-	for k in c.keys {
-		if k.key != .None && key_press(k.key, k.mods) { return true }
+	for k in c.keys { if chord_pressed(k, c.scope) { return true } }
+	return false
+}
+
+// Whether chord `k` of a command of `scope` was pressed this frame (the press is taken), by command_pressed's rules: a
+// program that reads its keys with its own table (a sequence of two chords, its own bindings) reads each chord with it.
+chord_pressed :: proc(k: Chord, scope := Command_Scope.Page) -> bool {
+	if k.key == .None { return false }
+	s := gs()
+	if command_key_types_text(k) && s.focus_key != 0 {
+		if b := s.boxes[s.focus_key] or_else nil; b != nil && is_text_field(b) { return false }
+	}
+	if keys_claimed(s, k) { return false }
+	// (text selected by the last press: its copy, read at the end of the build, takes the chord: text-selection.md)
+	if (k == Chord{.C, {.Ctrl}} || k == Chord{.Insert, {.Ctrl}}) && selection_takes_copy(s) { return false }
+	return scope == .Window ? key_press_any(k.key, k.mods) : key_press(k.key, k.mods)
+}
+
+// The window commands of `commands` (scope .Window) whose keys a text field keeps (command_key_types_text), one line
+// each, "<label>: <key>" as command_typing_keys says them. A program's test expects none: a window command's key that
+// types text does nothing while a field has the keyboard, and then the command does not work everywhere.
+command_window_typing_keys :: proc(commands: []Command, allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	for c in commands {
+		if c.scope != .Window { continue }
+		for line in command_typing_keys([]Command{c}, allocator) { append(&out, line) }
+	}
+	return out[:]
+}
+
+// Whether `c` types text in a field: a letter, a digit, a punctuation mark, Space, Backspace or keypad + and -, with no
+// modifier or with Shift alone. Ctrl or Alt with any key, and the keys that type nothing (F1 to F12, Escape, Enter, Tab,
+// Delete, Insert, the arrows, Home, End, Page Up, Page Down, Menu, Print) with any modifier, are false. No key: false.
+command_key_types_text :: proc(c: Chord) -> bool {
+	if c.mods - {.Shift} != {} { return false }
+	#partial switch c.key {
+	case .A ..= .Z, .N0 ..= .N9, .Space, .Backspace, .Comma, .Period, .Slash, .Minus, .Equal, .Num_Add, .Num_Subtract:
+		return true
 	}
 	return false
+}
+
+// Every key of `commands` that types text (command_key_types_text), one line each: "<label>: <key>" ("Rectangle: R",
+// "Add a step…: Shift+A"), the label as the table holds it and the key by its name in platform.Key ("N1", "Space"):
+// the same text in every language. A program's test compares the lines with the ones it means: none when a field of
+// its window always has the keyboard.
+command_typing_keys :: proc(commands: []Command, allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	for c in commands {
+		for k in c.keys {
+			if !command_key_types_text(k) { continue }
+			append(&out, fmt.aprintf("%s: %s%v", c.label, (.Shift in k.mods) ? "Shift+" : "", k.key, allocator = allocator))
+		}
+	}
+	return out[:]
 }
 
 ////////////////////////////////
@@ -489,8 +598,8 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 							label(fmt.tprintf("%s###k", keys))
 						}
 					}
-					// (clear of the scroll bar, along the list's right edge)
-					spacer(px(em * 0.5 + scrollbar_gutter()))
+					// (the scroll bar keeps its own room: the layout of the list)
+					spacer(px(em * 0.5))
 				}
 				if sel { pop_tags() }
 				pop_tags()

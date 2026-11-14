@@ -118,6 +118,7 @@ destroy :: proc(s: ^State) {
 	wrap_cache_destroy(s)
 	delete(s.trunc_cache)
 	rich_cache_destroy(s)
+	text_faces_destroy(s)
 	for _, m in s.layout_warned { delete(m) }
 	delete(s.layout_warned)
 	delete(s.lazy_heights)
@@ -290,6 +291,9 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.base_style = p.base
 	base := p.base
 	if o := style_root(s); o != s && o.base_style.font_size > 0 { base = o.base_style }
+	// (the family chosen for the interface once its face is loaded, else the program's own when it gave one
+	// (set_text_faces): s.base_style keeps what the build was given)
+	if f := state_text_face(s, .Interface); f != 0 { base.font = f }
 	base.font_size = math.round(base.font_size * s.scale)
 	base.text_pad = math.round(base.text_pad * s.scale)
 	base.radius = math.round(base.radius * s.scale)
@@ -379,6 +383,8 @@ end_build :: proc() {
 	// per-frame input state is consumed
 	s.scroll_delta = {}
 	s.focus_field_next = false   // (asked in a build, for that build's fields only)
+	// (a claim lasts while its widget is built: the next build's commands, read before the widget, see this one)
+	s.keys_claim, s.keys_claim_next = s.keys_claim_next, {}
 	for b in platform.Mouse_Button {
 		s.pressed_key[b] = 0
 		s.pressed_any[b] = false
@@ -902,6 +908,7 @@ update_animations :: proc(s: ^State) {
 		busy^ = true
 	}
 	autoscroll_apply(s)   // middle-click autoscroll sets its box's view_target before the ease below (autoscroll_region.odin)
+	drag_autoscroll_apply(s)   // a selecting drag near an edge does too (drag_autoscroll.odin)
 	// the hot box and its ancestors (for .Hot_Within boxes)
 	chain: [HOT_ANCESTORS_MAX]Key
 	n := 0

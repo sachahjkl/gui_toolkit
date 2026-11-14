@@ -11,6 +11,8 @@ library ([font-backend.md](font-backend.md)). This page describes the DirectWrit
 | --- | --- |
 | `load_system(s, family, weight, style, stretch)` | A face of the system collection (Windows' "font family" model: `"Segoe UI"`, `"Segoe UI Semibold"`, `"Arial Black"`). Missing bold / italic are simulated by DirectWrite. Shared by every request that resolves to the same font. |
 | `has_system_family(s, family)` | Whether the system has that family. |
+| `system_families(s, allocator)` | The installed families, sorted, once each: `font.Family{name, monospace}` (the monospace flag as the font service says it: [font-backend.md](font-backend.md)). It reads the font service (the disk): on a worker, never on the interface's thread. |
+| `family_of(s, id)` | The family a font is, as a person reads it: the family it was loaded as (`load_system`), else the one its `name` table gives (its typographic family, else its family): the embedded Roboto is `"Roboto"`. "" for an id that is no live font. The string is the font's (clone it to keep it). |
 | `load_from_file(s, path, index)` | A face of a font file (collections: `index`). |
 | `load_memory(s, data, owned, index, simulations, family, weight, style)` | A face from memory (web fonts: the decoded sfnt). The bytes go through a custom `IDWriteFontFileLoader` whose keys are never reused. `load_from_memory` / `load_embedded`: shortcuts. |
 | `with_simulations(s, face, bold, oblique)` | The same face with synthetic bold / slant (CSS `font-synthesis`). |
@@ -118,9 +120,17 @@ asks `ui.styled_face(face, bold, italic)` and gets the same (a toast's title, a 
 `rich_layout`, `rich_text` (the whole text), `rich_index_at` (hit test), `rich_caret`, `rich_range_rects`,
 `rich_link_at`. Example: `examples/markdown`.
 
-**Selecting text outside fields** (`src/ui/selection.odin`). Labels, paragraphs and rich paragraphs built with
-`.Selectable` (`next({flags = {.Selectable}})`, or `style({flags = {.Selectable}})` around a whole document: clickable
-boxes in it stay buttons) share one selection that runs across boxes in build order. Press and drag selects (into the
+**Selecting text outside fields** (`src/ui/selection.odin`, the rule in `src/md/features/text-selection.md`). Every
+text a person reads as content is selectable; a control's label is not. `paragraph` and `rich_paragraph` are
+selectable by default (`selectable = false`: a control's part, as a list row's lit name); `label` is not (most labels
+name controls): a label that shows content takes `next({flags = {.Selectable}})`, or `style({flags = {.Selectable}})`
+around a whole document (clickable boxes in it stay buttons). Selectable boxes share one selection that runs across
+boxes in build order. Selectable text inside a clickable box (a history item) keeps the box's click: a press and a
+release there is its click, and a press that moves more than 4 px first selects instead (the box gets no click).
+Ctrl+C and Ctrl+Insert are the selection's while the last press made it and no field has the keyboard
+(`selection_takes_copy`): a program's command on the chord (`command_pressed`, `chord_pressed`) then does not fire; a
+press elsewhere gives them back to the program. A copy joins boxes by "\n", and by a blank line before a box with
+`.Selection_Block` (a block of a document: Markdown sets it on each block but a list item after another). Press and drag selects (into the
 nearest selectable box when the pointer leaves the text: above a box its start, below it its end), Shift+click
 extends, a double click selects a word, a triple click the box's paragraph (the drag then extends by words /
 paragraphs), Shift+Left / Right / Up / Down / Home / End move the moving end when no field has the keyboard, Ctrl+C

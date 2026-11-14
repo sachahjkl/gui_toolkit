@@ -39,6 +39,22 @@ swap_red_blue :: proc "contextless" (dst, src: [^]u8, n: int) #no_bounds_check {
 	}
 }
 
+// `n` texels of four halves (R first, premultiplied, values in `space`) as an 8-bit frame of that space holds them: RGBA8,
+// each value clamped to [0, 1] (a NaN as 0), the colour sRGB-encoded in a linear space as an sRGB view encodes it.
+@(private)
+half_texels_to_rgba8 :: proc(dst, src: []u8, n: int, space: Blend_Space) #no_bounds_check {
+	h := ([^]u16)(raw_data(src))
+	unit :: #force_inline proc(v: f32) -> f32 { return v == v ? clamp(v, 0, 1) : 0 }
+	for i in 0 ..< n {
+		d := dst[i * 4:]
+		for k in 0 ..< 3 {
+			v := unit(f32(transmute(f16)h[i * 4 + k]))
+			d[k] = space == .Linear ? srgb_byte(v) : u8(v * 255 + 0.5)
+		}
+		d[3] = u8(unit(f32(transmute(f16)h[i * 4 + 3])) * 255 + 0.5)
+	}
+}
+
 // A `size` picture of premultiplied texels of a target in `space` (rows `pitch` bytes apart) as straight sRGB RGBA8:
 // straight_srgb of each. An opaque texel of bytes is its own bytes in an sRGB target, and each of its bytes through one
 // table in a linear one: where 4 in a row are opaque they are made at once.

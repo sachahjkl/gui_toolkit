@@ -164,6 +164,9 @@ most; a newer find, another folder, the toggle off or the dialog closing stops i
 told on `timefmt.local_offset_minutes()`, the toolkit's one reading of the local time's offset. A program's own source answers from where its data comes (ocn: its requests to the server, whose answers already
 come on the interface's thread).
 
+`examples/showcase/files.odin` is a whole source in memory, one table of folders and files that answers each call at
+once: a start for a program's own source.
+
 The paths of any separator are read by `file_path_root`, `file_path_parent`, `file_path_name`, `file_path_join`,
 `file_path_clean`, `file_path_parts`, `file_path_within`; `file_entry_hidden`, `file_entry_look` and `file_look_icon`
 say what an entry is.

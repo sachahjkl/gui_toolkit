@@ -5,6 +5,7 @@
 package prefs_page_test
 
 import "core:fmt"
+import "core:mem/virtual"
 import "core:os"
 import "core:strings"
 import "core:time"
@@ -206,6 +207,28 @@ the_updater_shows_under_its_preference :: proc(t: ^testing.T) {
 	testing.expect(t, found, "said under the line")
 }
 
+// Check now keeps its words on one line on a page of a normal width: its row has a width of its own, not the program's
+// base width (text_size() of a row with no text: a few pixels, which wrapped the words to their widest one).
+@(test)
+the_update_button_keeps_its_words_on_one_line :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	base, _ := os.temp_directory(context.temp_allocator)
+	app.updater = update.updater_start({product = {name = "app"}, folder = "http://127.0.0.1:1/", current = "1.0.0", exe = fmt.tprintf("%s/no-such-app", base)})
+	defer update.updater_stop(app.updater)
+	s := app_start(t, &app, "cache")
+	b := session.find(s, "update_check")
+	testing.expect(t, b != nil, "Check now")
+	if b == nil { return }
+	words := session.find(s, "t", within = b)
+	testing.expect(t, words != nil, "its words")
+	if words == nil { return }
+	wide := words.rect.max.x - words.rect.min.x
+	tall := words.rect.max.y - words.rect.min.y
+	testing.expectf(t, wide + 0.5 >= words.text_dim.x, "as wide as its words on one line: %v < %v", wide, words.text_dim.x)
+	testing.expectf(t, tall < 1.5 * words.text_dim.y, "one line tall: %v for a line of %v", tall, words.text_dim.y)
+}
+
 // A copy a package manager updates says so, and offers nothing.
 @(test)
 a_managed_copy_offers_nothing :: proc(t: ^testing.T) {
@@ -287,6 +310,51 @@ a_setting_from_the_palette :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "How surfaces are drawn.") != nil, "the one chosen")
 	testing.expect(t, session.find_text(s, "Keep a cache of the responses.") == nil, "alone")
 	testing.expect_value(t, app.page.current, "look")
+}
+
+@(private = "file")
+Palette_App :: struct {
+	using app: App,
+	pal:       ui.Command_Palette,
+	commands:  []ui.Command,
+}
+
+@(private = "file")
+PALETTE_KEY := ui.Command{label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}}, scope = .Window}
+
+// (the window command first, as a program reads its keys before it builds its page)
+@(private = "file")
+palette_app_build :: proc(s: ^session.Session) {
+	app := (^Palette_App)(s.user)
+	if ui.command_pressed(PALETTE_KEY) {
+		ui.palette_set(&app.pal, app.commands, nil, {})
+		ui.palette_open(&app.pal)
+	}
+	app_build(s)
+}
+
+// The settings shown, their search field with the keyboard: the window command's key opens the palette, which lists the
+// settings.
+@(test)
+the_palette_opens_from_the_settings :: proc(t: ^testing.T) {
+	app: Palette_App
+	defer app_end(&app.app)
+	defer ui.palette_destroy(&app.pal)
+	app.prefs = config.prefs_make()
+	config.register(&app.prefs, DEFS[:])
+	// (the table lives while the palette is open: an arena of the test's, not the frames' temp memory)
+	arena: virtual.Arena
+	defer virtual.arena_destroy(&arena)
+	app.commands, _ = prefs_page.palette_commands(&app.prefs, {pages = PAGES[:]}, virtual.arena_allocator(&arena))
+	prefs_page.focus_search(&app.page)
+	s := session.start(t, {size = {1200, 700}, build = palette_app_build, user = &app})
+	session.type_text(s, "cache")
+	testing.expect_value(t, ui.line_edit_string(&app.page.query), "cache")
+	session.key(s, .K, {.Ctrl})
+	session.frames(s, 2)
+	testing.expect(t, ui.palette_is_open(&app.pal), "Ctrl+K opens the palette while the settings' field has the keyboard")
+	testing.expect_value(t, ui.line_edit_string(&app.page.query), "cache")
+	testing.expect(t, session.find_text(s, "Max body") != nil, "the palette lists the settings")
 }
 
 // The search the palette put there is for that visit: closed and opened again, the settings show the page the person

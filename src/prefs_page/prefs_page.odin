@@ -9,11 +9,15 @@
 //     control on the right (a switch, a segmented choice or a list, a number, a field with its unit), a reset button
 //     while it is not at its default, a carved line under it. A control the line has no room for goes under the words.
 //     The preferences of an inner group (appearance.text) follow under its title; the advanced ones (Def.advanced) of
-//     the page under "Advanced", folded until a click.
+//     the page under "Advanced", folded until a click. A page of advanced ones alone shows them, under a sentence that
+//     says they are technical (a fold would leave the page empty). A standard group whose title does not say what it is
+//     for has a sentence under it (group_intro).
 //   * While a search is typed: what matches in every page, under each page's title (config.Search).
 //
-// A preference can get a control of the program's own (Page_Options.custom): a font picker. The standard preferences
-// (standard.odin) need none: Page_Options.themes shows appearance.theme as cards (and the user's themes file:
+// A preference can get a control of the program's own (Page_Options.custom). The standard preferences (standard.odin)
+// need none: the family settings are font pickers (ui.font_picker, their defaults the program's faces, named:
+// Standard_Targets.faces; standard_watch applies a choice live),
+// Page_Options.themes shows appearance.theme as cards (and the user's themes file:
 // Page_Options.themes_file), Page_Options.shortcut_prefs shows global shortcuts with what the system said of them. A program shows
 // the page in place of its main view with back_bar and escape_leaves.
 //
@@ -153,6 +157,8 @@ Page :: struct {
 	changed:      proc(user: rawptr, name: string),
 	user:         rawptr,
 	diagnostics:  Diagnostics_View,    // the Diagnostics page's (diagnostics.odin)
+	font_families: ui.Font_Families,   // the families (ui.text_font_source), read at a picker's first opening (shared by the pickers)
+	font_pickers:  [ui.Text_Face]ui.Font_Picker,
 }
 
 @(private)
@@ -174,6 +180,8 @@ destroy :: proc(p: ^Page) {
 	for k in p.unfolded { delete(k) }
 	delete(p.unfolded)
 	diagnostics_destroy(&p.diagnostics)
+	for &fp in p.font_pickers { ui.font_picker_destroy(&fp) }
+	ui.font_families_destroy(&p.font_families)
 	delete(p.file_of)
 	delete(p.file_shown)
 	delete(p.note)
@@ -187,6 +195,7 @@ focus_search :: proc(p: ^Page) { p.focus_search = true }
 editing :: proc(p: ^Page) -> bool {
 	if ui.hotkey_recording() { return true }   // (its Escape gives the recording up)
 	if p.number_typed { return true }
+	for &fp in p.font_pickers { if fp.open { return true } }   // (its Escape closes it)
 	k := ui.focus_key()
 	if k == 0 { return false }
 	for _, f in p.fields { if f.box == k { return true } }
@@ -196,7 +205,8 @@ editing :: proc(p: ^Page) -> bool {
 // Whether Escape leaves the settings shown in place of the program's main view: it was pressed, and no editor of a
 // preference has the keyboard (that Escape is the editor's). A program with its own dialogs open asks only when none is.
 escape_leaves :: proc(p: ^Page) -> bool {
-	return ui.key_press(.Escape) && !editing(p)
+	// (editing first: an editor's Escape is left for it, not taken here)
+	return !editing(p) && ui.key_press(.Escape)
 }
 
 // A bar above the page shown in place of the main view: a back arrow (Lucide's in Page_Options.icon_font, else the word),
@@ -412,8 +422,15 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 							for name in names {
 								if config.entry(prefs, config.ref_of(prefs, name)).def.advanced { append(&advanced, name) } else { append(&basic, name) }
 							}
-							sections(p, prefs, o, pg.category, basic[:], em)
-							if len(advanced) > 0 { advanced_part(p, prefs, o, pg.category, advanced[:], em) }
+							if intro := group_intro(pg.category); intro != "" { page_note(i18n.tr(intro), "prefs_intro", em) }
+							if len(basic) == 0 && len(advanced) > 0 {
+								// (a page of technical settings alone: a fold would leave it empty, so they show, said as such)
+								page_note(i18n.tr("These are technical settings: their defaults are right for most people."), "prefs_technical", em)
+								sections(p, prefs, o, pg.category, advanced[:], em)
+							} else {
+								sections(p, prefs, o, pg.category, basic[:], em)
+								if len(advanced) > 0 { advanced_part(p, prefs, o, pg.category, advanced[:], em) }
+							}
 							if o.page_foot != nil { o.page_foot(o.user, pg.category, em) }
 						}
 					}
@@ -465,7 +482,10 @@ sections :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, category: stri
 		first := true
 		for name in names {
 			if group_of(name) != g { continue }
-			if first && g != category { section_heading(config.group_title(prefs, g), g, em) }
+			if first && g != category {
+				section_heading(config.group_title(prefs, g), g, em)
+				if intro := group_intro(g); intro != "" { page_note(i18n.tr(intro), fmt.tprintf("intro_%s", g), em) }
+			}
 			first = false
 			setting(p, prefs, o, name, em)
 		}
@@ -487,7 +507,18 @@ section_heading :: proc(title, id: string, em: f32) {
 	ui.spacer(ui.px(em * 0.2))
 }
 
-// The page's advanced preferences, folded under "Advanced" until a click (the page keeps it open).
+// A sentence in the weak text above a page's or a section's settings. `id`: its key, without "###".
+@(private = "file")
+page_note :: proc(text, id: string, em: f32) {
+	if ui.tags("weak") {
+		ui.next({width = ui.fill(), font_size = math.round(em * 0.9), text_pad = 0})
+		ui.paragraph(fmt.tprintf("%s###%s", text, id))
+	}
+	ui.spacer(ui.px(em * 0.5))
+}
+
+// The page's advanced preferences, folded under "Advanced" until a click (the page keeps it open). Only on a page that
+// has ordinary ones too: a page of advanced ones alone shows them, under a sentence that says they are technical.
 @(private = "file")
 advanced_part :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, category: string, names: []string, em: f32) {
 	open := p.unfolded[category]
@@ -889,6 +920,7 @@ control_width :: proc(o: Page_Options, e: ^config.Entry, em: f32) -> (w: f32, sh
 	case .Bool: return em * SWITCH_EM, share
 	case .String:
 		if is_hotkey(o, name) { return em * LIST_EM, share }
+		if _, ok := font_setting_of(name); ok { return em * FIELD_EM, share }
 		labels, values := choices_of(o, e)
 		if len(values) == 0 { return em * FIELD_EM, share }
 		if len(values) <= SEGMENTS_MAX { return ui.segmented_width(labels), WIDE_SHARE }
@@ -917,6 +949,10 @@ control :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, 
 			hk, _ := platform.hotkey_parse(e.value.s)
 			ui.next({width = width, height = h})
 			if ui.hotkey_field("###keys", &hk) { apply(p, prefs, o, name, platform.hotkey_text(hk)) }
+			return
+		}
+		if fs, ok := font_setting_of(name); ok {
+			font_control(p, prefs, o, e, fs, width, h)
 			return
 		}
 		labels, values := choices_of(o, e)
@@ -956,6 +992,34 @@ control_under :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config
 		return
 	}
 	if o.custom != nil && slice.contains(o.custom_names, e.def.name) { o.custom(o.user, e.def.name, em) }
+}
+
+// The family setting `name` is (ok false: it is none of them).
+@(private = "file")
+font_setting_of :: proc(name: string) -> (fs: ui.Text_Face, ok: bool) {
+	switch name {
+	case UI_FONT_PREF:    return .Interface, true
+	case MONO_FONT_PREF:  return .Mono, true
+	case PROSE_FONT_PREF: return .Prose, true
+	}
+	return
+}
+
+// A family setting: a font picker (ui.font_picker) that shows the family in use, its default named: the program's own
+// face (ui.program_text_face), whatever was chosen before. Its list is read at its first opening, on a chore, from the
+// program's source (ui.text_font_source: Standard_Targets.font_source); a choice is set at once, and standard_watch
+// applies it.
+@(private = "file")
+font_control :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, e: ^config.Entry, fs: ui.Text_Face, width, height: ui.Size) {
+	fam := &p.font_families
+	// (taken at each build, a copy: a source given after the page's first build is the one read)
+	fam.source = ui.text_font_source(ui.current_state())
+	value := strings.trim_space(e.value.s)
+	def := ui.program_text_face(ui.current_state(), fs)
+	ui.next({width = width, height = height})
+	if v, ok := ui.font_picker("###font", &p.font_pickers[fs], fam, value, {default_face = def, monospace = fs == .Mono, name = config.title_of(e.def)}).?; ok {
+		apply(p, prefs, o, e.def.name, v)
+	}
 }
 
 // Under the themes' cards: that one can make one's own, and the file (a click makes it when needed and opens it).
@@ -1222,8 +1286,10 @@ updater_under :: proc(o: Page_Options, em: f32) {
 	}
 	if st.phase == .Managed { return }
 	ui.spacer(ui.px(em * 0.4))
-	ui.next({height = ui.children_sum()})
-	if ui.row() {
+	// (a width of its own: a row that takes the program's base width, text_size() of no text, is a few pixels wide,
+	// and the buttons in it wrap to their widest word though the line has room)
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
+	if ui.row(.Center, id = "###update_buttons") {
 		busy := st.phase == .Checking || st.phase == .Downloading || st.phase == .Installed
 		if ui.button("update_check", i18n.tr("Check now"), lucide.REFRESH_CW, {disabled = busy, icon_font = ui.lucide_icons(), intent = .Primary}).clicked && !busy {
 			update.check_now(o.updater)

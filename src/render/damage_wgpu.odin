@@ -131,14 +131,16 @@ wgpu_damage_side_swap :: proc(r: ^Renderer) {
 	g.damage_ready, g.damage_side_ready = g.damage_side_ready, g.damage_ready
 }
 
-// Reads a whole BGRA8 texture back to CPU memory, tightly packed. nil on failure. (Verify only; the hot path never reads back.)
+// Reads a whole texture of the frame's size and format (the offscreen frame, the kept target) back to CPU memory, tightly
+// packed: frame_texel_bytes a texel, B8G8R8A8 or four halves. nil on failure. (Tests and verify; the hot path never reads back.)
 @(private)
-wgpu_damage_readback :: proc(r: ^Renderer, tex: wgpu.Texture) -> []u8 {
+wgpu_read_texture :: proc(r: ^Renderer, tex: wgpu.Texture, allocator := context.allocator) -> []u8 {
 	if tex == nil { return nil }
 	g := &r.wg
 	w, h := r.size.x, r.size.y
-	row := align_up(w * 4, COPY_ROW_ALIGN_BYTES)
-	buf := wgpu.DeviceCreateBuffer(g.device, &{label = "verify readback", usage = {.CopyDst, .MapRead}, size = u64(row * h)})
+	bpp := frame_texel_bytes(r)
+	row := align_up(w * bpp, COPY_ROW_ALIGN_BYTES)
+	buf := wgpu.DeviceCreateBuffer(g.device, &{label = "frame readback", usage = {.CopyDst, .MapRead}, size = u64(row * h)})
 	if buf == nil { return nil }
 	defer wgpu.BufferRelease(buf)
 	enc := wgpu.DeviceCreateCommandEncoder(g.device)
@@ -161,8 +163,8 @@ wgpu_damage_readback :: proc(r: ^Renderer, tex: wgpu.Texture) -> []u8 {
 	for tries := 0; !done && !r.lost && tries < READBACK_WAIT_MAX_TRIES; tries += 1 { wgpu_poll(r, true, events = true) }
 	if !ok { return nil }
 	src := wgpu.BufferGetConstMappedRange(buf, 0, uint(row * h))
-	out := make([]u8, w * h * 4)
-	for y in 0 ..< h { copy(out[y * w * 4:], src[y * row:][:w * 4]) }
+	out := make([]u8, w * h * bpp, allocator)
+	for y in 0 ..< h { copy(out[y * w * bpp:], src[y * row:][:w * bpp]) }
 	wgpu.BufferUnmap(buf)
 	return out
 }

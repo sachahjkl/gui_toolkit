@@ -42,7 +42,8 @@ empty_state :: proc(id: string, e: Empty_State) -> (clicked: int) {
 			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###empty_icon", e.icon))
 			spacer(px(em * 0.6))
 		}
-		next({width = fill(), height = px(em * 1.8), font_size = em * 1.1, text_align = .Center})
+		// (content: the file browser says a file's name there, an error its message)
+		next({width = fill(), height = px(em * 1.8), font_size = em * 1.1, text_align = .Center, flags = {.Selectable}})
 		label(fmt.tprintf("%s###empty_title", text_shown(e.title)))
 		if e.note != "" {
 			if tags("weak") {

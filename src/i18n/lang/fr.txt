@@ -427,6 +427,9 @@ fr Recherche
 en No setting matches.
 fr Aucun réglage ne correspond.
 
+en These are technical settings: their defaults are right for most people.
+fr Ce sont des réglages techniques : leurs valeurs par défaut conviennent à la plupart des gens.
+
 en Advanced
 fr Avancé
 
@@ -667,20 +670,20 @@ fr Texte et polices
 en Interface font
 fr Police de l'interface
 
-en The family of the interface's text, as the system names it ("Inter"). Empty: the program's.
-fr La famille du texte de l'interface, telle que le système la nomme (« Inter »). Vide : celle du programme.
+en The family of the interface's text. Default: the program's.
+fr La famille du texte de l'interface. Par défaut : celle du programme.
 
 en Monospace font
 fr Police à chasse fixe
 
-en The family of code and of what lines up in columns. Empty: the program's.
-fr La famille du code et de ce qui s'aligne en colonnes. Vide : celle du programme.
+en The family of code and of what lines up in columns. Default: the program's.
+fr La famille du code et de ce qui s'aligne en colonnes. Par défaut : celle du programme.
 
 en Reading font
 fr Police de lecture
 
-en The family of long text to read (documents, messages). Empty: the program's.
-fr La famille des longs textes à lire (documents, messages). Vide : celle du programme.
+en The family of long text to read (documents, messages). Default: the program's.
+fr La famille des longs textes à lire (documents, messages). Par défaut : celle du programme.
 
 en Emoji font
 fr Police des emoji
@@ -867,6 +870,12 @@ fr Masquer les barres de défilement
 
 en A scroll bar shows only while its view moves, while the pointer is over the view, or while it is held.
 fr Une barre de défilement ne s'affiche que pendant que sa vue défile, que le pointeur est sur la vue ou qu'on la tient.
+
+en Scroll bars over the content
+fr Barres de défilement par-dessus le contenu
+
+en A scroll bar is drawn over the edge of what its view shows, which keeps no room for it.
+fr Une barre de défilement est dessinée par-dessus le bord de ce que montre sa vue, qui ne lui garde pas de place.
 
 en Glide curve
 fr Courbe du glissement
@@ -1104,6 +1113,15 @@ fr Flottants 16 bits
 
 en 8 bits
 fr 8 bits
+
+en How held keys and buttons repeat, what an undo takes back, and how far a step of a number goes.
+fr Comment les touches et les boutons maintenus se répètent, ce qu'une annulation défait, et de combien un nombre avance à chaque pas.
+
+en How long the interface waits before a tooltip or a submenu shows, how tall a menu's items are, and how long a change of theme fades.
+fr Combien de temps l'interface attend avant d'afficher une info-bulle ou un sous-menu, la hauteur des éléments d'un menu, et la durée du fondu d'un changement de thème.
+
+en How the interface's pictures are made and sent to the screen: the delay from a key to the screen, the work of the graphics card.
+fr Comment les images de l'interface sont produites et envoyées à l'écran : le délai entre une touche et l'écran, le travail de la carte graphique.
 
 en The file could not be written.
 fr Le fichier n'a pas pu être écrit.
@@ -1788,6 +1806,27 @@ fr Le fichier n'a pas pu être lu : %s.
 
 en The folder could not be made: %s.
 fr Le dossier n'a pas pu être créé : %s.
+
+en Default
+fr Par défaut
+
+en %s (default)
+fr %s (par défaut)
+
+en Font
+fr Police
+
+en Reading the fonts…
+fr Lecture des polices…
+
+en Search fonts
+fr Chercher une police
+
+en Other families
+fr Autres familles
+
+en monospace
+fr chasse fixe
 
 en Press the keys…
 fr Appuyez sur les touches…

@@ -47,6 +47,7 @@ Text_Edit :: struct {
 	group_ms:   f64,
 	sb_drag:    Text_Scrollbar,   // the scrollbar held
 	sb_part:    Scrollbar_Part,   // and its part held
+	bar_room:   Vec2,             // the room its text keeps for its bars, as a scroll box's layout does (edit_bar_room)
 	sb_grab:    f32,
 	ext_key:    u64,       // content size cache (measuring every line each frame is the editor's main cost)
 	ext:        Vec2,
@@ -94,30 +95,42 @@ Editor_Bars :: struct {
 	has_v, has_h: bool,
 }
 
+// `corner`: the box's drawn radius, which the bars keep clear of; `edge`: its border, which they stay inside; `room`:
+// what the text keeps for them (edit_bar_room).
 @(private="file")
-editor_bars :: proc(r: Rect, gutter, pad, inset: f32, content: Vec2, scroll: Vec2, wrapped: bool) -> (e: Editor_Bars) {
+editor_bars :: proc(r: Rect, gutter, pad, corner, edge: f32, room: Vec2, content: Vec2, scroll: Vec2, wrapped: bool) -> (e: Editor_Bars) {
 	s := gs()
-	view := Vec2{(r.max.x - r.min.x) - gutter - 2 * pad, (r.max.y - r.min.y) - 2 * pad}
+	view := editor_view(r, gutter, pad, room)
 	e.has_v = content.y > view.y + SCROLLBAR_FIT_SLACK_PX
 	e.has_h = !wrapped && content.x + end_slack() > view.x + SCROLLBAR_FIT_SLACK_PX   // (wrapped text never scrolls sideways: its width is the last layout's, which may be a pixel wider than this one)
 	w := scrollbar_thickness(s)
+	inset := max(corner, edge)
 	if e.has_v {
-		bar := Rect{{r.max.x - w, r.min.y + inset}, {r.max.x, r.max.y - (e.has_h ? w : inset)}}
+		bar := Rect{{r.max.x - edge - w, r.min.y + inset}, {r.max.x - edge, r.max.y - (e.has_h ? edge + w : inset)}}
 		e.v = scrollbar_layout(s, bar, .Y, view.y, content.y, clamp(scroll.y / max(1, content.y - view.y), 0, 1))
 	}
 	if e.has_h {
-		bar := Rect{{r.min.x + gutter + (gutter > 0 ? 0 : inset), r.max.y - w}, {r.max.x - (e.has_v ? w : inset), r.max.y}}
+		bar := Rect{{r.min.x + gutter + (gutter > 0 ? 0 : inset), r.max.y - edge - w}, {r.max.x - (e.has_v ? edge + w : inset), r.max.y - edge}}
 		e.h = scrollbar_layout(s, bar, .X, view.x, content.x + end_slack(), clamp(scroll.x / max(1, content.x + end_slack() - view.x), 0, 1))
 	}
 	return
 }
 
-// The bar of an editor that takes a press at `p`: the one shown, a little wider toward the text (.None: none).
+// What an editor shows of its text: its box less the line numbers, its padding and the room of its bars.
 @(private="file")
-editor_bar_under :: proc(bars: Editor_Bars, p: Vec2) -> Text_Scrollbar {
-	toward, away := scrollbar_grab()
-	if bars.has_v && contains(Rect{{bars.v.bar.min.x - toward, bars.v.bar.min.y}, {bars.v.bar.max.x + away, bars.v.bar.max.y}}, p) { return .Vertical }
-	if bars.has_h && contains(Rect{{bars.h.bar.min.x, bars.h.bar.min.y - toward}, {bars.h.bar.max.x, bars.h.bar.max.y + away}}, p) { return .Horizontal }
+editor_view :: proc(r: Rect, gutter, pad: f32, room: Vec2) -> Vec2 {
+	return {(r.max.x - r.min.x) - gutter - 2 * pad - room.x, (r.max.y - r.min.y) - 2 * pad - room.y}
+}
+
+// The bar of an editor that takes a press at `p`: the one shown, a little wider toward the text where it is over the text
+// (no `room` kept for it) (.None: none).
+@(private="file")
+editor_bar_under :: proc(bars: Editor_Bars, room: Vec2, p: Vec2) -> Text_Scrollbar {
+	grab_in, away := scrollbar_grab()
+	toward_v := room.x > 0 ? 0 : grab_in
+	toward_h := room.y > 0 ? 0 : grab_in
+	if bars.has_v && contains(Rect{{bars.v.bar.min.x - toward_v, bars.v.bar.min.y}, {bars.v.bar.max.x + away, bars.v.bar.max.y}}, p) { return .Vertical }
+	if bars.has_h && contains(Rect{{bars.h.bar.min.x, bars.h.bar.min.y - toward_h}, {bars.h.bar.max.x, bars.h.bar.max.y + away}}, p) { return .Horizontal }
 	return .None
 }
 
@@ -280,6 +293,7 @@ Text_Edit_Draw :: struct {
 	selection, caret, weak, gutter_bg, gutter_line: Color,
 	mono:        font.Font_Id,
 	bars:        Editor_Bars,
+	room:        Vec2,                              // what the text keeps for its bars: nothing of it is drawn there
 	bar_looks:   [Text_Scrollbar]Scrollbar_Look,   // the state each bar is drawn in
 	highlight:   ^Text_Highlight,   // nil: plain text in b.text_color
 	error_color: Color,
@@ -322,7 +336,7 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	lo, hi := min(d.cursor, d.mark), max(d.cursor, d.mark)
 	first := max(0, int(d.scroll.y / lh) - 1)
 	last := min(len(d.lines) - 1, int((d.scroll.y + (r.max.y - r.min.y)) / lh) + 1)
-	draw.push_clip(dc, {{r.min.x + d.gutter, r.min.y}, r.max})
+	draw.push_clip(dc, {{r.min.x + d.gutter, r.min.y}, r.max - d.room})
 	for li in first ..= last {
 		l := d.lines[li]
 		y := top + f32(li) * lh
@@ -461,17 +475,19 @@ text_edit :: proc(id: string, a: ^Text_Edit, o := Text_Edit_Options{}) -> (res: 
 		res.signal = signal(b)
 		res.hover_line = -1
 		pad := b.text_pad
-		mono := s.mono_font != 0 ? s.mono_font : b.font
+		mono := state_text_face(s, .Mono)
+		if mono == 0 { mono = b.font }
 		m := font.metrics(s.fonts, b.font, b.font_size)
 		e := Edit_Build{s = s, a = a, b = b, res = &res, now = s.time_ms, pad = pad, lh = math.round(m.line_height * TEXT_EDIT_LINE_HEIGHT)}
 		if o.line_numbers {
 			digits := len(fmt_int(text_edit_line_count(a)))
 			e.gutter = math.round(font.text_width(s.fonts, mono, math.round(b.font_size * TEXT_EDIT_GUTTER_FONT_SCALE), "0") * f32(max(digits, 2)) + pad * 1.8)
 		}
+		// the room kept for its bars: the last build's (edit_bar_room decides it again below)
+		e.room = s.scrollbar_overlay ? Vec2{} : a.bar_room
+		e.wrap = o.wrap
 		// the width lines wrap at: the box's from the last layout (none yet in its first frame: one more frame)
-		if o.wrap {
-			if b.size.x > 0 { e.wrap_w = max(TEXT_VIEW_MIN_PX * s.scale, b.size.x - e.gutter - 2 * pad) } else { wake_within(s, 1) }
-		}
+		edit_wrap_width(&e)
 		e.lines = edit_lines(&e)
 		a.built = s.build_index
 		before_hash := hash_bytes(a.buf[:])
@@ -498,13 +514,14 @@ text_edit :: proc(id: string, a: ^Text_Edit, o := Text_Edit_Options{}) -> (res: 
 		if cursor_moved && !res.changed { a.group = .None }     // (what is typed after a move of the caret is another step)
 		if res.focused { caret_wake(s, e.now - a.edited_ms) }
 		if res.changed || cursor_moved { e.lines = edit_lines(&e) }
+		edit_bar_room(&e)
 
 		// height: as tall as the lines, within the limits (the next layout uses it)
 		if o.auto_height {
 			n := len(e.lines)
 			n = max(n, max(o.min_lines, 1))
 			if o.max_lines > 0 { n = min(n, o.max_lines) }
-			b.pref[.Y] = px(f32(n) * e.lh + 2 * pad)
+			b.pref[.Y] = px(f32(n) * e.lh + 2 * pad + e.room.y)   // (and the room of a horizontal bar: no line under it)
 		}
 		content := edit_follow_caret(&e, o.auto_height, cursor_moved)
 		edit_fill_draw(&e, content, o.placeholder, mono, o.highlight)
@@ -522,10 +539,46 @@ Edit_Build :: struct {
 	res:    ^Edit_Result,
 	now:    f64,
 	pad, lh, gutter: f32,
+	wrap:   bool,              // its lines wrap (Text_Edit_Options.wrap)
 	wrap_w: f32,               // the width lines wrap at (0: they do not)
+	room:   Vec2,              // what its text keeps for its bars (edit_bar_room)
 	lines:  []Visual_Line,
 	moved:  bool,              // the caret was placed, even where it was
 	vertical: bool,            // Up, Down or a page moved it: the column stays
+}
+
+// The width its lines wrap at: the box's from the last layout less the line numbers, the padding and the vertical bar's
+// room (none yet in its first frame: one more frame).
+@(private="file")
+edit_wrap_width :: proc(e: ^Edit_Build) {
+	if !e.wrap { return }
+	s, b := e.s, e.b
+	if b.size.x > 0 { e.wrap_w = max(TEXT_VIEW_MIN_PX * s.scale, b.size.x - e.gutter - 2 * e.pad - e.room.x) } else { wake_within(s, 1) }
+}
+
+// The room its text keeps for its bars, as a scroll box's layout keeps it (scrollbar_rooms_update, the same rule and the
+// same hysteresis): measured with the room it had, a bar's room is taken where the text overflows and given back where it
+// fits beside the bar. When the vertical room changes, wrapped lines are wrapped again at once: no line is drawn under
+// the bar, not even for a frame.
+@(private="file")
+edit_bar_room :: proc(e: ^Edit_Build) {
+	s, a, b := e.s, e.a, e.b
+	room: Vec2
+	if !s.scrollbar_overlay && b.size.x > 0 {
+		content := content_extent(a, text_edit_string(a), b, e.lh, e.lines, e.wrap_w)
+		view := editor_view(b.rect, e.gutter, e.pad, e.room)
+		w := scrollbar_thickness(s)
+		if content.y > view.y + SCROLLBAR_FIT_SLACK_PX { room.x = w }
+		if e.wrap_w <= 0 && content.x + end_slack() > view.x + SCROLLBAR_FIT_SLACK_PX { room.y = w }
+	}
+	a.bar_room = room
+	if room == e.room { return }
+	x_changed := room.x != e.room.x
+	e.room = room
+	if x_changed && e.wrap {
+		edit_wrap_width(e)
+		e.lines = edit_lines(e)
+	}
 }
 
 @(private="file")
@@ -574,13 +627,13 @@ edit_pointer :: proc(e: ^Edit_Build) {
 	gutter, pad, lh, wrap_w := e.gutter, e.pad, e.lh, e.wrap_w
 	text := text_edit_string(a)
 	content := content_extent(a, text, b, lh, e.lines, wrap_w)
-	bars := editor_bars(b.rect, gutter, pad, scrollbar_inset(s, b), content, a.scroll, wrap_w > 0)
-	view := Vec2{(b.rect.max.x - b.rect.min.x) - gutter - 2 * pad, (b.rect.max.y - b.rect.min.y) - 2 * pad}
+	bars := editor_bars(b.rect, gutter, pad, scrollbar_inset(s, b), border_inset(b), e.room, content, a.scroll, wrap_w > 0)
+	view := editor_view(b.rect, gutter, pad, e.room)
 	limit := Vec2{max(content.x + end_slack() - view.x, 0), max(content.y - view.y, 0)}
 	mp := b.rect.min + res.mouse
 	if !res.dragging && !res.pointer_pressed { a.sb_drag, a.sb_part = .None, .None }
 	if res.pointer_pressed {
-		a.sb_drag, a.sb_part = editor_bar_under(bars, mp), .None
+		a.sb_drag, a.sb_part = editor_bar_under(bars, e.room, mp), .None
 		if a.sb_drag != .None {
 			axis := a.sb_drag == .Vertical ? Axis.Y : Axis.X
 			parts := a.sb_drag == .Vertical ? bars.v : bars.h
@@ -610,7 +663,15 @@ edit_pointer :: proc(e: ^Edit_Build) {
 		}
 	}
 	if a.sb_drag == .None && (res.pointer_pressed || res.dragging) {
-		idx, up := edit_point_to_index(e, res.mouse)
+		at := res.mouse
+		if !res.pointer_pressed {
+			// a selecting drag: near or past an edge the text scrolls (then the views around it), and the moving end
+			// stays on the lines shown, so it reaches each line as it scrolls in
+			text_view := Rect{b.rect.min + {gutter + pad, pad}, b.rect.min + {gutter + pad, pad} + view}
+			_ = drag_autoscroll_own(b.key, text_view, &a.scroll, limit)
+			at = drag_point_in(b, text_view, mp) - b.rect.min
+		}
+		idx, up := edit_point_to_index(e, at)
 		if res.pointer_pressed { a.word.on = false }
 		if a.word.on {
 			a.mark, a.cursor = word_drag_to(a.word, text, idx)
@@ -801,9 +862,9 @@ edit_follow_caret :: proc(e: ^Edit_Build, auto_height, cursor_moved: bool) -> Ve
 	text := text_edit_string(a)
 	cur_line := visual_line_of(lines, a.cursor, a.upstream)
 	if !(lines[cur_line].soft && lines[cur_line].end == a.cursor) { a.upstream = false }   // only the end of a wrapped line has two places
-	view_w := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - gutter - 2 * pad)
-	view_h := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.y - b.rect.min.y) - 2 * pad)
-	if auto_height { view_h = max(TEXT_VIEW_MIN_PX * s.scale, b.pref[.Y].value - 2 * pad) }   // the height this build asks for, not last frame's
+	view_w := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.x - b.rect.min.x) - gutter - 2 * pad - e.room.x)
+	view_h := max(TEXT_VIEW_MIN_PX * s.scale, (b.rect.max.y - b.rect.min.y) - 2 * pad - e.room.y)
+	if auto_height { view_h = max(TEXT_VIEW_MIN_PX * s.scale, b.pref[.Y].value - 2 * pad - e.room.y) }   // the height this build asks for, not last frame's
 	ext := content_extent(a, text, b, lh, lines, wrap_w)
 	cx := caret_x_on(text, lines[cur_line], b, a.cursor)
 	cy := f32(cur_line) * lh
@@ -852,10 +913,11 @@ edit_fill_draw :: proc(e: ^Edit_Build, content: Vec2, placeholder: string, mono:
 		li := int((res.mouse.y - pad + a.scroll.y) / lh)
 		if li >= 0 && li < len(lines) { res.hover_line = lines[li].para }
 	}
-	d.bars = editor_bars(b.rect, gutter, pad, scrollbar_inset(s, b), content, a.scroll, e.wrap_w > 0)
+	d.bars = editor_bars(b.rect, gutter, pad, scrollbar_inset(s, b), border_inset(b), e.room, content, a.scroll, e.wrap_w > 0)
+	d.room = e.room
 	// each bar's state: lit under the pointer or held (also with the pointer gone off it), its part under the pointer
 	mpos := b.rect.min + res.mouse
-	under := res.hovering ? editor_bar_under(d.bars, mpos) : Text_Scrollbar.None
+	under := res.hovering ? editor_bar_under(d.bars, e.room, mpos) : Text_Scrollbar.None
 	for which in ([2]Text_Scrollbar{.Vertical, .Horizontal}) {
 		held := a.sb_drag == which
 		hot := under == which && (a.sb_drag == .None || held)

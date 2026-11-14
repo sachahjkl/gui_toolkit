@@ -225,6 +225,7 @@ open :: proc(o: Open_Options) -> ^App {
 	set_palette(app, palette_index(DEFAULT_PALETTE))
 	reset_values(app)
 	data_init(app)
+	files_init(app)
 	app.tree_open[0], app.tree_open[1], app.tree_open[6], app.tree_open[10] = true, true, true, true
 	app.tree_sel = 2
 	settings_load(app)
@@ -273,6 +274,7 @@ open :: proc(o: Open_Options) -> ^App {
 close :: proc(app: ^App) {
 	devtools.stop(app.devtools)
 	ui.destroy(&app.ui_state)
+	files_destroy(app)
 	ui.theme_destroy(&app.theme)
 	draw.destroy(&app.dc)
 	render.destroy(&app.r)

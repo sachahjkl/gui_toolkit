@@ -143,8 +143,10 @@ is `paint_rect` with a radius per corner).
 
 A box that declares its sides (`.Draw_Side_Top`, `.Draw_Side_Bottom`, `.Draw_Side_Left`, `.Draw_Side_Right`) has those
 lines alone: no finish draws its rim (the lit line round a raised face) on it. Nor on a box flush with an edge of the
-window, a bar. `ui.box_rimmed(s, b)` says whether a box gets the rim; `ui.paint_rect_corners(..., rim = false)` paints a
-face without it.
+window, a bar. Nor on a box inside a face that draws (a background, a border, a custom draw: a frame, a card, a well)
+when it meets that face's inner top edge or runs across its whole inner width: a header, a row, a stripe. The rim is for
+a face that stands on its own: a button, a card, a chip, a dialog. `ui.box_rimmed(s, b)` says whether a box gets the rim;
+`ui.paint_rect_corners(..., rim = false)` paints a face without it.
 
 ```odin
 ui.next({width = ui.fill(), height = ui.px(em * 2), radius = em * 0.45})

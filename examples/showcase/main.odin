@@ -8,6 +8,7 @@
 //   build/showcase --page=scrolling --advanced        the settings scene: the page shown, its Advanced part unfolded
 //   build/showcase --scene=views --views=floating     the views scene: docked (panels), floating (and a floating
 //                                                     window), dialog (and a dialog)
+//   build/showcase --scene=files                      the file browser over the page, on a demo source (files.odin)
 //   build/showcase --headless                         no window of the system: what tk screenshots runs
 //   build/showcase --size=1280x800                    the window's size
 // tk screenshots makes docs/screenshots/showcase_*.webp and site/img/showcase_*.webp from it (tools/tk/shots.odin).
@@ -28,13 +29,13 @@ import "../../src/render"
 import "../../src/ui"
 import "../../src/ascii"
 
-Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views }
+Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views, Files }
 
 // The scenes' names on the command line (--scene=), and their titles in the sidebar.
 SCENE_NAMES := [Scene]string{
 	.Intents = "intents", .Controls = "controls", .Palette = "palette", .Menus = "menus", .Dialog = "dialog",
 	.Confirm = "confirm", .Prompt = "prompt", .Settings = "settings", .Graph = "graph", .Toasts = "toasts", .Themes = "themes",
-	.Toolbar = "toolbar", .Views = "views",
+	.Toolbar = "toolbar", .Views = "views", .Files = "files",
 }
 
 WINDOW_SIZE :: [2]int{1280, 800}
@@ -79,6 +80,9 @@ App :: struct {
 	terminal_count: int,
 	views_hue, views_sat, views_val: f32,
 	views_keep_meta: bool,
+
+	// the file browser's scene (files.odin): its demo source, read by the dialog while it is open
+	files:          ui.File_Source,
 
 	// the overlays: views of the window's own Views, shown as dialogs (in memory only: the showcase keeps no file)
 	palette:      ui.Command_Palette,
@@ -154,6 +158,7 @@ open :: proc(o: Open_Options) -> ^App {
 	h.params = params
 	h.before_input = proc(h: ^host.Host) { app := (^App)(h.user); devtools.service(app.devtools, &h.state, &app.shared.r) }
 
+	app.files = demo_files()
 	export_register(app)
 	views_register(app)
 	themes_make(app)

@@ -2,8 +2,6 @@
 package font
 
 import "base:runtime"
-import "core:slice"
-import "core:strings"
 
 // The DirectWrite backend: IDWriteTextAnalyzer shapes (GetGlyphs / GetGlyphPlacements) and analyses (scripts, bidi,
 // line breaks with Windows' dictionaries), IDWriteFontFace answers coverage, metrics and outlines. And the system's
@@ -182,9 +180,9 @@ dwrite_fallback :: proc(s: ^State, first: Font_Id, w: []u16, a, b: int, faces: [
 }
 
 @(private)
-dwrite_families :: proc(s: ^State, allocator: runtime.Allocator) -> []string {
+dwrite_families :: proc(s: ^State, allocator: runtime.Allocator) -> []Family {
 	if s.system == nil { return nil }
-	out := make([dynamic]string, 0, DWRITE_FAMILIES_HINT, allocator)
+	out := make([dynamic]Family, 0, DWRITE_FAMILIES_HINT, allocator)
 	n := s.system->GetFontFamilyCount()
 	for i in 0 ..< n {
 		fam: ^IDWriteFontFamily
@@ -192,21 +190,24 @@ dwrite_families :: proc(s: ^State, allocator: runtime.Allocator) -> []string {
 		names: ^IDWriteLocalizedStrings
 		if fam->GetFamilyNames(&names) >= 0 && names != nil {
 			name := localized_string(names, allocator)
-			if name != "" { append(&out, name) } else { delete(name, allocator) }
+			if name != "" { append(&out, Family{name = name, monospace = dwrite_family_monospace(fam)}) } else { delete(name, allocator) }
 			com_release(names)
 		}
 		com_release(fam)
 	}
-	slice.sort_by(out[:], proc(a, b: string) -> bool { return strings.compare(a, b) < 0 })
-	// a family a font set lists twice (rare): once
-	k := 0
-	for i in 0 ..< len(out) {
-		if k > 0 && out[k - 1] == out[i] { delete(out[i], allocator); continue }
-		out[k] = out[i]
-		k += 1
-	}
-	resize(&out, k)
-	return out[:]
+	return families_sorted(&out, allocator)
+}
+
+// Whether the family's regular face says it is monospace (IDWriteFont1, Windows 8+; before it: none is).
+@(private = "file")
+dwrite_family_monospace :: proc(fam: ^IDWriteFontFamily) -> bool {
+	dwf: ^IDWriteFont
+	if fam->GetFirstMatchingFont(DWRITE_FONT_WEIGHT(FONT_WEIGHT_NORMAL), DWRITE_FONT_STRETCH(FONT_STRETCH_NORMAL), dw_style(.Normal), &dwf) < 0 || dwf == nil { return false }
+	defer com_release(dwf)
+	f1 := com_query(dwf, &IID_IDWriteFont1, IDWriteFont1)
+	if f1 == nil { return false }
+	defer com_release(f1)
+	return bool(f1->IsMonospacedFont())
 }
 
 // GetGlyphs + GetGlyphPlacements of the request (one face, one script, one direction), appended from `pen`, glyphs in

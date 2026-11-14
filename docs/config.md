@@ -30,7 +30,8 @@ that its name, title and description do not say ("colours", "dark" for a theme).
 
 ### Advanced and hidden
 
-- `advanced`: a technical setting. A settings page shows it, folded under an "Advanced" part of its group. A search finds
+- `advanced`: a technical setting. A settings page shows it, folded under an "Advanced" part of its group (with no fold
+  on a page whose settings are all advanced, under a sentence that says they are technical). A search finds
   it as any other, and nothing blocks a change to it.
 - `hidden`: the program's state, not a setting (a layout, a last choice). It is kept, read and saved as the others, but no
   settings page shows it, `groups_of` does not count it, and the JSON, TOML and INI exports leave it out.

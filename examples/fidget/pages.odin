@@ -361,6 +361,8 @@ page_inputs :: proc(app: ^App) {
 						ui.label(fmt.tprintf("%d of %d", matches, len(words)))
 					}
 				}
+				// (last of its column: the cards above keep their places, where the tests find them)
+				if ui.card("Files", ICON_FOLDER_OPEN) { files_card(app, em) }
 			}
 			ui.spacer(ui.px(em))
 			if half("###right") {
