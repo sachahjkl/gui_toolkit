@@ -557,6 +557,7 @@ view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list
 			on := r == shown
 			title := text_shown(view_title_shown(r))
 			tb := tab_box(fmt.tprintf("###view_tab_%s", r.modal_name), on)
+			if on { strip_reveal(tb) }   // (a tab its "+" opened at the end, or one a command showed, comes into view)
 			if parent(tb) {
 				if !on { push_tags("weak") }
 				next({width = text_size(em * DOCK_TAB_PAD_EM * 2), height = pct(1), text_pad = em * DOCK_TAB_PAD_EM, text_align = .Center})

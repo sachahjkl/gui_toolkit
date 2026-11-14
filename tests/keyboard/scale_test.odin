@@ -63,24 +63,27 @@ sizes_follow_the_scale :: proc(t: ^testing.T) {
 	ui.init(&f.s, &f.fonts, &f.theme)
 	defer { ui.destroy(&f.s); ui.theme_destroy(&f.theme); draw.destroy(&f.dc); render.destroy(&f.r); font.destroy(&f.fonts) }
 
-	// a tab's underline: the rows of a column of its left padding (no text there) that its being selected changes
+	// a tab's plate: the rows of a column of its left padding (no text there, past its rounded corner) that its being
+	// chosen changes: the raised plate's height, which follows the scale
 	tabs :: proc(user: rawptr) {
 		r := (^Tab_Run)(user)
 		ui.next({width = ui.fill(), height = ui.px(ui.scale() * 40), axis = .X})
 		if ui.row() { ui.tabs("###t", {"One", "Two"}, nil, &r.sel) }
 	}
-	underline :: proc(f: ^Sx, dpi: f32) -> int {
+	plate :: proc(f: ^Sx, dpi: f32) -> int {
 		on, off := Tab_Run{0}, Tab_Run{1}
 		a := picture(f, dpi, tabs, &on)
 		defer delete(a)
 		b := picture(f, dpi, tabs, &off)
 		defer delete(b)
 		n := 0
-		for y in 0 ..< SIZE.y { if differs(a, b, int(4 * dpi), y) { n += 1 } }
+		for y in 0 ..< SIZE.y { if differs(a, b, int(8 * dpi), y) { n += 1 } }
 		return n
 	}
-	testing.expect_value(t, underline(f, 1), 3)
-	testing.expect_value(t, underline(f, 2), 6)
+	p1, p2 := plate(f, 1), plate(f, 2)
+	// (0.8 of a row of 40 px: about 32 rows, then 64; the finish's rim or shadow may add a row or two at each side)
+	testing.expectf(t, p1 >= 28 && p1 <= 38, "the plate at 100 %%: %d rows", p1)
+	testing.expectf(t, p2 >= 2 * p1 - 4 && p2 <= 2 * p1 + 4, "the plate at 200 %%: %d rows, twice %d", p2, p1)
 
 	// a radio's ring: the pixels of the row through its middle, from its left edge in, that differ from no radio at all
 	ring :: proc(f: ^Sx, dpi: f32) -> int {

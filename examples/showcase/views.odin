@@ -75,14 +75,18 @@ views_canvas :: proc(app: ^App, em: f32) {
 	tint := draw.hsv(app.views_hue / 360, app.views_sat, 0.32 + 0.5 * app.views_val)
 	margin := math.round(em * 0.9)
 	ui.next({width = ui.fill(), height = ui.fill(), radius = math.round(em * 0.6), bg = tint, axis = .Y})
-	canvas := ui.build_box({.Draw_Background}, "###views_canvas")
+	// (it clips: nothing of it ever draws over the panels beside it)
+	canvas := ui.build_box({.Draw_Background, .Clip}, "###views_canvas")
 	if ui.parent(canvas) {
 		ui.spacer(ui.fill())
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 		if ui.row(id = "###views_canvas_foot") {
 			ui.spacer(ui.px(margin))
-			ui.next({width = ui.text_size(math.round(em * 0.3)), height = ui.px(math.round(em * 1.9)), radius = math.round(em * 0.4), bg = draw.Color{0, 0, 0, 0.45}, fg = draw.Color{1, 1, 1, 0.92}})
-			ui.build_box({.Draw_Background, .Draw_Text, .No_Text_Trunc}, "harbour-at-dusk.webp · 1920 × 1080###views_canvas_name")
+			// (as wide as its words while the picture has the room, then it gives way: its words cut with "…", the whole
+			// name in a tooltip)
+			ui.next({width = ui.text_size(math.round(em * 0.3), 0), height = ui.px(math.round(em * 1.9)), radius = math.round(em * 0.4), bg = draw.Color{0, 0, 0, 0.45}, fg = draw.Color{1, 1, 1, 0.92}, flags = {.Draw_Background}})
+			_ = ui.label_tip("harbour-at-dusk.webp · 1920 × 1080###views_canvas_name")
+			ui.spacer(ui.px(margin))
 		}
 		ui.spacer(ui.px(margin))
 	}

@@ -1232,47 +1232,36 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 	return
 }
 
-@(private = "file") TAB_RATE :: 34
-@(private = "file") TAB_UNDERLINE_MIN_T :: 0.01
-@(private = "file") TAB_UNDERLINE_PX :: 3
-@(private = "file") TAB_UNDERLINE_RADIUS_PX :: 1.5
+// A tab's plate: its share of its row's height (centred in it: the row's own surface shows around it), and its corners.
+@(private = "file") TAB_PLATE_HEIGHT :: 0.8
+@(private = "file") TAB_RADIUS_EM :: 0.35
 
-Tab_Draw :: struct { t: f32, accent: Color }
-
-@(private)
-tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
-	d := (^Tab_Draw)(user)
-	if d.t < TAB_UNDERLINE_MIN_T { return }
-	r := b.rect
-	w := (r.max.x - r.min.x) * d.t
-	cx := (r.min.x + r.max.x) * 0.5
-	draw.rect(dc, {{cx - w * 0.5, r.max.y - math.round(TAB_UNDERLINE_PX * scale())}, {cx + w * 0.5, r.max.y}}, d.accent, TAB_UNDERLINE_RADIUS_PX * scale())
-}
-
-// One tab: the look of every row of tabs of the toolkit (tabs, a dock's stack, a stack of views). The chosen tab is in
-// the text's colour over the accent underline, which grows when it is chosen; the others are weak, lit by the theme's
-// "tab" hover. A Tab stop as tall as its row and as wide as what the caller builds in it (`if parent(b)`); the caller
-// pushes "weak" around the words of an unchosen tab. `flags` adds to the tab's own.
+// One tab: the look of every row of tabs of the toolkit (tabs, a dock's stack, a stack of views). The chosen tab is a
+// raised plate, the finish's face of a button (a bevel when machined, a sheen with a gradient); the others are flat, in
+// the weak ink, a plate of the theme's "tab" hover under the pointer. A Tab stop, as wide as what the caller builds in it
+// (`if parent(b)`); the caller pushes "weak" around the words of an unchosen tab. `flags` adds to the tab's own.
 @(private)
 tab_box :: proc(id: string, on: bool, flags: Box_Flags = {}) -> ^Box {
 	s := gs()
-	t := anim(key_from_string(key_from_string(parent_box().key, id), "t"), on ? 1 : 0, TAB_RATE)
+	em := font_size()
 	set_next_axis(.X, .Center)
 	s.next_mod.width = children_sum()
-	s.next_mod.height = pct(1)
-	if !on { push_tags("weak") }
-	push_tags("tab")
-	b := build_box(Box_Flags{.Clickable, .Focusable, .Draw_Hot_Effects} + flags, id)
+	s.next_mod.height = pct(TAB_PLATE_HEIGHT)
+	s.next_mod.radius = math.round(em * TAB_RADIUS_EM)
+	f := Box_Flags{.Clickable, .Focusable, .Draw_Hot_Effects} + flags
+	if on {
+		f += {.Draw_Background, .Draw_Border}
+		push_tags("button")
+	} else {
+		push_tags("tab", "weak")
+	}
+	b := build_box(f, id)
 	pop_tags()
-	if !on { pop_tags() }
-	d := frame_new(Tab_Draw)
-	d.t, d.accent = t, color("accent")
-	b.custom, b.custom_user = tab_draw, d
 	return b
 }
 
-// Row of tabs with a growing underline, on a strip (strip.odin): too many for the row, it scrolls with arrows, never a
-// bar. With no width given (next), as wide as its tabs, and the first to give way in a short row; `strip_view(id)` is
+// Row of tabs, the chosen one a raised plate (tab_box), on a strip (strip.odin): too many for the row, it scrolls with
+// arrows, never a bar; the chosen tab is brought into view when it changes. With no width given (next), as wide as its tabs, and the first to give way in a short row; `strip_view(id)` is
 // its tab list. `icons` may be nil. Returns true when the selection changed.
 tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (changed: bool) {
 	em := font_size()
@@ -1282,6 +1271,7 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 		for label, i in labels {
 			on := selected^ == i
 			b := tab_box(fmt.tprintf("%s_%d", id, i), on)
+			if on { strip_reveal(b) }
 			if parent(b) {
 				if !on { push_tags("weak") }
 				spacer(px(em))

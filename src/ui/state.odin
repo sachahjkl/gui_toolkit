@@ -343,6 +343,7 @@ end_build :: proc() {
 	s.metrics.build_ms = t_layout - s.build_start
 	layout(s)
 	lazy_settle(s)   // (the view stays on what it showed: before anything reads the rects)
+	strips_place(s)  // (each strip's arrows by this layout: on their edges or hidden, before anything reads the rects)
 	s.metrics.layout_ms = real_ms() - t_layout
 	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case
 	if s.caption_built || s.caption_keys != {} {
@@ -584,7 +585,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.cross = cross
 	b.gap = {}
 	if has_mod { if v, ok := mod.gap.?; ok { b.gap = v } }
-	b.edge_fade = {}
+	b.edge_fade, b.edge_hold, b.strip_arrow = {}, {}, 0
 	if has_mod { if v, ok := mod.edge_fade.?; ok { b.edge_fade = v } }
 	b.font = st.font
 	b.font_size = st.font_size
@@ -1087,11 +1088,13 @@ scroll_focus_into_view :: proc(s: ^State) {
 	b := s.boxes[s.focus_key]
 	if b == nil { return }
 	for p := b.parent; p != nil; p = p.parent {
-		if .View_Scroll_Y in p.flags { view_reveal_box(p, b, margin = b.font_size) }
-		// (sideways: clear of the faded edges, where a strip's arrows lie; a box wider than that, a table's row, leaves
-		// the view where the reader put it)
+		// (clear of the faded edges and of what lies over them, a strip's arrows)
+		if .View_Scroll_Y in p.flags {
+			view_reveal_box(p, b, margin = max(b.font_size, p.edge_hold[1] + p.edge_fade[1], p.edge_hold[3] + p.edge_fade[3]))
+		}
+		// (sideways: a box wider than the clear part, a table's row, leaves the view where the reader put it)
 		if .View_Scroll_X in p.flags {
-			margin := max(b.font_size, p.edge_fade[0], p.edge_fade[2])
+			margin := max(b.font_size, p.edge_hold[0] + p.edge_fade[0], p.edge_hold[2] + p.edge_fade[2])
 			if b.rect.max.x - b.rect.min.x <= p.size.x - 2 * margin { view_reveal_box(p, b, .X, margin) }
 		}
 	}

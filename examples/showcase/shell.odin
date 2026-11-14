@@ -132,36 +132,40 @@ sidebar :: proc(app: ^App, em: f32) {
 	if ui.tags("bar") {
 		ui.next({width = ui.px(em * 14), height = ui.fill(), axis = .Y, radius = 0})
 		if ui.column(flags = {.Draw_Background, .Draw_Side_Right}, id = "###nav") {
-			ui.spacer(ui.px(em * 0.9))
-			for s in NAV {
-				if s == .Settings { continue }
-				ui.next({width = ui.fill(), height = ui.px(em * 2.3), axis = .X})
-				if ui.row(id = fmt.tprintf("###navrow%v", s)) {
-					ui.spacer(ui.px(em * 0.6))
-					face := s == shown ? ui.Button_Face.Toggled : .Ghost
-					if ui.button(fmt.tprintf("###nav%v", s), SCENE_TITLES[s], SCENE_ICONS[s], {face = face, width = ui.fill(), left = true}).clicked {
-						app.scene = s
+			// the scenes and the overlays: a column of choices on a vertical strip, with up and down arrows when the
+			// window is too short for them (docs/strip.md)
+			ui.next({width = ui.fill(), height = ui.fill()})
+			if ui.strip("###nav_strip", {axes = {.Y}}) {
+				ui.spacer(ui.px(em * 0.9))
+				for s in NAV {
+					if s == .Settings { continue }
+					ui.next({width = ui.fill(), height = ui.px(em * 2.3), axis = .X})
+					if ui.row(id = fmt.tprintf("###navrow%v", s)) {
+						ui.spacer(ui.px(em * 0.6))
+						face := s == shown ? ui.Button_Face.Toggled : .Ghost
+						sig := ui.button(fmt.tprintf("###nav%v", s), SCENE_TITLES[s], SCENE_ICONS[s], {face = face, width = ui.fill(), left = true})
+						if s == shown { ui.strip_reveal(sig.box) }
+						if sig.clicked { app.scene = s }
+						ui.spacer(ui.px(em * 0.6))
 					}
-					ui.spacer(ui.px(em * 0.6))
+					ui.spacer(ui.px(em * 0.25))
 				}
-				ui.spacer(ui.px(em * 0.25))
+				ui.spacer(ui.px(em * 0.6))
+				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+				if ui.row(id = "###navline") {
+					ui.spacer(ui.px(em * 0.9))
+					ui.hline(ui.fill())
+					ui.spacer(ui.px(em * 0.9))
+				}
+				ui.spacer(ui.px(em * 0.6))
+				// the overlays, opened from here as a program would
+				overlay_link(app, "###open_palette", lucide.COMMAND, "Command palette", .Palette, em)
+				overlay_link(app, "###open_dialog", lucide.DOWNLOAD, "Export dialog", .Dialog, em)
+				overlay_link(app, "###open_confirm", lucide.TRASH_2, "Delete for good…", .Confirm, em)
+				overlay_link(app, "###open_prompt", lucide.KEY_ROUND, "Unlock the key…", .Prompt, em)
+				overlay_link(app, "###open_files", lucide.FOLDER_OPEN, "Open a file…", .Files, em)
+				overlay_link(app, "###open_toasts", lucide.BELL, "Say what was done", .Toasts, em)
 			}
-			ui.spacer(ui.px(em * 0.6))
-			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-			if ui.row(id = "###navline") {
-				ui.spacer(ui.px(em * 0.9))
-				ui.hline(ui.fill())
-				ui.spacer(ui.px(em * 0.9))
-			}
-			ui.spacer(ui.px(em * 0.6))
-			// the overlays, opened from here as a program would
-			overlay_link(app, "###open_palette", lucide.COMMAND, "Command palette", .Palette, em)
-			overlay_link(app, "###open_dialog", lucide.DOWNLOAD, "Export dialog", .Dialog, em)
-			overlay_link(app, "###open_confirm", lucide.TRASH_2, "Delete for good…", .Confirm, em)
-			overlay_link(app, "###open_prompt", lucide.KEY_ROUND, "Unlock the key…", .Prompt, em)
-			overlay_link(app, "###open_files", lucide.FOLDER_OPEN, "Open a file…", .Files, em)
-			overlay_link(app, "###open_toasts", lucide.BELL, "Say what was done", .Toasts, em)
-			ui.spacer(ui.fill())
 			ui.next({width = ui.fill(), height = ui.px(em * 2), axis = .X, cross = .Center})
 			if ui.row(id = "###health") {
 				ui.spacer(ui.px(em * 1.1))

@@ -88,7 +88,7 @@ Box_Flag :: enum u8 {
 	Scrollbar_Left,      // a .View_Scroll_Y box's scrollbar is at its left edge (a panel docked on the right side keeps it on the outside)
 	Scrollbar_None,      // a scroll box that shows no bar and keeps no room for one (a table's titles over its rows; a strip, strip.odin)
 	Scrollbar_Reserve,   // a scroll box keeps its bars' room even while its content fits: no jump when it grows past the view (scroll-bar.md)
-	Wheel_Sideways,      // a .View_Scroll_X box that an up-and-down wheel scrolls sideways while it overflows (a strip)
+	Strip_Wheel,         // a strip's view (strip.odin): it takes the wheel only while it overflows that way, never with Ctrl; on one axis every wheel scrolls along it
 	Selectable,          // its text (a label, a paragraph, a rich paragraph) can be selected and copied (selection.odin)
 	Middle_Click,        // handles the middle button itself (a tab closes): a middle press on it does not start autoscroll in the region it is in
 	Sunken,              // a well (fields, input_frame, well): the machined finish carves it in, its focus a ring of light
@@ -144,6 +144,7 @@ Box :: struct {
 	squish:      f32,
 	transparency: f32,
 	edge_fade:   [4]f32,         // a .Clip box: its content fades out over these widths at its left, top, right, bottom edges (px)
+	edge_hold:   [4]f32,         // ... after a band this wide at each edge where it does not show at all (a strip's arrow lies there)
 	cursor:      platform.Cursor,
 	tags_key:    Key,            // identifies the tag stack the box was built under (for theme lookups while drawing)
 	custom:      Custom_Draw,
@@ -164,6 +165,8 @@ Box :: struct {
 	view_off:    Vec2,           // scroll offset, animated
 	view_target: Vec2,           // scroll offset target
 	view_top_held: [2]bool,      // the target is the content's start as asked (view_top), not where a move stopped (view_shift)
+	strip_chosen: Key,           // a strip's view: the chosen choice it last brought into view (strip_reveal)
+	strip_arrow: f32,            // a strip's view (0: none): its arrow's length; the layout keeps it, and its strip, at least its largest choice and this along each axis it scrolls (strip_least)
 	view_bounds: Vec2,           // extent of the children (for clamping)
 	view_anim:   [2]Scroll_Anim, // smooth scrolling toward view_target (scroll_anim.odin)
 
