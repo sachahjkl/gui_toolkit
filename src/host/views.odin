@@ -17,6 +17,7 @@ import "../ui"
 View_Window :: struct {
 	host:  Host,
 	owner: ^Host,
+	shown: bool,   // ui's step showed it: from now on its frames draw pictures
 }
 
 // The backend of the views' windows for the views `owner` owns (and for theirs: a view opened in a view's window has
@@ -42,6 +43,9 @@ view_window_open :: proc(user: rawptr, ask: ui.View_Window_Ask) -> (state: ^ui.S
 	h.after_input = owner.after_input
 	h.partial_redraw = owner.partial_redraw
 	h.params = proc(h: ^Host, p: ^ui.Build_Params) { p.inactive = !h.win.active }
+	// (hidden, its unseen layouts are built and never drawn: a picture would put a buffer on a surface with no role
+	// yet, and on Wayland the role given to it at the show is a protocol error, the end of the connection)
+	h.hold = proc(h: ^Host, size: Vec2) -> int { return (^View_Window)(h.user).shown ? 0 : 1 }
 	h.close_asked = proc(h: ^Host) { ui.view_window_close_asked(&h.state) }
 	if at, ok := ask.at.?; ok { platform.move_window(h.win, at.x, at.y) }
 	append(&sh.views, vw)
@@ -51,6 +55,7 @@ view_window_open :: proc(user: rawptr, ask: ui.View_Window_Ask) -> (state: ^ui.S
 @(private = "file")
 view_window_show :: proc(user: rawptr, handle: rawptr) {
 	vw := (^View_Window)(handle)
+	vw.shown = true
 	host_show(&vw.host)
 	platform.raise_window(vw.host.win)
 }

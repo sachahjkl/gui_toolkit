@@ -185,7 +185,8 @@ wayland_lib :: proc() -> ^Wayland_Lib {
 @(private) XKB_STATE_MODS_EFFECTIVE :: (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3)
 @(private) XKB_KEY_DOWN :: 1
 
-// What a thread's connection to the display server is. Lost is for good: a new window does not come back on it.
+// What a thread's connection to the display server is. Lost: no new window comes back on it while one of its windows
+// lives; on Wayland, once none is left, the next window starts a new connection (wl_connect).
 @(private) Display_Link :: enum u8 { Untried, Failed, Connected, Lost }
 
 // The server went away: for each window of the connection, what the user closing it would have said.

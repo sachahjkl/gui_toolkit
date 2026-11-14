@@ -163,6 +163,9 @@ wl_state :: proc(w: ^Window) -> ^Wl_Window_State { return (^Wl_Window_State)(w.w
 
 @(private)
 wl_connect :: proc() -> bool {
+	// (a connection the compositor ended, a protocol error among them, with no window left on it: the next window
+	// starts a new one. While a window of it lives, nothing of it goes: that window still reads wlc)
+	if wlc.link == .Lost && len(wlc.windows) == 0 { wl_connection_forget() }
 	if wlc.link != .Untried { return wlc.link == .Connected }
 	if wl_connect_now() {
 		wlc.link = .Connected
@@ -172,6 +175,27 @@ wl_connect :: proc() -> bool {
 	if wlc.display != nil { wl.display_disconnect(wlc.display) }
 	wlc = {link = .Failed}
 	return false
+}
+
+// A lost connection, with no window on it, goes whole: its display (and with it every proxy of it), what wlc owns, and
+// wlc starts again untried. Only from wl_connect, with no window left.
+@(private = "file")
+wl_connection_forget :: proc() {
+	assert(len(wlc.windows) == 0, "wl_connection_forget: a window still lives on the connection")
+	if wlc.display != nil { wl.display_disconnect(wlc.display) }
+	for o in wlc.outputs {
+		delete(o.output_name, wlc.outputs.allocator)
+		free(o, wlc.outputs.allocator)
+	}
+	delete(wlc.outputs)
+	delete(wlc.windows)
+	delete(wlc.toplevels)
+	delete(wlc.clip_text, runtime.heap_allocator())   // (clipboard_linux.odin makes it there)
+	for list in ([]^[dynamic]string{&wlc.offer_mimes, &wlc.dnd_mimes, &wlc.pending_offer_mimes}) {
+		wl_free_mimes(list)
+		delete(list^)
+	}
+	wlc = {}
 }
 
 @(private = "file")
