@@ -92,6 +92,69 @@ what_is_too_much_gives_way_by_its_strictness :: proc(t: ^testing.T) { unwatched.
 	testing.expect_value(t, width_of(s, "soft"), f32(WINDOW.x) - 300)
 }) }
 
+@(private = "file")
+Spacer_Row :: struct { width: f32 }
+
+// An empty fill() spacer gives its width before a label is cut: a row of fixed parts, a name that may shrink and a
+// spacer asking for the whole row keeps the name whole while the row holds it, and cuts it only by what is missing.
+@(test)
+a_spacer_gives_way_before_a_label :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Spacer_Row{1000}
+	s := session.start(t, {size = {1200, 300}, no_renderer = true, user = &r, build = proc(s: ^session.Session) {
+		r := (^Spacer_Row)(s.user)
+		ui.next({width = ui.px(r.width), height = ui.px(24), axis = .X})
+		if ui.row(id = "###row") {
+			ui.next({width = ui.px(20), height = ui.fill()}); ui.build_box({}, "###indent")
+			ui.next({width = ui.px(16), height = ui.fill()}); ui.build_box({}, "###chevron")
+			ui.next({width = ui.px(16), height = ui.fill()}); ui.build_box({}, "###icon")
+			ui.next({width = ui.text_size(0, 0), height = ui.fill()}); ui.label("A rather long node name###name")
+			ui.next({width = ui.px(30), height = ui.fill()}); ui.build_box({}, "###count")
+			ui.next({width = ui.px(60), height = ui.fill()}); ui.build_box({}, "###button")
+			ui.spacer(ui.fill())
+		}
+	}})
+	name := session.get(s, "name")
+	natural := math.ceil(name.text_dim.x + 2 * name.text_pad)
+	fixed := f32(20 + 16 + 16 + 30 + 60)
+	testing.expect_value(t, width_of(s, "name"), natural)
+	// room for all and 10 px more: the name whole, the spacer takes the 10 px
+	r.width = fixed + natural + 10
+	session.frame(s)
+	testing.expect_value(t, width_of(s, "name"), natural)
+	testing.expect_value(t, session.get(s, "button").rect.max.x, session.get(s, "row").rect.min.x + fixed + natural)
+	// 20 px short: the name gives exactly those
+	r.width = fixed + natural - 20
+	session.frame(s)
+	testing.expect_value(t, width_of(s, "name"), natural - 20)
+	testing.expect_value(t, width_of(s, "button"), 60)
+}) }
+
+// label, spacer(fill()), what is at the right: with room the spacer pushes it to the right edge and the label is whole;
+// short of room the label gives only what is missing.
+@(test)
+a_spacer_pushes_to_the_right_edge :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Spacer_Row{400}
+	s := session.start(t, {size = {600, 300}, no_renderer = true, user = &r, build = proc(s: ^session.Session) {
+		r := (^Spacer_Row)(s.user)
+		ui.next({width = ui.px(r.width), height = ui.px(24), axis = .X})
+		if ui.row(id = "###row") {
+			ui.next({width = ui.text_size(0, 0), height = ui.fill()}); ui.label("Title of the panel###name")
+			ui.spacer(ui.fill())
+			ui.next({width = ui.px(60), height = ui.fill()}); ui.build_box({}, "###button")
+		}
+	}})
+	name := session.get(s, "name")
+	natural := math.ceil(name.text_dim.x + 2 * name.text_pad)
+	row := session.get(s, "row")
+	testing.expect_value(t, width_of(s, "name"), natural)
+	testing.expect_value(t, session.get(s, "button").rect.max.x, row.rect.max.x)
+	testing.expect_value(t, width_of(s, "button"), 60)
+	r.width = natural + 60 - 10
+	session.frame(s)
+	testing.expect_value(t, width_of(s, "name"), natural - 10)
+	testing.expect_value(t, session.get(s, "button").rect.max.x, session.get(s, "row").rect.max.x)
+}) }
+
 // The cross alignment of a row: centred children keep their own height, in the middle.
 @(test)
 a_row_centres_across :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

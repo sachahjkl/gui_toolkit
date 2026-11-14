@@ -1100,34 +1100,45 @@ reset :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
 @(private = "file")
 Card :: struct { colors: ui.Theme_Colors, chosen: bool }
 
-// The themes of `list`, three to a row, each in its own colours (its version `light`): its surface, its name in its
-// text, its hues as dots, a ring of its accent around the one named `current`. The index of the one clicked, or -1.
-theme_cards :: proc(list: []ui.Theme_Def, current: string, light: bool, em: f32) -> (picked: int) {
+// The themes of `list`, `columns` to a row (all of the same width, a last row that is not full too), each in its own
+// colours (its version `light`): its surface, its name in its text, its hues as dots, a ring of its accent around the
+// one named `current`. The index of the one clicked, or -1.
+theme_cards :: proc(list: []ui.Theme_Def, current: string, light: bool, em: f32, columns := CARDS_PER_ROW) -> (picked: int) {
 	picked = -1
-	for row := 0; row < len(list); row += CARDS_PER_ROW {
+	gap := em * 0.5
+	n := max(columns, 1)
+	for row := 0; row < len(list); row += n {
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 		if ui.row(id = fmt.tprintf("###themes%d", row)) {
-			for i in row ..< row + CARDS_PER_ROW {
-				if i > row { ui.spacer(ui.px(em * 0.5)) }
-				if i >= len(list) { ui.next({width = ui.fill(), height = ui.px(1)}); ui.build_box({}, fmt.tprintf("###th_pad%d", i)); continue }
-				t := list[i]
-				chosen := ascii.equal_fold(t.name, current)   // (a theme's name: what programs store)
-				ui.next({width = ui.fill(), height = ui.px(math.round(em * CARD_H_EM)), axis = .Y, cursor = .Hand})
-				ui.a11y({role = .Radio_Button, name = t.name, toggled = chosen ? .True : .False})
-				b := ui.build_box({.Clickable, .Focusable}, fmt.tprintf("###th%d", i))
-				d := ui.frame_new(Card)
-				d.colors, _ = ui.theme_version(t, light)
-				d.chosen = chosen
-				b.custom, b.custom_user = card_draw, d
-				if ui.signal(b).clicked && !chosen { picked = i }
-				if ui.parent(b) {
-					ui.spacer(ui.px(em * 0.55))
-					ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-					if ui.row(id = "###n") {
-						ui.spacer(ui.px(em * 0.8))
-						ui.next({width = ui.fill(), height = ui.px(em * 1.4), font_size = math.round(em * 0.92), fg = draw.hex(d.colors.texts[2]), text_pad = 0})
-						ui.label(fmt.tprintf("%s###t", t.name))
+			for i in row ..< min(row + n, len(list)) {
+				// (each column is a cell of exactly 1/N of the row, holding its card and its part of the gaps: column c has
+				// c/N of a gap before its card and (N-1-c)/N after, so every card is (row - (N-1) gaps) / N wide, the cards
+				// of a last row that is not full too, at their columns. A row of fill() shares and gaps would split its
+				// overflow by what each share holds, and a short row's cards would not match the full rows')
+				col := i - row
+				ui.next({width = ui.pct(1.0 / f32(n)), height = ui.children_sum(), axis = .X})
+				if ui.row(id = fmt.tprintf("###thc%d", i)) {
+					if col > 0 { ui.spacer(ui.px(gap * f32(col) / f32(n))) }
+					t := list[i]
+					chosen := ascii.equal_fold(t.name, current)   // (a theme's name: what programs store)
+					ui.next({width = ui.fill(), height = ui.px(math.round(em * CARD_H_EM)), axis = .Y, cursor = .Hand})
+					ui.a11y({role = .Radio_Button, name = t.name, toggled = chosen ? .True : .False})
+					b := ui.build_box({.Clickable, .Focusable}, fmt.tprintf("###th%d", i))
+					d := ui.frame_new(Card)
+					d.colors, _ = ui.theme_version(t, light)
+					d.chosen = chosen
+					b.custom, b.custom_user = card_draw, d
+					if ui.signal(b).clicked && !chosen { picked = i }
+					if ui.parent(b) {
+						ui.spacer(ui.px(em * 0.55))
+						ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+						if ui.row(id = "###n") {
+							ui.spacer(ui.px(em * 0.8))
+							ui.next({width = ui.fill(), height = ui.px(em * 1.4), font_size = math.round(em * 0.92), fg = draw.hex(d.colors.texts[2]), text_pad = 0})
+							ui.label(fmt.tprintf("%s###t", t.name))
+						}
 					}
+					if after := n - 1 - col; after > 0 { ui.spacer(ui.px(gap * f32(after) / f32(n))) }
 				}
 			}
 		}
@@ -1157,6 +1168,7 @@ card_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	defer draw.set_circular_corners(dc, prev)
 	for h, i in t.hues {
 		sz := i == 0 ? dot * 1.4 : dot
+		if x + sz > r.max.x - math.round(0.8 * em) { break }   // (a narrow card shows fewer dots, never dots past its edge)
 		cy := y + dot * 0.5
 		draw.rect(dc, {{x, cy - sz * 0.5}, {x + sz, cy + sz * 0.5}}, draw.hex(h | 0xff), sz * 0.5)
 		x += sz + math.round(dot * 0.45)

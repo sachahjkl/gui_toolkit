@@ -186,6 +186,23 @@ layout_violations :: proc(b: ^Box, axis: Axis) {
 				budget += shrinkable(c, axis)
 			}
 			violation := total - avail
+			// (an empty fill() spacer only pushes what follows it to the edge: when the row is too narrow it gives all its
+			// width before anything with content shrinks, so a label is cut only when the row truly lacks room for it.
+			// Shared among the spacers in proportion to their widths, so two that centre something keep it centred)
+			if axis == .X && violation > LAYOUT_VIOLATION_EPS_PX {
+				slack: f32
+				for c := b.first; c != nil; c = c.next { if !is_floating(c, axis) && is_fill_spacer(c) { slack += shrinkable(c, axis) } }
+				if slack > 0 {
+					taken := min(slack, violation)
+					for c := b.first; c != nil; c = c.next {
+						if is_floating(c, axis) || !is_fill_spacer(c) { continue }
+						c.size.x -= taken * shrinkable(c, axis) / slack
+					}
+					violation -= taken
+					budget = 0
+					for c := b.first; c != nil; c = c.next { if !is_floating(c, axis) { budget += shrinkable(c, axis) } }
+				}
+			}
 			// (a fill() share gives what it has beyond what is in it first: two buttons that share a row by halves keep
 			// their words whole when the row holds both, rather than both shrink by the same share)
 			if axis == .X && violation > LAYOUT_VIOLATION_EPS_PX {
@@ -243,6 +260,15 @@ shrinkable :: proc(c: ^Box, axis: Axis) -> f32 {
 share_slack :: proc(c: ^Box) -> f32 {
 	if c.pref[.X].kind != .Percent || c.first == nil { return 0 }
 	return max(0, min(c.size.x - natural_width(c), shrinkable(c, .X)))
+}
+
+// An empty box sized as a share of its parent's width (spacer(fill()), a pct pad): no children, no text, nothing drawn,
+// nothing to click. It holds nothing a user sees, so it gives its width first when its row is too narrow. (A drawn
+// share, a bar or a canvas, keeps the usual rule: it shrinks with the rest, by its size)
+@(private = "file")
+is_fill_spacer :: proc(c: ^Box) -> bool {
+	SEEN :: Box_Flags{.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Draw_Text}
+	return c.pref[.X].kind == .Percent && c.first == nil && c.text == "" && c.custom == nil && c.flags & SEEN == {}
 }
 
 // A row's children along X still wider together than `avail` after what may shrink did: each gives what its words can

@@ -24,6 +24,9 @@ is migrated in the same piece of work.
   changes and kept.
 - A program's catalogue never changes the toolkit's own words: each catalogue answers for the texts of its own files.
 - A label a user must read is never cut: widgets grow or wrap; only data rows elide.
+- In a row that is too narrow, an empty `fill()` spacer gives its width before anything a user sees shrinks: it only
+  pushes what follows it, and it often asks for the whole row. A grid of equal columns makes each cell an exact
+  fraction of the row with the gaps inside it, so a last row that is not full has the full rows' column width.
 - Defaults are the best value for every program; a program overrides only its identity (its theme).
 
 ## File Index
