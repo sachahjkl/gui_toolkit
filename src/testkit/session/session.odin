@@ -31,7 +31,6 @@ package tk_session
 
 import "base:runtime"
 import "core:fmt"
-import "core:log"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -260,15 +259,6 @@ repo_root :: proc(allocator := context.temp_allocator) -> string {
 out_path :: proc(s: ^Session, name: string) -> string {
 	_ = os.make_directory_all(s.out)
 	return fmt.aprintf("%s/%s", s.out, name, allocator = s.test.temp_allocator)
-}
-
-// Ends the test here: its message is logged at the place given, and the runner ends this thread (its "Test timed out" follows
-// the message: a limit of 0 is the one way of being ended that core:testing gives a test twice in a run: testing.fail_now raises a
-// signal, and on Windows the runner lets go of a lock it does not hold when it handles one, so that the next signal waits for ever).
-stop_test :: proc(t: ^testing.T, message: string, loc: runtime.Source_Code_Location) -> ! {
-	log.error(message, location = loc)
-	testing.set_fail_timeout(t, 0, loc)
-	for { time.sleep(time.Hour) }
 }
 
 // An action failed: the test ends here, and says what to read.

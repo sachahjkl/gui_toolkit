@@ -276,8 +276,16 @@ key_held :: proc(key: platform.Key) -> bool { return key in gs().keys_held }
 // Consuming keyboard query: true once if a matching key press (exact modifiers) is pending. While a dialog is open, the
 // keys are its own: code built outside it gets none (keys_behind_dialogs turns that off).
 key_press :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool {
-	if keys_held_by_dialog(gs()) { return false }
+	s := gs()
+	if keys_held_by_dialog(s) || keys_held_from_view(s) { return false }
 	return key_press_any(key, mods)
+}
+
+// Whether the code being built is a panel's or an internal window's body (State.view_keys_root) and the focus is not
+// in it: its keys are the content's then (src/md/features/views.md, section 6.5).
+@(private)
+keys_held_from_view :: proc(s: ^State) -> bool {
+	return s.view_keys_root != 0 && !view_focus_inside(s, s.view_keys_root)
 }
 
 // key_press wherever it is asked from (a dialog's own Escape, taken as its scope ends).
@@ -297,7 +305,7 @@ key_press_any :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bool 
 // key they modify. ok = false: none.
 key_take :: proc() -> (hk: platform.Hotkey, ok: bool) {
 	s := gs()
-	if keys_held_by_dialog(s) { return }
+	if keys_held_by_dialog(s) || keys_held_from_view(s) { return }
 	for e, i in s.events.list {
 		if s.events.consumed[i] || e.kind != .Key_Press || (e.key == .None && e.char == 0) { continue }
 		if e.key == .Shift || e.key == .Ctrl || e.key == .Alt { continue }

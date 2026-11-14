@@ -1,7 +1,8 @@
 # Views: one content, four presentations
 
-Status: steps 1 and 2 are written (the model, the memory, the Dialog presentation, the ready-made views; the Internal
-presentation, the Detach icon, the drag of a dialog's header, the header's menu; section 7.3). The rest is the plan for
+Status: steps 1 to 3 are written (the model, the memory, the Dialog presentation, the ready-made views; the Internal
+presentation, the Detach icon, the drag of a dialog's header, the header's menu; the Panel presentation, the dock
+spaces, the drops on a dock target, the palette's commands; section 7.3). The rest is the plan for
 the toolkit and for the six programs. The user's decisions are in section 2.5 (the chrome rules)
 and section 8.2.
 
@@ -849,46 +850,69 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 }
 ```
 
+**Decision of step 3: zones, not the dock's tree.** A dock space has four zones, one per edge (left, right, top,
+bottom), around its content. Each zone is one stack of views. The first plan laid out a `Dock` (`dock_model.odin`)
+with the content as a fixed leaf. Refused: a dock leaf always draws its tab strip and its menu button (rule 1 forbids
+both for a lone panel), its drags know only its own tabs (a dialog or an internal window dropped on it must dock), and
+it has no fixed leaf. A zone has what the chrome rules need and nothing else. Two stacks on one edge (a split inside a
+zone) are not offered; they come with a program that needs them. The `Dock` widget stays for a program's own docking
+inside a view (Wren's developer tools).
+
 `views_frame` does this, in order:
 
-1. It lays out the frame's `Dock` (`dock_model.odin`, one per owner State, kept in `Views`). The content is a fixed
-   leaf, `VIEW_CONTENT_PANEL`: no tab strip, not closable, not movable, always the main tree's centre.
-2. It makes the content's box, empty, at the content leaf's rect.
-3. It builds the panels and the internal windows. Their boxes come after the content's box in the tree, so they draw
-   over it and win its hit tests. Their code runs before the content's code, so they read keys first (section 6.5).
+1. It settles the views of its State (`views_settle_all`, once per build): a dialog, an internal window or a panel
+   that opens or moves is decided before anything of this frame is built.
+2. It lays out the frame's space: the top zone, then the left zone, the content, the right zone, then the bottom
+   zone, each zone with its handle (the `splitter` of `split.odin`) on its content side. A zone with no view is not
+   built: a window with no panel has its content and one box around it.
+3. It builds the panels into their zones, then the internal windows. Their code runs before the content's code, so
+   they read keys first (section 6.5). The internal windows are children of the root, after the program's first box:
+   they draw over the whole frame.
 4. It returns true with the content's box as the parent. The program builds its content there.
-5. `views_frame_end` builds the dock's drop targets and its menu (`dock_end`). The dialogs are not its: since step 1,
-   `end_build` builds the views of the State that show as dialogs, over everything the program built. A program that
-   forgets `views_frame` still gets its dialogs.
+5. `views_frame_end` ends the content. The dialogs and the drop targets are `end_build`'s, over everything. A program
+   that forgets `views_frame` still gets its dialogs and its internal windows; its panels wait for a space.
 
-The window's title bar stays the program's, inside the content. A panel at the top goes under it. A window with no
-panel and no internal window has a dock with one leaf: it costs one box.
+The window's title bar stays the program's, inside the content. A panel at the top goes under it.
+
+**Panels show at once.** A panel's size is its zone's, not its content's: it has no unseen builds. A view that opens
+or moves into a zone settles in the settle pass and is built there in the same frame. Its content may measure itself
+on the last layout, as in any layout.
 
 ### 6.2 Dock spaces of the program
 
 `views_dock(vs, name, o)` is the same machinery inside the content: Mission Control's space (`"mission"`, panels only),
 inspecteur's Services section (`"services"`, with the list of services as its content). A view whose home place
-names a space docks there. A space that is not built in a frame does not build its panels (section 3.2).
+names a space docks there. A space that is not built in a frame does not build its panels: they stay Shown and keep
+their state, drawn nowhere, until it is built again (section 8.2, decision 2). Without `content`, the centre of the
+space is empty.
 
-A view docked in a space can be dragged to another space or to the frame's edges. Its home place does not change:
-re-attach is not shown for a Panel, and the Dock menu brings it back.
+A view docked in a space can be dragged to another space or to the frame's edges. Its home place does not change.
 
 ### 6.3 Sizes
 
-- A panel's extent comes from the memory, else `extent_em`.
-- The handle between a panel and the content is the dock's `pane_split` handle. The content keeps `DOCK_MIN_EM` at
-  least. A double click folds the panel to a strip (the dock's fold).
-- The extent and the layout are written when the handle is let go (`Dock_Result.finished`).
-- A window too small for the panels and the content folds the panels, the last one opened first. The memory is not
-  changed by this.
+- A zone's extent (its width at the left and right, its height at the top and bottom) is the space's: the memory's
+  line `#<space>` (`views_space_format`: `v1 left=18.0 right=20.0`, ems), else the first view's `extent_em`, else
+  `width_em` (left, right) or `height_em` (top, bottom), else `VIEW_ZONE_EM`.
+- The handle between a zone and the content is a `splitter`. The content keeps `DOCK_MIN_EM` at least. Its extent is
+  written when the handle is let go (`Splitter_Result.finished`).
+- The view's own line keeps its place (`dock=<space>:<edge>:<extent>`).
 
 ### 6.4 Several panels
 
-- Views at different places: each has its area. A view alone in its area has no tab strip and no border (section 2.5,
-  rule 1).
-- Views at the same place: tabs of one stack (a dock leaf). The tab strip appears with the second view. The tab shown is
-  the last one opened or activated.
-- A space's layout is the dock's: stacks, splits, folds. A view dropped at a stack's side splits it (`DOCK_DROP_SHARE`).
+- Views at different places: each has its zone. A view alone in its zone has no tab strip and no border (section 2.5,
+  rule 1): its body's first box starts at the zone's top edge.
+- Views at the same place: tabs of one stack. The tab strip appears with the second view. The tab shown is the last
+  one opened, docked or clicked. A tab dragged past `DOCK_DRAG_EM` leaves the zone as an internal window under the
+  pointer.
+- A lone panel moves by its title when the program marks its title box (`view_drag_handle(v, box)`); one without shows
+  no grip and moves by its hover icon, its menu or the palette (rule 4).
+
+### 6.4b Drops
+
+While any view of a State is dragged (a dialog's header, an internal window's header, a panel's tab or title), each
+space built this frame shows four targets, one square at the middle of each edge, and the preview of the zone it
+would land in. Released over a target, the view becomes a Panel there (`Drop`); released elsewhere, it stays an
+internal window. The targets show only during a drag. This is step 3: a drop on a dock target is in the first version.
 
 ### 6.5 A panel's keys share the main window
 
@@ -902,6 +926,18 @@ Panels and internal windows are not modal. Their keys and the content's keys com
 4. **Escape that a panel does not take gives the focus back to the content** (section 3.5).
 
 A panel sees the program's state as the last frame left it: the content of this frame is built after it.
+
+Rule 2 is the State's `view_keys_root`: set while a panel's or an internal window's body is built, `key_press` and
+`key_take` read nothing unless the focused box is under it. A dialog keeps its own rule (`keys_held_by_dialog`).
+Ctrl+W closes a panel or an internal window that has the focus. F6 and Shift+F6, read by `views_frame`, move the focus
+to the first stop of the next or the previous area: the content, each zone, each internal window.
+
+### 6.6 The palette's commands
+
+`views_commands(vs)` gives a `Command` per act of each open view, in the language in use: "Float <title>", "Dock
+<title> to the left", "... to the right", "... to the bottom", "Re-attach <title>", "Close <title>" (an act that does
+nothing where the view is is absent). `views_command_run(vs, c)` does it. `views_version(vs)` changes when an act or
+an opening changes the list: the program gives it to `palette_set`.
 
 ---
 
@@ -1099,9 +1135,10 @@ Each step ships as a toolkit version, and each step leaves every program working
 2. **Toolkit, Internal** (written): the internal window's builder (section 5), the Detach icon of the dialog active,
    the drag of a dialog's header, the header's right-click menu, the two-step header (no tools box when the program
    gives no tools), the remembered internal rect. Tests of section 7.4, items 1, 3 (Internal), 7 (detach), 10.
-3. **Toolkit, Panel**: `views_frame` with its dock, `views_dock`, the content leaf, the key rule, F6, the hover icons,
-   the palette's commands (`views_commands`), `view_drag_handle`, the drags inside a window. `examples/docking` and
-   `examples/panes` move to views.
+3. **Toolkit, Panel** (written): `views_frame` and `views_dock` (zones, section 6.1), the key rule, F6, the hover
+   icons, the Dock items of the menu, the palette's commands (`views_commands`), `view_drag_handle`, the drops on a dock
+   target and the tab dragged out, the remembered zones (`#<space>`). `examples/docking` and `examples/panes` move to
+   views. Tests of section 7.4, items 9, 11, 15, 17.
 4. **Toolkit, External**: `View_Windows`, `host.view_windows`, the hosts loop, `ui.style_follow`,
    `state_move_subtree`, `moved`, the drags out and in (Windows, X11), `platform.set_window_owner`,
    `platform.set_min_size`, `platform.pointer_screen`.

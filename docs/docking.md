@@ -139,7 +139,8 @@ that `controls` its panel's body, a `.Tab_Panel` labelled by its tab. Handles ar
 stacks on each side, with their size as a value. A floating panel is a group ("floating panel"). The squares and the
 preview are not in the tree: the menu is how a screen reader reaches the targets.
 
-Example: `examples/docking` (`tk build docking`): six panels of an editor, the layout saved next to the program. Tests:
+A program's panels around its content are views ([views.md](views.md), "Panels"): `examples/docking` shows them. The
+`Dock` stays for a program's own docking inside its content (Wren's developer tools). Tests:
 `tests/docking` (the model: split, join, float and back, close, the strip, folds, the layout and the targets under a
 point, the text, its round trip, the texts refused; through the test session: a tab dragged onto each target and each
 edge, along strips, out and back by a double click, Escape, the keyboard and the menu, a handle, a close button, the

@@ -23,8 +23,8 @@ On Windows it needs nothing beyond Odin's `core:` and `vendor:` packages and the
     odin run tools/tk -- build smoke        # renderer / font / draw smoke test (no UI layer)
     odin run tools/tk -- build transforms   # rotated / skewed / scaled shapes, text and images, rounded clips (draw layer only)
     odin run tools/tk -- build stream       # a thread posting lines to the interface (ui.post)
-    odin run tools/tk -- build panes        # splitters and accordions
-    odin run tools/tk -- build docking      # panels docked, stacked, split and floated by dragging their tabs
+    odin run tools/tk -- build panes        # side panes (views) and accordions
+    odin run tools/tk -- build docking      # panels around the content: docked, tabbed, floated and docked back by a drag
     odin run tools/tk -- build todo -debug
 
 `build.bat` and `./build.sh` are shortcuts for `tk build`. Every other step is a command of `tools/tk` too: `ci`, `desktop_tests`,

@@ -96,6 +96,9 @@ Views :: struct {
 	states:    [dynamic]^State,         // the States that build its views (each lists it in State.views_attached)
 	building:  int,                     // views of it are being built (views_build): the records stay where they are
 	z_next:    u64,                     // the last stamp of an internal window brought to the front (View_Record.z)
+	spaces:    map[string]^View_Space,  // the dock spaces, by name ("": the frame's; views_panels.odin)
+	dock_next: u64,                     // the last stamp of a view docked (View_Record.dock_order)
+	version:   u64,                     // changes when a view opens, closes or moves (views_version)
 	memory:    store.Store,
 	labels:    View_Labels,
 	allocator: runtime.Allocator,
@@ -150,6 +153,9 @@ View_Record :: struct {
 	owned:      rawptr,
 	owned_free: proc(p: rawptr),
 	allocator:  runtime.Allocator,   // the Views': what its strings are made with
+	vs:            ^Views,   // the Views it is of (view_drag_handle)
+	settled_build: u64,      // the build that settled it (views_settle_all: once per build)
+	dock_order:    u64,      // its place among the tabs of its zone (the last docked shown first when none is chosen)
 }
 
 // Optional: the memory file and the words of a Views the program keeps (a zero Views is memory only). Call it at
@@ -162,7 +168,7 @@ views_init :: proc(vs: ^Views, o: Views_Options, allocator := context.allocator)
 }
 
 // (a zero Views takes the allocator of its first use)
-@(private = "file")
+@(private)
 views_ready :: proc(vs: ^Views) {
 	if vs.allocator.procedure == nil { vs.allocator = context.allocator }
 }
@@ -209,6 +215,8 @@ views_destroy :: proc(vs: ^Views) {
 	delete(vs.records)
 	for _, k in vs.kinds { view_kind_free(k) }
 	delete(vs.kinds)
+	for _, sp in vs.spaces { view_space_free(sp) }
+	delete(vs.spaces)
 	store.close(&vs.memory)
 	vs^ = {}
 }
@@ -258,7 +266,7 @@ view_open_raw :: proc(vs: ^Views, id: string, data: rawptr, type: typeid, instan
 	r := view_record_find(vs, id, instance)
 	if r == nil {
 		r = new(View_Record)
-		r.kind, r.instance, r.allocator = k, strings.clone(instance), vs.allocator
+		r.kind, r.instance, r.allocator, r.vs = k, strings.clone(instance), vs.allocator, vs
 		r.machine = {home = k.o.home, home_place = k.o.home_place}
 		r.modal_name = instance == "" ? fmt.aprintf("view_%s", id) : fmt.aprintf("view_%s/%s", id, instance)
 		append(&vs.records, r)
@@ -272,10 +280,15 @@ view_open_raw :: proc(vs: ^Views, id: string, data: rawptr, type: typeid, instan
 		as := m.as.? or_else (k.o.first.? or_else k.o.home)
 		place := k.o.home_place
 		if d, ok := m.dock.?; ok {
-			// (the memory's text is temporary: a space is kept by the kind's own name; another space is the frame's
-			// until step 3 knows the spaces of the program)
+			// (the memory's text is temporary: a space is kept by a name owned elsewhere, the kind's or a space's; a
+			// space never built in this run is the frame's)
 			place.edge = d.place.edge
-			place.space = d.place.space == k.o.home_place.space ? k.o.home_place.space : ""
+			place.space = ""
+			if d.place.space == k.o.home_place.space {
+				place.space = k.o.home_place.space
+			} else if sp, known_space := vs.spaces[d.place.space]; known_space {
+				place.space = sp.name
+			}
 		}
 		r.size, r.size_kept = m.dialog, m.dialog
 		view_apply(vs, r, {kind = .Open, as = as, place = place})
@@ -407,13 +420,14 @@ views_hold_keys :: proc(vs: ^Views) -> bool {
 ////////////////////////////////
 // The registry
 
-// The presentation a view is built in. Step 2: Dialog and Internal; a Panel (step 3) and an External window (step 4) are
-// built as a Dialog until their builders replace these lines.
+// The presentation a view is built in. Step 3: Dialog, Internal and Panel; an External window (step 4) is built as a
+// Dialog until its builder replaces this line.
 @(private)
 view_built_as :: proc(p: View_Presentation) -> View_Presentation {
 	switch p {
-	case .Dialog, .Panel, .External: return .Dialog
-	case .Internal:                  return .Internal
+	case .Dialog, .External: return .Dialog
+	case .Internal:          return .Internal
+	case .Panel:             return .Panel
 	}
 	return .Dialog
 }
@@ -476,8 +490,10 @@ views_sweep :: proc(vs: ^Views) {
 @(private)
 view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 	was_internal := r.machine.state != .Closed && (view_built_as(r.machine.as) == .Internal || r.machine.state == .Moving && view_built_as(r.machine.from) == .Internal)
+	before := r.machine
 	next, fx := view_step(r.machine, e)
 	r.machine = next
+	if next.state != before.state || next.as != before.as || next.place != before.place { vs.version += 1 }
 	// the internal window's focus (a dialog's is its modal's: modal_begin, modals_settle)
 	if .Keep_Focus in fx && r.owner != nil { r.focus_back = r.owner.focus_key }
 	if (.Show in fx || .Raise in fx) && next.state != .Opening && view_built_as(next.as) == .Internal {
@@ -537,9 +553,10 @@ views_memory_write :: proc(vs: ^Views, id: string, m: View_Memory) {
 
 // `vs` is among the views `s` builds at the end of its builds.
 // (each side forgets the other when it goes: views_destroy and ui.destroy may come in either order)
-@(private = "file")
+@(private)
 views_attach_state :: proc(vs: ^Views, s: ^State) {
 	for x in s.views_attached { if x == vs { return } }
+	context.allocator = vs.allocator
 	append(&s.views_attached, vs)
 	append(&vs.states, s)
 }

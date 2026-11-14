@@ -14,8 +14,8 @@ The four presentations are degrees of attachment to the owner window:
 
 Each view has a **home**: Dialog or Panel. **Re-attach** brings a view back to its home; the view stays open.
 
-This version builds the Dialog and the Internal presentations. Panel and External are states of the view's machine
-already: until their builders come, a view in one of them is built as a Dialog. The intent and the plan are in `src/md/features/views.md`.
+This version builds the Dialog, the Internal and the Panel presentations. External is a state of the view's machine
+already: until its builder comes, a view in it is built as a Dialog. The intent and the plan are in `src/md/features/views.md`.
 
 ## Where the views live
 
@@ -108,7 +108,10 @@ again.
 | `view_was_open(vs, id, instance)` | it was open when the program last quit |
 | `view_dialog_size(vs, id, instance)` | the size the user gave its dialog, in ems (`{}`: none) |
 | `views_hold_keys(vs)` | a dialog of `vs` holds the keys of the State being built |
-| inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_room(v)`, `view_header_tools(v)` | |
+| `views_frame(vs)`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels) |
+| `views_commands(vs, allocator) -> (commands, acts)`, `views_command_run(vs, act)`, `views_version(vs)` | the palette's commands of the views |
+| `views_space_format(extent)`, `views_space_parse(text)` | a dock space's line of the memory |
+| inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)` | |
 
 `View_Options`: `title`, `icon`, `icon_font`, `home` (`.Dialog` or `.Panel`), `home_place`, `first` (the presentation
 of the first opening), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em`, `min_height_em`,
@@ -166,11 +169,69 @@ no scrim, the page stays usable and keeps its keys.
 A view opens as an internal window when the memory says so (the user chose it), or `first = .Internal`, or
 `view_present(vs, id, .Internal)`. `view_reattach` brings it back to its home.
 
+## Panels
+
+A panel is docked at an edge of a **dock space**. The window's frame is one: the program puts its content in
+`views_frame`, and the panels go around it.
+
+```odin
+build :: proc(app: ^App) {
+	if ui.views_frame(&app.views) {
+		// the program's content: its title bar, its body, its status bar
+		if ui.views_dock(&app.views, "mission", {}) {}   // a space of its own, in its layout (panels only)
+	}
+}
+
+ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Panel, home_place = {edge = .Left}, extent_em = 16})
+```
+
+- A space has four zones, one per edge, around its centre. `views_frame(vs)` is the window's frame (the space `""`);
+  `views_dock(vs, name, {content = true})` is a space in the program's layout, the block its centre. A zone with no
+  panel is not built: a frame with no panel costs one box around the content.
+- `views_frame` builds the panels and the internal windows before the content, so they read their keys first; it is
+  where F6 is read. A program without `views_frame` still has its dialogs and its internal windows; its panels wait.
+- A panel alone in its zone adds nothing: no tab strip, no border, no background (rule 1). Two panels or more in a
+  zone are tabs of one stack: a click shows one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out
+  as an internal window under the pointer.
+- On the hover of a panel's top area (`VIEW_HOVER_EM`), two icons show at its top right, in the weak colour: Float
+  (an internal window) and Close. A right click there opens its menu.
+- `view_drag_handle(v, box)` marks the program's title box of a view: a lone panel moves by it (it floats, and a drop
+  docks it again). A panel without one shows no grip; it moves by its icon, its menu or the palette.
+- A zone's extent is the space's: its handle resizes it (the content keeps `DOCK_MIN_EM`), and the memory keeps it
+  when the handle is let go. Before that: the first panel's `extent_em`, else `width_em` or `height_em`, else
+  `VIEW_ZONE_EM` (18).
+- A panel whose space is not built in this frame stays open and keeps its state: it shows when its space is built.
+- Keys: the panel's code reads keys only while the focus is in it (`key_press`, `key_take`). Ctrl+W closes it; an
+  Escape it does not take gives the focus back. F6 and Shift+F6 move the focus to the next or the previous area: the
+  content, each zone, each internal window.
+
+### Drops
+
+While a view is dragged (a dialog's header, an internal window's header, a panel's tab or title), each space built in
+that frame shows four squares, at the middle of its edges; the one under the pointer lights up with the preview of the
+zone. Let go over a square, the view docks there; elsewhere it is an internal window where it is. Escape puts it back
+where it was. The squares show only during a drag.
+
+### The palette's commands
+
+```odin
+commands, acts := ui.views_commands(&app.views)          // temporary memory: make them again when views_version changes
+ui.palette_set(&app.palette, commands, nil, {...})
+if c, ok := ui.palette_chosen(&app.palette); ok && c >= first_view_command { ui.views_command_run(&app.views, acts[c - first_view_command]) }
+```
+
+`views_commands(vs, allocator)` gives a `Command` per act of each open view, in the language in use: "Float <title>",
+"Dock <title> to the left", "... to the right", "... to the bottom" (when the owner window builds `views_frame`),
+"Re-attach <title>" (not at home), "Close <title>". An act that does nothing where the view is is absent. `acts[i]`
+says what `commands[i]` does: `views_command_run(vs, acts[i])` does it (nothing when its view closed since).
+`views_version(vs)` changes when a view opens, closes or moves.
+
 ## The header's menu
 
-A right click on a view's header opens its menu: Detach into a window (inactive until the External presentation),
-Open as a floating window (absent in an internal window), Dock left, Dock right, Dock bottom (inactive until the Panel
-presentation), Re-attach (absent at home), Close. Its words are `View_Labels`' (`window`, `floating`, `dock_left`,
+A right click on a view's header (on a panel: on its top area or its tab) opens its menu: Detach into a window
+(inactive until the External presentation), Open as a floating window (absent in an internal window), Dock left, Dock
+right, Dock bottom (the window's frame edges: inactive when the owner window builds no `views_frame`; the edge where
+it is now is absent), Re-attach (absent at home), Close. Its words are `View_Labels`' (`window`, `floating`, `dock_left`,
 `dock_right`, `dock_bottom`, `reattach`, `close`); a word left empty is the toolkit's, in the language in use.
 
 `dialog_body("id")` holds what a dialog says and asks, with its margins (`DIALOG_MARGIN_EM`) and gaps
@@ -192,7 +253,16 @@ sidebar	v1 as=panel open=1 dock=:left:18.0
 | `as` | the last presentation the user chose | `view_present`, `view_reattach`, a drop |
 | `open` | it was open when the program quit | `views_destroy` |
 | `dialog` | the dialog's size in ems | its grip is let go |
-| `internal`, `window`, `dock` | the internal rect, the window's size, the panel's place and extent | the later presentations |
+| `internal` | the internal window's rect | a move or a resize is let go |
+| `dock` | the panel's place (`<space>:<edge>`) | it docks (a drop, a menu, a command) |
+| `window` | the external window's size | the External presentation |
+
+A dock space has a line of its own, under `#<space>` (`#` for the window's frame): the extent of each zone in ems,
+written when its handle is let go (`views_space_format`, `views_space_parse`):
+
+```
+#	v1 left=18.0 bottom=12.5
+```
 
 An absent field is the default of `View_Options`. A line that does not parse is ignored. Instances share their id's
 line. The store writes on its own thread: no disk call runs on the interface's thread after `views_init`.

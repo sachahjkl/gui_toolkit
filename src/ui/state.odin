@@ -103,6 +103,7 @@ destroy :: proc(s: ^State) {
 	delete(s.focus_order)
 	delete(s.popup_stack)
 	delete(s.modal_stack)
+	delete(s.views_space_stack)
 	delete(s.modals_open)
 	delete(s.modals_built)
 	delete(s.list_stack)
@@ -293,6 +294,7 @@ end_build :: proc() {
 	assert(len(s.disabled_stack) == 0, "ui: unbalanced disabled scopes")
 	assert(len(s.tab_stops_off) == 0, "ui: unbalanced tab_stops scopes")
 	assert(len(s.modal_stack) == 0, "ui: unbalanced modal scopes")
+	assert(len(s.views_space_stack) == 0, "ui: unbalanced views_frame or views_dock")
 	assert(len(s.list_stack) == 0, "ui: unbalanced list scopes")
 	assert(len(s.menu_build) == 0, "ui: unbalanced menu scopes")
 

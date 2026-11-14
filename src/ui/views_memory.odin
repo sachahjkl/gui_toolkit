@@ -108,6 +108,38 @@ views_parse :: proc(text: string) -> (m: View_Memory, ok: bool) {
 	return m, true
 }
 
+// The line of a dock space (key `#<space>`): its zones' extents in ems, a zone of none absent.
+//
+//   #mission	v1 left=18.0 bottom=12.5
+views_space_format :: proc(extent: [View_Edge]f32, allocator := context.temp_allocator) -> string {
+	b := strings.builder_make(allocator)
+	strings.write_string(&b, VIEW_MEMORY_VERSION)
+	for x, e in extent {
+		if x > 0 { fmt.sbprintf(&b, " %s=%.1f", VIEW_EDGE_NAMES[e], x) }
+	}
+	return strings.to_string(b)
+}
+
+// The extents in a line that views_space_format wrote. ok false: not such a line; a field it does not know is skipped.
+views_space_parse :: proc(text: string) -> (extent: [View_Edge]f32, ok: bool) {
+	rest := strings.trim_space(text)
+	version, _ := next_word(&rest)
+	if version != VIEW_MEMORY_VERSION { return {}, false }
+	for {
+		word, more := next_word(&rest)
+		if !more { break }
+		eq := strings.index_byte(word, '=')
+		if eq <= 0 { return {}, false }
+		for n, e in VIEW_EDGE_NAMES {
+			if n != word[:eq] { continue }
+			x, xok := strconv.parse_f32(word[eq + 1:])
+			if !xok || x < 0 { return {}, false }
+			extent[e] = x
+		}
+	}
+	return extent, true
+}
+
 @(private = "file")
 next_word :: proc(rest: ^string) -> (word: string, ok: bool) {
 	r := strings.trim_left_space(rest^)

@@ -1,9 +1,9 @@
-// Docking (ui.dock_begin, ui.dock_panel, ui.dock_end): six panels of an editor the user rearranges. Drag a tab out of its
-// strip: the squares over the stack under the pointer split it or join it, those at the edges of the window dock at an edge,
-// a tab dropped elsewhere floats (moved by its strip, resized by its corner, docked back by a double click on its strip).
-// The stack's menu (its button, a right click or the menu key on a tab) reaches every target from the keyboard; Ctrl+Tab goes
-// through a stack's panels; the handles resize and fold. The layout is saved next to the program (docking_layout.txt) and
-// read again at the next start; "View" puts back a closed panel.
+// Docking with views (ui.views_frame, ui.view_register, ui.view_drag_handle): five panels of an editor around its
+// content. A panel alone at an edge adds nothing to what it draws; two at one edge are tabs. Drag a panel by its title or
+// its tab: it floats as an internal window, and the four squares at the middle of the window's edges dock it where it is
+// let go. The hover of a panel's top shows its Float and Close icons; a right click there opens its menu (Detach, Dock
+// left, right, bottom, Re-attach, Close); "View" lists the same acts. F6 goes through the areas. The places and the
+// zones' sizes are remembered next to the program (docking_views.txt) and read again at the next start.
 //   odin run tools/tk -- build docking
 package docking
 
@@ -18,13 +18,12 @@ import "../../src/platform"
 import "../../src/render"
 import "../../src/ui"
 
-Panel :: enum u32 { Files = 1, Outline, Editor, Console, Problems, Search }
+Panel :: enum u32 { Files, Search, Outline, Console, Problems }
 
-PANEL_NAMES := [Panel]string{.Files = "files", .Outline = "outline", .Editor = "editor", .Console = "console", .Problems = "problems", .Search = "search"}
-PANEL_TITLES := [Panel]string{.Files = "Files", .Outline = "Outline", .Editor = "Editor", .Console = "Console", .Problems = "Problems", .Search = "Search"}
-LAYOUT_FILE :: "docking_layout.txt"
-// The default layout: files and search at the left, the editor, the console and the problems under it, the outline at the right.
-DEFAULT_LAYOUT :: "dock1 x0.220([*files,search] x0.760(y0.700([*editor] [*console,problems]) [*outline]))"
+PANEL_IDS := [Panel]string{.Files = "files", .Search = "search", .Outline = "outline", .Console = "console", .Problems = "problems"}
+PANEL_TITLES := [Panel]string{.Files = "Files", .Search = "Search", .Outline = "Outline", .Console = "Console", .Problems = "Problems"}
+PANEL_EDGES := [Panel]ui.View_Edge{.Files = .Left, .Search = .Left, .Outline = .Right, .Console = .Bottom, .Problems = .Bottom}
+MEMORY_FILE :: "docking_views.txt"
 WINDOW_SIZE :: [2]int{1100, 700}
 LINE_EM :: 1.6
 
@@ -41,74 +40,69 @@ App :: struct {
 	frames_requested: int,
 	pacer:    render.Pacer,
 	slept:    bool,
-	dock:     ui.Dock,     // what the app saves (ui.dock_format)
-	saves:    int,
+	views:    ui.Views,   // the panels and what is remembered of them
 	path:     string,
 }
 
-panel_title :: proc(user: rawptr, id: u32) -> string { return PANEL_TITLES[Panel(id)] }
-panel_name :: proc(user: rawptr, id: u32) -> string { return PANEL_NAMES[Panel(id)] }
-panel_of :: proc(user: rawptr, name: string) -> (u32, bool) {
-	for n, p in PANEL_NAMES { if n == name { return u32(p), true } }
-	return 0, false
+// A panel: its title (which moves it), then its lines.
+panel_view :: proc(v: ^ui.View, app: ^App) {
+	em := ui.font_size()
+	p := panel_of(v.id)
+	room := ui.view_room(v)
+	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+	if ui.column(.Start, {.Draw_Background}, "###panel") {
+		ui.next({width = ui.fill(), height = ui.px(em * 2)})
+		title := ui.label(fmt.tprintf("  %s###title", PANEL_TITLES[p]))
+		ui.view_drag_handle(v, title.box)
+		for i in 0 ..< 6 {
+			ui.next({width = ui.fill(), height = ui.px(em * LINE_EM)})
+			ui.label(fmt.tprintf("   %s line %d (%.0f x %.0f px)###l%d", PANEL_TITLES[p], i + 1, room.x, room.y, i))
+		}
+	}
 }
 
-// The saved layout (else the default); a panel it does not name (one added since) goes with the editor.
-load_layout :: proc(app: ^App) {
-	ui.dock_init(&app.dock)
-	text, err := os.read_entire_file(app.path, context.temp_allocator)
-	if err != nil || !ui.dock_parse(&app.dock, string(text), panel_of, app) { ui.dock_parse(&app.dock, DEFAULT_LAYOUT, panel_of, app) }
-	for p in Panel { ui.dock_add(&app.dock, u32(p), ui.dock_with(&app.dock, u32(Panel.Editor))) }
-}
-
-save_layout :: proc(user: rawptr, d: ^ui.Dock) {
-	app := (^App)(user)
-	app.saves += 1
-	_ = os.write_entire_file(app.path, transmute([]u8)ui.dock_format(d, panel_name, app))
+panel_of :: proc(id: string) -> Panel {
+	for n, p in PANEL_IDS { if n == id { return p } }
+	return .Files
 }
 
 build_ui :: proc(app: ^App) {
 	em := ui.font_size()
-	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
-	if ui.column(.Start, {}, "###main") {
-		ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
-		if ui.row(.Center, {.Draw_Background}, "###bar") {
-			ui.spacer(ui.px(em))
-			ui.next({width = ui.text_size(), height = ui.pct(1)})
-			if ui.button("view", "View").clicked { ui.menu_open("view_menu", ui.mouse_pos()) }
-			if ui.menu("view_menu") {
-				for p in Panel {
-					if ui.menu_item(fmt.tprintf("%s###v%d", PANEL_TITLES[p], int(p)), checked = ui.dock_has(&app.dock, u32(p))).clicked {
-						if !ui.dock_add(&app.dock, u32(p), ui.dock_with(&app.dock, u32(Panel.Editor))) { ui.dock_activate(&app.dock, u32(p)) }
-					}
-				}
-				ui.menu_separator()
-				if ui.menu_item("Reset the layout###reset").clicked { ui.dock_parse(&app.dock, DEFAULT_LAYOUT, panel_of, app) }
+	if ui.views_frame(&app.views) {
+		ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+		if ui.column(.Start, {}, "###main") {
+			ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
+			if ui.row(.Center, {.Draw_Background}, "###bar") {
+				ui.spacer(ui.px(em))
+				ui.next({width = ui.text_size(), height = ui.pct(1)})
+				if ui.button("view", "View").clicked { ui.menu_open("view_menu", ui.mouse_pos()) }
+				if ui.menu("view_menu") { view_menu(app) }
 			}
-			ui.spacer(ui.px(em))
-			ui.next({width = ui.text_size(), height = ui.pct(1)})
-			ui.label(fmt.tprintf("%d saves, %d floating###info", app.saves, len(app.dock.floats)))
+			// the content: the editor, never moved
+			ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+			if ui.column(.Start, {}, "###editor") {
+				ui.spacer(ui.px(em * 0.5))
+				for i in 0 ..< 12 {
+					ui.next({width = ui.fill(), height = ui.px(em * LINE_EM)})
+					ui.label(fmt.tprintf("   Editor line %d###e%d", i + 1, i))
+				}
+			}
 		}
-		ui.next({width = ui.fill(), height = ui.fill()})
-		ui.dock_begin(&app.dock, "###dock", {title = panel_title, on_save = save_layout, user = app, close_buttons = true,
-			closable = proc(user: rawptr, id: u32) -> bool { return Panel(id) != .Editor }})
-		for p in Panel {
-			if ui.dock_panel(&app.dock, u32(p)) { panel_content(app, p) }
-		}
-		ui.dock_end(&app.dock)
 	}
 }
 
-panel_content :: proc(app: ^App, p: Panel) {
-	em := ui.font_size()
-	sz := ui.dock_panel_size(&app.dock, u32(p))
-	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
-	if ui.column(.Start, {.Draw_Background}, "###content") {
-		ui.spacer(ui.px(em * 0.5))
-		for i in 0 ..< 6 {
-			ui.next({width = ui.fill(), height = ui.px(em * LINE_EM)})
-			ui.label(fmt.tprintf("   %s line %d (%.0f x %.0f px)###l%d", PANEL_TITLES[p], i + 1, sz.x, sz.y, i))
+// Each panel, open or closed; then what the palette would list (ui.views_commands).
+view_menu :: proc(app: ^App) {
+	for p in Panel {
+		open := ui.view_is_open(&app.views, PANEL_IDS[p])
+		if ui.menu_item(fmt.tprintf("%s###v%d", PANEL_TITLES[p], int(p)), checked = open).clicked {
+			if open { ui.view_close(&app.views, PANEL_IDS[p]) } else { ui.view_open(&app.views, PANEL_IDS[p], app) }
 		}
+	}
+	ui.menu_separator()
+	commands, acts := ui.views_commands(&app.views)
+	for c, i in commands {
+		if ui.menu_item(fmt.tprintf("%s###c%d", c.label, i), icon = c.icon).clicked { ui.views_command_run(&app.views, acts[i]) }
 	}
 }
 
@@ -143,7 +137,7 @@ frame :: proc(app: ^App, inner := false) {
 main :: proc() {
 	app := new(App)
 	exe, _ := os.get_executable_path(context.allocator)
-	app.path = strings.concatenate({filepath.dir(exe), "/", LAYOUT_FILE})
+	app.path = strings.concatenate({filepath.dir(exe), "/", MEMORY_FILE})
 	delete(exe)
 	font.init(&app.fonts)
 	app.win = platform.open_window("gui_toolkit docking", WINDOW_SIZE, transparent = true)
@@ -156,7 +150,19 @@ main :: proc() {
 	draw.init(&app.dc, &app.r, &app.fonts)
 	ui.init(&app.ui_state, &app.fonts, &app.theme)
 	app.ui_state.icon_font = app.icons
-	load_layout(app)
+
+	// (the first start opens every panel; later ones, those open when the program quit)
+	_, err := os.read_entire_file(app.path, context.temp_allocator)
+	first := err != nil
+	ui.views_init(&app.views, {path = app.path})
+	ui.set_views(&app.ui_state, &app.views)
+	for p in Panel {
+		ui.view_register(&app.views, PANEL_IDS[p], panel_view, ui.View_Options{title = PANEL_TITLES[p], home = .Panel, home_place = {edge = PANEL_EDGES[p]}, extent_em = PANEL_EDGES[p] == .Bottom ? 12 : 16})
+	}
+	for p in Panel {
+		if first || ui.view_was_open(&app.views, PANEL_IDS[p]) { ui.view_open(&app.views, PANEL_IDS[p], app, owner = &app.ui_state) }
+	}
+
 	app.last_tick = time.tick_now()
 	app.frames_requested = 2
 	app.win.user = app
@@ -167,7 +173,7 @@ main :: proc() {
 		frame(app)
 		if app.frames_requested > 0 { app.frames_requested -= 1 }
 	}
-	ui.dock_destroy(&app.dock)
+	ui.views_destroy(&app.views)
 	delete(app.path)
 	ui.destroy(&app.ui_state)
 	draw.destroy(&app.dc)

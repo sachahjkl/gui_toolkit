@@ -140,6 +140,7 @@ if r.size > 0 {
   collapsible; assistive technologies can set the value. The button is a Button named "Hide <title>" / "Show <title>".
 - No frame at rest: nothing animates.
 
-Example: `examples/panes`. Tests: `tests/panes/pane_split_test.odin` (from the minimum to all but the other side's,
+A program's side panes are views now ([views.md](views.md), "Panels"): `examples/panes` shows them. `pane_split` stays
+for a split inside a program's own layout. Tests: `tests/panes/pane_split_test.odin` (from the minimum to all but the other side's,
 folding by a drag, a double click, Enter and the button, the strip's click and pull, the keyboard, the save callback,
 the text, the place, what the strip draws).

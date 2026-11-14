@@ -431,6 +431,9 @@ State :: struct {
 	views:        ^Views,                // its Views: set_views' (the program's), else &own_views (state_views)
 	own_views:    Views,                 // made at its first use, destroyed with the State
 	views_attached: [dynamic]^Views,     // the Views whose views this State builds at the end of its builds (views.odin)
+	views_frame_build: u64,              // the build whose views_frame built the internal windows (end_build does not)
+	views_space_stack: [dynamic]bool,    // views_frame and views_dock being built: did each push the content's box?
+	view_keys_root: Key,                 // a panel's or an internal window's body being built: its keys only while the focus is under it
 	modals_open:  [dynamic]Modal_Open,   // the dialogs of the last build, bottom to top (modal_phase)
 	modals_built: [dynamic]Modal_Open,   // and of this one
 	modal_stack:  [dynamic]Modal_Scope,  // the modals being built (modal_end)
