@@ -654,6 +654,28 @@ No presentation has a fade out. A view closes at once.
 Only the Dialog presentation is modal. An internal window, an external window and a panel never block the owner
 window, even for a question. The program checks its data when it takes an answer (section 8.1).
 
+**Keys typed right after an opening are the view's, in every presentation, at once.** The rule: every view is built in
+the frame it opens. Then the focus its first build gives (a field) is there before the next frame's keys, and nothing
+is held.
+
+- A dialog is built at `end_build`, as before.
+- An internal window opened after `views_frame` (or with no `views_frame`) is built at `end_build` of that frame:
+  `views_build_internals` builds each one not built yet in the build.
+- A panel opened after its space was built is built at `end_build` of that frame, unseen, at the place it will have
+  (`views_build_late_panels`). Its body's key is its name's alone (`State.key_rooted`), not its parent's: what is under
+  it has the same keys in its zone from the next frame, and the focus stays.
+- A panel whose space is not built (a section not shown, a window with no `views_frame`) floats: it is built as an
+  internal window at once, and goes to its space from the build after the space's (the user's decision). Every frame
+  shows it in one place. No key waits for a view that is not built.
+- A view in a window of its own is the only one whose keys wait: between `view_open` and the window's first frame
+  shown, the keys reach its owner (the window is hidden). They are held for it (`views_hold_input`, at the owner's
+  `begin_build`) and given first to its first shown build, in its window's State (`view_input_arrive`). A refusal ends
+  the wait too: the floating window it falls back to gets them. Only an opening as External holds keys.
+
+Refused: holding every view's keys until its build has the focus. The keys a dialog or the page must have at once
+(Escape, Enter, Tab) waited, and the bounds (builds, frames) were guesses. Only an
+opening holds keys: a move carries the focus (`state_carry`).
+
 When the focus moves with a view (Moving), the focused box's key is carried over: the view's root key is the same in
 every State (section 4.4).
 
@@ -762,7 +784,10 @@ View_Window_Ask :: struct { title: string, size: [2]int, at: Maybe([2]int), owne
 
 `src/host/views.odin` implements it:
 
-- `host.view_windows(sh: ^Shared) -> ui.View_Windows`.
+- `host.view_windows(sh: ^Shared) -> ui.View_Windows`: one backend for every window of the program, set once. The ask
+  names the owner State (`View_Window_Ask.owner_state`); the backend finds that Host among `Shared.hosts` and makes
+  the view's window's frames after its frames. Refused: a backend per owner window (`view_windows(owner)`): a program
+  of several owner windows (cliche) had to set it again at the top of each window's build.
 - Each external window is a `host.Host` on the program's `Shared`, as ocn's `Detached` is. It has its own `ui.State` and
   its own `render.Surface`.
 - Its `build` calls `ui.view_window_build(vs, v)`: the title bar, the body, and the dialogs whose owner is this window.
@@ -920,7 +945,7 @@ content (the frame, `{content = true}`) has none: its centre is the program's.
    they draw over the whole frame.
 4. It returns true with the content's box as the parent. The program builds its content there.
 5. `views_frame_end` ends the content. The dialogs and the drop targets are `end_build`'s, over everything. A program
-   that forgets `views_frame` still gets its dialogs and its internal windows; its panels wait for a space.
+   that forgets `views_frame` still gets its dialogs and its internal windows; its panels float until a space is built.
 
 The window's title bar stays the program's, inside the content. A panel at the top goes under it.
 
@@ -932,8 +957,9 @@ on the last layout, as in any layout.
 
 `views_dock(vs, name, o)` is the same machinery inside the content: Mission Control's space (`"mission"`, panels only),
 inspecteur's Services section (`"services"`, with the list of services as its content). A view whose home place
-names a space docks there. A space that is not built in a frame does not build its panels: they stay Shown and keep
-their state, drawn nowhere, until it is built again (section 8.2, decision 2). Without `content`, the centre of the
+names a space docks there. A panel whose space is not built floats: an internal window at once, in its space again
+from the build after the space's (the user's decision; it replaces "drawn nowhere until it is built again" of section
+8.2, decision 2: a view opened there would have taken no keys, and its user would not see it). Without `content`, the centre of the
 space is its `.Center` zone (empty until a view docks there).
 
 A view docked in a space can be dragged to another space or to the frame's edges. Its home place does not change.

@@ -1,7 +1,7 @@
 package scenarios_test
 
 // Words a person must read are never cut nor past an edge: a button grows to its words, or wraps them; a dialog grows to its
-// title and its buttons, then wraps them; a tool bar folds its groups into its "…" panel; a popover grows to what is in it.
+// title and its buttons, then wraps them; a tool bar folds its groups into its "…" menu; a popover grows to what is in it.
 
 import "core:fmt"
 import "core:testing"
@@ -98,7 +98,7 @@ a_dialog_holds_its_title_and_buttons :: proc(t: ^testing.T) { unwatched.run(t, p
 }) }
 
 // A tool bar too narrow for its groups folds the lowest priority first; its pinned group stays in the bar; the "…" button
-// opens a panel where the folded group is built and works.
+// opens a menu where the folded tool is a row under its group's title, and a click on it runs it and closes the menu.
 @(test)
 a_toolbar_folds_what_does_not_fit :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { clicks: int }
@@ -106,17 +106,16 @@ a_toolbar_folds_what_does_not_fit :: proc(t: ^testing.T) { unwatched.run(t, proc
 	s := session.start(t, {size = {900, 300}, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.fill(), height = ui.px(40)})
-		if ui.toolbar("bar") {
+		if ui.toolbar("bar", {overflow = .Fold}) {
 			if ui.toolbar_group("first", {priority = 2}) {
-				for i in 0 ..< 4 { ui.button(fmt.tprintf("a%d", i), "Outil") }
+				for i in 0 ..< 4 { _ = ui.toolbar_tool(fmt.tprintf("a%d", i), {label = "Outil", words = true}) }
 			}
-			if ui.toolbar_group("middle", {separator = true}) {
-				if ui.button("mid", "Propriétés de la forme").clicked { r.clicks += 1 }
+			if ui.toolbar_group("middle", {title = "Géométrie", separator = true}) {
+				if ui.toolbar_tool("mid", {label = "Propriétés de la forme", words = true}) { r.clicks += 1 }
 			}
-			ui.spacer(ui.fill())
 			if ui.toolbar_group("end", {pinned = true}) {
-				ui.button("cancel", "Annuler")
-				ui.button("done", "Terminé")
+				_ = ui.toolbar_tool("cancel", {label = "Annuler", words = true})
+				_ = ui.toolbar_tool("done", {label = "Terminé", words = true, intent = .Primary})
 			}
 		}
 	}})
@@ -130,18 +129,23 @@ a_toolbar_folds_what_does_not_fit :: proc(t: ^testing.T) { unwatched.run(t, proc
 	testing.expect(t, session.find(s, "toolbar_more") != nil, "its \"…\" button")
 	testing.expect(t, holds(bar, session.get(s, "done")), "the pinned group stays in the bar")
 	session.click(s, "toolbar_more")
-	mid := session.wait_box(s, "mid")
-	testing.expect(t, !holds(bar, mid) || mid.rect.min.y >= bar.rect.max.y, "built in the panel, under the bar")
-	session.click(s, "mid")
+	row := session.wait_text(s, "Propriétés de la forme")
+	testing.expect(t, row.rect.min.y >= bar.rect.max.y, "a row of the menu, under the bar")
+	testing.expect(t, session.find_text(s, "Géométrie") != nil, "its section's title")
+	testing.expect(t, ui.toolbar_menu_open("bar"), "the menu is open")
+	session.click_text(s, "Propriétés de la forme")
+	session.frames(s, 2)
 	testing.expect_value(t, r.clicks, 1)
-	testing.expect(t, ui.toolbar_menu_open("bar"), "a click in the panel keeps it open")
+	testing.expect(t, !ui.toolbar_menu_open("bar"), "a tool chosen closes the menu")
+	session.click(s, "toolbar_more")
+	session.wait_text(s, "Propriétés de la forme")
 	session.key(s, .Escape)
 	session.frames(s, 2)
 	testing.expect(t, !ui.toolbar_menu_open("bar"), "Escape closes it")
 }) }
 
 // A group of items folds item by item, its last first: at a width where it fits but for its last items, only those fold,
-// the others stay in the bar, and no room is left that the first folded item would fill. A folded item works in the panel.
+// the others stay in the bar, and no room is left that the first folded item would fill. A folded item works in the menu.
 @(test)
 a_toolbar_folds_a_group_item_by_item :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	ITEMS :: 6
@@ -150,19 +154,16 @@ a_toolbar_folds_a_group_item_by_item :: proc(t: ^testing.T) { unwatched.run(t, p
 	s := session.start(t, {size = {1200, 300}, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.fill(), height = ui.px(40)})
-		if ui.toolbar("bar") {
+		if ui.toolbar("bar", {overflow = .Fold}) {
 			if ui.toolbar_group("tools", {priority = 2}) {
-				for i in 0 ..< 3 { ui.button(fmt.tprintf("a%d", i), "Outil") }
+				for i in 0 ..< 3 { _ = ui.toolbar_tool(fmt.tprintf("a%d", i), {label = "Outil", words = true}) }
 			}
 			if ui.toolbar_group("props", {separator = true}) {
 				for i in 0 ..< ITEMS {
-					if ui.toolbar_item(fmt.tprintf("i%d", i)) {
-						if ui.button(fmt.tprintf("p%d", i), fmt.tprintf("Propriété %d", i)).clicked { r.clicks += 1 }
-					}
+					if ui.toolbar_tool(fmt.tprintf("p%d", i), {label = fmt.tprintf("Propriété %d", i), words = true}) { r.clicks += 1 }
 				}
 			}
-			ui.spacer(ui.fill())
-			if ui.toolbar_group("end", {pinned = true}) { ui.button("done", "Terminé") }
+			if ui.toolbar_group("end", {pinned = true}) { _ = ui.toolbar_tool("done", {label = "Terminé", words = true}) }
 		}
 	}})
 	session.frames(s, 3)
@@ -189,11 +190,12 @@ a_toolbar_folds_a_group_item_by_item :: proc(t: ^testing.T) { unwatched.run(t, p
 	testing.expect(t, holds(bar, kept), "the items kept are in the bar")
 	gap := session.get(s, "toolbar_more").rect.min.x - kept.rect.max.x
 	testing.expectf(t, gap < last.size.x + 2 * kept.font_size, "no room left that an item would fill: %v px", gap)
-	// (the folded items in the panel, working)
+	// (the folded items in the menu, working)
 	session.click(s, "toolbar_more")
-	folded := session.wait_box(s, fmt.tprintf("p%d", ITEMS - 1))
-	testing.expect(t, folded.rect.min.y >= bar.rect.max.y, "built in the panel, under the bar")
-	session.click(s, fmt.tprintf("p%d", ITEMS - 1))
+	folded := session.wait_text(s, fmt.tprintf("Propriété %d", ITEMS - 1))
+	testing.expect(t, folded.rect.min.y >= bar.rect.max.y, "a row of the menu, under the bar")
+	session.click_text(s, fmt.tprintf("Propriété %d", ITEMS - 1))
+	session.frames(s, 2)
 	testing.expect_value(t, r.clicks, 1)
 }) }
 
@@ -203,21 +205,16 @@ a_toolbar_folds_a_group_item_by_item :: proc(t: ^testing.T) { unwatched.run(t, p
 a_toolbar_item_folds_by_its_own_priority :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = {1200, 300}, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.fill(), height = ui.px(40)})
-		if ui.toolbar("bar") {
+		if ui.toolbar("bar", {overflow = .Fold}) {
 			if ui.toolbar_group("tools", {priority = 2}) {
-				for i in 0 ..< 3 {
-					if ui.toolbar_item(fmt.tprintf("t%d", i)) { ui.button(fmt.tprintf("a%d", i), "Outil") }
-				}
+				for i in 0 ..< 3 { _ = ui.toolbar_tool(fmt.tprintf("a%d", i), {label = "Outil", words = true}) }
 				// (rare: it folds first)
-				if ui.toolbar_item("rare", priority = -1) { ui.button("rare_tool", "Un outil rarement utilisé") }
+				_ = ui.toolbar_tool("rare_tool", {label = "Un outil rarement utilisé", words = true, priority = -1})
 			}
 			if ui.toolbar_group("props", {separator = true}) {
-				for i in 0 ..< 3 {
-					if ui.toolbar_item(fmt.tprintf("i%d", i)) { ui.button(fmt.tprintf("p%d", i), fmt.tprintf("Propriété %d", i)) }
-				}
+				for i in 0 ..< 3 { _ = ui.toolbar_tool(fmt.tprintf("p%d", i), {label = fmt.tprintf("Propriété %d", i), words = true}) }
 			}
-			ui.spacer(ui.fill())
-			if ui.toolbar_group("end", {pinned = true}) { ui.button("done", "Terminé") }
+			if ui.toolbar_group("end", {pinned = true}) { _ = ui.toolbar_tool("done", {label = "Terminé", words = true}) }
 		}
 	}})
 	session.frames(s, 3)

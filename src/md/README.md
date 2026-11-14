@@ -33,6 +33,8 @@ is migrated in the same piece of work.
 
 - [features/plugins.md](features/plugins.md): plugins in JavaScript over the whole toolkit — the notes taken before
   the design (the engine Wren already embeds, what to design first).
+- [features/toolbar.md](features/toolbar.md): tool bars — one API, two overflow modes (wrap onto more lines, or fold
+  into a "…" menu), groups and items declared once, why the dropdown is a menu and not the bar's controls.
 - [features/views.md](features/views.md): views — every dialog and movable pane as one content in four
   presentations (dialog, internal window, external window, docked panel), the state machine, what is remembered, the
   chrome rules, the plan of the work and the migration of the programs.

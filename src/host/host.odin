@@ -62,6 +62,7 @@ Shared :: struct {
 	font:  font.Font_Id,   // the interface's
 	main:  ^Host,          // the first window: the renderer's own, and the interface that is current between frames
 	views: [dynamic]^View_Window,   // the windows of views (views.odin): each made after its owner's frames
+	hosts: [dynamic]^Host,          // every window open on it (a view's owner is found among them: view_windows)
 }
 
 Open_Options :: struct {
@@ -126,6 +127,7 @@ host_adopt :: proc(h: ^Host, sh: ^Shared, w: ^platform.Window, build: proc(h: ^H
 	first := sh.main == nil
 	h.shared, h.win, h.build, h.user, h.paced = sh, w, build, user, first
 	if first { sh.main = h }
+	append(&sh.hosts, h)
 	h.last_ms = ui.now_ms()
 	w.user, w.on_frame = h, host_paint
 }
@@ -156,6 +158,7 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 		return false
 	}
 	if first { sh.main = h }
+	append(&sh.hosts, h)
 	ui.init(&h.state, &sh.fonts, &sh.theme)
 	ui.use(&sh.main.state)
 	h.last_ms = ui.now_ms()
@@ -202,10 +205,15 @@ host_close :: proc(h: ^Host) {
 	assert(!first || !ui.building(), "host: host_close inside a build")
 	if !first { render.surface_destroy(&sh.r, &h.surface) }
 	ui.destroy(&h.state)
+	for x, i in sh.hosts {
+		if x == h { ordered_remove(&sh.hosts, i); break }
+	}
 	if first {
 		// (ui.destroy of its State closed the windows of its views: view_windows_close)
 		delete(sh.views)
 		sh.views = nil
+		delete(sh.hosts)
+		sh.hosts = nil
 		sh.main = nil
 		ui.theme_destroy(&sh.theme)
 		draw.destroy(&sh.dc)

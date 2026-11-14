@@ -5,10 +5,11 @@ package host
 // Its frames come after its owner's, inside the owner's host_frame (host_views_frames); hosts_due and hosts_wait count
 // them. The program's loop does not change:
 //
-//   ui.views_set_windows(&app.views, host.view_windows(&app.main))   once, at start-up
+//   ui.views_set_windows(&app.views, host.view_windows(&app.shared))   once, at start-up, for every window
 //
-// Its system close re-attaches the view (ui.view_window_close_asked); its style follows its owner's (ui.style_follow,
-// in ui.views_windows_step).
+// One backend for the program: each view's owner State is a Host's (a main window, an editor's window, a view's window),
+// and that Host makes its frames. Its system close re-attaches the view (ui.view_window_close_asked); its style follows
+// its owner's (ui.style_follow, in ui.views_windows_step).
 
 import "../platform"
 import "../ui"
@@ -20,10 +21,19 @@ View_Window :: struct {
 	shown: bool,   // ui's step showed it: from now on its frames draw pictures
 }
 
-// The backend of the views' windows for the views `owner` owns (and for theirs: a view opened in a view's window has
-// that window for owner). Refused for an offscreen owner (a test's host: session.view_windows is the test's backend).
-view_windows :: proc(owner: ^Host) -> ui.View_Windows {
-	return {open = view_window_open, show = view_window_show, hide = view_window_hide, close = view_window_close, user = owner}
+// The backend of the views' windows of a program's windows, all of them (the hosts on `sh`): a view's window is made
+// after the frames of the Host that owns the view (View_Window_Ask.owner_state). Refused for an offscreen owner (a
+// test's host: session.view_windows is the test's backend), and for an owner State that is no Host's.
+view_windows :: proc(sh: ^Shared) -> ui.View_Windows {
+	return {open = view_window_open, show = view_window_show, hide = view_window_hide, close = view_window_close, user = sh}
+}
+
+// The Host whose State is `st`: one of `sh`'s windows (nil: none).
+@(private = "file")
+host_of_state :: proc(sh: ^Shared, st: ^ui.State) -> ^Host {
+	if st == nil { return nil }
+	for h in sh.hosts { if &h.state == st { return h } }
+	return nil
 }
 
 // (its owner hid: off the screen, no picture until it shows again)
@@ -36,9 +46,9 @@ view_window_hide :: proc(user: rawptr, handle: rawptr) {
 
 @(private = "file")
 view_window_open :: proc(user: rawptr, ask: ui.View_Window_Ask) -> (state: ^ui.State, win: ^platform.Window, handle: rawptr) {
-	owner := (^Host)(user)
+	sh := (^Shared)(user)
+	owner := host_of_state(sh, ask.owner_state)
 	if owner == nil || owner.win == nil || platform.is_offscreen(owner.win) { return }
-	sh := owner.shared
 	vw := new(View_Window)
 	vw.owner = owner
 	h := &vw.host

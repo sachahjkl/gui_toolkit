@@ -85,8 +85,11 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool) -> bool {
 	for e in View_Edge { for k in 0 ..< VIEW_STACKS_MAX { zones[e][k] = make([dynamic]^View_Record, 0, 2, context.temp_allocator) } }
 	for r in vs.records {
 		if r.owner != s || !view_builds_panel(r.machine) || r.machine.place.space != name { continue }
+		if r.ibuilt == s.build_index { continue }   // (floating this frame, its space was not built: from the next one here)
 		p := r.machine.place
 		if p.edge == .Center && content { continue }   // (a space with content has no centre zone: it waits)
+		// (placed in this build, its tab shown or not: not a late panel of end_build, whose body would cover its zone)
+		r.pbuilt = s.build_index
 		append(&zones[p.edge][clamp(p.stack, 0, VIEW_STACKS_MAX - 1)], r)
 	}
 	for e in View_Edge {
@@ -238,6 +241,44 @@ view_frame_built :: proc(vs: ^Views, owner: ^State) -> bool {
 	return ok && owner != nil && sp.state == owner && sp.built + 1 >= owner.build_index
 }
 
+// Whether a panel floats (an internal window) in this build: its space was built neither in it nor in the last one (a
+// section not shown, a window with no views_frame). It goes to its space from the build after the space's.
+@(private)
+view_panel_floats :: proc(vs: ^Views, r: ^View_Record, s: ^State) -> bool {
+	sp, ok := vs.spaces[r.machine.place.space]
+	return !ok || sp.state != s || sp.built + 1 < s.build_index
+}
+
+// end_build: the panels not built in this build, opened (or moved here) after their space was built. Each is built now,
+// in the frame it opens: unseen, at the place it will have, its body's key its own (key_rooted): what its first build
+// focused keeps the focus in its zone from the next frame. A panel whose space this build did not build floats now.
+@(private)
+views_build_late_panels :: proc(s: ^State) {
+	for vi := 0; vi < len(s.views_attached); vi += 1 {
+		vs := s.views_attached[vi]
+		for i := 0; i < len(vs.records); i += 1 {
+			r := vs.records[i]
+			if r.owner != s || !view_builds_panel(r.machine) || r.pbuilt == s.build_index || r.ibuilt == s.build_index { continue }
+			sp, ok := vs.spaces[r.machine.place.space]
+			if !ok || sp.state != s || sp.built != s.build_index {
+				view_internal_build(vs, r, false)   // (its space went in this build: a floating window, at once)
+				continue
+			}
+			em := sp.em
+			at := view_target_preview(sp, r.machine.place.edge, em)
+			if r.machine.place.edge == .Center && sp.has_content { at = sp.rect }
+			push_parent(s.root)
+			next({fixed_x = at.min.x, fixed_y = at.min.y, width = px(max(at.max.x - at.min.x, 1)), height = px(max(at.max.y - at.min.y, 1)), axis = .Y, transparency = 1})
+			holder := build_box({}, fmt.tprintf("###view_late_%s", r.modal_name))
+			push_parent(holder)
+			view_panel_build(vs, sp, r)
+			pop_parent()
+			pop_parent()
+			s.anim_busy = true   // (the next frame shows it in its zone)
+		}
+	}
+}
+
 // Whether a view is built this frame as a panel (in its space, when that space is built).
 @(private)
 view_builds_panel :: proc(m: View_Machine) -> bool {
@@ -383,9 +424,13 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record) {
 	em := font_size()
 	r.flag, r.ending, r.tools, r.header = true, nil, 0, 0
 	next({width = fill(), height = fill(), axis = .Y})
+	// (its key its name's alone: a panel opened late is built at end_build first, then in its zone; its field keeps its
+	// key, and the focus its first build gave it)
+	s.key_rooted = true
 	body := build_box({.Clip}, fmt.tprintf("###view_panel_%s", r.modal_name))
 	r.panel = body.key
 	r.roots[.Panel] = body.key
+	r.pbuilt = s.build_index
 	last := body.rect   // (the last layout's)
 	push_parent(body)
 	v := View{id = k.id, instance = r.instance, presentation = .Panel, place = r.machine.place, shown = true, record = r}
@@ -709,13 +754,15 @@ View_Command :: struct {
 // A command per act of each open view of `vs`, in the language in use ("Float Properties", "Dock Properties to the
 // right"...): an act that does nothing where the view is is absent. `acts[i]` is what `commands[i]` does
 // (views_command_run). Make them again when views_version changes.
-views_commands :: proc(vs: ^Views, allocator := context.temp_allocator) -> (commands: []Command, acts: []View_Command) {
+// `owner`: only the views that window owns (the window's own palette lists its own views' moves, its palette and its
+// sheet included); nil: every view.
+views_commands :: proc(vs: ^Views, allocator := context.temp_allocator, owner: ^State = nil) -> (commands: []Command, acts: []View_Command) {
 	cmds := make([dynamic]Command, 0, 4 * len(vs.records), allocator)
 	what := make([dynamic]View_Command, 0, 4 * len(vs.records), allocator)
 	group := i18n.tr("Views")
 	for r in vs.records {
 		m := r.machine
-		if m.state == .Closed || m.state == .Dragged { continue }
+		if m.state == .Closed || m.state == .Dragged || (owner != nil && r.owner != owner) { continue }
 		title := view_title_shown(r)
 		add :: proc(cmds: ^[dynamic]Command, what: ^[dynamic]View_Command, r: ^View_Record, act: View_Act, word, title, group, icon: string, allocator := context.allocator) {
 			append(cmds, Command{label = fmt.aprintf(word, title, allocator = allocator), group = group, icon = icon})
@@ -766,19 +813,21 @@ View_Commands :: struct {
 	made:      bool,
 	version:   u64,   // the views' version they were made for
 	language:  u32,
+	owner:     ^State,   // the window whose views they are (nil: every view)
 	allocator: runtime.Allocator,
 }
 
 // Makes `vc` again when the views of `vs` changed since (views_version) or the language did; true: they did, the
 // program builds its palette's table again (its own commands first, then these: the palette folds each slot's text once,
 // and the program's slots stay where they were) and calls palette_set. Cost: one pass over the open views, only then.
-views_commands_update :: proc(vc: ^View_Commands, vs: ^Views) -> (changed: bool) {
+// `owner`: only the views that window owns (a program of several windows keeps one View_Commands per window); nil: all.
+views_commands_update :: proc(vc: ^View_Commands, vs: ^Views, owner: ^State = nil) -> (changed: bool) {
 	views_ready(vs)
 	language := i18n.version()
-	if vc.made && vc.version == vs.version && vc.language == language { return false }
+	if vc.made && vc.version == vs.version && vc.language == language && vc.owner == owner { return false }
 	views_commands_destroy(vc)
-	vc.allocator = vs.allocator
-	commands, acts := views_commands(vs, context.temp_allocator)
+	vc.allocator, vc.owner = vs.allocator, owner
+	commands, acts := views_commands(vs, context.temp_allocator, owner)
 	vc.commands = make([]Command, len(commands), vc.allocator)
 	vc.acts = make([]View_Command, len(acts), vc.allocator)
 	for c, i in commands {

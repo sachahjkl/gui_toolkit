@@ -269,18 +269,33 @@ a_tab_dragged_out_floats :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.view_presentation(&r.views, "side"), ui.View_Presentation.Panel)
 }
 
-// A view homed in a space not built waits there, Shown; it is built when the space is.
+// A view homed in a space not built shows at once as a floating window; it goes to its space when the space is shown,
+// and floats again when the space goes. Every frame shows it in one place: never nowhere, never in two.
 @(test)
-a_home_in_a_hidden_space_waits :: proc(t: ^testing.T) {
+a_home_in_a_hidden_space_floats_until_it_shows :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "tool")
-	session.frames(s, 3)
+	if wait_built(s, "internal_view_tool") == nil { return }
 	testing.expect(t, ui.view_is_open(&r.views, "tool"), "open")
-	testing.expect(t, built(s, "view_panel_view_tool") == nil, "not built: its space is not")
+	testing.expect(t, built(s, "view_panel_view_tool") == nil, "no panel: its space is not built")
+	testing.expect_value(t, ui.view_presentation(&r.views, "tool"), ui.View_Presentation.Panel)
+	one_place :: proc(t: ^testing.T, s: ^session.Session, when_: string) -> (panel: bool) {
+		p, w := built(s, "view_panel_view_tool") != nil, built(s, "internal_view_tool") != nil
+		testing.expectf(t, p != w, "%s: in one place (panel %v, floating %v)", when_, p, w)
+		return p
+	}
 	r.tools = true
-	wait_built(s, "view_panel_view_tool")
+	for i in 0 ..< 6 {
+		session.frame(s)
+		if one_place(t, s, "the space shows") { break }
+		testing.expect(t, i < 5, "in its space at last")
+	}
 	testing.expect(t, built(s, "tools_centre") != nil, "the space's centre")
+	r.tools = false
+	session.frame(s)
+	one_place(t, s, "the space goes")
+	testing.expect(t, built(s, "internal_view_tool") != nil, "floating again at once")
 }
 
 // The zone's extent follows its handle and is remembered in the space's line once let go.

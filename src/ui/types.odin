@@ -435,6 +435,8 @@ State :: struct {
 	views_space_stack: [dynamic]bool,    // views_frame and views_dock being built: did each push the content's box?
 	view_keys_root: Key,                 // a panel's or an internal window's body being built: its keys only while the focus is under it
 	views_hidden: bool,                  // the window is hidden: its views' windows are too (views_windows_follow)
+	key_rooted:   bool,                  // the next build_box's key is its id's alone, not its parent's (a panel's body, built in two places)
+	focus_field_next: bool,              // focus_next_field: the next field built in this build takes the keyboard
 	modals_open:  [dynamic]Modal_Open,   // the dialogs of the last build, bottom to top (modal_phase)
 	modals_built: [dynamic]Modal_Open,   // and of this one
 	modal_stack:  [dynamic]Modal_Scope,  // the modals being built (modal_end)

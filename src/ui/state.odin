@@ -258,6 +258,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	paste_begin_build(s, p.events)
 	selection_begin(s)
 	process_events(s, p.events, !p.disable_zoom, left)
+	views_hold_input(s)   // (keys typed for a view that just opened, until its focused field is there: views.odin)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
 	menu_capture_keys(s, p.events)
 	s.scale = (p.dpi_scale > 0 ? p.dpi_scale : 1) * s.zoom
@@ -350,6 +351,7 @@ end_build :: proc() {
 
 	// per-frame input state is consumed
 	s.scroll_delta = {}
+	s.focus_field_next = false   // (asked in a build, for that build's fields only)
 	for b in platform.Mouse_Button {
 		s.pressed_key[b] = 0
 		s.pressed_any[b] = false
@@ -490,7 +492,11 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	s := gs()
 	parent := parent_box()
 	key: Key
-	if id == "" { key = key_from_u64(parent.key, u64(parent.child_count) + HASH_GOLDEN_RATIO_64) } else { key = key_from_string(parent.key, id) }
+	if id != "" && s.key_rooted {
+		// (the same box wherever its parent is: what is under it keeps its keys, and the focus, from one place to another)
+		key = key_from_string(0, id)
+	} else if id == "" { key = key_from_u64(parent.key, u64(parent.child_count) + HASH_GOLDEN_RATIO_64) } else { key = key_from_string(parent.key, id) }
+	s.key_rooted = false
 	// two siblings with the same id would share state: keep going until the key is free for this build
 	for {
 		if existing, ok := s.boxes[key]; ok && existing.last_build == s.build_index {
@@ -519,6 +525,11 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	if s.disabled_depth > 0 { b.flags += {.Disabled} }
 	if .Window_Caption in b.flags { s.caption_built = true }
 	if .Disabled in b.flags && s.focus_key == b.key { s.focus_key = 0 }
+	// (focus_next_field: the first field built since, whatever its widget calls its boxes)
+	if s.focus_field_next && .Text_Input in b.flags && .Focusable in b.flags && .Disabled not_in b.flags {
+		s.focus_field_next = false
+		s.focus_key = b.key
+	}
 	selection_note(s, b)
 	b.name = ""
 	if id != "" { b.name = strings.clone(hash_part(id), frame_allocator()) }

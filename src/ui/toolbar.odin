@@ -2,43 +2,38 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "../font"
 import i18n "../i18n"
 import lucide "../lucide"
-import "../platform"
 
-// A tool bar whose groups fold into a "…" panel when the window is too narrow for them, rather than run past its edge:
+// A tool bar: groups of items, declared once, that the bar shows whatever the window's width (src/md/features/toolbar.md):
 //
 //   ui.next({width = ui.fill(), height = ui.px(bar_h)})
-//   if ui.toolbar("editor_bar") {
-//       if ui.toolbar_group("tools", {priority = 2}) { ...the tools... }
-//       if ui.toolbar_group("props", {separator = true}) { ...the properties... }
-//       ui.spacer(ui.fill())
-//       if ui.toolbar_group("acts", {priority = 1}) { ...undo, redo, copy, save... }
-//       if ui.toolbar_group("end", {pinned = true}) { ...Cancel, Done... }
+//   if ui.toolbar("editor_bar", {overflow = .Fold}) {
+//       if ui.toolbar_group("tools", {title = "Tools", priority = 2}) {
+//           if ui.toolbar_tool("pen", {label = "Pen", icon = ICON_PEN, shortcut = "P", on = tool == .Pen}) { tool = .Pen }
+//       }
+//       if ui.toolbar_group("props", {title = "Style", separator = true}) {
+//           if ui.toolbar_control("width", {label = "Width"}) { ui.slider("###w", &width, 1, 20) }
+//       }
+//       if ui.toolbar_group("end", {pinned = true}) {
+//           if ui.toolbar_tool("done", {label = "Done", words = true, intent = .Primary}) { done() }
+//       }
 //   }
 //
-// A group is one block of the bar, built by the caller's code as anywhere else. When the groups do not fit, the bar folds
-// them, the lowest `priority` first (of two alike, the later one), until the rest fits with the "…" button; a `pinned`
-// group never folds (the bar's end buttons). The "…" button stands before the first pinned group (at the bar's end when
-// there is none); a click opens a panel under it where each folded group is a row, built by the same code: what is in it
-// works there as in the bar. A press outside the panel, or Escape, closes it.
-//
-// A group's width is measured where it is built (natural_width, before the layout: in the bar, or in the panel) and kept;
-// a folded group is measured again each time its panel is open. The bar is a row: `next` gives its size, its children are
-// centred across it.
-//
-// A group may be made of items (`if ui.toolbar_item(id) { ... }` in its block): the bar then folds the group item by
-// item, its last item first, and folds the group whole only once all its items are folded and it still does not fit. A
-// folded item is built in the panel, in a row of its group; the rest of the group stays in the bar, so a wide group of
-// properties loses its last ones, not all of them, and no gap is left where it was. An item may have a priority of its
-// own (toolbar_item's `priority`): the bar folds every group's items and rests together, by priority, so the rare tools
-// of a group kept long fold before the needed items of a group that folds early.
+// The program chooses what happens when the bar is too narrow (Toolbar_Options.overflow):
+//   - .Wrap: the bar takes more lines. A group goes to the next line whole; a group wider than a line wraps its items,
+//     each whole. The pinned groups stay at the end of the last line.
+//   - .Fold: the bar keeps one line. What does not fit goes into the menu of a "…" button, the lowest priority first, a
+//     group's last item first; a pinned group never folds. In the menu a folded group is a section (its title, a
+//     separator between two), a tool a menu row (icon, label, shortcut), a control a row with its label at the left and
+//     its widget at the right.
+// An item's call answers the same wherever it is shown: a tool returns true when clicked, a control's block builds its
+// widget. The bar puts its pinned groups at its end itself: build no spacer in it.
 
-// What a group of a tool bar is to its folding.
-Toolbar_Group_Options :: struct {
-	priority:  int,    // the lower folds first
-	pinned:    bool,   // never folds (the bar's end buttons)
-	separator: bool,   // a line before it in the bar (not in the panel)
+Toolbar_Overflow :: enum u8 {
+	Fold,   // one line; what does not fit goes into the "…" button's menu
+	Wrap,   // as many lines as it needs; each group moves whole
 }
 
 // The words of a tool bar (zero: toolbar_default_labels).
@@ -46,21 +41,54 @@ Toolbar_Labels :: struct { more: string }   // the "…" button's tooltip and na
 // The toolkit's words of a tool bar, in the language in use.
 toolbar_default_labels :: proc() -> Toolbar_Labels { return {more = i18n.tr("More tools")} }
 
+Toolbar_Options :: struct {
+	overflow: Toolbar_Overflow,
+	labels:   Toolbar_Labels,
+}
+
+// What a group of a tool bar is.
+Toolbar_Group_Options :: struct {
+	title:     string,   // its section's heading in the "…" menu, its name to a screen reader ("" none)
+	priority:  int,      // .Fold: the lower folds first
+	pinned:    bool,     // at the bar's end; never folds, never wraps away from the end (Cancel, Done)
+	separator: bool,     // a line before it in the bar (a separator between sections in the menu, whatever this says)
+}
+
+// A tool: an act, built by the toolkit as a button of the bar or as a row of the "…" menu.
+Toolbar_Tool :: struct {
+	label:     string,         // its words: the menu row's, the bar's tooltip (or its words, `words`)
+	icon:      string,         // a glyph of `icon_font`
+	shortcut:  string,         // its key's text ("Ctrl+Z"): the menu row's, in the bar's tooltip
+	command:   Command,        // a command: its label, icon and first key, for what the fields above leave ""
+	priority:  Maybe(int),     // .Fold: its own priority (nil: its group's)
+	words:     bool,           // in the bar, a button with its words (and its icon), not its icon alone
+	on:        bool,           // the tool chosen, a mode that is on: held down in the bar, checked in the menu
+	disabled:  bool,
+	intent:    Intent,         // what the act means (Done: Primary)
+	icon_font: font.Font_Id,   // 0: State.icon_font
+}
+
+// A control: a property with a widget of the program (a slider, swatches, a toggle), which the block builds.
+Toolbar_Control :: struct {
+	label:    string,       // the menu row's left column, its name to a screen reader
+	priority: Maybe(int),   // .Fold: its own priority (nil: its group's)
+	labelled: bool,         // in the bar too, its label before its widget
+}
+
 // What a tool bar keeps between builds (State.toolbars, by toolbar_key).
 @(private)
 Toolbar_Memory :: struct {
-	groups:     [dynamic]Toolbar_Group_Memory,   // in the order the last build built them
-	fixed:      f32,    // the width of what is in the bar besides its groups and the "…" button (spacers, words)
-	open:       bool,   // the panel of the folded groups is open
-	panel, more: Key,   // the panel's box and the "…" button's (the last build's)
+	groups: [dynamic]Toolbar_Group_Memory,   // in the order the last build built them
+	fixed:  f32,   // the width of what is in the bar besides its groups and the "…" button (spacers, words)
+	more:   Key,   // the "…" button's box (the last build's)
 }
 
 @(private)
 Toolbar_Group_Memory :: struct {
 	key:      Key,
-	width:    f32,    // what the caller builds in it, natural (0: not measured yet), as last built (its folded items not in it)
+	width:    f32,    // what is in it, natural (0: not measured yet), as last built in the bar (its folded items not in it)
 	rest:     f32,    // the part of `width` that is not an item
-	sep:      f32,    // its separator's width in the bar (0: none)
+	lead:     f32,    // its gap and its separator before it in the bar (0: none)
 	priority: int,
 	pinned:   bool,
 	folded:   bool,   // in this build
@@ -68,80 +96,128 @@ Toolbar_Group_Memory :: struct {
 	items:    [dynamic]Toolbar_Item_Memory,   // in the order the last build built them
 }
 
-// An item of a group (toolbar_item): it folds on its own.
+// An item of a group (toolbar_tool, toolbar_control): it folds on its own.
 @(private)
 Toolbar_Item_Memory :: struct {
 	key:      Key,
-	width:    f32,    // natural, where it was last built
+	width:    f32,    // natural, as last built in the bar (0: never built there)
 	priority: int,    // its own, else its group's (as last built)
-	folded:   bool,   // in this build (its group in the bar)
+	folded:   bool,   // in this build
 	seen:     u64,
 }
+
+// The "…" menu in this build: not open; open, not entered yet; its level being built; built, left for the bar's code.
+@(private)
+Toolbar_Menu :: enum u8 { Closed, Open, Entered, Left }
+
+// Where a group or an item is built: nowhere; in the bar; in an invisible box (a group folded whole); in the menu.
+@(private)
+Toolbar_Where :: enum u8 { None, Bar, Hidden, Menu }
 
 // The tool bar being built (State.toolbar).
 @(private)
 Toolbar_Build :: struct {
-	active:   bool,
-	key:      Key,
-	bar:      ^Box,
-	panel:    ^Box,   // the panel of the folded groups, once built in this build
-	more:     ^Box,   // the "…" button, once built
-	folded:   bool,   // a group is folded in this build
-	labels:   Toolbar_Labels,
-	side:     f32,    // the "…" button's side
-	order:    int,    // the groups built so far
-	group:    int,    // the group being built (its index in the memory)
-	group_id: string, // ...its id (the caller's, for this build)
-	in_panel: bool,   // ...in the panel
-	inner:    ^Box,   // ...its box of what the caller builds
-	items:    int,    // ...its items built so far
-	row, row_outer: ^Box,   // ...its row of folded items in the panel (what they are built in, and the row), once built
-	item:     int,    // the item being built (its index in its group's memory)
-	item_box: ^Box,
-	item_in_panel: bool,
+	active:     bool,
+	key:        Key,
+	overflow:   Toolbar_Overflow,
+	bar:        ^Box,
+	line:       f32,      // a line's height: the items' (.Wrap) and the separators'
+	side:       f32,      // a tool's side, the "…" button's
+	labels:     Toolbar_Labels,
+	folded:     bool,     // .Fold: a part is folded in this build
+	ended:      bool,     // the bar's end began: the pinned groups follow
+	pinned:     int,      // the pinned groups built so far
+	more:       ^Box,     // the "…" button, once built
+	menu_name:  string,
+	menu:       Toolbar_Menu,
+	menu_panel: ^Box,
+	sections:   int,      // the menu's sections so far
+	order:      int,      // the groups built so far
+	group:      int,      // the group being built (its index in the memory)
+	group_where: Toolbar_Where,
+	group_title: string,
+	group_section: bool,  // ...its section of the menu is begun
+	inner:      ^Box,     // ...its box of items
+	items:      int,      // ...its items built so far
+	item:       int,      // the item being built (its index in its group's memory)
+	item_box:   ^Box,
+	item_where: Toolbar_Where,
 }
 
-// Beside the "…" button, a panel row's margin at its ends and above and below, a separator's room on each side, in ems.
+// Beside the "…" button, between items, between a control's label and its widget, a separator's room on each side, a
+// line's room above and below its items (.Wrap), in ems; a separator's height, of a line.
 @(private = "file") TOOLBAR_MORE_GAP_EM :: 0.3
-@(private = "file") TOOLBAR_ROW_PAD_EM :: 0.5
-@(private = "file") TOOLBAR_ROW_GAP_EM :: 0.3
+@(private = "file") TOOLBAR_ITEM_GAP_EM :: 0.2
+@(private = "file") TOOLBAR_LABEL_GAP_EM :: 0.4
 @(private = "file") TOOLBAR_SEPARATOR_PAD_EM :: 0.45
-@(private = "file") TOOLBAR_SEPARATOR_HEIGHT :: 0.6   // of the bar's height
+@(private = "file") TOOLBAR_LINE_PAD_EM :: 0.3
+@(private = "file") TOOLBAR_SEPARATOR_HEIGHT :: 0.6
 
 // The key of tool bar `id`: the window's, as a menu's (toolbar_menu_open finds it from anywhere).
 @(private = "file")
 toolbar_key :: proc(id: string) -> Key { return key_from_string(0, fmt.tprintf("###toolbar_%s", id)) }
 
-// Whether the panel of tool bar `id`'s folded groups is open: Escape is its own (a program's Escape waits).
-toolbar_menu_open :: proc(id: string) -> bool {
-	m, ok := gs().toolbars[toolbar_key(id)]
-	return ok && m.open
-}
+// The id of tool bar `id`'s "…" menu.
+@(private = "file")
+toolbar_menu_name :: proc(id: string) -> string { return fmt.tprintf("###toolbar_menu_%s", id) }
 
+// Whether the "…" menu of tool bar `id` is open: Escape is its own (a program's Escape waits).
+toolbar_menu_open :: proc(id: string) -> bool { return menu_is_open(toolbar_menu_name(id)) }
+
+// Whether the item being built is in the "…" menu (a widget that sizes itself otherwise in a menu row).
+toolbar_in_menu :: proc() -> bool { return gs().toolbar.item_where == .Menu }
+
+// `if toolbar(id, o) { ...its groups... }`: a tool bar. `next` gives its size: in .Fold its height is its line's; in
+// .Wrap a height in pixels is a line's, and the bar is as tall as its lines.
 @(require_results, deferred_none = toolbar_end)
-toolbar :: proc(id: string, labels := Toolbar_Labels{}) -> bool {
+toolbar :: proc(id: string, o := Toolbar_Options{}) -> bool {
 	s := gs()
 	assert(!s.toolbar.active, "toolbar: a tool bar in a tool bar")
 	key := toolbar_key(id)
 	if key not_in s.toolbars { s.toolbars[key] = {} }
 	mem := &s.toolbars[key]
 	em := font_size()
-	side := math.round(em * BUTTON_LINE_EM)
-	set_next_axis(.X, .Center)
-	bar := build_box({.Clip}, fmt.tprintf("###%s", id))
-	a11y_default(bar, {role = .Toolbar, orientation = .X})
-	// (what folds: the widths of the last builds against the bar's width in the last layout)
-	folded := toolbar_fold(mem, bar, side + 2 * math.round(em * TOOLBAR_MORE_GAP_EM))
-	if !folded { mem.open = false }
-	if mem.open && toolbar_closes(s, mem) { mem.open = false }
-	s.toolbar = {active = true, key = key, bar = bar, folded = folded, side = side, labels = labels == {} ? toolbar_default_labels() : labels}
-	push_parent(bar)
+	tb := Toolbar_Build{active = true, key = key, overflow = o.overflow, side = math.round(em * BUTTON_LINE_EM), menu_name = toolbar_menu_name(id)}
+	tb.labels = o.labels == {} ? toolbar_default_labels() : o.labels
+	given: f32   // the height `next` gives in pixels (0: none)
+	if s.has_next {
+		if h, ok := s.next_mod.height.?; ok && h.kind == .Pixels { given = h.value }
+	}
+	switch o.overflow {
+	case .Fold:
+		tb.line = given > 0 ? given : tb.side
+		set_next_axis(.X, .Center)
+		tb.bar = build_box({.Clip}, fmt.tprintf("###%s", id))
+		// (what folds: the widths of the last builds against the bar's width in the last layout)
+		tb.folded = toolbar_fold(mem, tb.bar, tb.side + 2 * math.round(em * TOOLBAR_MORE_GAP_EM))
+		// (not measured yet: shown from the next frame, folded as it must be)
+		if tb.bar.first_build == s.build_index { tb.bar.transparency = 1; s.anim_busy = true }
+		if tb.folded && menu_is_open(tb.menu_name) { tb.menu = .Open }
+		push_parent(tb.bar)
+	case .Wrap:
+		tb.line = given > 0 ? given : tb.side + 2 * math.round(em * TOOLBAR_LINE_PAD_EM)
+		m := s.has_next ? s.next_mod : Style_Mod{}
+		if m.width == nil { m.width = fill() }
+		h := children_sum()
+		h.least = tb.line
+		m.height = h
+		m.axis = .X
+		m.cross = .End   // (the pinned groups at the end of the last line)
+		s.next_mod, s.has_next = m, true
+		tb.bar = build_box({}, fmt.tprintf("###%s", id))
+		push_parent(tb.bar)
+		gap := math.round(em * TOOLBAR_ITEM_GAP_EM)
+		next({width = fill(), height = children_sum(), axis = .X, gap = Vec2{gap, 0}})
+		push_parent(build_box({.Wrap}, "###flow"))
+	}
+	a11y_default(tb.bar, {role = .Toolbar, orientation = .X})
+	s.toolbar = tb
 	return true
 }
 
 // Folds what does not fit, the lowest priority first (of two alike the later group): a group of items item by item, its
-// last first, then the group whole; a group without items whole. Against the bar's width in the last layout, less what
-// is not a group, less the "…" button once one folds. A bar not laid out yet folds nothing. True: one folded.
+// last first, then the group whole. Against the bar's width in the last layout, less what is not a group, less the "…"
+// button once one folds. A bar not laid out yet folds nothing. True: one folded.
 @(private = "file")
 toolbar_fold :: proc(mem: ^Toolbar_Memory, bar: ^Box, more_w: f32) -> bool {
 	for &g in mem.groups {
@@ -181,44 +257,28 @@ toolbar_fold :: proc(mem: ^Toolbar_Memory, bar: ^Box, more_w: f32) -> bool {
 			need -= g.items[p.item].width
 		} else {
 			g.folded = true
-			need -= g.rest + g.sep
+			need -= g.rest + g.lead
 		}
 		if !folded { need += more_w; folded = true }
 	}
 	return folded
 }
 
-// The room a group takes in the bar with nothing of it folded: its separator, what is not an item, its items.
+// The room a group takes in the bar with nothing of it folded: its gap and separator, what is not an item, its items.
 @(private = "file")
 toolbar_group_need :: proc(g: Toolbar_Group_Memory) -> f32 {
-	need := g.sep + g.rest
+	need := g.lead + g.rest
 	for it in g.items { need += it.width }
 	return need
 }
 
-// Escape, or a press outside the panel and its "…" button (as the last build laid them out): the panel closes.
-@(private = "file")
-toolbar_closes :: proc(s: ^State, mem: ^Toolbar_Memory) -> bool {
-	if key_press(.Escape) { return true }
-	panel := s.boxes[mem.panel] or_else nil
-	for b in platform.Mouse_Button {
-		if !s.pressed_any[b] { continue }
-		hit := s.pressed_key[b]
-		if hit != 0 && hit == mem.more { return false }   // (the button toggles it itself)
-		hb: ^Box
-		if hit != 0 { hb = s.boxes[hit] or_else nil }
-		return hb == nil || panel == nil || !is_descendant(hb, panel)
-	}
-	return false
-}
-
-// `if toolbar_group(id, o) { ... }`: a group of the tool bar being built (toolbar): its block builds what is in it, in the
-// bar, or in the panel of folded groups while that is open. False: folded, its panel closed (nothing to build).
+// `if toolbar_group(id, o) { ...its items... }`: a group of the tool bar being built. Its block builds its items
+// (toolbar_tool, toolbar_control); each is shown in the bar or in the "…" menu. False: folded whole, the menu closed.
 @(require_results, deferred_out = toolbar_group_end)
 toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 	s := gs()
 	tb := &s.toolbar
-	assert(tb.active, "toolbar_group: outside a tool bar")
+	assert(tb.active && tb.group_where == .None, "toolbar_group: outside a tool bar, or in a group")
 	mem := &s.toolbars[tb.key]
 	em := font_size()
 	gkey := key_from_string(tb.key, id)
@@ -233,36 +293,44 @@ toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 		mem.groups[idx], mem.groups[tb.order] = mem.groups[tb.order], mem.groups[idx]
 		idx = tb.order
 	}
+	// (a gap before it: not before the bar's first group, nor before its first pinned one (a spacer and the "…" button
+	// are there); in .Wrap the flow's gap stands between the groups that are not pinned)
+	leads := tb.pinned > 0 if o.pinned else (tb.order > 0 && tb.overflow == .Fold)
+	gap: f32 = leads ? math.round(em * TOOLBAR_ITEM_GAP_EM) : 0
 	tb.order += 1
 	g := &mem.groups[idx]
 	g.priority, g.pinned, g.seen = o.priority, o.pinned, s.build_index
-	g.sep = o.separator ? toolbar_separator_width(em) : 0
-	tb.group, tb.group_id, tb.items, tb.row, tb.row_outer = idx, id, 0, nil, nil
-	if g.pinned && tb.folded && tb.more == nil { toolbar_more(s, tb, mem, em) }
-	if !g.folded {
-		tb.in_panel = false
-		next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
-		push_parent(build_box({}, fmt.tprintf("###tg_%s", id)))
-		if o.separator { toolbar_separator(tb, em) }
-		next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
-		tb.inner = build_box({}, "###in")
+	g.lead = gap + (o.separator ? toolbar_separator_width(em) : 0)
+	tb.group, tb.items, tb.group_title, tb.group_section = idx, 0, o.title, false
+	if o.pinned {
+		if !tb.ended { toolbar_end_begins(s, tb, mem, em) }
+		tb.pinned += 1
+	}
+	if tb.overflow == .Wrap || !g.folded {
+		tb.group_where = .Bar
+		next({width = children_sum(), height = tb.overflow == .Fold ? pct(1) : children_sum(), axis = .X, cross = .Center})
+		gb := build_box({}, fmt.tprintf("###tg_%s", id))
+		if o.title != "" { a11y_default(gb, {role = .Group, name = o.title}) }
+		push_parent(gb)
+		if gap > 0 { spacer(px(gap)) }
+		if o.separator { toolbar_separator() }
+		if tb.overflow == .Fold {
+			next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
+			tb.inner = build_box({}, "###in")
+		} else {
+			// (its items wrap in it, each whole, once it is wider than a line on its own)
+			next({width = children_sum(), height = children_sum(), axis = .X, gap = Vec2{math.round(em * TOOLBAR_ITEM_GAP_EM), 0}})
+			tb.inner = build_box({.Wrap}, "###in")
+		}
 		push_parent(tb.inner)
 		return true
 	}
-	if !mem.open { return false }
-	panel := toolbar_panel(s, tb, mem, em)
-	tb.in_panel = true
-	push_parent(s.root)
-	push_tags_isolated("floating")
-	push_style_copy()
-	push_parent(panel)
-	tall := children_sum()
-	tall.least = tb.side + 2 * math.round(em * TOOLBAR_ROW_GAP_EM)
-	next({width = children_sum(), height = tall, axis = .X, cross = .Center})
-	push_parent(build_box({}, fmt.tprintf("###tp_%s", id)))
-	spacer(px(math.round(em * TOOLBAR_ROW_PAD_EM)))
-	next({width = children_sum(), height = px(tb.side), axis = .X, cross = .Center})
-	tb.inner = build_box({}, "###in")
+	if tb.menu == .Closed { return false }
+	// (folded whole, the menu open: its items go to the menu; what the block builds besides them, nowhere to be seen)
+	tb.group_where = .Hidden
+	next({width = px(0), height = px(0)})
+	tb.inner = build_box({.Clip}, fmt.tprintf("###tg_%s", id))
+	tb.inner.transparency = 1
 	push_parent(tb.inner)
 	return true
 }
@@ -273,48 +341,53 @@ toolbar_group_end :: proc(built: bool) {
 	s := gs()
 	tb := &s.toolbar
 	mem := &s.toolbars[tb.key]
-	em := font_size()
-	pop_parent()   // its inner box
-	// (measured as the layout will lay it out, wherever it is: the bar's room for it is that and its separator; what is
-	// not an item is that less the items built in it)
+	pop_parent()   // its box of items
 	g := &mem.groups[tb.group]
-	g.width = natural_width(tb.inner)
+	// (measured as the layout will lay it out: the bar's room for it is that and its lead; what is not an item is that
+	// less the items built in it)
 	inside: f32
 	for i := len(g.items) - 1; i >= 0; i -= 1 {
 		it := g.items[i]
 		if it.seen != s.build_index { ordered_remove(&g.items, i); continue }
-		if tb.in_panel || !it.folded { inside += it.width }
+		if !it.folded { inside += it.width }
 	}
-	g.rest = max(0, g.width - inside)
-	tb.inner = nil
-	// (the row of its folded items, in the panel: its end's margin)
-	if tb.row_outer != nil {
-		push_parent(tb.row_outer)
-		spacer(px(math.round(em * TOOLBAR_ROW_PAD_EM)))
-		pop_parent()
-		tb.row, tb.row_outer = nil, nil
-	}
-	if !tb.in_panel {
+	if tb.group_where == .Bar {
+		g.width = natural_width(tb.inner)
+		g.rest = max(0, g.width - inside)
 		pop_parent()   // the group
-		return
 	}
-	spacer(px(math.round(em * TOOLBAR_ROW_PAD_EM)))
-	pop_parent()           // the row
-	pop_parent()           // the panel
-	pop(&s.style_stack)
-	pop_tags_isolated()
-	pop_parent()           // the root
+	tb.inner, tb.group_where = nil, .None
+}
+
+// The bar's end begins (at its first pinned group, or at its end): in .Wrap the flow closes, the pinned groups follow it
+// at the end of its last line; in .Fold a spacer pushes them to the bar's end, the "…" button before them.
+@(private = "file")
+toolbar_end_begins :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f32) {
+	tb.ended = true
+	switch tb.overflow {
+	case .Wrap:
+		pop_parent()   // the flow
+		spacer(px(math.round(em * TOOLBAR_MORE_GAP_EM)))
+	case .Fold:
+		spacer(fill())
+		if tb.folded { toolbar_more(s, tb, mem, em) }
+	}
 }
 
 // The end of a tool bar: the "…" button when no pinned group took it, what is not a group measured, the groups no longer
-// built forgotten.
+// built forgotten, the menu's level ended.
 @(private)
 toolbar_end :: proc() {
 	s := gs()
 	tb := &s.toolbar
 	mem := &s.toolbars[tb.key]
 	em := font_size()
-	if tb.folded && tb.more == nil { toolbar_more(s, tb, mem, em) }
+	if !tb.ended {
+		switch tb.overflow {
+		case .Wrap: pop_parent()   // the flow
+		case .Fold: if tb.folded { toolbar_more(s, tb, mem, em) }
+		}
+	}
 	pop_parent()   // the bar
 	for i := len(mem.groups) - 1; i >= 0; i -= 1 {
 		if mem.groups[i].seen != s.build_index {
@@ -322,27 +395,27 @@ toolbar_end :: proc() {
 			ordered_remove(&mem.groups, i)
 		}
 	}
-	total, groups: f32
-	for c := tb.bar.first; c != nil; c = c.next {
-		if !is_floating(c, .X) { total += natural_width(c) }
+	if tb.overflow == .Fold {
+		total, groups: f32
+		for c := tb.bar.first; c != nil; c = c.next {
+			if !is_floating(c, .X) { total += natural_width(c) }
+		}
+		for g in mem.groups { if !g.folded { groups += g.width + g.lead } }
+		more: f32 = tb.more != nil ? tb.side + 2 * math.round(em * TOOLBAR_MORE_GAP_EM) : 0
+		mem.fixed = max(0, total - groups - more)
 	}
-	for g in mem.groups { if !g.folded { groups += g.width + g.sep } }
-	more: f32 = tb.more != nil ? tb.side + 2 * math.round(em * TOOLBAR_MORE_GAP_EM) : 0
-	mem.fixed = max(0, total - groups - more)
-	mem.panel = tb.panel != nil && mem.open ? tb.panel.key : 0
 	if tb.more == nil { mem.more = 0 }
+	if tb.menu == .Left && toolbar_menu_enter(s, tb) { menu_end() }
 	s.toolbar = {}
 }
 
-// `if toolbar_item(id) { ... }`, in a toolbar_group's block: a part of the group that folds on its own (toolbar_fold: the
-// group's last item first). Its block builds it in the bar, or in the panel, in its group's row, while the panel is open.
-// `priority` (nil: its group's) places it among the parts of every group that fold: a rare tool of a group kept long
-// folds before another group's items. False: folded, the panel closed.
-@(require_results, deferred_out = toolbar_item_end)
-toolbar_item :: proc(id: string, priority: Maybe(int) = nil) -> bool {
+// An item's start: where it is shown (none: folded, the menu closed). In the bar its box is the parent until
+// toolbar_item_finish; in the menu the menu's level is entered, in the section of the item's group.
+@(private = "file")
+toolbar_item_begin :: proc(id: string, priority: Maybe(int)) -> Toolbar_Where {
 	s := gs()
 	tb := &s.toolbar
-	assert(tb.active && tb.inner != nil, "toolbar_item: outside a tool bar's group")
+	assert(tb.active && tb.group_where != .None && tb.item_where == .None, "toolbar item: outside a tool bar's group, or in an item")
 	mem := &s.toolbars[tb.key]
 	g := &mem.groups[tb.group]
 	ikey := key_from_string(g.key, id)
@@ -362,128 +435,207 @@ toolbar_item :: proc(id: string, priority: Maybe(int) = nil) -> bool {
 	it.seen = s.build_index
 	it.priority = priority.? or_else g.priority
 	tb.item = idx
-	tb.item_in_panel = false
-	if tb.in_panel || !it.folded {
-		next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
+	if tb.overflow == .Wrap || (tb.group_where == .Bar && !it.folded) {
+		next({width = children_sum(), height = tb.overflow == .Wrap ? px(tb.line) : pct(1), axis = .X, cross = .Center})
 		tb.item_box = build_box({}, fmt.tprintf("###ti_%s", id))
+		// (never measured: not shown until the bar places it)
+		if tb.overflow == .Fold && it.width == 0 && tb.bar.first_build != s.build_index {
+			tb.item_box.transparency = 1
+			s.anim_busy = true
+		}
 		push_parent(tb.item_box)
-		return true
+		// (in .Fold its gap is its own: it leaves with it when it folds; the first item of a group has none, whatever folds)
+		if tb.overflow == .Fold && idx > 0 { spacer(px(math.round(font_size() * TOOLBAR_ITEM_GAP_EM))) }
+		tb.item_where = .Bar
+		return .Bar
 	}
-	if !mem.open { return false }
-	row := toolbar_item_row(s, tb, mem, font_size())
-	tb.item_in_panel = true
-	push_parent(s.root)
-	push_tags_isolated("floating")
-	push_style_copy()
-	push_parent(row)
-	next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
-	tb.item_box = build_box({}, fmt.tprintf("###ti_%s", id))
-	push_parent(tb.item_box)
-	return true
+	if !toolbar_menu_enter(s, tb) { return .None }
+	toolbar_menu_section(tb)
+	tb.item_where = .Menu
+	return .Menu
+}
+
+// An item's end: its box measured in the bar, or the menu's level left for the bar's code.
+@(private = "file")
+toolbar_item_finish :: proc() {
+	s := gs()
+	tb := &s.toolbar
+	switch tb.item_where {
+	case .Bar:
+		pop_parent()   // the item
+		s.toolbars[tb.key].groups[tb.group].items[tb.item].width = natural_width(tb.item_box)
+		tb.item_box = nil
+	case .Menu:
+		toolbar_menu_leave(s, tb)
+	case .None, .Hidden:
+	}
+	tb.item_where = .None
+}
+
+// `if toolbar_tool(id, t) { ...act... }`, in a toolbar_group's block: a tool, a button in the bar, a row in the "…"
+// menu. True: clicked (or chosen by the keyboard in the menu), wherever it is shown; never while `t.disabled`.
+toolbar_tool :: proc(id: string, t: Toolbar_Tool) -> bool {
+	label, icon, shortcut := t.label, t.icon, t.shortcut
+	if label == "" && t.command.label != "" { label = i18n.tr(t.command.label) }
+	if icon == "" { icon = t.command.icon }
+	if shortcut == "" { shortcut = command_shortcut(t.command) }
+	clicked := false
+	switch toolbar_item_begin(id, t.priority) {
+	case .None, .Hidden: return false
+	case .Bar: clicked = toolbar_tool_button(id, t, label, icon, shortcut)
+	case .Menu: clicked = menu_item(fmt.tprintf("%s###%s", label, id), shortcut, t.on, icon, t.disabled, icon_font = t.icon_font).clicked
+	}
+	toolbar_item_finish()
+	return clicked
+}
+
+// A tool's look in the bar: its glyph alone (a tool among many), or its words beside it (`words`, or no glyph).
+@(private = "file")
+toolbar_tool_button :: proc(id: string, t: Toolbar_Tool, label, icon, shortcut: string) -> bool {
+	side := gs().toolbar.side
+	tip := shortcut != "" ? fmt.tprintf("%s (%s)", label, shortcut) : label
+	if t.words || icon == "" {
+		o := Button_Options{intent = t.intent, disabled = t.disabled, icon_font = t.icon_font}
+		if t.on {
+			o.face = Button_Face.Toggled
+			o.intent = .Primary
+		}
+		if shortcut != "" { o.tip = tip }
+		return button(id, label, icon, o).clicked && !t.disabled
+	}
+	next({width = px(side), height = px(side), radius = math.round(side * 0.22), font_size = math.round(side * 0.5)})
+	o := Button_Options{tip = tip, face = t.on ? .Toggled : .Ghost, intent = t.on ? .Primary : t.intent, disabled = t.disabled, icon_font = t.icon_font}
+	return button(id, icon = icon, o = o).clicked && !t.disabled
+}
+
+// `if toolbar_control(id, c) { ...a widget... }`, in a toolbar_group's block: a property whose widget the block builds,
+// in the bar (its label before it with `c.labelled`), or in a row of the "…" menu, its label at the left, the widget at
+// the right, in a column with the other control rows. False: folded, the menu closed (nothing to build).
+@(require_results, deferred_out = toolbar_control_end)
+toolbar_control :: proc(id: string, c: Toolbar_Control) -> bool {
+	switch toolbar_item_begin(id, c.priority) {
+	case .None, .Hidden: return false
+	case .Bar:
+		if c.labelled && c.label != "" {
+			next({width = text_size(), height = pct(1)})
+			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###lbl", c.label))
+			spacer(px(math.round(font_size() * TOOLBAR_LABEL_GAP_EM)))
+		}
+		return true
+	case .Menu:
+		if menu_control_begin(c.label, id) { return true }
+		toolbar_item_finish()   // (a search that its label does not match)
+		return false
+	}
+	return false
 }
 
 @(private)
-toolbar_item_end :: proc(built: bool) {
+toolbar_control_end :: proc(built: bool) {
 	if !built { return }
-	s := gs()
-	tb := &s.toolbar
-	mem := &s.toolbars[tb.key]
-	pop_parent()   // the item
-	mem.groups[tb.group].items[tb.item].width = natural_width(tb.item_box)
-	tb.item_box = nil
-	if !tb.item_in_panel { return }
-	pop_parent()   // its group's row
-	pop(&s.style_stack)
-	pop_tags_isolated()
-	pop_parent()   // the root
-	tb.item_in_panel = false
+	if gs().toolbar.item_where == .Menu { menu_control_end(true) }
+	toolbar_item_finish()
 }
 
-// The panel's row of the folded items of the group being built: made at its first folded item, its start's margin in it
-// (toolbar_group_end adds its end's).
+// The "…" menu's level, entered to build an item in it: opened and begun at the first folded item of the build, entered
+// again after the bar's code ran between two (toolbar_menu_leave). False: not open, or no longer this bar's (Escape, a
+// press outside it, a menu of the bar's own opened in its place).
 @(private = "file")
-toolbar_item_row :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f32) -> ^Box {
-	if tb.row != nil { return tb.row }
-	panel := toolbar_panel(s, tb, mem, em)
-	push_parent(s.root)
-	push_tags_isolated("floating")
-	push_style_copy()
-	push_parent(panel)
-	tall := children_sum()
-	tall.least = tb.side + 2 * math.round(em * TOOLBAR_ROW_GAP_EM)
-	next({width = children_sum(), height = tall, axis = .X, cross = .Center})
-	tb.row_outer = build_box({}, fmt.tprintf("###tpi_%s", tb.group_id))
-	push_parent(tb.row_outer)
-	spacer(px(math.round(em * TOOLBAR_ROW_PAD_EM)))
-	next({width = children_sum(), height = px(tb.side), axis = .X, cross = .Center})
-	tb.row = build_box({}, "###in")
-	pop_parent()   // the row
+toolbar_menu_enter :: proc(s: ^State, tb: ^Toolbar_Build) -> bool {
+	key := menu_key(tb.menu_name)
+	switch tb.menu {
+	case .Closed: return false
+	case .Entered: return true
+	case .Open:
+		if len(s.menus) == 0 || s.menus[0].key != key { tb.menu = .Closed; return false }
+		if s.build_index > s.menus[0].open_build && menu_pressed_outside(s, 0, s.menus[0].anchor) {
+			menu_close()
+			tb.menu = .Closed
+			return false
+		}
+		next_drop(s)   // (what the program said with `next` was for its widget, not for the menu's panel)
+		if !menu_level_begin(0, 0) {
+			pop(&s.popup_stack)
+			tb.menu = .Closed
+			return false
+		}
+		tb.menu_panel = parent_box()
+	case .Left:
+		if len(s.menus) == 0 || s.menus[0].key != key { tb.menu = .Closed; return false }
+		// (as menu_level_begin left it: the root, the menu's tags and the window's style, the panel)
+		push_parent(s.root)
+		push_tags_isolated("floating")
+		append(&s.style_stack, s.style_stack[0])
+		push_parent(tb.menu_panel)
+		append(&s.popup_stack, true)
+		append(&s.menu_build, 0)
+	}
+	tb.menu = .Entered
+	return true
+}
+
+// The bar's code goes on outside the menu's level: what toolbar_menu_enter pushed, taken back.
+@(private = "file")
+toolbar_menu_leave :: proc(s: ^State, tb: ^Toolbar_Build) {
 	pop_parent()   // the panel
 	pop(&s.style_stack)
 	pop_tags_isolated()
 	pop_parent()   // the root
-	return tb.row
+	pop(&s.popup_stack)
+	pop(&s.menu_build)
+	tb.menu = .Left
 }
 
-// The "…" button: a click opens the panel of the folded groups, or closes it.
+// The menu's section of the group being built, at its first item in the menu: a separator after another section, its
+// title.
+@(private = "file")
+toolbar_menu_section :: proc(tb: ^Toolbar_Build) {
+	if tb.group_section { return }
+	tb.group_section = true
+	if tb.sections > 0 { menu_separator() }
+	if tb.group_title != "" { menu_heading(tb.group_title) }
+	tb.sections += 1
+}
+
+// The "…" button: a click opens the menu of what is folded under it, or closes it.
 @(private = "file")
 toolbar_more :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f32) {
 	gap := math.round(em * TOOLBAR_MORE_GAP_EM)
+	open := menu_is_open(tb.menu_name)
 	spacer(px(gap))
 	next({width = px(tb.side), height = px(tb.side), radius = math.round(tb.side * 0.22), font_size = math.round(tb.side * 0.5)})
-	sig := button("###toolbar_more", icon = lucide.ELLIPSIS, o = {tip = tb.labels.more, icon_font = lucide_icons(), lit = mem.open})
+	sig := button("###toolbar_more", icon = lucide.ELLIPSIS, o = {tip = tb.labels.more, icon_font = lucide_icons(), lit = open})
 	spacer(px(gap))
 	tb.more = sig.box
 	mem.more = sig.box != nil ? sig.box.key : 0
-	if sig.clicked { mem.open = !mem.open }
+	if sig.box != nil && sig.box.a11y != nil { sig.box.a11y.popup = .Menu; sig.box.a11y.expanded = open }
+	if sig.clicked && sig.box != nil {
+		if open { menu_close() } else { menu_open(tb.menu_name, sig.box.rect, anchor = sig.box.key, search = false) }
+	}
 }
 
-// The panel of the folded groups, under the "…" button (its right edge at the button's, as the last build laid it out),
-// over the page; built once in a build, at the first folded group.
-@(private = "file")
-toolbar_panel :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f32) -> ^Box {
-	if tb.panel != nil { return tb.panel }
-	id := fmt.tprintf("###toolbar_panel_%x", u64(tb.key))
-	prev := s.boxes[key_from_string(s.root.key, id)] or_else nil
-	size := prev != nil ? prev.size : Vec2{em * 12, em * 6}
-	anchor := tb.bar.rect
-	if more := s.boxes[mem.more] or_else nil; more != nil && mem.more != 0 { anchor = more.rect }
-	pos := clamp_popup({anchor.max.x - size.x, anchor.max.y + math.round(em * 0.25)}, size, s.window_size)
-	push_parent(s.root)
-	push_tags_isolated("floating")
-	push_style_copy()
-	set_next_axis(.Y)
-	s.next_mod.fixed_x = pos.x
-	s.next_mod.fixed_y = pos.y
-	s.next_mod.width = children_sum()
-	s.next_mod.height = children_sum()
-	s.next_mod.radius = em * 0.5
-	if prev == nil { s.next_mod.transparency = 1; s.anim_busy = true }   // (measured on this frame, shown on the next)
-	p := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip}, id)
-	p.cursor = .Arrow
-	a11y_default(p, {role = .Toolbar, orientation = .Y, name = tb.labels.more})
-	_ = signal(p)
-	push_parent(p)
-	spacer(px(math.round(em * TOOLBAR_ROW_GAP_EM)))
-	pop_parent()
-	pop(&s.style_stack)
-	pop_tags_isolated()
-	pop_parent()
-	tb.panel = p
-	return p
-}
-
-// A separator's width in the bar: its line and its room on each side.
+// A separator's width in a bar: its line and its room on each side.
 @(private = "file")
 toolbar_separator_width :: proc(em: f32) -> f32 {
 	return 2 * math.round(em * TOOLBAR_SEPARATOR_PAD_EM) + max(math.round(gs().scale), 1)
 }
 
-@(private = "file")
-toolbar_separator :: proc(tb: ^Toolbar_Build, em: f32) {
+// A vertical line between parts of a bar, its room on each side: in a tool bar a line's height, elsewhere its parent's
+// (a height in pixels) or a button's line. In a tool bar, a group's `separator` puts one before the group; in the "…"
+// menu this builds nothing (its sections have their own).
+toolbar_separator :: proc() {
+	s := gs()
+	tb := &s.toolbar
+	if tb.active && tb.item_where == .Menu { return }
+	em := font_size()
+	h := math.round(em * BUTTON_LINE_EM)
+	if tb.active {
+		h = tb.line
+	} else if p := parent_box(); p.pref[.Y].kind == .Pixels {
+		h = p.pref[.Y].value
+	}
 	spacer(px(math.round(em * TOOLBAR_SEPARATOR_PAD_EM)))
-	h := tb.bar.pref[.Y].kind == .Pixels ? tb.bar.pref[.Y].value : tb.side
-	next({width = px(max(math.round(gs().scale), 1)), height = px(math.round(h * TOOLBAR_SEPARATOR_HEIGHT)), bg = color("border")})
-	build_box({.Draw_Background}, "###sep")
+	next({width = px(max(math.round(s.scale), 1)), height = px(math.round(h * TOOLBAR_SEPARATOR_HEIGHT)), bg = color("border")})
+	build_box({.Draw_Background}, "")
 	spacer(px(math.round(em * TOOLBAR_SEPARATOR_PAD_EM)))
 }

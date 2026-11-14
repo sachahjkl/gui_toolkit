@@ -2307,7 +2307,7 @@ a_view_s_window_comes_and_its_close_reattaches :: proc(t: ^testing.T) {
 	defer host.host_close(h)
 	defer ui.views_destroy(&d.views)
 	ui.set_views(&h.state, &d.views)
-	ui.views_set_windows(&d.views, host.view_windows(h))
+	ui.views_set_windows(&d.views, host.view_windows(&sh))
 	view :: proc(v: ^ui.View, d: ^View_Desk) { if ui.dialog_body("b") { ui.label("in a window of its own###w") } }
 	ui.view_register(&d.views, "own", view, ui.View_Options{title = VIEW_WINDOW_TITLE, first = .External})
 	host.host_show(h)
@@ -2330,4 +2330,42 @@ a_view_s_window_comes_and_its_close_reattaches :: proc(t: ^testing.T) {
 	testing.expect(t, ui.view_window_state(&d.views, "own") == nil, "its window went")
 	testing.expect(t, ui.view_is_open(&d.views, "own"), "still open")
 	testing.expect_value(t, ui.view_presentation(&d.views, "own"), ui.View_Presentation.Dialog)
+}
+
+// One backend for the whole program: a view owned by a second window of the program gets its window, made after that
+// window's frames, with the backend set once (host.view_windows of the Shared).
+@(test)
+a_second_window_s_view_gets_its_window :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	d := new(View_Desk)
+	defer free(d)
+	sh: host.Shared
+	main_host, second := new(host.Host), new(host.Host)
+	defer { free(main_host); free(second) }
+	nothing :: proc(h: ^host.Host, size: host.Vec2) { ui.label("a window###l") }
+	if !host.host_open(main_host, &sh, {title = "views main", size = {480, 320}}, nothing, d) {
+		testing.expect(t, false, "the renderer starts (Vulkan: lavapipe on the virtual desktop)")
+		return
+	}
+	defer host.host_close(main_host)
+	if !host.host_open(second, &sh, {title = "views second", size = {400, 300}}, nothing, d) { testing.expect(t, false, "a second window"); return }
+	defer host.host_close(second)
+	defer ui.views_destroy(&d.views)
+	ui.set_views(&main_host.state, &d.views)
+	ui.set_views(&second.state, &d.views)
+	ui.views_set_windows(&d.views, host.view_windows(&sh))
+	view :: proc(v: ^ui.View, d: ^View_Desk) { if ui.dialog_body("b") { ui.label("the second window's view###w") } }
+	ui.view_register(&d.views, "theirs", view, ui.View_Options{title = "Theirs", first = .External})
+	host.host_show(main_host)
+	host.host_show(second)
+	ui.view_open(&d.views, "theirs", d, owner = &second.state)
+	win: ^platform.Window
+	for i := 0; i < 100 && win == nil; i += 1 {
+		for h in ([]^host.Host{main_host, second}) { h.settle = max(h.settle, 1); host.host_frame(h) }
+		pump_for(second.win, 20)
+		if st := ui.view_window_state(&d.views, "theirs"); st != nil && platform.is_window_visible(st.window) { win = st.window }
+	}
+	testing.expect(t, win != nil, "the second window's view has its window")
+	testing.expect_value(t, ui.view_presentation(&d.views, "theirs"), ui.View_Presentation.External)
 }

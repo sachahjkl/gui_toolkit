@@ -98,6 +98,7 @@ Menu_Level :: struct {
 	items, prev:  [dynamic]Menu_Item_Info,   // this frame's items / last frame's (keyboard navigation reads those)
 	width, prev_width: f32,  // natural width of the widest item: measured this frame / last frame
 	eff_width:    f32,       // width of the rows this frame
+	labels, prev_labels: f32,   // menu_control: the widest label of its rows, this frame / last frame (their column)
 	activate:     bool,      // keyboard: choose the selected item when it is built
 	open_sub:     bool,      // keyboard: open the selected submenu
 	from_keyboard: bool,     // opened from the keyboard: the first item starts selected (until its rows are known)
@@ -417,7 +418,7 @@ menu :: proc(id: string, width: f32 = 0) -> bool {
 }
 
 // A press of this frame (any button) landed outside the open levels from `from` on, and not on `anchor`.
-@(private = "file")
+@(private)
 menu_pressed_outside :: proc(s: ^State, from: int, anchor: Key) -> bool {
 	hit: Key
 	any_press := false
@@ -442,6 +443,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	lv.prev, lv.items = lv.items, lv.prev
 	clear(&lv.items)
 	lv.prev_width, lv.width = lv.width, 0
+	lv.prev_labels, lv.labels = lv.labels, 0
 	lv.built_build = s.build_index
 	lv.activate, lv.open_sub = false, false
 
@@ -798,6 +800,66 @@ menu_separator :: proc() {
 	spacer(px(em * MENU_SEPARATOR_GAP_EM))
 	hline(px(w))
 	spacer(px(em * MENU_SEPARATOR_GAP_EM))
+}
+
+// Between a control row's label column and its widget, in em.
+@(private = "file") MENU_CONTROL_GAP_EM :: 0.8
+
+// `if menu_control(label) { ...a widget... }`: a row of the menu being built that holds a widget (a slider, swatches, a
+// toggle) rather than an act: `label` at its left, what the block builds at its right. The labels line up with the
+// items' labels; the widgets of every control row of the level start at one column, after the widest label. Not an
+// item: the keyboard skips it, and using its widget does not close the menu. A search shows it when its label matches.
+// `id` (default: the label's id part) keeps its state while its label changes. False (nothing to build): outside a
+// menu, or not matched.
+@(require_results, deferred_out = menu_control_end)
+menu_control :: proc(label: string, id := "") -> bool { return menu_control_begin(label, id) }
+
+// menu_control's start, without its deferred end (a tool bar's control row ends it itself).
+@(private)
+menu_control_begin :: proc(label: string, id := "") -> bool {
+	s := gs()
+	lv, _ := menu_current()
+	if lv == nil || !menu_matches(lv, label) { return false }
+	em := font_size()
+	st := top_style()
+	text := display_part(label)
+	lw := text_width(st.font, em, text)
+	lv.labels = max(lv.labels, lw)
+	// (the column of last frame's widest label: this frame's rows are not all built yet; the first frame is not shown)
+	col := max(lv.prev_labels, lw)
+	line := dense(em * s.feel.menu_item_em)
+	set_next_axis(.X, .Center)
+	s.next_mod.width = px(lv.eff_width)
+	h := children_sum()
+	h.least = line
+	s.next_mod.height = h
+	row := build_box({}, fmt.tprintf("###mc_%s", hash_part(id != "" ? id : label)))
+	a11y_default(row, {role = .Group, name = text})
+	// (the pointer on a row that is no act: no item stays selected under it)
+	if s.mouse_moved && row.first_build != s.build_index && contains(row.rect, s.mouse) { lv.sel = -1 }
+	push_parent(row)
+	spacer(px(em * (MENU_ROW_LEAD_EM + MENU_ICON_EM)))
+	next({width = px(math.ceil(col + 2 * st.text_pad)), height = px(line)})
+	build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###lbl", text))
+	spacer(px(em * MENU_CONTROL_GAP_EM))
+	next({width = children_sum(), height = children_sum(), axis = .X, cross = .Center})
+	push_parent(build_box({}, "###ctl"))
+	return true
+}
+
+@(private)
+menu_control_end :: proc(built: bool) {
+	if !built { return }
+	pop_parent()   // its widget's box
+	row := parent_box()
+	pop_parent()   // the row
+	lv, _ := menu_current()
+	if lv == nil { return }
+	// (its natural width: its columns as built, its widget's as measured, the trail and a scroll bar's room)
+	em := font_size()
+	w := em * MENU_ROW_TRAIL_EM + menu_bar_room(lv, em)
+	for c := row.first; c != nil; c = c.next { w += natural_width(c) }
+	lv.width = max(lv.width, math.ceil(w))
 }
 
 // `if menu_submenu("Label") { menu_item(...) }`: an item that opens a nested menu (to its right, or its left when there

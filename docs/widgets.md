@@ -148,35 +148,49 @@ scrolls in its own box, and the page does not scroll for it.
 
 ## Tool bars (`src/ui/toolbar.odin`)
 
-`if ui.toolbar(id) { ... }` is a bar of groups (`next` gives its size). `if ui.toolbar_group(id, o) { ... }` is one group,
-built by the caller's code as anywhere else. When the groups do not fit, the bar folds them, the lowest `o.priority`
-first (of two alike, the later one), until the rest fits with a "…" button; a group with `o.pinned` never folds (the
-bar's end buttons). `o.separator` draws a line before the group in the bar. The "…" button stands before the first
-pinned group; a click opens a panel under it where each folded group is a row, built by the same code: what is in it
-works there as in the bar. A press outside the panel, or Escape, closes it; `ui.toolbar_menu_open(id)` says whether it
-is open (a program's own Escape waits). A group's width is measured where it is built (`natural_width`) and kept.
+`if ui.toolbar(id, o) { ... }` is a bar of groups; `if ui.toolbar_group(id, o) { ... }` is one group; the group's block
+declares its items, each once. The program chooses what happens when the window is too narrow, `o.overflow`:
 
-A group may be made of items: `if ui.toolbar_item(id) { ... }` in its block. The bar then folds that group item by item,
-its last item first, and folds it whole only once all its items are folded and it still does not fit. A folded item is
-built in the panel, in a row of its group, and works there; the group's other items stay in the bar. A wide group of
-properties so loses its last ones, not all of them, and leaves no empty room in the bar. Order the items from the most
-needed to the least.
+- `.Wrap`: the bar takes more lines, as tall as they are. A group goes to the next line whole; a group wider than a line
+  wraps its items, each whole (a label with its slider, the swatches with their disc). `next` gives the bar's width; a
+  height in pixels is a line's.
+- `.Fold`: the bar keeps one line (`next` gives its size). What does not fit goes into the menu of a "…" button: the
+  lowest priority first (of two alike, the later group), a group's last item first, the group whole once its items are
+  all folded. The menu is a toolkit menu: a folded group is a section (its `title` as a heading, a separator between
+  two), a tool is a row (icon, label, shortcut), a control is a row with its label at the left and its widget at the
+  right, the widgets in one column. Arrows, Enter and Escape work as in every menu; the control rows are for the
+  pointer. `ui.toolbar_menu_open(id)` says whether the menu is open (a program's own Escape waits).
 
-`ui.toolbar_item(id, priority = p)` gives an item a priority of its own (nil: its group's). The bar folds the items and
-the groups of every group together, the lowest priority first: a rarely used tool of a group kept long folds before the
-needed items of a group that folds early (a group folds whole only after its items).
+| Procedure | What it is |
+|---|---|
+| `toolbar(id, {overflow, labels})` | the bar; `labels.more`: the "…" button's tooltip (zero: the toolkit's words) |
+| `toolbar_group(id, {title, priority, pinned, separator})` | a group: `title` heads its menu section; `pinned` puts it at the bar's end (after the "…" button, at the end of the last line), where it never folds nor wraps away; `separator` draws a line before it |
+| `toolbar_tool(id, {label, icon, shortcut, command, priority, words, on, disabled, intent, icon_font}) -> bool` | an act. The toolkit builds it: a glyph button in the bar (its words with `words`, or with no glyph), a row in the menu. `command` gives the label, icon and first key that the fields leave "". `on`: held down in the bar, checked in the menu. True when clicked, in either place |
+| `toolbar_control(id, {label, priority, labelled}) -> bool` | `if toolbar_control(...) { ...widget... }`: a property whose widget the block builds, in the bar (its label before it with `labelled`) or in the right column of a menu row |
+| `toolbar_in_menu() -> bool` | the item being built is in the menu (a widget that sizes itself otherwise there) |
+| `toolbar_separator()` | a vertical line and its room: for a bar a program builds itself (in a tool bar, use the group's `separator`) |
+
+An item's `priority` (nil: its group's) places it among every group's parts: a rare tool of a group kept long folds
+before the needed items of a group that folds early. Order a group's items from the most needed to the least. The bar
+puts its pinned groups at its end itself: build no spacer in it. Build a `.Fold` bar of items only: what a group builds
+besides its items is not shown once the group folds.
 
 ```odin
 ui.next({width = ui.fill(), height = ui.px(bar_h)})
-if ui.toolbar("editor_bar") {
-    if ui.toolbar_group("tools", {priority = 2}) { ... }
-    if ui.toolbar_group("props", {separator = true}) {        // folds first, its last item first
-        if ui.toolbar_item("colours") { ... }
-        if ui.toolbar_item("width") { ... }
+if ui.toolbar("editor_bar", {overflow = .Fold}) {               // .Wrap: the same groups, on more lines
+    if ui.toolbar_group("tools", {title = "Tools", priority = 2}) {
+        for t in Tool {
+            if ui.toolbar_tool(tool_ids[t], {command = TOOL_COMMANDS[t], on = tool == t}) { tool = t }
+        }
     }
-    ui.spacer(ui.fill())
-    if ui.toolbar_group("acts", {priority = 1}) { ... }
-    if ui.toolbar_group("end", {pinned = true}) { ... }        // Cancel, Done: always shown
+    if ui.toolbar_group("style", {title = "Style", separator = true}) {   // folds first, its last item first
+        if ui.toolbar_control("colour", {label = "Colour"}) { swatches(&colour) }
+        if ui.toolbar_control("width", {label = "Width", labelled = true}) { ui.slider("###w", &width, 1, 20) }
+    }
+    if ui.toolbar_group("end", {pinned = true}) {                // Cancel, Done: always shown, at the end
+        if ui.toolbar_tool("cancel", {label = "Cancel", words = true}) { cancel() }
+        if ui.toolbar_tool("done", {label = "Done", words = true, intent = .Primary}) { done() }
+    }
 }
 ```
 

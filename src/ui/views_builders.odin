@@ -29,8 +29,11 @@ views_build :: proc(s: ^State) {
 	}
 
 	views_settle_all(s)
-	// (views_frame built them before the content: this build is done with them)
-	if s.views_frame_build != s.build_index { views_build_internals(s) }
+	// every view is built in the frame it opens, in every presentation of this window: its focus is there before the
+	// next keys. The internal windows views_frame did not build (opened since, or no views_frame), then the panels opened
+	// after their space was built (views_panels.odin)
+	views_build_internals(s)
+	views_build_late_panels(s)
 
 	// the dialogs, in their order; a view opened by a view's build is built after it, in this build
 	for vi := 0; vi < len(s.views_attached); vi += 1 {
@@ -76,8 +79,12 @@ views_build_internals :: proc(s: ^State) {
 	internals := make([dynamic]Internal, 0, 4, context.temp_allocator)
 	for vs in s.views_attached[:n] {
 		for r in vs.records {
-			if r.owner != s { continue }
-			if yes, unseen := view_builds_internal(r.machine); yes { append(&internals, Internal{vs, r, unseen}) }
+			// (each once per build: views_frame's, then end_build's for what opened since)
+			if r.owner != s || r.ibuilt == s.build_index { continue }
+			yes, unseen := view_builds_internal(r.machine)
+			// (a panel whose space is not built: a floating window until it is, at once)
+			if !yes && view_builds_panel(r.machine) && r.pbuilt != s.build_index && view_panel_floats(vs, r, s) { yes, unseen = true, false }
+			if yes { append(&internals, Internal{vs, r, unseen}) }
 		}
 	}
 	if mouse_pressed(.Left) {
@@ -247,7 +254,7 @@ view_build_ended :: proc(vs: ^Views, r: ^View_Record) {
 
 // The view as an internal window: a floating frame of the owner window, the header strip (it moves the window), the
 // body, the grips of its edges and corners. Unseen: built at its place, not drawn, taking no input of its own.
-@(private = "file")
+@(private)
 view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
 	s := gs()
 	k := r.kind
@@ -269,6 +276,8 @@ view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
 	a11y_default(frame, {role = .Dialog, name = title, role_description = i18n.tr("floating window")})
 	r.iframe, r.panel = frame.key, frame.key
 	r.roots[.Internal] = frame.key
+	r.ibuilt = s.build_index
+	view_input_arrive(r, !unseen)   // (a window of its own refused: the keys held for it are this one's)
 	push_parent(frame)
 	v := View{id = k.id, instance = r.instance, presentation = .Internal, place = r.machine.place, shown = !unseen, record = r}
 	if k.o.backdrop != nil { k.o.backdrop(&v, r.data) }
@@ -422,7 +431,12 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	title := view_title_shown(r)
 	// (a ready-made view's icon for this opening is Lucide's)
 	icon := r.icon != "" ? r.icon : k.o.icon
-	icon_font := r.icon != "" ? lucide_icons() : (k.o.icon_font != 0 ? k.o.icon_font : s.icon_font)
+	icon_font := k.o.icon_font != 0 ? k.o.icon_font : s.icon_font
+	if r.icon_set {
+		if r.icon_font != 0 { icon_font = r.icon_font }   // (view_icon's, in its font)
+	} else if r.icon != "" {
+		icon_font = lucide_icons()   // (a ready-made view's)
+	}
 	panel := parent_box()
 	h := math.round(dense(em * DIALOG_HEADER_EM))
 	if p == .Dialog {

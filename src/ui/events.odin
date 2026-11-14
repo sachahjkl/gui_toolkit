@@ -347,6 +347,11 @@ active_key :: proc() -> Key { return gs().active_key[.Left] }
 focus_key :: proc() -> Key { return gs().focus_key }
 set_focus :: proc(k: Key) { gs().focus_key = k }
 
+// Inside a build: the next field built in it (a line_edit, a number's value, a text_edit: a box that takes text) takes
+// the keyboard, whatever keys its widget gives its boxes. A view focuses its field on its first build so:
+// `if first { ui.focus_next_field() }; ui.number("width", &w)`.
+focus_next_field :: proc() { gs().focus_field_next = true }
+
 // The signal of a box (call after building it, usually through a widget).
 signal :: proc(b: ^Box) -> (sig: Signal) {
 	s := gs()

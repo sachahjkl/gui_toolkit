@@ -130,7 +130,10 @@ View_Record :: struct {
 	size:       Vec2,        // the dialog's size in ems ({}: its first size)
 	size_kept:  Vec2,        // the size the memory has
 	title:      string,      // owned: view_title's (or a ready-made view's), "": the kind's
-	icon:       string,      // a ready-made view's icon for this opening ("": the kind's)
+	icon:       string,      // a ready-made view's icon for this opening (Lucide's), or view_icon's ("": the kind's)
+	icon_own:   string,      // owned: view_icon's
+	icon_font:  font.Font_Id,   // view_icon's font (0: the kind's, else the State's)
+	icon_set:   bool,        // the icon is view_icon's (not a ready-made view's Lucide one)
 	tools:      Key,         // the header's box of the program's tools, in this build
 	header:     Key,         // the header strip, in this build (view_room)
 	panel:      Key,         // the dialog's panel, or the internal window's frame (view_room)
@@ -176,6 +179,13 @@ View_Record :: struct {
 	w_move_to:     Maybe([2]int),   // where the next step moves it (a drag of its header)
 	w_title:       string,    // owned: the title the window has
 	w_drag:        View_Window_Drag,
+	// what was typed after its opening in a window of its own, before the window showed (views_hold_input, view_input_arrive)
+	keys_pending:  bool,
+	held_typed:    [dynamic]rune,
+	held_keys:     [dynamic]platform.Event,
+	// the builds that built it this frame, as an internal window, as a panel (each presentation once per build)
+	ibuilt:        u64,
+	pbuilt:        u64,
 }
 
 // Optional: the memory file and the words of a Views the program keeps (a zero Views is memory only). Call it at
@@ -425,6 +435,18 @@ view_end :: proc(v: ^View, code: int) {
 	v.record.flag = false   // (its dialog leaves this build's dialogs: the focus goes back at once)
 }
 
+// Inside a build: an icon for this opening (the kind's View_Options.icon is the default: one id, a different icon per
+// opening, as view_title gives a title). `icon_font` 0: the kind's icon font, else the State's. Shown from the next build.
+view_icon :: proc(v: ^View, icon: string, icon_font: font.Font_Id = 0) {
+	r := v.record
+	if r.icon_set && r.icon == icon && r.icon_font == icon_font { return }
+	delete(r.icon_own, r.allocator)
+	r.icon_own = strings.clone(icon, r.allocator)
+	r.icon, r.icon_font, r.icon_set = r.icon_own, icon_font, true
+	if r.vs != nil { r.vs.version += 1 }
+	gs().anim_busy = true
+}
+
 // Inside a build: a title for this frame (a process's name). Temporary memory is enough. The header shows it from the
 // next build, which comes at once (a dialog is measured unseen before it shows: its first frame drawn has it).
 view_title :: proc(v: ^View, title: string) {
@@ -506,6 +528,8 @@ view_record_reset :: proc(r: ^View_Record) {
 	r.imeasures, r.ilayout, r.focus_in, r.hand_from, r.focus_back = 0, 0, false, 0, 0
 	delete(r.title)
 	r.title, r.icon = "", ""
+	delete(r.icon_own, r.allocator)
+	r.icon_own, r.icon_font, r.icon_set = "", 0, false
 	if r.owned != nil && r.owned_free != nil { r.owned_free(r.owned) }
 	r.owned, r.owned_free = nil, nil
 }
@@ -516,6 +540,8 @@ view_record_free :: proc(r: ^View_Record) {
 	delete(r.instance)
 	delete(r.modal_name)
 	delete(r.w_title)
+	delete(r.held_typed)
+	delete(r.held_keys)
 	free(r)
 }
 
@@ -583,6 +609,14 @@ view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 			break
 		}
 	}
+	// (opening in a window of its own: what is typed until it shows is its own, views_hold_input)
+	if before.state == .Closed && next.state == .Opening && next.as == .External {
+		r.keys_pending = true
+		clear(&r.held_typed)
+		clear(&r.held_keys)
+	} else if next.state == .Closed {
+		r.keys_pending = false
+	}
 	// (said in the owner's next build: a refusal comes from views_windows_step, between two frames)
 	if .Announce_Refused in fx { r.announce = true }
 	if .Carry_State in fx { view_carry(r, before.from, before.as) }
@@ -606,6 +640,49 @@ view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 	// (an event from another window's build, or from between two frames: the owner makes a frame for it)
 	if r.owner != nil && build_of != r.owner { r.owner.anim_busy = true }
 	// (Retire_Old, Leave_Scrim: the builders stop building the old place, views_builders.odin)
+}
+
+// begin_build of `s`, after its input is read: what is typed (text and key presses) while a view of `s` opens in a
+// window of its own, not shown yet, goes to that view (the keys reach the owner while the window is hidden). The only
+// hold: a view in the owner's window is built in the frame it opens (end_build), its focus there before the next keys.
+// It ends with the window's first frame shown, or with its refusal (the floating window it falls back to gets them).
+@(private)
+views_hold_input :: proc(s: ^State) {
+	taker: ^View_Record
+	for vs in s.views_attached {
+		for r in vs.records {
+			if r.owner != s || !r.keys_pending { continue }
+			if taker != nil { taker.keys_pending = false }   // (an older one waits no more: the newest has the keyboard)
+			taker = r
+		}
+	}
+	if taker == nil || (len(s.typed) == 0 && len(s.events.list) == 0) { return }
+	context.allocator = taker.allocator
+	append(&taker.held_typed, ..s.typed[:])
+	clear(&s.typed)
+	for e, i in s.events.list {
+		if s.events.consumed[i] || e.kind != .Key_Press { continue }
+		append(&taker.held_keys, e)
+		s.events.consumed[i] = true
+	}
+}
+
+// At the start of a view's first shown build (its window's, or the floating window of a refusal), before its code reads
+// input: what was held for it is this build's input, first, in the State it is built in. Its unseen builds focused its
+// field already.
+@(private)
+view_input_arrive :: proc(r: ^View_Record, shown: bool) {
+	if !r.keys_pending || !shown { return }
+	s := gs()
+	if len(r.held_typed) > 0 { inject_at_elems(&s.typed, 0, ..r.held_typed[:]) }
+	if n := len(r.held_keys); n > 0 {
+		inject_at_elems(&s.events.list, 0, ..r.held_keys[:])
+		falses := make([]bool, n, context.temp_allocator)
+		inject_at_elems(&s.events.consumed, 0, ..falses)
+	}
+	r.keys_pending = false
+	clear(&r.held_typed)
+	clear(&r.held_keys)
 }
 
 // The presentation it is seen in: during a move, the old one.

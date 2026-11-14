@@ -1,0 +1,6 @@
+type: Changed
+
+**A tool bar wraps or folds, and its "…" dropdown is a menu**: `ui.toolbar(id, {overflow = .Wrap})` takes more lines when the window is too narrow, each group moving to the next line whole, the pinned groups (Cancel, Done) at the end of the last line. `.Fold` keeps one line and folds what does not fit into the "…" button's dropdown, which is now an ordinary menu: one section per folded group under its `title`, separators between sections, each tool a row with its icon, label and shortcut, each control a row with its label at the left and its widget at the right. The arrows, Enter and Escape work in it as in every menu. A program declares each item once, in either mode:
+  - `ui.toolbar_tool(id, {label, icon, shortcut, command, on, words, intent, ...})` is an act: a button in the bar, a row in the menu; it returns true when clicked in either.
+  - `if ui.toolbar_control(id, {label}) { ... }` is a property whose widget the block builds, in the bar or in a menu row (`ui.toolbar_in_menu()` says which).
+  - `ui.toolbar_item` is gone; `ui.toolbar_group` takes a `title`; the bar puts its pinned groups at its end itself (no spacer); `ui.toolbar_separator()` draws a bar's separator; `ui.menu_control(label)` makes a row with a widget in any menu.

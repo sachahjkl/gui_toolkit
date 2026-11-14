@@ -130,7 +130,7 @@ main :: proc() {
 
 	ui.views_init(&app.views, {path = app.path})
 	ui.set_views(&app.main.state, &app.views)
-	ui.views_set_windows(&app.views, host.view_windows(&app.main))
+	ui.views_set_windows(&app.views, host.view_windows(&app.shared))
 	for p in Panel {
 		ui.view_register(&app.views, PANEL_IDS[p], panel_view, ui.View_Options{title = PANEL_TITLES[p], home = .Panel, home_place = {edge = PANEL_EDGES[p]}, extent_em = PANEL_EDGES[p] == .Bottom ? 12 : 16})
 	}

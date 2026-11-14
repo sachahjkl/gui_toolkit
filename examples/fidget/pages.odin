@@ -27,6 +27,7 @@ reset_values :: proc(app: ^App) {
 	app.dd = {0, 1}
 	app.rating = 3
 	app.progress, app.progress_run = 0.35, false
+	app.bar_tool, app.bar_color, app.bar_width, app.bar_grid = 0, 0, 4, false
 	ui.line_edit_set(&app.name, "Ada Lovelace")
 	ui.line_edit_set(&app.email, "ada@example.com")
 	ui.line_edit_set(&app.number, "42")
@@ -162,6 +163,16 @@ page_controls :: proc(app: ^App) {
 						}
 					}
 				}
+				// (last of its column: the cards above keep their places, where the tests find them)
+				if ui.card("Tool bars", ICON_PENCIL) {
+					if ui.tags("weak") { ui.label("Wrap: narrow the window, each group moves to the next line whole.") }
+					ui.spacer(ui.px(em * 0.3))
+					demo_toolbar(app, "demo_wrap", .Wrap)
+					ui.spacer(ui.px(em * 0.6))
+					if ui.tags("weak") { ui.label("Fold: what does not fit goes into the \"…\" menu, by section.") }
+					ui.spacer(ui.px(em * 0.3))
+					demo_toolbar(app, "demo_fold", .Fold)
+				}
 			}
 			ui.spacer(ui.px(em))
 			if half("###right") {
@@ -220,6 +231,55 @@ page_controls :: proc(app: ^App) {
 					}
 				}
 			}
+		}
+	}
+}
+
+BAR_TOOL_ICONS :: [?]string{ICON_PENCIL, ICON_TARGET, ICON_GRID, ICON_PIN}
+BAR_TOOL_NAMES :: [?]string{"Pen", "Target", "Grid", "Pin"}
+BAR_TOOL_KEYS :: [?]string{"P", "T", "G", "I"}
+BAR_COLOR_HUES :: [?]f32{0.62, 0.02, 0.40, 0.13}
+
+// One tool bar, declared once, in one of the two modes: the same items wrap onto more lines or fold into the "…" menu.
+@(private)
+demo_toolbar :: proc(app: ^App, id: string, overflow: ui.Toolbar_Overflow) {
+	em := ui.font_size()
+	bar_tool_icons, bar_tool_names, bar_tool_keys, bar_color_hues := BAR_TOOL_ICONS, BAR_TOOL_NAMES, BAR_TOOL_KEYS, BAR_COLOR_HUES
+	ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.8))})
+	if ui.toolbar(id, {overflow = overflow}) {
+		if ui.toolbar_group("tools", {title = "Tools", priority = 2}) {
+			for icon, i in bar_tool_icons {
+				if ui.toolbar_tool(fmt.tprintf("tool%d", i), {label = bar_tool_names[i], icon = icon, shortcut = bar_tool_keys[i], on = app.bar_tool == i}) { app.bar_tool = i }
+			}
+		}
+		if ui.toolbar_group("style", {title = "Style", separator = true}) {
+			if ui.toolbar_control("colour", {label = "Colour"}) {
+				side := math.round(em * 1.4)
+				for h, i in bar_color_hues {
+					if i > 0 { ui.spacer(ui.px(math.round(em * 0.25))) }
+					ui.next({width = ui.px(side), height = ui.px(side), radius = side * 0.5, bg = draw.hsv(h, 0.65, 0.95), border = app.bar_color == i ? nil : draw.Color{}})
+					sw := ui.build_box({.Clickable, .Draw_Background, .Draw_Border, .Fixed_Radius}, fmt.tprintf("###swatch%d", i))
+					sw.cursor = .Hand
+					if ui.signal(sw).clicked { app.bar_color = i }
+				}
+			}
+			if ui.toolbar_control("width", {label = "Width", labelled = true}) {
+				ui.next({width = ui.px(math.round(em * 7)), height = ui.px(math.round(em * 1.6))})
+				ui.slider("###width", &app.bar_width, 1, 20, 1, "%.0f")
+			}
+			if ui.toolbar_control("grid", {label = "Snap to grid"}) {
+				ui.next({height = ui.px(math.round(em * 1.6))})
+				ui.toggle("###grid", "", &app.bar_grid)
+			}
+		}
+		if ui.toolbar_group("edit", {title = "Edit", priority = 1, separator = true}) {
+			if ui.toolbar_tool("undo", {label = "Undo", icon = ICON_UNDO, shortcut = "Ctrl+Z"}) { ui.announce(&app.announcer, .Info, "Undo") }
+			if ui.toolbar_tool("save", {label = "Save", icon = ICON_SAVE, shortcut = "Ctrl+S"}) { ui.announce(&app.announcer, .Info, "Save") }
+			if ui.toolbar_tool("copy", {label = "Copy", icon = ICON_CLIPBOARD, shortcut = "Ctrl+C"}) { ui.announce(&app.announcer, .Info, "Copy") }
+		}
+		if ui.toolbar_group("end", {pinned = true}) {
+			if ui.toolbar_tool("cancel", {label = "Cancel", words = true}) { ui.announce(&app.announcer, .Info, "Cancel") }
+			if ui.toolbar_tool("done", {label = "Done", words = true, intent = .Primary}) { ui.announce(&app.announcer, .Good, "Done") }
 		}
 	}
 }

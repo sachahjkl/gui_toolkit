@@ -26,6 +26,8 @@ if ui.menu("file_menu") {
 | `menu(id, width = 0)` | `if menu(id) { ... }` builds the menu while it is open, a nested one in the block of the menu that opened it |
 | `menu_item(text, shortcut, checked, icon, disabled, keep_open, icon_font)` | one row; `disabled` (or a `disabled` scope): muted, skipped by the keyboard |
 | `menu_submenu(text, icon, disabled)` | `if menu_submenu("Open with") { ... }` a row that opens a submenu |
+| `menu_control(label, id = "")` | `if menu_control("Width") { ui.slider(...) }` a row that holds a widget: `label` at its left, in line with the items' labels, the widget at its right. The widgets of every control row of a level start at one column, after the widest label. Not an item: the keyboard skips it, and using its widget does not close the menu |
+| `menu_heading(text)`, `menu_separator()` | a small weak title above a group of rows; a line between two groups (neither is an item) |
 | `menu_close()`, `menu_is_open(id)`, `menu_any_open()` | closes every level; whether `id` is open (any level); whether a menu is open |
 | `menu_bar_button(id) -> string` | an entry of a menu bar: the id of its menu, for `menu` |
 

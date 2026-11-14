@@ -116,7 +116,8 @@ again.
 | `views_set_windows(vs, w)`, `views_windows_ready(vs)`, `view_window_state(vs, id, instance)` | the backend of the views' windows (section External) |
 | `views_windows_step(s)`, `views_window_build()`, `view_window_close_asked(s)` | a backend's part: between frames, a window's build, its system close |
 | `state_carry(from, from_root, to, to_root)`, `style_follow(dst, src)` | what follows a view to another place; a window's settings from the main one |
-| inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)` | |
+| inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_icon(v, icon, icon_font)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)` | `view_icon`: this opening's icon (one id, an icon per opening) |
+| `focus_next_field()` | inside a build: the next field built (a `line_edit`, a `number`'s value, a `text_edit`) takes the keyboard: a view focuses its field on its first build without rebuilding a widget's keys |
 
 `View_Options`: `title`, `icon`, `icon_font`, `home` (`.Dialog` or `.Panel`), `home_place`, `first` (the presentation
 of the first opening), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em`, `min_height_em`,
@@ -180,9 +181,13 @@ A view in a window of the system of its own, with its own `ui.State` on the prog
 itself: a backend does.
 
 ```odin
-ui.views_set_windows(&app.views, host.view_windows(&app.main))   // a host.Host program, once at start-up
+ui.views_set_windows(&app.views, host.view_windows(&app.shared))   // a host.Host program, once at start-up, for every window
 ui.views_set_windows(&app.views, session.view_windows(s))        // a test (docs/testing.md)
 ```
+
+- **One backend for every owner window.** A program of several windows that own views (cliche's history and its
+  editors) sets it once: each view's window is made after the frames of the window that owns the view (its owner
+  State, `View_Window_Ask.owner_state`; `host.view_windows` finds that Host among the program's).
 
 - Without a backend, a view asked to be External floats inside its owner, and the owner says "No window: the system
   refused it." (a toast). The same when the backend refuses (`open` returns nil). `views_windows_ready(vs)`: whether
@@ -243,7 +248,7 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   handle between two stacks moves their share of the zone. A view's place says its stack: `View_Place.stack`, its
   rank in the zone (0 first; the ranks stay compact as stacks empty).
 - `views_frame` builds the panels and the internal windows before the content, so they read their keys first; it is
-  where F6 is read. A program without `views_frame` still has its dialogs and its internal windows; its panels wait.
+  where F6 is read. A program without `views_frame` still has its dialogs and its internal windows; its panels float (internal windows) until a space is built.
 - A panel alone in its stack adds nothing: no tab strip, no border, no background (rule 1). Two panels or more in a
   stack are its tabs: a click shows one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out
   as an internal window under the pointer.
@@ -254,7 +259,9 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
 - A zone's extent is the space's: its handle resizes it (the content keeps `DOCK_MIN_EM`), and the memory keeps it
   when the handle is let go. Before that: the first panel's `extent_em`, else `width_em` or `height_em`, else
   `VIEW_ZONE_EM` (18).
-- A panel whose space is not built in this frame stays open and keeps its state: it shows when its space is built.
+- A panel whose space is not built shows at once as a floating window (a section not shown, a window with no
+  `views_frame`); it goes to its space from the frame after the space is built, and floats again when the space goes.
+  Every frame shows it in one place.
 - Keys: the panel's code reads keys only while the focus is in it (`key_press`, `key_take`). Ctrl+W closes it; an
   Escape it does not take gives the focus back. F6 and Shift+F6 move the focus to the next or the previous area: the
   content, each stack, each internal window.
@@ -273,6 +280,13 @@ panel") wins over the toolkit's. A command whose key a view also uses (a letter 
 floating window) asks where the focus is instead of guessing: `view_has_focus(vs, id, instance)`, or
 `views_focus(vs) -> (id, instance, ok)` for any view (a dialog, a floating window, a panel, a view's window when it is
 the active one). `views_hold_keys(vs)` says a dialog holds them all.
+
+**What is typed right after an opening is the view's**, in every presentation. Every view is built in the frame it
+opens (a dialog, a floating window, a panel opened after its space: at `end_build`), so the field its first build
+focuses has the next frame's keys. A panel whose space is not built shows as a floating window until the space is,
+then goes there. A view in a window of its own gets the keys typed before its window shows (they reach the owner
+meanwhile): they are held for it and given to its first shown build, or to the floating window it falls back to when
+the system refuses a window.
 
 ### Drops
 
@@ -298,6 +312,11 @@ if c, _, ok := ui.palette_chosen(&app.palette); ok {
 }
 // at the end: ui.views_commands_destroy(&app.view_cmds)
 ```
+
+A program of several windows keeps one `View_Commands` per window and gives its State:
+`views_commands_update(&win.view_cmds, &app.views, owner = &win.host.state)` lists only the moves of the views that
+window owns (its palette and its sheet included); `views_commands(vs, allocator, owner)` the same in memory of the
+caller's.
 
 What it costs: `views_commands_update` is one comparison per frame, and one pass over the open views when they changed
 (an opening, a close, a move, a new title). `palette_set` keeps the table (a slice the palette holds while it is open:

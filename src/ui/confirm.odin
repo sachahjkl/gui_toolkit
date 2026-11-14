@@ -145,7 +145,7 @@ ready_made_own :: proc(r: ^View_Record, owned: rawptr, free_proc: proc(p: rawptr
 	r.owned, r.owned_free, r.data = owned, free_proc, owned
 	delete(r.title, r.allocator)
 	r.title = strings.clone(title, r.allocator)
-	r.icon = icon
+	r.icon, r.icon_set = icon, false
 }
 
 // A question that takes an answer typed in: a view, home Dialog. A title, a sentence (what to type), one field, Cancel

@@ -205,6 +205,10 @@ App :: struct {
 	progress: f32,
 	progress_run: bool,
 	ctx_check: bool,
+	bar_tool:  int,    // the tool bars' demo: the tool chosen, the colour, the width, the grid
+	bar_color: int,
+	bar_width: f32,
+	bar_grid:  bool,
 
 	// inputs page
 	name, email, number, search, tag_input, bio, filter: ui.Line_Edit,

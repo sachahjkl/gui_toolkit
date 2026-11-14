@@ -5,7 +5,7 @@ package ui
 // for a host.Host program, session.view_windows for a test). Nothing here enters the system in a build: an effect
 // marks the record, and views_windows_step, called by the backend between two frames, opens, shows, moves and closes.
 //
-//   ui.views_set_windows(&app.views, host.view_windows(&app.main))   at start-up
+//   ui.views_set_windows(&app.views, host.view_windows(&app.shared))   once, at start-up, for every owner window
 //   (the host calls ui.views_windows_step after each frame of a window, then makes the frames of its views' windows)
 
 import "core:fmt"
@@ -20,6 +20,7 @@ View_Window_Ask :: struct {
 	size:           [2]int,          // the client area, logical pixels
 	at:             Maybe([2]int),   // its outer top left on the screen, physical pixels (nil: the system's choice)
 	owner:          ^platform.Window,
+	owner_state:    ^State,          // the window that owns the view: its backend frames the view's window after its frames
 	under_children: bool,            // View_Options.under_children: it gets a native child window (a web view)
 }
 
@@ -136,7 +137,7 @@ view_window_open :: proc(vs: ^Views, r: ^View_Record) {
 		return
 	}
 	title := view_title_shown(r)
-	ask := View_Window_Ask{title = title, size = view_window_size(vs, r), at = r.w_at, owner = r.owner.window, under_children = r.kind.o.under_children}
+	ask := View_Window_Ask{title = title, size = view_window_size(vs, r), at = r.w_at, owner = r.owner.window, owner_state = r.owner, under_children = r.kind.o.under_children}
 	if ask.at == nil && views_positions(vs, r.owner.window) { ask.at = views_memory_of(vs, r.kind.id).at }
 	r.w_at = nil
 	st, win, handle := vs.windows.open(vs.windows.user, ask)
@@ -277,6 +278,7 @@ view_external_build :: proc(vs: ^Views, r: ^View_Record) {
 	next({width = fill(), height = fill(), axis = .Y})
 	frame := build_box({.Draw_Background}, fmt.tprintf("###external_%s", r.modal_name))
 	r.panel, r.roots[.External] = frame.key, frame.key
+	view_input_arrive(r, shown)
 	push_parent(frame)
 	v := View{id = k.id, instance = r.instance, presentation = .External, place = r.machine.place, shown = shown, record = r}
 	if k.o.backdrop != nil { k.o.backdrop(&v, r.data) }
