@@ -190,8 +190,7 @@ nothing_shows_before_the_layout_settles :: proc(t: ^testing.T) {
 	testing.expect(t, b != nil && b.rect == shown_at, "the first frame drawn is where it stays")
 }
 
-// The presentation the user chose and whether it was open survive a quit. Until Internal is built, a view presented as
-// Internal is built as a dialog.
+// The presentation the user chose and whether it was open survive a quit.
 @(test)
 the_presentation_is_remembered :: proc(t: ^testing.T) {
 	r: Run
@@ -209,8 +208,7 @@ the_presentation_is_remembered :: proc(t: ^testing.T) {
 	wait_shown(s, "modal_view_ask")
 	ui.view_present(&r.views, "ask", .Internal)
 	testing.expect_value(t, ui.view_presentation(&r.views, "ask"), ui.View_Presentation.Internal)
-	session.frames(s, AFTER)
-	testing.expect(t, session.find(s, "modal_view_ask") != nil, "built as a dialog until Internal is built")
+	session.wait_box(s, "internal_view_ask")   // (built as an internal window now)
 	testing.expect(t, ui.view_is_open(&r.views, "ask"))
 
 	// a quit with it open, a start
@@ -253,8 +251,8 @@ two_windows_share_one_views :: proc(t: ^testing.T) {
 	ui.view_close(&r.views, "ask")
 }
 
-// A dialog's header holds its title, the Detach icon (inactive until Internal is built) and the close cross; nothing
-// in it takes a click.
+// A dialog's header holds its title, the Detach icon and the close cross; no tools box when the program gives no tools;
+// in the strip, only the Detach icon takes a click (the strip itself is dragged).
 @(test)
 the_header_adds_nothing_else :: proc(t: ^testing.T) {
 	r: Run
@@ -264,17 +262,34 @@ the_header_adds_nothing_else :: proc(t: ^testing.T) {
 	wait_shown(s, "modal_view_ask")
 	header := session.find(s, "view_header")
 	testing.expect(t, header != nil, "the header")
+	if header == nil { return }
 	testing.expect(t, session.find_text(s, "Question") != nil, "its title")
 	detach := session.find(s, "view_detach", within = header)
-	testing.expect(t, detach != nil && .Disabled in detach.flags && .Clickable not_in detach.flags, "the Detach icon, inactive")
-	// (the slot of view_header_tools: nothing in it, and no room taken)
-	tools := session.find(s, "view_tools", within = header)
-	testing.expect(t, tools == nil || (tools.first == nil && tools.rect.max.x - tools.rect.min.x == 0), "no tools: the program gave none")
+	testing.expect(t, detach != nil && .Clickable in detach.flags && .Disabled not_in detach.flags, "the Detach icon, active")
+	testing.expect(t, session.find(s, "view_tools") == nil, "no tools box: the program gave no tools")
 	testing.expect(t, session.find(s, "dialog_close") != nil, "the close cross")
 	clickable :: proc(b: ^ui.Box) -> int {
 		n := .Clickable in b.flags ? 1 : 0
 		for c := b.first; c != nil; c = c.next { n += clickable(c) }
 		return n
 	}
-	testing.expect_value(t, clickable(header), 0)
+	testing.expect_value(t, clickable(header) - 1, 1)   // (the strip, and the Detach icon)
+}
+
+// A body that asks for tools gets them in its header, after the title.
+@(test)
+the_header_holds_the_program_s_tools :: proc(t: ^testing.T) {
+	r: Run
+	defer run_end(&r)
+	ui.view_register(&r.views, "tooled", proc(v: ^ui.View, b: ^Body) {
+		if ui.view_header_tools(v) { ui.button("tool", "A tool") }
+		ui.label("The body###tooled_body")
+	}, ui.View_Options{title = "With tools"})
+	r.want = "tooled"
+	s := run_start(t, &r)
+	wait_shown(s, "modal_view_tooled")
+	tools := session.find(s, "view_tools", within = session.find(s, "view_header"))
+	testing.expect(t, tools != nil && session.find(s, "tool", within = tools) != nil, "the tool in the header's tools box")
+	title := session.find(s, "view_header_title")
+	if tools != nil && title != nil { testing.expect(t, tools.rect.min.x >= title.rect.max.x, "after the title") }
 }

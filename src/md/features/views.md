@@ -1,7 +1,8 @@
 # Views: one content, four presentations
 
-Status: step 1 is written (the model, the memory, the Dialog presentation, the ready-made views; section 7.3). The
-rest is the plan for the toolkit and for the six programs. The user's decisions are in section 2.5 (the chrome rules)
+Status: steps 1 and 2 are written (the model, the memory, the Dialog presentation, the ready-made views; the Internal
+presentation, the Detach icon, the drag of a dialog's header, the header's menu; section 7.3). The rest is the plan for
+the toolkit and for the six programs. The user's decisions are in section 2.5 (the chrome rules)
 and section 8.2.
 
 A **view** is a build procedure and its data, declared by an id. The program says that the view is open or closed and
@@ -457,8 +458,14 @@ The attachment acts. Each is absent where it does nothing:
 | Dock left, right, bottom | `lucide.PANEL_LEFT`, `PANEL_RIGHT`, `PANEL_BOTTOM` | Panel at that edge of the frame (the menu and the palette) | at that place |
 | Close view | `lucide.X` | ends the view, `VIEW_CANCELLED` | never |
 
-Step 1 builds the Dialog header with its Detach icon inactive (drawn weak, not clickable) until Internal is built in
-step 2.
+Step 2 makes the Dialog's Detach icon active (it opens the view as an internal window at the dialog's rect). The
+header is built in two steps (`view_header_begin`, `view_header_end`): the icon and the title before the body, the
+buttons after it. The box of the program's tools is made only when the body calls `view_header_tools`: a header with
+no tools has no tools box.
+
+The header's right-click menu, in every presentation: Detach into a window (inactive until step 4), Open as a floating
+window (absent when Internal), Dock left, Dock right, Dock bottom (inactive until step 3), Re-attach (absent at home),
+Close.
 
 **The close of an external window is re-attach.** The system's close (the system title bar's close button, Alt+F4,
 the compositor, the taskbar's "Close window") acts on the window, not on the view. It brings the view back to its home,
@@ -781,13 +788,42 @@ is the terminal whose view has the focus.
 
 ## 5. Internal windows
 
-- An internal window is a floating frame of the owner's dock space: the dock's floating panel (`dock_float`), with
-  the view's header as its title strip. Its frame, shadow, corner grip and minimum (`DOCK_FLOAT_MIN_EM`) are the
-  dock's.
-- It moves by its header. It resizes by its edges and its corners. It stays inside the owner window; a smaller window
-  moves it in, and the remembered rect is not changed.
-- Several internal windows float at once. A press on one brings it to the front. The order is kept in the dock's
-  `floats` (the topmost last).
+- **Its own builder, not the dock's floating panel.** The first plan put an internal window in the frame's dock space
+  as a `dock_float`. Refused in step 2: the dock space of the frame is step 3's, an internal window must work in a
+  program that never docks, and a dock's floating panel is built inside the program's layout, while an internal window
+  is a layer above it. The builder (`views.odin`, `view_internal_build`) takes the dock's look: the `floating` tags, the
+  frame with its shadow, `DOCK_FLOAT_MIN_EM`, the corner grip (`resize_grip_paint`). Step 3 docks it through the same
+  machine (`Drop` on a dock target), not through `dock_float`.
+- Internal windows are built at the end of the build (`end_build`), before the dialogs: above the content and the
+  panels, below the dialogs, the menus and the toasts. So in step 2 the content reads its keys before them; step 3's
+  `views_frame` builds them before the content (section 6.5).
+- It moves by its header. It resizes by its edges and its corners: the side held moves, the other stays (a dialog
+  keeps its centre; an internal window does not). It stays inside the owner window; a smaller window moves it in, and
+  the remembered rect is not changed.
+- Its rect is in logical pixels from the owner's top left (`internal=` in the memory), written when a move or a resize
+  is let go. With no rect remembered, it opens where the dialog was (Detach, or a drag of the dialog's header), else
+  centred at `width_em`, as tall as what is in it: its height is taken from its first settled layout.
+- Several internal windows float at once. A press on one brings it to the front, before its boxes are built (in front
+  this frame). The order is a stamp per view (`View_Record.z`), the topmost last.
+- Focus: when it shows, the focus goes to its first stop; what had the focus is kept, and gets it back when it closes,
+  if the focus was inside it. Escape and Ctrl+W close it while the focus is inside it. It holds no key of the content.
+- Its header holds: the icon, the title, the program's tools, Re-attach (absent at home), Detach into a window
+  (inactive until step 4) and Close. Its right-click menu is the header's menu of every presentation (section 2.5,
+  rule 3).
+
+The moves of step 2, and why each is built as it is:
+
+| Move | How | Unseen builds |
+|---|---|---|
+| Dialog → Internal by the Detach icon or `view_present` | `Moving`: the dialog shows; the internal window is built unseen at the dialog's rect until its layout settles; then the dialog goes in the frame the window shows | the internal window's (two or three) |
+| Dialog → Internal by a drag of the header past `DOCK_DRAG_EM` | `Drag_Start`: at once an internal window at the dialog's rect, moved by the pointer; the press goes on in its header (`press_hand`); `Drop` at the release | none: the pointer drives it |
+| Internal → Dialog by Re-attach | `Moving`: the internal window shows; the dialog is measured unseen (`Modal_Show`); then the window goes in the frame the dialog shows | the dialog's |
+| Escape during the header's drag | `Drag_Cancel`: back to the dialog | the dialog's opening |
+
+In a `Moving` frame the body is built twice, once in each place. That is the design's price for no frame with the view
+in neither place (section 3.1). The body's boxes have other parents in each place: no key collides. The settle is
+decided once per frame for every view, before any is built (`views_settle`), so the old place and the new never show
+in one frame.
 - Layers, from the bottom: the content, the panels, the internal windows, the dialogs, the menus and popups, the
   toasts.
 - It is not modal: no scrim, the content stays usable. Its keys follow the panel's rule (section 6.5).
@@ -1060,8 +1096,9 @@ Each step ships as a toolkit version, and each step leaves every program working
    `Dialog_Header_Options` are private. Panel, Internal and External are states of the machine; their builders are
    stubs that build the view as a Dialog. `examples/showcase` and `examples/fidget` moved. Tests of section 7.4, items
    1, 4, 5 (Dialog), 6 and 7 (Dialog).
-2. **Toolkit, Internal**: the internal window's builder, the Detach icon of the dialog active, the drag of a
-   dialog's header, the right-click menu.
+2. **Toolkit, Internal** (written): the internal window's builder (section 5), the Detach icon of the dialog active,
+   the drag of a dialog's header, the header's right-click menu, the two-step header (no tools box when the program
+   gives no tools), the remembered internal rect. Tests of section 7.4, items 1, 3 (Internal), 7 (detach), 10.
 3. **Toolkit, Panel**: `views_frame` with its dock, `views_dock`, the content leaf, the key rule, F6, the hover icons,
    the palette's commands (`views_commands`), `view_drag_handle`, the drags inside a window. `examples/docking` and
    `examples/panes` move to views.

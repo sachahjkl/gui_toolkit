@@ -230,6 +230,7 @@ Modal_Options :: struct {
 	min_height_em: f32,
 	size:          ^Vec2,        // nil: not resizable; else the size the person gave it, in ems ({}: none yet)
 	top:           Maybe(f32),   // its top held at this fraction of the window's height (a command palette; resized, its bottom edge alone follows the pointer); nil: centered
+	first_h:       f32,          // its height when no layout of it is known yet (a dialog shown back at once, views_builders.odin); 0: none
 }
 
 // A dialog's width when its options give none, in ems: its least. It grows to what is in it (a long title, a row of
@@ -279,7 +280,7 @@ Modal_Open :: struct {
 Modal_Show :: enum u8 { Measuring, Ready, Showing, Shown }
 
 // The layouts a dialog has unseen at most: one that never settles (something in it moves at every frame) shows then.
-@(private = "file") MODAL_MEASURES_MAX :: 6
+@(private) MODAL_MEASURES_MAX :: 6   // (an internal window's unseen layouts too: view_settle)
 
 // Where a dialog is, from the last build: not in it (the focus leaves the page for it), under another one, or the
 // one on top (Escape is its own).
@@ -358,7 +359,7 @@ modals_measure :: proc(s: ^State) {
 
 // What a dialog's layout is, in one number: the rects of its panel and of every box in it. Two layouts with the same
 // signature draw the dialog at the same place, with the same parts at the same places.
-@(private = "file")
+@(private)
 modal_layout_signature :: proc(panel: ^Box) -> u64 {
 	walk :: proc(b: ^Box, h: ^u64) {
 		r := [4]f32{b.rect.min.x, b.rect.min.y, b.rect.max.x, b.rect.max.y}
@@ -396,13 +397,13 @@ modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 		// (resizable, it needs a height of its own: its first build, unseen, lays what is in it out in all the room there
 		// is; then it is as tall as that was, still unseen until that height holds)
 		phase, _ := modal_phase(s, key)
-		pref.y = phase != .Opening && panel != nil ? modal_content_height(panel) : hi.y
+		pref.y = phase != .Opening && panel != nil ? modal_content_height(panel) : (o.first_h > 0 ? o.first_h : hi.y)
 	}
 	want := o.size != nil && o.size^ != {} ? o.size^ * em : pref
 	wh := Vec2{math.round(clamp(want.x, lo.x, hi.x)), want.y > 0 ? math.round(clamp(want.y, lo.y, hi.y)) : 0}
 	// (as tall as what is in it: placed by the height of the last frame, nothing is laid out yet. It is not drawn until
 	// two layouts in a row agree (modal_begin): the frame that shows it is already where it stays)
-	h := wh.y > 0 ? wh.y : (panel != nil ? panel.size.y : 0)
+	h := wh.y > 0 ? wh.y : (panel != nil ? panel.size.y : o.first_h)
 	y := math.round(max((s.window_size.y - h) * 0.5, margin))
 	if top, held := o.top.?; held {
 		// held at `top` of the window's height, unless it would go past its bottom

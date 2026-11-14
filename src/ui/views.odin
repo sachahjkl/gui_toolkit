@@ -28,11 +28,9 @@ package ui
 import "base:intrinsics"
 import "base:runtime"
 import "core:fmt"
-import "core:math"
 import "core:strings"
 import "../font"
 import i18n "../i18n"
-import lucide "../lucide"
 import "../platform"
 import store "../store"
 
@@ -70,13 +68,19 @@ View :: struct {
 // The build procedure as the registry keeps it. It builds the body only: the header is the toolkit's.
 View_Build :: #type proc(v: ^View, data: rawptr)
 
-// The words of the views' header and menus (zero: view_default_labels, in the language in use).
+// The words of the views' header and menus (a word left empty: view_default_labels', in the language in use).
 View_Labels :: struct {
-	detach, close: string,
+	detach, close, reattach: string,   // detach: the Detach icon's name; reattach: back to its home
+	window, floating:        string,   // "Detach into a window" (External), "Open as a floating window" (Internal)
+	dock_left, dock_right, dock_bottom: string,
 }
 
 view_default_labels :: proc() -> View_Labels {
-	return {detach = i18n.tr("Detach"), close = i18n.tr("Close")}
+	return {
+		detach = i18n.tr("Detach"), close = i18n.tr("Close"), reattach = i18n.tr("Re-attach"),
+		window = i18n.tr("Detach into a window"), floating = i18n.tr("Open as a floating window"),
+		dock_left = i18n.tr("Dock left"), dock_right = i18n.tr("Dock right"), dock_bottom = i18n.tr("Dock bottom"),
+	}
 }
 
 Views_Options :: struct {
@@ -91,6 +95,7 @@ Views :: struct {
 	records:   [dynamic]^View_Record,   // open, or holding an answer not taken; in opening order (the last is on top)
 	states:    [dynamic]^State,         // the States that build its views (each lists it in State.views_attached)
 	building:  int,                     // views of it are being built (views_build): the records stay where they are
+	z_next:    u64,                     // the last stamp of an internal window brought to the front (View_Record.z)
 	memory:    store.Store,
 	labels:    View_Labels,
 	allocator: runtime.Allocator,
@@ -122,7 +127,25 @@ View_Record :: struct {
 	icon:       string,      // a ready-made view's icon for this opening ("": the kind's)
 	tools:      Key,         // the header's box of the program's tools, in this build
 	header:     Key,         // the header strip, in this build (view_room)
-	panel:      Key,         // the dialog's panel
+	panel:      Key,         // the dialog's panel, or the internal window's frame (view_room)
+	// the internal window: its frame, its rect (window px; a height of 0: as tall as what is in it, until it settles),
+	// the rect the memory has, its unseen layouts (view_settle), its place among the internal windows, the focus to
+	// give back when it closes and whether the focus goes into it at its next build, the press of a dialog's header that
+	// goes on in its header (a drag that detached it)
+	iframe:     Key,
+	irect:      Rect,
+	irect_kept: Rect,
+	imeasures:  int,
+	ilayout:    u64,
+	z:          u64,
+	focus_back: Key,
+	focus_in:   bool,
+	hand_from:  Key,
+	// a drag of the dialog's header: where the dialog was when its press began (the window moves from there), and its
+	// height (an Escape during the drag shows the dialog back there at once)
+	hand_origin: Vec2,
+	dialog_rect: Rect,
+	dialog_back: bool,   // that Escape: the dialog's next build shows it at once, at `dialog_rect`
 	// what a ready-made view owns for this opening (its options cloned), freed with the record
 	owned:      rawptr,
 	owned_free: proc(p: rawptr),
@@ -347,16 +370,24 @@ view_room :: proc(v: ^View) -> Vec2 {
 	return {max(room.x - 2 * inset, 0), max(room.y - 2 * inset, 0)}
 }
 
-// Inside a build: `if ui.view_header_tools(v) { ... }` builds controls in the header, after the title. False in a
-// presentation with no header (the block is skipped).
+// Inside a build: `if ui.view_header_tools(v) { ... }` builds controls in the header, after the title. Its box is made
+// at the first call of a build: a header whose body asks for no tools has none. False in a presentation with no header
+// (the block is skipped).
 @(require_results, deferred_none = view_header_tools_end)
 view_header_tools :: proc(v: ^View) -> bool {
-	b := box_from_key(v.record.tools)
-	if b == nil || v.record.tools == 0 {
+	r := v.record
+	head := box_from_key(r.header)
+	if head == nil || r.header == 0 {
 		push_parent(parent_box())
 		return false
 	}
-	push_parent(b)
+	if r.tools == 0 {
+		push_parent(head)
+		next({width = children_sum(), height = children_sum(), axis = .X, cross = .Center})
+		r.tools = build_box({}, "###view_tools").key
+		pop_parent()
+	}
+	push_parent(box_from_key(r.tools))
 	return true
 }
 
@@ -376,12 +407,13 @@ views_hold_keys :: proc(vs: ^Views) -> bool {
 ////////////////////////////////
 // The registry
 
-// The presentation a view is built in. Step 1: Dialog for every one; the builders of Panel and Internal (steps 2 and
-// 3) and of External (step 4) replace these lines.
+// The presentation a view is built in. Step 2: Dialog and Internal; a Panel (step 3) and an External window (step 4) are
+// built as a Dialog until their builders replace these lines.
 @(private)
 view_built_as :: proc(p: View_Presentation) -> View_Presentation {
 	switch p {
-	case .Dialog, .Panel, .Internal, .External: return .Dialog
+	case .Dialog, .Panel, .External: return .Dialog
+	case .Internal:                  return .Internal
 	}
 	return .Dialog
 }
@@ -398,6 +430,7 @@ view_record_find :: proc(vs: ^Views, id, instance: string) -> ^View_Record {
 @(private = "file")
 view_record_reset :: proc(r: ^View_Record) {
 	r.ending = nil
+	r.imeasures, r.ilayout, r.focus_in, r.hand_from, r.focus_back = 0, 0, false, 0, 0
 	delete(r.title)
 	r.title, r.icon = "", ""
 	if r.owned != nil && r.owned_free != nil { r.owned_free(r.owned) }
@@ -442,8 +475,19 @@ views_sweep :: proc(vs: ^Views) {
 // Steps the machine of `r` and applies what it says.
 @(private)
 view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
+	was_internal := r.machine.state != .Closed && (view_built_as(r.machine.as) == .Internal || r.machine.state == .Moving && view_built_as(r.machine.from) == .Internal)
 	next, fx := view_step(r.machine, e)
 	r.machine = next
+	// the internal window's focus (a dialog's is its modal's: modal_begin, modals_settle)
+	if .Keep_Focus in fx && r.owner != nil { r.focus_back = r.owner.focus_key }
+	if (.Show in fx || .Raise in fx) && next.state != .Opening && view_built_as(next.as) == .Internal {
+		view_raise(vs, r)
+		r.focus_in = true
+	}
+	if next.state == .Closed && was_internal && r.owner != nil && view_focus_inside(r.owner, r.iframe) {
+		back := r.owner.boxes[r.focus_back] or_else nil
+		r.owner.focus_key = back != nil ? r.focus_back : 0
+	}
 	if .Remember in fx {
 		m := views_memory_of(vs, r.kind.id)
 		m.as = next.as
@@ -467,8 +511,8 @@ view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 		toast_add(.Warn, nil, nil, i18n.tr("No window: the renderer refused it."))
 	}
 	if next.state == .Closed && r.owner != nil { r.owner.anim_busy = true }   // (the next build takes the answer at once)
-	// (Keep_Focus, Show, Give_Focus_Back: the dialog's own code does them, modal_begin and modals_settle. Open_Window,
-	// Close_Windows, Retire_Old, Carry_State, Leave_Scrim: the builders of steps 2 to 4.)
+	// (Retire_Old, Leave_Scrim: the builders stop building the old place, views_builders.odin. Open_Window,
+	// Close_Windows, Carry_State: step 4's External.)
 }
 
 ////////////////////////////////
@@ -520,102 +564,4 @@ views_state_gone :: proc(s: ^State) {
 	views_destroy(&s.own_views)
 }
 
-// end_build: the views of `s` that show as dialogs, in their order (the last opened on top). A view opened by a view's
-// build is built after it, in this build.
-@(private)
-views_build :: proc(s: ^State) {
-	for vi := 0; vi < len(s.views_attached); vi += 1 {
-		vs := s.views_attached[vi]
-		vs.building += 1
-		for i := 0; i < len(vs.records); i += 1 {
-			r := vs.records[i]
-			if r.owner != s || r.machine.state == .Closed { continue }
-			view_dialog_build(vs, r)
-		}
-		vs.building -= 1
-		views_sweep(vs)
-	}
-}
-
-////////////////////////////////
-// The Dialog presentation
-
-// The view as a dialog: the toolkit's modal (its first frames measured unseen, its fade, its grips, Escape and the
-// scrim), the header strip, then the body.
-@(private = "file")
-view_dialog_build :: proc(vs: ^Views, r: ^View_Record) {
-	s := gs()
-	k := r.kind
-	key := modal_key(s, r.modal_name)
-	phase, last := modal_phase(s, key)
-	// (the dialog's own measure says when it settled: the frame it shows in)
-	if r.machine.state == .Opening && phase != .Opening && (last.show == .Showing || last.show == .Shown) {
-		view_apply(vs, r, {kind = .Settled})
-	}
-	// (a move between two presentations built alike has nothing to measure)
-	if r.machine.state == .Moving && view_built_as(r.machine.as) == view_built_as(r.machine.from) {
-		view_apply(vs, r, {kind = .Settled})
-	}
-	r.flag, r.ending, r.tools, r.header = true, nil, 0, 0
-	o := Modal_Options{width_em = k.o.width_em, height_em = k.o.height_em, min_width_em = k.o.min_width_em, min_height_em = k.o.min_height_em, top = k.o.top}
-	if k.o.resizable { o.size = &r.size }
-	v := View{id = k.id, instance = r.instance, presentation = r.machine.as, place = r.machine.place, record = r}
-	v.shown = phase != .Opening && (last.show == .Showing || last.show == .Shown)
-	if modal(r.modal_name, &r.flag, o) {
-		r.panel = parent_box().key
-		if k.o.backdrop != nil { k.o.backdrop(&v, r.data) }
-		if !k.o.no_header { view_dialog_header(vs, r) }
-		k.build(&v, r.data)
-		// (Ctrl+W closes the dialog on top, as Escape does)
-		if r.flag && r.ending == nil && phase == .Top && key_press(.W, {.Ctrl}) { r.flag = false }
-	}
-	if code, ended := r.ending.?; ended {
-		view_apply(vs, r, {kind = .End, code = code})
-	} else if !r.flag {
-		view_apply(vs, r, {kind = .User_Close})
-	}
-	if r.machine.state == .Closed { return }
-	// (the size the user gave it, kept once the grip is let go)
-	if k.o.resizable && r.size != r.size_kept && s.active_key[.Left] == 0 {
-		m := views_memory_of(vs, k.id)
-		m.dialog = r.size
-		views_memory_write(vs, k.id, m)
-		r.size_kept = r.size
-	}
-}
-
-// A dialog's header: its icon and title, the program's tools (view_header_tools), the Detach icon, the close cross in
-// the corner. The Detach icon is inactive until the Internal presentation is built (step 2).
-@(private = "file")
-view_dialog_header :: proc(vs: ^Views, r: ^View_Record) {
-	k := r.kind
-	labels := vs.labels == {} ? view_default_labels() : vs.labels
-	title := r.title != "" ? r.title : i18n.tr(k.o.title)
-	// (a ready-made view's icon for this opening is Lucide's)
-	icon := r.icon != "" ? r.icon : k.o.icon
-	icon_font := r.icon != "" ? lucide_icons() : k.o.icon_font
-	if dialog_header("view_header", text_shown(title), {icon = icon, icon_font = icon_font, close = true, close_label = labels.close}) {
-		r.header = parent_box().key
-		next({width = children_sum(), height = children_sum(), axis = .X, cross = .Center})
-		r.tools = build_box({}, "###view_tools").key
-		view_detach_icon(labels.detach, view_built_as(.Internal) == .Internal)
-	}
-}
-
-// The small Detach icon beside the close cross, in the weak colour. `active` false: drawn, not clickable.
-@(private = "file")
-view_detach_icon :: proc(label: string, active: bool) {
-	em := font_size()
-	side := math.round(em * VIEW_DETACH_EM)
-	spacer(px(em * 0.3))
-	push_tags("ghost_button", "button", "weak")
-	defer pop_tags()
-	flags := Box_Flags{.Draw_Text, .No_Text_Trunc}
-	if active { flags += {.Clickable, .Focusable, .Draw_Background, .Draw_Hot_Effects} } else { flags += {.Disabled} }
-	next({width = px(side), height = px(side), font = lucide_icons(), font_size = em * 0.85, text_pad = 0, text_align = .Center, radius = em * 0.3})
-	b := build_box(flags, fmt.tprintf("%s###view_detach", lucide.PICTURE_IN_PICTURE_2))
-	a11y_default(b, {role = .Button, name = label})
-}
-
-// The side of the header's Detach icon, in ems: smaller than the close cross (DIALOG_CLOSE_EM).
-VIEW_DETACH_EM :: f32(1.5)
+// (the builders of the presentations: views_builders.odin)

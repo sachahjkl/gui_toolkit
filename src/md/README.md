@@ -28,6 +28,8 @@ is migrated in the same piece of work.
 
 ## File Index
 
+- [features/plugins.md](features/plugins.md): plugins in JavaScript over the whole toolkit — the notes taken before
+  the design (the engine Wren already embeds, what to design first).
 - [features/views.md](features/views.md): views — every dialog and movable pane as one content in four
   presentations (dialog, internal window, external window, docked panel), the state machine, what is remembered, the
   chrome rules, the plan of the work and the migration of the programs.

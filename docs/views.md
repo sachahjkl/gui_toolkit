@@ -14,8 +14,8 @@ The four presentations are degrees of attachment to the owner window:
 
 Each view has a **home**: Dialog or Panel. **Re-attach** brings a view back to its home; the view stays open.
 
-This version builds the Dialog presentation. Panel, Internal and External are states of the view's machine already:
-until their builders come, a view in one of them is built as a Dialog. The intent and the plan are in `src/md/features/views.md`.
+This version builds the Dialog and the Internal presentations. Panel and External are states of the view's machine
+already: until their builders come, a view in one of them is built as a Dialog. The intent and the plan are in `src/md/features/views.md`.
 
 ## Where the views live
 
@@ -66,8 +66,8 @@ if code, ok := ui.view_ended(vs, "conflict"); ok {
 
 - The build procedure draws the body only. The header is the toolkit's: the icon, the title (`View_Options.title`,
   shown with `i18n.tr`; `view_title` changes it from the next build), the program's controls
-  (`if ui.view_header_tools(v) { ... }`), a small Detach icon, the close cross in the corner. `no_header` drops it (a
-  palette draws its search band at the top).
+  (`if ui.view_header_tools(v) { ... }`), a small Detach icon, the close cross in the corner. `no_header` drops it from
+  the dialog (a palette draws its search band at the top); an internal window always has its header (it moves it).
 - `view_register(vs, id, build, o)`: `build` is a `proc(v: ^ui.View, data: ^T)`. `view_open(vs, id, &data)` checks
   that its data is a `^T`. The data is the program's, and must stay valid until the view closes.
 - The dialogs of a State are built at the end of its build (`end_build`), over the page, under the menus and the
@@ -136,10 +136,42 @@ before.
   Escape and Ctrl+W close it. A dialog that opens takes the focus, and gives it back when it closes, unless something
   else took it meanwhile.
 - The header: a strip a shade darker than the dialog (`DIALOG_HEADER_EM` tall), the icon in the accent, the title
-  (never cut: it wraps), the program's tools, the Detach icon (`lucide.PICTURE_IN_PICTURE_2`, in the weak colour,
-  `VIEW_DETACH_EM`; inactive until the Internal presentation is built), and the close cross (`DIALOG_CLOSE_EM`) at the
-  same margin from the dialog's top and right edges, its corners concentric with the dialog's. The close cross is the
-  last stop of Tab.
+  (never cut: it wraps), the program's tools (a box made only when the body calls `view_header_tools`), the Detach icon
+  (`lucide.PICTURE_IN_PICTURE_2`, in the weak colour, `VIEW_DETACH_EM`: it opens the view as an internal window where
+  the dialog is), and the close cross (`DIALOG_CLOSE_EM`) at the same margin from the dialog's top and right edges, its
+  corners concentric with the dialog's. The close cross is the last stop of Tab.
+- A drag of the header past `DOCK_DRAG_EM` detaches the dialog: it is an internal window under the pointer at once,
+  and the same press moves it. Escape during the drag puts it back as a dialog.
+
+## The Internal presentation
+
+An internal window floats inside its owner window, drawn by the toolkit: the same on every system. It is not modal:
+no scrim, the page stays usable and keeps its keys.
+
+- Layers, from the bottom: the page, the internal windows, the dialogs, the menus, the toasts. Several float at once;
+  a press on one brings it to the front.
+- Its header holds the icon, the title, the program's tools, Re-attach (`lucide.UNDO_2`; absent when it is at its
+  home), Detach into a window (inactive until the External presentation is built) and Close. The header moves it. Its
+  edges and corners resize it: the side held follows the pointer, the other stays; at least `DOCK_FLOAT_MIN_EM`. Its
+  bottom right corner has the resize grip.
+- It stays inside the window: a window made smaller moves it in, its remembered rect unchanged.
+- Its rect is remembered (`internal=`, logical pixels) when a move or a resize is let go. With none, it opens where the
+  dialog was, else centred at `width_em`, as tall as what is in it.
+- When it shows, the focus goes to its first stop. Escape and Ctrl+W close it (`VIEW_CANCELLED`) while the focus is
+  in it. When it closes with the focus in it, the focus goes back to what had it.
+- It is built unseen at its place until its layout is the same two builds in a row, as a dialog is. A move between a
+  dialog and an internal window by a button never leaves a frame with the view in neither place or in both: the old
+  place shows while the new one is measured, and goes in the frame the new one shows.
+
+A view opens as an internal window when the memory says so (the user chose it), or `first = .Internal`, or
+`view_present(vs, id, .Internal)`. `view_reattach` brings it back to its home.
+
+## The header's menu
+
+A right click on a view's header opens its menu: Detach into a window (inactive until the External presentation),
+Open as a floating window (absent in an internal window), Dock left, Dock right, Dock bottom (inactive until the Panel
+presentation), Re-attach (absent at home), Close. Its words are `View_Labels`' (`window`, `floating`, `dock_left`,
+`dock_right`, `dock_bottom`, `reattach`, `close`); a word left empty is the toolkit's, in the language in use.
 
 `dialog_body("id")` holds what a dialog says and asks, with its margins (`DIALOG_MARGIN_EM`) and gaps
 (`DIALOG_GAP_EM`). `dialog_buttons("id")` is its row of buttons at its right end, the main act last; buttons that do

@@ -1,0 +1,552 @@
+package ui
+
+// The presentations' builders (src/md/features/views.md, sections 2.5, 3.4 and 5): at the end of each build, the settle
+// of every view, then the internal windows (back to front), then the dialogs (the last opened on top). Layers, from the
+// bottom: the page, the internal windows, the dialogs, the menus, the toasts.
+
+import "core:fmt"
+import "core:math"
+import i18n "../i18n"
+import lucide "../lucide"
+import "../platform"
+
+// What the press of a header or of an internal window's grip keeps (press_data): where the window was when it began.
+@(private = "file")
+View_Move_Press :: struct { from: Vec2, taken: bool }
+@(private = "file")
+View_Grip_Press :: struct { from: Rect, taken: bool }
+
+// end_build: the views of `s`.
+@(private)
+views_build :: proc(s: ^State) {
+	// (a view's build may attach another Views to `s`: only these hold their records in place)
+	n := len(s.views_attached)
+	for vs in s.views_attached[:n] { vs.building += 1 }
+	defer {
+		for vs in s.views_attached[:n] { vs.building -= 1 }
+		for vs in s.views_attached { views_sweep(vs) }
+	}
+
+	// the settle of each view, decided once before any is built: its old place and its new never show in one frame
+	for vs in s.views_attached[:n] {
+		for r in vs.records {
+			if r.owner == s && r.machine.state != .Closed { view_settle(vs, r) }
+		}
+	}
+
+	// the internal windows, back to front; a press on one brings it to the front first
+	Internal :: struct { vs: ^Views, r: ^View_Record, unseen: bool }
+	internals := make([dynamic]Internal, 0, 4, context.temp_allocator)
+	for vs in s.views_attached[:n] {
+		for r in vs.records {
+			if r.owner != s { continue }
+			if yes, unseen := view_builds_internal(r.machine); yes { append(&internals, Internal{vs, r, unseen}) }
+		}
+	}
+	if mouse_pressed(.Left) {
+		top: ^Internal
+		for &x in internals {
+			f := s.boxes[x.r.iframe] or_else nil
+			if x.unseen || f == nil || !rect_has(f.rect, mouse_pos()) { continue }
+			if top == nil || x.r.z > top.r.z { top = &x }
+		}
+		if top != nil { view_raise(top.vs, top.r) }
+	}
+	for i in 1 ..< len(internals) {   // (a few windows: insertion by z)
+		x := internals[i]
+		j := i - 1
+		for j >= 0 && internals[j].r.z > x.r.z { internals[j + 1] = internals[j]; j -= 1 }
+		internals[j + 1] = x
+	}
+	for x in internals {
+		if x.r.machine.state != .Closed { view_internal_build(x.vs, x.r, x.unseen) }
+	}
+
+	// the dialogs, in their order; a view opened by a view's build is built after it, in this build
+	for vi := 0; vi < len(s.views_attached); vi += 1 {
+		vs := s.views_attached[vi]
+		for i := 0; i < len(vs.records); i += 1 {
+			r := vs.records[i]
+			if r.owner == s && view_builds_dialog(r.machine) { view_dialog_build(vs, r) }
+		}
+	}
+}
+
+@(private = "file")
+rect_has :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y }
+
+// Where a view is built this frame as an internal window, and whether unseen (measured before it shows).
+@(private)
+view_builds_internal :: proc(m: View_Machine) -> (yes, unseen: bool) {
+	#partial switch m.state {
+	case .Opening:          return view_built_as(m.as) == .Internal, true
+	case .Shown, .Dragged:  return view_built_as(m.as) == .Internal, false
+	case .Moving:
+		if view_built_as(m.from) == .Internal { return true, false }
+		return view_built_as(m.as) == .Internal, true
+	}
+	return false, false
+}
+
+// Whether a view is built this frame as a dialog (unseen or not: the modal's own measure says).
+@(private)
+view_builds_dialog :: proc(m: View_Machine) -> bool {
+	#partial switch m.state {
+	case .Opening, .Shown, .Dragged: return view_built_as(m.as) == .Dialog
+	case .Moving: return view_built_as(m.from) == .Dialog || view_built_as(m.as) == .Dialog
+	}
+	return false
+}
+
+// A view that opens or moves settles here, from the last layout: a dialog when its modal shows, an internal window when
+// its layout is the same two builds in a row (or after MODAL_MEASURES_MAX), a move between two presentations built
+// alike at once.
+@(private = "file")
+view_settle :: proc(vs: ^Views, r: ^View_Record) {
+	s := gs()
+	m := r.machine
+	if m.state != .Opening && m.state != .Moving { return }
+	if m.state == .Moving && view_built_as(m.as) == view_built_as(m.from) {
+		view_apply(vs, r, {kind = .Settled})
+		return
+	}
+	switch view_built_as(m.as) {
+	case .Dialog:
+		// (Ready: this build shows it; the old place is not built in it)
+		phase, last := modal_phase(s, modal_key(s, r.modal_name))
+		if phase != .Opening && last.show != .Measuring { view_apply(vs, r, {kind = .Settled}) }
+	case .Internal:
+		s.anim_busy = true   // (each unseen build at once)
+		f := s.boxes[r.iframe] or_else nil
+		if f == nil || f.last_build + 1 != s.build_index { return }
+		sig := modal_layout_signature(f)
+		settled := r.imeasures > 0 && sig == r.ilayout
+		r.ilayout = sig
+		r.imeasures += 1
+		if !settled && r.imeasures < MODAL_MEASURES_MAX { return }
+		r.imeasures, r.ilayout = 0, 0
+		// (as tall as what is in it, its first time: its height is the one it settled at)
+		if r.irect.max.y <= r.irect.min.y { r.irect.max.y = r.irect.min.y + (f.rect.max.y - f.rect.min.y) }
+		if m.state == .Moving && view_built_as(m.from) == .Dialog {
+			// (what the dialog took the focus from gets it back when the window closes)
+			if _, last := modal_phase(s, modal_key(s, r.modal_name)); last.focus != 0 { r.focus_back = last.focus }
+		}
+		view_apply(vs, r, {kind = .Settled})
+	case .Panel, .External:
+	}
+}
+
+// It comes to the front of the internal windows.
+@(private)
+view_raise :: proc(vs: ^Views, r: ^View_Record) {
+	vs.z_next += 1
+	r.z = vs.z_next
+}
+
+////////////////////////////////
+// The Dialog presentation
+
+// The view as a dialog: the toolkit's modal (its first frames measured unseen, its fade, its grips, Escape and the
+// scrim), the header strip, then the body.
+@(private = "file")
+view_dialog_build :: proc(vs: ^Views, r: ^View_Record) {
+	s := gs()
+	k := r.kind
+	key := modal_key(s, r.modal_name)
+	o := Modal_Options{width_em = k.o.width_em, height_em = k.o.height_em, min_width_em = k.o.min_width_em, min_height_em = k.o.min_height_em, top = k.o.top}
+	if r.dialog_back {
+		// (a drag of its header cancelled: it was laid out a moment ago, at this rect; it shows in this build, with no
+		// unseen layout, where it was)
+		r.dialog_back = false
+		scrim := key_from_string(s.root.key, fmt.tprintf("###modal_scrim_%s", r.modal_name))
+		append(&s.modals_open, Modal_Open{panel = key, scrim = scrim, focus = r.focus_back, show = .Ready, measures = MODAL_MEASURES_MAX})
+		o.first_h = r.dialog_rect.max.y - r.dialog_rect.min.y
+	}
+	phase, last := modal_phase(s, key)
+	r.flag, r.ending, r.tools, r.header = true, nil, 0, 0
+	if k.o.resizable { o.size = &r.size }
+	v := View{id = k.id, instance = r.instance, presentation = .Dialog, place = r.machine.place, record = r}
+	v.shown = phase != .Opening && (last.show == .Showing || last.show == .Shown)
+	if modal(r.modal_name, &r.flag, o) {
+		r.panel = parent_box().key
+		if k.o.backdrop != nil { k.o.backdrop(&v, r.data) }
+		if !k.o.no_header { view_header_begin(vs, r, .Dialog) }
+		k.build(&v, r.data)
+		if !k.o.no_header { view_header_end(vs, r, .Dialog) }
+		// (Ctrl+W closes the dialog on top, as Escape does)
+		if r.flag && r.ending == nil && phase == .Top && key_press(.W, {.Ctrl}) { r.flag = false }
+	}
+	view_build_ended(vs, r)
+	if r.machine.state == .Closed { return }
+	// (the size the user gave it, kept once the grip is let go)
+	if k.o.resizable && r.size != r.size_kept && s.active_key[.Left] == 0 {
+		m := views_memory_of(vs, k.id)
+		m.dialog = r.size
+		views_memory_write(vs, k.id, m)
+		r.size_kept = r.size
+	}
+}
+
+// After a build: view_end's answer, or the user's close (Escape, the scrim, a close button, the menu).
+@(private = "file")
+view_build_ended :: proc(vs: ^Views, r: ^View_Record) {
+	if code, ended := r.ending.?; ended {
+		view_apply(vs, r, {kind = .End, code = code})
+	} else if !r.flag {
+		view_apply(vs, r, {kind = .User_Close})
+	}
+}
+
+////////////////////////////////
+// The Internal presentation
+
+// The view as an internal window: a floating frame of the owner window, the header strip (it moves the window), the
+// body, the grips of its edges and corners. Unseen: built at its place, not drawn, taking no input of its own.
+@(private = "file")
+view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
+	s := gs()
+	k := r.kind
+	em := font_size()
+	r.flag, r.ending, r.tools, r.header = true, nil, 0, 0
+	rect := view_internal_place(vs, r, em)
+	w, h := rect.max.x - rect.min.x, rect.max.y - rect.min.y
+	title := view_title_shown(r)
+
+	push_parent(s.root)
+	push_tags_isolated("floating")   // (a window is a window, whatever the tags where it is built)
+	push_style_copy()
+	next({fixed_x = rect.min.x, fixed_y = rect.min.y, width = px(w), height = h > 0 ? px(h) : children_sum(), axis = .Y,
+		radius = DIALOG_RADIUS_EM * em, transparency = unseen ? 1 : 0})
+	frame := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate, .Clip}, fmt.tprintf("###internal_%s", r.modal_name))
+	frame.cursor = .Arrow
+	frame.square_corners = {.Bottom_Right}   // (the grip's corner, as a floating panel's)
+	_ = signal(frame)
+	a11y_default(frame, {role = .Dialog, name = title, role_description = i18n.tr("floating window")})
+	r.iframe, r.panel = frame.key, frame.key
+	push_parent(frame)
+	v := View{id = k.id, instance = r.instance, presentation = .Internal, place = r.machine.place, shown = !unseen, record = r}
+	if k.o.backdrop != nil { k.o.backdrop(&v, r.data) }
+	// (an internal window always has its header: it is what moves it, whatever a dialog of `no_header` draws)
+	view_header_begin(vs, r, .Internal)
+	next({width = fill(), height = h > 0 ? fill() : children_sum(), axis = .Y})
+	body := build_box({.Clip}, "###view_body")
+	push_parent(body)
+	k.build(&v, r.data)
+	pop_parent()
+	view_header_end(vs, r, .Internal)
+	if !unseen { view_internal_grips(r, frame, w, h, em) }
+	pop_parent()   // frame
+	pop(&s.style_stack)
+	pop_tags_isolated()
+	pop_parent()   // root
+
+	if !unseen {
+		// (its keys while the focus is in it: Escape and Ctrl+W close it; a dialog on top holds them)
+		inside := view_focus_inside(s, r.iframe)
+		if inside && r.flag && r.ending == nil && (key_press(.Escape) || key_press(.W, {.Ctrl})) { r.flag = false }
+		if r.focus_in {
+			r.focus_in = false
+			if !inside { if first := view_first_stop(s.boxes[r.iframe] or_else nil); first != 0 { s.focus_key = first } }
+		}
+	} else {
+		s.anim_busy = true
+	}
+	view_build_ended(vs, r)
+	if r.machine.state == .Closed { return }
+	// (its rect, kept once a move or a resize is let go: logical pixels)
+	if !unseen && r.irect != r.irect_kept && s.active_key[.Left] == 0 && r.irect.max.y > r.irect.min.y {
+		m := views_memory_of(vs, k.id)
+		sc := max(s.scale, 0.01)
+		m.internal = {i32(math.round(r.irect.min.x / sc)), i32(math.round(r.irect.min.y / sc)), i32(math.round((r.irect.max.x - r.irect.min.x) / sc)), i32(math.round((r.irect.max.y - r.irect.min.y) / sc))}
+		views_memory_write(vs, k.id, m)
+		r.irect_kept = r.irect
+	}
+}
+
+// Where the internal window is this frame, in window pixels: its rect (what the user made it), else the memory's, else
+// centred at its width, as tall as what is in it (a height of 0). Kept inside the window, the rect itself unchanged.
+@(private = "file")
+view_internal_place :: proc(vs: ^Views, r: ^View_Record, em: f32) -> Rect {
+	s := gs()
+	win := s.window_size
+	if r.irect == {} {
+		m := views_memory_of(vs, r.kind.id)
+		if m.internal[2] > 0 {
+			sc := s.scale
+			r.irect = {{f32(m.internal[0]) * sc, f32(m.internal[1]) * sc}, {f32(m.internal[0] + m.internal[2]) * sc, f32(m.internal[1] + m.internal[3]) * sc}}
+			r.irect_kept = r.irect
+		} else {
+			w := math.round((r.kind.o.width_em > 0 ? r.kind.o.width_em : DIALOG_WIDTH_EM) * em)
+			hh := math.round(r.kind.o.height_em * em)
+			x := math.round((win.x - w) * 0.5)
+			y := math.round(win.y * VIEW_INTERNAL_TOP)
+			r.irect = {{x, y}, {x + w, y + hh}}
+		}
+	}
+	rect := r.irect
+	w := min(rect.max.x - rect.min.x, win.x)
+	h := min(rect.max.y - rect.min.y, win.y)
+	x := clamp(rect.min.x, 0, max(win.x - w, 0))
+	y := clamp(rect.min.y, 0, max(win.y - max(h, em * DIALOG_HEADER_EM), 0))
+	return {{x, y}, {x + w, y + max(h, 0)}}
+}
+
+// Where an internal window of no rect opens: its top at this share of the window's height.
+@(private = "file") VIEW_INTERNAL_TOP :: 0.15
+
+// The edges and corners of an internal window: the side held follows the pointer, the opposite one stays.
+@(private = "file")
+view_internal_grips :: proc(r: ^View_Record, frame: ^Box, w, h, em: f32) {
+	e, c := math.round(em * 0.4), math.round(em * 0.9)
+	lo := DOCK_FLOAT_MIN_EM * em
+	Grip :: struct { dir: Vec2, cursor: platform.Cursor }
+	grips := [8]Grip{
+		{{0, -1}, .Resize_N}, {{0, 1}, .Resize_S}, {{-1, 0}, .Resize_W}, {{1, 0}, .Resize_E},
+		{{-1, -1}, .Resize_NW}, {{1, -1}, .Resize_NE}, {{-1, 1}, .Resize_SW}, {{1, 1}, .Resize_SE},
+	}
+	if h <= 0 { return }   // (as tall as what is in it, until its first settled layout)
+	for g, i in grips {
+		corner := g.dir.x != 0 && g.dir.y != 0
+		t := corner ? c : e
+		if g.dir == {1, 1} { t = c + RESIZE_GRIP_BEVEL_PAST_PX * scale() }
+		if g.dir.y < 0 { t = min(t, e) }   // (the top's grips stay thin: the header under them moves the window)
+		gw := g.dir.x != 0 ? t : w - 2 * c
+		gh := g.dir.y != 0 ? t : h - 2 * c
+		gx := g.dir.x < 0 ? 0 : g.dir.x > 0 ? w - gw : c
+		gy := g.dir.y < 0 ? 0 : g.dir.y > 0 ? h - gh : c
+		next({fixed_x = gx, fixed_y = gy, width = px(gw), height = px(gh), cursor = g.cursor})
+		b := build_box({.Clickable}, fmt.tprintf("###view_grip%d", i))
+		a11y_default(b, {ignore = true})
+		sig := signal(b)
+		if g.dir == {1, 1} { resize_grip_paint(b, sig) }
+		p := press_data(View_Grip_Press, b.key)
+		if p != nil && !p.taken { p^ = {from = r.irect, taken = true} }
+		if !sig.dragging || p == nil { continue }
+		nr, d := p.from, sig.drag_delta
+		if g.dir.x < 0 { nr.min.x = min(p.from.min.x + d.x, p.from.max.x - lo.x) }
+		if g.dir.x > 0 { nr.max.x = max(p.from.max.x + d.x, p.from.min.x + lo.x) }
+		if g.dir.y < 0 { nr.min.y = min(p.from.min.y + d.y, p.from.max.y - lo.y) }
+		if g.dir.y > 0 { nr.max.y = max(p.from.max.y + d.y, p.from.min.y + lo.y) }
+		r.irect = {{math.round(nr.min.x), math.round(nr.min.y)}, {math.round(nr.max.x), math.round(nr.max.y)}}
+	}
+}
+
+// Whether the focus is on a box under `root` (as the last build laid them out).
+@(private)
+view_focus_inside :: proc(s: ^State, root: Key) -> bool {
+	if root == 0 || s.focus_key == 0 { return false }
+	for b := s.boxes[s.focus_key] or_else nil; b != nil; b = b.parent {
+		if b.key == root { return true }
+	}
+	return false
+}
+
+// The first stop of Tab under `b` (0: none).
+@(private = "file")
+view_first_stop :: proc(b: ^Box) -> Key {
+	if b == nil { return 0 }
+	if .Focusable in b.flags && .Disabled not_in b.flags { return b.key }
+	for c := b.first; c != nil; c = c.next {
+		if k := view_first_stop(c); k != 0 { return k }
+	}
+	return 0
+}
+
+////////////////////////////////
+// The header: two steps
+
+// The title, as this opening shows it: view_title's, a ready-made view's, else the kind's.
+@(private = "file")
+view_title_shown :: proc(r: ^View_Record) -> string {
+	return r.title != "" ? r.title : i18n.tr(r.kind.o.title)
+}
+
+// The first step, before the body: the strip, its icon and its title (never cut: it wraps). The buttons come after the
+// body (view_header_end), and the box of the program's tools only if the body asks for it (view_header_tools).
+@(private = "file")
+view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
+	s := gs()
+	em := font_size()
+	k := r.kind
+	labels := view_labels(vs)
+	title := view_title_shown(r)
+	// (a ready-made view's icon for this opening is Lucide's)
+	icon := r.icon != "" ? r.icon : k.o.icon
+	icon_font := r.icon != "" ? lucide_icons() : (k.o.icon_font != 0 ? k.o.icon_font : s.icon_font)
+	panel := parent_box()
+	h := math.round(dense(em * DIALOG_HEADER_EM))
+	if p == .Dialog {
+		// (the close cross in the dialog's corner, the same margin from its top and right edges: modal_end builds it)
+		m := &s.modal_stack[len(s.modal_stack) - 1]
+		border := border_inset(box_from_key(m.panel))
+		m.corner_side = math.round(min(em * DIALOG_CLOSE_EM, h))
+		m.corner_inset = border + math.round((h - m.corner_side) * 0.5)
+		m.close, m.close_label = true, labels.close
+	}
+	shade := frame_new(Color)
+	shade^ = srgb_step(panel.bg, {0, 0, 0, panel.bg.a}, DIALOG_HEADER_DARKEN)
+	tall := children_sum()
+	tall.least = h
+	next({width = fill(), height = tall, radius = 0, axis = .X, cross = .Center})
+	b := build_box({.Clickable}, "###view_header")   // (Clickable: it is dragged; its right click opens its menu)
+	b.custom, b.custom_user = top_strip_draw, shade
+	a11y_default(b, {role = .Heading, name = title})
+	r.header = b.key
+	push_parent(b)
+	spacer(px(em * 1.0))
+	if icon != "" {
+		next({width = px(em * 1.4), height = px(h), font = icon_font, font_size = em * 1.1, text_align = .Center, text_pad = 0, fg = color("accent")})
+		build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###view_header_icon", icon))
+		spacer(px(em * 0.55))
+	}
+	// (its width is its words on one line: a dialog grows to it, up to its most, then it wraps)
+	next({width = text_size(), height = text_size(math.round(em * DIALOG_TITLE_MARGIN_EM)), font_size = em * 1.05, text_pad = 0, text_align = .Left})
+	build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###view_header_title", text_shown(title)))
+	spacer(fill())
+	pop_parent()
+}
+
+// The second step, after the body: the buttons of this presentation, its drag, its menu.
+@(private = "file")
+view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
+	s := gs()
+	em := font_size()
+	hb := box_from_key(r.header)
+	if hb == nil || r.header == 0 { return }
+	labels := view_labels(vs)
+	at_home := view_machine_at_home(r.machine) && r.machine.state != .Dragged
+	push_parent(hb)
+	switch p {
+	case .Dialog:
+		if view_header_icon("view_detach", lucide.PICTURE_IN_PICTURE_2, labels.floating, true) { view_float(vs, r) }
+		dialog_header_end()   // (clear of the close cross; pops the strip)
+	case .Internal:
+		if !at_home && view_header_icon("view_reattach", lucide.UNDO_2, labels.reattach, true) { view_apply(vs, r, {kind = .Reattach}) }
+		_ = view_header_icon("view_window", lucide.EXTERNAL_LINK, labels.window, view_built_as(.External) == .External)
+		if view_header_icon("view_close", lucide.X, labels.close, true) { r.flag = false }
+		spacer(px(em * 0.5))
+		pop_parent()
+	case .Panel, .External:
+		pop_parent()
+	}
+
+	// the drag: a dialog's header detaches it under the pointer; an internal window's moves it
+	if p == .Internal && r.hand_from != 0 {
+		// (the press of the dialog's header goes on here: the same gesture)
+		// (from where the dialog was when the press began: the pointer may have moved since the threshold)
+		if press_hand(r.hand_from, hb.key) {
+			if pd := press_data(View_Move_Press, hb.key); pd != nil { pd^ = {from = r.hand_origin, taken = true} }
+		}
+		r.hand_from = 0
+	}
+	if p == .Internal && r.machine.state == .Dragged {
+		if s.active_key[.Left] != hb.key {
+			view_apply(vs, r, {kind = .Drop, as = .Internal})
+			view_raise(vs, r)
+			r.focus_in = true
+		} else if key_press(.Escape) {
+			// back where it was, nothing remembered: the dialog shows in this build at its rect, the window is not drawn
+			view_apply(vs, r, {kind = .Drag_Cancel})
+			r.irect = r.irect_kept
+			r.dialog_back = true
+			if f := box_from_key(r.iframe); f != nil { f.transparency = 1 }
+		}
+	}
+	sig := signal(hb)
+	if sig.dragging {
+		if pd := press_data(View_Move_Press, hb.key); pd != nil {
+			if !pd.taken { pd^ = {from = r.irect.min, taken = true} }
+			d := sig.drag_delta
+			if p == .Dialog && r.machine.state == .Shown && math.sqrt(d.x * d.x + d.y * d.y) >= DOCK_DRAG_EM * em {
+				// past the threshold: an internal window at the dialog's place, moved by the pointer from now on
+				if panel := box_from_key(r.panel); panel != nil {
+					r.irect = {panel.rect.min + d, panel.rect.max + d}
+					r.hand_from, r.hand_origin, r.dialog_rect = hb.key, panel.rect.min, panel.rect
+					// (what the dialog took the focus from: the window gives it back, or the dialog if the drag is cancelled)
+					if _, last := modal_phase(s, modal_key(s, r.modal_name)); last.focus != 0 { r.focus_back = last.focus }
+					view_apply(vs, r, {kind = .Drag_Start})
+				}
+			} else if p == .Internal {
+				size := r.irect.max - r.irect.min
+				at := Vec2{math.round(pd.from.x + d.x), math.round(pd.from.y + d.y)}
+				r.irect = {at, at + size}
+			}
+		}
+	}
+	if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), hb.key, search = false) }
+	view_header_menu(vs, r, p)
+}
+
+// A small icon button of a header, in the weak colour. `active` false: drawn, not clickable.
+@(private = "file")
+view_header_icon :: proc(id, glyph, label: string, active: bool) -> (clicked: bool) {
+	em := font_size()
+	side := math.round(em * VIEW_DETACH_EM)
+	spacer(px(em * 0.3))
+	push_tags("ghost_button", "button", "weak")
+	defer pop_tags()
+	flags := Box_Flags{.Draw_Text, .No_Text_Trunc}
+	if active { flags += {.Clickable, .Focusable, .Draw_Background, .Draw_Hot_Effects} } else { flags += {.Disabled} }
+	next({width = px(side), height = px(side), font = lucide_icons(), font_size = em * 0.85, text_pad = 0, text_align = .Center, radius = em * 0.3})
+	b := build_box(flags, fmt.tprintf("%s###%s", glyph, id))
+	a11y_default(b, {role = .Button, name = label})
+	sig := signal(b)
+	if active && hovered_for(sig) { if tooltip() { tooltip_text(label) } }
+	return active && sig.clicked
+}
+
+@(private = "file")
+view_menu_id :: proc(r: ^View_Record) -> string { return fmt.tprintf("###view_menu_%s", r.modal_name) }
+
+// The header's right-click menu: the same acts in every presentation (src/md/features/views.md, section 2.5).
+@(private = "file")
+view_header_menu :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
+	if menu(view_menu_id(r)) { view_header_menu_items(vs, r, p) }
+}
+
+@(private = "file")
+view_header_menu_items :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
+	labels := view_labels(vs)
+	_ = menu_item(fmt.tprintf("%s###vm_window", labels.window), icon = lucide.EXTERNAL_LINK, icon_font = lucide_icons(), disabled = view_built_as(.External) != .External)
+	if p != .Internal {
+		if menu_item(fmt.tprintf("%s###vm_float", labels.floating), icon = lucide.PICTURE_IN_PICTURE_2, icon_font = lucide_icons()).clicked { view_float(vs, r) }
+	}
+	docks := view_built_as(.Panel) != .Panel
+	_ = menu_item(fmt.tprintf("%s###vm_left", labels.dock_left), icon = lucide.PANEL_LEFT, icon_font = lucide_icons(), disabled = docks)
+	_ = menu_item(fmt.tprintf("%s###vm_right", labels.dock_right), icon = lucide.PANEL_RIGHT, icon_font = lucide_icons(), disabled = docks)
+	_ = menu_item(fmt.tprintf("%s###vm_bottom", labels.dock_bottom), icon = lucide.PANEL_BOTTOM, icon_font = lucide_icons(), disabled = docks)
+	menu_separator()
+	if !view_machine_at_home(r.machine) {
+		if menu_item(fmt.tprintf("%s###vm_reattach", labels.reattach), icon = lucide.UNDO_2, icon_font = lucide_icons()).clicked { view_apply(vs, r, {kind = .Reattach}) }
+	}
+	if menu_item(fmt.tprintf("%s###vm_close", labels.close), icon = lucide.X, icon_font = lucide_icons()).clicked { r.flag = false }
+}
+
+// Open as a floating window: Internal, at its last rect, else where the dialog is now.
+@(private)
+view_float :: proc(vs: ^Views, r: ^View_Record) {
+	if r.irect == {} && views_memory_of(vs, r.kind.id).internal[2] <= 0 {
+		if panel := box_from_key(r.panel); panel != nil && r.panel != 0 { r.irect = panel.rect }
+	}
+	view_apply(vs, r, {kind = .Present, as = .Internal})
+}
+
+// The words of the views' header and menu, in the language in use.
+@(private)
+view_labels :: proc(vs: ^Views) -> View_Labels {
+	d := view_default_labels()
+	l := vs.labels
+	if l.detach == "" { l.detach = d.detach }
+	if l.close == "" { l.close = d.close }
+	if l.reattach == "" { l.reattach = d.reattach }
+	if l.window == "" { l.window = d.window }
+	if l.floating == "" { l.floating = d.floating }
+	if l.dock_left == "" { l.dock_left = d.dock_left }
+	if l.dock_right == "" { l.dock_right = d.dock_right }
+	if l.dock_bottom == "" { l.dock_bottom = d.dock_bottom }
+	return l
+}
+
+// The side of a header's small icons (Detach, Re-attach, Close of an internal window), in ems: smaller than the close
+// cross of a dialog (DIALOG_CLOSE_EM).
+VIEW_DETACH_EM :: f32(1.5)

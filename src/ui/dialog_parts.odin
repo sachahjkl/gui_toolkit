@@ -4,71 +4,17 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import "../font"
-import i18n "../i18n"
 import lucide "../lucide"
 
-// What a dialog's header shows besides its title. The views' header (views.odin) is its only user: a view's build
-// draws its body only.
-@(private)
-Dialog_Header_Options :: struct {
-	icon:        string,         // a glyph of `icon_font` before the title ("": none)
-	icon_font:   font.Font_Id,   // 0: the state's icon font
-	// A close button in the dialog's top right corner (modal_corner: the same margin from its top and right edges, its
-	// corners concentric with the dialog's); a click closes the dialog (its `open`). The header's own controls stay clear of
-	// it. A control of the program's own look takes its place: build it with modal_corner, in the header's block.
-	close:       bool,
-	close_label: string,         // the button's name to a screen reader ("": "Close")
-}
+// A dialog's header is the views' (view_header_begin, view_header_end in views_builders.odin): a strip across its top, a
+// shade darker than the dialog (top_strip_draw: the dialog's top corners, a groove under it), its icon and its title,
+// the program's tools, then the close button in the corner (modal_end builds it).
 
-// `if dialog_header(id, title, {icon = ..., close = true}) { ... }`: the header of a dialog: a strip across its top, a shade
-// darker than the dialog (top_strip_draw: the dialog's top corners, a groove under it), its title and an icon at its
-// start, then what the block builds (the header's own controls, a toolbar), and the close button in the corner. Build it
-// first in the dialog, before its body, so that it stays on top while the body scrolls.
-@(private, require_results, deferred_none = dialog_header_end)
-dialog_header :: proc(id: string, title: string, o := Dialog_Header_Options{}) -> bool {
-	s := gs()
-	em := font_size()
-	panel := parent_box()
-	h := math.round(dense(em * DIALOG_HEADER_EM))
-	if o.close {
-		assert(len(s.modal_stack) > 0, "dialog_header: a close button outside a dialog")
-		m := &s.modal_stack[len(s.modal_stack) - 1]
-		// (the button centered on the strip, which begins inside the dialog's border; its margin from the right edge the same)
-		border := border_inset(box_from_key(m.panel))
-		m.corner_side = math.round(min(em * DIALOG_CLOSE_EM, h))
-		m.corner_inset = border + math.round((h - m.corner_side) * 0.5)
-		m.close = true
-		m.close_label = o.close_label != "" ? o.close_label : i18n.tr("Close")
-	}
-	shade := frame_new(Color)
-	shade^ = srgb_step(panel.bg, {0, 0, 0, panel.bg.a}, DIALOG_HEADER_DARKEN)
-	// (as tall as its title: a title longer than the dialog is wide wraps onto more lines, never cut)
-	tall := children_sum()
-	tall.least = h
-	next({width = fill(), height = tall, radius = 0, axis = .X, cross = .Center})
-	b := build_box({}, strings.concatenate({"###", id}, frame_allocator()))
-	b.custom, b.custom_user = top_strip_draw, shade
-	a11y_default(b, {role = .Heading, name = title})
-	push_parent(b)
-	spacer(px(em * 1.0))
-	if o.icon != "" {
-		f := o.icon_font != 0 ? o.icon_font : s.icon_font
-		next({width = px(em * 1.4), height = px(h), font = f, font_size = em * 1.1, text_align = .Center, text_pad = 0, fg = color("accent")})
-		build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###%s_icon", o.icon, id))
-		spacer(px(em * 0.55))
-	}
-	// (its width is its words on one line: the dialog grows to it (modal_end), up to its most, then it wraps)
-	next({width = text_size(), height = text_size(math.round(em * DIALOG_TITLE_MARGIN_EM)), font_size = em * 1.05, text_pad = 0, text_align = .Left})
-	build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###%s_title", title, id))
-	spacer(fill())
-	return true
-}
+// Above and below a header's title that wraps onto more lines, in ems.
+@(private) DIALOG_TITLE_MARGIN_EM :: 0.45
 
-// Above and below a title that wraps onto more lines, in ems.
-@(private = "file") DIALOG_TITLE_MARGIN_EM :: 0.45
-
-// The end of dialog_header: its right end, clear of the corner's control when it has one (the control's margin on each
-// side of it: a control of the header never touches it).
+// The end of a dialog's header: its right end, clear of the corner's control when it has one (the control's margin on
+// each side of it: a control of the header never touches it). It pops the strip.
 @(private)
 dialog_header_end :: proc() {
 	s := gs()
