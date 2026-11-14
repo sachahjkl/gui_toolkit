@@ -169,13 +169,14 @@ colors_of :: proc(in_c: Colors) -> Colors {
 }
 
 // Builds the box a table or a code block sits in, full width and as tall as what it holds, and makes it the parent (the
-// caller pops it).
+// caller pops it). Its radius is the frame's corners whoever draws it (a program's own frame draws with it): what is clipped
+// inside it takes the same corners (ui.clip_inside_open).
 @(private)
 frame_open :: proc(id: string, o: ^View_Options, kind: Frame_Kind, bg: ui.Color) {
-	m := ui.Style_Mod{width = ui.fill(), height = ui.children_sum(), axis = .Y}
+	m := ui.Style_Mod{width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = math.round(TABLE_RADIUS_PX * ui.scale())}
 	flags := ui.Box_Flags{}
 	if o.frame == nil {
-		m.bg, m.radius = bg, math.round(TABLE_RADIUS_PX * ui.scale())
+		m.bg = bg
 		flags = {.Draw_Background}
 	}
 	ui.next(m)

@@ -120,6 +120,12 @@ rect, the same `inset` from both edges that meet there, with that radius: give i
 with (`box_drawn_radius`), and draw the control with the radius it returns. A box laid against its parent's corner takes
 the same rule (`box_drawn_radii`); a dialog's close button is placed by it (`dialog_header`'s `close`, `modal_corner`, [modals](modals.md)).
 
+What a rounded frame holds is never rounded a second time inside it: rows whose backgrounds run from side to side (a
+table's stripes) are square, and clipped to the frame's inside, where they take its curve at a corner. `clip_inside_open()`,
+first in the frame, and `clip_inside_close()`, last in it, clip what is drawn between them to the frame's rect a line in
+(its rim stays over them), its corners as drawn less that line (`clip_inside_push(dc, frame)` from a custom draw: a floating
+dock panel). A frame its program draws itself gives the box its radius, so that the clip has the same corners.
+
 A box gets the machined drawing from its flags and its theme: `.Groove` is a groove (`hline`); `.Sunken` with a
 background is a well (`line_edit`, `text_edit`, `input_frame`, the track of `segmented`; a clear background sits in a
 well, as a bare field does); `.Plate` with an opaque background is a raised panel (`card`, `modal`, menus, tooltips); an

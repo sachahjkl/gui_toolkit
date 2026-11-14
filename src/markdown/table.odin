@@ -186,23 +186,23 @@ table_block :: proc(id: string, d: ^Doc, n: int, o: ^View_Options, c: Colors, fs
 	}
 	room := ui.parent_box().rect.max.x - ui.parent_box().rect.min.x   // (the place it had in the last layout: none yet, it fits)
 	// (every other row tinted with the text's colour, faintly: light on a dark theme, dark on a light one; the header is told by
-	// its words and its rule. The rows stand off the frame's edge, rounded a little: their tint does not cover its rim.)
+	// its words and its rule. The rows run from side to side of the frame, square, clipped to its inside: where one reaches
+	// a corner it takes the frame's curve, and only the frame is rounded, never a row inside it.)
 	stripe := c.table_stripe.a > 0 ? c.table_stripe : with_alpha(c.text, TABLE_STRIPE_ALPHA)
 	rule := c.table_rule.a > 0 ? c.table_rule : with_alpha(c.marker, TABLE_RULE_ALPHA)
-	edge := 2 * max(1, math.round(ui.scale()))
-	overflow := room > 0 && total > room - 2 * edge
+	overflow := room > 0 && total > room
 	frame_open(id, o, .Table, c.table_frame)
+	ui.clip_inside_open()
 	ui.spacer(ui.px(em * 0.3))
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	if ui.row(id = "###in") {
-		ui.spacer(ui.px(edge))
 		// (sideways: the rows in a box that scrolls; a fade on the side that hides more, and the box's own scroll bar
 		// under them, say so: the toolkit's, as every box that scrolls has; a second bar of the table's drew two)
 		_ = table_scroller(overflow, total, em)
 		ui.next({width = overflow ? ui.px(total, 1) : ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###rows") {
 			for ri in 0 ..< t.rows {
-				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, bg = ri > 0 && ri % 2 == 0 ? stripe : {}, radius = math.round(em * 0.25)})
+				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, bg = ri > 0 && ri % 2 == 0 ? stripe : {}})
 				if ui.row(flags = {.Draw_Background}, id = fmt.tprintf("###tr%d", ri)) {
 					for ci in 0 ..< t.cols {
 						text := t.texts[ri * t.cols + ci]
@@ -226,9 +226,9 @@ table_block :: proc(id: string, d: ^Doc, n: int, o: ^View_Options, c: Colors, fs
 			if overflow { ui.spacer(ui.px(ui.scrollbar_gutter())) }
 		}
 		ui.pop_parent()   // (table_scroller's box)
-		ui.spacer(ui.px(edge))
 	}
 	ui.spacer(ui.px(em * 0.3))
+	ui.clip_inside_close()   // (before the corner's tools: they are over the frame, not in what it clips)
 	if o.table_corner != nil { table_corner(o, t, block_lines(d, n), em) }
 	ui.pop_parent()   // (the frame)
 }

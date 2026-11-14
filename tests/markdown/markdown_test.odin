@@ -164,6 +164,24 @@ a_document_is_read_once_across_frames :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "grown") != nil, "shown")
 }
 
+// A table's striped row runs from side to side of its frame, square: what the frame holds is clipped to its inside, so that a
+// row reaching a corner takes the frame's curve. Its rows stood off the frame's sides, rounded: a curve inside the curve.
+@(test)
+a_tables_stripes_run_from_side_to_side :: proc(t: ^testing.T) {
+	r: Run
+	defer finish(&r)
+	s := start(t, &r, "| Name | Size |\n|------|-----:|\n| one | 1 |\n| two | 22 |\n| three | 333 |\n")
+	session.frames(s, 3)
+	in_row, striped := session.find(s, "in"), session.find(s, "tr2")
+	if !testing.expect(t, in_row != nil && striped != nil, "the rows and a striped one") { return }
+	testing.expect(t, striped.bg.a > 0, "striped")
+	testing.expect_value(t, striped.radius, f32(0))
+	testing.expectf(t, striped.rect.min.x == in_row.rect.min.x && striped.rect.max.x == in_row.rect.max.x, "flush with the frame's sides: %v in %v", striped.rect, in_row.rect)
+	open, close := session.find(s, "clip_inside_open"), session.find(s, "clip_inside_close")
+	testing.expect(t, open != nil && close != nil, "clipped to the frame's inside")
+	if open != nil { testing.expect(t, open.parent == in_row.parent && open.parent.radius > 0, "the frame's, with its corners") }
+}
+
 // A table: its header and rows as a grid, each column aligned as its separator says, measured once.
 @(test)
 a_table_is_a_grid :: proc(t: ^testing.T) {

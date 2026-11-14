@@ -669,12 +669,7 @@ dock_build_float :: proc(d: ^Dock, root: i32) {
 }
 
 @(private)
-dock_float_clip :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
-	s := gs()
-	line := max(math.round(scale()), 1)
-	radius := max(box_drawn_radius(s, b) - line, 0)
-	draw.push_clip_rounded(dc, draw.rect_pad(b.rect, -line), box_radii(radius, b.square_corners))
-}
+dock_float_clip :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) { clip_inside_push(dc, b) }
 
 @(private)
 dock_float_unclip :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) { draw.pop_clip(dc) }
