@@ -44,7 +44,9 @@ Widgets and layout
 Platform and system
   platform.md         Platform backends
   clipboard.md        Rich clipboard
-  dialogs.md          File dialogs
+  file-browser.md     The file browser
+  path-bar.md         The path bar
+  dialogs.md          The system's file dialogs
   printing.md         Printing a picture
   tray.md             Notification area icon
   overlays.md         Overlay windows

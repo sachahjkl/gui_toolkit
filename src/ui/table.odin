@@ -93,6 +93,18 @@ Table_Layout :: struct {
 	moving_col: int,
 	menu_column: int,     // the column whose title was right-clicked for the header's menu (-1: the header's empty part)
 	highlight:  string,   // what the cells light where it matches, each word of it (the filter's text; not owned)
+	// The filter takes a row whose search text has the query's letters in that order (fuzzy_score, as a file manager's
+	// filter), and the cells light the letters it matched; false: each word of the query, as it is (word_ranges).
+	fuzzy:      bool,
+}
+
+// What a cell lights of `text`: the filter's words, or the letters a fuzzy filter matched.
+@(private = "file")
+table_ranges :: proc(l: ^Table_Layout, text: string) -> []Fuzzy_Range {
+	if !l.fuzzy { return word_ranges(text, l.highlight) }
+	if l.highlight == "" { return nil }
+	_, ranges, ok := fuzzy_score(l.highlight, text)
+	return ok ? ranges : nil
 }
 
 // `sort`: the column sorted by at first (TABLE_UNSORTED: none).
@@ -532,7 +544,7 @@ table_cell :: proc(l: ^Table_Layout, col: int, text: string, bg: Maybe(Color) = 
 	if bg != nil { flags += {.Draw_Background} }
 	if border != nil { flags += {.Draw_Border} }
 	// (square, whatever the style: a tinted cell is part of its row, side by side with the next one)
-	if ranges := word_ranges(text, l.highlight); len(ranges) > 0 {
+	if ranges := table_ranges(l, text); len(ranges) > 0 {
 		// what matches the filter, lit: the cell keeps its text (a screen reader's, a test's), drawn by the line in it
 		next({width = table_width(l, col), height = pct(1), axis = .X, cross = .Center, bg = bg, fg = fg, border = border, radius = 0})
 		b := build_box(flags - {.Draw_Text}, fmt.tprintf("%s###c%d", text_shown(text), col))
@@ -598,6 +610,7 @@ Table_Data :: struct {
 	ids:    [dynamic]u64,       // each row's identity: the selection follows it
 	search: [dynamic]string,    // what the filter looks in, in lower case
 	tones:  [dynamic]Table_Tone,
+	groups: [dynamic]int,       // row by row: the rows of a lower group come first in every sort (a file manager's folders)
 }
 
 table_data_reset :: proc(d: ^Table_Data, cols: int) {
@@ -609,6 +622,7 @@ table_data_reset :: proc(d: ^Table_Data, cols: int) {
 	clear(&d.ids)
 	clear(&d.search)
 	clear(&d.tones)
+	clear(&d.groups)
 }
 
 table_data_destroy :: proc(d: ^Table_Data) {
@@ -618,6 +632,7 @@ table_data_destroy :: proc(d: ^Table_Data) {
 	delete(d.ids)
 	delete(d.search)
 	delete(d.tones)
+	delete(d.groups)
 	d^ = {}
 }
 
@@ -627,10 +642,12 @@ table_data_count :: proc(d: ^Table_Data) -> int { return len(d.ids) }
 table_data_clone :: proc(d: ^Table_Data, text: string) -> string { return strings.clone(text, virtual.arena_allocator(&d.arena)) }
 
 // A new row; its cells follow (table_data_cell, as many as the columns). `search`: what the filter finds it by.
-table_data_row :: proc(d: ^Table_Data, id: u64, search: string, tone := Table_Tone.Normal) {
+// `group`: the rows of a lower group come before the others whatever the sort (folders before files).
+table_data_row :: proc(d: ^Table_Data, id: u64, search: string, tone := Table_Tone.Normal, group := 0) {
 	append(&d.ids, id)
 	append(&d.search, strings.to_lower(search, virtual.arena_allocator(&d.arena)))
 	append(&d.tones, tone)
+	append(&d.groups, group)
 }
 
 // The next cell of the last row: its text, and the number it sorts by in a numeric column.
@@ -645,6 +662,7 @@ Table :: struct {
 	using layout: Table_Layout,
 	rows:      [dynamic]int,    // the rows shown: filtered, sorted (indices of the data)
 	ids:       [dynamic]u64,    // their identities (the list's keys)
+	ids_version: u64,           // counts table_apply's: the list compares no ids at a build that changed none
 	vl:        Virtual_List,
 	query:     string,          // the filter applied, in lower case (owned)
 	sel_rect:  Rect,            // the selected row, as last built (where the Menu key opens the menu)
@@ -698,12 +716,32 @@ table_apply :: proc(t: ^Table, d: ^Table_Data, query: string) {
 		}
 	}
 	clear(&t.rows)
-	for i in 0 ..< len(d.ids) {
-		if q == "" || strings.contains(d.search[i], q) { append(&t.rows, i) }
+	if t.fuzzy && q != "" {
+		needle := fuzzy_needle(q)
+		for i in 0 ..< len(d.ids) {
+			// (the search text is in lower case already: it is its own fold)
+			if _, _, ok := fuzzy_score(needle, Fuzzy_Text{d.search[i], d.search[i]}); ok { append(&t.rows, i) }
+		}
+	} else {
+		for i in 0 ..< len(d.ids) {
+			if q == "" || strings.contains(d.search[i], q) { append(&t.rows, i) }
+		}
 	}
-	if t.sort >= 0 { table_sort_rows(t, d) }
+	if t.sort >= 0 {
+		table_sort_rows(t, d)
+	} else if len(d.groups) == len(d.ids) {
+		// (unsorted: the data's own order, its groups first all the same)
+		Group_Ctx :: struct { d: ^Table_Data }
+		gctx := Group_Ctx{d}
+		context.user_ptr = &gctx
+		slice.stable_sort_by(t.rows[:], proc(a, b: int) -> bool {
+			x := (^Group_Ctx)(context.user_ptr)
+			return x.d.groups[a] < x.d.groups[b]
+		})
+	}
 	clear(&t.ids)
 	for i in t.rows { append(&t.ids, d.ids[i]) }
+	t.ids_version += 1
 	vlist_invalidate(&t.vl)
 	t.vl.sel = -1
 	if has_keep {
@@ -723,11 +761,12 @@ table_apply :: proc(t: ^Table, d: ^Table_Data, query: string) {
 // The rows shown, by the sort's column (its number or its text, case ignored), ties by the first column, then as read.
 @(private = "file")
 table_sort_rows :: proc(t: ^Table, d: ^Table_Data) {
-	Sort_Ctx :: struct { d: ^Table_Data, col: int, number: bool }
-	ctx := Sort_Ctx{d, t.sort, t.columns[t.sort].number}
+	Sort_Ctx :: struct { d: ^Table_Data, col: int, number: bool, grouped: bool }
+	ctx := Sort_Ctx{d, t.sort, t.columns[t.sort].number, len(d.groups) == len(d.ids)}
 	context.user_ptr = &ctx
 	slice.sort_by(t.rows[:], proc(a, b: int) -> bool {
 		x := (^Sort_Ctx)(context.user_ptr)
+		if x.grouped && x.d.groups[a] != x.d.groups[b] { return x.d.groups[a] < x.d.groups[b] }
 		if x.number {
 			na, nb := x.d.nums[a * x.d.cols + x.col], x.d.nums[b * x.d.cols + x.col]
 			if na != nb { return na < nb }
@@ -740,7 +779,14 @@ table_sort_rows :: proc(t: ^Table, d: ^Table_Data) {
 		if c != 0 { return c < 0 }
 		return a < b
 	})
-	if t.descending { slice.reverse(t.rows[:]) }
+	if !t.descending { return }
+	// (reversed within each group: the groups stay in their order)
+	from := 0
+	for i in 1 ..= len(t.rows) {
+		if i < len(t.rows) && (!ctx.grouped || d.groups[t.rows[i]] == d.groups[t.rows[from]]) { continue }
+		slice.reverse(t.rows[from:i])
+		from = i
+	}
 }
 
 // Selects the row of `id` and brings it into view, when it is shown.
@@ -810,7 +856,7 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 		row_h := dense(em * (t.row_em > 0 ? t.row_em : TABLE_ROW_EM))
 		least := table_min_width(&t.layout)
 		next({width = fill(), height = fill(), flags = {.View_Scroll_X, .Allow_Overflow_X}})
-		if rows, ok := vlist("###rows", &t.vl, t.ids[:]); ok {
+		if rows, ok := vlist("###rows", &t.vl, t.ids[:], ids_version = t.ids_version); ok {
 			// (the keyboard may be in a filter field, yet the selection is the window's: strong while the window is the user's)
 			t.vl.focused = !inactive()
 			for i in rows.first ..< rows.last {
@@ -867,7 +913,7 @@ table_cells :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em, row_h: f32) 
 					t.lead(t, r, t.row_em > 0 ? row_h - em * 0.5 : em * 1.5)
 					spacer(px(em * 0.4))
 				}
-				if ranges := word_ranges(text, t.highlight); len(ranges) > 0 {
+				if ranges := table_ranges(&t.layout, text); len(ranges) > 0 {
 					next({width = fill(), height = pct(1), axis = .X, cross = .Center})
 					b := build_box({.Clip}, fmt.tprintf("%s###c0", text_shown(text)))
 					if parent(b) {

@@ -114,6 +114,9 @@ View_Kind :: struct {
 	type:  typeid,
 	o:     View_Options,   // its strings owned
 	opened: bool,          // opened in this run (views_destroy writes its line, view_restore)
+	// a ready-made view of the toolkit's whose answer is the toolkit's (the file browser: no program polls view_ended):
+	// called when it ends by its own build or by the person (End, User_Close), its answer taken
+	on_end: proc(data: rawptr, code: int),
 }
 
 // One instance of a view: open, or closed with an answer not taken yet.
@@ -639,6 +642,12 @@ view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 	if next.state == .Closed && r.owner != nil { r.owner.anim_busy = true }   // (the next build takes the answer at once)
 	// (an event from another window's build, or from between two frames: the owner makes a frame for it)
 	if r.owner != nil && build_of != r.owner { r.owner.anim_busy = true }
+	// (a view whose answer is the toolkit's own: told now, last, its answer taken; what it does may close it again)
+	if next.state == .Closed && before.state != .Closed && (e.kind == .End || e.kind == .User_Close) && r.kind.on_end != nil {
+		code := next.answer.? or_else VIEW_CANCELLED
+		r.machine.answer = nil
+		r.kind.on_end(r.data, code)
+	}
 	// (Retire_Old, Leave_Scrim: the builders stop building the old place, views_builders.odin)
 }
 

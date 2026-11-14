@@ -37,7 +37,7 @@ The data of a task is the caller's until `done` or `lost` runs: allocate it with
 | Procedure | |
 |---|---|
 | `open(target, kind = .Path)` | opens a file or folder (`.Path`), a web address (`.Url`) or shows a file in its folder (`.Reveal`) with the system's program, on the chores: a launch can wait on the disk, the shell or D-Bus. `target` is copied |
-| `file_dialog(s, kind, d, done, user)` | the system's file dialog (`.Open`, `.Save`, `.Folder`; `d` a `platform.File_Dialog`, copied) on the chores: a modal loop (Windows) or another process (zenity, kdialog, the portal) that the interface's thread would wait for. `done(result, user)` comes at a next build of `s`; the result's paths are freed after it |
+| `file_dialog(s, kind, d, done, user, source = nil)` | a file dialog (`.Open`, `.Save`, `.Folder`; `d` a `platform.File_Dialog`, copied): the toolkit's browser, reading `source` (nil: the computer's files; docs/file-browser.md), built by the toolkit at each build; with `set_file_dialogs(s, .System)` and no source, the system's, on the chores: a modal loop (Windows) or another process (zenity, kdialog, the portal) that the interface's thread would wait for. `done(result, user)` comes at a next build of `s`; the result's paths are freed after it |
 
 `platform.open_url`, `open_path`, `reveal_in_folder` and the `platform.*_dialog` procedures wait: they are for a
 thread that may wait (a task's work).

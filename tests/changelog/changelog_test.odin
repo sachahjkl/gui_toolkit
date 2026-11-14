@@ -26,8 +26,12 @@ fresh :: proc(t: ^testing.T) -> string {
 	write(fmt.tprintf("%s/%s", dir, tool.VERSION_FILE), VERSION_SOURCE)
 	write(fmt.tprintf("%s/CHANGELOG.md", dir), fmt.tprintf("# Changelog\r\n\r\nIntro.\r\n\r\n## [%s] - 2026-01-01\r\n\r\n### Added\r\n- %s\r\n", BASE_VERSION, OLD_ENTRY))
 	write(fmt.tprintf("%s/README.md", dir), `<a><img src="https://img.shields.io/badge/version-1.2.3-1d57ba" alt="version 1.2.3"></a>`)
+	write(fmt.tprintf("%s/ROADMAP.md", dir), ROADMAP)
 	return dir
 }
+
+// (a project keeps one beside its changelog: the check reads both)
+@(private = "file") ROADMAP :: "# Roadmap\n\n## Now\n\n## Next\n\n## Later\n"
 
 @(private = "file") write :: proc(path, text: string) { _ = os.write_entire_file(path, transmute([]byte)text) }
 @(private = "file") read :: proc(path: string) -> string { d, _ := os.read_entire_file(path, context.temp_allocator); return string(d) }
@@ -181,6 +185,7 @@ a_version_is_x_y_z :: proc(t: ^testing.T) {
 a_hand_written_unreleased_section_is_assembled_too :: proc(t: ^testing.T) {
 	dir := testkit.temp_folder(t, "changelog")
 	_ = os.make_directory_all(fmt.tprintf("%s/changelog.d", dir))
+	write(fmt.tprintf("%s/ROADMAP.md", dir), ROADMAP)
 	write(fmt.tprintf("%s/CHANGELOG.md", dir), "# Changelog\n\n## [Unreleased]\n\n### Added\n- **By hand**: one.\n  - a sub-item.\n\n### Fixed\n- A fix by hand.\n\n## [0.1.0] - 2026-11-01\n\n### Added\n- The first.\n\n[Unreleased]: https://github.com/o/r/compare/v0.1.0...HEAD\n[0.1.0]: https://github.com/o/r/releases/tag/v0.1.0\n")
 	o := changelog.Project_Options{root = dir, link = "https://github.com/o/r/releases/tag/v%s"}
 	errors, n := changelog.check(o)

@@ -1,11 +1,24 @@
 # timefmt: times as people read them
 
-`import "gt:timefmt"` (or the relative path of the submodule). Pure Odin, any target.
+`import "gt:timefmt"` (or the relative path of the submodule). Any target.
 
 A time is milliseconds since 1970 (UTC), as servers and JavaScript give them. The local clock is UTC plus
-`offset_minutes`. Reading the machine's offset is a system call (on Linux it can read the zone's file): read it on a
-worker, keep the last value, and pass it. No procedure of this package makes a system call. Each result is in temp memory
+`offset_minutes`, which the caller passes. The procedures that format make no system call. Each result is in temp memory
 unless `allocator` says otherwise.
+
+## The machine's offset
+
+| Procedure | Result |
+|---|---|
+| `local_offset_watch()` | starts the watch: one thread reads the machine's offset at once, then every `LOCAL_OFFSET_EVERY` (a minute), and stores it atomically. The first call starts it; a later one does nothing. `ui.init` calls it: a program of the toolkit never does |
+| `local_offset_minutes()` | the last reading, in minutes to add to UTC (daylight saving included); 0 until the first one. An atomic load: any thread, any build |
+| `local_offset_read_once()` | whether the first reading is stored (a test waits for it) |
+
+Reading the offset is a system call (Linux: libc's `localtime_r`, which can read the zone's file; Windows:
+`GetTimeZoneInformation`; other systems: 0, UTC). It never runs on the caller's thread. Every widget and every program
+reads the same value: a change of zone or of daylight saving shows everywhere within a minute.
+
+## Formatting
 
 | Procedure | Result |
 |---|---|
@@ -21,7 +34,7 @@ The constants `MS_PER_S`, `SECS_PER_MINUTE`, `SECS_PER_HOUR`, `SECS_PER_DAY`, `S
 `MINUTES_PER_DAY` are exported for the arithmetic around them.
 
 ```odin
-offset := local_offset_minutes()   // (the program's: read on a worker)
+offset := timefmt.local_offset_minutes()   // (the watch's last reading: no system call here)
 started := timefmt.clock(task.started_ms, offset, {seconds = true})
 if timefmt.local_day(task.started_ms, offset) != timefmt.local_day(now, offset) {
 	started = fmt.tprintf("%s, %s", timefmt.date(task.started_ms, offset), started)

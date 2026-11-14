@@ -343,7 +343,8 @@ it is now is absent), Re-attach (absent at home), Close. Its words are `View_Lab
 `dialog_body("id")` holds what a dialog says and asks, with its margins (`DIALOG_MARGIN_EM`) and gaps
 (`DIALOG_GAP_EM`). `dialog_buttons("id")` is its row of buttons at its right end, the main act last; buttons that do
 not fit go on more lines. `choice_row` is a row of a list to choose from (the accounts of a key, the passkeys of a
-site).
+site). `ranges` lights what a search found in the title (`fuzzy_score`'s ranges); `beside` puts the detail at the right
+of the title, on its line, weak: one line a row, for a list under a field (the path bar's).
 
 ## What is remembered
 
@@ -396,6 +397,7 @@ of the design; `tests/views` tests each row.
 | `palette_set(p, commands, disabled, o)`, `palette_open(p)`, `palette_is_open(p)`, `palette_close(p)`, `palette_chosen(p) -> (index, mods, ok)` | the command palette ([commands](commands.md)) |
 | `shortcuts_sheet_open(sheet, commands, title, version)`, `shortcuts_sheet_is_open(sheet)`, `shortcuts_sheet_close(sheet)` | the sheet of the keys |
 | `setup.open(d, o, logo)`, `setup.update(d, o)` | the setup dialog ([setup](setup.md)) |
+| `ui.file_dialog(s, kind, d, done, user, source)` | the file browser, the view `"file_dialog"` of each window ([file-browser](file-browser.md)): `done` once |
 
 Each is a view of `ui.views()`: the Views of the window being built (or of the State in use), which reads its answer
 in its own build.

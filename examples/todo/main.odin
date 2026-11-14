@@ -9,7 +9,7 @@ import "core:strings"
 import "../../src/devtools"
 import "../../src/draw"
 import "../../src/font"
-import "../../src/host"
+import host "../../src/host"
 import "../../src/platform"
 import "../../src/ui"
 

@@ -202,7 +202,7 @@ writes the file off the loop.
 
 ## Export and import
 
-**Export…** asks for a file (the system's dialog, `ui.file_dialog`), then writes the user's settings (what differs from
+**Export…** asks for a file (`ui.file_dialog`), then writes the user's settings (what differs from
 the defaults) in the format of its extension: JSON (as the `settings.json` of Zed or VS Code), TOML, INI, or the
 program's own (`.txt`: `config.export` with `.Own`). The text is made on the interface's thread, a task writes it. **Import…**
 reads a file of the program's own format (a task reads it, `config.load_text` sets its values as the user's): settings

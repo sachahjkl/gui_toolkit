@@ -170,10 +170,10 @@ if ev.menu || key_ev.menu { open_menu(ev.menu ? ev.menu_at : key_ev.menu_at) }
 | Procedure | |
 |---|---|
 | `table_data_reset(d, cols)`, `table_data_destroy(d)`, `table_data_count(d)` | |
-| `table_data_row(d, id, search, tone)`, then `table_data_cell(d, text, num)` once per column | a row; `search` is what the filter finds it by |
+| `table_data_row(d, id, search, tone, group)`, then `table_data_cell(d, text, num)` once per column | a row; `search` is what the filter finds it by; the rows of a lower `group` come first in every sort, unsorted too (a file manager's folders) |
 | `table_data_text(d, row, col)`, `table_data_clone(d, text)` | a cell's text; a copy that lives as long as the rows |
 | `table_init(t, columns, sort, descending)`, `table_destroy(t)` | |
-| `table_apply(t, d, query)` | filters (the query in each row's search text, case ignored) and sorts again: texts with `ascii.compare_fold`, numbers by their value, ties by the first column. The selected row stays selected when it is shown; a new filter selects its first row |
+| `table_apply(t, d, query)` | filters (the query in each row's search text, case ignored; with `Table_Layout.fuzzy`, the query's letters in that order, as `fuzzy_score` finds them, the cells lighting the letters matched) and sorts again: texts with `ascii.compare_fold`, numbers by their value, ties by the first column, the groups in their order. The selected row stays selected when it is shown; a new filter selects its first row |
 | `table_selected(t)` | the data row selected, -1 for none |
 | `table_select_id(t, id)` | selects a row by its identity and brings it into view |
 | `table_keys(t)` | Up, Down, Page Up, Page Down, Ctrl+Home, Ctrl+End move the selection while the keyboard is elsewhere (a filter field); Enter activates; the Menu key and Shift+F10 ask for the row's menu under the selected row (`keyboard` is true) |

@@ -1,7 +1,9 @@
 # File dialogs and shell actions (`src/platform/dialogs.odin`)
 
 The system's Open, Save and folder dialogs, and handing a URL or a file to the system, behind an API of the toolkit's
-own. Windows: the Common Item Dialog (`IFileOpenDialog`, `IFileSaveDialog`) and `ShellExecuteExW`
+own. A program asks `ui.file_dialog`, which shows the toolkit's own browser ([file-browser.md](file-browser.md)) unless
+the person chose the system's (`general.file_dialog`); these are what it calls then. `File_Dialog.places` is the
+browser's: the system's dialogs do not show them. Windows: the Common Item Dialog (`IFileOpenDialog`, `IFileSaveDialog`) and `ShellExecuteExW`
 (`src/platform/dialogs_win32.odin`). Linux: the XDG portal, then zenity or kdialog (`dialogs_linux.odin`). Other systems: every call answers "not supported" (`dialogs_stub.odin`).
 
 ```odin

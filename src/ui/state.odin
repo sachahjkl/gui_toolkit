@@ -11,6 +11,7 @@ import base "../base"
 import "../draw"
 import "../font"
 import "../platform"
+import timefmt "../timefmt"
 
 // The state selected by the last `begin_build` (or `init`, `use`). Public procs operate on it (like raddebugger's `ui_state`), through `gs`.
 @(private, thread_local) current: ^State   // (of this thread: several apps of a process build their interfaces on threads of their own)
@@ -54,6 +55,8 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.trunc_cache = make(map[Trunc_Key]Trunc_Entry)
 	post_init(s)
 	_, _ = sync.atomic_compare_exchange_strong(&tick_origin._nsec, 0, time.tick_now()._nsec)
+	// (every program's dates on the local clock: the machine's offset, read on its own thread; the first init starts it)
+	timefmt.local_offset_watch()
 }
 
 // Makes s the state the public procs operate on (a program with several windows, one state each, goes back to a window's
@@ -63,7 +66,10 @@ use :: proc(s: ^State) { current = (^State)(rawptr(s)) }
 
 // Frees everything `init` and the builds allocated (the fonts and the theme are the caller's).
 destroy :: proc(s: ^State) {
-	views_state_gone(s)   // (its views end with VIEW_CANCELLED; their Views forget it)
+	// (the file browser first: its view is closed as the program's close, its `done` not called; then the other views
+	// end with VIEW_CANCELLED and their Views forget it)
+	file_browser_destroy(s)
+	views_state_gone(s)
 	box_edits_clear(s)
 	delete(s.edits)
 	draw.damage_memory_destroy(&s.damage)
@@ -260,7 +266,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	process_events(s, p.events, !p.disable_zoom, left)
 	views_hold_input(s)   // (keys typed for a view that just opened, until its focused field is there: views.odin)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
-	menu_capture_keys(s, p.events)
+	overlay_capture_keys(s, p.events)
 	s.scale = (p.dpi_scale > 0 ? p.dpi_scale : 1) * s.zoom
 
 	// root: fills the window
@@ -299,8 +305,10 @@ end_build :: proc() {
 	assert(len(s.list_stack) == 0, "ui: unbalanced list scopes")
 	assert(len(s.menu_build) == 0, "ui: unbalanced menu scopes")
 
-	views_build(s)   // (the views shown as dialogs: over the page, under the toasts and the menus)
+	views_build(s)   // (the views shown as dialogs, the file browser among them: over the page, under the toasts and the menus)
 	assert(len(s.parent_stack) == 0 && len(s.popup_stack) == 0 && len(s.modal_stack) == 0, "ui: a view's build left a scope open")
+	// (keys held for the file browser that no build of it took, a browser that closed or moved: the frame ends with them)
+	overlay_release_keys(s, .File_Browser)
 	toasts_build()   // (over everything the program built, under its menus)
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }

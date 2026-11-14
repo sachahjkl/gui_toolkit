@@ -2,9 +2,9 @@ package timefmt
 
 // Times as a person reads them in an interface: a span ("4m 12s"), an age ("3m", "2h"), a clock ("14:32", "2:32 pm") and a
 // date ("Nov 10"). Times are milliseconds since 1970 (UTC), as servers and JavaScript give them. The local clock is UTC plus
-// `offset_minutes`: reading the machine's offset is a system call (on Linux it may read the zone's file), so a program reads
-// it off the interface thread and passes it; these procedures do no system call. Pure Odin, any target. Their words and
-// units are in the language in use (gt:i18n).
+// `offset_minutes`, which the caller passes: local_offset_minutes() (local_offset.odin) is the machine's, read by a thread
+// of its own (ui.init starts it), so these procedures stay pure: no system call, and a test gives any offset. Their words
+// and units are in the language in use (gt:i18n).
 
 import "core:fmt"
 import "core:math"

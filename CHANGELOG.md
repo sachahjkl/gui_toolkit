@@ -5,6 +5,64 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.259.0] - 2026-11-14
+
+### Added
+- **`update.notice`**: what a program says once of a change of its Updater, beside the badge that shows the phase: a failed install (asked or not) and the answer to `check_now`, never a version on offer, its download or a version in place. `Status.install` says that a result is an install's; a failed install's `result` is its reason alone, and `status_words` says it on the Updates page ("Version 0.16.0 is available. The update failed: …").
+
+### Changed
+- **`prefs_page.update_badge` returns its box**: nil when it builds nothing, else its box, whose rect is the room it takes, so a bar can fit its other parts beside it and its words are never cut. The badge is the one place of a window that shows the update's phase.
+
+### Fixed
+- **An empty `fill()` spacer no longer takes a label's room**: in a row that is too narrow, an empty spacer (no children, no text, nothing drawn) now gives all its width before a label is cut. A row of a name and a `spacer(fill())` that asks for the whole row keeps the name whole while the row holds it. With room, `label … spacer(fill()) … buttons` lays out as before.
+- **The theme cards of a last row that is not full keep their width**: in the settings page, the cards after the last full row were crushed to thin bars with their colour dots piled under them. Every card now has the column's width, at its column. `theme_cards` takes the number of columns (`columns`, 3 by default), and a card too narrow for all its dots shows fewer.
+
+## [0.258.1] - 2026-11-14
+
+### Fixed
+- **`host`: a second window's resize step is drawn at once on Wayland**: the paced window's frame draws the resize steps of the other windows first (`host_steps`, the `host_paint` path), and `platform.wait_slot` ends when such a step waits. Before, a window that is not paced waited for the paced window's slot and its work, and the compositor showed its last picture stretched to the new size.
+
+## [0.258.0] - 2026-11-14
+
+### Added
+- **`ui.path_bar`**: a folder's path as a breadcrumb whose parts a click walks (a faint "/" between them, the leading ones in a "…" menu when they do not fit), turned by a click on its empty part (or `path_bar_edit`) into an address field with a dropdown: the children of the folder typed, by fuzzy matching, then the program's suggestions under their titles; ↓ ↑, Tab, Enter and Escape move, complete, go and come back. It reads nothing itself: it says which folder it `wants`, and the program answers with `path_bar_children` or `path_bar_failed`. `ui.choice_row` lights a search's letters (`ranges`) and puts its detail on the title's line (`beside`).
+
+### Changed
+- **The file browser's path bar**: its breadcrumb is tighter, a "/" between its parts, every part a click away; Ctrl+L or a click on its empty end gives the path as a field with a dropdown of the folder's folders (and files in Open and Save), found by fuzzy matching, then the places and the recent folders. Tab takes the row highlighted; Enter or a click goes there.
+
+## [0.257.0] - 2026-11-14
+
+### Added
+- **A project's roadmap is checked with its changelog**: `changelog.check` reads `ROADMAP.md` beside `CHANGELOG.md` (`# Roadmap`, then `## Now`, `## Next` and `## Later`, each a list of entries that start with a bold summary, no dates) and names each line that is wrong; a project without one does not pass. Every program's changelog check and the toolkit's release run it.
+- **Search in subfolders in the file browser**: an "In subfolders" toggle beside the filter finds files and folders at any depth under the folder shown, best matches first, their path shown with the matched letters lit; a folder found is entered, a file found is chosen or previewed as any other. A program's source offers it with `File_Source.find` (`ui.file_reply_found`); `File_Dialog.find_deep` turns it on at first, and `File_Dialog.act` gives the act button the program's own word.
+
+### Changed
+- **One local time for every program (`timefmt.local_offset_minutes`)**: the toolkit reads the machine's time zone offset on a thread of its own, again every minute, so dates follow a change of zone or of daylight saving time during a run. `Scroll_Marks_Options.offset_minutes` is gone: the scroll marks and the file browser read the toolkit's.
+
+### Fixed
+- **The file browser keeps the keyboard**: while it is open, the program behind it no longer sees a key first (Escape closed the picker and also did what the program does with Escape). `ui.file_dialog_shown` says whether it is open.
+
+## [0.256.0] - 2026-11-14
+
+### Added
+- **`ui.Table`: groups and a fuzzy filter**: `table_data_row`'s `group` keeps the rows of a lower group first in every sort (a file manager's folders), and `Table_Layout.fuzzy` filters by the query's letters in order, the cells lighting the letters matched. `ui.code_runs_of` colours a text with spans kept from an earlier `syntax.spans`; `platform.file_roots` lists the drives on Windows, `/` elsewhere.
+- **A file browser of the toolkit's own (`ui.file_dialog`)**: opening, saving and choosing a folder look and work the same in every program and every theme: places (the system's, the program's, the recent folders), a breadcrumb that becomes a path field (Ctrl+L, Tab completes), a sortable list with folders first that filters as you type, a preview of texts and pictures, New folder, Hidden files, and a question before Save replaces a file. It reads the computer's files, or a program's own (`ui.File_Source`: a server's files), without ever freezing the window. Each dialog remembers its folder, size, sort and recent folders (`ui.file_dialog_memory` keeps them between runs). The system's dialog stays one setting away: General › File dialogs.
+
+## [0.255.2] - 2026-11-14
+
+### Fixed
+- **A Markdown table's stripes are square and meet the frame's rim, in every theme**: a striped row left without a radius took the style's, rounded in a theme that rounds its boxes; it says radius 0. `ui.clip_inside_push` keeps a frame's border out of its clip only when the frame draws one inside its rect (`.Draw_Border`): a frame whose rim is drawn outside its rect, as a machined well's, has what it holds up to its rim, with no line of the well between.
+
+## [0.255.1] - 2026-11-14
+
+### Fixed
+- **A Markdown table's stripes run from side to side, square**: a striped row stood off the frame's sides with its own rounded corners, a curve inside the frame's curve. Its rows are square and clipped to the frame's inside, where a row that reaches a corner takes the frame's curve: only the frame is rounded. `ui.clip_inside_open` and `clip_inside_close` clip what a rounded frame holds to its inside (`clip_inside_push` from a custom draw, as a floating dock panel does); a table's or a code block's frame has its radius even when the program draws it.
+
+## [0.255.0] - 2026-11-14
+
+### Changed
+- **`gt:host`'s package is `tk_host`**: as the toolkit's other packages with a common name, so that a program with its own `host` package (Wren's loop and tasks) can use `prefs_page`, which imports it; Odin wants one name per package in a program. A program imports it as `import host "gt:host"` (was `import "gt:host"`); nothing else changes.
+
 ## [0.254.0] - 2026-11-14
 
 ### Added
@@ -3460,6 +3518,14 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.259.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.259.0
+[0.258.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.258.1
+[0.258.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.258.0
+[0.257.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.257.0
+[0.256.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.256.0
+[0.255.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.2
+[0.255.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.1
+[0.255.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.0
 [0.254.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.254.0
 [0.253.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.2
 [0.253.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.1

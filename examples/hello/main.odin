@@ -9,7 +9,7 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "../../src/host"
+import host "../../src/host"
 import "../../src/platform"
 import "../../src/ui"
 

@@ -465,7 +465,8 @@ State :: struct {
 	menu_build:      [dynamic]int,          // levels whose items are being built (innermost last)
 	menu_close_pending: bool,               // an item was chosen: the menu closes when its block ends, not in the middle of it
 	menu_next:       Maybe(Menu_Level),     // a menu opened from inside a menu's block: it opens when the block ends
-	menu_keys:       Events,                // key presses and text of this frame while a menu is open: the menu owns them
+	overlay_keys:    Events,                // key presses and text of this frame held for a toolkit overlay (overlay_capture_keys)
+	key_owner:       Key_Owner,             // ... which one: an open menu, the open file browser; .Program: none
 	popup_stack:     [dynamic]bool,   // one entry per open popup scope: did it push parents/tags?
 	hover_since_ms:  f64,
 	hover_key:       Key,
@@ -517,6 +518,10 @@ State :: struct {
 	post_wake_own:   bool,                  // set_post_wake gave the app's own wake: Build_Params.window does not replace it
 	post_windows:    [dynamic]^platform.Window,   // the windows that hold the queue (they forget it at ui.destroy)
 	task_box:        ^Task_Box,   // where ui.task's results are posted, shut at ui.destroy (nil: no task asked yet)
+	// the file browser ui.file_dialog shows, built at the end of each build while it is open (file_browser.odin; nil:
+	// never asked), and which dialog file_dialog shows (set_file_dialogs)
+	files:           ^File_Browser,
+	file_dialogs:    File_Dialogs,
 	// accessibility: the tree screen readers read, the requests they made (a11y.odin)
 	a11y:            A11y_Data,
 }

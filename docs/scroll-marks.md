@@ -27,8 +27,8 @@ track, at the height where its item stands in the content. The marks and the bar
 
 ## Use
 
-The times are read on the program's clock: `Scroll_Marks_Options.now_ms` (now, ms since 1970; 0: dates shown whole),
-`offset_minutes` (the local clock's offset from UTC, read off the interface thread) and `hours12`.
+The times are read on the program's clock: `Scroll_Marks_Options.now_ms` (now, ms since 1970; 0: dates shown whole) and
+`hours12`. The local clock's offset is the toolkit's (`timefmt.local_offset_minutes`): the program passes none.
 
 The program keeps a `ui.Scroll_Marks` between builds. It gives the marks when its items change, with a version of its own,
 and it gives each mark's place at each build, where it already goes over its items:

@@ -1,4 +1,4 @@
-package host
+package tk_host
 
 // The windows of views (src/md/features/views.md, section 4.1): ui's View_Windows for the windows of a program. Each
 // view's window is a Host on the program's Shared, with its own ui.State on the program's Views and its own surface.
@@ -32,7 +32,7 @@ view_windows :: proc(sh: ^Shared) -> ui.View_Windows {
 @(private = "file")
 host_of_state :: proc(sh: ^Shared, st: ^ui.State) -> ^Host {
 	if st == nil { return nil }
-	for h in sh.hosts { if &h.state == st { return h } }
+	for h := sh.hosts; h != nil; h = h.next { if &h.state == st { return h } }
 	return nil
 }
 
