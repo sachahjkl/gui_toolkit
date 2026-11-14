@@ -5,6 +5,18 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.259.0] - 2026-11-14
+
+### Added
+- **`update.notice`**: what a program says once of a change of its Updater, beside the badge that shows the phase: a failed install (asked or not) and the answer to `check_now`, never a version on offer, its download or a version in place. `Status.install` says that a result is an install's; a failed install's `result` is its reason alone, and `status_words` says it on the Updates page ("Version 0.16.0 is available. The update failed: …").
+
+### Changed
+- **`prefs_page.update_badge` returns its box**: nil when it builds nothing, else its box, whose rect is the room it takes, so a bar can fit its other parts beside it and its words are never cut. The badge is the one place of a window that shows the update's phase.
+
+### Fixed
+- **An empty `fill()` spacer no longer takes a label's room**: in a row that is too narrow, an empty spacer (no children, no text, nothing drawn) now gives all its width before a label is cut. A row of a name and a `spacer(fill())` that asks for the whole row keeps the name whole while the row holds it. With room, `label … spacer(fill()) … buttons` lays out as before.
+- **The theme cards of a last row that is not full keep their width**: in the settings page, the cards after the last full row were crushed to thin bars with their colour dots piled under them. Every card now has the column's width, at its column. `theme_cards` takes the number of columns (`columns`, 3 by default), and a card too narrow for all its dots shows fewer.
+
 ## [0.258.1] - 2026-11-14
 
 ### Fixed
@@ -3506,6 +3518,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.259.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.259.0
 [0.258.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.258.1
 [0.258.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.258.0
 [0.257.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.257.0
