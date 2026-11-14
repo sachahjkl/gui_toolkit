@@ -800,6 +800,48 @@ the_views_moves_source :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.choices, 0)
 }
 
+@(private = "file")
+TOGGLE_COMMANDS := [?]ui.Command{
+	{label = "Expand tools", group = "View", toggle = true},
+	{label = "Fork the session", group = "Session"},
+}
+
+// A toggle command (Command.toggle): its mark is the program's state, read for the rows in view; chosen, the palette
+// stays open, the program flips it, the mark follows and nothing is ranked again. A command's detail shows after its
+// title, and is not searched.
+@(test)
+a_toggle_command_and_a_detail :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	on := false
+	r := Run{table = TOGGLE_COMMANDS[:], opts = {
+		details = {"", "Session · Fix the build"},
+		checked = proc(user: rawptr, index: int) -> bool { return (^bool)(user)^ },
+		user    = &on,
+	}}
+	defer run_free(&r)
+	open_palette(t, &f, &r)
+	testing.expect_value(t, row_id(&r, 0), "Expand tools")
+	testing.expect(t, find_text(&f, ui.ICON_CHECK) == nil, "off: no mark")
+	testing.expect(t, find_text(&f, "Session · Fix the build") != nil, "the detail shows")
+	rankings, asks := r.pal.rankings, r.pal.asks
+	frame(&f, {key(.Return)}, &r)
+	frame(&f, nil, &r)   // (the choice is read in the build after it)
+	testing.expect_value(t, r.choices, 1)
+	testing.expect_value(t, chosen_command(&r), 0)
+	testing.expect(t, palette_open_now(&f, &r), "a toggle: the palette stays open")
+	on = !on   // (the program flips it)
+	frame(&f, nil, &r)
+	testing.expect(t, find_text(&f, ui.ICON_CHECK) != nil, "on: its mark")
+	// (no source read again, the views' moves neither: the palette's own view stepping its state lists no new move)
+	testing.expect_value(t, r.pal.asks, asks)
+	testing.expect_value(t, r.pal.rankings, rankings)
+	// the detail is not searched: "fix" finds neither command
+	open_palette(t, &f, &r, "fix")
+	testing.expect_value(t, ui.palette_row_count(&r.pal), 0)
+}
+
 // What a chore ends: a question, with an answer of `items` or dropped.
 @(private = "file")
 Chore_End :: struct {

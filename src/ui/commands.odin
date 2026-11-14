@@ -53,6 +53,10 @@ Command :: struct {
 	keys:  []Chord,
 	icon:  string,     // a glyph of the state's icon_font (Lucide's): the palette's line shows it ("" none)
 	scope: Command_Scope,
+	// a switch (Expand tools, Follow the output): it is on or off. Its menu line shows its check (menu_item's `checked`,
+	// the program's state), the palette its mark (Palette_Commands_Options.checked) and stays open when it is chosen,
+	// as a setting's switch does. What it is, constant; whether it is on, the program's at each read
+	toggle: bool,
 }
 
 // Where a command's keys work (src/md/features/commands.md, "Window commands").

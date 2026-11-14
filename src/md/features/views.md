@@ -438,6 +438,13 @@ draws, except the header that a dialog always had. The rules:
 2. **A lone panel's controls appear only on hover.** While the pointer is over a strip-less panel's top area, two
    small icons show in its top right corner: Detach and Close, in the weak colour. At rest nothing is added. The icons
    take no room in the layout: they float over the body's corner. A panel with a strip has none: the strip holds them.
+   **They never cover the control the pointer is on.** Where the pointer is in their corner over a control of the body
+   (by the last layout, the icons apart), they do not show, and that control takes the press; elsewhere in the top area
+   they show as before. They stay while one of them is held, not while any box of the body is. Shown over a control, they
+   took the press meant for it: in opencode native the sidebar's server tabs fill its top area, and the click on their
+   strip's right arrow, under the Detach icon, floated the sidebar (a new box tree: the strip at its start again).
+   Refused: hiding them over any control of the top area (a field at its left would have hidden them for nothing), and
+   moving them (the corner is where a person looks for them).
 2b. **The tab strip, left to right** (`view_stack_strip`): the tabs, in the look of every row of tabs (`tab_box`) and on
    a strip ([strip.md](strip.md)): too many for the stack, they scroll with arrows over the faded edge, never a bar; the
    "+" of the shown view's kind (`new_tab`), right after the last tab (outside the strip: at its end when the tabs
@@ -1428,7 +1435,8 @@ In `tests/views` (the toolkit). Each test that builds runs with `ODIN_TEST_THREA
 16. **A window refused**: the backend returns nil. The view opens as Internal, the memory is not changed.
 17. **No chrome at rest**: a panel alone in its zone adds no tab strip and no extra border: its body's first box starts
     at the zone's top edge, and no box of the dock is drawn between them. Its hover icons show only while the pointer
-    is over its top area. A dialog's header has the title, the Detach icon and the close cross, and nothing else.
+    is over its top area, never over the control the pointer is on in their corner (a strip's arrow under them keeps its
+    click: tests/views/panel_test.odin, a_strip_in_a_panel_s_band_keeps_its_scroll). A dialog's header has the title, the Detach icon and the close cross, and nothing else.
 
 Each program adds tests for its own views: the answer acts (classeur deletes, inspecteur kills), the pattern F views
 close when their request ends, the side panes reopen at start.

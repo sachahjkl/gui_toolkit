@@ -123,7 +123,7 @@ the matcher does not find stays, after every match.
 
 | Call | Source | Prefix | What choosing does |
 |---|---|---|---|
-| `palette_commands(&p, table, disabled, Palette_Commands_Options{names, keys, first, version, alternates})` | the commands; and beside them the views' moves of the window the palette is over | `>`, plain | a command: returned, `palette_chosen_command(&p, c)` its index in the table. A move: the toolkit runs it |
+| `palette_commands(&p, table, disabled, Palette_Commands_Options{names, keys, first, version, alternates, details, checked, user})` | the commands; and beside them the views' moves of the window the palette is over | `>`, plain | a command: returned, `palette_chosen_command(&p, c)` its index in the table. A move: the toolkit runs it |
 | `prefs_page.palette_settings_add(&p, &settings, &prefs, &page, options, open, user)`, once | the settings the pages show; `options(user) -> Page_Options` is asked each time the source reads or acts (the themes' slice as it is then); a change of the pages bumps `settings.source.version` | `:`, plain | a switch flips (`Page_Options.changed` is called) and the palette stays; another setting is put alone on its page (`prefs_page.show`) and `open(user)` shows the settings |
 | `flow_palette(&p, &fp, g, cat, from, version)`, at each build | a node graph's add palette, `Flow_Palette`: one item per kind of the catalog (a kind at its max_count, or with no port that fits `from`, disabled). A chooser: no prefix. `flow_palette_items(g, cat, from, allocator)` gives its items (a test) | none | returned: `c.index` the kind, `c.id` its name |
 
@@ -131,7 +131,12 @@ the matcher does not find stays, after every match.
 text as the program shows them (nil: its first chord); `first`, a command put first while something is typed (an alias
 typed whole; not when it is disabled); `version`, the version of the table and of `disabled` (0: neither changes in
 place, the palette compares their addresses; it never reads `disabled` at a frame); `alternates`, the words of Enter
-with a modifier. A `disabled` that follows a list's selection takes the selection's `version` (`Item_Selection.version`:
+with a modifier; `details`, each command's detail ("Session · Fix the build": what it acts on), shown weak after its
+title and not searched (a detail that many commands share would find them all), part of `version`; `checked(user,
+index)` and `user`, whether a toggle command is on now. A command with `Command.toggle` is a switch: its row shows its
+mark (`checked`, read for the rows built only, at each build: a flip ranks nothing again) and choosing it leaves the
+palette open; the choice is returned to the program, which flips it. Its menu line is the same command:
+`menu_item(c.label, ui.command_shortcut(c), checked = on)`. A `disabled` that follows a list's selection takes the selection's `version` (`Item_Selection.version`:
 it moves when a row is selected or no longer, one row for another at the same count, and the active row moves).
 
 ## The rest of the API

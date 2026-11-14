@@ -275,6 +275,16 @@ the toolkit lacked. The answers, one API per need:
   tells them apart, and is asked again in the other place for the same query.
 - **A choice carries its query**, without its prefix (classeur's Alt+Enter makes an alias of it): reading the field
   after the close, and stripping the prefix by hand, was each program's copy of the parse.
+- **A toggle command is a property of the command** (`Command.toggle`), its state the program's
+  (`Palette_Commands_Options.checked(user, index)`, read for the rows in view). One concept for the menus and the
+  palette: a menu line of a toggle already takes `checked` from the program, and the palette's row shows the same state
+  and stays open when chosen, as a setting's switch does. A `stays []bool` and a `marks` proc beside the table were
+  refused: whether a command is a switch does not change, it belongs with its label and its keys. The state is read at
+  each build, not versioned: a flip ranks nothing again. (opencode native's Expand tools, Follow the output.)
+- **A command's detail** (`Palette_Commands_Options.details`, part of the version): what it acts on ("Session · Fix
+  the build"). Shown, not searched: a detail that every Session command shares would make the session's title find
+  them all, and no other source's detail is searched either. A detail read per row in view was refused: the details
+  change with what they name (a session switched), rarely, and a version says it.
 - **`palette_ranked_for(p, text)`** for tests: whether the list shown was ranked for that text. A test reading the
   palette's private state was refused.
 
@@ -319,6 +329,10 @@ the toolkit lacked. The answers, one API per need:
   registered, not when a value changes (`Prefs.version` moves at each value).
 - **An error answers the question.** A source that could not read is not asked again for the same query and version:
   else it is asked at each build.
+- **The moves source reads again only when the moves it lists change.** The views' version moves with any view's
+  step, the palette's own too (its opening, its first frame shown), whose moves the source leaves out. Read again at
+  each such step, it ranked the list once more after a toggle chosen with the palette open. A fingerprint of the moves
+  listed, taken when the views changed, decides.
 - **A searching source's older answer** stays until the new one comes, but only its items that the matcher finds: what
   it found for "do" is no proof for "srv/".
 - **The snapshots are counted.** The palette holds one per source, each ranking one per source in scope; the last to let

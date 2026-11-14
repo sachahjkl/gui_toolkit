@@ -20,6 +20,13 @@ Palette_Commands_Options :: struct {
 	// what Ctrl+Enter, Alt+Enter and Shift+Enter do with a command (classeur: "Set a key", "Add an alias"): literals, or
 	// as long-lived as the palette
 	alternates: Palette_Alternates,
+	// each command's detail, by index ("Session · Fix the build": what it acts on), weak after its title; part of
+	// `version` (a new detail, a new version). Shown, not searched: a detail shared by many commands would find them all
+	details:    []string,
+	// whether toggle command `index` (Command.toggle) is on now: read for the rows built only, at each build, so a flip
+	// shows at once and ranks nothing again. nil: no mark. `user` is given to it
+	checked:    proc(user: rawptr, index: int) -> bool,
+	user:       rawptr,
 }
 
 // The commands source: the program's table, `disabled`, and the options, copied but the table.
@@ -29,11 +36,15 @@ Palette_Commands :: struct {
 	disabled: [dynamic]bool,
 	names:    []string,    // (owned)
 	keys:     []string,    // (owned)
+	details:  []string,    // (owned)
 	first:    Maybe(int),
 	version:  u64,
-	sources:  [4]rawptr,   // the addresses of the table, `disabled`, `names` and `keys` (version 0)
+	sources:  [5]rawptr,   // the addresses of the table, `disabled`, `names`, `keys` and `details` (version 0)
 	count:    int,
 	made:     bool,
+	checked:  proc(user: rawptr, index: int) -> bool,
+	user:     rawptr,
+	index:    map[string]int,   // a command's index by its id (keys: `names`' or the table's labels): the mark's lookup
 }
 
 // The views' moves of the window the palette is open over ("Float Files", "Dock Files to the right"): the toolkit runs
@@ -41,6 +52,7 @@ Palette_Commands :: struct {
 Palette_Moves :: struct {
 	source: Palette_Source,
 	vc:     View_Commands,
+	listed: u64,   // a fingerprint of the moves listed (the palette's own left out) when the version last moved
 }
 
 // What the palette lists of the program's: its commands (the table, valid while the palette is open), those that cannot
@@ -52,7 +64,7 @@ palette_commands :: proc(p: ^Command_Palette, table: []Command, disabled: []bool
 	if c.source.read == nil {
 		c.source = {
 			name = "command", title = i18n.later("Commands"), prefix = .Commands, plain = true, remember = true, listed = true,
-			enter = i18n.later("Run"), read = palette_commands_read, toolkit = true,
+			enter = i18n.later("Run"), read = palette_commands_read, mark = palette_commands_mark, user = p, toolkit = true,
 		}
 		p.moves.source = {
 			name = "move", title = i18n.later("Views"), prefix = .Commands, plain = true, enter = i18n.later("Run"),
@@ -63,16 +75,39 @@ palette_commands :: proc(p: ^Command_Palette, table: []Command, disabled: []bool
 	}
 	c.table = table
 	c.source.alternates = o.alternates
-	addresses := [4]rawptr{raw_data(table), raw_data(disabled), raw_data(o.names), raw_data(o.keys)}
+	c.source.user = p
+	c.checked, c.user = o.checked, o.user   // (read at each build: no version)
+	addresses := [5]rawptr{raw_data(table), raw_data(disabled), raw_data(o.names), raw_data(o.keys), raw_data(o.details)}
 	if c.made && o.version == c.version && len(table) == c.count && len(disabled) == len(c.disabled) && palette_maybe_eq(o.first, c.first) &&
 		(o.version != 0 || addresses == c.sources) { return }
 	resize(&c.disabled, len(disabled))
 	copy(c.disabled[:], disabled)
 	palette_strings_free(c.names)
 	palette_strings_free(c.keys)
-	c.names, c.keys = palette_strings_clone(o.names), palette_strings_clone(o.keys)
+	palette_strings_free(c.details)
+	c.names, c.keys, c.details = palette_strings_clone(o.names), palette_strings_clone(o.keys), palette_strings_clone(o.details)
 	c.first, c.version, c.count, c.made, c.sources = o.first, o.version, len(table), true, addresses
+	// (the ids' index, made on a change only: the mark of a row in view is one lookup)
+	clear(&c.index)
+	for cmd, i in table { c.index[palette_command_id(c, cmd, i)] = i }
 	c.source.version += 1
+}
+
+// A command's id: its name, else its label as the table holds it.
+@(private = "file")
+palette_command_id :: proc(c: ^Palette_Commands, cmd: Command, i: int) -> string {
+	return i < len(c.names) && c.names[i] != "" ? c.names[i] : cmd.label
+}
+
+// The mark of a toggle command in view: the program's `checked`.
+@(private = "file")
+palette_commands_mark :: proc(src: ^Palette_Source, id: string) -> bool {
+	p := (^Command_Palette)(src.user)
+	c := &p.commands
+	if c.checked == nil { return false }
+	i, ok := c.index[id]
+	if !ok || i >= len(c.table) || !c.table[i].toggle { return false }
+	return c.checked(c.user, i)
 }
 
 @(private = "file")
@@ -101,6 +136,8 @@ palette_commands_free :: proc(c: ^Palette_Commands) {
 	delete(c.disabled)
 	palette_strings_free(c.names)
 	palette_strings_free(c.keys)
+	palette_strings_free(c.details)
+	delete(c.index)
 	c^ = {}
 }
 
@@ -114,18 +151,39 @@ palette_commands_read :: proc(p: ^Command_Palette, src: ^Palette_Source, q: Pale
 	a.items = make([]Palette_Item, len(c.table), al)
 	for cmd, i in c.table {
 		label, group, tags := command_shown(cmd)
-		id := i < len(c.names) && c.names[i] != "" ? c.names[i] : cmd.label
 		keys := i < len(c.keys) ? c.keys[i] : command_shortcut(cmd)
-		it := Palette_Item{id = id, title = label, group = group, tags = tags, icon = cmd.icon, keys = keys, disabled = i < len(c.disabled) && c.disabled[i]}
+		detail := i < len(c.details) ? c.details[i] : ""
+		it := Palette_Item{
+			id = palette_command_id(c, cmd, i), title = label, detail = detail, group = group, tags = tags, icon = cmd.icon, keys = keys,
+			disabled = i < len(c.disabled) && c.disabled[i], stays = cmd.toggle,
+		}
 		a.items[i] = palette_item_clone(it, al)
 	}
 	palette_answer(q, &a)
 }
 
-// (at each build while open) The moves follow the views of the window the palette is over.
+// (at each build while open) The moves follow the views of the window the palette is over. The views' version moves
+// with any view's step, the palette's own too (its opening, its first frame shown): the source is read again, and the
+// list ranked again, only when the moves it lists changed (a toggle flipped with the palette open ranked once more).
 @(private = "file")
 palette_moves_poll :: proc(p: ^Command_Palette, src: ^Palette_Source) {
-	if views_commands_update(&p.moves.vc, views(), p.owner) { src.version += 1 }
+	m := &p.moves
+	if !views_commands_update(&m.vc, views(), p.owner) { return }
+	// (FNV-1a over what the source lists: one pass over the open views' moves, only when the views changed)
+	h := u64(0xcbf29ce484222325)
+	mix :: proc(h: ^u64, s: string) {
+		for i in 0 ..< len(s) { h^ = (h^ ~ u64(s[i])) * 0x100000001b3 }
+		h^ = (h^ ~ 0xff) * 0x100000001b3   // (a separator: "ab"+"c" is not "a"+"bc")
+	}
+	for cmd, i in m.vc.commands {
+		a := m.vc.acts[i]
+		if a.id == PALETTE_VIEW { continue }
+		mix(&h, a.id); mix(&h, a.instance); mix(&h, cmd.label); mix(&h, cmd.group); mix(&h, cmd.icon)
+		h = (h ~ u64(a.act)) * 0x100000001b3
+	}
+	if h == m.listed && src.version != 0 { return }
+	m.listed = h
+	src.version += 1
 }
 
 // A move's id: its view, its instance, its act.

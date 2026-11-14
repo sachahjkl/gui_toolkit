@@ -335,7 +335,8 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
     the palette.
   - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.
 - On the hover of a panel's top area (`VIEW_HOVER_EM`), two icons show at its top right, in the weak colour: Float
-  (an internal window) and Close. A right click there opens its menu, unless the body takes it: the press is on a
+  (an internal window) and Close. They do not show over a control of the body the pointer is on in their corner (a
+  strip's arrow, a button): that control keeps its click. A right click there opens its menu, unless the body takes it: the press is on a
   clickable box of the body (a tab of its own there, with its own menu), or the body opened a menu in that build.
 - `view_drag_handle(v, box)` marks the program's title box of a view: a lone panel moves by it (it floats, and a drop
   docks it again). A panel without one shows no grip; it moves by its icon, its menu or the palette.

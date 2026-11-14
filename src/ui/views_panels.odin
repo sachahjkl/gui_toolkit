@@ -679,11 +679,19 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, with_stri
 	labels := view_labels(vs)
 	band := Rect{last.min, {last.max.x, last.min.y + em * VIEW_HOVER_EM}}
 	over := s.mouse_valid && view_rect_has(band, mouse_pos())
-	if !with_strip && (over || view_held_within(s, body.key)) {
-		side := math.round(em * VIEW_DETACH_EM)
-		w := last.max.x - last.min.x
-		gap := math.round(em * 0.35)
-		next({fixed_x = w - 2 * side - 3 * gap - em * 0.6, fixed_y = gap, width = children_sum(), height = px(side), axis = .X, cross = .Center})
+	side := math.round(em * VIEW_DETACH_EM)
+	w := last.max.x - last.min.x
+	gap := math.round(em * 0.35)
+	icons_x := w - 2 * side - 3 * gap - em * 0.6
+	// (where they lie: two icons, each with the spacer before it, view_header_icon)
+	icons := Rect{{last.min.x + icons_x, last.min.y + gap}, {last.min.x + icons_x + 2 * (side + em * 0.3), last.min.y + gap + side}}
+	icons_key := key_from_string(body.key, "###view_panel_icons")
+	// (they never cover the control the pointer is on: in their corner, over a control of the body (a strip's arrow
+	// under them, a button), they do not show and that control takes the press. Shown over it, they took the press meant
+	// for it: a strip's arrow in a sidebar's top band floated the sidebar)
+	covers := over && view_rect_has(icons, mouse_pos()) && view_body_control_at(body, mouse_pos())
+	if !with_strip && ((over && !covers) || view_held_within(s, icons_key)) {
+		next({fixed_x = icons_x, fixed_y = gap, width = children_sum(), height = px(side), axis = .X, cross = .Center})
 		if parent(build_box({}, "###view_panel_icons")) {
 			if view_header_icon("view_detach", lucide.PICTURE_IN_PICTURE_2, labels.floating, true) { view_float(vs, r) }
 			if view_header_icon("view_close", lucide.X, labels.close, true) { r.flag = false }
@@ -734,7 +742,16 @@ menu_opened_now :: proc(s: ^State) -> bool {
 @(private)
 view_rect_has :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y }
 
-// Whether the left button holds a box under `root` (an icon pressed while the pointer leaves the band keeps it).
+// Whether a control of the panel's body lies under `p`, by the last layout. Called before the hover icons are built in
+// this build: they are not among its children yet, so what is under them counts.
+@(private = "file")
+view_body_control_at :: proc(body: ^Box, p: Vec2) -> bool {
+	for c := body.last; c != nil; c = c.prev { if hit_test_box(c, p, body.rect) != 0 { return true } }
+	return false
+}
+
+// Whether the left button holds a box under `root` (an icon pressed while the pointer leaves the band keeps them: the
+// icons' box, not the body, whose own controls held would bring the icons over them).
 @(private = "file")
 view_held_within :: proc(s: ^State, root: Key) -> bool {
 	k := s.active_key[.Left]

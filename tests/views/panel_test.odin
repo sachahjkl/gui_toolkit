@@ -86,6 +86,28 @@ tabbed_view :: proc(v: ^ui.View, r: ^Dock) {
 	if ui.menu("tab_menu") { _ = ui.menu_item("Rename the tab") }
 }
 
+// A row of tabs on a strip in a lone panel's top band, the first chosen, a "+" after it (opencode native's server tabs at
+// the top of its sidebar): the strip's right arrow lies under the panel's hover icons' corner.
+@(private = "file") STRIPED_TABS :: 12
+@(private = "file")
+striped_view :: proc(v: ^ui.View, r: ^Dock) {
+	ui.next({width = ui.fill(), height = ui.px(30), axis = .X})
+	if ui.row(id = "###striped_row") {
+		ui.spacer(ui.px(10))
+		if ui.strip("###striped_strip") {
+			for i in 0 ..< STRIPED_TABS {
+				ui.next({width = ui.px(70), height = ui.pct(1)})
+				b := ui.build_box({.Clickable, .Focusable}, fmt.tprintf("###stab%d", i))
+				if i == 0 { ui.strip_reveal(b) }
+			}
+		}
+		ui.next({width = ui.px(28), height = ui.pct(1)})
+		ui.build_box({.Clickable}, "###stab_add")
+		ui.spacer(ui.px(10))
+	}
+	ui.label("The striped side's words###striped_words")
+}
+
 // A terminal: tabs always, a "+" that opens the next one (as ocn's: the program names the instance).
 @(private = "file")
 term_view :: proc(v: ^ui.View, r: ^Dock) {
@@ -127,6 +149,7 @@ dock_register :: proc(r: ^Dock) {
 	ui.view_register(&r.views, "tabbed", tabbed_view, ui.View_Options{title = "Tabbed", home = .Panel, home_place = {edge = .Left}, extent_em = 20})
 	ui.view_register(&r.views, "side", side_view, ui.View_Options{title = "Side", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM})
 	ui.view_register(&r.views, "side2", side_view, ui.View_Options{title = "Second", home = .Panel, home_place = {edge = .Left}})
+	ui.view_register(&r.views, "striped", striped_view, ui.View_Options{title = "Striped", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM})
 	ui.view_register(&r.views, "tool", plain_view, ui.View_Options{title = "Tool", home = .Panel, home_place = {space = "tools", edge = .Right}})
 	ui.view_register(&r.views, "ask", plain_view, ui.View_Options{title = "Question"})
 	ui.view_register(&r.views, "float", plain_view, ui.View_Options{title = "Floating", first = .Internal})
@@ -249,6 +272,34 @@ a_lone_panel_adds_nothing :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect(t, built(s, "view_panel_icons") == nil, "gone when the pointer leaves")
 	testing.expectf(t, abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "its extent_em: %v", zone.rect)
+}
+
+// A strip in a lone panel's top band, its first tab chosen: a click on its right arrow, under the corner of the panel's
+// hover icons, scrolls the strip and keeps it scrolled (opencode native's sidebar). The icons do not cover the arrow the
+// pointer is on, whether the pointer comes straight to it or rests first on the band, where they show: the click is the
+// arrow's, not Detach's (which floated the panel: a new strip, at its start).
+@(test)
+a_strip_in_a_panel_s_band_keeps_its_scroll :: proc(t: ^testing.T) {
+	for from_band in ([2]bool{false, true}) {
+		r: Dock
+		defer dock_end(&r)
+		s := dock_start(t, &r, "striped")
+		body := wait_built(s, "view_panel_view_striped")
+		right := wait_built(s, "strip_right")
+		if body == nil || right == nil { return }
+		if from_band {
+			session.move(s, {body.rect.min.x + 5, body.rect.min.y + 15})   // (the row's empty start: the icons show)
+			testing.expect(t, built(s, "view_panel_icons") != nil, "the icons on the hover of the top area")
+		}
+		session.click_at(s, session.center(right))
+		session.wait_idle(s)
+		testing.expectf(t, ui.view_presentation(&r.views, "striped") == .Panel, "%v: still a panel, not floated by Detach", from_band)
+		testing.expectf(t, built(s, "view_panel_icons") == nil, "%v: no icon over the arrow the pointer is on", from_band)
+		view := built(s, "strip_view")
+		if !testing.expectf(t, view != nil, "%v: the strip's view", from_band) { continue }
+		testing.expectf(t, view.view_off.x > 0, "%v: the arrow scrolled the strip, and it stays: %v", from_band, view.view_off.x)
+		testing.expectf(t, built(s, "strip_left") != nil, "%v: the start arrow now", from_band)
+	}
 }
 
 // Two views in one zone: the tab strip, a tab each; a click on a tab shows its view.
