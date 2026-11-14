@@ -6,6 +6,7 @@ package views_test
 // F6.
 
 import "core:fmt"
+import "core:math"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
@@ -477,6 +478,7 @@ the_dock_line_is_where_the_rule_is_drawn :: proc(t: ^testing.T) {
 	if !testing.expect(t, ok, "a line: the left zone has its handle") { return }
 	handle = session.find(s, "view_handle_Left")
 	testing.expectf(t, line.min.x >= handle.rect.min.x && line.max.x <= handle.rect.max.x, "inside its handle: %v in %v", line, handle.rect)
+	testing.expectf(t, line.min.x == math.round(line.min.x), "on a whole pixel, not across two: %v", line)
 	// (moved off the handle: its rule is drawn at rest, not hot)
 	session.move(s, {line.min.x + 200, line.min.y + 40})
 	session.wait_idle(s)

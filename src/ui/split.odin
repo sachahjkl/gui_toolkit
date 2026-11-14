@@ -151,7 +151,8 @@ splitter_line :: proc(r: Rect, at: Splitter_Line, th: f32) -> Rect {
 	if r.max.x - r.min.x < r.max.y - r.min.y {
 		x0: f32
 		switch at {
-		case .Middle: x0 = math.round((r.min.x + r.max.x) * 0.5) - th * 0.5
+		// (its start on a whole pixel: a rule of one pixel from a rounded middle less half of it sat across two)
+		case .Middle: x0 = math.round((r.min.x + r.max.x - th) * 0.5)
 		case .Start:  x0 = r.min.x
 		case .End:    x0 = r.max.x - th
 		}
@@ -159,7 +160,7 @@ splitter_line :: proc(r: Rect, at: Splitter_Line, th: f32) -> Rect {
 	}
 	y0: f32
 	switch at {
-	case .Middle: y0 = math.round((r.min.y + r.max.y) * 0.5) - th * 0.5
+	case .Middle: y0 = math.round((r.min.y + r.max.y - th) * 0.5)
 	case .Start:  y0 = r.min.y
 	case .End:    y0 = r.max.y - th
 	}
