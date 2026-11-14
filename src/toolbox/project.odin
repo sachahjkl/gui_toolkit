@@ -272,7 +272,7 @@ build_launcher :: proc(p: Project) -> bool {
 }
 
 // Windows, beside a release build: the executable carries its icon (resource 1, exe_has_icon), and the launcher gives
-// the program's output and exit code through: `<launcher> version` says "<name> <version>", and an unknown command ends
+// the program's output and exit code through: `<launcher> --version` says "<name> <version>", and an unknown command ends
 // with Launcher.refuses_exit when it is set.
 check_launcher :: proc(p: Project) -> bool {
 	when ODIN_OS == .Windows {
@@ -281,10 +281,11 @@ check_launcher :: proc(p: Project) -> bool {
 		exe, _ = strings.replace_all(exe, "/", "\\", context.temp_allocator)
 		if !exe_has_icon(exe) { fmt.eprintfln("%s has no icon (resource 1 of %s)", p.program, windows_resource_path(p)); return false }
 		l, launcher := p.launcher, launcher_path(p)
-		out, code := capture({launcher, "version"})
+		// (--version, not `version`: gt:cli's form, the one every program answers; a bare word is a program's own command)
+		out, code := capture({launcher, "--version"})
 		want := fmt.tprintf("%s %s", p.name, project_version(p))
 		if code != 0 || strings.trim_space(out) != want {
-			fmt.eprintfln("%s version gave %q (exit code %d), not %q", launcher, strings.trim_space(out), code, want)
+			fmt.eprintfln("%s --version gave %q (exit code %d), not %q", launcher, strings.trim_space(out), code, want)
 			return false
 		}
 		if l.refuses_exit != 0 {
