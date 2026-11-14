@@ -16,10 +16,12 @@ Exported :: struct {
 
 Object_Handler :: #type proc(user: rawptr, c: ^Conn, msg: ^Message) -> bool
 
-connect_bus :: proc(bus: Bus_Kind, allocator := context.allocator) -> ^Conn { return nil }
-connect_bus_address :: proc(addr: string, allocator := context.allocator) -> ^Conn { return nil }
+connect_bus :: proc(bus: Bus_Kind, allocator := context.allocator, unix_fds := false) -> ^Conn { return nil }
+connect_bus_address :: proc(addr: string, allocator := context.allocator, unix_fds := false) -> ^Conn { return nil }
 conn_fd    :: proc(c: ^Conn) -> i32 { return -1 }
 conn_name  :: proc(c: ^Conn) -> string { return "" }
+conn_unix_fds :: proc(c: ^Conn) -> bool { return false }
+call_with_fds :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, fds: []i32, timeout_ms := DEFAULT_CALL_TIMEOUT_MS) -> (msg: Message, ok: bool) { return {}, false }
 conn_alive :: proc(c: ^Conn) -> bool { return false }
 conn_close :: proc(c: ^Conn) {}
 dispatch   :: proc(c: ^Conn) {}

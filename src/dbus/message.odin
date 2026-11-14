@@ -66,8 +66,9 @@ msg_reader :: proc(msg: ^Message) -> Reader {
 // Frames a method call / signal into bytes ready for the socket. `body` is the already-marshalled body (little-endian,
 // base 0) with `signature`; nil body and "" signature for a call with no arguments. The serial is taken from the
 // connection.
+// `unix_fds`: how many descriptors go with it (its 'h' arguments are indexes into them).
 @(private)
-build_message :: proc(serial: u32, type: Msg_Type, flags: u8, path, iface, member, destination, error_name: string, reply_serial: u32, signature: string, body: []u8, allocator := context.allocator) -> []u8 {
+build_message :: proc(serial: u32, type: Msg_Type, flags: u8, path, iface, member, destination, error_name: string, reply_serial: u32, signature: string, body: []u8, allocator := context.allocator, unix_fds: u32 = 0) -> []u8 {
 	w := writer_make(allocator)
 	// fixed header: endianness 'l', type, flags, protocol version 1, body length (u32), serial (u32)
 	w_u8(&w, 'l')
@@ -97,6 +98,7 @@ build_message :: proc(serial: u32, type: Msg_Type, flags: u8, path, iface, membe
 	if reply_serial != 0 { put_field_u32(&w, FIELD_REPLY_SERIAL, reply_serial) }
 	if destination != "" { put_field_string(&w, FIELD_DESTINATION, "s", destination) }
 	if signature != ""   { put_field_string(&w, FIELD_SIGNATURE, "g", signature) }
+	if unix_fds != 0     { put_field_u32(&w, FIELD_UNIX_FDS, unix_fds) }
 	w_array_end(&w, len_at, content_at)
 	w_align(&w, BODY_ALIGN)
 	append(&w.buf, ..body)

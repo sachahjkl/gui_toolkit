@@ -64,15 +64,17 @@ Timeval_C :: struct { sec, usec: i64 }
 
 // Opens a connection to the bus, authenticates and does Hello. Returns nil when there is no bus or the handshake
 // failed; the caller treats that as "the desktop service is unavailable" and falls back.
-connect_bus :: proc(bus: Bus_Kind, allocator := context.allocator) -> ^Conn {
+// `unix_fds`: the connection asks to pass file descriptors (call_with_fds; conn_unix_fds says whether the bus agreed).
+// Off by default: the agreement costs one more round trip of the handshake, which only a caller that passes files needs.
+connect_bus :: proc(bus: Bus_Kind, allocator := context.allocator, unix_fds := false) -> ^Conn {
 	addr := bus_address(bus)
 	if addr == "" { return nil }
-	return connect_bus_address(addr, allocator)
+	return connect_bus_address(addr, allocator, unix_fds)
 }
 
 // Opens a connection to a bus named by its D-Bus address string (the AT-SPI bus, say, whose address comes from
 // org.a11y.Bus.GetAddress). Same handshake as connect_bus.
-connect_bus_address :: proc(addr: string, allocator := context.allocator) -> ^Conn {
+connect_bus_address :: proc(addr: string, allocator := context.allocator, unix_fds := false) -> ^Conn {
 	path := unix_path_of(addr)
 	if path == "" { return nil }
 	fd := socket(AF_UNIX, SOCK_STREAM, 0)
@@ -99,7 +101,7 @@ connect_bus_address :: proc(addr: string, allocator := context.allocator) -> ^Co
 	c.subs = make([dynamic]Subscription, allocator)
 	c.pending = make([dynamic]Pending, allocator)
 	_ = virtual.arena_init_growing(&c.msg_arena)
-	if !auth_external(c) || !hello(c) { conn_close(c); return nil }
+	if !auth_external(c, unix_fds) || !hello(c) { conn_close(c); return nil }
 	c.state = .Ready
 	return c
 }
@@ -120,6 +122,9 @@ connect_bounded :: proc(fd: i32, sa: ^Sockaddr_Un, addrlen: u32) -> bool {
 conn_fd :: proc(c: ^Conn) -> i32 { return c == nil ? -1 : c.fd }
 
 conn_name :: proc(c: ^Conn) -> string { return c == nil ? "" : c.unique_name }
+
+// Whether file descriptors can go on this connection: asked at connect_bus (`unix_fds`), and the bus agreed.
+conn_unix_fds :: proc(c: ^Conn) -> bool { return c != nil && c.unix_fds }
 
 // False once the bus is gone, for good: the Conn stays valid (every call on it fails at once) until conn_close.
 conn_alive :: proc(c: ^Conn) -> bool { return c != nil && c.state == .Ready }
@@ -194,9 +199,10 @@ unix_path_of :: proc(addr: string) -> string {
 // authentication (SASL EXTERNAL)
 
 // The SASL exchange: a leading NUL byte, then "AUTH EXTERNAL <hex uid>", "BEGIN". We read line by line, HANDSHAKE_MS at
-// most. The server answers "OK <guid>" on success.
+// most. The server answers "OK <guid>" on success. `unix_fds`: "NEGOTIATE_UNIX_FD" before BEGIN; a bus that refuses
+// it ("ERROR") still gives a connection, with no fds.
 @(private)
-auth_external :: proc(c: ^Conn) -> bool {
+auth_external :: proc(c: ^Conn, unix_fds: bool) -> bool {
 	// the mandatory leading NUL (the "credentials" byte)
 	zero := [1]u8{0}
 	if !send_all(c.fd, zero[:]) { return false }
@@ -207,8 +213,11 @@ auth_external :: proc(c: ^Conn) -> bool {
 	line_buf: [AUTH_LINE_BYTES]u8
 	resp := read_line(c.fd, line_buf[:], HANDSHAKE_MS)
 	if !strings.has_prefix(resp, "OK ") { return false }
-	// NEGOTIATE_UNIX_FD would go here if we needed to pass fds; the tray and notifications send icon bytes inline, so
-	// we skip it (BEGIN straight away).
+	if unix_fds {
+		ask := "NEGOTIATE_UNIX_FD\r\n"
+		if !send_all(c.fd, transmute([]u8)ask) { return false }
+		c.unix_fds = read_line(c.fd, line_buf[:], HANDSHAKE_MS) == "AGREE_UNIX_FD"
+	}
 	begin := "BEGIN\r\n"
 	if !send_all(c.fd, transmute([]u8)begin) { return false }
 	return true
@@ -286,6 +295,39 @@ send_all :: proc(fd: i32, data: []u8) -> bool {
 		return false
 	}
 	return true
+}
+
+// The most descriptors one message carries (the control buffer's size; the portals pass one or two).
+@(private) MAX_UNIX_FDS :: 8
+
+// `data` with `fds` in the ancillary data of its first byte (SCM_RIGHTS: the bus duplicates them for the receiver);
+// what sendmsg leaves goes as send_all sends. The descriptors stay the caller's.
+@(private)
+send_with_fds :: proc(fd: i32, data: []u8, fds: []i32) -> bool {
+	if len(fds) == 0 { return send_all(fd, data) }
+	if len(fds) > MAX_UNIX_FDS || len(data) == 0 { return false }
+	// (a cmsghdr then the ints, aligned as CMSG_SPACE wants: 8 bytes on Linux, hence words of 8 bytes)
+	control: [(size_of(posix.cmsghdr) + MAX_UNIX_FDS * size_of(i32)) / 8 + 1]u64
+	payload := len(fds) * size_of(i32)
+	cmsg := (^posix.cmsghdr)(&control[0])
+	cmsg.cmsg_level = posix.SOL_SOCKET
+	cmsg.cmsg_type = posix.SCM_RIGHTS
+	cmsg.cmsg_len = auto_cast (size_of(posix.cmsghdr) + payload)
+	copy(posix.CMSG_DATA(cmsg)[:payload], ([^]u8)(raw_data(fds))[:payload])
+	iov := posix.iovec{iov_base = raw_data(data), iov_len = uint(len(data))}
+	msg := posix.msghdr{msg_iov = &iov, msg_iovlen = 1, msg_control = &control[0], msg_controllen = auto_cast ((size_of(posix.cmsghdr) + payload + 7) &~ 7)}
+	for {
+		n := posix.sendmsg(posix.FD(fd), &msg, {.NOSIGNAL})
+		if n > 0 { return send_all(fd, data[n:]) }
+		#partial switch posix.errno() {
+		case .EINTR:
+			continue
+		case .EAGAIN:
+			pfd := Pollfd_C{fd = fd, events = POLLOUT_C}
+			if poll_c(&pfd, 1, SEND_STALL_MS) != 0 { continue }
+		}
+		return false
+	}
 }
 
 @(private)

@@ -77,9 +77,11 @@ with `w_array_begin` / `w_array_end` at the element's alignment; raw array bytes
 
 ## Known limits
 
-- **No Unix-fd passing.** Auth skips `NEGOTIATE_UNIX_FD`; the tray sends its icon inline as an ARGB pixmap, and the
-  portals that would pass an fd are not used that way here. A service that needs `UnixFD` (some notification servers for
-  large images) would need the fd-passing `sendmsg` path added.
+- **File descriptors go out, never in.** A connection asks for them at `connect_bus(bus, unix_fds = true)` (one more
+  line of the handshake: `NEGOTIATE_UNIX_FD`); `conn_unix_fds` says whether the bus agreed. `call_with_fds(conn, ...,
+  body, fds)` then sends them with the call (`sendmsg`, `SCM_RIGHTS`; each `h` of the body is an index into `fds`,
+  written with `w_u32`): the print portal takes its page so (`platform.print_image`). A descriptor that comes in is not
+  read: the tray and the notifications send their pictures inline.
 - A `Message` from `call` lasts until the next `call` at the same depth (a call nested in a handler has its own).
 - `request_name` answers false for a name it queued for, and `NameLost` / `NameAcquired` are not followed: the tray's name
   is its process's own.

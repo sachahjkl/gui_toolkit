@@ -67,3 +67,32 @@ watermark :: proc(img, mark: Image, anchor := Anchor.Bottom_Right, margin := 16,
 	at := anchor_point({img.width, img.height}, {mark.width, mark.height}, anchor, margin)
 	draw_over(img, mark, at.x, at.y, opacity)
 }
+
+// The pictures side by side, left to right (or stacked, top to bottom, when `vertical`), `gap` pixels apart, on
+// `background`. Each is centred across: a narrower one in a stack has a margin of background on each side. An empty
+// picture in the list takes no room. Empty when none has pixels.
+combine :: proc(images: []Image, vertical := false, gap := 0, background := TRANSPARENT, allocator := context.allocator) -> Image {
+	along, across, count := 0, 0, 0
+	for img in images {
+		if !valid(img) { continue }
+		along += vertical ? img.height : img.width
+		across = max(across, vertical ? img.width : img.height)
+		count += 1
+	}
+	if count == 0 { return {} }
+	along += max(gap, 0) * (count - 1)
+	out := vertical ? create(across, along, background, allocator) : create(along, across, background, allocator)
+	at := 0
+	for img in images {
+		if !valid(img) { continue }
+		// (replaced, not drawn over: a transparent part of a picture stays transparent, as a screenshot's corners)
+		if vertical {
+			place(out, img, (across - img.width) / 2, at)
+			at += img.height + max(gap, 0)
+		} else {
+			place(out, img, at, (across - img.height) / 2)
+			at += img.width + max(gap, 0)
+		}
+	}
+	return out
+}

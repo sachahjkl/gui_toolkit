@@ -3,6 +3,7 @@ package dbus
 
 import "core:mem/virtual"
 import "core:sys/linux"
+import "core:sys/posix"
 import "core:testing"
 import "core:thread"
 import "core:time"
@@ -304,6 +305,41 @@ a_timed_out_handler_that_calls :: proc(t: ^testing.T) {
 	dispatch(c)
 	testing.expect_value(t, re.calls, TEST_EXPIRED)
 	testing.expect_value(t, len(c.pending), 0)
+}
+
+// A descriptor goes with its call, in the ancillary data, the message saying how many; a connection that did not get the
+// bus's agreement sends nothing.
+@(test)
+a_descriptor_goes_with_its_call :: proc(t: ^testing.T) {
+	c, peer := test_conn(t)
+	defer { conn_close(c); linux.close(peer) }
+	pipe: [2]linux.Fd
+	testing.expect_value(t, linux.pipe2(&pipe, {}), linux.Errno.NONE)
+	defer { linux.close(pipe[0]); linux.close(pipe[1]) }
+	w := writer_make(context.temp_allocator)
+	w_u32(&w, 0)   // (the 'h': the first descriptor)
+	fds := [1]i32{i32(pipe[1])}
+	_, refused := call_with_fds(c, "d", "/p", "i.f", "m", "h", w.buf[:], fds[:], TEST_SILENCE_MS)
+	testing.expect(t, !refused, "no agreement: nothing sent")
+
+	c.unix_fds = true
+	says(peer, 1, "ok")   // (its answer, ready: the call's serial is 1)
+	_, ok := call_with_fds(c, "d", "/p", "i.f", "m", "h", w.buf[:], fds[:], TEST_CALL_MS)
+	testing.expect(t, ok, "answered")
+
+	buf: [512]u8
+	control: [8]u64   // (8-byte words: a cmsghdr's alignment)
+	iov := posix.iovec{iov_base = &buf[0], iov_len = len(buf)}
+	msg := posix.msghdr{msg_iov = &iov, msg_iovlen = 1, msg_control = &control[0], msg_controllen = size_of(control)}
+	n := posix.recvmsg(posix.FD(peer), &msg, {})
+	if !testing.expect(t, n > 0, "the call came") { return }
+	cmsg := (^posix.cmsghdr)(&control[0])
+	testing.expect(t, msg.msg_controllen > 0 && cmsg.cmsg_level == posix.SOL_SOCKET && cmsg.cmsg_type == posix.SCM_RIGHTS, "a descriptor with it")
+	got := (^i32)(posix.CMSG_DATA(cmsg))^
+	testing.expect(t, got >= 0 && got != i32(pipe[1]), "the receiver's own copy")
+	if got >= 0 { linux.close(linux.Fd(got)) }
+	parsed, _, parsed_ok := parse_message(buf[:n], context.temp_allocator)
+	testing.expect(t, parsed_ok && parsed.signature == "h", "the message reads")
 }
 
 // No message has serial 0: it is what a failed send answers, and the spec forbids it.

@@ -96,6 +96,7 @@ Conn :: struct {
 	fd:          i32,         // the Unix socket, -1 once Lost
 	unique_name: string,      // this connection's name on the bus (":1.42"), learned from Hello
 	serial:      u32,         // the next outgoing serial
+	unix_fds:    bool,        // the bus agreed to pass file descriptors (asked at connect_bus)
 	// an incoming-byte buffer: whole messages are parsed out of it, a partial message stays until the rest arrives
 	in_buf:      [dynamic]u8,
 	// the callers waiting synchronously, the innermost last (a handler may call while another call waits)

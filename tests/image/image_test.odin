@@ -192,6 +192,28 @@ draw_over_blends :: proc(t: ^testing.T) {
 }
 
 @(test)
+combine_lays_out :: proc(t: ^testing.T) {
+	a := context.temp_allocator
+	wide := picture(2, {RED, RED})
+	tall := picture(1, {GREEN, GREEN, GREEN})
+	side := image.combine({wide, {}, tall}, gap = 1, background = BLUE, allocator = a)
+	testing.expect_value(t, side.width, 4)
+	testing.expect_value(t, side.height, 3)
+	// (the short picture centred across, the gap and the margins of the background)
+	expect_pixels(t, side, 4, {
+		BLUE, BLUE, BLUE, GREEN,
+		RED, RED, BLUE, GREEN,
+		BLUE, BLUE, BLUE, GREEN,
+	}, "side by side")
+
+	stack := image.combine({wide, picture(1, {GREEN})}, vertical = true, allocator = a)
+	expect_pixels(t, stack, 2, {RED, RED, GREEN, image.TRANSPARENT}, "stacked")
+
+	none := image.combine({{}, {}}, allocator = a)
+	testing.expect(t, none.pixels == nil && none.width == 0, "nothing to combine is empty")
+}
+
+@(test)
 pixelate_averages :: proc(t: ^testing.T) {
 	img := picture(4, {
 		image.BLACK, image.WHITE, A, A,

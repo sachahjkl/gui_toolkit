@@ -23,6 +23,12 @@ call :: proc(c: ^Conn, destination, path, iface, member, signature: string, body
 	if !conn_open(c) { return {}, false }
 	serial := send_message(c, .Method_Call, call_flags(interactive), path, iface, member, destination, "", 0, signature, body)
 	if serial == 0 { return {}, false }
+	return call_wait(c, serial, timeout_ms)
+}
+
+// The reply of the call of `serial`, sent just before (call, call_with_fds).
+@(private)
+call_wait :: proc(c: ^Conn, serial: u32, timeout_ms: int) -> (msg: Message, ok: bool) {
 	deadline := time.tick_now()
 	limit := timeout_ms > 0 ? timeout_ms : DEFAULT_CALL_TIMEOUT_MS
 	depth := len(c.waiters)
@@ -59,6 +65,16 @@ call_async :: proc(c: ^Conn, destination, path, iface, member, signature: string
 	return true
 }
 
+// `call` with file descriptors: each 'h' argument of `body` is an index into `fds` (w_u32). The connection must have
+// asked for them (connect_bus's `unix_fds`) and the bus agreed (conn_unix_fds); else ok is false and nothing is sent.
+// The descriptors stay the caller's: the bus has its own copies once the call is sent.
+call_with_fds :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8, fds: []i32, timeout_ms := DEFAULT_CALL_TIMEOUT_MS) -> (msg: Message, ok: bool) {
+	if !conn_open(c) || (len(fds) > 0 && !c.unix_fds) { return {}, false }
+	serial := send_message(c, .Method_Call, 0, path, iface, member, destination, "", 0, signature, body, fds)
+	if serial == 0 { return {}, false }
+	return call_wait(c, serial, timeout_ms)
+}
+
 // Sends a method call expecting no reply (NO_REPLY_EXPECTED), fire and forget.
 call_noreply :: proc(c: ^Conn, destination, path, iface, member, signature: string, body: []u8) -> bool {
 	if !conn_open(c) { return false }
@@ -89,12 +105,12 @@ conn_open :: proc(c: ^Conn) -> bool { return c != nil && c.state != .Lost }
 
 // The message's serial; 0 when it could not be sent, which is why no message has that one (the spec forbids it too).
 @(private)
-send_message :: proc(c: ^Conn, type: Msg_Type, flags: u8, path, iface, member, destination, error_name: string, reply_serial: u32, signature: string, body: []u8) -> u32 {
+send_message :: proc(c: ^Conn, type: Msg_Type, flags: u8, path, iface, member, destination, error_name: string, reply_serial: u32, signature: string, body: []u8, fds: []i32 = nil) -> u32 {
 	serial := c.serial
 	c.serial += 1
 	if c.serial == 0 { c.serial = 1 }
-	bytes := build_message(serial, type, flags, path, iface, member, destination, error_name, reply_serial, signature, body, context.temp_allocator)
-	if !send_all(c.fd, bytes) { conn_lost(c); return 0 }
+	bytes := build_message(serial, type, flags, path, iface, member, destination, error_name, reply_serial, signature, body, context.temp_allocator, u32(len(fds)))
+	if !send_with_fds(c.fd, bytes, fds) { conn_lost(c); return 0 }
 	return serial
 }
 

@@ -90,6 +90,7 @@ STEPS := []Step{
 	{name = "clipboard_station"},
 	{name = "clock", oses = EVERYWHERE},
 	{name = "dialogs"},
+	{name = "print", oses = EVERYWHERE},   // (the pure parts: the layout and the PDF; no dialog opens)
 	{name = "dragdrop", oses = EVERYWHERE},
 	{name = "flate", oses = EVERYWHERE},
 	{name = "flate_pkg", path = "src/flate", oses = EVERYWHERE},

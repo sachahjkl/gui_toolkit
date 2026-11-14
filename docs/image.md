@@ -97,6 +97,8 @@ All in place; alpha stays.
 - `text_image(fonts, face, text, size, color)`: text as a picture, from the outlines of a `font.State`'s faces (as
   `svg.raster` draws its texts). A glyph without an outline, a colour emoji, is left out.
 - `watermark_text(img, fonts, face, text, size, color, anchor, margin, opacity)`: in place, `text_image` then `watermark`.
+- `combine(images, vertical, gap, background)`: a new picture with the pictures side by side, left to right (top to
+  bottom when `vertical`), `gap` pixels apart on `background`. Each is centred across. An empty picture takes no room.
 
 ```odin
 fonts: font.State
@@ -116,8 +118,12 @@ On Linux, text is shaped by the native text backend, the default there, as every
 | `webp_encode(img, quality = 85, lossless = false)` | a WebP file by libwebp, loaded when first asked; `lossless` keeps every pixel. nil where libwebp is not there |
 | `webp_decode(data) -> (img, ok)` | the picture of a WebP file (lossy or lossless, alpha kept) by libwebp, in the allocator; ok is false where libwebp is not there or the bytes are not WebP |
 | `webp_available()` | whether libwebp could be loaded (Nix: libwebp; Debian: libwebp7; Windows: libwebp.dll beside the program) |
+| `decode(data) -> (img, format, ok)` | the picture of a PNG, JPEG (baseline or progressive), WebP or BMP file, as RGBA8 in the allocator; the format is read from the first bytes, not from a name. ok is false for another format, a damaged file, or a WebP where libwebp is not there |
+| `file_format(data)` | `Png`, `Jpeg`, `Webp`, `Bmp` or `Unknown`, from the signature alone (nothing decoded) |
 
-A PNG is `gt:png`'s `png.encode`.
+A PNG is `gt:png`'s `png.encode`. `decode` reads a PNG with `png.decode`, a JPEG and a BMP with the Odin core's
+`core:image/jpeg` and `core:image/bmp` (the same decoders as the clipboard's), a WebP with libwebp. A JPEG's EXIF
+orientation is not applied: the picture comes as its pixels are stored.
 
 ## How it stays fast
 
@@ -131,8 +137,10 @@ The procedures run on 4K pictures on a worker. Each one is a few passes, with no
 
 ## Tests
 
-`tests/image`: exact pixels for crop, flip, rotate, pad, border, invert, grayscale, threshold, sepia, draw_over, pixelate
-and the anchors; properties for the rest (blur keeps the sum, resize, blur and sharpen keep a flat colour, round corners
+`tests/image`: exact pixels for crop, flip, rotate, pad, border, invert, grayscale, threshold, sepia, draw_over, combine,
+pixelate and the anchors; properties for the rest (blur keeps the sum, resize, blur and sharpen keep a flat colour, round corners
 clear the corners, a shadow grows the picture and keeps it whole, a gradient runs its way); text drawn from the embedded
 face lands at its anchor; a JPEG reads back (core:image/jpeg) close to its picture, a lower quality makes a smaller
-file; a WebP file is a RIFF WEBP file where libwebp is there, and a lossless one reads back pixel for pixel.
+file; a WebP file is a RIFF WEBP file where libwebp is there, and a lossless one reads back pixel for pixel. `decode`
+reads each format by its signature (a PNG and a BMP pixel for pixel, a JPEG close to its picture) and refuses an
+unknown format and a file cut short.

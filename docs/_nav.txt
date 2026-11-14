@@ -45,6 +45,7 @@ Platform and system
   platform.md         Platform backends
   clipboard.md        Rich clipboard
   dialogs.md          File dialogs
+  printing.md         Printing a picture
   tray.md             Notification area icon
   overlays.md         Overlay windows
   notifications.md    System notifications

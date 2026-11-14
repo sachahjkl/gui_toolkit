@@ -90,7 +90,7 @@ portal_file_dialog :: proc(kind: int, d: File_Dialog, allocator := context.alloc
 
 // /org/freedesktop/portal/desktop/request/SENDER/TOKEN: the sender is the connection's name without its colon, its dots
 // as underscores (temporary allocator).
-@(private = "file")
+@(private)
 portal_request_path :: proc(conn: ^dbus.Conn, token: string) -> string {
 	sender, _ := strings.replace_all(strings.trim_prefix(dbus.conn_name(conn), ":"), ".", "_", context.temp_allocator)
 	return strings.concatenate({"/org/freedesktop/portal/desktop/request/", sender, "/", token}, context.temp_allocator)
