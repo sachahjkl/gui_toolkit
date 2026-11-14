@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.255.2] - 2026-11-14
+
+### Fixed
+- **A Markdown table's stripes are square and meet the frame's rim, in every theme**: a striped row left without a radius took the style's, rounded in a theme that rounds its boxes; it says radius 0. `ui.clip_inside_push` keeps a frame's border out of its clip only when the frame draws one inside its rect (`.Draw_Border`): a frame whose rim is drawn outside its rect, as a machined well's, has what it holds up to its rim, with no line of the well between.
+
 ## [0.255.1] - 2026-11-14
 
 ### Fixed
@@ -3470,6 +3475,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.255.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.2
 [0.255.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.1
 [0.255.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.0
 [0.254.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.254.0
