@@ -108,6 +108,24 @@ if res.committed { open_hit(app) }
 
 `ui.top_strip_draw` is the band's drawing, as a box's custom draw: a dialog's header uses it too, with a colour of its own.
 
+### What gives way in a row that is too narrow
+
+When the children of a row are wider together than the row, they give up width in this order:
+
+1. An empty `fill()` or `pct` spacer gives its width first: a box with no children, no text, no custom draw, nothing
+   drawn and nothing to click. Two spacers give in proportion to their widths, so what they centre stays centred.
+2. A `fill()` share that holds boxes gives what it has beyond what is in it (`natural_width`).
+3. What has a strictness under 1 shrinks by its size: a label of `text_size(0, 0)` is cut here, only by what is still
+   missing.
+
+A row `label … spacer(fill()) … buttons` therefore lays out as before when it has room: the spacer pushes the buttons to
+the right edge. The label is cut only when the row truly lacks room for it. A spacer that asks for the whole row
+(`spacer(fill())` at the end of a row of fixed parts) never takes the room of a label.
+
+A grid of equal columns gives each cell `pct(1.0 / columns)` and puts its part of the gaps inside the cell (column `c`
+of `n`: `c / n` of a gap before, `(n - 1 - c) / n` after). Every cell then has the same width, the cells of a last row
+that is not full too. `prefs_page.theme_cards` is built so.
+
 ### Words wrap rather than spill
 
 A row whose children are wider together than it, once what may shrink did (its `fill()` spacers and shares, what has a

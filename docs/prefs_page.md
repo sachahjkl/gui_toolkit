@@ -250,9 +250,10 @@ Keep the `Themes_File` as long as the `ui.State` its tasks answer to.
 
 ## Themes as cards
 
-`theme_cards(list, current, light, em)` draws the themes of `list` three to a row, each in its own colours (its version
-`light`): its surface, its name in its text, its hues as dots, a ring of its accent around the one named `current`. It
-returns the index of the one clicked, or -1.
+`theme_cards(list, current, light, em, columns = 3)` draws the themes of `list` `columns` to a row, each in its own
+colours (its version `light`): its surface, its name in its text, its hues as dots, a ring of its accent around the one
+named `current`. Every card has the column's width, the cards of a last row that is not full too, at their columns. A
+card too narrow for all its dots shows fewer. It returns the index of the one clicked, or -1.
 
 ## The settings in place of the main view
 

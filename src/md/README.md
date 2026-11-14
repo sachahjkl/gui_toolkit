@@ -10,8 +10,18 @@ The toolkit is an immediate-mode interface (`ui`) over its own platform layer (`
 and text (`font`). Two rules shape every module:
 
 - The interface's thread makes no system call and no work in proportion to the data in a frame. Readings go to the
-  chores (`ui.task`); a result comes back at a next build.
+  chores (`ui.task`, `gt:tasks`); a result comes back at a next build. Lists, filters, sorts and translated tables are
+  made when their data changes, and kept.
 - What is one app's state lives in its State (or its Window, its Renderer), never in a global.
+
+## Subtleties
+
+- A program's catalogue never changes the toolkit's own words: each catalogue answers for the texts of its own files.
+- A label a user must read is never cut: widgets grow or wrap; only data rows elide.
+- In a row that is too narrow, an empty `fill()` spacer gives its width before anything a user sees shrinks: it only
+  pushes what follows it, and it often asks for the whole row. A grid of equal columns makes each cell an exact
+  fraction of the row with the gaps inside it, so a last row that is not full has the full rows' column width.
+- Defaults are the best value for every program; a program overrides only its identity (its theme).
 
 ## File Index
 
