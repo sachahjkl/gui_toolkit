@@ -194,6 +194,44 @@ a_toolbar_folds_a_group_item_by_item :: proc(t: ^testing.T) { unwatched.run(t, p
 	testing.expect_value(t, r.clicks, 1)
 }) }
 
+// An item's own priority places it among every group's parts: a rare tool of the group kept longest folds before the
+// items of a group that folds first.
+@(test)
+a_toolbar_item_folds_by_its_own_priority :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {1200, 300}, no_renderer = true, build = proc(s: ^session.Session) {
+		ui.next({width = ui.fill(), height = ui.px(40)})
+		if ui.toolbar("bar") {
+			if ui.toolbar_group("tools", {priority = 2}) {
+				for i in 0 ..< 3 {
+					if ui.toolbar_item(fmt.tprintf("t%d", i)) { ui.button(fmt.tprintf("a%d", i), "Outil") }
+				}
+				// (rare: it folds first)
+				if ui.toolbar_item("rare", priority = -1) { ui.button("rare_tool", "Un outil rarement utilisé") }
+			}
+			if ui.toolbar_group("props", {separator = true}) {
+				for i in 0 ..< 3 {
+					if ui.toolbar_item(fmt.tprintf("i%d", i)) { ui.button(fmt.tprintf("p%d", i), fmt.tprintf("Propriété %d", i)) }
+				}
+			}
+			ui.spacer(ui.fill())
+			if ui.toolbar_group("end", {pinned = true}) { ui.button("done", "Terminé") }
+		}
+	}})
+	session.frames(s, 3)
+	testing.expect(t, session.find(s, "rare_tool") != nil && session.find(s, "toolbar_more") == nil, "room for all: nothing folds")
+	// (narrower by the room left and a quarter of the rare tool: it alone folds, with room for the "…" button)
+	rare := session.get(s, "rare_tool")
+	slack := session.get(s, "done").rect.min.x - session.get(s, "p2").rect.max.x
+	session.resize(s, {int(1200 - slack - 0.25 * rare.size.x), 300})
+	session.frames(s, 4)
+	testing.expect(t, session.find(s, "toolbar_more") != nil, "its \"…\" button")
+	testing.expect(t, session.find(s, "rare_tool") == nil, "the rare tool folded first")
+	for i in 0 ..< 3 {
+		testing.expectf(t, session.find(s, fmt.tprintf("p%d", i)) != nil, "the properties stay: p%d", i)
+		testing.expectf(t, session.find(s, fmt.tprintf("a%d", i)) != nil, "the other tools stay: a%d", i)
+	}
+}) }
+
 // A popover narrower than what is in it grows to it.
 @(test)
 a_popover_grows_to_what_is_in_it :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

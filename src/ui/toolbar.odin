@@ -30,7 +30,9 @@ import "../platform"
 // A group may be made of items (`if ui.toolbar_item(id) { ... }` in its block): the bar then folds the group item by
 // item, its last item first, and folds the group whole only once all its items are folded and it still does not fit. A
 // folded item is built in the panel, in a row of its group; the rest of the group stays in the bar, so a wide group of
-// properties loses its last ones, not all of them, and no gap is left where it was.
+// properties loses its last ones, not all of them, and no gap is left where it was. An item may have a priority of its
+// own (toolbar_item's `priority`): the bar folds every group's items and rests together, by priority, so the rare tools
+// of a group kept long fold before the needed items of a group that folds early.
 
 // What a group of a tool bar is to its folding.
 Toolbar_Group_Options :: struct {
@@ -69,10 +71,11 @@ Toolbar_Group_Memory :: struct {
 // An item of a group (toolbar_item): it folds on its own.
 @(private)
 Toolbar_Item_Memory :: struct {
-	key:    Key,
-	width:  f32,    // natural, where it was last built
-	folded: bool,   // in this build (its group in the bar)
-	seen:   u64,
+	key:      Key,
+	width:    f32,    // natural, where it was last built
+	priority: int,    // its own, else its group's (as last built)
+	folded:   bool,   // in this build (its group in the bar)
+	seen:     u64,
 }
 
 // The tool bar being built (State.toolbar).
@@ -150,30 +153,36 @@ toolbar_fold :: proc(mem: ^Toolbar_Memory, bar: ^Box, more_w: f32) -> bool {
 	need := mem.fixed
 	for g in mem.groups { need += toolbar_group_need(g) }
 	if need <= avail + 0.5 { return false }
-	// (the later first, then by priority, lowest first: an insertion sort keeps the order of equals)
-	n := len(mem.groups)
-	order := make([]int, n, context.temp_allocator)
-	for i in 0 ..< n { order[i] = n - 1 - i }
-	for i in 1 ..< n {
-		for j := i; j > 0 && mem.groups[order[j]].priority < mem.groups[order[j - 1]].priority; j -= 1 {
-			order[j], order[j - 1] = order[j - 1], order[j]
+	// (what folds, one part at a time: each item, then the rest of its group once its items are all folded (its priority
+	// the highest of them and the group's). The later group first, a group's last item first, then by priority, lowest
+	// first: an insertion sort keeps the order of equals, so an item of another priority folds among another group's)
+	Part :: struct { group, item, priority: int }   // item -1: the group's rest
+	parts := make([dynamic]Part, 0, len(mem.groups) * 2, context.temp_allocator)
+	#reverse for g, gi in mem.groups {
+		if g.pinned { continue }
+		top := g.priority
+		#reverse for it, ii in g.items {
+			append(&parts, Part{gi, ii, it.priority})
+			top = max(top, it.priority)
+		}
+		append(&parts, Part{gi, -1, top})
+	}
+	for i in 1 ..< len(parts) {
+		for j := i; j > 0 && parts[j].priority < parts[j - 1].priority; j -= 1 {
+			parts[j], parts[j - 1] = parts[j - 1], parts[j]
 		}
 	}
 	folded := false
-	for i in order {
+	for p in parts {
 		if need <= avail + 0.5 { break }
-		g := &mem.groups[i]
-		if g.pinned { continue }
-		// (its items, the last first: what stays in the bar is its first ones)
-		#reverse for &it in g.items {
-			if need <= avail + 0.5 { break }
-			it.folded = true
-			need -= it.width
-			if !folded { need += more_w; folded = true }
+		g := &mem.groups[p.group]
+		if p.item >= 0 {
+			g.items[p.item].folded = true
+			need -= g.items[p.item].width
+		} else {
+			g.folded = true
+			need -= g.rest + g.sep
 		}
-		if need <= avail + 0.5 { break }
-		g.folded = true
-		need -= g.rest + g.sep
 		if !folded { need += more_w; folded = true }
 	}
 	return folded
@@ -327,9 +336,10 @@ toolbar_end :: proc() {
 
 // `if toolbar_item(id) { ... }`, in a toolbar_group's block: a part of the group that folds on its own (toolbar_fold: the
 // group's last item first). Its block builds it in the bar, or in the panel, in its group's row, while the panel is open.
-// False: folded, the panel closed.
+// `priority` (nil: its group's) places it among the parts of every group that fold: a rare tool of a group kept long
+// folds before another group's items. False: folded, the panel closed.
 @(require_results, deferred_out = toolbar_item_end)
-toolbar_item :: proc(id: string) -> bool {
+toolbar_item :: proc(id: string, priority: Maybe(int) = nil) -> bool {
 	s := gs()
 	tb := &s.toolbar
 	assert(tb.active && tb.inner != nil, "toolbar_item: outside a tool bar's group")
@@ -350,6 +360,7 @@ toolbar_item :: proc(id: string) -> bool {
 	tb.items += 1
 	it := &g.items[idx]
 	it.seen = s.build_index
+	it.priority = priority.? or_else g.priority
 	tb.item = idx
 	tb.item_in_panel = false
 	if tb.in_panel || !it.folded {

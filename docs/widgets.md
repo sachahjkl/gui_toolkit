@@ -144,6 +144,10 @@ built in the panel, in a row of its group, and works there; the group's other it
 properties so loses its last ones, not all of them, and leaves no empty room in the bar. Order the items from the most
 needed to the least.
 
+`ui.toolbar_item(id, priority = p)` gives an item a priority of its own (nil: its group's). The bar folds the items and
+the groups of every group together, the lowest priority first: a rarely used tool of a group kept long folds before the
+needed items of a group that folds early (a group folds whole only after its items).
+
 ```odin
 ui.next({width = ui.fill(), height = ui.px(bar_h)})
 if ui.toolbar("editor_bar") {
