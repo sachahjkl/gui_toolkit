@@ -13,7 +13,7 @@ ui.set_feel(&app.state, f)
 
 `ui.set_feel(s, f)` takes `f` for every build from then on. It brings each value within what works (below), and gives
 the platform its part through `platform.set_input_defaults`. The other settings of the State keep their own setters:
-`set_zoom`, `set_density`, `set_rounding`, `set_scrollbar_autohide`, `set_scrollbar_arrows`, `set_toast_position`,
+`set_zoom`, `set_density`, `set_rounding`, `set_scrollbar_size`, `set_scrollbar_autohide`, `set_toast_position`,
 `set_scroll_settings`, `set_autoscroll_settings`, `set_animations`, `set_smooth_scroll`. Every one of them is a standard
 preference of the settings page ([settings.md](settings.md)): `prefs_page.standard_watch` applies them.
 
@@ -42,7 +42,7 @@ Both take effect at the next build. `set_smooth_scroll` replaces the former `Bui
 | `typeahead_ms` | ms | 900 | Keys typed in a `list` within this much of each other add up to one prefix. |
 | `undo_steps` | steps | 200 | The edit history a `line_edit` and a `text_edit` keep. A lower value set later trims the history at the next edit. At least 1. |
 | `undo_merge_ms` | ms | 1000 | Typing (or deleting) within this much of the previous edit of the same kind is the same undo step. 0: each edit is a step. |
-| `repeat_delay_ms` | ms | 420 | A held button repeats after this long: `repeat_pressed` (a `number`'s buttons) and a scroll bar's arrows. |
+| `repeat_delay_ms` | ms | 420 | A held button repeats after this long: `repeat_pressed` (a `number`'s buttons). |
 | `repeat_interval_ms` | ms | 55 | Then once every this much. At least 1. |
 | `step_shift` | factor | 10 | Shift multiplies a step: a `slider`'s arrow and Page keys and wheel notch, a `number`'s buttons and wheel, a number in text (`num_step_delta`). |
 | `step_ctrl` | factor | 100 | Ctrl multiplies the step of a number in text. |
@@ -72,4 +72,5 @@ of `Feel`; a program that uses `ui` does not call it itself.
 
 `repeat_pressed(sig)` is true at the press of a button, then every `repeat_interval_ms` after `repeat_delay_ms` while the
 pointer stays on it. Off the button it waits; back on it, it goes on. It wakes the loop at the next repeat only. The arrow
-buttons of a scroll bar (`set_scrollbar_arrows`) repeat by the same rule.
+buttons of a scroll bar repeat by the same rule with the times of their standard, 400 ms then 60 ms, not the Feel's
+([scroll-bar.md](scroll-bar.md)).

@@ -86,6 +86,6 @@ so the marks add no pass over the content.
 Tags used: `scroll_marks`; its field has `input`. Colours: a mark is a thin tick (2 px, short of the track's sides) in a
 muted `accent` (a weak mark fainter, and shorter). The marks within the thumb's span are drawn over it, a little brighter:
 they say where the view is. The mark under the pointer and the keyboard's are the full `accent`, twice as tall, across the
-track. The track at rest is a lighter `track` (flat: a tint of `text`); the thumb is a plain bar's, without its grip lines.
-The magnifier is `weak text`, `accent` under the pointer and while a filter is typed. With `set_scrollbar_autohide`, a bar
+track. The bar is the toolkit's ([scroll-bar.md](scroll-bar.md)), wider; its thumb has no grip lines, which would cross
+the marks drawn over it. The magnifier is `weak text`, `accent` under the pointer and while a filter is typed. With `set_scrollbar_autohide`, a bar
 with marks still shows.

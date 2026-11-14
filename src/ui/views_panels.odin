@@ -306,17 +306,21 @@ view_frame_built :: proc(vs: ^Views, owner: ^State) -> bool {
 	return ok && owner != nil && sp.state == owner && sp.built + 1 >= owner.build_index
 }
 
-// Whether a panel floats (an internal window) in this build: its space was built neither in it nor in the last one (a
-// section not shown, a window with no views_frame). It goes to its space from the build after the space's.
+// Whether a panel floats (an internal window) in this build: its place is the window's frame, and the window built no
+// views_frame in this build nor in the last one. It goes to the frame from the build after the frame's. A panel of a
+// space of the program's (views_dock) never floats: while its space is not built (a section not shown) it waits there,
+// not built, and shows when the space is built again (section 8.2, decision 2).
 @(private)
 view_panel_floats :: proc(vs: ^Views, r: ^View_Record, s: ^State) -> bool {
-	sp, ok := vs.spaces[r.machine.place.space]
+	if r.machine.place.space != "" { return false }
+	sp, ok := vs.spaces[""]
 	return !ok || sp.state != s || sp.built + 1 < s.build_index
 }
 
 // end_build: the panels not built in this build, opened (or moved here) after their space was built. Each is built now,
 // in the frame it opens: unseen, at the place it will have, its body's key its own (key_rooted): what its first build
-// focused keeps the focus in its zone from the next frame. A panel whose space this build did not build floats now.
+// focused keeps the focus in its zone from the next frame. A panel whose space this build did not build floats now when
+// its place is the frame of a window with no frame (view_panel_floats), and waits when it is a space of the program's.
 @(private)
 views_build_late_panels :: proc(s: ^State) {
 	for vi := 0; vi < len(s.views_attached); vi += 1 {
@@ -326,7 +330,9 @@ views_build_late_panels :: proc(s: ^State) {
 			if r.owner != s || !view_builds_panel(r.machine) || r.pbuilt == s.build_index || r.ibuilt == s.build_index { continue }
 			sp, ok := vs.spaces[r.machine.place.space]
 			if !ok || sp.state != s || sp.built != s.build_index {
-				view_internal_build(vs, r, false)   // (its space went in this build: a floating window, at once)
+				// (its space not built in this build: a frame-less window's panel floats at once; one of a space of the
+				// program's waits there, not built, until the space is)
+				if view_panel_floats(vs, r, s) { view_internal_build(vs, r, false) }
 				continue
 			}
 			em := sp.em

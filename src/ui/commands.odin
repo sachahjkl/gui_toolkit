@@ -490,8 +490,7 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 						}
 					}
 					// (clear of the scroll bar, along the list's right edge)
-					bar_w, bar_m := scrollbar_size(em)
-					spacer(px(em * 0.5 + bar_w + 2 * bar_m))
+					spacer(px(em * 0.5 + scrollbar_gutter()))
 				}
 				if sel { pop_tags() }
 				pop_tags()

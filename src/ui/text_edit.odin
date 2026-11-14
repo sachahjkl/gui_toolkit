@@ -46,6 +46,7 @@ Text_Edit :: struct {
 	group:      Edit_Kind, // consecutive edits of one kind within a second form one undo step
 	group_ms:   f64,
 	sb_drag:    Text_Scrollbar,   // the scrollbar held
+	sb_part:    Scrollbar_Part,   // and its part held
 	sb_grab:    f32,
 	ext_key:    u64,       // content size cache (measuring every line each frame is the editor's main cost)
 	ext:        Vec2,
@@ -85,34 +86,39 @@ Text_Highlight :: struct {
 	error: Color,   // the underline colour (a zero colour falls back to a theme red)
 }
 
-// Scrollbar geometry of the editor (screen space). The bars overlay the text at the right / bottom edges.
+// Scrollbar geometry of the editor (screen space): the toolkit's bars (scrollbar.odin), over the text at the right and
+// bottom edges, `inset` from the ends of those edges (a rounded box's corners).
 @(private="file")
 Editor_Bars :: struct {
-	vtrack, vthumb, htrack, hthumb: Rect,
+	v, h:         Scrollbar_Parts,
 	has_v, has_h: bool,
 }
 
 @(private="file")
-editor_bars :: proc(r: Rect, gutter, pad, font_size: f32, content: Vec2, scroll: Vec2, wrapped: bool) -> (e: Editor_Bars) {
+editor_bars :: proc(r: Rect, gutter, pad, inset: f32, content: Vec2, scroll: Vec2, wrapped: bool) -> (e: Editor_Bars) {
+	s := gs()
 	view := Vec2{(r.max.x - r.min.x) - gutter - 2 * pad, (r.max.y - r.min.y) - 2 * pad}
 	e.has_v = content.y > view.y + SCROLLBAR_FIT_SLACK_PX
 	e.has_h = !wrapped && content.x + end_slack() > view.x + SCROLLBAR_FIT_SLACK_PX   // (wrapped text never scrolls sideways: its width is the last layout's, which may be a pixel wider than this one)
-	w, m := scrollbar_size(font_size)
+	w := scrollbar_thickness(s)
 	if e.has_v {
-		e.vtrack = {{r.max.x - w - m, r.min.y + m}, {r.max.x - m, r.max.y - m - (e.has_h ? w + m : 0)}}
-		len_ := e.vtrack.max.y - e.vtrack.min.y
-		at, th := scrollbar_thumb(font_size, len_, view.y, content.y, clamp(scroll.y / max(1, content.y - view.y), 0, 1))
-		y := e.vtrack.min.y + at
-		e.vthumb = {{e.vtrack.min.x, y}, {e.vtrack.max.x, y + th}}
+		bar := Rect{{r.max.x - w, r.min.y + inset}, {r.max.x, r.max.y - (e.has_h ? w : inset)}}
+		e.v = scrollbar_layout(s, bar, .Y, view.y, content.y, clamp(scroll.y / max(1, content.y - view.y), 0, 1))
 	}
 	if e.has_h {
-		e.htrack = {{r.min.x + gutter + m, r.max.y - w - m}, {r.max.x - m - (e.has_v ? w + m : 0), r.max.y - m}}
-		len_ := e.htrack.max.x - e.htrack.min.x
-		at, tw := scrollbar_thumb(font_size, len_, view.x, content.x + end_slack(), clamp(scroll.x / max(1, content.x + end_slack() - view.x), 0, 1))
-		x := e.htrack.min.x + at
-		e.hthumb = {{x, e.htrack.min.y}, {x + tw, e.htrack.max.y}}
+		bar := Rect{{r.min.x + gutter + (gutter > 0 ? 0 : inset), r.max.y - w}, {r.max.x - (e.has_v ? w : inset), r.max.y}}
+		e.h = scrollbar_layout(s, bar, .X, view.x, content.x + end_slack(), clamp(scroll.x / max(1, content.x + end_slack() - view.x), 0, 1))
 	}
 	return
+}
+
+// The bar of an editor that takes a press at `p`: the one shown, a little wider toward the text (.None: none).
+@(private="file")
+editor_bar_under :: proc(bars: Editor_Bars, p: Vec2) -> Text_Scrollbar {
+	toward, away := scrollbar_grab()
+	if bars.has_v && contains(Rect{{bars.v.bar.min.x - toward, bars.v.bar.min.y}, {bars.v.bar.max.x + away, bars.v.bar.max.y}}, p) { return .Vertical }
+	if bars.has_h && contains(Rect{{bars.h.bar.min.x, bars.h.bar.min.y - toward}, {bars.h.bar.max.x, bars.h.bar.max.y + away}}, p) { return .Horizontal }
+	return .None
 }
 
 @(private="file")
@@ -274,8 +280,7 @@ Text_Edit_Draw :: struct {
 	selection, caret, weak, gutter_bg, gutter_line: Color,
 	mono:        font.Font_Id,
 	bars:        Editor_Bars,
-	bar_hot:     Text_Scrollbar,   // hovered or held
-	bar_held:    Text_Scrollbar,   // held
+	bar_looks:   [Text_Scrollbar]Scrollbar_Look,   // the state each bar is drawn in
 	highlight:   ^Text_Highlight,   // nil: plain text in b.text_color
 	error_color: Color,
 }
@@ -346,17 +351,9 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	if d.focused && d.caret_on { draw.rect(dc, caret_rect, d.caret) }
 	draw.pop_clip(dc)
 
-	// scrollbars: the toolkit's look (scrollbar_paint), at the editor's place: it scrolls itself
-	for which in ([2]Text_Scrollbar{.Vertical, .Horizontal}) {
-		has := which == .Vertical ? d.bars.has_v : d.bars.has_h
-		if !has { continue }
-		shows := scrollbar_opacity(s, b)
-		if shows <= SCROLLBAR_HIDDEN_ALPHA { continue }
-		track := which == .Vertical ? d.bars.vtrack : d.bars.htrack
-		thumb := which == .Vertical ? d.bars.vthumb : d.bars.hthumb
-		held := d.bar_held == which
-		scrollbar_paint(s, dc, b, track, thumb, which == .Vertical ? .Y : .X, d.bar_hot == which, held, held, shows)
-	}
+	// scrollbars: the toolkit's (scrollbar_paint), at the editor's place: it scrolls itself
+	if d.bars.has_v { scrollbar_paint(s, dc, b, d.bars.v, d.bar_looks[.Vertical]) }
+	if d.bars.has_h { scrollbar_paint(s, dc, b, d.bars.h, d.bar_looks[.Horizontal]) }
 
 	// line numbers (not scrolled horizontally): one per paragraph, on its first visual line
 	if d.gutter > 0 {
@@ -569,39 +566,50 @@ edit_point_to_index :: proc(e: ^Edit_Build, p: Vec2) -> (int, bool) {
 	return i, l.soft && i >= l.end
 }
 
-// Clicks, drags (the scrollbars own theirs: a press on a thumb grabs it, a press on a track jumps there), the wheel.
+// Clicks, drags (the scrollbars own theirs: an arrow steps a line and repeats while held, a press on a track pages, a
+// press on a thumb grabs it), the wheel.
 @(private="file")
 edit_pointer :: proc(e: ^Edit_Build) {
-	a, b, res := e.a, e.b, e.res
+	s, a, b, res := e.s, e.a, e.b, e.res
 	gutter, pad, lh, wrap_w := e.gutter, e.pad, e.lh, e.wrap_w
 	text := text_edit_string(a)
-	bars := editor_bars(b.rect, gutter, pad, b.font_size, content_extent(a, text, b, lh, e.lines, wrap_w), a.scroll, wrap_w > 0)
+	content := content_extent(a, text, b, lh, e.lines, wrap_w)
+	bars := editor_bars(b.rect, gutter, pad, scrollbar_inset(s, b), content, a.scroll, wrap_w > 0)
+	view := Vec2{(b.rect.max.x - b.rect.min.x) - gutter - 2 * pad, (b.rect.max.y - b.rect.min.y) - 2 * pad}
+	limit := Vec2{max(content.x + end_slack() - view.x, 0), max(content.y - view.y, 0)}
 	mp := b.rect.min + res.mouse
+	if !res.dragging && !res.pointer_pressed { a.sb_drag, a.sb_part = .None, .None }
 	if res.pointer_pressed {
-		a.sb_drag = .None
-		toward, away := scrollbar_grab()
-		vgrab := Rect{{bars.vtrack.min.x - toward, bars.vtrack.min.y}, {bars.vtrack.max.x + away, bars.vtrack.max.y}}
-		hgrab := Rect{{bars.htrack.min.x, bars.htrack.min.y - toward}, {bars.htrack.max.x, bars.htrack.max.y + away}}
-		if bars.has_v && contains(vgrab, mp) {
-			a.sb_drag = .Vertical
-			a.sb_grab = (mp.y >= bars.vthumb.min.y && mp.y < bars.vthumb.max.y) ? mp.y - bars.vthumb.min.y : (bars.vthumb.max.y - bars.vthumb.min.y) * 0.5
-		} else if bars.has_h && contains(hgrab, mp) {
-			a.sb_drag = .Horizontal
-			a.sb_grab = (mp.x >= bars.hthumb.min.x && mp.x < bars.hthumb.max.x) ? mp.x - bars.hthumb.min.x : (bars.hthumb.max.x - bars.hthumb.min.x) * 0.5
+		a.sb_drag, a.sb_part = editor_bar_under(bars, mp), .None
+		if a.sb_drag != .None {
+			axis := a.sb_drag == .Vertical ? Axis.Y : Axis.X
+			parts := a.sb_drag == .Vertical ? bars.v : bars.h
+			ai := int(axis)
+			a.sb_part = scrollbar_part_at(parts, mp)
+			#partial switch a.sb_part {
+			case .Start, .End:
+				if scrollbar_repeat(s, scrollbar_key(b, axis), true, true) { a.scroll[ai] = clamp(a.scroll[ai] + (a.sb_part == .Start ? -lh : lh), 0, limit[ai]) }
+			case .Thumb:
+				a.sb_grab = mp[ai] - parts.thumb.min[ai]
+			case .Track:
+				a.scroll[ai] = clamp(a.scroll[ai] + (mp[ai] < parts.thumb.min[ai] ? -view[ai] : view[ai]), 0, limit[ai])
+			}
+		}
+	} else if a.sb_drag != .None && res.dragging {
+		axis := a.sb_drag == .Vertical ? Axis.Y : Axis.X
+		parts := a.sb_drag == .Vertical ? bars.v : bars.h
+		ai := int(axis)
+		#partial switch a.sb_part {
+		case .Start, .End:
+			on := contains(a.sb_part == .Start ? parts.start : parts.end, mp)
+			if scrollbar_repeat(s, scrollbar_key(b, axis), false, on) { a.scroll[ai] = clamp(a.scroll[ai] + (a.sb_part == .Start ? -lh : lh), 0, limit[ai]) }
+		case .Thumb:
+			// (no move since the press, no shift: the thumb's place is whole pixels)
+			span := (parts.track.max[ai] - parts.track.min[ai]) - (parts.thumb.max[ai] - parts.thumb.min[ai])
+			if span > 0 && mp[ai] != s.press_pos[.Left][ai] { a.scroll[ai] = clamp((mp[ai] - a.sb_grab - parts.track.min[ai]) / span, 0, 1) * limit[ai] }
 		}
 	}
-	if !res.dragging && !res.pointer_pressed { a.sb_drag = .None }
-	if a.sb_drag != .None && (res.pointer_pressed || res.dragging) {
-		content := content_extent(a, text, b, lh, e.lines, wrap_w)
-		view := Vec2{(b.rect.max.x - b.rect.min.x) - gutter - 2 * pad, (b.rect.max.y - b.rect.min.y) - 2 * pad}
-		if a.sb_drag == .Vertical {
-			span := (bars.vtrack.max.y - bars.vtrack.min.y) - (bars.vthumb.max.y - bars.vthumb.min.y)
-			if span > 0 { a.scroll.y = clamp((mp.y - a.sb_grab - bars.vtrack.min.y) / span, 0, 1) * (content.y - view.y) }
-		} else {
-			span := (bars.htrack.max.x - bars.htrack.min.x) - (bars.hthumb.max.x - bars.hthumb.min.x)
-			if span > 0 { a.scroll.x = clamp((mp.x - a.sb_grab - bars.htrack.min.x) / span, 0, 1) * (content.x + end_slack() - view.x) }
-		}
-	} else if res.pointer_pressed || res.dragging {
+	if a.sb_drag == .None && (res.pointer_pressed || res.dragging) {
 		idx, up := edit_point_to_index(e, res.mouse)
 		if res.pointer_pressed { a.word.on = false }
 		if a.word.on {
@@ -844,15 +852,19 @@ edit_fill_draw :: proc(e: ^Edit_Build, content: Vec2, placeholder: string, mono:
 		li := int((res.mouse.y - pad + a.scroll.y) / lh)
 		if li >= 0 && li < len(lines) { res.hover_line = lines[li].para }
 	}
-	d.bars = editor_bars(b.rect, gutter, pad, b.font_size, content, a.scroll, e.wrap_w > 0)
-	d.bar_held = a.sb_drag
+	d.bars = editor_bars(b.rect, gutter, pad, scrollbar_inset(s, b), content, a.scroll, e.wrap_w > 0)
+	// each bar's state: lit under the pointer or held (also with the pointer gone off it), its part under the pointer
 	mpos := b.rect.min + res.mouse
-	if a.sb_drag != .None { d.bar_hot = a.sb_drag } else if res.hovering {
-		toward, _ := scrollbar_grab()
-		if d.bars.has_v && contains(Rect{{d.bars.vtrack.min.x - toward, d.bars.vtrack.min.y}, d.bars.vtrack.max}, mpos) { d.bar_hot = .Vertical }
-		if d.bars.has_h && contains(Rect{{d.bars.htrack.min.x, d.bars.htrack.min.y - toward}, d.bars.htrack.max}, mpos) { d.bar_hot = .Horizontal }
+	under := res.hovering ? editor_bar_under(d.bars, mpos) : Text_Scrollbar.None
+	for which in ([2]Text_Scrollbar{.Vertical, .Horizontal}) {
+		held := a.sb_drag == which
+		hot := under == which && (a.sb_drag == .None || held)
+		look := &d.bar_looks[which]
+		look.lit = hot || held
+		if held { look.held = a.sb_part }
+		if hot { look.hot = scrollbar_part_at(which == .Vertical ? d.bars.v : d.bars.h, mpos) }
 	}
-	if d.bar_hot != .None { s.cursor_request = .Arrow }
+	if under != .None || a.sb_drag != .None { s.cursor_request = .Arrow }
 	b.custom = text_edit_draw
 	b.custom_user = d
 	if s.a11y.wanted {

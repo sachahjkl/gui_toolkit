@@ -122,7 +122,6 @@ Scroll_Marks_Options :: struct {
 @(private = "file") SCROLL_MARKS_ALPHA :: 0.45        // of the accent: muted, the window has other things to say
 @(private = "file") SCROLL_MARKS_WEAK_ALPHA :: 0.25
 @(private = "file") SCROLL_MARKS_IN_VIEW_ALPHA :: 0.7 // the marks within the thumb's span: where the view is reads among them
-@(private) SCROLL_MARKS_TRACK_REST :: 0.6             // the track at rest, of its look under the pointer
 @(private = "file") SCROLL_MARKS_TIP_LINES :: 5       // a merged mark's card: a line for this many of its items
 @(private = "file") SCROLL_MARKS_CARD_LINES :: 3      // a mark's card: the first lines of its text
 @(private = "file") SCROLL_MARKS_CARD_EM :: 22        // a card's text, at most
@@ -183,8 +182,9 @@ scroll_marks_query :: proc(k: ^Scroll_Marks) -> string { return line_edit_string
 // over it.
 scroll_marks_at :: proc(k: ^Scroll_Marks, view: ^Box, i: int) -> (at: Vec2, ok: bool) {
 	if view == nil || scroll_marks_of(view) != k || view.view_bounds.y <= 0 || i < 0 || i >= len(k.marks) || k.marks[i].top < 0 || marks_shown_at(k, i) < 0 { return }
-	_, track, _, _, has := scrollbar_parts(view)
+	parts, has := scrollbar_parts(view)
 	if !has { return }
+	track := parts.track
 	return {(track.min.x + track.max.x) * 0.5, marks_y(track, k.marks[i].top, view.view_bounds.y)}, true
 }
 
@@ -199,11 +199,12 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 	k.current = min(k.current, len(k.marks) - 1)   // (a zero Scroll_Marks has none, its current 0)
 	if view == nil || .View_Scroll_Y not_in view.flags { return }
 	em := view.font_size
-	_, m := scrollbar_size(em)
+	inset := scrollbar_inset(s, view)
 	head_w := math.round(em * SCROLL_MARKS_HEAD_EM)
-	k.head = head_w + m
+	k.head = head_w
 	view.bar_marks, view.bar_marks_build = k, s.build_index
-	bar, track, _, _, ok := scrollbar_parts(view)
+	parts, ok := scrollbar_parts(view)
+	bar, track := parts.bar, parts.track
 	if !ok {
 		// (all of it in view: no bar, no marks)
 		k.head_key, k.field_key = 0, 0
@@ -216,7 +217,7 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 
 	// the filter's button above the bar, built at the root (over the view, which it is not part of): the marks' own box, the
 	// keyboard's stop and what a screen reader reads. (Scroll_Self: the wheel over it is the view's)
-	head := Rect{{left ? bar.min.x : bar.max.x - head_w, view.rect.min.y + m}, {}}
+	head := Rect{{left ? bar.min.x : bar.max.x - head_w, view.rect.min.y + inset}, {}}
 	head.max = head.min + head_w
 	push_parent(s.root)
 	push_tags("scroll_marks")
@@ -241,7 +242,7 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 
 	// the pointer on the bar: the mark under it; a press on one goes there (the bar left that press to it: scrollbar_press)
 	if s.hot_key == sbk { k.hot = scroll_marks_hit(k, view, s.mouse) }
-	if s.pressed_key[.Left] == sbk && s.sb_on_mark && k.hot >= 0 {
+	if s.pressed_key[.Left] == sbk && s.sb_held == .Mark && k.hot >= 0 {
 		jumped = k.hot
 		k.current = k.hot
 		marks_jump(view, k.marks[k.hot].top, margin)
@@ -338,10 +339,11 @@ scroll_marks_of :: proc(b: ^Box) -> ^Scroll_Marks {
 // The width of a bar with marks, as wide as it has widened.
 @(private)
 scroll_marks_bar_width :: proc(b: ^Box) -> f32 {
-	w, _ := scrollbar_size(b.font_size)
+	w := scrollbar_thickness(gs())
 	rest := max(w, math.round(b.font_size * SCROLL_MARKS_BAR_EM))
 	wide := max(rest, math.round(b.font_size * SCROLL_MARKS_BAR_WIDE_EM))
-	return math.round(math.lerp(rest, wide, clamp(b.bar_wide_t, 0, 1)))
+	// (odd, as every bar: its triangles' points on a pixel)
+	return odd_px(math.round(math.lerp(rest, wide, clamp(b.bar_wide_t, 0, 1))))
 }
 
 // The bar widens under the pointer, held, and while its marks have the keyboard: its marks are then the thing looked at.
@@ -356,16 +358,16 @@ scroll_marks_wide :: proc(s: ^State, b: ^Box, k: ^Scroll_Marks) -> bool {
 // The mark a press at `p` on the bar of `b` is on (-1: none, or the thumb is there: the press is the thumb's).
 @(private)
 scroll_marks_hit :: proc(k: ^Scroll_Marks, b: ^Box, p: Vec2) -> int {
-	_, track, thumb, _, ok := scrollbar_parts(b)
-	if !ok || b.view_bounds.y <= 0 || (p.y >= thumb.min.y && p.y < thumb.max.y) { return -1 }
-	return marks_nearest(k, track, b.view_bounds.y, p.y, b.font_size * SCROLL_MARKS_REACH_EM)
+	parts, ok := scrollbar_parts(b)
+	if !ok || b.view_bounds.y <= 0 || (p.y >= parts.thumb.min.y && p.y < parts.thumb.max.y) { return -1 }
+	return marks_nearest(k, parts.track, b.view_bounds.y, p.y, b.font_size * SCROLL_MARKS_REACH_EM)
 }
 
 // The marks on the track: `over` false, before the thumb, those out of its span, muted; `over` true, after it, those within
 // its span a little brighter (where the view is), then the one under the pointer and the keyboard's in the full accent.
 // A merged mark is drawn as one mark: its place is its first's.
 @(private)
-scroll_marks_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box, k: ^Scroll_Marks, track, thumb: Rect, shows: f32, over: bool) {
+scroll_marks_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box, k: ^Scroll_Marks, track, thumb: Rect, over: bool) {
 	content := b.view_bounds.y
 	if content <= 0 || len(k.shown) == 0 { return }
 	thick := max(1, math.round(SCROLL_MARKS_THICK_PX * s.scale))
@@ -380,7 +382,7 @@ scroll_marks_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box, k: ^Scroll_Mark
 		c := accent
 		lit: f32 = in_view ? SCROLL_MARKS_IN_VIEW_ALPHA : SCROLL_MARKS_ALPHA
 		if g.weak { lit *= SCROLL_MARKS_WEAK_ALPHA / SCROLL_MARKS_ALPHA }
-		c.a *= lit * shows
+		c.a *= lit
 		side := g.weak ? max(inset, math.round(w * SCROLL_MARKS_WEAK_INSET)) : inset
 		draw.rect(dc, {{track.min.x + side, y}, {track.max.x - side, y + thick}}, tuned(c), shape_rad(thick * 0.5))
 	}
@@ -390,7 +392,6 @@ scroll_marks_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box, k: ^Scroll_Mark
 	for i in ([2]int{keyboard ? k.current : -1, k.hot}) {
 		if i < 0 || i >= len(k.marks) || k.marks[i].top < 0 || marks_shown_at(k, i) < 0 { continue }
 		c := accent
-		c.a *= shows
 		y := math.round(marks_y(track, k.marks[i].top, content) - big * 0.5)
 		draw.rect(dc, {{track.min.x, y}, {track.max.x, y + big}}, tuned(c), shape_rad(big * 0.5))
 	}

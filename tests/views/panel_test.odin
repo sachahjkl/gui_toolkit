@@ -41,6 +41,7 @@ Dock :: struct {
 	terms:      int,               // the terminals the "+" asked for (term_new)
 	later:      bool,              // term_new only asks: the test opens the instance frames later (a server's answer)
 	hug_w:      f32,               // the width "hug" asks for this opening (view_size), in ems
+	no_frame:   bool,              // the window builds no views_frame (its content alone)
 }
 
 @(private = "file")
@@ -50,6 +51,10 @@ dock_build :: proc(s: ^session.Session) {
 	clear(&r.want)
 	r.em = ui.font_size()
 	if code, ok := ui.view_ended(&r.views, "ask"); ok { append(&r.answers, code) }
+	if r.no_frame {
+		ui.label("The page alone###page_alone")
+		return
+	}
 	if ui.views_frame(&r.views, r.frame_o) {
 		if ui.key_press(.F2) { r.content_k += 1 }
 		if r.own_f6 && ui.key_press(.F6) { r.f6_taken += 1 }
@@ -322,33 +327,45 @@ a_tab_dragged_out_floats :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.view_presentation(&r.views, "side"), ui.View_Presentation.Panel)
 }
 
-// A view homed in a space not built shows at once as a floating window; it goes to its space when the space is shown,
-// and floats again when the space goes. Every frame shows it in one place: never nowhere, never in two.
+// A view homed in a space of the program's that is not built (a section not shown) waits there: open, not built, not
+// floating over the page; it shows in its space when the space is built, and waits again when the space goes (section
+// 8.2, decision 2).
 @(test)
-a_home_in_a_hidden_space_floats_until_it_shows :: proc(t: ^testing.T) {
+a_home_in_a_hidden_space_waits_until_it_shows :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "tool")
-	if wait_built(s, "internal_view_tool") == nil { return }
+	session.frames(s, 6)
 	testing.expect(t, ui.view_is_open(&r.views, "tool"), "open")
-	testing.expect(t, built(s, "view_panel_view_tool") == nil, "no panel: its space is not built")
 	testing.expect_value(t, ui.view_presentation(&r.views, "tool"), ui.View_Presentation.Panel)
-	one_place :: proc(t: ^testing.T, s: ^session.Session, when_: string) -> (panel: bool) {
-		p, w := built(s, "view_panel_view_tool") != nil, built(s, "internal_view_tool") != nil
-		testing.expectf(t, p != w, "%s: in one place (panel %v, floating %v)", when_, p, w)
-		return p
-	}
+	testing.expect(t, built(s, "view_panel_view_tool") == nil, "no panel: its space is not built")
+	testing.expect(t, session.find(s, "internal_view_tool") == nil, "no floating window over the page: it waits")
 	r.tools = true
-	for i in 0 ..< 6 {
-		session.frame(s)
-		if one_place(t, s, "the space shows") { break }
-		testing.expect(t, i < 5, "in its space at last")
-	}
+	if wait_built(s, "view_panel_view_tool") == nil { return }
 	testing.expect(t, built(s, "tools_centre") != nil, "the space's centre")
+	testing.expect(t, session.find(s, "internal_view_tool") == nil, "never floating")
 	r.tools = false
-	session.frame(s)
-	one_place(t, s, "the space goes")
-	testing.expect(t, built(s, "internal_view_tool") != nil, "floating again at once")
+	session.frames(s, 3)
+	testing.expect(t, built(s, "view_panel_view_tool") == nil && session.find(s, "internal_view_tool") == nil, "waiting again")
+	testing.expect(t, ui.view_is_open(&r.views, "tool"), "still open")
+	r.tools = true
+	wait_built(s, "view_panel_view_tool")
+}
+
+// A panel of the window's frame in a window that builds no views_frame floats at once (no space to wait for); it goes
+// to the frame once the window builds one.
+@(test)
+a_frameless_window_s_panel_floats :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	r.no_frame = true
+	s := dock_start(t, &r, "side")
+	if wait_built(s, "internal_view_side") == nil { return }
+	testing.expect(t, built(s, "view_panel_view_side") == nil, "no frame: no panel")
+	r.no_frame = false
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	session.frames(s, 2)
+	testing.expect(t, built(s, "internal_view_side") == nil, "in the frame now, floating no more")
 }
 
 // The zone's extent follows its handle and is remembered in the space's line once let go.

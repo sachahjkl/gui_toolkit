@@ -132,8 +132,9 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 ## Features
 
 - **Layout**: pixels / text / percent / children-sum sizes with strictness, floating boxes, cross-axis alignment,
-  wrapping rows (`flow`), borders kept out of the content (border-box), scrolling with overlay scrollbars
-  (at the right edge, or at the left one with `.Scrollbar_Left`; `set_scrollbar_autohide` shows them only under the pointer).
+  wrapping rows (`flow`), borders kept out of the content (border-box), scrolling with scroll bars that show
+  while the content overflows (or, with `set_scrollbar_autohide`, only while it moves or under the pointer), with arrow
+  buttons, thin or wide (at the right edge, or at the left one with `.Scrollbar_Left`).
 - **State survives rebuilds**: hover/press/focus animation, scroll offsets and text-field state are keyed by id strings
   (`"Label##hidden"`, `"Label###stable_id"`, `"###id"` as in raddebugger).
 - **Themes**: 26 themes, most with a dark and a light version, the system's light or dark followed (`theme_show`); a

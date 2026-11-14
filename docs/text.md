@@ -65,9 +65,9 @@ undo and redo). A field the keyboard reaches another way gives it its keys: the 
 `menu_open(..., search = true)` is a `Line_Edit` edited by it, the menu keeping the arrows, Enter and Escape. That menu
 keeps the corner and the width of its first layout while it filters.
 
-**Its scroll bars** are the toolkit's: a `text_edit` scrolls itself and places its bars, which `ui.scrollbar_paint` draws as
-it draws a view's (`draw_scrollbar`): the same track, the same thumb in the interface's greys, held a step toward the text. A
-widget of a program that scrolls itself draws its bar with it too.
+**Its scroll bars** are the toolkit's ([scroll-bar.md](scroll-bar.md)): a `text_edit` scrolls itself and places its bars,
+which `ui.scrollbar_paint` draws as it draws a view's: the same trough, arrow buttons, thumb and states. An arrow steps a
+line of the text, a press on the track a page of it. A widget of a program that scrolls itself draws its bar with it too.
 
 **Paste** (`src/ui/paste.odin`). Ctrl+V and Shift+Insert in a `line_edit` or a `text_edit`, and a field menu's Paste, do not
 wait for the clipboard: the build that sees the key asks for the text (`ui.paste_request(key)`, `key` the widget's), and the

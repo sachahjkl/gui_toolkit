@@ -107,7 +107,7 @@ lazy_begin :: proc(all := false, sweep := [2]int{}) -> (lz: ^Lazy) {
 	// moves the view after it. The band goes where the view will be, or the items it shows are not built (an item measured below
 	// the view, an answer that streams in, moves the estimate of hundreds of items above it: screens).
 	ahead: f32
-	if c.anchor != 0 && c.anchor_est > 0 && sb.view_off.y > 0 && s.active_key[.Left] != scrollbar_key(sb) {
+	if c.anchor != 0 && c.anchor_est > 0 && sb.view_off.y > 0 && !scrollbar_thumb_held(s, sb) {
 		ahead = (lz.est - c.anchor_est) * f32(c.anchor_guessed)
 	}
 	lz.lo = sb.view_off.y + ahead - view * LAZY_MARGIN
@@ -228,7 +228,7 @@ lazy_settle :: proc(s: ^State) {
 		c, ok := &s.lazy_columns[lz.column]
 		if !ok || sb == nil || sb.last_build != s.build_index { continue }
 		if col := box_from_key(lz.column); col != nil { c.top, c.top_known = content_top(sb, col), true }
-		dragging := s.active_key[.Left] == scrollbar_key(sb)
+		dragging := scrollbar_thumb_held(s, sb)
 		c.pin_found, c.pin_moved = false, false
 		if lz.pin != 0 {
 			for b in lz.items {

@@ -301,9 +301,6 @@ fr Les images sont dessinées par un rendu logiciel, pas par la carte graphique 
 en Program
 fr Programme
 
-en Toolkit
-fr Boîte à outils
-
 en System
 fr Système
 
@@ -853,17 +850,23 @@ fr Lignes par cran
 en The lines a notch of the wheel moves, where the system does not say.
 fr Les lignes qu'un cran de la molette fait défiler, là où le système ne le dit pas.
 
+en Scroll bar width
+fr Largeur des barres de défilement
+
+en How wide every scroll bar is. Thin: half as wide as Wide.
+fr La largeur de chaque barre de défilement. Fines : moitié moins larges que Larges.
+
+en Thin
+fr Fines
+
+en Wide
+fr Larges
+
 en Hide the scroll bars
 fr Masquer les barres de défilement
 
-en A scroll bar shows only while the pointer is over its view, or for a moment after it scrolled.
-fr Une barre de défilement ne s'affiche que quand le pointeur est sur sa vue, ou un instant après un défilement.
-
-en Scroll bar arrows
-fr Flèches des barres de défilement
-
-en An arrow button at each end of every scroll bar.
-fr Un bouton fléché à chaque bout de chaque barre de défilement.
+en A scroll bar shows only while its view moves, while the pointer is over the view, or while it is held.
+fr Une barre de défilement ne s'affiche que pendant que sa vue défile, que le pointeur est sur la vue ou qu'on la tient.
 
 en Glide curve
 fr Courbe du glissement
@@ -1206,6 +1209,9 @@ fr Installé, mais il manque un raccourci, l'entrée des Paramètres ou un fichi
 en Installed, but the menu entry, an icon or a file is missing.
 fr Installé, mais il manque l'entrée du menu, une icône ou un fichier.
 
+en %s Setup
+fr Installation : %s
+
 en Upgrade to %s
 fr Passer à %s
 
@@ -1223,9 +1229,6 @@ fr Mettre à jour les raccourcis
 
 en Install
 fr Installer
-
-en %s Setup
-fr Installation : %s
 
 en Not installed
 fr Non installé
@@ -1531,9 +1534,6 @@ fr Aucun résultat
 
 en Recent
 fr Récents
-
-en Keyboard shortcuts
-fr Raccourcis clavier
 
 en Cancel
 fr Annuler
@@ -1918,6 +1918,72 @@ fr Colonnes par défaut
 
 en More tools
 fr Plus d'outils
+
+en Detach
+fr Détacher
+
+en Re-attach
+fr Rattacher
+
+en Close view
+fr Fermer la vue
+
+en Detach into a window
+fr Détacher dans une fenêtre
+
+en Open as a floating window
+fr Ouvrir en fenêtre flottante
+
+en Dock left
+fr Ancrer à gauche
+
+en Dock right
+fr Ancrer à droite
+
+en Dock bottom
+fr Ancrer en bas
+
+en Minimise the panel
+fr Réduire le panneau
+
+en Maximise the panel
+fr Agrandir le panneau
+
+en Restore the panel
+fr Restaurer le panneau
+
+en Close the panel
+fr Fermer le panneau
+
+en New tab
+fr Nouvel onglet
+
+en No window: the system refused it.
+fr Pas de fenêtre : le système l'a refusée.
+
+en floating window
+fr fenêtre flottante
+
+en Views
+fr Vues
+
+en Open %s in a window
+fr Ouvrir %s dans une fenêtre
+
+en Float %s
+fr Faire flotter %s
+
+en Dock %s to the left
+fr Ancrer %s à gauche
+
+en Dock %s to the right
+fr Ancrer %s à droite
+
+en Dock %s to the bottom
+fr Ancrer %s en bas
+
+en Re-attach %s
+fr Rattacher %s
 
 ctx window
 en Minimize

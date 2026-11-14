@@ -94,7 +94,10 @@ every_standard_set_registers_and_applies :: proc(t: ^testing.T) {
 	set(t, &c, "scrolling.duration", "0");            testing.expect_value(t, ui.scroll_settings(st).duration_ms, f32(0))
 	set(t, &c, "scrolling.curve", "ease_out");        testing.expect_value(t, ui.scroll_settings(st).curve, ui.Scroll_Curve.Ease_Out)
 	set(t, &c, "scrolling.wheel_lines", "5");         testing.expect_value(t, ui.feel(st).wheel_lines, f32(5))
-	set(t, &c, "scrolling.autohide_scrollbars", "true"); testing.expect(t, st.scrollbar_autohide, "the bars hide")
+	testing.expect_value(t, st.scrollbar_size, ui.Scrollbar_Size.Thin)
+	set(t, &c, "scrolling.scrollbar_size", "wide");   testing.expect_value(t, st.scrollbar_size, ui.Scrollbar_Size.Wide)
+	testing.expect(t, !st.scrollbar_autohide, "the bars show by default")
+	set(t, &c, "scrolling.scrollbar_autohide", "true"); testing.expect(t, st.scrollbar_autohide, "the bars hide")
 	set(t, &c, "scrolling.autoscroll.dead_zone", "20"); testing.expect_value(t, ui.autoscroll_settings(st).dead_zone, f32(20))
 	set(t, &c, "input.key_repeat_rate", "30");        testing.expect_value(t, ui.feel(st).key_repeat_rate, 30)
 	set(t, &c, "input.undo_steps", "50");             testing.expect_value(t, ui.feel(st).undo_steps, 50)
@@ -108,11 +111,12 @@ every_standard_set_registers_and_applies :: proc(t: ^testing.T) {
 	// the watch applies every standard preference: the user's, and the defaults too (a program's own default is its
 	// Standard_Defaults.values, never a setter called beside the registry)
 	ui.set_density(st, 1)
-	ui.set_scrollbar_arrows(st, true)
+	config.reset(&c.prefs, "scrolling.scrollbar_size")
+	ui.set_scrollbar_size(st, .Wide)
 	prefs_page.standard_unwatch(&c.watch)
 	prefs_page.standard_watch(&c.watch, &c.prefs, st)
 	testing.expect_value(t, ui.density(st), f32(0.8))
-	testing.expect(t, !st.scrollbar_arrows, "the default applied")
+	testing.expect_value(t, st.scrollbar_size, ui.Scrollbar_Size.Thin)   // (the default applied)
 }
 
 // The advanced preferences of a page are under "Advanced", folded until a click.

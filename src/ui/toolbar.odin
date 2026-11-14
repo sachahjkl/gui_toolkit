@@ -42,8 +42,16 @@ Toolbar_Labels :: struct { more: string }   // the "…" button's tooltip and na
 // The toolkit's words of a tool bar, in the language in use.
 toolbar_default_labels :: proc() -> Toolbar_Labels { return {more = i18n.tr("More tools")} }
 
+// Where a bar's groups stand along its line (the pinned groups stay at its end).
+Toolbar_Align :: enum u8 {
+	Start,    // from the bar's start, as a menu bar's (the default)
+	Center,   // centred: .Wrap each line in the bar's room, .Fold the groups left in the bar in the room before the "…"
+	          // button and the pinned groups (an editor's bars, under and over a picture)
+}
+
 Toolbar_Options :: struct {
 	overflow: Toolbar_Overflow,
+	align:    Toolbar_Align,
 	labels:   Toolbar_Labels,
 }
 
@@ -131,6 +139,7 @@ Toolbar_Build :: struct {
 	active:     bool,
 	key:        Key,
 	overflow:   Toolbar_Overflow,
+	align:      Toolbar_Align,
 	bar:        ^Box,
 	line:       f32,      // a line's height: the items' (.Wrap) and the separators'
 	side:       f32,      // a tool's side, the "…" button's
@@ -228,7 +237,7 @@ toolbar :: proc(id: string, o := Toolbar_Options{}) -> bool {
 	if key not_in s.toolbars { s.toolbars[key] = {} }
 	mem := &s.toolbars[key]
 	em := font_size()
-	tb := Toolbar_Build{active = true, key = key, overflow = o.overflow, side = math.round(em * BUTTON_LINE_EM), menu_name = toolbar_menu_name(id)}
+	tb := Toolbar_Build{active = true, key = key, overflow = o.overflow, align = o.align, side = math.round(em * BUTTON_LINE_EM), menu_name = toolbar_menu_name(id)}
 	tb.labels = o.labels == {} ? toolbar_default_labels() : o.labels
 	given: f32   // the height `next` gives in pixels (0: none)
 	if s.has_next {
@@ -245,6 +254,9 @@ toolbar :: proc(id: string, o := Toolbar_Options{}) -> bool {
 		if tb.bar.first_build == s.build_index { tb.bar.transparency = 1; s.anim_busy = true }
 		if tb.folded && menu_is_open(tb.menu_name) { tb.menu = .Open }
 		push_parent(tb.bar)
+		// (centred: an empty fill() spacer at each end of the groups shares the room left; it measures nothing, the fold
+		// reads the same widths)
+		if o.align == .Center { spacer(fill()) }
 	case .Wrap:
 		tb.line = given > 0 ? given : tb.side + 2 * math.round(em * TOOLBAR_LINE_PAD_EM)
 		m := s.has_next ? s.next_mod : Style_Mod{}
@@ -259,7 +271,8 @@ toolbar :: proc(id: string, o := Toolbar_Options{}) -> bool {
 		push_parent(tb.bar)
 		// (the room between two groups is the flow's gap: a gap stands only between two groups of one line, so a group
 		// that starts a line has none; the flow draws the separators in it, between two groups of one line only)
-		next({width = fill(), height = children_sum(), axis = .X, gap = Vec2{toolbar_separator_width(em), 0}})
+		// (centred: the flow centres each of its lines, the last too, in its room)
+		next({width = fill(), height = children_sum(), axis = .X, cross = o.align == .Center ? .Center : .Start, gap = Vec2{toolbar_separator_width(em), 0}})
 		flow := build_box({.Wrap}, "###flow")
 		tb.flow_lines = frame_new(Toolbar_Flow_Lines)
 		tb.flow_lines^ = {groups = make([dynamic]^Box, frame_allocator()), color = color("border"), height = math.round(tb.line * TOOLBAR_SEPARATOR_HEIGHT), width = max(math.round(s.scale), 1)}
@@ -383,7 +396,7 @@ toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 			tb.inner = build_box({}, "###in")
 		} else {
 			// (its items wrap in it, each whole, once it is wider than a line on its own)
-			next({width = children_sum(), height = children_sum(), axis = .X, gap = Vec2{dense(em * TOOLBAR_ITEM_GAP_EM), 0}})
+			next({width = children_sum(), height = children_sum(), axis = .X, cross = tb.align == .Center ? .Center : .Start, gap = Vec2{dense(em * TOOLBAR_ITEM_GAP_EM), 0}})
 			tb.inner = build_box({.Wrap}, "###in")
 		}
 		push_parent(tb.inner)
@@ -448,7 +461,9 @@ toolbar_end :: proc() {
 	if !tb.ended {
 		switch tb.overflow {
 		case .Wrap: pop_parent()   // the flow
-		case .Fold: if tb.folded { toolbar_more(s, tb, mem, em) }
+		case .Fold:
+			if tb.align == .Center { spacer(fill()) }   // (the other end of the room the groups are centred in)
+			if tb.folded { toolbar_more(s, tb, mem, em) }
 		}
 	}
 	pop_parent()   // the bar
@@ -499,7 +514,11 @@ toolbar_item_begin :: proc(id: string, priority: Maybe(int)) -> Toolbar_Where {
 	it.priority = priority.? or_else g.priority
 	tb.item = idx
 	if tb.overflow == .Wrap || (tb.group_where == .Bar && !it.folded) {
-		next({width = children_sum(), height = tb.overflow == .Wrap ? px(tb.line) : pct(1), axis = .X, cross = .Center})
+		// (centred in its line: in .Fold the bar's line; in .Wrap a line at least, taller with a taller control, and the
+		// flow centres each item in its line's height)
+		tall := children_sum()
+		tall.least = tb.line
+		next({width = children_sum(), height = tb.overflow == .Wrap ? tall : pct(1), axis = .X, cross = .Center})
 		tb.item_box = build_box({}, fmt.tprintf("###ti_%s", id))
 		// (never measured: not shown until the bar places it)
 		if tb.overflow == .Fold && it.width == 0 && tb.bar.first_build != s.build_index {
@@ -607,7 +626,9 @@ toolbar_control :: proc(id: string, c: Toolbar_Control) -> bool {
 		// (a widget is seen to its edge: room of its own on each side, toolbar_control_end the end's)
 		spacer(px(dense(font_size() * TOOLBAR_CONTROL_PAD_EM)))
 		if c.labelled && c.label != "" {
-			next({width = text_size(), height = pct(1)})
+			// (a line's height, not a share: in .Wrap the item is as tall as what is in it, and a share of that goes to a
+			// distant ancestor)
+			next({width = text_size(), height = px(gs().toolbar.line)})
 			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###lbl", c.label))
 			spacer(px(math.round(font_size() * TOOLBAR_LABEL_GAP_EM)))
 		}

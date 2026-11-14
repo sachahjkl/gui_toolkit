@@ -50,7 +50,7 @@
   placement, toast position), Text and fonts (interface, mono and prose families, emoji source, system fallback;
   grey or subpixel smoothing, subpixel steps, grid fit, DirectWrite mode, atlas or Slug, Slug tolerance; gamma,
   contrast, coverage exponent, blend space; colour and async emoji; atlas pages and caches), Scrolling (smooth
-  scroll and `ui.Scroll_Settings`, wheel lines, scrollbar autohide and arrows, middle-click autoscroll, touch fling
+  scroll and `ui.Scroll_Settings`, wheel lines, scroll bar width and autohide, middle-click autoscroll, touch fling
   stop speed), Input (key repeat, undo steps and merge, list type-ahead, number steps), Delays and menus (one tooltip
   delay instead of three constants, submenu hover, menu item height, palette fade), Rendering (present mode, frame
   latency, partial redraw, blur limit, filter precision), Updates (`update.auto`, `update.channel`,

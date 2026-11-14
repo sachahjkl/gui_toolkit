@@ -842,21 +842,28 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32, step: f32 = 0, f
 
 // A button that repeats while it is held (a number's − and +): true at the press, then again every
 // Feel.repeat_interval_ms after Feel.repeat_delay_ms while the pointer stays on it (off the button it waits). It wakes
-// the loop at the next repeat, not at every refresh while the button is held. A scroll bar's arrow repeats by the same rule.
+// the loop at the next repeat, not at every refresh while the button is held. A scroll bar's arrow repeats by the same
+// rule, with the times of its standard (scrollbar_repeat).
 repeat_pressed :: proc(sig: Signal) -> bool { return repeat_fires(gs(), sig.box.key, sig.pressed, sig.dragging, sig.hovering) }
 
 // The rule of repeat_pressed for any held thing named by `key`: `pressed` this frame, `held` since, `on` it (the pointer
 // is over it). Its timer is the State's (s.timers): a held thing that is not a widget (a scroll bar's arrow) has one too.
 @(private)
 repeat_fires :: proc(s: ^State, key: Key, pressed, held, on: bool) -> bool {
+	return repeat_fires_every(s, key, pressed, held, on, s.feel.repeat_delay_ms, s.feel.repeat_interval_ms)
+}
+
+// repeat_fires with its own times: the first repeat `delay_ms` after the press, then one every `interval_ms`.
+@(private)
+repeat_fires_every :: proc(s: ^State, key: Key, pressed, held, on: bool, delay_ms, interval_ms: int) -> bool {
 	fire := false
 	if pressed {
 		fire = true
-		s.timers[key] = Timer{next_ms = s.time_ms + f64(s.feel.repeat_delay_ms), last_build = s.build_index}
+		s.timers[key] = Timer{next_ms = s.time_ms + f64(delay_ms), last_build = s.build_index}
 	} else if held {
 		if t, ok := s.timers[key]; ok {
 			t.last_build = s.build_index
-			if on && s.time_ms >= t.next_ms { fire = true; t.next_ms = s.time_ms + f64(s.feel.repeat_interval_ms) }
+			if on && s.time_ms >= t.next_ms { fire = true; t.next_ms = s.time_ms + f64(max(interval_ms, 1)) }
 			s.timers[key] = t
 		}
 	}

@@ -127,6 +127,13 @@ Page :: struct {
 	current:      string,   // the category shown (owned; "": the first page)
 	focus_search: bool,
 	search:       config.Search,
+	// the search `show` put in the field (owned; "": none, or the person's own search) and the page shown before it
+	// (owned). A build that follows a gap (the settings were closed) puts that page back and clears that search: the
+	// program's jump was for that one visit. The person's own search stays, as the last page does
+	placed:       string,
+	placed_over:  string,
+	placed_new:   bool,   // `show` ran since the last build: the gap before this build is the opening, not a close
+	last_build:   u64,    // the ui.State's build_index at the page's last build
 	fields:       map[string]^Field,   // the free fields' text while typed
 	// the number held by its slider (its preference's name, owned; "": none) and where it is: the value is written when
 	// the slider is let go (not at the pointer's rate), the page shows it meanwhile
@@ -160,6 +167,8 @@ destroy :: proc(p: ^Page) {
 	ui.line_edit_destroy(&p.query)
 	delete(p.current)
 	delete(p.held)
+	delete(p.placed)
+	delete(p.placed_over)
 	for k, f in p.fields { ui.line_edit_destroy(&f.text); delete(f.synced); delete(f.error); free(f); delete(k) }
 	delete(p.fields)
 	for k in p.unfolded { delete(k) }
@@ -332,6 +341,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 	p.prefs, p.state, p.changed, p.user = prefs, ui.current_state(), o.changed, o.user
 	p.diagnostics.host, p.diagnostics.version = o.diagnostics, o.version
 	p.number_typed = false
+	placed_drop(p)
 	pages := pages_of(prefs, o, p)
 	if len(pages) == 0 { return }
 	cur := 0
@@ -413,6 +423,32 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 			}
 		}
 	}
+}
+
+// A search `show` placed goes when the settings were closed since (the page was not built at the last build): the
+// next opening is a fresh one, on the page the person had. Once the person changed the field, the search is theirs.
+@(private = "file")
+placed_drop :: proc(p: ^Page) {
+	now := p.state != nil ? p.state.build_index : 0
+	gap := p.last_build != 0 && p.last_build + 1 < now
+	p.last_build = now
+	if p.placed == "" { return }
+	if ui.line_edit_string(&p.query) != p.placed {
+		placed_forget(p)
+	} else if gap && !p.placed_new {
+		ui.line_edit_clear(&p.query)
+		delete(p.current)
+		p.current, p.placed_over = p.placed_over, ""
+		placed_forget(p)
+	}
+	p.placed_new = false
+}
+
+@(private)
+placed_forget :: proc(p: ^Page) {
+	delete(p.placed)
+	delete(p.placed_over)
+	p.placed, p.placed_over, p.placed_new = "", "", false
 }
 
 // The preferences of a page in sections: those of its own group first, then each inner group's under its title, in

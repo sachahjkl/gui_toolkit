@@ -42,8 +42,12 @@ TABLE_HEADER_EM :: 2.2
 TABLE_ROW_EM :: 1.9
 // The grip of a column's rule, in ems: where a drag takes it.
 @(private = "file") TABLE_RULE_GRIP_EM :: 0.7
-// Room at the right of the last column for the rows' scroll bar, which floats over them.
+// Room at the right of the last column for the rows' scroll bar, which floats over them: an em, or the bar's thickness
+// when it is wider (table_bar_room).
 @(private = "file") TABLE_SCROLLBAR_EM :: 1
+
+@(private = "file")
+table_bar_room :: proc(em: f32) -> f32 { return max(em * TABLE_SCROLLBAR_EM, scrollbar_gutter()) }
 // The fill column (width 0) never goes narrower: when the window is too narrow, the last columns go past the right edge
 // (cut by the rows) instead of the fill column going to nothing under its neighbours' text.
 TABLE_FILL_MIN_EM :: 10
@@ -324,7 +328,7 @@ table_header :: proc(id: string, l: ^Table_Layout, lead_em: f32 = 0.6, o := Tabl
 			next({width = px(em * TABLE_RULE_GRIP_EM), height = pct(1)})
 			if row(id = "###last_rule") { if table_rule(l, prev, em, prev_px) { ev.resized = true } }
 		}
-		spacer(px(em * (TABLE_SCROLLBAR_EM - TABLE_RULE_GRIP_EM)))
+		spacer(px(max(table_bar_room(em) - em * TABLE_RULE_GRIP_EM, 0)))
 		if l.moving { ev.moved = table_move_drag(l, moving, places, titles_row) }
 	}
 	return
@@ -501,7 +505,7 @@ table_column_items :: proc(l: ^Table_Layout) -> (changed, sort_changed: bool) {
 // and the room of the scroll bar. A wider room: the fill column takes the rest; a narrower one: the rows scroll sideways.
 table_min_width :: proc(l: ^Table_Layout) -> f32 {
 	em := font_size()
-	w := em * TABLE_SCROLLBAR_EM
+	w := table_bar_room(em)
 	for k in 0 ..< len(l.columns) {
 		if !l.shown[k] { continue }
 		w += em * (l.width[k] > 0 ? l.width[k] : TABLE_FILL_MIN_EM)
@@ -578,7 +582,7 @@ text_shown :: proc(text: string, allocator := context.temp_allocator) -> string 
 }
 
 // The end of a row's cells: the room of the rows' scroll bar.
-table_row_end :: proc() { spacer(px(font_size() * TABLE_SCROLLBAR_EM)) }
+table_row_end :: proc() { spacer(px(table_bar_room(font_size()))) }
 
 // Whether the pointer is on the box and `text` does not fit in it with `pad` on each side (the box as laid out at the
 // last build).

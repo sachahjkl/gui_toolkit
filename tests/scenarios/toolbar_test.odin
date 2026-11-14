@@ -96,6 +96,89 @@ a_wrapping_toolbar_moves_groups_whole :: proc(t: ^testing.T) { unwatched.run(t, 
 }) }
 
 @(private = "file")
+Align_Run :: struct {
+	overflow: ui.Toolbar_Overflow,
+	align:    ui.Toolbar_Align,
+	bar_w:    f32,   // the bar's width (0: the window's)
+}
+
+// Three groups of tools, a group with a control taller than a tool, Cancel and Done pinned.
+@(private = "file")
+align_build :: proc(s: ^session.Session) {
+	r := (^Align_Run)(s.user)
+	ui.next({width = r.bar_w > 0 ? ui.px(r.bar_w) : ui.fill(), height = ui.px(40)})
+	if ui.toolbar("abar", {overflow = r.overflow, align = r.align}) {
+		for g in 0 ..< 3 {
+			if ui.toolbar_group(fmt.tprintf("g%d", g), {separator = g > 0}) {
+				for i in 0 ..< 2 { _ = ui.toolbar_tool(fmt.tprintf("g%d_%d", g, i), {label = "Outil", words = true}) }
+			}
+		}
+		if ui.toolbar_group("tall", {separator = true}) {
+			_ = ui.toolbar_tool("short", {label = "Court", words = true})
+			if ui.toolbar_control("big", {label = "Grand"}) {
+				ui.next({height = ui.px(ui.font_size() * 3.4)})
+				_ = ui.button("tall_widget", "Grand")
+			}
+		}
+		if ui.toolbar_group("end", {pinned = true}) {
+			_ = ui.toolbar_tool("cancel", {label = "Annuler", words = true})
+			_ = ui.toolbar_tool("done", {label = "Terminé", words = true})
+		}
+	}
+}
+
+// .Start (the default) begins each line at the bar's start; .Center centres each line of a .Wrap bar in the flow's room
+// (equal room left and right within a pixel, the last line too), and the groups of a .Fold bar in the room before its
+// pinned groups. In every mode an item sits on its line's middle, a control taller than a tool too.
+@(test)
+a_toolbar_aligns_its_groups :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	// (the items' boxes: a control's has its own room around its widget, part of its line)
+	names := [?]string{"ti_g0_0", "ti_g0_1", "ti_g1_0", "ti_g1_1", "ti_g2_0", "ti_g2_1", "ti_short", "ti_big"}
+	for overflow in ui.Toolbar_Overflow {
+		for align in ui.Toolbar_Align {
+			r := Align_Run{overflow = overflow, align = align}
+			s := session.start(t, {size = {1400, 400}, user = &r, no_renderer = true, build = align_build})
+			session.frames(s, 3)
+			if overflow == .Wrap {
+				// (narrow: the groups take several lines)
+				r.bar_w = session.get(s, "g0_0").size.x * 7
+				session.frames(s, 4)
+			}
+			bar := session.get(s, "abar")
+			// (the lines: the boxes by their middle's height)
+			Line :: struct { y, left, right: f32 }
+			lines := make([dynamic]Line, context.temp_allocator)
+			for name in names {
+				b := session.get(s, name)
+				cy := (b.rect.min.y + b.rect.max.y) * 0.5
+				found := false
+				for &l in lines {
+					if abs(l.y - cy) <= 1 { l.left, l.right = min(l.left, b.rect.min.x), max(l.right, b.rect.max.x); found = true }
+				}
+				if !found { append(&lines, Line{cy, b.rect.min.x, b.rect.max.x}) }
+			}
+			// (on its line's middle: the taller control and the tool beside it)
+			short, tall := session.get(s, "short"), session.get(s, "tall_widget")
+			testing.expectf(t, abs((short.rect.min.y + short.rect.max.y) * 0.5 - (tall.rect.min.y + tall.rect.max.y) * 0.5) <= 1, "%v %v: the taller control on its line's middle: %v and %v", overflow, align, tall.rect, short.rect)
+			// (the room the groups stand in: .Wrap the flow's, .Fold the bar's before Cancel)
+			room_l, room_r := bar.rect.min.x, session.get(s, "ti_cancel").rect.min.x
+			if overflow == .Wrap {
+				flow := session.get(s, "flow")
+				room_l, room_r = flow.rect.min.x, flow.rect.max.x
+				testing.expectf(t, len(lines) > 1, "%v %v: several lines", overflow, align)
+			}
+			for l in lines {
+				left, right := l.left - room_l, room_r - l.right
+				switch align {
+				case .Start:  testing.expectf(t, left <= 1, "%v .Start: the line at %v starts at the room's start: %v px", overflow, l.y, left)
+				case .Center: testing.expectf(t, abs(left - right) <= 1, "%v .Center: the line at %v centred: %v px left, %v px right", overflow, l.y, left, right)
+				}
+			}
+		}
+	}
+}) }
+
+@(private = "file")
 Fold_Run :: struct {
 	pen, bold, width, opacity: int,
 	bar_w: f32,   // the bar's width (0: the window's)

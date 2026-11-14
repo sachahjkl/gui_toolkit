@@ -49,7 +49,8 @@ palette_commands :: proc(prefs: ^config.Prefs, o: Page_Options, allocator := con
 
 // The page shows preference `name` alone: its search holds the name (in quotes: that one, not the others it begins), and
 // its page is the one under the search. `name` may also be a page's category (the command of a page of its own): that
-// page, the search cleared.
+// page, the search cleared. The search is for this visit: once the settings close (a build without the page), the next
+// opening shows the page the person had, the search empty, unless the person changed the search meanwhile.
 show :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
 	// (a page's category, from its own command: the page, the search cleared)
 	for pg in pages_of(prefs, o) {
@@ -57,8 +58,13 @@ show :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
 		delete(p.current)
 		p.current = strings.clone(pg.category)
 		ui.line_edit_clear(&p.query)
+		placed_forget(p)
 		return
 	}
+	// (the page the person had, put back when the settings close: a second jump keeps the first one's)
+	over := p.placed != "" ? strings.clone(p.placed_over) : strings.clone(p.current)
+	placed_forget(p)
+	p.placed_over = over
 	for pg in pages_of(prefs, o) {
 		for n in page_names(prefs, pg) {
 			if n != name { continue }
@@ -66,6 +72,9 @@ show :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
 			p.current = strings.clone(pg.category)
 		}
 	}
-	ui.line_edit_set(&p.query, fmt.tprintf("\"%s\"", name))
+	query := fmt.tprintf("\"%s\"", name)
+	ui.line_edit_set(&p.query, query)
+	p.placed = strings.clone(query)
+	p.placed_new = true
 	p.focus_search = true
 }

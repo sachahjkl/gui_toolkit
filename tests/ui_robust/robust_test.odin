@@ -385,7 +385,8 @@ tooltip_places :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.min.y, 0)
 }
 
-// The bar of a scroll box: its size from the font, its margin, its thumb's length and place.
+// The bar of a scroll box (src/md/features/scroll-bar.md): thin, 9 px at the box's edge; an arrow button of 9 px at each
+// end, the track between them; the thumb as long as the view's share of the track, in whole pixels, at its place.
 @(test)
 scrollbar_geometry :: proc(t: ^testing.T) {
 	f: Fx
@@ -396,23 +397,35 @@ scrollbar_geometry :: proc(t: ^testing.T) {
 	b := ui.box_at("###list")
 	track, thumb, ok := ui.scrollbar_rects(b)
 	testing.expect(t, ok, "a bar")
-	testing.expect_value(t, track, ui.Rect{{289, 53}, {297, 347}})
-	testing.expect_value(t, thumb, ui.Rect{{289, 53}, {297, 53 + 73.5}})   // 294 * 300 / 1200 long
+	start, end, arrows := ui.scrollbar_arrow_rects(b)
+	testing.expect(t, arrows, "its arrow buttons")
+	testing.expect_value(t, start, ui.Rect{{291, 50}, {300, 59}})
+	testing.expect_value(t, end, ui.Rect{{291, 341}, {300, 350}})
+	testing.expect_value(t, track, ui.Rect{{291, 59}, {300, 341}})
+	testing.expect_value(t, thumb, ui.Rect{{291, 59}, {300, 59 + 71}})   // 282 * 300 / 1200 = 70.5 long, rounded
 	b.view_off.y = 450
 	_, thumb, _ = ui.scrollbar_rects(b)
-	testing.expect_value(t, thumb.min.y, 53 + 0.5 * (294 - 73.5))
+	testing.expect_value(t, thumb.min.y, f32(59) + math.round(f32(0.5 * (282 - 71))))
 	b.view_off.y = 900
 	_, thumb, _ = ui.scrollbar_rects(b)
-	testing.expect_value(t, thumb.max.y, 347)
+	testing.expect_value(t, thumb.max.y, 341)
 	b.view_off.y = 0
 	r.left = true
 	for _ in 0 ..< 2 { frame(&f, nil, build_scroll, &r) }
 	track, _, _ = ui.scrollbar_rects(ui.box_at("###list"))
-	testing.expect_value(t, track.min.x, 103)
-	testing.expect_value(t, track.max.x, 111)
+	testing.expect_value(t, track.min.x, 100)
+	testing.expect_value(t, track.max.x, 109)
+	// wide: the standard's 17 px, its buttons as long
+	r.left = false
+	ui.set_scrollbar_size(&f.s, .Wide)
+	defer ui.set_scrollbar_size(&f.s, .Thin)
+	for _ in 0 ..< 2 { frame(&f, nil, build_scroll, &r) }
+	track, _, _ = ui.scrollbar_rects(ui.box_at("###list"))
+	testing.expect_value(t, track, ui.Rect{{283, 67}, {300, 333}})
+	testing.expect_value(t, ui.scrollbar_gutter(), 17)
 }
 
-// At 200 % the bar is twice as wide, and so is what takes the press beyond it.
+// At 200 % the bar is about twice as wide (odd: 19 px for 2 × 9), and what takes the press beyond it is twice as wide.
 @(test)
 scrollbar_follows_the_scale :: proc(t: ^testing.T) {
 	f: Fx
@@ -430,7 +443,7 @@ scrollbar_follows_the_scale :: proc(t: ^testing.T) {
 	}
 	for _ in 0 ..< 2 { one(&f, &r, nil) }
 	track, _, _ := ui.scrollbar_rects(ui.box_at("###list"))
-	testing.expect_value(t, track.max.x - track.min.x, 15)
+	testing.expect_value(t, track.max.x - track.min.x, 19)
 	on_bar :: proc(f: ^Fx, r: ^Scroll_Run, x: f32) -> bool {
 		ev := [1]platform.Event{{kind = .Mouse_Move, pos = {x, 200}}}
 		for _ in 0 ..< 2 { one(f, r, ev[:]) }

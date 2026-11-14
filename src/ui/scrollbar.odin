@@ -1,11 +1,12 @@
 package ui
 
-// Scrollbars for every scroll region: a vertical one for a box with .View_Scroll_Y whose content is taller than it, at its
+// Scroll bars for every scroll region: a vertical one for a box with .View_Scroll_Y whose content is taller than it, at its
 // right edge (the left one with .Scrollbar_Left); a horizontal one for a box with .View_Scroll_X whose content is wider,
-// along its bottom edge (short of the vertical one). And corner rounding control. A bar is drawn over the content, can be
-// dragged, and a press on its track jumps there. With set_scrollbar_arrows, a bar has an arrow
-// button at each end: a press scrolls a step, held it repeats. A vertical bar can carry marks (scroll_marks.odin): it is
+// along its bottom edge (short of the vertical one). A text area places its own (text_edit.odin) and draws them here.
+// The form is the desktop's (src/md/features/scroll-bar.md): a trough, an arrow button at each end, a thumb with a grip.
+// A bar shows whenever its content overflows, and never hides. A vertical bar can carry marks (scroll_marks.odin): it is
 // then wider, its marks are drawn on its track under a thumb that lets them show, and a press on a mark goes there.
+// And corner rounding control.
 
 import "core:math"
 import "../draw"
@@ -15,34 +16,6 @@ import "../draw"
 set_rounding :: proc(s: ^State, r: f32) { s.rounding = clamp(r, 0, 2) }
 rounding :: proc(s: ^State) -> f32 { return s.theme != nil && s.theme.finish == .Edged ? 0 : s.rounding }
 
-// Scroll bars that show only while the pointer is over their box, while one is held, and for a moment after
-// scrollbar_reveal. Off by default: a bar always shows. Still there to grab as soon as the pointer comes.
-set_scrollbar_autohide :: proc(s: ^State, on: bool) { s.scrollbar_autohide = on }
-
-// Arrow buttons at both ends of every bar (classic scroll bars). Off by default: the track runs from end to end.
-set_scrollbar_arrows :: proc(s: ^State, on: bool) { s.scrollbar_arrows = on }
-
-// Scrolled by something other than the pointer (the keyboard): its bar shows for a moment, wherever the pointer is.
-scrollbar_reveal :: proc(b: ^Box) {
-	if b == nil { return }
-	b.bar_until = gs().time_ms + SCROLLBAR_REVEAL_MS
-}
-
-// How much a box's bar shows, 0..1.
-// A bar with marks always shows: its marks are a map of the content, not a sign that it scrolls.
-scrollbar_opacity :: proc(s: ^State, b: ^Box) -> f32 { return (s.scrollbar_autohide && scroll_marks_of(b) == nil) ? b.bar_t : 1 }
-
-// Where a box's bar is heading, each build (update_animations).
-@(private)
-scrollbar_shown :: proc(s: ^State, b: ^Box) -> bool {
-	inside := s.mouse_valid && s.mouse.x >= b.rect.min.x && s.mouse.x < b.rect.max.x && s.mouse.y >= b.rect.min.y && s.mouse.y < b.rect.max.y
-	if inside || s.active_key[.Left] == scrollbar_key(b) || s.active_key[.Left] == scrollbar_key(b, .X) { return true }
-	left := b.bar_until - s.time_ms
-	if left <= 0 { return false }
-	wake_within(s, int(left) + 1)
-	return true
-}
-
 // A radius scaled by the current rounding (for custom draw procs that want to follow the setting).
 rad :: proc(r: f32) -> f32 { return radius_drawn(gs(), r) }
 
@@ -50,191 +23,278 @@ rad :: proc(r: f32) -> f32 { return radius_drawn(gs(), r) }
 // edged finish's square corners leave it.
 shape_rad :: proc(r: f32) -> f32 { return r * gs().rounding }
 
-// Scrollbars of scroll boxes and of text_edit. Width and thumb in em, the margin as a fraction of the width.
-@(private) SCROLLBAR_WIDTH_MIN_PX :: 6
-@(private) SCROLLBAR_WIDTH_EM :: 0.5
-@(private) SCROLLBAR_MARGIN_FRACTION :: 0.35
-@(private) SCROLLBAR_THUMB_MIN_EM :: 1.6
+// How thick every scroll bar is: Thin (the default) or Wide (the standard's 17 px).
+Scrollbar_Size :: enum u8 { Thin, Wide }
+
+set_scrollbar_size :: proc(s: ^State, size: Scrollbar_Size) { s.scrollbar_size = size }
+
+// Scroll bars that show only while their content moves, while the pointer is over their box or one of them is held, and
+// for a moment after scrollbar_reveal; they fade otherwise. Off by default: a bar always shows while its content
+// overflows. A hidden bar is still there to take as soon as the pointer comes.
+set_scrollbar_autohide :: proc(s: ^State, on: bool) { s.scrollbar_autohide = on }
+
+// Scrolled by something other than the pointer (the keyboard): its bar shows for a moment, wherever the pointer is.
+scrollbar_reveal :: proc(b: ^Box) {
+	if b == nil { return }
+	b.bar_until = gs().time_ms + SCROLLBAR_REVEAL_MS
+}
+
+// How much a box's bar shows, 0..1: 1 without auto-hide. A bar with marks always shows: its marks are a map of the
+// content, not a sign that it scrolls.
+scrollbar_opacity :: proc(s: ^State, b: ^Box) -> f32 { return (s.scrollbar_autohide && scroll_marks_of(b) == nil) ? b.bar_t : 1 }
+
+// Where a box's bar is heading with auto-hide, each build (update_animations): shown while its view moves, the pointer
+// is over the box or its bar is held, and until the time scrollbar_reveal set.
+@(private)
+scrollbar_shown :: proc(s: ^State, b: ^Box) -> bool {
+	inside := s.mouse_valid && contains(b.rect, s.mouse)
+	held := s.active_key[.Left] == scrollbar_key(b) || s.active_key[.Left] == scrollbar_key(b, .X)
+	moving := b.view_off != b.view_target || b.view_anim[0].active || b.view_anim[1].active
+	if inside || held || moving { return true }
+	left := b.bar_until - s.time_ms
+	if left <= 0 { return false }
+	wake_within(s, int(left) + 1)
+	return true
+}
+
+// A part of a scroll bar. Mark: a mark of a bar with marks (scroll_marks.odin).
+Scrollbar_Part :: enum u8 { None, Start, End, Track, Thumb, Mark }
+
+// Where the parts of a bar are, window pixels. `start` and `end` are its arrow buttons (`arrows` false: none, the track
+// is the whole bar).
+Scrollbar_Parts :: struct {
+	bar, start, end, track, thumb: Rect,
+	axis:   Axis,
+	arrows: bool,
+}
+
+// How a bar is drawn: `lit` (the pointer over it, or a part of it held), the part under the pointer, the part held.
+Scrollbar_Look :: struct {
+	lit:       bool,
+	hot, held: Scrollbar_Part,
+}
+
+// The standard's numbers, logical pixels (scroll-bar.md): the thickness, the grip's line length and the rows of a
+// triangle, wide and thin. Thin is 9, not 8.5: odd, its grip and its triangles' points have a middle column.
+@(private = "file") SCROLLBAR_WIDE_PX :: 17
+@(private = "file") SCROLLBAR_THIN_PX :: 9
+@(private = "file") SCROLLBAR_GRIP_WIDE_PX :: 7
+@(private = "file") SCROLLBAR_GRIP_THIN_PX :: 3
+@(private = "file") SCROLLBAR_ARROW_ROWS_WIDE :: 4
+@(private = "file") SCROLLBAR_ARROW_ROWS_THIN :: 3
+@(private = "file") SCROLLBAR_GRIP_LINES :: 4
+@(private = "file") SCROLLBAR_GRIP_THUMB_PX :: 20   // a thumb shorter than this has no grip
+@(private = "file") SCROLLBAR_THUMB_LEAST :: 0.08   // of the track
+@(private = "file") SCROLLBAR_THUMB_RADIUS_PX :: 3
+@(private = "file") SCROLLBAR_ARROW_RADIUS_PX :: 2
+@(private = "file") SCROLLBAR_REPEAT_DELAY_MS :: 400
+@(private = "file") SCROLLBAR_REPEAT_INTERVAL_MS :: 60
+// Where the stops of the gradients across the bar are, 0..1: the trough's middle stop, the thumb's two middle ones.
+@(private = "file") SCROLLBAR_TROUGH_MIDDLE :: 0.5
+@(private = "file") SCROLLBAR_THUMB_MIDDLE_A :: 0.45
+@(private = "file") SCROLLBAR_THUMB_MIDDLE_B :: 0.55
+@(private = "file") SCROLLBAR_REVEAL_MS :: 900   // auto-hide: how long a bar shows after scrollbar_reveal
+@(private) SCROLLBAR_HIDDEN_ALPHA :: 0.01   // auto-hide: a bar that shows no more than this is not drawn
 @(private) SCROLLBAR_FIT_SLACK_PX :: 0.5   // content this much larger than the view still fits
 @(private = "file") SCROLLBAR_VIEW_MIN_PX :: 8   // a view smaller than this shows no bar
-// What takes the press beyond the bar's track: toward the content, and away from it (scrollbar_grab).
+// What takes the press beyond the bar: toward the content, and away from it (scrollbar_grab).
 @(private = "file") SCROLLBAR_GRAB_IN_PX :: 4
 @(private = "file") SCROLLBAR_GRAB_OUT_PX :: 2
-@(private) SCROLLBAR_TRACK_HOT_ALPHA :: 0.06
-@(private) SCROLLBAR_THUMB_REST_ALPHA :: 0.22
-@(private = "file") SCROLLBAR_THUMB_HOT_ALPHA :: 0.4
-@(private = "file") SCROLLBAR_THUMB_HELD_ALPHA :: 0.55
-// the thumb drawn as a thing to take (every finish but Flat): a rim a little toward the text from its face, and three grip lines
-// across its middle, cut in the background's colour; the lines only on a thumb long enough to hold them
-@(private = "file") SCROLLBAR_RIM_ALPHA :: 0.18
-@(private = "file") SCROLLBAR_HELD_TOWARD_TEXT :: 0.5   // a thumb held: from the weak text this far toward the text
-@(private = "file") SCROLLBAR_GRIP_ALPHA :: 0.7
-@(private = "file") SCROLLBAR_GRIP_LINES :: 3
-@(private = "file") SCROLLBAR_GRIP_PITCH_PX :: 3
-@(private = "file") SCROLLBAR_GRIP_SPAN :: 0.5   // of the thumb's width
 @(private = "file") SCROLLBAR_KEY_SALT :: 0x5c5c_5c5c
 @(private = "file") SCROLLBAR_X_KEY_SALT :: 0x5c5c_5c5d
-@(private = "file") SCROLLBAR_REVEAL_MS :: 900
-@(private) SCROLLBAR_HIDDEN_ALPHA :: 0.01   // no more than this: not drawn
-// Arrow buttons (set_scrollbar_arrows): each as long as the bar is broad (its width and margins), the triangle this much
-// of the bar's width; a press scrolls a step, held it repeats as any held button (repeat_pressed: Feel.repeat_delay_ms,
-// then Feel.repeat_interval_ms).
-@(private = "file") SCROLLBAR_ARROW_GLYPH_FRACTION :: 0.7
-@(private = "file") SCROLLBAR_ARROW_STEP_EM :: 3
 
 @(private)
 scrollbar_key :: proc(b: ^Box, axis := Axis.Y) -> Key { return key_from_u64(b.key, axis == .Y ? SCROLLBAR_KEY_SALT : SCROLLBAR_X_KEY_SALT) }
+
+// The thumb of a box's vertical bar is held: the view goes where the pointer puts it, and nothing must move it under the
+// pointer (a list that keeps its row in view). A held arrow or a page moves the view as the wheel does.
+@(private)
+scrollbar_thumb_held :: proc(s: ^State, b: ^Box) -> bool { return s.active_key[.Left] == scrollbar_key(b) && s.sb_held == .Thumb }
 
 // The axis of a box's bar by its key.
 @(private)
 scrollbar_axis :: proc(b: ^Box, sbk: Key) -> Axis { return sbk == scrollbar_key(b, .X) ? .X : .Y }
 
-// What takes the press beyond a bar's track: toward the content, and away from it.
+// What takes the press beyond a bar: toward the content, and away from it.
 @(private)
 scrollbar_grab :: proc() -> (toward, away: f32) { return SCROLLBAR_GRAB_IN_PX * gs().scale, SCROLLBAR_GRAB_OUT_PX * gs().scale }
+
+// The odd number of pixels nearest below `x` (at least 1): a part with a middle column, so that what is centred on the
+// bar (a triangle's point, the grip) is on a pixel.
+@(private)
+odd_px :: proc(x: f32) -> f32 { return 2 * math.floor(max(x, 1) * 0.5) + 1 }
+
+// A border, the thumb's inner line, a line of the grip and a row of a triangle: one logical pixel at the scale.
+@(private = "file")
+scrollbar_unit :: proc(s: ^State) -> f32 { return max(1, math.round(s.scale)) }
+
+// How thick a bar is, pixels: the setting's at the window's scale, odd.
+@(private)
+scrollbar_thickness :: proc(s: ^State) -> f32 {
+	return odd_px((s.scrollbar_size == .Wide ? SCROLLBAR_WIDE_PX : SCROLLBAR_THIN_PX) * s.scale)
+}
+
+// What a vertical bar takes at the edge of a scroll box: its thickness. The bar is drawn over what is in the box: content
+// that must stay clear of it (a row's buttons at its right end) leaves this much room there when the box scrolls.
+scrollbar_gutter :: proc() -> f32 { return scrollbar_thickness(gs()) }
+
+// How far a bar keeps from the ends of the edge it lies on: the box's drawn corner, so that it stays inside a rounded box.
+@(private)
+scrollbar_inset :: proc(s: ^State, b: ^Box) -> f32 { return math.round(box_drawn_radius(s, b)) }
+
+// The parts of a bar laid along `bar`: a view `view` long over a content `content` long, scrolled `t` (0..1) of the way.
+@(private)
+scrollbar_layout :: proc(s: ^State, bar: Rect, axis: Axis, view, content, t: f32) -> (p: Scrollbar_Parts) {
+	a := int(axis)
+	w := scrollbar_thickness(s)
+	p.bar, p.axis, p.track = bar, axis, bar
+	length := bar.max[a] - bar.min[a]
+	// (two buttons and a least thumb, or no buttons: the track takes the bar)
+	if length >= 3 * w {
+		p.arrows = true
+		p.start, p.end = bar, bar
+		p.start.max[a] = bar.min[a] + w
+		p.end.min[a] = bar.max[a] - w
+		p.track.min[a], p.track.max[a] = p.start.max[a], p.end.min[a]
+	}
+	avail := p.track.max[a] - p.track.min[a]
+	thumb := min(max(avail * view / max(content, 1), avail * SCROLLBAR_THUMB_LEAST, w), avail)
+	thumb = math.round(thumb)
+	at := math.round(p.track.min[a] + clamp(t, 0, 1) * (avail - thumb))
+	p.thumb = p.track
+	p.thumb.min[a], p.thumb.max[a] = at, at + thumb
+	return
+}
+
+// The parts of a scroll box's bar along `axis`, or ok = false when everything fits.
+@(private)
+scrollbar_parts :: proc(b: ^Box, axis := Axis.Y) -> (p: Scrollbar_Parts, ok: bool) {
+	s := gs()
+	a := int(axis)
+	view, content := b.size[a], b.view_bounds[a]
+	flag := axis == .Y ? Box_Flag.View_Scroll_Y : Box_Flag.View_Scroll_X
+	if flag not_in b.flags || .Scrollbar_None in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * s.scale { return }
+	w := scrollbar_thickness(s)
+	inset := scrollbar_inset(s, b)
+	bar: Rect
+	if axis == .Y {
+		top := b.rect.min.y + inset
+		// (a bar with marks: wider, and below the room of its filter's button)
+		if k := scroll_marks_of(b); k != nil { w, top = scroll_marks_bar_width(b), top + k.head }
+		bottom := b.rect.max.y - inset
+		if bottom - top < SCROLLBAR_VIEW_MIN_PX * s.scale { return }
+		bar = {{b.rect.max.x - w, top}, {b.rect.max.x, bottom}}
+		if .Scrollbar_Left in b.flags { bar.min.x, bar.max.x = b.rect.min.x, b.rect.min.x + w }
+	} else {
+		bar = {{b.rect.min.x + inset, b.rect.max.y - w}, {b.rect.max.x - inset, b.rect.max.y}}
+		// (short of the vertical bar's corner, on whichever side it is)
+		if y, has := scrollbar_parts(b, .Y); has {
+			if .Scrollbar_Left in b.flags { bar.min.x = max(bar.min.x, y.bar.max.x) } else { bar.max.x = min(bar.max.x, y.bar.min.x) }
+		}
+		if bar.max.x - bar.min.x < SCROLLBAR_VIEW_MIN_PX * s.scale { return }
+	}
+	limit := view_limit(b, axis)
+	t := limit > 0 ? b.view_off[a] / limit : 0
+	return scrollbar_layout(s, bar, axis, view, content, t), true
+}
+
+// The track and the thumb a scroll box shows (ok = false: everything fits, no bar), window pixels. For tests and tools.
+scrollbar_rects :: proc(b: ^Box, axis := Axis.Y) -> (track, thumb: Rect, ok: bool) {
+	p, has := scrollbar_parts(b, axis)
+	return p.track, p.thumb, has
+}
+
+// The arrow buttons of a scroll box's bar, at the start and at the end of its track (ok = false: no bar, or one too
+// short for them), window pixels.
+scrollbar_arrow_rects :: proc(b: ^Box, axis := Axis.Y) -> (start, end: Rect, ok: bool) {
+	p, has := scrollbar_parts(b, axis)
+	if !has || !p.arrows { return }
+	return p.start, p.end, true
+}
 
 // The bar of `b` that takes a press at `p` (window pixels): the one it shows, a little wider toward the content. ok = false:
 // none. A program that hears the pointer before the interface (a terminal's grid in a box that scrolls) leaves such a press
 // to it.
 scrollbar_under :: proc(b: ^Box, p: Vec2) -> (axis: Axis, ok: bool) {
-	if bar, _, _, _, has := scrollbar_parts(b); has {
-		toward, away := scrollbar_grab()
-		grab := Rect{{bar.min.x - toward, bar.min.y}, {bar.max.x + away, bar.max.y}}
-		if .Scrollbar_Left in b.flags { grab.min.x, grab.max.x = bar.min.x - away, bar.max.x + toward }
+	toward, away := scrollbar_grab()
+	if y, has := scrollbar_parts(b); has {
+		grab := Rect{{y.bar.min.x - toward, y.bar.min.y}, {y.bar.max.x + away, y.bar.max.y}}
+		if .Scrollbar_Left in b.flags { grab.min.x, grab.max.x = y.bar.min.x - away, y.bar.max.x + toward }
 		if contains(grab, p) { return .Y, true }
 	}
-	if bar, _, _, _, has := scrollbar_parts(b, .X); has {
-		toward, away := scrollbar_grab()
-		if contains(Rect{{bar.min.x, bar.min.y - toward}, {bar.max.x, bar.max.y + away}}, p) { return .X, true }
+	if x, has := scrollbar_parts(b, .X); has {
+		if contains(Rect{{x.bar.min.x, x.bar.min.y - toward}, {x.bar.max.x, x.bar.max.y + away}}, p) { return .X, true }
 	}
 	return
 }
 
-// What a vertical bar takes at the edge of a scroll box: its width and its margins. The bar is drawn over what is in
-// the box: content that must stay clear of it (a row's buttons at its right end) leaves this much room there when the
-// box scrolls.
-scrollbar_gutter :: proc() -> f32 {
-	w, m := scrollbar_size(font_size())
-	return w + 2 * m
-}
-
-// A bar's width and its margin from the edges of its box.
+// The part of a bar at `at`, along its axis (what is beside the bar, in its grab margin, is the part it is beside).
 @(private)
-scrollbar_size :: proc(font_size: f32) -> (w, m: f32) {
-	w = max(SCROLLBAR_WIDTH_MIN_PX * gs().scale, math.round(font_size * SCROLLBAR_WIDTH_EM))
-	m = math.round(w * SCROLLBAR_MARGIN_FRACTION)
-	return
+scrollbar_part_at :: proc(p: Scrollbar_Parts, at: Vec2) -> Scrollbar_Part {
+	a := int(p.axis)
+	if p.arrows {
+		if at[a] < p.start.max[a] { return .Start }
+		if at[a] >= p.end.min[a] { return .End }
+	}
+	if at[a] >= p.thumb.min[a] && at[a] < p.thumb.max[a] { return .Thumb }
+	return .Track
 }
 
-// Along a track `avail` long: where the thumb starts (`t`: how far the view is scrolled, 0..1) and how long it is.
+// The rule of a held arrow (repeat_fires with the standard's times): true at the press, then after 400 ms, then every
+// 60 ms while the pointer is on it. `key` names the bar.
 @(private)
-scrollbar_thumb :: proc(font_size, avail, view, content, t: f32) -> (at, length: f32) {
-	length = max(font_size * SCROLLBAR_THUMB_MIN_EM, avail * view / content)
-	at = t * (avail - length)
-	return
+scrollbar_repeat :: proc(s: ^State, key: Key, pressed, on: bool) -> bool {
+	return repeat_fires_every(s, key, pressed, true, on, SCROLLBAR_REPEAT_DELAY_MS, SCROLLBAR_REPEAT_INTERVAL_MS)
 }
 
-// The parts of a scroll box's bar, or ok = false when everything fits: the whole bar, its track (the bar less its arrow
-// buttons) and the thumb; `arrow`: how long each arrow button is (0: none).
-@(private)
-scrollbar_parts :: proc(b: ^Box, axis := Axis.Y) -> (bar, track, thumb: Rect, arrow: f32, ok: bool) {
-	if axis == .X { return scrollbar_parts_x(b) }
-	view := b.size.y
-	content := b.view_bounds.y
-	if .View_Scroll_Y not_in b.flags || .Scrollbar_None in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * gs().scale { return }
-	w, m := scrollbar_size(b.font_size)
-	top := b.rect.min.y + m
-	// (a bar with marks: wider, and below the room of its filter's button)
-	if k := scroll_marks_of(b); k != nil { w, top = scroll_marks_bar_width(b), top + k.head }
-	if b.rect.max.y - m - top < SCROLLBAR_VIEW_MIN_PX * gs().scale { return }
-	bar = {{b.rect.max.x - w - m, top}, {b.rect.max.x - m, b.rect.max.y - m}}
-	if .Scrollbar_Left in b.flags { bar.min.x, bar.max.x = b.rect.min.x + m, b.rect.min.x + m + w }
-	// arrows only on a bar long enough for both and some track
-	if gs().scrollbar_arrows && bar.max.y - bar.min.y > 2 * (w + 2 * m) + w { arrow = w + 2 * m }
-	track = {{bar.min.x, bar.min.y + arrow}, {bar.max.x, bar.max.y - arrow}}
-	th_avail := track.max.y - track.min.y
-	at, th := scrollbar_thumb(b.font_size, th_avail, view, content, clamp(b.view_off.y / view_limit(b), 0, 1))
-	y := track.min.y + at
-	thumb = {{track.min.x, y}, {track.max.x, y + th}}
-	ok = true
-	return
-}
-
-// The horizontal bar: along the bottom edge, short of the vertical bar's corner when that one shows; no arrow buttons.
+// An arrow's step: the view moves a line toward `dir` (eased like the wheel's).
 @(private = "file")
-scrollbar_parts_x :: proc(b: ^Box) -> (bar, track, thumb: Rect, arrow: f32, ok: bool) {
-	view := b.size.x
-	content := b.view_bounds.x
-	if .View_Scroll_X not_in b.flags || .Scrollbar_None in b.flags || content <= view + SCROLLBAR_FIT_SLACK_PX || view < SCROLLBAR_VIEW_MIN_PX * gs().scale { return }
-	w, m := scrollbar_size(b.font_size)
-	end := b.rect.max.x - m
-	if _, _, _, _, y_bar := scrollbar_parts(b, .Y); y_bar { end -= w + m }
-	bar = {{b.rect.min.x + m, b.rect.max.y - w - m}, {end, b.rect.max.y - m}}
-	track = bar
-	at, th := scrollbar_thumb(b.font_size, track.max.x - track.min.x, view, content, clamp(b.view_off.x / max(view_limit(b, .X), 1), 0, 1))
-	x := track.min.x + at
-	thumb = {{x, track.min.y}, {x + th, track.max.y}}
-	ok = true
-	return
+scrollbar_step :: proc(b: ^Box, axis: Axis, dir: f32) {
+	a := int(axis)
+	b.view_target[a] = clamp(b.view_target[a] + dir * line_height_of(b), 0, view_limit(b, axis))
 }
 
-// Track and thumb rects of a scroll box, or ok = false when everything fits.
-@(private)
-scrollbar_geom :: proc(b: ^Box, axis := Axis.Y) -> (track, thumb: Rect, ok: bool) {
-	_, track, thumb, _, ok = scrollbar_parts(b, axis)
-	return
-}
-
-// The track and the thumb a scroll box shows (ok = false: everything fits, no bar), window pixels. For tests and tools.
-scrollbar_rects :: proc(b: ^Box, axis := Axis.Y) -> (track, thumb: Rect, ok: bool) { return scrollbar_geom(b, axis) }
-
-// The arrow buttons of a scroll box's bar, at the start and at the end of its track (ok = false: no bar, or no arrows),
-// window pixels.
-scrollbar_arrow_rects :: proc(b: ^Box) -> (start, end: Rect, ok: bool) {
-	bar, track, _, arrow, has := scrollbar_parts(b)
-	if !has || arrow <= 0 { return }
-	return {bar.min, {bar.max.x, track.min.y}}, {{bar.min.x, track.max.y}, bar.max}, true
-}
-
-// A held arrow's step: the view moves by it toward `dir` (eased like the wheel's).
+// A press on the track: the view moves a page (its own length) toward `dir`.
 @(private = "file")
-scrollbar_arrow_step :: proc(b: ^Box, dir: f32) {
-	b.view_target.y = clamp(b.view_target.y + dir * b.font_size * SCROLLBAR_ARROW_STEP_EM, 0, view_limit(b))
+scrollbar_page :: proc(b: ^Box, axis: Axis, dir: f32) {
+	a := int(axis)
+	b.view_target[a] = clamp(b.view_target[a] + dir * b.size[a], 0, view_limit(b, axis))
 }
 
-// Press on a scrollbar: an arrow steps the view; else remember where the thumb was grabbed (a press on the track centres
-// the thumb there).
+// Press on a scroll bar (events, against the layout under the press): an arrow steps the view, the track pages it, the
+// thumb is held where it was taken, a mark is left to scroll_marks.
 @(private)
 scrollbar_press :: proc(s: ^State, sbk: Key, p: Vec2) {
-	s.sb_arrow = 0
-	s.sb_on_mark = false
+	s.sb_held = .None
 	owner, ok := s.sb_owner[sbk]
 	if !ok { return }
 	b := s.boxes[owner]
 	if b == nil { return }
-	if scrollbar_axis(b, sbk) == .X {
-		_, thumb_x, has_x := scrollbar_geom(b, .X)
-		if !has_x { return }
-		if p.x >= thumb_x.min.x && p.x < thumb_x.max.x { s.sb_grab = p.x - thumb_x.min.x } else { s.sb_grab = (thumb_x.max.x - thumb_x.min.x) * 0.5 }
-		return
-	}
-	_, thumb, has := scrollbar_geom(b)
+	axis := scrollbar_axis(b, sbk)
+	parts, has := scrollbar_parts(b, axis)
 	if !has { return }
-	if start, end, arrows := scrollbar_arrow_rects(b); arrows && (contains(start, p) || contains(end, p)) {
-		s.sb_arrow = contains(start, p) ? -1 : 1
-		if repeat_fires(s, sbk, true, true, true) { scrollbar_arrow_step(b, s.sb_arrow) }
-		return
-	}
+	a := int(axis)
+	part := scrollbar_part_at(parts, p)
 	// (a mark: the build goes there, scroll_marks)
-	if k := scroll_marks_of(b); k != nil && scroll_marks_hit(k, b, p) >= 0 {
-		s.sb_on_mark = true
-		return
+	if part == .Track && axis == .Y {
+		if k := scroll_marks_of(b); k != nil && scroll_marks_hit(k, b, p) >= 0 {
+			s.sb_held = .Mark
+			return
+		}
 	}
-	if p.y >= thumb.min.y && p.y < thumb.max.y { s.sb_grab = p.y - thumb.min.y } else { s.sb_grab = (thumb.max.y - thumb.min.y) * 0.5 }
+	s.sb_held = part
+	#partial switch part {
+	case .Start, .End:
+		if scrollbar_repeat(s, sbk, true, true) { scrollbar_step(b, axis, part == .Start ? -1 : 1) }
+	case .Thumb:
+		s.sb_grab = p[a] - parts.thumb.min[a]
+	case .Track:
+		scrollbar_page(b, axis, p[a] < parts.thumb.min[a] ? -1 : 1)
+	}
 }
 
-// While a scrollbar is held, map the pointer to a scroll offset (applied at once, no easing: the thumb follows). A held
-// arrow steps again by the clock while the pointer stays on it.
+// While a bar is held: a held arrow steps again by the clock while the pointer stays on it; a held thumb maps the pointer
+// to the offset (at once, no easing: the thumb follows), once the pointer moved since the press.
 @(private)
 scrollbar_drag :: proc(s: ^State) {
 	sbk := s.active_key[.Left]
@@ -242,110 +302,205 @@ scrollbar_drag :: proc(s: ^State) {
 	if !ok { return }
 	b := s.boxes[owner]
 	if b == nil { return }
-	if scrollbar_axis(b, sbk) == .X {
-		track_x, thumb_x, has_x := scrollbar_geom(b, .X)
-		if !has_x { return }
-		span_x := (track_x.max.x - track_x.min.x) - (thumb_x.max.x - thumb_x.min.x)
-		if span_x <= 0 { return }
-		t := clamp((s.mouse.x - s.sb_grab - track_x.min.x) / span_x, 0, 1)
-		view_jump(b, t * view_limit(b, .X), .X)
+	axis := scrollbar_axis(b, sbk)
+	parts, has := scrollbar_parts(b, axis)
+	if !has { return }
+	a := int(axis)
+	#partial switch s.sb_held {
+	case .Start, .End:
+		on := contains(s.sb_held == .Start ? parts.start : parts.end, s.mouse)
+		if scrollbar_repeat(s, sbk, false, on) { scrollbar_step(b, axis, s.sb_held == .Start ? -1 : 1) }
+	case .Thumb:
+		// (the thumb's place is whole pixels, coarser than a long content's offsets: no move, no shift)
+		if s.mouse[a] == s.press_pos[.Left][a] { return }
+		span := (parts.track.max[a] - parts.track.min[a]) - (parts.thumb.max[a] - parts.thumb.min[a])
+		if span <= 0 { return }
+		t := clamp((s.mouse[a] - s.sb_grab - parts.track.min[a]) / span, 0, 1)
+		view_jump(b, t * view_limit(b, axis), axis)
 		s.anim_busy = true
-		return
 	}
-	track, thumb, has := scrollbar_geom(b)
-	if !has || s.sb_on_mark { return }
-	if s.sb_arrow != 0 {
-		start, end, _ := scrollbar_arrow_rects(b)
-		if repeat_fires(s, sbk, false, true, contains(s.sb_arrow < 0 ? start : end, s.mouse)) { scrollbar_arrow_step(b, s.sb_arrow) }
-		return
-	}
-	span := (track.max.y - track.min.y) - (thumb.max.y - thumb.min.y)
-	if span <= 0 { return }
-	t := clamp((s.mouse.y - s.sb_grab - track.min.y) / span, 0, 1)
-	view_jump(b, t * view_limit(b))
-	s.anim_busy = true
 }
 
-// A thumb's rim and its grip lines, across it (horizontal lines on a vertical bar), where it is long enough for them.
-@(private = "file")
-scrollbar_thumb_marks :: proc(s: ^State, dc: ^draw.Context, b: ^Box, thumb: Rect, face: Color, radius: f32, axis: Axis, shows: f32, grips := true) {
-	px := max(math.round(s.scale), 1)
-	rim := draw.mix(face, color_from_tags(s, b.tags_key, "text"), SCROLLBAR_RIM_ALPHA)   // (a little toward the text: its edge)
-	rim.a = face.a
-	draw.rect(dc, thumb, tuned(rim), radius, px)
-	if !grips { return }
-	across := axis == .Y ? thumb.max.x - thumb.min.x : thumb.max.y - thumb.min.y
-	along := axis == .Y ? thumb.max.y - thumb.min.y : thumb.max.x - thumb.min.x
-	pitch := math.round(SCROLLBAR_GRIP_PITCH_PX * s.scale)
-	if along < pitch * (SCROLLBAR_GRIP_LINES + 3) { return }
-	line := color_from_tags(s, b.tags_key, "background")
-	line.a = SCROLLBAR_GRIP_ALPHA * shows
-	half := math.round(across * SCROLLBAR_GRIP_SPAN * 0.5)
-	mid := draw.rect_center(thumb)
-	for k in 0 ..< SCROLLBAR_GRIP_LINES {
-		at := math.round(mid[axis == .Y ? 1 : 0] + (f32(k) - f32(SCROLLBAR_GRIP_LINES - 1) * 0.5) * pitch)
-		r := axis == .Y ? Rect{{mid.x - half, at}, {mid.x + half, at + px}} : Rect{{at, mid.y - half}, {at + px, mid.y + half}}
-		draw.rect(dc, r, tuned(line))
-	}
+// A scroll box's bar along `axis`, in its state.
+@(private)
+draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box, axis := Axis.Y) {
+	parts, ok := scrollbar_parts(b, axis)
+	if !ok { return }
+	sbk := scrollbar_key(b, axis)
+	held := s.active_key[.Left] == sbk
+	hot := s.hot_key == sbk
+	look := Scrollbar_Look{lit = hot || held}
+	if held && s.sb_held != .Mark { look.held = s.sb_held }
+	if hot && s.mouse_valid { look.hot = scrollbar_part_at(parts, s.mouse) }
+	scrollbar_paint(s, dc, b, parts, look)
+}
+
+// The colours of a bar (scroll-bar.md, "The colours come from the theme"): the standard's dark or light table, made of
+// the theme's surfaces and accent.
+@(private)
+Scrollbar_Colors :: struct {
+	trough:                                          [3]Color,
+	trough_border, lit_border, thumb_border, hot_border: Color,
+	button_lit, button_hot, button_pressed:          [2]Color,
+	glyph, glyph_hot:                                Color,
+	thumb_rest, thumb_lit, thumb_held:               [4]Color,
+	thumb_line, grip, grip_lit:                      Color,
 }
 
 @(private)
-draw_scrollbar :: proc(s: ^State, dc: ^draw.Context, b: ^Box, axis := Axis.Y) {
-	track, thumb, ok := scrollbar_geom(b, axis)
-	if !ok { return }
-	shows := scrollbar_opacity(s, b)
-	if shows <= SCROLLBAR_HIDDEN_ALPHA { return }
-	sbk := scrollbar_key(b, axis)
-	hot := s.hot_key == sbk
-	active := s.active_key[.Left] == sbk
-	scrollbar_paint(s, dc, b, track, thumb, axis, hot, active, active && s.sb_arrow == 0, shows)
-	if axis == .X { return }
-	start, end, arrows := scrollbar_arrow_rects(b)
-	if !arrows { return }
-	glyph := color_from_tags(s, b.tags_key, "text")
-	w := track.max.x - track.min.x
-	half := w * SCROLLBAR_ARROW_GLYPH_FRACTION * 0.5
-	for r, i in ([2]Rect{start, end}) {
-		dir: f32 = i == 0 ? -1 : 1
-		held := active && s.sb_arrow == dir
-		glyph.a = (held ? SCROLLBAR_THUMB_HELD_ALPHA : (hot && contains(r, s.mouse) ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
-		mid := draw.rect_center(r)
-		draw.triangle(dc, {mid.x, mid.y + dir * half}, {mid.x - half, mid.y - dir * half}, {mid.x + half, mid.y - dir * half}, tuned(glyph))
+scrollbar_colors :: proc(s: ^State, b: ^Box) -> (c: Scrollbar_Colors) {
+	opaque :: proc(c: Color) -> Color { return {c.r, c.g, c.b, 1} }
+	m :: proc(a, b: Color, t: f32) -> Color { return srgb_mix(a, b, t) }
+	white := Color{1, 1, 1, 1}
+	under := box_under(b)
+	track := opaque(color_from_tags(s, b.tags_key, "track"))
+	line := opaque(color_from_tags(s, b.tags_key, "border"))
+	weak := opaque(color_from_tags(s, b.tags_key, "weak text"))
+	text := opaque(color_from_tags(s, b.tags_key, "text"))
+	accent := opaque(color_from_tags(s, b.tags_key, "accent"))
+	dark := s.theme != nil ? s.theme.dark : under.r + under.g + under.b < 1.5
+	c.hot_border = accent
+	if dark {
+		edge := m(track, line, 0.5)
+		c.trough = {edge, line, edge}
+		c.trough_border = m(under, track, 0.5)
+		c.lit_border = m(line, weak, 0.4)
+		c.thumb_border = c.lit_border
+		c.button_lit = {m(line, weak, 0.2), m(line, weak, 0.1)}
+		c.button_hot = {m(track, accent, 0.28), m(track, accent, 0.2)}
+		c.button_pressed = {m(track, accent, 0.4), m(track, accent, 0.32)}
+		c.glyph = m(weak, text, 0.3)
+		c.glyph_hot = m(text, accent, 0.2)
+		c.thumb_rest = {m(line, weak, 0.3), m(line, weak, 0.24), m(line, weak, 0.18), m(line, weak, 0.12)}
+		c.thumb_lit = {m(track, accent, 0.45), m(track, accent, 0.38), m(track, accent, 0.31), m(track, accent, 0.24)}
+		c.thumb_held = {m(track, accent, 0.58), m(track, accent, 0.5), m(track, accent, 0.42), m(track, accent, 0.34)}
+		c.thumb_line = {1, 1, 1, 0.12}
+		c.grip = c.trough_border
+		c.grip_lit = m(text, accent, 0.45)
+	} else {
+		edge := m(track, line, 0.5)
+		c.trough = {edge, m(under, white, 0.3), edge}
+		c.trough_border = line
+		c.lit_border = m(line, weak, 0.5)
+		c.thumb_border = c.lit_border
+		c.button_lit = {m(under, white, 0.5), m(track, line, 0.6)}
+		c.button_hot = {m(white, accent, 0.1), m(white, accent, 0.2)}
+		c.button_pressed = {m(white, accent, 0.22), m(white, accent, 0.3)}
+		c.glyph = weak
+		c.glyph_hot = m(accent, text, 0.4)
+		deep := m(line, weak, 0.25)
+		c.thumb_rest = {m(white, deep, 0.2), m(white, deep, 0.45), m(white, deep, 0.7), deep}
+		c.thumb_lit = {m(white, accent, 0.12), m(white, accent, 0.2), m(white, accent, 0.28), m(white, accent, 0.36)}
+		c.thumb_held = {m(white, accent, 0.22), m(white, accent, 0.3), m(white, accent, 0.38), m(white, accent, 0.46)}
+		c.thumb_line = {1, 1, 1, 0.4}
+		c.grip = m(weak, line, 0.3)
+		c.grip_lit = m(accent, text, 0.25)
 	}
+	return
 }
 
-// How a scroll bar looks, whatever scrolls (a view, a text area that scrolls itself): its track when the pointer is on it or it
-// is held (`hot`, `active`), its thumb in the interface's own greys, held (`held`) a step further toward the text. One look for
-// every bar: a widget with a bar of its own draws it with this, at its own place.
+// `r` filled with a gradient across a bar along `axis` (left to right on a vertical bar, top to bottom on a horizontal
+// one), its stops `colors` at `at`, in sRGB values as the standard's.
+@(private = "file")
+scrollbar_fill :: proc(dc: ^draw.Context, r: Rect, axis: Axis, colors: []Color, at: []f32, radius: f32) {
+	stops: [4]draw.Gradient_Stop
+	n := min(len(colors), len(stops))
+	for i in 0 ..< n { stops[i] = {color = colors[i], pos = at[i]} }
+	size := r.max - r.min
+	g := draw.Gradient{kind = .Linear, space = .Srgb, end = axis == .Y ? Vec2{size.x, 0} : Vec2{0, size.y}, stops = stops[:n]}
+	draw.gradient(dc, r, g, {radius, radius, radius, radius})
+}
+
+// How a scroll bar looks, whatever scrolls (a view, a text area that scrolls itself), at the parts `p`, in the state
+// `look`: the trough, the arrow buttons, the thumb with its border, its inner line and its grip. One look for every bar:
+// a widget with a bar of its own draws it with this, at its own place.
 //
-// A vertical bar with marks (scroll_marks.odin) shows its track at rest too, the lane of its marks; the marks out of the
-// thumb's span are drawn under it, those within it over it, a little brighter (where the view is among them), and the mark
-// under the pointer or the keyboard's last.
-scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, track, thumb: Rect, axis: Axis, hot, active, held: bool, shows: f32) {
-	c := color_from_tags(s, b.tags_key, "text")
-	w := axis == .Y ? track.max.x - track.min.x : track.max.y - track.min.y
+// A vertical bar with marks (scroll_marks.odin) draws its marks on the trough: those out of the thumb's span under it,
+// those within it over it, a little brighter (where the view is among them), and the mark under the pointer or the
+// keyboard's last. Its thumb has no grip.
+scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Parts, look: Scrollbar_Look) {
+	// (auto-hide: the whole bar fades as one, its parts drawn as at full strength)
+	shows := scrollbar_opacity(s, b)
+	if shows <= SCROLLBAR_HIDDEN_ALPHA { return }
+	draw.push_alpha(dc, shows)
+	defer draw.pop_alpha(dc)
+	c := scrollbar_colors(s, b)
+	u := scrollbar_unit(s)
+	axis := p.axis
+	a := int(axis)
+	trough_at := [3]f32{0, SCROLLBAR_TROUGH_MIDDLE, 1}
+	thumb_at := [4]f32{0, SCROLLBAR_THUMB_MIDDLE_A, SCROLLBAR_THUMB_MIDDLE_B, 1}
+	button_at := [2]f32{0, 1}
+	scrollbar_fill(dc, p.bar, axis, c.trough[:], trough_at[:], 0)
+	draw.rect(dc, p.bar, c.trough_border, 0, u)
 	marks := axis == .Y ? scroll_marks_of(b) : nil
-	if hot || active || marks != nil {
-		// (its track a surface of the theme: "track"; flat, a tint of the text)
-		lit := (hot || active) ? f32(1) : SCROLL_MARKS_TRACK_REST
-		tc := c; tc.a = SCROLLBAR_TRACK_HOT_ALPHA * shows * lit
-		if s.theme == nil || s.theme.finish != .Flat { tc = color_from_tags(s, b.tags_key, "track"); tc.a *= shows * lit }
-		draw.rect(dc, track, tuned(tc), w * 0.5 * rounding(s))
+	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, false) }
+
+	if p.arrows {
+		radius := radius_drawn(s, SCROLLBAR_ARROW_RADIUS_PX * s.scale)
+		for part in ([2]Scrollbar_Part{.Start, .End}) {
+			r := part == .Start ? p.start : p.end
+			hot := look.hot == part
+			fill: Maybe([2]Color)
+			border: Maybe(Color)
+			switch {
+			case look.held == part: fill = c.button_pressed
+			case hot:               fill = c.button_hot
+			case look.lit:          fill = c.button_lit
+			}
+			switch {
+			case hot || look.held == part: border = c.hot_border
+			case look.lit:                 border = c.lit_border
+			}
+			if f, has := fill.?; has { scrollbar_fill(dc, r, axis, f[:], button_at[:], radius) }
+			if k, has := border.?; has { draw.rect(dc, r, k, radius, u) }
+			scrollbar_triangle(s, dc, r, axis, part == .Start, hot ? c.glyph_hot : c.glyph)
+		}
 	}
-	if marks != nil { scroll_marks_draw(s, dc, b, marks, track, thumb, shows, false) }
-	defer if marks != nil { scroll_marks_draw(s, dc, b, marks, track, thumb, shows, true) }
-	c.a = (held ? SCROLLBAR_THUMB_HELD_ALPHA : (hot ? SCROLLBAR_THUMB_HOT_ALPHA : SCROLLBAR_THUMB_REST_ALPHA)) * shows
-	radius := w * 0.5 * rounding(s)
-	// (the thumb in the interface's own greys, not the text's light: a surface's border at rest, the weak text under the
-	// pointer, held a step further toward the text; no accent, which the rest of the window already shows)
-	if s.theme == nil || s.theme.finish != .Flat {
-		face := color_from_tags(s, b.tags_key, hot || active ? "weak text" : "border")
-		if held { face = draw.mix(face, color_from_tags(s, b.tags_key, "text"), SCROLLBAR_HELD_TOWARD_TEXT) }
-		face.a *= shows
-		// (over marks: the plain thumb, without grip lines across the marks drawn over it)
-		draw.rect(dc, thumb, tuned(face), radius)
-		scrollbar_thumb_marks(s, dc, b, thumb, face, radius, axis, shows, grips = marks == nil)
-	} else {
-		draw.rect(dc, thumb, tuned(c), radius)
+
+	// the thumb, over the trough's border: the whole thickness of the bar
+	thumb := p.thumb
+	radius := radius_drawn(s, SCROLLBAR_THUMB_RADIUS_PX * s.scale)
+	stops := look.held == .Thumb ? c.thumb_held : (look.lit ? c.thumb_lit : c.thumb_rest)
+	scrollbar_fill(dc, thumb, axis, stops[:], thumb_at[:], radius)
+	draw.rect(dc, draw.rect_pad(thumb, -u), tuned(c.thumb_line), max(radius - u, 0), u)
+	draw.rect(dc, thumb, look.lit ? c.hot_border : c.thumb_border, radius, u)
+	along := thumb.max[a] - thumb.min[a]
+	if marks == nil && along >= SCROLLBAR_GRIP_THUMB_PX * s.scale {
+		gl := odd_px((s.scrollbar_size == .Wide ? SCROLLBAR_GRIP_WIDE_PX : SCROLLBAR_GRIP_THIN_PX) * s.scale)
+		pitch := 2 * u
+		first := math.round((thumb.min[a] + thumb.max[a]) * 0.5 - (f32(SCROLLBAR_GRIP_LINES) * pitch - u) * 0.5)
+		x := 1 - a
+		lo := thumb.min[x] + math.floor((thumb.max[x] - thumb.min[x] - gl) * 0.5)
+		grip := look.lit ? c.grip_lit : c.grip
+		for k in 0 ..< SCROLLBAR_GRIP_LINES {
+			r: Rect
+			r.min[a], r.max[a] = first + f32(k) * pitch, first + f32(k) * pitch + u
+			r.min[x], r.max[x] = lo, lo + gl
+			draw.rect(dc, r, grip)
+		}
+	}
+	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, true) }
+}
+
+// An arrow button's triangle, in rows of pixels: rows of 1, 3, 5… (one unit tall each, two units wider each), its point
+// toward the start of the bar (`start`) or its end, centred in `r`.
+@(private = "file")
+scrollbar_triangle :: proc(s: ^State, dc: ^draw.Context, r: Rect, axis: Axis, start: bool, color: Color) {
+	u := scrollbar_unit(s)
+	rows := s.scrollbar_size == .Wide ? SCROLLBAR_ARROW_ROWS_WIDE : SCROLLBAR_ARROW_ROWS_THIN
+	a := int(axis)
+	x := 1 - a
+	side := r.max[x] - r.min[x]
+	along := r.min[a] + math.floor(((r.max[a] - r.min[a]) - f32(rows) * u) * 0.5)
+	for i in 0 ..< rows {
+		width := 1 + 2 * f32(i) * u
+		row := start ? i : rows - 1 - i
+		q: Rect
+		q.min[a] = along + f32(row) * u
+		q.max[a] = q.min[a] + u
+		q.min[x] = r.min[x] + math.floor((side - width) * 0.5)
+		q.max[x] = q.min[x] + width
+		draw.rect(dc, q, color)
 	}
 }

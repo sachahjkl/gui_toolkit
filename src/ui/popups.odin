@@ -632,8 +632,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 @(private = "file")
 menu_bar_room :: proc(lv: ^Menu_Level, em: f32) -> f32 {
 	if !lv.scrolls { return 0 }
-	w, m := scrollbar_size(em)
-	return w + 2 * m
+	return scrollbar_gutter()
 }
 
 // Scrolls a level that scrolls so that its row `b` (laid out in the last frame) is in view.

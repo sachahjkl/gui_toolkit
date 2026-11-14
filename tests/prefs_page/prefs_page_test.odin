@@ -39,11 +39,13 @@ App :: struct {
 	changed: [dynamic]string,
 	updater: ^update.Updater,
 	preview: f64,   // the last value a held slider showed (Page_Options.preview)
+	closed:  bool,  // the settings closed: the page is not built
 }
 
 @(private = "file")
 app_build :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
+	if app.closed { return }
 	ui.next({width = ui.fill(), height = ui.fill()})
 	prefs_page.build(&app.page, &app.prefs, {user = app, version = "Sample 1.2.3", pages = PAGES[:], hotkeys = HOTKEYS[:], updater = app.updater, update_pref = "net.cache", problem = proc(user: rawptr, name: string) -> string {
 		return name == "look.keys" && config.string_of(&(^App)(user).prefs, "look.keys") == "Ctrl+Alt+Delete" ? "Windows holds it" : ""
@@ -285,6 +287,52 @@ a_setting_from_the_palette :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "How surfaces are drawn.") != nil, "the one chosen")
 	testing.expect(t, session.find_text(s, "Keep a cache of the responses.") == nil, "alone")
 	testing.expect_value(t, app.page.current, "look")
+}
+
+// The search the palette put there is for that visit: closed and opened again, the settings show the page the person
+// had, the search empty. A search the person typed stays, as the last page does.
+@(test)
+a_setting_from_the_palette_goes_when_the_settings_close :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app)
+	session.frames(s, 2)
+	app.closed = true
+	session.frames(s, 2)
+	prefs_page.show(&app.page, &app.prefs, {pages = PAGES[:]}, "look.style")
+	app.closed = false
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "How surfaces are drawn.") != nil, "opened on the one chosen")
+	testing.expect(t, session.find_text(s, "Keep a cache of the responses.") == nil, "alone")
+	app.closed = true
+	session.frames(s, 2)
+	prefs_page.focus_search(&app.page)
+	app.closed = false
+	session.frames(s, 2)
+	testing.expect_value(t, ui.line_edit_string(&app.page.query), "")
+	testing.expect_value(t, app.page.current, "")   // (the page the person had: the first)
+	testing.expect(t, session.find_text(s, "Keep a cache of the responses.") != nil, "the first page, whole")
+
+	// (the person's own search: kept across a close)
+	session.type_text(s, "surfaces")
+	session.frames(s, 2)
+	app.closed = true
+	session.frames(s, 2)
+	app.closed = false
+	session.frames(s, 2)
+	testing.expect_value(t, ui.line_edit_string(&app.page.query), "surfaces")
+
+	// (a jump the person then changed is theirs too)
+	prefs_page.show(&app.page, &app.prefs, {pages = PAGES[:]}, "net.cache")
+	session.frames(s, 2)
+	session.type_text(s, "x")
+	session.frames(s, 2)
+	app.closed = true
+	session.frames(s, 2)
+	app.closed = false
+	session.frames(s, 2)
+	q := ui.line_edit_string(&app.page.query)
+	testing.expect(t, q != "" && q != "\"net.cache\"", "the changed search stays")
 }
 
 @(private = "file")

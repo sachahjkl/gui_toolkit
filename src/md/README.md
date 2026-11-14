@@ -32,11 +32,17 @@ and its memory, the views, the texts in the user's language.
   pushes what follows it, and it often asks for the whole row. A grid of equal columns makes each cell an exact
   fraction of the row with the gaps inside it, so a last row that is not full has the full rows' column width.
 - Defaults are the best value for every program; a program overrides only its identity (its theme).
+- A behaviour goes in the lowest widget that carries its concept: the wheel belongs to `ui.slider`, not to the slider
+  with a field that wraps it. A wrapper composes; it adds no capacity its part lacks. Before giving a widget a
+  behaviour, find its siblings of the same concept and give it to them too, or write why not.
+- The corner of a window's resize grip stays square (0.213.0): a choice of look, not a defect. The patch that rounded it
+  was refused.
 
 ## File Index
 
 - [features/file-browser.md](features/file-browser.md): the file browser of `ui.file_dialog`: why it reads through sources, how stale answers are dropped, what a quiet build does not do
 - [features/path-bar.md](features/path-bar.md): the path bar (`ui.path_bar`): why it reads nothing itself, why `wants` is said once, why its dropdown is a popover
 - [features/plugins.md](features/plugins.md): plugins in JavaScript over the whole toolkit: the notes taken before the design (the engine Wren already embeds, what to design first)
+- [features/scroll-bar.md](features/scroll-bar.md): the scroll bar of every view: the desktop's standard it takes (numbers, states, gradients), the theme's colours that reproduce it, why it hides only on request, why thin is 9 px
 - [features/toolbar.md](features/toolbar.md): the tool bar: one bar that wraps or folds into an organised menu, why the menu shows rows and not the bar's controls
 - [features/views.md](features/views.md): views: every dialog and movable pane as one content in four presentations (dialog, floating window, window of the system, docked panel), the state machine, what is remembered, the chrome rules, the migration of the programs

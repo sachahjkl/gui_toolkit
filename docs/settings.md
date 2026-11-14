@@ -79,8 +79,8 @@ names every standard preference.
 | `scrolling.smooth` | `on` | `follow` (as `appearance.animations`), `on`, `off` | `ui.set_smooth_scroll` |
 | `scrolling.duration` | 180 ms | 0 to 1000 ms | `ui.Scroll_Settings.duration_ms` |
 | `scrolling.wheel_lines` | 3 | 1 to 20 | `ui.Feel.wheel_lines` |
-| `scrolling.autohide_scrollbars` | `false` | | `ui.set_scrollbar_autohide` |
-| `scrolling.scrollbar_arrows` | `false` | | `ui.set_scrollbar_arrows` |
+| `scrolling.scrollbar_size` | `thin` | `thin` (9 px), `wide` (17 px) | `ui.set_scrollbar_size` ([scroll-bar.md](scroll-bar.md)) |
+| `scrolling.scrollbar_autohide` | `false` | | `ui.set_scrollbar_autohide` |
 | `scrolling.curve` | `impulse` | `impulse`, `ease_out`, `exponential` | Advanced; `ui.Scroll_Settings.curve` |
 | `scrolling.impulse` | 5 | 1 to 20 | Advanced; `ui.Scroll_Settings.impulse` |
 | `scrolling.fling_stop_speed` | 20 px/s | 0 to 1000 px/s | Advanced; `ui.Feel.fling_stop_speed` |

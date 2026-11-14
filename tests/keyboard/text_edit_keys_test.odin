@@ -2,6 +2,7 @@
 // the wheel, its scrollbars, what a screen reader asks.
 package keyboard_test
 
+import "core:math"
 import "core:strings"
 import "core:sync"
 import "core:testing"
@@ -419,7 +420,8 @@ text_edit_pointer :: proc(t: ^testing.T) {
 	f.numbers = false
 	f.clock += 1000
 
-	// the wheel, the vertical bar: a press on its track jumps, a drag follows, the caret stays
+	// the wheel, the vertical bar (the toolkit's, thin): a press on its track pages, an arrow steps a line, a drag of its
+	// thumb follows, the caret stays
 	long := strings.repeat("line\n", 200)
 	defer delete(long)
 	start(f, long)
@@ -432,16 +434,31 @@ text_edit_pointer :: proc(t: ^testing.T) {
 	testing.expect(t, f.area.scroll.y > before, "the wheel scrolls")
 	d := (^ui.Text_Edit_Draw)(f.res.box.custom_user)
 	testing.expect(t, d.bars.has_v && !d.bars.has_h, "a vertical bar")
-	testing.expect_value(t, d.bars.vtrack, ui.Rect{{289, 3}, {297, 197}})
-	testing.expect_value(t, d.bars.vthumb.max.y - d.bars.vthumb.min.y, 24)   // (the least: the text is far longer than the view)
-	bar: ui.Vec2 = {f.res.box.rect.max.x - 6, f.res.box.rect.max.y - 8}
-	frame(f, {press(bar)})
-	far := f.area.scroll.y
-	testing.expect(t, far > 1000, "a press on the track jumps")
+	v := d.bars.v
+	testing.expect_value(t, v.bar.max.x - v.bar.min.x, 9)
+	testing.expect_value(t, v.bar.max.x, f.res.box.rect.max.x)
+	testing.expect(t, v.arrows, "an arrow button at each end")
+	testing.expect_value(t, v.thumb.max.y - v.thumb.min.y, math.round(max((v.track.max.y - v.track.min.y) * 0.08, 9)))   // (the least: the text is far longer than the view)
+	x := (v.bar.min.x + v.bar.max.x) * 0.5
+	wheeled := f.area.scroll.y
+	frame(f, {press({x, v.track.max.y - 1})})
+	paged := f.area.scroll.y
+	testing.expectf(t, paged - wheeled > 100 && paged - wheeled <= 200, "a press on the track pages: %v after %v", paged, wheeled)
 	testing.expect_value(t, f.area.cursor, c)
-	frame(f, {move_to({bar.x, f.res.box.rect.min.y})})
+	frame(f, {release({x, v.track.max.y - 1})})
+	f.clock += 1000
+	lh := f32(int(font.metrics(&f.fonts, f.ui_font, 15).line_height * 1.15 + 0.5))
+	frame(f, {press({x, v.end.min.y + 2}), release({x, v.end.min.y + 2})})
+	testing.expect_value(t, f.area.scroll.y, paged + lh)
+	f.clock += 1000
+	d = (^ui.Text_Edit_Draw)(f.res.box.custom_user)
+	grab := ui.Vec2{x, (d.bars.v.thumb.min.y + d.bars.v.thumb.max.y) * 0.5}
+	far := f.area.scroll.y
+	frame(f, {press(grab)})
+	testing.expect_value(t, f.area.scroll.y, far)   // (a press on the thumb moves nothing)
+	frame(f, {move_to({x, f.res.box.rect.min.y})})
 	testing.expect(t, f.area.scroll.y < far, "the drag follows")
-	frame(f, {release({bar.x, f.res.box.rect.min.y})})
+	frame(f, {release({x, f.res.box.rect.min.y})})
 	testing.expect_value(t, f.area.cursor, c)
 	f.clock += 1000
 
@@ -454,9 +471,9 @@ text_edit_pointer :: proc(t: ^testing.T) {
 	tap(f, .Home, {.Ctrl})
 	testing.expect_value(t, f.area.scroll.x, 0)
 	c = f.area.cursor
-	hbar: ui.Vec2 = {f.res.box.rect.max.x - 20, f.res.box.rect.max.y - 6}
+	hbar: ui.Vec2 = {f.res.box.rect.max.x - 30, f.res.box.rect.max.y - 4}
 	frame(f, {press(hbar)})
-	testing.expect(t, f.area.scroll.x > 100, "a press on the track jumps")
+	testing.expect(t, f.area.scroll.x > 100, "a press on the track pages")
 	testing.expect_value(t, f.area.cursor, c)
 	frame(f, {release(hbar)})
 	f.clock += 1000

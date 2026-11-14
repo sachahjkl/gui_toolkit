@@ -401,8 +401,8 @@ the_pointer_is_on_what_is_in_front :: proc(t: ^testing.T) { unwatched.run(t, pro
 	testing.expect(t, !r.back && !r.front && r.around, "what is around them")
 }) }
 
-// A text area that scrolls itself has the toolkit's scroll bar: its thumb at rest is the one of a view that scrolls, in the
-// interface's greys in the machined finish (it had a look of its own, a tint of the text).
+// A text area that scrolls itself has the toolkit's scroll bar: its thumb at rest is the one of a view that scrolls (it had a
+// look of its own, a tint of the text).
 @(test)
 a_text_area_has_the_toolkit_s_scroll_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { area: ui.Text_Edit, view: ui.Rect }
@@ -422,14 +422,13 @@ a_text_area_has_the_toolkit_s_scroll_bar :: proc(t: ^testing.T) { unwatched.run(
 			ui.text_edit("###area", &r.area)
 		}
 	}})
-	// (the machined finish, a program's: its thumbs in the interface's greys; flat, both are a tint of the text)
-	if s.state.theme != nil { s.state.theme.finish = .Machined }
 	session.frames(s, 3)
 	img := session.capture(s)
 	view := session.get(s, "view")
 	_, thumb, ok := ui.scrollbar_rects(view)
 	if !testing.expect(t, ok, "the view scrolls") { return }
-	want := session.pixel(img, int((thumb.min.x + thumb.max.x) * 0.5), int((thumb.min.y + thumb.max.y) * 0.5))
+	// (the thumb's face: clear of its border, its inner line and its grip)
+	want := session.pixel(img, int(thumb.min.x) + 2, int(thumb.min.y) + 4)
 	area := session.get(s, "area")
 	found := false
 	for x in int(area.rect.max.x) - 16 ..< int(area.rect.max.x) {

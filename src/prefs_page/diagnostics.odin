@@ -143,7 +143,7 @@ diagnostics_make :: proc(v: ^Diagnostics_View) {
 	h := v.host
 	add :: proc(v: ^Diagnostics_View, key, value: string) { append(&v.rows, Diagnostics_Row{strings.clone(key), strings.clone(value)}) }
 	if v.version != "" { add(v, i18n.tr("Program"), v.version) }
-	add(v, i18n.tr("Toolkit"), fmt.tprintf("gui_toolkit %s", ui.VERSION))
+	add(v, "gui_toolkit", ui.VERSION)   // (a product's name: never translated)
 	add(v, i18n.tr("System"), fmt.tprintf("%s (%v %v)", v.system != "" ? v.system : "…", ODIN_OS, ODIN_ARCH))
 	a := render.adapter_info(&h.shared.r)
 	v.software = a.software

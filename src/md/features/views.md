@@ -723,9 +723,12 @@ is held.
 - A panel opened after its space was built is built at `end_build` of that frame, unseen, at the place it will have
   (`views_build_late_panels`). Its body's key is its name's alone (`State.key_rooted`), not its parent's: what is under
   it has the same keys in its zone from the next frame, and the focus stays.
-- A panel whose space is not built (a section not shown, a window with no `views_frame`) floats: it is built as an
-  internal window at once, and goes to its space from the build after the space's (the user's decision). Every frame
-  shows it in one place. No key waits for a view that is not built.
+- A panel whose place is a dock space of the program's (`views_dock`) that is not built in this frame (a section not
+  shown) **waits there**: it is not built, not shown, and no key is held for it; it shows when its space is built
+  again (section 8.2, decision 2). A panel whose place is the window's frame, in a window that builds no
+  `views_frame`, floats: it is built as an internal window at once (there is no frame to wait for), and goes to the
+  frame from the build after the frame's. Every frame shows a view in one place at most. No key waits for a view
+  that is not built.
 - A view in a window of its own is the only one whose keys wait: between `view_open` and the window's first frame
   shown, the keys reach its owner (the window is hidden). They are held for it (`views_hold_input`, at the owner's
   `begin_build`) and given first to its first shown build, in its window's State (`view_input_arrive`). A refusal ends
@@ -1069,10 +1072,14 @@ on the last layout, as in any layout.
 
 `views_dock(vs, name, o)` is the same machinery inside the content: Mission Control's space (`"mission"`, panels only),
 inspecteur's Services section (`"services"`, with the list of services as its content). A view whose home place
-names a space docks there. A panel whose space is not built floats: an internal window at once, in its space again
-from the build after the space's (the user's decision; it replaces "drawn nowhere until it is built again" of section
-8.2, decision 2: a view opened there would have taken no keys, and its user would not see it). Without `content`, the centre of the
-space is its `.Center` zone (empty until a view docks there).
+names a space docks there. A panel whose space is not built **waits there** (section 8.2, decision 2): not built,
+not shown, no key held, shown when its space is built again. Only a panel of the window's frame, in a window with no
+`views_frame`, floats (there is no space of the program's to wait for). An earlier rule floated every panel whose
+space was not built: inspecteur's Services details, restored at start, then covered Mission Control as a big
+floating window while the Services section was not shown. Refused too: floating a panel the person just opened in a
+hidden space. The program knows where the view lives and shows its section when it opens it there (inspecteur opens
+Services with the service's details); the toolkit cannot tell an explicit opening from a restore. Without `content`,
+the centre of the space is its `.Center` zone (empty until a view docks there).
 
 A view docked in a space can be dragged to another space or to the frame's edges. Its home place does not change.
 

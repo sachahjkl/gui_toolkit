@@ -76,8 +76,8 @@ order among a program's own (theirs have the order 0): General, Appearance and W
 `Standard_Defaults.values`), to
 the toolkit's setters: `ui.set_feel` (repeats, undo, typeahead, steps, zoom step, tooltips, menus, the fade, the
 wheel's lines, the fling), `set_zoom`, `set_density`, `set_rounding`, `set_animations`, `set_smooth_scroll`,
-`set_scroll_settings`, `set_autoscroll_enabled`, `set_autoscroll_settings`, `set_scrollbar_autohide`,
-`set_scrollbar_arrows`, `set_toast_position`, `set_partial_redraw`. `Standard_Targets` gives what lies outside the
+`set_scroll_settings`, `set_autoscroll_enabled`, `set_autoscroll_settings`, `set_scrollbar_size`,
+`set_scrollbar_autohide`, `set_toast_position`, `set_partial_redraw`. `Standard_Targets` gives what lies outside the
 interface (each nil: left alone): `renderer` (`set_corner_smoothing`, `set_text_rendering`, `set_blend_space`,
 `set_present_mode`, `set_max_frame_latency`, `set_blur_sigma_limit`, `set_filter_precision`), `fonts`
 (`font.set_settings`) and `partial_redraw` (a host's flag, `host.Host.partial_redraw`, which the host gives the

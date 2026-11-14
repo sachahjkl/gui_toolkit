@@ -428,6 +428,7 @@ State :: struct {
 	partial_redraw: bool,            // set_partial_redraw: each frame redraws only what changed (draw_tree)
 	partial_redraw_set: bool,        // draw_tree turned the renderer's partial redraw on: off again when the state is
 	damage:       draw.Damage_Memory, // what each box drew last frame (draw.damage_auto)
+	scrollbar_size: Scrollbar_Size,  // set_scrollbar_size
 	scrollbar_autohide: bool,        // set_scrollbar_autohide
 	edits:        map[Key]Box_Edit,  // box_edit: what a tool imposes on boxes, build after build
 	focus_key:    Key,
@@ -454,9 +455,7 @@ State :: struct {
 	tab_dir_next: int,               // the same asked during a build (focus_step): tab_dir of the next one
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
 	sb_grab:      f32,               // pointer offset inside the thumb while dragging it
-	scrollbar_arrows: bool,          // set_scrollbar_arrows
-	sb_on_mark:   bool,              // the bar's press was on a mark: it went there (scroll_marks), the thumb does not follow
-	sb_arrow:     f32,               // the arrow button held: -1 toward the start, 1 toward the end, 0 none
+	sb_held:      Scrollbar_Part,    // the part of the bar held (the bar: active_key); a mark: it went there (scroll_marks)
 	feel:         Feel,              // set_feel: delays, repeats, steps (feel.odin)
 	density:      f32,               // vertical compactness: 1 = comfortable, lower = denser rows and gaps (see `dense`)
 	rounding:     f32,               // corner rounding factor applied to every rounded shape (0 = square, 1 = default)

@@ -305,7 +305,8 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   handle between two stacks moves their share of the zone. A view's place says its stack: `View_Place.stack`, its
   rank in the zone (0 first; the ranks stay compact as stacks empty).
 - `views_frame` builds the panels and the internal windows before the content, so they read their keys first; it is
-  where F6 is read. A program without `views_frame` still has its dialogs and its internal windows; its panels float (internal windows) until a space is built.
+  where F6 is read. A program without `views_frame` still has its dialogs and its internal windows; the panels of its
+  frame float (internal windows) until it builds one, and the panels of its own spaces wait for them.
 - A panel alone in its stack adds nothing: no tab strip, no border, no background (rule 1), unless its kind says
   `tabs_always` (a terminal: its strip shows with one tab). Two panels or more in a stack are its tabs: a click shows
   one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out as an internal window under the pointer.
@@ -347,9 +348,13 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   shares and tabs shown back to their defaults (its memory line goes), and each open view docked there or whose home
   is there back to its home: one the user floated or docked elsewhere comes back, one the user docked there goes home.
   A command "Reset the layout" calls it.
-- A panel whose space is not built shows at once as a floating window (a section not shown, a window with no
-  `views_frame`); it goes to its space from the frame after the space is built, and floats again when the space goes.
-  Every frame shows it in one place.
+- **A panel of a space of the program's waits for it.** While its `views_dock` space is not built (a section not
+  shown), the panel is open but not built and not shown, and no key is held for it; it shows in its space when the
+  space is built again, its state kept. A view restored at start in a hidden section does not cover the page. A
+  program that opens a view homed in a hidden section shows that section itself.
+- A panel of the window's frame in a window that builds no `views_frame` shows at once as a floating window (there is
+  no space to wait for); it goes to the frame from the frame after the window builds one. Every frame shows a view in
+  one place at most.
 - Keys: the panel's code reads keys only while the focus is in it (`key_press`, `key_take`). Ctrl+W closes it; an
   Escape it does not take gives the focus back. F6 and Shift+F6 move the focus to the next or the previous area: the
   content, each stack, each internal window.
@@ -371,8 +376,8 @@ the active one). `views_hold_keys(vs)` says a dialog holds them all.
 
 **What is typed right after an opening is the view's**, in every presentation. Every view is built in the frame it
 opens (a dialog, a floating window, a panel opened after its space: at `end_build`), so the field its first build
-focuses has the next frame's keys. A panel whose space is not built shows as a floating window until the space is,
-then goes there. A view in a window of its own gets the keys typed before its window shows (they reach the owner
+focuses has the next frame's keys. A panel whose space of the program's is not built waits for it, with no key held;
+one of the frame of a window with no frame floats until there is one. A view in a window of its own gets the keys typed before its window shows (they reach the owner
 meanwhile): they are held for it and given to its first shown build, or to the floating window it falls back to when
 the system refuses a window.
 

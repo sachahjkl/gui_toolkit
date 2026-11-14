@@ -37,6 +37,23 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
   priority first, a group's last item first, the group whole once its items are all folded (the measuring and the
   priorities of the bar before this design, unchanged). The "…" button stands before the pinned groups.
 
+## Alignment
+
+- **The groups start at the bar's start by default** (`Toolbar_Align.Start`), as a menu bar's: a program's tools stay
+  where the hand learned them whatever the window's width.
+- **`.Center` is the program's choice per bar**: an editor's bars over and under a picture (cliche) read as balanced
+  around it. In `.Wrap` each line is centred, the last one too (the flow's cross alignment, `layout_wrap_positions`). In
+  `.Fold` the groups left in the bar are centred in the room before the "…" button and the pinned groups: an empty
+  `fill()` spacer at each end shares that room, and a spacer measures nothing, so the fold reads the same widths.
+- **The pinned groups stay at the bar's end**, in both alignments. In `.Wrap` they are at the end of the last line,
+  outside the flow, and the lines are centred in the flow's room: the bar less the pinned groups. Refused: a line of
+  their own at the right, which would centre the lines in the whole bar but cost a line in every bar, even one that
+  fits on one line, and take Cancel and Done away from the last tools.
+- **Every item sits on its line's middle**, in every mode and alignment. In `.Wrap` an item is a line tall at least,
+  taller with a taller control, and the flow centres each item in its line's height; a box in a bar is never a share of
+  its parent's height (a share of a box sized by its children goes to a distant ancestor: the bar became as tall as
+  the page once).
+
 ## The dropdown is a menu
 
 - It is a toolkit menu (`menu_open`, `menu`), not a panel. A folded group is a section: its title as a heading, a

@@ -24,11 +24,11 @@ toolbar_build :: proc(app: ^App, em: f32) {
 	// (the wrapping bar first: the "…" menu opens down, over what stands under the folding bar)
 	ui.next({width = ui.px(math.round(em * BAR_WIDTH_EM)), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = "###bars") {
-		bar_caption("Wrap: the bar takes more lines", em)
-		editor_bar(app, "editor_wrap", .Wrap, em)
+		bar_caption("Wrap, centred: the bar takes more lines, each one centred", em)
+		editor_bar(app, "editor_wrap", .Wrap, .Center, em)
 		ui.spacer(ui.px(em * 1.6))
-		bar_caption("Fold: what does not fit goes into the \"…\" menu", em)
-		editor_bar(app, FOLD_BAR, .Fold, em)
+		bar_caption("Fold, from the start (the default): what does not fit goes into the \"…\" menu", em)
+		editor_bar(app, FOLD_BAR, .Fold, .Start, em)
 	}
 	// (its "…" menu open from the start, so that a picture shows its sections: once its button is laid out; a person who
 	// comes to the scene later opens it themselves)
@@ -55,11 +55,11 @@ bar_caption :: proc(words: string, em: f32) {
 
 // The bar of an editor, as cliche's: what draws, what it inserts, its colours and style, the edits, then Cancel and Done.
 @(private = "file")
-editor_bar :: proc(app: ^App, id: string, overflow: ui.Toolbar_Overflow, em: f32) {
+editor_bar :: proc(app: ^App, id: string, overflow: ui.Toolbar_Overflow, align: ui.Toolbar_Align, em: f32) {
 	icons := ui.lucide_icons()
 	tools, names, keys, hues, dashes := BAR_TOOLS, BAR_TOOL_NAMES, BAR_TOOL_KEYS, BAR_HUES, BAR_DASHES
 	ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.8))})
-	if ui.toolbar(id, {overflow = overflow}) {
+	if ui.toolbar(id, {overflow = overflow, align = align}) {
 		if ui.toolbar_group("tools", {title = "Tools", priority = 3}) {
 			for glyph, i in tools {
 				if ui.toolbar_tool(fmt.tprintf("tool%d", i), {label = names[i], icon = glyph, shortcut = keys[i], icon_font = icons, on = app.bar_tool == i}) { app.bar_tool = i }

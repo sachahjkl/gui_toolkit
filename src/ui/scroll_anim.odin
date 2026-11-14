@@ -116,8 +116,8 @@ view_reveal_offset :: proc(offset, top, bottom, view: f32, margin: f32 = 0) -> f
 	return o
 }
 
-// Heads for `top` .. `bottom` (a glide, as the wheel's); true when the target moved. A view that shows its bar only for
-// a while decides for itself whether this is a reason to: see scrollbar_reveal.
+// Heads for `top` .. `bottom` (a glide, as the wheel's); true when the target moved. With auto-hide, a caller that moves
+// a view for the keyboard decides whether this is a reason to show its bar: see scrollbar_reveal.
 view_reveal :: proc(b: ^Box, top, bottom: f32, axis := Axis.Y, margin: f32 = 0) -> (moved: bool) {
 	ai := int(axis)
 	y := view_reveal_offset(b.view_target[ai], top, bottom, b.size[ai], margin)

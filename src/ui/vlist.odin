@@ -201,7 +201,7 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	// 3. the view stays on the row it showed, wherever that row is now
 	view_h := b.size.y > 0 ? b.size.y : s.window_size.y
 	limit := max(0, total - view_h)   // (not view_limit: the bounds are last build's, these rows' are known)
-	dragging := s.active_key[.Left] == scrollbar_key(b)
+	dragging := scrollbar_thumb_held(s, b)
 	if st.has_anchor && !dragging && n > 0 {
 		at := -1
 		guess := vlist_row_at(st.offsets[:], b.view_off.y)

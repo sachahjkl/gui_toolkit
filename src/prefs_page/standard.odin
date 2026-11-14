@@ -101,6 +101,7 @@ FONT_SIZE_MAX :: 24
 @(private = "file", rodata) ANIMATION_CHOICES := [?]string{"system", "on", "off"}
 @(private = "file", rodata) SMOOTH_CHOICES := [?]string{"follow", "on", "off"}
 @(private = "file", rodata) CURVE_CHOICES := [?]string{"impulse", "ease_out", "exponential"}
+@(private = "file", rodata) SCROLLBAR_SIZE_CHOICES := [?]string{"thin", "wide"}   // ui.Scrollbar_Size in its order
 @(private = "file", rodata) TOAST_CHOICES := [?]string{"top_left", "top_center", "top_right", "middle_left", "middle_right", "bottom_left", "bottom_center", "bottom_right"}
 // ("auto": the system's, system_stripes; the others are font.Subpixel_Text in its order, one further)
 @(private = "file", rodata) SUBPIXEL_CHOICES := [?]string{"auto", "off", "rgb", "bgr"}
@@ -404,12 +405,13 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			tags = SCROLL_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autohide_scrollbars", title = i18n.later("Hide the scroll bars"), kind = .Bool, default = {b = false},
-			description = i18n.later("A scroll bar shows only while the pointer is over its view, or for a moment after it scrolled."),
+			name = "scrolling.scrollbar_size", title = i18n.later("Scroll bar width"), kind = .String, default = {s = SCROLLBAR_SIZE_CHOICES[0]},
+			description = i18n.later("How wide every scroll bar is. Thin: half as wide as Wide."),
+			choices = SCROLLBAR_SIZE_CHOICES[:], choice_labels = labels(a, i18n.later("Thin"), i18n.later("Wide")),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.scrollbar_arrows", title = i18n.later("Scroll bar arrows"), kind = .Bool, default = {b = false},
-			description = i18n.later("An arrow button at each end of every scroll bar."),
+			name = "scrolling.scrollbar_autohide", title = i18n.later("Hide the scroll bars"), kind = .Bool, default = {b = false},
+			description = i18n.later("A scroll bar shows only while its view moves, while the pointer is over the view, or while it is held."),
 		})
 		append(&defs, config.Def{
 			name = "scrolling.curve", title = i18n.later("Glide curve"), kind = .String, default = {s = CURVE_CHOICES[int(sc.curve)]}, advanced = true,
@@ -857,8 +859,10 @@ apply_scrolling :: proc(prefs: ^config.Prefs, s: ^ui.State, name: string) {
 	case "scrolling.impulse":          if num { sc.impulse = f32(v) }
 	case "scrolling.wheel_lines":      if num { f.wheel_lines = f32(v) }
 	case "scrolling.fling_stop_speed": if num { f.fling_stop_speed = f32(v) }
-	case "scrolling.autohide_scrollbars": if is_bool { ui.set_scrollbar_autohide(s, b) }; return
-	case "scrolling.scrollbar_arrows":    if is_bool { ui.set_scrollbar_arrows(s, b) }; return
+	case "scrolling.scrollbar_size":
+		if i, ok := choice_value(prefs, name, SCROLLBAR_SIZE_CHOICES[:]); ok { ui.set_scrollbar_size(s, ui.Scrollbar_Size(i)) }
+		return
+	case "scrolling.scrollbar_autohide": if is_bool { ui.set_scrollbar_autohide(s, b) }; return
 	case "scrolling.autoscroll.enabled":  if is_bool { ui.set_autoscroll_enabled(s, b) }; return
 	case "scrolling.autoscroll.toggle":    if is_bool { au.toggle = b }
 	case "scrolling.autoscroll.dead_zone": if num { au.dead_zone = f32(v) }
