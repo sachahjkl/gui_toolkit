@@ -296,9 +296,9 @@ a_zone_s_extent_is_remembered :: proc(t: ^testing.T) {
 	zone = built(s, "view_zone_Left")
 	testing.expectf(t, zone != nil && abs(zone.rect.max.x - zone.rect.min.x - (was + GROW_PX)) <= 1.5, "wider by the drag: %v, then %v", was, zone.rect)
 	text, ok := store.get(&r.views.memory, "#")
-	ext, parsed := ui.views_space_parse(text)
+	sm, parsed := ui.views_space_parse(text)
 	testing.expect(t, ok && parsed, "the space's line")
-	testing.expectf(t, ext[.Left] > SIDE_EM, "its left extent: %v", ext)
+	testing.expectf(t, sm.extent[.Left] > SIDE_EM, "its left extent: %v", sm.extent)
 }
 
 // The palette's commands: one per act of each open view, in words; running one does it.

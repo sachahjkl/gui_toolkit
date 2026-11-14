@@ -23,7 +23,15 @@ View_Window :: struct {
 // The backend of the views' windows for the views `owner` owns (and for theirs: a view opened in a view's window has
 // that window for owner). Refused for an offscreen owner (a test's host: session.view_windows is the test's backend).
 view_windows :: proc(owner: ^Host) -> ui.View_Windows {
-	return {open = view_window_open, show = view_window_show, close = view_window_close, user = owner}
+	return {open = view_window_open, show = view_window_show, hide = view_window_hide, close = view_window_close, user = owner}
+}
+
+// (its owner hid: off the screen, no picture until it shows again)
+@(private = "file")
+view_window_hide :: proc(user: rawptr, handle: rawptr) {
+	vw := (^View_Window)(handle)
+	vw.shown = false
+	host_hide(&vw.host)
 }
 
 @(private = "file")

@@ -7,12 +7,14 @@ package ui
 View_Presentation :: enum u8 { Dialog, Panel, Internal, External }
 
 // An edge of a dock space.
-View_Edge :: enum u8 { Right, Left, Bottom, Top }
+View_Edge :: enum u8 { Right, Left, Bottom, Top, Center }   // (Center: a space without content's main zone)
 
-// Where a panel goes: a dock space (by name; "" is the owner window's frame) and an edge of it.
+// Where a panel goes: a dock space (by name; "" is the owner window's frame), a zone of it (an edge, or the centre of a
+// space without content), and a stack of that zone (its rank along the zone's axis, 0 first).
 View_Place :: struct {
 	space: string,
 	edge:  View_Edge,
+	stack: int,
 }
 
 // Closed: not built (it can hold an answer not taken). Opening: built unseen until its layout settles. Shown: built and

@@ -41,7 +41,9 @@ The rules:
 - **The views' windows**: `ui.views_set_windows(&app.views, session.view_windows(s, o))` is the test backend of the
   External presentation. Each window a view asks for is an offscreen window with its own State, a session of its own
   (`find`, `click`, `key` on it); its frames are the application's. `session.view_window(s, vs, id)` gives it (nil:
-  none), `session.window_shown(w)` whether it is on the screen, `session.system_close(w)` is the system's close.
+  none), `session.window_shown(w)` whether it is on the screen, `session.system_close(w)` is the system's close,
+  `session.hide(s)` and `session.show(s)` the application hiding its window and showing it again (its views' windows
+  follow).
   `o.refuse` refuses every window; `o.no_positions` is Wayland's rule (no drop outside, no drag of a window onto the
   owner's targets). An action that fails ends the test with its message (Linux: `testing.fail_now`; Windows: a time
   limit of 0 after the message, the runner's signal handling allows no more).

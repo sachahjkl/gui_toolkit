@@ -505,9 +505,8 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 		if s.active_key[.Left] != hb.key {
 			// released: on a dock target, a panel there (built from the next frame: the window shows this one);
 			// elsewhere, an internal window where it is
-			if place, ok := view_target_at(s, mouse_pos()); ok {
-				view_apply(vs, r, {kind = .Drop, as = .Panel, place = place})
-				view_space_activate(vs, r)
+			if target, ok := view_target_at(s, mouse_pos()); ok {
+				view_target_drop(vs, r, target)
 			} else if view_drop_outside(vs, r) {
 				// (outside the window, where the system says so: a window of its own there; this one shows until it does)
 			} else {
@@ -601,11 +600,10 @@ view_header_menu_items :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation
 	Dock_Item :: struct { edge: View_Edge, word, glyph, id: string }
 	items := [3]Dock_Item{{.Left, labels.dock_left, lucide.PANEL_LEFT, "vm_left"}, {.Right, labels.dock_right, lucide.PANEL_RIGHT, "vm_right"}, {.Bottom, labels.dock_bottom, lucide.PANEL_BOTTOM, "vm_bottom"}}
 	for it in items {
-		here := p == .Panel && r.machine.place == View_Place{edge = it.edge}
+		here := p == .Panel && r.machine.place.space == "" && r.machine.place.edge == it.edge
 		if here { continue }
 		if menu_item(fmt.tprintf("%s###%s", it.word, it.id), icon = it.glyph, icon_font = lucide_icons(), disabled = no_frame).clicked {
-			view_apply(vs, r, {kind = .Present, as = .Panel, place = {edge = it.edge}})
-			view_space_activate(vs, r)
+			view_dock_at(vs, r, it.edge)
 		}
 	}
 	menu_separator()

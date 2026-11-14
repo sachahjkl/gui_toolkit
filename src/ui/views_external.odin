@@ -30,6 +30,7 @@ View_Window_Ask :: struct {
 View_Windows :: struct {
 	open:         proc(user: rawptr, ask: View_Window_Ask) -> (state: ^State, win: ^platform.Window, handle: rawptr),
 	show:         proc(user: rawptr, handle: rawptr),
+	hide:         proc(user: rawptr, handle: rawptr),   // off the screen, its State kept (its owner hid: views_windows_follow)
 	close:        proc(user: rawptr, handle: rawptr),
 	no_positions: bool,   // a test's: as on Wayland, whatever platform.positions_known says
 	user:         rawptr,
@@ -119,6 +120,8 @@ view_window_step :: proc(vs: ^Views, r: ^View_Record) {
 	r.w_layout = sig
 	r.w_measures += 1
 	if !settled && r.w_measures < MODAL_MEASURES_MAX { return }
+	// (its owner is hidden: it shows with it, views_windows_follow)
+	if r.owner != nil && r.owner.views_hidden { return }
 	vs.windows.show(vs.windows.user, r.w_handle)
 	r.w_shown_build = st.build_index
 	r.focus_in = true
@@ -142,7 +145,7 @@ view_window_open :: proc(vs: ^Views, r: ^View_Record) {
 		return
 	}
 	r.w_state, r.w_win, r.w_handle = st, win, handle
-	r.w_shown_build, r.w_measures, r.w_layout, r.w_move_to = 0, 0, 0, nil
+	r.w_shown_build, r.w_measures, r.w_layout, r.w_move_to, r.w_hidden = 0, 0, 0, nil, false
 	r.roots[.External] = 0
 	delete(r.w_title, vs.allocator)
 	r.w_title = strings.clone(title, vs.allocator)
@@ -208,6 +211,29 @@ view_window_size :: proc(vs: ^Views, r: ^View_Record) -> [2]int {
 		size = {(o.width_em > 0 ? o.width_em : DIALOG_WIDTH_EM) * em, (o.height_em > 0 ? o.height_em : VIEW_WINDOW_HEIGHT_EM) * em}
 	}
 	return {max(int(math.round(size.x)), VIEW_WINDOW_MIN.x), max(int(math.round(size.y)), VIEW_WINDOW_MIN.y)}
+}
+
+// `s`, a window that owns views, hides (`shown` false) or shows again: the windows of its views do the same (section
+// 4.1, decision 9). Between two frames; the host's host_hide and host_show call it. A window shown again comes back
+// where it was (where the system keeps places), with its State as it was.
+views_windows_follow :: proc(s: ^State, shown: bool) {
+	if s == nil || s.views_hidden == !shown { return }
+	s.views_hidden = !shown
+	for vs in s.views_attached {
+		for r in vs.records {
+			if r.owner != s || r.w_state == nil || r.w_shown_build == 0 { continue }
+			if !shown && !r.w_hidden && vs.windows.hide != nil {
+				vs.windows.hide(vs.windows.user, r.w_handle)
+				r.w_hidden = true
+			} else if shown && r.w_hidden {
+				vs.windows.show(vs.windows.user, r.w_handle)
+				r.w_hidden = false
+			}
+			// (its own views' windows follow it too)
+			views_windows_follow(r.w_state, shown)
+		}
+	}
+	if shown { s.anim_busy = true }
 }
 
 // The system asked the window of `s` to close (its title bar, Alt+F4, the compositor): the view goes back to its home,
@@ -298,9 +324,8 @@ view_window_header_drag :: proc(vs: ^Views, r: ^View_Record, hb: ^Box, sig: Sign
 	if r.machine.state == .Dragged {
 		if s.active_key[.Left] != hb.key {
 			// released: on a target of the owner, a panel there (this window goes at the next step); else here
-			if place, ok := view_target_at(r.owner, d.owner_at); ok && d.over_owner {
-				view_apply(vs, r, {kind = .Drop, as = .Panel, place = place})
-				view_space_activate(vs, r)
+			if target, ok := view_target_at(r.owner, d.owner_at); ok && d.over_owner {
+				view_target_drop(vs, r, target)
 			} else {
 				view_apply(vs, r, {kind = .Drop, as = .External})
 			}

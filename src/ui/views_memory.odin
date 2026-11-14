@@ -29,7 +29,7 @@ View_Dock_Memory :: struct {
 @(private = "file", rodata)
 VIEW_AS_NAMES := [View_Presentation]string{.Dialog = "dialog", .Panel = "panel", .Internal = "internal", .External = "external"}
 @(private = "file", rodata)
-VIEW_EDGE_NAMES := [View_Edge]string{.Right = "right", .Left = "left", .Bottom = "bottom", .Top = "top"}
+VIEW_EDGE_NAMES := [View_Edge]string{.Right = "right", .Left = "left", .Bottom = "bottom", .Top = "top", .Center = "center"}
 
 // The version of the line's format: a line of another version is ignored.
 @(private = "file") VIEW_MEMORY_VERSION :: "v1"
@@ -44,7 +44,7 @@ views_format :: proc(m: View_Memory, allocator := context.temp_allocator) -> str
 	if m.internal[2] > 0 { fmt.sbprintf(&b, " internal=%d,%d,%d,%d", m.internal[0], m.internal[1], m.internal[2], m.internal[3]) }
 	if m.window != {} { fmt.sbprintf(&b, " window=%dx%d", m.window[0], m.window[1]) }
 	if at, ok := m.at.?; ok { fmt.sbprintf(&b, " at=%d,%d", at.x, at.y) }
-	if d, ok := m.dock.?; ok { fmt.sbprintf(&b, " dock=%s:%s:%.1f", d.place.space, VIEW_EDGE_NAMES[d.place.edge], d.extent_em) }
+	if d, ok := m.dock.?; ok { fmt.sbprintf(&b, " dock=%s:%s:%.1f:%d", d.place.space, VIEW_EDGE_NAMES[d.place.edge], d.extent_em, d.place.stack) }
 	return strings.to_string(b)
 }
 
@@ -106,34 +106,59 @@ views_parse :: proc(text: string) -> (m: View_Memory, ok: bool) {
 			}
 			m.at = at
 		case "dock":
+			// (space:edge:extent[:stack]; a line of three fields is a zone's first stack)
 			parts := strings.split(value, ":", context.temp_allocator)
-			if len(parts) != 3 { return {}, false }
+			if len(parts) != 3 && len(parts) != 4 { return {}, false }
 			d := View_Dock_Memory{place = {space = parts[0]}}
 			found := false
 			for n, e in VIEW_EDGE_NAMES { if n == parts[1] { d.place.edge, found = e, true } }
 			x, xok := strconv.parse_f32(parts[2])
 			if !found || !xok || x < 0 { return {}, false }
 			d.extent_em = x
+			if len(parts) == 4 {
+				k, kok := strconv.parse_int(parts[3], 10)
+				if !kok || k < 0 || k >= VIEW_STACKS_MAX { return {}, false }
+				d.place.stack = k
+			}
 			m.dock = d
 		}
 	}
 	return m, true
 }
 
-// The line of a dock space (key `#<space>`): its zones' extents in ems, a zone of none absent.
+// The most stacks a zone holds (section 6.3: the ranks are made compact before an insertion).
+VIEW_STACKS_MAX :: 8
+
+// What is remembered of a dock space: each zone's extent in ems (0: none yet), the axis its stacks are laid along
+// (nil: the zone's own: .Y at the left, the right and the centre, .X at the top and the bottom), and the share of each
+// stack of its length (0: an equal share; the last stack takes what the others leave).
+View_Space_Memory :: struct {
+	extent: [View_Edge]f32,
+	axis:   [View_Edge]Maybe(Axis),
+	shares: [View_Edge][VIEW_STACKS_MAX]f32,
+}
+
+// The line of a dock space (key `#<space>`): a zone of none absent, a share of 0 absent at the end of its list.
 //
-//   #mission	v1 left=18.0 bottom=12.5
-views_space_format :: proc(extent: [View_Edge]f32, allocator := context.temp_allocator) -> string {
+//   #mission	v1 left=18.0 left.axis=y left.shares=0.400,0.350 bottom=12.5
+views_space_format :: proc(m: View_Space_Memory, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
 	strings.write_string(&b, VIEW_MEMORY_VERSION)
-	for x, e in extent {
-		if x > 0 { fmt.sbprintf(&b, " %s=%.1f", VIEW_EDGE_NAMES[e], x) }
+	for e in View_Edge {
+		name := VIEW_EDGE_NAMES[e]
+		if m.extent[e] > 0 { fmt.sbprintf(&b, " %s=%.1f", name, m.extent[e]) }
+		if a, ok := m.axis[e].?; ok { fmt.sbprintf(&b, " %s.axis=%s", name, a == .X ? "x" : "y") }
+		n := 0
+		for x, i in m.shares[e] { if x > 0 { n = i + 1 } }
+		if n == 0 { continue }
+		fmt.sbprintf(&b, " %s.shares=", name)
+		for i in 0 ..< n { fmt.sbprintf(&b, i == 0 ? "%.3f" : ",%.3f", m.shares[e][i]) }
 	}
 	return strings.to_string(b)
 }
 
-// The extents in a line that views_space_format wrote. ok false: not such a line; a field it does not know is skipped.
-views_space_parse :: proc(text: string) -> (extent: [View_Edge]f32, ok: bool) {
+// The space in a line that views_space_format wrote. ok false: not such a line; a field it does not know is skipped.
+views_space_parse :: proc(text: string) -> (m: View_Space_Memory, ok: bool) {
 	rest := strings.trim_space(text)
 	version, _ := next_word(&rest)
 	if version != VIEW_MEMORY_VERSION { return {}, false }
@@ -142,14 +167,34 @@ views_space_parse :: proc(text: string) -> (extent: [View_Edge]f32, ok: bool) {
 		if !more { break }
 		eq := strings.index_byte(word, '=')
 		if eq <= 0 { return {}, false }
+		key, value := word[:eq], word[eq + 1:]
+		field := ""
+		if dot := strings.index_byte(key, '.'); dot > 0 { key, field = key[:dot], key[dot + 1:] }
 		for n, e in VIEW_EDGE_NAMES {
-			if n != word[:eq] { continue }
-			x, xok := strconv.parse_f32(word[eq + 1:])
-			if !xok || x < 0 { return {}, false }
-			extent[e] = x
+			if n != key { continue }
+			switch field {
+			case "":
+				x, xok := strconv.parse_f32(value)
+				if !xok || x < 0 { return {}, false }
+				m.extent[e] = x
+			case "axis":
+				switch value {
+				case "x": m.axis[e] = .X
+				case "y": m.axis[e] = .Y
+				case:     return {}, false
+				}
+			case "shares":
+				parts := strings.split(value, ",", context.temp_allocator)
+				if len(parts) > VIEW_STACKS_MAX { return {}, false }
+				for p, i in parts {
+					x, xok := strconv.parse_f32(p)
+					if !xok || x < 0 || x >= 1 { return {}, false }
+					m.shares[e][i] = x
+				}
+			}
 		}
 	}
-	return extent, true
+	return m, true
 }
 
 @(private = "file")

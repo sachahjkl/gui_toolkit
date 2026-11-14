@@ -301,6 +301,8 @@ host_present_free :: proc(h: ^Host) -> bool {
 // Takes the window off the screen, its interface kept: the renderer's surface goes first, then the window's (Wayland
 // destroys its surface: platform.hide_window). Make no frame of it until host_show. Not from inside its frame.
 host_hide :: proc(h: ^Host) {
+	// (the windows of its views go with it: made after its frames, they would stay frozen on the screen)
+	ui.views_windows_follow(&h.state, false)
 	if !platform.is_window_visible(h.win) { return }
 	render.surface_scope(&h.shared.r, &h.surface)
 	render.surface_drop(&h.shared.r)
@@ -312,6 +314,8 @@ host_hide :: proc(h: ^Host) {
 host_show :: proc(h: ^Host) {
 	platform.show_window(h.win)
 	h.settle = max(h.settle, h.after_input)
+	// (the windows of its views come back with it, where they were)
+	ui.views_windows_follow(&h.state, true)
 }
 
 // The wait of the frame, on this window's swap chain. (Its own scope: the surface goes back before the input is read.)

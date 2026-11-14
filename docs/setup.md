@@ -18,6 +18,8 @@ d: setup.Dialog
 
 // at a start, in a build: the dialog when there is something to do, unless the user answered already
 if setup.wanted(setup.facts(cfg), APP_VERSION, saved_choice) { setup.open(&d, cfg, logo) }
+// a logo made later (from a task's answer): set_logo, never Dialog.logo itself; shown from the next frame
+setup.set_logo(&d, logo)
 
 // each frame
 switch setup.update(&d, cfg) {

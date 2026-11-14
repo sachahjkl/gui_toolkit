@@ -7,6 +7,7 @@ package tk_setup
 //   d: setup.Dialog                          kept by the program, at a place that does not move while it is open
 //   setup.open(&d, cfg, logo)                at a start when setup.wanted(...), from a menu, from `--setup`: the view
 //                                            "setup" (home Dialog, ui's views) opens in the window being built
+//   setup.set_logo(&d, logo)                 a logo made later (a task's answer): shown from the next frame
 //   ev := setup.update(&d, cfg)              each frame, open or not: the work that ended, the answer of the view
 //   setup.stale(&d)                          the program knows the install may have changed (its window came back)
 //   setup.finish(&d, cfg)                    at the end of the process (what an uninstall left goes then)
@@ -61,7 +62,7 @@ Dialog :: struct {
 	// the view (open): the Views it is in (its window's at `open`), what its build draws with, and the event its buttons gave (update says it)
 	views:     ^ui.Views,
 	options:   Setup_Options,
-	logo:      Maybe(Logo),
+	logo:      Maybe(Logo),        // the view's mark: open's, then set_logo's (the program does not write it)
 	pending:   Event,
 	building:  bool,               // the view's build runs: a close from its buttons ends the view there
 }
@@ -124,6 +125,13 @@ start :: proc(d: ^Dialog, o: Setup_Options) {
 	say(d, true, "")
 	watch_begin(d, o)
 	job_start(d, o, .Read)
+}
+
+// The mark beside the program's name, given or changed after `open` (a program that makes its logo from a task's
+// answer): the view shows it from its next frame. nil: none.
+set_logo :: proc(d: ^Dialog, logo: Maybe(Logo)) {
+	d.logo = logo
+	if s := sync.atomic_load(&d.state); s != nil { s.anim_busy = true }   // (a frame shows it, even a window at rest)
 }
 
 // The install may have changed (the program's own reason: its window came back, a place no watcher sees): read again.

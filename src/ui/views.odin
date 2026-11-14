@@ -166,6 +166,7 @@ View_Record :: struct {
 	w_win:         ^platform.Window,
 	w_handle:      rawptr,
 	w_want:        bool,      // a window is wanted and not open yet
+	w_hidden:      bool,      // its owner hid: the window is off the screen until the owner shows (views_windows_follow)
 	w_close:       bool,      // the window goes at the next step
 	w_shown_build: u64,       // the window State's build when it was shown (0: not shown yet)
 	w_measures:    int,       // its unseen layouts
@@ -302,7 +303,7 @@ view_open_raw :: proc(vs: ^Views, id: string, data: rawptr, type: typeid, instan
 		if d, ok := m.dock.?; ok {
 			// (the memory's text is temporary: a space is kept by a name owned elsewhere, the kind's or a space's; a
 			// space never built in this run is the frame's)
-			place.edge = d.place.edge
+			place.edge, place.stack = d.place.edge, d.place.stack
 			place.space = ""
 			if d.place.space == k.o.home_place.space {
 				place.space = k.o.home_place.space
@@ -388,6 +389,7 @@ view_title :: proc(v: ^View, title: string) {
 	context.allocator = r.allocator
 	delete(r.title)
 	r.title = strings.clone(title)
+	if r.vs != nil { r.vs.version += 1 }   // (the palette's commands say the title: views_commands_update)
 	gs().anim_busy = true
 }
 

@@ -167,6 +167,28 @@ the_window_s_close_and_escape_close_the_view :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.answers[1], ui.VIEW_CANCELLED)
 }
 
+// The owner hides (papier hides instead of quitting): its view's window goes off the screen with it, and comes back
+// with it, the same window at the same place, the view still External.
+@(test)
+a_view_s_window_follows_its_owner :: proc(t: ^testing.T) {
+	r: Ext
+	defer ext_end(&r)
+	r.want = "ask"
+	s := ext_start(t, &r, first = .External)
+	w := shown_as_window(s, &r)
+	if w == nil { return }
+	at := platform.client_origin(w.win)
+	session.hide(s)
+	testing.expect(t, !session.window_shown(w), "hidden with its owner")
+	testing.expect(t, session.view_window(s, &r.views, "ask") == w, "the same window, kept")
+	session.frames(s, 4)
+	testing.expect(t, !session.window_shown(w), "still hidden: nothing shows it while its owner is hidden")
+	session.show(s)
+	testing.expect(t, session.window_shown(w), "back with its owner")
+	testing.expect_value(t, platform.client_origin(w.win), at)
+	testing.expect_value(t, ui.view_presentation(&r.views, "ask"), ui.View_Presentation.External)
+}
+
 // No window can open: a view that opens as External floats inside its owner, and the owner says why.
 @(test)
 a_refused_window_floats_and_says_so :: proc(t: ^testing.T) {

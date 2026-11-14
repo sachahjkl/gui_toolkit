@@ -22,7 +22,29 @@ Windows_Options :: struct {
 // The backend of the views' windows of the application of `s` (one of `start`).
 view_windows :: proc(s: ^Session, o := Windows_Options{}) -> ui.View_Windows {
 	s.windows_o = o
-	return {open = window_open, show = window_show, close = window_close, no_positions = o.no_positions, user = s}
+	return {open = window_open, show = window_show, hide = window_hide, close = window_close, no_positions = o.no_positions, user = s}
+}
+
+// The application hides its window (as host_hide: papier hides instead of quitting), or shows it again: the windows of
+// its views follow it (ui.views_windows_follow).
+hide :: proc(s: ^Session) {
+	if s.parent != nil { return }
+	ui.views_windows_follow(s.state, false)
+	s.hidden = true
+	frames(s, INPUT_FRAMES)
+}
+
+show :: proc(s: ^Session) {
+	if s.parent != nil { return }
+	s.hidden = false
+	ui.views_windows_follow(s.state, true)
+	frames(s, INPUT_FRAMES)
+}
+
+@(private = "file")
+window_hide :: proc(user: rawptr, handle: rawptr) {
+	c := (^Session)(handle)
+	c.hidden = true
 }
 
 // The session of the window a view is in now (nil: it is in none).

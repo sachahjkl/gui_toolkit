@@ -434,6 +434,7 @@ State :: struct {
 	views_frame_build: u64,              // the build whose views_frame built the internal windows (end_build does not)
 	views_space_stack: [dynamic]bool,    // views_frame and views_dock being built: did each push the content's box?
 	view_keys_root: Key,                 // a panel's or an internal window's body being built: its keys only while the focus is under it
+	views_hidden: bool,                  // the window is hidden: its views' windows are too (views_windows_follow)
 	modals_open:  [dynamic]Modal_Open,   // the dialogs of the last build, bottom to top (modal_phase)
 	modals_built: [dynamic]Modal_Open,   // and of this one
 	modal_stack:  [dynamic]Modal_Scope,  // the modals being built (modal_end)

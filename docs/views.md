@@ -109,7 +109,8 @@ again.
 | `views_hold_keys(vs)` | a dialog of `vs` holds the keys of the State being built |
 | `views_frame(vs)`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels) |
 | `views_commands(vs, allocator) -> (commands, acts)`, `views_command_run(vs, act)`, `views_version(vs)` | the palette's commands of the views |
-| `views_space_format(extent)`, `views_space_parse(text)` | a dock space's line of the memory |
+| `views_space_format(m)`, `views_space_parse(text) -> (View_Space_Memory, ok)` | a dock space's line of the memory |
+| `views_windows_follow(s, shown)` | the windows of the views of `s` hide and show with it (host_hide, host_show call it) |
 | `views_set_windows(vs, w)`, `views_windows_ready(vs)`, `view_window_state(vs, id, instance)` | the backend of the views' windows (section External) |
 | `views_windows_step(s)`, `views_window_build()`, `view_window_close_asked(s)` | a backend's part: between frames, a window's build, its system close |
 | `state_carry(from, from_root, to, to_root)`, `style_follow(dst, src)` | what follows a view to another place; a window's settings from the main one |
@@ -205,9 +206,14 @@ ui.views_set_windows(&app.views, session.view_windows(s))        // a test (docs
 - A view opened from an external view's build has that window for owner: its dialogs show over the window.
 - `view_window_state(vs, id, instance)`: the State of its window (nil: none).
 
+- **It follows its owner.** A program that hides its main window (`host_hide`; papier hides instead of quitting)
+  hides its views' windows with it, and `host_show` shows them again where they were (Wayland: where the compositor
+  puts them). While the owner is hidden, a window that settles waits to show with it.
+
 A backend of your own (a program with its own loop) implements `View_Windows`: `open(user, ask) -> (state, win,
 handle)` makes a hidden window and a State whose builds call `ui.views_window_build()`; `show` puts it on the screen;
-`close` ends it (never from inside its frame); its system close calls `ui.view_window_close_asked(state)`; after each
+`hide` takes it off, its State kept; `close` ends it (never from inside its frame); when the owner hides or shows it
+calls `ui.views_windows_follow(owner, shown)`; its system close calls `ui.view_window_close_asked(state)`; after each
 frame of an owner it calls `ui.views_windows_step(owner)` then frames the windows.
 
 ## Panels
@@ -227,12 +233,17 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
 ```
 
 - A space has four zones, one per edge, around its centre. `views_frame(vs)` is the window's frame (the space `""`);
-  `views_dock(vs, name, {content = true})` is a space in the program's layout, the block its centre. A zone with no
-  panel is not built: a frame with no panel costs one box around the content.
+  `views_dock(vs, name, {content = true})` is a space in the program's layout, the block its centre;
+  `views_dock(vs, name, {})` has no content: its centre is a fifth zone, `.Center` (Mission Control's main area). A
+  zone with no panel is not built: a frame with no panel costs one box around the content.
+- A zone holds one stack or several in a row along its axis: one above the other at the left, the right and the
+  centre, side by side at the top and the bottom (the first split of a zone's one stack may choose the other). A
+  handle between two stacks moves their share of the zone. A view's place says its stack: `View_Place.stack`, its
+  rank in the zone (0 first; the ranks stay compact as stacks empty).
 - `views_frame` builds the panels and the internal windows before the content, so they read their keys first; it is
   where F6 is read. A program without `views_frame` still has its dialogs and its internal windows; its panels wait.
-- A panel alone in its zone adds nothing: no tab strip, no border, no background (rule 1). Two panels or more in a
-  zone are tabs of one stack: a click shows one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out
+- A panel alone in its stack adds nothing: no tab strip, no border, no background (rule 1). Two panels or more in a
+  stack are its tabs: a click shows one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out
   as an internal window under the pointer.
 - On the hover of a panel's top area (`VIEW_HOVER_EM`), two icons show at its top right, in the weak colour: Float
   (an internal window) and Close. A right click there opens its menu.
@@ -249,24 +260,41 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
 ### Drops
 
 While a view is dragged (a dialog's header, an internal window's header, a panel's tab or title), each space built in
-that frame shows four squares, at the middle of its edges; the one under the pointer lights up with the preview of the
-zone. Let go over a square, the view docks there; elsewhere it is an internal window where it is. Escape puts it back
-where it was. The squares show only during a drag.
+that frame shows four squares, at the middle of its edges (a fifth at its centre, for a space without content whose
+centre is empty). Over a stack, a cross shows at its middle: its centre square makes the view a tab of that stack; its
+side squares split it, the view in a new stack before or after it (along the zone's axis; the four sides while the
+zone has one stack, the side chosen setting the axis). An edge square of a zone that exists makes the view a tab of
+its first stack. The square under the pointer lights up with the preview of where the view would go. Let go over a
+square, the view docks there; elsewhere it is an internal window where it is. Escape puts it back where it was. The
+squares show only during a drag. A zone holds `VIEW_STACKS_MAX` (8) stacks at most.
 
 ### The palette's commands
 
 ```odin
-commands, acts := ui.views_commands(&app.views)          // temporary memory: make them again when views_version changes
-ui.palette_set(&app.palette, commands, nil, {...})
-if c, ok := ui.palette_chosen(&app.palette); ok && c >= first_view_command { ui.views_command_run(&app.views, acts[c - first_view_command]) }
+// each frame: made again only when the views changed (views_version) or the language did
+if ui.views_commands_update(&app.view_cmds, &app.views) || app.table_changed {
+	app.table = append_both(app.own_commands, app.view_cmds.commands)   // the program's own first: their slots stay
+	ui.palette_set(&app.palette, app.table[:], app.disabled[:], {version = app.own_version << 32 | app.view_cmds.serial})
+}
+if c, _, ok := ui.palette_chosen(&app.palette); ok {
+	if c >= len(app.own_commands) { ui.views_command_run(&app.views, app.view_cmds.acts[c - len(app.own_commands)]) } else { run(app, c) }
+}
+// at the end: ui.views_commands_destroy(&app.view_cmds)
 ```
+
+What it costs: `views_commands_update` is one comparison per frame, and one pass over the open views when they changed
+(an opening, a close, a move, a new title). `palette_set` keeps the table (a slice the palette holds while it is open:
+not temporary memory) and copies `disabled` and the options. The palette ranks its list again only while it is open
+and its version, its count or its query changed; each slot's text is folded once and kept, so with the program's own
+commands first, a change of the views' commands folds only theirs. `views_commands(vs, allocator)` is the same list in
+memory of the caller's.
 
 `views_commands(vs, allocator)` gives a `Command` per act of each open view, in the language in use: "Open <title> in
 a window" (with a backend of windows), "Float <title>",
 "Dock <title> to the left", "... to the right", "... to the bottom" (when the owner window builds `views_frame`),
 "Re-attach <title>" (not at home), "Close <title>". An act that does nothing where the view is is absent. `acts[i]`
 says what `commands[i]` does: `views_command_run(vs, acts[i])` does it (nothing when its view closed since).
-`views_version(vs)` changes when a view opens, closes or moves.
+`views_version(vs)` changes when a view opens, closes, moves or changes its title.
 
 ## The header's menu
 
@@ -296,16 +324,19 @@ sidebar	v1 as=panel open=1 dock=:left:18.0
 | `open` | it was open when the program quit | `views_destroy` |
 | `dialog` | the dialog's size in ems | its grip is let go |
 | `internal` | the internal window's rect | a move or a resize is let go |
-| `dock` | the panel's place (`<space>:<edge>`) | it docks (a drop, a menu, a command) |
+| `dock` | the panel's place (`<space>:<edge>:<extent>:<stack>`) | it docks (a drop, a menu, a command), another view's split moves its stack |
 | `window` | the external window's size, logical pixels | its window closes |
 | `at` | the external window's outer top left, physical pixels | its window closes (where `positions_known`) |
 
-A dock space has a line of its own, under `#<space>` (`#` for the window's frame): the extent of each zone in ems,
-written when its handle is let go (`views_space_format`, `views_space_parse`):
+A dock space has a line of its own, under `#<space>` (`#` for the window's frame): the extent of each zone in ems, its
+axis, and the share of each of its stacks but the last, written when a handle is let go or a drop splits a stack
+(`views_space_format(View_Space_Memory)`, `views_space_parse(text) -> (View_Space_Memory, ok)`):
 
 ```
-#	v1 left=18.0 bottom=12.5
+#	v1 left=18.0 left.axis=y left.shares=0.400 bottom=12.5
 ```
+
+A view's `dock` field is `<space>:<edge>:<extent>:<stack>` (`center` for the centre zone of a space without content).
 
 An absent field is the default of `View_Options`. A line that does not parse is ignored. Instances share their id's
 line. The store writes on its own thread: no disk call runs on the interface's thread after `views_init`.

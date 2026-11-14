@@ -84,6 +84,25 @@ wait_event :: proc(s: ^session.Session) {
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return (^App)(s.user).event != .None }, "the event")
 }
 
+// A logo given after open (made from a task's answer): the view shows it from then on. (No renderer: the mark is a box
+// whose drawing is not read here.)
+@(test)
+a_logo_given_after_open_shows :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	app.cfg = {identity = desktop.Identity{name = "Sample", vendor = "Someone"}, version = "1.0.0"}
+	app.d.open, app.d.known = true, true
+	app.d.facts = {state = .Not_Installed}
+	app.opening = true
+	s := session.start(t, {size = {900, 640}, user = &app, build = app_build, no_renderer = true})
+	session.wait_box(s, "setup_scroll")
+	testing.expect(t, session.find(s, "setup_logo") == nil, "no mark yet")
+	setup.set_logo(&app.d, setup.Logo{size = {64, 64}})
+	session.wait_box(s, "setup_logo")
+	setup.set_logo(&app.d, nil)
+	session.wait_gone(s, "setup_logo")
+}
+
 @(test)
 not_installed_offers_install_and_standalone :: proc(t: ^testing.T) {
 	app: App

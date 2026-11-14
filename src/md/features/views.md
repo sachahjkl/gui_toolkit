@@ -752,6 +752,13 @@ View_Window_Ask :: struct { title: string, size: [2]int, at: Maybe([2]int), owne
    screen's) where `positions_known`.
 8. **Its dialogs are its window's.** A view opened during an external view's build has that window's State for owner
    (`view_open`'s rule): a question asked from the window shows over the window.
+9. **A view's window follows its owner.** A program that hides its main window (papier hides it instead of closing
+   it) makes no frames of it, so no step and no frame of its views' windows: one left on the screen would be frozen.
+   `views_windows_follow(owner, shown)` hides the windows of the views it owns when it hides, and shows them again
+   when it shows (where they were: Windows and X11 keep the place, Wayland's compositor places them anew). The host's
+   `host_hide` and `host_show` call it; the test session's `hide` and `show` too. While its owner is hidden, a window
+   whose layout settles is not shown: it waits for the owner. The backend's `hide(user, handle)` takes it off the
+   screen, its State kept.
 
 `src/host/views.odin` implements it:
 
@@ -885,9 +892,21 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 bottom), around its content. Each zone is one stack of views. The first plan laid out a `Dock` (`dock_model.odin`)
 with the content as a fixed leaf. Refused: a dock leaf always draws its tab strip and its menu button (rule 1 forbids
 both for a lone panel), its drags know only its own tabs (a dialog or an internal window dropped on it must dock), and
-it has no fixed leaf. A zone has what the chrome rules need and nothing else. Two stacks on one edge (a split inside a
-zone) are not offered; they come with a program that needs them. The `Dock` widget stays for a program's own docking
-inside a view (Wren's developer tools).
+it has no fixed leaf. A zone has what the chrome rules need and nothing else. The `Dock` widget stays for a program's
+own docking inside a view (Wren's developer tools).
+
+**Splits inside a zone (after papier, before inspecteur's Mission Control).** A zone holds one stack or several, in a
+row along its axis: one above the other (`.Y`, the left, right and centre zones by default) or side by side (`.X`,
+the top and bottom zones by default). Each stack has its own tabs (none for a lone view: rule 1 holds per stack), and a
+`splitter` between two stacks. A view's place says its stack: `View_Place.stack`, a rank in its zone. Refused: a tree
+of splits in a zone (any split in any direction). A row along one axis is what Mission Control's eight panels need
+(a column at the left, a row at the bottom, a column in the centre), it keeps the targets few, and its memory is a
+list of shares. A zone's axis is set by the first split of its one stack; with two stacks or more only that axis
+splits it.
+
+**A space without content has a centre zone.** `views_dock(vs, name, {})` (no `content`) lays out a fifth zone,
+`.Center`, which fills what the edges leave: its views are the space's main area (Mission Control). A space with
+content (the frame, `{content = true}`) has none: its centre is the program's.
 
 `views_frame` does this, in order:
 
@@ -915,7 +934,7 @@ on the last layout, as in any layout.
 inspecteur's Services section (`"services"`, with the list of services as its content). A view whose home place
 names a space docks there. A space that is not built in a frame does not build its panels: they stay Shown and keep
 their state, drawn nowhere, until it is built again (section 8.2, decision 2). Without `content`, the centre of the
-space is empty.
+space is its `.Center` zone (empty until a view docks there).
 
 A view docked in a space can be dragged to another space or to the frame's edges. Its home place does not change.
 
@@ -926,13 +945,19 @@ A view docked in a space can be dragged to another space or to the frame's edges
   `width_em` (left, right) or `height_em` (top, bottom), else `VIEW_ZONE_EM`.
 - The handle between a zone and the content is a `splitter`. The content keeps `DOCK_MIN_EM` at least. Its extent is
   written when the handle is let go (`Splitter_Result.finished`).
-- The view's own line keeps its place (`dock=<space>:<edge>:<extent>`).
+- The stacks of a zone share its length: each stack but the last has a share (a fraction of the zone's length), the
+  last takes the rest; a handle between two stacks moves the share of the one before it. The space's line keeps each
+  zone's axis and shares: `v1 left=18.0 left.axis=y left.shares=0.400,0.350` (`views_space_format(View_Space_Memory)`).
+- The view's own line keeps its place (`dock=<space>:<edge>:<extent>:<stack>`; a line of three fields is stack 0).
+- A stack inserted before others moves their ranks up by one: the places of the views there change, and their lines
+  are written again. The ranks are made compact (0, 1, 2...) before each insertion, so a zone has at most
+  `VIEW_STACKS_MAX` (8) stacks.
 
 ### 6.4 Several panels
 
-- Views at different places: each has its zone. A view alone in its zone has no tab strip and no border (section 2.5,
-  rule 1): its body's first box starts at the zone's top edge.
-- Views at the same place: tabs of one stack. The tab strip appears with the second view. The tab shown is the last
+- Views at different places: each has its stack. A view alone in its stack has no tab strip and no border (section
+  2.5, rule 1): its body's first box starts at the stack's top edge.
+- Views at the same place (zone and stack): tabs of one stack. The tab strip appears with the second view. The tab shown is the last
   one opened, docked or clicked. A tab dragged past `DOCK_DRAG_EM` leaves the zone as an internal window under the
   pointer.
 - A lone panel moves by its title when the program marks its title box (`view_drag_handle(v, box)`); one without shows
@@ -941,9 +966,13 @@ A view docked in a space can be dragged to another space or to the frame's edges
 ### 6.4b Drops
 
 While any view of a State is dragged (a dialog's header, an internal window's header, a panel's tab or title), each
-space built this frame shows four targets, one square at the middle of each edge, and the preview of the zone it
-would land in. Released over a target, the view becomes a Panel there (`Drop`); released elsewhere, it stays an
-internal window. The targets show only during a drag. This is step 3: a drop on a dock target is in the first version.
+space built this frame shows four targets, one square at the middle of each edge (a fifth at its centre, in a space
+without content whose centre zone is empty), and the preview of the zone it would land in. Over a stack, a cross of
+squares shows at its middle: the centre one makes the view a tab of that stack; the ones on its sides split it, the
+view in a new stack before or after it (along the zone's axis; the four sides when the zone has one stack, the side
+chosen setting the axis). An edge square of a zone that exists makes the view a tab of its first stack. Released over
+a target, the view becomes a Panel there (`Drop`); released elsewhere, it stays an internal window. The targets show
+only during a drag.
 
 ### 6.5 A panel's keys share the main window
 
@@ -964,6 +993,11 @@ Ctrl+W closes a panel or an internal window that has the focus. F6 and Shift+F6,
 to the first stop of the next or the previous area: the content, each zone, each internal window.
 
 ### 6.6 The palette's commands
+
+A palette holds its table while it is open, so the views' commands live in memory of their own:
+`views_commands_update(&vc, vs)` makes them again only when `views_version` (an opening, a close, a move, a title) or
+the language changed, and its `serial` goes into the palette's version. The program puts its own commands first: the
+palette folds each slot's text once, so only the views' slots are folded again.
 
 `views_commands(vs)` gives a `Command` per act of each open view, in the language in use: "Open <title> in a window"
 (with a backend of windows), "Float <title>", "Dock
