@@ -9,6 +9,7 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
+import i18n "../../src/i18n"
 import "../../src/platform"
 import store "../../src/store"
 import "../../src/testkit/session"
@@ -38,6 +39,7 @@ Dock :: struct {
 	frame_o:    ui.View_Dock_Options,   // what views_frame is given (its zones' extents at first)
 	side_cover: int,               // the floating views over the panel "side", as its last build saw them (view_occluders)
 	terms:      int,               // the terminals the "+" asked for (term_new)
+	later:      bool,              // term_new only asks: the test opens the instance frames later (a server's answer)
 	hug_w:      f32,               // the width "hug" asks for this opening (view_size), in ems
 }
 
@@ -88,6 +90,7 @@ term_view :: proc(v: ^ui.View, r: ^Dock) {
 term_new :: proc(data: rawptr) {
 	r := (^Dock)(data)
 	r.terms += 1
+	if r.later { return }
 	ui.view_open(&r.views, "term", r, fmt.tprintf("t%d", r.terms))
 }
 
@@ -573,6 +576,72 @@ the_strip_of_a_terminal :: proc(t: ^testing.T) {
 		ui.views_command_run(&r.views, acts[found])
 		wait_built(s, "view_panel_view_term/t2")
 	}
+}
+
+// A "+" whose new_tab answers later (a shell a server makes): the instance opened frames after the click joins the
+// stack clicked, not where its kind's memory says. One that comes after NEW_TAB_WAIT_MS opens where the memory says.
+@(test)
+a_new_tab_that_comes_later_joins_its_stack :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "term")
+	if wait_built(s, "view_panel_view_term") == nil { return }
+	// (another terminal moved to the right: the kind's memory says the right from now on)
+	ui.view_open(&r.views, "term", &r, "a", owner = s.state)
+	session.frames(s, 2)
+	ui.view_present(&r.views, "term", .Panel, {edge = .Right}, "a")
+	if wait_built(s, "view_panel_view_term/a") == nil { return }
+	session.frames(s, 2)
+	bottom_plus :: proc(s: ^session.Session) -> ^ui.Box {
+		zone := session.find(s, "view_zone_Bottom")
+		return zone != nil ? session.find(s, "view_new_tab", within = zone) : nil
+	}
+	plus := bottom_plus(s)
+	if plus == nil { testing.expect(t, false, "the bottom stack's +"); return }
+	r.later = true
+	session.click_at(s, session.center(plus))
+	session.frames(s, 5)
+	testing.expect_value(t, r.terms, 1)
+	testing.expect(t, !ui.view_is_open(&r.views, "term", "t1"), "not open yet: the server answers later")
+	ui.view_open(&r.views, "term", &r, "t1", owner = s.state)
+	if wait_built(s, "view_panel_view_term/t1") == nil { return }
+	session.frames(s, 2)
+	zone := session.find(s, "view_zone_Bottom")
+	testing.expect(t, zone != nil && session.find(s, "view_tab_view_term/t1", within = zone) != nil, "it joined the stack clicked")
+
+	// too late: where the memory says (the right)
+	plus = bottom_plus(s)
+	if plus == nil { return }
+	session.click_at(s, session.center(plus))
+	session.advance(s, ui.NEW_TAB_WAIT_MS + 100)
+	ui.view_open(&r.views, "term", &r, "t2", owner = s.state)
+	if wait_built(s, "view_panel_view_term/t2") == nil { return }
+	session.frames(s, 2)
+	zone = session.find(s, "view_zone_Bottom")
+	testing.expect(t, zone == nil || session.find(s, "view_tab_view_term/t2", within = zone) == nil, "after the wait: not in that stack")
+	testing.expect(t, ui.view_presentation(&r.views, "term", "t2") == .Panel && session.find(s, "view_tab_view_term/t2", within = session.find(s, "view_zone_Right")) != nil, "where the memory says")
+}
+
+// The program's words are translated when shown: a language changed during the session shows in the palette's "New
+// terminal" at once (new_tab_label), and in the views' own words.
+@(test)
+the_words_follow_the_language :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "term")
+	if wait_built(s, "view_panel_view_term") == nil { return }
+	label :: proc(r: ^Dock) -> string {
+		commands, acts := ui.views_commands(&r.views)
+		for a, i in acts { if a.act == .New_Tab { return commands[i].label } }
+		return ""
+	}
+	testing.expect_value(t, label(&r), "New terminal")
+	l, _ := i18n.load("fr", {{"fr", "language fr\n\nen New terminal\nfr Nouveau terminal\n\nen Terminal\nfr Console\n"}})
+	defer { i18n.use(nil); i18n.destroy(l) }
+	i18n.use(l)
+	session.frames(s, 2)
+	testing.expect_value(t, label(&r), "Nouveau terminal")
+	testing.expect(t, session.find_text(s, "Console") != nil, "the tab's title, translated")
 }
 
 // Maximise: the stack fills the dock space, the content is not seen; again restores. Minimise: the zone is its strip

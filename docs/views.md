@@ -308,9 +308,14 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   shown view (`view_header_tools`); then at the right end Minimise (zones at the top and the bottom), Maximise and
   Close of the stack, drawn as a window's caption buttons. A panel with a strip has no hover icons.
   - `View_Options.new_tab: proc(data: rawptr)`: the "+" calls it with the shown view's data; the program opens a new
-    instance (`view_open` with a name of its own). Every instance of that kind opened during the call joins the stack,
-    its tab last and shown. The same act is the first item of the band's menu and a palette command, in the words of
-    `new_tab_label` ("New terminal"; "": "New tab").
+    instance (`view_open` with a name of its own), at once or later (a shell a server makes). Each "+" leaves the
+    stack waiting for one instance of that kind: the next one that opens within `NEW_TAB_WAIT_MS` (10 s) joins the
+    stack, its tab last and shown. Later than that, or when that stack is gone, it opens where its memory says. The
+    same act is the first item of the band's menu and a palette command, in the words of `new_tab_label` ("New
+    terminal"; "": "New tab").
+  - The words of `View_Options` (`title`, `new_tab_label`) and of `Views_Options.labels` are the program's source
+    words (English, `i18n.later`): the toolkit translates them when it shows them, so a change of language during the
+    session shows at the next build.
   - **Maximise**: the stack fills the dock space; the other zones are not built and the program's content is laid out
     at no size (still built: its state is kept). Maximise again, or Escape with the focus in it, restores. Not
     remembered across runs. `views_space_maximised(vs, name) -> (edge, stack, ok)` says which.

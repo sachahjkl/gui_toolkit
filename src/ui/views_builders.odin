@@ -736,47 +736,70 @@ view_float :: proc(vs: ^Views, r: ^View_Record) {
 view_labels :: proc(vs: ^Views) -> View_Labels {
 	d := view_default_labels()
 	l := vs.labels
-	if l.detach == "" { l.detach = d.detach }
-	if l.close == "" { l.close = d.close }
-	if l.reattach == "" { l.reattach = d.reattach }
-	if l.close_view == "" { l.close_view = d.close_view }
-	if l.window == "" { l.window = d.window }
-	if l.floating == "" { l.floating = d.floating }
-	if l.dock_left == "" { l.dock_left = d.dock_left }
-	if l.dock_right == "" { l.dock_right = d.dock_right }
-	if l.dock_bottom == "" { l.dock_bottom = d.dock_bottom }
-	if l.minimize == "" { l.minimize = d.minimize }
-	if l.maximize == "" { l.maximize = d.maximize }
-	if l.restore == "" { l.restore = d.restore }
-	if l.close_stack == "" { l.close_stack = d.close_stack }
-	if l.new_tab == "" { l.new_tab = d.new_tab }
+	// (a word the program gave is its source word, translated now: a language changed during the session shows at once;
+	// one left empty is the toolkit's)
+	word :: proc(w: ^string, d: string) { w^ = w^ == "" ? d : i18n.tr(w^) }
+	word(&l.detach, d.detach)
+	word(&l.close, d.close)
+	word(&l.reattach, d.reattach)
+	word(&l.close_view, d.close_view)
+	word(&l.window, d.window)
+	word(&l.floating, d.floating)
+	word(&l.dock_left, d.dock_left)
+	word(&l.dock_right, d.dock_right)
+	word(&l.dock_bottom, d.dock_bottom)
+	word(&l.minimize, d.minimize)
+	word(&l.maximize, d.maximize)
+	word(&l.restore, d.restore)
+	word(&l.close_stack, d.close_stack)
+	word(&l.new_tab, d.new_tab)
 	return l
 }
 
-// The words of a kind's "+" (its new_tab_label, else the labels' new_tab).
+// The words of a kind's "+" (its new_tab_label, else the labels' new_tab), in the language in use now: the program's
+// source words, translated when shown.
 @(private)
 view_new_tab_label :: proc(vs: ^Views, k: ^View_Kind) -> string {
-	return k.o.new_tab_label != "" ? k.o.new_tab_label : view_labels(vs).new_tab
+	return k.o.new_tab_label != "" ? i18n.tr(k.o.new_tab_label) : view_labels(vs).new_tab
 }
 
-// A new tab of `r`'s kind, by the program's new_tab: each instance of that kind it opens joins `r`'s stack (a panel),
-// its tab last and shown. Elsewhere it opens where its memory says.
+// How long a "+" waits for the instance its new_tab asked for (a shell a server makes): an instance of that kind
+// opened later than this opens where its memory says, not in that stack (the user may have gone elsewhere since).
+NEW_TAB_WAIT_MS :: 10_000
+
+// A new tab of `r`'s kind, by the program's new_tab. When `r` is a panel, its stack waits for it: the next instance of
+// that kind that opens, during the call or frames later (a server's answer), within NEW_TAB_WAIT_MS, joins that stack,
+// its tab last and shown (view_open, view_new_tab_take). Each "+" awaits one instance.
 @(private)
 view_new_tab :: proc(vs: ^Views, r: ^View_Record) {
 	k := r.kind
 	if k.o.new_tab == nil { return }
-	before := make(map[^View_Record]bool, len(vs.records), context.temp_allocator)
-	for x in vs.records { if x.machine.state != .Closed { before[x] = true } }
-	place, docked := r.machine.place, view_builds_panel(r.machine)
-	k.o.new_tab(r.data)
-	for x in vs.records {
-		if x.kind != k || x in before || x.machine.state != .Opening { continue }
-		if docked {
-			view_apply(vs, x, {kind = .Present, as = .Panel, place = place})
-			view_space_activate(vs, x)
-		}
+	if view_builds_panel(r.machine) && r.owner != nil {
+		now := clock_ms(r.owner)
+		if k.tab_wanted > 0 && (now > k.tab_until || k.tab_place != r.machine.place) { k.tab_wanted = 0 }
+		k.tab_place, k.tab_until = r.machine.place, now + NEW_TAB_WAIT_MS
+		k.tab_wanted += 1
 	}
+	k.o.new_tab(r.data)
 	if r.owner != nil { r.owner.anim_busy = true }
+}
+
+// view_open of a new instance `r` of `k`: whether a "+" awaits it (in time, its stack still there). Either way, an
+// instance that opens takes one of the "+" awaited (one "+", one tab).
+@(private)
+view_new_tab_take :: proc(vs: ^Views, k: ^View_Kind, r: ^View_Record, now: f64) -> bool {
+	if k.tab_wanted <= 0 { return false }
+	if now > k.tab_until {
+		k.tab_wanted = 0
+		return false
+	}
+	k.tab_wanted -= 1
+	// (its stack: an open panel of this Views there; one closed meanwhile leaves nothing to join)
+	for x in vs.records {
+		if x == r || x.machine.state == .Closed || !view_builds_panel(x.machine) { continue }
+		if x.machine.place == k.tab_place { return true }
+	}
+	return false
 }
 
 // The side of a header's small icons (Detach, Re-attach, Close of an internal window), in ems: smaller than the close

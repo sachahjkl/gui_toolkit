@@ -445,10 +445,19 @@ draws, except the header that a dialog always had. The rules:
    caption buttons (one builder, `caption_row`, for both). Refused: the moves at the far right (the eye is on the tabs;
    the right end is the stack's own, as a window's is).
    - **"+"** calls `View_Options.new_tab(data)` with the shown view's data: the program opens a new instance
-     (`view_open` with a new name). Every instance of that kind opened during the call goes to this stack, its tab
-     last (after the others: where the "+" was) and shown. The same act is the first item of the band's menu and a
+     (`view_open` with a new name), often later (ocn asks a server for a shell; it answers frames later). So the "+"
+     leaves its stack waiting (`View_Kind.tab_place`, `tab_wanted`, `tab_until`): the next instance of that kind that
+     opens, during the call or after it, within `NEW_TAB_WAIT_MS` (10 s), joins this stack, its tab last (where the
+     "+" was) and shown. One "+", one instance: each opening takes one. Later than the bound, or when that stack is
+     gone, it opens where its memory says. Why a time and not "until the user does something else with the stack": a
+     click elsewhere does not make the shell asked for less wanted there, and no act of the user's says the request is
+     abandoned; a time does, for a server that never answers (its instance, opened a minute later from elsewhere,
+     must not jump into a stack). The same act is the first item of the band's menu and a
      palette command ("New terminal": `new_tab_label`, else "New tab"), for each kind with `new_tab` that has a view
      open. Refused: the toolkit making the instance's name or data (the program's: a shell's id).
+   - **Words are the program's source words**: `title`, `new_tab_label` and `Views_Options.labels` are kept as given
+     (English, `i18n.later`) and translated when shown, at each build. Refused: translating at registration (the
+     words stayed in the language of the start).
    - **Maximise**: the stack takes the whole dock space for a while: the other zones are not built, the program's
      content is laid out at no size (built, its state kept, not seen). Maximise again, or Escape with the focus in it,
      restores. Not remembered across runs: a program that starts with its content hidden looks broken.

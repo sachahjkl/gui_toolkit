@@ -53,7 +53,8 @@ View_Options :: struct {
 	// (view_open with a new name); `data` is the shown view's. Every instance of this kind opened during the call joins
 	// that stack, its tab last and shown. nil: no "+"
 	new_tab:        proc(data: rawptr),
-	new_tab_label:  string,                     // the menu's and the palette's words ("New terminal"; "": "New tab")
+	new_tab_label:  string,                     // the menu's and the palette's words, in English as `title` ("New terminal",
+	                                            // i18n.later: translated when shown); "": "New tab"
 	resizable:      bool,                       // the dialog has grips; its size is remembered
 	top:            Maybe(f32),                 // the dialog's top at this fraction of the window (a palette); nil: centred
 	no_header:      bool,                       // the build draws the top itself (a palette's search band): no header strip
@@ -75,7 +76,8 @@ View :: struct {
 // The build procedure as the registry keeps it. It builds the body only: the header is the toolkit's.
 View_Build :: #type proc(v: ^View, data: rawptr)
 
-// The words of the views' header and menus (a word left empty: view_default_labels', in the language in use).
+// The words of the views' header and menus (a word left empty: view_default_labels', in the language in use). The
+// program gives its source words (English, i18n.later): they are translated when shown, at each build.
 View_Labels :: struct {
 	detach, close, reattach: string,   // detach: the Detach icon's name; reattach: back to its home
 	close_view:              string,   // an external window's Close button (its system close re-attaches)
@@ -125,6 +127,11 @@ View_Kind :: struct {
 	type:  typeid,
 	o:     View_Options,   // its strings owned
 	opened: bool,          // opened in this run (views_destroy writes its line, view_restore)
+	// its "+" (view_new_tab): the stack the next instances opened join, how many are still awaited, until when (the
+	// owner's clock, ms)
+	tab_place:  View_Place,
+	tab_wanted: int,
+	tab_until:  f64,
 	// a ready-made view of the toolkit's whose answer is the toolkit's (the file browser: no program polls view_ended):
 	// called when it ends by its own build or by the person (End, User_Close), its answer taken
 	on_end: proc(data: rawptr, code: int),
@@ -335,7 +342,10 @@ view_register_raw :: proc(vs: ^Views, id: string, build: View_Build, type: typei
 	assert(o.home == .Dialog || o.home == .Panel, "view_register: the home is a Dialog or a Panel")
 	k := new(View_Kind)
 	k.id, k.build, k.type, k.o = strings.clone(id), build, type, o
+	// (its words are the program's source words, kept as given and translated when shown: a language changed during the
+	// session shows at the next build)
 	k.o.title, k.o.icon, k.o.home_place.space = strings.clone(o.title), strings.clone(o.icon), strings.clone(o.home_place.space)
+	k.o.new_tab_label = strings.clone(o.new_tab_label)
 	vs.kinds[k.id] = k
 }
 
@@ -394,7 +404,12 @@ view_open_raw :: proc(vs: ^Views, id: string, data: rawptr, type: typeid, instan
 			}
 		}
 		r.size, r.size_kept = m.dialog, m.dialog
+		// (a "+" of its kind waits for it: it joins that stack, its tab last and shown; at once or frames later, a shell
+		// the program asked a server for)
+		joined := view_new_tab_take(vs, k, r, clock_ms(who))
+		if joined { as, place = .Panel, k.tab_place }
 		view_apply(vs, r, {kind = .Open, as = as, place = place})
+		if joined { view_space_activate(vs, r) }
 	} else {
 		view_apply(vs, r, {kind = .Open})
 	}
@@ -637,6 +652,7 @@ view_kind_free :: proc(k: ^View_Kind) {
 	delete(k.o.title)
 	delete(k.o.icon)
 	delete(k.o.home_place.space)
+	delete(k.o.new_tab_label)
 	free(k)
 }
 
