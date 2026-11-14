@@ -1696,6 +1696,9 @@ fr Le chemin d'un dossier
 en Filter
 fr Filtrer
 
+en In subfolders
+fr Dans les sous-dossiers
+
 en The folders above
 fr Les dossiers au-dessus
 
@@ -1731,6 +1734,15 @@ fr Rien à afficher ici
 
 en Files
 fr Fichiers
+
+en The search failed
+fr La recherche a échoué
+
+en Searching…
+fr Recherche en cours…
+
+en Nothing found.
+fr Rien n'a été trouvé.
 
 en The new folder's name
 fr Le nom du nouveau dossier

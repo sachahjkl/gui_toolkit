@@ -230,6 +230,7 @@ file_dialog_options_clone :: proc(d: platform.File_Dialog, a: runtime.Allocator)
 	c.remember_id = strings.clone(d.remember_id, a)
 	c.suggested_name = strings.clone(d.suggested_name, a)
 	c.default_ext = strings.clone(d.default_ext, a)
+	c.act = strings.clone(d.act, a)
 	filters := make([]platform.File_Filter, len(d.filters), a)
 	for f, i in d.filters {
 		patterns := make([]string, len(f.patterns), a)
@@ -246,7 +247,7 @@ file_dialog_options_clone :: proc(d: platform.File_Dialog, a: runtime.Allocator)
 @(private)
 file_dialog_options_free :: proc(d: ^platform.File_Dialog, a: runtime.Allocator) {
 	delete(d.title, a); delete(d.start_dir, a); delete(d.remember_id, a)
-	delete(d.suggested_name, a); delete(d.default_ext, a)
+	delete(d.suggested_name, a); delete(d.default_ext, a); delete(d.act, a)
 	for f in d.filters {
 		delete(f.name, a)
 		for x in f.patterns { delete(x, a) }

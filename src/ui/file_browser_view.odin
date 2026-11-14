@@ -36,6 +36,9 @@ File_Action :: struct {
 // The end of a build: the browser and its question, when a dialog is open.
 @(private)
 file_browser_build :: proc(s: ^State) {
+	// (the keys held from the program since begin_build: the browser's own; also when it closed during the program's
+	// build, so that none is lost)
+	overlay_release_keys(s, .File_Browser)
 	fb := s.files
 	if fb == nil || !fb.open { return }
 	context.allocator = runtime.heap_allocator()
@@ -97,6 +100,7 @@ file_browser_dialog :: proc(fb: ^File_Browser) -> (act: File_Action) {
 	em := font_size()
 	title, act_word := file_browser_words(fb.kind)
 	if fb.d.title != "" { title = fb.d.title }
+	if fb.d.act != "" { act_word = fb.d.act }
 	was := fb.shown
 	if modal("file_browser", &fb.shown, {width_em = FILE_BROWSER_WIDTH_EM, height_em = FILE_BROWSER_HEIGHT_EM, min_width_em = FILE_BROWSER_MIN_WIDTH_EM, min_height_em = FILE_BROWSER_MIN_HEIGHT_EM, size = &fb.size}) {
 		act = file_browser_keys(fb)
@@ -212,10 +216,14 @@ file_browser_bar :: proc(fb: ^File_Browser, act: ^File_Action) {
 			next({width = fill(), height = pct(1)})
 			if tags("bare") {
 				a11y({name = i18n.tr("Filter")})
-				res := line_edit("###fb_filter", &fb.filter, {placeholder = i18n.tr("Filter"), clearable = true})
+				res := line_edit("###fb_filter", &fb.filter, {placeholder = fb.deep && fb.source.find != nil ? i18n.tr("Search") : i18n.tr("Filter"), clearable = true})
 				fb.filter_key = res.box.key
 				if res.committed { act.kind = .Activate }
 			}
+		}
+		if fb.source.find != nil {
+			spacer(px(em * 0.5))
+			_ = checkbox("###fb_deep", fmt.tprintf("%s###fb_deep_text", i18n.tr("In subfolders")), &fb.deep)
 		}
 		spacer(px(em * DIALOG_MARGIN_EM))
 	}
@@ -378,6 +386,11 @@ file_place_row :: proc(fb: ^File_Browser, p: platform.File_Place, marked: string
 file_browser_list :: proc(fb: ^File_Browser, act: ^File_Action) {
 	s := fb.state
 	em := font_size()
+	file_browser_find_follow(fb)
+	if file_browser_finds(fb) {
+		file_browser_found_list(fb, act)
+		return
+	}
 	if fb.new_folder { file_browser_new_row(fb, act) }
 	switch {
 	case remote.failed(&fb.listing):
@@ -415,9 +428,16 @@ file_browser_list :: proc(fb: ^File_Browser, act: ^File_Action) {
 		return
 	}
 	file_browser_rows(fb, false)
+	empty := line_edit_string(&fb.filter) != "" ? i18n.tr("Nothing here matches the filter") : i18n.tr("Nothing here to show")
+	file_browser_table(fb, act, empty)
+}
+
+// The rows' table, the folder's or the find's: a click on a title sorts them, Enter or a double click acts.
+@(private = "file")
+file_browser_table :: proc(fb: ^File_Browser, act: ^File_Action, empty: string) {
+	s := fb.state
 	fb.table.lead = file_row_lead
 	fb.table.lead_user = fb
-	empty := line_edit_string(&fb.filter) != "" ? i18n.tr("Nothing here matches the filter") : i18n.tr("Nothing here to show")
 	next({width = fill(), height = fill()})
 	a11y({name = i18n.tr("Files"), multiselectable = fb.table.vl.multi})
 	ev := table_build("###fb_table", &fb.table, &fb.data, empty)
@@ -428,6 +448,47 @@ file_browser_list :: proc(fb: ^File_Browser, act: ^File_Action) {
 		if fb.kind == .Save && fb.name_key != 0 { s.focus_key = fb.name_key } else { s.focus_key = fb.table.vl.key }
 		fb.focus_list = false
 	}
+}
+
+// The find's rows (the toggle on and a query typed): what it found, best first, its path relative to the folder in the
+// Name column; while the first answer is on its way, a line after FILE_BROWSER_SLOW_MS; nothing found; its failure.
+// The answer of the last query stays while the next one is asked: the list does not flash at each letter.
+@(private = "file")
+file_browser_found_list :: proc(fb: ^File_Browser, act: ^File_Action) {
+	s := fb.state
+	em := font_size()
+	file_browser_rows(fb, false)   // (the find's rows, even empty: what the keys act on is what is shown)
+	switch {
+	case remote.failed(&fb.finding):
+		next({width = fill(), height = fill()})
+		empty_state("fb_find_failed", {icon = lucide.ALERT_TRIANGLE, title = i18n.tr("The search failed"), note = fb.finding.message})
+		return
+	case !remote.shows(&fb.finding):
+		// (Idle: the query is not quiet yet; Loading: asked, no answer yet)
+		waited := fb.finding.state == .Loading ? clock_ms(s) - fb.find_ms : 0
+		next({width = fill(), height = fill(), axis = .Y, cross = .Center})
+		if column(.Center, {}, "###fb_finding") {
+			if waited >= FILE_BROWSER_SLOW_MS {
+				spacer(fill())
+				spinner("###fb_finding_spinner", em * 1.6)
+				spacer(px(em * 0.5))
+				if tags("weak") {
+					next({width = fill(), text_align = .Center})
+					label(fmt.tprintf("%s###fb_finding_text", i18n.tr("Searching…")))
+				}
+				spacer(fill())
+				a11y_default(parent_box(), {role = .Status, name = i18n.tr("Searching…"), busy = true, live = .Polite})
+			} else if fb.finding.state == .Loading {
+				wake_within(s, int(FILE_BROWSER_SLOW_MS - waited) + WAKE_MARGIN_MS)
+			}
+		}
+		return
+	case fb.finding.state == .Ready && len(fb.found) == 0:
+		next({width = fill(), height = fill()})
+		empty_state("fb_found_none", {icon = lucide.SEARCH, title = i18n.tr("Nothing found.")})
+		return
+	}
+	file_browser_table(fb, act, i18n.tr("Nothing found."))
 }
 
 // A row's icon, before its name: its kind's (a folder in the accent).

@@ -1,7 +1,8 @@
 // The file browser (ui.file_dialog, docs/file-browser.md) on a fake source that answers when the test says (in order,
 // late, never, refused, at once), and on the computer's files in a folder made in the temporary directory. What breaks
 // first: a slow folder answering after the next one was asked; 100 000 entries; names of every kind of character;
-// Save over a file; the dialog closed with a reading under way.
+// Save over a file; the dialog closed with a reading under way; an older search's late answer; the program's keys while
+// the browser is open.
 //   odin test tests/file_browser -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 //   -define:FILE_BROWSER_TIMING=true: a build of 100 000 entries is timed too (FILE_BROWSER_BUILD_BUDGET_MS)
 package file_browser_test
@@ -36,17 +37,27 @@ Asked :: struct {
 	reply: ui.File_Reply,
 }
 
+// A search in subfolders asked of the fake source: answered when the test says (fake_found).
+@(private = "file")
+Asked_Find :: struct {
+	folder: string,
+	query:  string,
+	limit:  int,
+	reply:  ui.File_Reply,
+}
+
 @(private = "file")
 Fake :: struct {
 	folders: map[string][]ui.File_Entry,
 	asked:   [dynamic]Asked,
 	at_once: bool,   // answers in the call
 	made:    [dynamic]string,
+	finds:   [dynamic]Asked_Find,
 }
 
 @(private = "file")
-fake_source :: proc(f: ^Fake, caps := ui.File_Caps{.Size, .Modified}) -> ui.File_Source {
-	return {
+fake_source :: proc(f: ^Fake, caps := ui.File_Caps{.Size, .Modified}, finds := false) -> ui.File_Source {
+	src := ui.File_Source{
 		user = f, caps = caps, separator = '/',
 		list = proc(src: ^ui.File_Source, path: string, reply: ui.File_Reply) {
 			f := (^Fake)(src.user)
@@ -59,7 +70,18 @@ fake_source :: proc(f: ^Fake, caps := ui.File_Caps{.Size, .Modified}) -> ui.File
 			ui.file_reply_made(reply)
 		},
 	}
+	if finds {
+		src.find = proc(src: ^ui.File_Source, folder, query: string, limit: int, reply: ui.File_Reply) {
+			f := (^Fake)(src.user)
+			a := runtime.heap_allocator()
+			append(&f.finds, Asked_Find{folder = strings.clone(folder, a), query = strings.clone(query, a), limit = limit, reply = reply})
+		}
+	}
+	return src
 }
+
+@(private = "file")
+fake_found :: proc(f: ^Fake, i: int, entries: []ui.File_Entry) { ui.file_reply_found(f.finds[i].reply, entries) }
 
 @(private = "file")
 fake_answer :: proc(f: ^Fake, i: int) {
@@ -71,8 +93,10 @@ fake_answer :: proc(f: ^Fake, i: int) {
 fake_destroy :: proc(f: ^Fake) {
 	for a in f.asked { delete(a.path, runtime.heap_allocator()) }
 	for m in f.made { delete(m, runtime.heap_allocator()) }
+	for x in f.finds { delete(x.folder, runtime.heap_allocator()); delete(x.query, runtime.heap_allocator()) }
 	delete(f.asked)
 	delete(f.made)
+	delete(f.finds)
 	delete(f.folders)
 }
 
@@ -90,11 +114,21 @@ App :: struct {
 	answers:  int,
 	status:   platform.Dialog_Status,
 	paths:    [dynamic]string,
+	// the program's own keys, read before the browser is built (as a program reads its shortcuts)
+	watch:    bool,
+	escapes:  int,   // key_press(.Escape) the program saw
+	typed_q:  int,   // 'q' typed that the program took
 }
 
 @(private = "file")
 build :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
+	if app.watch {
+		// (keys reach code outside a dialog: only the overlay's hold keeps them from the program)
+		ui.set_keys_behind_dialogs(s.state, true)
+		if ui.key_press(.Escape) { app.escapes += 1 }
+		if ui.typed_take('q') { app.typed_q += 1 }
+	}
 	if app.ask {
 		app.ask = false
 		ui.file_dialog(s.state, app.kind, app.d, done, app, source = app.local ? nil : &app.source)
@@ -447,4 +481,214 @@ the_local_source_lists_a_real_folder :: proc(t: ^testing.T) {
 	session.click_text(s, "five.txt")
 	session.click(s, "fb_act")
 	if testing.expect_value(t, len(app.paths), 1) { testing.expect_value(t, app.paths[0], fmt.tprintf("%s%sfive.txt", root, ODIN_OS == .Windows ? "\\" : "/")) }
+}
+
+////////////////////////////////
+// Search in subfolders
+
+// The frames past FILE_FIND_QUIET_MS: the query stayed the same long enough to be asked.
+@(private = "file")
+quiet :: proc(s: ^session.Session) { session.advance(s, ui.FILE_FIND_QUIET_MS + 50) }
+
+// The computer's files: a file three folders deep is found by a fuzzy query, its path relative to the folder shown;
+// what is in a hidden folder is found only with Hidden files on.
+@(test)
+the_local_source_finds_in_subfolders :: proc(t: ^testing.T) {
+	root := fmt.tprintf("%s/gui_toolkit_file_find_%d", fsx.temp_dir(context.temp_allocator), os.get_pid())
+	fsx.remove_tree(root)
+	fsx.make_dirs(fmt.tprintf("%s/alpha/beta/gamma", root))
+	fsx.make_dirs(fmt.tprintf("%s/.secret", root))
+	defer fsx.remove_tree(root)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/alpha/beta/gamma/needle_report.txt", root), transmute([]byte)string("x")) == nil)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/.secret/hidden_report.txt", root), transmute([]byte)string("x")) == nil)
+	sep := ODIN_OS == .Windows ? "\\" : "/"
+	app: App
+	defer app_destroy(&app)
+	app.local = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = root, find_deep = true})
+	testing.expect(t, counts(s).deep, "find_deep: on at open")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).entries == 2 }, "the folder's entries", BOUND)
+	// (the letters in order, across the path's parts)
+	session.type_text(s, "ndlrep")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).found > 0 }, "the find's answer", BOUND)
+	testing.expect(t, counts(s).found_shown, "the rows are the find's")
+	deep := fmt.tprintf("alpha%sbeta%sgamma%sneedle_report.txt", sep, sep, sep)
+	testing.expect(t, session.find_text(s, deep) != nil, "the file three folders deep, by its relative path")
+	session.key(s, .Return)
+	if testing.expect_value(t, len(app.paths), 1) { testing.expect_value(t, app.paths[0], fmt.tprintf("%s%s%s", root, sep, deep)) }
+	// a hidden folder: not entered while Hidden files is off
+	open(s, &app, .Open, {start_dir = root, find_deep = true})
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).entries == 2 }, "the folder's entries", BOUND)
+	session.type_text(s, "hddnrep")
+	session.wait_text(s, "Nothing found.", BOUND)
+	session.key(s, .H, {.Ctrl})
+	hidden := fmt.tprintf(".secret%shidden_report.txt", sep)
+	session.wait_text(s, hidden, BOUND)
+}
+
+// A fake source that finds: the answer of an older query that comes late is dropped; the newer one's stays.
+@(test)
+a_late_answer_of_an_older_query_is_dropped :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("top.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	app.source = fake_source(&app.fake, finds = true)
+	open(s, &app, .Open, {start_dir = "/f", find_deep = true})
+	session.type_text(s, "ab")
+	quiet(s)
+	if !testing.expect_value(t, len(app.fake.finds), 1) { return }
+	testing.expect_value(t, app.fake.finds[0].folder, "/f")
+	testing.expect_value(t, app.fake.finds[0].query, "ab")
+	testing.expect_value(t, app.fake.finds[0].limit, ui.FILE_FIND_LIMIT)
+	session.type_text(s, "c")
+	quiet(s)
+	if !testing.expect_value(t, len(app.fake.finds), 2) { return }
+	testing.expect_value(t, app.fake.finds[1].query, "abc")
+	fake_found(&app.fake, 1, []ui.File_Entry{F("x/abc_new.txt")})
+	fake_found(&app.fake, 0, []ui.File_Entry{F("y/ab_stale.txt")})   // (the older query's, after: too late)
+	session.frames(s, 3)
+	testing.expect(t, session.find_text(s, "x/abc_new.txt") != nil, "the newer query's answer")
+	testing.expect(t, session.find_text(s, "ab_stale") == nil, "an older query's late answer shows nothing")
+	testing.expect_value(t, counts(s).found, 1)
+}
+
+// A folder found is entered, the query cleared: the folder's own rows again.
+@(test)
+a_folder_found_is_entered :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("top.txt")}
+	app.fake.folders["/f/sub/inner"] = []ui.File_Entry{F("in.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	app.source = fake_source(&app.fake, finds = true)
+	open(s, &app, .Open, {start_dir = "/f", find_deep = true})
+	session.type_text(s, "inner")
+	quiet(s)
+	if !testing.expect_value(t, len(app.fake.finds), 1) { return }
+	fake_found(&app.fake, 0, []ui.File_Entry{F("sub/inner", .Folder)})
+	session.frames(s, 3)
+	session.key(s, .Return)   // (in the filter: the first row found, selected)
+	testing.expect_value(t, counts(s).folder, "/f/sub/inner")
+	session.frames(s, 3)
+	testing.expect(t, !counts(s).found_shown, "the query cleared: the folder's rows")
+	testing.expect(t, session.find_text(s, "in.txt") != nil)
+}
+
+// A file found is chosen as the folder's path joined to its relative one.
+@(test)
+a_file_found_is_chosen_by_its_whole_path :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("top.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	app.source = fake_source(&app.fake, finds = true)
+	open(s, &app, .Open, {start_dir = "/f", find_deep = true})
+	session.type_text(s, "deep")
+	quiet(s)
+	if !testing.expect_value(t, len(app.fake.finds), 1) { return }
+	fake_found(&app.fake, 0, []ui.File_Entry{F("a/b/deep.txt"), F("deep_other.txt")})
+	session.frames(s, 3)
+	testing.expect_value(t, counts(s).rows_shown, 2)
+	session.key(s, .Return)
+	testing.expect_value(t, app.status, platform.Dialog_Status.Chosen)
+	if testing.expect_value(t, len(app.paths), 1) { testing.expect_value(t, app.paths[0], "/f/a/b/deep.txt") }
+}
+
+// A query that does not change asks the source once, whatever the number of frames; the toggle off asks nothing.
+@(test)
+a_quiet_query_asks_once :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("top.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	app.source = fake_source(&app.fake, finds = true)
+	open(s, &app, .Open, {start_dir = "/f", find_deep = true})
+	session.type_text(s, "to")
+	quiet(s)
+	session.frames(s, 60)
+	testing.expect_value(t, len(app.fake.finds), 1)
+	fake_found(&app.fake, 0, []ui.File_Entry{F("x/top_deep.txt")})
+	session.frames(s, 60)
+	testing.expect_value(t, len(app.fake.finds), 1)
+	// the toggle off: the folder's filter, no find
+	session.click(s, "fb_deep")
+	session.type_text(s, "p")
+	quiet(s)
+	session.frames(s, 30)
+	testing.expect_value(t, len(app.fake.finds), 1)
+	testing.expect(t, !counts(s).found_shown, "the folder's rows")
+	testing.expect_value(t, counts(s).rows_shown, 1)
+}
+
+// find_deep turns the toggle on at open; without it, or with a source that cannot find, it is off (and not shown).
+@(test)
+find_deep_turns_the_toggle_on :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("top.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	app.source = fake_source(&app.fake, finds = true)
+	open(s, &app, .Open, {start_dir = "/f", find_deep = true})
+	testing.expect(t, counts(s).deep)
+	testing.expect(t, session.find(s, "fb_deep") != nil, "the toggle")
+	open(s, &app, .Open, {start_dir = "/f"})
+	testing.expect(t, !counts(s).deep)
+	app.source = fake_source(&app.fake)
+	open(s, &app, .Open, {start_dir = "/f", find_deep = true})
+	testing.expect(t, !counts(s).deep, "a source that cannot find")
+	testing.expect(t, session.find(s, "fb_deep") == nil, "no toggle")
+}
+
+// The act's word: the program's own, else the mode's.
+@(test)
+the_act_says_the_programs_word :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Folder, {start_dir = "/f", act = "Start here"})
+	testing.expect(t, session.find_text(s, "Start here") != nil)
+	open(s, &app, .Folder, {start_dir = "/f"})
+	testing.expect(t, session.find_text(s, "Start here") == nil)
+	testing.expect(t, session.find_text(s, "Choose") != nil)
+}
+
+////////////////////////////////
+// The keyboard is the browser's
+
+// While the browser is open, the program's key_press and typed text get nothing, even with keys behind dialogs: the
+// browser gets them (the letter filters, Escape clears the filter then cancels). Once it closed, the program's again.
+@(test)
+the_browser_keeps_the_keyboard :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("quartz.txt"), F("other.txt")}
+	app.fake.at_once = true
+	app.watch = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/f"})
+	testing.expect(t, ui.file_dialog_shown(s.state))
+	session.type_text(s, "q")
+	testing.expect_value(t, app.typed_q, 0)
+	testing.expect_value(t, counts(s).rows_shown, 1)   // (the browser's filter took it)
+	session.key(s, .Escape)
+	testing.expect_value(t, app.escapes, 0)
+	testing.expect(t, counts(s).open, "the first Escape clears the filter")
+	testing.expect_value(t, counts(s).rows_shown, 2)
+	session.key(s, .Escape)
+	testing.expect_value(t, app.escapes, 0)
+	testing.expect(t, !ui.file_dialog_shown(s.state), "the second cancels")
+	testing.expect_value(t, app.status, platform.Dialog_Status.Cancelled)
+	// (closed: the program's keys again)
+	session.key(s, .Escape)
+	testing.expect_value(t, app.escapes, 1)
+	session.type_text(s, "q")
+	testing.expect_value(t, app.typed_q, 1)
 }

@@ -32,9 +32,34 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   version of its ids to the list (`Table.ids_version`), and Open's "can act" is kept by (selection, marks, version).
 - **The table grew, no second list.** Folders first is `Table_Data.groups`; the fuzzy filter is `Table_Layout.fuzzy`.
   Every table gets them.
-- **The computer's places and the time zone offset are read once per State, on the chores** (`File_Local`).
-  `known_folder_path` and the drives are system calls; the offset reads the zone file on Linux. Refused: a process
-  global (the rule: what is one app's lives in its State). `local_places` reads the thread's State for this reason.
+- **The computer's places are read once per State, on the chores** (`File_Local`). `known_folder_path` and the drives
+  are system calls. Refused: a process global (the rule: what is one app's lives in its State). `local_places` reads
+  the thread's State for this reason.
+- **The local time's offset is the toolkit's, not the browser's** (`timefmt.local_offset_minutes`). It is the
+  machine's, one per process: a global of class `process`, read by one thread `ui.init` starts, again each minute (a
+  zone or a daylight saving change during a run). The browser, the scroll marks and every program read the same value.
+  Refused: an offset per State or per widget (each one read it, and they disagreed after a change), and
+  `core:time/timezone` (it loads and parses the zone's file at each reading; libc and Win32 answer the same question).
+- **Search in subfolders is a call of the source** (`File_Source.find`), not a walk of the browser over `list`. A
+  server walks its own disk in one request; the browser asking a listing per folder would be thousands of requests.
+  The answer is ranked by the source, best first, at most `limit`: the browser shows it as it is (no re-sort, no
+  folders first) until the person clicks a column.
+- **The find is asked on a change of the query, after `FILE_FIND_QUIET_MS` of no change**, measured by the State's
+  clock. A request per key typed would start a walk per letter; a request per frame, a walk per frame.
+- **The local walk stops early when it is no longer wanted.** One stop counter per browser, shared with the walks
+  (counted references: a walk may end after `ui.destroy`). A newer find, another folder, the toggle off and the dialog
+  closing bump it; the walk compares it with its own at each entry. The ticket still drops a late answer: the counter
+  only saves the work.
+- **The walk is bounded** (`FILE_FIND_VISIT_MAX` entries): a search from `/` must end. It does not enter links (a
+  loop) nor hidden folders unless Hidden files is on (`File_Reply.hidden`: one API for every source, the call's
+  signature the same).
+- **A toolkit overlay takes the keyboard before the program sees it** (`overlay_capture_keys`, begin_build). An open
+  menu and the open browser are both built after the program's own code (the menu where it is built, the browser in
+  `end_build`): without this, the program's `key_press` saw Escape first (ocn: Escape interrupted a running job while
+  the person closed the picker). The menu reads the queue itself; the browser gets it back as the frame's keys when it
+  is built (`overlay_release_keys`), so its fields and its list read keys as everywhere. The modal's own rule
+  (`keys_held_by_dialog`) is not enough: a program may set `keys_behind_dialogs`, and typed text, `key_pressed_peek`
+  and a program's own reading of the events went around it.
 - **`File_Place` is in `platform`.** `platform.File_Dialog` stays the one options struct, with `places`.
 - **A picture's texture is made at the first draw.** The build has no renderer; the draw callback has it.
 - **`dialog_test_hook` still answers for the computer's files.** The end-to-end tests of programs set it.
@@ -54,3 +79,9 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
 - A program's source must not answer after `ui.destroy`: the reply holds the State.
 - Escape is taken by the browser before its fields and its list: the filter, then the path field, then the new folder's
   row, then the dialog.
+- The browser takes the keyboard from the build after it opened: the build that opens it gave its keys to the program
+  already.
+- A result of a find is named by its path relative to the folder shown. Its row's identity is the hash of that path:
+  `select_name`, the preview and the act join it to the folder as they join a name.
+- The find's rows replace the folder's rows while the toggle is on and the query is not empty. The folder's entries stay
+  as they are: clearing the query shows them again without a new listing.

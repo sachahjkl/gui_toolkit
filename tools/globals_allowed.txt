@@ -282,6 +282,9 @@ testkit/folders.odin temp_folder.serial test  # the test folders' names (atomic)
 testkit/session/session.odin current test  # the session a test runs (one test at a time: owner_thread checks it)
 testkit/session/session.odin owner_thread test  # the session a test runs (one test at a time: owner_thread checks it)
 testkit/session/session.odin live_sessions test  # the session a test runs (one test at a time: owner_thread checks it)
+timefmt/local_offset.odin offset_minutes process  # the machine's local time offset, one per process: written by its watch's thread, read by any (atomic)
+timefmt/local_offset.odin offset_known process  # the watch stored its first reading (atomic)
+timefmt/local_offset.odin offset_watching process  # the watch's thread started, once for the process (atomic)
 toolbox/licence.odin PADDLE_FLAGS const  # the paddle command's flags, a table
 toolbox/i18n.odin I18N_FLAGS const  # the i18n command's flags, a table
 toolbox/group_linux.odin running_groups process  # the process groups started, for the signal handler (the thread that starts them writes it)

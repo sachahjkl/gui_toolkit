@@ -234,7 +234,7 @@ file_preview_build :: proc(fb: ^File_Browser) {
 	// its way)
 	details := make([dynamic]string, context.temp_allocator)
 	if p.size >= 0 { append(&details, timefmt.size(p.size)) }
-	if p.modified > 0 { append(&details, timefmt.moment(f64(p.modified), f64(choice_now()), fb.local.offset_minutes)) }
+	if p.modified > 0 { append(&details, timefmt.moment(f64(p.modified), f64(choice_now()), timefmt.local_offset_minutes())) }
 	switch {
 	case p.reading.state == .Loading: append(&details, i18n.tr("Reading…"))
 	case remote.failed(&p.reading):   append(&details, p.reading.message)

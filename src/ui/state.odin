@@ -11,6 +11,7 @@ import base "../base"
 import "../draw"
 import "../font"
 import "../platform"
+import timefmt "../timefmt"
 
 // The state selected by the last `begin_build` (or `init`, `use`). Public procs operate on it (like raddebugger's `ui_state`), through `gs`.
 @(private, thread_local) current: ^State   // (of this thread: several apps of a process build their interfaces on threads of their own)
@@ -54,6 +55,8 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.trunc_cache = make(map[Trunc_Key]Trunc_Entry)
 	post_init(s)
 	_, _ = sync.atomic_compare_exchange_strong(&tick_origin._nsec, 0, time.tick_now()._nsec)
+	// (every program's dates on the local clock: the machine's offset, read on its own thread; the first init starts it)
+	timefmt.local_offset_watch()
 }
 
 // Makes s the state the public procs operate on (a program with several windows, one state each, goes back to a window's
@@ -258,7 +261,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	selection_begin(s)
 	process_events(s, p.events, !p.disable_zoom, left)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
-	menu_capture_keys(s, p.events)
+	overlay_capture_keys(s, p.events)
 	s.scale = (p.dpi_scale > 0 ? p.dpi_scale : 1) * s.zoom
 
 	// root: fills the window

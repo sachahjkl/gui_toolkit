@@ -71,7 +71,7 @@ split_lines :: proc(s: string) -> []string {
 	return strings.split(t, "\n", context.temp_allocator)
 }
 
-@(private = "file")
+@(private)
 read_text :: proc(path: string) -> (string, bool) {
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	return string(data), err == nil
@@ -338,6 +338,7 @@ check :: proc(o: Project_Options, release := "") -> (errors: [dynamic]string, fr
 		if key in released { append(&errors, fmt.tprintf("changelog.d/%s: already in a released section of CHANGELOG.md (assembled but not deleted)", f.name)) }
 		if other, twice := seen[key]; twice { append(&errors, fmt.tprintf("changelog.d/%s: the same text as changelog.d/%s", f.name, other)) } else { seen[key] = f.name }
 	}
+	roadmap_check(root, &errors)
 	if o.version != nil {
 		said := o.version(root, o.user)
 		if said == "" {

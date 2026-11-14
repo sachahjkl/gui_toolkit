@@ -261,21 +261,39 @@ menus_destroy :: proc(s: ^State) {
 	for &lv in s.menus { delete(lv.items); delete(lv.prev); line_edit_destroy(&lv.query) }
 	delete(s.menus)
 	delete(s.menu_build)
-	delete(s.menu_keys.list)
-	delete(s.menu_keys.consumed)
+	delete(s.overlay_keys.list)
+	delete(s.overlay_keys.consumed)
 }
 
-// While a menu is open it owns the keyboard: key presses and typed text of the frame move to its own queue before any
-// widget is built (begin_build).
+// What holds the keyboard of a frame before the program's code is built (overlay_capture_keys).
+@(private)
+Key_Owner :: enum u8 {
+	Program,        // nothing: the frame's keys are where they are
+	Menu,           // an open menu: its innermost level reads the queue itself (menu_level_begin)
+	File_Browser,   // the open file browser: built in end_build, it gets the queue back then (overlay_release_keys)
+}
+
+// While a toolkit overlay is open it owns the keyboard: key presses and typed text of the frame move to its queue
+// (State.overlay_keys) before any widget is built (begin_build). An overlay built after the program's code (a menu where
+// it is built, the file browser in end_build) would otherwise see a key after the program did: Escape both closed it and
+// did what the program does with Escape. A menu goes first: one is open over the browser too (its type list, its "…").
 // Key presses and typed characters stay in the order they came (Text events in the same queue).
 @(private)
-menu_capture_keys :: proc(s: ^State, events: []platform.Event) {
-	clear(&s.menu_keys.list)
-	clear(&s.menu_keys.consumed)
-	if len(s.menus) == 0 { return }
-	// (a field of an open menu has the focus, a panel's search: its keys are its own; the menu took them all, and what
-	// was typed in the field went nowhere)
-	if f := s.boxes[s.focus_key] or_else nil; f != nil && .Text_Input in f.flags && menu_holds(s, s.focus_key) { return }
+overlay_capture_keys :: proc(s: ^State, events: []platform.Event) {
+	clear(&s.overlay_keys.list)
+	clear(&s.overlay_keys.consumed)
+	s.key_owner = .Program
+	switch {
+	case len(s.menus) > 0:
+		// (a field of an open menu has the focus, a panel's search: its keys are its own; the menu took them all, and
+		// what was typed in the field went nowhere)
+		if f := s.boxes[s.focus_key] or_else nil; f != nil && .Text_Input in f.flags && menu_holds(s, s.focus_key) { return }
+		s.key_owner = .Menu
+	case file_dialog_shown(s):
+		s.key_owner = .File_Browser
+	case:
+		return
+	}
 	at := 0   // (the keys process_events kept, in their order: what took one of them, Ctrl+zoom or autoscroll's Escape, had it)
 	for e in events {
 		if e.kind == .Key_Press {
@@ -283,12 +301,34 @@ menu_capture_keys :: proc(s: ^State, events: []platform.Event) {
 			at += 1
 			if s.events.consumed[at - 1] { continue }
 		} else if e.kind != .Text { continue }
-		append(&s.menu_keys.list, e)
-		append(&s.menu_keys.consumed, false)
+		append(&s.overlay_keys.list, e)
+		append(&s.overlay_keys.consumed, false)
 	}
 	clear(&s.events.list)
 	clear(&s.events.consumed)
 	clear(&s.typed)
+}
+
+// The overlay `owner` is being built: the keys held for it are the frame's again, in their order, so that its fields,
+// its list and its key_press read them as everywhere. Nothing when another one holds them.
+@(private)
+overlay_release_keys :: proc(s: ^State, owner: Key_Owner) {
+	if s.key_owner != owner { return }
+	s.key_owner = .Program
+	clear(&s.events.list)
+	clear(&s.events.consumed)
+	clear(&s.typed)
+	for e, i in s.overlay_keys.list {
+		if s.overlay_keys.consumed[i] { continue }
+		if e.kind == .Text {
+			append(&s.typed, e.text)
+		} else {
+			append(&s.events.list, e)
+			append(&s.events.consumed, false)
+		}
+	}
+	clear(&s.overlay_keys.list)
+	clear(&s.overlay_keys.consumed)
 }
 
 // The open menus go over whatever the root holds (end_build, before layout): a level is built where the app builds the
@@ -472,9 +512,10 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 			lv.pick_first, lv.sel = true, -1
 			lv.query.edited_ms = now_ms()
 		}
-		keys: for e, i in s.menu_keys.list {
-			if s.menu_keys.consumed[i] { continue }
-			s.menu_keys.consumed[i] = true
+		keys: for e, i in s.overlay_keys.list {
+			if s.key_owner != .Menu { break }   // (held for the file browser, not for a menu opened over it this frame)
+			if s.overlay_keys.consumed[i] { continue }
+			s.overlay_keys.consumed[i] = true
 			valid := lv.sel >= 0 && lv.sel < len(items) && items[lv.sel].enabled
 			if lv.search && e.kind == .Text {
 				if e.text >= ' ' {

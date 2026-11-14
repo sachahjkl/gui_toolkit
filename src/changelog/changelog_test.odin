@@ -22,6 +22,7 @@ the_command_works_on_the_project :: proc(t: ^testing.T) {
 	version_file := fmt.tprintf("%s/main.odin", dir)
 	testing.expect(t, os.write_entire_file(changes, "# Changelog\n\n## [0.1.0] - 2026-11-01\n\n### Added\n- **One**: the first.\n\n[0.1.0]: https://github.com/o/r/releases/tag/v0.1.0\n") == nil)
 	testing.expect(t, os.write_entire_file(version_file, "APP_VERSION :: \"0.1.0\"\n") == nil)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/ROADMAP.md", dir), ROADMAP_GOOD) == nil)
 	c := command({name = "sample", repository = "https://github.com/o/r", changelog = changes, version_file = version_file, version_line = "APP_VERSION :: "})
 	defer free(c.user)
 	cs := []toolbox.Command{c}

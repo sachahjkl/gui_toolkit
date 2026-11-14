@@ -22,6 +22,18 @@ Every step is a command of `tools/tk` (the head of `tools/tk/main.odin` lists th
 This project follows https://srcmd.org, with the Markdown in `src/md`. Read `src/md/README.md` first. Change the intent
 there before the code it describes.
 
+## Roadmap
+
+[ROADMAP.md](ROADMAP.md), beside `CHANGELOG.md`, holds the planned work: the toolkit's own and every work that touches
+several programs. No project keeps its plans in a global to-do file.
+
+- Plain Markdown, no front matter: `# Roadmap`, then `## Now`, `## Next` and `## Later`, in this order, each a list.
+- An entry starts with a bold summary, then one or two sentences on what it gives the user; its continuation lines are
+  indented. No dates. If a design exists, the entry links its intent file in `src/md`.
+- When a work is done, its entry goes in the same commit as its changelog fragment.
+- `changelog.check` checks the format of a project's `ROADMAP.md`. Every program's changelog check and the toolkit's
+  release run it, so a program without a roadmap fails its check.
+
 ## Key prompts
 
 Apply these to every task, before you write code:

@@ -1,6 +1,8 @@
 package timefmt
 
 import "core:testing"
+import "core:thread"
+import "core:time"
 
 DAY_MS :: f64(SECS_PER_DAY * MS_PER_S)
 
@@ -69,6 +71,27 @@ a_moment_reads_from_now :: proc(t: ^testing.T) {
 	testing.expect_value(t, moment(now, 0, 0), "Nov 10, 11:20")
 	// (yesterday on the local clock, though less than a day ago)
 	testing.expect_value(t, moment(now - 12 * 3_600_000, now, 0, short = true), "yesterday")
+}
+
+// The bound of the wait for the watch's first reading, and the widest offset of a zone (UTC+14, UTC-12).
+@(private = "file") OFFSET_WAIT :: 10 * time.Second
+@(private = "file") OFFSET_MOST_MINUTES :: 14 * MINUTES_PER_HOUR
+
+// The watch reads the machine's offset on its own thread: once it has, the value is the system's, within a zone's
+// reach. A second call starts nothing more.
+@(test)
+the_watch_reads_the_machines_offset :: proc(t: ^testing.T) {
+	local_offset_watch()
+	local_offset_watch()
+	end := time.tick_add(time.tick_now(), OFFSET_WAIT)
+	for !local_offset_read_once() {
+		if time.tick_diff(time.tick_now(), end) <= 0 { break }
+		thread.yield()
+	}
+	if !testing.expect(t, local_offset_read_once(), "the watch read the offset within its bound") { return }
+	got := local_offset_minutes()
+	testing.expect_value(t, got, local_offset_read())
+	testing.expectf(t, abs(got) <= OFFSET_MOST_MINUTES, "an offset of %d minutes", got)
 }
 
 @(test)

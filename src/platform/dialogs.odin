@@ -39,6 +39,8 @@ File_Dialog :: struct {
 	overwrite_prompt: bool,         // save: ask before replacing a file (the system's question)
 	places:         []File_Place,   // the program's own places, after the source's (the toolkit's file browser; the
 	                                // system's dialogs do not show them)
+	find_deep:      bool,           // the toolkit's file browser: its filter starts searching the subfolders too
+	act:            string,         // the toolkit's file browser: the act button's word ("": the mode's, Open, Choose, Save)
 }
 
 // A folder a file dialog lists among its places, to go to at once.

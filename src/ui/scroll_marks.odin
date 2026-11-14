@@ -102,11 +102,10 @@ Scroll_Marks :: struct {
 Scroll_Marks_Options :: struct {
 	name:   string,   // what a screen reader calls the marks ("": "Marks")
 	margin: f32,      // pixels left above an item the view jumps to (0: half a line)
-	// The clock the marks' times are read on (timefmt.moment): now (ms since 1970, UTC; 0: their dates shown whole), the
-	// local clock's offset from UTC (the program reads it off the interface thread), on 12 hours.
-	now_ms:         f64,
-	offset_minutes: int,
-	hours12:        bool,
+	// The clock the marks' times are read on (timefmt.moment, on timefmt.local_offset_minutes): now (ms since 1970, UTC;
+	// 0: their dates shown whole), on 12 hours.
+	now_ms:  f64,
+	hours12: bool,
 }
 
 // The bar with marks: its width at rest, and under the pointer or with the keyboard.
@@ -457,7 +456,7 @@ marks_card :: proc(k: ^Scroll_Marks, i: int, o: Scroll_Marks_Options, em: f32) {
 	pad := math.round(em * SCROLL_MARKS_CARD_PAD_EM)
 	most := math.round(em * SCROLL_MARKS_CARD_EM)
 	small := math.round(em * SCROLL_MARKS_CARD_SMALL)
-	when_ := m.time_ms > 0 ? timefmt.moment(m.time_ms, o.now_ms, o.offset_minutes, {hours12 = o.hours12}) : ""
+	when_ := m.time_ms > 0 ? timefmt.moment(m.time_ms, o.now_ms, timefmt.local_offset_minutes(), {hours12 = o.hours12}) : ""
 	// (from its first line that says something: the blank lines before it are no part of what it says)
 	body := m.text
 	if m.line != "" { body = strings.trim_right_space(m.text[int(uintptr(raw_data(m.line)) - uintptr(raw_data(m.text))):]) }
@@ -515,7 +514,7 @@ marks_card_lines :: proc(k: ^Scroll_Marks, group: []int, o: Scroll_Marks_Options
 		if n == SCROLL_MARKS_TIP_LINES { break }
 		m := k.marks[i]
 		label_w = max(label_w, math.ceil(text_width(st.font, small, m.label)))
-		if m.time_ms > 0 { when_w = max(when_w, math.ceil(text_width(st.font, small, timefmt.moment(m.time_ms, o.now_ms, o.offset_minutes, {hours12 = o.hours12}, short = true)))) }
+		if m.time_ms > 0 { when_w = max(when_w, math.ceil(text_width(st.font, small, timefmt.moment(m.time_ms, o.now_ms, timefmt.local_offset_minutes(), {hours12 = o.hours12}, short = true)))) }
 	}
 	line_h := math.round(em * 1.5)
 	next({width = children_sum(), height = children_sum(), axis = .X})
@@ -546,7 +545,7 @@ marks_card_lines :: proc(k: ^Scroll_Marks, group: []int, o: Scroll_Marks_Options
 					if when_w > 0 {
 						spacer(px(math.round(em * 0.6)))
 						if tags("weak") {
-							when_ := m.time_ms > 0 ? timefmt.moment(m.time_ms, o.now_ms, o.offset_minutes, {hours12 = o.hours12}, short = true) : ""
+							when_ := m.time_ms > 0 ? timefmt.moment(m.time_ms, o.now_ms, timefmt.local_offset_minutes(), {hours12 = o.hours12}, short = true) : ""
 							next({width = px(when_w), height = pct(1), font_size = small, text_pad = 0, text_align = .Right})
 							build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###when", when_))
 						}

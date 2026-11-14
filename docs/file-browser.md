@@ -60,6 +60,14 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
   what is there).
 - **The filter**: typing anywhere but in a field filters the list (`type_to_field`), fuzzy (`Table_Layout.fuzzy`: the
   letters in order), the matched letters marked; the arrows and Enter stay the list's while the keyboard is in it.
+- **In subfolders**: a toggle beside the filter, shown when the source can search (`File_Source.find`), on at first
+  with `File_Dialog.find_deep`. With it on and a query typed, the rows are what the source found under the folder, at
+  any depth: their path relative to the folder in the Name column, the matched letters lit, folders and files as found,
+  best first (a click on a column sorts them). The search is asked when the query changed and then stayed the same
+  `FILE_FIND_QUIET_MS`; at most `FILE_FIND_LIMIT` entries; the answer of an older query is dropped. "Searching…" shows
+  after `FILE_BROWSER_SLOW_MS`, "Nothing found." when the answer is empty. A folder found is entered (the query
+  cleared); a file found is chosen, previewed and named as one of the folder (`file_path_join(folder, relative)`).
+  With the toggle off, the filter is the folder's only.
 - **The preview**, at the right (a split the person resizes, `splitter`; hidden when the dialog is narrower than
   `FILE_PREVIEW_SHOWN_EM` beside the places, and when the source cannot read): the selected file's text, coloured by its
   kind (`syntax`), its first `FILE_PREVIEW_BYTES` and `FILE_PREVIEW_LINES` lines; a picture (PNG, JPEG, BMP, WebP:
@@ -70,7 +78,8 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 - **The bottom**: in Save mode the name field (the suggested name selected without its extension) and the type list;
   in Open mode the type list when there is more than one line; New folder (when the source can make one: an inline row
   at the top of the list, its name typed in it, Enter makes it, the folder is read again with the new one selected; the
-  source's words under it when it fails); Hidden files; Cancel and the act (`Open`, `Choose`, `Save`). The act is
+  source's words under it when it fails); Hidden files; Cancel and the act (`Open`, `Choose`, `Save`; the program's own
+  word with `File_Dialog.act`: "Start here"). The act is
   disabled while nothing can be chosen (Open with no file selected; Folder mode chooses the selected folder, or the
   folder shown when none is).
 - **States**: reading (a line that says so, after `FILE_BROWSER_SLOW_MS` only: a fast folder does not flash), empty
@@ -93,6 +102,10 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 | F5 | reads the folder again |
 | Shift+Ctrl+N | New folder |
 
+While the browser is open it holds the keyboard, as an open menu does: from the build after it opened until it
+closes, the program's `key_press`, `key_take`, `key_pressed_peek` and typed text get nothing (whatever
+`set_keys_behind_dialogs` says), and the browser gets every key. `ui.file_dialog_shown(s)` says whether it is open.
+
 A double click enters a folder or chooses a file (in Save mode: names it and saves). Every control has its role and its
 name for a screen reader (the places are links, the one marked the current location; the list is a list box with its
 rows' count).
@@ -114,6 +127,7 @@ File_Source :: struct {
 	list:        proc(src: ^File_Source, path: string, reply: File_Reply),           // the entries of a folder
 	read:        proc(src: ^File_Source, path: string, max: int, reply: File_Reply), // the start of a file (preview)
 	make_folder: proc(src: ^File_Source, path: string, reply: File_Reply),
+	find:        proc(src: ^File_Source, folder, query: string, limit: int, reply: File_Reply),  // search in subfolders
 	places:      proc(src: ^File_Source, allocator: mem.Allocator) -> []platform.File_Place,  // cheap: what it knows already
 	start:       proc(src: ^File_Source, allocator: mem.Allocator) -> string,        // where a dialog starts with no folder known ("": the source's first place)
 }
@@ -121,8 +135,13 @@ File_Source :: struct {
 
 A call starts the work and returns at once: it never blocks the interface's thread. The source answers later (or in
 the call), on the interface's thread, through the reply: `file_reply_listed(reply, entries)`,
-`file_reply_read(reply, bytes, size)`, `file_reply_made(reply)`, or
-`file_reply_failed(reply, message, refused = false, missing = false)`. A reply carries the ticket of its reading
+`file_reply_read(reply, bytes, size)`, `file_reply_made(reply)`, `file_reply_found(reply, entries)`, or
+`file_reply_failed(reply, message, refused = false, missing = false)`.
+
+`find` (nil: no search in subfolders) answers `file_reply_found` with the entries under `folder`, at any depth, that
+match `query`, best first, at most `limit`: each entry's `name` is its path relative to `folder`, with the source's
+separator (`docs/notes.md`). `reply.hidden` is Hidden files: off, the hidden entries and what is in hidden folders are
+not found. The browser shows them in the order given. A reply carries the ticket of its reading
 (`remote`) and its dialog: the answer of a folder left, of a file no longer selected, or of a dialog closed changes
 nothing. The entries and bytes are copied by the browser: the source frees its own after the call. A source answers
 while the State lives (a program's source stops answering at `ui.destroy`).
@@ -132,8 +151,11 @@ while the State lives (a program's source stops answering at `ui.destroy`).
 says). `platform.File_Place`: `name` ("": the path's last part), `path`, `icon` (a Lucide glyph, "": a folder).
 
 `ui.local_files()` is the computer's: `core:os` on the chores (`ui.task`), the system's places
-(`platform.known_folder_path`, `platform.file_roots`) and the local time's offset read once per State on the chores, all
-`caps`. A program's own source answers from where its data comes (ocn: its requests to the server, whose answers already
+(`platform.known_folder_path`, `platform.file_roots`) read once per State on the chores, all `caps`. Its `find` walks the
+folder on the chores, breadth first: it scores each path relative to the folder with `fuzzy_score` and keeps the best
+`limit`; it does not enter links, nor hidden folders unless `reply.hidden`; it looks at `FILE_FIND_VISIT_MAX` entries at
+most; a newer find, another folder, the toggle off or the dialog closing stops it early. The dates of every source are
+told on `timefmt.local_offset_minutes()`, the toolkit's one reading of the local time's offset. A program's own source answers from where its data comes (ocn: its requests to the server, whose answers already
 come on the interface's thread).
 
 The paths of any separator are read by `file_path_root`, `file_path_parent`, `file_path_name`, `file_path_join`,
@@ -155,7 +177,8 @@ The interface's thread never touches the file. What a dialog remembered before t
 
 `ui.file_browser_counts(s)`: whether a dialog is open, its folder, its entries and rows shown, and how many times its rows
 were made (new entries, Hidden files, the type), filtered or sorted, and placed by the list: a build that changed none of
-them does no work in proportion to the entries.
+them does no work in proportion to the entries. Also whether In subfolders is on (`deep`), the entries of the last find
+(`found`) and whether the rows are the find's (`found_shown`).
 
 ## Tests
 
@@ -165,4 +188,5 @@ breaks first: a slow folder answering after the next one was asked; a folder wit
 to the entries runs in a frame that did not change them; `-define:FILE_BROWSER_TIMING=true` times a build against
 `FILE_BROWSER_BUILD_BUDGET_MS`); a name with every kind of character; Save over an existing file; the dialog closed with
 a reading under way; the keyboard (Enter, Backspace, typing, Escape's order, Shift+↓, Ctrl+A); Folder mode; the
-program's places; New folder.
+program's places; New folder; the search in subfolders (a file three folders deep, a hidden folder, a late answer of an
+older query, no request per frame); the program's `key_press` and typed text while the browser is open.

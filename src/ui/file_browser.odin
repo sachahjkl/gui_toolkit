@@ -10,7 +10,10 @@ package ui
 //   listing:  the folder shown (Idle -> Loading -> Ready | Refused | Failed; a missing folder goes up instead)
 //   making:   a new folder (Loading -> Ready: the folder read again, the new one selected | Failed: said under its row)
 //   preview:  the file selected (preview.reading)
+//   finding:  a search in subfolders (File_Source.find): Idle while the query is quiet for less than FILE_FIND_QUIET_MS,
+//             Loading -> Ready | Failed; reset when the query empties, the toggle goes off, the folder changes
 // and the dialog's own: closed -> open -> (asking: Save over a file, the confirm) -> closed, `done` called once.
+// The rows show the folder's entries, or the find's (the toggle on and a query typed): File_Rows_Key.found says which.
 
 import "base:runtime"
 import "core:mem/virtual"
@@ -31,6 +34,10 @@ FILE_PREVIEW_IMAGE_BYTES :: 32 * 1024 * 1024
 FILE_BROWSER_RECENT :: 8
 // What a build of the browser may take once its rows are made (tests/file_browser checks it with 100 000 entries).
 FILE_BROWSER_BUILD_BUDGET_MS :: 16
+// A search in subfolders: the entries it gives at most, and the time the query stays unchanged before it is asked (a
+// search per letter typed would start a walk per letter).
+FILE_FIND_LIMIT :: 200
+FILE_FIND_QUIET_MS :: 150
 
 // The columns of the list.
 @(private) FILE_COLUMN_NAME :: 0
@@ -51,9 +58,10 @@ File_Move :: enum u8 {
 // What the rows were made from: another of these, they are made again.
 @(private)
 File_Rows_Key :: struct {
-	entries:    u64,
+	entries:    u64,    // the version of the entries they were made of (entries_version, or found_version)
 	hidden:     bool,
 	type_index: int,
+	found:      bool,   // of the find's entries (fb.found), not the folder's
 }
 
 @(private)
@@ -71,7 +79,7 @@ File_Browser :: struct {
 	sep:          u8,
 	source_places: [dynamic]platform.File_Place,   // what the source knows (in places_arena)
 	places_arena: virtual.Arena,
-	local:        File_Local,  // the computer's places and the local time's offset (file_local.odin)
+	local:        File_Local,  // the computer's places (file_local.odin)
 
 	// the folder
 	folder:       string,     // shown (the path bar's); "" before the first one is known
@@ -123,6 +131,22 @@ File_Browser :: struct {
 	main_width:   f32,        // the room of the list and the preview at the last layout (the preview shows when wide)
 	focus_list:   bool,       // the list takes the keyboard at the next build
 
+	// the search in subfolders
+	deep:         bool,       // the toggle "In subfolders"
+	finding:      remote.Remote,
+	found:        [dynamic]File_Entry,   // its answer, best first (names: paths relative to `folder`, in found_arena)
+	found_arena:  virtual.Arena,
+	found_version: u64,
+	find_query:   string,     // what the find on its way, or answered, asked ("": none)
+	find_hidden:  bool,       // ... with Hidden files on
+	find_seen:    string,     // the query wanted at the last build (its change starts the quiet time)
+	find_typed_ms: f64,       // when it changed
+	find_ms:      f64,        // when the find was asked (the "Searching" line comes after FILE_BROWSER_SLOW_MS)
+	find_stop:    ^File_Find_Stop,   // stops the local walks (file_local.odin)
+	sort_kept:    bool,       // the find's rows show as found: the folder's sort, back when they go
+	kept_sort:    int,
+	kept_descending: bool,
+
 	preview:      File_Preview,
 	memory:       File_Memories,
 }
@@ -137,6 +161,7 @@ file_browser_of :: proc(s: ^State) -> ^File_Browser {
 	fb.back = make([dynamic]string, a)
 	fb.forward = make([dynamic]string, a)
 	fb.entries = make([dynamic]File_Entry, a)
+	fb.found = make([dynamic]File_Entry, a)
 	fb.rows = make([dynamic]int, a)
 	fb.by_id = make(map[u64]int, a)
 	fb.source_places = make([dynamic]platform.File_Place, a)
@@ -171,19 +196,24 @@ file_browser_destroy :: proc(s: ^State) {
 	file_local_destroy(&fb.local)
 	table_destroy(&fb.table)
 	table_data_destroy(&fb.data)
-	delete(fb.back); delete(fb.forward); delete(fb.entries); delete(fb.rows); delete(fb.by_id)
+	delete(fb.back); delete(fb.forward); delete(fb.entries); delete(fb.found); delete(fb.rows); delete(fb.by_id)
 	delete(fb.source_places)
 	virtual.arena_destroy(&fb.entries_arena)
+	virtual.arena_destroy(&fb.found_arena)
 	virtual.arena_destroy(&fb.places_arena)
 	line_edit_destroy(&fb.filter); line_edit_destroy(&fb.name); line_edit_destroy(&fb.path_edit); line_edit_destroy(&fb.new_name)
-	remote.destroy(&fb.listing); remote.destroy(&fb.making)
+	remote.destroy(&fb.listing); remote.destroy(&fb.making); remote.destroy(&fb.finding)
+	delete(fb.find_query, a); delete(fb.find_seen, a)
+	// (a walk still on its way holds the stop: it stops, and the last of them frees it)
+	file_find_stop(fb)
+	file_find_stop_release(fb.find_stop)
 	file_preview_destroy(fb)
 	free(fb, a)
 	s.files = nil
 }
 
 // What a test reads of the browser: whether it is open, the folder shown, how many times its rows were made and
-// filtered or sorted (a build that changed nothing does neither), the rows shown.
+// filtered or sorted (a build that changed nothing does neither), the rows shown, the search in subfolders.
 File_Browser_Counts :: struct {
 	open:         bool,
 	folder:       string,
@@ -192,14 +222,22 @@ File_Browser_Counts :: struct {
 	rows_shown:   int,
 	entries:      int,
 	list_layouts: int,   // the times the list placed its rows again (Virtual_List.offsets_made)
+	deep:         bool,  // "In subfolders" is on
+	found:        int,   // the entries of the last find's answer
+	found_shown:  bool,  // the rows are the find's
 }
 
 file_browser_counts :: proc(s: ^State) -> File_Browser_Counts {
 	fb := s.files
 	if fb == nil { return {} }
 	return {open = fb.open, folder = fb.folder, rows_made = fb.rows_made, rows_applied = fb.rows_applied,
-		rows_shown = len(fb.table.rows), entries = len(fb.entries), list_layouts = fb.table.vl.offsets_made}
+		rows_shown = len(fb.table.rows), entries = len(fb.entries), list_layouts = fb.table.vl.offsets_made,
+		deep = fb.deep, found = len(fb.found), found_shown = fb.made && fb.made_for.found}
 }
+
+// Whether the toolkit's file browser is open (ui.file_dialog shows it until it answers): a program that counts what
+// is over its window, or waits for its keys.
+file_dialog_shown :: proc(s: ^State) -> bool { return s.files != nil && s.files.open }
 
 ////////////////////////////////
 // Open and close
@@ -225,6 +263,7 @@ file_browser_open :: proc(s: ^State, kind: File_Dialog_Kind, d: platform.File_Di
 	fb.shift_from = -1
 	fb.listing_ms = clock_ms(s)
 	line_edit_clear(&fb.filter)
+	fb.deep = d.find_deep && fb.source.find != nil
 	// (the suggested name selected without its extension: what is typed replaces the name, the type stays)
 	line_edit_set(&fb.name, d.suggested_name)
 	fb.name.mark = 0
@@ -239,7 +278,7 @@ file_browser_open :: proc(s: ^State, kind: File_Dialog_Kind, d: platform.File_Di
 	if m != nil && m.sort_set { fb.table.sort, fb.table.descending = m.sort, m.descending }
 	fb.table.shown[FILE_COLUMN_SIZE] = .Size in fb.source.caps
 	fb.table.shown[FILE_COLUMN_MODIFIED] = .Modified in fb.source.caps
-	file_local_warm(s)   // (the local time's offset: every source's dates; the computer's places)
+	file_local_warm(s)   // (the computer's places)
 	file_browser_places_refresh(fb)
 	start := d.start_dir
 	if start == "" && m != nil { start = m.folder }
@@ -279,6 +318,8 @@ file_browser_close :: proc(fb: ^File_Browser) {
 	fb.open, fb.shown, fb.asking = false, false, false
 	fb.serial += 1   // (a reply still on its way is of no dialog now)
 	file_dialog_options_free(&fb.d, a)
+	file_browser_find_drop(fb)
+	delete(fb.find_seen, a); fb.find_seen = ""
 	file_strings_clear(&fb.back)
 	file_strings_clear(&fb.forward)
 	delete(fb.folder, a); fb.folder = ""
@@ -290,10 +331,12 @@ file_browser_close :: proc(fb: ^File_Browser) {
 	remote.reset(&fb.listing)
 	remote.reset(&fb.making)
 	file_entries_clear(fb)
+	file_browser_sort_back(fb)
 	table_data_reset(&fb.data, len(fb.columns))
 	clear(&fb.rows)
 	clear(&fb.by_id)
 	table_apply(&fb.table, &fb.data, "")
+	fb.table.highlight = fb.table.query
 	fb.made = false
 	fb.new_folder, fb.path_editing = false, false
 	file_preview_clear(fb)
@@ -312,6 +355,7 @@ file_browser_finish :: proc(fb: ^File_Browser, status: platform.Dialog_Status, p
 		for p, i in paths { r.paths[i] = strings.clone(p, a) }
 	}
 	done, user := fb.done, fb.user
+	file_browser_sort_back(fb)   // (the folder's sort is the one remembered, not the find's order)
 	file_memory_remember(fb, status == .Chosen ? (fb.kind == .Folder && len(paths) > 0 ? paths[0] : fb.folder) : "")
 	file_browser_close(fb)
 	if done != nil { done(r, user) }
@@ -354,6 +398,7 @@ file_browser_go :: proc(fb: ^File_Browser, path: string, move := File_Move.New) 
 		delete(fb.select_name, a)
 		fb.select_name = ""
 		file_entries_clear(fb)
+		file_browser_find_drop(fb)   // (what was found is under the folder left)
 		line_edit_clear(&fb.filter)
 		fb.new_folder = false
 		fb.shift_from = -1
@@ -472,7 +517,89 @@ file_browser_failed :: proc(fb: ^File_Browser, kind: File_Reply_Kind, ticket: u6
 		_ = remote.answer(&fb.making, ticket, refused ? .Refused : .Failed, message)
 	case .Read:
 		file_preview_failed(fb, ticket, message)
+	case .Find:
+		_ = remote.answer(&fb.finding, ticket, refused ? .Refused : .Failed, message)
 	}
+}
+
+////////////////////////////////
+// Search in subfolders
+
+// Whether the rows are the find's: the toggle on, a source that finds, a query typed.
+@(private)
+file_browser_finds :: proc(fb: ^File_Browser) -> bool {
+	return fb.deep && fb.source.find != nil && line_edit_string(&fb.filter) != ""
+}
+
+// At each build, before the list: the query wanted (empty with the toggle off) is compared with the last one (a string,
+// not the entries); a new one is asked once it stayed the same FILE_FIND_QUIET_MS, by the State's clock. Nothing is
+// asked again while it stays the same: no request per frame.
+@(private)
+file_browser_find_follow :: proc(fb: ^File_Browser) {
+	s := fb.state
+	a := runtime.heap_allocator()
+	want := file_browser_finds(fb) ? line_edit_string(&fb.filter) : ""
+	now := clock_ms(s)
+	if want != fb.find_seen {
+		delete(fb.find_seen, a)
+		fb.find_seen = strings.clone(want, a)
+		fb.find_typed_ms = now
+		if want == "" { file_browser_find_drop(fb) }
+	}
+	// (the computer's first folder not known yet: asked once it is)
+	if want == "" || fb.folder == "" || (want == fb.find_query && fb.hidden == fb.find_hidden) { return }
+	if waited := now - fb.find_typed_ms; waited < FILE_FIND_QUIET_MS {
+		wake_within(s, int(FILE_FIND_QUIET_MS - waited) + WAKE_MARGIN_MS)
+		return
+	}
+	delete(fb.find_query, a)
+	fb.find_query = strings.clone(want, a)
+	fb.find_hidden = fb.hidden
+	fb.find_ms = now
+	context.allocator = a
+	ticket := remote.begin(&fb.finding)
+	reply := File_Reply{state = s, dialog = fb.serial, ticket = ticket, kind = .Find, hidden = fb.hidden}
+	fb.source.find(&fb.source, strings.clone(fb.folder, context.temp_allocator), strings.clone(want, context.temp_allocator), FILE_FIND_LIMIT, reply)
+}
+
+// No find wanted any more (the query emptied, the toggle off, another folder, the dialog closed): the walk on its way
+// stops, its answer is dropped, what was found goes.
+@(private)
+file_browser_find_drop :: proc(fb: ^File_Browser) {
+	file_find_stop(fb)
+	context.allocator = runtime.heap_allocator()
+	remote.reset(&fb.finding)
+	delete(fb.find_query, runtime.heap_allocator())
+	fb.find_query, fb.find_hidden = "", false
+	if len(fb.found) > 0 {
+		virtual.arena_free_all(&fb.found_arena)
+		clear(&fb.found)
+		fb.found_version += 1
+	}
+}
+
+@(private)
+file_browser_found :: proc(fb: ^File_Browser, ticket: u64, entries: []File_Entry) {
+	context.allocator = runtime.heap_allocator()
+	if !remote.answer(&fb.finding, ticket, .Ready) { return }
+	virtual.arena_free_all(&fb.found_arena)
+	clear(&fb.found)
+	ea := virtual.arena_allocator(&fb.found_arena)
+	reserve(&fb.found, len(entries))
+	for e in entries {
+		c := e
+		c.name = strings.clone(e.name, ea)
+		append(&fb.found, c)
+	}
+	fb.found_version += 1
+}
+
+// The folder's sort back, when the find's rows had set it aside.
+@(private)
+file_browser_sort_back :: proc(fb: ^File_Browser) {
+	if !fb.sort_kept { return }
+	fb.table.sort, fb.table.descending = fb.kept_sort, fb.kept_descending
+	fb.sort_kept = false
 }
 
 ////////////////////////////////
@@ -520,19 +647,33 @@ file_browser_made :: proc(fb: ^File_Browser, ticket: u64) {
 // when the filter or the sort changed: a build that changed none of them does no work in proportion to the entries.
 @(private)
 file_browser_rows :: proc(fb: ^File_Browser, sorted: bool) {
-	key := File_Rows_Key{entries = fb.entries_version, hidden = fb.hidden, type_index = fb.type_index}
+	found := file_browser_finds(fb)
+	key := File_Rows_Key{entries = found ? fb.found_version : fb.entries_version, hidden = fb.hidden, type_index = fb.type_index, found = found}
 	remade := false
 	if !fb.made || key != fb.made_for {
+		// (the find's rows in the order found, best first: the folder's sort set aside until they go, unless the person
+		// clicks a column)
+		if found && !fb.sort_kept {
+			fb.kept_sort, fb.kept_descending, fb.sort_kept = fb.table.sort, fb.table.descending, true
+			fb.table.sort, fb.table.descending = TABLE_UNSORTED, false
+		} else if !found {
+			file_browser_sort_back(fb)
+		}
+		fb.made_for = key   // (before the rows: file_rows_entries reads which entries they are of)
 		file_browser_rows_make(fb)
-		fb.made_for, fb.made, remade = key, true, true
+		fb.made, remade = true, true
 		fb.rows_made += 1
+		if found { vlist_scroll_to(&fb.table.vl, 0) }
 	}
 	q := line_edit_string(&fb.filter)
 	if remade || sorted || q != fb.applied_query {
 		a := runtime.heap_allocator()
 		delete(fb.applied_query, a)
 		fb.applied_query = strings.clone(q, a)
-		table_apply(&fb.table, &fb.data, q)
+		// (the find filtered and ranked them already: the table filters nothing more, and lights the query's letters)
+		table_apply(&fb.table, &fb.data, found ? "" : q)
+		fb.table.highlight = found ? fb.applied_query : fb.table.query
+		if found && fb.table.vl.sel < 0 && len(fb.table.ids) > 0 { list_select(&fb.table.vl, 0) }
 		fb.rows_applied += 1
 	}
 	// (looked for once the folder's rows are there, not at every build: a pass over them)
@@ -554,23 +695,25 @@ file_browser_rows_make :: proc(fb: ^File_Browser) {
 	clear(&fb.rows)
 	clear(&fb.by_id)
 	now := f64(time.to_unix_nanoseconds(time.now()) / 1_000_000)
-	offset := fb.local.offset_minutes
+	offset := timefmt.local_offset_minutes()
 	filters := file_browser_type_filters(fb)
 	words := [File_Look]string{
 		.Folder = i18n.tr("Folder"), .File = i18n.tr("File"), .Image = i18n.tr("Image"), .Code = i18n.tr("Code"),
 		.Archive = i18n.tr("Archive"), .Text = i18n.tr("Text"), .Link = i18n.tr("Link"),
 	}
-	// (folders first, in the data too: the rows unsorted keep them first)
-	for pass in 0 ..< 2 {
-		for e, i in fb.entries {
+	found := fb.made_for.found
+	// (the folder's: folders first, in the data too, so the rows unsorted keep them first; the find's: one pass, in the
+	// order found, a folder and a file in one group)
+	for pass in 0 ..< (found ? 1 : 2) {
+		for e, i in file_rows_entries(fb) {
 			folder := e.kind == .Folder
-			if (pass == 0) != folder { continue }
+			if !found && (pass == 0) != folder { continue }
 			hidden := file_entry_hidden(e)
 			if hidden && !fb.hidden { continue }
 			tone := hidden ? Table_Tone.Dim : Table_Tone.Normal
 			if !folder {
 				// (Open: what no type of the dialog takes is not there; Save and Folder: faded, it says what is there)
-				if filters != nil && !platform.filter_matches(filters, e.name) {
+				if filters != nil && !platform.filter_matches(filters, file_path_name(e.name, fb.sep)) {
 					if fb.kind == .Open { continue }
 					tone = .Dim
 				}
@@ -578,7 +721,7 @@ file_browser_rows_make :: proc(fb: ^File_Browser) {
 			}
 			id := file_row_id(e.name)
 			fb.by_id[id] = len(fb.rows)
-			table_data_row(&fb.data, id, e.name, tone, folder ? 0 : 1)
+			table_data_row(&fb.data, id, e.name, tone, found || folder ? 0 : 1)
 			table_data_cell(&fb.data, e.name)
 			table_data_cell(&fb.data, !folder && e.size >= 0 ? timefmt.size(e.size) : "", folder ? -1 : f64(e.size))
 			table_data_cell(&fb.data, e.modified > 0 ? timefmt.moment(f64(e.modified), now, offset, short = true) : "", f64(e.modified))
@@ -595,24 +738,33 @@ file_browser_type_filters :: proc(fb: ^File_Browser) -> []platform.File_Filter {
 	return fb.d.filters[fb.type_index:fb.type_index + 1]
 }
 
+// The entries the rows were made of: the folder's, or the find's (their names: paths relative to the folder). Either
+// joins to the folder by file_path_join.
+@(private)
+file_rows_entries :: proc(fb: ^File_Browser) -> []File_Entry { return fb.made_for.found ? fb.found[:] : fb.entries[:] }
+
 // The entry of data row `r`.
 @(private)
 file_row_entry :: proc(fb: ^File_Browser, r: int) -> ^File_Entry {
-	if r < 0 || r >= len(fb.rows) { return nil }
-	return &fb.entries[fb.rows[r]]
+	list := file_rows_entries(fb)
+	// (the entries may have changed since the rows were made: they are made again at the list's next build)
+	if r < 0 || r >= len(fb.rows) || fb.rows[r] >= len(list) { return nil }
+	return &list[fb.rows[r]]
 }
 
-// The entries chosen: the rows marked (Open with `multiple`), else the selected one; in the folder's order.
+// The entries chosen (indices of file_rows_entries): the rows marked (Open with `multiple`), else the selected one; in
+// the entries' order.
 @(private)
 file_browser_chosen :: proc(fb: ^File_Browser, allocator := context.temp_allocator) -> []int {
 	out := make([dynamic]int, allocator)
+	n := len(file_rows_entries(fb))
 	vl := &fb.table.vl
 	if vl.multi && list_mark_count(vl) > 0 {
 		for id in vl.marks {
-			if r, ok := fb.by_id[id]; ok { append(&out, fb.rows[r]) }
+			if r, ok := fb.by_id[id]; ok && fb.rows[r] < n { append(&out, fb.rows[r]) }
 		}
 		slice.sort(out[:])
-	} else if r := table_selected(&fb.table); r >= 0 {
+	} else if r := table_selected(&fb.table); r >= 0 && fb.rows[r] < n {
 		append(&out, fb.rows[r])
 	}
 	return out[:]
@@ -629,7 +781,8 @@ file_browser_can_act :: proc(fb: ^File_Browser) -> bool {
 		key := [3]u64{u64(vl.sel + 1), u64(list_mark_count(vl)), fb.table.ids_version}
 		if key != fb.open_key {
 			fb.open_key, fb.open_ok = key, false
-			for i in file_browser_chosen(fb) { if fb.entries[i].kind == .File { fb.open_ok = true; break } }
+			list := file_rows_entries(fb)
+			for i in file_browser_chosen(fb) { if list[i].kind == .File { fb.open_ok = true; break } }
 		}
 		return fb.open_ok
 	case .Folder: return fb.folder != ""
@@ -641,17 +794,18 @@ file_browser_can_act :: proc(fb: ^File_Browser) -> bool {
 // The act's button, or Enter in the name field.
 @(private)
 file_browser_act :: proc(fb: ^File_Browser) {
+	list := file_rows_entries(fb)
 	switch fb.kind {
 	case .Open:
 		paths := make([dynamic]string, context.temp_allocator)
 		for i in file_browser_chosen(fb) {
-			if fb.entries[i].kind == .File { append(&paths, file_path_join(fb.folder, fb.entries[i].name, fb.sep)) }
+			if list[i].kind == .File { append(&paths, file_path_join(fb.folder, list[i].name, fb.sep)) }
 		}
 		if len(paths) > 0 { file_browser_finish(fb, .Chosen, paths[:]) }
 	case .Folder:
 		path := fb.folder
-		if chosen := file_browser_chosen(fb); len(chosen) == 1 && fb.entries[chosen[0]].kind == .Folder {
-			path = file_path_join(fb.folder, fb.entries[chosen[0]].name, fb.sep)
+		if chosen := file_browser_chosen(fb); len(chosen) == 1 && list[chosen[0]].kind == .Folder {
+			path = file_path_join(fb.folder, list[chosen[0]].name, fb.sep)
 		}
 		if path != "" {
 			paths := [1]string{strings.clone(path, context.temp_allocator)}

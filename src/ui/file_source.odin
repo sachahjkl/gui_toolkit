@@ -3,7 +3,7 @@ package ui
 // What the file browser reads its folders through (docs/file-browser.md): the computer's own files (local_files) or any
 // other file system a program reaches (a server's, an archive's). A source's calls start the work and return at once;
 // the source answers later, on the interface's thread, through the reply it was given (file_reply_listed,
-// file_reply_read, file_reply_made, file_reply_failed). An answer of a reading given up (another folder asked since,
+// file_reply_read, file_reply_made, file_reply_found, file_reply_failed). An answer of a reading given up (another folder asked since,
 // another file selected, the dialog closed) changes nothing: the reply carries its ticket (remote) and its dialog.
 //
 // The paths are the source's: absolute, its separator between their parts. The helpers below read them for any
@@ -34,7 +34,7 @@ File_Entry :: struct {
 }
 
 // What a reply answers.
-File_Reply_Kind :: enum u8 { List, Read, Make }
+File_Reply_Kind :: enum u8 { List, Read, Make, Find }
 
 // The way back of one call of a source: give it to the file_reply_ procedure that answers, on the interface's thread.
 // It is a value: keep it as long as the work takes (it holds no memory).
@@ -43,6 +43,7 @@ File_Reply :: struct {
 	dialog: u64,     // the dialog that asked (an answer after it closed is dropped)
 	ticket: u64,     // the reading (an answer of a reading given up is dropped)
 	kind:   File_Reply_Kind,
+	hidden: bool,    // .Find: Hidden files is on; else the hidden entries, and what is in hidden folders, are not found
 }
 
 File_Source :: struct {
@@ -55,6 +56,9 @@ File_Source :: struct {
 	read:        proc(src: ^File_Source, path: string, max: int, reply: File_Reply),
 	// Makes the folder `path` (file_reply_made). nil: no New folder.
 	make_folder: proc(src: ^File_Source, path: string, reply: File_Reply),
+	// The entries under `folder`, at any depth, that match `query`, best first, at most `limit` (file_reply_found);
+	// `reply.hidden`: hidden ones too. nil: the source cannot, the browser offers no search in subfolders.
+	find:        proc(src: ^File_Source, folder, query: string, limit: int, reply: File_Reply),
 	// The places it knows already, at once (cheap: no reading), in `allocator`. nil: none.
 	places:      proc(src: ^File_Source, allocator: mem.Allocator) -> []platform.File_Place,
 	// Where a dialog starts that knows no folder ("": the first of its places), in `allocator`. nil: its first place.
@@ -74,6 +78,12 @@ file_reply_read :: proc(reply: File_Reply, bytes: []u8, size: i64) {
 // The folder asked was made.
 file_reply_made :: proc(reply: File_Reply) {
 	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Make { file_browser_made(fb, reply.ticket) }
+}
+
+// What a find found, best first: each entry's `name` is its path relative to the folder asked, with the source's
+// separator ("docs/notes.md"). They are copied: the source frees its own after the call.
+file_reply_found :: proc(reply: File_Reply, entries: []File_Entry) {
+	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Find { file_browser_found(fb, reply.ticket, entries) }
 }
 
 // The call did not end well: `message` is what the person reads (the source's words, in the language in use).
