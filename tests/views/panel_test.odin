@@ -459,6 +459,40 @@ views_space_reset_puts_the_layout_back :: proc(t: ^testing.T) {
 	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "its extent_em again: %v", zone != nil ? zone.rect : ui.Rect{})
 }
 
+// view_dock_line says where the handle's rule is drawn, at a fractional scale and after a drag: the pixel column it
+// names is the rule's, so a program's line across a bar meets it.
+@(test)
+the_dock_line_is_where_the_rule_is_drawn :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side")
+	session.set_dpi(s, 1.25)
+	if wait_built(s, "view_zone_Left") == nil { return }
+	handle := session.find(s, "view_handle_Left")
+	if handle == nil { testing.expect(t, false, "its handle"); return }
+	at := session.center(handle)
+	session.drag(s, at, at + {7, 0})
+	session.wait_idle(s)
+	line, ok := ui.view_dock_line(&r.views, .Left)
+	if !testing.expect(t, ok, "a line: the left zone has its handle") { return }
+	handle = session.find(s, "view_handle_Left")
+	testing.expectf(t, line.min.x >= handle.rect.min.x && line.max.x <= handle.rect.max.x, "inside its handle: %v in %v", line, handle.rect)
+	// (moved off the handle: its rule is drawn at rest, not hot)
+	session.move(s, {line.min.x + 200, line.min.y + 40})
+	session.wait_idle(s)
+	img := session.capture(s)
+	y := int(line.min.y + 40)
+	x := int(line.min.x)
+	rule := session.pixel(img, x, y)
+	testing.expectf(t, !session.near(rule, session.pixel(img, x - 3, y), 6) || !session.near(rule, session.pixel(img, x + 3, y), 6),
+		"the rule's colour at x %d: %v, beside it %v and %v", x, rule, session.pixel(img, x - 3, y), session.pixel(img, x + 3, y))
+
+	ui.view_close(&r.views, "side")
+	session.wait_idle(s)
+	_, still := ui.view_dock_line(&r.views, .Left)
+	testing.expect(t, !still, "no line once nothing is docked there")
+}
+
 // Instances open at the quit are listed at the next start (view_restored_instances), each reopened by the program
 // where it was; one closed before the quit is not; a quit with none open lists none.
 @(test)

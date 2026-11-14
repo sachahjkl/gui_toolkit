@@ -34,6 +34,7 @@ View_Space :: struct {
 	rect:      Rect,                                    // window px, as laid out by its last build
 	zone:      [View_Edge]Rect,                         // ... each zone's ({}: none)
 	zone_key:  [View_Edge]Key,
+	handle_key: [View_Edge]Key,                         // ... each zone's handle (view_dock_line)
 	stacks:    [View_Edge][VIEW_STACKS_MAX]Rect,        // ... each stack's, by rank ({}: none)
 	stack_key: [View_Edge][VIEW_STACKS_MAX]Key,
 	count:     [View_Edge]int,                          // ... how many stacks each zone had
@@ -431,6 +432,23 @@ view_zone_box :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record, em: f3
 	return b
 }
 
+// Where a zone's handle draws its rule.
+@(private = "file")
+VIEW_HANDLE_LINE :: Splitter_Line.Middle
+
+// Where zone `e`'s handle draws its rule in the space `space` ("": the window's frame), in window pixels: from this
+// frame's layout when called after it (a box's custom draw), else from the last one. A program's own line that goes on
+// across a bar (a title bar's, a status bar's) takes its place from here, never from a width of its own: one value, the
+// same pixel column during a drag and after it. ok = false: no handle there in its last build (nothing docked, a zone
+// minimised, a stack maximised).
+view_dock_line :: proc(vs: ^Views, e: View_Edge, space := "") -> (line: Rect, ok: bool) {
+	sp, found := vs.spaces[space]
+	if !found || sp.state == nil || sp.handle_key[e] == 0 { return }
+	b := sp.state.boxes[sp.handle_key[e]] or_else nil
+	if b == nil || b.last_build != sp.built { return }
+	return splitter_line(b.rect, VIEW_HANDLE_LINE, splitter_line_width(sp.state.scale)), true
+}
+
 // The handle between a zone and the centre: the centre keeps DOCK_MIN_EM; the extent is written when it is let go.
 @(private = "file")
 view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
@@ -441,7 +459,8 @@ view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
 	least := DOCK_MIN_EM * em / sc
 	size := view_zone_px(sp, e, em, total * sc) / sc
 	res := splitter(fmt.tprintf("###view_handle_%v", e), across ? .X : .Y, &size, least, max(total - least, least),
-		{after = e == .Right || e == .Bottom, total = total > 0 ? total : 0, min_other = least})
+		{after = e == .Right || e == .Bottom, total = total > 0 ? total : 0, min_other = least, line_at = VIEW_HANDLE_LINE})
+	if res.box != nil { sp.handle_key[e] = res.box.key }
 	// (the drag kept in the zone's unit: a share stays a share, it goes on following the window)
 	if res.changed {
 		if sp.mem.frac[e] > 0 {
