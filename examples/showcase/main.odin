@@ -7,7 +7,7 @@
 //   build/showcase --finish=edged                     flat, gradient, glass, machined (the default), edged
 //   build/showcase --page=scrolling --advanced        the settings scene: the page shown, its Advanced part unfolded
 //   build/showcase --scene=views --views=floating     the views scene: docked (panels), floating (and a floating
-//                                                     window), dialog (and a dialog)
+//                                                     window), dialog (and a dialog), tabs (every terminal)
 //   build/showcase --scene=files                      the file browser over the page, on a demo source (files.odin)
 //   build/showcase --headless                         no window of the system: what tk screenshots runs
 //   build/showcase --size=1280x800                    the window's size

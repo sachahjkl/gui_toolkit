@@ -510,38 +510,61 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 // as a window's caption buttons (caption_row).
 @(private = "file")
 view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list: []^View_Record, shown: ^View_Record, maxed: bool) {
-	s := gs()
 	em := font_size()
-	labels := view_labels(vs)
 	minimised := sp.mem.minimised[e] && !maxed
 	next({width = fill(), height = px(math.round(DOCK_TAB_EM * em)), axis = .X, cross = .Center})
-	strip: ^Box
-	if tags("bar") { strip = build_box({.Draw_Background, .Draw_Side_Bottom}, "###view_tabs") }
-	a11y_default(strip, {role = .Tab_List, orientation = .X})
-	push_parent(strip)
+	bar: ^Box
+	if tags("bar") { bar = build_box({.Draw_Background, .Draw_Side_Bottom}, "###view_tabs") }
+	push_parent(bar)
 	defer pop_parent()
-	for r in list {
-		on := r == shown
-		push_tags(on ? "selected" : "ghost_button")
-		next({width = text_size(em * DOCK_TAB_PAD_EM * 2), height = pct(1), text_pad = em * DOCK_TAB_PAD_EM, text_align = .Center})
-		tb := build_box({.Clickable, .Draw_Text, .Draw_Background, .Draw_Hot_Effects}, fmt.tprintf("%s###view_tab_%s", text_shown(view_title_shown(r)), r.modal_name))
-		pop_tags()
-		a11y_default(tb, {role = .Tab, selected = on})
-		sig := signal(tb)
-		if sig.clicked {
-			if !on {
-				delete(sp.active[e][k], vs.allocator)
-				sp.active[e][k] = strings.clone(r.modal_name, vs.allocator)
+	// the tabs, as every row of tabs of the toolkit (tab_box), on a strip: too many for the stack, they scroll with arrows
+	if strip("###view_tab_strip") {
+		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
+		for r in list {
+			on := r == shown
+			title := text_shown(view_title_shown(r))
+			tb := tab_box(fmt.tprintf("###view_tab_%s", r.modal_name), on)
+			if parent(tb) {
+				if !on { push_tags("weak") }
+				next({width = text_size(em * DOCK_TAB_PAD_EM * 2), height = pct(1), text_pad = em * DOCK_TAB_PAD_EM, text_align = .Center})
+				build_box({.Draw_Text}, fmt.tprintf("%s###view_tab_title", title))
+				if !on { pop_tags() }
 			}
-			if minimised { view_stack_minimise(vs, sp, e, false) }
+			a11y_default(tb, {role = .Tab, selected = on, name = title})
+			view_stack_tab_input(vs, sp, e, k, r, tb, on, minimised)
 		}
-		if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), tb.key, search = false) }
-		if sig.dragging { view_panel_drag(vs, r, tb.key, sig, em) }
 	}
-	// the "+": right after the last tab, where the new one comes
+	// the "+": right after the last tab, where the new one comes (at the strip's end when the tabs scroll)
 	if shown.kind.o.new_tab != nil && view_header_icon("view_new_tab", lucide.PLUS, view_new_tab_label(vs, shown.kind), true) {
 		view_new_tab(vs, shown)
 	}
+	view_stack_strip_rest(vs, sp, e, k, list, shown, maxed, minimised)
+}
+
+// What a tab of a stack's strip does: a click shows its view (and restores a zone minimised), a right click opens its
+// menu, a drag takes it out as an internal window.
+@(private = "file")
+view_stack_tab_input :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, r: ^View_Record, tb: ^Box, on, minimised: bool) {
+	em := font_size()
+	sig := signal(tb)
+	if sig.clicked {
+		if !on {
+			delete(sp.active[e][k], vs.allocator)
+			sp.active[e][k] = strings.clone(r.modal_name, vs.allocator)
+		}
+		if minimised { view_stack_minimise(vs, sp, e, false) }
+	}
+	if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), tb.key, search = false) }
+	if sig.dragging { view_panel_drag(vs, r, tb.key, sig, em) }
+}
+
+// The rest of a stack's strip after its tabs and its "+": the shown view's moves, the slot of its program's tools, the
+// stack's own buttons at the right end.
+@(private = "file")
+view_stack_strip_rest :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list: []^View_Record, shown: ^View_Record, maxed, minimised: bool) {
+	s := gs()
+	em := font_size()
+	labels := view_labels(vs)
 	// the shown view's moves, where the eye already is
 	spacer(px(em * 0.4))
 	if view_header_icon("view_detach", lucide.PICTURE_IN_PICTURE_2, labels.floating, true) { view_float(vs, shown) }

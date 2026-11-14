@@ -310,8 +310,10 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
 - A panel alone in its stack adds nothing: no tab strip, no border, no background (rule 1), unless its kind says
   `tabs_always` (a terminal: its strip shows with one tab). Two panels or more in a stack are its tabs: a click shows
   one, a right click opens its menu, a drag past `DOCK_DRAG_EM` takes it out as an internal window under the pointer.
-- **The strip**, left to right: the tabs; the "+" of the shown view's kind, right after the last tab, where the new
-  tab appears; the shown view's moves (Float, Open in a window, Re-attach), small and weak; the program's tools of the
+- **The strip**, left to right: the tabs, in the look of every row of tabs (`ui.tabs`: the shown one in the text's colour
+  over the accent underline, the others weak), each a Tab stop, on a strip ([strip.md](strip.md)): too many for the
+  stack, they scroll with arrows, never a bar; the "+" of the shown view's kind, right after the last tab (at the end of
+  the tabs when they scroll), where the new tab appears; the shown view's moves (Float, Open in a window, Re-attach), small and weak; the program's tools of the
   shown view (`view_header_tools`); then at the right end Minimise (zones at the top and the bottom), Maximise and
   Close of the stack, drawn as a window's caption buttons. A panel with a strip has no hover icons.
   - `View_Options.new_tab: proc(data: rawptr)`: the "+" calls it with the shown view's data; the program opens a new

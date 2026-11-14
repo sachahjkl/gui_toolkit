@@ -254,7 +254,7 @@ scroll_view_delta :: proc(s: ^State) -> Vec2 {
 
 // The box the wheel scrolls: the innermost under `p` that scrolls the way `d` goes (mostly sideways: .View_Scroll_X, else
 // .View_Scroll_Y; .Scroll_Self takes both). A box that scrolls only sideways (a wide table) lets a vertical wheel through to
-// the page around it.
+// the page around it, unless it turns it sideways (.Wheel_Sideways: a strip) and overflows.
 @(private)
 scroll_hit_test :: proc(s: ^State, p: Vec2, d: Vec2) -> Key {
 	if s.root == nil { return 0 }
@@ -271,7 +271,9 @@ scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways: bool) -> Key {
 	for c := b.last; c != nil; c = c.prev {
 		if k := scroll_hit_box(c, p, child_clip, sideways); k != 0 { return k }
 	}
-	takes := .Scroll_Self in b.flags || (sideways ? .View_Scroll_X in b.flags : .View_Scroll_Y in b.flags)
+	// (a strip takes an up-and-down wheel too while it overflows: there is nothing to scroll up and down over it)
+	turned := .Wheel_Sideways in b.flags && view_limit(b, .X) > 0
+	takes := .Scroll_Self in b.flags || (sideways ? .View_Scroll_X in b.flags : (.View_Scroll_Y in b.flags || turned))
 	if takes && contains(b.rect, p) { return b.key }
 	return 0
 }
@@ -407,6 +409,7 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 	if .Scroll_Self in b.flags && s.scroll_key == b.key { sig.scrolled = s.scroll_delta }
 	if (.View_Scroll_X in b.flags || .View_Scroll_Y in b.flags) && s.scroll_key == b.key {
 		d := scroll_view_delta(s)
+		if .Wheel_Sideways in b.flags && d.x == 0 { d = {d.y, 0} }
 		if .View_Scroll_X in b.flags { b.view_target.x += d.x * wheel_step(b, .X); sig.scrolled.x = d.x }
 		if .View_Scroll_Y in b.flags { b.view_target.y += d.y * wheel_step(b, .Y); sig.scrolled.y = d.y }
 		// clamp against last frame's bounds; the animation pass re-clamps with fresh ones

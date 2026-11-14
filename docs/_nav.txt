@@ -30,6 +30,7 @@ Widgets and layout
   commands.md         Commands, palette, keys
   autoscroll.md       Middle-click autoscroll
   scroll-bar.md       The scroll bar
+  strip.md            Strips: rows of choices that scroll
   scroll-marks.md     Marks on a scroll bar
   data-views.md       Tables, graphs and meters
   term.md             term: a terminal's grid

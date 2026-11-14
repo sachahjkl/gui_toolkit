@@ -1249,47 +1249,61 @@ tab_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	draw.rect(dc, {{cx - w * 0.5, r.max.y - math.round(TAB_UNDERLINE_PX * scale())}, {cx + w * 0.5, r.max.y}}, d.accent, TAB_UNDERLINE_RADIUS_PX * scale())
 }
 
-// Row of tabs with a growing underline. `icons` may be nil. Returns true when the selection changed.
-tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (changed: bool) {
+// One tab: the look of every row of tabs of the toolkit (tabs, a dock's stack, a stack of views). The chosen tab is in
+// the text's colour over the accent underline, which grows when it is chosen; the others are weak, lit by the theme's
+// "tab" hover. A Tab stop as tall as its row and as wide as what the caller builds in it (`if parent(b)`); the caller
+// pushes "weak" around the words of an unchosen tab. `flags` adds to the tab's own.
+@(private)
+tab_box :: proc(id: string, on: bool, flags: Box_Flags = {}) -> ^Box {
 	s := gs()
+	t := anim(key_from_string(key_from_string(parent_box().key, id), "t"), on ? 1 : 0, TAB_RATE)
+	set_next_axis(.X, .Center)
+	s.next_mod.width = children_sum()
+	s.next_mod.height = pct(1)
+	if !on { push_tags("weak") }
+	push_tags("tab")
+	b := build_box(Box_Flags{.Clickable, .Focusable, .Draw_Hot_Effects} + flags, id)
+	pop_tags()
+	if !on { pop_tags() }
+	d := frame_new(Tab_Draw)
+	d.t, d.accent = t, color("accent")
+	b.custom, b.custom_user = tab_draw, d
+	return b
+}
+
+// Row of tabs with a growing underline, on a strip (strip.odin): too many for the row, it scrolls with arrows, never a
+// bar. With no width given (next), as wide as its tabs, and the first to give way in a short row; `strip_view(id)` is
+// its tab list. `icons` may be nil. Returns true when the selection changed.
+tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (changed: bool) {
 	em := font_size()
-	a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
-	first_tab: ^Box
-	for label, i in labels {
-		on := selected^ == i
-		tab_id := fmt.tprintf("%s_%d", id, i)
-		key := key_from_string(parent_box().key, tab_id)
-		t := anim(key_from_string(key, "t"), on ? 1 : 0, TAB_RATE)
-		if !on { push_tags("weak") }
-		set_next_axis(.X, .Center)
-		s.next_mod.width = children_sum()
-		s.next_mod.height = pct(1)
-		push_tags("tab")
-		b := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, tab_id)
-		pop_tags()
-		d := frame_new(Tab_Draw)
-		d.t, d.accent = t, color("accent")
-		b.custom, b.custom_user = tab_draw, d
-		if parent(b) {
-			spacer(px(em))
-			if i < len(icons) { icon(icons[i], em * 1.6) }
-			next({width = text_size(), height = pct(1)})
-			build_box({.Draw_Text}, label)
-			spacer(px(em))
+	if strip(id) {
+		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
+		first_tab: ^Box
+		for label, i in labels {
+			on := selected^ == i
+			b := tab_box(fmt.tprintf("%s_%d", id, i), on)
+			if parent(b) {
+				if !on { push_tags("weak") }
+				spacer(px(em))
+				if i < len(icons) { icon(icons[i], em * 1.6) }
+				next({width = text_size(), height = pct(1)})
+				build_box({.Draw_Text}, label)
+				spacer(px(em))
+				if !on { pop_tags() }
+			}
+			sig := signal(b)
+			if sig.clicked && !on { selected^ = i; changed = true }
+			a11y_default(b, {role = .Tab, selected = on, position = i + 1, set_size = len(labels)})
+			if first_tab == nil { first_tab = b }
 		}
-		if !on { pop_tags() }
-		sig := signal(b)
-		if sig.clicked && !on { selected^ = i; changed = true }
-		a11y_default(b, {role = .Tab, selected = on, position = i + 1, set_size = len(labels)})
-		if first_tab == nil { first_tab = b }
-	}
-	// (the tab clicked this frame is the selected one: the earlier tabs said otherwise)
-	if changed {
-		i := 0
-		for c := first_tab; c != nil && i < len(labels); c = c.next {
-			if c.a11y == nil || c.a11y.role != .Tab { continue }
-			c.a11y.selected = i == selected^
-			i += 1
+		// (the tab clicked this frame is the selected one: the earlier tabs said otherwise)
+		if changed {
+			i := 0
+			for c := first_tab; c != nil && i < len(labels); c = c.next {
+				if c.a11y == nil || c.a11y.role != .Tab { continue }
+				c.a11y.selected = i == selected^
+				i += 1
+			}
 		}
 	}
 	return

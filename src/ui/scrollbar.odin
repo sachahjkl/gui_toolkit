@@ -55,14 +55,16 @@ scrollbar_overflows :: proc(s: ^State, b: ^Box, axis: Axis) -> bool {
 // True when a room changed: the layout runs again in the same build. Measured with the room it had, the decision has a
 // hysteresis: a content that overflows only beside a bar never takes the room (it was measured without it), and a
 // content that keeps the room gives it back once it fits beside the bar (it then fits without it too). The room never
-// goes and comes from one build to the next.
+// goes and comes from one build to the next. A box with .Scrollbar_Reserve keeps the room of each bar it can show,
+// overflowing or not (a content that grows past its view does not narrow then); .Scrollbar_None keeps none.
 @(private)
 scrollbar_rooms_update :: proc(s: ^State, b: ^Box) -> (changed: bool) {
 	if b.flags & {.View_Scroll_X, .View_Scroll_Y} != {} {
 		want: Vec2
-		if !s.scrollbar_overlay {
-			if scrollbar_overflows(s, b, .Y) { want.x = scroll_marks_of(b) != nil ? scroll_marks_rest_width(b) : scrollbar_thickness(s) }
-			if scrollbar_overflows(s, b, .X) { want.y = scrollbar_thickness(s) }
+		if !s.scrollbar_overlay && .Scrollbar_None not_in b.flags {
+			reserve := .Scrollbar_Reserve in b.flags
+			if (reserve && .View_Scroll_Y in b.flags) || scrollbar_overflows(s, b, .Y) { want.x = scroll_marks_of(b) != nil ? scroll_marks_rest_width(b) : scrollbar_thickness(s) }
+			if (reserve && .View_Scroll_X in b.flags) || scrollbar_overflows(s, b, .X) { want.y = scrollbar_thickness(s) }
 		}
 		if want != b.bar_room { b.bar_room, changed = want, true }
 	} else if b.bar_room != {} {

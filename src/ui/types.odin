@@ -86,7 +86,9 @@ Box_Flag :: enum u8 {
 	Window_Caption,      // part of an integrated title bar: where nothing clickable is over it, it drags the window (`title_bar`)
 	Hot_Within,          // hot (hot_t, its hover fill) also while the pointer is on a clickable box inside it (a row and its buttons)
 	Scrollbar_Left,      // a .View_Scroll_Y box's scrollbar is at its left edge (a panel docked on the right side keeps it on the outside)
-	Scrollbar_None,      // a scroll box that shows no bar (its view follows another's: a table's titles over its rows)
+	Scrollbar_None,      // a scroll box that shows no bar and keeps no room for one (a table's titles over its rows; a strip, strip.odin)
+	Scrollbar_Reserve,   // a scroll box keeps its bars' room even while its content fits: no jump when it grows past the view (scroll-bar.md)
+	Wheel_Sideways,      // a .View_Scroll_X box that an up-and-down wheel scrolls sideways while it overflows (a strip)
 	Selectable,          // its text (a label, a paragraph, a rich paragraph) can be selected and copied (selection.odin)
 	Middle_Click,        // handles the middle button itself (a tab closes): a middle press on it does not start autoscroll in the region it is in
 	Sunken,              // a well (fields, input_frame, well): the machined finish carves it in, its focus a ring of light
@@ -489,6 +491,8 @@ State :: struct {
 	hover_key:       Key,
 	mouse_moved:     bool,            // the pointer moved this frame
 	list_stack:      [dynamic]^List_State,  // lists being built (list.odin)
+	strip_stack:     [dynamic]Strip_Build,  // strips being built (strip.odin)
+	strips:          [dynamic]Strip_Build,  // the strips of this build, for strips_settle after its layout
 	virtual_depth:   int,                   // > 0 inside a vlist or a lazy column (Box.virtual)
 
 	// integrated title bar (window_chrome.odin)

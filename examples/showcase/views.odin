@@ -3,7 +3,8 @@ package showcase
 // The views scene: a section of a program with its own dock space (views_dock, docs/views.md "Panels"): its content in
 // the centre, two terminals stacked as tabs at the bottom (their strip: the tabs, the "+", the moves, then minimise,
 // maximise and close), a lone inspector at the right (no strip: a panel alone adds nothing), and, by --views=, a
-// floating window over the content or a dialog. The views open when the scene shows and close when it goes: a panel
+// floating window over the content or a dialog, or every terminal open (--views=tabs: in a narrow window their tabs
+// overflow the strip, which scrolls with arrows). The views open when the scene shows and close when it goes: a panel
 // whose space is not built would float over the other scenes. Their memory is the window's own: in memory only.
 
 import "core:fmt"
@@ -17,8 +18,9 @@ Views_Variant :: enum u8 {
 	Docked,     // the panels only
 	Floating,   // the panels and a floating window over the content
 	Dialog,     // the panels and a dialog over all of it (its header: the Detach icon, the close cross)
+	Tabs,       // the panels, every terminal open: in a narrow window their tabs overflow the strip (its arrows)
 }
-VIEWS_VARIANT_NAMES := [Views_Variant]string{.Docked = "docked", .Floating = "floating", .Dialog = "dialog"}
+VIEWS_VARIANT_NAMES := [Views_Variant]string{.Docked = "docked", .Floating = "floating", .Dialog = "dialog", .Tabs = "tabs"}
 
 VIEWS_SPACE :: "views_scene"
 TERMINAL_VIEW :: "terminal"
@@ -100,6 +102,7 @@ views_scene_open :: proc(app: ^App) {
 	case .Docked:
 	case .Floating: ui.view_open(vs, COLOUR_VIEW, app)
 	case .Dialog:   ui.view_open(vs, EXPORT_VIEW, app)
+	case .Tabs:     for app.terminal_count < TERMINALS_MAX { terminal_open(app) }
 	}
 }
 
