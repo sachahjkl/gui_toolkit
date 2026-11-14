@@ -273,8 +273,8 @@ read_linker_map :: proc(text: string) -> (symbols: []Map_Symbol, stamp: string) 
 	return out[:], stamp
 }
 
-// "pkg::[file.odin]::proc" -> "pkg.proc" and its file; "pkg::proc" -> "pkg.proc".
-@(private = "file")
+// "pkg::[file.odin]::proc" -> "pkg.proc" and its file; "pkg::proc" -> "pkg.proc" (temp memory). Public: a program's own
+// symbol reader (a PDB through DbgHelp) names Odin's functions the same way as the crash reports.
 odin_symbol :: proc(s: string) -> (name, file: string) {
 	i := strings.index(s, "::")
 	if i <= 0 { return s, "" }

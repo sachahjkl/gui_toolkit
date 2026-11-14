@@ -133,6 +133,10 @@ A release has no debug information beside it, and the program's own functions ar
 - Linux: link with `-extra-linker-flags:-Wl,--build-id`. Keep the executable: `addr2line` reads its debug information, and
   the build id says it is the one that crashed.
 
+`toolbox.odin_symbol(s)` turns a linker's name of an Odin procedure into what the reports show: `pkg::[file.odin]::proc`
+gives `pkg.proc` and its file, `pkg::proc` gives `pkg.proc`. A program that reads symbols its own way (a PDB through
+DbgHelp) uses it to name them alike.
+
 ## Tests
 
 `tests/crash`: a report written and read back; a real crash of a child process (the test program itself, started again) that

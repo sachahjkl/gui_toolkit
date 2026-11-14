@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.261.0] - 2026-11-14
+
+### Added
+- **The Ember theme**: a near black with a peach accent, and in the light version white with a deeper orange, among the toolkit's themes (`ui.THEMES`), for every program. Its colours are those of opencode native's own theme, which can use this one instead of its copy.
+
+## [0.260.3] - 2026-11-14
+
+### Added
+- **`toolbox.odin_symbol`**: the name of an Odin procedure as the crash reports show it (`pkg::[file.odin]::proc` gives `pkg.proc` and its file), for a program that reads symbols its own way, as Wren's PDB reader does.
+
 ## [0.260.2] - 2026-11-14
 
 ### Fixed
@@ -3596,6 +3606,8 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.261.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.261.0
+[0.260.3]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.260.3
 [0.260.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.260.2
 [0.260.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.260.1
 [0.260.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.260.0
