@@ -47,10 +47,12 @@ a_manifest_from_the_project :: proc(t: ^testing.T) {
 	m := windows_manifest({name = "opencode-native", title = "opencode native", publisher = "Froment Software"}, {0, 45, 1})
 	for want in ([]string{
 		`name="FromentSoftware.OpencodeNative" version="1.0.0.0" processorArchitecture="amd64"`, "PerMonitorV2", `level="asInvoker"`,
+		// (whole: fmt once read its braces as argument indexes and wrote "%!(BAD ARGUMENT NUMBER)" in it)
+		`<supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>`,
 	}) {
 		testing.expectf(t, strings.contains(m, want), "the manifest has %s", want)
 	}
-	for refused in ([]string{"<dependency", "<activeCodePage", "<longPathAware", `processorArchitecture="*"`, `version="0.`}) {
+	for refused in ([]string{"%!", "{{", "<dependency", `processorArchitecture="*"`, `version="0.`}) {
 		testing.expectf(t, !strings.contains(m, refused), "the manifest has no %s", refused)
 	}
 	testing.expect(t, strings.contains(windows_manifest({name = "a b"}, {1, 0, 0}), `name="ab"`), "no publisher: the name, without spaces")

@@ -53,18 +53,22 @@ windows_manifest :: proc(p: Project, v: [3]int, allocator := context.temp_alloca
 	}
 	identity := strings.to_string(b)
 	if identity == "" { identity = "program" }
-	return fmt.aprintf(WINDOWS_MANIFEST, identity, allocator = allocator)
+	// (the name is put in by a plain replace, never by fmt: the supportedOS GUID's braces are fmt's argument indexes,
+	// and fmt.aprintf turned "{8e0f7a12-…}" into "%!(BAD ARGUMENT NUMBER)…": Windows refused the manifest, error 14001)
+	out, _ := strings.replace_all(WINDOWS_MANIFEST, MANIFEST_NAME_MARK, identity, allocator)
+	return out
 }
 
-// (the assembly's name. The manifest is the one papier and Wren started with on Windows, word for word: a version
-// 1.0.0.0 on amd64, run as the user, Windows 10 and 11, per-monitor DPI. With more in it (the program's version,
-// the "*" architecture, a dependency on Common Controls 6, longPathAware, the UTF-8 code page) Windows refused to
-// start the program: error 14001, ERROR_SXS_CANT_GEN_ACTCTX. Nothing of the toolkit needs Common Controls, and it
-// calls the wide (UTF-16) functions; the program's version is in the VERSIONINFO, where Explorer reads it.)
+@(private = "file")
+MANIFEST_NAME_MARK :: "{{name}}"
+
+// (the assembly's name at {{name}}. The manifest is the one papier and Wren start with on Windows: a version 1.0.0.0 on
+// amd64, run as the user, Windows 10 and 11, per-monitor DPI; the program's version is in the VERSIONINFO, where
+// Explorer reads it. Nothing of the toolkit needs Common Controls 6, and it calls the wide (UTF-16) functions.)
 @(private = "file")
 WINDOWS_MANIFEST :: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="%s" version="1.0.0.0" processorArchitecture="amd64"/>
+  <assemblyIdentity type="win32" name="{{name}}" version="1.0.0.0" processorArchitecture="amd64"/>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
