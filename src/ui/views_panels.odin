@@ -1029,7 +1029,6 @@ views_version :: proc(vs: ^Views) -> u64 { return vs.version }
 View_Commands :: struct {
 	commands:  []Command,
 	acts:      []View_Command,
-	serial:    u64,   // changes each time they are made again
 	made:      bool,
 	version:   u64,   // the views' version they were made for
 	language:  u32,
@@ -1059,11 +1058,10 @@ views_commands_update :: proc(vc: ^View_Commands, vs: ^Views, owner: ^State = ni
 		vc.acts[i] = {id = strings.clone(a.id, vc.allocator), instance = strings.clone(a.instance, vc.allocator), act = a.act}
 	}
 	vc.made, vc.version, vc.language = true, vs.version, language
-	vc.serial += 1
 	return true
 }
 
-// Frees what views_commands_update made (its serial goes on: a palette given it again sees a change).
+// Frees what views_commands_update made.
 views_commands_destroy :: proc(vc: ^View_Commands) {
 	if !vc.made { return }
 	for c in vc.commands { delete(c.label, vc.allocator); delete(c.group, vc.allocator) }

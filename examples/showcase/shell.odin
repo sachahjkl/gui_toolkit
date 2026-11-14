@@ -62,7 +62,8 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 	// every command under its group, with its keys)
 	if app.builds == 1 { scene_open(app, app.scene) }
 	views_scene_follow(app)   // (the views scene's panels go with it: their space is built in that scene only)
-	if ui.command_pressed(ui.PALETTE_COMMAND) { palette_toggle(app) }
+	if !ui.palette_is_open(&app.palette) { palette_sources(app) }   // (before the keys open it)
+	ui.palette_keys(&app.palette)
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 	if ui.column(id = "###app") {
 		top_bar(app, em)
@@ -205,19 +206,20 @@ scene_open :: proc(app: ^App, s: Scene) {
 	}
 }
 
-// The palette, its sources given their data: the commands, the settings (with the page options of this build).
+// The palette's sources given their data: the commands, the settings (with the page options of this build). O(1): the
+// palette reads them when it opens.
 @(private = "file")
-palette_show :: proc(app: ^App) {
+palette_sources :: proc(app: ^App) {
 	ui.palette_commands(&app.palette, COMMANDS[:], nil)
 	prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page, settings_options(app), proc(user: rawptr) {
 		(^App)(user).scene = .Settings
 	}, app)
-	ui.palette_open(&app.palette)
 }
 
 @(private = "file")
-palette_toggle :: proc(app: ^App) {
-	if ui.palette_is_open(&app.palette) { ui.palette_close(&app.palette) } else { palette_show(app) }
+palette_show :: proc(app: ^App) {
+	palette_sources(app)
+	ui.palette_open(&app.palette)
 }
 
 @(private = "file")

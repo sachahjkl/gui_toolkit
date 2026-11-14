@@ -4,17 +4,18 @@ package ui
 // palette in every program: the same look, the same keys, the same prefixes.
 //
 //   ui.palette_memory_open(&app.palette, &app.ui, path)               once: the usage memory's file ("": in memory only)
-//   ui.palette_commands(&app.palette, COMMANDS[:], disabled[:], {})   when the table or `disabled` change: the commands
-//                                                                     source and the views' moves source
 //   ui.palette_add(&app.palette, &app.sessions)                       a source of the program's (a prefix of the table)
-//   if ui.command_pressed(ui.PALETTE_COMMAND) { ui.palette_toggle(&app.palette) }   Ctrl+K, Ctrl+Shift+P
-//   if c, ok := ui.palette_chosen(&app.palette); ok {                 each frame: the toolkit's sources act in it
-//       if c.command >= 0 { run(Cmd(c.command)) } else if c.source == &app.sessions { switch_to(c.id) }
+//   // each build, at its top:
+//   ui.palette_commands(&app.palette, COMMANDS[:], disabled[:], {version = v})   the commands source and the views' moves
+//   ui.palette_keys(&app.palette)                                     Ctrl+K, Ctrl+Shift+P open and close it
+//   if c, ok := ui.palette_chosen(&app.palette); ok {                 the toolkit's sources act in it
+//       if i, is := ui.palette_chosen_command(&app.palette, c); is { run(Cmd(i)) } else if c.source == &app.sessions { switch_to(c.id) }
 //   }
 //
-// A source answers its question (Palette_Question) with palette_answer, at once from the program's memory or later
-// from a chore's answer. The palette ranks every answer together on a chore: the interface's thread never matches an
-// item. An answer or a ranking for another serial (an older query, a former opening) is dropped.
+// A source answers its question (Palette_Question) with palette_answer and a Palette_Answer it built (at once, or on a
+// chore): the palette takes the answer as it is, without a copy. The palette ranks every answer together on a chore: the
+// interface's thread never matches an item. An answer or a ranking for another serial (an older query, a former
+// opening, a source removed) is dropped and freed.
 
 import "base:runtime"
 import "core:fmt"
@@ -43,11 +44,14 @@ PALETTE_OWN_PENALTY :: 5
 // What an item that a searching source found, and the matcher does not find, loses: after every match, the last text's
 // too. It stays: the source knew something (a page's content, a path's folder).
 PALETTE_FOUND_PENALTY :: 200_000
+// A ranking reads this many items of a source between two looks at whether a newer ranking replaced it: a stale one
+// stops early, and does not hold a chore while the next letter's ranking waits.
+PALETTE_RANK_CHUNK :: 2048
 
 // The prefixes: a closed table of the toolkit. A prefix means the same thing in every program; a program fills one with a
 // source, or leaves it empty.
 Palette_Prefix :: enum u8 {
-	None,       // the plain search: every source with `plain`
+	None,       // the plain search: every source with `plain`, and every source without a prefix
 	Commands,   // '>' what the program does
 	Go_To,      // '@' the things of the program that one opens or switches to
 	Paths,      // '/' files, folders and addresses
@@ -84,15 +88,16 @@ palette_prefix_name :: proc(x: Palette_Prefix) -> string {
 	return ""
 }
 
-// The toolkit's command of the palette: Ctrl+K and Ctrl+Shift+P, a window command. A program puts it in its table (its
-// menus and its sheet show it) and calls palette_toggle on its press; no setting turns it off.
-// (its label and group in English, translated where they show: a global's initializer is a constant, no i18n.later)
-PALETTE_COMMAND := Command{
-	label = "Command palette", group = "Window", icon = lucide.COMMAND, scope = .Window,
-	keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}},
+// (read only: a Command made of them can be put in any table, none can change the keys of all)
+@(private = "file", rodata) PALETTE_CHORDS := [2]Chord{{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}
+
+// The toolkit's command of the palette: Ctrl+K and Ctrl+Shift+P, a window command; no setting turns it off. A program's
+// menus and sheet show it; palette_keys reads its keys. (Its label and group in English, translated where they show.)
+palette_command :: proc() -> Command {
+	return {label = "Command palette", group = "Window", icon = lucide.COMMAND, scope = .Window, keys = PALETTE_CHORDS[:]}
 }
 
-// An item of a source. Its strings are copied by palette_answer.
+// An item of a source. Its strings live in its answer's arena (palette_answer_allocator), or are constants.
 Palette_Item :: struct {
 	id:         string,     // stable in its source, never a title: the usage memory's key and the choice's
 	title:      string,     // what the row says and the query lights, in the language in use
@@ -107,10 +112,35 @@ Palette_Item :: struct {
 	stays:      bool,       // choosing it does not close the palette (a switch)
 }
 
-// What the palette asks a source: its serial (palette_answer gives it back) and the query, after the prefix.
+// A source's answer: its items and the arena that holds them. The source builds it (on the interface's thread for an
+// answer made at once, on a chore for one made later); palette_answer takes it whole, kept or dropped: no copy.
+Palette_Answer :: struct {
+	arena: virtual.Arena,
+	items: []Palette_Item,   // in `arena`
+}
+
+// What an answer's items and strings are made in.
+palette_answer_allocator :: proc(a: ^Palette_Answer) -> runtime.Allocator { return virtual.arena_allocator(&a.arena) }
+
+// An item with its strings copied in `allocator` (an answer's): for a source whose items live in memory that can change.
+palette_item_clone :: proc(it: Palette_Item, allocator: runtime.Allocator) -> Palette_Item {
+	c := it
+	c.id, c.title, c.detail = strings.clone(it.id, allocator), strings.clone(it.title, allocator), strings.clone(it.detail, allocator)
+	c.icon, c.keys, c.group = strings.clone(it.icon, allocator), strings.clone(it.keys, allocator), strings.clone(it.group, allocator)
+	c.last, c.completion = strings.clone(it.last, allocator), strings.clone(it.completion, allocator)
+	c.tags = make([]string, len(it.tags), allocator)
+	for t, k in it.tags { c.tags[k] = strings.clone(t, allocator) }
+	return c
+}
+
+// What the palette asks a source. It holds a counted handle on the palette: the source ends each question exactly once,
+// with palette_answer, palette_answer_error or palette_question_drop (a source that gives up). After palette_destroy, an
+// end finds no palette and only lets go of the handle. End it on the interface's thread.
 Palette_Question :: struct {
+	link:   ^Palette_Link,
+	source: ^Palette_Source,
 	serial: u64,
-	query:  string,   // valid during the call: a source that answers later copies it
+	query:  string,   // the query after the prefix; valid during `read`: a source that answers later copies it
 }
 
 // The meaning of Enter with a modifier for a source's items ("Open in a new tab"; "": what Enter does).
@@ -118,29 +148,28 @@ Palette_Alternates :: struct {
 	ctrl, alt, shift: string,
 }
 
-// A choice: the source, the item's id, its index in the answer it came from, and the modifiers of the Enter ({} plain
-// Enter or a click). `command`: the index in the commands table (palette_commands), -1 for another source.
+// A choice: the source, the item's id, its index in the answer it came from (the commands source: its index in the
+// table, palette_chosen_command), and the modifiers of the Enter ({} plain Enter or a click).
 Palette_Choice :: struct {
-	source:  ^Palette_Source,
-	id:      string,   // the palette's: valid until the next choice
-	index:   int,
-	command: int,
-	mods:    platform.Modifiers,
+	source: ^Palette_Source,
+	id:     string,   // the palette's: valid until the next choice
+	index:  int,
+	mods:   platform.Modifiers,
 }
 
 // A source of items. The program keeps it at a place that does not move while the palette has it (palette_add).
 Palette_Source :: struct {
 	name:       string,           // stable, in English: the usage memory's part ("command", "session")
 	title:      string,           // "Sessions", in English: the hint row's and its "reading" row's, translated there
-	prefix:     Palette_Prefix,
-	plain:      bool,             // its items take part in a search without a prefix (never a Secrets source)
+	prefix:     Palette_Prefix,   // None: in the plain search only (a chooser's source)
+	plain:      bool,             // its items take part in a search without a prefix too (never a Secrets source)
 	remember:   bool,             // its choices go to the usage memory (never a Secrets source)
 	listed:     bool,             // its items are listed while nothing is typed and no prefix is (the commands)
 	searches:   bool,             // it answers for the query: asked again at each one. Else once per version
 	enter:      string,           // the word of Enter in the hint row, in English ("": "Choose")
 	alternates: Palette_Alternates,
 	// asks for the items, on the interface's thread, when the query (a searching source), the version or the language
-	// changed: answer with palette_answer, at once or from a chore's answer. It makes no system call.
+	// changed. It ends the question (palette_answer) at once or later; it makes no system call.
 	read:       proc(p: ^Command_Palette, src: ^Palette_Source, q: Palette_Question),
 	// the mark of an item now (a switch on, the model in use): called for the rows built only
 	mark:       proc(src: ^Palette_Source, id: string) -> bool,
@@ -161,11 +190,11 @@ Command_Palette :: struct {
 	commands: Palette_Commands,                // palette_commands's source
 	moves:    Palette_Moves,                   // the views' moves, beside the commands
 	memory:   Choice_Memory,                   // what the user chose (palette_memory_open)
-	// what a test reads: the questions asked, the rankings started, the answers dropped (another serial)
+	// what a test reads: the questions asked, the rankings started, the answers and rankings dropped (another serial)
 	asks, rankings, dropped: int,
 
-	serial:     u64,              // changes at each query, each question, each open and each close
-	link:       ^Palette_Link,    // what the chores' answers find the palette by
+	serial:     u64,              // changes at each query, each question, each open, each close, each removal
+	link:       ^Palette_Link,    // what the questions and the chores' answers find the palette by
 	shown:      ^Palette_Job,     // the list in view: the last ranking that came (nil: none yet)
 	pending:    u64,              // the serial of the ranking in flight (0: none)
 	ranked:     Palette_Ranked,   // what the last ranking was asked for
@@ -177,12 +206,16 @@ Command_Palette :: struct {
 
 	sel:        int,              // the row selected
 	sel_moved:  bool,             // the person moved the selection since the query changed: it follows its item
-	sel_source: ^Palette_Source,  // the selected row's item, to find it in the next list
-	sel_id:     string,           // (owned)
+	sel_source: ^Palette_Source,  // the selected row's item, to find it in the next list: its source, its id, and
+	sel_id:     string,           // (owned) whether it is a row of Recent (an item can be there and in its group)
+	sel_recent: bool,
 	sel_gen:    u64,              // counts the changes of the selected item
 
-	enter_wait:  Maybe(platform.Modifiers),   // Enter while the ranking of the last query is in flight
-	enter_ready: bool,                        // that ranking came: the view chooses its first row
+	// Enter while a ranking is in flight: its modifiers, and whether the person had moved the selection (the ranking
+	// keeps it on its item: Enter takes that row; else the first row that acts)
+	enter_wait:  Maybe(platform.Modifiers),
+	enter_moved: bool,
+	enter_ready: bool,                        // that ranking came: the view chooses
 	chosen:      Palette_Choice,              // the program's choice, until palette_chosen takes it
 	has_choice:  bool,
 	act_due:     bool,                        // a choice of a source with `act`, run by palette_chosen
@@ -218,11 +251,11 @@ Palette_Ranked :: struct {
 	memory_version: u64,
 }
 
-// A source's answer, copied: immutable while a ranking reads it, freed by the last one that lets go of it.
+// A source's answer, kept: immutable while a ranking reads it, freed by the last one that lets go of it.
 @(private)
 Palette_Snapshot :: struct {
 	refs:     int,   // (atomic) the palette's and each ranking's
-	arena:    virtual.Arena,
+	arena:    virtual.Arena,   // the answer's, taken whole
 	items:    []Palette_Item,
 	source:   ^Palette_Source,   // (read on the interface's thread only)
 	// the source's flags, copied: a chore reads them
@@ -245,11 +278,12 @@ Palette_Row :: struct {
 	range_first, range_count: int,
 }
 
-// What a chore's answer finds the palette by: nil once it is destroyed. Counted: the palette's and each job's.
-@(private)
+// What the questions and the chores' answers find the palette by: `p` nil once it is destroyed. Counted: the palette's,
+// each question's, each job's. `latest`: the serial of the ranking the palette waits for (atomic: a chore reads it).
 Palette_Link :: struct {
-	p:    ^Command_Palette,
-	refs: int,
+	p:      ^Command_Palette,
+	refs:   int,
+	latest: u64,
 }
 
 // A ranking: what it reads (asked on the interface's thread), what it makes (on a chore).
@@ -267,12 +301,15 @@ Palette_Job :: struct {
 	first:    [2]i32,          // (snapshot, item) put first while something is typed ({-1, -1}: none)
 	sel_source: ^Palette_Source,
 	sel_id:   string,
+	sel_recent: bool,
 	sel_gen:  u64,
 	// made by the chore
-	rows:     []Palette_Row,
-	ranges:   []Fuzzy_Range,
-	sel_row:  int,
-	icons:    bool,
+	rows:        []Palette_Row,
+	ranges:      []Fuzzy_Range,
+	sel_row:     int,    // the selected item's row (-1: not in the list)
+	first_acting: int,   // the first row that is not disabled (-1: none)
+	icons:       bool,
+	stale:       bool,   // a newer ranking replaced it: it stopped early
 }
 
 // Adds a source (once). The program keeps it where it is while the palette has it.
@@ -283,7 +320,8 @@ palette_add :: proc(p: ^Command_Palette, src: ^Palette_Source) {
 	p.generation += 1
 }
 
-// Removes a source: its answer goes, and the list is ranked again.
+// Removes a source: its answer goes, its question goes stale, the ranking in flight (which reads it) is dropped, and
+// the list is ranked again.
 palette_remove :: proc(p: ^Command_Palette, src: ^Palette_Source) {
 	i := palette_source_index(p, src)
 	if i < 0 { return }
@@ -291,20 +329,24 @@ palette_remove :: proc(p: ^Command_Palette, src: ^Palette_Source) {
 	ordered_remove(&p.sources, i)
 	ordered_remove(&p.states, i)
 	palette_shown_free(p)
+	palette_rank_drop(p)
+	p.ranked.valid = false
+	p.serial += 1
 	p.generation += 1
 }
 
-// The answer of `src` to its question `serial`: its items, copied (the caller frees its own after the call). An answer
-// for another serial (an older query, a former opening) is dropped: false. Call it on the interface's thread.
-palette_answer :: proc(p: ^Command_Palette, src: ^Palette_Source, serial: u64, items: []Palette_Item) -> bool {
-	i := palette_source_index(p, src)
-	if i < 0 || serial == 0 || p.states[i].asked != serial {
-		p.dropped += 1
+// Ends question `q` with the source's answer: the palette takes `a` whole (it is zero after), kept when `q` is the
+// source's question in flight, else dropped and freed (false). Call it on the interface's thread.
+palette_answer :: proc(q: Palette_Question, a: ^Palette_Answer) -> bool {
+	p, i, ok := palette_question_end(q)
+	if !ok {
+		virtual.arena_destroy(&a.arena)
+		a^ = {}
 		return false
 	}
 	st := &p.states[i]
 	if st.snap != nil { palette_snapshot_release(st.snap) }
-	st.snap = palette_snapshot_make(src, items, st.version, st.language, st.query)
+	st.snap = palette_snapshot_take(q.source, a, st.version, st.language, st.query)
 	st.asked, st.reading, st.failed = 0, false, false
 	delete(st.error)
 	st.error = ""
@@ -312,14 +354,11 @@ palette_answer :: proc(p: ^Command_Palette, src: ^Palette_Source, serial: u64, i
 	return true
 }
 
-// The source could not read (its own timeout, its own error): one weak row says it, "Sessions: could not read
-// (message)". The same serial rule as palette_answer.
-palette_answer_error :: proc(p: ^Command_Palette, src: ^Palette_Source, serial: u64, message: string) -> bool {
-	i := palette_source_index(p, src)
-	if i < 0 || serial == 0 || p.states[i].asked != serial {
-		p.dropped += 1
-		return false
-	}
+// Ends question `q`: the source could not read (its own timeout, its own error). One weak row says it, "Sessions: could
+// not read (message)". The same rule as palette_answer.
+palette_answer_error :: proc(q: Palette_Question, message: string) -> bool {
+	p, i, ok := palette_question_end(q)
+	if !ok { return false }
 	st := &p.states[i]
 	st.asked, st.reading, st.failed = 0, false, true
 	delete(st.error)
@@ -327,7 +366,16 @@ palette_answer_error :: proc(p: ^Command_Palette, src: ^Palette_Source, serial: 
 	return true
 }
 
-// Opens the palette over the window being built (one open comes forward), `typed` in its field ("@": the sessions).
+// Ends question `q` without an answer: a source that gives it up (a newer question came, its chore was cancelled). When
+// it was the question in flight, the source no longer reads, and the palette asks it again at a next build.
+palette_question_drop :: proc(q: Palette_Question) {
+	p, i, ok := palette_question_end(q)
+	if !ok { return }
+	p.states[i].asked, p.states[i].reading = 0, false
+}
+
+// Opens the palette over the window being built (one open comes forward), `typed` in its field ("@": the sessions);
+// `typed` given to an open palette replaces its field.
 palette_open :: proc(p: ^Command_Palette, typed := "") {
 	vs := views()
 	if !view_registered(vs, PALETTE_VIEW) {
@@ -344,6 +392,9 @@ palette_open :: proc(p: ^Command_Palette, typed := "") {
 		delete(p.text)
 		p.text, p.query, p.prefix = "", "", .None
 		line_edit_set(&p.field, typed)
+	} else if typed != "" {
+		line_edit_set(&p.field, typed)
+		p.fresh = true
 	}
 	view_open(vs, PALETTE_VIEW, p, palette_instance(p))
 	p.was_open = true
@@ -357,22 +408,24 @@ palette_close :: proc(p: ^Command_Palette) {
 	p.was_open = false
 }
 
-// Ctrl+K again closes it.
+// Opens or closes it: a program's button or menu line.
 palette_toggle :: proc(p: ^Command_Palette, typed := "") {
 	if palette_is_open(p) { palette_close(p) } else { palette_open(p, typed) }
 }
 
-// PALETTE_COMMAND's keys, pressed: the palette opens or closes. For a program that does not list the command in its own
-// table; read it once at the top of the build, as any window command.
+// The palette's keys (palette_command: Ctrl+K, Ctrl+Shift+P), pressed: it opens or closes. The one way a program reads
+// them: once, at the top of the build, as any window command (a program's own table lists the command for its menus and
+// its sheet, and its key loop leaves it out).
 palette_keys :: proc(p: ^Command_Palette) -> bool {
 	palette_follow_close(p)
-	if !command_pressed(PALETTE_COMMAND) { return false }
+	if !command_pressed(palette_command()) { return false }
 	palette_toggle(p)
 	return true
 }
 
 // The choice of the program's sources, taken once, in the build after it. Call it at each build: it runs the choices of
-// the toolkit's sources (a setting flips or shows its page, a view's move runs), which return nothing.
+// the toolkit's sources (a setting flips or shows its page, a view's move runs), which return nothing, and it follows a
+// close the palette did not make (Escape, a click outside), whose questions go stale.
 palette_chosen :: proc(p: ^Command_Palette) -> (c: Palette_Choice, ok: bool) {
 	palette_follow_close(p)
 	if p.act_due {
@@ -383,6 +436,12 @@ palette_chosen :: proc(p: ^Command_Palette) -> (c: Palette_Choice, ok: bool) {
 	if !p.has_choice { return {}, false }
 	p.has_choice = false
 	return p.chosen, true
+}
+
+// The index in the commands table (palette_commands) of a choice of the commands source.
+palette_chosen_command :: proc(p: ^Command_Palette, c: Palette_Choice) -> (index: int, ok: bool) {
+	if c.source == nil || c.source != &p.commands.source { return -1, false }
+	return c.index, true
 }
 
 // The prefixes the program has, each with its name, in the table's order: "> Commands", "@ Sessions" (the source's title
@@ -436,6 +495,7 @@ palette_destroy :: proc(p: ^Command_Palette) {
 	choice_memory_close(&p.memory)
 	if p.link != nil {
 		p.link.p = nil
+		sync.atomic_store(&p.link.latest, 0)
 		palette_link_release(p.link)
 	}
 	delete(p.text)
@@ -458,6 +518,35 @@ palette_instance :: proc(p: ^Command_Palette) -> string { return fmt.tprintf("%x
 palette_source_index :: proc(p: ^Command_Palette, src: ^Palette_Source) -> int {
 	for s, i in p.sources { if s == src { return i } }
 	return -1
+}
+
+@(private = "file")
+palette_link_of :: proc(p: ^Command_Palette) -> ^Palette_Link {
+	if p.link == nil {
+		p.link = new(Palette_Link, runtime.heap_allocator())
+		p.link^ = {p = p, refs = 1}
+	}
+	return p.link
+}
+
+@(private = "file")
+palette_link_release :: proc(l: ^Palette_Link) {
+	if sync.atomic_sub(&l.refs, 1) == 1 { free(l, runtime.heap_allocator()) }
+}
+
+// Lets go of a question's handle; the palette and the source's state when it is the source's question in flight.
+@(private = "file")
+palette_question_end :: proc(q: Palette_Question) -> (p: ^Command_Palette, state: int, ok: bool) {
+	if q.link == nil { return nil, -1, false }
+	p = q.link.p
+	palette_link_release(q.link)
+	if p == nil { return nil, -1, false }
+	state = palette_source_index(p, q.source)
+	if state < 0 || q.serial == 0 || p.states[state].asked != q.serial {
+		p.dropped += 1
+		return nil, -1, false
+	}
+	return p, state, true
 }
 
 // The hint row's name of a prefix: its one source's title, the prefix's name when several hold it, "" when none does.
@@ -493,11 +582,20 @@ palette_parse :: proc(p: ^Command_Palette, text: string) -> (prefix: Palette_Pre
 	return .None, strings.trim_space(text)
 }
 
-// Whether a source is asked and ranked for this prefix: its own; with none, the plain ones (never a Secrets source).
+// Whether a source is asked and ranked for this prefix: its own. With none: the plain ones, and the ones without a prefix
+// (the plain search is their only place: a chooser's); never a Secrets source.
 @(private)
 palette_in_scope :: proc(prefix, of: Palette_Prefix, plain: bool) -> bool {
 	if prefix != .None { return of == prefix }
-	return plain && of != .Secrets
+	return (plain || of == .None) && of != .Secrets
+}
+
+// The ranking in flight is not waited for any more: its answer will be dropped, and its chore stops at its next look.
+@(private = "file")
+palette_rank_drop :: proc(p: ^Command_Palette) {
+	p.pending = 0
+	if p.link != nil { sync.atomic_store(&p.link.latest, 0) }
+	p.enter_wait, p.enter_ready, p.enter_moved = nil, false, false
 }
 
 // The questions still open go stale (an open, a close): their answers will be dropped.
@@ -505,8 +603,7 @@ palette_in_scope :: proc(prefix, of: Palette_Prefix, plain: bool) -> bool {
 palette_forget :: proc(p: ^Command_Palette) {
 	p.serial += 1
 	for &st in p.states { st.asked, st.reading, st.failed = 0, false, false }
-	p.pending = 0
-	p.enter_wait, p.enter_ready = nil, false
+	palette_rank_drop(p)
 }
 
 // A close that the palette did not make (Escape, a click outside, its window gone): its questions go stale.
@@ -524,6 +621,7 @@ palette_follow_close :: proc(p: ^Command_Palette) {
 @(private = "file")
 palette_ask :: proc(p: ^Command_Palette) {
 	language := i18n.version()
+	link := palette_link_of(p)
 	for src, i in p.sources {
 		if !palette_in_scope(p.prefix, src.prefix, src.plain) || src.read == nil { continue }
 		st := &p.states[i]
@@ -535,30 +633,24 @@ palette_ask :: proc(p: ^Command_Palette) {
 		delete(st.query)
 		st.query = strings.clone(query)
 		p.asks += 1
-		src.read(p, src, {serial = st.asked, query = st.query})
+		sync.atomic_add(&link.refs, 1)   // (the question's handle)
+		src.read(p, src, {link = link, source = src, serial = st.asked, query = st.query})
 	}
 }
 
+// An answer taken as a snapshot: its arena and items moved in, the source's flags copied beside them (a few strings).
 @(private = "file")
-palette_snapshot_make :: proc(src: ^Palette_Source, items: []Palette_Item, version: u64, language: u32, query: string) -> ^Palette_Snapshot {
+palette_snapshot_take :: proc(src: ^Palette_Source, a: ^Palette_Answer, version: u64, language: u32, query: string) -> ^Palette_Snapshot {
 	snap := new(Palette_Snapshot, runtime.heap_allocator())
-	a := virtual.arena_allocator(&snap.arena)
+	snap.arena, snap.items = a.arena, a.items
+	a^ = {}
+	al := virtual.arena_allocator(&snap.arena)
 	snap.refs, snap.source = 1, src
-	snap.name, snap.title = strings.clone(src.name, a), strings.clone(src.title, a)
+	snap.name, snap.title = strings.clone(src.name, al), strings.clone(src.title, al)
 	snap.prefix, snap.plain, snap.listed, snap.searches, snap.toolkit = src.prefix, src.plain, src.listed, src.searches, src.toolkit
 	snap.remember = src.remember && src.prefix != .Secrets
 	if src.prefix == .Secrets { snap.plain = false }
-	snap.version, snap.language, snap.query = version, language, strings.clone(query, a)
-	snap.items = make([]Palette_Item, len(items), a)
-	for it, i in items {
-		c := it
-		c.id, c.title, c.detail = strings.clone(it.id, a), strings.clone(it.title, a), strings.clone(it.detail, a)
-		c.icon, c.keys, c.group = strings.clone(it.icon, a), strings.clone(it.keys, a), strings.clone(it.group, a)
-		c.last, c.completion = strings.clone(it.last, a), strings.clone(it.completion, a)
-		c.tags = make([]string, len(it.tags), a)
-		for t, k in it.tags { c.tags[k] = strings.clone(t, a) }
-		snap.items[i] = c
-	}
+	snap.version, snap.language, snap.query = version, language, strings.clone(query, al)
 	return snap
 }
 
@@ -577,30 +669,22 @@ palette_state_free :: proc(st: ^Palette_Source_State) {
 	st^ = {}
 }
 
-@(private = "file")
-palette_link_release :: proc(l: ^Palette_Link) {
-	if sync.atomic_sub(&l.refs, 1) == 1 { free(l, runtime.heap_allocator()) }
-}
-
 ////////////////////////////////
 // The ranking, on a chore
 
 // Starts a ranking when the query, a snapshot, a source or the usage memory changed since the last one (a quiet build
-// starts none). The list shown stays until its answer comes.
+// starts none). The list shown stays until its answer comes; the ranking it replaces stops at its next look.
 @(private = "file")
 palette_rank_start :: proc(p: ^Command_Palette) {
 	if p.ranked.valid && p.ranked.text == p.text && p.ranked.generation == p.generation && p.ranked.memory_version == p.memory.version { return }
 	delete(p.ranked.text)
 	p.ranked = {valid = true, text = strings.clone(p.text), generation = p.generation, memory_version = p.memory.version}
-	if p.link == nil {
-		p.link = new(Palette_Link, runtime.heap_allocator())
-		p.link^ = {p = p, refs = 1}
-	}
+	link := palette_link_of(p)
 	j := new(Palette_Job, runtime.heap_allocator())
 	a := virtual.arena_allocator(&j.arena)
 	p.serial += 1
-	j.link, j.serial, j.prefix, j.query = p.link, p.serial, p.prefix, strings.clone(p.query, a)
-	sync.atomic_add(&p.link.refs, 1)
+	j.link, j.serial, j.prefix, j.query = link, p.serial, p.prefix, strings.clone(p.query, a)
+	sync.atomic_add(&link.refs, 1)
 	j.chooser = len(p.sources) == 1 && p.sources[0].prefix == .None
 	snaps := make([dynamic]^Palette_Snapshot, a)
 	j.first = {-1, -1}
@@ -608,7 +692,8 @@ palette_rank_start :: proc(p: ^Command_Palette) {
 		snap := p.states[i].snap
 		if snap == nil || !palette_in_scope(p.prefix, src.prefix, src.plain) { continue }
 		if src == &p.commands.source {
-			if f, ok := p.commands.first.?; ok && f >= 0 && f < len(snap.items) { j.first = {i32(len(snaps)), i32(f)} }
+			// (a disabled command is not put first: it would be the row Enter cannot choose)
+			if f, ok := p.commands.first.?; ok && f >= 0 && f < len(snap.items) && !snap.items[f].disabled { j.first = {i32(len(snaps)), i32(f)} }
 		}
 		sync.atomic_add(&snap.refs, 1)
 		append(&snaps, snap)
@@ -619,8 +704,9 @@ palette_rank_start :: proc(p: ^Command_Palette) {
 	j.memory.entries = make(map[string]Choice, len(p.memory.entries), a)
 	for k, e in p.memory.entries { j.memory.entries[strings.clone(k, a)] = e }
 	j.now_ms = choice_now()
-	j.sel_source, j.sel_id, j.sel_gen = p.sel_source, strings.clone(p.sel_id, a), p.sel_gen
+	j.sel_source, j.sel_id, j.sel_recent, j.sel_gen = p.sel_source, strings.clone(p.sel_id, a), p.sel_recent, p.sel_gen
 	p.pending = j.serial
+	sync.atomic_store(&link.latest, j.serial)
 	p.rankings += 1
 	task(p.owner != nil ? p.owner : gs(), palette_rank_work, palette_rank_done, j, palette_job_free)
 }
@@ -640,40 +726,51 @@ palette_shown_free :: proc(p: ^Command_Palette) {
 	p.shown = nil
 }
 
-// (on the interface's thread, at a build) A ranking of another serial is dropped. The selection stays on its item.
+// (on the interface's thread, at a build) A ranking of another serial is dropped. The selection stays on its item;
+// else it is the first row that acts.
 @(private = "file")
 palette_rank_done :: proc(d: rawptr, _: u64) {
 	j := (^Palette_Job)(d)
 	p := j.link.p
-	if p == nil || j.serial != p.pending {
+	if p == nil || j.stale || j.serial != p.pending {
 		if p != nil { p.dropped += 1 }
 		palette_job_free(j)
 		return
 	}
 	palette_shown_free(p)
 	p.shown, p.pending = j, 0
+	sync.atomic_store(&j.link.latest, 0)
 	n := len(j.rows)
 	switch {
-	case !p.sel_moved:           p.sel = 0
+	case !p.sel_moved:           p.sel = -1
 	case j.sel_gen == p.sel_gen: p.sel = j.sel_row
-	case:                        p.sel = palette_row_of(p, p.sel_source, p.sel_id)
+	case:                        p.sel = palette_row_of(p, p.sel_source, p.sel_id, p.sel_recent)   // (moved while it ranked)
 	}
-	if p.sel < 0 { p.sel, p.sel_moved = 0, false }
+	if p.sel < 0 { p.sel, p.sel_moved = max(j.first_acting, 0), false }
 	p.sel = clamp(p.sel, 0, max(n - 1, 0))
 	if !p.sel_moved { palette_sel_note(p) }
 	p.reveal = true
 	if _, waits := p.enter_wait.?; waits { p.enter_ready = true }
 }
 
-// The row of an item in the list shown (-1: none). (After a move of the selection while a ranking was in flight only.)
+// The row of an item in the list shown, a row of Recent or not as the selection was (-1: none). (After a move of the
+// selection while a ranking was in flight only: else the chore found it.)
 @(private = "file")
-palette_row_of :: proc(p: ^Command_Palette, src: ^Palette_Source, id: string) -> int {
+palette_row_of :: proc(p: ^Command_Palette, src: ^Palette_Source, id: string, recent: bool) -> int {
 	if p.shown == nil || src == nil { return -1 }
 	for r, i in p.shown.rows {
 		snap := p.shown.snaps[r.snap]
-		if snap.source == src && snap.items[r.item].id == id { return i }
+		if r.recent == recent && snap.source == src && snap.items[r.item].id == id { return i }
 	}
 	return -1
+}
+
+// Whether a newer ranking replaced this one (a chore's look between two chunks).
+@(private = "file")
+palette_job_stale :: proc(j: ^Palette_Job) -> bool {
+	if sync.atomic_load(&j.link.latest) == j.serial { return false }
+	j.stale = true
+	return true
 }
 
 // (on a chore) The rows for the query: with nothing typed, the recent choices then the listed items in their groups,
@@ -692,13 +789,15 @@ palette_rank_work :: proc(d: rawptr) {
 	} else {
 		palette_list_ranked(j, &rows, &ranges)
 	}
+	if j.stale { return }
 	j.rows, j.ranges = rows[:], ranges[:]
-	j.sel_row = -1
+	j.sel_row, j.first_acting = -1, -1
 	for r, i in j.rows {
 		snap := j.snaps[r.snap]
 		it := &snap.items[r.item]
 		if it.icon != "" { j.icons = true }
-		if j.sel_row < 0 && !r.recent && snap.source == j.sel_source && it.id == j.sel_id { j.sel_row = i }
+		if j.first_acting < 0 && !it.disabled { j.first_acting = i }
+		if j.sel_row < 0 && r.recent == j.sel_recent && snap.source == j.sel_source && it.id == j.sel_id { j.sel_row = i }
 	}
 }
 
@@ -719,6 +818,7 @@ palette_list_empty :: proc(j: ^Palette_Job, rows: ^[dynamic]Palette_Row) {
 	group := ""
 	for snap, si in j.snaps {
 		if !(j.prefix != .None || j.chooser || snap.listed) { continue }
+		if palette_job_stale(j) { return }
 		items := snap.items
 		i := 0
 		for i < len(items) {
@@ -790,7 +890,7 @@ palette_item_bonus :: proc(it: ^Palette_Item, user: rawptr) -> f64 {
 
 // Something typed: every source in scope ranked with the same matcher (rank_palette) and the usage memory's bonus, merged
 // in one list; a program's own source a few points behind in a plain search; the disabled after the others; the commands'
-// `first` before all.
+// `first` before all. A source is read by chunks: between two, a ranking that a newer one replaced stops.
 @(private = "file")
 palette_list_ranked :: proc(j: ^Palette_Job, rows: ^[dynamic]Palette_Row, ranges: ^[dynamic]Fuzzy_Range) {
 	Hit :: struct { at: [2]i32, score: f64, ranges: []Fuzzy_Range, disabled: bool }
@@ -800,18 +900,22 @@ palette_list_ranked :: proc(j: ^Palette_Job, rows: ^[dynamic]Palette_Row, ranges
 		b := Palette_Bonus{memory = &j.memory, name = snap.name, query = j.query, now_ms = j.now_ms}
 		bonus: proc(it: ^Palette_Item, user: rawptr) -> f64
 		if snap.remember { bonus = palette_item_bonus }
-		found := rank(j.query, snap.items, palette_item_entry, &b, bonus = bonus)
 		// (the answer of a searching source to this very query: what it found stays; an older answer, shown until the
 		// next one comes, keeps only what the matcher finds)
 		matched: []bool
 		if snap.searches && snap.query == j.query { matched = make([]bool, len(snap.items), context.temp_allocator) }
-		for h in found {
-			at := [2]i32{i32(si), i32(h.index)}
-			if matched != nil { matched[h.index] = true }
-			if at == j.first { first_ranges = h.ranges; continue }
-			score := h.score
-			if j.prefix == .None && !snap.toolkit { score -= PALETTE_OWN_PENALTY }
-			append(&hits, Hit{at, score, h.ranges, snap.items[h.index].disabled})
+		for lo := 0; lo < len(snap.items); lo += PALETTE_RANK_CHUNK {
+			if palette_job_stale(j) { return }
+			hi := min(lo + PALETTE_RANK_CHUNK, len(snap.items))
+			for h in rank(j.query, snap.items[lo:hi], palette_item_entry, &b, bonus = bonus) {
+				index := lo + h.index
+				at := [2]i32{i32(si), i32(index)}
+				if matched != nil { matched[index] = true }
+				if at == j.first { first_ranges = h.ranges; continue }
+				score := h.score
+				if j.prefix == .None && !snap.toolkit { score -= PALETTE_OWN_PENALTY }
+				append(&hits, Hit{at, score, h.ranges, snap.items[index].disabled})
+			}
 		}
 		// (what the source found and the matcher does not: it stays, after every match, in the source's order)
 		for m, i in matched {
@@ -840,9 +944,10 @@ palette_list_ranked :: proc(j: ^Palette_Job, rows: ^[dynamic]Palette_Row, ranges
 palette_sel_note :: proc(p: ^Command_Palette) {
 	src, id, ok := palette_row(p, p.sel)
 	if !ok { return }
-	if src == p.sel_source && id == p.sel_id { return }
+	recent := p.shown.rows[p.sel].recent
+	if src == p.sel_source && id == p.sel_id && recent == p.sel_recent { return }
 	delete(p.sel_id)
-	p.sel_source, p.sel_id = src, strings.clone(id)
+	p.sel_source, p.sel_id, p.sel_recent = src, strings.clone(id), recent
 	p.sel_gen += 1
 }
 
@@ -889,7 +994,7 @@ palette_choose :: proc(p: ^Command_Palette, v: ^View, i: int, mods: platform.Mod
 		if it.stays && current { p.ranked.memory_version = p.memory.version }
 	}
 	delete(p.chosen.id)
-	p.chosen = {source = src, id = strings.clone(it.id), index = int(r.item), command = src == &p.commands.source ? int(r.item) : -1, mods = mods}
+	p.chosen = {source = src, id = strings.clone(it.id), index = int(r.item), mods = mods}
 	if src.act != nil { p.act_due = true } else { p.has_choice = true }
 	if !it.stays {
 		view_end(v, 0)
@@ -906,13 +1011,13 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 	em := font_size()
 	if language := i18n.version(); language != p.language { p.language = language; p.generation += 1 }
 	for src in p.sources { if src.poll != nil { src.poll(p, src) } }
-	// (Enter waited for the ranking of its query: it came)
+	// (Enter waited for a ranking: it came. The row the person had moved to, kept on its item; else the first that acts)
 	if p.enter_ready {
 		mods := p.enter_wait.? or_else platform.Modifiers{}
-		p.enter_wait, p.enter_ready = nil, false
-		first := -1
-		for k in 0 ..< palette_row_count(p) { if !palette_row_disabled(p, k) { first = k; break } }
-		if first >= 0 { palette_choose(p, v, first, mods) }
+		moved := p.enter_moved && p.sel_moved
+		p.enter_wait, p.enter_ready, p.enter_moved = nil, false, false
+		at := moved ? p.sel : (p.shown != nil ? p.shown.first_acting : -1)
+		if at >= 0 { palette_choose(p, v, at, mods) }
 		if !p.was_open { return }
 	}
 	n := palette_row_count(p)
@@ -966,7 +1071,8 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 	palette_ask(p)
 	palette_rank_start(p)
 	if mods, ok := enter.?; ok {
-		if p.pending != 0 { p.enter_wait = mods } else { palette_choose(p, v, p.sel, mods) }
+		// (a ranking in flight, for a new query, a late answer, a change of the memory: Enter chooses from it)
+		if p.pending != 0 { p.enter_wait, p.enter_moved = mods, p.sel_moved } else { palette_choose(p, v, p.sel, mods) }
 		if !p.was_open { return }
 	}
 	spacer(px(gap_h))
@@ -1013,7 +1119,7 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 	}
 	spacer(px(rest))
 	if !chooser { palette_hint_row(p, foot_h) } else { spacer(px(foot_h)) }
-	if hovered >= 0 && hovered != p.sel {
+	if hovered >= 0 && hovered != p.sel && !palette_row_disabled(p, hovered) {
 		p.sel, p.sel_moved = hovered, true
 		palette_sel_note(p)
 	}

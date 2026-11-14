@@ -72,13 +72,20 @@ dialog_open :: proc(app: ^App, id: string) { ui.view_open(ui.state_views(&app.ui
 
 dialog_is_open :: proc(app: ^App, id: string) -> bool { return ui.view_is_open(ui.state_views(&app.ui_state), id) }
 
-// The toolkit's palette over fidget's commands (command_info), `typed` in its field.
-palette_toggle :: proc(app: ^App, typed := "") {
-	for info, c in command_info {
-		app.palette_commands[c] = {label = info.title, group = info.category, icon = info.icon}
-		app.palette_keys[c] = info.shortcut
+// The palette's commands source over fidget's commands (command_info): a fixed table, known by its address.
+palette_sources :: proc(app: ^App) {
+	if app.palette_commands[.Quit].label == "" {
+		for info, c in command_info {
+			app.palette_commands[c] = {label = info.title, group = info.category, icon = info.icon}
+			app.palette_keys[c] = info.shortcut
+		}
 	}
 	ui.palette_commands(&app.palette, slice.enumerated_array(&app.palette_commands), nil, {keys = slice.enumerated_array(&app.palette_keys)})
+}
+
+// The toolkit's palette, `typed` in its field: a button, a menu line, the command line.
+palette_toggle :: proc(app: ^App, typed := "") {
+	palette_sources(app)
 	ui.palette_toggle(&app.palette, typed)
 }
 
@@ -86,8 +93,11 @@ palette_is_open :: proc(app: ^App) -> bool { return ui.palette_is_open(&app.pale
 
 handle_shortcuts :: proc(app: ^App) {
 	ctrl := platform.Modifiers{.Ctrl}
-	if ui.command_pressed(ui.PALETTE_COMMAND) { palette_toggle(app) }
-	if c, ok := ui.palette_chosen(&app.palette); ok && c.command >= 0 { run_cmd(app, Command(c.command)) }
+	palette_sources(app)
+	ui.palette_keys(&app.palette)
+	if c, ok := ui.palette_chosen(&app.palette); ok {
+		if i, is := ui.palette_chosen_command(&app.palette, c); is { run_cmd(app, Command(i)) }
+	}
 	if ui.key_press(.N1, ctrl) { run_cmd(app, .Go_Controls) }
 	if ui.key_press(.N2, ctrl) { run_cmd(app, .Go_Inputs) }
 	if ui.key_press(.N3, ctrl) { run_cmd(app, .Go_Data) }

@@ -112,8 +112,8 @@ ignore it.
 
 ## The palette's command: the toolkit's
 
-The palette's command is the exception to the last refusal: `ui.PALETTE_COMMAND` (Ctrl+K and Ctrl+Shift+P, scope
-`.Window`) and `palette_toggle`. This file refused it first, for the reason above: each program had its own words and
+The palette's command is the exception to the last refusal: `ui.palette_command()` (Ctrl+K and Ctrl+Shift+P, scope
+`.Window`; a procedure over read-only keys, so no program changes them for all) and `palette_keys`, its one reader. This file refused it first, for the reason above: each program had its own words and
 keys. The single palette ([palette.md](palette.md)) changes the balance. The palette is the same view in every program,
 so its keys must be the same too: a person who opens the palette in one program with Ctrl+K expects Ctrl+K in the next
 one. Homogeneity comes first. No setting turns Ctrl+K off: a standard shortcut is not disabled. A widget that needs the

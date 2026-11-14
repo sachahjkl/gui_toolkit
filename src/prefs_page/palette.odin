@@ -58,24 +58,28 @@ settings_poll :: proc(p: ^ui.Command_Palette, src: ^ui.Palette_Source) {
 settings_read :: proc(p: ^ui.Command_Palette, src: ^ui.Palette_Source, q: ui.Palette_Question) {
 	s := (^Palette_Settings)(src.user)
 	prefs := s.prefs
-	items := make([dynamic]ui.Palette_Item, context.temp_allocator)
+	// (in the answer's own arena: the registry and the page options can go before the palette lets go of the answer)
+	a: ui.Palette_Answer
+	al := ui.palette_answer_allocator(&a)
+	items := make([dynamic]ui.Palette_Item, al)
 	for pg in pages_of(prefs, s.options) {
 		icon := pg.icon != "" ? pg.icon : lucide.SLIDERS_HORIZONTAL
 		if pg.build != nil && pg.tags != nil {
-			append(&items, ui.Palette_Item{id = pg.category, title = pg.title, group = i18n.tr("Settings"), icon = icon, tags = pg.tags})
+			append(&items, ui.palette_item_clone({id = pg.category, title = pg.title, group = i18n.tr("Settings"), icon = icon, tags = pg.tags}, al))
 			continue
 		}
 		group := fmt.tprintf(i18n.tr("Settings · %s"), pg.title)
 		for name in page_names(prefs, pg) {
 			r := prefs.index[name]
 			d := prefs.entries[r].def
-			append(&items, ui.Palette_Item{
+			append(&items, ui.palette_item_clone({
 				id = name, title = i18n.tr(config.title_of(d)), group = group, icon = icon, tags = d.tags, last = name,
 				stays = d.kind == .Bool, disabled = config.is_locked(prefs, config.Ref(r)),
-			})
+			}, al))
 		}
 	}
-	ui.palette_answer(p, src, q.serial, items[:])
+	a.items = items[:]
+	ui.palette_answer(q, &a)
 }
 
 // A switch on.

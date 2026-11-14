@@ -153,16 +153,14 @@ the_views_commands_are_kept_until_the_views_change :: proc(t: ^testing.T) {
 	s := split_start(t, &r, "ask")
 	if wait_built(s, "modal_view_ask") == nil { return }
 	testing.expect(t, ui.views_commands_update(&vc, &r.views), "made the first time")
-	n, serial := len(vc.commands), vc.serial
+	n := len(vc.commands)
 	testing.expect(t, n > 0 && len(vc.acts) == n, "a command per act")
 	session.frames(s, 3)
 	testing.expect(t, !ui.views_commands_update(&vc, &r.views), "nothing changed: kept")
-	testing.expect_value(t, vc.serial, serial)
 	label := vc.commands[0].label
 	ui.view_present(&r.views, "ask", .Internal)
 	if wait_built(s, "internal_view_ask") == nil { return }
 	testing.expect(t, ui.views_commands_update(&vc, &r.views), "the view moved: made again")
-	testing.expect(t, vc.serial != serial, "a new serial for the palette's version")
 	testing.expect(t, label != "", "(the old label was the kept memory's until then)")
 }
 

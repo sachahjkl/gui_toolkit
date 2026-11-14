@@ -36,17 +36,29 @@ their items together, shows them, and says which item the person chose.
 
 A source has:
 
-- **a prefix** (`ui.Palette_Prefix`, below), or none;
+- **a prefix** (`ui.Palette_Prefix`, below), or none: a source without a prefix is in the plain search only (a
+  chooser's), `plain` or not;
 - **a title** ("Sessions", "Tabs"), shown in the hint row and in its "reading" row;
-- **`plain`**: its items take part in a search without a prefix;
+- **`plain`**: its items take part in a search without a prefix too;
 - **`remember`**: its choices go to the usage memory (false for the views' moves and the secrets);
 - **its alternates**: the meaning of Ctrl+Enter, Alt+Enter and Shift+Enter for its items ("Open in a new tab"), or
   none;
 - **`read`**: a procedure that the palette calls on the interface's thread when the query or the source's version
-  changed. It answers at once from the program's memory, or it starts a chore and answers later (`palette_answer`);
+  changed, with a question. It answers at once from the program's memory, or it starts a chore and answers later
+  (`palette_answer`);
 - **`mark`**: a procedure that says the mark of an item now (a switch on, the model in use). The palette calls it for
   the rows in view only: a command's `checked` can walk a conversation;
 - **its version**: the program bumps it when the source's items change.
+
+**A question is a counted handle.** It holds a reference to the palette's link (`Palette_Link`), and the source ends
+it exactly once: `palette_answer`, `palette_answer_error` or `palette_question_drop`. An answer that comes after
+`palette_destroy` finds no palette and only lets go of the handle. A raw `^Command_Palette` kept by a chore was refused:
+it is a write into freed memory the day the palette goes first.
+
+**An answer is the source's, built in its own arena** (`Palette_Answer`, `palette_answer_allocator`), on a chore for
+an answer made later. `palette_answer(q, &answer)` takes it whole, without a copy, kept or dropped (and freed). One
+call for an answer made at once and one made later. A copy at the answer was refused: a searching source answers at
+each key, and a copy of 100 000 items on the interface's thread is work in proportion to the data.
 
 A source answers in one of two ways:
 
@@ -64,8 +76,9 @@ close the palette: a switch). Its mark comes from the source's `mark`.
 
 ### A choice
 
-`palette_chosen` returns the source, the item's id and the modifiers of the Enter. It does not return an index in a
-concatenated table. The toolkit's own sources act themselves: a setting flips or opens its page, a view's move runs.
+`palette_chosen` returns the source, the item's id, its index in its answer and the modifiers of the Enter. It does
+not return an index in a concatenated table. `palette_chosen_command` gives a command's index in the program's table:
+one field, not a second copy of the index in the choice. The toolkit's own sources act themselves: a setting flips or opens its page, a view's move runs.
 The program handles only the choices of its own sources.
 
 ### The toolkit's sources
@@ -90,7 +103,7 @@ A program fills a prefix with a source, or leaves it empty. It cannot invent a c
 
 | Prefix | Name | Meaning | Sources |
 |---|---|---|---|
-| (none) | plain search | every source with `plain` | commands, moves, settings, and what a program adds |
+| (none) | plain search | every source with `plain`, and every source without a prefix | commands, moves, settings, and what a program adds |
 | `>` | Commands | what the program does | the commands, the views' moves, opencode native's server commands |
 | `@` | Go to | the things of the program that one opens or switches to | sessions, tabs and closed tabs, clipboard entries, captures, processes |
 | `/` | Paths | files, folders and addresses | the session's files, a folder to go to, visited pages, bookmarks |
@@ -112,8 +125,11 @@ Rules:
 ## Keys
 
 - **Ctrl+K and Ctrl+Shift+P open the palette** in every program. Again: they close it. The toolkit gives the command
-  (`ui.PALETTE_COMMAND`, scope `.Window`). This changes a refused alternative of [commands.md](commands.md) ("no
-  ready-made window commands"): homogeneity first. That file changes with the code.
+  (`ui.palette_command()`, scope `.Window`) and its one reader, `palette_keys`. Two ways to read the keys were refused
+  (`command_pressed` of the command and `palette_toggle` beside `palette_keys`): they differ in what they follow. A
+  close that the palette did not make (Escape, a click outside) is followed in `palette_chosen`, which the program calls
+  at each build, and in `palette_keys`. This changes a refused alternative of [commands.md](commands.md) ("no
+  ready-made window commands"): homogeneity first.
 - **Up, Down** move the selection and wrap. **Page Up, Page Down** move by the rows in view. The selection skips a
   disabled item.
 - **Enter** chooses. **Ctrl+Enter, Alt+Enter, Shift+Enter** choose with the source's alternate; without one, they do
@@ -147,9 +163,14 @@ tags, then the group, then the same with a slip, then the last text. The usage m
 points behind at an equal score: a command typed whole beats a page whose title holds the same word. Disabled items go
 after the others, greyed.
 
-**The ranking always runs on a chore.** The palette copies the items into a snapshot, once per source version, and
-ranks the snapshot on a chore at each new query. The list shown stays until the new ranking arrives. One path for 10
-items and for 100 000.
+**The ranking always runs on a chore.** The palette keeps each answer as a snapshot, once per source version (it takes
+the answer's arena, no copy), and ranks the snapshots on a chore at each new query. The list shown stays until the new
+ranking arrives. One path for 10 items and for 100 000.
+
+**A ranking that a newer one replaced stops.** The link holds the serial the palette waits for (`latest`, atomic). A
+ranking reads a source by chunks of `PALETTE_RANK_CHUNK` items and stops at the first look that finds another serial.
+Without it, a letter typed at each frame over 100 000 items starts one full ranking per letter, they fill the chores,
+and the last letter's ranking waits behind them all (the day-one test 6 failed on its bound for that reason).
 
 ## Reading and serials
 
@@ -158,11 +179,16 @@ items and for 100 000.
 - A source that reads (its question has no answer yet) shows "reading" in its row (prefix) or as a spinner in the
   band's count (plain search). The palette never waits for it. The source owns its timeout and its error: an error is
   one weak row, "Sessions: could not read (…)".
-- **Enter while the ranking of the last query is in flight waits for that ranking**, then chooses its first row. It
-  does not wait for a source that reads. A person who types "nf" and Enter in one frame gets the first item for "nf",
-  not for "n".
-- **The selection follows the id of its item.** A late answer that puts rows above the selection does not move it to
-  another item. Until the person moves the selection after a change of the query, the selection is the first row.
+- **Enter while a ranking is in flight waits for that ranking** (a new query, a late answer, a change of the memory),
+  then chooses. It does not wait for a source that reads. If the person had moved the selection, Enter chooses that
+  item, where the new ranking put it; else the first row that acts. A person who types "nf" and Enter in one frame gets
+  the first item for "nf", not for "n".
+- **The selection follows its item**: its source, its id, and whether it is a row of Recent (an item can be in Recent
+  and in its group). A late answer that puts rows above the selection does not move it to another item. Until the
+  person moves the selection after a change of the query, the selection is the first row that acts; a disabled
+  `first` of the commands is not put first.
+- **A source removed** takes its answer and its question with it, and the ranking in flight (which reads its snapshot)
+  is dropped: no row of the list points at it.
 
 ## The usage memory
 
@@ -265,8 +291,12 @@ program helps all of them. Opencode native changes where the shared palette is m
   it found for "do" is no proof for "srv/".
 - **The snapshots are counted.** The palette holds one per source, each ranking one per source in scope; the last to let
   go frees it, on whichever thread. The list shown is the last ranking itself (its rows point into its snapshots).
-- **The selection's item is known by its source and its id.** A ranking started while the selection did not move finds
-  that item's row on the chore; after a move during the ranking, the interface's thread looks for it once.
+- **The selection's item is known by its source, its id and its Recent flag.** A ranking started while the selection
+  did not move finds that item's row on the chore; after a move during the ranking, the interface's thread looks for it
+  once, by the same rule.
+- **The commands source compares versions, never `disabled`.** A program changes what can act with a new `version`
+  (0: the table and `disabled` do not change in place; their addresses are compared). A pass over `disabled` at each
+  build was refused: work in proportion to the data at each frame.
 
 ## Migration
 

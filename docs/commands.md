@@ -12,7 +12,7 @@ Cmd :: enum u8 { End_Task, Kill, Palette, Shortcuts }
 COMMANDS := [Cmd]ui.Command{
 	.End_Task  = {label = "End task", group = "Processes", keys = {{.Delete, {}}}},
 	.Kill      = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}},
-	// the keys of ui.PALETTE_COMMAND: the same in every program (its press: ui.palette_toggle)
+	// the keys of ui.palette_command(): the same in every program; read by ui.palette_keys, so the loop below skips it
 	.Palette   = {label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}, scope = .Window},
 	.Shortcuts = {label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}, scope = .Window},
 }
@@ -27,8 +27,11 @@ tip := ui.command_tip(COMMANDS[.Kill])          // "Kill… (Shift+Delete)"
 // the palette (palette.md) and the sheet: views (views.md), home Dialog
 disabled: [Cmd]bool
 for c in Cmd { disabled[c] = !can(c) }
-ui.palette_commands(&app.palette, COMMANDS[:], disabled[:])                 // the palette's commands source
-if c, ok := ui.palette_chosen(&app.palette); ok && c.command >= 0 { run(Cmd(c.command)) }   // the build after the choice
+ui.palette_commands(&app.palette, COMMANDS[:], disabled[:], {version = app.can_version})   // the palette's commands source
+ui.palette_keys(&app.palette)                                                            // Ctrl+K, Ctrl+Shift+P
+if c, ok := ui.palette_chosen(&app.palette); ok {                                        // the build after the choice
+	if i, is := ui.palette_chosen_command(&app.palette, c); is { run(Cmd(i)) }
+}
 if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 ```
 
@@ -46,8 +49,8 @@ if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 | `command_window_typing_keys(commands)` | the window commands' keys that type text, as `command_typing_keys` says them. A program's test expects none |
 | `command_key_types_text(chord)` | whether the chord types text in a field: a letter, a digit, a punctuation mark, Space, Backspace or keypad + and -, with no modifier or with Shift alone. Ctrl or Alt with any key, and F1–F12, Escape, Enter, Tab, Delete, Insert, the arrows, Home, End, Page Up, Page Down, Menu and Print with any modifier: false |
 | `command_typing_keys(commands)` | one line per key of the table that types text, `"<label>: <key>"` (`"Rectangle: R"`, `"Add a step…: Shift+A"`), the key by its `platform.Key` name. A program's unit test compares it with the keys it means (below) |
-| `palette_commands(&p, commands, disabled, o)` | the palette's commands source ([palette.md](palette.md)): the program's table (valid while the palette is open), `disabled` and `Palette_Commands_Options` copied. A command chosen comes back from `palette_chosen` as `Palette_Choice.command`, its index |
-| `PALETTE_COMMAND`, `palette_toggle(&p)`, `palette_keys(&p)` | the toolkit's window command of the palette (Ctrl+K, Ctrl+Shift+P); open or close it; read its keys and toggle |
+| `palette_commands(&p, commands, disabled, o)` | the palette's commands source ([palette.md](palette.md)): the program's table (valid while the palette is open), `disabled` and `Palette_Commands_Options` copied when `o.version` changes (0: when their addresses do). `palette_chosen_command(&p, choice)` gives a chosen command's index |
+| `palette_command()`, `palette_keys(&p)`, `palette_toggle(&p)` | the toolkit's window command of the palette (Ctrl+K, Ctrl+Shift+P), for a menu and the sheet; the one reader of its keys; a button's open or close |
 | `shortcuts_sheet_open(&sheet, commands, title, version)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window. `commands` stays valid while it is open; `version` as the palette's |
 
 ### A key that types text

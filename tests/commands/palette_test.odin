@@ -78,6 +78,16 @@ settle_closed :: proc(t: ^testing.T, f: ^Fx, r: ^Run, loc := #caller_location) {
 	}
 }
 
+// Frames until the palette dropped `n` answers or rankings.
+@(private = "file")
+settle_dropped :: proc(t: ^testing.T, f: ^Fx, r: ^Run, n: int, loc := #caller_location) {
+	start := time.tick_now()
+	for r.pal.dropped < n || r.pal.pending != 0 {
+		frame(f, nil, r)
+		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the stale answer or ranking did not come", loc) }
+	}
+}
+
 @(private = "file")
 palette_open_now :: proc(f: ^Fx, r: ^Run) -> bool {
 	ui.use(&f.s)
@@ -96,14 +106,21 @@ find_text :: proc(f: ^Fx, text: string) -> ^ui.Box {
 	return walk(f.s.root, text)
 }
 
-// The id of row `i` ("": none).
+// The id of row `i` ("": none); the id selected.
 @(private = "file")
 row_id :: proc(r: ^Run, i: int) -> string {
 	_, id, _ := ui.palette_row(&r.pal, i)
 	return id
 }
 
-// A source of the test's: its items given at once, or its questions kept for the test to answer.
+@(private = "file")
+selected_id :: proc(r: ^Run) -> string {
+	_, id, _ := ui.palette_selected(&r.pal)
+	return id
+}
+
+// A source of the test's: its items given at once, or its questions kept for the test to answer. Each question is ended
+// once: by an answer of the test's, or dropped by source_free.
 @(private = "file")
 Test_Source :: struct {
 	src:       ui.Palette_Source,
@@ -115,7 +132,11 @@ Test_Source :: struct {
 }
 
 @(private = "file")
-Question :: struct { serial: u64, query: string }
+Question :: struct {
+	q:     ui.Palette_Question,
+	query: string,   // (owned: the question's is the palette's)
+	ended: bool,
+}
 
 @(private = "file")
 source_make :: proc(ts: ^Test_Source, name, title: string, prefix: ui.Palette_Prefix, items: []ui.Palette_Item, plain := false, later := false, searches := false) {
@@ -125,21 +146,54 @@ source_make :: proc(ts: ^Test_Source, name, title: string, prefix: ui.Palette_Pr
 
 @(private = "file")
 source_free :: proc(ts: ^Test_Source) {
-	for q in ts.questions { delete(q.query) }
+	for &q in ts.questions {
+		if !q.ended { ui.palette_question_drop(q.q) }
+		delete(q.query)
+	}
 	delete(ts.questions)
 }
 
 @(private = "file")
 source_read :: proc(p: ^ui.Command_Palette, src: ^ui.Palette_Source, q: ui.Palette_Question) {
 	ts := (^Test_Source)(src.user)
-	append(&ts.questions, Question{q.serial, strings.clone(q.query)})
-	if !ts.later { ui.palette_answer(p, src, q.serial, ts.items) }
+	append(&ts.questions, Question{q = q, query = strings.clone(q.query)})
+	if !ts.later { answer(ts, len(ts.questions) - 1, ts.items) }
 }
+
+// An answer of `items`, their strings copied in its arena (the source's own memory).
+@(private = "file")
+answer_of :: proc(items: []ui.Palette_Item) -> ui.Palette_Answer {
+	a: ui.Palette_Answer
+	al := ui.palette_answer_allocator(&a)
+	a.items = make([]ui.Palette_Item, len(items), al)
+	for it, i in items { a.items[i] = ui.palette_item_clone(it, al) }
+	return a
+}
+
+// Ends question `i` with `items`.
+@(private = "file")
+answer :: proc(ts: ^Test_Source, i: int, items: []ui.Palette_Item) -> bool {
+	q := &ts.questions[i]
+	assert(!q.ended, "a question is ended once")
+	q.ended = true
+	a := answer_of(items)
+	return ui.palette_answer(q.q, &a)
+}
+
+@(private = "file")
+answer_last :: proc(ts: ^Test_Source, items: []ui.Palette_Item) -> bool { return answer(ts, len(ts.questions) - 1, items) }
 
 @(private = "file")
 last_question :: proc(ts: ^Test_Source) -> Question {
 	if len(ts.questions) == 0 { return {} }
 	return ts.questions[len(ts.questions) - 1]
+}
+
+// The index of the question asked for `query` (-1: none).
+@(private = "file")
+question_for :: proc(ts: ^Test_Source, query: string) -> int {
+	for q, i in ts.questions { if q.query == query { return i } }
+	return -1
 }
 
 // What a test's build gives the palette, and what it chose.
@@ -155,7 +209,6 @@ Run :: struct {
 	chosen:   ui.Palette_Choice,
 	choices:  int,
 	extra:    proc(r: ^Run),   // the test's own part of the build (a view)
-	user:     rawptr,
 }
 
 @(private = "file")
@@ -173,6 +226,13 @@ run_free :: proc(r: ^Run) {
 	delete(r.sources)
 }
 
+// The command chosen last (-1: none, or another source's).
+@(private = "file")
+chosen_command :: proc(r: ^Run) -> int {
+	i, ok := ui.palette_chosen_command(&r.pal, r.chosen)
+	return ok ? i : -1
+}
+
 @(private = "file")
 open_palette :: proc(t: ^testing.T, f: ^Fx, r: ^Run, typed := "", loc := #caller_location) {
 	r.open_now, r.typed = true, typed
@@ -184,6 +244,20 @@ NEW_COMMANDS := [?]ui.Command{
 	{label = "Notes", group = "File"},
 	{label = "New folder", group = "File"},
 	{label = "Open", group = "File"},
+}
+
+@(private = "file")
+LATE_ITEMS := [?]ui.Palette_Item{{id = "a0", title = "Alpha"}, {id = "a1", title = "Apple"}}
+
+@(private = "file")
+TAB_ITEMS := [?]ui.Palette_Item{{id = "b0", title = "Beta"}, {id = "b1", title = "Bravo"}, {id = "b2", title = "Brick"}}
+
+// Two sources under `@`: one that answers later (its rows come above), one at once.
+@(private = "file")
+late_and_tabs :: proc(r: ^Run, late, tabs: ^Test_Source) {
+	source_make(late, "closed", "Closed tabs", .Go_To, LATE_ITEMS[:], later = true)
+	source_make(tabs, "tab", "Tabs", .Go_To, TAB_ITEMS[:])
+	append(&r.sources, late, tabs)
 }
 
 // 1. Type and Enter in one frame: the choice is the first item of the full query's ranking ("nf": New folder), not of
@@ -203,7 +277,7 @@ type_and_enter_in_one_frame :: proc(t: ^testing.T) {
 	settle_closed(t, &f, &r)
 	frame(&f, nil, &r)
 	testing.expect_value(t, r.choices, 1)
-	testing.expect_value(t, r.chosen.command, 1)
+	testing.expect_value(t, chosen_command(&r), 1)
 	testing.expect_value(t, r.chosen.id, "New folder")
 }
 
@@ -216,32 +290,51 @@ a_stale_answer_is_dropped :: proc(t: ^testing.T) {
 	items := []ui.Palette_Item{{id = "abc", title = "abc"}}
 	paths: Test_Source
 	source_make(&paths, "path", "Paths", .Paths, items, later = true, searches = true)
-	defer source_free(&paths)
 	r: Run
 	append(&r.sources, &paths)
 	defer run_free(&r)
+	defer source_free(&paths)   // (before the palette: its questions find it)
 	open_palette(t, &f, &r, "/")
-	type_text(&f, &r, "ab")
-	ab := last_question(&paths)
-	testing.expect_value(t, ab.query, "ab")
-	type_text(&f, &r, "c")
-	abc := last_question(&paths)
-	testing.expect_value(t, abc.query, "abc")
+	type_text(&f, &r, "abc")
+	ab, abc := question_for(&paths, "ab"), question_for(&paths, "abc")
+	if !testing.expect(t, ab >= 0 && abc >= 0, "asked for \"ab\", then for \"abc\"") { return }
 	dropped := r.pal.dropped
-	testing.expect(t, !ui.palette_answer(&r.pal, &paths.src, ab.serial, items), "the answer for \"ab\" is dropped")
+	testing.expect(t, !answer(&paths, ab, items), "the answer for \"ab\" is dropped")
 	testing.expect_value(t, r.pal.dropped, dropped + 1)
-	testing.expect(t, ui.palette_answer(&r.pal, &paths.src, abc.serial, items), "the answer for \"abc\" is kept")
+	testing.expect(t, answer(&paths, abc, items), "the answer for \"abc\" is kept")
 	settle(t, &f, &r)
 	testing.expect_value(t, row_id(&r, 0), "abc")
 	// (closed and opened: the question of the former opening is stale)
+	type_text(&f, &r, "x")
+	abcx := question_for(&paths, "abcx")
 	frame(&f, {key(.Escape)}, &r)
 	settle_closed(t, &f, &r)
 	open_palette(t, &f, &r, "/abd")
-	testing.expect(t, !ui.palette_answer(&r.pal, &paths.src, abc.serial, items), "an answer of the former opening is dropped")
-	testing.expect(t, ui.palette_answer(&r.pal, &paths.src, last_question(&paths).serial, items), "this opening's is kept")
+	if !testing.expect(t, abcx >= 0, "asked for \"abcx\"") { return }
+	testing.expect(t, !answer(&paths, abcx, items), "an answer of the former opening is dropped")
+	testing.expect(t, answer_last(&paths, items), "this opening's is kept")
 }
 
-// 3. A source that never answers: the palette says it reads, Up, Down and Escape work, and a later answer is dropped.
+// A stale ranking: one that a newer opening replaced comes back and is dropped (and freed).
+@(test)
+a_stale_ranking_is_dropped :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Run{table = NEW_COMMANDS[:]}
+	defer run_free(&r)
+	open_palette(t, &f, &r)
+	dropped := r.pal.dropped
+	frame(&f, {typed('n')}, &r)   // (a ranking in flight: its answer comes at a next build)
+	testing.expect(t, r.pal.pending != 0, "in flight")
+	ui.use(&f.s)
+	ui.palette_close(&r.pal)
+	settle_dropped(t, &f, &r, dropped + 1)
+	testing.expect_value(t, r.pal.dropped, dropped + 1)
+}
+
+// 3. A source that never answers: the palette says it reads, Up and Down move among the rows of the other source of its
+// prefix, Escape closes it, and a later answer is dropped.
 @(test)
 a_source_that_never_answers :: proc(t: ^testing.T) {
 	f: Fx
@@ -249,18 +342,24 @@ a_source_that_never_answers :: proc(t: ^testing.T) {
 	defer close(&f)
 	paths: Test_Source
 	source_make(&paths, "path", "Paths", .Paths, nil, later = true, searches = true)
-	defer source_free(&paths)
+	marks: Test_Source
+	source_make(&marks, "mark", "Bookmarks", .Paths, []ui.Palette_Item{{id = "m1", title = "x one"}, {id = "m2", title = "x two"}})
 	r := Run{table = NEW_COMMANDS[:]}
-	append(&r.sources, &paths)
+	append(&r.sources, &paths, &marks)
 	defer run_free(&r)
+	defer { source_free(&paths); source_free(&marks) }
 	open_palette(t, &f, &r, "/x")
 	testing.expect(t, find_text(&f, "Paths: reading…") != nil, "it says the source reads")
 	testing.expect(t, ui.palette_busy(&r.pal), "busy while it reads")
+	testing.expect_value(t, selected_id(&r), "m1")
 	frame(&f, {key(.Down)}, &r)
+	testing.expect_value(t, selected_id(&r), "m2")
 	frame(&f, {key(.Up)}, &r)
+	testing.expect_value(t, selected_id(&r), "m1")
+	testing.expect(t, find_text(&f, "Paths: reading…") != nil, "still reading")
 	frame(&f, {key(.Escape)}, &r)
 	settle_closed(t, &f, &r)
-	testing.expect(t, !ui.palette_answer(&r.pal, &paths.src, last_question(&paths).serial, {{id = "x", title = "x"}}), "a later answer is dropped")
+	testing.expect(t, !answer_last(&paths, {{id = "x", title = "x"}}), "a later answer is dropped")
 }
 
 // 4. A late answer above the selection: the selected item stays the same item.
@@ -269,25 +368,93 @@ a_late_answer_keeps_the_selected_item :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
-	late: Test_Source
-	source_make(&late, "closed", "Closed tabs", .Go_To, []ui.Palette_Item{{id = "a0", title = "Alpha"}, {id = "a1", title = "Apple"}}, later = true)
-	defer source_free(&late)
-	tabs: Test_Source
-	source_make(&tabs, "tab", "Tabs", .Go_To, []ui.Palette_Item{{id = "b0", title = "Beta"}, {id = "b1", title = "Bravo"}, {id = "b2", title = "Brick"}})
-	defer source_free(&tabs)
+	late, tabs: Test_Source
 	r: Run
-	append(&r.sources, &late, &tabs)   // (the late source first: its rows come above)
+	late_and_tabs(&r, &late, &tabs)
 	defer run_free(&r)
+	defer { source_free(&late); source_free(&tabs) }
 	open_palette(t, &f, &r, "@")
 	testing.expect_value(t, row_id(&r, 0), "b0")
 	frame(&f, {key(.Down)}, &r)
-	_, id, _ := ui.palette_selected(&r.pal)
-	testing.expect_value(t, id, "b1")
-	testing.expect(t, ui.palette_answer(&r.pal, &late.src, last_question(&late).serial, late.items), "the late answer")
+	testing.expect_value(t, selected_id(&r), "b1")
+	testing.expect(t, answer_last(&late, late.items), "the late answer")
 	settle(t, &f, &r)
 	testing.expect_value(t, row_id(&r, 0), "a0")
-	_, id, _ = ui.palette_selected(&r.pal)
-	testing.expect_value(t, id, "b1")
+	testing.expect_value(t, selected_id(&r), "b1")
+}
+
+// Enter while a ranking that no new query started is in flight (a late answer): it chooses the row the person moved to,
+// kept on its item, not the first row.
+@(test)
+enter_after_a_move_chooses_the_moved_row :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	late, tabs: Test_Source
+	r: Run
+	late_and_tabs(&r, &late, &tabs)
+	defer run_free(&r)
+	defer { source_free(&late); source_free(&tabs) }
+	open_palette(t, &f, &r, "@")
+	frame(&f, {key(.Down)}, &r)
+	testing.expect_value(t, selected_id(&r), "b1")
+	testing.expect(t, answer_last(&late, late.items), "the late answer")
+	frame(&f, {key(.Return)}, &r)   // (the late answer's ranking starts in this build: Enter waits for it)
+	settle_closed(t, &f, &r)
+	frame(&f, nil, &r)
+	testing.expect_value(t, r.chosen.id, "b1")
+}
+
+// The selection moved while a ranking is in flight (the pointer, after the ranking started in that build): the new list
+// finds that item (palette_row_of), not the one the ranking was started with.
+@(test)
+a_move_during_a_ranking_keeps_its_item :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	late, tabs: Test_Source
+	r: Run
+	late_and_tabs(&r, &late, &tabs)
+	defer run_free(&r)
+	defer { source_free(&late); source_free(&tabs) }
+	open_palette(t, &f, &r, "@")
+	testing.expect_value(t, selected_id(&r), "b0")
+	brick := find_text(&f, "Brick")
+	if !testing.expect(t, brick != nil, "Brick's row") { return }
+	at := [2]f32{(brick.rect.min.x + brick.rect.max.x) * 0.5, (brick.rect.min.y + brick.rect.max.y) * 0.5}
+	testing.expect(t, answer_last(&late, late.items), "the late answer")
+	frame(&f, {{kind = .Mouse_Move, pos = at}}, &r)   // (the ranking starts, then the pointer selects Brick)
+	testing.expect_value(t, selected_id(&r), "b2")
+	settle(t, &f, &r)
+	testing.expect_value(t, row_id(&r, 0), "a0")
+	testing.expect_value(t, selected_id(&r), "b2")
+}
+
+// A source removed while its question and a ranking that reads it are in flight: the ranking is dropped, the answer is
+// dropped, and the list holds no row of it.
+@(test)
+a_source_removed_in_flight :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	late, tabs: Test_Source
+	r: Run
+	late_and_tabs(&r, &late, &tabs)
+	defer run_free(&r)
+	defer { source_free(&late); source_free(&tabs) }
+	open_palette(t, &f, &r, "@")
+	frame(&f, {typed('b')}, &r)   // (a ranking in flight that reads the tabs' snapshot)
+	testing.expect(t, r.pal.pending != 0, "in flight")
+	dropped := r.pal.dropped
+	ui.palette_remove(&r.pal, &tabs.src)
+	ordered_remove(&r.sources, 1)
+	testing.expect_value(t, r.pal.pending, 0)
+	ui.palette_remove(&r.pal, &late.src)
+	ordered_remove(&r.sources, 0)
+	testing.expect(t, !answer_last(&late, late.items), "the removed source's answer is dropped")
+	settle_dropped(t, &f, &r, dropped + 2)   // (that answer, and the ranking)
+	testing.expect_value(t, ui.palette_row_count(&r.pal), 0)
+	frame(&f, nil, &r)   // (the view builds with no row of a removed source)
 }
 
 // 5. A quiet build: with nothing changed, no source is asked and nothing is ranked.
@@ -298,10 +465,10 @@ a_quiet_build_asks_and_ranks_nothing :: proc(t: ^testing.T) {
 	defer close(&f)
 	tabs: Test_Source
 	source_make(&tabs, "tab", "Tabs", .Go_To, []ui.Palette_Item{{id = "b0", title = "Beta"}}, plain = true)
-	defer source_free(&tabs)
 	r := Run{table = NEW_COMMANDS[:]}
 	append(&r.sources, &tabs)
 	defer run_free(&r)
+	defer source_free(&tabs)
 	open_palette(t, &f, &r)
 	type_text(&f, &r, "be")
 	settle(t, &f, &r)
@@ -316,7 +483,8 @@ a_quiet_build_asks_and_ranks_nothing :: proc(t: ^testing.T) {
 
 @(private = "file") MANY_ITEMS :: 100_000
 
-// 6. No ranking on the interface's thread: a source of 100 000 items; this thread matches none of them.
+// 6. No ranking on the interface's thread: a source of 100 000 items, a letter at each frame; this thread matches none
+// of them, and the last letter's ranking comes within the bound (the ones it replaces stop early).
 @(test)
 the_interfaces_thread_matches_nothing :: proc(t: ^testing.T) {
 	f: Fx
@@ -331,10 +499,10 @@ the_interfaces_thread_matches_nothing :: proc(t: ^testing.T) {
 	defer for it in items { delete(it.id); delete(it.title) }
 	many: Test_Source
 	source_make(&many, "item", "Items", .Go_To, items, plain = true)
-	defer source_free(&many)
 	r: Run
 	append(&r.sources, &many)
 	defer run_free(&r)
+	defer source_free(&many)
 	before := ui.rank_matched()
 	open_palette(t, &f, &r, "@")
 	type_text(&f, &r, "item 99999")
@@ -400,7 +568,6 @@ a_switch_flips_and_the_palette_stays :: proc(t: ^testing.T) {
 	defer close(&f)
 	choose: Test_Source
 	source_make(&choose, "option", "Options", .Choose, []ui.Palette_Item{{id = "wrap", title = "Wrap lines", stays = true}})
-	defer source_free(&choose)
 	choose.src.mark = proc(src: ^ui.Palette_Source, id: string) -> bool { return (^Test_Source)(src.user).on }
 	choose.src.act = proc(p: ^ui.Command_Palette, src: ^ui.Palette_Source, c: ui.Palette_Choice) {
 		ts := (^Test_Source)(src.user)
@@ -409,6 +576,7 @@ a_switch_flips_and_the_palette_stays :: proc(t: ^testing.T) {
 	r: Run
 	append(&r.sources, &choose)
 	defer run_free(&r)
+	defer source_free(&choose)
 	open_palette(t, &f, &r, "#")
 	testing.expect(t, find_text(&f, ui.ICON_CHECK) == nil, "off: no mark")
 	rankings := r.pal.rankings
@@ -424,7 +592,7 @@ a_switch_flips_and_the_palette_stays :: proc(t: ^testing.T) {
 }
 
 // 10. One table of prefixes: a program's test lists its sources and compares them with the list it means. A chooser (one
-// source, no prefix) has none.
+// source, no prefix, not marked plain: the plain search is its only place) has none, and no Recent.
 @(test)
 one_table_of_prefixes :: proc(t: ^testing.T) {
 	f: Fx
@@ -433,28 +601,48 @@ one_table_of_prefixes :: proc(t: ^testing.T) {
 	sessions, models: Test_Source
 	source_make(&sessions, "session", "Sessions", .Go_To, nil)
 	source_make(&models, "model", "Models", .Choose, nil)
-	defer { source_free(&sessions); source_free(&models) }
 	r := Run{table = NEW_COMMANDS[:]}
 	append(&r.sources, &sessions, &models)
 	defer run_free(&r)
+	defer { source_free(&sessions); source_free(&models) }
 	frame(&f, nil, &r)
 	got := ui.palette_prefixes(&r.pal)
 	testing.expectf(t, slice.equal(got, []string{"> Commands", "@ Sessions", "# Models"}), "the prefixes: %v", got)
 
 	nodes: Test_Source
 	source_make(&nodes, "node", "Nodes", .None, []ui.Palette_Item{{id = "add", title = "Add"}, {id = "mix", title = "Mix"}})
-	defer source_free(&nodes)
 	chooser: Run
 	append(&chooser.sources, &nodes)
 	defer run_free(&chooser)
+	defer source_free(&nodes)
 	open_palette(t, &f, &chooser)
+	testing.expect_value(t, row_id(&chooser, 0), "add")
 	frame(&f, {key(.Return)}, &chooser)
 	settle_closed(t, &f, &chooser)
 	frame(&f, nil, &chooser)
+	testing.expect_value(t, chooser.chosen.id, "add")
 	testing.expect_value(t, len(ui.palette_prefixes(&chooser.pal)), 0)
 	open_palette(t, &f, &chooser)
 	testing.expect(t, find_text(&f, "Recent") == nil, "a chooser has no Recent")
 	testing.expect_value(t, row_id(&chooser, 0), "add")
+}
+
+// An open palette opened again with a prefix: the prefix is typed.
+@(test)
+opening_again_with_a_prefix_types_it :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	sessions: Test_Source
+	source_make(&sessions, "session", "Sessions", .Go_To, []ui.Palette_Item{{id = "s1", title = "First session"}})
+	r := Run{table = NEW_COMMANDS[:]}
+	append(&r.sources, &sessions)
+	defer run_free(&r)
+	defer source_free(&sessions)
+	open_palette(t, &f, &r)
+	open_palette(t, &f, &r, "@")
+	testing.expect_value(t, ui.line_edit_string(&r.pal.field), "@")
+	testing.expect_value(t, row_id(&r, 0), "s1")
 }
 
 @(private = "file")
@@ -465,7 +653,7 @@ SERVICE_COMMANDS := [?]ui.Command{
 }
 
 // The commands source: its keys' texts, its ids, a disabled command greyed and listed last and never chosen, Enter
-// with a modifier, `first`, the views' moves beside it.
+// with a modifier, `first`.
 @(test)
 the_commands_source :: proc(t: ^testing.T) {
 	f: Fx
@@ -486,13 +674,34 @@ the_commands_source :: proc(t: ^testing.T) {
 	frame(&f, {key(.Return, {.Ctrl})}, &r)
 	settle_closed(t, &f, &r)
 	frame(&f, nil, &r)
-	testing.expect_value(t, r.chosen.command, 1)
+	testing.expect_value(t, chosen_command(&r), 1)
 	testing.expect_value(t, r.chosen.mods, platform.Modifiers{.Ctrl})
-	// a word the label does not say: its tags; `first` before the best match
-	r.opts.first = 2
+	// a word the label does not say: its tags; `first` before the best match (a new version: the options changed)
+	r.opts.first, r.opts.version = 2, 1
 	open_palette(t, &f, &r, "halt")
 	testing.expect_value(t, row_id(&r, 0), "process.kill")
 	testing.expect_value(t, row_id(&r, 1), "service.stop")
+}
+
+// The selection starts on the first row that acts, and a disabled `first` is not put first.
+@(test)
+the_selection_starts_on_a_row_that_acts :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	table := []ui.Command{{label = "Alpha", group = "One"}, {label = "Beta", group = "Two"}}
+	disabled := []bool{true, false}
+	r := Run{table = table, disabled = disabled}
+	defer run_free(&r)
+	open_palette(t, &f, &r)
+	testing.expect_value(t, row_id(&r, 0), "Alpha")   // (alone in its group: first, greyed)
+	testing.expect_value(t, selected_id(&r), "Beta")
+	frame(&f, {key(.Escape)}, &r)
+	settle_closed(t, &f, &r)
+	r.opts.first, r.opts.version = 0, 1
+	open_palette(t, &f, &r, "a")
+	testing.expect_value(t, row_id(&r, 0), "Beta")
+	testing.expect_value(t, selected_id(&r), "Beta")
 }
 
 // A program's own source in the plain search: merged with the commands in one ranking, a few points behind at an equal
@@ -504,10 +713,10 @@ a_program_source_in_the_plain_search :: proc(t: ^testing.T) {
 	defer close(&f)
 	tabs: Test_Source
 	source_make(&tabs, "tab", "Tabs", .Go_To, []ui.Palette_Item{{id = "t1", title = "Open", detail = "https://example.org"}}, plain = true)
-	defer source_free(&tabs)
 	r := Run{table = NEW_COMMANDS[:]}
 	append(&r.sources, &tabs)
 	defer run_free(&r)
+	defer source_free(&tabs)
 	open_palette(t, &f, &r, "open")
 	src, id, _ := ui.palette_row(&r.pal, 0)
 	testing.expect(t, src == &r.pal.commands.source && id == "Open", "the command typed whole first")
@@ -520,7 +729,8 @@ a_program_source_in_the_plain_search :: proc(t: ^testing.T) {
 	testing.expect(t, find_text(&f, "https://example.org") != nil, "its detail")
 }
 
-// A searching source answers from a chore: its rows come in a later build, a later query asks it again.
+// A searching source answers from a chore: its rows come in a later build, a later query asks it again, an error answers
+// the question.
 @(test)
 a_searching_source_answers_later :: proc(t: ^testing.T) {
 	f: Fx
@@ -528,15 +738,15 @@ a_searching_source_answers_later :: proc(t: ^testing.T) {
 	defer close(&f)
 	paths: Test_Source
 	source_make(&paths, "path", "Paths", .Paths, nil, later = true, searches = true)
-	defer source_free(&paths)
 	r: Run
 	append(&r.sources, &paths)
 	defer run_free(&r)
+	defer source_free(&paths)
 	open_palette(t, &f, &r, "/do")
 	testing.expect_value(t, last_question(&paths).query, "do")
 	// (the source found a folder whose name the matcher does not find: it stays, after every match)
 	found := []ui.Palette_Item{{id = "/home/docs", title = "docs"}, {id = "/srv/archive", title = "archive", completion = "/srv/archive/"}}
-	testing.expect(t, ui.palette_answer(&r.pal, &paths.src, last_question(&paths).serial, found), "kept")
+	testing.expect(t, answer_last(&paths, found), "kept")
 	settle(t, &f, &r)
 	testing.expect_value(t, ui.palette_row_count(&r.pal), 2)
 	testing.expect_value(t, row_id(&r, 0), "/home/docs")
@@ -546,7 +756,9 @@ a_searching_source_answers_later :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.line_edit_string(&r.pal.field), "/srv/archive/")
 	testing.expect_value(t, last_question(&paths).query, "srv/archive/")
 	asked := len(paths.questions)
-	testing.expect(t, ui.palette_answer_error(&r.pal, &paths.src, last_question(&paths).serial, "no such folder"), "an error")
+	last := &paths.questions[len(paths.questions) - 1]
+	last.ended = true
+	testing.expect(t, ui.palette_answer_error(last.q, "no such folder"), "an error")
 	settle(t, &f, &r)
 	testing.expect(t, find_text(&f, "Paths: could not read (no such folder)") != nil, "it says so")
 	testing.expect_value(t, len(paths.questions), asked)

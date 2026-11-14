@@ -59,7 +59,7 @@ the program.
 
 | Site | Holds | Data | Result | Size |
 |---|---|---|---|---|
-| `src/ui/commands.odin:335` `palette` | the command palette: a search band, the ranked commands | `^Command_Palette` and `commands`, `disabled`, `Palette_Options` given at each frame. It reads Up/Down/Page keys before `modal` (`:325`). It opens with `palette_open` (`:297`). | returns `(chosen: int, resized: bool)`, and `p.chosen_mods` | resizable `PALETTE_WIDTH_EM`×`PALETTE_HEIGHT_EM`, `top = PALETTE_TOP`. The program keeps `p.size`. |
+| `src/ui/palette.odin` `palette_view` | the command palette: a search band, the ranked items of its sources, the hint row | `^Command_Palette` and its sources (palette.md). It reads Up/Down/Page keys before its field. It opens with `palette_open`. | `palette_chosen -> (Palette_Choice, ok)` | resizable `PALETTE_WIDTH_EM`×`PALETTE_HEIGHT_EM`, `top = PALETTE_TOP`; the views keep its size |
 | `src/ui/commands.odin:637` `shortcuts_sheet` | the list of the keys, by group | `^Shortcuts_Sheet` and `commands` at each frame. It opens with `sheet.open = true`. | none | `SHEET_WIDTH_EM`. Its height is the content, at most `SHEET_HEIGHT` of the window. |
 | `src/ui/confirm.odin:47` `confirm` | a title, a note, the lines it acts on, Cancel and the act | `Confirm_Options` at each frame. It opens with `open^ = true`. | `Confirm_Answer`: `.Confirmed`, `.Cancelled` once, else `.None` | grows from `width_em` up to `DIALOG_MAX_WIDTH_EM` |
 | `src/ui/confirm.odin:126` `prompt` | a title, a note, one field, Cancel and OK | `^Line_Edit` (the program's) and `Prompt_Options` | `Confirm_Answer`. The text stays in the field. | grows from `width_em` |
@@ -80,7 +80,7 @@ instance). See `file-browser.md`.
 | Site | Holds | Data | Result | Size |
 |---|---|---|---|---|
 | `src/qr.odin:51` `qr_build` | a QR code and its text | `app.qr.text`, cloned by `qr_open` (`qr.odin:36`) | none | the width comes from the window (`side / em + 3`) |
-| `src/actions.odin:213` | `ui.palette` | the table of `ACTIONS` | an action index | the palette's |
+| `src/actions.odin:213` | the toolkit's palette | the table of `ACTIONS` | an action (its move to sources: palette.md) | the palette's view |
 | `src/actions.odin:217` | `ui.shortcuts_sheet` | `ACTIONS` | none | the sheet's |
 | `src/setup_view.odin:60` | `install_frame` | `app.install` | `.Launched`: quit | the setup's |
 
@@ -98,7 +98,7 @@ The settings of papier are a page (`src/settings_view.odin:66`), not a dialog. T
 | `src/dialogs.odin:102` `conflict_build` | "a name taken": two files, a checkbox, four buttons | the job that asks (`job_asking`). The dialog is open while a job asks. | a `Conflict` choice (Skip, Keep both, Replace, Cancel the job) sent to the job | `CONFLICT_WIDTH_EM` |
 | `src/batch.odin:264` `batch_build` | batch rename: three fields, options, the list of new names | `app.batch` (`batch_open`, `:90`), names computed before the modal | mutates and applies | `pw / em`, `top = 0.1` |
 | `src/palette.odin:209` | `ui.shortcuts_sheet` | `p.sheet_list` | none | the sheet's |
-| `src/palette.odin:222` | `ui.palette` with the settings in it | `palette_list` | an index and `chosen_mods`: run, record keys, alias | the palette's, kept by `palette_keep_size` |
+| `src/palette.odin:222` | the toolkit's palette, its settings among its items | `palette_list` | a choice and its modifiers: run, record keys, alias (its move to sources: palette.md) | the palette's view |
 | `src/palette.odin:262` `palette_recorder` | the recorder of a command's keys (`ui.key_take`) | `p.recording` | mutates the keymap | default |
 | `src/view.odin:91` | `install_frame` | `app.install` | `setup.Event` | the setup's |
 
@@ -122,13 +122,13 @@ remove (section 3.5). The journal and Mission Control windows are in section 1.9
 
 | Site | Holds | Data | Result | Size |
 |---|---|---|---|---|
-| `src/editor.odin:2094` | `ui.palette` of the editor | `EDITOR_ACTIONS`, `disabled` | `editor_action` | the palette's |
+| `src/editor.odin:2094` | the palette of the editor (to sources: palette.md) | `EDITOR_ACTIONS`, `disabled` | `editor_action` | the palette's |
 | `src/editor.odin:2096` | `ui.shortcuts_sheet` | `EDITOR_ACTIONS` | none | the sheet's |
 | `src/editor.odin:2097` | `ui.confirm`: drop the changes | `ed.asking` | `.Confirmed`: `ed.close_due` | default |
 | `src/editor.odin:2133` `editor_size_dialog` | resize the picture, or add margins: number fields, swatches | `ed.size_dialog`, filled by `editor_size_dialog_open` (`:2105`) | apply: one undo step | `width_em = 24` |
 | `src/history_view.odin:1182`, `:1192` | the palette and the sheet of the history window | tables | an action | the palette's |
 | `src/history_view.odin:1200` | `ui.confirm`: delete files | `hw.delete_ids` | `worker_send(History_Delete)` | default |
-| `src/workflow_view.odin:615` | `ui.palette`: add a node | `m.add_table` | `workflow_add_chosen` | the palette's |
+| `src/workflow_view.odin:615` | the add palette, a chooser (palette.md) | `m.add_table` | `workflow_add_chosen` | the palette's |
 | `src/workflow_view.odin:660` | `ui.confirm`: delete a workflow | `m.delete_id` | `workflows_remove` | default |
 | `src/history_view.odin:553` | `install_frame` | `app.install` | `.Launched` | the setup's |
 
@@ -1263,9 +1263,11 @@ if code, ok := ui.view_ended(&app.views, "editor_size", ed.name); ok && code != 
 **A chooser (pattern C).** papier `src/actions.odin:213`.
 
 ```odin
-ui.palette_commands(&app.palette, ACTIONS[:], disabled)   // the commands source (palette.md)
-if c, ok := ui.palette_chosen(&app.palette); ok && c.command >= 0 { action_run(app, Action(c.command)) }
-// Ctrl+K: ui.palette_toggle(&app.palette)
+ui.palette_commands(&app.palette, ACTIONS[:], disabled, {version = app.can_version})   // the commands source (palette.md)
+ui.palette_keys(&app.palette)   // Ctrl+K
+if c, ok := ui.palette_chosen(&app.palette); ok {
+	if i, is := ui.palette_chosen_command(&app.palette, c); is { action_run(app, Action(i)) }
+}
 ```
 
 **A viewer (pattern D).** papier `src/qr.odin:51`.

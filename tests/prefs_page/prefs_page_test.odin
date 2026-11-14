@@ -304,7 +304,7 @@ Palette_App :: struct {
 @(private = "file")
 palette_app_build :: proc(s: ^session.Session) {
 	app := (^Palette_App)(s.user)
-	if ui.command_pressed(ui.PALETTE_COMMAND) { ui.palette_toggle(&app.pal) }
+	ui.palette_keys(&app.pal)
 	if app.show { app.show = false; ui.palette_open(&app.pal, app.typed) }
 	_, _ = ui.palette_chosen(&app.pal)
 	app_build(s)

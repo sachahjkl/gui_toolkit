@@ -19,8 +19,8 @@ package ui
 //   COMMANDS := [Cmd]ui.Command{.Kill = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}}, ...}
 //   if ui.command_pressed(COMMANDS[.Kill]) { kill() }
 //   ui.menu_item(COMMANDS[.Kill].label, ui.command_shortcut(COMMANDS[.Kill]))
-//   ui.palette_commands(&palette, COMMANDS[:], disabled[:], {})          when the commands or `disabled` change
-//   if c, ok := ui.palette_chosen(&palette); ok && c.command >= 0 { run(Cmd(c.command)) }
+//   ui.palette_commands(&palette, COMMANDS[:], disabled[:], {version = v})   at each build: compares v only
+//   if c, ok := ui.palette_chosen(&palette); ok { if i, is := ui.palette_chosen_command(&palette, c); is { run(Cmd(i)) } }
 
 import "core:fmt"
 import "core:math"
