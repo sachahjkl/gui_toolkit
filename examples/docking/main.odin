@@ -128,9 +128,6 @@ main :: proc() {
 	platform.set_dark_title(app.main.win, true)
 	if icons, ok := font.load_embedded(&app.shared.fonts, ui.ICON_FONT_DATA); ok { app.main.state.icon_font = icons }
 
-	// (the first start opens every panel; later ones, those open when the program quit)
-	_, err := os.read_entire_file(app.path, context.temp_allocator)
-	first := err != nil
 	ui.views_init(&app.views, {path = app.path})
 	ui.set_views(&app.main.state, &app.views)
 	ui.views_set_windows(&app.views, host.view_windows(&app.main))
@@ -138,10 +135,9 @@ main :: proc() {
 		ui.view_register(&app.views, PANEL_IDS[p], panel_view, ui.View_Options{title = PANEL_TITLES[p], home = .Panel, home_place = {edge = PANEL_EDGES[p]}, extent_em = PANEL_EDGES[p] == .Bottom ? 12 : 16})
 	}
 	ui.view_register(&app.views, PROPERTIES, properties_view, ui.View_Options{title = "Properties", width_em = 26, resizable = true})
-	for p in Panel {
-		if first || ui.view_was_open(&app.views, PANEL_IDS[p]) { ui.view_open(&app.views, PANEL_IDS[p], app, owner = &app.main.state) }
-	}
-	if ui.view_was_open(&app.views, PROPERTIES) { ui.view_open(&app.views, PROPERTIES, app, owner = &app.main.state) }
+	// (the first start opens every panel; later ones, those open when the program quit)
+	for p in Panel { _ = ui.view_restore(&app.views, PANEL_IDS[p], app, first_start_open = true, owner = &app.main.state) }
+	_ = ui.view_restore(&app.views, PROPERTIES, app, owner = &app.main.state)
 
 	platform.show_window(app.main.win)
 	for !platform.is_closed(app.main.win) {

@@ -989,8 +989,19 @@ A panel sees the program's state as the last frame left it: the content of this 
 
 Rule 2 is the State's `view_keys_root`: set while a panel's or an internal window's body is built, `key_press` and
 `key_take` read nothing unless the focused box is under it. A dialog keeps its own rule (`keys_held_by_dialog`).
-Ctrl+W closes a panel or an internal window that has the focus. F6 and Shift+F6, read by `views_frame`, move the focus
-to the first stop of the next or the previous area: the content, each zone, each internal window.
+Ctrl+W closes a panel or an internal window that has the focus. F6 and Shift+F6 move the focus to the first stop of
+the next or the previous area: the content, each stack, each internal window. They are read last, at `end_build`,
+only when nothing of the build took them. Refused: reading them in `views_frame`, before the content: a program's own
+binding of F6 had to be read before `views_frame` to win. With the toolkit last, a program reads its command keys
+where it builds, and its bindings win.
+
+A program asks whether the focus is in a view (`view_has_focus`, `views_focus`) instead of guessing it from the places
+it is not (classeur's first form: "not under the content, the top row, the sidebar or the inspector").
+
+**The first start.** `view_restore(vs, id, data, first_start_open)` opens a view at start-up when it was open at the
+last quit, or when the memory has no line for it and `first_start_open` asks. Refused: `View_Options.open_at_first_start`
+with the toolkit opening it: an opening needs the program's data, which `view_register` does not have. A view opened
+in a run gets its line at the quit even when it was closed again, so the user's "closed" holds.
 
 ### 6.6 The palette's commands
 
@@ -1146,7 +1157,7 @@ New:
 ```odin
 ui.view_register(&app.views, "sidebar", sidebar_view, {title = i18n.later("Places"), icon = lucide.FOLDER_TREE,
 	home = .Panel, home_place = {edge = .Left}, extent_em = 16, min_width_em = SIDEBAR_MIN_EM})
-if ui.view_was_open(&app.views, "sidebar") { ui.view_open(&app.views, "sidebar", app) }   // at start-up
+ui.view_restore(&app.views, "sidebar", app, first_start_open = true)   // at start-up: open at the first start, then as the user left it
 // the command "Show the sidebar": open it, or close it
 ```
 

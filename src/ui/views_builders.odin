@@ -42,6 +42,8 @@ views_build :: proc(s: ^State) {
 	}
 	// while a view is dragged, the dock targets of the spaces built this frame, over everything
 	views_build_targets(s)
+	// (F6 last: only when nothing of the build took it; a dialog holds the keys, key_press says none then)
+	views_f6_end(s)
 	// a window refused between two frames (views_windows_step): said here, in a build of its owner
 	for vs in s.views_attached {
 		for r in vs.records {

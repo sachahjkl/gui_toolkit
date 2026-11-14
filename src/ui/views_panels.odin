@@ -78,7 +78,7 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool) -> bool {
 	}
 	sp := view_space_of(vs, name)
 	sp.built, sp.state, sp.em, sp.has_content = s.build_index, s, em, content
-	if name == "" { views_f6(s, vs, sp) }
+	// (F6 is read at the end of the build, views_f6_end: a program's own binding of it, read anywhere in its build, wins)
 
 	// the views docked here, by zone and stack, each stack's in the order they docked; the ranks made compact
 	zones: [View_Edge]View_Zone_Lists
@@ -653,6 +653,16 @@ views_build_targets :: proc(s: ^State) {
 
 ////////////////////////////////
 // F6
+
+// end_build: F6 and Shift+F6 of the window's frame, when nothing of the build took them (key_press takes a key once:
+// a program that binds F6 to a command of its own reads it in its build, before or after views_frame, and keeps it).
+@(private)
+views_f6_end :: proc(s: ^State) {
+	for vs in s.views_attached {
+		sp, ok := vs.spaces[""]
+		if ok && sp.state == s && sp.built == s.build_index { views_f6(s, vs, sp); return }
+	}
+}
 
 // F6 and Shift+F6 in the window's frame: the focus to the first stop of the next or the previous area (the content,
 // each stack, each internal window).

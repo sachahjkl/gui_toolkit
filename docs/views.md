@@ -105,6 +105,8 @@ again.
 | `view_present(vs, id, p, place, instance)`, `view_reattach(vs, id, instance)` | moves it; the choice is remembered |
 | `view_presentation(vs, id, instance)` | where it is, or where it opens next |
 | `view_was_open(vs, id, instance)` | it was open when the program last quit |
+| `view_restore(vs, id, data, first_start_open, instance, owner) -> bool` | at start-up: opens it if it was open at the last quit, or at the very first start (no line for it yet) when `first_start_open`; a view the user closed stays closed |
+| `view_has_focus(vs, id, instance)`, `views_focus(vs) -> (id, instance, ok)` | the keyboard focus is in a view (section "A program's command keys") |
 | `view_dialog_size(vs, id, instance)` | the size the user gave its dialog, in ems (`{}`: none) |
 | `views_hold_keys(vs)` | a dialog of `vs` holds the keys of the State being built |
 | `views_frame(vs)`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels) |
@@ -255,7 +257,22 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
 - A panel whose space is not built in this frame stays open and keeps its state: it shows when its space is built.
 - Keys: the panel's code reads keys only while the focus is in it (`key_press`, `key_take`). Ctrl+W closes it; an
   Escape it does not take gives the focus back. F6 and Shift+F6 move the focus to the next or the previous area: the
-  content, each zone, each internal window.
+  content, each stack, each internal window.
+
+### A program's command keys and the views' keys
+
+`key_press` takes a key once: who reads it first has it. The order of a frame:
+
+1. `views_frame`: the panels' and the internal windows' code (each only while the focus is in it).
+2. The program's content and its command keys, wherever it reads them.
+3. `end_build`: the dialogs (a dialog holds every key of its window while it is open), then the toolkit's F6 and
+   Shift+F6, last: they act only when nothing of the build took them.
+
+So a program reads its command keys where it builds, before or after `views_frame`: a binding of its own of F6 ("Next
+panel") wins over the toolkit's. A command whose key a view also uses (a letter typed in a panel's field, Escape in a
+floating window) asks where the focus is instead of guessing: `view_has_focus(vs, id, instance)`, or
+`views_focus(vs) -> (id, instance, ok)` for any view (a dialog, a floating window, a panel, a view's window when it is
+the active one). `views_hold_keys(vs)` says a dialog holds them all.
 
 ### Drops
 

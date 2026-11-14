@@ -113,6 +113,7 @@ View_Kind :: struct {
 	build: View_Build,
 	type:  typeid,
 	o:     View_Options,   // its strings owned
+	opened: bool,          // opened in this run (views_destroy writes its line, view_restore)
 }
 
 // One instance of a view: open, or closed with an answer not taken yet.
@@ -218,7 +219,9 @@ views_destroy :: proc(vs: ^Views) {
 			if .Was_Open in fx { was = true }
 		}
 		m := views_memory_of(vs, id)
-		if m.open != was {
+		// (a view opened in this run has a line from now on, even closed: view_restore's first start is over for it)
+		_, has_line := store.get(&vs.memory, id)
+		if m.open != was || (k.opened && !has_line) {
 			m.open = was
 			views_memory_write(vs, id, m)
 		}
@@ -281,6 +284,7 @@ view_open_raw :: proc(vs: ^Views, id: string, data: rawptr, type: typeid, instan
 	k, known := vs.kinds[id]
 	assert(known, "view_open: the id is not registered (view_register)")
 	assert(k.type == type, "view_open: the data is not of the type view_register got")
+	k.opened = true
 	// (the State being built, else the one in use: the last built or selected, as ui.init selects it)
 	who := owner != nil ? owner : (build_of != nil ? build_of : current)
 	assert(who != nil, "view_open: no State in use: give its owner")
@@ -331,6 +335,46 @@ view_close :: proc(vs: ^Views, id: string, instance := "") {
 view_is_open :: proc(vs: ^Views, id: string, instance := "") -> bool {
 	r := view_record_find(vs, id, instance)
 	return r != nil && r.machine.state != .Closed
+}
+
+// Whether the keyboard focus is in this view, in whatever presentation: on a box of its body (or its header) in the
+// State it is shown in, and, in a window of its own, that window is the active one. A program's command keys that a
+// view's own keys would conflict with ask it (or views_focus) rather than guess from where the focus is not.
+view_has_focus :: proc(vs: ^Views, id: string, instance := "") -> bool {
+	r := view_record_find(vs, id, instance)
+	return r != nil && view_record_has_focus(r)
+}
+
+// The view that has the keyboard focus (see view_has_focus), if one has. Its strings are the view's: valid while it is
+// open.
+views_focus :: proc(vs: ^Views) -> (id, instance: string, ok: bool) {
+	for r in vs.records {
+		if view_record_has_focus(r) { return r.kind.id, r.instance, true }
+	}
+	return "", "", false
+}
+
+@(private = "file")
+view_record_has_focus :: proc(r: ^View_Record) -> bool {
+	m := r.machine
+	if m.state == .Closed || m.state == .Opening { return false }
+	p := view_shown_in(m)
+	if m.state == .Dragged { p = m.as }   // (dragged: the floating window it is during the drag)
+	st := view_state_of(r, p)
+	root := r.roots[p]
+	if st == nil || root == 0 { return false }
+	if p == .External && (st.window == nil || !st.window.active) { return false }
+	return view_focus_inside(st, root)
+}
+
+// At start-up: opens the view when it was open as the program last quit; at the very first start (the memory has no
+// line for it yet) when `first_start_open`. A view the user closed stays closed at the next starts. True: it opened.
+view_restore :: proc(vs: ^Views, id: string, data: ^$T, first_start_open := false, instance := "", owner: ^State = nil) -> bool {
+	views_ready(vs)
+	_, known := store.get(&vs.memory, id)
+	if known ? !views_memory_of(vs, id).open : !first_start_open { return false }
+	view_open(vs, id, data, instance, owner)
+	return true
 }
 
 // Whether it was open when the program last quit (a side pane, a tool window): the program opens it again.

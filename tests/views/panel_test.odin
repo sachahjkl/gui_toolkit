@@ -27,6 +27,8 @@ Dock :: struct {
 	content_k:  int,               // F2 read by the content's code
 	answers:    [dynamic]int,
 	em:         f32,               // the font size of the last build (frame px)
+	own_f6:     bool,              // the program binds F6 itself, read after views_frame (in its content)
+	f6_taken:   int,
 }
 
 @(private = "file")
@@ -38,6 +40,7 @@ dock_build :: proc(s: ^session.Session) {
 	if code, ok := ui.view_ended(&r.views, "ask"); ok { append(&r.answers, code) }
 	if ui.views_frame(&r.views) {
 		if ui.key_press(.F2) { r.content_k += 1 }
+		if r.own_f6 && ui.key_press(.F6) { r.f6_taken += 1 }
 		ui.next({width = ui.px(200)})
 		ui.button("content_button", "In the content")
 		if r.tools {
@@ -340,6 +343,10 @@ a_panel_s_keys_are_its_own_only_with_the_focus :: proc(t: ^testing.T) {
 		testing.expectf(t, false, "F6 to the panel's field: the focus is on %q", focused)
 		return
 	}
+	// the program asks where the focus is, rather than guess it
+	testing.expect(t, ui.view_has_focus(&r.views, "side"), "the panel has the focus")
+	id, _, has := ui.views_focus(&r.views)
+	testing.expect(t, has && id == "side", "views_focus says it")
 	session.type_text(s, "abc")
 	testing.expect_value(t, ui.line_edit_string(&r.field), "abc")
 	session.key(s, .F2)
@@ -349,4 +356,41 @@ a_panel_s_keys_are_its_own_only_with_the_focus :: proc(t: ^testing.T) {
 	session.frames(s, 2)
 	testing.expect(t, session.focused_name(s) != "side_field", "the focus left the panel")
 	testing.expect(t, ui.view_is_open(&r.views, "side"), "the panel stays")
+	testing.expect(t, !ui.view_has_focus(&r.views, "side"), "no view has the focus now")
+	_, _, has = ui.views_focus(&r.views)
+	testing.expect(t, !has, "views_focus: none")
+}
+
+// A program that binds F6 itself, read in its content (after views_frame): its binding wins, the toolkit's F6 moves no
+// focus (it acts only on an F6 nothing in the build took).
+@(test)
+a_program_s_own_f6_wins :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	r.own_f6 = true
+	s := dock_start(t, &r, "side")
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	if !click_named(s, "content_button") { return }
+	session.key(s, .F6)
+	testing.expect_value(t, r.f6_taken, 1)
+	testing.expect(t, session.focused_name(s) != "side_field", "the toolkit did not move the focus")
+	r.own_f6 = false
+	session.key(s, .F6)
+	testing.expect_value(t, session.focused_name(s), "side_field")
+}
+
+// view_restore: at the very first start (no line), opened when asked; a line that says closed keeps it closed, one
+// that says open opens it.
+@(test)
+view_restore_respects_the_user_s_choice :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r)
+	testing.expect(t, !ui.view_restore(&r.views, "side2", &r, owner = s.state), "no line, not asked: closed")
+	testing.expect(t, ui.view_restore(&r.views, "side", &r, first_start_open = true, owner = s.state), "no line, asked: opened")
+	ui.view_close(&r.views, "side")
+	_ = store.set(&r.views.memory, "side", "v1 open=0")
+	testing.expect(t, !ui.view_restore(&r.views, "side", &r, first_start_open = true, owner = s.state), "the user closed it: stays closed")
+	_ = store.set(&r.views.memory, "side", "v1 open=1")
+	testing.expect(t, ui.view_restore(&r.views, "side", &r, first_start_open = true, owner = s.state), "open at the last quit: opened")
 }
