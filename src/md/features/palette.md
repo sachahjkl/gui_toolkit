@@ -1,0 +1,260 @@
+# The command palette: intent
+
+One palette for every program: the same look, the same keys, the same prefixes. This file records the design before
+the code. The palette today is `ui.Command_Palette` (`src/ui/commands.odin`), ranked by `ui.rank` (`src/ui/rank.odin`)
+and remembered by `ui.Choice_Memory` (`src/ui/choices.odin`). The keys of a command and the window commands are in
+[commands.md](commands.md). The views' moves are in [views.md](views.md).
+
+## The problem
+
+The programs have three palettes. They diverged.
+
+- **The toolkit's palette** lists one table of `ui.Command`. Papier, classeur, inspecteur and cliche each concatenate
+  three tables into it: their commands, the settings (`prefs_page.palette_commands`) and the views' moves
+  (`ui.View_Commands`). Then each program decodes the chosen index by ranges: `i < len(Action)`, then the settings,
+  then the moves. Four copies of the same code. Each copy breaks when the table is made again between the choice and
+  its reading.
+- **opencode native's palette** (`ocn/src/palette.odin`) has its own items, its own row, its own stamp and five
+  prefixes: `>` commands, `@` sessions and agents, `/` the server's commands, `#` models, `:` settings.
+- **Wren's palette** (`wren/src/browser/palette.odin`, 800 lines) has its own sources and prefixes: `>` commands,
+  `@` tabs, `:` preferences, `/` pages, `$` the vault. It also has nine settings of its own.
+
+The same character means different things: `/` is a server command in opencode native and a page in Wren; `@` is a
+session or an agent in one and a tab in the other. A fix in one palette (the lit ranges, a stale list, the selection
+under the pointer) is not in the others. A person who uses two programs learns two palettes.
+
+The state machines behind the three palettes are the same: "what is typed selects what is asked", "an answer is for
+the query it was asked for", "what was chosen before comes first". The toolkit owns them.
+
+## The model
+
+A palette is a field and a ranked list of items. **Sources** give the items. The palette asks the sources, ranks
+their items together, shows them, and says which item the person chose.
+
+### A source
+
+A source has:
+
+- **a prefix** (`ui.Palette_Prefix`, below), or none;
+- **a title** ("Sessions", "Tabs"), shown in the hint row and in its "reading" row;
+- **`plain`**: its items take part in a search without a prefix;
+- **`remember`**: its choices go to the usage memory (false for the views' moves and the secrets);
+- **its alternates**: the meaning of Ctrl+Enter, Alt+Enter and Shift+Enter for its items ("Open in a new tab"), or
+  none;
+- **`read`**: a procedure that the palette calls on the interface's thread when the query or the source's version
+  changed. It answers at once from the program's memory, or it starts a chore and answers later (`palette_answer`);
+- **`mark`**: a procedure that says the mark of an item now (a switch on, the model in use). The palette calls it for
+  the rows in view only: a command's `checked` can walk a conversation;
+- **its version**: the program bumps it when the source's items change.
+
+A source answers in one of two ways:
+
+- **It gives its items.** The palette ranks them. Most sources do this: commands, settings, sessions, tabs, models.
+- **It searches.** It receives the query and returns what it found, best first (a walk of a folder, the server's
+  find, a history of a hundred thousand pages). The palette still scores each item with the same matcher, to merge it
+  with the other sources and to light its ranges. An item that the source found and the matcher does not find stays,
+  with the matcher's last-resort penalty: the source knew something (a page's content, a path's folder).
+
+### An item
+
+An item has an id (stable in its source, never a title), a title, a detail, an icon, the text of its keys, a group,
+tags, a last text (a setting's name, an address: `Rank_Entry.last`), `disabled`, and `stays` (choosing it does not
+close the palette: a switch). Its mark comes from the source's `mark`.
+
+### A choice
+
+`palette_chosen` returns the source, the item's id and the modifiers of the Enter. It does not return an index in a
+concatenated table. The toolkit's own sources act themselves: a setting flips or opens its page, a view's move runs.
+The program handles only the choices of its own sources.
+
+### The toolkit's sources
+
+Every program gets three sources, and gives them only its data:
+
+| Source | Prefix | Plain | What choosing does |
+|---|---|---|---|
+| Commands | `>` | yes | returned to the program: the index in its `[]ui.Command` table |
+| Views' moves | `>` | yes | the toolkit runs it (`views_command_run`); the palette's own view is not listed |
+| Settings | `:` | yes | the toolkit flips a switch (the palette stays) or opens the settings on it (`prefs_page.show`) |
+
+The commands source takes what `palette_set` takes today: the table, `disabled`, the keys' texts, the names for the
+usage memory, the version. A program with its own settings model (Wren's `about:config`) replaces the settings source
+with its own source of the same prefix.
+
+## The prefixes
+
+The prefixes are a closed table of the toolkit, `ui.Palette_Prefix`. A prefix means the same thing in every program.
+A program fills a prefix with a source, or leaves it empty. It cannot invent a character.
+
+| Prefix | Name | Meaning | Sources |
+|---|---|---|---|
+| (none) | plain search | every source with `plain` | commands, moves, settings, and what a program adds |
+| `>` | Commands | what the program does | the commands, the views' moves, opencode native's server commands |
+| `@` | Go to | the things of the program that one opens or switches to | sessions, tabs and closed tabs, clipboard entries, captures, processes |
+| `/` | Paths | files, folders and addresses | the session's files, a folder to go to, visited pages, bookmarks |
+| `#` | Choose | one among alternatives, the one in use marked | models, agents, workflows |
+| `:` | Settings | the settings | the toolkit's settings source, or the program's own |
+| `$` | Secrets | entries of a vault | Wren's vault |
+
+Rules:
+
+1. The prefix is the first character of the query, after leading spaces. The spaces after it are dropped.
+2. A prefix counts only when one of the program's sources holds it. Else the character is text: `/home/sacha` in a
+   program without a Paths source is a plain search.
+3. A program adds its own source in one of two ways: under one of the prefixes, with that meaning; or with no prefix,
+   in the plain search only. A new meaning that two programs need is a new line of this table, in the toolkit.
+4. A Secrets source is never in the plain search and never in the usage memory. Its details are not shown.
+5. A program can open the palette with a prefix typed (`palette_open(p, "@")`): opencode native's sessions button,
+   Wren's address bar shortcut.
+
+## Keys
+
+- **Ctrl+K and Ctrl+Shift+P open the palette** in every program. Again: they close it. The toolkit gives the command
+  (`ui.PALETTE_COMMAND`, scope `.Window`). This changes a refused alternative of [commands.md](commands.md) ("no
+  ready-made window commands"): homogeneity first. That file changes with the code.
+- **Up, Down** move the selection and wrap. **Page Up, Page Down** move by the rows in view. The selection skips a
+  disabled item.
+- **Enter** chooses. **Ctrl+Enter, Alt+Enter, Shift+Enter** choose with the source's alternate; without one, they do
+  what Enter does.
+- **Tab** completes: an item that has a completion (a folder of the Paths source) puts it in the field. Else Tab does
+  nothing.
+- **Escape** closes the palette. Backspace on a prefix removes it, as any character.
+- A click chooses. The pointer selects a row when it moves over it, not when the list moves under it.
+
+## Look
+
+- One view of the toolkit (`PALETTE_VIEW`, home Dialog), at the top centre of the window it is asked from, resizable;
+  the views' memory keeps its size. The search band (`ui.search_band`) is its top.
+- **One row shape for every source**: the icon, the title with the lit ranges, the detail (weak), the mark, the keys
+  (weak). A path or an address in the detail is cut in its middle. A program gives an icon glyph; a source can draw
+  its own icon in the icon's place (Wren's site icons).
+- The selected row is the toolkit's: a well with the accent's bar. The program's theme gives the colours.
+- With nothing typed: **Recent** (the heaviest choices of the usage memory, among the items listed), then the
+  commands under their groups. The settings and the moves are not listed then: `:` and `>` list them.
+- With something typed: one ranked list, each row with its group or its source's title after the title.
+- **The hint row** is the foot: the prefixes that the program has, each with its name (`> Commands  @ Sessions
+  : Settings`), and at the right the keys of the selected row (`Enter Run`, the alternates of its source). A click on a
+  prefix types it. While a prefix is typed, the hint row shows that source alone.
+- **Nothing matches**: one weak row. With a prefix and a source still reading: "Reading sessions…" instead.
+
+## Ranking
+
+One ranking for every source: `ui.rank` with `rank_palette`. The title whole or at the starts of its words, then the
+tags, then the group, then the same with a slip, then the last text. The usage memory adds its bonus
+(`choice_bonus`). A plain search puts the items of the program's own sources (not commands, moves or settings) a few
+points behind at an equal score: a command typed whole beats a page whose title holds the same word. Disabled items go
+after the others, greyed.
+
+**The ranking always runs on a chore.** The palette copies the items into a snapshot, once per source version, and
+ranks the snapshot on a chore at each new query. The list shown stays until the new ranking arrives. One path for 10
+items and for 100 000.
+
+## Reading and serials
+
+- The palette has a serial. It changes at each query, each open and each close. Each question to a source and each
+  ranking carries it. An answer with another serial is dropped and freed.
+- A source that reads (its question has no answer yet) shows "reading" in its row (prefix) or as a spinner in the
+  band's count (plain search). The palette never waits for it. The source owns its timeout and its error: an error is
+  one weak row, "Sessions: could not read (…)".
+- **Enter while the ranking of the last query is in flight waits for that ranking**, then chooses its first row. It
+  does not wait for a source that reads. A person who types "nf" and Enter in one frame gets the first item for "nf",
+  not for "n".
+- **The selection follows the id of its item.** A late answer that puts rows above the selection does not move it to
+  another item. Until the person moves the selection after a change of the query, the selection is the first row.
+
+## The usage memory
+
+The usage memory is `ui.Choice_Memory`. The palette owns it. The program gives the path of its file
+(`palette_choices.txt` in its state folder; "" in a test or a demo). A choice's key is `<source>:<id>`
+(`command:tab.new`, `setting:appearance.theme`, `session:ses_…`): an id, never a title, so the memory holds across
+languages. The palette notes each choice of a source with `remember`. Recent lists only the items present in an answer
+that the palette already has: a session deleted since is not listed.
+
+## What each program's palette becomes
+
+- **papier, inspecteur**: `>` and `:` from the toolkit's sources. The code that decodes the chosen index by ranges
+  goes. Inspecteur adds `@`: the processes and the services; choosing one selects its row. Inspecteur's `disabled`
+  that follows the selection stays as a version of its commands source.
+- **cliche**: the editor's and the history's palettes are the toolkit's with its commands. The history adds `@` (the
+  captures) and `#` (the workflow to use). The add palette of the node graph is **a chooser**: a palette with one
+  source and no prefix shows no hint row and no Recent. `ui.flow_palette` gives that source.
+- **classeur**: `@` the tabs and panels (they replace "Tab 1 to Last tab", which showed when "tab" was typed). `/` the
+  folders: a path typed, the recent folders, read on its workers. Its Ctrl+Enter (a key of one's own) and Alt+Enter
+  (an alias) are the alternates of its commands source.
+- **opencode native**: its palette goes. Its sources:
+  - `>` its commands, the views' moves, and the server's commands in their group "Server" ("/compact": choosing puts it
+    in the composer, as today);
+  - `@` the root sessions;
+  - `#` the models and the agents, the one in use marked;
+  - `:` the toolkit's settings source on its `cfg_prefs`;
+  - `/` the files of the session's folder, searched by the server: a later step.
+
+  What changes for its user: `/` no longer lists the server's commands (they are under `>` and in the plain search);
+  the agents move from `@` to `#`; with nothing typed, Recent and the commands show, not the eight last sessions; a
+  switch flips and the palette stays open; the rows have the toolkit's look.
+- **Wren**: its registry stays its own type (a name, a condition, an action around `ui.Command`). It gives a
+  `[]ui.Command` table to the commands source at each registry version. Its sources: `@` the tabs and the closed tabs,
+  `/` the visited pages and the bookmarks (alternate: "Open in a new tab"), `:` its own source over `about:config`, `$`
+  the vault. `palette.odin` goes, with its nine settings: the view remembers the width, the toolkit's constants give the
+  rest.
+
+## Refused alternatives
+
+- **Keep two palettes** (the toolkit's for four programs, their own for opencode native and Wren). It is how they
+  diverged: each fix lands in one of them.
+- **A prefix grammar per program** (a program registers any character). The same character then means two things in
+  two programs, which is today's defect.
+- **A callback per keystroke on the interface's thread that returns the filtered items** (`palette_items` of opencode
+  native, Wren's `items`). The work is in proportion to the data on the interface's thread, and one slow source
+  freezes the typing.
+- **Ranking on the interface's thread for a short list, on a chore for a long one.** Two paths: a test sees one of
+  them, a defect lives in the other.
+- **Sections per source** (the best of each source in its own block). A weak source above buries the best hit of a
+  strong one. One merged ranking.
+- **A chip for the prefix** (the character taken out of the field). A text that the person does not see is a hidden
+  state. Backspace then needs a rule of its own.
+- **Word prefixes** ("cmd:", "tab:"). They are longer to type and change with the language.
+- **The program decodes every choice** (an index in a concatenated table). It breaks when the table is made again
+  before the choice is read. A choice is a source and an id.
+- **Hidden disabled commands** (opencode native today). The person does not learn that the command exists. Greyed and
+  last.
+- **Settings of the palette per program** (Wren's width, rows, half-life…). They make the palettes differ.
+
+## Subtle points
+
+- The palette of a program with several windows opens over the window it is asked from. Its moves are that window's
+  views (`views_commands_update(owner = …)`).
+- The usage memory was named `palette_usage` in the request: the toolkit's name is `Choice_Memory`.
+- A source's `read` runs on the interface's thread. It must not make a system call. It answers from memory or starts a
+  chore.
+- A switch's mark is read for the rows in view, at each build. A flip does not rank the list again.
+- The snapshot of a source is immutable while a chore ranks it. A new version makes a new snapshot; the old one is
+  freed when its last ranking ends.
+- A window command's key still works while the palette's field has the keyboard (commands.md). The palette's command
+  closes it.
+
+## Migration
+
+1. The toolkit: the sources, the prefix table, the hint row, the serials, the ranking on chores, the usage memory
+   owned by the palette, the three toolkit sources. `palette_set` and the index-range decoding go. Update
+   [commands.md](commands.md) and `docs/commands.md`.
+2. papier, inspecteur, cliche: the toolkit's sources, their decoding removed; cliche's add palette as a chooser.
+3. classeur: `@`, `/`, the alternates.
+4. opencode native: its sources; its `palette.odin` goes. `/` files after.
+5. Wren: the registry's table, its sources; its `palette.odin` goes.
+
+## The tests that break the design on day one
+
+1. **Type and Enter in one frame**: the choice is the first item of the full query's ranking.
+2. **A stale answer**: a source answers for "ab" after the query is "abc", or after a close and an open. The answer
+   is dropped, and freed.
+3. **A source that never answers**: the palette shows "reading", Up, Down and Escape work, a later answer is dropped.
+4. **A late answer above the selection**: the selected item stays the same item.
+5. **A quiet build**: with nothing changed, no source is asked, nothing is ranked (a counter).
+6. **No ranking on the interface's thread**: a source of 100 000 items; the interface's thread calls no matcher (a
+   counter per thread).
+7. **A prefix without a source**: `/home/x` in a program without Paths is a plain search.
+8. **The usage memory across languages**: a choice made in English is first under Recent in French.
+9. **A switch**: Enter flips it, the palette stays open, its mark changes, the list is not ranked again.
+10. **One table of prefixes**: each program's test lists its sources (`palette_prefixes`: "> Commands", "@ Sessions"…)
+    and compares them with the list it means, as `command_typing_keys` does for the keys.
