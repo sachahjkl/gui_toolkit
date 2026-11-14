@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.256.0] - 2026-11-14
+
+### Added
+- **`ui.Table`: groups and a fuzzy filter**: `table_data_row`'s `group` keeps the rows of a lower group first in every sort (a file manager's folders), and `Table_Layout.fuzzy` filters by the query's letters in order, the cells lighting the letters matched. `ui.code_runs_of` colours a text with spans kept from an earlier `syntax.spans`; `platform.file_roots` lists the drives on Windows, `/` elsewhere.
+- **A file browser of the toolkit's own (`ui.file_dialog`)**: opening, saving and choosing a folder look and work the same in every program and every theme: places (the system's, the program's, the recent folders), a breadcrumb that becomes a path field (Ctrl+L, Tab completes), a sortable list with folders first that filters as you type, a preview of texts and pictures, New folder, Hidden files, and a question before Save replaces a file. It reads the computer's files, or a program's own (`ui.File_Source`: a server's files), without ever freezing the window. Each dialog remembers its folder, size, sort and recent folders (`ui.file_dialog_memory` keeps them between runs). The system's dialog stays one setting away: General › File dialogs.
+
 ## [0.255.2] - 2026-11-14
 
 ### Fixed
@@ -3475,6 +3481,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.256.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.256.0
 [0.255.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.2
 [0.255.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.1
 [0.255.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.0
