@@ -94,9 +94,9 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 	zones: [View_Edge]View_Zone_Lists
 	for e in View_Edge { for k in 0 ..< VIEW_STACKS_MAX { zones[e][k] = make([dynamic]^View_Record, 0, 2, context.temp_allocator) } }
 	for r in vs.records {
-		if r.owner != s || !view_builds_panel(r.machine) || r.machine.place.space != name { continue }
+		p := view_panel_place(r.machine)
+		if r.owner != s || !view_builds_panel(r.machine) || p.space != name { continue }
 		if r.ibuilt == s.build_index { continue }   // (floating this frame, its space was not built: from the next one here)
-		p := r.machine.place
 		if p.edge == .Center && content { continue }   // (a space with content has no centre zone: it waits)
 		// (placed in this build, its tab shown or not: not a late panel of end_build, whose body would cover its zone)
 		r.pbuilt = s.build_index
@@ -275,6 +275,9 @@ view_zone_compact :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zo
 		if len(z[k]) == 0 { continue }
 		if k != to {
 			for r in z[k] {
+				// (one leaving is listed at the place it still shows in: that place moves; it goes elsewhere, nothing to
+				// remember here)
+				if r.machine.state == .Moving { r.machine.from_place.stack = to; continue }
 				r.machine.place.stack = to
 				view_place_remember(vs, r)
 			}
@@ -328,7 +331,8 @@ views_build_late_panels :: proc(s: ^State) {
 		for i := 0; i < len(vs.records); i += 1 {
 			r := vs.records[i]
 			if r.owner != s || !view_builds_panel(r.machine) || r.pbuilt == s.build_index || r.ibuilt == s.build_index { continue }
-			sp, ok := vs.spaces[r.machine.place.space]
+			place := view_panel_place(r.machine)
+			sp, ok := vs.spaces[place.space]
 			if !ok || sp.state != s || sp.built != s.build_index {
 				// (its space not built in this build: a frame-less window's panel floats at once; one of a space of the
 				// program's waits there, not built, until the space is)
@@ -336,8 +340,8 @@ views_build_late_panels :: proc(s: ^State) {
 				continue
 			}
 			em := sp.em
-			at := view_target_preview(sp, r.machine.place.edge, em)
-			if r.machine.place.edge == .Center && sp.has_content { at = sp.rect }
+			at := view_target_preview(sp, place.edge, em)
+			if place.edge == .Center && sp.has_content { at = sp.rect }
 			push_parent(s.root)
 			next({fixed_x = at.min.x, fixed_y = at.min.y, width = px(max(at.max.x - at.min.x, 1)), height = px(max(at.max.y - at.min.y, 1)), axis = .Y, transparency = 1})
 			holder := build_box({}, fmt.tprintf("###view_late_%s", r.modal_name))
@@ -360,6 +364,13 @@ view_builds_panel :: proc(m: View_Machine) -> bool {
 	return false
 }
 
+// Where a view built as a panel is built: while it moves away, the place it still shows in (`from_place`), not the one it
+// goes to (a panel moving into its own window was laid out at another edge, and its window took that size).
+@(private)
+view_panel_place :: proc(m: View_Machine) -> View_Place {
+	return m.state == .Moving ? m.from_place : m.place
+}
+
 // A zone's extent, in its own unit (sp.mem): the remembered one, else the space's (extent_frac, extent_em), else its
 // first view's (extent_frac, extent_em, else its width or height), else VIEW_ZONE_EM. One of the two is set from then
 // on: the handle keeps that unit.
@@ -370,16 +381,19 @@ view_zone_extent :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record) -> 
 	if m.extent[e] > 0 { return m.extent[e], 0 }
 	o := first.kind.o
 	switch {
-	case sp.defaults.extent_frac[e] > 0: m.frac[e] = sp.defaults.extent_frac[e]
-	case sp.defaults.extent_em[e] > 0:   m.extent[e] = sp.defaults.extent_em[e]
-	case o.extent_frac > 0:              m.frac[e] = o.extent_frac
-	case o.extent_em > 0:                m.extent[e] = o.extent_em
+	case sp.defaults.extent_frac[e] > 0: frac = sp.defaults.extent_frac[e]
+	case sp.defaults.extent_em[e] > 0:   em_size = sp.defaults.extent_em[e]
+	case o.extent_frac > 0:              frac = o.extent_frac
+	case o.extent_em > 0:                em_size = o.extent_em
 	case:
 		x := e == .Left || e == .Right ? o.width_em : o.height_em
-		m.extent[e] = x > 0 ? x : VIEW_ZONE_EM
+		em_size = x > 0 ? x : VIEW_ZONE_EM
 	}
-	m.frac[e] = clamp(m.frac[e], 0, 0.95)
-	return m.extent[e], m.frac[e]
+	frac = clamp(frac, 0, 0.95)
+	// (a view leaving the zone is still laid out there for its last frames, but the zone's extent is not its own: the
+	// views that stay or come set it)
+	if first.machine.state != .Moving { m.extent[e], m.frac[e] = em_size, frac }
+	return
 }
 
 // The extent of a zone of `sp` in pixels, a space `length` long along it.

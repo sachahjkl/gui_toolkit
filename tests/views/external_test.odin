@@ -270,6 +270,38 @@ a_view_s_window_follows_the_program_s_decorations :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(r.answers), 0)
 }
 
+// A docked panel of tabs (a terminal: tabs_always, its content fills it) moved into a window of its own, under the
+// program's decorations: its header at the window's top, its content filling the rest (it showed the header alone, in
+// the middle of an empty window).
+@(test)
+a_panel_of_tabs_fills_its_window :: proc(t: ^testing.T) {
+	r: Ext
+	defer ext_end(&r)
+	grid :: proc(v: ^ui.View, r: ^Ext) {
+		ui.next({width = ui.fill(), height = ui.fill()})
+		_ = ui.build_box({.Draw_Background}, "###grid")
+	}
+	ui.view_register(&r.views, "term", grid, ui.View_Options{title = "Terminal", home = .Panel, home_place = {edge = .Bottom},
+		extent_em = 12, width_em = 60, height_em = 30, tabs_always = true})
+	r.frame = true
+	s := ext_start(t, &r, integrated = true)
+	ui.view_open(&r.views, "term", &r, "a")
+	if !wait(s, &r, proc(s: ^session.Session, r: ^Ext) -> bool { return drawn(s, "grid") != nil }, "the docked grid") { return }
+	ui.view_present(&r.views, "term", .External, instance = "a")
+	if !wait(s, &r, proc(s: ^session.Session, r: ^Ext) -> bool {
+		w := session.view_window(s, &r.views, "term", "a")
+		return session.window_shown(w) && drawn(w, "grid") != nil
+	}, "the grid in its window") { return }
+	w := session.view_window(s, &r.views, "term", "a")
+	header, g := drawn(w, "view_header"), drawn(w, "grid")
+	size := w.state.window_size
+	if !testing.expect(t, header != nil && g != nil, "its header and its grid") { return }
+	testing.expectf(t, header.rect.min.y < 2, "the header at the top: %v in %v", header.rect, size)
+	// (as wide as the panel it came from: a bottom panel's window is wide)
+	testing.expectf(t, size.x > size.y, "a bottom panel's window is wide: %v", size)
+	testing.expectf(t, g.rect.max.y - g.rect.min.y > 0.6 * size.y, "the grid fills the window: %v in %v", g.rect, size)
+}
+
 // A view opened straight into a window of its own: `moved` says which window (its native child goes there).
 @(test)
 moved_is_told_when_it_opens_in_a_window :: proc(t: ^testing.T) {

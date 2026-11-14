@@ -578,12 +578,14 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	}
 	shade := frame_new(Color)
 	shade^ = srgb_step(panel.bg, {0, 0, 0, panel.bg.a}, DIALOG_HEADER_DARKEN)
-	tall := children_sum()
-	tall.least = h
-	next({width = fill(), height = tall, radius = 0, axis = .X, cross = .Center})
 	// (Clickable: it is dragged; its right click opens its menu. In a window of its own with the program's decorations,
 	// it is the window's title bar instead: a caption the system drags and maximises, rule 2c)
 	caption := p == .External && view_window_integrated(r)
+	tall := children_sum()
+	tall.least = h
+	// (a title bar has its height: the window's buttons are as tall as their row, so a row as tall as its children
+	// took the whole window and left the view's body nothing)
+	next({width = fill(), height = caption ? px(h) : tall, radius = 0, axis = .X, cross = .Center})
 	b := build_box(caption ? Box_Flags{.Window_Caption} : Box_Flags{.Clickable}, "###view_header")
 	b.custom, b.custom_user = top_strip_draw, shade
 	a11y_default(b, {role = caption ? A11y_Role.Title_Bar : A11y_Role.Heading, name = title})
