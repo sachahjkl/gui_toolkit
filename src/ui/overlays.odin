@@ -212,6 +212,7 @@ toasts_build :: proc() {
 ////////////////////////////////
 // Modal dialog
 
+// The Dialog presentation of a view (views.odin) is built with it; a program opens views, not modals.
 // `if modal("confirm", &open, {width_em = 29}) { ... }`: dims the page, shows a panel, closes on a click outside or on
 // Escape: what is inside it has Escape first (a focused field), and of several dialogs the one on top (opened last) takes
 // it. It stays in the window, however small: narrower than it asks if it must, and never past its bottom.
@@ -221,6 +222,7 @@ toasts_build :: proc() {
 // edges and corners, the two sides moving together as it stays centered; a double click on one goes back to
 // `width_em` × `height_em`. `size` is the program's to keep, in ems ({}: `width_em` × `height_em`): a smaller window does
 // not change it. A resizable dialog of `height_em` 0 opens as tall as what is in it (modal_content_height).
+@(private)
 Modal_Options :: struct {
 	width_em:      f32,          // 0: DIALOG_WIDTH_EM
 	height_em:     f32,          // 0: as tall as what is in it
@@ -374,7 +376,7 @@ MODAL_MARGIN_EM :: 1.0   // between a dialog and the edge of the window
 @(private = "file") MODAL_EDGE_EM :: 0.4     // what takes a press along an edge (inside the dialog: the scrim is the rest)
 @(private = "file") MODAL_CORNER_EM :: 0.9   // and in a corner
 
-@(require_results, deferred_none = modal_end)
+@(private, require_results, deferred_none = modal_end)
 modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 	s := gs()
 	modal_take_escape(s, id, open)
@@ -422,7 +424,7 @@ modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 }
 
 // The key of the panel of dialog `id`.
-@(private = "file")
+@(private)
 modal_key :: proc(s: ^State, id: string) -> Key { return key_from_string(s.root.key, fmt.tprintf("###modal_%s", id)) }
 
 // The height of what is in a dialog (as the last build laid it out), its border counted: what fills it (`fill()`) counts as
@@ -522,6 +524,7 @@ DIALOG_RADIUS_EM :: 0.8
 // concentric with the dialog's (corner_place; Fixed_Radius: `radius` is as drawn, its look draws it with that). The
 // dialog's close button is one; a program's own look of it is another, built in the header's block (the toolkit's then
 // is not built). What `next` said is kept, but for its place, its size and its radius.
+@(private)
 modal_corner :: proc(flags: Box_Flags, id: string) -> ^Box {
 	s := gs()
 	assert(len(s.modal_stack) > 0, "modal_corner: outside a dialog")

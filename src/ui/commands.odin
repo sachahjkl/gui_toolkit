@@ -5,19 +5,20 @@ package ui
 //   command_pressed   the key handling: a command's keys, pressed this frame
 //   chord_text        the text of a key in a menu's line ("Ctrl+Shift+P"); command_tip, a tooltip's ("Kill (Shift+Delete)");
 //                     key_tip, a tooltip's for a control that is no command
-//   palette           the command palette: a dialog the user resizes, that searches (fuzzy_words), every command with
-//                     its keys, grouped
-//   shortcuts_sheet   a dialog that lists every command's keys, grouped
+//   palette_open      the command palette: a view (home Dialog) the user resizes, that searches (fuzzy_words), every
+//                     command with its keys, grouped
+//   shortcuts_sheet_open   a view that lists every command's keys, grouped
 //
 // A program keeps its commands in a table of its own (an enum of its commands indexing an array of Command) and says
-// each frame which ones can act now (the `disabled` of palette): one place names a command and its keys, and its menus,
+// which ones can act now (the `disabled` of palette_set): one place names a command and its keys, and its menus,
 // tooltips, palette and sheet all say the same.
 //
 //   COMMANDS := [Cmd]ui.Command{.Kill = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}}, ...}
 //   if ui.command_pressed(COMMANDS[.Kill]) { kill() }
 //   ui.menu_item(COMMANDS[.Kill].label, ui.command_shortcut(COMMANDS[.Kill]))
+//   ui.palette_set(&palette, COMMANDS[:], disabled[:], {})              when the commands or `disabled` change
 //   if ui.key_press(.K, {.Ctrl}) { ui.palette_open(&palette) }
-//   if i, _ := ui.palette(&palette, COMMANDS[:], disabled[:]); i >= 0 { run(Cmd(i)) }
+//   if i, _, ok := ui.palette_chosen(&palette); ok { run(Cmd(i)) }
 
 import "core:fmt"
 import "core:math"
@@ -129,12 +130,10 @@ command_pressed :: proc(c: Command, disabled := false) -> bool {
 ////////////////////////////////
 // The palette
 
-// The palette: a dialog at the top centre of the window (a modal of a `size`: its edges and its corner resize it), a field
-// that searches what is typed, and the commands under it. The program keeps it between frames; `size` is the size the
-// user gave it (in ems; {} the default), for the program to keep between starts.
+// The palette: a view (home Dialog) at the top centre of the window, its edges and its corner resize it (the views'
+// memory keeps its size), a field that searches what is typed, and the commands under it. The program keeps it between
+// frames, at a place that does not move while it is open.
 Command_Palette :: struct {
-	open:   bool,
-	size:   Vec2,
 	field:  Line_Edit,
 	sel:    int,    // the line selected, among the commands listed
 	fresh:  bool,   // opened this frame: the field takes the keyboard
@@ -153,6 +152,12 @@ Command_Palette :: struct {
 	kept:     Palette_Key,            // what the list was made for (valid: it was)
 	query:    string,                 // the query it was made for (owned)
 	rankings: int,                    // how many times the list was made (a test reads it)
+	// what palette_set gave: the program's table (valid while the palette is open), and copies of the rest
+	commands:  []Command,
+	disabled:  [dynamic]bool,
+	options:   Palette_Options,       // its strings and slices owned (its `memory` is the program's)
+	names_src: rawptr,                // the program's `names`: what the list is keyed on (Palette_Options.version 0)
+	list_key:  Key,                   // the list's scroll box, at the last build
 }
 
 // What the palette's list depends on, apart from the query: the commands (their version, or their address while it is
@@ -290,27 +295,91 @@ palette_destroy :: proc(p: ^Command_Palette) {
 	delete(p.lines)
 	delete(p.ranges)
 	delete(p.query)
-	p.lines, p.ranges, p.query, p.kept = nil, nil, "", {}
+	delete(p.disabled)
+	palette_options_free(&p.options)
+	p.lines, p.ranges, p.query, p.kept, p.disabled, p.commands = nil, nil, "", {}, nil, nil
 }
 
-// Opens the palette, its field empty and its first command selected.
+// What the palette lists: the program's commands (its table, valid while the palette is open), those that cannot act
+// now (`disabled[i]` true; nil: none), and what the program adds (Palette_Options). `disabled` and the options are
+// copied. Call it when they change, not at each frame: the list is ranked again only when what it depends on changed.
+palette_set :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool, o: Palette_Options) {
+	p.commands = commands
+	resize(&p.disabled, len(disabled))
+	copy(p.disabled[:], disabled)
+	palette_options_free(&p.options)
+	p.options = o
+	p.options.names = palette_strings_clone(o.names)
+	p.options.keys = palette_strings_clone(o.keys)
+	p.options.recent_title, p.options.foot = strings.clone(o.recent_title), strings.clone(o.foot)
+	p.names_src = raw_data(o.names)
+}
+
+@(private = "file")
+palette_strings_clone :: proc(list: []string) -> []string {
+	if list == nil { return nil }
+	out := make([]string, len(list))
+	for x, i in list { out[i] = strings.clone(x) }
+	return out
+}
+
+@(private = "file")
+palette_options_free :: proc(o: ^Palette_Options) {
+	for x in o.names { delete(x) }
+	delete(o.names)
+	for x in o.keys { delete(x) }
+	delete(o.keys)
+	delete(o.recent_title)
+	delete(o.foot)
+	o^ = {}
+}
+
+// The view of each palette: its id, and the instance that is this palette.
+PALETTE_VIEW :: "palette"
+@(private = "file")
+palette_instance :: proc(p: ^Command_Palette) -> string { return fmt.tprintf("%x", uintptr(p)) }
+
+// Opens the palette (one open comes forward), its field empty and its first command selected, in the State in use (a
+// view of ui.views()). It lists what the last palette_set gave.
 palette_open :: proc(p: ^Command_Palette) {
-	p.open, p.fresh, p.sel, p.reveal = true, true, 0, true
-	line_edit_clear(&p.field)
+	vs := views()
+	if !view_registered(vs, PALETTE_VIEW) {
+		view_register(vs, PALETTE_VIEW, palette_view, View_Options{
+			title = "Commands", no_header = true, resizable = true, top = PALETTE_TOP,
+			width_em = PALETTE_WIDTH_EM, height_em = PALETTE_HEIGHT_EM, min_width_em = PALETTE_MIN_EM.x, min_height_em = PALETTE_MIN_EM.y,
+		})
+	}
+	if !view_is_open(vs, PALETTE_VIEW, palette_instance(p)) {
+		p.fresh, p.sel, p.reveal = true, 0, true
+		line_edit_clear(&p.field)
+	}
+	view_open(vs, PALETTE_VIEW, p, palette_instance(p))
 }
 
-// The palette while it is open: every command, under its group's heading, with its keys. What is typed keeps the
-// commands whose label (or label and group) holds it whole or in pieces that begin words (fuzzy_words), the best matches
-// first (the headings go then; each line says its group); the first one is selected. Up, Down, Page Up, Page Down move
-// the selection, Enter runs it, Escape closes the palette. A command that cannot act now (`disabled[i]` true; nil: none
-// can) is greyed and is not chosen. Returns the index of the command chosen (-1: none), and `resized` when the user
-// changed its size this frame (`p.size`: keep it). Enter with Ctrl, Alt or Shift chooses too: `p.chosen_mods` says which.
-// `o`: the choices remembered, a command first, the keys' texts, a foot line, the commands' version (Palette_Options).
-// The list is kept (palette_keep), and only the lines near the view are built.
-palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil, o := Palette_Options{}) -> (chosen: int, resized: bool) {
-	chosen = -1
+palette_is_open :: proc(p: ^Command_Palette) -> bool { return view_is_open(views(), PALETTE_VIEW, palette_instance(p)) }
+
+palette_close :: proc(p: ^Command_Palette) { view_close(views(), PALETTE_VIEW, palette_instance(p)) }
+
+// The command chosen, taken once: its index in the commands, and the modifiers of the Enter that chose it (Ctrl+Enter,
+// Alt+Enter, Shift+Enter: what else the program does with it; {} plain Enter or a click). ok false: none (still open,
+// closed without a choice, or taken).
+palette_chosen :: proc(p: ^Command_Palette) -> (index: int, mods: platform.Modifiers, ok: bool) {
+	code, ended := view_ended(views(), PALETTE_VIEW, palette_instance(p))
+	if !ended || code < 0 { return -1, {}, false }
+	return code, p.chosen_mods, true
+}
+
+// The palette's view: every command, under its group's heading, with its keys. What is typed keeps the commands whose
+// label (or label and group) holds it whole or in pieces that begin words (fuzzy_words), the best matches first (the
+// headings go then; each line says its group); the first one is selected. Up, Down, Page Up, Page Down move the
+// selection, Enter chooses it, Escape closes the palette. A command that cannot act now is greyed and is not chosen.
+// Enter with Ctrl, Alt or Shift chooses too: `p.chosen_mods` says which. The list is kept (palette_keep), and only the
+// lines near the view are built.
+@(private = "file")
+palette_view :: proc(v: ^View, p: ^Command_Palette) {
+	chosen := -1
 	p.chosen_mods = {}
-	if !p.open { return }
+	commands, disabled, o := p.commands, p.disabled[:], p.options
 	em := font_size()
 	query := strings.trim_space(line_edit_string(&p.field))
 	palette_keep(p, commands, query, o)
@@ -321,7 +390,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 	heading_h := em * PALETTE_HEADING_EM
 	if n > 0 {
 		page := max(int(p_view_h(p) / row_h), 1)
-		// (the palette's own keys, read before its dialog is built)
+		// (the palette's own keys, read before its field is built)
 		if key_press_any(.Down) { p.sel = (p.sel + 1) % n; p.reveal = true }
 		if key_press_any(.Up) { p.sel = (p.sel + n - 1) % n; p.reveal = true }
 		if key_press_any(.Page_Down) { p.sel = min(p.sel + page, n - 1); p.reveal = true }
@@ -331,8 +400,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 	mouse := mouse_pos()
 	moved := abs(mouse.x - p.mouse.x) + abs(mouse.y - p.mouse.y) > 0.5
 	p.mouse = mouse
-	before := p.size
-	if modal("palette", &p.open, {width_em = PALETTE_WIDTH_EM, height_em = PALETTE_HEIGHT_EM, min_width_em = PALETTE_MIN_EM.x, min_height_em = PALETTE_MIN_EM.y, size = &p.size, top = PALETTE_TOP}) {
+	{
 		// (the strip, the gaps and the foot in whole pixels: the list's height is what is left, cut to whole lines below)
 		top_h := math.round(dense(em * SEARCH_BAND_EM))   // (search_band's)
 		gap_h := math.round(em * 0.3)
@@ -340,7 +408,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 		res := search_band("palette_top", &p.field, {count = p.found})
 		if p.fresh { set_focus(res.box.key); p.fresh = false }
 		if res.changed { p.sel = 0; p.reveal = true }
-		if res.cancelled { p.open = false }   // (Escape in the field: the field takes it before the dialog)
+		if res.cancelled { view_end(v, VIEW_CANCELLED) }   // (Escape in the field: the field takes it before the dialog)
 		if res.committed && n > 0 && list[p.sel].index >= 0 && can(disabled, list[p.sel].index) { chosen = list[p.sel].index }
 		// (Enter with a modifier: the program's other use of the command chosen)
 		for m in ([]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}) {
@@ -356,6 +424,7 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 		next({width = fill(), height = fill()})
 		if scroll_y("###palette_list") {
 			lb := parent_box()
+			p.list_key = lb.key
 			view_h := lb.rect.max.y - lb.rect.min.y
 			if p.reveal && view_h > row_h && n > 0 {   // (a search that keeps nothing: no line to show)
 				top := heading_line_top(list, p.sel, row_h, heading_h)
@@ -444,17 +513,14 @@ palette :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool = nil
 			spacer(px(foot_h))
 		}
 	}
-	resized = p.size != before
-	if chosen >= 0 { p.open = false }
-	return
+	if chosen >= 0 { view_end(v, chosen) }
 }
 
 // The palette's list's height at the last build (0: not laid out yet).
 @(private = "file")
 p_view_h :: proc(p: ^Command_Palette) -> f32 {
-	s := gs()
-	b := box_from_key(key_from_string(key_from_string(s.root.key, "###modal_palette"), "###palette_list"))
-	if b == nil { return 0 }
+	b := box_from_key(p.list_key)
+	if b == nil || p.list_key == 0 { return 0 }
 	return b.rect.max.y - b.rect.min.y
 }
 
@@ -510,7 +576,7 @@ palette_keep :: proc(p: ^Command_Palette, commands: []Command, query: string, o:
 		valid = true, count = len(commands), version = o.version, first = -1,
 		memory = o.memory, language = i18n.version(),
 	}
-	if o.version == 0 { key.commands, key.names = raw_data(commands), raw_data(o.names) }
+	if o.version == 0 { key.commands, key.names = raw_data(commands), p.names_src }
 	if f, ok := o.first.?; ok { key.first = f }
 	if o.memory != nil { key.memory_version = o.memory.version }
 	if key == p.kept && query == p.query { return }
@@ -588,13 +654,14 @@ palette_list :: proc(p: ^Command_Palette, commands: []Command, query: string, o:
 ////////////////////////////////
 // The sheet of the keys
 
-// The sheet: the program keeps it between frames. `open` shows it; the rest is the list it keeps (its commands that have
-// a key, made again only when the commands change).
+// The sheet: the program keeps it between frames, at a place that does not move while it is open. It keeps the list of
+// its commands that have a key, made again only when the commands change.
 Shortcuts_Sheet :: struct {
-	open:     bool,
 	lines:    [dynamic]Sheet_Line,
 	kept:     Sheet_Key,
-	listings: int,   // how many times the list was made (a test reads it)
+	listings: int,         // how many times the list was made (a test reads it)
+	commands: []Command,   // shortcuts_sheet_open's: the program's table, valid while the sheet is open
+	version:  u64,
 }
 
 // What the sheet's list depends on: the commands (their version, or their address while it is 0) and their count.
@@ -618,26 +685,45 @@ shortcuts_sheet_destroy :: proc(sheet: ^Shortcuts_Sheet) {
 	sheet.lines, sheet.kept = nil, {}
 }
 
-// The dialog `id` while `sheet.open`: every command that has a key, under its group's heading, its keys at the right. It
-// scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close button of its header close it.
+// The view of each sheet: its id, and the instance that is this sheet.
+SHORTCUTS_VIEW :: "shortcuts"
+@(private = "file")
+sheet_instance :: proc(sheet: ^Shortcuts_Sheet) -> string { return fmt.tprintf("%x", uintptr(sheet)) }
+
+// Opens the sheet (a view, home Dialog): every command of `commands` that has a key, under its group's heading, its keys
+// at the right. It scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close cross close it.
 // `title` "": "Keyboard shortcuts", in the language in use. `version`: the commands' version as the program counts
 // their changes (their keys too: a table rebound in place gives one); 0: the table does not change in place. The list
-// of the commands that have a key is kept, and only the lines near the view are built.
-shortcuts_sheet :: proc(sheet: ^Shortcuts_Sheet, id: string, commands: []Command, title := "", version: u64 = 0) {
+// of the commands that have a key is kept, and only the lines near the view are built. One open takes these commands.
+shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title := "", version: u64 = 0) {
+	vs := views()
+	if !view_registered(vs, SHORTCUTS_VIEW) {
+		view_register(vs, SHORTCUTS_VIEW, sheet_view, View_Options{title = "Keyboard shortcuts", width_em = SHEET_WIDTH_EM})
+	}
+	sheet.commands, sheet.version = commands, version
+	r := view_open_raw(vs, SHORTCUTS_VIEW, sheet, typeid_of(Shortcuts_Sheet), sheet_instance(sheet), nil)
+	delete(r.title, r.allocator)
+	r.title = strings.clone(title, r.allocator)
+	r.icon = lucide.KEYBOARD
+}
+
+shortcuts_sheet_is_open :: proc(sheet: ^Shortcuts_Sheet) -> bool { return view_is_open(views(), SHORTCUTS_VIEW, sheet_instance(sheet)) }
+
+shortcuts_sheet_close :: proc(sheet: ^Shortcuts_Sheet) { view_close(views(), SHORTCUTS_VIEW, sheet_instance(sheet)) }
+
+@(private = "file")
+sheet_view :: proc(v: ^View, sheet: ^Shortcuts_Sheet) {
 	s := gs()
 	em := font_size()
 	w := em * SHEET_WIDTH_EM
-	key := Sheet_Key{valid = true, count = len(commands), version = version}
-	if version == 0 { key.commands = raw_data(commands) }
-	if sheet.open && key != sheet.kept {
+	key := Sheet_Key{valid = true, count = len(sheet.commands), version = sheet.version}
+	if sheet.version == 0 { key.commands = raw_data(sheet.commands) }
+	if key != sheet.kept {
 		sheet.kept = key
 		sheet.listings += 1
-		sheet_list(sheet, commands)
+		sheet_list(sheet, sheet.commands)
 	}
-	if modal(id, &sheet.open, {width_em = SHEET_WIDTH_EM}) {
-		if dialog_header("sheet_title", title != "" ? title : i18n.tr("Keyboard shortcuts"), {icon = lucide.KEYBOARD, icon_font = lucide_icons(), close = true}) {}
-		sheet_body(sheet, commands, w, em, s.window_size.y)
-	}
+	sheet_body(sheet, sheet.commands, w, em, s.window_size.y)
 }
 
 @(private = "file")

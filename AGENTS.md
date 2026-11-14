@@ -7,6 +7,12 @@ examples, tests, tools and docs are beside it. Wren and opencode native use it a
 Read first: [README.md](README.md), [CONTRIBUTING.md](CONTRIBUTING.md) (a change, publishing a version),
 [docs/getting-started.md](docs/getting-started.md) (where state lives, the pitfalls), [docs/testing.md](docs/testing.md).
 
+## Intent
+
+This project follows https://srcmd.org: the intent of a feature, a data model or an API is Markdown in `src/md`, near
+the code. Read [src/md/README.md](src/md/README.md) first. Change the intent first, then the code and the tests; a change
+of design changes its intent file in the same commit. Documentation for a program's author stays in `docs/`.
+
 ## Build and test
 
 Every step is a command of `tools/tk` (the head of `tools/tk/main.odin` lists them), on Windows and Linux:

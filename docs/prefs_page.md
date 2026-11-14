@@ -321,7 +321,7 @@ folder, its icons, its own options and `prepare` for its parts: the PATH, the st
 prefs_page.install_init(&app.install, &app.prefs, setup_options())   // its settings loaded (registers install.choice)
 prefs_page.install_offer(&app.install, &app.main.state, offer = !app.demo)   // its window open: read on a task
 // each frame
-if prefs_page.install_frame(&app.install, em) == .Launched { quit() }   // the modal while open, the work that ended
+if prefs_page.install_frame(&app.install) == .Launched { quit() }   // the work that ended, the view's answer
 opts.install = &app.install                                          // the settings: the Installation page
 // --setup
 prefs_page.install_open(&app.install)
@@ -334,7 +334,8 @@ prefs_page.install_launch(&app.install)
   When `offer` and `setup.wanted` say so (no install, one to repair, an older one to upgrade) and the user did not answer
   for this version, the setup's modal opens. `Install.known` and `running_it` say what the reading found (an updater wants
   to know which copy runs).
-- `install_frame(in, em) -> setup.Event` draws the modal while it is open (`Install.logo` is its mark) and collects the work:
+- `install_frame(in) -> setup.Event` collects the work and the answer of the setup's view (a view of the window's
+  Views, built at the end of the build; `Install.logo` is its mark):
   the answer goes to `install.choice` (`INSTALL_CHOICE_PREF`, hidden: `installed`, `standalone`, `dismissed:<version>`;
   a page left answers nothing; an Uninstall is `standalone`: the next start offers nothing). `choice_after(ev, upgrade,
   saved, version)` says what each event leaves; the offer obeys `install_choice(in)`, the value for the run (a
@@ -397,8 +398,9 @@ if app.table_version != app.prefs.version + 1 {
     app.table = slice.concatenate([][]ui.Command{app_commands, settings}, a)
     app.setting_names = names
     app.table_version = app.prefs.version + 1
+    ui.palette_set(&app.palette, app.table, disabled, {version = app.table_version})
 }
-if i, _ := ui.palette(&app.palette, app.table, disabled, {version = app.table_version}); i >= len(app_commands) {
+if i, _, ok := ui.palette_chosen(&app.palette); ok && i >= len(app_commands) {
     app.settings_open = true
     prefs_page.show(&app.page, &app.prefs, opts, app.setting_names[i - len(app_commands)])
 }

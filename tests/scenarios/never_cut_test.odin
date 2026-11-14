@@ -72,12 +72,15 @@ a_dialog_holds_its_title_and_buttons :: proc(t: ^testing.T) { unwatched.run(t, p
 	r := Run{open = true}
 	s := session.start(t, {size = {1300, 700}, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		_ = ui.confirm("ask", &r.open, {title = LONG_TITLE, note = "Les annotations de cette image sont perdues.", act = LONG_ACT})
+		if r.open {
+			r.open = false
+			ui.confirm_open("ask", {title = LONG_TITLE, note = "Les annotations de cette image sont perdues.", act = LONG_ACT})
+		}
 	}})
 	session.frames(s, 3)
 	check :: proc(t: ^testing.T, s: ^session.Session, wrapped: bool) {
-		panel := session.get(s, "modal_ask")
-		title := session.get(s, "confirm_title_title")
+		panel := session.get(s, "modal_view_ask")
+		title := session.get(s, "view_header_title")
 		testing.expect(t, holds(panel, title), "the title inside the dialog")
 		if !wrapped { testing.expectf(t, title.size.x >= title.text_dim.x, "the title on one line, whole: %v of %v", title.size.x, title.text_dim.x) }
 		for name in ([]string{"confirm_cancel", "confirm_act"}) {

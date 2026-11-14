@@ -10,7 +10,8 @@ package ui
 // written by a store.Writer (its own thread, atomic, once the changes rest).
 //
 //   ui.choice_memory_open(&app.choices, &app.ui, path)
-//   if i, _ := ui.palette(&app.palette, COMMANDS[:], disabled[:], {memory = &app.choices, names = NAMES[:]}); i >= 0 {
+//   ui.palette_set(&app.palette, COMMANDS[:], disabled[:], {memory = &app.choices, names = NAMES[:]})
+//   if i, _, ok := ui.palette_chosen(&app.palette); ok {
 //       ui.choice_note(&app.choices, NAMES[i])
 //       run(Cmd(i))
 //   }

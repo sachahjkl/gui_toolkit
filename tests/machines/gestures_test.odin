@@ -5,6 +5,7 @@ package machines_test
 
 import "core:testing"
 import "../../src/platform"
+import store "../../src/store"
 import "../../src/testkit/session"
 import "../../src/ui"
 
@@ -26,45 +27,59 @@ import "../../src/ui"
 @(private = "file") VIEW_FAR :: 500
 @(private = "file") FEW_BUILDS :: 30
 
+// A resizable view: the size the person gave it is the views' (view_dialog_size).
 @(private = "file")
-Sized :: struct { open: bool, size: ui.Vec2 }
+Sized :: struct { views: ui.Views, opened: bool }
 
 @(private = "file")
 sized_build :: proc(s: ^session.Session) {
 	r := (^Sized)(s.user)
-	if ui.modal("sized", &r.open, {width_em = PREFERRED.x, height_em = PREFERRED.y, size = &r.size}) { ui.label("Hello") }
+	if !r.opened { r.opened = true; ui.view_open(&r.views, "sized", r) }
+}
+
+// `size`: what the memory has of an earlier run ({}: none).
+@(private = "file")
+sized_init :: proc(r: ^Sized, size := ui.Vec2{}) {
+	ui.view_register(&r.views, "sized", proc(v: ^ui.View, r: ^Sized) { ui.label("Hello") }, ui.View_Options{width_em = PREFERRED.x, height_em = PREFERRED.y, resizable = true, no_header = true})
+	if size != {} { _ = store.set(&r.views.memory, "sized", ui.views_format({dialog = size})) }
 }
 
 // A press on an edge that does not move leaves the person's size alone: the size this small window clamps it to is not theirs.
 @(test)
 a_press_on_a_dialog_edge_chooses_no_size :: proc(t: ^testing.T) {
-	r := Sized{open = true}
+	r: Sized
+	sized_init(&r)
+	defer ui.views_destroy(&r.views)
 	s := session.start(t, {size = SMALL_WINDOW, user = &r, build = sized_build})
 	session.frames(s, SETTLE_FRAMES)
 	at := session.center(session.get(s, "modal_grip3"))
 	session.press(s, at)
 	session.release(s, at)
-	testing.expect_value(t, r.size, ui.Vec2{})
+	testing.expect_value(t, ui.view_dialog_size(&r.views, "sized"), ui.Vec2{})
 }
 
 // A double click goes back to the preferred size, and stays there with a frame made while the button is down.
 @(test)
 a_double_click_on_a_dialog_edge_holds :: proc(t: ^testing.T) {
-	r := Sized{open = true, size = PREFERRED + {3, 0}}
+	r: Sized
+	sized_init(&r, PREFERRED + {3, 0})
+	defer ui.views_destroy(&r.views)
 	s := session.start(t, {size = WINDOW, user = &r, build = sized_build})
 	session.frames(s, SETTLE_FRAMES)
 	at := session.center(session.get(s, "modal_grip3"))
 	session.click_at(s, at)
 	session.press(s, at)   // (the second press: the button stays down)
 	session.frames(s, SETTLE_FRAMES)
-	testing.expect_value(t, r.size, ui.Vec2{})
+	testing.expect_value(t, ui.view_dialog_size(&r.views, "sized"), ui.Vec2{})
 	session.release(s, at)
 }
 
 // A move back to where the press was is a move: the size follows it there.
 @(test)
 a_dialog_edge_comes_back_with_the_pointer :: proc(t: ^testing.T) {
-	r := Sized{open = true}
+	r: Sized
+	sized_init(&r)
+	defer ui.views_destroy(&r.views)
 	s := session.start(t, {size = WINDOW, user = &r, build = sized_build})
 	session.frames(s, SETTLE_FRAMES)
 	at := session.center(session.get(s, "modal_grip3"))
@@ -72,7 +87,7 @@ a_dialog_edge_comes_back_with_the_pointer :: proc(t: ^testing.T) {
 	session.move(s, at + {GRIP_MOVE_PX, 0})
 	session.move(s, at)
 	session.release(s, at)
-	testing.expect_value(t, r.size, PREFERRED)
+	testing.expect_value(t, ui.view_dialog_size(&r.views, "sized"), PREFERRED)
 }
 
 @(private = "file")

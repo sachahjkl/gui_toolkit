@@ -239,36 +239,40 @@ an_unchanged_long_list_is_not_walked :: proc(t: ^testing.T) { unwatched.run(t, p
 // A dialog open over a list that has the keyboard holds its keys: Enter is the dialog's, the row behind is not opened.
 @(test)
 a_dialog_holds_the_keys_of_the_list_behind :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { st: ui.Virtual_List, ids: [LIST_ROWS]u64, labels: [LIST_ROWS]string, asking, activated, moved: bool }
+	Run :: struct { st: ui.Virtual_List, ids: [LIST_ROWS]u64, labels: [LIST_ROWS]string, ask, activated, moved: bool }
 	r := new(Run)
 	defer { ui.vlist_destroy(&r.st); free(r) }
 	for i in 0 ..< LIST_ROWS { r.ids[i], r.labels[i] = u64(i + 1), "A row" }
 	s := session.start(t, {size = WINDOW, user = r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
+		if r.ask {
+			r.ask = false
+			ui.confirm_open("ask", {title = "Delete it?", act = "Delete"})
+		}
+		_ = ui.confirm_answer("ask")
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if rows, ok := ui.vlist("###list", &r.st, r.ids[:], r.labels[:]); ok {
 			// (the list keeps the keyboard under the dialog: a dialog that takes no focus, a recorder of keys)
-			if s.frames == 1 || r.asking { ui.set_focus(r.st.key) }
+			if s.frames == 1 || ui.view_is_open(ui.views(), "ask") { ui.set_focus(r.st.key) }
 			for i in rows.first ..< rows.last {
 				ui.next({height = ui.px(LIST_ROW_HEIGHT)})
 				ui.list_row(&r.st.list, i, r.labels[i])
 			}
 			if r.st.list.activated { r.activated = true }
 		}
-		if ui.confirm("ask", &r.asking, {title = "Delete it?", act = "Delete"}) != .None { r.asking = false }
 	}})
 	session.frames(s, 2)
 	session.key(s, .Down)
 	testing.expect(t, r.st.list.sel >= 0, "the list has the keys")
 	sel := r.st.list.sel
-	r.asking = true
+	r.ask = true
 	session.frames(s, 2)
 	session.key(s, .Down)
 	session.key(s, .Return)
 	session.frames(s, 2)
 	testing.expect(t, !r.activated, "Enter answered the dialog, not the row")
 	testing.expect_value(t, r.st.list.sel, sel)
-	testing.expect(t, !r.asking, "the dialog answered")
+	testing.expect(t, !ui.view_is_open(ui.state_views(s.state), "ask"), "the dialog answered")
 }) }
 
 // A list with no type-ahead leaves the letters typed for the program: its filter takes them though the list has the keyboard.
@@ -319,16 +323,22 @@ a_selection_is_cleared_by_the_program :: proc(t: ^testing.T) { unwatched.run(t, 
 // while the dialog on top holds it. Text selected behind a dialog is not: the dialog holds the keys.
 @(test)
 text_selected_in_a_dialog_is_copied :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { open, behind: bool }
-	r := Run{open = true}
+	Run :: struct { views: ui.Views, behind: bool }
+	r: Run
+	defer ui.views_destroy(&r.views)
+	ui.view_register(&r.views, "dialog", proc(v: ^ui.View, r: ^Run) {
+		ui.next({width = ui.fill(), flags = {.Selectable}})
+		ui.label("/home/sacha/.local/bin/a-path###path")
+	}, ui.View_Options{title = "A path"})
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		ui.next({width = ui.fill(), flags = {.Selectable}})
 		ui.label("Words behind it###behind")
-		if r.behind { return }
-		if ui.modal("dialog", &r.open, {width_em = 400 / ui.font_size()}) {
-			ui.next({width = ui.fill(), flags = {.Selectable}})
-			ui.label("/home/sacha/.local/bin/a-path###path")
+		// (behind: the dialog is not there; then it is again)
+		if r.behind {
+			ui.view_close(&r.views, "dialog")
+		} else if !ui.view_is_open(&r.views, "dialog") {
+			ui.view_open(&r.views, "dialog", r)
 		}
 	}})
 	session.frames(s, 3)
@@ -697,8 +707,12 @@ a_confirmation_answers :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testin
 	r := Run{open = true}
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		lines := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
-		if a := ui.confirm("ask", &r.open, {title = "Delete 10 items for good?", note = "They do not go to the trash.", lines = lines, act = "Delete", enter_confirms = r.safe}); a != .None {
+		if r.open {
+			r.open = false
+			lines := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
+			ui.confirm_open("ask", {title = "Delete 10 items for good?", note = "They do not go to the trash.", lines = lines, act = "Delete", enter_confirms = r.safe})
+		}
+		if a := ui.confirm_answer("ask"); a != .None {
 			r.answer = a
 			r.answers += 1
 		}
@@ -710,7 +724,7 @@ a_confirmation_answers :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testin
 	session.key(s, .Return)
 	session.frames(s, 1)
 	testing.expect_value(t, r.answer, ui.Confirm_Answer.Cancelled)
-	testing.expect(t, !r.open, "closed")
+	testing.expect(t, !ui.view_is_open(ui.state_views(s.state), "ask"), "closed")
 	r.open, r.safe = true, true
 	session.frames(s, 2)
 	testing.expect(t, session.find_text(s, "Delete (Enter)") != nil, "a safe act: Enter acts")
@@ -1022,22 +1036,24 @@ code_takes_the_theme_s_colours :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 // A dialog holds the keys: code built outside it gets no Escape while it is open; inside, it does.
 @(test)
 a_dialog_holds_the_keys :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { open: bool, outside, inside: bool }
-	r := Run{open = true}
+	Run :: struct { views: ui.Views, opened, outside, inside: bool }
+	r: Run
+	defer ui.views_destroy(&r.views)
+	ui.view_register(&r.views, "keys_dialog", proc(v: ^ui.View, r: ^Run) {
+		if ui.key_pressed_peek(.Escape) { r.inside = true }
+		ui.label("A dialog###d")
+	}, ui.View_Options{title = "Keys"})
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
+		if !r.opened { r.opened = true; ui.view_open(&r.views, "keys_dialog", r) }
 		if ui.key_press(.Escape) { r.outside = true }
-		if ui.modal("###keys_dialog", &r.open, {width_em = 300 / ui.font_size()}) {
-			if ui.key_pressed_peek(.Escape) { r.inside = true }
-			ui.label("A dialog###d")
-		}
 	}})
 	session.frames(s, 2)
 	session.key(s, .Escape)
 	session.frame(s)
 	testing.expect(t, !r.outside, "not the page's")
 	testing.expect(t, r.inside, "the dialog's")
-	testing.expect(t, !r.open, "Escape closes it")
+	testing.expect(t, !ui.view_is_open(&r.views, "keys_dialog"), "Escape closes it")
 	session.key(s, .Escape)
 	testing.expect(t, r.outside, "closed: the page's again")
 }) }
@@ -1046,14 +1062,16 @@ a_dialog_holds_the_keys :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testi
 // frame between them (a dialog of the last build that closed in it holds none).
 @(test)
 a_dialog_closed_by_a_button_holds_no_key :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	Run :: struct { open: bool, outside: bool }
-	r := Run{open = true}
+	Run :: struct { views: ui.Views, opened, outside: bool }
+	r: Run
+	defer ui.views_destroy(&r.views)
+	ui.view_register(&r.views, "closed_dialog", proc(v: ^ui.View, r: ^Run) {
+		if ui.button("close", "Close").clicked { ui.view_end(v, 0) }
+	}, ui.View_Options{title = "Closed"})
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
+		if !r.opened { r.opened = true; ui.view_open(&r.views, "closed_dialog", r) }
 		if ui.key_press(.Escape) { r.outside = true }
-		if ui.modal("###closed_dialog", &r.open, {width_em = 300 / ui.font_size()}) {
-			if ui.button("close", "Close").clicked { r.open = false }
-		}
 	}})
 	session.frames(s, 2)
 	// (by hand: the click's release builds the frame that closes it, and the key comes in the very next one)
@@ -1063,7 +1081,7 @@ a_dialog_closed_by_a_button_holds_no_key :: proc(t: ^testing.T) { unwatched.run(
 	session.frame(s)
 	session.event(s, {kind = .Mouse_Release, button = .Left, pos = at})
 	session.frame(s)
-	testing.expect(t, !r.open, "the button closes it")
+	testing.expect(t, !ui.view_is_open(&r.views, "closed_dialog"), "the button closes it")
 	session.event(s, {kind = .Key_Press, key = .Escape})
 	session.frame(s)
 	testing.expect(t, r.outside, "the next key is the page's")

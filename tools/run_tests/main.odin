@@ -143,6 +143,7 @@ STEPS := []Step{
 	{name = "machines", one = true},
 	{name = "panes", one = true},
 	{name = "docking", one = true},
+	{name = "views", one = true, oses = EVERYWHERE, text = true},
 	{name = "keyboard", one = true, wgpu = .Ci2},
 	{name = "commands", one = true, oses = EVERYWHERE, text = true},
 	{name = "status", one = true, wgpu = .Ci1},

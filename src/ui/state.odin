@@ -63,6 +63,7 @@ use :: proc(s: ^State) { current = (^State)(rawptr(s)) }
 
 // Frees everything `init` and the builds allocated (the fonts and the theme are the caller's).
 destroy :: proc(s: ^State) {
+	views_state_gone(s)   // (its views end with VIEW_CANCELLED; their Views forget it)
 	box_edits_clear(s)
 	delete(s.edits)
 	draw.damage_memory_destroy(&s.damage)
@@ -295,6 +296,8 @@ end_build :: proc() {
 	assert(len(s.list_stack) == 0, "ui: unbalanced list scopes")
 	assert(len(s.menu_build) == 0, "ui: unbalanced menu scopes")
 
+	views_build(s)   // (the views shown as dialogs: over the page, under the toasts and the menus)
+	assert(len(s.parent_stack) == 0 && len(s.popup_stack) == 0 && len(s.modal_stack) == 0, "ui: a view's build left a scope open")
 	toasts_build()   // (over everything the program built, under its menus)
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }

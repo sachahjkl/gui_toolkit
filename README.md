@@ -240,9 +240,11 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
   palette** (`palette`: fuzzy, grouped, resizable, recent commands) and the sheet of the keys
   ([docs/commands.md](docs/commands.md)). A menu is as wide as its widest row, and typing searches it: a band shows what
   is typed, a submenu's rows come up ([docs/menus.md](docs/menus.md)).
-- **Dialogs**: `modal` (sized in ems, resized by its edges when it has a `size`, kept in the window, laid out before its first frame, fading
-  in); `dialog_header` with the close button in its corner, `dialog_body`, `dialog_buttons`; `confirm` before an act not
-  taken back; `prompt` for an answer typed in, a secret wiped after use ([docs/modals.md](docs/modals.md)).
+- **Views**: a build procedure and its data, declared by an id; the program opens it and reads its answer, the toolkit
+  builds it as a dialog (sized in ems, resized by its edges, kept in the window, laid out before its first frame, fading
+  in, its header with the close cross) and remembers the user's choices per id; `dialog_body`, `dialog_buttons`;
+  `confirm_open` before an act not taken back; `prompt_open` for an answer typed in, a secret wiped after use
+  ([docs/views.md](docs/views.md)).
 - **Settings**: `prefs_page` builds a program's settings page from its `config` registry with no code per preference,
   and the toolkit's standard sets give every program the same settings (Appearance, Text, Scrolling, Input, Timing,
   Rendering, Update, Session), applied as they change (`standard_watch`): pages, groups, a folded Advanced part, search,

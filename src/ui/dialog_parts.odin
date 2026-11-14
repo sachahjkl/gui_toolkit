@@ -7,7 +7,9 @@ import "../font"
 import i18n "../i18n"
 import lucide "../lucide"
 
-// What a dialog's header shows besides its title.
+// What a dialog's header shows besides its title. The views' header (views.odin) is its only user: a view's build
+// draws its body only.
+@(private)
 Dialog_Header_Options :: struct {
 	icon:        string,         // a glyph of `icon_font` before the title ("": none)
 	icon_font:   font.Font_Id,   // 0: the state's icon font
@@ -22,7 +24,7 @@ Dialog_Header_Options :: struct {
 // darker than the dialog (top_strip_draw: the dialog's top corners, a groove under it), its title and an icon at its
 // start, then what the block builds (the header's own controls, a toolbar), and the close button in the corner. Build it
 // first in the dialog, before its body, so that it stays on top while the body scrolls.
-@(require_results, deferred_none = dialog_header_end)
+@(private, require_results, deferred_none = dialog_header_end)
 dialog_header :: proc(id: string, title: string, o := Dialog_Header_Options{}) -> bool {
 	s := gs()
 	em := font_size()

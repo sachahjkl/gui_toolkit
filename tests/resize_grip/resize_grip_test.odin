@@ -11,19 +11,37 @@ import "../../src/ui"
 
 @(private = "file") GRIP_WINDOW :: [2]int{400, 300}
 
+// A resizable view with no header, opened in the first build (its sizes are pixels of the window: in its ems there).
 @(private = "file")
-Grip_Dialog :: struct { size: ui.Vec2, open: bool, panel: ui.Rect, em: f32 }
+Grip_Dialog :: struct { views: ui.Views, opened, top: bool, panel: ui.Rect, em: f32 }
+
+@(private = "file")
+grip_view :: proc(v: ^ui.View, d: ^Grip_Dialog) {
+	d.panel = ui.parent_box().rect
+	d.em = ui.font_size()
+	ui.label("Hello")
+}
+
+@(private = "file")
+grip_build :: proc(s: ^session.Session) {
+	d := (^Grip_Dialog)(s.user)
+	if d.opened { return }
+	d.opened = true
+	em := ui.font_size()
+	if d.top {
+		ui.view_register(&d.views, "top", grip_view, ui.View_Options{width_em = 200 / em, height_em = 120 / em, min_width_em = 100 / em, min_height_em = 60 / em, top = 0.1, resizable = true, no_header = true})
+		ui.view_open(&d.views, "top", d)
+	} else {
+		ui.view_register(&d.views, "grip", grip_view, ui.View_Options{width_em = 200 / em, height_em = 150 / em, resizable = true, no_header = true})
+		ui.view_open(&d.views, "grip", d)
+	}
+}
 
 @(private = "file")
 grip_dialog :: proc(t: ^testing.T, light: bool) {
-	d := Grip_Dialog{open = true}
-	s := session.start(t, {size = GRIP_WINDOW, dpi_scale = 2, palette = ui.palette_of("Midnight", light = light), user = &d, build = proc(s: ^session.Session) {
-		d := (^Grip_Dialog)(s.user)
-		if ui.modal("grip", &d.open, {width_em = 200 / ui.font_size(), height_em = 150 / ui.font_size(), size = &d.size}) {
-			d.panel = ui.parent_box().rect
-			ui.label("Hello")
-		}
-	}})
+	d: Grip_Dialog
+	defer ui.views_destroy(&d.views)
+	s := session.start(t, {size = GRIP_WINDOW, dpi_scale = 2, palette = ui.palette_of("Midnight", light = light), user = &d, build = grip_build})
 	session.frames(s, 2)
 	img := session.capture(s)
 	session.save_png(s, light ? "grip_light.png" : "grip_dark.png")
@@ -49,21 +67,13 @@ a_dialog_s_resize_grip_is_a_square_bevelled_corner :: proc(t: ^testing.T) {
 	grip_dialog(t, false)
 }
 
-// A dialog held at the top of the window (Modal_Options.top): its top stays where it is, its bottom edge follows the pointer, one
+// A dialog held at the top of the window (View_Options.top): its top stays where it is, its bottom edge follows the pointer, one
 // to one, and it has no grips at its top.
-@(private = "file")
-Top_Dialog :: struct { size: ui.Vec2, open: bool, panel: ui.Rect }
-
 @(test)
 a_dialog_held_at_the_top_grows_downward :: proc(t: ^testing.T) {
-	d := Top_Dialog{open = true}
-	s := session.start(t, {size = {400, 300}, user = &d, build = proc(s: ^session.Session) {
-		d := (^Top_Dialog)(s.user)
-		if ui.modal("top", &d.open, {width_em = 200 / ui.font_size(), height_em = 120 / ui.font_size(), min_width_em = 100 / ui.font_size(), min_height_em = 60 / ui.font_size(), top = 0.1, size = &d.size}) {
-			d.panel = ui.parent_box().rect
-			ui.label("Hello")
-		}
-	}})
+	d := Grip_Dialog{top = true}
+	defer ui.views_destroy(&d.views)
+	s := session.start(t, {size = {400, 300}, user = &d, build = grip_build})
 	session.frames(s, 2)
 	before := d.panel
 	testing.expect_value(t, before.min.y, f32(30))
@@ -85,15 +95,9 @@ a_dialog_held_at_the_top_grows_downward :: proc(t: ^testing.T) {
 // the bottom edge's.
 @(test)
 the_whole_bevel_has_the_corner_cursor :: proc(t: ^testing.T) {
-	d := Grip_Dialog{open = true}
-	s := session.start(t, {size = GRIP_WINDOW, user = &d, build = proc(s: ^session.Session) {
-		d := (^Grip_Dialog)(s.user)
-		if ui.modal("grip", &d.open, {width_em = 200 / ui.font_size(), height_em = 150 / ui.font_size(), size = &d.size}) {
-			d.panel = ui.parent_box().rect
-			d.em = ui.font_size()
-			ui.label("Hello")
-		}
-	}})
+	d: Grip_Dialog
+	defer ui.views_destroy(&d.views)
+	s := session.start(t, {size = GRIP_WINDOW, user = &d, build = grip_build})
 	session.frames(s, 2)
 	// on the bevel near the bottom edge, past the corner's own size (0.9 em) by 3 of its 5 px
 	session.move(s, {d.panel.max.x - math.round(d.em * 0.9) - 3, d.panel.max.y - 2})

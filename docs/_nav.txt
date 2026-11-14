@@ -26,7 +26,7 @@ Widgets and layout
   docking.md          Docking
   panes.md            Splitter and panes
   menus.md            Menus
-  modals.md           Modal dialogs
+  views.md            Views: dialogs, panels, windows
   commands.md         Commands, palette, keys
   autoscroll.md       Middle-click autoscroll
   scroll-marks.md     Marks on a scroll bar

@@ -179,16 +179,12 @@ App :: struct {
 	accent_override: bool,
 	hue, sat, val: f32,
 
-	// overlays
-	palette_open: bool,
+	// overlays: views of the window's Views, shown as dialogs (shell.odin: PALETTE_VIEW, CONFIRM_VIEW, ABOUT_VIEW, SETTINGS_VIEW)
 	palette_field: ui.Line_Edit,
 	palette_sel, palette_scroll: int,
 	palette_focus: bool,
 	palette_mouse: [2]f32,
 	palette_frames: int,
-	modal_open:   bool,
-	about_open:   bool,
-	settings_open: bool,
 	corner_smoothing: f32,   // 0 circular, 1 squircle
 	window_square: bool,
 	translucent, backdrop_ok: bool,   // current palette shows the OS backdrop (and the OS accepted it)     // last value sent to the OS (window corners follow rounding = 0)

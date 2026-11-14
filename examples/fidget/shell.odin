@@ -38,9 +38,9 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	case .Toast_Warn: ui.announce(&app.announcer, .Warn, "Careful: the disk is 91% full")
 	case .Toast_Bad: ui.announce(&app.announcer, .Bad, "Something went wrong (just kidding)")
 	case .Clear_Toasts: ui.toasts_clear()
-	case .Open_Modal: app.modal_open = true
-	case .About: app.about_open = true
-	case .Settings: app.settings_open = true
+	case .Open_Modal: dialog_open(app, CONFIRM_VIEW)
+	case .About: dialog_open(app, ABOUT_VIEW)
+	case .Settings: dialog_open(app, SETTINGS_VIEW)
 	case .Spawn_Balls: app.page = .Playground; spawn_balls(app, 25)
 	case .Confetti: app.page = .Playground; spawn_confetti(app, {app.arena_size.x * 0.5, app.arena_size.y * 0.7}, 120)
 	case .Clear_Balls: for &b in app.balls { b.alive = false }
@@ -53,13 +53,34 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	app.frames_requested = 4
 }
 
+// The dialogs of fidget: views of its own look (no header: each draws its own top), as wide as what is in them.
+PALETTE_VIEW :: "palette"
+CONFIRM_VIEW :: "confirm"
+ABOUT_VIEW :: "about"
+SETTINGS_VIEW :: "settings"
+
+views_register :: proc(app: ^App) {
+	vs := ui.state_views(&app.ui_state)
+	ui.view_register(vs, PALETTE_VIEW, palette_view, ui.View_Options{width_em = 1, top = 0.11, no_header = true})
+	ui.view_register(vs, CONFIRM_VIEW, confirm_view, ui.View_Options{width_em = 1, no_header = true})
+	ui.view_register(vs, ABOUT_VIEW, about_view, ui.View_Options{width_em = 1, top = 0.16, no_header = true})
+	ui.view_register(vs, SETTINGS_VIEW, settings_view, ui.View_Options{width_em = 1, top = 0.10, no_header = true})
+}
+
+// (its window's State is the owner: run_cmd and the command line open them inside a build or before the first)
+dialog_open :: proc(app: ^App, id: string) { ui.view_open(ui.state_views(&app.ui_state), id, app, owner = &app.ui_state) }
+
+dialog_is_open :: proc(app: ^App, id: string) -> bool { return ui.view_is_open(ui.state_views(&app.ui_state), id) }
+
 palette_toggle :: proc(app: ^App) {
-	app.palette_open = !app.palette_open
-	if app.palette_open {
-		ui.line_edit_clear(&app.palette_field)
-		app.palette_sel, app.palette_scroll, app.palette_frames = 0, 0, 0
-		app.palette_focus = true
+	if dialog_is_open(app, PALETTE_VIEW) {
+		ui.view_close(ui.state_views(&app.ui_state), PALETTE_VIEW)
+		return
 	}
+	ui.line_edit_clear(&app.palette_field)
+	app.palette_sel, app.palette_scroll, app.palette_frames = 0, 0, 0
+	app.palette_focus = true
+	dialog_open(app, PALETTE_VIEW)
 }
 
 handle_shortcuts :: proc(app: ^App) {
@@ -106,10 +127,7 @@ build_ui :: proc(app: ^App) {
 			}
 			build_statusbar(app, em)
 		}
-		build_palette(app)
-		build_confirm(app)
-		build_about(app)
-		build_settings(app)
+		// (the dialogs are views: built at the end of the build, over the page)
 		// toasts live in the content area: below the menu bar + tabs, above the status bar
 		top := em * (2.6 + 2.9)
 		bottom := f32(app.win.size.y) - (app.show_status ? em * 2.1 : 0)
@@ -230,8 +248,7 @@ build_statusbar :: proc(app: ^App, em: f32) {
 ////////////////////////////////
 // Command palette
 
-build_palette :: proc(app: ^App) {
-	if !app.palette_open { return }
+palette_view :: proc(v: ^ui.View, app: ^App) {
 	em := ui.font_size()
 	app.palette_frames += 1
 	pw := min(em * 46, f32(app.win.size.x) / app.win.dpi_scale * 0.92)
@@ -267,7 +284,7 @@ build_palette :: proc(app: ^App) {
 	app.palette_mouse = mouse
 	run := -1
 
-	if ui.modal("palette", &app.palette_open, {width_em = pw / em, top = 0.11}) {
+	{
 		if ui.style({width = ui.px(pw)}) {
 			ui.next({width = ui.px(pw), height = ui.px(ui.dense(em * 3.4))})
 			if ui.row(.Center, id = "###pal_head") {
@@ -276,7 +293,7 @@ build_palette :: proc(app: ^App) {
 				ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
 				field_ui := ui.line_edit("###pal_input", &app.palette_field, {placeholder = "Type a command..."})
 				if field_ui.changed { app.palette_sel, app.palette_scroll = 0, 0 }
-				if field_ui.cancelled { app.palette_open = false }   // (its foot says it: Esc closes, the field has the first Esc)
+				if field_ui.cancelled { ui.view_end(v, ui.VIEW_CANCELLED) }   // (its foot says it: Esc closes, the field has the first Esc)
 				if field_ui.committed && n > 0 { run = int(entries[app.palette_sel].cmd) }
 				if app.palette_focus { ui.set_focus(input_key); app.palette_focus = false }
 				ui.spacer(ui.px(em * 0.9))
@@ -331,13 +348,13 @@ build_palette :: proc(app: ^App) {
 			}
 		}
 	}
-	if run >= 0 { app.palette_open = false; run_cmd(app, Command(run)) }
+	if run >= 0 { ui.view_end(v, run); run_cmd(app, Command(run)) }
 }
 
-build_confirm :: proc(app: ^App) {
+confirm_view :: proc(v: ^ui.View, app: ^App) {
 	em := ui.font_size()
 	w := min(em * 30, f32(app.win.size.x) / app.win.dpi_scale * 0.9)
-	if ui.modal("confirm", &app.modal_open, {width_em = w / em}) {
+	{
 		if ui.style({width = ui.px(w)}) {
 			ui.spacer(ui.px(em * 1.2))
 			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 2.4))})
@@ -357,9 +374,9 @@ build_confirm :: proc(app: ^App) {
 			ui.next({width = ui.px(w), height = ui.px(ui.dense(em * 2.6))})
 			if ui.row(.Center, id = "###cf_btns") {
 				ui.spacer(ui.fill())
-				if ui.button("cf_cancel", "Cancel").clicked { app.modal_open = false; ui.announce(&app.announcer, .Info, "Cancelled") }
+				if ui.button("cf_cancel", "Cancel").clicked { ui.view_end(v, ui.VIEW_CANCELLED); ui.announce(&app.announcer, .Info, "Cancelled") }
 				ui.spacer(ui.px(em * 0.6))
-				if ui.button("cf_ok", "Delete", ICON_TRASH, {intent = .Danger}).clicked { app.modal_open = false; ui.announce(&app.announcer, .Bad, "Deleted... nothing, it's a demo") }
+				if ui.button("cf_ok", "Delete", ICON_TRASH, {intent = .Danger}).clicked { ui.view_end(v, 0); ui.announce(&app.announcer, .Bad, "Deleted... nothing, it's a demo") }
 				ui.spacer(ui.px(em * 1.4))
 			}
 			ui.spacer(ui.px(em * 1.2))
@@ -382,12 +399,12 @@ logo_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	spinner_draw(b, &inner, dc)
 }
 
-build_about :: proc(app: ^App) {
+about_view :: proc(v: ^ui.View, app: ^App) {
 	em := ui.font_size()
 	w := min(em * 32, f32(app.win.size.x) * 0.9)
 	pad := em * 1.6
 	inner := w - 2 * pad
-	if ui.modal("about", &app.about_open, {width_em = w / em, top = 0.16}) {
+	{
 		if ui.style({width = ui.px(w)}) {
 			ui.spacer(ui.px(em * 1.6))
 			// header: logo + name + tagline
@@ -463,7 +480,7 @@ build_about :: proc(app: ^App) {
 					ui.announce(&app.announcer, .Good, "Copied to the clipboard")
 				}
 				ui.spacer(ui.px(em * 0.6))
-				if ui.button("###ab_close", "Close", o = {intent = .Primary}).clicked { app.about_open = false }
+				if ui.button("###ab_close", "Close", o = {intent = .Primary}).clicked { ui.view_end(v, 0) }
 				ui.spacer(ui.px(pad))
 			}
 			ui.spacer(ui.px(em * 1.4))

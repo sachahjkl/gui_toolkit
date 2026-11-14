@@ -19,7 +19,7 @@ import "../ui"
 
 page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 	if !d.open {
-		open(d, o)
+		start(d, o)
 		d.in_page = true
 	}
 	if s := ui.current_state(); s != nil { d.page_build = s.build_index }

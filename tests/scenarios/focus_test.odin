@@ -14,8 +14,18 @@ Form :: struct {
 	agree:       bool,
 	saves:       int,
 	show_mail:   bool,
-	modal:       bool,
+	modal:       bool,       // open the dialog in the next build
 	disabled:    bool,
+	views:       ui.Views,
+}
+
+// (no header: its stops are the two buttons alone)
+@(private = "file")
+dialog_view :: proc(v: ^ui.View, f: ^Form) {
+	ui.next({width = ui.px(100)})
+	ui.button("m_one", "One")
+	ui.next({width = ui.px(100)})
+	ui.button("m_two", "Two")
 }
 
 @(private = "file")
@@ -33,11 +43,9 @@ form_build :: proc(s: ^session.Session) {
 		ui.next({width = ui.px(100)})
 		if ui.button("save", "Save").clicked { f.saves += 1 }
 	}
-	if ui.modal("dialog", &f.modal, {width_em = 300 / ui.font_size()}) {
-		ui.next({width = ui.px(100)})
-		ui.button("m_one", "One")
-		ui.next({width = ui.px(100)})
-		ui.button("m_two", "Two")
+	if f.modal {
+		f.modal = false
+		ui.view_open(&f.views, "dialog", f)
 	}
 }
 
@@ -45,8 +53,10 @@ form_build :: proc(s: ^session.Session) {
 form_start :: proc(t: ^testing.T, loc := #caller_location) -> (^session.Session, ^Form) {
 	f := new(Form)   // (a cleanup runs after the test's procedure has returned)
 	f.show_mail = true
+	ui.view_register(&f.views, "dialog", dialog_view, ui.View_Options{no_header = true})
 	testing.cleanup(t, proc(p: rawptr) {
 		f := (^Form)(p)
+		ui.views_destroy(&f.views)
 		ui.line_edit_destroy(&f.name)
 		ui.line_edit_destroy(&f.mail)
 		free(f)
@@ -141,7 +151,7 @@ a_modal_keeps_tab_inside :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^test
 	session.click(s, "agree")
 	testing.expect(t, !f.agree, "the page is behind the dialog")
 	session.key(s, .Escape)
-	testing.expect(t, !f.modal, "Esc closes it")
+	session.wait_until(s, f, proc(s: ^session.Session, f: ^Form) -> bool { return !ui.view_is_open(&f.views, "dialog") }, "Esc to close it")
 }) }
 
 // Arrows move the focus through space between the widgets that do not use them.

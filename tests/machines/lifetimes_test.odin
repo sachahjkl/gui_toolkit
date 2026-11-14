@@ -29,7 +29,8 @@ Run :: struct {
 	clicks: int,
 	size:   f32,
 	finished: int,
-	first, second: bool,
+	first, second: bool,   // open the view in the next build
+	views:  ui.Views,
 	menu:   string,
 	rich:   ui.Rich_Result,
 }
@@ -337,38 +338,33 @@ the_escape_of_autoscroll_is_not_the_menus :: proc(t: ^testing.T) {
 @(test)
 escape_in_the_first_frame_of_a_dialog_is_its_own :: proc(t: ^testing.T) {
 	r := Run{first = true}
+	defer ui.views_destroy(&r.views)
+	ui.view_register(&r.views, "first", proc(v: ^ui.View, r: ^Run) { ui.label("First") }, ui.View_Options{title = "First"})
+	ui.view_register(&r.views, "second", proc(v: ^ui.View, r: ^Run) { ui.label("Second") }, ui.View_Options{title = "Second"})
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		if ui.modal("first", &r.first, {width_em = 400 / ui.font_size()}) { ui.label("First") }
-		if ui.modal("second", &r.second, {width_em = 300 / ui.font_size()}) { ui.label("Second") }
+		if r.first { r.first = false; ui.view_open(&r.views, "first", r) }
+		if r.second { r.second = false; ui.view_open(&r.views, "second", r) }
 	}})
 	session.frames(s, SETTLE_FRAMES)
 	session.event(s, {kind = .Key_Press, key = .Escape})
 	r.second = true
 	session.frames(s, SETTLE_FRAMES)
-	testing.expect(t, r.first, "the dialog under it stays")
-	testing.expect(t, !r.second, "the one on top closed")
+	testing.expect(t, ui.view_is_open(&r.views, "first"), "the dialog under it stays")
+	testing.expect(t, !ui.view_is_open(&r.views, "second"), "the one on top closed")
 }
 
-// A style given to a widget that builds nothing is gone with it: it is not the next box's.
+// A style given to a widget that builds nothing is gone with it: it is not the next box's. (A dialog is a view, built
+// at the end of the build: no `next` reaches it.)
 @(test)
 next_goes_with_what_builds_nothing :: proc(t: ^testing.T) {
-	Latches :: struct { open: bool, size: ui.Vec2 }
-	r: Latches
-	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
-		r := (^Latches)(s.user)
-		ui.next({width = ui.px(ODD_WIDTH)})
-		if ui.modal("closed", &r.open, {width_em = 300 / ui.font_size()}) {}
-		ui.button("a", "A")
-		ui.next({width = ui.px(ODD_WIDTH)})
-		if ui.modal("closed2", &r.open, {width_em = 300 / ui.font_size(), height_em = 300 / ui.font_size(), size = &r.size}) {}
-		ui.button("b", "B")
+	s := session.start(t, {size = WINDOW, build = proc(s: ^session.Session) {
 		ui.next({width = ui.px(ODD_WIDTH)})
 		if ui.menu("closed3") {}
 		ui.button("c", "C")
 	}})
 	session.frame(s)
-	for name in ([]string{"a", "b", "c"}) {
+	for name in ([]string{"c"}) {
 		b := session.get(s, name)
 		testing.expectf(t, b.rect.max.x - b.rect.min.x != ODD_WIDTH, "%s has its own width", name)
 	}

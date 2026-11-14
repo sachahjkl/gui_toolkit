@@ -26,8 +26,20 @@ Sx :: struct {
 	ui_font: font.Font_Id,
 	link:  ui.Rich_Result,
 	clicks: int,
-	dialog: bool,
+	views:  ui.Views,        // the dialog's (a zero Views works)
+	dialog: bool,            // open the dialog in the next build
 	in_dialog: [2]^ui.Box,   // its label and its paragraph
+}
+
+// (no header: what it holds is its two texts alone)
+@(private = "file")
+sel_view :: proc(v: ^ui.View, f: ^Sx) {
+	ui.next({flags = {.Selectable}})
+	f.in_dialog[0] = ui.label("Said in a dialog###dl").box
+	ui.spacer(ui.px(60))
+	ui.next({width = ui.px(280), flags = {.Selectable}})
+	f.in_dialog[1] = ui.paragraph("Its second text###dp").box
+	ui.spacer(ui.px(60))
 }
 
 PARA :: "The paragraph wraps across several lines in this narrow box, so that a drag can end in its middle."
@@ -54,13 +66,12 @@ frame :: proc(f: ^Sx, events: []platform.Event = nil, draw_it := false) -> []u8 
 	f.link = ui.rich_paragraph("###r", RICH)
 	ui.next({fixed_x = 330, fixed_y = 10, width = ui.px(100)})
 	if ui.button("b", "Copy").clicked { f.clicks += 1 }
-	if ui.modal("sel", &f.dialog, {width_em = 300 / ui.font_size(), top = 0.1}) {
-		ui.next({flags = {.Selectable}})
-		f.in_dialog[0] = ui.label("Said in a dialog###dl").box
-		ui.spacer(ui.px(60))
-		ui.next({width = ui.px(280), flags = {.Selectable}})
-		f.in_dialog[1] = ui.paragraph("Its second text###dp").box
-		ui.spacer(ui.px(60))
+	if f.dialog {
+		f.dialog = false
+		if !ui.view_registered(&f.views, "sel") {
+			ui.view_register(&f.views, "sel", sel_view, ui.View_Options{width_em = 300 / ui.font_size(), top = 0.1, no_header = true})
+		}
+		ui.view_open(&f.views, "sel", f)
 	}
 	ui.end_build()
 	px: []u8
@@ -185,6 +196,7 @@ selection_in_a_dialog :: proc(t: ^testing.T) {
 	ui.apply_palette(&f.theme, ui.palette_of("Midnight"))
 	ui.init(&f.s, &f.fonts, &f.theme)
 	defer { ui.destroy(&f.s); ui.theme_destroy(&f.theme); draw.destroy(&f.dc); render.destroy(&f.r); font.destroy(&f.fonts); delete(clip); clip = "" }
+	defer ui.views_destroy(&f.views)
 	f.dialog = true
 	delete(frame(f))
 	delete(frame(f))
@@ -201,7 +213,7 @@ selection_in_a_dialog :: proc(t: ^testing.T) {
 	delete(frame(f, {move(end)}))
 	delete(frame(f, {release(end)}))
 	testing.expect_value(t, ui.selected_text(&f.s, context.temp_allocator), "Said in a dialog")
-	testing.expect(t, f.dialog, "a press in the dialog leaves it open")
+	testing.expect(t, ui.view_is_open(&f.views, "sel"), "a press in the dialog leaves it open")
 	// a double click: a word
 	word := [2]f32{l.rect.min.x + 12, y}
 	delete(frame(f, {press(word)}))
@@ -233,5 +245,5 @@ selection_in_a_dialog :: proc(t: ^testing.T) {
 	delete(frame(f, {press(blank)}))
 	delete(frame(f, {release(blank)}))
 	testing.expect(t, !ui.has_selection(&f.s), "cleared, the page behind untouched")
-	testing.expect(t, f.dialog, "and the dialog stays")
+	testing.expect(t, ui.view_is_open(&f.views, "sel"), "and the dialog stays")
 }

@@ -5,15 +5,16 @@ package tk_setup
 // program's own options (Setup_Options.choices), and the install folder before the first install (Setup_Options.folder).
 //
 //   d: setup.Dialog                          kept by the program, at a place that does not move while it is open
-//   setup.open(&d, cfg)                      at a start when setup.wanted(...), from a menu, from `--setup`
-//   ev := setup.dialog(&d, cfg, em, logo)    each frame, open or not (a modal while open; it also collects the work)
+//   setup.open(&d, cfg, logo)                at a start when setup.wanted(...), from a menu, from `--setup`: the view
+//                                            "setup" (home Dialog, ui's views) opens in the window being built
+//   ev := setup.update(&d, cfg)              each frame, open or not: the work that ended, the answer of the view
 //   setup.stale(&d)                          the program knows the install may have changed (its window came back)
 //   setup.finish(&d, cfg)                    at the end of the process (what an uninstall left goes then)
 //   setup.destroy(&d)
 //
-// A program that draws a screen of its own keeps the Dialog and calls `update` each frame instead of `dialog`, and the
-// actions below from its buttons (the dialog uses the same): what the state is, what is offered and how the work goes
-// are the same in every screen.
+// A program that draws a screen of its own keeps the Dialog, calls `update` each frame, and the actions below from its
+// buttons (the view uses the same): what the state is, what is offered and how the work goes are the same in every
+// screen.
 //
 // Nothing is read or written on the interface thread: reading the state, Install, Uninstall and the folder picker run on
 // a thread of the dialog's, one at a time; meanwhile the dialog says so and its buttons wait, and the end of the work
@@ -43,7 +44,6 @@ Dialog :: struct {
 	shortcut:  bool,               // the Desktop's shortcut, asked of Install
 	choices:   [dynamic]bool,      // the program's options (Setup_Options.choices), as ticked
 	folder:    ui.Line_Edit,      // the install folder (Setup_Options.folder): set from the facts when they first come
-	size:      [2]f32,             // what the user made it, in ems ({}: DIALOG_EM; the program may keep it)
 	note:      string,             // what the last action said (owned)
 	note_good: bool,
 	installed: string,             // the copy just installed, to open (owned; "": none)
@@ -56,9 +56,18 @@ Dialog :: struct {
 	stale_flag: bool,              // atomic: the watcher (or the program) says the install changed
 	state:     ^ui.State,          // atomic: the State of its last frame, which the threads wake (nil before one)
 	at:        [Button_Role]draw.Rect,   // where the last frame put its buttons ({}: not shown): a program's automation clicks them
-	in_page:   bool,               // open as a page of the settings (page), not as the modal
+	in_page:   bool,               // open as a page of the settings (page), not as the view
 	page_build: u64,               // the build that last drew the page: a build without it closes it (update)
+	// the view (open): the Views it is in (its window's at `open`), what its build draws with, and the event its buttons gave (update says it)
+	views:     ^ui.Views,
+	options:   Setup_Options,
+	logo:      Maybe(Logo),
+	pending:   Event,
+	building:  bool,               // the view's build runs: a close from its buttons ends the view there
 }
+
+// The id of the setup's view.
+VIEW :: "setup"
 
 // The buttons a program's automation finds in Dialog.at. Secondary: what closes (Do not install, Not now, Close) or opens
 // the installed copy.
@@ -84,8 +93,28 @@ Logo :: struct {
 @(private) MARGIN_EM       :: 1.5
 @(private = "file") LOGO_EM         :: 4.2
 
-// Opens the dialog: the facts are read on its thread, the places of the install are watched.
-open :: proc(d: ^Dialog, o: Setup_Options) {
+// Opens the view "setup" (registered the first time) in the State in use, the window being built (ui.views()): the facts are read on its
+// thread, the places of the install are watched. `o` and `logo` are what the view draws with (the options' strings and
+// procedures are the program's constants; the logo is a texture of the window's renderer).
+open :: proc(d: ^Dialog, o: Setup_Options, logo: Maybe(Logo) = nil) {
+	vs := ui.views()
+	if d.open && !d.in_page && d.views == vs && ui.view_is_open(vs, VIEW) { return }
+	if !ui.view_registered(vs, VIEW) {
+		ui.view_register(vs, VIEW, view_build, ui.View_Options{
+			title = "Setup", width_em = DIALOG_EM.x, height_em = DIALOG_EM.y, min_width_em = DIALOG_MIN_EM.x, min_height_em = DIALOG_MIN_EM.y,
+			resizable = true, backdrop = view_backdrop,
+		})
+	}
+	// (a controller already started, by the page or by the program's own facts, goes on in the view)
+	if !d.open { start(d, o) }
+	d.in_page = false
+	d.views, d.options, d.logo, d.pending = vs, o, logo, .None
+	ui.view_open(vs, VIEW, d)
+}
+
+// Starts the controller without the toolkit's view: the facts are read on the dialog's thread, the places watched. A
+// screen of the program's own (a view of its own, a page) calls it; open and page do.
+start :: proc(d: ^Dialog, o: Setup_Options) {
 	if d.open { return }
 	d.open, d.known, d.confirm, d.in_page = true, false, false, false
 	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
@@ -358,51 +387,63 @@ words_pieces_missing :: proc() -> string {
 	}
 }
 
-// The dialog, while it is open (a modal over the window); called each frame, open or not. What happened, if anything.
-//
-// Laid out dense, as a tool's panel: a title bar (the name, the close control); a header (what the dialog offers, the
-// versions, the state as a badge); the install location; the options as a grid of boxes; what the disk says (where the
-// files are, a note); the buttons. Setup_Options.square: every corner square.
-dialog :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo) = nil) -> (ev: Event) {
-	ev = update(d, o)
-	if !d.open { return }
-	was_open := d.open
-	busy := d.job != nil && d.job.kind != .Read
-	if ui.modal("setup", &d.open, {width_em = DIALOG_EM.x, height_em = DIALOG_EM.y, min_width_em = DIALOG_MIN_EM.x, min_height_em = DIALOG_MIN_EM.y, size = &d.size}) {
-		f := &d.facts
-		if o.square { ui.parent_box().radius = 0 }
-		if o.backdrop != nil { o.backdrop(o.user) }
-		title_bar(d, o, em)
-		// what the dialog says scrolls when it is made small; its buttons stay under it
-		ui.next({width = ui.fill(), height = ui.fill()})
-		if ui.scroll_y("###setup_scroll") {
-			ui.spacer(ui.px(em * 0.5))
-			head(d, o, em, logo)
-			if d.known {
-				location(d, o, em, busy)
-				if !f.from_nix { options_grid(d, o, em) }
-				ui.spacer(ui.px(em * 0.6))
-				info(d, o, em, busy)
-			}
-			ui.spacer(ui.px(em * 0.5))
+// What the program's look draws first, under the header (Setup_Options.backdrop: a blur of the window...).
+@(private = "file")
+view_backdrop :: proc(v: ^ui.View, data: rawptr) {
+	o := (^Dialog)(data).options
+	if o.square { ui.parent_box().radius = 0 }
+	if o.backdrop != nil { o.backdrop(o.user) }
+}
+
+// The view's body, under the toolkit's header ("<name> Setup", the close cross). Laid out dense, as a tool's panel: a
+// header (what the dialog offers, the versions, the state as a badge); the install location; the options as a grid of
+// boxes; what the disk says (where the files are, a note); the buttons. Setup_Options.square: every corner square.
+@(private = "file")
+view_build :: proc(v: ^ui.View, d: ^Dialog) {
+	o := d.options
+	em := ui.font_size()
+	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
+	ui.view_title(v, fmt.tprintf(i18n.tr("%s Setup"), o.identity.name))
+	is_busy := busy(d)
+	f := &d.facts
+	// what the dialog says scrolls when it is made small; its buttons stay under it
+	ui.next({width = ui.fill(), height = ui.fill()})
+	if ui.scroll_y("###setup_scroll") {
+		ui.spacer(ui.px(em * 0.5))
+		head(d, o, em, d.logo)
+		if d.known {
+			location(d, o, em, is_busy)
+			if !f.from_nix { options_grid(d, o, em) }
+			ui.spacer(ui.px(em * 0.6))
+			info(d, o, em, is_busy)
 		}
-		ui.spacer(ui.px(em * 0.4))
-		if bev := buttons(d, o, em); bev != .None { ev = bev }
-		ui.spacer(ui.px(em * 0.8))
+		ui.spacer(ui.px(em * 0.5))
 	}
-	if was_open && !d.open && ev == .None { ev = closed_event(d) }
-	if !d.open { watch_end(d) }
-	return
+	ui.spacer(ui.px(em * 0.4))
+	d.building = true
+	if ev := buttons(d, o, em); ev != .None { d.pending = ev }
+	d.building = false
+	ui.spacer(ui.px(em * 0.8))
+	// (a button closed it: the view ends with it, the event waits for update)
+	if !d.open { ui.view_end(v, 0) }
 }
 
 ////////////////////////////////
-// The controller: what a screen of the program's own calls (the dialog calls the same)
+// The controller: what a screen of the program's own calls (the view calls the same)
 
-// Each frame, open or not: collects the work that ended (its event), reads the install again when it changed, stops
+// Each frame, open or not: collects the work that ended (its event) and the answer of the view (closed by its cross,
+// Escape or a press outside: Dismissed, unless there is nothing to ask), reads the install again when it changed, stops
 // watching once closed.
 update :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 	if s := ui.current_state(); s != nil { sync.atomic_store(&d.state, s) }
 	ev = job_collect(d, o)
+	if d.views != nil && !d.in_page {
+		if code, ended := ui.view_ended(d.views, VIEW); ended && code == ui.VIEW_CANCELLED && d.open {
+			d.open = false
+			if ev == .None { ev = closed_event(d) }
+		}
+	}
+	if ev == .None && d.pending != .None { ev, d.pending = d.pending, .None }
 	// (a page has no close of its own: the settings showed another page, or closed, when a build went by without it)
 	if d.open && d.in_page {
 		if s := ui.current_state(); s != nil && s.build_index > d.page_build + 1 {
@@ -473,6 +514,8 @@ open_installed :: proc(d: ^Dialog) -> Event {
 // Closes the screen by `how`: the event to keep (Kept_Standalone, Dismissed: not again for this version, or None).
 close :: proc(d: ^Dialog, how: Closing) -> Event {
 	if !d.open { return .None }
+	// (from the program's own code: the view goes too; from the view's buttons, its build ends it)
+	if d.views != nil && !d.in_page && !d.building { ui.view_close(d.views, VIEW) }
 	d.open, d.in_page = false, false
 	watch_end(d)
 	switch how {
@@ -494,17 +537,6 @@ closed_event :: proc(d: ^Dialog) -> Event {
 // A corner's radius: `k` ems, none when the program wants it square.
 @(private)
 rad :: proc(o: Setup_Options, em, k: f32) -> f32 { return o.square ? 0 : math.round(em * k) }
-
-// The dialog's own header: "<name> Setup", and the close control in its corner (the program's, else the toolkit's button,
-// which closes the dialog through its `open`).
-@(private = "file")
-title_bar :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
-	if ui.dialog_header("setup_title_bar", fmt.tprintf(i18n.tr("%s Setup"), o.identity.name), {close = true}) {
-		if o.close != nil {
-			if o.close("###setup_close_x", em, o.user) { d.open = false }
-		}
-	}
-}
 
 // A framed panel across the dialog, inside its margins: `if panel(...) { ... }`.
 @(private, deferred_none = panel_end)

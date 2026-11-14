@@ -40,57 +40,87 @@ a_start_offers_it_when_there_is_something_to_do :: proc(t: ^testing.T) {
 	testing.expect(t, !setup.version_older("x", "1.0.0"))
 }
 
+// The setup's view, opened in the first build (`opening`), its events through update at each build.
 @(private = "file")
 App :: struct {
-	d:     setup.Dialog,
-	cfg:   setup.Setup_Options,
-	event: setup.Event,
+	d:       setup.Dialog,
+	cfg:     setup.Setup_Options,
+	event:   setup.Event,
+	opening: bool,
+	state:   ^ui.State,   // the session's (its Views has the setup's view)
 }
 
+@(private = "file")
+app_build :: proc(s: ^session.Session) {
+	app := (^App)(s.user)
+	app.state = s.state
+	if app.opening {
+		app.opening = false
+		setup.open(&app.d, app.cfg)
+	}
+	if ev := setup.update(&app.d, app.cfg); ev != .None { app.event = ev }
+}
+
+@(private = "file")
+app_end :: proc(app: ^App) {
+	setup.destroy(&app.d)
+}
+
+// (the facts are the test's: the controller is open with them, the view takes it over)
 @(private = "file")
 start :: proc(t: ^testing.T, app: ^App, f: setup.Facts) -> ^session.Session {
 	app.cfg = {identity = desktop.Identity{name = "Sample", vendor = "Someone"}, version = "1.0.0"}
 	app.d.open, app.d.known = true, true
 	app.d.facts = f
-	return session.start(t, {size = {900, 640}, user = app, build = proc(s: ^session.Session) {
-		app := (^App)(s.user)
-		if ev := setup.dialog(&app.d, app.cfg, ui.font_size()); ev != .None { app.event = ev }
-	}})
+	app.opening = true
+	s := session.start(t, {size = {900, 640}, user = app, build = app_build})
+	session.wait_box(s, "setup_scroll")
+	return s
+}
+
+// The event the view's buttons or its close gave, read by update in a later build.
+@(private = "file")
+wait_event :: proc(s: ^session.Session) {
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return (^App)(s.user).event != .None }, "the event")
 }
 
 @(test)
 not_installed_offers_install_and_standalone :: proc(t: ^testing.T) {
 	app: App
-	defer setup.destroy(&app.d)
+	defer app_end(&app)
 	s := start(t, &app, {state = .Not_Installed})
 	testing.expect(t, session.find_text(s, "Not installed") != nil, "the state says it")
 	testing.expect(t, session.find(s, "setup_install") != nil, "Install")
 	testing.expect(t, session.find(s, "setup_uninstall") == nil, "nothing to uninstall")
 	session.click(s, "setup_standalone")
+	wait_event(s)
 	testing.expect_value(t, app.event, setup.Event.Kept_Standalone)
 	testing.expect(t, !app.d.open, "and it closes")
+	testing.expect(t, !ui.view_is_open(ui.state_views(app.state), setup.VIEW), "its view too")
 }
 
 @(test)
 an_older_copy_is_offered_an_upgrade :: proc(t: ^testing.T) {
 	app: App
-	defer setup.destroy(&app.d)
+	defer app_end(&app)
 	s := start(t, &app, {state = .Other_Copy, version = strings.clone("0.9.0"), exe_there = true, manifest = true,
 		exe = strings.clone(`C:\Users\someone\AppData\Local\Programs\sample\sample.exe`), running = strings.clone(`C:\Users\someone\Downloads\sample-1.0.0-windows-x64\sample.exe`)})
 	testing.expect(t, session.find_text(s, "Upgrade to 1.0.0") != nil)
 	testing.expect(t, session.find(s, "setup_uninstall") != nil, "the installed copy can be removed")
 	session.click(s, "setup_later")
+	wait_event(s)
 	testing.expect_value(t, app.event, setup.Event.Dismissed)
 }
 
 @(test)
 the_installed_copy_updates_its_shortcuts :: proc(t: ^testing.T) {
 	app: App
-	defer setup.destroy(&app.d)
+	defer app_end(&app)
 	s := start(t, &app, {state = .This_Copy, exe_there = true, manifest = true, running_it = true, start_lnk = true, record = true})
 	testing.expect(t, session.find_text(s, "this is the installed copy") != nil)
 	testing.expect(t, session.find_text(s, "Update the shortcuts") != nil)
 	session.click(s, "setup_close")
+	session.wait_gone(s, "setup_scroll")
 	testing.expect(t, !app.d.open)
 	testing.expect_value(t, app.event, setup.Event.None)   // (nothing to remember: it is installed)
 }
@@ -98,9 +128,10 @@ the_installed_copy_updates_its_shortcuts :: proc(t: ^testing.T) {
 @(test)
 escape_dismisses_it_for_this_version :: proc(t: ^testing.T) {
 	app: App
-	defer setup.destroy(&app.d)
+	defer app_end(&app)
 	s := start(t, &app, {state = .Not_Installed})
 	session.key(s, .Escape)
+	wait_event(s)
 	testing.expect(t, !app.d.open)
 	testing.expect_value(t, app.event, setup.Event.Dismissed)
 }
@@ -109,7 +140,7 @@ escape_dismisses_it_for_this_version :: proc(t: ^testing.T) {
 @(test)
 a_path_is_copied :: proc(t: ^testing.T) {
 	app: App
-	defer setup.destroy(&app.d)
+	defer app_end(&app)
 	path := `C:\Users\someone\AppData\Local\Programs\sample\sample.exe`
 	s := start(t, &app, {state = .This_Copy, exe = strings.clone(path), running = strings.clone(path), exe_there = true, manifest = true, running_it = true, start_lnk = true, record = true})
 	session.click(s, "copy")
@@ -121,7 +152,7 @@ a_path_is_copied :: proc(t: ^testing.T) {
 @(test)
 a_newer_copy_is_named_as_such :: proc(t: ^testing.T) {
 	app: App
-	defer setup.destroy(&app.d)
+	defer app_end(&app)
 	s := start(t, &app, {state = .Other_Copy, version = strings.clone("1.2.0"), exe_there = true, manifest = true})
 	testing.expect(t, session.find_text(s, "A newer copy is installed (1.2.0)") != nil)
 	testing.expect(t, session.find_text(s, "Go back to 1.0.0") != nil)
@@ -131,7 +162,7 @@ a_newer_copy_is_named_as_such :: proc(t: ^testing.T) {
 @(test)
 uninstall_asks_first :: proc(t: ^testing.T) {
 	app: App
-	defer setup.destroy(&app.d)
+	defer app_end(&app)
 	s := start(t, &app, {state = .This_Copy, exe_there = true, manifest = true, running_it = true, start_lnk = true, record = true})
 	session.click(s, "setup_uninstall")
 	testing.expect(t, session.find_text(s, "Click again to uninstall") != nil)
@@ -142,9 +173,10 @@ uninstall_asks_first :: proc(t: ^testing.T) {
 @(test)
 the_program_s_choices_are_boxes :: proc(t: ^testing.T) {
 	app: App
-	defer setup.destroy(&app.d)
+	defer app_end(&app)
 	s := start(t, &app, {state = .Not_Installed})
 	app.cfg.choices = []setup.Choice{{label = "Add to PATH", on = true}, {label = "Register as a browser", on = false}}
+	app.d.options.choices = app.cfg.choices   // (the view draws with the options it was opened with)
 	append(&app.d.choices, true, false)
 	session.frames(s, 2)
 	testing.expect(t, session.find_text(s, "Register as a browser") != nil)
@@ -180,14 +212,11 @@ the_dialog_reads_on_its_thread_and_follows_the_disk :: proc(t: ^testing.T) {
 	testing.expect(t, os.make_directory_all(sc.root) == nil)
 	defer os.remove_all(sc.root)
 	app: App
-	defer setup.destroy(&app.d)
-	s := session.start(t, {size = {900, 640}, user = &app, build = proc(s: ^session.Session) {
-		app := (^App)(s.user)
-		if ev := setup.dialog(&app.d, app.cfg, ui.font_size()); ev != .None { app.event = ev }
-	}})
+	defer app_end(&app)
+	s := session.start(t, {size = {900, 640}, user = &app, build = app_build})
 	app.cfg = {identity = desktop.Identity{name = "Sample", slug = "sample", exe_name = "sample", manifest_name = "sample_install.txt"},
 		version = "1.0.0", prepare = scratch_prepare, user = &sc}
-	setup.open(&app.d, app.cfg)
+	app.opening = true   // (the next build opens it: the facts are read on the dialog's thread)
 	session.wait_text(s, "Install Sample")   // (the title the facts give: "not installed" is also in the line of the versions)
 	testing.expect(t, app.d.known)
 	testing.expect(t, app.d.watcher != nil, "the install is watched")
@@ -196,6 +225,7 @@ the_dialog_reads_on_its_thread_and_follows_the_disk :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/sample", sc.install), transmute([]byte)string("x")) == nil)
 	session.wait_text(s, "earlier setup")
 	session.key(s, .Escape)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return !(^App)(s.user).d.open }, "Escape to close it")
 	session.frames(s, 2)
 	testing.expect(t, app.d.watcher == nil, "closed: no longer watched")
 }
@@ -270,16 +300,14 @@ an_update_of_the_installed_copy_is_recorded :: proc(t: ^testing.T) {
 @(test)
 a_long_option_stays_in_its_tile :: proc(t: ^testing.T) {
 	app: App
-	defer setup.destroy(&app.d)
+	defer app_end(&app)
 	LONG :: "Start with the session, in the notification area, and keep the history of the clipboard from the first copy"
 	app.cfg = {identity = desktop.Identity{name = "Sample", vendor = "Someone"}, version = "1.0.0", choices = []setup.Choice{{label = LONG, on = true}, {label = "Add to PATH"}}}
 	append(&app.d.choices, true, false)
 	app.d.open, app.d.known = true, true
 	app.d.facts = {state = .Not_Installed}
-	s := session.start(t, {size = {560, 760}, user = &app, build = proc(s: ^session.Session) {
-		app := (^App)(s.user)
-		if ev := setup.dialog(&app.d, app.cfg, ui.font_size()); ev != .None { app.event = ev }
-	}})
+	app.opening = true
+	s := session.start(t, {size = {560, 760}, user = &app, build = app_build})
 	session.frames(s, 3)
 	session.save_png(s, "options.png")
 	tile := session.find(s, "setup_tile_1")

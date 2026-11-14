@@ -23,12 +23,13 @@ for c in Cmd { if ui.command_pressed(COMMANDS[c], can(c)) { run(c) } }
 if ui.menu_item(COMMANDS[.Kill].label, ui.command_shortcut(COMMANDS[.Kill]), disabled = !can(.Kill)).clicked { run(.Kill) }
 tip := ui.command_tip(COMMANDS[.Kill])          // "Kill… (Shift+Delete)"
 
-// the palette and the sheet
-if run_palette { ui.palette_open(&app.palette) }
+// the palette and the sheet: views (views.md), home Dialog
 disabled: [Cmd]bool
 for c in Cmd { disabled[c] = !can(c) }
-if i, resized := ui.palette(&app.palette, COMMANDS[:], disabled[:]); i >= 0 { run(Cmd(i)) }   // resized: save app.palette.size
-ui.shortcuts_sheet(&app.sheet, "keys", COMMANDS[:])   // app.sheet.open = true shows it
+ui.palette_set(&app.palette, COMMANDS[:], disabled[:], {})                  // when the table or `disabled` change
+if run_palette { ui.palette_open(&app.palette) }
+if i, _, ok := ui.palette_chosen(&app.palette); ok { run(Cmd(i)) }   // the build after the choice
+if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 ```
 
 | | |
@@ -39,10 +40,11 @@ ui.shortcuts_sheet(&app.sheet, "keys", COMMANDS[:])   // app.sheet.open = true s
 | `key_tip(label, chord)` | a tooltip's text for a control that is no command: `Settings (Ctrl+,)`, the label alone with no key |
 | `command_shortcut(c)`, `command_keys_text(c)`, `command_tip(c)` | the first key's text; every key's, apart by commas; `label (key)` |
 | `command_pressed(c, disabled)` | one of its keys was pressed this frame: the press is taken. A command that cannot act (`disabled`) takes no key |
-| `palette_open(&p)` | opens the palette (`Command_Palette`, the program's) at the top centre of the window (`PALETTE_TOP` of its height), its field empty |
-| `palette(&p, commands, disabled, o) -> (int, resized)` | while it is open: the commands under their groups' headings, each with its icon and its first key; the index chosen, or -1; `resized`: the user changed its size (`p.size`, logical pixels: keep it). Ctrl, Alt or Shift with Enter chooses too: `p.chosen_mods` says which |
+| `palette_set(&p, commands, disabled, o)` | what the palette lists: the program's table (valid while the palette is open), `disabled` and `o` copied. Call it when they change |
+| `palette_open(&p)`, `palette_is_open(&p)`, `palette_close(&p)` | the view of the palette (of `ui.views()`, the window being built) (`Command_Palette`, the program's) at the top centre of the window (`PALETTE_TOP` of its height), its field empty; the views remember its size |
+| `palette_chosen(&p) -> (index, mods, ok)` | the command chosen, once, in the build after the choice: its index, and the modifiers of the Enter that chose it (Ctrl, Alt or Shift with Enter chooses too) |
 | `Palette_Options{memory, names, recent_title, first, keys, foot, version}` | what a program adds: `version`, its commands' version (below); what the user chose before (`memory`, a `Choice_Memory`, and each command's key in it, `names`; below), the heaviest choices on top under their heading ("Recent") while nothing is typed and a match raised by its weight while something is; a command first while something is (an alias typed whole); per command the text of its keys as the program shows them (its user's own, a sequence "Ctrl+M, T"); a line under the list |
-| `shortcuts_sheet(&sheet, id, commands, title, version)`, `shortcuts_sheet_destroy(&sheet)` | while `sheet.open` (a `Shortcuts_Sheet`, the program's): a dialog, every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window. `version` as the palette's |
+| `shortcuts_sheet_open(&sheet, commands, title, version)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window. `commands` stays valid while it is open; `version` as the palette's |
 
 ### A key's text
 
@@ -74,7 +76,7 @@ same: it lists the commands that have a key when they change (`version`, as the 
 one), and builds the lines near its view. `Command_Palette.rankings` and `Shortcuts_Sheet.listings` count the lists made
 (a test reads them).
 
-The palette is a dialog (a `modal` of a `size`, in ems: its edges and its corner's grip resize it, `PALETTE_WIDTH_EM` by
+The palette is a view shown as a dialog with no header (resizable, in ems: its edges and its corner's grip resize it, `PALETTE_WIDTH_EM` by
 `PALETTE_HEIGHT_EM` at first, never under `PALETTE_MIN_EM`) with a field at its top and the commands under it; a command's
 `icon` (a glyph of the state's `icon_font`) shows before its label. Its list holds a whole number of lines at any size
 (what is left of a line goes under it), so the foot never cuts its last line. Up, Down, Page Up, Page Down move the selection;
@@ -106,9 +108,10 @@ if !settings.palette_ctrl_k { app.commands[.Palette].keys = COMMANDS[.Palette].k
 app.commands[.Kill].keys = app.kill_keys[:]                               // the user's keys, in the program's memory
 app.commands_version += 1                                                 // changed in place: the sheet lists it again
 
+ui.palette_set(&app.palette, app.commands[:], disabled[:], {version = app.commands_version})
+
 for c in Cmd { if ui.command_pressed(app.commands[c], !can(c)) { run(c) } }
-ui.palette(&app.palette, app.commands[:], disabled[:])
-ui.shortcuts_sheet(&app.sheet, "keys", app.commands[:], version = app.commands_version)
+if show_keys { ui.shortcuts_sheet_open(&app.sheet, app.commands[:], version = app.commands_version) }
 ```
 
 A key turned off is not taken: what reads the keys after the commands gets it. Why a table and not a key of a setting
@@ -127,7 +130,8 @@ each choice with a stable key ("tab.new", "pref:appearance.theme"), passes the m
 ```odin
 ui.choice_memory_open(&app.choices, &app.ui, path)   // read on the chores; "": in memory only
 NAMES := [Cmd]string{.Kill = "process.kill", ...}
-if i, _ := ui.palette(&app.palette, COMMANDS[:], disabled[:], {memory = &app.choices, names = NAMES[:]}); i >= 0 {
+ui.palette_set(&app.palette, COMMANDS[:], disabled[:], {memory = &app.choices, names = NAMES[:]})
+if i, _, ok := ui.palette_chosen(&app.palette); ok {
 	ui.choice_note(&app.choices, NAMES[Cmd(i)])
 	run(Cmd(i))
 }

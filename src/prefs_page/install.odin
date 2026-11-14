@@ -7,8 +7,8 @@ package tk_prefs_page
 //
 //   prefs_page.install_init(&app.install, &app.prefs, setup_options())   at the start, its settings loaded
 //   prefs_page.install_offer(&app.install, &state, offer)                 its window open: reads the install on a task
-//   if prefs_page.install_frame(&app.install, em) == .Launched { quit() }  each frame: the modal, the work that ended
-//   prefs_page.install_open(&app.install)                                 --setup: the modal now
+//   if prefs_page.install_frame(&app.install) == .Launched { quit() }      each frame: the work that ended, the answer
+//   prefs_page.install_open(&app.install)                                 --setup: the setup's view now (during a build)
 //   opts.install = &app.install                                           the settings show the Installation page
 //   prefs_page.install_end(&app.install)                                  at the end, before the window's State goes
 //   prefs_page.install_launch(&app.install)                               last, its single instance released
@@ -110,23 +110,20 @@ offer_free :: proc(data: rawptr) {
 	free(j)
 }
 
-// Shows the modal now (--setup, Settings > Apps' Uninstall).
+// Shows the setup's view now (--setup, Settings > Apps' Uninstall), in the window being built (a task's answer runs
+// in its build).
 install_open :: proc(in_: ^Install) {
 	if in_.dialog.open && !in_.dialog.in_page { return }
-	if in_.dialog.open { _ = setup.close(&in_.dialog, .Close) }   // (the page's: the modal takes it over)
-	setup.open(&in_.dialog, in_.options)
+	if in_.dialog.open { _ = setup.close(&in_.dialog, .Close) }   // (the page's: the view takes it over)
+	setup.open(&in_.dialog, in_.options, in_.logo)
 }
 
-// Each frame of the window the modal belongs to: the modal while it is open, the work that ended, the answer kept; what
-// happened (the answer is already kept). Launched: the program ends (its window closes, its single instance goes), and
+// Each frame of the window the setup belongs to: the work that ended, the view's answer, the answer kept; what happened
+// (the answer is already kept). Launched: the program ends (its window closes, its single instance goes), and
 // install_launch starts the installed copy. Installed, Uninstalled: the program follows what its own settings say of the
 // desktop again, if it applies them.
-install_frame :: proc(in_: ^Install, em: f32) -> (ev: setup.Event) {
-	if in_.dialog.in_page {
-		ev = setup.update(&in_.dialog, in_.options)
-	} else {
-		ev = setup.dialog(&in_.dialog, in_.options, em, in_.logo)
-	}
+install_frame :: proc(in_: ^Install) -> (ev: setup.Event) {
+	ev = setup.update(&in_.dialog, in_.options)
 	install_event(in_, ev)
 	if ev == .None { ev = in_.pending }
 	in_.pending = .None

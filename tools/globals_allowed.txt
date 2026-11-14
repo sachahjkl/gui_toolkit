@@ -305,6 +305,8 @@ ui/tasks.odin chores_pool process  # the program's one pool of chores, started o
 ui/tasks.odin chores_once process  # starts the chores once
 ui/tasks.odin chores_stopped process  # the chores stopped (atomic)
 ui/themes.odin FINISH_NAMES const  # a table of names, read only
+ui/views_memory.odin VIEW_AS_NAMES const  # a table of names, read only
+ui/views_memory.odin VIEW_EDGE_NAMES const  # a table of names, read only
 ui/theme_default.odin entries const  # a table
 ui/theme_default.odin state_entries const  # a table
 platform/platform.odin scheme_serial process  # the system's light / dark choice, bumped as it may change (atomic): one system, whatever the number of apps

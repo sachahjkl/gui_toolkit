@@ -422,7 +422,7 @@ toggle_group :: proc(app: ^App, g: i32, header: int) {
 @(private)
 handle_table_keys :: proc(app: ^App, list: ^ui.Box, disp: []Disp, row_h, view_h: f32) {
 	n := len(disp)
-	if !app.table_focus || n == 0 || app.palette_open || app.modal_open { return }
+	if !app.table_focus || n == 0 || ui.views_hold_keys(ui.state_views(&app.ui_state)) { return }
 	if ui.focus_key() != 0 { return }   // a text field owns the keyboard
 	sel := app.selected_row
 	page := int(view_h / row_h)

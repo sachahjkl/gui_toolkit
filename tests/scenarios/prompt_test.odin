@@ -1,7 +1,7 @@
 package scenarios_test
 
-// A prompt (ui.prompt): its field has the keyboard as it opens, Enter answers with what was typed, Escape and Cancel give
-// up. line_edit_wipe leaves no byte of a secret in the field's buffer nor in its undo and redo history.
+// A prompt (ui.prompt_open, a view): its field has the keyboard as it opens, Enter answers with what was typed, Escape
+// and Cancel give up. line_edit_wipe leaves no byte of a secret in the field's buffer nor in its undo and redo history.
 
 import "core:bytes"
 import "core:mem"
@@ -17,7 +17,7 @@ import "../../src/ui"
 
 @(private = "file")
 Ask :: struct {
-	open:    bool,
+	open:    bool,   // open the prompt in the next build
 	field:   ui.Line_Edit,
 	answers: [dynamic]ui.Confirm_Answer,
 }
@@ -25,9 +25,16 @@ Ask :: struct {
 @(private = "file")
 ask_build :: proc(s: ^session.Session) {
 	r := (^Ask)(s.user)
-	if a := ui.prompt("pin", &r.open, &r.field, {title = "Unlock", note = "Type the PIN.", secret = true}); a != .None {
-		append(&r.answers, a)
+	if r.open {
+		r.open = false
+		ui.prompt_open("pin", &r.field, {title = "Unlock", note = "Type the PIN.", secret = true})
 	}
+	if a := ui.prompt_answer("pin"); a != .None { append(&r.answers, a) }
+}
+
+@(private = "file")
+answers_reach :: proc(s: ^session.Session, n: int) {
+	session.wait_until(s, n, proc(s: ^session.Session, n: int) -> bool { return len((^Ask)(s.user).answers) >= n }, "the answer")
 }
 
 @(test)
@@ -39,7 +46,8 @@ a_prompt_answers_at_enter_and_gives_up_at_escape :: proc(t: ^testing.T) { unwatc
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.focused_name(s) == "prompt_field" }, "the field to have the keyboard")
 	session.type_text(s, "1234")
 	session.key(s, .Return)
-	testing.expect(t, !r.open, "Enter closes it")
+	answers_reach(s, 1)
+	testing.expect(t, !ui.view_is_open(ui.state_views(s.state), "pin"), "Enter closes it")
 	testing.expect_value(t, len(r.answers), 1)
 	testing.expect_value(t, r.answers[0], ui.Confirm_Answer.Confirmed)
 	testing.expect_value(t, ui.line_edit_string(&r.field), "1234")
@@ -49,14 +57,16 @@ a_prompt_answers_at_enter_and_gives_up_at_escape :: proc(t: ^testing.T) { unwatc
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.focused_name(s) == "prompt_field" }, "the field to have the keyboard again")
 	session.type_text(s, "99")
 	session.key(s, .Escape)
-	testing.expect(t, !r.open, "Escape closes it")
+	answers_reach(s, 2)
+	testing.expect(t, !ui.view_is_open(ui.state_views(s.state), "pin"), "Escape closes it")
 	testing.expect_value(t, len(r.answers), 2)
 	testing.expect_value(t, r.answers[1], ui.Confirm_Answer.Cancelled)
 
 	r.open = true
 	session.wait_box(s, "prompt_cancel")
 	session.click(s, "prompt_cancel")
-	testing.expect(t, !r.open, "Cancel closes it")
+	answers_reach(s, 3)
+	testing.expect(t, !ui.view_is_open(ui.state_views(s.state), "pin"), "Cancel closes it")
 	testing.expect_value(t, r.answers[2], ui.Confirm_Answer.Cancelled)
 }) }
 

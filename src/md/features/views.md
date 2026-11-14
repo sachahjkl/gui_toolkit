@@ -1,0 +1,1155 @@
+# Views: one content, four presentations
+
+Status: step 1 is written (the model, the memory, the Dialog presentation, the ready-made views; section 7.3). The
+rest is the plan for the toolkit and for the six programs. The user's decisions are in section 2.5 (the chrome rules)
+and section 8.2.
+
+A **view** is a build procedure and its data, declared by an id. The program says that the view is open or closed and
+gives its data. The toolkit decides where the view is built. The four presentations are degrees of attachment to the
+owner window:
+
+| Presentation | What it is | Modal |
+|---|---|---|
+| **Dialog** | centred over the owner window, with a scrim. This is the `ui.modal` of today. | yes |
+| **Internal** | an internal window: a floating window inside the owner window, drawn by the toolkit. It moves by its header, resizes by its edges, stays above the content and below the dialogs. Several can float; a click brings one to the front. It works on every system, Wayland too. | no |
+| **External** | an external window: an OS window of its own, resizable. It uses the renderer and the fonts of the program. | no |
+| **Panel** | docked to an edge of the owner window (left, right, bottom, top) or in a dock space of the program. Several views at one place are tabs. It can be undocked. | no |
+
+Each view has a **home**: Dialog or Panel (with its dock place). A dialog's home is Dialog. A side pane's home is
+Panel. **Re-attach** brings a view back to its home. Re-attach is not a close: the view stays open.
+
+The user changes the presentation with the small icons of the view's top area, its right-click menu, the palette's
+commands, by dragging its header or its tab, and with the dock targets. The docking machinery does not invade the
+screens: at rest, a view adds nothing that the program did not draw (section 2.5). The toolkit remembers the last
+presentation per view id. Every view accepts the four presentations,
+confirmations too. The toolkit has no special case and no program logic.
+
+`ui.modal`, `Modal_Options`, `dialog_header` and `modal_corner` stop being public. `if ui.modal(...) { ... }` goes from
+every program. The programs' side panes and their window code (ocn `detached.odin`, inspecteur's journal and Mission
+windows, Wren's developer tools window) become views in this work. No compatibility layer is kept.
+
+Contents:
+
+1. [Inventory](#1-inventory)
+2. [The API](#2-the-api)
+3. [The state machine of a view](#3-the-state-machine-of-a-view)
+4. [External windows](#4-external-windows)
+5. [Internal windows](#5-internal-windows)
+6. [Panels and dock spaces](#6-panels-and-dock-spaces)
+7. [Migration and order of work](#7-migration-and-order-of-work)
+8. [Risks and open questions](#8-risks-and-open-questions)
+
+---
+
+## 1. Inventory
+
+The columns:
+
+- **Holds**: what the dialog or the pane shows.
+- **Data**: where the data comes from, and the procedure that opens it.
+- **Result**: how the answer gets to the program.
+- **Size**: the `Modal_Options` or the splitter it uses.
+
+Abbreviations: "mutates" means the block changes the program's state directly. "Resizable" means `size = &x`, kept by
+the program.
+
+### 1.1 The toolkit
+
+| Site | Holds | Data | Result | Size |
+|---|---|---|---|---|
+| `src/ui/commands.odin:335` `palette` | the command palette: a search band, the ranked commands | `^Command_Palette` and `commands`, `disabled`, `Palette_Options` given at each frame. It reads Up/Down/Page keys before `modal` (`:325`). It opens with `palette_open` (`:297`). | returns `(chosen: int, resized: bool)`, and `p.chosen_mods` | resizable `PALETTE_WIDTH_EM`×`PALETTE_HEIGHT_EM`, `top = PALETTE_TOP`. The program keeps `p.size`. |
+| `src/ui/commands.odin:637` `shortcuts_sheet` | the list of the keys, by group | `^Shortcuts_Sheet` and `commands` at each frame. It opens with `sheet.open = true`. | none | `SHEET_WIDTH_EM`. Its height is the content, at most `SHEET_HEIGHT` of the window. |
+| `src/ui/confirm.odin:47` `confirm` | a title, a note, the lines it acts on, Cancel and the act | `Confirm_Options` at each frame. It opens with `open^ = true`. | `Confirm_Answer`: `.Confirmed`, `.Cancelled` once, else `.None` | grows from `width_em` up to `DIALOG_MAX_WIDTH_EM` |
+| `src/ui/confirm.odin:126` `prompt` | a title, a note, one field, Cancel and OK | `^Line_Edit` (the program's) and `Prompt_Options` | `Confirm_Answer`. The text stays in the field. | grows from `width_em` |
+| `src/setup/dialog.odin:371` `setup.dialog` | the install dialog: the location, the options, the disk | `^setup.Dialog` (`setup.open`, `:88`), worker jobs (`job_collect`) | `setup.Event` returned at each frame | resizable `DIALOG_EM`, min `DIALOG_MIN_EM`, `d.size` |
+| `src/prefs_page/install.odin:10` `install_frame` | the setup dialog of each program, offered at a start | `Install` (`install_open`, `:11`) | `setup.Event` (`.Launched`) | the setup dialog's |
+| `src/ui/docking.odin:145` `dock_begin` | the dock: stacks of tabs, splits, floating panels, "Open in a window" (`Dock_Options.windows`, `:107`) | the program's `Dock` and its panel ids | `Dock_Result.closed`, `.windowed` | the dock's layout text, saved by `on_save` |
+| `examples/fidget/settings_ui.odin:107`, `shell.odin:270`, `:340`, `:390` | the settings, a palette, a confirmation, About | `app.*_open` | mutates | `top` 0.10, 0.11, 0.16 |
+| `examples/showcase/shell.odin:247`, `:255`, `:262`, `scenes.odin:418` | the palette, `confirm`, `prompt`, a resizable dialog (export) | `app.*_open` | as in the toolkit | `app.dialog_size` |
+| `examples/docking`, `examples/panes` | the dock and the panes | their own | none | their own |
+
+### 1.2 papier
+
+| Site | Holds | Data | Result | Size |
+|---|---|---|---|---|
+| `src/qr.odin:51` `qr_build` | a QR code and its text | `app.qr.text`, cloned by `qr_open` (`qr.odin:36`) | none | the width comes from the window (`side / em + 3`) |
+| `src/actions.odin:213` | `ui.palette` | the table of `ACTIONS` | an action index | the palette's |
+| `src/actions.odin:217` | `ui.shortcuts_sheet` | `ACTIONS` | none | the sheet's |
+| `src/setup_view.odin:60` | `install_frame` | `app.install` | `.Launched`: quit | the setup's |
+
+The settings of papier are a page (`src/settings_view.odin:66`), not a dialog. The list and the view of papier
+(`src/view.odin:405`, a `splitter`) are its content, not a side pane (section 1.9).
+
+### 1.3 classeur
+
+| Site | Holds | Data | Result | Size |
+|---|---|---|---|---|
+| `src/layouts.odin:159` | `ui.prompt`: the name of a layout | `l.naming`, `l.field` | `.Confirmed`: `layout_save`. An empty name opens the prompt again. | default |
+| `src/goto.odin:218` `goto_build` | "Go to": a field and the rows that match, Tab completes | `app.goto`, rows computed before the modal (`goto_rows`) | mutates (`go_to`) | `pw / em`, `top = 0.12` |
+| `src/options.odin:60` `options_build` | the settings (`prefs_page.build`) | `app.options`, `prefs_page.show` | mutates the preferences. Close undoes a preview (`options_unpreview`). | resizable `OPTIONS_PREFERRED_EM`, `o.size` |
+| `src/dialogs.odin:69` `confirm_build` | `ui.confirm`: delete or empty the trash | `app.confirm` (paths, names), set by `confirm_delete` | `.Confirmed`: `job_add(.Delete)` | default |
+| `src/dialogs.odin:102` `conflict_build` | "a name taken": two files, a checkbox, four buttons | the job that asks (`job_asking`). The dialog is open while a job asks. | a `Conflict` choice (Skip, Keep both, Replace, Cancel the job) sent to the job | `CONFLICT_WIDTH_EM` |
+| `src/batch.odin:264` `batch_build` | batch rename: three fields, options, the list of new names | `app.batch` (`batch_open`, `:90`), names computed before the modal | mutates and applies | `pw / em`, `top = 0.1` |
+| `src/palette.odin:209` | `ui.shortcuts_sheet` | `p.sheet_list` | none | the sheet's |
+| `src/palette.odin:222` | `ui.palette` with the settings in it | `palette_list` | an index and `chosen_mods`: run, record keys, alias | the palette's, kept by `palette_keep_size` |
+| `src/palette.odin:262` `palette_recorder` | the recorder of a command's keys (`ui.key_take`) | `p.recording` | mutates the keymap | default |
+| `src/view.odin:91` | `install_frame` | `app.install` | `setup.Event` | the setup's |
+
+The main window is `host_open` (`src/app.odin:358`). Its side panes are in section 1.9.
+
+### 1.4 inspecteur
+
+| Site | Holds | Data | Result | Size |
+|---|---|---|---|---|
+| `src/props_view.odin:21` `props_build` | Properties of a process: tabs, a filter, actions | `app.props` (pid, start, tab). It reads the sampler at each frame. Its keys are read inside it. | mutates. It opens the kill confirmation and the affinity over itself. | resizable `PROPS_W_EM`×`PROPS_H_EM`, `pp.size` |
+| `src/affinity_view.odin:82` | the processors of a process | `app.affinity` | `act_start(.Affinity_Set)` | `AFFINITY_W_EM` |
+| `src/diagnosis.odin:168` | the findings of a diagnosis | `app.diagnosis_open` and the findings | none | `DIAG_W_EM` |
+| `src/menu.odin:427` `confirm_build` | `ui.confirm`: kill, signal, stop a service, dump | `app.menu.confirm`, set by `confirm_service` (`:409`) and others | `.Confirmed`: `confirm_act` | default, `enter_confirms` |
+| `src/commands.odin:278`, `:301` | the palette and the sheet | the command table | an index | the palette's |
+| `src/view.odin:89` | `install_frame` | `app.install` | `.Launched` | the setup's |
+
+`view.odin:47` computes `free_keys` from seven booleans of dialogs. This is an implicit state machine that the views
+remove (section 3.5). The journal and Mission Control windows are in section 1.9.
+
+### 1.5 cliche
+
+| Site | Holds | Data | Result | Size |
+|---|---|---|---|---|
+| `src/editor.odin:2094` | `ui.palette` of the editor | `EDITOR_ACTIONS`, `disabled` | `editor_action` | the palette's |
+| `src/editor.odin:2096` | `ui.shortcuts_sheet` | `EDITOR_ACTIONS` | none | the sheet's |
+| `src/editor.odin:2097` | `ui.confirm`: drop the changes | `ed.asking` | `.Confirmed`: `ed.close_due` | default |
+| `src/editor.odin:2133` `editor_size_dialog` | resize the picture, or add margins: number fields, swatches | `ed.size_dialog`, filled by `editor_size_dialog_open` (`:2105`) | apply: one undo step | `width_em = 24` |
+| `src/history_view.odin:1182`, `:1192` | the palette and the sheet of the history window | tables | an action | the palette's |
+| `src/history_view.odin:1200` | `ui.confirm`: delete files | `hw.delete_ids` | `worker_send(History_Delete)` | default |
+| `src/workflow_view.odin:615` | `ui.palette`: add a node | `m.add_table` | `workflow_add_chosen` | the palette's |
+| `src/workflow_view.odin:660` | `ui.confirm`: delete a workflow | `m.delete_id` | `workflows_remove` | default |
+| `src/history_view.odin:553` | `install_frame` | `app.install` | `.Launched` | the setup's |
+
+cliche has several owner windows: the history window (`history_view.odin:345`), one editor per picture
+(`editor.odin:437`), the overlays and the pins. A dialog belongs to the window whose build opens it.
+
+### 1.6 opencode native
+
+All dialogs are built in one place, `src/views.odin:44`–`61`, after the page. `App_Context.open: [Dialog]bool`
+(`constants.odin:216`) opens them. `dialog_options` (`settings.odin:668`) gives the sizes. `dialogs_track`
+(`settings.odin:641`) keeps them in the preference `layout.dialogs`, by position in `DIALOGS_SIZED`.
+
+| Site | Holds | Data | Result | Size |
+|---|---|---|---|---|
+| `src/settings.odin:749` | the settings (`prefs_page`, server pages) | `settings_open` (`:713`) | mutates the preferences | `DIALOG_PREFERRED_EM[.Settings]`, resizable |
+| `src/commands.odin:189` | Help, the keys | `cx.open[.Help]` | none | resizable |
+| `src/session_tools.odin:471` `changes_modal` | what a prompt changed, go back | `Changes_State` (a union, `:174`), `changes_open` (`:237`) | posts to the server | resizable |
+| `src/files.odin:476` | the files of the project | `files_open` (`:392`) | mutates, opens a diff | resizable |
+| `src/schedules.odin:219` | the schedules of a session, a form | `schedules_open` (`:87`) | posts to the server | `top = SCHEDULES_TOP` |
+| `src/schedules.odin:606` | the artifacts | `artifacts_open` (`:382`) | none | resizable |
+| `src/diff_full.odin:48` | a whole diff | `diff_full_open` (`:24`) | none | resizable |
+| `src/output_view.odin:411` | the output of a command, one per command (`OUTPUT_PANEL_BASE`) | `cx.outputs.shown`. It moves to a window already (`output_view_body(..., in_window)`). | none | resizable |
+| `src/palette.odin:248` | the program's own palette | `palette_open` (`:55`) | runs a command | resizable, `top = PALETTE_TOP` |
+| `src/sidebar_rows.odin:351` | `ui.confirm`: delete a session | `sidebar.delete_id` (`:336`) | `delete_session` | `width_em = 26` |
+| `src/images.odin:445`, `:474` | the image viewer, or its wait | `image_view_open` (`:352`) | none. A press around the picture closes it. | the size comes from the picture at each frame (`viewer_frame`) |
+| `src/servers.odin:570` | add or edit a server: three fields | `server_edit_open` (`:536`) | mutates `app.servers` | `top = SERVER_DIALOG_TOP` |
+| `src/pair.odin:89` | the pairing code | `pair_open` (`:27`) and a request | none | `width_em = 40` |
+| `src/context_menus.odin:353` | `ui.prompt`: rename a session | `cx.open[.Rename]`, `rename.field` | `rename_commit` | `width_em = 28` |
+| `src/missed_view.odin:128` | "What you missed" | `missed_view_open` (`missed.odin:442`) | marks the notices seen | resizable |
+| `src/diagrams.odin:274` | a diagram | `diagram_view_open` (`:239`) | none | resizable |
+| `src/setup.odin:78` | `install_frame` | `app.install` | `.Launched` | the setup's |
+
+`Picker` (`picker.odin:96`) is a popup anchored to a button, not a dialog. Menus, pickers and tooltips stay popups.
+`overlay_open` (`commands.odin:138`) gathers every open dialog for the keys behind them. The panels and
+`detached.odin` are in section 1.9.
+
+### 1.7 Wren (read-only)
+
+Wren builds its dialogs in the frame of each browser window (`windows.odin`). Each browser window is an owner.
+Wren does not use `gt:host`: it has its own loop (`src/host/loop.odin`) and its own windows.
+
+| Site | Holds | Data | Result | Size |
+|---|---|---|---|---|
+| `src/browser/confirm_shell.odin:88` | `ui.confirm` of the shell (delete a bookmark folder, a download, history) | `app.confirm`, set by `confirm_ask` and the `*_asked` procedures | a `kind` switch on `.Confirmed` | default |
+| `src/browser/fs_shell.odin:134` | a page asks for files | the head of `app.ask_state.queue`, queued by a page (`fs_shell_ask`) | `page.fs_ask_done(req, granted)` | `width_em = 30` |
+| `src/browser/notification_shell.odin:191` | a page asks for notifications | the head of `app.notes.asks` | the page's callback | `width_em = 30` |
+| `src/browser/storage_access_shell.odin:45` | a page asks for storage access | the head of `app.sa_queue` | the page's callback | `width_em = 32` |
+| `src/browser/passkey_choice.odin:164` | choose a passkey | `app.passkey_choice`. It closes when the page ends its request. | the Vault's ticket | resizable, `c.size` |
+| `src/browser/webauthn_shell.odin:103`, `:163`, `:216` | a security key: PIN, account, touch | the WebAuthn request. One question at a time. | the request's answer | resizable |
+| `src/browser/vault_shell.odin:721`, `:1047` | `ui.confirm`: log out, fill an insecure page | `s.logout_ask`, `s.ask_open` | mutates the Vault | default |
+| `src/browser/vault_shell.odin:777` | the Vault's login, unlock, approval | `app.vault` | mutates the Vault | resizable, `s.dialog_size` |
+| `src/browser/vault_shell.odin:997` | set a PIN | `s.pin_dialog`. It closes when the Vault locks. | mutates | resizable, `s.pin_size` |
+| `src/browser/vault_save.odin:270` | the password generator | `s.gen_dialog` | copies the password | resizable, `s.gen_size` |
+| `src/browser/qr_shell.odin:27` | the QR code of the page | `app.qr_url` (`qr_open`, `:15`) | none | `QR_SIDE_EM + 6` |
+| `src/browser/bookmarks_ui.odin:171` | edit a bookmark or a folder | `app.bview`. It closes when the bookmark goes. | mutates | `width_em = 28` |
+
+Most of Wren's dialogs use a local `open := true` and close by their own rule (the queue empty, the Vault locked).
+
+### 1.8 The dialog patterns
+
+| Pattern | What makes it | Examples |
+|---|---|---|
+| **A. Question** | A fixed set of answers. The program acts on one answer, once. | every `ui.confirm`; classeur conflict; Wren permissions, WebAuthn touch |
+| **B. Typed answer** | Fields, then OK. The value is in the program's fields. | every `ui.prompt`; classeur batch rename; cliche size; ocn server, rename; Wren PIN, bookmark |
+| **C. Chooser** | A list and a search. Enter chooses, then the view closes. | palettes; classeur goto; Wren passkey choice, account choice |
+| **D. Viewer** | Shows data. No answer. | QR codes, the sheet, diagnosis, image, diagram, diff, output, artifacts |
+| **E. Long-lived tool** | Its own state, its own keys, actions that act at once, it stays open. | settings (classeur, ocn), inspecteur Properties, setup, ocn Changes, files, schedules, Wren Vault |
+| **F. Queue-driven** | Opened by a request from another thread or a page. Closed when the request ends, whatever the user does. | classeur conflict; Wren fs, notifications, storage access, passkeys, WebAuthn |
+
+### 1.9 Side panes, dock panels and windows of their own
+
+The rule: a pane that the user can hide, resize or move becomes a view with a home of Panel. A part of the window
+that is always there with a fixed size is content (papier's list and view, classeur's folder columns, inspecteur's
+navigation sidebar of `SIDEBAR_EM`, ocn's conversation).
+
+| Program | Site | Holds | Data | Today | Its view |
+|---|---|---|---|---|---|
+| classeur | `src/view.odin:372` | the sidebar (places, folders) | `app.sidebar` (shown), `app.sidebar_px` | a `splitter` at the left, a preference for its width | `"sidebar"`, home Panel left of the frame |
+| classeur | `src/inspector.odin:304` | the inspector of the selected item | `app.inspector`, its `ui.Pane` kept in `inspector.width`; `inspector_ask` | a `pane_split` beside the list that has the keyboard, folded to a strip | `"inspector"`, home Panel right of the frame |
+| cliche | `src/history_view.odin:573` | the preview of the selected capture | `hw.preview_open`, preference `history.preview_width` | a `splitter` at the right of the history window | `"preview"`, home Panel right of the history window's frame |
+| inspecteur | `src/services_view.odin:57` | the details and the journal of the selected service | `app.services.pane`, preference `services.details_height` | a `splitter` under the list of services | `"service"`, home Panel bottom of the dock space `"services"` |
+| inspecteur | `src/journal_window.odin:32` | a service's journal in its own window, one per service | `Journal_Window` (manager, name, its own `Journal_View`) | a `host.Host` with its own title bar, `JOURNAL_WINDOW_SIZE` | `"journal"`, an instance per service, home Panel bottom of the frame, first External |
+| inspecteur | `src/mission_control.odin:119` | the eight Mission Control panels (`Mission_Panel`, `:22`) | `app.mission.dock`, its text saved by `mission_save` | `ui.dock_begin` in the Mission Control section, `windows = true` | `"mission/<panel>"`, home Panel in the dock space `"mission"` |
+| inspecteur | `src/mission_window.odin:28` | a Mission Control panel in its own window | `Mission_Window`; reopened at the next start (`mission.windows`) | a `host.Host` | the External presentation of `"mission/<panel>"` |
+| ocn | `src/views.odin:37` | the sessions' sidebar | `app.sidebar` (`hidden`, `width`) | a `splitter` at the left | `"sidebar"`, home Panel left of the frame |
+| ocn | `src/preview.odin:564` | the dock: Conversation, Preview, Terminals, Stats (`Panel`, `preview.odin:21`) | `app.dock`, `dock_setup` (`:186`), preference `layout.dock` | `ui.dock_begin` around the conversation | the conversation is the frame's content; `"preview"`, `"stats"`, `"terminal"` (an instance per shell, `TERM_PANEL_BASE`) are views, home Panel right |
+| ocn | `src/detached.odin:88` `panel_detach` | a dock panel in its own window | `Detached`: a `host.Host`, `detached_style`, `detached_asks`, the terminal's keys moved by the `input` hook (`:178`) | built after the main window in `main_after_frame` (`main.odin:409`) | the External presentation of each view. The file goes. |
+| ocn | `src/output_view.odin:411` | a command's output, dialog or window | `cx.outputs`, `OUTPUT_PANEL_BASE` | its own `in_window` path | `"output"`, an instance per command, home Dialog |
+| Wren | `src/browser/devtools.odin:554`, `main.odin:1117`–`1129` | the developer tools, docked left, right or bottom of the page | `Window_Own.devtools`, `dev().size` | a `pane_split` beside the page | `"devtools"`, an instance per browser window, home Panel bottom |
+| Wren | `src/browser/devtools_window.odin` | the developer tools in their own window | `Dev_Window` | its own window code on Wren's loop | the External presentation of `"devtools"` |
+
+The developer tools' own dock (`devtools_layout.odin:142`, `devtools_elements.odin:493`) is their content. It stays
+a `ui.dock_begin` inside the view.
+
+Facts that constrain the design:
+
+1. Pattern F opens and closes from the program's state. `view_close` must work at any time.
+2. One view can have several instances at the same time: inspecteur's journal (per service), ocn's terminals and
+   outputs, Wren's developer tools (per browser window), cliche's editor dialogs (per editor).
+3. A view can open another view over it: inspecteur's kill confirmation over Properties.
+4. A view's size can follow its content at each frame (ocn's image viewer).
+5. Panels are not only at the window's edges. Mission Control and inspecteur's Services section have dock spaces of
+   their own, inside the content of one section.
+6. A view can hold a native child window: ocn's Preview (a web view, `under_children`, `preview_move`). It must follow
+   the view to another OS window.
+7. Four places in three programs repeat the same window code: a `host.Host` on the shared renderer, the style copied,
+   the wakes forwarded, the window built after its owner.
+
+---
+
+## 2. The API
+
+The file is `src/ui/views.odin`, in package `ui`. The external window backend is in `src/host/views.odin`.
+
+### 2.1 Types
+
+```odin
+// How a view is shown, from the most attached to the least.
+View_Presentation :: enum u8 { Dialog, Panel, Internal, External }
+
+// An edge of a dock space.
+View_Edge :: enum u8 { Right, Left, Bottom, Top }
+
+// Where a panel goes: a dock space (by name; "" is the owner window's frame) and an edge of it.
+View_Place :: struct { space: string, edge: View_Edge }
+
+// What a view is, given once when it is registered. Sizes are in ems of the owner's style.
+View_Options :: struct {
+	title:          string,            // in the header, the tab and the OS title (a constant: kept)
+	icon:           string,            // a glyph of icon_font before the title ("": none)
+	icon_font:      font.Font_Id,      // 0: the state's icon font
+	home:           View_Presentation, // .Dialog or .Panel: where re-attach brings it (default .Dialog)
+	home_place:     View_Place,        // with home .Panel (default: the frame's right edge)
+	first:          Maybe(View_Presentation),   // the presentation of its first opening, before the user chose (nil: home)
+	width_em:       f32,               // the first size of the dialog and of the windows (0: DIALOG_WIDTH_EM)
+	height_em:      f32,               // 0: as tall as what is in it
+	min_width_em:   f32,
+	min_height_em:  f32,
+	extent_em:      f32,               // a panel's width or height (0: width_em, or height_em at Top and Bottom)
+	resizable:      bool,              // the dialog has grips. The windows and the panels are always resizable.
+	top:            Maybe(f32),        // the dialog's top at this fraction of the window (a palette); nil: centred
+	under_children: bool,              // its external window gets a native child window (host Open_Options)
+	moved:          proc(data: rawptr, win: ^platform.Window),   // it is now built in `win` (a native child follows); nil: none
+}
+
+// The handle a build procedure gets. The program reads it; it does not keep it after the build.
+View :: struct {
+	id, instance:  string,
+	presentation:  View_Presentation,
+	place:         View_Place,        // with .Panel
+	shown:         bool,              // false: this build is unseen (measured, section 3.4). It takes no input.
+	// (private fields: the kind, the data, the machine, the State it is built in, the root key)
+}
+
+// The build procedure. It builds the body only: the header is the toolkit's (section 2.5).
+View_Build :: #type proc(v: ^View, data: rawptr)
+
+// The views of a program: what is registered, what is open, what is remembered, the dock spaces.
+Views :: struct { /* private */ }
+
+Views_Options :: struct {
+	path:    string,         // the memory file, in the program's state folder ("": memory only, for tests)
+	windows: View_Windows,   // what opens an external window (host.view_windows for a host.Host program)
+	labels:  View_Labels,    // the words of the header and the menus (zero: view_default_labels, translated)
+}
+
+// The answer of a view that ended. VIEW_CANCELLED: the user closed the view (Escape, the close button, the scrim),
+// or its owner window went. Other values are the program's (an enum cast to int).
+VIEW_CANCELLED :: -1
+```
+
+`Panel` comes before `Internal` in the enum because it is attached to the owner's layout; `Internal` is only drawn
+over it. The order is not used for logic.
+
+### 2.2 Procedures
+
+**Who owns the Views.** A rule that every program and test must remember ("views_init first") is forgotten everywhere,
+so nothing is called before the first view:
+
+- A zero `Views` works: memory only, the allocator of its first use.
+- Every `ui.State` has one. By default it is the State's own (`State.own_views`), made at its first use and destroyed by
+  `ui.destroy`. `state_views(s)` gives it; `views()` gives the one of the State in use (being built, else last built
+  or selected).
+- A program that keeps the memory in a file, or whose windows share their views (an external window, a view moved
+  between windows: one Views per program is required there), owns one `Views` and gives it to each of its windows'
+  States with `set_views(s, vs)`. `views_init(vs, o)` is then optional: it reads the file. That program calls
+  `views_destroy(vs)` after its last build; `ui.destroy` and `views_destroy` forget each other in either order.
+- The ready-made views take no `Views`: `confirm_open(id, o)`, `palette_open(p)`, `setup.open(d, o)`... use
+  `views()`. The host (step 4) gives its program's Views to each window it opens.
+
+```odin
+state_views   :: proc(s: ^State) -> ^Views            // its own, unless set_views gave one
+views         :: proc() -> ^Views                     // of the State in use
+set_views     :: proc(s: ^State, vs: ^Views)          // the program's, shared by its windows
+views_init    :: proc(vs: ^Views, o: Views_Options)   // optional: reads the memory file (before its first view)
+views_destroy :: proc(vs: ^Views)                     // closes every window, gives no answers, flushes the memory
+
+// Declares a view. Call it once per id at start-up. The data's type is checked at each view_open.
+view_register :: proc(vs: ^Views, id: string, build: proc(v: ^View, data: ^$T), o: View_Options)
+
+// Opens the view (one already open comes forward: a window is raised, a panel's tab shown, a dialog focused). It opens
+// in its last presentation (the memory), else `first`, else its home. `data` must stay valid until the view is
+// closed: the program owns it. The owner is the State being built; `owner` names another one. An answer not taken
+// from a former opening is dropped.
+view_open :: proc(vs: ^Views, id: string, data: ^$T, instance := "", owner: ^State = nil)
+
+// Closes it now, in whatever presentation. Its build is not called again. No answer is kept.
+view_close   :: proc(vs: ^Views, id: string, instance := "")
+view_is_open :: proc(vs: ^Views, id: string, instance := "") -> bool
+
+// Whether it was open when the program last quit (a side pane, a journal window): the program opens it again.
+view_was_open :: proc(vs: ^Views, id: string, instance := "") -> bool
+
+// Moves it to another presentation (what the header buttons do). The choice is remembered.
+view_present  :: proc(vs: ^Views, id: string, p: View_Presentation, place := View_Place{}, instance := "")
+// Back to its home presentation and place. The view stays open.
+view_reattach :: proc(vs: ^Views, id: string, instance := "")
+
+// The answer of a view that ended, taken once: ok is false until it ended, and after it was taken.
+view_ended :: proc(vs: ^Views, id: string, instance := "") -> (code: int, ok: bool)
+
+// Inside a build: closes the view with this answer.
+view_end :: proc(v: ^View, code: int)
+
+// Inside a build: a title for this frame (a process's name). Temporary memory is enough.
+view_title :: proc(v: ^View, title: string)
+
+// Inside a build: the room of the body in this presentation, from the last layout (a viewer sizes its picture by it).
+view_room :: proc(v: ^View) -> Vec2
+
+// Inside a build: `if ui.view_header_tools(v) { ... }` builds controls in the header, after the title.
+@(require_results, deferred_none = view_header_tools_end)
+view_header_tools :: proc(v: ^View) -> bool
+
+// Whether a view shown as a dialog holds the keys of the State being built (inspecteur's free_keys, ocn's overlay_open).
+views_hold_keys :: proc(vs: ^Views) -> bool
+
+// In each owner window's build, around its content: `if ui.views_frame(&app.views) { content }`. It builds the
+// frame's dock space (its panels), the internal windows, then the block is the content's box; the end of the
+// statement builds the dialogs, on top (section 6.1).
+@(require_results, deferred_none = views_frame_end)
+views_frame :: proc(vs: ^Views) -> bool
+
+// A dock space of the program's own, inside its content (Mission Control, Services). With `o.content`, the block is
+// its fixed centre; without it, the space is panels only and the block is empty.
+@(require_results, deferred_none = views_dock_end)
+views_dock :: proc(vs: ^Views, name: string, o: View_Dock_Options) -> bool
+
+View_Dock_Options :: struct { content: bool }
+```
+
+`dialog_body` and `dialog_buttons` stay public. A build procedure uses them for its body and its row of buttons.
+
+The typed procedures are parametric over `$T`. They store `data` as `rawptr` and `typeid_of(T)`. `view_open` asserts
+that `T` is the type that `view_register` got. This catches a wrong pointer on the first run.
+
+### 2.3 How a view gets its data, and the order of builds
+
+All windows of a program are built on one thread, one after the other. The owner's frame comes first. The external
+windows come after it, in the owner's `host_frame`, as ocn's `detached_frames` does today. So a build procedure can
+read and change the program's state through `data` with no lock. The rules:
+
+1. **Data is the program's, by pointer.** It is a field of the app or a heap object. It is not temporary memory:
+   `host_frame` frees the temporary allocator at the end of each window's frame.
+2. **A change made by a view in an external window is seen by its owner at the owner's next build.** The toolkit asks
+   that build at once: after an external window's frame with input or with an answer, it calls `wake_within(owner, 0)`.
+   This replaces ocn's `detached_asks`.
+3. **The build procedure runs with the State of the presentation current.** Dialog, Internal and Panel: the owner's
+   State. External: the window's State. Every `ui` call inside it goes to the right State. `announce` inside it
+   shows the toast in the window where the view is.
+4. **An unseen build takes no input** (`v.shown == false`). Its events are nil and its dt is 0. It only measures the
+   layout. A build procedure acts on signals, and an unseen build has none.
+5. **A view does not keep a pointer to a box.** A view moves between States. Its boxes are found by key in the State
+   of the frame.
+
+### 2.4 How an answer gets to the program
+
+The answer is polled with `view_ended`. It is not a callback.
+
+- A callback runs where the view is built. That is often another window's State. The program's code then calls `ui`
+  procedures on the wrong State. ocn passes `history_window_of(app)` to `app_announce` for this reason.
+- A polled answer is read by the program in its owner's build, with the owner's State current.
+- The answer stays until it is taken, or until the view opens again. It is given once.
+
+A dialog is built at the end of the owner's build, after the owner's code that polls. So the program reads the answer
+at the next build, one frame later than today. The toolkit asks that frame at once (`anim_busy`). Tests wait for the
+answer with a bound (section 7.4).
+
+The type of the answer is an `int`. A program casts its own enum: `ui.view_end(v, int(Conflict.Replace))`. Values
+from 0 up are the program's. `VIEW_CANCELLED` is the toolkit's.
+
+### 2.5 The header, and the chrome rules
+
+The user's rule: the docking machinery must not invade the screens. A view at rest adds nothing to what the program
+draws, except the header that a dialog always had. The rules:
+
+1. **A panel alone in its zone has no tab strip.** A tab strip appears only when two or more views share a zone (a dock
+   leaf). A panel alone adds no strip and no border: its body starts at the zone's top edge. A test checks this
+   (section 7.4, test 17).
+2. **A panel's controls appear only on hover.** While the pointer is over a panel's top area, two small icons show in
+   its top right corner: Detach and Close, in the weak colour. At rest nothing is added. The icons take no room in the
+   layout: they float over the body's corner.
+3. **A right-click menu on a panel's top area** has: Detach into a window, Open as a floating window, Dock left, Dock
+   right, Dock bottom, Close. The same acts are palette commands, made by the toolkit for every registered view:
+   "Detach <title>", "Float <title>", "Dock <title> to the left", "Dock <title> to the right", "Dock <title> to the
+   bottom", "Close <title>". A program adds them to its palette with `views_commands` (step 3).
+4. **Dragging starts from the existing header.** A panel with a title moves by its title. A panel without a title (a
+   sidebar) shows no grip: it detaches by the menu, by the palette or by the hover icons.
+5. **Dialogs keep their look.** The header strip, the title and the close cross stay as `dialog_header` drew them. The
+   only addition is one small Detach icon next to the close cross, in the same weak colour. Dragging the header also
+   detaches the dialog (it becomes Internal, section 2.6).
+
+The toolkit draws the header of a Dialog, of an Internal window and of an External window. The build procedure draws
+only the body. The header is built in two steps: its box is made before the body with empty slots, then the slots are
+filled after it. So `view_title` and `view_header_tools` in the body change this frame's header. The title is never
+cut (today's `dialog_header` rule).
+
+| Presentation | Where the header is | What it holds, in order |
+|---|---|---|
+| Dialog | the strip at the dialog's top (today's `dialog_header`) | icon, title, tools, Detach (small, weak), the close cross in the corner |
+| Internal | the internal window's title strip | icon, title, tools, Re-attach, Detach, Close |
+| External, integrated title | the OS window's title bar (`title_bar`, then `window_buttons` without their close) | icon, title, tools, Re-attach, Close view, minimize, maximize |
+| External, system title | a strip under the system's title bar | icon, title, tools, Re-attach, Close view |
+| Panel | none at rest (rule 1). With two or more views in its zone: the zone's tab strip (icon and title per tab) | on hover of its top area: Detach and Close (rule 2) |
+
+The attachment acts. Each is absent where it does nothing:
+
+| Act | Icon | Does | Absent in |
+|---|---|---|---|
+| Re-attach | `lucide.UNDO_2` | `view_reattach`: back to its home | its home presentation |
+| Detach | `lucide.PICTURE_IN_PICTURE_2` | Internal (from a Dialog or a Panel); External from an Internal window | External |
+| Open in a window | `lucide.EXTERNAL_LINK` | External (the menu and the palette) | External |
+| Dock left, right, bottom | `lucide.PANEL_LEFT`, `PANEL_RIGHT`, `PANEL_BOTTOM` | Panel at that edge of the frame (the menu and the palette) | at that place |
+| Close view | `lucide.X` | ends the view, `VIEW_CANCELLED` | never |
+
+Step 1 builds the Dialog header with its Detach icon inactive (drawn weak, not clickable) until Internal is built in
+step 2.
+
+**The close of an external window is re-attach.** The system's close (the system title bar's close button, Alt+F4,
+the compositor, the taskbar's "Close window") acts on the window, not on the view. It brings the view back to its home,
+open. Close view, in the header, ends the view. The integrated title bar of an external window shows Re-attach and
+Close view, and no third close button. The reasons:
+
+- A system close comes from the window manager. It can come from a gesture made for windows in general (closing all
+  windows of a workspace). It must not lose a question or a tool's state.
+- The two acts have two buttons with two icons and two tooltips ("Back to the main window", "Close"). No button means
+  two things.
+- A Dialog, a Panel and an Internal window have no system close. The rule only adds a way back for the External one.
+
+### 2.6 Dragging
+
+The user drags the header (Dialog, Internal, External), the tab (a Panel in a zone of two or more), or the title of a
+panel alone in its zone (the program's own title, which the view marks with `view_drag_handle`, step 3). A panel
+without a title has no grip (section 2.5, rule 4). The drag starts past `DOCK_DRAG_EM`, as the dock's.
+
+| Dragged | Over what | On release |
+|---|---|---|
+| a Dialog's header | the owner window | it becomes Internal at once, under the pointer (it leaves the scrim) |
+| an Internal window's header | the owner window | it moves |
+| an Internal window's header, a Panel's tab | a dock target (the dock's squares, edges and strips) | Panel at that target |
+| a Panel's tab | the owner window, no target | Internal, under the pointer, as large as the panel was (at most `DOCK_FLOAT_DEFAULT_EM`) |
+| any | outside the owner window | Windows and X11: External, at the pointer's screen position. Wayland: Internal, kept inside the window (no release outside is reported). |
+| an External window's header | the owner window's dock targets | Windows and X11: Panel at that target. Wayland: not possible; the Dock menu does it. |
+| any | Escape during the drag | nothing moves (the dock's rule) |
+
+The drop targets show in the owner window while something is dragged: the frame's edges, the stacks of the frame's
+panels, and the dock spaces built this frame. The content of the frame is not a target for "into", only for its sides.
+
+### 2.7 Ready-made views
+
+`ui.confirm`, `ui.prompt`, the palette, the shortcuts sheet and the setup dialog become views, home Dialog. Their
+procedures register the view the first time and clone what they are given.
+
+```odin
+// All of them are views of views(): the Views of the window being built.
+// A question (pattern A). Its options are cloned: the strings and the lines can be temporary.
+confirm_open   :: proc(id: string, o: Confirm_Options, instance := "")
+confirm_answer :: proc(id: string, instance := "") -> Confirm_Answer   // .None until answered, once
+
+// A typed answer (pattern B). `field` is the program's, valid until the answer: the secret stays in its memory only.
+prompt_open   :: proc(id: string, field: ^Line_Edit, o: Prompt_Options, instance := "")
+prompt_answer :: proc(id: string, instance := "") -> Confirm_Answer
+
+// The palette (pattern C). The program gives its commands when they change, not at each frame.
+palette_open   :: proc(p: ^Command_Palette)
+palette_set    :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool, o: Palette_Options)
+palette_chosen :: proc(p: ^Command_Palette) -> (index: int, mods: platform.Modifiers, ok: bool)
+
+// The sheet of the keys (pattern D).
+shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title := "", version: u64 = 0)
+
+// The setup dialog (pattern E): its events stay setup.update's.
+setup.open :: proc(d: ^setup.Dialog, o: setup.Setup_Options, logo: Maybe(setup.Logo) = nil)
+```
+
+`Confirm_Answer` stays: `.None`, `.Confirmed`, `.Cancelled`. `confirm_answer` maps `VIEW_CANCELLED` to `.Cancelled`.
+
+The palette reads its Up, Down, Page Up and Page Down keys inside its view. Outside a Dialog, the keys reach it only
+while it has the focus (section 3.5).
+
+### 2.8 Names
+
+- `View_Options`, `Views_Options`, `View_Dock_Options`, with the parameter `o`.
+- `views_init` and `views_destroy` for the struct that the program owns.
+- `view_*` for one view, `views_*` for the set.
+- "Presentation": Dialog, Panel, Internal, External. "Internal window" and "external window" in prose.
+- "Home": the presentation that re-attach brings back. "Re-attach": back to home, the view open. "Close": the view
+  ends.
+- "Place": a dock space and an edge. "Dock space": a place where panels dock (the frame, or one of `views_dock`).
+- "Owner": the window that opened a view.
+
+---
+
+## 3. The state machine of a view
+
+### 3.1 The states
+
+One machine per instance (id and instance). It is a pure value: `view_step(m, event) -> (View_Machine, View_Effects)`.
+The toolkit's builds and windows apply the effects. The tests drive the machine with no State and no window.
+
+```odin
+View_State :: enum u8 { Closed, Opening, Shown, Moving, Dragged }
+
+View_Machine :: struct {
+	state:      View_State,
+	as:         View_Presentation,   // Opening, Shown, Dragged: where it is. Moving: where it goes.
+	from:       View_Presentation,   // Moving: where it still shows. Dragged: where a cancel puts it back.
+	place:      View_Place,          // with .Panel
+	home:       View_Presentation,   // View_Options.home: what Reattach goes back to
+	home_place: View_Place,
+	answer:     Maybe(int),          // Closed: an answer not taken yet
+}
+
+View_Event :: struct { kind: View_Event_Kind, as: View_Presentation, place: View_Place, code: int }
+View_Effects :: bit_set[View_Effect]
+view_step :: proc(m: View_Machine, e: View_Event) -> (View_Machine, View_Effects)
+```
+
+The machine does not hold the steps of the first-frame rule (`Modal_Show`, section 3.4): each presentation's builder
+measures its own layout and sends `Settled`. `Open` carries the presentation to open in: the caller resolves the
+memory, `first` and the home, so `view_step` reads nothing but its arguments. An event that a state does not take
+returns the machine unchanged and no effect.
+
+- **Closed**: not built. It can hold an answer that the program did not take.
+- **Opening**: built unseen in its presentation until its layout settles. Nothing of it is drawn.
+- **Shown**: built and drawn in one presentation.
+- **Moving**: it shows in `from`, and it is built unseen in `as`. When `as` settles, `from` goes in the frame where `as`
+  shows. The user never sees a frame with the view in neither place, or in both.
+- **Dragged**: its header or its tab is held past the threshold. It is drawn as an Internal window under the pointer
+  (a Panel's tab, a Dialog), or it is an External window that the system moves.
+
+### 3.2 The events and the transitions
+
+| From | Event | To | Effects |
+|---|---|---|---|
+| Closed | `Open` (program) | Opening (memory, else `first`, else home) | answer dropped; the focus kept to give back; External: open the window, hidden |
+| Opening | `Settled` (two layouts agree, or six builds) | Shown | Dialog: fade in. External: draw, then show. Internal, Panel: show. The focus goes to the view. |
+| any but Closed | `Open` again | the same state | raise the window, show the panel's tab, bring the internal window to the front, or focus the dialog |
+| Shown | `Present(q, place)` (a button, the Dock menu, `view_present`) | Moving (`from` = current, `as` = q) | remember q; External: open the window, hidden |
+| Shown (not home) | `Reattach` (the button, `view_reattach`, External's system close) | Moving (`as` = home, `place` = home place) | remember home |
+| Moving | `Settled` | Shown (`as`) | the old presentation goes; the focus moves (section 3.5); box state carried (section 4.4); `moved` called |
+| Moving | `Present(r)` or `Reattach` | Moving (`as` = r, or home) | the unfinished target is dropped |
+| Shown | `Drag_Start` (header or tab past `DOCK_DRAG_EM`) | Dragged (`as` = Internal, or External for an external window) | a Dialog leaves its scrim; it holds no keys any more |
+| Dragged | `Drop(target)` (section 2.6) | Shown (Panel at the target, or Internal where it is) | remember the presentation and the place, at once (same State: no unseen build) |
+| Dragged | `Drop_Outside(at)` (Windows, X11) | Moving (`as` = External at `at`) | open the window at `at`, hidden |
+| Dragged | `Drag_Cancel` (Escape) | Shown (where it was) | nothing remembered |
+| Opening, Shown, Moving, Dragged | `End(code)` (`view_end`) | Closed, answer = code | windows closed; focus given back in the owner |
+| Opening, Shown, Moving, Dragged | `User_Close` (Close view, Escape, the scrim, Ctrl+W) | Closed, answer = `VIEW_CANCELLED` | as `End` |
+| Opening, Shown, Moving, Dragged | `Program_Close` (`view_close`) | Closed, no answer | as `End`, with no answer |
+| Opening (External), Moving (to External) | `Window_Refused` (no surface) | Opening (Internal), or Shown (`from`) | announce "No window: the renderer refused it"; the memory is not changed |
+| any but Closed | `Owner_Gone` (its owner window closed) | Closed, answer = `VIEW_CANCELLED` | its windows closed |
+| any | `Quit` (`views_destroy`) | Closed, no answer | windows closed; `open` and the presentation remembered (section 3.6) |
+
+Each row is a table test (section 7.4). Rules that the table makes explicit:
+
+- The remembered presentation changes on `Present`, `Reattach` and `Drop`. A close of any kind does not change it.
+- The system's close of an external window is `Reattach`, never `User_Close` (section 2.5).
+- A move inside one State (Dialog, Internal, Panel, from one to another by a drag) is done in the frame of the drop,
+  with no unseen build: the pointer drives it, and a settle lags behind the pointer. A move by a button, or to another
+  State, has the unseen builds of Moving.
+- A program that closes a view gets no answer. It knows why it closed it.
+- A view whose build calls `view_end` is not built again, in this frame or after it.
+- A Panel whose dock space is not built in a frame (inspecteur's Services section while another section shows) is not
+  built in that frame. It stays Shown and keeps its state.
+
+### 3.3 Views that open views
+
+A view opened inside a view's build has the State of that build as owner. So the kill confirmation opened from
+Properties in an external window is a dialog of that window. Opened from Properties in a panel or an internal window,
+it is a dialog of the main window. When an external window closes for good (`Owner_Gone`), the views it owns end with
+`VIEW_CANCELLED`. When it re-attaches, its views move with it: their owner is the view, and the State follows it.
+
+### 3.4 Animations and the first frame (no flash)
+
+The rule of `Modal_Show` applies to every presentation. Nothing shows until its layout is the same two frames in a
+row, or after six builds (`MODAL_MEASURES_MAX`). Each unseen build comes at once (`anim_busy`).
+
+| Presentation | Unseen builds | The first frame shown |
+|---|---|---|
+| Dialog | today's `Measuring`, `Ready`, `Showing`, `Shown`, with `modal_layout_signature` | the scrim and the panel fade in together, `MODAL_FADE_MS` (120 ms), at once with the animations off. What had the focus loses it on that frame. |
+| Internal | built in its floating frame at its place, `transparency = 1` | it shows at once, above the content |
+| External | built in the window's State, offscreen: the window is open but not shown. With no remembered size, the window takes the content's natural size (`natural_width`, `modal_content_height`), clamped to the work area. | the first picture is drawn at the settled size, then the window is shown (`host_show`) |
+| Panel | built in a floating box of the dock area's size, unseen, in the owner's State | the dock area is inserted and the panel shows in the same frame |
+| Moving | built unseen in the new presentation while the old one shows | the old one goes and the new one shows in one frame |
+| a drag inside one State | none | the drop's frame |
+
+No presentation has a fade out. A view closes at once.
+
+### 3.5 Focus and keyboard
+
+| Case | Dialog | Internal | External | Panel |
+|---|---|---|---|---|
+| It opens or moves here | its first Tab stop, on the first frame shown | its first stop; it comes to the front | the window is activated (Wayland: `raise_window_token` with the owner's last input token); its first stop | its first stop; its tab shown |
+| It closes | the focus goes back to what had it in the owner, unless something else took it since (`modals_settle`) | the same | the owner window is activated, then the same | the same |
+| Escape not taken inside | closes the view | closes the view | closes the view | the focus goes back to the content; the panel stays |
+| Ctrl+W | closes the view | closes the view | closes the view | closes the view |
+| Tab | round the dialog's stops | round the internal window's stops | round the window's stops | through the content and the panels in tree order |
+| F6, Shift+F6 | none | to the next or previous area | none | to the next or previous area: the content, each dock area, each internal window |
+| The owner's keys | held (`keys_held_by_dialog`) | not held | not held (another window) | not held |
+| Its own keys | all of its State's while on top | only while the focus is inside it | its window's | only while the focus is inside it |
+
+Only the Dialog presentation is modal. An internal window, an external window and a panel never block the owner
+window, even for a question. The program checks its data when it takes an answer (section 8.1).
+
+When the focus moves with a view (Moving), the focused box's key is carried over: the view's root key is the same in
+every State (section 4.4).
+
+`views_hold_keys` answers what programs compute today from their own booleans: inspecteur's `free_keys`
+(`view.odin:47`), ocn's `overlay_open` (`commands.odin:138`). These booleans go.
+
+### 3.6 What is remembered, and where
+
+In a `gt:store` file in the program's state folder. The program gives the path in `Views_Options.path`, beside its
+other stores (as ocn's `stores.odin:37`). One line per view id, and one per dock space:
+
+```
+props	v1 as=external open=0 dialog=58.0x40.0 internal=120,80,700,480 window=1180x760 at=212,96,0
+sidebar	v1 as=panel open=1 dock=:left:18.0
+#mission	v1 dock1 x0.500([*mission/machine] [mission/cpu]) ...
+```
+
+| Field | What | Written when |
+|---|---|---|
+| `as` | the last presentation | `Present`, `Reattach`, `Drop` |
+| `open` | it was open when the program quit (`view_was_open`) | `Quit` |
+| `dialog` | the dialog's size in ems (today's `Modal_Options.size`) | its grip is let go |
+| `internal` | the internal window's rect, logical pixels from its owner's top left | it is let go after a move or a resize |
+| `window` | the external window's size, logical pixels | it closes or re-attaches, or its border is let go |
+| `at` | the external window's place (`platform.Placement`: left, top, maximized) | as `window`. Windows and X11 only. |
+| `dock` | the place (space, edge) and the extent in ems | a drop, `Present`, its handle let go |
+| `#<space>` | the dock space's layout (`dock_format`, the views named `id` or `id/instance`) | the dock's `on_save` |
+
+- An absent field means the default of `View_Options`.
+- Instances use their id's line. A second external window of one id is placed by the system, not over the first.
+  An instance in a dock space's layout is named `id/instance` (ocn's terminals, inspecteur's journals).
+- An internal rect is clamped into the owner window when it is used: the window can be smaller.
+- A line that does not parse is ignored. Its id gets the defaults.
+- This file replaces ocn's `layout.dialogs` and `layout.dock`, inspecteur's `mission.windows` and Mission layout,
+  classeur's `inspector.width` and sidebar width, cliche's `history.preview_width`, inspecteur's
+  `services.details_height`, and the `size` fields of every dialog.
+
+The store writes on its own thread (`tk_store`), after the changes rest. No disk call runs on the interface thread
+after `views_init`.
+
+### 3.7 Tested without a window
+
+- The machine: `view_step` table tests, one per row of section 3.2. No State, no window.
+- The memory: `views_format` and `views_parse` round trips, refused texts, a store in memory (`path = ""`).
+- The builds: `testkit/session` with a headless host (`Open_Options.headless`). Internal windows and panels are built
+  in the owner's State. The External presentation uses a backend for tests: it opens offscreen windows
+  (`open_window_offscreen`) with their own State. A flag of this backend says "no drop outside" to test Wayland's rule.
+
+---
+
+## 4. External windows
+
+### 4.1 One backend for every program
+
+`ui` cannot open a window: it does not know the renderer's surfaces or the host's loop. The `Views` get a backend:
+
+```odin
+// What opens and closes an external window. host.view_windows gives it for a host.Host program.
+View_Windows :: struct {
+	open:  proc(user: rawptr, o: View_Window_Ask) -> (state: ^State, win: ^platform.Window, handle: rawptr),  // hidden; nil: refused
+	show:  proc(user: rawptr, handle: rawptr),
+	close: proc(user: rawptr, handle: rawptr),
+	drop_outside: bool,   // the system reports a drag's release outside a window (false on Wayland)
+	user:  rawptr,
+}
+View_Window_Ask :: struct { title: string, size: [2]int, at: Maybe(platform.Placement), owner: ^platform.Window, integrated_title, under_children: bool }
+```
+
+`src/host/views.odin` implements it:
+
+- `host.view_windows(sh: ^Shared) -> ui.View_Windows`.
+- Each external window is a `host.Host` on the program's `Shared`, as ocn's `Detached` is. It has its own `ui.State` and
+  its own `render.Surface`.
+- Its `build` calls `ui.view_window_build(vs, v)`: the title bar, the body, and the dialogs whose owner is this window.
+- Its frames come after its owner's frame, inside the owner's `host_frame`. `hosts_due` and `hosts_wait` count the
+  external windows of the hosts they get. The program's loop does not change.
+- Its `still` hook is ocn's `detached_still`. Its `params` hook copies the owner's style (section 4.3).
+- Its `close_asked` hook sends `Reattach` (section 2.5).
+
+Wren has its own loop. It implements `View_Windows` with its own windows. This is the only part of the views that
+Wren writes for itself.
+
+ocn's `detached.odin`, inspecteur's `journal_window.odin` and `mission_window.odin`, and Wren's
+`devtools_window.odin` go. Their panels are views, and their windows are this backend's.
+
+### 4.2 Platform limits
+
+| What | Windows | X11 | Wayland |
+|---|---|---|---|
+| Place a window | `set_placement`: kept and given back | `move_window`, `set_placement`: kept and given back | Not possible. The compositor places it. `at` is not written. |
+| A drag released outside the owner | known (the pointer is captured) | known (the pointer is grabbed) | not reported: a drag out stays an Internal window |
+| An external window dragged onto the owner's targets | the toolkit reads the pointer during the system's move (`WM_MOVING`) | the toolkit moves the window itself and reads the pointer | not possible: the Dock menu does it |
+| Parent hint | owner window (`GWLP_HWNDPARENT`) | `WM_TRANSIENT_FOR` | `xdg_toplevel.set_parent` (in `wl_protocol_linux.odin:305`) |
+| Least size | `WM_GETMINMAXINFO` | `WM_NORMAL_HINTS` | `xdg_toplevel.set_min_size` |
+| Activation | `SetForegroundWindow` with the input rules | `_NET_ACTIVE_WINDOW` | `xdg-activation-v1` with the owner's last input token |
+
+New platform procedures:
+
+```odin
+set_window_owner :: proc(w, owner: ^Window)          // the parent hint of each system
+set_min_size     :: proc(w: ^Window, size: [2]int)   // logical pixels
+pointer_screen   :: proc(w: ^Window) -> (pos: [2]int, ok: bool)   // during a drag; ok false on Wayland
+```
+
+No external window is modal, so xdg-dialog-v1 is not needed.
+
+### 4.3 Scale, theme and style per window
+
+- **Scale**: each window has its own `dpi_scale` (its monitor's), in its `Build_Params`. The sizes in ems follow it.
+- **Theme**: one `ui.Theme` for the program (`Shared.theme`). Each window gets `platform.set_dark_title` from it.
+- **Style**: zoom, density, rounding, scrollbars, feel, animations, smooth scroll, fonts and families come from the
+  owner's State at each frame. This is ocn's `detached_style` (`detached.odin:48`), moved into the toolkit as
+  `ui.style_follow(dst, src: ^State)`. inspecteur's `window_params` does the same work; it goes too.
+- **Inactive**: an external window that is not the active window is built with `Build_Params.inactive`.
+
+### 4.4 What moves with a view
+
+The program's data does not move: the view holds a pointer.
+
+The State's box state moves: scroll offsets, animations, the focused key. The view's root key is the same in every
+State and in every presentation: `key_from_string(0, "###view_<id>/<instance>")`, not derived from its parent's key.
+So each box under it has the same key everywhere. A move inside one State keeps all of it. A move to another State
+copies the persistent fields of these boxes, and the focus if it was inside (`state_move_subtree(from, to, root)`).
+
+A native child window (ocn's Preview) follows by `View_Options.moved`: the toolkit calls it with the new OS window
+after each move to another State. ocn's `preview_move` becomes this procedure.
+
+ocn's terminals read their keys through the host's `input` hook (`detached.odin:178`: `s.only`, `s.focused`). As a
+view, a terminal's build reads the events of the State it is built in. The program's keyboard owner (`terms.focused`)
+is the terminal whose view has the focus.
+
+---
+
+## 5. Internal windows
+
+- An internal window is a floating frame of the owner's dock space: the dock's floating panel (`dock_float`), with
+  the view's header as its title strip. Its frame, shadow, corner grip and minimum (`DOCK_FLOAT_MIN_EM`) are the
+  dock's.
+- It moves by its header. It resizes by its edges and its corners. It stays inside the owner window; a smaller window
+  moves it in, and the remembered rect is not changed.
+- Several internal windows float at once. A press on one brings it to the front. The order is kept in the dock's
+  `floats` (the topmost last).
+- Layers, from the bottom: the content, the panels, the internal windows, the dialogs, the menus and popups, the
+  toasts.
+- It is not modal: no scrim, the content stays usable. Its keys follow the panel's rule (section 6.5).
+- It is drawn by the toolkit inside the owner window, so it works the same on every system.
+- A double click on its header docks it at its last panel place, else its home place (the dock's rule for floating
+  panels).
+
+---
+
+## 6. Panels and dock spaces
+
+### 6.1 The frame provides the dock areas
+
+Programs do not add a dock to their layout. `views_frame` makes the owner window's dock space:
+
+```odin
+build :: proc(h: ^host.Host, size: host.Vec2) {
+	app := (^App)(h.user)
+	if ui.views_frame(&app.views) {
+		// the program's content, as today: its title bar, its body, its status bar
+	}
+	// (views_frame_end: the dialogs, over everything)
+}
+```
+
+`views_frame` does this, in order:
+
+1. It lays out the frame's `Dock` (`dock_model.odin`, one per owner State, kept in `Views`). The content is a fixed
+   leaf, `VIEW_CONTENT_PANEL`: no tab strip, not closable, not movable, always the main tree's centre.
+2. It makes the content's box, empty, at the content leaf's rect.
+3. It builds the panels and the internal windows. Their boxes come after the content's box in the tree, so they draw
+   over it and win its hit tests. Their code runs before the content's code, so they read keys first (section 6.5).
+4. It returns true with the content's box as the parent. The program builds its content there.
+5. `views_frame_end` builds the dock's drop targets and its menu (`dock_end`). The dialogs are not its: since step 1,
+   `end_build` builds the views of the State that show as dialogs, over everything the program built. A program that
+   forgets `views_frame` still gets its dialogs.
+
+The window's title bar stays the program's, inside the content. A panel at the top goes under it. A window with no
+panel and no internal window has a dock with one leaf: it costs one box.
+
+### 6.2 Dock spaces of the program
+
+`views_dock(vs, name, o)` is the same machinery inside the content: Mission Control's space (`"mission"`, panels only),
+inspecteur's Services section (`"services"`, with the list of services as its content). A view whose home place
+names a space docks there. A space that is not built in a frame does not build its panels (section 3.2).
+
+A view docked in a space can be dragged to another space or to the frame's edges. Its home place does not change:
+re-attach is not shown for a Panel, and the Dock menu brings it back.
+
+### 6.3 Sizes
+
+- A panel's extent comes from the memory, else `extent_em`.
+- The handle between a panel and the content is the dock's `pane_split` handle. The content keeps `DOCK_MIN_EM` at
+  least. A double click folds the panel to a strip (the dock's fold).
+- The extent and the layout are written when the handle is let go (`Dock_Result.finished`).
+- A window too small for the panels and the content folds the panels, the last one opened first. The memory is not
+  changed by this.
+
+### 6.4 Several panels
+
+- Views at different places: each has its area. A view alone in its area has no tab strip and no border (section 2.5,
+  rule 1).
+- Views at the same place: tabs of one stack (a dock leaf). The tab strip appears with the second view. The tab shown is
+  the last one opened or activated.
+- A space's layout is the dock's: stacks, splits, folds. A view dropped at a stack's side splits it (`DOCK_DROP_SHARE`).
+
+### 6.5 A panel's keys share the main window
+
+Panels and internal windows are not modal. Their keys and the content's keys come from one event list.
+
+1. **They are built before the content.** So their code reads keys first.
+2. **They take keys only while the focus is inside them.** Inside their build, `key_press`, `key_take` and
+   `command_pressed` return nothing unless the focused box (of the last build) is under the view's root.
+3. **A key that they do not take goes on to the content.** Ctrl+K opens the palette from a focused panel if the
+   panel's code does not read Ctrl+K.
+4. **Escape that a panel does not take gives the focus back to the content** (section 3.5).
+
+A panel sees the program's state as the last frame left it: the content of this frame is built after it.
+
+---
+
+## 7. Migration and order of work
+
+### 7.1 Dialogs: the old forms and the new forms
+
+**A question (pattern A).** classeur `src/dialogs.odin:69`.
+
+Old:
+
+```odin
+confirm_delete :: proc(app: ^App, paths: []string, ...) { ...; c.open = true }
+
+confirm_build :: proc(app: ^App, em: f32) {           // each frame, after the page
+	c := &app.confirm
+	if ui.confirm("confirm_delete", &c.open, {title = title, note = note, lines = names, act = act}) == .Confirmed {
+		job_add(app, .Delete, c.paths[:])
+	}
+}
+```
+
+New:
+
+```odin
+confirm_delete :: proc(app: ^App, paths: []string, ...) {
+	...   // the paths kept in app.confirm, as today
+	ui.confirm_open("confirm_delete", {title = title, note = note, lines = names, act = act})
+}
+
+dialogs_answers :: proc(app: ^App) {                  // each frame, anywhere in the owner's build
+	if ui.confirm_answer("confirm_delete") == .Confirmed { job_add(app, .Delete, app.confirm.paths[:]) }
+}
+```
+
+The title and the note are made once, when the question opens.
+
+**A question with the program's own answers (pattern A, F).** classeur `src/dialogs.odin:102`, the conflict. (The
+examples below use the program's shared Views, `app.views`, given to its windows with `set_views`; a program of one
+window can use `ui.views()` instead.)
+
+```odin
+ui.view_register(&app.views, "conflict", conflict_view, {title = i18n.later("A name is taken"), icon = lucide.FILES, width_em = CONFLICT_WIDTH_EM})
+
+conflict_view :: proc(v: ^ui.View, c: ^Conflict_View) {
+	ui.view_title(v, fmt.tprintf(i18n.tr("%s is already in %s"), ...))
+	if ui.dialog_body("body") { ... }
+	if ui.dialog_buttons("buttons") {
+		if ui.button("skip", i18n.tr("Skip")).clicked { ui.view_end(v, int(Conflict.Skip)) }
+		...
+	}
+}
+
+// each frame: the job asks, or it does not (pattern F: the program opens and closes it)
+if job := job_asking(app); job != nil && !ui.view_is_open(&app.views, "conflict") {
+	app.conflict.job = job
+	ui.view_open(&app.views, "conflict", &app.conflict)
+} else if job == nil {
+	ui.view_close(&app.views, "conflict")
+}
+if code, ok := ui.view_ended(&app.views, "conflict"); ok {
+	job_answer(app.conflict.job, code == ui.VIEW_CANCELLED ? .Cancel : Conflict(code))
+}
+```
+
+**A typed answer (pattern B).** cliche `src/editor.odin:2133`, the size of the picture.
+
+```odin
+ui.view_register(&app.views, "editor_size", editor_size_view, {title = i18n.later("Resize the picture"), icon = lucide.SCALING, width_em = 24})
+
+editor_size_dialog_open :: proc(ed: ^Editor, margins: bool) {
+	ed.size_dialog = {margins = margins, ...}   // filled as today
+	ui.view_open(&ed.app.views, "editor_size", &ed.size_dialog, instance = ed.name)   // the editor's window is the owner
+}
+
+editor_size_view :: proc(v: ^ui.View, d: ^Size_Dialog) {
+	if d.margins { ui.view_title(v, i18n.tr("Add margins to the picture")) }
+	if ui.dialog_body("size_body") { ... }   // the fields, as today
+	if ui.dialog_buttons("size_buttons") {
+		if ui.button("size_apply", i18n.tr("Apply"), o = {intent = .Primary}).clicked || ui.key_press(.Return) { ui.view_end(v, 0) }
+	}
+}
+
+// in the editor's build
+if code, ok := ui.view_ended(&app.views, "editor_size", ed.name); ok && code != ui.VIEW_CANCELLED { editor_size_apply(ed) }
+```
+
+**A chooser (pattern C).** papier `src/actions.odin:213`.
+
+```odin
+ui.palette_set(&app.palette, t.commands, disabled, {version = t.version})   // when the table or `disabled` changes
+if i, _, ok := ui.palette_chosen(&app.palette); ok { action_run(app, Action(i)) }
+// Ctrl+K: ui.palette_open(&app.palette)
+```
+
+**A viewer (pattern D).** papier `src/qr.odin:51`.
+
+```odin
+ui.view_register(&app.views, "qr", qr_view, {title = i18n.later("QR code"), icon = lucide.QR_CODE})
+
+qr_view :: proc(v: ^ui.View, q: ^Qr) {
+	room := ui.view_room(v)   // the room of this presentation, not app.room: a panel or a window is not the main window
+	side := clamp(min(room.x, room.y) * 0.6, ...)
+	...
+}
+```
+
+**A long-lived tool (pattern E).** inspecteur `src/props_view.odin:21`.
+
+- `props_build` becomes `props_view :: proc(v: ^ui.View, pp: ^Props)`.
+- The guard `if !app.menu.confirm.open && !app.affinity.open && !ui.menu_any_open() { props_keys(app) }` goes. Its
+  keys reach it while it has the focus, in every presentation.
+- `pp.size` goes. `free_keys` in `view.odin:47` goes; `ui.views_hold_keys` answers it.
+
+**Wren's request prompts (pattern F).** `fs_shell.odin:134`: the head of the queue opens the view with the request as
+data, `instance` = the browser window's id. When the page ends its request, the shell calls `view_close`. The answer
+goes to the page when the shell takes it (`view_ended`).
+
+**opencode native's dialogs.** `Dialog`, `App_Context.open`, `DIALOGS_SIZED`, `DIALOG_PREFERRED_EM`,
+`DIALOG_MIN_EM`, `dialog_options` and `dialogs_track` go. Each dialog of `views.odin:44`–`61` is a `view_register` at
+start-up, with its sizes in its `View_Options`. `overlay_open` is `ui.views_hold_keys` and the menus' state. The
+debug assertion of `views.odin:64` goes: a view cannot be built without being open.
+
+### 7.2 Panes and windows: the old forms and the new forms
+
+**A side pane.** classeur `src/view.odin:372`, the sidebar.
+
+Old:
+
+```odin
+if app.sidebar {
+	ui.next({width = ui.px(app.sidebar_px * scale), height = ui.fill()})
+	sidebar_build(app, em)
+	ui.splitter("###side_split", .X, &app.sidebar_px, SIDEBAR_MIN_PX, SIDEBAR_MAX_PX, {...})
+}
+```
+
+New:
+
+```odin
+ui.view_register(&app.views, "sidebar", sidebar_view, {title = i18n.later("Places"), icon = lucide.FOLDER_TREE,
+	home = .Panel, home_place = {edge = .Left}, extent_em = 16, min_width_em = SIDEBAR_MIN_EM})
+if ui.view_was_open(&app.views, "sidebar") { ui.view_open(&app.views, "sidebar", app) }   // at start-up
+// the command "Show the sidebar": open it, or close it
+```
+
+`app.sidebar`, `app.sidebar_px` and their preferences go. The inspector (`inspector.odin:304`) is the same, at the
+right: its `ui.Pane` and `inspector.width` go, and it reads the current tab's selection through its data.
+
+**A program's dock.** ocn `src/preview.odin:564`.
+
+- The conversation is the frame's content. `Panel`, `dock_setup`, `DOCK_DEFAULT`, `layout.dock`, `panel_title`,
+  `panel_closable` and `dock_save` go.
+- `"preview"`, `"stats"` and `"terminal"` (an instance per shell) are views, home Panel at the frame's right. Their
+  first default layout is their home places; the memory's `#` line keeps what the user made.
+- The strip's look (`strip_look`, `panel_tab`) becomes the build's `view_header_tools` and the theme's.
+- `detached.odin` goes: "Open in a window" is the External presentation. `output_view.odin`'s `in_window` path goes.
+- `preview_move` becomes the Preview's `moved` procedure.
+
+**A dock space inside a section.** inspecteur `src/mission_control.odin:119`.
+
+```odin
+for p in Mission_Panel {
+	ui.view_register(&app.views, mission_view_id(p), mission_view, {title = MISSION_TITLES[p], home = .Panel, home_place = {space = "mission"}})
+}
+// in build_mission, in place of dock_begin ... dock_end
+if ui.views_dock(&app.views, "mission", {}) {}
+```
+
+`mission_window.odin` and `mission.windows` go. The Mission layout's text goes into the views' memory. The services'
+details pane (`services_view.odin:57`) is `"service"` in the space `"services"`, with the list as its content.
+
+**A window of its own.** inspecteur `src/journal_window.odin`.
+
+- `Journal_Window` keeps its `Journal_View`, its manager and its name. It loses its `host.Host` and its title bar code.
+- `journal_window_open` becomes `ui.view_open(&app.views, "journal", w, instance = name)`, with
+  `home = .Panel, home_place = {edge = .Bottom}, first = .External`.
+- Its system close re-attaches it at the bottom of the main window, as tabs per service.
+
+**Wren's developer tools.** `"devtools"`, an instance per browser window, home Panel at the bottom. The
+`pane_split` of `devtools.odin:554` and the docking code of `main.odin:1117`–`1129` go; the left, right and bottom
+choices are the frame's edges. `devtools_window.odin` goes: External is Wren's `View_Windows`.
+
+### 7.3 Order of work
+
+Each step ships as a toolkit version, and each step leaves every program working.
+
+1. **Toolkit, model and Dialog** (written): `View_Machine`, `view_step` with the whole table, the memory, `Views`,
+   `view_register`, `view_open`, `view_close`, `view_ended`, `view_present`, `view_reattach`. Views are built in
+   `views_frame_end` through the private modal code (the no-flash rule kept). `confirm`, `prompt`, the palette, the
+   sheet, `setup` and `prefs_page.install` are views. `ui.modal`, `Modal_Options`, `dialog_header`, `modal_corner` and
+   `Dialog_Header_Options` are private. Panel, Internal and External are states of the machine; their builders are
+   stubs that build the view as a Dialog. `examples/showcase` and `examples/fidget` moved. Tests of section 7.4, items
+   1, 4, 5 (Dialog), 6 and 7 (Dialog).
+2. **Toolkit, Internal**: the internal window's builder, the Detach icon of the dialog active, the drag of a
+   dialog's header, the right-click menu.
+3. **Toolkit, Panel**: `views_frame` with its dock, `views_dock`, the content leaf, the key rule, F6, the hover icons,
+   the palette's commands (`views_commands`), `view_drag_handle`, the drags inside a window. `examples/docking` and
+   `examples/panes` move to views.
+4. **Toolkit, External**: `View_Windows`, `host.view_windows`, the hosts loop, `ui.style_follow`,
+   `state_move_subtree`, `moved`, the drags out and in (Windows, X11), `platform.set_window_owner`,
+   `platform.set_min_size`, `platform.pointer_screen`.
+5. **papier**: three dialogs. The smallest program checks the API.
+6. **classeur**: its dialogs, its sidebar and its inspector.
+7. **cliche**: several owners (editors, history), instances, the preview pane.
+8. **inspecteur**: nested views, Mission Control's space, the Services space, the journal.
+9. **opencode native**: its dialogs, its sidebar, its dock, `detached.odin`.
+10. **Wren**: its dialogs, its developer tools, its own `View_Windows`.
+
+Each program changes in one release: all its dialogs and panes move together.
+
+### 7.4 Tests to write
+
+In `tests/views` (the toolkit). Each test that builds runs with `ODIN_TEST_THREADS=1`.
+
+1. **The machine**: one table test per row of section 3.2.
+2. **One build, four presentations**: the same build procedure in each. Its body's boxes exist, its title is in the
+   header, the attachment buttons are those of section 2.5.
+3. **Re-attach**: from Internal and from External, back to the home presentation and place, the view open, no
+   answer. The system's close of an external window does the same. Close view ends it with `VIEW_CANCELLED`.
+4. **The answer**: `confirm_open`, a click on the act, then `confirm_answer` is `.Confirmed` once and `.None` after it,
+   in each presentation. The test waits for the answer with a bound of frames.
+5. **The answer of a close**: Escape (Dialog, Internal, External), Ctrl+W, the owner window closed. Each gives
+   `VIEW_CANCELLED` once. `view_close` gives none. Escape in a panel gives the focus to the content and no answer.
+6. **The memory**: the presentation, the sizes, the internal rect, the dock place and `open` survive a quit and a start.
+   Format and parse round trip. A line that does not parse is ignored.
+7. **No flash**: a view whose layout moves for three builds. No frame draws it before it settles. The first frame drawn
+   has the final rects. Dialog: the fade starts there. External: the window is not shown before its first picture.
+   Panel: the dock area and the panel come in the same frame.
+8. **Moving**: Dialog → Internal → Panel → External → Dialog by buttons. In each frame the view is drawn in exactly one
+   place. A scroll offset and the focused field survive each move.
+9. **Drags**: a dialog's header dragged becomes Internal under the pointer; dropped on an edge target it is a Panel; a
+   panel's tab dragged to no target becomes Internal; released outside the window it is External (backend with
+   `drop_outside`), or stays Internal (backend without it); Escape during the drag moves nothing.
+10. **Internal windows**: two float; a press brings the one under it to the front; neither blocks the content; a
+    smaller owner window moves them in without changing the memory.
+11. **Keys of a panel and of an internal window**: with the focus in its field, the field takes the letters and the
+    content's shortcut still works. With the focus in the content, the view's code gets no key.
+12. **Cross-window state**: a view in an external window changes the program's data on a click. The owner's next build
+    sees it, and that build comes at once.
+13. **Nested**: a confirmation opened from a view in an external window is a dialog of that window. The window's
+    re-attach brings both to the main window.
+14. **Instances**: two instances of one id in two places. Each has its own answer. They share the memory; in a dock
+    space's layout each has its own name.
+15. **Dock spaces**: a view homed in a space that is not built is not built, and keeps its state when the space comes
+    back.
+16. **A window refused**: the backend returns nil. The view opens as Internal, the memory is not changed.
+17. **No chrome at rest**: a panel alone in its zone adds no tab strip and no extra border: its body's first box starts
+    at the zone's top edge, and no box of the dock is drawn between them. Its hover icons show only while the pointer
+    is over its top area. A dialog's header has the title, the Detach icon and the close cross, and nothing else.
+
+Each program adds tests for its own views: the answer acts (classeur deletes, inspecteur kills), the pattern F views
+close when their request ends, the side panes reopen at start.
+
+---
+
+## 8. Risks and open questions
+
+### 8.1 Risks
+
+- **One frame of latency for answers.** A dialog's answer comes one frame later than today. The toolkit asks that
+  frame at once. Test 4 waits for it with a bound.
+- **Temporary memory across windows.** Each window frees its temporary allocator at the end of its frame. Data in
+  temporary memory, given to `view_open`, is gone when an external window builds. The ready-made views clone what they
+  get. A debug build asserts that `data` is not in the temporary allocator's arena.
+- **Box state across States.** `state_move_subtree` copies scroll, animations and focus. Each widget that keeps other
+  state in its boxes must be checked once. Test 8 covers the common ones.
+- **No modality outside the Dialog presentation.** While a question waits in a panel or a window, the thing it asks
+  about can change: a file deleted, a tab closed. The program checks its data when it takes the answer. Pattern F
+  views already close themselves when their request ends.
+- **Panels and internal windows are built before the content.** They see the state that the last frame left. A pane
+  that needs this frame's content (classeur's inspector, the current tab's selection made this frame) shows it one
+  frame late.
+- **Drags across OS windows.** Windows and X11 need the pointer's screen position during a drag and during the
+  system's move of a window. Each system's code is new.
+- **Native child windows.** ocn's Preview moves its web view by `moved`. A web view that cannot change its parent
+  window loses its page.
+- **Wren's own loop.** Wren writes `View_Windows` itself. If its loop cannot build an external window after its owner,
+  the rule of section 2.3 fails there.
+
+### 8.2 Decisions
+
+1. **What stays content.** papier's list and view, classeur's folder columns, inspecteur's navigation sidebar and ocn's
+   conversation stay content. They are not views.
+2. **Re-attach to a hidden dock space.** A view homed in a program's dock space (Mission Control, Services) re-attaches
+   to that space even when the space is not shown. It is not built until the space shows, then it is built there.
+3. **The chrome.** The docking machinery must not invade the screens: section 2.5 gives the five rules.

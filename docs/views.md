@@ -1,0 +1,249 @@
+# Views (`src/ui/views.odin`)
+
+A **view** is a build procedure and its data, declared once by an id. The program opens it, closes it and reads its
+answer. The toolkit decides where it is built, and it remembers the presentation that the user chose, per id.
+
+The four presentations are degrees of attachment to the owner window:
+
+| Presentation | What it is | Modal |
+|---|---|---|
+| **Dialog** | centred over the owner window, with a scrim | yes |
+| **Internal** | a floating window inside the owner window, drawn by the toolkit | no |
+| **External** | an OS window of its own | no |
+| **Panel** | docked to an edge of the owner window, or in a dock space of the program | no |
+
+Each view has a **home**: Dialog or Panel. **Re-attach** brings a view back to its home; the view stays open.
+
+This version builds the Dialog presentation. Panel, Internal and External are states of the view's machine already:
+until their builders come, a view in one of them is built as a Dialog. The intent and the plan are in `src/md/features/views.md`.
+
+## Where the views live
+
+Every `ui.State` has a `Views`. Nothing is called to make it:
+
+- **By default, a State's own.** `ui.state_views(&state)` gives it, and `ui.views()` gives the one of the State in use
+  (the State being built, else the last one built or selected). It is made at its first use and destroyed by
+  `ui.destroy`. It keeps its memory in memory only.
+- **The program's, shared by its windows.** A program that keeps the memory in a file, or whose windows share their
+  views (a view moved from one window to another, an external window), owns one `Views` and gives it to each window's
+  State with `ui.set_views(&state, &app.views)`, before the first view of that State opens.
+  `ui.views_init(&app.views, {path = ...})` reads its file (at start-up, before its first view);
+  `ui.views_destroy(&app.views)` writes which views were open and frees it after the last build.
+- **A zero `Views` works.** `views_init` is only for a file and for the header's words.
+
+The ready-made views (`confirm_open`, `prompt_open`, `palette_open`, `shortcuts_sheet_open`, `setup.open`) and their
+answers take no `Views`: they use `ui.views()`, the window being built.
+
+## A view
+
+```odin
+App :: struct { state: ui.State, conflict: Conflict_View, ... }
+
+vs := ui.state_views(&app.state)                   // its window's (or the program's: set_views)
+ui.view_register(vs, "conflict", conflict_view, {title = i18n.later("A name is taken"), icon = lucide.FILES, width_em = 32})
+
+conflict_view :: proc(v: ^ui.View, c: ^Conflict_View) {
+	ui.view_title(v, fmt.tprintf(i18n.tr("%s is already there"), c.name))
+	if ui.dialog_body("body") { ... }
+	if ui.dialog_buttons("buttons") {
+		if ui.button("skip", i18n.tr("Skip")).clicked { ui.view_end(v, int(Conflict.Skip)) }
+		if ui.button("replace", i18n.tr("Replace"), o = {intent = .Danger}).clicked { ui.view_end(v, int(Conflict.Replace)) }
+	}
+}
+
+// in a build: open it, and read its answer in a later build
+vs := ui.views()
+if job := job_asking(app); job != nil && !ui.view_is_open(vs, "conflict") {
+	app.conflict.job = job
+	ui.view_open(vs, "conflict", &app.conflict)
+} else if job == nil {
+	ui.view_close(vs, "conflict")
+}
+if code, ok := ui.view_ended(vs, "conflict"); ok {
+	job_answer(app.conflict.job, code == ui.VIEW_CANCELLED ? .Cancel : Conflict(code))
+}
+```
+
+- The build procedure draws the body only. The header is the toolkit's: the icon, the title (`View_Options.title`,
+  shown with `i18n.tr`; `view_title` changes it from the next build), the program's controls
+  (`if ui.view_header_tools(v) { ... }`), a small Detach icon, the close cross in the corner. `no_header` drops it (a
+  palette draws its search band at the top).
+- `view_register(vs, id, build, o)`: `build` is a `proc(v: ^ui.View, data: ^T)`. `view_open(vs, id, &data)` checks
+  that its data is a `^T`. The data is the program's, and must stay valid until the view closes.
+- The dialogs of a State are built at the end of its build (`end_build`), over the page, under the menus and the
+  toasts. The program calls nothing to build them.
+- The owner of a view is the State being built when `view_open` is called, else the State in use (the last built or
+  selected: `ui.init` selects it); `owner` names another one.
+- One view can have several instances: `instance` (an editor's name, a service's name). Each has its own answer.
+
+## The answer
+
+`view_ended(vs, id, instance) -> (code, ok)` gives the answer once. `ok` is false until the view ended, and after the
+answer was taken. The answer is read in the build after the one where the view ended; the toolkit asks for that build
+at once.
+
+| How it ended | Code |
+|---|---|
+| `view_end(v, code)` in its build | `code` (the program's: 0 and up) |
+| Escape, Ctrl+W, the close cross, a press on the scrim | `VIEW_CANCELLED` (-1) |
+| its owner window went (`ui.destroy`) | `VIEW_CANCELLED` |
+| `view_close` | no answer |
+
+An answer that is not taken is dropped when the view opens again. A view whose build calls `view_end` is not built
+again.
+
+## The procedures
+
+| Procedure | |
+|---|---|
+| `state_views(s)`, `views()` | the Views of a State (its own unless set_views gave one), of the State in use |
+| `set_views(s, vs)` | `s` builds its views from the program's `vs` (shared by its windows) |
+| `views_init(vs, o)`, `views_destroy(vs)` | optional for a program's Views: `o.path`, the memory file ("": memory only); `o.labels`, the header's words |
+| `view_register(vs, id, build, o)`, `view_registered(vs, id)` | |
+| `view_open(vs, id, data, instance = "", owner = nil)` | one already open comes forward (a dialog goes on top) |
+| `view_close(vs, id, instance)`, `view_is_open(vs, id, instance)` | |
+| `view_ended(vs, id, instance) -> (code, ok)` | |
+| `view_present(vs, id, p, place, instance)`, `view_reattach(vs, id, instance)` | moves it; the choice is remembered |
+| `view_presentation(vs, id, instance)` | where it is, or where it opens next |
+| `view_was_open(vs, id, instance)` | it was open when the program last quit |
+| `view_dialog_size(vs, id, instance)` | the size the user gave its dialog, in ems (`{}`: none) |
+| `views_hold_keys(vs)` | a dialog of `vs` holds the keys of the State being built |
+| inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_room(v)`, `view_header_tools(v)` | |
+
+`View_Options`: `title`, `icon`, `icon_font`, `home` (`.Dialog` or `.Panel`), `home_place`, `first` (the presentation
+of the first opening), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em`, `min_height_em`,
+`resizable` (grips; the size is remembered), `top` (the dialog's top at this fraction of the window), `no_header`,
+`backdrop` (drawn first, under the header and the body), `extent_em`, `under_children` and `moved` (the later
+presentations).
+
+## The Dialog presentation
+
+A dialog that opens is built and laid out unseen, the next frame at once, until two layouts in a row agree: the rects
+of its panel and of every box in it. The first frame that shows it has it at its size and place. One that never
+settles shows after six layouts. From the first frame shown, its scrim and its panel fade in together
+(`MODAL_FADE_MS`, 120 ms; at once with the animations off). What had the focus loses it on that first frame shown, not
+before.
+
+- A dialog that is not resizable is as wide as what is in it asks (its title on one line, its row of buttons on one
+  line), `width_em` at least, `DIALOG_MAX_WIDTH_EM` (46) at most. Past that, its title and the words of a button wrap.
+  Nothing in it is cut, nothing goes past its edge. What is in it takes its width with `fill()`.
+- It stays within the window however small, and never past its bottom.
+- `resizable`: the user resizes it by its edges and corners; it stays centred. A double click on an edge goes back to
+  `width_em` × `height_em`. The size is remembered when the grip is let go. Its bottom right corner is square, with the
+  resize grip in it. With `top`, its bottom edge follows the pointer and its top has no grips.
+- A resizable dialog of `height_em` 0 opens as tall as what is in it.
+- Several dialogs can be open; the one opened last is on top. It has the keyboard: Tab goes round its own stops,
+  Escape and Ctrl+W close it. A dialog that opens takes the focus, and gives it back when it closes, unless something
+  else took it meanwhile.
+- The header: a strip a shade darker than the dialog (`DIALOG_HEADER_EM` tall), the icon in the accent, the title
+  (never cut: it wraps), the program's tools, the Detach icon (`lucide.PICTURE_IN_PICTURE_2`, in the weak colour,
+  `VIEW_DETACH_EM`; inactive until the Internal presentation is built), and the close cross (`DIALOG_CLOSE_EM`) at the
+  same margin from the dialog's top and right edges, its corners concentric with the dialog's. The close cross is the
+  last stop of Tab.
+
+`dialog_body("id")` holds what a dialog says and asks, with its margins (`DIALOG_MARGIN_EM`) and gaps
+(`DIALOG_GAP_EM`). `dialog_buttons("id")` is its row of buttons at its right end, the main act last; buttons that do
+not fit go on more lines. `choice_row` is a row of a list to choose from (the accounts of a key, the passkeys of a
+site).
+
+## What is remembered
+
+The memory is a `gt:store` file in the program's state folder (`Views_Options.path`). One line per view id:
+
+```
+props	v1 as=external open=0 dialog=58.0x40.0 internal=120,80,700,480 window=1180x760
+sidebar	v1 as=panel open=1 dock=:left:18.0
+```
+
+| Field | What | Written when |
+|---|---|---|
+| `as` | the last presentation the user chose | `view_present`, `view_reattach`, a drop |
+| `open` | it was open when the program quit | `views_destroy` |
+| `dialog` | the dialog's size in ems | its grip is let go |
+| `internal`, `window`, `dock` | the internal rect, the window's size, the panel's place and extent | the later presentations |
+
+An absent field is the default of `View_Options`. A line that does not parse is ignored. Instances share their id's
+line. The store writes on its own thread: no disk call runs on the interface's thread after `views_init`.
+`views_format(m)` and `views_parse(text)` are the line's format.
+
+## The machine
+
+Each instance has a `View_Machine`, a pure value. `view_step(m, event) -> (next, effects)` reads only its arguments;
+the toolkit applies the effects (`View_Effects`). The states: `Closed`, `Opening` (built unseen until it settles),
+`Shown`, `Moving` (it shows in `from` and is built unseen in `as`), `Dragged`. The events: `Open`, `Settled`, `Present`,
+`Reattach`, `Drag_Start`, `Drop`, `Drop_Outside`, `Drag_Cancel`, `End`, `User_Close`, `Program_Close`,
+`Window_Refused`, `Owner_Gone`, `Quit`. An event that a state does not take changes nothing. The table is section 3.2
+of the design; `tests/views` tests each row.
+
+## Ready-made views
+
+| Procedure | What |
+|---|---|
+| `confirm_open(id, o)`, `confirm_answer(id) -> Confirm_Answer` | a question before an act that is not taken back |
+| `prompt_open(id, &field, o)`, `prompt_answer(id)` | a question with an answer typed in |
+| `palette_set(p, commands, disabled, o)`, `palette_open(p)`, `palette_is_open(p)`, `palette_close(p)`, `palette_chosen(p) -> (index, mods, ok)` | the command palette ([commands](commands.md)) |
+| `shortcuts_sheet_open(sheet, commands, title, version)`, `shortcuts_sheet_is_open(sheet)`, `shortcuts_sheet_close(sheet)` | the sheet of the keys |
+| `setup.open(d, o, logo)`, `setup.update(d, o)` | the setup dialog ([setup](setup.md)) |
+
+Each is a view of `ui.views()`: the Views of the window being built (or of the State in use), which reads its answer
+in its own build.
+
+`Confirm_Answer` is `.None` until the answer, then `.Confirmed` or `.Cancelled` once.
+
+| `ui.confirm_open` | `ui.prompt_open`, a secret |
+|---|---|
+| ![A confirmation: what it deletes, a line each; Cancel answers Enter](screenshots/showcase_confirm.webp) | ![A prompt for a PIN, its eye at the end of the field](screenshots/showcase_prompt.webp) |
+
+**A confirmation** has a title, a note in the weak text (what comes of it), what it acts on one per line when there is
+more than one (`CONFIRM_LINES_MAX` shown, the others counted), then Cancel (a neutral button) and the act's button in
+the colours of `act_intent` (nil: Danger; with `enter_confirms`, Success). Enter answers what is safe: Cancel, and the
+act only with `enter_confirms`. The button Enter presses says so: "Cancel (Enter)". Its options are cloned when it
+opens: the strings and the lines can be temporary. Its words other than the caller's are the toolkit's, in the
+language in use (`confirm_default_labels`); `Confirm_Options.labels` gives a program's own.
+
+```odin
+ui.confirm_open("delete", {title = title, note = note, lines = names, act = i18n.tr("Delete")})
+if ui.confirm_answer("delete") == .Confirmed { job_add(app, .Delete, app.confirm.paths[:]) }
+```
+
+**A prompt** has a title, a sentence (`note`), one field, Cancel and OK (`act`). The field has the keyboard as it
+opens. Enter in it answers `.Confirmed` (the text is the field's); Escape or Cancel `.Cancelled`. `field` is the
+program's and must stay valid until the answer: a secret stays in its memory only. `secret` makes it a password field
+(`reveal`: the caller's bool for the eye). Once the answer is used or given up, `ui.line_edit_wipe(&field)` leaves
+nothing of it in memory.
+
+```odin
+ui.prompt_open("unlock", &app.pin, {title = "Unlock", note = "Type the PIN of the key.", secret = true})
+switch ui.prompt_answer("unlock") {
+case .Confirmed: unlock(app, ui.line_edit_string(&app.pin)); ui.line_edit_wipe(&app.pin)
+case .Cancelled: ui.line_edit_wipe(&app.pin)
+case .None:
+}
+```
+
+## A strip across a dialog's top
+
+A strip across the top of a dialog (its title, a search field) is a box whose custom draw is `top_strip_draw`. Give the
+box no radius of its own: its top corners are those it fills, the dialog's as drawn. For a colour of its own, put a
+`^Color` in `custom_user` (none: a field's, `input background`, the colour of `search_band`). A raised dialog's rim and
+edge are drawn over what is in it (`machined_plate_frame`). A search over a list is `search_band`
+([widgets](widgets.md)), which draws this strip.
+
+## From the modals of before
+
+| Before | Now |
+|---|---|
+| `if ui.modal("x", &open, {width_em = 32, size = &size}) { body }` | `view_register(ui.views(), "x", x_view, {width_em = 32, resizable = true})`, `view_open(ui.views(), "x", &data)`; `x_view` holds the body |
+| `ui.dialog_header("h", title, {icon, close = true})` | `View_Options.title`, `icon`; `view_title`; `view_header_tools` for its controls |
+| `ui.modal_corner` (a corner control of the program's look) | none: the close cross is the toolkit's |
+| `open = false` in the body | `view_end(v, code)` |
+| `ui.confirm(id, &open, o)` each frame | `confirm_open(id, o)` once, `confirm_answer(id)` each frame |
+| `ui.prompt(id, &open, &field, o)` | `prompt_open(id, &field, o)`, `prompt_answer(id)` |
+| `ui.palette_open(&p)`, `ui.palette(&p, commands, disabled, o)` | `palette_set(&p, commands, disabled, o)` when they change, `palette_open(&p)`, `palette_chosen(&p)` |
+| `Command_Palette.open`, `.size` | `palette_is_open(&p)`; the size is the views' memory |
+| `sheet.open = true`, `ui.shortcuts_sheet(&sheet, id, commands)` | `shortcuts_sheet_open(&sheet, commands)` |
+| `setup.open(&d, cfg)`, `setup.dialog(&d, cfg, em, logo)` | `setup.open(&d, cfg, logo)` in a build, `setup.update(&d, cfg)` |
+| `prefs_page.install_frame(&in, em)` | `install_frame(&in)` |
+| `ui.dialog_open()`, a program's own booleans of dialogs | `views_hold_keys(vs)`, `view_is_open` |
+
+An answer comes one build later than the old return value; the toolkit asks for that build at once.

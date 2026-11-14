@@ -109,17 +109,21 @@ a_menu_cut_by_the_window_says_its_rows_whole :: proc(t: ^testing.T) { unwatched.
 
 @(private = "file")
 Opening :: struct {
-	open:  bool,
+	views: ui.Views,
+	open:  bool,   // open it in the next build
 	sized: bool,
-	size:  ui.Vec2,
 }
 
 @(private = "file")
 opening_start :: proc(t: ^testing.T, o: ^Opening) -> ^session.Session {
+	// (a cleanup runs after the test's procedure has returned: `o` is freed here, after the views)
+	testing.cleanup(t, proc(p: rawptr) { ui.views_destroy(&(^Opening)(p).views); free(p) }, o)
 	return session.start(t, {size = MD_WINDOW, user = o, animations = true, no_renderer = true, build = proc(s: ^session.Session) {
 		o := (^Opening)(s.user)
-		if o.sized {
-			if ui.modal("fit", &o.open, {width_em = 320 / ui.font_size(), min_width_em = 200 / ui.font_size(), min_height_em = 80 / ui.font_size(), size = &o.size}) {
+		em := ui.font_size()
+		// (registered in a build: its sizes are pixels of this window, in its ems; no header: the body alone is measured)
+		if !ui.view_registered(&o.views, "fit") {
+			ui.view_register(&o.views, "fit", proc(v: ^ui.View, o: ^Opening) {
 				ui.next({width = ui.fill(), height = ui.px(40)})
 				ui.build_box({}, "###fit_top")
 				ui.next({width = ui.fill(), height = ui.fill()})
@@ -127,13 +131,16 @@ opening_start :: proc(t: ^testing.T, o: ^Opening) -> ^session.Session {
 					ui.next({width = ui.fill(), height = ui.px(150)})
 					ui.build_box({}, "###fit_inner")
 				}
-			}
-		} else {
+			}, ui.View_Options{width_em = 320 / em, min_width_em = 200 / em, min_height_em = 80 / em, resizable = true, no_header = true})
 			// (taller than the window's lower part: its first place, at y_fraction, would go past the bottom)
-			if ui.modal("tall", &o.open, {width_em = 300 / ui.font_size()}) {
+			ui.view_register(&o.views, "tall", proc(v: ^ui.View, o: ^Opening) {
 				ui.next({width = ui.fill(), height = ui.px(480)})
 				ui.build_box({}, "###tall_body")
-			}
+			}, ui.View_Options{width_em = 300 / em, no_header = true})
+		}
+		if o.open {
+			o.open = false
+			ui.view_open(&o.views, o.sized ? "fit" : "tall", o)
 		}
 	}})
 }
@@ -142,8 +149,8 @@ opening_start :: proc(t: ^testing.T, o: ^Opening) -> ^session.Session {
 // panel fade in together.
 @(test)
 a_dialog_opens_where_it_stays :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	o := Opening{}
-	s := opening_start(t, &o)
+	o := new(Opening)
+	s := opening_start(t, o)
 	session.frames(s, 2)
 	o.open = true
 	shown: ui.Rect
@@ -151,7 +158,7 @@ a_dialog_opens_where_it_stays :: proc(t: ^testing.T) { unwatched.run(t, proc(t: 
 	faded := false
 	for _ in 0 ..< 30 {
 		session.frame(s)
-		panel, scrim := session.find(s, "modal_tall"), session.find(s, "modal_scrim_tall")
+		panel, scrim := session.find(s, "modal_view_tall"), session.find(s, "modal_scrim_view_tall")
 		if panel == nil || scrim == nil { continue }
 		testing.expectf(t, panel.transparency == scrim.transparency, "the scrim and the panel together: %v, %v", scrim.transparency, panel.transparency)
 		if panel.transparency >= 1 { continue }   // (measured, unseen)
@@ -166,7 +173,7 @@ a_dialog_opens_where_it_stays :: proc(t: ^testing.T) { unwatched.run(t, proc(t: 
 	testing.expect(t, seen, "the dialog shows")
 	testing.expect(t, faded, "it fades in (its first frame shown is not at full strength)")
 	session.wait_until(s, proc(s: ^session.Session) -> bool {
-		b := session.find(s, "modal_tall")
+		b := session.find(s, "modal_view_tall")
 		return b != nil && b.transparency == 0
 	}, "the fade's end")
 }) }
@@ -175,15 +182,16 @@ a_dialog_opens_where_it_stays :: proc(t: ^testing.T) { unwatched.run(t, proc(t: 
 // frame shown.
 @(test)
 a_fitted_dialog_is_as_tall_as_its_content :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	o := Opening{sized = true}
-	s := opening_start(t, &o)
+	o := new(Opening)
+	o.sized = true
+	s := opening_start(t, o)
 	session.frames(s, 2)
 	o.open = true
 	session.wait_until(s, proc(s: ^session.Session) -> bool {
-		b := session.find(s, "modal_fit")
+		b := session.find(s, "modal_view_fit")
 		return b != nil && b.transparency < 1
 	}, "the dialog shows")
-	panel, top, scroll, inner := session.find(s, "modal_fit"), session.find(s, "fit_top"), session.find(s, "fit_scroll"), session.find(s, "fit_inner")
+	panel, top, scroll, inner := session.find(s, "modal_view_fit"), session.find(s, "fit_top"), session.find(s, "fit_scroll"), session.find(s, "fit_inner")
 	if !testing.expect(t, panel != nil && top != nil && scroll != nil && inner != nil, "the dialog and its parts") { return }
 	testing.expectf(t, inner.rect.max.y <= scroll.rect.max.y + MD_EPS, "nothing hidden: the content ends at %v, its view at %v", inner.rect.max.y, scroll.rect.max.y)
 	border := panel.rect.max.y - scroll.rect.max.y
@@ -209,10 +217,11 @@ a_fitted_dialog_is_as_tall_as_its_content :: proc(t: ^testing.T) { unwatched.run
 @(private = "file")
 First_Shown_Kind :: enum { Late, Buttons, Confirm, Prompt, Palette, Sheet }
 
-// Each kind's dialog, by its id (session.find: "modal_<id>", "modal_scrim_<id>"), and a box in it that must not move either.
+// Each kind's view, by its id (session.find: "modal_view_<id>", "modal_scrim_view_<id>"; the palette and the sheet are
+// an instance each, fs_panel_name), and a box in it that must not move either.
 // (variables, read only: a constant array cannot be indexed by a value known at run time)
-@(private = "file", rodata) FS_ID := [First_Shown_Kind]string{.Late = "late", .Buttons = "buttons", .Confirm = "ask", .Prompt = "pin", .Palette = "palette", .Sheet = "keys"}
-@(private = "file", rodata) FS_INNER := [First_Shown_Kind]string{.Late = "late_body", .Buttons = "fs_b8", .Confirm = "confirm_act", .Prompt = "prompt_ok", .Palette = "", .Sheet = "sheet_title"}
+@(private = "file", rodata) FS_ID := [First_Shown_Kind]string{.Late = "late", .Buttons = "buttons", .Confirm = "ask", .Prompt = "pin", .Palette = "palette", .Sheet = "shortcuts"}
+@(private = "file", rodata) FS_INNER := [First_Shown_Kind]string{.Late = "late_body", .Buttons = "fs_b8", .Confirm = "confirm_act", .Prompt = "prompt_ok", .Palette = "", .Sheet = "view_header_title"}
 
 @(private = "file")
 FS_COMMANDS := [?]ui.Command{
@@ -225,8 +234,7 @@ FS_COMMANDS := [?]ui.Command{
 @(private = "file")
 First_Shown :: struct {
 	kind:     First_Shown_Kind,
-	open_now: bool,   // the next build opens the dialog of `kind`
-	open:     bool,
+	open_now: bool,   // the next build opens the view of `kind`
 	late_w:   f32,    // the late body's width at the last layout: a program's own measure, known one frame late
 	field:    ui.Line_Edit,
 	pal:      ui.Command_Palette,
@@ -234,53 +242,66 @@ First_Shown :: struct {
 }
 
 @(private = "file")
+late_view :: proc(v: ^ui.View, r: ^First_Shown) {
+	if ui.dialog_body("fs_body") {
+		ui.paragraph("A sentence that wraps at the width the dialog has.###fs_note")
+		// (as tall as its width asks, the width it had at the last layout: as a program's own measure is)
+		ui.next({width = ui.fill(), height = ui.px(r.late_w > 0 ? r.late_w * FS_LATE_PER_WIDTH : FS_LATE_LEAST)})
+		b := ui.build_box({}, "###late_body")
+		r.late_w = b.rect.max.x - b.rect.min.x
+	}
+}
+
+@(private = "file")
+buttons_view :: proc(v: ^ui.View, r: ^First_Shown) {
+	if ui.dialog_buttons("fs_row") {
+		for i in 0 ..< FS_BUTTONS { _ = ui.button(fmt.tprintf("fs_b%d", i), fmt.tprintf("Button number %d", i)) }
+	}
+}
+
+@(private = "file")
 first_shown_build :: proc(s: ^session.Session) {
 	r := (^First_Shown)(s.user)
-	if r.open_now {
-		r.open_now = false
-		switch r.kind {
-		case .Palette: ui.palette_open(&r.pal)
-		case .Sheet:   r.sheet.open = true
-		case .Late, .Buttons, .Confirm, .Prompt: r.open = true
-		}
+	vs := ui.views()   // (the window's own)
+	if !ui.view_registered(vs, "late") {
+		// (the titles are given here: a long one grows its dialog, then wraps)
+		ui.view_register(vs, "late", late_view, ui.View_Options{title = FS_LONG_TITLE})
+		ui.view_register(vs, "buttons", buttons_view, ui.View_Options{title = "Many buttons"})
 	}
+	if !r.open_now { return }
+	r.open_now = false
 	switch r.kind {
-	case .Late:
-		if ui.modal("late", &r.open, {}) {
-			if ui.dialog_header("fs_head", FS_LONG_TITLE, {close = true}) {}
-			if ui.dialog_body("fs_body") {
-				ui.paragraph("A sentence that wraps at the width the dialog has.###fs_note")
-				// (as tall as its width asks, the width it had at the last layout: as a program's own measure is)
-				ui.next({width = ui.fill(), height = ui.px(r.late_w > 0 ? r.late_w * FS_LATE_PER_WIDTH : FS_LATE_LEAST)})
-				b := ui.build_box({}, "###late_body")
-				r.late_w = b.rect.max.x - b.rect.min.x
-			}
-		}
-	case .Buttons:
-		if ui.modal("buttons", &r.open, {}) {
-			if ui.dialog_header("fs_head", "Many buttons", {close = true}) {}
-			if ui.dialog_buttons("fs_row") {
-				for i in 0 ..< FS_BUTTONS { _ = ui.button(fmt.tprintf("fs_b%d", i), fmt.tprintf("Button number %d", i)) }
-			}
-		}
+	case .Late:    ui.view_open(vs, "late", r)
+	case .Buttons: ui.view_open(vs, "buttons", r)
 	case .Confirm:
 		lines := []string{"first.txt", "second.txt", "third.txt"}
-		_ = ui.confirm("ask", &r.open, {title = FS_LONG_TITLE, note = "They do not go to the trash.", lines = lines, act = "Delete"})
-	case .Prompt:
-		_ = ui.prompt("pin", &r.open, &r.field, {title = FS_LONG_TITLE, note = "Type the PIN of the key."})
+		ui.confirm_open("ask", {title = FS_LONG_TITLE, note = "They do not go to the trash.", lines = lines, act = "Delete"})
+	case .Prompt:  ui.prompt_open("pin", &r.field, {title = FS_LONG_TITLE, note = "Type the PIN of the key."})
 	case .Palette:
-		_, _ = ui.palette(&r.pal, FS_COMMANDS[:])
-	case .Sheet:
-		ui.shortcuts_sheet(&r.sheet, "keys", FS_COMMANDS[:])
+		ui.palette_set(&r.pal, FS_COMMANDS[:], nil, {})
+		ui.palette_open(&r.pal)
+	case .Sheet:   ui.shortcuts_sheet_open(&r.sheet, FS_COMMANDS[:])
 	}
+}
+
+// The name of the panel of `kind`'s view (its scrim: with `scrim`).
+@(private = "file")
+fs_panel_name :: proc(r: ^First_Shown, kind: First_Shown_Kind, scrim := false) -> string {
+	id := FS_ID[kind]
+	#partial switch kind {
+	case .Palette: id = fmt.tprintf("%s/%x", id, uintptr(&r.pal))
+	case .Sheet:   id = fmt.tprintf("%s/%x", id, uintptr(&r.sheet))
+	}
+	return fmt.tprintf(scrim ? "modal_scrim_view_%s" : "modal_view_%s", id)
 }
 
 // Frame by frame from the one that opens it: the scrim and the panel have one transparency, unseen (1) until the frame
 // that shows them; from that frame on, neither the panel nor `inner` moves, and the fade goes on to its end.
 @(private = "file")
 first_shown_expect :: proc(t: ^testing.T, s: ^session.Session, kind: First_Shown_Kind) {
-	panel_name := fmt.tprintf("modal_%s", FS_ID[kind])
-	scrim_name := fmt.tprintf("modal_scrim_%s", FS_ID[kind])
+	r := (^First_Shown)(s.user)
+	panel_name := fs_panel_name(r, kind)
+	scrim_name := fs_panel_name(r, kind, scrim = true)
 	shown, inner_shown: ui.Rect
 	seen, done := false, false
 	for i in 0 ..< FS_FRAMES {
@@ -322,7 +343,9 @@ a_dialog_does_not_move_after_its_first_frame_shown :: proc(t: ^testing.T) { unwa
 		session.frames(s, FS_SETTLE_FRAMES)   // (the last one's dialog gone)
 		r.open_now = true
 		first_shown_expect(t, s, kind)
-		r.open, r.pal.open, r.sheet.open = false, false, false
+		ui.view_close(ui.state_views(s.state), FS_ID[kind])
+		ui.palette_close(&r.pal)
+		ui.shortcuts_sheet_close(&r.sheet)
 	}
 }) }
 
@@ -336,14 +359,15 @@ a_confirmation_closes_from_its_corner :: proc(t: ^testing.T) { unwatched.run(t, 
 	r := Run{open = true}
 	s := session.start(t, {size = MD_WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		if a := ui.confirm("ask", &r.open, {title = "Delete it?", act = "Delete"}); a != .None { r.answer = a }
+		if r.open { r.open = false; ui.confirm_open("ask", {title = "Delete it?", act = "Delete"}) }
+		if a := ui.confirm_answer("ask"); a != .None { r.answer = a }
 	}})
 	session.frames(s, 3)
 	x := session.find(s, "dialog_close")
 	if !testing.expect(t, x != nil, "the close button") { return }
 	session.click(s, "dialog_close")
 	session.frames(s, 2)
-	testing.expect(t, !r.open, "closed")
+	testing.expect(t, !ui.view_is_open(ui.state_views(s.state), "ask"), "closed")
 	testing.expect_value(t, r.answer, ui.Confirm_Answer.Cancelled)
 }) }
 

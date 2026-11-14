@@ -16,11 +16,11 @@ cfg := setup.Setup_Options{
 }
 d: setup.Dialog
 
-// at a start: the dialog when there is something to do, unless the user answered already
-if setup.wanted(setup.facts(cfg), APP_VERSION, saved_choice) { setup.open(&d, cfg) }
+// at a start, in a build: the dialog when there is something to do, unless the user answered already
+if setup.wanted(setup.facts(cfg), APP_VERSION, saved_choice) { setup.open(&d, cfg, logo) }
 
 // each frame
-switch setup.dialog(&d, cfg, em, logo) {
+switch setup.update(&d, cfg) {
 case .Installed:       saved_choice = setup.CHOICE_INSTALLED
 case .Kept_Standalone: saved_choice = setup.CHOICE_STANDALONE
 case .Dismissed:       saved_choice = setup.choice_dismissed(APP_VERSION)
@@ -37,8 +37,10 @@ The dialog says where everything is: the installed program, the menu's entry, th
 that does not fit is cut; the pointer over it shows it whole, and a click on it or on the copy button after it puts it on
 the clipboard.
 
-The dialog opens at 36 by 27 em; its edges and its corner resize it (`Dialog.size`, logical pixels: the program may keep it
-between starts). What it says scrolls when it is made small; its buttons stay under it.
+The dialog is the view `setup.VIEW` ("setup", home Dialog, [views](views.md)): its header ("<name> Setup", the close
+cross) is the toolkit's. It opens at 46 by 34 em; its edges and its corner resize it, and the views remember its size.
+What it says scrolls when it is made small; its buttons stay under it. Escape, the close cross or a press outside give
+`Dismissed` through `update`, unless there is nothing to ask.
 
 A program does not drive the dialog by hand: `prefs_page.Install` ([prefs_page.md](prefs_page.md), "The installation")
 holds it, opens it at a start, keeps the answer and shows the Installation page of the settings. The calls below are
@@ -81,13 +83,15 @@ uninstalled (your settings and data stay)`, or why it failed; its exit code is `
 
 ## A screen of the program's own
 
-A program that wants another layout keeps the `Dialog` and its machinery and draws the rest: it calls `update` each frame
-instead of `dialog`, and the actions from its own buttons. The state, what is offered and the work (on the dialog's
-thread, the install watched) are the same as in the dialog, which calls the same procedures.
+A program that wants another layout keeps the `Dialog` and its machinery and draws the rest in a view of its own: it
+calls `start` in place of `open`, `update` each frame, and the actions from its own buttons. The state, what is offered
+and the work (on the dialog's thread, the install watched) are the same as in the toolkit's view, which calls the same
+procedures.
 
 ```odin
+setup.start(&d, cfg); ui.view_open(ui.views(), "my_setup", &d)   // opening, in a build
 ev := setup.update(&d, cfg)                       // each frame, open or not: the work that ended, the install read again
-if d.open && ui.modal("my_setup", &d.open, {...}) {
+my_setup_view :: proc(v: ^ui.View, d: ^setup.Dialog) {   // registered with ui.view_register
 	title, badge := setup.headline(d.facts, cfg)   // "Install Classeur", "Not installed"
 	words, tone := setup.state_words(d.facts, cfg) // the state in a sentence, its tone
 	ui.checkbox("###shortcut", "Shortcut on the Desktop", &d.shortcut)   // d.choices[i]: Setup_Options.choices
@@ -97,7 +101,7 @@ if d.open && ui.modal("my_setup", &d.open, {...}) {
 	if d.installed != "" && my_button("Open the installed copy") { ev = setup.open_installed(&d) }
 	if label := setup.install_label(&d, cfg); label != "" && my_button(label) && !setup.busy(&d) { setup.start_install(&d, cfg) }
 }
-// Escape or a click outside closed it: setup.close(&d, .Close) gives the event to keep
+// Escape or a click outside ended the view (ui.view_ended): setup.close(&d, .Close) gives the event to keep
 ```
 
 | | |
@@ -116,14 +120,13 @@ are what such a screen shows and sets.
 
 ## The program's look
 
-The dialog is drawn with the theme's widgets. A program with a look of its own gives `Setup_Options` three procedures (each may be
-nil, and `Setup_Options.user` is passed to them):
+The dialog is drawn with the theme's widgets. A program with a look of its own gives `Setup_Options` two procedures (each may be
+nil, and `Setup_Options.user` is passed to them). The header and its close cross are the views' ([views](views.md)):
 
 | | |
 |---|---|
-| `backdrop(user)` | drawn first in the dialog: what lies behind it (a blur of the window, a dim of its own); nil: the theme's scrim |
+| `backdrop(user)` | drawn first in the dialog, under its header: what lies behind it (a blur of the window, a dim of its own); nil: the theme's scrim |
 | `button(id, label, glyph, intent, em, user) -> bool` | each button: its words, a Lucide glyph and a `ui.Intent` (`Success`: what installs or opens, `Danger`: Uninstall, `Cancel`: what closes, `Primary`: Choose); clicked: true |
-| `close(id, em, user) -> bool` | the close control in the dialog's top right corner, built in its header's block: build its box with `ui.modal_corner(flags, id)`, which gives its place, its size and its radius ([modals](modals.md)); nil: the toolkit's close button (`ui.dialog_header`'s `close`) |
 
 ## The states
 

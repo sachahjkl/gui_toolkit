@@ -8,6 +8,7 @@ import "core:fmt"
 import "core:testing"
 import "../../src/font"
 import "../../src/platform"
+import store "../../src/store"
 import "../../src/ui"
 
 // A focused field's next wake right after an edit: the caret's flip (530 ms) and the margin of a wake, at most: the real clock goes on between the edit and the look.
@@ -1002,16 +1003,34 @@ side_buttons_are_read :: proc(t: ^testing.T) {
 	testing.expect(t, seen[1], "forward")
 }
 
+// The views of the dialogs below (a test's), the one to open at the next build, and its panel at the last build.
 @(private = "file")
-sized_size: ui.Vec2
+sized_views: ui.Views
 @(private = "file")
-sized_open: bool
+sized_want: string
 @(private = "file")
 sized_panel: ^ui.Box
 
+// (the base style is 15 px: the sizes in ems of these pixels)
+@(private = "file") SIZED_EM :: 15
+
+@(private = "file")
+sized_init :: proc() {
+	panel :: proc(v: ^ui.View, p: ^^ui.Box) { p^ = ui.parent_box() }
+	ui.view_register(&sized_views, "t", panel, ui.View_Options{width_em = 400.0 / SIZED_EM, height_em = 300.0 / SIZED_EM, min_width_em = 200.0 / SIZED_EM, min_height_em = 100.0 / SIZED_EM, resizable = true, no_header = true})
+	ui.view_register(&sized_views, "tall", proc(v: ^ui.View, p: ^^ui.Box) {
+		p^ = ui.parent_box()
+		ui.next({width = ui.fill(), height = ui.px(450)})
+		ui.label("tall###x")
+	}, ui.View_Options{width_em = 2000.0 / SIZED_EM, top = 0.5, no_header = true})
+}
+
 @(private = "file")
 build_sized :: proc(f: ^Fx, user: rawptr) {
-	if ui.modal("t", &sized_open, {width_em = 400 / ui.font_size(), height_em = 300 / ui.font_size(), min_width_em = 200 / ui.font_size(), min_height_em = 100 / ui.font_size(), size = &sized_size}) { sized_panel = ui.parent_box() }
+	if sized_want != "" {
+		ui.view_open(&sized_views, sized_want, &sized_panel)
+		sized_want = ""
+	}
 }
 
 // A dialog of a size of its own: centered, within the window however small, resized by its edges with the opposite side following,
@@ -1022,7 +1041,9 @@ a_resizable_modal_stays_centered_and_in_the_window :: proc(t: ^testing.T) {
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
 	defer close(f)
-	sized_size, sized_open = {}, true
+	sized_init()
+	defer ui.views_destroy(&sized_views)
+	sized_want = "t"
 	for _ in 0 ..< 2 { frame(f, nil, build_sized, nil) }
 	r := sized_panel.rect
 	testing.expect_value(t, r, ui.Rect{{200, 150}, {600, 450}})
@@ -1032,7 +1053,7 @@ a_resizable_modal_stays_centered_and_in_the_window :: proc(t: ^testing.T) {
 	frame(f, {{kind = .Mouse_Press, pos = {599, 300}, button = .Left}}, build_sized, nil)
 	frame(f, {{kind = .Mouse_Move, pos = {619, 300}}}, build_sized, nil)
 	frame(f, nil, build_sized, nil)
-	testing.expect_value(t, sized_size, ui.Vec2{440, 300} / 15)   // (in ems: the base style is 15 px)
+	testing.expect_value(t, ui.view_dialog_size(&sized_views, "t"), ui.Vec2{440, 300} / SIZED_EM)   // (in ems: the base style is 15 px)
 	testing.expect_value(t, sized_panel.rect, ui.Rect{{180, 150}, {620, 450}})
 	// past what the window allows, then released: it stops at the margin
 	frame(f, {{kind = .Mouse_Move, pos = {2000, 300}}}, build_sized, nil)
@@ -1042,12 +1063,15 @@ a_resizable_modal_stays_centered_and_in_the_window :: proc(t: ^testing.T) {
 	testing.expect_value(t, sized_panel.rect.min.x, WINDOW.x - sized_panel.rect.max.x)
 
 	// a window too small for even its least: the window wins, and the size chosen is kept for when it grows
-	chosen := ui.Vec2{500, 400} / 15
-	sized_size = chosen
+	// (the size chosen in an earlier run: in the memory, the dialog opened again)
+	chosen := ui.Vec2{500, 400} / SIZED_EM
+	ui.view_close(&sized_views, "t")
+	_ = store.set(&sized_views.memory, "t", ui.views_format({dialog = chosen}))
+	sized_want = "t"
 	for _ in 0 ..< 2 { frame(f, nil, build_sized, nil, {150, 80}) }
 	r = sized_panel.rect
 	testing.expect(t, r.min.x >= 0 && r.min.y >= 0 && r.max.x <= 150 && r.max.y <= 80, "within a tiny window")
-	testing.expect_value(t, sized_size, chosen)
+	testing.expect_value(t, ui.view_dialog_size(&sized_views, "t"), chosen)
 	for _ in 0 ..< 2 { frame(f, nil, build_sized, nil) }
 	testing.expect_value(t, sized_panel.rect, ui.Rect{{150, 100}, {650, 500}})
 
@@ -1060,19 +1084,10 @@ a_resizable_modal_stays_centered_and_in_the_window :: proc(t: ^testing.T) {
 	click(f)
 	click(f)
 	frame(f, nil, build_sized, nil)
-	testing.expect_value(t, sized_size, ui.Vec2{})
+	testing.expect_value(t, ui.view_dialog_size(&sized_views, "t"), ui.Vec2{})
 	testing.expect_value(t, sized_panel.rect, ui.Rect{{200, 150}, {600, 450}})
-	sized_open = false
+	ui.view_close(&sized_views, "t")
 	frame(f, nil, build_sized, nil)
-}
-
-@(private = "file")
-build_tall_modal :: proc(f: ^Fx, user: rawptr) {
-	if ui.modal("tall", &sized_open, {width_em = 2000 / ui.font_size(), top = 0.5}) {
-		sized_panel = ui.parent_box()
-		ui.next({width = ui.fill(), height = ui.px(450)})
-		ui.label("tall###x")
-	}
 }
 
 // A plain dialog does not leave the window either: narrower, and higher than asked when what is in it would pass the bottom.
@@ -1082,13 +1097,15 @@ modal_stays_in_the_window :: proc(t: ^testing.T) {
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
 	defer close(f)
-	sized_open = true
-	for _ in 0 ..< 3 { frame(f, nil, build_tall_modal, nil) }
+	sized_init()
+	defer ui.views_destroy(&sized_views)
+	sized_want = "tall"
+	for _ in 0 ..< 3 { frame(f, nil, build_sized, nil) }
 	r := sized_panel.rect
 	testing.expect(t, r.min.x > 0 && r.max.x < WINDOW.x, "narrower than asked")
 	testing.expect(t, r.max.y < WINDOW.y, "above the bottom")
-	sized_open = false
-	frame(f, nil, build_tall_modal, nil)
+	ui.view_close(&sized_views, "tall")
+	frame(f, nil, build_sized, nil)
 }
 
 @(private = "file")
@@ -1609,27 +1626,29 @@ list_select_ahead_of_the_rows :: proc(t: ^testing.T) {
 	testing.expect_value(t, z.st.sel, -1)
 }
 
+// `outer`, `inner`: open it in the next build; nested: the inner view is opened by the outer one's build, else by the page.
 @(private = "file")
-Modal_Run :: struct { outer, inner: bool, field: ui.Line_Edit, res: ui.Edit_Result, with_field: bool }
+Modal_Run :: struct { views: ui.Views, outer, inner, nested: bool, field: ui.Line_Edit, res: ui.Edit_Result, with_field: bool }
 
 @(private = "file")
-build_nested_modals :: proc(f: ^Fx, user: rawptr) {
-	r := (^Modal_Run)(user)
-	if ui.modal("outer", &r.outer, {width_em = 300 / ui.font_size()}) {
-		if r.with_field {
-			ui.next({width = ui.px(200), height = ui.px(30)})
-			r.res = ui.line_edit("###in_dialog", &r.field)
-		}
-		if ui.modal("inner", &r.inner, {width_em = 200 / ui.font_size()}) { ui.label("inner") }
+outer_view :: proc(v: ^ui.View, r: ^Modal_Run) {
+	if r.with_field {
+		ui.next({width = ui.px(200), height = ui.px(30)})
+		r.res = ui.line_edit("###in_dialog", &r.field)
 	}
+	ui.label("outer")
+	if r.nested && r.inner { r.inner = false; ui.view_open(&r.views, "inner", r) }
 }
 
 @(private = "file")
-build_stacked_modals :: proc(f: ^Fx, user: rawptr) {
+build_modals :: proc(f: ^Fx, user: rawptr) {
 	r := (^Modal_Run)(user)
-	if ui.modal("first", &r.outer, {width_em = 300 / ui.font_size()}) { ui.label("first") }
-	if ui.modal("second", &r.inner, {width_em = 200 / ui.font_size()}) { ui.label("second") }
+	if r.outer { r.outer = false; ui.view_open(&r.views, "outer", r) }
+	if !r.nested && r.inner { r.inner = false; ui.view_open(&r.views, "inner", r) }
 }
+
+@(private = "file")
+modal_open :: proc(r: ^Modal_Run, id: string) -> bool { return ui.view_is_open(&r.views, id) }
 
 // Escape closes the dialog on top, and a widget inside a dialog has it first.
 @(test)
@@ -1639,35 +1658,39 @@ modal_escape_goes_to_what_is_on_top :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
-	r := Modal_Run{outer = true, inner = true}
+	r := Modal_Run{outer = true, inner = true, nested = true}
+	defer ui.views_destroy(&r.views)
+	ui.view_register(&r.views, "outer", outer_view, ui.View_Options{width_em = 300.0 / SIZED_EM, title = "Outer"})
+	ui.view_register(&r.views, "inner", proc(v: ^ui.View, r: ^Modal_Run) { ui.label("inner") }, ui.View_Options{width_em = 200.0 / SIZED_EM, title = "Inner"})
 	defer ui.line_edit_destroy(&r.field)
-	frame(&f, nil, build_nested_modals, &r)
-	frame(&f, nil, build_nested_modals, &r)
-	frame(&f, {key(.Escape)}, build_nested_modals, &r)
-	frame(&f, nil, build_nested_modals, &r)   // (the build after the key closes it: the dialog on top is known at the end of the build)
-	testing.expect(t, r.outer && !r.inner, "nested: the inner one closes")
-	frame(&f, nil, build_nested_modals, &r)
-	frame(&f, {key(.Escape)}, build_nested_modals, &r)
-	frame(&f, nil, build_nested_modals, &r)
-	testing.expect(t, !r.outer, "then the outer one")
+	frame(&f, nil, build_modals, &r)
+	frame(&f, nil, build_modals, &r)
+	frame(&f, {key(.Escape)}, build_modals, &r)
+	frame(&f, nil, build_modals, &r)   // (the build after the key closes it: the dialog on top is known at the end of the build)
+	testing.expect(t, modal_open(&r, "outer") && !modal_open(&r, "inner"), "nested: the inner one closes")
+	frame(&f, nil, build_modals, &r)
+	frame(&f, {key(.Escape)}, build_modals, &r)
+	frame(&f, nil, build_modals, &r)
+	testing.expect(t, !modal_open(&r, "outer"), "then the outer one")
 
-	r.outer, r.inner = true, true
-	frame(&f, nil, build_stacked_modals, &r)
-	frame(&f, nil, build_stacked_modals, &r)
-	frame(&f, {key(.Escape)}, build_stacked_modals, &r)
-	frame(&f, nil, build_stacked_modals, &r)
-	testing.expect(t, r.outer && !r.inner, "stacked: the one built last closes")
+	r.outer, r.inner, r.nested = true, true, false
+	frame(&f, nil, build_modals, &r)
+	frame(&f, nil, build_modals, &r)
+	frame(&f, {key(.Escape)}, build_modals, &r)
+	frame(&f, nil, build_modals, &r)
+	testing.expect(t, modal_open(&r, "outer") && !modal_open(&r, "inner"), "stacked: the one opened last closes")
+	ui.view_close(&r.views, "outer")
 
 	r.outer, r.inner, r.with_field = true, false, true
-	frame(&f, nil, build_nested_modals, &r)
-	frame(&f, nil, build_nested_modals, &r)
+	frame(&f, nil, build_modals, &r)
+	frame(&f, nil, build_modals, &r)
 	ui.set_focus(r.res.box.key)
-	frame(&f, nil, build_nested_modals, &r)
-	frame(&f, {key(.Escape)}, build_nested_modals, &r)
-	testing.expect(t, r.res.cancelled && r.outer, "the field takes Escape, the dialog stays")
-	frame(&f, {key(.Escape)}, build_nested_modals, &r)
-	frame(&f, nil, build_nested_modals, &r)
-	testing.expect(t, !r.outer, "with no field focused the dialog closes")
+	frame(&f, nil, build_modals, &r)
+	frame(&f, {key(.Escape)}, build_modals, &r)
+	testing.expect(t, r.res.cancelled && modal_open(&r, "outer"), "the field takes Escape, the dialog stays")
+	frame(&f, {key(.Escape)}, build_modals, &r)
+	frame(&f, nil, build_modals, &r)
+	testing.expect(t, !modal_open(&r, "outer"), "with no field focused the dialog closes")
 }
 
 ////////////////////////////////

@@ -216,7 +216,7 @@ page_controls :: proc(app: ^App) {
 					ui.spacer(ui.px(em * 0.3))
 					ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8))})
 					if ui.row(.Center, id = "###modalrow") {
-						if ui.button("###b_modal", "Open dialog", ICON_QUESTION, {face = .Ghost}).clicked { app.modal_open = true }
+						if ui.button("###b_modal", "Open dialog", ICON_QUESTION, {face = .Ghost}).clicked { dialog_open(app, CONFIRM_VIEW) }
 					}
 				}
 			}

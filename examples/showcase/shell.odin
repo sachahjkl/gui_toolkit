@@ -60,8 +60,10 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 	app := (^App)(h.user)
 	app.builds += 1
 	em := ui.font_size()
-	if app.builds == 1 && app.scene == .Toasts { toasts_say(app) }   // (in a build: a toast is born at the build's time)
-	if ui.key_press(.K, {.Ctrl}) { ui.palette_open(&app.palette) }
+	// (in a build: a toast is born at the build's time, a view's owner is this window; nothing typed in the palette:
+	// every command under its group, with its keys)
+	if app.builds == 1 { scene_open(app, app.scene) }
+	if ui.key_press(.K, {.Ctrl}) { palette_show(app) }
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 	if ui.column(id = "###app") {
 		top_bar(app, em)
@@ -100,7 +102,7 @@ top_bar :: proc(app: ^App, em: f32) {
 			}
 			ui.spacer(ui.fill())
 			if ui.search_launcher("###search", "Search the commands", "Ctrl+K", tip = "The command palette").clicked {
-				ui.palette_open(&app.palette)
+				palette_show(app)
 			}
 			ui.spacer(ui.px(em * 1.2))
 			light := app.shown.light
@@ -186,12 +188,35 @@ overlay_link :: proc(app: ^App, id, glyph, words: string, s: Scene, em: f32) {
 scene_open :: proc(app: ^App, s: Scene) {
 	app.scene = s
 	#partial switch s {
-	case .Palette: ui.palette_open(&app.palette)
-	case .Dialog:  app.dialog_open = true
-	case .Confirm: app.confirm_open = true
-	case .Prompt:  app.prompt_open = true
+	case .Palette: palette_show(app)
+	case .Dialog:  ui.view_open(ui.views(), EXPORT_VIEW, app)
+	case .Confirm:
+		ui.confirm_open("delete", {
+			title = "Delete 4 pictures for good?", note = "They leave the disk at once: the bin does not keep them.", act = "Delete",
+			lines = {"harbour-at-dusk.webp", "harbour-at-dusk-2.webp", "pier-in-fog.png", "lighthouse.jpg"},
+		})
+	case .Prompt:
+		ui.prompt_open("unlock", &app.pin, {
+			title = "Unlock the key", note = "Type the PIN of the security key to sign the release.", placeholder = "PIN",
+			secret = true, reveal = &app.reveal, act = "Unlock",
+		})
 	case .Toasts:  toasts_say(app)
 	}
+}
+
+// The palette, its table made again when the settings changed.
+@(private = "file")
+palette_show :: proc(app: ^App) {
+	palette_table_keep(app)
+	ui.palette_open(&app.palette)
+}
+
+@(private = "file")
+palette_table_keep :: proc(app: ^App) {
+	table := &app.palette_table
+	if table.version == app.prefs.version + 1 { return }
+	palette_table_make(table, &app.prefs, settings_options(app))
+	ui.palette_set(&app.palette, table.commands, nil, {memory = &app.choices, names = table.keys, version = table.version})
 }
 
 @(private = "file")
@@ -238,31 +263,22 @@ palette_table_destroy :: proc(table: ^Palette_Table) {
 	table^ = {}
 }
 
-// The overlays of the scene: the palette, the dialogs; the menu is the menus scene's own.
+// The answers of the scene's overlays (views shown as dialogs, built at the end of the build); the menu is the menus
+// scene's own.
 @(private = "file")
 overlays :: proc(app: ^App, em: f32) {
-	o := settings_options(app)
+	// (the settings changed while the palette is open: its table follows)
+	if ui.palette_is_open(&app.palette) { palette_table_keep(app) }
 	table := &app.palette_table
-	if app.palette.open && table.version != app.prefs.version + 1 { palette_table_make(table, &app.prefs, o) }
-	if i, _ := ui.palette(&app.palette, table.commands, nil, {memory = &app.choices, names = table.keys, version = table.version}); i >= 0 {
+	if i, _, ok := ui.palette_chosen(&app.palette); ok {
 		ui.choice_note(&app.choices, table.keys[i])
 		if i >= len(COMMANDS) {
 			app.scene = .Settings
-			prefs_page.show(&app.page, &app.prefs, o, table.names[i - len(COMMANDS)])
+			prefs_page.show(&app.page, &app.prefs, settings_options(app), table.names[i - len(COMMANDS)])
 		}
 	}
-	dialog_build(app, em)
-	switch ui.confirm("delete", &app.confirm_open, {
-		title = "Delete 4 pictures for good?", note = "They leave the disk at once: the bin does not keep them.", act = "Delete",
-		lines = {"harbour-at-dusk.webp", "harbour-at-dusk-2.webp", "pier-in-fog.png", "lighthouse.jpg"},
-	}) {
-	case .Confirmed: ui.announce(&app.announcer, .Good, "4 pictures deleted")
-	case .Cancelled, .None:
-	}
-	switch ui.prompt("unlock", &app.prompt_open, &app.pin, {
-		title = "Unlock the key", note = "Type the PIN of the security key to sign the release.", placeholder = "PIN",
-		secret = true, reveal = &app.reveal, act = "Unlock",
-	}) {
+	if ui.confirm_answer("delete") == .Confirmed { ui.announce(&app.announcer, .Good, "4 pictures deleted") }
+	switch ui.prompt_answer("unlock") {
 	case .Confirmed, .Cancelled: ui.line_edit_wipe(&app.pin)
 	case .None:
 	}

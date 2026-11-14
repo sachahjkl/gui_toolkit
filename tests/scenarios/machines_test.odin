@@ -18,7 +18,8 @@ import "../../src/ui"
 
 @(private = "file")
 Dialogs :: struct {
-	first, second: bool,
+	views:         ui.Views,
+	first, second: bool,   // open it in the next build (the first before the second: the second is on top)
 	page, field:   ui.Line_Edit,
 }
 
@@ -27,23 +28,43 @@ dialogs_build :: proc(s: ^session.Session) {
 	d := (^Dialogs)(s.user)
 	ui.next({width = ui.px(FIELD_WIDTH)})
 	ui.line_edit("###page", &d.page)
-	if ui.modal("first", &d.first, {width_em = 400 / ui.font_size()}) {
-		ui.next({width = ui.px(100)})
-		ui.button("below", "Below")
-	}
-	if ui.modal("second", &d.second, {width_em = 300 / ui.font_size()}) {
-		ui.next({width = ui.px(FIELD_WIDTH)})
-		ui.line_edit("###field", &d.field)
-		ui.next({width = ui.px(100)})
-		ui.button("above", "Above")
-	}
+	if d.first { d.first = false; ui.view_open(&d.views, "first", d) }
+	if d.second { d.second = false; ui.view_open(&d.views, "second", d) }
+}
+
+@(private = "file")
+first_view :: proc(v: ^ui.View, d: ^Dialogs) {
+	ui.next({width = ui.px(100)})
+	ui.button("below", "Below")
+}
+
+@(private = "file")
+second_view :: proc(v: ^ui.View, d: ^Dialogs) {
+	ui.next({width = ui.px(FIELD_WIDTH)})
+	ui.line_edit("###field", &d.field)
+	ui.next({width = ui.px(100)})
+	ui.button("above", "Above")
+}
+
+@(private = "file")
+dialogs_init :: proc(d: ^Dialogs) {
+	ui.view_register(&d.views, "first", first_view, ui.View_Options{title = "First"})
+	ui.view_register(&d.views, "second", second_view, ui.View_Options{title = "Second"})
+}
+
+@(private = "file")
+dialogs_end :: proc(d: ^Dialogs) {
+	ui.views_destroy(&d.views)
+	ui.line_edit_destroy(&d.page)
+	ui.line_edit_destroy(&d.field)
 }
 
 // A dialog under another one is not opening again at each frame: what the top one's field was given, it keeps.
 @(test)
 a_field_of_the_top_dialog_keeps_the_keyboard :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	d := Dialogs{first = true, second = true}
-	defer { ui.line_edit_destroy(&d.page); ui.line_edit_destroy(&d.field) }
+	dialogs_init(&d)
+	defer dialogs_end(&d)
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
 	session.frame(s)
 	session.click(s, "field")
@@ -55,7 +76,8 @@ a_field_of_the_top_dialog_keeps_the_keyboard :: proc(t: ^testing.T) { unwatched.
 @(test)
 tab_stays_in_the_top_dialog :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	d := Dialogs{first = true, second = true}
-	defer { ui.line_edit_destroy(&d.page); ui.line_edit_destroy(&d.field) }
+	dialogs_init(&d)
+	defer dialogs_end(&d)
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
 	session.frame(s)
 	below := session.get(s, "below").key
@@ -69,18 +91,19 @@ tab_stays_in_the_top_dialog :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^t
 @(test)
 a_closed_dialog_gives_the_focus_back :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	d: Dialogs
-	defer { ui.line_edit_destroy(&d.page); ui.line_edit_destroy(&d.field) }
+	dialogs_init(&d)
+	defer dialogs_end(&d)
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
 	session.click(s, "page")
 	d.first = true
 	// (it is laid out unseen until its layout holds: the page loses the focus on the frame that shows it)
 	session.wait_until(s, proc(s: ^session.Session) -> bool {
-		b := session.find(s, "modal_first")
+		b := session.find(s, "modal_view_first")
 		return b != nil && b.transparency < 1
 	}, "the dialog to show")
 	testing.expect_value(t, s.state.focus_key, ui.Key(0))
 	session.key(s, .Escape)
-	session.wait_until(s, proc(s: ^session.Session) -> bool { return !(^Dialogs)(s.user).first }, "Escape to close it")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return !ui.view_is_open(&(^Dialogs)(s.user).views, "first") }, "Escape to close it")
 	session.type_text(s, "back")
 	testing.expect_value(t, ui.line_edit_string(&d.page), "back")
 }) }

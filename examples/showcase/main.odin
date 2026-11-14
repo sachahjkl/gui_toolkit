@@ -62,15 +62,11 @@ App :: struct {
 	bold, italic: bool,
 	view:     int,
 
-	// the overlays
+	// the overlays: views of the window's own Views, shown as dialogs (in memory only: the showcase keeps no file)
 	palette:      ui.Command_Palette,
 	choices:      ui.Choice_Memory,   // (in memory only: the showcase keeps no file)
 	palette_table: Palette_Table,
-	dialog_open:  bool,
-	dialog_size:  ui.Vec2,
 	file_name:    ui.Line_Edit,
-	confirm_open: bool,
-	prompt_open:  bool,
 	pin:          ui.Line_Edit,
 	reveal:       bool,
 	announcer:    ui.Announcer,
@@ -138,6 +134,7 @@ open :: proc(o: Open_Options) -> ^App {
 	h.params = params
 	h.before_input = proc(h: ^host.Host) { app := (^App)(h.user); devtools.service(app.devtools, &h.state, &app.shared.r) }
 
+	export_register(app)
 	themes_make(app)
 	values_reset(app)
 	settings_open(app, page, advanced)
@@ -213,12 +210,9 @@ values_reset :: proc(app: ^App) {
 	app.checks = {true, false}
 	app.radio = 1
 	app.bold = true
-	app.dialog_open = app.scene == .Dialog
-	app.confirm_open = app.scene == .Confirm
-	app.prompt_open = app.scene == .Prompt
 	ui.line_edit_set(&app.file_name, "harbour-at-dusk")
 	ui.line_edit_set(&app.pin, "472913")
-	if app.scene == .Palette { ui.palette_open(&app.palette) }   // (nothing typed: every command under its group, with its keys)
+	// (the scene's overlay opens in the first build: a view's owner is the window being built)
 }
 
 main :: proc() {

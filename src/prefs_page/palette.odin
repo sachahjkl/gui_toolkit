@@ -8,8 +8,9 @@ package tk_prefs_page
 //	settings, names := prefs_page.palette_commands(&app.prefs, opts, table_allocator)
 //	app.table = slice.concatenate([][]ui.Command{app_commands, settings}, table_allocator)
 //	app.table_version = app.prefs.version + 1
+//	ui.palette_set(&app.palette, app.table, disabled, {version = app.table_version})
 //	// each frame
-//	if i, _ := ui.palette(&app.palette, app.table, disabled, {version = app.table_version}); i >= len(app_commands) {
+//	if i, _, ok := ui.palette_chosen(&app.palette); ok && i >= len(app_commands) {
 //		app.settings_open = true
 //		prefs_page.show(&app.page, &app.prefs, opts, names[i - len(app_commands)])
 //	}

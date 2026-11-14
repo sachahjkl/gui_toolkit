@@ -99,12 +99,12 @@ position_picker :: proc(app: ^App, size: ui.Vec2) -> (changed: bool) {
 
 anim_mode_labels := [?]string{"System", "On", "Off"}
 
-build_settings :: proc(app: ^App) {
+settings_view :: proc(v: ^ui.View, app: ^App) {
 	em := ui.font_size()
 	w := min(em * 34, f32(app.win.size.x) * 0.92)
 	pad := em * 1.5
 	inner := w - 2 * pad
-	if ui.modal("settings", &app.settings_open, {width_em = w / em, top = 0.10}) {
+	{
 		if ui.style({width = ui.px(w)}) {
 			ui.spacer(ui.px(em * 1.1))
 			// header
@@ -116,7 +116,7 @@ build_settings :: proc(app: ^App) {
 				ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 1.35)})
 				ui.label("Settings")
 				ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2)})
-				if ui.button("st_close", icon = ui.ICON_X).clicked { app.settings_open = false }
+				if ui.button("st_close", icon = ui.ICON_X).clicked { ui.view_end(v, 0) }
 				ui.spacer(ui.px(pad - em * 0.4))
 			}
 
@@ -227,7 +227,7 @@ build_settings :: proc(app: ^App) {
 							ui.announce(&app.announcer, .Good, "Settings restored to defaults")
 						}
 						ui.spacer(ui.fill())
-						if ui.button("###st_done", "Done", o = {intent = .Primary}).clicked { app.settings_open = false }
+						if ui.button("###st_done", "Done", o = {intent = .Primary}).clicked { ui.view_end(v, 0) }
 					}
 				}
 				ui.spacer(ui.px(pad))

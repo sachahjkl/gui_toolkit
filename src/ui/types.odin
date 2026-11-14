@@ -428,6 +428,9 @@ State :: struct {
 	focus_order:  [dynamic]Focus_Entry,  // Tab stops in build order (this frame)
 	tab_stops_off: [dynamic]bool,    // `tab_stops` scopes; tab_skip counts the ones that turned Tab stops off
 	tab_skip:     int,
+	views:        ^Views,                // its Views: set_views' (the program's), else &own_views (state_views)
+	own_views:    Views,                 // made at its first use, destroyed with the State
+	views_attached: [dynamic]^Views,     // the Views whose views this State builds at the end of its builds (views.odin)
 	modals_open:  [dynamic]Modal_Open,   // the dialogs of the last build, bottom to top (modal_phase)
 	modals_built: [dynamic]Modal_Open,   // and of this one
 	modal_stack:  [dynamic]Modal_Scope,  // the modals being built (modal_end)

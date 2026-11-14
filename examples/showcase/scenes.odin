@@ -413,10 +413,18 @@ themes_build :: proc(app: ^App, em: f32) {
 ////////////////////////////////
 // The overlays' scenes
 
-// A dialog of its own: its header with the close button in its corner, its body, its buttons. It fades in.
-dialog_build :: proc(app: ^App, em: f32) {
-	if ui.modal("export", &app.dialog_open, {width_em = 31, size = &app.dialog_size}) {
-		if ui.dialog_header("export_head", "Export pictures", {icon = lucide.DOWNLOAD, icon_font = ui.lucide_icons(), close = true}) {}
+// A view of its own, shown as a dialog: the toolkit's header (its title, the close cross in its corner), its body, its
+// buttons. It fades in; the user resizes it, and the views remember its size.
+EXPORT_VIEW :: "export"
+
+export_register :: proc(app: ^App) {
+	ui.view_register(ui.state_views(&app.main.state), EXPORT_VIEW, export_view, ui.View_Options{title = "Export pictures", icon = lucide.DOWNLOAD, width_em = 31, resizable = true})
+}
+
+@(private = "file")
+export_view :: proc(v: ^ui.View, app: ^App) {
+	em := ui.font_size()
+	{
 		if ui.dialog_body("export_body") {
 			if ui.form_row("Name") { ui.line_edit("###export_name", &app.file_name, {placeholder = "The file's name"}) }
 			if ui.form_row("Format") {
@@ -431,9 +439,9 @@ dialog_build :: proc(app: ^App, em: f32) {
 			facts_well("###export_facts", em)
 		}
 		if ui.dialog_buttons("export_buttons") {
-			if ui.button("export_cancel", "Cancel", lucide.X).clicked { app.dialog_open = false }
+			if ui.button("export_cancel", "Cancel", lucide.X).clicked { ui.view_end(v, ui.VIEW_CANCELLED) }
 			if ui.button("export_go", "Export 4 pictures", lucide.DOWNLOAD, {intent = .Primary}).clicked {
-				app.dialog_open = false
+				ui.view_end(v, 0)
 				ui.announce(&app.announcer, .Good, "4 pictures exported", "~/Pictures/Shots")
 			}
 		}

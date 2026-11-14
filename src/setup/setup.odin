@@ -42,11 +42,10 @@ Setup_Options :: struct {
 	square:         bool,            // every corner of the dialog square (its panel, frames, fields, the toolkit's buttons)
 	user:           rawptr,
 	// The program's own look of the dialog (nil: the toolkit's): what is drawn behind it first (a blur of the window...),
-	// its buttons, and the close control in its corner (its box built with ui.modal_corner: the toolkit places it).
+	// and its buttons. The header and its close cross are the toolkit's (the views' header).
 	backdrop:       proc(user: rawptr),
 	// A button: its words, a Lucide glyph and its intent (what it does: Danger uninstalls, Success installs or opens).
 	button:         proc(id, label, glyph: string, intent: ui.Intent, em: f32, user: rawptr) -> bool,
-	close:          proc(id: string, em: f32, user: rawptr) -> bool,
 }
 
 // An option of the program's install (Setup_Options.choices).
