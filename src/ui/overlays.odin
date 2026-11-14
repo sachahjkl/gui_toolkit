@@ -257,13 +257,27 @@ Modal_Scope :: struct {
 }
 
 // A dialog of this build or the last. `focus`: what had the focus when it opened, and gets it back when it closes.
-// `shown`: it was drawn (its first build measures it unseen): what had the focus loses it then, as the dialog appears.
+// `show`: where it is in its opening (Modal_Show); `measures`: the layouts it had unseen; `layout`: the signature of the
+// last one (modal_layout_signature).
 @(private)
 Modal_Open :: struct {
-	panel: Key,
-	focus: Key,
-	shown: bool,
+	panel:    Key,
+	scrim:    Key,
+	focus:    Key,
+	show:     Modal_Show,
+	measures: int,
+	layout:   u64,
 }
+
+// A dialog's opening. Measuring: built and laid out unseen, until two layouts in a row agree (modals_settle; a layout that
+// depends on the last one, as a dialog's height or a program's own measure does, settles in two or three). Ready: its
+// next build shows it. Showing: the build that shows it (what had the focus loses it, its fade starts); its layout is
+// checked once more, and one that moved still goes back to Measuring, unseen. Shown: drawn, fading in or done.
+@(private)
+Modal_Show :: enum u8 { Measuring, Ready, Showing, Shown }
+
+// The layouts a dialog has unseen at most: one that never settles (something in it moves at every frame) shows then.
+@(private = "file") MODAL_MEASURES_MAX :: 6
 
 // Where a dialog is, from the last build: not in it (the focus leaves the page for it), under another one, or the
 // one on top (Escape is its own).
@@ -308,6 +322,52 @@ modals_settle :: proc(s: ^State) {
 		s.focus_key = m.focus
 		s.anim_busy = true   // (the frame that shows it)
 	}
+	modals_measure(s)
+}
+
+// After the layout (modals_settle): a dialog still unseen is shown once its layout is the same two frames in a row, so
+// that the first frame drawn is the one that stays. Only a dialog that is opening is walked, for a few frames.
+@(private = "file")
+modals_measure :: proc(s: ^State) {
+	for &m in s.modals_built {
+		if m.show == .Shown || m.show == .Ready { continue }
+		panel := s.boxes[m.panel] or_else nil
+		if panel == nil || panel.last_build != s.build_index { continue }
+		sig := modal_layout_signature(panel)
+		settled := m.measures > 0 && sig == m.layout
+		m.layout = sig
+		switch m.show {
+		case .Measuring:
+			m.measures += 1
+			if settled || m.measures >= MODAL_MEASURES_MAX { m.show = .Ready }
+			s.anim_busy = true   // (the next frame at once: it is not drawn)
+		case .Showing:
+			if settled || m.measures >= MODAL_MEASURES_MAX { m.show = .Shown; continue }
+			// (it moved as it showed: unseen again, the scrim with it)
+			m.show = .Measuring
+			m.measures += 1
+			panel.transparency = 1
+			if scrim := s.boxes[m.scrim] or_else nil; scrim != nil { scrim.transparency = 1 }
+			s.anim_busy = true
+		case .Ready, .Shown:
+		}
+	}
+}
+
+// What a dialog's layout is, in one number: the rects of its panel and of every box in it. Two layouts with the same
+// signature draw the dialog at the same place, with the same parts at the same places.
+@(private = "file")
+modal_layout_signature :: proc(panel: ^Box) -> u64 {
+	walk :: proc(b: ^Box, h: ^u64) {
+		r := [4]f32{b.rect.min.x, b.rect.min.y, b.rect.max.x, b.rect.max.y}
+		for v in r {
+			h^ = (h^ ~ u64(transmute(u32)v)) * 0x100000001b3   // (FNV-1a, a word at a time)
+		}
+		for c := b.first; c != nil; c = c.next { walk(c, h) }
+	}
+	h: u64 = 0xcbf29ce484222325
+	walk(panel, &h)
+	return h
 }
 
 MODAL_MARGIN_EM :: 1.0   // between a dialog and the edge of the window
@@ -332,14 +392,14 @@ modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 	panel := box_from_key(key)
 	if pref.y <= 0 && o.size != nil {
 		// (resizable, it needs a height of its own: its first build, unseen, lays what is in it out in all the room there
-		// is; then it is as tall as that was)
+		// is; then it is as tall as that was, still unseen until that height holds)
 		phase, _ := modal_phase(s, key)
 		pref.y = phase != .Opening && panel != nil ? modal_content_height(panel) : hi.y
 	}
 	want := o.size != nil && o.size^ != {} ? o.size^ * em : pref
 	wh := Vec2{math.round(clamp(want.x, lo.x, hi.x)), want.y > 0 ? math.round(clamp(want.y, lo.y, hi.y)) : 0}
-	// (as tall as what is in it: placed by the height of the last frame, nothing is laid out yet. Its first build is not
-	// drawn (modal_begin): the frame that shows it is already where it stays)
+	// (as tall as what is in it: placed by the height of the last frame, nothing is laid out yet. It is not drawn until
+	// two layouts in a row agree (modal_begin): the frame that shows it is already where it stays)
 	h := wh.y > 0 ? wh.y : (panel != nil ? panel.size.y : 0)
 	y := math.round(max((s.window_size.y - h) * 0.5, margin))
 	if top, held := o.top.?; held {
@@ -390,23 +450,34 @@ modal_content_height :: proc(panel: ^Box) -> f32 {
 // How long a dialog takes to appear: its scrim and its panel fade in together.
 @(private = "file") MODAL_FADE_MS :: 120
 
-// The scrim and the panel at `at`, `wh` its size (a height of 0: that of what is in it). The build that opens it lays it out
-// unseen and asks for the next frame at once: the first frame that shows it has it at its size and place, and what is in it
-// laid out (a tall dialog moved up on its second frame, its content's own measures settled one frame late). Then the scrim
-// and the panel fade in together (MODAL_FADE_MS; at once with animations off).
+// The scrim and the panel at `at`, `wh` its size (a height of 0: that of what is in it). A dialog that opens is built and
+// laid out unseen, the next frame at once, until its layout is the same two frames in a row (Modal_Show, modals_measure):
+// its place depends on its height, which the last layout gave, and what is in it may measure itself on the last layout
+// too. The first frame that shows it has it at its size and place, and what is in it where it stays. From that frame,
+// the scrim and the panel fade in together, one value for both (MODAL_FADE_MS; at once with animations off).
 @(private = "file")
 modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	em := font_size()
 	key := modal_key(s, id)
 	phase, last := modal_phase(s, key)
+	cur := last
+	if phase == .Opening {
+		cur = {panel = key, scrim = key_from_string(s.root.key, fmt.tprintf("###modal_scrim_%s", id)), focus = s.focus_key}
+	} else if cur.show == .Ready {
+		// keyboard: what had the focus loses it as the dialog shows, not while it is unseen: the focus ring behind goes in
+		// the frame the dialog comes. (What the dialog's own unseen builds focused keeps it.)
+		if s.focus_key == cur.focus { s.focus_key = 0 }
+		cur.show = .Showing
+	}
 	fade_key := key_from_string(key, "fade")
 	shown: f32
-	if phase == .Opening {
-		_ = tween(fade_key, 0, 0)               // (from nothing, each time it opens)
-		_ = tween(fade_key, 1, MODAL_FADE_MS)   // (its fade starts with the frame that shows it)
-		s.anim_busy = true                      // (that frame now)
-	} else {
+	if cur.show == .Showing || cur.show == .Shown {
 		shown = tween(fade_key, 1, MODAL_FADE_MS)
+	} else {
+		// (from nothing while unseen: the fade starts here each frame, and moves from the first frame that shows it)
+		_ = tween(fade_key, 0, 0)
+		_ = tween(fade_key, 1, MODAL_FADE_MS)
+		s.anim_busy = true   // (the next frame at once)
 	}
 	push_parent(s.root)
 	push_tags_isolated("floating")   // (a dialog is a dialog, whatever the tags where it is built)
@@ -438,16 +509,7 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
 	a11y_default(panel, {role = .Dialog, modal = true})
 	push_parent(panel)
 	append(&s.popup_stack, true)
-	// keyboard: Tab cycles inside the dialog; what had the focus loses it while the dialog is open. Lost when the dialog
-	// shows, not in its unseen build: the focus ring behind went one frame before the dialog came. (What the dialog's own
-	// first build focused keeps it.)
-	cur := last
-	if phase == .Opening {
-		cur = {panel = panel.key, focus = s.focus_key}
-	} else if !cur.shown {
-		if s.focus_key == cur.focus { s.focus_key = 0 }
-		cur.shown = true
-	}
+	// (keyboard: Tab cycles inside the dialog, Modal_Scope.order)
 	append(&s.modals_built, cur)
 	append(&s.modal_stack, Modal_Scope{panel = panel.key, order = len(s.modals_built), open = open, wh = wh})
 }

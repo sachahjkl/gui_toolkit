@@ -3,6 +3,7 @@ package scenarios_test
 // Menus as wide as what they show, dialogs that open where they stay and fade in, the close button of a dialog's header,
 // the menu of a text area.
 
+import "core:fmt"
 import "core:strings"
 import "core:testing"
 import "../../src/testkit/session"
@@ -190,6 +191,139 @@ a_fitted_dialog_is_as_tall_as_its_content :: proc(t: ^testing.T) { unwatched.run
 	h := panel.rect.max.y - panel.rect.min.y
 	testing.expectf(t, h < f32(MD_WINDOW.y) * 0.5, "not as tall as the window: %v", h)
 	testing.expectf(t, h >= 190, "as tall as its content: %v", h)
+}) }
+
+////////////////////////////////
+// No dialog moves after its first frame shown
+
+// A title longer than a dialog's default width: the dialog grows to it, then it wraps.
+@(private = "file") FS_LONG_TITLE :: "A title much longer than the width a dialog has by default, so that it grows to it and then wraps"
+// The height of the program's own measure before it knew its width, and its height for a width (px).
+@(private = "file") FS_LATE_LEAST :: 40
+@(private = "file") FS_LATE_PER_WIDTH :: 0.5
+@(private = "file") FS_BUTTONS :: 9
+// The frames a dialog has to show and end its fade; the frames that let the last one go.
+@(private = "file") FS_FRAMES :: 60
+@(private = "file") FS_SETTLE_FRAMES :: 4
+
+@(private = "file")
+First_Shown_Kind :: enum { Late, Buttons, Confirm, Prompt, Palette, Sheet }
+
+// Each kind's dialog, by its id (session.find: "modal_<id>", "modal_scrim_<id>"), and a box in it that must not move either.
+// (variables, read only: a constant array cannot be indexed by a value known at run time)
+@(private = "file", rodata) FS_ID := [First_Shown_Kind]string{.Late = "late", .Buttons = "buttons", .Confirm = "ask", .Prompt = "pin", .Palette = "palette", .Sheet = "keys"}
+@(private = "file", rodata) FS_INNER := [First_Shown_Kind]string{.Late = "late_body", .Buttons = "fs_b8", .Confirm = "confirm_act", .Prompt = "prompt_ok", .Palette = "", .Sheet = "sheet_title"}
+
+@(private = "file")
+FS_COMMANDS := [?]ui.Command{
+	{label = "End task", group = "Processes", keys = {{.Delete, {}}}},
+	{label = "Kill", group = "Processes", keys = {{.Delete, {.Shift}}}},
+	{label = "Start", group = "Services", keys = {{.S, {.Ctrl}}}},
+	{label = "Command palette", group = "Window", keys = {{.P, {.Ctrl, .Shift}}}},
+}
+
+@(private = "file")
+First_Shown :: struct {
+	kind:     First_Shown_Kind,
+	open_now: bool,   // the next build opens the dialog of `kind`
+	open:     bool,
+	late_w:   f32,    // the late body's width at the last layout: a program's own measure, known one frame late
+	field:    ui.Line_Edit,
+	pal:      ui.Command_Palette,
+	sheet:    ui.Shortcuts_Sheet,
+}
+
+@(private = "file")
+first_shown_build :: proc(s: ^session.Session) {
+	r := (^First_Shown)(s.user)
+	if r.open_now {
+		r.open_now = false
+		switch r.kind {
+		case .Palette: ui.palette_open(&r.pal)
+		case .Sheet:   r.sheet.open = true
+		case .Late, .Buttons, .Confirm, .Prompt: r.open = true
+		}
+	}
+	switch r.kind {
+	case .Late:
+		if ui.modal("late", &r.open, {}) {
+			if ui.dialog_header("fs_head", FS_LONG_TITLE, {close = true}) {}
+			if ui.dialog_body("fs_body") {
+				ui.paragraph("A sentence that wraps at the width the dialog has.###fs_note")
+				// (as tall as its width asks, the width it had at the last layout: as a program's own measure is)
+				ui.next({width = ui.fill(), height = ui.px(r.late_w > 0 ? r.late_w * FS_LATE_PER_WIDTH : FS_LATE_LEAST)})
+				b := ui.build_box({}, "###late_body")
+				r.late_w = b.rect.max.x - b.rect.min.x
+			}
+		}
+	case .Buttons:
+		if ui.modal("buttons", &r.open, {}) {
+			if ui.dialog_header("fs_head", "Many buttons", {close = true}) {}
+			if ui.dialog_buttons("fs_row") {
+				for i in 0 ..< FS_BUTTONS { _ = ui.button(fmt.tprintf("fs_b%d", i), fmt.tprintf("Button number %d", i)) }
+			}
+		}
+	case .Confirm:
+		lines := []string{"first.txt", "second.txt", "third.txt"}
+		_ = ui.confirm("ask", &r.open, {title = FS_LONG_TITLE, note = "They do not go to the trash.", lines = lines, act = "Delete"})
+	case .Prompt:
+		_ = ui.prompt("pin", &r.open, &r.field, {title = FS_LONG_TITLE, note = "Type the PIN of the key."})
+	case .Palette:
+		_, _ = ui.palette(&r.pal, FS_COMMANDS[:])
+	case .Sheet:
+		ui.shortcuts_sheet(&r.sheet, "keys", FS_COMMANDS[:])
+	}
+}
+
+// Frame by frame from the one that opens it: the scrim and the panel have one transparency, unseen (1) until the frame
+// that shows them; from that frame on, neither the panel nor `inner` moves, and the fade goes on to its end.
+@(private = "file")
+first_shown_expect :: proc(t: ^testing.T, s: ^session.Session, kind: First_Shown_Kind) {
+	panel_name := fmt.tprintf("modal_%s", FS_ID[kind])
+	scrim_name := fmt.tprintf("modal_scrim_%s", FS_ID[kind])
+	shown, inner_shown: ui.Rect
+	seen, done := false, false
+	for i in 0 ..< FS_FRAMES {
+		session.frame(s)
+		panel, scrim := session.find(s, panel_name), session.find(s, scrim_name)
+		if panel == nil || scrim == nil { continue }
+		testing.expectf(t, panel.transparency == scrim.transparency, "%v, frame %d: the scrim and the panel fade as one: %v, %v", kind, i, scrim.transparency, panel.transparency)
+		inner := FS_INNER[kind] != "" ? session.find(s, FS_INNER[kind]) : nil
+		if panel.transparency >= 1 {
+			testing.expectf(t, !seen, "%v, frame %d: unseen again after it showed", kind, i)
+			continue
+		}
+		if !seen {
+			seen, shown = true, panel.rect
+			if inner != nil { inner_shown = inner.rect }
+			testing.expectf(t, panel.transparency > 0, "%v: its first frame shown starts its fade (%v)", kind, panel.transparency)
+			continue
+		}
+		testing.expectf(t, panel.rect == shown, "%v, frame %d: the rect of its first frame shown %v, now %v", kind, i, shown, panel.rect)
+		if inner != nil { testing.expectf(t, inner.rect == inner_shown, "%v, frame %d: %s at %v when it showed, now %v", kind, i, FS_INNER[kind], inner_shown, inner.rect) }
+		if panel.transparency == 0 { done = true; break }
+	}
+	testing.expectf(t, seen && done, "%v: it shows and ends its fade within %d frames (seen %v)", kind, FS_FRAMES, seen)
+}
+
+// The first frame where a dialog is seen has it at its size and place, and what is in it where it stays: a dialog that
+// grows to a long title and wraps it, one of a row of buttons on several lines, one whose content measures itself on the
+// last layout (as a program's own widget does), a confirmation, a prompt, the palette, the sheet of the keys. Its scrim
+// and its panel fade in as one, from the same frame.
+@(test)
+a_dialog_does_not_move_after_its_first_frame_shown :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := First_Shown{}
+	defer ui.line_edit_destroy(&r.field)
+	defer ui.palette_destroy(&r.pal)
+	defer ui.shortcuts_sheet_destroy(&r.sheet)
+	s := session.start(t, {size = MD_WINDOW, user = &r, animations = true, no_renderer = true, build = first_shown_build})
+	for kind in First_Shown_Kind {
+		r.kind, r.late_w = kind, 0
+		session.frames(s, FS_SETTLE_FRAMES)   // (the last one's dialog gone)
+		r.open_now = true
+		first_shown_expect(t, s, kind)
+		r.open, r.pal.open, r.sheet.open = false, false, false
+	}
 }) }
 
 ////////////////////////////////

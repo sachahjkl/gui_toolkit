@@ -27,10 +27,14 @@ sizes in ems of the style where `modal` is called:
   No program adds up its header and its buttons to size it.
 - A resizable dialog's bottom right corner is square, with the resize grip in it: a bevel in the theme's `resize_grip shade` (the border colour: darker on a light theme, lighter on a dark one) and dots on it. A floating panel of the dock has the same grip.
 
-A dialog that opens is laid out once unseen, and the next frame comes at once: the first frame that shows it has it at its
-size and place, and what is in it laid out. Its scrim and its panel then fade in together (`MODAL_FADE_MS`, 120 ms; at once
-with the animations off). What had the focus loses it on that first frame shown, not before: its focus ring goes as the
-dialog comes.
+A dialog that opens is built and laid out unseen, the next frame at once, until two layouts in a row agree: the rects of
+its panel and of every box in it. Its place depends on its height, which only a layout gives, and what is in it may
+measure itself on the last layout (a program's own widget, a list that builds the lines in view): that takes two or three
+frames, a few milliseconds. The first frame that shows it then has it at its size and place, and what is in it where it
+stays; a dialog that still moves on that frame goes back unseen. One that never settles (something in it moves at every
+frame) shows after six layouts. From the first frame shown, its scrim and its panel fade in together, one value for both
+(`MODAL_FADE_MS`, 120 ms; at once with the animations off). What had the focus loses it on that first frame shown, not
+before: its focus ring goes as the dialog comes. Only a dialog that is opening is compared, for those few frames.
 
 Several dialogs may be open, one in another or one after the other; the one built last is on top. It has the keyboard: Tab goes round its own stops and Escape closes it, the ones under it wait (it is known at the end of the build, so `open` turns false at the next one: an Escape read as a dialog opens is that dialog's). A dialog that opens takes the focus from what had it, and gives it back when it closes, unless something else took it meanwhile.
 

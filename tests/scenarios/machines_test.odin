@@ -73,12 +73,14 @@ a_closed_dialog_gives_the_focus_back :: proc(t: ^testing.T) { unwatched.run(t, p
 	s := session.start(t, {size = WINDOW, user = &d, build = dialogs_build})
 	session.click(s, "page")
 	d.first = true
-	session.frame(s)
-	session.frame(s)
+	// (it is laid out unseen until its layout holds: the page loses the focus on the frame that shows it)
+	session.wait_until(s, proc(s: ^session.Session) -> bool {
+		b := session.find(s, "modal_first")
+		return b != nil && b.transparency < 1
+	}, "the dialog to show")
 	testing.expect_value(t, s.state.focus_key, ui.Key(0))
 	session.key(s, .Escape)
-	session.frame(s)
-	testing.expect(t, !d.first, "Escape closed it")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return !(^Dialogs)(s.user).first }, "Escape to close it")
 	session.type_text(s, "back")
 	testing.expect_value(t, ui.line_edit_string(&d.page), "back")
 }) }
