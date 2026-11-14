@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.258.0] - 2026-11-14
+
+### Added
+- **`ui.path_bar`**: a folder's path as a breadcrumb whose parts a click walks (a faint "/" between them, the leading ones in a "…" menu when they do not fit), turned by a click on its empty part (or `path_bar_edit`) into an address field with a dropdown: the children of the folder typed, by fuzzy matching, then the program's suggestions under their titles; ↓ ↑, Tab, Enter and Escape move, complete, go and come back. It reads nothing itself: it says which folder it `wants`, and the program answers with `path_bar_children` or `path_bar_failed`. `ui.choice_row` lights a search's letters (`ranges`) and puts its detail on the title's line (`beside`).
+
+### Changed
+- **The file browser's path bar**: its breadcrumb is tighter, a "/" between its parts, every part a click away; Ctrl+L or a click on its empty end gives the path as a field with a dropdown of the folder's folders (and files in Open and Save), found by fuzzy matching, then the places and the recent folders. Tab takes the row highlighted; Enter or a click goes there.
+
 ## [0.257.0] - 2026-11-14
 
 ### Added
@@ -3493,6 +3501,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.258.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.258.0
 [0.257.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.257.0
 [0.256.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.256.0
 [0.255.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.255.2
