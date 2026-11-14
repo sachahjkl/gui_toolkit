@@ -2,15 +2,13 @@
 
 ## Now
 
-- **One command palette for every program.** The toolkit's palette is fed by sources, with one table of prefixes and
-  one ranking on the chores; the programs move to it, in this order: papier, inspecteur, cliche, classeur, opencode
-  native, Wren. opencode native's and Wren's own palettes go. Intent:
-  [src/md/features/palette.md](src/md/features/palette.md).
+- **Wren on the toolkit's palette and views.** Wren is the last program with a palette and dialogs of its own: its
+  command registry feeds the toolkit's palette (its tabs under `@`, its history and bookmarks under `/`, its vault
+  under `$`, `about:config` under `:`), and its bookmark, vault and security-key dialogs become views. Intents:
+  [src/md/features/palette.md](src/md/features/palette.md), [src/md/features/views.md](src/md/features/views.md)
+  (sections 1 and 7).
 
 ## Next
-
-- **Wren moves to views.** Wren's bookmark, vault and security-key dialogs become views, as in the other programs.
-  Intent: [src/md/features/views.md](src/md/features/views.md), sections 1 and 7.
 - **Every row of tabs on a strip.** The dock's stacks, classeur's tab rows and Wren's tab strip scroll with the
   toolkit's arrows when their tabs are too many, as `ui.tabs` and the views' stacks do; today they cut or scroll in their
   own way. Intent: [src/md/features/strip.md](src/md/features/strip.md).
