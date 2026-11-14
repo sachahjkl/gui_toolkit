@@ -167,6 +167,8 @@ View_Record :: struct {
 	iframe:     Key,
 	irect:      Rect,
 	irect_kept: Rect,
+	ifit:       bool,        // it opened with no rect of its own: its unseen builds widen it to what is in it, centred
+	inatural:   f32,         // what is in it needs this width, on one line (window px, its last build): its least width
 	imeasures:  int,
 	ilayout:    u64,
 	z:          u64,

@@ -44,6 +44,7 @@ scene_build :: proc(app: ^App, s: Scene, em: f32) {
 			case .Graph:    heading("A node graph and its inspector", "gt:flowgraph holds the workflow and runs it; ui.node_graph draws it in the theme's finish, ui.node_inspector edits a node from its kind's schema.", em); graph_build(app, em)
 			case .Themes:   themes_build(app, em)
 			case .Toolbar:  toolbar_build(app, em)
+			case .Views:    views_build(app, em)
 			}
 			ui.spacer(ui.px(em * 1.2))
 		}

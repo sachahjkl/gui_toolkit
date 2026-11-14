@@ -359,7 +359,11 @@ view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
 	s.view_keys_root = keys_root
 	pop_parent()
 	view_header_end(vs, r, .Internal)
-	if !unseen { view_internal_grips(r, frame, w, h, em) }
+	w = view_internal_fit(r, frame, w)
+	if !unseen {
+		r.ifit = false   // (shown: its width is the user's from now on, never under what is in it)
+		view_internal_grips(r, frame, w, h, em)
+	}
 	pop_parent()   // frame
 	pop(&s.style_stack)
 	pop_tags_isolated()
@@ -406,6 +410,7 @@ view_internal_place :: proc(vs: ^Views, r: ^View_Record, em: f32) -> Rect {
 			x := math.round((win.x - w) * 0.5)
 			y := math.round(win.y * VIEW_INTERNAL_TOP)
 			r.irect = {{x, y}, {x + w, y + hh}}
+			r.ifit = true   // (width_em is its least: its unseen builds widen it to what is in it)
 		}
 	}
 	rect := r.irect
@@ -416,6 +421,35 @@ view_internal_place :: proc(vs: ^Views, r: ^View_Record, em: f32) -> Rect {
 	return {{x, y}, {x + w, y + max(h, 0)}}
 }
 
+// In the build, before its layout: what is in the window needs `need` on one line (natural_width, the measure of a
+// dialog that grows to what is in it: a label on one line, a row of controls, what has a width of its own). That is its
+// least width: a label the user must read is never cut. A window that opened with no rect of its own (r.ifit, until it
+// shows) grows to it, centred again; any other (the memory's, the dialog's or the panel's rect it came from, the user's
+// resize) is never narrower than it. Its height is the user's: what does not fit is clipped (the program's scroll
+// regions scroll). Returns its width now.
+@(private = "file")
+view_internal_fit :: proc(r: ^View_Record, frame: ^Box, w: f32) -> f32 {
+	s := gs()
+	need: f32
+	for c := frame.first; c != nil; c = c.next {
+		if !is_floating(c, .X) { need = max(need, natural_width(c)) }
+	}
+	need = min(math.ceil(need + 2 * border_inset(frame)), s.window_size.x)
+	r.inatural = need
+	if w >= need { return w }
+	if r.ifit {
+		// (its first width: centred at the width of what is in it)
+		x := math.round((s.window_size.x - need) * 0.5)
+		r.irect = {{x, r.irect.min.y}, {x + need, r.irect.max.y}}
+		frame.fixed_pos.x = x
+	} else {
+		r.irect.max.x = r.irect.min.x + need
+		frame.fixed_pos.x = min(frame.fixed_pos.x, max(s.window_size.x - need, 0))
+	}
+	frame.pref[.X] = px(need)
+	return need
+}
+
 // Where an internal window of no rect opens: its top at this share of the window's height.
 @(private = "file") VIEW_INTERNAL_TOP :: 0.15
 
@@ -424,6 +458,7 @@ view_internal_place :: proc(vs: ^Views, r: ^View_Record, em: f32) -> Rect {
 view_internal_grips :: proc(r: ^View_Record, frame: ^Box, w, h, em: f32) {
 	e, c := math.round(em * 0.4), math.round(em * 0.9)
 	lo := DOCK_FLOAT_MIN_EM * em
+	lo.x = max(lo.x, r.inatural)   // (what is in it on one line: a resize never cuts a label)
 	Grip :: struct { dir: Vec2, cursor: platform.Cursor }
 	grips := [8]Grip{
 		{{0, -1}, .Resize_N}, {{0, 1}, .Resize_S}, {{-1, 0}, .Resize_W}, {{1, 0}, .Resize_E},

@@ -6,6 +6,8 @@
 //   build/showcase --theme="Tokyo Night" --light      a theme of ui.THEMES (or of THEMES_OF_THE_USER), its light version
 //   build/showcase --finish=edged                     flat, gradient, glass, machined (the default), edged
 //   build/showcase --page=scrolling --advanced        the settings scene: the page shown, its Advanced part unfolded
+//   build/showcase --scene=views --views=floating     the views scene: docked (panels), floating (and a floating
+//                                                     window), dialog (and a dialog)
 //   build/showcase --headless                         no window of the system: what tk screenshots runs
 //   build/showcase --size=1280x800                    the window's size
 // tk screenshots makes docs/screenshots/showcase_*.webp and site/img/showcase_*.webp from it (tools/tk/shots.odin).
@@ -26,13 +28,13 @@ import "../../src/render"
 import "../../src/ui"
 import "../../src/ascii"
 
-Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar }
+Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views }
 
 // The scenes' names on the command line (--scene=), and their titles in the sidebar.
 SCENE_NAMES := [Scene]string{
 	.Intents = "intents", .Controls = "controls", .Palette = "palette", .Menus = "menus", .Dialog = "dialog",
 	.Confirm = "confirm", .Prompt = "prompt", .Settings = "settings", .Graph = "graph", .Toasts = "toasts", .Themes = "themes",
-	.Toolbar = "toolbar",
+	.Toolbar = "toolbar", .Views = "views",
 }
 
 WINDOW_SIZE :: [2]int{1280, 800}
@@ -68,6 +70,15 @@ App :: struct {
 	bar_width: f32,
 	bar_bold:  bool,
 	bar_menu_opened: bool,
+
+	// the views scene (views.odin): what it opens (--views=), whether its views are open, its terminals, its picture's
+	// tint, the inspector's toggle
+	views_variant:  Views_Variant,
+	views_opened:   bool,
+	terminals:      [TERMINALS_MAX]Terminal,
+	terminal_count: int,
+	views_hue, views_sat, views_val: f32,
+	views_keep_meta: bool,
 
 	// the overlays: views of the window's own Views, shown as dialogs (in memory only: the showcase keeps no file)
 	palette:      ui.Command_Palette,
@@ -115,6 +126,8 @@ open :: proc(o: Open_Options) -> ^App {
 		case strings.has_prefix(a, "--theme="): app.choice.name = a[len("--theme="):]
 		case strings.has_prefix(a, "--finish="): app.choice.finish = ui.finish_of(a[len("--finish="):])
 		case strings.has_prefix(a, "--page="): page = a[len("--page="):]
+		case strings.has_prefix(a, "--views="):
+			for name, v in VIEWS_VARIANT_NAMES { if ascii.equal_fold(name, a[len("--views="):]) { app.views_variant = v } }
 		case strings.has_prefix(a, "--size="):
 			v := a[len("--size="):]
 			if x := strings.index_byte(v, 'x'); x > 0 {
@@ -142,6 +155,7 @@ open :: proc(o: Open_Options) -> ^App {
 	h.before_input = proc(h: ^host.Host) { app := (^App)(h.user); devtools.service(app.devtools, &h.state, &app.shared.r) }
 
 	export_register(app)
+	views_register(app)
 	themes_make(app)
 	values_reset(app)
 	settings_open(app, page, advanced)
@@ -213,6 +227,7 @@ values_reset :: proc(app: ^App) {
 	app.from, app.to = 9, 17
 	app.volume = 0.64
 	app.bar_tool, app.bar_colour, app.bar_width, app.bar_bold, app.bar_dash = 1, 4, 4, true, 0
+	app.views_hue, app.views_sat, app.views_val, app.views_keep_meta = 205, 0.45, 0.55, true
 	app.format = 2
 	app.switches = {true, false, true}
 	app.checks = {true, false}

@@ -964,7 +964,17 @@ is the terminal whose view has the focus.
   the remembered rect is not changed.
 - Its rect is in logical pixels from the owner's top left (`internal=` in the memory), written when a move or a resize
   is let go. With no rect remembered, it opens where the dialog was (Detach, or a drag of the dialog's header), else
-  centred at `width_em`, as tall as what is in it: its height is taken from its first settled layout.
+  centred, as wide as what is in it asks (`width_em` at least), as tall as what is in it: its height is taken from its
+  first settled layout.
+- **Its least width is what is in it on one line** (`view_internal_fit`, each build before the layout: the dialog's
+  measure, `natural_width`, kept as `View_Record.inatural`). One that opened with no rect grows to it, centred, during
+  its unseen builds (`ifit`); any other rect (the memory's, the dialog's or the panel's it came from) is widened to it;
+  the grips stop there. A label the user must read is never cut (the showcase's Colour window cut "Saturation" at
+  `width_em` 19). Decided: width only. Its height is the user's, what does not fit is clipped and the program's scroll
+  regions scroll: a whole height as a floor would forbid a small window over a long list. Refused: making the body a
+  scroll region (a view that fills the window, a terminal, would then be as tall as its content). The root of that
+  cut was also `form_row`'s label, 34 % of the row with no least: its words on one line are now its least, so the
+  measure sees them and the widget gives way.
 - Several internal windows float at once. A press on one brings it to the front, before its boxes are built (in front
   this frame). The order is a stamp per view (`View_Record.z`), the topmost last.
 - Focus: when it shows, the focus goes to its first stop; what had the focus is kept, and gets it back when it closes,

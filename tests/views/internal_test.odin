@@ -21,6 +21,7 @@ Win :: struct {
 	views:   ui.Views,
 	want:    string,   // open in the next build
 	answers: [dynamic]int,
+	sat:     f32,      // the colour window's slider
 }
 
 @(private = "file")
@@ -39,10 +40,22 @@ win_view :: proc(v: ^ui.View, r: ^Win) {
 	if ui.dialog_buttons("win_buttons") { _ = ui.button("win_ok", "OK") }
 }
 
+// A floating colour window narrower than what is in it (Saturation's label, a line of a width of its own).
+@(private = "file")
+colour_view :: proc(v: ^ui.View, r: ^Win) {
+	ui.next({width = ui.px(WIDE_PX), height = ui.px(10)})
+	_ = ui.build_box({}, "###colour_wide")
+	if ui.form_row("Saturation") { ui.slider("###colour_sat", &r.sat, 0, 1, 0.01, "%.2f") }
+}
+
+@(private = "file") WIDE_PX :: 420   // (wider than COLOUR_EM)
+@(private = "file") COLOUR_EM :: 12
+
 @(private = "file")
 win_start :: proc(t: ^testing.T, r: ^Win) -> ^session.Session {
 	ui.view_register(&r.views, "ask", win_view, ui.View_Options{title = "Question"})
 	ui.view_register(&r.views, "other", win_view, ui.View_Options{title = "Another"})
+	ui.view_register(&r.views, "colour", colour_view, ui.View_Options{title = "Colour", first = .Internal, width_em = COLOUR_EM})
 	return session.start(t, {size = WINDOW, user = r, build = win_build})
 }
 
@@ -77,6 +90,33 @@ grab_point :: proc(header: ^ui.Box) -> [2]f32 {
 
 @(private = "file")
 near :: proc(a, b: [2]f32) -> bool { return abs(a.x - b.x) <= EPS && abs(a.y - b.y) <= EPS }
+
+// A floating window with no rect opens at what is in it (as wide as its widest line, centred), not at its narrower
+// width_em; a form row's label shows whole; a resize never makes it narrower than that.
+@(test)
+a_floating_window_opens_at_what_is_in_it :: proc(t: ^testing.T) {
+	r: Win
+	defer win_end(&r)
+	r.want = "colour"
+	s := win_start(t, &r)
+	frame := wait_drawn(s, "internal_view_colour")
+	if frame == nil { return }
+	width :: proc(b: ^ui.Box) -> f32 { return b.rect.max.x - b.rect.min.x }
+	testing.expectf(t, width(frame) >= WIDE_PX, "as wide as its widest line: %v", frame.rect)
+	centre := (frame.rect.min.x + frame.rect.max.x) * 0.5
+	testing.expectf(t, abs(centre - f32(WINDOW.x) * 0.5) <= 2, "centred: %v", frame.rect)
+	lbl := session.find(s, "lbl", within = frame)
+	if lbl == nil { testing.expect(t, false, "the row's label"); return }
+	testing.expectf(t, width(lbl) >= lbl.text_dim.x, "its label whole: %v for %v", width(lbl), lbl.text_dim.x)
+	// a resize by its right edge, far to the left: it stops at what is in it
+	grip := session.find(s, "view_grip3", within = frame)
+	if grip == nil { testing.expect(t, false, "its right grip"); return }
+	at := session.center(grip)
+	session.drag(s, at, at - {width(frame), 0})
+	session.frames(s, 2)
+	frame = drawn(s, "internal_view_colour")
+	testing.expectf(t, frame != nil && width(frame) >= WIDE_PX, "never under what is in it: %v", frame != nil ? frame.rect : ui.Rect{})
+}
 
 // The Detach icon: an internal window where the dialog was; in each frame the view is drawn in one place only.
 @(test)

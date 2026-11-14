@@ -1351,8 +1351,8 @@ card_end :: proc() {
 	spacer(px(em))
 }
 
-// `if form_row("Name") { widget }`: label on the left (34 %), the widget fills the rest. Widgets inside default to
-// full width and 2.3 em height.
+// `if form_row("Name") { widget }`: label on the left (34 %, at least its words on one line: never cut), the widget
+// fills the rest. Widgets inside default to full width and 2.3 em height.
 @(require_results, deferred_none = form_row_end)
 form_row :: proc(label_text: string) -> bool {
 	em := font_size()
@@ -1364,7 +1364,10 @@ form_row :: proc(label_text: string) -> bool {
 	push_parent(r)
 	if tags("weak") {
 		next({width = pct(0.34), height = px(dense(em * 2.5))})
-		build_box({.Draw_Text}, fmt.tprintf("%s###lbl", label_text))
+		lbl := build_box({.Draw_Text}, fmt.tprintf("%s###lbl", label_text))
+		// (a label the user must read is never cut: its words on one line are its least, the widget gives way; a
+		// window or a dialog that grows to what is in it counts them, natural_width)
+		lbl.pref[.X].least = math.ceil(lbl.text_dim.x + 2 * lbl.text_pad)
 	}
 	push_style_copy()
 	top_style().pref = {.X = fill(), .Y = px(dense(em * 2.3))}
