@@ -2271,3 +2271,63 @@ slice_clone :: proc(b: []u8) -> []u8 {
 	copy(out, b)
 	return out
 }
+
+////////////////////////////////
+// a view in a window of its own (ui's External presentation, host.view_windows)
+
+@(private = "file") VIEW_WINDOW_TITLE :: "A view of its own"
+
+@(private = "file")
+View_Desk :: struct {
+	views:  ui.Views,
+	opened: bool,
+}
+
+// A view that opens as External on a real server: its window comes on the screen (a host of the main one's Shared),
+// positions are known on X11 and not on Wayland, and the system's close of the window brings the view back as a dialog
+// of the main window, still open, its window gone.
+@(test)
+a_view_s_window_comes_and_its_close_reattaches :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	d := new(View_Desk)
+	defer free(d)
+	sh: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	build :: proc(h: ^host.Host, size: host.Vec2) {
+		d := (^View_Desk)(h.user)
+		if !d.opened { d.opened = true; ui.view_open(&d.views, "own", d) }
+		ui.label("the main window###l")
+	}
+	if !host.host_open(h, &sh, {title = "views main", size = {480, 320}}, build, d) {
+		testing.expect(t, false, "the renderer starts (Vulkan: lavapipe on the virtual desktop)")
+		return
+	}
+	defer host.host_close(h)
+	defer ui.views_destroy(&d.views)
+	ui.set_views(&h.state, &d.views)
+	ui.views_set_windows(&d.views, host.view_windows(h))
+	view :: proc(v: ^ui.View, d: ^View_Desk) { if ui.dialog_body("b") { ui.label("in a window of its own###w") } }
+	ui.view_register(&d.views, "own", view, ui.View_Options{title = VIEW_WINDOW_TITLE, first = .External})
+	host.host_show(h)
+	frames :: proc(h: ^host.Host, n: int) {
+		for _ in 0 ..< n { h.settle = max(h.settle, 1); host.host_frame(h); pump_for(h.win, 20) }
+	}
+	testing.expect_value(t, platform.positions_known(h.win), x11())
+	win: ^platform.Window
+	for i := 0; i < 100 && win == nil; i += 1 {
+		frames(h, 1)
+		if st := ui.view_window_state(&d.views, "own"); st != nil && platform.is_window_visible(st.window) { win = st.window }
+	}
+	if win == nil { testing.expect(t, false, "its window shows"); return }
+	frames(h, 5)
+	testing.expect(t, on_screen(win, VIEW_WINDOW_TITLE), "on the screen")
+	testing.expect_value(t, ui.view_presentation(&d.views, "own"), ui.View_Presentation.External)
+	// the system's close (its title bar's cross): the view goes home, still open
+	platform.inject_event(win, {kind = .Close})
+	for i := 0; i < 100 && ui.view_window_state(&d.views, "own") != nil; i += 1 { frames(h, 1) }
+	testing.expect(t, ui.view_window_state(&d.views, "own") == nil, "its window went")
+	testing.expect(t, ui.view_is_open(&d.views, "own"), "still open")
+	testing.expect_value(t, ui.view_presentation(&d.views, "own"), ui.View_Presentation.Dialog)
+}

@@ -1,9 +1,11 @@
-// Docking with views (ui.views_frame, ui.view_register, ui.view_drag_handle): five panels of an editor around its
-// content. A panel alone at an edge adds nothing to what it draws; two at one edge are tabs. Drag a panel by its title or
-// its tab: it floats as an internal window, and the four squares at the middle of the window's edges dock it where it is
-// let go. The hover of a panel's top shows its Float and Close icons; a right click there opens its menu (Detach, Dock
-// left, right, bottom, Re-attach, Close); "View" lists the same acts. F6 goes through the areas. The places and the
-// zones' sizes are remembered next to the program (docking_views.txt) and read again at the next start.
+// Views in every presentation (ui.views_frame, ui.view_register, ui.view_drag_handle, host.view_windows): five panels of
+// an editor around its content, and a Properties view that opens as a dialog. A panel alone at an edge adds nothing to
+// what it draws; two at one edge are tabs. Drag a panel by its title or its tab: it floats as an internal window, and the
+// four squares at the middle of the window's edges dock it where it is let go; let go outside the window (Windows, X11),
+// it opens in a window of its own. The hover of a panel's top shows its Float and Close icons; a right click on a header
+// opens its menu (Detach into a window, Float, Dock left, right, bottom, Re-attach, Close); "View" lists the same acts.
+// A view's window closed by the system goes back to where it was at home. F6 goes through the areas. The places, the
+// zones' sizes and the windows' sizes are remembered next to the program (docking_views.txt).
 //   odin run tools/tk -- build docking
 package docking
 
@@ -11,11 +13,9 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import "core:time"
-import "../../src/draw"
 import "../../src/font"
+import "../../src/host"
 import "../../src/platform"
-import "../../src/render"
 import "../../src/ui"
 
 Panel :: enum u32 { Files, Search, Outline, Console, Problems }
@@ -26,22 +26,14 @@ PANEL_EDGES := [Panel]ui.View_Edge{.Files = .Left, .Search = .Left, .Outline = .
 MEMORY_FILE :: "docking_views.txt"
 WINDOW_SIZE :: [2]int{1100, 700}
 LINE_EM :: 1.6
+PROPERTIES :: "properties"
 
 App :: struct {
-	win:      ^platform.Window,
-	r:        render.Renderer,
-	fonts:    font.State,
-	dc:       draw.Context,
-	theme:    ui.Theme,
-	ui_state: ui.State,
-	ui_font:  font.Font_Id,
-	icons:    font.Font_Id,
-	last_tick: time.Tick,
-	frames_requested: int,
-	pacer:    render.Pacer,
-	slept:    bool,
-	views:    ui.Views,   // the panels and what is remembered of them
-	path:     string,
+	shared: host.Shared,
+	main:   host.Host,
+	views:  ui.Views,   // the views and what is remembered of them
+	path:   string,
+	name:   ui.Line_Edit,   // the Properties view's field: the program's data, the same in every presentation
 }
 
 // A panel: its title (which moves it), then its lines.
@@ -61,13 +53,29 @@ panel_view :: proc(v: ^ui.View, app: ^App) {
 	}
 }
 
+// The Properties view: a field and its buttons, wherever it is shown.
+properties_view :: proc(v: ^ui.View, app: ^App) {
+	em := ui.font_size()
+	if ui.dialog_body("props_body") {
+		ui.label(fmt.tprintf("Shown as: %v###props_where", v.presentation))
+		ui.next({width = ui.fill()})
+		ui.line_edit("###props_name", &app.name, {placeholder = "A name"})
+		ui.spacer(ui.px(em * 0.5))
+	}
+	if ui.dialog_buttons("props_buttons") {
+		if ui.button("props_done", "Done", o = {intent = .Primary}).clicked { ui.view_end(v, 0) }
+	}
+}
+
 panel_of :: proc(id: string) -> Panel {
 	for n, p in PANEL_IDS { if n == id { return p } }
 	return .Files
 }
 
-build_ui :: proc(app: ^App) {
+build :: proc(h: ^host.Host, size: host.Vec2) {
+	app := (^App)(h.user)
 	em := ui.font_size()
+	_, _ = ui.view_ended(&app.views, PROPERTIES)
 	if ui.views_frame(&app.views) {
 		ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 		if ui.column(.Start, {}, "###main") {
@@ -77,6 +85,8 @@ build_ui :: proc(app: ^App) {
 				ui.next({width = ui.text_size(), height = ui.pct(1)})
 				if ui.button("view", "View").clicked { ui.menu_open("view_menu", ui.mouse_pos()) }
 				if ui.menu("view_menu") { view_menu(app) }
+				ui.next({width = ui.text_size(), height = ui.pct(1)})
+				if ui.button("props", "Properties").clicked { ui.view_open(&app.views, PROPERTIES, app) }
 			}
 			// the content: the editor, never moved
 			ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
@@ -106,80 +116,40 @@ view_menu :: proc(app: ^App) {
 	}
 }
 
-frame :: proc(app: ^App, inner := false) {
-	at_once := render.pace_frame(&app.pacer, &app.r, app.win, idled = app.slept, dragging = ui.active_key() != 0, inner = inner)
-	app.slept = false
-	events := platform.poll_events(app.win, false)
-	render.mark_input(&app.r)
-	if len(events) > 0 { app.frames_requested = max(app.frames_requested, 2) }
-	render.resize(&app.r, app.win.size)
-	size := draw.Vec2{f32(app.win.size.x), f32(app.win.size.y)}
-	now := time.tick_now()
-	dt := clamp(f32(time.duration_seconds(time.tick_diff(app.last_tick, now))), 0.0005, 0.1)
-	app.last_tick = now
-	ui.apply_palette(&app.theme, ui.palette_of("Midnight"))
-	platform.set_dark_title(app.win, true)
-	base := ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = app.ui_font, font_size = 14, text_pad = 6, cursor = .Arrow}
-	ui.begin_build(&app.ui_state, {window_size = size, events = events, dt = dt, animations = platform.os_animations_enabled(), dpi_scale = app.win.dpi_scale, base = base, window = app.win})
-	build_ui(app)
-	ui.end_build()
-	platform.set_cursor(app.win, ui.cursor(&app.ui_state))
-	if ui.needs_frame(&app.ui_state) { app.frames_requested = max(app.frames_requested, 1) }
-	draw.begin_frame(&app.dc, size)
-	render.frame_begin(&app.r, {0, 0, 0, 1})
-	ui.draw_tree(&app.ui_state, &app.dc)
-	draw.end_frame(&app.dc)
-	render.frame_end(&app.r, !at_once)
-	render.paced_present(&app.pacer)
-	free_all(context.temp_allocator)
-}
-
 main :: proc() {
 	app := new(App)
+	defer free(app)
 	exe, _ := os.get_executable_path(context.allocator)
 	app.path = strings.concatenate({filepath.dir(exe), "/", MEMORY_FILE})
 	delete(exe)
-	font.init(&app.fonts)
-	app.win = platform.open_window("gui_toolkit docking", WINDOW_SIZE, transparent = true)
-	if !render.init_window(&app.r, app.win, app.win.size, transparent = true) { fmt.eprintln("renderer init failed"); return }
-	render.set_fixed_surface(&app.r, platform.monitor_size(app.win))   // (a resize never stretches a frame: docs/getting-started.md)
-	ok: bool
-	app.ui_font, ok, _ = font.load_system_or_embedded(&app.fonts, platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
-	if !ok { fmt.eprintln("cannot load a UI font"); return }
-	app.icons, _ = font.load_embedded(&app.fonts, ui.ICON_FONT_DATA)
-	draw.init(&app.dc, &app.r, &app.fonts)
-	ui.init(&app.ui_state, &app.fonts, &app.theme)
-	app.ui_state.icon_font = app.icons
+	defer delete(app.path)
+	if !host.host_open(&app.main, &app.shared, {title = "gui_toolkit docking", size = WINDOW_SIZE}, build, app) { os.exit(1) }
+	app.main.background = ui.theme_lookup(&app.shared.theme, {}, "background")
+	platform.set_dark_title(app.main.win, true)
+	if icons, ok := font.load_embedded(&app.shared.fonts, ui.ICON_FONT_DATA); ok { app.main.state.icon_font = icons }
 
 	// (the first start opens every panel; later ones, those open when the program quit)
 	_, err := os.read_entire_file(app.path, context.temp_allocator)
 	first := err != nil
 	ui.views_init(&app.views, {path = app.path})
-	ui.set_views(&app.ui_state, &app.views)
+	ui.set_views(&app.main.state, &app.views)
+	ui.views_set_windows(&app.views, host.view_windows(&app.main))
 	for p in Panel {
 		ui.view_register(&app.views, PANEL_IDS[p], panel_view, ui.View_Options{title = PANEL_TITLES[p], home = .Panel, home_place = {edge = PANEL_EDGES[p]}, extent_em = PANEL_EDGES[p] == .Bottom ? 12 : 16})
 	}
+	ui.view_register(&app.views, PROPERTIES, properties_view, ui.View_Options{title = "Properties", width_em = 26, resizable = true})
 	for p in Panel {
-		if first || ui.view_was_open(&app.views, PANEL_IDS[p]) { ui.view_open(&app.views, PANEL_IDS[p], app, owner = &app.ui_state) }
+		if first || ui.view_was_open(&app.views, PANEL_IDS[p]) { ui.view_open(&app.views, PANEL_IDS[p], app, owner = &app.main.state) }
 	}
+	if ui.view_was_open(&app.views, PROPERTIES) { ui.view_open(&app.views, PROPERTIES, app, owner = &app.main.state) }
 
-	app.last_tick = time.tick_now()
-	app.frames_requested = 2
-	app.win.user = app
-	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
-	platform.show_window(app.win)
-	for !platform.is_closed(app.win) {
-		if app.frames_requested == 0 && !ui.needs_frame(&app.ui_state) { platform.wait_event(app.win, ui.wake_in_ms(&app.ui_state)); app.slept = true }
-		frame(app)
-		if app.frames_requested > 0 { app.frames_requested -= 1 }
+	platform.show_window(app.main.win)
+	for !platform.is_closed(app.main.win) {
+		host.hosts_wait({&app.main})
+		host.host_frame(&app.main)
 	}
+	// (the views first: their windows close while the main window is still there)
 	ui.views_destroy(&app.views)
-	delete(app.path)
-	ui.destroy(&app.ui_state)
-	draw.destroy(&app.dc)
-	render.destroy(&app.r)
-	font.destroy(&app.fonts)
-	ui.theme_destroy(&app.theme)
-	platform.destroy_window(app.win)
-	free(app)
+	ui.line_edit_destroy(&app.name)
+	host.host_close(&app.main)
 }

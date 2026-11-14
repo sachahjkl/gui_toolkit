@@ -71,13 +71,14 @@ View_Build :: #type proc(v: ^View, data: rawptr)
 // The words of the views' header and menus (a word left empty: view_default_labels', in the language in use).
 View_Labels :: struct {
 	detach, close, reattach: string,   // detach: the Detach icon's name; reattach: back to its home
+	close_view:              string,   // an external window's Close button (its system close re-attaches)
 	window, floating:        string,   // "Detach into a window" (External), "Open as a floating window" (Internal)
 	dock_left, dock_right, dock_bottom: string,
 }
 
 view_default_labels :: proc() -> View_Labels {
 	return {
-		detach = i18n.tr("Detach"), close = i18n.tr("Close"), reattach = i18n.tr("Re-attach"),
+		detach = i18n.tr("Detach"), close = i18n.tr("Close"), reattach = i18n.tr("Re-attach"), close_view = i18n.tr("Close view"),
 		window = i18n.tr("Detach into a window"), floating = i18n.tr("Open as a floating window"),
 		dock_left = i18n.tr("Dock left"), dock_right = i18n.tr("Dock right"), dock_bottom = i18n.tr("Dock bottom"),
 	}
@@ -99,6 +100,7 @@ Views :: struct {
 	spaces:    map[string]^View_Space,  // the dock spaces, by name ("": the frame's; views_panels.odin)
 	dock_next: u64,                     // the last stamp of a view docked (View_Record.dock_order)
 	version:   u64,                     // changes when a view opens, closes or moves (views_version)
+	windows:   View_Windows,            // the backend of the external windows (views_set_windows; none: they are refused)
 	memory:    store.Store,
 	labels:    View_Labels,
 	allocator: runtime.Allocator,
@@ -156,6 +158,22 @@ View_Record :: struct {
 	vs:            ^Views,   // the Views it is of (view_drag_handle)
 	settled_build: u64,      // the build that settled it (views_settle_all: once per build)
 	dock_order:    u64,      // its place among the tabs of its zone (the last docked shown first when none is chosen)
+	// the box its body is built in, per presentation, as the last build that built it there made it (state_carry)
+	roots:         [View_Presentation]Key,
+	announce:      bool,     // no window could open: the owner's next build says so (a toast)
+	// its external window (views_external.odin): what the backend gave, what the next step does with it
+	w_state:       ^State,
+	w_win:         ^platform.Window,
+	w_handle:      rawptr,
+	w_want:        bool,      // a window is wanted and not open yet
+	w_close:       bool,      // the window goes at the next step
+	w_shown_build: u64,       // the window State's build when it was shown (0: not shown yet)
+	w_measures:    int,       // its unseen layouts
+	w_layout:      u64,
+	w_at:          Maybe([2]int),   // where it opens on the screen (a drop outside the owner), physical pixels
+	w_move_to:     Maybe([2]int),   // where the next step moves it (a drag of its header)
+	w_title:       string,    // owned: the title the window has
+	w_drag:        View_Window_Drag,
 }
 
 // Optional: the memory file and the words of a Views the program keeps (a zero Views is memory only). Call it at
@@ -204,6 +222,8 @@ views_destroy :: proc(vs: ^Views) {
 			views_memory_write(vs, id, m)
 		}
 	}
+	// (their windows go first, while each window's State and this Views still know each other)
+	for r in vs.records { view_window_close(vs, r, false) }
 	for s in vs.states {
 		for x, i in s.views_attached {
 			if x == vs { unordered_remove(&s.views_attached, i); break }
@@ -420,17 +440,10 @@ views_hold_keys :: proc(vs: ^Views) -> bool {
 ////////////////////////////////
 // The registry
 
-// The presentation a view is built in. Step 3: Dialog, Internal and Panel; an External window (step 4) is built as a
-// Dialog until its builder replaces this line.
+// The presentation a view is built in: each is its own (an External window with no backend is refused when it is asked
+// for: views_windows_step).
 @(private)
-view_built_as :: proc(p: View_Presentation) -> View_Presentation {
-	switch p {
-	case .Dialog, .External: return .Dialog
-	case .Internal:          return .Internal
-	case .Panel:             return .Panel
-	}
-	return .Dialog
-}
+view_built_as :: proc(p: View_Presentation) -> View_Presentation { return p }
 
 @(private)
 view_record_find :: proc(vs: ^Views, id, instance: string) -> ^View_Record {
@@ -456,6 +469,7 @@ view_record_free :: proc(r: ^View_Record) {
 	view_record_reset(r)
 	delete(r.instance)
 	delete(r.modal_name)
+	delete(r.w_title)
 	free(r)
 }
 
@@ -523,12 +537,64 @@ view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 			break
 		}
 	}
-	if .Announce_Refused in fx && r.owner != nil && current_state() == r.owner {
-		toast_add(.Warn, nil, nil, i18n.tr("No window: the renderer refused it."))
+	// (said in the owner's next build: a refusal comes from views_windows_step, between two frames)
+	if .Announce_Refused in fx { r.announce = true }
+	if .Carry_State in fx { view_carry(r, before.from, before.as) }
+	// a view shown now in another window than before: `moved` (a native child window follows it)
+	if next.state == .Shown && before.state != .Opening && before.state != .Closed {
+		was := view_shown_in(before)
+		if next.as != was && r.kind.o.moved != nil {
+			if a, b := view_window_of(r, was), view_window_of(r, next.as); a != b && b != nil { r.kind.o.moved(r.data, b) }
+		}
+	}
+	// its window: wanted while a presentation of it is External, gone at the next step when none is (Open_Window,
+	// Close_Windows, Retire_Old of an External, a drop out of a window)
+	if view_uses_window(next) {
+		if r.w_state == nil { r.w_want = true }
+		r.w_close = false
+	} else if r.w_state != nil || r.w_want {
+		r.w_want = false
+		r.w_close = r.w_state != nil
 	}
 	if next.state == .Closed && r.owner != nil { r.owner.anim_busy = true }   // (the next build takes the answer at once)
-	// (Retire_Old, Leave_Scrim: the builders stop building the old place, views_builders.odin. Open_Window,
-	// Close_Windows, Carry_State: step 4's External.)
+	// (an event from another window's build, or from between two frames: the owner makes a frame for it)
+	if r.owner != nil && build_of != r.owner { r.owner.anim_busy = true }
+	// (Retire_Old, Leave_Scrim: the builders stop building the old place, views_builders.odin)
+}
+
+// The presentation it is seen in: during a move, the old one.
+@(private)
+view_shown_in :: proc(m: View_Machine) -> View_Presentation { return m.state == .Moving ? m.from : m.as }
+
+// Whether a presentation of it is its external window: where it is, where it goes, or where it still shows.
+@(private)
+view_uses_window :: proc(m: View_Machine) -> bool {
+	#partial switch m.state {
+	case .Opening, .Shown, .Dragged: return m.as == .External
+	case .Moving:                    return m.as == .External || m.from == .External
+	}
+	return false
+}
+
+// The window of the system a presentation of it is in.
+@(private)
+view_window_of :: proc(r: ^View_Record, p: View_Presentation) -> ^platform.Window {
+	if p == .External { return r.w_win }
+	return r.owner != nil ? r.owner.window : nil
+}
+
+// The State a presentation of it is built in.
+@(private)
+view_state_of :: proc(r: ^View_Record, p: View_Presentation) -> ^State {
+	return p == .External ? r.w_state : r.owner
+}
+
+// A move settles: the scroll and the focus of its old place go to the new one (state_carry).
+@(private = "file")
+view_carry :: proc(r: ^View_Record, from, to: View_Presentation) {
+	a, b := view_state_of(r, from), view_state_of(r, to)
+	if a == nil || b == nil || r.roots[from] == 0 || r.roots[to] == 0 { return }
+	state_carry(a, r.roots[from], b, r.roots[to])
 }
 
 ////////////////////////////////
@@ -567,7 +633,15 @@ views_attach_state :: proc(vs: ^Views, s: ^State) {
 views_state_gone :: proc(s: ^State) {
 	for vs in s.views_attached {
 		for r in vs.records {
+			// (the window of a view, ended by its backend outside a step: the view goes back to its home)
+			if r.w_state == s {
+				r.w_state, r.w_win, r.w_handle, r.w_shown_build, r.w_close = nil, nil, nil, 0, false
+				r.roots[.External] = 0
+				if view_uses_window(r.machine) { view_apply(vs, r, {kind = .Reattach}) }
+				r.w_want = false
+			}
 			if r.owner != s { continue }
+			view_window_close(vs, r, false)   // (its window goes with its owner)
 			view_apply(vs, r, {kind = .Owner_Gone})
 			r.owner = nil
 		}

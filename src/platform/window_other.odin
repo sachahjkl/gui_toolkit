@@ -87,6 +87,7 @@ set_app_id :: proc(id: string) {}
 get_placement :: proc(w: ^Window) -> Placement { return {} }
 set_placement :: proc(w: ^Window, p: Placement) {}
 client_origin :: proc(w: ^Window) -> [2]int { return {} }
+positions_known :: proc(w: ^Window) -> bool { return false }
 outer_rect :: proc(w: ^Window) -> [4]int { return {} }
 monitor_size :: proc(w: ^Window) -> [2]int { return {} }
 window_output_name :: proc(w: ^Window) -> string { return "" }

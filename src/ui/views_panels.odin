@@ -31,6 +31,7 @@ View_Space :: struct {
 	zone:    [View_Edge]Rect,      // ... each zone's ({}: none)
 	zone_key: [View_Edge]Key,
 	content: Key,
+	em:      f32,                  // its font size in its last build (the targets' size, read from another window too)
 }
 
 // What views_dock makes: with `content`, the block is its centre (the program's content); without, panels only.
@@ -64,7 +65,7 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool) -> bool {
 		s.views_frame_build = s.build_index
 	}
 	sp := view_space_of(vs, name)
-	sp.built, sp.state = s.build_index, s
+	sp.built, sp.state, sp.em = s.build_index, s, em
 	if name == "" { views_f6(s, vs, sp) }
 
 	// the views docked here, each zone's in the order they docked
@@ -265,6 +266,7 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record) {
 	next({width = fill(), height = fill(), axis = .Y})
 	body := build_box({.Clip}, fmt.tprintf("###view_panel_%s", r.modal_name))
 	r.panel = body.key
+	r.roots[.Panel] = body.key
 	last := body.rect   // (the last layout's)
 	push_parent(body)
 	v := View{id = k.id, instance = r.instance, presentation = .Panel, place = r.machine.place, shown = true, record = r}
@@ -348,12 +350,12 @@ view_panel_drag :: proc(vs: ^Views, r: ^View_Record, from: Key, sig: Signal, em:
 // that holds `p`.
 @(private)
 view_target_at :: proc(s: ^State, p: Vec2) -> (place: View_Place, ok: bool) {
-	em := font_size()
 	for vs in s.views_attached {
 		for _, sp in vs.spaces {
 			if sp.state != s || sp.built + 1 < s.build_index || sp.rect == {} { continue }
 			for e in View_Edge {
-				if view_rect_has(view_target_square(sp.rect, e, em), p) { return {space = sp.name, edge = e}, true }
+				// (the space's own size of em: `s` may be another window than the one being built)
+				if view_rect_has(view_target_square(sp.rect, e, sp.em), p) { return {space = sp.name, edge = e}, true }
 			}
 		}
 	}
@@ -397,12 +399,20 @@ view_target_preview :: proc(sp: ^View_Space, e: View_Edge, em: f32) -> Rect {
 @(private)
 views_build_targets :: proc(s: ^State) {
 	dragged := false
+	p := mouse_pos()
 	for vs in s.views_attached {
-		for r in vs.records { if r.owner == s && r.machine.state == .Dragged { dragged = true } }
+		for r in vs.records {
+			if r.owner != s || r.machine.state != .Dragged { continue }
+			dragged = true
+			// (an external window's header is held in its own window: the pointer as it is over this one)
+			if r.machine.as == .External {
+				p = r.w_drag.over_owner ? r.w_drag.owner_at : {-1, -1}
+				s.anim_busy = true
+			}
+		}
 	}
 	if !dragged { return }
 	em := font_size()
-	p := mouse_pos()
 	push_parent(s.root)
 	push_tags_isolated("floating")
 	defer { pop_tags_isolated(); pop_parent() }
@@ -462,7 +472,7 @@ views_f6 :: proc(s: ^State, vs: ^Views, sp: ^View_Space) {
 // The palette's commands
 
 // An act of the palette's commands on a view (views_commands).
-View_Act :: enum u8 { Float, Dock_Left, Dock_Right, Dock_Bottom, Reattach, Close }
+View_Act :: enum u8 { Window, Float, Dock_Left, Dock_Right, Dock_Bottom, Reattach, Close }
 
 // The view a command acts on, and how. Its strings are the view's: valid while it is open.
 View_Command :: struct {
@@ -485,6 +495,7 @@ views_commands :: proc(vs: ^Views, allocator := context.temp_allocator) -> (comm
 			append(cmds, Command{label = fmt.aprintf(word, title, allocator = allocator), group = group, icon = icon})
 			append(what, View_Command{id = r.kind.id, instance = r.instance, act = act})
 		}
+		if m.as != .External && views_windows_ready(vs) { add(&cmds, &what, r, .Window, i18n.tr("Open %s in a window"), title, group, lucide.EXTERNAL_LINK, allocator) }
 		if m.as != .Internal { add(&cmds, &what, r, .Float, i18n.tr("Float %s"), title, group, lucide.PICTURE_IN_PICTURE_2, allocator) }
 		if view_frame_built(vs, r.owner) {
 			edges := [3]View_Edge{.Left, .Right, .Bottom}
@@ -507,6 +518,7 @@ views_command_run :: proc(vs: ^Views, c: View_Command) {
 	r := view_record_find(vs, c.id, c.instance)
 	if r == nil || r.machine.state == .Closed { return }
 	switch c.act {
+	case .Window:      view_apply(vs, r, {kind = .Present, as = .External})
 	case .Float:       view_float(vs, r)
 	case .Dock_Left:   view_dock_at(vs, r, .Left)
 	case .Dock_Right:  view_dock_at(vs, r, .Right)

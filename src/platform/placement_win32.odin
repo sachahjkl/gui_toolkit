@@ -24,6 +24,10 @@ client_origin :: proc(w: ^Window) -> [2]int {
 	return {int(pt.x), int(pt.y)}
 }
 
+// Whether the system tells this window where it and the pointer are on the screen, and lets it move itself: always on
+// Windows (placement_linux.odin: not on Wayland).
+positions_known :: proc(w: ^Window) -> bool { return w != nil }
+
 // Moves the window (its top left corner) without resizing, raising or activating it.
 move_window :: proc(w: ^Window, x, y: int) {
 	if w.offscreen { w.off_place[0], w.off_place[1] = x, y; return }

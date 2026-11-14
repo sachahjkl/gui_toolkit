@@ -23,6 +23,13 @@ client_origin :: proc(w: ^Window) -> [2]int {
 	return {}   // Wayland: the compositor keeps it from the client
 }
 
+// Whether the system tells this window where it and the pointer are on the screen, and lets it move itself: X11 and an
+// offscreen window yes, Wayland no (the compositor keeps positions from clients). Asked at run time: one build runs on both.
+positions_known :: proc(w: ^Window) -> bool {
+	if w == nil { return false }
+	return w.offscreen || w.backend == .X11
+}
+
 move_window :: proc(w: ^Window, x, y: int) {
 	if w.offscreen { w.off_place[0], w.off_place[1] = x, y; return }
 	if w.backend == .X11 { x11_move(w, x, y) }   // Wayland: the compositor owns placement

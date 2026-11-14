@@ -42,6 +42,14 @@ views_build :: proc(s: ^State) {
 	}
 	// while a view is dragged, the dock targets of the spaces built this frame, over everything
 	views_build_targets(s)
+	// a window refused between two frames (views_windows_step): said here, in a build of its owner
+	for vs in s.views_attached {
+		for r in vs.records {
+			if r.owner != s || !r.announce { continue }
+			r.announce = false
+			toast_add(.Warn, nil, nil, i18n.tr("No window: the system refused it."))
+		}
+	}
 }
 
 // The settle of each view of `s`, once per build, before any is built: its old place and its new never show in one
@@ -157,6 +165,16 @@ view_settle :: proc(vs: ^Views, r: ^View_Record) {
 		view_apply(vs, r, {kind = .Settled})
 		view_space_activate(vs, r)
 	case .External:
+		// (no backend: nothing will open a window, refused now: it floats inside its owner, or stays where it was)
+		if !views_windows_ready(vs) {
+			view_apply(vs, r, {kind = .Window_Refused})
+			return
+		}
+		// (its window shown, and a frame of it drawn since: the old place goes in this build; until then it shows)
+		s.anim_busy = true
+		if w := r.w_state; w != nil && r.w_shown_build != 0 && w.build_index > r.w_shown_build {
+			view_apply(vs, r, {kind = .Settled})
+		}
 	}
 }
 
@@ -193,6 +211,7 @@ view_dialog_build :: proc(vs: ^Views, r: ^View_Record) {
 	v.shown = phase != .Opening && (last.show == .Showing || last.show == .Shown)
 	if modal(r.modal_name, &r.flag, o) {
 		r.panel = parent_box().key
+		r.roots[.Dialog] = r.panel
 		if k.o.backdrop != nil { k.o.backdrop(&v, r.data) }
 		if !k.o.no_header { view_header_begin(vs, r, .Dialog) }
 		k.build(&v, r.data)
@@ -247,6 +266,7 @@ view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
 	_ = signal(frame)
 	a11y_default(frame, {role = .Dialog, name = title, role_description = i18n.tr("floating window")})
 	r.iframe, r.panel = frame.key, frame.key
+	r.roots[.Internal] = frame.key
 	push_parent(frame)
 	v := View{id = k.id, instance = r.instance, presentation = .Internal, place = r.machine.place, shown = !unseen, record = r}
 	if k.o.backdrop != nil { k.o.backdrop(&v, r.data) }
@@ -391,7 +411,7 @@ view_title_shown :: proc(r: ^View_Record) -> string {
 
 // The first step, before the body: the strip, its icon and its title (never cut: it wraps). The buttons come after the
 // body (view_header_end), and the box of the program's tools only if the body asks for it (view_header_tools).
-@(private = "file")
+@(private)
 view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	s := gs()
 	em := font_size()
@@ -435,7 +455,7 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 }
 
 // The second step, after the body: the buttons of this presentation, its drag, its menu.
-@(private = "file")
+@(private)
 view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	s := gs()
 	em := font_size()
@@ -450,12 +470,26 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 		dialog_header_end()   // (clear of the close cross; pops the strip)
 	case .Internal:
 		if !at_home && view_header_icon("view_reattach", lucide.UNDO_2, labels.reattach, true) { view_apply(vs, r, {kind = .Reattach}) }
-		_ = view_header_icon("view_window", lucide.EXTERNAL_LINK, labels.window, view_built_as(.External) == .External)
+		if view_header_icon("view_window", lucide.EXTERNAL_LINK, labels.window, views_windows_ready(vs)) {
+			view_apply(vs, r, {kind = .Present, as = .External})
+		}
 		if view_header_icon("view_close", lucide.X, labels.close, true) { r.flag = false }
 		spacer(px(em * 0.5))
 		pop_parent()
-	case .Panel, .External:
+	case .External:
+		view_window_header_buttons(vs, r, at_home)
+		spacer(px(em * 0.5))
 		pop_parent()
+	case .Panel:
+		pop_parent()
+	}
+	if p == .External {
+		// (its own drag: the window of the system follows the pointer, where the system tells positions)
+		sig := signal(hb)
+		view_window_header_drag(vs, r, hb, sig, em)
+		if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), hb.key, search = false) }
+		view_header_menu(vs, r, p)
+		return
 	}
 
 	// the drag: a dialog's header detaches it under the pointer; an internal window's moves it
@@ -474,6 +508,8 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 			if place, ok := view_target_at(s, mouse_pos()); ok {
 				view_apply(vs, r, {kind = .Drop, as = .Panel, place = place})
 				view_space_activate(vs, r)
+			} else if view_drop_outside(vs, r) {
+				// (outside the window, where the system says so: a window of its own there; this one shows until it does)
 			} else {
 				view_apply(vs, r, {kind = .Drop, as = .Internal})
 				view_raise(vs, r)
@@ -552,7 +588,11 @@ view_header_menu :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 @(private = "file")
 view_header_menu_items :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	labels := view_labels(vs)
-	_ = menu_item(fmt.tprintf("%s###vm_window", labels.window), icon = lucide.EXTERNAL_LINK, icon_font = lucide_icons(), disabled = view_built_as(.External) != .External)
+	if p != .External {
+		if menu_item(fmt.tprintf("%s###vm_window", labels.window), icon = lucide.EXTERNAL_LINK, icon_font = lucide_icons(), disabled = !views_windows_ready(vs)).clicked {
+			view_apply(vs, r, {kind = .Present, as = .External})
+		}
+	}
 	if p != .Internal {
 		if menu_item(fmt.tprintf("%s###vm_float", labels.floating), icon = lucide.PICTURE_IN_PICTURE_2, icon_font = lucide_icons()).clicked { view_float(vs, r) }
 	}
@@ -581,7 +621,8 @@ view_header_menu_items :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation
 // Open as a floating window: Internal, at its last rect, else where the dialog is now.
 @(private)
 view_float :: proc(vs: ^Views, r: ^View_Record) {
-	if r.irect == {} && views_memory_of(vs, r.kind.id).internal[2] <= 0 {
+	// (an external window's rect is its own window's, not the owner's: the memory's, else centred)
+	if r.irect == {} && views_memory_of(vs, r.kind.id).internal[2] <= 0 && r.machine.as != .External {
 		if panel := box_from_key(r.panel); panel != nil && r.panel != 0 {
 			r.irect = panel.rect
 			// (a panel can be the window's height: a floating window of it is the dock's default size at most)
@@ -602,6 +643,7 @@ view_labels :: proc(vs: ^Views) -> View_Labels {
 	if l.detach == "" { l.detach = d.detach }
 	if l.close == "" { l.close = d.close }
 	if l.reattach == "" { l.reattach = d.reattach }
+	if l.close_view == "" { l.close_view = d.close_view }
 	if l.window == "" { l.window = d.window }
 	if l.floating == "" { l.floating = d.floating }
 	if l.dock_left == "" { l.dock_left = d.dock_left }

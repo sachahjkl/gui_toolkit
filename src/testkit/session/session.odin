@@ -114,6 +114,11 @@ Session :: struct {
 	app_user:  rawptr,
 	// what the next frame says has changed, for a test of partial redraw (draw.set_partial_redraw through draw_context): nil is the whole frame
 	damage:    Maybe(draw.Rect),
+	// the windows of its views (windows.odin): a window's session has its parent, made and ended by the parent's frames
+	parent:    ^Session,
+	windows:   [dynamic]^Session,
+	hidden:    bool,                 // a view's window not shown yet
+	windows_o: Windows_Options,
 }
 
 // What `start` makes.
@@ -224,7 +229,9 @@ session_end :: proc(s: ^Session) {
 	if s.state != nil { ui.set_clock(s.state, nil) }
 	if own := s.own; own != nil {
 		platform.clipboard_set(s.win, {})   // (the process's store outlives the test)
-		ui.destroy(&own.state)
+		ui.destroy(&own.state)   // (the windows of its views go with it: window_close)
+		for len(s.windows) > 0 { window_end(pop(&s.windows)) }
+		delete(s.windows)
 		ui.theme_destroy(&own.theme)
 		if !own.no_renderer {
 			draw.destroy(&own.dc)
@@ -284,6 +291,8 @@ keep_failure :: proc(s: ^Session) {
 // One frame of the application.
 frame :: proc(s: ^Session) {
 	if ui.building() { return }
+	// (a view's window is drawn by its parent's frames: one frame of the program)
+	if s.parent != nil { frame(s.parent); return }
 	test := context
 	defer context = test
 	current = s
@@ -294,6 +303,7 @@ frame :: proc(s: ^Session) {
 		s.app_frame(s.app_user)
 	} else {
 		own_frame(s)
+		windows_frames(s)
 	}
 	free_all(context.temp_allocator)
 }

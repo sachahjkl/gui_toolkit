@@ -67,7 +67,7 @@ View_Effect :: enum u8 {
 	Leave_Scrim,        // a dialog leaves its scrim: it holds no keys any more
 	Close_Windows,      // its windows close
 	Give_Focus_Back,    // the owner gets back the focus that Keep_Focus kept
-	Announce_Refused,   // say "No window: the renderer refused it"
+	Announce_Refused,   // say "No window: the system refused it" (in the owner's next build)
 	Was_Open,           // Quit: it was open (view_was_open at the next start)
 }
 View_Effects :: bit_set[View_Effect]

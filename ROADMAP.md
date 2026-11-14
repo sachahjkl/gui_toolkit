@@ -2,7 +2,8 @@
 
 ## Now
 
-- **Views, step 4: external windows** — a view opens in an OS window of its own and comes back to its home when that window is closed; Detach into a window works, and a drag out of the window opens one. Intent: [src/md/features/views.md](src/md/features/views.md), section 4.
+- **Views, splits inside a dock zone** — a zone holds several stacks side by side, and a dock space can have its views in its centre, so that inspecteur's Mission Control keeps its eight panels laid out as today when it moves to views. Intent: [src/md/features/views.md](src/md/features/views.md), section 6.
+- **An empty fill never takes a label's room** — in a row of a fixed width, an empty `fill()` spacer gives up its width before a label that can shrink is cut, so no program cuts a name for a spacer, as inspecteur's process names were.
 
 ## Next
 

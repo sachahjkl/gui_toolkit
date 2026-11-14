@@ -61,6 +61,7 @@ Shared :: struct {
 	theme: ui.Theme,
 	font:  font.Font_Id,   // the interface's
 	main:  ^Host,          // the first window: the renderer's own, and the interface that is current between frames
+	views: [dynamic]^View_Window,   // the windows of views (views.odin): each made after its owner's frames
 }
 
 Open_Options :: struct {
@@ -202,6 +203,9 @@ host_close :: proc(h: ^Host) {
 	if !first { render.surface_destroy(&sh.r, &h.surface) }
 	ui.destroy(&h.state)
 	if first {
+		// (ui.destroy of its State closed the windows of its views: view_windows_close)
+		delete(sh.views)
+		sh.views = nil
 		sh.main = nil
 		ui.theme_destroy(&sh.theme)
 		draw.destroy(&sh.dc)
@@ -275,6 +279,8 @@ host_frame :: proc(h: ^Host, inner := false) {
 	ui.use(&h.state)   // (a frame of another window may have run in that call)
 	host_picture(h, events, at_once, shown)
 	if h.after_frame != nil { h.after_frame(h) }
+	// (the windows of its views: opened, shown, closed between two frames, then their frames, after this one's)
+	if !inner { host_views_frames(h) }
 	// (a frame that drew no picture, held for the compositor's word, owes it still: the patience above draws it)
 	if !inner && h.settle > 0 && shown { h.settle -= 1 }
 	free_all(context.temp_allocator)
@@ -450,7 +456,9 @@ hosts_frame :: proc(hosts: []^Host, inner := false) {
 // Whether a frame of these windows is due now (input read for one of them, a change that settles, something that moves); else how
 // long the loop may sleep: the soonest of what they asked for (0: until input).
 hosts_due :: proc(hosts: []^Host) -> (now: bool, wake_ms: int) {
-	for h in hosts {
+	// (the windows of their views count too: their frames come after their owners')
+	all := host_with_views(hosts)
+	for h in all {
 		if platform.is_closed(h.win) { continue }
 		if platform.events_waiting(h.win) { return true, 0 }
 		// (its last picture not shown yet: what moves or settles waits for the compositor's word, which wakes the loop; a

@@ -1,8 +1,8 @@
 # Views: one content, four presentations
 
-Status: steps 1 to 3 are written (the model, the memory, the Dialog presentation, the ready-made views; the Internal
+Status: steps 1 to 4 are written (the model, the memory, the Dialog presentation, the ready-made views; the Internal
 presentation, the Detach icon, the drag of a dialog's header, the header's menu; the Panel presentation, the dock
-spaces, the drops on a dock target, the palette's commands; section 7.3). The rest is the plan for
+spaces, the drops on a dock target, the palette's commands; the External presentation and its windows; section 7.3). The rest is the plan for
 the toolkit and for the six programs. The user's decisions are in section 2.5 (the chrome rules)
 and section 8.2.
 
@@ -716,11 +716,42 @@ View_Windows :: struct {
 	open:  proc(user: rawptr, o: View_Window_Ask) -> (state: ^State, win: ^platform.Window, handle: rawptr),  // hidden; nil: refused
 	show:  proc(user: rawptr, handle: rawptr),
 	close: proc(user: rawptr, handle: rawptr),
-	drop_outside: bool,   // the system reports a drag's release outside a window (false on Wayland)
+	no_positions: bool,   // a test's: as Wayland, whatever the system says
 	user:  rawptr,
 }
-View_Window_Ask :: struct { title: string, size: [2]int, at: Maybe(platform.Placement), owner: ^platform.Window, integrated_title, under_children: bool }
+View_Window_Ask :: struct { title: string, size: [2]int, at: Maybe([2]int), owner: ^platform.Window, under_children: bool }
 ```
+
+**Decisions of step 4.**
+
+1. **Never in a build.** An effect that opens or closes a window (`Open_Window`, `Close_Windows`, `Retire_Old` from
+   External) only marks the record. `views_windows_step(s)` does the system's part between two frames: the backend
+   calls it after the owner's frame, then makes the frames of the windows. A build never enters the system: a window's
+   creation would select another State in the middle of the owner's build.
+2. **The order of a move to a window (no flash, no frame in two places or none).** The view is built unseen in the
+   window's State while the window is hidden; when two layouts in a row agree (or after `MODAL_MEASURES_MAX`), the step
+   shows the window and the backend draws its first picture; the owner's next settle sees that picture (the window's
+   State built after its show) and the old place goes in that build. For one frame of the owner both show: the old
+   place is never gone before the new one is on the screen.
+3. **Positions, at run time.** `platform.positions_known(w)` says whether the system gives a window its place and the
+   pointer's (Windows, X11, offscreen: yes; Wayland: no). With it: a drag released outside the owner (its position
+   outside the client area: the pointer is captured, or grabbed) opens the window there; a drag of an external
+   window's header moves it (`move_window`) and shows the owner's dock targets under the pointer. Without it: neither;
+   the Detach button and the menu do it, and the system's title bar moves the window.
+4. **What follows the view.** Its data (the program's). Its box state: `state_carry(from, from_root, to, to_root)`
+   pairs the named boxes of both subtrees by name (a name found twice in either is left alone) and copies the scroll
+   and the focus. The presentations wrap the body differently (a dialog's body is its panel's children, an internal
+   window's is in `view_body`): a walk side by side would pair the wrong boxes. Refused too: one root key for every
+   presentation (`key_from_string(0, ...)`): in a move inside one State both places are built in one frame, and the
+   second would take a salted key. An unnamed box keeps no state across a move.
+5. **The system's close re-attaches.** The window's close is `view_window_close_asked(state)`: `Reattach`. "Close view"
+   in its header, Escape and Ctrl+W close the view.
+6. **The parent hint and the least size** (`set_window_owner`, `set_min_size`) are not in step 4: the view's window is a
+   window of its own for the system. They come with the first program that needs them (Wren's developer tools).
+7. **What is remembered.** `window=` (logical size) when it closes or re-attaches; `at=left,top` (physical, the
+   screen's) where `positions_known`.
+8. **Its dialogs are its window's.** A view opened during an external view's build has that window's State for owner
+   (`view_open`'s rule): a question asked from the window shows over the window.
 
 `src/host/views.odin` implements it:
 
@@ -934,7 +965,8 @@ to the first stop of the next or the previous area: the content, each zone, each
 
 ### 6.6 The palette's commands
 
-`views_commands(vs)` gives a `Command` per act of each open view, in the language in use: "Float <title>", "Dock
+`views_commands(vs)` gives a `Command` per act of each open view, in the language in use: "Open <title> in a window"
+(with a backend of windows), "Float <title>", "Dock
 <title> to the left", "... to the right", "... to the bottom", "Re-attach <title>", "Close <title>" (an act that does
 nothing where the view is is absent). `views_command_run(vs, c)` does it. `views_version(vs)` changes when an act or
 an opening changes the list: the program gives it to `palette_set`.
@@ -1139,9 +1171,9 @@ Each step ships as a toolkit version, and each step leaves every program working
    icons, the Dock items of the menu, the palette's commands (`views_commands`), `view_drag_handle`, the drops on a dock
    target and the tab dragged out, the remembered zones (`#<space>`). `examples/docking` and `examples/panes` move to
    views. Tests of section 7.4, items 9, 11, 15, 17.
-4. **Toolkit, External**: `View_Windows`, `host.view_windows`, the hosts loop, `ui.style_follow`,
-   `state_move_subtree`, `moved`, the drags out and in (Windows, X11), `platform.set_window_owner`,
-   `platform.set_min_size`, `platform.pointer_screen`.
+4. **Toolkit, External** (written): `View_Windows`, `host.view_windows`, the hosts loop (`views_windows_step`),
+   `ui.style_follow`, `state_carry`, `moved`, the drags out and in where `platform.positions_known`, the test
+   backend (`session.view_windows`). The parent hint and the least size wait (section 4.1, decision 6).
 5. **papier**: three dialogs. The smallest program checks the API.
 6. **classeur**: its dialogs, its sidebar and its inspector.
 7. **cliche**: several owners (editors, history), instances, the preview pane.

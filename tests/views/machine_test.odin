@@ -71,6 +71,15 @@ every_transition_of_the_table :: proc(t: ^testing.T) {
 		{"closed: end does nothing", m(.Closed, .Dialog), {kind = .End, code = PROGRAM_CODE}, .Closed, .Dialog, nil, {}},
 		{"opening: a drag does not start", m(.Opening, .Dialog), {kind = .Drag_Start}, .Opening, .Dialog, nil, {}},
 		{"shown: a drop without a drag does nothing", m(.Shown, .Dialog), {kind = .Drop, as = .Panel}, .Shown, .Dialog, nil, {}},
+		// (the External presentation: its window shows, the system closes it, a drag of it docks it)
+		{"moving to external: its first frame shows it there", m(.Moving, .External, from = .Dialog), {kind = .Settled}, .Shown, .External, nil, {.Show, .Retire_Old, .Carry_State}},
+		{"opening external: its first frame shows it", m(.Opening, .External), {kind = .Settled}, .Shown, .External, nil, {.Show}},
+		{"shown external: the system's close re-attaches", m(.Shown, .External), {kind = .Reattach}, .Moving, .Dialog, nil, {.Remember}},
+		{"moving from external: settled shows it at home", m(.Moving, .Dialog, from = .External), {kind = .Settled}, .Shown, .Dialog, nil, {.Show, .Retire_Old, .Carry_State}},
+		{"dragged external: a drop on a target docks it", m(.Dragged, .External, from = .External), {kind = .Drop, as = .Panel, place = LEFT}, .Shown, .Panel, nil, {.Remember}},
+		{"dragged external: a drop elsewhere keeps it", m(.Dragged, .External, from = .External), {kind = .Drop, as = .External}, .Shown, .External, nil, {.Remember}},
+		{"dragged external: a cancel keeps it", m(.Dragged, .External, from = .External), {kind = .Drag_Cancel}, .Shown, .External, nil, {}},
+		{"shown external: present as a panel moves it", m(.Shown, .External), {kind = .Present, as = .Panel, place = LEFT}, .Moving, .Panel, nil, {.Remember}},
 	}
 	for r in rows {
 		next, fx := ui.view_step(r.from, r.event)
@@ -99,7 +108,7 @@ reattach_takes_the_home_place :: proc(t: ^testing.T) {
 
 @(test)
 the_memory_line_round_trips :: proc(t: ^testing.T) {
-	want := ui.View_Memory{as = .External, open = true, dialog = {58, 40}, internal = {120, 80, 700, 480}, window = {1180, 760}, dock = ui.View_Dock_Memory{place = {space = "mission", edge = .Bottom}, extent_em = 18}}
+	want := ui.View_Memory{as = .External, open = true, dialog = {58, 40}, internal = {120, 80, 700, 480}, window = {1180, 760}, at = [2]int{212, -96}, dock = ui.View_Dock_Memory{place = {space = "mission", edge = .Bottom}, extent_em = 18}}
 	text := ui.views_format(want)
 	got, ok := ui.views_parse(text)
 	testing.expect(t, ok, text)
@@ -108,6 +117,8 @@ the_memory_line_round_trips :: proc(t: ^testing.T) {
 	testing.expect_value(t, got.dialog, want.dialog)
 	testing.expect_value(t, got.internal, want.internal)
 	testing.expect_value(t, got.window, want.window)
+	at, at_ok := got.at.?
+	testing.expect(t, at_ok && at == [2]int{212, -96}, "the window's place")
 	d, has := got.dock.?
 	testing.expect(t, has)
 	testing.expect_value(t, d.place.space, "mission")
@@ -118,7 +129,7 @@ the_memory_line_round_trips :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.views_format({}), "v1 open=0")
 	empty, eok := ui.views_parse("v1 open=0")
 	testing.expect(t, eok)
-	testing.expect(t, empty.as == nil && empty.dock == nil && empty.dialog == {})
+	testing.expect(t, empty.as == nil && empty.dock == nil && empty.dialog == {} && empty.at == nil)
 }
 
 @(test)

@@ -85,7 +85,9 @@ close or the compositor's: the window stays, the program hides it or asks first)
 reads it with `poll_events`); the first frame after the show makes the renderer's surface again. Another window is another
 `host_open` with the same `Shared`: a surface on the same renderer, built in turn, `hosts_wait({&a, &b})` for both
 (`hosts_frame` makes a frame of each). The steps above are all public: a program may make its frames by hand, as
-`examples/fidget` does, or mix both.
+`examples/fidget` does, or mix both. The windows of views (a view detached into a window of its own, docs/views.md) are
+hosts too: `ui.views_set_windows(&app.views, host.view_windows(&app.main))` once, and `host_frame` of a window makes their
+frames after its own; `hosts_wait` counts them. Call `ui.views_destroy` before the last `host_close`.
 
 **Redraw only what changed.** Set `h.partial_redraw = true` (any time; it is read at every frame): each frame then compares
 what every box draws with the last frame and redraws only where something changed (a hover, a caret, an animation, a toast).

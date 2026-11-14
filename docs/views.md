@@ -14,8 +14,7 @@ The four presentations are degrees of attachment to the owner window:
 
 Each view has a **home**: Dialog or Panel. **Re-attach** brings a view back to its home; the view stays open.
 
-This version builds the Dialog, the Internal and the Panel presentations. External is a state of the view's machine
-already: until its builder comes, a view in it is built as a Dialog. The intent and the plan are in `src/md/features/views.md`.
+This version builds the four presentations. The intent and the plan are in `src/md/features/views.md`.
 
 ## Where the views live
 
@@ -111,6 +110,9 @@ again.
 | `views_frame(vs)`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels) |
 | `views_commands(vs, allocator) -> (commands, acts)`, `views_command_run(vs, act)`, `views_version(vs)` | the palette's commands of the views |
 | `views_space_format(extent)`, `views_space_parse(text)` | a dock space's line of the memory |
+| `views_set_windows(vs, w)`, `views_windows_ready(vs)`, `view_window_state(vs, id, instance)` | the backend of the views' windows (section External) |
+| `views_windows_step(s)`, `views_window_build()`, `view_window_close_asked(s)` | a backend's part: between frames, a window's build, its system close |
+| `state_carry(from, from_root, to, to_root)`, `style_follow(dst, src)` | what follows a view to another place; a window's settings from the main one |
 | inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)` | |
 
 `View_Options`: `title`, `icon`, `icon_font`, `home` (`.Dialog` or `.Panel`), `home_place`, `first` (the presentation
@@ -154,7 +156,7 @@ no scrim, the page stays usable and keeps its keys.
 - Layers, from the bottom: the page, the internal windows, the dialogs, the menus, the toasts. Several float at once;
   a press on one brings it to the front.
 - Its header holds the icon, the title, the program's tools, Re-attach (`lucide.UNDO_2`; absent when it is at its
-  home), Detach into a window (inactive until the External presentation is built) and Close. The header moves it. Its
+  home), Detach into a window (inactive without a backend of windows) and Close. The header moves it. Its
   edges and corners resize it: the side held follows the pointer, the other stays; at least `DOCK_FLOAT_MIN_EM`. Its
   bottom right corner has the resize grip.
 - It stays inside the window: a window made smaller moves it in, its remembered rect unchanged.
@@ -168,6 +170,45 @@ no scrim, the page stays usable and keeps its keys.
 
 A view opens as an internal window when the memory says so (the user chose it), or `first = .Internal`, or
 `view_present(vs, id, .Internal)`. `view_reattach` brings it back to its home.
+
+## The External presentation
+
+A view in a window of the system of its own, with its own `ui.State` on the program's `Views`. `ui` opens no window
+itself: a backend does.
+
+```odin
+ui.views_set_windows(&app.views, host.view_windows(&app.main))   // a host.Host program, once at start-up
+ui.views_set_windows(&app.views, session.view_windows(s))        // a test (docs/testing.md)
+```
+
+- Without a backend, a view asked to be External floats inside its owner, and the owner says "No window: the system
+  refused it." (a toast). The same when the backend refuses (`open` returns nil). `views_windows_ready(vs)`: whether
+  a backend is there; the Detach into a window button and menu item are active then.
+- **Between frames, never in a build.** `views_windows_step(s)` opens the windows wanted (hidden), shows each one once
+  two layouts in a row agree, moves one dragged, and closes those no presentation uses. The host calls it after each
+  frame of a window, then makes the frames of its views' windows; `hosts_wait` counts them.
+- **No flash.** The old place stays drawn until the window's first picture is out; the next frame of the owner takes
+  it away. The view is in two places for one frame at most, and never nowhere.
+- Its header: the title, the program's tools, Re-attach, Close view (`View_Labels.close_view`). Escape and Ctrl+W close
+  the view. The system's close of the window (its title bar's cross, Alt+F4) **re-attaches** it: it stays open. When it
+  shows, the window is activated and the focus goes to its first stop; when it closes, the owner window is activated.
+- **Drags** where the system gives positions (`platform.positions_known`: Windows, X11; not Wayland, asked at run
+  time): a floating window's header let go outside the owner opens the view in a window there; an external window's
+  header moves the window, and the owner shows its dock targets while the pointer is over it: let go on one, the view
+  docks there and its window closes. On Wayland the system's title bar moves the window; the buttons and the menus move
+  the view.
+- `View_Options.moved(data, win)`: called when the view is shown in another window of the system than before (a native
+  child window follows it). The scroll and the focus of the named boxes follow it (`state_carry`); the program's data
+  is the program's.
+- Its style follows the owner's at each step (`ui.style_follow(dst, src)`: zoom, density, rounding, the feel,
+  animations, scrolling, the icon fonts); its scale is its monitor's.
+- A view opened from an external view's build has that window for owner: its dialogs show over the window.
+- `view_window_state(vs, id, instance)`: the State of its window (nil: none).
+
+A backend of your own (a program with its own loop) implements `View_Windows`: `open(user, ask) -> (state, win,
+handle)` makes a hidden window and a State whose builds call `ui.views_window_build()`; `show` puts it on the screen;
+`close` ends it (never from inside its frame); its system close calls `ui.view_window_close_asked(state)`; after each
+frame of an owner it calls `ui.views_windows_step(owner)` then frames the windows.
 
 ## Panels
 
@@ -220,7 +261,8 @@ ui.palette_set(&app.palette, commands, nil, {...})
 if c, ok := ui.palette_chosen(&app.palette); ok && c >= first_view_command { ui.views_command_run(&app.views, acts[c - first_view_command]) }
 ```
 
-`views_commands(vs, allocator)` gives a `Command` per act of each open view, in the language in use: "Float <title>",
+`views_commands(vs, allocator)` gives a `Command` per act of each open view, in the language in use: "Open <title> in
+a window" (with a backend of windows), "Float <title>",
 "Dock <title> to the left", "... to the right", "... to the bottom" (when the owner window builds `views_frame`),
 "Re-attach <title>" (not at home), "Close <title>". An act that does nothing where the view is is absent. `acts[i]`
 says what `commands[i]` does: `views_command_run(vs, acts[i])` does it (nothing when its view closed since).
@@ -229,7 +271,7 @@ says what `commands[i]` does: `views_command_run(vs, acts[i])` does it (nothing 
 ## The header's menu
 
 A right click on a view's header (on a panel: on its top area or its tab) opens its menu: Detach into a window
-(inactive until the External presentation), Open as a floating window (absent in an internal window), Dock left, Dock
+(inactive without a backend of windows, absent in an external window), Open as a floating window (absent in an internal window), Dock left, Dock
 right, Dock bottom (the window's frame edges: inactive when the owner window builds no `views_frame`; the edge where
 it is now is absent), Re-attach (absent at home), Close. Its words are `View_Labels`' (`window`, `floating`, `dock_left`,
 `dock_right`, `dock_bottom`, `reattach`, `close`); a word left empty is the toolkit's, in the language in use.
@@ -255,7 +297,8 @@ sidebar	v1 as=panel open=1 dock=:left:18.0
 | `dialog` | the dialog's size in ems | its grip is let go |
 | `internal` | the internal window's rect | a move or a resize is let go |
 | `dock` | the panel's place (`<space>:<edge>`) | it docks (a drop, a menu, a command) |
-| `window` | the external window's size | the External presentation |
+| `window` | the external window's size, logical pixels | its window closes |
+| `at` | the external window's outer top left, physical pixels | its window closes (where `positions_known`) |
 
 A dock space has a line of its own, under `#<space>` (`#` for the window's frame): the extent of each zone in ems,
 written when its handle is let go (`views_space_format`, `views_space_parse`):

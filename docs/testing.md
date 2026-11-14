@@ -38,6 +38,13 @@ The rules:
 - **No window of the system, no real input.** The window is offscreen (`platform.open_window_offscreen`), the renderer the offscreen one (WARP on Windows, a software Vulkan on Linux), input
   goes through `platform.inject_event` and `poll_events` as a device's does. Its machine is virtual: `platform.virtual_screen_set` (size, rate), `session.set_dpi`, `session.activate`, `session.clipboard`,
   `session.cursor`. Several `session.start` in a test are several windows.
+- **The views' windows**: `ui.views_set_windows(&app.views, session.view_windows(s, o))` is the test backend of the
+  External presentation. Each window a view asks for is an offscreen window with its own State, a session of its own
+  (`find`, `click`, `key` on it); its frames are the application's. `session.view_window(s, vs, id)` gives it (nil:
+  none), `session.window_shown(w)` whether it is on the screen, `session.system_close(w)` is the system's close.
+  `o.refuse` refuses every window; `o.no_positions` is Wayland's rule (no drop outside, no drag of a window onto the
+  owner's targets). An action that fails ends the test with its message (Linux: `testing.fail_now`; Windows: a time
+  limit of 0 after the message, the runner's signal handling allows no more).
 - **Barriers, never sleeps.** `session.wait_until(s, ready, "what")`, `wait_box`, `wait_text`, `wait_gone`, `wait_idle` make frames until what they wait for holds; a bound (`bound`, 60 s by default) only ends a failing run. Every input action returns once what it caused is built.
 - **Time is the session's.** `session.advance(s, ms)` moves the clock (`ui.set_clock`) frame by frame: a tooltip's delay, a caret's blink, a scroll bar that hides happen with no wait. Elsewhere: a clock passed in (`Build_Params.time_ms`, `platform.cadence_*` take theirs), a semaphore or a barrier for another thread.
 - **An action that fails ends the test there**, with where it was called from; what it left is in `build/session/<test>/` (`failure.png`, `failure_tree.txt`, its `save_png`s). A test checks no return; checks are `testing.expect*`.

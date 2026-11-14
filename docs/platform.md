@@ -84,7 +84,9 @@ same size are told apart by it, where a window's size cannot. "" before then, an
 `wait_handle` (waits on a render frame-latency handle while taking input), `take_paint_request`, `pump_stats`, `wake`,
 `wake_handle` / `wake_signal` (a thread-safe wake handle for offscreen windows), `inject_event`.
 
-**Placement** — `outer_rect`, `client_origin`, `move_window`, `get_placement`, `set_placement`.
+**Placement** — `outer_rect`, `client_origin`, `move_window`, `get_placement`, `set_placement`. `positions_known(w)`:
+whether the system gives this window its place and the pointer's on the screen (Windows, X11, offscreen: yes; Wayland:
+no), asked at run time.
 `move_to_active_monitor(w, follow)` puts a window on the monitor the user works on, at the same place of its work area
 (`rect_on_work`): with `.Pointer` (the default) the monitor under the pointer, with `.Focus` the one of the window in front
 (the pointer's when there is none; `active_monitor_parse` reads "pointer" or "focus"): a program called up by a shortcut or a

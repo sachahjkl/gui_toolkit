@@ -2,7 +2,7 @@ package ui
 
 // What the toolkit remembers of a view, per id: one line of a gt:store file (docs/views.md, "What is remembered").
 //
-//   props	v1 as=external open=0 dialog=58.0x40.0 internal=120,80,700,480 window=1180x760
+//   props	v1 as=external open=0 dialog=58.0x40.0 internal=120,80,700,480 window=1180x760 at=212,96
 //   sidebar	v1 as=panel open=1 dock=:left:18.0
 //
 // An absent field is the default of View_Options. A line that does not parse is ignored: its id gets the defaults.
@@ -17,6 +17,7 @@ View_Memory :: struct {
 	dialog:   Vec2,                        // the dialog's size in ems ({}: none)
 	internal: [4]i32,                      // the internal window's rect: x, y, width, height in logical pixels (width 0: none)
 	window:   [2]i32,                      // the external window's size in logical pixels ({}: none)
+	at:       Maybe([2]int),               // its outer top left on the screen, physical pixels (where the system tells it)
 	dock:     Maybe(View_Dock_Memory),     // the panel's place and extent
 }
 
@@ -42,6 +43,7 @@ views_format :: proc(m: View_Memory, allocator := context.temp_allocator) -> str
 	if m.dialog != {} { fmt.sbprintf(&b, " dialog=%.1fx%.1f", m.dialog.x, m.dialog.y) }
 	if m.internal[2] > 0 { fmt.sbprintf(&b, " internal=%d,%d,%d,%d", m.internal[0], m.internal[1], m.internal[2], m.internal[3]) }
 	if m.window != {} { fmt.sbprintf(&b, " window=%dx%d", m.window[0], m.window[1]) }
+	if at, ok := m.at.?; ok { fmt.sbprintf(&b, " at=%d,%d", at.x, at.y) }
 	if d, ok := m.dock.?; ok { fmt.sbprintf(&b, " dock=%s:%s:%.1f", d.place.space, VIEW_EDGE_NAMES[d.place.edge], d.extent_em) }
 	return strings.to_string(b)
 }
@@ -93,6 +95,16 @@ views_parse :: proc(text: string) -> (m: View_Memory, ok: bool) {
 				if !nok || n <= 0 { return {}, false }
 				m.window[i] = i32(n)
 			}
+		case "at":
+			parts := strings.split(value, ",", context.temp_allocator)
+			if len(parts) != 2 { return {}, false }
+			at: [2]int
+			for p, i in parts {
+				n, nok := strconv.parse_int(p, 10)
+				if !nok { return {}, false }
+				at[i] = n
+			}
+			m.at = at
 		case "dock":
 			parts := strings.split(value, ":", context.temp_allocator)
 			if len(parts) != 3 { return {}, false }
