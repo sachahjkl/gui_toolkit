@@ -1193,12 +1193,14 @@ updater_under :: proc(o: Page_Options, em: f32) {
 	}
 }
 
-// For a program's status bar: what its Updater has to say now, as a button the user acts on there: "Install 0.16.0"
-// when a version is on offer, "Downloading 0.16.0…" while it comes, "Restart to update to 0.16.0" once it is in place
-// (`restart`: the program starts again). Nothing when there is nothing to do; true when it built something. Its height
-// is the caller's (`next`), its width its words'.
-update_badge :: proc(u: ^update.Updater, restart: proc(user: rawptr), user: rawptr) -> bool {
-	if u == nil { return false }
+// For a program's bar: what its Updater has to say now, as a button the user acts on there: "Install 0.16.0" when a
+// version is on offer, "Downloading 0.16.0…" while it comes, "Restart to update to 0.16.0" once it is in place
+// (`restart`: the program starts again). It is the one place of a program's window that shows the phase: the program's
+// status line or toasts say only update.notice. Nothing when there is nothing to do; else its box, whose rect (the last
+// layout's) is the room it takes, for a bar that fits its other parts beside it. Its height is the caller's (`next`), its
+// width its words', never cut.
+update_badge :: proc(u: ^update.Updater, restart: proc(user: rawptr), user: rawptr) -> ^ui.Box {
+	if u == nil { return nil }
 	em := ui.font_size()
 	st := update.status(u)
 	words, glyph: string
@@ -1206,16 +1208,17 @@ update_badge :: proc(u: ^update.Updater, restart: proc(user: rawptr), user: rawp
 	case .Available:   words, glyph = fmt.tprintf(i18n.tr("Install %s"), st.version), lucide.DOWNLOAD
 	case .Downloading: words = fmt.tprintf(i18n.tr("Downloading %s…"), st.version)
 	case .Installed:   words, glyph = fmt.tprintf(i18n.tr("Restart to update to %s"), st.version), lucide.POWER
-	case:              return false
+	case:              return nil
 	}
 	if st.phase == .Downloading {
 		ui.next_merge({width = ui.text_size(em * 0.6), font_size = math.round(em * 0.88), text_align = .Center})
-		if ui.tags("weak") { ui.label(fmt.tprintf("%s###update_badge", words)) }
-		return true
+		if ui.tags("weak") { return ui.label(fmt.tprintf("%s###update_badge", words)).box }
+		return nil
 	}
 	ui.next_merge({font_size = math.round(em * 0.88)})
-	if ui.button("update_badge", words, glyph, {icon_font = ui.lucide_icons(), intent = .Success}).clicked {
+	sig := ui.button("update_badge", words, glyph, {icon_font = ui.lucide_icons(), intent = .Success})
+	if sig.clicked {
 		if st.phase == .Available { update.install_now(u) } else if restart != nil { restart(user) }
 	}
-	return true
+	return sig.box
 }

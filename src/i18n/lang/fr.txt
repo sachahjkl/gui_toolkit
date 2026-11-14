@@ -1818,6 +1818,9 @@ fr Recherche d'une version plus récente…
 en Downloading version %s…
 fr Téléchargement de la version %s…
 
+en Version %s is available. The update failed: %s.
+fr La version %s est disponible. La mise à jour a échoué : %s.
+
 en Version %s is available.
 fr La version %s est disponible.
 
@@ -1826,6 +1829,9 @@ fr La version %s est installée : elle sera lancée au prochain démarrage.
 
 en Not checked yet.
 fr Pas encore vérifié.
+
+en The update failed: %s.
+fr La mise à jour a échoué : %s.
 
 en The last check failed: %s.
 fr La dernière vérification a échoué : %s.
@@ -1844,9 +1850,6 @@ fr le serveur a répondu %d pour %s
 
 en stopped
 fr arrêté
-
-en version %s was not installed: %s
-fr la version %s n'a pas été installée : %s
 
 en version %s is installed: it runs at the next start
 fr la version %s est installée : elle sera lancée au prochain démarrage

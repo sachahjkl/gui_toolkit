@@ -408,4 +408,8 @@ if i, _ := ui.palette(&app.palette, app.table, disabled, {version = app.table_ve
 
 `update_badge(updater, restart, user)` is a button for a program's status bar: "Install 0.16.0" when a version is on
 offer, "Downloading 0.16.0…" while it comes, "Restart to update to 0.16.0" once it is in place (`restart(user)`: the
-program starts again). It builds nothing when there is nothing to do, and returns whether it built something.
+program starts again). It builds nothing when there is nothing to do and returns nil; else it returns its box, whose
+rect (the last layout's) is the room it takes, for a bar that fits its other parts beside it. Its words are never cut.
+
+The badge is the one place of a program's window that shows the update's phase. The program's status line or toasts
+say only `update.notice(status)` ([update.md](update.md)): never the phase again beside the badge.
