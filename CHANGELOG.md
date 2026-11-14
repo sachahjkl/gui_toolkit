@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.253.0] - 2026-11-14
+
+### Added
+- **`ui.card_stack`: a queue gone through one card at a time**: the card the program builds has the room and scrolls; a foot under it holds Previous, where the card is ("3 / 14"), an act in the middle (Acknowledge by default) and Next; the Left and Right arrows and A do the same. `Card_Stack.act` says what was asked. docs/data-views.md, "A stack of cards".
+
 ## [0.252.1] - 2026-11-14
 
 ### Fixed
@@ -3428,6 +3433,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.253.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.253.0
 [0.252.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.252.1
 [0.252.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.252.0
 [0.251.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.251.0

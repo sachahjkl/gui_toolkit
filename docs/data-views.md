@@ -263,6 +263,16 @@ if ui.title_strip("###boot", "Boot") { open = false }
 
 In the machined and edged finishes a tile, a part and the strip are lit along their top and shaded along their bottom.
 
+## A stack of cards (`src/ui/card_stack.odin`)
+
+A queue the person goes through one item at a time, each read whole (what they missed, what waits for a review):
+`if ui.card_stack("###cards", &st, count, opts) { build the card st.at }`. The card has the room left, and scrolls; under
+it a foot holds Previous, where the card is ("3 / 14"), the act in the middle (`opts.settle`, Acknowledge by default, in
+`opts.settle_intent`, Success by default) and Next. The Left and Right arrows and A do the same (`opts.no_keys`: a field in
+the card keeps them). After the stack, `st.act` says what was asked: `.Previous` and `.Next` moved `st.at` already;
+`.Settle` is the program's act on the card at `st.at` (an entry that stays in the list: the program moves `st.at` on). A
+card shown anew is shown from its top. With no card (`count` 0) nothing is built in it, and its buttons are off.
+
 ## An empty view (`src/ui/empty_state.odin`)
 
 `ui.empty_state(id, {icon, title, note, actions})` is what a view shows when it has nothing to show: an empty folder, a

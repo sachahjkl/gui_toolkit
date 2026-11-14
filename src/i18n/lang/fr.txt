@@ -1496,6 +1496,15 @@ fr Po
 en %d B
 fr %d o
 
+en Previous
+fr Précédent
+
+en Acknowledge
+fr Acquitter
+
+en Next
+fr Suivant
+
 en Colour picker
 fr Sélecteur de couleur
 
