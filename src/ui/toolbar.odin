@@ -66,6 +66,9 @@ Toolbar_Tool :: struct {
 	disabled:  bool,
 	intent:    Intent,         // what the act means (Done: Primary)
 	icon_font: font.Font_Id,   // 0: State.icon_font
+	// the id of a menu the program builds as always (`if ui.menu(id) { ... }`, outside the bar): the tool opens it, under
+	// itself in the bar (lit while it is open), as its submenu when it is a row of the "…" menu ("": an act)
+	menu:      string,
 }
 
 // A control: a property with a widget of the program (a slider, swatches, a toggle), which the block builds.
@@ -144,10 +147,18 @@ Toolbar_Build :: struct {
 	item_where: Toolbar_Where,
 }
 
-// Beside the "…" button, between items, between a control's label and its widget, a separator's room on each side, a
-// line's room above and below its items (.Wrap), in ems; a separator's height, of a line.
+// Beside the "…" button, between a control's label and its widget, a separator's room on each side, a line's room above
+// and below its items (.Wrap), in ems; a separator's height, of a line.
+// The gaps between parts are measured between what a person sees (src/md/features/toolbar.md, "Spacing"). A tool is a
+// ghost button of a line's side around a glyph half as tall: its face shows only under the pointer, so its glyph already
+// stands a quarter of the side from its edge, and ITEM_GAP only keeps two lit faces apart. A control's widget (a track,
+// a swatch, a field's frame) is seen to its edge: it carries CONTROL_PAD on each side, two controls standing
+// 2 * CONTROL_PAD + ITEM_GAP = 0.5 em apart. Two groups stand GROUP_GAP apart, more than any two items, or a separator's
+// room when they have one. Each is a horizontal gap of the density (dense): a dense window's bars tighten as its lists do.
 @(private = "file") TOOLBAR_MORE_GAP_EM :: 0.3
 @(private = "file") TOOLBAR_ITEM_GAP_EM :: 0.2
+@(private = "file") TOOLBAR_CONTROL_PAD_EM :: 0.15
+@(private = "file") TOOLBAR_GROUP_GAP_EM :: 0.8
 @(private = "file") TOOLBAR_LABEL_GAP_EM :: 0.4
 @(private = "file") TOOLBAR_SEPARATOR_PAD_EM :: 0.45
 @(private = "file") TOOLBAR_LINE_PAD_EM :: 0.3
@@ -206,8 +217,8 @@ toolbar :: proc(id: string, o := Toolbar_Options{}) -> bool {
 		s.next_mod, s.has_next = m, true
 		tb.bar = build_box({}, fmt.tprintf("###%s", id))
 		push_parent(tb.bar)
-		gap := math.round(em * TOOLBAR_ITEM_GAP_EM)
-		next({width = fill(), height = children_sum(), axis = .X, gap = Vec2{gap, 0}})
+		// (no gap of the flow: each group carries its own before it, as in .Fold)
+		next({width = fill(), height = children_sum(), axis = .X})
 		push_parent(build_box({.Wrap}, "###flow"))
 	}
 	a11y_default(tb.bar, {role = .Toolbar, orientation = .X})
@@ -293,10 +304,10 @@ toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 		mem.groups[idx], mem.groups[tb.order] = mem.groups[tb.order], mem.groups[idx]
 		idx = tb.order
 	}
-	// (a gap before it: not before the bar's first group, nor before its first pinned one (a spacer and the "…" button
-	// are there); in .Wrap the flow's gap stands between the groups that are not pinned)
-	leads := tb.pinned > 0 if o.pinned else (tb.order > 0 && tb.overflow == .Fold)
-	gap: f32 = leads ? math.round(em * TOOLBAR_ITEM_GAP_EM) : 0
+	// (a group's gap before it, unless its separator's room stands there: not before the bar's first group, nor before its
+	// first pinned one (a spacer and the "…" button, or the end of the flow, are there))
+	leads := tb.pinned > 0 if o.pinned else tb.order > 0
+	gap: f32 = leads && !o.separator ? dense(em * TOOLBAR_GROUP_GAP_EM) : 0
 	tb.order += 1
 	g := &mem.groups[idx]
 	g.priority, g.pinned, g.seen = o.priority, o.pinned, s.build_index
@@ -319,7 +330,7 @@ toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 			tb.inner = build_box({}, "###in")
 		} else {
 			// (its items wrap in it, each whole, once it is wider than a line on its own)
-			next({width = children_sum(), height = children_sum(), axis = .X, gap = Vec2{math.round(em * TOOLBAR_ITEM_GAP_EM), 0}})
+			next({width = children_sum(), height = children_sum(), axis = .X, gap = Vec2{dense(em * TOOLBAR_ITEM_GAP_EM), 0}})
 			tb.inner = build_box({.Wrap}, "###in")
 		}
 		push_parent(tb.inner)
@@ -367,7 +378,7 @@ toolbar_end_begins :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, 
 	switch tb.overflow {
 	case .Wrap:
 		pop_parent()   // the flow
-		spacer(px(math.round(em * TOOLBAR_MORE_GAP_EM)))
+		spacer(px(dense(em * TOOLBAR_GROUP_GAP_EM)))
 	case .Fold:
 		spacer(fill())
 		if tb.folded { toolbar_more(s, tb, mem, em) }
@@ -445,7 +456,7 @@ toolbar_item_begin :: proc(id: string, priority: Maybe(int)) -> Toolbar_Where {
 		}
 		push_parent(tb.item_box)
 		// (in .Fold its gap is its own: it leaves with it when it folds; the first item of a group has none, whatever folds)
-		if tb.overflow == .Fold && idx > 0 { spacer(px(math.round(font_size() * TOOLBAR_ITEM_GAP_EM))) }
+		if tb.overflow == .Fold && idx > 0 { spacer(px(dense(font_size() * TOOLBAR_ITEM_GAP_EM))) }
 		tb.item_where = .Bar
 		return .Bar
 	}
@@ -473,7 +484,8 @@ toolbar_item_finish :: proc() {
 }
 
 // `if toolbar_tool(id, t) { ...act... }`, in a toolbar_group's block: a tool, a button in the bar, a row in the "…"
-// menu. True: clicked (or chosen by the keyboard in the menu), wherever it is shown; never while `t.disabled`.
+// menu. True: clicked (or chosen by the keyboard in the menu), wherever it is shown; never while `t.disabled`. A tool
+// with a `menu` opens it and is never true: what is chosen is in the menu's block.
 toolbar_tool :: proc(id: string, t: Toolbar_Tool) -> bool {
 	label, icon, shortcut := t.label, t.icon, t.shortcut
 	if label == "" && t.command.label != "" { label = i18n.tr(t.command.label) }
@@ -483,29 +495,46 @@ toolbar_tool :: proc(id: string, t: Toolbar_Tool) -> bool {
 	switch toolbar_item_begin(id, t.priority) {
 	case .None, .Hidden: return false
 	case .Bar: clicked = toolbar_tool_button(id, t, label, icon, shortcut)
-	case .Menu: clicked = menu_item(fmt.tprintf("%s###%s", label, id), shortcut, t.on, icon, t.disabled, icon_font = t.icon_font).clicked
+	case .Menu:
+		row := fmt.tprintf("%s###%s", label, id)
+		if t.menu != "" {
+			menu_submenu_of(row, icon, t.menu, t.disabled, t.icon_font)
+		} else {
+			clicked = menu_item(row, shortcut, t.on, icon, t.disabled, icon_font = t.icon_font).clicked
+		}
 	}
 	toolbar_item_finish()
 	return clicked
 }
 
-// A tool's look in the bar: its glyph alone (a tool among many), or its words beside it (`words`, or no glyph).
+// A tool's look in the bar: its glyph alone (a tool among many), or its words beside it (`words`, or no glyph). A tool
+// with a menu toggles it, under its own box, and is lit while it is open.
 @(private = "file")
 toolbar_tool_button :: proc(id: string, t: Toolbar_Tool, label, icon, shortcut: string) -> bool {
 	side := gs().toolbar.side
 	tip := shortcut != "" ? fmt.tprintf("%s (%s)", label, shortcut) : label
+	open := t.menu != "" && menu_is_open(t.menu)
+	sig: Signal
 	if t.words || icon == "" {
-		o := Button_Options{intent = t.intent, disabled = t.disabled, icon_font = t.icon_font}
+		o := Button_Options{intent = t.intent, disabled = t.disabled, icon_font = t.icon_font, lit = open}
 		if t.on {
 			o.face = Button_Face.Toggled
 			o.intent = .Primary
 		}
 		if shortcut != "" { o.tip = tip }
-		return button(id, label, icon, o).clicked && !t.disabled
+		sig = button(id, label, icon, o)
+	} else {
+		next({width = px(side), height = px(side), radius = math.round(side * 0.22), font_size = math.round(side * 0.5)})
+		o := Button_Options{tip = tip, face = t.on ? .Toggled : .Ghost, intent = t.on ? .Primary : t.intent, disabled = t.disabled, icon_font = t.icon_font, lit = open}
+		sig = button(id, icon = icon, o = o)
 	}
-	next({width = px(side), height = px(side), radius = math.round(side * 0.22), font_size = math.round(side * 0.5)})
-	o := Button_Options{tip = tip, face = t.on ? .Toggled : .Ghost, intent = t.on ? .Primary : t.intent, disabled = t.disabled, icon_font = t.icon_font}
-	return button(id, icon = icon, o = o).clicked && !t.disabled
+	clicked := sig.clicked && !t.disabled
+	if t.menu == "" || sig.box == nil { return clicked }
+	if sig.box.a11y != nil { sig.box.a11y.popup = .Menu; sig.box.a11y.expanded = open }
+	if clicked {
+		if open { menu_close() } else { menu_open(t.menu, sig.box.rect, anchor = sig.box.key) }
+	}
+	return false
 }
 
 // `if toolbar_control(id, c) { ...a widget... }`, in a toolbar_group's block: a property whose widget the block builds,
@@ -516,6 +545,8 @@ toolbar_control :: proc(id: string, c: Toolbar_Control) -> bool {
 	switch toolbar_item_begin(id, c.priority) {
 	case .None, .Hidden: return false
 	case .Bar:
+		// (a widget is seen to its edge: room of its own on each side, toolbar_control_end the end's)
+		spacer(px(dense(font_size() * TOOLBAR_CONTROL_PAD_EM)))
 		if c.labelled && c.label != "" {
 			next({width = text_size(), height = pct(1)})
 			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###lbl", c.label))
@@ -533,7 +564,11 @@ toolbar_control :: proc(id: string, c: Toolbar_Control) -> bool {
 @(private)
 toolbar_control_end :: proc(built: bool) {
 	if !built { return }
-	if gs().toolbar.item_where == .Menu { menu_control_end(true) }
+	switch gs().toolbar.item_where {
+	case .Menu: menu_control_end(true)
+	case .Bar: spacer(px(dense(font_size() * TOOLBAR_CONTROL_PAD_EM)))
+	case .None, .Hidden:
+	}
 	toolbar_item_finish()
 }
 
@@ -617,7 +652,7 @@ toolbar_more :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f3
 // A separator's width in a bar: its line and its room on each side.
 @(private = "file")
 toolbar_separator_width :: proc(em: f32) -> f32 {
-	return 2 * math.round(em * TOOLBAR_SEPARATOR_PAD_EM) + max(math.round(gs().scale), 1)
+	return 2 * dense(em * TOOLBAR_SEPARATOR_PAD_EM) + max(math.round(gs().scale), 1)
 }
 
 // A vertical line between parts of a bar, its room on each side: in a tool bar a line's height, elsewhere its parent's
@@ -634,8 +669,8 @@ toolbar_separator :: proc() {
 	} else if p := parent_box(); p.pref[.Y].kind == .Pixels {
 		h = p.pref[.Y].value
 	}
-	spacer(px(math.round(em * TOOLBAR_SEPARATOR_PAD_EM)))
+	spacer(px(dense(em * TOOLBAR_SEPARATOR_PAD_EM)))
 	next({width = px(max(math.round(s.scale), 1)), height = px(math.round(h * TOOLBAR_SEPARATOR_HEIGHT)), bg = color("border")})
 	build_box({.Draw_Background}, "")
-	spacer(px(math.round(em * TOOLBAR_SEPARATOR_PAD_EM)))
+	spacer(px(dense(em * TOOLBAR_SEPARATOR_PAD_EM)))
 }

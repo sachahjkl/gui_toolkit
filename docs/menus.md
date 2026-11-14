@@ -23,7 +23,7 @@ if ui.menu("file_menu") {
 | Procedure | What it does |
 |---|---|
 | `menu_open(id, at, anchor = 0, from_keyboard = false, search = true, nested = false)` | opens the menu `id` at `at`, a `Menu_At`: a point (`Vec2`, its top-left corner) or a rect (`Rect`: below it, above it when there is no room). It replaces any open menu. `anchor`: the box that opens it (a press on it is not a press outside: the widget toggles the menu). `from_keyboard`: its first item starts selected. `search`: what is typed filters the items (off: a typed letter selects the next item that starts with it; a menu of a few fixed choices, a drop-down's list). `nested`: in the block of an open menu, the menu opens over it and that menu stays open behind it |
-| `menu(id, width = 0)` | `if menu(id) { ... }` builds the menu while it is open, a nested one in the block of the menu that opened it |
+| `menu(id, width = 0)` | `if menu(id) { ... }` builds the menu while it is open, a nested one in the block of the menu that opened it. A tool bar's tool with a `menu`, folded into its "…" menu, opens `id` as a submenu of its row: the same block builds it there |
 | `menu_item(text, shortcut, checked, icon, disabled, keep_open, icon_font)` | one row; `disabled` (or a `disabled` scope): muted, skipped by the keyboard |
 | `menu_submenu(text, icon, disabled)` | `if menu_submenu("Open with") { ... }` a row that opens a submenu |
 | `menu_control(label, id = "")` | `if menu_control("Width") { ui.slider(...) }` a row that holds a widget: `label` at its left, in line with the items' labels, the widget at its right. The widgets of every control row of a level start at one column, after the widest label. Not an item: the keyboard skips it, and using its widget does not close the menu |

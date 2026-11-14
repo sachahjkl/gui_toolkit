@@ -39,22 +39,28 @@ View_Space :: struct {
 	content:   Key,
 	has_content: bool,                                  // the program's content is its centre (else its centre is a zone)
 	em:        f32,                                     // its font size in its last build (the targets' size, read from another window too)
+	defaults:  View_Dock_Options,                       // what its last build gave (its zones' extents at first)
 }
 
 // What views_dock makes: with `content`, the block is its centre (the program's content); without, panels only, its
-// centre a zone of its own.
+// centre a zone of its own. A zone's extent at first: `extent_frac` (a share of the space's width at the left and the
+// right, of its height at the top and the bottom: it follows the window), else `extent_em`, else its first view's
+// (View_Options.extent_frac, extent_em). What the user drags is remembered in the zone's unit.
 View_Dock_Options :: struct {
-	content: bool,
+	content:     bool,
+	extent_em:   [View_Edge]f32,
+	extent_frac: [View_Edge]f32,
 }
 
 // `if ui.views_frame(vs) { ... }` around the window's content: its zones, its panels, its internal windows (before the
-// content: they read their keys first), then the content's box as the block's parent.
+// content: they read their keys first), then the content's box as the block's parent. `o`: its zones' extents at first
+// (its `content` is always true).
 @(require_results, deferred_none = views_space_end)
-views_frame :: proc(vs: ^Views) -> bool { return views_space_begin(vs, "", true) }
+views_frame :: proc(vs: ^Views, o := View_Dock_Options{}) -> bool { return views_space_begin(vs, "", true, o) }
 
 // `if ui.views_dock(vs, name, {content = true}) { ... }`: a dock space of the program's own, where it is built.
 @(require_results, deferred_none = views_space_end)
-views_dock :: proc(vs: ^Views, name: string, o: View_Dock_Options) -> bool { return views_space_begin(vs, name, o.content) }
+views_dock :: proc(vs: ^Views, name: string, o: View_Dock_Options) -> bool { return views_space_begin(vs, name, o.content, o) }
 
 @(private)
 views_space_end :: proc() {
@@ -67,7 +73,7 @@ views_space_end :: proc() {
 View_Zone_Lists :: [VIEW_STACKS_MAX][dynamic]^View_Record
 
 @(private = "file")
-views_space_begin :: proc(vs: ^Views, name: string, content: bool) -> bool {
+views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_Options) -> bool {
 	s := gs()
 	em := font_size()
 	views_ready(vs)
@@ -77,7 +83,7 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool) -> bool {
 		s.views_frame_build = s.build_index
 	}
 	sp := view_space_of(vs, name)
-	sp.built, sp.state, sp.em, sp.has_content = s.build_index, s, em, content
+	sp.built, sp.state, sp.em, sp.has_content, sp.defaults = s.build_index, s, em, content, o
 	// (F6 is read at the end of the build, views_f6_end: a program's own binding of it, read anywhere in its build, wins)
 
 	// the views docked here, by zone and stack, each stack's in the order they docked; the ranks made compact
@@ -181,6 +187,32 @@ view_space_remember :: proc(vs: ^Views, sp: ^View_Space) {
 	_ = store.set(&vs.memory, view_space_key(sp.name), views_space_format(sp.mem))
 }
 
+// The layout of the space `name` as at first: its zones' extents, axes and stacks' shares and the tabs shown go back to
+// its defaults (its memory line goes), and each open view docked there or whose home is there goes back to its home
+// (Reattach: one the user moved out comes back, one moved in goes home). A command "the layout as at first" calls it.
+views_space_reset :: proc(vs: ^Views, name: string) {
+	views_ready(vs)
+	context.allocator = vs.allocator
+	sp := view_space_of(vs, name)
+	sp.mem = {}
+	for e in View_Edge {
+		for &a in sp.active[e] { delete(a); a = "" }
+	}
+	store.remove(&vs.memory, view_space_key(name))
+	for i := 0; i < len(vs.records); i += 1 {
+		r := vs.records[i]
+		m := r.machine
+		if m.state == .Closed || m.state == .Dragged { continue }
+		here := (m.as == .Panel && m.place.space == name) || (m.state == .Moving && m.from == .Panel && m.from_place.space == name)
+		homed := m.home == .Panel && m.home_place.space == name
+		if !here && !homed { continue }
+		view_apply(vs, r, {kind = .Reattach})
+		view_space_activate(vs, r)   // (a view at home: its tab shown, in the order they come back)
+	}
+	vs.version += 1
+	if sp.state != nil { sp.state.anim_busy = true }
+}
+
 // The axis a zone's stacks are laid along: the remembered one, else .Y at the left, the right and the centre (one above
 // the other), .X at the top and the bottom (side by side).
 @(private)
@@ -227,11 +259,12 @@ view_zone_compact :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zo
 // A view's place as it is now, in its memory line (another view's drop moved its stack).
 @(private = "file")
 view_place_remember :: proc(vs: ^Views, r: ^View_Record) {
-	m := views_memory_of(vs, r.kind.id)
+	key := view_instance_key(r.kind.id, r.instance)   // (an instance's own line: its own place)
+	m := views_memory_of(vs, key)
 	d := m.dock.? or_else View_Dock_Memory{extent_em = r.kind.o.extent_em}
 	d.place = r.machine.place
 	m.dock = d
-	views_memory_write(vs, r.kind.id, m)
+	views_memory_write(vs, key, m)
 }
 
 // Whether `owner` built its frame's space in its last or its current build: the Dock items and commands act there.
@@ -289,26 +322,48 @@ view_builds_panel :: proc(m: View_Machine) -> bool {
 	return false
 }
 
-// A zone's extent in ems: the space's, else its first view's (extent_em, else its width or height), else VIEW_ZONE_EM.
+// A zone's extent, in its own unit (sp.mem): the remembered one, else the space's (extent_frac, extent_em), else its
+// first view's (extent_frac, extent_em, else its width or height), else VIEW_ZONE_EM. One of the two is set from then
+// on: the handle keeps that unit.
 @(private = "file")
-view_zone_extent :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record) -> f32 {
-	if sp.mem.extent[e] > 0 { return sp.mem.extent[e] }
+view_zone_extent :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record) -> (em_size: f32, frac: f32) {
+	m := &sp.mem
+	if m.frac[e] > 0 { return 0, m.frac[e] }
+	if m.extent[e] > 0 { return m.extent[e], 0 }
 	o := first.kind.o
-	x := o.extent_em
-	if x <= 0 { x = e == .Left || e == .Right ? o.width_em : o.height_em }
-	if x <= 0 { x = VIEW_ZONE_EM }
-	sp.mem.extent[e] = x
-	return x
+	switch {
+	case sp.defaults.extent_frac[e] > 0: m.frac[e] = sp.defaults.extent_frac[e]
+	case sp.defaults.extent_em[e] > 0:   m.extent[e] = sp.defaults.extent_em[e]
+	case o.extent_frac > 0:              m.frac[e] = o.extent_frac
+	case o.extent_em > 0:                m.extent[e] = o.extent_em
+	case:
+		x := e == .Left || e == .Right ? o.width_em : o.height_em
+		m.extent[e] = x > 0 ? x : VIEW_ZONE_EM
+	}
+	m.frac[e] = clamp(m.frac[e], 0, 0.95)
+	return m.extent[e], m.frac[e]
+}
+
+// The extent of a zone of `sp` in pixels, a space `length` long along it.
+@(private = "file")
+view_zone_px :: proc(sp: ^View_Space, e: View_Edge, em, length: f32) -> f32 {
+	if sp.mem.frac[e] > 0 { return math.round(sp.mem.frac[e] * length) }
+	return math.round((sp.mem.extent[e] > 0 ? sp.mem.extent[e] : VIEW_ZONE_EM) * em)
 }
 
 @(private = "file")
 view_zone_box :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record, em: f32) -> ^Box {
 	axis := view_zone_axis(sp, e)
+	// (a share is laid out against the space as this layout makes it, not the last one: it follows a resize at once)
+	// (strict: the content gives way, as it does to a zone in ems)
+	size :: proc(x, frac, em: f32) -> Size { return frac > 0 ? pct(frac, 1) : px(math.round(x * em)) }
 	switch e {
 	case .Left, .Right:
-		next({width = px(math.round(view_zone_extent(sp, e, first) * em)), height = fill(), axis = axis})
+		x, frac := view_zone_extent(sp, e, first)
+		next({width = size(x, frac, em), height = fill(), axis = axis})
 	case .Top, .Bottom:
-		next({width = fill(), height = px(math.round(view_zone_extent(sp, e, first) * em)), axis = axis})
+		x, frac := view_zone_extent(sp, e, first)
+		next({width = fill(), height = size(x, frac, em), axis = axis})
 	case .Center:
 		next({width = fill(), height = fill(), axis = axis})
 	}
@@ -326,10 +381,17 @@ view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
 	across := e == .Left || e == .Right
 	total := (across ? sp.rect.max.x - sp.rect.min.x : sp.rect.max.y - sp.rect.min.y) / sc
 	least := DOCK_MIN_EM * em / sc
-	size := sp.mem.extent[e] * em / sc
+	size := view_zone_px(sp, e, em, total * sc) / sc
 	res := splitter(fmt.tprintf("###view_handle_%v", e), across ? .X : .Y, &size, least, max(total - least, least),
 		{after = e == .Right || e == .Bottom, total = total > 0 ? total : 0, min_other = least})
-	if res.changed { sp.mem.extent[e] = size * sc / em }
+	// (the drag kept in the zone's unit: a share stays a share, it goes on following the window)
+	if res.changed {
+		if sp.mem.frac[e] > 0 {
+			if total > 0 { sp.mem.frac[e] = clamp(size / total, 0.01, 0.95) }
+		} else {
+			sp.mem.extent[e] = size * sc / em
+		}
+	}
 	if res.finished { view_space_remember(vs, sp) }
 }
 
@@ -640,7 +702,8 @@ view_target_preview :: proc(sp: ^View_Space, e: View_Edge, em: f32) -> Rect {
 	if z := sp.zone[e]; z.max.x > z.min.x { return z }
 	r := sp.rect
 	if e == .Center { return r }
-	ext := min(math.round((sp.mem.extent[e] > 0 ? sp.mem.extent[e] : VIEW_ZONE_EM) * em), (e == .Left || e == .Right ? r.max.x - r.min.x : r.max.y - r.min.y) * 0.4)
+	length := e == .Left || e == .Right ? r.max.x - r.min.x : r.max.y - r.min.y
+	ext := min(view_zone_px(sp, e, em, length), length * 0.4)
 	#partial switch e {
 	case .Left:   return {r.min, {r.min.x + ext, r.max.y}}
 	case .Right:  return {{r.max.x - ext, r.min.y}, r.max}

@@ -165,10 +165,14 @@ declares its items, each once. The program chooses what happens when the window 
 |---|---|
 | `toolbar(id, {overflow, labels})` | the bar; `labels.more`: the "…" button's tooltip (zero: the toolkit's words) |
 | `toolbar_group(id, {title, priority, pinned, separator})` | a group: `title` heads its menu section; `pinned` puts it at the bar's end (after the "…" button, at the end of the last line), where it never folds nor wraps away; `separator` draws a line before it |
-| `toolbar_tool(id, {label, icon, shortcut, command, priority, words, on, disabled, intent, icon_font}) -> bool` | an act. The toolkit builds it: a glyph button in the bar (its words with `words`, or with no glyph), a row in the menu. `command` gives the label, icon and first key that the fields leave "". `on`: held down in the bar, checked in the menu. True when clicked, in either place |
+| `toolbar_tool(id, {label, icon, shortcut, command, priority, words, on, disabled, intent, icon_font, menu}) -> bool` | an act. The toolkit builds it: a glyph button in the bar (its words with `words`, or with no glyph), a row in the menu. `command` gives the label, icon and first key that the fields leave "". `on`: held down in the bar, checked in the menu. True when clicked, in either place. `menu`: the id of a menu the program builds as always (`if ui.menu(id) { ... }`, outside the bar); the tool opens it under itself and is lit while it is open, and folded it is a submenu row of the "…" menu, built by the same block. Such a tool is never true |
 | `toolbar_control(id, {label, priority, labelled}) -> bool` | `if toolbar_control(...) { ...widget... }`: a property whose widget the block builds, in the bar (its label before it with `labelled`) or in the right column of a menu row |
 | `toolbar_in_menu() -> bool` | the item being built is in the menu (a widget that sizes itself otherwise there) |
 | `toolbar_separator()` | a vertical line and its room: for a bar a program builds itself (in a tool bar, use the group's `separator`) |
+
+The spacing is the toolkit's, for every program: 0.2 em between two items, 0.15 em more on each side of a control (its
+widget is seen to its edge, a ghost tool's glyph stands inside its face), 0.8 em between two groups, or a separator's
+room; each follows the density.
 
 An item's `priority` (nil: its group's) places it among every group's parts: a rare tool of a group kept long folds
 before the needed items of a group that folds early. Order a group's items from the most needed to the least. The bar

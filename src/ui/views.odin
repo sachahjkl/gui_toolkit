@@ -47,6 +47,7 @@ View_Options :: struct {
 	min_width_em:   f32,                        // how small the user makes it (with `resizable`)
 	min_height_em:  f32,
 	extent_em:      f32,                        // a panel's width or height (step 3)
+	extent_frac:    f32,                        // ... as a share of its space's width or height instead (0: extent_em)
 	resizable:      bool,                       // the dialog has grips; its size is remembered
 	top:            Maybe(f32),                 // the dialog's top at this fraction of the window (a palette); nil: centred
 	no_header:      bool,                       // the build draws the top itself (a palette's search band): no header strip
@@ -238,6 +239,7 @@ views_destroy :: proc(vs: ^Views) {
 			m.open = was
 			views_memory_write(vs, id, m)
 		}
+		views_instances_quit(vs, id, k)
 	}
 	// (their windows go first, while each window's State and this Views still know each other)
 	for r in vs.records { view_window_close(vs, r, false) }
@@ -256,6 +258,52 @@ views_destroy :: proc(vs: ^Views) {
 	delete(vs.spaces)
 	store.close(&vs.memory)
 	vs^ = {}
+}
+
+// The key of an instance's own line: `<id>/<instance>` (the id's own line: "").
+@(private)
+view_instance_key :: proc(id, instance: string) -> string {
+	return instance == "" ? id : fmt.tprintf("%s/%s", id, instance)
+}
+
+// At the quit: a line per instance of `id` open now (open=1, its presentation and its place), and the lines of the
+// instances not open go: the memory holds the instances to reopen, not every one ever opened.
+@(private = "file")
+views_instances_quit :: proc(vs: ^Views, id: string, k: ^View_Kind) {
+	open := make(map[string]bool, 8, context.temp_allocator)
+	for r in vs.records {
+		if r.kind != k || r.instance == "" { continue }
+		_, fx := view_step(r.machine, {kind = .Quit})
+		if .Was_Open not_in fx { continue }
+		open[r.instance] = true
+		key := view_instance_key(id, r.instance)
+		m := views_memory_of(vs, key)
+		m.open, m.as = true, r.machine.as
+		if r.machine.as == .Panel {
+			d := m.dock.? or_else View_Dock_Memory{extent_em = k.o.extent_em}
+			d.place = r.machine.place
+			m.dock = d
+		}
+		views_memory_write(vs, key, m)
+	}
+	prefix := fmt.tprintf("%s/", id)
+	for key in store.keys(&vs.memory) {
+		if strings.has_prefix(key, prefix) && !(key[len(prefix):] in open) { store.remove(&vs.memory, key) }
+	}
+}
+
+// The instances of `id` open at the last quit (their names, in `allocator`), each to be opened again by the program
+// with its own data (view_open with that instance): each opens where it was. Read at start-up, before they open.
+view_restored_instances :: proc(vs: ^Views, id: string, allocator := context.allocator) -> []string {
+	views_ready(vs)
+	out := make([dynamic]string, 0, 4, allocator)
+	prefix := fmt.tprintf("%s/", id)
+	for key in store.keys(&vs.memory) {
+		if !strings.has_prefix(key, prefix) || len(key) == len(prefix) { continue }
+		if !views_memory_of(vs, key).open { continue }
+		append(&out, strings.clone(key[len(prefix):], allocator))
+	}
+	return out[:]
 }
 
 // Declares a view: `build` is a `proc(v: ^ui.View, data: ^T)`. Call it once per id, at start-up. The data's type is
@@ -315,9 +363,14 @@ view_open_raw :: proc(vs: ^Views, id: string, data: rawptr, type: typeid, instan
 		views_attach_state(vs, who)
 		view_record_reset(r)
 		m := views_memory_of(vs, id)
-		as := m.as.? or_else (k.o.first.? or_else k.o.home)
+		// (an instance's own line, when it has one: where that instance was; the sizes stay the id's)
+		seen := m
+		if instance != "" {
+			if _, has := store.get(&vs.memory, view_instance_key(id, instance)); has { seen = views_memory_of(vs, view_instance_key(id, instance)) }
+		}
+		as := seen.as.? or_else (k.o.first.? or_else k.o.home)
 		place := k.o.home_place
-		if d, ok := m.dock.?; ok {
+		if d, ok := seen.dock.?; ok {
 			// (the memory's text is temporary: a space is kept by a name owned elsewhere, the kind's or a space's; a
 			// space never built in this run is the frame's)
 			place.edge, place.stack = d.place.edge, d.place.stack
@@ -392,7 +445,7 @@ view_restore :: proc(vs: ^Views, id: string, data: ^$T, first_start_open := fals
 
 // Whether it was open when the program last quit (a side pane, a tool window): the program opens it again.
 view_was_open :: proc(vs: ^Views, id: string, instance := "") -> bool {
-	return views_memory_of(vs, id).open
+	return views_memory_of(vs, view_instance_key(id, instance)).open
 }
 
 // The presentation it has now (Closed: its last one, or its home).
@@ -594,14 +647,19 @@ view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 		r.owner.focus_key = back != nil ? r.focus_back : 0
 	}
 	if .Remember in fx {
-		m := views_memory_of(vs, r.kind.id)
-		m.as = next.as
-		if next.as == .Panel {
-			d := m.dock.? or_else View_Dock_Memory{extent_em = r.kind.o.extent_em}
-			d.place = next.place
-			m.dock = d
+		// (the id's line: where its next new instance opens; an instance's own line: where that one was)
+		keys := [2]string{r.kind.id, view_instance_key(r.kind.id, r.instance)}
+		for key, i in keys {
+			if i == 1 && r.instance == "" { break }
+			m := views_memory_of(vs, key)
+			m.as = next.as
+			if next.as == .Panel {
+				d := m.dock.? or_else View_Dock_Memory{extent_em = r.kind.o.extent_em}
+				d.place = next.place
+				m.dock = d
+			}
+			views_memory_write(vs, key, m)
 		}
-		views_memory_write(vs, r.kind.id, m)
 	}
 	if .Raise in fx && view_built_as(next.as) == .Dialog && vs.building == 0 {
 		// (a dialog brought forward is the one on top)

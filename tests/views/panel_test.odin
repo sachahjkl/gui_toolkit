@@ -6,6 +6,8 @@ package views_test
 // F6.
 
 import "core:fmt"
+import "core:os"
+import "core:path/filepath"
 import "core:testing"
 import "../../src/platform"
 import store "../../src/store"
@@ -16,6 +18,8 @@ import "../../src/ui"
 @(private = "file") SIDE_EM :: 12
 @(private = "file") GROW_PX :: 40
 @(private = "file") OUT :: [2]f32{420, 300}   // (a point of the content, far from the zones and the targets)
+@(private = "file") LOW_FRAC :: f32(0.25)     // the view "low"'s zone: a quarter of the window's height
+@(private = "file") LEFT_FRAC :: f32(0.3)     // the frame's left zone, when the program gives it
 
 @(private = "file")
 Dock :: struct {
@@ -29,6 +33,7 @@ Dock :: struct {
 	em:         f32,               // the font size of the last build (frame px)
 	own_f6:     bool,              // the program binds F6 itself, read after views_frame (in its content)
 	f6_taken:   int,
+	frame_o:    ui.View_Dock_Options,   // what views_frame is given (its zones' extents at first)
 }
 
 @(private = "file")
@@ -38,7 +43,7 @@ dock_build :: proc(s: ^session.Session) {
 	clear(&r.want)
 	r.em = ui.font_size()
 	if code, ok := ui.view_ended(&r.views, "ask"); ok { append(&r.answers, code) }
-	if ui.views_frame(&r.views) {
+	if ui.views_frame(&r.views, r.frame_o) {
 		if ui.key_press(.F2) { r.content_k += 1 }
 		if r.own_f6 && ui.key_press(.F6) { r.f6_taken += 1 }
 		ui.next({width = ui.px(200)})
@@ -65,13 +70,20 @@ plain_view :: proc(v: ^ui.View, r: ^Dock) {
 
 @(private = "file")
 dock_start :: proc(t: ^testing.T, r: ^Dock, want: ..string) -> ^session.Session {
+	dock_register(r)
+	for w in want { append(&r.want, w) }
+	return session.start(t, {size = WINDOW, user = r, build = dock_build})
+}
+
+@(private = "file")
+dock_register :: proc(r: ^Dock) {
+	ui.view_register(&r.views, "log", plain_view, ui.View_Options{title = "Log"})   // (an instance per name)
 	ui.view_register(&r.views, "side", side_view, ui.View_Options{title = "Side", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM})
 	ui.view_register(&r.views, "side2", side_view, ui.View_Options{title = "Second", home = .Panel, home_place = {edge = .Left}})
 	ui.view_register(&r.views, "tool", plain_view, ui.View_Options{title = "Tool", home = .Panel, home_place = {space = "tools", edge = .Right}})
 	ui.view_register(&r.views, "ask", plain_view, ui.View_Options{title = "Question"})
 	ui.view_register(&r.views, "float", plain_view, ui.View_Options{title = "Floating", first = .Internal})
-	for w in want { append(&r.want, w) }
-	return session.start(t, {size = WINDOW, user = r, build = dock_build})
+	ui.view_register(&r.views, "low", plain_view, ui.View_Options{title = "Low", home = .Panel, home_place = {edge = .Bottom}, extent_frac = LOW_FRAC})
 }
 
 @(private = "file")
@@ -317,6 +329,111 @@ a_zone_s_extent_is_remembered :: proc(t: ^testing.T) {
 	sm, parsed := ui.views_space_parse(text)
 	testing.expect(t, ok && parsed, "the space's line")
 	testing.expectf(t, sm.extent[.Left] > SIDE_EM, "its left extent: %v", sm.extent)
+}
+
+// A zone sized by a share of its space (the view's extent_frac): that share of the window; the drag is remembered as a
+// share. The program's default for a zone of its frame (View_Dock_Options.extent_frac) comes before its view's.
+@(test)
+a_zone_sized_by_a_share_follows_its_space :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "low")
+	zone := wait_built(s, "view_zone_Bottom")
+	space := built(s, "views_space_")
+	handle := session.find(s, "view_handle_Bottom")
+	if zone == nil || space == nil || handle == nil { testing.expect(t, false, "the zone, its space and its handle"); return }
+	height :: proc(b: ^ui.Box) -> f32 { return b.rect.max.y - b.rect.min.y }
+	whole := height(space)
+	was := height(zone)
+	testing.expectf(t, abs(was - LOW_FRAC * whole) <= 1.5, "a quarter of its space: %v of %v", was, whole)
+	at := session.center(handle)
+	session.drag(s, at, at - {0, GROW_PX})
+	session.frames(s, 2)
+	zone = built(s, "view_zone_Bottom")
+	testing.expectf(t, zone != nil && abs(height(zone) - (was + GROW_PX)) <= 1.5, "taller by the drag: %v, then %v", was, zone != nil ? height(zone) : 0)
+	text, ok := store.get(&r.views.memory, "#")
+	sm, parsed := ui.views_space_parse(text)
+	testing.expect(t, ok && parsed, "the space's line")
+	testing.expectf(t, abs(sm.frac[.Bottom] - (was + GROW_PX) / whole) <= 0.01, "remembered as a share: %q", text)
+	testing.expectf(t, sm.extent[.Bottom] == 0, "not in ems: %q", text)
+
+	// the program's default for its frame's left zone, before the view's own extent_em
+	r.frame_o = {extent_frac = #partial [ui.View_Edge]f32{.Left = LEFT_FRAC}}
+	append(&r.want, "side")
+	left := wait_built(s, "view_zone_Left")
+	space = built(s, "views_space_")
+	if left == nil || space == nil { return }
+	w := left.rect.max.x - left.rect.min.x
+	testing.expectf(t, abs(w - LEFT_FRAC * (space.rect.max.x - space.rect.min.x)) <= 1.5, "the frame's share: %v", w)
+}
+
+// The layout as at first (views_space_reset): the zone's extent the default again, its line gone, a view the user
+// floated back in its zone, one the user docked there back at its home.
+@(test)
+views_space_reset_puts_the_layout_back :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side")
+	zone := wait_built(s, "view_zone_Left")
+	handle := session.find(s, "view_handle_Left")
+	if zone == nil || handle == nil { testing.expect(t, false, "the zone and its handle"); return }
+	at := session.center(handle)
+	session.drag(s, at, at + {GROW_PX, 0})
+	session.frames(s, 2)
+	_, had := store.get(&r.views.memory, "#")
+	testing.expect(t, had, "the space's line, after the drag")
+	// (the dialog opens after the drag: a press outside a dialog, the handle's, closes it)
+	append(&r.want, "ask")
+	if wait_built(s, "modal_view_ask") == nil { return }
+	ui.view_present(&r.views, "side", .Internal)
+	ui.view_present(&r.views, "ask", .Panel, {edge = .Left})
+	if wait_built(s, "internal_view_side") == nil { return }
+	if wait_built(s, "view_panel_view_ask") == nil { return }
+
+	ui.views_space_reset(&r.views, "")
+	_, has := store.get(&r.views.memory, "#")
+	testing.expect(t, !has, "its line went")
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	testing.expect_value(t, ui.view_presentation(&r.views, "side"), ui.View_Presentation.Panel)
+	testing.expect_value(t, ui.view_presentation(&r.views, "ask"), ui.View_Presentation.Dialog)
+	session.frames(s, 4)
+	zone = built(s, "view_zone_Left")
+	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "its extent_em again: %v", zone != nil ? zone.rect : ui.Rect{})
+}
+
+// Instances open at the quit are listed at the next start (view_restored_instances), each reopened by the program
+// where it was; one closed before the quit is not; a quit with none open lists none.
+@(test)
+instances_reopen_where_they_were :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r)
+	path, _ := filepath.join({s.out, "views_instances.txt"}, context.temp_allocator)
+	_ = os.remove(path)   // (the session's folder stays between runs)
+	restart :: proc(r: ^Dock, path: string) {
+		ui.views_destroy(&r.views)
+		ui.views_init(&r.views, {path = path})
+		dock_register(r)
+	}
+	restart(&r, path)
+	for n in ([]string{"alpha", "beta", "gamma"}) { ui.view_open(&r.views, "log", &r, n, owner = s.state) }
+	session.frames(s, 3)
+	ui.view_present(&r.views, "log", .Panel, {edge = .Right}, "beta")
+	ui.view_close(&r.views, "log", "gamma")
+	if wait_built(s, "view_panel_view_log/beta") == nil { return }
+
+	restart(&r, path)
+	names := ui.view_restored_instances(&r.views, "log", context.temp_allocator)
+	has :: proc(names: []string, n: string) -> bool { for x in names { if x == n { return true } }; return false }
+	testing.expectf(t, len(names) == 2 && has(names, "alpha") && has(names, "beta"), "alpha and beta: %v", names)
+	for n in names { ui.view_open(&r.views, "log", &r, n, owner = s.state) }
+	if wait_built(s, "view_panel_view_log/beta") == nil { return }
+	testing.expect_value(t, ui.view_presentation(&r.views, "log", "beta"), ui.View_Presentation.Panel)
+	testing.expect_value(t, ui.view_presentation(&r.views, "log", "alpha"), ui.View_Presentation.Dialog)
+
+	for n in names { ui.view_close(&r.views, "log", n) }
+	restart(&r, path)
+	testing.expect_value(t, len(ui.view_restored_instances(&r.views, "log", context.temp_allocator)), 0)
 }
 
 // The palette's commands: one per act of each open view, in words; running one does it.

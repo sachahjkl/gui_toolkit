@@ -6,6 +6,7 @@ package views_test
 // floats and says so; `moved` follows it; a drag released outside the owner opens a window there (not where positions
 // are unknown); a window's header dragged onto the owner's dock target docks it.
 
+import "core:fmt"
 import "core:testing"
 import "../../src/platform"
 import store "../../src/store"
@@ -22,6 +23,7 @@ Ext :: struct {
 	answers: [dynamic]int,
 	moves:   [dynamic]^platform.Window,   // what `moved` got
 	frame:   bool,                  // build views_frame (its dock targets)
+	count:   int,                   // the owner's data the view shows (a new sample)
 }
 
 @(private = "file")
@@ -39,7 +41,10 @@ ext_build :: proc(s: ^session.Session) {
 
 @(private = "file")
 ext_view :: proc(v: ^ui.View, r: ^Ext) {
-	if ui.dialog_body("ext_body") { ui.label("What is in it###ext_words") }
+	if ui.dialog_body("ext_body") {
+		ui.label("What is in it###ext_words")
+		ui.label(fmt.tprintf("Sample %d###ext_count", r.count))
+	}
 	if ui.dialog_buttons("ext_buttons") { _ = ui.button("ext_ok", "OK") }
 }
 
@@ -187,6 +192,24 @@ a_view_s_window_follows_its_owner :: proc(t: ^testing.T) {
 	testing.expect(t, session.window_shown(w), "back with its owner")
 	testing.expect_value(t, platform.client_origin(w.win), at)
 	testing.expect_value(t, ui.view_presentation(&r.views, "ask"), ui.View_Presentation.External)
+}
+
+// The owner's data changes (a new sample its build took): the frame of the owner that follows builds the view's window
+// too, with nothing woken by hand.
+@(test)
+a_view_s_window_builds_with_its_owner :: proc(t: ^testing.T) {
+	r: Ext
+	defer ext_end(&r)
+	r.want = "ask"
+	s := ext_start(t, &r, first = .External)
+	w := shown_as_window(s, &r)
+	if w == nil { return }
+	testing.expect(t, session.find_text(w, "Sample 0") != nil)
+	built := w.state.build_index
+	r.count = 7
+	session.frame(s)
+	testing.expect(t, w.state.build_index > built, "the owner's frame built its view's window")
+	testing.expect(t, session.find_text(w, "Sample 7") != nil, "the new sample in the window")
 }
 
 // No window can open: a view that opens as External floats inside its owner, and the owner says why.

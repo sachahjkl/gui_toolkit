@@ -106,10 +106,12 @@ again.
 | `view_presentation(vs, id, instance)` | where it is, or where it opens next |
 | `view_was_open(vs, id, instance)` | it was open when the program last quit |
 | `view_restore(vs, id, data, first_start_open, instance, owner) -> bool` | at start-up: opens it if it was open at the last quit, or at the very first start (no line for it yet) when `first_start_open`; a view the user closed stays closed |
+| `view_restored_instances(vs, id, allocator) -> []string` | at start-up: the instances of `id` open at the last quit, in the order their lines were written; the program opens each with its own data, and each opens where it was (section "What is remembered") |
 | `view_has_focus(vs, id, instance)`, `views_focus(vs) -> (id, instance, ok)` | the keyboard focus is in a view (section "A program's command keys") |
 | `view_dialog_size(vs, id, instance)` | the size the user gave its dialog, in ems (`{}`: none) |
 | `views_hold_keys(vs)` | a dialog of `vs` holds the keys of the State being built |
-| `views_frame(vs)`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels) |
+| `views_frame(vs, o = {})`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels); `o`: `View_Dock_Options` |
+| `views_space_reset(vs, name)` | the layout of a space as at first: its zones, axes and shares the defaults, its views back home (section Panels) |
 | `views_commands(vs, allocator) -> (commands, acts)`, `views_command_run(vs, act)`, `views_version(vs)` | the palette's commands of the views |
 | `views_space_format(m)`, `views_space_parse(text) -> (View_Space_Memory, ok)` | a dock space's line of the memory |
 | `views_windows_follow(s, shown)` | the windows of the views of `s` hide and show with it (host_hide, host_show call it) |
@@ -122,8 +124,8 @@ again.
 `View_Options`: `title`, `icon`, `icon_font`, `home` (`.Dialog` or `.Panel`), `home_place`, `first` (the presentation
 of the first opening), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em`, `min_height_em`,
 `resizable` (grips; the size is remembered), `top` (the dialog's top at this fraction of the window), `no_header`,
-`backdrop` (drawn first, under the header and the body), `extent_em`, `under_children` and `moved` (the later
-presentations).
+`backdrop` (drawn first, under the header and the body), `extent_em`, `extent_frac`, `under_children` and `moved`
+(the later presentations).
 
 ## The Dialog presentation
 
@@ -195,6 +197,10 @@ ui.views_set_windows(&app.views, session.view_windows(s))        // a test (docs
 - **Between frames, never in a build.** `views_windows_step(s)` opens the windows wanted (hidden), shows each one once
   two layouts in a row agree, moves one dragged, and closes those no presentation uses. The host calls it after each
   frame of a window, then makes the frames of its views' windows; `hosts_wait` counts them.
+- **A view's window builds when its owner builds.** Each frame of the owner window is followed by a frame of each of
+  its views' windows: what woke the owner (a new sample posted to it, a reading) is in the views that show it, wherever
+  they are. A program never wakes a view's window by hand. When nothing is due, the owner makes no frame and neither do
+  they; a frame redraws only what changed (partial redraw). A view's window also makes its own frames for its input.
 - **No flash.** The old place stays drawn until the window's first picture is out; the next frame of the owner takes
   it away. The view is in two places for one frame at most, and never nowhere.
 - Its header: the title, the program's tools, Re-attach, Close view (`View_Labels.close_view`). Escape and Ctrl+W close
@@ -257,8 +263,17 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
 - `view_drag_handle(v, box)` marks the program's title box of a view: a lone panel moves by it (it floats, and a drop
   docks it again). A panel without one shows no grip; it moves by its icon, its menu or the palette.
 - A zone's extent is the space's: its handle resizes it (the content keeps `DOCK_MIN_EM`), and the memory keeps it
-  when the handle is let go. Before that: the first panel's `extent_em`, else `width_em` or `height_em`, else
+  when the handle is let go. Before that, in this order: the space's `View_Dock_Options.extent_frac[edge]`, its
+  `extent_em[edge]`, the first panel's `extent_frac`, its `extent_em`, else `width_em` or `height_em`, else
   `VIEW_ZONE_EM` (18).
+- **A share or ems.** An `extent_frac` is a share of the space's width (left, right) or height (top, bottom): the zone
+  follows the window's size. An `extent_em` is a fixed size (a sidebar). The user's drag is remembered in the zone's
+  own unit: a share stays a share. `if ui.views_dock(&app.views, "mission", {extent_frac = {.Left = 0.25, .Bottom =
+  0.3}}) {}` gives a space its zones' shares at first.
+- **The layout as at first**: `views_space_reset(vs, name)` (`""`: the window's frame) puts the space's zones, axes,
+  shares and tabs shown back to their defaults (its memory line goes), and each open view docked there or whose home
+  is there back to its home: one the user floated or docked elsewhere comes back, one the user docked there goes home.
+  A command "Reset the layout" calls it.
 - A panel whose space is not built shows at once as a floating window (a section not shown, a window with no
   `views_frame`); it goes to its space from the frame after the space is built, and floats again when the space goes.
   Every frame shows it in one place.
@@ -365,18 +380,31 @@ sidebar	v1 as=panel open=1 dock=:left:18.0
 | `window` | the external window's size, logical pixels | its window closes |
 | `at` | the external window's outer top left, physical pixels | its window closes (where `positions_known`) |
 
-A dock space has a line of its own, under `#<space>` (`#` for the window's frame): the extent of each zone in ems, its
-axis, and the share of each of its stacks but the last, written when a handle is let go or a drop splits a stack
-(`views_space_format(View_Space_Memory)`, `views_space_parse(text) -> (View_Space_Memory, ok)`):
+A dock space has a line of its own, under `#<space>` (`#` for the window's frame): the extent of each zone in ems
+(`left=18.0`) or as a share of the space (`bottom.frac=0.250`), its axis, and the share of each of its stacks but the
+last, written when a handle is let go or a drop splits a stack (`views_space_format(View_Space_Memory)`,
+`views_space_parse(text) -> (View_Space_Memory, ok)`):
 
 ```
-#	v1 left=18.0 left.axis=y left.shares=0.400 bottom=12.5
+#	v1 left=18.0 left.axis=y left.shares=0.400 bottom.frac=0.250
 ```
 
 A view's `dock` field is `<space>:<edge>:<extent>:<stack>` (`center` for the centre zone of a space without content).
 
-An absent field is the default of `View_Options`. A line that does not parse is ignored. Instances share their id's
-line. The store writes on its own thread: no disk call runs on the interface's thread after `views_init`.
+An absent field is the default of `View_Options`. A line that does not parse is ignored.
+
+An instance has a line of its own, `<id>/<instance>`: its presentation, its place, and whether it was open at the
+quit; the sizes stay its id's. At the quit, each instance open writes its line and each one not open loses its line, so
+the memory holds the instances to reopen, not every one ever opened. An instance's name holds no tab and no line
+break. At start-up:
+
+```odin
+for name in ui.view_restored_instances(&app.views, JOURNAL_VIEW, context.temp_allocator) {
+	if j := journal_open(app, name); j != nil { ui.view_open(&app.views, JOURNAL_VIEW, j, name) }
+}
+```
+
+ The store writes on its own thread: no disk call runs on the interface's thread after `views_init`.
 `views_format(m)` and `views_parse(text)` are the line's format.
 
 ## The machine

@@ -51,6 +51,32 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
 - **Refused: two APIs, one per mode.** The groups, the items, the separators and the pinned end are the same in both;
   only what happens at the edge differs. A program moves from one to the other by one option.
 
+## A tool that opens a menu
+
+- Insert, Picture, a zoom: a tool whose act is to show a menu. `Toolbar_Tool.menu` is the id of a menu that the program
+  builds as any menu (`if ui.menu(id) { ... }`, outside the bar). In the bar the tool opens it under its own box (its
+  anchor: a second click closes it) and is lit while it is open. Folded, the tool is a submenu row of the "…" menu, and
+  the same `ui.menu(id)` block builds that submenu (`menu_submenu_of`: `menu` finds its id open as a level over another
+  menu's row). Such a tool never returns true: what is chosen is in its menu's block.
+- **Refused: a control that holds a button and opens the menu itself** (what cliche did first). Folded, the button sat
+  in a menu row with no anchor that the program could use, and the menu opened over the "…" menu, not beside its row.
+- **Refused: the tool's block builds the items.** The menu would then be built inside the bar's code, at the tool's
+  place in the build, in the bar or in the "…" menu; a program's menu is built once, where it always is, and a menu that
+  closes no longer depends on whether its tool is folded.
+
+## Spacing
+
+- The gaps are measured between what a person sees, and are the same for every program. A tool is a ghost button a
+  line wide around a glyph half as tall: its face shows only under the pointer, so its glyph already stands a quarter of
+  the line from its edge. Between two tools the gap is small (0.2 em): it only keeps two lit faces apart.
+- A control's widget (a track, a swatch, a field's frame) is seen to its edge. It carries 0.15 em of its own on each
+  side, so two controls stand 0.5 em apart (cliche's spacing between properties), and a control stands a little further
+  from a tool than two tools do from each other. One rule, item gap plus what each item carries, reads well for a bar of
+  tools and for a bar of properties.
+- Two groups stand 0.8 em apart, more than any two items, or a separator's room when the group has one: a group reads
+  as a group without a line.
+- Every horizontal gap follows the density (`dense`): a dense window tightens its bars as it tightens its lists.
+
 ## Subtle points
 
 - **One build, two places.** The bar and its menu are built in one pass over the program's code, in the bar's order.
@@ -61,8 +87,9 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
   built there while folded. A new item, never measured, is built in the bar invisible for one frame, then placed. The
   bar's first frame is invisible: it has not been measured yet. Nothing shows in a place it leaves at the next frame.
 - **Gaps belong to items.** In `.Fold`, an item's gap before it is in its box (not before the first item of a group),
-  and a group's gap and separator count with its rest: the widths that fold are the widths that leave. A gap of the
-  layout would stay behind and make the fold oscillate.
+  a control's own room is in its box, and a group's gap and separator count with its rest: the widths that fold are
+  the widths that leave. A gap of the layout would stay behind and make the fold oscillate. In `.Wrap` the groups carry
+  their gap too (the flow has none), so a group's gap and its separator are one room, never both.
 - **Controls are for the pointer.** The menu owns the keyboard while it is open (`menu_capture_keys`), so the arrows
   skip the control rows. A control that a person needs by keyboard is a tool (`on`) or a command of the palette.
 - **What a group builds outside its items** shows in the bar only. When the whole group folds, it is built in an

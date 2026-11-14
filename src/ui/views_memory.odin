@@ -129,24 +129,30 @@ views_parse :: proc(text: string) -> (m: View_Memory, ok: bool) {
 // The most stacks a zone holds (section 6.3: the ranks are made compact before an insertion).
 VIEW_STACKS_MAX :: 8
 
-// What is remembered of a dock space: each zone's extent in ems (0: none yet), the axis its stacks are laid along
-// (nil: the zone's own: .Y at the left, the right and the centre, .X at the top and the bottom), and the share of each
-// stack of its length (0: an equal share; the last stack takes what the others leave).
+// What is remembered of a dock space: each zone's extent in ems or as a share of the space's width or height (one of
+// the two, the zone's own unit; 0 and 0: none yet), the axis its stacks are laid along (nil: the zone's own: .Y at the
+// left, the right and the centre, .X at the top and the bottom), and the share of each stack of its length (0: an equal
+// share; the last stack takes what the others leave).
 View_Space_Memory :: struct {
 	extent: [View_Edge]f32,
+	frac:   [View_Edge]f32,
 	axis:   [View_Edge]Maybe(Axis),
 	shares: [View_Edge][VIEW_STACKS_MAX]f32,
 }
 
 // The line of a dock space (key `#<space>`): a zone of none absent, a share of 0 absent at the end of its list.
 //
-//   #mission	v1 left=18.0 left.axis=y left.shares=0.400,0.350 bottom=12.5
+//   #mission	v1 left=18.0 left.axis=y left.shares=0.400,0.350 bottom.frac=0.250
 views_space_format :: proc(m: View_Space_Memory, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
 	strings.write_string(&b, VIEW_MEMORY_VERSION)
 	for e in View_Edge {
 		name := VIEW_EDGE_NAMES[e]
-		if m.extent[e] > 0 { fmt.sbprintf(&b, " %s=%.1f", name, m.extent[e]) }
+		if m.frac[e] > 0 {
+			fmt.sbprintf(&b, " %s.frac=%.3f", name, m.frac[e])
+		} else if m.extent[e] > 0 {
+			fmt.sbprintf(&b, " %s=%.1f", name, m.extent[e])
+		}
 		if a, ok := m.axis[e].?; ok { fmt.sbprintf(&b, " %s.axis=%s", name, a == .X ? "x" : "y") }
 		n := 0
 		for x, i in m.shares[e] { if x > 0 { n = i + 1 } }
@@ -177,6 +183,10 @@ views_space_parse :: proc(text: string) -> (m: View_Space_Memory, ok: bool) {
 				x, xok := strconv.parse_f32(value)
 				if !xok || x < 0 { return {}, false }
 				m.extent[e] = x
+			case "frac":
+				x, xok := strconv.parse_f32(value)
+				if !xok || x <= 0 || x >= 1 { return {}, false }
+				m.frac[e] = x
 			case "axis":
 				switch value {
 				case "x": m.axis[e] = .X

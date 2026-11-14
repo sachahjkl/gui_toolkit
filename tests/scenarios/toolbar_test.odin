@@ -144,3 +144,96 @@ a_folding_toolbar_shows_a_menu_of_sections :: proc(t: ^testing.T) { unwatched.ru
 	session.frames(s, 2)
 	testing.expect_value(t, r.bold, 1)
 }) }
+
+@(private = "file")
+Menu_Run :: struct {
+	overflow: ui.Toolbar_Overflow,
+	bar_w:    f32,    // the bar's width (0: the window's)
+	inserted: int,    // the rectangles inserted from the tool's menu
+	returned: int,    // the times the tool with a menu said true (never)
+}
+
+// A tool bar with a tool that opens a menu, and that menu, built by the program as any menu, outside the bar.
+@(private = "file")
+menu_bar_build :: proc(s: ^session.Session) {
+	r := (^Menu_Run)(s.user)
+	ui.next({width = r.bar_w > 0 ? ui.px(r.bar_w) : ui.fill(), height = ui.px(40)})
+	if ui.toolbar("mbar", {overflow = r.overflow}) {
+		if ui.toolbar_group("draw", {title = "Dessin"}) {
+			if ui.toolbar_tool("insert", {label = "Insérer", words = true, menu = "insert_menu"}) { r.returned += 1 }
+		}
+		if ui.toolbar_group("end", {pinned = true}) { _ = ui.toolbar_tool("done", {label = "Terminé", words = true}) }
+	}
+	if ui.menu("insert_menu") {
+		if ui.menu_item("Rectangle").clicked { r.inserted += 1 }
+		_ = ui.menu_item("Ellipse")
+	}
+}
+
+// In the bar, a tool with a menu opens it under itself and is lit while it is open; what is chosen in it runs.
+@(test)
+a_toolbar_tool_opens_its_menu_in_the_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Menu_Run{overflow = .Wrap}
+	s := session.start(t, {size = {900, 400}, user = &r, no_renderer = true, build = menu_bar_build})
+	session.frames(s, 3)
+	tool := session.get(s, "insert")
+	testing.expect(t, .Lit not_in tool.flags, "not lit while its menu is closed")
+	session.click(s, "insert")
+	rect := session.wait_text(s, "Rectangle")
+	tool = session.get(s, "insert")
+	testing.expect(t, ui.menu_is_open("insert_menu"), "the click opens its menu")
+	testing.expect(t, .Lit in tool.flags, "lit while its menu is open")
+	testing.expectf(t, rect.rect.min.y >= tool.rect.max.y && abs(rect.parent.rect.min.x - tool.rect.min.x) <= 2 * tool.font_size, "the menu under the tool: %v, the tool %v", rect.rect, tool.rect)
+	session.click_text(s, "Rectangle")
+	session.frames(s, 2)
+	testing.expect_value(t, r.inserted, 1)
+	testing.expect(t, !ui.menu_any_open(), "a choice closes the menu")
+	testing.expect(t, .Lit not_in session.get(s, "insert").flags, "no longer lit")
+	// (a second click on the tool closes its open menu)
+	session.click(s, "insert")
+	session.wait_text(s, "Rectangle")
+	session.click(s, "insert")
+	session.frames(s, 2)
+	testing.expect(t, !ui.menu_any_open(), "the tool closes its menu")
+	testing.expect_value(t, r.returned, 0)
+}) }
+
+// Folded, a tool with a menu is a submenu row of the "…" menu: its menu, built by the same block, opens beside the row,
+// by the pointer and by the keyboard, and what is chosen in it runs.
+@(test)
+a_folded_toolbar_tool_is_a_submenu :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Menu_Run{overflow = .Fold}
+	s := session.start(t, {size = {900, 400}, user = &r, no_renderer = true, build = menu_bar_build})
+	session.frames(s, 3)
+	// (as narrow as Done and the "…" button: the tool folds)
+	done := session.get(s, "done")
+	r.bar_w = done.size.x * 1.5
+	session.frames(s, 4)
+	more := session.get(s, "toolbar_more")
+	r.bar_w = done.size.x + more.size.x + more.font_size
+	session.frames(s, 4)
+	testing.expect(t, session.find(s, "insert") == nil, "the tool folded")
+	session.click(s, "toolbar_more")
+	row := session.wait_text(s, "Insérer")
+	testing.expect(t, session.find_text(s, "Rectangle") == nil, "its menu waits for its row")
+	session.click_text(s, "Insérer")
+	rect := session.wait_text(s, "Rectangle")
+	row = session.find_text(s, "Insérer")
+	testing.expect(t, row != nil && rect.rect.min.x >= row.parent.rect.max.x - 4, "its menu beside its row")
+	testing.expect(t, ui.toolbar_menu_open("mbar"), "the \"…\" menu stays open behind it")
+	session.click_text(s, "Rectangle")
+	session.frames(s, 2)
+	testing.expect_value(t, r.inserted, 1)
+	testing.expect(t, !ui.menu_any_open(), "a choice closes both")
+	// (the keyboard: Down selects the row, Right opens its menu on its first item, Enter chooses it)
+	session.click(s, "toolbar_more")
+	session.wait_text(s, "Insérer")
+	session.key(s, .Down)
+	session.key(s, .Right)
+	session.wait_text(s, "Rectangle")
+	session.key(s, .Return)
+	session.frames(s, 2)
+	testing.expect_value(t, r.inserted, 2)
+	testing.expect(t, !ui.menu_any_open(), "closed")
+	testing.expect_value(t, r.returned, 0)
+}) }

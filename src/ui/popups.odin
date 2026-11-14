@@ -444,6 +444,13 @@ menu :: proc(id: string, width: f32 = 0) -> bool {
 		}
 		return menu_level_begin(d, width)
 	}
+	// (open as the submenu of another menu's row (menu_submenu_of), built here, where the program always builds it: that
+	// menu's level 0 takes the presses outside, its rows close it when the pointer rests on another)
+	if depth < 0 {
+		for i in 1 ..< len(s.menus) {
+			if s.menus[i].key == key && !s.menus[i].nested { return menu_level_begin(i, width) }
+		}
+	}
 	if len(s.menus) == 0 || s.menus[0].key != key || s.menus[0].nested {
 		next_drop(s)
 		append(&s.popup_stack, false)
@@ -918,12 +925,22 @@ menu_submenu :: proc(text: string, icon := "", disabled := false) -> bool {
 		append(&s.popup_stack, false)
 		return !disabled && s.disabled_depth == 0
 	}
-	en := !disabled && s.disabled_depth == 0
+	if !menu_submenu_row(lv, depth, text, icon, !disabled && s.disabled_depth == 0, key_from_string(lv.key, hash_part(text))) {
+		append(&s.popup_stack, false)
+		return false
+	}
+	return menu_level_begin(depth + 1, 0)
+}
+
+// The row of a submenu in the level being built, the submenu's level `sub_key` opened over it when it is clicked, rested
+// on, or chosen with Right / Enter / Space. True: the submenu is open.
+@(private = "file")
+menu_submenu_row :: proc(lv: ^Menu_Level, depth: int, text, icon: string, en: bool, sub_key: Key, icon_font: font.Font_Id = 0) -> bool {
+	s := gs()
 	idx := len(lv.items)
 	append(&lv.items, Menu_Item_Info{enabled = en, submenu = true, first = first_letter(display_part(text))})
-	sub_key := key_from_string(lv.key, hash_part(text))
 	open := len(s.menus) > depth + 1 && s.menus[depth + 1].key == sub_key
-	sig := menu_row(lv, idx, text, "", icon, false, en, true, idx == lv.sel || open)
+	sig := menu_row(lv, idx, text, "", icon, false, en, true, idx == lv.sel || open, icon_font)
 	want, kb := false, false
 	if en {
 		if sig.clicked { want = true }
@@ -938,11 +955,19 @@ menu_submenu :: proc(text: string, icon := "", disabled := false) -> bool {
 		open = true
 	}
 	if sig.box != nil && sig.box.a11y != nil { sig.box.a11y.expanded = open }
-	if !open {
-		append(&s.popup_stack, false)
-		return false
-	}
-	return menu_level_begin(depth + 1, 0)
+	return open
+}
+
+// A row of the menu being built whose submenu is the menu `id`, which the program builds where it always does
+// (`if menu(id) { ... }`, outside this menu's block): `menu` builds it as this row's submenu while it is open there. A tool
+// bar's tool folded into its "…" menu shows its own menu so. Not shown while a search filters the menu (the items of `id`
+// are not this menu's to search).
+@(private)
+menu_submenu_of :: proc(text, icon, id: string, disabled := false, icon_font: font.Font_Id = 0) {
+	s := gs()
+	lv, depth := menu_current()
+	if lv == nil || menu_query(lv) != "" { return }
+	_ = menu_submenu_row(lv, depth, text, icon, !disabled && s.disabled_depth == 0, menu_key(id), icon_font)
 }
 
 // True once the pointer has rested on the box for Feel.tooltip_delay_ms: its tooltip shows (asks the app loop for a timed

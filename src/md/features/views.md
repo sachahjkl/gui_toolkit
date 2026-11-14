@@ -710,7 +710,13 @@ sidebar	v1 as=panel open=1 dock=:left:18.0
 | `#<space>` | the dock space's layout (`dock_format`, the views named `id` or `id/instance`) | the dock's `on_save` |
 
 - An absent field means the default of `View_Options`.
-- Instances use their id's line. A second external window of one id is placed by the system, not over the first.
+- **An instance has a line of its own** (`<id>/<instance>`): its presentation, its place, whether it was open at the
+  quit. The sizes stay the id's. At the quit, a line is written for each instance open and removed for each one
+  closed (the memory does not grow with every journal ever opened). `view_restored_instances(vs, id)` lists the
+  instances open at the last quit: the program reopens each with its own data (a journal per service, a terminal per
+  shell), and each opens where it was. Refused: a list of names in the id's line (a name may hold any character but a
+  line break; one line per instance keeps each one's place too).
+- Instances use their id's line for the sizes. A second external window of one id is placed by the system, not over the first.
   An instance in a dock space's layout is named `id/instance` (ocn's terminals, inspecteur's journals).
 - An internal rect is clamped into the owner window when it is used: the window can be smaller.
 - A line that does not parse is ignored. Its id gets the defaults.
@@ -786,6 +792,14 @@ View_Window_Ask :: struct { title: string, size: [2]int, at: Maybe([2]int), owne
    `host_hide` and `host_show` call it; the test session's `hide` and `show` too. While its owner is hidden, a window
    whose layout settles is not shown: it waits for the owner. The backend's `hide(user, handle)` takes it off the
    screen, its State kept.
+10. **A view's window builds when its owner builds.** The backend makes a frame of each window of a window's views
+    after each frame of that window, unconditionally (`host_views_frames`; the test session's `windows_frames`): what
+    woke the owner (a sample posted to it) is in the views that show it, wherever they are. A program never wakes a
+    view's window by hand (inspecteur's `views_follow` did, believing they built on their own wake only). No cost when
+    nothing changed: the owner frames only when something is due, and a view's window redraws what changed (partial
+    redraw). Refused: a "data changed" signal per view (the program would have to say which view shows what; the
+    owner's frame already says that something changed). Its own input or wake also frames it (`hosts_due` counts it).
+    A test pins the rule (`a_view_s_window_builds_with_its_owner`).
 
 `src/host/views.odin` implements it:
 
@@ -979,6 +993,19 @@ A view docked in a space can be dragged to another space or to the frame's edges
 - The stacks of a zone share its length: each stack but the last has a share (a fraction of the zone's length), the
   last takes the rest; a handle between two stacks moves the share of the one before it. The space's line keeps each
   zone's axis and shares: `v1 left=18.0 left.axis=y left.shares=0.400,0.350` (`views_space_format(View_Space_Memory)`).
+- **A zone's extent in ems or as a share of its space.** A zone sized by a share (`View_Dock_Options.extent_frac`
+  for a space's zone, `View_Options.extent_frac` for a view's) is a fraction of its space's width (left, right) or
+  height (top, bottom): it follows the window. The user's drag is remembered in the zone's own unit: a share stays a
+  share (`left.frac=0.300`), ems stay ems (`left=18.0`). Refused: always ems (Mission Control's zones would stop
+  following the window), always shares (a sidebar of a fixed width would grow with the window). The order at first:
+  the space's (`View_Dock_Options.extent_frac`, `extent_em`, per edge), then the first view's (`extent_frac`,
+  `extent_em`, `width_em`/`height_em`), then `VIEW_ZONE_EM`. A share is laid out as a strict percentage of the space
+  (`pct(frac, 1)`): it follows a resize in the same layout, with no frame of lag; the handle converts the drag back
+  to a share of the space's last rect. A share stays below 0.95 (the content keeps `DOCK_MIN_EM`).
+- **The layout as at first** (`views_space_reset(vs, name)`): the space's zones, axes, shares and tabs shown go back to
+  the defaults (its memory line goes), and every open view docked there or homed there goes back to its home place
+  (`Reattach`): a view the user moved out comes back, one moved in goes home. Refused: zones only (the panels would
+  stay where the user put them, which is not the layout at first).
 - The view's own line keeps its place (`dock=<space>:<edge>:<extent>:<stack>`; a line of three fields is stack 0).
 - A stack inserted before others moves their ranks up by one: the places of the views there change, and their lines
   are written again. The ranks are made compact (0, 1, 2...) before each insertion, so a zone has at most
