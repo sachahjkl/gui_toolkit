@@ -11,10 +11,11 @@ import "core:io"
 import "core:mem"
 import "core:mem/virtual"
 import "core:os"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:sync"
-import "core:time"
+import "../fsx"
 import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
@@ -22,11 +23,15 @@ import "../platform"
 // The entries a search in subfolders looks at, at most: a search from a disk's root ends.
 FILE_FIND_VISIT_MAX :: 200_000
 
+// The computer's own separator.
+@(private = "file")
+LOCAL_SEPARATOR :: filepath.SEPARATOR
+
 // The computer's files: all caps, its own separator.
 local_files :: proc() -> File_Source {
 	return {
 		caps        = {.Size, .Modified, .Read, .Make_Folder},
-		separator   = ODIN_OS == .Windows ? '\\' : '/',
+		separator   = LOCAL_SEPARATOR,
 		list        = local_list,
 		read        = local_read,
 		make_folder = local_make_folder,
@@ -201,33 +206,44 @@ local_fail :: proc(j: ^Local_Job, err: os.Error, what: string) {
 	}
 }
 
+// The browser's entry for one entry of folder `dir`, its name `f.name`'s (not cloned). Its `hidden` is the system's mark
+// (fsx.read_folder: Windows' attribute, read with the folder), so file_entry_hidden is the one rule of the listing and
+// of the search. A link is what it points to: a folder to enter, a file to choose.
+@(private = "file")
+local_entry :: proc(f: fsx.Folder_Entry, dir: string, sep: u8, allocator: mem.Allocator) -> File_Entry {
+	e := File_Entry{name = f.name, kind = .File, size = f.size, modified = f.modified, hidden = f.hidden}
+	switch f.kind {
+	case .Directory: e.kind = .Folder
+	case .Link:
+		e.link = true
+		full := file_path_join(dir, f.name, sep, allocator)
+		defer delete(full, allocator)
+		if to, to_err := os.stat(full, allocator); to_err == nil {
+			if to.type == .Directory { e.kind = .Folder }
+			e.size = to.size
+			os.file_info_delete(to, allocator)
+		}
+	case .File, .Absent:
+	}
+	if e.kind == .Folder { e.size = -1 }
+	return e
+}
+
 @(private = "file")
 local_list :: proc(src: ^File_Source, path: string, reply: File_Reply) {
 	work :: proc(d: rawptr) {
 		j := (^Local_Job)(d)
 		a := runtime.heap_allocator()
-		infos, err := os.read_all_directory_by_path(j.path, a)
+		found, err := fsx.read_folder(j.path, a)
 		if err != nil {
 			local_fail(j, err, i18n.tr("The folder could not be read: %s."))
 			return
 		}
-		defer os.file_info_slice_delete(infos, a)
-		reserve(&j.entries, len(infos))
-		for fi in infos {
-			e := File_Entry{name = strings.clone(fi.name, a), size = fi.size, modified = time.to_unix_nanoseconds(fi.modification_time) / 1_000_000}
-			switch fi.type {
-			case .Directory: e.kind = .Folder
-			case .Symlink:
-				// (a link is what it points to: a folder to enter, a file to choose)
-				e.link = true
-				if to, to_err := os.stat(fi.fullpath, a); to_err == nil {
-					if to.type == .Directory { e.kind = .Folder }
-					e.size = to.size
-					os.file_info_delete(to, a)
-				}
-			case .Undetermined, .Regular, .Named_Pipe, .Socket, .Block_Device, .Character_Device:
-			}
-			if e.kind == .Folder { e.size = -1 }
+		defer fsx.folder_entries_delete(found, a)
+		reserve(&j.entries, len(found))
+		for f in found {
+			e := local_entry(f, j.path, LOCAL_SEPARATOR, a)
+			e.name = strings.clone(f.name, a)
 			append(&j.entries, e)
 		}
 	}
@@ -318,32 +334,22 @@ local_find_work :: proc(d: rawptr) {
 	walk: for head := 0; head < len(folders); head += 1 {
 		rel := folders[head]
 		full := rel == "" ? j.path : file_path_join(j.path, rel, j.sep)
-		infos, err := os.read_all_directory_by_path(full, context.temp_allocator)
+		found, err := fsx.read_folder(full, context.temp_allocator)
 		if err != nil {
 			// (the folder itself: said; a subfolder that cannot be read: left out)
 			if rel == "" { local_fail(&j.job, err, i18n.tr("The folder could not be read: %s.")); return }
 			continue
 		}
-		for fi in infos {
+		for f in found {
 			if sync.atomic_load(&j.stop.generation) != j.generation { j.stopped = true; break walk }
 			visited += 1
 			if visited > FILE_FIND_VISIT_MAX { break walk }
-			if !j.reply.hidden && len(fi.name) > 0 && fi.name[0] == '.' { continue }
-			path := rel == "" ? fi.name : file_path_join(rel, fi.name, j.sep)
-			e := File_Entry{kind = .File, size = fi.size, modified = time.to_unix_nanoseconds(fi.modification_time) / 1_000_000}
-			#partial switch fi.type {
-			case .Directory:
-				e.kind = .Folder
-				append(&folders, strings.clone(path, virtual.arena_allocator(&paths)))
-			case .Symlink:
-				// (a link is what it points to, and is not entered: a link to a folder above would loop)
-				e.link = true
-				if to, to_err := os.stat(fi.fullpath, context.temp_allocator); to_err == nil {
-					if to.type == .Directory { e.kind = .Folder }
-					e.size = to.size
-				}
-			}
-			if e.kind == .Folder { e.size = -1 }
+			// (before local_entry: a hidden link is not followed for nothing)
+			if !j.reply.hidden && file_entry_hidden({name = f.name, hidden = f.hidden}) { continue }
+			e := local_entry(f, full, j.sep, context.temp_allocator)
+			path := rel == "" ? f.name : file_path_join(rel, f.name, j.sep)
+			// (a link is not entered: a link to a folder above would loop)
+			if f.kind == .Directory { append(&folders, strings.clone(path, virtual.arena_allocator(&paths))) }
 			resize(&low, len(path))
 			fold_lower_into(low[:], path)
 			score, _, ok := fuzzy_score_folded(needle, Fuzzy_Text{path, string(low[:])}, context.temp_allocator)

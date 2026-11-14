@@ -16,6 +16,9 @@
 //	               deleted meanwhile is read as it was: readers never block a writer's rename or a deletion
 //	make_dirs      the directory and every missing parent
 //	list_files     the plain files of a directory (no subdirectory, no link to one), names and sizes
+//	read_folder    every entry of a directory ("." and ".." left out): name, size, last write, kind, and the
+//	               system's hidden mark, all from the directory's own reading (Windows: FindFirstFileW's attributes,
+//	               no call per entry)
 //	path_kind      what a path names, links never followed: a junction / symlink to a directory is a Link
 //	remove_tree    a file, or a directory with everything in it, one entry at a time
 //	temp_dir       the directory for temporary files
@@ -39,6 +42,23 @@ READ_ALL_TRIES :: 4
 Dir_File :: struct {
 	name: string,
 	size: i64,
+}
+
+// An entry of a folder (read_folder): its name (no path), its size (a file's), its last write in Unix milliseconds (0:
+// unknown), what it is (File, Directory or Link: a symbolic link or a junction, not followed) and whether the system
+// marks it hidden: Windows' hidden attribute, elsewhere a name that starts with ".".
+Folder_Entry :: struct {
+	name:     string,
+	size:     i64,
+	modified: i64,
+	kind:     Path_Kind,
+	hidden:   bool,
+}
+
+// Frees what read_folder gave.
+folder_entries_delete :: proc(entries: []Folder_Entry, allocator := context.allocator) {
+	for e in entries { delete(e.name, allocator) }
+	delete(entries, allocator)
 }
 
 // What a path names, links never followed: a junction or a symbolic link to a directory is a Link (fsx_<os>.odin).

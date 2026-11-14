@@ -111,6 +111,37 @@ read_all_never_gives_a_part :: proc(t: ^testing.T) {
 	thread.destroy(th)
 }
 
+// The entry of `entries` named `name` (nil: none).
+folder_entry :: proc(entries: []fsx.Folder_Entry, name: string) -> ^fsx.Folder_Entry {
+	for &e in entries { if e.name == name { return &e } }
+	return nil
+}
+
+// A folder's entries, each once, "." and ".." left out: a file with its size and time, a folder, neither hidden.
+@(test)
+read_folder_gives_each_entry_once :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_read_folder")
+	defer fsx.remove_tree(root)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/file.txt", root), transmute([]byte)string("abc")) == nil)
+	testing.expect(t, fsx.make_dirs(fmt.tprintf("%s/sub", root)))
+	entries, err := fsx.read_folder(root)
+	defer fsx.folder_entries_delete(entries)
+	if !testing.expect_value(t, err, nil) { return }
+	testing.expect_value(t, len(entries), 2)
+	if f := folder_entry(entries, "file.txt"); testing.expect(t, f != nil, "the file") {
+		testing.expect_value(t, f.kind, fsx.Path_Kind.File)
+		testing.expect_value(t, f.size, 3)
+		testing.expect(t, f.modified > 0, "its last write")
+		testing.expect(t, !f.hidden, "not hidden")
+	}
+	if d := folder_entry(entries, "sub"); testing.expect(t, d != nil, "the folder") {
+		testing.expect_value(t, d.kind, fsx.Path_Kind.Directory)
+		testing.expect(t, !d.hidden, "not hidden")
+	}
+	_, missing := fsx.read_folder(fmt.tprintf("%s/none", root))
+	testing.expect_value(t, missing, os.General_Error.Not_Exist)
+}
+
 // A folder made twice: the second call finds it and says so (Odin's make_directory_all says Exist then).
 @(test)
 a_folder_made_again_is_there :: proc(t: ^testing.T) {

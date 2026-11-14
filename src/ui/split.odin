@@ -60,7 +60,7 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, o 
 	s := gs()
 	unit := o.unit > 0 ? o.unit : s.scale
 	grab := o.thickness > 0 ? o.thickness : math.round(SPLITTER_THICKNESS_PX * s.scale)
-	line := max(math.round(s.scale), 1)
+	line := splitter_line_width(s.scale)
 	across := o.flush ? line : grab
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if axis == .X {
@@ -122,7 +122,7 @@ splitter :: proc(id: string, axis: Axis, size: ^f32, min_size, max_size: f32, o 
 	d := frame_new(Splitter_Draw)
 	d.hot = res.sig.hovering || res.dragging || (res.sig.focused && s.focus_visible)
 	d.color = d.hot ? color("accent") : color("border")
-	d.line = max(math.round(s.scale), 1)
+	d.line = splitter_line_width(s.scale)
 	d.fill, d.at = o.fill, o.line_at
 	b.custom, b.custom_user = splitter_draw, d
 	// (a bar between side-by-side panes is vertical: its orientation is across `axis`)
@@ -142,24 +142,33 @@ splitter_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	r := b.rect
 	th := d.hot ? d.line * 2 : d.line
 	if d.fill.a > 0 { draw.rect(dc, r, d.fill) }
+	draw.rect(dc, splitter_line(r, d.at, th), d.color)
+}
+
+// Where a handle of rect `r` draws its rule `th` thick: along its long side, at its middle, its start or its end. One
+// place for the drawing and for what lines up with it (view_dock_line).
+splitter_line :: proc(r: Rect, at: Splitter_Line, th: f32) -> Rect {
 	if r.max.x - r.min.x < r.max.y - r.min.y {
 		x0: f32
-		switch d.at {
-		case .Middle: x0 = math.round((r.min.x + r.max.x) * 0.5) - th * 0.5
+		switch at {
+		// (its start on a whole pixel: a rule of one pixel from a rounded middle less half of it sat across two)
+		case .Middle: x0 = math.round((r.min.x + r.max.x - th) * 0.5)
 		case .Start:  x0 = r.min.x
 		case .End:    x0 = r.max.x - th
 		}
-		draw.rect(dc, {{x0, r.min.y}, {x0 + th, r.max.y}}, d.color)
-	} else {
-		y0: f32
-		switch d.at {
-		case .Middle: y0 = math.round((r.min.y + r.max.y) * 0.5) - th * 0.5
-		case .Start:  y0 = r.min.y
-		case .End:    y0 = r.max.y - th
-		}
-		draw.rect(dc, {{r.min.x, y0}, {r.max.x, y0 + th}}, d.color)
+		return {{x0, r.min.y}, {x0 + th, r.max.y}}
 	}
+	y0: f32
+	switch at {
+	case .Middle: y0 = math.round((r.min.y + r.max.y - th) * 0.5)
+	case .Start:  y0 = r.min.y
+	case .End:    y0 = r.max.y - th
+	}
+	return {{r.min.x, y0}, {r.max.x, y0 + th}}
 }
+
+// The thickness of a handle's rule at rest, in frame pixels: one logical pixel, at least one.
+splitter_line_width :: proc(scale: f32) -> f32 { return max(math.round(scale), 1) }
 
 ////////////////////////////////
 // Accordion
