@@ -140,6 +140,7 @@ Wl_Window_State :: struct {
 	// a picture of this surface was presented (its first frame_shown_ask): until then the compositor has not mapped it,
 	// and an activation would name a window it does not know yet (ShojiWM drops it): it waits in activate_*
 	presented:   bool,
+	drawn:       [2]int,           // w.size at the last picture's commit: another size is a step of a resize no picture shows yet
 	output:      u32,              // the registry name of the output the surface entered last (wl_surface.enter); 0: none yet
 	activate_pending: bool,        // raise_window asked the focus before the first picture
 	activate_token:   string,      // raise_window_token did (owned)
@@ -942,6 +943,7 @@ wl_frame_shown_ask :: proc(w: ^Window) {
 	// (the picture before this one was committed: the window is mapped)
 	if st.presented { wl_activation_flush(w, st) }
 	st.presented = true
+	st.drawn = w.size
 	if st.frame_cb != nil { return }
 	st.frame_asked = time.tick_now()
 	st.frame_cb = wl.proxy_marshal_flags(st.surface, WL_SURFACE_FRAME, wl.callback_interface, wl.proxy_get_version(st.surface), 0, nil)
@@ -1332,6 +1334,21 @@ wl_wait :: proc(w: ^Window, timeout_ms: int) {
 wl_wait_over :: proc(w: ^Window) -> bool {
 	if wait_is_over(w) { return true }
 	for x in wlc.windows { if x != w && x.paint_requested && x.show != .Hidden { return true } }
+	return false
+}
+
+// Whether another window of the thread has a step of a resize to show now: a size its last picture does not have, and the
+// compositor showed that picture (a new one may go). It ends the slot wait of `w` (wait_slot): the windows that are not paced
+// make their frames in the paced one's, and a step waiting for its slot is late on the border the compositor moves (it shows
+// the last picture stretched to the new size meanwhile). On Windows the system's loop of the window being sized draws it.
+@(private)
+wl_step_waits :: proc(w: ^Window) -> bool {
+	for x in wlc.windows {
+		// (as host_steps: a window not shown draws no step, and would end every wait)
+		if x == w || x.show == .Hidden || x.show == .Minimized || x.in_poll { continue }
+		st := wl_state(x)
+		if st != nil && st.surface != nil && st.presented && st.frame_cb == nil && x.size != st.drawn { return true }
+	}
 	return false
 }
 

@@ -19,9 +19,12 @@
 //     windows' too. It may also leave this window closed.
 //   * A step of a resize is that window's alone, at once (host_paint): waiting for another window's frame, or drawing
 //     that one first, is what shows a window late on its border. When its border rests, the program's whole frame goes
-//     on from there (rest_frame).
+//     on from there (rest_frame). Where no loop of the system draws a window being sized (Wayland), the paced window's
+//     frame draws the steps of the others first, by the same way (host_steps).
 //   * Every window has a composition surface whose buffers keep the size of the monitor, shown 1:1 and clipped by the window:
 //     nothing is ever stretched, and on_frame draws from inside the system's loop for as long as the border is held.
+//     (Direct3D. On WebGPU the surface follows the window: only a step drawn at once keeps the compositor from stretching
+//     the last picture.)
 //   * Only the first window is paced. All of them are drawn on one thread: each waiting for its own slot and its own screen,
 //     the waits would add up. The others go out as soon as they are drawn, in the rhythm of the first (`paced`).
 //
@@ -64,6 +67,7 @@ Shared :: struct {
 	theme: ui.Theme,
 	font:  font.Font_Id,   // the interface's
 	main:  ^Host,          // the first window: the renderer's own, and the interface that is current between frames
+	hosts: ^Host,          // every window open on it, linked by Host.next (host_steps)
 }
 
 Open_Options :: struct {
@@ -116,6 +120,7 @@ Host :: struct {
 	shown:   [2]int,   // the size of the last picture
 	shown_again: u32,  // the window's count of shows after a hide, as of the last frame (a new one remakes the swap chain)
 	last_ms: f64,      // the clock at the last frame
+	next:    ^Host,    // the next window on the same Shared (Shared.hosts)
 }
 
 // How long the steps of the last picture took. (The builds are the application's to time: `builds` may make several.)
@@ -128,6 +133,7 @@ host_adopt :: proc(h: ^Host, sh: ^Shared, w: ^platform.Window, build: proc(h: ^H
 	first := sh.main == nil
 	h.shared, h.win, h.build, h.user, h.paced = sh, w, build, user, first
 	if first { sh.main = h }
+	h.next, sh.hosts = sh.hosts, h
 	h.last_ms = ui.now_ms()
 	w.user, w.on_frame = h, host_paint
 }
@@ -158,6 +164,7 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 		return false
 	}
 	if first { sh.main = h }
+	h.next, sh.hosts = sh.hosts, h
 	ui.init(&h.state, &sh.fonts, &sh.theme)
 	ui.use(&sh.main.state)
 	h.last_ms = ui.now_ms()
@@ -202,6 +209,10 @@ host_close :: proc(h: ^Host) {
 	sh := h.shared
 	first := sh.main == h
 	assert(!first || !ui.building(), "host: host_close inside a build")
+	for p := &sh.hosts; p^ != nil; p = &p^.next {
+		if p^ == h { p^ = h.next; break }
+	}
+	h.next = nil
 	if !first { render.surface_destroy(&sh.r, &h.surface) }
 	ui.destroy(&h.state)
 	if first {
@@ -256,6 +267,7 @@ host_frame :: proc(h: ^Host, inner := false) {
 	}
 	shown := !pending
 	at_once := shown ? host_pace(h, inner) : false
+	if h.paced && !inner { host_steps(h) }
 	h.rested = h.slept
 	h.slept = false
 	if h.before_input != nil { h.before_input(h) }
@@ -442,6 +454,22 @@ host_paint :: proc(user: rawptr) {
 		h.rest_frame(h)
 	} else {
 		host_frame(h, inner = true)
+	}
+}
+
+// The steps of a resize of the other windows, drawn at once in the paced window's frame, by the way the system's loop draws
+// them (host_paint). The windows that are not paced make their frames in the paced one's, after its slot and its work: a
+// step that waited for them came a refresh late or more, and the compositor showed the last picture stretched to the new
+// size meanwhile (Wayland, where no loop of the system draws the window being sized; the platform ends the slot's wait
+// when such a step waits). A step is a size no picture was drawn at, after one was, once the compositor showed the last.
+@(private = "file")
+host_steps :: proc(h: ^Host) {
+	for o := h.shared.hosts; o != nil; {
+		next := o.next   // (read first: a frame of the program may close a window)
+		step := o != h && o.shown != {} && o.win.size != o.shown && !platform.is_closed(o.win) &&
+			(o.win.offscreen || platform.is_window_visible(o.win)) && !platform.frame_shown_pending(o.win)
+		if step { host_paint(o) }
+		o = next
 	}
 }
 

@@ -1,9 +1,9 @@
 // host: a window as an object. The first window is offscreen, on the software renderer (no window of the system); a second
-// one is a real window, hidden, on the runner's own desktop. The clock is the state's own (ui.set_clock): nothing waits.
+// one is a real window, hidden, on the runner's own desktop (Windows only: host_test_windows.odin). The clock is the state's
+// own (ui.set_clock): nothing waits.
 package host_test
 
 import "core:testing"
-import win "core:sys/windows"
 import "../../src/draw"
 import "../../src/font"
 import host "../../src/host"
@@ -11,32 +11,32 @@ import "../../src/platform"
 import "../../src/render"
 import "../../src/ui"
 
-@(private = "file") SIZE :: [2]int{320, 200}
+@(private) SIZE :: [2]int{320, 200}
 @(private = "file") FRAME_MS :: 16
 @(private = "file") HOLD_MS :: 40
-@(private = "file") WAKE_A_MS :: 300
-@(private = "file") WAKE_B_MS :: 120
-@(private = "file") B_CLOCK_AHEAD_MS :: 100000
+@(private) WAKE_A_MS :: 300
+@(private) WAKE_B_MS :: 120
+@(private) B_CLOCK_AHEAD_MS :: 100000
 
-@(private = "file")
+@(private)
 Probe :: struct {
 	clock:  f64,
 	seen:   [dynamic]string,
 	builds: int,
 	hold:   int,
-	hwnd_in_poll: win.HWND,   // what the renderer held while the input was read
+	hwnd_in_poll: rawptr,   // what the renderer held while the input was read (Windows)
 }
 
-@(private = "file")
+@(private)
 note :: proc(h: ^host.Host, what: string) { append(&(^Probe)(h.user).seen, what) }
 
-@(private = "file")
+@(private)
 probe_build :: proc(h: ^host.Host, size: host.Vec2) {
 	(^Probe)(h.user).builds += 1
 	ui.label("probe###probe")
 }
 
-@(private = "file")
+@(private)
 open_main :: proc(t: ^testing.T, sh: ^host.Shared, h: ^host.Host, p: ^Probe) -> bool {
 	if !host.host_open(h, sh, {title = "host test", size = SIZE, headless = true}, probe_build, p) {
 		testing.fail_now(t, "no renderer (WARP)")
@@ -45,7 +45,7 @@ open_main :: proc(t: ^testing.T, sh: ^host.Shared, h: ^host.Host, p: ^Probe) -> 
 	return true
 }
 
-@(private = "file")
+@(private)
 step :: proc(h: ^host.Host) {
 	(^Probe)(h.user).clock += FRAME_MS
 	host.host_frame(h)
@@ -195,75 +195,6 @@ a_size_with_no_picture_leaves_the_renderer :: proc(t: ^testing.T) {
 	testing.expect_value(t, sh.r.size, [2]int{SIZE.x + 80, SIZE.y})
 }
 
-// The loop sleeps until the soonest of what the windows asked for, and not at all while one still moves or settles.
-@(test)
-the_wait_is_the_soonest_of_all :: proc(t: ^testing.T) {
-	p: Probe
-	defer delete(p.seen)
-	sh: host.Shared
-	a, b := new(host.Host), new(host.Host)
-	defer { free(a); free(b) }
-	open_main(t, &sh, a, &p)
-	defer host.host_close(a)
-	if !host.host_open(b, &sh, {title = "host test b", size = SIZE}, probe_build, &p) { testing.fail_now(t, "no second window") }
-	defer host.host_close(b)
-	ui.set_clock(&b.state, &p.clock)
-	step(a)
-	step(b)
-	a.state.wake_ms, b.state.wake_ms = WAKE_A_MS, WAKE_B_MS
-	now, wake := host.hosts_due({a, b})
-	testing.expect(t, !now, "nothing is due")
-	testing.expect_value(t, wake, WAKE_B_MS)
-	b.state.anim_busy = true
-	now, _ = host.hosts_due({a, b})
-	testing.expect(t, now, "one window moves: no sleep")
-	b.state.anim_busy = false
-	a.settle = 1
-	now, _ = host.hosts_due({a, b})
-	testing.expect(t, now, "a change settles: no sleep")
-	step(a)
-	testing.expect_value(t, a.settle, 0)
-}
-
-// The second window: its frame draws on its own surface, and reads its input with the renderer given back (a loop of the system
-// begun there would find the other windows' frames as a frame leaves them).
-@(test)
-a_second_window_reads_its_input_with_the_renderer_given_back :: proc(t: ^testing.T) {
-	p: Probe
-	defer delete(p.seen)
-	sh: host.Shared
-	a, b := new(host.Host), new(host.Host)
-	defer { free(a); free(b) }
-	open_main(t, &sh, a, &p)
-	defer host.host_close(a)
-	if !host.host_open(b, &sh, {title = "host test b", size = SIZE}, probe_build, &p) { testing.fail_now(t, "no second window") }
-	defer host.host_close(b)
-	b_clock := p.clock + B_CLOCK_AHEAD_MS   // (its own clock: which interface is current shows in ui.now_ms)
-	ui.set_clock(&b.state, &b_clock)
-	testing.expect(t, !b.paced, "only the first window is paced")
-	main_hwnd := sh.r.hwnd
-	b.paced = true   // (so that the pacing, done on its surface, is seen too)
-	b.dragging = proc(h: ^host.Host) -> bool {
-		note(h, h.shared.r.hwnd == win.HWND(h.win.hwnd) ? "paced on its surface" : "paced elsewhere")
-		return false
-	}
-	b.before_input = proc(h: ^host.Host) { (^Probe)(h.user).hwnd_in_poll = h.shared.r.hwnd }
-	b.input = proc(h: ^host.Host, e: []platform.Event) -> []platform.Event {
-		note(h, h.shared.r.hwnd == win.HWND(h.win.hwnd) ? "built on its surface" : "built elsewhere")
-		return e
-	}
-	step(b)
-	testing.expect_value(t, len(p.seen), 2)
-	if len(p.seen) == 2 {
-		testing.expect_value(t, p.seen[0], "paced on its surface")
-		testing.expect_value(t, p.seen[1], "built on its surface")
-	}
-	testing.expect_value(t, p.hwnd_in_poll, main_hwnd)
-	testing.expect_value(t, sh.r.hwnd, main_hwnd)   // (and after the frame)
-	testing.expect_value(t, b.shown, b.win.size)
-	testing.expect_value(t, ui.now_ms(), p.clock)   // (between frames, the first window's interface is the current one)
-}
-
 // From the system's loop: a step of a resize is this window's alone; with no step to show, the program's whole frame.
 @(test)
 a_resize_step_is_the_window_s_own :: proc(t: ^testing.T) {
@@ -284,6 +215,44 @@ a_resize_step_is_the_window_s_own :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(p.seen), 1)   // (no rest frame)
 	testing.expect_value(t, p.builds, built + 1)
 	testing.expect_value(t, h.shown, h.win.size)
+}
+
+// Another window's step of a resize is drawn in the paced window's frame, before that frame reads its input: it does not
+// wait for the paced window's work (Wayland, where no loop of the system draws a window being sized). At rest, it is not.
+@(test)
+another_window_s_resize_step_comes_first :: proc(t: ^testing.T) {
+	p: Probe
+	defer delete(p.seen)
+	sh: host.Shared
+	a, b := new(host.Host), new(host.Host)
+	defer { free(a); free(b) }
+	open_main(t, &sh, a, &p)
+	defer host.host_close(a)
+	w := platform.open_window_offscreen("host test step", SIZE)
+	if !testing.expect(t, w != nil) { return }
+	host.host_adopt(b, &sh, w, probe_build, &p)   // (offscreen: drawn on the first window's target, no window opens)
+	ui.init(&b.state, &sh.fonts, &sh.theme)
+	ui.use(&a.state)
+	defer host.host_close(b)
+	ui.set_clock(&b.state, &p.clock)
+	testing.expect(t, !b.paced, "only the first window is paced")
+	step(a)
+	step(b)
+	testing.expect_value(t, b.shown, SIZE)
+	a.before_input = proc(h: ^host.Host) { note(h, "a reads") }
+	b.after_build = proc(h: ^host.Host) { note(h, "b step") }
+	step(a)
+	testing.expect_value(t, len(p.seen), 1)   // (b at rest: not drawn)
+	clear(&p.seen)
+	b.win.size = {SIZE.x + 40, SIZE.y}
+	step(a)
+	testing.expect_value(t, len(p.seen), 2)
+	if len(p.seen) == 2 {
+		testing.expect_value(t, p.seen[0], "b step")
+		testing.expect_value(t, p.seen[1], "a reads")
+	}
+	testing.expect_value(t, b.shown, b.win.size)
+	testing.expect_value(t, ui.now_ms(), p.clock)   // (the first window's interface is current again)
 }
 
 _ :: render

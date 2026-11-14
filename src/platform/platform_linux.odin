@@ -587,7 +587,8 @@ wait_event :: proc(w: ^Window, timeout_ms := 0) {
 // Waits until `handle` is signaled or `timeout_ms` passed (0: no limit), taking the window's keyboard and mouse input
 // as it arrives (time-stamped, kept for the next poll_events). `handle` is a render frame-latency fd (poll(2)-able):
 // render.frame_waitable returns one on wgpu. Returns true when the handle was signaled. The frame then starts on fresh
-// input, as the Win32 MsgWaitForMultipleObjectsEx path does. `until_press`: a key or a button taken ends the wait (wait_slot).
+// input, as the Win32 MsgWaitForMultipleObjectsEx path does. `until_press`: a key or a button taken ends the wait (wait_slot),
+// and so does another Wayland window's step of a resize.
 wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0, until_press := false) -> bool {
 	if handle == nil { return true }
 	if w.in_poll {
@@ -608,6 +609,8 @@ wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0, until_press := 
 		case .None:
 		}
 		if until_press && press_waits(w) { return false }
+		// (another window's step of a resize is drawn in this window's frame, which must not wait for its slot first)
+		if until_press && w.backend == .Wayland && wl_step_waits(w) { return false }
 		left := -1
 		if timeout_ms > 0 {
 			rem := f64(timeout_ms) - time.duration_milliseconds(time.tick_since(start))

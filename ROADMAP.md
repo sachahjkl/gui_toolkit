@@ -178,6 +178,9 @@
 
 ## Later
 
+- **The host tests on Linux too.** `tests/host` runs on Windows only: on Linux, its windows without a screen get no
+  renderer after a few tests in one process (each test passes alone), so a renderer closed seems to keep something of
+  its device. Freed whole, the tests of a program's windows (resize steps, waits) run on the system that needs them most.
 - **One scroll per axis.** A wide table in a message (ocn's markdown) shows two horizontal scrollbars, its own and its
   container's. The toolkit keeps only the innermost box that overflows on an axis, or reports the nesting.
 - **A key read outside the open dialog is reported.** A dialog keeps the keyboard; ocn's palette read its arrows
