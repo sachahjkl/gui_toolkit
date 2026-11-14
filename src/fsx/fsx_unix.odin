@@ -7,6 +7,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:sys/posix"
+import "core:time"
 import base "../base"
 
 @(private = "file") NS_PER_SECOND :: 1_000_000_000
@@ -136,6 +137,30 @@ list_files :: proc(dir: string, allocator := context.temp_allocator, loc := #cal
 		append(&out, Dir_File{name = strings.clone(fi.name, allocator), size = fi.size})
 	}
 	return out[:]
+}
+
+// (Unix has no hidden mark of its own: a name that starts with "." is the system's rule)
+read_folder :: proc(dir: string, allocator := context.allocator, loc := #caller_location) -> ([]Folder_Entry, os.Error) {
+	base.blocking("fsx.read_folder", loc)
+	infos, err := os.read_all_directory_by_path(dir, allocator)
+	if err != nil { return nil, err }
+	defer os.file_info_slice_delete(infos, allocator)
+	out := make([]Folder_Entry, len(infos), allocator)
+	for fi, i in infos {
+		kind: Path_Kind = .File
+		#partial switch fi.type {
+		case .Directory: kind = .Directory
+		case .Symlink:   kind = .Link
+		}
+		out[i] = {
+			name     = strings.clone(fi.name, allocator),
+			size     = fi.size,
+			modified = time.to_unix_nanoseconds(fi.modification_time) / 1_000_000,
+			kind     = kind,
+			hidden   = len(fi.name) > 0 && fi.name[0] == '.',
+		}
+	}
+	return out, nil
 }
 
 path_kind :: proc(path: string, loc := #caller_location) -> Path_Kind {

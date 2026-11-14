@@ -77,6 +77,15 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   as the views do (the focus in it). The modal's own rule
   (`keys_held_by_dialog`) is not enough: a program may set `keys_behind_dialogs`, and typed text, `key_pressed_peek`
   and a program's own reading of the events went around it.
+- **A local entry is hidden as the system says, by one rule for the listing and the search.** `fsx.read_folder` gives
+  the system's mark with each entry; `file_entry_hidden` (that mark, or a name that starts with ".") decides in the
+  folder and in the walk. On Windows the mark is `FILE_ATTRIBUTE_HIDDEN` alone: Explorer's Hidden items shows those, and
+  a file with `SYSTEM` but not `HIDDEN` is shown by Explorer too. `HIDDEN` and `SYSTEM` together are Explorer's
+  "protected operating system files", a second toggle; one Hidden files toggle shows them with the others (they carry
+  `HIDDEN`). The attribute comes from `FindFirstFileW` / `FindNextFileW`'s records: `core:os`'s `File_Info` drops it
+  (and opens each entry to stat it), and a `GetFileAttributesW` per entry would be one more call per entry of a walk of
+  200 000. Refused: a `when ODIN_OS` in `file_local.odin` (the system's code is in `fsx_<os>.odin`), and a second read
+  of each folder for the attributes alone (two readings that can disagree).
 - **`File_Place` is in `platform`.** `platform.File_Dialog` stays the one options struct, with `places`.
 - **A picture's texture is made at the first draw.** The build has no renderer; the draw callback has it.
 - **`dialog_test_hook` still answers for the computer's files.** The end-to-end tests of programs set it.
@@ -92,7 +101,9 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
 ## Subtle points
 
 - A row's identity is the hash of its name. Two names of one hash share a selection; nothing else breaks.
-- The Windows hidden attribute is not read (`core:os` does not give it): only names that start with "." are hidden.
+- On Windows a name that starts with "." is hidden too, though the system does not mark it: a program's dot folders
+  (`.git`, `.config`) are the clutter Hidden files is for, and every source keeps the same rule.
+- A hidden link is skipped before it is followed: the walk stats no link it does not show.
 - A program's source must not answer after `ui.destroy`: the reply holds the State.
 - Escape is taken by the browser before its fields and its list: the filter, then the new folder's row, then the
   dialog. While the path bar is typed in, Escape is the bar's (its dropdown, then the breadcrumb).

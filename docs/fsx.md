@@ -50,9 +50,18 @@ blocks a writer's rename or a deletion: a file being replaced underneath is read
 fsx.make_dirs(dir)                                // the directory and every missing parent
 files := fsx.list_files(dir)                      // the plain files (no subdirectory, no link to one): name and size
 kind := fsx.path_kind(path)                       // .Absent / .File / .Directory / .Link (links never followed)
+entries, err := fsx.read_folder(dir)               // every entry: name, size, modified, kind, hidden (os.Error on failure)
+fsx.folder_entries_delete(entries)                 // frees them (same allocator)
 ok := fsx.remove_tree(path)                        // a file, or a directory with everything in it, one entry at a time
 dir := fsx.temp_dir()                              // TEMP when set, else the system's (GetTempPathW / TMPDIR / /tmp)
 ```
+
+`read_folder` gives a `Folder_Entry` per entry ("." and ".." left out): `name` (no path), `size` (a file's; 0 for a
+folder), `modified` (Unix milliseconds, 0: unknown), `kind` (`.File`, `.Directory`, `.Link`: a symbolic link or a
+junction, not followed) and `hidden`, the system's mark. On Windows `hidden` is the `FILE_ATTRIBUTE_HIDDEN` attribute,
+read from `FindFirstFileW` / `FindNextFileW` with the rest: no call per entry (`core:os` opens each entry and drops the
+attribute). Elsewhere it is a name that starts with ".". Its error is `core:os`'s: `io.Error.Permission_Denied`,
+`os.General_Error.Not_Exist`, or the system's code. It blocks: call it off the interface's thread.
 
 `remove_tree` deletes a directory one entry at a time rather than through `os.remove_all`, which asks the Windows shell
 (`SHFileOperationW`) for a non-empty directory: the shell is not thread-safe (tests running side by side are not) and

@@ -156,8 +156,10 @@ while the State lives (a program's source stops answering at `ui.destroy`).
 `modified` (Unix milliseconds, 0: unknown), `hidden` (the source's flag; a name starting with `.` is hidden whatever it
 says). `platform.File_Place`: `name` ("": the path's last part), `path`, `icon` (a Lucide glyph, "": a folder).
 
-`ui.local_files()` is the computer's: `core:os` on the chores (`ui.task`), the system's places
-(`platform.known_folder_path`, `platform.file_roots`) read once per State on the chores, all `caps`. Its `find` walks the
+`ui.local_files()` is the computer's, with all `caps`: `fsx.read_folder` and `core:os` on the chores (`ui.task`), the
+system's places (`platform.known_folder_path`, `platform.file_roots`) read once per State on the chores. An entry is
+hidden when its name starts with `.` or the system marks it hidden (Windows: the hidden attribute, as in Explorer; a
+system file without it is shown), in the folder and in the search alike. Its `find` walks the
 folder on the chores, breadth first: it scores each path relative to the folder with `fuzzy_score` and keeps the best
 `limit`; it does not enter links, nor hidden folders unless `reply.hidden`; it looks at `FILE_FIND_VISIT_MAX` entries at
 most; a newer find, another folder, the toggle off or the dialog closing stops it early. The dates of every source are

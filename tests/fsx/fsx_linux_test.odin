@@ -44,3 +44,22 @@ a_private_write_is_readable_by_its_user_only :: proc(t: ^testing.T) {
 	testing.expect(t, posix.stat(strings.clone_to_cstring(path, context.temp_allocator), &st) == .OK, "written")
 	testing.expect_value(t, st.st_mode & {.IRGRP, .IWGRP, .IXGRP, .IROTH, .IWOTH, .IXOTH}, posix.mode_t{})
 }
+
+// Linux marks no file hidden but by its name: one that starts with "." is; a link is a Link, not followed.
+@(test)
+read_folder_hides_dot_names_and_keeps_links :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_read_folder_linux")
+	defer fsx.remove_tree(root)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/.dot", root), transmute([]byte)string("x")) == nil)
+	testing.expect(t, fsx.make_dirs(fmt.tprintf("%s/sub", root)))
+	link := strings.clone_to_cstring(fmt.tprintf("%s/link", root), context.temp_allocator)
+	testing.expect_value(t, posix.symlink("sub", link), posix.result.OK)
+	entries, err := fsx.read_folder(root)
+	defer fsx.folder_entries_delete(entries)
+	if !testing.expect_value(t, err, nil) { return }
+	if d := folder_entry(entries, ".dot"); testing.expect(t, d != nil, "the dot file") { testing.expect(t, d.hidden, "hidden by its name") }
+	if l := folder_entry(entries, "link"); testing.expect(t, l != nil, "the link") {
+		testing.expect_value(t, l.kind, fsx.Path_Kind.Link)
+		testing.expect(t, !l.hidden, "not hidden")
+	}
+}
