@@ -3,7 +3,7 @@
 ## Now
 
 - **One mechanism for work off the interface's thread.** A program asks "do this off the thread, give me the result",
-  and no disk, network or process call runs on the interface's thread. Move ocn's `Work_Pool` (`src/work_pool.odin`:
+  and no disk, network or process call runs on the interface's thread. Move ocn's `Work_Pool` (`opencode_native/src/work_pool.odin`:
   a few ordered threads, an optional delay, a threadless pool that a test pumps) into the toolkit, with one "chores"
   pool per program and the result back through `ui.post`; perhaps a task type with ask/take as `ui.Worker`. `gt:store`
   and `ui.Worker` use it if that is simpler. Then audit ocn, papier, classeur, inspecteur, cliche, wren and the toolkit
@@ -21,17 +21,15 @@
 - **The dialog's close button in its corner.** A control in a rounded corner sits at a margin m from both edges,
   with a concentric radius `r_int = max(r_ext - m, 0)`. One toolkit helper places a corner control for every dialog,
   and a toolbar beside it never touches it.
-- **The toolkit's button replaces ocn's `bevel_button`.** `ui.button_icon` gains a free height, `wrap` (a label on
-  several lines), `left` (content on the left), `quiet` (secondary), `lit` (held lit while its menu is open),
-  `icon_color`, the Ghost and Toggled faces with an intent, the program's rounding and the glow of intent buttons;
-  then ocn deletes `bevel_button`. `setup.Button_Kind` (`setup/setup.odin`) becomes `ui.Intent` (ocn's
-  `src/desktop.odin` guesses it from the button's id). Also replace the other hand-made icon and text buttons
-  (Wren's `icon_square_button` and `dt_btn`): `ui.icon_button` gains a font, a tooltip and an intent.
+- **The toolkit's button replaces ocn's `bevel_button`.** `ui.button` and its `Button_Options` have what ocn's
+  button has, except the program's rounding and the glow of intent buttons: add those, then ocn deletes
+  `bevel_button` (ocn's `opencode_native/src/desktop.odin` guesses an intent from the button's id). Wren's hand-made
+  icon and text buttons (`icon_square_button`, `dt_btn`) become `ui.button` too.
 - **Themes of your own, for every program.** In the Theme section of the settings, a visible line says that a person
   can make their themes, with the file's path as a link that opens it in the system's editor. The toolkit creates the
   file at the first opening, filled with comments that explain the keys, the colour format, `from = ...`, the light
   versions and an example, on a worker, and reloads it when it changes. ocn then deletes its `themes_file_open` and
-  its template (`src/theme.odin`).
+  its template (`opencode_native/src/theme.odin`).
 
 ## Next
 
@@ -70,25 +68,19 @@
   any window size. Its bounded numbers use the number widget (exact value typed, wheel, − and +), keeping "write on
   the release of a drag, at once for a key, a click or a wheel notch"; past `SLIDER_STEPS_MAX` it has a field without
   a slider today.
-- **One widget for a number.** `ui.stepper` (int, − and +, no wheel, no typed value) and `ui.slider_field` (f32,
-  slider, field, wheel, unit) merge into one API (for example `ui.number`, `$T` integer or real, a slider when bounded,
-  a field, − and +, the wheel, the unit), and `stepper` goes without an alias (only caller:
-  `tests/machines/gestures_test.odin`). Adopt it wherever a number is set.
+- **One widget for a number in every program.** The programs set each number with the toolkit's number widget
+  (`ui.number_int`, `ui.number_f32`, `ui.number_f64`: exact value typed, wheel, − and +, a slider when bounded).
 - **Widgets that carry one concept behave the same.** A table of widgets × behaviours (wheel, keyboard, focus and
   Tab, accessibility, context menu, disabled, tooltip, Shift for a bigger step, typed exact value, reset by double
-  click); each empty cell between two widgets of one concept is a bug or a written decision. Known cases:
-  - `ui.range_slider` (`src/ui/widgets_ext.odin`) is neither focusable nor driven by keys, wheel or accessibility:
-    give it what `ui.slider` has, on the active thumb, plus `step` and `format`. No program uses it.
-  - `ui.button` and `ui.icon_button` (`src/ui/widgets.odin`) set `text_align = .Center` after the style, so a
-    `ui.next({text_align = ...})` is lost: set it only when the style asked nothing, then check the callers that
-    went to `ui.nav_item` for that reason (cliche's list of workflows).
+  click); each empty cell between two widgets of one concept is a bug or a written decision. Cliche's list of
+  workflows can go back to `ui.button` now that a `ui.next({text_align = ...})` is kept.
 - **Context menus as rich as the palette, everywhere.** Move ocn's context menu mechanism (`ctx_check`/`ctx_open`: the
   innermost target takes the click, one menu per kind of target) into the toolkit. `text_edit` gets `line_edit`'s
   field menu (ocn's composer menu redoes it), as rich as the command palette. Find the programs that test "rect
   contains the mouse" for a right click and use `ui.pointer_on`. Remove the `search = true` that the default made
   useless, and take every menu icon from one font.
 - **One search band for menus, palettes and pickers.** The darkened band of the toolkit's context menu (a field's
-  background, a line below) everywhere: ocn's palette (`src/palette.odin`, `###pal_top`) and pickers
+  background, a line below) everywhere: ocn's palette (`opencode_native/src/palette.odin`, `###pal_top`) and pickers
   (`picker.odin`) and the other programs' searches use the toolkit's drawing (`dialog_top_draw` or its equivalent,
   made public if needed).
 - **One command registry and one palette.** Wren has its registry (`commands.odin`, icons in `command_icons.odin`)
@@ -125,18 +117,10 @@
   palette opens on Shift+A, a right click, or a link dropped in the void.
 - **Standard folders in every program.** `platform.user_dir(kind, program)` (Config, Data, Cache, State) is in the
   toolkit; the programs still read `XDG_*`, `APPDATA` and `LOCALAPPDATA` themselves (classeur 17 times, wren 12, ocn
-  its own `config_dir`, papier, inspecteur, cliche). Each program moves to it, and `platform.config_dir`,
-  `desktop.xdg_*_home` and the toolkit's own `XDG_DATA_HOME` reads go without an alias.
-- **Crash reports for every program.** Extract Wren's `src/crashtrace` (signals on their own stack without
-  allocation, backtrace with module and offset, build id; Windows through `RtlVirtualUnwind` and DbgHelp) into a
-  toolkit package that a program enables in one line, its reports in `user_dir(.State)/crashes`, and
-  `tools/crash_symbolize` as a shared toolbox command. At the next start the program says it crashed and offers to
-  open or copy the report; nothing is sent. One text file per crash, in sections of stable, versioned `key: value`
-  lines: program, version, build id, system, UTC time, signal or exception, faulting address, thread, each thread's
-  stack, loaded modules with bases, the last log lines, the non-default settings; a parser and a round-trip test.
-- **A log for every program.** Levels, written off the interface's thread into `user_dir(.State)/logs` with rotation
-  (size, file count), plugged into `core:log` so everything goes through it, its last lines joined to a crash
-  report. Replaces ocn's `log_line` and every program's writes to stderr from the interface's thread.
+  its own `config_dir`, papier, inspecteur, cliche). Each program moves to it, and the toolkit's own `XDG_DATA_HOME`
+  reads (`gt:desktop`) too.
+- **Wren logs through `gt:log`.** The other programs write their log through the toolkit's `gt:log` (levels, off the
+  interface's thread, rotation, its last lines in a crash report); Wren moves to it.
 - **Every program in French and English.** All the toolkit's texts go through `tr` (field menus, menus, dialogs,
   the settings page); the language loading that `docs/i18n.md` describes; a toolbox tool that extracts the `tr` calls
   of a program and the toolkit into a catalogue and reports translations whose text is gone; a base setting
@@ -148,19 +132,11 @@
   −875 KB, 86 names used of 1913); `devtools` behind `#config(TOOLKIT_DEVTOOLS, ODIN_DEBUG)` with `start_from_env`
   returning nil otherwise (−352 KB and about −2 s of release build; ocn, papier, classeur and inspecteur call it
   unconditionally); the fallback fonts behind `#config(FONT_EMBED_FALLBACK, true)` (−159 KB); one native crate
-  `native/gt` with cargo features instead of `gt_text`, `gt_mermaid` and `gt_a11y` and their std collisions
+  (`gt`, in the `native` folder) with cargo features instead of `gt_text`, `gt_mermaid` and `gt_a11y` and their std collisions
   (`--allow-multiple-definition`), built by `tk build_native` (−0.4 MB, more if wgpu-native joins); `FONT_BACKEND`
   native by default outside Windows (today's dwrite default gives a Linux binary without text). Then a feature list
   per program in `gt:toolbox`, from which the defines, native steps and link flags come, called by every build tool.
   Outside the plan: shipping stripped (−7.5 MB).
-- **`tk release` takes the next number and pushes atomically.** Other sessions publish meanwhile: `tk release` picks
-  the next patch or minor number itself, works from a worktree or a detached HEAD (it requires master today), and
-  pushes master and the tag together (`git push --atomic origin HEAD:master <tag>`), redoing fetch, rebase and
-  number if the server refuses. Today a refused master push still sends the tag, leaving a tag off master without a
-  GitHub release.
-- **The toolkit's CI checks Windows from Linux.** Packages that pull wgpu cannot be checked for windows_amd64 on Linux
-  without `wgpu_native.lib`, so a Windows-only break passes the CI. Bring cliche's fake Odin root with an empty wgpu
-  (`tools/clichetool`, `build/odin_root`) into `tk ci`.
 - **Platforms that plug in and out, toward macOS.** Everything specific to a system sits in `*_windows`, `*_linux`,
   `*_darwin` or `*_other` files behind a clear interface, with no scattered `when ODIN_OS` in portable code. The
   gate: `odin check` of every toolkit and program package for darwin_arm64 passes (`*_other` files that say "not on

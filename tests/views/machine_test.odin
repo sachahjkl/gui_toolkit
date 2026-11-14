@@ -125,6 +125,13 @@ the_memory_line_round_trips :: proc(t: ^testing.T) {
 	testing.expect_value(t, d.place.edge, ui.View_Edge.Bottom)
 	testing.expect_value(t, d.extent_em, 18)
 
+	// (a size in ems that has no short decimal comes back the same: one decimal reopened a dialog of 400 px at 401)
+	exact := ui.View_Memory{dialog = ui.Vec2{500, 400} / 15, dock = ui.View_Dock_Memory{place = {space = "mission", edge = .Left}, extent_em = f32(250) / 15}}
+	back, back_ok := ui.views_parse(ui.views_format(exact))
+	testing.expect(t, back_ok)
+	testing.expect_value(t, back.dialog, exact.dialog)
+	if bd, bd_ok := back.dock.?; testing.expect(t, bd_ok, "the dock comes back") { testing.expect_value(t, bd.extent_em, f32(250) / 15) }
+
 	// (the defaults write nothing but the version and `open`)
 	testing.expect_value(t, ui.views_format({}), "v1 open=0")
 	empty, eok := ui.views_parse("v1 open=0")

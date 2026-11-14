@@ -77,7 +77,7 @@ content (a table's titles) reads `ui.scrollbar_room(box, .X)`.
 | `ui.scrollbar_under(box, point)` | Which bar of a box takes a press at a point: a program that hears the pointer before the interface (a terminal's grid) leaves that press to the bar. |
 | `ui.scrollbar_paint(s, dc, box, parts, look)` | Draws a bar at any place, in a state (`Scrollbar_Parts`, `Scrollbar_Look`): for a widget that scrolls itself. `text_edit` uses it. |
 
-`ui.set_scrollbar_arrows` and the setting `scrolling.scrollbar_arrows` are gone: the arrows are part of the bar. The
+The former set_scrollbar_arrows and the setting `scrolling.scrollbar_arrows` are gone: the arrows are part of the bar. The
 setting `scrolling.autohide_scrollbars` is now `scrolling.scrollbar_autohide`.
 
 ## Tests

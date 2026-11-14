@@ -750,8 +750,8 @@ In a `gt:store` file in the program's state folder. The program gives the path i
 other stores (as ocn's `stores.odin:37`). One line per view id, and one per dock space:
 
 ```
-props	v1 as=external open=0 dialog=58.0x40.0 internal=120,80,700,480 window=1180x760 at=212,96,0
-sidebar	v1 as=panel open=1 dock=:left:18.0
+props	v1 as=external open=0 dialog=58x40 internal=120,80,700,480 window=1180x760 at=212,96,0
+sidebar	v1 as=panel open=1 dock=:left:18.5
 #mission	v1 dock1 x0.500([*mission/machine] [mission/cpu]) ...
 ```
 

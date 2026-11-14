@@ -15,5 +15,5 @@ What changed in the areas your views migration covers, since your note:
 - `ui.file_dialog` shows the toolkit's own file browser (`src/ui/file_browser*.odin`), a modal built in `end_build`; it
   takes the keyboard like menus (`overlay_capture_keys`); `ui.file_dialog_shown`. Its path is `ui.path_bar` (a popover).
 - `host`: `host_steps` draws the other windows' resize steps in the paced window's frame on Wayland (toolkit 0.258.1);
-  ocn's `src/detached.odin` relies on it.
-- ocn: its Files dialog and its folder choice are gone (the file browser with a server source, `src/folders.odin`).
+  ocn's `opencode_native/src/detached.odin` relies on it.
+- ocn: its Files dialog and its folder choice are gone (the file browser with a server source, `opencode_native/src/folders.odin`).

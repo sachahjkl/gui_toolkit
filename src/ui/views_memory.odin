@@ -40,11 +40,13 @@ views_format :: proc(m: View_Memory, allocator := context.temp_allocator) -> str
 	strings.write_string(&b, VIEW_MEMORY_VERSION)
 	if as, ok := m.as.?; ok { fmt.sbprintf(&b, " as=%s", VIEW_AS_NAMES[as]) }
 	fmt.sbprintf(&b, " open=%d", m.open ? 1 : 0)
-	if m.dialog != {} { fmt.sbprintf(&b, " dialog=%.1fx%.1f", m.dialog.x, m.dialog.y) }
+	// (the shortest text that reads back as the same number: one decimal of an em lost up to 0.75 px, a dialog of 400 px
+	// reopened at 401)
+	if m.dialog != {} { fmt.sbprintf(&b, " dialog=%vx%v", m.dialog.x, m.dialog.y) }
 	if m.internal[2] > 0 { fmt.sbprintf(&b, " internal=%d,%d,%d,%d", m.internal[0], m.internal[1], m.internal[2], m.internal[3]) }
 	if m.window != {} { fmt.sbprintf(&b, " window=%dx%d", m.window[0], m.window[1]) }
 	if at, ok := m.at.?; ok { fmt.sbprintf(&b, " at=%d,%d", at.x, at.y) }
-	if d, ok := m.dock.?; ok { fmt.sbprintf(&b, " dock=%s:%s:%.1f:%d", d.place.space, VIEW_EDGE_NAMES[d.place.edge], d.extent_em, d.place.stack) }
+	if d, ok := m.dock.?; ok { fmt.sbprintf(&b, " dock=%s:%s:%v:%d", d.place.space, VIEW_EDGE_NAMES[d.place.edge], d.extent_em, d.place.stack) }
 	return strings.to_string(b)
 }
 

@@ -49,6 +49,8 @@ a_package_carries_the_signed_update :: proc(t: ^testing.T) {
 	self, err := os.read_entire_file(os.args[0], context.temp_allocator)
 	testing.expect(t, err == nil && os.write_entire_file(program, self) == nil, "the program")
 	c := Release_Options{project = {name = "sample", version_file = version_file, version_line = "APP_VERSION :: ", program = program}, dist = fmt.tprintf("%s/dist", dir), update = product}
+	// (Windows: the archive carries the console launcher built beside the program, as the release workflow builds it)
+	when ODIN_OS == .Windows { testing.expect(t, os.write_entire_file(toolbox.launcher_path(c.project), self) == nil, "the launcher") }
 
 	os.unset_env(toolbox.UPDATE_KEY_ENV)
 	testing.expect_value(t, package_(c, {"v1.2.3"}), 1)   // (a release without the key)

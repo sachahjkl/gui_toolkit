@@ -841,7 +841,22 @@ devtools_two_clicks_in_a_batch :: proc(t: ^testing.T) {
 	send(c, "Toolkit.startRecording", `{"injected":true}`)
 	devtools.local_send(c.l, `{"id":100,"method":"Toolkit.click","params":{"name":"nav1"}}`)
 	devtools.local_send(c.l, `{"id":101,"method":"Toolkit.click","params":{"name":"nav2"}}`)
-	session.frames(r.s, CLIENT_GONE_FRAMES)
+	// (a click is answered once its box has rested CLICK_REST_BUILDS builds, a few frames that the layout decides: a fixed
+	// count of frames stopped the recording between a press and its release)
+	answered := 0
+	end := time.tick_add(time.tick_now(), CALL_LIMIT)
+	for answered < 2 {
+		for m in devtools.local_take(c.l, context.temp_allocator) {
+			v, err := json.parse_string(m, parse_integers = true, allocator = context.temp_allocator)
+			if err != nil { continue }
+			o := v.(json.Object) or_continue
+			if id := i64(number(o["id"])); id == 100 || id == 101 { answered += 1 }
+		}
+		if answered >= 2 { break }
+		if time.tick_diff(time.tick_now(), end) <= 0 { session.failed(r.s, fmt.tprintf("%v passed waiting for the clicks' answers", CALL_LIMIT)) }
+		session.frame(r.s)
+	}
+	idle(c)   // (the releases, injected after the answers, and the recorder's reading of them)
 	lines := stop_recording(c)
 	testing.expectf(t, lines_with(lines, "click") == 2, "two clicks: %v", lines)
 }

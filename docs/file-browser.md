@@ -145,7 +145,7 @@ the call), on the interface's thread, through the reply: `file_reply_listed(repl
 
 `find` (nil: no search in subfolders) answers `file_reply_found` with the entries under `folder`, at any depth, that
 match `query`, best first, at most `limit`: each entry's `name` is its path relative to `folder`, with the source's
-separator (`docs/notes.md`). `reply.hidden` is Hidden files: off, the hidden entries and what is in hidden folders are
+separator (`notes/todo.md`). `reply.hidden` is Hidden files: off, the hidden entries and what is in hidden folders are
 not found. The browser shows them in the order given. A reply's `bar` says a listing is the path bar's (its dropdown's
 children), not the folder shown's: a source passes the reply back as it is given. A reply carries the ticket of its reading
 (`remote`) and its dialog: the answer of a folder left, of a file no longer selected, or of a dialog closed changes

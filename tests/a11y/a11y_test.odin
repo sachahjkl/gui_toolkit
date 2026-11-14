@@ -60,6 +60,9 @@ app_destroy :: proc(a: ^App) {
 }
 
 body :: proc(a: ^App) {
+	// (as tall as what is in it: the base style's 30 px would make the list, the one box that scrolls, give all its height
+	// to the column, and a screen reader drops the rows that a list of no height clips)
+	ui.next({width = ui.fill(), height = ui.children_sum()})
 	if ui.column() {
 		ui.next({width = ui.px(400), height = ui.children_sum()})
 		if ui.row(id = "###toolbar") {
@@ -244,6 +247,9 @@ tree_from_boxes :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.A11y_Role(r1.role), platform.A11y_Role.List_Box_Option)
 	testing.expect_value(t, platform.a11y_node_string(u, r1i, .Label), "Pears")
 	testing.expect_value(t, len(platform.a11y_node_children(u, r1i)), 0)
+	// (AccessKit leaves out a child that its clipping parent does not show: a row must be inside its list)
+	inside := r1.bounds[0] < lst.bounds[2] && lst.bounds[0] < r1.bounds[2] && r1.bounds[1] < lst.bounds[3] && lst.bounds[1] < r1.bounds[3]
+	testing.expectf(t, inside, "the row %v is inside its list %v", r1.bounds, lst.bounds)
 
 	// a graft node: a node with no children of its own, naming its tree
 	_, gi := node(&f, a.keys.graft)

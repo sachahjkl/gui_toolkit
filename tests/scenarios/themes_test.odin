@@ -344,10 +344,14 @@ a_bar_with_declared_sides_has_no_frame :: proc(t: ^testing.T) { unwatched.run(t,
 		for id in ([]string{"nav", "inset"}) {
 			r := session.get(s, id).rect
 			cx, cy := int(r.min.x + r.max.x) / 2, int(r.min.y + r.max.y) / 2
-			// (1 and 2 px in: where the rim was; the face further in, on the same row, or 5 px down: a face lit from
-			// above changes along its height)
+			// (1 and 2 px in: where the rim was; the face further in, on the same row, or down its height carried back by
+			// its slope from 5 and 9 px in: a face lit from above changes along its height, glass's top half by about a
+			// level a pixel on a box 120 px tall, and a rim is a line tens of levels apart)
+			f5, f9 := session.pixel(img, cx, int(r.min.y) + 5), session.pixel(img, cx, int(r.min.y) + 9)
 			for d in 1 ..= 2 {
-				top, face := session.pixel(img, cx, int(r.min.y) + d), session.pixel(img, cx, int(r.min.y) + 5)
+				top := session.pixel(img, cx, int(r.min.y) + d)
+				face := f5
+				for k in 0 ..< 3 { face[k] = u8(clamp(int(f5[k]) + (int(f5[k]) - int(f9[k])) * (5 - d) / 4, 0, 255)) }
 				testing.expectf(t, session.near(top, face, 2), "%v %s: no line along its top (%d px in): %v, the face %v", finish, id, d, top, face)
 				left, row := session.pixel(img, int(r.min.x) + d, cy), session.pixel(img, int(r.min.x) + 20, cy)
 				testing.expectf(t, session.near(left, row, 2), "%v %s: no line along its left (%d px in): %v, the face %v", finish, id, d, left, row)

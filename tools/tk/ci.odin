@@ -109,7 +109,7 @@ build_example :: proc(root, example: string, debug: bool) -> string {
 }
 
 // ci: what the CI checks on this system, every step run whatever an earlier one said, then the failures. odin check -vet of every
-// package and of every tool under tools/ (Linux: for Linux, with the native text backend, and for Windows), the CI's examples built, and the tests of tools/run_tests (its list
+// package and of every tool under tools/ (Linux: for Linux, with the native text backend, and for Windows), doc_check, the CI's examples built, and the tests of tools/run_tests (its list
 // says which run here; Linux's pixels: Vulkan's software rasterizer).
 run_ci :: proc(args: []string) -> string {
 	root := toolkit_root()
@@ -169,6 +169,15 @@ run_ci :: proc(args: []string) -> string {
 		icons, why := lucide_icons(ttf)
 		have, _ := os.read_entire_file(join({root, "src", "lucide", "lucide.odin"}), context.temp_allocator)
 		if why != "" || string(have) != lucide_source(icons) { append(&failed, "src/lucide/lucide.odin is not what gen_lucide makes of lucide.ttf") }
+	}
+	// (the GitHub job's Documentation step: without it here, a name the docs lost passed locally and failed there)
+	if problems, why := doc_check(root, nil); why != "" {
+		append(&failed, fmt.tprintf("doc_check: %s", why))
+	} else if len(problems) > 0 {
+		for p in problems { fmt.println(p) }
+		append(&failed, fmt.tprintf("doc_check: %d names not found", len(problems)))
+	} else {
+		fmt.println("doc_check ok")
 	}
 	examples := CI_EXAMPLES_WINDOWS when ODIN_OS == .Windows else CI_EXAMPLES_LINUX
 	for e in examples {

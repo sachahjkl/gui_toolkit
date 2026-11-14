@@ -29,6 +29,8 @@ import "../../src/ui"
 // What a hovered button may redraw at most (its row of the window at the most).
 @(private = "file") HOVER_PX_MAX :: 40_000
 @(private = "file") SETTLE_FRAMES :: 90
+// Frames in a row that redraw nothing: at rest (longer than a gap inside an animation; a caret's blink is half a second).
+@(private = "file") QUIET_FRAMES :: 12
 
 @(private = "file")
 App :: struct {
@@ -111,13 +113,18 @@ region_px :: proc(s: ^session.Session) -> (px: int, active: bool) {
 	return
 }
 
-// Frames until nothing moves; the largest region on the way.
+// Frames until nothing moves (QUIET_FRAMES in a row redraw nothing), `frames` at most; the largest region on the way.
+// (A fixed count ran every scene its whole bound: twice the scenes with half floats passed 420 s on WebGPU's WARP, where
+// the verify draws each frame twice.)
 @(private = "file")
 settle :: proc(s: ^session.Session, frames := SETTLE_FRAMES) -> (most: int) {
+	quiet := 0
 	for _ in 0 ..< frames {
 		session.frame(s)
-		px, _ := region_px(s)
+		px, active := region_px(s)
 		most = max(most, px)
+		quiet = active && px == 0 ? quiet + 1 : 0
+		if quiet >= QUIET_FRAMES { break }
 	}
 	return
 }

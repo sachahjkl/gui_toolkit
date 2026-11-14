@@ -444,8 +444,8 @@ of the title, on its line, weak: one line a row, for a list under a field (the p
 The memory is a `gt:store` file in the program's state folder (`Views_Options.path`). One line per view id:
 
 ```
-props	v1 as=external open=0 dialog=58.0x40.0 internal=120,80,700,480 window=1180x760
-sidebar	v1 as=panel open=1 dock=:left:18.0
+props	v1 as=external open=0 dialog=58x40 internal=120,80,700,480 window=1180x760
+sidebar	v1 as=panel open=1 dock=:left:18.5
 ```
 
 | Field | What | Written when |
