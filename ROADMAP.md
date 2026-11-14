@@ -2,12 +2,10 @@
 
 ## Now
 
-- **One command palette for every program.** One toolkit palette, the same look, keys and prefixes in every program,
-  fed by sources: a prefix chooses what is searched (commands, sessions, models, history, paths, tabs), a source may be
-  asynchronous (its list read off the interface's thread, ranked off it when large), and a row can be more than a
-  command (a title, a detail, an icon, a checked or active mark). opencode native's palette with its prefixes and
-  Wren's own registry and palette become sources of it and go; what helps one program helps all, and opencode native
-  may change where the shared palette is more consistent. The intent comes first.
+- **One command palette for every program.** The toolkit's palette is fed by sources, with one table of prefixes and
+  one ranking on the chores; the programs move to it, in this order: papier, inspecteur, cliche, classeur, opencode
+  native, Wren. opencode native's and Wren's own palettes go. Intent:
+  [src/md/features/palette.md](src/md/features/palette.md).
 
 ## Next
 
@@ -56,6 +54,9 @@
 
 ## Later
 
+- **Personal keys and aliases for every program.** Classeur's keys of one's own (Ctrl+Enter in its palette) and its
+  aliases typed whole become the toolkit's, so a person sets a key or an alias for a command in any program, the same
+  way. Intent: [src/md/features/palette.md](src/md/features/palette.md), "Decisions".
 - **Plugins in JavaScript.** A plugin builds its own screens and views, runs commands and reads settings through a
   dynamic API over the whole toolkit, with the JavaScript engine that Wren already embeds moved into the toolkit
   (`gt:js`). Notes: [src/md/features/plugins.md](src/md/features/plugins.md).

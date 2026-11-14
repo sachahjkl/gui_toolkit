@@ -392,31 +392,29 @@ its first stack. The square under the pointer lights up with the preview of wher
 square, the view docks there; elsewhere it is an internal window where it is. Escape puts it back where it was. The
 squares show only during a drag. A zone holds `VIEW_STACKS_MAX` (8) stacks at most.
 
-### The palette's commands
+### The palette's moves
+
+The command palette lists the views' moves by itself: `palette_commands` adds the moves source beside the commands
+([palette.md](palette.md)). It lists the moves of the views of the window the palette is open over, but the palette's
+own, and the toolkit runs the one chosen. A program needs nothing for them.
+
+A menu of the views (the `docking` and `panes` examples) reads the same list:
 
 ```odin
 // each frame: made again only when the views changed (views_version) or the language did
-if ui.views_commands_update(&app.view_cmds, &app.views) || app.table_changed {
-	app.table = append_both(app.own_commands, app.view_cmds.commands)   // the program's own first: their slots stay
-	ui.palette_set(&app.palette, app.table[:], app.disabled[:], {version = app.own_version << 32 | app.view_cmds.serial})
-}
-if c, _, ok := ui.palette_chosen(&app.palette); ok {
-	if c >= len(app.own_commands) { ui.views_command_run(&app.views, app.view_cmds.acts[c - len(app.own_commands)]) } else { run(app, c) }
+ui.views_commands_update(&app.view_cmds, &app.views)
+for c, i in app.view_cmds.commands {
+	if ui.menu_item(c.label, icon = c.icon).clicked { ui.views_command_run(&app.views, app.view_cmds.acts[i]) }
 }
 // at the end: ui.views_commands_destroy(&app.view_cmds)
 ```
 
 A program of several windows keeps one `View_Commands` per window and gives its State:
 `views_commands_update(&win.view_cmds, &app.views, owner = &win.host.state)` lists only the moves of the views that
-window owns (its palette and its sheet included); `views_commands(vs, allocator, owner)` the same in memory of the
-caller's.
+window owns; `views_commands(vs, allocator, owner)` the same in memory of the caller's.
 
 What it costs: `views_commands_update` is one comparison per frame, and one pass over the open views when they changed
-(an opening, a close, a move, a new title). `palette_set` keeps the table (a slice the palette holds while it is open:
-not temporary memory) and copies `disabled` and the options. The palette ranks its list again only while it is open
-and its version, its count or its query changed; each slot's text is folded once and kept, so with the program's own
-commands first, a change of the views' commands folds only theirs. `views_commands(vs, allocator)` is the same list in
-memory of the caller's.
+(an opening, a close, a move, a new title). `views_commands(vs, allocator)` is the same list in memory of the caller's.
 
 `views_commands(vs, allocator)` gives a `Command` per act of each open view, in the language in use: "Open <title> in
 a window" (with a backend of windows), "Float <title>",
@@ -500,7 +498,7 @@ of the design; `tests/views` tests each row.
 |---|---|
 | `confirm_open(id, o)`, `confirm_answer(id) -> Confirm_Answer` | a question before an act that is not taken back |
 | `prompt_open(id, &field, o)`, `prompt_answer(id)` | a question with an answer typed in |
-| `palette_set(p, commands, disabled, o)`, `palette_open(p)`, `palette_is_open(p)`, `palette_close(p)`, `palette_chosen(p) -> (index, mods, ok)` | the command palette ([commands](commands.md)) |
+| `palette_commands(p, commands, disabled, o)`, `palette_open(p, typed)`, `palette_is_open(p)`, `palette_close(p)`, `palette_chosen(p) -> (Palette_Choice, ok)` | the command palette ([palette](palette.md)) |
 | `shortcuts_sheet_open(sheet, commands, title, version)`, `shortcuts_sheet_is_open(sheet)`, `shortcuts_sheet_close(sheet)` | the sheet of the keys |
 | `setup.open(d, o, logo)`, `setup.update(d, o)` | the setup dialog ([setup](setup.md)) |
 | `ui.file_dialog(s, kind, d, done, user, source)` | the file browser, the view `"file_dialog"` of each window ([file-browser](file-browser.md)): `done` once |
@@ -559,7 +557,7 @@ edge are drawn over what is in it (`machined_plate_frame`). A search over a list
 | `open = false` in the body | `view_end(v, code)` |
 | `ui.confirm(id, &open, o)` each frame | `confirm_open(id, o)` once, `confirm_answer(id)` each frame |
 | `ui.prompt(id, &open, &field, o)` | `prompt_open(id, &field, o)`, `prompt_answer(id)` |
-| `ui.palette_open(&p)`, `ui.palette(&p, commands, disabled, o)` | `palette_set(&p, commands, disabled, o)` when they change, `palette_open(&p)`, `palette_chosen(&p)` |
+| `ui.palette_open(&p)`, `ui.palette(&p, commands, disabled, o)` | `palette_commands(&p, commands, disabled, o)`, `palette_open(&p)`, `palette_chosen(&p)` ([palette](palette.md)) |
 | `Command_Palette.open`, `.size` | `palette_is_open(&p)`; the size is the views' memory |
 | `sheet.open = true`, then the sheet built at each frame | `shortcuts_sheet_open(&sheet, commands)` |
 | `setup.open(&d, cfg)`, `setup.dialog(&d, cfg, em, logo)` | `setup.open(&d, cfg, logo)` in a build, `setup.update(&d, cfg)` |

@@ -2,6 +2,7 @@ package fidget
 
 import "core:fmt"
 import "core:math"
+import "core:slice"
 import "core:strings"
 import "../../src/draw"
 import "../../src/platform"
@@ -53,15 +54,14 @@ run_cmd :: proc(app: ^App, cmd: Command) {
 	app.frames_requested = 4
 }
 
-// The dialogs of fidget: views of its own look (no header: each draws its own top), as wide as what is in them.
-PALETTE_VIEW :: "palette"
+// The dialogs of fidget: views of its own look (no header: each draws its own top), as wide as what is in them. The
+// palette is the toolkit's.
 CONFIRM_VIEW :: "confirm"
 ABOUT_VIEW :: "about"
 SETTINGS_VIEW :: "settings"
 
 views_register :: proc(app: ^App) {
 	vs := ui.state_views(&app.ui_state)
-	ui.view_register(vs, PALETTE_VIEW, palette_view, ui.View_Options{width_em = 1, top = 0.11, no_header = true})
 	ui.view_register(vs, CONFIRM_VIEW, confirm_view, ui.View_Options{width_em = 1, no_header = true})
 	ui.view_register(vs, ABOUT_VIEW, about_view, ui.View_Options{width_em = 1, top = 0.16, no_header = true})
 	ui.view_register(vs, SETTINGS_VIEW, settings_view, ui.View_Options{width_em = 1, top = 0.10, no_header = true})
@@ -72,20 +72,22 @@ dialog_open :: proc(app: ^App, id: string) { ui.view_open(ui.state_views(&app.ui
 
 dialog_is_open :: proc(app: ^App, id: string) -> bool { return ui.view_is_open(ui.state_views(&app.ui_state), id) }
 
-palette_toggle :: proc(app: ^App) {
-	if dialog_is_open(app, PALETTE_VIEW) {
-		ui.view_close(ui.state_views(&app.ui_state), PALETTE_VIEW)
-		return
+// The toolkit's palette over fidget's commands (command_info), `typed` in its field.
+palette_toggle :: proc(app: ^App, typed := "") {
+	for info, c in command_info {
+		app.palette_commands[c] = {label = info.title, group = info.category, icon = info.icon}
+		app.palette_keys[c] = info.shortcut
 	}
-	ui.line_edit_clear(&app.palette_field)
-	app.palette_sel, app.palette_scroll, app.palette_frames = 0, 0, 0
-	app.palette_focus = true
-	dialog_open(app, PALETTE_VIEW)
+	ui.palette_commands(&app.palette, slice.enumerated_array(&app.palette_commands), nil, {keys = slice.enumerated_array(&app.palette_keys)})
+	ui.palette_toggle(&app.palette, typed)
 }
+
+palette_is_open :: proc(app: ^App) -> bool { return ui.palette_is_open(&app.palette) }
 
 handle_shortcuts :: proc(app: ^App) {
 	ctrl := platform.Modifiers{.Ctrl}
-	if ui.key_press(.K, ctrl) || ui.key_press(.P, {.Ctrl, .Shift}) { palette_toggle(app) }
+	if ui.command_pressed(ui.PALETTE_COMMAND) { palette_toggle(app) }
+	if c, ok := ui.palette_chosen(&app.palette); ok && c.command >= 0 { run_cmd(app, Command(c.command)) }
 	if ui.key_press(.N1, ctrl) { run_cmd(app, .Go_Controls) }
 	if ui.key_press(.N2, ctrl) { run_cmd(app, .Go_Inputs) }
 	if ui.key_press(.N3, ctrl) { run_cmd(app, .Go_Data) }
@@ -243,112 +245,6 @@ build_statusbar :: proc(app: ^App, em: f32) {
 		ui.spacer(ui.px(em * 0.5))
 		ui.status_item(app.show_boxes ? fmt.tprintf("%d boxes  |  frame %.2f ms###sb_ms", ui.boxes_built(&app.ui_state), app.ui_ms) : fmt.tprintf("frame %.2f ms###sb_ms", app.ui_ms), mono = true)
 	}
-}
-
-////////////////////////////////
-// Command palette
-
-palette_view :: proc(v: ^ui.View, app: ^App) {
-	em := ui.font_size()
-	app.palette_frames += 1
-	pw := min(em * 46, f32(app.win.size.x) / app.win.dpi_scale * 0.92)
-
-	// rank commands: every space-separated needle part must match somewhere in the title
-	entries := make([dynamic]Palette_Entry, context.temp_allocator)
-	needle := ui.line_edit_string(&app.palette_field)
-	for cmd in Command {
-		ranges, ok := ui.fuzzy_find(needle, command_info[cmd].title)
-		if ok { append(&entries, Palette_Entry{cmd, ranges}) }
-	}
-	// keep matches that start earlier first (stable otherwise)
-	for i in 1 ..< len(entries) {
-		e := entries[i]
-		start := len(e.ranges) > 0 ? e.ranges[0][0] : 0
-		j := i - 1
-		for j >= 0 && (len(entries[j].ranges) > 0 ? entries[j].ranges[0][0] : 0) > start { entries[j + 1] = entries[j]; j -= 1 }
-		entries[j + 1] = e
-	}
-	n := len(entries)
-	ROWS :: 9
-	if n > 0 {
-		if ui.key_press(.Down) { app.palette_sel = (app.palette_sel + 1) % n }
-		if ui.key_press(.Up) { app.palette_sel = (app.palette_sel + n - 1) % n }
-		if ui.key_press(.Page_Down) { app.palette_sel = min(app.palette_sel + ROWS, n - 1) }
-		if ui.key_press(.Page_Up) { app.palette_sel = max(app.palette_sel - ROWS, 0) }
-		app.palette_sel = clamp(app.palette_sel, 0, n - 1)
-		if app.palette_sel < app.palette_scroll { app.palette_scroll = app.palette_sel }
-		if app.palette_sel >= app.palette_scroll + ROWS { app.palette_scroll = app.palette_sel - ROWS + 1 }
-	}
-	mouse := ui.mouse_pos()
-	moved := abs(mouse.x - app.palette_mouse.x) + abs(mouse.y - app.palette_mouse.y) > 0.5
-	app.palette_mouse = mouse
-	run := -1
-
-	{
-		if ui.style({width = ui.px(pw)}) {
-			ui.next({width = ui.px(pw), height = ui.px(ui.dense(em * 3.4))})
-			if ui.row(.Center, id = "###pal_head") {
-				ui.spacer(ui.px(em * 0.9))
-				input_key := ui.key_from_string(ui.parent_box().key, "###pal_input")
-				ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.4))})
-				field_ui := ui.line_edit("###pal_input", &app.palette_field, {placeholder = "Type a command..."})
-				if field_ui.changed { app.palette_sel, app.palette_scroll = 0, 0 }
-				if field_ui.cancelled { ui.view_end(v, ui.VIEW_CANCELLED) }   // (its foot says it: Esc closes, the field has the first Esc)
-				if field_ui.committed && n > 0 { run = int(entries[app.palette_sel].cmd) }
-				if app.palette_focus { ui.set_focus(input_key); app.palette_focus = false }
-				ui.spacer(ui.px(em * 0.9))
-			}
-			ui.hline(ui.px(pw))
-			ui.spacer(ui.px(em * 0.4))
-			ui.next({width = ui.px(pw), height = ui.children_sum()})
-			if ui.column(.Center, id = "###pal_rows") {
-				for vi in 0 ..< min(n, ROWS) {
-					hi := app.palette_scroll + vi
-					e := entries[hi]
-					info := command_info[e.cmd]
-					selected := hi == app.palette_sel
-					if selected { ui.push_tags("selected") }
-					ui.next({width = ui.px(pw - em * 1.2), height = ui.px(ui.dense(em * 2.6)), radius = em * 0.5, border = selected ? nil : draw.Color{}})
-					row_sig: ui.Signal
-					row_flags := ui.Box_Flags{.Clickable, .Draw_Hot_Effects, .Draw_Border}   // border always laid out, visible when selected
-					if selected { row_flags += {.Draw_Background} }
-					if ui.row(.Center, row_flags, fmt.tprintf("###pal_row_%d", int(e.cmd))) {
-						row_sig = ui.signal(ui.parent_box())
-						ui.spacer(ui.px(em * 0.5))
-						if ui.tags("weak") { ui.icon(info.icon, em * 1.9) }
-						ui.next({width = ui.fill(), height = ui.pct(1)})
-						ui.label_fuzzy(info.title, e.ranges)
-						if ui.tags("weak") {
-							ui.next({width = ui.text_size(em * 0.5), height = ui.pct(1), font_size = math.round(em * 0.85)})
-							ui.label(info.category)
-						}
-						if info.shortcut != "" { ui.spacer(ui.px(em * 0.6)); ui.kbd(info.shortcut) }
-						ui.spacer(ui.px(em * 0.6))
-					}
-					if selected { ui.pop_tags() }
-					if row_sig.clicked { run = int(e.cmd) }
-					if row_sig.hovering && moved { app.palette_sel = hi }
-				}
-			}
-			if n == 0 {
-				if ui.tags("weak") {
-					ui.next({width = ui.px(pw), height = ui.px(ui.dense(em * 4)), text_align = .Center})
-					ui.label("No matching commands")
-				}
-			}
-			ui.spacer(ui.px(em * 0.4))
-			ui.hline(ui.px(pw))
-			ui.next({width = ui.px(pw), height = ui.px(ui.dense(em * 2.3))})
-			if ui.row(.Center, id = "###pal_foot") {
-				ui.spacer(ui.px(em))
-				if ui.tags("weak") {
-					ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.82)})
-					ui.label(fmt.tprintf("%d of %d commands   |   Up/Down select   Enter run   Esc close", n, len(Command)))
-				}
-			}
-		}
-	}
-	if run >= 0 { ui.view_end(v, run); run_cmd(app, Command(run)) }
 }
 
 confirm_view :: proc(v: ^ui.View, app: ^App) {

@@ -415,6 +415,9 @@ fr Licence %s
 en Settings
 fr Réglages
 
+en Show
+fr Afficher
+
 en Settings · %s
 fr Réglages · %s
 
@@ -1547,12 +1550,6 @@ fr Nouvelle couleur
 en Colour
 fr Couleur
 
-en Nothing matches
-fr Aucun résultat
-
-en Recent
-fr Récents
-
 en Cancel
 fr Annuler
 
@@ -1668,6 +1665,9 @@ fr Lien
 
 en Places
 fr Emplacements
+
+en Recent
+fr Récents
 
 en No preview
 fr Pas d'aperçu
@@ -1819,6 +1819,9 @@ fr Police
 en Reading the fonts…
 fr Lecture des polices…
 
+en Nothing matches
+fr Aucun résultat
+
 en Search fonts
 fr Chercher une police
 
@@ -1880,8 +1883,29 @@ fr Aucun raccourci
 en The default
 fr Par défaut
 
-en Show
-fr Afficher
+en Commands
+fr Commandes
+
+en Go to
+fr Aller à
+
+en Paths
+fr Chemins
+
+en Secrets
+fr Secrets
+
+en %s: reading…
+fr %s : lecture…
+
+en %s: could not read (%s)
+fr %s : lecture impossible (%s)
+
+en Run
+fr Lancer
+
+en Views
+fr Vues
 
 en Hide
 fr Masquer
@@ -2002,9 +2026,6 @@ fr Pas de fenêtre : le système l'a refusée.
 
 en floating window
 fr fenêtre flottante
-
-en Views
-fr Vues
 
 en Open %s in a window
 fr Ouvrir %s dans une fenêtre

@@ -382,7 +382,7 @@ shown (`DIAGNOSTICS_REFRESH_MS`); **Copy** puts them on the clipboard as `key: v
 
 ## The toolkit's pages in the palette
 
-A page of its own (`Page_Info.build`) with `Page_Info.tags` is a line of `palette_commands`: its title, the group
+A page of its own (`Page_Info.build`) with `Page_Info.tags` is an item of the palette's settings source: its title, the group
 "Settings", its icon and its tags; its name is the page's category, and `show(page, prefs, o, category)` puts that page up,
 the search cleared. The Licence, Installation and Diagnostics pages have theirs ("licence", "key", "buy"; "install",
 "uninstall", "path"; "gpu", "performance", "slow"). `Page_Info.user` is what `build` is given (nil: `Page_Options.user`).
@@ -395,34 +395,26 @@ closes the page on Escape leaves that Escape to the field.
 
 ## The settings in the command palette
 
-`palette_commands(prefs, o)` gives one `ui.Command` per preference the pages show (a hidden one is not): its label
-is the title the page gives it, its group `Settings · <page>`, its icon the page's (else Lucide's sliders), its tags the
-preference's (`config.Def.tags`: other words the settings' search and the palette find it by, "colours" and "dark" for a
-theme). A program puts
-them after its own commands in `ui.palette`; when one is chosen, it opens its settings and calls `show(page, prefs,
-options, name)`: the page's search holds the preference's name in quotes, so it shows alone with its control, and the
-page under the search is its own (clearing the search lands there).
+`palette_settings_add(&palette, &settings, &prefs, &page, options, open, user)` adds the toolkit's settings source to a
+program's command palette ([palette.md](palette.md)): the prefix `:`, and the plain search. It gives one item per
+preference the pages show (a hidden one is not): its title is the one the page gives it, its group `Settings · <page>`,
+its icon the page's (else Lucide's sliders), its tags the preference's (`config.Def.tags`: other words the settings'
+search and the palette find it by, "colours" and "dark" for a theme), its name its last text (a search by
+`appearance.theme` finds it). A preference that a policy fixes is greyed.
 
-The program makes this table when the settings change, not at each frame: a frame then walks no preference, and the
-palette ranks again only when the table's version changes (docs/commands.md). Its labels and groups are in the language in
-use: a change of `general.language` is a change of the settings (their version moves after the language switched), so the
-table below follows it; a program that switches the language otherwise makes it again when `i18n.version()` moves.
+Choosing a switch flips it (`Page_Options.changed` then saves it) and the palette stays open, the switch's mark
+following. Choosing another preference calls `show(page, prefs, options, name)`, then `open(user)`: the program shows
+its settings. The page's search holds the preference's name in quotes, so it shows alone with its control, and the page
+under the search is its own (clearing the search lands there).
+
+The source reads the preferences again when one is registered, and when the language changes: a frame walks none.
+`Palette_Settings` stays where it is while the palette has it; call `palette_settings_add` again when the page options
+change.
 
 ```odin
-// when the settings change (app.prefs.version): the table in memory of its own
-if app.table_version != app.prefs.version + 1 {
-    virtual.arena_free_all(&app.table_arena)
-    a := virtual.arena_allocator(&app.table_arena)
-    settings, names := prefs_page.palette_commands(&app.prefs, opts, a)
-    app.table = slice.concatenate([][]ui.Command{app_commands, settings}, a)
-    app.setting_names = names
-    app.table_version = app.prefs.version + 1
-    ui.palette_set(&app.palette, app.table, disabled, {version = app.table_version})
-}
-if i, _, ok := ui.palette_chosen(&app.palette); ok && i >= len(app_commands) {
-    app.settings_open = true
-    prefs_page.show(&app.page, &app.prefs, opts, app.setting_names[i - len(app_commands)])
-}
+prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page, opts, proc(user: rawptr) {
+    (^App)(user).settings_open = true
+}, app)
 ```
 
 ## The update in the status bar

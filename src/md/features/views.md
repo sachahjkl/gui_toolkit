@@ -572,10 +572,10 @@ confirm_answer :: proc(id: string, instance := "") -> Confirm_Answer   // .None 
 prompt_open   :: proc(id: string, field: ^Line_Edit, o: Prompt_Options, instance := "")
 prompt_answer :: proc(id: string, instance := "") -> Confirm_Answer
 
-// The palette (pattern C). The program gives its commands when they change, not at each frame.
-palette_open   :: proc(p: ^Command_Palette)
-palette_set    :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool, o: Palette_Options)
-palette_chosen :: proc(p: ^Command_Palette) -> (index: int, mods: platform.Modifiers, ok: bool)
+// The palette (pattern C), fed by sources (palette.md).
+palette_open     :: proc(p: ^Command_Palette, typed := "")
+palette_commands :: proc(p: ^Command_Palette, commands: []Command, disabled: []bool, o := Palette_Commands_Options{})
+palette_chosen   :: proc(p: ^Command_Palette) -> (c: Palette_Choice, ok: bool)
 
 // The sheet of the keys (pattern D).
 shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title := "", version: u64 = 0)
@@ -1164,16 +1164,15 @@ in a run gets its line at the quit even when it was closed again, so the user's 
 
 ### 6.6 The palette's commands
 
-A palette holds its table while it is open, so the views' commands live in memory of their own:
-`views_commands_update(&vc, vs)` makes them again only when `views_version` (an opening, a close, a move, a title) or
-the language changed, and its `serial` goes into the palette's version. The program puts its own commands first: the
-palette folds each slot's text once, so only the views' slots are folded again.
+The views' commands live in memory of their own: `views_commands_update(&vc, vs)` makes them again only when
+`views_version` (an opening, a close, a move, a title) or the language changed. The command palette's moves source
+follows them by itself ([palette.md](palette.md)); a program no longer adds them to its table.
 
 `views_commands(vs)` gives a `Command` per act of each open view, in the language in use: "Open <title> in a window"
 (with a backend of windows), "Float <title>", "Dock
 <title> to the left", "... to the right", "... to the bottom", "Re-attach <title>", "Close <title>" (an act that does
 nothing where the view is is absent). `views_command_run(vs, c)` does it. `views_version(vs)` changes when an act or
-an opening changes the list: the program gives it to `palette_set`.
+an opening changes the list.
 
 ---
 
@@ -1264,9 +1263,9 @@ if code, ok := ui.view_ended(&app.views, "editor_size", ed.name); ok && code != 
 **A chooser (pattern C).** papier `src/actions.odin:213`.
 
 ```odin
-ui.palette_set(&app.palette, t.commands, disabled, {version = t.version})   // when the table or `disabled` changes
-if i, _, ok := ui.palette_chosen(&app.palette); ok { action_run(app, Action(i)) }
-// Ctrl+K: ui.palette_open(&app.palette)
+ui.palette_commands(&app.palette, ACTIONS[:], disabled)   // the commands source (palette.md)
+if c, ok := ui.palette_chosen(&app.palette); ok && c.command >= 0 { action_run(app, Action(c.command)) }
+// Ctrl+K: ui.palette_toggle(&app.palette)
 ```
 
 **A viewer (pattern D).** papier `src/qr.odin:51`.

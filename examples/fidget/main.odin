@@ -234,7 +234,7 @@ open :: proc(o: Open_Options) -> ^App {
 		if strings.has_prefix(a, "--page=") { if v, vok := strconv.parse_int(a[7:]); vok { app.page = Page(clamp(v, 0, len(Page) - 1)) } }
 		if strings.has_prefix(a, "--theme=") { if v, vok := strconv.parse_int(a[8:]); vok { set_palette(app, v) } }
 		if a == "--palette" { palette_toggle(app) }
-		if strings.has_prefix(a, "--palette_query=") { palette_toggle(app); ui.line_edit_set(&app.palette_field, a[16:]) }
+		if strings.has_prefix(a, "--palette_query=") { palette_toggle(app, a[16:]) }
 		if a == "--modal" { dialog_open(app, CONFIRM_VIEW) }
 		if a == "--about" { dialog_open(app, ABOUT_VIEW) }
 		if a == "--settings" { dialog_open(app, SETTINGS_VIEW) }
@@ -273,6 +273,7 @@ open :: proc(o: Open_Options) -> ^App {
 // The end of what `open` made.
 close :: proc(app: ^App) {
 	devtools.stop(app.devtools)
+	ui.palette_destroy(&app.palette)
 	ui.destroy(&app.ui_state)
 	files_destroy(app)
 	ui.theme_destroy(&app.theme)

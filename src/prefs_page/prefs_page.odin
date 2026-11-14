@@ -53,8 +53,8 @@ Page_Info :: struct {
 	// title (a search does not look in it). `category` still names it (Page.current, show)
 	build:                 proc(user: rawptr, em: f32),
 	user:                  rawptr,     // what `build` is given (nil: Page_Options.user)
-	// other words the palette finds the page by: a page with `build` and tags is a command of palette_commands, which
-	// shows it (the toolkit's Installation and Diagnostics pages have theirs)
+	// other words the palette finds the page by: a page with `build` and tags is an item of the settings source
+	// (palette_settings_add), which shows it (the toolkit's Installation and Diagnostics pages have theirs)
 	tags:                  []string,
 	// a heading above the page in the sidebar, which starts a group of pages ("CLIENT", "SERVER"; "": none)
 	heading:               string,

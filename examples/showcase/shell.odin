@@ -5,10 +5,6 @@ package showcase
 
 import "core:fmt"
 import "core:math"
-import "core:mem/virtual"
-import "core:slice"
-import "core:strings"
-import config "../../src/config"
 import host "../../src/host"
 import lucide "../../src/lucide"
 import prefs_page "../../src/prefs_page"
@@ -40,7 +36,8 @@ page_of :: proc(s: Scene) -> Scene {
 	return s
 }
 
-// The commands of the palette: the program's own, then one per preference of its settings (prefs_page.palette_commands).
+// The commands of the palette (its commands source); its settings source lists the preferences, its moves source the
+// views' moves.
 COMMANDS := [?]ui.Command{
 	{label = "New window", group = "File", keys = {{.N, {.Ctrl, .Shift}}}, icon = lucide.PLUS},
 	{label = "Open…", group = "File", keys = {{.O, {.Ctrl}}}, icon = lucide.FOLDER_OPEN},
@@ -65,7 +62,7 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 	// every command under its group, with its keys)
 	if app.builds == 1 { scene_open(app, app.scene) }
 	views_scene_follow(app)   // (the views scene's panels go with it: their space is built in that scene only)
-	if ui.key_press(.K, {.Ctrl}) { palette_show(app) }
+	if ui.command_pressed(ui.PALETTE_COMMAND) { palette_toggle(app) }
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 	if ui.column(id = "###app") {
 		top_bar(app, em)
@@ -208,19 +205,19 @@ scene_open :: proc(app: ^App, s: Scene) {
 	}
 }
 
-// The palette, its table made again when the settings changed.
+// The palette, its sources given their data: the commands, the settings (with the page options of this build).
 @(private = "file")
 palette_show :: proc(app: ^App) {
-	palette_table_keep(app)
+	ui.palette_commands(&app.palette, COMMANDS[:], nil)
+	prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page, settings_options(app), proc(user: rawptr) {
+		(^App)(user).scene = .Settings
+	}, app)
 	ui.palette_open(&app.palette)
 }
 
 @(private = "file")
-palette_table_keep :: proc(app: ^App) {
-	table := &app.palette_table
-	if table.version == app.prefs.version + 1 { return }
-	palette_table_make(table, &app.prefs, settings_options(app))
-	ui.palette_set(&app.palette, table.commands, nil, {memory = &app.choices, names = table.keys, version = table.version})
+palette_toggle :: proc(app: ^App) {
+	if ui.palette_is_open(&app.palette) { ui.palette_close(&app.palette) } else { palette_show(app) }
 }
 
 @(private = "file")
@@ -237,50 +234,12 @@ status_line :: proc(app: ^App, em: f32) {
 	}
 }
 
-// The palette's table: the program's commands, then one per preference (prefs_page.palette_commands), and each line's
-// key in the memory of choices (a command's label, "pref:" and a preference's name). Made again only when the settings
-// change (a frame does not walk the preferences), in an arena of its own.
-Palette_Table :: struct {
-	arena:    virtual.Arena,
-	commands: []ui.Command,
-	keys:     []string,
-	names:    []string,   // the preferences' names, the lines after COMMANDS
-	version:  u64,        // the settings' version it was made for, plus one (0: not made); the palette's version
-}
-
-palette_table_make :: proc(table: ^Palette_Table, prefs: ^config.Prefs, o: prefs_page.Page_Options) {
-	virtual.arena_destroy(&table.arena)
-	table^ = {}
-	a := virtual.arena_allocator(&table.arena)
-	settings, names := prefs_page.palette_commands(prefs, o, a)
-	table.commands = slice.concatenate([][]ui.Command{COMMANDS[:], settings}, a)
-	table.keys = make([]string, len(table.commands), a)
-	for c, i in COMMANDS { table.keys[i] = c.label }
-	for n, i in names { table.keys[len(COMMANDS) + i] = fmt.aprintf("pref:%s", n, allocator = a) }
-	table.names = make([]string, len(names), a)
-	for n, i in names { table.names[i] = strings.clone(n, a) }
-	table.version = prefs.version + 1
-}
-
-palette_table_destroy :: proc(table: ^Palette_Table) {
-	virtual.arena_destroy(&table.arena)
-	table^ = {}
-}
-
 // The answers of the scene's overlays (views shown as dialogs, built at the end of the build); the menu is the menus
 // scene's own.
 @(private = "file")
 overlays :: proc(app: ^App, em: f32) {
-	// (the settings changed while the palette is open: its table follows)
-	if ui.palette_is_open(&app.palette) { palette_table_keep(app) }
-	table := &app.palette_table
-	if i, _, ok := ui.palette_chosen(&app.palette); ok {
-		ui.choice_note(&app.choices, table.keys[i])
-		if i >= len(COMMANDS) {
-			app.scene = .Settings
-			prefs_page.show(&app.page, &app.prefs, settings_options(app), table.names[i - len(COMMANDS)])
-		}
-	}
+	// (a setting or a view's move acts in palette_chosen; the showcase's own commands only show themselves)
+	_, _ = ui.palette_chosen(&app.palette)
 	if ui.confirm_answer("delete") == .Confirmed { ui.announce(&app.announcer, .Good, "4 pictures deleted") }
 	switch ui.prompt_answer("unlock") {
 	case .Confirmed, .Cancelled: ui.line_edit_wipe(&app.pin)

@@ -27,7 +27,8 @@ Widgets and layout
   panes.md            Splitter and panes
   menus.md            Menus
   views.md            Views: dialogs, panels, windows
-  commands.md         Commands, palette, keys
+  commands.md         Commands, keys
+  palette.md          Command palette
   autoscroll.md       Middle-click autoscroll
   scroll-bar.md       The scroll bar
   scroll-marks.md     Marks on a scroll bar

@@ -1,9 +1,10 @@
 # The command palette: intent
 
-One palette for every program: the same look, the same keys, the same prefixes. This file records the design before
-the code. The palette today is `ui.Command_Palette` (`src/ui/commands.odin`), ranked by `ui.rank` (`src/ui/rank.odin`)
-and remembered by `ui.Choice_Memory` (`src/ui/choices.odin`). The keys of a command and the window commands are in
-[commands.md](commands.md). The views' moves are in [views.md](views.md).
+One palette for every program: the same look, the same keys, the same prefixes. The palette is `ui.Command_Palette`
+(`src/ui/palette.odin`), its commands and moves sources are in `src/ui/palette_sources.odin`, its settings source in
+`src/prefs_page/palette.odin`. It ranks with `ui.rank` (`src/ui/rank.odin`) and remembers with `ui.Choice_Memory`
+(`src/ui/choices.odin`). The API is in [docs/palette.md](../../../docs/palette.md). The keys of a command and the
+window commands are in [commands.md](commands.md). The views' moves are in [views.md](views.md).
 
 ## The problem
 
@@ -77,9 +78,10 @@ Every program gets three sources, and gives them only its data:
 | Views' moves | `>` | yes | the toolkit runs it (`views_command_run`); the palette's own view is not listed |
 | Settings | `:` | yes | the toolkit flips a switch (the palette stays) or opens the settings on it (`prefs_page.show`) |
 
-The commands source takes what `palette_set` takes today: the table, `disabled`, the keys' texts, the names for the
-usage memory, the version. A program with its own settings model (Wren's `about:config`) replaces the settings source
-with its own source of the same prefix.
+`palette_commands` gives the commands source what `palette_set` took: the table, `disabled`, the keys' texts, the ids
+for the usage memory (`names`), `first`, the version, and the alternates. Its first call adds the moves source too. The
+settings source is `prefs_page.palette_settings_add`: `ui` does not import `prefs_page`. A program with its own
+settings model (Wren's `about:config`) gives its own source of the same prefix instead.
 
 ## The prefixes
 
@@ -198,6 +200,26 @@ that the palette already has: a session deleted since is not listed.
   the vault. `palette.odin` goes, with its nine settings: the view remembers the width, the toolkit's constants give the
   rest.
 
+## Decisions
+
+The design's open questions, answered by the user. The principle behind each answer: homogeneity first. What helps one
+program helps all of them. Opencode native changes where the shared palette is more consistent.
+
+- **`$` Secrets stays in the shared table.** Only Wren fills it today. A second vault (a password field's history) then
+  has its prefix ready, with the same rules (never plain, never remembered, no detail shown).
+- **Opencode native follows the table.** `#` is Choose: the agents move there, with the models. `/` is Paths: the
+  session's files. The server's commands go under `>`, in their group "Server".
+- **No setting turns Ctrl+K off.** A standard shortcut is not disabled. A widget that needs Ctrl+K (a terminal, a
+  shortcut recorder) claims it (`keys_claim`), as [commands.md](commands.md) says.
+- **Disabled items are greyed and listed last.** A person learns that a command exists, and the items that act come
+  first. With nothing typed, the disabled commands are last in their group.
+- **Personal keys and aliases for every program** (classeur's Ctrl+Enter and Alt+Enter, its aliases typed whole):
+  later, a separate entry of the roadmap. Until then, classeur keeps them through its commands source's alternates and
+  `first`.
+- **The palette always remembers the choices.** No setting turns the usage memory off.
+- **The ranking always runs on a chore**, a short list too. The price is one frame between a key and its list. One path
+  is worth that frame: the tests see the path that ships.
+
 ## Refused alternatives
 
 - **Keep two palettes** (the toolkit's for four programs, their own for opencode native and Wren). It is how they
@@ -232,12 +254,25 @@ that the palette already has: a session deleted since is not listed.
   freed when its last ranking ends.
 - A window command's key still works while the palette's field has the keyboard (commands.md). The palette's command
   closes it.
+- **A toolkit source acts in `palette_chosen`, not in the palette's build.** A view's move docks or closes views: it must
+  not run inside a view's builder. The program calls `palette_chosen` at each build anyway, for its own choices.
+- **A switch's flip does not rank again.** Its choice goes to the usage memory, whose version is part of what a ranking
+  depends on; the palette counts that one change as seen. The settings source reads again when a preference is
+  registered, not when a value changes (`Prefs.version` moves at each value).
+- **An error answers the question.** A source that could not read is not asked again for the same query and version:
+  else it is asked at each build.
+- **A searching source's older answer** stays until the new one comes, but only its items that the matcher finds: what
+  it found for "do" is no proof for "srv/".
+- **The snapshots are counted.** The palette holds one per source, each ranking one per source in scope; the last to let
+  go frees it, on whichever thread. The list shown is the last ranking itself (its rows point into its snapshots).
+- **The selection's item is known by its source and its id.** A ranking started while the selection did not move finds
+  that item's row on the chore; after a move during the ranking, the interface's thread looks for it once.
 
 ## Migration
 
-1. The toolkit: the sources, the prefix table, the hint row, the serials, the ranking on chores, the usage memory
-   owned by the palette, the three toolkit sources. `palette_set` and the index-range decoding go. Update
-   [commands.md](commands.md) and `docs/commands.md`.
+1. The toolkit (done): the sources, the prefix table, the hint row, the serials, the ranking on chores, the usage
+   memory owned by the palette, the three toolkit sources. `palette_set`, `Palette_Options` and
+   `prefs_page.palette_commands` went; fidget uses the toolkit's palette.
 2. papier, inspecteur, cliche: the toolkit's sources, their decoding removed; cliche's add palette as a chooser.
 3. classeur: `@`, `/`, the alternates.
 4. opencode native: its sources; its `palette.odin` goes. `/` files after.

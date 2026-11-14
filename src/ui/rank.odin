@@ -25,6 +25,12 @@ Rank_Hit :: struct {
 
 @(private = "file") RANK_LAST_PENALTY :: 100_000
 
+// The items that rank matched on this thread, since it started: a test reads that the interface's thread matches none
+// while the palette ranks on the chores.
+@(private = "file", thread_local) rank_matched_here: int
+
+rank_matched :: proc() -> int { return rank_matched_here }
+
 // The slots of a rank's cache that one item takes: RANK_MATCH_SLOTS for its matcher, then one for its last text.
 RANK_MATCH_SLOTS :: 3
 @(private = "file") RANK_SLOTS :: RANK_MATCH_SLOTS + 1
@@ -67,6 +73,7 @@ rank :: proc(query: string, items: []$T, entry: proc(it: ^T, user: rawptr) -> Ra
 	for &it, i in items {
 		e := entry(&it, user)
 		if e.skip { continue }
+		rank_matched_here += 1
 		score, ranges, ok := match(needle, e, c, RANK_SLOTS * i)
 		if !ok && e.last != "" {
 			score, _, ok = fuzzy_words(needle, fuzzy_cache_text(c, RANK_SLOTS * i + RANK_MATCH_SLOTS, e.last))

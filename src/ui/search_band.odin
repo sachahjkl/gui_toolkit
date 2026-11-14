@@ -14,6 +14,7 @@ SEARCH_BAND_EM :: 2.5
 Search_Band_Options :: struct {
 	placeholder: string,       // what to type, weak, while the field is empty ("": "Type to search")
 	count:       Maybe(int),   // the number of results, weak, at the band's end (nil: none)
+	busy:        bool,         // more results come (a source reads, a ranking runs): "…" after the count
 	clearable:   bool,         // a cross at the field's end empties it while it holds text (line_edit's `clearable`)
 	// The keys reach the field through its owner (a menu keeps the keys that move in its items and gives the others to
 	// line_edit_key): the field is drawn as one that has the keyboard, its caret blinking, and takes neither the keyboard
@@ -66,7 +67,7 @@ search_band :: proc(id: string, field: ^Line_Edit, o := Search_Band_Options{}) -
 	if n, ok := o.count.?; ok {
 		if tags("weak") {
 			next({width = text_size(), height = pct(1), font_size = em * 0.85, text_pad = em * 0.4})
-			label(fmt.tprintf("%d###count", n))
+			label(fmt.tprintf("%d%s###count", n, o.busy ? "…" : ""))
 		}
 	}
 	spacer(px(em * 0.8))

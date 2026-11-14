@@ -4,18 +4,19 @@
 package commands_test
 
 import "core:fmt"
-import "core:math"
 import "core:slice"
 import "core:strings"
 import "core:mem"
 import "core:testing"
+import "core:time"
 import "../../src/font"
 import lucide "../../src/lucide"
 import "../../src/platform"
-import store "../../src/store"
 import "../../src/ui"
 
 WINDOW :: ui.Vec2{800, 600}
+// How long a test waits at most for the palette's ranking, on the chores.
+SETTLE_BOUND :: 5 * time.Second
 
 Fx :: struct {
 	fonts: font.State,
@@ -67,44 +68,15 @@ PALETTE_COMMANDS := [?]ui.Command{
 	{label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}},
 }
 
-// Each command's key in a choice memory.
 @(private = "file")
-PALETTE_NAMES := [len(PALETTE_COMMANDS)]string{"end", "kill", "start", "palette"}
-
-Palette_Run :: struct {
-	pal:     ui.Command_Palette,
+Keys_Pressed :: struct {
 	disabled: [len(PALETTE_COMMANDS)]bool,
-	chosen:  int,
-	mods:    platform.Modifiers,
-	pressed: [len(PALETTE_COMMANDS)]bool,
-	opts:    ui.Palette_Options,
-}
-
-// (what the palette lists is given at each build: the test changes `disabled` and the options as it goes; the answer
-// of a choice comes in the build after it)
-@(private = "file")
-build_palette :: proc(f: ^Fx, user: rawptr) {
-	r := (^Palette_Run)(user)
-	ui.palette_set(&r.pal, PALETTE_COMMANDS[:], r.disabled[:], r.opts)
-	if i, mods, ok := ui.palette_chosen(&r.pal); ok { r.chosen, r.mods = i, mods }
-}
-
-@(private = "file")
-open_palette :: proc(f: ^Fx, user: rawptr) {
-	r := (^Palette_Run)(user)
-	ui.palette_set(&r.pal, PALETTE_COMMANDS[:], r.disabled[:], r.opts)
-	ui.palette_open(&r.pal)
-}
-
-// The palette's dialog panel (its view's instance is the palette).
-@(private = "file")
-palette_panel :: proc(f: ^Fx, p: ^ui.Command_Palette) -> ^ui.Box {
-	return ui.box_from_key(ui.key_from_string(f.s.root.key, fmt.tprintf("###modal_view_palette/%x", uintptr(p))))
+	pressed:  [len(PALETTE_COMMANDS)]bool,
 }
 
 @(private = "file")
 build_command_keys :: proc(f: ^Fx, user: rawptr) {
-	r := (^Palette_Run)(user)
+	r := (^Keys_Pressed)(user)
 	for c, i in PALETTE_COMMANDS { r.pressed[i] = ui.command_pressed(c, r.disabled[i]) }
 }
 
@@ -125,91 +97,20 @@ command_texts :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.key_tip("Open the folder", {}), "Open the folder")
 }
 
+// A command's keys, and only when it can act. (The palette's tests: palette_test.odin.)
 @(test)
-command_keys_and_palette :: proc(t: ^testing.T) {
+command_keys :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
-	r := Palette_Run{chosen = -1}
-	defer ui.palette_destroy(&r.pal)
+	r: Keys_Pressed
 	r.disabled = {false, false, true, false}
-
-	// a command's keys, and only when it can act
 	frame(&f, {key(.Delete, {.Shift})}, build_command_keys, &r)
 	testing.expect(t, !r.pressed[0] && r.pressed[1], "Shift+Delete is Kill's, not End task's")
 	frame(&f, {key(.P, {.Ctrl, .Shift})}, build_command_keys, &r)
 	testing.expect(t, r.pressed[3], "a command's second key")
 	frame(&f, {key(.S, {.Ctrl})}, build_command_keys, &r)
 	testing.expect(t, !r.pressed[2], "a command that cannot act takes no key")
-
-	// the palette: typed letters keep the matches, Enter runs the first one that can act
-	frame(&f, nil, open_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	panel := palette_panel(&f, &r.pal)
-	testing.expect(t, panel != nil, "the palette is laid out")
-	if panel != nil { testing.expect(t, abs((panel.rect.min.x + panel.rect.max.x) * 0.5 - WINDOW.x * 0.5) < 2, "at the window's centre") }
-	testing.expect_value(t, r.pal.sel, 0)
-	for c in "kil" { frame(&f, {typed(c)}, build_palette, &r) }
-	frame(&f, nil, build_palette, &r)
-	frame(&f, {key(.Return)}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)   // (the choice is read in the build after it)
-	testing.expect_value(t, r.chosen, 1)
-	testing.expect(t, !ui.palette_is_open(&r.pal), "choosing closes the palette")
-
-	// a word the label does not say: its tags
-	r.chosen = -1
-	frame(&f, nil, open_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	for c in "termin" { frame(&f, {typed(c)}, build_palette, &r) }
-	frame(&f, nil, build_palette, &r)
-	frame(&f, {key(.Return)}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	testing.expect_value(t, r.chosen, 1)
-
-	// the best match first: "c" is in the group of End task, Kill and Start (Processes, Services), and at the start of
-	// Command palette's label: Command palette comes first, though it is last in the table
-	r.chosen = -1
-	frame(&f, nil, open_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	frame(&f, {typed('c')}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	frame(&f, {key(.Return)}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	testing.expect_value(t, r.chosen, 3)
-
-	// what cannot act is not chosen: "start" matches only Start, which is greyed
-	r.chosen = -1
-	frame(&f, nil, open_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	for c in "start" { frame(&f, {typed(c)}, build_palette, &r) }
-	frame(&f, nil, build_palette, &r)
-	frame(&f, {key(.Return)}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	testing.expect_value(t, r.chosen, -1)
-	frame(&f, {key(.Escape)}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)   // (a dialog takes Escape at the end of a build: it closes at the next)
-	testing.expect(t, !ui.palette_is_open(&r.pal), "Escape closes it")
-
-	// a search that keeps nothing: the palette says so, and goes on
-	frame(&f, nil, open_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	for c in "zzqx" { frame(&f, {typed(c)}, build_palette, &r) }
-	frame(&f, nil, build_palette, &r)
-	frame(&f, {key(.Down)}, build_palette, &r)
-	frame(&f, {key(.Return)}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	testing.expect_value(t, r.chosen, -1)
-	frame(&f, {key(.Escape)}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-
-	// a size of the user's (the views' memory, from an earlier run): the palette opens at it
-	_ = store.set(&ui.state_views(&f.s).memory, ui.PALETTE_VIEW, ui.views_format({dialog = ui.Vec2{500, 300} / 15}))   // (in ems: the base style is 15 px)
-	frame(&f, nil, open_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	panel = palette_panel(&f, &r.pal)
-	if testing.expect(t, panel != nil) { testing.expect_value(t, panel.rect.max.x - panel.rect.min.x, f32(500)) }
 }
 
 Sheet_Run :: struct { sheet: ui.Shortcuts_Sheet, opened: bool }
@@ -330,74 +231,6 @@ a_key_is_held_from_its_press_to_its_release :: proc(t: ^testing.T) {
 	frame(&f, {key(.Ctrl)}, nothing, nil)
 	frame(&f, {{kind = .Frame_Press}}, nothing, nil)
 	testing.expect(t, !ui.key_held(.Ctrl), "the window left: none held")
-}
-
-// A program's additions: the recent commands on top under their heading, a command first while searching, the keys'
-// texts of its own, a foot line, Enter with a modifier.
-@(test)
-palette_options :: proc(t: ^testing.T) {
-	f: Fx
-	if !testing.expect(t, open(&f), "fonts") { return }
-	defer close(&f)
-	r := Palette_Run{chosen = -1}
-	defer ui.palette_destroy(&r.pal)
-	r.disabled = {}
-	memory: ui.Choice_Memory   // (in memory only)
-	defer ui.choice_memory_close(&memory)
-	ui.choice_note(&memory, "start")
-	keys := []string{"", "", "Ctrl+M, T", ""}
-	r.opts = {memory = &memory, names = PALETTE_NAMES[:], keys = keys, foot = "Enter: run   Ctrl+Enter: its keys"}
-	// nothing typed: the one chosen before first, selected; Enter runs it
-	frame(&f, nil, open_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	testing.expect(t, find_text(&f, "Recent") != nil, "the recent group's heading")
-	testing.expect(t, find_text(&f, "Ctrl+M, T") != nil, "the program's text of the keys")
-	testing.expect(t, find_text(&f, "Ctrl+S") == nil, "instead of its chord")
-	testing.expect(t, find_text(&f, "Enter: run   Ctrl+Enter: its keys") != nil, "the foot line")
-	frame(&f, {key(.Return)}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)   // (the choice is read in the build after it)
-	testing.expect_value(t, r.chosen, 2)
-	testing.expect_value(t, r.mods, platform.Modifiers{})
-	// letters typed: `first` before the best match; Ctrl+Enter chooses it with Ctrl
-	r.chosen = -1
-	r.opts.first = 0
-	frame(&f, nil, open_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	for c in "ki" { frame(&f, {typed(c)}, build_palette, &r) }
-	frame(&f, nil, build_palette, &r)
-	frame(&f, {key(.Return, {.Ctrl})}, build_palette, &r)
-	frame(&f, nil, build_palette, &r)
-	testing.expect_value(t, r.chosen, 0)
-	testing.expect_value(t, r.mods, platform.Modifiers{.Ctrl})
-}
-
-// The palette's list ends on a whole line, whatever the dialog's height: the foot under it never cuts its last line.
-@(test)
-the_palettes_list_ends_on_a_whole_line :: proc(t: ^testing.T) {
-	f: Fx
-	if !testing.expect(t, open(&f), "fonts") { return }
-	defer close(&f)
-	r := Palette_Run{chosen = -1}
-	defer ui.palette_destroy(&r.pal)
-	r.disabled = {}
-	r.opts = {foot = "Enter: run"}
-	for h in ([]f32{300, 317, 331}) {
-		_ = store.set(&ui.state_views(&f.s).memory, ui.PALETTE_VIEW, ui.views_format({dialog = ui.Vec2{500, h} / 15}))   // (in ems)
-		frame(&f, nil, open_palette, &r)
-		frame(&f, nil, build_palette, &r)
-		frame(&f, {typed('k')}, build_palette, &r)   // (a search: lines only, no headings)
-		frame(&f, nil, build_palette, &r)
-		list := ui.box_from_key(ui.key_from_string(palette_panel(&f, &r.pal).key, "###palette_list"))
-		if !testing.expect(t, list != nil && list.first != nil, "the list and a line") { return }
-		row_h := list.first.rect.max.y - list.first.rect.min.y
-		list_h := list.rect.max.y - list.rect.min.y
-		testing.expectf(t, row_h > 0 && list_h >= row_h && abs(list_h - math.round(list_h / row_h) * row_h) < 0.5, "%v: the list (%v px) holds whole lines of %v px", h, list_h, row_h)
-		foot := find_text(&f, "Enter: run")
-		if testing.expect(t, foot != nil, "the foot line") { testing.expect(t, foot.rect.min.y >= list.rect.max.y, "the foot under the list") }
-		frame(&f, {key(.Escape)}, build_palette, &r)
-		frame(&f, nil, build_palette, &r)
-	}
 }
 
 // A box of the last build that shows `text` (nil: none).
@@ -781,7 +614,7 @@ build_window :: proc(f: ^Fx, user: rawptr) {
 	res := ui.line_edit("###window_field", &r.field)
 	if r.focus { ui.set_focus(res.box.key); r.focus = false }
 	if r.claim { ui.keys_claim(res.box.key, ui.Chord{.F1, {}}) }
-	ui.palette_set(&r.pal, WINDOW_COMMANDS[:], nil, {})
+	ui.palette_commands(&r.pal, WINDOW_COMMANDS[:], nil)
 	if r.show { ui.palette_open(&r.pal); r.show = false }
 }
 
@@ -851,7 +684,7 @@ build_keys_in_effect :: proc(f: ^Fx, user: rawptr) {
 	r := (^Keys_Run)(user)
 	for c, i in r.commands { r.pressed[i] = ui.command_pressed(c) }
 	r.other = ui.key_press(.K, {.Ctrl})
-	ui.palette_set(&r.pal, r.commands, nil, {})
+	ui.palette_commands(&r.pal, r.commands, nil)
 	if r.show {
 		r.show = false
 		ui.palette_open(&r.pal)
@@ -890,78 +723,29 @@ the_keys_in_effect_are_the_table_passed :: proc(t: ^testing.T) {
 
 	r.show = true
 	frame(&f, nil, build_keys_in_effect, &r)
+	// (the palette ranks on the chores: its list comes in a later build)
+	deadline := time.tick_now()
+	for ui.palette_is_open(&r.pal) && (ui.palette_busy(&r.pal) || ui.palette_row_count(&r.pal) == 0) && time.tick_since(deadline) < SETTLE_BOUND {
+		frame(&f, nil, build_keys_in_effect, &r)
+	}
 	frame(&f, nil, build_keys_in_effect, &r)
 	testing.expect(t, find_text(&f, "F3") != nil, "the palette and the sheet show the new key")
 	testing.expect(t, find_text(&f, "Ctrl+S") == nil, "and not the old one")
 	testing.expect(t, find_text(&f, "Ctrl+K") == nil, "nor the key turned off")
 }
 
-@(private = "file")
-Choice_Run :: struct {
-	pal:    ui.Command_Palette,
-	opts:   ui.Palette_Options,
-	chosen: int,
-}
-
-@(private = "file")
-OPEN_COMMANDS := [?]ui.Command{{label = "Open file"}, {label = "Open folder"}}
-
-@(private = "file")
-build_open_palette :: proc(f: ^Fx, user: rawptr) {
-	r := (^Choice_Run)(user)
-	ui.palette_set(&r.pal, OPEN_COMMANDS[:], nil, r.opts)
-	if i, _, ok := ui.palette_chosen(&r.pal); ok { r.chosen = i }
-}
-
-@(private = "file")
-choose_open :: proc(f: ^Fx, r: ^Choice_Run) -> int {
-	r.chosen = -1
-	frame(f, nil, proc(f: ^Fx, user: rawptr) {
-		r := (^Choice_Run)(user)
-		ui.palette_set(&r.pal, OPEN_COMMANDS[:], nil, r.opts)
-		ui.palette_open(&r.pal)
-	}, r)
-	frame(f, nil, build_open_palette, r)
-	for c in "open" { frame(f, {typed(c)}, build_open_palette, r) }
-	frame(f, nil, build_open_palette, r)
-	frame(f, {key(.Return)}, build_open_palette, r)
-	frame(f, nil, build_open_palette, r)   // (the choice is read in the build after it)
-	return r.chosen
-}
-
-// While something is typed, a command chosen often comes before an equal match chosen less.
-@(test)
-the_palette_raises_what_was_chosen :: proc(t: ^testing.T) {
-	f: Fx
-	if !testing.expect(t, open(&f), "fonts") { return }
-	defer close(&f)
-	memory: ui.Choice_Memory
-	defer ui.choice_memory_close(&memory)
-	r := Choice_Run{opts = {memory = &memory, names = {"open.file", "open.folder"}}}
-	defer ui.palette_destroy(&r.pal)
-	testing.expect_value(t, choose_open(&f, &r), 0)
-	for _ in 0 ..< 5 { ui.choice_note(&memory, "open.folder") }
-	testing.expect_value(t, choose_open(&f, &r), 1)
-}
-
 @(private = "file") MANY :: 2000
 
 @(private = "file")
 Many_Run :: struct {
-	commands: [MANY]ui.Command,
-	disabled: [MANY]bool,
-	names:    [MANY]string,
-	pal:      ui.Command_Palette,
-	opts:     ui.Palette_Options,
-	sheet:    ui.Shortcuts_Sheet,
-	palette, sheet_now: bool,   // open the palette, the sheet, in the next build
+	commands:  [MANY]ui.Command,
+	sheet:     ui.Shortcuts_Sheet,
+	sheet_now: bool,   // open the sheet in the next build
 }
 
 @(private = "file")
 build_many :: proc(f: ^Fx, user: rawptr) {
 	r := (^Many_Run)(user)
-	ui.palette_set(&r.pal, r.commands[:], r.disabled[:], r.opts)
-	if r.palette { r.palette = false; ui.palette_open(&r.pal) }
 	if r.sheet_now { r.sheet_now = false; ui.shortcuts_sheet_open(&r.sheet, r.commands[:]) }
 }
 
@@ -975,11 +759,9 @@ built_with_prefix :: proc(f: ^Fx, prefix: string) -> int {
 	return n
 }
 
-// The palette ranks its commands only when what its list depends on changes: a frame that changes nothing, or changes
-// only what can act, does not rank them; each letter typed ranks them once; a choice noted and a new version of the
-// table do too. Of 2000 lines, only those near the view are built; the sheet lists its commands once.
+// The sheet lists its commands that have a key once, and of 2000 lines builds only those near its view.
 @(test)
-the_palette_ranks_only_when_its_list_changes :: proc(t: ^testing.T) {
+the_sheet_lists_once_and_builds_near_its_view :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
@@ -987,49 +769,9 @@ the_palette_ranks_only_when_its_list_changes :: proc(t: ^testing.T) {
 	defer free(r)
 	for &c, i in r.commands {
 		c = {label = fmt.aprintf("Command %d", i), group = fmt.aprintf("Group %d", i / 100), keys = {{.F2, {}}}}
-		r.names[i] = c.label
 	}
 	defer for c in r.commands { delete(c.label); delete(c.group) }
-	memory: ui.Choice_Memory
-	defer ui.choice_memory_close(&memory)
-	r.opts = {memory = &memory, names = r.names[:]}
-	defer ui.palette_destroy(&r.pal)
 	defer ui.shortcuts_sheet_destroy(&r.sheet)
-
-	r.palette = true
-	for _ in 0 ..< 4 { frame(&f, nil, build_many, r) }
-	testing.expect_value(t, r.pal.rankings, 1)
-	testing.expectf(t, built_with_prefix(&f, "Command ") < 200, "the lines near the view only: %d", built_with_prefix(&f, "Command "))
-	testing.expect(t, find_text(&f, "Command 0") != nil && find_text(&f, "Command 1999") == nil, "the first lines, not the last")
-
-	r.disabled[3] = true
-	frame(&f, nil, build_many, r)
-	testing.expect_value(t, r.pal.rankings, 1)
-
-	for c in "com" { frame(&f, {typed(c)}, build_many, r) }
-	for _ in 0 ..< 3 { frame(&f, nil, build_many, r) }
-	testing.expect_value(t, r.pal.rankings, 4)
-	testing.expect_value(t, len(r.pal.lines), MANY)
-
-	ui.choice_note(&memory, "Command 7")
-	frame(&f, nil, build_many, r)
-	frame(&f, nil, build_many, r)
-	testing.expect_value(t, r.pal.rankings, 5)
-	if len(r.pal.lines) > 0 { testing.expect_value(t, r.pal.lines[0].index, 7) }   // (the choice raised among equal matches)
-	r.opts.version = 1
-	frame(&f, nil, build_many, r)
-	frame(&f, nil, build_many, r)
-	testing.expect_value(t, r.pal.rankings, 6)
-
-	// a jump to the end builds the lines there, and ranks nothing
-	frame(&f, {key(.Up)}, build_many, r)
-	for _ in 0 ..< 3 { frame(&f, nil, build_many, r) }
-	testing.expect_value(t, r.pal.rankings, 6)
-	testing.expect_value(t, built_with_prefix(&f, "Command 1999  ·  Group 19"), 1)   // (the last line, selected, is built)
-
-	// the sheet: its list made once, its lines near the view only
-	frame(&f, {key(.Escape)}, build_many, r)
-	frame(&f, nil, build_many, r)   // (the palette closes in the build after Escape)
 	r.sheet_now = true
 	for _ in 0 ..< 4 { frame(&f, nil, build_many, r) }
 	testing.expect_value(t, r.sheet.listings, 1)

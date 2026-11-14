@@ -1021,15 +1021,15 @@ views_command_run :: proc(vs: ^Views, c: View_Command) {
 	}
 }
 
-// What changes the list of views_commands: a view opened, closed, moved or retitled. The program gives it to palette_set.
+// What changes the list of views_commands: a view opened, closed, moved or retitled. The palette's moves source follows it.
 views_version :: proc(vs: ^Views) -> u64 { return vs.version }
 
-// The views' commands as a program's palette keeps them (a palette holds its table while it is open: temporary memory
-// would go at the frame's end). Made again by views_commands_update only when the views or the language changed.
+// The views' commands kept past the frame (the palette's moves source, a menu of the views). Made again by
+// views_commands_update only when the views or the language changed.
 View_Commands :: struct {
 	commands:  []Command,
 	acts:      []View_Command,
-	serial:    u64,   // changes each time they are made again: a part of the palette's Palette_Options.version
+	serial:    u64,   // changes each time they are made again
 	made:      bool,
 	version:   u64,   // the views' version they were made for
 	language:  u32,
@@ -1037,9 +1037,8 @@ View_Commands :: struct {
 	allocator: runtime.Allocator,
 }
 
-// Makes `vc` again when the views of `vs` changed since (views_version) or the language did; true: they did, the
-// program builds its palette's table again (its own commands first, then these: the palette folds each slot's text once,
-// and the program's slots stay where they were) and calls palette_set. Cost: one pass over the open views, only then.
+// Makes `vc` again when the views of `vs` changed since (views_version) or the language did; true: they did. Cost: one
+// pass over the open views, only then.
 // `owner`: only the views that window owns (a program of several windows keeps one View_Commands per window); nil: all.
 views_commands_update :: proc(vc: ^View_Commands, vs: ^Views, owner: ^State = nil) -> (changed: bool) {
 	views_ready(vs)

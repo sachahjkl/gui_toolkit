@@ -1,8 +1,9 @@
 # Commands: a key that types text, the window's commands
 
 A program names its commands once, in a table of `ui.Command` (`src/ui/commands.odin`). The table gives the keys, the
-menus' and the tooltips' key texts, the palette and the sheet. This file records two rules of that table: what a key that
-types text may do, and where a window command's key works. The API is in [docs/commands.md](../../../docs/commands.md).
+menus' and the tooltips' key texts, the palette's commands source and the sheet. This file records two rules of that
+table: what a key that types text may do, and where a window command's key works. The API is in
+[docs/commands.md](../../../docs/commands.md).
 
 ## The problem
 
@@ -106,8 +107,17 @@ ignore it.
 - **Window commands that stop at every dialog.** The settings of a program are often a view shown as a dialog: the
   palette then could not open from them. A window command opens its own view on top (the palette, the sheet), and a
   question stays below it. A program that must not quit under a question gives `disabled`.
-- **Ready-made window commands in the toolkit (a palette, a sheet, a settings command).** Each program has its own words,
-  keys and icons for them. The scope is one field on the table it already has.
+- **Ready-made window commands in the toolkit for the sheet and the settings.** Each program has its own words, keys
+  and icons for them. The scope is one field on the table it already has.
+
+## The palette's command: the toolkit's
+
+The palette's command is the exception to the last refusal: `ui.PALETTE_COMMAND` (Ctrl+K and Ctrl+Shift+P, scope
+`.Window`) and `palette_toggle`. This file refused it first, for the reason above: each program had its own words and
+keys. The single palette ([palette.md](palette.md)) changes the balance. The palette is the same view in every program,
+so its keys must be the same too: a person who opens the palette in one program with Ctrl+K expects Ctrl+K in the next
+one. Homogeneity comes first. No setting turns Ctrl+K off: a standard shortcut is not disabled. A widget that needs the
+chord (a terminal, a shortcut recorder) claims it with `keys_claim`, as before.
 
 ## Subtle points
 

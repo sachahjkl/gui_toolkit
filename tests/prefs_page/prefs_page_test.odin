@@ -5,7 +5,6 @@
 package prefs_page_test
 
 import "core:fmt"
-import "core:mem/virtual"
 import "core:os"
 import "core:strings"
 import "core:time"
@@ -290,71 +289,115 @@ a_held_slider_previews_its_value :: proc(t: ^testing.T) {
 	testing.expect(t, config.float_of(&app.prefs, "look.zoom") > 1.8, "written at the release")
 }
 
-// The settings as commands of a palette: one per preference shown (not a hidden one), under its page; show puts the one
-// chosen alone on its page.
+@(private = "file")
+Palette_App :: struct {
+	using app: App,
+	pal:       ui.Command_Palette,
+	settings:  prefs_page.Palette_Settings,
+	opened:    int,      // the times the settings source asked the program to show its settings
+	show:      bool,     // open the palette in the next build
+	typed:     string,   // what it opens with
+}
+
+// (the window command first, as a program reads its keys before it builds its page; the toolkit's sources act in
+// palette_chosen)
+@(private = "file")
+palette_app_build :: proc(s: ^session.Session) {
+	app := (^Palette_App)(s.user)
+	if ui.command_pressed(ui.PALETTE_COMMAND) { ui.palette_toggle(&app.pal) }
+	if app.show { app.show = false; ui.palette_open(&app.pal, app.typed) }
+	_, _ = ui.palette_chosen(&app.pal)
+	app_build(s)
+}
+
+@(private = "file")
+palette_app_start :: proc(t: ^testing.T, app: ^Palette_App) -> ^session.Session {
+	app.prefs = config.prefs_make()
+	config.register(&app.prefs, DEFS[:])
+	prefs_page.palette_settings_add(&app.pal, &app.settings, &app.prefs, &app.page, {pages = PAGES[:], user = app, changed = proc(user: rawptr, name: string) {
+		app := (^Palette_App)(user)
+		append(&app.changed, strings.clone(name))
+	}}, proc(user: rawptr) { (^Palette_App)(user).opened += 1 }, app)
+	prefs_page.focus_search(&app.page)
+	return session.start(t, {size = {1200, 700}, build = palette_app_build, user = app})
+}
+
+// The palette's list came: no ranking in flight, no source reading.
+@(private = "file")
+palette_wait :: proc(s: ^session.Session, app: ^Palette_App) {
+	session.wait_until(s, app, proc(s: ^session.Session, app: ^Palette_App) -> bool { return !ui.palette_busy(&app.pal) && ui.palette_row_count(&app.pal) > 0 }, "the palette's list")
+}
+
+// The settings source: one item per preference shown (not a hidden one), under its page; the one chosen is put alone on
+// its page, and the program is asked to show its settings.
 @(test)
 a_setting_from_the_palette :: proc(t: ^testing.T) {
-	app: App
-	defer app_end(&app)
-	s := app_start(t, &app)
-	commands, names := prefs_page.palette_commands(&app.prefs, {pages = PAGES[:]})
-	testing.expect_value(t, len(commands), 6)   // (the seven of DEFS but the hidden one)
-	testing.expect_value(t, len(names), 6)
-	at := -1
-	for n, i in names { if n == "look.style" { at = i } }
-	testing.expect(t, at >= 0, "look.style is there")
-	testing.expect(t, !slice_has(names, "net.window_size"), "not the hidden one")
-	if at >= 0 { testing.expect_value(t, commands[at].group, "Settings · Look") }
-	prefs_page.show(&app.page, &app.prefs, {pages = PAGES[:]}, "look.style")
+	app: Palette_App
+	defer app_end(&app.app)
+	defer ui.palette_destroy(&app.pal)
+	s := palette_app_start(t, &app)
+	testing.expect(t, slice_has(ui.palette_prefixes(&app.pal), ": Settings"), "the prefix of the settings")
+	app.show, app.typed = true, ":"
+	palette_wait(s, &app)
+	testing.expect_value(t, ui.palette_row_count(&app.pal), 6)   // (the seven of DEFS but the hidden one)
+	ids := make([dynamic]string, context.temp_allocator)
+	for i in 0 ..< ui.palette_row_count(&app.pal) { _, id, _ := ui.palette_row(&app.pal, i); append(&ids, id) }
+	testing.expect(t, slice_has(ids[:], "look.style"), "look.style is there")
+	testing.expect(t, !slice_has(ids[:], "net.window_size"), "not the hidden one")
+	testing.expect(t, session.find_text(s, "Settings · Look") != nil, "under its page")
+	session.type_text(s, "style")
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Palette_App) -> bool {
+		_, id, ok := ui.palette_row(&app.pal, 0)
+		return !ui.palette_busy(&app.pal) && ok && id == "look.style"
+	}, "look.style first")
+	session.key(s, .Return)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Palette_App) -> bool { return app.opened == 1 }, "the settings shown")
 	session.frames(s, 2)
 	testing.expect(t, session.find_text(s, "How surfaces are drawn.") != nil, "the one chosen")
 	testing.expect(t, session.find_text(s, "Keep a cache of the responses.") == nil, "alone")
 	testing.expect_value(t, app.page.current, "look")
 }
 
-@(private = "file")
-Palette_App :: struct {
-	using app: App,
-	pal:       ui.Command_Palette,
-	commands:  []ui.Command,
+// A switch from the palette: Enter flips it, the palette stays open, its mark follows, the list is not ranked again.
+@(test)
+a_switch_flips_from_the_palette :: proc(t: ^testing.T) {
+	app: Palette_App
+	defer app_end(&app.app)
+	defer ui.palette_destroy(&app.pal)
+	s := palette_app_start(t, &app)
+	app.show, app.typed = true, ":cache"
+	palette_wait(s, &app)
+	_, id, _ := ui.palette_row(&app.pal, 0)
+	testing.expect_value(t, id, "net.cache")
+	testing.expect(t, app.settings.source.mark(&app.settings.source, "net.cache"), "on: its mark")
+	rankings := app.pal.rankings
+	session.key(s, .Return)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Palette_App) -> bool { return !config.bool_of(&app.prefs, "net.cache") }, "the switch off")
+	session.frames(s, 2)
+	testing.expect(t, ui.palette_is_open(&app.pal), "the palette stays open")
+	testing.expect(t, !app.settings.source.mark(&app.settings.source, "net.cache"), "off: no mark")
+	testing.expect_value(t, app.pal.rankings, rankings)
+	testing.expect(t, slice_has(app.changed[:], "net.cache"), "the program hears of it")
+	testing.expect_value(t, app.opened, 0)
 }
 
-@(private = "file")
-PALETTE_KEY := ui.Command{label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}}, scope = .Window}
-
-// (the window command first, as a program reads its keys before it builds its page)
-@(private = "file")
-palette_app_build :: proc(s: ^session.Session) {
-	app := (^Palette_App)(s.user)
-	if ui.command_pressed(PALETTE_KEY) {
-		ui.palette_set(&app.pal, app.commands, nil, {})
-		ui.palette_open(&app.pal)
-	}
-	app_build(s)
-}
-
-// The settings shown, their search field with the keyboard: the window command's key opens the palette, which lists the
-// settings.
+// The settings shown, their search field with the keyboard: the window command's key opens the palette, which finds
+// the settings.
 @(test)
 the_palette_opens_from_the_settings :: proc(t: ^testing.T) {
 	app: Palette_App
 	defer app_end(&app.app)
 	defer ui.palette_destroy(&app.pal)
-	app.prefs = config.prefs_make()
-	config.register(&app.prefs, DEFS[:])
-	// (the table lives while the palette is open: an arena of the test's, not the frames' temp memory)
-	arena: virtual.Arena
-	defer virtual.arena_destroy(&arena)
-	app.commands, _ = prefs_page.palette_commands(&app.prefs, {pages = PAGES[:]}, virtual.arena_allocator(&arena))
-	prefs_page.focus_search(&app.page)
-	s := session.start(t, {size = {1200, 700}, build = palette_app_build, user = &app})
+	s := palette_app_start(t, &app)
 	session.type_text(s, "cache")
 	testing.expect_value(t, ui.line_edit_string(&app.page.query), "cache")
 	session.key(s, .K, {.Ctrl})
 	session.frames(s, 2)
 	testing.expect(t, ui.palette_is_open(&app.pal), "Ctrl+K opens the palette while the settings' field has the keyboard")
 	testing.expect_value(t, ui.line_edit_string(&app.page.query), "cache")
-	testing.expect(t, session.find_text(s, "Max body") != nil, "the palette lists the settings")
+	session.type_text(s, "max")
+	palette_wait(s, &app)
+	testing.expect(t, session.find_text(s, "Max body") != nil, "the palette finds the settings")
 }
 
 // The search the palette put there is for that visit: closed and opened again, the settings show the page the person

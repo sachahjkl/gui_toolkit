@@ -4,7 +4,7 @@ A program names each of its commands once, in a table of `ui.Command`: its label
 gives the key handling, the shortcut of a menu's line, a tooltip's text, the command palette and the sheet of the keys:
 they cannot disagree.
 
-![The palette: the program's commands under their groups with their keys, then one per preference of its settings (examples/showcase)](screenshots/showcase_palette.webp)
+![The palette with nothing typed: the program's commands under their groups with their keys, the prefixes at its foot (examples/showcase)](screenshots/showcase_palette.webp)
 
 ```odin
 Cmd :: enum u8 { End_Task, Kill, Palette, Shortcuts }
@@ -12,6 +12,7 @@ Cmd :: enum u8 { End_Task, Kill, Palette, Shortcuts }
 COMMANDS := [Cmd]ui.Command{
 	.End_Task  = {label = "End task", group = "Processes", keys = {{.Delete, {}}}},
 	.Kill      = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}},
+	// the keys of ui.PALETTE_COMMAND: the same in every program (its press: ui.palette_toggle)
 	.Palette   = {label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}, scope = .Window},
 	.Shortcuts = {label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}, scope = .Window},
 }
@@ -23,12 +24,11 @@ for c in Cmd { if ui.command_pressed(COMMANDS[c], can(c)) { run(c) } }
 if ui.menu_item(COMMANDS[.Kill].label, ui.command_shortcut(COMMANDS[.Kill]), disabled = !can(.Kill)).clicked { run(.Kill) }
 tip := ui.command_tip(COMMANDS[.Kill])          // "Kill… (Shift+Delete)"
 
-// the palette and the sheet: views (views.md), home Dialog
+// the palette (palette.md) and the sheet: views (views.md), home Dialog
 disabled: [Cmd]bool
 for c in Cmd { disabled[c] = !can(c) }
-ui.palette_set(&app.palette, COMMANDS[:], disabled[:], {})                  // when the table or `disabled` change
-if run_palette { ui.palette_open(&app.palette) }
-if i, _, ok := ui.palette_chosen(&app.palette); ok { run(Cmd(i)) }   // the build after the choice
+ui.palette_commands(&app.palette, COMMANDS[:], disabled[:])                 // the palette's commands source
+if c, ok := ui.palette_chosen(&app.palette); ok && c.command >= 0 { run(Cmd(c.command)) }   // the build after the choice
 if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 ```
 
@@ -46,10 +46,8 @@ if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 | `command_window_typing_keys(commands)` | the window commands' keys that type text, as `command_typing_keys` says them. A program's test expects none |
 | `command_key_types_text(chord)` | whether the chord types text in a field: a letter, a digit, a punctuation mark, Space, Backspace or keypad + and -, with no modifier or with Shift alone. Ctrl or Alt with any key, and F1–F12, Escape, Enter, Tab, Delete, Insert, the arrows, Home, End, Page Up, Page Down, Menu and Print with any modifier: false |
 | `command_typing_keys(commands)` | one line per key of the table that types text, `"<label>: <key>"` (`"Rectangle: R"`, `"Add a step…: Shift+A"`), the key by its `platform.Key` name. A program's unit test compares it with the keys it means (below) |
-| `palette_set(&p, commands, disabled, o)` | what the palette lists: the program's table (valid while the palette is open), `disabled` and `o` copied. Call it when they change |
-| `palette_open(&p)`, `palette_is_open(&p)`, `palette_close(&p)` | the view of the palette (of `ui.views()`, the window being built) (`Command_Palette`, the program's) at the top centre of the window (`PALETTE_TOP` of its height), its field empty; the views remember its size |
-| `palette_chosen(&p) -> (index, mods, ok)` | the command chosen, once, in the build after the choice: its index, and the modifiers of the Enter that chose it (Ctrl, Alt or Shift with Enter chooses too) |
-| `Palette_Options{memory, names, recent_title, first, keys, foot, version}` | what a program adds: `version`, its commands' version (below); what the user chose before (`memory`, a `Choice_Memory`, and each command's key in it, `names`; below), the heaviest choices on top under their heading ("Recent") while nothing is typed and a match raised by its weight while something is; a command first while something is (an alias typed whole); per command the text of its keys as the program shows them (its user's own, a sequence "Ctrl+M, T"); a line under the list |
+| `palette_commands(&p, commands, disabled, o)` | the palette's commands source ([palette.md](palette.md)): the program's table (valid while the palette is open), `disabled` and `Palette_Commands_Options` copied. A command chosen comes back from `palette_chosen` as `Palette_Choice.command`, its index |
+| `PALETTE_COMMAND`, `palette_toggle(&p)`, `palette_keys(&p)` | the toolkit's window command of the palette (Ctrl+K, Ctrl+Shift+P); open or close it; read its keys and toggle |
 | `shortcuts_sheet_open(&sheet, commands, title, version)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key, grouped, its keys at the right; scrolls past `SHEET_HEIGHT` of the window. `commands` stays valid while it is open; `version` as the palette's |
 
 ### A key that types text
@@ -112,30 +110,17 @@ keeps `platform.hotkey_text`'s English, never this text: `hotkey_parse` reads th
 
 ### Nothing in proportion to the commands at a frame
 
-The palette keeps its list (`Command_Palette.lines`, its own memory) and matches and ranks the commands again only
-when what the list depends on changes: the query, the commands, `first`, the memory of choices (`Choice_Memory.version`)
-or the language in use (`i18n.version()`: the labels are translated). The commands are known by `Palette_Options.version`
-and their count: a program bumps `version` when its table changes (labels, groups, tags, icons, `names`). With `version`
-0 the palette knows them by the table's address and its count: a constant table needs nothing, but a table built again
-each frame, or changed in place, must give a version. `disabled` and the keys are read only for the lines built: they
-do not rank anything. A frame that changes nothing builds the lines near the view (a screen each side, and where the view
-is heading), finds them by two searches by halves, and leaves the room of the others to two spacers. The sheet does the
-same: it lists the commands that have a key when they change (`version`, as the palette's: a table rebound in place gives
-one), and builds the lines near its view. `Command_Palette.rankings` and `Shortcuts_Sheet.listings` count the lists made
-(a test reads them).
+The palette ranks on the chores, once per query or per change of a source ([palette.md](palette.md)). The sheet lists
+the commands that have a key when they change (`version`: a table rebound in place gives one), and builds the lines
+near its view (a screen each side, and where the view is heading), found by two searches by halves; the room of the
+others goes to two spacers. `Shortcuts_Sheet.listings` counts the lists made (a test reads it).
 
-The palette is a view shown as a dialog with no header (resizable, in ems: its edges and its corner's grip resize it, `PALETTE_WIDTH_EM` by
-`PALETTE_HEIGHT_EM` at first, never under `PALETTE_MIN_EM`) with a field at its top and the commands under it; a command's
-`icon` (a glyph of the state's `icon_font`) shows before its label. Its list holds a whole number of lines at any size
-(what is left of a line goes under it), so the foot never cuts its last line. Up, Down, Page Up, Page Down move the selection;
-the pointer moving over a line selects it. What is typed keeps the commands whose label
-(or label and group) holds it whole, or in pieces that each begin a word, the words in order (`fuzzy_words`: "prio" finds
-"Raise the priority", "ks" "Keyboard shortcuts"; letters scattered in a word match nothing, so "prio" does not find
-"Previous section"), or, when nothing is found so, each word with a slip or two (`fuzzy_typos`: "Qestart pencode" finds "Restart
-opencode native"; none in a word of three letters, one up to six, two beyond), the best matches first (the text whole before pieces, at a word's start before elsewhere; a match in the label
-before one that needs the group's letters), the headings go and each line says its group, and the first match is selected: Enter runs
-it. A command that cannot act now is greyed and is not chosen. Escape closes the palette,
-and the sheet.
+What is typed in the palette keeps the items whose title (or title and group) holds it whole, or in pieces that each
+begin a word, the words in order (`fuzzy_words`: "prio" finds "Raise the priority", "ks" "Keyboard shortcuts"; letters
+scattered in a word match nothing, so "prio" does not find "Previous section"), or, when nothing is found so, each word
+with a slip or two (`fuzzy_typos`: "Qestart pencode" finds "Restart opencode native"; none in a word of three letters,
+one up to six, two beyond), the best matches first (the text whole before pieces, at a word's start before elsewhere; a
+match in the title before one that needs the group's letters). Escape closes the palette, and the sheet.
 
 ### Keys the user changes
 
@@ -156,7 +141,7 @@ if !settings.palette_ctrl_k { app.commands[.Palette].keys = COMMANDS[.Palette].k
 app.commands[.Kill].keys = app.kill_keys[:]                               // the user's keys, in the program's memory
 app.commands_version += 1                                                 // changed in place: the sheet lists it again
 
-ui.palette_set(&app.palette, app.commands[:], disabled[:], {version = app.commands_version})
+ui.palette_commands(&app.palette, app.commands[:], disabled[:], {version = app.commands_version})
 
 for c in Cmd { if ui.command_pressed(app.commands[c], !can(c)) { run(c) } }
 if show_keys { ui.shortcuts_sheet_open(&app.sheet, app.commands[:], version = app.commands_version) }
@@ -171,18 +156,13 @@ stack).
 ### What the user chose before
 
 `ui.Choice_Memory` remembers each choice that the user makes in a palette or a picker: its count and its last time.
-A choice weighs its count, halved every half-life since it was last made (`CHOICE_HALF_LIFE_DAYS`, 14). The palette lists
-the heaviest choices on top while nothing is typed, and raises a match by its weight while something is. A program names
-each choice with a stable key ("tab.new", "pref:appearance.theme"), passes the memory to the palette and notes each choice:
+A choice weighs its count, halved every half-life since it was last made (`CHOICE_HALF_LIFE_DAYS`, 14). The command
+palette owns one (`palette_memory_open(&p, s, path)`, [palette.md](palette.md)) and notes its choices itself. A picker
+of a program's own names each choice with a stable key ("tab.new", "setting:appearance.theme") and notes it:
 
 ```odin
 ui.choice_memory_open(&app.choices, &app.ui, path)   // read on the chores; "": in memory only
-NAMES := [Cmd]string{.Kill = "process.kill", ...}
-ui.palette_set(&app.palette, COMMANDS[:], disabled[:], {memory = &app.choices, names = NAMES[:]})
-if i, _, ok := ui.palette_chosen(&app.palette); ok {
-	ui.choice_note(&app.choices, NAMES[Cmd(i)])
-	run(Cmd(i))
-}
+ui.choice_note(&app.choices, item.key)               // the person chose it
 ui.choice_memory_close(&app.choices)                 // the program's end: the file is written when it returns
 ```
 
@@ -206,8 +186,9 @@ choices make the same file. A key holds no line break (`choice_note` refuses it)
 A list ranked with `rank` reads the memory in its bonus: `bonus = proc(it: ^Item, user: rawptr) -> f64 { return
 ui.choice_bonus(memory, it.name, query) }`, the memory and the query in `user`.
 
-A program with a palette of its own (commands, sessions and settings in one list) ranks each entry the same way:
-`ui.palette_match(query, label, group, tags)` gives its score and what lights in its label.
+A list of a program's own (a picker) ranks each entry as the palette does: `ui.palette_match(query, label, group,
+tags)` gives its score and what lights in its label. Its commands, sessions and settings go in the toolkit's palette,
+as its sources ([palette.md](palette.md)), not in a palette of its own.
 
 ### A ranked list
 
@@ -256,11 +237,11 @@ ui.fuzzy_cache_keep(&app.search, 3 * len(items))
 The fold of a text goes 16 bytes at a time over its ASCII runs (`ascii.lower_run`) and a rune at a time past them, with
 the same bytes as `unicode.to_lower`.
 
-A program's settings go in its palette too: `prefs_page.palette_commands` and `prefs_page.show` (docs/prefs_page.md).
+A program's settings go in its palette too: the settings source, `prefs_page.palette_settings_add` ([palette.md](palette.md)).
 
 A key held, not pressed: `ui.key_held(key)` is true from its press in the window to its release, by the key's own
 events (not by the modifiers' state, which a compositor may leave stale after one of its own shortcuts). A key pressed
 before the window had the keyboard is not held, and none is once the user left the window. Ctrl, Shift and Alt are keys
 there: a monitor stops its refresh while Ctrl is held alone.
 
-`tests/commands` tests the texts, the keys (any number of them, the table in effect), the keys held, the palette (and that it ranks only when its list changes, building the lines near its view), the sheet and the memory of choices (`choices_test.odin`: weights, the recent ones, the bonus, the file read and written).
+`tests/commands` tests the texts, the keys (any number of them, the table in effect), the keys held, the palette (`palette_test.odin`), the sheet (its list made once, the lines near its view) and the memory of choices (`choices_test.odin`: weights, the recent ones, the bonus, the file read and written).

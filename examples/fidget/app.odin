@@ -179,12 +179,11 @@ App :: struct {
 	accent_override: bool,
 	hue, sat, val: f32,
 
-	// overlays: views of the window's Views, shown as dialogs (shell.odin: PALETTE_VIEW, CONFIRM_VIEW, ABOUT_VIEW, SETTINGS_VIEW)
-	palette_field: ui.Line_Edit,
-	palette_sel, palette_scroll: int,
-	palette_focus: bool,
-	palette_mouse: [2]f32,
-	palette_frames: int,
+	// overlays: views of the window's Views, shown as dialogs (shell.odin: the toolkit's palette, CONFIRM_VIEW, ABOUT_VIEW,
+	// SETTINGS_VIEW)
+	palette:          ui.Command_Palette,
+	palette_commands: [Command]ui.Command,   // command_info as the palette's commands source reads it (palette_toggle)
+	palette_keys:     [Command]string,       // each one's keys, as fidget shows them
 	corner_smoothing: f32,   // 0 circular, 1 squircle
 	window_square: bool,
 	translucent, backdrop_ok: bool,   // current palette shows the OS backdrop (and the OS accepted it)     // last value sent to the OS (window corners follow rounding = 0)
@@ -258,8 +257,6 @@ App :: struct {
 }
 
 Saved_Settings :: struct { palette, anim, status, toast_pos: i32, zoom, rounding, smoothing, density: f32, blending: i32 }
-
-Palette_Entry :: struct { cmd: Command, ranges: []ui.Fuzzy_Range }
 
 // xorshift: deterministic enough for a demo, no allocation
 rng_state: u64 = 0x9e3779b97f4a7c15

@@ -278,7 +278,7 @@ first_shown_build :: proc(s: ^session.Session) {
 		ui.confirm_open("ask", {title = FS_LONG_TITLE, note = "They do not go to the trash.", lines = lines, act = "Delete"})
 	case .Prompt:  ui.prompt_open("pin", &r.field, {title = FS_LONG_TITLE, note = "Type the PIN of the key."})
 	case .Palette:
-		ui.palette_set(&r.pal, FS_COMMANDS[:], nil, {})
+		ui.palette_commands(&r.pal, FS_COMMANDS[:], nil)
 		ui.palette_open(&r.pal)
 	case .Sheet:   ui.shortcuts_sheet_open(&r.sheet, FS_COMMANDS[:])
 	}

@@ -2,20 +2,17 @@ package ui
 
 // What the user chose in a palette or a picker, and when: each choice's count and last time, kept in a file. A choice
 // weighs its count, halved every half-life since it was last made (frecency): what is chosen often and lately comes
-// first. The palette reads it (Palette_Options.memory) for its "Recent" group and to raise a match; a list ranked with
-// `rank` reads it in its bonus (choice_bonus). The program names each choice with a stable key ("tab.new",
-// "pref:appearance.theme") and says when one is made (choice_note).
+// first. The command palette owns one (Command_Palette.memory, palette_memory_open) for its "Recent" group and to raise a
+// match, its keys "<source>:<id>"; a list ranked with `rank` reads one in its bonus (choice_bonus). The program names
+// each choice with a stable key ("tab.new", "setting:appearance.theme") and says when one is made (choice_note).
 //
 // The interface's thread never touches the file: the memory is read by a task (ui.task) after choice_memory_open, and
 // written by a store.Writer (its own thread, atomic, once the changes rest).
 //
 //   ui.choice_memory_open(&app.choices, &app.ui, path)
-//   ui.palette_set(&app.palette, COMMANDS[:], disabled[:], {memory = &app.choices, names = NAMES[:]})
-//   if i, _, ok := ui.palette_chosen(&app.palette); ok {
-//       ui.choice_note(&app.choices, NAMES[i])
-//       run(Cmd(i))
-//   }
-//   ui.choice_memory_close(&app.choices)   // the program's end: the file is written when it returns
+//   hits := ui.rank(query, items, entry, &app, bonus = proc(it: ^Item, user: rawptr) -> f64 { ... ui.choice_bonus(...) })
+//   ui.choice_note(&app.choices, items[hit.index].key)   // the person chose it
+//   ui.choice_memory_close(&app.choices)                 // the program's end: the file is written when it returns
 
 import "base:runtime"
 import "core:fmt"

@@ -147,9 +147,9 @@ fidget_zoom_keys_and_settings :: proc(t: ^testing.T) {
 fidget_overlays_by_the_keyboard :: proc(t: ^testing.T) {
 	s, app := start_fidget(t, INPUTS_ARGS)
 	session.key(s, .K, {.Ctrl})
-	testing.expect(t, fidget.dialog_is_open(app, fidget.PALETTE_VIEW))
+	testing.expect(t, fidget.palette_is_open(app))
 	session.key(s, .Escape)
-	wait_closed(s, app, fidget.PALETTE_VIEW)
+	wait_palette_closed(s, app)
 	session.key(s, .Comma, {.Ctrl})
 	testing.expect(t, fidget.dialog_is_open(app, fidget.SETTINGS_VIEW))
 	session.key(s, .Tab)
@@ -170,6 +170,12 @@ fidget_overlays_by_the_keyboard :: proc(t: ^testing.T) {
 wait_closed :: proc(s: ^session.Session, app: ^fidget.App, id: string) {
 	Closing :: struct { app: ^fidget.App, id: string }
 	session.wait_until(s, Closing{app, id}, proc(s: ^session.Session, c: Closing) -> bool { return !fidget.dialog_is_open(c.app, c.id) }, "the dialog to close")
+}
+
+// The palette closes in a build after what closed it; Enter waits for the ranking of its query, on the chores.
+@(private = "file")
+wait_palette_closed :: proc(s: ^session.Session, app: ^fidget.App) {
+	session.wait_until(s, app, proc(s: ^session.Session, app: ^fidget.App) -> bool { return !fidget.palette_is_open(app) }, "the palette to close")
 }
 
 // The Files card: each mode asks a file dialog and says its answer. The test hook answers for the computer's files:
@@ -271,11 +277,11 @@ fidget_tooltip_menu_and_wheel :: proc(t: ^testing.T) {
 fidget_palette_and_about :: proc(t: ^testing.T) {
 	s, app := start_fidget(t, CONTROLS_ARGS)
 	session.click(s, "bar_palette")
-	testing.expect(t, fidget.dialog_is_open(app, fidget.PALETTE_VIEW))
+	testing.expect(t, fidget.palette_is_open(app))
 	session.type_text(s, "machined")
 	session.key(s, .Return)
-	testing.expect(t, !fidget.dialog_is_open(app, fidget.PALETTE_VIEW), "Enter runs the command and closes the palette")
-	testing.expect(t, app.machined, "the machined finish is on")
+	wait_palette_closed(s, app)   // (Enter runs the command and closes the palette)
+	session.wait_until(s, app, proc(s: ^session.Session, app: ^fidget.App) -> bool { return app.machined }, "the machined finish on")
 	session.key(s, .F1)
 	testing.expect(t, fidget.dialog_is_open(app, fidget.ABOUT_VIEW))
 	session.key(s, .Escape)
