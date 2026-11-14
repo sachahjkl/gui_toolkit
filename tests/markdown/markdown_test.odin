@@ -109,6 +109,7 @@ Run :: struct {
 	codes:   int,
 	keyword: ui.Color,        // the theme's colour of a keyword
 	hook:    bool,            // the code goes to the callback
+	round:   bool,            // in a style that rounds its boxes (a theme's)
 }
 
 @(private = "file")
@@ -131,8 +132,16 @@ start :: proc(t: ^testing.T, r: ^Run, text: string) -> ^session.Session {
 				r.codes += 1
 			}
 		}
-		ui.next({width = ui.px(600), height = ui.children_sum(), axis = .Y})
-		if ui.column(id = "###col") { markdown.view(&r.doc, "md", string(r.text[:]), cfg) }
+		shown :: proc(r: ^Run, cfg: markdown.View_Options) {
+			cfg := cfg
+			ui.next({width = ui.px(600), height = ui.children_sum(), axis = .Y})
+			if ui.column(id = "###col") { markdown.view(&r.doc, "md", string(r.text[:]), cfg) }
+		}
+		if r.round {
+			if ui.style({radius = 8}) { shown(r, cfg) }
+		} else {
+			shown(r, cfg)
+		}
 	}})
 }
 
@@ -168,7 +177,7 @@ a_document_is_read_once_across_frames :: proc(t: ^testing.T) {
 // row reaching a corner takes the frame's curve. Its rows stood off the frame's sides, rounded: a curve inside the curve.
 @(test)
 a_tables_stripes_run_from_side_to_side :: proc(t: ^testing.T) {
-	r: Run
+	r := Run{round = true}   // (a theme that rounds its boxes: a row left without a radius took the style's)
 	defer finish(&r)
 	s := start(t, &r, "| Name | Size |\n|------|-----:|\n| one | 1 |\n| two | 22 |\n| three | 333 |\n")
 	session.frames(s, 3)

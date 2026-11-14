@@ -202,7 +202,8 @@ table_block :: proc(id: string, d: ^Doc, n: int, o: ^View_Options, c: Colors, fs
 		ui.next({width = overflow ? ui.px(total, 1) : ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###rows") {
 			for ri in 0 ..< t.rows {
-				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, bg = ri > 0 && ri % 2 == 0 ? stripe : {}})
+				// (radius 0 said, not left out: left out, the row takes the style's, rounded in a theme that rounds its boxes)
+				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, bg = ri > 0 && ri % 2 == 0 ? stripe : {}, radius = 0})
 				if ui.row(flags = {.Draw_Background}, id = fmt.tprintf("###tr%d", ri)) {
 					for ci in 0 ..< t.cols {
 						text := t.texts[ri * t.cols + ci]
