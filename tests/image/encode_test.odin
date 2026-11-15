@@ -3,6 +3,8 @@ package image_test
 // The encoders: a JPEG that a decoder reads back close to the picture, and a WebP file where libwebp is there, which
 // webp_decode reads back.
 
+@(require) import "core:os"   // (Windows: the DLL beside the program)
+@(require) import "core:path/filepath"
 import "core:testing"
 import core_image "core:image"
 import "core:image/jpeg"
@@ -39,6 +41,16 @@ a_jpeg_reads_back_close_to_the_picture :: proc(t: ^testing.T) {
 	// a lower quality, a smaller file
 	testing.expect(t, len(image.jpeg_encode(img, 30, context.temp_allocator)) < len(file))
 	testing.expect(t, image.jpeg_encode({}, 90, context.temp_allocator) == nil, "no pixel, no file")
+}
+
+// Windows: with the toolkit's gt_webp.dll beside the program (tools/run_tests puts it beside the tests), WebP is there:
+// the tests below then read and write it, never skip it unseen.
+@(test)
+the_toolkits_libwebp_is_found_beside_the_program :: proc(t: ^testing.T) {
+	when ODIN_OS == .Windows {
+		beside, _ := filepath.join({filepath.dir(os.args[0]), "gt_webp.dll"}, context.temp_allocator)
+		if os.exists(beside) { testing.expectf(t, image.webp_available(), "%s is there: WebP is available", beside) }
+	}
 }
 
 @(test)

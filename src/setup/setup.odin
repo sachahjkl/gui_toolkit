@@ -173,7 +173,7 @@ install :: proc(o: Setup_Options, desktop_shortcut: bool, choices: []bool = nil,
 	exe_name := desktop.exe_name_of(integration.identity)
 	plan := desktop.Install_Plan{
 		identity = integration.identity, src_exe = process.executable_path(), dir = integration.install_dir, exe_name = exe_name,
-		version = o.version, channel = "release", adapt = true,
+		version = o.version, channel = "release", adapt = true, payload = desktop.TOOLKIT_FILES,
 	}
 	if r := desktop.files_install(plan); r.error != .None { return false, failure(r) }
 	integration.exe = join({integration.install_dir, exe_name})
@@ -194,7 +194,7 @@ updated :: proc(o: Setup_Options, version: string, exe := "") -> (ok: bool, why:
 	exe_name := desktop.exe_name_of(integration.identity)
 	plan := desktop.Install_Plan{
 		identity = integration.identity, src_exe = running, dir = integration.install_dir, exe_name = exe_name,
-		version = version, channel = "release", adapt = true,
+		version = version, channel = "release", adapt = true, payload = desktop.TOOLKIT_FILES,
 	}
 	if r := desktop.files_install(plan); r.error != .None { return false, failure(r) }
 	integration.exe = running

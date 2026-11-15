@@ -38,5 +38,10 @@ drops its Rust `image` crate for it (ROADMAP, "One image decoder").
   the table stops growing until a clear code, as the encoder expects (`src/gif/lzw.odin`).
 - The decoder stops reading as soon as its frame is full: the end code, the terminator and the trailer are not needed.
   A file cut after its last pixel's code reads.
-- WebP needs libwebp at run time. A system without it decodes no WebP; the Rust crate decoded WebP itself. The gap is
-  known: a pure Odin WebP decoder is the next format if a program needs WebP where libwebp is not installed.
+- WebP needs libwebp at run time. Linux has it from the system (Nix, Debian's libwebp7). Windows has the toolkit's
+  own: `native/webp` builds libwebp's and sharpyuv's C sources with MSVC (libwebp-sys, pinned by Cargo.lock) into
+  `gt_webp.dll`, which a program ships beside it (`tools/tk build_webp`). Its calls are `gt_webp_*`, never libwebp's
+  names: another libwebp loaded in the process is never taken for it. Refused: Google's prebuilt archive (its static
+  `libwebp.lib` calls `SharpYuv*`, and `libsharpyuv.lib` is not in it), a static link (programs on Windows do not build
+  the toolkit's Rust libraries, and a missing DLL leaves a program that starts, without WebP, rather than one that
+  does not link), and a pure Odin WebP codec (libwebp's lossy encoder is the work of years).

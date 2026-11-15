@@ -20,9 +20,11 @@ package tk_release
 
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import changelog "../changelog"
+import desktop "../desktop"
 import toolbox "../toolbox"
 import update "../update"
 import "../fsx"
@@ -130,6 +132,11 @@ package_ :: proc(o: Release_Options, args: []string) -> int {
 	}
 	for f in o.files {
 		if !copy_file(o.name, f[0], fmt.tprintf("%s/%s", stage, f[1])) { return 1 }
+	}
+	// (the toolkit's files the build put beside the program, Windows' libwebp: the setup installs them with it)
+	for f in desktop.TOOLKIT_FILES {
+		beside := fmt.tprintf("%s/%s", filepath.dir(o.program), f)
+		if os.exists(beside) && !copy_file(o.name, beside, fmt.tprintf("%s/%s", stage, f)) { return 1 }
 	}
 	when ODIN_OS == .Windows {
 		// (tar.exe of Windows 10 and later: -a picks the zip format by the name)

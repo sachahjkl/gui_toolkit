@@ -47,6 +47,11 @@ install_info_destroy :: proc(i: ^Install_Info, allocator := context.allocator) {
 }
 
 // What is copied, from where, and where to.
+// The toolkit's files a program may have beside it, every program the same: Windows' libwebp (gt:image loads it
+// there). The setup copies those that are there with the program, a release's package ships those its build put there
+// (toolbox Feature.Webp). An update replaces the program alone: these keep their names and their calls.
+TOOLKIT_FILES :: []string{"gt_webp.dll"}
+
 Install_Plan :: struct {
 	identity: Identity,   // the manifest's name and header, NixOS's runtime
 	src_exe:  string,     // the program to install (absolute): the running executable

@@ -240,6 +240,8 @@ MAX_JOBS :: 12
 // With the WebGPU backend on WARP, one device at a time: d3d10warp.dll crashes now and then with several at once.
 WGPU_JOBS :: 1
 BUILD_DIR :: "build/tests"
+// The toolkit's libwebp for Windows (tools/tk build_webp), copied beside the tests.
+WEBP_DLL :: "build/webp/gt_webp.dll"
 
 // The toolkit's packages as the collection gt, as a program has them: a test imports "gt:ui", not a path out of its
 // folder, so the tests could live in a repository of their own.
@@ -308,6 +310,11 @@ main :: proc() {
 	}
 	_ = os.make_directory_all(BUILD_DIR)
 	_ = os.make_directory_all(LOG_DIR)
+	// (Windows: the toolkit's libwebp beside the tests, as a program ships it: tests/image reads and writes WebP there.
+	// tools/tk build_webp makes it; without it, WebP is not available and those tests say so)
+	when ODIN_OS == .Windows {
+		if os.exists(WEBP_DLL) { _ = os.copy_file(BUILD_DIR + "/gt_webp.dll", WEBP_DLL) }
+	}
 	pool := Pool{steps = chosen, results = make([]Result, len(chosen)), o = &o}
 	jobs := o.jobs > 0 ? o.jobs : (o.backend == "wgpu" ? WGPU_JOBS : clamp(os.get_processor_core_count() * 3 / 4, 1, MAX_JOBS))
 	began := time.tick_now()

@@ -2,7 +2,7 @@ package tk_image
 
 // A WebP file of a picture and back, by libwebp's simple API (WebPEncodeRGBA, WebPEncodeLosslessRGBA, WebPDecodeRGBA), loaded when first asked
 // (webp_<system>.odin): a program starts on a system without it, and says WebP is not available there. Nix: libwebp;
-// Debian: libwebp7; Windows: libwebp.dll beside the program.
+// Debian: libwebp7; Windows: the toolkit's gt_webp.dll beside the program (tools/tk build_webp).
 
 import "core:sync"
 
