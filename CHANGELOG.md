@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.283.0] - 2026-11-15 22:32
+
+### Added
+- **A picture held as text, decoded off the interface**: `pictures.get` takes a `prepare` that makes the picture file from what the program holds (base64, a data URL) on the chores, before the decode, so the interface never spends the time.
+
 ## [0.282.0] - 2026-11-15 20:59
 
 ### Added
@@ -3920,6 +3925,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.283.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.283.0
 [0.282.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.282.0
 [0.281.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.281.0
 [0.280.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.2
