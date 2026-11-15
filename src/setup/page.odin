@@ -44,6 +44,7 @@ page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 				}
 			}
 		}
+		by_line(o, d.vendor_mark, em, "###setup_page_by")
 		if d.known {
 			words, tone := state_words(f^, o)
 			if ui.tags(tone == "accent" ? "" : tone) {

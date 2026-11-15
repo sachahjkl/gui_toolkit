@@ -1337,6 +1337,9 @@ fr installé
 en This copy: v%s → %s
 fr Cette copie : v%s → %s
 
+en By
+fr Par
+
 en Install location
 fr Emplacement de l'installation
 

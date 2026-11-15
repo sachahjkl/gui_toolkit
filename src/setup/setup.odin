@@ -28,6 +28,7 @@ Setup_Options :: struct {
 	install_folder: string,          // the install folder's name beside the default ("": the desktop package's default)
 	icons:          []desktop.Icon,  // Linux: the icons of the menu entry (Windows uses the executable's own)
 	note:           string,          // a line under the version in the dialog ("": none)
+	vendor_url:     string,          // the vendor's site: its name in the "By" line opens it ("": the name alone)
 	// The program's own options of an install, shown as boxes in the dialog (the PATH, a browser's registration...): their
 	// first values. What the user ticks is given to `prepare`, in this order.
 	choices:        []Choice,
