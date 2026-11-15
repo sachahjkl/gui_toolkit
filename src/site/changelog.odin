@@ -896,7 +896,9 @@ build_changelog :: proc(site, out: string, o: Changelog_Options) -> bool {
 	pages := make([dynamic]Page, context.temp_allocator)
 	append(&pages, ..made)
 	// (the shop's pages are pages of the site like the others: build_meta then gives them their canonical address)
-	if shop, sells := o.meta.shop.?; sells { append(&pages, ..licence_pages(shop)) }
+	if shop, sells := o.meta.shop.?; sells {
+		for p in licence_pages(shop) { append(&pages, shop_dressed(p, made[0].text)) }
+	}
 	if !copy_site(site, out) { return false }
 	for page in pages {
 		// (every page is a folder of its own: classic/features/index.html)
