@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.281.0] - 2026-11-15 20:53
+
+### Added
+- **A JSON value as a person reads it**: `json.display` shows a value without quotes, a number as written, a boolean and null in the program's own words, and a structure as indented JSON, so a program no longer keeps its own.
+
+### Changed
+- **One row of a label and its value**: `ui.stat_row` takes its options (`Stat_Row_Options`): its width (its parent's by default), a column of labels with the values after them for a list of properties, a value's colour, selectable text, its height and its insets. A program no longer keeps its own key and value row. `stat_row(id, label, value, width)` becomes `stat_row(id, label, value, {width = px(width)})`.
+
 ## [0.280.2] - 2026-11-15 20:43
 
 ### Added
@@ -3890,6 +3898,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.281.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.281.0
 [0.280.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.2
 [0.280.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.1
 [0.280.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.0
