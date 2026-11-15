@@ -869,3 +869,81 @@ table_scene :: proc(t: ^testing.T, half: bool) {
 	expect_opaque(t, s, "the pointer gone")
 	expect_exact(t, s, "a table with code in its cells")
 }
+
+// A program's window as atelier builds it: everything in ui.views_frame, a page box, a list of framed panels (boxes
+// tagged "input", each a check box and words), in the machined finish with its glow; then a dialog over them, and the
+// dialog closed. No pixel is left less than opaque at any step, in both frame formats.
+@(private = "file") PANELS_WINDOW :: [2]int{640, 480}
+@(private = "file") PANEL_ROWS :: 8
+
+@(private = "file")
+Panels_Run :: struct {
+	views:  ui.Views,
+	body:   Under_Body,
+	want:   bool,
+	ticked: [PANEL_ROWS]bool,
+}
+
+@(private = "file")
+panels_build :: proc(s: ^session.Session) {
+	u := (^Panels_Run)(s.user)
+	if u.want {
+		ui.view_open(&u.views, "files", &u.body)
+		u.want = false
+	}
+	if ui.views_frame(&u.views) {
+		ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+		page := ui.build_box({.Draw_Background}, "###page")
+		if ui.parent(page) {
+			ui.next({width = ui.fill(), height = ui.fill()})
+			if ui.scroll_y("###panels") {
+				for i in 0 ..< PANEL_ROWS {
+					ui.spacer(ui.px(6))
+					ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center, radius = 6})
+					box: ^ui.Box
+					if ui.tags("input") { box = ui.build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###panel%d", i)) }
+					if ui.parent(box) {
+						ui.next({width = ui.px(28), height = ui.px(28)})
+						ui.checkbox("###box", "", &u.ticked[i])
+						ui.next({width = ui.fill(), height = ui.px(44)})
+						ui.label(fmt.tprintf("Program %d###name", i))
+					}
+				}
+			}
+		}
+	}
+}
+
+@(test)
+framed_panels_and_a_dialog_over_them_stay_opaque :: proc(t: ^testing.T) { for half in FORMATS { panels_scene(t, half) } }
+
+@(private = "file")
+panels_scene :: proc(t: ^testing.T, half: bool) {
+	u: Panels_Run
+	defer ui.views_destroy(&u.views)
+	ui.view_register(&u.views, "files", under_view, ui.View_Options{title = "Files"})
+	pal := ui.palette_of("Midnight")
+	pal.finish = .Machined
+	s := session.start(t, {size = PANELS_WINDOW, build = panels_build, user = &u, palette = pal, half_float = half})
+	s.state.theme.glow = 1
+	ui.set_partial_redraw(s.state, true)
+	draw.set_damage_verify(session.draw_context(s), true)
+	settle(s)
+	expect_opaque(t, s, "the panels")
+	for i in 0 ..< 3 {
+		session.move(s, session.center(session.get(s, fmt.tprintf("panel%d", i))))
+		settle(s, 20)
+		expect_opaque(t, s, fmt.tprintf("the pointer over panel %d", i))
+	}
+	u.want = true
+	session.wait_until(s, "modal_view_files", proc(s: ^session.Session, panel: string) -> bool {
+		b := session.find(s, panel)
+		return b != nil && b.transparency <= 0
+	}, "the dialog to show")
+	settle(s)
+	expect_opaque(t, s, "the dialog over the panels")
+	session.key(s, .Escape)
+	settle(s)
+	expect_opaque(t, s, "the dialog closed")
+	expect_exact(t, s, "framed panels and a dialog over them")
+}

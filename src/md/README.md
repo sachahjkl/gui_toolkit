@@ -63,4 +63,5 @@ and its memory, the views, the texts in the user's language.
 - [features/toolbar.md](features/toolbar.md): the tool bar: one bar that wraps or folds into an organised menu, why the menu shows rows and not the bar's controls
 - [features/widget-table.md](features/widget-table.md): the widgets × their behaviours (wheel, keys, Tab, screen reader, menu, disabled, tooltip, Shift step, typed value, reset); its gaps and its decisions
 - [infrastructure/frame-formats.md](infrastructure/frame-formats.md): a frame in 8 bits or in half floats: why a translucent window's is in half floats, why every shader output is clamped to [0, 1], how the tests and the verify see both formats
+- [infrastructure/window-alpha.md](infrastructure/window-alpha.md): an opaque frame is presented with its alpha ignored (the clear decides), and how a window's swap chain or surface changes mode when its theme turns translucent
 - [features/views.md](features/views.md): views: every dialog and movable pane as one content in four presentations (dialog, floating window, window of the system, docked panel), the state machine, what is remembered, the chrome rules, the migration of the programs

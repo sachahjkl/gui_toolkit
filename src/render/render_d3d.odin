@@ -79,20 +79,7 @@ create_swapchain :: proc(r: ^Renderer, sized_by_surface := false) -> bool {
 		}
 	}
 	factory->MakeWindowAssociation(hwnd, {.NO_ALT_ENTER})
-	when LOW_LATENCY {
-		sc2: ^dxgi.ISwapChain2
-		if win.SUCCEEDED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) {
-			sc2->SetMaximumFrameLatency(1)
-			r.latency_handle = sc2->GetFrameLatencyWaitableObject()
-			sc2->Release()
-			// One of the object's counts is taken for good (latency_drain, as soon as the object has it to give): with it,
-			// a wait returns while the last frame still waits for its refresh, the next one queues behind it and the
-			// screen shows input a frame later. Without it, a frame starts when the last one is on screen. Measured in
-			// opencode native (RENDER_PROBE, a fast hand over a list, six runs each): 48 ms from input to screen with
-			// the count, 30 without. The price: a frame that takes longer than a refresh waits for the next one.
-			if r.latency_handle != nil { r.present.latency_debt = 1 }
-		}
-	}
+	swapchain_latency(r, 1)
 	create_target(r)
 	r.source_size = r.buffer_size
 	// a chain made again (recover, surface_refresh) keeps what set_fixed_surface asked: the size of the buffers, and what is shown of them
@@ -105,6 +92,76 @@ create_swapchain :: proc(r: ^Renderer, sized_by_surface := false) -> bool {
 		}
 	}
 	return true
+}
+
+// The waitable object of a new swap chain (LOW_LATENCY), `frames` queued at most.
+@(private)
+swapchain_latency :: proc(r: ^Renderer, frames: int) {
+	when LOW_LATENCY {
+		sc2: ^dxgi.ISwapChain2
+		if win.SUCCEEDED(r.swapchain->QueryInterface(dxgi.ISwapChain2_UUID, (^rawptr)(&sc2))) {
+			sc2->SetMaximumFrameLatency(u32(clamp(frames, 1, FRAME_LATENCY_MAX)))
+			r.present.max_latency = clamp(frames, 1, FRAME_LATENCY_MAX)
+			r.latency_handle = sc2->GetFrameLatencyWaitableObject()
+			sc2->Release()
+			// One of the object's counts is taken for good (latency_drain, as soon as the object has it to give): with it,
+			// a wait returns while the last frame still waits for its refresh, the next one queues behind it and the
+			// screen shows input a frame later. Without it, a frame starts when the last one is on screen. Measured in
+			// opencode native (RENDER_PROBE, a fast hand over a list, six runs each): 48 ms from input to screen with
+			// the count, 30 without. The price: a frame that takes longer than a refresh waits for the next one.
+			if r.latency_handle != nil { r.present.latency_debt = 1 }
+		}
+	}
+}
+
+// A translucent window's frames went opaque or translucent (frame_begin's clear): its composition swap chain is made again
+// with the alpha mode that follows (window_alpha.odin). A chain's alpha mode is fixed when it is made, and ResizeBuffers
+// keeps it. The new chain has the old one's buffers (their size: the monitor's for a fixed surface, the format of the
+// blend space) and is drawn into from this frame on; the visual shows the old one until the new one is presented
+// (composition_show, at frame_end): DirectComposition swaps them at one commit, and no frame without content is shown.
+// The kept target of partial redraw is not the chain's: it stays, and the next frame copies it whole as usual. Refused:
+// the old mode stays, and is not asked again until the frames change again.
+@(private)
+composition_remake :: proc(r: ^Renderer, opaque: bool) {
+	r.opaque_frames = opaque
+	if r.swapchain == nil || r.dcomp_visual == nil { return }
+	desc: dxgi.SWAP_CHAIN_DESC1
+	if hr_failed(r.swapchain->GetDesc1(&desc)) { return }
+	desc.AlphaMode = composition_alpha_mode(opaque)
+	factory: ^dxgi.IFactory2
+	if hr_failed(r.swapchain->GetParent(dxgi.IFactory2_UUID, (^rawptr)(&factory))) || factory == nil { return }
+	defer factory->Release()
+	fresh: ^dxgi.ISwapChain1
+	if fault_hit(.Composition) || hr_failed(factory->CreateSwapChainForComposition(r.device, &desc, nil, &fresh)) || fresh == nil {
+		fmt.eprintln("render: a swap chain with the alpha mode of the frames was refused: the window keeps", opaque ? "its alpha" : "its alpha ignored")
+		return
+	}
+	r.ctx->OMSetRenderTargets(0, nil, nil)
+	if r.rtv != nil { r.rtv->Release(); r.rtv = nil }
+	if r.frame_tex != nil { r.frame_tex->Release(); r.frame_tex = nil }
+	// (a chain made and never shown, the mode changed back before a present: the one on screen stays the one retired)
+	if r.swap_retired == nil { r.swap_retired = r.swapchain } else { r.swapchain->Release() }
+	r.swapchain = fresh
+	set_composition_color_space(r)
+	frames := r.present.max_latency
+	if r.latency_handle != nil { win.CloseHandle(r.latency_handle); r.latency_handle = nil }
+	present_reset(r)
+	swapchain_latency(r, frames)
+	create_target(r)
+	r.source_size = r.buffer_size
+	if !r.fixed_surface && r.size != r.buffer_size && !set_source_size(r, r.size) { resize_buffers(r, r.size) }
+}
+
+// The chain made by composition_remake was presented: the visual shows it from the same commit, and the old one goes.
+@(private)
+composition_show :: proc(r: ^Renderer) {
+	if r.swap_retired == nil { return }
+	if r.dcomp_visual != nil && r.dcomp != nil {
+		r.dcomp_visual->SetContent((^win.IUnknown)(r.swapchain))
+		r.dcomp->Commit()
+	}
+	r.swap_retired->Release()
+	r.swap_retired = nil
 }
 
 // How long a renderer that ends waits for the GPU to finish what it was given (a frame submitted, not read back).
@@ -431,7 +488,7 @@ init_composition :: proc(r: ^Renderer, factory: ^dxgi.IFactory2, dxgi_device: ^d
 	desc := base
 	desc.Width, desc.Height = u32(max(size.x, 1)), u32(max(size.y, 1))
 	desc.Scaling = .STRETCH
-	desc.AlphaMode = .PREMULTIPLIED
+	desc.AlphaMode = composition_alpha_mode(r.opaque_frames)   // (the last frames' mode: a chain made again keeps it)
 	// Linear: scRGB (linear fp16), composed by DWM in linear light like our blending. Srgb: 8-bit, which DWM takes as
 	// premultiplied sRGB values, our output in that space (a linear output there would look washed out).
 	desc.Format = composition_format(r.space)
@@ -734,6 +791,8 @@ d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) ->
 // Clears the frame to `clear`: linear, premultiplied (the same thing for an opaque color), whatever the blend space.
 d3d_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	if r.lost && !recover(r) { return }
+	// (before anything is drawn: this frame goes into the chain of its own alpha mode)
+	if r.transparent && frame_opaque(clear) != r.opaque_frames { composition_remake(r, frame_opaque(clear)) }
 	c := clear
 	if r.space == .Srgb && c.a > 0 {
 		for k in 0 ..< 3 { c[k] = linear_to_srgb(c[k] / c.a) * c.a }
@@ -827,14 +886,19 @@ d3d_frame_end :: proc(r: ^Renderer, vsync := true) {
 		if is_device_loss(r.device->GetDeviceRemovedReason()) { r.lost = true }
 		return
 	}
-	if r.damage.skip_present {   // a region of nothing: the window keeps what it shows, and the slot waited for stays free
+	// a region of nothing: the window keeps what it shows, and the slot waited for stays free. (Not a chain just made: it has
+	// to be presented before the visual shows it; the kept target was copied whole into it.)
+	if r.damage.skip_present && r.swap_retired == nil {
 		r.present.slot_unused = true
 		if is_device_loss(r.device->GetDeviceRemovedReason()) { r.lost = true }
 		return
 	}
-	if hr := present_frame(r, vsync); is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
+	hr := present_frame(r, vsync)
+	if is_device_loss(hr) || is_device_loss(r.device->GetDeviceRemovedReason()) {
 		r.lost = true
+		return   // (the recovery makes the chain and its visual again; the retired one goes with them)
 	}
+	if hr_ok(hr) { composition_show(r) }
 }
 
 // DXGI's limits: back buffers of a swap chain, MaximumFrameLatency.
@@ -858,6 +922,7 @@ d3d_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
 @(private)
 release_presentation :: proc(r: ^Renderer) {
 	rel :: proc(p: ^$T) { if p^ != nil { p^->Release(); p^ = nil } }
+	rel(&r.swap_retired)   // (the visual holds its own reference to what it shows)
 	if r.teardown_wait_ms <= 0 || r.swapchain == nil {
 		rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
 		return
