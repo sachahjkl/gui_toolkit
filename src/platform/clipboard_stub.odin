@@ -2,6 +2,9 @@
 #+build !linux
 package platform
 
+// A file URI's path names a drive (file:///C:/x is C:/x): uri_list_to_paths.
+@(private) URI_PATHS_HAVE_DRIVES :: false
+
 // The rich clipboard on the systems that have no implementation yet (clipboard.odin has the API and the conversions):
 // nothing is there, nothing can be written. Linux has its own (clipboard_linux.odin).
 
