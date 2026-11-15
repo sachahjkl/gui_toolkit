@@ -16,10 +16,9 @@
   Cliche, Atelier, Wren, Opencode Native) while its binary and package keep the lowercase name, and keeps its settings
   in its vendor's folder (`%APPDATA%\FromentSoftware\Papier`, `~/.config/FromentSoftware/Papier`), the old folders
   moved once. Intent: [src/md/features/folders.md](src/md/features/folders.md).
-- **One spacing scale for every program.** The toolkit gives spacing tokens (0.25, 0.5, 0.75, 1, 1.5 em), a card whose
-  inset is the same on its four sides and adds no gap after it, a grouped list card with dividers, a well without an
-  edge and a padding option, all on that scale. Programs lay out the same way and stop keeping scales of their own
-  (atelier's `view.odin` holds one today).
+- **Every program on the spacing scale.** The toolkit's pages (settings, setup) and the programs lay out with the
+  scale's roles, cards and list cards, and stop keeping values or scales of their own (atelier's `view.odin` holds one
+  today). Intent: [src/md/features/spacing.md](src/md/features/spacing.md).
 - **No graphics driver on Windows, tested.** A window whose hardware Direct3D 11 device is refused falls back to WARP,
   and a program without a console that cannot open its window says why in a message box; both are written and
   type-checked, not yet run. A test on the Windows CI (a fault that refuses the hardware device, a child started without

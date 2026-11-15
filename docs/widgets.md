@@ -136,6 +136,19 @@ are stepped at the end of the build.
 
 `if ui.well("###facts") { ... }` is a sunken box, carved in the surface (code, a preview, a list of facts): the theme's
 "well" colour, carved in by the machined finish. Its size and corners come from `next`; `axis` lays out its children.
+`pad = ui.INNER_PAD` insets its content the same on its four sides; `edge = false` draws no border (a tinted area inside
+a card).
+
+### The spacing scale, cards and list cards
+
+Every gap and inset of a page is a step of one scale ([spacing.md](../src/md/features/spacing.md)):
+`ui.SPACE_1`..`ui.SPACE_6` (0.25, 0.5, 0.75, 1, 1.5 em), named by role: `PAGE_MARGIN`, `CARD_PAD`, `ROW_PAD`,
+`GROUP_GAP`, `ITEM_GAP`, `LINE_GAP`, `ICON_GAP`, `CONTROL_GAP`, `TOOL_GAP`, `INNER_PAD`. `ui.space(step)` is a spacer of
+that many font sizes, on whole pixels. A program uses the roles, never values of its own.
+
+`if ui.card("Title", icon) { ... }` is a panel whose content sits `CARD_PAD` from its four edges; nothing follows it, the
+page puts `GROUP_GAP` or `ITEM_GAP` between two cards. `if ui.list_card("###id") { if ui.card_row("###a") { ... } }` is
+a card of rows split by hairlines, each row `ROW_PAD` above and below, its first and last rows `CARD_PAD` from its edges.
 A well around a field that shows when the field has the keyboard (a composer, a search): `flags = {.Focus_Within,
 .Draw_Focus_Ring}`, the ring of the well lit while any box in it has the keyboard.
 

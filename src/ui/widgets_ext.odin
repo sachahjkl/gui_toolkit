@@ -1495,28 +1495,12 @@ kbd :: proc(text: string) {
 	}
 }
 
-// `if card("Title", ICON) { ... }`: a titled panel, full width, height from its content. Tags used: "card".
+// `if card("Title", ICON) { ... }`: a titled panel, full width, height from its content, CARD_PAD in from each of its
+// four edges. It adds nothing after itself: the page puts GROUP_GAP or ITEM_GAP between two cards. Tags used: "card".
 @(require_results, deferred_none = card_end)
 card :: proc(title: string, icon := "") -> bool {
 	em := font_size()
-	push_tags("card")
-	set_next_axis(.Y)
-	gs().next_mod.width = fill()
-	gs().next_mod.height = children_sum()
-	gs().next_mod.radius = em * 0.6
-	c := build_box({.Draw_Background, .Draw_Border, .Plate}, fmt.tprintf("###card_%s", title))
-	a11y_default(c, {role = .Group, name = title})
-	push_parent(c)
-	spacer(px(em * 0.9))
-	set_next_axis(.X)
-	gs().next_mod.width = fill()
-	gs().next_mod.height = children_sum()
-	push_parent(build_box({}, "###card_pad"))
-	spacer(px(em * 1.1))
-	set_next_axis(.Y)
-	gs().next_mod.width = fill()
-	gs().next_mod.height = children_sum()
-	push_parent(build_box({}, "###card_body"))
+	card_open(fmt.tprintf("###card_%s", title), CARD_PAD, title)
 	if title != "" {
 		next({width = fill(), height = px(dense(em * 2.2))})
 		if row(.Center) {
@@ -1538,14 +1522,7 @@ card :: proc(title: string, icon := "") -> bool {
 
 @(private)
 card_end :: proc() {
-	em := font_size()
-	pop_parent()   // body
-	spacer(px(em * 1.1))
-	pop_parent()   // padded row
-	spacer(px(em * 0.9))
-	pop_parent()   // card
-	pop_tags()
-	spacer(px(em))
+	card_close(CARD_PAD)
 }
 
 // `if form_row("Name") { widget }`: label on the left (34 %, at least its words on one line: never cut), the widget
@@ -1585,15 +1562,41 @@ form_row_end :: proc() {
 
 // `if well("###id") { ... }`: a sunken box, carved in the surface (code, a preview, a list of facts): the theme's well
 // (its "well" colour; the machined finish carves it in, with a lit lower lip). Its size and corners from `next`; `axis`:
-// how its children are laid out. Tags used: "well".
-@(require_results, deferred_none = pop_parent)
-well :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}) -> bool {
+// how its children are laid out. `pad`: an inset of that many font sizes on its four sides (INNER_PAD for a text in it);
+// `edge = false`: no border (a tinted area inside a card, where a second edge is one line too many). Tags used: "well".
+@(require_results, deferred_in = well_end)
+well :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}, pad: f32 = 0, edge := true) -> bool {
 	set_next_axis(axis)
 	push_tags("well")
-	b := build_box({.Draw_Background, .Draw_Border, .Sunken} + flags, id)
+	b := build_box({.Draw_Background, .Sunken} + (edge ? Box_Flags{.Draw_Border} : {}) + flags, id)
 	pop_tags()
 	push_parent(b)
+	if pad > 0 {
+		// (the inset: a line across `axis` between two gaps, then the body along `axis` in it, as card's; each as wide
+		// and as tall as the well lets it: what it holds when the well grows to it, all of it when it is sized)
+		fit :: proc(s: Size) -> Size { return s.kind == .Children_Sum ? children_sum() : fill() }
+		space(pad)
+		set_next_axis(axis == .Y ? .X : .Y)
+		gs().next_mod.width, gs().next_mod.height = fit(b.pref[.X]), fit(b.pref[.Y])
+		push_parent(build_box({}, "###well_pad"))
+		space(pad)
+		set_next_axis(axis)
+		gs().next_mod.width, gs().next_mod.height = fit(b.pref[.X]), fit(b.pref[.Y])
+		push_parent(build_box({}, "###well_body"))
+	}
 	return true
+}
+
+@(private)
+well_end :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}, pad: f32 = 0, edge := true) {
+	inset := pad
+	if inset > 0 {
+		pop_parent()   // body
+		space(inset)
+		pop_parent()   // padded line
+		space(inset)
+	}
+	pop_parent()   // well
 }
 
 // A search field that opens a search elsewhere (the command palette): it looks like the fields one types in (sunken, an
