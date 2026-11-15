@@ -777,8 +777,8 @@ roadmap_page :: proc(index, head, bar, footer, script, name, roadmap: string) ->
 	md := render_markdown(body, allocator = context.temp_allocator)
 	// (a section with no entry says so: an empty heading read as a page that failed)
 	html := md.html
-	for name in ([]string{"Now", "Next", "Later"}) {
-		id := heading_id(name, context.temp_allocator)
+	for section in ([]string{"Now", "Next", "Later"}) {
+		id := heading_id(section, context.temp_allocator)
 		at := strings.index(html, cat(`<h2 id="`, id, `">`))
 		if at < 0 { continue }
 		end := at + strings.index(html[at:], "</h2>\n") + len("</h2>\n")
