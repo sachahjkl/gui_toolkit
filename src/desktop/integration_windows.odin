@@ -35,6 +35,7 @@ import "core:os"
 import "core:strings"
 import win "core:sys/windows"
 import "../process"
+import ascii "../ascii"
 
 @(private = "file")
 WINDOWS_BACKEND := Backend{
@@ -211,7 +212,7 @@ file_manager_status :: proc(o: ^Integration_Options, l: Layout, allocator: runti
 		cmd, cmd_ok, mine := verb_status(o, l.verbs[i])
 		default, _ := reg_get(l.shells[i], "")
 		any_mine ||= mine
-		all &&= mine && cmd_ok && strings.equal_fold(default, l.verb_name)
+		all &&= mine && cmd_ok && ascii.equal_fold(default, l.verb_name)
 		if mine && cmd_ok && (target == "" || same_path(target, o.exe)) { target = command_program(cmd) }
 	}
 	if !any_mine { return }
@@ -486,7 +487,7 @@ remove_file_manager :: proc(o: ^Integration_Options, l: Layout) -> Result {
 	}
 	for i in 0 ..< len(l.verbs) {
 		if _, _, mine := verb_status(o, l.verbs[i]); mine && !reg_delete_tree(l.verbs[i]) && res.error == .None { res = failed(l.verbs[i]) }
-		if default, ok := reg_get(l.shells[i], ""); ok && strings.equal_fold(default, l.verb_name) {
+		if default, ok := reg_get(l.shells[i], ""); ok && ascii.equal_fold(default, l.verb_name) {
 			if !reg_delete_value(l.shells[i], "") && res.error == .None { res = failed(l.shells[i]) }
 		}
 		if reg_delete_if_empty(l.shells[i]) { _ = reg_delete_if_empty(l.shells[i][:strings.last_index_byte(l.shells[i], '\\')]) }

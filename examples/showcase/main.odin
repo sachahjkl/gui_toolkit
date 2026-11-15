@@ -1,6 +1,6 @@
 // gui_toolkit example: the showcase. Each scene is composed to be looked at, and to be a screenshot: the intents and their
 // hues, the numbers and ranges, the command palette, a menu that searches, the dialogs, the settings page, a node graph
-// with its inspector, the toasts, every theme. Its data is fixed: no clock, no chance, the same picture each run.
+// with its inspector, the toasts, the steppers, every theme. Its data is fixed: no clock, no chance, the same picture each run.
 //   odin run tools/tk -- build showcase
 //   build/showcase --scene=graph                      a scene by its name (SCENE_NAMES)
 //   build/showcase --theme="Tokyo Night" --light      a theme of ui.THEMES (or of THEMES_OF_THE_USER), its light version
@@ -29,13 +29,13 @@ import "gt:render"
 import "gt:ui"
 import "gt:ascii"
 
-Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views, Files }
+Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views, Files, Steppers }
 
 // The scenes' names on the command line (--scene=), and their titles in the sidebar.
 SCENE_NAMES := [Scene]string{
 	.Intents = "intents", .Controls = "controls", .Palette = "palette", .Menus = "menus", .Dialog = "dialog",
 	.Confirm = "confirm", .Prompt = "prompt", .Settings = "settings", .Graph = "graph", .Toasts = "toasts", .Themes = "themes",
-	.Toolbar = "toolbar", .Views = "views", .Files = "files",
+	.Toolbar = "toolbar", .Views = "views", .Files = "files", .Steppers = "steppers",
 }
 
 WINDOW_SIZE :: [2]int{1280, 800}
