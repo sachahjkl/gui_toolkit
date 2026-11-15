@@ -4,9 +4,9 @@ package prefs_page_test
 // moves (not twice for the same place, not while minimized), and nothing restored at a first start.
 
 import "core:testing"
-import config "../../src/config"
-import "../../src/platform"
-import prefs_page "../../src/prefs_page"
+import config "gt:config"
+import "gt:platform"
+import prefs_page "gt:prefs_page"
 
 @(test)
 the_window_comes_back_where_it_was :: proc(t: ^testing.T) {
