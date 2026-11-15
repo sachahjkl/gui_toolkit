@@ -316,7 +316,8 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   stack, they scroll with arrows, never a bar; the "+" of the shown view's kind, right after the last tab (at the end of
   the tabs when they scroll), where the new tab appears; the shown view's moves (Float, Open in a window, Re-attach), small and weak; the program's tools of the
   shown view (`view_header_tools`); then at the right end Minimise (zones at the top and the bottom), Maximise and
-  Close of the stack, drawn as a window's caption buttons. A panel with a strip has no hover icons.
+  Close of the stack, drawn as a window's caption buttons. A lone panel shows the same strip on the hover of its top
+  edge; it pushes the body down, so none of its controls lies over the body's.
   - `View_Options.new_tab: proc(data: rawptr)`: the "+" calls it with the shown view's data; the program opens a new
     instance (`view_open` with a name of its own), at once or later (a shell a server makes). Each "+" leaves the
     stack waiting for one instance of that kind: the next one that opens within `NEW_TAB_WAIT_MS` (10 s) joins the

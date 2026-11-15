@@ -251,7 +251,8 @@ seen_center :: proc(s: ^session.Session, b: ^ui.Box) -> [2]f32 {
 }
 
 // Test 17: a panel alone in its zone adds no tab strip, no border, no icon at rest; its body starts at the zone's top
-// left. Its two icons show while the pointer is over its top area, and go when it leaves.
+// left. Its stack's strip comes on the hover of the top edge and pushes the body down (nothing of it over the body);
+// it stays while the pointer is on it, goes when the pointer goes down into the body, and does not come again by itself.
 @(test)
 a_lone_panel_adds_nothing :: proc(t: ^testing.T) {
 	r: Dock
@@ -260,24 +261,39 @@ a_lone_panel_adds_nothing :: proc(t: ^testing.T) {
 	body := wait_built(s, "view_panel_view_side")
 	zone := built(s, "view_zone_Left")
 	if body == nil || zone == nil { testing.expect(t, false, "the panel and its zone"); return }
-	testing.expect_value(t, body.rect.min, zone.rect.min)
+	top := zone.rect.min
+	testing.expect_value(t, body.rect.min, top)
 	testing.expect(t, session.find(s, "view_tabs") == nil, "no tab strip")
 	testing.expect(t, .Draw_Background not_in zone.flags && .Draw_Border not_in zone.flags, "the zone draws nothing")
 	testing.expect(t, .Draw_Background not_in body.flags && .Draw_Border not_in body.flags, "the body draws nothing of its own")
-	testing.expect(t, built(s, "view_panel_icons") == nil, "no icon at rest")
-	session.move(s, {body.rect.min.x + 30, body.rect.min.y + 8})
+	// (a pointer in the body, past the edge's band: nothing)
+	session.move(s, {top.x + 30, top.y + r.em * 1.5})
 	session.frames(s, 2)
-	testing.expect(t, built(s, "view_panel_icons") != nil, "its icons on the hover of its top area")
+	testing.expect(t, built(s, "view_tabs") == nil, "nothing on the hover of the body")
+	// the top edge: the strip, the body under it
+	session.move(s, {top.x + 30, top.y + 2})
+	session.frames(s, 2)
+	tabs := built(s, "view_tabs")
+	if !testing.expect(t, tabs != nil, "the strip on the hover of the top edge") { return }
+	body = built(s, "view_panel_view_side")
+	testing.expectf(t, body.rect.min.y >= tabs.rect.max.y - 0.5, "the body pushed under it: %v under %v", body.rect, tabs.rect)
+	testing.expect(t, session.find(s, "view_tab_view_side") != nil, "its tab: its title, its menu")
+	// on the strip: it stays; down into the body: it goes, and the body back up does not bring it again
+	session.move(s, {top.x + 30, (tabs.rect.min.y + tabs.rect.max.y) * 0.5})
+	session.frames(s, 2)
+	testing.expect(t, built(s, "view_tabs") != nil, "it stays while the pointer is on it")
+	session.move(s, {top.x + 30, tabs.rect.max.y + r.em * 2})
+	session.frames(s, 4)
+	testing.expect(t, built(s, "view_tabs") == nil, "gone when the pointer goes down into the body, and not back")
 	session.move(s, OUT)
 	session.frames(s, 2)
-	testing.expect(t, built(s, "view_panel_icons") == nil, "gone when the pointer leaves")
+	testing.expect(t, built(s, "view_tabs") == nil, "none when the pointer leaves")
 	testing.expectf(t, abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "its extent_em: %v", zone.rect)
 }
 
-// A strip in a lone panel's top band, its first tab chosen: a click on its right arrow, under the corner of the panel's
-// hover icons, scrolls the strip and keeps it scrolled (opencode native's sidebar). The icons never show over a strip:
-// not when the pointer comes straight to the arrow, nor when it rests first on the band's empty start; the click is the
-// arrow's, not Detach's (which floated the panel: a new strip, at its start).
+// A strip in a lone panel's top band, its first tab chosen: a click on its right arrow scrolls the strip and keeps it
+// scrolled (opencode native's sidebar), whether the pointer comes straight to the arrow or rests first on the band's
+// empty start; the click is the arrow's, never a control of the panel's (which floated it: a new strip, at its start).
 @(test)
 a_strip_in_a_panel_s_band_keeps_its_scroll :: proc(t: ^testing.T) {
 	for from_band in ([2]bool{false, true}) {
@@ -289,12 +305,12 @@ a_strip_in_a_panel_s_band_keeps_its_scroll :: proc(t: ^testing.T) {
 		if body == nil || right == nil { return }
 		if from_band {
 			session.move(s, {body.rect.min.x + 5, body.rect.min.y + 15})   // (the row's empty start, in the top area)
-			testing.expect(t, built(s, "view_panel_icons") == nil, "no icon in a top area whose corner holds a strip")
+			testing.expect(t, built(s, "view_tabs") == nil, "no strip of the panel's on the hover of the body's own")
 		}
 		session.click_at(s, session.center(right))
 		session.wait_idle(s)
 		testing.expectf(t, ui.view_presentation(&r.views, "striped") == .Panel, "%v: still a panel, not floated by Detach", from_band)
-		testing.expectf(t, built(s, "view_panel_icons") == nil, "%v: no icon over the arrow the pointer is on", from_band)
+		testing.expectf(t, built(s, "view_tabs") == nil, "%v: no strip of the panel's over the arrow the pointer is on", from_band)
 		view := built(s, "strip_view")
 		if !testing.expectf(t, view != nil, "%v: the strip's view", from_band) { continue }
 		testing.expectf(t, view.view_off.x > 0, "%v: the arrow scrolled the strip, and it stays: %v", from_band, view.view_off.x)
@@ -302,24 +318,24 @@ a_strip_in_a_panel_s_band_keeps_its_scroll :: proc(t: ^testing.T) {
 	}
 }
 
-// The hover icons and a strip never meet: over a panel whose top area holds a strip in their corner, they do not show
-// wherever the pointer is in that area, and its menu (a right click on the area's free part) still floats it; a panel
-// with no strip there shows them as before.
+// The panel's controls and the body's never meet: on the hover of its top edge, a lone panel's strip pushes the body's
+// own strip (a sidebar's row of tabs) down under it, every control of both in reach; its tab's menu floats the panel.
 @(test)
-a_panel_s_icons_never_cover_a_strip :: proc(t: ^testing.T) {
+a_panel_s_strip_pushes_the_body_s_strip :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "striped")
 	body := wait_built(s, "view_panel_view_striped")
-	strip := wait_built(s, "striped_strip")
-	if body == nil || strip == nil { return }
-	// (along the top area: the row's start, over a tab, over the strip's end, over the "+")
-	for x in ([4]f32{5, 40, strip.rect.max.x - 10, strip.rect.max.x + 10}) {
-		session.move(s, {body.rect.min.x + x, body.rect.min.y + 15})
-		testing.expectf(t, built(s, "view_panel_icons") == nil, "no icon with the pointer %v px into the top area", x)
-	}
-	// its menu still does what the icons did
-	session.click_at(s, {body.rect.min.x + 5, body.rect.min.y + 15}, .Right)
+	if body == nil || wait_built(s, "striped_strip") == nil { return }
+	session.move(s, {body.rect.min.x + 40, body.rect.min.y + 2})
+	session.frames(s, 2)
+	tabs, strip := built(s, "view_tabs"), built(s, "striped_strip")
+	if !testing.expect(t, tabs != nil && strip != nil, "the panel's strip and the body's") { return }
+	testing.expectf(t, strip.rect.min.y >= tabs.rect.max.y - 0.5, "the body's strip under the panel's: %v under %v", strip.rect, tabs.rect)
+	// its tab's menu floats it
+	tab := built(s, "view_tab_view_striped")
+	if !testing.expect(t, tab != nil, "the panel's tab") { return }
+	session.click_at(s, session.center(tab), .Right)
 	if !click_item(s, "Open as a floating window") { return }
 	if wait_built(s, "internal_view_striped") == nil { return }
 	testing.expect_value(t, ui.view_presentation(&r.views, "striped"), ui.View_Presentation.Internal)
@@ -710,7 +726,6 @@ the_strip_of_a_terminal :: proc(t: ^testing.T) {
 	testing.expect(t, plus.rect.min.x >= second.rect.max.x, "the + after it")
 	testing.expect(t, detach.rect.min.x >= plus.rect.max.x, "the moves after the +")
 	testing.expectf(t, abs(close.rect.max.x - strip.rect.max.x) <= 1, "Close at the strip's right end: %v in %v", close.rect, strip.rect)
-	testing.expect(t, built(s, "view_panel_icons") == nil, "no hover icons: the strip has them")
 	// the palette offers it too, in the program's words
 	commands, acts := ui.views_commands(&r.views)
 	found := -1
