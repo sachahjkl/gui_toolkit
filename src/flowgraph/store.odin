@@ -15,6 +15,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:strconv"
 import "core:strings"
+import tk_json "../json"
 
 // A graph of the set, with the program's words about it.
 Graph_Entry :: struct {
@@ -103,20 +104,20 @@ set_text :: proc(s: ^Graph_Set, cat: ^Catalog, format: Store_Format = {}) -> str
 	strings.write_string(&b, "{\n  \"version\": ")
 	strings.write_int(&b, f.version)
 	strings.write_string(&b, ",\n  ")
-	json_string(&b, f.list)
+	tk_json.quote_into(&b, f.list)
 	strings.write_string(&b, ": [")
 	for &e, ei in s.list {
 		strings.write_string(&b, ei == 0 ? "\n    {" : ",\n    {")
 		strings.write_string(&b, "\"id\": ")
 		strings.write_u64(&b, e.id)
 		strings.write_string(&b, ", \"name\": ")
-		json_string(&b, e.name)
+		tk_json.quote_into(&b, e.name)
 		strings.write_string(&b, ", ")
-		json_string(&b, f.labels)
+		tk_json.quote_into(&b, f.labels)
 		strings.write_string(&b, ": [")
 		for l, li in e.labels {
 			if li > 0 { strings.write_string(&b, ", ") }
-			json_string(&b, l)
+			tk_json.quote_into(&b, l)
 		}
 		strings.write_string(&b, "], \"next_id\": ")
 		strings.write_u64(&b, e.graph.next_id)
@@ -150,61 +151,29 @@ node_write :: proc(b: ^strings.Builder, cat: ^Catalog, n: ^Node) {
 	strings.write_string(b, "{\"id\": ")
 	strings.write_u64(b, n.id)
 	strings.write_string(b, ", \"kind\": ")
-	json_string(b, def != nil ? def.name : "")
+	tk_json.quote_into(b, def != nil ? def.name : "")
 	strings.write_string(b, ", \"x\": ")
-	json_number(b, f64(n.pos.x))
+	tk_json.write_float(b, f64(n.pos.x))
 	strings.write_string(b, ", \"y\": ")
-	json_number(b, f64(n.pos.y))
+	tk_json.write_float(b, f64(n.pos.y))
 	strings.write_string(b, ", \"params\": {")
 	if def != nil {
 		for d, i in def.params {
 			if i >= PARAMS_MAX { break }
 			if i > 0 { strings.write_string(b, ", ") }
-			json_string(b, d.name)
+			tk_json.quote_into(b, d.name)
 			strings.write_string(b, ": ")
 			p := n.params[i]
 			switch d.type {
 			case .Int, .Choice: strings.write_i64(b, i64(p.number))
-			case .Float:        json_number(b, p.number)
+			case .Float:        tk_json.write_float(b, p.number)
 			case .Bool:         strings.write_string(b, p.number != 0 ? "true" : "false")
-			case .Color:        json_string(b, color_text(p.color))
-			case .Text, .Folder, .List, .Hotkey: json_string(b, p.text)
+			case .Color:        tk_json.quote_into(b, color_text(p.color))
+			case .Text, .Folder, .List, .Hotkey: tk_json.quote_into(b, p.text)
 			}
 		}
 	}
 	strings.write_string(b, "}}")   // (its parameters, then the node)
-}
-
-// The shortest text that reads back as `v`.
-@(private = "file")
-json_number :: proc(b: ^strings.Builder, v: f64) {
-	buf: [64]u8
-	strings.write_string(b, strconv.write_float(buf[:], v, 'g', -1, 64, {}))
-}
-
-// `s` as a JSON string, quoted and escaped.
-@(private = "file")
-json_string :: proc(b: ^strings.Builder, s: string) {
-	hex := "0123456789abcdef"
-	strings.write_byte(b, '"')
-	for c in s {
-		switch c {
-		case '"':  strings.write_string(b, "\\\"")
-		case '\\': strings.write_string(b, "\\\\")
-		case '\n': strings.write_string(b, "\\n")
-		case '\r': strings.write_string(b, "\\r")
-		case '\t': strings.write_string(b, "\\t")
-		case:
-			if c < 0x20 {
-				strings.write_string(b, "\\u00")
-				strings.write_byte(b, hex[int(c) >> 4])
-				strings.write_byte(b, hex[int(c) & 0xf])
-			} else {
-				strings.write_rune(b, c)
-			}
-		}
-	}
-	strings.write_byte(b, '"')
 }
 
 // "#rrggbbaa" (temp allocator).
@@ -243,18 +212,16 @@ set_parse :: proc(text: string, cat: ^Catalog, format: Store_Format = {}) -> (s:
 	top, is_object := root.(json.Object)
 	if !is_object { return s, "not an object" }
 	if v, has := top["version"]; has {
-		if version := json_int(v); version > i64(f.version) { return s, fmt.tprintf("version %d is newer than this program's", version) }
+		if version := max(tk_json.integer(v), 0); version > i64(f.version) { return s, fmt.tprintf("version %d is newer than this program's", version) }
 	}
 	list, is_array := top[f.list].(json.Array)
 	if !is_array { return s, fmt.tprintf("no list %q", f.list) }
 	for item in list {
 		o, ok := item.(json.Object)
 		if !ok { return s, "a graph is not an object" }
-		e := Graph_Entry{id = u64(json_int(o["id"])), name = strings.clone(json_text(o["name"]))}
-		if labels, has := o[f.labels].(json.Array); has {
-			for l in labels {
-				if t := json_text(l); t != "" { append(&e.labels, strings.clone(t)) }
-			}
+		e := Graph_Entry{id = count_of(o, "id"), name = strings.clone(tk_json.text(o, "name"))}
+		for l in tk_json.array(o, f.labels) {
+			if t := tk_json.text(l); t != "" { append(&e.labels, strings.clone(t)) }
 		}
 		if nodes, has := o["nodes"].(json.Array); has {
 			for node_item in nodes {
@@ -267,14 +234,14 @@ set_parse :: proc(text: string, cat: ^Catalog, format: Store_Format = {}) -> (s:
 				e.graph.next_id = max(e.graph.next_id, n.id)
 			}
 		}
-		e.graph.next_id = max(e.graph.next_id, u64(json_int(o["next_id"])))
+		e.graph.next_id = max(e.graph.next_id, count_of(o, "next_id"))
 		if links, has := o["links"].(json.Array); has {
 			for link_item in links {
 				lo, is_link := link_item.(json.Object)
 				if !is_link { continue }
 				l := Link{
-					from_node = u64(json_int(lo["from"])), from_port = u32(json_int(lo["from_port"])),
-					to_node = u64(json_int(lo["to"])), to_port = u32(json_int(lo["to_port"])),
+					from_node = count_of(lo, "from"), from_port = u32(count_of(lo, "from_port")),
+					to_node = count_of(lo, "to"), to_port = u32(count_of(lo, "to_port")),
 				}
 				_, _ = link(&e.graph, cat, l)   // (one that is not valid is dropped)
 			}
@@ -289,11 +256,11 @@ set_parse :: proc(text: string, cat: ^Catalog, format: Store_Format = {}) -> (s:
 // A node of the text. known false: its kind is not the catalog's.
 @(private = "file")
 node_parse :: proc(o: json.Object, cat: ^Catalog) -> (n: Node, known: bool) {
-	n.kind = kind_named(cat, json_text(o["kind"]))
+	n.kind = kind_named(cat, tk_json.text(o, "kind"))
 	if n.kind < 0 { return {}, false }
 	known = true
-	n.id = u64(json_int(o["id"]))
-	n.pos = {f32(json_float(o["x"])), f32(json_float(o["y"]))}
+	n.id = count_of(o, "id")
+	n.pos = {f32(tk_json.number(o, "x")), f32(tk_json.number(o, "y"))}
 	node_params_default(cat, &n)
 	params, has := o["params"].(json.Object)
 	if !has { return }
@@ -304,11 +271,11 @@ node_parse :: proc(o: json.Object, cat: ^Catalog) -> (n: Node, known: bool) {
 		p := &n.params[i]
 		switch d.type {
 		case .Int, .Choice, .Float:
-			if x, is_number := json_number_of(v); is_number { p.number = x }
+			p.number = tk_json.number(v, default = p.number)
 		case .Bool:
 			if x, is_bool := v.(json.Boolean); is_bool { p.number = x ? 1 : 0 }
 		case .Color:
-			if c, read := color_parse(json_text(v)); read { p.color = c }
+			if c, read := color_parse(tk_json.text(v)); read { p.color = c }
 		case .Text, .Folder, .List, .Hotkey:
 			if x, is_string := v.(json.String); is_string {
 				delete(p.text)
@@ -319,32 +286,8 @@ node_parse :: proc(o: json.Object, cat: ^Catalog) -> (n: Node, known: bool) {
 	return
 }
 
+// An id or a port of the text: a negative one is none (0).
 @(private = "file")
-json_number_of :: proc(v: json.Value) -> (f: f64, ok: bool) {
-	#partial switch x in v {
-	case json.Integer: return f64(x), true
-	case json.Float:   return f64(x), true
-	}
-	return 0, false
-}
-
-@(private = "file")
-json_float :: proc(v: json.Value) -> f64 {
-	f, _ := json_number_of(v)
-	return f
-}
-
-@(private = "file")
-json_int :: proc(v: json.Value) -> i64 {
-	#partial switch x in v {
-	case json.Integer: return max(i64(x), 0)
-	case json.Float:   return x < 0 ? 0 : i64(x)
-	}
-	return 0
-}
-
-@(private = "file")
-json_text :: proc(v: json.Value) -> string {
-	s, _ := v.(json.String)
-	return string(s)
+count_of :: proc(o: json.Object, name: string) -> u64 {
+	return u64(max(tk_json.integer(o, name), 0))
 }

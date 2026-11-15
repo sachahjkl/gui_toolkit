@@ -15,6 +15,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "../ascii"
+import tk_json "../json"
 
 NOTICES_FILE :: "THIRD-PARTY-NOTICES"
 // The target the crates are linked for: this system's.
@@ -151,31 +152,22 @@ notices_text :: proc(p: Project, works: []Notice_Work, crates: []Notice_Crate, n
 notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
 	root, err := json.parse_string(metadata, allocator = context.temp_allocator)
 	if err != nil { return nil, "cargo metadata's output cannot be read" }
-	top := root.(json.Object) or_else nil
-	packages := top["packages"].(json.Array) or_else nil
-	resolve := top["resolve"].(json.Object) or_else nil
-	by_id := make(map[string]json.Object, 128, context.temp_allocator)
-	for p in packages {
-		o := p.(json.Object) or_else nil
-		by_id[json_text(o["id"])] = o
-	}
-	nodes := make(map[string]json.Object, 128, context.temp_allocator)
-	for n in resolve["nodes"].(json.Array) or_else nil {
-		o := n.(json.Object) or_else nil
-		nodes[json_text(o["id"])] = o
-	}
+	by_id := make(map[string]json.Value, 128, context.temp_allocator)
+	for p in tk_json.array(root, "packages") { by_id[tk_json.text(p, "id")] = p }
+	nodes := make(map[string]json.Value, 128, context.temp_allocator)
+	for n in tk_json.array(root, "resolve", "nodes") { nodes[tk_json.text(n, "id")] = n }
 	linked := make(map[string]bool, 128, context.temp_allocator)
 	todo := make([dynamic]string, context.temp_allocator)
-	append(&todo, json_text(resolve["root"]))
+	append(&todo, tk_json.text(root, "resolve", "root"))
 	for len(todo) > 0 {
 		id := pop(&todo)
-		for d in nodes[id]["deps"].(json.Array) or_else nil {
-			dep := d.(json.Object) or_else nil
+		for dep in tk_json.array(nodes[id], "deps") {
 			normal := false
-			for k in dep["dep_kinds"].(json.Array) or_else nil {
-				if kind, is_obj := k.(json.Object); is_obj { if _, is_null := kind["kind"].(json.Null); is_null { normal = true } }
+			for k in tk_json.array(dep, "dep_kinds") {
+				// (a normal dependency's kind is an explicit null; a missing kind is none)
+				if _, is_null := tk_json.get(k, "kind").(json.Null); is_null { normal = true }
 			}
-			pkg := json_text(dep["pkg"])
+			pkg := tk_json.text(dep, "pkg")
 			// (a procedural macro runs in the compiler: none of it is linked)
 			if !normal || linked[pkg] || proc_macro(by_id[pkg]) { continue }
 			linked[pkg] = true
@@ -185,7 +177,7 @@ notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
 	list := make([dynamic]Notice_Crate, context.temp_allocator)
 	for id in linked {
 		p := by_id[id]
-		folder := os.dir(json_text(p["manifest_path"]))
+		folder := os.dir(tk_json.text(p, "manifest_path"))
 		names := make([dynamic]string, context.temp_allocator)
 		if fis, ferr := os.read_all_directory_by_path(folder, context.temp_allocator); ferr == nil {
 			for fi in fis {
@@ -195,15 +187,15 @@ notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
 				}
 			}
 		}
-		if lf := json_text(p["license_file"]); lf != "" && !slice.contains(names[:], lf) { append(&names, lf) }
+		if lf := tk_json.text(p, "license_file"); lf != "" && !slice.contains(names[:], lf) { append(&names, lf) }
 		slice.sort(names[:])
 		texts := make([dynamic]string, context.temp_allocator)
 		for n in names {
 			if data, rerr := os.read_entire_file(fmt.tprintf("%s/%s", folder, n), context.temp_allocator); rerr == nil { append(&texts, string(data)) }
 		}
-		if len(texts) == 0 { return nil, fmt.tprintf("the crate %s %s ships no licence file", json_text(p["name"]), json_text(p["version"])) }
-		licence := json_text(p["license"])
-		append(&list, Notice_Crate{json_text(p["name"]), json_text(p["version"]), licence != "" ? licence : "see its licence file", texts[:]})
+		if len(texts) == 0 { return nil, fmt.tprintf("the crate %s %s ships no licence file", tk_json.text(p, "name"), tk_json.text(p, "version")) }
+		licence := tk_json.text(p, "license")
+		append(&list, Notice_Crate{tk_json.text(p, "name"), tk_json.text(p, "version"), licence != "" ? licence : "see its licence file", texts[:]})
 	}
 	slice.sort_by(list[:], crate_less)
 	return list[:], ""
@@ -213,12 +205,9 @@ notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
 crate_less :: proc(a, b: Notice_Crate) -> bool { return a.name != b.name ? a.name < b.name : a.version < b.version }
 
 @(private = "file")
-proc_macro :: proc(p: json.Object) -> bool {
-	for t in p["targets"].(json.Array) or_else nil {
-		for k in (t.(json.Object) or_else nil)["kind"].(json.Array) or_else nil { if json_text(k) == "proc-macro" { return true } }
+proc_macro :: proc(p: json.Value) -> bool {
+	for t in tk_json.array(p, "targets") {
+		for k in tk_json.array(t, "kind") { if tk_json.text(k) == "proc-macro" { return true } }
 	}
 	return false
 }
-
-@(private = "file")
-json_text :: proc(v: json.Value) -> string { return v.(json.String) or_else "" }
