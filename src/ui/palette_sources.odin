@@ -72,7 +72,7 @@ palette_commands :: proc(p: ^Command_Palette, table: []Command, disabled: []bool
 		palette_add(p, &p.moves.source)
 	}
 	c.table = table
-	km := gs().keymap
+	km := state_keymap()   // (nil before any window: a program may fill its palette first; a later call reads it)
 	c.source.alternates = {shift = o.shift}
 	if km != nil { c.source.alternates.ctrl, c.source.alternates.alt = i18n.later("Set a key"), i18n.later("Make the letters its alias") }
 	c.source.user = p

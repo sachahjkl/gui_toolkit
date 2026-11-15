@@ -198,6 +198,15 @@ the_keys_outlive_a_window :: proc(t: ^testing.T) {
 	testing.expect(t, view_window.keymap == &km, "a view's window reads its owner's keymap")
 }
 
+// A program fills its palette before its first window (papier's prefixes): no State, no keymap, no panic.
+@(test)
+a_palette_filled_before_any_window :: proc(t: ^testing.T) {
+	p: ui.Command_Palette
+	defer ui.palette_destroy(&p)
+	ui.palette_commands(&p, TABS[:], nil)
+	testing.expect(t, len(ui.palette_prefixes(&p)) > 0, "the commands' source is there")
+}
+
 @(private = "file")
 SEQUENCE := [?]ui.Command{
 	{id = "terminal", label = "Terminal", keys = {{.F7, {}}}},
