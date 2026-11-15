@@ -107,4 +107,5 @@ the_defines_of_the_features :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(feature_defines({}, .Windows, "x")), 0)
 	testing.expect(t, slice.equal(native_crates({}), []string{"native/text"}))
 	testing.expect(t, slice.equal(native_crates({.Mermaid, .Accessibility}), []string{"native/text", "native/a11y", "native/mermaid"}))
+	testing.expect(t, slice.equal(native_crates({.Webp}), []string{"native/text", "native/webp"}), "WebP: its crate's notices")
 }

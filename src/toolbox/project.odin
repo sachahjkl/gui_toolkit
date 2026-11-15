@@ -54,6 +54,8 @@ Feature :: enum u8 {
 	Devtools,           // the CDP endpoint in a release build too (TOOLKIT_DEVTOOLS=true); a -debug build has it anyway
 	Lucide_Subset,      // only the Lucide icons the sources name are compiled in (lucide_subset, LUCIDE_SUBSET)
 	No_Fallback_Fonts,  // no Roboto or Inconsolata compiled in (FONT_EMBED_FALLBACK=false): the system's fonts only
+	Webp,               // Windows: WebP read and written (gt_webp.dll, native/webp, built and put beside the program; the
+	                    // package and the setup take it with it). Elsewhere the system's libwebp
 }
 Features :: bit_set[Feature; u8]
 
@@ -196,6 +198,7 @@ native_crates :: proc(features: Features) -> []string {
 	append(&out, "native/text")
 	if .Accessibility in features { append(&out, "native/a11y") }
 	if .Mermaid in features { append(&out, "native/mermaid") }
+	if .Webp in features { append(&out, "native/webp") }
 	return out[:]
 }
 
@@ -213,6 +216,7 @@ build_native :: proc(p: Project) -> bool {
 	if ODIN_OS != .Windows || .Native_Text in p.features { append(&steps, "build_text") }
 	if ODIN_OS == .Windows && .Accessibility in p.features { append(&steps, "build_a11y") }
 	if .Mermaid in p.features { append(&steps, "build_mermaid") }
+	if ODIN_OS == .Windows && .Webp in p.features { append(&steps, "build_webp") }
 	if len(steps) > 0 {
 		_ = os.make_directory_all(fmt.tprintf("%s/build", gt))   // (a fresh checkout has none: the linker writes tk there)
 		root, err := os.get_absolute_path(gt, context.temp_allocator)
@@ -220,6 +224,15 @@ build_native :: proc(p: Project) -> bool {
 		tk := fmt.tprintf("%s/build/tk%s", root, ODIN_OS == .Windows ? ".exe" : "")
 		if !run({"odin", "build", "tools/tk", fmt.tprintf("-out:%s", tk)}, {dir = gt, echo = true}) { return false }
 		for s in steps { if !run({tk, s}, {dir = gt, echo = true}) { return false } }
+		// (Windows' libwebp beside the program, where gt:image loads it, the package and the setup take it)
+		when ODIN_OS == .Windows {
+			if .Webp in p.features {
+				dll := fmt.tprintf("%s/build/webp/gt_webp.dll", root)
+				dir := p.program[:max(strings.last_index_any(p.program, "/\\"), 0)]
+				if dir == "" { dir = "." }
+				if os.copy_file(fmt.tprintf("%s/gt_webp.dll", dir), dll) != nil { fmt.eprintfln("%s: %s cannot be copied beside the program", p.name, dll); return false }
+			}
+		}
 	}
 	if .Lucide_Subset in p.features {
 		if _, why := lucide_subset(p); why != "" { fmt.eprintln(why); return false }

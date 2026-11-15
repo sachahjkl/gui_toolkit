@@ -312,6 +312,7 @@ the crates of the notices (`native_crates(features)`) follow from it. What each 
 | `Devtools` | `TOOLKIT_DEVTOOLS=true`: the CDP endpoint in a release build ([devtools.md](devtools.md)) | | |
 | `Lucide_Subset` | `LUCIDE_SUBSET=<path>`, once the file is made, but for `check` | `lucide_subset(p)` | |
 | `No_Fallback_Fonts` | `FONT_EMBED_FALLBACK=false` | | |
+| `Webp` | | Windows: `tk build_webp`, `gt_webp.dll` copied beside the program; the package and the setup take it with it (`desktop.TOOLKIT_FILES`) | `native/webp` (libwebp, BSD) |
 
 ```odin
 p := toolbox.Project{name = "classeur", src = "src", program = "build/classeur", features = {.Mermaid, .Lucide_Subset},
