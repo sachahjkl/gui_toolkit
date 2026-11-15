@@ -32,8 +32,10 @@
   `gt:image` reads GIF now. The switch is written (`ocn-views/build/gt-image-only.patch`) and waits for WebP on
   Windows, which the Rust crate reads today. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).
 - **Wren logs through `gt:log`.** Wren writes its log through the toolkit, as the other programs do.
-- **One native crate.** One native library with features replaces the toolkit's three native libraries, so no program
-  links with multiple-definition flags.
+- **One native crate.** One native library with a cargo feature per part (text, Mermaid, AccessKit, WebP) replaces the
+  toolkit's four, with one copy of Rust's standard library: about 0.4 MB less for a program that links two of them. The
+  multiple-definition flag stays on Linux while wgpu-native, prebuilt, brings its own copy (docs/builds.md); Wren and
+  opencode native, which build `gt_text` into their own crate, take the new crate's name.
 - **One install command line.** `desktop.parse_cli` and `desktop.cli_run` (`--desktop-integration`, their own exit
   numbers) fold into `gt:setup`'s commands and `cli.Exit`; Wren, their last user, takes `setup.command_of` and
   `command_run`.
