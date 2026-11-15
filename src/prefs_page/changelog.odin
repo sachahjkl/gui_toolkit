@@ -13,6 +13,7 @@ package tk_prefs_page
 import "core:fmt"
 import "core:math"
 import "core:strings"
+import "../ascii"
 import config "../config"
 import "../draw"
 import i18n "../i18n"
@@ -119,7 +120,7 @@ changelog_read :: proc(c: ^Changelog, text: string) {
 			close_group(g, &list)
 			g = nil
 			version, _, after := strings.partition(line[len("## ["):], "]")
-			if strings.equal_fold(version, "unreleased") { r = nil; continue }
+			if ascii.equal_fold(version, "unreleased") { r = nil; continue }
 			append(&c.releases, Changelog_Release{version = version, stamp = strings.trim_space(strings.trim_prefix(after, " - "))})
 			r = &c.releases[len(c.releases) - 1]
 		case r != nil && strings.has_prefix(line, "### "):
