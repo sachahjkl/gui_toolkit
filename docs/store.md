@@ -63,6 +63,21 @@ the separator or a line break, and a value cannot hold a line break: `set` refus
 When it reads, `open` drops a leading byte-order mark and the `\r` of a CRLF line. It skips a line with no separator, or
 whose key was seen already (the first one stays).
 
+## Kept values: a number per id
+
+A `Kept` holds a number per id over a store the program opens (a session's zoom, a shell's, a pane's width per
+document). A value at its rest is not kept: forgotten, it follows the rest when the rest changes (a preference the
+person sets later). The numbers are read once, at `kept_load`, so a frame that shows them reads no text.
+
+```odin
+k: store.Kept
+store.kept_load(&k, &app.stores.zooms, least = 0.5, most = 3)   // (each clamped; 0 and 0: no clamp)
+zoom := store.kept_of(&k, session_id, rest = prefs_zoom)
+store.kept_set(&k, session_id, 1.25, rest = prefs_zoom)       // (at the rest: forgotten, its line goes)
+store.kept_forget(&k, session_id)                            // (its subject is gone)
+store.kept_destroy(&k)                                       // (the store is the program's to close)
+```
+
 ## A Writer: a file the program formats
 
 A file that is no list of lines (JSON, several lines per entry) has the same worker through a `Writer`. The program hands

@@ -30,8 +30,8 @@
 - **One JSON helper.** Reading and writing JSON goes through one toolkit package, used by the toolkit's own stores and
   exports and by opencode native, instead of three private helpers and a program's own
   ([src/md/features/json.md](src/md/features/json.md)).
-- **Kept values per key.** A value kept per id in a file and forgotten at its rest value (opencode native's zoom per
-  session) becomes a toolkit setting kept by key.
+- **opencode native keeps its zooms with `store.Kept`.** The toolkit has kept values per id (`store.Kept`); opencode
+  native's own `Kept_Zooms` (src/zooms.odin) goes for it.
 - **Context menus from opencode native in the toolkit.** The innermost target under the pointer takes the right click,
   one menu per kind of target, for every program; classeur drops its needless menu search options.
 - **A table of widgets and their behaviours.** The table of widgets × behaviours (wheel, keys, Tab, accessibility,
