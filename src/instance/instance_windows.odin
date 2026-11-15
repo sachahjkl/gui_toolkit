@@ -1,5 +1,8 @@
 package tk_instance
 
+// The paths of this system fold their case and take either slash (key, same_identity).
+@(private) PATHS_FOLD_CASE :: true
+
 // Windows: a named mutex (Local\<name>: this session's, not the machine's), a message-only window titled with the name,
 // WM_COPYDATA between them. See instance.odin for the whole picture.
 

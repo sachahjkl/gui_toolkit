@@ -115,21 +115,12 @@ package_ :: proc(o: Release_Options, args: []string) -> int {
 	updates := o.update.name != ""
 	signed := os.get_env(toolbox.UPDATE_KEY_ENV, context.temp_allocator) != ""
 	if updates && len(args) > 0 && !signed { fmt.eprintfln("%s: a release signs its update manifest: set %s", o.name, toolbox.UPDATE_KEY_ENV); return 1 }
-	when ODIN_OS == .Windows {
-		name := fmt.tprintf("%s-%s-windows-x64", o.name, version)
-		exe, archive := fmt.tprintf("%s.exe", o.name), fmt.tprintf("%s.zip", name)
-	} else {
-		name := fmt.tprintf("%s-%s-linux-x64", o.name, version)
-		exe, archive := o.name, fmt.tprintf("%s.tar.gz", name)
-	}
+	name, exe, archive := package_names(o, version)   // (release_windows.odin, release_other.odin)
 	stage := fmt.tprintf("%s/%s", o.dist, name)
 	_ = os.remove_all(o.dist)
 	if !fsx.make_dirs(stage) { fmt.eprintfln("%s: %s cannot be made", o.name, stage); return 1 }
 	if !copy_file(o.name, o.program, fmt.tprintf("%s/%s", stage, exe)) { return 1 }
-	// (its console launcher beside it: typed in cmd or PowerShell, the program gives its output and exit code)
-	when ODIN_OS == .Windows {
-		if !copy_file(o.name, toolbox.launcher_path(o.project), fmt.tprintf("%s/%s.com", stage, o.name)) { return 1 }
-	}
+	if !stage_launcher(o, stage) { return 1 }
 	for f in o.files {
 		if !copy_file(o.name, f[0], fmt.tprintf("%s/%s", stage, f[1])) { return 1 }
 	}
@@ -138,15 +129,7 @@ package_ :: proc(o: Release_Options, args: []string) -> int {
 		beside := fmt.tprintf("%s/%s", filepath.dir(o.program), f)
 		if os.exists(beside) && !copy_file(o.name, beside, fmt.tprintf("%s/%s", stage, f)) { return 1 }
 	}
-	when ODIN_OS == .Windows {
-		// (tar.exe of Windows 10 and later: -a picks the zip format by the name)
-		if !toolbox.run({"tar", "-a", "-cf", archive, name}, {dir = o.dist}) { return 1 }
-	} else {
-		// (the symbols are a third of a program: a crash in a release is read again with a build of its tag)
-		if !toolbox.run({"strip", fmt.tprintf("%s/%s", stage, exe)}) { return 1 }
-		_ = os.chmod(fmt.tprintf("%s/%s", stage, exe), {.Read_User, .Write_User, .Execute_User, .Read_Group, .Execute_Group, .Read_Other, .Execute_Other})
-		if !toolbox.run({"tar", "--owner=0", "--group=0", "--numeric-owner", "-czf", archive, name}, {dir = o.dist}) { return 1 }
-	}
+	if !pack(o, stage, name, exe, archive) { return 1 }
 	// the program alone (stripped on Linux, as in the archive) and its signed manifest
 	program: []u8
 	if updates {
@@ -158,7 +141,7 @@ package_ :: proc(o: Release_Options, args: []string) -> int {
 	if updates {
 		alone := fmt.tprintf("%s/%s", o.dist, update.expected_file_name(o.update, version, update.PLATFORM, context.temp_allocator))
 		if os.write_entire_file(alone, program) != nil { fmt.eprintfln("%s: %s cannot be written", o.name, alone); return 1 }
-		when ODIN_OS != .Windows { _ = os.chmod(alone, {.Read_User, .Write_User, .Execute_User, .Read_Group, .Execute_Group, .Read_Other, .Execute_Other}) }
+		mark_executable(alone)
 		if signed {
 			manifest := fmt.tprintf("%s/%s", o.dist, update.manifest_name(update.PLATFORM, "", context.temp_allocator))
 			if why := toolbox.update_manifest(o.update, alone, version, "", manifest); why != "" { fmt.eprintfln("%s: %s", o.name, why); return 1 }
@@ -172,7 +155,7 @@ package_ :: proc(o: Release_Options, args: []string) -> int {
 	return 0
 }
 
-@(private = "file")
+@(private)
 copy_file :: proc(who, from, to: string) -> bool {
 	data, err := os.read_entire_file(from, context.temp_allocator)
 	if err != nil { fmt.eprintfln("%s: %s cannot be read", who, from); return false }

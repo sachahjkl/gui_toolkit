@@ -1,5 +1,8 @@
 package tk_crash
 
+// The system, as a report names it: "<os> <arch>".
+@(private) SYSTEM_NAME :: "windows amd64" when ODIN_ARCH == .amd64 else "windows arm64" when ODIN_ARCH == .arm64 else "other"
+
 // Windows: an exception no one handles (an access violation, an illegal instruction, a stack overflow, a heap the system found
 // corrupted) writes the report on standard error and into "<dir>\crash-<date>-<pid>.txt" (and "<report>.dmp" with
 // Install_Options.minidump), then the process dies as it would have (its exit code, the Application Error event).

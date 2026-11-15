@@ -1,6 +1,7 @@
 package tk_toolbox
 
 import "core:fmt"
+import "core:os"
 import win "core:sys/windows"
 
 // A program of the system (curl, tar), from the system's own folder: never another of that name earlier on the PATH (Git's tar
@@ -19,4 +20,18 @@ exe_has_icon :: proc(path: string) -> bool {
 	if module == nil { return false }
 	defer win.FreeLibrary(module)
 	return win.FindResourceW(module, transmute(win.LPCWSTR)uintptr(1), transmute(win.LPCWSTR)win.RT_GROUP_ICON) != nil
+}
+
+// What a stamp file ends with (the ones PowerShell's Set-Content wrote end so on Windows, and stay valid).
+STAMP_NEWLINE :: "\r\n"
+// What a program's -extra-linker-flags must hold for its reports to be named: the linker's map.
+CRASH_LINKER_FLAGS :: "/MAP"
+// The target the crates are linked for: this system's.
+NOTICES_TARGET :: "x86_64-pc-windows-msvc"
+
+// The exit code of a finished process; -1 when it did not exit. Windows gives it as an unsigned number: it is read back as the
+// program's 32-bit int (`exit(-1)` is -1, a crash's NTSTATUS is negative).
+exit_code :: proc(state: os.Process_State) -> int {
+	if !state.exited { return -1 }
+	return int(i32(u32(state.exit_code)))
 }

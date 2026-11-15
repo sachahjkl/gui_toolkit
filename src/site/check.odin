@@ -358,16 +358,7 @@ site_processes :: proc(profile: string) -> []int {
 	return out[:]
 }
 
-// (by its number: on Windows os.process_open does not ask for the right to end what it opens)
-@(private = "file")
-site_kill :: proc(pid: int) {
-	id := fmt.tprintf("%d", pid)
-	when ODIN_OS == .Windows {
-		run_quiet({"taskkill", "/F", "/PID", id})
-	} else {
-		run_quiet({"kill", "-9", id})
-	}
-}
+// (site_kill(pid): a process ended by its number, the system's command: check_windows.odin, check_other.odin)
 
 // Asked to leave, then made to, its helpers with it: what ends the browser does not end them, and they hold its profile.
 // (The call has a limit of its own: a browser that does not answer must not hold the rest up.)

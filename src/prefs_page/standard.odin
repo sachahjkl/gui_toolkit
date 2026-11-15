@@ -191,7 +191,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	a := allocator
 	// (the launcher's place in the user's words, as gt:desktop's menu_name says it: the page does not import it)
 	menu_description := i18n.later("Put %[0]s in the application menu, with its icon. The desktop then knows %[0]s by its name: its shortcuts and its windows' places come from that.")
-	when ODIN_OS == .Windows {
+	when START_MENU {
 		menu_description = i18n.later("Put %[0]s in the Start menu, with its icon. The desktop then knows %[0]s by its name: its shortcuts and its windows' places come from that.")
 	}
 	if .Text in sets { sync.once_do(&system_stripes_once, proc() { system_stripes = font.system_subpixel_text() }) }
@@ -372,7 +372,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			description = i18n.later("Whether outlines are fitted to the pixel grid: crisper stems, shapes a little off. Auto: as the font asks."),
 			choices = GRID_FIT_CHOICES[:], choice_labels = labels(a, i18n.later("Auto"), i18n.later("On"), i18n.later("Off")),
 		})
-		when ODIN_OS == .Windows {
+		when font.SYSTEM_RASTERIZER {
 			// (elsewhere there is no rasterizer of bitmaps: Slug draws every letter)
 			append(&defs, config.Def{
 				name = "appearance.text.renderer", title = i18n.later("Text renderer"), kind = .String, default = {s = RENDERER_CHOICES[int(fs.text_renderer)]}, advanced = true,

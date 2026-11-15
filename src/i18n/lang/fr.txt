@@ -71,30 +71,6 @@ fr un fichier n'a pas pu être écrit ou supprimé
 en the system refused
 fr le système a refusé
 
-en Start menu
-fr menu Démarrer
-
-en application menu
-fr menu des applications
-
-en Default apps
-fr Applications par défaut
-
-en the default browser setting
-fr le réglage du navigateur par défaut
-
-en Start menu, default apps, session start
-fr menu Démarrer, applications par défaut, démarrage de la session
-
-en Start menu, session start
-fr menu Démarrer, démarrage de la session
-
-en application menu, default browser, PATH, session start
-fr menu des applications, navigateur par défaut, PATH, démarrage de la session
-
-en application menu, PATH, session start
-fr menu des applications, PATH, démarrage de la session
-
 en Enter the folder to install into.
 fr Indiquez le dossier d'installation.
 
@@ -103,21 +79,6 @@ fr Le nom du dossier a des caractères que Windows refuse.
 
 en The folder name has a control character.
 fr Le nom du dossier a un caractère de contrôle.
-
-en Use a full path on a local drive, such as C:\\Users\\you\\AppData\\Local\\Programs\\%s.
-fr Indiquez un chemin complet sur un disque local, comme C:\\Users\\vous\\AppData\\Local\\Programs\\%s.
-
-en The folder name has a colon after the drive letter.
-fr Le nom du dossier a un deux-points après la lettre du disque.
-
-en Pick a folder, not the root of a drive.
-fr Choisissez un dossier, pas la racine d'un disque.
-
-en Use a full path.
-fr Indiquez un chemin complet.
-
-en Pick a folder, not the root.
-fr Choisissez un dossier, pas la racine.
 
 en The path is too long (the files inside need room too).
 fr Le chemin est trop long (les fichiers qu'il contiendra ont besoin de place aussi).
@@ -136,6 +97,45 @@ fr %s est un fichier, pas un dossier.
 
 en Cannot write in %s.
 fr Impossible d'écrire dans %s.
+
+en Use a full path.
+fr Indiquez un chemin complet.
+
+en Pick a folder, not the root.
+fr Choisissez un dossier, pas la racine.
+
+en Use a full path on a local drive, such as C:\\Users\\you\\AppData\\Local\\Programs\\%s.
+fr Indiquez un chemin complet sur un disque local, comme C:\\Users\\vous\\AppData\\Local\\Programs\\%s.
+
+en The folder name has a colon after the drive letter.
+fr Le nom du dossier a un deux-points après la lettre du disque.
+
+en Pick a folder, not the root of a drive.
+fr Choisissez un dossier, pas la racine d'un disque.
+
+en application menu
+fr menu des applications
+
+en the default browser setting
+fr le réglage du navigateur par défaut
+
+en application menu, default browser, PATH, session start
+fr menu des applications, navigateur par défaut, PATH, démarrage de la session
+
+en application menu, PATH, session start
+fr menu des applications, PATH, démarrage de la session
+
+en Start menu
+fr menu Démarrer
+
+en Default apps
+fr Applications par défaut
+
+en Start menu, default apps, session start
+fr menu Démarrer, applications par défaut, démarrage de la session
+
+en Start menu, session start
+fr menu Démarrer, démarrage de la session
 
 en no error
 fr aucune erreur
@@ -1247,31 +1247,6 @@ fr Installé par Nix. Une installation antérieure a laissé des fichiers ici : 
 en Installed by Nix: the Nix package has the menu entry and the icon.
 fr Installé par Nix : le paquet Nix a l'entrée du menu et l'icône.
 
-ctx setup key
-en Start menu
-fr Menu Démarrer
-
-en Applications menu
-fr Menu des applications
-
-en Settings > Apps
-fr Paramètres > Applications
-
-en Icons
-fr Icônes
-
-en Installed. Start it from the Start menu, or now:
-fr Installé. Lancez-le depuis le menu Démarrer, ou maintenant :
-
-en Installed. Start it from the applications menu, or now:
-fr Installé. Lancez-le depuis le menu des applications, ou maintenant :
-
-en Installed, but a shortcut, the Settings entry or a file is missing.
-fr Installé, mais il manque un raccourci, l'entrée des Paramètres ou un fichier.
-
-en Installed, but the menu entry, an icon or a file is missing.
-fr Installé, mais il manque l'entrée du menu, une icône ou un fichier.
-
 en %s Setup
 fr Installation : %s
 
@@ -1424,6 +1399,31 @@ fr oui (avec son lanceur de console)
 
 en the install folder is unknown
 fr le dossier d'installation est inconnu
+
+en Applications menu
+fr Menu des applications
+
+en Icons
+fr Icônes
+
+en Installed. Start it from the applications menu, or now:
+fr Installé. Lancez-le depuis le menu des applications, ou maintenant :
+
+en Installed, but the menu entry, an icon or a file is missing.
+fr Installé, mais il manque l'entrée du menu, une icône ou un fichier.
+
+ctx setup key
+en Start menu
+fr Menu Démarrer
+
+en Settings > Apps
+fr Paramètres > Applications
+
+en Installed. Start it from the Start menu, or now:
+fr Installé. Lancez-le depuis le menu Démarrer, ou maintenant :
+
+en Installed, but a shortcut, the Settings entry or a file is missing.
+fr Installé, mais il manque un raccourci, l'entrée des Paramètres ou un fichier.
 
 en Waiting for the system's answer…
 fr En attente de la réponse du système…

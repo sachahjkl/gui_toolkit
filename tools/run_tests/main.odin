@@ -176,6 +176,8 @@ STEPS := []Step{
 	{name = "resize_grip", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (a dialog's grips and corner control: a process of its own, the scenarios' is full)
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
 	{name = "partial_redraw", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
+	// (what covers a change: a process of its own, on another runner; with the scenes above it passed 420 s on WARP)
+	{name = "partial_redraw_layers", one = true, wgpu = .Ci4, oses = EVERYWHERE, text = true},
 	{name = "examples", one = true, oses = EVERYWHERE, text = true},
 	// (each frame also drawn whole on the side: a partial frame must match it byte for byte; a difference ends the program with 1)
 	{name = "examples_damage", path = "tests/examples", one = true, defines = {"TOOLKIT_DAMAGE_CHECK=true", "ODIN_TEST_NAMES=examples_test.whatsnew_pages_look_like_their_images,examples_test.whatsnew_lazy_column_after_a_wheel_burst,examples_test.fidget_controls_by_the_mouse,examples_test.fidget_editor_undo_and_redo"}},

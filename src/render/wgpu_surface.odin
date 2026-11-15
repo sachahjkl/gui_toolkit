@@ -34,7 +34,7 @@ wgpu_surface_init :: proc(r: ^Renderer, s: ^Surface, handles: platform.Surface_H
 	wgpu_surface_exchange(r, s)
 	r.size, r.surface_handles, r.transparent, r.transparent_asked = size, handles, transparent, transparent
 	r.swap_gen, r.swap_space = r.device_generation, r.space_epoch
-	when ODIN_OS == .Windows { r.hwnd = win.HWND(handles.hwnd) }
+	r.hwnd = win.HWND(handles.hwnd)   // (nil off Windows)
 	ok := true
 	g.surface = wgpu_make_surface(r, handles)
 	if handles.backend != .None && g.surface == nil { fmt.eprintln("render: wgpu: cannot create the second window's surface"); ok = false }

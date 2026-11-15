@@ -30,7 +30,7 @@ import "../platform"
 //     (presentation estimates, see wgpu_present.odin).
 
 WGPU_ADAPTER_LIMITS :: #config(TOOLKIT_WGPU_ADAPTER_LIMITS, false)   // ask for everything the adapter offers (more memory), else the defaults of WebGPU
-WGPU_BACKEND :: #config(TOOLKIT_WGPU_BACKEND, "dx12" when ODIN_OS == .Windows else "vulkan")   // "dx12" | "vulkan" (no DX12 off Windows)
+WGPU_BACKEND :: #config(TOOLKIT_WGPU_BACKEND, "dx12" when SYSTEM_DIRECT3D else "vulkan")   // "dx12" | "vulkan" (no DX12 off Windows)
 WGPU_DX12_COMPILER :: #config(TOOLKIT_WGPU_DX12_COMPILER, "auto")   // "fxc" (d3dcompiler, always there) | "dxc" (dxcompiler.dll + dxil.dll next to the program) | "auto": dxc when the DLLs are there (tools/tk fetch_wgpu)
 
 @(private) WGPU_SLUG_SOURCE :: WGSL_RECT + "\n" + WGSL_SLUG   // as naga reads the Slug module (shaders.odin: MODULES)
@@ -227,32 +227,7 @@ wait_request :: proc(g: ^Wgpu_State, req: ^Request) -> bool {
 	return req.done && req.ok
 }
 
-// A one-millisecond sleep while polling for a wgpu request (Windows has win.Sleep; elsewhere core:time's nanosleep).
-@(private)
-thread_sleep_1ms :: proc() {
-	when ODIN_OS == .Windows { win.Sleep(1) } else { time.sleep(time.Millisecond) }
-}
-
-// The path of dxcompiler.dll when it and dxil.dll sit next to the program ("" otherwise: FXC compiles the shaders).
-// Windows and the DX12 backend only; other systems use Vulkan and have no HLSL compiler to choose.
-@(private)
-find_dxc :: proc() -> string {
-	when ODIN_OS == .Windows {
-		buf: [win.MAX_PATH_WIDE]u16
-		n := win.GetModuleFileNameW(nil, raw_data(buf[:]), len(buf))
-		if n == 0 { return "" }
-		dir, err := win.utf16_to_utf8(buf[:n], context.temp_allocator)
-		if err != nil { return "" }
-		slash := strings.last_index_byte(dir, '\\')
-		if slash < 0 { return "" }
-		dll := fmt.tprintf("%s\\dxcompiler.dll", dir[:slash])
-		il := fmt.tprintf("%s\\dxil.dll", dir[:slash])
-		if !os.exists(dll) || !os.exists(il) { return "" }
-		return dll
-	} else {
-		return ""
-	}
-}
+// (thread_sleep_1ms, find_dxc: wgpu_core_windows.odin, wgpu_core_other.odin)
 
 // Instance, (surface), adapter, device and queue. `hwnd` nil: no surface (offscreen). `fallback`: the software adapter.
 //
@@ -260,26 +235,13 @@ find_dxc :: proc() -> string {
 // and a vectored exception handler that treats every exception as fatal (the one of Odin's test runner, debuggers' `break
 // on first chance` options) would stop the process on them. Only the thread that makes the calls sees them.
 // Makes the wgpu surface for the native handles the platform package filled. `.None`: an offscreen window, no surface.
-// On Windows a translucent window goes through DirectComposition (wgpu_dcomp.odin); on Linux the Wayland / XCB handles
-// go through wgpu_surface_from_handles (wgpu_surface_linux.odin). The renderer's device, present, resize and capture are
-// the same code afterwards, whatever made the surface.
+// The system's handles go through wgpu_surface_from_handles (wgpu_surface_windows.odin: a translucent window through
+// DirectComposition; wgpu_surface_linux.odin: Wayland / XCB). The renderer's device, present, resize and capture are the
+// same code afterwards, whatever made the surface.
 @(private)
 wgpu_make_surface :: proc(r: ^Renderer, h: platform.Surface_Handles) -> wgpu.Surface {
 	if h.backend == .None { return nil }
-	when ODIN_OS == .Windows {
-		hwnd := win.HWND(h.hwnd)
-		if hwnd == nil { return nil }
-		if r.transparent {
-			s := fault_hit(.Composition) ? nil : wgpu_dcomp_surface(r, hwnd)
-			if s != nil { return s }
-			fmt.eprintln("render: wgpu: DirectComposition unavailable, the window is opaque")
-			r.transparent = false
-		}
-		src := wgpu.SurfaceSourceWindowsHWND{chain = {sType = .SurfaceSourceWindowsHWND}, hinstance = h.hinstance != nil ? h.hinstance : rawptr(win.GetModuleHandleW(nil)), hwnd = rawptr(hwnd)}
-		return wgpu.InstanceCreateSurface(r.wg.instance, &{nextInChain = &src.chain})
-	} else {
-		return wgpu_surface_from_handles(r.wg.instance, h)
-	}
+	return wgpu_surface_from_handles(r, h)
 }
 
 @(private)
@@ -309,7 +271,7 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 		dxcPath = dxc_path,
 		dcxMaxShaderModel = .V6_0,
 	}
-	g.fxc = ODIN_OS == .Windows && WGPU_BACKEND != "vulkan" && dxc_path == ""
+	g.fxc = SYSTEM_DIRECT3D && WGPU_BACKEND != "vulkan" && dxc_path == ""
 	g.instance = wgpu.CreateInstance(&{nextInChain = &extras.chain})
 	if g.instance == nil { fmt.eprintln("render: wgpu: no instance"); return false }
 	g.surface = wgpu_make_surface(r, surface)
@@ -455,7 +417,7 @@ wgpu_frame_formats :: proc(r: ^Renderer) {
 
 @(private)
 wgpu_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
-	when ODIN_OS == .Windows { r.hwnd = win.HWND(surface.hwnd) }
+	r.hwnd = win.HWND(surface.hwnd)   // (nil off Windows)
 	r.surface_handles = surface
 	r.size = size
 	r.transparent, r.transparent_asked = transparent, transparent

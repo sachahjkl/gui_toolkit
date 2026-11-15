@@ -54,7 +54,7 @@ Watch_State :: struct {
 REG_FILTER :: win.REG_NOTIFY_CHANGE_NAME | win.REG_NOTIFY_CHANGE_LAST_SET
 DIR_FILTER :: win.FILE_NOTIFY_CHANGE_FILE_NAME | win.FILE_NOTIFY_CHANGE_DIR_NAME | win.FILE_NOTIFY_CHANGE_LAST_WRITE
 
-watch_start_windows :: proc(o: ^Integration_Options, wake: Watch_Proc, user: rawptr) -> ^Watcher {
+watch_system_start :: proc(o: ^Integration_Options, wake: Watch_Proc, user: rawptr) -> ^Watcher {
 	st := new(Watch_State)
 	st.wake, st.user = wake, user
 	st.stop = win.CreateEventW(nil, true, false, nil)
@@ -201,7 +201,7 @@ watch_thread :: proc(data: rawptr) {
 	}
 }
 
-watch_stop_windows :: proc(w: ^Watcher) {
+watch_system_stop :: proc(w: ^Watcher) {
 	st := (^Watch_State)(w.impl)
 	if st == nil { return }
 	if st.stop != nil { win.SetEvent(st.stop) }

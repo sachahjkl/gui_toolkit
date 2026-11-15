@@ -27,58 +27,6 @@ Wgpu_Latency :: struct {
 	lag_ns:     f64,          // how much later than the next vblank the swap chain really takes a new frame (learned from the acquires that had to wait)
 }
 
-@(private)
-DWM_TIMING_INFO :: struct #packed {   // the header packs it to 1 byte
-	cbSize:                u32,
-	rateRefresh:           [2]u32,   // numerator, denominator
-	qpcRefreshPeriod:      u64,
-	rateCompose:           [2]u32,
-	qpcVBlank:             u64,
-	cRefresh:              u64,
-	cDXRefresh:            u32,
-	qpcCompose:            u64,
-	cFrame:                u64,
-	cDXPresent:            u32,
-	cRefreshFrame:         u64,
-	cFrameSubmitted:       u64,
-	cDXPresentSubmitted:   u32,
-	cFrameConfirmed:       u64,
-	cDXPresentConfirmed:   u32,
-	cRefreshConfirmed:     u64,
-	cDXRefreshConfirmed:   u32,
-	cFramesLate:           u64,
-	cFramesOutstanding:    u32,
-	cFrameDisplayed:       u64,
-	qpcFrameDisplayed:     u64,
-	cRefreshFrameDisplayed: u64,
-	cFrameComplete:        u64,
-	qpcFrameComplete:      u64,
-	cFramePending:         u64,
-	qpcFramePending:       u64,
-	cFramesDisplayed:      u64,
-	cFramesComplete:       u64,
-	cFramesPending:        u64,
-	cFramesAvailable:      u64,
-	cFramesDropped:        u64,
-	cFramesMissed:         u64,
-	cRefreshNextDisplayed: u64,
-	cRefreshNextPresented: u64,
-	cRefreshesDisplayed:   u64,
-	cRefreshesPresented:   u64,
-	cRefreshStarted:       u64,
-	cPixelsReceived:       u64,
-	cPixelsDrawn:          u64,
-	cBuffersEmpty:         u64,
-}
-
-#assert(size_of(DWM_TIMING_INFO) == 292)
-
-foreign import dwmapi_present "system:dwmapi.lib"
-@(default_calling_convention = "system", private = "file")
-foreign dwmapi_present {
-	DwmGetCompositionTimingInfo :: proc(hwnd: win.HWND, info: ^DWM_TIMING_INFO) -> win.HRESULT ---
-}
-
 // Frames the surface may queue without LOW_LATENCY.
 @(private) WGPU_FRAME_LATENCY_DEFAULT :: 3
 // An acquire that waited longer than this says the latency object was set too early; else the lag fades by LAG_DECAY.
@@ -97,39 +45,8 @@ wgpu_frame_latency :: proc(r: ^Renderer) -> u32 {
 	when LOW_LATENCY { return 1 } else { return WGPU_FRAME_LATENCY_DEFAULT }
 }
 
-@(private)
-wgpu_latency_start :: proc(r: ^Renderer) {
-	when !LOW_LATENCY { return }
-	when ODIN_OS == .Windows {
-		l := &r.wg.latency
-		if r.wg.surface == nil || l.timer != nil { return }
-		CREATE_WAITABLE_TIMER_HIGH_RESOLUTION :: 0x2
-		l.timer = win.CreateWaitableTimerExW(nil, nil, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, win.TIMER_ALL_ACCESS)
-		if l.timer == nil { l.timer = win.CreateWaitableTimerExW(nil, nil, 0, win.TIMER_ALL_ACCESS) }
-		wgpu_latency_arm(r, 0)   // nothing queued yet: the first frame is not held back
-	}
-	// On Linux there is no frame-latency waitable: the present mode (FIFO by default) paces the frames at the vblank,
-	// and platform.wait_handle(w, wgpu_waitable(r) == nil) returns at once (see wgpu_waitable).
-}
-
-@(private)
-wgpu_latency_stop :: proc(r: ^Renderer) {
-	when ODIN_OS == .Windows {
-		l := &r.wg.latency
-		if l.timer != nil { win.CloseHandle(l.timer); l.timer = nil }
-	}
-}
-
-// Signals the frame latency object in `ns` nanoseconds (0: at once). Windows only (the waitable timer).
-@(private)
-wgpu_latency_arm :: proc(r: ^Renderer, ns: i64) {
-	when ODIN_OS == .Windows {
-		l := &r.wg.latency
-		if l.timer == nil { return }
-		due := win.LARGE_INTEGER(ns > 100 ? -(ns / 100) : -1)   // relative, in 100 ns units
-		win.SetWaitableTimerEx(l.timer, &due, 0, nil, nil, nil, 0)
-	}
-}
+// (wgpu_latency_start, wgpu_latency_stop, wgpu_latency_arm, wgpu_latency_wait, wgpu_compositor_timing: the frame
+// latency object and the compositor's timing, wgpu_latency_windows.odin; elsewhere none, wgpu_latency_other.odin)
 
 // The frame latency object (nil without LOW_LATENCY or offscreen).
 @(private)
@@ -155,10 +72,7 @@ wgpu_acquire :: proc(r: ^Renderer) -> wgpu.SurfaceTexture {
 // there is no latency object; the FIFO present paces instead, and this just acquires the frame.
 @(private)
 wgpu_wait_frame :: proc(r: ^Renderer, timeout_ms: int) -> bool {
-	when ODIN_OS == .Windows {
-		l := &r.wg.latency
-		if l.timer != nil && !r.present.slot_unused && win.WaitForSingleObject(l.timer, u32(max(timeout_ms, 0))) != win.WAIT_OBJECT_0 { return false }
-	}
+	if !r.present.slot_unused && !wgpu_latency_wait(r, timeout_ms) { return false }
 	return wgpu_ensure_frame(r)
 }
 
@@ -264,19 +178,7 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	// the compositor's timing: the last vblank (QPC, refresh counter) and the period. DWM is Windows only; on Linux
 	// there is no portable per-present timing here, so the frame statistics (shown / missed refreshes) stay off and
 	// the FIFO present paces the frames.
-	info := DWM_TIMING_INFO{cbSize = size_of(DWM_TIMING_INFO)}
-	ok := false
-	when ODIN_OS == .Windows {
-		ok = hr_ok(DwmGetCompositionTimingInfo(nil, &info)) && info.qpcRefreshPeriod > 0
-		p.stats_ok = ok
-		if ok {
-			freq: win.LARGE_INTEGER
-			win.QueryPerformanceFrequency(&freq)
-			p.period_ns = f64(info.qpcRefreshPeriod) * 1e9 / f64(freq)
-			p.sync_tick = qpc_to_tick(i64(info.qpcVBlank))
-			p.sync_count = u32(info.cRefresh)
-		}
-	}
+	refresh, ok := wgpu_compositor_timing(p)
 	shown := now
 	index: u64
 	if ok && sync > 0 && p.period_ns > 0 {
@@ -284,9 +186,9 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 		since := f64(time.tick_diff(p.sync_tick, now)) + PRESENT_GPU_MARGIN_NS
 		k := since <= 0 ? 0 : u64(since / p.period_ns) + 1
 		shown._nsec = p.sync_tick._nsec + i64(f64(k + u64(sync - 1)) * p.period_ns)
-		index = info.cRefresh + k + u64(sync - 1)
+		index = refresh + k + u64(sync - 1)
 	} else if ok {
-		index = info.cRefresh + u64(max(f64(time.tick_diff(p.sync_tick, now)), 0) / max(p.period_ns, 1))
+		index = refresh + u64(max(f64(time.tick_diff(p.sync_tick, now)), 0) / max(p.period_ns, 1))
 	}
 	// the latency object: the screen has taken the frame when it reaches that vblank (plus the lag learned so far)
 	wgpu_latency_arm(r, sync > 0 ? max(i64(time.tick_diff(now, shown) + time.Duration(l.lag_ns)) - LATENCY_ARM_EARLY_NS, 0) : 0)

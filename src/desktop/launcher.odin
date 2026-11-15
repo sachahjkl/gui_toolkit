@@ -33,15 +33,8 @@ launcher_bytes :: proc(o: ^Integration_Options) -> []byte { return len(o.launche
 // What a launcher of this identity carries: its own mark, else the embedded launcher's.
 launcher_mark_of :: proc(id: Identity) -> string { return id.launcher_mark != "" ? id.launcher_mark : BUILT_LAUNCHER_MARK }
 
-// `<dir>\<stem>.com` for the executable `<dir>\<stem>.exe`; "" where there is no such thing (not Windows) or `exe` has no
-// extension.
-launcher_file :: proc(exe: string, allocator := context.temp_allocator) -> string {
-	when ODIN_OS != .Windows { return "" }
-	slash := max(strings.last_index_byte(exe, '\\'), strings.last_index_byte(exe, '/'))
-	dot := strings.last_index_byte(exe, '.')
-	if dot <= slash + 1 { return "" }
-	return strings.concatenate({exe[:dot], ".com"}, allocator)
-}
+// launcher_file(exe): the console launcher of the executable `exe` (launcher_windows.odin: `<dir>\<stem>.com`); "" where
+// there is no such thing (launcher_other.odin).
 
 // Is the file at `path` a launcher of ours (it carries the identity's mark)? Never without a mark.
 launcher_is_ours :: proc(o: ^Integration_Options, path: string) -> bool {

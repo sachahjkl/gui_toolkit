@@ -83,7 +83,7 @@ key :: proc(prefix, path: string, allocator := context.temp_allocator) -> string
 	if abs, err := filepath.abs(path, context.temp_allocator); err == nil { p = abs }
 	p, _ = strings.replace_all(p, "\\", "/", context.temp_allocator)
 	p = strings.trim_right(p, "/")
-	when ODIN_OS == .Windows { p = strings.to_lower(p, context.temp_allocator) }
+	when PATHS_FOLD_CASE { p = strings.to_lower(p, context.temp_allocator) }
 	h: u64 = FNV_OFFSET_BASIS
 	for c in transmute([]u8)p { h = (h ~ u64(c)) * FNV_PRIME }
 	hex := "0123456789abcdef"
@@ -121,7 +121,7 @@ decode :: proc(data: []byte) -> (identity: string, message: []byte, ok: bool) {
 @(private)
 same_identity :: proc(owner, sender: string) -> bool {
 	if owner == "" { return true }
-	when ODIN_OS == .Windows {
+	when PATHS_FOLD_CASE {
 		x, _ := strings.replace_all(owner, "/", "\\", context.temp_allocator)
 		y, _ := strings.replace_all(sender, "/", "\\", context.temp_allocator)
 		return strings.equal_fold(x, y)

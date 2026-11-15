@@ -1,6 +1,9 @@
 #+build linux
 package platform
 
+// A file URI's path names a drive (file:///C:/x is C:/x): uri_list_to_paths.
+@(private) URI_PATHS_HAVE_DRIVES :: false
+
 // The rich clipboard on Linux (clipboard.odin has the API and the pure conversions). Text goes through the X11
 // CLIPBOARD selection (window_x11_linux.odin) or the Wayland wl_data_device (window_wl_linux.odin). The richer
 // flavours — HTML, an image, a file list — are kept by the process that set them and offered to other clients under

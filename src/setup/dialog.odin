@@ -369,32 +369,8 @@ state_words :: proc(f: Facts, o: Setup_Options) -> (words, tone: string) {
 	return "", ""
 }
 
-// The words of this system for the pieces of an install, in the language in use (whole sentences: a language puts the
-// pieces' words where its grammar wants them).
-@(private)
-words_menu :: proc() -> string {
-	// (a key of a line, capitalised: desktop.menu_name says the same place inside a sentence)
-	when ODIN_OS == .Windows { return i18n.tr("setup key", "Start menu") } else { return i18n.tr("Applications menu") }
-}
-
-@(private)
-words_record :: proc() -> string {
-	when ODIN_OS == .Windows { return i18n.tr("Settings > Apps") } else { return i18n.tr("Icons") }
-}
-
-@(private = "file")
-words_installed :: proc() -> string {
-	when ODIN_OS == .Windows { return i18n.tr("Installed. Start it from the Start menu, or now:") } else { return i18n.tr("Installed. Start it from the applications menu, or now:") }
-}
-
-@(private = "file")
-words_pieces_missing :: proc() -> string {
-	when ODIN_OS == .Windows {
-		return i18n.tr("Installed, but a shortcut, the Settings entry or a file is missing.")
-	} else {
-		return i18n.tr("Installed, but the menu entry, an icon or a file is missing.")
-	}
-}
+// (words_menu, words_record, words_installed, words_pieces_missing: the words of this system for the pieces of an
+// install, system_windows.odin, system_other.odin)
 
 // What the program's look draws first, under the header (Setup_Options.backdrop: a blur of the window...).
 @(private = "file")

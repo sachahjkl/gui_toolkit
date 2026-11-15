@@ -1,6 +1,9 @@
 #+build windows
 package platform
 
+// A file URI's path names a drive (file:///C:/x is C:/x): uri_list_to_paths.
+@(private) URI_PATHS_HAVE_DRIVES :: true
+
 // The clipboard's flavours on Windows (clipboard.odin has the API). Formats read, best first: images "PNG" (alpha, what
 // browsers and Office write), CF_DIBV5, CF_DIB, CF_BITMAP; HTML "HTML Format"; files CF_HDROP. Written: CF_UNICODETEXT
 // (CRLF line ends), "HTML Format", "PNG" + CF_DIBV5 (alpha) + CF_DIB (opaque over white), CF_HDROP with "Preferred

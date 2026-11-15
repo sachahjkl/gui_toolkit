@@ -1,5 +1,8 @@
 package tk_instance
 
+// The paths of this system keep their case (key, same_identity).
+@(private) PATHS_FOLD_CASE :: false
+
 // Linux: a lock file and a Unix socket in the user's runtime directory ($XDG_RUNTIME_DIR/tk_instance, else
 // /tmp/tk_instance-<uid>, mode 0700: only this user's processes reach them). See instance.odin for the whole picture.
 //

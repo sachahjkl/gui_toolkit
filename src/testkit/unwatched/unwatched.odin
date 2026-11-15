@@ -19,13 +19,5 @@
 // ended by an exception leaves them to the runner.
 package unwatched
 
-import "core:testing"
-
-// Calls body(t) on a thread of its own and waits for it (directly, off Windows).
-run :: proc(t: ^testing.T, body: proc(t: ^testing.T), loc := #caller_location) {
-	when ODIN_OS == .Windows {
-		run_unwatched(t, body, loc)
-	} else {
-		body(t)
-	}
-}
+// run(t, body): calls body(t) on a thread of its own and waits for it (unwatched_windows.odin); elsewhere directly
+// (unwatched_other.odin).

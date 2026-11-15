@@ -94,3 +94,10 @@ all_attributes :: proc(names: []string) -> bool {
 	}
 	return true
 }
+
+// The system is NixOS: ID=nixos in /etc/os-release (also seen inside an FHS sandbox, which hides /etc/NIXOS). The
+// installed copy needs its runtime there.
+is_nixos :: proc() -> bool {
+	data, err := os.read_entire_file("/etc/os-release", context.temp_allocator)
+	return err == nil && os_release_is_nixos(string(data))
+}

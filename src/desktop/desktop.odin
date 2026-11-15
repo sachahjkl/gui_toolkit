@@ -310,25 +310,13 @@ supported_parts :: proc() -> Parts {
 	return b == nil ? {} : b.parts
 }
 
-// The launcher's place in the user's words, in the language in use: "Start menu" on Windows, "application menu" elsewhere.
-menu_name :: proc() -> string {
-	when ODIN_OS == .Windows { return i18n.tr("Start menu") } else { return i18n.tr("application menu") }
-}
-
-// Where the system lists the programs that can be the default browser, in the user's words (in the language in use).
-default_apps_name :: proc() -> string {
-	when ODIN_OS == .Windows { return i18n.tr("Default apps") } else { return i18n.tr("the default browser setting") }
-}
+// (menu_name, default_apps_name, targets: the system's places in the user's words, words_windows.odin, words_other.odin)
 
 // What the integration adds on this platform, for a label, in the language in use: "Start menu, session start", or
 // "Start menu, default apps, session start" for a browser ("" where there is no integration).
 targets :: proc(browser: bool) -> string {
 	if platform_backend() == nil { return "" }
-	when ODIN_OS == .Windows {
-		return browser ? i18n.tr("Start menu, default apps, session start") : i18n.tr("Start menu, session start")
-	} else {
-		return browser ? i18n.tr("application menu, default browser, PATH, session start") : i18n.tr("application menu, PATH, session start")
-	}
+	return targets_words(browser)
 }
 
 // True when the system has a page where the user picks the default programs.
@@ -418,16 +406,7 @@ describe :: proc(s: ^Status) -> string {
 	return ""
 }
 
-// The system is NixOS: ID=nixos in /etc/os-release (also seen inside an FHS sandbox, which hides /etc/NIXOS). The
-// installed copy needs its runtime there (nixos_linux.odin).
-is_nixos :: proc() -> bool {
-	when ODIN_OS == .Linux {
-		data, err := os.read_entire_file("/etc/os-release", context.temp_allocator)
-		return err == nil && os_release_is_nixos(string(data))
-	} else {
-		return false
-	}
-}
+// (is_nixos: the system is NixOS, nixos_linux.odin; never elsewhere, nixos_other.odin)
 
 os_release_is_nixos :: proc(text: string) -> bool {
 	rest := text
@@ -442,15 +421,11 @@ os_release_is_nixos :: proc(text: string) -> bool {
 // The program is in the Nix store: a Nix package made it, and the package makes it run and lists it in the menu.
 in_nix_store :: proc(exe: string) -> bool { return strings.has_prefix(exe, "/nix/store/") }
 
-// Same file? Windows paths ignore case and slash direction; the others are exact.
+// Same file? (same_path_system: Windows paths ignore case and slash direction, system_windows.odin; the others are
+// exact, path_other.odin)
 same_path :: proc(a, b: string) -> bool {
 	if a == "" || b == "" { return false }
-	when ODIN_OS == .Windows {
-		// (one file has two names when a folder has a short 8.3 name too, C:\Users\RUNNER~1: a TEMP or a shortcut may give either)
-		return strings.equal_fold(long_path(normalize_slashes(a)), long_path(normalize_slashes(b)))
-	} else {
-		return a == b
-	}
+	return same_path_system(a, b)
 }
 
 @(private)
