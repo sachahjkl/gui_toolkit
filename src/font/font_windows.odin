@@ -1,6 +1,10 @@
 #+build windows
 package font
 
+// The system draws letters itself (DirectWrite: bitmaps hinted per size, its own colour glyphs): the dwrite backend, the
+// atlas renderer and the system's colour engine are there.
+SYSTEM_RASTERIZER :: true
+
 import "base:runtime"
 import "core:math"
 import "core:os"

@@ -35,7 +35,7 @@ face_colr_open :: proc(f: ^Font) -> (fc: ^Face_Colr, refused: bool) {
 	fc = new(Face_Colr)
 	colr, cpal: []u8
 	colr, fc.colr_ctx = face_table_read(f, "COLR")
-	when ODIN_OS != .Windows {
+	when !SYSTEM_RASTERIZER {
 		fc.cblc, _ = face_table_read(f, "CBLC")
 		fc.cbdt, _ = face_table_read(f, "CBDT")
 	}
@@ -135,7 +135,7 @@ face_colr_end :: proc(fc: ^Face_Colr) {
 @(private)
 colr_draws :: proc(s: ^State, f: ^Font, gid: u16) -> bool {
 	if !s.settings.color_glyphs || f.colr == nil || f.colr.c == nil || !colr_has_glyph(f.colr.c, gid) { return false }
-	when ODIN_OS != .Windows { return true } else { return s.settings.color_engine == .Builtin || colr_nests_glyph_cached(f.colr, gid) }
+	when !SYSTEM_RASTERIZER { return true } else { return s.settings.color_engine == .Builtin || colr_nests_glyph_cached(f.colr, gid) }
 }
 
 @(private)

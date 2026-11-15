@@ -1,6 +1,9 @@
 #+build !windows
 package font
 
+// No rasterizer of the system's: the native backend, Slug draws every letter, the toolkit's own colour glyphs.
+SYSTEM_RASTERIZER :: false
+
 import "base:runtime"
 import "core:os"
 import "core:strings"
