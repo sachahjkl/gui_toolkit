@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.276.2] - 2026-11-15 16:48
+
+### Fixed
+- **A dropdown without a width shows its item**: in a row as wide as its children, a view's header tools among them, a dropdown with no width given was squeezed to an empty sliver. It is now as wide as its widest item and its arrow.
+
 ## [0.276.1] - 2026-11-15 16:47
 
 ### Fixed
@@ -3831,6 +3836,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.276.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.276.2
 [0.276.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.276.1
 [0.276.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.276.0
 [0.275.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.275.0
