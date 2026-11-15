@@ -154,10 +154,13 @@ a card of rows split by hairlines, each row `ROW_PAD` above and below, its first
 scale in red, the box under the pointer named: where a page leaves the scale shows at a glance. Ctrl+Alt+Shift+W
 toggles it in a build with the devtools; Chrome DevTools' "Layer borders" too.
 
-`ui.set_exploded(state, on)` draws the window's boxes as planes in depth instead of the page: one plane per depth of the
-tree, each parent behind its children, menus, toasts and tooltips on their own planes. A drag turns it, the wheel
-spreads the planes, Escape turns it off; the page takes no input meanwhile. Ctrl+Alt+Shift+E toggles it in a build
-with the devtools. `ui.exploded(state)` says whether it is on.
+`ui.set_exploded(state, on)` draws the window's boxes as planes in depth instead of the page: each parent behind its
+children, menus, toasts and tooltips on their own planes. Turned on, the flat page eases into the view in about 600 ms;
+turned off, it eases back, then the page takes input again. A panel at the right sets the mode (Layers, Depths,
+Outlines), the yaw, the pitch, the spread and the zoom. A drag on the planes turns them, the wheel spreads them, Escape
+turns the view off; the page takes no input meanwhile. Ctrl+Alt+Shift+E toggles it in a build with the devtools.
+`ui.exploded(state)` says whether it is on: false from the moment it is turned off.
+
 A well around a field that shows when the field has the keyboard (a composer, a search): `flags = {.Focus_Within,
 .Draw_Focus_Ring}`, the ring of the well lit while any box in it has the keyboard.
 

@@ -62,12 +62,13 @@ the_wireframe_knows_each_gap :: proc(t: ^testing.T) {
 
 @(private = "file") exploded_clicks: int
 
-// The exploded view (src/md/features/exploded-view.md) takes the pointer: a drag turns it, a click on a button under it
-// presses nothing; Escape turns it off and the page takes clicks again. (Its drawing is kept in exploded.png.)
+// The exploded view (src/md/features/exploded-view.md) eases in from the flat page, then takes the pointer: a drag on
+// the planes turns it, a click on a button under it presses nothing, a slider of its panel sets its yaw; Escape eases
+// it back, and once flat the page takes clicks again. (Its drawing is kept in exploded.png.)
 @(test)
 the_exploded_view_turns_and_takes_the_pointer :: proc(t: ^testing.T) {
 	exploded_clicks = 0
-	s := session.start(t, {size = {500, 600}, build = proc(s: ^session.Session) {
+	s := session.start(t, {size = {500, 600}, animations = true, build = proc(s: ^session.Session) {
 		spacing_build(s)
 		ui.next({fixed_x = 20, fixed_y = 540, width = ui.px(120), height = ui.px(40)})
 		if ui.button("go", "Go").clicked { exploded_clicks += 1 }
@@ -77,14 +78,26 @@ the_exploded_view_turns_and_takes_the_pointer :: proc(t: ^testing.T) {
 	ui.set_exploded(s.state, true)
 	session.frames(s, 2)
 	testing.expect(t, ui.exploded(s.state))
+	testing.expectf(t, s.state.exploded.t > 0 && s.state.exploded.t < 1, "it eases in: t %v", s.state.exploded.t)
+	session.advance(s, 1000)
+	testing.expect_value(t, s.state.exploded.t, 1)
+	// (on the planes, left of the panel)
 	yaw := s.state.exploded.yaw
-	session.drag(s, {250, 300}, {350, 300})
+	session.drag(s, {40, 300}, {140, 300})
 	testing.expectf(t, s.state.exploded.yaw != yaw, "a drag across turns the view: yaw %v, then %v", yaw, s.state.exploded.yaw)
 	session.click_at(s, go)
 	testing.expect_value(t, exploded_clicks, 0)   // (the page takes no click under the view)
+	// (the yaw slider's left end: its least)
+	slider := session.get(s, "exploded_yaw")
+	session.drag(s, session.center(slider), {slider.rect.min.x + 1, session.center(slider).y})
+	testing.expect_value(t, s.state.exploded.yaw, -180)
 	session.save_png(s, "exploded.png")
 	session.key(s, .Escape)
 	testing.expect(t, !ui.exploded(s.state), "Escape turns it off")
+	session.click_at(s, go)
+	testing.expect_value(t, exploded_clicks, 0)   // (on its way back, the view still takes the pointer)
+	session.advance(s, 1000)
+	testing.expect_value(t, s.state.exploded.t, 0)
 	session.click_at(s, go)
 	testing.expect_value(t, exploded_clicks, 1)
 }

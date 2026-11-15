@@ -21,7 +21,7 @@ import tk_json "../json"
 
 NOTICES_FILE :: "THIRD-PARTY-NOTICES"
 // What a crate's licence files are named, in upper case.
-@(rodata) NOTICE_FILE_PREFIXES := [?]string{"LICENSE", "LICENCE", "COPYING", "NOTICE"}
+@(rodata) NOTICE_FILE_PREFIXES := [?]string{"LICENSE", "LICENCE", "COPYING", "NOTICE", "PATENTS"}
 
 @(private = "file") WGPU_MIT    :: #load("licences/wgpu-native-LICENSE.MIT", string)
 @(private = "file") WGPU_APACHE :: #load("licences/wgpu-native-LICENSE.APACHE", string)
@@ -180,12 +180,22 @@ notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
 		p := by_id[id]
 		folder := os.dir(tk_json.text(p, "manifest_path"))
 		names := make([dynamic]string, context.temp_allocator)
-		if fis, ferr := os.read_all_directory_by_path(folder, context.temp_allocator); ferr == nil {
+		licence_files :: proc(folder, under: string, names: ^[dynamic]string) {
+			fis, ferr := os.read_all_directory_by_path(folder, context.temp_allocator)
+			if ferr != nil { return }
 			for fi in fis {
 				up := ascii.upper(fi.name)
 				for prefix in NOTICE_FILE_PREFIXES {
-					if strings.has_prefix(up, prefix) { append(&names, fi.name); break }
+					if strings.has_prefix(up, prefix) { append(names, under == "" ? fi.name : fmt.tprintf("%s/%s", under, fi.name)); break }
 				}
+			}
+		}
+		licence_files(folder, "", &names)
+		// (a crate that wraps a C library's sources keeps that library's licence with them: libwebp-sys's vendor/COPYING
+		// and PATENTS. None at its root: one level down)
+		if len(names) == 0 {
+			if fis, ferr := os.read_all_directory_by_path(folder, context.temp_allocator); ferr == nil {
+				for fi in fis { if fi.type == .Directory { licence_files(fmt.tprintf("%s/%s", folder, fi.name), fi.name, &names) } }
 			}
 		}
 		if lf := tk_json.text(p, "license_file"); lf != "" && !slice.contains(names[:], lf) { append(&names, lf) }

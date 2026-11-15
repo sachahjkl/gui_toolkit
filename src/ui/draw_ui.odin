@@ -69,7 +69,7 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 		s.disabled_keep = tuned(color_from_tags(s, 0, "text") * {1, 1, 1, 0} + {0, 0, 0, s.disabled_keep}).a
 	}
 	interp := draw.set_interpolation(dc, .Linear)
-	if s.exploded.on {
+	if exploded_shown(s) {
 		// (instead of the page: the author's view of its layers, exploded.odin)
 		exploded_draw(s, dc)
 		draw.set_interpolation(dc, interp)
