@@ -72,7 +72,12 @@ wgpu_frame_begin :: proc(r: ^Renderer, clear: [4]f32) {
 	}
 	g.clear = {f64(c.r), f64(c.g), f64(c.b), f64(c.a)}
 	g.clear_pending = true
-	if g.surface != nil && wgpu_pick_present_mode(r) != g.present_mode { wgpu_configure_surface(r) }
+	// (the frames went opaque or translucent: the surface's alpha mode follows, before its texture of this frame is taken)
+	// (asked only at a change: the surface's modes are a call to the driver)
+	opaque := frame_opaque(clear)
+	turned := opaque != r.opaque_frames
+	r.opaque_frames = opaque
+	if g.surface != nil && (wgpu_pick_present_mode(r) != g.present_mode || (turned && g.configured && wgpu_surface_alpha(r) != g.alpha_mode)) { wgpu_configure_surface(r) }
 	t0 := time.tick_now()
 	wgpu_ensure_frame(r)
 	g.cpu.begin += time.duration_milliseconds(time.tick_since(t0))

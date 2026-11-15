@@ -121,7 +121,9 @@ render.init_window(&r, win, win.size, transparent = true)
 render.set_fixed_surface(&r, platform.monitor_size(win))
 ```
 
-It stays opaque as long as the frame is (`render.frame_begin` with an alpha of 1). Colours in the linear blend space are
+It stays opaque as long as the frame is (`render.frame_begin` with an alpha of 1): such a frame is presented with its
+alpha ignored, so the desktop never shows through it. A clear of alpha < 1 (a translucent theme's background) makes the
+window translucent again, at that frame; the renderer remakes its swap chain by itself. Colours in the linear blend space are
 then held in 16-bit floats, twice the memory of the ordinary swap chain, for buffers of the screen's size. WebGPU has no fixed
 surface (`set_fixed_surface` returns false), so the recipe does not help there ([webgpu.md](webgpu.md)).
 `tools/resize_probe` checks a program from outside: it resizes the window and reads where a column of fixed width ends.

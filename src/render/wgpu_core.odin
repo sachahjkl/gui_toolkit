@@ -96,6 +96,7 @@ Wgpu_Window :: struct {
 	clear_pending: bool,                 // the frame target still has to be cleared (first pass of the frame)
 	first_shown:   bool,                 // a frame of the window was presented (the first one shows the background before compiling)
 	present_mode:  wgpu.PresentMode,
+	alpha_mode:    wgpu.CompositeAlphaMode,   // the surface's, as configured (wgpu_surface_alpha)
 	latency:       Wgpu_Latency,         // wgpu_present.odin
 	panel:         ^Panel,               // translucent window: the DirectComposition visual's swap chain panel (wgpu_dcomp.odin)
 	// partial redraw (damage_wgpu.odin): wgpu-native has no present-with-damage in the pinned version, so a partial
@@ -445,7 +446,7 @@ wgpu_frame_formats :: proc(r: ^Renderer) {
 			for i in 0 ..< caps.formatCount { if caps.formats[i] == .RGBA16Float { has_fp16 = true } }
 		}
 	}
-	fp16 := wgpu_wants_fp16(r.transparent, r.space, wgpu_surface_alpha(r) == .Premultiplied, has_fp16)
+	fp16 := wgpu_wants_fp16(r.transparent, r.space, wgpu_surface_alpha_translucent(r) == .Premultiplied, has_fp16)
 	if r.half_float_offscreen && g.surface == nil { fp16 = true }   // (init_offscreen's half_float: a translucent window's frame, for a test)
 	g.surface_format = fp16 ? .RGBA16Float : .BGRA8Unorm
 	g.view_format = fp16 ? .RGBA16Float : (r.space == .Srgb ? .BGRA8Unorm : .BGRA8UnormSrgb)
@@ -499,11 +500,25 @@ wgpu_create_offscreen :: proc(r: ^Renderer) -> bool {
 	return g.frame_rtv != nil
 }
 
-// How the compositor blends the surface: Windows' translucent windows through DirectComposition's panel; an overlay
-// (its handles' see_through) with an alpha mode the surface offers, premultiplied first, or the windows below it would
-// show black; every other window opaque.
+// How the compositor blends the surface: as wgpu_surface_alpha_translucent says, but a frame that is opaque (frame_begin's
+// clear, window_alpha.odin) takes .Opaque where the surface offers it: its alpha is then never read, and nothing of the
+// desktop can show through an opaque theme. The format does not follow this (wgpu_frame_formats asks the translucent mode):
+// a change of it reconfigures the surface alone.
 @(private)
 wgpu_surface_alpha :: proc(r: ^Renderer) -> wgpu.CompositeAlphaMode {
+	translucent := wgpu_surface_alpha_translucent(r)
+	if !r.opaque_frames || translucent == .Opaque || r.wg.surface == nil { return translucent }
+	caps, st := wgpu.SurfaceGetCapabilities(r.wg.surface, r.wg.adapter)
+	defer wgpu.SurfaceCapabilitiesFreeMembers(caps)
+	if st != .Success { return translucent }
+	return wgpu_window_alpha(true, translucent, caps.alphaModes[:caps.alphaModeCount])
+}
+
+// How the compositor blends a translucent frame of the surface: Windows' translucent windows through DirectComposition's
+// panel; an overlay (its handles' see_through) with an alpha mode the surface offers, premultiplied first, or the windows
+// below it would show black; every other window opaque.
+@(private)
+wgpu_surface_alpha_translucent :: proc(r: ^Renderer) -> wgpu.CompositeAlphaMode {
 	if r.transparent && r.wg.panel != nil { return .Premultiplied }
 	if !r.surface_handles.see_through || r.wg.surface == nil { return .Opaque }
 	caps, st := wgpu.SurfaceGetCapabilities(r.wg.surface, r.wg.adapter)
@@ -535,6 +550,7 @@ wgpu_configure_surface :: proc(r: ^Renderer) -> bool {
 		alphaMode = wgpu_surface_alpha(r), presentMode = wgpu_pick_present_mode(r),
 	}
 	g.present_mode = cfg.presentMode
+	g.alpha_mode = cfg.alphaMode
 	t_conf := time.tick_now()
 	wgpu.SurfaceConfigure(g.surface, &cfg)
 	if wgpu_trace() { fmt.eprintfln("wgpu: configure %dx%d: present %v (tearing mode asked: %v), drain %.2f ms, SurfaceConfigure %.2f ms", r.size.x, r.size.y, cfg.presentMode, r.present.mode, time.duration_milliseconds(time.tick_diff(t_start, t_drain)), time.duration_milliseconds(time.tick_since(t_conf))) }
