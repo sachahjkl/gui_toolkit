@@ -34,8 +34,9 @@
 - **Wren logs through `gt:log`.** Wren writes its log through the toolkit, as the other programs do.
 - **One native crate.** One native library with features replaces the toolkit's three native libraries, so no program
   links with multiple-definition flags.
-- **Platforms that plug in and out, toward macOS.** The portable files that still test the system move that code into
-  system files, and the CI checks every toolkit and program package for macOS, as it does for Windows.
+- **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
+  `-check:darwin_arm64`); the programs' packages are checked for it too, and the 31 portable files that still test the
+  system with `when ODIN_OS` move that code into system files.
 - **Colours by intent in opencode native.** Its 85 `HEX_*` constants become the theme's intents and hues, so a theme
   changes them all, as cliche's graph colours do since its 0.8.
 
