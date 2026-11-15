@@ -486,9 +486,20 @@ host_steps :: proc(h: ^Host) {
 	}
 }
 
+// A window the system closed and that is done with: it has no close_asked to take the close back. One that has the hook
+// still gets its frame, whose start takes the close back and calls it (a view's window re-attaches its view). On Wayland
+// the close of one window of the connection is read in another's frame: a window skipped as soon as it was closed never
+// got that frame, and stayed on the screen.
+@(private)
+host_done :: proc(h: ^Host) -> bool { return platform.is_closed(h.win) && h.close_asked == nil }
+
+// A close the window's frame has to take back now.
+@(private)
+host_close_waits :: proc(h: ^Host) -> bool { return platform.is_closed(h.win) && h.close_asked != nil }
+
 // A frame of each window still open. `inner`: from rest_frame.
 hosts_frame :: proc(hosts: []^Host, inner := false) {
-	for h in hosts { if !platform.is_closed(h.win) { host_frame(h, inner) } }
+	for h in hosts { if !host_done(h) { host_frame(h, inner) } }
 }
 
 // Whether a frame of these windows is due now (input read for one of them, a change that settles, something that moves); else how
@@ -497,8 +508,8 @@ hosts_due :: proc(hosts: []^Host) -> (now: bool, wake_ms: int) {
 	// (the windows of their views count too: their frames come after their owners')
 	all := host_with_views(hosts)
 	for h in all {
-		if platform.is_closed(h.win) { continue }
-		if platform.events_waiting(h.win) { return true, 0 }
+		if host_done(h) { continue }
+		if host_close_waits(h) || platform.events_waiting(h.win) { return true, 0 }
 		// (its last picture not shown yet: what moves or settles waits for the compositor's word, which wakes the loop; a
 		// timer still wakes it: the word may never come, on a hidden workspace or an output with nothing else to draw,
 		// and the program's own work (a sample) goes on, its picture held)
