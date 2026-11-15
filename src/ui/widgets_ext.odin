@@ -245,9 +245,52 @@ checkbox :: proc(id: string, text: string, value: ^bool, wrap := false) -> (chan
 
 // One choice of several: `selected^` becomes `index` on click. True when `selected` changed this frame.
 radio :: proc(id: string, text: string, selected: ^int, index: int) -> (changed: bool) {
+	s := gs()
+	group := rawptr(selected)
+	// (its group's radios as the last build had them, in their order: a radio knows its siblings only from there)
+	members := make([dynamic]Radio_Slot, 0, 8, frame_allocator())
+	chosen_there := false
+	for r in s.radios_last {
+		if r.group != group { continue }
+		append(&members, r)
+		if r.index == selected^ { chosen_there = true }
+	}
 	sig := mark_row(id, text, selected^ == index, true)
+	append(&s.radios, Radio_Slot{group = group, index = index, key = sig.box.key})
+	// (one Tab stop: the chosen one; none chosen, the first; a group not seen yet, each, until the next build knows it)
+	stop := index == selected^ || len(members) == 0 || (!chosen_there && members[0].index == index)
+	if !stop { not_a_tab_stop(sig.box) }
 	if sig.clicked && selected^ != index { selected^ = index; a11y_state_toggled(sig.box, true); changed = true }
+	if sig.focused && len(members) > 0 {
+		at := -1
+		for r, i in members { if r.index == index { at = i } }
+		if at >= 0 {
+			if to := choice_group_step(true, at, len(members)); to >= 0 {
+				selected^, changed = members[to].index, true
+				set_focus(members[to].key)
+			}
+		}
+	}
 	return
+}
+
+// `b`, built Focusable, is no Tab stop after all (a choice of a group but the chosen one): its flag and its place in
+// this build's Tab order go (build_box put it there).
+@(private)
+not_a_tab_stop :: proc(b: ^Box) {
+	if b == nil || .Focusable not_in b.flags { return }
+	b.flags -= {.Focusable}
+	s := gs()
+	#reverse for e, i in s.focus_order {
+		if e.key == b.key { ordered_remove(&s.focus_order, i); break }
+	}
+}
+
+// A radio button of the last build or of this one: its group (the caller's `selected`), its index, its box.
+Radio_Slot :: struct {
+	group: rawptr,
+	index: int,
+	key:   Key,
 }
 
 // The state screen readers read follows a change made after the box was built (the click of this frame).
@@ -1333,7 +1376,7 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 			b := tab_box(fmt.tprintf("%s_%d", id, i), on)
 			if on { strip_reveal(b) }
 			// (one Tab stop, the chosen tab: the arrows move along the row, choice_group_step)
-			if i != chosen { b.flags -= {.Focusable} }
+			if i != chosen { not_a_tab_stop(b) }
 			items[i] = b
 			if parent(b) {
 				if !on { push_tags("weak") }

@@ -500,6 +500,10 @@ State :: struct {
 	list_stack:      [dynamic]^List_State,  // lists being built (list.odin)
 	strip_stack:     [dynamic]Strip_Build,  // strips being built (strip.odin)
 	strips:          [dynamic]Strip_Build,  // the strips of this build, for strips_settle after its layout
+	// the radio buttons of this build and of the last, each with its group (its `selected`): a group is one Tab stop, the
+	// arrows move its choice (radio)
+	radios:          [dynamic]Radio_Slot,
+	radios_last:     [dynamic]Radio_Slot,
 	virtual_depth:   int,                   // > 0 inside a vlist or a lazy column (Box.virtual)
 
 	// integrated title bar (window_chrome.odin)

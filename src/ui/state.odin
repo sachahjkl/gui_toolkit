@@ -118,6 +118,8 @@ destroy :: proc(s: ^State) {
 	delete(s.list_stack)
 	delete(s.strip_stack)
 	delete(s.strips)
+	delete(s.radios)
+	delete(s.radios_last)
 	menus_destroy(s)
 	platform.chrome_regions_destroy(&s.chrome)
 	wrap_cache_destroy(s)
@@ -246,6 +248,8 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.anim_busy = false
 	s.wake_ms = 0
 	clear(&s.strips)
+	s.radios, s.radios_last = s.radios_last, s.radios
+	clear(&s.radios)
 	s.menu_close_pending = false
 	s.toast_area_set = false
 	s.boxes_built = 0
