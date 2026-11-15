@@ -5,6 +5,19 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.265.0] - 2026-11-15
+
+### Added
+- **A menu under a button lines up with its right edge.** `ui.menu_open(..., align = .End)` puts the menu's right edge on the button's, at the width the toolkit measured: a button at the end of a toolbar opens its menu without the program knowing its width (`ui.Menu_Align`).
+- **The rows of a program's tables are a standard setting.** The set `Standard_Set.Rows` registers `appearance.rows.zebra` (alternating rows) and `appearance.rows.rules` (a line under each row), with the program's defaults from `Standard_Defaults.values`; `prefs_page.rows_look(prefs)` reads them for its tables. Every program with tables then has the same two settings, with the same words.
+- **The main window's place is a standard preference.** `window.placement` (hidden) with `prefs_page.placement_restore` before the window shows, `placement_track` at each frame and `placement_keep` at the close: the window opens where it was, on the monitor it was on, at its size, maximized again, and a crash or an update's restart finds it kept.
+
+### Changed
+- **A dock's stack with too many tabs scrolls them with arrows.** Its tabs are on a strip, as every row of tabs of the toolkit: an arrow on each side that hides tabs, the wheel along them, the tab on top brought into view; the stack's fold and menu buttons stay at its end. Before, the tabs past the room were cut.
+
+### Fixed
+- **Windows: an offscreen window's placement reads back maximized.** `platform.set_placement` with `maximized` on an offscreen window makes it maximized at once, as on Linux; `get_placement` said it was not until it was shown, which an offscreen window never is.
+
 ## [0.264.2] - 2026-11-15
 
 ### Changed
@@ -3714,6 +3727,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.265.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.265.0
 [0.264.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.264.2
 [0.264.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.264.1
 [0.264.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.264.0
