@@ -395,11 +395,19 @@ off_track :: proc() -> Color {
 	return tuned(c)
 }
 
-// Switch (named `toggle` because `switch` is an Odin keyword). True when `value` changed this frame.
-toggle :: proc(id: string, text: string, value: ^bool) -> (changed: bool) {
+// Switch (named `toggle` because `switch` is an Odin keyword). True when `value` changed this frame. `wrap`: a label longer
+// than the row goes on to the next lines (the row as tall as they are, the switch on the first), as checkbox's.
+toggle :: proc(id: string, text: string, value: ^bool, wrap := false) -> (changed: bool) {
 	em := font_size()
-	fit := fit_row_width()
-	set_next_axis(.X, .Center)
+	fit := fit_row_width() && !wrap
+	if wrap {
+		s := gs()
+		if !s.has_next { s.next_mod, s.has_next = {}, true }
+		if s.next_mod.height == nil { s.next_mod.height = children_sum() }
+		set_next_axis(.X, .Start)
+	} else {
+		set_next_axis(.X, .Center)
+	}
 	// (the row is the target and draws nothing: the switch reacts, toggle_draw)
 	row_box := build_box({.Clickable, .Focusable}, id)
 	sig := signal(row_box)
@@ -407,8 +415,23 @@ toggle :: proc(id: string, text: string, value: ^bool) -> (changed: bool) {
 	a11y_default(row_box, {role = .Switch, toggled = value^ ? .True : .False})
 	if parent(row_box) {
 		spacer(px(em * 0.4))
-		next({width = fit ? text_size() : fill(), height = pct(1)})
-		build_box({.Draw_Text}, text)
+		lined := false
+		if wrap {
+			next({width = fill(), height = text_size()})
+			build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, text)
+			// (the switch on the first line: centred in that line's height)
+			st := top_style()
+			line := font.metrics(gs().fonts, st.font, st.font_size).line_height + 2 * st.text_pad
+			if line > em * 1.4 {
+				next({width = px(em * 2.6), height = px(line), axis = .Y})
+				push_parent(build_box({}, "###switch_line"))
+				spacer(px(math.round((line - em * 1.4) * 0.5)))
+				lined = true
+			}
+		} else {
+			next({width = fit ? text_size() : fill(), height = pct(1)})
+			build_box({.Draw_Text}, text)
+		}
 		next({width = px(em * 2.6), height = px(em * 1.4)})
 		d := frame_new(Toggle_Draw)
 		d.t = anim(key_from_string(row_box.key, "t"), value^ ? 1 : 0, TOGGLE_RATE)
@@ -416,6 +439,7 @@ toggle :: proc(id: string, text: string, value: ^bool) -> (changed: bool) {
 		d.track = off_track()
 		d.accent = color("accent")
 		custom("track", toggle_draw, d)
+		if lined { pop_parent() }
 		spacer(px(em * 0.4))
 	}
 	return

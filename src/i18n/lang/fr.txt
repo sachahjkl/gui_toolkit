@@ -1343,17 +1343,14 @@ fr Paquet Nix
 en Reading the install…
 fr Lecture de l'installation…
 
-en not installed
-fr non installé
+en   ·  v%s installed
+fr   ·  v%s installée
 
-en v%s installed
-fr v%s installé
+en Managed by Nix
+fr Géré par Nix
 
-en installed
-fr installé
-
-en This copy: v%s → %s
-fr Cette copie : v%s → %s
+en %s comes from the Nix store. Nix installs it, puts it in the applications menu and updates it with your system: there is nothing to do here.
+fr %s vient du store de Nix. Nix l'installe, le met dans le menu des applications et le met à jour avec votre système : il n'y a rien à faire ici.
 
 en By
 fr Par
@@ -1373,17 +1370,8 @@ fr Options
 en Shortcut on the Desktop
 fr Raccourci sur le Bureau
 
-en This copy
-fr Cette copie
-
-en On NixOS, a Nix package is the better install: Nix updates it. An install here makes this copy run by itself (nix-build makes the libraries it needs).
-fr Sous NixOS, un paquet Nix est la meilleure installation : Nix le met à jour. Installé ici, ce programme fonctionne sans Nix : nix-build crée les bibliothèques dont il a besoin.
-
-en Working…
-fr En cours…
-
-en Copy %s
-fr Copier %s
+en Details
+fr Détails
 
 en Click again to remove
 fr Cliquez encore pour supprimer
@@ -1396,6 +1384,21 @@ fr Supprimer ce qui reste
 
 en Uninstall
 fr Désinstaller
+
+en This copy
+fr Cette copie
+
+en On NixOS, a Nix package is the better install: Nix updates it. An install here makes this copy run by itself (nix-build makes the libraries it needs).
+fr Sous NixOS, un paquet Nix est la meilleure installation : Nix le met à jour. Installé ici, ce programme fonctionne sans Nix : nix-build crée les bibliothèques dont il a besoin.
+
+en Working…
+fr En cours…
+
+en not there
+fr absent
+
+en Copy %s
+fr Copier %s
 
 en Close
 fr Fermer

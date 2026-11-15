@@ -64,6 +64,7 @@ Dialog :: struct {
 	options:   Setup_Options,
 	logo:      Maybe(Logo),        // the view's mark: open's, then set_logo's (the program does not write it)
 	vendor_mark: Maybe(Logo),      // its vendor's mark in the "By" line: open's, then set_vendor_mark's (nil: the name alone)
+	details:   Maybe(bool),        // the person opened or folded the details (nil: folded)
 	pending:   Event,
 	building:  bool,               // the view's build runs: a close from its buttons ends the view there
 }
@@ -90,7 +91,7 @@ Logo :: struct {
 	size:    [2]f32,
 }
 
-@(private = "file") DIALOG_EM       :: [2]f32{46, 37}   // its size at first (a grip of its corner or edges makes it larger or smaller)
+@(private = "file") DIALOG_EM       :: [2]f32{46, 40}   // its size at first (a grip of its corner or edges makes it larger or smaller)
 @(private = "file") DIALOG_MIN_EM   :: [2]f32{28, 16}   // ... and at the least (what does not fit scrolls; the buttons stay)
 @(private = "file") LOGO_EM         :: 4.2
 
@@ -401,9 +402,10 @@ view_backdrop :: proc(v: ^ui.View, data: rawptr) {
 	if o.backdrop != nil { o.backdrop(v, o.user) }
 }
 
-// The view's body, under the toolkit's header ("<name> Setup", the close cross). Laid out dense, as a tool's panel: a
-// header (what the dialog offers, the versions, the state as a badge); the install location; the options as a grid of
-// boxes; what the disk says (where the files are, a note); the buttons. Setup_Options.square: every corner square.
+// The view's body, under the toolkit's header ("<name> Setup", the close cross) (src/md/features/setup-screen.md): the
+// program's hero (its logo, its name, what it is, its state), where it goes, its options as a list of switches, the
+// details folded (where the parts are, Uninstall), and a footer: the vendor's signature, the buttons.
+// Setup_Options.square: every corner square.
 @(private = "file")
 view_build :: proc(v: ^ui.View, d: ^Dialog) {
 	o := d.options
@@ -412,26 +414,30 @@ view_build :: proc(v: ^ui.View, d: ^Dialog) {
 	ui.view_title(v, fmt.tprintf(i18n.tr("%s Setup"), o.identity.name))
 	is_busy := busy(d)
 	f := &d.facts
-	// what the dialog says scrolls when it is made small; its buttons stay under it
+	d.at = {}   // (the details and the footer mark where their buttons are, for a program's automation)
+	// (a copy from the Nix store: a screen of its own, nothing to install here; what an earlier install left, if any,
+	// can still go from the details)
+	if d.known && f.state == .Nix_Package {
+		hero(d, o, em, d.logo)
+		nix_panel(d, o, em)
+		if leftover(f^) { details(d, o, em, is_busy) }
+		ui.space(ui.GROUP_GAP)
+	} else {
+	// what the dialog says scrolls when it is made small; its footer stays under it
 	ui.next({width = ui.fill(), height = ui.fill()})
 	if ui.scroll_y("###setup_scroll") {
-		// (the scale's roles; the panels are wells: INNER_PAD inside, PAGE_MARGIN at the dialog's sides, ITEM_GAP
-		// between two, the dialog being dense)
-		ui.space(ui.LINE_GAP)
-		head(d, o, em, d.logo)
+		hero(d, o, em, d.logo)
 		if d.known {
 			location(d, o, em, is_busy)
-			if !f.from_nix { options_grid(d, o, em) }
-			ui.space(ui.ITEM_GAP)
-			info(d, o, em, is_busy)
+			if !f.from_nix { options_card(d, o, em) }
+			details(d, o, em, is_busy)
 		}
-		ui.space(ui.LINE_GAP)
+		ui.space(ui.GROUP_GAP)
 	}
-	ui.space(ui.LINE_GAP)
+	}
 	d.building = true
-	if ev := buttons(d, o, em); ev != .None { d.pending = ev }
+	if ev := footer(d, o, em); ev != .None { d.pending = ev }
 	d.building = false
-	ui.space(ui.ITEM_GAP)   // (a dense dialog: its buttons a group's gap from its edge, not a page's margin)
 	// (a button closed it: the view ends with it, the event waits for update)
 	if !d.open { ui.view_end(v, 0) }
 }
@@ -583,48 +589,178 @@ headline :: proc(f: Facts, o: Setup_Options) -> (title, badge: string) {
 	return name, ""
 }
 
-// The header: the logo, what is offered and the versions, the state as a badge.
+// The hero: the program first. Its logo large (or its initial on a tile of its accent, when it gives none), its name,
+// what it is (Identity.description), its state as a pill and the versions; under it, what the state means, in its tone.
+// No frame: a band of the accent's tint, fading down into the dialog, carries it.
 @(private = "file")
-head :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
+hero :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 	f := &d.facts
-	if panel(o, em, "###setup_head", .X) {
-		ui.space(ui.INNER_PAD)
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+	band := ui.build_box({}, "###setup_hero")
+	tint := ui.frame_new(ui.Color)
+	tint^ = ui.color("accent")
+	tint.a *= HERO_TINT
+	band.custom, band.custom_user = hero_draw, tint
+	ui.push_parent(band)
+	defer ui.pop_parent()
+	ui.space(ui.GROUP_GAP)
+	line_next()
+	if ui.row(.Center, id = "###setup_hero_row") {
+		ui.space(ui.PAGE_MARGIN)
+		side := math.round(em * HERO_LOGO_EM)
 		if l, has := logo.?; has {
-			side := math.round(em * 2.6)
 			ui.next({width = ui.px(side), height = ui.px(side)})
 			b := ui.build_box({}, "###setup_logo")
 			p := ui.frame_new(Logo)
 			p^ = l
 			b.custom, b.custom_user = logo_draw, p
-			ui.space(ui.ICON_GAP)
+		} else {
+			// (no logo given: the name's first letter on a tile of the accent, so the hero keeps its shape)
+			initial := o.identity.name != "" ? o.identity.name[:1] : "?"
+			ui.next({width = ui.px(side), height = ui.px(side), radius = rad(o, em, 0.9), bg = ui.color("accent"),
+				fg = ui.color("accent text"), font_size = math.round(side * 0.5), text_align = .Center, text_pad = 0})
+			ui.build_box({.Draw_Background, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###setup_initial", initial))
 		}
-		title, badge := i18n.tr("Reading the install…"), ""
-		if d.known { title, badge = headline(f^, o) }
+		ui.space(ui.SPACE_6)
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###setup_words") {
-			ui.space(ui.INNER_PAD)
-			ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.7)), font_size = math.round(em * 1.25), text_pad = 0})
-			ui.label(fmt.tprintf("%s###setup_name", title))
-			if ui.tags("weak") {
-				installed := i18n.tr("not installed")
-				if d.known && f.state != .Not_Installed && f.state != .Nix_Package { installed = f.version != "" ? fmt.tprintf(i18n.tr("v%s installed"), f.version) : i18n.tr("installed") }
-				ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.35)), font_size = math.round(em * 0.9), text_pad = 0})
-				ui.label(fmt.tprintf("%s###setup_version", fmt.tprintf(i18n.tr("This copy: v%s → %s"), o.version, installed)))
+			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), font_size = math.round(em * HERO_TITLE_EM), text_pad = 0})
+			ui.label(fmt.tprintf("%s###setup_name", o.identity.name))
+			if o.identity.description != "" {
+				if ui.tags("weak") {
+					ui.next({width = ui.fill(), text_pad = 0})
+					ui.paragraph(fmt.tprintf("%s###setup_description", o.identity.description))
+				}
 			}
-			by_line(o, d.vendor_mark, em, "###setup_by")
-			ui.space(ui.INNER_PAD)
-		}
-		if badge != "" {
-			_, tone := state_words(f^, o)
-			ui.space(ui.CONTROL_GAP)
-			ui.next({width = ui.text_size(em * 1.2), height = ui.px(math.round(em * 2)), radius = rad(o, em, 0.3), text_pad = 0, text_align = .Center})
-			if ui.tags("button", tone) {
-				b := ui.build_box({.Draw_Background, .Draw_Border, .Draw_Text}, fmt.tprintf("%s###setup_badge", badge))
-				b.text_align = .Center
+			ui.space(ui.LINE_GAP)
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
+			if ui.row(.Center, id = "###setup_facts") {
+				words, badge := i18n.tr("Reading the install…"), ""
+				if d.known { _, badge = headline(f^, o) }
+				_, tone := state_words(f^, o)
+				if badge != "" { ui.pill("setup_badge", badge, state_glyph(f^), tone_color(tone)) } else { ui.pill("setup_badge", words, "", ui.color("weak text")) }
+				ui.space(ui.CONTROL_GAP)
+				if ui.tags("weak") {
+					installed := ""
+					if d.known && f.state != .Not_Installed && f.state != .Nix_Package && f.version != "" && f.version != o.version {
+						installed = fmt.tprintf(i18n.tr("  ·  v%s installed"), f.version)
+					}
+					ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.5)), text_pad = 0, font = ui.mono_font(), font_size = math.round(em * 0.86)})
+					ui.label(fmt.tprintf("v%s%s###setup_version", o.version, installed))
+				}
+			}
+			// (what the state means, under the pill that names it: weak, the pill carries the tone)
+			if d.known && f.state != .Nix_Package {   // (Nix's panel says it, larger)
+				words, _ := state_words(f^, o)
+				ui.space(ui.LINE_GAP)
+				if ui.tags("weak") {
+					ui.next({width = ui.fill(), text_pad = 0, font_size = math.round(em * 0.92)})
+					ui.paragraph(fmt.tprintf("%s###setup_state", words))
+				}
 			}
 		}
-		ui.space(ui.INNER_PAD)
+		ui.space(ui.PAGE_MARGIN)
 	}
+	ui.space(ui.ITEM_GAP)
+}
+
+// The hero's band: the accent's tint at its top, fading out at its foot, and a hairline under it.
+@(private = "file")
+hero_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+	c := (^ui.Color)(user)^
+	r := b.rect
+	clear := c
+	clear.a = 0
+	stops := [2]draw.Gradient_Stop{{color = c, pos = 0}, {color = clear, pos = 1}}
+	draw.gradient(dc, r, {kind = .Linear, start = {0, 0}, end = {0, r.max.y - r.min.y}, stops = stops[:], dither = true})
+}
+
+// A copy from the Nix store: the rest of the dialog says so, and only that. Nix's snowflake large on a disc of Nix's
+// two blues, "Managed by Nix", why there is nothing to do here, and where the copy runs from. Centred in the room left:
+// a screen that cannot be mistaken for an install that failed.
+@(private = "file")
+nix_panel :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
+	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y, cross = .Center})
+	if ui.column(id = "###setup_nix") {
+		ui.spacer(ui.fill())
+		side := math.round(em * NIX_DISC_EM)
+		// (the disc a box of its own, the snowflake a box in it: a box's own drawing comes after its text)
+		ui.next({width = ui.px(side), height = ui.px(side)})
+		disc := ui.build_box({}, "###setup_nix_disc")
+		disc.custom = nix_disc_draw
+		if ui.parent(disc) {
+			ui.next({width = ui.fill(), height = ui.fill(), font = ui.lucide_icons(), font_size = math.round(side * 0.55),
+				fg = draw.hex(0xFFFFFFFF), text_align = .Center, text_pad = 0})
+			ui.build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###setup_nix_mark", lucide.SNOWFLAKE))
+		}
+		ui.space(ui.GROUP_GAP)
+		ui.next({width = ui.text_size(), height = ui.px(math.round(em * 2)), font_size = math.round(em * 1.4), text_pad = 0})
+		ui.label(fmt.tprintf("%s###setup_nix_title", i18n.tr("Managed by Nix")))
+		ui.space(ui.LINE_GAP)
+		line_next()
+		if ui.row(id = "###setup_nix_words_row") {
+			ui.space(ui.SPACE_6)
+			ui.space(ui.SPACE_6)
+			if ui.tags("weak") {
+				ui.next({width = ui.fill(), text_pad = 0, text_align = .Center})
+				words := fmt.tprintf(i18n.tr("%s comes from the Nix store. Nix installs it, puts it in the applications menu and updates it with your system: there is nothing to do here."), o.identity.name)
+				ui.paragraph(fmt.tprintf("%s###setup_nix_words", words))
+			}
+			ui.space(ui.SPACE_6)
+			ui.space(ui.SPACE_6)
+		}
+		if d.facts.running != "" {
+			ui.space(ui.LINE_GAP)
+			if ui.tags("weak") {
+				ui.next({width = ui.text_size(), height = ui.px(math.round(em * 1.4)), text_pad = 0, font = ui.mono_font(), font_size = math.round(em * 0.8)})
+				ui.label(fmt.tprintf("%s###setup_nix_path", d.facts.running))
+			}
+		}
+		ui.spacer(ui.fill())
+	}
+}
+
+// Nix's disc: its two blues, the light one at the top left, the dark one at the bottom right.
+@(private = "file")
+nix_disc_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+	r := b.rect
+	side := r.max.x - r.min.x
+	stops := [2]draw.Gradient_Stop{{color = draw.hex(NIX_LIGHT), pos = 0}, {color = draw.hex(NIX_DARK), pos = 1}}
+	draw.gradient(dc, r, {kind = .Linear, space = .Oklab, start = {0, 0}, end = {side, side}, stops = stops[:], dither = true}, {side, side, side, side} * 0.5)
+}
+
+@(private = "file") NIX_DISC_EM :: 6.5
+@(private = "file") NIX_LIGHT   :: 0x7EBAE4FF   // Nix's light blue
+@(private = "file") NIX_DARK    :: 0x5277C3FF   // Nix's dark blue
+
+@(private = "file") HERO_LOGO_EM  :: 4.5    // the program's logo in the hero
+@(private = "file") HERO_TITLE_EM :: 1.6    // its name
+@(private = "file") HERO_TINT     :: 0.14   // how much of the accent the band starts with
+
+// The colour of a state's tone, for its pill.
+@(private = "file")
+tone_color :: proc(tone: string) -> ui.Color {
+	switch tone {
+	case "good": return ui.hue(.Green)
+	case "warn": return ui.hue(.Yellow)
+	case "bad":  return ui.hue(.Red)
+	case "accent": return ui.color("accent")
+	}
+	return ui.color("weak text")
+}
+
+// The glyph of a state, in its pill.
+@(private = "file")
+state_glyph :: proc(f: Facts) -> string {
+	switch f.state {
+	case .Not_Installed:     return lucide.CIRCLE_DASHED
+	case .This_Copy:         return lucide.CHECK_CIRCLE
+	case .Repair:            return lucide.WRENCH
+	case .Other_Copy:        return lucide.ARROW_UP_CIRCLE
+	case .Removal_Scheduled: return lucide.TRASH_2
+	case .Nix_Package:       return lucide.PACKAGE
+	}
+	return ""
 }
 
 // "By <mark> <vendor>", as the foot of the program's site: the vendor's name opens its site (Setup_Options.vendor_url).
@@ -634,7 +770,7 @@ by_line :: proc(o: Setup_Options, mark: Maybe(Logo), em: f32, id: string) {
 	if o.identity.vendor == "" { return }
 	line := math.round(em * 1.35)
 	size := math.round(em * 0.9)
-	ui.next({width = ui.fill(), height = ui.px(line), axis = .X, cross = .Center})
+	ui.next({width = ui.children_sum(), height = ui.px(line), axis = .X, cross = .Center})
 	if ui.row(id = id) {
 		if ui.tags("weak") {
 			ui.next({width = ui.text_size(), height = ui.px(line), font_size = size, text_pad = 0})
@@ -669,15 +805,8 @@ by_line :: proc(o: Setup_Options, mark: Maybe(Logo), em: f32, id: string) {
 location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	f := &d.facts
 	choose := o.folder && f.state == .Not_Installed && !f.from_nix
-	ui.space(ui.ITEM_GAP)
-	line_next()
-	if ui.row(id = "###setup_location_label") {
-		ui.space(ui.PAGE_MARGIN)
-		if ui.tags("weak") {
-			ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.5)), text_pad = 0})
-			ui.label(fmt.tprintf("%s###setup_loc", choose ? i18n.tr("Install location") : i18n.tr("Installed program")))
-		}
-	}
+	if !choose && f.exe == "" { return }   // (nothing chosen, nothing there: no empty field)
+	section_head(em, "###setup_location_label", choose ? i18n.tr("Install location") : i18n.tr("Installed program"))
 	line_next()
 	if ui.row(.Center, id = "###setup_location_row") {
 		ui.space(ui.PAGE_MARGIN)
@@ -709,62 +838,80 @@ location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	}
 }
 
-// "Options": a section header, then the Desktop shortcut and the program's choices, two framed boxes a line.
+// A section's head: its name, small and weak, at the page's margin, LINE_GAP above what it heads.
 @(private)
-options_grid :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
+section_head :: proc(em: f32, id, title: string) {
 	ui.space(ui.ITEM_GAP)
-	if panel(o, em, "###setup_options_head", .X) {
-		ui.next({width = ui.px(max(math.round(em * 0.22), 2)), height = ui.px(math.round(em * 1.9)), bg = ui.color("accent")})
-		ui.build_box({.Draw_Background}, "###setup_options_bar")
-		ui.space(ui.ICON_GAP)
-		ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.9)), text_pad = 0})
-		ui.label(fmt.tprintf("%s###setup_options_label", i18n.tr("Options")))
-	}
-	n := 1 + min(len(o.choices), len(d.choices))
-	// (one per line, as wide as the dialog: a long label wraps in its tile, never past it)
-	for k in 0 ..< n {
-		ui.space(ui.LINE_GAP)
-		line_next()
-		if ui.row(.Center, id = fmt.tprintf("###setup_options_%d", k)) {
-			ui.space(ui.PAGE_MARGIN)
-			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = rad(o, em, 0.4)})
-			tile: ^ui.Box
-			if ui.tags("input") { tile = ui.build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###setup_tile_%d", k)) }
-			if ui.parent(tile) {
-				ui.space(ui.INNER_PAD)
-				ui.next({width = ui.fill()})
-				if k == 0 {
-					ui.checkbox("###setup_shortcut", i18n.tr("Shortcut on the Desktop"), &d.shortcut, wrap = true)
-				} else {
-					ui.checkbox(fmt.tprintf("###setup_choice_%d", k - 1), i18n.tr(o.choices[k - 1].label), &d.choices[k - 1], wrap = true)
-				}
-				ui.space(ui.INNER_PAD)
-			}
-			ui.space(ui.PAGE_MARGIN)
+	line_next()
+	if ui.row(.Center, id = id) {
+		ui.space(ui.PAGE_MARGIN)
+		if ui.tags("weak") {
+			ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.4)), text_pad = 0, font_size = math.round(em * 0.86)})
+			ui.label(fmt.tprintf("%s###t", title))
 		}
+		ui.space(ui.PAGE_MARGIN)
+	}
+	ui.space(ui.LINE_GAP)
+}
+
+// "Options": the Desktop shortcut and the program's choices, a list card of switches at the page's margins. A long
+// label wraps in its row, never past it.
+@(private)
+options_card :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
+	section_head(em, "###setup_options_head", i18n.tr("Options"))
+	n := 1 + min(len(o.choices), len(d.choices))
+	line_next()
+	if ui.row(id = "###setup_options") {
+		ui.space(ui.PAGE_MARGIN)
+		if ui.list_card("###setup_options_card") {
+			for k in 0 ..< n {
+				if ui.card_row(fmt.tprintf("###setup_tile_%d", k)) {
+					ui.next({width = ui.fill()})
+					if k == 0 {
+						ui.toggle("###setup_shortcut", i18n.tr("Shortcut on the Desktop"), &d.shortcut, wrap = true)
+					} else {
+						ui.toggle(fmt.tprintf("###setup_choice_%d", k - 1), i18n.tr(o.choices[k - 1].label), &d.choices[k - 1], wrap = true)
+					}
+				}
+			}
+		}
+		ui.space(ui.PAGE_MARGIN)
 	}
 }
 
-// What the disk says, in a framed box: the state in a sentence, the launcher and the record, this copy, the note of
-// NixOS, and what the last action said.
+// "Details", folded at first, Uninstall on its line whether it is open or not (never hidden behind a click): the
+// parts of the install, each with its mark, this copy, the note of NixOS, what the last action said, and Uninstall.
 @(private = "file")
-info :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
+details :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	f := &d.facts
+	open := d.details.? or_else false
+	ui.space(ui.ITEM_GAP)
+	line_next()
+	if ui.row(.Center, id = "###setup_details_head") {
+		ui.space(ui.PAGE_MARGIN)
+		if ui.button("###setup_details", i18n.tr("Details"), open ? lucide.CHEVRON_DOWN : lucide.CHEVRON_RIGHT, {face = .Link, icon_font = ui.lucide_icons()}).clicked {
+			d.details = !open
+		}
+		ui.spacer(ui.fill())
+		if can_uninstall(d) {
+			// (the first click asks; the second uninstalls; beside a Nix package, what goes is only what an earlier
+			// install left)
+			nix := f.state == .Nix_Package
+			words := d.confirm ? (nix ? i18n.tr("Click again to remove") : i18n.tr("Click again to uninstall")) : (nix ? i18n.tr("Remove what is left") : i18n.tr("Uninstall"))
+			if ui.button("###setup_uninstall", words, lucide.TRASH_2, {face = .Link, intent = .Danger, icon_font = ui.lucide_icons()}).clicked && !busy {
+				if d.confirm { start_uninstall(d, o) } else { d.confirm = true }
+			}
+			if b := ui.prev_box("###setup_uninstall"); b != nil { d.at[.Uninstall] = b.rect }
+		}
+		ui.space(ui.PAGE_MARGIN)
+	}
+	if !open { return }
+	ui.space(ui.LINE_GAP)
 	if panel(o, em, "###setup_info") {
 		ui.space(ui.INNER_PAD)
-		words, tone := state_words(f^, o)
-		line_next()
-		if ui.row(.Center, id = "###setup_state_row") {
-			ui.space(ui.INNER_PAD)
-			if ui.tags(tone == "accent" ? "" : tone) {
-				ui.next({width = ui.fill(), text_pad = 0})
-				ui.paragraph(fmt.tprintf("%s###setup_state", words))
-			}
-			ui.space(ui.INNER_PAD)
-		}
 		key_w := keys_width(em, words_menu(), words_record(), i18n.tr("This copy"))
-		where_row(d, "###w2", words_menu(), f.start_lnk ? o.identity.name : "-", false, key_w, em)
-		where_row(d, "###w3", words_record(), f.record ? o.identity.name : "-", false, key_w, em)
+		where_row(d, "###w2", words_menu(), part_words(f.start_lnk, o), false, key_w, em)
+		where_row(d, "###w3", words_record(), part_words(f.record, o), false, key_w, em)
 		where_row(d, "###w4", i18n.tr("This copy"), f.running, true, key_w, em)
 		if f.nixos && f.state != .Nix_Package && f.state != .This_Copy {
 			line_next()
@@ -791,6 +938,12 @@ info :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 		}
 		ui.space(ui.INNER_PAD)
 	}
+}
+
+// A part of the install as the details say it: the program's name where it is there, "not there" where it is not.
+@(private = "file")
+part_words :: proc(there: bool, o: Setup_Options) -> string {
+	return there ? o.identity.name : i18n.tr("not there")
 }
 
 // A line of the dialog: as wide as it, as tall as what it holds.
@@ -899,26 +1052,18 @@ logo_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	draw.image(dc, l.texture, {at, at + sz})
 }
 
-// Uninstall on the left; on the right, what closes, and what installs (or the installed copy to open). While the work
-// runs, a click does nothing.
+// The footer, under a hairline, on the dialog's ground: the vendor's signature on the left; on the right, what closes,
+// and what installs (or the installed copy to open). While the work runs, a click does nothing.
 @(private = "file")
-buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
-	d.at = {}
+footer :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 	// (keys are made under the row: the box of a button is looked for there, right after it)
 	mark :: proc(d: ^Dialog, role: Button_Role, id: string) { if b := ui.prev_box(id); b != nil { d.at[role] = b.rect } }
+	ui.hline(ui.fill())
+	ui.space(ui.ITEM_GAP)
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 	if ui.row(.Center, id = "###setup_buttons") {
 		ui.space(ui.PAGE_MARGIN)
-		if can_uninstall(d) {
-			// (the first click asks; the second uninstalls)
-			// (beside a Nix package, what goes is only what an earlier install left)
-			nix := d.facts.state == .Nix_Package
-			words := d.confirm ? (nix ? i18n.tr("Click again to remove") : i18n.tr("Click again to uninstall")) : (nix ? i18n.tr("Remove what is left") : i18n.tr("Uninstall"))
-			if button(o, "###setup_uninstall", words, lucide.TRASH_2, .Danger, em) && !busy(d) {
-				if d.confirm { start_uninstall(d, o) } else { d.confirm = true }
-			}
-			mark(d, .Uninstall, "###setup_uninstall")
-		}
+		by_line(o, d.vendor_mark, em, "###setup_by")
 		ui.spacer(ui.fill())
 		just_installed := d.installed != "" && d.facts.state != .This_Copy
 		how := closing(d, o)
@@ -938,6 +1083,7 @@ buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 		}
 		ui.space(ui.PAGE_MARGIN)
 	}
+	ui.space(ui.ITEM_GAP)
 	if d.confirm && ui.key_press(.Escape) { d.confirm = false }
 	return
 }
