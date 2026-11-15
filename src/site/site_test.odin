@@ -247,6 +247,11 @@ the_pages_of_a_small_site :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(road, "<title>Roadmap · Thing</title>") && strings.contains(road, "<h1>Roadmap</h1>"), "its title")
 	testing.expect(t, strings.count(road, "<h1") == 1 && strings.contains(road, "<strong>A thing.</strong>"), "its sections and entries; its own # line is the title")
 	testing.expect(t, strings.contains(road, `<a href="../changelog/">changelog</a>`) && strings.contains(road, `class="brand" href="../"`), "its links from its folder")
+	// its own anchors stay on it, a file of the repository goes to the repository's page of it
+	linked, _ := make_pages(SAMPLE_HOME, parse_changelog(SAMPLE_CHANGES), repository = "https://example.org/thing", roadmap = "# Roadmap\n\n## Now\n\n- **A thing.** See [later](#later) and [its intent](src/md/a.md).\n\n## Next\n\n## Later\n")
+	lroad := page_text(linked, ROADMAP_PAGE)
+	testing.expectf(t, strings.contains(lroad, `href="./#later"`), "an anchor of the page stays on it: %s", lroad)
+	testing.expect(t, strings.contains(lroad, `href="https://example.org/thing/blob/master/src/md/a.md"`), "a file of the repository: the repository's page")
 	classic := page_text(pages, "classic/index.html")
 	testing.expect(t, strings.contains(classic, `<li><a href="features/#one-thing">One thing</a>: First</li>`), "a feature, in a line")
 	testing.expect(t, strings.contains(classic, `<a href="features/">features</a>`), "the nav is in lower case")

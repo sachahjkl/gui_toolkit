@@ -687,7 +687,7 @@ make_pages :: proc(index: string, releases: []^Release, site_name := "", reposit
 </body>
 </html>
 `), CHANGELOG_PAGE)})
-	if roadmap != "" { append(&out, roadmap_page(index, head, bar, footer, script, name, roadmap)) }
+	if roadmap != "" { append(&out, roadmap_page(index, head, bar, footer, script, name, roadmap, repository)) }
 
 	hero := between(index, `<section class="hero">`, "</section>")
 	title := inner(between(hero, "<h1>", "</h1>"))
@@ -785,16 +785,48 @@ make_pages :: proc(index: string, releases: []^Release, site_name := "", reposit
 	return out[:], ""
 }
 
+// The links of the roadmap's HTML as the site reads them: its own anchors on its page (from_home would send "#later" to
+// the home page's), a file of the repository (an intent, "src/md/features/strip.md") to its page on the repository's
+// site ("": left out of the link, its words stay).
+@(private = "file")
+roadmap_links :: proc(html, repository: string) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	rest := html
+	ATTR :: ` href="`
+	for {
+		at := strings.index(rest, ATTR)
+		if at < 0 { break }
+		strings.write_string(&b, rest[:at + len(ATTR)])
+		rest = rest[at + len(ATTR):]
+		end := strings.index_byte(rest, '"')
+		if end < 0 { break }
+		link := rest[:end]
+		rest = rest[end:]
+		switch {
+		case strings.has_prefix(link, "#"):
+			strings.write_string(&b, cat("/", ROADMAP, "/", link))
+		case strings.contains(link, "://") || strings.has_prefix(link, "/") || strings.has_prefix(link, "mailto:"):
+			strings.write_string(&b, link)
+		case repository != "":
+			strings.write_string(&b, cat(strings.trim_right(repository, "/"), "/blob/master/", strings.trim_prefix(link, "./")))
+		case:
+			strings.write_string(&b, cat("/", ROADMAP, "/"))   // (no repository to point to: the link stays on the page)
+		}
+	}
+	strings.write_string(&b, rest)
+	return strings.to_string(b)
+}
+
 // The roadmap's page (roadmap/): the project's ROADMAP.md, its title and its sections (Now, Next, Later), in the
 // changelog's dress (the home page's head, bar, footer and script, the changelog's `main`). Its first line, "# Roadmap",
 // is the page's title.
 @(private = "file")
-roadmap_page :: proc(index, head, bar, footer, script, name, roadmap: string) -> Page {
+roadmap_page :: proc(index, head, bar, footer, script, name, roadmap, repository: string) -> Page {
 	body := roadmap
 	if strings.has_prefix(body, "# ") { _, _, body = strings.partition(body, "\n") }
 	md := render_markdown(body, allocator = context.temp_allocator)
+	html := roadmap_links(md.html, repository)
 	// (a section with no entry says so: an empty heading read as a page that failed)
-	html := md.html
 	for section in ([]string{"Now", "Next", "Later"}) {
 		id := heading_id(section, context.temp_allocator)
 		at := strings.index(html, cat(`<h2 id="`, id, `">`))

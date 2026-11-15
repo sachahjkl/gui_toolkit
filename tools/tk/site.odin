@@ -53,7 +53,7 @@ site_meta :: proc(root: string) -> tk_site.Meta {
 }
 
 site_changelog :: proc(site, out: string) -> bool {
-	return tk_site.build_changelog(site, out, {changes = join({toolkit_root(), "CHANGELOG.md"})})
+	return tk_site.build_changelog(site, out, {changes = join({toolkit_root(), "CHANGELOG.md"}), meta = {name = SITE_META.name, repository = SITE_META.repository}})
 }
 
 run_site_changelog :: proc(args: []string) -> string {
