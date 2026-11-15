@@ -10,7 +10,7 @@ package tk_desktop
 //   ~/.local/bin/<slug>                              the PATH part: a link to the executable
 //   $XDG_CONFIG_HOME/autostart/<slug>.desktop        the Autostart part: the program at the start of the session
 //   <desktop folder>/<slug>.desktop                  the Desktop_Shortcut part: a copy of the entry, executable (a desktop
-//                                                    starts only an executable entry); the folder is xdg_desktop_dir's
+//                                                    starts only an executable entry); the folder is platform.known_folder_path(.Desktop)'s
 //
 // $XDG_DATA_HOME defaults to ~/.local/share (and must be an absolute path, as the specification says). After a change
 // `update-desktop-database <applications>` rebuilds the MIME cache when that tool is installed.
@@ -179,10 +179,11 @@ entry_ours :: proc(o: ^Integration_Options, path: string) -> (ours: bool, target
 	return mark == o.identity.slug || same_path(target, o.exe), target, text
 }
 
-// <desktop folder>/<slug>.desktop: the copy of the entry on the desktop ("" when there is no home).
+// <desktop folder>/<slug>.desktop: the copy of the entry on the desktop ("" when there is no home, or the person disabled
+// their desktop folder).
 @(private = "file")
 desktop_shortcut_path :: proc(o: ^Integration_Options) -> string {
-	dir := o.desktop_dir != "" ? o.desktop_dir : xdg_desktop_dir()
+	dir := o.desktop_dir != "" ? o.desktop_dir : platform.known_folder_path(.Desktop, context.temp_allocator)
 	if dir == "" { return "" }
 	return strings.concatenate({dir, "/", o.identity.slug, ".desktop"}, context.temp_allocator)
 }

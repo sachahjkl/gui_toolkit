@@ -33,25 +33,6 @@ pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc :
 	return file_dialog_spawn(DIALOG_FOLDER, d, allocator)
 }
 
-// The XDG user directories: $XDG_<NAME>_DIR (user-dirs.dirs), else $HOME/<Name>.
-known_folder_path :: proc(k: Known_Folder, allocator := context.allocator) -> string {
-	home := ""
-	if h := posix.getenv("HOME"); h != nil { home = string(h) }
-	sub := ""
-	switch k {
-	case .None:      return strings.clone(home, allocator)
-	case .Home:      return strings.clone(home, allocator)
-	case .Desktop:   sub = "Desktop"
-	case .Documents: sub = "Documents"
-	case .Downloads: sub = "Downloads"
-	case .Music:     sub = "Music"
-	case .Pictures:  sub = "Pictures"
-	case .Videos:    sub = "Videos"
-	}
-	if home == "" { return "" }
-	return strings.concatenate({home, "/", sub}, allocator)
-}
-
 open_url :: proc(url: string, loc := #caller_location) -> bool {
 	base.blocking("platform.open_url", loc)
 	if portal_open_uri(url) { return true }   // the portal (OpenURI) first; xdg-open otherwise

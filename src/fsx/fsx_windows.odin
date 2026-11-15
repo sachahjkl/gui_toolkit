@@ -115,6 +115,14 @@ make_dirs :: proc(dir: string, loc := #caller_location) -> bool {
 	return attrs != win.INVALID_FILE_ATTRIBUTES && attrs & win.FILE_ATTRIBUTE_DIRECTORY != 0
 }
 
+// A new folder takes its parent's access list, and the parents a program's folders are in (%TEMP%, %LOCALAPPDATA%) are
+// in the user's profile, closed to the other users already: nothing to change. A junction or a link at the name is
+// refused, as on POSIX.
+private_dir :: proc(dir: string, loc := #caller_location) -> bool {
+	base.blocking("fsx.private_dir", loc)
+	return make_dirs(dir, loc) && path_kind(dir, loc) == .Directory
+}
+
 list_files :: proc(dir: string, allocator := context.temp_allocator, loc := #caller_location) -> []Dir_File {
 	base.blocking("fsx.list_files", loc)
 	out := make([dynamic]Dir_File, allocator)

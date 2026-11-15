@@ -67,7 +67,7 @@ watch_start_linux :: proc(o: ^Integration_Options, wake: Watch_Proc, user: rawpt
 		o.applications_dir != "" ? o.applications_dir : (data == "" ? "" : strings.concatenate({data, "/applications"}, context.temp_allocator)),
 		o.icons_dir != "" ? o.icons_dir : (data == "" ? "" : strings.concatenate({data, "/icons/hicolor"}, context.temp_allocator)),
 		o.bin_dir != "" ? o.bin_dir : xdg_bin_dir(),
-		o.desktop_dir != "" ? o.desktop_dir : xdg_desktop_dir(),
+		o.desktop_dir != "" ? o.desktop_dir : platform.known_folder_path(.Desktop, context.temp_allocator),
 		o.autostart_dir != "" ? o.autostart_dir : (config == "" ? "" : strings.concatenate({config, "/autostart"}, context.temp_allocator)),
 		install_target(o),
 	}

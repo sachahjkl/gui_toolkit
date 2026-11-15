@@ -38,7 +38,8 @@ known_folder_id :: proc(k: Known_Folder) -> ^win.GUID {
 }
 
 // The path of a folder the system names ("" when it has none).
-known_folder_path :: proc(k: Known_Folder, allocator := context.allocator) -> string {
+known_folder_path :: proc(k: Known_Folder, allocator := context.allocator, loc := #caller_location) -> string {
+	base.blocking("platform.known_folder_path", loc)
 	if k == .None { return "" }
 	p: win.LPWSTR
 	if win.SHGetKnownFolderPath(known_folder_id(k), 0, nil, &p) < 0 || p == nil { return "" }

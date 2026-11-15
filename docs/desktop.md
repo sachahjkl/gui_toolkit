@@ -129,7 +129,7 @@ all. `--cli` anywhere makes the launcher wait, and the program never sees it. A 
 | Part | What is written |
 |---|---|
 | `Launcher` | `$XDG_DATA_HOME/applications/<slug>.desktop` (`desktop_entry_text`), marked by its `entry_marker` line |
-| `Desktop_Shortcut` | with `desktop_shortcut`: a copy of the entry in the desktop folder (`xdg_desktop_dir`: `$XDG_DESKTOP_DIR`, else `user-dirs.dirs`, else `~/Desktop`), executable; another program's file of that name stays (Install fails with it) |
+| `Desktop_Shortcut` | with `desktop_shortcut`: a copy of the entry in the desktop folder (`platform.known_folder_path(.Desktop)`: `user-dirs.dirs`, else `~/Desktop`; none when the person disabled it), executable; another program's file of that name stays (Install fails with it) |
 | `Icons` | `$XDG_DATA_HOME/icons/hicolor/<n>x<n>/apps/<slug>.png`, one per icon of the options |
 | `Path` | a link `~/.local/bin/<slug>` to the executable |
 | `Autostart` | with `autostart`: `$XDG_CONFIG_HOME/autostart/<slug>.desktop` (the XDG Autostart specification), `Exec` the executable and `autostart_arguments`, marked as the desktop entry is |
@@ -203,7 +203,8 @@ file is chosen by, the picture still made at `size` (Papirus's small icons are m
 
 The theme read and the files found are kept while the data folders and the theme's name are the same. The theme's name is
 asked once (`file_icons_forget` makes the next icon ask it again: the person chose another theme). `file_icon_key` reads no
-file: on Linux it is the type the name says.
+file: on Linux a file's is the type its name says; a folder's is its path, on every system (whether it is one of the
+person's folders comes from a file, read by `file_icon` on its worker).
 
 ## Icons of applications
 

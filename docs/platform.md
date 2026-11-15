@@ -108,7 +108,7 @@ for a screen-sized fixed surface).
 the drives on Windows, `/` elsewhere (the file browser's places). `launch_detached(args)` (Linux) starts a program and does not wait for it, its output
 nowhere: xdg-open, an application of "Open with" (`desktop.open_with`).
 
-**System** — `user_dir`, `system_font_path`, `os_animations_enabled`, `app_icon_rgba`.
+**System** — `user_dir`, `session_runtime_dir`, `system_font_path`, `os_animations_enabled`, `app_icon_rgba`.
 
 **A program's folders** (`user_dir.odin`) — `user_dir(kind, program)` is where a program keeps what it keeps, one folder of its own
 per kind, the same call on every system (`program` ""; the folder every program's is in). Nothing is made: the program makes it
@@ -120,10 +120,21 @@ when it writes there.
 | `.Data` (what it made and keeps) | `$XDG_DATA_HOME/<program>` (`~/.local/share`) | `%LOCALAPPDATA%\<program>` |
 | `.State` (logs, crash reports, what it remembers between runs) | `$XDG_STATE_HOME/<program>` (`~/.local/state`) | `%LOCALAPPDATA%\<program>\state` |
 | `.Cache` (what it can make again) | `$XDG_CACHE_HOME/<program>` (`~/.cache`) | `%LOCALAPPDATA%\<program>\cache` |
-| `.Runtime` (sockets, pipes, what lasts a session) | `$XDG_RUNTIME_DIR/<program>` (else `$TMPDIR`, else `/tmp`) | `%TEMP%\<program>` |
+| `.Runtime` (sockets, pipes, what lasts a session) | the session's (`session_runtime_dir`)`/<program>`, else `<$TMPDIR or /tmp>/runtime-<uid>/<program>` | the system's temporary folder (`GetTempPath2W`, else `GetTempPathW`)`\<program>` |
 
 A variable counts only when it is an absolute path, as the XDG specification says, on Windows too (`%APPDATA%`, `%LOCALAPPDATA%`):
 a test or a portable copy points them elsewhere. Without them, Windows' known folders (`SHGetKnownFolderPath`).
+
+The runtime folder is never one that another user can enter or make first. On Linux without a session's runtime folder,
+`user_dir(.Runtime, ...)` makes `runtime-<uid>` in the temporary folder, closed to the others (`fsx.private_dir`). It gives
+"" when another user made that name first, or when the name is a link. A program's folder in it needs no check of its own:
+`fsx.make_dirs` is enough. `user_dir` can ask the system (a `stat`, a `mkdir`; on Windows, a known folder): call it from a
+task. The decisions are in [src/md/features/folders.md](../src/md/features/folders.md).
+
+`session_runtime_dir()` returns `(dir, ok)`: the session's own runtime folder, the one its services (gvfs, the portals,
+D-Bus) use. On Linux it is `$XDG_RUNTIME_DIR` when that is absolute, else `/run/user/<uid>` when that is a folder of this
+user closed to the others. `ok` is false when the session has none (Windows, a Linux session without a login manager).
+A program that looks for gvfs's mounts reads `<dir>/gvfs` only when `ok` is true.
 
 **Network interfaces** (`net_interfaces.odin`) — `interface_addresses()` lists every IPv4 and IPv6 address of every
 interface, IPv4 first (`Interface_Address`: the interface's name, the family, the address and the netmask in network

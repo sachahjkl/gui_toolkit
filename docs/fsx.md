@@ -48,6 +48,7 @@ blocks a writer's rename or a deletion: a file being replaced underneath is read
 
 ```odin
 fsx.make_dirs(dir)                                // the directory and every missing parent
+ok := fsx.private_dir(dir)                        // the same, the directory its user's alone (false: another's, a link)
 files := fsx.list_files(dir)                      // the plain files (no subdirectory, no link to one): name and size
 kind := fsx.path_kind(path)                       // .Absent / .File / .Directory / .Link (links never followed)
 entries, err := fsx.read_folder(dir)               // every entry: name, size, modified, kind, hidden (os.Error on failure)
@@ -62,6 +63,19 @@ junction, not followed) and `hidden`, the system's mark. On Windows `hidden` is 
 read from `FindFirstFileW` / `FindNextFileW` with the rest: no call per entry (`core:os` opens each entry and drops the
 attribute). Elsewhere it is a name that starts with ".". Its error is `core:os`'s: `io.Error.Permission_Denied`,
 `os.General_Error.Not_Exist`, or the system's code. It blocks: call it off the interface's thread.
+
+`private_dir` is for a folder in a place that other users share (`/tmp`). There, another user can make the name first,
+and `make_dirs` would take that folder. `private_dir` makes the missing parents and the folder (mode 0700 on POSIX).
+It returns true only when the path is a folder of this user that the others cannot enter.
+
+- A folder of this user that is open to others is closed (0700).
+- A folder of another user, or a link at the name, is refused (false).
+- The checks are made on the opened folder (`O_NOFOLLOW`, `fstat`, `fchmod`). A name swapped between the check and the
+  change is therefore never followed.
+- On Windows a new folder takes its parent's access list, and a junction or a link at the name is refused.
+
+`platform.user_dir(.Runtime, ...)` uses it for its Linux fallback, so a program's runtime folder needs no check of its
+own. It blocks: call it off the interface's thread.
 
 `remove_tree` deletes a directory one entry at a time rather than through `os.remove_all`, which asks the Windows shell
 (`SHFileOperationW`) for a non-empty directory: the shell is not thread-safe (tests running side by side are not) and
