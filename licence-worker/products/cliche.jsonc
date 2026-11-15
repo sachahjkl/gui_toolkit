@@ -1,0 +1,80 @@
+// The licence Worker of cliche, made by `licence worker` from its licence.Product: make it again rather than
+// edit the product's values. SET: what the maintainer still sets (licence-worker/README.md). No secret is here.
+{
+	"name": "cliche-licence",
+	"main": "../src/index.ts",
+	"compatibility_date": "2026-10-01",
+	"workers_dev": true,
+	"observability": { "enabled": true },
+	"kv_namespaces": [{ "binding": "LICENSES" }],
+	"durable_objects": { "bindings": [{ "name": "ORDERS", "class_name": "LicenseOrder" }] },
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["LicenseOrder"] }],
+	"send_email": [{ "name": "EMAIL" }],
+
+	"vars": {
+		"PRODUCT": "cliche",
+		"PRODUCT_TITLE": "cliche",
+		"VERSION_TAG": "CLICHE1",
+		"SIGN_CONTEXT": "cliche-licence-v1\n",
+		"FILE_EXTENSION": ".clichelicence",
+		"ORDER_PREFIX": "CLICHE",
+		"EDITIONS": "[{\"id\":\"supporter\",\"title\":\"Supporter\"}]",
+		"UPDATE_YEARS": "",
+		"UPDATES_FROM": "",
+		"LICENSE_PUBLIC_KEY": "blQ1xEG1inSgHUbIujJZ2yuPXUgaO_UIKXzvTWoN3ss",
+		"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+		"PADDLE_API_BASE": "https://api.paddle.com",
+		"ALLOWED_ORIGIN": "https://cliche.froment.software",
+		"MAIL_FROM": "cliche <license@mail.froment.software>",
+		"MAIL_REPLY_TO": "",
+		"MAIL_SUBJECT": "",
+		"MAIL_TEXT": "",
+		"FILE_HINT": "Open cliche's settings, the General page, Licence: choose this file, or paste the key there.",
+		"WEBHOOK_TOLERANCE_SECONDS": "300",
+		"RESEND_ENABLED": "false",
+		"RESEND_MAX_PER_HOUR": "3",
+		"RESEND_REQUIRE_TOKEN": "false",
+		"MAIL_BACKOFF_MINUTES": "1,5,30,120,720,2880",
+		"MAIL_MAX_ATTEMPTS": "7",
+		"PII_RETENTION_DAYS": "90"
+	},
+
+	"env": {
+		"sandbox": {
+			"name": "cliche-licence-sandbox",
+			"workers_dev": true,
+			"observability": { "enabled": true },
+			"kv_namespaces": [{ "binding": "LICENSES" }],
+			"durable_objects": { "bindings": [{ "name": "ORDERS", "class_name": "LicenseOrder" }] },
+			"migrations": [{ "tag": "v1", "new_sqlite_classes": ["LicenseOrder"] }],
+			"send_email": [{ "name": "EMAIL" }],
+			"vars": {
+				"PRODUCT": "cliche",
+				"PRODUCT_TITLE": "cliche",
+				"VERSION_TAG": "CLICHE1",
+				"SIGN_CONTEXT": "cliche-licence-v1\n",
+				"FILE_EXTENSION": ".clichelicence",
+				"ORDER_PREFIX": "CLICHE",
+				"EDITIONS": "[{\"id\":\"supporter\",\"title\":\"Supporter\"}]",
+				"UPDATE_YEARS": "",
+				"UPDATES_FROM": "",
+				"LICENSE_PUBLIC_KEY": "4u0W0RNCU5S16f_LtlKwtM4uokN4fZ6m8jIgT26ynyo",
+				"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+				"PADDLE_API_BASE": "https://sandbox-api.paddle.com",
+				"ALLOWED_ORIGIN": "https://cliche.froment.software,http://localhost:8765",
+				"MAIL_FROM": "cliche <license@mail.froment.software>",
+				"MAIL_REPLY_TO": "",
+				"MAIL_SUBJECT": "",
+				"MAIL_TEXT": "",
+				"FILE_HINT": "Open cliche's settings, the General page, Licence: choose this file, or paste the key there.",
+				"WEBHOOK_TOLERANCE_SECONDS": "300",
+				"RESEND_ENABLED": "false",
+				"RESEND_MAX_PER_HOUR": "3",
+				"RESEND_REQUIRE_TOKEN": "false",
+				"MAIL_BACKOFF_MINUTES": "1,5,30,120,720,2880",
+				"MAIL_MAX_ATTEMPTS": "7",
+				"PII_RETENTION_DAYS": "90"
+			}
+		}
+	}
+}
