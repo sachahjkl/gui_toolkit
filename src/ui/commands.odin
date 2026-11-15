@@ -366,35 +366,45 @@ heading_lines_band :: proc(lines: []$T, view: ^Box, row_h, heading_h: f32) -> (f
 // The sheet: the program keeps it between frames, at a place that does not move while it is open. It keeps the list of
 // its commands that have a key, made again only when the commands change.
 Shortcuts_Sheet :: struct {
-	lines:    [dynamic]Sheet_Line,
+	entries:  [dynamic]Sheet_Entry,
 	kept:     Sheet_Key,
-	listings: int,         // how many times the list was made (a test reads it)
-	commands: []Command,   // shortcuts_sheet_open's: the program's table, valid while the sheet is open
+	listings: int,            // how many times the list was made (a test reads it)
+	commands: []Command,      // shortcuts_sheet_open's: the program's table, valid while the sheet is open
+	extra:    []Sheet_Line,   // shortcuts_sheet_open's: the lines that are no command, valid while the sheet is open
 	version:  u64,
 }
 
-// What the sheet's list depends on: the commands (their version, or their address while it is 0), their count, and the
-// keymap's version (a person's key given or taken lists a command or not).
+// A line of the sheet that is no command: a key a widget owns (Up in a composer's history, a middle click). `keys` is
+// shown as written; `group` and `label` are translated as a command's (i18n.tr).
+Sheet_Line :: struct {
+	group, keys, label: string,
+}
+
+// What the sheet's list depends on: the commands and the extra lines (their version, or their address while it is 0),
+// their counts, and the keymap's version (a person's key given or taken lists a command or not).
 @(private)
 Sheet_Key :: struct {
 	valid:    bool,
 	commands: rawptr,
 	count:    int,
+	extra:    rawptr,
+	extra_count: int,
 	version:  u64,
 	keymap:   ^Keymap,
 	keymap_version: u64,
 }
 
-// A command that has a key: its index, the group headings down to it, whether its group's heading is just above it.
+// A line of the sheet: a command that has a key (`extra` false: its index, the palette's command at len(commands)) or an
+// extra line (its index in `extra`); the group headings down to it, whether its group's heading is just above it.
 @(private)
-Sheet_Line :: struct {
+Sheet_Entry :: struct {
 	index, headings: int,
-	heading:         bool,
+	heading, extra:  bool,
 }
 
 shortcuts_sheet_destroy :: proc(sheet: ^Shortcuts_Sheet) {
-	delete(sheet.lines)
-	sheet.lines, sheet.kept = nil, {}
+	delete(sheet.entries)
+	sheet.entries, sheet.kept = nil, {}
 }
 
 // The view of each sheet: its id, and the instance that is this sheet.
@@ -408,12 +418,14 @@ sheet_instance :: proc(sheet: ^Shortcuts_Sheet) -> string { return fmt.tprintf("
 // `title` "": "Keyboard shortcuts", in the language in use. `version`: the commands' version as the program counts
 // their changes (their keys too: a table rebound in place gives one); 0: the table does not change in place. The list
 // of the commands that have a key is kept, and only the lines near the view are built. One open takes these commands.
-shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title := "", version: u64 = 0) {
+// `extra`: lines that are no command (a widget's keys), each after the last command of its group, or under its own
+// heading after them all when no command of its group has a key; `version` counts their changes too.
+shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title := "", version: u64 = 0, extra: []Sheet_Line = nil) {
 	vs := views()
 	if !view_registered(vs, SHORTCUTS_VIEW) {
 		view_register(vs, SHORTCUTS_VIEW, sheet_view, View_Options{title = "Keyboard shortcuts", width_em = SHEET_WIDTH_EM})
 	}
-	sheet.commands, sheet.version = commands, version
+	sheet.commands, sheet.extra, sheet.version = commands, extra, version
 	r := view_open_raw(vs, SHORTCUTS_VIEW, sheet, typeid_of(Shortcuts_Sheet), sheet_instance(sheet), nil)
 	delete(r.title, r.allocator)
 	r.title = strings.clone(title, r.allocator)
@@ -429,15 +441,15 @@ sheet_view :: proc(v: ^View, sheet: ^Shortcuts_Sheet) {
 	s := gs()
 	em := font_size()
 	w := em * SHEET_WIDTH_EM
-	key := Sheet_Key{valid = true, count = len(sheet.commands), version = sheet.version, keymap = s.keymap}
+	key := Sheet_Key{valid = true, count = len(sheet.commands), extra_count = len(sheet.extra), version = sheet.version, keymap = s.keymap}
 	if s.keymap != nil { key.keymap_version = s.keymap.version }
-	if sheet.version == 0 { key.commands = raw_data(sheet.commands) }
+	if sheet.version == 0 { key.commands, key.extra = raw_data(sheet.commands), raw_data(sheet.extra) }
 	if key != sheet.kept {
 		sheet.kept = key
 		sheet.listings += 1
-		sheet_list(sheet, sheet.commands, s.keymap)
+		sheet_list(sheet, sheet.commands, sheet.extra, s.keymap)
 	}
-	sheet_body(sheet, sheet.commands, s.keymap, w, em, s.window_size.y)
+	sheet_body(sheet, sheet.commands, sheet.extra, s.keymap, w, em, s.window_size.y)
 }
 
 // The commands the sheet lists: the program's, then the toolkit's palette command (index len(commands)): the sheet
@@ -449,27 +461,50 @@ sheet_command :: proc(commands: []Command, i: int) -> Command {
 
 // (the commands that have a key in effect: one whose own keys others took, and that has no key of the person's, is not
 // listed; one with an alias and no key neither: the sheet is about keys)
+// (an extra line goes after the last listed command of its group, so a group a table splits in two runs gets it once,
+// at its end; a group no listed command has gets its own heading after all the commands)
 @(private = "file")
-sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, km: ^Keymap) {
-	clear(&sheet.lines)
-	group := ""
-	headings := 0
+sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, extra: []Sheet_Line, km: ^Keymap) {
+	clear(&sheet.entries)
+	listed := make([dynamic]int, 0, len(commands) + 1, context.temp_allocator)
+	last_of := make(map[string]int, context.temp_allocator)
 	for i in 0 ..= len(commands) {
 		c := sheet_command(commands, i)
 		if keys_first_text(km, c) == "" { continue }
-		heading := c.group != group
-		if heading { headings += 1 }
-		group = c.group
-		append(&sheet.lines, Sheet_Line{index = i, headings = headings, heading = heading})
+		append(&listed, i)
+		last_of[c.group] = i
 	}
+	extras_of := make(map[int][dynamic]int, context.temp_allocator)   // a command's index: the extra lines after it
+	alone := make([dynamic]int, 0, len(extra), context.temp_allocator)
+	for x, k in extra {
+		if i, ok := last_of[x.group]; ok {
+			if i not_in extras_of { extras_of[i] = make([dynamic]int, context.temp_allocator) }
+			append(&extras_of[i], k)
+		} else {
+			append(&alone, k)
+		}
+	}
+	group := ""
+	headings := 0
+	add :: proc(sheet: ^Shortcuts_Sheet, group: ^string, headings: ^int, g: string, index: int, extra: bool) {
+		heading := g != group^
+		if heading { headings^ += 1 }
+		group^ = g
+		append(&sheet.entries, Sheet_Entry{index = index, headings = headings^, heading = heading, extra = extra})
+	}
+	for i in listed {
+		add(sheet, &group, &headings, sheet_command(commands, i).group, i, false)
+		if xs, ok := extras_of[i]; ok { for k in xs { add(sheet, &group, &headings, extra[k].group, k, true) } }
+	}
+	for k in alone { add(sheet, &group, &headings, extra[k].group, k, true) }
 }
 
 @(private = "file")
-sheet_body :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, km: ^Keymap, w, em, window_h: f32) {
+sheet_body :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, extra: []Sheet_Line, km: ^Keymap, w, em, window_h: f32) {
 	pad := em * 1.2
 	line_h := dense(em * 1.7)
 	heading_h := em * 2.2   // (a gap of em * 0.5 and the heading)
-	lines := sheet.lines[:]
+	lines := sheet.entries[:]
 	next({width = px(w), height = children_sum(), axis = .Y})
 	if column(id = "###sheet") {
 		spacer(px(em * 0.5))
@@ -479,29 +514,41 @@ sheet_body :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, km: ^Keymap, w,
 			first, last, above, below := heading_lines_band(lines, parent_box(), line_h, heading_h)
 			if above > 0 { spacer(px(above)) }
 			for line in lines[first:last] {
-				if line.index > len(commands) { continue }   // (a table that shrank without a version: listed again next frame)
-				c := sheet_command(commands, line.index)
+				// (a table that shrank without a version: listed again next frame)
+				if line.extra ? line.index >= len(extra) : line.index > len(commands) { continue }
+				group, text, keys: string
+				own: bool
+				if line.extra {
+					x := extra[line.index]
+					group, text, keys = x.group, x.label, x.keys
+				} else {
+					c := sheet_command(commands, line.index)
+					group, text, keys = c.group, c.label, keys_all_text(km, c)
+					_, own = command_bound(km, c)
+				}
+				// (an extra line's ids apart from the commands': the same index is two lines)
+				kind := line.extra ? "x" : ""
 				if line.heading {
 					spacer(px(em * 0.5))
 					next({width = fill(), height = px(em * 1.7)})
-					if row(.Center, {}, fmt.tprintf("###sheet_group_%d", line.index)) {
+					if row(.Center, {}, fmt.tprintf("###sheet_group_%s%d", kind, line.index)) {
 						spacer(px(pad))
 						next({width = fill(), height = pct(1), text_pad = 0, fg = color("accent")})
-						label(fmt.tprintf("%s###g", i18n.tr(c.group)))
+						label(fmt.tprintf("%s###g", i18n.tr(group)))
 					}
 				}
 				next({width = fill(), height = px(line_h)})
-				if row(.Center, {}, fmt.tprintf("###sheet_line_%d", line.index)) {
+				if row(.Center, {}, fmt.tprintf("###sheet_line_%s%d", kind, line.index)) {
 					spacer(px(pad))
 					next({width = fill(), height = pct(1), text_pad = 0})
-					label(fmt.tprintf("%s###l", i18n.tr(c.label)))
+					label(fmt.tprintf("%s###l", i18n.tr(text)))
 					// (a person's key in the accent: the sheet says which keys are one's own)
-					if _, own := command_bound(km, c); own {
+					if own {
 						next({width = text_size(), height = pct(1), text_pad = 0, fg = color("accent")})
-						label(fmt.tprintf("%s###k", keys_all_text(km, c)))
+						label(fmt.tprintf("%s###k", keys))
 					} else if tags("weak") {
 						next({width = text_size(), height = pct(1), text_pad = 0})
-						label(fmt.tprintf("%s###k", keys_all_text(km, c)))
+						label(fmt.tprintf("%s###k", keys))
 					}
 					spacer(px(pad))
 				}

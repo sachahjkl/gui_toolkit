@@ -54,7 +54,13 @@ text on its accent (`accent_text`; 0 picks the darkest step or the brightest tex
 | `finish_of(name)`, `FINISH_NAMES` | the finishes by name: "flat", "gradient", "glass", "machined", "edged" |
 
 The palette takes, from a version: `bg` = bg0, `bar` = bg1, `panel` = bg2, `panel2` = bg3, `border` = line,
-`well` = well, `weak` and `text`, `accent`, `good` = green, `warn` = yellow, `bad` = red.
+`well` = well, `faint`, `weak`, `text` and `bright`, `accent`, `good` = green, `warn` = yellow, `bad` = red.
+
+The texts are entries a program asks by name: `"text"`, `"weak text"`, `"faint text"` (a hint, a line number; a palette
+without one takes weak `FAINT_STEP` toward the page), `"soft text"` (a quiet text: weak `SOFT_STEP` toward text: code,
+a tool's output) and `"bright text"` (a title, what is selected; without one, white on dark, black on light).
+`theme_color(name)` reads any entry of the theme shown whatever tags are pushed: a custom draw, a colour computed
+outside a build, as `hue(h)` does for the hues.
 
 ## A program's own colours in any theme
 
@@ -131,7 +137,8 @@ dock panel). A frame its program draws itself gives the box its radius, so that 
 
 A box gets the machined drawing from its flags and its theme: `.Groove` is a groove (`hline`); `.Sunken` with a
 background is a well (`line_edit`, `text_edit`, `input_frame`, the track of `segmented`; a clear background sits in a
-well, as a bare field does); `.Plate` with an opaque background is a raised panel (`card`, `modal`, menus, tooltips); an
+well, as a bare field does); `.Plate` with an opaque background is a raised panel (`card`, `modal`, menus, tooltips), or
+with its own look (`Box.plate`, a `Plate_Look`: `card`'s options) in every finish, its background whatever it is; an
 opaque background with a sheen is raised (bevelled when it is `.Clickable`). An accent fill a widget paints itself
 (`paint_rect`) is a lit face, as in `Gradient` but a little stronger.
 

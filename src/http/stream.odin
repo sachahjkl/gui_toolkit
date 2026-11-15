@@ -39,8 +39,9 @@ stop_ask :: proc(s: ^Stop) { sync.atomic_store(&s.asked, true) }
 stop_asked :: proc(s: ^Stop) -> bool { return s != nil && sync.atomic_load(&s.asked) }
 
 // Reads the event stream of `url` (GET), calling `on_event` for each event, until the stream ends, `on_event` returns
-// .Stop or `stop` is asked. `req.timeout` is the longest silence (0: STREAM_SILENCE); `req.max_bytes` bounds a line and
-// an event's data (0: MAX_BYTES). An Accept header is added when req has none. status: the answer's (after the
+// .Stop or `stop` is asked. `req.timeout` is the longest silence (0: STREAM_SILENCE), and the connection's bound unless
+// `req.connect_timeout` gives one; `req.max_bytes` bounds a line and an event's data (0: MAX_BYTES), decoded when
+// `req.compressed`. An Accept header is added when req has none. status: the answer's (after the
 // redirects); a status that is not 2xx gives no event and no Error. A stream the server ends is no Error either: call
 // again to reconnect, with a Last-Event-ID header from the last Event.id.
 events :: proc(url: string, req: Request, on_event: Event_Proc, user: rawptr, stop: ^Stop = nil) -> (status: int, err: Error) {

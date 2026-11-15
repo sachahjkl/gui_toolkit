@@ -119,6 +119,21 @@ so its keys must be the same too: a person who opens the palette in one program 
 one. Homogeneity comes first. No setting turns Ctrl+K off: a standard shortcut is not disabled. A widget that needs the
 chord (a terminal, a shortcut recorder) claims it with `keys_claim`, as before.
 
+## The sheet's lines that are no command
+
+A program has keys that belong to a widget, not to a command: Up and Down in a composer's history, Ctrl+V that pastes a
+picture, a middle click, Escape twice that stops. They are not in its table, as no `command_pressed` reads them; the
+sheet must list them all the same, or a person never learns them. `shortcuts_sheet_open`'s `extra` takes them as
+`Sheet_Line{group, keys, label}`.
+
+- **Their keys are text, as written.** A middle click or "Esc twice" is no `Chord`; the program says them in its words.
+- **In their group.** A line of a group the commands have goes after that group's last command (a group that a table
+  splits in two runs gets it once, at its end); a line of a group no command has goes under its own heading after the
+  commands. A person looks for a key by what it does, and the group says that.
+- **Not in the palette.** A line acts on nothing by itself: the palette would list a choice that does nothing.
+- **Refused: commands with no key reader** (a `Command` the program never reads, for the sheet alone). Its keys would
+  be a `Chord` (no middle click), the palette would list it, and a person could rebind a key nothing reads.
+
 ## Subtle points
 
 - Two places can read the same window command (the program's top level and a view's body). The first one takes the key:

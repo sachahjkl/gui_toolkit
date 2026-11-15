@@ -150,6 +150,25 @@ that many font sizes, on whole pixels. A program uses the roles, never values of
 page puts `GROUP_GAP` or `ITEM_GAP` between two cards. `if ui.list_card("###id") { if ui.card_row("###a") { ... } }` is
 a card of rows split by hairlines, each row `ROW_PAD` above and below, its first and last rows `CARD_PAD` from its edges.
 
+`ui.card(title, icon, id = "", o = ui.Card_Options{})`: `id` is its box's id (`""`: `"###card_<title>"`; give one to
+each card without a title in a list). `o` is its own look, in every finish; a zero field is the theme's:
+
+| `Card_Options` | |
+|---|---|
+| `radius` | its corners, logical pixels (0: 0.6 font size) |
+| `look.top`, `look.bottom` | its face, a gradient from its top to its bottom (the flat forms: their mean) |
+| `look.border` | its edge (a colour of alpha 0: none) |
+| `look.rim` | the light along its top edge, an alpha (machined, edged) |
+| `look.shadow` | its soft shadow, logical pixels (machined, edged; 0: none) |
+
+```odin
+look := ui.Plate_Look{top = warm_top, bottom = warm_bottom, border = ui.with_alpha(ui.color("accent"), 0.55), rim = 0.1, shadow = 8}
+if ui.card("", id = fmt.tprintf("###perm_%s", p.id), o = {look = look}) { ... }
+```
+
+`ui.list_card(id, o)` takes the same options. A `.Plate` box of a program's own takes a look the same way:
+`b.plate = ui.frame_new(ui.Plate_Look); b.plate^ = look` after `build_box` (this build's arena).
+
 `ui.set_wireframe(state, on)` draws every box as its outline and each gap in the colour of its step, a gap off the
 scale in red, the box under the pointer named: where a page leaves the scale shows at a glance. Ctrl+Alt+Shift+W
 toggles it in a build with the devtools; Chrome DevTools' "Layer borders" too.

@@ -46,8 +46,24 @@ asks for it here rather than keep its own.
 
 ### The card
 
-`ui.card(title, icon)` keeps its signature. Its content sits `CARD_PAD` from each of its four edges, its title
+`ui.card(title, icon, id, o)`. Its content sits `CARD_PAD` from each of its four edges, its title
 included. It adds nothing after itself: the page puts `GROUP_GAP` or `ITEM_GAP` between two cards.
+
+A card may have its own look (`Card_Options`: a radius, and a `Plate_Look`: its face from a top colour to a bottom one,
+its edge, its rim, its shadow; a zero field is the theme's). opencode native draws its permission and question cards as
+raised plates of their own colours with an accent edge; without this it kept a copy of the plate (a custom draw, its
+own gradient, rim and shadow) beside `ui.card`. `id` is for the cards without a title: two of them in one list had the
+same key.
+
+- The look is the `.Plate` box's (`Box.plate`, this build's arena), not the card's: every raised panel draws through
+  `machined_box` and `machined_plate_over`, so the face goes under the children and the rim and the edge over them, as
+  for a theme's card.
+- It holds in every finish. In the machined and edged finishes it is `machined_plate` with its colours; in the flat
+  forms its face is the mean of its two colours and its edge is its own colour (else the theme's line). A face that
+  kept the theme's colour in the flat finish would make a permission card a plain card there.
+- `list_card` takes the same options: it is the same panel.
+- Refused: a `bg` and a `border` through `next`. They are one colour each, a box's animated targets from the theme;
+  a gradient, a rim and a shadow have no place there.
 
 ### The list card
 

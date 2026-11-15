@@ -37,6 +37,7 @@ MACHINED_OVERFLOW_PX :: 6
 @(private = "file") PLATE_TOP_LIGHTEN   :: 0.05
 @(private = "file") PLATE_BOTTOM_DARKEN :: 0.06
 @(private = "file") PLATE_SHADOW_PX     :: 5
+@(private = "file") PLATE_RIM_ALPHA     :: 0.07
 // Below this a state or a halo draws nothing.
 @(private = "file") VISIBLE :: 0.01
 
@@ -344,6 +345,21 @@ machined_pip :: proc(dc: ^draw.Context, c: Vec2, d: f32, col: Color) {
 // the dimmed page around a dialog)
 @(private)
 machined_plate_over :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f32) {
+	if .Plate in b.flags && b.plate != nil {
+		look := b.plate
+		if !machined() {
+			edge := look.border == {} ? flat_edge(0) : look.border
+			if edge.a > 0 { draw.rect_corners(dc, r, colors4(edge), radii, px1()) }
+			return
+		}
+		edge := look.border
+		if edged() {
+			if edge == {} { edge = b.border.a > VISIBLE ? b.border : color_from_tags(s, b.tags_key, "border") }
+			edge = lighten(edge, EDGED_PLATE_EDGE_LIGHTEN)
+		}
+		machined_plate_frame_corners(dc, r, radii, look.rim.? or_else PLATE_RIM_ALPHA, edge)
+		return
+	}
 	if !machined() || .Plate not_in b.flags || .Draw_Background not_in b.flags || b.bg.a < 0.99 { return }
 	edge := relief_shade(0.85)
 	if edged() { edge = lighten(b.border.a > VISIBLE ? b.border : color_from_tags(s, b.tags_key, "border"), EDGED_PLATE_EDGE_LIGHTEN) }
@@ -353,6 +369,17 @@ machined_plate_over :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radi
 @(private)
 machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f32, keyboard_focus: bool) -> (face, whole: bool) {
 	radius := radii[0]   // (a well or a bevel: one radius; a raised panel takes each corner's)
+	// a raised panel with its own look, in every finish (the flat one included: its colours are the program's, not the
+	// theme's, so draw_face, which knows only the box's background, cannot draw it); its frame after its children
+	if .Plate in b.flags && b.plate != nil {
+		look := b.plate
+		top, bottom := look.top, look.bottom
+		if top == {} { top = lighten(b.bg, PLATE_TOP_LIGHTEN) }
+		if bottom == {} { bottom = relief_darken(b.bg, PLATE_BOTTOM_DARKEN) }
+		shadow := look.shadow.? or_else (.Draw_Shadow in b.flags ? 0 : PLATE_SHADOW_PX)
+		machined_plate_corners(dc, r, radii, top, bottom, shadow, frame = false)
+		return true, true
+	}
 	// (a row draws its own face, inset in it: row_face.odin)
 	if !machined() || .Row in b.flags { return }
 	if .Groove in b.flags {

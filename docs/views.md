@@ -514,7 +514,7 @@ of the design; `tests/views` tests each row.
 | `confirm_open(id, o)`, `confirm_answer(id) -> Confirm_Answer` | a question before an act that is not taken back |
 | `prompt_open(id, &field, o)`, `prompt_answer(id)` | a question with an answer typed in |
 | `palette_commands(p, commands, disabled, o)`, `palette_open(p, typed)`, `palette_is_open(p)`, `palette_close(p)`, `palette_chosen(p) -> (Palette_Choice, ok)` | the command palette ([palette](palette.md)) |
-| `shortcuts_sheet_open(sheet, commands, title, version)`, `shortcuts_sheet_is_open(sheet)`, `shortcuts_sheet_close(sheet)` | the sheet of the keys |
+| `shortcuts_sheet_open(sheet, commands, title, version, extra)`, `shortcuts_sheet_is_open(sheet)`, `shortcuts_sheet_close(sheet)` | the sheet of the keys |
 | `setup.open(d, o, logo)`, `setup.update(d, o)` | the setup dialog ([setup](setup.md)) |
 | `ui.file_dialog(s, kind, d, done, user, source)` | the file browser, the view `"file_dialog"` of each window ([file-browser](file-browser.md)): `done` once |
 

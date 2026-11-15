@@ -31,9 +31,10 @@ space :: proc(step: f32) {
 
 // `if list_card("###id") { if card_row("###a") { ... }; if card_row("###b") { ... } }`: one card whose rows are split by
 // hairlines. Its first and last rows sit CARD_PAD from its edges, as the content of any card. Tags used: "card".
+// `o`: its own look, as a card's.
 @(require_results, deferred_none = list_card_end)
-list_card :: proc(id: string) -> bool {
-	card_open(id, CARD_PAD - ROW_PAD)
+list_card :: proc(id: string, o := Card_Options{}) -> bool {
+	card_open(id, CARD_PAD - ROW_PAD, o = o)
 	return true
 }
 
@@ -67,16 +68,17 @@ card_row_end :: proc() {
 }
 
 // A card's box, its padded row and its body, `pad_y` font sizes above its content (card and list_card). `name`: what a
-// screen reader says of the group ("": none).
+// screen reader says of the group ("": none). `o`: its own look (card's options; zero: the theme's).
 @(private)
-card_open :: proc(id: string, pad_y: f32, name := "") {
+card_open :: proc(id: string, pad_y: f32, name := "", o := Card_Options{}) {
 	em := font_size()
 	push_tags("card")
 	set_next_axis(.Y)
 	gs().next_mod.width = fill()
 	gs().next_mod.height = children_sum()
-	gs().next_mod.radius = em * 0.6
+	gs().next_mod.radius = o.radius > 0 ? o.radius * scale() : em * 0.6
 	c := build_box({.Draw_Background, .Draw_Border, .Plate}, id)
+	if o.look != {} { c.plate = new_clone(o.look, frame_allocator()) }
 	a11y_default(c, {role = .Group, name = name})
 	push_parent(c)
 	set_next_axis(.X)

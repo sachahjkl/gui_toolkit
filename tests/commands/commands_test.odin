@@ -143,6 +143,39 @@ shortcuts_sheet_lists_the_keys :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.shortcuts_sheet_is_open(&r.sheet), "Escape closes it")
 }
 
+@(private = "file")
+SHEET_EXTRA := [?]ui.Sheet_Line{
+	{group = "Composer", keys = "Up / Down", label = "Earlier prompts"},
+	{group = "Processes", keys = "Middle click", label = "Open in a new window"},
+}
+
+// Lines that are no command (a widget's keys): one of a group the commands have goes after that group's last command,
+// one of a group they lack goes under its own heading after them all; their keys are shown as written.
+@(test)
+the_sheet_lists_lines_that_are_no_command :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Sheet_Run
+	defer ui.shortcuts_sheet_destroy(&r.sheet)
+	sheet :: proc(f: ^Fx, user: rawptr) {
+		r := (^Sheet_Run)(user)
+		if !r.opened { r.opened = true; ui.shortcuts_sheet_open(&r.sheet, PALETTE_COMMANDS[:3], extra = SHEET_EXTRA[:]) }
+	}
+	frame(&f, nil, sheet, &r)
+	frame(&f, nil, sheet, &r)
+	y :: proc(f: ^Fx, text: string) -> f32 {
+		b := find_text(f, text)
+		return b != nil ? b.rect.min.y : -1
+	}
+	kill, middle, start := y(&f, "Kill…"), y(&f, "Open in a new window"), y(&f, "Start")
+	testing.expectf(t, kill >= 0 && middle > kill && start > middle, "after its group's last command (Kill %v, the line %v, Start %v)", kill, middle, start)
+	testing.expect(t, find_text(&f, "Middle click") != nil, "its keys as written")
+	heading, history, palette := y(&f, "Composer"), y(&f, "Earlier prompts"), y(&f, "Command palette")
+	testing.expectf(t, palette >= 0 && heading > palette && history > heading, "its own group after the commands (palette %v, heading %v, line %v)", palette, heading, history)
+	testing.expect(t, find_text(&f, "Up / Down") != nil)
+}
+
 // The palette's matching: the needle whole, or pieces that begin words; never letters scattered in a word.
 @(test)
 fuzzy_words_whole_or_at_words_starts :: proc(t: ^testing.T) {

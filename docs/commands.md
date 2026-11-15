@@ -58,7 +58,22 @@ if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 | `command_typing_keys(commands)` | one line per key of the table that types text, `"<label>: <key>"` (`"Rectangle: R"`, `"Add a step…: Shift+A"`), the key by its `platform.Key` name. A program's unit test compares it with the keys it means (below) |
 | `palette_commands(&p, commands, disabled, o)` | the palette's commands source ([palette.md](palette.md)): the program's table (valid while the palette is open), `disabled` and `Palette_Commands_Options` copied when `o.version` or the keymap's version changes (0: when their addresses do). `palette_chosen_command(&p, choice)` gives a chosen command's index. Ctrl+Enter and Alt+Enter on a command set a key and an alias (below) |
 | `palette_command()`, `palette_keys(&p)`, `palette_toggle(&p)` | the toolkit's window command of the palette (Ctrl+K, Ctrl+Shift+P), for a menu and the sheet; the one reader of its keys; a button's open or close |
-| `shortcuts_sheet_open(&sheet, commands, title, version)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key in effect, grouped, its keys at the right (the person's in the accent's colour), and the toolkit's palette command after them (the sheet adds it: no table holds it); scrolls past `SHEET_HEIGHT` of the window. `commands` stays valid while it is open; `version` as the palette's; the list is made again when the keymap's version moves |
+| `shortcuts_sheet_open(&sheet, commands, title, version, extra)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key in effect, grouped, its keys at the right (the person's in the accent's colour), and the toolkit's palette command after them (the sheet adds it: no table holds it); scrolls past `SHEET_HEIGHT` of the window. `extra`: lines that are no command (below). `commands` and `extra` stay valid while it is open; `version` as the palette's, and counts the changes of `extra` too; the list is made again when the keymap's version moves |
+| `Sheet_Line{group, keys, label}` | a line of the sheet that is no command: a key a widget owns. `keys` is shown as written (`"Middle click"`, `"Esc Esc"`); `group` and `label` are translated as a command's. It goes after the last command of its group, or under its own heading after the commands when none has a key; the palette does not list it |
+
+### Keys that are no command
+
+A key that a widget reads itself (Up and Down in a composer's history, Ctrl+V that pastes a picture, a middle click)
+is in no table. Give it to the sheet as an extra line ([src/md/features/commands.md](../src/md/features/commands.md)):
+
+```odin
+WIDGET_KEYS := [?]ui.Sheet_Line{
+	{group = "Composer", keys = "Up / Down", label = "Earlier prompts"},
+	{group = "Composer", keys = "Ctrl+V", label = "Paste a picture"},
+	{group = "Session", keys = "Esc Esc", label = "Stop the answer"},
+}
+if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:], extra = WIDGET_KEYS[:]) }
+```
 
 ### A key that types text
 
