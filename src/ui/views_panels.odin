@@ -13,6 +13,7 @@ package ui
 import "base:runtime"
 import "core:fmt"
 import "core:math"
+import "../draw"
 import "core:strings"
 import i18n "../i18n"
 import lucide "../lucide"
@@ -678,7 +679,7 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, with_stri
 	s.view_keys_root = keys_root
 	labels := view_labels(vs)
 	band := Rect{last.min, {last.max.x, last.min.y + em * VIEW_HOVER_EM}}
-	over := s.mouse_valid && view_rect_has(band, mouse_pos())
+	over := s.mouse_valid && draw.rect_contains(band, mouse_pos())
 	side := math.round(em * VIEW_DETACH_EM)
 	w := last.max.x - last.min.x
 	gap := math.round(em * 0.35)
@@ -689,7 +690,7 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, with_stri
 	// (they never cover the control the pointer is on: in their corner, over a control of the body (a strip's arrow
 	// under them, a button), they do not show and that control takes the press. Shown over it, they took the press meant
 	// for it: a strip's arrow in a sidebar's top band floated the sidebar)
-	covers := over && view_rect_has(icons, mouse_pos()) && view_body_control_at(body, mouse_pos())
+	covers := over && draw.rect_contains(icons, mouse_pos()) && view_body_control_at(body, mouse_pos())
 	// (nor a strip's arrows, ever: a strip of the body in their corner (a sidebar's row of tabs at its top) keeps them
 	// away, wherever the pointer is in the top area; the panel's menu and the palette still detach and close it)
 	if !with_strip && !view_strip_at(s, body, icons) && ((over && !covers) || view_held_within(s, icons_key)) {
@@ -741,8 +742,6 @@ menu_opened_now :: proc(s: ^State) -> bool {
 	return false
 }
 
-@(private)
-view_rect_has :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y }
 
 // Whether a control of the panel's body lies under `p`, by the last layout. Called before the hover icons are built in
 // this build: they are not among its children yet, so what is under them counts.
@@ -858,7 +857,7 @@ view_space_squares :: proc(sp: ^View_Space, p: Vec2, out: ^[dynamic]View_Square)
 		n := sp.count[e]
 		for k in 0 ..< n {
 			sr := sp.stacks[e][k]
-			if !view_rect_has(sr, p) { continue }
+			if !draw.rect_contains(sr, p) { continue }
 			sc := (sr.min + sr.max) * 0.5
 			axis := view_zone_axis(sp, e)
 			base := fmt.tprintf("view_target_%s_%v_%d", sp.name, e, k)
@@ -897,7 +896,7 @@ view_target_at :: proc(s: ^State, p: Vec2) -> (t: View_Target, ok: bool) {
 			clear(&squares)
 			view_space_squares(sp, p, &squares)
 			#reverse for q in squares {
-				if view_rect_has(q.rect, p) { return q.target, true }
+				if draw.rect_contains(q.rect, p) { return q.target, true }
 			}
 		}
 	}
@@ -979,7 +978,7 @@ views_build_targets :: proc(s: ^State) {
 			clear(&squares)
 			view_space_squares(sp, p, &squares)
 			lit := -1
-			#reverse for q, i in squares { if lit < 0 && view_rect_has(q.rect, p) { lit = i } }
+			#reverse for q, i in squares { if lit < 0 && draw.rect_contains(q.rect, p) { lit = i } }
 			if lit >= 0 {
 				pr := squares[lit].preview
 				next({fixed_x = pr.min.x, fixed_y = pr.min.y, width = px(pr.max.x - pr.min.x), height = px(pr.max.y - pr.min.y), transparency = 0.6, radius = em * DOCK_MARKER_RADIUS_EM})

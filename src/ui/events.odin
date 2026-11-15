@@ -2,6 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "../draw"
 import "../platform"
 
 _ :: fmt   // used by the UI_PROBE debug output only
@@ -243,8 +244,8 @@ pointer_on_at :: proc(b: ^Box, p: Vec2) -> bool {
 
 // Whether `p` is on the box's shape: its rect, or the trapezoid `slant` makes of it.
 box_contains :: proc(b: ^Box, p: Vec2) -> bool {
-	if b.hit_outset > 0 { return contains(Rect{b.rect.min - b.hit_outset, b.rect.max + b.hit_outset}, p) }
-	if b.slant == {} { return contains(b.rect, p) }
+	if b.hit_outset > 0 { return draw.rect_contains(Rect{b.rect.min - b.hit_outset, b.rect.max + b.hit_outset}, p) }
+	if b.slant == {} { return draw.rect_contains(b.rect, p) }
 	return platform.slanted_contains({b.rect.min, b.rect.max, b.slant}, p)
 }
 
@@ -290,7 +291,7 @@ scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways, ctrl: bool) -> Ke
 	} else {
 		takes = .Scroll_Self in b.flags || (sideways ? .View_Scroll_X in b.flags : .View_Scroll_Y in b.flags)
 	}
-	if takes && contains(b.rect, p) { return b.key }
+	if takes && draw.rect_contains(b.rect, p) { return b.key }
 	return 0
 }
 
@@ -302,9 +303,6 @@ ctrl_wheel_taken :: proc(s: ^State, p, d: Vec2) -> bool {
 	b := s.boxes[k] if k != 0 else nil
 	return b != nil && .Ctrl_Wheel in b.flags
 }
-
-@(private)
-contains :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y }
 
 // Whether `key` is held now: pressed in this window and not released yet, by its own presses and releases (not by the
 // modifiers' state, which a compositor may leave stale). A key pressed before the window had the keyboard is not held;

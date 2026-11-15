@@ -353,7 +353,7 @@ sel_inside :: proc(b: ^Box, taker: Key) -> bool {
 sel_box_at :: proc(s: ^State, p: Vec2) -> Key {
 	for i := len(s.sel.order) - 1; i >= 0; i -= 1 {
 		b := s.boxes[s.sel.order[i]]
-		if b != nil && sel_kind(b) != .None && contains(visible_rect(b), p) { return b.key }
+		if b != nil && sel_kind(b) != .None && draw.rect_contains(visible_rect(b), p) { return b.key }
 	}
 	return 0
 }

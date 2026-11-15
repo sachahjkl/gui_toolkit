@@ -129,8 +129,8 @@ editor_bar_under :: proc(bars: Editor_Bars, room: Vec2, p: Vec2) -> Text_Scrollb
 	grab_in, away := scrollbar_grab()
 	toward_v := room.x > 0 ? 0 : grab_in
 	toward_h := room.y > 0 ? 0 : grab_in
-	if bars.has_v && contains(Rect{{bars.v.bar.min.x - toward_v, bars.v.bar.min.y}, {bars.v.bar.max.x + away, bars.v.bar.max.y}}, p) { return .Vertical }
-	if bars.has_h && contains(Rect{{bars.h.bar.min.x, bars.h.bar.min.y - toward_h}, {bars.h.bar.max.x, bars.h.bar.max.y + away}}, p) { return .Horizontal }
+	if bars.has_v && draw.rect_contains(Rect{{bars.v.bar.min.x - toward_v, bars.v.bar.min.y}, {bars.v.bar.max.x + away, bars.v.bar.max.y}}, p) { return .Vertical }
+	if bars.has_h && draw.rect_contains(Rect{{bars.h.bar.min.x, bars.h.bar.min.y - toward_h}, {bars.h.bar.max.x, bars.h.bar.max.y + away}}, p) { return .Horizontal }
 	return .None
 }
 
@@ -662,7 +662,7 @@ edit_pointer :: proc(e: ^Edit_Build) {
 		ai := int(axis)
 		#partial switch a.sb_part {
 		case .Start, .End:
-			on := contains(a.sb_part == .Start ? parts.start : parts.end, mp)
+			on := draw.rect_contains(a.sb_part == .Start ? parts.start : parts.end, mp)
 			if scrollbar_repeat(s, scrollbar_key(b, axis), false, on) { a.scroll[ai] = clamp(a.scroll[ai] + (a.sb_part == .Start ? -lh : lh), 0, limit[ai]) }
 		case .Thumb:
 			// (no move since the press, no shift: the thumb's place is whole pixels)

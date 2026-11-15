@@ -2,6 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "../draw"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
@@ -216,7 +217,7 @@ menu_any_open :: proc() -> bool { return len(gs().menus) > 0 }
 menu_at :: proc(p: Vec2) -> bool {
 	s := gs()
 	for lv in s.menus {
-		if b := s.boxes[lv.panel]; b != nil && contains(b.rect, p) { return true }
+		if b := s.boxes[lv.panel]; b != nil && draw.rect_contains(b.rect, p) { return true }
 	}
 	return false
 }
@@ -506,7 +507,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	if s.mouse_moved {
 		for it in lv.prev {
 			if it.enabled || it.key == 0 { continue }
-			if b := s.boxes[it.key]; b != nil && contains(b.rect, s.mouse) { lv.sel = -1; break }
+			if b := s.boxes[it.key]; b != nil && draw.rect_contains(b.rect, s.mouse) { lv.sel = -1; break }
 		}
 	}
 
@@ -780,7 +781,7 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checke
 		if lv.hover_item != idx { lv.hover_item = idx; lv.hover_since = s.time_ms }
 	} else if lv.hover_item == idx {
 		lv.hover_item = -1
-	} else if !enabled && s.mouse_moved && sig.box != nil && contains(sig.box.rect, s.mouse) {
+	} else if !enabled && s.mouse_moved && sig.box != nil && draw.rect_contains(sig.box.rect, s.mouse) {
 		// the pointer moved onto a disabled row (it gets no signal): the row it left must not stay selected
 		lv.sel = -1
 	}
@@ -879,7 +880,7 @@ menu_control_begin :: proc(label: string, id := "") -> bool {
 	row := build_box({}, fmt.tprintf("###mc_%s", hash_part(id != "" ? id : label)))
 	a11y_default(row, {role = .Group, name = text})
 	// (the pointer on a row that is no act: no item stays selected under it)
-	if s.mouse_moved && row.first_build != s.build_index && contains(row.rect, s.mouse) { lv.sel = -1 }
+	if s.mouse_moved && row.first_build != s.build_index && draw.rect_contains(row.rect, s.mouse) { lv.sel = -1 }
 	push_parent(row)
 	spacer(px(em * (MENU_ROW_LEAD_EM + MENU_ICON_EM)))
 	next({width = px(math.ceil(col + 2 * st.text_pad)), height = px(line)})

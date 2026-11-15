@@ -6,6 +6,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import "../draw"
 import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
@@ -91,7 +92,7 @@ views_build_internals :: proc(s: ^State) {
 		top: ^Internal
 		for &x in internals {
 			f := s.boxes[x.r.iframe] or_else nil
-			if x.unseen || f == nil || !rect_has(f.rect, mouse_pos()) { continue }
+			if x.unseen || f == nil || !draw.rect_contains(f.rect, mouse_pos()) { continue }
 			if top == nil || x.r.z > top.r.z { top = &x }
 		}
 		if top != nil { view_raise(top.vs, top.r) }
@@ -107,8 +108,6 @@ views_build_internals :: proc(s: ^State) {
 	}
 }
 
-@(private = "file")
-rect_has :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x < r.max.x && p.y >= r.min.y && p.y < r.max.y }
 
 // Where a view is built this frame as an internal window, and whether unseen (measured before it shows).
 @(private)

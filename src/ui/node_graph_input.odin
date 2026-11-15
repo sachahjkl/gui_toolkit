@@ -194,9 +194,9 @@ node_graph_port_reach :: proc(f: ^Node_Graph_Frame) -> f32 {
 @(private)
 node_graph_hit :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> (h: Node_Graph_Hit) {
 	area := Rect{f.view.origin, f.view.origin + f.view.size}
-	if !contains(area, p) { return }
+	if !draw.rect_contains(area, p) { return }
 	if f.o.minimap {
-		if mm, ok := node_graph_minimap(f, area); ok && contains(mm.rect, p) { return {kind = .Minimap} }
+		if mm, ok := node_graph_minimap(f, area); ok && draw.rect_contains(mm.rect, p) { return {kind = .Minimap} }
 	}
 	// the ports first (they stand out of their node's sides), the nodes on top first
 	reach := node_graph_port_reach(f)
@@ -212,7 +212,7 @@ node_graph_hit :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> (h: Node_Graph_Hit) {
 		}
 	}
 	for i := len(f.nodes) - 1; i >= 0; i -= 1 {
-		if contains(node_graph_screen_rect(f, i), p) { return {kind = .Node, node = i} }
+		if draw.rect_contains(node_graph_screen_rect(f, i), p) { return {kind = .Node, node = i} }
 	}
 	best := GRAPH_LINK_HIT_PX * f.sc
 	for l in f.links {
@@ -222,7 +222,7 @@ node_graph_hit :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> (h: Node_Graph_Hit) {
 		ca, cb := node_graph_curve(a, b, node_graph_curve_least(f))
 		lo := [2]f32{min(a.x, b.x, ca.x, cb.x), min(a.y, b.y, ca.y, cb.y)} - best
 		hi := [2]f32{max(a.x, b.x, ca.x, cb.x), max(a.y, b.y, ca.y, cb.y)} + best
-		if !contains({lo, hi}, p) { continue }
+		if !draw.rect_contains({lo, hi}, p) { continue }
 		if d := node_graph_curve_distance(a, ca, cb, b, p); d <= best {
 			best = d
 			h = {kind = .Link, link = l}

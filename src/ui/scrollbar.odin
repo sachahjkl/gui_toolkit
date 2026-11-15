@@ -88,7 +88,7 @@ scrollbar_opacity :: proc(s: ^State, b: ^Box) -> f32 { return (s.scrollbar_autoh
 // is over the box or its bar is held, and until the time scrollbar_reveal set.
 @(private)
 scrollbar_shown :: proc(s: ^State, b: ^Box) -> bool {
-	inside := s.mouse_valid && contains(b.rect, s.mouse)
+	inside := s.mouse_valid && draw.rect_contains(b.rect, s.mouse)
 	held := s.active_key[.Left] == scrollbar_key(b) || s.active_key[.Left] == scrollbar_key(b, .X)
 	moving := b.view_off != b.view_target || b.view_anim[0].active || b.view_anim[1].active
 	if inside || held || moving { return true }
@@ -265,11 +265,11 @@ scrollbar_under :: proc(b: ^Box, p: Vec2) -> (axis: Axis, ok: bool) {
 		toward := b.bar_room.x > 0 ? 0 : grab_in
 		grab := Rect{{y.bar.min.x - toward, y.bar.min.y}, {y.bar.max.x + away, y.bar.max.y}}
 		if .Scrollbar_Left in b.flags { grab.min.x, grab.max.x = y.bar.min.x - away, y.bar.max.x + toward }
-		if contains(grab, p) { return .Y, true }
+		if draw.rect_contains(grab, p) { return .Y, true }
 	}
 	if x, has := scrollbar_parts(b, .X); has {
 		toward := b.bar_room.y > 0 ? 0 : grab_in
-		if contains(Rect{{x.bar.min.x, x.bar.min.y - toward}, {x.bar.max.x, x.bar.max.y + away}}, p) { return .X, true }
+		if draw.rect_contains(Rect{{x.bar.min.x, x.bar.min.y - toward}, {x.bar.max.x, x.bar.max.y + away}}, p) { return .X, true }
 	}
 	return
 }
@@ -354,7 +354,7 @@ scrollbar_drag :: proc(s: ^State) {
 	a := int(axis)
 	#partial switch s.sb_held {
 	case .Start, .End:
-		on := contains(s.sb_held == .Start ? parts.start : parts.end, s.mouse)
+		on := draw.rect_contains(s.sb_held == .Start ? parts.start : parts.end, s.mouse)
 		if scrollbar_repeat(s, sbk, false, on) { scrollbar_step(b, axis, s.sb_held == .Start ? -1 : 1) }
 	case .Thumb:
 		// (the thumb's place is whole pixels, coarser than a long content's offsets: no move, no shift)
