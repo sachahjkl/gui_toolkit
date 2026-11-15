@@ -5,18 +5,27 @@ package tk_setup
 //   <program> --install     installs this copy for the user (the program, the menu's entry, the system's record and the
 //                           program's own parts: Setup_Options.prepare), as the Install button does; no window
 //   <program> --uninstall   takes it all away (the user's settings and data stay); no window
-//   <program> --status      says the install's state and whether the program runs; no window
+//   <program> --status      says the install's state, whether the program runs and whether it can be asked to end;
+//                           no window
+//   <program> --quit        asks the copy that runs to end (Setup_Options.quit), then waits for it to end, for a
+//                           bounded time; no window
 //   <program> --setup       starts the program with its installation shown (Settings > Apps' Uninstall runs it:
 //                           Identity.uninstall_arguments)
 //
 // A program lists COMMAND_OPTIONS in its table of options (gt:cli), takes the command out with command_of before it
-// opens a window, and for Install, Uninstall and Status exits with command_run's code.
+// opens a window, and for Install, Uninstall, Status and Quit exits with command_run's code.
 
 import "core:fmt"
+import "core:time"
 import cli "../cli"
 import desktop "../desktop"
+import process "../process"
 
-Command :: enum u8 { None, Install, Uninstall, Status, Setup }
+Command :: enum u8 { None, Install, Uninstall, Status, Quit, Setup }
+
+// How long --quit waits for the copy that runs to end (it may save its work first), and how often it looks.
+QUIT_WAIT :: 10 * time.Second
+QUIT_POLL :: 50 * time.Millisecond
 
 // The options of the command line, for the program's table (cli.check, cli.usage).
 @(rodata)
@@ -24,6 +33,7 @@ COMMAND_OPTIONS := [?]cli.Option{
 	{name = "install", help = "install this copy for you: the program, the menu entry, and its uninstaller", group = "Installation"},
 	{name = "uninstall", help = "remove the installed copy (your settings and data stay)", group = "Installation"},
 	{name = "status", help = "say what is installed, and whether the program runs (exit code 0 installed, 1 not installed or to repair)", group = "Installation"},
+	{name = "quit", help = "ask the program that runs to end, and wait for it (exit code 0 ended or not running, 1 still running)", group = "Installation"},
 	{name = "setup", help = "open the window on the installation"},
 }
 
@@ -35,6 +45,7 @@ command_of :: proc(args: []string, allocator := context.temp_allocator) -> (c: C
 		case "--install":   c = .Install
 		case "--uninstall": c = .Uninstall
 		case "--status":    c = .Status
+		case "--quit":      c = .Quit
 		case "--setup":     c = .Setup
 		case:               append(&rest, a)
 		}
@@ -43,9 +54,9 @@ command_of :: proc(args: []string, allocator := context.temp_allocator) -> (c: C
 }
 
 // Whether the command runs without a window: the program exits with command_run's code.
-command_alone :: proc(c: Command) -> bool { return c == .Install || c == .Uninstall || c == .Status }
+command_alone :: proc(c: Command) -> bool { return c == .Install || c == .Uninstall || c == .Status || c == .Quit }
 
-// Runs Install, Uninstall or Status, says what happened with `out` (process.console_write: a program of the GUI
+// Runs Install, Uninstall, Status or Quit, says what happened with `out` (process.console_write: a program of the GUI
 // subsystem has no console of its own) and how it ended (the program ends with it: cli.exit). Status is .Done when an
 // install is there whole, .Failed otherwise (its words say which: not installed, to repair). An uninstall of the copy
 // that runs leaves its files for after the process: still .Done, the files go once it ends. Reads and writes the disk:
@@ -80,20 +91,58 @@ command_run :: proc(c: Command, o: Setup_Options, out: proc(text: string)) -> cl
 		running := o.running != nil && o.running()
 		out(status_text(f, o, running))
 		return status_exit(f.state)
+	case .Quit:
+		return quit_run(o, out)
 	}
 	return .Done
 }
 
+// --quit: the copy that runs is asked to end (Setup_Options.quit), then the end is awaited, at most QUIT_WAIT: its
+// single instance gone, and no process left of the installed copy's file (an installer replaces that file next; on
+// Windows a process that is still ending holds it). Done when nothing runs; failed when it cannot be asked, or still runs.
+@(private = "file")
+quit_run :: proc(o: Setup_Options, out: proc(text: string)) -> cli.Exit {
+	name := o.identity.name
+	if o.running == nil || !o.running() {
+		out(fmt.tprintf("%s: not running\n", name))
+		return .Done
+	}
+	if o.quit == nil {
+		out(fmt.tprintf("%s: it runs, and cannot be asked to end\n", name))
+		return .Failed
+	}
+	if !o.quit() {
+		out(fmt.tprintf("%s: the copy that runs did not take the request to end\n", name))
+		return .Failed
+	}
+	f := facts(o)
+	deadline := time.tick_add(time.tick_now(), QUIT_WAIT)
+	for {
+		left := f.exe_there ? len(process.processes_of(f.exe, context.temp_allocator)) : 0
+		if left == 0 && !o.running() {
+			out(fmt.tprintf("%s: ended\n", name))
+			return .Done
+		}
+		if time.tick_diff(time.tick_now(), deadline) <= 0 {
+			out(fmt.tprintf("%s: still running after %v\n", name, QUIT_WAIT))
+			return .Failed
+		}
+		time.sleep(QUIT_POLL)
+	}
+}
+
 // What --status says, a fact a line ("key: value"), the first the state in a word: what scripts and tests read.
+// `quit: yes` says that --quit can end the copy that runs (Setup_Options.quit): an installer asks it before it replaces
+// the program, and ends the process by other means when it says no (a program built before --quit says nothing).
 status_text :: proc(f: Facts, o: Setup_Options, running: bool) -> string {
 	yes_no :: proc(b: bool) -> string { return b ? "yes" : "no" }
 	words := [State]string{
 		.Not_Installed = "not installed", .This_Copy = "installed (this copy)", .Repair = "installed, to repair",
 		.Other_Copy = "installed (another copy)", .Removal_Scheduled = "uninstalled", .Nix_Package = "installed by Nix",
 	}
-	return fmt.tprintf("%s: %s\n  program: %s\n  version: %s\n  this copy: %s %s\n  menu entry: %s\n  start with the session: %s\n  on the PATH: %s\n  running: %v\n",
+	return fmt.tprintf("%s: %s\n  program: %s\n  version: %s\n  this copy: %s %s\n  menu entry: %s\n  start with the session: %s\n  on the PATH: %s\n  running: %v\n  quit: %s\n",
 		o.identity.name, words[f.state], f.exe_there ? f.exe : "-", f.version != "" ? f.version : "-", o.version, f.running,
-		yes_no(f.start_lnk), yes_no(f.autostart), yes_no(f.on_path), running)
+		yes_no(f.start_lnk), yes_no(f.autostart), yes_no(f.on_path), running, yes_no(o.quit != nil))
 }
 
 // How --status ends for a state: .Done installed whole (a Nix package too), .Failed not installed or to repair.

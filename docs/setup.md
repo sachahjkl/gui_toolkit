@@ -88,12 +88,18 @@ The same options in every program, listed in its table of options (`setup.COMMAN
 |---|---|
 | `--install` | installs this copy for the user, as the Install button does (`install`): no window |
 | `--uninstall` | removes the installed copy (`uninstall`, then `remove_later` for what the running copy holds); the user's settings and data stay: no window |
-| `--status` | says the state in a word, then a fact a line (the program, its version, this copy, the menu entry, the start with the session, the PATH, `running: true` when a copy runs: `Setup_Options.running`, the program's single-instance check); exit code 0 installed (a Nix package too), 2 to repair, 1 not installed: no window |
+| `--status` | says the state in a word, then a fact a line (the program, its version, this copy, the menu entry, the start with the session, the PATH, `running: true` when a copy runs: `Setup_Options.running`, the program's single-instance check; `quit: yes` when `--quit` can end it: `Setup_Options.quit`); exit code 0 installed whole (a Nix package too), 1 not installed or to repair (`status_exit`; the words say which): no window |
+| `--quit` | asks the copy that runs to end (`Setup_Options.quit`, its single instance: `instance.MESSAGE_QUIT`), then waits until its instance is gone and no process runs the installed copy's file, at most `QUIT_WAIT` (10 s); exit code 0 ended or not running, 1 still running or cannot be asked: no window |
 | `--setup` | starts the program with the install shown (`prefs_page.install_open`); Settings > Apps' Uninstall runs it (`Identity.uninstall_arguments = "--setup"`) |
+
+A program gives `running` and `quit` from its single instance ([instance.md](instance.md), "The messages every program
+understands"): `quit` sends `instance.MESSAGE_QUIT`, and the handler of the copy that runs closes its window. A program
+without `quit` answers `quit: no`, and `--quit` fails at once when it runs: an installer then ends its process by other
+means (`process.processes_of`, `process.signal_process`).
 
 ```odin
 cmd, rest := setup.command_of(os.args[1:])
-if setup.command_alone(cmd) { cli.exit(setup.command_run(cmd, setup_options(), process.console_write)) }   // install, uninstall, status
+if setup.command_alone(cmd) { cli.exit(setup.command_run(cmd, setup_options(), process.console_write)) }   // install, uninstall, status, quit
 // ... the window; then for .Setup: prefs_page.install_open(&app.install)
 ```
 

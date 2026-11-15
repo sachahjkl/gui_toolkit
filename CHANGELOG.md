@@ -5,6 +5,19 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.275.0] - 2026-11-15 15:40
+
+### Added
+- **`Button_Options.busy`**: a button whose act is under way shows the spinner in its glyph's place, keeps its size, ignores clicks and is busy to a screen reader; no spinner beside it any more.
+- **`process.processes_of(exe)`**: the processes of this user that run the file `exe`, found by its full path (never by its
+name), each with its start time (`Process_Ref`). On Windows, `process_start_time` and `signal_process` (`Terminate`,
+`Kill`: TerminateProcess) work now too.
+- **`instance.MESSAGE_PING` and `instance.MESSAGE_QUIT`**: the two messages every program's single instance takes the same
+way: a ping that only says a copy runs, and a request to end as the program's own Quit does.
+- **`<program> --quit`** (`setup.Command.Quit`, `Setup_Options.quit`): asks the copy that runs to end through its single
+instance, then waits until it has ended, at most `setup.QUIT_WAIT` (exit code 0 ended or not running, 1 still running).
+`--status` says `quit: yes` when a program can be asked, so an installer closes a running program before it replaces it.
+
 ## [0.274.0] - 2026-11-15 15:18
 
 ### Added
@@ -3803,6 +3816,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.275.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.275.0
 [0.274.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.274.0
 [0.273.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.273.0
 [0.272.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.272.0

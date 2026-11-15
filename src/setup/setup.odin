@@ -38,6 +38,9 @@ Setup_Options :: struct {
 	// whether a copy of the program runs and answers (its single instance: instance.acquire's owner), for --status; nil:
 	// never said to run. Called from a process with no window, before any: it may wait a moment for the answer
 	running:        proc() -> bool,
+	// asks the copy that runs to end, as its own Quit does (its single instance: instance.MESSAGE_QUIT), for --quit; true
+	// when it took the request. nil: the program cannot be asked, and --status says `quit: no`. Called as `running` is
+	quit:           proc() -> bool,
 	folder:         bool,            // the dialog lets the user choose the install folder before the first install
 	square:         bool,            // every corner of the dialog square (its panel, frames, fields, the toolkit's buttons)
 	user:           rawptr,
