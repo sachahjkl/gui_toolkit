@@ -1,3 +1,0 @@
-type: Added
-
-**`desktop.Integration_Options.default_file_manager`**: a program opens folders in place of the system's file manager, as the part `Part.File_Manager` that `install`, `remove` and `status` handle like the others. On Windows, Win+E and the folders and drives opened from the shell run the program (keys in the user's `Software\Classes`, removed with the system's own verbs back). On Linux, the program is the default of `inode/directory` in `mimeapps.list`, and removal gives the former default back. `config_dir` (`<prefix>CONFIG_DIR`) points the tests at a scratch `$XDG_CONFIG_HOME`; `mimeapps_default` and `mimeapps_with_default` read and edit a `mimeapps.list` text.

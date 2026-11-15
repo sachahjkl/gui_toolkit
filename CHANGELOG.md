@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.268.0] - 2026-11-15
+
+### Added
+- **`setup.Choice.parts`**: an option of the install tied to parts of the integration starts, once a program is installed, from what the system has (`Facts.parts`), not from its default: the box of "open folders with the program" is ticked only when it does.
+- **`desktop.Integration_Options.default_file_manager`**: a program opens folders in place of the system's file manager, as the part `Part.File_Manager` that `install`, `remove` and `status` handle like the others. On Windows, Win+E and the folders and drives opened from the shell run the program (keys in the user's `Software\Classes`, removed with the system's own verbs back). On Linux, the program is the default of `inode/directory` in `mimeapps.list`, and removal gives the former default back. `config_dir` (`<prefix>CONFIG_DIR`) points the tests at a scratch `$XDG_CONFIG_HOME`; `mimeapps_default` and `mimeapps_with_default` read and edit a `mimeapps.list` text.
+- **`ui.stepper`**: the stages of a long work as nodes joined by connectors, each pending, active (the spinner's arc turns), done (a disc pops in and its check draws itself, the connector after it fills), failed or skipped. Left to right, top to bottom or reversed; labels and a second line below, above or beside the nodes, in the state's colour, an intent's or any colour; a compact form with the words in tooltips. It follows the animation setting, asks for frames only while something moves, and a screen reader hears "Step 2 of 4: Install, in progress".
+- **`archive.Zip_Writer`** (`zip_begin`, `zip_add`, `zip_end`) writes a zip file by file, deflated or stored, alone or after the bytes of a program, and **`archive.open_as`** opens a file as a given kind whatever its name: a program reads the files it carries after its own bytes.
+
 ## [0.267.0] - 2026-11-15
 
 ### Added
@@ -3743,6 +3751,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.268.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.268.0
 [0.267.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.267.0
 [0.266.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.266.0
 [0.265.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.265.0
