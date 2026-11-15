@@ -21,7 +21,7 @@ hotkey_field.odin, split.odin). "gen." is the rule every box has: a tooltip is t
 | `tabs` | its strip | Space, Left, Right, Home, End | the chosen one | tab list | program's | gen. | gen. | — | — | — |
 | `dropdown` | — (D1) | Down, Alt+Down, F4 open | yes | combo box | program's | gen. | gen. | — | — | — |
 | `slider` | a step | arrows, Home, End, Page | yes | slider | program's | gen. | gen. | yes | — (D2) | `default`: double click |
-| `range_slider` | a step, active thumb | arrows, Home, End, Page | yes, each thumb | two sliders | program's | gen. | gen. | yes | — (D2) | — (G2) |
+| `range_slider` | a step, active thumb | arrows, Home, End, Page | yes, each thumb | two sliders | program's | gen. | gen. | yes | — (D2) | `default`: double click, both ends |
 | `number` | a step | Up, Down, Page; Ctrl, Alt | the field | spin button | Reset (with `default`) | `disabled`, gen. | gen. | yes | yes | `default`: menu, track |
 | `color_picker` | — | its fields' | its fields | its parts | program's | gen. | gen. | — | hex, numbers | — |
 | `hotkey_field` | — | records the keys | yes | its text | program's | gen. | gen. | — | the keys | — |
@@ -41,8 +41,8 @@ hotkey_field.odin, split.odin). "gen." is the rule every box has: a tooltip is t
 - **G2, a value's reset.** A `splitter` given its `default_size` comes back to it on a double click. `slider` and
   `number` take an optional `default`: a double click on a slider's track sets it (after the press that moved the knob:
   the default wins), and a number's field has a right-click menu, "Reset to 10" (its only way when it has no track; a
-  double click on the field selects a word, as in every field). `range_slider` remains: two thumbs, two defaults, and a
-  double click on the track would have to say which.
+  double click on the field selects a word, as in every field). `range_slider` takes a range: a double click on its
+  track sets both ends (a range is one value; one thumb alone would have had to say which).
 
 ## Decisions
 

@@ -27,8 +27,6 @@
 - **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate:
   `gt:image` reads GIF now. The switch is written (`ocn-views/build/gt-image-only.patch`) and waits for WebP on
   Windows, which the Rust crate reads today. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).
-- **A range comes back to its default.** `range_slider` takes a default for each thumb, as `slider` and `number` do.
-  Intent: [src/md/features/widget-table.md](src/md/features/widget-table.md) (G2).
 - **Small tools that Wren still redoes.** Wren's panel placement (`toolbar_panel_rect`) goes for `ui.menu_open`'s
   `align = .End`, and its `dialog_field` for a plain `ui.line_edit` (`committed`, `cancelled`) or `ui.prompt_open`, which
   already answer Enter and end a view with Escape in one press.

@@ -829,8 +829,9 @@ Range_Press :: struct { high, taken: bool }
 // other thumb is one), Page Up / Page Down ten steps. The wheel over the track moves the active thumb (none: the one
 // nearest the pointer) a step a notch, Shift ten; in a view that scrolls, once a thumb has the keyboard. step 0 =
 // continuous. `format`: a printf format of each value ("%.0f": "20-80"); "": no value text, the track runs to the right
-// end. True when a value changed this frame.
-range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32, step: f32 = 0, format := "%.0f") -> (changed: bool) {
+// end. `default`: the range a double click on the track sets again, both thumbs (a range is one value).
+// True when a value changed this frame.
+range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32, step: f32 = 0, format := "%.0f", default: Maybe([2]f32) = nil) -> (changed: bool) {
 	s := gs()
 	em := font_size()
 	before := [2]f32{lo_v^, hi_v^}
@@ -859,6 +860,12 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32, step: f32 = 0, f
 	}
 	if sig.dragging && press != nil {
 		set(press.high ? 1 : 0, lo + slider_pct(b, room) * (hi - lo), lo_v, hi_v, lo, hi, step)
+	}
+	// (after the press that moved a thumb: the default wins, both ends of it)
+	if d, has := default.?; has && sig.double_clicked {
+		a, z := min(d[0], d[1]), max(d[0], d[1])
+		lo_v^ = clamp(slider_snap(a, step), lo, hi)
+		hi_v^ = clamp(slider_snap(z, step), lo_v^, hi)
 	}
 	if n := wheel_steps(b, active >= 0); n != 0 {
 		which := active

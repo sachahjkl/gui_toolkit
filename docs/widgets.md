@@ -250,7 +250,7 @@ at its right end ("": none, the track runs to it). Its width is never less than 
 value's room (about 10 em with a value; 3.5 em without one, as in `ui.number`): a share of a narrow row or a width given too small does not leave the knob
 alone. With no width given (in a box as wide as what is in it: a tool bar's control, a menu's control row) it is 12 em.
 
-`ui.range_slider(id, &lo_v, &hi_v, lo, hi, step, format)` has two thumbs on one track. Each thumb is a Tab stop and a
+`ui.range_slider(id, &lo_v, &hi_v, lo, hi, step, format, default)` has two thumbs on one track. Each thumb is a Tab stop and a
 slider for a screen reader; the active thumb (the one a press took, or the one Tab reached) moves as `slider` does:
 arrows a step, Home / End to its ends (the other thumb is one), Page Up / Page Down ten steps. The wheel over the track
 moves the active thumb (none: the one nearest the pointer). `format` is each value's ("%.0f": "20-80"; "": no text).
