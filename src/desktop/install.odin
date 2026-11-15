@@ -66,8 +66,7 @@ Install_Plan :: struct {
 // The executable's file name on the desktop: `identity.exe_name`, else the slug (with .exe on Windows).
 exe_name_of :: proc(id: Identity) -> string {
 	if id.exe_name != "" { return id.exe_name }
-	when ODIN_OS == .Windows { return strings.concatenate({id.slug, ".exe"}, context.temp_allocator) }
-	return id.slug
+	return strings.concatenate({id.slug, EXE_SUFFIX}, context.temp_allocator)
 }
 
 // Where the installed copy of these options is: the folder they name, else the one the system recorded, else the default.
@@ -125,17 +124,7 @@ check_install_dir :: proc(dir, name: string, probe := false) -> string {
 	if d == "" { return i18n.tr("Enter the folder to install into.") }
 	if strings.contains_any(d, "\x00<>\"|?*") { return i18n.tr("The folder name has characters that Windows does not allow.") }
 	for r in d { if r < ' ' { return i18n.tr("The folder name has a control character.") } }
-	when ODIN_OS == .Windows {
-		// a drive path, C:\dir; a colon only after the drive letter; no network share (a program is not installed there)
-		if len(d) < 3 || !is_ascii_letter(d[0]) || d[1] != ':' || (d[2] != '\\' && d[2] != '/') {
-			return fmt.tprintf(i18n.tr("Use a full path on a local drive, such as C:\\Users\\you\\AppData\\Local\\Programs\\%s."), name)
-		}
-		if strings.contains(d[2:], ":") { return i18n.tr("The folder name has a colon after the drive letter.") }
-		if strings.trim_right(d[2:], "\\/") == "" { return i18n.tr("Pick a folder, not the root of a drive.") }
-	} else {
-		if !strings.has_prefix(d, "/") { return i18n.tr("Use a full path.") }
-		if strings.trim_right(d, "/") == "" { return i18n.tr("Pick a folder, not the root.") }
-	}
+	if why := full_path_refusal(d, name); why != "" { return why }   // (install_windows.odin, install_other.odin)
 	if len(d) > INSTALL_PATH_MAX { return i18n.tr("The path is too long (the files inside need room too).") }
 	// a name made of dots and spaces cannot be made (Windows trims them)
 	for part in split_path_parts(d) { if part != "" && strings.trim(part, ". ") == "" { return i18n.tr("A folder name cannot be only dots or spaces.") } }
@@ -185,26 +174,11 @@ is_inside :: proc(path, folder: string) -> bool {
 	a := strings.trim_right(normalize_slashes(path), "\\/")
 	b := strings.trim_right(normalize_slashes(folder), "\\/")
 	if len(a) <= len(b) + 1 { return false }
-	when ODIN_OS == .Windows {
-		if !strings.equal_fold(a[:len(b)], b) { return false }
-	} else {
-		if a[:len(b)] != b { return false }
-	}
+	if !same_path_part(a[:len(b)], b) { return false }
 	return a[len(b)] == '\\' || a[len(b)] == '/'
 }
 
-@(private)
-system_folders :: proc() -> []string {
-	out := make([dynamic]string, context.temp_allocator)
-	when ODIN_OS == .Windows {
-		for name in ([]string{"SystemRoot", "windir", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData", "CommonProgramFiles"}) {
-			if v, ok := os.lookup_env(name, context.temp_allocator); ok && v != "" { append(&out, v) }
-		}
-	} else {
-		for p in ([]string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/boot", "/dev", "/proc", "/sys", "/var", "/opt", "/root"}) { append(&out, p) }
-	}
-	return out[:]
-}
+// (system_folders, the system's own folders where nothing is installed: install_windows.odin, install_other.odin)
 
 ////////////////////////////////
 // Manifest
@@ -287,10 +261,8 @@ files_install :: proc(plan: Install_Plan) -> Result {
 			if r := place_tree(src, join_path(plan.dir, rel), rel, &files); r.error != .None { return r }
 		}
 	}
-	when ODIN_OS == .Linux {
-		if plan.adapt {
-			if r := nixos_adapt(plan.identity, plan.dir, plan.exe_name, &files); r.error != .None { return r }
-		}
+	if plan.adapt {
+		if r := nixos_adapt(plan.identity, plan.dir, plan.exe_name, &files); r.error != .None { return r }
 	}
 	text := manifest_text(plan, files[:])
 	manifest := join_path(plan.dir, plan.identity.manifest_name)
@@ -469,9 +441,7 @@ join_path :: proc(dir, name: string) -> string {
 }
 
 @(private)
-sep :: proc() -> string {
-	when ODIN_OS == .Windows { return "\\" } else { return "/" }
-}
+sep :: proc() -> string { return SEPARATOR }
 
 ////////////////////////////////
 // Uninstall: the whole installed copy

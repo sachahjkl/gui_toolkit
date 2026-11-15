@@ -27,9 +27,6 @@ test_identity :: proc() -> Identity {
 	}
 }
 
-@(private)
-EXE_SUFFIX :: ".exe" when ODIN_OS == .Windows else ""
-
 @(test)
 identity_is_validated :: proc(t: ^testing.T) {
 	o := Integration_Options{identity = test_identity(), exe = "x"}

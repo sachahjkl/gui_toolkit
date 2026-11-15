@@ -80,21 +80,6 @@ fr Le nom du dossier a des caractères que Windows refuse.
 en The folder name has a control character.
 fr Le nom du dossier a un caractère de contrôle.
 
-en Use a full path on a local drive, such as C:\\Users\\you\\AppData\\Local\\Programs\\%s.
-fr Indiquez un chemin complet sur un disque local, comme C:\\Users\\vous\\AppData\\Local\\Programs\\%s.
-
-en The folder name has a colon after the drive letter.
-fr Le nom du dossier a un deux-points après la lettre du disque.
-
-en Pick a folder, not the root of a drive.
-fr Choisissez un dossier, pas la racine d'un disque.
-
-en Use a full path.
-fr Indiquez un chemin complet.
-
-en Pick a folder, not the root.
-fr Choisissez un dossier, pas la racine.
-
 en The path is too long (the files inside need room too).
 fr Le chemin est trop long (les fichiers qu'il contiendra ont besoin de place aussi).
 
@@ -112,6 +97,21 @@ fr %s est un fichier, pas un dossier.
 
 en Cannot write in %s.
 fr Impossible d'écrire dans %s.
+
+en Use a full path.
+fr Indiquez un chemin complet.
+
+en Pick a folder, not the root.
+fr Choisissez un dossier, pas la racine.
+
+en Use a full path on a local drive, such as C:\\Users\\you\\AppData\\Local\\Programs\\%s.
+fr Indiquez un chemin complet sur un disque local, comme C:\\Users\\vous\\AppData\\Local\\Programs\\%s.
+
+en The folder name has a colon after the drive letter.
+fr Le nom du dossier a un deux-points après la lettre du disque.
+
+en Pick a folder, not the root of a drive.
+fr Choisissez un dossier, pas la racine d'un disque.
 
 en application menu
 fr menu des applications
