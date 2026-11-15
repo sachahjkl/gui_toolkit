@@ -28,6 +28,19 @@ cards_build :: proc(s: ^session.Session) {
 	}
 }
 
+// The bar's arrows keep off the stack's edges (they touched them: a panel's edge, its resize grip).
+@(test)
+a_card_stack_s_arrows_keep_off_its_edges :: proc(t: ^testing.T) {
+	c := Cards{count = 3}
+	defer delete(c.acts)
+	s := session.start(t, {size = {400, 300}, user = &c, no_renderer = true, build = cards_build})
+	session.frames(s, 3)
+	page := session.get(s, "page")
+	prev, next := session.get(s, "card_prev"), session.get(s, "card_next")
+	testing.expectf(t, prev.rect.min.x - page.rect.min.x >= 8, "Previous off the left edge: %v in %v", prev.rect, page.rect)
+	testing.expectf(t, page.rect.max.x - next.rect.max.x >= 8, "Next off the right edge: %v in %v", next.rect, page.rect)
+}
+
 @(test)
 a_card_stack_goes_card_by_card :: proc(t: ^testing.T) {
 	c := Cards{count = 3}
