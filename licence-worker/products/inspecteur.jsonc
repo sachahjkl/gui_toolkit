@@ -22,7 +22,7 @@
 		"UPDATE_YEARS": "",
 		"UPDATES_FROM": "",
 		"LICENSE_PUBLIC_KEY": "ybWQ-6L7ppTvPpFJQ5emY2GKhVz0ft9iyldc34ieQwI",
-		"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+		"PRICES": "{\"pri_01m7fyapvwx2x8qa5m20sbxyjf\":\"supporter\"}",
 		"PADDLE_API_BASE": "https://api.paddle.com",
 		"ALLOWED_ORIGIN": "https://inspecteur.froment.software",
 		"MAIL_FROM": "inspecteur <license@mail.froment.software>",
@@ -59,7 +59,7 @@
 				"UPDATE_YEARS": "",
 				"UPDATES_FROM": "",
 				"LICENSE_PUBLIC_KEY": "AdStxVdn8FsJ4eil4es_IaBkqV0p0Vn1jV7sCbozGyA",
-				"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+				"PRICES": "{}",   // SET: the sandbox's price ids (`paddle -apply`)
 				"PADDLE_API_BASE": "https://sandbox-api.paddle.com",
 				"ALLOWED_ORIGIN": "https://inspecteur.froment.software,http://localhost:8765",
 				"MAIL_FROM": "inspecteur <license@mail.froment.software>",
