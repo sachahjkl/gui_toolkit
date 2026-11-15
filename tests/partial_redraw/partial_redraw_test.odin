@@ -747,6 +747,69 @@ under_scene :: proc(t: ^testing.T, half: bool) {
 	expect_exact(t, s, "a change under a dialog")
 }
 
+// An internal window (a view floated in the window: its frame, its shadow, its plate) over lines of text that change
+// each step (a shell's output under it, opencode native's Statistics over a conversation): the text never shows through
+// the window. Each partial frame is the whole frame to the bit, in both frame formats.
+@(private = "file") FLOAT_STEPS :: 6
+
+@(private = "file")
+Float_Run :: struct {
+	views: ui.Views,
+	body:  Under_Body,
+	want:  bool,
+	step:  int,
+}
+
+@(private = "file")
+float_build :: proc(s: ^session.Session) {
+	u := (^Float_Run)(s.user)
+	if u.want {
+		ui.view_open(&u.views, "files", &u.body)
+		ui.view_present(&u.views, "files", .Internal)
+		u.want = false
+	}
+	ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(f32(UNDER_WINDOW.x)), height = ui.px(f32(UNDER_WINDOW.y)), axis = .Y})
+	if ui.column(id = "###lines") {
+		for i in 0 ..< 24 {
+			ui.next({width = ui.fill(), height = ui.px(ROW_HEIGHT), font = ui.mono_font()})
+			ui.label(fmt.tprintf("line %d of step %d: /run/systemd/app.slice/opencode.service %d###line%d", i, u.step, u.step * 31 + i, i))
+		}
+	}
+}
+
+@(test)
+text_that_changes_under_an_internal_window_stays_under_it :: proc(t: ^testing.T) { for half in FORMATS { float_scene(t, half) } }
+
+@(private = "file")
+float_scene :: proc(t: ^testing.T, half: bool) { for f in ui.Finish { float_scene_in(t, half, f) } }
+
+@(private = "file")
+float_scene_in :: proc(t: ^testing.T, half: bool, finish: ui.Finish) {
+	u: Float_Run
+	defer ui.views_destroy(&u.views)
+	ui.view_register(&u.views, "files", under_view, ui.View_Options{title = "Files"})
+	pal := ui.palette_of("Midnight")
+	pal.finish = finish
+	s := session.start(t, {size = UNDER_WINDOW, build = float_build, user = &u, palette = pal, half_float = half})
+	s.state.theme.glow = 1
+	ui.set_partial_redraw(s.state, true)
+	draw.set_damage_verify(session.draw_context(s), true)
+	session.frames(s, 3)
+	u.want = true
+	session.wait_until(s, "internal_view_files", proc(s: ^session.Session, frame: string) -> bool {
+		b := session.find(s, frame)
+		return b != nil && b.transparency <= 0
+	}, "the internal window to show")
+	settle(s)
+	for k in 1 ..= FLOAT_STEPS {
+		u.step = k
+		session.frame(s)
+		settle(s)
+		expect_opaque(t, s, fmt.tprintf("step %d", k))
+	}
+	expect_exact(t, s, fmt.tprintf("text that changes under an internal window, %v", finish))
+}
+
 // A Markdown table wider than its place (it scrolls sideways in a masked layer), inline code in its striped rows, in the
 // machined finish on a light palette: the pointer over it (its corner's tool comes and goes) and a scroll sideways. Each
 // partial frame is the whole frame to the byte; no pixel is left less than opaque around the code's chips.
