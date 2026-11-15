@@ -1,5 +1,5 @@
 // A build with the toolkit's optional parts left out (run_tests passes the defines; docs/builds.md):
-//   odin test tests/lean_build -vet -define:TOOLKIT_DEVTOOLS=false -define:FONT_EMBED_FALLBACK=false
+//   odin test tests/lean_build -collection:gt=src -vet -define:TOOLKIT_DEVTOOLS=false -define:FONT_EMBED_FALLBACK=false
 package lean_build_test
 
 import "core:os"

@@ -1,7 +1,7 @@
 // Windows and their messages, without a person at the mouse: the window procedure is fed the messages the system would
 // send (SendMessage / PostMessage), the results are read from the windows' event lists. Needs a desktop session (the
 // repaint tests show a small window without activating it).
-//   odin test tests/window -vet
+//   odin test tests/window -collection:gt=src -vet
 package window_test
 
 import "core:os"

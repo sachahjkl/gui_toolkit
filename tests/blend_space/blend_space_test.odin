@@ -1,7 +1,7 @@
 // Pixel tests of the two blend spaces (render.Blend_Space) on an offscreen renderer (WARP): blending, antialiased
 // edges, gradients and their interpolation space, RGBA textures (premultiplication, filtering, mips, a texture of the
 // other space), layers of either space in a frame of the other, set_blend_space, the clear color and the text
-// correction. Srgb results are those of web browsers (CSS Color 4, Compositing 1).   odin test tests/blend_space -vet
+// correction. Srgb results are those of web browsers (CSS Color 4, Compositing 1).   odin test tests/blend_space -collection:gt=src -vet
 package blend_space_test
 
 import "core:math"

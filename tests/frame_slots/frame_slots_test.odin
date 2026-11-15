@@ -1,6 +1,6 @@
 // The cap on the cadence of frames (platform/frame_slots.odin): the logic alone, with a clock that is a number and a
 // screen that is a function. Nothing here measures a duration of the machine.
-//   odin test tests/frame_slots -use-separate-modules -vet
+//   odin test tests/frame_slots -collection:gt=src -use-separate-modules -vet
 package frame_slots_test
 
 import "core:testing"

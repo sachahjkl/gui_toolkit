@@ -1,7 +1,7 @@
 // tools/tk in process: its command line, ppm_diff on two small pictures, the font with a table dropped, the stamps that make a second
 // build nothing, font/emoji_data.odin from a small emoji-data.txt, the
 // board's list and cells, and the logo and the icon (drawn by the paint package).
-//   odin test tests/tk -vet
+//   odin test tests/tk -collection:gt=src -vet
 package tk_test
 
 import "core:encoding/endian"

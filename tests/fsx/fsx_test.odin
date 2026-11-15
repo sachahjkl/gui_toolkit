@@ -1,5 +1,5 @@
 // Moved here with the file helpers it covers (was Wren's src/base/base_test.odin, remove_tree over temp_dir).
-//   odin test tests/fsx -vet
+//   odin test tests/fsx -collection:gt=src -vet
 package fsx_test
 
 import "core:fmt"

@@ -1,6 +1,6 @@
 // Moved here with the port-block logic it covers (was Wren's src/tools/testenv/testenv_test.odin), adapted to the neutral
 // Ports value (an application passes its own base port and span).
-//   odin test tests/testkit -vet
+//   odin test tests/testkit -collection:gt=src -vet
 package testkit_test
 
 import "core:testing"

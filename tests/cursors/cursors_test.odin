@@ -1,6 +1,6 @@
 // Cursors: the CSS keywords, where each cursor comes from (system or drawn), the drawn shapes, the resampling of
 // custom images, and on a real (hidden) window: every cursor made, sizes and hotspots, the life of custom cursors.
-//   odin test tests/cursors -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/cursors -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package cursors_test
 
 import "core:testing"

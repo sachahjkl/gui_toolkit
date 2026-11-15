@@ -1,6 +1,6 @@
 // Hotkeys (platform/hotkey.odin): their text read and written; on Windows, one registered on a hidden window and its
 // WM_HOTKEY made a Hotkey event with its id.
-//   odin test tests/hotkey -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/hotkey -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package hotkey_test
 
 import "core:testing"

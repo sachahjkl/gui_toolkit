@@ -1,5 +1,5 @@
 // The selection of a list's rows alone (ui.Item_Selection, src/md/features/selection.md): every rule, with no window.
-//   odin test tests/data_views -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/data_views -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package data_views_test
 
 import "core:testing"

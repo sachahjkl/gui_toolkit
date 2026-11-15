@@ -232,5 +232,5 @@ window shows in the picture. A minimized window gives `.Failed`.
 
 ### Tests
 
-- `odin test tests/capture` checks the pure parts on every system.
+- `odin test tests/capture -collection:gt=src` checks the pure parts on every system.
 - `CAPTURE_LIVE=1` adds a test on the real desktop (Windows only).

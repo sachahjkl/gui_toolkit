@@ -2,7 +2,7 @@
 // feeds): what comes before a `done` waits for it; a `done` gives the app its events (Backspace presses for the text
 // replaced, .Text for the text committed) and the preedit to draw. And the caret's rectangle in the compositor's units.
 // No window, no input method: the protocol's events are made up.
-//   odin test tests/ime -vet
+//   odin test tests/ime -collection:gt=src -vet
 package ime_test
 
 import "core:strings"

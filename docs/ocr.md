@@ -123,7 +123,7 @@ call and leaves it after. A thread that is already in a single-threaded apartmen
 creates its own `TessBaseAPI` for each call and loads the language data each time. Two threads can therefore read at the
 same time.
 
-Tests: `odin test tests/ocr -vet`. The pure tests check the reading order (rows, overlaps), the scale rule and its limits,
+Tests: `odin test tests/ocr -collection:gt=src -vet`. The pure tests check the reading order (rows, overlaps), the scale rule and its limits,
 the dark ground, the line height (rules and borders not counted), a dark picture prepared, the languages of a locale and
 a bad picture. The engine test draws lines of text in the toolkit's Roboto at 13 and 14 px: dark on light, then light on
 dark. The engine of the system must read each one back as one line, with its words, at the place where the test drew it.

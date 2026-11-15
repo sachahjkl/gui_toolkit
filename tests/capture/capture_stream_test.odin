@@ -1,6 +1,6 @@
 // The pure parts of a stream: its pace and its timestamps, the two buffers its frames are made in, the cut of a region
 // without an allocation. No desktop needed: they run on every system.
-//   odin test tests/capture -vet
+//   odin test tests/capture -collection:gt=src -vet
 package capture_test
 
 import "core:testing"

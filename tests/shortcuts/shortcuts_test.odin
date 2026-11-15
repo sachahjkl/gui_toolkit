@@ -1,6 +1,6 @@
 // The pure parts of gt:shortcuts and of the hotkeys it reads: the portal's trigger of a combination, Print Screen, what
 // makes a combination complete. The portal itself and RegisterHotKey need a desktop: not here.
-//   odin test tests/shortcuts -vet
+//   odin test tests/shortcuts -collection:gt=src -vet
 package shortcuts_test
 
 import "core:testing"

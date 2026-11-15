@@ -1,6 +1,6 @@
 // Pixel tests of filters, blend modes, backdrops and clip shapes on an offscreen renderer (WARP, the software
 // rasterizer: no GPU or window needed), in both blend spaces. Expected values follow the formulas of CSS Filter
-// Effects 1 and Compositing 1 on sRGB values, as browsers compute them.   odin test tests/effects -vet
+// Effects 1 and Compositing 1 on sRGB values, as browsers compute them.   odin test tests/effects -collection:gt=src -vet
 package effects_test
 
 import "core:math"

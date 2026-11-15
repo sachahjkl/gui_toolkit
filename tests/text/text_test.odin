@@ -1,5 +1,5 @@
 // Tests of the DirectWrite text stack: faces, fallback, shaping, bidi, line breaks, color glyphs, the atlas.
-//   odin test tests/text -vet
+//   odin test tests/text -collection:gt=src -vet
 package text_test
 
 import "core:fmt"

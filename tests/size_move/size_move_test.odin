@@ -1,5 +1,5 @@
 // Which WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE open the window's modal mode: the decision alone (no window, no clock).
-//   odin test tests/size_move -use-separate-modules -vet
+//   odin test tests/size_move -collection:gt=src -use-separate-modules -vet
 package size_move_test
 
 import "core:testing"

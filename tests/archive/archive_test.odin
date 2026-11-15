@@ -1,6 +1,6 @@
 // The archive package (src/archive): a zip's index (a stored entry, a deflated one, a folder named only by its file),
 // a tar's and a gzipped tar's (a GNU long name), their files read back, a name that would leave its folder refused.
-//   odin test tests/archive -vet
+//   odin test tests/archive -collection:gt=src -vet
 package archive_test
 
 import "core:fmt"

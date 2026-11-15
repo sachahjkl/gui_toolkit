@@ -56,6 +56,6 @@ come from: a change to them stays under the MPL-2.0. `mux.odin` (the API and the
 
 Left out: QuickTime (`.mov`), CMAF, fast start "reserve", subtitles, PCM, metadata tags, rotation.
 
-Tests: `odin test tests/mux -vet` (synthetic H.264 access units muxed and the files walked back: an MP4 in memory, one
+Tests: `odin test tests/mux -collection:gt=src -vet` (synthetic H.264 access units muxed and the files walked back: an MP4 in memory, one
 without fast start through a stream, a fragmented one, the composition offsets of B-frames, AAC and Opus tracks; WebM in
 memory and append only; the errors).

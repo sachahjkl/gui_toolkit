@@ -1,7 +1,7 @@
 // Interaction states without a window: hover, press, focus and selection show in the frame that sees them (no fade),
 // the theme's state fills are visible steps of the right size in both blend spaces, a palette change still cross-fades,
 // and a theme that asks for transitions gets them.
-//   odin test tests/states -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/states -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package states_test
 
 import "core:math"

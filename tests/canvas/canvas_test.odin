@@ -1,6 +1,6 @@
 // Pixel tests of the 2D canvas renderer (render.canvas_*): geometries, paints, operators, clip masks, layers with filters,
 // images and read-back (at once, and asynchronous: begun, polled, finished or cancelled), on the offscreen renderer (WARP).
-//   odin test tests/canvas -vet
+//   odin test tests/canvas -collection:gt=src -vet
 package canvas_test
 
 import "core:slice"

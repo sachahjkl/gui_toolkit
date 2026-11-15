@@ -1,5 +1,5 @@
 // Pixel tests of application shaders (draw.app_shader) on an offscreen renderer (WARP, the software rasterizer: no GPU or window
-// needed), in both blend spaces.   odin test tests/appshaders -vet
+// needed), in both blend spaces.   odin test tests/appshaders -collection:gt=src -vet
 // The shader is test.wgsl; its Direct3D 11 pixel shader (shaders/test.dxbc, shaders/test.sha256) is written by
 //   odin run tools/shaders -- app test tests/appshaders/test.wgsl tests/appshaders/shaders
 // (The same tests run on the WebGPU backend: odin run tools/run_tests -- -backend:wgpu appshaders.)

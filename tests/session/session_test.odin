@@ -1,6 +1,6 @@
 // The test session itself (testkit/session): an application with no window of the system, its input through the toolkit's own path, its
 // time a clock of its own, its pixels the real renderer's.
-//   odin test tests/session -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/session -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package session_test
 
 import "core:testing"

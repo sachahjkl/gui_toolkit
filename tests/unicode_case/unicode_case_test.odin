@@ -4,7 +4,7 @@
 // protocols (header names, hosts, font family keys, keywords, enum names, extensions) are ASCII: ascii.lower,
 // ascii.equal_fold...; Unicode is for user text (a search, find in page, type-ahead), display text and Windows paths.
 // A call the list does not name fails, and so does an entry that matches no line (the list follows the code).
-//   odin test tests/unicode_case -vet          (the sources are read relative to this file, not the cwd)
+//   odin test tests/unicode_case -collection:gt=src -vet          (the sources are read relative to this file, not the cwd)
 package unicode_case_test
 
 import "core:fmt"

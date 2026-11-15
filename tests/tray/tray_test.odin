@@ -2,7 +2,7 @@
 // to the shell (add, version 4, modify, delete; again after the shell restarted), menus, icons. The shell is replaced by
 // tray_test_hook: no icon appears on the desktop. A hidden window receives the notifications through its window
 // procedure (tray_inject sends them as the shell does).
-//   odin test tests/tray -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/tray -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package tray_test
 
 import "core:testing"

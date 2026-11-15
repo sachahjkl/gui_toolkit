@@ -1,5 +1,5 @@
 // ui.Deferred: something done once things are quiet, by the toolkit's clock (a test's: ui.set_clock).
-//   odin test tests/deferred -vet
+//   odin test tests/deferred -collection:gt=src -vet
 package deferred_test
 
 import "core:testing"

@@ -1,6 +1,6 @@
 // platform.interface_addresses: on Linux the loopback interface is there with 127.0.0.1, up and marked loopback; elsewhere
 // the list is empty.
-//   odin test tests/netif -vet
+//   odin test tests/netif -collection:gt=src -vet
 package netif_test
 
 import "core:testing"

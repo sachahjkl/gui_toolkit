@@ -1,6 +1,6 @@
 // Moved here with the single-instance mechanism it covers (was Wren's src/instance/instance_test.odin), adapted to the
 // neutral API: a name built with `key`, an identity token, and an opaque message the test encodes and decodes itself.
-//   odin test tests/instance -vet
+//   odin test tests/instance -collection:gt=src -vet
 package instance_test
 
 import "base:runtime"

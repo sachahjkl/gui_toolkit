@@ -1,6 +1,6 @@
 // The setup (src/setup): what the facts make of an install, when a start offers the dialog, and the dialog itself: the
 // buttons each state shows, what a choice tells the program. Nothing is installed: the facts are given.
-//   odin test tests/setup -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/setup -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package setup_test
 
 import "core:fmt"

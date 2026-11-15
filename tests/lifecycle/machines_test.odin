@@ -1,6 +1,6 @@
 // What the renderer's states allow, on both backends: a device lost and not had back, a window set aside, a frame that did not run.
-//   odin test tests/lifecycle -vet
-//   odin test tests/lifecycle -vet -define:TOOLKIT_RENDER=wgpu
+//   odin test tests/lifecycle -collection:gt=src -vet
+//   odin test tests/lifecycle -collection:gt=src -vet -define:TOOLKIT_RENDER=wgpu
 // With what the system does not fail on demand (render/faults.odin): -define:TOOLKIT_RENDER_FAULTS=true
 package lifecycle_test
 

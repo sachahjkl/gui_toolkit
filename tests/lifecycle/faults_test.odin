@@ -1,6 +1,6 @@
 // What the system does not fail on demand, forced (render/faults.odin):
-//   odin test tests/lifecycle -vet -define:TOOLKIT_RENDER_FAULTS=true
-//   odin test tests/lifecycle -vet -define:TOOLKIT_RENDER_FAULTS=true -define:TOOLKIT_RENDER=wgpu
+//   odin test tests/lifecycle -collection:gt=src -vet -define:TOOLKIT_RENDER_FAULTS=true
+//   odin test tests/lifecycle -collection:gt=src -vet -define:TOOLKIT_RENDER_FAULTS=true -define:TOOLKIT_RENDER=wgpu
 package lifecycle_test
 
 @(require) import "core:testing"

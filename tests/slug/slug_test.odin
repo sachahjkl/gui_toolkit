@@ -1,5 +1,5 @@
 // Tests of the Slug glyph data: outlines from DirectWrite, bands, the cache.
-//   odin test tests/slug -vet
+//   odin test tests/slug -collection:gt=src -vet
 package slug_test
 
 import "core:fmt"

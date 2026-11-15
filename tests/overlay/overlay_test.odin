@@ -1,6 +1,6 @@
 // Overlay windows (platform/overlay.odin): the output an area names, the monitors' logical places, the input region in
 // physical pixels. Pure: no window opens.
-//   odin test tests/overlay -vet
+//   odin test tests/overlay -collection:gt=src -vet
 package overlay_test
 
 import "core:testing"

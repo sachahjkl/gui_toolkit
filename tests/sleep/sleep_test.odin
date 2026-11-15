@@ -1,6 +1,6 @@
 // platform.precise_sleep and wait_slot: the wait of a frame's slot. Only that it lasts at least what was asked: how much longer
 // depends on the machine, and on a loaded runner it says nothing.
-//   odin test tests/sleep -vet
+//   odin test tests/sleep -collection:gt=src -vet
 package sleep_test
 
 import "core:testing"

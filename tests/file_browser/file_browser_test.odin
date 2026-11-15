@@ -3,7 +3,7 @@
 // first: a slow folder answering after the next one was asked; 100 000 entries; names of every kind of character;
 // Save over a file; the dialog closed with a reading under way; an older search's late answer; the program's keys while
 // the browser is open.
-//   odin test tests/file_browser -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
+//   odin test tests/file_browser -collection:gt=src -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 //   -define:FILE_BROWSER_TIMING=true: a build of 100 000 entries is timed too (FILE_BROWSER_BUILD_BUDGET_MS)
 package file_browser_test
 

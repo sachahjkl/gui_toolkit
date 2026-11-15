@@ -281,7 +281,7 @@ Not there yet: a macOS backend; off Windows, color glyphs in SVG and sbix; on Li
 
 ## Testing
 
-`odin test tests/affine -vet` runs the unit tests of the affine helpers. `odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1`
+`odin test tests/affine -collection:gt=src -vet` runs the unit tests of the affine helpers. `odin test tests/keyboard -collection:gt=src -vet -define:ODIN_TEST_THREADS=1`
 drives menus, submenus, lists, line edit history and wrapped text with synthetic input, without a window;
 `tests/status` the sample history (ring, resize, statistics, rates) and the frame graph's scale and hit testing;
 `tests/chrome` the integrated title bar's hit test (zones, edges, maximized) and regions, the virtualized list, the wrap
@@ -293,7 +293,7 @@ custom cursors on a hidden window. `tests/layers`, `tests/effects`,
 
 Timing checks (durations, CPU or GPU times, frames in a time window) are opt-in: `base.perf_skip` skips them unless
 `GUI_PERF=1` (or `true`) is set and `CI` is not, and prints `perf: skipped (...)`. Run them by hand, never in CI:
-`GUI_PERF=1 odin test tests/colr -vet`, `GUI_PERF=1 odin test tests/window -vet`, `GUI_PERF=1 odin test tests/gpufx -vet`.
+`GUI_PERF=1 odin test tests/colr -collection:gt=src -vet`, `GUI_PERF=1 odin test tests/window -collection:gt=src -vet`, `GUI_PERF=1 odin test tests/gpufx -collection:gt=src -vet`.
 
 `tests/examples` drives `examples/fidget` and `examples/todo` in the test's process (`src/testkit/session`: no window of the system, no input of the machine):
 clipboard, Tab and arrow focus, Space activation, editor undo / redo, zoom keys, palette, Settings dialog and its dropdown, menus closing on a click

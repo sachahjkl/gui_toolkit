@@ -1,5 +1,5 @@
 // Pixel tests of masks (CSS Masking 1 §7: mask-image, mask-mode, mask-composite; background-clip: text) on an
-// offscreen renderer (WARP), in both blend spaces.   odin test tests/masks -vet
+// offscreen renderer (WARP), in both blend spaces.   odin test tests/masks -collection:gt=src -vet
 package masks_test
 
 import "core:math"

@@ -1,5 +1,5 @@
 // The log package: lines written off the thread that logs, in their order, rotated past a size; the last lines for a crash report.
-//   odin test tests/log -vet
+//   odin test tests/log -collection:gt=src -vet
 package log_test
 
 import "core:fmt"

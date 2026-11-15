@@ -4,7 +4,7 @@
 // bounding box wherever the change is in a row (the vector and the scalar parts of the search); odd sizes; strides;
 // long inputs (clear codes); many colours (median cut, the fixed table, dithering) come back close; a writer gets the
 // same bytes.
-//   odin test tests/gif -vet
+//   odin test tests/gif -collection:gt=src -vet
 package gif_test
 
 import "core:math/rand"

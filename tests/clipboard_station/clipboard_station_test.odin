@@ -1,7 +1,7 @@
 #+build windows
 // The clipboard of a window with no HWND is the process's store: the system's stays as it was. Read in a window station of the test's own, whose
 // clipboard nobody else writes. (Its own package: a window station is the whole process's.)
-//   odin test tests/clipboard_station -vet
+//   odin test tests/clipboard_station -collection:gt=src -vet
 package clipboard_station_test
 
 import "core:testing"

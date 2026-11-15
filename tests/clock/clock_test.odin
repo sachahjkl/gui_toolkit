@@ -1,5 +1,5 @@
 // One clock for the process: a second ui.State made later (a second window) does not restart it.
-//   odin test tests/clock -vet
+//   odin test tests/clock -collection:gt=src -vet
 package clock_test
 
 import "core:testing"

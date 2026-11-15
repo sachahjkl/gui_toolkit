@@ -1,7 +1,7 @@
 // The splitter and the accordion (ui/split.odin): dragging within the limits of both panes, the pane after the handle,
 // a double click and Enter back to the default, the arrow keys, the cursor, no frame at rest; folding and unfolding
 // with an animated height, the keyboard, content built only while visible; what is drawn.
-//   odin test tests/panes -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/panes -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package panes_test
 
 import "core:testing"

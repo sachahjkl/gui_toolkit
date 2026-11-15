@@ -1,7 +1,7 @@
 // Docking's chrome (ui/docking.odin, ui/panes.odin, ui/popups.odin): a folded side's strip in the theme's colours, the
 // fold button of a stack's strip by the pointer and the keyboard, the strip's tooltip sized to its text and inside the
 // window, under an app's style that fills (as a browser's chrome is built).
-//   odin test tests/docking -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/docking -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package docking_test
 
 import "core:fmt"

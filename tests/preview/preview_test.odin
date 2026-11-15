@@ -1,6 +1,6 @@
 // A preview: its pure steps (what fits, a zoom around a point, the reach of a pan), and in a session the wheel, a drag,
 // a double click, the keys and the bar's buttons.
-//   odin test tests/preview -vet
+//   odin test tests/preview -collection:gt=src -vet
 package preview_test
 
 import "core:testing"

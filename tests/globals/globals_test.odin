@@ -8,8 +8,8 @@
 //             reach it: it is locked or atomic, or the note says which thread it is bound to.
 //   thread    @(thread_local): each thread its own (and a global marked so is of this class)
 //   test      a test's own
-//   odin test tests/globals -vet                                   the check (the sources are read relative to this file, not the cwd)
-//   odin test tests/globals -define:GLOBALS_WRITE=true             the list rewritten from the code, keeping the classes known; new
+//   odin test tests/globals -collection:gt=src -vet                                   the check (the sources are read relative to this file, not the cwd)
+//   odin test tests/globals -collection:gt=src -define:GLOBALS_WRITE=true             the list rewritten from the code, keeping the classes known; new
 //                                                                  ones get "?": to classify by hand (or to move into their struct)
 package globals_test
 

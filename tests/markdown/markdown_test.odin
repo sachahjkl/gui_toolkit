@@ -1,7 +1,7 @@
 // Markdown in a window: the blocks of a text and their cache (read once, a text that grows read from its last block), the
 // lists' marker column, a table as HTML; in a session a document read once across frames, a table's grid, a code block
 // highlighted and a link that calls the program.
-//   odin test tests/markdown -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/markdown -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package markdown_test
 
 import "core:fmt"

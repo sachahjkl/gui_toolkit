@@ -1,7 +1,7 @@
 // The path bar (ui.path_bar, docs/path-bar.md) in a window of its own, its folders answered when the test says. What
 // breaks first: `wants` said at each frame; an answer for a folder typed before; a ranking at each frame; the dropdown's
 // click lost to the focus leaving the field.
-//   odin test tests/path_bar -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
+//   odin test tests/path_bar -collection:gt=src -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 package path_bar_test
 
 import "base:runtime"

@@ -5,7 +5,7 @@
 // from ADTS (esds, roll groups), fast start in memory and at the end (a stream), fragments (moof, traf, trun, mfra),
 // WebM's EBML tree (EBML, Segment, SeekHead, Info, Tracks, Cluster, SimpleBlock, Cues) and its append-only form,
 // and the errors.
-//   odin test tests/mux -vet
+//   odin test tests/mux -collection:gt=src -vet
 package mux_test
 
 import "core:testing"

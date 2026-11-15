@@ -1,6 +1,6 @@
 // Pixel tests of gradients evaluated by the shader (draw.gradient): values at the stops, between them, hard stops,
 // transition hints, repeating, radial and conic geometry, interpolation spaces, tiles, dithering, rounded corners.
-// Offscreen renderer (WARP).   odin test tests/gradients -vet
+// Offscreen renderer (WARP).   odin test tests/gradients -collection:gt=src -vet
 package gradients_test
 
 import "core:math"

@@ -1,7 +1,7 @@
 // The terminal widget (src/term) on a screen of the test's own (Fake): no emulator, no window, no font. The row cache and its
 // dirty flags, the selection made with the pointer and copied, the keys turned into bytes, the paste keys, the press held
 // and let go, the zoom keys.
-//   odin test tests/term -vet
+//   odin test tests/term -collection:gt=src -vet
 package term_test
 
 import "base:runtime"

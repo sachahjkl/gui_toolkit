@@ -1,7 +1,7 @@
 // Every cursor in a grid: hover a cell to get its cursor. Each cell shows the cursor as the system draws it, over a
 // light and a dark tile, with its CSS name and where it comes from (the system's, or drawn by the toolkit). The last
 // cell has a custom cursor made from an image (custom_cursor_create), with its hotspot at the center.
-//   odin run examples/cursors
+//   odin run examples/cursors -collection:gt=src
 package cursors_example
 
 import "core:fmt"

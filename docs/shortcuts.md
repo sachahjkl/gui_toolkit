@@ -62,4 +62,4 @@ are `Taken`.
 release, which the window gives as a press and a release). `platform.hotkey_complete` says what a shortcut may be: a key
 with a modifier, or Print Screen alone; `ui.hotkey_field` and `hotkey_parse` follow it.
 
-Tests: `odin test tests/shortcuts -vet` (the portal's triggers, Print Screen, complete combinations, a nil service).
+Tests: `odin test tests/shortcuts -collection:gt=src -vet` (the portal's triggers, Print Screen, complete combinations, a nil service).

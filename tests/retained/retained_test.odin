@@ -1,6 +1,6 @@
 // Retained drawing (draw.Picture): a replayed picture draws exactly what direct drawing draws, slots move content
 // without recording, partial re-recording, culling, the memory budget (eviction) and a device loss. Offscreen renderer
-// (WARP), both blend spaces.   odin test tests/retained -vet
+// (WARP), both blend spaces.   odin test tests/retained -collection:gt=src -vet
 package retained_test
 
 import "core:testing"

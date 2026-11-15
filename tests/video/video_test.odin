@@ -1,5 +1,5 @@
 // Pixel tests of video pictures (render.video_convert): planes in memory and an NV12 texture of the device, matrices and
-// ranges, crop, rotation, in both blend spaces, on the offscreen renderer (WARP).   odin test tests/video -vet
+// ranges, crop, rotation, in both blend spaces, on the offscreen renderer (WARP).   odin test tests/video -collection:gt=src -vet
 package video_test
 
 import "core:testing"

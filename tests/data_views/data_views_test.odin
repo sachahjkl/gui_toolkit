@@ -1,7 +1,7 @@
 // The table of texts (ui.Table): sort by a title's click, reverse, unsorted at the third, a column moved by its title, filter, the selection kept by identity, a column
 // resized by its rule, a cut cell's tooltip; type_to_field (typing anywhere goes to the filter, not when another field
 // has the keyboard); a segment's tooltip.
-//   odin test tests/data_views -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
+//   odin test tests/data_views -collection:gt=src -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 package data_views_test
 
 import "core:fmt"

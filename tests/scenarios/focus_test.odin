@@ -1,6 +1,6 @@
 // What a user does to an interface, through testkit/session: no window of the system, input through the event path, the real renderer's pixels, the session's clock.
 // One file per subject.
-//   odin test tests/scenarios -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/scenarios -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package scenarios_test
 
 import "core:testing"

@@ -1,6 +1,6 @@
 // A window's placement: the rectangle fitted to a work area (pure), and a window put where a placement says, read back, moved, and
 // shown maximized (needs a desktop session; the window is never shown except the last test, which does not activate it).
-//   odin test tests/placement -vet
+//   odin test tests/placement -collection:gt=src -vet
 package placement_test
 
 import "core:os"

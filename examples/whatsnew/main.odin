@@ -1,5 +1,5 @@
 // gui_toolkit example: what changed in 0.55, a page per change, each showing it live.
-//   odin build examples/whatsnew -vet -out:build/whatsnew.exe -subsystem:windows
+//   odin build examples/whatsnew -collection:gt=src -vet -out:build/whatsnew.exe -subsystem:windows
 //   build\whatsnew.exe                  the window
 //   build\whatsnew.exe --page=lazy      open on a page (its name in lower case, or its number)
 //   build\whatsnew.exe --headless       no window at all, software rendering (WARP on Windows): for tk timeline_test, over devtools
@@ -394,7 +394,7 @@ page_webgpu :: proc(app: ^App, em: f32) {
 	heading("WebGPU: the first frame", em)
 	para("On Direct3D 12 without DXC next to the program, wgpu compiles the shaders with FXC: seconds for the first frame's pipelines, during which the window stayed white. The renderer now presents the theme's background first, then compiles; when the first frame took over a second with FXC, it says on stderr to put dxcompiler.dll and dxil.dll next to the program (tools/fetch_wgpu.ps1).")
 	gap(em)
-	para("Try it: odin build examples/whatsnew -define:TOOLKIT_RENDER=wgpu -out:build/whatsnew_wgpu.exe", true)
+	para("Try it: odin build examples/whatsnew -collection:gt=src -define:TOOLKIT_RENDER=wgpu -out:build/whatsnew_wgpu.exe", true)
 	gap(em)
 	para("docs/font-backend.md also explains now how a program with a Rust crate of its own builds the toolkit's text backend into it (one Rust standard library per program), and why the prebuilt wgpu-native cannot join it on Windows.")
 }

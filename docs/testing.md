@@ -3,8 +3,8 @@
 `odin run tools/run_tests` runs every test package of this system, side by side, each its own process (`-list` names them; the first lines of
 `tools/run_tests/main.odin` give the flags). On Windows it runs itself on a desktop of its own: what a test opens can take nobody's focus, mouse or keyboard.
 `odin run tools/run_tests -- <name>` runs one package with what its line gives it: its defines, one test at a time when it
-builds an interface, the failure hooks, and on Linux the native text library. A bare `odin test tests/<name>` has none of
-these, so a test that draws text or drives the ui package's state fails there for no fault of its own: use `run_tests`.
+builds an interface, the failure hooks, and on Linux the native text library. A bare `odin test tests/<name>
+-collection:gt=src` (the tests import the toolkit as `gt:`) has none of these, so a test that draws text or drives the ui package's state fails there for no fault of its own: use `run_tests`.
 A new package is a line of the list in
 `tools/run_tests/main.odin`, with its group for the WebGPU backend.
 

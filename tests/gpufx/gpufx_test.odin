@@ -1,7 +1,7 @@
 // Pixel tests of the cost-saving paths of filters (WARP, both blend spaces, both filter precisions): blurs on reduced
 // images against the exact gaussian, kept filter results against drawn ones (hits, whole-pixel moves, invalidation),
 // color matrices applied by the composite, kept backdrops, pooled textures reused without clearing, the per-step GPU
-// profile, the GPU time of a frame (set_gpu_timing).   odin test tests/gpufx -vet
+// profile, the GPU time of a frame (set_gpu_timing).   odin test tests/gpufx -collection:gt=src -vet
 package gpufx_test
 
 import "core:math"

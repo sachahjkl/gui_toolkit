@@ -1,5 +1,5 @@
 // examples/fidget as a user meets it, in this process, with no window of the system: each action checks what it changed.
-//   odin test tests/examples -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/examples -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package examples_test
 
 import "base:runtime"

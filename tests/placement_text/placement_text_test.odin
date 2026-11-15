@@ -1,5 +1,5 @@
 // A window's placement as a preference's text (platform.placement_text, placement_parse): pure, on every system.
-//   odin test tests/placement_text -vet
+//   odin test tests/placement_text -collection:gt=src -vet
 package placement_text_test
 
 import "core:testing"

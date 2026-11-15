@@ -2,7 +2,7 @@
 // emulation prevention bytes, Annex B splitting, the BT.709 limited-range conversion of known pixels in NV12 and I420,
 // odd sizes, the levels), then whatever encoder the system has: 30 frames in, 30 packets out, the first a keyframe
 // with its SPS and PPS. Skipped, with a log line, when the system has no encoder (CI).
-//   odin test tests/h264 -vet
+//   odin test tests/h264 -collection:gt=src -vet
 package h264_test
 
 import "core:log"

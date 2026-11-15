@@ -1,6 +1,6 @@
 // The JSON helper: the quoter's escapes and its policy for bytes that are no UTF-8, path reads that never panic, the writer
 // read back by core:encoding/json.
-//   odin test tests/json -vet
+//   odin test tests/json -collection:gt=src -vet
 package json_test
 
 import "core:encoding/json"

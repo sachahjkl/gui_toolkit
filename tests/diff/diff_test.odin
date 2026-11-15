@@ -1,6 +1,6 @@
 // tk_diff: a unified diff read into lines (headers, hunks, their numbers, what changed in a line), two texts compared, the rows of a
 // split view, the rows a view builds; then the widget over frames: a patch read once, only the rows in view built.
-//   odin test tests/diff -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
+//   odin test tests/diff -collection:gt=src -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 package diff_test
 
 import "core:fmt"

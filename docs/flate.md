@@ -90,6 +90,6 @@ what it allows out at once, the bound per push), which Wren's `CompressionStream
 `deflate_runs` for pictures taken while a program runs (2.5 to 3.5 times as fast as core's level 1, for an output 1.6 to
 1.7 times its size).
 
-Tests: `odin test tests/flate -vet` (a .NET gzip with dynamic codes in chunks of 1, 7 and 100 bytes, cut, corrupted and
+Tests: `odin test tests/flate -collection:gt=src -vet` (a .NET gzip with dynamic codes in chunks of 1, 7 and 100 bytes, cut, corrupted and
 followed by junk; round trips of every format in chunks; dynamic codes checked by `core:compress/deflate` too, and
 its streams at every level read here in chunks; stored blocks for noise; the output bound).

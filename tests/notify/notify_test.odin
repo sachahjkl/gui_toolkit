@@ -2,7 +2,7 @@
 // arguments of org.freedesktop.Notifications.Notify (read back as a server reads them), the escaping of markup and XML,
 // the image of the image-data hint, the toast's XML and the arguments of its activation. notify_test_linux.odin runs the
 // Linux side against a notification server of its own, on a bus of its own.
-//   odin test tests/notify -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/notify -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package notify_test
 
 import "core:strings"

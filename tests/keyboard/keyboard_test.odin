@@ -1,6 +1,6 @@
 // Keyboard behaviour of menus, lists and line edits, without a window: synthetic input events, builds, assertions on
 // the results and on the laid-out boxes. The ui state of a build is global: one test thread.
-//   odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/keyboard -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package keyboard_test
 
 import "core:sync"

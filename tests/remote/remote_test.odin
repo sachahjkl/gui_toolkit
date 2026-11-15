@@ -1,5 +1,5 @@
 // tk_remote: a reading's state, and the ticket that drops the answer of a reading given up.
-//   odin test tests/remote -vet
+//   odin test tests/remote -collection:gt=src -vet
 package remote_test
 
 import "core:testing"

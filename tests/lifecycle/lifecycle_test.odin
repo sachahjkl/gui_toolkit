@@ -1,5 +1,5 @@
 // Tests of the renderer's life cycle: teardown, device loss and recovery, captures, on an offscreen renderer (WARP; both render
-// backends: -define:TOOLKIT_RENDER=wgpu).   odin test tests/lifecycle -vet
+// backends: -define:TOOLKIT_RENDER=wgpu).   odin test tests/lifecycle -collection:gt=src -vet
 package lifecycle_test
 
 import "core:mem"

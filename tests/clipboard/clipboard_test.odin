@@ -1,7 +1,7 @@
 // The conversions of the rich clipboard (platform/clipboard.odin): bitmaps (every header, depth and orientation) to and
 // from RGBA, the file list of CF_HDROP, the "HTML Format" offsets and source URL, PNG. The user's clipboard is never
 // touched: the calls that read or write it are thin layers over these conversions.
-//   odin test tests/clipboard -vet
+//   odin test tests/clipboard -collection:gt=src -vet
 package clipboard_test
 
 import "core:strconv"

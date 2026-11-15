@@ -5,8 +5,8 @@ On Linux it is the only backend. On Windows it is an option and Direct3D 11 is t
 `render` has two backends behind one interface, chosen when the program is compiled:
 
 ```
-odin build examples/fidget -define:TOOLKIT_RENDER=d3d11   # Direct3D 11, the default
-odin build examples/fidget -define:TOOLKIT_RENDER=wgpu    # WebGPU (wgpu-native): Direct3D 12 on Windows, Vulkan on Linux
+odin build examples/fidget -collection:gt=src -define:TOOLKIT_RENDER=d3d11   # Direct3D 11, the default
+odin build examples/fidget -collection:gt=src -define:TOOLKIT_RENDER=wgpu    # WebGPU (wgpu-native): Direct3D 12 on Windows, Vulkan on Linux
 ```
 
 The procedures of the interface (`render.init`, `frame_begin`, `frame_submit`, `frame_end`, textures, targets, retained heaps,

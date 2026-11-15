@@ -1,6 +1,6 @@
 // The mermaid package (native/mermaid's library, built by tools/tk build_mermaid): a diagram's text to a drawing, and a
 // mistake to what mermaid says of it; the drawing drawn in a window (diagram.png beside the session's files).
-//   odin test tests/mermaid -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/mermaid -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package mermaid_test
 
 import "core:strings"

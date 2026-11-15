@@ -1,7 +1,7 @@
 // The pure parts of the capture backends that start from physical pixels (Windows): the logical layout of the outputs,
 // a window's rect in logical pixels, an output drawn into the desktop, and the Windows backend's decisions (which
 // windows are listed, how a rotated output is read). No desktop needed: they run on every system.
-//   odin test tests/capture -vet
+//   odin test tests/capture -collection:gt=src -vet
 package capture_test
 
 import "core:testing"

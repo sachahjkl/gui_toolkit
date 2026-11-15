@@ -1,5 +1,5 @@
 // Pixel tests of draw layers (group opacity) on an offscreen renderer (WARP, the software rasterizer: no GPU or
-// window needed), in both blend spaces.   odin test tests/layers -vet
+// window needed), in both blend spaces.   odin test tests/layers -collection:gt=src -vet
 package layers_test
 
 import "core:mem"

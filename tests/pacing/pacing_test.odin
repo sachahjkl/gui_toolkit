@@ -2,7 +2,7 @@
 // application (fixed refresh), that do not (variable refresh, tearing), under input at 1 kHz, a resize, a panel dragged and
 // a program that resizes the window from outside (AltSnap). The clock is a number and the screen a function: nothing here
 // measures a duration of the machine.
-//   odin test tests/pacing -vet
+//   odin test tests/pacing -collection:gt=src -vet
 package pacing_test
 
 import "core:testing"

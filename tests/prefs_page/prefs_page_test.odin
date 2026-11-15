@@ -1,7 +1,7 @@
 // The settings page of a program's preferences (prefs_page): the search keeps what matches, a switch flips and resets,
 // a choice is chosen, a field refuses a value out of range with its reason and takes a good one, a page is shown; the
 // program hears of each change.
-//   odin test tests/prefs_page -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/prefs_page -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package prefs_page_test
 
 import "core:fmt"

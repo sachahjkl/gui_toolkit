@@ -1,6 +1,6 @@
 // The svg package's reading: elements, paths, colours, transforms, markers and texts, on its own drawings and on what mermaid-svg
 // writes (flowchart.svg, sequence.svg: native/mermaid's output, kept). Pure: no window.
-//   odin test tests/svg -vet
+//   odin test tests/svg -collection:gt=src -vet
 package svg_test
 
 import "core:math"

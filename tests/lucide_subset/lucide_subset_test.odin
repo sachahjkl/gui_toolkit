@@ -1,6 +1,6 @@
 // A subset of the Lucide font (toolbox.font_subset), as the font package reads it: each icon kept is the glyph the whole
 // font draws for it, an icon left out is not in the face.
-//   odin test tests/lucide_subset -vet
+//   odin test tests/lucide_subset -collection:gt=src -vet
 package lucide_subset_test
 
 import "core:slice"

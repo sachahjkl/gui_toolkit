@@ -1,7 +1,7 @@
 // The pure parts of printing (platform/print.odin): where a picture goes on its page (natural size, smaller to fit,
 // never larger, centred), and the one-page PDF the print portal gets (its structure, its cross-reference table, its
 // pixels laid over white). The system's print dialog needs a person: it is never shown here.
-//   odin test tests/print -vet
+//   odin test tests/print -collection:gt=src -vet
 package print_test
 
 import "core:fmt"

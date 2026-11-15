@@ -1,6 +1,6 @@
 // Docking, the model (ui/dock_model.odin): splitting, joining, floating and docking back, closing, moving along a strip,
 // folds, the layout and the drop targets under a point, the text and its round trip, texts that are not one.
-//   odin test tests/docking -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/docking -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package docking_test
 
 import "core:strings"

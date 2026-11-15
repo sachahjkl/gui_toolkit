@@ -1,6 +1,6 @@
 // The text backend a build gets with no -define: DirectWrite on Windows, the native one elsewhere (where there is no
 // DirectWrite: a build that forgot the define had no text).
-//   odin test tests/font_default -vet
+//   odin test tests/font_default -collection:gt=src -vet
 package font_default_test
 
 import "core:testing"

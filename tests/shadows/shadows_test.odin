@@ -1,6 +1,6 @@
 // Box shadows (draw.box_shadow, draw.inset_shadow) against a numeric reference: the coverage of the rounded rect,
 // supersampled, convolved with the gaussian. Offscreen renderer (WARP), sRGB blending (a black shadow over white is
-// 255 * (1 - coverage)).   odin test tests/shadows -vet
+// 255 * (1 - coverage)).   odin test tests/shadows -collection:gt=src -vet
 package shadows_test
 
 import "core:log"

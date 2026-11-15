@@ -1,5 +1,5 @@
 // The store package: a file of keys and values read once, kept in memory, written later on its worker, atomically.
-//   odin test tests/store -vet
+//   odin test tests/store -collection:gt=src -vet
 package store_test
 
 import "core:fmt"

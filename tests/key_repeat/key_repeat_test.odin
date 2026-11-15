@@ -1,6 +1,6 @@
 // The auto-repeat of a held key (platform/key_repeat.odin), for a system that leaves it to the client: a delay, then a
 // rate; only the last key pressed repeats; missed repeats are dropped. The clock is a number.
-//   odin test tests/key_repeat -vet
+//   odin test tests/key_repeat -collection:gt=src -vet
 package key_repeat_test
 
 import "core:testing"

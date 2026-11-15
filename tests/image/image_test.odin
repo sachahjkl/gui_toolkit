@@ -2,7 +2,7 @@
 // pad, border, invert, grayscale, threshold, sepia, draw_over, pixelate, anchors), properties where it is not (blur keeps
 // the sum, a flat colour stays flat through resize, blur and sharpen, round corners clear the corners and keep the centre,
 // a shadow grows the picture and keeps it whole, a gradient runs its way); text drawn on the CPU lands at its anchor.
-//   odin test tests/image -vet
+//   odin test tests/image -collection:gt=src -vet
 package image_test
 
 import "core:testing"

@@ -1,5 +1,5 @@
 // pointer_from_buffer: a point of an output's buffer, turned and scaled, as a point on the desktop. No desktop needed.
-//   odin test tests/capture -vet
+//   odin test tests/capture -collection:gt=src -vet
 package capture_test
 
 import "core:testing"

@@ -11,7 +11,7 @@ The adapter is Rust (AccessKit), linked statically:
 
 ```
 odin run tools/tk -- build_a11y                         # -> build/a11y/gt_a11y.lib (pinned crates, --locked)
-odin build examples/fidget -define:A11Y_ACCESSKIT=true ...
+odin build examples/fidget -collection:gt=src -define:A11Y_ACCESSKIT=true ...
 ```
 
 A program that has a Rust static library of its own builds `native/a11y` into it (a dependency: its `gt_a11y_*`

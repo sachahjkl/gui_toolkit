@@ -1,7 +1,7 @@
 #+build windows
 // The Windows backend on the real desktop: opt-in (CAPTURE_LIVE=1), since it needs a signed-in desktop and reads the
 // screen.
-//   set CAPTURE_LIVE=1 && odin test tests/capture -vet
+//   set CAPTURE_LIVE=1 && odin test tests/capture -collection:gt=src -vet
 package capture_test
 
 import "core:os"

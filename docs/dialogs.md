@@ -57,4 +57,4 @@ alone takes the extensions the app's table knows).
 person; its `kind` is `DIALOG_OPEN`, `DIALOG_SAVE` or `DIALOG_FOLDER`). On Windows `file_dialog_call(kind, d)` is what the
 Common Item Dialog is told (options set and cleared, the type list and the line selected, the file name, the default
 extension, the GUID of `remember_id`, the folder and whether it is forced), so a test reads it without opening one.
-`odin test tests/dialogs -vet`.
+`odin test tests/dialogs -collection:gt=src -vet`.

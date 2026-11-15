@@ -1,4 +1,4 @@
-// Tests of the draw layer's 2D affine helpers.   odin test tests/affine -vet
+// Tests of the draw layer's 2D affine helpers.   odin test tests/affine -collection:gt=src -vet
 package affine_test
 
 import "core:math"

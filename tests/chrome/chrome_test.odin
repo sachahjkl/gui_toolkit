@@ -1,6 +1,6 @@
 // The window's integrated title bar (hit test, regions from the ui tree), the virtualized list, the wrapped text cache
 // and the scroll curve, without a window: synthetic input, builds, assertions. The ui state is global: one test thread.
-//   odin test tests/chrome -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/chrome -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package chrome_test
 
 import "core:fmt"

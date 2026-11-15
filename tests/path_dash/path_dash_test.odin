@@ -1,5 +1,5 @@
 // Tests of draw.path_dash: the dashes' ends along a line and around a corner, dots as contours of one point, a closed
-// contour dashed across its last line, the offset, an odd pattern, a pattern of no length.   odin test tests/path_dash -vet
+// contour dashed across its last line, the offset, an odd pattern, a pattern of no length.   odin test tests/path_dash -collection:gt=src -vet
 package path_dash_test
 
 import "core:testing"

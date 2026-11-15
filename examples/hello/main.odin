@@ -1,6 +1,6 @@
 // The smallest application of the toolkit: a window, a label, a text field and a button that counts its clicks.
 // docs/getting-started.md walks through it.
-//   odin build examples/hello -vet -out:build/hello.exe -subsystem:windows
+//   odin build examples/hello -collection:gt=src -vet -out:build/hello.exe -subsystem:windows
 //   build\hello.exe                 the window
 //   build\hello.exe --frames=3      three frames without showing the window, then exit (a check that it runs)
 package hello

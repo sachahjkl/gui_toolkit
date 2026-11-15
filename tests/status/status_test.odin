@@ -1,5 +1,5 @@
 // Sample history (ring, resize, aggregates, rates) and the frame graph's hit testing, without a window.
-//   odin test tests/status -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/status -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package status_test
 
 import "core:testing"

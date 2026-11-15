@@ -1,6 +1,6 @@
 // Rows of controls without a window: a check box, a radio or a switch given no width is as wide as its mark and its
 // label, and a click on its label toggles it; a `next` cross alignment holds through `row` / `column`.
-//   odin test tests/states -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/states -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package states_test
 
 import "core:sync"

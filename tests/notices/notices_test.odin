@@ -1,6 +1,6 @@
 // The notices package: a log of what the user missed, one open entry per key, a history of what was acknowledged, its
 // groups kept between changes, its file through gt:store.
-//   odin test tests/notices -vet
+//   odin test tests/notices -collection:gt=src -vet
 package notices_test
 
 import "core:fmt"

@@ -1,7 +1,7 @@
 // Middle-click autoscroll, the pure parts (no window): the acceleration curve (dead zone, monotone, capped, symmetric),
 // the engage/latch/end state machine (hold and toggle modes), the direction cursor, and that integrating the velocity
 // against dt gives the same travel at 60 Hz and at 180 Hz (frame-rate independence).
-//   odin test tests/autoscroll -vet
+//   odin test tests/autoscroll -collection:gt=src -vet
 package autoscroll_test
 
 import "core:math"

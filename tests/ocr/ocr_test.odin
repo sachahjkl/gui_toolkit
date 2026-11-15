@@ -3,7 +3,7 @@
 // the test draws: the toolkit's own Roboto (src/font/data), its outlines read here and filled by gt:paint, dark on light
 // and light on dark, at the size of a screen's text. With no engine or no English installed, that test says so in the
 // log and passes.
-//   odin test tests/ocr -vet
+//   odin test tests/ocr -collection:gt=src -vet
 package ocr_test
 
 import "core:log"

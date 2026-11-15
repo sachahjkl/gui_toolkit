@@ -1,7 +1,7 @@
 // Docking, the widgets (ui/docking.odin) through the test session's input: a tab dragged onto each drop target, along its
 // strip, out (floating) and back by a double click on the floating panel's title; Escape cancels a drag; the keyboard (the
 // arrows along a strip, Ctrl+Tab, the menu); a handle resized and folded; the roles screen readers get; the save.
-//   odin test tests/docking -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/docking -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package docking_test
 
 import "core:fmt"

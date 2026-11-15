@@ -1,7 +1,7 @@
 // Widgets and theme calls with the arguments an application can hand them by mistake or by timing (an empty list, a
 // selection past the end, icons fewer than labels, a theme edited before the palette), a toast cut inside a character, the
 // highlight of a search match after a character whose lower case is longer, wake-up requests. No window.
-//   odin test tests/ui_robust -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/ui_robust -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package ui_robust_test
 
 import "core:fmt"

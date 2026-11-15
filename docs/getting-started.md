@@ -161,7 +161,7 @@ if ui.input_frame("###search") {
 ## 3. What `tk build` does
 
 `odin run tools/tk -- build <example> [-debug]` (in the toolkit's folder; `build.bat` and `./build.sh` are its shortcuts) is
-`odin build examples/<example> -out:build/<example> -o:speed -vet` (or `-debug` instead of `-o:speed`). On Windows it adds
+`odin build examples/<example> -collection:gt=src -out:build/<example> -o:speed -vet` (or `-debug` instead of `-o:speed`). On Windows it adds
 `-subsystem:windows` and `-resource:examples/<example>/<example>.rc` when the example has an icon; on Linux it builds the native
 text backend first (the default backend there). It builds the examples only; your project calls `odin build` itself as
 above.
@@ -203,8 +203,8 @@ to HLSL translator, for whoever edits the shaders) are for the toolkit's own wor
 In the toolkit's folder (the CI runs the same: `.github/workflows/ci.yml`):
 
 ```powershell
-odin test tests/flate -vet                                         # one package
-odin test tests/keyboard -vet -define:ODIN_TEST_THREADS=1           # packages that build interfaces: one test at a time
+odin test tests/flate -collection:gt=src -vet                                         # one package
+odin test tests/keyboard -collection:gt=src -vet -define:ODIN_TEST_THREADS=1           # packages that build interfaces: one test at a time
 odin run tools/run_tests                                           # every package, on a desktop of its own (needs the native libraries)
 odin run tools/run_tests -- -backend:wgpu              # the pixel tests on WebGPU (after tools/tk fetch_wgpu)
 ```
@@ -241,7 +241,7 @@ session bus: a window's procedures are called on the thread that opened it, as o
 
 `tools/globals_allowed.txt` lists every global of the packages with its class and why; `tests/globals` (in `odin run tools/run_tests`)
 fails on a global that is not listed, on one listed that is gone, and on a class the code contradicts (`@(thread_local)` is
-`thread`, and only it). `odin test tests/globals -define:GLOBALS_WRITE=true` rewrites the list from the code, keeping the classes
+`thread`, and only it). `odin test tests/globals -collection:gt=src -define:GLOBALS_WRITE=true` rewrites the list from the code, keeping the classes
 known; a new one gets `?` until it is classified, or moved into its struct.
 
 ## 8. Pitfalls
@@ -249,7 +249,7 @@ known; a new one gets `?` until it is classified, or moved into its struct.
 - **The output folder must exist**: `odin build ... -out:build/x.exe` fails with "Error(013): don't have access to write"
   when `build\` is missing.
 - **`odin test` deletes its exe** after the run. To run a test program several times (to chase an unstable test):
-  `odin build tests/<name> -build-mode:test -out:build/<name>_test.exe`, then run the exe.
+  `odin build tests/<name> -collection:gt=src -build-mode:test -out:build/<name>_test.exe`, then run the exe.
 - **A `render.Surface` (second window) in a local variable**: it is several kilobytes; with `-o:speed -debug` LLVM spent
   more than ten minutes on the module that copied one. Make it where it lives: `render.surface_init(&r, &app.surface,
   hwnd, size)`, not `s, ok := render.surface_create(...)`.

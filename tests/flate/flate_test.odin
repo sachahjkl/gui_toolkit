@@ -1,6 +1,6 @@
 // The streaming codec: .NET's gzip (dynamic codes) in chunks of any size, cut, corrupted and followed by junk; round trips
 // of every format through the deflater in chunks; the bound on the output; dynamic codes made by the deflater.
-//   odin test tests/flate -vet
+//   odin test tests/flate -collection:gt=src -vet
 package flate_test
 
 import "core:bytes"

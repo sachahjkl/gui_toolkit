@@ -1,6 +1,6 @@
 // Pixel tests of RGBA image textures: what create_texture_rgba / update_texture_rgba put on the GPU (zeroing deferred to
 // the first draw, opaque uploads that skip the conversion, premultiplied translucent ones, strides, partial updates), in
-// both blend spaces, on an offscreen renderer (WARP).   odin test tests/textures -vet
+// both blend spaces, on an offscreen renderer (WARP).   odin test tests/textures -collection:gt=src -vet
 package textures_test
 
 import "core:testing"

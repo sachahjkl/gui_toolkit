@@ -1,7 +1,7 @@
 // The logic of the file dialogs (platform/dialogs.odin): patterns, matching, filters from a web page's accept list, and
 // the test hook that stands for the real dialogs (they need a person: never shown here), and what the system's dialog
 // is told for a File_Dialog (file_dialog_call: options, type list, names, folder) without opening it.
-//   odin test tests/dialogs -vet
+//   odin test tests/dialogs -collection:gt=src -vet
 package dialogs_test
 
 import "base:runtime"

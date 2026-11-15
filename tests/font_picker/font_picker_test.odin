@@ -1,7 +1,7 @@
 // The font picker (ui.font_picker, docs/font-picker.md) over a fake source: no system read. What breaks first: the list
 // read at each opening; every family's face asked at once; a ranking at each frame; the monospace families lost from
 // the mono list; the default shown empty.
-//   odin test tests/font_picker -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
+//   odin test tests/font_picker -collection:gt=src -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 package font_picker_test
 
 import "base:runtime"

@@ -1,7 +1,7 @@
 // The crash package: a report written and read back, and a real crash. The crashing program is this test program itself, started
 // again with GT_CRASH_TEST_CHILD set: its @(init) does what the child must do (install, a session, a crash, a hang, a look at the
 // last report) and ends before the test runner starts.
-//   odin test tests/crash -vet
+//   odin test tests/crash -collection:gt=src -vet
 package crash_test
 
 import "base:intrinsics"

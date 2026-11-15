@@ -1,7 +1,7 @@
 // src/changelog with tools/changelog's options, on a throwaway checkout (a CHANGELOG.md, the file that holds the version,
 // fragments): well formed and malformed fragments, new_fragment, check (orphans, duplicates, a release), assemble with and
 // without fragments, section; and a project of its own (no version file, a hand-written [Unreleased] section).
-//   odin test tests/changelog -vet
+//   odin test tests/changelog -collection:gt=src -vet
 package changelog_test
 
 import "core:fmt"

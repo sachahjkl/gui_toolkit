@@ -2,7 +2,7 @@
 // changed, and every partial frame is the whole frame to the byte (draw.set_damage_verify draws each one whole on the side).
 // The scenes run in both frame formats, 8 bits and half floats (a translucent window's), and their last frame holds only
 // values in [0, 1], opaque.
-//   odin test tests/partial_redraw -vet -define:ODIN_TEST_THREADS=1
+//   odin test tests/partial_redraw -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package partial_redraw_test
 
 import "core:fmt"

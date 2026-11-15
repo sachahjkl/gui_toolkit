@@ -1,6 +1,6 @@
 // The state machine of a thread's frames (platform/frame_gate.odin): which frame may begin where, which moves a frame may make,
 // and what a frame begun inside another puts back. The logic alone: no window, no clock.
-//   odin test tests/frame_gate -vet
+//   odin test tests/frame_gate -collection:gt=src -vet
 package frame_gate_test
 
 import "core:testing"
