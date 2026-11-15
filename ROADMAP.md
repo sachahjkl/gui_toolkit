@@ -21,10 +21,9 @@
 - **opencode native on the toolkit's pieces.** Its branch `toolkit-0.266` takes the toolkit's JSON, rich paste
   (`ui.paste_answer`: its menu's Paste attaches an image as Ctrl+V does), kept zooms (`store.Kept`), context menus
   (`ui.context_take`), window place and standard folders in place of its own; it waits for its merge and release.
-- **WebP on Windows in every program.** `gt:image` reads and writes WebP through `libwebp.dll`, which no program ships, so
-  Windows has no WebP today. The official build's static `lib/libwebp.lib` cannot be linked alone: it calls
-  `SharpYuv*`, whose `libsharpyuv.lib` the archive lacks. Build both from libwebp's sources with MSVC, as `gt_text` is,
-  so cliche's WebP export and every program's WebP pictures work there.
+- **WebP on Windows in every program.** The toolkit builds `gt_webp.dll` from libwebp's sources (`tools/tk build_webp`);
+  each program's Windows package puts it beside the program, so cliche's WebP export and every program's WebP pictures
+  work there. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).
 - **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate:
   `gt:image` reads GIF now. The switch is written (`ocn-views/build/gt-image-only.patch`) and waits for WebP on
   Windows, which the Rust crate reads today. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).

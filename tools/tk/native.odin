@@ -125,6 +125,33 @@ build_rust_lib :: proc(root: string, lib: Rust_Lib, force: bool) -> string {
 	}
 }
 
+// libwebp for Windows: native/webp's DLL (libwebp's and sharpyuv's C sources, built by libwebp-sys with the target's
+// compiler), which src/image/webp_windows.odin loads beside the program -> build/webp/gt_webp.dll; elsewhere the crate's
+// shared library (libgt_webp.so: Linux loads the system's libwebp, this one is built for the crate's test alone). Rebuilt
+// when build/webp/STAMP is not the hash of the crate's sources, Cargo.lock and these steps.
+WEBP_CRATE :: "native/webp"
+WEBP_OUT :: "build/webp"
+WEBP_FILE :: "gt_webp.dll" when ODIN_OS == .Windows else "libgt_webp.so"
+
+build_webp :: proc(root: string, force: bool) -> string {
+	crate, out := join({root, WEBP_CRATE}), join({root, WEBP_OUT})
+	file, stamp_file := join({out, WEBP_FILE}), join({out, RUST_STAMP})
+	stamp, ok := rust_stamp(crate, BUILD_STEPS_SOURCE)
+	if !ok { return fmt.tprintf("the sources of %s cannot be read", crate) }
+	if !force && toolbox.stamp_holds(file, stamp_file, stamp) {
+		fmt.printfln("gt_webp up to date in %s", out)
+		return ""
+	}
+	if _, code := toolbox.capture({"cargo", "--version"}); code != 0 { return "cargo not found: install Rust with rustup (stable)" }
+	target := join({out, "target"})
+	if !toolbox.run({"cargo", "build", "--release", "--locked", "--lib", "--manifest-path", join({crate, "Cargo.toml"}), "--target-dir", target}) { return "cargo build failed" }
+	_ = os.make_directory_all(out)
+	if os.copy_file(file, join({target, "release", WEBP_FILE})) != nil { return fmt.tprintf("%s cannot be written", file) }
+	if !toolbox.write_stamp(stamp_file, stamp) { return fmt.tprintf("%s cannot be written", stamp_file) }
+	fmt.printfln("built %s", file)
+	return ""
+}
+
 // The stamp of the translator: the SHA-256 of each of its sources, in upper case, separated by commas. ok = false: one cannot be read.
 naga_sources :: proc(crate: string) -> (stamp: string, ok: bool) {
 	sums := make([dynamic]string, context.temp_allocator)

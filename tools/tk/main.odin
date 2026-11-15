@@ -5,6 +5,8 @@
 //                                             when build/text/STAMP is the hash of the crate's sources, Cargo.lock and tools/tk/native.odin
 //   build_a11y [-force]                       the AccessKit adapter (native/a11y) -> build/a11y/gt_a11y.lib, the same way
 //   build_mermaid [-force]                    Mermaid diagrams to SVG (native/mermaid) -> build/mermaid/gt_mermaid.lib, the same way
+//   build_webp [-force]                       libwebp for Windows (native/webp: its C sources, sharpyuv's) -> build/webp/gt_webp.dll, put
+//                                             beside a program (src/image/webp_windows.odin loads it); elsewhere the crate's .so
 //   build_naga                                the WGSL to HLSL translator (tools/wgsl2hlsl, naga) -> build/naga/wgsl2hlsl.exe: its Cargo.lock
 //                                             pinned by SHA-256 (NAGA_LOCK_SHA256), rebuilt when build/naga/wgsl2hlsl.sources differs
 //   fetch_emoji [-dest:dir] [-unicode]        Noto Color Emoji COLR v1 (pinned by commit and SHA-256, its SVG table dropped) and OFL.txt
@@ -71,6 +73,7 @@ import toolbox "../../src/toolbox"
 COMMANDS := []toolbox.Command {
 	{name = "build_text", usage = "[-force]: the native text backend (native/text) -> build/text, unless its stamp says it is up to date", checked = true, flags = {"force"}, run = proc(args: []string) -> int { return toolbox.done(run_build_text(args)) }},
 	{name = "build_a11y", usage = "[-force]: the AccessKit adapter (native/a11y) -> build/a11y, the same way", checked = true, flags = {"force"}, run = proc(args: []string) -> int { return toolbox.done(run_build_a11y(args)) }},
+	{name = "build_webp", usage = "[-force]: libwebp for Windows (native/webp) -> build/webp/gt_webp.dll, beside a program", checked = true, flags = {"force"}, run = proc(args: []string) -> int { return toolbox.done(build_webp(toolkit_root(), toolbox.has_flag(args, "force"))) }},
 	{name = "build_mermaid", usage = "[-force]: Mermaid diagrams to SVG (native/mermaid) -> build/mermaid, the same way", checked = true, flags = {"force"}, run = proc(args: []string) -> int { return toolbox.done(run_build_mermaid(args)) }},
 	{name = "build_naga", usage = ": the WGSL to HLSL translator (tools/wgsl2hlsl) -> build/naga/wgsl2hlsl.exe, its Cargo.lock pinned", checked = true, run = proc(args: []string) -> int { return toolbox.done(run_build_naga(args)) }},
 	{name = "fetch_emoji", usage = "[-dest:dir] [-unicode]: Noto Color Emoji COLR v1 and OFL.txt -> build/emoji; -unicode: Unicode's emoji files too", checked = true, flags = {"dest:", "unicode"}, run = proc(args: []string) -> int { return toolbox.done(run_fetch_emoji(args)) }},

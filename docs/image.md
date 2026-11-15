@@ -120,7 +120,7 @@ On Linux, text is shaped by the native text backend, the default there, as every
 | `jpeg_encode(img, quality = 90)` | a baseline JPEG, written here in Odin: the colours not subsampled (4:4:4), so a screenshot's text keeps its edges; alpha laid over white |
 | `webp_encode(img, quality = 85, lossless = false)` | a WebP file by libwebp, loaded when first asked; `lossless` keeps every pixel. nil where libwebp is not there |
 | `webp_decode(data) -> (img, ok)` | the picture of a WebP file (lossy or lossless, alpha kept) by libwebp, in the allocator; ok is false where libwebp is not there or the bytes are not WebP |
-| `webp_available()` | whether libwebp could be loaded (Nix: libwebp; Debian: libwebp7; Windows: libwebp.dll beside the program) |
+| `webp_available()` | whether libwebp could be loaded (Nix: libwebp; Debian: libwebp7; Windows: the toolkit's `gt_webp.dll` beside the program: `tools/tk build_webp` makes it from libwebp's sources in `build/webp`, and a program's Windows package ships it) |
 | `decode(data) -> (img, format, ok)` | the picture of a PNG, JPEG (baseline or progressive), WebP, BMP or GIF file, as RGBA8 in the allocator; a GIF's first frame; the format is read from the first bytes, not from a name. ok is false for another format, a damaged file, or a WebP where libwebp is not there |
 | `file_format(data)` | `Png`, `Jpeg`, `Webp`, `Bmp`, `Gif` or `Unknown`, from the signature alone (nothing decoded) |
 
