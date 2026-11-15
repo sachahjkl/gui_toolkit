@@ -304,7 +304,9 @@ Escape gives up the editor first.
 ## What's new
 
 `Page_Options.changelog` (a `Changelog`, the program's) adds a What's new page, first of the toolkit's own: the
-program's `CHANGELOG.md`, laid out by `gt:markdown`. The changelog is written in English (`Changelog.english`, often
+program's `CHANGELOG.md` as a timeline: a rail with a dot at each version (the newest lit), a card per version (its
+number, its day and time, "Latest"), its changes by type under a tile of the type's hue, their text laid out by
+`gt:markdown`; 12 versions, then "Show 12 older versions". The changelog is written in English (`Changelog.english`, often
 `#load("../CHANGELOG.md", string)`); `translations` may give it in other languages (`Changelog_Text{language, text}`),
 and the page shows the one of the language in use, else the English one (`changelog_text`).
 

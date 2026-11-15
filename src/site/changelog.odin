@@ -167,7 +167,8 @@ parse_changelog :: proc(text: string) -> []^Release {
 			if js_lower(version) != "unreleased" {
 				r = new(Release, context.temp_allocator)
 				r.version = version
-				if strings.has_prefix(rest, " - ") { r.date = first_word(rest[len(" - "):]) }
+				// (its day, and its time since versions carry it: "2026-11-15 14:07", UTC)
+				if strings.has_prefix(rest, " - ") { r.date = release_stamp(rest[len(" - "):]) }
 				r.link = links[version]
 				r.intro = make([dynamic]string, context.temp_allocator)
 				r.sections = make([dynamic]^Section, context.temp_allocator)
@@ -604,10 +605,27 @@ classic_page :: proc(frame: Classic_Frame, p: Classic_Page) -> string {
 	return relative_links(strings.to_string(b), p.file)
 }
 
+// A version's heading after its " - ": its day "2026-11-15", and its time when it has one ("2026-11-15 14:07", UTC): the
+// day's word, then an hh:mm word if it follows. ("UTC" is said where it shows.)
+release_stamp :: proc(rest: string) -> string {
+	day, _, more := strings.partition(strings.trim_space(rest), " ")
+	clock := first_word(more)
+	if len(clock) == 5 && clock[2] == ':' { return cat(day, " ", clock, " UTC") }
+	return day
+}
+
+// The stamp of a version as HTML's datetime: "2026-11-15" or "2026-11-15T14:07Z".
+iso_stamp :: proc(stamp: string) -> string {
+	day, _, more := strings.partition(stamp, " ")
+	clock := first_word(more)
+	if len(clock) == 5 { return cat(day, "T", clock, "Z") }
+	return day
+}
+
 news_item :: proc(r: ^Release, name: string) -> string {
 	b := strings.builder_make(context.temp_allocator)
 	strings.write_string(&b, "<div class=\"item\">\n")
-	if r.date != "" { put(&b, `<time class="date" datetime="`, esc(r.date), `">`, esc(r.date), "</time>: ") }
+	if r.date != "" { put(&b, `<time class="date" datetime="`, esc(iso_stamp(r.date)), `">`, esc(r.date), "</time>: ") }
 	put(&b, `<a href="`, classic_address(CHANGELOG), `#v`, esc(r.version), `">`, esc(name), " ", esc(r.version), "</a> released.\n<ul>", leads(entries(r)), "</ul>\n</div>")
 	return strings.to_string(b)
 }

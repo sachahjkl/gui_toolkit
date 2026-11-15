@@ -5,9 +5,10 @@
 //   odin run tools/changelog -- -check                       every fragment well formed, none already in CHANGELOG.md (CI)
 //   odin run tools/changelog -- -check -release:0.4.0        ready to tag 0.4.0: no fragment left, its section there, the version said
 //   odin run tools/changelog -- -assemble                    what the next version brings, printed
-//   odin run tools/changelog -- -assemble -version:0.4.0     the release: a "## [0.4.0] - <date>" section in CHANGELOG.md, the version written in
+//   odin run tools/changelog -- -assemble -version:0.4.0     the release: a "## [0.4.0] - <date> <time>" section in CHANGELOG.md, the version written in
 //                                                            ui/version.odin and the README's badge, the fragments deleted (tk release does it)
 //   odin run tools/changelog -- -section -version:0.4.0 [-out:f.md]   the body of that version's section (release notes)
+//   odin run tools/changelog -- -times                       the versions with a day alone get their time, their tag's (git)
 // -root:dir works on another checkout. Exit code 0 when all is well, 1 otherwise. tests/changelog calls `options` and the package.
 package changelog_tool
 
@@ -131,6 +132,12 @@ main :: proc() {
 		fmt.printfln("CHANGELOG.md: section %s (%d entries); commit the deletion of the fragments with it", version, n)
 		return
 	}
-	fmt.println("tools/changelog: -new, -check, -assemble or -section (see the head of its source)")
+	if _, on := flag("-times"); on {
+		n, why := changelog.add_times(root)
+		if why != "" { fmt.printfln("error: %s", why); os.exit(1) }
+		fmt.printfln("changelog: %d versions given their time", n)
+		return
+	}
+	fmt.println("tools/changelog: -new, -check, -assemble, -section or -times (see the head of its source)")
 	os.exit(1)
 }

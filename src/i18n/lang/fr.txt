@@ -301,6 +301,12 @@ fr Les nouveautés : cliquez pour les lire
 en What's new
 fr Nouveautés
 
+en Show %d older versions
+fr Voir %d versions plus anciennes
+
+en Latest
+fr Dernière
+
 en Diagnostics
 fr Diagnostics
 
