@@ -287,7 +287,8 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 		if e.kind != .Mouse_Move && e.kind != .Scroll { s.pointer_only = false; break }
 	}
 	zoom_was := s.zoom
-	process_events(s, p.events, !zoom_off, left)
+	// (while the exploded view is on, it takes the pointer and the keys: the page under it takes none)
+	process_events(s, exploded_events(s, p.events), !zoom_off, left)
 	// (its zoom keys are the program's: they zoom the window it follows, which every other window follows)
 	if o := style_root(s); o != s && s.zoom != zoom_was {
 		o.zoom = s.zoom
@@ -296,6 +297,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	if s.zoom != zoom_was { s.pointer_only = false }   // (Ctrl+wheel: every window follows the zoom)
 	keymap_begin_build(s)   // (a sequence's second press, taken before any reader: keymap.odin)
 	wireframe_keys(s)       // (the devtools' key: wireframe.odin)
+	exploded_keys(s)        // (the devtools' key: exploded.odin)
 	views_hold_input(s)   // (keys typed for a view that just opened, until its focused field is there: views.odin)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
 	overlay_capture_keys(s, p.events)

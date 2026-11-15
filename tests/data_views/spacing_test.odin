@@ -60,6 +60,35 @@ the_wireframe_knows_each_gap :: proc(t: ^testing.T) {
 	testing.expect(t, !s.state.wireframe)
 }
 
+@(private = "file") exploded_clicks: int
+
+// The exploded view (src/md/features/exploded-view.md) takes the pointer: a drag turns it, a click on a button under it
+// presses nothing; Escape turns it off and the page takes clicks again. (Its drawing is kept in exploded.png.)
+@(test)
+the_exploded_view_turns_and_takes_the_pointer :: proc(t: ^testing.T) {
+	exploded_clicks = 0
+	s := session.start(t, {size = {500, 600}, build = proc(s: ^session.Session) {
+		spacing_build(s)
+		ui.next({fixed_x = 20, fixed_y = 540, width = ui.px(120), height = ui.px(40)})
+		if ui.button("go", "Go").clicked { exploded_clicks += 1 }
+	}})
+	session.frames(s, 2)
+	go := session.center(session.get(s, "go"))
+	ui.set_exploded(s.state, true)
+	session.frames(s, 2)
+	testing.expect(t, ui.exploded(s.state))
+	yaw := s.state.exploded.yaw
+	session.drag(s, {250, 300}, {350, 300})
+	testing.expectf(t, s.state.exploded.yaw != yaw, "a drag across turns the view: yaw %v, then %v", yaw, s.state.exploded.yaw)
+	session.click_at(s, go)
+	testing.expect_value(t, exploded_clicks, 0)   // (the page takes no click under the view)
+	session.save_png(s, "exploded.png")
+	session.key(s, .Escape)
+	testing.expect(t, !ui.exploded(s.state), "Escape turns it off")
+	session.click_at(s, go)
+	testing.expect_value(t, exploded_clicks, 1)
+}
+
 @(test)
 the_blocks_keep_to_the_scale :: proc(t: ^testing.T) {
 	s := session.start(t, {size = {500, 600}, no_renderer = true, build = spacing_build})

@@ -448,6 +448,7 @@ State :: struct {
 	last_click_pos:  Vec2,   // (a double click is two presses close in time AND in place)
 	inspected:    Key,               // set_inspected: the box lit over everything
 	wireframe:    bool,              // set_wireframe: every box's outline, its gaps tinted by their step (wireframe.odin)
+	exploded:     Exploded_View,     // set_exploded: the boxes as planes in depth, turned with the mouse (exploded.odin)
 	partial_redraw: bool,            // set_partial_redraw: each frame redraws only what changed (draw_tree)
 	partial_redraw_set: bool,        // draw_tree turned the renderer's partial redraw on: off again when the state is
 	damage:       draw.Damage_Memory, // what each box drew last frame (draw.damage_auto)

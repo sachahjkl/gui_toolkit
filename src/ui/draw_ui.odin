@@ -69,6 +69,12 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 		s.disabled_keep = tuned(color_from_tags(s, 0, "text") * {1, 1, 1, 0} + {0, 0, 0, s.disabled_keep}).a
 	}
 	interp := draw.set_interpolation(dc, .Linear)
+	if s.exploded.on {
+		// (instead of the page: the author's view of its layers, exploded.odin)
+		exploded_draw(s, dc)
+		draw.set_interpolation(dc, interp)
+		return
+	}
 	draw_box(s, dc, s.root, s.scale)
 	if s.window != nil && s.root != nil && platform.needs_frame_outline(s.window) {
 		// (a frame of the system's would be there: Linux with an integrated title bar)
@@ -168,8 +174,9 @@ corner_place :: proc(outer: Rect, outer_radius: f32, c: Corner, size: Vec2, inse
 // The least radius a box's corners are rounded with (logical pixels): under it, they are square.
 ROUND_LEAST_PX :: 3
 
+// `children` false: the box's own face alone, its subtree skipped (the exploded view draws each depth on its own plane).
 @(private)
-draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
+draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := true) {
 	// what the box draws, its children apart, is compared with its last frame's (set_partial_redraw)
 	draw.damage_span_begin(dc, u64(b.key))
 	defer draw.damage_span_end(dc)
@@ -224,7 +231,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	faded := .Clip in flags && (b.edge_fade != {} || b.edge_hold != {})
 	if faded { draw.push_mask(dc, r) }   // (no cache_id: it always asks for the content)
 	if b.custom != nil { b.custom(b, b.custom_user, dc) }
-	for c := b.first; c != nil; c = c.next { draw_box(s, dc, c, scale) }
+	if children { for c := b.first; c != nil; c = c.next { draw_box(s, dc, c, scale) } }
 	if faded {
 		draw.mask_edge_fade(dc, r, b.edge_fade, b.edge_hold)
 		draw.pop_mask(dc)

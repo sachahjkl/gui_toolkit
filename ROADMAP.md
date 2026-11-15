@@ -53,9 +53,6 @@
 
 ## Later
 
-- **An exploded 3D view.** The window's boxes drawn as layers in depth, each parent behind its children, turned with the
-  mouse: the nesting of a page, the views over it and the overlays (menus, toasts, tooltips) read at a glance, as a
-  browser's 3D view of its layers shows them.
 - **OpenGL when Vulkan is missing.** On a Linux machine with OpenGL and no Vulkan driver (an old GPU, some virtual
   machines), a program draws through wgpu's GL backend instead of saying that it cannot. It waits for wgpu-native to
   take the display in its instance descriptor: today its GL instance has no backend on Linux. Intent:
