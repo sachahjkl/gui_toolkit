@@ -9,6 +9,12 @@
   (sections 1 and 7).
 
 ## Next
+- **Display titles and settings folders by the system's convention.** A program's identity gives its vendor
+  (FromentSoftware), its display title (Papier, Classeur, Inspecteur, Cliche, Atelier, Wren...: capitalised, while the
+  binary, the package and the Linux folders keep the lowercase technical name) and its reverse-DNS id
+  (`software.froment.Papier`: the desktop file, the D-Bus name, the AppUserModelID). `platform.user_dir` then places the
+  settings where each system expects them: `%APPDATA%\FromentSoftware\Papier` on Windows, `~/.config/papier` on Linux.
+  Waits for two decisions: opencode native's title, and whether the old Windows folder moves once.
 - **opencode native answers --quit.** As papier, classeur, inspecteur and cliche do, it gives `Setup_Options.quit` and
   takes `instance.MESSAGE_QUIT` in its handler: atelier then closes it cleanly before it installs it, in place of ending
   its process. Intent: [src/md/features/quit.md](src/md/features/quit.md).
