@@ -9,9 +9,9 @@
   (sections 1 and 7).
 
 ## Next
-- **Every program answers --quit.** papier, classeur, inspecteur, cliche and opencode native give `Setup_Options.quit`
-  and take `instance.MESSAGE_QUIT` in their handler: atelier then closes them cleanly before it installs them, in place of
-  ending their process. Intent: [src/md/features/quit.md](src/md/features/quit.md).
+- **opencode native answers --quit.** As papier, classeur, inspecteur and cliche do, it gives `Setup_Options.quit` and
+  takes `instance.MESSAGE_QUIT` in its handler: atelier then closes it cleanly before it installs it, in place of ending
+  its process. Intent: [src/md/features/quit.md](src/md/features/quit.md).
 - **What's new in opencode native.** As papier, classeur, inspecteur and cliche do since their 0.26 and 0.10, it gives
   its changelog to the settings (`Page_Options.changelog`) and calls `changelog_after_update` at start: after an update,
   a message that stays opens the page of what changed.
