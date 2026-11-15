@@ -15,7 +15,8 @@
 - **No program blocks its interface's thread.** Each program's tests run its windows with the toolkit's blocking check
   on and fail when a disk, process or D-Bus call happens in a build, so the CI finds it.
 - **The last settings that programs copy.** opencode native drops `advanced.frame_rate` for the toolkit's
-  `rendering.frame_rate` (`Standard_Targets.pacer`); Wren drops its own text backend, emoji and renderer settings. (The
+  `rendering.frame_rate` (`Standard_Targets.pacer`, since 0.269), and Wren its `browser.frame.*`; Wren drops its own
+  text backend, emoji and renderer settings. (The
   desktop's and the motion's are the standard `Session` and `Appearance` sets; the window's place and the rows' look are
   the toolkit's since 0.265; an FPS display is opencode native's alone, so it stays its own.)
 - **opencode native on the toolkit's pieces.** Its branch `toolkit-0.266` takes the toolkit's JSON, rich paste
@@ -27,9 +28,6 @@
 - **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate:
   `gt:image` reads GIF now. The switch is written (`ocn-views/build/gt-image-only.patch`) and waits for WebP on
   Windows, which the Rust crate reads today. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).
-- **Small tools that Wren still redoes.** Wren's panel placement (`toolbar_panel_rect`) goes for `ui.menu_open`'s
-  `align = .End`, and its `dialog_field` for a plain `ui.line_edit` (`committed`, `cancelled`) or `ui.prompt_open`, which
-  already answer Enter and end a view with Escape in one press.
 - **Wren logs through `gt:log`.** Wren writes its log through the toolkit, as the other programs do.
 - **One native crate.** One native library with features replaces the toolkit's three native libraries, so no program
   links with multiple-definition flags.
