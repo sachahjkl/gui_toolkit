@@ -185,7 +185,7 @@ shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless: bool) -> bool {
 		render.set_fixed_surface(&sh.r, platform.monitor_size(w))
 	}
 	ok: bool
-	sh.font, ok, _ = font.load_system_or_embedded(&sh.fonts, headless ? "" : platform.system_font_path("segoeui.ttf"), font.FALLBACK_UI_DATA)
+	sh.font, ok = load_ui_font(&sh.fonts, headless)
 	if !ok {
 		fmt.eprintln("host: no UI font")
 		render.destroy(&sh.r)

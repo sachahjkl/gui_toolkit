@@ -666,6 +666,7 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 				} else {
 					// (the field while nobody types in it: the value, as the field shows its text; the key is the field's, so
 					// a press gives it the keyboard and the next build types in it)
+					next_default({radius = em * CONTROL_RADIUS_EM})   // (a button's corners)
 					push_tags("input")
 					fb := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###value", text_shown(text)))
 					pop_tags()
@@ -1424,7 +1425,7 @@ well :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}) -> bool {
 // Its size comes from `next` (default: 19 ems wide, a field's height).
 search_launcher :: proc(id: string, hint: string, keys := "", tip := "") -> Signal {
 	em := font_size()
-	next_default({width = px(em * 19), height = px(dense(em * 2.1)), radius = em * 0.45})
+	next_default({width = px(em * 19), height = px(dense(em * 2.1)), radius = em * CONTROL_RADIUS_EM})
 	set_next_axis(.X, .Center)
 	push_tags("input")
 	b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects, .Draw_Focus_Ring, .Sunken}, id)

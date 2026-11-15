@@ -92,6 +92,16 @@ hosts too: `ui.views_set_windows(&app.views, host.view_windows(&app.shared))` on
 view's window is made after the frames of the window that owns the view), and `host_frame` of a window makes their
 frames after its own; `hosts_wait` counts them. Call `ui.views_destroy` before the last `host_close`.
 
+**A window ready ahead.** A window that must show at once when it is asked for (a screenshot tool's editor at its
+shortcut) is opened hidden before: each turn while one is wanted, `if host.ahead_due(&app.ahead, &app.shared, wake, app)`
+opens it. With no window yet, the graphics driver is made on a thread first (`render.preload_device`), whose end calls
+`wake(app)`; then it is due, once.
+
+**Text on a worker thread.** A `font.State` is one thread's: a worker that draws text (a watermark on a picture) keeps a
+`host.Worker_Fonts` and calls `host.worker_fonts(&f)` on its thread each time it needs them (made at the first call: the
+interface's face, the system's else the toolkit's own, the rule of `host.load_ui_font`), then `host.worker_fonts_destroy`
+when it ends.
+
 **Redraw only what changed.** Set `h.partial_redraw = true` (any time; it is read at every frame): each frame then compares
 what every box draws with the last frame and redraws only where something changed (a hover, a caret, an animation, a toast).
 An idle frame redraws nothing; the window shows the same pixels as with whole frames. A program that makes its frames by hand

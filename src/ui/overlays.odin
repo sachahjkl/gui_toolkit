@@ -231,6 +231,7 @@ Modal_Options :: struct {
 	size:          ^Vec2,        // nil: not resizable; else the size the person gave it, in ems ({}: none yet)
 	top:           Maybe(f32),   // its top held at this fraction of the window's height (a command palette; resized, its bottom edge alone follows the pointer); nil: centered
 	first_h:       f32,          // its height when no layout of it is known yet (a dialog shown back at once, views_builders.odin); 0: none
+	maximised:     bool,         // the window's whole room minus MODAL_MARGIN_EM, whatever its sizes; no grips (`size` untouched)
 }
 
 // A dialog's width when its options give none, in ems: its least. It grows to what is in it (a long title, a row of
@@ -389,6 +390,14 @@ modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 	em := font_size()
 	margin := em * MODAL_MARGIN_EM
 	hi := Vec2{max(s.window_size.x - 2 * margin, 1), max(s.window_size.y - 2 * margin, 1)}
+	if o.maximised {
+		// (all the room a dialog may have, from this window's size at each build: a resized window keeps it filling. No
+		// size, no fit: no grips, and the person's size in `size` stays theirs for the restore)
+		wh := Vec2{math.round(hi.x), math.round(hi.y)}
+		modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), math.round((s.window_size.y - wh.y) * 0.5)}, wh)
+		s.modal_stack[len(s.modal_stack) - 1].em = em
+		return true
+	}
 	lo := Vec2{min(o.min_width_em * em, hi.x), min(o.min_height_em * em, hi.y)}
 	pref := Vec2{(o.width_em > 0 ? o.width_em : DIALOG_WIDTH_EM) * em, o.height_em * em}
 	key := modal_key(s, id)

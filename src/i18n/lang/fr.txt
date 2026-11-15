@@ -2057,11 +2057,8 @@ fr Ancrer en bas
 en Minimise the panel
 fr Réduire le panneau
 
-en Maximise the panel
-fr Agrandir le panneau
-
-en Restore the panel
-fr Restaurer le panneau
+en Maximise
+fr Agrandir
 
 en Close the panel
 fr Fermer le panneau

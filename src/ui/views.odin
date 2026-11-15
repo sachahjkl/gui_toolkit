@@ -83,7 +83,8 @@ View_Labels :: struct {
 	close_view:              string,   // an external window's Close button (its system close re-attaches)
 	window, floating:        string,   // "Detach into a window" (External), "Open as a floating window" (Internal)
 	dock_left, dock_right, dock_bottom: string,
-	// a stack's strip: its right end (minimise, maximise, restore either, close every view of the stack), its "+"
+	// a stack's strip: its right end (minimise, maximise, restore either, close every view of the stack), its "+";
+	// maximise and restore are a resizable dialog's header button too
 	minimize, maximize, restore, close_stack, new_tab: string,
 }
 
@@ -92,7 +93,7 @@ view_default_labels :: proc() -> View_Labels {
 		detach = i18n.tr("Detach"), close = i18n.tr("Close"), reattach = i18n.tr("Re-attach"), close_view = i18n.tr("Close view"),
 		window = i18n.tr("Detach into a window"), floating = i18n.tr("Open as a floating window"),
 		dock_left = i18n.tr("Dock left"), dock_right = i18n.tr("Dock right"), dock_bottom = i18n.tr("Dock bottom"),
-		minimize = i18n.tr("Minimise the panel"), maximize = i18n.tr("Maximise the panel"), restore = i18n.tr("Restore the panel"),
+		minimize = i18n.tr("Minimise the panel"), maximize = i18n.tr("Maximise"), restore = i18n.tr("Restore"),
 		close_stack = i18n.tr("Close the panel"), new_tab = i18n.tr("New tab"),
 	}
 }
@@ -151,6 +152,9 @@ View_Record :: struct {
 	size:       Vec2,        // the dialog's size in ems ({}: its first size)
 	size_kept:  Vec2,        // the size the memory has
 	asked:      Vec2,        // view_size's for this opening, in ems (an axis of 0: the kind's)
+	// its dialog fills the window (view_maximise, the header's button): this opening's only, never the memory's, and
+	// off once it leaves the Dialog presentation (src/md/features/views.md, section 2.9)
+	maximised:  bool,
 	title:      string,      // owned: view_title's (or a ready-made view's), "": the kind's
 	icon:       string,      // a ready-made view's icon for this opening (Lucide's), or view_icon's ("": the kind's)
 	icon_own:   string,      // owned: view_icon's
@@ -494,6 +498,28 @@ view_dialog_size :: proc(vs: ^Views, id: string, instance := "") -> Vec2 {
 	return views_memory_of(vs, id).dialog
 }
 
+// Whether its dialog fills the window now (the header's Maximise, a double click on the header, view_maximise).
+view_maximised :: proc(vs: ^Views, id: string, instance := "") -> bool {
+	r := view_record_find(vs, id, instance)
+	return r != nil && r.machine.state != .Closed && r.maximised
+}
+
+// Its dialog fills the window (`on`), or goes back to the size it had. For this opening only: call it after view_open
+// to open a viewer maximised. Nothing while it is not open or not shown as a dialog; the size the user gave it (the
+// memory's) is not changed.
+view_maximise :: proc(vs: ^Views, id: string, on: bool, instance := "") {
+	r := view_record_find(vs, id, instance)
+	if r == nil || r.machine.state == .Closed { return }
+	view_maximise_record(r, on)
+}
+
+@(private)
+view_maximise_record :: proc(r: ^View_Record, on: bool) {
+	if view_shown_in(r.machine) != .Dialog || r.maximised == on { return }
+	r.maximised = on
+	if r.owner != nil { r.owner.anim_busy = true }   // (the next build lays it out at its new size)
+}
+
 // Moves it to another presentation (what the header's icons and the menus do). The choice is remembered.
 view_present :: proc(vs: ^Views, id: string, p: View_Presentation, place := View_Place{}, instance := "") {
 	if r := view_record_find(vs, id, instance); r != nil { view_apply(vs, r, {kind = .Present, as = p, place = place}) }
@@ -634,6 +660,7 @@ view_record_reset :: proc(r: ^View_Record) {
 	delete(r.icon_own, r.allocator)
 	r.icon_own, r.icon_font, r.icon_set = "", 0, false
 	r.asked = {}
+	r.maximised = false
 	if r.owned != nil && r.owned_free != nil { r.owned_free(r.owned) }
 	r.owned, r.owned_free = nil, nil
 }
@@ -685,6 +712,10 @@ view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 	next, fx := view_step(r.machine, e)
 	r.machine = next
 	if next.state != before.state || next.as != before.as || next.place != before.place { vs.version += 1 }
+	// (a maximised dialog is the Dialog presentation's alone: a floating window or a panel has its own size, and a
+	// re-attach shows the dialog at the user's size. Off once it is seen elsewhere, not when a move starts: the dialog
+	// still shows, maximised, while its new place is measured)
+	if next.state != .Closed && view_shown_in(next) != .Dialog { r.maximised = false }
 	// the internal window's focus (a dialog's is its modal's: modal_begin, modals_settle)
 	if .Keep_Focus in fx && r.owner != nil { r.focus_back = r.owner.focus_key }
 	if (.Show in fx || .Raise in fx) && next.state != .Opening && view_built_as(next.as) == .Internal {

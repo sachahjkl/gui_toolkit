@@ -5,6 +5,22 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.267.0] - 2026-11-15
+
+### Added
+- **A resizable dialog maximises to fill its window**: a Maximise button left of its close cross, or a double click on its header, makes it take the whole window but a small margin, and it keeps filling the window as the window is resized; Restore gives it back the size it had, which stays the one remembered. A program opens a viewer maximised with `ui.view_maximise(vs, id, true)` after `view_open`, and reads it with `ui.view_maximised`.
+- **A program's own words are links**: `ui.link_words_set(prefixes)` makes each word that starts with one of them (a session's id, `ses_…`) a link, in plain text and in Markdown, its target the word itself. Empty inline code is no longer read as a link.
+
+## [0.266.0] - 2026-11-15
+
+### Added
+- **A window ready ahead.** `host.ahead_due` says once when to open a hidden window that must show at once later (an editor at a screenshot's shortcut); with no window yet, the graphics driver is made on a thread first and its end wakes the program, so the interface never waits for it.
+- **A program's steps in the renderer's trace.** With `TOOLKIT_RENDER_TRACE=1`, `render.trace_start`, `trace_mark` and `trace_note` print how long each step from a trigger took, beside the renderer's own timings: one switch and one list for a latency, from a shortcut to the first picture.
+- **A worker thread's own fonts.** `host.Worker_Fonts` with `host.worker_fonts` gives a worker that draws text (a watermark on a picture) a font state of its own, made at its first use with the interface's face; `host.load_ui_font` is that one rule, the window's fonts included.
+
+### Changed
+- **Fields have the corners of buttons.** A text field, a text editor, an input frame, a shortcut field and a number's field are rounded as a button is (the same radius, scaled by the rounding setting); they were square beside rounded buttons. `next` still gives another radius.
+
 ## [0.265.0] - 2026-11-15
 
 ### Added
@@ -3727,6 +3743,8 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.267.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.267.0
+[0.266.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.266.0
 [0.265.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.265.0
 [0.264.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.264.2
 [0.264.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.264.1

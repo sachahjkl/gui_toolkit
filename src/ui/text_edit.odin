@@ -474,6 +474,7 @@ Text_Edit_Options :: struct {
 text_edit :: proc(id: string, a: ^Text_Edit, o := Text_Edit_Options{}) -> (res: Edit_Result) {
 	s := gs()
 	if tags("input") {
+		next_default({radius = font_size() * CONTROL_RADIUS_EM})   // (a button's corners)
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Scroll_Self, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken}, id)
 		b.cursor = .Text
 		b.text = ""
