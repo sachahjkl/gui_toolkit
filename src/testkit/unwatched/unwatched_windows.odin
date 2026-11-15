@@ -69,6 +69,9 @@ Job :: struct {
 @(private, thread_local)
 current: ^Job
 
+// Calls body(t) on a thread of its own and waits for it (unwatched.odin says why).
+run :: proc(t: ^testing.T, body: proc(t: ^testing.T), loc := #caller_location) { run_unwatched(t, body, loc) }
+
 // The body on a thread of its own; its exception, when it ends by one, fails the test.
 @(private)
 run_unwatched :: proc(t: ^testing.T, body: proc(t: ^testing.T), loc: runtime.Source_Code_Location) {
