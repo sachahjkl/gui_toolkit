@@ -164,7 +164,6 @@ Mark :: struct { from, to: u16, color: Color, strike: bool }          // an unde
 
 ZOOM_MIN     :: 0.5
 ZOOM_MAX     :: 3
-ZOOM_STEP    :: 1.1
 // A zoom at rest after this long without a step: the grid then takes its new size. Each new number of columns wraps
 // every row of the scrollback again, thousands of them: not at every notch of the wheel.
 ZOOM_REST_MS :: 150.0
@@ -173,7 +172,10 @@ KEY_BYTES    :: 128   // the most a key or a mouse event is encoded in
 View :: struct {
 	source:    Source,
 	read_only: bool,     // nothing is typed: the keys that are not for reading are the program's, the pointer selects
-	zoom:      f32,      // times Style.font_size
+	// Its zoom is a zoom zone's (ui.zoom_zone): the standard zoom keys and Ctrl+wheel reach it through the interface. The
+	// program gives the zone a memory (zone.memory) and build a key, if each shell keeps its own zoom.
+	zone:      ui.Zoom_Zone,
+	zoom:      f32,      // times Style.font_size: the zone's, as the last build read it
 	zoom_ms:   f64,      // when it last changed (0: never)
 	hold:      bool,     // the program awaits a whole new picture (a size just given): the last one drawn stays until then
 	cols, rows: int,     // the grid, as the source was last told
@@ -201,11 +203,12 @@ View :: struct {
 
 // `cols` and `rows`: the size the source starts with, until the grid is laid out.
 init :: proc(v: ^View, source: Source, cols, rows: int, allocator := context.allocator) {
-	v^ = {source = source, zoom = 1, cols = cols, rows = rows}
+	v^ = {source = source, zoom = 1, cols = cols, rows = rows, zone = {min = ZOOM_MIN, max = ZOOM_MAX}}
 	v.lines = make([dynamic]Row, allocator)   // (its rows take its allocator: they are built in a frame, never in its temp one)
 }
 
 destroy :: proc(v: ^View) {
+	ui.zoom_zone_destroy(&v.zone)
 	for &r in v.lines { row_delete(&r) }
 	delete(v.lines)
 	v.lines = nil

@@ -9,9 +9,16 @@ import "../font"
 import "../ui"
 
 // Builds the grid, all the room it is given. `take_focus`: the program asks that it has the keyboard (a press on it takes
-// it anyway). Its id is "###term_box".
-build :: proc(v: ^View, style: Style, take_focus := false) -> (b: ^ui.Box, sig: ui.Signal) {
+// it anyway). Its id is "###term_box". The box is the zoom zone `v.zone`, showing `zoom_key` (a shell's id: with a
+// memory in the zone, each shell keeps its zoom; "" its own).
+build :: proc(v: ^View, style: Style, take_focus := false, zoom_key := "") -> (b: ^ui.Box, sig: ui.Signal) {
 	v.style = style
+	ui.zoom_zone(&v.zone, zoom_key)
+	zoom_follow(v)
+	// (the grid takes its new size once the zoom rests: a frame then, with no input to wake it)
+	if s := ui.current_state(); s != nil && v.zoom_ms != 0 {
+		if left := ZOOM_REST_MS - (ui.now_ms() - v.zoom_ms); left > 0 { ui.wake_within(s, int(math.ceil(left)) + 1) }
+	}
 	ui.next({width = ui.fill(), height = ui.fill(), cursor = .Text})
 	b = ui.build_box({.Clickable, .Focusable, .Clip, .View_Scroll_Y, .View_Clamp_Y}, "###term_box")
 	sig = ui.signal(b)

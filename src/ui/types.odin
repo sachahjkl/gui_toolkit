@@ -181,6 +181,7 @@ Box :: struct {
 	bar_marks:   ^Scroll_Marks,  // the marks its vertical bar carries (scroll_marks.odin), given at build bar_marks_build
 	bar_marks_build: u64,        // (kept across builds: the marks may be given before the box is built in a build)
 	bar_wide_t:  f32,            // how far a bar with marks has widened, 0..1 (under the pointer, or the marks' keyboard)
+	zoom_zone:   ^Zoom_Zone,     // the zone this box is (zoom_zone), the program's; written at each build_box
 
 	// accessibility (a11y.odin): what it is to screen readers, set by its widget or the app (this build's arena)
 	a11y:        ^A11y_Info,
@@ -388,6 +389,7 @@ State :: struct {
 	color_memo:   map[[2]u64]Color,   // per-frame: (tags key, name hash) -> resolved color
 	next_mod:     Style_Mod,
 	has_next:     bool,
+	next_zoom_zone: ^Zoom_Zone,       // zoom_zone: the zone the next box is (zoom_zone.odin)
 	overlay_root: ^Box,
 	anim_rate:    f32,                // exponential rate multiplier: 0 disables animation (values jump)
 	scroll_smooth: bool,              // scrolling glides this build (smooth_scroll, with the animations)

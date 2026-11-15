@@ -9,6 +9,7 @@ import "core:strings"
 import "core:testing"
 import "gt:platform"
 import "gt:term"
+import "gt:ui"
 
 // A screen of a few rows of ASCII, each cell a byte. The selection is on one row, as the widget asks for it.
 Fake :: struct {
@@ -304,20 +305,27 @@ a_program_hears_the_release_of_its_press :: proc(t: ^testing.T) {
 	testing.expect_value(t, term.event(&v, {kind = .Mouse_Press, button = .Right, mods = {.Shift}, pos = at({1, 1})}), term.Outcome.Menu)
 }
 
-// Ctrl+= and Ctrl+- move the zoom by a step, within its bounds; Ctrl+0 puts it back. The wheel scrolls the rows shown.
+// The zoom keys and Ctrl+wheel are the interface's (it routes them to the grid's zoom zone): the grid takes none and sends
+// nothing. Its zoom, set through its zone, stays within its bounds and snaps back to 1. The wheel scrolls the rows shown.
 @(test)
 the_zoom_keys_and_the_wheel :: proc(t: ^testing.T) {
 	f := Fake{}
 	defer delete(f.out)
 	v := make_view(&f)
 	defer term.destroy(&v)
-	testing.expect_value(t, term.event(&v, {kind = .Key_Press, key = .Equal, mods = {.Ctrl}}), term.Outcome.Zoomed)
-	testing.expect(t, v.zoom > 1.05, "bigger")
-	for _ in 0 ..< 50 { term.event(&v, {kind = .Key_Press, key = .Equal, mods = {.Ctrl}}) }
-	testing.expect_value(t, v.zoom, f32(term.ZOOM_MAX))
-	term.event(&v, {kind = .Key_Press, key = .N0, mods = {.Ctrl}})
+	for table in ([][]ui.Chord{ui.ZOOM_IN_KEYS[:], ui.ZOOM_OUT_KEYS[:], ui.ZOOM_RESET_KEYS[:]}) {
+		for c in table {
+			testing.expectf(t, term.event(&v, {kind = .Key_Press, key = c.key, mods = c.mods}) == .Ignored, "%v is the interface's", c)
+		}
+	}
+	testing.expect_value(t, term.event(&v, {kind = .Scroll, pos = at({1, 1}), delta = {0, -1}, mods = {.Ctrl}}), term.Outcome.Ignored)
 	testing.expect_value(t, v.zoom, f32(1))
 	testing.expect_value(t, string(f.out[:]), "")   // (nothing reached the program)
+	term.zoom_set(&v, 50)
+	testing.expect_value(t, v.zoom, f32(term.ZOOM_MAX))
+	testing.expect_value(t, ui.zoom_zone_value(&v.zone), f32(term.ZOOM_MAX))
+	term.zoom_set(&v, 1.003)   // (steps back and forth come back near 1, not to it)
+	testing.expect_value(t, v.zoom, f32(1))
 	testing.expect_value(t, term.event(&v, {kind = .Scroll, pos = at({1, 1}), delta = {0, -1}}), term.Outcome.Taken)
 	testing.expect(t, f.scrolled < 0, "up the scrollback")
 	f.scrolled = 0

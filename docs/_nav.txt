@@ -23,6 +23,7 @@ Widgets and layout
   widgets.md          Buttons and numbers
   themes.md           Themes and finishes
   feel.md             Feel: delays, repeats, steps
+  zoom-zones.md       Zoom zones
   docking.md          Docking
   panes.md            Splitter and panes
   menus.md            Menus

@@ -1,7 +1,7 @@
 # term: a terminal's grid
 
 `import "gt:term"`. The grid of a terminal as a widget: the cells of a screen, a selection made with the pointer, the keys
-and the mouse turned into bytes, the scrollback under the toolkit's scroll bar, a zoom of its own, a cursor. It emulates
+and the mouse turned into bytes, the scrollback under the toolkit's scroll bar, a zoom (a zoom zone), a cursor. It emulates
 nothing: a `Source` gives it the screen and takes what it sends back. An emulator stands behind it (opencode native uses
 libghostty-vt), or a program's own model of a screen (a command's output, a log with colours).
 
@@ -10,8 +10,11 @@ v: term.View
 term.init(&v, my_source(&screen), cols = 80, rows = 24)   // the size until the grid is laid out
 defer term.destroy(&v)
 
-// each build: all the room it is given, a box with the id "###term_box"
-term.build(&v, style, take_focus = asked)
+// once: the shells' zooms remembered by their id (optional; ui.Zoom_Memory, docs/zoom-zones.md)
+v.zone.memory = &app.term_zooms
+
+// each build: all the room it is given, a box with the id "###term_box", which is the zoom zone v.zone showing zoom_key
+term.build(&v, style, take_focus = asked, zoom_key = shell_id)
 
 // before the interface sees the frame's events: the keys to the view with the keyboard, the pointer to the one that
 // holds a press (v.press != .None), else to the one under it (term.contains)
@@ -21,7 +24,6 @@ case .Taken:
 case .Copy:    clipboard_set(term.selection_text(&v))
 case .Paste:   term.paste(&v, clipboard_get())
 case .Menu:    // the program's menu at e.pos (term.select_all, term.has_selection...)
-case .Zoomed:  // keep v.zoom if it is kept; a frame after term.ZOOM_REST_MS
 }
 ```
 
@@ -71,17 +73,20 @@ without building them. `recolour(&v)` (a new theme: the source's colours moved) 
 
 - Keys: a printable key alone gives nothing, its `Text` event types the character; Ctrl with Alt is AltGr. Ctrl+Shift+C
   and Ctrl+Insert copy (Ctrl+C alone where nothing is typed, `read_only`), Ctrl+Shift+V and Shift+Insert paste,
-  Shift+Page Up and Page Down scroll a page. Ctrl+=, Ctrl+- and Ctrl+0 zoom (`ZOOM_STEP`, between `ZOOM_MIN` and
-  `ZOOM_MAX`). What is typed goes to the last rows and drops the selection.
+  Shift+Page Up and Page Down scroll a page. The zoom keys (`ui.ZOOM_IN_KEYS`, `ZOOM_OUT_KEYS`, `ZOOM_RESET_KEYS`) are
+  never the shell's: `event` leaves them to the interface (`.Ignored`), which zooms the grid's zone, `v.zone` (the Feel's
+  `zoom_step`, between `ZOOM_MIN` and `ZOOM_MAX`; Ctrl+0 forgets the shell's zoom). `zoom_set(&v, zoom)` sets it from
+  the program (a menu). What is typed goes to the last rows and drops the selection.
 - `paste_text` puts a paste in brackets when the program asks for them; else its line ends are returns.
 - The pointer: a press on the toolkit's scroll bar is the interface's (`on_bar`). A program that tracks the mouse gets
   the presses, the moves and the wheel (Shift: the pointer selects, and a right click opens the menu); the release of a
   press it was told of comes wherever the button is let go, or when the press is taken away (`press_end`).
-- The wheel scrolls the rows shown by the lines the system says; Ctrl and the wheel zoom.
+- The wheel scrolls the rows shown by the lines the system says; Ctrl and the wheel are the interface's, which zooms
+  the zone under the pointer (`.Ignored`).
 - The grid keeps its size while the zoom moves and takes its new number of columns once the zoom has rested for
-  `ZOOM_REST_MS`: each new number wraps every row of the scrollback again.
+  `ZOOM_REST_MS`: each new number wraps every row of the scrollback again. `build` asks for that frame itself.
 
 ## Tests
 
 `tests/term` drives the widget on a screen of its own, without a window or a font: the row cache, the selection, the
-keys, the paste keys, the press held and let go, the zoom keys.
+keys, the paste keys, the press held and let go, the zoom keys left to the interface.
