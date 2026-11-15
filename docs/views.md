@@ -109,6 +109,7 @@ again.
 | `view_restored_instances(vs, id, allocator) -> []string` | at start-up: the instances of `id` open at the last quit, in the order their lines were written; the program opens each with its own data, and each opens where it was (section "What is remembered") |
 | `view_has_focus(vs, id, instance)`, `views_focus(vs) -> (id, instance, ok)` | the keyboard focus is in a view (section "A program's command keys") |
 | `view_dialog_size(vs, id, instance)` | the size the user gave its dialog, in ems (`{}`: none) |
+| `view_maximise(vs, id, on, instance)`, `view_maximised(vs, id, instance) -> bool` | its dialog fills the window, or goes back to its size; for this opening only (after `view_open`: a viewer that opens maximised); the remembered size is not changed |
 | `views_hold_keys(vs)` | a dialog of `vs` holds the keys of the State being built |
 | `views_frame(vs, o = {})`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels); `o`: `View_Dock_Options` |
 | `views_space_maximised(vs, name) -> (edge, stack, ok)` | the stack of a space that its strip's Maximise shows alone |
@@ -162,6 +163,14 @@ before.
   corners concentric with the dialog's. The close cross is the last stop of Tab.
 - A drag of the header past `DOCK_DRAG_EM` detaches the dialog: it is an internal window under the pointer at once,
   and the same press moves it. Escape during the drag puts it back as a dialog.
+- **Maximise.** A `resizable` dialog has a Maximise button (`lucide.MAXIMIZE_2`, `View_Labels.maximize`) just left of
+  the close cross; a double click on the header does the same. Maximised, it fills the window but `MODAL_MARGIN_EM`
+  on each side, whatever its sizes, and keeps filling it as the window is resized; it has no grips, and its header's
+  drag does not detach it. The button is then Restore (`lucide.MINIMIZE_2`, `View_Labels.restore`): the dialog goes
+  back to the size it had. The remembered size stays the user's own, and the maximised state is this opening's only:
+  it is not remembered, and it goes when the view leaves the Dialog presentation (Detach opens the floating window at
+  its default place). `view_maximise(vs, id, true)` after `view_open` opens a viewer maximised;
+  `view_maximised(vs, id)` reads it.
 
 ## The Internal presentation
 
