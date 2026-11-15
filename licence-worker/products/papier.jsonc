@@ -22,7 +22,7 @@
 		"UPDATE_YEARS": "",
 		"UPDATES_FROM": "",
 		"LICENSE_PUBLIC_KEY": "s67_MOVX2AnUb4R11Q8IgT1JtLa9F3POujv3fwwSvGQ",
-		"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+		"PRICES": "{\"pri_01m7fyah37tdgnpsxs8kh5ss03\":\"supporter\"}",
 		"PADDLE_API_BASE": "https://api.paddle.com",
 		"ALLOWED_ORIGIN": "https://papier.froment.software",
 		"MAIL_FROM": "papier <license@mail.froment.software>",
@@ -59,7 +59,7 @@
 				"UPDATE_YEARS": "",
 				"UPDATES_FROM": "",
 				"LICENSE_PUBLIC_KEY": "AxUmDVadQ3OHFyeMIrDczTTo63rdjtn3zgMJ6a6QyU0",
-				"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+				"PRICES": "{}",   // SET: the sandbox's price ids (`paddle -apply`)
 				"PADDLE_API_BASE": "https://sandbox-api.paddle.com",
 				"ALLOWED_ORIGIN": "https://papier.froment.software,http://localhost:8765",
 				"MAIL_FROM": "papier <license@mail.froment.software>",

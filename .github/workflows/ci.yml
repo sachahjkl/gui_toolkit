@@ -78,18 +78,14 @@ jobs:
 
       - uses: ./.github/actions/setup-odin
 
-      # the Rust static libraries (native text backend, AccessKit adapter): their build scripts skip the build when the
-      # STAMP next to the library matches the sources, so a stale restore only means a rebuild
+      # the Rust libraries (the native library: text backend, AccessKit adapter, Mermaid; libwebp's DLL): their build skips
+      # when the STAMP next to the library matches the sources, so a stale restore only means a rebuild
       - name: Cache the native libraries and the emoji font
         uses: actions/cache@v6
         with:
           path: |
-            build/text/gt_text.lib
-            build/text/STAMP
-            build/a11y/gt_a11y.lib
-            build/a11y/STAMP
-            build/mermaid/gt_mermaid.lib
-            build/mermaid/STAMP
+            build/native/gt_native.lib
+            build/native/STAMP
             build/webp/gt_webp.dll
             build/webp/STAMP
             build/emoji
@@ -109,17 +105,13 @@ jobs:
           ./build/tk.exe fetch_emoji -unicode
           if ($LASTEXITCODE) { exit 1 }
 
-      # fat LTO makes a cold build of the two Rust libraries slow (the cache is saved only when the job succeeds: this step has its
+      # fat LTO makes a cold build of the Rust libraries slow (the cache is saved only when the job succeeds: this step has its
       # own, long limit so that a cold run can end and fill it; with the cache the step takes seconds)
-      - name: Native libraries (text backend, AccessKit adapter, Mermaid diagrams, WebP)
+      - name: Native libraries (text backend, AccessKit adapter and Mermaid diagrams in one; WebP)
         shell: pwsh
         timeout-minutes: 30
         run: |
-          ./build/tk.exe build_text
-          if ($LASTEXITCODE) { exit 1 }
-          ./build/tk.exe build_a11y
-          if ($LASTEXITCODE) { exit 1 }
-          ./build/tk.exe build_mermaid
+          ./build/tk.exe build_native
           if ($LASTEXITCODE) { exit 1 }
           ./build/tk.exe build_webp
           if ($LASTEXITCODE) { exit 1 }
@@ -182,9 +174,8 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: |
-            build/text
-            build/mermaid
-          key: native-linux-nix-${{ hashFiles('native/text/**', 'native/mermaid/**', 'flake.lock') }}
+            build/native
+          key: native-linux-nix-${{ hashFiles('native/**', 'flake.lock') }}
 
       # (the shell's dbus reads its session bus's configuration where NixOS keeps it, /etc/dbus-1, which this runner does not
       # have: a session bus of its own for sway's dbus-run-session)

@@ -73,12 +73,17 @@ system_odin_flags :: proc(p: Project, verb, pkg: string, cmd: ^[dynamic]string) 
 	append(cmd, ..windows_flags(p, (verb == "build" || verb == "run") && pkg == ""))
 }
 
-// The native libraries this system builds: the text backend when asked (DirectWrite is the default), AccessKit, libwebp.
+// The parts of the native library this system links: the text backend when asked (DirectWrite is the default), AccessKit.
 @(private)
-system_native_steps :: proc(p: Project, steps: ^[dynamic]string) {
-	if .Native_Text in p.features { append(steps, "build_text") }
-	if .Accessibility in p.features { append(steps, "build_a11y") }
-	if .Webp in p.features { append(steps, "build_webp") }
+system_native_parts :: proc(p: Project, parts: ^[dynamic]string) {
+	if .Native_Text in p.features { append(parts, "text") }
+	if .Accessibility in p.features { append(parts, "a11y") }
+}
+
+// The other native steps of this system: libwebp's DLL.
+@(private)
+system_native_steps :: proc(p: Project, steps: ^[dynamic][]string) {
+	if .Webp in p.features { append(steps, native_step("build_webp")) }
 }
 
 // After the native libraries: libwebp beside the program, where gt:image loads it (the package and the setup take it).

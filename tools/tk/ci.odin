@@ -82,7 +82,7 @@ tool_check_flags :: proc(name: string) -> []string {
 // build [example] [-debug]: an example (default fidget) -> build/<example>[.exe], optimized (-o:speed) or with debug information
 // (Windows: the D3D11 debug layer), with the devtools endpoint (TOOLKIT_DEVTOOLS: tk cdp and tk screenshots drive the release
 // builds). Windows: no console (-subsystem:windows), and examples/<example>/<example>.rc as its resource when there is one.
-// Linux: the native text backend first (build_text).
+// Linux: the native library first (build_native).
 run_build :: proc(args: []string) -> string {
 	example := len(toolbox.plain_args(args)) > 0 ? toolbox.plain_args(args)[0] : "fidget"
 	known := false
@@ -94,7 +94,7 @@ run_build :: proc(args: []string) -> string {
 
 build_example :: proc(root, example: string, debug: bool) -> string {
 	when ODIN_OS != .Windows {
-		if why := build_rust_lib(root, TEXT_LIB, false); why != "" { return why }
+		if why := build_native_default(root); why != "" { return why }
 	}
 	out := join({root, "build", fmt.tprintf("%s%s", example, EXE)})
 	_ = os.make_directory_all(join({root, "build"}))
@@ -119,8 +119,7 @@ run_ci :: proc(args: []string) -> string {
 	root := toolkit_root()
 	failed := make([dynamic]string, context.temp_allocator)
 	when ODIN_OS != .Windows {
-		if why := build_rust_lib(root, TEXT_LIB, false); why != "" { return why }
-		if why := build_rust_lib(root, MERMAID_LIB, false); why != "" { return why }   // (tests/mermaid)
+		if why := build_native_default(root); why != "" { return why }
 	}
 	packages := library_packages(root)
 	for p in packages {

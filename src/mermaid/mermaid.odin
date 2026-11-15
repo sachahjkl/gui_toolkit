@@ -5,7 +5,7 @@
 //	doc, why := mermaid.diagram(text, dark = true)
 //	if why == "" { svg.draw_doc(dc, &doc, at, scale, {regular = f, bold = fb}); svg.destroy(&doc) }
 //
-// It links build/mermaid/gt_mermaid.lib (tools/tk build_mermaid). A program that has a Rust library of its own builds gt_mermaid
+// It links build/native/gt_native.lib (tools/tk build_native, with the part mermaid). A program that has a Rust library of its own builds gt_mermaid
 // into it (as a dependency: its gt_mermaid_* functions stay exported) and builds with -define:MERMAID_NATIVE_LINK=false.
 package tk_mermaid
 
@@ -19,7 +19,7 @@ when !MERMAID_NATIVE_LINK {
 	when ODIN_OS == .Windows { foreign import gt_mermaid "system:kernel32.lib" } else { foreign import gt_mermaid "system:c" }
 } else when ODIN_OS == .Windows {
 	foreign import gt_mermaid {
-		"../../build/mermaid/gt_mermaid.lib",
+		"../../build/native/gt_native.lib",
 		"system:ntdll.lib",
 		"system:userenv.lib",
 		"system:ws2_32.lib",
@@ -30,7 +30,7 @@ when !MERMAID_NATIVE_LINK {
 	}
 } else {
 	foreign import gt_mermaid {
-		"../../build/mermaid/libgt_mermaid.a",
+		"../../build/native/libgt_native.a",
 		"system:dl",
 		"system:pthread",
 		"system:m",

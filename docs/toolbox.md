@@ -297,10 +297,10 @@ that are not flags; a lone `-` is plain).
   A file not made yet is left out: a check from Linux builds without them. A tool that builds the program with its own odin
   command (opencode native's) runs `build_windows` and appends these.
 - `build_native(p)` builds what the program needs before an odin command: on Windows `build_windows(p)` (the resource and
-  the console launcher), then the toolkit's native libraries this system
-  links (`tk build_text` on Linux or with `Native_Text`, `tk build_a11y` on Windows with `Accessibility`,
-  `tk build_mermaid` with `Mermaid`), by the toolkit's own tool in the project's checkout of it (nothing when a library is
-  up to date), and the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)).
+  the console launcher), then the toolkit's native library with the parts this system links (`tk build_native
+  -features:...`: `text` on Linux or with `Native_Text`, `a11y` on Windows with `Accessibility`, `mermaid` with
+  `Mermaid`) and Windows' libwebp with `Webp` (`tk build_webp`), by the toolkit's own tool in the project's checkout of it
+  (nothing when a library is up to date), and the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)).
 
 ### Features
 
@@ -310,9 +310,9 @@ the crates of the notices (`native_crates(features)`) follow from it. What each 
 
 | `Feature` | Define | Native build | Crates of the notices |
 |---|---|---|---|
-| `Native_Text` | Windows: `FONT_BACKEND=native` (the default elsewhere) | `tk build_text` (Linux: always) | `native/text` (always) |
-| `Accessibility` | Windows: `A11Y_ACCESSKIT=true` | Windows: `tk build_a11y` | `native/a11y` |
-| `Mermaid` | | `tk build_mermaid` | `native/mermaid` |
+| `Native_Text` | Windows: `FONT_BACKEND=native` (the default elsewhere) | `tk build_native`, part `text` (Linux: always) | `native/text` (always) |
+| `Accessibility` | Windows: `A11Y_ACCESSKIT=true` | Windows: `tk build_native`, part `a11y` | `native/a11y` |
+| `Mermaid` | | `tk build_native`, part `mermaid` | `native/mermaid` |
 | `Devtools` | `TOOLKIT_DEVTOOLS=true`: the CDP endpoint in a release build ([devtools.md](devtools.md)) | | |
 | `Lucide_Subset` | `LUCIDE_SUBSET=<path>`, once the file is made, but for `check` | `lucide_subset(p)` | |
 | `No_Fallback_Fonts` | `FONT_EMBED_FALLBACK=false` | | |

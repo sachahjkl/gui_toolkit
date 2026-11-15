@@ -39,8 +39,8 @@ platform.clipboard_set_image(win, {rgba = paint.to_rgba8(c, context.temp_allocat
 gantt, pie, mindmap, timeline, git graph, and more) and gives the drawing `svg.draw_doc` draws; `why` says what is wrong
 with a text that is no diagram. `mermaid.to_svg` gives the SVG itself.
 
-The layout is mermaid-svg's (native/mermaid, a Rust crate of one dependency, MIT), built by `tools/tk build_mermaid` into
-`build/mermaid/gt_mermaid.lib` (`libgt_mermaid.a` on Linux), which the package links. A program that has a Rust library of
+The layout is mermaid-svg's (native/mermaid, a Rust crate of one dependency, MIT), built by `tools/tk build_native` (its part `mermaid`) into
+`build/native/gt_native.lib` (`libgt_native.a` on Linux), which the package links. A program that has a Rust library of
 its own builds `gt_mermaid` into it (`gt_mermaid = { path = "…/native/mermaid" }`, its `gt_mermaid_*` functions stay
 exported) and builds with `-define:MERMAID_NATIVE_LINK=false`, as for the text backend. It adds about 1 MB to a program.
 

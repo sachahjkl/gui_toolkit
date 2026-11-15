@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.277.1] - 2026-11-15 17:26
+
+### Fixed
+- **A card stack's arrows keep off its edges**: the Previous and Next arrows under a stack of cards touched the edges of what held them (a panel's side, a dialog's resize grip); they now have room on each side.
+
+## [0.277.0] - 2026-11-15 17:19
+
+### Changed
+- **One native library.** The text backend, Mermaid and AccessKit are one static library, `build/native/gt_native.lib` (`libgt_native.a`), built by `tk build_native -features:text,mermaid,a11y` with one copy of Rust's standard library; `build_text`, `build_mermaid` and `build_a11y` are gone, and `toolbox.build_native` builds the parts a program's features ask for. A program with a Rust library of its own still builds the part's crate (`native/text`...) into it.
+
 ## [0.276.2] - 2026-11-15 16:48
 
 ### Fixed
@@ -3836,6 +3846,8 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.277.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.1
+[0.277.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.0
 [0.276.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.276.2
 [0.276.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.276.1
 [0.276.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.276.0
