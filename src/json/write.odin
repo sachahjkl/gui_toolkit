@@ -200,6 +200,25 @@ write_value :: proc(w: ^Writer, v: json.Value) {
 	}
 }
 
+// The words `display` says for what has no text of its own: a program gives them in its language.
+Display_Words :: struct {
+	yes, no, null: string,
+}
+
+DISPLAY_WORDS :: Display_Words{yes = "yes", no = "no", null = "—"}
+
+// A value as a person reads it, not as JSON: a string without its quotes, a number as written, a boolean and null as
+// `words` say; an object or an array as JSON text, indented by `indent`. In temp memory by default.
+display :: proc(v: json.Value, words := DISPLAY_WORDS, indent := "  ", allocator := context.temp_allocator) -> string {
+	#partial switch x in v {
+	case json.String:  return strings.clone(string(x), allocator)
+	case json.Boolean: return x ? words.yes : words.no
+	case json.Null:    return words.null
+	case json.Integer, json.Float: return to_text(v, "", allocator)
+	}
+	return to_text(v, indent, allocator)
+}
+
 // A parsed value as JSON text, with an indent per level ("": one line). In temp memory by default, as quote.
 to_text :: proc(v: json.Value, indent := "", allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)

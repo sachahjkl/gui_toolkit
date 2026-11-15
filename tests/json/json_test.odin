@@ -40,6 +40,21 @@ quote_reference :: proc(s: string) -> string {
 	return strings.to_string(b)
 }
 
+// A value as a person reads it: no quotes, booleans and null in the program's words, a structure as indented JSON.
+@(test)
+display_reads_as_a_person_does :: proc(t: ^testing.T) {
+	v, err := json.parse_string(`{"s":"a \"b\"","i":42,"f":1.5,"t":true,"n":null,"a":[1,2]}`, allocator = context.temp_allocator)
+	if !testing.expect(t, err == nil) { return }
+	o := v.(json.Object)
+	testing.expect_value(t, tk_json.display(o["s"]), `a "b"`)
+	testing.expect_value(t, tk_json.display(o["i"]), "42")
+	testing.expect_value(t, tk_json.display(o["f"]), "1.5")
+	testing.expect_value(t, tk_json.display(o["t"]), "yes")
+	testing.expect_value(t, tk_json.display(o["n"]), "—")
+	testing.expect_value(t, tk_json.display(o["t"], {yes = "oui", no = "non", null = "—"}), "oui")
+	testing.expect(t, strings.contains(tk_json.display(o["a"]), "\n"), "a structure as indented JSON")
+}
+
 @(test)
 quote_escapes_what_json_needs :: proc(t: ^testing.T) {
 	Case :: struct { s, want: string }
