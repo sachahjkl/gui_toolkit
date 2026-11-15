@@ -102,3 +102,22 @@ the_command_line_of_the_install :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(rest), 2)
 	testing.expect_value(t, command_run(.None, {}, nil), COMMAND_DONE)
 }
+
+// --quit runs without a window; --status says whether it can end the copy that runs (an installer reads `quit: yes`
+// before it asks); a program that does not run is done at once, one that runs and cannot be asked fails at once.
+@(test)
+the_quit_of_the_copy_that_runs :: proc(t: ^testing.T) {
+	c, _ := command_of({"--quit"})
+	testing.expect_value(t, c, Command.Quit)
+	testing.expect(t, command_alone(.Quit), "--quit runs without a window")
+	no := status_text({state = .Not_Installed}, {identity = {name = "App"}, version = "1.1"}, false)
+	testing.expectf(t, strings.contains(no, "  quit: no\n"), "%s", no)
+	asks := proc() -> bool { return true }
+	yes := status_text({state = .Not_Installed}, {identity = {name = "App"}, version = "1.1", quit = asks}, false)
+	testing.expectf(t, strings.contains(yes, "  quit: yes\n"), "%s", yes)
+	quiet :: proc(text: string) {}
+	testing.expect_value(t, command_run(.Quit, {identity = {name = "App"}}, quiet), COMMAND_DONE)
+	testing.expect_value(t, command_run(.Quit, {identity = {name = "App"}, running = proc() -> bool { return false }, quit = asks}, quiet), COMMAND_DONE)
+	testing.expect_value(t, command_run(.Quit, {identity = {name = "App"}, running = proc() -> bool { return true }}, quiet), COMMAND_FAILED)
+	testing.expect_value(t, command_run(.Quit, {identity = {name = "App"}, running = proc() -> bool { return true }, quit = proc() -> bool { return false }}, quiet), COMMAND_FAILED)
+}
