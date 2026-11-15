@@ -172,6 +172,9 @@ Button_Options :: struct {
 	lit:       bool,                 // drawn as under the pointer (while its menu is open)
 	selected:  bool,                 // the Row face: the place the user is (a sidebar's page shown)
 	disabled:  bool,                 // shown faded, not clickable
+	// its act is under way: the spinner turns in its glyph's place (a cell is made for it when it has none), its size
+	// stays, a click does nothing, a screen reader hears it busy. Not faded: it is not unavailable, it is working
+	busy:      bool,
 	tip:       string,               // a tooltip when the pointer rests on it ("" none), its description for a screen reader
 	icon_font: font.Font_Id,         // the glyph's font (0: State.icon_font; lucide_icons() for Lucide's)
 	icon_color: Maybe(Color),        // the glyph's own colour (a mode it shows: a shield red in one mode); nil: the words'
@@ -203,9 +206,15 @@ button :: proc(id: string, text := "", icon := "", o := Button_Options{}) -> Sig
 	face := o.face.? or_else (text == "" && icon != "" ? Button_Face.Ghost : .Raised)
 	push_disabled(o.disabled)
 	defer pop_disabled()
-	if face == .Link { return button_link(id, text, icon, o) }
-	if text == "" { return button_glyph(id, icon, face, o) }
-	return button_row(id, text, icon, face, o)
+	sig: Signal
+	switch {
+	case face == .Link: sig = button_link(id, text, icon, o)
+	case text == "":    sig = button_glyph(id, icon, face, o)
+	case:               sig = button_row(id, text, icon, face, o)
+	}
+	// (a busy button keeps its place and its look; only its act waits)
+	if o.busy { sig.clicked, sig.pressed, sig.pointer_clicked, sig.pointer_pressed, sig.double_clicked = false, false, false, false, false }
+	return sig
 }
 
 // How a button sits, as its id: "###id" whether the caller wrote "id" or "###id".
@@ -234,12 +243,22 @@ button_glyph :: proc(id, icon: string, face: Button_Face, o: Button_Options) -> 
 	if face == .Row { next_default({radius = font_size() * CONTROL_RADIUS_EM}) }
 	if style({font = o.icon_font != 0 ? o.icon_font : s.icon_font}) {
 		aligned := text_align_given()
-		flags := button_flags(face, o) + {.Draw_Text, .No_Text_Trunc}
+		flags := button_flags(face, o) + {.No_Text_Trunc}
+		if !o.busy { flags += {.Draw_Text} }
 		if face != .Ghost && face != .Row { flags += {.Draw_Border} }
+		// (busy: the same box and key, its glyph not drawn, the spinner centred in it)
+		if o.busy { set_next_axis(.X, .Center) }
 		b := build_box(flags, button_key(icon, id))
 		if !aligned { b.text_align = .Center }
-		if face != .Ghost && face != .Row { b.squish = press_squish(b) }
-		button_a11y(b, face, o.tip != "" ? o.tip : hash_part(id), o.tip)
+		if face != .Ghost && face != .Row && !o.busy { b.squish = press_squish(b) }
+		if o.busy {
+			if parent(b) {
+				spacer(fill())
+				spinner("###spin", math.round(font_size() * 1.05))
+				spacer(fill())
+			}
+		}
+		button_a11y(b, face, o.tip != "" ? o.tip : hash_part(id), o.tip, o.busy)
 		sig := signal(b)
 		button_tip(sig, o.tip)
 		return sig
@@ -313,9 +332,9 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 	b := build_box(flags, button_key("", id))
 	b.text_align = align
 	// (a row does not shrink pressed: it is a place, not a key)
-	if face != .Row { b.squish = press_squish(b) }
+	if face != .Row && !o.busy { b.squish = press_squish(b) }
 	sig = signal(b)
-	button_a11y(b, face, "", o.tip)
+	button_a11y(b, face, "", o.tip, o.busy)
 	button_tip(sig, o.tip)
 	// (a secondary act's words: weak until the pointer is over it, unless they say an intent)
 	weak := o.quiet && o.intent == .Neutral && !sig.hovering && !o.lit
@@ -327,7 +346,16 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 		if pad > 0 { spacer(px(pad)) }
 		if wide && align != .Left { spacer(fill()) }
 		glyph_w: f32 = 0
-		if icon != "" {
+		if o.busy {
+			// (the spinner in the glyph's cell: the words do not move when the act starts or ends)
+			glyph_w = em * BUTTON_GLYPH_EM
+			next({width = px(glyph_w), height = glyph_h, axis = .X, cross = .Center})
+			if row(.Center, id = "###busy") {
+				spacer(fill())
+				spinner("###spin", math.round(em * 1.05))
+				spacer(fill())
+			}
+		} else if icon != "" {
 			glyph_w = em * BUTTON_GLYPH_EM
 			next({width = px(glyph_w), height = glyph_h, font = o.icon_font != 0 ? o.icon_font : s.icon_font, text_align = .Center, fg = o.icon_color != nil ? o.icon_color : ink})
 			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon))
@@ -443,8 +471,8 @@ button_tip :: proc(sig: Signal, tip: string) {
 
 // A button's node for a screen reader: `name` ("" its words), `tip` its description, pressed while Toggled.
 @(private)
-button_a11y :: proc(b: ^Box, face: Button_Face, name, tip: string) {
-	info := A11y_Info{role = .Button, name = name, description = tip != name ? tip : ""}
+button_a11y :: proc(b: ^Box, face: Button_Face, name, tip: string, busy := false) {
+	info := A11y_Info{role = .Button, name = name, description = tip != name ? tip : "", busy = busy}
 	if face == .Toggled { info.toggled = .True }
 	if face == .Row && .Chosen in b.flags { info.current = .Page }
 	a11y_default(b, info)
