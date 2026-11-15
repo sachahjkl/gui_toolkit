@@ -22,8 +22,9 @@
   three requests removed, so its menu's Paste attaches an image as Ctrl+V does
   ([src/md/features/paste.md](src/md/features/paste.md)).
 - **WebP on Windows in every program.** `gt:image` reads and writes WebP through `libwebp.dll`, which no program ships, so
-  Windows has no WebP today. Link the pinned build's static `lib/libwebp.lib` (the archive `toolbox` already fetches for
-  `cwebp`), so cliche's WebP export and every program's WebP pictures work there.
+  Windows has no WebP today. The official build's static `lib/libwebp.lib` cannot be linked alone: it calls
+  `SharpYuv*`, whose `libsharpyuv.lib` the archive lacks. Build both from libwebp's sources with MSVC, as `gt_text` is,
+  so cliche's WebP export and every program's WebP pictures work there.
 - **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate:
   `gt:image` reads GIF now. The switch is written (`ocn-views/build/gt-image-only.patch`) and waits for WebP on
   Windows, which the Rust crate reads today. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).
