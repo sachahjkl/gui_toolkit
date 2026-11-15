@@ -11,12 +11,9 @@ import "core:strings"
 
 // Where a project's subset of the Lucide font is written, in the project.
 LUCIDE_SUBSET_FILE :: "build/lucide_subset.ttf"
-// The package name of the toolkit's lucide package: what a file that imports it with no alias names it by.
-@(private = "file")
-LUCIDE_PACKAGE :: "tk_lucide"
 
 // The Lucide icons the Odin sources under `dirs` name, sorted, each once: every `<name>.ICON` of a file that imports the
-// toolkit's lucide package as <name> (its own name, tk_lucide, without an alias). A name that is not an icon (DATA) is
+// toolkit's lucide package as <name> (its folder's name, lucide, without an alias). A name that is not an icon (DATA) is
 // there too: lucide_codes leaves it out. An icon a program reaches otherwise (its character written out) is not seen.
 lucide_names_used :: proc(dirs: []string, allocator := context.temp_allocator) -> []string {
 	seen := make(map[string]bool, context.temp_allocator)
@@ -52,7 +49,13 @@ lucide_names_in :: proc(text: string) -> []string {
 		path := l[q + 1:q + 1 + end]
 		if !strings.has_suffix(path, "/lucide") && !strings.has_suffix(path, ":lucide") { continue }
 		alias := strings.trim_space(l[:q])
-		append(&aliases, alias != "" ? alias : LUCIDE_PACKAGE)
+		if alias != "" {
+			append(&aliases, alias)
+		} else {
+			// (with no alias Odin names an import by its folder, `lucide`, whatever the package says: the toolkit's own
+			// `import "../lucide"` was missed, and a strip's left chevron was not in a program's font)
+			append(&aliases, "lucide")
+		}
 	}
 	out := make([dynamic]string, context.temp_allocator)
 	for alias in aliases {

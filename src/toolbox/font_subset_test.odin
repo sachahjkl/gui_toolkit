@@ -76,14 +76,17 @@ a_composite_glyph_keeps_its_parts :: proc(t: ^testing.T) {
 	}
 }
 
-// What a source takes from the lucide package: by the alias it imports it as, or by its package name without one; the
-// names that are not icons drop out with lucide_codes.
+// What a source takes from the lucide package: by the alias it imports it as, or by its folder's name without one (Odin
+// names an import with no alias by its folder, not by its package, tk_lucide: the toolkit's strip.odin is such a file);
+// the names that are not icons drop out with lucide_codes.
 @(test)
 the_icons_a_source_names :: proc(t: ^testing.T) {
 	aliased := "package x\nimport lucide \"../lucide\"\nf :: proc() { a := lucide.SEARCH; b := lucide.DATA; c := notlucide.X }\n"
 	testing.expect(t, slice.equal(lucide_names_in(aliased), []string{"SEARCH", "DATA"}))
-	plain := "package x\nimport \"gt:lucide\"\nf :: proc() { a := tk_lucide.TRASH_2 }\n"
-	testing.expect(t, slice.equal(lucide_names_in(plain), []string{"TRASH_2"}))
+	plain := "package x\nimport \"../lucide\"\nf :: proc() { a := lucide.CHEVRON_LEFT }\n"
+	testing.expect(t, slice.equal(lucide_names_in(plain), []string{"CHEVRON_LEFT"}))
+	plain_collection := "package x\nimport \"gt:lucide\"\nf :: proc() { a := lucide.TRASH_2 }\n"
+	testing.expect(t, slice.equal(lucide_names_in(plain_collection), []string{"TRASH_2"}))
 	other := "package x\nimport ic \"gt:lucide\"\nf :: proc() { a := lucide.SEARCH; b := ic.X }\n"
 	testing.expect(t, slice.equal(lucide_names_in(other), []string{"X"}))
 	testing.expect_value(t, len(lucide_names_in("package x\nf :: proc() { a := lucide.SEARCH }\n")), 0)
