@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.276.0] - 2026-11-15 16:09
+
+### Added
+- **A program's tests find what blocks its window.** A program's tests now run with the blocking check, and a test session fails when one of its frames waits on the system (a file read, a process, a D-Bus call): the CI finds it before a person's window freezes. `session.allow_blocking(s)` is for a test of a step meant to wait. The system's light or dark and the person's folders are read once before the first frame, and the frames wait on nothing for them.
+- **The zoom's keys, the same in every program.** `ui.ZOOM_IN_KEYS`, `ZOOM_OUT_KEYS` and `ZOOM_RESET_KEYS` hold Ctrl+= and Ctrl++ (Ctrl+Shift+=, as an AZERTY keyboard types +), the keypad's + and -, Ctrl+- and Ctrl+0: a program's Zoom in answers Ctrl++ on a French keyboard too.
+
+### Changed
+- **What's new is searched and filtered.** The page shows every version, with no "Show older versions" to press; a search keeps the versions whose number, day or changes hold its words, a toggle per kind of change (Added, Fixed...) hides or shows it, and the page says how many versions are kept.
+- **A command ends with a `cli.Exit`, not a number.** A tool's command (`Command.run`, `run_with`), a program's line (`cli.check`) and the install's commands (`setup.command_run`) end with `cli.Exit`: `.Done`, `.Failed` or `.Usage`; `toolbox.done(why)` and `toolbox.ended(ok)` give it, and only `cli.exit` (and `tool_main`) turns it into the process's exit code. `--status` ends with `.Done` for an install there whole and `.Failed` otherwise. `EXIT_DONE`, `EXIT_FAILED`, `EXIT_USAGE`, `cli.EXIT_OK`, `cli.EXIT_USAGE` and `setup.COMMAND_*` are gone.
+
 ## [0.275.0] - 2026-11-15 15:40
 
 ### Added
@@ -3816,6 +3826,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.276.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.276.0
 [0.275.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.275.0
 [0.274.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.274.0
 [0.273.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.273.0
