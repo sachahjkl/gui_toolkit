@@ -102,6 +102,7 @@ Box_Flag :: enum u8 {
 	Selection_Block,     // a .Selectable box that starts a block of a document: a copy puts a blank line before it, as the source (Markdown's blocks)
 	Row,                 // a row of a list, a table, a menu, a sidebar: its face (hover, selection) is inset and rounded inside it, its background a square ground (row_face.odin)
 	Chosen,              // a .Row that is selected: its background is its face, joined to the selected rows it touches
+	Gap,                 // a spacer: room between boxes (Box.gap_step: its step of the spacing scale, when space made it)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
@@ -154,6 +155,7 @@ Box :: struct {
 	measure_y:   proc(b: ^Box) -> f32,   // a .Text height that depends on the width the X pass gave (rich_paragraph)
 	slant:       platform.Slant,   // a Clickable box whose sides lean (a trapezoid tab): only that shape is hit (reset each build)
 	hit_outset:  f32,              // frame pixels its hit area reaches past its rect on each side: a thin handle grabbed wider than it is drawn (reset each build)
+	gap_step:    f32,              // a .Gap made by space: its step of the spacing scale (0: a gap off the scale; reset each build)
 
 	// colors: targets from the theme, and the animated values actually drawn
 	target_bg, target_border, target_text: Color,
@@ -445,6 +447,7 @@ State :: struct {
 	last_click_ms:   f64,
 	last_click_pos:  Vec2,   // (a double click is two presses close in time AND in place)
 	inspected:    Key,               // set_inspected: the box lit over everything
+	wireframe:    bool,              // set_wireframe: every box's outline, its gaps tinted by their step (wireframe.odin)
 	partial_redraw: bool,            // set_partial_redraw: each frame redraws only what changed (draw_tree)
 	partial_redraw_set: bool,        // draw_tree turned the renderer's partial redraw on: off again when the state is
 	damage:       draw.Damage_Memory, // what each box drew last frame (draw.damage_auto)

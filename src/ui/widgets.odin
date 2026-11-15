@@ -74,7 +74,7 @@ spacer :: proc(size: Size, exact := false) {
 	if p.layout_axis == .X { m.width = size; m.height = Size{} } else { m.height = size; m.width = Size{} }
 	if s.has_next { m = merge_mod(s.next_mod, m) }
 	next(m)
-	build_box({})
+	build_box({.Gap})
 }
 
 // `a` with what it leaves unset taken from `b` (every field; flags are added together).

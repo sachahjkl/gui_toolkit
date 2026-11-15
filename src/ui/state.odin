@@ -295,6 +295,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	}
 	if s.zoom != zoom_was { s.pointer_only = false }   // (Ctrl+wheel: every window follows the zoom)
 	keymap_begin_build(s)   // (a sequence's second press, taken before any reader: keymap.odin)
+	wireframe_keys(s)       // (the devtools' key: wireframe.odin)
 	views_hold_input(s)   // (keys typed for a view that just opened, until its focused field is there: views.odin)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
 	overlay_capture_keys(s, p.events)
@@ -618,6 +619,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.measure_y = nil
 	b.slant = {}
 	b.hit_outset = 0
+	b.gap_step = 0
 	b.a11y = nil
 	if s.a11y.has_next {
 		b.a11y = new_clone(s.a11y.next, frame_allocator())

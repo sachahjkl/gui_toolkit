@@ -149,6 +149,10 @@ that many font sizes, on whole pixels. A program uses the roles, never values of
 `if ui.card("Title", icon) { ... }` is a panel whose content sits `CARD_PAD` from its four edges; nothing follows it, the
 page puts `GROUP_GAP` or `ITEM_GAP` between two cards. `if ui.list_card("###id") { if ui.card_row("###a") { ... } }` is
 a card of rows split by hairlines, each row `ROW_PAD` above and below, its first and last rows `CARD_PAD` from its edges.
+
+`ui.set_wireframe(state, on)` draws every box as its outline and each gap in the colour of its step, a gap off the
+scale in red, the box under the pointer named: where a page leaves the scale shows at a glance. Ctrl+Alt+Shift+W
+toggles it in a build with the devtools; Chrome DevTools' "Layer borders" too.
 A well around a field that shows when the field has the keyboard (a composer, a search): `flags = {.Focus_Within,
 .Draw_Focus_Ring}`, the ring of the well lit while any box in it has the keyboard.
 

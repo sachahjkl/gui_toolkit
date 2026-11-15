@@ -55,10 +55,6 @@
 
 ## Later
 
-- **A wireframe mode.** A key of the devtools draws every box of the window as its outline, its insets and gaps tinted
-  by their role of the spacing scale (a card's inset, a group's gap) and a gap off the scale in red, with its id under
-  the pointer: one sees how a page is built and where it leaves the scale. Today the devtools light one box at a time,
-  from Chrome's inspector. Intent: [src/md/features/spacing.md](src/md/features/spacing.md).
 - **An exploded 3D view.** The window's boxes drawn as layers in depth, each parent behind its children, turned with the
   mouse: the nesting of a page, the views over it and the overlays (menus, toasts, tooltips) read at a glance, as a
   browser's 3D view of its layers shows them.

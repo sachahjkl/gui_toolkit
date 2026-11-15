@@ -651,6 +651,10 @@ cmd_overlay :: proc(c: ^Cmd) -> Answer {
 	case "Overlay.hideHighlight":
 		ui.set_inspected(c.s, 0)
 		c.srv.dom.lit = nil
+	case "Overlay.setShowDebugBorders":
+		// (the Rendering panel's "Layer borders": the toolkit's wireframe, every box and its gaps)
+		show, _ := c.p["show"].(json.Boolean)
+		ui.set_wireframe(c.s, bool(show))
 	case:
 		return .Unknown
 	}

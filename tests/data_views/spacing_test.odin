@@ -34,6 +34,32 @@ spacing_build :: proc(s: ^session.Session) {
 	}
 }
 
+// The wireframe reads what each gap is: one made by space knows its step, one made by hand is off the scale (step 0);
+// set_wireframe turns it on and off. (Its drawing is kept in wireframe.png.)
+@(test)
+the_wireframe_knows_each_gap :: proc(t: ^testing.T) {
+	s := session.start(t, {size = {500, 600}, build = proc(s: ^session.Session) {
+		spacing_build(s)
+		ui.next({fixed_x = 0, fixed_y = 560, width = ui.px(300), height = ui.px(20), axis = .X})
+		if ui.row(id = "###gaps") {
+			ui.space(ui.ITEM_GAP)
+			ui.spacer(ui.px(7))
+		}
+	}})
+	session.frames(s, 2)
+	row := session.get(s, "gaps")
+	testing.expect(t, row.first != nil && row.first.next != nil)
+	if row.first == nil || row.first.next == nil { return }
+	testing.expect(t, .Gap in row.first.flags && row.first.gap_step == ui.ITEM_GAP, "space knows its step")
+	testing.expect(t, .Gap in row.first.next.flags && row.first.next.gap_step == 0, "a gap by hand is off the scale")
+	ui.set_wireframe(s.state, true)
+	session.frames(s, 2)
+	testing.expect(t, s.state.wireframe)
+	session.save_png(s, "wireframe.png")
+	ui.set_wireframe(s.state, false)
+	testing.expect(t, !s.state.wireframe)
+}
+
 @(test)
 the_blocks_keep_to_the_scale :: proc(t: ^testing.T) {
 	s := session.start(t, {size = {500, 600}, no_renderer = true, build = spacing_build})

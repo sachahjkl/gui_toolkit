@@ -85,6 +85,12 @@ draw_tree :: proc(s: ^State, dc: ^draw.Context) {
 		draw.rect(dc, b.rect, INSPECTED_EDGE_COLOR, 0, 1)
 		draw.damage_span_end(dc)
 	}
+	if s.wireframe {
+		// (over everything, as the inspected box: what the author looks at, never the program's)
+		draw.damage_span_begin(dc, SPAN_INSPECTED)
+		wireframe_draw(s, dc)
+		draw.damage_span_end(dc)
+	}
 	draw.set_interpolation(dc, interp)
 }
 

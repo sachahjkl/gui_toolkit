@@ -62,6 +62,19 @@ the first: the program does not count its rows.
 (`INNER_PAD` for a text in it); `edge = false` leaves its border out (a tinted area inside a card, where a second edge
 would be one line too many).
 
+### The wireframe
+
+`ui.set_wireframe(s, on)` draws every box of the window as its outline, over the page, each gap filled with the colour
+of its step (`SPACE_1` blue, `SPACE_2` green, `SPACE_3` yellow, `SPACE_4` orange, `SPACE_6` violet), a gap off the
+scale in red, and the innermost box under the pointer named with its size. A gap knows its step because `space` writes
+it on the spacer it makes (`Box.gap_step`); a spacer made by hand (`spacer(px(...))`) has none, and shows red: the
+places that still leave the scale are seen at a glance.
+
+It is the author's, not the users': Ctrl+Alt+Shift+W toggles it only in a build with the devtools
+(`TOOLKIT_DEVTOOLS`), and Chrome DevTools' Rendering panel turns it on with "Layer borders"
+(`Overlay.setShowDebugBorders`). A gap is drawn across its whole parent: it has no size across the parent's axis, and
+the room it makes is the parent's width (or height).
+
 ## Subtle points
 
 - The steps are rounded to whole pixels where they are used (`space`), never in the constants: a scale multiplied

@@ -26,6 +26,7 @@ INNER_PAD   :: SPACE_3   // inside a well: its content's inset from its edge
 // A gap of `step` font sizes along the parent's axis, on whole pixels.
 space :: proc(step: f32) {
 	spacer(px(math.round(font_size() * step)))
+	if b := parent_box().last; b != nil { b.gap_step = step }   // (the wireframe tints it by its step)
 }
 
 // `if list_card("###id") { if card_row("###a") { ... }; if card_row("###b") { ... } }`: one card whose rows are split by
