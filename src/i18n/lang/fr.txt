@@ -2078,6 +2078,9 @@ fr Ancrer %s en bas
 en Re-attach %s
 fr Rattacher %s
 
+en Reset to %s
+fr Revenir à %s
+
 ctx window
 en Minimize
 fr Réduire
