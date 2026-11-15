@@ -97,6 +97,27 @@ a_dialog_holds_its_title_and_buttons :: proc(t: ^testing.T) { unwatched.run(t, p
 	check(t, s, true)
 }) }
 
+// A dropdown with no width given, in a row as wide as its children (a view's header tools): as wide as its widest item
+// and its arrow, its item whole. (The style's width, a share of a row that has none to share, made it a sliver.)
+@(test)
+a_dropdown_without_a_width_holds_its_items :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Run :: struct { sel: int }
+	r := Run{sel = 1}
+	s := session.start(t, {size = {600, 200}, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.children_sum(), height = ui.px(30), axis = .X})
+		if ui.row(id = "###tools") {
+			items := []string{"Top to bottom", "Left to right"}
+			ui.dropdown("###dd", items, &r.sel)
+		}
+	}})
+	session.frames(s, 3)
+	dd := session.get(s, "dd")
+	cur := session.get(s, "cur", within = dd)
+	testing.expectf(t, cur.size.x >= cur.text_dim.x, "its item whole: %v of %v", cur.size.x, cur.text_dim.x)
+	testing.expectf(t, dd.size.x > cur.text_dim.x + 20, "with its arrow: %v", dd.size.x)
+}) }
+
 // A dialog's title of one long word, a path, wider than the dialog can be: it wraps between its characters, inside the
 // dialog and before its close cross. (Its width never gave way: it ran under the cross and past the dialog's edge.)
 @(test)

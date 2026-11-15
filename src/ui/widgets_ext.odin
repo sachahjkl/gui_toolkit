@@ -1353,9 +1353,22 @@ dot_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 ////////////////////////////////
 // Dropdown and tabs
 
-// Button showing the current item; opens a menu of `items`. Returns true when the selection changed.
+// A dropdown's room before its item's words, and its arrow's cell, in ems.
+@(private = "file") DROPDOWN_LEAD_EM :: 0.8
+@(private = "file") DROPDOWN_ARROW_EM :: 1.8
+
+// Button showing the current item; opens a menu of `items`. Returns true when the selection changed. Without a width
+// from `next`, it is as wide as its widest item, its padding and its arrow: the style's width (a share of its parent)
+// left nothing in a row as wide as its children, a view's header tools, and it showed as an empty sliver.
 dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool) {
 	em := font_size()
+	s := gs()
+	if !s.has_next || s.next_mod.width == nil {
+		st := top_style()
+		widest: f32
+		for it in items { widest = max(widest, text_width(st.font, st.font_size, display_part(it))) }
+		next_default({width = px(math.ceil(widest + 2 * st.text_pad + em * (DROPDOWN_LEAD_EM + DROPDOWN_ARROW_EM) + 2 * max(1, math.round(s.scale))))})
+	}
 	menu_id := fmt.tprintf("###dropdown_menu_%x", u64(key_from_string(parent_box().key, id)))
 	open := menu_is_open(menu_id)
 	btn: ^Box
@@ -1367,10 +1380,10 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 		cur := selected^ >= 0 && selected^ < len(items) ? items[selected^] : ""   // none chosen, or the list changed
 		a11y_default(btn, {role = .Combo_Box, value = display_part(cur), expanded = open, popup = .Listbox, read_only = true})
 		if parent(btn) {
-			spacer(px(em * 0.8))
+			spacer(px(em * DROPDOWN_LEAD_EM))
 			next({width = fill(), height = pct(1)})
 			build_box({.Draw_Text}, fmt.tprintf("%s###cur", cur))
-			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * 1.8, nil, widget_icons()) }
+			if tags("weak") { icon(open ? ICON_UP : ICON_DOWN, em * DROPDOWN_ARROW_EM, nil, widget_icons()) }
 		}
 	}
 	// Down / Alt+Down on the focused button opens the list from the keyboard too

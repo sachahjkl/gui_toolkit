@@ -316,6 +316,9 @@ Every widget that edits a value of the caller's returns `changed: bool`, true in
 `checkbox`, `radio`, `toggle`, `slider`, `range_slider`, `number`, `segmented`, `dropdown`, `tabs`, the colour pickers
 (`color_picker`, `hue_picker`, `alpha_picker`, `sat_val_picker`), `hotkey_field`.
 
+`dropdown(id, items, &selected)` takes the width `next` gives it; without one, it is as wide as its widest item, its
+padding and its arrow, so a header's tools or any row as wide as its children shows it whole.
+
 A group of choices, `segmented` (pills or words), `tabs` and the `radio` buttons of one `selected`, is one Tab stop: the
 chosen one. While it has the
 keyboard, the arrows change the choice and the keyboard follows: Left and Right (and Up and Down in a segmented
