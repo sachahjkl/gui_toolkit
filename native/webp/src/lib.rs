@@ -1,5 +1,6 @@
-//! libwebp's simple API, exported by a DLL of the toolkit's (gt_webp.dll): the four calls src/image/webp.odin makes, under
-//! names of their own (gt_webp_*), so that the DLL never stands in for another libwebp by its names.
+//! libwebp's simple API, a part of the toolkit's native library (native/gt, feature webp): the four calls
+//! src/image/webp.odin makes, under names of their own (gt_webp_*), so that they never clash with another libwebp's names
+//! linked into the same program.
 
 use libwebp_sys as w;
 use std::os::raw::c_int;

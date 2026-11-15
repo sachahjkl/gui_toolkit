@@ -33,7 +33,7 @@ file_format :: proc(data: []u8) -> File_Format {
 }
 
 // The picture of a file of `data`, whatever its format (file_format), as straight RGBA8 in `allocator`; a GIF's first
-// frame. ok is false for a format it does not read, a damaged file, or a WebP where libwebp is not there.
+// frame. ok is false for a format it does not read, a damaged file, or a WebP in a program built without WebP (IMAGE_WEBP).
 decode :: proc(data: []u8, allocator := context.allocator) -> (img: Image, format: File_Format, ok: bool) {
 	format = file_format(data)
 	// (the decoders' own pictures in the heap, freed here: a photo is tens of MB, and the caller's allocator may be an arena)

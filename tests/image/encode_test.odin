@@ -1,10 +1,7 @@
 package image_test
 
-// The encoders: a JPEG that a decoder reads back close to the picture, and a WebP file where libwebp is there, which
-// webp_decode reads back.
+// The encoders: a JPEG that a decoder reads back close to the picture, and a WebP file, which webp_decode reads back.
 
-@(require) import "core:os"   // (Windows: the DLL beside the program)
-@(require) import "core:path/filepath"
 import "core:testing"
 import core_image "core:image"
 import "core:image/jpeg"
@@ -43,23 +40,16 @@ a_jpeg_reads_back_close_to_the_picture :: proc(t: ^testing.T) {
 	testing.expect(t, image.jpeg_encode({}, 90, context.temp_allocator) == nil, "no pixel, no file")
 }
 
-// Windows: with the toolkit's gt_webp.dll beside the program (tools/run_tests puts it beside the tests), WebP is there:
-// the tests below then read and write it, never skip it unseen.
+// tools/run_tests builds these tests with -define:IMAGE_WEBP=true and the native library's part webp: WebP is inside
+// the program on every system, so the tests below read and write it, never skip it unseen.
 @(test)
-the_toolkits_libwebp_is_found_beside_the_program :: proc(t: ^testing.T) {
-	when ODIN_OS == .Windows {
-		beside, _ := filepath.join({filepath.dir(os.args[0]), "gt_webp.dll"}, context.temp_allocator)
-		if os.exists(beside) { testing.expectf(t, image.webp_available(), "%s is there: WebP is available", beside) }
-	}
+webp_is_inside_the_program :: proc(t: ^testing.T) {
+	testing.expect(t, image.webp_available(), "built with -define:IMAGE_WEBP=true: WebP is available")
 }
 
 @(test)
-a_webp_is_a_riff_file_where_libwebp_is :: proc(t: ^testing.T) {
+a_webp_is_a_riff_file :: proc(t: ^testing.T) {
 	img := image.create(16, 16, image.Color{30, 120, 200, 255}, context.temp_allocator)
-	if !image.webp_available() {
-		testing.expect(t, image.webp_encode(img, allocator = context.temp_allocator) == nil, "no libwebp: no file")
-		return
-	}
 	for lossless in ([]bool{false, true}) {
 		file := image.webp_encode(img, 85, lossless, context.temp_allocator)
 		testing.expectf(t, len(file) > 12 && string(file[0:4]) == "RIFF" && string(file[8:12]) == "WEBP", "a WebP file (lossless %v)", lossless)
@@ -67,7 +57,7 @@ a_webp_is_a_riff_file_where_libwebp_is :: proc(t: ^testing.T) {
 }
 
 @(test)
-a_webp_reads_back_where_libwebp_is :: proc(t: ^testing.T) {
+a_webp_reads_back :: proc(t: ^testing.T) {
 	// 13 x 7 (odd sizes: no row padding may slip in), a gradient with a transparent column
 	w, h :: 13, 7
 	img := image.create(w, h, allocator = context.temp_allocator)
@@ -76,11 +66,6 @@ a_webp_reads_back_where_libwebp_is :: proc(t: ^testing.T) {
 			p := img.pixels[(y * w + x) * 4:][:4]
 			p[0], p[1], p[2], p[3] = u8(x * 19), u8(y * 36), 90, x == 0 ? 0 : 255
 		}
-	}
-	if !image.webp_available() {
-		_, ok := image.webp_decode([]u8{'R', 'I', 'F', 'F'}, context.temp_allocator)
-		testing.expect(t, !ok, "no libwebp: no picture")
-		return
 	}
 	file := image.webp_encode(img, lossless = true, allocator = context.temp_allocator)
 	back, ok := image.webp_decode(file, context.temp_allocator)

@@ -1,7 +1,7 @@
-# The toolkit's one native library: the parts a program needs, by feature (text, mermaid, a11y), linked as one static
-# library with one copy of Rust's standard library (tools/tk build_native -features:...). Each part stays a crate of its
-# own (native/text, native/mermaid, native/a11y): a program with a Rust library of its own builds the crate it needs into
-# it (FONT_NATIVE_LINK=false...), as before.
+# The toolkit's one native library: the parts a program needs, by feature (text, mermaid, a11y, webp), linked as one
+# static library with one copy of Rust's standard library (tools/tk build_native -features:...). Each part stays a crate
+# of its own (native/text, native/mermaid, native/a11y, native/webp): a program with a Rust library of its own builds the
+# crate it needs into it (FONT_NATIVE_LINK=false...), as before.
 [package]
 name = "gt_native"
 version = "0.1.0"
@@ -17,11 +17,13 @@ path = "src/lib.rs"
 text = ["dep:gt_text"]
 mermaid = ["dep:gt_mermaid"]
 a11y = ["dep:gt_a11y"]
+webp = ["dep:gt_webp"]
 
 [dependencies]
 gt_text = { path = "../text", optional = true }
 gt_mermaid = { path = "../mermaid", optional = true }
 gt_a11y = { path = "../a11y", optional = true }
+gt_webp = { path = "../webp", optional = true }
 
 [profile.release]
 opt-level = 3

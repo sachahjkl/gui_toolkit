@@ -1,7 +1,7 @@
 package image_test
 
 // image.decode: a file is read by its first bytes, whatever its name: PNG pixel for pixel, JPEG close to its picture,
-// BMP and GIF pixel for pixel, WebP where libwebp is there; what is no picture, or a picture cut short, is refused.
+// BMP and GIF pixel for pixel, WebP (built in: tools/run_tests passes -define:IMAGE_WEBP=true); what is no picture, or a picture cut short, is refused.
 // (gt:gif's own tests check its decoder on files made by hand: interlace, transparency, damage.)
 
 import "core:testing"
@@ -81,8 +81,7 @@ a_bmp_decodes_pixel_for_pixel :: proc(t: ^testing.T) {
 }
 
 @(test)
-a_webp_decodes_where_libwebp_is :: proc(t: ^testing.T) {
-	if !image.webp_available() { return }
+a_webp_decodes :: proc(t: ^testing.T) {
 	img := decode_sample()
 	file := image.webp_encode(img, lossless = true, allocator = context.temp_allocator)
 	back, format, ok := image.decode(file, context.temp_allocator)

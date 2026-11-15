@@ -78,16 +78,14 @@ jobs:
 
       - uses: ./.github/actions/setup-odin
 
-      # the Rust libraries (the native library: text backend, AccessKit adapter, Mermaid; libwebp's DLL): their build skips
-      # when the STAMP next to the library matches the sources, so a stale restore only means a rebuild
-      - name: Cache the native libraries and the emoji font
+      # the Rust library (the native library: text backend, AccessKit adapter, Mermaid, libwebp): its build skips when the
+      # STAMP next to the library matches the sources, so a stale restore only means a rebuild
+      - name: Cache the native library and the emoji font
         uses: actions/cache@v6
         with:
           path: |
             build/native/gt_native.lib
             build/native/STAMP
-            build/webp/gt_webp.dll
-            build/webp/STAMP
             build/emoji
           key: native-${{ hashFiles('native/**', 'tools/tk/**') }}
           restore-keys: native-
@@ -107,13 +105,11 @@ jobs:
 
       # fat LTO makes a cold build of the Rust libraries slow (the cache is saved only when the job succeeds: this step has its
       # own, long limit so that a cold run can end and fill it; with the cache the step takes seconds)
-      - name: Native libraries (text backend, AccessKit adapter and Mermaid diagrams in one; WebP)
+      - name: Native library (text backend, AccessKit adapter, Mermaid diagrams and WebP in one)
         shell: pwsh
         timeout-minutes: 30
         run: |
           ./build/tk.exe build_native
-          if ($LASTEXITCODE) { exit 1 }
-          ./build/tk.exe build_webp
           if ($LASTEXITCODE) { exit 1 }
 
       - name: Tests (tools/run_tests)

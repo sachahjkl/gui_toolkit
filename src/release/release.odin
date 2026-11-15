@@ -22,11 +22,9 @@ import cli "../cli"
 
 import "core:fmt"
 import "core:os"
-import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import changelog "../changelog"
-import desktop "../desktop"
 import toolbox "../toolbox"
 import update "../update"
 import "../fsx"
@@ -125,11 +123,6 @@ package_ :: proc(o: Release_Options, args: []string) -> cli.Exit {
 	if !stage_launcher(o, stage) { return .Failed }
 	for f in o.files {
 		if !copy_file(o.name, f[0], fmt.tprintf("%s/%s", stage, f[1])) { return .Failed }
-	}
-	// (the toolkit's files the build put beside the program, Windows' libwebp: the setup installs them with it)
-	for f in desktop.TOOLKIT_FILES {
-		beside := fmt.tprintf("%s/%s", filepath.dir(o.program), f)
-		if os.exists(beside) && !copy_file(o.name, beside, fmt.tprintf("%s/%s", stage, f)) { return .Failed }
 	}
 	if !pack(o, stage, name, exe, archive) { return .Failed }
 	// the program alone (stripped on Linux, as in the archive) and its signed manifest
