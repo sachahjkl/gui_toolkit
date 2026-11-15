@@ -139,6 +139,42 @@ changelog_read :: proc(c: ^Changelog, text: string) {
 	if c.shown == 0 { c.shown = CHANGELOG_SHOWN_FIRST }
 }
 
+// A chip of the page: rounded as a pill, a light wash of `c` with a line of it around, its icon and its words in `c`
+// lightened (flat tiles of full colour read as plain blocks).
+@(private = "file")
+change_chip :: proc(id, text, icon: string, c: ui.Color, em: f32, mono := false) {
+	ink := draw.mix(c, ui.Color{1, 1, 1, 1}, 0.25)
+	h := math.round(ui.dense(em * 1.55))
+	ui.next({width = ui.children_sum(), height = ui.px(h), axis = .X, cross = .Center, radius = h * 0.5,
+		bg = c * {1, 1, 1, 0.16}, border = c * {1, 1, 1, 0.55}})
+	chip := ui.build_box({.Draw_Background, .Draw_Border, .Fixed_Radius}, fmt.tprintf("###%s", id))
+	ui.push_parent(chip)
+	defer ui.pop_parent()
+	ui.spacer(ui.px(math.round(em * 0.6)))
+	if icon != "" {
+		ui.next({width = ui.px(math.round(em * 1.1)), height = ui.pct(1), font = ui.lucide_icons(), font_size = em * 0.85, fg = ink, text_align = .Center, text_pad = 0})
+		ui.build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###icon", icon))
+		ui.spacer(ui.px(math.round(em * 0.3)))
+	}
+	ui.next({width = ui.text_size(0), height = ui.pct(1), fg = ink, text_pad = 0, font = mono ? ui.mono_font() : nil, font_size = em * 0.88})
+	ui.build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###text", text))
+	ui.spacer(ui.px(math.round(em * 0.7)))
+}
+
+// The icon of a type of change.
+@(private = "file")
+change_icon :: proc(type: string) -> string {
+	switch type {
+	case "Added":      return lucide.SPARKLES
+	case "Changed":    return lucide.REFRESH_CW
+	case "Fixed":      return lucide.WRENCH
+	case "Removed":    return lucide.CIRCLE_MINUS
+	case "Deprecated": return lucide.ARCHIVE
+	case "Security":   return lucide.SHIELD_CHECK
+	}
+	return lucide.TAG
+}
+
 // The hue of a type of change: what comes green, what changed blue, what was fixed purple, what went red.
 @(private = "file")
 change_hue :: proc(type: string) -> ui.Hue {
@@ -209,13 +245,12 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, i: int, la
 			ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.9))})
 			if ui.row(.Center, {}, "###release_head") {
 				ui.spacer(ui.px(em * 1))
-				ui.next({font_size = em * 1.05})
-				ui.tile("ver", r.version, newest ? ui.color("accent") : ui.color("weak text"))
+				change_chip("ver", r.version, lucide.TAG, newest ? ui.color("accent") : ui.color("weak text"), em, mono = true)
 				ui.spacer(ui.px(em * 0.7))
 				if ui.tags("weak") { ui.label(fmt.tprintf("%s###stamp", r.stamp)) }
 				if newest {
 					ui.spacer(ui.px(em * 0.6))
-					ui.tile("latest", i18n.tr("Latest"), ui.hue(.Green))
+					change_chip("latest", i18n.tr("Latest"), lucide.ROCKET, ui.hue(.Green), em)
 				}
 			}
 			// its changes, by type
@@ -226,7 +261,7 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, i: int, la
 					ui.spacer(ui.px(em * 1))
 					ui.next({width = ui.px(math.round(em * 6.5)), height = ui.children_sum(), axis = .Y})
 					// (its type in English, as the changelog)
-					if ui.column(id = "###type") { ui.tile("type", g.type, ui.hue(change_hue(g.type))) }
+					if ui.column(id = "###type") { change_chip("type", g.type, change_icon(g.type), ui.hue(change_hue(g.type)), em) }
 					ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 					if ui.column(id = "###list") { markdown.view(&g.doc, fmt.tprintf("list_%d_%d", i, k), g.list, {}) }
 					ui.spacer(ui.px(em * 1))
