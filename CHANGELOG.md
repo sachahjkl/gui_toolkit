@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.286.0] - 2026-11-15 23:44
+
+### Added
+- **`ui.shortcuts_sheet_set(sheet, commands, version, extra)`**: gives the sheet of the keys a new table and new extra lines without opening or closing it, so a program that makes its table again in another language no longer reopens the sheet.
+- **`ui.card_box()`**: inside a `card` or a `list_card` (a row of it too), the box of the innermost card, to give it the keyboard or read its rect; nil outside a card. It replaces `parent_box().parent.parent`, which counted the card's inner boxes.
+
+### Changed
+- **The sheet names an extra line's keys in the person's language**: `Sheet_Line.keys` is written in English as a table's keys (`"Esc, Esc"`, `"Up / Down"`) and reads as a command's keys do (`"Échap, Échap"`, `"Haut / Bas"` in French); a word that names no key (`"Middle click"`) stays as written. `platform.key_text` reads ` / ` between two keys as it reads a comma.
+- **A card can ask for no edge**: `Plate_Look.border` and the `border` of `machined_plate`, `machined_plate_corners`, `machined_plate_frame` and `machined_plate_frame_corners` are a `Maybe(Color)`: nil is the finish's edge, a colour of alpha 0 (`Color{}` included) is none. Migration: a look that left `border` zero for the finish's edge leaves it unset; a call that passed `Color{}` for the relief's edge passes nothing.
+
 ## [0.285.0] - 2026-11-15 23:19
 
 ### Added
@@ -3938,6 +3948,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.286.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.0
 [0.285.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.285.0
 [0.284.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.284.0
 [0.283.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.283.0
