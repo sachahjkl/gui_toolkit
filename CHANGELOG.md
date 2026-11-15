@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.279.0] - 2026-11-15 18:48
+
+### Added
+- **Zoom zones** (`ui.zoom_zone`, `ui.Zoom_Memory`): an area of a window can have a zoom of its own, beside the interface's. The same zoom keys (Ctrl+= and Ctrl++, Ctrl+-, Ctrl+0) zoom the area that has the keyboard focus, Ctrl+wheel the area under the pointer, and the whole interface elsewhere. Each thing an area shows (a session, a shell) keeps its own zoom, between runs if the program gives a file; one never zoomed follows the program's default, and Ctrl+0 brings it back to it.
+
+### Changed
+- **A terminal's zoom is a zoom zone**: its zoom keys and Ctrl+wheel are the interface's (`term.event` leaves them, `.Zoomed` and `term.ZOOM_STEP` are gone), it steps by the interface's zoom step, and each shell keeps its zoom through `View.zone` and `term.build`'s `zoom_key`.
+
 ## [0.278.0] - 2026-11-15 17:49
 
 ### Fixed
@@ -3859,6 +3867,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.279.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.279.0
 [0.278.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.278.0
 [0.277.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.2
 [0.277.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.1
