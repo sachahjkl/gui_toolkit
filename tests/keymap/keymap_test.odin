@@ -165,6 +165,39 @@ a_key_set_in_french_holds_in_english :: proc(t: ^testing.T) {
 	testing.expect_value(t, custom, "gone=Ctrl+F4;tab_new=Ctrl+W")   // (the stale entry kept, inert)
 }
 
+// The keys are the settings' to write, whichever window watched last: a second window (a pin, an editor) that closes
+// leaves them written. A key and an alias stored together are not read back half written. A view's own window reads
+// its owner's keymap.
+@(test)
+the_keys_outlive_a_window :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	prefs := config.prefs_make()
+	defer config.prefs_destroy(&prefs)
+	prefs_page.standard_register(&prefs, {.Keys}, prefs_page.STANDARD_DEFAULTS, context.temp_allocator)
+	km: ui.Keymap
+	defer ui.keymap_destroy(&km)
+	ui.keymap_known(&km, TABS[:])
+	main, pin: prefs_page.Standard_Watch
+	prefs_page.standard_watch(&main, &prefs, &f.s, {keymap = &km})
+	defer prefs_page.standard_unwatch(&main)
+	prefs_page.standard_watch(&pin, &prefs, &f.s, {keymap = &km})
+	prefs_page.standard_unwatch(&pin)   // (the pin closes; the main window stays)
+
+	ui.keymap_alias(&km, "nt", "tab_new")
+	ui.keymap_bind(&km, "tab_new", {{{.W, {.Ctrl}}, {}}})
+	testing.expect_value(t, config.string_of(&prefs, prefs_page.KEYS_CUSTOM_PREF), "tab_new=Ctrl+W")
+	testing.expect_value(t, config.string_of(&prefs, prefs_page.KEYS_ALIASES_PREF), "nt=tab_new")
+	testing.expect_value(t, ui.keymap_alias_command(&km, "nt"), "tab_new")
+
+	view_window: ui.State
+	view_window.style_owner = &f.s
+	ui.keymap_use(&f.s, &km)
+	ui.style_follow(&view_window, &f.s)
+	testing.expect(t, view_window.keymap == &km, "a view's window reads its owner's keymap")
+}
+
 @(private = "file")
 SEQUENCE := [?]ui.Command{
 	{id = "terminal", label = "Terminal", keys = {{.F7, {}}}},

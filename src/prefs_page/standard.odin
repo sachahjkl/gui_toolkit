@@ -851,7 +851,6 @@ Standard_Watch :: struct {
 	s:       ^ui.State,
 	t:       Standard_Targets,
 	id:      int,
-	writing: bool,   // the keymap's texts being written: their watch does not read them back half written
 }
 
 // With `t.keymap`: the keymap's `changed` writes keys.custom and keys.aliases (the one that changed), and a change of
@@ -859,26 +858,25 @@ Standard_Watch :: struct {
 standard_watch :: proc(w: ^Standard_Watch, prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets = {}) {
 	w^ = {prefs = prefs, s = s, t = t}
 	standard_apply(prefs, s, t)
+	// (the keys are written by the settings, not by a window: any watch sets the same writer, and none takes it back
+	// when its window closes, so a program whose other windows come and go keeps writing them)
 	if km := t.keymap; km != nil && config.ref_of(prefs, KEYS_CUSTOM_PREF) != config.NO_REF {
 		km.changed, km.user = proc(user: rawptr, custom, aliases: string) {
-			w := (^Standard_Watch)(user)
-			w.writing = true
-			defer w.writing = false
+			prefs := (^config.Prefs)(user)
 			// (a policy that fixes them refuses: the keymap keeps the change for this run)
-			if config.string_of(w.prefs, KEYS_CUSTOM_PREF) != custom { _ = config.set_string(w.prefs, KEYS_CUSTOM_PREF, custom) }
-			if config.string_of(w.prefs, KEYS_ALIASES_PREF) != aliases { _ = config.set_string(w.prefs, KEYS_ALIASES_PREF, aliases) }
-		}, w
+			if config.string_of(prefs, KEYS_CUSTOM_PREF) != custom { _ = config.set_string(prefs, KEYS_CUSTOM_PREF, custom) }
+			if config.string_of(prefs, KEYS_ALIASES_PREF) != aliases { _ = config.set_string(prefs, KEYS_ALIASES_PREF, aliases) }
+		}, prefs
 	}
 	w.id = config.watch(prefs, "", proc(user: rawptr, name: string, p: ^config.Prefs) {
 		w := (^Standard_Watch)(user)
-		if w.writing && (name == KEYS_CUSTOM_PREF || name == KEYS_ALIASES_PREF) { return }
+		if km := w.t.keymap; km != nil && km.storing && (name == KEYS_CUSTOM_PREF || name == KEYS_ALIASES_PREF) { return }
 		standard_apply_one(p, w.s, w.t, name)
 	}, w)
 }
 
 standard_unwatch :: proc(w: ^Standard_Watch) {
 	if w.prefs != nil && w.id != 0 { config.unwatch(w.prefs, w.id) }
-	if km := w.t.keymap; km != nil && km.user == rawptr(w) { km.changed, km.user = nil, nil }
 	w^ = {}
 }
 

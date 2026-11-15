@@ -20,6 +20,8 @@ style_follow :: proc(dst, src: ^State) {
 	dst.toast_pos = src.toast_pos
 	if src.theme != nil { dst.theme = src.theme }
 	if src.fonts != nil { dst.fonts = src.fonts }
+	// (the person's keys are the program's: a view's window reads the keymap its owner reads)
+	if src.keymap != nil { dst.keymap = src.keymap }
 }
 
 // The window `s` looks like at the end of its chain of owners (itself when it follows none).

@@ -124,6 +124,12 @@ Two standard settings of the toolkit, in a new `Standard_Set.Keys` that `STANDAR
   setting that changed, and reads them into the keymap when the file changes. A value it wrote itself comes back as a
   change of the file: the keymap compares each text with its own and reads nothing. Wren gives the same two calls its
   own settings model.
+- **The writer is the settings', not a window's.** Every window watches the settings, and a program's other windows
+  (cliche's pins and editors) come and go while the main one stays. The writer's user is the `Prefs`, set by any
+  watch and taken back by none: a writer tied to the last watch stopped storing the keys when that window closed.
+  `Keymap.storing` is up while `changed` runs, so no watch reads the two texts back half written.
+- **A view's own window reads its owner's keymap** (`style_follow`, as its theme and zoom): the program cannot reach
+  that window's `State` to call `keymap_use`.
 - The texts are written in the order of the ids, sorted: the file does not change at each save because of a map's order.
 
 ### The palette

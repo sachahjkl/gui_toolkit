@@ -51,6 +51,9 @@ Keymap :: struct {
 	// (keymap_texts). prefs_page.standard_watch sets it to write keys.custom and keys.aliases
 	changed:   proc(user: rawptr, custom, aliases: string),
 	user:      rawptr,
+	// `changed` runs: its two texts are being stored one after the other, and a watch of the settings does not read
+	// them back half written (the new keys beside the old aliases)
+	storing:   bool,
 	// the texts last read or written (owned): a text the keymap wrote itself comes back as a change of the file, and is
 	// not read again
 	custom_text, aliases_text: string,
@@ -230,7 +233,11 @@ keymap_save :: proc(km: ^Keymap) {
 	delete(km.aliases_text)
 	km.custom_text, km.aliases_text = strings.clone(custom), strings.clone(aliases)
 	keymap_changed_inside(km)
-	if km.changed != nil { km.changed(km.user, km.custom_text, km.aliases_text) }
+	if km.changed != nil {
+		km.storing = true
+		km.changed(km.user, km.custom_text, km.aliases_text)
+		km.storing = false
+	}
 }
 
 // `taken` made again, and the version moved: every reader of the keys lists again.
