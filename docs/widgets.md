@@ -218,7 +218,7 @@ if ui.toolbar("editor_bar", {overflow = .Fold}) {               // .Wrap: the sa
 
 ![ui.number with its track, ui.range_slider, ui.slider, a well of facts (examples/showcase)](screenshots/showcase_controls.webp)
 
-`ui.number(id, &value, lo, hi, step, unit, slider, disabled)` is the one widget for a number one sets, of any integer
+`ui.number(id, &value, lo, hi, step, unit, slider, disabled, default)` is the one widget for a number one sets, of any integer
 or float type: − and + around a field where its exact value is typed, then its unit; with `slider = true` and both
 bounds, a slider before them. It returns whether the value changed this frame.
 
@@ -240,8 +240,11 @@ ui.number("###width", &app.width, lo = 1, hi = 40, step = 0.5, unit = "px", slid
 - **Buttons**: a step each (Shift: ten), repeated while held (`repeat_pressed`). They are no Tab stops: the field is.
 - **Screen readers**: the field is a spin button (value, bounds, step; Set value, Increment, Decrement); the slider a
   slider.
+- **Default** (`default`, optional): the value a person comes back to. The field's right click opens a menu with
+  "Reset to 10"; a double click on the slider's track sets it too. `ui.slider` takes the same `default` (a double click
+  on its track).
 
-`ui.slider(id, &value, lo, hi, step, format)` is the track alone, the lowest widget: its keys (arrows a step, Home / End,
+`ui.slider(id, &value, lo, hi, step, format, default)` is the track alone, the lowest widget: its keys (arrows a step, Home / End,
 Page Up / Page Down ten steps), its wheel, its screen reader's requests. `format` is a printf format of the value's text
 at its right end ("": none, the track runs to it). Its width is never less than its pads, a track of 4 em and its
 value's room (about 10 em with a value; 3.5 em without one, as in `ui.number`): a share of a narrow row or a width given too small does not leave the knob

@@ -20,9 +20,9 @@ hotkey_field.odin, split.odin). "gen." is the rule every box has: a tooltip is t
 | `segmented` | — | Space | yes, each | radio group | program's | gen. | `tips` | — | — | — |
 | `tabs` | its strip | Space | yes, each | tab list | program's | gen. | gen. | — | — | — |
 | `dropdown` | — (D1) | Down, Alt+Down, F4 open | yes | combo box | program's | gen. | gen. | — | — | — |
-| `slider` | a step | arrows, Home, End, Page | yes | slider | program's | gen. | gen. | yes | — (D2) | **gap** (G2) |
-| `range_slider` | a step, active thumb | arrows, Home, End, Page | yes, each thumb | two sliders | program's | gen. | gen. | yes | — (D2) | **gap** (G2) |
-| `number` | a step | Up, Down, Page; Ctrl, Alt | the field | spin button | program's | `disabled`, gen. | gen. | yes | yes | **gap** (G2) |
+| `slider` | a step | arrows, Home, End, Page | yes | slider | program's | gen. | gen. | yes | — (D2) | `default`: double click |
+| `range_slider` | a step, active thumb | arrows, Home, End, Page | yes, each thumb | two sliders | program's | gen. | gen. | yes | — (D2) | — (G2) |
+| `number` | a step | Up, Down, Page; Ctrl, Alt | the field | spin button | Reset (with `default`) | `disabled`, gen. | gen. | yes | yes | `default`: menu, track |
 | `color_picker` | — | its fields' | its fields | its parts | program's | gen. | gen. | — | hex, numbers | — |
 | `hotkey_field` | — | records the keys | yes | its text | program's | gen. | gen. | — | the keys | — |
 | `line_edit` | — | editing | yes | text field | edit menu | `.Read_Only`, gen. | gen. | — | yes | — |
@@ -34,9 +34,11 @@ hotkey_field.odin, split.odin). "gen." is the rule every box has: a tooltip is t
 - **G1, arrows in a group of choices.** `radio`, `segmented` and `tabs` make each choice a Tab stop, and the arrows do
   nothing in them. A group of choices is one Tab stop, and the arrows move the choice in it (the radio group's and the
   tab list's rule of every desktop). Fix: one roving focus for the three, the chosen one the Tab stop.
-- **G2, a value's reset.** A `splitter` given its `default_size` comes back to it on a double click; a slider and a
-  number cannot, they know no default. Fix: an optional `default` for `slider`, `range_slider` and `number`; a double
-  click on the track or the field's label sets it.
+- **G2, a value's reset.** A `splitter` given its `default_size` comes back to it on a double click. `slider` and
+  `number` take an optional `default`: a double click on a slider's track sets it (after the press that moved the knob:
+  the default wins), and a number's field has a right-click menu, "Reset to 10" (its only way when it has no track; a
+  double click on the field selects a word, as in every field). `range_slider` remains: two thumbs, two defaults, and a
+  double click on the track would have to say which.
 
 ## Decisions
 

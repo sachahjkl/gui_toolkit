@@ -457,8 +457,9 @@ slider_pct :: proc(b: ^Box, value_room := true) -> f32 {
 // to the ends, Page Up / Page Down move by Feel.step_page steps. Shift multiplies a key's move by Feel.step_shift.
 // Wheel (wheel_steps): a notch up is a step more, Shift Feel.step_shift; in a view that scrolls, once the slider has the
 // keyboard.
+// `default`: a double click on the track sets it (the value a person comes back to, as a splitter's size).
 // True when `value` changed this frame.
-slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%.2f") -> (changed: bool) {
+slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%.2f", default: Maybe(f32) = nil) -> (changed: bool) {
 	before := value^
 	b := build_box({.Clickable, .Focusable}, id)
 	b.cursor = .Hand
@@ -471,6 +472,8 @@ slider :: proc(id: string, value: ^f32, lo, hi: f32, step: f32 = 0, format := "%
 		if v, moved := slider_keys(value^, k, lo, hi); moved { set(value, v, lo, hi, step) }
 	}
 	if sig.pointer_pressed || sig.dragging { set(value, lo + slider_pct(b, format != "") * (hi - lo), lo, hi, step) }
+	// (after the press: the double click's second press moved the knob there first; the default wins)
+	if d, has := default.?; has && sig.double_clicked { set(value, d, lo, hi, step) }
 	if v, ok := a11y_numeric_request(b.key, value^, k); ok { set(value, v, lo, hi, step) }
 	t := clamp((value^ - lo) / (hi - lo), 0, 1)
 	d := slider_draw_of(b, format)
@@ -565,19 +568,19 @@ wheel_steps :: proc(b: ^Box, focused: bool) -> f32 {
 //   ui.number("###count", &app.count, lo = 0)
 number :: proc{number_int, number_f32, number_f64}
 
-number_int :: proc(id: string, value: ^int, lo: Maybe(int) = nil, hi: Maybe(int) = nil, step := 0, unit := "", slider := false, disabled := false) -> (changed: bool) {
-	return number_of(id, value, lo, hi, step, unit, slider, disabled)
+number_int :: proc(id: string, value: ^int, lo: Maybe(int) = nil, hi: Maybe(int) = nil, step := 0, unit := "", slider := false, disabled := false, default: Maybe(int) = nil) -> (changed: bool) {
+	return number_of(id, value, lo, hi, step, unit, slider, disabled, default)
 }
-number_f32 :: proc(id: string, value: ^f32, lo: Maybe(f32) = nil, hi: Maybe(f32) = nil, step: f32 = 0, unit := "", slider := false, disabled := false) -> (changed: bool) {
-	return number_of(id, value, lo, hi, step, unit, slider, disabled)
+number_f32 :: proc(id: string, value: ^f32, lo: Maybe(f32) = nil, hi: Maybe(f32) = nil, step: f32 = 0, unit := "", slider := false, disabled := false, default: Maybe(f32) = nil) -> (changed: bool) {
+	return number_of(id, value, lo, hi, step, unit, slider, disabled, default)
 }
-number_f64 :: proc(id: string, value: ^f64, lo: Maybe(f64) = nil, hi: Maybe(f64) = nil, step: f64 = 0, unit := "", slider := false, disabled := false) -> (changed: bool) {
-	return number_of(id, value, lo, hi, step, unit, slider, disabled)
+number_f64 :: proc(id: string, value: ^f64, lo: Maybe(f64) = nil, hi: Maybe(f64) = nil, step: f64 = 0, unit := "", slider := false, disabled := false, default: Maybe(f64) = nil) -> (changed: bool) {
+	return number_of(id, value, lo, hi, step, unit, slider, disabled, default)
 }
 
 // (one body for every type: an Odin default of a parameter of a polymorphic type cannot be had, so the group above gives them)
 @(private = "file")
-number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: string, with_slider, disabled: bool) -> (changed: bool) where intrinsics.type_is_integer(T) || intrinsics.type_is_float(T) {
+number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: string, with_slider, disabled: bool, default: Maybe(T)) -> (changed: bool) where intrinsics.type_is_integer(T) || intrinsics.type_is_float(T) {
 	s := gs()
 	em := font_size()
 	low, has_lo := lo.?
@@ -625,7 +628,9 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 			when !intrinsics.type_is_float(T) { if slider_step <= 0 { slider_step = 1 } }
 			next({width = fill(), height = pct(1)})
 			// (no value text on the knob: the field says it; its keys and its wheel are its own)
-			slider("###slider", &v, f32(low), f32(high), slider_step, "")
+			track_default: Maybe(f32)
+			if d, has := default.?; has { track_default = f32(d) }
+			slider("###slider", &v, f32(low), f32(high), slider_step, "", track_default)
 			if v != f32(value^) { number_set(value, f64(v), lo, hi, step); moved = true }
 			spacer(px(math.round(em * 0.4)))
 		}
@@ -672,6 +677,17 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 					pop_tags()
 					fb.cursor = .Text
 					fsig = signal(fb)
+				}
+				// (a default: the field's menu sets it again; a right press while typing keeps the text's own menu out)
+				if d, has := default.?; has && !disabled {
+					menu_id := fmt.tprintf("###number_menu_%d", u64(fkey))
+					if fsig.right_clicked { menu_open(menu_id, mouse_pos(), fkey, search = false) }
+					if menu(menu_id) {
+						if menu_item(fmt.tprintf(i18n.tr("Reset to %s"), number_text(d, step)), disabled = value^ == d).clicked {
+							number_set(value, f64(d), lo, hi, step)
+							moved = true
+						}
+					}
 				}
 				// (the wheel over the field moves the value as over the slider: it is one line, nothing in it scrolls)
 				if n := wheel_steps(fsig.box, typing); n != 0 && !disabled {
