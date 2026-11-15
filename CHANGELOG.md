@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.271.0] - 2026-11-15
+
+### Changed
+- **Hover, press and selection are drawn by each widget in its own design**: under the pointer a face lifts (a button's gradient or bevel, a field's border and well, a check box's own box and ring, a switch's track), pressed it sinks at once (a gradient turns over, glass loses its gloss, a machined key goes in), a ghost button's face appears in its own shape, a hovered selected row lifts; no more translucent layer over the widget, and a check box no longer shows a plate larger than its box and off its centre.
+
+### Fixed
+- **An opaque theme can no longer show the desktop through a window (Windows)**: a window whose theme is opaque is now shown with its transparency ignored, so no part of it (a panel, a dialog, a list's rows) can show the desktop or the window behind it. A translucent theme still shows the desktop's backdrop, and a switch between the two changes the window at once. On Linux, a see-through window (an overlay) with an opaque frame is shown opaque the same way.
+
 ## [0.270.0] - 2026-11-15
 
 ### Added
@@ -3771,6 +3779,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.271.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.271.0
 [0.270.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.270.0
 [0.269.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.269.0
 [0.268.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.268.0
