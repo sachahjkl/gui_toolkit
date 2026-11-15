@@ -9,6 +9,10 @@
   (sections 1 and 7).
 
 ## Next
+- **No graphics driver on Windows, tested.** A window whose hardware Direct3D 11 device is refused falls back to WARP,
+  and a program without a console that cannot open its window says why in a message box; both are written and
+  type-checked, not yet run. A test on the Windows CI (a fault that refuses the hardware device, a child started without
+  a console) proves them. Intent: [src/md/infrastructure/no-graphics.md](src/md/infrastructure/no-graphics.md).
 - **Every program answers --quit.** papier, classeur, inspecteur, cliche and opencode native give `Setup_Options.quit`
   and take `instance.MESSAGE_QUIT` in their handler: atelier then closes them cleanly before it installs them, in place of
   ending their process. Intent: [src/md/features/quit.md](src/md/features/quit.md).
@@ -46,6 +50,11 @@
   changes them all, as cliche's graph colours do since its 0.8.
 
 ## Later
+
+- **OpenGL when Vulkan is missing.** On a Linux machine with OpenGL and no Vulkan driver (an old GPU, some virtual
+  machines), a program draws through wgpu's GL backend instead of saying that it cannot. It waits for wgpu-native to
+  take the display in its instance descriptor: today its GL instance has no backend on Linux. Intent:
+  [src/md/infrastructure/no-graphics.md](src/md/infrastructure/no-graphics.md).
 
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link

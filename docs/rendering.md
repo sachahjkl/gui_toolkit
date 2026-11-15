@@ -34,6 +34,31 @@ offscreen renderer has no window:
 render.init_offscreen(&r, {w, h}, warp = true, space = .Srgb)   // tests, image export; WARP on Direct3D
 ```
 
+**When init fails.** `init`, `init_window` and `init_offscreen` return false and keep why in the renderer; the rest of it
+is released. `render.init_failure(&r)` gives an `Init_Error` and the driver's words; `render.init_failure_text(&r, allocator)`
+gives the sentence for a person:
+
+```odin
+if !render.init_window(&r, w, w.size) {
+	fmt.eprintfln("myapp: %s", render.init_failure_text(&r, context.temp_allocator))
+	// no graphics device this program can draw with (Vulkan): vulkan drivers/libraries could not be loaded.
+	// Install your system's Vulkan driver (the package mesa-vulkan-drivers on Debian and Ubuntu).
+	return 1
+}
+```
+
+| `Init_Error` | |
+|---|---|
+| `No_Driver` | the graphics API found no device: no driver, one the program cannot load, a virtual machine without one |
+| `No_Window` | a device exists but cannot draw into this window |
+| `Failed` | the device, its swap chain or its pipelines failed after the driver answered |
+
+`render.graphics_api()` names the API ("Vulkan", "Direct3D 12", "Direct3D 11"). A machine without a driver never ends the
+process: on WebGPU the adapter is asked for before the window's surface is made, because wgpu-native aborts the process
+when it makes a surface on an instance with no backend. On Direct3D 11 a window falls back to WARP, the software
+rasterizer, when no hardware device can be made. Why: [src/md/infrastructure/no-graphics.md](../src/md/infrastructure/no-graphics.md).
+`host.host_open` reports it by itself (getting-started.md).
+
 The device can be made before the window exists, on a thread of its own: the first device of a process loads the graphics
 driver, the longest step of a renderer's start. The init of the same kind (hardware, or WARP with `warp = true`) takes it,
 waiting for the thread if it has not finished, and makes only the swap chain or the offscreen target:

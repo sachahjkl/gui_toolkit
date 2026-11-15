@@ -31,11 +31,22 @@ backend_name :: proc() -> string { return RENDER_BACKEND }
 // from platform.native_surface_handles(window)): the HWND on Windows, the Wayland or XCB handles on Linux. An offscreen
 // window has no handles (backend .None): use init_offscreen instead. `transparent`: the window shows through where the
 // frame has alpha < 1 (open the window translucent too). `space`: what the frame blends in.
+// False: no renderer, nothing of it left but why (init_failure, init_failure_text).
 init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, transparent := false, space := Blend_Space.Linear) -> bool {
+	r.failure = {}
 	ok: bool
 	when USE_WGPU { ok = wgpu_init(r, surface, size, transparent, space) } else { ok = d3d_init(r, surface, size, transparent, space) }
-	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 }
+	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 } else { init_release(r) }
 	return ok
+}
+
+// What a failed init made goes; why it failed stays. (A failure no step named is a failure all the same.)
+@(private)
+init_release :: proc(r: ^Renderer) {
+	failure := r.failure
+	if failure.error == .None { failure.error = .Failed }
+	when USE_WGPU { wgpu_destroy(r) } else { d3d_destroy(r) }
+	r.failure = failure
 }
 
 // init from a window directly: the common case, equivalent to init(r, platform.native_surface_handles(w), ...).
@@ -59,10 +70,11 @@ destroy :: proc(r: ^Renderer) {
 // frame is stored in half floats, as a translucent window's in linear light is (the same values a window in that format
 // holds, for a test to read with read_pixels_float); else in 8 bits a channel.
 init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := Blend_Space.Linear, half_float := false) -> bool {
+	r.failure = {}
 	r.half_float_offscreen = half_float
 	ok: bool
 	when USE_WGPU { ok = wgpu_init_offscreen(r, size, warp, space) } else { ok = d3d_init_offscreen(r, size, warp, space) }
-	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 }
+	if ok { r.id = sync.atomic_add(&renderer_ids, 1) + 1 } else { init_release(r) }
 	return ok
 }
 

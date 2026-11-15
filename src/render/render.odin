@@ -499,6 +499,7 @@ Renderer :: struct {
 	warp:        bool,                   // the device is WARP (software)
 	half_float_offscreen: bool,          // init_offscreen's `half_float`: the offscreen frame in half floats, as a translucent window's
 	wg:          Wgpu_State,             // the wgpu backend (wgpu_*.odin); zero on the Direct3D backend
+	failure:     Init_Failure,           // why the last init failed (init_failure.odin)
 	first_present_noted: bool,           // (the program's first, whichever window: a trace of its start)
 	teardown_wait_ms: int,               // set_teardown_wait
 	space_epoch: u64,                    // bumps at each set_blend_space

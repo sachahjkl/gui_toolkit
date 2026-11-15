@@ -216,6 +216,24 @@ Request :: struct {
 	device:  wgpu.Device,
 	done:    bool,
 	ok:      bool,
+	why:     [INIT_DETAIL_BYTES]u8,   // a refusal's reason (the callback's message lives only during the callback)
+	why_len: int,
+}
+
+// wgpu's clause about the backend asked for, from a refused adapter request's message: "No suitable graphics adapter
+// found; noop not requested, vulkan drivers/libraries could not be loaded, ..." gives "vulkan drivers/libraries could not
+// be loaded". Else the cause after "Caused by:", else the message. A slice of `message`.
+@(private)
+wgpu_failure_reason :: proc(message, backend: string) -> string {
+	cause := message
+	if i := strings.last_index(message, "Caused by:"); i >= 0 { cause = message[i + len("Caused by:"):] }
+	cause = strings.trim_space(cause)
+	rest := cause
+	for piece in strings.split_multi_iterate(&rest, {",", ";"}) {
+		p := strings.trim_space(piece)
+		if len(p) > len(backend) && strings.has_prefix(p, backend) && p[len(backend)] == ' ' { return p }
+	}
+	return cause
 }
 
 @(private)
@@ -238,9 +256,11 @@ wait_request :: proc(g: ^Wgpu_State, req: ^Request) -> bool {
 // The system's handles go through wgpu_surface_from_handles (wgpu_surface_windows.odin: a translucent window through
 // DirectComposition; wgpu_surface_linux.odin: Wayland / XCB). The renderer's device, present, resize and capture are the
 // same code afterwards, whatever made the surface.
+// Never on an instance that has given no adapter: wgpuInstanceCreateSurface ends the process when the instance has no
+// backend (no-graphics.md), and an adapter is the proof that it has one.
 @(private)
 wgpu_make_surface :: proc(r: ^Renderer, h: platform.Surface_Handles) -> wgpu.Surface {
-	if h.backend == .None { return nil }
+	if h.backend == .None || r.wg.instance == nil || r.wg.adapter == nil { return nil }
 	return wgpu_surface_from_handles(r, h)
 }
 
@@ -273,24 +293,31 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 	}
 	g.fxc = SYSTEM_DIRECT3D && WGPU_BACKEND != "vulkan" && dxc_path == ""
 	g.instance = wgpu.CreateInstance(&{nextInChain = &extras.chain})
-	if g.instance == nil { fmt.eprintln("render: wgpu: no instance"); return false }
-	g.surface = wgpu_make_surface(r, surface)
-	if surface.backend != .None && g.surface == nil { fmt.eprintln("render: wgpu: cannot create the surface"); return false }
+	if g.instance == nil { return init_fail(r, .No_Driver, "no instance") }
+	// The adapter before the surface: wgpuInstanceCreateSurface ends the process (a Rust panic) on an instance with no
+	// backend, a machine without the driver; the adapter request says so and returns (no-graphics.md). On one GPU the
+	// adapter found without the surface is the one that presents to it: asked again only when it cannot.
 	req: Request
-	adapter_cb :: proc "c" (status: wgpu.RequestAdapterStatus, adapter: wgpu.Adapter, message: wgpu.StringView, u1, u2: rawptr) {
-		req := (^Request)(u1)
-		req.done, req.ok, req.adapter = true, status == .Success, adapter
-		if status != .Success {
-			context = runtime.default_context()
-			fmt.eprintln("render: wgpu: no adapter:", status, message)
+	if !wgpu_request_adapter(g, &req, nil, fallback) {
+		return init_fail(r, .No_Driver, req.why_len > 0 ? string(req.why[:req.why_len]) : "no adapter")
+	}
+	g.adapter = req.adapter
+	if surface.backend != .None {
+		g.surface = wgpu_make_surface(r, surface)
+		if g.surface == nil {
+			buf: [64]u8   // (this thread's temporary allocator is never freed: it ends after this call)
+			return init_fail(r, .No_Window, fmt.bprintf(buf[:], "no surface for a %v window", surface.backend))
+		}
+		if !wgpu_surface_fits(g) {
+			wgpu.AdapterRelease(g.adapter)
+			g.adapter = nil
+			req = {}
+			if !wgpu_request_adapter(g, &req, g.surface, fallback) {
+				return init_fail(r, .No_Window, req.why_len > 0 ? string(req.why[:req.why_len]) : "no adapter presents to it")
+			}
+			g.adapter = req.adapter
 		}
 	}
-	opts := wgpu.RequestAdapterOptions{
-		powerPreference = .HighPerformance, forceFallbackAdapter = b32(fallback), compatibleSurface = g.surface,
-	}
-	wgpu.InstanceRequestAdapter(g.instance, &opts, {mode = .AllowSpontaneos, callback = adapter_cb, userdata1 = &req})
-	if !wait_request(g, &req) { return false }
-	g.adapter = req.adapter
 
 	info, _ := wgpu.AdapterGetInfo(g.adapter)
 	g.backend_type = info.backendType
@@ -324,14 +351,32 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 		req.done, req.ok, req.device = true, status == .Success, device
 		if status != .Success {
 			context = runtime.default_context()
-			fmt.eprintln("render: wgpu: no device:", status, message)
+			req.why_len = copy(req.why[:], wgpu_failure_reason(string(message), WGPU_BACKEND))
 		}
 	}
 	wgpu.AdapterRequestDevice(g.adapter, &dd, {mode = .AllowSpontaneos, callback = device_cb, userdata1 = &req})
-	if !wait_request(g, &req) { return false }
+	if !wait_request(g, &req) { return init_fail(r, .Failed, req.why_len > 0 ? string(req.why[:req.why_len]) : "the adapter gave no device") }
 	g.device = req.device
 	g.queue = wgpu.DeviceGetQueue(g.device)
-	return g.queue != nil
+	if g.queue == nil { return init_fail(r, .Failed, "the device has no queue") }
+	return true
+}
+
+// Asks the instance for an adapter (`surface`: one that presents to it; nil: any) and waits for the answer. A refusal's
+// reason is in req.why.
+@(private)
+wgpu_request_adapter :: proc(g: ^Wgpu_State, req: ^Request, surface: wgpu.Surface, fallback: bool) -> bool {
+	adapter_cb :: proc "c" (status: wgpu.RequestAdapterStatus, adapter: wgpu.Adapter, message: wgpu.StringView, u1, u2: rawptr) {
+		req := (^Request)(u1)
+		req.done, req.ok, req.adapter = true, status == .Success, adapter
+		if status != .Success {
+			context = runtime.default_context()
+			req.why_len = copy(req.why[:], wgpu_failure_reason(string(message), WGPU_BACKEND))
+		}
+	}
+	opts := wgpu.RequestAdapterOptions{powerPreference = .HighPerformance, forceFallbackAdapter = b32(fallback), compatibleSurface = surface}
+	wgpu.InstanceRequestAdapter(g.instance, &opts, {mode = .AllowSpontaneos, callback = adapter_cb, userdata1 = req})
+	return wait_request(g, req)
 }
 
 // A window's renderer from the device made early (device_preload.odin): it was made without a surface, so the window's is
@@ -424,8 +469,8 @@ wgpu_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int,
 	r.space = space
 	if !wgpu_take_preloaded_device(r, surface) { wgpu_create_device(r, surface, false) or_return }
 	wgpu_frame_formats(r)
-	wgpu_configure_surface(r) or_return
-	wgpu_init_pipeline(r) or_return
+	if !wgpu_configure_surface(r) { return init_fail(r, .No_Window, "the surface cannot be configured") }
+	if !wgpu_init_pipeline(r) { return init_fail(r, .Failed, "the shaders cannot be made") }
 	return true
 }
 
@@ -440,8 +485,9 @@ wgpu_init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := 
 		r.warp = true
 	}
 	wgpu_frame_formats(r)
-	wgpu_create_offscreen(r) or_return
-	return wgpu_init_pipeline(r)
+	if !wgpu_create_offscreen(r) { return init_fail(r, .Failed, "the offscreen image cannot be made") }
+	if !wgpu_init_pipeline(r) { return init_fail(r, .Failed, "the shaders cannot be made") }
+	return true
 }
 
 @(private)

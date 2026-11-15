@@ -30,9 +30,15 @@ d3d_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int, 
 	r.size = size
 	r.transparent, r.transparent_asked = transparent, transparent
 	r.space = space
-	if !take_preloaded_device(r, warp = false) { create_device(r, .HARDWARE) or_return }   // (device_preload.odin)
-	create_swapchain(r) or_return
-	return init_pipeline(r)
+	// (device_preload.odin) No hardware device (no driver, a remote session without one): WARP, the system's software
+	// rasterizer, draws the window, slowly but whole, as the offscreen renderer does (no-graphics.md).
+	if !take_preloaded_device(r, warp = false) && !create_device(r, .HARDWARE) {
+		if !create_device(r, .WARP) { return init_fail(r, .No_Driver, "Direct3D 11 gives no device, not even WARP") }
+		r.warp = true
+	}
+	if !create_swapchain(r) { return init_fail(r, .No_Window, "the window's swap chain cannot be made") }
+	if !init_pipeline(r) { return init_fail(r, .Failed, "the shaders cannot be made") }
+	return true
 }
 
 // The swap chain of the window (a composition one when translucent), its waitable object and the frame's view.
@@ -229,11 +235,12 @@ d3d_init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := B
 	r.space = space
 	r.warp = warp
 	if !take_preloaded_device(r, warp) && !create_device(r, warp ? .WARP : .HARDWARE) {
-		if warp || !create_device(r, .WARP) { return false }
+		if warp || !create_device(r, .WARP) { return init_fail(r, .No_Driver, "Direct3D 11 gives no device, not even WARP") }
 		r.warp = true
 	}
-	create_offscreen_target(r) or_return
-	return init_pipeline(r)
+	if !create_offscreen_target(r) { return init_fail(r, .Failed, "the offscreen image cannot be made") }
+	if !init_pipeline(r) { return init_fail(r, .Failed, "the shaders cannot be made") }
+	return true
 }
 
 @(private)
