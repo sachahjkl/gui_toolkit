@@ -4,7 +4,10 @@ package platform
 // The file dialogs and shell actions of dialogs.odin on Windows: the Common Item Dialog (IFileOpenDialog,
 // IFileSaveDialog, FOS_PICKFOLDERS for folders) and ShellExecuteExW.
 
+import "base:runtime"
 import "core:hash"
+import "core:os"
+import "core:sync"
 import "core:strings"
 import win "core:sys/windows"
 import base "../base"
@@ -37,15 +40,31 @@ known_folder_id :: proc(k: Known_Folder) -> ^win.GUID {
 	return &ids[k]
 }
 
-// The path of a folder the system names ("" when it has none).
+// The path of a folder the system names ("" when it has none). The system is asked once a process for each folder (a
+// shell call: it waits on the system), and the answer kept: a frame that asks again waits on nothing. The home is
+// %USERPROFILE%, read from the environment.
 known_folder_path :: proc(k: Known_Folder, allocator := context.allocator, loc := #caller_location) -> string {
-	base.blocking("platform.known_folder_path", loc)
 	if k == .None { return "" }
-	p: win.LPWSTR
-	if win.SHGetKnownFolderPath(known_folder_id(k), 0, nil, &p) < 0 || p == nil { return "" }
-	defer win.CoTaskMemFree(p)
-	return wide_to_utf8(p, allocator)
+	if k == .Home {
+		if home := os.get_env("USERPROFILE", context.temp_allocator); home != "" { return strings.clone(home, allocator) }
+	}
+	sync.mutex_guard(&known_folders_lock)
+	if !known_folders_read[k] {
+		base.blocking("platform.known_folder_path", loc)
+		p: win.LPWSTR
+		if win.SHGetKnownFolderPath(known_folder_id(k), 0, nil, &p) >= 0 && p != nil {
+			known_folders[k] = wide_to_utf8(p, runtime.heap_allocator())
+			win.CoTaskMemFree(p)
+		}
+		known_folders_read[k] = true
+	}
+	return strings.clone(known_folders[k], allocator)
 }
+
+// The folders the system named, kept for the process (heap memory), read under the lock.
+@(private = "file") known_folders_lock: sync.Mutex
+@(private = "file") known_folders: [Known_Folder]string
+@(private = "file") known_folders_read: [Known_Folder]bool
 
 @(private = "file")
 wide_to_utf8 :: proc(p: win.LPWSTR, allocator := context.allocator) -> string {
