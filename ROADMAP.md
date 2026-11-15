@@ -42,9 +42,6 @@
 - **Small tools that Wren still redoes.** Wren's panel placement (`toolbar_panel_rect`) goes for `ui.menu_open`'s
   `align = .End`, and its `dialog_field` for a plain `ui.line_edit` (`committed`, `cancelled`) or `ui.prompt_open`, which
   already answer Enter and end a view with Escape in one press.
-- **Image nodes and the graph's keys in the toolkit.** cliche's node catalogue of image transformations moves next to
-  `gt:flowgraph` for papier and classeur, and the node graph itself opens its add palette on Shift+A, a right click or a
-  link dropped in the void.
 - **Standard folders in every program.** opencode native's own config folder, papier's and classeur's runtime folder
   reads and inspecteur's autostart folders go through the toolkit's standard folders.
 - **Wren logs through `gt:log`.** Wren writes its log through the toolkit, as the other programs do.
@@ -58,6 +55,10 @@
   inspecteur and cliche set `images = tk_site.images_default()` and install Ubuntu's `webp` in their Pages workflow.
 
 ## Later
+
+- **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
+  when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link
+  dropped in the void) is the toolkit's already.
 
 - **Personal keys and aliases for every program.** Classeur's keys of one's own (Ctrl+Enter in its palette) and its
   aliases typed whole become the toolkit's, so a person sets a key or an alias for a command in any program, the same
