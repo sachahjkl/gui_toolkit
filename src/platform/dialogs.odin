@@ -15,7 +15,9 @@ package platform
 import "base:runtime"
 import "core:strings"
 
-// A folder the system names (WICG File System Access "WellKnownDirectory" and the like).
+// A folder the system names (WICG File System Access "WellKnownDirectory" and the like). known_folder_path gives its path
+// as the person's desktop names it (Windows: SHGetKnownFolderPath; Linux: user-dirs.dirs, read once and kept,
+// known_folder_linux.odin): it asks the system, so call it from a task.
 Known_Folder :: enum u8 { None, Desktop, Documents, Downloads, Music, Pictures, Videos, Home }
 
 // One line of a dialog's file type list: "Images" with "*.png", "*.jpg".

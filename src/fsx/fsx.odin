@@ -15,6 +15,10 @@
 //	read_at        up to len(buf) bytes from `offset` (short at the end of the file). A file being replaced or
 //	               deleted meanwhile is read as it was: readers never block a writer's rename or a deletion
 //	make_dirs      the directory and every missing parent
+//	private_dir    the directory and its missing parents, the directory its user's alone: true when it is a folder
+//	               (not a link) of this user that the others cannot enter (POSIX: mode 0700; one of this user's
+//	               open to others is closed; one of another user's is refused). In a shared folder (/tmp) another
+//	               user can make the name first: this says so, where make_dirs would take their folder
 //	list_files     the plain files of a directory (no subdirectory, no link to one), names and sizes
 //	read_folder    every entry of a directory ("." and ".." left out): name, size, last write, kind, and the
 //	               system's hidden mark, all from the directory's own reading (Windows: FindFirstFileW's attributes,

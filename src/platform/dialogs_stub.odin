@@ -21,7 +21,7 @@ pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator) -> Di
 	return {status = .Unsupported}
 }
 
-known_folder_path :: proc(k: Known_Folder, allocator := context.allocator) -> string { return "" }
+known_folder_path :: proc(k: Known_Folder, allocator := context.allocator, loc := #caller_location) -> string { return "" }
 open_url :: proc(url: string) -> bool { return false }
 open_path :: proc(path: string) -> bool { return false }
 reveal_in_folder :: proc(path: string) -> bool { return false }

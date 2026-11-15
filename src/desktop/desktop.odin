@@ -106,7 +106,7 @@ Integration_Options :: struct {
 	// Where things go. The zero value is the user's real desktop; a test (or <env_prefix>* in the environment,
 	// roots_from_env) points each at a scratch place.
 	menu_dir:         string,     // Windows: the Programs folder of the user's Start menu
-	desktop_dir:      string,     // the user's Desktop folder (Linux: xdg_desktop_dir's)
+	desktop_dir:      string,     // the user's Desktop folder (Linux: platform.known_folder_path(.Desktop)'s)
 	environment_root: string,     // Windows: the subkey of HKEY_CURRENT_USER that stands for "Environment" (PATH lives there)
 	install_dir:      string,     // where the installed copy lives ("" = the platform's default, install.odin)
 	registry_root:    string,     // Windows: the subkey of HKEY_CURRENT_USER that stands for "Software" (default "Software")

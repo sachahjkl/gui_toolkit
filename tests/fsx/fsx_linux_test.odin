@@ -45,6 +45,44 @@ a_private_write_is_readable_by_its_user_only :: proc(t: ^testing.T) {
 	testing.expect_value(t, st.st_mode & {.IRGRP, .IWGRP, .IXGRP, .IROTH, .IWOTH, .IXOTH}, posix.mode_t{})
 }
 
+// A private folder is made 0700 with its missing parents; one of this user's open to others is closed; a link at the name is
+// refused, its target left as it was. (A folder of another user cannot be made without root: fstat's owner check stays
+// untested here.)
+@(test)
+a_private_folder_is_its_user_s_alone :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_private_dir")
+	defer fsx.remove_tree(root)
+	mode_of :: proc(path: string) -> (posix.mode_t, bool) {
+		st: posix.stat_t
+		if posix.lstat(strings.clone_to_cstring(path, context.temp_allocator), &st) != .OK { return {}, false }
+		return st.st_mode, true
+	}
+	OTHERS :: posix.mode_t{.IRGRP, .IWGRP, .IXGRP, .IROTH, .IWOTH, .IXOTH}
+
+	made := fmt.tprintf("%s/parent/made", root)
+	testing.expect(t, fsx.private_dir(made), "made with its parent")
+	if m, ok := mode_of(made); testing.expect(t, ok, "there") {
+		testing.expect(t, posix.S_ISDIR(m), "a folder")
+		testing.expect_value(t, m & OTHERS, posix.mode_t{})
+	}
+	testing.expect(t, fsx.private_dir(made), "already there and private")
+
+	open := fmt.tprintf("%s/open", root)
+	testing.expect(t, fsx.make_dirs(open))
+	testing.expect_value(t, posix.chmod(strings.clone_to_cstring(open, context.temp_allocator), {.IRUSR, .IWUSR, .IXUSR, .IRGRP, .IXGRP, .IROTH, .IXOTH}), posix.result.OK)
+	testing.expect(t, fsx.private_dir(open), "this user's: closed")
+	if m, ok := mode_of(open); ok { testing.expect_value(t, m & OTHERS, posix.mode_t{}) }
+
+	target := fmt.tprintf("%s/target", root)
+	testing.expect(t, fsx.make_dirs(target))
+	testing.expect_value(t, posix.chmod(strings.clone_to_cstring(target, context.temp_allocator), {.IRUSR, .IWUSR, .IXUSR, .IRGRP, .IXGRP, .IROTH, .IXOTH}), posix.result.OK)
+	link := fmt.tprintf("%s/link", root)
+	testing.expect_value(t, posix.symlink("target", strings.clone_to_cstring(link, context.temp_allocator)), posix.result.OK)
+	testing.expect(t, !fsx.private_dir(link), "a link is refused")
+	if m, ok := mode_of(target); ok { testing.expect(t, m & OTHERS != {}, "its target untouched") }
+	testing.expect_value(t, fsx.path_kind(link), fsx.Path_Kind.Link)
+}
+
 // Linux marks no file hidden but by its name: one that starts with "." is; a link is a Link, not followed.
 @(test)
 read_folder_hides_dot_names_and_keeps_links :: proc(t: ^testing.T) {

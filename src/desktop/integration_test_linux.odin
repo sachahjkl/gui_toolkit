@@ -242,21 +242,6 @@ linux_desktop_shortcut :: proc(t: ^testing.T) {
 	testing.expect(t, os.is_file(copy), "not the program's: stays")
 }
 
-// The desktop folder of user-dirs.dirs: $HOME made the home, an absolute path as it is, anything else not taken.
-@(test)
-linux_user_dirs_desktop :: proc(t: ^testing.T) {
-	text := "# written by xdg-user-dirs-update\nXDG_DOWNLOAD_DIR=\"$HOME/Téléchargements\"\nXDG_DESKTOP_DIR=\"$HOME/Bureau\"\n"
-	dir, found := user_dirs_desktop(text, "/home/ada")
-	testing.expect(t, found)
-	testing.expect_value(t, dir, "/home/ada/Bureau")
-	dir, found = user_dirs_desktop("XDG_DESKTOP_DIR=\"/data/desk\"\n", "/home/ada")
-	testing.expect_value(t, dir, "/data/desk")
-	_, found = user_dirs_desktop("XDG_DESKTOP_DIR=\"Desk\"\n", "/home/ada")
-	testing.expect(t, !found, "neither $HOME nor absolute")
-	_, found = user_dirs_desktop("XDG_MUSIC_DIR=\"$HOME/Music\"\n", "/home/ada")
-	testing.expect(t, !found)
-}
-
 // What the settings ask (apply): the launcher, then the start with the session alone (the launcher goes), then nothing.
 @(test)
 linux_apply_follows_the_settings :: proc(t: ^testing.T) {

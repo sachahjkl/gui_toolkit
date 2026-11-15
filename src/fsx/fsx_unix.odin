@@ -127,6 +127,21 @@ make_dirs :: proc(dir: string, loc := #caller_location) -> bool {
 	return os.is_dir(dir)
 }
 
+// The checks are made on the opened folder, not on its name: a name swapped for a link between the check and the
+// change is never followed, and in a sticky folder (/tmp) no other user can rename or remove a folder of ours.
+private_dir :: proc(dir: string, loc := #caller_location) -> bool {
+	base.blocking("fsx.private_dir", loc)
+	if parent := filepath.dir(dir); parent != "" && parent != dir { _ = os.make_directory_all(parent) }
+	if posix.mkdir(cpath(dir), posix.S_IRWXU) != .OK && posix.errno() != .EEXIST { return false }
+	fd := open_retry(dir, {.DIRECTORY, .NOFOLLOW})
+	if fd < 0 { return false }   // (a link: O_NOFOLLOW refuses it)
+	defer posix.close(fd)
+	st: posix.stat_t
+	if posix.fstat(fd, &st) != .OK || !posix.S_ISDIR(st.st_mode) || st.st_uid != posix.geteuid() { return false }
+	if st.st_mode & (posix.S_IRWXG + posix.S_IRWXO) == {} { return true }
+	return posix.fchmod(fd, posix.S_IRWXU) == .OK
+}
+
 list_files :: proc(dir: string, allocator := context.temp_allocator, loc := #caller_location) -> []Dir_File {
 	base.blocking("fsx.list_files", loc)
 	out := make([dynamic]Dir_File, allocator)

@@ -322,10 +322,9 @@ file_names :: proc(db: ^Mime_Database, mime: string) -> []string {
 
 @(private)
 icon_key_native :: proc(path: string, folder: bool, allocator: runtime.Allocator) -> string {
-	if folder {
-		names := folder_names(path)
-		return strings.concatenate({"folder:", names[0]}, allocator)
-	}
+	// (a folder's key is its path, as on Windows: its icon depends on the person's folders, which are read from a file, and
+	// a key is asked in a frame; file_icon resolves the special icon on its worker)
+	if folder { return strings.concatenate({"folder:", path}, allocator) }
 	// (from the name alone: a key costs no read of the file)
 	sync.mutex_guard(&mime_cache.mutex)
 	db := mime_cache_get(&mime_cache, xdg_roots())

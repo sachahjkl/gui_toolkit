@@ -123,6 +123,8 @@ ocr/ocr_linux.odin tess_once process  # a library of the system, loaded once (sy
 ocr/ocr_linux.odin tess_found process  # a library of the system, loaded once (sync.Once), then only read
 platform/a11y_accesskit.odin a11y_abi_checked process  # whether the accessibility library's ABI matches (atomic)
 platform/clipboard.odin clip process  # the process's clipboard store (locked: Clip_Store.mutex)
+platform/known_folder_linux.odin user_dirs_cache process  # what user-dirs.dirs says, read once per process (locked: User_Dirs_Cache.lock)
+platform/user_dir_linux_test.odin env_lock test
 platform/hotkey.odin HOTKEY_KEY_NAMES const  # a table: the names of the keys a hotkey can name
 platform/hotkey.odin KEYSYM_NAMES const  # a table: the xkb names of the keys a hotkey can name
 platform/clipboard_wl_linux.odin data_source_listener const  # a listener table (passed by address to libwayland)

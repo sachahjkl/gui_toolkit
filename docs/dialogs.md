@@ -22,7 +22,7 @@ if r.status == .Chosen { for p in r.paths { ... } }
 | `save_file_dialog(d)` | a path to write (`suggested_name`, `default_ext`, `overwrite_prompt`) |
 | `pick_folder_dialog(d)` | a folder |
 | `dialog_result_destroy(&r)` | frees `r.paths` (made with the allocator given to the dialog) |
-| `known_folder_path(k)` | Desktop, Documents, Downloads, Music, Pictures, Videos, Home |
+| `known_folder_path(k)` | Desktop, Documents, Downloads, Music, Pictures, Videos, Home, as the person's desktop names them (below) |
 | `open_url(url)` | the system's handler of the URL (default browser, mail client) |
 | `open_path(path)` | the application of the file's type (a folder: the file manager) |
 | `reveal_in_folder(path)` | the file manager on the file's folder, with the file selected |
@@ -35,6 +35,18 @@ if r.status == .Chosen { for p in r.paths { ... } }
 
 **Threads.** The dialogs are modal and return when the user closed them: call them from a thread that may block (a
 worker of the app's blocking pool), not from the frame loop.
+
+**The person's folders.** `known_folder_path(k)` asks the system, so call it from a task. On Windows it asks
+`SHGetKnownFolderPath`. On Linux it reads xdg-user-dirs' `$XDG_CONFIG_HOME/user-dirs.dirs` (`XDG_DESKTOP_DIR="$HOME/Bureau"`
+on a French desktop) once per process and keeps it. It reads the file again when `XDG_CONFIG_HOME` or `HOME` changed.
+
+- A folder the file names is that path: `$HOME/...` or an absolute path, as GLib reads them.
+- A folder that the file sets to the home is disabled: the result is "", Desktop included.
+- A folder that the file does not name is `$HOME/<English name>`. A caller that shows places checks that it exists.
+- `.Home` is `$HOME`.
+
+The variables `$XDG_<NAME>_DIR` of the environment are not read. A test points `XDG_CONFIG_HOME` at a file of its own.
+The decisions are in [src/md/features/folders.md](../src/md/features/folders.md).
 
 **Filters.** `filter_patterns(f)` joins a filter's patterns as the systems want them (`"*.png;*.jpg"`),
 `filter_matches(filters, name)` matches a file name case-insensitively, `filters_from_accept(entries, mime_extensions)`
