@@ -268,6 +268,57 @@ a_folding_toolbar_shows_a_menu_of_sections :: proc(t: ^testing.T) { unwatched.ru
 	testing.expect_value(t, r.bold, 1)
 }) }
 
+// A .Fold bar as cliche's history builds it (fill width in a row, a margin each side; groups of one segmented control
+// each, by priority): at every width of the window, nothing the bar shows runs past the bar's end, and the bar ends inside
+// the window (a narrow window left the last segment cut by the window's edge instead of folding it).
+@(test)
+a_folding_bar_of_segmented_controls_never_runs_past_its_end :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {1000, 200}, no_renderer = true, build = proc(s: ^session.Session) {
+		em := ui.font_size()
+		kinds := []string{"Tout", "Captures d'écran", "Enregistrements", "Mises en ligne", "Texte"}
+		sizes := []string{"P", "M", "G"}
+		views := []string{"Grille", "Liste"}
+		@(static) kind, size, view: int
+		ui.next({width = ui.fill(), height = ui.px(40), axis = .X, cross = .Center})
+		if ui.row(id = "###row") {
+			ui.spacer(ui.px(em * 0.6))
+			ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
+			if ui.toolbar("sbar", {overflow = .Fold}) {
+				if ui.toolbar_group("kind", {title = "Genre", priority = 4}) {
+					if ui.toolbar_control("kind", {label = "Genre"}) { _ = ui.segmented("kind", kinds, &kind) }
+				}
+				if ui.toolbar_group("size", {title = "Taille", priority = 1}) {
+					if ui.toolbar_control("size", {label = "Taille"}) { _ = ui.segmented("size", sizes, &size) }
+				}
+				if ui.toolbar_group("view", {title = "Vue", priority = 2}) {
+					if ui.toolbar_control("view", {label = "Vue"}) { _ = ui.segmented("view", views, &view) }
+				}
+				// (cliche's last group: icon tools, one with a menu, one on, one folded first, one the palette's command)
+				if ui.toolbar_group("window", {title = "Fenêtre", priority = 3}) {
+					_ = ui.toolbar_tool("period", {label = "Par date…", icon = "", menu = "###period_menu", menu_search = false})
+					_ = ui.toolbar_tool("preview", {label = "Aperçu", icon = "", on = true})
+					_ = ui.toolbar_tool("folder", {label = "Dossier", icon = "", priority = 0})
+					_ = ui.toolbar_tool("workflows", {label = "Workflows", icon = ""})
+					_ = ui.toolbar_tool("palette", {command = ui.palette_command()})
+					_ = ui.toolbar_tool("settings", {label = "Réglages", icon = ""})
+				}
+			}
+			ui.spacer(ui.px(em * 0.6))
+		}
+	}})
+	for w := 1000; w >= 300; w -= 23 {
+		session.resize(s, {w, 200})
+		session.frames(s, 4)
+		bar := session.get(s, "sbar")
+		testing.expectf(t, bar.rect.max.x <= f32(w) + 0.5, "at %d px: the bar ends at %v, past the window", w, bar.rect.max.x)
+		for name in ([]string{"kind", "size", "view", "period", "preview", "folder", "workflows", "palette", "settings", "toolbar_more"}) {
+			b := session.find(s, name, within = bar)
+			if b == nil { continue }
+			testing.expectf(t, b.rect.max.x <= bar.rect.max.x + 0.5, "at %d px: %s ends at %v, past the bar's end %v", w, name, b.rect.max.x, bar.rect.max.x)
+		}
+	}
+}) }
+
 // A tool's `tip` is its tooltip whatever it shows (a zoom's words "100 %" say "Zoom" under the pointer); a tool's menu
 // opens with a search by default, without one when the tool says `menu_search = false` (a typed letter selects there).
 @(test)

@@ -69,7 +69,8 @@ column of rows, unless `next` gives another axis.
 | `ui.strip_view(id)` | The box that holds the choices of the strip built last with `id` in the current parent: its role for a screen reader goes there (a tab list's), and a test reads its offset (`view_off`) and its limit (`ui.view_limit(box, axis)`). |
 | `.Strip_Wheel` | The box flag a strip's view has: it takes the wheel only while it overflows the way the wheel scrolls it, never with Ctrl; on one axis every wheel scrolls along it. |
 | `.Scrollbar_None` | The box flag a strip's view has: no bar, no room for one ([scroll-bar.md](scroll-bar.md)). |
-| `Box.edge_hold` | Beside `edge_fade`: a band at each edge of a `.Clip` box where its content does not show at all, before the fade (`draw.mask_edge_fade`'s `hold`). A strip sets both under its arrows. |
+| `Box.edge_hold` | Beside `edge_fade`: a band at each edge of a `.Clip` box where its content does not show at all, before the fade (`draw.mask_edge_fade`'s `hold`). A strip sets both: the hold is its arrow and the gap beyond it. |
+| `ui.STRIP_GAP_EM` | The clear gap between an arrow and the first pixel of the content, ems. |
 
 The boxes a test finds by name: `strip_left`, `strip_right`, `strip_up`, `strip_down` (the arrows, inside the strip),
 `strip_view`. Every arrow is built at every build; one whose side hides nothing has no place after the layout (nor a
