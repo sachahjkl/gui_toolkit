@@ -596,8 +596,9 @@ view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 		build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###view_header_icon", icon))
 		spacer(px(em * 0.55))
 	}
-	// (its width is its words on one line: a dialog grows to it, up to its most, then it wraps)
-	next({width = text_size(), height = text_size(math.round(em * DIALOG_TITLE_MARGIN_EM)), font_size = em * 1.05, text_pad = 0, text_align = .Left})
+	// (its width is its words on one line: a dialog grows to it, up to its most, then it wraps. It gives way to the tools
+	// and the close cross: a title of one long word, a path, wrapped between its characters and never ran under them)
+	next({width = text_size(strictness = 0), height = text_size(math.round(em * DIALOG_TITLE_MARGIN_EM)), font_size = em * 1.05, text_pad = 0, text_align = .Left})
 	build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###view_header_title", text_shown(title)))
 	spacer(fill())
 	pop_parent()

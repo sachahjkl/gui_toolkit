@@ -97,6 +97,28 @@ a_dialog_holds_its_title_and_buttons :: proc(t: ^testing.T) { unwatched.run(t, p
 	check(t, s, true)
 }) }
 
+// A dialog's title of one long word, a path, wider than the dialog can be: it wraps between its characters, inside the
+// dialog and before its close cross. (Its width never gave way: it ran under the cross and past the dialog's edge.)
+@(test)
+a_dialog_s_path_title_wraps_before_its_cross :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Run :: struct { open: bool }
+	r := Run{open = true}
+	s := session.start(t, {size = {700, 500}, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		if r.open {
+			r.open = false
+			ui.confirm_open("path", {title = "/home/someone/Projects/kernel-devlog/2026-11-15_drawing_module/compare_all_the_frames_of_the_run.png", act = "Open"})
+		}
+	}})
+	session.frames(s, 3)
+	panel := session.get(s, "modal_view_path")
+	title := session.get(s, "view_header_title")
+	cross := session.get(s, "dialog_close")
+	testing.expectf(t, holds(panel, title), "the title inside the dialog: %v in %v", title.rect, panel.rect)
+	testing.expectf(t, title.rect.max.x <= cross.rect.min.x + 0.5, "the title before the cross: %v, %v", title.rect, cross.rect)
+	testing.expectf(t, title.rect.max.y - title.rect.min.y > title.text_dim.y * 0.5 + 1, "on more lines than one (%v)", title.rect)
+}) }
+
 // A tool bar too narrow for its groups folds the lowest priority first; its pinned group stays in the bar; the "…" button
 // opens a menu where the folded tool is a row under its group's title, and a click on it runs it and closes the menu.
 @(test)

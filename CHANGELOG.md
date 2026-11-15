@@ -5,6 +5,24 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.264.2] - 2026-11-15
+
+### Changed
+- **The bubble of a cut text is compact**: Copy and close are two small glyphs in its top right corner, without words, and its text wraps at a reasonable width instead of taking the window's.
+
+## [0.264.1] - 2026-11-15
+
+### Fixed
+- **0.264.0 builds again**: the bubble of a cut text used a point-in-rect test that 0.263.0 had removed; it now uses `draw.rect_contains`.
+
+## [0.264.0] - 2026-11-15
+
+### Added
+- **A cut text shows itself whole**: the "..." at the end of a text too long for its place is now a target in every program. A click on it opens a bubble under it with the whole text, which can be selected and copied (Copy, or Ctrl+C), and which stays until its cross, Escape or a click outside it. The rest of a row still acts as before.
+
+### Fixed
+- **A dialog's long title stays inside it**: a title of one long word, a file's path, ran past the dialog's edge and under its close cross. It now gives way to the header's tools and the cross, and wraps between its characters.
+
 ## [0.263.0] - 2026-11-15
 
 ### Added
@@ -3696,6 +3714,9 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.264.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.264.2
+[0.264.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.264.1
+[0.264.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.264.0
 [0.263.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.263.0
 [0.262.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.262.2
 [0.262.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.262.1
