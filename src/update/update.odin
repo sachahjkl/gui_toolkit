@@ -51,8 +51,7 @@ SCHEMA :: 1
 PLATFORM_WINDOWS_X64 :: "windows-x64"
 PLATFORM_LINUX_X64   :: "linux-x64"
 PLATFORMS            :: [?]string{PLATFORM_WINDOWS_X64, PLATFORM_LINUX_X64}
-// The platform of this program ("": none that updates itself).
-PLATFORM :: PLATFORM_WINDOWS_X64 when ODIN_OS == .Windows && ODIN_ARCH == .amd64 else PLATFORM_LINUX_X64 when ODIN_OS == .Linux && ODIN_ARCH == .amd64 else ""
+// (PLATFORM, the platform of this program: update_windows.odin, update_linux.odin, update_other.odin)
 
 MAX_MANIFEST       :: 16 * 1024   // bytes of a manifest: a real one is about 300
 MAX_SIGNATURE_TEXT :: 256         // an Ed25519 signature is 86 characters of base64url
@@ -388,20 +387,7 @@ place :: proc(exe: string, data: []byte, m: Manifest) -> Error {
 	if os.write_entire_file(next, data) != nil { _ = os.remove(next); return .Not_Written }
 	back, err := os.read_entire_file(next, context.temp_allocator)
 	if err != nil || check_binary(m, back) != .None { _ = os.remove(next); return .Not_Written_Whole }
-	when ODIN_OS == .Windows {
-		old := fmt.tprintf("%s.old", exe)
-		_ = os.remove(old)
-		if os.rename(exe, old) != nil { _ = os.remove(next); return .Not_Moved_Aside }
-		if os.rename(next, exe) != nil {
-			_ = os.rename(old, exe)   // (back as it was)
-			_ = os.remove(next)
-			return .Not_Placed
-		}
-	} else {
-		_ = os.chmod(next, os.Permissions_Default_File | {.Execute_User, .Execute_Group, .Execute_Other})
-		if os.rename(next, exe) != nil { _ = os.remove(next); return .Not_Placed }
-	}
-	return .None
+	return swap_in(exe, next)   // (update_windows.odin, update_unix.odin)
 }
 
 // What an update left beside `exe`: the program it replaced (Windows: <exe>.old) and a new one never put in place (<exe>.update).
