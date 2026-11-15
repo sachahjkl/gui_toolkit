@@ -9,9 +9,9 @@
   (sections 1 and 7).
 
 ## Next
-- **What's new in every program.** papier, classeur, inspecteur, cliche and opencode native give their changelog to
-  the settings (`Page_Options.changelog`) and call `changelog_after_update` at start: after an update, a message that
-  stays opens the page of what changed.
+- **What's new in opencode native.** As papier, classeur, inspecteur and cliche do since their 0.26 and 0.10, it gives
+  its changelog to the settings (`Page_Options.changelog`) and calls `changelog_after_update` at start: after an update,
+  a message that stays opens the page of what changed.
 - **Wren's tab strip on a strip.** Wren's tabs scroll with the toolkit's arrows when they are too many, as `ui.tabs`,
   the views' and the dock's stacks and classeur's tabs do; today they scroll in their own way. Intent:
   [src/md/features/strip.md](src/md/features/strip.md).
@@ -25,9 +25,6 @@
 - **opencode native on the toolkit's pieces.** Its branch `toolkit-0.266` takes the toolkit's JSON, rich paste
   (`ui.paste_answer`: its menu's Paste attaches an image as Ctrl+V does), kept zooms (`store.Kept`), context menus
   (`ui.context_take`), window place and standard folders in place of its own; it waits for its merge and release.
-- **WebP on Windows in every program.** cliche, papier, classeur and inspecteur add `toolbox.Feature.Webp` to their
-  Project, so their Windows packages ship `gt_webp.dll` and cliche's WebP export and every program's WebP pictures work
-  there. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).
 - **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate:
   `gt:image` reads GIF now. The switch is written (`ocn-views/build/gt-image-only.patch`) and waits for WebP on
   Windows, which the Rust crate reads today. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).
@@ -41,8 +38,9 @@
   `command_run`.
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
   `-check:darwin_arm64`), and every portable file names the system's facts, not the system (`SYSTEM_DIRECT3D`,
-  `font.SYSTEM_RASTERIZER`); what is left: the programs' packages checked for macOS too, and the native libraries' links
-  (`font/backend_native.odin`, `mermaid.odin`), which stay beside their `foreign` blocks until one native crate.
+  `font.SYSTEM_RASTERIZER`); papier, classeur, inspecteur and cliche check theirs for macOS. What is left: opencode
+  native and Wren check theirs, and the native libraries' links (`font/backend_native.odin`, `mermaid.odin`) stay beside
+  their `foreign` blocks until one native crate.
 - **Colours by intent in opencode native.** Its 85 `HEX_*` constants become the theme's intents and hues, so a theme
   changes them all, as cliche's graph colours do since its 0.8.
 
