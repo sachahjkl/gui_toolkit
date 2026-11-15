@@ -43,6 +43,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.density = 1
 	set_feel(s, FEEL_DEFAULT)
 	s.sb_owner = make(map[Key]Key)
+	s.reveal_owner = make(map[Key]Key)
 	_ = virtual.arena_init_growing(&s.arena)
 	s.boxes = make(map[Key]^Box)
 	s.anims = make(map[Key]Animation)
@@ -92,6 +93,8 @@ destroy :: proc(s: ^State) {
 	delete(s.tag_sets)
 	delete(s.color_memo)
 	delete(s.sb_owner)
+	delete(s.reveal_owner)
+	text_reveal_close(s)
 	delete(s.bar_keys)
 	delete(s.bar_keys_prev)
 	delete(s.parent_stack)
@@ -336,6 +339,7 @@ end_build :: proc() {
 	assert(len(s.parent_stack) == 0 && len(s.popup_stack) == 0 && len(s.modal_stack) == 0, "ui: a view's build left a scope open")
 	// (keys held for the file browser that no build of it took, a browser that closed or moved: the frame ends with them)
 	overlay_release_keys(s, .File_Browser)
+	text_reveal_build(s)   // (over the page and its dialogs, under the toasts and the menus)
 	toasts_build()   // (over everything the program built, under its menus)
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }
@@ -385,6 +389,9 @@ end_build :: proc() {
 	clear(&dead)
 	for k, owner in s.sb_owner { if owner not_in s.boxes { append(&dead, k) } }
 	for k in dead { delete_key(&s.sb_owner, k) }
+	clear(&dead)
+	for k, owner in s.reveal_owner { if owner not_in s.boxes { append(&dead, k) } }
+	for k in dead { delete_key(&s.reveal_owner, k) }
 
 	// per-frame input state is consumed
 	s.scroll_delta = {}

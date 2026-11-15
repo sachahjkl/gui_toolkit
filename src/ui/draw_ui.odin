@@ -326,10 +326,27 @@ draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	text := b.text
 	width := b.text_dim.x
 	avail := (b.rect.max.x - b.rect.min.x) - 2 * b.text_pad
+	cut := false
 	if width > avail && .No_Text_Trunc not_in b.flags {
 		text, width = truncate(s, b, avail)
+		cut = text != ""
 	}
 	pos := text_origin(s, b, {width, b.text_dim.y})
+	b.ellipsis = {}
+	if cut {
+		// (the ellipsis, as tall as the box and a little wider than its dots: a target the pointer can find)
+		ell_w := font.text_width(s.fonts, b.font, b.font_size, TRUNC_ELLIPSIS)
+		x1 := pos.x + width
+		pad := math.round(b.font_size * REVEAL_PAD_EM)
+		b.ellipsis = {{x1 - ell_w - pad, b.rect.min.y}, {min(x1 + pad, b.rect.max.x), b.rect.max.y}}
+		if s.hot_key == reveal_key(b) {
+			// (lit under the pointer: it is a target)
+			kept := text[:len(text) - len(TRUNC_ELLIPSIS)]
+			draw.text(dc, b.font, b.font_size, pos, b.text_color, kept)
+			draw.text(dc, b.font, b.font_size, {pos.x + width - ell_w, pos.y}, color_from_tags(s, b.tags_key, "accent"), TRUNC_ELLIPSIS)
+			return
+		}
+	}
 	// (engraved: the machined finish's alone; on a shaded face the text reads as on the plain colour)
 	if s.theme != nil && s.theme.finish == .Machined {
 		if k := box_sheen(s, b); k > DRAW_INVISIBLE_EPS {
@@ -366,7 +383,7 @@ Trunc_Entry :: struct {
 // Shortens `b.text` so that it plus an ellipsis fits in `avail` pixels.
 @(private)
 truncate :: proc(s: ^State, b: ^Box, avail: f32) -> (string, f32) {
-	ell :: "..."
+	ell :: TRUNC_ELLIPSIS
 	k := Trunc_Key{text_hash = hash_bytes(transmute([]u8)b.text), text_len = len(b.text), font = b.font, size = b.font_size, avail = avail}
 	e, known := &s.trunc_cache[k]
 	if !known {

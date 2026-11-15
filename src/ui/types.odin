@@ -162,6 +162,7 @@ Box :: struct {
 	rel_pos:     Vec2,           // position relative to the parent's origin
 	rect:        Rect,           // final screen rect
 	text_dim:    Vec2,           // measured size of `text` (without padding)
+	ellipsis:    Rect,           // where the last draw cut its text: the ellipsis, a target (text_reveal.odin); {}: not cut
 	view_off:    Vec2,           // scroll offset, animated
 	view_target: Vec2,           // scroll offset target
 	view_top_held: [2]bool,      // the target is the content's start as asked (view_top), not where a move stopped (view_shift)
@@ -471,6 +472,8 @@ State :: struct {
 	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
 	tab_dir_next: int,               // the same asked during a build (focus_step): tab_dir of the next one
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to
+	reveal_owner: map[Key]Key,       // a cut text's ellipsis key -> key of its box (text_reveal.odin)
+	reveal:       Text_Reveal,       // the whole text of a cut one, open in its bubble
 	sb_grab:      f32,               // pointer offset inside the thumb while dragging it
 	sb_held:      Scrollbar_Part,    // the part of the bar held (the bar: active_key); a mark: it went there (scroll_marks)
 	feel:         Feel,              // set_feel: delays, repeats, steps (feel.odin)

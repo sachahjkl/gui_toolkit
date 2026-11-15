@@ -273,6 +273,7 @@ Key_Owner :: enum u8 {
 	Program,        // nothing: the frame's keys are where they are
 	Menu,           // an open menu: its innermost level reads the queue itself (menu_level_begin)
 	File_Browser,   // the file browser open as a dialog: its view's build gets the queue back (overlay_release_keys)
+	Text_Reveal,    // a cut text's whole text open in its bubble (text_reveal_build gets the queue back)
 }
 
 // While a toolkit overlay is open it owns the keyboard: key presses and typed text of the frame move to its queue
@@ -295,6 +296,8 @@ overlay_capture_keys :: proc(s: ^State, events: []platform.Event) {
 		// (open as a dialog of this window; as a floating window, a panel or a window of its own, it takes keys as
 		// views do)
 		s.key_owner = .File_Browser
+	case s.reveal.open:
+		s.key_owner = .Text_Reveal
 	case:
 		return
 	}
