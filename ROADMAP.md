@@ -54,8 +54,8 @@
   system files, and the CI checks every toolkit and program package for macOS, as it does for Windows.
 - **Colours by intent everywhere.** inspecteur's heat cells use the toolkit's ink-on choice, and each program's
   hard-coded greens and reds become intents or hues.
-- **Light site images in every program.** papier, classeur, inspecteur and cliche publish their site's pictures as WebP,
-  as opencode native does.
+- **Light site images in every program.** The site command makes them (`Project_Site.images`): papier, classeur,
+  inspecteur and cliche set `images = tk_site.images_default()` and install Ubuntu's `webp` in their Pages workflow.
 
 ## Later
 

@@ -16,6 +16,17 @@ Project_Site :: struct {
 	dir:   string,              // its sources in the repository ("": "site")
 	pages: Changelog_Options,   // the home page's version mark and downloads (changes "": Meta.changes; meta: `meta`)
 	extra: proc(s: ^Check),     // the project's own checks of `site check` (nil: none); s.user is the ^Project_Site
+	// its pictures made light at `site build` (build_images: WebP at their widths, the pages pointed at them; dir "": as they
+	// are). The encoder is found then (toolbox.webp_encoder): the publishing machine needs cwebp (Ubuntu's `webp`).
+	images: Images_Options,
+}
+
+// The light pictures most sites want: the folder img, two narrower copies, the PNGs other sites read kept.
+@(rodata) IMAGES_KEEP_DEFAULT := [?]string{"logo.png", "card.png", "froment-software-64.png"}
+@(rodata) IMAGES_WIDTHS_DEFAULT := [?]int{720, 1100}
+
+images_default :: proc() -> Images_Options {
+	return {dir = "img", widths = IMAGES_WIDTHS_DEFAULT[:], keep = IMAGES_KEEP_DEFAULT[:]}
 }
 
 // The usage of the command, as its help says it.
@@ -49,7 +60,12 @@ command_run :: proc(args: []string, user: rawptr) -> int {
 	switch what {
 	case "build":
 		if len(args) != 3 { break }
-		return project_build(s, args[1], args[2]) ? toolbox.EXIT_DONE : toolbox.EXIT_FAILED
+		if !project_build(s, args[1], args[2]) { return toolbox.EXIT_FAILED }
+		if s.images.dir == "" { return toolbox.EXIT_DONE }
+		o := s.images
+		why: string
+		if o.encoder, why = toolbox.webp_encoder("build"); why != "" { fmt.eprintfln("site: no WebP encoder: %s", why); return toolbox.EXIT_FAILED }
+		return build_images(args[2], o) ? toolbox.EXIT_DONE : toolbox.EXIT_FAILED
 	case "check":
 		o := Check_Options{site = dir, generate = project_pages, extra = s.extra, user = s}
 		if why := check_arguments(args[1:], &o); why != "" { fmt.eprintfln("site check: %s", why); return toolbox.EXIT_USAGE }

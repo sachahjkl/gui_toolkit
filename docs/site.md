@@ -90,6 +90,10 @@ own. Every other mention of the PNG (a link that opens it whole) gets the WebP a
 removed. `o.keep` names the PNGs left as they are: what other sites read (the sharing card, a logo, a favicon). Run it on the
 built site, after `build_meta`.
 
+A project's `site` command does it at `site build` when its `Project_Site.images` names a folder: `images = tk_site.images_default()`
+(img, copies at 720 and 1100 pixels, the logo, the card and the publisher's logo kept). The publishing machine needs `cwebp`
+(the Pages workflow installs Ubuntu's `webp`).
+
 ## The documentation pages
 
 `build_docs(&d)` makes a page of each Markdown document of `d.source` (the repository's `docs/`) in `d.out` (the site's `docs/`):
