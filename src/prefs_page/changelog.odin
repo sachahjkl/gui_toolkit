@@ -29,10 +29,17 @@ SEEN_VERSION_PREF :: "general.seen_version"
 Changelog :: struct {
 	english:      string,             // the program's CHANGELOG.md (the program's: #load), the one shown by default
 	translations: []Changelog_Text,   // the same in other languages (none today: the changelogs stay English)
-	// the page's state: the text its releases were read from, the releases (owned), how many are shown
+	// the page's state: the text its releases were read from, the releases (owned)
 	read_from:    string,
 	releases:     [dynamic]Changelog_Release,
-	shown:        int,
+	// the search and the kinds hidden; what they keep, worked out when one of them or the text changes (never per frame)
+	search:       ui.Line_Edit,
+	kinds_off:    bit_set[Change_Kind],
+	shown:        [dynamic]Changelog_Shown,
+	shown_for:    string,                   // (owned) the search the list was made for, folded
+	shown_kinds:  bit_set[Change_Kind],
+	shown_from:   string,                   // the text it was made from
+	kinds_in:     bit_set[Change_Kind],     // the kinds the changelog has: a toggle each
 }
 
 // A version of the changelog, as the page shows it: its number, its day and time, its groups of changes.
@@ -41,15 +48,23 @@ Changelog_Release :: struct {
 	groups:         [dynamic]Changelog_Group,
 }
 
-// The changes of one type (Added, Fixed...) of a version: their Markdown list, laid out by gt:markdown.
+// The changes of one kind (Added, Fixed...) of a version: their Markdown list, laid out by gt:markdown.
 Changelog_Group :: struct {
-	type: string,
-	list: string,         // owned: "- item" a line
-	doc:  markdown.Doc,
+	type:   string,
+	kind:   Change_Kind,
+	list:   string,         // owned: "- item" a line
+	folded: string,         // owned: the list in ASCII lower case, what the search reads
+	doc:    markdown.Doc,
 }
 
-// The versions the page shows at first, and how many more each "older versions" press adds.
-CHANGELOG_SHOWN_FIRST :: 12
+// The kinds of change of Keep a Changelog; Other for a heading it does not name.
+Change_Kind :: enum u8 { Added, Changed, Deprecated, Removed, Fixed, Security, Other }
+
+// A version the search and the kinds keep, and which of its groups.
+Changelog_Shown :: struct {
+	release: int,
+	groups:  u64,   // bit k: its group k shows
+}
 
 Changelog_Text :: struct { language, text: string }   // a language's tag ("fr") and its changelog
 
@@ -88,15 +103,54 @@ changelog_destroy :: proc(c: ^Changelog) {
 	changelog_releases_free(c)
 	delete(c.releases)
 	c.releases = nil
+	ui.line_edit_destroy(&c.search)
+	delete(c.shown)
+	delete(c.shown_for)
+	c.shown, c.shown_for = nil, ""
 }
 
 @(private = "file")
 changelog_releases_free :: proc(c: ^Changelog) {
 	for &r in c.releases {
-		for &g in r.groups { delete(g.list); markdown.doc_destroy(&g.doc) }
+		for &g in r.groups { delete(g.list); delete(g.folded); markdown.doc_destroy(&g.doc) }
 		delete(r.groups)
 	}
 	clear(&c.releases)
+	c.shown_from = ""   // (the list goes with them)
+}
+
+@(private = "file")
+change_kind :: proc(type: string) -> Change_Kind {
+	switch type {
+	case "Added":      return .Added
+	case "Changed":    return .Changed
+	case "Deprecated": return .Deprecated
+	case "Removed":    return .Removed
+	case "Fixed":      return .Fixed
+	case "Security":   return .Security
+	}
+	return .Other
+}
+
+// The versions and groups the search and the kinds keep, made again when one of them or the text changed. A version
+// whose number or day holds the search shows its groups of the kinds kept; else only those whose text holds it.
+@(private)
+changelog_filter :: proc(c: ^Changelog) {
+	query := strings.trim_space(ui.line_edit_string(&c.search))
+	folded := ascii.lower(query)
+	if raw_data(c.shown_from) == raw_data(c.read_from) && len(c.shown_from) == len(c.read_from) && c.shown_kinds == c.kinds_off && c.shown_for == folded { return }
+	delete(c.shown_for)
+	c.shown_for, c.shown_kinds, c.shown_from = strings.clone(folded), c.kinds_off, c.read_from
+	clear(&c.shown)
+	for &r, i in c.releases {
+		whole := folded == "" || ascii.contains_fold(r.version, folded) || ascii.contains_fold(r.stamp, folded)
+		groups: u64
+		for &g, k in r.groups {
+			if k >= 64 || g.kind in c.kinds_off { continue }
+			if whole || strings.contains(g.folded, folded) { groups |= 1 << u64(k) }
+		}
+		if groups != 0 { append(&c.shown, Changelog_Shown{release = i, groups = groups}) }
+	}
 }
 
 // The versions of a changelog's text ("## [1.2.0] - 2026-11-15 14:07", "### Added", "- item" and its following lines),
@@ -106,11 +160,15 @@ changelog_read :: proc(c: ^Changelog, text: string) {
 	if raw_data(c.read_from) == raw_data(text) && len(c.read_from) == len(text) { return }
 	changelog_releases_free(c)
 	c.read_from = text
+	c.kinds_in = {}
 	r: ^Changelog_Release
 	g: ^Changelog_Group
 	list := strings.builder_make(context.temp_allocator)
 	close_group :: proc(g: ^Changelog_Group, list: ^strings.Builder) {
-		if g != nil { g.list = strings.clone(strings.trim_space(strings.to_string(list^))) }
+		if g != nil {
+			g.list = strings.clone(strings.trim_space(strings.to_string(list^)))
+			g.folded = ascii.lower(g.list, context.allocator)
+		}
 		strings.builder_reset(list)
 	}
 	rest := text
@@ -125,8 +183,10 @@ changelog_read :: proc(c: ^Changelog, text: string) {
 			r = &c.releases[len(c.releases) - 1]
 		case r != nil && strings.has_prefix(line, "### "):
 			close_group(g, &list)
-			append(&r.groups, Changelog_Group{type = strings.trim_space(line[len("### "):])})
+			type := strings.trim_space(line[len("### "):])
+			append(&r.groups, Changelog_Group{type = type, kind = change_kind(type)})
 			g = &r.groups[len(r.groups) - 1]
+			c.kinds_in += {g.kind}
 		case g != nil && strings.has_prefix(line, "["):   // (the versions' links at the end)
 			close_group(g, &list)
 			g, r = nil, nil
@@ -136,7 +196,6 @@ changelog_read :: proc(c: ^Changelog, text: string) {
 		}
 	}
 	close_group(g, &list)
-	if c.shown == 0 { c.shown = CHANGELOG_SHOWN_FIRST }
 }
 
 // The icon of a type of change.
@@ -174,36 +233,81 @@ changelog_page_info :: proc(c: ^Changelog) -> Page_Info {
 
 @(private = "file", rodata) CHANGELOG_TAGS := [?]string{"changelog", "release notes", "news", "version", "update"}
 
-// The page: a timeline, newest first. A rail on the left, a dot on it at each version (the newest lit in the accent);
-// beside it each version's card: its number as a chip, its day and time, "Latest" on the newest, then its changes by
-// type, each type a tile of its hue over its list.
+// The page: a search and a toggle per kind of change over a timeline, newest first. A rail on the left, a dot on it at
+// each version (the newest lit in the accent); beside it each version's card: its number as a pill, its day and time,
+// "Latest" on the newest, then its changes by kind, each under a pill of its hue. Every version is there: only those
+// near the view are built (a lazy column), the others stand as their height.
 @(private = "file")
 changelog_build :: proc(user: rawptr, em: f32) {
 	c := (^Changelog)(user)
 	changelog_read(c, changelog_text(c))
+	changelog_filter(c)
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = "###whats_new") {
-		n := min(c.shown, len(c.releases))
-		for i in 0 ..< n {
-			changelog_release_build(c, &c.releases[i], i, i == n - 1 && n == len(c.releases), em)
+		changelog_tools_build(c, em)
+		ui.spacer(ui.px(math.round(em * 0.9)))
+		if len(c.shown) == 0 {
+			if ui.tags("weak") { ui.label(fmt.tprintf("%s###whats_new_none", i18n.tr("No version holds that."))) }
+			return
 		}
-		if n < len(c.releases) {
-			ui.spacer(ui.px(em * 0.6))
-			ui.next({height = ui.px(ui.dense(em * 2))})
-			older := min(len(c.releases) - n, CHANGELOG_SHOWN_FIRST)
-			if ui.button("###whats_new_older", fmt.tprintf(i18n.tr("Show %d older versions"), older), o = {face = .Ghost}).clicked { c.shown += older }
+		lz := ui.lazy_begin()
+		for s, n in c.shown {
+			r := &c.releases[s.release]
+			if ui.lazy_item(lz, fmt.tprintf("###release_%s", r.version)) {
+				changelog_release_build(c, r, s, n == len(c.shown) - 1, em)
+			}
 		}
 	}
+}
+
+// The search over the versions and a toggle per kind the changelog has (on: shown), and how many versions are kept.
+@(private = "file")
+changelog_tools_build :: proc(c: ^Changelog, em: f32) {
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
+	if ui.row(.Start, {}, "###whats_new_tools") {
+		ui.next({width = ui.px(math.round(em * 16))})
+		ui.line_edit("###whats_new_search", &c.search, {placeholder = i18n.tr("Search the versions"), clearable = true})
+		ui.spacer(ui.px(math.round(em * 0.8)))
+		for k in Change_Kind {
+			if k not_in c.kinds_in { continue }
+			on := k not_in c.kinds_off
+			word := change_kind_word(k)
+			ui.next({height = ui.px(ui.dense(em * 1.9))})
+			// (on: held down, its icon in its hue; off: a ghost, weak, its icon grey)
+			o := ui.Button_Options{face = on ? .Toggled : .Ghost, quiet = !on, icon_font = ui.lucide_icons(), icon_color = on ? ui.hue(change_hue(word)) : ui.color("weak text"),
+				tip = on ? fmt.tprintf(i18n.tr("Hide the changes of kind %s"), word) : fmt.tprintf(i18n.tr("Show the changes of kind %s"), word)}
+			if ui.button(fmt.tprintf("###kind_%v", k), word, change_icon(word), o).clicked { c.kinds_off ~= {k} }
+			ui.spacer(ui.px(math.round(em * 0.3)))
+		}
+		ui.spacer(ui.fill())
+		if ui.tags("weak") { ui.label(fmt.tprintf("%s###whats_new_count", fmt.tprintf(i18n.tr("%d of %d versions"), len(c.shown), len(c.releases)))) }
+	}
+}
+
+// A kind's word, as the changelog writes it (English, as the changelog).
+@(private = "file")
+change_kind_word :: proc(k: Change_Kind) -> string {
+	switch k {
+	case .Added:      return "Added"
+	case .Changed:    return "Changed"
+	case .Deprecated: return "Deprecated"
+	case .Removed:    return "Removed"
+	case .Fixed:      return "Fixed"
+	case .Security:   return "Security"
+	case .Other:      return "Other"
+	}
+	return ""
 }
 
 @(private = "file")
 Rail_Draw :: struct { line, dot: ui.Color, last, lit: bool, dot_y, gutter: f32 }
 
 @(private = "file")
-changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, i: int, last: bool, em: f32) {
-	newest := i == 0
+changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, s: Changelog_Shown, last: bool, em: f32) {
+	newest := s.release == 0
+	i := s.release
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-	if ui.row(.Start, {}, fmt.tprintf("###release_%d", i)) {
+	if ui.row(.Start, {}, "###release") {
 		// the rail, drawn by the row in its left gutter (as tall as the card beside it): its line, not past the last dot;
 		// the dot level with the version's chip
 		row := ui.parent_box()
@@ -233,6 +337,7 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, i: int, la
 			}
 			// its changes, by type
 			for &g, k in r.groups {
+				if k >= 64 || s.groups & (1 << u64(k)) == 0 { continue }
 				ui.spacer(ui.px(em * 0.5))
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 				if ui.row(.Start, {}, fmt.tprintf("###group_%d", k)) {

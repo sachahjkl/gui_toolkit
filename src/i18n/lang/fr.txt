@@ -301,8 +301,20 @@ fr Les nouveautés : cliquez pour les lire
 en What's new
 fr Nouveautés
 
-en Show %d older versions
-fr Voir %d versions plus anciennes
+en No version holds that.
+fr Aucune version ne contient cela.
+
+en Search the versions
+fr Rechercher dans les versions
+
+en Hide the changes of kind %s
+fr Masquer les changements de type %s
+
+en Show the changes of kind %s
+fr Afficher les changements de type %s
+
+en %d of %d versions
+fr %d versions sur %d
 
 en Latest
 fr Dernière

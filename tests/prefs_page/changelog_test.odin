@@ -62,6 +62,41 @@ the_changelog_reads_in_the_program_and_an_update_says_so_once :: proc(t: ^testin
 	testing.expect_value(t, app.opened, 1)
 }
 
+// Every version is on the page (no "older versions" to press); the search keeps the versions whose number, day or
+// changes hold it, and a kind's toggle hides its changes; the count says how many versions are kept.
+@(test)
+the_changelog_is_searched_and_filtered_by_kind :: proc(t: ^testing.T) {
+	app: Changelog_App
+	app.prefs = config.prefs_make()
+	defer config.prefs_destroy(&app.prefs)
+	config.register(&app.prefs, CHANGELOG_DEFS[:])
+	app.changelog = {english = SAMPLE_CHANGELOG}
+	defer prefs_page.changelog_destroy(&app.changelog)
+	app.page.current = strings.clone(prefs_page.CHANGELOG_PAGE)
+	defer prefs_page.destroy(&app.page)
+	s := session.start(t, {size = {1100, 700}, user = &app, build = proc(s: ^session.Session) {
+		app := (^Changelog_App)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill()})
+		prefs_page.build(&app.page, &app.prefs, {user = app, pages = CHANGELOG_PAGES[:], changelog = &app.changelog})
+	}})
+	session.frames(s, 3)
+	testing.expect(t, session.find_text(s, "A thing that is new.") != nil && session.find_text(s, "An old thing.") != nil, "both versions shown")
+	testing.expect(t, session.find_text(s, "2 of 2 versions") != nil, "the count")
+	// the search: a word of one version's changes
+	session.click(s, "whats_new_search")
+	session.type_text(s, "OLD thing")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "An old thing.") != nil && session.find_text(s, "A thing that is new.") == nil, "the search keeps the version that holds it (case folded)")
+	testing.expect(t, session.find_text(s, "1 of 2 versions") != nil, "the count follows")
+	// its kind hidden: nothing is left
+	session.click(s, "kind_Fixed")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "No version holds that.") != nil, "Fixed hidden: no version left")
+	session.click(s, "kind_Fixed")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "An old thing.") != nil, "Fixed shown again")
+}
+
 // The language in use has no translation: the English changelog.
 @(test)
 the_english_changelog_is_the_fallback :: proc(t: ^testing.T) {
