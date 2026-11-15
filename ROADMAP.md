@@ -9,6 +9,9 @@
   (sections 1 and 7).
 
 ## Next
+- **What's new in every program.** papier, classeur, inspecteur, cliche and opencode native give their changelog to
+  the settings (`Page_Options.changelog`) and call `changelog_after_update` at start: after an update, a message that
+  stays opens the page of what changed.
 - **Wren's tab strip on a strip.** Wren's tabs scroll with the toolkit's arrows when they are too many, as `ui.tabs`,
   the views' and the dock's stacks and classeur's tabs do; today they scroll in their own way. Intent:
   [src/md/features/strip.md](src/md/features/strip.md).

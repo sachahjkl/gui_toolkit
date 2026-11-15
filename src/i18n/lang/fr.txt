@@ -292,6 +292,15 @@ ctx key
 en Print
 fr Impr. écran
 
+en Updated to %s
+fr Mis à jour en %s
+
+en What's new: click to read it
+fr Les nouveautés : cliquez pour les lire
+
+en What's new
+fr Nouveautés
+
 en Diagnostics
 fr Diagnostics
 
@@ -2071,6 +2080,9 @@ fr Réduire le panneau
 
 en Maximise
 fr Agrandir
+
+en Restore
+fr Restaurer
 
 en Close the panel
 fr Fermer le panneau

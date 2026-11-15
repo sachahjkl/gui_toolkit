@@ -122,6 +122,8 @@ Page_Options :: struct {
 	licence:     ^Licence,
 	install:     ^Install,
 	diagnostics: ^host.Host,
+	// the program's changelog (changelog.odin): a What's new page, first of the toolkit's own (nil: not shown)
+	changelog:   ^Changelog,
 }
 
 // The page's state, kept by the program between frames (destroy). Keep it as long as the ui.State it is built in: the
@@ -271,14 +273,19 @@ SIDEBAR_DEFS := [?]config.Def{
 		bounded = true, min = NAV_MIN_EM, max = NAV_MAX_EM, hidden = true},
 }
 
-// The pages of `o`, or each category of the registry by name; then the toolkit's own (Page_Options.licence, install,
+// The pages of `o`, or each category of the registry by name; then the toolkit's own (Page_Options.changelog, licence, install,
 // diagnostics). `p`: the page being built (its Diagnostics page's state; nil for the palette).
 @(private)
 pages_of :: proc(prefs: ^config.Prefs, o: Page_Options, p: ^Page = nil) -> []Page_Info {
 	out := program_pages_of(prefs, o)
-	if o.licence == nil && o.install == nil && o.diagnostics == nil { return out }
+	if o.changelog == nil && o.licence == nil && o.install == nil && o.diagnostics == nil { return out }
 	all := make([dynamic]Page_Info, 0, len(out) + 3, context.temp_allocator)
 	append(&all, ..out)
+	if o.changelog != nil {
+		pg := changelog_page_info(o.changelog)
+		pg.title = i18n.tr(pg.title)
+		append(&all, pg)
+	}
 	if o.licence != nil {
 		pg := licence_page_info(o.licence)
 		pg.title = i18n.tr(pg.title)
