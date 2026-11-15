@@ -5,6 +5,20 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.272.0] - 2026-11-15 14:05
+
+### Added
+- **A pill, the toolkit's.** `ui.pill(id, text, icon, color)` marks a version, a kind of change or a state: rounded at its ends, a wash and a line of its colour, an icon, its words lighter. What's new draws its versions and types with it.
+- **A version's time beside its day.** The release writes each version's heading with its time, UTC ("## [1.2.0] - 2026-11-15 14:07"): several versions a day are told apart, on the sites and in the programs alike. `changelog times` (`tools/changelog -times` for the toolkit) gives the versions of before their tag's time.
+- **What's new, in every program.** `Page_Options.changelog` adds a What's new page to the settings: the program's changelog, in English, or in the language in use when the program gives a translation. After an update, a message "Updated to 1.2.0" stays until it is clicked, and opens that page (`changelog_after_update`; `ui.announce` takes `stays`).
+- **Text that changes without a blink.** `ui.morph_label` shows a new text by flipping only the characters that differ, left to right, in 300 ms, at the new width at once: a count or an address that another source replaces no longer flashes.
+
+### Changed
+- **What's new is a timeline.** The settings' What's new page shows each version as a card on a rail: its number, its day and time, the newest marked Latest, its changes under a coloured tile of their type.
+
+### Fixed
+- **The pricing page's logo has no frame.** A program's logo, drawn on nothing, showed in a dark rounded tile (a shadow around its picture); it now stands alone, as on the home page.
+
 ## [0.271.0] - 2026-11-15 13:40
 
 ### Changed
@@ -3779,6 +3793,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.272.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.272.0
 [0.271.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.271.0
 [0.270.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.270.0
 [0.269.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.269.0
