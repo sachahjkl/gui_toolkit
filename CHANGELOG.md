@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.285.0] - 2026-11-15 23:19
+
+### Added
+- **Faint, soft and bright text in every theme**: besides text and weak text, a program asks the theme for `faint text` (a hint, a line number), `soft text` (code, a tool's output) and `bright text` (a title, what is selected), and `ui.theme_color(name)` reads any colour of the theme shown, so a program keeps no colours of its own.
+- **`gt:http`: compressed answers and a bound on the connection**: `Request.compressed` asks for gzip or deflate and gives the body decoded (`max_bytes` counts decoded bytes), for a request and an event stream; `Request.connect_timeout` bounds the name's lookup and the connection of a request, a stream and a socket (0: `timeout`).
+- **The sheet of the keys lists keys that are no command**: `shortcuts_sheet_open`'s `extra` takes `Sheet_Line{group, keys, label}` (Up and Down in a history, a middle click), each after the last command of its group, or under its own heading; its keys are shown as written.
+- **`ui.card` with its own look**: `ui.card(title, icon, id, o)` and `ui.list_card(id, o)` take `Card_Options` (a radius, and a `Plate_Look`: a face from a top colour to a bottom one, an edge, a rim, a shadow; a zero field is the theme's), in every finish; `id` sets the box of a card without a title. A `.Plate` box takes a look through `Box.plate`.
+
 ## [0.284.0] - 2026-11-15 22:42
 
 ### Added
@@ -3930,6 +3938,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.285.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.285.0
 [0.284.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.284.0
 [0.283.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.283.0
 [0.282.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.282.0
