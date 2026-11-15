@@ -147,7 +147,7 @@ facts :: proc(o: Setup_Options, choices: []bool = nil, loc := #caller_location) 
 	for p in desktop.Part {
 		if s.parts[p].present && !s.parts[p].stale { f.parts += {p} }
 	}
-	when ODIN_OS == .Windows {
+	when SYSTEM_RECORD {
 		f.record = recorded
 	} else {
 		icons := s.parts[.Icons]

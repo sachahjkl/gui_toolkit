@@ -68,9 +68,9 @@ page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 				if !f.running_it { where_row(d, "###p_this", i18n.tr("Location of this copy"), f.running, true, kw, em) }
 				yes_no :: proc(on: bool) -> string { return on ? i18n.tr("yes") : "-" }
 				where_row(d, "###p_menu", words_menu(), yes_no(f.start_lnk), false, kw, em)
-				when ODIN_OS == .Windows { where_row(d, "###p_record", words_record(), yes_no(f.record), false, kw, em) }
+				when SYSTEM_RECORD { where_row(d, "###p_record", words_record(), yes_no(f.record), false, kw, em) }
 				where_row(d, "###p_autostart", i18n.tr("With the session"), yes_no(f.autostart), false, kw, em)
-				when ODIN_OS == .Windows {
+				when PATH_LAUNCHER {
 					where_row(d, "###p_path", i18n.tr("On the PATH"), f.on_path ? i18n.tr("yes (with its console launcher)") : "-", false, kw, em)
 				} else {
 					where_row(d, "###p_path", i18n.tr("On the PATH"), yes_no(f.on_path), false, kw, em)

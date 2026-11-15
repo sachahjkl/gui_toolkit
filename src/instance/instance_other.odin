@@ -2,6 +2,9 @@
 #+build !linux
 package tk_instance
 
+// The paths of this system keep their case (key, same_identity).
+@(private) PATHS_FOLD_CASE :: false
+
 // Other platforms: no hand-over yet (instance_linux.odin's lock file and Unix socket would do on macOS and the BSDs, with
 // their own runtime directory). Every start owns its name, as if there were no one else.
 

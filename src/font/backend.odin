@@ -19,7 +19,7 @@ import "base:runtime"
 Backend :: enum u8 { Dwrite, Native }
 
 // (native by default but on Windows: elsewhere DirectWrite is not there, and a build without the define had no text)
-@(private = "file") FONT_BACKEND_DEFAULT :: "dwrite" when ODIN_OS == .Windows else "native"
+@(private = "file") FONT_BACKEND_DEFAULT :: "dwrite" when SYSTEM_RASTERIZER else "native"
 FONT_BACKEND :: #config(FONT_BACKEND, FONT_BACKEND_DEFAULT)
 #assert(FONT_BACKEND == "dwrite" || FONT_BACKEND == "native", "FONT_BACKEND is dwrite or native")
 
@@ -35,7 +35,7 @@ when NATIVE_TEXT {
 // Whether `b` can serve in this build (Native: only with -define:FONT_BACKEND=native).
 backend_available :: proc(b: Backend) -> bool {
 	switch b {
-	case .Dwrite: return ODIN_OS == .Windows
+	case .Dwrite: return SYSTEM_RASTERIZER
 	case .Native: return NATIVE_TEXT
 	}
 	return false
@@ -169,7 +169,7 @@ none_backend := Text_Backend{
 @(private)
 backend_table :: proc(b: Backend) -> ^Text_Backend {
 	switch b {
-	case .Dwrite: when ODIN_OS == .Windows { return &dwrite_backend }
+	case .Dwrite: when SYSTEM_RASTERIZER { return &dwrite_backend }
 	case .Native: when NATIVE_TEXT { return &native_backend }
 	}
 	return &none_backend

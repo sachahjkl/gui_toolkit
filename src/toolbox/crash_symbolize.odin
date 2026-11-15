@@ -22,8 +22,6 @@ import "core:strings"
 import "../ascii"
 import crash "../crash"
 
-// What a program's -extra-linker-flags must hold for its reports to be named: the map (Windows), the build id (Linux).
-CRASH_LINKER_FLAGS :: "/MAP" when ODIN_OS == .Windows else "-Wl,--build-id"
 
 @(private = "file") HEADER_READ_BYTES :: 64 * 1024
 @(private = "file") PE_NT_OFFSET :: 0x3C
