@@ -392,28 +392,49 @@ swatch :: proc(c: Color, id: string = "") {
 	if row(.Center, {.Draw_Background}, id) {}
 }
 
-// `label .......... value` across `width`: the label weak, the value right-aligned (monospace when `mono`).
-// `color` not zero: a swatch before the label (a legend row). `tone`: tags of the value ("", "good", "warn", "bad").
-stat_row :: proc(id, label, value: string, width: f32, mono := true, swatch_color := Color{}, tone := "") {
+// How a stat_row is laid out. The zero value: as wide as its parent, the label filling, the value right-aligned in
+// monospace, the toolkit's line and room at its sides.
+Stat_Row_Options :: struct {
+	width:        Size,       // {}: its parent's width
+	height:       f32,        // px; 0: the toolkit's line
+	key_width:    f32,        // px; 0: the label fills and the value is right-aligned; else a label column this wide, the value after it, left-aligned (a list of properties)
+	label_size:   f32,        // the label's font size, px; 0: the style's
+	proportional: bool,       // the value in the interface's face (else monospace)
+	swatch:       Color,      // not zero: a swatch before the label (a legend row)
+	tone:         string,     // tags of the value ("", "good", "warn", "bad")
+	value_color:  Color,      // not zero: the value's colour, over the tone's
+	selectable:   bool,       // the label and the value are content: selected and copied (text-selection.md)
+	inset:        Maybe([2]f32),   // room at its left and right, in ems; nil: 0.9 each
+}
+
+// `label .......... value`: the label weak, the value right-aligned, or after a label column (`o.key_width`): one row
+// for a legend, a measure, a property.
+stat_row :: proc(id, label, value: string, o := Stat_Row_Options{}) {
 	em := font_size()
-	next({width = px(width), height = px(dense(em * 1.55))})
+	inset := o.inset.? or_else {0.9, 0.9}
+	next({width = o.width != {} ? o.width : fill(), height = px(o.height > 0 ? o.height : dense(em * 1.55))})
 	if row(.Center, {}, fmt.tprintf("###sr_%s", id)) {
-		spacer(px(em * 0.9))
-		if swatch_color.a > 0 {
-			swatch(swatch_color, "###sw")
+		if inset[0] > 0 { spacer(px(em * inset[0])) }
+		if o.swatch.a > 0 {
+			swatch(o.swatch, "###sw")
 			spacer(px(em * 0.45))
 		}
+		flags := o.selectable ? Box_Flags{.Draw_Text, .Selectable} : Box_Flags{.Draw_Text}
 		if tags("weak") {
-			next({width = fill(), height = pct(1), text_pad = 0})
-			build_box({.Draw_Text}, fmt.tprintf("%s###l", label))
+			lm := Style_Mod{width = o.key_width > 0 ? px(o.key_width) : fill(), height = pct(1), text_pad = 0}
+			if o.label_size > 0 { lm.font_size = o.label_size }
+			if o.key_width > 0 { lm.font = mono_font() }   // (a column of keys: they line up)
+			next(lm)
+			build_box(flags, fmt.tprintf("%s###l", label))
 		}
-		if tone != "" { push_tags(tone) }
-		m := Style_Mod{width = text_size(0, 1), height = pct(1), text_pad = 0, text_align = .Right}
-		if mono { m.font = mono_font() }
+		if o.tone != "" { push_tags(o.tone) }
+		m := Style_Mod{width = o.key_width > 0 ? fill() : text_size(0, 1), height = pct(1), text_pad = 0, text_align = o.key_width > 0 ? .Left : .Right}
+		if !o.proportional { m.font = mono_font() }
+		if o.value_color.a > 0 { m.fg = o.value_color }
 		next(m)
-		build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###v", value))
-		if tone != "" { pop_tags() }
-		spacer(px(em * 0.9))
+		build_box(o.key_width > 0 ? flags : flags + {.No_Text_Trunc}, fmt.tprintf("%s###v", value))
+		if o.tone != "" { pop_tags() }
+		if inset[1] > 0 { spacer(px(em * inset[1])) }
 	}
 }
 

@@ -114,7 +114,7 @@ a_popover_stands_by_its_anchor :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 		anchor := ui.Rect{{200, 200}, {260, 230}}
 		if ui.popover("###pop", anchor, 150) {
 			ui.stat_heading("###head", "Numbers", 130)
-			ui.stat_row("###row", "Frames", "60", 130)
+			ui.stat_row("###row", "Frames", "60", {width = ui.px(130)})
 		}
 	}})
 	session.frame(s)

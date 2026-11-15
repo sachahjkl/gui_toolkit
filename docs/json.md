@@ -65,6 +65,7 @@ member its `key` before its value; the writer places the commas, the colons and,
 | `write_raw(w, json_text)` | JSON text the caller made, as it is |
 | `write_value(w, v)` | a parsed `json.Value`, whole; the keys of an object sorted |
 | `to_text(v, indent = "", allocator = context.temp_allocator) -> string` | a parsed value as JSON text |
+| `display(v, words = DISPLAY_WORDS, indent = "  ", allocator = context.temp_allocator) -> string` | a value as a person reads it: a string without quotes, a number as written, a boolean and null as `words` say (`Display_Words{yes, no, null}`, the program's language), an object or an array as indented JSON |
 
 ```odin
 b := strings.builder_make(context.temp_allocator)

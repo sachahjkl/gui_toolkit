@@ -234,8 +234,8 @@ build_statusbar :: proc(app: ^App, em: f32) {
 		graph := ui.frame_graph("###sb_graph", &app.frames, {colors = colors[:], budget = 16.7, scale = 4, bars = 64})
 		if s := ui.history_at(&app.frames, graph.hovered); s != nil {
 			if ui.tooltip() {
-				ui.stat_row("build", "build", fmt.tprintf("%.2f ms", s.v[0]), em * 11, swatch_color = colors[0])
-				ui.stat_row("draw", "draw", fmt.tprintf("%.2f ms", s.v[1]), em * 11, swatch_color = colors[1])
+				ui.stat_row("build", "build", fmt.tprintf("%.2f ms", s.v[0]), {width = ui.px(em * 11), swatch = colors[0]})
+				ui.stat_row("draw", "draw", fmt.tprintf("%.2f ms", s.v[1]), {width = ui.px(em * 11), swatch = colors[1]})
 			}
 		}
 		if graph.clicked { app.show_boxes = !app.show_boxes }

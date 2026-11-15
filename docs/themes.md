@@ -64,6 +64,9 @@ to the shown theme's hue nearest to it, mixed with the shown theme's grey as muc
 alpha stays. `theme_reference(colors)` makes the reference from its colours; a program can set `levels` itself when its
 greys stand elsewhere. Cache the results: a program asks for the same few colours every frame.
 
+`with_alpha(c, a)` is `c` with its alpha times `a`; `lighten(c, t)` and `darken(c, t)` move `c` a share `t` toward
+white or black in sRGB steps (`srgb_step`), its alpha kept: the toolkit's own tints, for a program's too.
+
 ## A user's themes
 
 `themes_read(text, catalog, base)` reads a file of the user's. Each `[Name]` section is one theme. It starts as `base`'s
