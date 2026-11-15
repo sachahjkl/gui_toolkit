@@ -255,6 +255,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.toast_area_set = false
 	s.boxes_built = 0
 	s.virtual_depth = 0
+	s.next_zoom_zone = nil   // (a mark the last build gave no box after)
 	s.time_ms = p.time_ms > 0 ? p.time_ms : clock_ms(s)
 	left := p.inactive && !s.inactive
 	s.inactive = p.inactive
@@ -584,6 +585,8 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	}
 
 	b.flags = flags + st.extra_flags
+	b.zoom_zone = s.next_zoom_zone
+	s.next_zoom_zone = nil
 	if s.disabled_depth > 0 { b.flags += {.Disabled} }
 	if .Window_Caption in b.flags { s.caption_built = true }
 	if .Disabled in b.flags && s.focus_key == b.key { s.focus_key = 0 }
@@ -730,6 +733,7 @@ next :: proc(m: Style_Mod) {
 next_drop :: proc(s: ^State) {
 	s.has_next = false
 	s.next_mod = {}
+	s.next_zoom_zone = nil
 	s.a11y.has_next = false
 }
 

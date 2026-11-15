@@ -106,8 +106,12 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mouse_valid = true   // (the wheel is where its event says: a first notch with no move before it scrolls too)
 			s.mods = e.mods        // (what a wheel steps by: line_edit_num_step)
 			if zoom_keys && .Ctrl in e.mods && !ctrl_wheel_taken(s, e.pos, e.delta) {
-				// Ctrl+wheel zooms (wheel up = delta.y < 0 = bigger) instead of scrolling
-				s.zoom = clamp(s.zoom * math.pow(s.feel.zoom_step, -e.delta.y), ZOOM_MIN, ZOOM_MAX)
+				// Ctrl+wheel zooms (wheel up = delta.y < 0 = bigger) instead of scrolling: the zone under the pointer, else the window
+				if z := zoom_zone_at(s, e.pos); z != nil {
+					zoom_zone_act(s, z, .In, -e.delta.y)
+				} else {
+					s.zoom = clamp(s.zoom * math.pow(s.feel.zoom_step, -e.delta.y), ZOOM_MIN, ZOOM_MAX)
+				}
 			} else {
 				s.scroll_delta += e.delta
 			}
@@ -124,13 +128,19 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.mods = e.mods
 			s.typed_mods += e.mods
 			if e.key != .None { s.keys_held += {e.key} }
-			if zoom_keys && .Ctrl in e.mods && .Alt not_in e.mods {
-				#partial switch e.key {
-				case .Equal, .Num_Add: s.zoom = clamp(s.zoom * s.feel.zoom_step, ZOOM_MIN, ZOOM_MAX); continue
-				case .Minus, .Num_Subtract: s.zoom = clamp(s.zoom / s.feel.zoom_step, ZOOM_MIN, ZOOM_MAX); continue
-				case .N0:    s.zoom = 1; continue
-				case:
+			if act := zoom_key_action(e.key, e.mods); zoom_keys && act != .None {
+				// the zone that holds the keyboard focus, else the window (zoom-zones.md)
+				if z := zoom_zone_of_focus(s); z != nil {
+					zoom_zone_act(s, z, act)
+				} else {
+					switch act {
+					case .In:    s.zoom = clamp(s.zoom * s.feel.zoom_step, ZOOM_MIN, ZOOM_MAX)
+					case .Out:   s.zoom = clamp(s.zoom / s.feel.zoom_step, ZOOM_MIN, ZOOM_MAX)
+					case .Reset: s.zoom = 1
+					case .None:
+					}
 				}
+				continue
 			}
 			append(&s.events.list, e)
 			append(&s.events.consumed, false)

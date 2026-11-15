@@ -20,7 +20,6 @@ Outcome :: enum u8 {
 	Copy,      // a copy key, with a selection: selection_text goes to the clipboard
 	Paste,     // a paste key: the clipboard's text goes to paste
 	Menu,      // a right click: the program's menu, at the event's position
-	Zoomed,    // the zoom moved (zoom_set): the program may keep it, and needs a frame after ZOOM_REST_MS
 }
 
 // One event for this view. The program decides that it is this view's: see the head of this file.
@@ -36,10 +35,8 @@ event :: proc(v: ^View, e: platform.Event) -> Outcome {
 		}
 		return .Taken
 	case .Scroll:
-		if .Ctrl in e.mods {
-			zoom_set(v, e.delta.y < 0 ? v.zoom * ZOOM_STEP : v.zoom / ZOOM_STEP)
-			return .Zoomed
-		}
+		// (Ctrl+wheel zooms: the interface's, which routes it to the grid's zone under the pointer)
+		if .Ctrl in e.mods { return .Ignored }
 		if tracks_mouse(v) {
 			button := e.delta.y > 0 ? Mouse_Button.Wheel_Down : Mouse_Button.Wheel_Up
 			mouse_send(v, .Press, button, e.pos, e.mods, false)
@@ -90,13 +87,8 @@ typed :: proc(v: ^View) -> bool { return !v.read_only && v.source.write != nil }
 
 @(private)
 key_event :: proc(v: ^View, e: platform.Event) -> Outcome {
-	if e.mods == {.Ctrl} {
-		#partial switch e.key {
-		case .Equal, .Num_Add:      zoom_set(v, v.zoom * ZOOM_STEP); return .Zoomed
-		case .Minus, .Num_Subtract: zoom_set(v, v.zoom / ZOOM_STEP); return .Zoomed
-		case .N0:                   zoom_set(v, 1); return .Zoomed
-		}
-	}
+	// (the zoom keys are never the shell's: the interface routes them to the grid's zone, which has the keyboard)
+	if ui.zoom_key_action(e.key, e.mods) != .None { return .Ignored }
 	switch {
 	// (Ctrl+C alone is the program's: an interrupt. Ctrl+Insert: the terminals' other copy.)
 	case (e.key == .C && (e.mods == {.Ctrl, .Shift} || (v.read_only && e.mods == {.Ctrl}))) || (e.key == .Insert && e.mods == {.Ctrl}):
@@ -357,10 +349,18 @@ contains :: proc(v: ^View, p: [2]f32) -> bool { return draw.rect_contains(v.rect
 ////////////////////////////////
 // The zoom
 
-// Its own zoom, within ZOOM_MIN and ZOOM_MAX. The grid keeps its size until the zoom rests (ZOOM_REST_MS): the program
-// asks for a frame then.
+// Its zoom (a menu's Zoom in: ui.zoom_zone_by(&v.zone, step) does the same), within ZOOM_MIN and ZOOM_MAX, in its zone:
+// remembered under the zone's key when it has a memory. The grid keeps its size until the zoom rests (ZOOM_REST_MS).
 zoom_set :: proc(v: ^View, zoom: f32) {
-	v.zoom = clamp(zoom, ZOOM_MIN, ZOOM_MAX)
-	if abs(v.zoom - 1) < 0.01 { v.zoom = 1 }   // (steps back and forth come back near 1, not to it)
+	ui.zoom_zone_set(&v.zone, zoom)
+	zoom_follow(v)
+}
+
+// The zone's zoom, taken by the grid: a change starts the rest (ZOOM_REST_MS) before the grid takes its new size.
+@(private)
+zoom_follow :: proc(v: ^View) {
+	z := ui.zoom_zone_value(&v.zone)
+	if z == v.zoom { return }
+	v.zoom = z
 	v.zoom_ms = ui.now_ms()
 }

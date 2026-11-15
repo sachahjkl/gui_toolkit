@@ -48,7 +48,7 @@ Both take effect at the next build. `set_smooth_scroll` replaces the former `Bui
 | `step_ctrl` | factor | 100 | Ctrl multiplies the step of a number in text. |
 | `step_alt` | factor | 0.1 | Alt multiplies the step of a number in text. |
 | `step_page` | steps | 10 | Page Up and Page Down move this many steps: a `slider`, a number in text. |
-| `zoom_step` | factor | 1.1 | The interface's zoom (`zoom`, `set_zoom`) is multiplied or divided by it: Ctrl+wheel (per notch), Ctrl+= and Ctrl+-. At least 1.01. It stays between `ZOOM_MIN` and `ZOOM_MAX`. |
+| `zoom_step` | factor | 1.1 | The interface's zoom (`zoom`, `set_zoom`) is multiplied or divided by it: Ctrl+wheel (per notch), Ctrl+= and Ctrl+-. At least 1.01. It stays between `ZOOM_MIN` and `ZOOM_MAX`. A zoom zone's zoom takes the same step ([zoom-zones.md](zoom-zones.md)). |
 | `wheel_lines` | lines | 3 | The lines a notch of the wheel moves where the system does not say: Linux always, Windows when the setting cannot be read (`platform.wheel_lines`). |
 | `key_repeat_delay_ms` | ms | 600 | A held key repeats after this long, where the program makes the repeats and the system has not said its own (Wayland, until the compositor sends its rate). |
 | `key_repeat_rate` | per second | 25 | Then this many times a second, likewise. 0: no repeat. |
