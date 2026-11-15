@@ -284,11 +284,14 @@ fuzzy_score_folded :: proc(needle: Fuzzy_Needle, h: Fuzzy_Text, allocator := con
 }
 
 // fuzzy_words: what a match earns. A run of the needle whole in the text beats pieces at words' starts; the start of the
-// text or of a word adds; each piece past the first, and the text's length, cost.
+// text or of a word adds, and so does a run that ends where its word ends ("inspecteur" is the whole word in "inspecteur",
+// a part of one in "inspecteurtool": the length's cost is too coarse to tell them apart); each piece past the first, and
+// the text's length, cost.
 @(private = "file") WORDS_SCORE_WHOLE :: 1000
 @(private = "file") WORDS_SCORE_PIECES :: 600
 @(private = "file") WORDS_SCORE_TEXT_START :: 200
 @(private = "file") WORDS_SCORE_WORD_START :: 100
+@(private = "file") WORDS_SCORE_WORD_END :: 50
 @(private = "file") WORDS_PIECE_COST :: 60
 // The needle's characters a search by pieces tries at most (a longer one is matched whole or not at all).
 @(private = "file") WORDS_MAX_NEEDLE :: 64
@@ -321,6 +324,7 @@ fuzzy_words_folded :: proc(needle: Fuzzy_Needle, h: Fuzzy_Text, allocator := con
 		}
 		score = WORDS_SCORE_WHOLE
 		if at == 0 { score += WORDS_SCORE_TEXT_START } else if word_start(hay, at) { score += WORDS_SCORE_WORD_START }
+		if end := at + len(want); end >= len(hay) || word_start(hay, end) { score += WORDS_SCORE_WORD_END }
 		append(&out, Fuzzy_Range{at, at + len(want)})
 		return score - len(hay) / FUZZY_BYTES_PER_LENGTH_POINT, out[:], true
 	}
