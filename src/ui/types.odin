@@ -100,6 +100,8 @@ Box_Flag :: enum u8 {
 	Held,                // drawn pressed in, as while the button is held on it (a toggled button: the option chosen)
 	Lit,                 // drawn as under the pointer (a button whose menu is open)
 	Selection_Block,     // a .Selectable box that starts a block of a document: a copy puts a blank line before it, as the source (Markdown's blocks)
+	Row,                 // a row of a list, a table, a menu, a sidebar: its face (hover, selection) is inset and rounded inside it, its background a square ground (row_face.odin)
+	Chosen,              // a .Row that is selected: its background is its face, joined to the selected rows it touches
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 

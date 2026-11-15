@@ -33,7 +33,9 @@ for decides how it is laid out:
   (bevelled by the machined finish). `.Ghost`: no face until the pointer is over it, a tool among many; an intent then
   colours its words. `.Toggled`: held down, the option chosen (the box flag `.Held`; a screen reader reads it pressed).
   `.Link`: no face at all, words that say what can be done and do it; an intent colours them, a little quieter away
-  from the pointer.
+  from the pointer. `.Row`: a line of a navigation (a sidebar's page): a row's face, inset and rounded, under the
+  pointer, and with **`selected`** the selected row's, a bar of the accent at its leading edge (a screen reader reads
+  it as the current page).
 - **`width`** (`{}`: as wide as what is in it; `fill()` a share of the row; `px(...)` its least) and **`height`** (of one
   line, in pixels, its least; 0: the toolkit's). They win over what `next` says. A button's words are never cut: a width
   or a height in pixels (from `o` or `next`) is a least, the button growing to its words on one line; given less room
@@ -94,6 +96,16 @@ pointer. A press shows at once and eases out on release; a hover eases in and ou
 - A field: its border and face lift a little; a press does not sink it.
 - A selected row is the theme's `selected` tint as its face; under the pointer it lifts. A list's selection is
   `weak_selected` when the list does not have the keyboard or the window is not the user's (`inactive`).
+- A row (`.Row`: a row of a list, a table, a menu, the palette, a file browser's places, a sidebar) draws its face
+  inset in it, `ROW_FACE_INSET_EM` from its sides and `ROW_FACE_GAP_PX` from its top and bottom, rounded as a button
+  (the box's radius, `CONTROL_RADIUS_EM` by default, scaled by the rounding setting; at most half the face's height),
+  in the finish: a plain fill (flat), a soft gradient and a faint lit line (gradient), a calm gloss with a fine edge of
+  the accent (glass), a low plate (machined, edged). The content does not move. Selected rows that touch (`.Chosen`)
+  are one rounded block. A navigation's selected row (tag `nav`: a sidebar's page, a place, the palette's row) has a
+  short bar of the accent at its leading edge (theme: `row_mark`). A zebra stripe or a row's `tint` stays square, from
+  edge to edge, under the face. Square rows: `rounding` 0, the edged finish, or `next({radius = 0})` before the row.
+- A sidebar's page is a button of face `.Row`, `selected` on the page shown: `ui.button(id, title, glyph, {face =
+  .Row, selected = shown, width = ui.fill(), left = true})`.
 
 A custom draw paints its own states with the same parts:
 
@@ -106,6 +118,9 @@ A custom draw paints its own states with the same parts:
 | `state_fill(b, "hover_fill", under)` | the opaque face of a state over `under`, with `b`'s tags' step |
 | `state_tint()` | the theme's tint of the states, opaque |
 | `mark_colors(st, t, ring, accent, under, tint)` | a check box's or a radio's colours in a state |
+| `row_face_of(s, b)` | a row's face: its rect and radii, the block of selected rows it is part of, how it joins them |
+| `row_face_rect(r, inset, gap, joins)`, `row_face_radii(face, radius, joins)` | the same from a rect: inset, square where joined |
+| `row_face(s, b)`, `row_face_paint(dc, r, radii, color, k, sunk, edge)` | a row's face in its state, and its painting by the finish |
 
 A custom draw reads the states when it draws (`face_state(b)` in the draw proc), not when its box is built: the states
 are stepped at the end of the build.
