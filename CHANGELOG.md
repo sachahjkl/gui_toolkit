@@ -5,6 +5,20 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.269.0] - 2026-11-15
+
+### Added
+- **The frame rate is a standard setting.** Settings › Rendering › Frame rate (`rendering.frame_rate`): the screen's rate, 30 to 240 a second, or no limit, applied to the window's pacing (`Standard_Targets.pacer`). Every program has it, with the same words.
+- **A range slider comes back to its default.** `ui.range_slider` takes an optional `default` range: a double click on its track sets both ends again.
+- **A slider and a number come back to their default.** `ui.slider` and `ui.number` take an optional `default`: a double click on the slider's track sets it, and a number's field has a right-click menu, "Reset to 10".
+- **Every site shows its roadmap.** The site command makes a roadmap page from the project's `ROADMAP.md` (what is being done now, what comes next, what comes later), in the changelog's look; the changelog's first paragraph links to it. Every program's site gets it at its next build.
+- **A Subscribe menu on every site's changelog.** Beside the changelog's title, a menu leads to the releases' feed (RSS) and to the repository's releases on GitHub, where Watch follows them; a press elsewhere or Escape closes it. Every program's site gets it at its next build, with no change of its own.
+
+### Changed
+- **The arrows choose among radio buttons.** The radio buttons of one choice are one Tab stop, the chosen one; the arrows, Home and End change the choice and the keyboard follows it, as in a segmented control and a row of tabs. A row of tabs or a segmented control left out of the Tab order the choices that are not chosen.
+- **The arrows choose in a segmented control and a row of tabs.** Each is one Tab stop, the chosen one; while it has the keyboard, Left and Right (and Up and Down in a segmented control), Home and End change the choice and the keyboard follows it. Before, each choice was a Tab stop of its own and the arrows did nothing.
+- **A lone panel's controls never cover its content.** On the hover of its top edge, a lone docked panel shows its stack's strip (its title, its moves, its buttons) and its content moves down under it; the strip goes when the pointer goes down into the content, and does not come back by itself. Before, two icons floated over the content's top right corner, over its own buttons, and neither could be clicked on purpose.
+
 ## [0.268.0] - 2026-11-15
 
 ### Added
@@ -3751,6 +3765,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.269.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.269.0
 [0.268.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.268.0
 [0.267.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.267.0
 [0.266.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.266.0
