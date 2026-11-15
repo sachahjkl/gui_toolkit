@@ -5,6 +5,19 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.280.0] - 2026-11-15 20:08
+
+### Added
+- **The vendor signs the setup.** The setup's view and the Installation page show "By", the vendor's mark and its name under the version, as the foot of the program's site; the name opens the vendor's site (`Setup_Options.vendor_url`, `setup.set_vendor_mark`, `prefs_page.Install.vendor_mark`). `setup.logo_make` makes a mark or a logo from a PNG's bytes.
+- **A program's folders under its vendor's.** `platform.USER_DIR_SEPARATOR` writes a program's folder as its vendor's then its own (`FromentSoftware/Papier`: `%APPDATA%\FromentSoftware\Papier`, `~/.config/FromentSoftware/Papier`), and `platform.user_dirs_move(from, to)` moves its old folders there once, at start, so its settings, history and licence come along.
+- **Personal keys and aliases in every program.** In the command palette, Ctrl+Enter on a command records a key of one's own for it, or a sequence of two (Ctrl+M, then T: the first chord shows in a bubble at the bottom of the window until the second); Alt+Enter makes the letters typed an alias that puts the command first and finds it by its first letters. A person's key wins over a command's own key; the menus, the tooltips, the palette and the sheet of the keys (in the accent's colour) show the keys in effect, and alternative keys read `Ctrl+K / Ctrl+Shift+P`. The keys are stored in English, so a language switch keeps them, in the advanced settings `keys.custom` and `keys.aliases` (`prefs_page.Standard_Set.Keys`, in `STANDARD_ALL`). For a program: `ui.Command.id` (each command's name for good, also the palette's memory key `command:<id>`), `ui.command_ids_check`, `ui.Keymap` with `keymap_use`, `keymap_known`, `keymap_read`, `keymap_texts`, `keymap_bind`, `keymap_unbind`, `keymap_alias`, `keymap_alias_command`, `keymap_destroy`, `binding_text`, `binding_store_text`, `binding_parse`, `command_keys_in_effect`, `KEYMAP_RECORDER_VIEW`, `platform.key_english`, and `prefs_page.Standard_Targets.keymap` for `standard_watch`. `Palette_Commands_Options.names`, `.keys`, `.first` and `.alternates` are removed: the ids, the keymap and the aliases replace them, and `Palette_Commands_Options.shift` is the program's Shift+Enter.
+
+### Changed
+- **WebP inside the program.** A program that reads and writes WebP pictures is standalone on every system: no `gt_webp.dll` beside it on Windows, no system libwebp on Linux; a program with `toolbox.Feature.Webp` builds libwebp into `gt_native` (`tk build_native`, part `webp`) and builds with `-define:IMAGE_WEBP=true`. `tk build_webp` and `desktop.TOOLKIT_FILES` are gone.
+
+### Fixed
+- **The shop's pages wear the site's dress.** Pricing, the thank-you page, the terms, refunds, privacy and imprint have the home page's icon, bar and footer, as the changelog and the roadmap do, in place of a bar and a footer of their own. When Paddle refuses a checkout (a seller not yet open for sales), the pricing page says so under the button instead of nothing.
+
 ## [0.279.0] - 2026-11-15 18:48
 
 ### Added
@@ -3867,6 +3880,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.280.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.0
 [0.279.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.279.0
 [0.278.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.278.0
 [0.277.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.2
