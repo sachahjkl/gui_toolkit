@@ -80,13 +80,13 @@ px1 :: proc() -> f32 { return max(1, math.round(scale())) }
 @(private = "file")
 radii4 :: proc(r: f32) -> [4]f32 { return {r, r, r, r} }
 
-@(private = "file")
+// `c` with its alpha times `a` (a tint of a colour: a selection's fill, a halo).
 with_alpha :: proc(c: Color, a: f32) -> Color { return {c.r, c.g, c.b, c.a * a} }
 
-@(private = "file")
+// `c` a share `t` of the way to white, in sRGB steps (srgb_step), its alpha kept.
 lighten :: proc(c: Color, t: f32) -> Color { return srgb_step(c, {1, 1, 1, c.a}, t) }
 
-@(private = "file")
+// `c` a share `t` of the way to black, in sRGB steps (srgb_step), its alpha kept.
 darken :: proc(c: Color, t: f32) -> Color { return srgb_step(c, {0, 0, 0, c.a}, t) }
 
 // How a relief's shades and lights are drawn on the palette shown: made for the dark, a light palette takes lighter shades

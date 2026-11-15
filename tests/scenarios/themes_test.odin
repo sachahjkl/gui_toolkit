@@ -421,3 +421,15 @@ an_intent_button_is_a_soft_pair_of_its_hue :: proc(t: ^testing.T) { unwatched.ru
 		testing.expectf(t, abs(ui.to_oklch(words)[2] - ui.to_oklch(hue)[2]) < 12, "%s: its words are of its hue", pair[0])
 	}
 }) }
+
+// The toolkit's colour tints, public: alpha times a share, a step toward white or black with the alpha kept.
+@(test)
+the_colour_tints_are_the_toolkits :: proc(t: ^testing.T) {
+	c := ui.Color{0.5, 0.25, 0.75, 0.8}
+	testing.expect_value(t, ui.with_alpha(c, 0.5), ui.Color{0.5, 0.25, 0.75, 0.4})
+	l, d := ui.lighten(c, 0.5), ui.darken(c, 0.5)
+	testing.expect(t, l.r > c.r && l.g > c.g && l.a == c.a, "lighter, its alpha kept")
+	testing.expect(t, d.r < c.r && d.g < c.g && d.a == c.a, "darker, its alpha kept")
+	z := ui.lighten(c, 0)   // (no step: the same colour, within the sRGB round trip)
+	testing.expectf(t, abs(z.r - c.r) < 1e-5 && abs(z.g - c.g) < 1e-5 && abs(z.b - c.b) < 1e-5 && z.a == c.a, "no step: %v", z)
+}
