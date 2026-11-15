@@ -19,6 +19,13 @@ package tk_desktop
 //                         Software\Classes\<scheme>                      (Identity.url_schemes: `URL Protocol`,
 //                                                                          `"<exe>" <url_flag> "%1"`)
 //                       then SHChangeNotify(SHCNE_ASSOCCHANGED), so open windows of Settings notice.
+//   File manager        (default_file_manager) what opens folders, in HKCU\Software\Classes over the system's:
+//                         CLSID\{52205fd8-...}\shell\opennewwindow\command  (`"<exe>"`, DelegateExecute empty: Win+E and
+//                                                                          the File Explorer shortcut run it)
+//                         Directory\shell\<key>.open\command               (`"<exe>" "%1"`), and Directory\shell's
+//                                                                          default verb set to it (a folder's double click)
+//                         Drive\shell\<key>.open\command, Drive\shell      (the same for a drive, `%1` unquoted)
+//                       Removal puts back what the system had: the keys go, and a default verb that names ours.
 //
 // Marks: the shortcut carries the AppUserModelID; the keys carry `Identity.registry_mark` (set to the AppUserModelID)
 // or run the executable. Removal deletes what has a mark and nothing else.
@@ -32,7 +39,7 @@ import "../process"
 @(private = "file")
 WINDOWS_BACKEND := Backend{
 	name = "windows",
-	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart},
+	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart, .File_Manager},
 	status = windows_status,
 	install = windows_install,
 	remove = windows_remove,
@@ -67,7 +74,18 @@ Layout :: struct {
 	registered:   string,   // Software\RegisteredApplications
 	progid_name:  string,   // <key>HTML
 	links:        []string, // Software\Classes\<scheme> for each of Identity.url_schemes
+	// the File_Manager part
+	explorer:     string,     // Software\Classes\CLSID\{52205fd8-...}: File Explorer's object
+	new_window:   string,     // <explorer>\shell\opennewwindow: what Win+E runs
+	verb_name:    string,     // <key>.open
+	shells:       [2]string,  // Software\Classes\Directory\shell, Software\Classes\Drive\shell
+	verbs:        [2]string,  // <shell>\<key>.open
 }
+
+// File Explorer's shell object: Win+E and the taskbar's File Explorer open a new window through its `opennewwindow` verb
+// (the CLSID Windows itself registers in HKLM; a key of the user's in HKCU\Software\Classes overrides it).
+@(private = "file")
+FILE_EXPLORER_CLSID :: "{52205fd8-5dfb-447d-801a-d0b52f2e83e1}"
 
 @(private = "file")
 layout_of :: proc(o: ^Integration_Options) -> (l: Layout, ok: bool) {
@@ -85,6 +103,13 @@ layout_of :: proc(o: ^Integration_Options) -> (l: Layout, ok: bool) {
 	names := o.identity.url_schemes
 	l.links = make([]string, len(names), context.temp_allocator)
 	for n, i in names { l.links[i] = reg_join(root, "Classes", n) }
+	l.explorer = reg_join(root, "Classes", "CLSID", FILE_EXPLORER_CLSID)
+	l.new_window = reg_join(l.explorer, "shell", "opennewwindow")
+	l.verb_name = strings.concatenate({o.identity.key, ".open"}, context.temp_allocator)
+	for kind, i in ([2]string{"Directory", "Drive"}) {
+		l.shells[i] = reg_join(root, "Classes", kind, "shell")
+		l.verbs[i] = reg_join(l.shells[i], l.verb_name)
+	}
 	return l, true
 }
 
@@ -166,7 +191,44 @@ windows_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) ->
 		}
 		if ps.target == "" && client_cmd_ok { ps.target = clone_or_empty(client_prog, allocator) }
 	}
+
+	s.parts[.File_Manager] = file_manager_status(o, l, allocator)
 	return s
+}
+
+// The File_Manager part: present when one of its keys is the program's (its mark, or its executable in the command);
+// whole when Win+E, the folders' verb and the drives' verb all run it and are the default verbs.
+@(private = "file")
+file_manager_status :: proc(o: ^Integration_Options, l: Layout, allocator: runtime.Allocator) -> (ps: Part_Status) {
+	any_mine, all := false, true
+	target := ""
+	window_cmd, window_ok, window_mine := verb_status(o, l.new_window)
+	_, delegate_ok := reg_get(reg_join(l.new_window, "command"), "DelegateExecute")
+	any_mine ||= window_mine
+	all &&= window_mine && window_ok && delegate_ok
+	if window_mine && window_ok { target = command_program(window_cmd) }
+	for i in 0 ..< len(l.verbs) {
+		cmd, cmd_ok, mine := verb_status(o, l.verbs[i])
+		default, _ := reg_get(l.shells[i], "")
+		any_mine ||= mine
+		all &&= mine && cmd_ok && strings.equal_fold(default, l.verb_name)
+		if mine && cmd_ok && (target == "" || same_path(target, o.exe)) { target = command_program(cmd) }
+	}
+	if !any_mine { return }
+	ps.present, ps.partial = true, !all
+	ps.target = clone_or_empty(target, allocator)
+	ps.stale = target != "" && !same_path(target, o.exe)
+	return
+}
+
+// A verb's key: its command (`<key>\command`), and whether it is the program's (the mark on the key, or the executable
+// in the command).
+@(private = "file")
+verb_status :: proc(o: ^Integration_Options, key: string) -> (command: string, command_ok, mine: bool) {
+	command, command_ok = reg_get(reg_join(key, "command"), "")
+	mark, _ := reg_get(key, o.identity.registry_mark)
+	mine = mark == identity_aumid(o.identity) || (command_ok && same_path(command_program(command), o.exe))
+	return
 }
 
 @(private = "file")
@@ -241,6 +303,10 @@ windows_install :: proc(o: ^Integration_Options) -> Result {
 	} else {
 		remove_registration(o, l)   // an earlier install that registered: the option says it should not
 	}
+
+	if o.default_file_manager {
+		if r := write_file_manager(o, l); r.error != .None { return r }
+	} else if r := remove_file_manager(o, l); r.error != .None { return r }
 
 	path_changed := false
 	if dir := exe_dir(o.exe); dir != "" {
@@ -378,6 +444,56 @@ write_registration :: proc(o: ^Integration_Options, l: Layout) -> Result {
 	return {}
 }
 
+// The File_Manager part: Win+E's new window, and the default verb of folders and drives, run the program.
+@(private = "file")
+write_file_manager :: proc(o: ^Integration_Options, l: Layout) -> Result {
+	id := o.identity
+	failed :: proc(path: string) -> Result { return {.System, strings.concatenate({"cannot write HKCU\\", path}, context.temp_allocator)} }
+	window := strings.concatenate({"\"", o.exe, "\""}, context.temp_allocator)
+	// a folder's path quoted (it may hold spaces); a drive's not: "C:\" ends in a backslash, which the command line's
+	// rules read with the closing quote as a quote (C:"), and a drive's root has no space
+	opens := [2]string{
+		strings.concatenate({"\"", o.exe, "\" \"%1\""}, context.temp_allocator),
+		strings.concatenate({"\"", o.exe, "\" %1"}, context.temp_allocator),
+	}
+	icon := strings.concatenate({o.exe, ",0"}, context.temp_allocator)
+
+	// (DelegateExecute empty: the shell runs the command rather than File Explorer's own handler of the verb)
+	command := reg_join(l.new_window, "command")
+	if !reg_set(l.new_window, id.registry_mark, identity_aumid(id)) { return failed(l.new_window) }
+	if !reg_set(command, "", window) || !reg_set(command, "DelegateExecute", "") { return failed(command) }
+
+	for i in 0 ..< len(l.verbs) {
+		verb := l.verbs[i]
+		if !reg_set(verb, "", id.name) || !reg_set(verb, "Icon", icon) || !reg_set(verb, id.registry_mark, identity_aumid(id)) { return failed(verb) }
+		if !reg_set(reg_join(verb, "command"), "", opens[i]) { return failed(verb) }
+		// the default verb: a double click on a folder or a drive opens it with the program
+		if !reg_set(l.shells[i], "", l.verb_name) { return failed(l.shells[i]) }
+	}
+	return {}
+}
+
+// Takes the File_Manager part away: the keys that are the program's, the default verbs that name its verb (the system's
+// own verb is the default again), and the parents it made that are left empty.
+@(private = "file")
+remove_file_manager :: proc(o: ^Integration_Options, l: Layout) -> Result {
+	res: Result
+	failed :: proc(path: string) -> Result { return {.System, strings.concatenate({"cannot delete HKCU\\", path}, context.temp_allocator)} }
+	if _, _, mine := verb_status(o, l.new_window); mine {
+		if !reg_delete_tree(l.new_window) { res = failed(l.new_window) }
+		_ = reg_delete_if_empty(reg_join(l.explorer, "shell"))
+		_ = reg_delete_if_empty(l.explorer)
+	}
+	for i in 0 ..< len(l.verbs) {
+		if _, _, mine := verb_status(o, l.verbs[i]); mine && !reg_delete_tree(l.verbs[i]) && res.error == .None { res = failed(l.verbs[i]) }
+		if default, ok := reg_get(l.shells[i], ""); ok && strings.equal_fold(default, l.verb_name) {
+			if !reg_delete_value(l.shells[i], "") && res.error == .None { res = failed(l.shells[i]) }
+		}
+		if reg_delete_if_empty(l.shells[i]) { _ = reg_delete_if_empty(l.shells[i][:strings.last_index_byte(l.shells[i], '\\')]) }
+	}
+	return res
+}
+
 // Tells the shell that file associations changed (Settings and Explorer read them again).
 @(private = "file")
 notify_associations :: proc() { win.SHChangeNotify(win.SHCNE_ASSOCCHANGED, 0, nil, nil) }
@@ -397,6 +513,7 @@ windows_remove :: proc(o: ^Integration_Options) -> Result {
 		if r := remove_shortcut(o, l.desktop_lnk); r.error != .None && res.error == .None { res = r }
 	}
 	if r := remove_registration(o, l); r.error != .None && res.error == .None { res = r }
+	if r := remove_file_manager(o, l); r.error != .None && res.error == .None { res = r }
 	path_changed := false
 	if dir := exe_dir(o.exe); dir != "" {
 		had := path_contains(o, dir)

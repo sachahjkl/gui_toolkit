@@ -2,8 +2,10 @@ package tk_desktop
 
 // Linux: inotify watches every directory an integration lives in, so what shows its state reads the disk again the moment
 // one changes instead of on a timer. The places: the applications directory (the <slug>.desktop file), the hicolor icon
-// theme root, the bin directory (the PATH link), the Desktop (its shortcut), the autostart directory, and the install
-// folder (the program and its manifest: a reinstall, a repair, an uninstall by another process).
+// theme root, the bin directory (the PATH link), the Desktop (its shortcut), the autostart directory, the install
+// folder (the program and its manifest: a reinstall, a repair, an uninstall by another process), and the configuration
+// directory (mimeapps.list: the default file manager; the person's settings of other programs wake the reader too,
+// which then reads a status: cheap, and rare next to a frame).
 //
 // A place that does not exist (a fresh profile has no ~/.local/share/applications, nothing is installed yet) is followed
 // through its nearest existing ancestor: the watch there looks only for the next directory of the path being made (or
@@ -25,7 +27,7 @@ import "core:sys/linux"
 import "core:thread"
 import "../platform"
 
-WATCH_LINUX_PLACES :: 6
+WATCH_LINUX_PLACES :: 7
 
 @(private = "file")
 Watch_Place :: struct {
@@ -70,6 +72,7 @@ watch_start_linux :: proc(o: ^Integration_Options, wake: Watch_Proc, user: rawpt
 		o.desktop_dir != "" ? o.desktop_dir : platform.known_folder_path(.Desktop, context.temp_allocator),
 		o.autostart_dir != "" ? o.autostart_dir : (config == "" ? "" : strings.concatenate({config, "/autostart"}, context.temp_allocator)),
 		install_target(o),
+		o.config_dir != "" ? o.config_dir : config,   // (mimeapps.list: the File_Manager part)
 	}
 	for p, i in paths {
 		st.places[i] = {path = clone_or_empty(p, st.allocator), wd = linux.Wd(-1)}

@@ -10,7 +10,7 @@ package tk_desktop
 // files, and on Windows the registry.
 apply :: proc(o: ^Integration_Options) -> Result {
 	if !supported() { return {} }
-	wanted := o.start_menu || o.desktop_shortcut || o.add_to_path || o.autostart || o.register_browser
+	wanted := o.start_menu || o.desktop_shortcut || o.add_to_path || o.autostart || o.register_browser || o.default_file_manager
 	st := status(o, context.temp_allocator)
 	if !wanted {
 		if st.state == .Absent && st.error == .None { return {} }

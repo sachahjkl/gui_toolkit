@@ -11,6 +11,9 @@ package tk_desktop
 //   $XDG_CONFIG_HOME/autostart/<slug>.desktop        the Autostart part: the program at the start of the session
 //   <desktop folder>/<slug>.desktop                  the Desktop_Shortcut part: a copy of the entry, executable (a desktop
 //                                                    starts only an executable entry); the folder is platform.known_folder_path(.Desktop)'s
+//   $XDG_CONFIG_HOME/mimeapps.list                   the File_Manager part: [Default Applications]
+//                                                    inode/directory=<slug>.desktop, the person's former default kept
+//                                                    after it; the entry then takes inode/directory (MimeType) and %F
 //
 // $XDG_DATA_HOME defaults to ~/.local/share (and must be an absolute path, as the specification says). After a change
 // `update-desktop-database <applications>` rebuilds the MIME cache when that tool is installed.
@@ -20,6 +23,7 @@ package tk_desktop
 import "base:runtime"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "../fsx"
@@ -28,7 +32,7 @@ import "../platform"
 @(private = "file")
 LINUX_BACKEND := Backend{
 	name = "linux",
-	parts = {.Launcher, .Desktop_Shortcut, .Icons, .Path, .Autostart},
+	parts = {.Launcher, .Desktop_Shortcut, .Icons, .Path, .Autostart, .File_Manager},
 	status = linux_status,
 	install = linux_install,
 	remove = linux_remove,
@@ -152,7 +156,62 @@ linux_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> S
 			ps.partial = o.autostart && text != autostart_entry_text(o) && !ps.stale
 		}
 	}
+
+	// File_Manager: present when mimeapps.list makes the entry the default of folders. The default counts only for an
+	// entry that takes inode/directory: partial without one (when the options have the entry, Install writes it so).
+	if path := mimeapps_path(o); path != "" {
+		if data, err := os.read_entire_file(path, context.temp_allocator); err == nil && mimeapps_default(string(data), DIRECTORY_MIME) == entry_id(o) {
+			ps := &s.parts[.File_Manager]
+			ps.present = true
+			ours, target, text := entry_ours(o, l.entry)
+			if ours {
+				ps.target = clone_or_empty(target, allocator)
+				ps.stale = !same_path(target, o.exe)
+			}
+			mime, _ := entry_value(text, "MimeType")
+			ps.partial = o.start_menu && !(ours && strings.contains(mime, DIRECTORY_MIME + ";"))
+		}
+	}
 	return s
+}
+
+// <config_dir>/mimeapps.list ($XDG_CONFIG_HOME/mimeapps.list): the person's own defaults, which the File_Manager part
+// edits ("" when there is no home).
+@(private = "file")
+mimeapps_path :: proc(o: ^Integration_Options) -> string {
+	dir := o.config_dir != "" ? o.config_dir : platform.user_dir(.Config, "", context.temp_allocator)
+	if dir == "" { return "" }
+	return strings.concatenate({dir, "/mimeapps.list"}, context.temp_allocator)
+}
+
+// The desktop file id of the entry (<slug>.desktop): what mimeapps.list names.
+@(private = "file")
+entry_id :: proc(o: ^Integration_Options) -> string {
+	return strings.concatenate({o.identity.slug, ".desktop"}, context.temp_allocator)
+}
+
+// Makes the entry the default of folders (`on`), or takes it out of that line (the person's former default comes back).
+// The file is written only when it changes, and in one rename: another program reads it at any time.
+@(private = "file")
+file_manager_set :: proc(o: ^Integration_Options, on: bool) -> Result {
+	path := mimeapps_path(o)
+	if path == "" {
+		if on { return {.System, "neither $XDG_CONFIG_HOME nor the home directory is known"} }
+		return {}
+	}
+	data, err := os.read_entire_file(path, context.temp_allocator)
+	if err != nil && os.exists(path) { return {.Io, strings.concatenate({"cannot read ", path}, context.temp_allocator)} }
+	text := string(data)
+	ids := mimeapps_defaults(text, DIRECTORY_MIME)
+	id := entry_id(o)
+	if on {
+		if len(ids) > 0 && ids[0] == id { return {} }
+	} else if !slice.contains(ids, id) {
+		return {}
+	}
+	if on && !ensure_dir(filepath.dir(path)) { return {.Io, strings.concatenate({"cannot create the directory of ", path}, context.temp_allocator)} }
+	if !fsx.write_atomic(path, transmute([]byte)mimeapps_with_default(text, DIRECTORY_MIME, id, on)) { return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)} }
+	return {}
 }
 
 // <autostart_dir>/<slug>.desktop ($XDG_CONFIG_HOME/autostart): the entry that starts the program with the session.
@@ -259,6 +318,9 @@ linux_install :: proc(o: ^Integration_Options) -> Result {
 		}
 	}
 
+	// File_Manager: the entry the default of folders with the option; taken out of that line without it
+	if r := file_manager_set(o, o.default_file_manager); r.error != .None { return r }
+
 	// (the icon theme's cache is checked against the directories' times: there is nothing to run for the icons)
 	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }
 	return {}
@@ -309,6 +371,8 @@ linux_remove :: proc(o: ^Integration_Options) -> Result {
 			if rerr := os.remove(path); rerr != nil && res.error == .None { res = {.Io, strings.concatenate({"cannot delete ", path}, context.temp_allocator)} }
 		}
 	}
+	// File_Manager: the entry's id goes from the folders' line (the rest of the person's file stays).
+	if r := file_manager_set(o, false); r.error != .None && res.error == .None { res = r }
 	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }
 	return res
 }

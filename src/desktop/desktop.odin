@@ -101,6 +101,7 @@ Integration_Options :: struct {
 	add_to_path:      bool,       // the program on the user's PATH (Windows: its folder; Linux: a link in bin_dir)
 	autostart:        bool,       // the program starts with the user's session
 	autostart_arguments: string,  // what it starts with then ("--hidden": in the notification area; "": nothing)
+	default_file_manager: bool,   // the program opens folders in place of the system's file manager (Windows: also Win+E)
 	launcher:         []byte,     // Windows: the console launcher (launcher.odin), written beside the executable with the PATH entry and removed with it; none: the one the build embedded, if any
 
 	// Where things go. The zero value is the user's real desktop; a test (or <env_prefix>* in the environment,
@@ -114,6 +115,7 @@ Integration_Options :: struct {
 	icons_dir:        string,     // Linux: $XDG_DATA_HOME/icons/hicolor
 	bin_dir:          string,     // Linux: ~/.local/bin, where the PATH part puts its link
 	autostart_dir:    string,     // Linux: $XDG_CONFIG_HOME/autostart
+	config_dir:       string,     // Linux: $XDG_CONFIG_HOME, where mimeapps.list names the default file manager
 	icons:            []Icon,     // Linux: the PNGs to install (the program embeds them; Windows uses the executable's own icon)
 	notify_system:    bool,       // tell the system once done (SHChangeNotify, update-desktop-database); off for scratch roots
 }
@@ -126,6 +128,7 @@ Part :: enum u8 {
 	Desktop_Shortcut,   // a shortcut on the desktop (Windows: a .lnk; Linux: a copy of the entry)
 	Path,               // the program on the user's PATH (Windows: its folder; Linux: a link in ~/.local/bin)
 	Autostart,          // the program starts with the user's session (Linux: an XDG autostart entry; Windows: HKCU\...\Run)
+	File_Manager,       // the program opens folders (Linux: the default of inode/directory; Windows: folders, drives and Win+E)
 }
 Parts :: bit_set[Part]
 
@@ -230,6 +233,8 @@ options_clone :: proc(o: Integration_Options, allocator := context.allocator) ->
 	c.applications_dir = clone_or_empty(o.applications_dir, allocator)
 	c.icons_dir = clone_or_empty(o.icons_dir, allocator)
 	c.bin_dir = clone_or_empty(o.bin_dir, allocator)
+	c.autostart_dir = clone_or_empty(o.autostart_dir, allocator)
+	c.config_dir = clone_or_empty(o.config_dir, allocator)
 	types := make([]string, len(o.file_types), allocator)
 	for ft, i in o.file_types { types[i] = strings.clone(ft, allocator) }
 	c.file_types = types
@@ -240,6 +245,7 @@ options_destroy :: proc(o: ^Integration_Options, allocator := context.allocator)
 	delete(o.exe, allocator); delete(o.menu_dir, allocator); delete(o.registry_root, allocator)
 	delete(o.desktop_dir, allocator); delete(o.environment_root, allocator); delete(o.install_dir, allocator)
 	delete(o.applications_dir, allocator); delete(o.icons_dir, allocator); delete(o.bin_dir, allocator)
+	delete(o.autostart_dir, allocator); delete(o.config_dir, allocator)
 	for ft in o.file_types { delete(ft, allocator) }
 	delete(o.file_types, allocator)
 	o^ = {}
@@ -259,6 +265,7 @@ parts_wanted :: proc(b: ^Backend, o: ^Integration_Options) -> Parts {
 	if !o.desktop_shortcut { w -= {.Desktop_Shortcut} }
 	if !o.add_to_path { w -= {.Path} }
 	if !o.autostart { w -= {.Autostart} }
+	if !o.default_file_manager { w -= {.File_Manager} }
 	if !o.register_browser { w -= {.Registration} }
 	if len(o.icons) == 0 { w -= {.Icons} }   // nothing to install: nothing to miss
 	return w

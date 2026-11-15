@@ -59,7 +59,26 @@ of the page opens the `Dialog` (its facts read on its thread, the places watched
 event, after a build that did not draw it (`Dialog.in_page`, `page_build`): leaving a page answers nothing.
 
 `Facts.autostart` and `Facts.on_path` say whether the start with the session and the PATH are in place (what
-`Setup_Options.prepare` asked).
+`Setup_Options.prepare` asked). `Facts.parts` has every part of the integration that is there and runs the installed
+copy.
+
+## The program's options
+
+`Setup_Options.choices` are the program's own options of an install, a box each; `prepare` receives their values in
+their order. A `Choice` tied to parts (`parts = {.File_Manager}`) stands for what the system has: when the install's
+facts first come and a program is installed, its box starts on when those parts are all in `Facts.parts`, off
+otherwise, whatever its `on` says (`choices_from_facts`). Before an install, the box starts from `on`. A file manager
+offers "open folders with it" this way, and the box never claims a part that someone took away.
+
+```odin
+choices = {
+	{label = i18n.later("Put the program on the PATH"), on = true, parts = {.Path}},
+	{label = i18n.later("Open folders with the program"), on = false, parts = {.File_Manager}},
+},
+prepare = proc(o: ^desktop.Integration_Options, choices: []bool, user: rawptr) {
+	o.add_to_path, o.default_file_manager = choices[0], choices[1]
+},
+```
 
 ## The command line
 
@@ -96,7 +115,7 @@ ev := setup.update(&d, cfg)                       // each frame, open or not: th
 my_setup_view :: proc(v: ^ui.View, d: ^setup.Dialog) {   // registered with ui.view_register
 	title, badge := setup.headline(d.facts, cfg)   // "Install Classeur", "Not installed"
 	words, tone := setup.state_words(d.facts, cfg) // the state in a sentence, its tone
-	ui.checkbox("###shortcut", "Shortcut on the Desktop", &d.shortcut)   // d.choices[i]: Setup_Options.choices
+	ui.checkbox("###shortcut", "Shortcut on the Desktop", &d.shortcut)   // d.choices[i]: Setup_Options.choices (set from the facts)
 	if setup.can_uninstall(&d) && my_button("Uninstall") && !setup.busy(&d) { setup.start_uninstall(&d, cfg) }
 	how := setup.closing(&d, cfg)                  // Close, Not_Now or Keep_Standalone
 	if my_button(...) { ev = setup.close(&d, how) }
