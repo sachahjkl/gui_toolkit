@@ -7,7 +7,9 @@ package scenarios_test
 // view reveals it; never a scroll bar nor a bar's room.
 
 import "core:fmt"
+import "core:math"
 import "core:testing"
+import "../../src/draw"
 import "../../src/platform"
 import "../../src/testkit/session"
 import "../../src/testkit/unwatched"
@@ -65,6 +67,10 @@ end_arrow :: proc(a: ui.Axis) -> string { return a == .X ? "strip_right" : "stri
 @(private = "file")
 off :: proc(s: ^session.Session, a: ui.Axis) -> f32 { return session.get(s, "strip_view").view_off[int(a)] }
 
+// The clear gap between an arrow and the first pixel of content, at the strip's font size.
+@(private = "file")
+strip_gap :: proc(view: ^ui.Box) -> f32 { return math.round(view.font_size * ui.STRIP_GAP_EM) }
+
 // Never a bar on a strip, nor its room.
 @(private = "file")
 expect_no_bar :: proc(t: ^testing.T, s: ^session.Session, loc := #caller_location) {
@@ -116,9 +122,10 @@ an_overflowing_strip_shows_the_end_arrow_at_its_start :: proc(t: ^testing.T) { u
 		testing.expect_value(t, arrow.rect.min[1 - i], strip.rect.min[1 - i])
 		testing.expect_value(t, arrow.rect.max[1 - i], strip.rect.max[1 - i])
 		testing.expect(t, .Focusable not_in arrow.flags, "the arrow takes no focus")
-		// (nothing of the content shows under the arrow: its band is held clear, the fade is beyond it)
+		// (nothing of the content shows under the arrow nor in the gap beyond it: that band is held clear, the fade is
+		// beyond it)
 		view := session.get(s, "strip_view")
-		testing.expect_value(t, view.edge_hold[i + 2], arrow.rect.max[i] - arrow.rect.min[i])
+		testing.expect_value(t, view.edge_hold[i + 2], arrow.rect.max[i] - arrow.rect.min[i] + strip_gap(view))
 		testing.expect(t, view.edge_fade[i + 2] > 0, "a fade beyond the arrow")
 		testing.expect_value(t, view.edge_hold[i], 0)
 
@@ -328,7 +335,8 @@ the_first_frame_has_the_least_size_and_the_arrow :: proc(t: ^testing.T) { unwatc
 			testing.expectf(t, length == want, "%v, %v beside: the strip %v long in the first frame, want %v", a, beside, length, want)
 			testing.expect_value(t, arrow.rect.max[i], strip.rect.max[i])
 			testing.expectf(t, session.find(s, start_arrow(a)) == nil, "%v: no start arrow", a)
-			testing.expect_value(t, session.get(s, "strip_view").edge_hold[i + 2], arrow.rect.max[i] - arrow.rect.min[i])
+			view := session.get(s, "strip_view")
+			testing.expect_value(t, view.edge_hold[i + 2], arrow.rect.max[i] - arrow.rect.min[i] + strip_gap(view))
 		}
 	}
 }) }
@@ -460,6 +468,104 @@ a_block_of_choices_scrolls_both_ways :: proc(t: ^testing.T) { unwatched.run(t, p
 	expect_clear(t, s, c, .X)
 	expect_clear(t, s, c, .Y)
 	expect_no_bar(t, s)
+}) }
+
+// Choices drawn as opencode native's server tabs: a raised bevel with a glow and a lamp with its halo, by a custom draw,
+// on a row of a surface of its own; a sample of that surface is left at the row's end.
+@(private = "file") PLATES_SURFACE :: draw.Color{0.06, 0.07, 0.09, 1}
+@(private = "file") PLATES_SAMPLE :: 40   // the row's end past the strip: the surface alone
+@(private = "file") PLATES_WINDOW :: [2]int{400, 120}
+
+@(private = "file")
+plate_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+	r := b.rect
+	ui.machined_bevel(dc, draw.Rect{{r.min.x + 2, r.min.y + 3}, {r.max.x - 2, r.max.y - 3}}, 6, draw.Color{0.55, 0.6, 0.7, 1}, 0, 0, draw.Color{0.9, 0.7, 0.2, 1})
+	ui.machined_lamp(dc, {r.min.x + 12, (r.min.y + r.max.y) * 0.5}, 8, draw.Color{0.2, 0.9, 0.3, 1})
+}
+
+@(private = "file")
+plates_build :: proc(s: ^session.Session) {
+	ui.next({width = ui.px(STRIP_LONG), height = ui.px(36), axis = .X, bg = PLATES_SURFACE})
+	if ui.parent(ui.build_box({.Draw_Background}, "###plates_row")) {
+		if ui.strip("###strip") {
+			for i in 0 ..< STRIP_MANY {
+				ui.next({width = ui.px(STRIP_ITEM), height = ui.pct(1), text_align = .Center})
+				b := ui.build_box({.Clickable, .Draw_Text}, fmt.tprintf("Tab %d###it%d", i, i))
+				b.custom = plate_draw
+			}
+		}
+		ui.spacer(ui.px(PLATES_SAMPLE))
+	}
+}
+
+// The plates' strip after a click on its right arrow, the pointer gone from it: the left arrow shows, a plate cut by it.
+@(private = "file")
+plates_scrolled :: proc(t: ^testing.T) -> ^session.Session {
+	s := session.start(t, {build = plates_build, size = PLATES_WINDOW})
+	session.wait_idle(s)
+	session.click(s, "strip_right")
+	session.wait_idle(s)
+	session.move(s, {f32(PLATES_WINDOW.x - 2), f32(PLATES_WINDOW.y - 2)})   // (no hover plate on an arrow)
+	session.wait_idle(s)
+	return s
+}
+
+// The pixel of `b` that differs most from `bg` (its chevron's ink), and how many differ by more than a trace.
+@(private = "file")
+arrow_ink :: proc(img: session.Image, b: ^ui.Box, bg: session.Color) -> (ink: session.Color, n: int) {
+	most := 0
+	for y in int(b.rect.min.y) ..< int(b.rect.max.y) {
+		for x in int(b.rect.min.x) ..< int(b.rect.max.x) {
+			p := session.pixel(img, x, y)
+			d := abs(int(p[0]) - int(bg[0])) + abs(int(p[1]) - int(bg[1])) + abs(int(p[2]) - int(bg[2]))
+			if d > 60 { n += 1 }
+			if d > most { most, ink = d, p }
+		}
+	}
+	return
+}
+
+// Within the band an arrow holds (its plate and the clear gap beyond it), nothing of a choice shows, its custom draw
+// (a bevel, a glow, a lamp's halo) included: past the arrow, the gap is the strip's surface, pixel for pixel; the fade
+// only begins after it. A capture is saved for a look (strip_plates.png).
+@(test)
+nothing_of_a_choice_shows_under_an_arrow_nor_beside_it :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := plates_scrolled(t)
+	left, view, row := session.find(s, "strip_left"), session.get(s, "strip_view"), session.get(s, "plates_row")
+	if !testing.expect(t, left != nil, "the left arrow, a plate cut by it") { return }
+	img := session.capture(s)
+	session.save_png(s, "strip_plates.png")
+	hold := view.edge_hold[0]
+	x0, x1 := int(left.rect.max.x), int(view.rect.min.x + hold)
+	testing.expectf(t, x1 - x0 >= 2, "a clear gap beyond the arrow: %d px", x1 - x0)
+	// (each row against the surface of that row at the row's end: a finish may shade the surface from top to bottom)
+	sample := int(row.rect.max.x) - PLATES_SAMPLE / 2
+	n := 0
+	for y in int(view.rect.min.y) ..< int(view.rect.max.y) {
+		surface := session.pixel(img, sample, y)
+		for x in x0 ..< x1 { if !session.near(session.pixel(img, x, y), surface, 4) { n += 1 } }
+	}
+	testing.expectf(t, n == 0, "%d pixels of a choice in the gap beyond the left arrow (%d .. %d)", n, x0, x1)
+}) }
+
+// Both arrows have one ink, at rest and under the pointer: the left one beside the right one just clicked is not faint,
+// and the hover shows by the plate, not by another ink.
+@(test)
+both_arrows_have_one_ink :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := plates_scrolled(t)
+	left, right := session.find(s, "strip_left"), session.find(s, "strip_right")
+	if !testing.expect(t, left != nil && right != nil, "both arrows") { return }
+	img := session.capture(s)
+	plate :: proc(img: session.Image, b: ^ui.Box) -> session.Color { return session.pixel(img, int(b.rect.min.x) + 2, int((b.rect.min.y + b.rect.max.y) * 0.5)) }
+	li, ln := arrow_ink(img, left, plate(img, left))
+	ri, rn := arrow_ink(img, right, plate(img, right))
+	testing.expectf(t, session.near(li, ri, 12), "one ink at rest: left %v, right %v", li, ri)
+	testing.expectf(t, ln > 0 && abs(ln - rn) <= max(3, ln / 5), "the same chevron, mirrored: %d and %d inked pixels", ln, rn)
+	session.hover(s, "strip_right")
+	session.wait_idle(s)
+	img = session.capture(s)
+	hi, _ := arrow_ink(img, right, plate(img, right))
+	testing.expectf(t, session.near(hi, ri, 12), "the same ink under the pointer: %v, at rest %v", hi, ri)
 }) }
 
 @(private = "file")

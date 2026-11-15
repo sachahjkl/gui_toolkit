@@ -275,8 +275,8 @@ a_lone_panel_adds_nothing :: proc(t: ^testing.T) {
 }
 
 // A strip in a lone panel's top band, its first tab chosen: a click on its right arrow, under the corner of the panel's
-// hover icons, scrolls the strip and keeps it scrolled (opencode native's sidebar). The icons do not cover the arrow the
-// pointer is on, whether the pointer comes straight to it or rests first on the band, where they show: the click is the
+// hover icons, scrolls the strip and keeps it scrolled (opencode native's sidebar). The icons never show over a strip:
+// not when the pointer comes straight to the arrow, nor when it rests first on the band's empty start; the click is the
 // arrow's, not Detach's (which floated the panel: a new strip, at its start).
 @(test)
 a_strip_in_a_panel_s_band_keeps_its_scroll :: proc(t: ^testing.T) {
@@ -288,8 +288,8 @@ a_strip_in_a_panel_s_band_keeps_its_scroll :: proc(t: ^testing.T) {
 		right := wait_built(s, "strip_right")
 		if body == nil || right == nil { return }
 		if from_band {
-			session.move(s, {body.rect.min.x + 5, body.rect.min.y + 15})   // (the row's empty start: the icons show)
-			testing.expect(t, built(s, "view_panel_icons") != nil, "the icons on the hover of the top area")
+			session.move(s, {body.rect.min.x + 5, body.rect.min.y + 15})   // (the row's empty start, in the top area)
+			testing.expect(t, built(s, "view_panel_icons") == nil, "no icon in a top area whose corner holds a strip")
 		}
 		session.click_at(s, session.center(right))
 		session.wait_idle(s)
@@ -300,6 +300,29 @@ a_strip_in_a_panel_s_band_keeps_its_scroll :: proc(t: ^testing.T) {
 		testing.expectf(t, view.view_off.x > 0, "%v: the arrow scrolled the strip, and it stays: %v", from_band, view.view_off.x)
 		testing.expectf(t, built(s, "strip_left") != nil, "%v: the start arrow now", from_band)
 	}
+}
+
+// The hover icons and a strip never meet: over a panel whose top area holds a strip in their corner, they do not show
+// wherever the pointer is in that area, and its menu (a right click on the area's free part) still floats it; a panel
+// with no strip there shows them as before.
+@(test)
+a_panel_s_icons_never_cover_a_strip :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "striped")
+	body := wait_built(s, "view_panel_view_striped")
+	strip := wait_built(s, "striped_strip")
+	if body == nil || strip == nil { return }
+	// (along the top area: the row's start, over a tab, over the strip's end, over the "+")
+	for x in ([4]f32{5, 40, strip.rect.max.x - 10, strip.rect.max.x + 10}) {
+		session.move(s, {body.rect.min.x + x, body.rect.min.y + 15})
+		testing.expectf(t, built(s, "view_panel_icons") == nil, "no icon with the pointer %v px into the top area", x)
+	}
+	// its menu still does what the icons did
+	session.click_at(s, {body.rect.min.x + 5, body.rect.min.y + 15}, .Right)
+	if !click_item(s, "Open as a floating window") { return }
+	if wait_built(s, "internal_view_striped") == nil { return }
+	testing.expect_value(t, ui.view_presentation(&r.views, "striped"), ui.View_Presentation.Internal)
 }
 
 // Two views in one zone: the tab strip, a tab each; a click on a tab shows its view.

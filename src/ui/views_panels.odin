@@ -690,7 +690,9 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, with_stri
 	// under them, a button), they do not show and that control takes the press. Shown over it, they took the press meant
 	// for it: a strip's arrow in a sidebar's top band floated the sidebar)
 	covers := over && view_rect_has(icons, mouse_pos()) && view_body_control_at(body, mouse_pos())
-	if !with_strip && ((over && !covers) || view_held_within(s, icons_key)) {
+	// (nor a strip's arrows, ever: a strip of the body in their corner (a sidebar's row of tabs at its top) keeps them
+	// away, wherever the pointer is in the top area; the panel's menu and the palette still detach and close it)
+	if !with_strip && !view_strip_at(s, body, icons) && ((over && !covers) || view_held_within(s, icons_key)) {
 		next({fixed_x = icons_x, fixed_y = gap, width = children_sum(), height = px(side), axis = .X, cross = .Center})
 		if parent(build_box({}, "###view_panel_icons")) {
 			if view_header_icon("view_detach", lucide.PICTURE_IN_PICTURE_2, labels.floating, true) { view_float(vs, r) }
@@ -747,6 +749,18 @@ view_rect_has :: proc(r: Rect, p: Vec2) -> bool { return p.x >= r.min.x && p.x <
 @(private = "file")
 view_body_control_at :: proc(body: ^Box, p: Vec2) -> bool {
 	for c := body.last; c != nil; c = c.prev { if hit_test_box(c, p, body.rect) != 0 { return true } }
+	return false
+}
+
+// Whether a strip built in the panel's body (this build's, at its last layout's place) meets the rect `r`: its arrows
+// come and go with its scroll, its box stays, so the answer does not flicker as they do.
+@(private = "file")
+view_strip_at :: proc(s: ^State, body: ^Box, r: Rect) -> bool {
+	for sb in s.strips {
+		o := s.boxes[sb.outer] if sb.outer != 0 else nil
+		if o == nil || o.rect.max.x <= r.min.x || o.rect.min.x >= r.max.x || o.rect.max.y <= r.min.y || o.rect.min.y >= r.max.y { continue }
+		for p := o.parent; p != nil; p = p.parent { if p == body { return true } }
+	}
 	return false
 }
 

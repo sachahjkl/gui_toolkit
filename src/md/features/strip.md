@@ -50,6 +50,15 @@ the axis, a side is an axis and an end. Refused: a vertical strip as a second wi
   default). Before, the arrow stood on the fade itself: the fade starts half-seen at the edge, and the words under the
   arrow showed glued to its chevron ("log>"). It takes no room from the layout: an arrow that took room when it came
   would shift every choice by its width each time the view left the start, under the pointer about to click.
+- **A clear gap beyond the arrow** (`STRIP_GAP_EM`, 0.3 em): the band held clear is the arrow and that gap, and the fade
+  begins past it. A choice cut at the arrow showed, glued to it, the first pixels of its own drawing (in opencode
+  native, the tail of a raised tab and its "⌄"), faint but seen at the start of the fade. Everything the view's content
+  draws, a custom draw (a bevel, a glow, a lamp's halo) as well as text, is under the strip's mask (`draw_box` pushes it
+  before the content's draws); the gap is what keeps a cut choice from touching the arrow. The step and the reveal keep
+  a choice clear of the arrow, the gap and the fade.
+- **One ink for both arrows**, at rest and under the pointer: the text's of where the strip is, read before the arrow's
+  own tags. The weak ink, lit as "hot text" under the pointer, made the arrow at rest look faint beside the one just
+  clicked. The hover shows by the plate.
 - **An arrow shows on a side only when that side hides choices.** At the start, only the end arrow; at the end, only
   the start one. A strip that fits has none. Every arrow is built at every build; right after the layout, by the layout
   that is drawn, each is put on its edge or hidden (`strips_place`: no place, no press, nothing drawn, nothing read

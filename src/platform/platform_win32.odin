@@ -27,6 +27,7 @@ Native_Window :: struct {
 	display_stale:  bool,
 	integrated:     bool,           // set_integrated_title: the client area covers the title bar
 	overlay:        bool,           // open_overlay (overlay_win32.odin): a topmost popup over one monitor
+	overlay_keyboard: Overlay_Keyboard,   // an overlay's: Exclusive takes the keyboard at each showing, not only the first
 	fullscreen:     bool,
 	nc_tracking:    bool,           // TrackMouseEvent asked for WM_NCMOUSELEAVE
 	saved_style:    i32,            // before full screen
@@ -432,7 +433,17 @@ show_window :: proc(w: ^Window) {
 		if w.want_maximized { w.off_state = .Maximized; w.want_maximized = false }
 		return
 	}
-	if w.overlay { win.ShowWindow(w.hwnd, win.SW_SHOWNOACTIVATE); return }   // (it takes the keyboard only when clicked)
+	if w.overlay {
+		// (On_Demand takes the keyboard only when clicked. Exclusive takes it at each showing: shown again without it, a
+		// region chooser's Escape did nothing until a first click)
+		if w.overlay_keyboard == .Exclusive {
+			win.ShowWindow(w.hwnd, win.SW_SHOW)
+			win.SetForegroundWindow(w.hwnd)
+		} else {
+			win.ShowWindow(w.hwnd, win.SW_SHOWNOACTIVATE)
+		}
+		return
+	}
 	win.ShowWindow(w.hwnd, w.want_maximized ? win.SW_SHOWMAXIMIZED : win.SW_SHOW)
 	w.want_maximized = false
 	win.SetForegroundWindow(w.hwnd)

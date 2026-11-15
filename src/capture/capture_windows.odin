@@ -374,7 +374,7 @@ output_frame :: proc(impl: ^Impl, m: ^Monitor, allocator: runtime.Allocator) -> 
 duplication_frame :: proc(impl: ^Impl, m: ^Monitor, allocator: runtime.Allocator) -> (f: Frame, ok: bool) {
 	d := &m.duplication
 	if d.unavailable { return }
-	acquire: for attempt in 0 ..< ACQUIRE_ATTEMPTS {
+	acquire: for _ in 0 ..< ACQUIRE_ATTEMPTS {
 		if d.duplication == nil && !duplication_open(impl, m) {
 			// Remote sessions, some drivers, the secure desktop: GDI still sees the screen.
 			d.unavailable = true
@@ -389,8 +389,8 @@ duplication_frame :: proc(impl: ^Impl, m: ^Monitor, allocator: runtime.Allocator
 			continue acquire
 		}
 		if hr == dxgi.ERROR_WAIT_TIMEOUT {
-			// Nothing changed since the last frame: staging is the screen.
-			if d.filled { break acquire }
+			// Nothing changed since the last frame: staging is the screen, once a frame with a picture filled it.
+			if d.filled && d.presented { break acquire }
 			continue acquire
 		}
 		if hr < 0 || resource == nil {
@@ -407,11 +407,13 @@ duplication_frame :: proc(impl: ^Impl, m: ^Monitor, allocator: runtime.Allocator
 			return
 		}
 		if info.LastPresentTime != 0 { d.presented = true }
-		// The first frame of a new duplication can carry only the pointer, over a surface not drawn yet: once more.
-		if !d.presented && attempt == 0 { continue acquire }
+		// The first frames of a new duplication can carry only the pointer, over a surface not drawn yet: again.
+		if !d.presented { continue acquire }
 		break acquire
 	}
-	if !d.filled { return }
+	// (no frame with a picture yet, on a screen that does not change: the staging surface is still black, and taking it
+	// gave a black capture now and then. GDI's copy sees the screen as it is)
+	if !d.filled || !d.presented { return }
 	return staging_read(d.device_context, d.staging, d.rotation, allocator)
 }
 

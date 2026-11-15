@@ -33,6 +33,9 @@ STRIP_FADE_EM :: 1.0
 @(private = "file") STRIP_ARROW_EM :: 1.6         // an arrow button's thickness along its axis
 @(private = "file") STRIP_GLYPH_EM :: 0.9         // its chevron's size
 @(private = "file") STRIP_ARROW_RADIUS_EM :: 0.3  // its plate's corners (its hover shows them)
+// Between an arrow's plate and the first pixel of content, nothing but the strip's surface: a choice cut at the arrow
+// (a raised plate's tail, its glyph) never looks glued to it, the fade only begins past this gap.
+STRIP_GAP_EM :: 0.3
 @(private = "file") STRIP_HIDDEN_PX :: 0.5        // an offset this close to an end is that end
 
 // A strip in the build, from strip to strips_settle. A side is [axis][0]: its start (left, up), [axis][1]: its end.
@@ -42,7 +45,7 @@ Strip_Build :: struct {
 	axes:        bit_set[Axis],
 	shown:       [Axis][2]bool,   // the arrows that show, by the layout drawn (strips_place)
 	arrows:      [Axis][2]Key,    // their boxes, all built: strips_place puts each on its edge, or hides it
-	arrow, fade: f32,
+	arrow, gap, fade: f32,       // an arrow's thickness, the clear gap beyond it, the fade beyond that
 	step:        Strip_Step,
 	reveal:      Key,             // a choice to bring into view this build (strip_reveal)
 }
@@ -80,6 +83,7 @@ strip :: proc(id: string, o := Strip_Options{}) -> bool {
 	_ = signal(view)
 	sb := Strip_Build{outer = outer.key, view = view.key, axes = axes, step = o.step}
 	sb.arrow = math.round(em * STRIP_ARROW_EM)
+	sb.gap = math.round(em * STRIP_GAP_EM)
 	sb.fade = math.round((o.fade > 0 ? o.fade : STRIP_FADE_EM) * em)
 	view.strip_arrow = sb.arrow   // (the layout keeps its least: strip_least)
 	append(&s.strip_stack, sb)
@@ -195,9 +199,13 @@ strip_arrow :: proc(sb: ^Strip_Build, view, outer: ^Box, choices: []^Box, a: Axi
 	// (placed by the last layout: strips_place puts it on this layout's edge, or hides it)
 	q := strip_arrow_rect(sb^, {{0, 0}, outer.size}, a, end)
 	glyph, name, side := strip_side(a, end)
+	// (one ink for every arrow, at rest and under the pointer: the text's of where the strip is, read before the
+	// arrow's tags. The weak ink, lit as "hot text" under the pointer, made the arrow at rest look faint beside the one
+	// just clicked; the hover says itself by its plate)
+	ink := color("text")
 	next({fixed_x = q.min.x, fixed_y = q.min.y, width = px(q.max.x - q.min.x), height = px(q.max.y - q.min.y), font = lucide_icons(),
-		font_size = math.round(em * STRIP_GLYPH_EM), text_pad = 0, text_align = .Center, radius = math.round(em * STRIP_ARROW_RADIUS_EM), bg = box_under(outer)})
-	push_tags("ghost_button", "button", "weak")
+		font_size = math.round(em * STRIP_GLYPH_EM), text_pad = 0, text_align = .Center, radius = math.round(em * STRIP_ARROW_RADIUS_EM), bg = box_under(outer), fg = ink})
+	push_tags("ghost_button", "button")
 	b := build_box({.Clickable, .Draw_Text, .Draw_Background, .Draw_Hot_Effects, .No_Text_Trunc}, fmt.tprintf("%s###strip_%s", glyph, side))
 	pop_tags()
 	a11y_default(b, {role = .Button, name = name})
@@ -216,7 +224,7 @@ strip_step :: proc(sb: Strip_Build, view: ^Box, choices: []^Box, a: Axis, dir: i
 	w := view.size[i]
 	t := view.view_target[i]
 	limit := view_limit(view, a)
-	edge := sb.arrow + sb.fade
+	edge := sb.arrow + sb.gap + sb.fade
 	room := w - 2 * edge   // (the clear part)
 	to := dir > 0 ? limit : 0   // (nothing hidden past the arrow: the end)
 	switch sb.step {
@@ -230,11 +238,11 @@ strip_step :: proc(sb: Strip_Build, view: ^Box, choices: []^Box, a: Axis, dir: i
 			x1 := x0 + (c.rect.max[i] - c.rect.min[i])
 			long := x1 - x0 > room   // (longer than the clear part: its start at the start of it)
 			if dir > 0 {
-				if x1 <= t + w - sb.arrow + STRIP_HIDDEN_PX { continue }
+				if x1 <= t + w - (sb.arrow + sb.gap) + STRIP_HIDDEN_PX { continue }   // (the arrow and its gap show nothing)
 				at := long ? x0 - edge : x1 - (w - edge)
 				if at > t + STRIP_HIDDEN_PX && (!found || at < to) { to, found = at, true }
 			} else {
-				if x0 >= t + sb.arrow - STRIP_HIDDEN_PX { continue }
+				if x0 >= t + sb.arrow + sb.gap - STRIP_HIDDEN_PX { continue }
 				at := long ? x1 - (w - edge) : x0 - edge
 				if at < t - STRIP_HIDDEN_PX && (!found || at > to) { to, found = at, true }
 			}
@@ -262,7 +270,7 @@ strip_bring :: proc(s: ^State, sb: Strip_Build, view: ^Box) {
 		off := view.view_off[i]
 		x0 := c.rect.min[i] - view.rect.min[i] + off
 		x1 := x0 + (c.rect.max[i] - c.rect.min[i])
-		to := clamp(view_reveal_offset(off, x0, x1, view.size[i], sb.arrow + sb.fade), 0, view_limit(view, a))
+		to := clamp(view_reveal_offset(off, x0, x1, view.size[i], sb.arrow + sb.gap + sb.fade), 0, view_limit(view, a))
 		d := math.round(to - off)   // (whole pixels: the boxes' rects are)
 		if d == 0 { continue }
 		view_jump(view, off + d, a)
@@ -297,7 +305,8 @@ strips_place :: proc(s: ^State) {
 			for end in 0 ..< 2 {
 				side := i + 2 * end   // (edge_hold and edge_fade: left, top, right, bottom)
 				view.edge_hold[side], view.edge_fade[side] = 0, 0
-				if sb.shown[a][end] { view.edge_hold[side], view.edge_fade[side] = sb.arrow, sb.fade }
+				// (the band held clear: the arrow and the gap beyond it; the fade begins past them)
+				if sb.shown[a][end] { view.edge_hold[side], view.edge_fade[side] = sb.arrow + sb.gap, sb.fade }
 				b := s.boxes[sb.arrows[a][end]] if sb.arrows[a][end] != 0 else nil
 				if b == nil { continue }
 				q := strip_arrow_rect(sb, outer.rect, a, end)

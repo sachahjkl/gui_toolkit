@@ -44,6 +44,7 @@ open_overlay :: proc(title: string, area: [4]int, keyboard := Overlay_Keyboard.O
 	w.dpi_scale = 1
 	w.display_stale = true
 	w.overlay = true
+	w.overlay_keyboard = keyboard
 	ex_style := win.WS_EX_TOPMOST | win.WS_EX_TOOLWINDOW | win.WS_EX_NOREDIRECTIONBITMAP
 	if keyboard == .On_Demand { ex_style |= win.WS_EX_NOACTIVATE }
 	wtitle := win.utf8_to_wstring(title, context.temp_allocator)
