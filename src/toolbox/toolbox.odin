@@ -99,16 +99,7 @@ capture :: proc(command: []string, o := Run_Options{}, allocator := context.temp
 	return string(stdout), exit_code(state)
 }
 
-// The exit code of a finished process; -1 when it did not exit. Windows gives it as an unsigned number: it is read back as the
-// program's 32-bit int (`exit(-1)` is -1, a crash's NTSTATUS is negative).
-exit_code :: proc(state: os.Process_State) -> int {
-	if !state.exited { return -1 }
-	when ODIN_OS == .Windows {
-		return int(i32(u32(state.exit_code)))
-	} else {
-		return state.exit_code
-	}
-}
+// (exit_code(state): the exit code of a finished process, -1 when it did not exit: system_windows.odin, system_other.odin)
 
 // The process exited with 0. (Process_State.success only says it did not crash, and on Windows it is always true.)
 succeeded :: proc(state: os.Process_State) -> bool { return state.exited && state.exit_code == 0 }

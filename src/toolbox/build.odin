@@ -9,8 +9,6 @@ import "core:path/filepath"
 import "core:strings"
 import "../fsx"
 
-// What a stamp file ends with (the ones PowerShell's Set-Content wrote end so on Windows, and stay valid).
-STAMP_NEWLINE :: "\r\n" when ODIN_OS == .Windows else "\n"
 // The stamp beside a library build_c_lib makes.
 C_LIB_STAMP :: "STAMP"
 

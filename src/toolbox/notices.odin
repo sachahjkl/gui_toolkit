@@ -18,8 +18,6 @@ import "../ascii"
 import tk_json "../json"
 
 NOTICES_FILE :: "THIRD-PARTY-NOTICES"
-// The target the crates are linked for: this system's.
-NOTICES_TARGET :: "x86_64-pc-windows-msvc" when ODIN_OS == .Windows else "x86_64-unknown-linux-gnu"
 // What a crate's licence files are named, in upper case.
 @(rodata) NOTICE_FILE_PREFIXES := [?]string{"LICENSE", "LICENCE", "COPYING", "NOTICE"}
 
