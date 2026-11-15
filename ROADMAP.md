@@ -18,9 +18,9 @@
   (fps, layout warnings, GPU profile, devtools) and one kept window placement that replaces the four copies in opencode
   native, inspecteur, classeur and papier. inspecteur's zebra rows and rules become appearance settings; Wren drops its
   own text backend, emoji and renderer settings.
-- **Rich paste in the toolkit.** Pasting files, an image or text is decided once the clipboard's answers are in, the
-  image decoded off the interface's thread; today the toolkit's paste knows only text, and opencode native does the rest
-  itself.
+- **opencode native pastes through the toolkit.** Its composer takes files and images from `ui.paste_answer`, its own
+  three requests removed, so its menu's Paste attaches an image as Ctrl+V does
+  ([src/md/features/paste.md](src/md/features/paste.md)).
 - **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate;
   `gt:image` gains GIF first.
 - **One JSON helper.** Reading and writing JSON goes through one toolkit package, used by the toolkit's own stores and

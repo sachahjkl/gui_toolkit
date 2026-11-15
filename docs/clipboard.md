@@ -54,12 +54,53 @@ for e in events {
 - Windows: the system keeps what was copied, the read is done in the call and its answer queued.
 - `inject_event` of a `Clipboard_Data` (a test playing another program's clipboard): its strings are copied.
 
+### A widget's paste: text, files or an image (`ui.paste_request`)
+
+A widget does not read the events itself: it asks with `ui.paste_request` and takes one answer with `ui.paste_answer`
+(`src/ui/paste.odin`, the design in [src/md/features/paste.md](../src/md/features/paste.md)).
+
+```odin
+// a chat composer: its editor takes the text, the program the files and the image
+res := ui.text_edit("###composer", &app.area, {wrap = true, paste = {.Text, .Files, .Image}})
+if a, ok := ui.paste_answer(res.box.key, {.Files, .Image}); ok {
+	switch a.kind {
+	case .Files: for p in a.files { attach_path(app, p) }                     // (clone what you keep)
+	case .Image: attach_bytes(app, a.image.data, a.image.mime)                // still encoded: PNG, JPEG, BMP, a DIB
+	case .Text:
+	}
+}
+
+// an image viewer: its pixels, decoded on the chores
+if ui.key_press(.V, {.Ctrl}) { ui.paste_request(view_key, {.Image}, decode = true) }
+if a, ok := ui.paste_answer(view_key); ok && a.image.rgba != nil { show(a.image.rgba, a.image.size) }
+```
+
+| | |
+|---|---|
+| `paste_request(key, kinds = {.Text}, decode = false) -> bool` | asks for one of `kinds` for the widget `key`; `decode`: an image comes with its pixels. False: no clipboard to ask |
+| `paste_answer(key, kinds = PASTE_KINDS_ALL) -> (Paste_Answer, ok)` | the answer, in the build it is ready, when its kind is in `kinds`; once |
+| `Paste_Answer` | `kind` (`.Text`, `.Files`, `.Image`), `text`, `files` and `cut`, `image` (`data` and `mime` as the clipboard held them; `rgba` and `size` when decoded) |
+| `Text_Edit_Options.paste`, `.paste_decode` | what the editor's Ctrl+V, Shift+Insert and menu ask for (`{}`: text) |
+| `edit_menu(..., paste, paste_decode)`, `edit_paste(owner, kinds, decode)` | the same for a program's own menu of an editor |
+
+- One kind wins, among those asked: files, then text, then an image. A file manager offers the paths as text too; a
+  spreadsheet's cells come as text and as a picture.
+- The kinds are asked one after the other, the next only when the last came empty: an image is read only when there
+  are no files and no text. Each step is a `clipboard_request`; a step costs a frame on Windows and on an offscreen
+  window, the owner's answer on Linux.
+- An image is decoded on the chores (`ui.task`) when the request said `decode`: its answer comes in a later build. A
+  decode that fails still answers `.Image`, `rgba` nil.
+- A text field takes `{.Text}` and only while it has the focus. An image-only clipboard pasted into it gives the field
+  nothing; the program that asked for `.Image` on its key takes the image after the field, in the same build.
+- One paste waits at a time: a second request replaces the first, its answers and its decode dropped. An answer nobody
+  takes in its build is dropped. Its text, paths and bytes live until the next `paste_request`.
+
 ### The toolkit's fields
 
-`ui.line_edit` and `ui.text_edit` paste this way (`src/ui/paste.odin`). Ctrl+V, Shift+Insert or a field menu's Paste asks
-with `ui.paste_request(key)`; `begin_build` finds the answer among the events it is given, and the widget `key` inserts it
-in that build (`ui.paste_answer(key)`) over its selection, in one undo step, if it is built and has the focus. Otherwise the
-answer is dropped. One paste waits at a time: a second request replaces the first.
+`ui.line_edit` and `ui.text_edit` paste this way. Ctrl+V, Shift+Insert or a field menu's Paste asks with
+`ui.paste_request(key, kinds)`; `begin_build` finds the answer among the events it is given, and the widget `key` inserts
+its text in that build over its selection, in one undo step, if it is built and has the focus. A line edit asks for text
+only.
 
 - The ui takes the answers whose id it asked for and leaves the others to the program. A program that reads the events
   before the ui (its own requests) passes every `Clipboard_Data` event on to `begin_build`, and checks each id against its
@@ -153,3 +194,6 @@ Tests: `tests/clipboard` (conversions only: the user's clipboard is never touche
 `clipboard_request`: no answer in the call, one per request at the next poll, none after. `tests/scenarios`
 (`text_edit_test.odin`) pastes into a line edit and an editor (nothing in the build of Ctrl+V, the text after the answer,
 one undo step) and drops an answer for a field that lost the focus; `tests/keyboard` pastes from a `clipboard_get`.
+`tests/scenarios` (`paste_test.odin`) pastes files (cut), text over an image, an image-only clipboard into an editor
+(nothing for it, the image for the program) and an image decoded on the chores; `tests/linux_desktop` reads another
+program's `text/uri-list` as files.

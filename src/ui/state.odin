@@ -105,7 +105,7 @@ destroy :: proc(s: ^State) {
 	delete(s.events.list)
 	delete(s.events.consumed)
 	delete(s.typed)
-	delete(s.paste.text)
+	paste_destroy(&s.paste)
 	delete(s.focus_order)
 	delete(s.popup_stack)
 	delete(s.modal_stack)
