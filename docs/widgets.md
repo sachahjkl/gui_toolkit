@@ -259,6 +259,10 @@ Every widget that edits a value of the caller's returns `changed: bool`, true in
 `checkbox`, `radio`, `toggle`, `slider`, `range_slider`, `number`, `segmented`, `dropdown`, `tabs`, the colour pickers
 (`color_picker`, `hue_picker`, `alpha_picker`, `sat_val_picker`), `hotkey_field`.
 
+A group of choices, `segmented` (pills or words) and `tabs`, is one Tab stop: the chosen one. While it has the
+keyboard, the arrows change the choice and the keyboard follows: Left and Right (and Up and Down in a segmented
+control), Home the first, End the last, with no wrap. Each change returns `changed`, as a click does.
+
 ```odin
 if ui.toggle("###dark", "Dark", &app.dark) { apply_theme(app) }
 ```

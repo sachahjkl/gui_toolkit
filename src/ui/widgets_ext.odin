@@ -989,24 +989,53 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 			inner := build_box({}, "###seg_inner")
 			push_parent(inner)
 			defer { pop_parent(); spacer(px(d.pad)); pop_parent(); spacer(px(d.pad)) }
+			items := make([]^Box, len(labels), frame_allocator())
+			on_one := false
+			chosen := clamp(selected^, 0, len(labels) - 1)
 			for label, i in labels {
 				fg := i == selected^ ? text_on : text_off
 				next({width = pct(1 / f32(len(labels))), height = pct(1), text_align = .Center, fg = fg, radius = d.key_radius})
 				push_tags("segment")
-				// (Fixed_Radius: key_radius is as drawn, concentric with the track's drawn corners)
-				item := build_box({.Clickable, .Focusable, .Draw_Text, .Draw_Hot_Effects, .Fixed_Radius}, fmt.tprintf("%s###seg%d", label, i))
+				// (Fixed_Radius: key_radius is as drawn, concentric with the track's drawn corners; one Tab stop, the chosen)
+				flags := Box_Flags{.Clickable, .Draw_Text, .Draw_Hot_Effects, .Fixed_Radius}
+				if i == chosen { flags += {.Focusable} }
+				item := build_box(flags, fmt.tprintf("%s###seg%d", label, i))
 				pop_tags()
+				items[i] = item
 				isig := signal(item)
+				if isig.focused { on_one = true }
 				if isig.clicked && i != selected^ { selected^ = i; changed = true }
 				tip := i < len(tips) ? tips[i] : ""
 				if tip != "" && hovered_for(isig) { if tooltip() { tooltip_text(tip) } }
 				a11y_default(item, {role = .Radio_Button, toggled = i == selected^ ? .True : .False, position = i + 1, set_size = len(labels), description = tip})
+			}
+			if to := choice_group_step(on_one, chosen, len(labels)); to >= 0 {
+				selected^, changed = to, true
+				items[chosen].flags -= {.Focusable}
+				items[to].flags += {.Focusable}
+				set_focus(items[to].key)
 			}
 			// (the item clicked this frame is the selected one: the earlier items said otherwise)
 			if changed { for c := inner.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
 		}
 	}
 	return
+}
+
+// A group of choices (a segmented control's segments, a row of tabs, radio buttons) is one Tab stop: the chosen one.
+// While a choice of the group has the keyboard, the arrows move the choice, and the keyboard goes with it (the caller
+// gives it the new choice's box): Left the one before, Right the next, and Up and Down as well where `vertical`; Home the
+// first, End the last. No wrap: an end is an end. -1: no move. (src/md/features/widget-table.md, G1)
+@(private)
+choice_group_step :: proc(focused: bool, selected, count: int, vertical := true) -> int {
+	if !focused || count <= 0 { return -1 }
+	to := selected
+	if key_press(.Left) || (vertical && key_press(.Up)) { to -= 1 }
+	if key_press(.Right) || (vertical && key_press(.Down)) { to += 1 }
+	if key_press(.Home) { to = 0 }
+	if key_press(.End) { to = count - 1 }
+	to = clamp(to, 0, count - 1)
+	return to == selected ? -1 : to
 }
 
 // (on each side of a separator)
@@ -1024,6 +1053,9 @@ segmented_text :: proc(id: string, labels: []string, selected: ^int, tips: []str
 	if parent(b) {
 		st := top_style()
 		bold := styled_face(st.font, true, false)
+		items := make([]^Box, len(labels), frame_allocator())
+		on_one := false
+		chosen := clamp(selected^, 0, len(labels) - 1)
 		for label, i in labels {
 			if i > 0 {
 				spacer(px(math.round(em * SEGMENTED_TEXT_GAP_EM)))
@@ -1037,9 +1069,11 @@ segmented_text :: proc(id: string, labels: []string, selected: ^int, tips: []str
 			on := i == selected^
 			if !on { push_tags("weak") }   // (the chosen one in the text's own colour)
 			next({width = text_size(0, 0), height = pct(1), text_pad = 0, font = on ? bold : st.font, cursor = .Hand})
-			item := build_box({.Clickable, .Focusable, .Draw_Text}, fmt.tprintf("%s###seg%d", label, i))
+			item := build_box(i == chosen ? {.Clickable, .Focusable, .Draw_Text} : {.Clickable, .Draw_Text}, fmt.tprintf("%s###seg%d", label, i))
 			if !on { pop_tags() }
+			items[i] = item
 			isig := signal(item)
+			if isig.focused { on_one = true }
 			if !on && isig.hovering { item.text_color = color("text") }
 			if on {
 				d := frame_new(Underline_Draw)
@@ -1050,6 +1084,12 @@ segmented_text :: proc(id: string, labels: []string, selected: ^int, tips: []str
 			tip := i < len(tips) ? tips[i] : ""
 			if tip != "" && hovered_for(isig) { if tooltip() { tooltip_text(tip) } }
 			a11y_default(item, {role = .Radio_Button, toggled = on ? .True : .False, position = i + 1, set_size = len(labels), description = tip})
+		}
+		if to := choice_group_step(on_one, chosen, len(labels)); to >= 0 {
+			selected^, changed = to, true
+			items[chosen].flags -= {.Focusable}
+			items[to].flags += {.Focusable}
+			set_focus(items[to].key)
 		}
 		if changed { for c := b.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
 	}
@@ -1269,10 +1309,16 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 	if strip(id) {
 		a11y_default(parent_box(), {role = .Tab_List, orientation = .X})
 		first_tab: ^Box
+		items := make([]^Box, len(labels), frame_allocator())
+		on_one := false
+		chosen := clamp(selected^, 0, len(labels) - 1)
 		for label, i in labels {
 			on := selected^ == i
 			b := tab_box(fmt.tprintf("%s_%d", id, i), on)
 			if on { strip_reveal(b) }
+			// (one Tab stop, the chosen tab: the arrows move along the row, choice_group_step)
+			if i != chosen { b.flags -= {.Focusable} }
+			items[i] = b
 			if parent(b) {
 				if !on { push_tags("weak") }
 				spacer(px(em))
@@ -1283,9 +1329,16 @@ tabs :: proc(id: string, labels: []string, icons: []string, selected: ^int) -> (
 				if !on { pop_tags() }
 			}
 			sig := signal(b)
+			if sig.focused { on_one = true }
 			if sig.clicked && !on { selected^ = i; changed = true }
 			a11y_default(b, {role = .Tab, selected = on, position = i + 1, set_size = len(labels)})
 			if first_tab == nil { first_tab = b }
+		}
+		if to := choice_group_step(on_one, chosen, len(labels), vertical = false); to >= 0 {
+			selected^, changed = to, true
+			items[chosen].flags -= {.Focusable}
+			items[to].flags += {.Focusable}
+			set_focus(items[to].key)
 		}
 		// (the tab clicked this frame is the selected one: the earlier tabs said otherwise)
 		if changed {

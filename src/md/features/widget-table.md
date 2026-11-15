@@ -15,10 +15,10 @@ hotkey_field.odin, split.odin). "gen." is the rule every box has: a tooltip is t
 |---|---|---|---|---|---|---|---|---|---|---|
 | `button` | — | Space, Enter | yes | button | program's | `o.disabled`, gen. | gen. | — | — | — |
 | `checkbox` | — | Space | yes | check box | program's | gen. | gen. | — | — | — |
-| `radio` | — | Space | yes, each | radio | program's | gen. | gen. | — | — | — |
+| `radio` | — | Space | yes, each (**G1**) | radio | program's | gen. | gen. | — | — | — |
 | `toggle` | — | Space | yes | switch | program's | gen. | gen. | — | — | — |
-| `segmented` | — | Space | yes, each | radio group | program's | gen. | `tips` | — | — | — |
-| `tabs` | its strip | Space | yes, each | tab list | program's | gen. | gen. | — | — | — |
+| `segmented` | — | Space, arrows, Home, End | the chosen one | radio group | program's | gen. | `tips` | — | — | — |
+| `tabs` | its strip | Space, Left, Right, Home, End | the chosen one | tab list | program's | gen. | gen. | — | — | — |
 | `dropdown` | — (D1) | Down, Alt+Down, F4 open | yes | combo box | program's | gen. | gen. | — | — | — |
 | `slider` | a step | arrows, Home, End, Page | yes | slider | program's | gen. | gen. | yes | — (D2) | **gap** (G2) |
 | `range_slider` | a step, active thumb | arrows, Home, End, Page | yes, each thumb | two sliders | program's | gen. | gen. | yes | — (D2) | **gap** (G2) |
@@ -31,9 +31,11 @@ hotkey_field.odin, split.odin). "gen." is the rule every box has: a tooltip is t
 
 ## Gaps
 
-- **G1, arrows in a group of choices.** `radio`, `segmented` and `tabs` make each choice a Tab stop, and the arrows do
-  nothing in them. A group of choices is one Tab stop, and the arrows move the choice in it (the radio group's and the
-  tab list's rule of every desktop). Fix: one roving focus for the three, the chosen one the Tab stop.
+- **G1, arrows in a group of choices.** A group of choices is one Tab stop, and the arrows move the choice in it (the
+  radio group's and the tab list's rule of every desktop). `segmented` and `tabs` do it (`choice_group_step`: the chosen
+  one the Tab stop, the arrows, Home and End move the choice and the keyboard, no wrap; a row of tabs takes Left and
+  Right alone, Down being the way into its page). `radio` remains: each is built alone and knows neither its siblings
+  nor their count, so it needs the group's memory in the state (the radios of one `selected` in the last build).
 - **G2, a value's reset.** A `splitter` given its `default_size` comes back to it on a double click; a slider and a
   number cannot, they know no default. Fix: an optional `default` for `slider`, `range_slider` and `number`; a double
   click on the track or the field's label sets it.
