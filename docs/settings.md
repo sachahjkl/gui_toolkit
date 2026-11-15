@@ -43,6 +43,7 @@ names every standard preference.
 |---|---|---|---|
 | `window.system_title` | Program (`false`) | | the program (`platform.set_integrated_title`: at once, as a program can) |
 | `window.toast_position` | `bottom_right` | the eight `ui.Toast_Position` | `ui.set_toast_position` |
+| `window.placement` | `""` (hidden) | `platform.placement_text` | the program: `placement_restore` before its window shows, `placement_track` at each frame, `placement_keep` at its close |
 
 ## Text and fonts (`Text`)
 

@@ -273,6 +273,10 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			description = i18n.later("Where in the window its short messages show."),
 			choices = TOAST_CHOICES[:], choice_labels = labels(a, i18n.later("Top left"), i18n.later("Top center"), i18n.later("Top right"), i18n.later("Middle left"), i18n.later("Middle right"), i18n.later("Bottom left"), i18n.later("Bottom center"), i18n.later("Bottom right")), tags = MESSAGES_TAGS[:],
 		})
+		append(&defs, config.Def{
+			name = PLACEMENT_PREF, kind = .String, default = {s = ""}, hidden = true,
+			description = "Where the main window was and its size (platform.placement_text): it opens there again (placement_restore, placement_track).",
+		})
 	}
 	if .Text in sets {
 		config.title_register(prefs, "appearance.text", i18n.later("Text and fonts"))
