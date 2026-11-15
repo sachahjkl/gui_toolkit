@@ -8,13 +8,14 @@ package render
 // capture) is the same code on every system. wgpu-native must be built for Linux (libwgpu_native.a beside Odin's
 // vendor:wgpu); the portability doc tracks that.
 //
-// The renderer calls wgpu_surface_from_handles with its instance and the handles; it returns a configured-ready
+// The renderer calls wgpu_surface_from_handles with itself and the handles; it returns a configured-ready
 // wgpu.Surface (nil when the handles are empty — an offscreen window renders with init_offscreen instead).
 
 import "vendor:wgpu"
 import "../platform"
 
-wgpu_surface_from_handles :: proc(instance: wgpu.Instance, h: platform.Surface_Handles) -> wgpu.Surface {
+wgpu_surface_from_handles :: proc(r: ^Renderer, h: platform.Surface_Handles) -> wgpu.Surface {
+	instance := r.wg.instance
 	switch h.backend {
 	case .Wayland:
 		src := wgpu.SurfaceSourceWaylandSurface{chain = {sType = .SurfaceSourceWaylandSurface}, display = h.display, surface = h.surface}

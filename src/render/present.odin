@@ -155,14 +155,8 @@ vblank_grid :: proc(r: ^Renderer) -> (last: time.Tick, period_ns: f64, ok: bool)
 	return r.present.sync_tick, r.present.period_ns, true
 }
 
-// The QueryPerformanceCounter value `qpc` on core:time's tick scale (what time.tick_now returns on Windows).
-qpc_to_tick :: proc(qpc: i64) -> time.Tick {
-	freq: win.LARGE_INTEGER   // (fixed at boot: the system reads it from memory it shares with the process)
-	when ODIN_OS == .Windows { win.QueryPerformanceFrequency(&freq) }
-	f := i64(freq)
-	if f == 0 { return {} }
-	return time.Tick{_nsec = (qpc / f) * 1e9 + (qpc % f) * 1e9 / f}
-}
+// (qpc_to_tick(qpc): a QueryPerformanceCounter value on core:time's tick scale, present_windows.odin; zero elsewhere,
+// present_other.odin)
 
 // What one Present is asked for: `sync` refreshes to wait (0: at once), `allow_tearing` the tearing flag (DXGI allows it
 // only with sync 0, on a swap chain made for it), `mode` the mode the frame is presented in (wgpu: Immediate or Fifo).
@@ -214,12 +208,7 @@ latency_lowered :: proc(p: ^Present_State, to: int) {
 	p.max_latency = to
 }
 
-@(private)
-latency_drain :: proc(p: ^Present_State, handle: win.HANDLE) {
-	when ODIN_OS == .Windows {
-		for p.latency_debt > 0 && handle != nil && win.WaitForSingleObject(handle, 0) == win.WAIT_OBJECT_0 { p.latency_debt -= 1 }
-	}
-}
+// (latency_drain(p, handle): the surplus taken from the latency object, present_windows.odin, present_other.odin)
 
 @(private)
 present_destroy :: proc(r: ^Renderer) { delete(r.present.out); delete(r.present.probe.samples) }

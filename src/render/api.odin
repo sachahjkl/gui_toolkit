@@ -19,10 +19,10 @@ import "../platform"
 // Linux renders through wgpu-native (Vulkan) from the neutral surface handles the platform package hands over
 // (platform.Surface_Handles), with no Direct3D, DXGI or Win32 type in the public API.
 
-RENDER_BACKEND :: #config(TOOLKIT_RENDER, "d3d11") when ODIN_OS == .Windows else "wgpu"
+RENDER_BACKEND :: #config(TOOLKIT_RENDER, "d3d11") when SYSTEM_DIRECT3D else "wgpu"
 USE_WGPU :: RENDER_BACKEND == "wgpu"
 #assert(RENDER_BACKEND == "d3d11" || RENDER_BACKEND == "wgpu", "TOOLKIT_RENDER must be d3d11 or wgpu")
-#assert(ODIN_OS == .Windows || USE_WGPU, "the Direct3D 11 backend is Windows only; other systems use wgpu")
+#assert(SYSTEM_DIRECT3D || USE_WGPU, "the Direct3D 11 backend is Windows only; other systems use wgpu")
 
 // The backend this program was built with: "d3d11" or "wgpu".
 backend_name :: proc() -> string { return RENDER_BACKEND }
