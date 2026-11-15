@@ -66,8 +66,6 @@
 - **Plugins in JavaScript.** A plugin builds its own screens and views, runs commands and reads settings through a
   dynamic API over the whole toolkit, with the JavaScript engine that Wren already embeds moved into the toolkit
   (`gt:js`). Notes: [src/md/features/plugins.md](src/md/features/plugins.md).
-- **The host tests on Linux too.** The host tests run on Windows only: on Linux, windows without a screen get no
-  renderer after a few tests in one process. Freed whole, the tests of a program's windows run on both systems.
 - **Demo states injected.** A demo mode that injects states that need an account (an unlocked vault, a PIN asked), so
   a capture needs no temporary code change.
 - **A reduced wgpu-native, only if it comes ready-made.** Studied and declined: WGSL and Vulkan only save about 1 MB for

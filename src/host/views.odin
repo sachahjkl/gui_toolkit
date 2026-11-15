@@ -120,10 +120,10 @@ host_views_frames :: proc(h: ^Host) {
 	// (a frame may open or close another: the list is read again each time)
 	for i := 0; i < len(sh.views); i += 1 {
 		vw := sh.views[i]
-		if vw.owner != h || platform.is_closed(vw.host.win) { continue }
+		if vw.owner != h || host_done(&vw.host) { continue }
 		view_window_follow(vw)
 		v := &vw.host
-		if quiet && v.settle == 0 && !platform.events_waiting(v.win) && !ui.view_window_due(&v.state) { continue }
+		if quiet && v.settle == 0 && !host_close_waits(v) && !platform.events_waiting(v.win) && !ui.view_window_due(&v.state) { continue }
 		host_frame(v)
 	}
 }

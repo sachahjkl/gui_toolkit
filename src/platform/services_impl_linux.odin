@@ -5,6 +5,7 @@ package platform
 // (Inhibit returns a cookie, UnInhibit takes it) over the session bus — the portal's Inhibit is the sandboxed
 // equivalent, left as a note. Recent files are appended to the freedesktop recently-used.xbel the file managers read.
 
+import "base:runtime"
 import "core:os"
 import "core:strings"
 import "core:time"
@@ -35,6 +36,8 @@ idle_inhibit_linux :: proc(w: ^Window, reason: string) -> Idle_Inhibit {
 	cookie := dbus.r_u32(&r)
 	session.idle_next += 1
 	h := Idle_Inhibit(session.idle_next)
+	// (the thread's list, in the heap as its bus is: session_bus)
+	if session.idle_records == nil { session.idle_records = make([dynamic]Idle_Record, runtime.heap_allocator()) }
 	append(&session.idle_records, Idle_Record{handle = h, cookie = cookie, window = w})
 	return h
 }

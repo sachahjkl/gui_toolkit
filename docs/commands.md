@@ -122,8 +122,9 @@ What is typed in the palette keeps the items whose title (or title and group) ho
 begin a word, the words in order (`fuzzy_words`: "prio" finds "Raise the priority", "ks" "Keyboard shortcuts"; letters
 scattered in a word match nothing, so "prio" does not find "Previous section"), or, when nothing is found so, each word
 with a slip or two (`fuzzy_typos`: "Qestart pencode" finds "Restart opencode native"; none in a word of three letters,
-one up to six, two beyond), the best matches first (the text whole before pieces, at a word's start before elsewhere; a
-match in the title before one that needs the group's letters). Escape closes the palette, and the sheet.
+one up to six, two beyond), the best matches first (the text whole before pieces, at a word's start before elsewhere,
+ending where its word ends before inside a longer word: "inspecteur" before "inspecteurtool"; a match in the title
+before one that needs the group's letters). Escape closes the palette, and the sheet.
 
 ### Keys the user changes
 

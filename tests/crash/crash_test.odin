@@ -27,6 +27,8 @@ CHILD_LOG :: "line one\nline two\n"
 CHILD_SETTINGS :: "theme = dark\n"
 NO_REPORT :: "none"
 CHILD_LIMIT :: 60 * time.Second
+GO_FILE :: "go"                        // a "hold" child ends when the test writes it
+HOLD_POLL :: 10 * time.Millisecond     // (the child's look at it: the test waits on a condition, the child on this file)
 
 ////////////////////////////////
 // The child
@@ -51,6 +53,11 @@ child :: proc "contextless" () {
 	case "hang":
 		forever: sync.Sema
 		sync.sema_wait(&forever)
+	case "hold":
+		// (runs until the test says, then ends cleanly: another instance of the program meanwhile)
+		go := fmt.tprintf("%s/%s", dir, GO_FILE)
+		for waited := time.Duration(0); !os.exists(go) && waited < CHILD_LIMIT; waited += HOLD_POLL { time.sleep(HOLD_POLL) }
+		crash.end_session()
 	case "last":
 		path, ok := crash.last_report()
 		fmt.print(ok ? path : NO_REPORT)
@@ -71,6 +78,26 @@ run_child :: proc(t: ^testing.T, mode, dir: string) -> (out: string, state: os.P
 	st, stdout, _, err := os.process_exec({command = {os.args[0]}, env = env}, context.temp_allocator)
 	testing.expectf(t, err == nil, "the child (%s) runs: %v", mode, err)
 	return string(stdout), st
+}
+
+// The session files in `dir`.
+sessions :: proc(dir: string) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	entries, _ := os.read_all_directory_by_path(dir, context.temp_allocator)
+	for e in entries {
+		if strings.has_prefix(e.name, crash.SESSION_PREFIX) && strings.has_suffix(e.name, crash.REPORT_EXTENSION) { append(&out, e.name) }
+	}
+	return out[:]
+}
+
+// A child started and left running ("hang", "hold"), its session begun.
+start_child :: proc(t: ^testing.T, mode, dir: string) -> (p: os.Process, ok: bool) {
+	env := toolbox.env_with({CHILD_ENV, DIR_ENV}, fmt.tprintf("%s=%s", CHILD_ENV, mode), fmt.tprintf("%s=%s", DIR_ENV, dir))
+	err: os.Error
+	p, err = os.process_start({command = {os.args[0]}, env = env})
+	if !testing.expectf(t, err == nil, "the child (%s) starts: %v", mode, err) { return }
+	session := fmt.tprintf("%s/%s", dir, crash.session_file(u64(p.pid), context.temp_allocator))
+	return p, testing.expect(t, testkit.await(&session, proc(s: ^string) -> bool { return os.exists(s^) }), "its session began")
 }
 
 // The reports of `prefix` in `dir`.
@@ -218,7 +245,7 @@ a_crash_leaves_a_report :: proc(t: ^testing.T) {
 	testing.expect(t, has_exe, "the program among the modules")
 	testing.expect(t, slice_equal(r.log[:], []string{"line one", "line two"}), "the log's last lines")
 	testing.expect(t, slice_equal(r.settings[:], []string{"theme = dark"}), "the settings")
-	testing.expect(t, !os.exists(fmt.tprintf("%s/%s", dir, crash.SESSION_FILE)), "the report closed the session")
+	testing.expect_value(t, len(sessions(dir)), 0)   // (the report closed the session)
 
 	// the next start learns of it; once it ended cleanly, the next one does not
 	out, _ := run_child(t, "last", dir)
@@ -232,11 +259,8 @@ a_crash_leaves_a_report :: proc(t: ^testing.T) {
 a_killed_session_is_found_at_the_next_start :: proc(t: ^testing.T) {
 	dir := testkit.temp_folder(t, "unclean")
 	context.allocator = context.temp_allocator   // (what the reports and the children's output hold: freed with the test)
-	env := toolbox.env_with({CHILD_ENV, DIR_ENV}, fmt.tprintf("%s=hang", CHILD_ENV), fmt.tprintf("%s=%s", DIR_ENV, dir))
-	p, err := os.process_start({command = {os.args[0]}, env = env})
-	if !testing.expect(t, err == nil) { return }
-	session := fmt.tprintf("%s/%s", dir, crash.SESSION_FILE)
-	testing.expect(t, testkit.await(&session, proc(s: ^string) -> bool { return os.exists(s^) }), "the session began")
+	p, started := start_child(t, "hang", dir)
+	if !started { return }
 	testing.expect(t, os.process_kill(p) == nil)
 	_, _ = os.process_wait(p, CHILD_LIMIT)
 
@@ -250,6 +274,50 @@ a_killed_session_is_found_at_the_next_start :: proc(t: ^testing.T) {
 	testing.expect_value(t, r.kind, crash.KIND_UNCLEAN)
 	testing.expect_value(t, r.program, CHILD_PROGRAM)
 	testing.expect_value(t, r.pid, u64(p.pid))
+}
+
+// Two instances at once: one ends cleanly while the other runs, then the other is killed. Each has its own session: the clean
+// end left the running one's trace, and the next start reports the kill. (With one session.txt for the program, the second
+// instance overwrote the first's, and its clean end removed it: the kill went unsaid.)
+@(test)
+two_instances_keep_their_own_sessions :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "two")
+	context.allocator = context.temp_allocator   // (what the reports and the children's output hold: freed with the test)
+	a, started := start_child(t, "hang", dir)
+	if !started { return }
+	_, state := run_child(t, "clean", dir)
+	testing.expect(t, toolbox.succeeded(state))
+	testing.expect(t, os.exists(fmt.tprintf("%s/%s", dir, crash.session_file(u64(a.pid), context.temp_allocator))), "the other's session is still there")
+	testing.expect(t, os.process_kill(a) == nil)
+	_, _ = os.process_wait(a, CHILD_LIMIT)
+	out, _ := run_child(t, "last", dir)
+	found := reports(dir, crash.UNCLEAN_PREFIX)
+	if !testing.expect_value(t, len(found), 1) { return }
+	testing.expect_value(t, filepath.base(out), filepath.base(found[0]))
+	data, _ := os.read_entire_file(found[0], context.temp_allocator)
+	r, _ := crash.report_parse(string(data), context.temp_allocator)
+	testing.expect_value(t, r.pid, u64(a.pid))
+	testing.expect_value(t, len(sessions(dir)), 0)
+}
+
+// One instance crashes while another runs; the other then ends cleanly. The next start still gives the crash: the clean end
+// marks as seen what was there when that session began, not what came while it ran. (With the end's time as the mark, the
+// crash of an instance was hidden by the clean end of another.)
+@(test)
+a_crash_while_another_runs_is_still_given :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "while")
+	context.allocator = context.temp_allocator   // (what the reports and the children's output hold: freed with the test)
+	b, started := start_child(t, "hold", dir)
+	if !started { return }
+	_, crashed := run_child(t, "crash", dir)
+	testing.expect(t, !toolbox.succeeded(crashed), "the child died of its crash")
+	found := reports(dir, crash.CRASH_PREFIX)
+	if !testing.expect_value(t, len(found), 1) { _ = os.process_kill(b); return }
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/%s", dir, GO_FILE), transmute([]u8)string("go")) == nil)
+	held, _ := os.process_wait(b, CHILD_LIMIT)
+	testing.expect(t, held.exited && toolbox.succeeded(held), "the other ended cleanly")
+	out, _ := run_child(t, "last", dir)
+	testing.expect_value(t, filepath.base(out), filepath.base(found[0]))
 }
 
 // A session that ends cleanly leaves nothing to report.

@@ -286,6 +286,41 @@ a_close_asked_leaves_the_window_to_the_program :: proc(t: ^testing.T) {
 	testing.expect(t, p.builds > built, "its frames go on")
 }
 
+// A view's window closed by the system while its owner's frame read the events (Wayland reads every window's events on
+// one connection, in whichever window's poll): it is marked closed before its own frame. That frame still comes, the loop
+// does not sleep over it, and it takes the close back: the program's hook re-attaches the view. (Skipped as soon as it was
+// closed, the window never got that frame and stayed on the screen.)
+@(test)
+a_view_window_closed_by_the_system_takes_its_close :: proc(t: ^testing.T) {
+	p: Probe
+	defer delete(p.seen)
+	sh: host.Shared
+	a := new(host.Host)
+	defer free(a)
+	open_main(t, &sh, a, &p)
+	defer host.host_close(a)
+	vw := new(host.View_Window)
+	defer free(vw)
+	w := platform.open_window_offscreen("host test view", SIZE)
+	if !testing.expect(t, w != nil) { return }
+	host.host_adopt(&vw.host, &sh, w, probe_build, &p)   // (offscreen: drawn on the first window's target, no window opens)
+	ui.init(&vw.host.state, &sh.fonts, &sh.theme)
+	ui.use(&a.state)
+	ui.set_clock(&vw.host.state, &p.clock)
+	vw.owner, vw.shown = a, true
+	append(&sh.views, vw)
+	defer { pop(&sh.views); host.host_close(&vw.host) }
+	vw.host.close_asked = proc(h: ^host.Host) { note(h, "close_asked") }
+	step(a)
+	w.closed = true   // (its close read in the owner's poll)
+	now, _ := host.hosts_due({a})
+	testing.expect(t, now, "a close to take back is due: the loop does not sleep over it")
+	step(a)
+	testing.expect_value(t, len(p.seen), 1)
+	if len(p.seen) == 1 { testing.expect_value(t, p.seen[0], "close_asked") }
+	testing.expect(t, !platform.is_closed(w), "the frame took the close back")
+}
+
 // The ring keeps the last FRAME_RING pictures and says their median and 95th percentile; the share of pixels drawn counts
 // only the pictures drawn with partial redraw on.
 @(test)

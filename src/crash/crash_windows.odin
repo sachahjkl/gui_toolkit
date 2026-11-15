@@ -14,6 +14,8 @@ package tk_crash
 // called them) leaves an "exit" report with the stack that asked for it: what remains unexplained at the next start came from outside.
 
 import "base:intrinsics"
+import "core:os"
+import "core:strings"
 import win "core:sys/windows"
 
 @(private) UNCLEAN_REASON :: "the session ended without a report: a fail-fast, or the process was ended from outside, or the machine stopped; Windows' Application Error event (wevtutil qe Application) may say more"
@@ -100,7 +102,7 @@ Windows_State :: struct {
 	dir:            [DIR_BYTES]u16,   // NUL-terminated
 	path:           [DIR_BYTES + 128]u16,
 	path_stem:      int,              // where the extension goes
-	session:        [DIR_BYTES + 32]u16,
+	session:        [DIR_BYTES + 48]u16,   // <dir>\session-<pid>.txt: this process's own (session_file)
 	out:            [OUT_BYTES]u8,
 	stack:          Stack_Copy,
 	pcs:            [MAX_FRAMES]u64,
@@ -126,7 +128,7 @@ install_handler :: proc() -> bool {
 		n := copy(sys.dir[:len(sys.dir) - 1], w)
 		sys.dir[n] = 0
 		s := copy(sys.session[:len(sys.session) - 1], sys.dir[:n])
-		file_name := "\\" + SESSION_FILE
+		file_name := strings.concatenate({"\\", session_file(u64(os.get_pid()), context.temp_allocator)}, context.temp_allocator)
 		for c in file_name { if s < len(sys.session) - 1 { sys.session[s] = u16(c); s += 1 } }
 		sys.session[s] = 0
 	}

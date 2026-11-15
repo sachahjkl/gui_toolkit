@@ -12,6 +12,7 @@ package tk_crash
 // (exported symbols only) come last, in [symbols], once everything else is written. The build is named by its GNU build id.
 
 import "base:intrinsics"
+import "core:os"
 import "core:sys/linux"
 import "core:sys/posix"
 import process "../process"
@@ -104,7 +105,7 @@ Linux_State :: struct {
 	slots:         [MAX_THREADS]Slot,
 	own:           Slot,
 	path:          [DIR_BYTES + 128]u8,
-	session:       [DIR_BYTES + 32]u8,   // <dir>/session.txt, NUL-terminated
+	session:       [DIR_BYTES + 48]u8,   // <dir>/session-<pid>.txt, NUL-terminated: this process's own (session_file)
 	name:          [THREAD_NAME_BYTES]u8,
 	date:          [32]u8,
 	file:          [96]u8,
@@ -117,7 +118,8 @@ sys: Linux_State
 install_handler :: proc() -> bool {
 	sys.fd = -1
 	n := copy(sys.session[:len(sys.session) - 1], kept_dir())
-	n += copy(sys.session[n:len(sys.session) - 1], "/" + SESSION_FILE)
+	n += copy(sys.session[n:len(sys.session) - 1], "/")
+	n += copy(sys.session[n:len(sys.session) - 1], session_file(u64(os.get_pid()), context.temp_allocator))
 	sys.session[n] = 0
 	// backtrace() loads libgcc's unwinder on its first call, which allocates: done here, not in the handler
 	warm: [4]rawptr
