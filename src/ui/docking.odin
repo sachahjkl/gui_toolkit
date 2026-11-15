@@ -116,6 +116,7 @@ Dock_Result :: struct {
 }
 
 @(private) DOCK_TABS_ID :: "###dock_tabs"   // a strip's tabs and its empty part
+@(private) DOCK_TAB_STRIP_ID :: "###dock_tab_strip"   // the tabs, on a strip (its view: "###strip_view")
 @(private) dock_leaf_id :: proc(leaf: i32) -> string { return fmt.tprintf("###dock_leaf_%d", leaf) }
 @(private) dock_tab_id :: proc(panel: u32) -> string { return fmt.tprintf("###dock_tab_%d", panel) }
 @(private) dock_body_id :: proc(panel: u32) -> string { return fmt.tprintf("###dock_body_%d", panel) }
@@ -133,9 +134,11 @@ dock_title :: proc(d: ^Dock, panel: u32) -> string {
 @(private)
 dock_closable :: proc(d: ^Dock, panel: u32) -> bool { return d.opts.closable == nil || d.opts.closable(d.opts.user, panel) }
 
-// The key of a tab's box (in its stack's strip, in the box of its tabs).
+// The key of a tab's box (in its stack's strip, in the box of its tabs, in their strip and its view).
 dock_tab_key :: proc(d: ^Dock, leaf: i32, panel: u32) -> Key {
-	return key_from_string(key_from_string(key_from_string(d.space_key, dock_leaf_id(leaf)), DOCK_TABS_ID), dock_tab_id(panel))
+	k := key_from_string(key_from_string(d.space_key, dock_leaf_id(leaf)), DOCK_TABS_ID)
+	k = key_from_string(key_from_string(k, DOCK_TAB_STRIP_ID), "###strip_view")
+	return key_from_string(k, dock_tab_id(panel))
 }
 // The key of the box a panel's content goes into.
 dock_body_key :: proc(d: ^Dock, panel: u32) -> Key { return key_from_string(d.space_key, dock_body_id(panel)) }
@@ -494,22 +497,24 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 	floating := root != d.main
 	sr := dock_strip_rect(d, leaf)
 	next({fixed_x = sr.min.x, fixed_y = sr.min.y, width = px(sr.max.x - sr.min.x), height = px(sr.max.y - sr.min.y), axis = .X, cross = .Center})
-	strip: ^Box
-	if tags("bar") { strip = build_box({.Clip, .Draw_Background}, dock_leaf_id(leaf)) }
+	bar: ^Box
+	if tags("bar") { bar = build_box({.Clip, .Draw_Background}, dock_leaf_id(leaf)) }
 	if edged() {   // (the edged finish: a stack's strip is a window's title, lit where the focus is)
 		focus, _ := dock_focus_leaf(d)
 		sd := frame_new(Dock_Strip_Draw)
-		sd^ = {bar = strip.bg, lit = focus == leaf}
-		strip.custom, strip.custom_user = dock_strip_draw, sd
+		sd^ = {bar = bar.bg, lit = focus == leaf}
+		bar.custom, bar.custom_user = dock_strip_draw, sd
 	}
-	a11y_set(strip, {role = .Tab_List, orientation = .X, name = dock_stack_label(d, leaf)})
-	if parent(strip) {
+	a11y_set(bar, {role = .Tab_List, orientation = .X, name = dock_stack_label(d, leaf)})
+	if parent(bar) {
 		if d.opts.strip_begin != nil { d.opts.strip_begin(d.opts.user, d, leaf) }
-		// the tabs and the rest of the strip, in the room the end's buttons leave (tabs too many for it are cut, the
-		// buttons stay in view)
+		// the tabs and the rest of the strip, in the room the end's buttons leave (tabs too many for it scroll with the
+		// toolkit's arrows, as every row of tabs: the buttons stay in view)
 		next({width = fill(), height = pct(1), axis = .X, cross = .Center})
 		if parent(build_box({.Clip}, DOCK_TABS_ID)) {
-			for p, i in tabs { dock_build_tab(d, leaf, p, i, len(tabs)) }
+			if strip(DOCK_TAB_STRIP_ID) {
+				for p, i in tabs { dock_build_tab(d, leaf, p, i, len(tabs)) }
+			}
 			// the rest: a floating panel's title (moved by it, docked back by a double click)
 			next({width = fill(), height = pct(1), cursor = floating ? platform.Cursor.Move : platform.Cursor.Arrow})
 			grab := build_box(floating ? {.Clickable} : {}, "###dock_grab")
@@ -562,6 +567,7 @@ dock_build_tab :: proc(d: ^Dock, leaf: i32, p: u32, i, n: int) {
 	active := d.nodes[leaf].active == p
 	// (the look of every row of tabs: tab_box)
 	tb := tab_box(dock_tab_id(p), active, {.Hot_Within})
+	if active { strip_reveal(tb) }   // (a panel shown by a command or a drop comes into view, not left behind an arrow)
 	sig := signal(tb)
 	held := d.drag.state == .Dragging && d.drag.panel == p
 	closable := dock_closable(d, p)
