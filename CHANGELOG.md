@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.274.0] - 2026-11-15 15:18
+
+### Added
+- **Partial redraw in a program's tests.** `session.damage_verify`, `damage_settle`, `damage_px`, `damage_expect_exact` and `expect_opaque` check that each partial frame is the whole frame and that no pixel is left less than opaque, as the toolkit's own tests do.
+
 ## [0.273.0] - 2026-11-15 14:31
 
 ### Changed
@@ -3798,6 +3803,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.274.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.274.0
 [0.273.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.273.0
 [0.272.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.272.0
 [0.271.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.271.0
