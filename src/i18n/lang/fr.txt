@@ -1247,31 +1247,6 @@ fr Installé par Nix. Une installation antérieure a laissé des fichiers ici : 
 en Installed by Nix: the Nix package has the menu entry and the icon.
 fr Installé par Nix : le paquet Nix a l'entrée du menu et l'icône.
 
-ctx setup key
-en Start menu
-fr Menu Démarrer
-
-en Applications menu
-fr Menu des applications
-
-en Settings > Apps
-fr Paramètres > Applications
-
-en Icons
-fr Icônes
-
-en Installed. Start it from the Start menu, or now:
-fr Installé. Lancez-le depuis le menu Démarrer, ou maintenant :
-
-en Installed. Start it from the applications menu, or now:
-fr Installé. Lancez-le depuis le menu des applications, ou maintenant :
-
-en Installed, but a shortcut, the Settings entry or a file is missing.
-fr Installé, mais il manque un raccourci, l'entrée des Paramètres ou un fichier.
-
-en Installed, but the menu entry, an icon or a file is missing.
-fr Installé, mais il manque l'entrée du menu, une icône ou un fichier.
-
 en %s Setup
 fr Installation : %s
 
@@ -1424,6 +1399,31 @@ fr oui (avec son lanceur de console)
 
 en the install folder is unknown
 fr le dossier d'installation est inconnu
+
+en Applications menu
+fr Menu des applications
+
+en Icons
+fr Icônes
+
+en Installed. Start it from the applications menu, or now:
+fr Installé. Lancez-le depuis le menu des applications, ou maintenant :
+
+en Installed, but the menu entry, an icon or a file is missing.
+fr Installé, mais il manque l'entrée du menu, une icône ou un fichier.
+
+ctx setup key
+en Start menu
+fr Menu Démarrer
+
+en Settings > Apps
+fr Paramètres > Applications
+
+en Installed. Start it from the Start menu, or now:
+fr Installé. Lancez-le depuis le menu Démarrer, ou maintenant :
+
+en Installed, but a shortcut, the Settings entry or a file is missing.
+fr Installé, mais il manque un raccourci, l'entrée des Paramètres ou un fichier.
 
 en Waiting for the system's answer…
 fr En attente de la réponse du système…
