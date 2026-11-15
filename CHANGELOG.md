@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.277.2] - 2026-11-15 17:35
+
+### Changed
+- **The sites' scroll bar is the toolkit's.** Every page of a site the toolkit builds, its documentation too, draws the scroll bar of the programs' windows: the thin bar with its trough, its thumb and its arrows, the site's accent under the pointer (Firefox: the bar's two colours).
+
+### Fixed
+- **Windows: a frame no longer reads the registry or asks the shell for a folder.** The light or dark choice is read once and again only when Windows says it changed, and the person's folders (Documents, Downloads...) once each, the home from %USERPROFILE%: a theme that follows the system, or a path shown in a frame, waits on nothing.
+
 ## [0.277.1] - 2026-11-15 17:26
 
 ### Fixed
@@ -3846,6 +3854,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.277.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.2
 [0.277.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.1
 [0.277.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.0
 [0.276.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.276.2
