@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.278.0] - 2026-11-15 17:49
+
+### Fixed
+- **A machine with no graphics driver**: a program on a machine with no usable graphics driver says so and ends, instead of crashing. `host.host_open` returns false and says why in the log, on standard error and, for a Windows program without a console, in a message box (`host.open_error`, `render.init_failure_text`); a Direct3D 11 window falls back to WARP when no hardware device can be made.
+
 ## [0.277.2] - 2026-11-15 17:35
 
 ### Changed
@@ -3854,6 +3859,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.278.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.278.0
 [0.277.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.2
 [0.277.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.1
 [0.277.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.277.0
