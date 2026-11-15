@@ -5,6 +5,28 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.282.0] - 2026-11-15 20:59
+
+### Added
+- **An exploded 3D view.** `ui.set_exploded` (Ctrl+Alt+Shift+E in a build with the devtools) draws the window's boxes as planes in depth, each parent behind its children, the menus, toasts and tooltips on their own planes. A drag turns it, the wheel spreads the planes, Escape closes it; the page takes no input meanwhile.
+- **macOS's folders.** `platform.user_dir` gives macOS's own places: settings, data and state in `~/Library/Application Support/<program>`, the cache in `~/Library/Caches/<program>`, the runtime files in the user's `$TMPDIR`; `log.default_dir` gives `~/Library/Logs/<program>`, and the setup's install folder is `~/Applications/<name>.app`.
+- **Event streams and WebSockets in `gt:http`.** `events` reads a server's event stream (Server-Sent Events) and calls the program for each event; `ws_connect`, `ws_send`, `ws_recv` and `ws_close` hold a WebSocket over `ws://` or `wss://`. Both run on a worker and stop at once when another thread asks. Windows uses WinHTTP; Linux uses any libcurl, also one built without WebSockets. The DevTools client (`gt:cdp`) now uses it (docs/http.md).
+- **A wireframe mode.** `ui.set_wireframe` (Ctrl+Alt+Shift+W in a build with the devtools, or Chrome DevTools' "Layer borders") draws every box of the window as its outline and each gap in the colour of its step of the spacing scale, a gap off the scale in red, with the name and size of the box under the pointer.
+- **SVG: `<use>`, and gradients an editor writes.** The SVG reader draws a `<use>` of another element (a logo's repeated arm), reads a fill or a stop colour written in the `style` attribute, and follows a gradient's `href` to the gradient whose stops it shares, as Inkscape writes them.
+- **A cache of decoded pictures.** `gt:pictures` keeps the textures of picture files under a byte budget: a program asks for a picture at each frame that shows it, at the size of its place, and gets its texture once a worker has decoded it. Places of nearly one size share one texture, the last pictures asked decode first, and what is on the screen is never evicted.
+- **Secrets sealed for the user.** `gt:secrets` seals a password or a token for the user's account: `seal` gives a field to keep in the program's file, `open` gives the secret back, `forget` removes it. Windows uses DPAPI, Linux the Secret Service. When no store is there, `seal` says so and the program chooses what to do (docs/secrets.md).
+- **One URL escaper.** `http.component_encode(s)` percent-encodes one part of a URL (a path's segment, a query's value): a space is `%20`, a slash `%2F`, as a path needs, where `form_encode` writes a form's `+`. The crash bar's issue link uses it.
+- **One spacing scale.** `ui.SPACE_1`..`ui.SPACE_6` and the roles every page uses (`PAGE_MARGIN`, `CARD_PAD`, `ROW_PAD`, `GROUP_GAP`, `ITEM_GAP`, `LINE_GAP`, `ICON_GAP`, `CONTROL_GAP`, `TOOL_GAP`, `INNER_PAD`), `ui.space(step)`, the list card (`ui.list_card`, `ui.card_row`: rows split by hairlines), and a well's `pad` and `edge`. A card's content now sits the same inset from its four edges, and a card adds no gap after itself: the page spaces its cards.
+
+### Changed
+- **A program installs into its vendor's folder, apart from its data.** A new install goes to `%LOCALAPPDATA%\Programs\FromentSoftware\Papier` on Windows and `~/.local/opt/FromentSoftware/Papier` on Linux, never beside the settings and data an uninstall leaves. An install already made stays where it is.
+- **A new setup screen.** The program comes first: its logo large on a band of its accent, its name, what it is, its state as a pill beside its version. The options are a list of switches, the details (where the parts are, Uninstall) fold under one line, and the footer signs it with the vendor's mark beside the buttons. A copy from the Nix store gets a screen of its own: Nix's snowflake, "Managed by Nix", and nothing to do. `ui.toggle` takes `wrap` for a long label, as `checkbox` does.
+- **The settings and the setup use the spacing scale.** The settings' pages, the sidebar, the changelog, the licence and Diagnostics pages, and the setup's view and page use the same steps as every other page. Two places side by side now have the same gaps and insets.
+
+### Removed
+- **`gt:cdp`'s own WebSocket frames.** `ws_encode`, `ws_decode` and the `WS_*` opcodes are no longer public: the client's WebSocket is `gt:http`'s (`ws_connect`, `ws_send`, `ws_recv`), which keeps the one codec of the toolkit.
+- **One install command line.** `desktop.parse_cli`, `desktop.cli_run` and `Identity.cli_flag` (`--desktop-integration`) are gone: no program used them any more. A program's install command line is gt:setup's (`--install`, `--uninstall`, `--setup`, `--status`, `--quit`).
+
 ## [0.281.0] - 2026-11-15 20:53
 
 ### Added
@@ -3898,6 +3920,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.282.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.282.0
 [0.281.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.281.0
 [0.280.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.2
 [0.280.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.1
