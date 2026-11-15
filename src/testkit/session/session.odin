@@ -42,6 +42,7 @@ import "../../font"
 import "../../platform"
 import "../../render"
 import "../../ui"
+import base "../../base"
 
 // What a test may take in all before the runner stops it (a barrier's bound comes first).
 TEST_LIMIT :: 5 * time.Minute
@@ -99,6 +100,10 @@ Session :: struct {
 	renderer: ^render.Renderer,
 	clock:    f64,                   // the state's time (ui.set_clock): `advance` moves it
 	frames:   int,                   // made so far
+	// the calls that wait on the system made in its frames (base.blocking, with TOOLKIT_BLOCKING_CHECK): the test fails
+	// at its end when there are any, unless `blocking_allowed` (allow_blocking)
+	blocking:         int,
+	blocking_allowed: bool,
 	buttons:  platform.Mouse_Buttons,   // held (press, release)
 	pointer:  [2]f32,                // where the last pointer event was
 	name:     string,                // the test's
@@ -155,6 +160,7 @@ start :: proc(t: ^testing.T, o: Session_Options, loc := #caller_location) -> ^Se
 	context = s.ctx
 	size := o.size.x > 0 ? o.size : DEFAULT_SIZE
 	s.win = platform.open_window_offscreen(s.name, size, o.dpi_scale)
+	_ = platform.dark_mode_preferred()   // (read before the frames, as host_open does: they count what waits)
 	if o.integrated_title { platform.set_integrated_title(s.win, true) }
 	if s.win == nil { failed(s, "no offscreen window", loc) }
 	font.init(&own.fonts)
@@ -225,6 +231,13 @@ session_end :: proc(s: ^Session) {
 	sync.atomic_sub(&live_sessions, 1)
 	if s.thread != sync.current_thread_id() { return }   // (stopped in the middle of what it was doing: its state stays as it was, with the process)
 	context = s.ctx
+	// (the interface's thread made calls that wait on the system: a disk asleep or a peer that does not answer freezes
+	// the window there; base.blocking said where on the standard error)
+	when base.BLOCKING_CHECK {
+		if !s.blocking_allowed && s.parent == nil {
+			testing.expectf(s.t, s.blocking == 0, "%d calls that wait on the system in the frames, on the interface's thread: make them tasks (their places are on the standard error)", s.blocking)
+		}
+	}
 	if testing.failed(s.t) { keep_failure(s) }
 	if current == s { current = nil }
 	if s.state != nil { ui.set_clock(s.state, nil) }
@@ -300,14 +313,20 @@ frame :: proc(s: ^Session) {
 	context = s.ctx
 	s.frames += 1
 	s.clock += FRAME_MS
+	waits := base.blocking_count_here()
 	if s.app_frame != nil {
 		s.app_frame(s.app_user)
 	} else {
 		own_frame(s)
 		windows_frames(s)
 	}
+	s.blocking += base.blocking_count_here() - waits
 	free_all(context.temp_allocator)
 }
+
+// This test's frames may wait on the system (a test of a step that is meant to: the setup's install, a dialog of the
+// system): its end does not fail for them.
+allow_blocking :: proc(s: ^Session) { s.blocking_allowed = true }
 
 @(private)
 own_frame :: proc(s: ^Session) {

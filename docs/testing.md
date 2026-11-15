@@ -62,6 +62,9 @@ The rules:
   `session.capture_float` gives its values as they are stored (`render.read_pixels_float`), and
   `session.out_of_range(img, least_alpha, margin)` finds a value that is not finite or out of [0, 1], or an alpha under
   `least_alpha` (`1 - margin` for a scene that must be opaque). `tests/partial_redraw` runs its scenes in both formats.
+- **What blocks the window**: with `TOOLKIT_BLOCKING_CHECK` (a program's tests have it: `toolbox.odin_command`), a session
+  counts the calls that wait on the system in its frames (`Session.blocking`) and the test fails at its end for any;
+  `session.allow_blocking(s)` for a test of a step meant to wait ([tasks.md](tasks.md), "Finding what blocks").
 - **Partial redraw**: `session.damage_verify(s)` turns partial redraw on and draws each partial frame whole on the side;
   `session.damage_settle(s, frames)` runs frames until 12 in a row redraw nothing (the largest region on the way),
   `session.damage_px(s)` gives the last frame's region; `session.damage_expect_exact(t, s, what)` fails when a partial

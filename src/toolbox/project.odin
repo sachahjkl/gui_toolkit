@@ -140,6 +140,8 @@ odin_command :: proc(p: Project, verb: string, pkg := "", extra: []string = nil)
 	collection_flags(p, &cmd)
 	append(&cmd, ..feature_defines(p.features, ODIN_OS, verb != "check" ? lucide_subset_path() : ""))
 	system_odin_flags(p, verb, pkg, &cmd)   // (project_windows.odin, project_linux.odin, project_other.odin)
+	// (the tests say a call that waits on the system in a frame: a session's test fails for it, testkit/session)
+	if verb == "test" { append(&cmd, "-define:TOOLKIT_BLOCKING_CHECK=true") }
 	append(&cmd, ..extra)
 	return cmd[:]
 }

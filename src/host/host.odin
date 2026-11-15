@@ -147,7 +147,11 @@ host_adopt :: proc(h: ^Host, sh: ^Shared, w: ^platform.Window, build: proc(h: ^H
 host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, size: Vec2), user: rawptr = nil) -> bool {
 	first := sh.main == nil
 	h.shared, h.build, h.user, h.paced = sh, build, user, first
-	if first { font.init(&sh.fonts) }
+	if first {
+		font.init(&sh.fonts)
+		// (the system's light or dark, read once before any frame: a frame then reads the kept value and waits on nothing)
+		_ = platform.dark_mode_preferred()
+	}
 	if o.headless {
 		h.win = platform.open_window_offscreen(o.title, o.size)
 	} else if o.overlay {

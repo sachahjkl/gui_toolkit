@@ -15,8 +15,6 @@
 - **Wren's tab strip on a strip.** Wren's tabs scroll with the toolkit's arrows when they are too many, as `ui.tabs`,
   the views' and the dock's stacks and classeur's tabs do; today they scroll in their own way. Intent:
   [src/md/features/strip.md](src/md/features/strip.md).
-- **No program blocks its interface's thread.** Each program's tests run its windows with the toolkit's blocking check
-  on and fail when a disk, process or D-Bus call happens in a build, so the CI finds it.
 - **The last settings that programs copy.** opencode native drops `advanced.frame_rate` for the toolkit's
   `rendering.frame_rate` (`Standard_Targets.pacer`, since 0.269), and Wren its `browser.frame.*`; Wren drops its own
   text backend, emoji and renderer settings. (The

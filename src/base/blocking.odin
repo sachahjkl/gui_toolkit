@@ -14,6 +14,7 @@ import "core:sync"
 BLOCKING_CHECK :: #config(TOOLKIT_BLOCKING_CHECK, ODIN_DEBUG)
 
 @(private = "file", thread_local) interface_thread: bool
+@(private = "file", thread_local) blocking_seen_here: int   // (this thread's: a test reads its own, whatever runs beside it)
 @(private = "file") blocking_seen: int
 @(private = "file") blocking_lock: sync.Mutex
 @(private = "file") blocking_sites: map[runtime.Source_Code_Location]struct{}
@@ -30,6 +31,7 @@ when BLOCKING_CHECK {
 	blocking :: proc(what: string, loc := #caller_location) {
 		if !interface_thread { return }
 		sync.atomic_add(&blocking_seen, 1)
+		blocking_seen_here += 1
 		sync.lock(&blocking_lock)
 		defer sync.unlock(&blocking_lock)
 		if blocking_sites == nil { blocking_sites = make(map[runtime.Source_Code_Location]struct{}, runtime.heap_allocator()) }
@@ -46,3 +48,6 @@ when BLOCKING_CHECK {
 
 // How many blocking calls the interface's threads made (with the check; 0 without).
 blocking_count :: proc "contextless" () -> int { return sync.atomic_load(&blocking_seen) }
+
+// How many blocking calls this thread made (with the check; 0 without).
+blocking_count_here :: proc "contextless" () -> int { return blocking_seen_here }

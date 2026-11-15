@@ -27,11 +27,10 @@ User_Dirs_Cache :: struct {
 // A folder the file names, else $HOME/<English name> (user-dirs.defaults, and the folders of a system without
 // xdg-user-dirs); "" for one the file disables (its value is the home) and without a home. .Home and .None: the home.
 known_folder_path :: proc(k: Known_Folder, allocator := context.allocator, loc := #caller_location) -> string {
-	base.blocking("platform.known_folder_path", loc)
 	home := os.get_env("HOME", context.temp_allocator)
 	if k == .Home || k == .None { return strings.clone(home, allocator) }
 	if home == "" { return "" }
-	said := user_dirs_said(k, home)
+	said := user_dirs_said(k, home, loc)
 	if said == home { return "" }   // (disabled: xdg-user-dirs-update points a folder at the home to turn it off)
 	if said != "" { return strings.clone(said, allocator) }
 	ENGLISH :: [Known_Folder]string{
@@ -44,7 +43,7 @@ known_folder_path :: proc(k: Known_Folder, allocator := context.allocator, loc :
 
 // The folder user-dirs.dirs gives `k` (temp memory; "": it names none), read when the cache is not of this file and home.
 @(private = "file")
-user_dirs_said :: proc(k: Known_Folder, home: string) -> string {
+user_dirs_said :: proc(k: Known_Folder, home: string, loc: runtime.Source_Code_Location) -> string {
 	config := user_dir(.Config, "", context.temp_allocator)
 	if config == "" { return "" }
 	file := strings.concatenate({config, "/user-dirs.dirs"}, context.temp_allocator)
@@ -56,6 +55,7 @@ user_dirs_said :: proc(k: Known_Folder, home: string) -> string {
 		delete(c.home, heap)
 		for d in c.dirs { delete(d, heap) }
 		dirs: [Known_Folder]string
+		base.blocking("platform.known_folder_path", loc)   // (the file read: once a process; $HOME and the cache wait on nothing)
 		if text, err := os.read_entire_file(file, context.temp_allocator); err == nil { dirs = user_dirs_parse(string(text), home) }
 		for d, i in dirs { c.dirs[i] = strings.clone(d, heap) }
 		c.file = strings.clone(file, heap)

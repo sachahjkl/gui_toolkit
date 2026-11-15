@@ -53,8 +53,17 @@ standard error, once per call site of the program:
 toolkit: fsx.write_atomic on the interface's thread (<program>/prefs.odin:88): it can freeze the window; make it a task (ui.task)
 ```
 
-`base.blocking_count()` counts them (a test of a program can expect 0 after a scenario). `ui.begin_build` marks its
-thread; a call before the first build (the start-up's reads) is not said.
+`base.blocking_count()` counts them for the process, `base.blocking_count_here()` for this thread. `ui.begin_build` marks
+its thread; a call before the first build (the start-up's reads) is not said.
+
+A program's tests run with the check (`toolbox.odin_command` gives `-define:TOOLKIT_BLOCKING_CHECK=true` to `odin test`),
+and a `testkit/session` counts the calls made in its frames (`Session.blocking`): the test fails at its end when there
+are any, so the CI finds a disk, process or D-Bus call in a build. What the test does between frames (its fixtures) is
+not counted. A test of a step meant to wait (an install, a dialog of the system) says so with `session.allow_blocking(s)`.
+
+What is read once a process is read before the first frame, and the frames read the kept value: the system's light or
+dark (`platform.dark_mode_preferred`, read by `host_open`, then told by the portal), the person's folders
+(`platform.known_folder_path`: `$HOME` waits on nothing, `user-dirs.dirs` is read once).
 
 ## gt:tasks: pools and jobs
 
