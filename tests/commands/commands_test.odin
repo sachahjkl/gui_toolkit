@@ -177,6 +177,34 @@ the_sheet_lists_lines_that_are_no_command :: proc(t: ^testing.T) {
 	testing.expect(t, find_text(&f, "Up / Down") != nil)
 }
 
+@(private = "file") INTERLEAVED := [?]ui.Command{
+	{id = "one_a", label = "One first", group = "One", keys = {{.F2, {}}}},
+	{id = "two_a", label = "Two first", group = "Two", keys = {{.F3, {}}}},
+	{id = "one_b", label = "One second", group = "One", keys = {{.F4, {}}}},
+}
+
+// A table that interleaves its groups: each group once, where its first command stands, its commands together.
+@(test)
+the_sheet_shows_each_group_once :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Sheet_Run
+	defer ui.shortcuts_sheet_destroy(&r.sheet)
+	sheet :: proc(f: ^Fx, user: rawptr) {
+		r := (^Sheet_Run)(user)
+		if !r.opened { r.opened = true; ui.shortcuts_sheet_open(&r.sheet, INTERLEAVED[:]) }
+	}
+	frame(&f, nil, sheet, &r)
+	frame(&f, nil, sheet, &r)
+	y :: proc(f: ^Fx, text: string) -> f32 {
+		b := find_text(f, text)
+		return b != nil ? b.rect.min.y : -1
+	}
+	one_a, one_b, two_a := y(&f, "One first"), y(&f, "One second"), y(&f, "Two first")
+	testing.expectf(t, one_a >= 0 && one_b > one_a && two_a > one_b, "One's two together, then Two (%v, %v, %v)", one_a, one_b, two_a)
+}
+
 @(private = "file") TABLE_A := [?]ui.Command{{id = "alpha", label = "Alpha", group = "Tests", keys = {{.F2, {}}}}}
 @(private = "file") TABLE_B := [?]ui.Command{{id = "beta", label = "Beta", group = "Tests", keys = {{.F4, {}}}}}
 @(private = "file") EXTRA_A := [?]ui.Sheet_Line{{group = "Tests", keys = "F6", label = "Gamma"}}

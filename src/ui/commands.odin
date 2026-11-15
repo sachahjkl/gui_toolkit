@@ -24,6 +24,7 @@ package ui
 //   if c, ok := ui.palette_chosen(&palette); ok { if i, is := ui.palette_chosen_command(&palette, c); is { run(Cmd(i)) } }
 
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 import i18n "../i18n"
 import lucide "../lucide"
@@ -470,19 +471,25 @@ sheet_command :: proc(commands: []Command, i: int) -> Command {
 
 // (the commands that have a key in effect: one whose own keys others took, and that has no key of the person's, is not
 // listed; one with an alias and no key neither: the sheet is about keys)
-// (an extra line goes after the last listed command of its group, so a group a table splits in two runs gets it once,
-// at its end; a group no listed command has gets its own heading after all the commands)
+// (each group once, where its first command stands, its commands in the table's order: a table that interleaves its
+// groups, as the palette's does by meaning, would show a heading twice)
+// (an extra line goes after the last listed command of its group; a group no listed command has gets its own heading
+// after all the commands)
 @(private = "file")
 sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, extra: []Sheet_Line, km: ^Keymap) {
 	clear(&sheet.entries)
-	listed := make([dynamic]int, 0, len(commands) + 1, context.temp_allocator)
+	Listed :: struct { rank, i: int }
+	listed := make([dynamic]Listed, 0, len(commands) + 1, context.temp_allocator)
+	rank_of := make(map[string]int, context.temp_allocator)
 	last_of := make(map[string]int, context.temp_allocator)
 	for i in 0 ..= len(commands) {
 		c := sheet_command(commands, i)
 		if keys_first_text(km, c) == "" { continue }
-		append(&listed, i)
+		if c.group not_in rank_of { rank_of[c.group] = len(rank_of) }
+		append(&listed, Listed{rank_of[c.group], i})
 		last_of[c.group] = i
 	}
+	slice.sort_by(listed[:], proc(a, b: Listed) -> bool { return a.rank < b.rank || (a.rank == b.rank && a.i < b.i) })
 	extras_of := make(map[int][dynamic]int, context.temp_allocator)   // a command's index: the extra lines after it
 	alone := make([dynamic]int, 0, len(extra), context.temp_allocator)
 	for x, k in extra {
@@ -501,7 +508,8 @@ sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, extra: []Sheet_
 		group^ = g
 		append(&sheet.entries, Sheet_Entry{index = index, headings = headings^, heading = heading, extra = extra})
 	}
-	for i in listed {
+	for l in listed {
+		i := l.i
 		add(sheet, &group, &headings, sheet_command(commands, i).group, i, false)
 		if xs, ok := extras_of[i]; ok { for k in xs { add(sheet, &group, &headings, extra[k].group, k, true) } }
 	}

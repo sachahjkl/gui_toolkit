@@ -136,9 +136,12 @@ sheet must list them all the same, or a person never learns them. `shortcuts_she
 - **A new table without reopening.** A program makes its table again when the language changes; the sheet keeps the
   slices it was given. `shortcuts_sheet_set` swaps the table and the lines, open or not, and `shortcuts_sheet_open`
   calls it: a program never closes and reopens the sheet to change what it lists (the person's scroll would go).
-- **In their group.** A line of a group the commands have goes after that group's last command (a group that a table
-  splits in two runs gets it once, at its end); a line of a group no command has goes under its own heading after the
-  commands. A person looks for a key by what it does, and the group says that.
+- **Each group once.** The sheet shows a group where its first command stands, with all its commands together in the
+  table's order. A palette's table orders by meaning and may alternate groups; a heading shown twice reads as two
+  groups of one name.
+- **In their group.** A line of a group the commands have goes after that group's last command; a line of a group no
+  command has goes under its own heading after the commands. A person looks for a key by what it does, and the group
+  says that.
 - **Not in the palette.** A line acts on nothing by itself: the palette would list a choice that does nothing.
 - **Refused: commands with no key reader** (a `Command` the program never reads, for the sheet alone). Its keys would
   be a `Chord` (no middle click), the palette would list it, and a person could rebind a key nothing reads.
