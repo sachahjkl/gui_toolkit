@@ -121,6 +121,43 @@ a_zip_is_listed_and_read :: proc(t: ^testing.T) {
 	testing.expect_value(t, nerr, archive.Error.Not_Found)
 }
 
+// The day-one break of a carried zip: offsets written relative to the zip's own start instead of the file's. A host of
+// odd length before it, a file that deflates and one that does not (stored), read back through open_as.
+@(test)
+a_zip_written_after_a_program_reads_back_from_the_whole_file :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t)
+	host := fmt.tprintf("%s/host", dir)
+	testing.expect(t, os.write_entire_file(host, transmute([]u8)strings.repeat("\x7fELF host bytes ", 999, context.temp_allocator)) == nil)
+	noise := make([]u8, 4096, context.temp_allocator)
+	for &b, i in noise { b = u8((i * 7919 + i / 3) ~ (i >> 2)) }   // (barely compressible: stored)
+	text := strings.repeat("the working man's tools ", 200, context.temp_allocator)
+	path := fmt.tprintf("%s/bundle.exe", dir)
+	w: archive.Zip_Writer
+	testing.expect_value(t, archive.zip_begin(&w, path, after = host), archive.Error.None)
+	testing.expect_value(t, archive.zip_add(&w, "a/text.txt", transmute([]u8)text), archive.Error.None)
+	testing.expect_value(t, archive.zip_add(&w, "a/noise.bin", noise, mode = 0o755), archive.Error.None)
+	testing.expect_value(t, archive.zip_end(&w), archive.Error.None)
+
+	_, by_name := archive.open(path)
+	testing.expect_value(t, by_name, archive.Error.Not_An_Archive)   // (".exe" names no archive)
+	idx, err := archive.open_as(path, .Zip)
+	defer archive.index_destroy(&idx)
+	testing.expect_value(t, err, archive.Error.None)
+	testing.expect_value(t, len(idx.entries), 2)
+	got, gerr := archive.read(&idx, "a/text.txt", allocator = context.temp_allocator)
+	testing.expect(t, gerr == .None && string(got) == text, "the deflated file")
+	testing.expect(t, archive.find(&idx, "a/text.txt").packed < i64(len(text)), "deflated")
+	raw, rerr := archive.read(&idx, "a/noise.bin", allocator = context.temp_allocator)
+	testing.expect(t, rerr == .None && slice.equal(raw, noise), "the stored file")
+	whole, _ := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, strings.has_prefix(string(whole), "\x7fELF host bytes "), "the program's bytes first, as they were")
+
+	bad: archive.Zip_Writer
+	archive.zip_begin(&bad, fmt.tprintf("%s/bad.zip", dir))
+	testing.expect_value(t, archive.zip_add(&bad, "../out", noise), archive.Error.Unsafe_Name)
+	testing.expect_value(t, archive.zip_end(&bad), archive.Error.Unsafe_Name)
+}
+
 @(test)
 a_tar_and_a_gzipped_tar_are_listed_and_read :: proc(t: ^testing.T) {
 	dir := testkit.temp_folder(t)

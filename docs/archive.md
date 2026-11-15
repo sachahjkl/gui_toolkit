@@ -1,6 +1,6 @@
 # archive: what a zip or a tar holds
 
-`import archive "gt:archive"` (the package is named `tk_archive`). Read only, pure Odin (the toolkit's `flate` for the
+`import archive "gt:archive"` (the package is named `tk_archive`). It reads zips and tars and writes zips; pure Odin (the toolkit's `flate` for the
 compressed parts), any target. A file manager shows an archive as a folder with it; a program takes one file out of a
 download with it.
 
@@ -36,6 +36,33 @@ copy out of it could follow out of its folder. `find` is one look (`Index.by_nam
 - **tar**: header by header (ustar's prefix, GNU's long names, pax's `path`), its checksum checked; a gzipped one is
   inflated on the way, 256 KiB at a time, its data skipped. Each `open` and each `read` of a gzipped tar goes through it
   from its start (a gzip stream cannot be entered elsewhere).
+
+## Writing a zip, alone or after a program
+
+The package also writes zips, file by file. The writer can start after the bytes of another file, an executable: the
+offsets it records are the file's own, so the whole file opens as a zip, and a program reads the files it carries.
+A self-installing bundle ships many programs as one download that way (atelier's).
+
+```odin
+w: archive.Zip_Writer
+archive.zip_begin(&w, "build/bundle", after = "build/host")    // the host's bytes first ("": a zip alone)
+archive.zip_add(&w, "papier/papier", data, mode = 0o755)       // deflated, or stored when that is smaller
+if err := archive.zip_end(&w); err != .None { ... }            // the first error of the whole writing
+
+// in the program that carries it
+idx, err := archive.open_as(process.executable_path(), .Zip)  // open_as: whatever the file's name
+```
+
+| | |
+|---|---|
+| `zip_begin(w, path, after)` | makes or empties `path`; `after`: a file copied first, as it is |
+| `zip_add(w, name, data, mode)` | a file; `mode`: its Unix permissions, kept in the zip as Info-ZIP keeps them |
+| `zip_end(w)` | the central directory and its end, the file closed; returns the first error of the writing |
+| `open_as(path, kind)` | `open` without the name's guess |
+
+An error stops the writing: every later call does nothing and `zip_end` returns it. A name that would leave its folder
+is `Unsafe_Name`. Sizes and offsets stay under 4 GiB (no ZIP64 is written): past that, `Too_Large`. Names are written
+as UTF-8 (bit 11).
 
 Errors: `Unreadable`, `Not_An_Archive`, `Bad_Data`, `Unsupported`, `Not_Found`, `Too_Large`, `Unsafe_Name`.
 `tests/archive` builds its zips and tars byte by byte.
