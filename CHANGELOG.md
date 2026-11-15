@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.270.0] - 2026-11-15
+
+### Added
+- **A program ships WebP on Windows with one word.** `toolbox.Feature.Webp` builds `gt_webp.dll` and puts it beside the program; a release's package and the setup take it with the program (`desktop.TOOLKIT_FILES`), and the notices name libwebp.
+- **WebP on Windows.** `tools/tk build_webp` builds the toolkit's own libwebp from its sources (`native/webp`: libwebp and sharpyuv, compiled with MSVC) into `build/webp/gt_webp.dll`; `gt:image` loads it beside the program, so a program that ships it reads and writes WebP pictures on Windows. Without it, WebP is not available, as before.
+
 ## [0.269.0] - 2026-11-15
 
 ### Added
@@ -3765,6 +3771,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.270.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.270.0
 [0.269.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.269.0
 [0.268.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.268.0
 [0.267.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.267.0
