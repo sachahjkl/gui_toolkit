@@ -519,8 +519,8 @@ draws, except the header that a dialog always had. The rules:
 4. **Dragging starts from the existing header.** A panel with a title moves by its title. A panel without a title (a
    sidebar) shows no grip: it detaches by its strip on hover (rule 2), its menu or the palette.
 5. **Dialogs keep their look.** The header strip, the title and the close cross stay as `dialog_header` drew them. The
-   only addition is one small Detach icon next to the close cross, in the same weak colour. Dragging the header also
-   detaches the dialog (it becomes Internal, section 2.6).
+   only additions are one small Detach icon and, on a resizable dialog, Maximise (section 2.9), next to the close
+   cross, in the same weak colour. Dragging the header also detaches the dialog (it becomes Internal, section 2.6).
 
 The toolkit draws the header of a Dialog, of an Internal window and of an External window. The build procedure draws
 only the body. The header is built in two steps: its box is made before the body with empty slots, then the slots are
@@ -529,7 +529,7 @@ cut (today's `dialog_header` rule).
 
 | Presentation | Where the header is | What it holds, in order |
 |---|---|---|
-| Dialog | the strip at the dialog's top (today's `dialog_header`) | icon, title, tools, Detach (small, weak), the close cross in the corner |
+| Dialog | the strip at the dialog's top (today's `dialog_header`) | icon, title, tools, Detach (small, weak), Maximise or Restore (resizable only, section 2.9), the close cross in the corner |
 | Internal | the internal window's title strip | icon, title, tools, Re-attach, Detach, Close |
 | External, the program's decorations | the header is the window's title bar (rule 2c) | icon, title, tools, Re-attach, Close view, then the window's minimise, maximise, close (close: re-attach) |
 | External, the system's decorations | a strip under the system's title bar | icon, title, tools, Re-attach, Close view |
@@ -626,6 +626,45 @@ while it has the focus (section 3.5).
   ends.
 - "Place": a dock space and an edge. "Dock space": a place where panels dock (the frame, or one of `views_dock`).
 - "Owner": the window that opened a view.
+
+### 2.9 A dialog maximised
+
+**Purpose.** A viewer in a dialog (a diagram, a picture, a diff) needs the whole window for a while: to zoom and pan a
+diagram, to read a long diff. Every program's resizable dialog has the same need, so the toolkit gives it once.
+
+**What it is.** A resizable view shown as a Dialog has a Maximise button in its header, just left of the close cross
+(`lucide.MAXIMIZE_2`; `lucide.MINIMIZE_2` and Restore once maximised). A double click on the header's free part does
+the same. Maximised, the dialog takes the window's whole room minus `MODAL_MARGIN_EM` on each side: the margin every
+dialog keeps from the window's edges (`modal`'s `hi`). It is computed at each build from the window's size, so a
+window resized keeps it filling. Its grips are not built: nothing resizes it. Restore gives back the size it had.
+
+**Decisions.**
+
+1. **The flag is the opening's, not the memory's** (`View_Record.maximised`, reset at each opening). Maximise is a look
+   for a while (a diagram to zoom), as the stack's Maximise of a panel (rule 2b) is not remembered either. A viewer
+   that opened maximised once and then always opened over the whole window would hide the program each time. A
+   program that wants a viewer to open maximised says so at each opening: `view_maximise(vs, id, true)` after
+   `view_open`.
+2. **The size is not touched.** The maximised size is computed, never written in `View_Record.size`: the remembered
+   `dialog=` stays the user's own size, and Restore is only the flag going off. Refused: saving the size before and
+   putting it back (two copies of one size, and the grips' memory write would have seen the maximised one).
+3. **Only in the Dialog presentation.** The flag goes off when the view leaves it (Detach, a move, a drag). An
+   internal window has its own size and its grips; an external window has the system's maximise; a panel has its
+   stack's. Detach of a maximised dialog opens the internal window at its default place, not at the window's size.
+4. **The words are the labels'** (`View_Labels.maximize`, `restore`): one pair of words for the strip's Maximise and
+   the dialog's. Refused: a second pair for dialogs (two words to translate for one act).
+5. **Resizable dialogs only get the button.** A dialog sized by its words (a question) has nothing to show bigger.
+   `view_maximise` still acts on any dialog: the program knows its view.
+
+**Subtle points.**
+
+- The button is built before the close cross (`modal_end` builds the cross last): the cross stays the last Tab stop.
+- The double click is the header's own box (Clickable): its buttons take their own presses. Its first press is the
+  start of a drag as before; a drag past `DOCK_DRAG_EM` still detaches a dialog that is not maximised. A maximised
+  dialog's header does not detach by a drag: it fills the window, and a floating window of the window's size under the
+  pointer would cover the program; Restore first, or Detach.
+- A dialog that opens maximised is measured unseen at its maximised size: its first frame drawn is the maximised one.
+- `top` (a palette held at a share of the window's height) has no effect while it is maximised: it fills the window.
 
 ---
 

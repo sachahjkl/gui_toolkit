@@ -1,7 +1,7 @@
 # Buttons, numbers and small widgets
 
 The widgets a program asks for most, in `src/ui/widgets.odin` and `src/ui/widgets_ext.odin`: the buttons, the numbers one
-sets, and small marks (a spinner, a dot, a label that shows what it cuts). Every widget takes a stable `id` (key.odin)
+sets, and small marks (a spinner, a dot, a label that shows what it cuts), and the stepper of a long work. Every widget takes a stable `id` (key.odin)
 and keeps its value in the caller's variables.
 
 ## Buttons
@@ -318,6 +318,69 @@ ui.text_edit("###notes", &app.notes, {placeholder = "Notes", wrap = true, auto_h
 | `spinner(id, size)` | the busy arc, turning: three quarters of a circle in the accent. While shown it asks for the next frames itself (none with animations off); a busy progress indicator to a screen reader |
 | `dot(id, size, intent)` | a filled disc of the intent's hue (a recording, a state); with no intent, of the text's colour where it stands (a dot in a button's words). The icon fonts have no filled circle |
 | `label_tip(text)` | a label whose whole text shows in a tooltip when its box cuts it and the pointer rests on it (`Feel.tooltip_delay_ms`); it takes no press |
+
+## Steppers
+
+![An installer's list of horizontal steppers, a release as a vertical one, labels above, right to left, compact (examples/showcase --scene=steppers)](screenshots/showcase_steppers.webp)
+
+`ui.stepper` shows the stages of a long work as nodes joined by connectors (`src/ui/stepper.odin`; its design:
+[src/md/features/stepper.md](../src/md/features/stepper.md)). The program gives the states at each build; the stepper
+animates each change.
+
+```odin
+stepper :: proc(id: string, steps: []Stepper_Step, o := Stepper_Options{}) -> Stepper_Result
+```
+
+```odin
+steps := [3]ui.Stepper_Step{
+	{label = "Unpack", state = .Done},
+	{label = "Install", detail = "12 MB of 40", state = .Active},
+	{label = "Check"},
+}
+ui.next({width = ui.fill()})
+ui.stepper("###install", steps[:])
+```
+
+A step's state (`Stepper_State`) decides what its node draws:
+
+| State | Node | Words (by default) |
+|---|---|---|
+| `.Pending` | a hollow ring in the weak colour; its number with `o.numbers` | weak |
+| `.Active` | the spinner's arc turns on a faint ring of the accent | the text's colour |
+| `.Done` | a disc of the success hue pops in, then its check draws itself; the connector after it fills | the text, tinted toward the success hue |
+| `.Failed` | a disc of the danger hue, its cross drawn in the same way | the danger hue, readable on the page |
+| `.Skipped` | a weak ring and a dash | weak |
+
+`Stepper_Step`: `label`, `detail` (a second line, smaller and weak), `state`, `tone` (an `Intent`: the words in its hue,
+readable on the page), `color` (the words in any colour; it wins over `tone`), `tip` (a tooltip on the node).
+
+`Stepper_Options`:
+
+- **`direction`** (`Stepper_Direction`): `.Right` (the default), `.Down`, `.Left` (right to left), `.Up` (bottom to top).
+- **`labels`** (`Stepper_Labels`): `.Below` or `.Above` the nodes of a horizontal stepper, `.After` (right) or `.Before`
+  (left) those of a vertical one. Below and After are one side, Above and Before the other. `.Auto`: Below or After.
+- **`compact`**: the nodes alone. Each step's label, detail and tip go to its node's tooltip.
+- **`numbers`**: a pending node shows its number.
+- **`node`**: a node's size in pixels (0: `STEPPER_NODE_EM`, 1.5 times the font size). **`thickness`**: a connector's
+  (0: from the node's size).
+- **`colors`** (`Stepper_Colors`): `active`, `done`, `failed` over the accent and the success and danger hues.
+- **`name`**: what a screen reader calls it.
+
+Its width is `next`'s (else its parent's), its height its content's. A horizontal stepper gives each step an equal
+column: the nodes are evenly spaced, each in the middle of its column, the words wrapped and centred under it (or above
+it, the nodes staying on one line). A word too long for its column is cut by it. A vertical stepper gives each step a
+row: the label on one line level with its node (cut, its whole text in a tooltip), the detail wrapped under it.
+
+The motion follows the animation setting. A mark takes `STEPPER_MARK_MS` (the disc pops with a small overshoot, then the
+stroke is drawn), a connector's fill `STEPPER_FILL_MS`. A node seen for the first time is settled: a stepper that opens
+on a half-finished work shows no cascade of checks. With animations off, every state is shown at once and nothing asks
+for a frame. Otherwise the stepper asks for frames while an active step turns or a mark is drawn, and for none at rest.
+
+A screen reader hears one progress indicator: its value says the step in words ("Step 2 of 4: Install, in progress",
+"Every step is done"), its number is the share of the steps done or skipped. `stepper_progress(steps)`,
+`stepper_fraction` and `stepper_spoken` give the same to a program; `stepper_look(state, mark_t, fill_t)` is what a
+node draws. `Stepper_Result` gives the box, each step's look of this build, and the step whose node is under the
+pointer (`hovered`, -1: none).
 
 ## A secret's memory
 

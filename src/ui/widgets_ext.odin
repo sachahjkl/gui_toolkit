@@ -1241,13 +1241,18 @@ spinner_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	size := min(r.max.x - r.min.x, r.max.y - r.min.y)
 	c := draw.rect_center(r)
 	th := max(size * SPINNER_THICKNESS, 1.5 * scale())
-	radius := size * 0.5 - th * 0.5
-	steps := max(int(radius * math.TAU * SPINNER_ARC / max(th * 0.35, 0.5)), 12)
-	start := d.phase * math.TAU
+	arc_dots(dc, c, size * 0.5 - th * 0.5, th, d.phase * math.TAU, SPINNER_ARC, d.color)
+}
+
+// An arc of `sweep` turns from the angle `start`, `th` thick, centred on a circle of `radius`: the spinner's, and an
+// active step's (stepper.odin).
+@(private)
+arc_dots :: proc(dc: ^draw.Context, c: Vec2, radius, th, start, sweep: f32, color: Color) {
+	steps := max(int(radius * math.TAU * sweep / max(th * 0.35, 0.5)), 12)
 	for k in 0 ..= steps {
-		a := start + f32(k) / f32(steps) * math.TAU * SPINNER_ARC
+		a := start + f32(k) / f32(steps) * math.TAU * sweep
 		p := c + Vec2{math.cos(a), math.sin(a)} * radius
-		draw.rect(dc, {p - th * 0.5, p + th * 0.5}, d.color, th * 0.5)
+		draw.rect(dc, {p - th * 0.5, p + th * 0.5}, color, th * 0.5)
 	}
 }
 

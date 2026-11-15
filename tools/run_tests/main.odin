@@ -152,6 +152,7 @@ STEPS := []Step{
 	{name = "commands", one = true, oses = EVERYWHERE, text = true},
 	{name = "status", one = true, wgpu = .Ci1},
 	{name = "states", one = true, wgpu = .Ci1},
+	{name = "stepper", one = true, oses = EVERYWHERE, text = true},
 	{name = "chrome", wgpu = .Ci1},
 	{name = "ui_robust", one = true, wgpu = .Ci1},
 	{name = "a11y", one = true},

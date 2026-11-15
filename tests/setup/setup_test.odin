@@ -214,6 +214,7 @@ scratch_prepare :: proc(o: ^desktop.Integration_Options, choices: []bool, user: 
 	o.icons_dir = fmt.tprintf("%s/share/icons/hicolor", sc.root)
 	o.bin_dir = fmt.tprintf("%s/bin", sc.root)
 	o.autostart_dir = fmt.tprintf("%s/config/autostart", sc.root)
+	o.config_dir = fmt.tprintf("%s/config", sc.root)
 	o.desktop_dir = fmt.tprintf("%s/Desktop", sc.root)
 	o.menu_dir = fmt.tprintf("%s/menu", sc.root)
 	o.install_dir = sc.install

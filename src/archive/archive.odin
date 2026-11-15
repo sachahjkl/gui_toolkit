@@ -1,4 +1,5 @@
-// Package archive: what a zip or a tar (plain or gzipped) holds, and a file taken out of it. Read only; pure Odin (the
+// Package archive: what a zip or a tar (plain or gzipped) holds, and a file taken out of it; a zip written
+// (zip_write.odin). Pure Odin (the
 // toolkit's flate for the compressed parts), any target. The package is named tk_archive.
 //
 //	idx, err := archive.open("/home/me/photos.zip")    // the index: every entry, its size, its date
@@ -107,6 +108,12 @@ add_entry :: proc(idx: ^Index, e: Entry) {
 open :: proc(path: string, allocator := context.allocator) -> (idx: Index, err: Error) {
 	kind, ok := kind_of(path)
 	if !ok { return {}, .Not_An_Archive }
+	return open_as(path, kind, allocator)
+}
+
+// The archive at `path` read as `kind`, whatever its name: a program that carries a zip after its own bytes
+// (zip_begin's `after`) opens itself with open_as(process.executable_path(), .Zip).
+open_as :: proc(path: string, kind: Kind, allocator := context.allocator) -> (idx: Index, err: Error) {
 	idx.kind = kind
 	idx.path = keep(&idx, path)
 	idx.entries = make([dynamic]Entry, allocator)

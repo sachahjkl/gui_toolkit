@@ -2000,6 +2000,21 @@ fr Repères
 en Type to search
 fr Tapez pour rechercher
 
+en Every step is done
+fr Toutes les étapes sont terminées
+
+en in progress
+fr en cours
+
+en failed
+fr en échec
+
+en waiting
+fr en attente
+
+en Step %d of %d
+fr Étape %d sur %d
+
 en Scroll left
 fr Faire défiler vers la gauche
 
@@ -2054,11 +2069,8 @@ fr Ancrer en bas
 en Minimise the panel
 fr Réduire le panneau
 
-en Maximise the panel
-fr Agrandir le panneau
-
-en Restore the panel
-fr Restaurer le panneau
+en Maximise
+fr Agrandir
 
 en Close the panel
 fr Fermer le panneau

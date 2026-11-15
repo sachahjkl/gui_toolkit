@@ -799,3 +799,74 @@ windows_autostart :: proc(t: ^testing.T) {
 	_, ok = reg_get(run, o.identity.key)
 	testing.expect(t, !ok, "removed")
 }
+
+// The File_Manager part: Win+E's new window and the default verb of folders and drives run the program; to repair when
+// a piece goes; taken out with the option and by remove, the system's default verb back and another program's left.
+// (A scratch registry root: the user's own Classes are never touched.)
+@(private = "file")
+FILE_EXPLORER_KEY :: "{52205fd8-5dfb-447d-801a-d0b52f2e83e1}"   // (written out: the test checks the backend's constant)
+
+@(test)
+windows_file_manager :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	explorer := fmt.tprintf("%s\\Classes\\CLSID\\%s", s.root, FILE_EXPLORER_KEY)
+	window := fmt.tprintf("%s\\shell\\opennewwindow", explorer)
+	folders := fmt.tprintf("%s\\Classes\\Directory\\shell", s.root)
+	drives := fmt.tprintf("%s\\Classes\\Drive\\shell", s.root)
+	o.default_file_manager = true
+	testing.expect_value(t, install(o).error, Error.None)
+	cmd, ok := reg_get(fmt.tprintf("%s\\command", window), "")
+	testing.expect(t, ok && cmd == fmt.tprintf("\"%s\"", s.exe), "Win+E runs the program")
+	delegate, delegate_ok := reg_get(fmt.tprintf("%s\\command", window), "DelegateExecute")
+	testing.expect(t, delegate_ok && delegate == "", "DelegateExecute is there and empty")
+	for shell in ([]string{folders, drives}) {
+		verb, _ := reg_get(shell, "")
+		testing.expect_value(t, verb, "Sample.open")
+	}
+	open, _ := reg_get(fmt.tprintf("%s\\Sample.open\\command", folders), "")
+	testing.expect_value(t, open, fmt.tprintf("\"%s\" \"%%1\"", s.exe))
+	open, _ = reg_get(fmt.tprintf("%s\\Sample.open\\command", drives), "")
+	testing.expect_value(t, open, fmt.tprintf("\"%s\" %%1", s.exe))   // ("C:\" quoted would read as C:")
+	state, st := state_of(o)
+	testing.expect_value(t, state, State.Installed)
+	testing.expect(t, st.parts[.File_Manager].present && !st.parts[.File_Manager].partial && !st.parts[.File_Manager].stale, "the part is there")
+
+	// another default verb for folders: to repair, then repaired
+	testing.expect(t, reg_set(folders, "", "open"))
+	_, st = state_of(o)
+	testing.expect(t, st.parts[.File_Manager].partial, "the folders' default is another verb")
+	testing.expect_value(t, install(o).error, Error.None)
+	state, _ = state_of(o)
+	testing.expect_value(t, state, State.Installed)
+
+	// the program moved: stale
+	moved := o^
+	moved.exe = s.exe2
+	_, st = state_of(&moved)
+	testing.expect(t, st.parts[.File_Manager].stale, "it runs the old program")
+
+	// the option off: everything goes, the empty parents too
+	o.default_file_manager = false
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, !reg_key_exists(window), "Win+E is File Explorer's again")
+	testing.expect(t, !reg_key_exists(explorer), "nothing of ours under the CLSID")
+	testing.expect(t, !reg_key_exists(folders) && !reg_key_exists(drives), "the default verbs are the system's again")
+	_, st = state_of(o)
+	testing.expect(t, !st.parts[.File_Manager].present, "taken out with the option")
+
+	// remove: another program's verb stays, and the default it set too
+	o.default_file_manager = true
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, reg_set(fmt.tprintf("%s\\Other.open\\command", drives), "", `"C:\other\other.exe" "%1"`))
+	testing.expect(t, reg_set(drives, "", "Other.open"))
+	testing.expect_value(t, remove(o).error, Error.None)
+	_, st = state_of(o)
+	testing.expect(t, !st.parts[.File_Manager].present, "removed")
+	verb, _ := reg_get(drives, "")
+	testing.expect_value(t, verb, "Other.open")
+	testing.expect(t, reg_key_exists(fmt.tprintf("%s\\Other.open", drives)), "another program's verb stays")
+	_, verb_ok := reg_get(folders, "")
+	testing.expect(t, !verb_ok, "the folders' default is the system's again")
+}

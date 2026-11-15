@@ -85,6 +85,22 @@ reg_delete_tree :: proc(path: string) -> bool {
 	return r == 0 || r == win.LSTATUS(win.ERROR_FILE_NOT_FOUND)
 }
 
+// Deletes the key when it holds no subkey and no value: a parent the program created goes with its last child, and
+// one that holds something of another program stays. True when it is gone or never was there.
+@(private)
+reg_delete_if_empty :: proc(path: string) -> bool {
+	key: win.HKEY
+	r := win.RegOpenKeyExW(win.HKEY_CURRENT_USER, wide(path), 0, win.KEY_READ, &key)
+	if r == win.LSTATUS(win.ERROR_FILE_NOT_FOUND) { return true }
+	if r != 0 { return false }
+	subkeys, values: win.DWORD
+	r = win.RegQueryInfoKeyW(key, nil, nil, nil, &subkeys, nil, nil, &values, nil, nil, nil, nil)
+	win.RegCloseKey(key)
+	if r != 0 { return false }
+	if subkeys > 0 || values > 0 { return false }
+	return RegDeleteKeyW(win.HKEY_CURRENT_USER, wide(path)) == 0
+}
+
 @(private)
 reg_delete_value :: proc(path, name: string) -> bool {
 	key: win.HKEY

@@ -310,6 +310,7 @@ ui/color_text.odin COLOR_FORMAT_NAMES const  # a table
 ui/overlays.odin toast_position_names const  # a table
 ui/palette.odin PALETTE_CHORDS const  # the keys of the toolkit's command of the palette (Ctrl+K, Ctrl+Shift+P), read only memory
 ui/rank.odin rank_matched_here thread  # the items rank matched on this thread (a test reads that the interface's thread matches none)
+ui/rich_text.odin link_prefixes const  # the program's link words, written once by link_words_set before any text is read
 ui/state.odin current thread  # the State this thread builds
 ui/state.odin tick_origin process  # the clock of the interfaces, started by the first init (atomic)
 ui/state.odin build_of thread  # the state whose build is open on this thread

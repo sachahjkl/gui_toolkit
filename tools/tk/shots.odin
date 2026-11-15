@@ -53,6 +53,9 @@ SHOWCASE_SHOTS := []Shot {
 	{name = "showcase_controls_edged", example = "showcase", args = {"--headless", "--scene=controls", "--theme=Kernel", "--finish=edged", "--size=1280x680"}, webp = true},
 	{name = "showcase_controls_glass", example = "showcase", args = {"--headless", "--scene=controls", "--theme=Aero", "--size=1280x680"}, webp = true},
 	{name = "showcase_controls_gradient", example = "showcase", args = {"--headless", "--scene=controls", "--theme=Bootstrap", "--size=1280x680"}, webp = true},
+	// (an active step turns for ever: the program is never at rest, so a time)
+	{name = "showcase_steppers", example = "showcase", args = {"--headless", "--scene=steppers", "--theme=Graphite", "--size=1280x720"}, ms = 1500, webp = true},
+	{name = "showcase_steppers_light", example = "showcase", args = {"--headless", "--scene=steppers", "--theme=Glacier", "--light", "--finish=gradient", "--size=1280x720"}, ms = 1500, webp = true},
 	{name = "showcase_palette", example = "showcase", args = {"--headless", "--scene=palette", "--theme=Tokyo Night", "--size=1280x680"}, webp = true},
 	{name = "showcase_menus", example = "showcase", args = {"--headless", "--scene=menus", "--theme=Nord", "--size=1280x720"}, webp = true},
 	{name = "showcase_menu_search", example = "showcase", args = {"--headless", "--scene=menus", "--theme=Nord", "--light", "--size=1280x720"}, typed = "co", webp = true},

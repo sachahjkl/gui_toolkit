@@ -64,7 +64,7 @@ s := desktop.status(&o)               // .Absent, .Installed or .Repair, part by
 defer desktop.status_destroy(&s)
 ```
 
-`Integration_Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `autostart` with its `autostart_arguments` (a program of the notification area starts hidden), `register_browser` with its
+`Integration_Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `autostart` with its `autostart_arguments` (a program of the notification area starts hidden), `default_file_manager` (the program opens folders in place of the system's file manager, [below](#the-default-file-manager)), `register_browser` with its
 `file_types`, the `launcher` bytes, the `icons`) and where everything goes. `install` writes the parts that are on and takes
 away the ones that are off: applying a change of options is the same call. `status` says `Repair` when a wanted part is
 missing or incomplete, or when a part runs another executable (`stale_exe`: the program was moved). `describe` says it in one
@@ -100,6 +100,7 @@ if r := desktop.apply(&o); r.error != .None { report(r.detail) }
 | `Path` | the executable's folder in `HKCU\Environment\Path` (REG_EXPAND_SZ), marked by `PathDir` in `Software\<vendor_key>\<key>`; the console launcher `<stem>.com` beside `<stem>.exe` |
 | `Autostart` | with `autostart`: the value `<key>` of `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, `"<exe>" <autostart_arguments>` |
 | `Registration` | only with `register_browser`: `Software\Clients\StartMenuInternet\<key>`, `Software\RegisteredApplications`, the ProgID `Software\Classes\<key>HTML`, the http and https URL associations, the file types, and `Software\Classes\<scheme>` for each of `url_schemes` |
+| `File_Manager` | with `default_file_manager`: in `Software\Classes`, `CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\opennewwindow\command` (`"<exe>"`, `DelegateExecute` empty: Win+E), the verb `Directory\shell\<key>.open` (`"<exe>" "%1"`) and `Drive\shell\<key>.open` (`"<exe>" %1`: a quoted `"C:\"` reads as `C:"`), each the default of its `shell` key |
 
 The installed copy goes to `%LOCALAPPDATA%\Programs\<name>` unless `install_dir` says otherwise. `record_install` writes
 `Software\Microsoft\Windows\CurrentVersion\Uninstall\<key>`, which Settings > Apps lists and `install_target` reads back
@@ -133,6 +134,7 @@ all. `--cli` anywhere makes the launcher wait, and the program never sees it. A 
 | `Icons` | `$XDG_DATA_HOME/icons/hicolor/<n>x<n>/apps/<slug>.png`, one per icon of the options |
 | `Path` | a link `~/.local/bin/<slug>` to the executable |
 | `Autostart` | with `autostart`: `$XDG_CONFIG_HOME/autostart/<slug>.desktop` (the XDG Autostart specification), `Exec` the executable and `autostart_arguments`, marked as the desktop entry is |
+| `File_Manager` | with `default_file_manager`: `inode/directory=<slug>.desktop;` first in `[Default Applications]` of `$XDG_CONFIG_HOME/mimeapps.list`; the entry then has `inode/directory;` in `MimeType=` and `%F` in `Exec` |
 
 The entry has `MimeType=` (http, https, the URL schemes and the file types) only with `register_browser`, and `Exec` takes
 `%U` when the program is a browser or has URL schemes. `StartupWMClass=` is the slug, the window's class (`platform.set_app_id`
@@ -145,6 +147,31 @@ A release is linked for a usual Linux: on NixOS it starts only in an FHS sandbox
 copy run by itself: `nix-build` makes a profile of `nixos_libraries` (with patchelf), linked as `<install>/nix-runtime` (a root
 of the garbage collector, listed in the manifest), and patchelf sets the copy's loader and library path to it. A copy in the
 Nix store (`in_nix_store`) is never adapted: its package already runs it. `is_nixos` reads `/etc/os-release`.
+
+## The default file manager
+
+`default_file_manager` makes the program what opens folders: a file manager offers it as an option of its install, and
+`Part.File_Manager` says whether it is in place. Like every part, the state is the system's: the keys or the line are
+there or not, and `status` reads them each time. `install` writes the part when the option is on and takes it away when
+it is off; `remove` takes it away.
+
+- Windows: Win+E and the taskbar's File Explorer run `"<exe>"` with no argument; a folder or a drive opened from the
+  shell (a double click, a shortcut, `start <folder>`) runs `"<exe>" "<folder>"`. The keys are in the user's
+  `Software\Classes` (under `registry_root`), over the system's own in HKLM. `<key>.open` and the `opennewwindow` key
+  carry `registry_mark`. Removal deletes the keys that are the program's, puts the `(Default)` of `Directory\shell` and
+  `Drive\shell` back to none when it names `<key>.open` (the system's `open` is then the default again), and deletes
+  the parents left empty. Another program's verb, or a default that names it, stays.
+- Linux: the default application of `inode/directory` (the MIME Applications specification). The program's id goes
+  first in the line, and the ids that were there stay after it: removal takes the program's id out, and the person's
+  former default is the default again. Every other line of the file stays as it was; the file is written in one
+  rename, and only when it changes. The default counts only for an entry that takes `inode/directory`: the part needs
+  the `Launcher` (`start_menu`), and `status` says it is partial when the entry lacks the type. The file manager
+  receives each folder as a path (`%F`), unless the entry already takes addresses (`%U`: a browser).
+- Elsewhere: no such part (`supported_parts`).
+
+`mimeapps_default(text, mime)`, `mimeapps_defaults(text, mime)` and `mimeapps_with_default(text, mime, id, on)` read and
+edit the text of a `mimeapps.list` (no file read, on every system): the first id of a type's default line, all its
+ids, and the text with `id` put first in that line or taken out of it.
 
 ## Open with
 
@@ -282,7 +309,7 @@ with files left for after the process ends.
 ## The tests' scratch roots
 
 Every place is a field of `Integration_Options`: `menu_dir`, `desktop_dir`, `environment_root` and `registry_root` (keys under
-HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `install_dir`. A test points them at a scratch folder and a
+HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `config_dir` (`$XDG_CONFIG_HOME`, where `mimeapps.list` is), `install_dir`. A test points them at a scratch folder and a
 scratch key, and turns `notify_system` off. `roots_from_env` reads them from `<env_prefix>MENU_DIR`, `<env_prefix>BIN_DIR`...
 (`ROOT_NAMES`), so a program's own end-to-end tests run it on scratch places; any of them set turns the notification off.
 `delete_scratch_root` deletes a scratch registry key, and only one under the identity's `scratch_roots`.

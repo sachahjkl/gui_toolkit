@@ -51,8 +51,11 @@ Setup_Options :: struct {
 
 // An option of the program's install (Setup_Options.choices).
 Choice :: struct {
-	label: string,   // English, shown in the language in use (i18n.later)
-	on:    bool,
+	label: string,          // English, shown in the language in use (i18n.later)
+	on:    bool,            // its value before an install
+	// the parts of the integration the box stands for ({}: none). With an install there, the box starts from the
+	// system's truth: on when they are all there and run the installed copy (Facts.parts), whatever `on` says
+	parts: desktop.Parts,
 }
 
 State :: enum u8 {
@@ -76,6 +79,7 @@ Facts :: struct {
 	record:     bool,     // the system's record (Settings > Apps; the icons on Linux)
 	autostart:  bool,     // the program starts with the user's session (Setup_Options.prepare asked it)
 	on_path:    bool,     // the program is on the user's PATH (Windows: its folder and the console launcher <name>.com)
+	parts:      desktop.Parts,   // the parts of the integration that are there and run the installed copy
 	manifest:   bool,     // the install folder has the manifest
 	missing:    int,      // files the manifest names that are not there
 	version:    string,   // of the installed copy, from its manifest
@@ -140,6 +144,9 @@ facts :: proc(o: Setup_Options, choices: []bool = nil, loc := #caller_location) 
 	f.desk_lnk = shortcut.present && !shortcut.stale
 	f.autostart = s.parts[.Autostart].present && !s.parts[.Autostart].stale
 	f.on_path = s.parts[.Path].present && !s.parts[.Path].stale
+	for p in desktop.Part {
+		if s.parts[p].present && !s.parts[p].stale { f.parts += {p} }
+	}
 	when ODIN_OS == .Windows {
 		f.record = recorded
 	} else {
@@ -264,6 +271,16 @@ choices_or_first :: proc(o: Setup_Options, choices: []bool) -> []bool {
 	out := make([]bool, len(o.choices), context.temp_allocator)
 	for x, i in o.choices { out[i] = x.on }
 	return out
+}
+
+// The boxes of the program's options as the install is (`choices`, one per Setup_Options.choices): a choice tied to
+// parts is on when they are all there (Facts.parts). Without an install the boxes keep their values: there is nothing
+// to read them from, and a box ticked before the first install stays ticked.
+choices_from_facts :: proc(f: Facts, o: Setup_Options, choices: []bool) {
+	if !f.exe_there { return }
+	for x, i in o.choices {
+		if i < len(choices) && x.parts != {} { choices[i] = x.parts <= f.parts }
+	}
 }
 
 // What the user answered the dialog, kept by the program between starts (Choice_Text; "" at first).

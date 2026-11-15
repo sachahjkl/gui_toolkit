@@ -28,6 +28,21 @@ the_state_of_an_install :: proc(t: ^testing.T) {
 	testing.expect_value(t, state_of({from_nix = true, exe_there = true, manifest = true}), State.Other_Copy)
 }
 
+// A box tied to parts starts from what the install has; a box of no part, or no install, keeps its value.
+@(test)
+a_choice_of_a_part_shows_the_system_s_truth :: proc(t: ^testing.T) {
+	o := Setup_Options{choices = []Choice{{label = "PATH", on = true}, {label = "File manager", on = false, parts = {.File_Manager}}, {label = "Mine", on = true}}}
+	choices := []bool{true, false, true}
+	choices_from_facts({exe_there = false, parts = {.File_Manager}}, o, choices)
+	testing.expect(t, choices[0] && !choices[1] && choices[2], "no install: the values stay")
+	choices_from_facts({exe_there = true, parts = {.File_Manager}}, o, choices)
+	testing.expect(t, choices[1], "the part is there: on")
+	testing.expect(t, choices[0] && choices[2], "a box of no part keeps its value")
+	choices_from_facts({exe_there = true, parts = {.Path}}, o, choices)
+	testing.expect(t, !choices[1], "the part is not there: off")
+	choices_from_facts({exe_there = true}, o, choices[:1])   // (fewer boxes than choices: nothing out of bounds)
+}
+
 // Versions compare number by number; one that does not read as a version is never older.
 @(test)
 versions_compare_by_number :: proc(t: ^testing.T) {

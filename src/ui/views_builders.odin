@@ -270,6 +270,7 @@ view_dialog_build :: proc(vs: ^Views, r: ^View_Record) {
 	// (view_size of this opening: a non-resizable dialog of a width asked past DIALOG_MAX_WIDTH_EM keeps it, modal's `most`)
 	if r.asked.x > 0 { o.width_em = r.asked.x }
 	if r.asked.y > 0 { o.height_em = r.asked.y }
+	o.maximised = r.maximised   // (its sizes stay as asked: Restore is the flag going off)
 	if r.dialog_back {
 		// (a drag of its header cancelled: it was laid out a moment ago, at this rect; it shows in this build, with no
 		// unseen layout, where it was)
@@ -617,6 +618,11 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	switch p {
 	case .Dialog:
 		if view_header_icon("view_detach", lucide.PICTURE_IN_PICTURE_2, labels.floating, true) { view_float(vs, r) }
+		// (just left of the close cross, built before it: the cross stays the last Tab stop)
+		if r.kind.o.resizable {
+			glyph, word := r.maximised ? lucide.MINIMIZE_2 : lucide.MAXIMIZE_2, r.maximised ? labels.restore : labels.maximize
+			if view_header_icon("view_maximise", glyph, word, true) { view_maximise_record(r, !r.maximised) }
+		}
 		dialog_header_end()   // (clear of the close cross; pops the strip)
 	case .Internal:
 		if !at_home && view_header_icon("view_reattach", lucide.UNDO_2, labels.reattach, true) { view_apply(vs, r, {kind = .Reattach}) }
@@ -687,11 +693,14 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 		}
 	}
 	sig := signal(hb)
+	// (a double click on its free part maximises a resizable dialog, or restores it: as a window's title bar does)
+	if p == .Dialog && sig.double_clicked && r.kind.o.resizable && r.machine.state == .Shown { view_maximise_record(r, !r.maximised) }
 	if sig.dragging {
 		if pd := press_data(View_Move_Press, hb.key); pd != nil {
 			if !pd.taken { pd^ = {from = r.irect.min, taken = true} }
 			d := sig.drag_delta
-			if p == .Dialog && r.machine.state == .Shown && math.sqrt(d.x * d.x + d.y * d.y) >= DOCK_DRAG_EM * em {
+			// (maximised, it stays: a floating window of the window's size under the pointer would cover the program)
+			if p == .Dialog && r.machine.state == .Shown && !r.maximised && math.sqrt(d.x * d.x + d.y * d.y) >= DOCK_DRAG_EM * em {
 				// past the threshold: an internal window at the dialog's place, moved by the pointer from now on
 				if panel := box_from_key(r.panel); panel != nil {
 					r.irect = {panel.rect.min + d, panel.rect.max + d}
@@ -783,7 +792,8 @@ view_header_menu_items :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation
 @(private)
 view_float :: proc(vs: ^Views, r: ^View_Record) {
 	// (an external window's rect is its own window's, not the owner's: the memory's, else centred)
-	if r.irect == {} && views_memory_of(vs, r.kind.id).internal[2] <= 0 && r.machine.as != .External {
+	// (a maximised dialog's rect is the window's: the floating window opens at its default place instead)
+	if r.irect == {} && views_memory_of(vs, r.kind.id).internal[2] <= 0 && r.machine.as != .External && !r.maximised {
 		if panel := box_from_key(r.panel); panel != nil && r.panel != 0 {
 			r.irect = panel.rect
 			// (a panel can be the window's height: a floating window of it is the dock's default size at most)

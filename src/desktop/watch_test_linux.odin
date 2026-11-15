@@ -41,7 +41,7 @@ watch_follows_places_that_come_and_go :: proc(t: ^testing.T) {
 	o := Integration_Options{
 		identity = test_identity(),
 		applications_dir = fmt.tprintf("%s/share/applications", root), icons_dir = fmt.tprintf("%s/share/icons/hicolor", root),
-		bin_dir = fmt.tprintf("%s/bin", root), autostart_dir = fmt.tprintf("%s/config/autostart", root),
+		bin_dir = fmt.tprintf("%s/bin", root), autostart_dir = fmt.tprintf("%s/config/autostart", root), config_dir = fmt.tprintf("%s/config", root),
 		desktop_dir = fmt.tprintf("%s/Desktop", root), install_dir = fmt.tprintf("%s/programs/sample", root),
 	}
 	wakes: Wakes
