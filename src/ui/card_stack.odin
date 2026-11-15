@@ -15,6 +15,7 @@ package ui
 // card moves it for the next frame. A card shown anew is shown from its top.
 
 import "core:fmt"
+import "core:math"
 import lucide "../lucide"
 import i18n "../i18n"
 
@@ -28,6 +29,9 @@ Card_Stack :: struct {
 // What the person asked of the stack in a frame. Previous and Next are done by the stack (st.at moved); Settle is the
 // program's: the act of the middle button on the card at st.at.
 Card_Act :: enum u8 { None, Previous, Next, Settle }
+
+// The room on each side of the stack's bar of arrows, in ems.
+@(private = "file") CARD_FOOT_SIDE_EM :: 0.8
 
 Card_Stack_Options :: struct {
 	settle:        string,   // the middle button's words ("": Acknowledge)
@@ -73,6 +77,8 @@ card_stack_end :: proc(id: string, st: ^Card_Stack, count: int, o: Card_Stack_Op
 	next({width = fill(), height = children_sum(), axis = .X, cross = .Center})
 	if row(.Center, id = "###card_foot") {
 		h := dense(em * 2.2)
+		// (its arrows off the edges of what holds it: a panel's edge, a dialog's border, the resize grip)
+		spacer(px(math.round(em * CARD_FOOT_SIDE_EM)))
 		next({width = fill(), height = children_sum(), axis = .X, cross = .Center})
 		if row(.Center, id = "###card_before") {
 			if button("card_prev", "", lucide.ARROW_LEFT, {height = h, disabled = count == 0 || st.at == 0, tip = i18n.tr("Previous")}).clicked {
@@ -99,6 +105,7 @@ card_stack_end :: proc(id: string, st: ^Card_Stack, count: int, o: Card_Stack_Op
 				st.act = .Next
 			}
 		}
+		spacer(px(math.round(em * CARD_FOOT_SIDE_EM)))
 	}
 	pop_parent()   // the stack
 }
