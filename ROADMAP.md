@@ -12,6 +12,11 @@
   the cause is on the Direct3D 11 window's path. `tests/partial_redraw_layers` holds the scene, which the Windows CI runs.
 
 ## Next
+
+- **One spacing scale for every program.** The toolkit gives spacing tokens (0.25, 0.5, 0.75, 1, 1.5 em), a card whose
+  inset is the same on its four sides and adds no gap after it, a grouped list card with dividers, a well without an
+  edge and a padding option, all on that scale. Programs lay out the same way and stop keeping scales of their own
+  (atelier's `view.odin` holds one today).
 - **No graphics driver on Windows, tested.** A window whose hardware Direct3D 11 device is refused falls back to WARP,
   and a program without a console that cannot open its window says why in a message box; both are written and
   type-checked, not yet run. A test on the Windows CI (a fault that refuses the hardware device, a child started without
