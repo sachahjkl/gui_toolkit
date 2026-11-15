@@ -746,8 +746,32 @@ wheel_lines :: proc(across := false) -> f32 {
 
 // Whether the user prefers dark apps (Settings > Personalization > Colors > "Choose your app mode"; the registry's
 // AppsUseLightTheme, 0: dark). Absent (older systems): light, Windows' own default.
+// The value is read once a process (a registry read: it waits on the system) and kept; WM_SETTINGCHANGE
+// "ImmersiveColorSet" reads it again (the window's messages), so a frame that asks waits on nothing.
 dark_mode_preferred :: proc(loc := #caller_location) -> bool {
+	switch sync.atomic_load(&scheme_dark) {
+	case SCHEME_DARK:  return true
+	case SCHEME_LIGHT: return false
+	}
 	base.blocking("platform.dark_mode_preferred", loc)
+	return dark_mode_reread()
+}
+
+// The preference last read (atomic): not read yet, dark, light.
+@(private = "file") SCHEME_DARK :: 1
+@(private = "file") SCHEME_LIGHT :: 2
+@(private) scheme_dark: i32
+
+// Reads the preference from the registry and keeps it.
+@(private)
+dark_mode_reread :: proc() -> bool {
+	dark := dark_mode_read()
+	sync.atomic_store(&scheme_dark, dark ? SCHEME_DARK : SCHEME_LIGHT)
+	return dark
+}
+
+@(private = "file")
+dark_mode_read :: proc() -> bool {
 	v, size: win.DWORD = 1, size_of(win.DWORD)
 	key := win.utf8_to_wstring(`Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`)
 	name := win.utf8_to_wstring("AppsUseLightTheme")
@@ -1038,7 +1062,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_SETTINGCHANGE:
 		if lparam != 0 {   // (the light / dark choice of the apps: "ImmersiveColorSet")
 			name := win.wstring(rawptr(uintptr(lparam)))
-			if s, err := win.wstring_to_utf8(name, -1, context.temp_allocator); err == nil && s == "ImmersiveColorSet" { color_scheme_bump() }
+			if s, err := win.wstring_to_utf8(name, -1, context.temp_allocator); err == nil && s == "ImmersiveColorSet" { _ = dark_mode_reread(); color_scheme_bump() }
 		}
 		SPI_SETCLIENTAREAANIMATION :: 0x1043
 		if wparam == SPI_SETCLIENTAREAANIMATION { animations_set(animations_read()) }

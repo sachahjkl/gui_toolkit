@@ -136,6 +136,9 @@ platform/cursors_x11_linux.odin xc thread  # a library and what was made with it
 platform/dbus_linux.odin session thread  # this thread's session bus and the services' state on it (a connection is driven by one thread)
 platform/dialogs.odin dialog_test_hook process  # a test's hook, set before the calls it answers and cleared after (not locked)
 platform/dialogs_win32.odin known_folder_id.ids const  # a table (its entries passed by address)
+platform/dialogs_win32.odin known_folders_lock process  # guards known_folders and known_folders_read
+platform/dialogs_win32.odin known_folders process  # the folders the system named, kept for the process (locked)
+platform/dialogs_win32.odin known_folders_read process  # which of them were asked (locked)
 platform/dragdrop_win32.odin dnd_thread thread  # OLE's initialization and the running drag, per thread
 platform/dragdrop_win32.odin IID_IUnknown const  # a COM interface id (passed by address)
 platform/dragdrop_win32.odin IID_IDropTarget const  # a COM interface id (passed by address)
@@ -160,6 +163,7 @@ platform/platform_linux.odin app_id const  # the program's id on the desktop, se
 platform/platform_linux.odin pumping thread  # the windows of this thread inside poll_events
 platform/platform_win32.odin pumping thread  # the windows of this thread inside poll_events
 platform/platform_win32.odin os_build process  # the Windows build number (atomic: every thread writes the same)
+platform/platform_win32.odin scheme_dark process  # the light / dark preference last read (atomic: WM_SETTINGCHANGE reads it again)
 platform/platform_win32.odin window_class process  # the window class, registered once for the process (sync.Once)
 platform/portal_linux.odin portal_token.counter process  # the portal request tokens, unique in the process (atomic)
 platform/tray.odin tray_test_hook process  # a test's hook, set before the calls it answers and cleared after (not locked)
