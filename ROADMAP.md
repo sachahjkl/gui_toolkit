@@ -21,8 +21,9 @@
 - **opencode native pastes through the toolkit.** Its composer takes files and images from `ui.paste_answer`, its own
   three requests removed, so its menu's Paste attaches an image as Ctrl+V does
   ([src/md/features/paste.md](src/md/features/paste.md)).
-- **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate;
-  `gt:image` gains GIF first.
+- **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate:
+  `gt:image` reads GIF now, the program's switch is left. Intent:
+  [src/md/features/image-decode.md](src/md/features/image-decode.md).
 - **One JSON helper.** Reading and writing JSON goes through one toolkit package, used by the toolkit's own stores and
   exports and by opencode native, instead of three private helpers and a program's own
   ([src/md/features/json.md](src/md/features/json.md)).

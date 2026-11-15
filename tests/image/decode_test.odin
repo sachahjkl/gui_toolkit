@@ -1,11 +1,13 @@
 package image_test
 
 // image.decode: a file is read by its first bytes, whatever its name: PNG pixel for pixel, JPEG close to its picture,
-// BMP pixel for pixel, WebP where libwebp is there; what is no picture, or a picture cut short, is refused.
+// BMP and GIF pixel for pixel, WebP where libwebp is there; what is no picture, or a picture cut short, is refused.
+// (gt:gif's own tests check its decoder on files made by hand: interlace, transparency, damage.)
 
 import "core:testing"
 import core_image "core:image"
 import "core:image/bmp"
+import gif "../../src/gif"
 import image "../../src/image"
 import png "../../src/png"
 
@@ -29,7 +31,9 @@ the_format_comes_from_the_first_bytes :: proc(t: ^testing.T) {
 	testing.expect_value(t, image.file_format([]u8{0xFF, 0xD8, 0xFF, 0xE0}), image.File_Format.Jpeg)
 	testing.expect_value(t, image.file_format(transmute([]u8)string("RIFF\x00\x00\x00\x00WEBPVP8 ")), image.File_Format.Webp)
 	testing.expect_value(t, image.file_format(transmute([]u8)string("BM\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")), image.File_Format.Bmp)
-	testing.expect_value(t, image.file_format(transmute([]u8)string("GIF89a....")), image.File_Format.Unknown)
+	testing.expect_value(t, image.file_format(transmute([]u8)string("GIF89a....")), image.File_Format.Gif)
+	testing.expect_value(t, image.file_format(transmute([]u8)string("GIF87a....")), image.File_Format.Gif)
+	testing.expect_value(t, image.file_format(transmute([]u8)string("GIF88a....")), image.File_Format.Unknown)
 	testing.expect_value(t, image.file_format(nil), image.File_Format.Unknown)
 }
 
@@ -88,9 +92,29 @@ a_webp_decodes_where_libwebp_is :: proc(t: ^testing.T) {
 }
 
 @(test)
+a_gif_decodes_its_first_frame_pixel_for_pixel :: proc(t: ^testing.T) {
+	img := decode_sample()
+	// (gt:gif's encoder keeps a frame's colours exactly when they are 256 or fewer: the sample has 91)
+	bgra := make([]u8, len(img.pixels), context.temp_allocator)
+	for i := 0; i < len(bgra); i += 4 { bgra[i], bgra[i + 1], bgra[i + 2], bgra[i + 3] = img.pixels[i + 2], img.pixels[i + 1], img.pixels[i], 255 }
+	e: gif.Encoder
+	if !testing.expect(t, gif.begin(&e, img.width, img.height, allocator = context.temp_allocator), "the encoder starts") { return }
+	gif.add_frame(&e, bgra)
+	file, _ := gif.end(&e)
+	back, format, ok := image.decode(file, context.temp_allocator)
+	if !testing.expect(t, ok, "it reads") { return }
+	testing.expect_value(t, format, image.File_Format.Gif)
+	testing.expect_value(t, back.width, img.width)
+	testing.expect_value(t, back.height, img.height)
+	testing.expect(t, string(back.pixels) == string(img.pixels), "the same pixels")
+}
+
+@(test)
 what_is_no_picture_is_refused :: proc(t: ^testing.T) {
-	_, format, ok := image.decode(transmute([]u8)string("GIF89a, not read"), context.temp_allocator)
+	_, format, ok := image.decode(transmute([]u8)string("GIF88a, not read"), context.temp_allocator)
 	testing.expect(t, !ok && format == .Unknown, "an unknown format")
+	_, format, ok = image.decode(transmute([]u8)string("GIF89a, not read"), context.temp_allocator)
+	testing.expect(t, !ok && format == .Gif, "a GIF signature on no GIF: its format known, no picture")
 	img := decode_sample()
 	file := png.encode(img.pixels, img.width, img.height, .Fast, context.temp_allocator)
 	_, format, ok = image.decode(file[:len(file) / 2], context.temp_allocator)

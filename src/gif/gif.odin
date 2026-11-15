@@ -1,7 +1,7 @@
 // An animated GIF encoder (GIF89a) for screen recordings: BGRA frames in, a GIF file out, in memory or through a writer
 // procedure. Each frame after the first is only the rectangle that changed, its unchanged pixels transparent (disposal 1:
-// the decoder keeps what is below), so a still screen costs nothing and a moving cursor a few bytes. Pure Odin, any
-// target. See docs/gif.md.
+// the decoder keeps what is below), so a still screen costs nothing and a moving cursor a few bytes. decode.odin reads
+// a file's first frame back (image.decode's GIF). Pure Odin, any target. See docs/gif.md.
 package gif
 
 import "base:intrinsics"

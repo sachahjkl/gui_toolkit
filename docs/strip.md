@@ -42,7 +42,10 @@ if ui.strip("###places", {axes = {.Y}}) { for p in places { place_button(p) } }
 
 The arrows are not Tab stops: the choices are. A screen reader names them "Scroll left", "Scroll right", "Scroll up",
 "Scroll down"; they have no tooltip. They take no room in the layout: the choices never move when an arrow comes or
-goes.
+goes. Each is a small plate of the strip's surface in the ink of the text around the strip, the same for both arrows at
+rest and under the pointer (the hover shows by its plate). Beyond an arrow, a clear gap (`ui.STRIP_GAP_EM`, 0.3 em) shows
+nothing but the surface, then the content fades in: a choice cut at the arrow, its own drawing included (a custom draw's
+bevel, a glow), never touches it.
 
 ## Its size
 

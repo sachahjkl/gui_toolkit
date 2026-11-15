@@ -445,6 +445,13 @@ draws, except the header that a dialog always had. The rules:
    strip's right arrow, under the Detach icon, floated the sidebar (a new box tree: the strip at its start again).
    Refused: hiding them over any control of the top area (a field at its left would have hidden them for nothing), and
    moving them (the corner is where a person looks for them).
+   **Never over a strip.** When a strip of the body (`ui.strip`, opencode native's server tabs) lies in their corner,
+   they do not show at all, wherever the pointer is in the top area: shown when the pointer came to the area's free
+   start, they covered the strip's right arrow, and the person had to go around them to reach it. The test is the
+   strip's box, not its arrows: the arrows come and go with the scroll, the icons would have come and gone with them.
+   The panel's menu (a right click on the area's free part) and the palette still detach and close it. Refused: moving
+   them past the strip (a sidebar's row of tabs ends near the panel's edge: no room is left there) and putting them under
+   the strip's row (over the content that follows it, a "New session" button).
 2b. **The tab strip, left to right** (`view_stack_strip`): the tabs, in the look of every row of tabs (`tab_box`) and on
    a strip ([strip.md](strip.md)): too many for the stack, they scroll with arrows over the faded edge, never a bar; the
    "+" of the shown view's kind (`new_tab`), right after the last tab (outside the strip: at its end when the tabs
