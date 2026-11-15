@@ -45,8 +45,6 @@
   [src/md/features/image-decode.md](src/md/features/image-decode.md).
 - **Streams and sockets in `tk_http`.** A server's event stream and WebSockets over TLS, so opencode native drops ureq
   and tungstenite, Wren its own WebSocket and the toolkit's CDP client its plain `ws://` one: three copies today.
-- **Secrets sealed for the user.** One package that seals a secret for the user's account (DPAPI on Windows, the Secret
-  Service on Linux), in place of opencode native's and Wren's own.
 - **A cache of decoded pictures.** Textures of pictures kept under a byte budget, as opencode native and Wren each keep
   their own (images, favicons, system icons).
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,

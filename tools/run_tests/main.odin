@@ -80,6 +80,7 @@ STEPS := []Step{
 	{name = "qr", path = "src/qr", oses = EVERYWHERE},
 	{name = "process", path = "src/process", oses = EVERYWHERE},
 	{name = "http", path = "src/http", oses = EVERYWHERE},
+	{name = "secrets", path = "src/secrets", oses = EVERYWHERE},   // (Linux: the round trip only where a Secret Service answers)
 	{name = "toolbox", path = "src/toolbox", oses = EVERYWHERE},
 	{name = "release", path = "src/release", oses = EVERYWHERE},
 	{name = "update", path = "src/update", oses = EVERYWHERE},
