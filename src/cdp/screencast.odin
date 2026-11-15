@@ -3,7 +3,6 @@ package tk_cdp
 import "core:encoding/base64"
 import "core:encoding/json"
 import "core:fmt"
-import "core:net"
 import "core:os"
 import "core:time"
 
@@ -38,21 +37,19 @@ screencast_destroy :: proc(sc: ^Screencast) {
 // Handles what comes within `limit`, for a caller with nothing to ask: the frames of a screencast keep coming. !alive: the connection
 // ended.
 pump :: proc(c: ^Client, limit: time.Duration) -> (alive: bool) {
-	set_read_limit(c, limit)
-	defer set_read_limit(c, READ_LIMIT)
-	chunk: [CHUNK]byte
-	n, err := net.recv_tcp(c.sock, chunk[:])
-	if err == .Timeout || err == .Would_Block { return true }
-	if err != .None || n == 0 { return false }
-	append(&c.buf, ..chunk[:n])
+	wait := limit
 	for {
-		_, _, _, _, complete := ws_decode(c.buf[:])
-		if !complete { return true }
-		message, ok := next_message(c)
+		message, ok, timed_out := next_message(c, wait)
+		if timed_out { return true }
 		if !ok { return false }
 		event(c, message)
+		// (what already came is handled now; the next wait is short: the limit was for the first message)
+		wait = PUMP_DRAIN
 	}
 }
+
+// A pump's wait for the messages after its first.
+@(private) PUMP_DRAIN :: time.Millisecond
 
 @(private)
 screencast_frame :: proc(c: ^Client, message: string) {

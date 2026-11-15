@@ -117,13 +117,13 @@ platform.USER_DIR_SEPARATOR + "Papier"` (src/md/features/folders.md). `user_dirs
 folders once from an older name (`"papier"`) to it: call it at start, before anything reads them and before any window;
 it returns how many folders moved and the first that could not.
 
-| `User_Dir` | Linux | Windows |
-|---|---|---|
-| `.Config` (its settings) | `$XDG_CONFIG_HOME/<program>` (`~/.config`) | `%APPDATA%\<program>` |
-| `.Data` (what it made and keeps) | `$XDG_DATA_HOME/<program>` (`~/.local/share`) | `%LOCALAPPDATA%\<program>` |
-| `.State` (logs, crash reports, what it remembers between runs) | `$XDG_STATE_HOME/<program>` (`~/.local/state`) | `%LOCALAPPDATA%\<program>\state` |
-| `.Cache` (what it can make again) | `$XDG_CACHE_HOME/<program>` (`~/.cache`) | `%LOCALAPPDATA%\<program>\cache` |
-| `.Runtime` (sockets, pipes, what lasts a session) | the session's (`session_runtime_dir`)`/<program>`, else `<$TMPDIR or /tmp>/runtime-<uid>/<program>` | the system's temporary folder (`GetTempPath2W`, else `GetTempPathW`)`\<program>` |
+| `User_Dir` | Linux | Windows | macOS |
+|---|---|---|---|
+| `.Config` (its settings) | `$XDG_CONFIG_HOME/<program>` (`~/.config`) | `%APPDATA%\<program>` | `~/Library/Application Support/<program>` |
+| `.Data` (what it made and keeps) | `$XDG_DATA_HOME/<program>` (`~/.local/share`) | `%LOCALAPPDATA%\<program>` | `~/Library/Application Support/<program>` |
+| `.State` (logs, crash reports, what it remembers between runs) | `$XDG_STATE_HOME/<program>` (`~/.local/state`) | `%LOCALAPPDATA%\<program>\state` | `~/Library/Application Support/<program>/state` (logs: `~/Library/Logs/<program>`) |
+| `.Cache` (what it can make again) | `$XDG_CACHE_HOME/<program>` (`~/.cache`) | `%LOCALAPPDATA%\<program>\cache` | `~/Library/Caches/<program>` |
+| `.Runtime` (sockets, pipes, what lasts a session) | the session's (`session_runtime_dir`)`/<program>`, else `<$TMPDIR or /tmp>/runtime-<uid>/<program>` | the system's temporary folder (`GetTempPath2W`, else `GetTempPathW`)`\<program>` | `$TMPDIR/<program>` (macOS makes it the user's) |
 
 A variable counts only when it is an absolute path, as the XDG specification says, on Windows too (`%APPDATA%`, `%LOCALAPPDATA%`):
 a test or a portable copy points them elsewhere. Without them, Windows' known folders (`SHGetKnownFolderPath`).

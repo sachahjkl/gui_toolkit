@@ -1,5 +1,6 @@
 #+build !windows
 #+build !linux
+#+build !darwin
 package platform
 
 USER_DIR_SEPARATOR :: "/"   // (between a folder and the next: a program's folder written as vendor and name)

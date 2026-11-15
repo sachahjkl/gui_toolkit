@@ -102,6 +102,12 @@ install :: proc(o: Install_Options, allocator := context.allocator) -> runtime.L
 
 // The folder of `program`'s logs when Install_Options.dir is "": platform.user_dir(.State, program)/logs ("": the system has none).
 default_dir :: proc(program: string, allocator := context.allocator) -> string {
+	when ODIN_OS == .Darwin {
+		// (macOS keeps a user's logs in ~/Library/Logs: Console.app lists them there)
+		home, found := os.lookup_env("HOME", context.temp_allocator)
+		if !found || !filepath.is_abs(home) { return "" }
+		return strings.concatenate({home, "/Library/Logs/", program}, allocator)
+	}
 	state := platform.user_dir(.State, program, context.temp_allocator)
 	if state == "" { return "" }
 	return strings.concatenate({state, "/logs"}, allocator)

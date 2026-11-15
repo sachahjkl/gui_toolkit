@@ -9,9 +9,9 @@ import win "core:sys/windows"
 
 foreign import winhttp "system:Winhttp.lib"
 
-@(private = "file") HINTERNET :: rawptr
+@(private) HINTERNET :: rawptr
 
-@(default_calling_convention = "system", private = "file")
+@(default_calling_convention = "system", private)
 foreign winhttp {
 	WinHttpOpen :: proc(agent: win.LPCWSTR, access: u32, proxy, bypass: win.LPCWSTR, flags: u32) -> HINTERNET ---
 	WinHttpSetTimeouts :: proc(h: HINTERNET, resolve, connect, send, receive: i32) -> win.BOOL ---
@@ -27,15 +27,15 @@ foreign winhttp {
 	WinHttpCloseHandle :: proc(h: HINTERNET) -> win.BOOL ---
 }
 
-@(private = "file") WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY :: 4
-@(private = "file") WINHTTP_FLAG_SECURE                 :: 0x0080_0000
-@(private = "file") WINHTTP_QUERY_STATUS_CODE           :: 19
-@(private = "file") WINHTTP_QUERY_RAW_HEADERS_CRLF      :: 22
-@(private = "file") WINHTTP_QUERY_FLAG_NUMBER           :: 0x2000_0000
-@(private = "file") WINHTTP_OPTION_URL                  :: 34
-@(private = "file") WINHTTP_ADDREQ_FLAG_ADD             :: 0x2000_0000
-@(private = "file") WINHTTP_ADDREQ_FLAG_REPLACE         :: 0x8000_0000
-@(private = "file") WINHTTP_NO_LENGTH                   :: 0xFFFF_FFFF   // (the header's string ends with a 0)
+@(private) WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY :: 4
+@(private) WINHTTP_FLAG_SECURE                 :: 0x0080_0000
+@(private) WINHTTP_QUERY_STATUS_CODE           :: 19
+@(private) WINHTTP_QUERY_RAW_HEADERS_CRLF      :: 22
+@(private) WINHTTP_QUERY_FLAG_NUMBER           :: 0x2000_0000
+@(private) WINHTTP_OPTION_URL                  :: 34
+@(private) WINHTTP_ADDREQ_FLAG_ADD             :: 0x2000_0000
+@(private) WINHTTP_ADDREQ_FLAG_REPLACE         :: 0x8000_0000
+@(private) WINHTTP_NO_LENGTH                   :: 0xFFFF_FFFF   // (the header's string ends with a 0)
 
 request_system :: proc(method, url: string, req: Request, allocator := context.allocator) -> (res: Response, err: Error) {
 	u, _ := url_parse(url)

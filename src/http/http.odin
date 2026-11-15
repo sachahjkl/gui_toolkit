@@ -6,6 +6,8 @@
 //
 //	form, content_type := http.multipart({{name = "file", file_name = "a.png", content_type = "image/png", value = png}})
 //	res, err := http.request("POST", "https://example.com/upload", {headers = {{"Content-Type", content_type}}, body = form})
+//
+// A server's event stream (stream.odin) and WebSockets (socket.odin) block the same way, on a worker.
 package tk_http
 
 import "core:strconv"
@@ -47,7 +49,11 @@ Error :: enum {
 	Bad_Url,       // not http:// or https://, or no host
 	Bad_Request,   // a method or a header name that is not a token, a header value with a line break
 	Unreachable,   // no answer: the name, the network, TLS, the time limit
-	Too_Large,     // the body is larger than max_bytes
+	Too_Large,     // the body is larger than max_bytes (a stream: a line or an event; a socket: a message)
+	Stopped,       // a stream or a socket: a stop was asked (stop_ask, ws_stop)
+	Timed_Out,     // ws_recv: nothing came within its wait; the socket stays open
+	Closed,        // a socket: the connection ended (after a .Close message, or cut)
+	Refused,       // a WebSocket's server answered without the upgrade (its status is not 101)
 }
 
 error_text :: proc(e: Error) -> string {
@@ -58,6 +64,10 @@ error_text :: proc(e: Error) -> string {
 	case .Bad_Request: return i18n.tr("the request's method or a header is not valid")
 	case .Unreachable: return i18n.tr("the server could not be reached")
 	case .Too_Large:   return i18n.tr("the answer is larger than expected")
+	case .Stopped:     return i18n.tr("the connection was stopped")
+	case .Timed_Out:   return i18n.tr("nothing came in time")
+	case .Closed:      return i18n.tr("the connection ended")
+	case .Refused:     return i18n.tr("the server refused the WebSocket")
 	}
 	return i18n.tr("unknown error")
 }
@@ -78,12 +88,7 @@ get :: proc(url: string, req := Request{}, allocator := context.allocator) -> (s
 // One request: `method` (GET, POST, PUT, PATCH, DELETE, HEAD or any other token) to `url`, with req's headers and body.
 // The answer is the last one, after the redirects; a status that is not 2xx is no Error. res is empty when err != .None.
 request :: proc(method, url: string, req := Request{}, allocator := context.allocator) -> (res: Response, err: Error) {
-	if _, ok := url_parse(url); !ok { return {}, .Bad_Url }
-	if !is_token(method) { return {}, .Bad_Request }
-	for h in req.headers {
-		// (a line break in a header would let a value write headers of its own, or end them early)
-		if !is_token(h.name) || strings.contains_any(h.value, "\r\n\x00") { return {}, .Bad_Request }
-	}
+	if e := request_check(method, url, req); e != .None { return {}, e }
 	r := req
 	if r.max_bytes <= 0 { r.max_bytes = MAX_BYTES }
 	if r.timeout <= 0 { r.timeout = TIMEOUT }

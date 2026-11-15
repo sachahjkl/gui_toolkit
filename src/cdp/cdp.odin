@@ -5,73 +5,27 @@ package tk_cdp
 
 import "core:encoding/json"
 import "core:fmt"
-import "core:net"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import http "../http"
 
 // (above what any wait asks of a window: it answers at its own timeout)
 READ_LIMIT :: 75 * time.Second
-@(private) CHUNK :: 64 * 1024
 @(private) ACK_ID :: -1   // a call no one waits for: its answer is dropped
-@(private) MASK :: [4]byte{0x63, 0x64, 0x70, 0x74}
-@(private) SOCKET_KEY :: "dGtfY2RwIHRrX2NkcCB0aw=="
+// The handshake's limit: the servers are on this machine.
+@(private) CONNECT_LIMIT :: 10 * time.Second
 
-// The opcodes of RFC 6455 a client meets.
-WS_TEXT  :: 1
-WS_CLOSE :: 8
-WS_PING  :: 9
-WS_PONG  :: 10
-
+// The WebSocket is tk_http's (libcurl, WinHTTP): the frames are not this package's.
 Client :: struct {
-	sock:    net.TCP_Socket,
-	port:    int,
-	next_id: int,
-	buf:     [dynamic]byte,
-	session: string,   // a browser: the page the calls go to ("": the connection's own target)
+	socket:     ^http.Socket,
+	port:       int,
+	next_id:    int,
+	read_limit: time.Duration,   // how long a read waits before the call fails (READ_LIMIT unless told)
+	session:    string,   // a browser: the page the calls go to ("": the connection's own target)
 	screencast: ^Screencast,   // a screencast in progress: where its frames go
-	failure: string,   // what the last call that failed said
-	quiet:   bool,     // a failure is not printed (the caller says it)
-}
-
-// One frame of what a client sends: masked, as the protocol wants it.
-ws_encode :: proc(opcode: u8, payload: []byte, mask: [4]byte, allocator := context.allocator) -> []byte {
-	out := make([dynamic]byte, 0, len(payload) + 14, allocator)
-	append(&out, 0x80 | opcode)
-	n := len(payload)
-	switch {
-	case n < 126:
-		append(&out, 0x80 | u8(n))
-	case n < 65536:
-		append(&out, 0x80 | 126, u8(n >> 8), u8(n))
-	case:
-		append(&out, 0x80 | 127)
-		for shift := 56; shift >= 0; shift -= 8 { append(&out, u8(u64(n) >> uint(shift))) }
-	}
-	append(&out, mask[0], mask[1], mask[2], mask[3])
-	for b, i in payload { append(&out, b ~ mask[i % 4]) }
-	return out[:]
-}
-
-// The first frame of `buf`, a server's (not masked). !complete: more bytes are needed.
-ws_decode :: proc(buf: []byte) -> (opcode: u8, fin: bool, payload: []byte, used: int, complete: bool) {
-	if len(buf) < 2 { return }
-	opcode, fin = buf[0] & 0x0f, buf[0] & 0x80 != 0
-	n := int(buf[1] & 0x7f)
-	at := 2
-	switch n {
-	case 126:
-		if len(buf) < 4 { return }
-		n = int(buf[2]) << 8 | int(buf[3])
-		at = 4
-	case 127:
-		if len(buf) < 10 { return }
-		n = 0
-		for i in 2 ..< 10 { n = n << 8 | int(buf[i]) }
-		at = 10
-	}
-	if len(buf) < at + n { return }
-	return opcode, fin, buf[at:at + n], at + n, true
+	failure:    string,   // what the last call that failed said
+	quiet:      bool,     // a failure is not printed (the caller says it)
 }
 
 // A string as JSON, quotes included: what goes into the parameters of a call.
@@ -209,74 +163,38 @@ connect :: proc(port: int) -> (c: Client, ok: bool) {
 
 // The WebSocket at `path` of this machine's `port` (a browser's own, whose pages are sessions of one connection, or a window's).
 open :: proc(port: int, path: string) -> (c: Client, ok: bool) {
-	sock, err := net.dial_tcp_from_endpoint(net.Endpoint{address = net.IP4_Loopback, port = port})
-	if err != nil { return }
-	_ = net.set_option(sock, .Receive_Timeout, READ_LIMIT)
-	c.sock, c.port = sock, port
-	head := fmt.tprintf("GET %s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n", path, port, SOCKET_KEY)
-	if _, e := net.send_tcp(sock, transmute([]byte)head); e != nil { close(&c); return }
-	for {
-		end := strings.index(string(c.buf[:]), "\r\n\r\n")
-		if end >= 0 {
-			if !strings.contains(string(c.buf[:end]), " 101 ") { close(&c); return }
-			remove_range(&c.buf, 0, end + 4)
-			return c, true
-		}
-		if !read_more(&c) { close(&c); return }
-	}
+	s, err := http.ws_connect(fmt.tprintf("ws://127.0.0.1:%d%s", port, path), {timeout = CONNECT_LIMIT})
+	if err != .None { return }
+	c.socket, c.port, c.read_limit = s, port, READ_LIMIT
+	return c, true
 }
 
 close :: proc(c: ^Client) {
-	net.close(c.sock)
-	delete(c.buf)
-	c.buf = nil
+	http.ws_close(c.socket)
+	c.socket = nil
 }
 
 // How long a read waits before the call fails (READ_LIMIT unless told).
-set_read_limit :: proc(c: ^Client, limit: time.Duration) { _ = net.set_option(c.sock, .Receive_Timeout, limit) }
+set_read_limit :: proc(c: ^Client, limit: time.Duration) { c.read_limit = limit }
 
 @(private)
-read_more :: proc(c: ^Client) -> bool {
-	chunk: [CHUNK]byte
-	n, err := net.recv_tcp(c.sock, chunk[:])
-	if err != nil || n == 0 { return false }
-	append(&c.buf, ..chunk[:n])
-	return true
+write_text :: proc(c: ^Client, text: string) -> bool {
+	return c.socket != nil && http.ws_send(c.socket, transmute([]byte)text, .Text) == .None
 }
 
+// The next whole message within `wait`, in the temporary allocator. timed_out: nothing came, the connection stays.
 @(private)
-write_frame :: proc(c: ^Client, opcode: u8, payload: []byte) -> bool {
-	_, err := net.send_tcp(c.sock, ws_encode(opcode, payload, MASK, context.temp_allocator))
-	return err == nil
-}
-
-// The next whole message, in the temporary allocator.
-@(private)
-next_message :: proc(c: ^Client) -> (message: string, ok: bool) {
-	whole := make([dynamic]byte, context.temp_allocator)
-	for {
-		opcode, fin, payload, used, complete := ws_decode(c.buf[:])
-		if !complete {
-			if !read_more(c) { return "", false }
-			continue
-		}
-		switch opcode {
-		case WS_CLOSE:
-			return "", false
-		case WS_PING:
-			write_frame(c, WS_PONG, payload)
-		case WS_PONG:
-		case:
-			append(&whole, ..payload)
-		}
-		remove_range(&c.buf, 0, used)
-		if fin && opcode != WS_PING && opcode != WS_PONG { return string(whole[:]), true }
-	}
+next_message :: proc(c: ^Client, wait: time.Duration) -> (message: string, ok: bool, timed_out: bool) {
+	if c.socket == nil { return }
+	m, err := http.ws_recv(c.socket, wait)
+	if err == .Timed_Out { return "", false, true }
+	if err != .None || m.kind == .Close { return }
+	return strings.clone(string(m.data), context.temp_allocator), true, false
 }
 
 // A call no one waits for (an acknowledgement): its answer is dropped when it comes.
 send :: proc(c: ^Client, method: string, params := "{}") -> bool {
-	return write_frame(c, WS_TEXT, transmute([]byte)request(ACK_ID, method, params, c.session))
+	return write_text(c, request(ACK_ID, method, params, c.session))
 }
 
 // `params`: a JSON object. The result, in the temporary allocator. A failure is said once, here (unless `quiet`), and kept in
@@ -284,9 +202,10 @@ send :: proc(c: ^Client, method: string, params := "{}") -> bool {
 call :: proc(c: ^Client, method: string, params := "{}") -> (result: json.Value, ok: bool) {
 	c.next_id += 1
 	c.failure = ""
-	if !write_frame(c, WS_TEXT, transmute([]byte)request(c.next_id, method, params, c.session)) { return fail(c, method, "the connection is gone") }
+	if !write_text(c, request(c.next_id, method, params, c.session)) { return fail(c, method, "the connection is gone") }
 	for {
-		message, got := next_message(c)
+		message, got, timed_out := next_message(c, c.read_limit)
+		if timed_out { return fail(c, method, "no answer in time") }
 		if !got { return fail(c, method, "the connection ended") }
 		r, failure, mine := answer(message, c.next_id)
 		if !mine { event(c, message); continue }

@@ -155,6 +155,18 @@ fr le serveur est injoignable
 en the answer is larger than expected
 fr la réponse est plus grande que prévu
 
+en the connection was stopped
+fr la connexion a été arrêtée
+
+en nothing came in time
+fr rien n'est arrivé à temps
+
+en the connection ended
+fr la connexion s'est terminée
+
+en the server refused the WebSocket
+fr le serveur a refusé le WebSocket
+
 en unknown error
 fr erreur inconnue
 

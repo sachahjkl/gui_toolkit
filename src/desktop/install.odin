@@ -85,6 +85,7 @@ install_recorded :: proc(o: ^Integration_Options, allocator := context.temp_allo
 
 // The platform's default install folder ("" when it has none).
 default_install_dir :: proc(o: ^Integration_Options, allocator := context.temp_allocator) -> string {
+	when ODIN_OS == .Darwin { return darwin_default_install_dir(o, allocator) }   // (no backend there yet: integration_darwin.odin)
 	if b := platform_backend(); b != nil && b.default_install_dir != nil { return b.default_install_dir(o, allocator) }
 	return ""
 }

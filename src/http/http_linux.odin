@@ -7,9 +7,10 @@ import "base:runtime"
 import "core:strings"
 import "core:sync"
 import "core:sys/posix"
+import "core:time"
 import "../ascii"
 
-@(private = "file")
+@(private)
 Curl :: struct {
 	easy_init:    proc "c" () -> rawptr,
 	easy_setopt:  proc "c" (h: rawptr, option: i32, #c_vararg args: ..any) -> i32,
@@ -19,40 +20,54 @@ Curl :: struct {
 	global_init:  proc "c" (flags: i64) -> i32,
 	slist_append:   proc "c" (list: rawptr, s: cstring) -> rawptr,
 	slist_free_all: proc "c" (list: rawptr),
+	// a raw connection's bytes (CONNECT_ONLY = 1), the WebSocket's (socket_linux.odin); since 7.18.1
+	easy_send: proc "c" (h: rawptr, buffer: rawptr, buflen: uint, sent: ^uint) -> i32,
+	easy_recv: proc "c" (h: rawptr, buffer: rawptr, buflen: uint, received: ^uint) -> i32,
 }
 
-@(private = "file") curl_lib: Curl
-@(private = "file") curl_once: sync.Once
-@(private = "file") curl_found: bool
+@(private) curl_lib: Curl
+@(private) curl_once: sync.Once
+@(private) curl_found: bool
 
-@(private = "file") CURLOPT_WRITEDATA          :: 10001
-@(private = "file") CURLOPT_URL                :: 10002
-@(private = "file") CURLOPT_POSTFIELDS         :: 10015
-@(private = "file") CURLOPT_USERAGENT          :: 10018
-@(private = "file") CURLOPT_HTTPHEADER         :: 10023
-@(private = "file") CURLOPT_HEADERDATA         :: 10029
-@(private = "file") CURLOPT_CUSTOMREQUEST      :: 10036
-@(private = "file") CURLOPT_WRITEFUNCTION      :: 20011
-@(private = "file") CURLOPT_HEADERFUNCTION     :: 20079
-@(private = "file") CURLOPT_POSTFIELDSIZE_LARGE :: 30120
-@(private = "file") CURLOPT_NOBODY             :: 44
-@(private = "file") CURLOPT_FOLLOWLOCATION     :: 52
-@(private = "file") CURLOPT_MAXREDIRS          :: 68
-@(private = "file") CURLOPT_NOSIGNAL           :: 99
-@(private = "file") CURLOPT_TIMEOUT_MS         :: 155
-@(private = "file") CURLOPT_PROTOCOLS_STR      :: 10318
-@(private = "file") CURLOPT_REDIR_PROTOCOLS_STR :: 10319
-@(private = "file") CURLINFO_EFFECTIVE_URL     :: 0x100001
-@(private = "file") CURLINFO_RESPONSE_CODE     :: 0x200002
-@(private = "file") CURL_GLOBAL_DEFAULT        :: 3
-@(private = "file") CURLE_WRITE_ERROR          :: 23
-@(private = "file") CURLFOLLOW_ALL             :: 1
-@(private = "file") CURLFOLLOW_OBEYCODE        :: 2
+@(private) CURLOPT_WRITEDATA          :: 10001
+@(private) CURLOPT_URL                :: 10002
+@(private) CURLOPT_POSTFIELDS         :: 10015
+@(private) CURLOPT_USERAGENT          :: 10018
+@(private) CURLOPT_HTTPHEADER         :: 10023
+@(private) CURLOPT_HEADERDATA         :: 10029
+@(private) CURLOPT_CUSTOMREQUEST      :: 10036
+@(private) CURLOPT_WRITEFUNCTION      :: 20011
+@(private) CURLOPT_HEADERFUNCTION     :: 20079
+@(private) CURLOPT_POSTFIELDSIZE_LARGE :: 30120
+@(private) CURLOPT_NOBODY             :: 44
+@(private) CURLOPT_FOLLOWLOCATION     :: 52
+@(private) CURLOPT_MAXREDIRS          :: 68
+@(private) CURLOPT_NOSIGNAL           :: 99
+@(private) CURLOPT_TIMEOUT_MS         :: 155
+@(private) CURLOPT_PROTOCOLS_STR      :: 10318
+@(private) CURLOPT_REDIR_PROTOCOLS_STR :: 10319
+@(private) CURLINFO_EFFECTIVE_URL     :: 0x100001
+@(private) CURLINFO_RESPONSE_CODE     :: 0x200002
+@(private) CURL_GLOBAL_DEFAULT        :: 3
+@(private) CURLE_WRITE_ERROR          :: 23
+@(private) CURLFOLLOW_ALL             :: 1
+@(private) CURLFOLLOW_OBEYCODE        :: 2
+@(private) CURLOPT_NOPROGRESS         :: 43
+@(private) CURLOPT_XFERINFODATA       :: 10057
+@(private) CURLOPT_XFERINFOFUNCTION   :: 20219
+@(private) CURLOPT_CONNECT_ONLY       :: 141
+@(private) CURLOPT_CONNECTTIMEOUT_MS  :: 156
+@(private) CURLOPT_HTTPPROXYTUNNEL    :: 61
+@(private) CURLOPT_HTTP_VERSION       :: 84
+@(private) CURL_HTTP_VERSION_1_1      :: 2
+@(private) CURLINFO_ACTIVESOCKET      :: 0x50002C   // (7.45)
+@(private) CURLINFO_LASTSOCKET        :: 0x20001D   // (before 7.45: a long)
+@(private) CURLE_AGAIN                :: 81
 
 // The header lines of the answers kept at most: no real answer comes near it.
-@(private = "file") MAX_HEADER_BYTES :: 1 << 20
+@(private) MAX_HEADER_BYTES :: 1 << 20
 
-@(private = "file")
+@(private)
 curl_load :: proc() {
 	for name in ([]cstring{"libcurl.so.4", "libcurl.so", "libcurl-gnutls.so.4"}) {
 		h := posix.dlopen(name, posix.RTLD_LOCAL + {.NOW})
@@ -66,6 +81,8 @@ curl_load :: proc() {
 		c.global_init = auto_cast posix.dlsym(h, "curl_global_init")
 		c.slist_append = auto_cast posix.dlsym(h, "curl_slist_append")
 		c.slist_free_all = auto_cast posix.dlsym(h, "curl_slist_free_all")
+		c.easy_send = auto_cast posix.dlsym(h, "curl_easy_send")
+		c.easy_recv = auto_cast posix.dlsym(h, "curl_easy_recv")
 		if c.easy_init == nil || c.easy_setopt == nil || c.easy_perform == nil || c.easy_getinfo == nil || c.easy_cleanup == nil || c.global_init == nil || c.slist_append == nil || c.slist_free_all == nil {
 			posix.dlclose(h)
 			continue
@@ -180,4 +197,113 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	res.header_text = strings.clone(string(sink.head[:]), allocator)
 	res.headers = headers_parse(res.header_text, allocator)
 	return res, .None
+}
+
+// The headers as libcurl's list ("Name: value"); nil and true for none. !ok: libcurl had no memory.
+@(private)
+curl_header_list :: proc(headers: []Header) -> (list: rawptr, ok: bool) {
+	c := &curl_lib
+	for hd in headers {
+		next := c.slist_append(list, strings.clone_to_cstring(strings.concatenate({hd.name, ": ", hd.value}, context.temp_allocator), context.temp_allocator))
+		if next == nil {
+			if list != nil { c.slist_free_all(list) }
+			return nil, false
+		}
+		list = next
+	}
+	return list, true
+}
+
+// What one stream's callbacks share: they run on the thread of easy_perform.
+@(private = "file")
+Stream_Sink :: struct {
+	h:         rawptr,
+	parser:    ^Event_Parser,
+	on_event:  Event_Proc,
+	user:      rawptr,
+	stop:      ^Stop,
+	silence:   time.Duration,
+	last:      time.Tick,   // the last byte received, of a header or of the body
+	status:    int,         // the answer's, read at its first body bytes
+	refused:   bool,        // not 2xx: the body is not read
+	by_caller: bool,        // on_event said .Stop
+	stopped:   bool,        // stop was asked
+	silent:    bool,        // nothing came for `silence`
+}
+
+@(private = "file")
+on_stream_write :: proc "c" (ptr: [^]u8, size, count: uint, user: rawptr) -> uint {
+	context = runtime.default_context()
+	s := (^Stream_Sink)(user)
+	n := int(size * count)
+	s.last = time.tick_now()
+	if s.status == 0 {
+		code: i64
+		curl_lib.easy_getinfo(s.h, CURLINFO_RESPONSE_CODE, &code)
+		s.status = int(code)
+		if s.status < 200 || s.status > 299 { s.refused = true; return 0 }
+	}
+	if event_parser_feed(s.parser, ptr[:n], s.on_event, s.user) == .Stop {
+		if !s.parser.too_large { s.by_caller = true }
+		return 0   // (fewer bytes than given: libcurl stops)
+	}
+	return uint(n)
+}
+
+@(private = "file")
+on_stream_header :: proc "c" (ptr: [^]u8, size, count: uint, user: rawptr) -> uint {
+	s := (^Stream_Sink)(user)
+	s.last = time.tick_now()
+	return size * count
+}
+
+// libcurl calls it about once a second, bytes or not: where a stop and the silence are seen.
+@(private = "file")
+on_stream_progress :: proc "c" (user: rawptr, dltotal, dlnow, ultotal, ulnow: i64) -> i32 {
+	s := (^Stream_Sink)(user)
+	if s.stop != nil && sync.atomic_load(&s.stop.asked) { s.stopped = true; return 1 }
+	if time.tick_since(s.last) > s.silence { s.silent = true; return 1 }
+	return 0
+}
+
+events_system :: proc(url: string, req: Request, parser: ^Event_Parser, on_event: Event_Proc, user: rawptr, stop: ^Stop) -> (status: int, err: Error) {
+	sync.once_do(&curl_once, curl_load)
+	if !curl_found { return 0, .No_Client }
+	c := &curl_lib
+	h := c.easy_init()
+	if h == nil { return 0, .No_Client }
+	defer c.easy_cleanup(h)
+	sink := Stream_Sink{h = h, parser = parser, on_event = on_event, user = user, stop = stop, silence = req.timeout, last = time.tick_now()}
+	c.easy_setopt(h, CURLOPT_URL, strings.clone_to_cstring(url, context.temp_allocator))
+	c.easy_setopt(h, CURLOPT_FOLLOWLOCATION, i64(CURLFOLLOW_ALL))
+	c.easy_setopt(h, CURLOPT_MAXREDIRS, i64(MAX_REDIRECTS))
+	c.easy_setopt(h, CURLOPT_PROTOCOLS_STR, cstring("http,https"))
+	c.easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, cstring("http,https"))
+	c.easy_setopt(h, CURLOPT_NOSIGNAL, i64(1))
+	c.easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, i64(req.timeout / time.Millisecond))
+	c.easy_setopt(h, CURLOPT_WRITEFUNCTION, on_stream_write)
+	c.easy_setopt(h, CURLOPT_WRITEDATA, rawptr(&sink))
+	c.easy_setopt(h, CURLOPT_HEADERFUNCTION, on_stream_header)
+	c.easy_setopt(h, CURLOPT_HEADERDATA, rawptr(&sink))
+	c.easy_setopt(h, CURLOPT_XFERINFOFUNCTION, on_stream_progress)
+	c.easy_setopt(h, CURLOPT_XFERINFODATA, rawptr(&sink))
+	c.easy_setopt(h, CURLOPT_NOPROGRESS, i64(0))
+	if req.user_agent != "" { c.easy_setopt(h, CURLOPT_USERAGENT, strings.clone_to_cstring(req.user_agent, context.temp_allocator)) }
+	list, listed := curl_header_list(req.headers)
+	if !listed { return 0, .Unreachable }
+	defer if list != nil { c.slist_free_all(list) }
+	if list != nil { c.easy_setopt(h, CURLOPT_HTTPHEADER, list) }
+
+	code := c.easy_perform(h)
+	answer: i64
+	c.easy_getinfo(h, CURLINFO_RESPONSE_CODE, &answer)
+	status = int(answer)
+	switch {
+	case sink.refused, sink.by_caller: return status, .None
+	case parser.too_large:             return status, .Too_Large
+	case sink.stopped:                 return status, .Stopped
+	case sink.silent:                  return status, .Unreachable
+	case code != 0:                    return status, .Unreachable
+	}
+	return status, .None   // (the server ended the stream)
 }

@@ -20,6 +20,14 @@ an application that comes as a folder of its own. Refused: `~/.local/share/<slug
 the data, one rm from losing it), `~/.local/lib` (systemd's file-hierarchy keeps it for data and libraries, not an
 application's folder). An install already somewhere stays there: the setup reads the folder it recorded.
 
+On macOS a program is a bundle: `~/Applications/<name>.app`, the folder macOS keeps for one person's applications,
+with no vendor folder around it (the Finder, Launchpad and the Dock expect the bundle there). Its folders follow
+Apple's guide: settings, data and state in `~/Library/Application Support/<vendor>/<Title>` (the settings are the
+program's own files, not `~/Library/Preferences`' plists), its cache in `~/Library/Caches/<vendor>/<Title>`, its logs
+in `~/Library/Logs/<vendor>/<Title>` (where Console.app looks), its runtime files in the user's `$TMPDIR`. These are
+said already, for the setup's field and `user_dir`; the bundle itself waits for a Mac to test it
+(`src/desktop/integration_darwin.odin`).
+
 ## A program's folder: its vendor's, then its own
 
 A program's folder is `<vendor>/<Title>` on every system (`"FromentSoftware" + USER_DIR_SEPARATOR + "Papier"`):

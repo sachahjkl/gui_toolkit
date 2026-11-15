@@ -1,4 +1,4 @@
-# http: requests over HTTP and HTTPS
+# http: requests over HTTP and HTTPS, event streams, WebSockets
 
 `import http "gt:http"` (the package is named `tk_http`: a program may have an `http` package of its own). Requests over
 HTTP or HTTPS with what the system has: WinHTTP on Windows (its proxy settings and certificates), libcurl on Linux, loaded at
@@ -58,10 +58,62 @@ Pure procedures: no system call, testable anywhere.
 - `component_encode(s)` encodes one part of a URL (a path's segment, a query's value outside a form): RFC 3986's
   unreserved characters (letters, digits, `-._~`) stay, any other byte is `%XX` (a space `%20`, a slash `%2F`).
 
+## A server's event stream
+
+```odin
+on_event :: proc(user: rawptr, e: http.Event) -> http.Keep_Going {
+	fmt.println(e.type, e.data)   // e's strings are valid during the call only
+	return .Continue
+}
+stop: http.Stop                  // another thread: http.stop_ask(&stop)
+status, err := http.events("https://host/event", {headers = {{"Authorization", auth}}}, on_event, nil, &stop)
+```
+
+- `events(url, req, on_event, user, stop)` reads a Server-Sent Events stream (GET) until the server ends it, `on_event`
+  returns `.Stop`, or `stop_ask(&stop)` is called from another thread (seen within about a second: `.Stopped`). Call it
+  on a worker.
+- `Event`: `type` (`"message"` when the stream names none), `data` (the `data:` lines joined by `\n`), `id` (the last
+  `id:` of the stream), `retry` (the last `retry:`, in milliseconds; 0: none).
+- `req.timeout` is the longest silence, not the whole stream (0: `STREAM_SILENCE`, 2 minutes). Any byte restarts it: a
+  server's heartbeat comment is enough. A silence is `.Unreachable`. `req.max_bytes` bounds one line and one event.
+- An `Accept: text/event-stream` header is added when `req.headers` has no Accept.
+- A status that is not 2xx gives no event and no error: read `status`. The end of the stream is no error either. There
+  is no reconnection: call `events` again, with a `Last-Event-ID` header from the last `Event.id`, after `Event.retry`.
+- `Event_Parser` (`event_parser_init`, `event_parser_feed`, `event_parser_destroy`) is the parser alone: bytes in any cut,
+  the WHATWG rules (LF, CRLF or CR; comments; one space after the colon dropped; an event with no data line not given).
+
+## WebSockets
+
+```odin
+s, err := http.ws_connect("wss://host/socket", {headers = {{"Authorization", auth}}})
+if err != .None { return }
+defer http.ws_close(s)
+http.ws_send(s, transmute([]u8)string(`{"hello":1}`))   // any thread
+for {
+	m, e := http.ws_recv(s)                                // the reader's thread
+	if e != .None || m.kind == .Close { break }
+	handle(m.data)                                         // valid until the next ws_recv
+}
+```
+
+- `ws_connect(url, req)`: `ws://` or `wss://`. `req.headers` go with the handshake; `req.timeout` bounds the handshake;
+  `req.max_bytes` bounds one message. A server that answers without the upgrade is `.Refused`.
+- `ws_recv(s, wait)`: the next whole message, `.Text` or `.Binary`; a ping is answered with a pong. `wait` = 0
+  waits without limit; when a wait runs out, `.Timed_Out`, and the socket stays open. The server's close is a `.Close`
+  message (`code`, the reason in `data`); the calls after it are `.Closed`.
+- `ws_send(s, data, kind)`: `.Text` (the default) or `.Binary`, from any thread, one at a time.
+- `ws_stop(s)`, from any thread: a waiting `ws_recv` returns `.Stopped` at once, and every call after it too.
+- `ws_close(s)`: sends the close (1000) if the socket is open and frees it. Call it on the reader's thread, after its last
+  `ws_recv`, when no other thread uses the socket.
+- Windows: WinHTTP's WebSocket. Linux: any libcurl (7.18.1 or later), with or without its own WebSocket API: curl makes
+  the connection (TLS, a proxy as a tunnel), the package writes the upgrade and the frames.
+- A frame that breaks the protocol (masked by the server, an unknown opcode) ends the socket: `.Closed`.
+
 ## Errors
 
 `Error`: `No_Client` (Linux without libcurl), `Bad_Url` (not http or https, credentials in the address), `Bad_Request`,
-`Unreachable` (the name, the network, TLS, the time limit), `Too_Large`. `error_text` says it in a sentence.
+`Unreachable` (the name, the network, TLS, the time limit), `Too_Large`; for streams and sockets `Stopped`, `Timed_Out`,
+`Closed` and `Refused` (no upgrade, or a wrong `Sec-WebSocket-Accept`). `error_text` says it in a sentence.
 
 `url_parse` gives the parts of an http or https URL (secure, host, port, path with its query).
 
