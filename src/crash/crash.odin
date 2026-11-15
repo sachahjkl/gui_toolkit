@@ -31,8 +31,8 @@ import "../platform"
 
 // What a report's file name ends with, and the names of the folder's other files.
 REPORT_EXTENSION :: ".txt"
-SESSION_FILE :: "session.txt"      // a session runs: its process id and start (begin_session)
-CLEAN_END_FILE :: "clean-end.txt"  // the last clean end (end_session): a report older than it was seen
+SESSION_PREFIX :: "session"        // session-<pid>.txt: a session of that process runs, its id and start (begin_session)
+CLEAN_END_FILE :: "clean-end.txt"  // the start of the last session that ended cleanly (end_session): a report older than it was seen
 // The prefixes of the reports' file names, by kind.
 CRASH_PREFIX :: "crash"
 UNCLEAN_PREFIX :: "unclean"
@@ -139,33 +139,51 @@ SYSTEM_NAME :: "linux amd64" when ODIN_OS == .Linux && ODIN_ARCH == .amd64 else
 ////////////////////////////////
 // Sessions
 
-// A session starts. A file in the report folder says it runs (its process id and start); end_session removes it. Found here with its
-// process gone, the last session ended with no report at all (a kill, the out-of-memory killer, a power cut, a fail-fast): this writes
-// an "unclean" report for it, which last_report then gives. Call it at the start, after install, before the interface's loop (it reads
-// and writes files on the calling thread).
+// A session starts. A file of its own in the report folder says it runs (session_file: its process id and start); end_session
+// removes it. Every session file found here whose process is gone (or whose id now names another process) is a session that
+// ended with no report at all (a kill, the out-of-memory killer, a power cut, a fail-fast): this writes an "unclean" report for
+// it, which last_report then gives, and removes its file. Another instance's file, its process alive, is left alone. Call it
+// at the start, after install, before the interface's loop (it reads and writes files on the calling thread).
 begin_session :: proc() {
 	dir := kept_dir()
 	if dir == "" { return }
 	fsx.make_dirs(dir)
-	path := in_dir(dir, SESSION_FILE, context.temp_allocator)
-	if prev, ok := fsx.read_all(path, context.temp_allocator); ok {
-		s := parse_session(string(prev))
-		if s.pid != 0 {
-			now, alive := process_started(s.pid)
-			if !alive || now != s.start { write_unclean(dir, s) }
-		}
-	}
 	pid := u64(os.get_pid())
+	for f in fsx.list_files(dir, context.temp_allocator) {
+		if !is_session_name(f.name) { continue }
+		path := in_dir(dir, f.name, context.temp_allocator)
+		prev, ok := fsx.read_all(path, context.temp_allocator)
+		if !ok { continue }
+		s := parse_session(string(prev))
+		if s.pid == 0 || s.pid == pid { continue }
+		now, alive := process_started(s.pid)
+		if alive && now == s.start { continue }
+		write_unclean(dir, s)
+		_ = fsx.delete_file(path)
+	}
 	start, _ := process_started(pid)
 	text := fmt.tprintf("pid: %d\nstart: %d\nprogram: %s\nversion: %s\n", pid, start, kept_program(), kept_version())
-	_ = fsx.write_atomic(path, transmute([]u8)text)
+	_ = fsx.write_atomic(in_dir(dir, session_file(pid, context.temp_allocator), context.temp_allocator), transmute([]u8)text)
 	intrinsics.atomic_store(&kept.session_open, 1)
 }
 
-// The session ends cleanly: its file goes, and the clean end is noted (a report older than it was the previous sessions').
-// A thread of its own does the files, and the call waits for it (as config.user_writer_stop waits for its writer): the
-// thread that calls it at the end of the program is often the one that ran the interface, which makes no disk call, and
-// the files must be there before the process ends.
+// The name of the session file of process `pid`: session-<pid>.txt.
+session_file :: proc(pid: u64, allocator := context.allocator) -> string {
+	return fmt.aprintf("%s-%d%s", SESSION_PREFIX, pid, REPORT_EXTENSION, allocator = allocator)
+}
+
+// A session file's name, this version's (session-<pid>.txt) or an older one's single session.txt: both are read at a start.
+@(private)
+is_session_name :: proc(name: string) -> bool {
+	return strings.has_prefix(name, SESSION_PREFIX) && strings.has_suffix(name, REPORT_EXTENSION)
+}
+
+// The session ends cleanly: its own file goes, and becomes clean-end.txt, which keeps its time: the session's start. What was
+// written before the session began, it saw (the crash bar shows it at the start); what another instance wrote while it ran,
+// it did not, and last_report still gives it. An end whose start is older than the one clean-end.txt has says nothing new: its
+// file only goes. A thread of its own does the files, and the call waits for it (as config.user_writer_stop waits for its
+// writer): the thread that calls it at the end of the program is often the one that ran the interface, which makes no disk
+// call, and the files must be there before the process ends.
 end_session :: proc() {
 	intrinsics.atomic_store(&kept.session_open, 0)
 	dir := kept_dir()
@@ -179,8 +197,15 @@ end_session :: proc() {
 @(private = "file")
 session_close :: proc(data: rawptr) {
 	dir := (^string)(data)^
-	_ = fsx.delete_file(in_dir(dir, SESSION_FILE, context.temp_allocator))
-	_ = fsx.write_atomic(in_dir(dir, CLEAN_END_FILE, context.temp_allocator), transmute([]u8)string("clean end\n"))
+	own := in_dir(dir, session_file(u64(os.get_pid()), context.temp_allocator), context.temp_allocator)
+	clean := in_dir(dir, CLEAN_END_FILE, context.temp_allocator)
+	_, began, has_own := fsx.stat(own)
+	if !has_own { return }
+	_, seen, has_seen := fsx.stat(clean)
+	if !has_seen || began > seen {
+		if fsx.replace(own, clean, false) { return }
+	}
+	_ = fsx.delete_file(own)
 }
 
 // The newest report written since the last clean end: the program crashed (or was killed) last time, and can say so ("open the

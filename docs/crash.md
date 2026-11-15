@@ -57,13 +57,17 @@ Error event (Windows).
 
 ## Sessions
 
-`begin_session()` writes `session.txt` in the report folder: the process id and its start. `end_session()` removes it and
-writes `clean-end.txt`. When `begin_session` finds a `session.txt` whose process is gone, the last session ended without a
-report: the process was killed (the out-of-memory killer, `kill -9`, a watchdog), the machine stopped, or a fail-fast ended it.
-`begin_session` then writes an `unclean` report for it. A crash report removes `session.txt` itself.
+`begin_session()` writes the process's own session file in the report folder, `session_file(pid)` (`session-<pid>.txt`):
+the process id and its start. Every instance of a program has its own, so two instances that run at once never erase each
+other's. `begin_session` reads every session file it finds: one whose process is gone (or whose id now names another
+process) is a session that ended without a report: the process was killed (the out-of-memory killer, `kill -9`, a
+watchdog), the machine stopped, or a fail-fast ended it. `begin_session` writes an `unclean` report for it and removes its
+file; the file of an instance that still runs stays. A crash report removes the crashing process's own file.
 
-`last_report(allocator) -> (path: string, ok: bool)` is the newest report written after `clean-end.txt`: the last session
-crashed, was killed or ended itself. After the next clean end, `last_report` gives nothing for it again.
+`end_session()` removes the process's own file by renaming it `clean-end.txt`, which keeps its time: the session's start.
+`last_report(allocator) -> (path: string, ok: bool)` is the newest report written after `clean-end.txt`: a report the last
+clean session could not have shown at its start. After the next clean session, `last_report` gives nothing for it again; a
+crash of another instance while that session ran stays given.
 
 `begin_session` and `last_report` read and write files on the calling thread: call them at the start, before the interface's
 loop, not in a frame. `end_session` writes on a thread of its own and waits for it (as `config.user_writer_stop` waits for

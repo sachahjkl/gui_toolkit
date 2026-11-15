@@ -10,6 +10,7 @@ package platform
 // service degrades gracefully (the tray reports no icon, the portal falls back to zenity, the theme reads the GTK
 // files).
 
+import "base:runtime"
 import "../dbus"
 
 @(private) DBUS_QUICK_CALL_MS :: 3000   // a query the interface waits for: a missing service must not hold it long
@@ -35,12 +36,13 @@ Session_Bus :: struct {
 @(private, thread_local) session: Session_Bus
 
 // This thread's session bus (nil when unreachable, or gone: it ends with the login, and the services fall back as they do
-// with none). Opened once per thread.
+// with none). Opened once per thread, in the heap: it lives as long as the thread, whatever allocator the first caller had
+// (a test's is freed at its end while the bus still writes in what it gave).
 @(private)
 session_bus :: proc() -> ^dbus.Conn {
 	if !session.tried {
 		session.tried = true
-		session.conn = dbus.connect_bus(.Session)
+		session.conn = dbus.connect_bus(.Session, runtime.heap_allocator())
 	}
 	return dbus.conn_alive(session.conn) ? session.conn : nil
 }

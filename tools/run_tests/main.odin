@@ -178,7 +178,7 @@ STEPS := []Step{
 	{name = "examples_damage", path = "tests/examples", one = true, defines = {"TOOLKIT_DAMAGE_CHECK=true", "ODIN_TEST_NAMES=examples_test.whatsnew_pages_look_like_their_images,examples_test.whatsnew_lazy_column_after_a_wheel_burst,examples_test.fidget_controls_by_the_mouse,examples_test.fidget_editor_undo_and_redo"}},
 	// real windows, hidden, on the runner's own desktop
 	{name = "window"},
-	{name = "host", one = true},
+	{name = "host", one = true, oses = EVERYWHERE, text = true},   // (Linux: its windows without a screen; those of the system are host_test_windows.odin's)
 	{name = "cursors", one = true},
 	{name = "tray", one = true},
 	// pixels

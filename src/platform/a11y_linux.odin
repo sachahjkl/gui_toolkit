@@ -51,7 +51,7 @@ a11y_bus_state :: proc() -> A11y_Bus_State {
 	msg, ok := dbus.call(conn, ATSPI_BUS_NAME, ATSPI_BUS_PATH, ATSPI_BUS_NAME, "GetAddress", "", nil, DBUS_QUICK_CALL_MS)
 	if !ok { return .Absent }
 	r := dbus.msg_reader(&msg)
-	session.a11y_address = strings.clone(dbus.r_string(&r))
+	session.a11y_address = strings.clone(dbus.r_string(&r), runtime.heap_allocator())   // (the thread's, as its bus: session_bus)
 	if session.a11y_address == "" { return .Absent }
 	w := dbus.body_writer()
 	dbus.w_string(&w, ATSPI_STATUS_IFACE)
