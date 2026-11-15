@@ -271,6 +271,53 @@ news_html :: proc(rs: []^Release) -> string {
 	return strings.to_string(b)
 }
 
+// The changelog's Subscribe menu, beside its title: the releases' feed (feed.xml, meta.odin) and the repository's
+// releases, where GitHub's Watch follows them. A <details>: it opens with no script; a press elsewhere or Escape closes
+// it. Its look is here, in the page: every site has the same variables (--bg1, --text, --edge...), so no site's style
+// sheet needs a rule of its own. No repository: the feed alone.
+subscribe_html :: proc(repository: string) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, SUBSCRIBE_STYLE)
+	strings.write_string(&b, `<details class="subscribe"><summary>Subscribe</summary><ul>`)
+	strings.write_string(&b, `<li><a href="/`)
+	strings.write_string(&b, FEED_FILE)
+	strings.write_string(&b, `">RSS feed <span aria-hidden="true">↗</span></a></li>`)
+	if repository != "" {
+		strings.write_string(&b, `<li><a href="`)
+		strings.write_string(&b, esc(strings.trim_right(repository, "/")))
+		strings.write_string(&b, `/releases">Watch releases on GitHub <span aria-hidden="true">↗</span></a></li>`)
+	}
+	strings.write_string(&b, "</ul></details>\n")
+	strings.write_string(&b, SUBSCRIBE_SCRIPT)
+	return strings.to_string(b)
+}
+
+@(private = "file")
+SUBSCRIBE_STYLE :: `<style>
+  .changelog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .subscribe { position: relative; margin: 48px 0 8px; }
+  .subscribe > summary { list-style: none; cursor: pointer; padding: 8px 14px; border: 1px solid var(--edge); border-radius: 6px;
+    background: var(--bg2); color: var(--text); font: 500 1rem var(--sans); user-select: none; }
+  .subscribe > summary::-webkit-details-marker { display: none; }
+  .subscribe > summary::after { content: "⌄"; display: inline-block; margin-left: 8px; color: var(--weak); }
+  .subscribe[open] > summary::after { transform: rotate(180deg); }
+  .subscribe > summary:hover, .subscribe[open] > summary { background: var(--bg3); }
+  .subscribe ul { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; margin: 0; padding: 6px; list-style: none;
+    min-width: max-content; background: var(--bg1); border: 1px solid var(--edge); border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+  .subscribe a { display: block; padding: 8px 12px; border-radius: 4px; color: var(--text); text-decoration: none; font: 0.95rem var(--mono); }
+  .subscribe a:hover, .subscribe a:focus-visible { background: var(--bg3); }
+</style>
+`
+
+@(private = "file")
+SUBSCRIBE_SCRIPT :: `<script>
+  // a press outside the open menu, or Escape, closes it
+  (() => { const d = document.querySelector('.subscribe'); if (!d) return;
+    addEventListener('click', (e) => { if (d.open && !d.contains(e.target)) d.open = false; });
+    addEventListener('keydown', (e) => { if (e.key === 'Escape' && d.open) { d.open = false; d.querySelector('summary').focus(); } }); })();
+</script>
+`
+
 FILTER :: `<script>
   // unfolds what a link points at; the filter keeps the versions whose text has all the words
   const open = () => { const t = location.hash && document.getElementById(location.hash.slice(1)); if (t && t.tagName === 'DETAILS') { t.open = true; t.scrollIntoView() } };
@@ -568,7 +615,7 @@ Page :: struct {
 
 // Every page this step makes, from the home page and the versions. `site_name` titles them ("": the home page's title).
 // why: what the home page lacks.
-make_pages :: proc(index: string, releases: []^Release, site_name := "") -> (pages: []Page, why: string) {
+make_pages :: proc(index: string, releases: []^Release, site_name := "", repository := "") -> (pages: []Page, why: string) {
 	if !strings.contains(index, WHATS_NEW) { return nil, cat("no ", WHATS_NEW) }
 	shown := releases[:min(NEWS_VERSIONS, len(releases))]
 	out := make([dynamic]Page, context.temp_allocator)
@@ -604,7 +651,10 @@ make_pages :: proc(index: string, releases: []^Release, site_name := "") -> (pag
 `, bar, `
 
 <main class="changelog">
+<div class="changelog-head">
 <h1>Changelog</h1>
+`, subscribe_html(repository), `
+</div>
 `, changelog_intro, `
 </main>
 
@@ -729,7 +779,7 @@ build_changelog :: proc(site, out: string, o: Changelog_Options) -> bool {
 	if dl_why != "" { fmt.eprintfln("site: %s/%s: %s", site, HOME_PAGE, dl_why); return false }
 	framed, frame_why := with_frame(home, o.meta)
 	if frame_why != "" { fmt.eprintfln("site: %s/%s: %s", site, HOME_PAGE, frame_why); return false }
-	made, why := make_pages(with_version(framed, releases[0].version, o.version_mark), releases, o.meta.name)
+	made, why := make_pages(with_version(framed, releases[0].version, o.version_mark), releases, o.meta.name, o.meta.repository)
 	if why != "" { fmt.eprintfln("site: %s/%s: %s", site, HOME_PAGE, why); return false }
 	pages := make([dynamic]Page, context.temp_allocator)
 	append(&pages, ..made)

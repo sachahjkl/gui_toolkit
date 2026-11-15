@@ -12,7 +12,9 @@ colours (`Meta`, `Docs`), its home page as the template (`site/index.html`), its
 - `index.html`: the home page, the last 3 versions in place of `<!-- whats-new -->` (`news_html`). `version_mark` (for example
   `{{version}}`) is replaced by the last version, so a download link can name the files of that release.
 - `changelog/index.html`: every version, the last 6 open, with a filter. It wears the home page's head, bar, footer and first
-  script, their links made relative to its folder (`from_home`).
+  script, their links made relative to its folder (`from_home`). Beside its title, a Subscribe menu (`subscribe_html`):
+  the releases' feed (`feed.xml`) and, with `Meta.repository`, its releases on GitHub; its style is in the page, from the
+  variables every site has (`--bg1`, `--bg2`, `--bg3`, `--text`, `--weak`, `--edge`, `--sans`, `--mono`).
 - `classic/`: the same in a classic presentation (`classic/`, `classic/features/`, `classic/screenshots/`,
   `classic/changelog/`), a line of plain links and a column of text, with `classic/classic.css` of the site. Each modern page's
   footer links its classic page ("Classic version"), each classic page the modern one ("Modern version").
