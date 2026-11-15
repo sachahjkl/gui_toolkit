@@ -8,8 +8,9 @@ ellipsis opens the whole text.
 ## The decision
 
 - The ellipsis of a cut text is a target of its own. The pointer over it is a hand and lights it in the accent colour.
-  A click on it opens a **reveal**: a bubble under the ellipsis, with the whole text, selectable, a Copy button and a
-  close cross.
+  A click on it opens a **reveal**: a bubble under the ellipsis, with the whole text, selectable, and two small glyphs
+  in its top right corner, Copy and close, without words. The text wraps at `REVEAL_MAX_WIDTH_EM`: a long text makes
+  the bubble taller, not as wide as the window. The bubble is the text's; buttons with words made it heavy.
 - The reveal stays until the person closes it: the cross, Escape, or a press outside it. A tooltip goes when the
   pointer moves; the text must be read, selected and copied at leisure.
 - Every cut single-line text has it, in every program, with no flag. A program does nothing to get it.

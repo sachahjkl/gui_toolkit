@@ -17,7 +17,9 @@ TRUNC_ELLIPSIS :: "..."
 // The target around the ellipsis's dots, on each side, in ems of its text.
 REVEAL_PAD_EM :: 0.2
 // The bubble's text wraps past this width, in ems.
-@(private = "file") REVEAL_MAX_WIDTH_EM :: 28
+@(private = "file") REVEAL_MAX_WIDTH_EM :: 24
+// The side of its Copy and close glyphs, in ems.
+@(private = "file") REVEAL_BUTTON_EM :: 1.4
 // Between the ellipsis and the bubble, in ems.
 @(private = "file") REVEAL_GAP_EM :: 0.3
 @(private = "file") REVEAL_SALT :: 0x7e7e_a1ee_5ca1_ab1e
@@ -105,12 +107,14 @@ text_reveal_build :: proc(s: ^State) {
 		w := text_width(top_style().font, top_style().font_size, r.text)
 		next({width = px(math.ceil(min(w + 1, em * REVEAL_MAX_WIDTH_EM))), height = text_size()})
 		paragraph(fmt.tprintf("%s###reveal_text", text_shown(r.text)))
-		spacer(px(em * 0.75))
-		if button("###reveal_copy", i18n.tr("Copy"), lucide.COPY, {face = .Ghost, icon_font = lucide_icons()}).clicked { copy = true }
-		spacer(px(em * 0.2))
-		next({width = px(math.round(em * 1.6)), height = px(math.round(em * 1.6))})
-		if button("###reveal_close", icon = lucide.X, o = {icon_font = lucide_icons()}).clicked { text_reveal_close(s) }
-		spacer(px(em * 0.4))
+		spacer(px(em * 0.5))
+		// (two small glyphs in its corner, no words: the bubble is the text's, not its buttons')
+		side := math.round(em * REVEAL_BUTTON_EM)
+		next({width = px(side), height = px(side)})
+		if button("###reveal_copy", icon = lucide.COPY, o = {icon_font = lucide_icons(), tip = i18n.tr("Copy")}).clicked { copy = true }
+		next({width = px(side), height = px(side)})
+		if button("###reveal_close", icon = lucide.X, o = {icon_font = lucide_icons(), tip = i18n.tr("Close")}).clicked { text_reveal_close(s) }
+		spacer(px(em * 0.3))
 	}
 	spacer(px(em * 0.4))
 	if copy && s.clipboard_set != nil && r.open { s.clipboard_set(r.text) }

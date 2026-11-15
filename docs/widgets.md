@@ -140,7 +140,8 @@ what is in them.
 
 A one-line text narrower than its words (data: a row's title, a cell, a path in a column) ends with "...". That
 ellipsis is a target in every program, with no flag: the pointer over it is a hand and lights it, and a click opens a
-bubble under it with the whole text, selectable, Copy and a close cross. The bubble stays until its cross, Escape or a
+bubble under it with the whole text, selectable and wrapped at a reasonable width, and two small glyphs in its corner:
+Copy and close. The bubble stays until its cross, Escape or a
 press outside it; Ctrl+C in it copies the selection, or all of it. The rest of the box acts as before: a row's click is
 anywhere but on its ellipsis. `text_reveal_shown()` says whether one is open, and its text. Design:
 [src/md/features/text-reveal.md](../src/md/features/text-reveal.md).
