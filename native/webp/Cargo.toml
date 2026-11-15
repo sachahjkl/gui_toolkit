@@ -1,8 +1,8 @@
-# libwebp for Windows (src/image/webp_windows.odin loads gt_webp.dll beside the program): libwebp's own C sources,
-# sharpyuv's with them, built by libwebp-sys with the target's compiler (MSVC), so no prebuilt archive is needed (the
-# official one's static libwebp.lib calls SharpYuv*, which it does not ship). A DLL, loaded when first asked: a program
-# without it starts, and says WebP is not available. Linux loads the system's libwebp.so. Versions pinned here and by
-# Cargo.lock; tools/tk build_webp builds it with --locked. See src/md/features/image-decode.md.
+# The toolkit's WebP (src/image/webp.odin): libwebp's own C sources, sharpyuv's with them, built by libwebp-sys with the
+# target's compiler (MSVC on Windows), so no prebuilt archive is needed (the official one's static libwebp.lib calls
+# SharpYuv*, which it does not ship) and no system libwebp either. A part of the one native library (native/gt, feature
+# webp: tools/tk build_native -features:webp), so a program that writes WebP carries it inside. Versions pinned here and by
+# Cargo.lock; the build runs with --locked. See src/md/features/image-decode.md.
 [package]
 name = "gt_webp"
 version = "0.1.0"
@@ -11,16 +11,8 @@ publish = false
 license = "MIT"
 
 [lib]
-crate-type = ["cdylib", "rlib"]   # (rlib: its test)
+crate-type = ["rlib"]   # (linked into native/gt's static library; its release profile is native/gt's)
 path = "src/lib.rs"
 
 [dependencies]
 libwebp-sys = { version = "=0.14.4", default-features = false, features = ["std"] }
-
-[profile.release]
-opt-level = 3
-codegen-units = 1
-lto = "fat"
-debug = false
-panic = "abort"   # (no Rust code that can panic: four calls into C)
-incremental = false

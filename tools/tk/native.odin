@@ -1,4 +1,4 @@
-// The Rust parts, built with cargo: the static libraries of native/ (the text backend, the AccessKit adapter) and the WGSL to HLSL
+// The Rust parts, built with cargo: the static library of native/ (the text backend, the AccessKit adapter, Mermaid, libwebp) and the WGSL to HLSL
 // translator. Every crate is pinned by exact version in its Cargo.toml and by SHA-256 in its Cargo.lock (--locked); the stable
 // toolchain of rustup (x86_64-pc-windows-msvc).
 package tk
@@ -11,7 +11,7 @@ import "../../src/ascii"
 import toolbox "../../src/toolbox"
 @(require) import "core:time"   // (the build's timing is Windows')
 
-// The toolkit's native library, native/gt: the parts asked (its cargo features: text, mermaid, a11y) in one static library
+// The toolkit's native library, native/gt: the parts asked (its cargo features: text, mermaid, a11y, webp) in one static library
 // with one copy of Rust's standard library. An application may link other Rust static libraries (Wren: its image decoders,
 // Wasmtime); each carries its own standard library and all define the unmangled rust_eh_personality, so ours is renamed in
 // the object that defines it (with fat LTO, the crate's single object) and they link together.
@@ -20,11 +20,11 @@ NATIVE_CRATE :: "native/gt"
 NATIVE_OUT :: "build/native"
 NATIVE_SYMBOL :: "gt_native_rust_eh_personality"
 // The crates it is made of: a change in any builds it again.
-@(rodata) NATIVE_CRATES := [?]string{"native/gt", "native/text", "native/mermaid", "native/a11y"}
-// Its parts, each a cargo feature; a11y is AccessKit's Windows adapter.
-@(rodata) NATIVE_FEATURES := [?]string{"text", "mermaid", "a11y"}
+@(rodata) NATIVE_CRATES := [?]string{"native/gt", "native/text", "native/mermaid", "native/a11y", "native/webp"}
+// Its parts, each a cargo feature; a11y is AccessKit's Windows adapter; webp is libwebp, built from its C sources.
+@(rodata) NATIVE_FEATURES := [?]string{"text", "mermaid", "a11y", "webp"}
 // What `build_native` builds when no feature is named: every part this system has.
-NATIVE_DEFAULT :: "text,mermaid,a11y" when ODIN_OS == .Windows else "text,mermaid"
+NATIVE_DEFAULT :: "text,mermaid,a11y,webp" when ODIN_OS == .Windows else "text,mermaid,webp"
 
 RUST_TARGET :: "x86_64-pc-windows-msvc"
 // The hash of what a library is built from, beside it.
@@ -150,33 +150,6 @@ build_native_lib :: proc(root: string, features: []string, force: bool) -> strin
 		fmt.printfln("built %s (%.1f MB) in %.1f s", file, f64(size) / BYTES_PER_MB, time.duration_seconds(time.tick_since(began)))
 		return ""
 	}
-}
-
-// libwebp for Windows: native/webp's DLL (libwebp's and sharpyuv's C sources, built by libwebp-sys with the target's
-// compiler), which src/image/webp_windows.odin loads beside the program -> build/webp/gt_webp.dll; elsewhere the crate's
-// shared library (libgt_webp.so: Linux loads the system's libwebp, this one is built for the crate's test alone). Rebuilt
-// when build/webp/STAMP is not the hash of the crate's sources, Cargo.lock and these steps.
-WEBP_CRATE :: "native/webp"
-WEBP_OUT :: "build/webp"
-WEBP_FILE :: "gt_webp.dll" when ODIN_OS == .Windows else "libgt_webp.so"
-
-build_webp :: proc(root: string, force: bool) -> string {
-	crate, out := join({root, WEBP_CRATE}), join({root, WEBP_OUT})
-	file, stamp_file := join({out, WEBP_FILE}), join({out, RUST_STAMP})
-	stamp, ok := rust_stamp({crate}, BUILD_STEPS_SOURCE)
-	if !ok { return fmt.tprintf("the sources of %s cannot be read", crate) }
-	if !force && toolbox.stamp_holds(file, stamp_file, stamp) {
-		fmt.printfln("gt_webp up to date in %s", out)
-		return ""
-	}
-	if _, code := toolbox.capture({"cargo", "--version"}); code != 0 { return "cargo not found: install Rust with rustup (stable)" }
-	target := join({out, "target"})
-	if !toolbox.run({"cargo", "build", "--release", "--locked", "--lib", "--manifest-path", join({crate, "Cargo.toml"}), "--target-dir", target}) { return "cargo build failed" }
-	_ = os.make_directory_all(out)
-	if os.copy_file(file, join({target, "release", WEBP_FILE})) != nil { return fmt.tprintf("%s cannot be written", file) }
-	if !toolbox.write_stamp(stamp_file, stamp) { return fmt.tprintf("%s cannot be written", stamp_file) }
-	fmt.printfln("built %s", file)
-	return ""
 }
 
 // The stamp of the translator: the SHA-256 of each of its sources, in upper case, separated by commas. ok = false: one cannot be read.

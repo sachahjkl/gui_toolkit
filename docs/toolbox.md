@@ -299,8 +299,8 @@ that are not flags; a lone `-` is plain).
 - `build_native(p)` builds what the program needs before an odin command: on Windows `build_windows(p)` (the resource and
   the console launcher), then the toolkit's native library with the parts this system links (`tk build_native
   -features:...`: `text` on Linux or with `Native_Text`, `a11y` on Windows with `Accessibility`, `mermaid` with
-  `Mermaid`) and Windows' libwebp with `Webp` (`tk build_webp`), by the toolkit's own tool in the project's checkout of it
-  (nothing when a library is up to date), and the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)).
+  `Mermaid`, `webp` with `Webp`), by the toolkit's own tool in the project's checkout of it (nothing when the library is
+  up to date), and the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)).
 
 ### Features
 
@@ -316,7 +316,7 @@ the crates of the notices (`native_crates(features)`) follow from it. What each 
 | `Devtools` | `TOOLKIT_DEVTOOLS=true`: the CDP endpoint in a release build ([devtools.md](devtools.md)) | | |
 | `Lucide_Subset` | `LUCIDE_SUBSET=<path>`, once the file is made, but for `check` | `lucide_subset(p)` | |
 | `No_Fallback_Fonts` | `FONT_EMBED_FALLBACK=false` | | |
-| `Webp` | | Windows: `tk build_webp`, `gt_webp.dll` copied beside the program; the package and the setup take it with it (`desktop.TOOLKIT_FILES`) | `native/webp` (libwebp, BSD) |
+| `Webp` | `IMAGE_WEBP=true` | `tk build_native`, part `webp`: libwebp inside the program, every system | `native/webp` (libwebp, BSD) |
 
 ```odin
 p := toolbox.Project{name = "classeur", src = "src", program = "build/classeur", features = {.Mermaid, .Lucide_Subset},

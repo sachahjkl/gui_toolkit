@@ -6,7 +6,7 @@ drops its Rust `image` crate for it (ROADMAP, "One image decoder").
 
 ## Decisions
 
-- **The decoders.** PNG is `gt:png`; JPEG and BMP are the Odin core's; WebP is libwebp, loaded when first asked; GIF is
+- **The decoders.** PNG is `gt:png`; JPEG and BMP are the Odin core's; WebP is libwebp, built into the program; GIF is
   `gt:gif` (`gif.decode`), pure Odin. GIF is the toolkit's own because the core has no GIF decoder and `gt:gif`
   already holds its LZW and its block format (the encoder); a native library for it was refused: one more library to
   ship on Windows, for 200 lines.
@@ -38,10 +38,14 @@ drops its Rust `image` crate for it (ROADMAP, "One image decoder").
   the table stops growing until a clear code, as the encoder expects (`src/gif/lzw.odin`).
 - The decoder stops reading as soon as its frame is full: the end code, the terminator and the trailer are not needed.
   A file cut after its last pixel's code reads.
-- WebP needs libwebp at run time. Linux has it from the system (Nix, Debian's libwebp7). Windows has the toolkit's
-  own: `native/webp` builds libwebp's and sharpyuv's C sources with MSVC (libwebp-sys, pinned by Cargo.lock) into
-  `gt_webp.dll`, which a program ships beside it (`tools/tk build_webp`). Its calls are `gt_webp_*`, never libwebp's
-  names: another libwebp loaded in the process is never taken for it. Refused: Google's prebuilt archive (its static
-  `libwebp.lib` calls `SharpYuv*`, and `libsharpyuv.lib` is not in it), a static link (programs on Windows do not build
-  the toolkit's Rust libraries, and a missing DLL leaves a program that starts, without WebP, rather than one that
-  does not link), and a pure Odin WebP codec (libwebp's lossy encoder is the work of years).
+- WebP is libwebp, built into the program on every system: a program is standalone, with no DLL beside it and no
+  system library to find. `native/webp` builds libwebp's and sharpyuv's C sources with the target's compiler
+  (libwebp-sys, pinned by Cargo.lock), as the part `webp` of the one static native library `gt_native`. A program asks
+  for it with `toolbox.Feature.Webp`: the part in `tk build_native` and `-define:IMAGE_WEBP=true`. Without the define,
+  `gt:image` links nothing and `webp_available` is false: a program that does not write WebP does not pay for libwebp.
+  Its calls are `gt_webp_*`, never libwebp's names: another libwebp linked into the same program never clashes with
+  them. Refused: Google's prebuilt archive (its static `libwebp.lib` calls `SharpYuv*`, and `libsharpyuv.lib` is not in
+  it); loading at run time (a DLL beside the program on Windows, the system's libwebp on Linux: one more file to ship,
+  and a program that says WebP is not available on a system without it); and a pure Odin WebP codec (libwebp's lossy
+  encoder is the work of years). The DLL existed because programs on Windows did not build the toolkit's Rust
+  libraries; since every program links `gt_native`, that reason is gone.

@@ -1,5 +1,6 @@
 package tk_toolbox
 
+import "base:runtime"
 import "core:slice"
 import "core:testing"
 
@@ -105,6 +106,9 @@ the_defines_of_the_features :: proc(t: ^testing.T) {
 	linux := feature_defines(all, .Linux, "")
 	testing.expect(t, slice.equal(linux, []string{"-define:TOOLKIT_DEVTOOLS=true", "-define:FONT_EMBED_FALLBACK=false"}))
 	testing.expect_value(t, len(feature_defines({}, .Windows, "x")), 0)
+	for target in ([]runtime.Odin_OS_Type{.Windows, .Linux, .Darwin}) {
+		testing.expect(t, slice.equal(feature_defines({.Webp}, target, ""), []string{"-define:IMAGE_WEBP=true"}), "WebP: the same define on every system")
+	}
 	testing.expect(t, slice.equal(native_crates({}), []string{"native/text"}))
 	testing.expect(t, slice.equal(native_crates({.Mermaid, .Accessibility}), []string{"native/text", "native/a11y", "native/mermaid"}))
 	testing.expect(t, slice.equal(native_crates({.Webp}), []string{"native/text", "native/webp"}), "WebP: its crate's notices")

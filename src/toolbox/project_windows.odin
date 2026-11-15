@@ -79,20 +79,3 @@ system_native_parts :: proc(p: Project, parts: ^[dynamic]string) {
 	if .Native_Text in p.features { append(parts, "text") }
 	if .Accessibility in p.features { append(parts, "a11y") }
 }
-
-// The other native steps of this system: libwebp's DLL.
-@(private)
-system_native_steps :: proc(p: Project, steps: ^[dynamic][]string) {
-	if .Webp in p.features { append(steps, native_step("build_webp")) }
-}
-
-// After the native libraries: libwebp beside the program, where gt:image loads it (the package and the setup take it).
-@(private)
-system_after_native :: proc(p: Project, root: string) -> bool {
-	if .Webp not_in p.features { return true }
-	dll := fmt.tprintf("%s/build/webp/gt_webp.dll", root)
-	dir := p.program[:max(strings.last_index_any(p.program, "/\\"), 0)]
-	if dir == "" { dir = "." }
-	if os.copy_file(fmt.tprintf("%s/gt_webp.dll", dir), dll) != nil { fmt.eprintfln("%s: %s cannot be copied beside the program", p.name, dll); return false }
-	return true
-}

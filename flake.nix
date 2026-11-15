@@ -77,7 +77,6 @@
       cairo
       glib
       curl # tk_http on Linux (dlopen)
-      libwebp # image.webp_encode and webp_decode (dlopen)
     ];
 
     # What tk desktop_tests starts and asks.

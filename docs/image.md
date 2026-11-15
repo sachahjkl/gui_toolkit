@@ -118,10 +118,10 @@ On Linux, text is shaped by the native text backend, the default there, as every
 | Procedure | What it makes |
 | --- | --- |
 | `jpeg_encode(img, quality = 90)` | a baseline JPEG, written here in Odin: the colours not subsampled (4:4:4), so a screenshot's text keeps its edges; alpha laid over white |
-| `webp_encode(img, quality = 85, lossless = false)` | a WebP file by libwebp, loaded when first asked; `lossless` keeps every pixel. nil where libwebp is not there |
-| `webp_decode(data) -> (img, ok)` | the picture of a WebP file (lossy or lossless, alpha kept) by libwebp, in the allocator; ok is false where libwebp is not there or the bytes are not WebP |
-| `webp_available()` | whether libwebp could be loaded (Nix: libwebp; Debian: libwebp7; Windows: the toolkit's `gt_webp.dll` beside the program: `tools/tk build_webp` makes it from libwebp's sources in `build/webp`, and a program's Windows package ships it) |
-| `decode(data) -> (img, format, ok)` | the picture of a PNG, JPEG (baseline or progressive), WebP, BMP or GIF file, as RGBA8 in the allocator; a GIF's first frame; the format is read from the first bytes, not from a name. ok is false for another format, a damaged file, or a WebP where libwebp is not there |
+| `webp_encode(img, quality = 85, lossless = false)` | a WebP file by libwebp; `lossless` keeps every pixel. nil in a program built without WebP |
+| `webp_decode(data) -> (img, ok)` | the picture of a WebP file (lossy or lossless, alpha kept) by libwebp, in the allocator; ok is false in a program built without WebP or when the bytes are not WebP |
+| `webp_available()` | whether the program has WebP: `IMAGE_WEBP`. With `-define:IMAGE_WEBP=true`, `gt:image` links the native library (`build/native/gt_native.lib`, `libgt_native.a` elsewhere) built with the part `webp` (`tk build_native -features:...,webp`): libwebp is inside the program on every system, no DLL beside it and no system libwebp. `toolbox.Feature.Webp` does both |
+| `decode(data) -> (img, format, ok)` | the picture of a PNG, JPEG (baseline or progressive), WebP, BMP or GIF file, as RGBA8 in the allocator; a GIF's first frame; the format is read from the first bytes, not from a name. ok is false for another format, a damaged file, or a WebP in a program built without WebP |
 | `file_format(data)` | `Png`, `Jpeg`, `Webp`, `Bmp`, `Gif` or `Unknown`, from the signature alone (nothing decoded) |
 
 A PNG is `gt:png`'s `png.encode`. `decode` reads a PNG with `png.decode`, a JPEG and a BMP with the Odin core's
@@ -146,6 +146,7 @@ The procedures run on 4K pictures on a worker. Each one is a few passes, with no
 pixelate and the anchors; properties for the rest (blur keeps the sum, resize, blur and sharpen keep a flat colour, round corners
 clear the corners, a shadow grows the picture and keeps it whole, a gradient runs its way); text drawn from the embedded
 face lands at its anchor; a JPEG reads back (core:image/jpeg) close to its picture, a lower quality makes a smaller
-file; a WebP file is a RIFF WEBP file where libwebp is there, and a lossless one reads back pixel for pixel. `decode`
+file; WebP is available (`tools/run_tests` builds the tests with `-define:IMAGE_WEBP=true`), a WebP file is a RIFF WEBP
+file, and a lossless one reads back pixel for pixel. `decode`
 reads each format by its signature (a PNG, a BMP and a GIF pixel for pixel, a JPEG close to its picture) and refuses an
 unknown format and a file cut short.

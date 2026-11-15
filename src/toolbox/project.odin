@@ -54,8 +54,7 @@ Feature :: enum u8 {
 	Devtools,           // the CDP endpoint in a release build too (TOOLKIT_DEVTOOLS=true); a -debug build has it anyway
 	Lucide_Subset,      // only the Lucide icons the sources name are compiled in (lucide_subset, LUCIDE_SUBSET)
 	No_Fallback_Fonts,  // no Roboto or Inconsolata compiled in (FONT_EMBED_FALLBACK=false): the system's fonts only
-	Webp,               // Windows: WebP read and written (gt_webp.dll, native/webp, built and put beside the program; the
-	                    // package and the setup take it with it). Elsewhere the system's libwebp
+	Webp,               // WebP read and written (IMAGE_WEBP=true, native/webp): libwebp built into the program, every system
 }
 Features :: bit_set[Feature; u8]
 
@@ -170,6 +169,7 @@ feature_defines :: proc(features: Features, target: runtime.Odin_OS_Type, lucide
 	if .Devtools in features { append(&out, "-define:TOOLKIT_DEVTOOLS=true") }
 	if .Lucide_Subset in features && lucide != "" { append(&out, fmt.tprintf("-define:LUCIDE_SUBSET=%s", lucide)) }
 	if .No_Fallback_Fonts in features { append(&out, "-define:FONT_EMBED_FALLBACK=false") }
+	if .Webp in features { append(&out, "-define:IMAGE_WEBP=true") }
 	return out[:]
 }
 
@@ -201,40 +201,25 @@ native_crates :: proc(features: Features) -> []string {
 @(private)
 project_src :: proc(p: Project) -> string { return p.src != "" ? p.src : "src" }
 
-// A command of the toolkit's tool, its words in temp memory (a step kept in a list outlives the literal it is written as).
-@(private)
-native_step :: proc(words: ..string) -> []string {
-	out := make([]string, len(words), context.temp_allocator)
-	copy(out, words)
-	return out
-}
-
 // What the program needs built before an odin command of it: on Windows its resource and console launcher
 // (build_windows); the toolkit's native library with the parts this system links (the text backend on Linux, or with
-// Native_Text; AccessKit on Windows; Mermaid), and Windows' libwebp, by the toolkit's own tool in the project's checkout
-// of it (nothing when it is up to date); and the Lucide subset (lucide_subset).
+// Native_Text; AccessKit on Windows; Mermaid; WebP), by the toolkit's own tool in the project's checkout of it (nothing
+// when it is up to date); and the Lucide subset (lucide_subset).
 build_native :: proc(p: Project) -> bool {
 	if !build_windows(p) { return false }
 	gt := toolkit_dir(p)
 	parts := make([dynamic]string, context.temp_allocator)
 	system_native_parts(p, &parts)   // (project_windows.odin, project_unix.odin)
 	if .Mermaid in p.features { append(&parts, "mermaid") }
-	steps := make([dynamic][]string, context.temp_allocator)
-	if len(parts) > 0 { append(&steps, native_step("build_native", fmt.tprintf("-features:%s", strings.join(parts[:], ",", context.temp_allocator)))) }
-	system_native_steps(p, &steps)
-	if len(steps) > 0 {
+	if .Webp in p.features { append(&parts, "webp") }
+	if len(parts) > 0 {
 		_ = os.make_directory_all(fmt.tprintf("%s/build", gt))   // (a fresh checkout has none: the linker writes tk there)
 		root, err := os.get_absolute_path(gt, context.temp_allocator)
 		if err != nil { fmt.eprintfln("%s: no such folder", gt); return false }
 		tk := fmt.tprintf("%s/build/tk%s", root, EXE_SUFFIX)
 		if !run({"odin", "build", "tools/tk", fmt.tprintf("-out:%s", tk)}, {dir = gt, echo = true}) { return false }
-		for s in steps {
-			cmd := make([dynamic]string, context.temp_allocator)
-			append(&cmd, tk)
-			append(&cmd, ..s)
-			if !run(cmd[:], {dir = gt, echo = true}) { return false }
-		}
-		if !system_after_native(p, root) { return false }
+		features := fmt.tprintf("-features:%s", strings.join(parts[:], ",", context.temp_allocator))
+		if !run({tk, "build_native", features}, {dir = gt, echo = true}) { return false }
 	}
 	if .Lucide_Subset in p.features {
 		if _, why := lucide_subset(p); why != "" { fmt.eprintln(why); return false }
