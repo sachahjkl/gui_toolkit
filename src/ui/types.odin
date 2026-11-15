@@ -397,6 +397,7 @@ State :: struct {
 	lazy_heights:    map[Key]Lazy_Height,
 	lazy_columns:    map[Key]Lazy_Column,
 	qr_codes:        map[Key]Qr_Cached,   // qr_code: each box's encoded text, kept while the box is built
+	morphs:          map[Key]Morph_Memory,   // morph_label: each label's text changing, kept while the label is built
 	toolbars:        map[Key]Toolbar_Memory,   // toolbar: each tool bar's groups, their widths, its panel
 	toolbar:         Toolbar_Build,            // the tool bar being built
 	lazy_frame:      [dynamic]^Lazy,   // this build's lazy columns (lazy_settle; frame memory)
