@@ -98,13 +98,18 @@ entries := [?]Entry{
 	{"floating background", .Panel2, 1}, {"floating text", .Text, 1}, {"floating border", .Border, 1},
 }
 
-// Interaction state fills. `alpha` is a fraction of the way from the surface under the box to the slot's colour in sRGB
-// values (draw.alpha_like_srgb when drawn into linear light), so a step reads alike on dark and light palettes and in
-// both blend spaces: about +7 % toward white (dark palettes) or black (light ones) under the pointer, +12 % while
-// pressed. "hover_fill" over a clickable box under the pointer, "press_fill" while the left button is held on it,
-// "hover_border": the border that much toward the tint (fields). Same ORDER rule as `entries` (roles first).
+// The steps of a face in its states (face.odin, src/md/features/interaction-states.md). `alpha` is a fraction of the way
+// from the face's colour to the slot's in sRGB values, so a step reads alike on dark and light palettes and in both blend
+// spaces: about 7 % toward white (dark palettes) or black (light ones) under the pointer, 12 % pressed or toggled.
+// "hover_fill" under the pointer, "press_fill" while the left button is held on it, "hover_border": the border that
+// much toward the tint (fields, buttons' rims), "hover_sheen": a face that has no colour at rest appears raised, with the
+// finish's light at that strength (0: flat, a row). Same ORDER rule as `entries` (roles first).
 @(private)
 state_entries := [?]Entry{
+	// (a field is no key: its press puts the caret, its face does not sink)
+	{"bare input hover_fill", .Hover, 0}, {"bare input press_fill", .Hover, 0},   // (its input_frame reacts)
+	{"input hover_fill", .Hover, 0.035}, {"input press_fill", .Hover, 0.035},
+	{"ghost_button hover_sheen", .White, 0.6}, {"icon_button hover_sheen", .White, 0.6}, {"tab hover_sheen", .White, 0.6},
 	{"menu_item hover_fill", .Hover, 0}, {"menu_item press_fill", .Hover, 0.08},   // a hovered item is the selected one
 	{"remove_button hover_fill", .Bad, 0.14}, {"remove_button press_fill", .Bad, 0.24},
 	{"accent_button hover_fill", .Hover, 0.10}, {"accent_button press_fill", .Hover, 0.18},
@@ -117,9 +122,9 @@ state_entries := [?]Entry{
 	{"segment hover_fill", .Hover, 0.07}, {"segment press_fill", .Hover, 0.12},
 	{"list_row hover_fill", .Hover, 0.05}, {"list_row press_fill", .Hover, 0.09},
 	{"tab hover_fill", .Hover, 0.06}, {"tab press_fill", .Hover, 0.10},
-	{"button hover_fill", .Hover, 0.07}, {"button press_fill", .Hover, 0.13},
+	{"button hover_fill", .Hover, 0.07}, {"button press_fill", .Hover, 0.13}, {"button hover_border", .Hover, 0.18},
 	{"input hover_border", .Hover, 0.22},
-	{"hover_fill", .Hover, 0.07}, {"press_fill", .Hover, 0.12}, {"hover_border", .Hover, 0},
+	{"hover_fill", .Hover, 0.07}, {"press_fill", .Hover, 0.12}, {"hover_border", .Hover, 0}, {"hover_sheen", .White, 0},
 }
 
 // The well of a palette that names none: its page this much toward black.
@@ -213,14 +218,14 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	if changed { t.serial += 1 }
 }
 
-// The fill of an interaction state ("hover_fill", "press_fill") under the tags of `b`, to draw over `under` (the
-// opaque surface below it): its alpha is the one that gives the theme's sRGB step in the blend space of the frame.
-// For custom draw procs that paint their own hover (rows, nodes of a graph).
+// The face of an interaction state ("hover_fill", "press_fill") under the tags of `b`: `under` (the face at rest, or the
+// opaque surface below it) that step toward the theme's tint, opaque. For custom draw procs that paint their own face in
+// a state (rows, nodes of a graph, a folded pane's strip): the box's own face, drawn on its own shape, not a layer.
 state_fill :: proc(b: ^Box, name: string, under: Maybe(Color) = nil) -> Color {
 	c := color_from_tags(gs(), b.tags_key, name)
 	o := under.? or_else box_under(b)
-	c.a = draw.alpha_like_srgb(gs().space, c, c.a, o)
-	return c
+	f := srgb_step(Color{o.r, o.g, o.b, 1}, Color{c.r, c.g, c.b, 1}, c.a)
+	return f
 }
 
 // The opaque colour under `b`: its own background when opaque, else the nearest ancestor's, else the theme's.

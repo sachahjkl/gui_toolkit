@@ -138,7 +138,7 @@ these two its flat form, so one call serves every finish (`machined()`: the reli
 | Procedure | What it draws |
 |---|---|
 | `machined_bevel(dc, r, radius, face, hot, pressed, glow)` | a raised face; `glow`: a halo under the pointer |
-| `machined_well(dc, r, radius, base, focus, accent)` | a sunken surface, its focus a ring of `accent` |
+| `machined_well(dc, r, radius, base, focus, accent, hot)` | a sunken surface, its focus a ring of `accent`; `hot` under the pointer: its face lifts a step, its lit rim brightens |
 | `machined_groove(dc, a, b, vertical)` | a carved line |
 | `machined_plate(dc, r, radius, top, bottom, shadow, rim, border, glow)` | a raised panel: cards, popovers; `border` zero (the default): the relief's edge, another colour of alpha 0: none |
 | `machined_lamp(dc, c, d, color, lit, glow)` | a status lamp: a glass bead and its halo |
@@ -147,6 +147,20 @@ these two its flat form, so one call serves every finish (`machined()`: the reli
 
 What the machined finish draws reaches out of a box by up to `MACHINED_OVERFLOW_PX` logical pixels (a shadow, a halo,
 the lip of a well). A region redrawn on its own must hold that much around its boxes.
+
+### States in each finish
+
+A state is drawn by the face itself ([widgets.md](widgets.md), "States"). The theme gives its steps under each tag:
+`hover_fill` and `press_fill` (fractions toward the tint, in sRGB values: about 7 % and 12 %), `hover_border` (a border
+that much toward the tint: fields, buttons' rims) and `hover_sheen` (a face that has none at rest appears raised: the
+ghost and glyph buttons, the tabs; 0 for rows).
+
+| Finish | Under the pointer | Pressed or toggled |
+|---|---|---|
+| `Flat` | the face a step toward the tint | a deeper step |
+| `Gradient` | the face lifts, its shade and lit line kept | the shade turns over: its top darker, its bottom lighter, no lit line |
+| `Glass` | the face lifts, its gloss kept | most of the gloss goes, the white rim too |
+| `Machined`, `Edged` | the bevel's face lighter and its rim brighter; a well's face lifts and its lit rim brightens; a ghost's key rises out of the plate | the key goes in |
 
 ## Button variants
 

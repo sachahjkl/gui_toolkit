@@ -121,7 +121,9 @@ render.init_window(&r, win, win.size, transparent = true)
 render.set_fixed_surface(&r, platform.monitor_size(win))
 ```
 
-It stays opaque as long as the frame is (`render.frame_begin` with an alpha of 1). Colours in the linear blend space are
+It stays opaque as long as the frame is (`render.frame_begin` with an alpha of 1): such a frame is presented with its
+alpha ignored, so the desktop never shows through it. A clear of alpha < 1 (a translucent theme's background) makes the
+window translucent again, at that frame; the renderer remakes its swap chain by itself. Colours in the linear blend space are
 then held in 16-bit floats, twice the memory of the ordinary swap chain, for buffers of the screen's size. WebGPU has no fixed
 surface (`set_fixed_surface` returns false), so the recipe does not help there ([webgpu.md](webgpu.md)).
 `tools/resize_probe` checks a program from outside: it resizes the window and reads where a column of fixed width ends.
@@ -157,7 +159,8 @@ lines alone: no finish draws its rim (the lit line round a raised face) on it. N
 window, a bar. Nor on a box inside a face that draws (a background, a border, a custom draw: a frame, a card, a well)
 when it meets that face's inner top edge or runs across its whole inner width: a header, a row, a stripe. The rim is for
 a face that stands on its own: a button, a card, a chip, a dialog. `ui.box_rimmed(s, b)` says whether a box gets the rim;
-`ui.paint_rect_corners(..., rim = false)` paints a face without it.
+`ui.paint_rect_corners(..., rim = false)` paints a face without it; `sunk = 1` paints it pressed in (a gradient turned
+over, glass without its gloss: docs/themes.md, "States in each finish"), as `ui.lit_face(..., sunk)` does.
 
 ```odin
 ui.next({width = ui.fill(), height = ui.px(em * 2), radius = em * 0.45})

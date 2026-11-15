@@ -73,7 +73,7 @@ Box_Flag :: enum u8 {
 	Draw_Border,
 	Draw_Text,
 	Draw_Shadow,
-	Draw_Hot_Effects,    // hover / press fill over the box (theme: "hover_fill", "press_fill", "hover_border")
+	Draw_Hot_Effects,    // its face reacts: lifts under the pointer, sinks pressed or .Held, appears when it has none (face.odin; theme: "hover_fill", "press_fill", "hover_border", "hover_sheen")
 	Draw_Focus_Ring,
 	Draw_Side_Top,
 	Draw_Side_Bottom,

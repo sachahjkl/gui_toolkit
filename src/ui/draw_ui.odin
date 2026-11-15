@@ -192,21 +192,8 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 		glow := FOCUS_GLOW_PX * scale
 		draw.rect_corners(dc, draw.rect_pad(r, glow), colors4(tuned(c)), radii_grown(radii, glow), 0, glow)
 	}
-	if .Draw_Background in flags && !machined_face {
-		paint_rect_corners(dc, r, b.bg, radii, box_sheen(s, b), rim = box_rimmed(s, b))
-	}
-	hot, held := box_hot(b), box_held(b)
-	if .Draw_Hot_Effects in flags && (hot > DRAW_INVISIBLE_EPS || held > DRAW_INVISIBLE_EPS) && !machined_face {
-		// the theme's step toward its tint, over what is actually under the box (theme_default.odin: state_entries)
-		hover := color_from_tags(s, b.tags_key, "hover_fill")
-		press := color_from_tags(s, b.tags_key, "press_fill")
-		h := draw.mix(hover, press, held)
-		h.a = math.lerp(hover.a * hot, press.a, held)
-		if h.a > DRAW_INVISIBLE_EPS {
-			h.a = draw.alpha_like_srgb(s.space, h, h.a, box_under(b))
-			draw.rect_corners(dc, r, colors4(h), radii)
-		}
-	}
+	// the face in its state: lifted, sunk or appeared, on the box's own rect and radii (face.odin)
+	if !machined_face { draw_face(s, dc, r, radii, box_face(s, b)) }
 	// (a rich paragraph paints both itself, between its runs' backgrounds and its text)
 	if b.custom != rich_draw {
 		if .Selectable in flags { draw_selection(s, dc, b) }
@@ -234,8 +221,9 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 
 	if .Draw_Border in flags && b.border.a > BORDER_ALPHA_EPS && !machined_whole {
 		border := b.border
-		if b.hot_t > DRAW_INVISIBLE_EPS && b.focus_t < 0.5 && .Clickable in flags {
-			if k := color_from_tags(s, b.tags_key, "hover_border"); k.a > DRAW_INVISIBLE_EPS { border = srgb_step(border, k, k.a * b.hot_t) }
+		// (a box that reacts: a target, or a frame that holds one, .Draw_Hot_Effects with .Hot_Within: input_frame)
+		if hot := box_hot(b); hot > DRAW_INVISIBLE_EPS && b.focus_t < 0.5 && (.Clickable in flags || .Draw_Hot_Effects in flags) {
+			if k := color_from_tags(s, b.tags_key, "hover_border"); k.a > DRAW_INVISIBLE_EPS { border = srgb_step(border, k, k.a * hot) }
 		}
 		draw.rect_corners(dc, r, colors4(border), radii, max(1, math.round(scale)), backdrop = box_under(b))
 	}
@@ -264,8 +252,11 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 box_hot :: proc(b: ^Box) -> f32 { return .Lit in b.flags ? 1 : b.hot_t }
 
 // How much a box is drawn pressed in: all of it while .Held (toggled), else while the button is held on it and the
-// pointer is still there.
-box_held :: proc(b: ^Box) -> f32 { return .Held in b.flags ? 1 : b.active_t * b.hot_t }
+// pointer is still there (face_state).
+box_held :: proc(b: ^Box) -> f32 {
+	st := face_state(b)
+	return max(st.toggled, st.pressing)
+}
 
 // The radii of a box's corners (draw.rect_corners' order): `radius`, or 0 for its square corners.
 box_radii :: proc(radius: f32, square: Corners) -> (radii: [4]f32) {
@@ -448,6 +439,11 @@ len_utf8 :: proc(r: rune) -> int {
 @(private = "file") GLASS_LOWER_BLACK :: 0.06
 @(private = "file") GLASS_BOTTOM_WHITE :: 0.22
 @(private = "file") GLASS_RIM_ALPHA :: 0.55
+// A face pressed in (sunk): glass keeps this little of its gloss; a lit face's top is shaded by this share of its
+// bottom's darkening, its bottom lit by this share of its top's lightening.
+@(private = "file") GLASS_SUNK_GLOSS_LOSS :: 0.7
+@(private = "file") SUNK_TOP_SHADE :: 1.2
+@(private = "file") SUNK_BOTTOM_LIGHT :: 0.4
 
 // Fills a raised surface with the theme's finish (see `Finish`). `k` (0..1) is how strongly: 0 is a plain fill.
 // Custom draw procs use it for their accent fills so they match the buttons.
@@ -456,8 +452,9 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 }
 
 // paint_rect with a radius per corner (draw.rect_corners' order). `rim` false: the face alone, no lit line round it
-// (a box that declares its sides, a bar: box_rimmed).
-paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, k: f32 = 1, rim := true) {
+// (a box that declares its sides, a bar: box_rimmed). `sunk` (0..1): pressed in: a lit face inverts (its top shaded, its
+// bottom lit, no rim), glass loses most of its gloss.
+paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, k: f32 = 1, rim := true, sunk: f32 = 0) {
 	s := gs()
 	finish := s.theme != nil ? s.theme.finish : .Flat
 	if finish == .Flat || k <= DRAW_INVISIBLE_EPS || c.a <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 2 {
@@ -471,14 +468,14 @@ paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, 
 	switch finish {
 	case .Flat:
 	case .Machined, .Edged:   // (the reliefs are machined_box's; a surface painted here, an accent fill, is a lit face)
-		lit_face(dc, r, c, radii, MACHINED_TOP_WHITE * k, MACHINED_BOTTOM_BLACK * k, MACHINED_RIM_ALPHA * rk)
+		lit_face(dc, r, c, radii, MACHINED_TOP_WHITE * k, MACHINED_BOTTOM_BLACK * k, MACHINED_RIM_ALPHA * rk, sunk)
 	case .Gradient:
-		lit_face(dc, r, c, radii, GRADIENT_TOP_WHITE * k, GRADIENT_BOTTOM_BLACK * k, GRADIENT_RIM_ALPHA * rk)
+		lit_face(dc, r, c, radii, GRADIENT_TOP_WHITE * k, GRADIENT_BOTTOM_BLACK * k, GRADIENT_RIM_ALPHA * rk, sunk)
 	case .Glass:
 		mid := math.round((r.min.y + r.max.y) * 0.5)
 		// saturated fills keep more of their colour so white text stays readable on them
 		lum := LUMA_R * c.r + LUMA_G * c.g + LUMA_B * c.b
-		gloss := k * (lum > GLASS_BRIGHT_LUM ? 1 : GLASS_SATURATED_GLOSS)
+		gloss := k * (lum > GLASS_BRIGHT_LUM ? 1 : GLASS_SATURATED_GLOSS) * (1 - GLASS_SUNK_GLOSS_LOSS * sunk)
 		t0 := draw.mix(c, white, GLASS_TOP_WHITE * gloss)
 		t1 := draw.mix(c, white, GLASS_MID_WHITE * gloss)
 		b0 := draw.mix(c, black, GLASS_LOWER_BLACK * gloss)
@@ -487,19 +484,25 @@ paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, 
 		rr := [4]f32{min(radii[0], lim), min(radii[1], lim), min(radii[2], lim), min(radii[3], lim)}
 		draw.rect_corners(dc, {r.min, {r.max.x, mid}}, {t0, t1, t0, t1}, {rr[0], 0, rr[2], 0})
 		draw.rect_corners(dc, {{r.min.x, mid}, r.max}, {b0, b1, b0, b1}, {0, rr[1], 0, rr[3]})
-		if rim { draw.rect_corners(dc, draw.rect_pad(r, -px), colors4(tuned({1, 1, 1, GLASS_RIM_ALPHA * k * c.a}, Color{c.r, c.g, c.b, 1})), radii_grown(rr, -px), px) }
+		if rim && sunk < 1 { draw.rect_corners(dc, draw.rect_pad(r, -px), colors4(tuned({1, 1, 1, GLASS_RIM_ALPHA * k * c.a * (1 - sunk)}, Color{c.r, c.g, c.b, 1})), radii_grown(rr, -px), px) }
 	}
 }
 
 // A face of colour `c` lit from above: its top `up` toward white, its bottom `down` toward black (sRGB steps), a lit line
-// of alpha `rim` along its top edge that fades down its sides.
-lit_face :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, up, down, rim: f32) {
+// of alpha `rim` along its top edge that fades down its sides. `sunk` (0..1): pressed in, the light turns over: its top
+// shaded, its bottom lit a little, the rim gone (a face lit from above that goes in shades its own top).
+lit_face :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, up, down, rim: f32, sunk: f32 = 0) {
 	top := srgb_step(c, {1, 1, 1, 1}, up)
 	bot := srgb_step(c, {0, 0, 0, 1}, down)
+	if sunk > DRAW_INVISIBLE_EPS {
+		top = draw.mix(top, srgb_step(c, {0, 0, 0, 1}, down * SUNK_TOP_SHADE), sunk)
+		bot = draw.mix(bot, srgb_step(c, {1, 1, 1, 1}, up * SUNK_BOTTOM_LIGHT), sunk)
+	}
 	draw.rect_corners(dc, r, {top, bot, top, bot}, radii)
-	if rim <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 4 { return }
+	shine := rim * (1 - sunk)
+	if shine <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 4 { return }
 	p := max(1, math.round(gs().scale))
-	lit := tuned({1, 1, 1, rim * c.a}, top)
+	lit := tuned({1, 1, 1, shine * c.a}, top)
 	draw.rect_corners(dc, draw.rect_pad(r, -p), {lit, {1, 1, 1, 0}, lit, {1, 1, 1, 0}}, radii_grown(radii, -p), p)
 }
 

@@ -260,7 +260,7 @@ release_device_objects :: proc(r: ^Renderer) {
 	rel(&r.sampler); rel(&r.sampler_img); rel(&r.sampler_wrap); rel(&r.raster); rel(&r.blend)
 	rel(&r.layout); rel(&r.ps); rel(&r.vs); rel(&r.rtv); rel(&r.offscreen)
 	slug_destroy(r)
-	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swapchain)
+	rel(&r.dcomp_visual); rel(&r.dcomp_target); rel(&r.dcomp); rel(&r.swap_retired); rel(&r.swapchain)
 	capture_release_device_objects(&r.capture)
 	d3d_damage_release(&r.damage)
 	readback_device_lost(r)

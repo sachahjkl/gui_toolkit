@@ -78,6 +78,38 @@ The theme's tags of the buttons are named by the intent (`intent_tag`: `accent_b
 `box_hot(b)` and `box_held(b)` say how much a box is drawn under the pointer and pressed in (its `.Lit` and `.Held`
 flags count): a program's own draw of a button reads them.
 
+### States: hover, press, toggled, chosen
+
+Each widget draws its states in its own design and on its own geometry, never as a layer over it
+([interaction-states](../src/md/features/interaction-states.md)). Under the pointer a face lifts a step toward the
+theme's tint (lighter on a dark palette, darker on a light one); pressed it sinks (a gradient or a lit face turns over,
+glass loses its gloss, a machined key goes in); a toggled one (`.Held`) stays sunk and lifts half a step under the
+pointer. A press shows at once and eases out on release; a hover eases in and out with the theme's transition.
+
+- A box of a program's own with `.Draw_Hot_Effects` gets this from its face with no code: its background lifts and
+  sinks. Without a background, its face appears under the pointer in its own shape and radii, opaque once settled
+  (its tags' `hover_sheen` makes it raised: a key in the machined finish).
+- A check box, a radio and a switch: the row is the target, the mark reacts (its inside and ring, or its accent face;
+  machined, the well's face and lit rim); the row draws nothing.
+- A field: its border and face lift a little; a press does not sink it.
+- A selected row is the theme's `selected` tint as its face; under the pointer it lifts. A list's selection is
+  `weak_selected` when the list does not have the keyboard or the window is not the user's (`inactive`).
+
+A custom draw paints its own states with the same parts:
+
+| Procedure | What it gives |
+|---|---|
+| `face_state(b)` | `Face_State`: how much `b` is under the pointer, pressed (at once), toggled |
+| `face_step(st, hover, press)` | how far a face goes toward the tint in that state (the theme's steps) |
+| `box_face(s, b)`, `draw_face(s, dc, r, radii, f)` | the face a box draws in its state, and its painting by the finish |
+| `face_of(rest, under, tint, st, hover, press, hover_sheen, space)` | the same from colours: a face of colour `rest` (alpha 0: none) on `under` |
+| `state_fill(b, "hover_fill", under)` | the opaque face of a state over `under`, with `b`'s tags' step |
+| `state_tint()` | the theme's tint of the states, opaque |
+| `mark_colors(st, t, ring, accent, under, tint)` | a check box's or a radio's colours in a state |
+
+A custom draw reads the states when it draws (`face_state(b)` in the draw proc), not when its box is built: the states
+are stepped at the end of the build.
+
 ### Wells and search launchers
 
 `if ui.well("###facts") { ... }` is a sunken box, carved in the surface (code, a preview, a list of facts): the theme's

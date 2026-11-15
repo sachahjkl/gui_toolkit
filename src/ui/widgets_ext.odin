@@ -106,9 +106,34 @@ prev_box :: proc(id: string) -> ^Box { return box_from_key(key_from_string(paren
 @(private = "file") MARK_FILL_FADE_SPEED :: 1.6          // the fill is opaque before the mark has grown
 @(private = "file") MARK_CHECK_MIN_T :: 0.05             // no check glyph this small
 @(private = "file") MARK_RING_ALPHA :: 0.5
-@(private = "file") MARK_RING_HOT_ALPHA :: 0.25
+@(private = "file") MARK_RING_HOT_ALPHA :: 0.3
+// Under the pointer the ring goes this far toward the accent; the box's face (inside the ring, or the accent's when
+// checked) lifts a hover step and sinks a press step toward the theme's tint. A machined well darkens this much pressed.
+@(private = "file") MARK_RING_HOT_ACCENT :: 0.45
+@(private = "file") MARK_HOVER_STEP :: 0.08
+@(private = "file") MARK_PRESS_STEP :: 0.15
+@(private = "file") MARK_WELL_PRESS :: 0.25
+@(private = "file") MARK_WELL_PRESS_DIM :: 0.7
 
-Mark_Draw :: struct { t: f32, accent, ring: Color, size: f32, radio: bool }
+// A check box's or a radio's mark: `t` how far it is checked, `row` its row (the row is the target, the mark is what
+// reacts: its states are read when the mark is drawn, end_build having stepped them), its colours.
+Mark_Draw :: struct { t: f32, row: ^Box, accent, ring: Color, size: f32, radio: bool }
+
+// The colours of a mark in its state: `inside` the box's face inside its ring (alpha 0: none at rest), `ring` its ring,
+// `fill` its accent face (checked). `under` the surface the box is carved in, `tint` the theme's (state_tint). Pure: the
+// tests call it.
+Mark_Colors :: struct { inside, ring, fill: Color }
+
+mark_colors :: proc(st: Face_State, t: f32, ring, accent, under, tint: Color) -> (c: Mark_Colors) {
+	k := face_step(st, MARK_HOVER_STEP, MARK_PRESS_STEP)
+	if k > 0 {
+		c.inside = srgb_step({under.r, under.g, under.b, 1}, tint, k)
+		c.inside.a = min(1, st.hot + st.pressing)
+	}
+	c.ring = draw.mix(ring, accent, max(t, MARK_RING_HOT_ACCENT * st.hot))
+	c.fill = srgb_step(accent, tint, k)
+	return
+}
 
 @(private)
 mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
@@ -116,37 +141,46 @@ mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Mark_Draw)(user)
 	r := b.rect
 	w := r.max.x - r.min.x
+	radius := d.radio ? w * 0.5 : rad(w * MARK_BOX_RADIUS_FRACTION)
+	st := face_state(d.row)
+	ring := d.ring
+	ring.a = min(1, ring.a * (1 + MARK_RING_HOT_ALPHA / MARK_RING_ALPHA * st.hot))
+	mc := mark_colors(st, d.t, ring, d.accent, box_under(b), state_tint())
 	if machined() {   // a hole in the surface; checked, a raised key of the accent in it (a radio: a lit bead)
 		well := color_from_tags(s, b.tags_key, "well")
+		if st.pressing > 0 { well = relief_darken(well, MARK_WELL_PRESS * st.pressing) }
 		prev := draw.set_circular_corners(dc, d.radio)
-		machined_well(dc, r, d.radio ? w * 0.5 : rad(w * MARK_BOX_RADIUS_FRACTION), well)
+		// (pressed, the hole goes deeper: its lit rim dims again; a darker black alone did not show on a dark well)
+		machined_well(dc, r, radius, well, hot = st.hot * (1 - MARK_WELL_PRESS_DIM * st.pressing))
 		draw.set_circular_corners(dc, prev)
 		if d.t <= MARK_CHECK_MIN_T { return }
 		if d.radio {
-			machined_lamp(dc, draw.rect_center(r), w * 0.55 * d.t, d.accent, 1, 0)
+			machined_lamp(dc, draw.rect_center(r), w * 0.55 * d.t, mc.fill, 1, 0)
 			return
 		}
 		inset := max(1, math.round(scale())) + (1 - d.t) * w * 0.5
 		draw.push_alpha(dc, min(1, d.t * MARK_FILL_FADE_SPEED))
-		machined_bevel(dc, draw.rect_pad(r, -inset), rad(w * MARK_BOX_RADIUS_FRACTION) - inset * 0.5, d.accent, 0, 0)
+		machined_bevel(dc, draw.rect_pad(r, -inset), radius - inset * 0.5, mc.fill, st.hot, st.pressing)
 		draw.pop_alpha(dc)
 		mark_check(s, dc, r, d)
 		return
 	}
+	// (the box's own face under its ring: lifted under the pointer, sunk pressed; none at rest, the surface shows)
+	if mc.inside.a > 0 && d.t < 1 { draw.rect(dc, r, mc.inside, radius) }
 	if d.radio {
-		draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), w * 0.5, MARK_RING_PX * scale())
+		draw.rect(dc, r, mc.ring, radius, MARK_RING_PX * scale())
 		dot := w * 0.5 * d.t
 		c := draw.rect_center(r)
-		a := d.accent
+		a := mc.fill
 		a.a *= d.t
 		draw.rect(dc, {{c.x - dot * 0.5, c.y - dot * 0.5}, {c.x + dot * 0.5, c.y + dot * 0.5}}, a, dot * 0.5)
 		return
 	}
 	inset := (1 - d.t) * w * 0.5
-	fill := d.accent
+	fill := mc.fill
 	fill.a *= min(1, d.t * MARK_FILL_FADE_SPEED)
-	paint_rect(dc, draw.rect_pad(r, -inset), fill, rad(w * MARK_BOX_RADIUS_FRACTION), d.t)
-	draw.rect(dc, r, draw.mix(d.ring, d.accent, d.t), rad(w * MARK_BOX_RADIUS_FRACTION), MARK_RING_PX * scale())
+	paint_rect_corners(dc, draw.rect_pad(r, -inset), fill, {radius, radius, radius, radius}, d.t, sunk = st.pressing)
+	draw.rect(dc, r, mc.ring, radius, MARK_RING_PX * scale())
 	mark_check(s, dc, r, d)
 }
 
@@ -192,7 +226,9 @@ mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
 	} else {
 		set_next_axis(.X, .Center)
 	}
-	row_box := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, id)
+	// (the row is the target and draws nothing: its mark reacts, on the mark's own geometry; a fill over the row was a
+	// plate larger than the box and off its centre)
+	row_box := build_box({.Clickable, .Focusable}, id)
 	a11y_default(row_box, {role = radio ? .Radio_Button : .Check_Box, toggled = on ? .True : .False})
 	sig := signal(row_box)
 	if parent(row_box) {
@@ -215,8 +251,9 @@ mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
 		d := frame_new(Mark_Draw)
 		d.t = t
 		d.accent = color("accent")
+		d.row = row_box
 		d.ring = color("text")
-		d.ring.a = MARK_RING_ALPHA + MARK_RING_HOT_ALPHA * row_box.hot_t
+		d.ring.a = MARK_RING_ALPHA
 		d.ring = tuned(d.ring)
 		d.size = em * 0.95
 		d.radio = radio
@@ -313,11 +350,14 @@ a11y_state_toggled :: proc(b: ^Box, on: bool) {
 @(private = "file") TOGGLE_MACHINED_LIT :: 0.85
 @(private = "file") TOGGLE_MACHINED_KNOB :: Color{0.62, 0.62, 0.62, 1}
 
-Toggle_Draw :: struct { t, hot, active: f32, track, accent: Color }
+// A switch: `t` how far it is on, `row` its row (the target; its states read when drawn, as a check box's mark).
+Toggle_Draw :: struct { t: f32, row: ^Box, hot, active: f32, track, accent: Color }
 
 @(private)
 toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Toggle_Draw)(user)
+	st := face_state(d.row)
+	d.hot, d.active = st.hot, st.pressing
 	r := b.rect
 	h := r.max.y - r.min.y
 	pad := h * TOGGLE_KNOB_PAD_FRACTION
@@ -333,11 +373,14 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		kw = math.round(kd * (1 + TOGGLE_KNOB_PRESS_STRETCH * d.active + TOGGLE_KNOB_HOT_STRETCH * d.hot))
 		x = math.round(math.lerp(r.min.x + pad, r.max.x - pad - kw, d.t))
 		well := color_from_tags(gs(), b.tags_key, "well")
-		machined_well(dc, r, shape_rad(h * 0.5), draw.mix(well, d.accent, d.t * TOGGLE_MACHINED_LIT))
+		machined_well(dc, r, shape_rad(h * 0.5), draw.mix(well, d.accent, d.t * TOGGLE_MACHINED_LIT), hot = d.hot)
 		machined_bevel(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, shape_rad(kd * 0.5), TOGGLE_MACHINED_KNOB, d.hot, d.active)
 		return
 	}
-	paint_rect(dc, r, draw.mix(d.track, d.accent, d.t), rad(h * 0.5), d.t)
+	// (the track is the switch's face: it lifts under the pointer and sinks pressed, as a check box's does)
+	track := srgb_step(draw.mix(d.track, d.accent, d.t), state_tint(), face_step({hot = d.hot, pressing = d.active}, MARK_HOVER_STEP, MARK_PRESS_STEP))
+	tr := rad(h * 0.5)
+	paint_rect_corners(dc, r, track, {tr, tr, tr, tr}, d.t, sunk = d.active)
 	sc := scale()
 	draw.rect(dc, {{x - sc, r.min.y + pad + sc}, {x + kw + sc, r.max.y - pad + 2 * sc}}, {0, 0, 0, TOGGLE_KNOB_SHADOW_ALPHA}, rad(kd * 0.5), 0, TOGGLE_KNOB_SHADOW_SOFT_PX * sc)
 	draw.rect(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, {1, 1, 1, 1}, rad(kd * 0.5))
@@ -357,7 +400,8 @@ toggle :: proc(id: string, text: string, value: ^bool) -> (changed: bool) {
 	em := font_size()
 	fit := fit_row_width()
 	set_next_axis(.X, .Center)
-	row_box := build_box({.Clickable, .Focusable, .Draw_Hot_Effects}, id)
+	// (the row is the target and draws nothing: the switch reacts, toggle_draw)
+	row_box := build_box({.Clickable, .Focusable}, id)
 	sig := signal(row_box)
 	if sig.clicked { value^ = !value^; changed = true }
 	a11y_default(row_box, {role = .Switch, toggled = value^ ? .True : .False})
@@ -368,7 +412,7 @@ toggle :: proc(id: string, text: string, value: ^bool) -> (changed: bool) {
 		next({width = px(em * 2.6), height = px(em * 1.4)})
 		d := frame_new(Toggle_Draw)
 		d.t = anim(key_from_string(row_box.key, "t"), value^ ? 1 : 0, TOGGLE_RATE)
-		d.hot, d.active = row_box.hot_t, row_box.active_t
+		d.row = row_box
 		d.track = off_track()
 		d.accent = color("accent")
 		custom("track", toggle_draw, d)
@@ -447,6 +491,8 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	th := em * SLIDER_TRACK_EM
 	fx0 := d.range ? math.lerp(x0, x1, d.t0) : x0
 	fx1 := math.lerp(x0, x1, d.t1)
+	// (its states read now, end_build having stepped them; held, the knob stays held wherever the pointer drags it)
+	d.hot, d.active = b.hot_t, b.active_t
 	kr := em * (SLIDER_KNOB_EM + SLIDER_KNOB_HOT_EM * d.hot + SLIDER_KNOB_ACTIVE_EM * d.active)
 	knobs := [2]f32{math.lerp(x0, x1, d.t0), fx1}
 	sc := scale()
@@ -562,7 +608,6 @@ slider_keys :: proc(v, k, home, end: f32) -> (out: f32, moved: bool) {
 @(private = "file")
 slider_draw_of :: proc(b: ^Box, format: string) -> ^Slider_Draw {
 	d := frame_new(Slider_Draw)
-	d.hot, d.active = b.hot_t, b.active_t
 	d.track, d.accent, d.text = off_track(), color("accent"), color("text")
 	d.mono = mono_font()
 	d.no_text = format == ""
@@ -716,7 +761,7 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 					// a press gives it the keyboard and the next build types in it)
 					next_default({radius = em * CONTROL_RADIUS_EM})   // (a button's corners)
 					push_tags("input")
-					fb := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###value", text_shown(text)))
+					fb := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Hot_Effects, .Draw_Focus_Ring, .Sunken, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###value", text_shown(text)))
 					pop_tags()
 					fb.cursor = .Text
 					fsig = signal(fb)

@@ -409,6 +409,10 @@ Window_Target :: struct {
 	surface_handles: platform.Surface_Handles,   // the neutral native handles init was given (wgpu backend; the surface is made from them)
 	transparent: bool,                    // presented through DirectComposition with premultiplied alpha
 	transparent_asked: bool,              // what init or surface_init was told: a window remade tries again what failed once
+	// the window's frames are opaque (frame_begin's clear, window_alpha.odin): a translucent window is then composed with its
+	// alpha ignored. Kept through a remade swap chain or surface, which takes the mode of the last frame
+	opaque_frames: bool,
+	swap_retired:  ^dxgi.ISwapChain1,     // Direct3D: the composition chain a change of alpha mode replaced, shown until the new one's first present
 	under_children: bool,                 // surface_init: the composition surface is below the window's child windows
 	dcomp:        ^IDCompositionDevice,
 	dcomp_target: ^IDCompositionTarget,

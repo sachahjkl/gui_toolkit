@@ -261,7 +261,8 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 		if selectable { list_seek_row(st, i, label) }
 	}
 	lit := selectable && list_is_selected(st, i)
-	if lit { push_tags(st.focused ? "selected" : "weak_selected") }
+	// (strong where the user acts now: the list has the keyboard in the window the user is in; else calm, still read)
+	if lit { push_tags(st.focused && !inactive() ? "selected" : "weak_selected") }
 	m := s.has_next ? s.next_mod : Style_Mod{}
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = children_sum() }
@@ -271,7 +272,7 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 	s.has_next = true
 	flags := Box_Flags{.Clickable}
 	if lit { flags += {.Draw_Background} }
-	// rows that can be chosen light up under the pointer (theme: "list_row hover_fill"), headers do not
+	// rows that can be chosen lift their own face under the pointer (theme: "list_row hover_fill", face.odin), headers do not
 	// (and stay lit while the pointer is on a button of theirs)
 	if selectable { flags += {.Draw_Hot_Effects, .Hot_Within}; push_tags("list_row") }
 	// (the zebra goes by the row's index, a header's too: the stripes stay put while the rows scroll)
