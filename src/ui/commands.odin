@@ -42,6 +42,12 @@ Chord :: struct {
 	mods: platform.Modifiers,
 }
 
+// The keys of a program's zoom commands, the same in every program. Ctrl++ is Ctrl+Shift+= where + is on the = key's
+// shifted level (AZERTY, QWERTY): a chord matches its mods exactly, so both are listed, and the keypad's.
+@(rodata) ZOOM_IN_KEYS := [?]Chord{{.Equal, {.Ctrl}}, {.Equal, {.Ctrl, .Shift}}, {.Num_Add, {.Ctrl}}}
+@(rodata) ZOOM_OUT_KEYS := [?]Chord{{.Minus, {.Ctrl}}, {.Num_Subtract, {.Ctrl}}}
+@(rodata) ZOOM_RESET_KEYS := [?]Chord{{.N0, {.Ctrl}}}
+
 Command :: struct {
 	label: string,     // "End task": the menu's, the palette's and the sheet's text
 	group: string,     // "Processes": the palette's and the sheet's heading ("" none)

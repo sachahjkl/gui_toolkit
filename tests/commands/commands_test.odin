@@ -44,9 +44,9 @@ close :: proc(f: ^Fx) {
 }
 
 @(private = "file")
-frame :: proc(f: ^Fx, events: []platform.Event, body: proc(f: ^Fx, user: rawptr), user: rawptr) {
+frame :: proc(f: ^Fx, events: []platform.Event, body: proc(f: ^Fx, user: rawptr), user: rawptr, disable_zoom := false) {
 	ui.begin_build(&f.s, {
-		window_size = WINDOW, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1,
+		window_size = WINDOW, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1, disable_zoom = disable_zoom,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
 	})
 	body(f, user)
@@ -596,6 +596,34 @@ a_key_that_types_text_is_the_fields :: proc(t: ^testing.T) {
 	testing.expect(t, r.pressed[1], "Ctrl+N, the same command's other key, types nothing: the command's")
 	frame(&f, {key(.Delete, {.Shift})}, build_typing, &r)
 	testing.expect(t, r.pressed[2], "Shift+Delete types nothing: the command's, read before the field")
+}
+
+@(private = "file")
+Zoom_Run :: struct { pressed: [2]bool }
+
+@(private = "file")
+build_zoom :: proc(f: ^Fx, user: rawptr) {
+	r := (^Zoom_Run)(user)
+	r.pressed = {ui.command_pressed({label = "Zoom in", keys = ui.ZOOM_IN_KEYS[:]}), ui.command_pressed({label = "Zoom out", keys = ui.ZOOM_OUT_KEYS[:]})}
+}
+
+// The zoom's standard keys: Ctrl+= and Ctrl++ (Ctrl+Shift+= where + is the = key's shifted level, an AZERTY's), the
+// keypad's; Ctrl+- and the keypad's.
+@(test)
+the_zoom_keys_take_ctrl_plus_on_any_layout :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Zoom_Run
+	frame(&f, nil, build_zoom, &r, disable_zoom = true)   // (a program with zoom commands of its own: Build_Params.disable_zoom)
+	for k in ([]ui.Chord{{.Equal, {.Ctrl}}, {.Equal, {.Ctrl, .Shift}}, {.Num_Add, {.Ctrl}}}) {
+		frame(&f, {key(k.key, k.mods)}, build_zoom, &r, disable_zoom = true)
+		testing.expectf(t, r.pressed[0] && !r.pressed[1], "%v zooms in", k)
+	}
+	for k in ([]ui.Chord{{.Minus, {.Ctrl}}, {.Num_Subtract, {.Ctrl}}}) {
+		frame(&f, {key(k.key, k.mods)}, build_zoom, &r, disable_zoom = true)
+		testing.expectf(t, r.pressed[1] && !r.pressed[0], "%v zooms out", k)
+	}
 }
 
 @(private = "file")

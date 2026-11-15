@@ -38,6 +38,7 @@ if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 | | |
 |---|---|
 | `Chord{key, mods}` | a key and its modifiers; the zero value is no key |
+| `ZOOM_IN_KEYS`, `ZOOM_OUT_KEYS`, `ZOOM_RESET_KEYS` | the keys of a program's zoom commands, the same everywhere: Ctrl+= and Ctrl++ (Ctrl+Shift+=, + on an AZERTY's or a QWERTY's = key), Ctrl+keypad +; Ctrl+-, Ctrl+keypad -; Ctrl+0 (`keys = ui.ZOOM_IN_KEYS[:]`). A program with zoom commands of its own sets `Build_Params.disable_zoom`, else the window's zoom takes those keys |
 | `Command{label, group, keys, icon, tags, scope, toggle}` (`toggle`: a switch; its menu line takes `checked`, its palette row shows its mark and stays open: [palette.md](palette.md)) | `keys`: its chords, as many as it has (`[]Chord`; Zoom in: Ctrl+=, Ctrl+Num +, Ctrl+Shift+=), the first one shown in menus and tooltips (a zero chord among them is none); `tags`: other words the palette finds it by ("exit", "close" for Quit), a match of them after one of the label's |
 | `chord_text(chord)` | `Ctrl+Shift+P`, `Shift+Delete`, `F5`: modifiers in the order Ctrl, Shift, Alt; in the language in use (`Ctrl+Maj+P`): the words of `platform.key_text`, which names a `Key`, a `Hotkey` and keys written in English (below) |
 | `key_tip(label, chord)` | a tooltip's text for a control that is no command: `Settings (Ctrl+,)`, the label alone with no key |
