@@ -9,9 +9,9 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import host "../../src/host"
-import "../../src/platform"
-import "../../src/ui"
+import host "gt:host"
+import "gt:platform"
+import "gt:ui"
 
 App :: struct {
 	shared: host.Shared,   // the device, the fonts, the theme

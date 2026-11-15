@@ -7,11 +7,11 @@ package panes
 
 import "core:fmt"
 import "core:time"
-import "../../src/draw"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/render"
-import "../../src/ui"
+import "gt:draw"
+import "gt:font"
+import "gt:platform"
+import "gt:render"
+import "gt:ui"
 
 App :: struct {
 	win:      ^platform.Window,

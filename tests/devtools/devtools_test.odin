@@ -8,8 +8,8 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../src/devtools"
-import "../../src/platform"
+import "gt:devtools"
+import "gt:platform"
 
 PORT :: 9471   // (a port per test: they run at once)
 PORT_HTTP :: 9472

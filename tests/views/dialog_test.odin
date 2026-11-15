@@ -7,8 +7,8 @@ package views_test
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{900, 640}
 @(private = "file") ANSWER :: 3

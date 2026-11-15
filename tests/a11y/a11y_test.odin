@@ -7,9 +7,9 @@ package a11y_test
 
 import "core:sync"
 import "core:testing"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:font"
+import "gt:platform"
+import "gt:ui"
 
 WINDOW :: ui.Vec2{900, 700}
 

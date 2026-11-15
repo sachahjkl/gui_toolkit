@@ -3,7 +3,7 @@
 package capture_test
 
 import "core:testing"
-import "../../src/capture"
+import "gt:capture"
 
 @(test)
 the_backends_that_draw_the_pointer :: proc(t: ^testing.T) {

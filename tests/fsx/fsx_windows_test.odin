@@ -5,7 +5,7 @@ import "core:fmt"
 import "core:os"
 import win "core:sys/windows"
 import "core:testing"
-import "../../src/fsx"
+import "gt:fsx"
 
 // Windows marks a file hidden by its attribute, read with the folder: a hidden file is, a system file alone is not (as
 // Explorer shows it), and a name that starts with "." is not either (the system's rule is the attribute).

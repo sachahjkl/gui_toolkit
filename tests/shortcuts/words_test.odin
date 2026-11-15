@@ -1,7 +1,7 @@
 package shortcuts_test
 
 import "core:testing"
-import shortcuts "../../src/shortcuts"
+import shortcuts "gt:shortcuts"
 
 // What a settings page says under a shortcut, for each state the system can give.
 @(test)

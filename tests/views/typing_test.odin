@@ -6,8 +6,8 @@ package views_test
 // yet (the keys reach its owner); once it shows, its field has them all, and the page none.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{900, 640}
 @(private = "file") FRAMES_MAX :: 40

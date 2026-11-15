@@ -4,7 +4,7 @@ import "core:strings"
 import "core:testing"
 import "core:unicode"
 import "core:unicode/utf8"
-import "../../src/ui"
+import "gt:ui"
 
 // The fold as it was, a rune at a time (the reference of its ASCII vector path): the lower case of each rune, a rune whose
 // lower case takes another number of bytes, or a byte that is no rune, left as it is.

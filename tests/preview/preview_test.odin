@@ -4,9 +4,9 @@
 package preview_test
 
 import "core:testing"
-import "../../src/draw"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:draw"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(test)
 what_fits :: proc(t: ^testing.T) {

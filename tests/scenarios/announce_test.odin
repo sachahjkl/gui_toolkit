@@ -4,9 +4,9 @@ package scenarios_test
 // notification (no window to notify from here); nothing with messages off, but a failure all the same.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file")
 Said :: struct { announcer: ui.Announcer, kind: ui.Toast_Kind, said: bool }

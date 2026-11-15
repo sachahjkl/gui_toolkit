@@ -4,7 +4,7 @@ package fidget
 
 import "core:fmt"
 import "core:math"
-import "../../src/ui"
+import "gt:ui"
 
 // Toggle chips: bit i of `mask` is chip i. They wrap onto more lines when there is not enough room. True when `mask`
 // changed this frame.

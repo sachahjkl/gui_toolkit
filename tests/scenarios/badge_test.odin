@@ -3,9 +3,9 @@ package scenarios_test
 // A count on a button's corner: its digits in a pill at the top right, "99+" past 99, nothing at 0; the button keeps its click.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file")
 Badged :: struct { count, clicks: int }

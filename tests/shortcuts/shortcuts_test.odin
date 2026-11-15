@@ -4,8 +4,8 @@
 package shortcuts_test
 
 import "core:testing"
-import "../../src/platform"
-import shortcuts "../../src/shortcuts"
+import "gt:platform"
+import shortcuts "gt:shortcuts"
 
 @(private = "file")
 parse :: proc(t: ^testing.T, text: string, loc := #caller_location) -> platform.Hotkey {

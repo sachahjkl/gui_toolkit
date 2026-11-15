@@ -4,10 +4,10 @@ package scenarios_test
 
 import "core:math"
 import "core:testing"
-import flowgraph "../../src/flowgraph"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import flowgraph "gt:flowgraph"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{900, 520}
 @(private = "file") PICTURE :: 0

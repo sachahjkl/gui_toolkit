@@ -6,7 +6,7 @@ package image_test
 import "core:testing"
 import core_image "core:image"
 import "core:image/jpeg"
-import image "../../src/image"
+import image "gt:image"
 
 @(test)
 a_jpeg_reads_back_close_to_the_picture :: proc(t: ^testing.T) {

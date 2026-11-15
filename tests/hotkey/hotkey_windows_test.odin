@@ -3,7 +3,7 @@ package hotkey_test
 
 import win "core:sys/windows"
 import "core:testing"
-import "../../src/platform"
+import "gt:platform"
 
 // A combination no program of a runner holds: registered, its message is a Hotkey event with its id; unregistered, it
 // can be registered again.

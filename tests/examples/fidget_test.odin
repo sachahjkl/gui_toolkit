@@ -9,10 +9,10 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../../examples/fidget"
-import "../../src/platform"
-import "../../src/testkit"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:platform"
+import "gt:testkit"
+import "gt:testkit/session"
+import "gt:ui"
 
 // The pages, by what the command line says.
 @(private = "file") CONTROLS_ARGS := []string{"--anim=off"}

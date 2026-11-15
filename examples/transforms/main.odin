@@ -20,12 +20,12 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
-import "../../src/devtools"
-import "../../src/draw"
-import "../../src/font"
-import "../../src/platform"
-import png "../../src/png"
-import "../../src/render"
+import "gt:devtools"
+import "gt:draw"
+import "gt:font"
+import "gt:platform"
+import png "gt:png"
+import "gt:render"
 
 LOGO_PNG :: #load("../../.project/image.png")
 

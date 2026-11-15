@@ -9,9 +9,9 @@ import "core:math"
 import "core:mem"
 import "core:strings"
 import "core:testing"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:font"
+import "gt:platform"
+import "gt:ui"
 
 Fx :: struct {
 	fonts: font.State,

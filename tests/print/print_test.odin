@@ -8,8 +8,8 @@ import "core:fmt"
 import "core:strconv"
 import "core:strings"
 import "core:testing"
-import "../../src/flate"
-import "../../src/platform"
+import "gt:flate"
+import "gt:platform"
 
 @(test)
 a_small_picture_keeps_its_natural_size_centred :: proc(t: ^testing.T) {

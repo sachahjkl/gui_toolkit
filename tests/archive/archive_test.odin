@@ -8,9 +8,9 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:testing"
-import archive "../../src/archive"
-import flate "../../src/flate"
-import "../../src/testkit"
+import archive "gt:archive"
+import flate "gt:flate"
+import "gt:testkit"
 
 @(private = "file")
 le16 :: proc(b: ^[dynamic]u8, v: int) { append(b, u8(v), u8(v >> 8)) }

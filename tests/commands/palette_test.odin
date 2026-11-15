@@ -10,10 +10,10 @@ import "core:strings"
 import "core:sync"
 import "core:testing"
 import "core:time"
-import "../../src/font"
-import i18n "../../src/i18n"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:font"
+import i18n "gt:i18n"
+import "gt:platform"
+import "gt:ui"
 
 @(private = "file")
 open :: proc(f: ^Fx) -> bool {

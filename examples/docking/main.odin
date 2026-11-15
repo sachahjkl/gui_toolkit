@@ -13,10 +13,10 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import "../../src/font"
-import host "../../src/host"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:font"
+import host "gt:host"
+import "gt:platform"
+import "gt:ui"
 
 Panel :: enum u32 { Files, Search, Outline, Console, Problems }
 

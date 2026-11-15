@@ -2,8 +2,8 @@ package scenarios_test
 
 import "core:strings"
 import "core:testing"
-import "../../src/ui"
-import "../../src/testkit/unwatched"
+import "gt:ui"
+import "gt:testkit/unwatched"
 
 // rich_links: the web addresses of plain text become link runs, without the marks that end the sentence around them.
 @(test)

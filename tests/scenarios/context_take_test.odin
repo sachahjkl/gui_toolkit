@@ -4,9 +4,9 @@ package scenarios_test
 // asks keeps it, one box a build; a field that opened its own menu on that press keeps it; a left press is nobody's.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file")
 Ctx_Run :: struct { inner, outer: int, field: ui.Line_Edit }

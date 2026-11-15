@@ -3,7 +3,7 @@
 package placement_text_test
 
 import "core:testing"
-import "../../src/platform"
+import "gt:platform"
 
 // A placement as a preference's text and back; what is not one opens the window where the system puts it.
 @(test)

@@ -5,7 +5,7 @@
 package capture_test
 
 import "core:testing"
-import "../../src/capture"
+import "gt:capture"
 
 @(private = "file")
 overlap :: proc(a, b: capture.Rect) -> bool {

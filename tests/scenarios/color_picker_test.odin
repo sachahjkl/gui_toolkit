@@ -6,9 +6,9 @@ package scenarios_test
 
 import "core:strings"
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{500, 500}
 // A colour read back from its text: within one step of 8 bits (oklch and hsl round their numbers).

@@ -3,7 +3,7 @@ package affine_test
 
 import "core:math"
 import "core:testing"
-import "../../src/draw"
+import "gt:draw"
 
 EPS :: 1e-4
 

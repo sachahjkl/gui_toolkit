@@ -5,9 +5,9 @@ package views_test
 // has a centre zone; the space's line keeps the zones' axes and the stacks' shares.
 
 import "core:testing"
-import store "../../src/store"
-import "../../src/testkit/session"
-import "../../src/ui"
+import store "gt:store"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{1000, 700}
 @(private = "file") FRAMES_MAX :: 60

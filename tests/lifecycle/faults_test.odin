@@ -5,9 +5,9 @@ package lifecycle_test
 
 @(require) import "core:testing"
 @(require) import win "core:sys/windows"
-@(require) import "../../src/draw"
-@(require) import "../../src/font"
-@(require) import "../../src/render"
+@(require) import "gt:draw"
+@(require) import "gt:font"
+@(require) import "gt:render"
 
 when render.RENDER_FAULTS {
 

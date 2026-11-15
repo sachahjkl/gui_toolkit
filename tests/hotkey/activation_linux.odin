@@ -3,7 +3,7 @@ package hotkey_test
 
 import "core:os"
 import "core:testing"
-import "../../src/platform"
+import "gt:platform"
 
 // The launcher's activation token is read once and taken out of the environment.
 @(test)

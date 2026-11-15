@@ -6,9 +6,9 @@ package scenarios_test
 import "core:fmt"
 import "core:strings"
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") MD_WINDOW :: [2]int{800, 600}
 // A row's label laid out wider than its text by less than this is not cut (sub-pixel rounding).

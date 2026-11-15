@@ -8,9 +8,9 @@ import "core:fmt"
 import "core:math"
 import "core:slice"
 import "core:strings"
-import "../../src/draw"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:draw"
+import "gt:platform"
+import "gt:ui"
 
 first_names := [?]string{"Ada", "Alan", "Grace", "Linus", "Margaret", "Dennis", "Ken", "Barbara", "Edsger", "Donald", "Radia", "Tim", "Katherine", "Claude", "Hedy", "Niklaus", "Frances", "Bjarne", "Guido", "Yukihiro"}
 last_names := [?]string{"Lovelace", "Turing", "Hopper", "Torvalds", "Hamilton", "Ritchie", "Thompson", "Liskov", "Dijkstra", "Knuth", "Perlman", "Lee", "Johnson", "Shannon", "Lamarr", "Wirth", "Allen", "Stroustrup", "Rossum", "Matsumoto"}

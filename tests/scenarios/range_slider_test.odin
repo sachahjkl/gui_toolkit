@@ -5,9 +5,9 @@ package scenarios_test
 // nearest thumb.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{500, 200}
 @(private = "file") TRACK_WIDTH :: 400

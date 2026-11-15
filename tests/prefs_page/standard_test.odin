@@ -4,10 +4,10 @@ package prefs_page_test
 // reset rule (a user's value that is not the default); the themes' cards from Page_Options.themes; the back bar.
 
 import "core:testing"
-import config "../../src/config"
-import prefs_page "../../src/prefs_page"
-import "../../src/testkit/session"
-import "../../src/ui"
+import config "gt:config"
+import prefs_page "gt:prefs_page"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file")
 standard_prefs :: proc() -> config.Prefs {

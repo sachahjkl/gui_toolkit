@@ -3,8 +3,8 @@ package post_test
 import "core:sync"
 import "core:testing"
 import "core:time"
-import "../../src/font"
-import "../../src/ui"
+import "gt:font"
+import "gt:ui"
 
 // What should come is waited for at most this.
 @(private = "file") TASK_WAIT :: 5 * time.Second

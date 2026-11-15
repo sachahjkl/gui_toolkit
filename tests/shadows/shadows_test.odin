@@ -6,9 +6,9 @@ package shadows_test
 import "core:log"
 import "core:math"
 import "core:testing"
-import "../../src/draw"
-import "../../src/font"
-import "../../src/render"
+import "gt:draw"
+import "gt:font"
+import "gt:render"
 
 N :: 96
 SIZE :: [2]int{N, N}

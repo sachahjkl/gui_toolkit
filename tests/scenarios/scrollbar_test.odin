@@ -7,10 +7,10 @@ package scenarios_test
 import "core:fmt"
 import "core:math"
 import "core:testing"
-import "../../src/font"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:font"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") VIEW_SIZE :: [2]f32{300, 200}
 @(private = "file") ROW_HEIGHT :: 30

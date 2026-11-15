@@ -7,9 +7,9 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "core:time"
-import "../../src/font"
-import "../../src/fsx"
-import "../../src/ui"
+import "gt:font"
+import "gt:fsx"
+import "gt:ui"
 
 @(private = "file") DAY_MS :: 86_400_000
 @(private = "file") T0 :: i64(1_800_000_000_000)

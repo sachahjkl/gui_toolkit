@@ -2,7 +2,7 @@
 package capture_test
 
 import "core:testing"
-import wm "../../src/capture/wm"
+import wm "gt:capture/wm"
 
 HYPR_MONITORS :: `[
  {"id": 0, "name": "DP-1", "activeWorkspace": {"id": 1, "name": "1"}, "specialWorkspace": {"id": 0, "name": ""}},

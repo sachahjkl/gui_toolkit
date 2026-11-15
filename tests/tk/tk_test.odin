@@ -11,9 +11,9 @@ import "core:slice"
 import "core:strings"
 import "core:testing"
 import tk "../../tools/tk"
-import "../../src/testkit"
-import "../../src/ascii"
-import toolbox "../../src/toolbox"
+import "gt:testkit"
+import "gt:ascii"
+import toolbox "gt:toolbox"
 
 @(private = "file") PNG_SIGNATURE :: "\x89PNG\r\n\x1a\n"
 @(private = "file") PNG_WIDTH_AT :: 16   // in IHDR, after the signature and the chunk's length and type

@@ -5,7 +5,7 @@ package docking_test
 
 import "core:strings"
 import "core:testing"
-import "../../src/ui"
+import "gt:ui"
 
 // Panels of the tests: their ids and names.
 @(private) A :: u32(1)

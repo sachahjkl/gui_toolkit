@@ -5,11 +5,11 @@ package prefs_page_test
 
 import "core:strings"
 import "core:testing"
-import config "../../src/config"
-import licence "../../src/licence"
-import prefs_page "../../src/prefs_page"
-import "../../src/testkit/session"
-import "../../src/ui"
+import config "gt:config"
+import licence "gt:licence"
+import prefs_page "gt:prefs_page"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file")
 SAMPLE_PRODUCT :: licence.Product{

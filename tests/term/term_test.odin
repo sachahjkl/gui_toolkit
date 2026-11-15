@@ -7,8 +7,8 @@ package term_test
 import "base:runtime"
 import "core:strings"
 import "core:testing"
-import "../../src/platform"
-import "../../src/term"
+import "gt:platform"
+import "gt:term"
 
 // A screen of a few rows of ASCII, each cell a byte. The selection is on one row, as the widget asks for it.
 Fake :: struct {

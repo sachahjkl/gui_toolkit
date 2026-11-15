@@ -1,7 +1,7 @@
 package store_test
 
 import "core:testing"
-import store "../../src/store"
+import store "gt:store"
 
 // Kept values: read once as numbers (clamped; a line that is no number left out), a value at its rest forgotten and its
 // line gone from the file, another kept and written so that it reads back the same.

@@ -5,11 +5,11 @@ package lucide_subset_test
 
 import "core:slice"
 import "core:testing"
-import "../../src/font"
-import toolbox "../../src/toolbox"
+import "gt:font"
+import toolbox "gt:toolbox"
 
-@(private = "file") LUCIDE_TTF :: #load("../../src/lucide/lucide.ttf")
-@(private = "file") LUCIDE_ODIN :: #load("../../src/lucide/lucide.odin", string)
+@(private = "file") LUCIDE_TTF :: #load("gt:lucide/lucide.ttf")
+@(private = "file") LUCIDE_ODIN :: #load("gt:lucide/lucide.odin", string)
 @(private = "file") SIZE :: 16
 // Fine enough that a difference in a curve shows in its pieces.
 @(private = "file") TOLERANCE :: 0.25

@@ -7,11 +7,11 @@ import "core:fmt"
 import "core:slice"
 import "core:strings"
 import "core:testing"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
-import syntax "../../src/syntax"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
+import syntax "gt:syntax"
 
 @(private = "file") WINDOW :: [2]int{500, 400}
 // A toast's life is over by then (ui TOAST_LIFE_MS, its fade out).

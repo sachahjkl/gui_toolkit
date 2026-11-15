@@ -10,7 +10,7 @@ package mux_test
 
 import "core:testing"
 import "core:time"
-import mux "../../src/mux"
+import mux "gt:mux"
 
 CREATION :: time.Time{_nsec = 1_700_000_000 * 1_000_000_000}
 

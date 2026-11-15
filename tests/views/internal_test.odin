@@ -6,9 +6,9 @@ package views_test
 // in front of each other by a press.
 
 import "core:testing"
-import store "../../src/store"
-import "../../src/testkit/session"
-import "../../src/ui"
+import store "gt:store"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{1000, 720}
 @(private = "file") DRAG :: [2]f32{120, 60}

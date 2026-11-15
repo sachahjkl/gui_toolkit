@@ -6,8 +6,8 @@ package notices_test
 import "core:fmt"
 import "core:os"
 import "core:testing"
-import "../../src/fsx"
-import notices "../../src/notices"
+import "gt:fsx"
+import notices "gt:notices"
 
 recount :: proc(log: ^notices.Log) -> (c: [notices.State]int) {
 	for e in log.entries { c[e.state] += 1 }

@@ -6,9 +6,9 @@ import "core:math"
 import "core:strings"
 import "core:sync"
 import "core:testing"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:font"
+import "gt:platform"
+import "gt:ui"
 
 @(private = "file")
 Fx :: struct {

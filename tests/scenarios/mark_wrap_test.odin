@@ -3,9 +3,9 @@ package scenarios_test
 // A check box's long label with `wrap`: on the next lines, within its column, the row as tall as they are; without it, one line.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file")
 LONG :: "Contrat entre unités - Format d'unité, description des fonctions, convention d'appel, chargeur"

@@ -7,7 +7,7 @@ package subpixel_system_test
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
-import "../../src/font"
+import "gt:font"
 
 @(test)
 the_stripes_are_fontconfig_s :: proc(t: ^testing.T) {

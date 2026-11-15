@@ -5,9 +5,9 @@ package showcase
 
 import "core:fmt"
 import "core:math"
-import "../../src/draw"
-import lucide "../../src/lucide"
-import "../../src/ui"
+import "gt:draw"
+import lucide "gt:lucide"
+import "gt:ui"
 
 BAR_TOOLS :: [?]string{lucide.MOUSE_POINTER, lucide.PENCIL, lucide.HIGHLIGHTER, lucide.MOVE_UP_RIGHT, lucide.SQUARE, lucide.CIRCLE, lucide.TYPE, lucide.CROP}
 BAR_TOOL_NAMES :: [?]string{"Select", "Pen", "Highlighter", "Arrow", "Rectangle", "Ellipse", "Text", "Crop"}

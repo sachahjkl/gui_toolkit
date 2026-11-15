@@ -6,8 +6,8 @@
 package image_test
 
 import "core:testing"
-import font "../../src/font"
-import image "../../src/image"
+import font "gt:font"
+import image "gt:image"
 
 @(private = "file")
 RED :: image.Color{255, 0, 0, 255}

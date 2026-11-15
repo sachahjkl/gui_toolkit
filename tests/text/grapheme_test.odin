@@ -1,8 +1,8 @@
 package text_test
 
 import "core:testing"
-import "../../src/testkit/unwatched"
-import "../../src/font"
+import "gt:testkit/unwatched"
+import "gt:font"
 
 FAMILY :: "\U0001F468\u200D\U0001F469\u200D\U0001F467"
 FLAG_FR :: "\U0001F1EB\U0001F1F7"

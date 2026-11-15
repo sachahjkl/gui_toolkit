@@ -2,7 +2,7 @@ package cli_test
 
 import "core:strings"
 import "core:testing"
-import cli "../../src/cli"
+import cli "gt:cli"
 
 @(private = "file")
 P := cli.Program{name = "prog", summary = "a program", version = "1.2.3",

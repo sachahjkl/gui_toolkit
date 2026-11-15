@@ -8,7 +8,7 @@ package gif_test
 // no colour table, bad code sizes, a screen past MAX_DECODE_PIXELS.
 
 import "core:testing"
-import "../../src/gif"
+import "gt:gif"
 
 @(private = "file")
 Hand :: struct {

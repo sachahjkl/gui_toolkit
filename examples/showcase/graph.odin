@@ -5,9 +5,9 @@ package showcase
 // fixed: each node's state is written below, not computed.
 
 import "core:fmt"
-import flowgraph "../../src/flowgraph"
-import lucide "../../src/lucide"
-import "../../src/ui"
+import flowgraph "gt:flowgraph"
+import lucide "gt:lucide"
+import "gt:ui"
 
 PICTURE :: flowgraph.Port_Kind(1)
 TEXT    :: flowgraph.Port_Kind(2)

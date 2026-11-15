@@ -4,10 +4,10 @@ package scenarios_test
 // `backdrop`): darker than without it on a light surface; its straight sides, whole pixels, are the same.
 
 import "core:testing"
-import "../../src/draw"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:draw"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") RING :: draw.Rect{{20, 20}, {120, 80}}
 @(private = "file") SHIFT :: 140   // the second ring, beside the first

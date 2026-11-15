@@ -4,9 +4,9 @@ package scenarios_test
 // by a double click, a press that no pointer made.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{600, 500}
 @(private = "file") FIELD_WIDTH :: 200

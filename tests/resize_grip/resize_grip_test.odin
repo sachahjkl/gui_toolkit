@@ -5,9 +5,9 @@ package resize_grip_test
 
 import "core:math"
 import "core:testing"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") GRIP_WINDOW :: [2]int{400, 300}
 

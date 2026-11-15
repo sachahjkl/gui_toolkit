@@ -7,11 +7,11 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../../examples/todo"
-import "../../src/draw"
-import "../../src/render"
-import "../../src/testkit"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:draw"
+import "gt:render"
+import "gt:testkit"
+import "gt:testkit/session"
+import "gt:ui"
 
 // examples/todo as a user meets it: a task added, its box ticked, the filters, a tooltip, the context menu, the theme, a deletion, each read back from the
 // application and from the file it saves.

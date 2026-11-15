@@ -6,9 +6,9 @@ package showcase
 
 import "core:mem"
 import "core:strings"
-import lucide "../../src/lucide"
-import "../../src/platform"
-import "../../src/ui"
+import lucide "gt:lucide"
+import "gt:platform"
+import "gt:ui"
 
 DEMO_HOME :: "/home/robin"
 DEMO_START :: "/home/robin/Projects/harbour"

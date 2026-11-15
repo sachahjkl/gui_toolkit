@@ -5,9 +5,9 @@ package scenarios_test
 
 import "core:math"
 import "core:testing"
-import "../../src/draw"
-import "../../src/ui"
-import "../../src/testkit/unwatched"
+import "gt:draw"
+import "gt:ui"
+import "gt:testkit/unwatched"
 
 @(test)
 contrast_is_wcags :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

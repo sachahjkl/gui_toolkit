@@ -4,7 +4,7 @@
 package netif_test
 
 import "core:testing"
-import "../../src/platform"
+import "gt:platform"
 
 @(test)
 the_loopback_address_is_listed :: proc(t: ^testing.T) {

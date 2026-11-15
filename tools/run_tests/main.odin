@@ -238,6 +238,10 @@ MAX_JOBS :: 12
 // With the WebGPU backend on WARP, one device at a time: d3d10warp.dll crashes now and then with several at once.
 WGPU_JOBS :: 1
 BUILD_DIR :: "build/tests"
+
+// The toolkit's packages as the collection gt, as a program has them: a test imports "gt:ui", not a path out of its
+// folder, so the tests could live in a repository of their own.
+gt_collection :: proc(root: string) -> string { return fmt.tprintf("-collection:gt=%s/src", root) }
 LOG_DIR :: "build/test_logs"
 THIS_OS :: Os.Windows when ODIN_OS == .Windows else Os.Linux
 EXE_SUFFIX :: ".exe" when ODIN_OS == .Windows else ""
@@ -416,7 +420,7 @@ carry_out :: proc(s: ^Step, o: ^Run_Options, r: ^Result) {
 	here, _ := os.get_working_directory(context.temp_allocator)
 	exe_path := fmt.tprintf("%s/%s", here, exe)
 	if o.check != "" {
-		append(&cmd, "odin", "check", s.path, "-vet", fmt.tprintf("-target:%s", o.check))
+		append(&cmd, "odin", "check", s.path, "-vet", fmt.tprintf("-target:%s", o.check), gt_collection(here))
 		// (odin check has no test mode, so ODIN_TEST is false: the hooks a test build turns on, turned on by name)
 		if s.kind == .Test { append(&cmd, "-no-entry-point", "-ignore-unused-defineables", "-define:FONT_FAILURE_HOOKS=true", "-define:DRAW_FAILURE_HOOKS=true") }
 		if s.one { append(&cmd, "-define:ODIN_TEST_THREADS=1") }
@@ -445,6 +449,7 @@ carry_out :: proc(s: ^Step, o: ^Run_Options, r: ^Result) {
 	case .Check:
 		append(&cmd, "odin", "check", s.path, "-no-entry-point", "-vet", fmt.tprintf("-target:%s", s.target))
 	}
+	append(&cmd, gt_collection(here))
 	for d in s.defines { append(&cmd, fmt.tprintf("-define:%s", d)) }
 	for d in o.defines { append(&cmd, fmt.tprintf("-define:%s", d)) }
 	if !run_to_log(cmd[:], log_file, 0, r) {

@@ -6,9 +6,9 @@ package scenarios_test
 // scrolls only once it has the keyboard.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{600, 300}
 @(private = "file") ROW_WIDTH :: 360

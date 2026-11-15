@@ -7,10 +7,10 @@ package markdown_test
 import "core:fmt"
 import "core:strings"
 import "core:testing"
-import "../../src/font"
-import "../../src/markdown"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:font"
+import "gt:markdown"
+import "gt:testkit/session"
+import "gt:ui"
 
 // A list's numbers take the width of its widest ("10." is not cut); its levels are measured apart; another list is
 // measured on its own; what is not a list has no marker.

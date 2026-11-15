@@ -5,9 +5,9 @@ package edged_test
 
 import "core:fmt"
 import "core:testing"
-import "../../src/draw"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:draw"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") EDGED_WINDOW :: [2]int{200, 120}
 @(private = "file") FACE :: ui.Rect{{40, 30}, {160, 60}}

@@ -6,7 +6,7 @@ import "core:os"
 import "core:strings"
 import "core:sys/posix"
 import "core:testing"
-import "../../src/fsx"
+import "gt:fsx"
 
 // A name with no directory is in the current one, which is the directory to sync.
 @(test)

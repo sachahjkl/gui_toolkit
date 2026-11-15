@@ -3,7 +3,7 @@
 package size_move_test
 
 import "core:testing"
-import "../../src/platform"
+import "gt:platform"
 
 // The system's loop runs inside DefWindowProc: its messages count, and nest.
 @(test)

@@ -5,12 +5,12 @@ package mermaid_test
 
 import "core:strings"
 import "core:testing"
-import draw "../../src/draw"
-import font "../../src/font"
-import mermaid "../../src/mermaid"
-import svg "../../src/svg"
-import "../../src/testkit/session"
-import "../../src/ui"
+import draw "gt:draw"
+import font "gt:font"
+import mermaid "gt:mermaid"
+import svg "gt:svg"
+import "gt:testkit/session"
+import "gt:ui"
 
 FLOW :: "flowchart TD\n  A[User types /goal] --> B{Commands read?}\n  B -->|yes| C[Send as command]\n  B -->|no| D[Wait for the catalog]\n  D --> B\n"
 

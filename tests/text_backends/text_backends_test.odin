@@ -7,9 +7,9 @@ package text_backends_test
 import "core:strings"
 import "core:testing"
 import "core:time"
-import "../../src/testkit/unwatched"
-import base "../../src/base"
-import "../../src/font"
+import "gt:testkit/unwatched"
+import base "gt:base"
+import "gt:font"
 import corpus "../../tools/text_corpus"
 
 _ :: corpus   // used by the native tests only

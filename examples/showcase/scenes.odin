@@ -4,9 +4,9 @@ package showcase
 
 import "core:fmt"
 import "core:math"
-import lucide "../../src/lucide"
-import prefs_page "../../src/prefs_page"
-import "../../src/ui"
+import lucide "gt:lucide"
+import prefs_page "gt:prefs_page"
+import "gt:ui"
 
 INTENT_GLYPHS := [ui.Intent]string{
 	.Neutral = lucide.SQUARE, .Primary = lucide.SEND, .Info = lucide.INFO, .Success = lucide.CHECK,

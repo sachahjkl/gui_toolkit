@@ -4,10 +4,10 @@ package scenarios_test
 // another chooses it.
 
 import "core:testing"
-import "../../src/font"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:font"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file")
 Words :: struct { sel: int }

@@ -3,7 +3,7 @@
 package path_dash_test
 
 import "core:testing"
-import "../../src/draw"
+import "gt:draw"
 
 EPS :: 1e-4
 

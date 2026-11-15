@@ -4,8 +4,8 @@
 package hotkey_test
 
 import "core:testing"
-import i18n "../../src/i18n"
-import "../../src/platform"
+import i18n "gt:i18n"
+import "gt:platform"
 
 @(test)
 a_hotkey_reads_from_its_text :: proc(t: ^testing.T) {

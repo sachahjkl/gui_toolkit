@@ -7,9 +7,9 @@ package image_test
 import "core:testing"
 import core_image "core:image"
 import "core:image/bmp"
-import gif "../../src/gif"
-import image "../../src/image"
-import png "../../src/png"
+import gif "gt:gif"
+import image "gt:image"
+import png "gt:png"
 
 @(private = "file")
 decode_sample :: proc() -> image.Image {
