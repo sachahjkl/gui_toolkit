@@ -1,7 +1,7 @@
 // Compares the native text backend with DirectWrite on the corpus of tools/text_corpus: the same glyphs, clusters,
 // advances, metrics, bidi levels and line breaks (equivalence), and, with -perf, the cost of shaping a word and a run
 // with and without the word cache. Needs the native library:
-//   odin run tools/tk -- build_text
+//   odin run tools/tk -- build_native
 //   odin run tools/text_bench -vet -define:FONT_BACKEND=native -o:speed -out:build/text_bench.exe -- [-perf] [-v]
 // -threads (any backend; nothing else runs) times the locked hot paths with 1 to 8 threads (threads.odin):
 //   odin run tools/text_bench -vet -o:speed -out:build/text_bench.exe -- -threads
@@ -30,7 +30,7 @@ main :: proc() {
 	}
 	if threads { threads_bench(); return }
 	when !font.NATIVE_TEXT {
-		fmt.eprintln("text_bench: build with -define:FONT_BACKEND=native (and tools/tk build_text first)")
+		fmt.eprintln("text_bench: build with -define:FONT_BACKEND=native (and tools/tk build_native first)")
 		os.exit(2)
 	} else {
 		dw := make_state(.Dwrite, 32768)

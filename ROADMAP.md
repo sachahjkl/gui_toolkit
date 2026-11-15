@@ -27,18 +27,14 @@
   `gt:image` reads GIF now. The switch is written (`ocn-views/build/gt-image-only.patch`) and waits for WebP on
   Windows, which the Rust crate reads today. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).
 - **Wren logs through `gt:log`.** Wren writes its log through the toolkit, as the other programs do.
-- **One native crate.** One native library with a cargo feature per part (text, Mermaid, AccessKit, WebP) replaces the
-  toolkit's four, with one copy of Rust's standard library: about 0.4 MB less for a program that links two of them. The
-  multiple-definition flag stays on Linux while wgpu-native, prebuilt, brings its own copy (docs/builds.md); Wren and
-  opencode native, which build `gt_text` into their own crate, take the new crate's name.
 - **One install command line.** `desktop.parse_cli` and `desktop.cli_run` (`--desktop-integration`, their own exit
   numbers) fold into `gt:setup`'s commands and `cli.Exit`; Wren, their last user, takes `setup.command_of` and
   `command_run`.
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
   `-check:darwin_arm64`), and every portable file names the system's facts, not the system (`SYSTEM_DIRECT3D`,
   `font.SYSTEM_RASTERIZER`); papier, classeur, inspecteur and cliche check theirs for macOS. What is left: opencode
-  native and Wren check theirs, and the native libraries' links (`font/backend_native.odin`, `mermaid.odin`) stay beside
-  their `foreign` blocks until one native crate.
+  native and Wren check theirs. (The native library's links stay beside their `foreign` blocks, in
+  `font/backend_native.odin` and `mermaid.odin`: a `foreign import` is its file's.)
 - **Colours by intent in opencode native.** Its 85 `HEX_*` constants become the theme's intents and hues, so a theme
   changes them all, as cliche's graph colours do since its 0.8.
 

@@ -1,10 +1,11 @@
 // tk: the toolkit's tools that build, fetch and draw what the code needs, one program with a command each.
 //   odin run tools/tk -- <command> [flags]        (or odin build tools/tk -out:build/tk.exe once, then build/tk <command>)
 //
-//   build_text [-force]                       the native text backend (native/text, cargo) -> build/text/gt_text.lib; nothing to do
-//                                             when build/text/STAMP is the hash of the crate's sources, Cargo.lock and tools/tk/native.odin
-//   build_a11y [-force]                       the AccessKit adapter (native/a11y) -> build/a11y/gt_a11y.lib, the same way
-//   build_mermaid [-force]                    Mermaid diagrams to SVG (native/mermaid) -> build/mermaid/gt_mermaid.lib, the same way
+//   build_native [-features:text,mermaid,a11y] [-force]
+//                                             the native library (native/gt, cargo) with the parts asked (none named: all of this
+//                                             system's) -> build/native/gt_native.lib (libgt_native.a); nothing to do when
+//                                             build/native/STAMP is the hash of its crates' sources, their Cargo.lock, the parts
+//                                             and tools/tk/native.odin
 //   build_webp [-force]                       libwebp for Windows (native/webp: its C sources, sharpyuv's) -> build/webp/gt_webp.dll, put
 //                                             beside a program (src/image/webp_windows.odin loads it); elsewhere the crate's .so
 //   build_naga                                the WGSL to HLSL translator (tools/wgsl2hlsl, naga) -> build/naga/wgsl2hlsl.exe: its Cargo.lock
@@ -73,10 +74,8 @@ import "core:strings"
 import toolbox "../../src/toolbox"
 
 COMMANDS := []toolbox.Command {
-	{name = "build_text", usage = "[-force]: the native text backend (native/text) -> build/text, unless its stamp says it is up to date", checked = true, flags = {"force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build_text(args)) }},
-	{name = "build_a11y", usage = "[-force]: the AccessKit adapter (native/a11y) -> build/a11y, the same way", checked = true, flags = {"force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build_a11y(args)) }},
+	{name = "build_native", usage = "[-features:text,mermaid,a11y] [-force]: the native library (native/gt) with the parts asked (none named: all of this system's) -> build/native, unless its stamp says it is up to date", checked = true, flags = {"features:", "force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build_native(args)) }},
 	{name = "build_webp", usage = "[-force]: libwebp for Windows (native/webp) -> build/webp/gt_webp.dll, beside a program", checked = true, flags = {"force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(build_webp(toolkit_root(), toolbox.has_flag(args, "force"))) }},
-	{name = "build_mermaid", usage = "[-force]: Mermaid diagrams to SVG (native/mermaid) -> build/mermaid, the same way", checked = true, flags = {"force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build_mermaid(args)) }},
 	{name = "build_naga", usage = ": the WGSL to HLSL translator (tools/wgsl2hlsl) -> build/naga/wgsl2hlsl.exe, its Cargo.lock pinned", checked = true, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build_naga(args)) }},
 	{name = "fetch_emoji", usage = "[-dest:dir] [-unicode]: Noto Color Emoji COLR v1 and OFL.txt -> build/emoji; -unicode: Unicode's emoji files too", checked = true, flags = {"dest:", "unicode"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_fetch_emoji(args)) }},
 	{name = "fetch_wgpu", usage = "[-dest:dir] [-no-dxc] [-odin:exe]: wgpu-native as pinned (Windows: its DLL and DXC's; Linux: Odin's vendor library)", checked = true, flags = {"dest:", "no-dxc", "odin:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_fetch_wgpu(args)) }},
@@ -151,9 +150,11 @@ find_file :: proc(dir, name, within: string) -> string {
 	return ""
 }
 
-run_build_text :: proc(args: []string) -> string { return build_rust_lib(toolkit_root(), TEXT_LIB, toolbox.has_flag(args, "force")) }
-run_build_a11y :: proc(args: []string) -> string { return build_rust_lib(toolkit_root(), A11Y_LIB, toolbox.has_flag(args, "force")) }
-run_build_mermaid :: proc(args: []string) -> string { return build_rust_lib(toolkit_root(), MERMAID_LIB, toolbox.has_flag(args, "force")) }
+run_build_native :: proc(args: []string) -> string {
+	features, why := native_features(toolbox.flag_value(args, "features", NATIVE_DEFAULT))
+	if why != "" { return why }
+	return build_native_lib(toolkit_root(), features, toolbox.has_flag(args, "force"))
+}
 run_build_naga :: proc(args: []string) -> string { return build_naga(toolkit_root()) }
 
 run_fetch_emoji :: proc(args: []string) -> string {

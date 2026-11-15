@@ -1,7 +1,7 @@
 #+build windows
 package platform
 
-// The Windows adapter: AccessKit's UI Automation provider (native/a11y, gt_a11y.lib), compiled in with
+// The Windows adapter: AccessKit's UI Automation provider (native/a11y, in build/native/gt_native.lib), compiled in with
 // -define:A11Y_ACCESSKIT=true. A program that has a Rust library of its own builds gt_a11y into it (as a dependency:
 // its gt_a11y_* functions stay exported) and builds with -define:A11Y_NATIVE_LINK=false (as for the text backend).
 
@@ -21,7 +21,7 @@ when !A11Y_NATIVE_LINK {
 	foreign import gt_a11y "system:kernel32.lib"   // the symbols come from the program's own Rust library
 } else {
 	foreign import gt_a11y {
-		"../../build/a11y/gt_a11y.lib",
+		"../../build/native/gt_native.lib",
 		"system:ntdll.lib",
 		"system:userenv.lib",
 		"system:ws2_32.lib",

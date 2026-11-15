@@ -9,7 +9,7 @@ installed fonts through the **platform**. Everything else in the package is the 
 | `native` | Fontations (`read-fonts` font model: faces, cmap, metrics, outlines, variations, COLR / CPAL), HarfRust (shaping), ICU4X (`icu_segmenter` line breaks with dictionaries, `icu_properties` data for `unicode-bidi`) in a static Rust library `native/text` | the default elsewhere; `-define:FONT_BACKEND=native` on Windows |
 
 `FONT_BACKEND` is `dwrite` on Windows and `native` everywhere else (there is no DirectWrite there: a build without the
-native backend had no text). `native` links `build/text/gt_text.lib` (built by `tools/tk build_text`) and makes it the
+native backend had no text). `native` links `build/native/gt_native.lib` (built by `tools/tk build_native`, its part `text`) and makes it the
 default; `Settings.backend` still picks either one for a `State` (read by `init` only), which is how the
 `text_backends` test and `tools/text_bench` compare them in one process. On Windows, without
 `-define:FONT_BACKEND=native`, asking for `native` gives `dwrite`. `font.backend(s)` tells which one a `State` uses; `font.backend_available(b)` whether this build has it.
@@ -96,8 +96,8 @@ no COLR color glyphs yet.
 
 The Linux service runs in the CI and on real desktops. The macOS one is written against the documented C API and has
 never run on a Mac. A face of a macOS collection (.ttc) is found by its PostScript name
-(`gt_face_postscript_name`, `gt_file_face_count`). On Linux and macOS `cargo build --release --locked --lib --target-dir ../../build/text/target`
-in `native/text`, then a copy of `libgt_text.a` to `build/text/` (`tk build_text` does it, on Windows and Linux).
+(`gt_face_postscript_name`, `gt_file_face_count`). On Linux and macOS `cargo build --release --locked --lib --target-dir ../../build/native/target`
+in `native/gt` with `--features text`, then a copy of `libgt_native.a` to `build/native/` (`tk build_native` does it, on Windows and Linux).
 
 ## Comparing the backends
 

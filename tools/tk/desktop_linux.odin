@@ -155,7 +155,7 @@ run_desktop_tests :: proc(args: []string) -> string {
 	if !toolbox.run({"odin", "build", join({tests, "drag_peer"}), "-vet", gt_collection(d.root), fmt.tprintf("-out:%s", join({bin, "drag_peer"}))}) { return "building drag_peer failed" }
 	if !toolbox.run({"odin", "build", join({tests, "xdg_open"}), "-vet", gt_collection(d.root), fmt.tprintf("-out:%s", join({bin, "xdg-open"}))}) { return "building xdg_open failed" }
 	// (a host with its renderer is tested too: the native text library, linked as the examples are)
-	if why := build_rust_lib(d.root, TEXT_LIB, false); why != "" { return why }
+	if why := build_native_default(d.root); why != "" { return why }
 	test_cmd := make([dynamic]string, context.temp_allocator)
 	append(&test_cmd, "odin", "build", tests, "-build-mode:test", "-vet", gt_collection(d.root), "-define:ODIN_TEST_THREADS=1", "-debug", fmt.tprintf("-out:%s", join({d.out, "desktop_test"})))
 	append(&test_cmd, toolbox.LINUX_LINK_FLAG)

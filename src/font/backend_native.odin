@@ -5,7 +5,7 @@ import "core:slice"
 _ :: slice   // (the code below is compiled with the native backend only)
 
 // The native backend (-define:FONT_BACKEND=native): Fontations reads the faces, HarfRust shapes, ICU4X breaks lines
-// and resolves bidi, in the static library of native/text (tools/tk build_text builds build/text/gt_text.lib). Faces
+// and resolves bidi, in the static library of native/text (tools/tk build_native builds build/native/gt_native.lib, with the part text). Faces
 // still come from the platform (native_source_*.odin says where their bytes are); the platform also keeps the system
 // fallback. See docs/font-backend.md.
 
@@ -21,7 +21,7 @@ when !FONT_NATIVE_LINK {
 	when ODIN_OS == .Windows { foreign import gt_text "system:kernel32.lib" } else { foreign import gt_text "system:c" }
 } else when ODIN_OS == .Windows {
 	foreign import gt_text {
-		"../../build/text/gt_text.lib",
+		"../../build/native/gt_native.lib",
 		"system:ntdll.lib",
 		"system:userenv.lib",
 		"system:ws2_32.lib",
@@ -31,10 +31,8 @@ when !FONT_NATIVE_LINK {
 		"system:dbghelp.lib",
 	}
 } else {
-	// TODO(linux, macos): tools/build_text builds the .lib on Windows only; elsewhere `cargo build --release` in
-	// native/text gives libgt_text.a.
 	foreign import gt_text {
-		"../../build/text/libgt_text.a",
+		"../../build/native/libgt_native.a",
 		"system:dl",
 		"system:pthread",
 		"system:m",
