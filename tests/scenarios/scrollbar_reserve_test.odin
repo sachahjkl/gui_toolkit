@@ -6,9 +6,9 @@ package scenarios_test
 
 import "core:fmt"
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") RESERVE_VIEW :: [2]f32{300, 200}
 @(private = "file") RESERVE_ROW_H :: 30

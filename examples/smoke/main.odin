@@ -2,10 +2,10 @@
 package smoke
 
 import "core:fmt"
-import "../../src/draw"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/render"
+import "gt:draw"
+import "gt:font"
+import "gt:platform"
+import "gt:render"
 
 App :: struct {
 	win:   ^platform.Window,

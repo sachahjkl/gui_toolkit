@@ -9,11 +9,11 @@ import "core:os"
 import "core:strings"
 import "core:time"
 import "core:testing"
-import config "../../src/config"
-import prefs_page "../../src/prefs_page"
-import "../../src/testkit/session"
-import "../../src/ui"
-import update "../../src/update"
+import config "gt:config"
+import prefs_page "gt:prefs_page"
+import "gt:testkit/session"
+import "gt:ui"
+import update "gt:update"
 
 @(private = "file")
 DEFS := [?]config.Def{

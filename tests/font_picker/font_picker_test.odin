@@ -11,9 +11,9 @@ import "core:strings"
 import "core:sync"
 import "core:testing"
 import "core:time"
-import "../../src/font"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:font"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") BOUND :: 20 * time.Second
 

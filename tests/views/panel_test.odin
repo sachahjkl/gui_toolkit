@@ -10,11 +10,11 @@ import "core:math"
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
-import i18n "../../src/i18n"
-import "../../src/platform"
-import store "../../src/store"
-import "../../src/testkit/session"
-import "../../src/ui"
+import i18n "gt:i18n"
+import "gt:platform"
+import store "gt:store"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{1000, 700}
 @(private = "file") SIDE_EM :: 12

@@ -5,8 +5,8 @@ package views_test
 // per opening (view_icon).
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") FRAMES_MAX :: 40
 

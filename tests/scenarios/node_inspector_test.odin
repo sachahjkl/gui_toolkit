@@ -5,11 +5,11 @@ package scenarios_test
 // add palette of the catalog.
 
 import "core:testing"
-import flowgraph "../../src/flowgraph"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
-import undo "../../src/undo"
+import flowgraph "gt:flowgraph"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
+import undo "gt:undo"
 
 @(private = "file") PICTURE :: flowgraph.Port_Kind(1)
 @(private = "file") TEXT :: flowgraph.Port_Kind(2)

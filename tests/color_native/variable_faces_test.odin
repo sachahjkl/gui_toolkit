@@ -5,7 +5,7 @@
 package color_native_test
 
 import "core:testing"
-import "../../src/font"
+import "gt:font"
 
 // Inter's variable face, cut to "H" and "m" (data/inter-LICENSE.txt): opsz 14..32, wght 100..900 (default 400).
 INTER_HM :: #load("data/inter-variable-hm.ttf")

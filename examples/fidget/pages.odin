@@ -6,8 +6,8 @@ package fidget
 import "core:fmt"
 import "core:math"
 import "core:strings"
-import "../../src/draw"
-import "../../src/ui"
+import "gt:draw"
+import "gt:ui"
 
 seg_labels := [?]string{"Day", "Week", "Month"}
 chip_labels := [?]string{"Alpha", "Beta", "Gamma", "Delta"}

@@ -8,8 +8,8 @@ package fidget
 import "core:fmt"
 import "core:math"
 import "core:strings"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:platform"
+import "gt:ui"
 
 // The project's folders the path bar walks. A folder is its index here: the card keeps no string of its own.
 FILES_TREE := [?]string{

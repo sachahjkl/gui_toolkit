@@ -4,12 +4,12 @@
 package host_test
 
 import "core:testing"
-import "../../src/draw"
-import "../../src/font"
-import host "../../src/host"
-import "../../src/platform"
-import "../../src/render"
-import "../../src/ui"
+import "gt:draw"
+import "gt:font"
+import host "gt:host"
+import "gt:platform"
+import "gt:render"
+import "gt:ui"
 
 @(private) SIZE :: [2]int{320, 200}
 @(private = "file") FRAME_MS :: 16

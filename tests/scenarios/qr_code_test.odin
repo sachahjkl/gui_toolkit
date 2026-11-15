@@ -6,11 +6,11 @@ package scenarios_test
 import "core:fmt"
 import "core:math"
 import "core:testing"
-import "../../src/qr"
-import "../../src/render"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:qr"
+import "gt:render"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") QR_WINDOW :: [2]int{320, 320}
 @(private = "file") QR_AT :: [2]f32{10.4, 20.6}   // (between pixels: what the layout makes of it, the code is drawn from)

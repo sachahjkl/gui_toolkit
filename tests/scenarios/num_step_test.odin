@@ -5,10 +5,10 @@ package scenarios_test
 // keys and the wheel while it has the keyboard, the number selected after.
 
 import "core:testing"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(test)
 numbers_step_by_each_modifier :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

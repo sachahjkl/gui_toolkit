@@ -5,9 +5,9 @@ package svg_test
 
 import "core:math"
 import "core:testing"
-import font "../../src/font"
-import paint "../../src/paint"
-import svg "../../src/svg"
+import font "gt:font"
+import paint "gt:paint"
+import svg "gt:svg"
 
 FLOWCHART :: #load("flowchart.svg", string)
 SEQUENCE :: #load("sequence.svg", string)

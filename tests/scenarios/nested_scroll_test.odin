@@ -5,9 +5,9 @@ package scenarios_test
 import "core:fmt"
 import "core:strings"
 import "core:testing"
-import "../../src/markdown"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:markdown"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") VIEW_W :: 400
 @(private = "file") INNER_W :: 800   // the inner view's own width: wider than the outer view

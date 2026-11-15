@@ -6,7 +6,7 @@ package capture_test
 
 import "core:os"
 import "core:testing"
-import "../../src/capture"
+import "gt:capture"
 
 @(private = "file")
 live :: proc() -> bool {

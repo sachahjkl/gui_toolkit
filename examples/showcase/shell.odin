@@ -5,10 +5,10 @@ package showcase
 
 import "core:fmt"
 import "core:math"
-import host "../../src/host"
-import lucide "../../src/lucide"
-import prefs_page "../../src/prefs_page"
-import "../../src/ui"
+import host "gt:host"
+import lucide "gt:lucide"
+import prefs_page "gt:prefs_page"
+import "gt:ui"
 
 // The scenes the sidebar lists (the overlays' scenes stand on one of them), their titles and icons.
 NAV := [?]Scene{.Intents, .Controls, .Menus, .Toolbar, .Views, .Graph, .Themes, .Settings}

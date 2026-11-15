@@ -4,9 +4,9 @@ package scenarios_test
 // and down, a vertical wheel scrolls the page and Shift+wheel (or a sideways one) the table.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") PAGE :: [2]int{400, 300}
 @(private = "file") WIDE :: 1200      // the table's content, wider than the page

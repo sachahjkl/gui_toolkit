@@ -7,9 +7,9 @@ package lifecycle_test
 import "core:testing"
 import win "core:sys/windows"
 import "vendor:wgpu"
-import "../../src/draw"
-import "../../src/platform"
-import "../../src/render"
+import "gt:draw"
+import "gt:platform"
+import "gt:render"
 
 @(private = "file") MSIZE :: [2]int{64, 64}
 @(private = "file") MWHOLE :: draw.Rect{{0, 0}, {64, 64}}

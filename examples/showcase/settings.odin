@@ -5,10 +5,10 @@ package showcase
 // from or written to the disk: the registry starts at its defaults, and the paths shown are examples.
 
 import "core:strings"
-import config "../../src/config"
-import lucide "../../src/lucide"
-import prefs_page "../../src/prefs_page"
-import "../../src/ui"
+import config "gt:config"
+import lucide "gt:lucide"
+import prefs_page "gt:prefs_page"
+import "gt:ui"
 
 // Where a program keeps them (shown at the foot of the sidebar and under the themes' cards; never opened here).
 SETTINGS_FILE :: "~/.config/gui_toolkit_showcase/settings.txt"

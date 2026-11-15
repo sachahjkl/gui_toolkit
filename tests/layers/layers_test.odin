@@ -6,9 +6,9 @@ import "core:mem"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../src/draw"
-import "../../src/font"
-import "../../src/render"
+import "gt:draw"
+import "gt:font"
+import "gt:render"
 
 SIZE :: [2]int{64, 64}
 

@@ -4,7 +4,7 @@ package hotkey_test
 // item's text after a tab on Windows.
 
 import "core:testing"
-import "../../src/platform"
+import "gt:platform"
 
 @(test)
 a_shortcut_becomes_dbusmenu_keys :: proc(t: ^testing.T) {

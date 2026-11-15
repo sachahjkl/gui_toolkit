@@ -18,11 +18,11 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:time"
-import "../../src/devtools"
-import "../../src/draw"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/render"
+import "gt:devtools"
+import "gt:draw"
+import "gt:font"
+import "gt:platform"
+import "gt:render"
 
 App :: struct {
 	devtools: ^devtools.Server,   // TOOLKIT_DEVTOOLS=<port>: driven with the Chrome DevTools Protocol

@@ -4,10 +4,10 @@ package machines_test
 // it, the keyboard latches of a menu, the undo steps and the column of a text, the rows of a list that go.
 
 import "core:testing"
-import "../../src/platform"
-import store "../../src/store"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:platform"
+import store "gt:store"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{600, 500}
 @(private = "file") SMALL_WINDOW :: [2]int{300, 250}

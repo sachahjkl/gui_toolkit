@@ -5,9 +5,9 @@ package scenarios_test
 
 import "core:fmt"
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file")
 LONG_BODY :: "Permission: bash git push origin release/0.44.0 --force-with-lease, then the tag and the release notes"

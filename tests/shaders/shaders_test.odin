@@ -3,7 +3,7 @@ package tests_shaders
 @(require) import "core:slice"
 import "core:strings"
 import "core:testing"
-import "../../src/render"
+import "gt:render"
 
 // The shaders are written in WGSL (render/*.wgsl); the Direct3D 11 backend embeds the HLSL naga wrote from them and its DXBC.
 // After editing a .wgsl file, `odin run tools/shaders` writes both again (CI also runs it with -check, which has naga write the HLSL again).

@@ -4,8 +4,8 @@ package data_views_test
 // from edge to edge, row under row.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file")
 Rows :: struct { list: ui.List_State, menu_open: bool, table: ui.Table }

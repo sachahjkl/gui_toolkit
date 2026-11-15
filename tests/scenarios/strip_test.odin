@@ -9,11 +9,11 @@ package scenarios_test
 import "core:fmt"
 import "core:math"
 import "core:testing"
-import "../../src/draw"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:draw"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") STRIP_LONG :: 300     // the row's length along the strip's axis
 @(private = "file") STRIP_THICK :: 30     // ... and across it

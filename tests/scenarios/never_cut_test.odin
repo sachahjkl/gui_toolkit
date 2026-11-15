@@ -5,9 +5,9 @@ package scenarios_test
 
 import "core:fmt"
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") NARROW :: 170   // a column narrower than a button's words, wider than its longest word
 @(private = "file") SMALL :: 40    // a width in pixels smaller than a button's words

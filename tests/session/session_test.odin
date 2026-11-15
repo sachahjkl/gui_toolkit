@@ -4,9 +4,9 @@
 package session_test
 
 import "core:testing"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") App :: struct { clicks: int, field: ui.Line_Edit, typed: string }
 

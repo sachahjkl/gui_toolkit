@@ -9,9 +9,9 @@ package ocr_test
 import "core:log"
 import "core:strings"
 import "core:testing"
-import "../../src/ascii"
-import ocr "../../src/ocr"
-import paint "../../src/paint"
+import "gt:ascii"
+import ocr "gt:ocr"
+import paint "gt:paint"
 
 ////////////////////////////////
 // The pure parts
@@ -192,7 +192,7 @@ english :: proc(installed: []string) -> string {
 // Text drawn from Roboto's outlines (TrueType: cmap format 4, loca, glyf, hmtx), filled by gt:paint
 
 @(private = "file")
-ROBOTO := #load("../../src/font/data/Roboto-Regular.ttf", []u8)
+ROBOTO := #load("gt:font/data/Roboto-Regular.ttf", []u8)
 
 @(private = "file")
 Face :: struct {

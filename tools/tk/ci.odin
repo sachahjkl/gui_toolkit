@@ -9,6 +9,10 @@ import toolbox "../../src/toolbox"
 // What a program's file ends with.
 EXE :: ".exe" when ODIN_OS == .Windows else ""
 
+// The toolkit's packages as the collection gt, for what is built beside them (the examples, the tests): they import
+// "gt:ui" as a program does, not a path out of their folder.
+gt_collection :: proc(root: string) -> string { return fmt.tprintf("-collection:gt=%s", join({root, "src"})) }
+
 // The examples, and the ones the CI builds on each system.
 EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "stream", "panes", "docking", "cursors", "markdown", "whatsnew", "showcase"}
 CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking", "showcase"}
@@ -95,7 +99,7 @@ build_example :: proc(root, example: string, debug: bool) -> string {
 	out := join({root, "build", fmt.tprintf("%s%s", example, EXE)})
 	_ = os.make_directory_all(join({root, "build"}))
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "build", join({root, "examples", example}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed", "-define:TOOLKIT_DEVTOOLS=true")
+	append(&cmd, "odin", "build", join({root, "examples", example}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed", "-define:TOOLKIT_DEVTOOLS=true", gt_collection(root))
 	when ODIN_OS == .Windows {
 		append(&cmd, "-subsystem:windows")
 		rc := join({root, "examples", example, fmt.tprintf("%s.rc", example)})

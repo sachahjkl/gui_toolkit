@@ -8,10 +8,10 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "core:time"
-import desktop "../../src/desktop"
-import setup "../../src/setup"
-import "../../src/testkit/session"
-import "../../src/ui"
+import desktop "gt:desktop"
+import setup "gt:setup"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(test)
 the_facts_make_a_state :: proc(t: ^testing.T) {

@@ -9,7 +9,7 @@ package gif_test
 
 import "core:math/rand"
 import "core:testing"
-import "../../src/gif"
+import "gt:gif"
 
 ////////////////////////////////
 // A GIF decoder: what a browser shows after each frame

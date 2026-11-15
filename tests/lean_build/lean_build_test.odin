@@ -4,8 +4,8 @@ package lean_build_test
 
 import "core:os"
 import "core:testing"
-import "../../src/devtools"
-import "../../src/font"
+import "gt:devtools"
+import "gt:font"
 
 // Without the endpoint, the environment variable starts nothing, and service and stop take the nil.
 @(test)

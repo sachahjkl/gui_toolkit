@@ -8,9 +8,9 @@ import "core:strings"
 import "core:sync"
 import "core:testing"
 import "core:thread"
-import config "../../src/config"
-import i18n "../../src/i18n"
-import prefs_page "../../src/prefs_page"
+import config "gt:config"
+import i18n "gt:i18n"
+import prefs_page "gt:prefs_page"
 
 @(test)
 english_is_the_text_itself :: proc(t: ^testing.T) {

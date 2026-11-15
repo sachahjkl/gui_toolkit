@@ -7,11 +7,11 @@ package text_selection_test
 
 import "core:strings"
 import "core:testing"
-import tk_diff "../../src/diff"
-import "../../src/font"
-import "../../src/markdown"
-import "../../src/platform"
-import "../../src/ui"
+import tk_diff "gt:diff"
+import "gt:font"
+import "gt:markdown"
+import "gt:platform"
+import "gt:ui"
 
 @(private = "file") WINDOW :: ui.Vec2{600, 400}
 

@@ -7,9 +7,9 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:font"
+import "gt:platform"
+import "gt:ui"
 
 PRODUCERS :: 4
 PER_PRODUCER :: 20000

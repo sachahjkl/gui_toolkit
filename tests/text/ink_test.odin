@@ -1,7 +1,7 @@
 package text_test
 
 import "core:testing"
-import "../../src/font"
+import "gt:font"
 
 // A band under the baseline: `p` goes down through it, `x` stops above it.
 @(private = "file") BAND_TOP_EM :: 0.1

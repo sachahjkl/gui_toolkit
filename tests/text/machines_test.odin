@@ -1,10 +1,10 @@
 package text_test
 
 import "core:testing"
-import "../../src/testkit/unwatched"
-import "../../src/draw"
-import "../../src/font"
-import "../../src/render"
+import "gt:testkit/unwatched"
+import "gt:draw"
+import "gt:font"
+import "gt:render"
 
 // What lasts in the font package says what state it is in: a slot, a page, a sequence of the fallback.
 

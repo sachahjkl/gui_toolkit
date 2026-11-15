@@ -4,9 +4,9 @@ package prefs_page_test
 // uninstall from the Installation page keeps "standalone": the next start offers nothing.
 
 import "core:testing"
-import config "../../src/config"
-import prefs_page "../../src/prefs_page"
-import setup "../../src/setup"
+import config "gt:config"
+import prefs_page "gt:prefs_page"
+import setup "gt:setup"
 
 @(test)
 the_offer_obeys_the_choice_in_force :: proc(t: ^testing.T) {

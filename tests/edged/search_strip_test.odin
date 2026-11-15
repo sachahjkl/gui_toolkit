@@ -1,8 +1,8 @@
 package edged_test
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:ui"
 
 // A dialog's search strip (top_strip_draw with no colour of its own: search_band's) is a field's background, as a menu's
 // search band is (a box under the "input" tag): one look wherever one searches. It was the dialog's own background: it took

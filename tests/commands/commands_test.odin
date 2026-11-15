@@ -9,10 +9,10 @@ import "core:strings"
 import "core:mem"
 import "core:testing"
 import "core:time"
-import "../../src/font"
-import lucide "../../src/lucide"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:font"
+import lucide "gt:lucide"
+import "gt:platform"
+import "gt:ui"
 
 WINDOW :: ui.Vec2{800, 600}
 // How long a test waits at most for the palette's ranking, on the chores.

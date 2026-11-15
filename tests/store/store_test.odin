@@ -9,8 +9,8 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../src/fsx"
-import store "../../src/store"
+import "gt:fsx"
+import store "gt:store"
 
 // Long enough that a write cannot come by itself while a test looks: only flush and close write.
 WAIT_LONG_MS :: 60_000

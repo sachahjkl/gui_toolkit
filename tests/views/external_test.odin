@@ -8,10 +8,10 @@ package views_test
 
 import "core:fmt"
 import "core:testing"
-import "../../src/platform"
-import store "../../src/store"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:platform"
+import store "gt:store"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{900, 640}
 @(private = "file") FRAMES_MAX :: 40   // (more than the unseen layouts of a window and its show)

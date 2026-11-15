@@ -4,7 +4,7 @@ package views_test
 // its memory (views_format, views_parse). Pure: no State, no window.
 
 import "core:testing"
-import "../../src/ui"
+import "gt:ui"
 
 @(private = "file")
 Row :: struct {

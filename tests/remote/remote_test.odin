@@ -3,7 +3,7 @@
 package remote_test
 
 import "core:testing"
-import remote "../../src/remote"
+import remote "gt:remote"
 
 @(test)
 an_answer_of_an_old_ticket_is_dropped :: proc(t: ^testing.T) {

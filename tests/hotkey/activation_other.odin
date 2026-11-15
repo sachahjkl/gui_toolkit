@@ -2,7 +2,7 @@
 package hotkey_test
 
 import "core:testing"
-import "../../src/platform"
+import "gt:platform"
 
 // Windows has no launcher's activation token.
 @(test)

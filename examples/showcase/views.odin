@@ -9,9 +9,9 @@ package showcase
 
 import "core:fmt"
 import "core:math"
-import "../../src/draw"
-import lucide "../../src/lucide"
-import "../../src/ui"
+import "gt:draw"
+import lucide "gt:lucide"
+import "gt:ui"
 
 // What the scene opens with it (--views=).
 Views_Variant :: enum u8 {

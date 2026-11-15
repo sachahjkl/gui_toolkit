@@ -2,9 +2,9 @@ package prefs_page_test
 
 import "core:fmt"
 import "core:testing"
-import prefs_page "../../src/prefs_page"
-import "../../src/testkit/session"
-import "../../src/ui"
+import prefs_page "gt:prefs_page"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file")
 Cards :: struct { current: string, picked: int }

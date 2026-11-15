@@ -2,7 +2,7 @@ package pacing_test
 
 import "core:testing"
 import "core:time"
-import "../../src/platform"
+import "gt:platform"
 
 // What the last poll handed out has been read: it is no reason not to wait for more.
 @(test)

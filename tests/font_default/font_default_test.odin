@@ -4,7 +4,7 @@
 package font_default_test
 
 import "core:testing"
-import "../../src/font"
+import "gt:font"
 
 @(test)
 each_system_gets_a_text_backend_by_default :: proc(t: ^testing.T) {

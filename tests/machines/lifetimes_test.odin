@@ -4,9 +4,9 @@ package machines_test
 // that comes with a new dialog, a style given to nothing, the links of a paragraph.
 
 import "core:testing"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{600, 500}
 @(private = "file") FIELD_WIDTH :: 200

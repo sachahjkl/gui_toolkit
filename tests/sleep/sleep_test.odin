@@ -5,7 +5,7 @@ package sleep_test
 
 import "core:testing"
 import "core:time"
-import "../../src/platform"
+import "gt:platform"
 
 WAIT :: 3 * time.Millisecond
 SLACK :: 200 * time.Microsecond

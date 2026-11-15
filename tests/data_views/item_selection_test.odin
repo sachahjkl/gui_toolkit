@@ -3,7 +3,7 @@
 package data_views_test
 
 import "core:testing"
-import "../../src/ui"
+import "gt:ui"
 
 // Rows 0 to 5 by identity 10 to 15; row 3 a header (it cannot be selected).
 @(private = "file") IDS := [?]u64{10, 11, 12, 13, 14, 15}

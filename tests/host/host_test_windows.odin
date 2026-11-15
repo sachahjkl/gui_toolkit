@@ -4,9 +4,9 @@ package host_test
 
 import "core:testing"
 import win "core:sys/windows"
-import host "../../src/host"
-import "../../src/platform"
-import "../../src/ui"
+import host "gt:host"
+import "gt:platform"
+import "gt:ui"
 
 // The loop sleeps until the soonest of what the windows asked for, and not at all while one still moves or settles.
 @(test)

@@ -7,9 +7,9 @@ package notify_test
 
 import "core:strings"
 import "core:testing"
-import "../../src/dbus"
-import "../../src/platform"
-import "../../src/png"
+import "gt:dbus"
+import "gt:platform"
+import "gt:png"
 
 // A Notify call as a server reads it.
 Notify_Call :: struct {

@@ -4,8 +4,8 @@ package resize_grip_test
 // with the dialog's, the header's controls (view_header_tools) clear of it and centered with it, the grips out of its way.
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(test)
 an_inset_corner_is_concentric :: proc(t: ^testing.T) {

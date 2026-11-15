@@ -13,10 +13,10 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "core:time"
-import "../../src/fsx"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:fsx"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:ui"
 
 FILE_BROWSER_TIMING :: #config(FILE_BROWSER_TIMING, false)
 

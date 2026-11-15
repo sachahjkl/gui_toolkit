@@ -6,9 +6,9 @@ package diff_test
 import "core:fmt"
 import "core:strings"
 import "core:testing"
-import diff "../../src/diff"
-import "../../src/testkit/session"
-import "../../src/ui"
+import diff "gt:diff"
+import "gt:testkit/session"
+import "gt:ui"
 
 // The lines of `patch` as "<sign><text>|" each.
 @(private = "file")

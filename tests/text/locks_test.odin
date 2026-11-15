@@ -7,8 +7,8 @@ package text_test
 import "core:sync"
 import "core:testing"
 import "core:thread"
-import "../../src/testkit/unwatched"
-import "../../src/font"
+import "gt:testkit/unwatched"
+import "gt:font"
 
 LOCK_THREADS :: 8
 LOCK_ROUNDS :: 50

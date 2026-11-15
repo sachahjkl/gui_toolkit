@@ -3,7 +3,7 @@
 package deferred_test
 
 import "core:testing"
-import "../../src/ui"
+import "gt:ui"
 
 @(private = "file") WAIT_MS :: 100
 @(private = "file") MOST_MS :: 1000

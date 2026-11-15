@@ -7,11 +7,11 @@ package states_test
 import "core:math"
 import "core:sync"
 import "core:testing"
-import "../../src/draw"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/render"
-import "../../src/ui"
+import "gt:draw"
+import "gt:font"
+import "gt:platform"
+import "gt:render"
+import "gt:ui"
 
 WINDOW :: ui.Vec2{800, 600}
 

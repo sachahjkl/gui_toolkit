@@ -4,8 +4,8 @@ package status_test
 // line graph and a meter bar built without a window.
 
 import "core:testing"
-import "../../src/font"
-import "../../src/ui"
+import "gt:font"
+import "gt:ui"
 
 @(test)
 a_value_history_keeps_the_last_values :: proc(t: ^testing.T) {

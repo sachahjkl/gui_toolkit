@@ -3,7 +3,7 @@
 package capture_test
 
 import "core:testing"
-import "../../src/capture"
+import "gt:capture"
 
 // At scale 1, for each of the eight turns, the point lands where frame_from_buffer puts that pixel of the buffer:
 // the two read a turned buffer the same way.

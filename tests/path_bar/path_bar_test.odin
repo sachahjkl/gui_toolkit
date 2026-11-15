@@ -7,8 +7,8 @@ package path_bar_test
 import "base:runtime"
 import "core:strings"
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file")
 App :: struct {

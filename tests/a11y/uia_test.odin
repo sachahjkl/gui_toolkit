@@ -13,10 +13,10 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../src/platform"
-import "../../src/testkit"
+import "gt:platform"
+import "gt:testkit"
 import "../../tools/uia"
-import "../../src/ui"
+import "gt:ui"
 
 _ :: runtime
 _ :: testkit

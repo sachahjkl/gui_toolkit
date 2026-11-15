@@ -8,9 +8,9 @@ package drag_autoscroll_test
 import "core:fmt"
 import "core:strings"
 import "core:testing"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:font"
+import "gt:platform"
+import "gt:ui"
 
 @(private = "file") WINDOW :: ui.Vec2{400, 400}
 @(private = "file") VIEW_H :: 200   // the scroll view's height, at the window's top

@@ -5,10 +5,10 @@ package fidget
 
 import "core:fmt"
 import "core:math"
-import "../../src/draw"
-import "../../src/platform"
-import "../../src/render"
-import "../../src/ui"
+import "gt:draw"
+import "gt:platform"
+import "gt:render"
+import "gt:ui"
 
 @(private)
 section_title :: proc(text: string, width: f32) {

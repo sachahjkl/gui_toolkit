@@ -7,10 +7,10 @@ package scenarios_test
 import "core:slice"
 import "core:strings"
 import "core:testing"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 @(private = "file") EDITOR_SIZE :: [2]f32{300, 120}
 // The key of a view that pastes pictures, not a box: a program may ask with any key it builds with.

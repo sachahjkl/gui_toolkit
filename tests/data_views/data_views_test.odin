@@ -6,9 +6,9 @@ package data_views_test
 
 import "core:fmt"
 import "core:testing"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:ui"
 
 // The table's room; a cell's text that is longer than its column.
 @(private = "file") TABLE_W :: 450

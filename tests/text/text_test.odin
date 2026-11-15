@@ -5,9 +5,9 @@ package text_test
 import "core:fmt"
 import "core:sync"
 import "core:testing"
-import "../../src/testkit/unwatched"
+import "gt:testkit/unwatched"
 import "core:thread"
-import "../../src/font"
+import "gt:font"
 
 setup :: proc(t: ^testing.T, settings := font.DEFAULT_SETTINGS) -> ^font.State {
 	s := new(font.State)

@@ -4,7 +4,7 @@ package capture_test
 // frame's channels put in another order.
 
 import "core:testing"
-import "../../src/capture"
+import "gt:capture"
 
 // Two pixels a row, two rows, with four bytes of padding after each row; B, G, R, A.
 @(private = "file")

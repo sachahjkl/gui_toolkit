@@ -6,12 +6,12 @@ import "core:math"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "../../src/devtools"
-import "../../src/draw"
-import "../../src/font"
-import host "../../src/host"
-import "../../src/platform"
-import "../../src/ui"
+import "gt:devtools"
+import "gt:draw"
+import "gt:font"
+import host "gt:host"
+import "gt:platform"
+import "gt:ui"
 
 Filter :: enum { All, Active, Done }
 

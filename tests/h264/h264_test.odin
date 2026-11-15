@@ -8,7 +8,7 @@ package h264_test
 import "core:log"
 import "core:testing"
 import "core:time"
-import h264 "../../src/h264"
+import h264 "gt:h264"
 
 // The bytes of a string of '0' and '1' (spaces ignored), the last byte padded with zeros, and the count of bits.
 @(private = "file")

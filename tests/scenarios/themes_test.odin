@@ -7,10 +7,10 @@ package scenarios_test
 // A bar that declares its sides gets no frame from any finish.
 
 import "core:testing"
-import "../../src/draw"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:draw"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 // The colours of a theme's palette entries, to compare two themes.
 @(private = "file")

@@ -4,9 +4,9 @@ package system_title_test
 // integrated title (the program draws it), they are there; switched back, gone again.
 
 import "core:testing"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(test)
 window_buttons_follow_the_title_bar :: proc(t: ^testing.T) {

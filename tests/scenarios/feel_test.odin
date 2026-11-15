@@ -4,9 +4,9 @@ package scenarios_test
 // Feel.step_shift steps. (The undo limit: text_edit_test.odin; a scroll bar arrow's repeat: scrollbar_test.odin.)
 
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 // A delay well past the default (500 ms), and how far from it each look is.
 @(private = "file") TIP_DELAY_MS :: 2000

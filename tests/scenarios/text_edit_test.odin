@@ -4,11 +4,11 @@ package scenarios_test
 
 import "core:strings"
 import "core:testing"
-import "../../src/font"
-import "../../src/platform"
-import "../../src/testkit/session"
-import "../../src/testkit/unwatched"
-import "../../src/ui"
+import "gt:font"
+import "gt:platform"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
+import "gt:ui"
 
 // A stretch of the clock longer than what merges typing into one undo step (ui.Feel.undo_merge_ms).
 @(private = "file") PAUSE_OVER_MERGE_MS :: 2000

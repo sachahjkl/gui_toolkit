@@ -4,7 +4,7 @@
 package overlay_test
 
 import "core:testing"
-import "../../src/platform"
+import "gt:platform"
 
 // Two outputs side by side, the second one at 1.5: as gt:capture gives them.
 @(private = "file")

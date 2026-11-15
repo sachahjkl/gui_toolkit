@@ -9,11 +9,11 @@ import "core:mem"
 import "core:strings"
 import "core:testing"
 import "core:time"
-import config "../../src/config"
-import "../../src/font"
-import prefs_page "../../src/prefs_page"
-import "../../src/testkit/session"
-import "../../src/ui"
+import config "gt:config"
+import "gt:font"
+import prefs_page "gt:prefs_page"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") BOUND :: 20 * time.Second
 

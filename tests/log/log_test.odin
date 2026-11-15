@@ -10,8 +10,8 @@ import "core:strings"
 import "core:sync"
 import "core:testing"
 import "core:thread"
-import tk_log "../../src/log"
-import "../../src/testkit"
+import tk_log "gt:log"
+import "gt:testkit"
 
 LINE_TEXT_AT :: len("2026-11-13T17:03:00.123Z INFO  ")
 

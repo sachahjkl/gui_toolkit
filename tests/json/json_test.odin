@@ -8,7 +8,7 @@ import "core:math"
 import "core:strings"
 import "core:testing"
 import "core:unicode/utf8"
-import tk_json "../../src/json"
+import tk_json "gt:json"
 
 // The quoter a rune at a time, as the policy says it: the reference of the one that copies runs whole.
 @(private = "file")

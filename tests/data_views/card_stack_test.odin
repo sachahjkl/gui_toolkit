@@ -5,8 +5,8 @@ package data_views_test
 
 import "core:fmt"
 import "core:testing"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file")
 Cards :: struct { st: ui.Card_Stack, count: int, built: int, acts: [dynamic]ui.Card_Act }

@@ -18,11 +18,11 @@ import "core:sys/posix"
 import "core:testing"
 import "core:thread"
 import "core:time"
-import "../../src/dbus"
-import host "../../src/host"
-import "../../src/platform"
-import png "../../src/png"
-import "../../src/ui"
+import "gt:dbus"
+import host "gt:host"
+import "gt:platform"
+import png "gt:png"
+import "gt:ui"
 
 @(private = "file") desktop :: proc() -> string {
 	v := posix.getenv("GUI_TEST_DESKTOP")

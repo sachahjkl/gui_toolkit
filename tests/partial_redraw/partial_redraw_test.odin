@@ -8,12 +8,12 @@ package partial_redraw_test
 import "core:fmt"
 import "core:log"
 import "core:testing"
-import "../../src/draw"
-import "../../src/markdown"
-import "../../src/platform"
-import "../../src/render"
-import "../../src/testkit/session"
-import "../../src/ui"
+import "gt:draw"
+import "gt:markdown"
+import "gt:platform"
+import "gt:render"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file") WINDOW :: [2]int{640, 480}
 @(private = "file") ROWS :: 40

@@ -5,7 +5,7 @@ package prewarm_test
 // slowest packages of the CI spent most of their time there). A window's renderer still pre-warms: its start hides it.
 
 import "core:testing"
-import "../../src/render"
+import "gt:render"
 
 @(test)
 an_offscreen_renderer_does_not_prewarm :: proc(t: ^testing.T) {

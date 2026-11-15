@@ -5,7 +5,7 @@ package capture_test
 
 import "core:testing"
 import "core:time"
-import "../../src/capture"
+import "gt:capture"
 
 // The first frame is at 0; the next capture waits an interval after the last frame; timestamps count from the first.
 @(test)
