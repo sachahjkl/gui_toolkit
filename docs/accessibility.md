@@ -55,7 +55,7 @@ What the widgets say:
 
 | Widget | Role | Name, states |
 |---|---|---|
-| `button` | Button | its words (a Toggled face: pressed); its tip as description; a glyph alone: its `tip`, else its id |
+| `button` | Button | its words (a Toggled face: pressed; a selected Row: the current page); its tip as description; a glyph alone: its `tip`, else its id |
 | `checkbox`, `radio`, `toggle` | CheckBox, RadioButton, Switch | label, checked |
 | `slider` | Slider | value, min, max, step, value text |
 | `range_slider` | Group of two Sliders (its thumbs) | each: value, min, max (the other thumb), step, value text |

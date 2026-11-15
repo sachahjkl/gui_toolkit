@@ -467,13 +467,14 @@ font_picker_row :: proc(st: ^Font_Picker, fam: ^Font_Families, i: int, value, de
 		current = ascii.equal_fold(f.name, value)
 	}
 	selected := st.vl.sel == i
-	push_tags("menu_item")
+	push_tags("menu_item", "nav")
 	defer pop_tags()
 	if selected { push_tags("selected") }
 	defer if selected { pop_tags() }
-	next({width = fill(), height = px(row_h), axis = .X, cross = .Center})
-	rb := build_box({.Clickable, .Draw_Hot_Effects}, vlist_row_name(i))
-	if selected { rb.custom = palette_selected_draw }
+	next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = font_size() * CONTROL_RADIUS_EM})
+	flags := Box_Flags{.Clickable, .Draw_Hot_Effects, .Row}
+	if selected { flags += {.Draw_Background, .Chosen} }
+	rb := build_box(flags, vlist_row_name(i))
 	a11y_default(rb, {role = .List_Box_Option, name = title, selected = selected, position = i + 1})
 	sig := signal(rb)
 	if sig.hovering && s.mouse_moved && st.vl.sel != i { st.vl.sel = i }

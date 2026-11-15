@@ -23,9 +23,7 @@ package ui
 //   if c, ok := ui.palette_chosen(&palette); ok { if i, is := ui.palette_chosen_command(&palette, c); is { run(Cmd(i)) } }
 
 import "core:fmt"
-import "core:math"
 import "core:strings"
-import "../draw"
 import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
@@ -234,24 +232,7 @@ command_typing_keys :: proc(commands: []Command, allocator := context.temp_alloc
 }
 
 ////////////////////////////////
-// The palette's matcher and its selected row (palette.odin)
-
-// The selected row: sunk in a well with a bar of the accent at its left, its text in the theme's own colour. A raised
-// face of the accent (a button's) put the text, and what the search found in it, on a colour too close to theirs.
-@(private)
-palette_selected_draw :: proc(b: ^Box, _: rawptr, dc: ^draw.Context) {
-	s := gs()
-	p := px1()
-	r := b.rect
-	side := math.round(6 * scale())   // (off the dialog's sides)
-	r.min.x += side
-	r.max.x -= side
-	well := color_from_tags(s, b.tags_key, "well")
-	if machined() { machined_well(dc, r, 0, well) } else { draw.rect(dc, r, well) }
-	bar := math.round(2 * scale())
-	inset := math.round(r.max.y - r.min.y) * 0.25
-	draw.rect(dc, {{r.min.x + 2 * p, r.min.y + inset}, {r.min.x + 2 * p + bar, r.max.y - inset}}, color_from_tags(s, b.tags_key, "accent"), bar * 0.5)
-}
+// The palette's matcher (palette.odin)
 
 // What a palette makes of `query` for one of its entries, best first: its label holds it whole or at the starts of its words
 // (fuzzy_words), then with its tags (other words it is found by), then with its group; then the same with a slip or two in

@@ -267,11 +267,12 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = children_sum() }
 	m.axis = .X
-	m.radius = 0   // (a row is square, whatever the style: its fill runs from edge to edge, row under row)
+	// (its face's corners, inset in it, are a control's: the rounding scales them; `next`'s radius = 0 squares them)
+	if m.radius == nil { m.radius = font_size() * CONTROL_RADIUS_EM }
 	s.next_mod = m
 	s.has_next = true
-	flags := Box_Flags{.Clickable}
-	if lit { flags += {.Draw_Background} }
+	flags := Box_Flags{.Clickable, .Row}
+	if lit { flags += {.Draw_Background, .Chosen} }
 	// rows that can be chosen lift their own face under the pointer (theme: "list_row hover_fill", face.odin), headers do not
 	// (and stay lit while the pointer is on a button of theirs)
 	if selectable { flags += {.Draw_Hot_Effects, .Hot_Within}; push_tags("list_row") }

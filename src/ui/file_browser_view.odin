@@ -341,18 +341,19 @@ file_place_row :: proc(fb: ^File_Browser, p: platform.File_Place, marked: string
 	em := font_size()
 	on := marked != "" && p.path == marked
 	name := p.name != "" ? p.name : file_path_name(p.path, fb.sep)
-	push_tags("list_row")
+	push_tags("list_row", "nav")
 	defer pop_tags()
 	if on { push_tags("selected") }
 	defer if on { pop_tags() }
-	next({width = fill(), height = px(dense(em * 1.9)), axis = .X, cross = .Center, radius = em * 0.35})
-	flags := Box_Flags{.Clickable, .Focusable, .Draw_Hot_Effects}
-	if on { flags += {.Draw_Background} }
+	next({width = fill(), height = px(dense(em * 1.9)), axis = .X, cross = .Center, radius = em * CONTROL_RADIUS_EM})
+	flags := Box_Flags{.Clickable, .Focusable, .Draw_Hot_Effects, .Row}
+	if on { flags += {.Draw_Background, .Chosen} }
 	b := build_box(flags, fmt.tprintf("###fb_place_%d", n))
 	a11y_default(b, {role = .Link, name = name, description = p.path, current = on ? .Location : .False})
 	sig := signal(b)
 	if parent(b) {
-		spacer(px(em * 0.4))
+		// (inside the face, inset in the row, past the accent's bar of the place shown)
+		spacer(px(em * 0.75))
 		icon(p.icon != "" ? p.icon : lucide.FOLDER, em * 1.5, nil, lucide_icons())
 		spacer(px(em * 0.3))
 		next({width = fill(), height = pct(1), text_pad = 0})

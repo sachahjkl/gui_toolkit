@@ -158,6 +158,7 @@ Button_Face :: enum u8 {
 	Ghost,     // no face until the pointer is over it (a tool among many); an intent colours its words
 	Toggled,   // held down: the option chosen (Box_Flag .Held)
 	Link,      // no face at all: words that say an act and do it, as a link: weak like a hint, lit under the pointer
+	Row,       // a line of a navigation (a sidebar's page): a row's face, inset and rounded, under the pointer; `selected`: the selected row's, with the accent's bar
 }
 
 // How a button looks and is laid out, apart from its id, its words and its glyph (button).
@@ -169,6 +170,7 @@ Button_Options :: struct {
 	quiet:     bool,                 // a secondary act: smaller words, a Neutral one's weak until the pointer is over it
 	left:      bool,                 // what is in it at its left, whatever the style's text_align
 	lit:       bool,                 // drawn as under the pointer (while its menu is open)
+	selected:  bool,                 // the Row face: the place the user is (a sidebar's page shown)
 	disabled:  bool,                 // shown faded, not clickable
 	tip:       string,               // a tooltip when the pointer rests on it ("" none), its description for a screen reader
 	icon_font: font.Font_Id,         // the glyph's font (0: State.icon_font; lucide_icons() for Lucide's)
@@ -224,20 +226,19 @@ next_size :: proc(width: Size, height: f32) {
 @(private = "file")
 button_glyph :: proc(id, icon: string, face: Button_Face, o: Button_Options) -> Signal {
 	s := gs()
-	push_button_tags(o.intent, face, face == .Ghost ? "icon_button" : "button")
+	push_button_tags(o.intent, face, face == .Ghost ? "icon_button" : "button", o.selected)
 	defer pop_tags()
 	if face == .Ghost { if ink, ok := button_ink(o.intent).?; ok { next_default({fg = ink}) } }
 	if c, ok := o.icon_color.?; ok { next_default({fg = c}) }
 	next_size(o.width, o.height)
+	if face == .Row { next_default({radius = font_size() * CONTROL_RADIUS_EM}) }
 	if style({font = o.icon_font != 0 ? o.icon_font : s.icon_font}) {
 		aligned := text_align_given()
-		flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Text, .Draw_Hot_Effects, .No_Text_Trunc}
-		if face != .Ghost { flags += {.Draw_Border} }
-		if face == .Toggled { flags += {.Held} }
-		if o.lit { flags += {.Lit} }
+		flags := button_flags(face, o) + {.Draw_Text, .No_Text_Trunc}
+		if face != .Ghost && face != .Row { flags += {.Draw_Border} }
 		b := build_box(flags, button_key(icon, id))
 		if !aligned { b.text_align = .Center }
-		if face != .Ghost { b.squish = press_squish(b) }
+		if face != .Ghost && face != .Row { b.squish = press_squish(b) }
 		button_a11y(b, face, o.tip != "" ? o.tip : hash_part(id), o.tip)
 		sig := signal(b)
 		button_tip(sig, o.tip)
@@ -298,7 +299,7 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 	align := Text_Align.Center
 	if o.left { align = .Left } else if a, given := m.text_align.?; given { align = a } else if top_style().text_aligned { align = top_style().text_align }
 
-	push_button_tags(o.intent, face)
+	push_button_tags(o.intent, face, selected = o.selected)
 	defer pop_tags()
 	set_next_axis(.X, .Center)
 	s.next_mod.width = w == {} ? children_sum() : w
@@ -307,12 +308,12 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 	ink := face == .Ghost ? button_ink(o.intent) : nil
 	fg := m.fg
 	if fg == nil { fg = ink }
-	flags := Box_Flags{.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects}
-	if face == .Toggled { flags += {.Held} }
-	if o.lit { flags += {.Lit} }
+	flags := button_flags(face, o)
+	if face != .Row { flags += {.Draw_Border} }
 	b := build_box(flags, button_key("", id))
 	b.text_align = align
-	b.squish = press_squish(b)
+	// (a row does not shrink pressed: it is a place, not a key)
+	if face != .Row { b.squish = press_squish(b) }
 	sig = signal(b)
 	button_a11y(b, face, "", o.tip)
 	button_tip(sig, o.tip)
@@ -400,8 +401,13 @@ button_link :: proc(id, text, icon: string, o: Button_Options) -> Signal {
 // Pushes the tags of a button's box, one group (pop_tags once): `base` ("button", "icon_button"), and the intent's
 // (intent_tag) or, for a ghost, "ghost_button": a ghost has no face at rest, whatever its intent (button_ink colours its
 // words).
+// A Row is a row of a navigation, not a button: its tags are a list's row's ("list_row", "nav", and "selected").
 @(private)
-push_button_tags :: proc(intent: Intent, face: Button_Face, base := "button") {
+push_button_tags :: proc(intent: Intent, face: Button_Face, base := "button", selected := false) {
+	if face == .Row {
+		if selected { push_tags("list_row", "nav", "selected") } else { push_tags("list_row", "nav") }
+		return
+	}
 	tag := face == .Ghost ? (base == "button" ? "ghost_button" : "") : intent_tag(intent)
 	if tag != "" { push_tags(base, tag) } else { push_tags(base) }
 }
@@ -440,7 +446,24 @@ button_tip :: proc(sig: Signal, tip: string) {
 button_a11y :: proc(b: ^Box, face: Button_Face, name, tip: string) {
 	info := A11y_Info{role = .Button, name = name, description = tip != name ? tip : ""}
 	if face == .Toggled { info.toggled = .True }
+	if face == .Row && .Chosen in b.flags { info.current = .Page }
 	a11y_default(b, info)
+}
+
+// A button's flags for its face (its border apart: the caller's): a Row is a row's (row_face.odin), its background
+// only when selected.
+@(private = "file")
+button_flags :: proc(face: Button_Face, o: Button_Options) -> (flags: Box_Flags) {
+	flags = {.Clickable, .Focusable, .Draw_Hot_Effects}
+	if face == .Row {
+		flags += {.Row}
+		if o.selected { flags += {.Draw_Background, .Chosen} }
+	} else {
+		flags += {.Draw_Background}
+	}
+	if face == .Toggled { flags += {.Held} }
+	if o.lit { flags += {.Lit} }
+	return
 }
 
 // How much a pressed button shrinks: the theme's press_squish while the left button is held on it (at once), else 0.

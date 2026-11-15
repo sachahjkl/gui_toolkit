@@ -70,6 +70,11 @@ entries := [?]Entry{
 	{"button segment sheen", .White, 0},
 	{"menu_item background", .Panel2, 0}, {"menu_item sheen", .White, 0},
 	{"selected background", .Accent, 0.22}, {"selected border", .Accent, 1}, {"selected sheen", .White, 0.6},
+	// the accent's bar at the leading edge of a navigation's selected row (a sidebar's page, a place, the palette's row:
+	// tag "nav"; row_face.odin); a list's or a table's row has none. Its bar says where the user is: its face is a
+	// calmer tint than a list's or a menu's selection, and a weak text on it (the palette's keys) stays readable. (Before
+	// the menu_item's: the palette's row is both, and ties go to the first.)
+	{"nav row_mark", .Accent, 1}, {"row_mark", .Accent, 0}, {"nav selected background", .Accent, 0.13},
 	// the selected row of a menu is a filled, rounded row (a tint of the accent, no outline): the outline of a selected
 	// item belongs to lists and fields, and a ring around a row with a faint fill reads as a focus box, not as a highlight
 	{"menu_item selected background", .Accent, 0.30}, {"menu_item selected border", .Accent, 0},

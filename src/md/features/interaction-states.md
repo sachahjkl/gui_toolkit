@@ -65,6 +65,50 @@ Some widgets draw their face in a custom draw. Each takes the states of its clic
   opaque over the title bar: already their own face.
 - **A folded pane's strip** (`pane_draw`): its face is `state_fill`'s opaque step.
 
+### Rows: an inset, rounded face
+
+A row of a list, of a table, of a menu, of the palette, of a file browser's places, of a sidebar (`.Row`) drew its hover
+and its selection as a rectangle from edge to edge, square, flat. The owner's verdict: "too plain and square, sharp
+angle". A row now draws its face as a control does, inside its box (row_face.odin):
+
+- **Inset.** The face is `ROW_FACE_INSET_EM` (0.3 em) in from each side and `ROW_FACE_GAP_PX` (1 px) in from the top and
+  the bottom: two rows under the pointer one after the other, or a row under the pointer under a selected one, read as
+  two faces. The face is behind the row's content: nothing in the row moves, the box's rect and layout are unchanged.
+- **Rounded as the controls.** Its radius is the box's own, through `box_drawn_radius`, the path of a button's: the row
+  widgets give their box `CONTROL_RADIUS_EM` unless the program's `next` says otherwise. So the rounding setting scales
+  it, rounding 0 and the edged finish make it square, and a program that wants square rows gives the row
+  `radius = 0`. No radius of the rows' own. It is at most half the face's height (a pill, never a blob).
+- **Consecutive selected rows are one block.** A selected row whose neighbour above (or below) is selected and touches
+  it is joined to it: no gap there, square corners there. The run is one rounded block, as Finder draws a selection of
+  several files; separate pills with a pixel between them read as a striped column. Each row paints the whole run's
+  face clipped to its own rect, so a finish's gradient and lit line run over the whole block, once. The run is looked
+  for among the row's siblings, and only while they are in the list's view: a cost bound by the rows shown, not by the
+  rows selected.
+- **In the finish.** Flat: a plain fill. Gradient: a soft vertical gradient and a faint lit line along its top.
+  Glass: a calm gloss (its upper part a little whiter), a thin rim of light, and for a selection a fine edge of the
+  accent, as a selection of the system's glass did: the full glossy plate of a button was too loud behind text.
+  Machined: a low plate, its top lit and its bottom shaded, faint under the pointer, stronger when selected. Edged: the
+  same drawn crisp, a lit hairline on top and a shade line under it. Pressed, the light turns over (lit_face's sunk).
+- **Selected.** The selection's tint (`selected`, or `weak_selected` when the list does not have the keyboard or the
+  window is not the user's) is the face at rest; under the pointer it lifts one step (face_step), as before. A
+  navigation's row (a sidebar's page, a file browser's place: tag `nav`) adds a short rounded bar of the accent at the
+  face's leading edge (theme: `row_mark`), on a calmer tint (`nav selected background`): the bar says where the user
+  is, and a weak text on the face (the palette's keys) stays readable, which the palette's old well was made for. Lists
+  and tables have no bar: their content starts close to the face's edge,
+  a bar there met the icons, and the strong and weak tints already say whether the list has the keyboard.
+- **A row's ground stays square.** A list's zebra stripe and a row's own tint (`list_row`'s `tint`) are not a state:
+  they run from edge to edge, row under row, and the face is drawn over them.
+
+Hover and selection animate as every face: hot_t with the theme's ease, the background's colour cross-fade; with the
+animations off, they jump.
+
+The palette's rows, a dialog's choice rows (`choice_row`) and the font picker's drew their selection as a well with a bar
+of the accent, square and full width: they are rows of the same kind, and draw the same face now (with the bar: they
+are what the keyboard moves through, a navigation).
+
+A sidebar's entry is a button of face `.Row` (`selected` says the page shown): it was a ghost button and a toggled one,
+a key pressed in, which read as a control that is on, not as the place where the user is.
+
 `state_fill(b, name, under)` is for a program's own custom draw: the opaque face of a state (`"hover_fill"`,
 `"press_fill"`) over `under`. A program's own box with `.Draw_Hot_Effects` needs nothing: draw_box draws its face by
 the rule above.
@@ -91,5 +135,10 @@ A list's selected rows are `selected` while the list has the keyboard and the wi
 - **Keep the overlay and align it.** Aligned, it was still a veil over the design: the gradient and the bevel did not
   move.
 - **A plate behind the mark.** Larger than the box by definition; the box itself must react.
+- **A row's face from edge to edge** (the previous design): square and flat, it read as a block of colour, not as a
+  thing under the pointer.
+- **Selected rows as separate pills** (a pixel between them, as Windows' Explorer): a selection of ten files was a
+  striped column. Joined, it is one block, and a row under the pointer next to it stays a face of its own.
+- **A radius of the rows' own:** two roundings in one window, and a program's square look (rounding 0) left rounded rows.
 - **One colour per state in the theme (hover face, press face).** The steps are fractions toward the tint, so that every
   surface (a button, a soft intent button, a row on a card) gets its own lighter or deeper face.

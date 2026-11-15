@@ -121,7 +121,7 @@ with (`box_drawn_radius`), and draw the control with the radius it returns. A bo
 the same rule (`box_drawn_radii`); a dialog's close cross is placed by it (the views' header, [views](views.md)).
 
 What a rounded frame holds is never rounded a second time inside it: rows whose backgrounds run from side to side (a
-table's stripes) are square, and clipped to the frame's inside, where they take its curve at a corner. `clip_inside_open()`,
+table's stripes, a list's zebra) are square (a row's hover and selection are a face inset in it, rounded on its own), and clipped to the frame's inside, where they take its curve at a corner. `clip_inside_open()`,
 first in the frame, and `clip_inside_close()`, last in it, clip what is drawn between them to the frame's rect a line in
 (its rim stays over them), its corners as drawn less that line (`clip_inside_push(dc, frame)` from a custom draw: a floating
 dock panel). A frame its program draws itself gives the box its radius, so that the clip has the same corners.
@@ -161,6 +161,21 @@ ghost and glyph buttons, the tabs; 0 for rows).
 | `Gradient` | the face lifts, its shade and lit line kept | the shade turns over: its top darker, its bottom lighter, no lit line |
 | `Glass` | the face lifts, its gloss kept | most of the gloss goes, the white rim too |
 | `Machined`, `Edged` | the bevel's face lighter and its rim brighter; a well's face lifts and its lit rim brightens; a ghost's key rises out of the plate | the key goes in |
+
+A row's face (a list's, a table's, a menu's, the palette's, a sidebar's: [widgets.md](widgets.md), "States") is inset
+in the row and rounded as a button, and painted by the finish at its own, lower strength: a selected face fully, a face
+under the pointer alone half as much.
+
+| Finish | A row's face |
+|---|---|
+| `Flat` | a plain fill |
+| `Gradient` | a soft gradient (its top 5 % toward white, its bottom 5 % toward black) and a faint lit line along its top |
+| `Glass` | its upper half a little whiter, a thin rim of light; selected, a fine edge of the accent (no glossy plate: it was loud behind text) |
+| `Machined` | a low plate: its top lit, its bottom shaded, a lit line along its top; selected, a faint dark edge |
+| `Edged` | the same, crisp: a lit hairline along its top, a shade line along its bottom |
+
+The theme's entries: `selected` and `weak_selected` (the selection's tint), `nav selected background` (a navigation's
+calmer tint), `row_mark` (the accent's bar of a navigation's selected row: `nav row_mark`; 0 elsewhere).
 
 ## Button variants
 

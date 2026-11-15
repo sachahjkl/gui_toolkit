@@ -140,14 +140,14 @@ sidebar :: proc(app: ^App, em: f32) {
 					if s == .Settings { continue }
 					ui.next({width = ui.fill(), height = ui.px(em * 2.3), axis = .X})
 					if ui.row(id = fmt.tprintf("###navrow%v", s)) {
-						ui.spacer(ui.px(em * 0.6))
-						face := s == shown ? ui.Button_Face.Toggled : .Ghost
-						sig := ui.button(fmt.tprintf("###nav%v", s), SCENE_TITLES[s], SCENE_ICONS[s], {face = face, width = ui.fill(), left = true})
+						// (a row's face is inset in it: its face stands 0.6 em from the sidebar's sides)
+						ui.spacer(ui.px(em * (0.6 - ui.ROW_FACE_INSET_EM)))
+						sig := ui.button(fmt.tprintf("###nav%v", s), SCENE_TITLES[s], SCENE_ICONS[s], {face = .Row, selected = s == shown, width = ui.fill(), left = true})
 						if s == shown { ui.strip_reveal(sig.box) }
 						if sig.clicked { app.scene = s }
-						ui.spacer(ui.px(em * 0.6))
+						ui.spacer(ui.px(em * (0.6 - ui.ROW_FACE_INSET_EM)))
 					}
-					ui.spacer(ui.px(em * 0.25))
+					ui.spacer(ui.px(em * 0.1))
 				}
 				ui.spacer(ui.px(em * 0.6))
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
