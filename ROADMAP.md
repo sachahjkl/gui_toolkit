@@ -2,11 +2,12 @@
 
 ## Now
 
-- **Wren on the toolkit's palette and views.** Wren is the last program with a palette and dialogs of its own: its
-  command registry feeds the toolkit's palette (its tabs under `@`, its history and bookmarks under `/`, its vault
-  under `$`, `about:config` under `:`), and its bookmark, vault and security-key dialogs become views. Intents:
-  [src/md/features/palette.md](src/md/features/palette.md), [src/md/features/views.md](src/md/features/views.md)
-  (sections 1 and 7).
+- **opencode native and Wren drop their copies.** Each program is a thin layer over the toolkit: what it does again
+  that the toolkit has goes. opencode native: its colour helpers, PNG read, JSON helpers, key/value rows, pill,
+  spinner, time words, segmented control, model picker (the palette's `#` source). Wren: its re-exporting `config` and
+  `i18n` packages, header parsing, size and duration words, JSON quoters and writer, crash bar and crash marker, command
+  line (`gt:cli`), licence, install, diagnostics and update pages and its own updater, syntax colours, changelog and
+  release tools. The smallest first; each session has the list with its files.
 - **No black strip under machined buttons on Windows.** With partial redraw on, Windows 11 shows thin black strips just
   under a row of quiet machined buttons (atelier's Programs step); WebGPU on Linux draws the same scene exactly, so
   the cause is on the Direct3D 11 window's path. `tests/partial_redraw_layers` holds the scene, which the Windows CI runs.
@@ -23,15 +24,13 @@
   and a program without a console that cannot open its window says why in a message box; both are written and
   type-checked, not yet run. A test on the Windows CI (a fault that refuses the hardware device, a child started without
   a console) proves them. Intent: [src/md/infrastructure/no-graphics.md](src/md/infrastructure/no-graphics.md).
-- **opencode native answers --quit.** As papier, classeur, inspecteur and cliche do, it gives `Setup_Options.quit` and
-  takes `instance.MESSAGE_QUIT` in its handler: atelier then closes it cleanly before it installs it, in place of ending
-  its process. Intent: [src/md/features/quit.md](src/md/features/quit.md).
-- **What's new in opencode native.** As papier, classeur, inspecteur and cliche do since their 0.26 and 0.10, it gives
-  its changelog to the settings (`Page_Options.changelog`) and calls `changelog_after_update` at start: after an update,
-  a message that stays opens the page of what changed.
-- **Wren's tab strip on a strip.** Wren's tabs scroll with the toolkit's arrows when they are too many, as `ui.tabs`,
-  the views' and the dock's stacks and classeur's tabs do; today they scroll in their own way. Intent:
-  [src/md/features/strip.md](src/md/features/strip.md).
+- **opencode native and Wren answer --quit.** As papier, classeur, inspecteur and cliche do, each gives
+  `Setup_Options.quit` and takes `instance.MESSAGE_QUIT` in its handler (opencode native first takes a single instance):
+  atelier then closes it cleanly before it installs it, in place of ending its process. Intent:
+  [src/md/features/quit.md](src/md/features/quit.md).
+- **What's new in opencode native and Wren.** As papier, classeur, inspecteur and cliche do since their 0.26 and 0.10,
+  each gives its changelog to the settings (`Page_Options.changelog`) and calls `changelog_after_update` at start:
+  after an update, a message that stays opens the page of what changed.
 - **The last settings that programs copy.** opencode native drops `advanced.frame_rate` for the toolkit's
   `rendering.frame_rate` (`Standard_Targets.pacer`, since 0.269), and Wren its `browser.frame.*`; Wren drops its own
   text backend, emoji and renderer settings. (The
@@ -40,13 +39,18 @@
 - **opencode native on the toolkit's pieces.** Its branch `toolkit-0.266` takes the toolkit's JSON, rich paste
   (`ui.paste_answer`: its menu's Paste attaches an image as Ctrl+V does), kept zooms (`store.Kept`), context menus
   (`ui.context_take`), window place and standard folders in place of its own; it waits for its merge and release.
-- **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate:
-  `gt:image` reads GIF now. The switch is written (`ocn-views/build/gt-image-only.patch`) and waits for WebP on
-  Windows, which the Rust crate reads today. Intent: [src/md/features/image-decode.md](src/md/features/image-decode.md).
-- **Wren logs through `gt:log`.** Wren writes its log through the toolkit, as the other programs do.
-- **One install command line.** `desktop.parse_cli` and `desktop.cli_run` (`--desktop-integration`, their own exit
-  numbers) fold into `gt:setup`'s commands and `cli.Exit`; Wren, their last user, takes `setup.command_of` and
-  `command_run`.
+- **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate. The
+  switch is written (`ocn-views/build/gt-image-only.patch`), and WebP is now inside the toolkit's native library on
+  every system: it waits only for opencode native to move up from toolkit 0.266. Intent:
+  [src/md/features/image-decode.md](src/md/features/image-decode.md).
+- **Streams and sockets in `tk_http`.** A server's event stream and WebSockets over TLS, so opencode native drops ureq
+  and tungstenite, Wren its own WebSocket and the toolkit's CDP client its plain `ws://` one: three copies today.
+- **Secrets sealed for the user.** One package that seals a secret for the user's account (DPAPI on Windows, the Secret
+  Service on Linux), in place of opencode native's and Wren's own.
+- **A cache of decoded pictures.** Textures of pictures kept under a byte budget, as opencode native and Wren each keep
+  their own (images, favicons, system icons).
+- **One URL escaper.** A public escaper of a URL's parts in `tk_http`, in place of opencode native's two and the
+  crash bar's private one (`form_encode` writes a space as `+`, which a path refuses).
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
   `-check:darwin_arm64`), and every portable file names the system's facts, not the system (`SYSTEM_DIRECT3D`,
   `font.SYSTEM_RASTERIZER`); papier, classeur, inspecteur and cliche check theirs for macOS. What is left: opencode

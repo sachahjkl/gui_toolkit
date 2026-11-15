@@ -110,8 +110,8 @@ if setup.command_alone(cmd) { cli.exit(setup.command_run(cmd, setup_options(), p
 `command_run` says what happened on one line, in English (a script reads it): `<name>: installed: <exe>`, `<name>:
 uninstalled (your settings and data stay)`, or why it failed; it ends with a `cli.Exit`, `.Done` or `.Failed`.
 `--status` is `status_text` and `status_exit`: `.Done` for an install there whole, `.Failed` for none or one to repair
-(its words say which). It reads and writes the disk: call it before the window, never from a frame. The flag of `desktop.parse_cli`
-(`Identity.cli_flag`) stays for scripts and tests that want the integration alone.
+(its words say which). It reads and writes the disk: call it before the window, never from a frame. These are the
+program's one install command line.
 
 ## A screen of the program's own
 

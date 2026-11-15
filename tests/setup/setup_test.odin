@@ -328,7 +328,7 @@ an_update_of_the_installed_copy_is_recorded :: proc(t: ^testing.T) {
 		name = "Sample", key = "Sample", slug = "sample", aumid = "GuiToolkit.Sample.Test", description = "A test.",
 		vendor = "Gui Toolkit", exe_name = "sample", entry_marker = "X-Sample-Integration", registry_mark = "SampleIntegration",
 		vendor_key = "GuiToolkitTest", manifest_name = "sample_install.txt", manifest_header = "# Written by the setup tests.",
-		cli_flag = "--desktop-integration", env_prefix = "SAMPLE_DESKTOP_", watch_thread_name = "sample-watch", cleanup_name = "sample_cleanup",
+		env_prefix = "SAMPLE_DESKTOP_", watch_thread_name = "sample-watch", cleanup_name = "sample_cleanup",
 	}, version = "1.0.0", prepare = scratch_prepare, user = &sc}
 	ok, exe := setup.install(cfg, false)
 	testing.expectf(t, ok, "installed: %s", exe)

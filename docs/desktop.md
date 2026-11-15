@@ -37,7 +37,6 @@ them with a job on another thread.
 | `vendor_key` | `FromentSoftware` | `Software\<vendor_key>\<key>` keeps the program's own values (the PATH mark) |
 | `manifest_name`, `manifest_header` | `wren_install.txt` | the installed copy's list of files, and its first line |
 | `launcher_mark` | `(Wren console launcher)` | what the console launcher contains (`""`: the embedded launcher's, which the build gives) |
-| `cli_flag` | `--desktop-integration` | the flag `parse_cli` takes out (`""`: none) |
 | `env_prefix` | `WREN_DESKTOP_` | the prefix of the roots `roots_from_env` reads (`""`: none) |
 | `url_schemes`, `url_flag` | `wren-https`, `--open-url` | the program's own URL schemes, which run `"<exe>" <url_flag> "%1"` |
 | `uninstall_arguments` | `--setup` | Settings > Apps runs `"<exe>" <uninstall_arguments>` |
@@ -301,10 +300,8 @@ per file placed; a hand-edited one never reaches outside its folder.
 
 ## The command line
 
-`parse_cli` takes `<cli_flag>=install|remove|status|uninstall` (or the two-word form) out of
-the arguments; `cli_run` runs it and writes its report with the procedure it is given (`process.console_write`). Exit codes:
-0 done (`status`: installed), 1 failed (`status`: absent), 2 to repair, 3 unreadable, `CLI_UNINSTALL_LATER` (5) uninstalled
-with files left for after the process ends.
+A program's install command line is gt:setup's (`--install`, `--uninstall`, `--setup`, `--status`, `--quit`:
+`setup.command_of`, `setup.command_run`, [setup.md](setup.md)). This package has none of its own.
 
 ## The tests' scratch roots
 

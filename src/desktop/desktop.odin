@@ -50,7 +50,6 @@ Identity :: struct {
 	launcher_mark:   string,   // Windows: what the console launcher contains ("" = the embedded launcher's, launcher.odin)
 
 	// The program's command line.
-	cli_flag:            string,     // "--desktop-integration": parse_cli
 	env_prefix:          string,     // "WREN_DESKTOP_": roots_from_env reads <prefix>MENU_DIR and the others
 	url_schemes:         []string,   // the program's own URL schemes ("wren-https"), registered with the browser registration
 	url_flag:            string,     // "--open-url": a URL scheme runs `"<exe>" <url_flag> "%1"`

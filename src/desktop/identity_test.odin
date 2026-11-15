@@ -18,7 +18,7 @@ test_identity :: proc() -> Identity {
 		entry_marker = "X-Sample-Integration", registry_mark = "SampleIntegration", vendor_key = "GuiToolkitTest",
 		manifest_name = "sample_install.txt", manifest_header = "# Written by the tk_desktop tests.",
 		launcher_mark = "(Sample console launcher)",
-		cli_flag = "--desktop-integration", env_prefix = "SAMPLE_DESKTOP_",
+		env_prefix = "SAMPLE_DESKTOP_",
 		url_schemes = TEST_SCHEMES[:], url_flag = "--open-url", uninstall_arguments = "--uninstall",
 		generic_name = "Sample Program", categories = "Utility;", keywords = "Sample;Test;",
 		nix_runtime_name = "sample-runtime", nixos_libraries = TEST_LIBRARIES[:],
@@ -60,31 +60,6 @@ identity_is_validated :: proc(t: ^testing.T) {
 	o.launcher = nil
 	o.exe = "Z:\\no\\such\\file.exe"
 	testing.expect_value(t, validate(&o, true).error, Error.No_Executable)
-}
-
-@(test)
-cli_flag_parsing :: proc(t: ^testing.T) {
-	id := test_identity()
-	m, rest, bad := parse_cli(id, {"--desktop-integration=install", "https://a.test/"})
-	testing.expect_value(t, m, Cli_Mode.Install)
-	testing.expect_value(t, len(rest), 1)
-	testing.expect_value(t, bad, "")
-	m, rest, bad = parse_cli(id, {"--profile", "x", "--desktop-integration", "status"})
-	testing.expect_value(t, m, Cli_Mode.Status)
-	testing.expect_value(t, len(rest), 2)
-	m, _, bad = parse_cli(id, {"--desktop-integration=frobnicate"})
-	testing.expect_value(t, m, Cli_Mode.None)
-	testing.expect_value(t, bad, "frobnicate")
-	m, rest, _ = parse_cli(id, {"page.html", "--desktop-integrationx=install"})
-	testing.expect_value(t, m, Cli_Mode.None)
-	testing.expect_value(t, len(rest), 2)
-	m, rest, _ = parse_cli(id, {"--uninstall"})
-	testing.expect_value(t, m, Cli_Mode.None)   // (--install and --uninstall are gt:setup's: the whole copy)
-	testing.expect_value(t, len(rest), 1)
-	id.cli_flag = ""
-	m, rest, _ = parse_cli(id, {"--uninstall", "--desktop-integration=install"})
-	testing.expect_value(t, m, Cli_Mode.None)   // (a program without the flag keeps its arguments)
-	testing.expect_value(t, len(rest), 2)
 }
 
 @(test)
