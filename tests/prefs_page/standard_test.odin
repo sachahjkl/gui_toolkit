@@ -46,6 +46,21 @@ only_the_sets_asked_register :: proc(t: ^testing.T) {
 	prefs_page.standard_register(&p, {.Appearance}, prefs_page.STANDARD_DEFAULTS, context.temp_allocator)
 	testing.expect(t, config.ref_of(&p, "appearance.mode") != config.NO_REF, "the look is there")
 	testing.expect(t, config.ref_of(&p, "general.menu") == config.NO_REF, "the session's are not")
+	testing.expect(t, config.ref_of(&p, prefs_page.ROWS_ZEBRA_PREF) == config.NO_REF, "no tables asked, no rows")
+}
+
+// A program with tables asks for the rows' look, with its own defaults; the user's choice then reads back.
+@(test)
+the_rows_look_has_the_programs_defaults :: proc(t: ^testing.T) {
+	p := config.prefs_make()
+	defer config.prefs_destroy(&p)
+	d := prefs_page.STANDARD_DEFAULTS
+	d.values = {{prefs_page.ROWS_ZEBRA_PREF, "true"}}
+	prefs_page.standard_register(&p, {.Appearance, .Rows}, d, context.temp_allocator)
+	testing.expect_value(t, prefs_page.rows_look(&p), prefs_page.Rows_Look{zebra = true})
+	testing.expect_value(t, config.group_title(&p, "appearance.rows"), "Rows of tables")
+	testing.expect_value(t, config.set_from_string(&p, prefs_page.ROWS_RULES_PREF, "true", .User), config.Set_Error.None)
+	testing.expect_value(t, prefs_page.rows_look(&p), prefs_page.Rows_Look{zebra = true, rules = true})
 }
 
 // update.channel is there only for a program that has channels, as a choice of them; update_source reads it with the

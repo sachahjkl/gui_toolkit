@@ -667,6 +667,21 @@ fr En bas au centre
 en Bottom right
 fr En bas à droite
 
+en Rows of tables
+fr Lignes des tableaux
+
+en Alternating rows
+fr Lignes alternées
+
+en Every second row of a table a shade off, so that a line of numbers reads across.
+fr Une ligne sur deux d'un tableau d'une teinte voisine, pour qu'une ligne de nombres se lise d'un bout à l'autre.
+
+en Rules
+fr Filets
+
+en A thin line under each row of a table.
+fr Un trait fin sous chaque ligne d'un tableau.
+
 en Text and fonts
 fr Texte et polices
 
