@@ -126,6 +126,24 @@ query_append :: proc(url: string, params: []Param, allocator := context.allocato
 	return strings.to_string(b)
 }
 
+// `s` encoded as one part of a URL (a path's segment, a query's value): RFC 3986's unreserved characters (letters,
+// digits, -._~) stay, any other byte is %XX, a space %20 and a slash %2F. A form's body is form_encode's (a space is +,
+// which a path refuses).
+component_encode :: proc(s: string, allocator := context.allocator) -> string {
+	b := strings.builder_make(0, len(s), allocator)
+	hex := "0123456789ABCDEF"
+	for c in transmute([]u8)s {
+		switch c {
+		case 'a' ..= 'z', 'A' ..= 'Z', '0' ..= '9', '-', '.', '_', '~': strings.write_byte(&b, c)
+		case:
+			strings.write_byte(&b, '%')
+			strings.write_byte(&b, hex[c >> 4])
+			strings.write_byte(&b, hex[c & 15])
+		}
+	}
+	return strings.to_string(b)
+}
+
 // `s` encoded as a form's name or value: letters, digits and *-._ stay, a space is +, any other byte is %XX.
 form_encode :: proc(s: string, allocator := context.allocator) -> string {
 	b := strings.builder_make(0, len(s), allocator)

@@ -210,6 +210,13 @@ a_url_encoded_form :: proc(t: ^testing.T) {
 	testing.expect_value(t, query_append("https://h/p", nil, context.temp_allocator), "https://h/p")
 }
 
+// A part of a URL: a space %20 (never +), a slash %2F, ~ kept, a UTF-8 byte by byte.
+@(test)
+a_part_of_a_url :: proc(t: ^testing.T) {
+	testing.expect_value(t, component_encode("a b&c=d/é~", context.temp_allocator), "a%20b%26c%3Dd%2F%C3%A9~")
+	testing.expect_value(t, component_encode("", context.temp_allocator), "")
+}
+
 @(test)
 headers_of_an_answer :: proc(t: ^testing.T) {
 	text := "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Two:  b c \r\n folded\r\nbroken line\r\n\r\n"

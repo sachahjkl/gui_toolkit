@@ -13,6 +13,7 @@ package tk_crash_bar
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import http "../http"
 import i18n "../i18n"
 import lucide "../lucide"
 import "../ui"
@@ -227,19 +228,6 @@ escaped_len :: proc(s: string) -> (n: int) {
 	return
 }
 
-// Percent-encodes everything but RFC 3986's unreserved characters (temp memory).
-url_escape :: proc(s: string) -> string {
-	b := strings.builder_make(0, len(s), context.temp_allocator)
-	HEX := "0123456789ABCDEF"   // (a variable: a constant string cannot be indexed by a run-time value)
-	for i in 0 ..< len(s) {
-		c := s[i]
-		switch c {
-		case 'A' ..= 'Z', 'a' ..= 'z', '0' ..= '9', '-', '.', '_', '~': strings.write_byte(&b, c)
-		case:
-			strings.write_byte(&b, '%')
-			strings.write_byte(&b, HEX[c >> 4])
-			strings.write_byte(&b, HEX[c & 15])
-		}
-	}
-	return strings.to_string(b)
-}
+// A part of the issue's URL, percent-encoded (temp memory).
+@(private)
+url_escape :: proc(s: string) -> string { return http.component_encode(s, context.temp_allocator) }

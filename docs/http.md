@@ -55,6 +55,8 @@ Pure procedures: no system call, testable anywhere.
 - `form_urlencoded(params)` gives an `application/x-www-form-urlencoded` body from `Param`s: `a=1&b=x+y`.
 - `query_append(url, params)` adds params to a URL's query string (`?` or `&`, before a fragment).
 - `form_encode(s)` encodes one name or value: letters, digits and `*-._` stay, a space is `+`, any other byte is `%XX`.
+- `component_encode(s)` encodes one part of a URL (a path's segment, a query's value outside a form): RFC 3986's
+  unreserved characters (letters, digits, `-._~`) stay, any other byte is `%XX` (a space `%20`, a slash `%2F`).
 
 ## Errors
 

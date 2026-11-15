@@ -49,8 +49,6 @@
   Service on Linux), in place of opencode native's and Wren's own.
 - **A cache of decoded pictures.** Textures of pictures kept under a byte budget, as opencode native and Wren each keep
   their own (images, favicons, system icons).
-- **One URL escaper.** A public escaper of a URL's parts in `tk_http`, in place of opencode native's two and the
-  crash bar's private one (`form_encode` writes a space as `+`, which a path refuses).
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
   `-check:darwin_arm64`), and every portable file names the system's facts, not the system (`SYSTEM_DIRECT3D`,
   `font.SYSTEM_RASTERIZER`); papier, classeur, inspecteur and cliche check theirs for macOS. What is left: opencode
