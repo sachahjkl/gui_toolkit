@@ -84,15 +84,18 @@ key_text_hotkey :: proc(hk: Hotkey, allocator := context.temp_allocator) -> stri
 }
 
 // Keys written in English: hotkey_text's form ("Ctrl+Shift+Page_Up"), a portal's ("CTRL+SHIFT+a"), a program's table's
-// ("Ctrl+Esc", "PageDown"), a list of them apart by commas. Each word that names a modifier or a key becomes its text; a
-// word that names none (a sign, a character, "Click") stays as it is, and so do the separators and spaces.
+// ("Ctrl+Esc", "PageDown"), a list of them apart by commas or by " / " (the sheet's: "Up / Down"). Each word that names a
+// modifier or a key becomes its text; a word that names none (a sign, a character, "Click") stays as it is, and so do
+// the separators and spaces.
 key_text_written :: proc(text: string, allocator := context.temp_allocator) -> string {
 	if text == "" { return "" }
 	b := strings.builder_make(allocator)
 	start := 0
 	for i := 0; i <= len(text); i += 1 {
-		// (a word ends at a "+" that is not itself the key, at a "," or at the end: "Ctrl++" is Ctrl and "+")
-		if i < len(text) && !(text[i] == '+' && i > start) && text[i] != ',' { continue }
+		// (a word ends at a "+" that is not itself the key, at a ",", at a "/" with a space on each side, or at the end:
+		// "Ctrl++" is Ctrl and "+", "Ctrl+/" is Ctrl and "/")
+		listed := i < len(text) && text[i] == '/' && i > 0 && text[i - 1] == ' ' && i + 1 < len(text) && text[i + 1] == ' '
+		if i < len(text) && !(text[i] == '+' && i > start) && text[i] != ',' && !listed { continue }
 		word_text(&b, text[start:i])
 		if i < len(text) { strings.write_byte(&b, text[i]) }
 		start = i + 1

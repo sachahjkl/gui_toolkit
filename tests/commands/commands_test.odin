@@ -10,6 +10,7 @@ import "core:mem"
 import "core:testing"
 import "core:time"
 import "gt:font"
+import i18n "gt:i18n"
 import lucide "gt:lucide"
 import "gt:platform"
 import "gt:ui"
@@ -150,7 +151,7 @@ SHEET_EXTRA := [?]ui.Sheet_Line{
 }
 
 // Lines that are no command (a widget's keys): one of a group the commands have goes after that group's last command,
-// one of a group they lack goes under its own heading after them all; their keys are shown as written.
+// one of a group they lack goes under its own heading after them all; their keys in English read as written.
 @(test)
 the_sheet_lists_lines_that_are_no_command :: proc(t: ^testing.T) {
 	f: Fx
@@ -174,6 +175,78 @@ the_sheet_lists_lines_that_are_no_command :: proc(t: ^testing.T) {
 	heading, history, palette := y(&f, "Composer"), y(&f, "Earlier prompts"), y(&f, "Command palette")
 	testing.expectf(t, palette >= 0 && heading > palette && history > heading, "its own group after the commands (palette %v, heading %v, line %v)", palette, heading, history)
 	testing.expect(t, find_text(&f, "Up / Down") != nil)
+}
+
+@(private = "file") TABLE_A := [?]ui.Command{{id = "alpha", label = "Alpha", group = "Tests", keys = {{.F2, {}}}}}
+@(private = "file") TABLE_B := [?]ui.Command{{id = "beta", label = "Beta", group = "Tests", keys = {{.F4, {}}}}}
+@(private = "file") EXTRA_A := [?]ui.Sheet_Line{{group = "Tests", keys = "F6", label = "Gamma"}}
+@(private = "file") EXTRA_B := [?]ui.Sheet_Line{{group = "Tests", keys = "F7", label = "Delta"}}
+
+@(private = "file")
+Sheet_Set_Run :: struct { sheet: ui.Shortcuts_Sheet, opened, swap: bool }
+
+// A program that makes its table again (another language) hands it to the open sheet: the sheet lists the new commands
+// and lines at its next build and stays open; a sheet that is not open stays closed.
+@(test)
+the_sheet_takes_a_new_table_while_open :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r: Sheet_Set_Run
+	defer ui.shortcuts_sheet_destroy(&r.sheet)
+	sheet :: proc(f: ^Fx, user: rawptr) {
+		r := (^Sheet_Set_Run)(user)
+		if !r.opened { r.opened = true; ui.shortcuts_sheet_open(&r.sheet, TABLE_A[:], version = 1, extra = EXTRA_A[:]) }
+		if r.swap { r.swap = false; ui.shortcuts_sheet_set(&r.sheet, TABLE_B[:], 2, EXTRA_B[:]) }
+	}
+	frame(&f, nil, sheet, &r)
+	frame(&f, nil, sheet, &r)
+	testing.expect(t, find_text(&f, "Alpha") != nil && find_text(&f, "Gamma") != nil, "the table it was opened with")
+	listings := r.sheet.listings
+	r.swap = true
+	frame(&f, nil, sheet, &r)
+	frame(&f, nil, sheet, &r)
+	testing.expect(t, ui.shortcuts_sheet_is_open(&r.sheet), "still open")
+	testing.expect(t, r.sheet.listings > listings, "listed again")
+	testing.expect(t, find_text(&f, "Beta") != nil && find_text(&f, "F4") != nil, "the new table's command and key")
+	testing.expect(t, find_text(&f, "Delta") != nil && find_text(&f, "F7") != nil, "the new extra line")
+	testing.expect(t, find_text(&f, "Alpha") == nil && find_text(&f, "Gamma") == nil, "nothing of the old table")
+	ui.shortcuts_sheet_close(&r.sheet)
+	frame(&f, nil, sheet, &r)
+	ui.shortcuts_sheet_set(&r.sheet, TABLE_A[:], 3, EXTRA_A[:])
+	frame(&f, nil, sheet, &r)
+	testing.expect(t, !ui.shortcuts_sheet_is_open(&r.sheet), "a closed sheet stays closed")
+}
+
+@(private = "file")
+EXTRA_KEYS := [?]ui.Sheet_Line{
+	{group = "Composer", keys = "Esc, Esc", label = "Interrupt"},
+	{group = "Composer", keys = "Up / Down", label = "Earlier prompts"},
+	{group = "Composer", keys = "Middle click", label = "Paste the selection"},
+}
+
+// An extra line's keys are named in the language in use, as a command's are; a word that names no key stays as written.
+@(test)
+the_sheet_names_an_extra_lines_keys_in_the_language :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	l, bad := i18n.load("fr", nil)
+	defer { i18n.use(nil); i18n.destroy(l) }
+	testing.expect_value(t, len(bad), 0)
+	i18n.use(l)
+	r: Sheet_Run
+	defer ui.shortcuts_sheet_destroy(&r.sheet)
+	sheet :: proc(f: ^Fx, user: rawptr) {
+		r := (^Sheet_Run)(user)
+		if !r.opened { r.opened = true; ui.shortcuts_sheet_open(&r.sheet, PALETTE_COMMANDS[:3], extra = EXTRA_KEYS[:]) }
+	}
+	frame(&f, nil, sheet, &r)
+	frame(&f, nil, sheet, &r)
+	testing.expect(t, find_text(&f, "Échap, Échap") != nil, "Esc, Esc in French")
+	testing.expect(t, find_text(&f, "Haut / Bas") != nil, "Up / Down in French")
+	testing.expect(t, find_text(&f, "Middle click") != nil, "a word that names no key, as written")
+	testing.expect(t, find_text(&f, "Maj+Suppr") != nil, "as a command's keys")
 }
 
 // The palette's matching: the needle whole, or pieces that begin words; never letters scattered in a word.

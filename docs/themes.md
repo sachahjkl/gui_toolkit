@@ -150,7 +150,7 @@ these two its flat form, so one call serves every finish (`machined()`: the reli
 | `machined_bevel(dc, r, radius, face, hot, pressed, glow)` | a raised face; `glow`: a halo under the pointer |
 | `machined_well(dc, r, radius, base, focus, accent, hot)` | a sunken surface, its focus a ring of `accent`; `hot` under the pointer: its face lifts a step, its lit rim brightens |
 | `machined_groove(dc, a, b, vertical)` | a carved line |
-| `machined_plate(dc, r, radius, top, bottom, shadow, rim, border, glow)` | a raised panel: cards, popovers; `border` zero (the default): the relief's edge, another colour of alpha 0: none |
+| `machined_plate(dc, r, radius, top, bottom, shadow, rim, border, glow)` | a raised panel: cards, popovers; `border` a `Maybe(Color)`: nil (the default) the relief's edge, a colour of alpha 0 (`Color{}` included) none |
 | `machined_lamp(dc, c, d, color, lit, glow)` | a status lamp: a glass bead and its halo |
 | `machined_pip(dc, c, d, color)` | a small hole with a dab of colour: what is over |
 | `relief_face(dc, r, color, radius)` | a face of colour lit along its top, shaded along its bottom (a tile, a part of a bar) |

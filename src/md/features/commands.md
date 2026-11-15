@@ -126,7 +126,16 @@ picture, a middle click, Escape twice that stops. They are not in its table, as 
 sheet must list them all the same, or a person never learns them. `shortcuts_sheet_open`'s `extra` takes them as
 `Sheet_Line{group, keys, label}`.
 
-- **Their keys are text, as written.** A middle click or "Esc twice" is no `Chord`; the program says them in its words.
+- **Their keys are text, in a table's English.** A middle click or "Esc, Esc" is no `Chord`, so a line's keys are text.
+  The sheet names each word of it that is a key in the language in use (`platform.key_text`, the words of every
+  command's keys): "Esc, Esc" reads "Échap, Échap" in French, as Escape does on a command's line. Shown as written,
+  every program translated "Esc" itself, and a person read two names for one key on one sheet. A word that names no
+  key ("Middle click") stays as written: the toolkit has no word for it, the program translates it. " / " separates
+  two keys ("Up / Down"), as between a command's keys; a "/" that is a key ("Ctrl+/") has no space on one side.
+  Refused: a line's keys as `Binding`s. A middle click has none, and a line that mixes a key and a click would split.
+- **A new table without reopening.** A program makes its table again when the language changes; the sheet keeps the
+  slices it was given. `shortcuts_sheet_set` swaps the table and the lines, open or not, and `shortcuts_sheet_open`
+  calls it: a program never closes and reopens the sheet to change what it lists (the person's scroll would go).
 - **In their group.** A line of a group the commands have goes after that group's last command (a group that a table
   splits in two runs gets it once, at its end); a line of a group no command has goes under its own heading after the
   commands. A person looks for a key by what it does, and the group says that.

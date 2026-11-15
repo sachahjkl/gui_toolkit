@@ -80,6 +80,7 @@ card_open :: proc(id: string, pad_y: f32, name := "", o := Card_Options{}) {
 	c := build_box({.Draw_Background, .Draw_Border, .Plate}, id)
 	if o.look != {} { c.plate = new_clone(o.look, frame_allocator()) }
 	a11y_default(c, {role = .Group, name = name})
+	append(&gs().card_stack, c)
 	push_parent(c)
 	set_next_axis(.X)
 	gs().next_mod.width = fill()
@@ -101,5 +102,14 @@ card_close :: proc(pad_y: f32) {
 	space(CARD_PAD)
 	pop_parent()   // padded row
 	pop_parent()   // card
+	pop(&gs().card_stack)
 	pop_tags()
+}
+
+// The box of the innermost card (card, list_card) being built, its .Plate panel; nil outside a card. Inside a card's
+// scope the parent is its body, two boxes in: a program that gives its card the keyboard or reads its rect asks here
+// rather than count the card's inner boxes, which the card may change.
+card_box :: proc() -> ^Box {
+	s := gs()
+	return len(s.card_stack) > 0 ? s.card_stack[len(s.card_stack) - 1] : nil
 }

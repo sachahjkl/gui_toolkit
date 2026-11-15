@@ -117,6 +117,7 @@ destroy :: proc(s: ^State) {
 	delete(s.modals_built)
 	delete(s.list_stack)
 	delete(s.strip_stack)
+	delete(s.card_stack)
 	delete(s.strips)
 	delete(s.radios)
 	delete(s.radios_last)
@@ -343,6 +344,7 @@ end_build :: proc() {
 	assert(len(s.views_space_stack) == 0, "ui: unbalanced views_frame or views_dock")
 	assert(len(s.list_stack) == 0, "ui: unbalanced list scopes")
 	assert(len(s.strip_stack) == 0, "ui: unbalanced strip scopes")
+	assert(len(s.card_stack) == 0, "ui: unbalanced card scopes")
 	assert(len(s.menu_build) == 0, "ui: unbalanced menu scopes")
 
 	views_build(s)   // (the views shown as dialogs, the file browser among them: over the page, under the toasts and the menus)

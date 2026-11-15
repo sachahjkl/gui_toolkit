@@ -52,7 +52,7 @@ a_key_named_by_its_character :: proc(t: ^testing.T) {
 // program adds no key's word). hotkey_text stays English whatever the language: a file keeps it.
 @(test)
 a_key_reads_in_the_language :: proc(t: ^testing.T) {
-	texts :: proc() -> [10]string {
+	texts :: proc() -> [11]string {
 		return {
 			platform.key_text(platform.Key.Page_Down),
 			platform.key_text(platform.Key.Print),
@@ -64,17 +64,21 @@ a_key_reads_in_the_language :: proc(t: ^testing.T) {
 			platform.key_text("CTRL+SHIFT+a"),
 			platform.key_text("Ctrl+Esc, PageUp, Ctrl+,, Ctrl++"),
 			platform.key_text("Shift+Insert, Delete, Return, Page_Down, Escape, Ctrl+Enter, Click"),
+			// (the sheet's list, " / " between two keys; a "/" that is a key stays one)
+			platform.key_text("Up / Down, Ctrl+/ / Shift+/, Esc, Esc"),
 		}
 	}
-	EN :: [10]string{
+	EN :: [11]string{
 		"Page Down", "Print", "Ctrl+Shift+Print", "Alt+Win+Space", "Ctrl+ù", "",
 		"Ctrl+K, Ctrl+Shift+P", "Ctrl+Shift+A", "Ctrl+Escape, Page Up, Ctrl+,, Ctrl++",
 		"Shift+Insert, Delete, Enter, Page Down, Escape, Ctrl+Enter, Click",
+		"Up / Down, Ctrl+/ / Shift+/, Escape, Escape",
 	}
-	FR :: [10]string{
+	FR :: [11]string{
 		"Pg suiv", "Impr. écran", "Ctrl+Maj+Impr. écran", "Alt+Win+Espace", "Ctrl+ù", "",
 		"Ctrl+K, Ctrl+Maj+P", "Ctrl+Maj+A", "Ctrl+Échap, Pg préc, Ctrl+,, Ctrl++",
 		"Maj+Inser, Suppr, Entrée, Pg suiv, Échap, Ctrl+Entrée, Click",
+		"Haut / Bas, Ctrl+/ / Maj+/, Échap, Échap",
 	}
 	en, fr := EN, FR
 	got := texts()

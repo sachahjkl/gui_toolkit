@@ -62,6 +62,16 @@ same key.
   forms its face is the mean of its two colours and its edge is its own colour (else the theme's line). A face that
   kept the theme's colour in the flat finish would make a permission card a plain card there.
 - `list_card` takes the same options: it is the same panel.
+- The edge is a `Maybe(Color)`: nil is the finish's, a colour of alpha 0 is none. A zero colour meant the finish's
+  before, so `Color{}` could not say "no edge", and a program that gave the theme's border made transparent got an edge
+  or none by whether its colour happened to be zero. Two meanings need two values; the same holds for
+  `machined_plate`'s `border`, which drew the same rule. Refused: a `no_border` flag beside the colour, a second field
+  that could disagree with the first.
+- `card_box()` is the card's own box from anywhere in its scope: the innermost card being built (a stack in the
+  window's `State`, as the lists and the strips keep theirs), nil outside a card. A program focused its card or read
+  its rect through `parent_box().parent.parent`, which counts the card's inner boxes (its padded row, its body) and
+  breaks when they change. Refused: an id to look up, which a card without a title would have to be given, and a card
+  that returns its box, which would make `if card(...)` two values at every call.
 - Refused: a `bg` and a `border` through `next`. They are one colour each, a box's animated targets from the theme;
   a gradient, a rim and a shadow have no place there.
 

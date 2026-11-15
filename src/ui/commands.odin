@@ -6,7 +6,7 @@ package ui
 //   chord_text        the text of a key in a menu's line ("Ctrl+Shift+P"); command_tip, a tooltip's ("Kill (Shift+Delete)");
 //                     key_tip, a tooltip's for a control that is no command
 //   palette_commands  the commands source of the command palette (palette.odin)
-//   shortcuts_sheet_open   a view that lists every command's keys, grouped
+//   shortcuts_sheet_open   a view that lists every command's keys, grouped; shortcuts_sheet_set gives it a new table
 //   command_key_types_text, command_typing_keys   a key that types text: not a command's while a text field has the
 //                     keyboard; a program's test lists the ones its tables hold (src/md/features/commands.md)
 //   Command.scope .Window, keys_claim   a window command's keys work whatever has the focus and whatever the page; a
@@ -369,13 +369,15 @@ Shortcuts_Sheet :: struct {
 	entries:  [dynamic]Sheet_Entry,
 	kept:     Sheet_Key,
 	listings: int,            // how many times the list was made (a test reads it)
-	commands: []Command,      // shortcuts_sheet_open's: the program's table, valid while the sheet is open
-	extra:    []Sheet_Line,   // shortcuts_sheet_open's: the lines that are no command, valid while the sheet is open
+	commands: []Command,      // shortcuts_sheet_set's: the program's table, valid while the sheet is open
+	extra:    []Sheet_Line,   // shortcuts_sheet_set's: the lines that are no command, valid while the sheet is open
 	version:  u64,
 }
 
 // A line of the sheet that is no command: a key a widget owns (Up in a composer's history, a middle click). `keys` is
-// shown as written; `group` and `label` are translated as a command's (i18n.tr).
+// written in English as a program's table writes keys ("Up / Down", "Esc, Esc", "Ctrl+Enter"): the sheet names each key
+// in the language in use as it names a command's (platform.key_text); a word that names no key ("Middle click") stays
+// as written, so a program translates such a word itself. `group` and `label` are translated as a command's (i18n.tr).
 Sheet_Line :: struct {
 	group, keys, label: string,
 }
@@ -425,11 +427,18 @@ shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title
 	if !view_registered(vs, SHORTCUTS_VIEW) {
 		view_register(vs, SHORTCUTS_VIEW, sheet_view, View_Options{title = "Keyboard shortcuts", width_em = SHEET_WIDTH_EM})
 	}
-	sheet.commands, sheet.extra, sheet.version = commands, extra, version
+	shortcuts_sheet_set(sheet, commands, version, extra)
 	r := view_open_raw(vs, SHORTCUTS_VIEW, sheet, typeid_of(Shortcuts_Sheet), sheet_instance(sheet), nil)
 	delete(r.title, r.allocator)
 	r.title = strings.clone(title, r.allocator)
 	r.icon = lucide.KEYBOARD
+}
+
+// Gives the sheet another table and other extra lines, open or not, without opening or closing it: a program that
+// makes its table again (another language, a table rebound) hands the new one over, and an open sheet lists it at its
+// next build. `version` and `extra` as shortcuts_sheet_open's: a table rebuilt in place takes another version.
+shortcuts_sheet_set :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, version: u64 = 0, extra: []Sheet_Line = nil) {
+	sheet.commands, sheet.extra, sheet.version = commands, extra, version
 }
 
 shortcuts_sheet_is_open :: proc(sheet: ^Shortcuts_Sheet) -> bool { return view_is_open(views(), SHORTCUTS_VIEW, sheet_instance(sheet)) }
@@ -520,7 +529,7 @@ sheet_body :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, extra: []Sheet_
 				own: bool
 				if line.extra {
 					x := extra[line.index]
-					group, text, keys = x.group, x.label, x.keys
+					group, text, keys = x.group, x.label, platform.key_text(x.keys)
 				} else {
 					c := sheet_command(commands, line.index)
 					group, text, keys = c.group, c.label, keys_all_text(km, c)

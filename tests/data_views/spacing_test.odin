@@ -112,3 +112,35 @@ the_blocks_keep_to_the_scale :: proc(t: ^testing.T) {
 	testing.expectf(t, wl > 0 && wl == wt && wt == wr && wr == wb, "a well's inset, its four sides: %v %v %v %v", wl, wt, wr, wb)
 	testing.expect(t, .Draw_Border not_in w.flags, "a well without an edge draws none")
 }
+
+// What card_box answered at each place of the build: in a card, in a list card's row, in a card inside a card, after
+// the inner card's end, outside every card.
+@(private = "file") Card_Boxes :: struct { card, row, nested, after_nested, outside: ^ui.Box }
+@(private = "file") card_boxes: Card_Boxes
+
+// card_box is the innermost card's own box (its .Plate panel), from anywhere in its scope; none outside a card.
+@(test)
+a_card_gives_its_box :: proc(t: ^testing.T) {
+	card_boxes = {}
+	s := session.start(t, {size = {500, 600}, no_renderer = true, build = proc(s: ^session.Session) {
+		ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(500), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###page") {
+			if ui.card("Outer") {
+				card_boxes.card = ui.card_box()
+				if ui.card("", id = "###inner_card") { card_boxes.nested = ui.card_box() }
+				card_boxes.after_nested = ui.card_box()
+			}
+			if ui.list_card("###list") {
+				if ui.card_row("###r1") { card_boxes.row = ui.card_box() }
+			}
+			card_boxes.outside = ui.card_box()
+		}
+	}})
+	session.frames(s, 2)
+	outer, inner, list := session.get(s, "card_Outer"), session.get(s, "inner_card"), session.get(s, "list")
+	testing.expect(t, card_boxes.card == outer && .Plate in outer.flags, "in a card: its box")
+	testing.expect(t, card_boxes.nested == inner, "in a card inside a card: the inner one")
+	testing.expect(t, card_boxes.after_nested == outer, "after the inner card: the outer one again")
+	testing.expect(t, card_boxes.row == list, "in a list card's row: the list card")
+	testing.expect(t, card_boxes.outside == nil, "outside every card: none")
+}

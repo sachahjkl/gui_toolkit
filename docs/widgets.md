@@ -157,7 +157,7 @@ each card without a title in a list). `o` is its own look, in every finish; a ze
 |---|---|
 | `radius` | its corners, logical pixels (0: 0.6 font size) |
 | `look.top`, `look.bottom` | its face, a gradient from its top to its bottom (the flat forms: their mean) |
-| `look.border` | its edge (a colour of alpha 0: none) |
+| `look.border` | its edge, a `Maybe(Color)` (nil: the finish's; a colour of alpha 0, `Color{}` included: none) |
 | `look.rim` | the light along its top edge, an alpha (machined, edged) |
 | `look.shadow` | its soft shadow, logical pixels (machined, edged; 0: none) |
 
@@ -168,6 +168,17 @@ if ui.card("", id = fmt.tprintf("###perm_%s", p.id), o = {look = look}) { ... }
 
 `ui.list_card(id, o)` takes the same options. A `.Plate` box of a program's own takes a look the same way:
 `b.plate = ui.frame_new(ui.Plate_Look); b.plate^ = look` after `build_box` (this build's arena).
+
+`ui.card_box() -> ^Box`, inside a card's scope (`card` or `list_card`, a row of it too): the card's own box, its `.Plate`
+panel, of the innermost card; nil outside a card. A program gives it the keyboard or reads its rect with it, never by
+counting the card's inner boxes (`parent_box()` in a card is its body, and the boxes between are the card's own):
+
+```odin
+if ui.card("", id = fmt.tprintf("###perm_%s", p.id), o = {look = look}) {
+	if p.focus_now { ui.set_focus(ui.card_box().key) }
+	...
+}
+```
 
 `ui.set_wireframe(state, on)` draws every box as its outline and each gap in the colour of its step, a gap off the
 scale in red, the box under the pointer named: where a page leaves the scale shows at a glance. Ctrl+Alt+Shift+W
