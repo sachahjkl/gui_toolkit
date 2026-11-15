@@ -36,9 +36,10 @@
   native's own `Kept_Zooms` (opencode_native/src/zooms.odin) goes for it.
 - **opencode native's context menus on `ui.context_take`.** The toolkit has the rule (the innermost block takes the
   right press, one a build); opencode native's own `ctx_check` goes for it.
-- **A table of widgets and their behaviours.** The table of widgets × behaviours (wheel, keys, Tab, accessibility,
-  context menu, disabled, tooltip, Shift step, typed value, reset by double click), written down; each empty cell
-  between two widgets of one concept is a bug or a written decision.
+- **Arrows in a group of choices.** `radio`, `segmented` and `tabs` become one Tab stop each, the arrows moving the
+  choice, as on every desktop. Intent: [src/md/features/widget-table.md](src/md/features/widget-table.md) (G1).
+- **A value comes back to its default.** `slider`, `range_slider` and `number` take an optional default, set again by a
+  double click, as a splitter's size is. Intent: [src/md/features/widget-table.md](src/md/features/widget-table.md) (G2).
 - **Small tools that Wren still redoes.** Wren's panel placement (`toolbar_panel_rect`) goes for `ui.menu_open`'s
   `align = .End`, and its `dialog_field` for a plain `ui.line_edit` (`committed`, `cancelled`) or `ui.prompt_open`, which
   already answer Enter and end a view with Escape in one press.
