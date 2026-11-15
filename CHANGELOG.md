@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.262.1] - 2026-11-15
+
+### Fixed
+- **Linux: the session bus kept in memory it did not own**: a thread's session-bus connection (the tray, notifications, the portals, the screen saver's inhibitions, the accessibility bridge) took its memory from the first caller's allocator, and kept writing in it after that allocator freed it. It lives in the heap now, as long as its thread, with the accessibility bus's address and the list of inhibitions. The `host` tests run on Linux too (they crashed there after a few tests).
+- **Two instances of a program no longer hide each other's crashes**: every instance keeps its own session file (`crash.session_file`, `session-<pid>.txt`). One shared file was overwritten by a second instance, so a crash or a kill of the first went unreported, and the clean end of either removed the other's trace. A start reports every session whose process is gone, and leaves the ones that still run. A clean end now marks as seen what was there when its session began: a crash of another instance while it ran is still shown at the next start.
+
 ## [0.262.0] - 2026-11-14
 
 ### Added
@@ -3653,6 +3659,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.262.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.262.1
 [0.262.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.262.0
 [0.261.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.261.1
 [0.261.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.261.0
