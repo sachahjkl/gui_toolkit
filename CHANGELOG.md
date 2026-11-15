@@ -5,6 +5,37 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.263.0] - 2026-11-15
+
+### Added
+- **`fsx.private_dir` and `platform.session_runtime_dir`**: `private_dir(path)` makes a folder only its user can enter (POSIX: 0700, one of this user's open to others closed) and refuses a folder of another user or a link at the name, the checks made on the opened folder. `session_runtime_dir()` says whether the session has a runtime folder of its own, the one gvfs and the portals use (`$XDG_RUNTIME_DIR`, else `/run/user/<uid>`), and which.
+- **`gt:json`**: one JSON helper for every program. Path reads over `core:encoding/json` values with a default that never panics (`tk_json.text(v, "data", 0, "id")`), one string quoter (control characters and DEL escaped, text past ASCII kept as UTF-8, a byte that is no UTF-8 as U+FFFD) and a streaming writer that places the commas, compact or indented. The flowgraph's store, the preferences' JSON and TOML export and the crates' notices use it.
+- **GIF pictures open (`image.decode`, `gif.decode`)**: a GIF file opens as its first frame, as a browser shows it before it plays: both colour tables, transparency and interlaced files; a damaged or cut file is refused, and a file that declares a picture past 8192 x 8192 pixels is refused before any memory is taken for it. `image.file_format` names it `Gif`.
+- **`ui.context_take(box)`: a block's context menu.** A block that is no button (a message, a card, an image) takes a right press for its menu: the innermost that asks keeps it, a field's own menu keeps its press, and nothing under a dialog or a floating panel takes it.
+- **A project's `site build` makes its pictures light.** `Project_Site.images` (`tk_site.images_default()`: the folder img, copies at 720 and 1100 pixels) makes them WebP at their widths and points the pages at them, as opencode native's site already did.
+- **`store.Kept`: a number kept per id.** Read once from a program's store as numbers, clamped, forgotten at its rest value so that it follows the rest when that changes (a session's zoom, a shell's, a pane's width per document).
+
+### Changed
+- **The runtime folder is never one another user can take (`platform.user_dir(.Runtime)`)**: on Linux without `$XDG_RUNTIME_DIR`, it is the session's `/run/user/<uid>` when it is there, else `runtime-<uid>` in the temporary folder, made closed to the others; "" when another user made that name first. It is no longer the shared `/tmp`, so a program's folder in it needs no check of its own. On Windows it is the system's temporary folder as Windows gives it (`GetTempPath2W`, else `GetTempPathW`), never `%LOCALAPPDATA%`.
+- **`ui.paste_request` / `ui.paste_answer` paste files and images, not only text**: one paste API gives one answer, with one kind
+(text, files, or an image), and the toolkit chooses the kind once for every program. Files win over text, and text wins over an image.
+  - `paste_request(key)` → `paste_request(key, kinds = {.Text}, decode = false)`. `decode` gives an image its pixels, decoded on the chores.
+  - `paste_answer(key) -> (string, bool)` → `paste_answer(key, kinds = PASTE_KINDS_ALL) -> (Paste_Answer, bool)`. Read the text in `.text`.
+  - `Text_Edit_Options.paste` and `.paste_decode` set what the editor's Ctrl+V, Shift+Insert and menu ask for. The editor takes the text; the program takes the files or the image after it.
+  - `edit_menu` and `edit_paste` take the same `paste` kinds and `decode` flag.
+  - The toolkit reads an image only when the clipboard holds no files and no text.
+
+### Removed
+- **`desktop.xdg_desktop_dir` and `desktop.user_dirs_desktop`**: `platform.known_folder_path(.Desktop)` gives the desktop folder. `$XDG_DESKTOP_DIR` of the environment is no longer read (GLib does not read it either); a desktop folder the person disabled gets no shortcut.
+
+### Fixed
+- **A panel's hover icons never cover a strip**: over a lone docked panel whose top area holds a strip in their corner (a sidebar's row of server tabs), the Detach and Close icons do not show, so the strip's arrows are always reachable; the panel's menu and the palette still float and close it.
+- **A strip's arrows look alike and never touch a cut choice**: both arrows have the ink of the text around them, at rest and under the pointer (the left one looked faint beside the right one just clicked; the hover shows by its plate), and a clear gap of the strip's surface separates each arrow from the content, which fades in only past it: the tail of a tab cut at the arrow, its raised plate and its glyph, no longer shows glued to it (`ui.STRIP_GAP_EM`).
+- **The person's folders on Linux are their desktop's (`platform.known_folder_path`)**: a localized desktop's folders (`~/Bureau`, `~/Téléchargements`) come from xdg-user-dirs' `user-dirs.dirs`, read once per process as GLib reads it, so they are in the file browser's places and the dialogs start there. A folder the file disables (set to the home) is none; one it does not name is still `$HOME/<English name>`. `known_folder_path` is a blocking call on every system (it reports a call on the interface's thread), and a folder's icon key (`desktop.file_icon_key`) is its path, as on Windows, so a frame never reads the file.
+- **An overlay that takes the keyboard takes it each time it shows (Windows).** Shown again, it took the keyboard only at a first click, so a region chooser's Escape did nothing until then.
+- **A capture on Windows is never black.** A new screen duplication can first give a frame with only the pointer, over a surface not drawn yet; on a screen that did not change, that black surface was taken now and then. The capture now waits for a frame with a picture, else reads the screen through GDI.
+- **Every icon the toolkit draws is in a program's font.** A program built with only the Lucide icons it uses missed those of toolkit files that import the icons with no alias, such as a strip's left arrow, which showed as an empty button.
+
 ## [0.262.2] - 2026-11-15
 
 ### Fixed
@@ -3665,6 +3696,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.263.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.263.0
 [0.262.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.262.2
 [0.262.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.262.1
 [0.262.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.262.0
