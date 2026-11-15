@@ -131,6 +131,7 @@ STEPS := []Step{
 	{name = "netif", oses = EVERYWHERE},
 	{name = "placement"},
 	{name = "placement_text", oses = EVERYWHERE},
+	{name = "render_trace", oses = EVERYWHERE},
 	{name = "preview", one = true, oses = EVERYWHERE, text = true},
 	{name = "markdown", one = true, oses = EVERYWHERE, text = true},
 	{name = "svg", text = true, oses = EVERYWHERE},
