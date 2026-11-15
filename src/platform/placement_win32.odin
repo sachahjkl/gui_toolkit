@@ -54,8 +54,9 @@ get_placement :: proc(w: ^Window) -> Placement {
 set_placement :: proc(w: ^Window, p: Placement) {
 	if w.offscreen {
 		w.off_place = p.rect
+		// (as on Linux: no screen to wait for, the state is the one asked at once, read back by get_placement)
 		w.want_maximized = p.maximized
-		if !p.maximized && w.off_state == .Maximized { w.off_state = .Normal }
+		if p.maximized { w.off_state = .Maximized } else if w.off_state == .Maximized { w.off_state = .Normal }
 		return
 	}
 	rc := win.RECT{i32(p.rect[0]), i32(p.rect[1]), i32(p.rect[0] + p.rect[2]), i32(p.rect[1] + p.rect[3])}
