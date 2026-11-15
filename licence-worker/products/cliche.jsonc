@@ -22,7 +22,7 @@
 		"UPDATE_YEARS": "",
 		"UPDATES_FROM": "",
 		"LICENSE_PUBLIC_KEY": "blQ1xEG1inSgHUbIujJZ2yuPXUgaO_UIKXzvTWoN3ss",
-		"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+		"PRICES": "{\"pri_01m7fyasmyjra4t0qsx91zpaxx\":\"supporter\"}",
 		"PADDLE_API_BASE": "https://api.paddle.com",
 		"ALLOWED_ORIGIN": "https://cliche.froment.software",
 		"MAIL_FROM": "cliche <license@mail.froment.software>",
@@ -59,7 +59,7 @@
 				"UPDATE_YEARS": "",
 				"UPDATES_FROM": "",
 				"LICENSE_PUBLIC_KEY": "4u0W0RNCU5S16f_LtlKwtM4uokN4fZ6m8jIgT26ynyo",
-				"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+				"PRICES": "{}",   // SET: the sandbox's price ids (`paddle -apply`)
 				"PADDLE_API_BASE": "https://sandbox-api.paddle.com",
 				"ALLOWED_ORIGIN": "https://cliche.froment.software,http://localhost:8765",
 				"MAIL_FROM": "cliche <license@mail.froment.software>",

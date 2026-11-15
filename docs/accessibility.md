@@ -10,7 +10,7 @@ roles, names, states, bounds, Invoke and Focus), but it does not register with t
 The adapter is Rust (AccessKit), linked statically:
 
 ```
-odin run tools/tk -- build_a11y                         # -> build/a11y/gt_a11y.lib (pinned crates, --locked)
+odin run tools/tk -- build_native -features:a11y        # -> build/native/gt_native.lib (pinned crates, --locked)
 odin build examples/fidget -collection:gt=src -define:A11Y_ACCESSKIT=true ...
 ```
 

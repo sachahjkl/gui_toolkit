@@ -22,7 +22,7 @@
 		"UPDATE_YEARS": "",
 		"UPDATES_FROM": "",
 		"LICENSE_PUBLIC_KEY": "3q6lBp_XhL7hHNdoBfy5zgwmwqaI-xtls_M9DImZnSw",
-		"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+		"PRICES": "{\"pri_01m7fyaky9wrzkd5zk9h6xsz3e\":\"supporter\"}",
 		"PADDLE_API_BASE": "https://api.paddle.com",
 		"ALLOWED_ORIGIN": "https://classeur.froment.software",
 		"MAIL_FROM": "classeur <license@mail.froment.software>",
@@ -59,7 +59,7 @@
 				"UPDATE_YEARS": "",
 				"UPDATES_FROM": "",
 				"LICENSE_PUBLIC_KEY": "E2W_yH5ujOtduTE-7wHGjNJbbf7XVqi5MGi20IJA5nQ",
-				"PRICES": "{}",   // SET: {"pri_...":"<edition>"}, what `paddle -apply` prints
+				"PRICES": "{}",   // SET: the sandbox's price ids (`paddle -apply`)
 				"PADDLE_API_BASE": "https://sandbox-api.paddle.com",
 				"ALLOWED_ORIGIN": "https://classeur.froment.software,http://localhost:8765",
 				"MAIL_FROM": "classeur <license@mail.froment.software>",

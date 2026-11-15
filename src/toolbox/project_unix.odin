@@ -9,9 +9,13 @@ build_windows :: proc(p: Project) -> bool { return true }
 build_launcher :: proc(p: Project) -> bool { return true }
 check_launcher :: proc(p: Project) -> bool { return true }
 
-// The native libraries this system builds: the text backend (no DirectWrite here).
+// The parts of the native library this system links: the text backend (no DirectWrite here).
 @(private)
-system_native_steps :: proc(p: Project, steps: ^[dynamic]string) { append(steps, "build_text") }
+system_native_parts :: proc(p: Project, parts: ^[dynamic]string) { append(parts, "text") }
+
+// No other native step here (the system's libwebp is loaded).
+@(private)
+system_native_steps :: proc(p: Project, steps: ^[dynamic][]string) {}
 
 @(private)
 system_after_native :: proc(p: Project, root: string) -> bool { return true }

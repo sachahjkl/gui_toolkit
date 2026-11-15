@@ -71,7 +71,7 @@ Compiled into the exes and used only when the Windows fonts (Segoe UI, Consolas)
 
 ## Native text backend (optional, `-define:FONT_BACKEND=native`)
 
-`native/text` (`gt_text.lib`, linked statically; `src/font/backend_native.odin`) is the portable text backend used on
+`native/text` (in `gt_native.lib`, linked statically; `src/font/backend_native.odin`) is the portable text backend used on
 every platform in place of DirectWrite. It is built on, under their own licenses:
 
 - [HarfRust](https://github.com/harfbuzz/harfrust) (`harfrust` 0.15.0), MIT, the shaper (a Rust port of HarfBuzz):
@@ -88,7 +88,7 @@ Exact versions and SHA-256 are in `native/text/Cargo.lock` (the build runs `--lo
 
 ## Accessibility adapter (optional, `-define:A11Y_ACCESSKIT=true`)
 
-`native/a11y` (`gt_a11y.lib`, linked statically) is built on [AccessKit](https://github.com/AccessKit/accesskit)
+`native/a11y` (in `gt_native.lib`, linked statically) is built on [AccessKit](https://github.com/AccessKit/accesskit)
 (`accesskit` 0.25.2, `accesskit_consumer` 0.39.2, `accesskit_windows` 0.35.2), MIT or Apache-2.0, and its dependencies:
 the [windows](https://github.com/microsoft/windows-rs) crates 0.62 (MIT or Apache-2.0), `hashbrown` and `uuid` (MIT or
 Apache-2.0), `foldhash` (Zlib), and the build-time crates `syn`, `quote`, `proc-macro2`, `static_assertions` (MIT or

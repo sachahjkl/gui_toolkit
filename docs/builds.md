@@ -49,11 +49,10 @@ whatsnew takes 20.4 s instead of 23.5 s, fidget 23.9 s instead of 26.9 s (one bu
 
 ## What is not done
 
-- **One Rust library.** The native text backend, Mermaid and AccessKit are three static libraries (`native/text`,
-  `native/mermaid`, `native/a11y`), each with its own copy of Rust's standard library; on Linux they link with
-  `--allow-multiple-definition` (`toolbox.LINUX_LINK_FLAG`). One crate with a cargo feature per part would remove the
-  copies (about 0.4 MB for a program that links two of them), but changes the libraries that programs with a Rust library of
-  their own build into it (`A11Y_NATIVE_LINK=false`, `FONT_NATIVE_LINK=false`). `toolbox.build_native` already builds what
-  the features need, one library each.
+- **One Rust standard library with wgpu-native's.** The native text backend, Mermaid and AccessKit are one static
+  library (`native/gt`, a cargo feature each: `tk build_native -features:text,mermaid,a11y`), with one copy of Rust's
+  standard library. wgpu-native, prebuilt, brings its own: on Linux the programs still link with
+  `--allow-multiple-definition` (`toolbox.LINUX_LINK_FLAG`). Each part stays a crate (`native/text`, `native/mermaid`,
+  `native/a11y`): a program with a Rust library of its own builds the one it needs into it (`FONT_NATIVE_LINK=false`...).
 - **wgpu-native with WGSL and Vulkan only.** About 1 MB less on Linux, for a build of wgpu-native of our own (with
   bindgen and libclang) to maintain: not done.

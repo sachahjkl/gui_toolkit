@@ -8,7 +8,7 @@
 //                                                           Windows' code compiled from Linux (toolbox.check_env)
 // Other flags: -jobs:N, -timeout:seconds (of one package's run), -define:NAME=value (to every package). (PowerShell 7 splits a `-name:value` typed after
 // `--` into `-name:` and `value`: toolbox.args_joined joins them again.) Needs what the CI's steps build first: the native
-// libraries (tools/tk build_text, build_a11y), the emoji font (tools/tk fetch_emoji -unicode), wgpu-native and DXC (tools/tk fetch_wgpu). A log of each step
+// library (tools/tk build_native), the emoji font (tools/tk fetch_emoji -unicode), wgpu-native and DXC (tools/tk fetch_wgpu). A log of each step
 // is left in build/test_logs/.
 package run_tests
 
@@ -37,7 +37,7 @@ LINUX_ONLY :: Oses{.Linux}
 EVERYWHERE :: Oses{.Windows, .Linux}
 
 // The libraries a step links, which a CI step builds before it.
-Need :: enum { None, Text_Lib, A11y_Lib, Mermaid_Lib, Emoji }
+Need :: enum { None, Native_Lib, Emoji }   // (Native_Lib: build/native, tools/tk build_native)
 
 // A group of the WebGPU backend: about the same time each, on a runner.
 Wgpu_Group :: enum { None, Ci1, Ci2, Ci3, Ci4 }
@@ -135,7 +135,7 @@ STEPS := []Step{
 	{name = "preview", one = true, oses = EVERYWHERE, text = true},
 	{name = "markdown", one = true, oses = EVERYWHERE, text = true},
 	{name = "svg", text = true, oses = EVERYWHERE},
-	{name = "mermaid", one = true, need = .Mermaid_Lib, text = true, oses = EVERYWHERE},   // (Linux: tk ci builds the library first)
+	{name = "mermaid", one = true, need = .Native_Lib, text = true, oses = EVERYWHERE},   // (Linux: tk ci builds the library first)
 	{name = "size_move"},
 	{name = "testkit"},
 	{name = "tk"},
@@ -156,7 +156,7 @@ STEPS := []Step{
 	{name = "chrome", wgpu = .Ci1},
 	{name = "ui_robust", one = true, wgpu = .Ci1},
 	{name = "a11y", one = true},
-	{name = "a11y_uia", path = "tests/a11y", one = true, defines = {"A11Y_ACCESSKIT=true"}, need = .A11y_Lib},
+	{name = "a11y_uia", path = "tests/a11y", one = true, defines = {"A11Y_ACCESSKIT=true"}, need = .Native_Lib},
 	{name = "devtools"},
 	{name = "devtools_unit", path = "src/devtools"},
 	// the interface with real frames and input: testkit/session
@@ -224,7 +224,7 @@ STEPS := []Step{
 	{name = "font_default", oses = EVERYWHERE},   // (built with no define: the backend each system gets by default)
 	{name = "lucide_subset", oses = EVERYWHERE, text = true},
 	{name = "lean_build", oses = EVERYWHERE, defines = {"TOOLKIT_DEVTOOLS=false", "FONT_EMBED_FALLBACK=false"}, text = true},
-	{name = "text_backends_native", path = "tests/text_backends", defines = {"FONT_BACKEND=native"}, need = .Text_Lib},
+	{name = "text_backends_native", path = "tests/text_backends", defines = {"FONT_BACKEND=native"}, need = .Native_Lib},
 	// what must keep compiling
 	{name = "uia_probe", path = "tools/uia_probe", kind = .Build},
 	{name = "font_on_linux", path = "src/font", kind = .Check, target = "linux_amd64"},
@@ -396,9 +396,7 @@ missing_need :: proc(n: Need) -> string {
 	file: string
 	switch n {
 	case .None: return ""
-	case .Text_Lib: file = ODIN_OS == .Windows ? "build/text/gt_text.lib" : "build/text/libgt_text.a"
-	case .A11y_Lib: file = "build/a11y/gt_a11y.lib"
-	case .Mermaid_Lib: file = ODIN_OS == .Windows ? "build/mermaid/gt_mermaid.lib" : "build/mermaid/libgt_mermaid.a"
+	case .Native_Lib: file = ODIN_OS == .Windows ? "build/native/gt_native.lib" : "build/native/libgt_native.a"
 	case .Emoji: file = "build/emoji/NotoColorEmoji-COLRv1.ttf"
 	}
 	return os.exists(file) ? "" : fmt.tprintf("%s is not there: build it first", file)
@@ -408,7 +406,7 @@ run_step :: proc(s: ^Step, o: ^Run_Options) -> Result {
 	began := time.tick_now()
 	r := Result{step = s}
 	need := s.need
-	if s.text && ODIN_OS == .Linux && need == .None { need = .Text_Lib }
+	if s.text && ODIN_OS == .Linux && need == .None { need = .Native_Lib }
 	if o.check != "" { need = .None }   // (a check links nothing)
 	if why := missing_need(need); why != "" {
 		r.why = why

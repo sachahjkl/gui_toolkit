@@ -1,6 +1,6 @@
 // The commands of a program (ui/commands.odin): their keys' texts, their keys, the palette and the sheet of the keys.
 // Synthetic input events and builds, without a window; the ui state of a build is global: one test thread.
-//   odin run tools/run_tests -- commands   (on Linux it needs the native text backend: tools/tk build_text)
+//   odin run tools/run_tests -- commands   (on Linux it needs the native text backend: tools/tk build_native)
 package commands_test
 
 import "core:fmt"
