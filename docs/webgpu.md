@@ -57,6 +57,9 @@ to compile the main shader, DXC 0.3 s. `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc|d
 ## Environment
 
 `TOOLKIT_RENDER_TRACE=1`: the time of the first present, the surface calls, the CPU time per phase of a frame (once per second).
+A program's own steps join that list: `render.trace_start(what)` at a trigger (a shortcut), `render.trace_mark(what)` at each
+step of the interface's thread (its time and the time since the trigger), `render.trace_note(what)` from another thread (the
+time since the trigger); `render.trace_on()` says whether the switch is on. A latency is then read where it is spent.
 
 ## Differences to know about
 

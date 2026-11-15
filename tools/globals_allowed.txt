@@ -256,6 +256,8 @@ qr/qr.odin ECC_BLOCKS const  # a table of ISO/IEC 18004 (table 9)
 qr/qr_test.odin CAPACITY test
 render/api.odin renderer_ids process  # the renderers' ids, unique in the process (atomic)
 render/api.odin render_trace.state process  # a switch of the environment, read once (atomic)
+render/trace.odin trace_from process  # the last trigger of the program's trace (atomic: a worker's note reads it)
+render/trace.odin trace_last process  # the last step of that trace (atomic)
 render/capture.odin capture_map_held thread  # the capture mapped by this thread
 render/capture.odin srgb_table_bytes const  # a table, made once (srgb_table_once)
 render/capture.odin srgb_table_once process  # the once of a table

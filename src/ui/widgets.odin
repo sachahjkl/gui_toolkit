@@ -44,6 +44,7 @@ row :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "") 
 @(require_results, deferred_none = pop_parent)
 input_frame :: proc(id: string) -> bool {
 	set_next_axis(.X, .Center)
+	next_default({radius = font_size() * CONTROL_RADIUS_EM})   // (a button's corners)
 	push_tags("input")
 	b := build_box({.Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Focus_Within, .Sunken}, id)
 	pop_tags()
@@ -248,7 +249,9 @@ button_glyph :: proc(id, icon: string, face: Button_Face, o: Button_Options) -> 
 @(private = "file") BUTTON_PAD_EM :: 0.95
 @(private) BUTTON_LINE_EM :: 2.2   // (a button's line; the tool bar's items too)
 @(private = "file") BUTTON_GLYPH_EM :: 1.5
-@(private = "file") BUTTON_RADIUS_EM :: 0.45
+// The corners of a control, a button or a field, of the font size: one rounding for both (a square field beside a
+// rounded button read as two kinds of thing). `next` gives another.
+@(private) CONTROL_RADIUS_EM :: 0.45
 // A quiet button's words, of the font size.
 @(private = "file") BUTTON_QUIET_SCALE :: 0.9
 
@@ -298,7 +301,7 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 	set_next_axis(.X, .Center)
 	s.next_mod.width = w == {} ? children_sum() : w
 	s.next_mod.height = h
-	if s.next_mod.radius == nil { s.next_mod.radius = em * BUTTON_RADIUS_EM }
+	if s.next_mod.radius == nil { s.next_mod.radius = em * CONTROL_RADIUS_EM }
 	ink := face == .Ghost ? button_ink(o.intent) : nil
 	fg := m.fg
 	if fg == nil { fg = ink }

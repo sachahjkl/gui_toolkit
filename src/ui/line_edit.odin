@@ -427,6 +427,7 @@ line_edit :: proc(id: string, f: ^Line_Edit, o := Line_Edit_Options{}) -> (res: 
 	masked := o.kind == .Secret && !(revealable && o.reveal^)
 	shown_kind := masked ? Line_Edit_Kind.Secret : (read_only ? Line_Edit_Kind.Read_Only : Line_Edit_Kind.Plain)
 	if tags("input") {
+		next_default({radius = font_size() * CONTROL_RADIUS_EM})   // (a button's corners)
 		b := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken}, id)
 		b.cursor = .Text
 		b.text = ""
