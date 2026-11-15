@@ -30,15 +30,21 @@ User_Dir :: enum u8 { Config, Data, State, Cache, Runtime }
 // %APPDATA%\FromentSoftware\Papier, ~/.config/FromentSoftware/Papier): a vendor's programs sit together, under the names a
 // person reads. The program gives it as a constant and passes it wherever it names its folders.
 
-// Moves a program's folders from an older name to `to`, once: for each kind (Runtime aside: it lasts a session), the
-// folder of `from` becomes the folder of `to` when `to`'s is not there yet and `from`'s is. A folder that holds another
-// kind's (Windows: %LOCALAPPDATA%\<program> holds state and cache) moves once, with them. Call it at start, before
-// anything reads the folders and before any window: it waits on the system. `moved`: how many folders moved; `why`: the
-// first that could not ("": none), the others still tried.
-user_dirs_move :: proc(from, to: string) -> (moved: int, why: string) {
+User_Dirs :: bit_set[User_Dir]
+
+// What user_dirs_move moves by default: every kind but Runtime, which lasts a session.
+USER_DIRS_MOVED :: User_Dirs{.Config, .Data, .State, .Cache}
+
+// Moves a program's folders from an older name to `to`, once: for each kind of `kinds`, the folder of `from` becomes the
+// folder of `to` when `to`'s is not there yet and `from`'s is. A folder that holds another kind's (Windows:
+// %LOCALAPPDATA%\<program> holds state and cache) moves once, with them. `kinds` leaves out a folder that holds what must
+// stay (an older install in the data folder, which its menu entry names). Call it at start, before anything reads the
+// folders and before any window: it waits on the system. `moved`: how many folders moved; `why`: the first that could
+// not ("": none), the others still tried.
+user_dirs_move :: proc(from, to: string, kinds := USER_DIRS_MOVED) -> (moved: int, why: string) {
 	done := make([dynamic]string, context.temp_allocator)
 	for kind in User_Dir {
-		if kind == .Runtime { continue }
+		if kind == .Runtime || kind not_in kinds { continue }
 		base := user_dir_base(kind)
 		if base == "" { continue }
 		old := strings.concatenate({base, USER_DIR_SEPARATOR, from}, context.temp_allocator)

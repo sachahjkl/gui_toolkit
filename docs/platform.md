@@ -115,7 +115,9 @@ per kind, the same call on every system (`program` ""; the folder every program'
 when it writes there. `program` is its vendor's folder, then its own: `APP_FOLDER :: "FromentSoftware" +
 platform.USER_DIR_SEPARATOR + "Papier"` (src/md/features/folders.md). `user_dirs_move(from, to)` moves a program's
 folders once from an older name (`"papier"`) to it: call it at start, before anything reads them and before any window;
-it returns how many folders moved and the first that could not.
+it returns how many folders moved and the first that could not. `kinds` (`USER_DIRS_MOVED`: every kind but `Runtime`)
+leaves a kind where it is: an older install in the data folder, which its menu entry names, stays with `{.Config, .State,
+.Cache}`.
 
 | `User_Dir` | Linux | Windows | macOS |
 |---|---|---|---|
