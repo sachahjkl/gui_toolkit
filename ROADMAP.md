@@ -35,9 +35,9 @@
 - **One native crate.** One native library with features replaces the toolkit's three native libraries, so no program
   links with multiple-definition flags.
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
-  `-check:darwin_arm64`); the programs' packages are checked for it too, and the 7 portable files that still test the
-  system with `when ODIN_OS` move that code into system files (the renderer's five; the native
-  libraries' links stay beside their `foreign` blocks, as a `foreign import` is the file's, until one native crate).
+  `-check:darwin_arm64`), and every portable file names the system's facts, not the system (`SYSTEM_DIRECT3D`,
+  `font.SYSTEM_RASTERIZER`); what is left: the programs' packages checked for macOS too, and the native libraries' links
+  (`font/backend_native.odin`, `mermaid.odin`), which stay beside their `foreign` blocks until one native crate.
 - **Colours by intent in opencode native.** Its 85 `HEX_*` constants become the theme's intents and hues, so a theme
   changes them all, as cliche's graph colours do since its 0.8.
 
