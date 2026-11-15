@@ -3,6 +3,9 @@
 //   odin test tests/pictures -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package pictures_test
 
+import "base:runtime"
+import "core:encoding/base64"
+import "core:sync"
 import "core:testing"
 import image "gt:image"
 import pictures "gt:pictures"
@@ -119,4 +122,38 @@ a_broken_file_is_failed_with_why :: proc(t: ^testing.T) {
 	testing.expect_value(t, cut.why, pictures.Failure.Damaged)
 	testing.expect(t, pictures.failure_words(cut.why) != "")
 	testing.expect_value(t, pictures.held_bytes(&c), 0)
+}
+
+// The thread `prepare` ran on (0: not run).
+@(private = "file")
+prepared_on: int
+
+@(private = "file")
+from_base64 :: proc(data: []u8, allocator: runtime.Allocator) -> ([]u8, bool) {
+	sync.atomic_store(&prepared_on, sync.current_thread_id())
+	file, err := base64.decode(string(data), allocator = allocator)
+	return file, err == nil && len(file) > 0
+}
+
+@(private = "file")
+refuse :: proc(data: []u8, allocator: runtime.Allocator) -> ([]u8, bool) { return nil, false }
+
+// A picture held as text: prepare makes its file on the chores, never on the interface's thread; a refusal fails it.
+@(test)
+prepare_makes_the_file_on_the_chores :: proc(t: ^testing.T) {
+	s := session.start(t, {})
+	c: pictures.Cache
+	pictures.cache_init(&c, s.renderer, s.state)
+	defer pictures.cache_destroy(&c)
+	text, _ := base64.encode(png_file(64, 32), allocator = context.temp_allocator)
+	p := pictures.get(&c, 1, transmute([]u8)text, 64, from_base64)
+	no := pictures.get(&c, 2, transmute([]u8)text, 64, refuse)
+	wait_settled(s, p)
+	wait_settled(s, no)
+	testing.expect_value(t, p.state, pictures.Picture_State.Ready)
+	testing.expect_value(t, p.size, [2]int{64, 32})
+	on := sync.atomic_load(&prepared_on)
+	testing.expect(t, on != 0 && on != sync.current_thread_id(), "prepared on a thread of the chores")
+	testing.expect_value(t, no.state, pictures.Picture_State.Failed)
+	testing.expect_value(t, no.why, pictures.Failure.Unknown_Format)
 }
