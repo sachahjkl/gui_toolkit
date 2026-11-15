@@ -15,6 +15,7 @@ import "base:runtime"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
+import tk_json "../json"
 
 // The formats of export.
 //
@@ -37,7 +38,7 @@ Export_Format :: enum u8 { Json, Toml, Ini, Own }
 export :: proc(p: ^Prefs, format: Export_Format, all := false, allocator := context.allocator) -> string {
 	switch format {
 	case .Own:  return own_text(p, all, allocator)
-	case .Json: return json_text(p, all, allocator)
+	case .Json: return json_export(p, all, allocator)
 	case .Toml, .Ini: return export_tables(p, all, format, allocator)
 	}
 	return ""
@@ -66,22 +67,20 @@ own_text :: proc(p: ^Prefs, all: bool, allocator: runtime.Allocator) -> string {
 }
 
 @(private = "file")
-json_text :: proc(p: ^Prefs, all: bool, allocator: runtime.Allocator) -> string {
+json_export :: proc(p: ^Prefs, all: bool, allocator: runtime.Allocator) -> string {
 	sb := strings.builder_make(allocator)
-	items := exported(p, all)
-	if len(items) == 0 {
-		strings.write_string(&sb, "{}\n")
-		return strings.to_string(sb)
+	w := tk_json.writer_make(&sb, indent = "  ")
+	tk_json.begin_object(&w)
+	value := strings.builder_make(context.temp_allocator)
+	for it in exported(p, all) {
+		tk_json.key(&w, it.name)
+		// (typed writes the Float with its ".0", which the writer's own write_number leaves out)
+		strings.builder_reset(&value)
+		typed(&value, it, .Json)
+		tk_json.write_raw(&w, strings.to_string(value))
 	}
-	strings.write_string(&sb, "{\n")
-	for it, i in items {
-		strings.write_string(&sb, "  ")
-		quoted(&sb, it.name)
-		strings.write_string(&sb, ": ")
-		typed(&sb, it, .Json)
-		strings.write_string(&sb, i + 1 < len(items) ? ",\n" : "\n")
-	}
-	strings.write_string(&sb, "}\n")
+	tk_json.end_object(&w)
+	strings.write_byte(&sb, '\n')
 	return strings.to_string(sb)
 }
 
@@ -184,37 +183,10 @@ typed :: proc(sb: ^strings.Builder, it: Item, format: Export_Format) {
 		if format == .Ini && !ini_needs_quotes(it.value.s) {
 			strings.write_string(sb, it.value.s)
 		} else {
-			quoted(sb, it.value.s)
+			// tk_json's escapes are also those of TOML's basic strings (DEL included, which TOML refuses raw)
+			tk_json.quote_into(sb, it.value.s)
 		}
 	}
-}
-
-// A string between double quotes with the escapes JSON and TOML's basic strings share: `"`, `\`, the usual control
-// characters by their letter, the others (and DEL, which TOML refuses raw) as \u00XX.
-@(private = "file")
-quoted :: proc(sb: ^strings.Builder, s: string) {
-	hex := "0123456789ABCDEF"
-	strings.write_byte(sb, '"')
-	for c in transmute([]u8)s {
-		switch c {
-		case '"':  strings.write_string(sb, "\\\"")
-		case '\\': strings.write_string(sb, "\\\\")
-		case '\b': strings.write_string(sb, "\\b")
-		case '\f': strings.write_string(sb, "\\f")
-		case '\n': strings.write_string(sb, "\\n")
-		case '\r': strings.write_string(sb, "\\r")
-		case '\t': strings.write_string(sb, "\\t")
-		case:
-			if c < 0x20 || c == 0x7F {
-				strings.write_string(sb, "\\u00")
-				strings.write_byte(sb, hex[c >> 4])
-				strings.write_byte(sb, hex[c & 0xF])
-			} else {
-				strings.write_byte(sb, c)
-			}
-		}
-	}
-	strings.write_byte(sb, '"')
 }
 
 // A TOML key: bare when it has only letters, digits, `_` and `-`; quoted else.
@@ -227,7 +199,7 @@ toml_key :: proc(sb: ^strings.Builder, key: string) {
 		case: bare = false
 		}
 	}
-	if bare { strings.write_string(sb, key) } else { quoted(sb, key) }
+	if bare { strings.write_string(sb, key) } else { tk_json.quote_into(sb, key) }
 }
 
 // Whether an INI value would not read back as it is: spaces at an end (a reader trims them), a control character, a
