@@ -35,7 +35,7 @@
 - **One native crate.** One native library with features replaces the toolkit's three native libraries, so no program
   links with multiple-definition flags.
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
-  `-check:darwin_arm64`); the programs' packages are checked for it too, and the 22 portable files that still test the
+  `-check:darwin_arm64`); the programs' packages are checked for it too, and the 21 portable files that still test the
   system with `when ODIN_OS` move that code into system files.
 - **Colours by intent in opencode native.** Its 85 `HEX_*` constants become the theme's intents and hues, so a theme
   changes them all, as cliche's graph colours do since its 0.8.
