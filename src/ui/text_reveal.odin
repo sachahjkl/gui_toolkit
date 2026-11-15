@@ -7,6 +7,7 @@ package ui
 import "core:fmt"
 import "core:math"
 import "core:strings"
+import "../draw"
 import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
@@ -64,7 +65,7 @@ text_reveal_build :: proc(s: ^State) {
 			if !s.pressed_any[btn] { continue }
 			_, on_ellipsis := s.reveal_owner[s.pressed_key[btn]]
 			bubble := s.boxes[bubble_key] or_else nil
-			if !on_ellipsis && (bubble == nil || !contains(bubble.rect, s.press_pos[btn])) { text_reveal_close(s); break }
+			if !on_ellipsis && (bubble == nil || !draw.rect_contains(bubble.rect, s.press_pos[btn])) { text_reveal_close(s); break }
 		}
 	}
 	if owner, ok := s.reveal_owner[s.clicked_key[.Left]]; ok {

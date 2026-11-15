@@ -188,7 +188,7 @@ hit_test_box :: proc(b: ^Box, p: Vec2, clip: Rect) -> Key {
 		if k := hit_test_box(c, p, child_clip); k != 0 { return k }
 	}
 	// (a cut text's ellipsis, over whatever holds it: text_reveal.odin)
-	if b.ellipsis != {} && .Draw_Text in b.flags && .Disabled not_in b.flags && contains(b.ellipsis, p) {
+	if b.ellipsis != {} && .Draw_Text in b.flags && .Disabled not_in b.flags && draw.rect_contains(b.ellipsis, p) {
 		k := reveal_key(b)
 		gs().reveal_owner[k] = b.key
 		return k
