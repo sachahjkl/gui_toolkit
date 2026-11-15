@@ -1111,6 +1111,18 @@ fr Images en file
 en The pictures that may wait for the screen. 1: the least delay from a key to the screen; more: steadier under load.
 fr Les images qui peuvent attendre l'écran. 1 : le moins de délai d'une touche à l'écran ; plus : plus régulier sous la charge.
 
+en Frame rate
+fr Images par seconde
+
+en The most pictures a second, when something moves (nothing moving, nothing is drawn): the screen's rate, a number, or no limit. Above the screen's rate, the newest picture shows: not smoother, but quicker to answer, for more power.
+fr Le plus d'images par seconde quand quelque chose bouge (rien ne bouge, rien n'est dessiné) : la fréquence de l'écran, un nombre, ou aucune limite. Au-dessus de celle de l'écran, l'image la plus récente s'affiche : pas plus fluide, mais plus prompte à répondre, pour plus d'énergie.
+
+en Screen
+fr Écran
+
+en Uncapped
+fr Sans limite
+
 en Each picture redraws only what changed in the interface.
 fr Chaque image ne redessine que ce qui a changé dans l'interface.
 

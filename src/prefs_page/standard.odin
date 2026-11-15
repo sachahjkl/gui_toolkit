@@ -93,6 +93,7 @@ UI_FONT_PREF    :: "appearance.text.ui_font"
 MONO_FONT_PREF  :: "appearance.text.mono_font"
 PROSE_FONT_PREF :: "appearance.text.prose_font"
 EMOJI_FONT_PREF :: "appearance.text.emoji_font"
+FRAME_RATE_PREF :: "rendering.frame_rate"
 ROWS_ZEBRA_PREF :: "appearance.rows.zebra"
 ROWS_RULES_PREF :: "appearance.rows.rules"
 
@@ -123,6 +124,7 @@ FONT_SIZE_MAX :: 24
 @(private = "file", rodata) TEXT_CURVE_CHOICES := [?]string{"none", "srgb", "power"}
 @(private = "file", rodata) BLEND_CHOICES := [?]string{"linear", "srgb"}
 @(private = "file", rodata) PRESENT_CHOICES := [?]string{"vsync", "tearing"}
+@(private = "file", rodata) FRAME_RATE_CHOICES := [?]string{"screen", "30", "60", "120", "240", "uncapped"}
 @(private = "file", rodata) FILTER_CHOICES := [?]string{"half", "unorm8"}
 @(private = "file", rodata) MESSAGES_CHOICES := [?]string{"system", "window", "off"}
 // (ui.File_Dialogs in its order)
@@ -603,6 +605,11 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			tags = VSYNC_TAGS[:],
 		})
 		append(&defs, config.Def{
+			name = FRAME_RATE_PREF, title = i18n.later("Frame rate"), kind = .String, default = {s = "screen"}, advanced = true,
+			description = i18n.later("The most pictures a second, when something moves (nothing moving, nothing is drawn): the screen's rate, a number, or no limit. Above the screen's rate, the newest picture shows: not smoother, but quicker to answer, for more power."),
+			choices = FRAME_RATE_CHOICES[:], choice_labels = labels(a, i18n.later("Screen"), "30", "60", "120", "240", i18n.later("Uncapped")), tags = VSYNC_TAGS[:],
+		})
+		append(&defs, config.Def{
 			name = "rendering.partial_redraw", title = i18n.later("Partial redraw"), kind = .Bool, default = {b = true}, advanced = true,
 			description = i18n.later("Each picture redraws only what changed in the interface."),
 		})
@@ -795,6 +802,7 @@ Standard_Targets :: struct {
 	renderer:       ^render.Renderer,
 	fonts:          ^font.State,
 	partial_redraw: ^bool,
+	pacer:          ^render.Pacer,   // rendering.frame_rate: the host's (host.Host.pacer)
 	faces:          ui.Text_Faces,
 	font_source:    ui.Font_Source,
 }
@@ -1018,6 +1026,14 @@ apply_rendering :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets,
 	if name == "rendering.partial_redraw" {
 		if b, ok := bool_value(prefs, name); ok {
 			if t.partial_redraw != nil { t.partial_redraw^ = b } else { ui.set_partial_redraw(s, b) }
+		}
+		return
+	}
+	if name == FRAME_RATE_PREF {
+		if t.pacer != nil {
+			rate := config.string_of(prefs, name)
+			t.pacer.cadence.uncapped = rate == "uncapped"
+			t.pacer.choices.target_hz = strconv.parse_f64(rate) or_else 0
 		}
 		return
 	}

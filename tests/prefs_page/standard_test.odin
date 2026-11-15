@@ -6,6 +6,7 @@ package prefs_page_test
 import "core:testing"
 import config "gt:config"
 import prefs_page "gt:prefs_page"
+import "gt:render"
 import "gt:testkit/session"
 import "gt:ui"
 
@@ -47,6 +48,22 @@ only_the_sets_asked_register :: proc(t: ^testing.T) {
 	testing.expect(t, config.ref_of(&p, "appearance.mode") != config.NO_REF, "the look is there")
 	testing.expect(t, config.ref_of(&p, "general.menu") == config.NO_REF, "the session's are not")
 	testing.expect(t, config.ref_of(&p, prefs_page.ROWS_ZEBRA_PREF) == config.NO_REF, "no tables asked, no rows")
+}
+
+// rendering.frame_rate reaches the host's pacer: a number is its target, "uncapped" lifts the pacing, "screen" is the
+// screen's rate.
+@(test)
+the_frame_rate_reaches_the_pacer :: proc(t: ^testing.T) {
+	p := config.prefs_make()
+	defer config.prefs_destroy(&p)
+	prefs_page.standard_register(&p, {.Rendering}, prefs_page.STANDARD_DEFAULTS, context.temp_allocator)
+	s: ui.State
+	pacer: render.Pacer
+	for c in ([3]struct { text: string, hz: f64, uncapped: bool }{{"120", 120, false}, {"uncapped", 0, true}, {"screen", 0, false}}) {
+		testing.expect_value(t, config.set_from_string(&p, prefs_page.FRAME_RATE_PREF, c.text, .User), config.Set_Error.None)
+		prefs_page.standard_apply(&p, &s, {pacer = &pacer})
+		testing.expectf(t, pacer.choices.target_hz == c.hz && pacer.cadence.uncapped == c.uncapped, "%s: %v, %v", c.text, pacer.choices.target_hz, pacer.cadence.uncapped)
+	}
 }
 
 // A program with tables asks for the rows' look, with its own defaults; the user's choice then reads back.

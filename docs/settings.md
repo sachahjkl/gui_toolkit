@@ -144,6 +144,7 @@ A program with tables asks for this set; it is not in `STANDARD_ALL`. Its defaul
 |---|---|---|---|
 | `rendering.present` | `vsync` | `vsync`, `tearing` | `render.set_present_mode` |
 | `rendering.max_frame_latency` | 1 | 1 to 3 | `render.set_max_frame_latency` |
+| `rendering.frame_rate` | `screen` | `screen`, `30`, `60`, `120`, `240`, `uncapped` | `Standard_Targets.pacer` (`host.Host.pacer`): `choices.target_hz`, `cadence.uncapped` |
 | `rendering.partial_redraw` | `true` | | `host.Host.partial_redraw`, else `ui.set_partial_redraw` |
 | `rendering.blur_sigma_limit` | 8 px | 2 to 40 px | `render.set_blur_sigma_limit` |
 | `rendering.filter_precision` | `half` | `half`, `unorm8` | `render.set_filter_precision` |

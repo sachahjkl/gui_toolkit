@@ -14,9 +14,10 @@
   [src/md/features/strip.md](src/md/features/strip.md).
 - **No program blocks its interface's thread.** Each program's tests run its windows with the toolkit's blocking check
   on and fail when a disk, process or D-Bus call happens in a build, so the CI finds it.
-- **The last settings that programs copy.** The toolkit gets standard Desktop, Accessibility and Diagnostics groups
-  (fps, layout warnings, GPU profile, devtools); Wren drops its own text backend, emoji and renderer settings. (The
-  window's place and the rows' look are the toolkit's in papier, classeur and inspecteur since 0.265.)
+- **The last settings that programs copy.** opencode native drops `advanced.frame_rate` for the toolkit's
+  `rendering.frame_rate` (`Standard_Targets.pacer`); Wren drops its own text backend, emoji and renderer settings. (The
+  desktop's and the motion's are the standard `Session` and `Appearance` sets; the window's place and the rows' look are
+  the toolkit's since 0.265; an FPS display is opencode native's alone, so it stays its own.)
 - **opencode native on the toolkit's pieces.** Its branch `toolkit-0.266` takes the toolkit's JSON, rich paste
   (`ui.paste_answer`: its menu's Paste attaches an image as Ctrl+V does), kept zooms (`store.Kept`), context menus
   (`ui.context_take`), window place and standard folders in place of its own; it waits for its merge and release.
