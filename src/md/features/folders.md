@@ -10,6 +10,16 @@ Three questions, one procedure each, on every system:
 
 `fsx.private_dir(path)` makes a folder that only its user can enter, and refuses one that another user made first.
 
+## Where a program is installed
+
+A program installed for one person goes to `%LOCALAPPDATA%\Programs\<vendor_key>\<name>` on Windows (Microsoft's
+place for a person's own programs, as VS Code's user setup uses it) and `~/.local/opt/<vendor_key>/<name>` on Linux.
+It is never its data's folder: an uninstall deletes the install folder, and the data (`%LOCALAPPDATA%\<vendor>\<Title>`,
+`~/.local/share/<vendor>/<Title>`) stays. XDG names no place for programs; `~/.local/opt` mirrors `/opt`, where FHS puts
+an application that comes as a folder of its own. Refused: `~/.local/share/<slug>` (the data's tree: an install beside
+the data, one rm from losing it), `~/.local/lib` (systemd's file-hierarchy keeps it for data and libraries, not an
+application's folder). An install already somewhere stays there: the setup reads the folder it recorded.
+
 ## A program's folder: its vendor's, then its own
 
 A program's folder is `<vendor>/<Title>` on every system (`"FromentSoftware" + USER_DIR_SEPARATOR + "Papier"`):

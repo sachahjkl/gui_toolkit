@@ -47,11 +47,15 @@ platform_backend :: proc() -> ^Backend { return &LINUX_BACKEND }
 // A copy is installed under the data directory: $XDG_DATA_HOME/<slug> (~/.local/share/<slug>). Linux has no desktop
 // shortcut or Apps-list part (those are Windows parts: docs/desktop.md). Nothing records the install: the manifest in the
 // folder is the record.
-@(private = "file")
+@(private)
 linux_default_install_dir :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string {
-	data_home := platform.user_dir(.Data, "", context.temp_allocator)
-	if data_home == "" { return "" }
-	return strings.concatenate({data_home, "/", o.identity.slug}, allocator)
+	// (~/.local/opt/<vendor>/<name>: a program in a folder of its own, as /opt holds one for every user, apart from
+	// its data in ~/.local/share/<vendor>/<name> that an uninstall leaves; XDG names no place for programs:
+	// src/md/features/folders.md)
+	home := platform.known_folder_path(.Home, context.temp_allocator)
+	if home == "" { return "" }
+	if o.identity.vendor_key == "" { return strings.concatenate({home, "/.local/opt/", o.identity.name}, allocator) }
+	return strings.concatenate({home, "/.local/opt/", o.identity.vendor_key, "/", o.identity.name}, allocator)
 }
 
 // The window class and application id belong to the toolkit's window on this platform.

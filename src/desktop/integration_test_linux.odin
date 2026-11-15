@@ -55,6 +55,18 @@ expect_ok :: proc(t: ^testing.T, r: Result, loc := #caller_location) {
 	testing.expectf(t, r.error == .None, "%v: %s", r.error, r.detail, loc = loc)
 }
 
+// A program goes to ~/.local/opt/<vendor_key>/<name>, never beside its data in ~/.local/share; without a vendor, to
+// ~/.local/opt/<name>.
+@(test)
+the_default_install_folder_is_its_vendors_in_opt :: proc(t: ^testing.T) {
+	o := Integration_Options{identity = test_identity()}
+	o.identity.vendor_key, o.identity.name = "FromentSoftware", "Papier"
+	dir := linux_default_install_dir(&o, context.temp_allocator)
+	testing.expectf(t, strings.has_suffix(dir, "/.local/opt/FromentSoftware/Papier"), "%s", dir)
+	o.identity.vendor_key = ""
+	testing.expect(t, strings.has_suffix(linux_default_install_dir(&o, context.temp_allocator), "/.local/opt/Papier"))
+}
+
 @(test)
 linux_round_trip :: proc(t: ^testing.T) {
 	s := scratch_make()

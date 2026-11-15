@@ -22,9 +22,12 @@ uninstall_key :: proc(o: ^Integration_Options) -> string {
 
 @(private)
 windows_default_install_dir :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> string {
+	// (%LOCALAPPDATA%\Programs\<vendor>\<name>: a person's own programs, its vendor's together, apart from the data in
+	// %LOCALAPPDATA%\<vendor>\<name> that an uninstall leaves; src/md/features/folders.md)
 	base := known_folder(win.FOLDERID_LocalAppData)
 	if base == "" { return "" }
-	return strings.concatenate({base, "\\Programs\\", o.identity.name}, allocator)
+	if o.identity.vendor_key == "" { return strings.concatenate({base, "\\Programs\\", o.identity.name}, allocator) }
+	return strings.concatenate({base, "\\Programs\\", o.identity.vendor_key, "\\", o.identity.name}, allocator)
 }
 
 // The folder of the recorded installation, when the record is ours and the executable is there.

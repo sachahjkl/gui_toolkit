@@ -28,7 +28,7 @@ them with a job on another thread.
 |---|---|---|
 | `name` | `Wren` | the menu entry, the shortcut's file name (`<name>.lnk`), the name in the system's lists |
 | `key` | `Wren` | the registry key and ProgID stem (letters and digits) |
-| `slug` | `wren` | the `.desktop` file, the icon name, the window class, the default install folder on Linux (lower case, digits, hyphens) |
+| `slug` | `wren` | the `.desktop` file, the icon name, the window class (lower case, digits, hyphens) |
 | `aumid` | `FromentSoftware.Wren.Dev` | the Windows AppUserModelID; `set_process_identity` gives it to the process's windows (`""`: `identity_aumid` derives it from `vendor` and `name`, as gt:toolbox's `project_aumid` derives the build's from the Project's publisher and title: `Froment Software` and `Wren` give `FromentSoftware.Wren`; give one only for an id of another rule) |
 | `description`, `vendor` | | the menu entry's comment; the publisher in Settings > Apps |
 | `exe_name` | `wren.exe` | the executable's name in an install folder (`""`: the slug, with `.exe` on Windows) |
@@ -101,7 +101,7 @@ if r := desktop.apply(&o); r.error != .None { report(r.detail) }
 | `Registration` | only with `register_browser`: `Software\Clients\StartMenuInternet\<key>`, `Software\RegisteredApplications`, the ProgID `Software\Classes\<key>HTML`, the http and https URL associations, the file types, and `Software\Classes\<scheme>` for each of `url_schemes` |
 | `File_Manager` | with `default_file_manager`: in `Software\Classes`, `CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\opennewwindow\command` (`"<exe>"`, `DelegateExecute` empty: Win+E), the verb `Directory\shell\<key>.open` (`"<exe>" "%1"`) and `Drive\shell\<key>.open` (`"<exe>" %1`: a quoted `"C:\"` reads as `C:"`), each the default of its `shell` key |
 
-The installed copy goes to `%LOCALAPPDATA%\Programs\<name>` unless `install_dir` says otherwise. `record_install` writes
+The installed copy goes to `%LOCALAPPDATA%\Programs\<vendor_key>\<name>` (Linux: `~/.local/opt/<vendor_key>/<name>`) unless `install_dir` says otherwise. `record_install` writes
 `Software\Microsoft\Windows\CurrentVersion\Uninstall\<key>`, which Settings > Apps lists and `install_target` reads back
 (the default folder when there is no record); `install_recorded` reads the record alone ("" when there is none).
 A running program's file cannot be deleted: `files_install` renames it to `.old` first, `clean_old` deletes those at the
