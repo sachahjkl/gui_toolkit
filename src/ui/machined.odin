@@ -353,7 +353,8 @@ machined_plate_over :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radi
 @(private)
 machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f32, keyboard_focus: bool) -> (face, whole: bool) {
 	radius := radii[0]   // (a well or a bevel: one radius; a raised panel takes each corner's)
-	if !machined() { return }
+	// (a row draws its own face, inset in it: row_face.odin)
+	if !machined() || .Row in b.flags { return }
 	if .Groove in b.flags {
 		p := px1()
 		if r.max.x - r.min.x < r.max.y - r.min.y {

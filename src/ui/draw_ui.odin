@@ -135,7 +135,8 @@ box_drawn_radii :: proc(s: ^State, b: ^Box) -> (radii: [4]f32) {
 			// (its border's width: what is laid inside a bordered box starts there)
 			edge: f32 = .Draw_Border in a.flags ? max(1, math.round(s.scale)) : 0
 			if x > edge + CORNER_MEET_PX || y > edge + CORNER_MEET_PX { break }
-			if c in a.square_corners { continue }
+			// (a row's corner is not drawn: its face is inset in it, a cell at its corner stays square)
+			if c in a.square_corners || .Row in a.flags { continue }
 			ar := concentric_radius(box_drawn_radius(s, a), max(x, y))
 			if ar <= 0 { continue }
 			// (the corner it fills decides it: its own rounding there drew a second corner)
@@ -185,15 +186,23 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	// the machined finish draws its reliefs itself (machined.odin): the face, and for a well or a bevel its edge and focus
 	machined_face, machined_whole := machined_box(s, dc, b, r, radii, keyboard_focus)
 	if machined_whole { focus_ring = false }
+	// (a row's ring goes round its face, what the user sees of it, not round its box)
+	ring, ring_radii := r, radii
+	if focus_ring && .Row in flags { ring, ring_radii, _, _, _ = row_face_of(s, b) }
 	if focus_ring && s.theme != nil && s.theme.finish != .Flat {
 		// glow around the focused widget, under its background
 		c := color_from_tags(s, b.tags_key, "focus border")
 		c.a *= (keyboard_focus ? 1 : b.focus_t) * FOCUS_GLOW_ALPHA
 		glow := FOCUS_GLOW_PX * scale
-		draw.rect_corners(dc, draw.rect_pad(r, glow), colors4(tuned(c)), radii_grown(radii, glow), 0, glow)
+		draw.rect_corners(dc, draw.rect_pad(ring, glow), colors4(tuned(c)), radii_grown(ring_radii, glow), 0, glow)
 	}
-	// the face in its state: lifted, sunk or appeared, on the box's own rect and radii (face.odin)
-	if !machined_face { draw_face(s, dc, r, radii, box_face(s, b)) }
+	// the face in its state: lifted, sunk or appeared, on the box's own rect and radii (face.odin); a row's inset and
+	// rounded inside it, over its square ground (row_face.odin)
+	if .Row in flags {
+		row_draw(s, dc, b)
+	} else if !machined_face {
+		draw_face(s, dc, r, radii, box_face(s, b))
+	}
 	// (a rich paragraph paints both itself, between its runs' backgrounds and its text)
 	if b.custom != rich_draw {
 		if .Selectable in flags { draw_selection(s, dc, b) }
@@ -219,7 +228,8 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if .View_Scroll_X in flags { draw_scrollbar(s, dc, b, .X) }
 	machined_plate_over(s, dc, b, r, radii)
 
-	if .Draw_Border in flags && b.border.a > BORDER_ALPHA_EPS && !machined_whole {
+	// (a row's border would frame its box, not its inset face: a row has none)
+	if .Draw_Border in flags && b.border.a > BORDER_ALPHA_EPS && !machined_whole && .Row not_in flags {
 		border := b.border
 		// (a box that reacts: a target, or a frame that holds one, .Draw_Hot_Effects with .Hot_Within: input_frame)
 		if hot := box_hot(b); hot > DRAW_INVISIBLE_EPS && b.focus_t < 0.5 && (.Clickable in flags || .Draw_Hot_Effects in flags) {
@@ -241,7 +251,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32) {
 	if focus_ring {
 		c := color_from_tags(s, b.tags_key, "focus border")
 		if !keyboard_focus { c.a *= b.focus_t }
-		draw.rect_corners(dc, r, colors4(c), radii, FOCUS_RING_PX * scale)
+		draw.rect_corners(dc, ring, colors4(c), ring_radii, FOCUS_RING_PX * scale)
 	}
 	if squished { draw.pop_xform(dc) }
 	if fade { draw.pop_alpha(dc) }

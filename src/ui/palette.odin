@@ -1270,15 +1270,15 @@ palette_row_build :: proc(p: ^Command_Palette, snap: ^Palette_Snapshot, it: Pale
 	if p.query != "" {
 		if g := it.group != "" ? it.group : i18n.tr(snap.title); g != "" { text = fmt.tprintf("%s  ·  %s", it.title, g) }
 	}
-	push_tags("menu_item")
+	push_tags("menu_item", "nav")
 	defer pop_tags()
 	if sel { push_tags("selected") }
 	defer if sel { pop_tags() }
-	next({width = fill(), height = px(row_h), axis = .X, cross = .Center})
-	flags := Box_Flags{.Clickable, .Draw_Hot_Effects}
+	next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = em * CONTROL_RADIUS_EM})
+	flags := Box_Flags{.Clickable, .Draw_Hot_Effects, .Row}
+	if sel { flags += {.Draw_Background, .Chosen} }
 	if it.disabled { flags += {.Disabled} }
 	rb := build_box(flags, fmt.tprintf("###palette_%d_%d_%d", r.snap, r.item, k))
-	if sel { rb.custom = palette_selected_draw }
 	a11y_default(rb, {role = .Menu_Item, name = text, selected = sel})
 	rs := signal(rb)
 	if parent(rb) {

@@ -733,9 +733,12 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checke
 			set_next_axis(.X, .Center)
 			s.next_mod.width = px(width)
 			s.next_mod.height = px(dense(em * s.feel.menu_item_em))
-			s.next_mod.radius = 0   // (a row of a list: square, as a list's and a table's)
+			// (a row: its face inset in it, a control's corners: row_face.odin)
+			if s.next_mod.radius == nil { s.next_mod.radius = em * CONTROL_RADIUS_EM }
 			if !highlight { s.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
-			b := build_box({.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border}, fmt.tprintf("###mi_%d_%s", idx, hash_part(text)))
+			flags := Box_Flags{.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border, .Row}
+			if highlight { flags += {.Chosen} }
+			b := build_box(flags, fmt.tprintf("###mi_%d_%s", idx, hash_part(text)))
 			if highlight { pop_tags() }
 			if idx < len(lv.items) { lv.items[idx].key = b.key }
 			if idx == lv.sel && lv.reveal { menu_reveal(lv, b) }

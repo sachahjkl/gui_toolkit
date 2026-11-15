@@ -589,7 +589,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 					ui.spacer(ui.px(em * NAV_LEAD_EM))
 					shown := i == cur && !config.searching(&p.search)
 					glyph := o.icon_font != 0 ? pg.icon : ""
-					line := ui.Button_Options{face = shown ? .Toggled : .Ghost, width = ui.fill(), height = math.round(em * NAV_LINE_HEIGHT_EM), left = true, icon_font = o.icon_font}
+					line := ui.Button_Options{face = .Row, selected = shown, width = ui.fill(), height = math.round(em * NAV_LINE_HEIGHT_EM), left = true, icon_font = o.icon_font}
 					if ui.button(fmt.tprintf("###nav%d", i), icons ? "" : pg.title, glyph, line).clicked {
 						delete(p.current)
 						p.current = strings.clone(pg.category)
@@ -617,9 +617,10 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 
 // A line of the sidebar: as tall as this many font sizes (at least: a title that wraps makes it taller).
 @(private = "file") NAV_LINE_HEIGHT_EM :: 2.1
-// The sidebar's room beside a page's button: before it, after it (nav's spacers), and before a heading.
-@(private = "file") NAV_LEAD_EM :: 0.7
-@(private = "file") NAV_TRAIL_EM :: 0.9
+// The sidebar's room beside a page's row: before it, after it (nav's spacers), and before a heading. (Its face is inset
+// in it by ui.ROW_FACE_INSET_EM: the face stands where the buttons stood.)
+@(private = "file") NAV_LEAD_EM :: 0.7 - ui.ROW_FACE_INSET_EM
+@(private = "file") NAV_TRAIL_EM :: 0.9 - ui.ROW_FACE_INSET_EM
 @(private = "file") NAV_HEADING_LEAD_EM :: 1.1
 @(private = "file") NAV_HEADING_SIZE :: 0.75
 

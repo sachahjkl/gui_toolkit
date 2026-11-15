@@ -11,6 +11,7 @@
 //   build/showcase --scene=files                      the file browser over the page, on a demo source (files.odin)
 //   build/showcase --headless                         no window of the system: what tk screenshots runs
 //   build/showcase --size=1280x800                    the window's size
+//   build/showcase --rounding=0                       the rounding setting (0 square .. 2), over the default 1
 // tk screenshots makes docs/screenshots/showcase_*.webp and site/img/showcase_*.webp from it (tools/tk/shots.odin).
 package showcase
 
@@ -119,6 +120,7 @@ open :: proc(o: Open_Options) -> ^App {
 	size := WINDOW_SIZE
 	app.choice = {name = "Graphite", mode = .Dark, finish = .Machined, glow = 1}
 	page, advanced := "", false
+	rounding := -1.0   // (< 0: the setting's own)
 	for a in o.args {
 		switch {
 		case a == "--headless": headless = true
@@ -129,6 +131,8 @@ open :: proc(o: Open_Options) -> ^App {
 		case strings.has_prefix(a, "--theme="): app.choice.name = a[len("--theme="):]
 		case strings.has_prefix(a, "--finish="): app.choice.finish = ui.finish_of(a[len("--finish="):])
 		case strings.has_prefix(a, "--page="): page = a[len("--page="):]
+		case strings.has_prefix(a, "--rounding="):
+			if v, ok := strconv.parse_f64(a[len("--rounding="):]); ok { rounding = v }
 		case strings.has_prefix(a, "--views="):
 			for name, v in VIEWS_VARIANT_NAMES { if ascii.equal_fold(name, a[len("--views="):]) { app.views_variant = v } }
 		case strings.has_prefix(a, "--size="):
@@ -163,6 +167,8 @@ open :: proc(o: Open_Options) -> ^App {
 	themes_make(app)
 	values_reset(app)
 	settings_open(app, page, advanced)
+	// (after the settings: the command line's rounding, a picture at another rounding than the setting's default)
+	if rounding >= 0 { _ = config.set_float(&app.prefs, "appearance.rounding", rounding) }
 	graph_make(app)
 	app.announcer = {mode = .Window, window = h.win}
 	app.devtools = devtools.start_from_env(h.win, "gui_toolkit showcase")
