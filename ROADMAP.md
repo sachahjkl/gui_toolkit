@@ -7,6 +7,9 @@
   under `$`, `about:config` under `:`), and its bookmark, vault and security-key dialogs become views. Intents:
   [src/md/features/palette.md](src/md/features/palette.md), [src/md/features/views.md](src/md/features/views.md)
   (sections 1 and 7).
+- **No black strip under machined buttons on Windows.** With partial redraw on, Windows 11 shows thin black strips just
+  under a row of quiet machined buttons (atelier's Programs step); WebGPU on Linux draws the same scene exactly, so
+  the cause is on the Direct3D 11 window's path. `tests/partial_redraw_layers` holds the scene, which the Windows CI runs.
 
 ## Next
 - **No graphics driver on Windows, tested.** A window whose hardware Direct3D 11 device is refused falls back to WARP,
