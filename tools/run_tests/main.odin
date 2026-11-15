@@ -164,6 +164,7 @@ STEPS := []Step{
 	{name = "devtools_unit", path = "src/devtools"},
 	// the interface with real frames and input: testkit/session
 	{name = "session", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
+	{name = "pictures", one = true, oses = EVERYWHERE, text = true},
 	// (the check of what waits on the system in a frame: compiled in, as a program's tests have it)
 	{name = "session_blocking", path = "tests/session", one = true, oses = EVERYWHERE, text = true, defines = {"TOOLKIT_BLOCKING_CHECK=true", "ODIN_TEST_NAMES=session_test.a_frame_that_waits_on_the_system_is_counted"}},
 	{name = "data_views", one = true, oses = EVERYWHERE, text = true},

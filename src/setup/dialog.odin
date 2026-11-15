@@ -36,6 +36,7 @@ import "../draw"
 import lucide "../lucide"
 import "../platform"
 import "../render"
+import svg "../svg"
 import "../ui"
 
 Dialog :: struct {
@@ -65,6 +66,7 @@ Dialog :: struct {
 	logo:      Maybe(Logo),        // the view's mark: open's, then set_logo's (the program does not write it)
 	vendor_mark: Maybe(Logo),      // its vendor's mark in the "By" line: open's, then set_vendor_mark's (nil: the name alone)
 	details:   Maybe(bool),        // the person opened or folded the details (nil: folded)
+	nix_logo:  Maybe(svg.Document),   // Nix's snowflake, read at the first build of the Nix screen (destroy frees it)
 	pending:   Event,
 	building:  bool,               // the view's build runs: a close from its buttons ends the view there
 }
@@ -189,6 +191,7 @@ destroy :: proc(d: ^Dialog) {
 	ui.line_edit_destroy(&d.folder)
 	for l in d.leftovers { delete(l) }
 	delete(d.leftovers)
+	if doc, has := &d.nix_logo.?; has { svg.destroy(doc) }
 	d^ = {}
 }
 
@@ -638,8 +641,11 @@ hero :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 				words, badge := i18n.tr("Reading the install…"), ""
 				if d.known { _, badge = headline(f^, o) }
 				_, tone := state_words(f^, o)
-				if badge != "" { ui.pill("setup_badge", badge, state_glyph(f^), tone_color(tone)) } else { ui.pill("setup_badge", words, "", ui.color("weak text")) }
-				ui.space(ui.CONTROL_GAP)
+				// (a copy from Nix: no pill, Nix's panel says it once, larger)
+				if f.state != .Nix_Package || !d.known {
+					if badge != "" { ui.pill("setup_badge", badge, state_glyph(f^), tone_color(tone)) } else { ui.pill("setup_badge", words, "", ui.color("weak text")) }
+					ui.space(ui.CONTROL_GAP)
+				}
 				if ui.tags("weak") {
 					installed := ""
 					if d.known && f.state != .Not_Installed && f.state != .Nix_Package && f.version != "" && f.version != o.version {
@@ -650,7 +656,8 @@ hero :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 				}
 			}
 			// (what the state means, under the pill that names it: weak, the pill carries the tone)
-			if d.known && f.state != .Nix_Package {   // (Nix's panel says it, larger)
+			// (the sentence only when it says more than the pill: which version, what is missing, what goes)
+			if d.known && (f.state == .Repair || f.state == .Other_Copy || f.state == .Removal_Scheduled) {
 				words, _ := state_words(f^, o)
 				ui.space(ui.LINE_GAP)
 				if ui.tags("weak") {
@@ -684,15 +691,13 @@ nix_panel :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 	if ui.column(id = "###setup_nix") {
 		ui.spacer(ui.fill())
 		side := math.round(em * NIX_DISC_EM)
-		// (the disc a box of its own, the snowflake a box in it: a box's own drawing comes after its text)
-		ui.next({width = ui.px(side), height = ui.px(side)})
-		disc := ui.build_box({}, "###setup_nix_disc")
-		disc.custom = nix_disc_draw
-		if ui.parent(disc) {
-			ui.next({width = ui.fill(), height = ui.fill(), font = ui.lucide_icons(), font_size = math.round(side * 0.55),
-				fg = draw.hex(0xFFFFFFFF), text_align = .Center, text_pad = 0})
-			ui.build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###setup_nix_mark", lucide.SNOWFLAKE))
+		// (Nix's own snowflake, its six lambdas in its two blues: read once, the first time this screen is built)
+		if d.nix_logo == nil {
+			if doc, ok := svg.parse(NIX_SNOWFLAKE); ok { d.nix_logo = doc }
 		}
+		ui.next({width = ui.px(side), height = ui.px(side)})
+		mark := ui.build_box({}, "###setup_nix_mark")
+		if doc, has := &d.nix_logo.?; has { mark.custom, mark.custom_user = nix_logo_draw, doc }
 		ui.space(ui.GROUP_GAP)
 		ui.next({width = ui.text_size(), height = ui.px(math.round(em * 2)), font_size = math.round(em * 1.4), text_pad = 0})
 		ui.label(fmt.tprintf("%s###setup_nix_title", i18n.tr("Managed by Nix")))
@@ -703,7 +708,7 @@ nix_panel :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 			ui.space(ui.SPACE_6)
 			if ui.tags("weak") {
 				ui.next({width = ui.fill(), text_pad = 0, text_align = .Center})
-				words := fmt.tprintf(i18n.tr("%s comes from the Nix store. Nix installs it, puts it in the applications menu and updates it with your system: there is nothing to do here."), o.identity.name)
+				words := fmt.tprintf(i18n.tr("Nix installs and updates %s."), o.identity.name)
 				ui.paragraph(fmt.tprintf("%s###setup_nix_words", words))
 			}
 			ui.space(ui.SPACE_6)
@@ -720,18 +725,21 @@ nix_panel :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 	}
 }
 
-// Nix's disc: its two blues, the light one at the top left, the dark one at the bottom right.
+// The snowflake fitted to its box, centred.
 @(private = "file")
-nix_disc_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+nix_logo_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+	doc := (^svg.Document)(user)
 	r := b.rect
-	side := r.max.x - r.min.x
-	stops := [2]draw.Gradient_Stop{{color = draw.hex(NIX_LIGHT), pos = 0}, {color = draw.hex(NIX_DARK), pos = 1}}
-	draw.gradient(dc, r, {kind = .Linear, space = .Oklab, start = {0, 0}, end = {side, side}, stops = stops[:], dither = true}, {side, side, side, side} * 0.5)
+	room := r.max - r.min
+	if doc.view[2] <= 0 || doc.view[3] <= 0 { return }
+	scale := min(room.x / doc.view[2], room.y / doc.view[3])
+	at := r.min + (room - svg.size(doc, scale)) * 0.5
+	svg.draw_doc(dc, doc, at, scale, {})
 }
 
-@(private = "file") NIX_DISC_EM :: 6.5
-@(private = "file") NIX_LIGHT   :: 0x7EBAE4FF   // Nix's light blue
-@(private = "file") NIX_DARK    :: 0x5277C3FF   // Nix's dark blue
+@(private = "file") NIX_DISC_EM :: 7
+// The Nix snowflake (NixOS's artwork, CC BY 4.0: src/setup/nix-snowflake-LICENSE.txt).
+@(private = "file") NIX_SNOWFLAKE :: #load("nix-snowflake.svg", string)
 
 @(private = "file") HERO_LOGO_EM  :: 4.5    // the program's logo in the hero
 @(private = "file") HERO_TITLE_EM :: 1.6    // its name

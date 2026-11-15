@@ -46,6 +46,7 @@ Notice_Crate :: struct {
 	{"Roboto (the embedded interface font)", "Apache-2.0", "src/font/data/Roboto-LICENSE.txt"},
 	{"Inconsolata (the embedded monospace font)", "OFL-1.1", "src/font/data/Inconsolata-OFL.txt"},
 	{"Lucide (the icons)", "ISC", "src/lucide/LICENSE.txt"},
+	{"The Nix snowflake (the setup's screen for a copy from the Nix store)", "CC-BY-4.0", "src/setup/nix-snowflake-LICENSE.txt"},
 }
 
 // The `notices` command of a project's tool: `notices` writes THIRD-PARTY-NOTICES, `notices --check` fails when it is not

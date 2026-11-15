@@ -18,6 +18,7 @@ Drawing and text
   webgpu.md           WebGPU
   paint.md            paint: vector pictures
   diagrams.md         Diagrams: svg and mermaid
+  pictures.md         pictures: a cache of decoded pictures
 
 Widgets and layout
   widgets.md          Buttons and numbers

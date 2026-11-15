@@ -165,7 +165,7 @@ the_installed_copy_updates_its_shortcuts :: proc(t: ^testing.T) {
 	app: App
 	defer app_end(&app)
 	s := start(t, &app, {state = .This_Copy, exe_there = true, manifest = true, running_it = true, start_lnk = true, record = true})
-	testing.expect(t, session.find_text(s, "this is the installed copy") != nil)
+	testing.expect(t, session.find_text(s, "Installed") != nil)   // (the state's pill: the sentence says no more than it)
 	testing.expect(t, session.find_text(s, "Update the shortcuts") != nil)
 	session.click(s, "setup_close")
 	session.wait_gone(s, "setup_scroll")

@@ -45,8 +45,6 @@
   [src/md/features/image-decode.md](src/md/features/image-decode.md).
 - **Streams and sockets in `tk_http`.** A server's event stream and WebSockets over TLS, so opencode native drops ureq
   and tungstenite, Wren its own WebSocket and the toolkit's CDP client its plain `ws://` one: three copies today.
-- **A cache of decoded pictures.** Textures of pictures kept under a byte budget, as opencode native and Wren each keep
-  their own (images, favicons, system icons).
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
   `-check:darwin_arm64`), and every portable file names the system's facts, not the system (`SYSTEM_DIRECT3D`,
   `font.SYSTEM_RASTERIZER`); papier, classeur, inspecteur and cliche check theirs for macOS. What is left: opencode

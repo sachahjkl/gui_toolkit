@@ -206,6 +206,15 @@ fr l'image est trop grande pour la reconnaissance de texte
 en text recognition failed
 fr la reconnaissance de texte a échoué
 
+en not a picture file this program reads
+fr un fichier d'image que ce programme ne lit pas
+
+en the picture file is damaged
+fr le fichier d'image est abîmé
+
+en too large for the graphics card
+fr trop grande pour la carte graphique
+
 en All files
 fr Tous les fichiers
 
@@ -1349,8 +1358,8 @@ fr   ·  v%s installée
 en Managed by Nix
 fr Géré par Nix
 
-en %s comes from the Nix store. Nix installs it, puts it in the applications menu and updates it with your system: there is nothing to do here.
-fr %s vient du store de Nix. Nix l'installe, le met dans le menu des applications et le met à jour avec votre système : il n'y a rien à faire ici.
+en Nix installs and updates %s.
+fr Nix installe et met à jour %s.
 
 en By
 fr Par

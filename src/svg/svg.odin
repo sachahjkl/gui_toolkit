@@ -104,7 +104,10 @@ Parser :: struct {
 	a:       mem.Allocator,          // the document's
 	markers: map[string]^Node,
 	tree:    ^Node,
+	use_depth: int,                  // the <use> being followed, one in another
 }
+
+@(private) USE_DEPTH :: 8   // a <use> of a <use>... this deep at most
 
 // The elements of `p.src` under one root (temp memory).
 @(private)
@@ -520,6 +523,19 @@ walk :: proc(p: ^Parser, n: ^Node, m: Affine, parent: Style) {
 	switch n.name {
 	case "svg", "g", "a", "switch":
 		for c in n.children { walk(p, c, mm, st) }
+	case "use":
+		// (another element drawn again here, moved by x and y after this element's transform: a logo's six arms are one
+		// arm and five uses of it; a use of a use is followed USE_DEPTH deep, so that one naming itself ends)
+		ref, found := attr(n, "href")
+		if !found { ref, found = attr(n, "xlink:href") }
+		if !found || !strings.has_prefix(ref, "#") || p.use_depth >= USE_DEPTH { return }
+		target := find_id(find_svg_root(p), ref[1:])
+		if target == nil { return }
+		x, _ := length(attr(n, "x"))
+		y, _ := length(attr(n, "y"))
+		p.use_depth += 1
+		defer p.use_depth -= 1
+		walk(p, target, mul(mm, Affine{1, 0, 0, 1, x, y}), st)
 	case "path":
 		d, _ := attr(n, "d")
 		shape_add(p, n, path_of(d), mm, st)
@@ -567,23 +583,44 @@ walk :: proc(p: ^Parser, n: ^Node, m: Affine, parent: Style) {
 // fill="url(#g)": a gradient's first stop colour (the diagram's colours, without the blend).
 @(private)
 gradient_colors :: proc(p: ^Parser, n: ^Node, st: ^Style) {
+	// (a gradient that has no stops of its own takes another's, by href: an editor's gradients often share their stops so)
 	first_stop :: proc(p: ^Parser, ref: string) -> Maybe(Color) {
 		if !strings.has_prefix(ref, "url(#") { return nil }
 		id := strings.trim_suffix(strings.trim_prefix(ref, "url(#"), ")")
-		g := find_id(find_svg_root(p), id)
-		if g == nil { return nil }
-		for c in g.children {
-			if c.name != "stop" { continue }
-			if col, ok := attr(c, "stop-color"); ok { if v, is := color_of(col); is { return v } }
+		for _ in 0 ..< USE_DEPTH {
+			g := find_id(find_svg_root(p), id)
+			if g == nil { return nil }
+			for c in g.children {
+				if c.name != "stop" { continue }
+				if col, ok := property(c, "stop-color"); ok { if v, is := color_of(col); is { return v } }
+			}
+			next, linked := attr(g, "href")
+			if !linked { next, linked = attr(g, "xlink:href") }
+			if !linked || !strings.has_prefix(next, "#") { return nil }
+			id = next[1:]
 		}
 		return nil
 	}
 	for key in ([]string{"fill", "stroke"}) {
-		v, ok := attr(n, key)
+		v, ok := property(n, key)
 		if !ok || !strings.has_prefix(v, "url(") { continue }
 		c := first_stop(p, v)
 		if key == "fill" { st.fill = c } else { st.stroke = c }
 	}
+}
+
+// A property of an element: its style attribute's declaration first, else the attribute of that name (CSS's order:
+// a declaration wins over a presentation attribute). Trimmed.
+@(private)
+property :: proc(n: ^Node, key: string) -> (value: string, ok: bool) {
+	if css, has := attr(n, "style"); has {
+		for decl in strings.split(css, ";", context.temp_allocator) {
+			colon := strings.index_byte(decl, ':')
+			if colon > 0 && strings.trim_space(decl[:colon]) == key { return strings.trim_space(decl[colon + 1:]), true }
+		}
+	}
+	v, found := attr(n, key)
+	return strings.trim_space(v), found
 }
 
 @(private)

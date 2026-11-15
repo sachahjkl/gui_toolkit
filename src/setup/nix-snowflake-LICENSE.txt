@@ -1,0 +1,6 @@
+The Nix snowflake (src/setup/nix-snowflake.svg), drawn by the setup's screen for a copy from the Nix store.
+
+Source: https://github.com/NixOS/nixos-artwork/blob/master/logo/nix-snowflake-colours.svg
+Designed by Tim Cuthbertson (@timbertson), with the NixOS community.
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/
+The file is used as published; its colours are drawn flat (the toolkit's SVG reader takes a gradient's first colour).

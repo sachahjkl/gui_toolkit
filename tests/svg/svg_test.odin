@@ -30,6 +30,32 @@ shapes :: proc(doc: ^svg.Document) -> [dynamic]svg.Shape {
 near :: proc(a, b: [2]f32) -> bool { return abs(a.x - b.x) < 0.01 && abs(a.y - b.y) < 0.01 }
 
 // mermaid-svg's flowchart: its view, its boxes, its labels where it put them, an arrow at the end of each line.
+// A logo as an editor writes it: one arm and a <use> of it turned, its fill a gradient named in its style whose stops
+// are another gradient's (href). Two shapes, both in the stops' first colour; a <use> of itself ends.
+@(test)
+uses_and_linked_gradients_are_read :: proc(t: ^testing.T) {
+	SRC :: `<svg viewBox="0 0 10 10" xmlns:xlink="http://www.w3.org/1999/xlink">
+<defs><linearGradient id="stops"><stop style="stop-color:#5277c3"/><stop offset="1" stop-color="#7ebae4"/></linearGradient>
+<linearGradient id="g" xlink:href="#stops"/></defs>
+<path id="arm" d="M0 0 L4 0 L4 1 Z" style="fill:url(#g)"/>
+<use xlink:href="#arm" transform="rotate(90 5 5)"/>
+<use id="self" href="#self"/>
+</svg>`
+	doc, ok := svg.parse(SRC)
+	defer svg.destroy(&doc)
+	testing.expect(t, ok)
+	testing.expect_value(t, len(doc.items), 2)
+	for item in doc.items {
+		s, is := item.(svg.Shape)
+		testing.expect(t, is)
+		c, filled := s.fill.?
+		testing.expect(t, filled && abs(c.b - c.r) > 0.1, "the stops' blue, not black")
+	}
+	a, _ := doc.items[0].(svg.Shape)
+	b, _ := doc.items[1].(svg.Shape)
+	testing.expect(t, abs(b.segs[1].p.x - a.segs[1].p.x) > 1, "the use is turned")
+}
+
 @(test)
 a_flowchart_of_mermaid_is_read :: proc(t: ^testing.T) {
 	doc, ok := svg.parse(FLOWCHART)
