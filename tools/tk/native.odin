@@ -121,7 +121,12 @@ build_native_lib :: proc(root: string, features: []string, force: bool) -> strin
 
 		target := join({out, "target"})
 		began := time.tick_now()
-		if !toolbox.run(cargo) { return "cargo build failed" }
+		// (the static C runtime, as Odin's programs link it: libwebp's C, compiled by the cc crate, otherwise asks for
+		// the DLL's __imp_malloc and the like, which no Odin program links)
+		static_crt := make([dynamic]string, context.temp_allocator)
+		append(&static_crt, ..cargo)
+		append(&static_crt, "--config", fmt.tprintf("target.%s.rustflags=['-C','target-feature=+crt-static']", RUST_TARGET))
+		if !toolbox.run(static_crt[:]) { return "cargo build failed" }
 		_ = os.make_directory_all(out)
 		if os.copy_file(file, join({target, "release", fmt.tprintf("%s.lib", NATIVE_NAME)})) != nil { return fmt.tprintf("%s cannot be written", file) }
 
