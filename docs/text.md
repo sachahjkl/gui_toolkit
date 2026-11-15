@@ -113,7 +113,10 @@ is full width and as tall as its lines (`Box.measure_y`: its height follows the 
 result's `link_hovered`, `link_clicked`, `link` and `link_focused` (the paragraph is a Tab stop; Tab / Shift+Tab go
 through its links, Enter / Space choose one; the pointer is a hand over them). `ui.rich_links(text, style, &runs)` turns
 plain text into runs whose web addresses (`http://`, `https://`) are links, without the sentence's closing marks
-(`web_address_len` finds one). Bold and italic runs take the faces given
+(`web_address_len` finds one). `ui.link_words_set(prefixes)`, once at the start, makes the program's own words links
+too: a word that starts with one of the prefixes ("ses_abc"), its target the word (`link_len` finds either; Markdown
+reads them the same way, alone in inline code too). Design:
+[src/md/features/link-words.md](../src/md/features/link-words.md). Bold and italic runs take the faces given
 by `ui.set_family(state, regular, bold, italic, bold_italic)`, else the system's family, else simulated ones; a widget
 asks `ui.styled_face(face, bold, italic)` and gets the same (a toast's title, a section's name). Layouts are kept by content
 (`rich_layout_cached`): thousands of runs are laid out once. The geometry is public for selection and custom drawing:

@@ -18,8 +18,8 @@ inline_runs :: proc(text: string, base: ui.Rich_Style, out: ^[dynamic]ui.Rich_Ru
 	for i < len(text) {
 		c := text[i]
 		switch {
-		case ui.web_address_len(text, i) > 0:   // a bare web address: a link (before the emphasis marks: "_" is common in them)
-			n := ui.web_address_len(text, i)
+		case ui.link_len(text, i) > 0:   // a bare web address or link word: a link (before the emphasis marks: "_" is common in them)
+			n := ui.link_len(text, i)
 			flush(out, text[start:i], st)
 			l := st
 			l.link, l.underline, l.color = text[i:i + n], true, {}
@@ -41,7 +41,7 @@ inline_runs :: proc(text: string, base: ui.Rich_Style, out: ^[dynamic]ui.Rich_Ru
 			cs.code = true
 			if o.code_size > 0 { cs.size = o.code_size }
 			if o.code_color.a > 0 { cs.color = o.code_color }
-			if inner := text[i + 1:i + 1 + e]; ui.web_address_len(inner, 0) == len(inner) {   // `https://...`: a link still
+			if inner := text[i + 1:i + 1 + e]; inner != "" && ui.link_len(inner, 0) == len(inner) {   // `https://...`, `ses_abc`: a link still
 				cs.link, cs.underline, cs.color = inner, true, {}
 			}
 			flush(out, text[i + 1:i + 1 + e], cs)

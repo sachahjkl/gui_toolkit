@@ -42,7 +42,7 @@ Rich_Run :: struct {
 rich_links :: proc(text: string, style: Rich_Style, runs: ^[dynamic]Rich_Run) {
 	start, i := 0, 0
 	for i < len(text) {
-		n := web_address_len(text, i)
+		n := link_len(text, i)
 		if n == 0 { i += 1; continue }
 		if i > start { append(runs, Rich_Run{text = text[start:i], style = style}) }
 		link := style
@@ -52,6 +52,41 @@ rich_links :: proc(text: string, style: Rich_Style, runs: ^[dynamic]Rich_Run) {
 		start = i
 	}
 	if start < len(text) { append(runs, Rich_Run{text = text[start:], style = style}) }
+}
+
+// The program's link words (src/md/features/link-words.md): the prefixes of its own words that are links (a session's
+// id, "ses_"). Set once, before any text is read: the threads that build runs read them without a lock.
+@(private = "file") link_prefixes: []string
+
+// The words that start with one of `prefixes` become links, their target the word: once, at the program's start.
+link_words_set :: proc(prefixes: []string) {
+	assert(link_prefixes == nil, "ui: link_words_set is called once, before any text is read")
+	link_prefixes = make([]string, len(prefixes))
+	for p, i in prefixes { link_prefixes[i] = strings.clone(p) }
+}
+
+// The length of the link that starts at byte `i` of `text` (a web address, or one of the program's link words), 0 for
+// none. Its target is the text it covers.
+link_len :: proc(text: string, i: int) -> int {
+	if n := web_address_len(text, i); n > 0 { return n }
+	return link_word_len(text, i)
+}
+
+// The length of the program's link word that starts at byte `i` of `text`, 0 for none: one of the prefixes, not inside
+// another word, then letters, digits and "_" (at least one of them after the prefix).
+@(private = "file")
+link_word_len :: proc(text: string, i: int) -> int {
+	if len(link_prefixes) == 0 { return 0 }
+	word :: proc(c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' }
+	if i > 0 && word(text[i - 1]) { return 0 }
+	rest := text[i:]
+	for p in link_prefixes {
+		if !strings.has_prefix(rest, p) { continue }
+		end := len(p)
+		for end < len(rest) && word(rest[end]) { end += 1 }
+		if end > len(p) { return end }
+	}
+	return 0
 }
 
 // The length of the web address that starts at byte `i` of `text`, 0 for none.
