@@ -40,6 +40,7 @@ Standard_Set :: enum u8 {
 	Rendering,    // rendering.*: presentation, latency, partial redraw, filters (all advanced)
 	Update,       // update.*: automatic updates, channel, address
 	Session,      // general.*: in the menu, with the session, messages, language
+	Rows,         // appearance.rows.*: a table's rows, striped and ruled (a program with tables: not in STANDARD_ALL)
 }
 Standard :: bit_set[Standard_Set]
 
@@ -92,6 +93,16 @@ UI_FONT_PREF    :: "appearance.text.ui_font"
 MONO_FONT_PREF  :: "appearance.text.mono_font"
 PROSE_FONT_PREF :: "appearance.text.prose_font"
 EMOJI_FONT_PREF :: "appearance.text.emoji_font"
+ROWS_ZEBRA_PREF :: "appearance.rows.zebra"
+ROWS_RULES_PREF :: "appearance.rows.rules"
+
+// The look of a table's rows (Standard_Set.Rows), which the program gives each of its tables: a ui.List_State's
+// zebra and rules, or its own rows'.
+Rows_Look :: struct { zebra, rules: bool }
+
+rows_look :: proc(prefs: ^config.Prefs) -> Rows_Look {
+	return {zebra = config.bool_of(prefs, ROWS_ZEBRA_PREF), rules = config.bool_of(prefs, ROWS_RULES_PREF)}
+}
 
 FONT_SIZE_MIN :: 10
 FONT_SIZE_MAX :: 24
@@ -130,6 +141,7 @@ FONT_SIZE_MAX :: 24
 @(private = "file", rodata) DENSITY_TAGS := [?]string{"compact", "spacing", "rows"}
 @(private = "file", rodata) MOTION_TAGS := [?]string{"motion", "transitions", "reduce motion"}
 @(private = "file", rodata) FONT_TAGS := [?]string{"typeface", "family", "font"}
+@(private = "file", rodata) ROWS_TAGS := [?]string{"zebra", "stripes", "lines", "table", "list"}
 @(private = "file", rodata) TEXT_LOOK_TAGS := [?]string{"antialiasing", "cleartype", "smoothing", "sharpness", "weight"}
 @(private = "file", rodata) SCROLL_TAGS := [?]string{"wheel", "glide", "smooth"}
 @(private = "file", rodata) AUTOSCROLL_TAGS := [?]string{"middle click", "wheel click", "autoscroll"}
@@ -276,6 +288,18 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		append(&defs, config.Def{
 			name = PLACEMENT_PREF, kind = .String, default = {s = ""}, hidden = true,
 			description = "Where the main window was and its size (platform.placement_text): it opens there again (placement_restore, placement_track).",
+		})
+	}
+	if .Rows in sets {
+		config.title_register(prefs, "appearance.rows", i18n.later("Rows of tables"))
+		append(&defs, config.Def{
+			name = ROWS_ZEBRA_PREF, title = i18n.later("Alternating rows"), kind = .Bool, default = {b = false},
+			description = i18n.later("Every second row of a table a shade off, so that a line of numbers reads across."),
+			tags = ROWS_TAGS[:],
+		})
+		append(&defs, config.Def{
+			name = ROWS_RULES_PREF, title = i18n.later("Rules"), kind = .Bool, default = {b = false},
+			description = i18n.later("A thin line under each row of a table."), tags = ROWS_TAGS[:],
 		})
 	}
 	if .Text in sets {

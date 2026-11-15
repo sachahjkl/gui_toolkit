@@ -45,6 +45,15 @@ names every standard preference.
 | `window.toast_position` | `bottom_right` | the eight `ui.Toast_Position` | `ui.set_toast_position` |
 | `window.placement` | `""` (hidden) | `platform.placement_text` | the program: `placement_restore` before its window shows, `placement_track` at each frame, `placement_keep` at its close |
 
+## Rows of tables (`Rows`)
+
+A program with tables asks for this set; it is not in `STANDARD_ALL`. Its defaults come from `Standard_Defaults.values`.
+
+| Name | Default | Range, choices | Applied by |
+|---|---|---|---|
+| `appearance.rows.zebra` | `false` | | the program, to each table: `rows_look(prefs).zebra` (`ui.List_State.zebra`, or its own rows) |
+| `appearance.rows.rules` | `false` | | the program, to each table: `rows_look(prefs).rules` (`ui.List_State.rules`) |
+
 ## Text and fonts (`Text`)
 
 | Name | Default | Range, choices | Applied by |
