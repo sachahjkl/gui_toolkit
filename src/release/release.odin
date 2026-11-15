@@ -18,6 +18,8 @@
 // its end. An [Unreleased] section written by hand is assembled with the fragments, then removed.
 package tk_release
 
+import cli "../cli"
+
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
@@ -36,7 +38,7 @@ Release_Options :: struct {
 	using project: toolbox.Project,
 	dist:         string,        // where the archive goes ("build/dist")
 	files:        [][2]string,   // what goes beside the program: a file and its name in the archive
-	check:        proc() -> int, // the project's checks, run by ship before it commits (0: they passed)
+	check:        proc() -> cli.Exit, // the project's checks, run by ship before it commits (.Done: they passed)
 	// a program that updates itself (gt:update; its name set): package_ writes the program alone, what an installed copy
 	// downloads, and its manifest signed by $UPDATE_SIGNING_KEY (toolbox.UPDATE_KEY_ENV)
 	update:       update.Product,
@@ -53,9 +55,9 @@ commands :: proc(o: Release_Options) -> [3]toolbox.Command {
 	}
 }
 
-@(private = "file") run_package :: proc(args: []string, user: rawptr) -> int { return package_((^Release_Options)(user)^, args) }
-@(private = "file") run_notes :: proc(args: []string, user: rawptr) -> int { return notes((^Release_Options)(user)^, args) }
-@(private = "file") run_ship :: proc(args: []string, user: rawptr) -> int { return ship((^Release_Options)(user)^, args) }
+@(private = "file") run_package :: proc(args: []string, user: rawptr) -> cli.Exit { return package_((^Release_Options)(user)^, args) }
+@(private = "file") run_notes :: proc(args: []string, user: rawptr) -> cli.Exit { return notes((^Release_Options)(user)^, args) }
+@(private = "file") run_ship :: proc(args: []string, user: rawptr) -> cli.Exit { return ship((^Release_Options)(user)^, args) }
 
 // The three numbers of "x.y.z"; ok = false for anything else.
 semver :: proc(v: string) -> (n: [3]int, ok: bool) {
@@ -94,65 +96,65 @@ changelog_options :: proc(o: Release_Options) -> changelog.Project_Options {
 }
 
 // `notes <version>`: the changelog's section on the standard output.
-notes :: proc(o: Release_Options, args: []string) -> int {
-	if len(args) != 1 { fmt.eprintfln("%s: notes <version>", o.name); return 2 }
+notes :: proc(o: Release_Options, args: []string) -> cli.Exit {
+	if len(args) != 1 { fmt.eprintfln("%s: notes <version>", o.name); return .Usage }
 	section, ok := changelog.section(changelog_options(o).root, strings.trim_prefix(args[0], "v"))
-	if !ok { fmt.eprintfln("%s: %s has no section %s", o.name, o.changelog, args[0]); return 1 }
+	if !ok { fmt.eprintfln("%s: %s has no section %s", o.name, o.changelog, args[0]); return .Failed }
 	fmt.print(section)
-	return 0
+	return .Done
 }
 
 // `package [version]`: the archive of the release build and its SHA-256.
-package_ :: proc(o: Release_Options, args: []string) -> int {
+package_ :: proc(o: Release_Options, args: []string) -> cli.Exit {
 	source, _ := read_text(o.version_file)
 	version := toolbox.version_of(source, o.version_line)
 	if len(args) > 0 {
 		asked := strings.trim_prefix(args[0], "v")
-		if asked != version { fmt.eprintfln("%s: the tag says %s, the sources %s", o.name, asked, version); return 1 }
+		if asked != version { fmt.eprintfln("%s: the tag says %s, the sources %s", o.name, asked, version); return .Failed }
 	}
-	if !os.exists(o.program) { fmt.eprintfln("%s: %s is not built (a release build first)", o.name, o.program); return 1 }
+	if !os.exists(o.program) { fmt.eprintfln("%s: %s is not built (a release build first)", o.name, o.program); return .Failed }
 	// (a release, with its tag: the copies installed update themselves from its signed manifest, which needs the key)
 	updates := o.update.name != ""
 	signed := os.get_env(toolbox.UPDATE_KEY_ENV, context.temp_allocator) != ""
-	if updates && len(args) > 0 && !signed { fmt.eprintfln("%s: a release signs its update manifest: set %s", o.name, toolbox.UPDATE_KEY_ENV); return 1 }
+	if updates && len(args) > 0 && !signed { fmt.eprintfln("%s: a release signs its update manifest: set %s", o.name, toolbox.UPDATE_KEY_ENV); return .Failed }
 	name, exe, archive := package_names(o, version)   // (release_windows.odin, release_other.odin)
 	stage := fmt.tprintf("%s/%s", o.dist, name)
 	_ = os.remove_all(o.dist)
-	if !fsx.make_dirs(stage) { fmt.eprintfln("%s: %s cannot be made", o.name, stage); return 1 }
-	if !copy_file(o.name, o.program, fmt.tprintf("%s/%s", stage, exe)) { return 1 }
-	if !stage_launcher(o, stage) { return 1 }
+	if !fsx.make_dirs(stage) { fmt.eprintfln("%s: %s cannot be made", o.name, stage); return .Failed }
+	if !copy_file(o.name, o.program, fmt.tprintf("%s/%s", stage, exe)) { return .Failed }
+	if !stage_launcher(o, stage) { return .Failed }
 	for f in o.files {
-		if !copy_file(o.name, f[0], fmt.tprintf("%s/%s", stage, f[1])) { return 1 }
+		if !copy_file(o.name, f[0], fmt.tprintf("%s/%s", stage, f[1])) { return .Failed }
 	}
 	// (the toolkit's files the build put beside the program, Windows' libwebp: the setup installs them with it)
 	for f in desktop.TOOLKIT_FILES {
 		beside := fmt.tprintf("%s/%s", filepath.dir(o.program), f)
-		if os.exists(beside) && !copy_file(o.name, beside, fmt.tprintf("%s/%s", stage, f)) { return 1 }
+		if os.exists(beside) && !copy_file(o.name, beside, fmt.tprintf("%s/%s", stage, f)) { return .Failed }
 	}
-	if !pack(o, stage, name, exe, archive) { return 1 }
+	if !pack(o, stage, name, exe, archive) { return .Failed }
 	// the program alone (stripped on Linux, as in the archive) and its signed manifest
 	program: []u8
 	if updates {
 		err: os.Error
 		program, err = os.read_entire_file(fmt.tprintf("%s/%s", stage, exe), context.temp_allocator)
-		if err != nil { fmt.eprintfln("%s: %s/%s cannot be read", o.name, stage, exe); return 1 }
+		if err != nil { fmt.eprintfln("%s: %s/%s cannot be read", o.name, stage, exe); return .Failed }
 	}
 	_ = os.remove_all(stage)
 	if updates {
 		alone := fmt.tprintf("%s/%s", o.dist, update.expected_file_name(o.update, version, update.PLATFORM, context.temp_allocator))
-		if os.write_entire_file(alone, program) != nil { fmt.eprintfln("%s: %s cannot be written", o.name, alone); return 1 }
+		if os.write_entire_file(alone, program) != nil { fmt.eprintfln("%s: %s cannot be written", o.name, alone); return .Failed }
 		mark_executable(alone)
 		if signed {
 			manifest := fmt.tprintf("%s/%s", o.dist, update.manifest_name(update.PLATFORM, "", context.temp_allocator))
-			if why := toolbox.update_manifest(o.update, alone, version, "", manifest); why != "" { fmt.eprintfln("%s: %s", o.name, why); return 1 }
+			if why := toolbox.update_manifest(o.update, alone, version, "", manifest); why != "" { fmt.eprintfln("%s: %s", o.name, why); return .Failed }
 		}
 	}
 	sum, ok := toolbox.sha256_file(fmt.tprintf("%s/%s", o.dist, archive))
-	if !ok { return 1 }
+	if !ok { return .Failed }
 	// (one file per archive: the Linux and the Windows jobs of a release each upload their own)
-	if os.write_entire_file(fmt.tprintf("%s/%s.sha256", o.dist, archive), fmt.tprintf("%s  %s\n", sum, archive)) != nil { return 1 }
+	if os.write_entire_file(fmt.tprintf("%s/%s.sha256", o.dist, archive), fmt.tprintf("%s  %s\n", sum, archive)) != nil { return .Failed }
 	fmt.printfln("wrote %s/%s and %s/%s.sha256", o.dist, archive, o.dist, archive)
-	return 0
+	return .Done
 }
 
 @(private)
@@ -166,28 +168,28 @@ copy_file :: proc(who, from, to: string) -> bool {
 // `ship <patch|minor|major|x.y.z> [--dry-run]`: the release made from a clean checkout (any branch, a worktree), its
 // number the next after the last tag, committed, tagged and pushed to master with its tag at once (publish); the
 // release workflow builds it.
-ship :: proc(o: Release_Options, args: []string) -> int {
-	if len(args) == 0 { fmt.eprintfln("%s: ship <patch|minor|major|x.y.z> [--dry-run]", o.name); return 2 }
+ship :: proc(o: Release_Options, args: []string) -> cli.Exit {
+	if len(args) == 0 { fmt.eprintfln("%s: ship <patch|minor|major|x.y.z> [--dry-run]", o.name); return .Usage }
 	asked := strings.trim_prefix(args[0], "v")
 	dry := len(args) > 1 && args[1] == "--dry-run"
 	source, _ := read_text(o.version_file)
 	current := toolbox.version_of(source, o.version_line)
-	if _, ok := version_next(current, asked); !ok { fmt.eprintfln("%s: %s is not patch, minor, major or a version after %s", o.name, asked, current); return 2 }
+	if _, ok := version_next(current, asked); !ok { fmt.eprintfln("%s: %s is not patch, minor, major or a version after %s", o.name, asked, current); return .Usage }
 	changes := changelog_options(o)
 	problems, _ := changelog.check(changes)
 	for p in problems { fmt.eprintfln("%s: %s", o.name, p) }
-	if len(problems) > 0 { return 1 }
+	if len(problems) > 0 { return .Failed }
 	section, _ := changelog.preview(changes.root)
-	if section == "" { fmt.eprintfln("%s: nothing to release: no fragment in changelog.d/ (and nothing under [Unreleased] in %s)", o.name, o.changelog); return 1 }
+	if section == "" { fmt.eprintfln("%s: nothing to release: no fragment in changelog.d/ (and nothing under [Unreleased] in %s)", o.name, o.changelog); return .Failed }
 	if dry {
 		fmt.printfln("ship %s (dry run, after %s): the section it releases\n%s", asked, current, section)
-		return 0
+		return .Done
 	}
 	o := o
 	version, why := publish({asked = asked, floor = current, write = ship_write, user = &o})
-	if why != "" { fmt.eprintfln("%s: %s", o.name, why); return 1 }
+	if why != "" { fmt.eprintfln("%s: %s", o.name, why); return .Failed }
 	fmt.printfln("shipped v%s: the release workflow builds and publishes it (%s/actions)", version, o.repository)
-	return 0
+	return .Done
 }
 
 // The files of a program's release: the changelog's section, the version in the sources, then the project's checks.
@@ -203,7 +205,7 @@ ship_write :: proc(version: string, user: rawptr) -> (paths: []string, subject: 
 	for e in errors { fmt.eprintfln("%s: %s", o.name, e) }
 	if len(errors) > 0 { return nil, "", "assembling the changelog failed" }
 	if os.write_entire_file(o.version_file, new_source) != nil { return nil, "", fmt.tprintf("%s cannot be written", o.version_file) }
-	if o.check != nil && o.check() != 0 { return nil, "", "the checks failed: nothing is committed" }
+	if o.check != nil && o.check() != .Done { return nil, "", "the checks failed: nothing is committed" }
 	add := make([dynamic]string, context.temp_allocator)
 	append(&add, o.changelog, o.version_file)
 	// (the fragments deleted: a project with only an [Unreleased] section may have no changelog.d/ to add)

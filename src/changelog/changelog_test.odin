@@ -1,5 +1,7 @@
 package tk_changelog
 
+import cli "../cli"
+
 import "core:fmt"
 import "core:os"
 import "core:testing"
@@ -26,14 +28,14 @@ the_command_works_on_the_project :: proc(t: ^testing.T) {
 	c := command({name = "sample", repository = "https://github.com/o/r", changelog = changes, version_file = version_file, version_line = "APP_VERSION :: "})
 	defer free(c.user)
 	cs := []toolbox.Command{c}
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "new", "Added", "**Two**: the second.", "-subject:two"}), 0)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "new", "Added", "**Two**: the second.", "-subject:two"}), cli.Exit.Done)
 	entries, err := os.read_all_directory_by_path(fmt.tprintf("%s/changelog.d", dir), context.temp_allocator)
 	testing.expect(t, err == nil && len(entries) == 1, "one fragment")
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "check"}), 0)
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "preview"}), 0)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "check"}), cli.Exit.Done)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "preview"}), cli.Exit.Done)
 	testing.expect(t, os.write_entire_file(version_file, "APP_VERSION :: \"0.2.0\"\n") == nil)
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "check"}), 1)
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "new", "Added"}), 2)
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "publish"}), 2)
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "new", "Odd", "text"}), 1)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "check"}), cli.Exit.Failed)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "new", "Added"}), cli.Exit.Usage)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "publish"}), cli.Exit.Usage)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"changelog", "new", "Odd", "text"}), cli.Exit.Failed)
 }

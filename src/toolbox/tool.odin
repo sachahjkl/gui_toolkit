@@ -8,18 +8,16 @@ import "core:os"
 import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
+import cli "../cli"
 
-// Exit codes of a tool: the work is done, it failed, the line is not one the tool understands.
-EXIT_DONE   :: 0
-EXIT_FAILED :: 1
-EXIT_USAGE  :: 2
+// (a command ends with a cli.Exit, as a program does; only tool_main turns it into the process's exit code)
 
 // A command of a tool.
 Command :: struct {
 	name:        string,
-	usage:       string,                                   // its arguments and what it does, one line, for help
-	run:         proc(args: []string) -> int,              // the arguments after its name; the exit code
-	run_with:    proc(args: []string, user: rawptr) -> int, // instead of run: a command made for a project (changelog.command...)
+	usage:       string,                                    // its arguments and what it does, one line, for help
+	run:         proc(args: []string) -> cli.Exit,              // the arguments after its name
+	run_with:    proc(args: []string, user: rawptr) -> cli.Exit, // instead of run: a command made for a project (changelog.command...)
 	user:        rawptr,                                   // what run_with gets
 	checked:     bool,                                     // the line is checked against flags and positionals before run
 	flags:       []string,                                 // checked: "name" a switch (-name), "name:" a flag with a value (-name:value)
@@ -31,45 +29,49 @@ Command :: struct {
 @(private = "file") running_command: string
 
 // The tool's main: the line read (args_joined), the project's root found by `root_mark` and made the working directory
-// ("": the working directory stays), the command run; the process ends with its exit code. `help`, `-h`, `--help` or no
-// command: the commands listed, 0. A command it does not know: refused, 2.
+// ("": the working directory stays), the command run; the process ends with its Exit. `help`, `-h`, `--help` or no
+// command: the commands listed, .Done. A command it does not know: refused, .Usage.
 tool_main :: proc(program: string, commands: []Command, root_mark := "") {
 	if root_mark != "" {
 		cwd, _ := os.get_working_directory(context.temp_allocator)
 		root, found := project_root(cwd, root_mark)
-		if !found { fmt.eprintfln("%s: not in the project (no %s here or above)", program, root_mark); os.exit(EXIT_USAGE) }
-		if os.set_working_directory(root) != nil { fmt.eprintfln("%s: cannot work in %s", program, root); os.exit(EXIT_USAGE) }
+		if !found { fmt.eprintfln("%s: not in the project (no %s here or above)", program, root_mark); cli.exit(.Usage) }
+		if os.set_working_directory(root) != nil { fmt.eprintfln("%s: cannot work in %s", program, root); cli.exit(.Usage) }
 	}
-	os.exit(dispatch(program, commands, args_joined(os.args[1:], context.temp_allocator)))
+	cli.exit(dispatch(program, commands, args_joined(os.args[1:], context.temp_allocator)))
 }
 
-// Runs the command `args[0]` with the rest: its exit code. The help and the refusals of tool_main, without the process's end.
-dispatch :: proc(program: string, commands: []Command, args: []string) -> int {
+// Runs the command `args[0]` with the rest: how it ended. The help and the refusals of tool_main, without the process's
+// end.
+dispatch :: proc(program: string, commands: []Command, args: []string) -> cli.Exit {
 	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
 		if len(args) == 2 {
-			if c, ok := command_find(commands, args[1]); ok { fmt.printfln("%s %s %s", program, c.name, c.usage); return EXIT_DONE }
+			if c, ok := command_find(commands, args[1]); ok { fmt.printfln("%s %s %s", program, c.name, c.usage); return .Done }
 		}
 		fmt.print(tool_usage(program, commands))
-		return EXIT_DONE
+		return .Done
 	}
 	c, found := command_find(commands, args[0])
 	if !found {
 		fmt.eprintfln("%s: no command %s", program, args[0])
 		fmt.eprint(tool_usage(program, commands))
-		return EXIT_USAGE
+		return .Usage
 	}
 	rest := args[1:]
 	if why := args_check(c, rest); why != "" {
 		fmt.eprintfln("%s %s: %s", program, c.name, why)
 		fmt.eprintfln("  %s %s %s", program, c.name, c.usage)
-		return EXIT_USAGE
+		return .Usage
 	}
 	running_program, running_command = program, c.name
 	defer running_program, running_command = "", ""
 	if c.run_with != nil { return c.run_with(rest, c.user) }
 	if c.run != nil { return c.run(rest) }
-	return EXIT_FAILED
+	return .Failed
 }
+
+// A step that succeeded or not, as a command ends: .Done or .Failed (the step said why).
+ended :: proc(ok: bool) -> cli.Exit { return ok ? .Done : .Failed }
 
 // The command of that name.
 command_find :: proc(commands: []Command, name: string) -> (c: Command, ok: bool) {
@@ -87,11 +89,11 @@ tool_usage :: proc(program: string, commands: []Command, allocator := context.te
 	return strings.to_string(b)
 }
 
-// The exit code of a command whose work says why it failed ("": done), the failure said as "<tool> <command>: why".
-done :: proc(why: string) -> int {
-	if why == "" { return EXIT_DONE }
+// How a command whose work says why it failed ("": done) ends, the failure said as "<tool> <command>: why".
+done :: proc(why: string) -> cli.Exit {
+	if why == "" { return .Done }
 	if running_command != "" { fmt.eprintfln("%s %s: %s", running_program, running_command, why) } else { fmt.eprintln(why) }
-	return EXIT_FAILED
+	return .Failed
 }
 
 // Whether `args` are a line the command takes ("": they are, else why not). A command not `checked` takes any.

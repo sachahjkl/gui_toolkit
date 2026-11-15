@@ -4,6 +4,8 @@
 //   odin test tests/tk -collection:gt=src -vet
 package tk_test
 
+import cli "gt:cli"
+
 import "core:encoding/endian"
 import "core:fmt"
 import "core:os"
@@ -42,8 +44,8 @@ the_command_line :: proc(t: ^testing.T) {
 		{"build_naga", "extra"},
 	}
 	for r in refused { testing.expectf(t, line(r) != "", "%v is refused", r) }
-	testing.expect_value(t, toolbox.dispatch("tk", tk.COMMANDS, {"fetch_fonts"}), 2)
-	testing.expect_value(t, toolbox.dispatch("tk", tk.COMMANDS, {"ppm_diff", "a.ppm"}), 2)
+	testing.expect_value(t, toolbox.dispatch("tk", tk.COMMANDS, {"fetch_fonts"}), cli.Exit.Usage)
+	testing.expect_value(t, toolbox.dispatch("tk", tk.COMMANDS, {"ppm_diff", "a.ppm"}), cli.Exit.Usage)
 	seen := make(map[string]bool, context.temp_allocator)
 	for c in tk.COMMANDS {
 		testing.expectf(t, c.name not_in seen, "%s twice", c.name)

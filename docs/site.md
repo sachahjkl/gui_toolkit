@@ -204,7 +204,7 @@ its profile) is removed, and a run that cannot remove it fails.
 | `site check [--site folder] [--shot file.png] [--browser program]` | `check`, the pages made by `build_changelog`. |
 | `site card` | `draw_card` into the site's folder, once, by hand. |
 
-Another line is refused with exit code 2.
+Another line is refused: the command ends with `.Usage` (exit code 2).
 
 ```odin
 @(rodata) DOWNLOADS := [?]site.Download{{os = "linux", label = "Linux", href = "...", detail = "..."}}

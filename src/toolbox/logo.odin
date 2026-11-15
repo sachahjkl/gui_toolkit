@@ -1,5 +1,7 @@
 package tk_toolbox
 
+import cli "../cli"
+
 // The files a program makes from its logo: the program draws it (a proc that gives a canvas of a size), the toolbox writes
 // what every program needs of it: its PNG files, the .ico of its Windows executable, the project's picture.
 
@@ -81,7 +83,7 @@ logo_command :: proc(logo: Logo) -> Command {
 }
 
 @(private = "file")
-logo_run :: proc(args: []string, user: rawptr) -> int {
-	if len(args) > 0 { fmt.eprintln("logo takes no argument"); return EXIT_USAGE }
+logo_run :: proc(args: []string, user: rawptr) -> cli.Exit {
+	if len(args) > 0 { fmt.eprintln("logo takes no argument"); return .Usage }
 	return done(write_logo((^Logo)(user)^))
 }

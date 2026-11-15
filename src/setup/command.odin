@@ -23,7 +23,7 @@ Command :: enum u8 { None, Install, Uninstall, Status, Setup }
 COMMAND_OPTIONS := [?]cli.Option{
 	{name = "install", help = "install this copy for you: the program, the menu entry, and its uninstaller", group = "Installation"},
 	{name = "uninstall", help = "remove the installed copy (your settings and data stay)", group = "Installation"},
-	{name = "status", help = "say what is installed, and whether the program runs (exit code 0 installed, 2 to repair, 1 not installed)", group = "Installation"},
+	{name = "status", help = "say what is installed, and whether the program runs (exit code 0 installed, 1 not installed or to repair)", group = "Installation"},
 	{name = "setup", help = "open the window on the installation"},
 }
 
@@ -45,28 +45,23 @@ command_of :: proc(args: []string, allocator := context.temp_allocator) -> (c: C
 // Whether the command runs without a window: the program exits with command_run's code.
 command_alone :: proc(c: Command) -> bool { return c == .Install || c == .Uninstall || c == .Status }
 
-// Exit codes of command_run: done (Status: installed), failed (Status: not installed), to repair (Status). An uninstall
-// of the copy that runs leaves its files for after the process (desktop.CLI_UNINSTALL_LATER): still done for a script,
-// the files go once it ends.
-COMMAND_DONE   :: 0
-COMMAND_FAILED :: 1
-COMMAND_REPAIR :: 2
-
 // Runs Install, Uninstall or Status, says what happened with `out` (process.console_write: a program of the GUI
-// subsystem has no console of its own) and returns the exit code. Reads and writes the disk: before the window, never
-// from a frame. None and Setup do nothing (Setup is the window's).
-command_run :: proc(c: Command, o: Setup_Options, out: proc(text: string)) -> int {
+// subsystem has no console of its own) and how it ended (the program ends with it: cli.exit). Status is .Done when an
+// install is there whole, .Failed otherwise (its words say which: not installed, to repair). An uninstall of the copy
+// that runs leaves its files for after the process: still .Done, the files go once it ends. Reads and writes the disk:
+// before the window, never from a frame. None and Setup do nothing (Setup is the window's).
+command_run :: proc(c: Command, o: Setup_Options, out: proc(text: string)) -> cli.Exit {
 	name := o.identity.name
 	#partial switch c {
 	case .Install:
 		ok, exe_or_why := install(o, false)
 		if !ok {
 			out(fmt.tprintf("%s: the install failed: %s\n", name, exe_or_why))
-			return COMMAND_FAILED
+			return .Failed
 		}
 		out(fmt.tprintf("%s: installed: %s\n", name, exe_or_why))
 		if desktop.is_nixos() { out(fmt.tprintf("%s: on NixOS a Nix package is the better install: Nix updates it\n", name)) }
-		return COMMAND_DONE
+		return .Done
 	case .Uninstall:
 		ok, leftovers, why := uninstall(o)
 		defer {
@@ -76,17 +71,17 @@ command_run :: proc(c: Command, o: Setup_Options, out: proc(text: string)) -> in
 		if ok && len(leftovers) > 0 && !remove_later(o, leftovers[:]) { ok, why = false, "the removal of the program cannot be scheduled" }
 		if !ok {
 			out(fmt.tprintf("%s: the uninstall failed: %s\n", name, why))
-			return COMMAND_FAILED
+			return .Failed
 		}
 		out(fmt.tprintf("%s: uninstalled (your settings and data stay)\n", name))
-		return COMMAND_DONE
+		return .Done
 	case .Status:
 		f := facts(o)
 		running := o.running != nil && o.running()
 		out(status_text(f, o, running))
-		return status_code(f.state)
+		return status_exit(f.state)
 	}
-	return COMMAND_DONE
+	return .Done
 }
 
 // What --status says, a fact a line ("key: value"), the first the state in a word: what scripts and tests read.
@@ -101,12 +96,11 @@ status_text :: proc(f: Facts, o: Setup_Options, running: bool) -> string {
 		yes_no(f.start_lnk), yes_no(f.autostart), yes_no(f.on_path), running)
 }
 
-// The exit code of --status for a state: 0 installed (a Nix package too), 2 to repair, 1 not installed.
-status_code :: proc(s: State) -> int {
+// How --status ends for a state: .Done installed whole (a Nix package too), .Failed not installed or to repair.
+status_exit :: proc(s: State) -> cli.Exit {
 	switch s {
-	case .This_Copy, .Other_Copy, .Nix_Package: return COMMAND_DONE
-	case .Repair:                               return COMMAND_REPAIR
-	case .Not_Installed, .Removal_Scheduled:    return COMMAND_FAILED
+	case .This_Copy, .Other_Copy, .Nix_Package:            return .Done
+	case .Repair, .Not_Installed, .Removal_Scheduled:      return .Failed
 	}
-	return COMMAND_FAILED
+	return .Failed
 }

@@ -218,7 +218,7 @@ It is a list of `Command`s given to `tool_main`:
 ```odin
 main :: proc() {
 	p := project()
-	r := release.commands({project = p, dist = "build/dist", files = FILES[:], check = proc() -> int { return run_check(nil) }})
+	r := release.commands({project = p, dist = "build/dist", files = FILES[:], check = proc() -> cli.Exit { return run_check(nil) }})
 	toolbox.tool_main("classeurtool", {
 		{name = "build", usage = "[release]: the program", run = run_build},
 		{name = "check", usage = ": the checks of the CI", run = run_check},
@@ -227,7 +227,7 @@ main :: proc() {
 }
 ```
 
-A `Command` has a `name`, a `usage` (its arguments and what it does, one line) and `run(args) -> exit code`, the arguments
+A `Command` has a `name`, a `usage` (its arguments and what it does, one line) and `run(args) -> cli.Exit`, the arguments
 after its name. A command made for a project (`changelog.command`, `site.command`, `release.commands`, `logo_command`,
 `notices_command`) has `run_with(args, user)` and its `user` instead. With `checked`, the line is checked first: a flag is
 `-name` (a switch) or `-name:value`, and must be one of `flags` (`"name"`, `"name:"`); `positionals` is the number of
@@ -238,17 +238,21 @@ plain arguments (-1: none or one). A command not checked reads its own arguments
 1. reads the line, each `-name:` and its value joined again (`args_joined`: PowerShell 7 splits `-name:value` typed after
    `--` into two arguments);
 2. with a `root_mark` (`ROOT_MARK_DEFAULT`: `odin.version`), finds the project's root, the first folder from the working
-   directory up that holds it (`project_root(start, mark)`), and works there; none: exit code 2;
-3. runs the command (`dispatch(program, commands, args)`) and ends with its exit code.
+   directory up that holds it (`project_root(start, mark)`), and works there; none: `.Usage`;
+3. runs the command (`dispatch(program, commands, args) -> cli.Exit`) and ends with it (`cli.exit`).
 
-| Line | Exit code |
+A command ends with a `cli.Exit` (the same as a program's line, `cli.check`): `.Done` when the work is done, `.Failed` when it failed (it said why), `.Usage` for a line
+it does not take. Only `tool_main` turns it into the process's exit code: 0, 1 and 2.
+
+| Line | Exit |
 |---|---|
-| no command, `help`, `-h`, `--help` | 0: the commands and their usages (`tool_usage`); `help <command>`: that one |
-| a command it does not know | 2, the commands said |
-| a checked command's line that is not one it takes | 2, its usage said |
-| a command | its own: `EXIT_DONE` (0) when the work is done, `EXIT_FAILED` (1) when it failed, `EXIT_USAGE` (2) for a line it does not take |
+| no command, `help`, `-h`, `--help` | `.Done`: the commands and their usages (`tool_usage`); `help <command>`: that one |
+| a command it does not know | `.Usage`, the commands said |
+| a checked command's line that is not one it takes | `.Usage`, its usage said |
+| a command | its own |
 
-`done(why) -> int` is the exit code of a work that says why it failed (`""`: 0), the failure said as `<tool> <command>: why`.
+`done(why) -> Exit` is how a work that says why it failed ends (`""`: `.Done`, else `.Failed`), the failure said as
+`<tool> <command>: why`. `ended(ok) -> Exit` is `.Done` or `.Failed` for a step that said why itself.
 `command_find(commands, name)` and `args_check(command, args)` are the dispatcher's steps.
 
 The flags of a line: `has_flag(args, name)`, `flag_value(args, name, default)` (the last one given wins),

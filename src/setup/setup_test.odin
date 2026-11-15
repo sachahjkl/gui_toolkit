@@ -2,6 +2,7 @@ package tk_setup
 
 import "core:strings"
 import "core:testing"
+import cli "../cli"
 
 // What the facts of an install make of it.
 @(test)
@@ -94,11 +95,11 @@ the_command_line_of_the_install :: proc(t: ^testing.T) {
 	text := status_text({state = .Other_Copy, exe_there = true, exe = "/x/app", version = "1.0"}, {identity = {name = "App"}, version = "1.1"}, true)
 	testing.expectf(t, strings.has_prefix(text, "App: installed (another copy)\n"), "%s", text)
 	testing.expectf(t, strings.contains(text, "  running: true\n") && strings.contains(text, "  version: 1.0\n"), "%s", text)
-	testing.expect_value(t, status_code(.Other_Copy), COMMAND_DONE)
-	testing.expect_value(t, status_code(.Repair), COMMAND_REPAIR)
-	testing.expect_value(t, status_code(.Not_Installed), COMMAND_FAILED)
+	testing.expect_value(t, status_exit(.Other_Copy), cli.Exit.Done)
+	testing.expect_value(t, status_exit(.Repair), cli.Exit.Failed)
+	testing.expect_value(t, status_exit(.Not_Installed), cli.Exit.Failed)
 	c, rest = command_of({"--installer", "install"})
 	testing.expect_value(t, c, Command.None)   // (a word, or an option that only begins like one, is not it)
 	testing.expect_value(t, len(rest), 2)
-	testing.expect_value(t, command_run(.None, {}, nil), COMMAND_DONE)
+	testing.expect_value(t, command_run(.None, {}, nil), cli.Exit.Done)
 }

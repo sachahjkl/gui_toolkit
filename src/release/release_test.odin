@@ -1,5 +1,7 @@
 package tk_release
 
+import cli "../cli"
+
 import "core:fmt"
 import "core:os"
 import "core:testing"
@@ -29,8 +31,8 @@ the_notes_are_the_section :: proc(t: ^testing.T) {
 	text := "# Changelog\n\n## [0.1.0] - 2026-11-01\n\n### Added\n- The first.\n\n[0.1.0]: https://github.com/someone/something/releases/tag/v0.1.0\n"
 	testing.expect(t, os.write_entire_file(path, text) == nil)
 	c := Release_Options{project = {name = "sample", repository = "https://github.com/someone/something", changelog = path}}
-	testing.expect_value(t, notes(c, {"v0.1.0"}), 0)
-	testing.expect_value(t, notes(c, {"0.2.0"}), 1)
+	testing.expect_value(t, notes(c, {"v0.1.0"}), cli.Exit.Done)
+	testing.expect_value(t, notes(c, {"0.2.0"}), cli.Exit.Failed)
 }
 
 // A program that updates itself: package_ writes the program alone beside the archive and its manifest, signed with the
@@ -53,11 +55,11 @@ a_package_carries_the_signed_update :: proc(t: ^testing.T) {
 	when ODIN_OS == .Windows { testing.expect(t, os.write_entire_file(toolbox.launcher_path(c.project), self) == nil, "the launcher") }
 
 	os.unset_env(toolbox.UPDATE_KEY_ENV)
-	testing.expect_value(t, package_(c, {"v1.2.3"}), 1)   // (a release without the key)
+	testing.expect_value(t, package_(c, {"v1.2.3"}), cli.Exit.Failed)   // (a release without the key)
 
 	os.set_env(toolbox.UPDATE_KEY_ENV, signing.key_encode(seed[:], context.temp_allocator))
 	defer os.unset_env(toolbox.UPDATE_KEY_ENV)
-	testing.expect_value(t, package_(c, {"v1.2.3"}), 0)
+	testing.expect_value(t, package_(c, {"v1.2.3"}), cli.Exit.Done)
 	alone := fmt.tprintf("%s/%s", c.dist, update.expected_file_name(product, "1.2.3", update.PLATFORM, context.temp_allocator))
 	testing.expect(t, os.is_file(alone), "the program alone")
 	manifest_path := fmt.tprintf("%s/%s", c.dist, update.manifest_name(update.PLATFORM, "", context.temp_allocator))
@@ -89,7 +91,7 @@ the_release_commands_run_over_the_config :: proc(t: ^testing.T) {
 	testing.expect_value(t, cs[1].name, "notes")
 	testing.expect_value(t, cs[2].name, "ship")
 	for c in cs { testing.expectf(t, c.usage != "" && c.run_with != nil, "%s says what it does", c.name) }
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs[:], {"notes", "0.1.0"}), 0)
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs[:], {"notes"}), 2)
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs[:], {"ship"}), 2)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs[:], {"notes", "0.1.0"}), cli.Exit.Done)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs[:], {"notes"}), cli.Exit.Usage)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs[:], {"ship"}), cli.Exit.Usage)
 }

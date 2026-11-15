@@ -1,5 +1,7 @@
 package tk_toolbox
 
+import cli "../cli"
+
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
@@ -22,29 +24,29 @@ scratch :: proc(t: ^testing.T, name: string) -> string {
 
 @(private = "file")
 SAMPLE_COMMANDS := [?]Command{
-	{name = "build", usage = "[release]: the program", run = proc(args: []string) -> int { seen_args = len(args); return 0 }},
-	{name = "fail", usage = ": fails", run = proc(args: []string) -> int { return done("it broke") }},
-	{name = "fetch", usage = "[-dest:dir] [-force] <what>", checked = true, flags = {"dest:", "force"}, positionals = 1, run = proc(args: []string) -> int { return 0 }},
-	{name = "one", usage = "[x]", checked = true, positionals = -1, run = proc(args: []string) -> int { return 0 }},
-	{name = "with", usage = ": its user", run_with = proc(args: []string, user: rawptr) -> int { seen_user = user; return 7 }, user = &seen_args},
+	{name = "build", usage = "[release]: the program", run = proc(args: []string) -> cli.Exit { seen_args = len(args); return .Done }},
+	{name = "fail", usage = ": fails", run = proc(args: []string) -> cli.Exit { return done("it broke") }},
+	{name = "fetch", usage = "[-dest:dir] [-force] <what>", checked = true, flags = {"dest:", "force"}, positionals = 1, run = proc(args: []string) -> cli.Exit { return .Done }},
+	{name = "one", usage = "[x]", checked = true, positionals = -1, run = proc(args: []string) -> cli.Exit { return .Done }},
+	{name = "with", usage = ": its user", run_with = proc(args: []string, user: rawptr) -> cli.Exit { seen_user = user; return .Failed }, user = &seen_args},
 }
 
-// The exit codes of a tool: the command's own, 0 for the help, 2 for a command it does not know or a line the command
-// does not take; a command made for a project gets its user.
+// How a tool's command ends: the command's own Exit, .Done for the help, .Usage for a command it does not know or a line
+// the command does not take; a command made for a project gets its user.
 @(test)
 the_dispatcher_runs_the_command_and_says_its_code :: proc(t: ^testing.T) {
 	cs := SAMPLE_COMMANDS[:]
-	testing.expect_value(t, dispatch("sampletool", cs, {"build", "release", "x"}), 0)
+	testing.expect_value(t, dispatch("sampletool", cs, {"build", "release", "x"}), cli.Exit.Done)
 	testing.expect_value(t, seen_args, 2)
-	testing.expect_value(t, dispatch("sampletool", cs, {"fail"}), 1)
-	testing.expect_value(t, dispatch("sampletool", cs, {}), 0)
-	testing.expect_value(t, dispatch("sampletool", cs, {"help"}), 0)
-	testing.expect_value(t, dispatch("sampletool", cs, {"--help"}), 0)
-	testing.expect_value(t, dispatch("sampletool", cs, {"help", "fetch"}), 0)
-	testing.expect_value(t, dispatch("sampletool", cs, {"deploy"}), 2)
-	testing.expect_value(t, dispatch("sampletool", cs, {"with"}), 7)
+	testing.expect_value(t, dispatch("sampletool", cs, {"fail"}), cli.Exit.Failed)
+	testing.expect_value(t, dispatch("sampletool", cs, {}), cli.Exit.Done)
+	testing.expect_value(t, dispatch("sampletool", cs, {"help"}), cli.Exit.Done)
+	testing.expect_value(t, dispatch("sampletool", cs, {"--help"}), cli.Exit.Done)
+	testing.expect_value(t, dispatch("sampletool", cs, {"help", "fetch"}), cli.Exit.Done)
+	testing.expect_value(t, dispatch("sampletool", cs, {"deploy"}), cli.Exit.Usage)
+	testing.expect_value(t, dispatch("sampletool", cs, {"with"}), cli.Exit.Failed)   // run_with's own Exit, passed on
 	testing.expect(t, seen_user == rawptr(&seen_args), "run_with gets its user")
-	testing.expect_value(t, dispatch("sampletool", cs, {"fetch", "-dest:x", "-force", "emoji"}), 0)
+	testing.expect_value(t, dispatch("sampletool", cs, {"fetch", "-dest:x", "-force", "emoji"}), cli.Exit.Done)
 	refused := [][]string{
 		{"fetch", "emoji", "-Force"},         // the flags are the lower case ones
 		{"fetch", "emoji", "-force:yes"},     // a switch takes no value
@@ -53,8 +55,8 @@ the_dispatcher_runs_the_command_and_says_its_code :: proc(t: ^testing.T) {
 		{"fetch", "a", "b"},
 		{"one", "a", "b"},                    // one at most
 	}
-	for r in refused { testing.expectf(t, dispatch("sampletool", cs, r) == 2, "%v is refused", r) }
-	testing.expect_value(t, dispatch("sampletool", cs, {"one"}), 0)
+	for r in refused { testing.expectf(t, dispatch("sampletool", cs, r) == .Usage, "%v is refused", r) }
+	testing.expect_value(t, dispatch("sampletool", cs, {"one"}), cli.Exit.Done)
 	usage := tool_usage("sampletool", cs)
 	testing.expect(t, strings.has_prefix(usage, "sampletool <command> [arguments]\n") && strings.contains(usage, "  fetch  [-dest:dir]"), usage)
 }

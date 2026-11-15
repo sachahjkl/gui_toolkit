@@ -34,6 +34,9 @@
 - **Wren logs through `gt:log`.** Wren writes its log through the toolkit, as the other programs do.
 - **One native crate.** One native library with features replaces the toolkit's three native libraries, so no program
   links with multiple-definition flags.
+- **One install command line.** `desktop.parse_cli` and `desktop.cli_run` (`--desktop-integration`, their own exit
+  numbers) fold into `gt:setup`'s commands and `cli.Exit`; Wren, their last user, takes `setup.command_of` and
+  `command_run`.
 - **Platforms that plug in and out, toward macOS.** The toolkit's packages compile for macOS in its CI (`tk ci`,
   `-check:darwin_arm64`), and every portable file names the system's facts, not the system (`SYSTEM_DIRECT3D`,
   `font.SYSTEM_RASTERIZER`); what is left: the programs' packages checked for macOS too, and the native libraries' links

@@ -1,5 +1,7 @@
 package tk_site
 
+import cli "../cli"
+
 import "core:encoding/json"
 import "core:os"
 import "core:strings"
@@ -428,10 +430,10 @@ the_site_command_builds_the_project_site :: proc(t: ^testing.T) {
 	c := command({meta = m, dir = site})
 	defer free(c.user)
 	cs := []toolbox.Command{c}
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "build", site, out}), 0)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "build", site, out}), cli.Exit.Done)
 	testing.expect(t, os.exists(cat(out, "/changelog/index.html")) && os.exists(cat(out, "/feed.xml")), "the pages and the feed")
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "build", site}), 2)
-	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "check", "--what"}), 2)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "build", site}), cli.Exit.Usage)
+	testing.expect_value(t, toolbox.dispatch("sampletool", cs, {"site", "check", "--what"}), cli.Exit.Usage)
 }
 
 // The home page's nav and footer come from the Meta: the same entries, in the same order, on every site.

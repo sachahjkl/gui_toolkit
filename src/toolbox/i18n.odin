@@ -1,5 +1,7 @@
 package tk_toolbox
 
+import cli "../cli"
+
 // The catalogue of a language from the code: every `tr` call with literal texts in the .odin files of some folders (not
 // their tests), the translations already written kept, the new texts added to be translated, the texts the code no
 // longer has dropped (docs/i18n.md).
@@ -37,7 +39,7 @@ i18n_command :: proc(c: I18n_Catalogues) -> Command {
 I18N_FLAGS := [?]string{"check"}
 
 @(private = "file")
-i18n_run :: proc(args: []string, user: rawptr) -> int {
+i18n_run :: proc(args: []string, user: rawptr) -> cli.Exit {
 	c := (^I18n_Catalogues)(user)^
 	language := plain_args(args)[0]
 	path := fmt.tprintf("%s/%s.txt", c.folder, language)

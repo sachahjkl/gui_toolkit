@@ -6,12 +6,15 @@ release workflow; a project's own tool (`tools/<tool>`) gives them its `Release_
 ```odin
 config :: proc() -> release.Release_Options {
 	@(static) files := [?][2]string{{"README.md", "README.md"}, {"LICENSE", "LICENSE"}}
-	return {project = project(), dist = "build/dist", files = files[:], check = proc() -> int { return run_check(nil) }}
+	return {project = project(), dist = "build/dist", files = files[:], check = proc() -> cli.Exit { return run_check(nil) }}
 }
 release.package_(config(), args)   // <tool> package [version]
 release.notes(config(), args)      // <tool> notes <version>
 release.ship(config(), args)       // <tool> ship <patch|minor|major|x.y.z> [--dry-run]
 ```
+
+Each step returns a `cli.Exit`, as a command does. `check` is the project's checks: `ship` commits only when it
+returns `.Done`.
 
 `Release_Options.project` is the project's `toolbox.Project` ([toolbox.md](toolbox.md)): its name, repository, changelog, version file
 and line, and release build; its fields read as the Release_Options's (`o.name`).

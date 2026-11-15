@@ -56,11 +56,11 @@ version line, which `check` compares with the last released version. `project_op
 
 | Line | What it does |
 |---|---|
-| `changelog new <type> <text> [-subject:<subject>]` | One fragment (`new_fragment`); its name from the subject, else from the text. Exit code 1 when the type or the text is refused. |
+| `changelog new <type> <text> [-subject:<subject>]` | One fragment (`new_fragment`); its name from the subject, else from the text. It ends with `.Failed` when the type or the text is refused. |
 | `changelog check` | Every fragment well formed, the sources' version the last released one (`check`). |
 | `changelog preview` | What the next version brings (`preview`). |
 
-Another line is refused with exit code 2.
+Another line is refused: the command ends with `.Usage` (exit code 2).
 
 ## A changelog written by hand
 

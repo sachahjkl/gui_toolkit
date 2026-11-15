@@ -93,13 +93,14 @@ The same options in every program, listed in its table of options (`setup.COMMAN
 
 ```odin
 cmd, rest := setup.command_of(os.args[1:])
-if setup.command_alone(cmd) { os.exit(setup.command_run(cmd, setup_options(), process.console_write)) }   // install, uninstall, status
+if setup.command_alone(cmd) { cli.exit(setup.command_run(cmd, setup_options(), process.console_write)) }   // install, uninstall, status
 // ... the window; then for .Setup: prefs_page.install_open(&app.install)
 ```
 
 `command_run` says what happened on one line, in English (a script reads it): `<name>: installed: <exe>`, `<name>:
-uninstalled (your settings and data stay)`, or why it failed; its exit code is `COMMAND_DONE` (0) or `COMMAND_FAILED`
-(1). `--status` is `status_text` and `status_code` (`COMMAND_REPAIR`, 2, for an install to repair). It reads and writes the disk: call it before the window, never from a frame. The flag of `desktop.parse_cli`
+uninstalled (your settings and data stay)`, or why it failed; it ends with a `cli.Exit`, `.Done` or `.Failed`.
+`--status` is `status_text` and `status_exit`: `.Done` for an install there whole, `.Failed` for none or one to repair
+(its words say which). It reads and writes the disk: call it before the window, never from a frame. The flag of `desktop.parse_cli`
 (`Identity.cli_flag`) stays for scripts and tests that want the integration alone.
 
 ## A screen of the program's own

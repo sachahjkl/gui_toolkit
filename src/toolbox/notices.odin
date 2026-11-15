@@ -1,5 +1,7 @@
 package tk_toolbox
 
+import cli "../cli"
+
 // THIRD-PARTY-NOTICES: the licences of what a program's executable holds besides its own code, as a binary's distribution
 // must give them:
 //
@@ -53,8 +55,8 @@ notices_command :: proc(p: Project) -> Command {
 }
 
 @(private = "file")
-notices_run :: proc(args: []string, user: rawptr) -> int {
-	if len(args) > 1 || len(args) == 1 && args[0] != "--check" { fmt.eprintln("notices [--check]"); return EXIT_USAGE }
+notices_run :: proc(args: []string, user: rawptr) -> cli.Exit {
+	if len(args) > 1 || len(args) == 1 && args[0] != "--check" { fmt.eprintln("notices [--check]"); return .Usage }
 	return done(third_party_notices((^Project)(user)^, NOTICES_FILE, len(args) == 1))
 }
 

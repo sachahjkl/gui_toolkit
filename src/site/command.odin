@@ -1,5 +1,7 @@
 package tk_site
 
+import cli "../cli"
+
 // The site command of a project's tool: the steps are this package's, the project says what its site is.
 //   site build <site> <out>       the changelog's pages and the classic ones from <site> (build_changelog), then what a page
 //                                 says when it is shared (build_meta): <out> is what is published
@@ -53,27 +55,27 @@ project_pages :: proc(site, out: string, user: rawptr) -> bool {
 }
 
 @(private = "file")
-command_run :: proc(args: []string, user: rawptr) -> int {
+command_run :: proc(args: []string, user: rawptr) -> cli.Exit {
 	s := (^Project_Site)(user)
 	dir := s.dir != "" ? s.dir : "site"
 	what := len(args) > 0 ? args[0] : ""
 	switch what {
 	case "build":
 		if len(args) != 3 { break }
-		if !project_build(s, args[1], args[2]) { return toolbox.EXIT_FAILED }
-		if s.images.dir == "" { return toolbox.EXIT_DONE }
+		if !project_build(s, args[1], args[2]) { return .Failed }
+		if s.images.dir == "" { return .Done }
 		o := s.images
 		why: string
-		if o.encoder, why = toolbox.webp_encoder("build"); why != "" { fmt.eprintfln("site: no WebP encoder: %s", why); return toolbox.EXIT_FAILED }
-		return build_images(args[2], o) ? toolbox.EXIT_DONE : toolbox.EXIT_FAILED
+		if o.encoder, why = toolbox.webp_encoder("build"); why != "" { fmt.eprintfln("site: no WebP encoder: %s", why); return .Failed }
+		return toolbox.ended(build_images(args[2], o))
 	case "check":
 		o := Check_Options{site = dir, generate = project_pages, extra = s.extra, user = s}
-		if why := check_arguments(args[1:], &o); why != "" { fmt.eprintfln("site check: %s", why); return toolbox.EXIT_USAGE }
-		return check(o) ? toolbox.EXIT_DONE : toolbox.EXIT_FAILED
+		if why := check_arguments(args[1:], &o); why != "" { fmt.eprintfln("site check: %s", why); return .Usage }
+		return toolbox.ended(check(o))
 	case "card":
 		if len(args) != 1 { break }
-		return draw_card(s.meta, dir) ? toolbox.EXIT_DONE : toolbox.EXIT_FAILED
+		return toolbox.ended(draw_card(s.meta, dir))
 	}
 	fmt.eprintfln("site %s", COMMAND_USAGE)
-	return toolbox.EXIT_USAGE
+	return .Usage
 }

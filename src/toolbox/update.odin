@@ -1,5 +1,7 @@
 package tk_toolbox
 
+import cli "../cli"
+
 // The signed manifests of a program's releases (the toolkit's update package): what a project's tool runs as its `update`
 // command, for its product.
 //   update keygen <file>                                  the key pair; <file> is outside any git work tree
@@ -19,27 +21,34 @@ import update "../update"
 // The environment variable of the private key (base64url of its 32 bytes): a secret of the release workflow.
 UPDATE_KEY_ENV :: "UPDATE_SIGNING_KEY"
 
-// Runs `update <args>` for `product`. Returns the exit code (2: the words were not understood).
-update_command :: proc(product: update.Product, args: []string) -> int {
+// Runs `update <args>` for `product`: how the command ends (.Usage: the words were not understood).
+update_command :: proc(product: update.Product, args: []string) -> cli.Exit {
 	what := len(args) > 0 ? args[0] : ""
 	switch {
 	case what == "keygen" && len(args) == 2:
-		return update_keygen(args[1])
+		return update_done(update_keygen(args[1]))
 	case what == "pubkey" && len(args) == 1:
 		seed, ok := update_seed()
-		if !ok { return 1 }
+		if !ok { return .Failed }
 		pub, _ := signing.public_key_of(seed[:], context.temp_allocator)
 		fmt.println(pub)
-		return 0
+		return .Done
 	case what == "manifest" && len(args) == 5:
-		why := update_manifest(product, args[1], args[2], args[3] == "-" ? "" : args[3], args[4])
-		if why != "" { fmt.eprintfln("update: %s", why); return 1 }
-		return 0
+		return update_done(update_manifest(product, args[1], args[2], args[3] == "-" ? "" : args[3], args[4]))
 	case what == "verify" && len(args) == 3:
-		return update_verify(product, args[1], args[2] == "-" ? "" : args[2])
+		return update_done(update_verify(product, args[1], args[2] == "-" ? "" : args[2]))
 	}
 	fmt.eprintln("update: keygen <file> | pubkey | manifest <program> <version> <channel|-> <out.json> | verify <manifest.json> <channel|->")
-	return 2
+	return .Usage
+}
+
+// How the update command ends, its failure said as "update: why" (a program's tool may run it outside dispatch, where
+// done has no command to name).
+@(private = "file")
+update_done :: proc(why: string) -> cli.Exit {
+	if why == "" { return .Done }
+	fmt.eprintfln("update: %s", why)
+	return .Failed
 }
 
 // Writes the manifest of `program` (named as a release's program: expected_file_name) at `out`, and its signature at
@@ -95,29 +104,29 @@ in_git_tree :: proc(path: string) -> bool {
 }
 
 @(private = "file")
-update_keygen :: proc(path: string) -> int {
-	if in_git_tree(path) { fmt.eprintfln("update: refusing to write a signing key inside a git work tree: %s", path); return 1 }
-	if os.exists(path) { fmt.eprintfln("update: %s exists already: a second key would orphan the releases signed with the first", path); return 1 }
+update_keygen :: proc(path: string) -> (why: string) {
+	if in_git_tree(path) { return fmt.tprintf("refusing to write a signing key inside a git work tree: %s", path) }
+	if os.exists(path) { return fmt.tprintf("%s exists already: a second key would orphan the releases signed with the first", path) }
 	seed: [32]byte
 	crypto.rand_bytes(seed[:])
 	text := signing.key_encode(seed[:], context.temp_allocator)
 	pub, _ := signing.public_key_of(seed[:], context.temp_allocator)
 	if dir := filepath.dir(path); dir != "" { _ = os.make_directory_all(dir) }
-	if os.write_entire_file(path, transmute([]u8)text) != nil { fmt.eprintfln("update: cannot write %s", path); return 1 }
+	if os.write_entire_file(path, transmute([]u8)text) != nil { return fmt.tprintf("cannot write %s", path) }
 	fmt.println(pub)   // (the public half only: the private one stays in the file)
-	return 0
+	return ""
 }
 
 @(private = "file")
-update_verify :: proc(product: update.Product, file, channel: string) -> int {
+update_verify :: proc(product: update.Product, file, channel: string) -> (why: string) {
 	data, e1 := os.read_entire_file(file, context.temp_allocator)
 	sig, e2 := os.read_entire_file(fmt.tprintf("%s.sig", file), context.temp_allocator)
-	if e1 != nil || e2 != nil { fmt.eprintln("update: cannot read the manifest or its signature"); return 1 }
+	if e1 != nil || e2 != nil { return "cannot read the manifest or its signature" }
 	platform := ""
 	for p in update.PLATFORMS { if filepath.base(file) == update.manifest_name(p, channel, context.temp_allocator) { platform = p } }
-	if platform == "" { fmt.eprintfln("update: %s is not named as a manifest of that channel", file); return 1 }
+	if platform == "" { return fmt.tprintf("%s is not named as a manifest of that channel", file) }
 	m, err := update.verify(product, data, strings.trim_space(string(sig)), {platform = platform, channel = channel}, context.temp_allocator)
-	if err != .None { fmt.eprintln(update.error_text(err)); return 1 }
+	if err != .None { return update.error_text(err) }
 	fmt.printfln("good: %s %s", m.version, m.file)
-	return 0
+	return ""
 }

@@ -9,11 +9,12 @@
 //       {name = "seek-subagent", hidden = true},
 //   }
 //   if out, code, stop := cli.check({name = "opencode-native", summary = "...", version = "0.45.0"}, OPTIONS, os.args[1:]); stop {
-//       print(out); os.exit(code)
+//       print(out); cli.exit(code)
 //   }
 package tk_cli
 
 import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:unicode/utf8"
 
@@ -42,9 +43,16 @@ Program :: struct {
 	footer:      string,   // last (where its files are); "": none
 }
 
-// Exit codes: the help asked, a line not understood (as getopt's programs).
-EXIT_OK    :: 0
-EXIT_USAGE :: 2
+// How a program or a command of a tool ends: its work is done, it failed (it said why), the line is not one it
+// understands. Only exit turns it into the process's exit code (0, 1, 2: as getopt's programs).
+Exit :: enum u8 {
+	Done   = 0,
+	Failed = 1,
+	Usage  = 2,
+}
+
+// The process ends as `e` says.
+exit :: proc(e: Exit) -> ! { os.exit(int(e)) }
 
 // The help: the program, how it is called, its options by group (not the hidden ones) with what each takes, examples, the
 // environment it reads, and the footer.
@@ -107,32 +115,32 @@ form :: proc(o: Option) -> string {
 
 // Whether the line `args` (without the program) is one of `options`. `stop`: print `out` and end with `code` (--help, --version,
 // or a line not understood); else the program goes on and reads its options as it does.
-check :: proc(p: Program, options: []Option, args: []string) -> (out: string, code: int, stop: bool) {
+check :: proc(p: Program, options: []Option, args: []string) -> (out: string, code: Exit, stop: bool) {
 	for i := 0; i < len(args); i += 1 {
 		a := args[i]
 		switch a {
-		case "--help", "-h", "-?", "/?": return usage(p, options), EXIT_OK, true
+		case "--help", "-h", "-?", "/?": return usage(p, options), .Done, true
 		case "--version":
-			if p.version != "" { return fmt.tprintf("%s %s\n", p.name, p.version), EXIT_OK, true }
+			if p.version != "" { return fmt.tprintf("%s %s\n", p.name, p.version), .Done, true }
 		}
-		if !strings.has_prefix(a, "--") { return refused(p, options, fmt.tprintf("%s: what is %q? (no argument without an option)", p.name, a)), EXIT_USAGE, true }
+		if !strings.has_prefix(a, "--") { return refused(p, options, fmt.tprintf("%s: what is %q? (no argument without an option)", p.name, a)), .Usage, true }
 		name, _, value := strings.partition(a[2:], "=")
 		has_value := strings.contains_rune(a, '=')
 		o, known := find(options, name)
-		if !known { return refused(p, options, fmt.tprintf("%s: unknown option --%s", p.name, name)), EXIT_USAGE, true }
+		if !known { return refused(p, options, fmt.tprintf("%s: unknown option --%s", p.name, name)), .Usage, true }
 		switch {
 		case o.value == "" && has_value:
-			return refused(p, options, fmt.tprintf("%s: --%s takes no value", p.name, name)), EXIT_USAGE, true
+			return refused(p, options, fmt.tprintf("%s: --%s takes no value", p.name, name)), .Usage, true
 		case o.value != "" && !has_value && o.separate:
-			if i + 1 >= len(args) { return refused(p, options, fmt.tprintf("%s: --%s needs <%s> after it", p.name, name, o.value)), EXIT_USAGE, true }
+			if i + 1 >= len(args) { return refused(p, options, fmt.tprintf("%s: --%s needs <%s> after it", p.name, name, o.value)), .Usage, true }
 			i += 1
 		case o.value != "" && !has_value && !o.optional:
-			return refused(p, options, fmt.tprintf("%s: --%s needs a value: --%s=<%s>", p.name, name, name, o.value)), EXIT_USAGE, true
+			return refused(p, options, fmt.tprintf("%s: --%s needs a value: --%s=<%s>", p.name, name, name, o.value)), .Usage, true
 		case has_value && value == "" && !o.optional:
-			return refused(p, options, fmt.tprintf("%s: --%s needs a value: --%s=<%s>", p.name, name, name, o.value)), EXIT_USAGE, true
+			return refused(p, options, fmt.tprintf("%s: --%s needs a value: --%s=<%s>", p.name, name, name, o.value)), .Usage, true
 		}
 	}
-	return "", EXIT_OK, false
+	return "", .Done, false
 }
 
 // One option of a line, as given: `value` is "" for a switch, or for an optional value left out (`has_value` says which).

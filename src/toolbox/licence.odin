@@ -1,5 +1,7 @@
 package tk_toolbox
 
+import cli "../cli"
+
 // The licences of a program (the toolkit's licence package): what a project's tool runs as its `licence` and `paddle`
 // commands, for its product (docs/licence.md).
 //   licence keygen [-private:FILE] [-force]          the signing key pair; FILE outside any git work tree
@@ -74,7 +76,7 @@ licence worker <out.jsonc> [-origin:URL] [-mail:"Name <address>"]
 `
 
 @(private = "file")
-licence_run :: proc(args: []string, user: rawptr) -> int {
+licence_run :: proc(args: []string, user: rawptr) -> cli.Exit {
 	tool := (^Licence_Tool)(user)^
 	what := len(args) > 0 ? args[0] : ""
 	rest := len(args) > 0 ? args[1:] : nil
@@ -93,7 +95,7 @@ licence_run :: proc(args: []string, user: rawptr) -> int {
 		return done(sops_dotenv(plain[0], plain[1], names))
 	}
 	fmt.eprint(LICENCE_USAGE)
-	return EXIT_USAGE
+	return .Usage
 }
 
 ////////////////////////////////
@@ -338,7 +340,7 @@ paddle_prices_setting :: proc(ids: []string, amounts: []Paddle_Amount) -> string
 }
 
 @(private = "file")
-paddle_run :: proc(args: []string, user: rawptr) -> int {
+paddle_run :: proc(args: []string, user: rawptr) -> cli.Exit {
 	tool := (^Licence_Tool)(user)^
 	p := tool.product
 	c := tool.paddle
@@ -348,20 +350,20 @@ paddle_run :: proc(args: []string, user: rawptr) -> int {
 	if has_flag(args, "currency") { c.currency = flag_value(args, "currency") }
 	if c.currency == "" { c.currency = "EUR" }
 	environment := flag_value(args, "environment", "sandbox")
-	if environment != "sandbox" && environment != "live" { fmt.eprintln("paddle: -environment:sandbox or -environment:live"); return EXIT_USAGE }
-	if c.name == "" { fmt.eprintln("paddle: the product has no name (-name:N)"); return EXIT_USAGE }
+	if environment != "sandbox" && environment != "live" { fmt.eprintln("paddle: -environment:sandbox or -environment:live"); return .Usage }
+	if c.name == "" { fmt.eprintln("paddle: the product has no name (-name:N)"); return .Usage }
 	amounts, ok := paddle_amounts(p, c.amounts)
-	if !ok { fmt.eprintln("paddle: -amounts:ID=CENTS,... with the program's editions"); return EXIT_USAGE }
+	if !ok { fmt.eprintln("paddle: -amounts:ID=CENTS,... with the program's editions"); return .Usage }
 	base := environment == "live" ? PADDLE_LIVE : PADDLE_SANDBOX
 
 	if !has_flag(args, "apply") {
 		fmt.printfln("DRY RUN (%s, %s): nothing is sent. Add -apply to create it.", environment, base)
 		fmt.printfln("POST /products\n%s", paddle_product_body(c))
 		for a in amounts { fmt.printfln("POST /prices (product_id: the product above)\n%s", paddle_price_body(p, c, "", a)) }
-		return EXIT_DONE
+		return .Done
 	}
 	key := os.get_env(PADDLE_KEY_ENV, context.temp_allocator)
-	if key == "" { fmt.eprintfln("paddle: set %s to a server-side API key of the %s account first", PADDLE_KEY_ENV, environment); return EXIT_FAILED }
+	if key == "" { fmt.eprintfln("paddle: set %s to a server-side API key of the %s account first", PADDLE_KEY_ENV, environment); return .Failed }
 	return done(paddle_apply(p, c, amounts, base, key, environment))
 }
 
