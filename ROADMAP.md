@@ -42,9 +42,8 @@
 - **Small tools that Wren still redoes.** Wren's panel placement (`toolbar_panel_rect`) goes for `ui.menu_open`'s
   `align = .End`, and its `dialog_field` for a plain `ui.line_edit` (`committed`, `cancelled`) or `ui.prompt_open`, which
   already answer Enter and end a view with Escape in one press.
-- **The rest of cliche's pieces.** Fonts per worker thread move into `gt:font`, cliche's timing marks join the
-  renderer's trace, a host helper opens a hidden window ahead, toasts never cover a window's tool bar, and the toolkit
-  offers deferred file writing.
+- **The rest of cliche's pieces.** cliche's timing marks join the renderer's trace, a host helper opens a hidden window
+  ahead, and toasts never cover a window's tool bar.
 - **Image nodes and the graph's keys in the toolkit.** cliche's node catalogue of image transformations moves next to
   `gt:flowgraph` for papier and classeur, and the node graph itself opens its add palette on Shift+A, a right click or a
   link dropped in the void.
