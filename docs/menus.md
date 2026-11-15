@@ -14,6 +14,14 @@ if ui.menu("file_menu") {
 }
 ```
 
+A block that is no button (a message, a card, an image) takes a right press with `ui.context_take(box)`, called after
+what is in it is built: the innermost that asks keeps the press, one box a build; a field that opened its own menu on that
+press keeps it; nothing drawn over the pointer (a dialog, a floating panel) lets it through.
+
+```odin
+if ui.context_take(card) { app.menu_for = card_id; ui.menu_open("card_menu", ui.mouse_pos()) }
+```
+
 | A context menu | The same, `co` typed |
 |---|---|
 | ![A context menu: icons, words, keys, two submenus, a check, a row disabled](screenshots/showcase_menus.webp) | ![The menu searched: its band shows what is typed, a submenu's row comes up](screenshots/showcase_menu_search.webp) |

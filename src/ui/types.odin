@@ -426,6 +426,7 @@ State :: struct {
 	press_pos:   [platform.Mouse_Button]Vec2,
 	pressed_key:  [platform.Mouse_Button]Key,
 	pressed_any:  [platform.Mouse_Button]bool,   // a press happened this frame (even on nothing clickable)
+	context_taken: u64,   // the build whose right press a box took for its menu (context_take)
 	released_key: [platform.Mouse_Button]Key,
 	clicked_key:  [platform.Mouse_Button]Key,
 	double_key:   Key,

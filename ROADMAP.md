@@ -33,8 +33,8 @@
   ([src/md/features/json.md](src/md/features/json.md)).
 - **opencode native keeps its zooms with `store.Kept`.** The toolkit has kept values per id (`store.Kept`); opencode
   native's own `Kept_Zooms` (opencode_native/src/zooms.odin) goes for it.
-- **Context menus from opencode native in the toolkit.** The innermost target under the pointer takes the right click,
-  one menu per kind of target, for every program; classeur drops its needless menu search options.
+- **opencode native's context menus on `ui.context_take`.** The toolkit has the rule (the innermost block takes the
+  right press, one a build); opencode native's own `ctx_check` goes for it.
 - **A table of widgets and their behaviours.** The table of widgets × behaviours (wheel, keys, Tab, accessibility,
   context menu, disabled, tooltip, Shift step, typed value, reset by double click), written down; each empty cell
   between two widgets of one concept is a bug or a written decision.

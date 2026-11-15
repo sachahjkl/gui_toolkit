@@ -360,6 +360,19 @@ key_pressed_peek :: proc(key: platform.Key, mods: platform.Modifiers = {}) -> bo
 	return false
 }
 
+// Whether `b` takes this build's right press for its context menu: a right press came, the pointer is on `b` with nothing
+// drawn over it (pointer_on: not a dialog's, not a panel floating over it), and nothing took it first. Call it after
+// building what is in `b`: the innermost that asks keeps it, and a widget that opened its own menu on that press (a
+// field's) keeps it too. For a block that is no button (a message, a card, an image): a clickable box has
+// Signal.right_clicked. The program then opens its menu where the pointer is: menu_open(id, mouse_pos()).
+context_take :: proc(b: ^Box) -> bool {
+	s := gs()
+	if !s.pressed_any[.Right] || s.context_taken == s.build_index || !pointer_on(b) { return false }
+	for lv in s.menus { if lv.open_build == s.build_index { return false } }
+	s.context_taken = s.build_index
+	return true
+}
+
 mouse_pos :: proc() -> Vec2 { return gs().mouse }
 // A press of `button` happened in this frame, on anything or on nothing (a popup the app closes on a press outside it).
 mouse_pressed :: proc(button := platform.Mouse_Button.Left) -> bool { return gs().pressed_any[button] }
