@@ -674,6 +674,31 @@ a_menu_at_the_right_edge_shows_in_its_place :: proc(t: ^testing.T) { unwatched.r
 	testing.expect(t, seen, "the menu shows")
 }) }
 
+// A menu under a button at the end of a toolbar, aligned at its end: its right edge on the button's, at the width the
+// toolkit measured (the program knows none), from its first visible frame.
+@(test)
+a_menu_aligned_at_the_end_has_the_buttons_right_edge :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {800, 600}, no_renderer = true, build = proc(s: ^session.Session) {
+		key := "tools"
+		if s.frames == 2 { ui.menu_open(key, ui.Rect{{600, 10}, {640, 40}}, search = false, align = .End) }
+		if ui.menu(key) {
+			_ = ui.menu_item("Downloads")
+			_ = ui.menu_item("A panel with a long name")
+		}
+	}})
+	seen := false
+	for i in 0 ..< 6 {
+		session.frame(s)
+		b := session.find(s, fmt.tprintf("menu_%d", u64(ui.key_from_string(0, "tools"))))
+		if b == nil || b.transparency >= 1 { continue }
+		testing.expectf(t, abs(b.rect.max.x - 640) < 0.5, "frame %d: its right edge on the button's (%v)", i, b.rect)
+		testing.expectf(t, b.rect.min.x < 600, "frame %d: wider than the button, so it goes left (%v)", i, b.rect)
+		testing.expectf(t, b.rect.min.y >= 40, "frame %d: under it (%v)", i, b.rect)
+		seen = true
+	}
+	testing.expect(t, seen, "the menu shows")
+}) }
+
 // A list to choose from in a dialog: the pointer moving over a row selects it, a click chooses it.
 @(test)
 a_choice_follows_the_pointer :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

@@ -92,6 +92,7 @@ Menu_Level :: struct {
 	anchor:       Key,       // level 0: the widget that opened it (pressing it again is not a press "outside")
 	pos:          Vec2,      // where it was asked to open (top-left corner)
 	around:       Rect,      // not empty: open next to this rect (level 0, nested: below, else above; submenus: right, else left)
+	align:        Menu_Align,   // level 0, nested, below a rect: which of its edges the menu's lines up with
 	nested:       bool,      // opened with menu_open's `nested`: placed like level 0, not closed by resting on its menu's items
 	open_build:   u64,
 	built_build:  u64,
@@ -155,6 +156,10 @@ menu_matches :: proc(lv: ^Menu_Level, text: string) -> bool {
 // below), e.g. under the button that opens it.
 Menu_At :: union { Vec2, Rect }
 
+// Below a rect, the edge the menu lines up with: its left (.Start), or its right (.End: a button at the end of a
+// toolbar, whose menu then keeps the toolbar's margin from the window's edge).
+Menu_Align :: enum u8 { Start, End }
+
 // Opens the menu `id` at `at`, replacing any open menu. `anchor`: the box that opens the menu (dropdown button, menu bar
 // entry): pressing it again is not a press "outside", so the widget can toggle the menu itself. `from_keyboard`: the
 // first enabled item starts selected. `search` (on: every menu can be filtered): what is typed searches the items (fuzzy,
@@ -162,15 +167,15 @@ Menu_At :: union { Vec2, Rect }
 // come up into the menu, the first match is selected (Enter chooses it); off: a typed letter selects the next item that
 // starts with it (a menu of a few fixed choices). `nested`: called in the block of an open menu, the menu opens over it,
 // in place of any submenu or nested menu that menu had open, and the menu stays open behind it (it does nothing outside a
-// menu's block).
-menu_open :: proc(id: string, at: Menu_At, anchor: Key = 0, from_keyboard := false, search := true, nested := false) {
+// menu's block). `align`: below a rect, the edge the menu lines up with (its width is the toolkit's to know).
+menu_open :: proc(id: string, at: Menu_At, anchor: Key = 0, from_keyboard := false, search := true, nested := false, align := Menu_Align.Start) {
 	pos: Vec2
 	around: Rect
 	switch v in at {
 	case Vec2: pos = v
 	case Rect: pos, around = {v.min.x, v.max.y}, v
 	}
-	lv := Menu_Level{key = menu_key(id), pos = pos, around = around, nested = nested, open_build = gs().build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, search = search, query = {edited_ms = now_ms()}}
+	lv := Menu_Level{key = menu_key(id), pos = pos, around = around, align = align, nested = nested, open_build = gs().build_index, sel = -1, hover_item = -1, from_keyboard = from_keyboard, search = search, query = {edited_ms = now_ms()}}
 	if nested { menu_nest(lv) } else { lv.anchor = anchor; menu_push(lv) }
 }
 
@@ -399,7 +404,7 @@ menu_place :: proc(lv: ^Menu_Level, depth: int, size, window: Vec2, em: f32) -> 
 	if r.max.x > r.min.x || r.max.y > r.min.y {
 		if depth == 0 || lv.nested {
 			gap := em * 0.25
-			pos = {r.min.x, r.max.y + gap}
+			pos = {lv.align == .End ? r.max.x - size.x : r.min.x, r.max.y + gap}
 			if pos.y + size.y > window.y && r.min.y - gap - size.y >= 0 { pos.y = r.min.y - gap - size.y }
 		} else {
 			pad := dense(em * MENU_PAD_EM)   // the first row lines up with the item that opened the submenu
