@@ -6,8 +6,8 @@ package platform
 //
 //   * clipboard_set writes several flavours at once with one owner (text, HTML with its source URL, an image, files);
 //     clipboard_set_html / _image / _files are shorthands.
-//   * clipboard_request asks for the text or the files and returns at once: the answer comes in a later poll_events,
-//     a Clipboard_Data event. A program's paste uses it.
+//   * clipboard_request asks for the text, the files or an image and returns at once: the answer comes in a later
+//     poll_events, a Clipboard_Data event. ui.paste_request uses it (src/md/features/paste.md).
 //   * clipboard_get_image (RGBA8), clipboard_get_html (the fragment and its source URL), clipboard_get_files (paths),
 //     clipboard_files_cut (whether those files were cut: a paste moves them), get_clipboard (the text): these wait for
 //     the program that owns the clipboard (on Linux up to seconds when it does not answer).

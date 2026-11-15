@@ -129,10 +129,11 @@ clipboard_get_files :: proc(w: ^Window, allocator := context.allocator, loc := #
 	return out[:], true
 }
 
-// Asks for the clipboard's text or files: the answer comes with the next poll_events (a Clipboard_Data event), as on Linux.
-// Windows keeps what a program copies in its own memory: the read is done here, in the time open_clipboard's few tries
-// take at most, and only queued. (A format the owner renders late, WM_RENDERFORMAT, is asked of it by the system; text and
-// file lists are almost never given late.) Html and Image are answered not ok.
+// Asks for the clipboard's text, files or image: the answer comes with the next poll_events (a Clipboard_Data event), as on
+// Linux. Windows keeps what a program copies in its own memory: the read is done here, in the time open_clipboard's few
+// tries take at most, and only queued; an image is copied as it is held (its PNG, else its DIB), never decoded here. (A
+// format the owner renders late, WM_RENDERFORMAT, is asked of it by the system; text and file lists are almost never
+// given late.) Html is answered not ok.
 clipboard_request :: proc(w: ^Window, format: Clipboard_Format) -> u64 {
 	if w == nil { return 0 }
 	r := Clipboard_Reply{id = clipboard_next_id(w), format = format}

@@ -158,14 +158,16 @@ line_edit_insert :: proc(f: ^Line_Edit, text: string) {
 
 // Asks the clipboard's text for the field whose widget is `owner` (line_edit's box: its result's box.key). line_edit
 // inserts it over its selection when it comes, if it still has the focus; a field the keyboard reaches another way
-// takes it with line_edit_paste_answer. False: there is no clipboard to ask.
-edit_paste :: proc(owner: Key) -> bool { return paste_request(owner) }
+// takes it with line_edit_paste_answer. `kinds` and `decode`: what a text_edit's paste asks for besides its text
+// (Text_Edit_Options.paste); the field takes the text, the program the files or the image (paste_answer). False: there
+// is no clipboard to ask.
+edit_paste :: proc(owner: Key, kinds := Paste_Kinds{.Text}, decode := false) -> bool { return paste_request(owner, kinds, decode) }
 
 // Inserts the text a edit_paste of `owner` asked for, in the build it came (one undo step). True: it was inserted.
 line_edit_paste_answer :: proc(f: ^Line_Edit, owner: Key) -> bool {
-	text, ok := paste_answer(owner)
+	a, ok := paste_answer(owner, {.Text})
 	if !ok { return false }
-	line_edit_insert(f, text)
+	line_edit_insert(f, a.text)
 	return true
 }
 
@@ -564,8 +566,9 @@ Edit_Target :: union { ^Line_Edit, ^Text_Edit }
 // The menu of a text field, `id` its menu (menu_open opens it): Undo, Redo, Cut, Copy, Paste, Delete and Select all,
 // each with its keys and its icon (Lucide's: lucide_icons), on a line_edit's field or a text_edit's area. `owner`: the
 // field's widget, which a paste's text comes to (edit_paste). `kind` .Secret: neither copied nor cut; .Read_Only: only
-// copied and selected. line_edit and text_edit open it on a right press (unless their options' `own_menu`).
-edit_menu :: proc(id: string, target: Edit_Target, owner: Key, kind := Line_Edit_Kind.Plain) {
+// copied and selected. `paste` and `paste_decode`: what its Paste asks for (edit_paste; the text is the field's, the rest
+// the program's). line_edit and text_edit open it on a right press (unless their options' `own_menu`).
+edit_menu :: proc(id: string, target: Edit_Target, owner: Key, kind := Line_Edit_Kind.Plain, paste := Paste_Kinds{.Text}, paste_decode := false) {
 	if menu(id) {
 		secret, read_only := kind == .Secret, kind == .Read_Only
 		ico := lucide_icons()
@@ -579,7 +582,7 @@ edit_menu :: proc(id: string, target: Edit_Target, owner: Key, kind := Line_Edit
 		}
 		if menu_item(i18n.tr("Copy"), "Ctrl+C", icon = lucide.COPY, icon_font = ico, disabled = !sel || secret).clicked { edit_target_copy(target) }
 		if !read_only {
-			if menu_item(i18n.tr("Paste"), "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { edit_paste(owner) }
+			if menu_item(i18n.tr("Paste"), "Ctrl+V", icon = lucide.CLIPBOARD_PASTE, icon_font = ico).clicked { edit_paste(owner, paste, paste_decode) }
 			if menu_item(i18n.tr("Delete"), i18n.tr("key", "Del"), icon = lucide.TRASH_2, icon_font = ico, disabled = !sel).clicked { edit_target_delete(target) }
 		}
 		menu_separator()
@@ -590,14 +593,14 @@ edit_menu :: proc(id: string, target: Edit_Target, owner: Key, kind := Line_Edit
 // A right press on the field's box `b` opens its menu there (the field takes the keyboard: its edits are the menu's), and the
 // menu is built while it is open.
 @(private)
-edit_context_menu :: proc(b: ^Box, target: Edit_Target, kind: Line_Edit_Kind) {
+edit_context_menu :: proc(b: ^Box, target: Edit_Target, kind: Line_Edit_Kind, paste := Paste_Kinds{.Text}, paste_decode := false) {
 	s := gs()
 	id := fmt.tprintf("###edit_menu_%x", u64(b.key))
 	if s.pressed_any[.Right] && s.pressed_key[.Right] == b.key && !menu_any_open() {
 		s.focus_key = b.key
 		menu_open(id, s.mouse)
 	}
-	edit_menu(id, target, b.key, kind)
+	edit_menu(id, target, b.key, kind, paste, paste_decode)
 }
 
 @(private = "file")

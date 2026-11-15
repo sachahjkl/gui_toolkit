@@ -2265,6 +2265,43 @@ a_large_clipboard_image_comes_in_whole :: proc(t: ^testing.T) {
 	testing.expect(t, string(got) == string(file), "as it was")
 }
 
+// Files another program copied (a file manager: wl-copy, xclip with text/uri-list) come to clipboard_request as paths,
+// percent-decoded: what ui.paste_request gives a widget as .Files.
+@(test)
+a_clipboard_uri_list_comes_as_files :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("clip files")
+	testing.expect(t, w != nil)
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	pump_for(w, 200)
+	// (each URI a printf argument: the list's own % would be read as a format)
+	list := `printf '%s\r\n' 'file:///tmp/a%20b.txt' 'file:///tmp/c'`
+	if x11() {
+		sh(list, " | xclip -i -selection clipboard -t text/uri-list >/dev/null 2>&1")
+	} else {
+		sh("(", list, " | wl-copy -t text/uri-list) >/dev/null 2>&1")
+	}
+	pump_for(w, 500)
+	asked := platform.clipboard_request(w, .Files)
+	testing.expect(t, asked != 0)
+	files: [dynamic]string
+	defer { for f in files { delete(f) }; delete(files) }
+	answered := false
+	start := time.tick_now()
+	for !answered && time.duration_milliseconds(time.tick_since(start)) < 10_000 {
+		for e in platform.poll_events(w, false) {
+			if e.kind != .Clipboard_Data || e.clipboard.id != asked { continue }
+			answered = true
+			for f in e.clipboard.files { append(&files, strings.clone(f)) }
+		}
+		time.sleep(16 * time.Millisecond)   // (a frame's work between two polls)
+	}
+	testing.expect(t, answered, "answered")
+	testing.expectf(t, len(files) == 2 && files[0] == "/tmp/a b.txt" && files[1] == "/tmp/c", "the paths: %v", files[:])
+}
+
 @(private = "file")
 slice_clone :: proc(b: []u8) -> []u8 {
 	out := make([]u8, len(b))

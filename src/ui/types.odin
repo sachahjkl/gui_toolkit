@@ -480,7 +480,7 @@ State :: struct {
 	cursor_request: platform.Cursor,
 	clipboard_get: proc() -> string,
 	clipboard_set: proc(text: string),
-	paste:         Paste,            // the paste waiting for the clipboard's text (paste.odin)
+	paste:         Paste,            // the paste waiting for the clipboard's text, files or image (paste.odin)
 
 	// popups
 	menus:           [dynamic]Menu_Level,   // the open menu and its open submenus, outermost first (menu.odin)

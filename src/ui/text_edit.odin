@@ -460,6 +460,11 @@ Text_Edit_Options :: struct {
 	// Enter is `committed` and Shift+Enter breaks the line (a message, a caption typed in place); false: Enter breaks the
 	// line and Ctrl+Enter is `committed`.
 	enter_commits: bool,
+	// What Ctrl+V, Shift+Insert and the menu's Paste ask for ({}: text). The editor takes the text; files or an image are
+	// the program's, which takes them after the editor in the same build: paste_answer(res.box.key, {.Files, .Image}).
+	// `paste_decode`: an image comes with its pixels, decoded on the chores (paste_request).
+	paste:        Paste_Kinds,
+	paste_decode: bool,
 }
 
 // Multi-line editor. Its size comes from the style stack or `next`; it scrolls when its content is larger.
@@ -478,7 +483,7 @@ text_edit :: proc(id: string, a: ^Text_Edit, o := Text_Edit_Options{}) -> (res: 
 		mono := state_text_face(s, .Mono)
 		if mono == 0 { mono = b.font }
 		m := font.metrics(s.fonts, b.font, b.font_size)
-		e := Edit_Build{s = s, a = a, b = b, res = &res, now = s.time_ms, pad = pad, lh = math.round(m.line_height * TEXT_EDIT_LINE_HEIGHT)}
+		e := Edit_Build{s = s, a = a, b = b, res = &res, now = s.time_ms, pad = pad, lh = math.round(m.line_height * TEXT_EDIT_LINE_HEIGHT), paste = o.paste == {} ? Paste_Kinds{.Text} : o.paste, paste_decode = o.paste_decode}
 		if o.line_numbers {
 			digits := len(fmt_int(text_edit_line_count(a)))
 			e.gutter = math.round(font.text_width(s.fonts, mono, math.round(b.font_size * TEXT_EDIT_GUTTER_FONT_SCALE), "0") * f32(max(digits, 2)) + pad * 1.8)
@@ -525,7 +530,7 @@ text_edit :: proc(id: string, a: ^Text_Edit, o := Text_Edit_Options{}) -> (res: 
 		}
 		content := edit_follow_caret(&e, o.auto_height, cursor_moved)
 		edit_fill_draw(&e, content, o.placeholder, mono, o.highlight)
-		if !o.own_menu { edit_context_menu(b, a, .Plain) }
+		if !o.own_menu { edit_context_menu(b, a, .Plain, e.paste, e.paste_decode) }
 	}
 	return
 }
@@ -545,6 +550,8 @@ Edit_Build :: struct {
 	lines:  []Visual_Line,
 	moved:  bool,              // the caret was placed, even where it was
 	vertical: bool,            // Up, Down or a page moved it: the column stays
+	paste:  Paste_Kinds,       // what its paste asks for (Text_Edit_Options.paste, never empty)
+	paste_decode: bool,
 }
 
 // The width its lines wrap at: the box's from the last layout less the line numbers, the padding and the vertical bar's
@@ -837,16 +844,16 @@ edit_keys_clipboard :: proc(e: ^Edit_Build) {
 	if key_press(.C, ctrl) || key_press(.Insert, ctrl) { _ = text_edit_copy(a) }
 	if key_press(.X, ctrl) || key_press(.Delete, shift) { _ = text_edit_cut(a) }
 	// (the text comes in a later build: edit_paste_answer)
-	if key_press(.V, ctrl) || key_press(.Insert, {.Shift}) { paste_request(e.b.key) }
+	if key_press(.V, ctrl) || key_press(.Insert, {.Shift}) { paste_request(e.b.key, e.paste, e.paste_decode) }
 }
 
 // The text a paste asked for in an earlier build came: over the selection, in one undo step, before what was typed since.
 @(private="file")
 edit_paste_answer :: proc(e: ^Edit_Build) {
 	a := e.a
-	clip, ok := paste_answer(e.b.key)
+	clip, ok := paste_answer(e.b.key, {.Text})
 	if !ok { return }
-	clean, _ := strings.replace_all(clip, "\r\n", "\n", context.temp_allocator)
+	clean, _ := strings.replace_all(clip.text, "\r\n", "\n", context.temp_allocator)
 	clean, _ = strings.replace_all(clean, "\r", "\n", context.temp_allocator)
 	clean, _ = strings.replace_all(clean, "\t", "    ", context.temp_allocator)
 	begin_edit(a, .Other, e.now)
