@@ -20,9 +20,13 @@ import lucide "../lucide"
 import "../platform"
 import store "../store"
 
-// A zone's extent when nothing else gives one (ems), and the top area of a panel whose hover shows its icons (ems).
+// A zone's extent when nothing else gives one (ems).
 VIEW_ZONE_EM :: f32(18)
-VIEW_HOVER_EM :: f32(2.2)
+// A lone panel's strip on hover (view_hover_strip): it comes when the pointer is this near the stack's top edge, and
+// stays while the pointer is on it or this far under it (ems). The second is past the first: when the strip goes, the
+// body comes back up under a pointer that is past the edge's band, and the strip does not come again by itself.
+VIEW_HOVER_EDGE_EM :: f32(0.6)
+VIEW_HOVER_KEEP_EM :: f32(0.8)
 
 // A dock space: what is remembered of it (the memory's `#<space>` line) and what its last build laid out.
 @(private)
@@ -348,7 +352,7 @@ views_build_late_panels :: proc(s: ^State) {
 			next({fixed_x = at.min.x, fixed_y = at.min.y, width = px(max(at.max.x - at.min.x, 1)), height = px(max(at.max.y - at.min.y, 1)), axis = .Y, transparency = 1})
 			holder := build_box({}, fmt.tprintf("###view_late_%s", r.modal_name))
 			push_parent(holder)
-			view_panel_build(vs, sp, r, false)
+			view_panel_build(vs, sp, r)
 			pop_parent()
 			pop_parent()
 			s.anim_busy = true   // (the next frame shows it in its zone)
@@ -521,9 +525,12 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 		push_parent(stack)
 		with_strip := minimised || len(list) >= 2
 		for r in list { if r.kind.o.tabs_always { with_strip = true } }
+		// (a lone panel's strip comes on the hover of its top edge and pushes its body down: its controls never lie over
+		// the body's)
+		if !with_strip { with_strip = view_hover_strip(shown, stack, strip_h) }
 		shown.strip_tools = 0
 		if with_strip { view_stack_strip(vs, sp, e, k, list, shown, only >= 0) }
-		if !minimised { view_panel_build(vs, sp, shown, with_strip) }
+		if !minimised { view_panel_build(vs, sp, shown) }
 		pop_parent()
 		for r in list { view_header_menu(vs, r, .Panel) }
 		if last || length <= 0 || (minimised && axis == .Y) { continue }
@@ -653,14 +660,12 @@ views_space_maximised :: proc(vs: ^Views, name: string) -> (edge: View_Edge, sta
 	return edge, sp.max_stack, ok
 }
 
-// The view as a panel: its body fills its stack; its keys while the focus is in it; on the hover of its top area, its
-// two icons (Detach, Close) over the body's top right corner, unless its stack shows a strip (`with_strip`: the strip
-// holds them); a right click there opens its menu.
+// The view as a panel: its body fills its stack (under the stack's strip, which holds its tabs and its controls:
+// view_stack_strip; a lone panel's on hover, view_hover_strip); its keys while the focus is in it.
 @(private = "file")
-view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, with_strip: bool) {
+view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record) {
 	s := gs()
 	k := r.kind
-	em := font_size()
 	r.flag, r.ending, r.tools, r.header = true, nil, 0, 0
 	next({width = fill(), height = fill(), axis = .Y})
 	// (its key its name's alone: a panel opened late is built at end_build first, then in its zone; its field keeps its
@@ -670,43 +675,13 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, with_stri
 	r.panel = body.key
 	r.roots[.Panel] = body.key
 	r.pbuilt = s.build_index
-	last := body.rect   // (the last layout's)
 	push_parent(body)
 	v := View{id = k.id, instance = r.instance, presentation = .Panel, place = r.machine.place, shown = true, record = r}
 	keys_root := s.view_keys_root
 	s.view_keys_root = body.key
 	k.build(&v, r.data)
 	s.view_keys_root = keys_root
-	labels := view_labels(vs)
-	band := Rect{last.min, {last.max.x, last.min.y + em * VIEW_HOVER_EM}}
-	over := s.mouse_valid && draw.rect_contains(band, mouse_pos())
-	side := math.round(em * VIEW_DETACH_EM)
-	w := last.max.x - last.min.x
-	gap := math.round(em * 0.35)
-	icons_x := w - 2 * side - 3 * gap - em * 0.6
-	// (where they lie: two icons, each with the spacer before it, view_header_icon)
-	icons := Rect{{last.min.x + icons_x, last.min.y + gap}, {last.min.x + icons_x + 2 * (side + em * 0.3), last.min.y + gap + side}}
-	icons_key := key_from_string(body.key, "###view_panel_icons")
-	// (they never cover the control the pointer is on: in their corner, over a control of the body (a strip's arrow
-	// under them, a button), they do not show and that control takes the press. Shown over it, they took the press meant
-	// for it: a strip's arrow in a sidebar's top band floated the sidebar)
-	covers := over && draw.rect_contains(icons, mouse_pos()) && view_body_control_at(body, mouse_pos())
-	// (nor a strip's arrows, ever: a strip of the body in their corner (a sidebar's row of tabs at its top) keeps them
-	// away, wherever the pointer is in the top area; the panel's menu and the palette still detach and close it)
-	if !with_strip && !view_strip_at(s, body, icons) && ((over && !covers) || view_held_within(s, icons_key)) {
-		next({fixed_x = icons_x, fixed_y = gap, width = children_sum(), height = px(side), axis = .X, cross = .Center})
-		if parent(build_box({}, "###view_panel_icons")) {
-			if view_header_icon("view_detach", lucide.PICTURE_IN_PICTURE_2, labels.floating, true) { view_float(vs, r) }
-			if view_header_icon("view_close", lucide.X, labels.close, true) { r.flag = false }
-		}
-	}
 	pop_parent()
-	// (the view's menu only where nothing of the body takes the right press: the box a press there acts on (hot_key, by
-	// the last layout) is none of the body's, and the body opened no menu in this build. A tab in the band with a menu
-	// of its own keeps it: its right click comes at the release, the view's menu would have replaced it at the press)
-	if s.pressed_any[.Right] && over && !view_body_takes(s, body.key) && !menu_opened_now(s) {
-		menu_open(view_menu_id(r), mouse_pos(), body.key, search = false)
-	}
 	if view_focus_inside(s, body.key) && r.flag && r.ending == nil {
 		if key_press(.W, {.Ctrl}) {
 			r.flag = false
@@ -724,47 +699,25 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, with_stri
 	view_build_ended(vs, r)
 }
 
-// Whether the box a press at the pointer acts on (the last layout's hot box) is in the body under `root`, not `root`.
+// Whether a lone panel shows its stack's strip, on hover (section 2.5, rule 2): it comes when the pointer is in the
+// stack's top band (VIEW_HOVER_EDGE_EM, by the last layout), and pushes the body down; it stays while the pointer is on
+// it or just under it (VIEW_HOVER_KEEP_EM), while a box of it is held (a tab dragged out), or while the view's menu is
+// open. No control of the strip ever lies over the body's: the strip takes its room.
 @(private = "file")
-view_body_takes :: proc(s: ^State, root: Key) -> bool {
-	if s.hot_key == 0 || s.hot_key == root { return false }
-	for b := s.boxes[s.hot_key] or_else nil; b != nil; b = b.parent {
-		if b.key == root { return true }
+view_hover_strip :: proc(r: ^View_Record, stack: ^Box, strip_h: f32) -> bool {
+	s := gs()
+	em := font_size()
+	a, p := stack.rect, mouse_pos()
+	reach := r.hover_strip ? strip_h + em * VIEW_HOVER_KEEP_EM : em * VIEW_HOVER_EDGE_EM
+	on := s.mouse_valid && p.x >= a.min.x && p.x < a.max.x && p.y >= a.min.y && p.y < a.min.y + reach
+	if r.hover_strip && !on {
+		on = view_held_within(s, key_from_string(stack.key, "###view_tabs")) || menu_is_open(view_menu_id(r))
 	}
-	return false
+	r.hover_strip = on
+	return on
 }
 
-// Whether a menu opened in this build (a level of it, or one waiting for the block of an open menu to end).
-@(private)
-menu_opened_now :: proc(s: ^State) -> bool {
-	for lv in s.menus { if lv.open_build == s.build_index { return true } }
-	if lv, ok := s.menu_next.?; ok && lv.open_build == s.build_index { return true }
-	return false
-}
-
-
-// Whether a control of the panel's body lies under `p`, by the last layout. Called before the hover icons are built in
-// this build: they are not among its children yet, so what is under them counts.
-@(private = "file")
-view_body_control_at :: proc(body: ^Box, p: Vec2) -> bool {
-	for c := body.last; c != nil; c = c.prev { if hit_test_box(c, p, body.rect) != 0 { return true } }
-	return false
-}
-
-// Whether a strip built in the panel's body (this build's, at its last layout's place) meets the rect `r`: its arrows
-// come and go with its scroll, its box stays, so the answer does not flicker as they do.
-@(private = "file")
-view_strip_at :: proc(s: ^State, body: ^Box, r: Rect) -> bool {
-	for sb in s.strips {
-		o := s.boxes[sb.outer] if sb.outer != 0 else nil
-		if o == nil || o.rect.max.x <= r.min.x || o.rect.min.x >= r.max.x || o.rect.max.y <= r.min.y || o.rect.min.y >= r.max.y { continue }
-		for p := o.parent; p != nil; p = p.parent { if p == body { return true } }
-	}
-	return false
-}
-
-// Whether the left button holds a box under `root` (an icon pressed while the pointer leaves the band keeps them: the
-// icons' box, not the body, whose own controls held would bring the icons over them).
+// Whether the left button holds a box under `root` (a tab of a strip on hover, dragged out of it: the strip stays).
 @(private = "file")
 view_held_within :: proc(s: ^State, root: Key) -> bool {
 	k := s.active_key[.Left]

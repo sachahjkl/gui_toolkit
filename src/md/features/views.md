@@ -435,9 +435,20 @@ draws, except the header that a dialog always had. The rules:
    with one tab and its "+" says that more can come). A tab strip appears when two or more views share a stack, or
    one of them is `tabs_always`, or its zone is minimised. A panel alone otherwise adds no strip and no border: its
    body starts at the zone's top edge. A test checks this (section 7.4, test 17).
-2. **A lone panel's controls appear only on hover.** While the pointer is over a strip-less panel's top area, two
-   small icons show in its top right corner: Detach and Close, in the weak colour. At rest nothing is added. The icons
-   take no room in the layout: they float over the body's corner. A panel with a strip has none: the strip holds them.
+2. **A lone panel's strip comes on hover, and pushes its body down** (`view_hover_strip`). At rest nothing is added.
+   When the pointer touches the stack's top edge (a band of `VIEW_HOVER_EDGE_EM`), the stack's strip shows as if the
+   panel had company: its tab (its title, its menu), its moves, its Minimise, Maximise and Close (rule 2b). The strip
+   takes its room: the body moves down under it, and no control of the panel lies over a control of the body. It stays
+   while the pointer is on it or just under it (`VIEW_HOVER_KEEP_EM`), while one of its boxes is held, or while the
+   view's menu is open. The keep reach is past the edge band: when the strip goes, the body comes back up under a
+   pointer already past the band, and the strip does not come again by itself (no flicker).
+   **Why it changed (0.267).** Two small icons, Detach and Close, floated over the body's top right corner on the hover
+   of its top area. They took no room, so they lay over the body's own controls: the user could not click on purpose
+   either the panel's icon or the button under it (opencode native's browser panel), and the icons had no plate. The
+   rules below were patches over that overlap; they are kept for the record. The user chose the strip that pushes the
+   body, over a strip always shown (two ems taken from every lone panel, against rule 1) and over no hover control at
+   all (the moves only in the menu and the palette: hard to find).
+   *Before (refused since):* the icons never covered the control the pointer was on.
    **They never cover the control the pointer is on.** Where the pointer is in their corner over a control of the body
    (by the last layout, the icons apart), they do not show, and that control takes the press; elsewhere in the top area
    they show as before. They stay while one of them is held, not while any box of the body is. Shown over a control, they
@@ -506,7 +517,7 @@ draws, except the header that a dialog always had. The rules:
    and the body opened no menu in that build. Refused: opening it after any body's build regardless (it replaced the
    tab's menu, which opens at the release); a box of the band's own (it would cover the body's controls for clicks).
 4. **Dragging starts from the existing header.** A panel with a title moves by its title. A panel without a title (a
-   sidebar) shows no grip: it detaches by the menu, by the palette or by the hover icons.
+   sidebar) shows no grip: it detaches by its strip on hover (rule 2), its menu or the palette.
 5. **Dialogs keep their look.** The header strip, the title and the close cross stay as `dialog_header` drew them. The
    only addition is one small Detach icon next to the close cross, in the same weak colour. Dragging the header also
    detaches the dialog (it becomes Internal, section 2.6).
@@ -522,7 +533,7 @@ cut (today's `dialog_header` rule).
 | Internal | the internal window's title strip | icon, title, tools, Re-attach, Detach, Close |
 | External, the program's decorations | the header is the window's title bar (rule 2c) | icon, title, tools, Re-attach, Close view, then the window's minimise, maximise, close (close: re-attach) |
 | External, the system's decorations | a strip under the system's title bar | icon, title, tools, Re-attach, Close view |
-| Panel | none at rest (rule 1). With two views or more in its stack, `tabs_always`, or its zone minimised: the stack's strip (rule 2b) | tabs, "+", moves, tools, then Minimise, Maximise, Close of the stack; a lone panel: on hover, Detach and Close (rule 2) |
+| Panel | none at rest (rule 1). With two views or more in its stack, `tabs_always`, or its zone minimised: the stack's strip (rule 2b) | tabs, "+", moves, tools, then Minimise, Maximise, Close of the stack; a lone panel: the same strip on the hover of its top edge, the body pushed down (rule 2) |
 
 The attachment acts. Each is absent where it does nothing:
 
@@ -1136,7 +1147,7 @@ A view docked in a space can be dragged to another space or to the frame's edges
   one opened, docked or clicked. A tab dragged past `DOCK_DRAG_EM` leaves the zone as an internal window under the
   pointer.
 - A lone panel moves by its title when the program marks its title box (`view_drag_handle(v, box)`); one without shows
-  no grip and moves by its hover icon, its menu or the palette (rule 4).
+  no grip and moves by its strip on hover (rule 2), its menu or the palette (rule 4).
 
 ### 6.4b Drops
 
@@ -1441,8 +1452,8 @@ In `tests/views` (the toolkit). Each test that builds runs with `ODIN_TEST_THREA
     back.
 16. **A window refused**: the backend returns nil. The view opens as Internal, the memory is not changed.
 17. **No chrome at rest**: a panel alone in its zone adds no tab strip and no extra border: its body's first box starts
-    at the zone's top edge, and no box of the dock is drawn between them. Its hover icons show only while the pointer
-    is over its top area, never over the control the pointer is on in their corner (a strip's arrow under them keeps its
+    at the zone's top edge, and no box of the dock is drawn between them. Its strip shows only on the hover of its top
+    edge, and pushes the body down: no control of the panel over the body's (a strip's arrow in the body keeps its
     click: tests/views/panel_test.odin, a_strip_in_a_panel_s_band_keeps_its_scroll). A dialog's header has the title, the Detach icon and the close cross, and nothing else.
 
 Each program adds tests for its own views: the answer acts (classeur deletes, inspecteur kills), the pattern F views
