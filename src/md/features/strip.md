@@ -103,7 +103,8 @@ the axis, a side is an axis and an end. Refused: a vertical strip as a second wi
 
 ## One look for every row of tabs
 
-`ui.tabs`, a dock's stack and a stack of views are three rows of tabs; they have one look, `tab_box`
+`ui.tabs`, a dock's stack and a stack of views are three rows of tabs, each on a strip (a dock's stack: its tabs on a
+strip, its fold and menu buttons after it, always in view); they have one look, `tab_box`
 (`src/ui/widgets_ext.odin`): the chosen tab a raised plate, the finish's face of a button (a bevel when machined, a
 sheen with a gradient), 0.8 of the row's height, rounded; the others flat in the weak ink, a plate of the theme's "tab"
 hover under the pointer; each a Tab stop.

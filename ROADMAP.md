@@ -9,9 +9,9 @@
   (sections 1 and 7).
 
 ## Next
-- **Every row of tabs on a strip.** The dock's stacks, classeur's tab rows and Wren's tab strip scroll with the
-  toolkit's arrows when their tabs are too many, as `ui.tabs` and the views' stacks do; today they cut or scroll in their
-  own way. Intent: [src/md/features/strip.md](src/md/features/strip.md).
+- **Every row of tabs on a strip.** classeur's tab rows and Wren's tab strip scroll with the toolkit's arrows when their
+  tabs are too many, as `ui.tabs`, the views' stacks and the dock's stacks do; today they cut or scroll in their own
+  way. Intent: [src/md/features/strip.md](src/md/features/strip.md).
 - **No program blocks its interface's thread.** Each program's tests run its windows with the toolkit's blocking check
   on and fail when a disk, process or D-Bus call happens in a build, so the CI finds it.
 - **The last settings that programs copy.** The window's place is the toolkit's (`window.placement`,
