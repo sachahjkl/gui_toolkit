@@ -14,7 +14,10 @@ colours (`Meta`, `Docs`), its home page as the template (`site/index.html`), its
 - `changelog/index.html`: every version, the last 6 open, with a filter. It wears the home page's head, bar, footer and first
   script, their links made relative to its folder (`from_home`). Beside its title, a Subscribe menu (`subscribe_html`):
   the releases' feed (`feed.xml`) and, with `Meta.repository`, its releases on GitHub; its style is in the page, from the
-  variables every site has (`--bg1`, `--bg2`, `--bg3`, `--text`, `--weak`, `--edge`, `--sans`, `--mono`).
+  variables every site has (`--bg1`, `--bg2`, `--bg3`, `--text`, `--weak`, `--edge`, `--sans`, `--mono`). Its lead names
+  the roadmap when the project has one.
+- `roadmap/index.html`: the `ROADMAP.md` beside `CHANGELOG.md` (Now, Next, Later), in the changelog's dress; an empty
+  section says so. Linked from the changelog's lead, not from the bar.
 - `classic/`: the same in a classic presentation (`classic/`, `classic/features/`, `classic/screenshots/`,
   `classic/changelog/`), a line of plain links and a column of text, with `classic/classic.css` of the site. Each modern page's
   footer links its classic page ("Classic version"), each classic page the modern one ("Modern version").

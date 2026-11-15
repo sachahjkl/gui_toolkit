@@ -12,12 +12,15 @@ package tk_site
 
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 
 HOME_PAGE         :: "index.html"
 CHANGELOG         :: "changelog"                         // the changelog's folder
 CHANGELOG_ADDRESS :: CHANGELOG + "/"                     // its address, from the root
 CHANGELOG_PAGE    :: CHANGELOG + "/" + HOME_PAGE         // its file
+ROADMAP           :: "roadmap"                           // the roadmap's folder: what comes next (ROADMAP.md)
+ROADMAP_PAGE      :: ROADMAP + "/" + HOME_PAGE
 FEATURES_ID       :: "features"                          // the home's section that is a page of its own in classic/
 SCREENSHOTS       :: "screenshots"                       // the classic page of the pictures
 CLASSIC           :: "classic"                           // the classic pages' folder in the site
@@ -614,8 +617,9 @@ Page :: struct {
 }
 
 // Every page this step makes, from the home page and the versions. `site_name` titles them ("": the home page's title).
+// `roadmap`: the project's ROADMAP.md ("": none), made a page of its own (roadmap/), that the changelog's lead names.
 // why: what the home page lacks.
-make_pages :: proc(index: string, releases: []^Release, site_name := "", repository := "") -> (pages: []Page, why: string) {
+make_pages :: proc(index: string, releases: []^Release, site_name := "", repository := "", roadmap := "") -> (pages: []Page, why: string) {
 	if !strings.contains(index, WHATS_NEW) { return nil, cat("no ", WHATS_NEW) }
 	shown := releases[:min(NEWS_VERSIONS, len(releases))]
 	out := make([dynamic]Page, context.temp_allocator)
@@ -627,7 +631,8 @@ make_pages :: proc(index: string, releases: []^Release, site_name := "", reposit
 	if !strings.contains(footer, CLASSIC_LINK) { return nil, cat("no ", CLASSIC_LINK, " in the footer") }
 
 	versions := strings.builder_make(context.temp_allocator)
-	put(&versions, `<p class="lead">Every version of `, esc(name), ", newest first. The format is ", `<a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>, the versions follow <a href="https://semver.org">semantic versioning</a>.</p>
+	put(&versions, `<p class="lead">Every version of `, esc(name), ", newest first. The format is ", `<a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>, the versions follow <a href="https://semver.org">semantic versioning</a>.`,
+		roadmap != "" ? cat(` What comes next is in the <a href="/`, ROADMAP, `/">roadmap</a>.`) : "", `</p>
 <div class="filter"><input id="filter" type="search" placeholder="Filter by a word or a version" aria-label="Filter the versions by a word"><span id="count" class="small">`, fmt.tprint(len(releases)), " versions</span></div>\n")
 	for r, i in releases {
 		if i > 0 { strings.write_byte(&versions, '\n') }
@@ -664,6 +669,7 @@ make_pages :: proc(index: string, releases: []^Release, site_name := "", reposit
 </body>
 </html>
 `), CHANGELOG_PAGE)})
+	if roadmap != "" { append(&out, roadmap_page(index, head, bar, footer, script, name, roadmap)) }
 
 	hero := between(index, `<section class="hero">`, "</section>")
 	title := inner(between(hero, "<h1>", "</h1>"))
@@ -761,6 +767,57 @@ make_pages :: proc(index: string, releases: []^Release, site_name := "", reposit
 	return out[:], ""
 }
 
+// The roadmap's page (roadmap/): the project's ROADMAP.md, its title and its sections (Now, Next, Later), in the
+// changelog's dress (the home page's head, bar, footer and script, the changelog's `main`). Its first line, "# Roadmap",
+// is the page's title.
+@(private = "file")
+roadmap_page :: proc(index, head, bar, footer, script, name, roadmap: string) -> Page {
+	body := roadmap
+	if strings.has_prefix(body, "# ") { _, _, body = strings.partition(body, "\n") }
+	md := render_markdown(body, allocator = context.temp_allocator)
+	// (a section with no entry says so: an empty heading read as a page that failed)
+	html := md.html
+	for section in ([]string{"Now", "Next", "Later"}) {
+		id := heading_id(section, context.temp_allocator)
+		at := strings.index(html, cat(`<h2 id="`, id, `">`))
+		if at < 0 { continue }
+		end := at + strings.index(html[at:], "</h2>\n") + len("</h2>\n")
+		if end < len(html) && strings.has_prefix(html[end:], "<ul") { continue }
+		html = cat(html[:end], `<p class="small">Nothing here for now.</p>`, "\n", html[end:])
+	}
+	h := head
+	if at, end, ok := title_span(h); ok { h = replace_span(h, cat("<title>Roadmap · ", esc(name), "</title>"), at, end) }
+	if at, end, ok := tag_span(h, `<meta name="description"`); ok {
+		h = replace_span(h, cat(`<meta name="description" content="What comes next in `, esc(name), `: now, next and later.">`), at, end)
+	}
+	foot := replace_text(footer, CLASSIC_LINK, cat(`<a href="`, CLASSIC, `/">Classic version</a>`))
+	return Page{ROADMAP_PAGE, from_home(cat(`<!doctype html>
+<html lang="en">
+`, h, `
+<body>
+`, bar, `
+
+<main class="changelog roadmap">
+<h1>Roadmap</h1>
+<p class="lead">What comes next in `, esc(name), `: what is being done now, what comes next, and what comes later. What is
+done goes to the <a href="/`, CHANGELOG_ADDRESS, `">changelog</a>.</p>
+<style>
+  .roadmap h2 { position: relative; }
+  .roadmap h2 .anchor { position: absolute; left: -1em; opacity: 0; color: var(--weak); text-decoration: none; }
+  .roadmap h2:hover .anchor, .roadmap .anchor:focus-visible { opacity: 1; }
+  .roadmap h2 { margin-top: 40px; }
+  .roadmap li { margin: 10px 0; line-height: 1.6; }
+</style>
+`, html, `
+</main>
+
+`, foot, `
+`, script, `
+</body>
+</html>
+`), ROADMAP_PAGE)}
+}
+
 // The home page with the last version where it says `mark` ("": as it is).
 with_version :: proc(index, version, mark: string) -> string {
 	if mark == "" { return index }
@@ -779,7 +836,12 @@ build_changelog :: proc(site, out: string, o: Changelog_Options) -> bool {
 	if dl_why != "" { fmt.eprintfln("site: %s/%s: %s", site, HOME_PAGE, dl_why); return false }
 	framed, frame_why := with_frame(home, o.meta)
 	if frame_why != "" { fmt.eprintfln("site: %s/%s: %s", site, HOME_PAGE, frame_why); return false }
-	made, why := make_pages(with_version(framed, releases[0].version, o.version_mark), releases, o.meta.name, o.meta.repository)
+	// (the roadmap beside the changelog: every project keeps both)
+	dir := filepath.dir(o.changes)
+	roadmap_path := dir == "" || dir == "." ? "ROADMAP.md" : cat(dir, "/ROADMAP.md")
+	roadmap := ""
+	if os.exists(roadmap_path) { roadmap, _ = read_utf8(roadmap_path) }
+	made, why := make_pages(with_version(framed, releases[0].version, o.version_mark), releases, o.meta.name, o.meta.repository, roadmap)
 	if why != "" { fmt.eprintfln("site: %s/%s: %s", site, HOME_PAGE, why); return false }
 	pages := make([dynamic]Page, context.temp_allocator)
 	append(&pages, ..made)
