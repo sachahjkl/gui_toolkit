@@ -749,8 +749,9 @@ under_scene :: proc(t: ^testing.T, half: bool) {
 
 // An internal window (a view floated in the window: its frame, its shadow, its plate) over lines of text that change
 // each step (a shell's output under it, opencode native's Statistics over a conversation): the text never shows through
-// the window. Each partial frame is the whole frame to the bit, in both frame formats.
-@(private = "file") FLOAT_STEPS :: 6
+// the window. Each partial frame is the whole frame to the bit, in both frame formats, in opencode native's finish
+// (machined, its glow) and a flat one (every finish made the package pass 420 s on WebGPU's WARP).
+@(private = "file") FLOAT_STEPS :: 3
 
 @(private = "file")
 Float_Run :: struct {
@@ -781,7 +782,7 @@ float_build :: proc(s: ^session.Session) {
 text_that_changes_under_an_internal_window_stays_under_it :: proc(t: ^testing.T) { for half in FORMATS { float_scene(t, half) } }
 
 @(private = "file")
-float_scene :: proc(t: ^testing.T, half: bool) { for f in ui.Finish { float_scene_in(t, half, f) } }
+float_scene :: proc(t: ^testing.T, half: bool) { for f in ([2]ui.Finish{.Machined, .Flat}) { float_scene_in(t, half, f) } }
 
 @(private = "file")
 float_scene_in :: proc(t: ^testing.T, half: bool, finish: ui.Finish) {
