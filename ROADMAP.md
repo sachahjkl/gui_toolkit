@@ -39,8 +39,9 @@
 - **A table of widgets and their behaviours.** The table of widgets × behaviours (wheel, keys, Tab, accessibility,
   context menu, disabled, tooltip, Shift step, typed value, reset by double click), written down; each empty cell
   between two widgets of one concept is a bug or a written decision.
-- **Small tools that Wren still redoes.** Wren's dialog field becomes a line edit option for Enter and Escape; a menu
-  opened under a button takes an alignment, so Wren's panel placement goes.
+- **Small tools that Wren still redoes.** Wren's panel placement (`toolbar_panel_rect`) goes for `ui.menu_open`'s
+  `align = .End`, and its `dialog_field` for a plain `ui.line_edit` (`committed`, `cancelled`) or `ui.prompt_open`, which
+  already answer Enter and end a view with Escape in one press.
 - **The rest of cliche's pieces.** Fonts per worker thread move into `gt:font`, cliche's timing marks join the
   renderer's trace, a host helper opens a hidden window ahead, toasts never cover a window's tool bar, and the toolkit
   offers deferred file writing.
