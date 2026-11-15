@@ -33,7 +33,8 @@ changes when the label changes. It holds no `=`, `;`, `,` or space: those are th
   for it acts in both. Two different commands take two ids.
 - **A program that changes an id loses the person's key and alias for it.** No table of old ids is kept. The stored entry
   stays in the text, inert, until the person removes it. A program changes an id only when the command changes meaning.
-- **The toolkit's palette command has no id.** Its keys are read only (palette.md, "No setting turns Ctrl+K off").
+- **The toolkit's palette command has no id.** Its keys are read only (palette.md, "No setting turns Ctrl+K off"): a
+  command without an id reads its own keys only, and no person's key takes them.
 
 Refused:
 
@@ -48,15 +49,16 @@ Refused:
 ### Where the keymap lives
 
 `ui.Keymap` is the program's, one per process: `app.keymap`. Each window's `ui.State` points to it
-(`ui.keymap_use(&app.keymap)` once per window). The windows of one program share the person's keys, as they share the
-settings file. A global was refused: the toolkit keeps no app state in globals.
+(`ui.keymap_use(&app.ui, &app.keymap)` once per window, as `set_views`). The windows of one program share the person's
+keys, as they share the settings file. A global was refused: the toolkit keeps no app state in globals.
 
 The keymap holds:
 
 - `bindings`: id → one binding, one chord or a sequence of two;
 - `aliases`: alias → id;
 - `known`: the ids of the program's commands (`ui.keymap_known(&km, table)`, once per table, again at each version of a
-  table made at run time);
+  table made at run time). An id once known stays known: forgetting needs to know which table an id came from, and a
+  command gone for good keeps its key until the person sets it on another command;
 - `taken`: chord → id, made from `bindings` restricted to `known`, the first chord of each sequence included;
 - `version`: bumped at each change of the bindings, the aliases or the known ids.
 
@@ -90,7 +92,12 @@ command were refused: no program asked for it, and the recorder then needs a lis
   the window's `pending` chord and its deadline, `KEYMAP_SEQUENCE_MS` (1500) after.
 - **`pending` is in `ui.State`, one per window.** A first chord in one window is not completed in another.
 - While a chord is pending, no single chord acts. The next key press completes a sequence or clears `pending`. That
-  press is taken in both cases: a person who started a sequence did not mean the second key alone.
+  press is taken in both cases: a person who started a sequence did not mean the second key alone. The build's start
+  takes it out of the events, before any reader (and the character it types with it); the build's end clears
+  `pending`.
+- **The typing rule does not hold for the second chord.** "Ctrl+M, T" works while a field has the keyboard: the person
+  started a sequence, so the T is the sequence's. Holding it for the field would make the field lose the T anyway (the
+  press is taken), and the sequence would never work there. The first chord keeps the rule.
 - Escape clears `pending`. The deadline clears it too: the toolkit wakes the window at the deadline (`wake_within`).
 - **The toolkit shows the pending chord**: a small bubble at the bottom centre of the window, "Ctrl+M, …", until the
   sequence ends. A status line of each program's own was refused: each program has its own status, or none.
@@ -113,9 +120,10 @@ Two standard settings of the toolkit, in a new `Standard_Set.Keys` that `STANDAR
   (below).
 - **The keymap does not import `config`.** `ui.keymap_read(&km, custom, aliases)` reads the two texts.
   `Keymap.changed` (a procedure and its user) is called after each change made through the palette, with the two new
-  texts. `prefs_page.standard_watch` sets it to write the two settings, and reads them into the keymap when the file
-  changes. A value it wrote itself comes back as a change of the file: the keymap compares the text with its own and
-  reads nothing. Wren gives the same two calls its own settings model.
+  texts. `prefs_page.standard_watch` sets it (`Standard_Targets.keymap`: the targets are its options) to write the
+  setting that changed, and reads them into the keymap when the file changes. A value it wrote itself comes back as a
+  change of the file: the keymap compares each text with its own and reads nothing. Wren gives the same two calls its
+  own settings model.
 - The texts are written in the order of the ids, sorted: the file does not change at each save because of a map's order.
 
 ### The palette
@@ -129,15 +137,19 @@ nothing else.
   again. When it ends, the palette opens again with its query.
 - **The recorder says when a chord types text**: "This key does nothing while you type in a field." The rule of
   commands.md stays; the person learns it at the right moment.
+- **The recorder refuses the palette's keys** (a first chord Ctrl+K or Ctrl+Shift+P): "This key opens the command
+  palette." They are read only, so a person's key on one would never act.
 - **Alt+Enter on a command: "Make the letters its alias".** The choice's query, trimmed and lower case, becomes an alias
   of that command. A former alias with the same letters moves to it. The palette opens again with the query.
 - **An alias typed whole puts its command first**, under `>` and in the plain search. The aliases of a command are also
   its tags: "n" finds "nf". The source makes its entries again when `Keymap.version` changes. `Palette_Commands_Options.first`
   goes: the alias was its only use.
-- **The keys shown on a row are the keys in effect.** `Palette_Commands_Options.keys` goes.
+- **The keys shown on a row are the keys in effect**, the first of them, as a menu's line. `Palette_Commands_Options.keys`
+  goes.
 - **Ctrl+Enter and Alt+Enter on a command are the toolkit's in every program.** Shift+Enter stays the program's
-  alternate. Wren's "open a URL command in a new tab" moves from Ctrl+Enter to Shift+Enter: one meaning per key in every
-  program.
+  alternate: `Palette_Commands_Options.alternates` becomes `shift`, its words. Wren's "open a URL command in a new tab"
+  moves from Ctrl+Enter to Shift+Enter: one meaning per key in every program. A window without a keymap leaves Ctrl+Enter
+  and Alt+Enter to the program, as Enter.
 
 `ui.hotkey_field` is not the recorder. It records one combination for the system (Super, a character with no key name),
 and it needs a modifier. A command's key can be F7 alone, and a sequence's second chord is often a letter alone. The
@@ -173,7 +185,7 @@ and no person asked. If a person asks, the sheet's lines get the remove button, 
     KEYMAP_SEQUENCE_MS :: 1500
     KEYMAP_RECORDER_VIEW :: "keys"
 
-    keymap_use(km)                         this window's state reads km
+    keymap_use(s, km)                      this window's state reads km
     keymap_known(km, table)                the ids that exist (again at a table's new version)
     keymap_read(km, custom, aliases)       the stored texts into the keymap
     keymap_texts(km) -> (custom, aliases)  the texts to store, ids sorted
@@ -184,13 +196,14 @@ and no person asked. If a person asks, the sheet's lines get the remove button, 
     command_ids_check(tables: ..[]Command) -> []string
     keymap_destroy(km)
 
-    prefs_page: Standard_Set.Keys, KEYS_CUSTOM_PREF, KEYS_ALIASES_PREF; Standard_Watch_Options.keymap
+    platform.key_english(key)              a key's name in English, what binding_store_text writes
+    prefs_page: Standard_Set.Keys, KEYS_CUSTOM_PREF, KEYS_ALIASES_PREF; Standard_Targets.keymap
 
 ## Migration
 
-1. **The toolkit, with tests.** `Command.id`, `Keymap`, the reading in `command_pressed`, the recorder, the commands
-   source's alternates and aliases, the key texts, the sheet, the two settings. `names`, `keys` and `first` leave
-   `Palette_Commands_Options`. Fidget gives ids.
+1. **The toolkit, with tests** (done: `tests/keymap`). `Command.id`, `Keymap`, the reading in `command_pressed`, the
+   recorder, the commands source's alternates and aliases, the key texts, the sheet, the two settings. `names`, `keys`
+   and `first` leave `Palette_Commands_Options`. Fidget gives ids.
 2. **classeur.** `keymap.odin` goes, its recorder, its second tables for the palette and the sheet, `window_keys`'s
    pending reset, `bindings_pressed`, and its two `Def`s. Its `Command` keeps `run`, `enabled` and `in_text` around a
    `ui.Command` with its ids unchanged: the stored values stay valid.

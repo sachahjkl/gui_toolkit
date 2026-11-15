@@ -225,10 +225,10 @@ First_Shown_Kind :: enum { Late, Buttons, Confirm, Prompt, Palette, Sheet }
 
 @(private = "file")
 FS_COMMANDS := [?]ui.Command{
-	{label = "End task", group = "Processes", keys = {{.Delete, {}}}},
-	{label = "Kill", group = "Processes", keys = {{.Delete, {.Shift}}}},
-	{label = "Start", group = "Services", keys = {{.S, {.Ctrl}}}},
-	{label = "Command palette", group = "Window", keys = {{.P, {.Ctrl, .Shift}}}},
+	{id = "end_task", label = "End task", group = "Processes", keys = {{.Delete, {}}}},
+	{id = "kill", label = "Kill", group = "Processes", keys = {{.Delete, {.Shift}}}},
+	{id = "service.start", label = "Start", group = "Services", keys = {{.S, {.Ctrl}}}},
+	{id = "palette", label = "Command palette", group = "Window", keys = {{.P, {.Ctrl, .Shift}}}},
 }
 
 @(private = "file")

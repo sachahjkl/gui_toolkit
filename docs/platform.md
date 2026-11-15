@@ -147,7 +147,9 @@ order, `up`, `loopback`); `interface_addresses_destroy` frees the list. core:net
 window wherever the keyboard is, as a `Hotkey` event whose `hotkey` is the id. `hotkey_parse("Ctrl+Shift+V")` and
 `hotkey_text` read and write their text (Ctrl, Shift, Alt, Win, then a letter, a digit, F1 to F12, a named key, or a
 single character for a key Key does not name: `Hotkey.char`, the key that types it on the user's layout, "Ctrl+Shift+ù").
-That text is English, for a file. `key_text` (`key_text.odin`) gives the text a person reads, in the language in use, of a
+That text is English, for a file. `key_english(key)` gives a key's name in English whatever the language in use
+(`Page Up`, `Enter`, `Num +`): `key_text`'s words before their translation, which a file a person also reads keeps
+(`ui.binding_store_text`). `key_text` (`key_text.odin`) gives the text a person reads, in the language in use, of a
 `Key`, a `Hotkey` or keys written in English ("Maj+Impr. écran" in French): [commands.md](commands.md#a-keys-text).
 `ui.hotkey_field` records one from the keys pressed (a click, then the keys): a key Key does not name comes as a
 `Key_Press` with its character (`Event.char`).

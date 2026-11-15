@@ -55,9 +55,9 @@ the keyboard lists no typing key.
   desktop takes it.
 - Delete and Shift+Delete edit a field too (Shift+Delete cuts). They do not type text, so the rule allows them. A
   program that reads its keys before its field (papier's `view_keys`) gives them to its command; that is its choice.
-- A program that reads keys with its own table (classeur's `bindings_pressed`, opencode native's `commands_keys`) reads
-  each chord with `chord_pressed(chord, scope)`: the same rules as `command_pressed`, rule 2 and the window commands'
-  scope too.
+- A program that reads keys with its own table reads each chord with `chord_pressed(chord, scope)`: the same rules as
+  `command_pressed`, rule 2 and the window commands' scope too. The person's keys and sequences are the toolkit's
+  ([keymap.md](keymap.md)): `command_pressed` reads them.
 
 # Window commands
 

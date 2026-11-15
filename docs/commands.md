@@ -1,8 +1,9 @@
 # Commands: keys, palette and the sheet of the keys
 
-A program names each of its commands once, in a table of `ui.Command`: its label, its group and its keys. The same table
-gives the key handling, the shortcut of a menu's line, a tooltip's text, the command palette and the sheet of the keys:
-they cannot disagree.
+A program names each of its commands once, in a table of `ui.Command`: its id, its label, its group and its keys. The
+same table gives the key handling, the shortcut of a menu's line, a tooltip's text, the command palette and the sheet of
+the keys: they cannot disagree. The person sets keys and aliases of their own from the palette (`ui.Keymap`, below):
+every reader follows them.
 
 ![The palette with nothing typed: the program's commands under their groups with their keys, the prefixes at its foot (examples/showcase)](screenshots/showcase_palette.webp)
 
@@ -12,10 +13,14 @@ Cmd :: enum u8 { End_Task, Kill, Shortcuts }
 // (no line for the palette: the toolkit owns its command, ui.palette_command(); palette_keys reads its keys and the
 // sheet lists it)
 COMMANDS := [Cmd]ui.Command{
-	.End_Task  = {label = "End task", group = "Processes", keys = {{.Delete, {}}}},
-	.Kill      = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}},
-	.Shortcuts = {label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}, scope = .Window},
+	.End_Task  = {id = "end_task", label = "End task", group = "Processes", keys = {{.Delete, {}}}},
+	.Kill      = {id = "kill", label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}},
+	.Shortcuts = {id = "shortcuts", label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}, scope = .Window},
 }
+
+// at the start, once per window: the person's keys (the standard settings keys.custom and keys.aliases, prefs_page)
+ui.keymap_known(&app.keymap, COMMANDS[:])
+ui.keymap_use(&app.ui, &app.keymap)
 
 // each frame, before the page is built, in every page and mode: a window command's keys work whatever has the focus
 for c in Cmd { if ui.command_pressed(COMMANDS[c], can(c)) { run(c) } }
@@ -39,20 +44,21 @@ if show_keys { ui.shortcuts_sheet_open(&app.sheet, COMMANDS[:]) }
 |---|---|
 | `Chord{key, mods}` | a key and its modifiers; the zero value is no key |
 | `ZOOM_IN_KEYS`, `ZOOM_OUT_KEYS`, `ZOOM_RESET_KEYS` | the keys of a program's zoom commands, the same everywhere: Ctrl+= and Ctrl++ (Ctrl+Shift+=, + on an AZERTY's or a QWERTY's = key), Ctrl+keypad +; Ctrl+-, Ctrl+keypad -; Ctrl+0 (`keys = ui.ZOOM_IN_KEYS[:]`). A program with zoom commands of its own sets `Build_Params.disable_zoom`, else the window's zoom takes those keys |
-| `Command{label, group, keys, icon, tags, scope, toggle}` (`toggle`: a switch; its menu line takes `checked`, its palette row shows its mark and stays open: [palette.md](palette.md)) | `keys`: its chords, as many as it has (`[]Chord`; Zoom in: Ctrl+=, Ctrl+Num +, Ctrl+Shift+=), the first one shown in menus and tooltips (a zero chord among them is none); `tags`: other words the palette finds it by ("exit", "close" for Quit), a match of them after one of the label's |
+| `Command{id, label, group, keys, icon, tags, scope, toggle}` (`toggle`: a switch; its menu line takes `checked`, its palette row shows its mark and stays open: [palette.md](palette.md)) | `id`: its name for good (`tab_new`, `tab.new`: lower case letters, digits, `.`, `_`, `-`), whatever its label and the language: the person's key and alias for it, and the palette's memory of it, are stored by it. One id in two tables is one command. `keys`: its own chords, as many as it has (`[]Chord`; Zoom in: Ctrl+=, Ctrl+Num +, Ctrl+Shift+=), the first one in effect shown in menus and tooltips (a zero chord among them is none); `tags`: other words the palette finds it by ("exit", "close" for Quit), a match of them after one of the label's |
+| `command_ids_check(tables..) -> []string` | one line per wrong id: `"<label>: no id"`, `"<label>: \"Tab.New\" is not an id"`, `"<label>: \"x\" twice"` (twice in one table). A program's test expects none |
 | `chord_text(chord)` | `Ctrl+Shift+P`, `Shift+Delete`, `F5`: modifiers in the order Ctrl, Shift, Alt; in the language in use (`Ctrl+Maj+P`): the words of `platform.key_text`, which names a `Key`, a `Hotkey` and keys written in English (below) |
 | `key_tip(label, chord)` | a tooltip's text for a control that is no command: `Settings (Ctrl+,)`, the label alone with no key |
-| `command_shortcut(c)`, `command_keys_text(c)`, `command_tip(c)` | the first key's text; every key's, apart by commas; `label (key)` |
+| `command_shortcut(c)`, `command_keys_text(c)`, `command_tip(c)` | the keys in effect (`command_keys_in_effect`: the person's binding, else the own keys that no other command's binding took): the first one's text; every one's, `" / "` between them (`Ctrl+K / Ctrl+Shift+P`; a sequence reads `Ctrl+M, T`); `label (key)` |
 | `Command.scope` | `.Page` (the default): its keys reach it as any key does, not from behind a dialog. `.Window`: a window command (the palette, the keyboard shortcuts, the settings, close, quit): its keys work whatever has the focus and whatever the page, over a view shown as a dialog too (below) |
-| `command_pressed(c, disabled)` | one of its keys was pressed this frame: the press is taken. A command that cannot act (`disabled`) takes no key. A key that types text is not taken while a text field (a line edit, a text area) has the keyboard: the field gets it. A chord that the widget with the keyboard claims (`keys_claim`) is not taken either |
-| `chord_pressed(chord, scope)` | one chord by `command_pressed`'s rules, for a program that reads its keys with its own table (a sequence of two chords, bindings of its own) |
+| `command_pressed(c, disabled)` | one of its keys in effect was pressed this frame: the press is taken. With a keymap: the person's binding alone (a sequence: its second chord after its first), else each own key that no other command's binding took. A command that cannot act (`disabled`) takes no key. A key that types text is not taken while a text field (a line edit, a text area) has the keyboard: the field gets it. A chord that the widget with the keyboard claims (`keys_claim`) is not taken either |
+| `chord_pressed(chord, scope)` | one chord by `command_pressed`'s rules, for a program that reads its keys with its own table. Nothing while a sequence's first chord is pending |
 | `keys_claim(owner, ..pass)` | a widget that has the keyboard (box `owner`) keeps every chord, a window command's too, but the chords of `pass` (at most `KEYS_CLAIM_PASS_MAX`). Call it at each build while it owns them (a terminal, a shortcut recorder: `hotkey_field` claims while it records). Its claim counts from the build it is made in and the next one |
 | `command_window_typing_keys(commands)` | the window commands' keys that type text, as `command_typing_keys` says them. A program's test expects none |
 | `command_key_types_text(chord)` | whether the chord types text in a field: a letter, a digit, a punctuation mark, Space, Backspace or keypad + and -, with no modifier or with Shift alone. Ctrl or Alt with any key, and F1–F12, Escape, Enter, Tab, Delete, Insert, the arrows, Home, End, Page Up, Page Down, Menu and Print with any modifier: false |
 | `command_typing_keys(commands)` | one line per key of the table that types text, `"<label>: <key>"` (`"Rectangle: R"`, `"Add a step…: Shift+A"`), the key by its `platform.Key` name. A program's unit test compares it with the keys it means (below) |
-| `palette_commands(&p, commands, disabled, o)` | the palette's commands source ([palette.md](palette.md)): the program's table (valid while the palette is open), `disabled` and `Palette_Commands_Options` copied when `o.version` changes (0: when their addresses do). `palette_chosen_command(&p, choice)` gives a chosen command's index |
+| `palette_commands(&p, commands, disabled, o)` | the palette's commands source ([palette.md](palette.md)): the program's table (valid while the palette is open), `disabled` and `Palette_Commands_Options` copied when `o.version` or the keymap's version changes (0: when their addresses do). `palette_chosen_command(&p, choice)` gives a chosen command's index. Ctrl+Enter and Alt+Enter on a command set a key and an alias (below) |
 | `palette_command()`, `palette_keys(&p)`, `palette_toggle(&p)` | the toolkit's window command of the palette (Ctrl+K, Ctrl+Shift+P), for a menu and the sheet; the one reader of its keys; a button's open or close |
-| `shortcuts_sheet_open(&sheet, commands, title, version)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key, grouped, its keys at the right, and the toolkit's palette command after them (the sheet adds it: no table holds it); scrolls past `SHEET_HEIGHT` of the window. `commands` stays valid while it is open; `version` as the palette's |
+| `shortcuts_sheet_open(&sheet, commands, title, version)`, `shortcuts_sheet_is_open(&sheet)`, `shortcuts_sheet_close(&sheet)`, `shortcuts_sheet_destroy(&sheet)` | the view of the sheet (a `Shortcuts_Sheet`, the program's): every command that has a key in effect, grouped, its keys at the right (the person's in the accent's colour), and the toolkit's palette command after them (the sheet adds it: no table holds it); scrolls past `SHEET_HEIGHT` of the window. `commands` stays valid while it is open; `version` as the palette's; the list is made again when the keymap's version moves |
 
 ### A key that types text
 
@@ -127,16 +133,67 @@ one up to six, two beyond), the best matches first (the text whole before pieces
 ending where its word ends before inside a longer word: "inspecteur" before "inspecteurtool"; a match in the title
 before one that needs the group's letters). Escape closes the palette, and the sheet.
 
-### Keys the user changes
+### The person's keys and aliases
 
-The keys in effect are the table that the program passes. No reader keeps a key of its own: `command_pressed`,
-`command_shortcut`, `command_tip`, the palette and the sheet read `Command.keys` of the commands they are given. A program
-whose user rebinds a key, or turns one off by a setting, keeps its constant table and derives the table in effect from it
-when its settings change:
+In every program, the person sets a key for any command from the palette: Ctrl+Enter on a command opens the recorder
+(`KEYMAP_RECORDER_VIEW`), which takes any chord, two for a sequence (Ctrl+M, then T); Enter keeps them, Escape gives up,
+Backspace first gives the command its own keys again. Alt+Enter makes the letters typed an alias of the command: typed
+whole, the alias puts its command first; its first letters find it, as a tag. The palette opens again with its text.
+The reasons are in [src/md/features/keymap.md](../src/md/features/keymap.md).
+
+A program gives its tables ids, one `ui.Keymap` for the process, and the two standard settings (`Standard_Set.Keys`):
+
+```odin
+app.keymap: ui.Keymap                                   // the program's, one per process
+ui.keymap_known(&app.keymap, COMMANDS[:])              // each table, before its first command_pressed
+ui.keymap_use(&app.ui, &app.keymap)                     // each window
+prefs_page.standard_watch(&app.standard, &prefs, &app.ui, {keymap = &app.keymap, ...})   // keys.custom, keys.aliases
+...
+ui.keymap_destroy(&app.keymap)
+```
+
+and checks them in a test: `testing.expect_value(t, len(ui.command_ids_check(COMMANDS[:], OTHER[:])), 0)`.
+
+| | |
+|---|---|
+| `Keymap{bindings, aliases, known, taken, version, changed, user}` | `bindings`: id → its `Binding`; `aliases`: alias → id; `known`: the ids of the program's tables; `taken`: chord → id, made again when the bindings or the known ids change, never in a frame; `version` moves at each change. `changed(user, custom, aliases)`: called after each change made through the API (the recorder, an alias) with the two texts to store |
+| `Binding{chords}` | one chord, or two in a row (`chords[1]` none: one chord). `KEYMAP_SEQUENCE_MS` (1500): how long the first waits for the second |
+| `keymap_use(s, km)`, `keymap_known(km, table)`, `keymap_destroy(km)` | this window reads `km`; the ids of a table exist (again at each version of a table made at run time; an id once known stays known); its end |
+| `keymap_bind(km, id, b)`, `keymap_unbind(km, id)` | `id` acts on `b` in place of its own keys; back to its own keys. One key, one command: another binding of the same keys goes, a single chord that a new sequence starts with goes, a sequence that a new single chord starts goes |
+| `keymap_alias(km, alias, id)`, `keymap_alias_command(km, text) -> id` | `alias` (trimmed, lower case) names `id`; a former alias of the same letters moves. The command an alias names (`""`: none, or an id no table has) |
+| `keymap_read(km, custom, aliases)`, `keymap_texts(km) -> (custom, aliases)` | the stored texts into the keymap (a text equal to the last one read or written is not read again); the texts to store, ids sorted |
+| `binding_text(b)`, `binding_store_text(b)`, `binding_parse(text)` | `Ctrl+M, T` in the language in use (`Ctrl+Maj+M, T`); in English whatever the language (`platform.key_english`), what `keys.custom` stores; that text read back (a translated word is not read) |
+| `command_keys_in_effect(c) -> []Binding` | the person's binding, else the own keys that no other command's binding took |
+
+The stored texts, in the standard settings `keys.custom` and `keys.aliases` (advanced: an export carries them; the
+reset of a field removes them all):
+
+    keys.custom   tab_new=Ctrl+M, T;terminal=F7
+    keys.aliases  nf=new_folder;go=goto_popup
+
+The rules:
+
+- **A person's key wins over a command's own key.** The command that had that chord keeps its other keys, or none: the
+  sheet then does not list it. A person's binding replaces all the command's own keys.
+- **An entry of an id no table has is kept, and inert**: it takes no chord from anyone (a command of a mode not seen
+  yet, a command a program removed).
+- **A sequence's first chord is pending in its window**: a bubble at the bottom centre says `Ctrl+M, …`. The next key
+  press completes the sequence or ends it, and is taken either way (Escape too); the deadline ends it. No single chord
+  acts meanwhile.
+- **The palette's command has no id**: its keys (Ctrl+K, Ctrl+Shift+P) are read only, and the recorder refuses them.
+- A program without a settings registry of its own (Wren) calls `keymap_read` with its two values and stores what
+  `changed` gives.
+
+### Keys the program changes
+
+The own keys are the table that the program passes. No reader keeps a key of its own: `command_pressed`,
+`command_shortcut`, `command_tip`, the palette and the sheet read `Command.keys` of the commands they are given (and the
+person's keys over them). A program that turns one off by a setting of its own keeps its constant table and derives the
+table in effect from it when its settings change:
 
 ```odin
 COMMANDS := [Cmd]ui.Command{
-	.Palette = {label = "Command palette", group = "Window", keys = {{.P, {.Ctrl, .Shift}}, {.K, {.Ctrl}}}},
+	.Palette = {id = "palette", label = "Command palette", group = "Window", keys = {{.P, {.Ctrl, .Shift}}, {.K, {.Ctrl}}}},
 	...
 }
 
@@ -250,4 +307,4 @@ events (not by the modifiers' state, which a compositor may leave stale after on
 before the window had the keyboard is not held, and none is once the user left the window. Ctrl, Shift and Alt are keys
 there: a monitor stops its refresh while Ctrl is held alone.
 
-`tests/commands` tests the texts, the keys (any number of them, the table in effect), the keys held, the palette (`palette_test.odin`), the sheet (its list made once, the lines near its view) and the memory of choices (`choices_test.odin`: weights, the recent ones, the bonus, the file read and written).
+`tests/commands` tests the texts, the keys (any number of them, the table in effect), the keys held, the palette (`palette_test.odin`), the sheet (its list made once, the lines near its view) and the memory of choices (`choices_test.odin`: weights, the recent ones, the bonus, the file read and written). `tests/keymap` tests the person's keys: a key set in French that holds in English (the day-one test of keymap.md), sequences, one key one command, the stored texts, ids, aliases and the recorder in the palette, entries of unknown ids.

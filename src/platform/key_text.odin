@@ -18,7 +18,17 @@ import i18n "../i18n"
 key_text :: proc{key_text_key, key_text_hotkey, key_text_written}
 
 // A key's name as keyboards and menus print it ("" for .None).
-key_text_key :: proc(k: Key) -> string {
+key_text_key :: proc(k: Key) -> string { return key_word(k, false) }
+
+// A key's name in English whatever the language in use ("Page Up", "Enter", "Num +"; "" for .None): key_text_key's
+// words before their translation. A file that a person may also read stores it (ui.binding_store_text): a value
+// written in French is then read after a switch to English.
+key_english :: proc(k: Key) -> string { return key_word(k, true) }
+
+// (one table for both: an English name and its translation cannot drift apart; each tr keeps its literal for the
+// catalogue's tool)
+@(private = "file")
+key_word :: proc(k: Key, english: bool) -> string {
 	#partial switch k {
 	case .A ..= .Z:
 		letters := KEY_LETTERS
@@ -29,26 +39,26 @@ key_text_key :: proc(k: Key) -> string {
 	case .F1 ..= .F12:
 		functions := KEY_FUNCTIONS
 		return functions[int(k) - int(Key.F1)]
-	case .Escape:       return i18n.tr("key", "Escape")
-	case .Return:       return i18n.tr("key", "Enter")
-	case .Tab:          return i18n.tr("key", "Tab")
-	case .Space:        return i18n.tr("key", "Space")
-	case .Backspace:    return i18n.tr("key", "Backspace")
-	case .Delete:       return i18n.tr("key", "Delete")
-	case .Insert:       return i18n.tr("key", "Insert")
-	case .Left:         return i18n.tr("key", "Left")
-	case .Right:        return i18n.tr("key", "Right")
-	case .Up:           return i18n.tr("key", "Up")
-	case .Down:         return i18n.tr("key", "Down")
-	case .Home:         return i18n.tr("key", "Home")
-	case .End:          return i18n.tr("key", "End")
-	case .Page_Up:      return i18n.tr("key", "Page Up")
-	case .Page_Down:    return i18n.tr("key", "Page Down")
-	case .Shift:        return i18n.tr("key", "Shift")
-	case .Ctrl:         return i18n.tr("key", "Ctrl")
-	case .Alt:          return i18n.tr("key", "Alt")
-	case .Menu:         return i18n.tr("key", "Menu")
-	case .Print:        return i18n.tr("key", "Print")
+	case .Escape:       return english ? "Escape" : i18n.tr("key", "Escape")
+	case .Return:       return english ? "Enter" : i18n.tr("key", "Enter")
+	case .Tab:          return english ? "Tab" : i18n.tr("key", "Tab")
+	case .Space:        return english ? "Space" : i18n.tr("key", "Space")
+	case .Backspace:    return english ? "Backspace" : i18n.tr("key", "Backspace")
+	case .Delete:       return english ? "Delete" : i18n.tr("key", "Delete")
+	case .Insert:       return english ? "Insert" : i18n.tr("key", "Insert")
+	case .Left:         return english ? "Left" : i18n.tr("key", "Left")
+	case .Right:        return english ? "Right" : i18n.tr("key", "Right")
+	case .Up:           return english ? "Up" : i18n.tr("key", "Up")
+	case .Down:         return english ? "Down" : i18n.tr("key", "Down")
+	case .Home:         return english ? "Home" : i18n.tr("key", "Home")
+	case .End:          return english ? "End" : i18n.tr("key", "End")
+	case .Page_Up:      return english ? "Page Up" : i18n.tr("key", "Page Up")
+	case .Page_Down:    return english ? "Page Down" : i18n.tr("key", "Page Down")
+	case .Shift:        return english ? "Shift" : i18n.tr("key", "Shift")
+	case .Ctrl:         return english ? "Ctrl" : i18n.tr("key", "Ctrl")
+	case .Alt:          return english ? "Alt" : i18n.tr("key", "Alt")
+	case .Menu:         return english ? "Menu" : i18n.tr("key", "Menu")
+	case .Print:        return english ? "Print" : i18n.tr("key", "Print")
 	case .Comma:        return ","
 	case .Period:       return "."
 	case .Slash:        return "/"

@@ -196,6 +196,7 @@ Command_Palette :: struct {
 	states:   [dynamic]Palette_Source_State,   // one per source, in its order
 	commands: Palette_Commands,                // palette_commands's source
 	moves:    Palette_Moves,                   // the views' moves, beside the commands
+	recorder: Keymap_Recorder,                 // Ctrl+Enter on a command: its key recorded (keymap.odin)
 	memory:   ^Choice_Memory,                  // what the user chose: shared per file (palette_memory_open; nil: none yet)
 	// what a test reads: the questions asked, the rankings started, the answers and rankings dropped (another serial)
 	asks, rankings, dropped: int,
@@ -456,16 +457,26 @@ palette_toggle :: proc(p: ^Command_Palette, typed := "") {
 // them: once, at the top of the build, as any window command (its table has no line for the command: palette_command).
 palette_keys :: proc(p: ^Command_Palette) -> bool {
 	palette_follow_close(p)
+	// (the recorder takes any chord, Ctrl+K too: its claim counts once it has the keyboard, this from its opening)
+	if p.recorder.id != "" { return false }
 	if !command_pressed(palette_command()) { return false }
 	palette_toggle(p)
 	return true
 }
 
 // The choice of the program's sources, taken once, in the build after it. Call it at each build: it runs the choices of
-// the toolkit's sources (a setting flips or shows its page, a view's move runs), which return nothing, and it follows a
-// close the palette did not make (Escape, a click outside), whose questions go stale.
+// the toolkit's sources (a setting flips or shows its page, a view's move runs) and a command's Ctrl+Enter and Alt+Enter
+// (a key set, an alias made: keymap.odin), which return nothing; it opens the palette again when the recorder ended; and
+// it follows a close the palette did not make (Escape, a click outside), whose questions go stale.
 palette_chosen :: proc(p: ^Command_Palette) -> (c: Palette_Choice, ok: bool) {
 	palette_follow_close(p)
+	if p.recorder.id != "" {
+		if _, ended := view_ended(views(), KEYMAP_RECORDER_VIEW, palette_instance(p)); ended {
+			text := strings.clone(p.recorder.text, context.temp_allocator)
+			keymap_recorder_free(&p.recorder)
+			palette_open(p, text)
+		}
+	}
 	if p.act_due {
 		p.act_due = false
 		if src := p.chosen.source; src != nil && src.act != nil && palette_source_index(p, src) >= 0 { src.act(p, src, p.chosen) }
@@ -473,6 +484,7 @@ palette_chosen :: proc(p: ^Command_Palette) -> (c: Palette_Choice, ok: bool) {
 	}
 	if !p.has_choice { return {}, false }
 	p.has_choice = false
+	if palette_commands_alternate(p, p.chosen) { return {}, false }
 	return p.chosen, true
 }
 
@@ -545,6 +557,7 @@ palette_destroy :: proc(p: ^Command_Palette) {
 	delete(p.states)
 	delete(p.sources)
 	palette_commands_free(&p.commands)
+	keymap_recorder_free(&p.recorder)
 	views_commands_destroy(&p.moves.vc)
 	choice_memory_release(p.memory)
 	if p.link != nil {
@@ -563,7 +576,7 @@ palette_destroy :: proc(p: ^Command_Palette) {
 // The view of each palette: its id, and the instance that is this palette.
 PALETTE_VIEW :: "palette"
 
-@(private = "file")
+@(private)
 palette_instance :: proc(p: ^Command_Palette) -> string { return fmt.tprintf("%x", uintptr(p)) }
 
 ////////////////////////////////
@@ -817,8 +830,11 @@ palette_rank_start :: proc(p: ^Command_Palette) {
 		snap := p.states[i].snap
 		if snap == nil || !palette_in_scope(p.prefix, src.prefix, src.plain) { continue }
 		if src == &p.commands.source {
-			// (a disabled command is not put first: it would be the row Enter cannot choose)
-			if f, ok := p.commands.first.?; ok && f >= 0 && f < len(snap.items) && !snap.items[f].disabled { j.first = {i32(len(snaps)), i32(f)} }
+			// (an alias typed whole: its command first. Not a disabled one: it would be the row Enter cannot choose; the
+			// item's id is compared, the snapshot can be older than the table)
+			if f := palette_alias_first(p); f >= 0 && f < len(snap.items) && !snap.items[f].disabled && snap.items[f].id == p.commands.table[f].id {
+				j.first = {i32(len(snaps)), i32(f)}
+			}
 		}
 		sync.atomic_add(&snap.refs, 1)
 		append(&snaps, snap)

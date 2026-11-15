@@ -7,19 +7,16 @@ import "core:fmt"
 import "core:strings"
 import i18n "../i18n"
 
-// What the commands source takes beside the table.
+// What the commands source takes beside the table. A command's id is its key in the usage memory ("command:<id>"); its
+// keys shown are the keys in effect, the person's (keymap.odin); an alias typed whole puts its command first.
 Palette_Commands_Options :: struct {
-	// each command's id, by index: its key in the usage memory ("command:<id>"). nil or "": its label as the table holds
-	// it (English): the memory then holds across languages
-	names:      []string,
-	keys:       []string,     // each command's keys' text as the program shows them ("Ctrl+M, T", its user's own); nil: its first chord
-	first:      Maybe(int),   // a command put first while something is typed (an alias typed whole: its command); not when disabled
-	// the version of the table and of `disabled` as the program counts their changes (labels, groups, tags, icons,
-	// `names`, `keys`, what can act). 0: neither changes in place; the palette knows them by their addresses
+	// the version of the table and of `disabled` as the program counts their changes (ids, labels, groups, tags, icons,
+	// keys, what can act). 0: neither changes in place; the palette knows them by their addresses. A change of the keymap
+	// needs none: the source follows its version
 	version:    u64,
-	// what Ctrl+Enter, Alt+Enter and Shift+Enter do with a command (classeur: "Set a key", "Add an alias"): literals, or
-	// as long-lived as the palette
-	alternates: Palette_Alternates,
+	// what Shift+Enter does with a command ("": what Enter does): a literal, or as long-lived as the palette. Ctrl+Enter
+	// and Alt+Enter are the toolkit's in every program (with a keymap: set a key, make the letters an alias)
+	shift:      string,
 	// each command's detail, by index ("Session · Fix the build": what it acts on), weak after its title; part of
 	// `version` (a new detail, a new version). Shown, not searched: a detail shared by many commands would find them all
 	details:    []string,
@@ -34,17 +31,18 @@ Palette_Commands :: struct {
 	source:   Palette_Source,
 	table:    []Command,   // the program's: valid while the palette is open
 	disabled: [dynamic]bool,
-	names:    []string,    // (owned)
-	keys:     []string,    // (owned)
 	details:  []string,    // (owned)
-	first:    Maybe(int),
 	version:  u64,
-	sources:  [5]rawptr,   // the addresses of the table, `disabled`, `names`, `keys` and `details` (version 0)
+	sources:  [3]rawptr,   // the addresses of the table, `disabled` and `details` (version 0)
 	count:    int,
 	made:     bool,
 	checked:  proc(user: rawptr, index: int) -> bool,
 	user:     rawptr,
-	index:    map[string]int,   // a command's index by its id (keys: `names`' or the table's labels): the mark's lookup
+	index:    map[string]int,   // a command's index by its id: the mark's and the alias's lookup
+	// the keymap of the window it was given in (keymap_use) and its version when the items were made: the keys shown,
+	// the aliases as tags and the alternates follow it
+	keymap:   ^Keymap,
+	keymap_version: u64,
 }
 
 // The views' moves of the window the palette is open over ("Float Files", "Dock Files to the right"): the toolkit runs
@@ -74,29 +72,55 @@ palette_commands :: proc(p: ^Command_Palette, table: []Command, disabled: []bool
 		palette_add(p, &p.moves.source)
 	}
 	c.table = table
-	c.source.alternates = o.alternates
+	km := gs().keymap
+	c.source.alternates = {shift = o.shift}
+	if km != nil { c.source.alternates.ctrl, c.source.alternates.alt = i18n.later("Set a key"), i18n.later("Make the letters its alias") }
 	c.source.user = p
 	c.checked, c.user = o.checked, o.user   // (read at each build: no version)
-	addresses := [5]rawptr{raw_data(table), raw_data(disabled), raw_data(o.names), raw_data(o.keys), raw_data(o.details)}
-	if c.made && o.version == c.version && len(table) == c.count && len(disabled) == len(c.disabled) && palette_maybe_eq(o.first, c.first) &&
-		(o.version != 0 || addresses == c.sources) { return }
+	keymap_version := km != nil ? km.version : 0
+	addresses := [3]rawptr{raw_data(table), raw_data(disabled), raw_data(o.details)}
+	if c.made && o.version == c.version && len(table) == c.count && len(disabled) == len(c.disabled) && km == c.keymap &&
+		keymap_version == c.keymap_version && (o.version != 0 || addresses == c.sources) { return }
 	resize(&c.disabled, len(disabled))
 	copy(c.disabled[:], disabled)
-	palette_strings_free(c.names)
-	palette_strings_free(c.keys)
 	palette_strings_free(c.details)
-	c.names, c.keys, c.details = palette_strings_clone(o.names), palette_strings_clone(o.keys), palette_strings_clone(o.details)
-	c.first, c.version, c.count, c.made, c.sources = o.first, o.version, len(table), true, addresses
-	// (the ids' index, made on a change only: the mark of a row in view is one lookup)
+	c.details = palette_strings_clone(o.details)
+	c.version, c.count, c.made, c.sources = o.version, len(table), true, addresses
+	c.keymap, c.keymap_version = km, keymap_version
+	// (the ids' index, made on a change only: the mark of a row in view and an alias typed are one lookup)
 	clear(&c.index)
-	for cmd, i in table { c.index[palette_command_id(c, cmd, i)] = i }
+	for cmd, i in table { c.index[cmd.id] = i }
 	c.source.version += 1
 }
 
-// A command's id: its name, else its label as the table holds it.
-@(private = "file")
-palette_command_id :: proc(c: ^Palette_Commands, cmd: Command, i: int) -> string {
-	return i < len(c.names) && c.names[i] != "" ? c.names[i] : cmd.label
+// The command an alias typed whole names, by its index in the table (-1: none). The query is the palette's, its prefix
+// left out: `>nf` and `nf` both name the alias "nf".
+@(private)
+palette_alias_first :: proc(p: ^Command_Palette) -> int {
+	c := &p.commands
+	if c.keymap == nil || p.query == "" { return -1 }
+	id := keymap_alias_command(c.keymap, p.query)
+	if id == "" { return -1 }
+	return c.index[id] or_else -1
+}
+
+// A choice of the commands source with Ctrl or Alt, the toolkit's in every program while a keymap is in use: Ctrl+Enter
+// records a key for the command (the recorder; the palette opens again at its end), Alt+Enter makes the query its alias
+// and opens the palette again with its text. True: it was one, done; the program does not see it.
+@(private)
+palette_commands_alternate :: proc(p: ^Command_Palette, ch: Palette_Choice) -> bool {
+	c := &p.commands
+	if ch.source != &c.source || c.keymap == nil || ch.id == "" { return false }
+	switch ch.mods {
+	case {.Ctrl}:
+		if i, ok := c.index[ch.id]; ok && i < len(c.table) { keymap_recorder_open(p, ch.id, c.table[i].label) }
+		return true
+	case {.Alt}:
+		keymap_alias(c.keymap, ch.query, ch.id)
+		palette_open(p, strings.clone(line_edit_string(&p.field), context.temp_allocator))
+		return true
+	}
+	return false
 }
 
 // The mark of a toggle command in view: the program's `checked`.
@@ -108,13 +132,6 @@ palette_commands_mark :: proc(src: ^Palette_Source, id: string) -> bool {
 	i, ok := c.index[id]
 	if !ok || i >= len(c.table) || !c.table[i].toggle { return false }
 	return c.checked(c.user, i)
-}
-
-@(private = "file")
-palette_maybe_eq :: proc(a, b: Maybe(int)) -> bool {
-	x, has_x := a.?
-	y, has_y := b.?
-	return has_x == has_y && (!has_x || x == y)
 }
 
 @(private = "file")
@@ -134,27 +151,40 @@ palette_strings_free :: proc(list: []string) {
 @(private)
 palette_commands_free :: proc(c: ^Palette_Commands) {
 	delete(c.disabled)
-	palette_strings_free(c.names)
-	palette_strings_free(c.keys)
 	palette_strings_free(c.details)
 	delete(c.index)
 	c^ = {}
 }
 
-// The commands in the language in use (their English among their tags), each one's keys and whether it can act, in an
-// answer of their own: the table can change once the palette closes, the answer stays.
+// The commands in the language in use (their English and their aliases among their tags), each one's first key in effect
+// and whether it can act, in an answer of their own: the table can change once the palette closes, the answer stays.
 @(private = "file")
 palette_commands_read :: proc(p: ^Command_Palette, src: ^Palette_Source, q: Palette_Question) {
 	c := &p.commands
 	a: Palette_Answer
 	al := palette_answer_allocator(&a)
 	a.items = make([]Palette_Item, len(c.table), al)
+	// (the aliases by their command: one pass over them, not one per command)
+	aliases: map[string][dynamic]string
+	if c.keymap != nil && len(c.keymap.aliases) > 0 {
+		aliases = make(map[string][dynamic]string, len(c.keymap.aliases), context.temp_allocator)
+		for alias, id in c.keymap.aliases {
+			list := aliases[id] or_else make([dynamic]string, context.temp_allocator)
+			append(&list, alias)
+			aliases[id] = list
+		}
+	}
 	for cmd, i in c.table {
 		label, group, tags := command_shown(cmd)
-		keys := i < len(c.keys) ? c.keys[i] : command_shortcut(cmd)
+		if own, has := aliases[cmd.id]; has && cmd.id != "" {
+			all := make([]string, len(tags) + len(own), context.temp_allocator)
+			copy(all, tags)
+			copy(all[len(tags):], own[:])
+			tags = all
+		}
 		detail := i < len(c.details) ? c.details[i] : ""
 		it := Palette_Item{
-			id = palette_command_id(c, cmd, i), title = label, detail = detail, group = group, tags = tags, icon = cmd.icon, keys = keys,
+			id = cmd.id, title = label, detail = detail, group = group, tags = tags, icon = cmd.icon, keys = keys_first_text(c.keymap, cmd),
 			disabled = i < len(c.disabled) && c.disabled[i], stays = cmd.toggle,
 		}
 		a.items[i] = palette_item_clone(it, al)

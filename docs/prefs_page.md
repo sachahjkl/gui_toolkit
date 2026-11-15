@@ -61,6 +61,7 @@ ui.theme_show(&theme, themes, prefs_page.appearance_choice(a), &shown, space)
 | `Rendering` | `rendering` | all advanced: presentation (vsync, tearing), frames queued, partial redraw, the blur limit, the filters' precision |
 | `Update` | `update` | `update.auto`, `update.channel` (only with `Standard_Defaults.update_channels`: a choice of them), `update.base_url` (advanced); `update_source` reads the last two for the Updater |
 | `Session` | `general` | `general.menu` (in the application menu), `general.autostart` (with the session), `general.messages` (System, Window, Off; read by `announce_mode` for ui.announce), `general.language` (`system`; at once, `language_start`) |
+| `Keys` | `keys` | all advanced: `keys.custom` and `keys.aliases` (`KEYS_CUSTOM_PREF`, `KEYS_ALIASES_PREF`), the person's keys and aliases of commands, set from the palette; read into `Standard_Targets.keymap` and written back from it |
 
 `STANDARD_ALL` is every set. Start from `STANDARD_DEFAULTS`: a zero `Standard_Defaults` has `menu` and `update_auto` off.
 `Standard_Defaults.values` gives any other standard setting the program's own default, as the file writes it
@@ -93,7 +94,9 @@ the program's own face as `Build_Params.base.font`: the toolkit puts the chosen 
 
 `standard_watch(w, prefs, state, targets)` applies them, then watches the registry (`config.watch`): a change of one
 applies that one alone, at once, on the thread that changed it. A zoom by Ctrl+wheel is not undone by a change of the
-density. `standard_unwatch(w)` ends it; keep `w` where it is until then.
+density. `standard_unwatch(w)` ends it; keep `w` where it is until then. With `Standard_Targets.keymap` (the program's
+`ui.Keymap`) and the `Keys` set: `keys.custom` and `keys.aliases` are read into it, and its `changed` writes the one
+that changed when the person sets a key or an alias in the palette (a value it wrote itself is not read back).
 
 What the program applies itself:
 

@@ -123,15 +123,16 @@ the matcher does not find stays, after every match.
 
 | Call | Source | Prefix | What choosing does |
 |---|---|---|---|
-| `palette_commands(&p, table, disabled, Palette_Commands_Options{names, keys, first, version, alternates, details, checked, user})` | the commands; and beside them the views' moves of the window the palette is over | `>`, plain | a command: returned, `palette_chosen_command(&p, c)` its index in the table. A move: the toolkit runs it |
+| `palette_commands(&p, table, disabled, Palette_Commands_Options{version, shift, details, checked, user})` | the commands; and beside them the views' moves of the window the palette is over | `>`, plain | a command: returned, `palette_chosen_command(&p, c)` its index in the table; with Ctrl or Alt, the toolkit sets a key or an alias (below). A move: the toolkit runs it |
 | `prefs_page.palette_settings_add(&p, &settings, &prefs, &page, options, open, user)`, once | the settings the pages show; `options(user) -> Page_Options` is asked each time the source reads or acts (the themes' slice as it is then); a change of the pages bumps `settings.source.version` | `:`, plain | a switch flips (`Page_Options.changed` is called) and the palette stays; another setting is put alone on its page (`prefs_page.show`) and `open(user)` shows the settings |
 | `flow_palette(&p, &fp, g, cat, from, version)`, at each build | a node graph's add palette, `Flow_Palette`: one item per kind of the catalog (a kind at its max_count, or with no port that fits `from`, disabled). A chooser: no prefix. `flow_palette_items(g, cat, from, allocator)` gives its items (a test) | none | returned: `c.index` the kind, `c.id` its name |
 
-`Palette_Commands_Options`: `names`, each command's id (nil: its label as the table holds it); `keys`, each one's keys'
-text as the program shows them (nil: its first chord); `first`, a command put first while something is typed (an alias
-typed whole; not when it is disabled); `version`, the version of the table and of `disabled` (0: neither changes in
-place, the palette compares their addresses; it never reads `disabled` at a frame); `alternates`, the words of Enter
-with a modifier; `details`, each command's detail ("Session · Fix the build": what it acts on), shown weak after its
+A command's item id is its `Command.id`, the usage memory's key (`command:<id>`); the keys on its row are its first key
+in effect (the person's, [commands.md](commands.md)); the person's aliases of it are among its tags.
+`Palette_Commands_Options`: `version`, the version of the table and of `disabled` (0: neither changes in place, the
+palette compares their addresses; it never reads `disabled` at a frame; a change of the keymap needs none: the source
+follows its version); `shift`, the words of Shift+Enter (the program's alternate; `""`: what Enter does); `details`,
+each command's detail ("Session · Fix the build": what it acts on), shown weak after its
 title and not searched (a detail that many commands share would find them all), part of `version`; `checked(user,
 index)` and `user`, whether a toggle command is on now. A command with `Command.toggle` is a switch: its row shows its
 mark (`checked`, read for the rows built only, at each build: a flip ranks nothing again) and choosing it leaves the
@@ -139,13 +140,23 @@ palette open; the choice is returned to the program, which flips it. Its menu li
 `menu_item(c.label, ui.command_shortcut(c), checked = on)`. A `disabled` that follows a list's selection takes the selection's `version` (`Item_Selection.version`:
 it moves when a row is selected or no longer, one row for another at the same count, and the active row moves).
 
+While the window reads a keymap (`ui.keymap_use`), Ctrl+Enter and Alt+Enter on a command are the toolkit's in every
+program, and the program does not see these choices:
+
+- **Ctrl+Enter, "Set a key"**: the palette closes and the recorder (`KEYMAP_RECORDER_VIEW`) takes any chord, two for a
+  sequence; Enter keeps them, Escape gives up, Backspace first gives the command its own keys again. Then the palette
+  opens again with its text.
+- **Alt+Enter, "Make the letters its alias"**: the query, trimmed and in lower case, becomes an alias of the command;
+  the palette opens again with its text.
+- **An alias typed whole puts its command first**, under `>` and in the plain search (not a disabled one).
+
 ## The rest of the API
 
 | | |
 |---|---|
 | `palette_open(&p, typed = "")`, `palette_close(&p)`, `palette_toggle(&p, typed)`, `palette_is_open(&p)` | the palette's view over the window being built, at its top centre, resizable (the views remember its size); `typed` in its field (`"@"`: the sessions), also when it is open already. `palette_toggle`: a button or a menu line |
 | `palette_command() -> Command`, `palette_keys(&p) -> bool` | the toolkit's window command, Ctrl+K and Ctrl+Shift+P (its keys read only). The toolkit owns it whole: `palette_keys` reads its keys, the sheet of the keys lists it, so a program's table has no line for it. A program's menu line reads it at its build (`c := ui.palette_command()`). No setting turns it off |
-| `palette_chosen(&p) -> (Palette_Choice, ok)` | call it at each build: it runs the choices of the sources that act, returns the others once, and follows a close the palette did not make (Escape, a click outside). `Palette_Choice{source, id, index, mods, query}`: `query` is the query it was chosen for, without its prefix (an alias typed) |
+| `palette_chosen(&p) -> (Palette_Choice, ok)` | call it at each build: it runs the choices of the sources that act and a command's Ctrl+Enter and Alt+Enter, opens the palette again when the recorder ended, returns the other choices once, and follows a close the palette did not make (Escape, a click outside). `Palette_Choice{source, id, index, mods, query}`: `query` is the query it was chosen for, without its prefix |
 | `palette_chosen_command(&p, c) -> (index, ok)` | the index in the commands table of a choice of the commands source |
 | `palette_add(&p, &src)`, `palette_has(&p, &src)`, `palette_remove(&p, &src)` | a source of the program's: added (a second add does nothing), added or not, removed. A removal drops its answer, its question and the ranking in flight |
 | `palette_memory_open(&p, s, path)` | the usage memory's file (`Command_Palette.memory`), read on the chores. One memory per file for the process (`choice_memory_acquire`): the palettes of a program's windows that give one path share it, and the file holds every window's choices. The palette notes each choice of a source with `remember`; the last palette to go writes it. A choice made before the file was read is not lost at a quick quit |

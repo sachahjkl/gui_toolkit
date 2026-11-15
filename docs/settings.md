@@ -149,6 +149,16 @@ A program with tables asks for this set; it is not in `STANDARD_ALL`. Its defaul
 | `rendering.blur_sigma_limit` | 8 px | 2 to 40 px | `render.set_blur_sigma_limit` |
 | `rendering.filter_precision` | `half` | `half`, `unorm8` | `render.set_filter_precision` |
 
+## Keys (`Keys`, all advanced)
+
+The person's keys and aliases of commands, set from the command palette (Ctrl+Enter, Alt+Enter: [commands.md](commands.md),
+"The person's keys and aliases"). The reset of a field removes them all.
+
+| Name | Default | Range, choices | Applied by |
+|---|---|---|---|
+| `keys.custom` | `""` | `id=keys;…`, the keys in English, `", "` between the two of a sequence (`tab_new=Ctrl+M, T;terminal=F7`) | `Standard_Targets.keymap`: `ui.keymap_read`; written back by `standard_watch` at each change through the palette |
+| `keys.aliases` | `""` | `alias=id;…` (`nf=new_folder`) | the same |
+
 ## The page's own
 
 `prefs_page.sidebar_width` (hidden, 14 ems, 9 to 30): the width of the settings' sidebar, which the user sets with its

@@ -73,38 +73,38 @@ Command :: enum {
 	Quit,
 }
 
-Command_Info :: struct { title, category, shortcut, icon: string }
-
-command_info := [Command]Command_Info{
-	.Go_Controls = {"Go to Controls", "Navigate", "Ctrl+1", ICON_GEAR},
-	.Go_Inputs = {"Go to Inputs", "Navigate", "Ctrl+2", ICON_PENCIL},
-	.Go_Data = {"Go to Data", "Navigate", "Ctrl+3", ICON_LIST},
-	.Go_Playground = {"Go to Playground", "Navigate", "Ctrl+4", ICON_CUBE},
-	.Next_Theme = {"Theme: Cycle next", "Theme", "Ctrl+T", ICON_REFRESH},
-	.Toggle_Machined = {"Theme: Machined finish", "Theme", "Ctrl+M", ICON_PALETTE},
-	.Toggle_Status = {"View: Toggle status bar", "View", "Ctrl+B", ICON_WINDOW},
-	.Toggle_Animations = {"View: Toggle animations", "View", "Ctrl+J", ui.ICON_RADIO_ON},
-	.Anim_System = {"View: Animations follow system setting", "View", "", ICON_PAUSE},
-	.Anim_On = {"View: Animations always on", "View", "", ICON_PAUSE},
-	.Anim_Off = {"View: Animations always off", "View", "", ICON_PAUSE},
-	.Toggle_Slowmo = {"View: Slow-motion animations", "View", "", ICON_PAUSE},
-	.Toggle_Boxes = {"View: Count UI boxes in the status bar", "View", "", ICON_GRID},
-	.Toast_Info = {"Toast: Info", "Feedback", "", ui.ICON_INFO},
-	.Toast_Good = {"Toast: Success", "Feedback", "", ui.ICON_CHECK},
-	.Toast_Warn = {"Toast: Warning", "Feedback", "", ui.ICON_WARN},
-	.Toast_Bad = {"Toast: Error", "Feedback", "", ui.ICON_WARN_BIG},
-	.Clear_Toasts = {"Toast: Dismiss all", "Feedback", "", ui.ICON_X},
-	.Open_Modal = {"Dialog: Open confirm dialog", "Feedback", "", ICON_QUESTION},
-	.About = {"Help: About gui_toolkit fidget", "General", "F1", ui.ICON_INFO},
-	.Settings = {"Settings...", "General", "Ctrl+,", ICON_GEAR},
-	.Spawn_Balls = {"Playground: Spawn 25 balls", "Playground", "", ICON_DOT},
-	.Confetti = {"Playground: Confetti", "Playground", "", ICON_TARGET},
-	.Clear_Balls = {"Playground: Clear balls", "Playground", "", ICON_TRASH},
-	.Reset_Values = {"Reset all widget values", "General", "", ICON_UNDO},
-	.Zoom_In = {"View: Zoom in", "View", "Ctrl +", ui.ICON_ADD},
-	.Zoom_Out = {"View: Zoom out", "View", "Ctrl -", ui.ICON_MINUS},
-	.Zoom_Reset = {"View: Reset zoom", "View", "Ctrl 0", ui.ICON_MINUS},
-	.Quit = {"Quit", "General", "Alt+F4", ICON_STOP},
+// The palette, the keys and the person's own keys (ui.Keymap) read this table. The zoom's keys are the interface's own
+// (the build zooms on them): listed for the palette and the sheet. Ids: the person's keys and aliases are stored by them.
+COMMANDS := [Command]ui.Command{
+	.Go_Controls = {id = "go.controls", label = "Go to Controls", group = "Navigate", keys = {{.N1, {.Ctrl}}}, icon = ICON_GEAR},
+	.Go_Inputs = {id = "go.inputs", label = "Go to Inputs", group = "Navigate", keys = {{.N2, {.Ctrl}}}, icon = ICON_PENCIL},
+	.Go_Data = {id = "go.data", label = "Go to Data", group = "Navigate", keys = {{.N3, {.Ctrl}}}, icon = ICON_LIST},
+	.Go_Playground = {id = "go.playground", label = "Go to Playground", group = "Navigate", keys = {{.N4, {.Ctrl}}}, icon = ICON_CUBE},
+	.Next_Theme = {id = "theme.next", label = "Theme: Cycle next", group = "Theme", keys = {{.T, {.Ctrl}}}, icon = ICON_REFRESH},
+	.Toggle_Machined = {id = "theme.machined", label = "Theme: Machined finish", group = "Theme", keys = {{.M, {.Ctrl}}}, icon = ICON_PALETTE},
+	.Toggle_Status = {id = "view.status", label = "View: Toggle status bar", group = "View", keys = {{.B, {.Ctrl}}}, icon = ICON_WINDOW},
+	.Toggle_Animations = {id = "view.animations", label = "View: Toggle animations", group = "View", keys = {{.J, {.Ctrl}}}, icon = ui.ICON_RADIO_ON},
+	.Anim_System = {id = "view.animations_system", label = "View: Animations follow system setting", group = "View", icon = ICON_PAUSE},
+	.Anim_On = {id = "view.animations_on", label = "View: Animations always on", group = "View", icon = ICON_PAUSE},
+	.Anim_Off = {id = "view.animations_off", label = "View: Animations always off", group = "View", icon = ICON_PAUSE},
+	.Toggle_Slowmo = {id = "view.slow_motion", label = "View: Slow-motion animations", group = "View", icon = ICON_PAUSE},
+	.Toggle_Boxes = {id = "view.boxes", label = "View: Count UI boxes in the status bar", group = "View", icon = ICON_GRID},
+	.Toast_Info = {id = "toast.info", label = "Toast: Info", group = "Feedback", icon = ui.ICON_INFO},
+	.Toast_Good = {id = "toast.good", label = "Toast: Success", group = "Feedback", icon = ui.ICON_CHECK},
+	.Toast_Warn = {id = "toast.warn", label = "Toast: Warning", group = "Feedback", icon = ui.ICON_WARN},
+	.Toast_Bad = {id = "toast.bad", label = "Toast: Error", group = "Feedback", icon = ui.ICON_WARN_BIG},
+	.Clear_Toasts = {id = "toast.clear", label = "Toast: Dismiss all", group = "Feedback", icon = ui.ICON_X},
+	.Open_Modal = {id = "dialog.confirm", label = "Dialog: Open confirm dialog", group = "Feedback", icon = ICON_QUESTION},
+	.About = {id = "about", label = "Help: About gui_toolkit fidget", group = "General", keys = {{.F1, {}}}, icon = ui.ICON_INFO},
+	.Settings = {id = "settings", label = "Settings...", group = "General", keys = {{.Comma, {.Ctrl}}}, icon = ICON_GEAR},
+	.Spawn_Balls = {id = "playground.balls", label = "Playground: Spawn 25 balls", group = "Playground", icon = ICON_DOT},
+	.Confetti = {id = "playground.confetti", label = "Playground: Confetti", group = "Playground", icon = ICON_TARGET},
+	.Clear_Balls = {id = "playground.clear", label = "Playground: Clear balls", group = "Playground", icon = ICON_TRASH},
+	.Reset_Values = {id = "values.reset", label = "Reset all widget values", group = "General", icon = ICON_UNDO},
+	.Zoom_In = {id = "zoom.in", label = "View: Zoom in", group = "View", keys = ui.ZOOM_IN_KEYS[:], icon = ui.ICON_ADD},
+	.Zoom_Out = {id = "zoom.out", label = "View: Zoom out", group = "View", keys = ui.ZOOM_OUT_KEYS[:], icon = ui.ICON_MINUS},
+	.Zoom_Reset = {id = "zoom.reset", label = "View: Reset zoom", group = "View", keys = ui.ZOOM_RESET_KEYS[:], icon = ui.ICON_MINUS},
+	.Quit = {id = "quit", label = "Quit", group = "General", keys = {{.F4, {.Alt}}}, icon = ICON_STOP},
 }
 
 ////////////////////////////////
@@ -182,8 +182,7 @@ App :: struct {
 	// overlays: views of the window's Views, shown as dialogs (shell.odin: the toolkit's palette, CONFIRM_VIEW, ABOUT_VIEW,
 	// SETTINGS_VIEW)
 	palette:          ui.Command_Palette,
-	palette_commands: [Command]ui.Command,   // command_info as the palette's commands source reads it (palette_toggle)
-	palette_keys:     [Command]string,       // each one's keys, as fidget shows them
+	keymap:           ui.Keymap,   // the person's keys and aliases, set from the palette (kept for the run)
 	corner_smoothing: f32,   // 0 circular, 1 squircle
 	window_square: bool,
 	translucent, backdrop_ok: bool,   // current palette shows the OS backdrop (and the OS accepted it)     // last value sent to the OS (window corners follow rounding = 0)

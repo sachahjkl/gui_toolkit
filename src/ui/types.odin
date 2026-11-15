@@ -472,6 +472,13 @@ State :: struct {
 	keys_behind_dialogs: bool,       // set_keys_behind_dialogs: keys reach code outside an open dialog
 	keys_claim:      Keys_Claim,     // keys_claim of the last build: the chords the widget with the keyboard keeps
 	keys_claim_next: Keys_Claim,     // and of this one
+	keymap:          ^Keymap,        // keymap_use: the person's keys, the program's (nil: the commands' own keys only)
+	// A sequence's first chord, pressed in this window, and when it lapses: the next key press completes the sequence or
+	// ends it (keymap.odin). `key_second`: that press, taken out of the events at the build's start
+	key_pending:       Chord,
+	key_pending_until: f64,
+	key_second:        Chord,
+	key_second_taken:  bool,
 	tab_dir:      int,               // +1 / -1: the focus moved by Tab / Shift+Tab this frame (0: it did not)
 	tab_dir_next: int,               // the same asked during a build (focus_step): tab_dir of the next one
 	sb_owner:     map[Key]Key,       // scrollbar key -> key of the scroll box it belongs to

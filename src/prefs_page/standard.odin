@@ -41,10 +41,11 @@ Standard_Set :: enum u8 {
 	Update,       // update.*: automatic updates, channel, address
 	Session,      // general.*: in the menu, with the session, messages, language
 	Rows,         // appearance.rows.*: a table's rows, striped and ruled (a program with tables: not in STANDARD_ALL)
+	Keys,         // keys.*: the person's keys and aliases of commands, set from the palette (advanced; ui.Keymap)
 }
 Standard :: bit_set[Standard_Set]
 
-STANDARD_ALL :: Standard{.Appearance, .Text, .Scrolling, .Input, .Timing, .Rendering, .Update, .Session}
+STANDARD_ALL :: Standard{.Appearance, .Text, .Scrolling, .Input, .Timing, .Rendering, .Update, .Session, .Keys}
 
 // The defaults that are the program's, and its name for the descriptions. Start from STANDARD_DEFAULTS: a zero `menu`
 // is off. The other standard preferences have the toolkit's defaults (ui.FEEL_DEFAULT, font.DEFAULT_SETTINGS...).
@@ -96,6 +97,9 @@ EMOJI_FONT_PREF :: "appearance.text.emoji_font"
 FRAME_RATE_PREF :: "rendering.frame_rate"
 ROWS_ZEBRA_PREF :: "appearance.rows.zebra"
 ROWS_RULES_PREF :: "appearance.rows.rules"
+// (classeur's names: its people's values carry over as they are)
+KEYS_CUSTOM_PREF  :: "keys.custom"
+KEYS_ALIASES_PREF :: "keys.aliases"
 
 // The look of a table's rows (Standard_Set.Rows), which the program gives each of its tables: a ui.List_State's
 // zebra and rules, or its own rows'.
@@ -151,6 +155,8 @@ FONT_SIZE_MAX :: 24
 @(private = "file", rodata) UPDATE_TAGS := [?]string{"upgrade", "version", "release"}
 @(private = "file", rodata) VSYNC_TAGS := [?]string{"vsync", "tearing", "latency", "fps"}
 @(private = "file", rodata) LANGUAGE_TAGS := [?]string{"locale", "translation", "language"}
+@(private = "file", rodata) KEYS_TAGS := [?]string{"shortcuts", "keyboard", "bindings", "hotkeys"}
+@(private = "file", rodata) ALIASES_TAGS := [?]string{"alias", "abbreviation", "palette", "commands"}
 // English, then each language of the toolkit's catalogues (i18n.TOOLKIT_CATALOGS); their labels (in the Def) are their own names: one reads the name
 // of one's language in it
 @(private = "file", rodata) LANGUAGE_CHOICES := [?]string{"system", "en", "fr"}
@@ -165,6 +171,7 @@ FONT_SIZE_MAX :: 24
 @(private = "file") ORDER_TIMING     :: 102
 @(private = "file") ORDER_UPDATE     :: 103
 @(private = "file") ORDER_RENDERING  :: 104
+@(private = "file") ORDER_KEYS       :: 105
 
 // The Slug tolerance's unit: a thousandth of an em (its real values are 1/65536 to 1/64 em).
 @(private = "file") SLUG_TOLERANCE_UNIT :: 1000.0
@@ -623,6 +630,20 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			choices = FILTER_CHOICES[:], choice_labels = labels(a, i18n.later("16-bit floats"), i18n.later("8 bits")),
 		})
 	}
+	if .Keys in sets {
+		// (advanced, not hidden: the person's own, an export carries them; the page's field and its reset remove them)
+		config.title_register(prefs, "keys", i18n.later("Keys"), ORDER_KEYS)
+		append(&defs, config.Def{
+			name = KEYS_CUSTOM_PREF, title = i18n.later("Your keys"), kind = .String, default = {s = ""}, advanced = true,
+			description = i18n.later("The keys you set for commands, each in place of the command's own: an id, its keys (\"tab_new=Ctrl+M, T;terminal=F7\"). Ctrl+Enter on a command of the palette sets one."),
+			tags = KEYS_TAGS[:],
+		})
+		append(&defs, config.Def{
+			name = KEYS_ALIASES_PREF, title = i18n.later("Your aliases"), kind = .String, default = {s = ""}, advanced = true,
+			description = i18n.later("Letters that find a command in the palette, typed whole: an alias, an id (\"nf=new_folder\"). Alt+Enter on a command of the palette makes the letters typed its alias."),
+			tags = ALIASES_TAGS[:],
+		})
+	}
 	// (the theme's default must outlive the registry, as every Def's: the program's literal)
 	// (the program's own defaults over the toolkit's, before the registry reads them)
 	for v in d.values {
@@ -645,6 +666,7 @@ group_intro :: proc(path: string) -> string {
 	case "input":     return i18n.later("How held keys and buttons repeat, what an undo takes back, and how far a step of a number goes.")
 	case "timing":    return i18n.later("How long the interface waits before a tooltip or a submenu shows, how tall a menu's items are, and how long a change of theme fades.")
 	case "rendering": return i18n.later("How the interface's pictures are made and sent to the screen: the delay from a key to the screen, the work of the graphics card.")
+	case "keys":      return i18n.later("The keys and the aliases you set from the command palette. The reset of a field removes them all.")
 	}
 	return ""
 }
@@ -805,6 +827,9 @@ Standard_Targets :: struct {
 	pacer:          ^render.Pacer,   // rendering.frame_rate: the host's (host.Host.pacer)
 	faces:          ui.Text_Faces,
 	font_source:    ui.Font_Source,
+	// the program's keymap (Standard_Set.Keys): keys.custom and keys.aliases read into it; with standard_watch, its
+	// changes (the palette's recorder and aliases) written back to them
+	keymap:         ^ui.Keymap,
 }
 
 // Applies every standard preference that is registered, at its default too (a program's own defaults are
@@ -822,23 +847,38 @@ standard_apply :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets =
 // standard_apply now, then again for each standard preference that changes (config.watch: a change applies that one
 // alone, at once, on the thread that changed it; nothing runs per frame). Keep `w` where it is until standard_unwatch.
 Standard_Watch :: struct {
-	prefs: ^config.Prefs,
-	s:     ^ui.State,
-	t:     Standard_Targets,
-	id:    int,
+	prefs:   ^config.Prefs,
+	s:       ^ui.State,
+	t:       Standard_Targets,
+	id:      int,
+	writing: bool,   // the keymap's texts being written: their watch does not read them back half written
 }
 
+// With `t.keymap`: the keymap's `changed` writes keys.custom and keys.aliases (the one that changed), and a change of
+// either (the settings page, the file) is read into it.
 standard_watch :: proc(w: ^Standard_Watch, prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets = {}) {
 	w^ = {prefs = prefs, s = s, t = t}
 	standard_apply(prefs, s, t)
+	if km := t.keymap; km != nil && config.ref_of(prefs, KEYS_CUSTOM_PREF) != config.NO_REF {
+		km.changed, km.user = proc(user: rawptr, custom, aliases: string) {
+			w := (^Standard_Watch)(user)
+			w.writing = true
+			defer w.writing = false
+			// (a policy that fixes them refuses: the keymap keeps the change for this run)
+			if config.string_of(w.prefs, KEYS_CUSTOM_PREF) != custom { _ = config.set_string(w.prefs, KEYS_CUSTOM_PREF, custom) }
+			if config.string_of(w.prefs, KEYS_ALIASES_PREF) != aliases { _ = config.set_string(w.prefs, KEYS_ALIASES_PREF, aliases) }
+		}, w
+	}
 	w.id = config.watch(prefs, "", proc(user: rawptr, name: string, p: ^config.Prefs) {
 		w := (^Standard_Watch)(user)
+		if w.writing && (name == KEYS_CUSTOM_PREF || name == KEYS_ALIASES_PREF) { return }
 		standard_apply_one(p, w.s, w.t, name)
 	}, w)
 }
 
 standard_unwatch :: proc(w: ^Standard_Watch) {
 	if w.prefs != nil && w.id != 0 { config.unwatch(w.prefs, w.id) }
+	if km := w.t.keymap; km != nil && km.user == rawptr(w) { km.changed, km.user = nil, nil }
 	w^ = {}
 }
 
@@ -884,6 +924,11 @@ standard_apply_one :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targe
 	case strings.has_prefix(name, "rendering."): apply_rendering(prefs, s, t, name)
 	case name == FILE_DIALOG_PREF:
 		if i, ok := choice_value(prefs, name, FILE_DIALOG_CHOICES[:]); ok { ui.set_file_dialogs(s, ui.File_Dialogs(i)) }
+	case name == KEYS_CUSTOM_PREF || name == KEYS_ALIASES_PREF:
+		// (both texts: the keymap reads only the one that is not what it last read or wrote)
+		if t.keymap != nil && config.ref_of(prefs, KEYS_CUSTOM_PREF) != config.NO_REF && config.ref_of(prefs, KEYS_ALIASES_PREF) != config.NO_REF {
+			ui.keymap_read(t.keymap, config.string_of(prefs, KEYS_CUSTOM_PREF), config.string_of(prefs, KEYS_ALIASES_PREF))
+		}
 	}
 }
 

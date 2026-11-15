@@ -45,7 +45,7 @@ Fx :: struct {
 	row:     ^ui.Box,
 }
 
-@(private = "file") COPY := ui.Command{label = "Copy the files", keys = {{.C, {.Ctrl}}}}
+@(private = "file") COPY := ui.Command{id = "files.copy", label = "Copy the files", keys = {{.C, {.Ctrl}}}}
 
 // (the clipboard callbacks take no argument: one test thread)
 @(private = "file") clip: string

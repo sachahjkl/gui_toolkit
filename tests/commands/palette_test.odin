@@ -210,10 +210,12 @@ Run :: struct {
 	chosen:   ui.Palette_Choice,
 	choices:  int,
 	extra:    proc(r: ^Run),   // the test's own part of the build (a view)
+	keymap:   ^ui.Keymap,      // the person's keys and aliases (nil: none)
 }
 
 @(private = "file")
 run_build :: proc(r: ^Run) {
+	ui.keymap_use(ui.current_state(), r.keymap)
 	if r.table != nil { ui.palette_commands(&r.pal, r.table, r.disabled, r.opts) }
 	for ts in r.sources { ui.palette_add(&r.pal, &ts.src) }
 	if r.extra != nil { r.extra(r) }
@@ -242,9 +244,9 @@ open_palette :: proc(t: ^testing.T, f: ^Fx, r: ^Run, typed := "", loc := #caller
 
 @(private = "file")
 NEW_COMMANDS := [?]ui.Command{
-	{label = "Notes", group = "File"},
-	{label = "New folder", group = "File"},
-	{label = "Open", group = "File"},
+	{id = "notes", label = "Notes", group = "File"},
+	{id = "new_folder", label = "New folder", group = "File"},
+	{id = "open", label = "Open", group = "File"},
 }
 
 @(private = "file")
@@ -274,14 +276,14 @@ type_and_enter_in_one_frame :: proc(t: ^testing.T) {
 	type_text(&f, &r, "n")
 	settle(t, &f, &r)
 	testing.expect(t, ui.palette_ranked_for(&r.pal, "n"), "the list on screen is the one of \"n\"")
-	testing.expect_value(t, row_id(&r, 0), "Notes")
+	testing.expect_value(t, row_id(&r, 0), "notes")
 	frame(&f, {typed('f'), key(.Return)}, &r)
 	testing.expect(t, !ui.palette_ranked_for(&r.pal, "nf"), "\"nf\" in flight")
 	settle_closed(t, &f, &r)
 	frame(&f, nil, &r)
 	testing.expect_value(t, r.choices, 1)
 	testing.expect_value(t, chosen_command(&r), 1)
-	testing.expect_value(t, r.chosen.id, "New folder")
+	testing.expect_value(t, r.chosen.id, "new_folder")
 	testing.expect_value(t, r.chosen.query, "nf")   // (the query it was chosen for)
 }
 
@@ -521,11 +523,11 @@ a_prefix_without_a_source_is_text :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
-	table := []ui.Command{{label = "Notes"}, {label = "/home/x notes"}}
+	table := []ui.Command{{id = "notes", label = "Notes"}, {id = "home_notes", label = "/home/x notes"}}
 	r := Run{table = table}
 	defer run_free(&r)
 	open_palette(t, &f, &r, "/home/x")
-	testing.expect_value(t, row_id(&r, 0), "/home/x notes")
+	testing.expect_value(t, row_id(&r, 0), "home_notes")
 }
 
 @(private = "file")
@@ -544,7 +546,7 @@ the_memory_holds_across_languages :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
-	table := []ui.Command{{label = "Open", group = "File"}, {label = "Close", group = "File"}}
+	table := []ui.Command{{id = "open", label = "Open", group = "File"}, {id = "close", label = "Close", group = "File"}}
 	r := Run{table = table}
 	defer run_free(&r)
 	open_palette(t, &f, &r)
@@ -553,13 +555,13 @@ the_memory_holds_across_languages :: proc(t: ^testing.T) {
 	frame(&f, {key(.Return)}, &r)
 	settle_closed(t, &f, &r)
 	frame(&f, nil, &r)
-	testing.expect_value(t, r.chosen.id, "Close")
+	testing.expect_value(t, r.chosen.id, "close")
 	l, bad := i18n.load("fr", {{"fr", FRENCH}})
 	defer { i18n.use(nil); i18n.destroy(l) }
 	testing.expect_value(t, len(bad), 0)
 	i18n.use(l)
 	open_palette(t, &f, &r)
-	testing.expect_value(t, row_id(&r, 0), "Close")
+	testing.expect_value(t, row_id(&r, 0), "close")
 	testing.expect(t, find_text(&f, "Fermer") != nil, "shown in French")
 	testing.expect(t, find_text(&f, "Récents") != nil, "under Recent, in the toolkit's French")
 }
@@ -651,26 +653,25 @@ opening_again_with_a_prefix_types_it :: proc(t: ^testing.T) {
 
 @(private = "file")
 SERVICE_COMMANDS := [?]ui.Command{
-	{label = "Start", group = "Services", keys = {{.S, {.Ctrl}}}},
-	{label = "Stop", group = "Services", tags = {"halt"}},
-	{label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}},
+	{id = "service.start", label = "Start", group = "Services", keys = {{.S, {.Ctrl}}}},
+	{id = "service.stop", label = "Stop", group = "Services", tags = {"halt"}},
+	{id = "process.kill", label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}},
 }
 
 // The commands source: its keys' texts, its ids, a disabled command greyed and listed last and never chosen, Enter
-// with a modifier, `first`.
+// with a modifier (the program's while no keymap is in use), an alias typed whole first.
 @(test)
 the_commands_source :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	disabled := []bool{true, false, false}
-	r := Run{table = SERVICE_COMMANDS[:], disabled = disabled, opts = {names = {"service.start", "service.stop", "process.kill"}, keys = {"", "", "Ctrl+M, K"}}}
+	r := Run{table = SERVICE_COMMANDS[:], disabled = disabled}
 	defer run_free(&r)
 	open_palette(t, &f, &r)
 	testing.expect_value(t, row_id(&r, 0), "service.stop")    // (Start, disabled, after Stop in their group)
 	testing.expect_value(t, row_id(&r, 1), "service.start")
-	testing.expect(t, find_text(&f, "Ctrl+M, K") != nil, "the program's text of the keys")
-	testing.expect(t, find_text(&f, "Shift+Delete") == nil, "instead of its chord")
+	testing.expect(t, find_text(&f, "Shift+Delete") != nil, "a command's key in effect")
 	type_text(&f, &r, "st")
 	settle(t, &f, &r)
 	testing.expect_value(t, row_id(&r, 0), "service.stop")
@@ -680,32 +681,41 @@ the_commands_source :: proc(t: ^testing.T) {
 	frame(&f, nil, &r)
 	testing.expect_value(t, chosen_command(&r), 1)
 	testing.expect_value(t, r.chosen.mods, platform.Modifiers{.Ctrl})
-	// a word the label does not say: its tags; `first` before the best match (a new version: the options changed)
-	r.opts.first, r.opts.version = 2, 1
+	// a word the label does not say: its tags; an alias typed whole before the best match (the keymap's version: no new
+	// version of the table)
+	km: ui.Keymap
+	defer ui.keymap_destroy(&km)
+	ui.keymap_known(&km, SERVICE_COMMANDS[:])
+	ui.keymap_alias(&km, "Halt ", "process.kill")
+	r.keymap = &km
 	open_palette(t, &f, &r, "halt")
 	testing.expect_value(t, row_id(&r, 0), "process.kill")
 	testing.expect_value(t, row_id(&r, 1), "service.stop")
 }
 
-// The selection starts on the first row that acts, and a disabled `first` is not put first.
+// The selection starts on the first row that acts, and the disabled command of an alias typed whole is not put first.
 @(test)
 the_selection_starts_on_a_row_that_acts :: proc(t: ^testing.T) {
 	f: Fx
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
-	table := []ui.Command{{label = "Alpha", group = "One"}, {label = "Beta", group = "Two"}}
+	table := []ui.Command{{id = "alpha", label = "Alpha", group = "One"}, {id = "beta", label = "Beta", group = "Two"}}
 	disabled := []bool{true, false}
 	r := Run{table = table, disabled = disabled}
 	defer run_free(&r)
 	open_palette(t, &f, &r)
-	testing.expect_value(t, row_id(&r, 0), "Alpha")   // (alone in its group: first, greyed)
-	testing.expect_value(t, selected_id(&r), "Beta")
+	testing.expect_value(t, row_id(&r, 0), "alpha")   // (alone in its group: first, greyed)
+	testing.expect_value(t, selected_id(&r), "beta")
 	frame(&f, {key(.Escape)}, &r)
 	settle_closed(t, &f, &r)
-	r.opts.first, r.opts.version = 0, 1
+	km: ui.Keymap
+	defer ui.keymap_destroy(&km)
+	ui.keymap_known(&km, table)
+	ui.keymap_alias(&km, "a", "alpha")
+	r.keymap = &km
 	open_palette(t, &f, &r, "a")
-	testing.expect_value(t, row_id(&r, 0), "Beta")
-	testing.expect_value(t, selected_id(&r), "Beta")
+	testing.expect_value(t, row_id(&r, 0), "beta")
+	testing.expect_value(t, selected_id(&r), "beta")
 }
 
 // A program's own source in the plain search: merged with the commands in one ranking, a few points behind at an equal
@@ -723,7 +733,7 @@ a_program_source_in_the_plain_search :: proc(t: ^testing.T) {
 	defer source_free(&tabs)
 	open_palette(t, &f, &r, "open")
 	src, id, _ := ui.palette_row(&r.pal, 0)
-	testing.expect(t, src == &r.pal.commands.source && id == "Open", "the command typed whole first")
+	testing.expect(t, src == &r.pal.commands.source && id == "open", "the command typed whole first")
 	src, id, _ = ui.palette_row(&r.pal, 1)
 	testing.expect(t, src == &tabs.src && id == "t1", "then the tab of the same title")
 	frame(&f, {key(.Escape)}, &r)
@@ -802,8 +812,8 @@ the_views_moves_source :: proc(t: ^testing.T) {
 
 @(private = "file")
 TOGGLE_COMMANDS := [?]ui.Command{
-	{label = "Expand tools", group = "View", toggle = true},
-	{label = "Fork the session", group = "Session"},
+	{id = "expand_tools", label = "Expand tools", group = "View", toggle = true},
+	{id = "session.fork", label = "Fork the session", group = "Session"},
 }
 
 // A toggle command (Command.toggle): its mark is the program's state, read for the rows in view; chosen, the palette
@@ -822,7 +832,7 @@ a_toggle_command_and_a_detail :: proc(t: ^testing.T) {
 	}}
 	defer run_free(&r)
 	open_palette(t, &f, &r)
-	testing.expect_value(t, row_id(&r, 0), "Expand tools")
+	testing.expect_value(t, row_id(&r, 0), "expand_tools")
 	testing.expect(t, find_text(&f, ui.ICON_CHECK) == nil, "off: no mark")
 	testing.expect(t, find_text(&f, "Session · Fix the build") != nil, "the detail shows")
 	rankings, asks := r.pal.rankings, r.pal.asks

@@ -293,6 +293,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 		o.anim_busy = true
 	}
 	if s.zoom != zoom_was { s.pointer_only = false }   // (Ctrl+wheel: every window follows the zoom)
+	keymap_begin_build(s)   // (a sequence's second press, taken before any reader: keymap.odin)
 	views_hold_input(s)   // (keys typed for a view that just opened, until its focused field is there: views.odin)
 	a11y_begin_build(s, p.window)   // (after the input: a click asked by a screen reader is this build's click)
 	overlay_capture_keys(s, p.events)
@@ -346,6 +347,7 @@ end_build :: proc() {
 	overlay_release_keys(s, .File_Browser)
 	text_reveal_build(s)   // (over the page and its dialogs, under the toasts and the menus)
 	toasts_build()   // (over everything the program built, under its menus)
+	keymap_end_build(s)   // (every reader of keys is past: the pending chord ends or shows its bubble)
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }
 	t_layout := real_ms()

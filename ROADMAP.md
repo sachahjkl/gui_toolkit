@@ -49,7 +49,8 @@
 
 - **Personal keys and aliases for every program.** Classeur's keys of one's own (Ctrl+Enter in its palette) and its
   aliases typed whole become the toolkit's, so a person sets a key or an alias for a command in any program, the same
-  way. Intent: [src/md/features/palette.md](src/md/features/palette.md), "Decisions".
+  way. The toolkit has them; the programs move to them next. Intent:
+  [src/md/features/keymap.md](src/md/features/keymap.md), "Migration".
 - **Plugins in JavaScript.** A plugin builds its own screens and views, runs commands and reads settings through a
   dynamic API over the whole toolkit, with the JavaScript engine that Wren already embeds moved into the toolkit
   (`gt:js`). Notes: [src/md/features/plugins.md](src/md/features/plugins.md).

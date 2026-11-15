@@ -91,8 +91,9 @@ Every program gets three sources, and gives them only its data:
 | Views' moves | `>` | yes | the toolkit runs it (`views_command_run`); the palette's own view is not listed |
 | Settings | `:` | yes | the toolkit flips a switch (the palette stays) or opens the settings on it (`prefs_page.show`) |
 
-`palette_commands` gives the commands source what `palette_set` took: the table, `disabled`, the keys' texts, the ids
-for the usage memory (`names`), `first`, the version, and the alternates. Its first call adds the moves source too. The
+`palette_commands` gives the commands source what `palette_set` took: the table (each command's `id` is its item's id
+and its key in the usage memory), `disabled`, the version, and the program's Shift+Enter. The keys shown, the aliases
+and Ctrl+Enter and Alt+Enter are the keymap's ([keymap.md](keymap.md)). Its first call adds the moves source too. The
 settings source is `prefs_page.palette_settings_add`: `ui` does not import `prefs_page`. A program with its own
 settings model (Wren's `about:config`) gives its own source of the same prefix instead.
 
@@ -239,9 +240,8 @@ program helps all of them. Opencode native changes where the shared palette is m
   shortcut recorder) claims it (`keys_claim`), as [commands.md](commands.md) says.
 - **Disabled items are greyed and listed last.** A person learns that a command exists, and the items that act come
   first. With nothing typed, the disabled commands are last in their group.
-- **Personal keys and aliases for every program** (classeur's Ctrl+Enter and Alt+Enter, its aliases typed whole):
-  later, a separate entry of the roadmap. Until then, classeur keeps them through its commands source's alternates and
-  `first`.
+- **Personal keys and aliases for every program** (classeur's Ctrl+Enter and Alt+Enter, its aliases typed whole): the
+  toolkit's, in [keymap.md](keymap.md). The commands source's `names`, `keys`, `first` and `alternates` went with it.
 - **The palette always remembers the choices.** No setting turns the usage memory off.
 - **The ranking always runs on a chore**, a short list too. The price is one frame between a key and its list. One path
   is worth that frame: the tests see the path that ships.

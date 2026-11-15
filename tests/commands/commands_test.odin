@@ -62,10 +62,10 @@ typed :: proc(r: rune) -> platform.Event { return {kind = .Text, text = r} }
 
 @(private = "file")
 PALETTE_COMMANDS := [?]ui.Command{
-	{label = "End task", group = "Processes", keys = {{.Delete, {}}}},
-	{label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}, tags = {"terminate", "force"}},
-	{label = "Start", group = "Services", keys = {{.S, {.Ctrl}}}},
-	{label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}},
+	{id = "end_task", label = "End task", group = "Processes", keys = {{.Delete, {}}}},
+	{id = "kill", label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}, tags = {"terminate", "force"}},
+	{id = "service.start", label = "Start", group = "Services", keys = {{.S, {.Ctrl}}}},
+	{id = "palette", label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}, {.P, {.Ctrl, .Shift}}}},
 }
 
 @(private = "file")
@@ -90,7 +90,7 @@ command_texts :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.chord_text({.Escape, {}}), "Escape")
 	testing.expect_value(t, ui.chord_text({}), "")
 	testing.expect_value(t, ui.command_shortcut(PALETTE_COMMANDS[1]), "Shift+Delete")
-	testing.expect_value(t, ui.command_keys_text(PALETTE_COMMANDS[3]), "Ctrl+K, Ctrl+Shift+P")
+	testing.expect_value(t, ui.command_keys_text(PALETTE_COMMANDS[3]), "Ctrl+K / Ctrl+Shift+P")
 	testing.expect_value(t, ui.command_tip(PALETTE_COMMANDS[1]), "Kill… (Shift+Delete)")
 	testing.expect_value(t, ui.command_tip({label = "Open"}), "Open")
 	testing.expect_value(t, ui.key_tip("Settings", {.Comma, {.Ctrl}}), "Settings (Ctrl+,)")
@@ -133,7 +133,7 @@ shortcuts_sheet_lists_the_keys :: proc(t: ^testing.T) {
 	for _, b in f.s.boxes {
 		if b == nil || b.last_build != f.s.build_index { continue }
 		text := ui.box_text(b)
-		if text == "Ctrl+K, Ctrl+Shift+P" || text == "Shift+Delete" { found += 1 }
+		if text == "Ctrl+K / Ctrl+Shift+P" || text == "Shift+Delete" { found += 1 }
 		if text == "Command palette" { palettes += 1 }
 	}
 	testing.expect_value(t, found, 2)
@@ -514,7 +514,7 @@ a_command_has_any_number_of_keys :: proc(t: ^testing.T) {
 	Run :: struct { pressed: [3]bool }
 	r: Run
 	reload := ui.Command{label = "Reload", keys = {{.F5, {}}, {.R, {.Ctrl}}, {.R, {.Ctrl, .Shift}}}}
-	testing.expect_value(t, ui.command_keys_text(reload), "F5, Ctrl+R, Ctrl+Shift+R")
+	testing.expect_value(t, ui.command_keys_text(reload), "F5 / Ctrl+R / Ctrl+Shift+R")
 	testing.expect_value(t, ui.command_shortcut(reload), "F5")
 	testing.expect_value(t, ui.command_shortcut({label = "Rename", keys = {{}, {.F2, {}}}}), "F2")
 	testing.expect_value(t, ui.command_shortcut({label = "Open"}), "")
@@ -531,9 +531,9 @@ a_command_has_any_number_of_keys :: proc(t: ^testing.T) {
 
 @(private = "file")
 TYPING_COMMANDS := [?]ui.Command{
-	{label = "Rectangle", keys = {{.R, {}}}},
-	{label = "Add a step…", keys = {{.A, {.Shift}}, {.N, {.Ctrl}}}},
-	{label = "Remove", keys = {{.Delete, {.Shift}}}},
+	{id = "rectangle", label = "Rectangle", keys = {{.R, {}}}},
+	{id = "step_add", label = "Add a step…", keys = {{.A, {.Shift}}, {.N, {.Ctrl}}}},
+	{id = "remove", label = "Remove", keys = {{.Delete, {.Shift}}}},
 }
 
 @(private = "file")
@@ -628,9 +628,9 @@ the_zoom_keys_take_ctrl_plus_on_any_layout :: proc(t: ^testing.T) {
 
 @(private = "file")
 WINDOW_COMMANDS := [?]ui.Command{
-	{label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}}, scope = .Window},
-	{label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}, scope = .Window},
-	{label = "New", group = "File", keys = {{.N, {.Ctrl}}}},
+	{id = "palette", label = "Command palette", group = "Window", keys = {{.K, {.Ctrl}}}, scope = .Window},
+	{id = "shortcuts", label = "Keyboard shortcuts", group = "Window", keys = {{.F1, {}}}, scope = .Window},
+	{id = "new", label = "New", group = "File", keys = {{.N, {.Ctrl}}}},
 }
 
 @(private = "file")

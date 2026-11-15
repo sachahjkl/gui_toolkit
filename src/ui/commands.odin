@@ -1,8 +1,8 @@
 package ui
 
-// A program's commands in one table: each one's name, its group and its keys. The same table gives:
+// A program's commands in one table: each one's id, its name, its group and its keys. The same table gives:
 //
-//   command_pressed   the key handling: a command's keys, pressed this frame
+//   command_pressed   the key handling: a command's keys in effect (the person's, keymap.odin), pressed this frame
 //   chord_text        the text of a key in a menu's line ("Ctrl+Shift+P"); command_tip, a tooltip's ("Kill (Shift+Delete)");
 //                     key_tip, a tooltip's for a control that is no command
 //   palette_commands  the commands source of the command palette (palette.odin)
@@ -14,9 +14,10 @@ package ui
 //
 // A program keeps its commands in a table of its own (an enum of its commands indexing an array of Command) and says
 // which ones can act now (the `disabled` of palette_commands): one place names a command and its keys, and its menus,
-// tooltips, palette and sheet all say the same.
+// tooltips, palette and sheet all say the same. The person's keys and aliases (keymap.odin) change what they say and
+// read, not the table. A program's test checks its tables with command_ids_check.
 //
-//   COMMANDS := [Cmd]ui.Command{.Kill = {label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}}, ...}
+//   COMMANDS := [Cmd]ui.Command{.Kill = {id = "kill", label = "Kill…", group = "Processes", keys = {{.Delete, {.Shift}}}}, ...}
 //   if ui.command_pressed(COMMANDS[.Kill]) { kill() }
 //   ui.menu_item(COMMANDS[.Kill].label, ui.command_shortcut(COMMANDS[.Kill]))
 //   ui.palette_commands(&palette, COMMANDS[:], disabled[:], {version = v})   at each build: compares v only
@@ -47,13 +48,17 @@ Chord :: struct {
 @(rodata) ZOOM_RESET_KEYS := [?]Chord{{.N0, {.Ctrl}}}
 
 Command :: struct {
+	// "end_task": its name for good, whatever its label and the language (lower case letters, digits, '.', '_', '-').
+	// The person's key and alias for it, and the palette's memory of it ("command:<id>"), are stored by it. One id in two
+	// tables is one command. Every command of a table has one (command_ids_check); the toolkit's palette command has none
+	id:    string,
 	label: string,     // "End task": the menu's, the palette's and the sheet's text
 	group: string,     // "Processes": the palette's and the sheet's heading ("" none)
 	// other words the palette finds it by, that its label does not say ("exit", "close" for Quit)
 	tags:  []string,
-	// its keys, as many as it has, the first one shown in menus and tooltips (a zero Chord among them: none). A table
-	// built at run time keeps them in memory of its own, as its tags. The keys in effect are the table the program
-	// passes: one the user rebinds is a copy of its constant table with these slices replaced.
+	// its own keys, as many as it has, the first one in effect shown in menus and tooltips (a zero Chord among them:
+	// none). A table built at run time keeps them in memory of its own, as its tags. The person's binding replaces them
+	// all; a person's key on another command takes that one chord from it (command_keys_in_effect)
 	keys:  []Chord,
 	icon:  string,     // a glyph of the state's icon_font (Lucide's): the palette's line shows it ("" none)
 	scope: Command_Scope,
@@ -127,31 +132,22 @@ key_tip :: proc(label: string, c: Chord, allocator := context.temp_allocator) ->
 	return fmt.aprintf("%s (%s)", label, k, allocator = allocator)
 }
 
-// The text of a command's first key, for a menu's line ("" when it has none).
-command_shortcut :: proc(c: Command) -> string {
-	for k in c.keys { if k.key != .None { return chord_text(k) } }
-	return ""
-}
+// The text of a command's first key in effect (command_keys_in_effect), for a menu's line ("" when it has none): the
+// person's, else its own.
+command_shortcut :: proc(c: Command) -> string { return keys_first_text(state_keymap(), c) }
 
-// Whether the command has a key (the sheet lists it).
-@(private = "file")
-command_has_key :: proc(c: Command) -> bool {
-	for k in c.keys { if k.key != .None { return true } }
-	return false
-}
-
-// Every key of a command, apart by commas ("Ctrl+K, Ctrl+Shift+P").
+// Every key in effect of a command, " / " between them ("Ctrl+K / Ctrl+Shift+P"); a sequence reads "Ctrl+M, T".
 command_keys_text :: proc(c: Command, allocator := context.temp_allocator) -> string {
-	parts := make([dynamic]string, 0, len(c.keys), context.temp_allocator)
-	for k in c.keys { if k.key != .None { append(&parts, chord_text(k)) } }
-	return strings.join(parts[:], ", ", allocator)
+	return keys_all_text(state_keymap(), c, allocator)
 }
 
-// A tooltip's text: the label and its first key ("Kill (Shift+Delete)"), or the label alone; in the language in use.
+// A tooltip's text: the label and its first key in effect ("Kill (Shift+Delete)"), or the label alone; in the language
+// in use.
 command_tip :: proc(c: Command, allocator := context.temp_allocator) -> string {
-	first: Chord
-	for k in c.keys { if k.key != .None { first = k; break } }
-	return key_tip(i18n.tr(c.label), first, allocator)
+	label := i18n.tr(c.label)
+	k := keys_first_text(state_keymap(), c)
+	if k == "" { return strings.clone(label, allocator) }
+	return fmt.aprintf("%s (%s)", label, k, allocator = allocator)
 }
 
 // A command as the palette and the sheet show it: its label and its group in the language in use (a program's table holds
@@ -167,29 +163,48 @@ command_shown :: proc(c: Command) -> (label, group: string, tags: []string) {
 	return label, group, all
 }
 
-// Whether one of the command's keys was pressed this frame (the press is taken: nothing else sees it). A command that
-// cannot act now (`disabled`) takes no key: the key stays for what else wants it. A key that types text
-// (command_key_types_text) is not taken while a text field has the keyboard: the character is the field's; nor a chord
-// that the widget with the keyboard claims (keys_claim). A window command (scope .Window) takes its keys from behind a
-// dialog and from a view's body without the focus too (src/md/features/commands.md).
+// Whether one of the command's keys in effect was pressed this frame (the press is taken: nothing else sees it). With a
+// keymap (keymap_use): the person's binding alone when the command has one (a sequence: its second chord after its
+// first), else each own key that no other command's binding took. A command that cannot act now (`disabled`) takes no
+// key: the key stays for what else wants it, but a person's key on it is still taken from the others. A key that types
+// text (command_key_types_text) is not taken while a text field has the keyboard: the character is the field's; nor a
+// chord that the widget with the keyboard claims (keys_claim). A window command (scope .Window) takes its keys from
+// behind a dialog and from a view's body without the focus too (src/md/features/commands.md). While a sequence's first
+// chord is pending, no single chord acts. Its cost: a few map lookups per own key.
 command_pressed :: proc(c: Command, disabled := false) -> bool {
 	if disabled { return false }
-	for k in c.keys { if chord_pressed(k, c.scope) { return true } }
+	s := gs()
+	km := s.keymap
+	if b, ok := command_bound(km, c); ok { return binding_pressed(s, b, c.scope) }
+	for k in c.keys {
+		if chord_taken(km, c, k) { continue }
+		if chord_pressed(k, c.scope) { return true }
+	}
 	return false
 }
 
 // Whether chord `k` of a command of `scope` was pressed this frame (the press is taken), by command_pressed's rules: a
-// program that reads its keys with its own table (a sequence of two chords, its own bindings) reads each chord with it.
+// program that reads its keys with its own table reads each chord with it. Nothing while a sequence's first chord is
+// pending: the next press is the sequence's.
 chord_pressed :: proc(k: Chord, scope := Command_Scope.Page) -> bool {
-	if k.key == .None { return false }
 	s := gs()
-	if command_key_types_text(k) && s.focus_key != 0 {
+	if s.key_pending.key != .None || !chord_ready(s, k, scope) { return false }
+	return key_press_any(k.key, k.mods)
+}
+
+// Whether a press of chord `k` would reach a command of `scope` now: the typing rule (`typing`), a widget's claim, a
+// selection's copy, and the holds of a page command (a dialog, a view's body without the focus: key_press's).
+@(private)
+chord_ready :: proc(s: ^State, k: Chord, scope: Command_Scope, typing := true) -> bool {
+	if k.key == .None { return false }
+	if typing && command_key_types_text(k) && s.focus_key != 0 {
 		if b := s.boxes[s.focus_key] or_else nil; b != nil && is_text_field(b) { return false }
 	}
 	if keys_claimed(s, k) { return false }
 	// (text selected by the last press: its copy, read at the end of the build, takes the chord: text-selection.md)
 	if (k == Chord{.C, {.Ctrl}} || k == Chord{.Insert, {.Ctrl}}) && selection_takes_copy(s) { return false }
-	return scope == .Window ? key_press_any(k.key, k.mods) : key_press(k.key, k.mods)
+	if scope == .Page && (keys_held_by_dialog(s) || keys_held_from_view(s)) { return false }
+	return true
 }
 
 // The window commands of `commands` (scope .Window) whose keys a text field keeps (command_key_types_text), one line
@@ -358,13 +373,16 @@ Shortcuts_Sheet :: struct {
 	version:  u64,
 }
 
-// What the sheet's list depends on: the commands (their version, or their address while it is 0) and their count.
+// What the sheet's list depends on: the commands (their version, or their address while it is 0), their count, and the
+// keymap's version (a person's key given or taken lists a command or not).
 @(private)
 Sheet_Key :: struct {
 	valid:    bool,
 	commands: rawptr,
 	count:    int,
 	version:  u64,
+	keymap:   ^Keymap,
+	keymap_version: u64,
 }
 
 // A command that has a key: its index, the group headings down to it, whether its group's heading is just above it.
@@ -384,8 +402,9 @@ SHORTCUTS_VIEW :: "shortcuts"
 @(private = "file")
 sheet_instance :: proc(sheet: ^Shortcuts_Sheet) -> string { return fmt.tprintf("%x", uintptr(sheet)) }
 
-// Opens the sheet (a view, home Dialog): every command of `commands` that has a key, under its group's heading, its keys
-// at the right, and the palette's command (palette_command) after them. It scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close cross close it.
+// Opens the sheet (a view, home Dialog): every command of `commands` that has a key in effect (command_keys_in_effect),
+// under its group's heading, its keys at the right (a person's in the accent), and the palette's command
+// (palette_command) after them. The list is made again when the keymap's version moves. It scrolls when it is taller than SHEET_HEIGHT of the window; Escape and the close cross close it.
 // `title` "": "Keyboard shortcuts", in the language in use. `version`: the commands' version as the program counts
 // their changes (their keys too: a table rebound in place gives one); 0: the table does not change in place. The list
 // of the commands that have a key is kept, and only the lines near the view are built. One open takes these commands.
@@ -410,14 +429,15 @@ sheet_view :: proc(v: ^View, sheet: ^Shortcuts_Sheet) {
 	s := gs()
 	em := font_size()
 	w := em * SHEET_WIDTH_EM
-	key := Sheet_Key{valid = true, count = len(sheet.commands), version = sheet.version}
+	key := Sheet_Key{valid = true, count = len(sheet.commands), version = sheet.version, keymap = s.keymap}
+	if s.keymap != nil { key.keymap_version = s.keymap.version }
 	if sheet.version == 0 { key.commands = raw_data(sheet.commands) }
 	if key != sheet.kept {
 		sheet.kept = key
 		sheet.listings += 1
-		sheet_list(sheet, sheet.commands)
+		sheet_list(sheet, sheet.commands, s.keymap)
 	}
-	sheet_body(sheet, sheet.commands, w, em, s.window_size.y)
+	sheet_body(sheet, sheet.commands, s.keymap, w, em, s.window_size.y)
 }
 
 // The commands the sheet lists: the program's, then the toolkit's palette command (index len(commands)): the sheet
@@ -427,14 +447,16 @@ sheet_command :: proc(commands: []Command, i: int) -> Command {
 	return i < len(commands) ? commands[i] : palette_command()
 }
 
+// (the commands that have a key in effect: one whose own keys others took, and that has no key of the person's, is not
+// listed; one with an alias and no key neither: the sheet is about keys)
 @(private = "file")
-sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command) {
+sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, km: ^Keymap) {
 	clear(&sheet.lines)
 	group := ""
 	headings := 0
 	for i in 0 ..= len(commands) {
 		c := sheet_command(commands, i)
-		if !command_has_key(c) { continue }
+		if keys_first_text(km, c) == "" { continue }
 		heading := c.group != group
 		if heading { headings += 1 }
 		group = c.group
@@ -443,7 +465,7 @@ sheet_list :: proc(sheet: ^Shortcuts_Sheet, commands: []Command) {
 }
 
 @(private = "file")
-sheet_body :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, w, em, window_h: f32) {
+sheet_body :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, km: ^Keymap, w, em, window_h: f32) {
 	pad := em * 1.2
 	line_h := dense(em * 1.7)
 	heading_h := em * 2.2   // (a gap of em * 0.5 and the heading)
@@ -473,9 +495,13 @@ sheet_body :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, w, em, window_h
 					spacer(px(pad))
 					next({width = fill(), height = pct(1), text_pad = 0})
 					label(fmt.tprintf("%s###l", i18n.tr(c.label)))
-					if tags("weak") {
+					// (a person's key in the accent: the sheet says which keys are one's own)
+					if _, own := command_bound(km, c); own {
+						next({width = text_size(), height = pct(1), text_pad = 0, fg = color("accent")})
+						label(fmt.tprintf("%s###k", keys_all_text(km, c)))
+					} else if tags("weak") {
 						next({width = text_size(), height = pct(1), text_pad = 0})
-						label(fmt.tprintf("%s###k", command_keys_text(c)))
+						label(fmt.tprintf("%s###k", keys_all_text(km, c)))
 					}
 					spacer(px(pad))
 				}

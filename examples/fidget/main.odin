@@ -216,6 +216,9 @@ open :: proc(o: Open_Options) -> ^App {
 	app.announcer = {mode = .Window, state = &app.ui_state}
 	app.ui_state.icon_font = app.icons
 	app.ui_state.mono_font = app.mono
+	// (the ids known before the first key is read: a person's key takes its chord from the first frame)
+	ui.keymap_known(&app.keymap, slice.enumerated_array(&COMMANDS))
+	ui.keymap_use(&app.ui_state, &app.keymap)
 
 	app.show_status = true
 	ui.history_init(&app.frames, 96, 2)
@@ -275,6 +278,7 @@ close :: proc(app: ^App) {
 	devtools.stop(app.devtools)
 	ui.palette_destroy(&app.palette)
 	ui.destroy(&app.ui_state)
+	ui.keymap_destroy(&app.keymap)
 	files_destroy(app)
 	ui.theme_destroy(&app.theme)
 	draw.destroy(&app.dc)

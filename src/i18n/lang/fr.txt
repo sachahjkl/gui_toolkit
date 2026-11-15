@@ -1171,6 +1171,21 @@ fr Flottants 16 bits
 en 8 bits
 fr 8 bits
 
+en Keys
+fr Touches
+
+en Your keys
+fr Vos touches
+
+en The keys you set for commands, each in place of the command's own: an id, its keys ("tab_new=Ctrl+M, T;terminal=F7"). Ctrl+Enter on a command of the palette sets one.
+fr Les touches que vous avez choisies pour des commandes, chacune à la place de celles de la commande : un identifiant, ses touches (« tab_new=Ctrl+M, T;terminal=F7 »). Ctrl+Entrée sur une commande de la palette en choisit une.
+
+en Your aliases
+fr Vos alias
+
+en Letters that find a command in the palette, typed whole: an alias, an id ("nf=new_folder"). Alt+Enter on a command of the palette makes the letters typed its alias.
+fr Des lettres qui trouvent une commande dans la palette, tapées en entier : un alias, un identifiant (« nf=new_folder »). Alt+Entrée sur une commande de la palette fait des lettres tapées son alias.
+
 en How held keys and buttons repeat, what an undo takes back, and how far a step of a number goes.
 fr Comment les touches et les boutons maintenus se répètent, ce qu'une annulation défait, et de combien un nombre avance à chaque pas.
 
@@ -1179,6 +1194,9 @@ fr Combien de temps l'interface attend avant d'afficher une info-bulle ou un sou
 
 en How the interface's pictures are made and sent to the screen: the delay from a key to the screen, the work of the graphics card.
 fr Comment les images de l'interface sont produites et envoyées à l'écran : le délai entre une touche et l'écran, le travail de la carte graphique.
+
+en The keys and the aliases you set from the command palette. The reset of a field removes them all.
+fr Les touches et les alias que vous avez choisis depuis la palette de commandes. La réinitialisation d'un champ les retire tous.
 
 en The file could not be written.
 fr Le fichier n'a pas pu être écrit.
@@ -1894,6 +1912,24 @@ fr Cliquez, puis appuyez sur les touches
 en Shortcut: %s
 fr Raccourci : %s
 
+en Keys of a command
+fr Touches d'une commande
+
+en Keys for %s
+fr Touches de %s
+
+en Press the keys: two for a sequence. Enter keeps them, Escape gives up, Backspace first gives the command its own keys again.
+fr Appuyez sur les touches : deux pour une séquence. Entrée les garde, Échap abandonne, Retour arrière en premier rend à la commande ses propres touches.
+
+en This key opens the command palette.
+fr Cette touche ouvre la palette de commandes.
+
+en This key does nothing while you type in a field.
+fr Cette touche ne fait rien pendant que vous tapez dans un champ.
+
+en Keep
+fr Garder
+
 en Undo
 fr Annuler
 
@@ -1966,6 +2002,12 @@ fr Lancer
 
 en Views
 fr Vues
+
+en Set a key
+fr Choisir une touche
+
+en Make the letters its alias
+fr Faire des lettres son alias
 
 en Hide
 fr Masquer

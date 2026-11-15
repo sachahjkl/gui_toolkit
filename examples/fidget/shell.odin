@@ -72,15 +72,9 @@ dialog_open :: proc(app: ^App, id: string) { ui.view_open(ui.state_views(&app.ui
 
 dialog_is_open :: proc(app: ^App, id: string) -> bool { return ui.view_is_open(ui.state_views(&app.ui_state), id) }
 
-// The palette's commands source over fidget's commands (command_info): a fixed table, known by its address.
+// The palette's commands source over fidget's commands (COMMANDS): a fixed table, known by its address.
 palette_sources :: proc(app: ^App) {
-	if app.palette_commands[.Quit].label == "" {
-		for info, c in command_info {
-			app.palette_commands[c] = {label = info.title, group = info.category, icon = info.icon}
-			app.palette_keys[c] = info.shortcut
-		}
-	}
-	ui.palette_commands(&app.palette, slice.enumerated_array(&app.palette_commands), nil, {keys = slice.enumerated_array(&app.palette_keys)})
+	ui.palette_commands(&app.palette, slice.enumerated_array(&COMMANDS), nil)
 }
 
 // The toolkit's palette, `typed` in its field: a button, a menu line, the command line.
@@ -92,22 +86,15 @@ palette_toggle :: proc(app: ^App, typed := "") {
 palette_is_open :: proc(app: ^App) -> bool { return ui.palette_is_open(&app.palette) }
 
 handle_shortcuts :: proc(app: ^App) {
-	ctrl := platform.Modifiers{.Ctrl}
 	palette_sources(app)
 	ui.palette_keys(&app.palette)
 	if c, ok := ui.palette_chosen(&app.palette); ok {
 		if i, is := ui.palette_chosen_command(&app.palette, c); is { run_cmd(app, Command(i)) }
 	}
-	if ui.key_press(.N1, ctrl) { run_cmd(app, .Go_Controls) }
-	if ui.key_press(.N2, ctrl) { run_cmd(app, .Go_Inputs) }
-	if ui.key_press(.N3, ctrl) { run_cmd(app, .Go_Data) }
-	if ui.key_press(.N4, ctrl) { run_cmd(app, .Go_Playground) }
-	if ui.key_press(.T, ctrl) { run_cmd(app, .Next_Theme) }
-	if ui.key_press(.M, ctrl) { run_cmd(app, .Toggle_Machined) }
-	if ui.key_press(.B, ctrl) { run_cmd(app, .Toggle_Status) }
-	if ui.key_press(.J, ctrl) { run_cmd(app, .Toggle_Animations) }
-	if ui.key_press(.F1) { run_cmd(app, .About) }
-	if ui.key_press(.Comma, ctrl) { run_cmd(app, .Settings) }
+	// (the keys in effect: a key the person set from the palette, Ctrl+Enter, acts here at once)
+	for c, cmd in COMMANDS {
+		if ui.command_pressed(c) { run_cmd(app, cmd) }
+	}
 }
 
 ////////////////////////////////

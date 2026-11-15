@@ -150,6 +150,7 @@ STEPS := []Step{
 	{name = "views", one = true, oses = EVERYWHERE, text = true},
 	{name = "keyboard", one = true, wgpu = .Ci2},
 	{name = "commands", one = true, oses = EVERYWHERE, text = true},
+	{name = "keymap", one = true, oses = EVERYWHERE, text = true},   // (the person's keys: one language for the process)
 	{name = "status", one = true, wgpu = .Ci1},
 	{name = "states", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "stepper", one = true, oses = EVERYWHERE, text = true},

@@ -40,19 +40,19 @@ page_of :: proc(s: Scene) -> Scene {
 // The commands of the palette (its commands source); its settings source lists the preferences, its moves source the
 // views' moves.
 COMMANDS := [?]ui.Command{
-	{label = "New window", group = "File", keys = {{.N, {.Ctrl, .Shift}}}, icon = lucide.PLUS},
-	{label = "Open…", group = "File", keys = {{.O, {.Ctrl}}}, icon = lucide.FOLDER_OPEN},
-	{label = "Save", group = "File", keys = {{.S, {.Ctrl}}}, icon = lucide.SAVE},
-	{label = "Export pictures…", group = "File", keys = {{.E, {.Ctrl, .Shift}}}, icon = lucide.DOWNLOAD},
-	{label = "Theme: next", group = "View", tags = {"colours", "look"}, keys = {{.T, {.Ctrl}}}, icon = lucide.PALETTE},
-	{label = "Theme: light or dark", group = "View", tags = {"mode", "night", "day"}, keys = {{.L, {.Ctrl, .Shift}}}, icon = lucide.MOON},
-	{label = "Theme: open the themes file", group = "View", tags = {"colours", "custom"}, icon = lucide.FILE_TEXT},
-	{label = "Finish: machined", group = "View", tags = {"bevel", "relief"}, icon = lucide.SPARKLES},
-	{label = "Zoom in", group = "View", keys = ui.ZOOM_IN_KEYS[:], icon = lucide.PLUS},
-	{label = "Zoom out", group = "View", keys = ui.ZOOM_OUT_KEYS[:], icon = lucide.MINUS},
-	{label = "Node graph: fit the view", group = "Graph", keys = {{.F, {}}}, icon = lucide.SCAN},
-	{label = "Settings…", group = "General", keys = {{.Comma, {.Ctrl}}}, icon = lucide.SETTINGS},
-	{label = "Keyboard shortcuts", group = "General", keys = {{.F1, {}}}, icon = lucide.KEYBOARD},
+	{id = "window.new", label = "New window", group = "File", keys = {{.N, {.Ctrl, .Shift}}}, icon = lucide.PLUS},
+	{id = "open", label = "Open…", group = "File", keys = {{.O, {.Ctrl}}}, icon = lucide.FOLDER_OPEN},
+	{id = "save", label = "Save", group = "File", keys = {{.S, {.Ctrl}}}, icon = lucide.SAVE},
+	{id = "export", label = "Export pictures…", group = "File", keys = {{.E, {.Ctrl, .Shift}}}, icon = lucide.DOWNLOAD},
+	{id = "theme.next", label = "Theme: next", group = "View", tags = {"colours", "look"}, keys = {{.T, {.Ctrl}}}, icon = lucide.PALETTE},
+	{id = "theme.mode", label = "Theme: light or dark", group = "View", tags = {"mode", "night", "day"}, keys = {{.L, {.Ctrl, .Shift}}}, icon = lucide.MOON},
+	{id = "theme.file", label = "Theme: open the themes file", group = "View", tags = {"colours", "custom"}, icon = lucide.FILE_TEXT},
+	{id = "finish.machined", label = "Finish: machined", group = "View", tags = {"bevel", "relief"}, icon = lucide.SPARKLES},
+	{id = "zoom.in", label = "Zoom in", group = "View", keys = ui.ZOOM_IN_KEYS[:], icon = lucide.PLUS},
+	{id = "zoom.out", label = "Zoom out", group = "View", keys = ui.ZOOM_OUT_KEYS[:], icon = lucide.MINUS},
+	{id = "graph.fit", label = "Node graph: fit the view", group = "Graph", keys = {{.F, {}}}, icon = lucide.SCAN},
+	{id = "settings", label = "Settings…", group = "General", keys = {{.Comma, {.Ctrl}}}, icon = lucide.SETTINGS},
+	{id = "shortcuts", label = "Keyboard shortcuts", group = "General", keys = {{.F1, {}}}, icon = lucide.KEYBOARD},
 }
 
 build :: proc(h: ^host.Host, size: host.Vec2) {
