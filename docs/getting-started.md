@@ -50,7 +50,9 @@ package name is `tk_host`, so a program imports it as `import host "gt:host"`):
 ```odin
 App :: struct { shared: host.Shared, main: host.Host }          // what the windows share; one window
 
-host.host_open(&app.main, &app.shared, {title = "My app", size = {640, 400}}, build, app)
+if !host.host_open(&app.main, &app.shared, {title = "My app", size = {640, 400}}, build, app) {
+	os.exit(1)   // it has said why: host.open_error(&app.main)
+}
 platform.show_window(app.main.win)
 for !platform.is_closed(app.main.win) {
 	host.hosts_wait({&app.main})   // 0 % CPU at rest
@@ -58,6 +60,19 @@ for !platform.is_closed(app.main.win) {
 }
 host.host_close(&app.main)
 ```
+
+**When the window cannot open.** `host_open` returns false and says why once, where a person looks: in the program's log
+(`core:log`, the logger the program set), on standard error as `<program>: <why>`, and, for the first window of a Windows
+program that has no console (`-subsystem:windows`), in a message box. On a machine with no graphics driver that is:
+
+```
+myapp: no graphics device this program can draw with (Vulkan): vulkan drivers/libraries could not be loaded. Install your system's Vulkan driver (the package mesa-vulkan-drivers on Debian and Ubuntu).
+```
+
+The program then ends with its exit code. With crash reports on, it calls `crash.end_session` first (a `defer` does not
+run under `os.exit`: return from the procedure that deferred it), and the next start finds no crash ([crash.md](crash.md)). `host.open_error(&app.main, allocator)` gives the same sentence ("" once it opened) to a
+program that shows it its own way; `Host.failure` says which step failed (`Open_Failure`: `No_Window`, `No_Renderer`,
+`No_Font`, `Refused` for another window). [rendering.md](rendering.md), "When init fails".
 
 Each host keeps the times of its last pictures (`Host.frames`, `host.FRAME_RING` of them, in every build: a few stores a
 frame, no allocation): the interface's builds and the draw up to the present, and with partial redraw on the pixels drawn.

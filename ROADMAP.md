@@ -7,14 +7,23 @@
   under `$`, `about:config` under `:`), and its bookmark, vault and security-key dialogs become views. Intents:
   [src/md/features/palette.md](src/md/features/palette.md), [src/md/features/views.md](src/md/features/views.md)
   (sections 1 and 7).
+- **No black strip under machined buttons on Windows.** With partial redraw on, Windows 11 shows thin black strips just
+  under a row of quiet machined buttons (atelier's Programs step); WebGPU on Linux draws the same scene exactly, so
+  the cause is on the Direct3D 11 window's path. `tests/partial_redraw_layers` holds the scene, which the Windows CI runs.
 
 ## Next
-- **Display titles and settings folders by the system's convention.** A program's identity gives its vendor
-  (FromentSoftware), its display title (Papier, Classeur, Inspecteur, Cliche, Atelier, Wren...: capitalised, while the
-  binary, the package and the Linux folders keep the lowercase technical name) and its reverse-DNS id
-  (`software.froment.Papier`: the desktop file, the D-Bus name, the AppUserModelID). `platform.user_dir` then places the
-  settings where each system expects them: `%APPDATA%\FromentSoftware\Papier` on Windows, `~/.config/papier` on Linux.
-  Waits for two decisions: opencode native's title, and whether the old Windows folder moves once.
+- **Display titles and a vendor's folders.** Every program shows a capitalised title (Papier, Classeur, Inspecteur,
+  Cliche, Atelier, Wren, Opencode Native) while its binary and package keep the lowercase name, and keeps its settings
+  in its vendor's folder (`%APPDATA%\FromentSoftware\Papier`, `~/.config/FromentSoftware/Papier`), the old folders
+  moved once. Intent: [src/md/features/folders.md](src/md/features/folders.md).
+- **One spacing scale for every program.** The toolkit gives spacing tokens (0.25, 0.5, 0.75, 1, 1.5 em), a card whose
+  inset is the same on its four sides and adds no gap after it, a grouped list card with dividers, a well without an
+  edge and a padding option, all on that scale. Programs lay out the same way and stop keeping scales of their own
+  (atelier's `view.odin` holds one today).
+- **No graphics driver on Windows, tested.** A window whose hardware Direct3D 11 device is refused falls back to WARP,
+  and a program without a console that cannot open its window says why in a message box; both are written and
+  type-checked, not yet run. A test on the Windows CI (a fault that refuses the hardware device, a child started without
+  a console) proves them. Intent: [src/md/infrastructure/no-graphics.md](src/md/infrastructure/no-graphics.md).
 - **opencode native answers --quit.** As papier, classeur, inspecteur and cliche do, it gives `Setup_Options.quit` and
   takes `instance.MESSAGE_QUIT` in its handler: atelier then closes it cleanly before it installs it, in place of ending
   its process. Intent: [src/md/features/quit.md](src/md/features/quit.md).
@@ -48,6 +57,11 @@
   changes them all, as cliche's graph colours do since its 0.8.
 
 ## Later
+
+- **OpenGL when Vulkan is missing.** On a Linux machine with OpenGL and no Vulkan driver (an old GPU, some virtual
+  machines), a program draws through wgpu's GL backend instead of saying that it cannot. It waits for wgpu-native to
+  take the display in its instance descriptor: today its GL instance has no backend on Linux. Intent:
+  [src/md/infrastructure/no-graphics.md](src/md/infrastructure/no-graphics.md).
 
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link

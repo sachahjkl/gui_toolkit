@@ -314,6 +314,8 @@ page_tags :: proc(m: Meta, html, address: string, home: bool, card: [2]int) -> s
 	image := cat(m.url, m.card)
 	b := strings.builder_make(context.temp_allocator)
 	if !strings.contains(html, `rel="canonical"`) { put(&b, `<link rel="canonical" href="`, address, "\">\n") }
+	// (the toolkit's scroll bar, the same in every site and in the programs' windows)
+	if !strings.contains(html, "::-webkit-scrollbar-thumb:vertical") { put(&b, SCROLLBAR_CSS, "\n") }
 	put(&b, `<meta name="author" content="`, m.author, `">
 <meta name="theme-color" content="`, m.theme, `">
 <link rel="alternate" type="application/atom+xml" title="`, esc(m.name), `: releases" href="`, m.url, FEED_FILE, `">

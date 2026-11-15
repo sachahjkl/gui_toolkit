@@ -69,6 +69,9 @@ file; the file of an instance that still runs stays. A crash report removes the 
 clean session could not have shown at its start. After the next clean session, `last_report` gives nothing for it again; a
 crash of another instance while that session ran stays given.
 
+A machine with no graphics driver is not a crash: `host.host_open` returns false and says why ([getting-started.md](getting-started.md),
+"When the window cannot open"), and a program that calls `end_session` before it ends leaves no report.
+
 `begin_session` and `last_report` read and write files on the calling thread: call them at the start, before the interface's
 loop, not in a frame. `end_session` writes on a thread of its own and waits for it (as `config.user_writer_stop` waits for
 its writer): the thread that ran the interface calls it at the end and makes no disk call itself.

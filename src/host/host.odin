@@ -37,7 +37,11 @@
 package tk_host
 
 import "core:fmt"
+import "core:log"
+import "core:os"
+import "core:path/filepath"
 import "core:slice"
+import "core:strings"
 import "core:time"
 import "../draw"
 import "../font"
@@ -114,6 +118,7 @@ Host :: struct {
 	rest_frame:   proc(h: ^Host),   // from the system's loop, no step of a resize to show: the program's whole frame. nil: this window's
 	after_frame:  proc(h: ^Host),   // the picture is out (or held): what the program does between two frames. Not after a frame that found its window closed
 
+	failure: Open_Failure, // why the last host_open failed (open_error)
 	frames:  Frame_Ring,   // the last pictures' times, in every build (frame_stats)
 	slept:   bool,     // the loop slept before this frame (hosts_wait)
 	rested:  bool,     // this frame comes after a sleep: its dt is one refresh (host_picture)
@@ -142,11 +147,23 @@ host_adopt :: proc(h: ^Host, sh: ^Shared, w: ^platform.Window, build: proc(h: ^H
 	w.user, w.on_frame = h, host_paint
 }
 
+// Why host_open returned false (open_error).
+Open_Failure :: enum u8 {
+	None,
+	No_Window,     // the system gave no window (no display server)
+	No_Renderer,   // the first window: no graphics device draws it (render.init_failure says why)
+	No_Font,       // the first window: no font for the interface
+	Refused,       // another window: the renderer could not make its surface
+}
+
 // Opens a window: the first one makes what is shared, the others a surface on it. `h` stays where it is until host_close (the window
-// calls back with it). False: it cannot open, has said why and has left nothing behind.
+// calls back with it). False: it cannot open, has left nothing behind and has said why (open_error): in the program's log, on
+// standard error and, for the first window of a Windows program without a console, in a message box. The program then
+// returns from main with its exit code.
 host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, size: Vec2), user: rawptr = nil) -> bool {
 	first := sh.main == nil
 	h.shared, h.build, h.user, h.paced = sh, build, user, first
+	h.failure = .None
 	if first {
 		font.init(&sh.fonts)
 		// (the system's light or dark, read once before any frame: a frame then reads the kept value and waits on nothing)
@@ -160,15 +177,16 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 		h.win = platform.open_window(o.title, o.size, transparent = true, integrated_title = o.integrated_title)
 	}
 	if h.win == nil {
-		fmt.eprintln("host: no window")
 		if first { font.destroy(&sh.fonts) }
+		open_failed(h, .No_Window, o.title, box = first && !o.headless)
 		return false
 	}
-	ok := first ? shared_open(sh, h.win, o.headless) : surface_open(h, o)
-	if !ok {
+	failure := first ? shared_open(sh, h.win, o.headless) : surface_open(h, o)
+	if failure != .None {
 		if first { font.destroy(&sh.fonts) }
 		platform.destroy_window(h.win)
 		h.win = nil
+		open_failed(h, failure, o.title, box = first && !o.headless)
 		return false
 	}
 	if first { sh.main = h }
@@ -181,35 +199,58 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 }
 
 @(private = "file")
-shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless: bool) -> bool {
+shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless: bool) -> Open_Failure {
 	if headless {
-		if !render.init_offscreen(&sh.r, w.size, warp = true) { fmt.eprintln("host: no renderer"); return false }
+		if !render.init_offscreen(&sh.r, w.size, warp = true) { return .No_Renderer }
 	} else {
-		if !render.init_window(&sh.r, w, w.size, transparent = true) { fmt.eprintln("host: no renderer"); return false }
+		if !render.init_window(&sh.r, w, w.size, transparent = true) { return .No_Renderer }
 		render.set_fixed_surface(&sh.r, platform.monitor_size(w))
 	}
 	ok: bool
 	sh.font, ok = load_ui_font(&sh.fonts, headless)
 	if !ok {
-		fmt.eprintln("host: no UI font")
 		render.destroy(&sh.r)
-		return false
+		return .No_Font
 	}
 	draw.init(&sh.dc, &sh.r, &sh.fonts)
 	ui.apply_palette(&sh.theme, ui.palette_of("Midnight"))
-	return true
+	return .None
 }
 
 @(private = "file")
-surface_open :: proc(h: ^Host, o: Open_Options) -> bool {
+surface_open :: proc(h: ^Host, o: Open_Options) -> Open_Failure {
 	sh := h.shared
 	ok := render.surface_init(&sh.r, &h.surface, platform.native_surface_handles(h.win), h.win.size, transparent = true,
 		fixed_size = platform.monitor_size(h.win), under_children = o.under_children)
-	if !ok { fmt.eprintln("host: the renderer refused a window"); return false }
+	if !ok { return .Refused }
 	// (not the paced window: its frames never wait for the screen, which may not show it)
 	render.surface_scope(&sh.r, &h.surface)
 	render.set_present_wait(&sh.r, false)
-	return true
+	return .None
+}
+
+// Why the last host_open of `h` returned false, as a sentence for a person ("": it opened). A program that shows it its own
+// way reads it here; host_open has already logged it and written it on standard error.
+open_error :: proc(h: ^Host, allocator := context.temp_allocator) -> string {
+	switch h.failure {
+	case .None:        return ""
+	case .No_Window:   return strings.clone("the system gave no window: no desktop session (display server) answers", allocator)
+	case .No_Renderer: return h.shared != nil ? render.init_failure_text(&h.shared.r, allocator) : ""
+	case .No_Font:     return strings.clone("no font for the interface: neither the system's nor the one compiled in can be read", allocator)
+	case .Refused:     return strings.clone("the renderer cannot draw into another window", allocator)
+	}
+	return ""
+}
+
+// Says once why a window did not open: in the log (the program's logger: its file and a crash report's tail), on standard
+// error as "<program>: <why>", and in a message box where standard error goes nowhere (open_failed_box).
+@(private = "file")
+open_failed :: proc(h: ^Host, failure: Open_Failure, title: string, box: bool) {
+	h.failure = failure
+	why := open_error(h)
+	log.error(why)
+	fmt.eprintfln("%s: %s", filepath.stem(len(os.args) > 0 ? os.args[0] : "program"), why)
+	if box { open_failed_box(title, why) }
 }
 
 // Closes a window. The first one ends what is shared: it goes last. Not from inside this window's own frame.

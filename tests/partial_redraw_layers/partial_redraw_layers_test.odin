@@ -313,3 +313,101 @@ panels_scene :: proc(t: ^testing.T, half: bool) {
 	session.expect_opaque(t, s, "the dialog closed")
 	session.damage_expect_exact(t, s, "framed panels and a dialog over them")
 }
+
+// atelier's Programs step: a head row of quiet buttons (one of them busy at times) above framed panels, on a page box.
+// The pointer goes over each button, presses it and leaves; the busy one turns. Holes were seen on Windows in the strip
+// between the buttons and the first panel. Each partial frame is the whole frame to the byte, and every frame is opaque,
+// in every finish and both frame formats.
+@(private = "file") QUIET_WINDOW :: [2]int{640, 360}
+@(private = "file") QUIET_PANELS :: 3
+@(private = "file") QUIET_BUTTONS :: [3]string{"check", "all", "none"}
+
+@(private = "file")
+Quiet_Run :: struct {
+	busy:   bool,
+	ticked: [QUIET_PANELS]bool,
+}
+
+@(private = "file")
+quiet_build :: proc(s: ^session.Session) {
+	u := (^Quiet_Run)(s.user)
+	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+	page := ui.build_box({.Draw_Background}, "###page")
+	if !ui.parent(page) { return }
+	ui.spacer(ui.px(12))
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
+	if ui.row(.Center, id = "###select") {
+		ui.spacer(ui.px(16))
+		ui.next({width = ui.fill(), height = ui.px(28), text_pad = 0})
+		ui.label("Choose the programs to install.###choose")
+		_ = ui.button("###check", "Check for updates", o = {quiet = true, busy = u.busy})
+		ui.spacer(ui.px(6))
+		_ = ui.button("###all", "Select all", o = {quiet = true})
+		ui.spacer(ui.px(6))
+		_ = ui.button("###none", "Select none", o = {quiet = true})
+		ui.spacer(ui.px(16))
+	}
+	for i in 0 ..< QUIET_PANELS {
+		ui.spacer(ui.px(7))
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+		if ui.parent(ui.build_box({}, fmt.tprintf("###panel%d_line", i))) {
+			ui.spacer(ui.px(16))
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center, radius = 6})
+			box: ^ui.Box
+			if ui.tags("input") { box = ui.build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###panel%d", i)) }
+			if ui.parent(box) {
+				ui.next({width = ui.px(28), height = ui.px(28)})
+				ui.checkbox("###box", "", &u.ticked[i])
+				ui.next({width = ui.fill(), height = ui.px(56)})
+				ui.label(fmt.tprintf("Program %d###name", i))
+			}
+			ui.spacer(ui.px(16))
+		}
+	}
+}
+
+@(test)
+quiet_buttons_above_framed_panels_are_exact_and_opaque :: proc(t: ^testing.T) {
+	for half in FORMATS { for f in ui.Finish { quiet_scene(t, half, f) } }
+}
+
+// A scale of Windows' displays: the buttons' edges and their shadows fall between pixels. (1, 1.25 and 1.5 all passed
+// on WebGPU; one scale keeps the package within WARP's time.)
+@(private = "file") QUIET_SCALE :: 1.25
+
+@(private = "file")
+quiet_scene :: proc(t: ^testing.T, half: bool, finish: ui.Finish) {
+	u: Quiet_Run
+	pal := ui.palette_of("Midnight")
+	pal.finish = finish
+	s := session.start(t, {size = QUIET_WINDOW, build = quiet_build, user = &u, palette = pal, half_float = half, dpi_scale = QUIET_SCALE, animations = true})
+	s.state.theme.glow = 1
+	session.damage_verify(s)
+	session.damage_settle(s)
+	session.expect_opaque(t, s, fmt.tprintf("%v: shown", finish))
+	for name in QUIET_BUTTONS {
+		at := session.center(session.get(s, name))
+		session.move(s, at)
+		session.damage_settle(s, 20)
+		session.expect_opaque(t, s, fmt.tprintf("%v: over %s", finish, name))
+		session.press(s, at)
+		session.damage_settle(s, 20)
+		session.expect_opaque(t, s, fmt.tprintf("%v: %s pressed", finish, name))
+		session.release(s, at)
+		session.damage_settle(s, 20)
+		// (under the panels' strip: the pointer leaves downward, over the gap and the first panel)
+		session.move(s, {at.x, session.get(s, "panel0").rect.min.y - 2})
+		session.damage_settle(s, 20)
+		session.move(s, session.center(session.get(s, "panel0")))
+		session.damage_settle(s, 20)
+		session.expect_opaque(t, s, fmt.tprintf("%v: left %s", finish, name))
+	}
+	for busy in ([2]bool{true, false}) {
+		u.busy = busy
+		session.damage_settle(s, 30)
+		session.expect_opaque(t, s, fmt.tprintf("%v: busy %v", finish, busy))
+	}
+	session.leave(s)
+	session.damage_settle(s)
+	session.damage_expect_exact(t, s, fmt.tprintf("quiet buttons above framed panels, %v", finish))
+}
