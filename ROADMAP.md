@@ -14,10 +14,11 @@
   own way. Intent: [src/md/features/strip.md](src/md/features/strip.md).
 - **No program blocks its interface's thread.** Each program's tests run its windows with the toolkit's blocking check
   on and fail when a disk, process or D-Bus call happens in a build, so the CI finds it.
-- **The last settings that programs copy.** The toolkit gets standard Desktop, Accessibility and Diagnostics groups
-  (fps, layout warnings, GPU profile, devtools) and one kept window placement that replaces the four copies in opencode
-  native, inspecteur, classeur and papier. inspecteur's zebra rows and rules become appearance settings; Wren drops its
-  own text backend, emoji and renderer settings.
+- **The last settings that programs copy.** The window's place is the toolkit's (`window.placement`,
+  `prefs_page.placement_restore` and `placement_track`): opencode native, inspecteur, classeur and papier drop their own
+  copies for it. The toolkit gets standard Desktop, Accessibility and Diagnostics groups (fps, layout warnings, GPU
+  profile, devtools); inspecteur's zebra rows and rules become appearance settings; Wren drops its own text backend,
+  emoji and renderer settings.
 - **opencode native pastes through the toolkit.** Its composer takes files and images from `ui.paste_answer`, its own
   three requests removed, so its menu's Paste attaches an image as Ctrl+V does
   ([src/md/features/paste.md](src/md/features/paste.md)).
