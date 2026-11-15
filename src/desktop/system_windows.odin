@@ -30,3 +30,10 @@ long_path :: proc(path: string) -> string {
 	out, err := win.utf16_to_utf8(buf[:got], context.temp_allocator)
 	return err == nil ? out : path
 }
+
+// One file has two names when a folder has a short 8.3 name too (C:\Users\RUNNER~1: a TEMP or a shortcut may give
+// either); case and slash direction do not count.
+@(private)
+same_path_system :: proc(a, b: string) -> bool {
+	return strings.equal_fold(long_path(normalize_slashes(a)), long_path(normalize_slashes(b)))
+}

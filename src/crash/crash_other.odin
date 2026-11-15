@@ -2,6 +2,9 @@
 #+build !windows
 package tk_crash
 
+// The system, as a report names it: none of those a report knows.
+@(private) SYSTEM_NAME :: "other"
+
 // Other systems: no handler of crashes (install returns false). Sessions are not followed either: with no way to tell a process
 // that runs from one that is gone, every start would find an unclean end.
 

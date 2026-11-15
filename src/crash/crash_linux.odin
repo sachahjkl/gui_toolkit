@@ -1,5 +1,8 @@
 package tk_crash
 
+// The system, as a report names it: "<os> <arch>".
+@(private) SYSTEM_NAME :: "linux amd64" when ODIN_ARCH == .amd64 else "linux arm64" when ODIN_ARCH == .arm64 else "other"
+
 // Linux: a fatal signal (SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT, SIGTRAP) writes the report on standard error and into
 // "<dir>/crash-<date>-<pid>.txt", then the process dies as it would have (the default action: the system's core dump, if enabled,
 // keeps the memory; coredumpctl).

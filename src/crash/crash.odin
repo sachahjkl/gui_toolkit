@@ -128,13 +128,7 @@ report_dir :: proc() -> string { return kept_dir() }
 // The build of the running executable, as a report names it (Linux: its GNU build id, Windows: its PE time stamp and size).
 build_id :: proc() -> string { return kept_build() }
 
-// The system, as a report names it: "<os> <arch>".
-@(private)
-SYSTEM_NAME :: "linux amd64" when ODIN_OS == .Linux && ODIN_ARCH == .amd64 else
-	"linux arm64" when ODIN_OS == .Linux && ODIN_ARCH == .arm64 else
-	"windows amd64" when ODIN_OS == .Windows && ODIN_ARCH == .amd64 else
-	"windows arm64" when ODIN_OS == .Windows && ODIN_ARCH == .arm64 else
-	"other"
+// (SYSTEM_NAME, the system as a report names it, "<os> <arch>": crash_windows.odin, crash_linux.odin, crash_other.odin)
 
 ////////////////////////////////
 // Sessions

@@ -71,30 +71,6 @@ fr un fichier n'a pas pu être écrit ou supprimé
 en the system refused
 fr le système a refusé
 
-en Start menu
-fr menu Démarrer
-
-en application menu
-fr menu des applications
-
-en Default apps
-fr Applications par défaut
-
-en the default browser setting
-fr le réglage du navigateur par défaut
-
-en Start menu, default apps, session start
-fr menu Démarrer, applications par défaut, démarrage de la session
-
-en Start menu, session start
-fr menu Démarrer, démarrage de la session
-
-en application menu, default browser, PATH, session start
-fr menu des applications, navigateur par défaut, PATH, démarrage de la session
-
-en application menu, PATH, session start
-fr menu des applications, PATH, démarrage de la session
-
 en Enter the folder to install into.
 fr Indiquez le dossier d'installation.
 
@@ -136,6 +112,30 @@ fr %s est un fichier, pas un dossier.
 
 en Cannot write in %s.
 fr Impossible d'écrire dans %s.
+
+en application menu
+fr menu des applications
+
+en the default browser setting
+fr le réglage du navigateur par défaut
+
+en application menu, default browser, PATH, session start
+fr menu des applications, navigateur par défaut, PATH, démarrage de la session
+
+en application menu, PATH, session start
+fr menu des applications, PATH, démarrage de la session
+
+en Start menu
+fr menu Démarrer
+
+en Default apps
+fr Applications par défaut
+
+en Start menu, default apps, session start
+fr menu Démarrer, applications par défaut, démarrage de la session
+
+en Start menu, session start
+fr menu Démarrer, démarrage de la session
 
 en no error
 fr aucune erreur
