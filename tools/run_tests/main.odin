@@ -178,8 +178,11 @@ STEPS := []Step{
 	{name = "resize_grip", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (a dialog's grips and corner control: a process of its own, the scenarios' is full)
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
 	{name = "partial_redraw", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
-	// (what covers a change: a process of its own, on another runner; with the scenes above it passed 420 s on WARP)
-	{name = "partial_redraw_layers", one = true, wgpu = .Ci4, oses = EVERYWHERE, text = true},
+	// (what covers a change: a process of its own, on another runner; with the scenes above it passed 420 s on WARP. Its
+	// quiet buttons in every finish are a process of their own too, on the lightest runner: the five scenes together
+	// passed 420 s on WebGPU's CPU driver)
+	{name = "partial_redraw_layers", one = true, wgpu = .Ci4, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.a_change_under_a_dialog_redraws_the_dialog_over_it,partial_redraw_layers_test.text_that_changes_under_an_internal_window_stays_under_it,partial_redraw_layers_test.a_table_with_code_in_striped_rows_is_exact_and_opaque,partial_redraw_layers_test.framed_panels_and_a_dialog_over_them_stay_opaque"}},
+	{name = "partial_redraw_buttons", path = "tests/partial_redraw_layers", one = true, wgpu = .Ci3, oses = EVERYWHERE, text = true, defines = {"ODIN_TEST_NAMES=partial_redraw_layers_test.quiet_buttons_above_framed_panels_are_exact_and_opaque"}},
 	{name = "examples", one = true, oses = EVERYWHERE, text = true},
 	// (each frame also drawn whole on the side: a partial frame must match it byte for byte; a difference ends the program with 1)
 	{name = "examples_damage", path = "tests/examples", one = true, defines = {"TOOLKIT_DAMAGE_CHECK=true", "ODIN_TEST_NAMES=examples_test.whatsnew_pages_look_like_their_images,examples_test.whatsnew_lazy_column_after_a_wheel_burst,examples_test.fidget_controls_by_the_mouse,examples_test.fidget_editor_undo_and_redo"}},
