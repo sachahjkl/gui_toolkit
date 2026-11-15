@@ -45,6 +45,13 @@ for decides how it is laid out:
 - **`left`**: what is in a row wider than it at its left, whatever the style's `text_align`.
 - **`quiet`**: a secondary act, smaller; a Neutral one's words weak until the pointer is over it.
 - **`disabled`**: shown faded, takes no press and no focus.
+- **`busy`**: its act is under way. The spinner turns in its glyph's place (a cell is made for it when it has none), the
+  button keeps its size and look, a click does nothing, and a screen reader hears it busy. Put the button in this state
+  instead of a spinner beside it: nothing moves when the act starts or ends.
+
+  ```odin
+  if ui.button("install", "Accept and install", lucide.DOWNLOAD, {intent = .Success, busy = app.reading}).clicked { start(app) }
+  ```
 - **`lit`**: drawn as under the pointer while what it opened is open (a menu). The box flag `.Lit`.
 - **`tip`**: a tooltip once the pointer rests on it for `Feel.tooltip_delay_ms`; its description for a screen reader,
   and the name of a glyph alone (else its id: a glyph says nothing).
@@ -308,6 +315,9 @@ It shares its keys, its rounding and its drawing with `slider`.
 Every widget that edits a value of the caller's returns `changed: bool`, true in the frame the value changed:
 `checkbox`, `radio`, `toggle`, `slider`, `range_slider`, `number`, `segmented`, `dropdown`, `tabs`, the colour pickers
 (`color_picker`, `hue_picker`, `alpha_picker`, `sat_val_picker`), `hotkey_field`.
+
+`dropdown(id, items, &selected)` takes the width `next` gives it; without one, it is as wide as its widest item, its
+padding and its arrow, so a header's tools or any row as wide as its children shows it whole.
 
 A group of choices, `segmented` (pills or words), `tabs` and the `radio` buttons of one `selected`, is one Tab stop: the
 chosen one. While it has the

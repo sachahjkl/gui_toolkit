@@ -63,6 +63,12 @@ Instance_Options :: struct {
 	wait_ms:  int,      // how long to keep trying while the owner is starting or closing (a silent owner ends it at once)
 }
 
+// The messages every program's handler takes the same way (docs/instance.md), so that another program reaches any of
+// them: an installer, gt:setup's --status (Setup_Options.running) and --quit (Setup_Options.quit). The byte 0x02 first:
+// no path, launcher's token or word of a command line starts with it.
+MESSAGE_PING :: "\x02ping"   // nothing to do: the answer alone says that a copy runs
+MESSAGE_QUIT :: "\x02quit"   // end, as the program's own Quit does
+
 // The owner's handler: called on the thread that created the window / socket, inside pump_messages, with a message valid
 // only during the call (copy what is kept). It must be quick: the sender waits for it. `message` is the bytes the sender
 // gave `acquire` / `send`, nothing added.

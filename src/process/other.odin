@@ -1,10 +1,13 @@
 package tk_process
 
-// Other processes (Linux: other_linux.odin; elsewhere every call answers .Unsupported): a signal and a priority sent to
-// one process, named by its pid and its start time so that a pid given again to a new process is not touched.
+// Other processes (Linux: other_linux.odin; Windows: other_windows.odin, a start time and an end only; elsewhere every
+// call answers .Unsupported): a signal and a priority sent to one process, named by its pid and its start time so that a
+// pid given again to a new process is not touched.
 //
-//	process_start_time  when a process started (Linux: clock ticks after the boot, field 22 of /proc/<pid>/stat)
-//	signal_process      a signal, if the pid still names the process that started then
+//	process_start_time  when a process started (Linux: clock ticks after the boot, field 22 of /proc/<pid>/stat;
+//	                    Windows: its creation time, a FILETIME)
+//	signal_process      a signal, if the pid still names the process that started then (Windows: Terminate and Kill,
+//	                    both TerminateProcess)
 //	set_priority        a nice value for every thread of that process
 //	affinity            the logical processors the process may run on (its main thread's)
 //	set_affinity        the logical processors every thread of that process may run on

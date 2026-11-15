@@ -97,6 +97,31 @@ outcome := instance.send({name = name, identity = exe_path, wait_ms = 500}, mess
 `send` hands a message to the owner without trying to become the owner: a pure "there is a running copy, tell it this".
 Returns `Forwarded`, `Other_Instance`, or `Unresponsive` (no owner, a different identity refused, or no answer).
 
+## The messages every program understands
+
+The message is the program's own, with two exceptions that every program's handler takes the same way, so that another
+program (an installer, gt:setup's `--status` and `--quit`) can talk to any of them:
+
+| Message | What the owner does |
+|---|---|
+| `instance.MESSAGE_PING` | nothing: the answer alone says that a copy runs (`Setup_Options.running`) |
+| `instance.MESSAGE_QUIT` | it ends, as its own Quit does (`Setup_Options.quit`): its window closes, its work is saved |
+
+```odin
+app_running :: proc() -> bool { return instance.send({name = app_instance_name(), wait_ms = 2000}, transmute([]u8)string(instance.MESSAGE_PING)) == .Forwarded }
+app_quit    :: proc() -> bool { return instance.send({name = app_instance_name(), wait_ms = 2000}, transmute([]u8)string(instance.MESSAGE_QUIT)) == .Forwarded }
+
+app_message :: proc(user: rawptr, message: []byte) {
+	switch string(message) {
+	case instance.MESSAGE_PING: return
+	case instance.MESSAGE_QUIT: ui.post(..., proc(...) { platform.request_close(win) }, ...)   // (on the interface's thread)
+	}
+	// ... the program's own message
+}
+```
+
+Both start with the byte 0x02, which no path, no launcher's token and no word of a command line starts with.
+
 ## Elevation (Windows)
 
 `instance.is_elevated()` tells whether the process runs with an elevated token. An elevated owner lets a WM_COPYDATA
