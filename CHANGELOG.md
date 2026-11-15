@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.286.1] - 2026-11-15 23:52
+
+### Fixed
+- **Each group once in the keyboard shortcuts**: a program whose commands alternate between groups no longer shows a group's heading twice; its commands stand together where its first one is.
+
 ## [0.286.0] - 2026-11-15 23:44
 
 ### Added
@@ -3948,6 +3953,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.286.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.1
 [0.286.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.0
 [0.285.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.285.0
 [0.284.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.284.0
