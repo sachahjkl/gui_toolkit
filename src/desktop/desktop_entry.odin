@@ -234,7 +234,9 @@ desktop_entry_text :: proc(o: ^Integration_Options, allocator := context.temp_al
 	if id.generic_name != "" { line(&sb, "GenericName", escape_value(id.generic_name)) }
 	if id.description != "" { line(&sb, "Comment", escape_value(id.description)) }
 	opens := o.register_browser || len(id.url_schemes) > 0
-	line(&sb, "Exec", escape_value(strings.concatenate({quote_exec_argument(o.exe), opens ? " %U" : ""}, context.temp_allocator)))
+	// (a folder as a path, %F: a file manager opens local folders, and a file:// address would be one more form to read)
+	code := opens ? " %U" : o.default_file_manager ? " %F" : ""
+	line(&sb, "Exec", escape_value(strings.concatenate({quote_exec_argument(o.exe), code}, context.temp_allocator)))
 	line(&sb, "TryExec", escape_value(o.exe))
 	line(&sb, "Icon", id.slug)
 	line(&sb, "Terminal", "false")
@@ -243,9 +245,13 @@ desktop_entry_text :: proc(o: ^Integration_Options, allocator := context.temp_al
 	line(&sb, "StartupWMClass", id.slug)
 	if id.categories != "" { line(&sb, "Categories", escape_value(id.categories)) }
 	if id.keywords != "" { line(&sb, "Keywords", escape_value(id.keywords)) }
-	if o.register_browser {
+	if o.register_browser || o.default_file_manager {
 		sb2 := strings.builder_make(context.temp_allocator)
-		for m in mime_types(o.file_types, id.url_schemes) { strings.write_string(&sb2, m); strings.write_byte(&sb2, ';') }
+		if o.register_browser {
+			for m in mime_types(o.file_types, id.url_schemes) { strings.write_string(&sb2, m); strings.write_byte(&sb2, ';') }
+		}
+		// (the default of a type counts only for an entry associated with it: the MIME Applications specification)
+		if o.default_file_manager { strings.write_string(&sb2, DIRECTORY_MIME); strings.write_byte(&sb2, ';') }
 		line(&sb, "MimeType", strings.to_string(sb2))
 	}
 	if len(id.actions) > 0 {

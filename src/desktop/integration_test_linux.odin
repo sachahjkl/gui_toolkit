@@ -35,6 +35,7 @@ scratch_make :: proc() -> Scratch {
 		exe = s.exe, register_browser = true, start_menu = true, file_types = split_list(".html,.svg", context.temp_allocator), icons = icons,
 		applications_dir = fmt.aprintf("%s/share/applications", s.dir), icons_dir = fmt.aprintf("%s/share/icons/hicolor", s.dir),
 		bin_dir = fmt.aprintf("%s/bin", s.dir), autostart_dir = fmt.aprintf("%s/config/autostart", s.dir), notify_system = false,
+		config_dir = fmt.aprintf("%s/config", s.dir),
 		desktop_dir = fmt.aprintf("%s/Desktop", s.dir),   // (never the user's: remove takes out a copy that is the program's)
 	}
 	delete(tmp)
@@ -46,6 +47,7 @@ scratch_make :: proc() -> Scratch {
 scratch_destroy :: proc(s: ^Scratch) {
 	_ = os.remove_all(s.dir)
 	delete(s.dir); delete(s.exe); delete(s.exe2); delete(s.opts.applications_dir); delete(s.opts.icons_dir); delete(s.opts.bin_dir); delete(s.opts.autostart_dir); delete(s.opts.desktop_dir)
+	delete(s.opts.config_dir)
 }
 
 @(private = "file")
@@ -240,6 +242,66 @@ linux_desktop_shortcut :: proc(t: ^testing.T) {
 	testing.expect(t, install(o).error != .None, "another program's file: not replaced")
 	expect_ok(t, remove(o))
 	testing.expect(t, os.is_file(copy), "not the program's: stays")
+}
+
+// The File_Manager part: the entry made the default of folders in mimeapps.list, the person's former default kept after
+// it and given back with the option off and by remove; another program's default is never touched.
+@(test)
+linux_file_manager :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	o.register_browser = false
+	o.identity.url_schemes = nil   // (a program of no addresses: its entry takes folders as paths, %F)
+	list := fmt.tprintf("%s/mimeapps.list", o.config_dir)
+	entry := fmt.tprintf("%s/sample.desktop", o.applications_dir)
+	_ = os.make_directory_all(o.config_dir)
+	person := "[Default Applications]\ntext/plain=gedit.desktop\ninode/directory=org.gnome.Nautilus.desktop;\n"
+	_ = os.write_entire_file(list, person)
+
+	o.default_file_manager = true
+	expect_ok(t, install(o))
+	text, _ := os.read_entire_file(list, context.temp_allocator)
+	testing.expect_value(t, mimeapps_default(string(text), DIRECTORY_MIME), "sample.desktop")
+	testing.expect(t, strings.contains(string(text), "text/plain=gedit.desktop"), "the person's other lines stay")
+	content, _ := os.read_entire_file(entry, context.temp_allocator)
+	mime, _ := entry_value(string(content), "MimeType")
+	exec, _ := entry_value(string(content), "Exec")
+	testing.expect(t, strings.contains(mime, "inode/directory;"), "the entry takes folders")
+	testing.expect(t, strings.has_suffix(exec, " %F"), "a folder is its argument")
+	st := status(o, context.temp_allocator)
+	testing.expect_value(t, st.state, State.Installed)
+	testing.expect(t, st.parts[.File_Manager].present && !st.parts[.File_Manager].partial && !st.parts[.File_Manager].stale, "the part is there")
+
+	// an entry that does not take folders: to repair
+	o.default_file_manager = false
+	_ = os.write_entire_file(entry, desktop_entry_text(o))
+	o.default_file_manager = true
+	testing.expect(t, status(o, context.temp_allocator).parts[.File_Manager].partial, "the entry does not take folders")
+	expect_ok(t, install(o))
+	testing.expect_value(t, status(o, context.temp_allocator).state, State.Installed)
+
+	// the option off: the former default comes back
+	o.default_file_manager = false
+	expect_ok(t, install(o))
+	text, _ = os.read_entire_file(list, context.temp_allocator)
+	testing.expect_value(t, mimeapps_default(string(text), DIRECTORY_MIME), "org.gnome.Nautilus.desktop")
+	testing.expect(t, !strings.contains(string(text), "sample.desktop"), "nothing of ours is left")
+	testing.expect(t, !status(o, context.temp_allocator).parts[.File_Manager].present, "taken out with the option")
+
+	// remove takes it out too
+	o.default_file_manager = true
+	expect_ok(t, install(o))
+	expect_ok(t, remove(o))
+	text, _ = os.read_entire_file(list, context.temp_allocator)
+	testing.expect_value(t, mimeapps_default(string(text), DIRECTORY_MIME), "org.gnome.Nautilus.desktop")
+
+	// another program's default: not the part, and it stays
+	_ = os.write_entire_file(list, person)
+	testing.expect(t, !status(o, context.temp_allocator).parts[.File_Manager].present, "another program's default")
+	expect_ok(t, remove(o))
+	text, _ = os.read_entire_file(list, context.temp_allocator)
+	testing.expect_value(t, string(text), person)
 }
 
 // What the settings ask (apply): the launcher, then the start with the session alone (the launcher goes), then nothing.

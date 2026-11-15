@@ -340,6 +340,7 @@ job_collect :: proc(d: ^Dialog, o: Setup_Options) -> (ev: Event) {
 	if !d.known {
 		d.known = true
 		d.shortcut = d.facts.desk_lnk
+		choices_from_facts(d.facts, o, d.choices[:])   // (a box of a part shows what the system has, not a default)
 		if ui.line_edit_string(&d.folder) == "" { ui.line_edit_set(&d.folder, d.facts.dir) }
 	}
 	return

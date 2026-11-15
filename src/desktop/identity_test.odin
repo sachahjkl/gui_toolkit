@@ -97,11 +97,13 @@ roots_come_from_the_environment :: proc(t: ^testing.T) {
 		switch name {
 		case "SAMPLE_DESKTOP_BIN_DIR":      return "/scratch/bin"
 		case "SAMPLE_DESKTOP_REGISTRY_ROOT": return `Software\TkDesktopTest_1`
+		case "SAMPLE_DESKTOP_CONFIG_DIR":   return "/scratch/config"
 		case "WREN_DESKTOP_MENU_DIR":       return "/not/this/program's"
 		}
 		return ""
 	})
 	testing.expect_value(t, o.bin_dir, "/scratch/bin")
+	testing.expect_value(t, o.config_dir, "/scratch/config")
 	testing.expect_value(t, o.registry_root, `Software\TkDesktopTest_1`)
 	testing.expect_value(t, o.menu_dir, "")
 	testing.expect(t, !o.notify_system, "a scratch root tells the system nothing")
@@ -113,10 +115,13 @@ roots_come_from_the_environment :: proc(t: ^testing.T) {
 
 @(test)
 options_clone_owns_its_roots :: proc(t: ^testing.T) {
-	o := Integration_Options{identity = test_identity(), exe = "/a/sample", bin_dir = "/b", file_types = {".html"}}
+	o := Integration_Options{identity = test_identity(), exe = "/a/sample", bin_dir = "/b", autostart_dir = "/c/autostart", config_dir = "/c", file_types = {".html"}}
 	c := options_clone(o)
 	defer options_destroy(&c)
 	testing.expect_value(t, c.bin_dir, "/b")
 	testing.expect(t, raw_data(c.bin_dir) != raw_data(o.bin_dir), "a copy")
+	testing.expect_value(t, c.config_dir, "/c")
+	testing.expect(t, raw_data(c.config_dir) != raw_data(o.config_dir), "a copy")
+	testing.expect(t, raw_data(c.autostart_dir) != raw_data(o.autostart_dir), "a copy")
 	testing.expect_value(t, c.file_types[0], ".html")
 }
