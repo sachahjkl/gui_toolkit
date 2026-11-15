@@ -90,9 +90,8 @@ Logo :: struct {
 	size:    [2]f32,
 }
 
-@(private = "file") DIALOG_EM       :: [2]f32{46, 34}   // its size at first (a grip of its corner or edges makes it larger or smaller)
+@(private = "file") DIALOG_EM       :: [2]f32{46, 37}   // its size at first (a grip of its corner or edges makes it larger or smaller)
 @(private = "file") DIALOG_MIN_EM   :: [2]f32{28, 16}   // ... and at the least (what does not fit scrolls; the buttons stay)
-@(private) MARGIN_EM       :: 1.5
 @(private = "file") LOGO_EM         :: 4.2
 
 // Opens the view "setup" (registered the first time) in the State in use, the window being built (ui.views()): the facts are read on its
@@ -416,21 +415,23 @@ view_build :: proc(v: ^ui.View, d: ^Dialog) {
 	// what the dialog says scrolls when it is made small; its buttons stay under it
 	ui.next({width = ui.fill(), height = ui.fill()})
 	if ui.scroll_y("###setup_scroll") {
-		ui.spacer(ui.px(em * 0.5))
+		// (the scale's roles; the panels are wells: INNER_PAD inside, PAGE_MARGIN at the dialog's sides, ITEM_GAP
+		// between two, the dialog being dense)
+		ui.space(ui.LINE_GAP)
 		head(d, o, em, d.logo)
 		if d.known {
 			location(d, o, em, is_busy)
 			if !f.from_nix { options_grid(d, o, em) }
-			ui.spacer(ui.px(em * 0.6))
+			ui.space(ui.ITEM_GAP)
 			info(d, o, em, is_busy)
 		}
-		ui.spacer(ui.px(em * 0.5))
+		ui.space(ui.LINE_GAP)
 	}
-	ui.spacer(ui.px(em * 0.4))
+	ui.space(ui.LINE_GAP)
 	d.building = true
 	if ev := buttons(d, o, em); ev != .None { d.pending = ev }
 	d.building = false
-	ui.spacer(ui.px(em * 0.8))
+	ui.space(ui.ITEM_GAP)   // (a dense dialog: its buttons a group's gap from its edge, not a page's margin)
 	// (a button closed it: the view ends with it, the event waits for update)
 	if !d.open { ui.view_end(v, 0) }
 }
@@ -550,7 +551,7 @@ rad :: proc(o: Setup_Options, em, k: f32) -> f32 { return o.square ? 0 : math.ro
 panel :: proc(o: Setup_Options, em: f32, id: string, axis := ui.Axis.Y) -> bool {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	ui.push_parent(ui.build_box({}, fmt.tprintf("%s_line", id)))
-	ui.spacer(ui.px(em * MARGIN_EM))
+	ui.space(ui.PAGE_MARGIN)
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = axis, cross = .Center, radius = rad(o, em, 0.4)})
 	box: ^ui.Box
 	if ui.tags("input") { box = ui.build_box({.Draw_Background, .Draw_Border}, id) }
@@ -561,7 +562,7 @@ panel :: proc(o: Setup_Options, em: f32, id: string, axis := ui.Axis.Y) -> bool 
 @(private)
 panel_end :: proc() {
 	ui.pop_parent()
-	ui.spacer(ui.px(ui.font_size() * MARGIN_EM))
+	ui.space(ui.PAGE_MARGIN)
 	ui.pop_parent()
 }
 
@@ -587,7 +588,7 @@ headline :: proc(f: Facts, o: Setup_Options) -> (title, badge: string) {
 head :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 	f := &d.facts
 	if panel(o, em, "###setup_head", .X) {
-		ui.spacer(ui.px(em * 0.9))
+		ui.space(ui.INNER_PAD)
 		if l, has := logo.?; has {
 			side := math.round(em * 2.6)
 			ui.next({width = ui.px(side), height = ui.px(side)})
@@ -595,13 +596,13 @@ head :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 			p := ui.frame_new(Logo)
 			p^ = l
 			b.custom, b.custom_user = logo_draw, p
-			ui.spacer(ui.px(em * 0.8))
+			ui.space(ui.ICON_GAP)
 		}
 		title, badge := i18n.tr("Reading the install…"), ""
 		if d.known { title, badge = headline(f^, o) }
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###setup_words") {
-			ui.spacer(ui.px(em * 0.55))
+			ui.space(ui.INNER_PAD)
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.7)), font_size = math.round(em * 1.25), text_pad = 0})
 			ui.label(fmt.tprintf("%s###setup_name", title))
 			if ui.tags("weak") {
@@ -611,18 +612,18 @@ head :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 				ui.label(fmt.tprintf("%s###setup_version", fmt.tprintf(i18n.tr("This copy: v%s → %s"), o.version, installed)))
 			}
 			by_line(o, d.vendor_mark, em, "###setup_by")
-			ui.spacer(ui.px(em * 0.55))
+			ui.space(ui.INNER_PAD)
 		}
 		if badge != "" {
 			_, tone := state_words(f^, o)
-			ui.spacer(ui.px(em * 0.6))
+			ui.space(ui.CONTROL_GAP)
 			ui.next({width = ui.text_size(em * 1.2), height = ui.px(math.round(em * 2)), radius = rad(o, em, 0.3), text_pad = 0, text_align = .Center})
 			if ui.tags("button", tone) {
 				b := ui.build_box({.Draw_Background, .Draw_Border, .Draw_Text}, fmt.tprintf("%s###setup_badge", badge))
 				b.text_align = .Center
 			}
 		}
-		ui.spacer(ui.px(em * 0.9))
+		ui.space(ui.INNER_PAD)
 	}
 }
 
@@ -639,7 +640,7 @@ by_line :: proc(o: Setup_Options, mark: Maybe(Logo), em: f32, id: string) {
 			ui.next({width = ui.text_size(), height = ui.px(line), font_size = size, text_pad = 0})
 			ui.label(fmt.tprintf("%s###setup_by_word", i18n.tr("By")))
 		}
-		ui.spacer(ui.px(math.round(em * 0.35)))
+		ui.space(ui.ICON_GAP)
 		if l, has := mark.?; has {
 			side := math.round(em * 0.95)
 			ui.next({width = ui.px(side), height = ui.px(side)})
@@ -647,7 +648,7 @@ by_line :: proc(o: Setup_Options, mark: Maybe(Logo), em: f32, id: string) {
 			p := ui.frame_new(Logo)
 			p^ = l
 			b.custom, b.custom_user = logo_draw, p
-			ui.spacer(ui.px(math.round(em * 0.3)))
+			ui.space(ui.ICON_GAP)
 		}
 		if o.vendor_url == "" {
 			if ui.tags("weak") {
@@ -668,10 +669,10 @@ by_line :: proc(o: Setup_Options, mark: Maybe(Logo), em: f32, id: string) {
 location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	f := &d.facts
 	choose := o.folder && f.state == .Not_Installed && !f.from_nix
-	ui.spacer(ui.px(em * 0.6))
+	ui.space(ui.ITEM_GAP)
 	line_next()
 	if ui.row(id = "###setup_location_label") {
-		ui.spacer(ui.px(em * MARGIN_EM))
+		ui.space(ui.PAGE_MARGIN)
 		if ui.tags("weak") {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.5)), text_pad = 0})
 			ui.label(fmt.tprintf("%s###setup_loc", choose ? i18n.tr("Install location") : i18n.tr("Installed program")))
@@ -679,11 +680,11 @@ location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	}
 	line_next()
 	if ui.row(.Center, id = "###setup_location_row") {
-		ui.spacer(ui.px(em * MARGIN_EM))
+		ui.space(ui.PAGE_MARGIN)
 		if choose {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), radius = rad(o, em, 0.3)})
 			_ = ui.line_edit("###setup_folder", &d.folder)
-			ui.spacer(ui.px(em * 0.4))
+			ui.space(ui.CONTROL_GAP)
 			if button(o, "###setup_pick", i18n.tr("Choose…"), lucide.FOLDER_OPEN, .Primary, em) && !busy { pick_folder(d, o) }
 		} else {
 			ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), axis = .X, cross = .Center, radius = rad(o, em, 0.3)})
@@ -691,18 +692,18 @@ location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 			if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border}, "###setup_where") }
 			if ui.parent(well) { where_row(d, "###w1", "", f.exe, true, 0, em) }
 		}
-		ui.spacer(ui.px(em * MARGIN_EM))
+		ui.space(ui.PAGE_MARGIN)
 	}
 	if choose {
 		if why := desktop.check_install_dir(strings.trim_space(ui.line_edit_string(&d.folder)), o.identity.name); why != "" {
 			line_next()
 			if ui.row(id = "###setup_folder_why_row") {
-				ui.spacer(ui.px(em * MARGIN_EM))
+				ui.space(ui.PAGE_MARGIN)
 				if ui.tags("bad") {
 					ui.next({width = ui.fill(), text_pad = 0, font_size = math.round(em * 0.86)})
 					ui.paragraph(fmt.tprintf("%s###setup_folder_why", why))
 				}
-				ui.spacer(ui.px(em * MARGIN_EM))
+				ui.space(ui.PAGE_MARGIN)
 			}
 		}
 	}
@@ -711,35 +712,35 @@ location :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 // "Options": a section header, then the Desktop shortcut and the program's choices, two framed boxes a line.
 @(private)
 options_grid :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
-	ui.spacer(ui.px(em * 0.7))
+	ui.space(ui.ITEM_GAP)
 	if panel(o, em, "###setup_options_head", .X) {
 		ui.next({width = ui.px(max(math.round(em * 0.22), 2)), height = ui.px(math.round(em * 1.9)), bg = ui.color("accent")})
 		ui.build_box({.Draw_Background}, "###setup_options_bar")
-		ui.spacer(ui.px(em * 0.7))
+		ui.space(ui.ICON_GAP)
 		ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.9)), text_pad = 0})
 		ui.label(fmt.tprintf("%s###setup_options_label", i18n.tr("Options")))
 	}
 	n := 1 + min(len(o.choices), len(d.choices))
 	// (one per line, as wide as the dialog: a long label wraps in its tile, never past it)
 	for k in 0 ..< n {
-		ui.spacer(ui.px(em * 0.4))
+		ui.space(ui.LINE_GAP)
 		line_next()
 		if ui.row(.Center, id = fmt.tprintf("###setup_options_%d", k)) {
-			ui.spacer(ui.px(em * MARGIN_EM))
+			ui.space(ui.PAGE_MARGIN)
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = rad(o, em, 0.4)})
 			tile: ^ui.Box
 			if ui.tags("input") { tile = ui.build_box({.Draw_Background, .Draw_Border}, fmt.tprintf("###setup_tile_%d", k)) }
 			if ui.parent(tile) {
-				ui.spacer(ui.px(em * 0.5))
+				ui.space(ui.INNER_PAD)
 				ui.next({width = ui.fill()})
 				if k == 0 {
 					ui.checkbox("###setup_shortcut", i18n.tr("Shortcut on the Desktop"), &d.shortcut, wrap = true)
 				} else {
 					ui.checkbox(fmt.tprintf("###setup_choice_%d", k - 1), i18n.tr(o.choices[k - 1].label), &d.choices[k - 1], wrap = true)
 				}
-				ui.spacer(ui.px(em * 0.5))
+				ui.space(ui.INNER_PAD)
 			}
-			ui.spacer(ui.px(em * MARGIN_EM))
+			ui.space(ui.PAGE_MARGIN)
 		}
 	}
 }
@@ -750,16 +751,16 @@ options_grid :: proc(d: ^Dialog, o: Setup_Options, em: f32) {
 info :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 	f := &d.facts
 	if panel(o, em, "###setup_info") {
-		ui.spacer(ui.px(em * 0.45))
+		ui.space(ui.INNER_PAD)
 		words, tone := state_words(f^, o)
 		line_next()
 		if ui.row(.Center, id = "###setup_state_row") {
-			ui.spacer(ui.px(em * 0.9))
+			ui.space(ui.INNER_PAD)
 			if ui.tags(tone == "accent" ? "" : tone) {
 				ui.next({width = ui.fill(), text_pad = 0})
 				ui.paragraph(fmt.tprintf("%s###setup_state", words))
 			}
-			ui.spacer(ui.px(em * 0.9))
+			ui.space(ui.INNER_PAD)
 		}
 		key_w := keys_width(em, words_menu(), words_record(), i18n.tr("This copy"))
 		where_row(d, "###w2", words_menu(), f.start_lnk ? o.identity.name : "-", false, key_w, em)
@@ -768,27 +769,27 @@ info :: proc(d: ^Dialog, o: Setup_Options, em: f32, busy: bool) {
 		if f.nixos && f.state != .Nix_Package && f.state != .This_Copy {
 			line_next()
 			if ui.row(id = "###setup_nixos_row") {
-				ui.spacer(ui.px(em * 0.9))
+				ui.space(ui.INNER_PAD)
 				if ui.tags("weak") {
 					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
 					ui.paragraph(fmt.tprintf("%s###setup_nixos", i18n.tr("On NixOS, a Nix package is the better install: Nix updates it. An install here makes this copy run by itself (nix-build makes the libraries it needs).")))
 				}
-				ui.spacer(ui.px(em * 0.9))
+				ui.space(ui.INNER_PAD)
 			}
 		}
 		if d.note != "" || busy {
-			ui.spacer(ui.px(em * 0.3))
+			ui.space(ui.LINE_GAP)
 			line_next()
 			if ui.row(.Center, id = "###setup_note_row") {
-				ui.spacer(ui.px(em * 0.9))
+				ui.space(ui.INNER_PAD)
 				if ui.tags(busy ? "weak" : d.note_good ? "good" : "bad") {
 					ui.next({width = ui.fill(), text_pad = 0})
 					ui.paragraph(fmt.tprintf("%s###setup_note", busy ? i18n.tr("Working…") : d.note))
 				}
-				ui.spacer(ui.px(em * 0.9))
+				ui.space(ui.INNER_PAD)
 			}
 		}
-		ui.spacer(ui.px(em * 0.45))
+		ui.space(ui.INNER_PAD)
 	}
 }
 
@@ -805,11 +806,11 @@ keys_width :: proc(em: f32, keys: ..string) -> f32 {
 	widest: f32
 	st := ui.top_style()
 	for k in keys { widest = max(widest, ui.text_width(st.font, st.font_size, k)) }
-	return math.ceil(widest + em * KEY_GAP_EM)
+	return math.ceil(widest + math.round(em * KEY_GAP))
 }
 
-// The room between a well's key and its value, in font sizes.
-@(private = "file") KEY_GAP_EM :: 1.2
+// The room between a well's key and its value, in font sizes: a column's gap, which no role of the scale names.
+@(private = "file") KEY_GAP :: ui.SPACE_4
 
 // A line of the well: what, weak, in a column `key_w` wide (keys_width of the well's keys), then where ("" key: the value
 // alone, the line under a label). A path that does not fit is cut; the pointer over it shows it whole, and a click on it
@@ -818,7 +819,7 @@ keys_width :: proc(em: f32, keys: ..string) -> f32 {
 where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, key_w: f32, em: f32) {
 	ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.55)), axis = .X, cross = .Center})
 	if ui.row(.Center, id = id) {
-		ui.spacer(ui.px(em * 0.9))
+		ui.space(ui.INNER_PAD)   // (a line of a well: the well's inset at its sides)
 		if key != "" {
 			if ui.tags("weak") {
 				ui.next({width = ui.px(key_w), height = ui.pct(1), text_pad = 0})
@@ -834,7 +835,7 @@ where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, key_w: f32, em
 			ui.a11y({role = .Button, name = fmt.tprintf(i18n.tr("Copy %s"), value)})
 			text := ui.build_box({.Clickable, .Draw_Text}, fmt.tprintf("%s###v", value))
 			sig := ui.signal(text)
-			ui.spacer(ui.px(em * 0.4))
+			ui.space(ui.CONTROL_GAP)
 			side := math.round(em * 1.3)
 			ui.next({width = ui.px(side), height = ui.px(side), cursor = .Hand})
 			ui.a11y({role = .Button, name = fmt.tprintf(i18n.tr("Copy %s"), value)})
@@ -859,7 +860,7 @@ where_row :: proc(d: ^Dialog, id, key, value: string, path: bool, key_w: f32, em
 				}
 			}
 		}
-		ui.spacer(ui.px(em * 0.9))
+		ui.space(ui.INNER_PAD)
 	}
 }
 
@@ -907,7 +908,7 @@ buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 	mark :: proc(d: ^Dialog, role: Button_Role, id: string) { if b := ui.prev_box(id); b != nil { d.at[role] = b.rect } }
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 	if ui.row(.Center, id = "###setup_buttons") {
-		ui.spacer(ui.px(em * MARGIN_EM))
+		ui.space(ui.PAGE_MARGIN)
 		if can_uninstall(d) {
 			// (the first click asks; the second uninstalls)
 			// (beside a Nix package, what goes is only what an earlier install left)
@@ -926,16 +927,16 @@ buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 		if button(o, CLOSING_IDS[how], CLOSING_WORDS[how], lucide.X, .Neutral, em) { ev = close(d, how) }
 		if !just_installed { mark(d, .Secondary, CLOSING_IDS[how]) }
 		if just_installed {
-			ui.spacer(ui.px(em * 0.5))
+			ui.space(ui.CONTROL_GAP)
 			if button(o, "###setup_launch", i18n.tr("Open the installed copy"), lucide.EXTERNAL_LINK, .Success, em) { ev = open_installed(d) }
 			mark(d, .Secondary, "###setup_launch")
 		}
 		if label := install_label(d, o); label != "" {
-			ui.spacer(ui.px(em * 0.5))
+			ui.space(ui.CONTROL_GAP)
 			if button(o, "###setup_install", label, d.facts.state == .Repair ? lucide.WRENCH : lucide.DOWNLOAD, .Success, em) && !busy(d) { start_install(d, o) }
 			mark(d, .Install, "###setup_install")
 		}
-		ui.spacer(ui.px(em * MARGIN_EM))
+		ui.space(ui.PAGE_MARGIN)
 	}
 	if d.confirm && ui.key_press(.Escape) { d.confirm = false }
 	return

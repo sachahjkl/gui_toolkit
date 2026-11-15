@@ -51,13 +51,14 @@ page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 				ui.next({width = ui.fill(), text_pad = 0})
 				ui.paragraph(fmt.tprintf("%s###setup_page_state", words))
 			}
-			ui.spacer(ui.px(em * 0.6))
+			ui.space(ui.LINE_GAP)
 			// where everything is
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = rad(o, em, 0.4)})
 			well: ^ui.Box
 			if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border}, "###setup_page_where") }
 			if ui.parent(well) {
-				ui.spacer(ui.px(em * 0.35))
+				// (a well's inset: INNER_PAD above and under; where_row puts it at the sides)
+				ui.space(ui.INNER_PAD)
 				installed := f.state != .Not_Installed && f.state != .Nix_Package
 				// (one column for the keys, as wide as the widest in the language in use)
 				kw := keys_width(em, i18n.tr("Installed program"), i18n.tr("Version installed"), i18n.tr("This copy"),
@@ -76,12 +77,12 @@ page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 				} else {
 					where_row(d, "###p_path", i18n.tr("On the PATH"), yes_no(f.on_path), false, kw, em)
 				}
-				ui.spacer(ui.px(em * 0.35))
+				ui.space(ui.INNER_PAD)
 			}
 			// before an install: where it goes and its options
 			if !f.from_nix && install_label(d, o) != "" {
 				if o.folder && f.state == .Not_Installed { page_folder(d, o, em, is_busy) }
-				ui.spacer(ui.px(em * 0.6))
+				ui.space(ui.ITEM_GAP)
 				ui.next({width = ui.fill()})
 				ui.checkbox("###setup_page_shortcut", i18n.tr("Shortcut on the Desktop"), &d.shortcut, wrap = true)
 				for i in 0 ..< min(len(o.choices), len(d.choices)) {
@@ -97,13 +98,13 @@ page :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 			}
 		}
 		if d.note != "" || is_busy {
-			ui.spacer(ui.px(em * 0.4))
+			ui.space(ui.LINE_GAP)
 			if ui.tags(is_busy ? "weak" : d.note_good ? "good" : "bad") {
 				ui.next({width = ui.fill(), text_pad = 0})
 				ui.paragraph(fmt.tprintf("%s###setup_page_note", is_busy ? i18n.tr("Working…") : d.note))
 			}
 		}
-		ui.spacer(ui.px(em * 0.8))
+		ui.space(ui.ITEM_GAP)
 		if bev := page_buttons(d, o, em); bev != .None { ev = bev }
 	}
 	return
@@ -117,7 +118,7 @@ page_line :: proc() {
 // The install folder and the system's picker, before the first install.
 @(private = "file")
 page_folder :: proc(d: ^Dialog, o: Setup_Options, em: f32, is_busy: bool) {
-	ui.spacer(ui.px(em * 0.6))
+	ui.space(ui.ITEM_GAP)
 	if ui.tags("weak") {
 		ui.next({width = ui.fill(), text_pad = 0})
 		ui.label(fmt.tprintf("%s###setup_page_loc", i18n.tr("Install location")))
@@ -126,7 +127,7 @@ page_folder :: proc(d: ^Dialog, o: Setup_Options, em: f32, is_busy: bool) {
 	if ui.row(.Center, id = "###setup_page_folder_row") {
 		ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.1)), radius = rad(o, em, 0.3)})
 		_ = ui.line_edit("###setup_page_folder", &d.folder)
-		ui.spacer(ui.px(em * 0.4))
+		ui.space(ui.CONTROL_GAP)
 		if button(o, "###setup_page_pick", i18n.tr("Choose…"), lucide.FOLDER_OPEN, .Primary, em) && !is_busy { pick_folder(d, o) }
 	}
 }
@@ -141,12 +142,12 @@ page_buttons :: proc(d: ^Dialog, o: Setup_Options, em: f32) -> (ev: Event) {
 		if label := install_label(d, o); label != "" {
 			if button(o, "###setup_install", label, d.facts.state == .Repair ? lucide.WRENCH : lucide.DOWNLOAD, .Success, em) && !busy(d) { start_install(d, o) }
 			mark(d, .Install, "###setup_install")
-			ui.spacer(ui.px(em * 0.5))
+			ui.space(ui.CONTROL_GAP)
 		}
 		if d.installed != "" && d.facts.state != .This_Copy {
 			if button(o, "###setup_launch", i18n.tr("Open the installed copy"), lucide.EXTERNAL_LINK, .Success, em) { ev = open_installed(d) }
 			mark(d, .Secondary, "###setup_launch")
-			ui.spacer(ui.px(em * 0.5))
+			ui.space(ui.CONTROL_GAP)
 		}
 		ui.spacer(ui.fill())
 		if can_uninstall(d) {

@@ -189,58 +189,58 @@ licence_page_build :: proc(user: rawptr, em: f32) {
 	case l.status.registered:
 		lic := l.status.licence
 		if ui.tags("good") { line("licence_state", i18n.tr("Registered"), em, em * 1.1) }
-		ui.spacer(ui.px(em * 0.4))
+		ui.space(ui.LINE_GAP)
 		line("licence_holder", fmt.tprintf(i18n.tr("Holder: %s"), lic.name), em)
 		if licence_editions(l.options.store.product) > 1 {
 			line("licence_edition", fmt.tprintf(i18n.tr("Edition: %s"), licence.edition_title(l.options.store.product, lic.edition)), em)
 		}
-		ui.spacer(ui.px(em * 0.4))
+		ui.space(ui.LINE_GAP)
 		if ui.tags("weak") { line("licence_thanks", fmt.tprintf(i18n.tr("Thank you for supporting %s."), name), em) }
-		ui.spacer(ui.px(em * 0.8))
+		ui.space(ui.ITEM_GAP)
 		licence_remove_button(l, em)
 	case:
 		line("licence_state", i18n.tr("Unregistered"), em, em * 1.1)
-		ui.spacer(ui.px(em * 0.4))
+		ui.space(ui.LINE_GAP)
 		if ui.tags("weak") { line("licence_why", sentence(fmt.tprintf(i18n.tr("%s is free; a licence supports its development."), name)), em) }
 		if l.status.stored {
 			// (a key is there, but it does not check out: said, not hidden; it can be replaced or removed)
-			ui.spacer(ui.px(em * 0.4))
+			ui.space(ui.LINE_GAP)
 			if ui.tags("bad") { line("licence_stored", fmt.tprintf(i18n.tr("The licence stored here is not valid: %s"), licence.error_text(l.status.err)), em) }
 		}
 		if l.options.pricing_url != "" {
-			ui.spacer(ui.px(em * 0.8))
+			ui.space(ui.ITEM_GAP)
 			if ui.button("licence_buy", i18n.tr("Buy a licence"), lucide.HEART, {icon_font = ui.lucide_icons(), intent = .Primary}).clicked {
 				ui.open(l.options.pricing_url, .Url)
 			}
 		}
-		ui.spacer(ui.px(em * 0.8))
+		ui.space(ui.ITEM_GAP)
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 		if ui.row(id = "###licence_key_row") {
 			ui.next({width = ui.fill(), height = h})
 			res := ui.line_edit("###licence_key", &l.key, {placeholder = i18n.tr("Paste a licence key")})
 			key := strings.trim_space(ui.line_edit_string(&l.key))
-			ui.spacer(ui.px(em * 0.4))
+			ui.space(ui.CONTROL_GAP)
 			register := ui.button("licence_register", i18n.tr("Register"), lucide.CHECK, {icon_font = ui.lucide_icons(), intent = .Success, disabled = l.busy || key == ""})
 			if (register.clicked || res.committed) && key != "" && !l.busy { licence_run(l, .Install, key) }
 		}
-		ui.spacer(ui.px(em * 0.5))
+		ui.space(ui.CONTROL_GAP)
 		if ui.button("licence_file", i18n.tr("Choose a licence file…"), lucide.FOLDER_OPEN, {icon_font = ui.lucide_icons(), disabled = l.busy}).clicked {
 			licence_choose_file(l, name)
 		}
 		if l.status.stored {
-			ui.spacer(ui.px(em * 0.5))
+			ui.space(ui.CONTROL_GAP)
 			licence_remove_button(l, em)
 		}
 	}
 	if l.problem != "" {
-		ui.spacer(ui.px(em * 0.5))
+		ui.space(ui.LINE_GAP)
 		if ui.tags("bad") { line("licence_problem", l.problem, em) }
 	}
 	if l.notice != "" {
-		ui.spacer(ui.px(em * 0.5))
+		ui.space(ui.LINE_GAP)
 		if ui.tags("good") { line("licence_notice", l.notice, em) }
 	}
-	ui.spacer(ui.px(em * 1.2))
+	ui.space(ui.GROUP_GAP)
 	if ui.tags("weak") {
 		line("licence_offline", fmt.tprintf(i18n.tr("The key is checked on this computer, with no network: %s never sends it anywhere."), name), em, em * 0.9)
 	}

@@ -217,7 +217,7 @@ escape_leaves :: proc(p: ^Page) -> bool {
 back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) -> (back: bool) {
 	ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.6)), axis = .X, cross = .Center})
 	if ui.row(id = "###prefs_back_bar") {
-		ui.spacer(ui.px(em * 0.5))
+		ui.space(ui.SPACE_2)
 		icon := o.icon_font != 0
 		if icon {
 			ui.next({width = ui.px(math.round(em * 2.1)), height = ui.px(math.round(em * 2.1)), font = o.icon_font, radius = em * 0.4})
@@ -234,7 +234,7 @@ back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) ->
 			}
 		}
 		back = sig.clicked
-		ui.spacer(ui.px(em * 0.5))
+		ui.space(ui.ICON_GAP)
 		ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 1.05), text_pad = 0})
 		ui.label(fmt.tprintf("%s###prefs_back_title", title))
 	}
@@ -242,15 +242,15 @@ back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) ->
 }
 
 // Sizes, in ems: the sidebar (its default, least and most width, and the share of the page it may take), its icons
-// alone and the page width under which it shows them, the margins of the page, a control's height, the least width of
-// the words beside a control, the share of its line past which a segmented choice goes under its words, a theme's card.
+// alone and the page width under which it shows them, a control's height, the least width of the words beside a
+// control, the share of its line past which a segmented choice goes under its words, a theme's card. (The gaps are the
+// toolkit's scale: ui.PAGE_MARGIN and the other roles.)
 @(private = "file") NAV_EM          :: 14
 @(private = "file") NAV_MIN_EM      :: 9
 @(private = "file") NAV_MAX_EM      :: 30
 @(private = "file") NAV_SHARE_MAX   :: 0.5
 @(private = "file") NAV_ICONS_EM    :: 4
 @(private = "file") NARROW_EM       :: 40
-@(private = "file") MARGIN_EM       :: 1.4
 @(private = "file") CONTROL_H_EM    :: 2
 @(private = "file") WORDS_MIN_EM    :: 12
 @(private = "file") WIDE_SHARE      :: 0.45
@@ -395,10 +395,10 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 		if ui.scroll_y("###prefs_scroll") {
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 			if ui.row(id = "###prefs_margins") {
-				ui.spacer(ui.px(em * MARGIN_EM))
+				ui.space(ui.PAGE_MARGIN)
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 				if ui.column(id = "###prefs_body") {
-					ui.spacer(ui.px(em * 1.1))
+					ui.space(PAGE_TOP)
 					if config.searching(&p.search) {
 						page_title(i18n.tr("Search"), em)
 						for pg in pages {
@@ -441,9 +441,9 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 							if o.page_foot != nil { o.page_foot(o.user, pg.category, em) }
 						}
 					}
-					ui.spacer(ui.px(em * 1.5))
+					ui.space(ui.PAGE_MARGIN)
 				}
-				ui.spacer(ui.px(em * MARGIN_EM))
+				ui.space(ui.PAGE_MARGIN)
 			}
 		}
 	}
@@ -508,10 +508,10 @@ group_of :: proc(name: string) -> string {
 
 @(private = "file")
 section_heading :: proc(title, id: string, em: f32) {
-	ui.spacer(ui.px(em * 1.2))
+	ui.space(ui.GROUP_GAP)
 	ui.next({width = ui.fill(), height = ui.px(em * 1.6), font_size = math.round(em * 1.02), text_pad = 0})
 	ui.label(fmt.tprintf("%s###sec_%s", title, id))
-	ui.spacer(ui.px(em * 0.2))
+	ui.space(ui.LINE_GAP)
 }
 
 // A sentence in the weak text above a page's or a section's settings. `id`: its key, without "###".
@@ -521,7 +521,7 @@ page_note :: proc(text, id: string, em: f32) {
 		ui.next({width = ui.fill(), font_size = math.round(em * 0.9), text_pad = 0})
 		ui.paragraph(fmt.tprintf("%s###%s", text, id))
 	}
-	ui.spacer(ui.px(em * 0.5))
+	ui.space(ui.LINE_GAP)
 }
 
 // The page's advanced preferences, folded under "Advanced" until a click (the page keeps it open). Only on a page that
@@ -530,7 +530,7 @@ page_note :: proc(text, id: string, em: f32) {
 advanced_part :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, category: string, names: []string, em: f32) {
 	open := p.unfolded[category]
 	was := open
-	ui.spacer(ui.px(em * 0.8))
+	ui.space(ui.GROUP_GAP)
 	if ui.accordion("###advanced", i18n.tr("Advanced"), &open) {
 		sections(p, prefs, o, category, names, em)
 	}
@@ -545,11 +545,11 @@ advanced_part :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, category:
 nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool, width: f32, em: f32) {
 	ui.next({width = ui.px(math.round(em * width)), height = ui.fill(), axis = .Y})
 	if ui.column(id = "###prefs_nav") {
-		ui.spacer(ui.px(em * 1.1))
+		ui.space(PAGE_TOP)
 		if !icons {
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 			if ui.row(id = "###prefs_search_row") {
-				ui.spacer(ui.px(em * 0.7))
+				ui.space(NAV_SIDE_LEAD)
 				ui.next({width = ui.fill(), height = ui.px(math.round(em * CONTROL_H_EM)), radius = em * 0.45})
 				if ui.input_frame("###prefs_search") {
 					if o.icon_font != 0 && o.search_icon != "" {
@@ -564,15 +564,15 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 						if p.focus_search { p.focus_search = false; ui.set_focus(res.box.key) }
 					}
 				}
-				ui.spacer(ui.px(em * 0.9))
+				ui.space(NAV_SIDE_TRAIL)
 			}
 		}
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if ui.scroll_y("###prefs_nav_list") {
-			ui.spacer(ui.px(em * 0.6))
+			ui.space(ui.LINE_GAP)
 			for pg, i in pages {
 				if pg.heading != "" && !icons {
-					if i > 0 { ui.spacer(ui.px(em * 0.6)) }
+					if i > 0 { ui.space(ui.ITEM_GAP) }
 					ui.next({width = ui.fill(), height = ui.px(em * 1.5), axis = .X, cross = .Center})
 					if ui.row(id = fmt.tprintf("###nh%d", i)) {
 						ui.spacer(ui.px(em * NAV_HEADING_LEAD_EM))
@@ -582,11 +582,11 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 						}
 					}
 				} else if pg.heading != "" && i > 0 {
-					ui.spacer(ui.px(em * 0.6))
+					ui.space(ui.ITEM_GAP)
 				}
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 				if ui.row(id = fmt.tprintf("###nv%d", i)) {
-					ui.spacer(ui.px(em * NAV_LEAD_EM))
+					ui.space(NAV_LEAD_EM)
 					shown := i == cur && !config.searching(&p.search)
 					glyph := o.icon_font != 0 ? pg.icon : ""
 					line := ui.Button_Options{face = .Row, selected = shown, width = ui.fill(), height = math.round(em * NAV_LINE_HEIGHT_EM), left = true, icon_font = o.icon_font}
@@ -595,15 +595,15 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 						p.current = strings.clone(pg.category)
 						ui.line_edit_set(&p.query, "")   // (a page chosen: the search is done)
 					}
-					ui.spacer(ui.px(em * NAV_TRAIL_EM))
+					ui.space(NAV_TRAIL_EM)
 				}
-				ui.spacer(ui.px(em * 0.2))
+				ui.space(ui.SPACE_1)
 			}
 		}
 		if o.version != "" {
 			ui.next({width = ui.fill(), height = ui.px(em * 1.6), axis = .X, cross = .Center})
 			if ui.row(id = "###prefs_version") {
-				ui.spacer(ui.px(em * (icons ? 0.4 : 0.9)))
+				ui.space(icons ? ui.SPACE_2 : NAV_SIDE_TRAIL)
 				if ui.tags("weak") {
 					ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.8), text_pad = 0})
 					ui.label(fmt.tprintf("%s###version", o.version))
@@ -611,17 +611,25 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 			}
 		}
 		if !icons { nav_foot(p, o, em) }
-		ui.spacer(ui.px(em * 0.6))
+		ui.space(ui.LINE_GAP)
 	}
 }
 
 // A line of the sidebar: as tall as this many font sizes (at least: a title that wraps makes it taller).
 @(private = "file") NAV_LINE_HEIGHT_EM :: 2.1
+// Above the page's title and the sidebar's search: the window's own bar is over them, PAGE_MARGIN there leaves too much.
+@(private = "file") PAGE_TOP :: ui.SPACE_4
+// The sidebar's insets: before a control (the search, a page's row, Export), whose own padding moves its words in;
+// after a control, and on both sides of plain words (the version, the file, the note), so they line up with the
+// controls' words and keep clear of the splitter's handle.
+@(private = "file") NAV_SIDE_LEAD :: ui.SPACE_3
+@(private = "file") NAV_SIDE_TRAIL :: ui.SPACE_4
 // The sidebar's room beside a page's row: before it, after it (nav's spacers), and before a heading. (Its face is inset
-// in it by ui.ROW_FACE_INSET_EM: the face stands where the buttons stood.)
-@(private = "file") NAV_LEAD_EM :: 0.7 - ui.ROW_FACE_INSET_EM
-@(private = "file") NAV_TRAIL_EM :: 0.9 - ui.ROW_FACE_INSET_EM
-@(private = "file") NAV_HEADING_LEAD_EM :: 1.1
+// in it by ui.ROW_FACE_INSET_EM: the face stands where the buttons stood.) A heading's lead puts its words where the
+// rows' words start: an alignment, not a gap of the scale.
+@(private = "file") NAV_LEAD_EM :: NAV_SIDE_LEAD - ui.ROW_FACE_INSET_EM
+@(private = "file") NAV_TRAIL_EM :: NAV_SIDE_TRAIL - ui.ROW_FACE_INSET_EM
+@(private = "file") NAV_HEADING_LEAD_EM :: NAV_SIDE_LEAD + 0.4
 @(private = "file") NAV_HEADING_SIZE :: 0.75
 
 // The width, in ems, the sidebar needs to show each page's title and each heading on one line, and the search's
@@ -631,7 +639,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 nav_need_em :: proc(pages: []Page_Info, o: Page_Options, em: f32) -> f32 {
 	glyph := o.icon_font != 0 && o.search_icon != "" ? em * 1.8 : em * 0.4
 	border := 2 * max(1, math.round(ui.scale()))
-	need := em * (0.7 + 0.9) + glyph + 2 * em * 0.2 + border + em * 0.5 +
+	need := em * (NAV_SIDE_LEAD + NAV_SIDE_TRAIL) + glyph + 2 * em * 0.2 + border + em * 0.5 +
 		ui.text_width(ui.top_style().font, em, i18n.tr("Search settings"))
 	for pg in pages {
 		need = max(need, em * (NAV_LEAD_EM + NAV_TRAIL_EM) + ui.button_width(pg.title, o.icon_font != 0 && pg.icon != ""))
@@ -653,24 +661,24 @@ nav_foot :: proc(p: ^Page, o: Page_Options, em: f32) {
 		}
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 		if ui.row(id = "###prefs_file") {
-			ui.spacer(ui.px(em * 0.9))
+			ui.space(NAV_SIDE_TRAIL)
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 			if ui.column(id = "###prefs_file_col") {
 				if link("###prefs_file_link", p.file_shown, i18n.tr("Open the settings file"), em, mono = true) { ui.open(o.file) }
 			}
-			ui.spacer(ui.px(em * 0.9))
+			ui.space(NAV_SIDE_TRAIL)
 		}
 	}
-	ui.spacer(ui.px(em * 0.3))
+	ui.space(ui.LINE_GAP)
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 	if ui.row(id = "###prefs_transfer") {
-		ui.spacer(ui.px(em * 0.7))
+		ui.space(NAV_SIDE_LEAD)
 		h := ui.px(math.round(em * 1.7))
 		ui.next({width = ui.text_size(em * 0.6), height = h, radius = em * 0.35, font_size = math.round(em * 0.86)})
 		export_sig, import_sig: ui.Signal
 		if ui.tags("ghost_button") { export_sig = ui.button("prefs_export", i18n.tr("Export…")) }
 		ui.a11y_default(export_sig.box, {name = i18n.tr("Export the settings to a file (JSON, TOML, INI or this program's own)")})
-		ui.spacer(ui.px(em * 0.3))
+		ui.space(ui.CONTROL_GAP)
 		ui.next({width = ui.text_size(em * 0.6), height = h, radius = em * 0.35, font_size = math.round(em * 0.86)})
 		if ui.tags("ghost_button") { import_sig = ui.button("prefs_import", i18n.tr("Import…")) }
 		ui.a11y_default(import_sig.box, {name = i18n.tr("Import settings exported by this program")})
@@ -678,15 +686,15 @@ nav_foot :: proc(p: ^Page, o: Page_Options, em: f32) {
 		if import_sig.clicked { import_ask(p) }
 	}
 	if p.note != "" {
-		ui.spacer(ui.px(em * 0.3))
+		ui.space(ui.LINE_GAP)
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 		if ui.row(id = "###prefs_note") {
-			ui.spacer(ui.px(em * 0.9))
+			ui.space(NAV_SIDE_TRAIL)
 			if ui.tags(p.note_bad ? "bad" : "weak") {
 				ui.next({width = ui.fill(), font_size = math.round(em * 0.8), text_pad = 0})
 				ui.paragraph(fmt.tprintf("%s###note", p.note))
 			}
-			ui.spacer(ui.px(em * 0.9))
+			ui.space(NAV_SIDE_TRAIL)
 		}
 	}
 }
@@ -765,7 +773,7 @@ page_header :: proc(title: string, changed: bool, o: Page_Options, em: f32) -> (
 			restore = sig.clicked
 		}
 	}
-	ui.spacer(ui.px(em * 0.6))
+	ui.space(ui.LINE_GAP)
 	return
 }
 
@@ -773,7 +781,7 @@ page_header :: proc(title: string, changed: bool, o: Page_Options, em: f32) -> (
 page_title :: proc(title: string, em: f32) {
 	ui.next({width = ui.fill(), height = ui.px(em * 2), font_size = math.round(em * 1.3), text_pad = 0})
 	ui.label(fmt.tprintf("%s###prefs_title", title))
-	ui.spacer(ui.px(em * 0.6))
+	ui.space(ui.LINE_GAP)
 }
 
 // A preference's line: its title and its description, its control, a reset button while it is not at its default, a
@@ -783,7 +791,7 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 	show, heading := config.search_shows(&p.search, prefs, name)
 	if !show { return }
 	if heading != "" {
-		ui.spacer(ui.px(em * 0.6))
+		ui.space(ui.GROUP_GAP)
 		if ui.tags("weak") {
 			ui.next({width = ui.fill(), height = ui.px(em * 1.6), font_size = math.round(em * 0.78), text_pad = 0})
 			ui.label(fmt.tprintf("%s###sec_%s", strings.to_upper(heading, context.temp_allocator), heading))
@@ -794,7 +802,8 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 	locked := e.source == .Policy || e.source == .Command_Line
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = fmt.tprintf("###set_%s", name)) {
-		ui.spacer(ui.px(em * 0.4))
+		// (a line of a list: ROW_PAD above its words and under them, the carved line between two)
+		ui.space(ui.ROW_PAD)
 		under := false   // the control goes under the words (a wide choice, the program's own)
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 		if ui.row(.Center, id = "###line") {
@@ -816,12 +825,11 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 						ui.paragraph(fmt.tprintf("%s###d", note))
 					}
 				}
-				ui.spacer(ui.px(em * 0.2))
 			}
-			ui.spacer(ui.px(em * 0.8))
+			ui.space(ui.CONTROL_GAP)
 			if !locked && differs_from_default(prefs, name, is_hotkey(o, name)) {
 				if reset_button(o, em) { reset(p, prefs, o, name) }
-				ui.spacer(ui.px(em * 0.3))
+				ui.space(ui.CONTROL_GAP)
 			}
 			// (the line of the last build says the room: a control that leaves the words too little goes under them)
 			w, share := control_width(o, e, em)
@@ -835,7 +843,7 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 			}
 		}
 		if under {
-			ui.spacer(ui.px(em * 0.4))
+			ui.space(ui.LINE_GAP)
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 			if ui.column(id = "###under") {
 				if ui.disabled(locked) {
@@ -877,9 +885,8 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 				ui.paragraph(fmt.tprintf("%s###problem", why))
 			}
 		}
-		ui.spacer(ui.px(em * 0.5))
+		ui.space(ui.ROW_PAD)
 		ui.hline(ui.fill())
-		ui.spacer(ui.px(em * 0.3))
 	}
 }
 
@@ -935,7 +942,7 @@ control_width :: proc(o: Page_Options, e: ^config.Entry, em: f32) -> (w: f32, sh
 		return em * LIST_EM, share
 	case .Int, .Float:
 		if is_number(e.def) { return em * NUMBER_EM, share }
-		unit: f32 = e.def.unit != "" ? em * 0.4 + ui.text_width(ui.top_style().font, math.round(em * 0.86), i18n.tr(e.def.unit)) : 0
+		unit: f32 = e.def.unit != "" ? math.round(em * ui.CONTROL_GAP) + ui.text_width(ui.top_style().font, math.round(em * 0.86), i18n.tr(e.def.unit)) : 0
 		return em * NUMBER_FIELD_EM + unit, share
 	}
 	return
@@ -1033,12 +1040,12 @@ font_control :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, e: ^config
 // Under the themes' cards: that one can make one's own, and the file (a click makes it when needed and opens it).
 @(private = "file")
 themes_file_line :: proc(p: ^Page, tf: ^Themes_File, em: f32) {
-	ui.spacer(ui.px(em * 0.2))
+	// (the cards end with their gap: the words follow at once)
 	if ui.tags("weak") {
 		ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
 		ui.paragraph(fmt.tprintf("%s###themes_own", i18n.tr("Make themes of your own: each is a few lines in this file, which explains how. They show here as soon as it is saved.")))
 	}
-	ui.spacer(ui.px(em * 0.2))
+	ui.space(ui.LINE_GAP)
 	shown := home_short(tf.path, context.temp_allocator)
 	if link("###themes_file", shown, i18n.tr("Open the themes file in the system's editor (made at the first click)"), em, mono = true) && p.state != nil {
 		themes_file_open(tf, p.state)
@@ -1161,7 +1168,7 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 	}
 	if res.cancelled { delete(f.synced); f.synced = ""; delete(f.error); f.error = "" }
 	if numeric && e.def.unit != "" {
-		ui.spacer(ui.px(em * 0.4))
+		ui.space(ui.CONTROL_GAP)
 		if ui.tags("weak") {
 			ui.next({width = ui.text_size(0), height = ui.px(math.round(em * CONTROL_H_EM)), text_pad = 0, font_size = math.round(em * 0.86)})
 			ui.label(fmt.tprintf("%s###unit", i18n.tr(e.def.unit)))
@@ -1213,7 +1220,7 @@ Card :: struct { colors: ui.Theme_Colors, chosen: bool }
 // one named `current`. The index of the one clicked, or -1.
 theme_cards :: proc(list: []ui.Theme_Def, current: string, light: bool, em: f32, columns := CARDS_PER_ROW) -> (picked: int) {
 	picked = -1
-	gap := em * 0.5
+	gap := math.round(em * CARDS_GAP)
 	n := max(columns, 1)
 	for row := 0; row < len(list); row += n {
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
@@ -1238,22 +1245,26 @@ theme_cards :: proc(list: []ui.Theme_Def, current: string, light: bool, em: f32,
 					b.custom, b.custom_user = card_draw, d
 					if ui.signal(b).clicked && !chosen { picked = i }
 					if ui.parent(b) {
-						ui.spacer(ui.px(em * 0.55))
+						ui.space(ui.INNER_PAD)
 						ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 						if ui.row(id = "###n") {
-							ui.spacer(ui.px(em * 0.8))
+							ui.space(ui.INNER_PAD)
 							ui.next({width = ui.fill(), height = ui.px(em * 1.4), font_size = math.round(em * 0.92), fg = draw.hex(d.colors.texts[2]), text_pad = 0})
 							ui.label(fmt.tprintf("%s###t", t.name))
+							ui.space(ui.INNER_PAD)
 						}
 					}
 					if after := n - 1 - col; after > 0 { ui.spacer(ui.px(gap * f32(after) / f32(n))) }
 				}
 			}
 		}
-		ui.spacer(ui.px(em * 0.5))
+		ui.space(CARDS_GAP)
 	}
 	return
 }
+
+// Between two theme cards, across and down: a grid of small tiles, closer than two items of a page.
+@(private = "file") CARDS_GAP :: ui.SPACE_2
 
 @(private = "file")
 card_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
@@ -1270,13 +1281,14 @@ card_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	// its hues as dots along the bottom: the accent first, larger
 	em := ui.font_size()
 	dot := math.round((r.max.y - r.min.y) * 0.16)
-	x := r.min.x + math.round(0.8 * em)
-	y := r.max.y - math.round(0.55 * em) - dot
+	// (the dots sit INNER_PAD from the card's edges, as its name does)
+	x := r.min.x + math.round(ui.INNER_PAD * em)
+	y := r.max.y - math.round(ui.INNER_PAD * em) - dot
 	prev := draw.set_circular_corners(dc, true)
 	defer draw.set_circular_corners(dc, prev)
 	for h, i in t.hues {
 		sz := i == 0 ? dot * 1.4 : dot
-		if x + sz > r.max.x - math.round(0.8 * em) { break }   // (a narrow card shows fewer dots, never dots past its edge)
+		if x + sz > r.max.x - math.round(ui.INNER_PAD * em) { break }   // (a narrow card shows fewer dots, never dots past its edge)
 		cy := y + dot * 0.5
 		draw.rect(dc, {{x, cy - sz * 0.5}, {x + sz, cy + sz * 0.5}}, draw.hex(h | 0xff), sz * 0.5)
 		x += sz + math.round(dot * 0.45)
@@ -1293,7 +1305,7 @@ updater_under :: proc(o: Page_Options, em: f32) {
 		ui.paragraph(fmt.tprintf("%s###update_state", update.status_words(st)))
 	}
 	if st.phase == .Managed { return }
-	ui.spacer(ui.px(em * 0.4))
+	ui.space(ui.LINE_GAP)
 	// (a width of its own: a row that takes the program's base width, text_size() of no text, is a few pixels wide,
 	// and the buttons in it wrap to their widest word though the line has room)
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
@@ -1303,13 +1315,13 @@ updater_under :: proc(o: Page_Options, em: f32) {
 			update.check_now(o.updater)
 		}
 		if st.phase == .Available {
-			ui.spacer(ui.px(em * 0.5))
+			ui.space(ui.CONTROL_GAP)
 			if ui.button("update_install", fmt.tprintf(i18n.tr("Install %s"), st.version), lucide.DOWNLOAD, {icon_font = ui.lucide_icons(), intent = .Success}).clicked {
 				update.install_now(o.updater)
 			}
 		}
 		if st.phase == .Installed && o.restart != nil {
-			ui.spacer(ui.px(em * 0.5))
+			ui.space(ui.CONTROL_GAP)
 			if ui.button("update_restart", i18n.tr("Restart now"), lucide.POWER, {icon_font = ui.lucide_icons(), intent = .Success}).clicked { o.restart(o.user) }
 		}
 	}

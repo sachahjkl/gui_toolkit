@@ -67,5 +67,8 @@ would be one line too many).
 - The steps are rounded to whole pixels where they are used (`space`), never in the constants: a scale multiplied
   before rounding stays a scale at every zoom.
 - A list row's hairline is the theme's (`hline`), as wide as the card's content: it does not touch the card's edges.
-- The settings' pages (`prefs_page`) and the setup keep their own layout for now; they move to the roles in the same
-  way when they are next changed.
+- The settings' pages (`prefs_page`) and the setup use the roles too. Their framed boxes of facts (the setup's panels,
+  the Diagnostics rows) are wells: `INNER_PAD` inside. The changelog's version card has `ui.card`'s inset. A few gaps are
+  no role and stay a bare step: the page's top (`SPACE_4`, under the window's bar), the sidebar's insets, the gap
+  between two theme cards and between a key and its value. The sidebar's heading lead aligns with its rows' words; it
+  is not a gap.

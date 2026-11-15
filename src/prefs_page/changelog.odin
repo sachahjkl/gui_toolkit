@@ -245,7 +245,7 @@ changelog_build :: proc(user: rawptr, em: f32) {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = "###whats_new") {
 		changelog_tools_build(c, em)
-		ui.spacer(ui.px(math.round(em * 0.9)))
+		ui.space(ui.ITEM_GAP)
 		if len(c.shown) == 0 {
 			if ui.tags("weak") { ui.label(fmt.tprintf("%s###whats_new_none", i18n.tr("No version holds that."))) }
 			return
@@ -267,7 +267,7 @@ changelog_tools_build :: proc(c: ^Changelog, em: f32) {
 	if ui.row(.Start, {}, "###whats_new_tools") {
 		ui.next({width = ui.px(math.round(em * 16))})
 		ui.line_edit("###whats_new_search", &c.search, {placeholder = i18n.tr("Search the versions"), clearable = true})
-		ui.spacer(ui.px(math.round(em * 0.8)))
+		ui.space(ui.CONTROL_GAP)
 		for k in Change_Kind {
 			if k not_in c.kinds_in { continue }
 			on := k not_in c.kinds_off
@@ -277,7 +277,7 @@ changelog_tools_build :: proc(c: ^Changelog, em: f32) {
 			o := ui.Button_Options{face = on ? .Toggled : .Ghost, quiet = !on, icon_font = ui.lucide_icons(), icon_color = on ? ui.hue(change_hue(word)) : ui.color("weak text"),
 				tip = on ? fmt.tprintf(i18n.tr("Hide the changes of kind %s"), word) : fmt.tprintf(i18n.tr("Show the changes of kind %s"), word)}
 			if ui.button(fmt.tprintf("###kind_%v", k), word, change_icon(word), o).clicked { c.kinds_off ~= {k} }
-			ui.spacer(ui.px(math.round(em * 0.3)))
+			ui.space(ui.CONTROL_GAP)
 		}
 		ui.spacer(ui.fill())
 		if ui.tags("weak") { ui.label(fmt.tprintf("%s###whats_new_count", fmt.tprintf(i18n.tr("%d of %d versions"), len(c.shown), len(c.releases)))) }
@@ -309,10 +309,12 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, s: Changel
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	if ui.row(.Start, {}, "###release") {
 		// the rail, drawn by the row in its left gutter (as tall as the card beside it): its line, not past the last dot;
-		// the dot level with the version's chip
+		// the dot level with the version's chip (the middle of the card's head, CARD_PAD under its top)
 		row := ui.parent_box()
 		d := ui.frame_new(Rail_Draw)
-		d^ = {line = ui.color("border"), dot = newest ? ui.color("accent") : ui.color("weak text"), last = last, lit = newest, dot_y = math.round(em * 1.55), gutter = math.round(em * 2)}
+		head := ui.dense(em * 1.9)
+		dot_y := math.round(em * ui.CARD_PAD) + math.round(head * 0.5)
+		d^ = {line = ui.color("border"), dot = newest ? ui.color("accent") : ui.color("weak text"), last = last, lit = newest, dot_y = dot_y, gutter = math.round(em * 2)}
 		row.custom, row.custom_user = rail_draw, d
 		ui.spacer(ui.px(d.gutter))
 		// the card
@@ -322,38 +324,39 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, s: Changel
 			card := ui.build_box({.Draw_Background, .Draw_Border, .Plate}, "###release_card")
 			ui.push_parent(card)
 			defer ui.pop_parent()
-			ui.spacer(ui.px(em * 0.8))
+			// (ui.card's inset: CARD_PAD on its four sides)
+			ui.space(ui.CARD_PAD)
 			// its head: the version, its day and time, Latest
-			ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 1.9))})
+			ui.next({width = ui.fill(), height = ui.px(head)})
 			if ui.row(.Center, {}, "###release_head") {
-				ui.spacer(ui.px(em * 1))
+				ui.space(ui.CARD_PAD)
 				ui.pill("ver", r.version, lucide.TAG, newest ? ui.color("accent") : ui.color("weak text"), {mono = true})
-				ui.spacer(ui.px(em * 0.7))
+				ui.space(ui.CONTROL_GAP)
 				if ui.tags("weak") { ui.label(fmt.tprintf("%s###stamp", r.stamp)) }
 				if newest {
-					ui.spacer(ui.px(em * 0.6))
+					ui.space(ui.CONTROL_GAP)
 					ui.pill("latest", i18n.tr("Latest"), lucide.ROCKET, ui.hue(.Green))
 				}
 			}
 			// its changes, by type
 			for &g, k in r.groups {
 				if k >= 64 || s.groups & (1 << u64(k)) == 0 { continue }
-				ui.spacer(ui.px(em * 0.5))
+				ui.space(ui.LINE_GAP)
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 				if ui.row(.Start, {}, fmt.tprintf("###group_%d", k)) {
-					ui.spacer(ui.px(em * 1))
+					ui.space(ui.CARD_PAD)
 					ui.next({width = ui.px(math.round(em * 6.5)), height = ui.children_sum(), axis = .Y})
 					// (its type in English, as the changelog)
 					if ui.column(id = "###type") { ui.pill("type", g.type, change_icon(g.type), ui.hue(change_hue(g.type))) }
 					ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 					if ui.column(id = "###list") { markdown.view(&g.doc, fmt.tprintf("list_%d_%d", i, k), g.list, {}) }
-					ui.spacer(ui.px(em * 1))
+					ui.space(ui.CARD_PAD)
 				}
 			}
-			ui.spacer(ui.px(em * 0.9))
+			ui.space(ui.CARD_PAD)
 		}
 	}
-	if !last { ui.spacer(ui.px(math.round(em * 0.9))) }
+	if !last { ui.space(ui.ITEM_GAP) }
 }
 
 @(private = "file")

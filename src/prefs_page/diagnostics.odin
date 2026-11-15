@@ -104,30 +104,31 @@ diagnostics_build :: proc(user: rawptr, em: f32) {
 			ui.next({width = ui.fill(), text_pad = 0})
 			ui.paragraph(fmt.tprintf("%s###diag_software", i18n.tr("The frames are drawn by a software rasterizer, not the graphics card: everything is slower. Updating the graphics driver usually lets the program use the card again.")))
 		}
-		ui.spacer(ui.px(em * 0.6))
+		ui.space(ui.LINE_GAP)
 	}
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, radius = math.round(em * 0.4)})
 	well: ^ui.Box
 	if ui.tags("input") { well = ui.build_box({.Draw_Background, .Draw_Border}, "###diag_rows") }
 	if ui.parent(well) {
-		ui.spacer(ui.px(em * 0.4))
+		// (a well's inset, INNER_PAD on four sides; its rows stay its direct children, found by their ids)
+		ui.space(ui.INNER_PAD)
 		for r, i in v.rows {
+			if i > 0 { ui.space(ui.SPACE_1) }
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Start})
 			if ui.row(.Start, id = fmt.tprintf("###diag_row_%d", i)) {
-				ui.spacer(ui.px(em * 0.9))
+				ui.space(ui.INNER_PAD)
 				if ui.tags("weak") {
 					ui.next({width = ui.px(em * 10), text_pad = 0})
 					ui.paragraph(fmt.tprintf("%s###k", r.key))
 				}
 				ui.next({width = ui.fill(), text_pad = 0, font = ui.mono_font(), font_size = math.round(em * 0.9)})
 				ui.paragraph(fmt.tprintf("%s###v", r.value))
-				ui.spacer(ui.px(em * 0.9))
+				ui.space(ui.INNER_PAD)
 			}
-			ui.spacer(ui.px(em * 0.25))
 		}
-		ui.spacer(ui.px(em * 0.4))
+		ui.space(ui.INNER_PAD)
 	}
-	ui.spacer(ui.px(em * 0.8))
+	ui.space(ui.ITEM_GAP)
 	copied := v.copied_ms > 0 && now - v.copied_ms < 1500
 	if ui.button("###diag_copy", copied ? i18n.tr("Copied") : i18n.tr("Copy"), copied ? lucide.CHECK : lucide.COPY, {icon_font = ui.lucide_icons(), intent = .Primary}).clicked {
 		ui.window_clipboard_set(v.text)
