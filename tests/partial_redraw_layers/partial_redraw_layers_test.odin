@@ -368,7 +368,13 @@ quiet_build :: proc(s: ^session.Session) {
 
 @(test)
 quiet_buttons_above_framed_panels_are_exact_and_opaque :: proc(t: ^testing.T) {
-	for half in FORMATS { for f in ui.Finish { quiet_scene(t, half, f) } }
+	for f in ui.Finish { quiet_scene(t, false, f) }
+}
+
+// The same in half floats: a test of its own, each format within WARP's time (both in one passed 5 minutes there).
+@(test)
+quiet_buttons_above_framed_panels_are_exact_and_opaque_in_half_floats :: proc(t: ^testing.T) {
+	for f in ui.Finish { quiet_scene(t, true, f) }
 }
 
 // A scale of Windows' displays: the buttons' edges and their shadows fall between pixels. (1, 1.25 and 1.5 all passed
