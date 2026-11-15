@@ -46,7 +46,9 @@ input_frame :: proc(id: string) -> bool {
 	set_next_axis(.X, .Center)
 	next_default({radius = font_size() * CONTROL_RADIUS_EM})   // (a button's corners)
 	push_tags("input")
-	b := build_box({.Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Focus_Within, .Sunken}, id)
+	// (the frame is the field's face: it reacts while the pointer is on what it holds; the bare field inside draws no
+	// state, a face of its own was a second, smaller one inside the frame)
+	b := build_box({.Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Focus_Within, .Sunken, .Draw_Hot_Effects, .Hot_Within}, id)
 	pop_tags()
 	push_parent(b)
 	return true

@@ -27,6 +27,12 @@ MACHINED_OVERFLOW_PX :: 6
 @(private = "file") BEVEL_TOP_LIGHTEN   :: 0.14
 @(private = "file") BEVEL_BOTTOM_DARKEN :: 0.20
 @(private = "file") BEVEL_RIM_ALPHA     :: 0.22
+// Under the pointer: a raised face this much toward white, its rim this much more light. A well's face this far toward
+// the theme's tint, the lit rim of its opening this much more light.
+@(private = "file") BEVEL_HOT_LIGHTEN   :: 0.07
+@(private = "file") BEVEL_RIM_HOT       :: 0.16
+@(private = "file") WELL_HOT_LIFT       :: 0.10
+@(private = "file") WELL_RIM_HOT        :: 0.24
 // A .Plate box: how far its face goes toward white at the top and toward black at the bottom; its shadow (logical pixels).
 @(private = "file") PLATE_TOP_LIGHTEN   :: 0.05
 @(private = "file") PLATE_BOTTOM_DARKEN :: 0.06
@@ -145,7 +151,7 @@ machined_bevel :: proc(dc: ^draw.Context, r: Rect, radius: f32, face_color: Colo
 		draw.rect(dc, r, flat_edge(hot), radius, p)
 		return
 	}
-	face := lighten(face_color, 0.06 * hot)
+	face := lighten(face_color, BEVEL_HOT_LIGHTEN * hot)
 	if edged() {
 		// (filled shapes from the outside in, as the machined bevel: the dark hairline, then the face inside it, then its lines)
 		inner, ir := draw.rect_pad(r, -p), max(0, radius - p)
@@ -154,7 +160,7 @@ machined_bevel :: proc(dc: ^draw.Context, r: Rect, radius: f32, face_color: Colo
 			if g := glow_of(); glow.a > 0 && hot > VISIBLE && g > 0 { draw.box_shadow(dc, r, rr, 2.5 * s, with_alpha(glow, 0.2 * hot * g)) }
 			top, bot := lighten(face, EDGED_TOP_LIGHTEN), relief_darken(face, EDGED_BOTTOM_DARKEN)
 			draw.rect_corners(dc, inner, {top, bot, top, bot}, radii4(ir))
-			edged_lines(dc, r, radius, p, relief_shine(EDGED_RIM_ALPHA), relief_shade(EDGED_SHADE_ALPHA))
+			edged_lines(dc, r, radius, p, relief_shine(EDGED_RIM_ALPHA + BEVEL_RIM_HOT * hot), relief_shade(EDGED_SHADE_ALPHA))
 		} else {   // pushed in: darker, the shade now along its top
 			draw.rect(dc, inner, relief_darken(face, 0.18), ir)
 			edged_lines(dc, r, radius, p, relief_shade(EDGED_WELL_TOP), {})
@@ -172,7 +178,8 @@ machined_bevel :: proc(dc: ^draw.Context, r: Rect, radius: f32, face_color: Colo
 		top, bot := lighten(face, BEVEL_TOP_LIGHTEN), relief_darken(face, BEVEL_BOTTOM_DARKEN)
 		draw.rect_corners(dc, inner, {top, bot, top, bot}, radii4(ir))
 		// the rim: light along the top, dark along the bottom, on the face's own edge
-		draw.rect_corners(dc, inner, {relief_shine(BEVEL_RIM_ALPHA), relief_shine(0.03), relief_shine(BEVEL_RIM_ALPHA), relief_shine(0.03)}, radii4(ir), p)
+		rim := relief_shine(BEVEL_RIM_ALPHA + BEVEL_RIM_HOT * hot)
+		draw.rect_corners(dc, inner, {rim, relief_shine(0.03), rim, relief_shine(0.03)}, radii4(ir), p)
 		draw.rect(dc, {{r.min.x + radius * 0.8, r.max.y - 2 * p}, {r.max.x - radius * 0.8, r.max.y - p}}, relief_shade(0.25))
 	} else {
 		draw.rect(dc, r, relief_shade(0.85), radius)
@@ -189,14 +196,18 @@ machined_focus_glow :: proc(dc: ^draw.Context, r: Rect, radii: [4]f32, accent: C
 	if g := glow_of(); focus > VISIBLE && g > 0 { draw.box_shadow(dc, r, radii, 4 * scale(), with_alpha(accent, 0.12 * focus * g)) }
 }
 
-// A sunken surface of colour `base`; `focus` (0..1) lights a ring of `accent` around it.
-machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focus: f32 = 0, accent := Color{}) {
+// A sunken surface of colour `base`; `focus` (0..1) lights a ring of `accent` around it; `hot` (0..1), under the pointer:
+// its face lifts a step toward the theme's tint and its edge catches more light (the well itself reacts: a check box,
+// a field).
+machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focus: f32 = 0, accent := Color{}, hot: f32 = 0) {
 	s := scale()
 	p := px1()
 	rr := radii4(radius)
+	base := base
+	if hot > VISIBLE { base = srgb_step(base, state_tint(), WELL_HOT_LIFT * hot) }
 	if !machined() {
 		draw.rect(dc, r, base, radius)
-		draw.rect(dc, r, draw.mix(flat_edge(0), with_alpha(accent, 0.9), focus), radius, p)
+		draw.rect(dc, r, draw.mix(flat_edge(hot), with_alpha(accent, 0.9), focus), radius, p)
 		return
 	}
 	machined_focus_glow(dc, r, rr, accent, focus)
@@ -207,14 +218,14 @@ machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focu
 		draw.rect(dc, draw.rect_pad(r, -p), base, max(0, radius - p))
 		edged_lines(dc, r, radius, p, relief_shade(EDGED_WELL_TOP), {})
 		edged_lines(dc, draw.rect_shift(r, {0, p}), radius, p, relief_shade(EDGED_WELL_TOP2), {})
-		draw.rect(dc, {{r.min.x + radius * 0.6, r.max.y}, {r.max.x - radius * 0.6, r.max.y + p}}, relief_shine(EDGED_LIP_ALPHA))
+		draw.rect(dc, {{r.min.x + radius * 0.6, r.max.y}, {r.max.x - radius * 0.6, r.max.y + p}}, relief_shine(EDGED_LIP_ALPHA + WELL_RIM_HOT * hot))
 		return
 	}
 	// (filled shapes from the outside in, each over the antialiased edge of the one under it: the lit rim of the opening,
 	// the dark edge, the surface. Three strokes side by side left gaps in the curves at a small size, their greys
 	// changing along them; and the surface stops inside the edge, so a lit colour spills nothing onto the rim)
 	// the rim of the opening, lit: without it a dark well on a dark panel has no edge (the accent's ring replaces it)
-	if focus < 0.99 { draw.rect(dc, draw.rect_pad(r, p), relief_shine(0.1 * (1 - focus)), radius + p) }
+	if focus < 0.99 { draw.rect(dc, draw.rect_pad(r, p), relief_shine((0.1 + WELL_RIM_HOT * hot) * (1 - focus)), radius + p) }
 	edge := focus > VISIBLE ? draw.mix(relief_shade(0.9), with_alpha(accent, 0.85), focus) : relief_shade(0.9)
 	draw.rect(dc, r, edge, radius)
 	inner, ir := draw.rect_pad(r, -p), max(0, radius - p)
@@ -366,7 +377,10 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 	}
 	if .Sunken in b.flags {
 		focus := keyboard_focus ? 1 : b.focus_t
-		machined_well(dc, r, radius, color_from_tags(s, b.tags_key, "well"), focus, color_from_tags(s, b.tags_key, "focus border"))
+		// (a field the pointer is over reacts in its well, an input_frame for the field it holds; a well that is no
+		// target, a code block, does not)
+		hot: f32 = .Clickable in b.flags || .Draw_Hot_Effects in b.flags ? box_hot(b) : 0
+		machined_well(dc, r, radius, color_from_tags(s, b.tags_key, "well"), focus, color_from_tags(s, b.tags_key, "focus border"), hot)
 		return true, true
 	}
 	if b.bg.a < 0.99 || box_sheen(s, b) <= VISIBLE { return }

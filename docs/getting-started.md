@@ -157,7 +157,8 @@ lines alone: no finish draws its rim (the lit line round a raised face) on it. N
 window, a bar. Nor on a box inside a face that draws (a background, a border, a custom draw: a frame, a card, a well)
 when it meets that face's inner top edge or runs across its whole inner width: a header, a row, a stripe. The rim is for
 a face that stands on its own: a button, a card, a chip, a dialog. `ui.box_rimmed(s, b)` says whether a box gets the rim;
-`ui.paint_rect_corners(..., rim = false)` paints a face without it.
+`ui.paint_rect_corners(..., rim = false)` paints a face without it; `sunk = 1` paints it pressed in (a gradient turned
+over, glass without its gloss: docs/themes.md, "States in each finish"), as `ui.lit_face(..., sunk)` does.
 
 ```odin
 ui.next({width = ui.fill(), height = ui.px(em * 2), radius = em * 0.45})

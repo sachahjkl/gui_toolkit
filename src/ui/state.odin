@@ -951,7 +951,8 @@ update_animations :: proc(s: ^State) {
 		}
 		disabled: f32 = .Disabled in b.flags ? 1 : 0
 		step(&b.hot_t, hot, rate, &s.anim_busy)
-		step(&b.active_t, active, rate, &s.anim_busy)
+		// (a press shows at once: one that fades in reads as lag; its release eases out)
+		if active > b.active_t { b.active_t = active } else { step(&b.active_t, active, rate, &s.anim_busy) }
 		step(&b.focus_t, focus, rate, &s.anim_busy)
 		step(&b.disabled_t, disabled, rate, &s.anim_busy)
 		if s.scrollbar_autohide && b.flags & {.View_Scroll_Y, .View_Scroll_X, .Scroll_Self} != {} { step(&b.bar_t, scrollbar_shown(s, b) ? 1 : 0, rate, &s.anim_busy) }
