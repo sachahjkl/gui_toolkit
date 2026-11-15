@@ -2,7 +2,7 @@
 #+build !linux
 package platform
 
-@(private) USER_DIR_SEPARATOR :: "/"
+USER_DIR_SEPARATOR :: "/"   // (between a folder and the next: a program's folder written as vendor and name)
 
 // (No standard folders known on this system yet.)
 @(private)

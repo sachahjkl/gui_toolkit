@@ -9,7 +9,7 @@ import "core:sys/posix"
 import base "../base"
 import fsx "../fsx"
 
-@(private) USER_DIR_SEPARATOR :: "/"
+USER_DIR_SEPARATOR :: "/"   // (between a folder and the next: a program's folder written as vendor and name)
 
 // $XDG_<kind>_HOME when it is absolute, else its default under the home (temp memory; "": no home). The runtime folder is
 // the session's, else a folder of this user's in the temporary one (src/md/features/folders.md).

@@ -60,6 +60,41 @@ test_root :: proc(name: string) -> string {
 	return root
 }
 
+// A program's folders move once from an older name to its vendor's folder: what was there comes along, a second call does
+// nothing, and a folder already at the new name is never written over.
+@(test)
+a_program_s_folders_move_once :: proc(t: ^testing.T) {
+	sync.mutex_guard(&env_lock)
+	root := test_root("move")
+	defer fsx.remove_tree(root)
+	saved := [?]Saved_Env{env_save("XDG_CONFIG_HOME"), env_save("XDG_DATA_HOME"), env_save("XDG_STATE_HOME"), env_save("XDG_CACHE_HOME")}
+	defer for s in saved { env_restore(s) }
+	for name in ([]string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"}) {
+		dir := fmt.tprintf("%s/%s", root, name)
+		fsx.make_dirs(dir)
+		os.set_env(name, dir)
+	}
+	NEW :: "Vendor" + USER_DIR_SEPARATOR + "Prog"
+	old_config := user_dir(.Config, "prog", context.temp_allocator)
+	fsx.make_dirs(old_config)
+	_ = os.write_entire_file(fmt.tprintf("%s/prefs", old_config), transmute([]u8)string("a = 1\n"))
+	fsx.make_dirs(user_dir(.Cache, "prog", context.temp_allocator))
+	// (the new state folder is there already: it stays as it is, the old one is left)
+	new_state := user_dir(.State, NEW, context.temp_allocator)
+	fsx.make_dirs(new_state)
+	fsx.make_dirs(user_dir(.State, "prog", context.temp_allocator))
+
+	moved, why := user_dirs_move("prog", NEW)
+	testing.expect_value(t, why, "")
+	testing.expect_value(t, moved, 2)   // config and cache; no data folder; the state one was taken
+	data, err := os.read_entire_file(fmt.tprintf("%s/prefs", user_dir(.Config, NEW, context.temp_allocator)), context.temp_allocator)
+	testing.expect(t, err == nil && string(data) == "a = 1\n", "the configuration came along")
+	testing.expect(t, !os.exists(old_config), "the old folder is gone")
+	testing.expect(t, os.is_dir(user_dir(.State, "prog", context.temp_allocator)), "a folder whose new name is taken is left")
+	again, _ := user_dirs_move("prog", NEW)
+	testing.expect_value(t, again, 0)
+}
+
 // The mode and owner of a path, links not followed.
 @(private = "file")
 lstat_of :: proc(path: string) -> (st: posix.stat_t, ok: bool) {
