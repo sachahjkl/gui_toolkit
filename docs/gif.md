@@ -1,6 +1,6 @@
 # gif
 
-An animated GIF encoder (GIF89a) for screen recordings. Pure Odin, any target.
+An animated GIF encoder (GIF89a) for screen recordings, and a decoder of a GIF's first frame. Pure Odin, any target.
 
 ```odin
 import "gt:gif"
@@ -33,3 +33,26 @@ With a writer (`begin(..., write = proc(user, data) -> bool, user = ...)`), the 
 | `quantizer` | `.Median_Cut` | `.Median_Cut`: per frame, the exact colours when they fit, else Heckbert's median cut, in a local table. `.Fixed`: one global table (6 x 7 x 6 levels and 3 greys), the fastest. |
 | `dither` | `false` | Ordered (Bayer 4 x 4) dithering of the colours the palette lacks. Off, text stays crisp. |
 | `full_frames` | `false` | Every frame whole: no changed rectangle, no transparency, no merging of unchanged frames. |
+
+## Decoding
+
+```odin
+rgba, width, height, ok := gif.decode(data)   // the first frame, RGBA8 with straight alpha, in the allocator
+```
+
+`decode` reads GIF87a and GIF89a: global and local colour tables, the transparent index, interlaced frames. The picture
+is the logical screen (grown to the frame when the frame passes its edge), the first frame laid on it, the rest
+transparent. Only the first frame: no program plays an animation (the reasons:
+[src/md/features/image-decode.md](../src/md/features/image-decode.md)). A program reads any picture file with
+`image.decode` ([image.md](image.md)), which calls this one for a GIF.
+
+`ok` is false for no GIF, a file cut before its first frame's data ends, a damaged code stream, a frame with no colour
+table, or a canvas past `gif.MAX_DECODE_PIXELS` (8192 x 8192), refused before it is allocated. A code stream that stops
+before it fills its frame keeps what came, the rest transparent. The decoder never reads past its data.
+
+## Tests
+
+`tests/gif`: the encoder's files read back by a decoder of the test's own (every frame, as a browser shows it), and
+`gif.decode` on files made by hand (one pixel, both tables, transparency, interlace at every height up to 16, a frame
+off the screen's corner, a short stream), on the encoder's files pixel for pixel, and on damage: every cut of a file,
+every byte of it changed, codes that name no string, bad code sizes, a screen past the limit.

@@ -1,17 +1,19 @@
 package tk_image
 
-// A picture file of any format a screenshot tool meets (PNG, JPEG, WebP, BMP), read by its first bytes, not by its
-// name: a file renamed, or one a browser saved with the wrong extension, still opens. PNG is gt:png's decoder; JPEG
-// (baseline and progressive) and BMP are the Odin core's, as the clipboard reads them; WebP is libwebp's (webp.odin).
+// A picture file of any format a screenshot tool or a chat meets (PNG, JPEG, WebP, BMP, GIF), read by its first bytes,
+// not by its name: a file renamed, or one a browser saved with the wrong extension, still opens. PNG is gt:png's
+// decoder; JPEG (baseline and progressive) and BMP are the Odin core's, as the clipboard reads them; WebP is libwebp's
+// (webp.odin); GIF is gt:gif's, its first frame (src/md/features/image-decode.md).
 
 import "base:runtime"
 import core_image "core:image"
 import "core:image/bmp"
 import "core:image/jpeg"
+import gif "../gif"
 import png "../png"
 
 // The formats decode reads.
-File_Format :: enum u8 { Unknown, Png, Jpeg, Webp, Bmp }
+File_Format :: enum u8 { Unknown, Png, Jpeg, Webp, Bmp, Gif }
 
 // The format of a picture file from its signature, Unknown when it is none decode reads. Pure: no decoding.
 file_format :: proc(data: []u8) -> File_Format {
@@ -24,12 +26,14 @@ file_format :: proc(data: []u8) -> File_Format {
 		return .Webp
 	case len(data) >= 14 && data[0] == 'B' && data[1] == 'M':
 		return .Bmp
+	case len(data) >= 6 && (string(data[0:6]) == "GIF87a" || string(data[0:6]) == "GIF89a"):
+		return .Gif
 	}
 	return .Unknown
 }
 
-// The picture of a file of `data`, whatever its format (file_format), as straight RGBA8 in `allocator`. ok is false
-// for a format it does not read, a damaged file, or a WebP where libwebp is not there.
+// The picture of a file of `data`, whatever its format (file_format), as straight RGBA8 in `allocator`; a GIF's first
+// frame. ok is false for a format it does not read, a damaged file, or a WebP where libwebp is not there.
 decode :: proc(data: []u8, allocator := context.allocator) -> (img: Image, format: File_Format, ok: bool) {
 	format = file_format(data)
 	// (the decoders' own pictures in the heap, freed here: a photo is tens of MB, and the caller's allocator may be an arena)
@@ -42,6 +46,10 @@ decode :: proc(data: []u8, allocator := context.allocator) -> (img: Image, forma
 	case .Png:
 		rgba, w, h, png_ok := png.decode(data, allocator)
 		if !png_ok { return }
+		return {pixels = rgba, width = w, height = h}, format, true
+	case .Gif:
+		rgba, w, h, gif_ok := gif.decode(data, allocator)
+		if !gif_ok { return }
 		return {pixels = rgba, width = w, height = h}, format, true
 	case .Webp:
 		img, ok = webp_decode(data, allocator)

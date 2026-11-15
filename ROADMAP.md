@@ -21,8 +21,9 @@
 - **Rich paste in the toolkit.** Pasting files, an image or text is decided once the clipboard's answers are in, the
   image decoded off the interface's thread; today the toolkit's paste knows only text, and opencode native does the rest
   itself.
-- **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate;
-  `gt:image` gains GIF first.
+- **One image decoder.** opencode native decodes pictures with the toolkit's `gt:image` instead of its Rust crate:
+  `gt:image` reads GIF now, the program's switch is left. Intent:
+  [src/md/features/image-decode.md](src/md/features/image-decode.md).
 - **One JSON helper.** Reading and writing JSON goes through one toolkit package, used by the toolkit's own stores and
   exports and by opencode native, instead of three private helpers and a program's own.
 - **Kept values per key.** A value kept per id in a file and forgotten at its rest value (opencode native's zoom per

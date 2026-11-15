@@ -121,12 +121,14 @@ On Linux, text is shaped by the native text backend, the default there, as every
 | `webp_encode(img, quality = 85, lossless = false)` | a WebP file by libwebp, loaded when first asked; `lossless` keeps every pixel. nil where libwebp is not there |
 | `webp_decode(data) -> (img, ok)` | the picture of a WebP file (lossy or lossless, alpha kept) by libwebp, in the allocator; ok is false where libwebp is not there or the bytes are not WebP |
 | `webp_available()` | whether libwebp could be loaded (Nix: libwebp; Debian: libwebp7; Windows: libwebp.dll beside the program) |
-| `decode(data) -> (img, format, ok)` | the picture of a PNG, JPEG (baseline or progressive), WebP or BMP file, as RGBA8 in the allocator; the format is read from the first bytes, not from a name. ok is false for another format, a damaged file, or a WebP where libwebp is not there |
-| `file_format(data)` | `Png`, `Jpeg`, `Webp`, `Bmp` or `Unknown`, from the signature alone (nothing decoded) |
+| `decode(data) -> (img, format, ok)` | the picture of a PNG, JPEG (baseline or progressive), WebP, BMP or GIF file, as RGBA8 in the allocator; a GIF's first frame; the format is read from the first bytes, not from a name. ok is false for another format, a damaged file, or a WebP where libwebp is not there |
+| `file_format(data)` | `Png`, `Jpeg`, `Webp`, `Bmp`, `Gif` or `Unknown`, from the signature alone (nothing decoded) |
 
 A PNG is `gt:png`'s `png.encode`. `decode` reads a PNG with `png.decode`, a JPEG and a BMP with the Odin core's
-`core:image/jpeg` and `core:image/bmp` (the same decoders as the clipboard's), a WebP with libwebp. A JPEG's EXIF
-orientation is not applied: the picture comes as its pixels are stored.
+`core:image/jpeg` and `core:image/bmp` (the same decoders as the clipboard's), a WebP with libwebp, a GIF with
+`gt:gif`'s `gif.decode` (pure Odin: its first frame on its logical screen, the rest transparent; a canvas past
+`gif.MAX_DECODE_PIXELS` is refused, see [gif.md](gif.md)). A JPEG's EXIF orientation is not applied: the picture comes
+as its pixels are stored. To show a picture smaller, `resize` it after (`.Bilinear` for a thumbnail).
 
 ## How it stays fast
 
@@ -145,5 +147,5 @@ pixelate and the anchors; properties for the rest (blur keeps the sum, resize, b
 clear the corners, a shadow grows the picture and keeps it whole, a gradient runs its way); text drawn from the embedded
 face lands at its anchor; a JPEG reads back (core:image/jpeg) close to its picture, a lower quality makes a smaller
 file; a WebP file is a RIFF WEBP file where libwebp is there, and a lossless one reads back pixel for pixel. `decode`
-reads each format by its signature (a PNG and a BMP pixel for pixel, a JPEG close to its picture) and refuses an
+reads each format by its signature (a PNG, a BMP and a GIF pixel for pixel, a JPEG close to its picture) and refuses an
 unknown format and a file cut short.
