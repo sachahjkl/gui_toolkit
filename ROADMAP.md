@@ -52,8 +52,8 @@
   links with multiple-definition flags.
 - **Platforms that plug in and out, toward macOS.** The portable files that still test the system move that code into
   system files, and the CI checks every toolkit and program package for macOS, as it does for Windows.
-- **Colours by intent everywhere.** inspecteur's heat cells use the toolkit's ink-on choice, and each program's
-  hard-coded greens and reds become intents or hues.
+- **Colours by intent everywhere.** Each program's hard-coded greens and reds become intents or hues, so a theme
+  changes them all.
 - **Light site images in every program.** The site command makes them (`Project_Site.images`): papier, classeur,
   inspecteur and cliche set `images = tk_site.images_default()` and install Ubuntu's `webp` in their Pages workflow.
 
