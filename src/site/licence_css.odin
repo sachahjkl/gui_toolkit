@@ -52,7 +52,7 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
   content: ""; position: absolute; z-index: -1; left: 50%; top: -140px; width: 560px; height: 380px; margin-left: -280px;
   border-radius: 50%; background: var(--shop-accent); opacity: 0.13; filter: blur(70px);
 }
-.shop-icon { display: block; margin: 0 auto 18px; border-radius: 20px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32); }
+.shop-icon { display: block; margin: 0 auto 18px; }   /* (a program's logo is drawn on nothing: no frame, no shadow around it) */
 .shop-eyebrow { margin: 0 0 4px; color: var(--shop-accent); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
 .shop-name { margin: 0 0 12px; font-size: clamp(2.6rem, 10vw, 4.2rem); line-height: 1.02; letter-spacing: -0.03em; overflow-wrap: anywhere; }
 .shop-thanks-title { margin: 0 0 12px; font-size: clamp(1.9rem, 6vw, 2.8rem); line-height: 1.1; letter-spacing: -0.02em; overflow-wrap: anywhere; }
@@ -182,7 +182,7 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
   .shop-wrap { padding: 0 16px; }
   .shop-hero { padding: 44px 16px 28px; }
   .shop-hero::before { width: 360px; margin-left: -180px; top: -120px; }
-  .shop-icon { width: 72px; height: 72px; border-radius: 16px; }
+  .shop-icon { width: 72px; height: 72px; }
   .shop-offer { padding: 24px 20px 20px; border-radius: 16px; }
   .shop-amount { font-size: 3rem; }
   .shop-section { padding-top: 44px; }

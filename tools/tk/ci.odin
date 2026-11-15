@@ -196,6 +196,11 @@ run_ci :: proc(args: []string) -> string {
 			append(&failed, "tools/run_tests -check:windows_amd64")
 		}
 	}
+	// (macOS: every package that names it compiled for it, nothing run: the platforms stay pluggable, no portable file
+	// grows a system's code unseen)
+	if !toolbox.run({join({root, "build", fmt.tprintf("run_tests%s", EXE)}), "-check:darwin_arm64"}, {dir = root}) {
+		append(&failed, "tools/run_tests -check:darwin_arm64")
+	}
 	if len(failed) > 0 { return fmt.tprintf("failed: %s", strings.join(failed[:], ", ", context.temp_allocator)) }
 	fmt.println("ci: all passed")
 	return ""

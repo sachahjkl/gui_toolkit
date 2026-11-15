@@ -206,6 +206,17 @@ the_feed_keeps_dated_versions :: proc(t: ^testing.T) {
 	testing.expect_value(t, heading_date(" 2026-11-06"), "")
 }
 
+// A version's heading with its time ("2026-11-15 14:07", UTC: several a day) shows it; one with its day alone, the day.
+@(test)
+a_version_shows_its_day_and_its_time :: proc(t: ^testing.T) {
+	rs := parse_changelog("# Changelog\n\n## [1.1.0] - 2026-11-15 14:07\n\n### Added\n\n- **New.** It is.\n\n## [1.0.0] - 2026-11-01\n\n### Added\n\n- **Old.** It was.\n")
+	if !testing.expect_value(t, len(rs), 2) { return }
+	testing.expect_value(t, rs[0].date, "2026-11-15 14:07 UTC")
+	testing.expect_value(t, iso_stamp(rs[0].date), "2026-11-15T14:07Z")
+	testing.expect_value(t, rs[1].date, "2026-11-01")
+	testing.expect_value(t, iso_stamp(rs[1].date), "2026-11-01")
+}
+
 @(test)
 the_pages_of_a_small_site :: proc(t: ^testing.T) {
 	pages, why := make_pages(SAMPLE_HOME, parse_changelog(SAMPLE_CHANGES))

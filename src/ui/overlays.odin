@@ -29,6 +29,8 @@ toast_position :: proc(s: ^State) -> Toast_Position { return s.toast_pos }
 set_toast_area :: proc(r: Rect) { gs().toast_area = r; gs().toast_area_set = true }
 
 @(private = "file") TOAST_LIFE_MS :: 3800
+// A toast that stays (toast_add's `stays`): a life no session reaches, its fade never begun (a year).
+@(private = "file") TOAST_STAYS_MS :: 365 * 24 * 3600 * 1000
 @(private = "file") TOAST_FADE_IN_S :: 0.25
 @(private = "file") TOAST_FADE_OUT_S :: 0.35
 @(private = "file") TOAST_GLIDE_RATE :: 40
@@ -47,8 +49,9 @@ toast_copy :: proc(buf: []u8, text: string) -> int {
 // fades out; a click dismisses it, and does `action` (nil: nothing more; `user` must still be good when it is clicked).
 // `title` is in bold on its line, cut with "…" when long, and `msg` is under it, on as many lines as it needs; a toast of
 // no title is `msg` alone. The oldest is replaced when all slots are used.
+// `stays`: it stays until a click (what a person must read once: the news of an update), no fade out.
 @(private)
-toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, msg: string, title := "") {
+toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, msg: string, title := "", stays := false) {
 	s := gs()
 	slot := -1
 	oldest_ms := max(f64)
@@ -64,7 +67,7 @@ toast_add :: proc(kind: Toast_Kind, action: proc(user: rawptr), user: rawptr, ms
 	t.len = toast_copy(t.text[:], msg)
 	t.title_len = toast_copy(t.title[:], title)
 	s.toast_serial += 1
-	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, build_now_ms(), TOAST_LIFE_MS, s.toast_serial
+	t.alive, t.kind, t.born_ms, t.life_ms, t.serial = true, kind, build_now_ms(), stays ? TOAST_STAYS_MS : TOAST_LIFE_MS, s.toast_serial
 }
 
 toasts_clear :: proc() { for &t in gs().toasts { t.alive = false } }

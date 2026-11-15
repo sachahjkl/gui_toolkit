@@ -301,6 +301,20 @@ if app.settings_open {
 was pressed. `escape_leaves(page)` is true when Escape was pressed and no editor of a preference has the keyboard: that
 Escape gives up the editor first.
 
+## What's new
+
+`Page_Options.changelog` (a `Changelog`, the program's) adds a What's new page, first of the toolkit's own: the
+program's `CHANGELOG.md` as a timeline: a rail with a dot at each version (the newest lit), a card per version (its
+number, its day and time, "Latest"), its changes by type under a pill of the type's hue and icon, their text laid out by
+`gt:markdown`; 12 versions, then "Show 12 older versions". The changelog is written in English (`Changelog.english`, often
+`#load("../CHANGELOG.md", string)`); `translations` may give it in other languages (`Changelog_Text{language, text}`),
+and the page shows the one of the language in use, else the English one (`changelog_text`).
+
+`changelog_after_update(&c, &prefs, version, &announcer, open, user)`, once at start, compares `version` with the
+hidden `general.seen_version` (`changelog_register` registers it). Another version is an update: a message "Updated to
+1.2.0" stays until it is clicked (`ui.announce`'s `stays`), and the click calls `open`, where the program shows its
+settings at `CHANGELOG_PAGE` (`show`). The first start says nothing. `changelog_destroy` frees the page's text.
+
 ## The licence
 
 A program that sells a licence ([licence.md](licence.md)) shows it on the toolkit's **Licence** page, worded the same in

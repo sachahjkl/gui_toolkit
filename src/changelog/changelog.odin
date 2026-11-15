@@ -7,7 +7,7 @@
 //                                       (a blank line, optional)
 //     **What changed**: the one entry, as it will read in the list (no leading "- "); indented "  - " lines are sub-items.
 //
-// CHANGELOG.md follows Keep a Changelog: `## [x.y.z] - yyyy-mm-dd` sections, newest first, the versions' links at its end.
+// CHANGELOG.md follows Keep a Changelog: `## [x.y.z] - yyyy-mm-dd hh:mm` sections (UTC), newest first, the versions' links at its end.
 // An `## [Unreleased]` section written by hand (a project from before the fragments) is read too: assemble moves its entries
 // into the version, after the fragments', and removes it.
 package tk_changelog
@@ -65,7 +65,7 @@ canonical_type :: proc(t: string) -> string {
 	return ""
 }
 
-@(private = "file")
+@(private)
 split_lines :: proc(s: string) -> []string {
 	t, _ := strings.replace_all(s, "\r\n", "\n", context.temp_allocator)
 	return strings.split(t, "\n", context.temp_allocator)
@@ -77,7 +77,7 @@ read_text :: proc(path: string) -> (string, bool) {
 	return string(data), err == nil
 }
 
-@(private = "file") write_text :: proc(path, text: string) -> bool { return os.write_entire_file(path, transmute([]byte)text) == nil }
+@(private = "package") write_text :: proc(path, text: string) -> bool { return os.write_entire_file(path, transmute([]byte)text) == nil }
 
 @(private = "file") root_of :: proc(o: Project_Options) -> string { return o.root != "" ? o.root : "." }
 
@@ -279,10 +279,13 @@ slug :: proc(s: string) -> string {
 	return out != "" ? out : "change"
 }
 
-@(private = "file")
-date_of :: proc(when_: time.Time) -> string {
+// When a version is published, as its heading says it: its day and its time, UTC ("2026-11-15 14:07"): several versions
+// come out the same day, the time tells them apart, in the program's What's new as on its site.
+@(private = "package")
+stamp_of :: proc(when_: time.Time) -> string {
 	y, mo, d := time.date(when_)
-	return fmt.tprintf("%04d-%02d-%02d", y, int(mo), d)
+	h, mi, _ := time.clock(when_)
+	return fmt.tprintf("%04d-%02d-%02d %02d:%02d", y, int(mo), d, h, mi)
 }
 
 // The folder of the fragments of the checkout at `root` ("": the current folder, as Project_Options.root; "/changelog.d" was
@@ -380,7 +383,7 @@ preview :: proc(root: string) -> (text: string, errors: [dynamic]string) {
 }
 
 // The release: the version's section above the last one, its link with the others, a hand-written [Unreleased] section
-// gone, the version written (Project_Options.set_version), the fragments deleted. `date` "": today. `entries`: the changes.
+// gone, the version written (Project_Options.set_version), the fragments deleted. `date` "": now (its day and time, UTC). `entries`: the changes.
 assemble :: proc(o: Project_Options, version: string, date := "") -> (entries: int, errors: [dynamic]string) {
 	root := root_of(o)
 	c := read_changelog(root)
@@ -401,7 +404,7 @@ assemble :: proc(o: Project_Options, version: string, date := "") -> (entries: i
 		if i == c.first_release { first_release = len(lines) }
 		append(&lines, l)
 	}
-	day := date != "" ? date : date_of(time.now())
+	day := date != "" ? date : stamp_of(time.now())
 	all := make([dynamic]string, context.temp_allocator)
 	at := first_release >= 0 ? first_release : len(lines)
 	append(&all, ..lines[:at])

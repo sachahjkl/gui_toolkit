@@ -40,11 +40,12 @@ Announcer :: struct {
 // Says `title` (and `body`, a second line: a path, an address). kind .Bad: always said, whatever the mode. `action`:
 // what a click on it does (an update to install, a report to open): such a message is a toast of the window, whatever
 // the mode (a notification of the system does not call back here), and `user` must still be good when it is clicked.
-announce :: proc(a: ^Announcer, kind: Toast_Kind, title: string, body := "", action: proc(user: rawptr) = nil, user: rawptr = nil, in_window := false) {
+announce :: proc(a: ^Announcer, kind: Toast_Kind, title: string, body := "", action: proc(user: rawptr) = nil, user: rawptr = nil, in_window := false, stays := false) {
 	mode := a.mode
 	// (an action is a button: only a toast has one. `in_window`: a hint about the window itself, "press Esc to leave full
-	// screen", which a notification of the system would show away from it, and which "off" must not hide)
-	if action != nil || in_window { mode = .Window }
+	// screen", which a notification of the system would show away from it, and which "off" must not hide. `stays`: a toast
+	// that stays until a click, which a notification of the system cannot promise)
+	if action != nil || in_window || stays { mode = .Window }
 	if mode == .Off && kind == .Bad { mode = .System }
 	switch mode {
 	case .Off:
@@ -60,7 +61,7 @@ announce :: proc(a: ^Announcer, kind: Toast_Kind, title: string, body := "", act
 		if a.state != nil { use(a.state) }
 		defer if a.state != nil { use(prev) }
 		// (a title and its words: the title in bold on its line, the words under it)
-		if body != "" { toast_add(kind, action, user, body, title) } else { toast_add(kind, action, user, title) }
+		if body != "" { toast_add(kind, action, user, body, title, stays) } else { toast_add(kind, action, user, title, stays = stays) }
 	}
 }
 

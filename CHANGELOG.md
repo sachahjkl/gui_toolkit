@@ -5,7 +5,21 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
-## [0.271.0] - 2026-11-15
+## [0.272.0] - 2026-11-15 14:05
+
+### Added
+- **A pill, the toolkit's.** `ui.pill(id, text, icon, color)` marks a version, a kind of change or a state: rounded at its ends, a wash and a line of its colour, an icon, its words lighter. What's new draws its versions and types with it.
+- **A version's time beside its day.** The release writes each version's heading with its time, UTC ("## [1.2.0] - 2026-11-15 14:07"): several versions a day are told apart, on the sites and in the programs alike. `changelog times` (`tools/changelog -times` for the toolkit) gives the versions of before their tag's time.
+- **What's new, in every program.** `Page_Options.changelog` adds a What's new page to the settings: the program's changelog, in English, or in the language in use when the program gives a translation. After an update, a message "Updated to 1.2.0" stays until it is clicked, and opens that page (`changelog_after_update`; `ui.announce` takes `stays`).
+- **Text that changes without a blink.** `ui.morph_label` shows a new text by flipping only the characters that differ, left to right, in 300 ms, at the new width at once: a count or an address that another source replaces no longer flashes.
+
+### Changed
+- **What's new is a timeline.** The settings' What's new page shows each version as a card on a rail: its number, its day and time, the newest marked Latest, its changes under a coloured tile of their type.
+
+### Fixed
+- **The pricing page's logo has no frame.** A program's logo, drawn on nothing, showed in a dark rounded tile (a shadow around its picture); it now stands alone, as on the home page.
+
+## [0.271.0] - 2026-11-15 13:40
 
 ### Changed
 - **Hover, press and selection are drawn by each widget in its own design**: under the pointer a face lifts (a button's gradient or bevel, a field's border and well, a check box's own box and ring, a switch's track), pressed it sinks at once (a gradient turns over, glass loses its gloss, a machined key goes in), a ghost button's face appears in its own shape, a hovered selected row lifts; no more translucent layer over the widget, and a check box no longer shows a plate larger than its box and off its centre.
@@ -13,13 +27,13 @@ conflict on this file.
 ### Fixed
 - **An opaque theme can no longer show the desktop through a window (Windows)**: a window whose theme is opaque is now shown with its transparency ignored, so no part of it (a panel, a dialog, a list's rows) can show the desktop or the window behind it. A translucent theme still shows the desktop's backdrop, and a switch between the two changes the window at once. On Linux, a see-through window (an overlay) with an opaque frame is shown opaque the same way.
 
-## [0.270.0] - 2026-11-15
+## [0.270.0] - 2026-11-15 12:39
 
 ### Added
 - **A program ships WebP on Windows with one word.** `toolbox.Feature.Webp` builds `gt_webp.dll` and puts it beside the program; a release's package and the setup take it with the program (`desktop.TOOLKIT_FILES`), and the notices name libwebp.
 - **WebP on Windows.** `tools/tk build_webp` builds the toolkit's own libwebp from its sources (`native/webp`: libwebp and sharpyuv, compiled with MSVC) into `build/webp/gt_webp.dll`; `gt:image` loads it beside the program, so a program that ships it reads and writes WebP pictures on Windows. Without it, WebP is not available, as before.
 
-## [0.269.0] - 2026-11-15
+## [0.269.0] - 2026-11-15 12:17
 
 ### Added
 - **The frame rate is a standard setting.** Settings › Rendering › Frame rate (`rendering.frame_rate`): the screen's rate, 30 to 240 a second, or no limit, applied to the window's pacing (`Standard_Targets.pacer`). Every program has it, with the same words.
@@ -33,7 +47,7 @@ conflict on this file.
 - **The arrows choose in a segmented control and a row of tabs.** Each is one Tab stop, the chosen one; while it has the keyboard, Left and Right (and Up and Down in a segmented control), Home and End change the choice and the keyboard follows it. Before, each choice was a Tab stop of its own and the arrows did nothing.
 - **A lone panel's controls never cover its content.** On the hover of its top edge, a lone docked panel shows its stack's strip (its title, its moves, its buttons) and its content moves down under it; the strip goes when the pointer goes down into the content, and does not come back by itself. Before, two icons floated over the content's top right corner, over its own buttons, and neither could be clicked on purpose.
 
-## [0.268.0] - 2026-11-15
+## [0.268.0] - 2026-11-15 10:10
 
 ### Added
 - **`setup.Choice.parts`**: an option of the install tied to parts of the integration starts, once a program is installed, from what the system has (`Facts.parts`), not from its default: the box of "open folders with the program" is ticked only when it does.
@@ -41,13 +55,13 @@ conflict on this file.
 - **`ui.stepper`**: the stages of a long work as nodes joined by connectors, each pending, active (the spinner's arc turns), done (a disc pops in and its check draws itself, the connector after it fills), failed or skipped. Left to right, top to bottom or reversed; labels and a second line below, above or beside the nodes, in the state's colour, an intent's or any colour; a compact form with the words in tooltips. It follows the animation setting, asks for frames only while something moves, and a screen reader hears "Step 2 of 4: Install, in progress".
 - **`archive.Zip_Writer`** (`zip_begin`, `zip_add`, `zip_end`) writes a zip file by file, deflated or stored, alone or after the bytes of a program, and **`archive.open_as`** opens a file as a given kind whatever its name: a program reads the files it carries after its own bytes.
 
-## [0.267.0] - 2026-11-15
+## [0.267.0] - 2026-11-15 09:25
 
 ### Added
 - **A resizable dialog maximises to fill its window**: a Maximise button left of its close cross, or a double click on its header, makes it take the whole window but a small margin, and it keeps filling the window as the window is resized; Restore gives it back the size it had, which stays the one remembered. A program opens a viewer maximised with `ui.view_maximise(vs, id, true)` after `view_open`, and reads it with `ui.view_maximised`.
 - **A program's own words are links**: `ui.link_words_set(prefixes)` makes each word that starts with one of them (a session's id, `ses_…`) a link, in plain text and in Markdown, its target the word itself. Empty inline code is no longer read as a link.
 
-## [0.266.0] - 2026-11-15
+## [0.266.0] - 2026-11-15 08:34
 
 ### Added
 - **A window ready ahead.** `host.ahead_due` says once when to open a hidden window that must show at once later (an editor at a screenshot's shortcut); with no window yet, the graphics driver is made on a thread first and its end wakes the program, so the interface never waits for it.
@@ -57,7 +71,7 @@ conflict on this file.
 ### Changed
 - **Fields have the corners of buttons.** A text field, a text editor, an input frame, a shortcut field and a number's field are rounded as a button is (the same radius, scaled by the rounding setting); they were square beside rounded buttons. `next` still gives another radius.
 
-## [0.265.0] - 2026-11-15
+## [0.265.0] - 2026-11-15 08:05
 
 ### Added
 - **A menu under a button lines up with its right edge.** `ui.menu_open(..., align = .End)` puts the menu's right edge on the button's, at the width the toolkit measured: a button at the end of a toolbar opens its menu without the program knowing its width (`ui.Menu_Align`).
@@ -70,17 +84,17 @@ conflict on this file.
 ### Fixed
 - **Windows: an offscreen window's placement reads back maximized.** `platform.set_placement` with `maximized` on an offscreen window makes it maximized at once, as on Linux; `get_placement` said it was not until it was shown, which an offscreen window never is.
 
-## [0.264.2] - 2026-11-15
+## [0.264.2] - 2026-11-15 07:52
 
 ### Changed
 - **The bubble of a cut text is compact**: Copy and close are two small glyphs in its top right corner, without words, and its text wraps at a reasonable width instead of taking the window's.
 
-## [0.264.1] - 2026-11-15
+## [0.264.1] - 2026-11-15 07:38
 
 ### Fixed
 - **0.264.0 builds again**: the bubble of a cut text used a point-in-rect test that 0.263.0 had removed; it now uses `draw.rect_contains`.
 
-## [0.264.0] - 2026-11-15
+## [0.264.0] - 2026-11-15 07:34
 
 ### Added
 - **A cut text shows itself whole**: the "..." at the end of a text too long for its place is now a target in every program. A click on it opens a bubble under it with the whole text, which can be selected and copied (Copy, or Ctrl+C), and which stays until its cross, Escape or a click outside it. The rest of a row still acts as before.
@@ -88,7 +102,7 @@ conflict on this file.
 ### Fixed
 - **A dialog's long title stays inside it**: a title of one long word, a file's path, ran past the dialog's edge and under its close cross. It now gives way to the header's tools and the cross, and wraps between its characters.
 
-## [0.263.0] - 2026-11-15
+## [0.263.0] - 2026-11-15 07:32
 
 ### Added
 - **`fsx.private_dir` and `platform.session_runtime_dir`**: `private_dir(path)` makes a folder only its user can enter (POSIX: 0700, one of this user's open to others closed) and refuses a folder of another user or a link at the name, the checks made on the opened folder. `session_runtime_dir()` says whether the session has a runtime folder of its own, the one gvfs and the portals use (`$XDG_RUNTIME_DIR`, else `/run/user/<uid>`), and which.
@@ -119,19 +133,19 @@ conflict on this file.
 - **A capture on Windows is never black.** A new screen duplication can first give a frame with only the pointer, over a surface not drawn yet; on a screen that did not change, that black surface was taken now and then. The capture now waits for a frame with a picture, else reads the screen through GDI.
 - **Every icon the toolkit draws is in a program's font.** A program built with only the Lucide icons it uses missed those of toolkit files that import the icons with no alias, such as a strip's left arrow, which showed as an empty button.
 
-## [0.262.2] - 2026-11-15
+## [0.262.2] - 2026-11-15 06:37
 
 ### Fixed
 - **The palette puts the whole word first**: a search for a name now ranks the item whose word ends there above a longer one that only starts with it ("inspecteur" above "inspecteurtool", "End task" above "End tasks"). Both counted the same before, and the list's own order decided.
 - **A view in a window of its own closes again on Linux (Wayland)**: its window's close button, or the compositor's, left the window on the screen. The close of one window is read in another window's frame there, and the window marked closed was skipped before its own frame, the one that takes the close back and puts the view back in place. A window with a `close_asked` hook keeps its frame until it took the close back, and the loop does not sleep over it.
 
-## [0.262.1] - 2026-11-15
+## [0.262.1] - 2026-11-15 00:44
 
 ### Fixed
 - **Linux: the session bus kept in memory it did not own**: a thread's session-bus connection (the tray, notifications, the portals, the screen saver's inhibitions, the accessibility bridge) took its memory from the first caller's allocator, and kept writing in it after that allocator freed it. It lives in the heap now, as long as its thread, with the accessibility bus's address and the list of inhibitions. The `host` tests run on Linux too (they crashed there after a few tests).
 - **Two instances of a program no longer hide each other's crashes**: every instance keeps its own session file (`crash.session_file`, `session-<pid>.txt`). One shared file was overwritten by a second instance, so a crash or a kill of the first went unreported, and the clean end of either removed the other's trace. A start reports every session whose process is gone, and leaves the ones that still run. A clean end now marks as seen what was there when its session began: a crash of another instance while it ran is still shown at the next start.
 
-## [0.262.0] - 2026-11-14
+## [0.262.0] - 2026-11-14 23:28
 
 ### Added
 - **Toggle commands and a detail per command in the palette** (docs/palette.md): a command with `ui.Command.toggle` is a switch: its palette row shows its check (`Palette_Commands_Options.checked(user, index)`, the program's state, read for the rows in view) and choosing it leaves the palette open, as a setting's switch does; its menu line takes the same state (`menu_item(..., checked = on)`). `Palette_Commands_Options.details` gives each command a detail shown after its title ("Session · Fix the build"), part of `version`, not searched. The views' moves source reads again only when the moves it lists change, not at each step of a view (the palette's own included): a flip with the palette open ranks nothing again.
@@ -168,7 +182,7 @@ conflict on this file.
 - **A panel's hover icons no longer take a click meant for what is under them**: in a lone docked panel, the Detach and Close icons do not show over a control the pointer is on in their corner (a strip's arrow in a sidebar's top row), and that control takes the click. A click on the server tabs' right arrow at the top of a sidebar floated the sidebar instead of scrolling the tabs.
 - **A notification closed at once is known as closed (Linux).** The program listened for the notification server's "closed" signal only after the server answered, so a notification it closed at once stayed known as shown, and the next one replaced it instead of showing beside it.
 
-## [0.261.1] - 2026-11-14
+## [0.261.1] - 2026-11-14 21:46
 
 ### Added
 - **`ui.view_dock_line` says where a dock handle's rule is drawn.** A program's line that goes on across its title bar or its status bar takes its place from it, so the two meet on one pixel column during a drag, after it and at every scale. `ui.splitter_line` and `ui.splitter_line_width` give any handle's rule the same way.
@@ -178,27 +192,27 @@ conflict on this file.
 - **A panel moved into a window of its own shows its content.** Under the program's own title bar, the window's header took the whole height and left the view nothing (a terminal showed its header alone, in the middle of an empty window); and a docked panel opened in a window of the size of another edge's zone, not its own.
 - **The file browser hides the files that Windows marks hidden**: on Windows, a file or folder with the hidden attribute is now hidden in the folder shown and in the search in subfolders, until Hidden files (Ctrl+H) is on, as in Explorer. Before, only names that start with "." were hidden. A system file without the hidden attribute stays shown. `fsx.read_folder` gives a folder's entries with the system's hidden mark.
 
-## [0.261.0] - 2026-11-14
+## [0.261.0] - 2026-11-14 21:26
 
 ### Added
 - **The Ember theme**: a near black with a peach accent, and in the light version white with a deeper orange, among the toolkit's themes (`ui.THEMES`), for every program. Its colours are those of opencode native's own theme, which can use this one instead of its copy.
 
-## [0.260.3] - 2026-11-14
+## [0.260.3] - 2026-11-14 21:22
 
 ### Added
 - **`toolbox.odin_symbol`**: the name of an Odin procedure as the crash reports show it (`pkg::[file.odin]::proc` gives `pkg.proc` and its file), for a program that reads symbols its own way, as Wren's PDB reader does.
 
-## [0.260.2] - 2026-11-14
+## [0.260.2] - 2026-11-14 19:42
 
 ### Fixed
 - **The launcher check asks `--version`.** `toolbox.check_launcher` runs `<launcher> --version`, the form that `gt:cli` gives every program, instead of `version`, which a program that reads its line with `gt:cli` does not know.
 
-## [0.260.1] - 2026-11-14
+## [0.260.1] - 2026-11-14 19:16
 
 ### Fixed
 - **A resized dialog reopens at its exact size**: the size a person gave a dialog, and the width of a docked panel, were remembered to a tenth of an em, so a dialog of 400 px could reopen at 401 px. They now come back to the pixel.
 
-## [0.260.0] - 2026-11-14
+## [0.260.0] - 2026-11-14 18:21
 
 ### Added
 - **Window commands work in every page and whatever has the keyboard**: `ui.Command.scope = .Window` marks the palette, the keyboard shortcuts, the settings, close and quit. `command_pressed` takes their keys while a text field, a list or a docked or floating view has the keyboard, and over a view shown as a dialog (the settings of a program). A widget that owns every chord while it has the keyboard keeps them with `ui.keys_claim(owner, ..pass)`; the shortcut recorder (`hotkey_field`) does while it records. `ui.chord_pressed(chord, scope)` reads one chord by the same rules, for a program with a table of its own. `ui.command_window_typing_keys` lists a window command's key that a field would keep: a program's test expects none.
@@ -266,7 +280,7 @@ conflict on this file.
 - **The Rendering page shows its settings**: it showed only a folded "Advanced" part and was empty otherwise. A page whose settings are all advanced now shows them, under a sentence that says they are technical and that their defaults are right for most people; the "Advanced" fold stays on the pages that have ordinary settings too. The Input, Delays and menus and Rendering pages also say in one sentence what they are for.
 - **The Updates page's Check now keeps its words on one line**: its button was squeezed to its longest word and wrapped onto two lines ("Vérifier / maintenant") although the line had room. The buttons under the update preference now take the width of their words, and wrap only when the page is too narrow for them.
 
-## [0.259.0] - 2026-11-14
+## [0.259.0] - 2026-11-14 11:25
 
 ### Added
 - **`update.notice`**: what a program says once of a change of its Updater, beside the badge that shows the phase: a failed install (asked or not) and the answer to `check_now`, never a version on offer, its download or a version in place. `Status.install` says that a result is an install's; a failed install's `result` is its reason alone, and `status_words` says it on the Updates page ("Version 0.16.0 is available. The update failed: …").
@@ -278,12 +292,12 @@ conflict on this file.
 - **An empty `fill()` spacer no longer takes a label's room**: in a row that is too narrow, an empty spacer (no children, no text, nothing drawn) now gives all its width before a label is cut. A row of a name and a `spacer(fill())` that asks for the whole row keeps the name whole while the row holds it. With room, `label … spacer(fill()) … buttons` lays out as before.
 - **The theme cards of a last row that is not full keep their width**: in the settings page, the cards after the last full row were crushed to thin bars with their colour dots piled under them. Every card now has the column's width, at its column. `theme_cards` takes the number of columns (`columns`, 3 by default), and a card too narrow for all its dots shows fewer.
 
-## [0.258.1] - 2026-11-14
+## [0.258.1] - 2026-11-14 11:04
 
 ### Fixed
 - **`host`: a second window's resize step is drawn at once on Wayland**: the paced window's frame draws the resize steps of the other windows first (`host_steps`, the `host_paint` path), and `platform.wait_slot` ends when such a step waits. Before, a window that is not paced waited for the paced window's slot and its work, and the compositor showed its last picture stretched to the new size.
 
-## [0.258.0] - 2026-11-14
+## [0.258.0] - 2026-11-14 10:18
 
 ### Added
 - **`ui.path_bar`**: a folder's path as a breadcrumb whose parts a click walks (a faint "/" between them, the leading ones in a "…" menu when they do not fit), turned by a click on its empty part (or `path_bar_edit`) into an address field with a dropdown: the children of the folder typed, by fuzzy matching, then the program's suggestions under their titles; ↓ ↑, Tab, Enter and Escape move, complete, go and come back. It reads nothing itself: it says which folder it `wants`, and the program answers with `path_bar_children` or `path_bar_failed`. `ui.choice_row` lights a search's letters (`ranges`) and puts its detail on the title's line (`beside`).
@@ -291,7 +305,7 @@ conflict on this file.
 ### Changed
 - **The file browser's path bar**: its breadcrumb is tighter, a "/" between its parts, every part a click away; Ctrl+L or a click on its empty end gives the path as a field with a dropdown of the folder's folders (and files in Open and Save), found by fuzzy matching, then the places and the recent folders. Tab takes the row highlighted; Enter or a click goes there.
 
-## [0.257.0] - 2026-11-14
+## [0.257.0] - 2026-11-14 09:41
 
 ### Added
 - **A project's roadmap is checked with its changelog**: `changelog.check` reads `ROADMAP.md` beside `CHANGELOG.md` (`# Roadmap`, then `## Now`, `## Next` and `## Later`, each a list of entries that start with a bold summary, no dates) and names each line that is wrong; a project without one does not pass. Every program's changelog check and the toolkit's release run it.
@@ -303,28 +317,28 @@ conflict on this file.
 ### Fixed
 - **The file browser keeps the keyboard**: while it is open, the program behind it no longer sees a key first (Escape closed the picker and also did what the program does with Escape). `ui.file_dialog_shown` says whether it is open.
 
-## [0.256.0] - 2026-11-14
+## [0.256.0] - 2026-11-14 08:58
 
 ### Added
 - **`ui.Table`: groups and a fuzzy filter**: `table_data_row`'s `group` keeps the rows of a lower group first in every sort (a file manager's folders), and `Table_Layout.fuzzy` filters by the query's letters in order, the cells lighting the letters matched. `ui.code_runs_of` colours a text with spans kept from an earlier `syntax.spans`; `platform.file_roots` lists the drives on Windows, `/` elsewhere.
 - **A file browser of the toolkit's own (`ui.file_dialog`)**: opening, saving and choosing a folder look and work the same in every program and every theme: places (the system's, the program's, the recent folders), a breadcrumb that becomes a path field (Ctrl+L, Tab completes), a sortable list with folders first that filters as you type, a preview of texts and pictures, New folder, Hidden files, and a question before Save replaces a file. It reads the computer's files, or a program's own (`ui.File_Source`: a server's files), without ever freezing the window. Each dialog remembers its folder, size, sort and recent folders (`ui.file_dialog_memory` keeps them between runs). The system's dialog stays one setting away: General › File dialogs.
 
-## [0.255.2] - 2026-11-14
+## [0.255.2] - 2026-11-14 07:47
 
 ### Fixed
 - **A Markdown table's stripes are square and meet the frame's rim, in every theme**: a striped row left without a radius took the style's, rounded in a theme that rounds its boxes; it says radius 0. `ui.clip_inside_push` keeps a frame's border out of its clip only when the frame draws one inside its rect (`.Draw_Border`): a frame whose rim is drawn outside its rect, as a machined well's, has what it holds up to its rim, with no line of the well between.
 
-## [0.255.1] - 2026-11-14
+## [0.255.1] - 2026-11-14 07:29
 
 ### Fixed
 - **A Markdown table's stripes run from side to side, square**: a striped row stood off the frame's sides with its own rounded corners, a curve inside the frame's curve. Its rows are square and clipped to the frame's inside, where a row that reaches a corner takes the frame's curve: only the frame is rounded. `ui.clip_inside_open` and `clip_inside_close` clip what a rounded frame holds to its inside (`clip_inside_push` from a custom draw, as a floating dock panel does); a table's or a code block's frame has its radius even when the program draws it.
 
-## [0.255.0] - 2026-11-14
+## [0.255.0] - 2026-11-14 06:52
 
 ### Changed
 - **`gt:host`'s package is `tk_host`**: as the toolkit's other packages with a common name, so that a program with its own `host` package (Wren's loop and tasks) can use `prefs_page`, which imports it; Odin wants one name per package in a program. A program imports it as `import host "gt:host"` (was `import "gt:host"`); nothing else changes.
 
-## [0.254.0] - 2026-11-14
+## [0.254.0] - 2026-11-14 03:46
 
 ### Added
 - **File descriptors over D-Bus (gt:dbus)**: `dbus.call_with_fds` passes file descriptors with a call. The connection must ask for them: `connect_bus(bus, unix_fds = true)`; `conn_unix_fds` says whether the bus accepted.
@@ -341,28 +355,28 @@ conflict on this file.
 - **Keys as a node's parameter (gt:flowgraph)**: `flowgraph.Param_Type.Hotkey` holds keys as `platform.hotkey_text` writes them ("Ctrl+Alt+E"), kept in the file as a text; "" is none. `ui.node_inspector` records them with a `ui.hotkey_field` and a button that clears them. Use it for a shortcut of a workflow's own.
 - **The pointer in still pictures (gt:capture)**: `capture.set_cursor` asks for the pointer in a picture of an output, a window or the desktop; `capture.cursor_support` says whether the backend can draw it. On Wayland, the compositor draws it (`ext_image_copy_capture_v1`, `zwlr_screencopy_v1`). On Windows, the toolkit draws it over an output's picture (`GetCursorInfo`, `DrawIconEx`), and Windows.Graphics.Capture draws it in a window's picture. The screenshot portal and X11 cannot: `cursor_support` is false there. `capture.patch_clip` is the pure clip that the drawing uses. docs/capture.md, "The pointer in a picture".
 
-## [0.253.2] - 2026-11-14
+## [0.253.2] - 2026-11-14 01:42
 
 ### Fixed
 - **A program built by the toolkit starts on Windows: the real cause**: the builder made the application manifest with `fmt.aprintf`, which read the braces of the Windows 10 compatibility GUID (`{8e0f7a12-…}`) as an argument index and wrote "%!(BAD ARGUMENT NUMBER)" into the manifest; Windows refused it (error 14001). The program's name is now put in by a plain replace, and a test checks the GUID comes out whole. 0.252.1 and 0.253.1 changed the manifest's content and did not fix it.
 
-## [0.253.1] - 2026-11-14
+## [0.253.1] - 2026-11-14 01:24
 
 ### Fixed
 - **A program built by the toolkit starts on Windows again, for real this time**: 0.252.1 changed only the manifest's identity, and Windows still refused to start the programs (error 14001). The manifest the builder writes is now, word for word, the one papier and Wren started with: version 1.0.0.0 on amd64, run as the user, Windows 10 and 11, per-monitor DPI. The dependency on Common Controls 6, `longPathAware` and the UTF-8 code page are gone: nothing in the toolkit needs them.
 
-## [0.253.0] - 2026-11-14
+## [0.253.0] - 2026-11-14 00:58
 
 ### Added
 - **`ui.card_stack`: a queue gone through one card at a time**: the card the program builds has the room and scrolls; a foot under it holds Previous, where the card is ("3 / 14"), an act in the middle (Acknowledge by default) and Next; the Left and Right arrows and A do the same. `Card_Stack.act` says what was asked. docs/data-views.md, "A stack of cards".
 
-## [0.252.1] - 2026-11-14
+## [0.252.1] - 2026-11-14 00:22
 
 ### Fixed
 - **A program built by the toolkit starts on Windows again**: the application manifest the builder writes gave the program's own version (0.21.0.0) and the architecture "*" as its assembly's identity, and Windows refused to start it (error 14001). The identity is now version 1.0.0.0 on amd64, as Wren's; the program's version stays in its VERSIONINFO.
 - **A dialog no longer jumps as it opens**: the first frame that shows it has it at its final size and place, with its title, its buttons and its content where they stay, even when what is in it measures itself one frame late. Its scrim and its panel fade in as one, from the same frame.
 
-## [0.252.0] - 2026-11-13
+## [0.252.0] - 2026-11-13 23:45
 
 ### Added
 - **Update channels in the Updater and the standard Updates page** (docs/update.md, "Channels"). A program whose releases come on channels (stable, beta) gives each channel's folder to `update.updater_start` (`Updater_Options.channels`, `channel`), and `update.set_channel` follows another one at once: what the old channel offered is dropped, and a check under way is made again. The Updates page shows the Channel setting as a choice of the program's channels (`Standard_Defaults.update_channels`, `update_channel_labels`, `update_channel`); a program without channels has no Channel setting, where it had a free text field. `prefs_page.update_source` reads the address and the channel for the Updater.
@@ -422,7 +436,7 @@ conflict on this file.
   - The settings' choices read well in English and French: RGB, BGR, sRGB and GDI in capitals; the filter precision says "16-bit floats" or "8 bits" instead of `Half` and `Unorm8`.
   - File types are named in the language in use (shared-mime-info's comments).
 
-## [0.251.0] - 2026-11-13
+## [0.251.0] - 2026-11-13 18:52
 
 ### Added
 - **`image.webp_decode`**: reads a WebP file (lossy or lossless, alpha kept) into an `Image`, by the libwebp that `webp_encode` already loads at run time; `ok` is false on a system without libwebp or for bytes that are not WebP.
@@ -440,7 +454,7 @@ conflict on this file.
 ### Fixed
 - **`site.Shop.price_note` is HTML**, as its comment said and as `price` is: an entity such as `45&nbsp;&euro;` now shows as "45 €" on the pricing page instead of its source text.
 
-## [0.250.0] - 2026-11-13
+## [0.250.0] - 2026-11-13 16:55
 
 ### Added
 - **Previews and diagrams**: with `Preview_Options.wheel_pans`, the wheel moves a preview's content, Shift across, and Ctrl (a touchpad's pinch on Windows) zooms the preview around the pointer, not the interface. `mermaid.diagram(..., direction = .Left_Right)` lays a flowchart, class, state, ER or requirement diagram out in any of the four directions; `with_direction`, `direction_of` and `takes_direction` work on its text.
@@ -542,7 +556,7 @@ conflict on this file.
 - **The Rounding setting** is found by "corners", "round", "square" and "radius" in a settings search or the palette.
 - **Two views that scroll the same way, one in the other, show one bar**: the innermost's. A fixed-width table that scrolls sideways in a page that scrolls sideways showed two bars, one under the other.
 
-## [0.249.0] - 2026-11-13
+## [0.249.0] - 2026-11-13 07:31
 
 ### Added
 - **`ui.Announcer.state`**: the window whose toasts the messages are; a message said between two builds (a command, a task's result) shows in that window whatever state is in use.
@@ -575,7 +589,7 @@ conflict on this file.
 - **`fsx.make_dirs`** says whether the folder is there afterwards (one already there included), and `toolbox.build_c_lib` and `release.package_` use it: a second build of a C library no longer fails on its existing folder.
 - **`update keygen` writes a key into a folder that does not exist yet.** It refused such a path as if it were in a git work tree; it now checks from the nearest folder that exists, and makes the folder.
 
-## [0.248.0] - 2026-11-13
+## [0.248.0] - 2026-11-13 06:18
 
 ### Added
 - **`tk crash_symbolize`: crash reports with their functions named.** It names the program's frames of a crash report from the build's linker map (Windows) or its executable (Linux). A program's build tool links with `toolbox.CRASH_LINKER_FLAGS` and calls `toolbox.crash_publish_symbols` after each link to keep the map named by its build.
@@ -639,59 +653,59 @@ conflict on this file.
 ### Security
 - **A text field forgets a secret for good**: a step of the undo and redo history that is dropped (the oldest, a redo replaced by an edit, a step undone) is zeroed before its memory is freed.
 
-## [0.247.0] - 2026-11-13
+## [0.247.0] - 2026-11-13 01:13
 
 ### Fixed
 - **A capture session survives a broken connection**: when its connection to the display server breaks (a protocol error, the compositor restarted), `gt:capture` opens it again before the next capture, instead of failing every capture until the program restarts. Not while a stream is open on it.
 
-## [0.246.0] - 2026-11-13
+## [0.246.0] - 2026-11-13 01:00
 
 ### Fixed
 - **A new field shows its text from the start**: a line edit built with its text already set (a rename) showed only the end of its text for one frame.
 - **Animations start smoothly after a rest**: the first frame after the window slept counts as one refresh, so a switch clicked then slides instead of jumping most of its way at once.
 
-## [0.245.0] - 2026-11-13
+## [0.245.0] - 2026-11-13 00:43
 
 ### Fixed
 - **A menu opens in its place**: a menu against the window's right edge (a burger menu) showed for one frame past the edge at its first width, then jumped to its place; it is placed at the width it is built with from its first visible frame.
 
-## [0.244.0] - 2026-11-13
+## [0.244.0] - 2026-11-13 00:34
 
 ### Fixed
 - **A setting in % shows its value**: a slider of the settings page whose unit is "%" wrote "%!(MISSING ARGUMENT)" after its number.
 
-## [0.243.0] - 2026-11-13
+## [0.243.0] - 2026-11-13 00:32
 
 ### Added
 - **`ui.dialog_header` and `ui.choice_row`**: `ui.dialog_header` puts a dialog's title and icon in a strip across its top, darker than its body. `ui.choice_row` is a row of a list to choose from in a dialog (an icon, a title, a detail) with the command palette's selected look; the pointer that moves over a row selects it. `ui.confirm` shows its title in the header.
 - **`ui.dialog_body` and `ui.dialog_buttons`**: a dialog's body with its margins, and its row of buttons at its right end: with `ui.dialog_header`, every dialog has the same three parts.
 
-## [0.242.0] - 2026-11-13
+## [0.242.0] - 2026-11-13 00:18
 
 ### Fixed
 - **A click gives the focus to a field of an open menu**: a search field in a panel opened as a menu got no focus from a click (the menu kept it for what opened it), so nothing typed reached it.
 
-## [0.241.1] - 2026-11-13
+## [0.241.1] - 2026-11-13 00:13
 
 ### Fixed
 - **A strip's line that scrolls sideways shows it**: its bar was drawn over the cells; it has its own room under them now, and the side that hides cells fades out (`ui.scroll_fades`, which a wide Markdown table uses too).
 
-## [0.241.0] - 2026-11-13
+## [0.241.0] - 2026-11-13 00:01
 
 ### Added
 - **`ui.focus_glow`**: draws the halo of a focused field as the theme does (machined, edged or soft), in a colour of the program's: a part of a field drawn by the program glows as the field.
 
-## [0.240.0] - 2026-11-12
+## [0.240.0] - 2026-11-12 23:48
 
 ### Changed
 - **A frame around a QR code**: `ui.qr_code` draws a rounded border of the theme with a small gap around its white square.
 
-## [0.239.0] - 2026-11-12
+## [0.239.0] - 2026-11-12 22:56
 
 ### Added
 - **A table's rows can be taller** (`Table.row_em`): its lead fills the height, so a list can show a thumbnail at the start of each row.
 
-## [0.238.0] - 2026-11-12
+## [0.238.0] - 2026-11-12 22:53
 
 ### Changed
 - **The toolkit's dialogs and pages draw their action buttons with a glyph and an intent**: the confirmation (Cancel, and the act in red or, when it is safe, in green), an empty state's actions, the shortcut sheet's Close, the Setup dialog (Choose, Uninstall, Close or Not now, Install, Open the installed copy) and the update buttons of the preferences (Check now, Install, Restart now, and the status bar's badge) now look as `ui.button_icon` does: a Lucide glyph beside the words, in the soft colours of what the button does.
@@ -701,7 +715,7 @@ conflict on this file.
 ### Fixed
 - **A tooltip over the menus**: the tooltip of a button in a menu, or in a panel opened as a menu, showed under it; it is drawn over the open menus now.
 
-## [0.237.0] - 2026-11-12
+## [0.237.0] - 2026-11-12 22:37
 
 ### Added
 - **An overlay can take the keyboard from its showing** (`Overlay_Keyboard.Exclusive`, `host.Open.overlay_keyboard`): a selection of a region reads Escape, the arrows and Enter at once, with no window animation, as a layer surface.
@@ -712,12 +726,12 @@ conflict on this file.
 ### Fixed
 - **An overlay shows the windows below where it draws nothing** on Linux: its surface is composited with its alpha (`Surface_Handles.see_through`), where it was black.
 
-## [0.236.1] - 2026-11-12
+## [0.236.1] - 2026-11-12 22:29
 
 ### Fixed
 - **A floating panel's corner has a corner's cursor**: it asked for `nwse-resize`, which some cursor themes lack; their fallback (`bd_double_arrow`) is drawn the other way in some of them, a diagonal toward the bottom left. It asks for `se-resize`, as a window's corner and a dialog's grip do.
 
-## [0.236.0] - 2026-11-12
+## [0.236.0] - 2026-11-12 22:24
 
 ### Added
 - **`line_edit(..., read_only = true)`**: its text is shown, selected and copied (keys, a drag, the menu's Copy), never changed: a value made for the person to take. `field_key` and `field_menu` take `read_only` too.
@@ -725,32 +739,32 @@ conflict on this file.
 ### Fixed
 - **A field in an open menu takes its keys**: a search field in a panel opened as a menu (`ctx_menu_open_rect`) got no typed text, the menu took every key; while such a field has the focus, its keys are its own.
 
-## [0.235.0] - 2026-11-12
+## [0.235.0] - 2026-11-12 22:11
 
 ### Added
 - **`gt:notices` keeps a log of what the user missed, and `ui.badge` shows a count on a button**: a program puts an entry when a run ends or a question waits; an entry put again while open counts once more instead of adding a line. Entries are New, Seen or Acknowledged; what was acknowledged stays in a history of 200 entries by default, and what is open is never dropped. The log survives a restart, and its groups are made again only after a change. `ui.badge` draws a count in a pill on a button's corner, "99+" past 99, nothing at 0.
 
-## [0.234.1] - 2026-11-12
+## [0.234.1] - 2026-11-12 22:02
 
 ### Fixed
 - **No bars of white or of the desktop in a window on Wayland**: a transparent window took half floats wherever its surface offered them (NVIDIA's Vulkan on Wayland does), though Linux composites it opaque; a compositor read their alpha, and what the interface draws past the [0, 1] range (a highlight, a halo) showed as bars of white or of what is behind the window. Half floats are now for a surface composited with its alpha only (DirectComposition); others are 8 bits a channel, as tests render.
 
-## [0.234.0] - 2026-11-12
+## [0.234.0] - 2026-11-12 21:51
 
 ### Added
 - **`ui.announce` says what a program did in a system notification**: copied, saved, deleted go to the system's notifications, without waiting on the interface's thread (`platform.notify_async`), and to a toast of the window only where the system shows none. The standard preference `general.messages` (System, Window, Off) chooses where; a failure is always said.
 
-## [0.233.1] - 2026-11-12
+## [0.233.1] - 2026-11-12 21:43
 
 ### Fixed
 - **A dialog's search strip is a field's, as a menu's search band**: `dialog_top_draw` took the box's background, which inside a dialog is the dialog's: a palette's search strip was the dialog's colour, lighter than a menu's. Its colour of its own is now a `^Color` in `custom_user`; none, a field's (`input background`).
 
-## [0.233.0] - 2026-11-12
+## [0.233.0] - 2026-11-12 21:08
 
 ### Added
 - **Lucide**: `CREDIT_CARD`, `DICES`, `ID_CARD`, `MAIL`.
 
-## [0.232.0] - 2026-11-12
+## [0.232.0] - 2026-11-12 20:51
 
 ### Added
 - **`gt:image` writes JPEG and WebP files**: `jpeg_encode` (written in Odin, its colours not subsampled so a screenshot's text stays sharp) and `webp_encode` (lossy or lossless, by libwebp loaded when first asked; `webp_available` says whether it is there).
@@ -759,17 +773,17 @@ conflict on this file.
 ### Fixed
 - **A shortcut field records the Super key**: Super+S (Windows+S) is taken as a shortcut, as Ctrl+S is. `Event.super` says the key was held on Wayland, X11 and Windows.
 
-## [0.231.0] - 2026-11-12
+## [0.231.0] - 2026-11-12 20:07
 
 ### Changed
 - **The native text backend is the default off Windows**: `FONT_BACKEND` is `native` everywhere but Windows (`dwrite` there), so a Linux build with no define has text; it no longer needs `-define:FONT_BACKEND=native`.
 
-## [0.230.0] - 2026-11-12
+## [0.230.0] - 2026-11-12 19:43
 
 ### Changed
 - **A terminal's grid is centered in its box**: what its whole cells leave goes half on each side, not all under the last row. `term.grid_origin` gives where the cells start (`View.origin`); `Mouse_Input.pad` is now `pad_lo` and `pad_hi`, the margin on each side.
 
-## [0.229.0] - 2026-11-12
+## [0.229.0] - 2026-11-12 19:41
 
 ### Changed
 - **The machined and edged finishes on light palettes**: a light theme no longer falls back to the flat finish. Its
@@ -777,32 +791,32 @@ buttons, wells, grooves, panels, lamps and title bars keep their relief, drawn b
 rims and lips. Dark palettes look exactly as before. `machined_plate`'s `border` defaults to the relief's own edge (a
 zero colour); a program's own relief takes the same colours from `relief_shade_for` and `relief_shine_for`.
 
-## [0.228.1] - 2026-11-12
+## [0.228.1] - 2026-11-12 19:39
 
 ### Fixed
 - **The keyboard tests of the classic menu**: they open their menus with `search = false`, as their letter selection and their turn at a window's edge are the classic menu's; the menus that search have their own tests.
 
-## [0.228.0] - 2026-11-12
+## [0.228.0] - 2026-11-12 19:33
 
 ### Added
 - **`ui.modal_header`, `ui.modal_corner`, `ui.corner_place`, `ui.concentric_radius`**: a control in a dialog's top right corner (a close button) is placed by the toolkit: the same margin from the dialog's top and right edges, its corners concentric with the dialog's (radius `max(R - m, 0)`), and the row across the dialog's top centered with it and kept clear of it. The grips of a resized dialog leave it its corner. `corner_place` places a control in any rounded corner by the same rule. The Setup dialog's close control is placed this way.
 
-## [0.227.0] - 2026-11-12
+## [0.227.0] - 2026-11-12 19:18
 
 ### Changed
 - **A palette at rest costs nothing**: `ui.rank` takes a `version` of its items; with a cache, the same query and version return the hits kept, with no item read. The search for slips (`fuzzy_typos`) allocates nothing for a text it does not find and compares each word once. `ui.vlist_row_name(i)` names a row a program builds itself in a `vlist`, so the list measures it.
 
-## [0.226.2] - 2026-11-12
+## [0.226.2] - 2026-11-12 19:01
 
 ### Fixed
 - **A lazy column shows its items in the frame its view jumps**: a view moved far in one build (a conversation just read, put at its bottom) showed only empty space for a frame, because the column placed its items from its last position and the new offset together.
 
-## [0.226.1] - 2026-11-12
+## [0.226.1] - 2026-11-12 18:45
 
 ### Fixed
 - **A wide markdown table has one scroll bar**: a table wider than its place showed two horizontal bars, its own under it and the toolkit's of the box it scrolls in; it now has the toolkit's alone, with room under its rows. `markdown.Colors.scroll_bar` is removed.
 
-## [0.226.0] - 2026-11-12
+## [0.226.0] - 2026-11-12 18:23
 
 ### Added
 - **`gt:syntax` knows more languages, and Markdown and diffs**: Java, C#, Kotlin, Swift, Dart, PHP, Ruby, Lua, Zig, Nix,
@@ -810,22 +824,22 @@ YAML, TOML, INI, Dockerfile and Makefile are coloured; HTML, XML and CSS are col
 properties). `language_of_file` finds `Dockerfile` and `Makefile` by their whole name, and `guess` finds every one of
 these in a pasted text, and says when a text is Markdown or a diff (`highlight = false`: the label, no colours).
 
-## [0.225.0] - 2026-11-12
+## [0.225.0] - 2026-11-12 18:22
 
 ### Changed
 - **`ui.slider` follows the wheel**, not only `ui.slider_field`: a notch up is a step more (Shift: ten). In a view that scrolls, a slider takes the wheel once it has the keyboard, so the wheel over it still scrolls the page. `ui.repeat_pressed`: a button that repeats while held, what the stepper and slider_field's − and + share.
 
-## [0.224.1] - 2026-11-12
+## [0.224.1] - 2026-11-12 18:18
 
 ### Fixed
 - **`platform.user_dir` follows `%APPDATA%` and `%LOCALAPPDATA%` on Windows**: an absolute variable is taken, as XDG's are on Linux, so a test or a portable copy that points them elsewhere is followed; without them, the known folders.
 
-## [0.224.0] - 2026-11-12
+## [0.224.0] - 2026-11-12 18:17
 
 ### Changed
 - **A program's standard folders, one call on every system**: `platform.user_dir(kind, program)` gives its folder of configuration, data, state or cache (Linux: the XDG ones, an absolute variable or its default; Windows: the roaming application data for the configuration, the local one for the rest, with `state` and `cache` folders of their own). It replaces `platform.config_dir`, `desktop.xdg_data_home`, `desktop.xdg_config_home` and `desktop.xdg_cache_home`, which are gone.
 
-## [0.223.0] - 2026-11-12
+## [0.223.0] - 2026-11-12 17:56
 
 ### Added
 - **`image`: transformations of RGBA8 pictures on the CPU**: a program can crop, resize (Lanczos3, bilinear, box), scale, rotate, flip and pad a picture; give it a border, rounded corners, a drop shadow or a background of a colour or a gradient; adjust grayscale, invert, brightness and contrast, saturation, hue, sepia and threshold; blur, sharpen or pixelate it; draw one picture over another; and put a picture or a text as a watermark at a corner ([docs/image.md](docs/image.md)).
@@ -833,7 +847,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **A program can ask where the pointer is, even on Wayland**: `capture.pointer(s)` gives the pointer's place on the desktop (logical) and the output it is on, through the compositor's cursor sessions (`ext_image_copy_capture_cursor_session_v1`) on Wayland, `QueryPointer` on X11 and `GetCursorPos` on Windows; `capture.pointer_from_buffer` turns a point of an output's buffer, turned and scaled, into a point of the desktop.
 - **`ui.node_graph`**: a program edits a graph of nodes and links visually: nodes with a header, ports coloured by kind, a run's state, a thumbnail and widgets of their own; links drawn as curves from port to port, checked by the program's `can_link`; selection by click and band, moves snapped to a grid, pan and zoom (Ctrl+wheel, a touchpad's pinch), a minimap. The program keeps the model and applies the events it returns (`Graph_Moved`, `Graph_Linked`, `Graph_Deleted`...). A box with the new flag `.Ctrl_Wheel` gets Ctrl+wheel instead of the interface's zoom.
 
-## [0.222.0] - 2026-11-12
+## [0.222.0] - 2026-11-12 17:44
 
 ### Added
 - **Shades, soft pairs and intents**: `shade(c, .S100)` … `.S950` (and `hue_shade`) give a colour's tints and deep shades along its OKLCH lightness, its hue kept; `shade_on(c, ground, 4.5)` the shade of a colour that reads on a ground; `soft_pair(c)` a soft fill of a colour for the theme shown and words of the same colour that read on it. `Intent` (Primary, Info, Success, Warning, Danger, Cancel) names what an act means: `intent_hue`, `intent_tag`, and `button_icon(..., intent = .Danger)`; `button_icon(..., hue = ...)` is soft unless `solid`.
@@ -841,52 +855,52 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **The intents' buttons are soft**: `accent_button`, `danger_button` and `warn_button`, and the new `success_button`, `info_button` and `cancel_button`, are a soft fill of their hue with words of that hue (`soft_pair`), readable in every theme, light or dark, instead of a solid fill.
 
-## [0.221.1] - 2026-11-12
+## [0.221.1] - 2026-11-12 17:37
 
 ### Fixed
 - **A Wayland window no longer freezes when the compositor holds back its frame callback**: under NVIDIA's driver a present in Fifo waited behind a barrier the compositor lifts only once the last picture is shown, and a compositor that counted the window on the wrong output (ShojiWM) never lifted it, so the window drew nothing again. The renderer now presents in a mailbox on Wayland when the driver offers one (the window still paces itself on the compositor's word, `render.present_may_block`), and `host` waits for that word at most 250 ms when it has a picture to show (`FRAME_SHOWN_PATIENCE_MS`), not at all after a key or a click; `platform.frame_shown_waited_ms` says how long it has waited.
 
-## [0.221.0] - 2026-11-12
+## [0.221.0] - 2026-11-12 17:26
 
 ### Added
 - **Buttons of any hue of the theme**: `button_icon(..., hue = .Green)` fills a button with one of the hues every theme defines (`hue()`: accent, blue, purple, green, yellow, red, cyan, rose), its words and icon in `ink_on` of it. **`ink_on(ground)`**: of the theme's page and text colours, the one that reads on a filled ground, made readable (WCAG AA). **`hue_color`**: `hue()` under a name a parameter does not hide. Lucide: `KEY`, `KEY_ROUND`, `LOCK_KEYHOLE`, `LOCK_OPEN`, `SMARTPHONE`.
 
-## [0.220.0] - 2026-11-12
+## [0.220.0] - 2026-11-12 17:26
 
 ### Changed
 - **A text area has the toolkit's scroll bar**: a `text_edit`'s bars look as a view's do (its thumb in the interface's greys, its track, held a step toward the text); they had a look of their own. `ui.scrollbar_paint` draws a scroll bar at any place, for a widget that scrolls itself.
 
-## [0.219.1] - 2026-11-12
+## [0.219.1] - 2026-11-12 17:21
 
 ### Fixed
 - **A shared-width button keeps its padding**: the least width of `button_icon` with `width = fill()` now counts its label as the layout measures it (its text and its text padding), so a long label no longer runs against the button's right edge.
 
-## [0.219.0] - 2026-11-12
+## [0.219.0] - 2026-11-12 17:17
 
 ### Added
 - **ui.pointer_on**: whether the pointer is on a box with nothing drawn over it there (the surface in front at the pointer is the box, one in it or one around it). A right click on a box that is not a button checks it: a box that a later sibling covers no longer takes the press of the one in front.
 
-## [0.218.0] - 2026-11-12
+## [0.218.0] - 2026-11-12 17:07
 
 ### Added
 - **`ui.button_icon` takes a width and an icon font**: `width = fill()` shares the row as `flex: 1` does (two buttons side by side, or one across the whole width), `px(...)` gives it a width of its own, the default stays as wide as what is in it; its content stays centred. `icon_font` draws the glyph in another font than `State.icon_font` (`lucide_icons()`).
 
-## [0.217.3] - 2026-11-12
+## [0.217.3] - 2026-11-12 17:00
 
 ### Fixed
 - **A box in a bordered box's corner takes that corner**: a box laid against the border of a rounded box around it (a menu's search field, a header in a bordered card) now takes that box's corner, concentric, instead of its own rounding or a square corner: no second corner shows inside the first in any program.
 
-## [0.217.2] - 2026-11-12
+## [0.217.2] - 2026-11-12 16:48
 
 ### Fixed
 - **A menu's search field in its corners**: the field at the top of a menu that searches takes the menu's own corners; it drew the rounding of an input inside them, a second corner.
 
-## [0.217.1] - 2026-11-12
+## [0.217.1] - 2026-11-12 16:46
 
 ### Fixed
 - **A large picture comes whole through the Wayland clipboard**: a screenshot pasted from some programs came cut at 64 KiB ("image unreadable"). The pipe of a read is non-blocking on the reader's side only, so an owner that writes a picture in one go no longer stops at a full pipe; and the toolkit's own clipboard and drag sources write a flavour whole, on a thread of their own, whatever pipe the reader gave.
 
-## [0.217.0] - 2026-11-12
+## [0.217.0] - 2026-11-12 16:43
 
 ### Added
 - **`render.preload_device` can say when the device is made** (`done`): a program whose loop sleeps wakes itself and opens its windows early, hidden.
@@ -896,22 +910,22 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **Screen captures are read faster, in the order asked**: an upright screen is read a row at a time instead of a pixel at a time, and `capture.set_pixel_order(s, .RGBA)` gives frames a texture or a PNG encoder takes at once, with no pass of the program to swap their channels (`Frame.order` says which).
 - **`ui.slider_field` follows the wheel and has − and + buttons**: the wheel over the slider or the field moves the value a step, the buttons too (held: they repeat; Shift: ten steps).
 
-## [0.216.1] - 2026-11-12
+## [0.216.1] - 2026-11-12 16:32
 
 ### Fixed
 - **A matched label is centred as a label is**: `ui.matched_label` (a name the filter lit, in a table's row) drew its line at the top of a row taller than it, while the labels beside it were centred. A rich paragraph of one line (`max_lines = 1`) is now centred across its box; its links, its selection and find's matches follow.
 
-## [0.216.0] - 2026-11-12
+## [0.216.0] - 2026-11-12 16:28
 
 ### Changed
 - **Every context menu can be filtered**: `ctx_menu_open` searches by default (`search = true`): typing in an open context menu filters its items, as the menus that asked for it did. Pass `search = false` for a menu of a few fixed choices. **`State.menu_icon_font`**: the font of the menus' icons when it is not `icon_font` (a program whose menus use Lucide sets `lucide_icons()`).
 
-## [0.215.0] - 2026-11-12
+## [0.215.0] - 2026-11-12 15:36
 
 ### Added
 - **`ui.scrollbar_gutter`**: the room a vertical scroll bar takes at the edge of its box (its width and margins), so that a list's content keeps clear of the bar it is drawn under when it scrolls.
 
-## [0.214.0] - 2026-11-12
+## [0.214.0] - 2026-11-12 15:23
 
 ### Added
 - **A slider with a field for the exact value** (`ui.slider_field`): drag it, or type the number; Enter applies it, clamped and rounded to the step, with its unit after it.
@@ -919,17 +933,17 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **A window shown and raised at once comes to the front on Wayland**: the activation now waits for its first picture, so a compositor that only activates windows it shows (ShojiWM) no longer leaves it behind the window in front.
 
-## [0.213.0] - 2026-11-12
+## [0.213.0] - 2026-11-12 15:13
 
 ### Fixed
 - **A resizable dialog's grip corner in the machined finish**: the panel, its rim and its edge keep the square corner under the resize grip (they were drawn rounded over it); `ui.machined_plate_corners` and `ui.machined_plate_frame_corners` take a radius per corner.
 
-## [0.212.0] - 2026-11-12
+## [0.212.0] - 2026-11-12 14:45
 
 ### Added
 - **`config.User_Writer`: the preferences written off the loop**. `user_writer_save`, once per round of a program's loop, serializes the user's values when they changed and hands them to the writer's thread, which writes the file; a newer text replaces one not written yet. `user_writer_failed` tells a failed write once, `user_writer_stop` writes the last changes and ends the thread. A disk write on the loop froze the window at each change.
 
-## [0.211.0] - 2026-11-12
+## [0.211.0] - 2026-11-12 14:43
 
 ### Added
 - **Tray menu shortcuts**: an item of a tray menu can show its keyboard shortcut (`Tray_Menu_Item.shortcut`, "Ctrl+Print"): right-aligned in the menu on Windows, as dbusmenu's `shortcut` property on Linux for the panels that show it.
@@ -939,28 +953,28 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **prefs_page: no reset button on a default value**: a setting the user set back to its default value no longer shows its reset button, nor the page's Restore defaults; a key combination counts as the same in other words ("ctrl+print" is "Ctrl+Print").
 
-## [0.210.0] - 2026-11-12
+## [0.210.0] - 2026-11-12 14:33
 
 ### Changed
 - **The resize bands of an integrated title bar are outside the window on Wayland**: an invisible ring of 8 px around a free window resizes it, and the whole window is the app's: a scrollbar, a tab or a field along an edge no longer loses the pointer to a band. The compositor places, tiles and snaps the window without the ring. Maximized, full screen or tiled, a window has none; X11 keeps the bands inside.
 
-## [0.209.1] - 2026-11-12
+## [0.209.1] - 2026-11-12 14:13
 
 ### Fixed
 - **Text selected in a dialog is copied**: Ctrl+C did nothing on text selected in a dialog, since a dialog holds the keys and the selection reads them after the dialogs are built. The selection now has its keys when it is in the dialog on top (Ctrl+C, Ctrl+Insert, Shift and the arrows, Ctrl+A), and Ctrl+Insert copies a selection everywhere.
 
-## [0.209.0] - 2026-11-12
+## [0.209.0] - 2026-11-12 14:01
 
 ### Changed
 - **Screenshots kept in WebP**: `toolbox.webp_encoder` gives cwebp (the system's; libwebp's own build on Windows, fetched once and pinned), `toolbox.webp_encode` writes a picture as WebP and `toolbox.image_width` reads a PNG's or a WebP's width. `site.build_images` publishes a WebP of the site as it is, with its narrower copies made from it, and takes its encoder in `Images_Options.encoder` (`quality` is gone).
 
-## [0.208.0] - 2026-11-12
+## [0.208.0] - 2026-11-12 13:53
 
 ### Added
 - **A site's pictures in WebP**: `site.build_images` turns the PNG screenshots of a built site into WebP at their own width and at narrower ones (cwebp), gives each `<img>` a `srcset` of them and points every link at the WebP. A screenshot weighs some twenty times less, with its text as sharp.
 - **ui.typed_take**: takes the first character typed in a build before a field gets it, for a key that is the program's while a field holds a given text (Space in an empty filter opens a preview, and the field never shows the space).
 
-## [0.207.1] - 2026-11-12
+## [0.207.1] - 2026-11-12 13:39
 
 ### Added
 - **An image asked from the clipboard comes without a wait**: `platform.clipboard_request(w, .Image)` answers with the image as its owner holds it, still encoded (`Clipboard_Reply.data` and `.mime`: PNG, JPEG, BMP, or a Windows DIB as `image/x-dib`), which `platform.clipboard_image_decode` turns into pixels on any thread. On Linux the read stops at the first type that came.
@@ -968,12 +982,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **An MP4 of an odd width or height is written**: a video track whose side is odd took the first H.264 packet as the wrong size, since 4:2:0 codes that side one pixel larger; it is accepted now, and the track keeps the true size.
 
-## [0.207.0] - 2026-11-12
+## [0.207.0] - 2026-11-12 13:10
 
 ### Added
 - **`gt:h264` encodes with NVENC**: on a system with NVIDIA's driver (520 or later), Linux or Windows, `open` takes the GPU's encoder through NVENC first (`Backend.Nvenc`, one of `HARDWARE_BACKENDS`), where VA-API does not encode; another backend takes over when NVENC does not open.
 
-## [0.206.0] - 2026-11-12
+## [0.206.0] - 2026-11-12 12:30
 
 ### Added
 - **A setting's own title**: `config.Def.title` gives the words a settings page shows when the preference's name does not make good ones (an acronym, a phrase); empty, the title is made from the name as before.
@@ -992,7 +1006,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **A window closed no longer ends the capture session on ShojiWM**: when KDE's window management protocol said a window was gone, `gt:capture` asked the compositor to destroy its object, which ShojiWM refused with a protocol error that closed the connection.
 - **A resize costs less on Wayland**: the swap chain was reconfigured for every size the compositor asked for, also those no picture was drawn at (while the last picture waited to be shown), about three reconfigures for each picture shown; it now takes the window's size only with a picture drawn.
 
-## [0.205.0] - 2026-11-12
+## [0.205.0] - 2026-11-12 10:48
 
 ### Added
 - **`gt:qr` reads QR Codes too**: `decode_rgba` and `decode_gray` find a code in a picture (any scale, turned by quarter turns, dark on light or light on dark) and return its data; `decode_modules` reads a matrix of modules. Damaged codes are corrected as far as their level allows.
@@ -1004,7 +1018,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Shift+Insert pastes in a multi-line text too**: a `ui.text_area` took only Ctrl+C, Ctrl+X and Ctrl+V; it now takes Ctrl+Insert to copy, Shift+Delete to cut and Shift+Insert to paste, as a line edit and a terminal do.
 
-## [0.204.0] - 2026-11-12
+## [0.204.0] - 2026-11-12 09:36
 
 ### Added
 - **`term`**: a terminal's grid as a widget, over a screen source of the program's (`term.Source`: rows of cells with dirty flags, the cursor, the scrollback, a selection, the bytes sent back). Rows are drawn from a cache built again only for the rows that changed; a selection is made with the pointer; keys and the mouse become bytes (`xterm_key` for a source without an encoder); the scrollback is under the toolkit's scroll bar; each grid has its own zoom. The widget emulates nothing.
@@ -1013,7 +1027,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **`markdown`**: Markdown in a window: headings, paragraphs, lists, quotes, rules, tables that scroll sideways, fenced code highlighted by `syntax`, and inline emphasis, code and links, each block a selectable `ui.rich_paragraph`. A `Doc` the program keeps reads its text only when it changes (a text that grows in place: only its last block), and keeps each block's runs, highlight and table widths; a `Config` gives the faces, sizes and colours, and what a link, a code block, a table's frame and its corner do.
 - **`diff`**: a unified diff read into its lines once (`parse`, `Doc`: read again only when its text changes), with their numbers, its hunks and what changed in a changed line; two texts compared (`between`); and its rows (`lines_view`, `view`: stacked or split, only the rows in view built), in the theme's new `diff_added` / `diff_removed` / `diff` colours and the code's colours.
 
-## [0.203.0] - 2026-11-12
+## [0.203.0] - 2026-11-12 09:26
 
 ### Added
 - **`gt:gif`, an animated GIF encoder for screen recordings**: BGRA frames in, a GIF89a file out, in memory or through a writer. Each frame is only the rectangle that changed, with transparency; an unchanged frame is folded into the last one's delay; a frame's colours are kept exactly when they fit in 256, else a median cut.
@@ -1028,7 +1042,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **A text that fits its box stays on one line**: a tooltip as wide as its text broke its last letter onto a line of its own ("C:/code/project_" then "0"), because the wrap added the glyphs' advances one by one, without their kerning. A paragraph that fits measured whole now stays one line.
 
-## [0.202.0] - 2026-11-12
+## [0.202.0] - 2026-11-12 08:09
 
 ### Added
 - **`cli.parse`**: reads a line `cli.check` accepted by the same table of options, once: each option given, in order, with its value (a separate value joined to it). `cli.value` gives the last value of an option, `cli.values` every value of a repeated one, `cli.has` whether it was given.
@@ -1044,14 +1058,14 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **A slider's whole track shows**: the part of a slider's track that is off is a tint of the text, as a switch's is, so it shows on every surface; on a dialog of a theme whose colour was the track's, only the lit run showed, and the slider looked a few pixels wide.
 - **The palette's last line is whole**: the palette's list holds a whole number of lines at any size of the dialog, so its foot line no longer cuts the last command in half.
 
-## [0.201.0] - 2026-11-12
+## [0.201.0] - 2026-11-12 02:23
 
 ### Added
 - **`platform.set_caption_menu_app`, `ui.caption_right_clicked`, `platform.system_menu_available`**: an app can open its own menu on a right click on the empty part of an integrated title bar. When an app sets this option, Windows and Wayland give that click to the app instead of opening the system's window menu (X11 always does). `ui.caption_right_clicked` tells the app that the click came and where. `platform.show_system_menu` still opens the system's menu, and `platform.system_menu_available` tells whether there is one (Windows, Wayland).
 - **`ui.reorder_slot_sized`**: the place of a dragged item among items of different sizes. The item takes a neighbour's place as soon as its edge is a set share inside that neighbour (half by default), with an optional dead band so that it does not swap back and forth; a narrow item no longer has to pass the whole of a wide one.
 - **`desktop.type_name`: what the system calls a type of file**: "Plain text document", "PNG image", from shared-mime-info on Linux and from the shell on Windows, for a file manager's Type column.
 
-## [0.200.0] - 2026-11-12
+## [0.200.0] - 2026-11-12 02:02
 
 ### Added
 - **`platform.toplevels`, `toplevel_activate`: the session's windows**, other programs' too (their app id, title, focus, minimized), and one brought to the front: Wayland's wlr-foreign-toplevel-management (sway, Hyprland, niri, labwc, ShojiWM); none elsewhere yet.
@@ -1062,7 +1076,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **An empty state's icon is large**: `ui.empty_state` drew its icon at the text's size, a small mark over the title; it is drawn at 2.4 times the text's size now.
 - **A dialog holds the keys of the list behind it**: a list that had the keyboard took Enter, Escape and the arrows while a dialog was open over it, so an Enter that answered the dialog also opened the row behind. A list now reads no key while a dialog it is not in is open.
 
-## [0.199.0] - 2026-11-12
+## [0.199.0] - 2026-11-12 01:22
 
 ### Added
 - **`ui.empty_state`: what a view shows when it has nothing to show**: in the middle of the view, an icon in the weak colour, a title, a note, and a button for each thing that can be done about it (the action clicked is returned).
@@ -1070,12 +1084,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **A box in a rounded corner takes that corner**: a title bar's background, a header or any box that fills the corner of a rounded box around it (a dialog, a card, a menu) is rounded there too (`box_drawn_radii`): its square corner showed outside the rounded one. And every widget's own drawing (`rad`, the colour pickers, the tiles, the floating panels' clip) is square under 3 px, as the boxes are (`radius_drawn`).
 
-## [0.197.4] - 2026-11-12
+## [0.197.4] - 2026-11-12 01:11
 
 ### Fixed
 - **The clipboard with no window on Windows**: `get_clipboard` and `set_clipboard` given no window read nothing and write nothing, as on Linux; they crashed.
 
-## [0.198.0] - 2026-11-12
+## [0.198.0] - 2026-11-12 01:01
 
 ### Added
 - **`process.Signal`: `Quit`, `User1`, `User2`** (SIGQUIT, SIGUSR1, SIGUSR2): what a program's "Send signal" menu offers besides the others.
@@ -1086,12 +1100,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **A raised panel's frame over what is in it** (machined and edged finishes): a dialog's lit rim and edge were drawn under its content, so a title's background or a tab's line covered them along one side and not the next. The frame is drawn after the panel's children (`machined_plate_frame`).
 - **A window at rest sleeps again on Wayland**: since 0.196.0 the compositor's word that it showed a picture asked for a repaint each time, so a window at rest drew a new picture at every refresh, for ever (a core kept busy). The word now asks for a repaint only when a picture waited for it (`platform.frame_shown_held`, which host calls); a covered window still draws its picture when it is shown again.
 
-## [0.197.3] - 2026-11-12
+## [0.197.3] - 2026-11-12 00:52
 
 ### Changed
 - **A scroll bar held stays grey**: its thumb a step further toward the text than under the pointer, not the accent (too much accent in the window).
 
-## [0.197.2] - 2026-11-12
+## [0.197.2] - 2026-11-12 00:52
 
 ### Added
 - **`ui.confirm`: the question before an act that is not taken back**: a title, a note, what it acts on a line each (the others counted), Cancel and the act's button in the danger colours; Enter answers what is safe (Cancel, or the act with `enter_confirms`) and its button says "(Enter)"; it answers `.Confirmed` or `.Cancelled`. Its own words are in `Confirm_Labels`.
@@ -1099,12 +1113,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **A scroll bar in the interface's colours**: its thumb a surface's border at rest, the weak text under the pointer, the accent while held, its track the theme's track, with a rim a little toward the text (every finish but Flat). The text's light, up to 55 %, made it near white on a dark theme.
 
-## [0.197.1] - 2026-11-12
+## [0.197.1] - 2026-11-12 00:46
 
 ### Changed
 - **A scroll bar's thumb looks like a thing to take**: a rim a little stronger than its face, and three grip lines across its middle cut in the background's colour (on a thumb long enough to hold them), in every finish but Flat.
 
-## [0.197.0] - 2026-11-12
+## [0.197.0] - 2026-11-12 00:39
 
 ### Added
 - **`scrollbar_under(box, point)`**: which bar of a box takes a press at a point (the one shown, a little wider toward the content), for a program that hears the pointer before the interface and leaves that press to the bar (a terminal's grid in a box that scrolls).
@@ -1112,29 +1126,29 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **A menu's search is a field and the menu holds still**: what is typed in a menu opened with `search` is edited with a field's keys (`ui.field_key`, which `line_edit` uses too): Ctrl+A, Backspace on the selection, Ctrl+Backspace for a word, the caret moved by the arrows once something is typed, a paste. While it filters, the menu keeps the corner and the width of its first layout: it no longer narrows at each letter or moves from under the pointer.
 
-## [0.196.3] - 2026-11-12
+## [0.196.3] - 2026-11-12 00:20
 
 ### Fixed
 - **`label_fuzzy`'s matches are readable**: lit on the theme's `match_bg`, as a list's and the palette's are; 30 % of the accent, blended in linear light, made a chip too light for the text on it.
 
-## [0.196.2] - 2026-11-11
+## [0.196.2] - 2026-11-11 23:56
 
 ### Fixed
 - **The command palette's field strip has the dialog's corners**: it was rounded at the theme's radius whatever the program's rounding, so a dialog with square or little rounded corners showed a second, rounder corner inside its own. `box_drawn_radius` gives a custom draw the corners a box is drawn with.
 
-## [0.196.1] - 2026-11-11
+## [0.196.1] - 2026-11-11 23:48
 
 ### Changed
 - **`flate` and `png.decode` are faster**: `flate.deflate` takes a quarter to a third less time and `flate.inflate` gives 1.3 to 2 times its rate, for the same bytes. `png.decode` of an 8-bit RGBA picture takes less than half its time. `render.readback_poll` of a linear target moves opaque pixels 4 at once, as it does for an sRGB target.
 - **Reading pixels back is faster**: a capture of the frame and `render.readback_poll` of an sRGB target move opaque pixels 4 at once (about 5 times less time for the capture, about 20 times for an opaque readback). The pixels are the same.
 - **`png.encode` and `flate.deflate` are faster**: `.Small` writes a 1400 x 925 screenshot in about 30 ms where it took about 95 ms, and `flate.deflate` takes about half its time on pictures. The filters of a row and the bytes of a match are compared 16 at once (SSE, NEON). A row with bytes of value 128 can take another filter than before: such a file differs by a few bytes, and reads back to the same pixels.
 
-## [0.196.0] - 2026-11-11
+## [0.196.0] - 2026-11-11 23:26
 
 ### Fixed
 - **A window the compositor does not show no longer freezes its program** (Wayland): a picture presented in Fifo waited for the compositor's word that it showed the last one, which a covered window never gets, so a program whose main window another of its windows covered whole stopped answering. A window now presents a picture only once the last one was shown (`platform.frame_shown_pending`, `frame_shown_ask`); while it waits it reads its input and draws nothing, and the word asks for the next picture.
 
-## [0.195.1] - 2026-11-11
+## [0.195.1] - 2026-11-11 22:54
 
 ### Changed
 - **The command palette as in opencode native**: a magnifier before its field and the number of results at the end of the line, a carved line under the field, and the selected line sunk in a well with a bar of the accent at its left, its text in the theme's own colour (it was a raised face of the accent, the text on it hard to read).
@@ -1142,7 +1156,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **What a search found is readable**: it is drawn in the text's own colour on the tint of the accent (theme `match`); the accent's colour on its own tint read badly, worst on a dark theme. This is true in the palette, a list, and a table's filter.
 
-## [0.195.0] - 2026-11-11
+## [0.195.0] - 2026-11-11 22:34
 
 ### Added
 - **A table lights what its filter matches**: each word of `Table_Layout.highlight` in the cells, in the theme's `match` on `match_bg`; `table_apply` sets it to the filter, a program that builds its rows sets it.
@@ -1151,43 +1165,43 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **A table read again stays where it was scrolled**: `table_apply` brought the selected row back into view at each new reading with no filter, so a list refreshed every second could not be scrolled away from it. Only a filter cleared brings it now.
 
-## [0.194.0] - 2026-11-11
+## [0.194.0] - 2026-11-11 22:28
 
 ### Added
 - **`palette_match`: how a palette ranks one entry**, for a program with a palette of its own: its label whole or at the starts of its words, then its tags, then its group, then the same with a slip or two (`fuzzy_typos`); its score and what lights in its label. The command palette uses it.
 
-## [0.193.0] - 2026-11-11
+## [0.193.0] - 2026-11-11 22:15
 
 ### Added
 - **`fuzzy_typos`: a word typed with a slip still finds its word** (a letter missing, one too many, one for another, two swapped; none in a word of three letters, one up to six, two beyond), whole or its beginning: "Qestart pencode" finds "Restart opencode native". The command palette tries it after every exact match, on the label then with the tags, and lights the words it found.
 
-## [0.192.3] - 2026-11-11
+## [0.192.3] - 2026-11-11 22:08
 
 ### Fixed
 - **The command palette keeps its edge along its field**: the field's darker strip began on the dialog's lit rim (machined and edged finishes), so the dialog's edge showed only at its corners. The strip now begins inside it.
 
-## [0.192.2] - 2026-11-11
+## [0.192.2] - 2026-11-11 22:05
 
 ### Fixed
 - **All of a resize grip's bevel is its corner**: the pointer on the bevel's upper part, past the corner's size, showed the bottom or the right edge's cursor and took that edge; it now has the corner's cursor and resizes from the corner (a dialog's grip, a floating panel's).
 
-## [0.192.1] - 2026-11-11
+## [0.192.1] - 2026-11-11 22:03
 
 ### Changed
 - **The command palette's field has the darker background of a field**: still from edge to edge, with no frame of its own, its strip now reads as the place to type. Its top corners follow the dialog's.
 
-## [0.192.0] - 2026-11-11
+## [0.192.0] - 2026-11-11 21:56
 
 ### Added
 - **A dock's panel in a window of its own** (`Dock_Options.windows`): the menu's *Open in a window* lets the panel go as a close does, `Dock_Result.windowed` names it, and the program opens the window and builds the panel there; `dock_add` brings it back when the window closes.
 
-## [0.191.1] - 2026-11-11
+## [0.191.1] - 2026-11-11 20:50
 
 ### Fixed
 - **A `strip_grid` line scrolls with a mouse's wheel**: over a line that is cut, the wheel turned the usual way scrolls it sideways (it went to the page, and only a wheel turned sideways or a touchpad moved the line). A line that holds all its cells leaves the wheel to the page.
 - **A box that fills its parent fills it under a box that scrolls sideways too**: under a box with `Allow_Overflow_X` (a table's titles, its rows), a `fill()` kept the size its parent had before an ancestor shrank, the window's width: a table beside a sidebar was as wide as the window and scrolled for nothing.
 
-## [0.191.0] - 2026-11-11
+## [0.191.0] - 2026-11-11 20:50
 
 ### Added
 - **`tk_changelog.with_badge`**: a README's version badge (shields.io) and its alt text set to a version, for a program's `set_version` (it was the toolkit's own tool's).
@@ -1210,32 +1224,32 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **A test run by `unwatched.run` keeps its name in `build/session/`**: its folder had the anonymous body's procedure name ("pkg::test$anon-pkg:file.odin:123"), so a tool that looks for a test's pictures by its name found none.
 - **`changelog.new_fragment` with no root writes in the current folder**: it wrote `/changelog.d`, at the root of the disk, and refused the fragment it could not read back ("it is empty").
 
-## [0.190.2] - 2026-11-11
+## [0.190.2] - 2026-11-11 17:49
 
 ### Fixed
 - **A dialog closed by its own button gives the keys back at once**: the first key after the click (Escape, a shortcut) went nowhere when no frame came between them, held by a dialog no longer there (0.189.1).
 
-## [0.190.1] - 2026-11-11
+## [0.190.1] - 2026-11-11 17:29
 
 ### Fixed
 - **`release.notes` and `release.ship` find a changelog named `CHANGELOG.md` without a folder**: they looked for it at the root of the disk (0.190.0).
 
-## [0.190.0] - 2026-11-11
+## [0.190.0] - 2026-11-11 17:28
 
 ### Added
 - **`gt:changelog`**: a project's CHANGELOG made of fragments, one file per change in `changelog.d/`, as the toolkit's own. `release.ship` now assembles the fragments into the version's section and deletes them, instead of renaming `[Unreleased]`; it refuses a malformed fragment and a release with nothing in it. A hand-written `[Unreleased]` section is assembled too, after the fragments, and removed. `release.changelog_release` and `release.changelog_section` are gone: `changelog.assemble` and `changelog.section` replace them.
 
-## [0.189.1] - 2026-11-11
+## [0.189.1] - 2026-11-11 17:18
 
 ### Fixed
 - **An open dialog holds the keys**: code built outside it gets no key from `key_press`, `key_take`, `key_pressed_peek` or `command_pressed` while it is open. A program reads its keys before it builds its dialogs: Escape in a dialog opened from the palette closed the window behind it instead. `ui.set_keys_behind_dialogs(&state, true)` turns it off; `ui.dialog_open()` says whether one is open.
 
-## [0.189.0] - 2026-11-11
+## [0.189.0] - 2026-11-11 17:05
 
 ### Added
 - **`ui.key_held(key)`**: whether a key is held now, from its press in the window to its release, by its own events (not by the modifiers' state, which a compositor may leave stale); none once the user left the window. Ctrl held alone, for a monitor that stops its refresh while it is.
 
-## [0.188.0] - 2026-11-11
+## [0.188.0] - 2026-11-11 16:37
 
 ### Added
 - **A table's columns moved by their titles**: a title dragged sideways moves its column (the first stays first), a line in the accent's colour where it will go; `Table_Layout.order`, `table_layout_move`, `table_order_text` / `table_order_apply` to keep the order (columns added since stay where they are); `Table_Header_Events.moved`, `Table_Events.moved`.
@@ -1243,17 +1257,17 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **A table's third click leaves its rows unsorted**: the data's own order (`TABLE_UNSORTED`, `none` in `table_sort_text`), not the table's first sort; `Table_Layout.default_sort` and `default_descending` are gone. `Table.order` (the rows shown) is `Table.rows`.
 
-## [0.187.2] - 2026-11-11
+## [0.187.2] - 2026-11-11 16:21
 
 ### Fixed
 - Linux: **a portal that answers "no preference" for the colour scheme no longer makes the system light**: the GTK settings (`gtk-application-prefer-dark-theme`, a dark `GTK_THEME` or theme name) decide then, as with no portal. A session whose portal has no backend for it answers 0; a program following the system showed its light version, and the machined finish flat.
 
-## [0.187.1] - 2026-11-11
+## [0.187.1] - 2026-11-11 15:39
 
 ### Fixed
 - `ui.preview` fits its content from its very first frame: what fits was worked out from last frame's size of the box, none for a box new this frame, and a picture showed at its pixels, too large and off centre, for a frame.
 
-## [0.187.0] - 2026-11-11
+## [0.187.0] - 2026-11-11 13:38
 
 ### Added
 - **A title bar in the finish shown**: `caption_face(dc, r, top, bottom)` paints a title bar's face: in the edged finish the accent fading out from the left with its hairlines (the console's window), in the machined one a shaded face, flat one colour. `caption_ink(c)` is the colour words take on it. In the edged finish the window's close button is a red block, at rest too.
@@ -1265,32 +1279,32 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **A widget's bold is the family's own** (a toast's title, a section's name, segmented in words): `ui.styled_face(face, bold, italic)` (`styled_face_of(state, ...)` outside a build) gives the face the program declared for that family, else the system's family, else a simulated one. The widgets asked `font.styled_face`, which simulated the bold of an embedded face: its strokes thickened by an algorithm, the bar of an e lost its join at small sizes. `rich_set_faces` is now `set_family` (it serves every widget, not rich text alone), and `State.rich_faces` is `families`.
 - **`fsx.read_all` never gives the start of a larger file**: it read between two stats of the name that agreed, and on Windows a file replaced twice within one tick of the clock had the size and the time of the first, so the first part of the larger one between came back. It reads through one open file now (its size and its bytes of that file, whatever takes its name meanwhile). The test's writer gives every file one time, so it fails on every system without the fix.
 
-## [0.186.0] - 2026-11-11
+## [0.186.0] - 2026-11-11 12:46
 
 ### Added
 - `prefs_page.update_badge`: the Updater's state as a button of a program's status bar: Install, Downloading, Restart to update. **Machined: wells and keys are filled shapes from the outside in** (the lit rim, the dark edge, the surface): at a small scale their rings were strokes side by side, broken in the curves, their greys changing along them.
 
-## [0.185.0] - 2026-11-11
+## [0.185.0] - 2026-11-11 12:25
 
 ### Added
 - `prefs_page.Options.version`: the program and its version ("Papier 0.15.0") at the bottom of the settings' pages.
 
-## [0.184.0] - 2026-11-11
+## [0.184.0] - 2026-11-11 11:53
 
 ### Added
 - **What a search found, lit**: a line of a filtered list shows the parts that match in the theme's `match` colour on its `match_bg` (`ui.word_ranges`, `ui.match_runs`, `ui.matched_label`). The palette, a menu that searches and a settings page's search do it.
 
-## [0.183.0] - 2026-11-11
+## [0.183.0] - 2026-11-11 11:30
 
 ### Added
 - **Tags**: `config.Def.tags` and `ui.Command.tags`, other words a setting or a command is found by ("colours" and "dark" for a theme, "exit" for Quit). The settings' search reads a preference's tags; the palette a command's, a match of them after one of its label; `prefs_page.palette_commands` gives a setting's line its preference's tags.
 
-## [0.182.0] - 2026-11-11
+## [0.182.0] - 2026-11-11 10:55
 
 ### Added
 - **The settings in the command palette**: `prefs_page.palette_commands` gives one command per preference the pages show (its title, under `Settings · <page>`), and `prefs_page.show` opens the page on the one chosen, alone, its page underneath.
 
-## [0.181.0] - 2026-11-11
+## [0.181.0] - 2026-11-11 09:12
 
 ### Added
 - **A toast is as tall as its words, and may have a title**: its text goes on to the next lines inside it instead of past its edge, and the stack places each by its height. `toast_titled(kind, title, body, action, user)`: the title bold on its line (cut with "…"), the text under it.
@@ -1299,22 +1313,22 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **A thin ring's rounded corners are as heavy as its sides**: blended in linear light, the pixels a curve cuts were paler than a browser draws them (a 1 px border looked thinner in its corners). `draw.rect` and `draw.rect_corners` take the `backdrop` a ring is drawn over; its edge then blends as in sRGB values. A box's border gives its own: the colour under it (`box_under`).
 
-## [0.180.3] - 2026-11-11
+## [0.180.3] - 2026-11-11 09:00
 
 ### Fixed
 - `ui.preview`'s bar is as wide as what it holds: at a fixed width its last button went past its edge.
 
-## [0.180.2] - 2026-11-11
+## [0.180.2] - 2026-11-11 08:52
 
 ### Fixed
 - **A segmented control's labels are centred on their key**: they were laid out on the whole track while the key slides on the track less its padding, each a little further right of its key than the one before.
 
-## [0.180.1] - 2026-11-11
+## [0.180.1] - 2026-11-11 08:45
 
 ### Fixed
 - `ui.preview`'s bar shows its zoom in percent: the label had a fill width beside the buttons and got none of it.
 
-## [0.180.0] - 2026-11-11
+## [0.180.0] - 2026-11-11 08:38
 
 ### Added
 - **`ui.preview`** and **`ui.preview_image`**: content (a picture, a page, a diagram) that fits its box, then zooms with the wheel around the pointer, moves with a drag, goes to its pixels and back with a double click, answers +, −, 0 and the arrows; a bar over its corner (`Preview_Options.buttons`) shows the zoom and −, +, 1:1, Fit. docs/preview.md.
@@ -1322,48 +1336,48 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **Machined: a segmented control is a slot with a key in it**: the track carved in the surface (`machined_well`), grooves between its segments, the chosen one a raised metal key, in the text's colour, its corners rounded. **A switch's channel and knob lie on whole device pixels**, and **a well's surface stops inside its edge**: a lit colour (a switch that is on) no longer spills onto the rim around the opening.
 
-## [0.179.0] - 2026-11-11
+## [0.179.0] - 2026-11-11 08:29
 
 ### Changed
 - **Machined: a segmented control is a slot with a key in it**: the track carved in the surface (`machined_well`), grooves between its segments, the chosen one a raised metal key with a small light of the accent under its label (`machined_light`), in the text's colour. **A switch's channel and knob lie on whole device pixels**: their 1 px rims no longer step along the curves.
 
-## [0.178.0] - 2026-11-11
+## [0.178.0] - 2026-11-11 08:09
 
 ### Fixed
 - **A check box or a radio whose label wraps** had its mark at the top of its row, above the middle of its first line (Setup's "Shortcut on the Desktop"): the mark is now centered on the first line, as on a row of one line.
 
-## [0.177.1] - 2026-11-11
+## [0.177.1] - 2026-11-11 01:45
 
 ### Added
 - `Box_Flag.Scrollbar_None`: a scroll box that shows no bar (a table's titles, which follow the rows' sideways scroll).
 
-## [0.177.0] - 2026-11-11
+## [0.177.0] - 2026-11-11 01:42
 
 ### Changed
 - **Tables as in a file manager**: a column's rule is at its right edge and resizes that column, the columns after it move (the fill column takes its width at the first drag; the table then scrolls); a third click on a title comes back to the table's own sort (`table_sort_click`). **A horizontal scroll bar** for every box that scrolls sideways (`View_Scroll_X`), along its bottom edge.
 - **The palette's field is flush with its edges**, on a strip with a line under it; the commands' keys stay clear of the scroll bar.
 
-## [0.176.1] - 2026-11-11
+## [0.176.1] - 2026-11-11 01:27
 
 ### Fixed
 - **The command palette no longer crashes on a search that keeps nothing**: it brought line 0 of an empty list into view.
 
-## [0.176.0] - 2026-11-11
+## [0.176.0] - 2026-11-11 01:15
 
 ### Fixed
 - `syntax.guess` finds Odin written as `proc name(...)`, with no `::` nor `:=` in it.
 
-## [0.175.1] - 2026-11-11
+## [0.175.1] - 2026-11-11 01:11
 
 ### Fixed
 - **A second window never waits for the screen** (`render.set_present_wait`, set by `host` for every window but the first): on Wayland a Fifo present waited for a frame callback the compositor never sent to a window it did not show, and froze every window of the thread. Its frames now go out in a mailbox (else with tearing).
 
-## [0.175.0] - 2026-11-11
+## [0.175.0] - 2026-11-11 01:02
 
 ### Added
 - **Code in the theme's colours**: `ui.code_runs` (runs for `rich_paragraph`) and `ui.code_highlight` (a `text_edit`'s highlight) colour tk_syntax's classes with the theme's new entries `code_keyword`, `code_string`, `code_comment`, `code_func` and `code_type`. A `Palette` carries the theme's other hues (`blue`, `purple`, `cyan`, `rose`).
 
-## [0.174.0] - 2026-11-11
+## [0.174.0] - 2026-11-11 00:54
 
 ### Added
 - **`syntax.guess`**: the language of a text with no name (a copy, a paste): its `#!` line, JSON, or the language whose `signs` and keywords it holds the most of, only for a text with the punctuation of code (prose, addresses and paths are none). **SQL** (`Language.fold_case`: keywords in any case).
@@ -1371,7 +1385,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **Middle-click autoscroll is on by default**: every scroll region of every program (`scroll_y`, lists, tables, a vlist) takes a click of the wheel and scrolls by the pointer, as in the browsers. A program whose middle button does something else calls `ui.set_autoscroll_enabled(&state, false)`.
 
-## [0.173.0] - 2026-11-11
+## [0.173.0] - 2026-11-11 00:53
 
 ### Added
 - **`line_edit(clearable = true)`**: while it holds text, a cross at its end empties it; the field keeps the keyboard, and Undo brings the text back.
@@ -1379,7 +1393,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **A menu, a tooltip, a popover or a dialog built from inside a field is one of its own**: it wore the tags around it ("input floating"), and a field's menu was drawn with a field's see-through background (`push_tags_isolated`, `pop_tags_isolated`). A menu takes the window's style, not the field's.
 
-## [0.172.0] - 2026-11-11
+## [0.172.0] - 2026-11-11 00:12
 
 ### Added
 - **`platform.drop_types`**: the MIME types a drag over the window offers, from its enter on. On Linux the data is read only at the drop: a target judges a drop of a program's own format by its types (it refused it before).
@@ -1387,23 +1401,23 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **The command palette is a dialog the user resizes** (`Command_Palette`, `palette_open(&p)`, `palette(&p, commands, enabled) -> (chosen, resized)`): `modal_sized` with its corner's grip, `PALETTE_WIDTH_EM` by `PALETTE_HEIGHT_EM` at first, its size the program's to keep; a command's `icon` before its label. **A table narrower than its columns scrolls sideways** (`table_min_width`, `table_scroll_sync`; `table_build` does it); `Size.least` is a floor of the resolved size too.
 
-## [0.171.0] - 2026-11-10
+## [0.171.0] - 2026-11-10 23:44
 
 ### Added
 - **A text field's menu**: a right click on a `line_edit` opens Undo, Redo, Cut, Copy, Paste, Delete and Select all, each with its keys and its icon (`ui.field_menu`; a secret's neither copies nor cuts; `menu = false`: the program has its own). **`menu_item` takes `icon_font`**: an item's icon may be a character of any face (0: `State.icon_font`), so a menu of the toolkit's draws Lucide's whatever the program's icons are.
 
-## [0.170.0] - 2026-11-10
+## [0.170.0] - 2026-11-10 23:32
 
 ### Fixed
 - **A Mermaid gantt chart's section names** sat on the left edge of their band (mermaid-svg sets them there, its whole padding after them): `gt_mermaid` moves them half that padding in.
 
-## [0.169.0] - 2026-11-10
+## [0.169.0] - 2026-11-10 23:14
 
 ### Fixed
 - **A Mermaid gantt chart in `dateFormat X` or `x`** (seconds or milliseconds since 1970, as a model writes the timing of calls) was refused: "cannot parse task end". mermaid-svg reads no such format: `gt_mermaid` gives it the chart with its dates written as `YYYY-MM-DD HH:mm:ss` (UTC), its directives, ids and durations as they were.
 - **Resizing a table's column no longer moves the columns after the fill column a frame late.** The fill column took the header's width of the last build: it is now `fill_least` (`Size.least`: a size the layout never shrinks under), resolved in the build it is in. A list's stripes are fainter again (0.8 %).
 
-## [0.168.0] - 2026-11-10
+## [0.168.0] - 2026-11-10 22:59
 
 ### Added
 - **`lucide`: twelve more icons** for a program's menus: `ARCHIVE`, `ARCHIVE_RESTORE`, `CALENDAR_CLOCK`, `CLIPBOARD_COPY`, `FILE_DIFF`, `FILE_DOWN`, `HASH`, `LOG_OUT`, `MESSAGE_SQUARE_QUOTE`, `QUOTE`, `SERVER`, `TEXT_QUOTE`. docs/lucide.md says how a program draws its own icons, from a font of its own, with no constant in the toolkit.
@@ -1411,7 +1425,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **`archive.kind_of` and `syntax.language_of_file`** fold a file's extension by ASCII (`ascii.lower`), as the toolkit's rule wants for names (`unicode_case` failed on them). The test of the launcher's activation token builds with `-vet` on Windows.
 
-## [0.165.1] - 2026-11-10
+## [0.165.1] - 2026-11-10 22:39
 
 ### Changed
 - **A list's stripes are fainter**: every second row 1.5 % toward the theme's tint, from 3 %: the stripes guide the eye across a line without drawing it.
@@ -1419,12 +1433,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **`archive`**: an entry named with a `.` or `..` part or a drive is left out of the index (a copy of a folder out of a malicious archive made folders outside its destination); `find` looks entries up by name.
 
-## [0.167.0] - 2026-11-10
+## [0.167.0] - 2026-11-10 22:35
 
 ### Fixed
 - **`testkit/unwatched` builds with `-vet` off Windows**: its Windows code and imports are in `unwatched_windows.odin`; a program whose tests import it no longer stops on unused imports there.
 
-## [0.166.0] - 2026-11-10
+## [0.166.0] - 2026-11-10 22:33
 
 ### Added
 - **`platform.activation_token_from_env`** and **`platform.raise_window_token`**: a second start hands the token its launcher gave it (XDG_ACTIVATION_TOKEN, DESKTOP_STARTUP_ID) to the first, whose window comes up with it on Wayland.
@@ -1432,7 +1446,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **`archive`**: what a zip, a tar or a gzipped tar holds (`open`, `children`, `find`), a file of it read or extracted (`read`, `extract`; a name that would leave its folder refused). Read only, pure Odin.
 - **`testkit/unwatched`** (was `tests/unwatched`, the toolkit's own): a test's body on a thread the runner of `core:testing` does not watch, for a program's tests on Windows. There the runner fails a test on any exception of its thread, even one DirectWrite, Direct3D or DXGI raises and catches itself ("Signal caught: Unknown", now and then). `unwatched.run` now also does the body's `testing.cleanup`s on its thread when it returns: a window or a testkit session made in the body ends on the thread that made it. docs/testkit.md.
 
-## [0.165.0] - 2026-11-10
+## [0.165.0] - 2026-11-10 21:36
 
 ### Added
 - **`prefs_page.Options.preview`**: each value a held slider moves to, for the program to show at once; the preference is still written at the release.
@@ -1440,12 +1454,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **Machined: a graph with a grid is a well, a meter bar a slot** (`line_graph`, `meter_bar`): a screen set in the surface, a run lit in a carved slot.
 
-## [0.164.0] - 2026-11-10
+## [0.164.0] - 2026-11-10 21:31
 
 ### Changed
 - **The Gradient finish is a shade, the Machined one a relief everywhere.** Gradient: a face a few percent lighter at its top than at its bottom and a fine lit line, no white gloss nor engraved text (the text reads as on the plain colour). Machined: cards, dialogs, menus and tooltips are plates (`Box_Flag.Plate`); check boxes, radios, switches, sliders and progress bars are wells with a raised key or a lit face in them; buttons' bevels are stronger; an accent fill (`paint_rect`) is a lit face; the light engraving under dark text is fainter. `tk finish_shots` pictures fidget's pages in each finish; fidget takes `--finish=name`.
 
-## [0.163.0] - 2026-11-10
+## [0.163.0] - 2026-11-10 21:20
 
 ### Added
 - **`release.Config.update`**: a program that updates itself; `package_` writes the program alone and its manifest signed by `$UPDATE_SIGNING_KEY` beside the archive (a release without the key is refused).
@@ -1453,77 +1467,77 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Setup, a copy of the Nix store beside what an earlier install left**: it read as "To repair", with "The installed program is missing" in red, when an icon or a menu entry of an earlier install was left. A copy of the Nix store with no installed copy is now the Nix package's (`State.Nix_Package`, `setup.state_of`): the screen says an earlier install left files, and offers only to remove them ("Remove what is left"), never a repair that would install this copy beside the package. `setup.leftover` says when something is left.
 
-## [0.162.0] - 2026-11-10
+## [0.162.0] - 2026-11-10 21:09
 
 ### Added
 - `paint.rgba_shrink`: RGBA8 bytes shrunk without a canvas, each pixel the alpha-weighted average of what it covers, for a thumbnail of a large picture.
 
-## [0.161.0] - 2026-11-10
+## [0.161.0] - 2026-11-10 20:52
 
 ### Added
 - **`warn_button`**, beside `accent_button` and `danger_button`: the warning hue behind black text, for an action done with care (end a task, stop a service). docs/themes.md lists the button variants.
 
-## [0.160.0] - 2026-11-10
+## [0.160.0] - 2026-11-10 20:47
 
 ### Fixed
 - **A table's fill column keeps `TABLE_FILL_MIN_EM`** (`ui.table_width`): in a window too narrow for its columns, the last columns go past the edge, cut, instead of the fill column going to nothing under its neighbours' text.
 
-## [0.159.2] - 2026-11-10
+## [0.159.2] - 2026-11-10 20:31
 
 ### Fixed
 - **`ui.type_to_field`** takes an input method's text again right after a shortcut: only the modifiers of the frame's own key presses count (`State.typed_mods`).
 
-## [0.159.1] - 2026-11-10
+## [0.159.1] - 2026-11-10 20:24
 
 ### Fixed
 - **`ui.type_to_field`** no longer takes a shortcut's letter: Alt+P gives the text "p" too, which went to the filter instead of the shortcut.
 
-## [0.159.0] - 2026-11-10
+## [0.159.0] - 2026-11-10 19:25
 
 ### Added
 - **Stripes, rules and tints of a list's rows**: `List_State.zebra` and `.rules` (every second row shaded, a hairline under each), `list_row`'s `tint`, `table_cell`'s `border` (a busy cell's outline); `animations_on` and `keep_animating` for a program's own motion.
 
-## [0.158.0] - 2026-11-10
+## [0.158.0] - 2026-11-10 19:02
 
 ### Added
 - **`ui.table_cell` takes `fg`**, the colour of its text, beside `bg`: a cell tinted by its value keeps a text that reads on it.
 
-## [0.157.0] - 2026-11-10
+## [0.157.0] - 2026-11-10 17:14
 
 ### Changed
 - `platform.move_to_active_monitor(w, follow)`: the monitor under the pointer by default (`.Pointer`: a pointer moved to another monitor is followed with no click), or the one of the window in front (`.Focus`). `active_monitor_parse` reads "pointer" or "focus".
 
-## [0.156.0] - 2026-11-10
+## [0.156.0] - 2026-11-10 17:13
 
 ### Fixed
 - **`prefs_page`**: a slider dragged and let go keeps its value. `ui.slider` moves its value only while the button is down, and the page read the preference again at the release: what was dragged was never written, and the slider went back. The page now keeps the value while the button is down and writes it when it comes up.
 
-## [0.155.0] - 2026-11-10
+## [0.155.0] - 2026-11-10 16:58
 
 ### Added
 - **`config.words_match`: phrases**: words between double quotes are one, spaces and all (`"Session 2"` is not in "Session 12"); a quote left open runs to the end of the query. The settings' search has them too.
 
-## [0.154.0] - 2026-11-10
+## [0.154.0] - 2026-11-10 16:48
 
 ### Added
 - **`config.words_match(query, fields..)`**: whether every word of a query is in one of several fields, in any case: a search over a thing's title, id and folder at once. `config.matches` (a preference's search) uses it.
 
-## [0.153.0] - 2026-11-10
+## [0.153.0] - 2026-11-10 16:21
 
 ### Added
 - **`svg.raster`**: a drawing made into pixels on the CPU (a `paint.Canvas`), where no frame is drawn: a diagram to copy as a picture or to save as a PNG file. Its shapes, dashes and markers are those `svg.draw_doc` draws; its texts are filled from the outlines of the program's faces.
 
-## [0.152.0] - 2026-11-10
+## [0.152.0] - 2026-11-10 15:55
 
 ### Fixed
 - **`desktop.watch_start` on Linux**: a place made in the moment between the failed watch of it and the watch of its parent (its CREATE came before that watch) was not followed: once an ancestor is watched, the next directory toward the place is looked for, and the place settles one level down when it is there. (`watch_follows_places_that_come_and_go` failed now and then.)
 
-## [0.151.0] - 2026-11-10
+## [0.151.0] - 2026-11-10 15:37
 
 ### Added
 - `site`: the home page's download for the reader's system (`Changelog_Options.downloads`): `<!-- download -->` becomes one button per system, the reader's shown by a script of the page (the first when it is not known), and `<!-- download-others -->` a line that offers the others.
 
-## [0.150.0] - 2026-11-10
+## [0.150.0] - 2026-11-10 15:31
 
 ### Added
 - `platform.move_to_active_monitor`: a window goes to the monitor the user works on (the one of the window in front, else under the pointer), at the same place of its work area (`rect_on_work`), before a program called up by a shortcut shows it. Windows.
@@ -1531,51 +1545,51 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - `setup` dialog: one option per line, its tile as tall as its label: a long label wraps in it instead of running past its edge.
 
-## [0.149.0] - 2026-11-10
+## [0.149.0] - 2026-11-10 15:18
 
 ### Added
 - **Diagrams: the `svg` and `mermaid` packages** (docs/diagrams.md). `svg.parse` reads a drawing in SVG (paths and every command of them, rects, circles, ellipses, lines, polygons, texts and tspans, markers, transforms, fills, strokes, dashes, opacities, the style attribute) and `svg.draw_doc` draws it with the toolkit's paths and fonts, at any scale. `mermaid.diagram` lays out a Mermaid diagram's text (flowchart, sequence, class, state, ER, gantt, pie, mindmap, timeline, git graph...) through mermaid-svg in native/mermaid (`tools/tk build_mermaid`, about 1 MB; `-define:MERMAID_NATIVE_LINK=false` for a program that builds `gt_mermaid` into its own Rust library) and gives that drawing.
 
-## [0.148.0] - 2026-11-10
+## [0.148.0] - 2026-11-10 14:04
 
 ### Added
 - **`platform.placement_text`, `placement_parse`**: a window's placement as a preference's text ("120 80 1400 900", "maximized" after it) and back, so that a program opens its window where it was, on the monitor it was on (`set_placement` brings it onto one that is there).
 
-## [0.147.0] - 2026-11-10
+## [0.147.0] - 2026-11-10 13:41
 
 ### Added
 - `setup.updated(cfg, version)`: after the Updater put a new program in place of the installed copy, its install manifest and the system's record (Settings > Apps) say the new version.
 
-## [0.146.0] - 2026-11-10
+## [0.146.0] - 2026-11-10 13:34
 
 ### Added
 - `prefs_page`: `Options.updater` and `update_pref` show a program's Updater under the line of its update preference: its state in words, Check now, Install when a version is on offer, Restart now (`Options.restart`) when one is installed. `update.status_words` says a state in a sentence.
 
-## [0.145.1] - 2026-11-10
+## [0.145.1] - 2026-11-10 13:28
 
 ### Fixed
 - `toolbox.update_command keygen` writes a key outside a work tree: it refused every path (the key's file, which does not exist yet, was looked up to make its absolute path).
 
-## [0.145.0] - 2026-11-10
+## [0.145.0] - 2026-11-10 13:22
 
 ### Added
 - **`update.Updater`**: a program updates itself. A thread of its own checks the release a while after the start and then every day, downloads the program it names, checks it against the signed manifest and puts it in place; automatic or offered (`check_now`, `install_now`), its state in `update.status`, the program told of each change (`news`). A copy from the Nix store is left to its package manager.
   - **`gt:http`** (`tk_http`): one GET over HTTP or HTTPS with what the system has (WinHTTP; libcurl loaded at run time on Linux), redirects followed, the body bounded.
   - `toolbox.update_command`: the `update` command of a project's tool (keygen, pubkey, the signed manifest of a release, verify), for its product; `toolbox.update_manifest` for a release step.
 
-## [0.144.0] - 2026-11-10
+## [0.144.0] - 2026-11-10 13:05
 
 ### Added
 - **`ui.line_edit`'s `reveal`**: a secret field (a password) with an eye at its end that shows the text and hides it again (`reveal: ^bool`, kept by the program); shown, it is text, copied as any other; the field keeps the keyboard. **`ui.lucide_icons`**: the lucide package's face, loaded when first needed, for the marks the toolkit's own icon font has not.
 
-## [0.143.0] - 2026-11-10
+## [0.143.0] - 2026-11-10 12:10
 
 ### Added
 - **`toolbox.write_logo`**: the files a program makes from its logo, from its drawing (a proc that gives a canvas of a size): the PNG sizes, the `.ico` of its Windows executable (PNG entries, or DIBs below a size), the project's picture (`.project/image.png`).
   - `toolbox.version_header` and `write_version_header`: the C header (`VER_MAJOR`, `VER_MINOR`, `VER_PATCH`, `VER_STRING`) a Windows executable's `.rc` includes for its VERSIONINFO, written only when it changes.
   - `toolbox.exe_has_icon` (Windows): an executable carries its icon group 1.
 
-## [0.142.0] - 2026-11-10
+## [0.142.0] - 2026-11-10 11:57
 
 ### Added
 - **`ui.hotkey_field`**: a field that records a key combination from the keys pressed (a click, then the keys; Escape gives it up), for a program's shortcut. `ui.hotkey_recording` says when one records (a program lets its global hotkey go then).
@@ -1591,12 +1605,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **`setup.facts`**: on Windows, a program installed in the default folder (`%LOCALAPPDATA%\Programs\<name>`, or an `install_folder` that is the same path) was taken for an install "to repair" after its restart: the record of the default folder counted as no record. `desktop.install_recorded` reads the record alone.
 
-## [0.141.1] - 2026-11-10
+## [0.141.1] - 2026-11-10 10:48
 
 ### Fixed
 - **The widgets' marks** (a check in a menu or a check box, a dropdown's and a submenu's arrow, a stepper's signs, a toast's sign) are drawn in the toolkit's own icon font (`ui.widget_icons`), whatever `icon_font` the program sets: with Lucide as its icon font, a check was a letter "V".
 
-## [0.141.0] - 2026-11-10
+## [0.141.0] - 2026-11-10 10:36
 
 ### Added
 - **`Toolkit.click`** takes CDP's `modifiers` (Alt 1, Ctrl 2, Shift 8): a Ctrl or Shift click, as a test marks rows of a list.
@@ -1613,13 +1627,13 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **`process.set_priority`** lists the threads through a descriptor of the process's own `/proc/<pid>` folder, whose start time it checks, and its pidfd says afterwards whether the process still ran: a pid given to another process in between is no longer read or changed.
 
-## [0.140.0] - 2026-11-10
+## [0.140.0] - 2026-11-10 09:00
 
 ### Added
 - **`desktop.Identity.actions`**: the desktop entry's actions (`Desktop_Action`: `Actions=` and a `[Desktop Action id]` group each, the program run with its arguments), which a launcher's right click offers.
 - **`ui.Command`**: a program's commands in one table (label, group, keys) give its key handling (`command_pressed`), its menus' and tooltips' key texts (`chord_text`, `command_shortcut`, `command_tip`), a command palette that searches as you type, the best matches first (`palette_open`, `palette`) and a sheet of the keys (`shortcuts_sheet`); docs/commands.md.
 
-## [0.139.0] - 2026-11-10
+## [0.139.0] - 2026-11-10 08:11
 
 ### Added
 - **`ui.key_take`**: the frame's first key press not taken yet, with its modifiers (a recorder of shortcuts).
@@ -1635,7 +1649,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **`dbus.call` / `call_async` `interactive`**: the call carries ALLOW_INTERACTIVE_AUTHORIZATION, so a service that checks with polkit (systemd on a system unit) can ask the user for a password instead of refusing.
 - **`ascii.compare_fold`**: the order of two names, case ignored (ASCII) first, then the bytes (a table sorted A to Z). docs/ascii.md describes the package.
 
-## [0.138.0] - 2026-11-10
+## [0.138.0] - 2026-11-10 00:12
 
 ### Added
 - **`lucide.REDO_2`**: the redo icon.
@@ -1652,43 +1666,43 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **`desktop.file_icon`**: two threads asking the first icons at once no longer share the theme's cache unlocked; the portal is asked with no lock held (`file_icons_forget` asks the theme again); `file_icon_key` reads no file; on Windows the icons come at 48 and 256 pixels too, COM is started on the asking thread, an icon with no alpha takes its mask; `open_terminal` quotes a drive's root and shows no dialog when Windows Terminal is missing, `$TERMINAL` may hold arguments.
 - **`ui.hline` in the machined finish** keeps its two lines, the dark one and the lit one under it: the rule is two lines tall there, both inside its box. The lit line was drawn under the box, where the pane after it covered it (a lone dark line), and showed through a clear splitter's handle as a ledge.
 
-## [0.137.0] - 2026-11-09
+## [0.137.0] - 2026-11-09 22:44
 
 ### Added
 - **`config.Def.hidden`**: a preference the program keeps for itself (a layout, a last choice): `prefs_page` shows it on no page and its search does not find it.
 
-## [0.136.0] - 2026-11-09
+## [0.136.0] - 2026-11-09 22:28
 
 ### Added
 - **`prefs_page.Page_Info.names`**: the preferences a page shows, in this order, whatever their category (nil: those of its category, as before), so that a program's settings pages need not be its registry's categories, which its editor of every preference keeps.
 - **`draw.replay(..., compare = true)`**: with partial redraw (`damage_auto`), a replayed picture is compared with the last frame's (the picture, its version, its slots, the matrix, the alpha, the outer clip, its batches' state and textures) and drawn again only when one of them changed, where the picture draws (not its whole scissor). Off by default: a replay is redrawn every frame, as before.
 
-## [0.135.0] - 2026-11-09
+## [0.135.0] - 2026-11-09 22:05
 
 ### Added
 - **`platform.send_hotkey`**: presses a key combination for whatever window has the keyboard, another program's (a clipboard history pastes into the program it was called from). Windows: `SendInput`; Wayland: a virtual keyboard of the seat (`zwp_virtual_keyboard_v1`); X11: none yet. `keysym_name_of` gives a key's xkb name. See docs/platform.md.
 
-## [0.134.0] - 2026-11-09
+## [0.134.0] - 2026-11-09 21:28
 
 ### Added
 - **`checkbox` and `radio` take `wrap`**: a label longer than the row goes on to the next lines, the row as tall as they are and its mark on the first, instead of running past the row's edge.
 
-## [0.133.0] - 2026-11-09
+## [0.133.0] - 2026-11-09 21:20
 
 ### Fixed
 - **A capture of a window with partial redraw is taken when nothing changed**: a frame that drew nothing was not presented and had no texture to copy, so a capture asked for then failed (DevTools' screenshots, once a dialog had opened). A frame a capture waits for is now presented (`damage_skips_present`).
 
-## [0.132.0] - 2026-11-09
+## [0.132.0] - 2026-11-09 21:15
 
 ### Changed
 - **`setup`**: the dialog is laid out dense, as a tool's panel: its own title bar (the name, the close control), a framed header (what is offered for the state, the versions, the state as a badge), the install location, "Options" as a grid of framed boxes two a line, a framed box of what the disk says, then the buttons. It opens 46 × 34 em. `Config.square`: every corner of the dialog square (its panel, frames, fields and the toolkit's buttons).
 
-## [0.131.0] - 2026-11-09
+## [0.131.0] - 2026-11-09 21:07
 
 ### Added
 - **`setup.Dialog.at`**: where the last frame put the dialog's buttons (Install, Uninstall, the secondary one: `Button_Role`), for a program's automation and its tests. The dialog opens 31 em high (27 before), so a program's choices show without scrolling.
 
-## [0.130.0] - 2026-11-09
+## [0.130.0] - 2026-11-09 21:05
 
 ### Added
 - **`ui.current_state`**: the State whose build is open on this thread (nil outside a build), for a widget that works on other threads and posts to it (`ui.post`) when its work ends.
@@ -1708,28 +1722,28 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **`setup.facts`**: a program with no icons that is not installed reads as not installed, not as an install to repair.
 
-## [0.129.0] - 2026-11-09
+## [0.129.0] - 2026-11-09 19:42
 
 ### Added
 - **`lucide`**: `ALIGN_LEFT`, `CLIPBOARD`, `EDIT`, `FILES`, `IMAGE`, `PIN_OFF`, `SAVE`, the icons papier draws (it uses the toolkit's set in place of its own copy).
 
-## [0.128.0] - 2026-11-09
+## [0.128.0] - 2026-11-09 19:13
 
 ### Added
 - **`lucide`: the Lucide icons as a font** (`lucide.DATA`) and constants for their characters (`lucide.SEARCH`, `lucide.PALETTE`, `lucide.DOWNLOAD`...): one set of icons for every program of the toolkit, in place of each program's own copy.
 
-## [0.127.0] - 2026-11-09
+## [0.127.0] - 2026-11-09 18:56
 
 ### Added
 - **`setup`: the program's own look, and the Desktop's shortcut on Linux.** `Config.backdrop`, `Config.button` (`Button_Kind`: `Normal`, `Accent`, `Danger`) and `Config.close` let a program draw the dialog's backdrop, its buttons and a close control as its own dialogs do. The dialog asks for a shortcut on the Desktop on Linux too: `desktop` has a `Desktop_Shortcut` part there (a copy of the entry in `xdg_desktop_dir`, executable; another program's file stays). The `setup` package has its tests (the states, the versions, when a start offers the dialog). The dialog can be resized from its edges and its corner (`Dialog.size`, which the program may keep); what it says scrolls when it is small, its buttons stay under it.
 
-## [0.126.0] - 2026-11-09
+## [0.126.0] - 2026-11-09 18:28
 
 ### Added
 - **`setup`**: a program installs itself for the user from a dialog of its own, over the desktop package: the state of the install (`facts`, `state_of`), Install (the copy, the launchers, the program's own parts by `Config.prepare`, the system's record), Uninstall (what the running copy holds goes at the end of the process), Repair, Upgrade, Open the installed copy, and the offer at a start (`wanted`, the user's choice kept by the program). It was opencode native's Setup. See docs/setup.md.
 - **The console launcher** (`tools/console_launcher`, `src/console_launcher`): `<stem>.com` beside a program of the Windows subsystem, which `desktop.install` writes with the PATH entry. In cmd or PowerShell it gives a console command its output and its exit code and lets a window go. A program builds its own with its mark and its rules (`LAUNCHER_DEFAULT`, `LAUNCHER_OTHERS`: words as the first argument, flags anywhere, `(none)`) and embeds the bytes. It was Wren's (src/tools/wrencom). See docs/desktop.md.
 
-## [0.125.0] - 2026-11-09
+## [0.125.0] - 2026-11-09 17:55
 
 ### Added
 - **`qr` and `ui.qr_code`**: QR Codes (ISO/IEC 18004, model 2), as Project Nayuki's generator makes them: numeric, alphanumeric or byte mode, levels L, M, Q and H, the smallest version that holds the text, the mask of lowest penalty. `ui.qr_code` draws one dark on white in whole device pixels with its quiet zone, encoded again only when its text changes ([docs/qr.md](docs/qr.md)).
@@ -1743,12 +1757,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Offscreen windows on Linux** hear the session bus and the accessibility bus while they wait: notifications and portal answers reach a window that has no display.
 
-## [0.124.1] - 2026-11-09
+## [0.124.1] - 2026-11-09 16:50
 
 ### Fixed
 - **Linux: `system_subpixel_text` reads fontconfig** (`antialias`, `rgba`) instead of always saying RGB: a configuration that asks for BGR, grey or no smoothing is followed. The colour-stripe text tests (`tests/subpixel`, Slug) run on Linux too, with the built-in face.
 
-## [0.124.0] - 2026-11-09
+## [0.124.0] - 2026-11-09 16:43
 
 ### Added
 - **`winrt`** and **hotkeys**: what a program needs for the Windows clipboard history and a global shortcut.
@@ -1757,17 +1771,17 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
   - `prefs_page`: a page of `Options.pages` with no preference in the registry is not shown (a program that registers some preferences on one system only).
   - `platform.uri_list_to_paths` on Windows: `file:///C:/x` reads as `C:/x`, not `/C:/x`.
 
-## [0.123.0] - 2026-11-09
+## [0.123.0] - 2026-11-09 16:05
 
 ### Fixed
 - **`config.save_user`** makes the folder of its file when it is not there: a program's first save from its settings no longer fails (papier's Settings lost a change, read back from no file).
 
-## [0.122.0] - 2026-11-09
+## [0.122.0] - 2026-11-09 15:47
 
 ### Fixed
 - **`prefs_page`**: a number with a unit no longer makes its line as tall as the page (the unit took the height of a parent sized by its children).
 
-## [0.121.0] - 2026-11-09
+## [0.121.0] - 2026-11-09 15:23
 
 ### Changed
 - **`draw.damage_auto`** works out the region in linear time: 0.45 ms instead of 2.0 to 2.6 ms for 10,000 spans (`-o:speed`). A span is compared by parts (what it drew between two children); `Damage_Memory` holds `parts` and `next` (swapped, not copied), `Damage_Span` is now `Damage_Part`, `Damage_Auto_Stats` has `parts` (was `spans`), `ms`, `px_drawn` and `px_window`, and `Damage_Whole.Offscreen` is now `Plane`. A second memory in one frame asserts.
@@ -1783,22 +1797,22 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Security
 - **`desktop.exec_expand`** refuses an `Exec` line the Desktop Entry specification refuses: a field code in a quoted argument (`sh -c "viewer %f"` let a file name such as `a;rm -rf ~.txt` run as shell code), an unknown code, `%F` `%U` `%i` inside an argument, two file codes. It returns `ok`; `exec_arguments` returns `Exec_Argument` (`text`, `quoted`). "Open with" lists no application with such a line.
 
-## [0.120.0] - 2026-11-09
+## [0.120.0] - 2026-11-09 14:57
 
 ### Added
 - **`prefs_page`**: a program's settings page from its `config` registry, with no code per preference, in the look of opencode native's settings: the search in a well and the pages with their icons on the left; the page's title and a line per preference on the right (its title and description, a switch, a segmented choice or a list, a slider or a field with its unit, a reset button, a carved line); a search shows what matches in every page. `Options.custom` gives a preference a control of the program's own; `theme_cards` shows the themes as cards in their own colours. `Options.changed` runs after each change, for the program to save and apply it. See docs/prefs_page.md.
 
-## [0.119.0] - 2026-11-09
+## [0.119.0] - 2026-11-09 14:31
 
 ### Added
 - **Web addresses in plain text become links**: `ui.rich_links(text, style, &runs)` turns a string into rich runs whose `http://` and `https://` addresses are links in the theme's link colour, underlined, without the sentence's closing marks around them (`ui.web_address_len`).
 
-## [0.118.0] - 2026-11-09
+## [0.118.0] - 2026-11-09 14:03
 
 ### Added
 - **Automatic partial redraw**: `ui.set_partial_redraw` (or `Host.partial_redraw` in `host`) redraws only the boxes whose drawing changed since the last frame, with no rectangle marked by hand; an idle frame redraws nothing, a caret blink or a hover a small rectangle, custom draws included. Underneath, `draw.damage_auto` with `draw.damage_span_begin` / `damage_span_end` compares a digest of what each span draws (`draw.Damage_Memory`, `damage_volatile`, `damage_whole`, `ui.damage_stats`); `render.texture_version` and `render.damage_building` are new, and a frame with a region is whole when the clear colour, blend space, text or corner settings change. `Toolkit.metrics` (DevTools) reports it: the partial frames, why the others were whole, and the share of pixels drawn.
 
-## [0.117.0] - 2026-11-09
+## [0.117.0] - 2026-11-09 13:54
 
 ### Added
 - **The machined finish** (`Finish.Machined`): bevelled buttons that sink when pressed, fields and segmented tracks as sunken wells with a ring of the accent when focused, separators as carved grooves (box flags `.Sunken`, `.Groove`); flat on a light palette. Its primitives for a program's own surfaces: `machined_bevel`, `machined_well`, `machined_groove`, `machined_plate`, `machined_lamp`, `machined_pip` (each draws its flat form outside the finish); `Theme.glow` sets its halos. It draws up to `MACHINED_OVERFLOW_PX` outside a box: a region redrawn alone must hold that margin. fidget: a Machined finish switch (Ctrl+M).
@@ -1806,63 +1820,63 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **Themes replace the named palettes**: `ui.THEMES` (25 themes, most with a dark and a light version: opencode native's and the toolkit's), `Theme_Def`, `Theme_Colors`, `theme_palette`, `theme_palettes`, `palette_of`, `theme_find`; `theme_show` applies a theme, a mode (system, dark, light) and a finish, and follows the system; `theme_recolor` moves a program's own colours to the theme shown; `themes_read` reads a user's themes. `NAMED_PALETTES`, `palette_named` and the `PALETTE_*` constants are gone: `palette_of("Midnight")`, `palette_of("Midnight", light = true)` for Daylight. `Palette.well`: the colour of sunken surfaces. See docs/themes.md.
 
-## [0.116.0] - 2026-11-09
+## [0.116.0] - 2026-11-09 13:12
 
 ### Added
 - **`desktop.handlers_for_file`, `desktop.open_with`**: "Open with": the applications the system knows for a type of file, the default first, and a file opened with one of them (Linux: shared-mime-info, desktop entries, mimeapps.list; Windows: the shell's handlers). Also `desktop.exec_arguments`, `desktop.exec_expand` and `platform.launch_detached` (Linux).
 
-## [0.114.2] - 2026-11-09
+## [0.114.2] - 2026-11-09 11:26
 
 ### Fixed
 - **A window never shown is in no task bar (Wayland)**: `open_window` makes a surface with no role, and the toplevel is made at the first `show_window`. A program that starts hidden in the notification area was listed in the task bars that show every toplevel (ShojiWM). `set_maximized` and `set_fullscreen` asked before the first show are asked by the new toplevel.
 
-## [0.115.0] - 2026-11-09
+## [0.115.0] - 2026-11-09 10:57
 
 ### Fixed
 - **The wheel goes to the box that scrolls its way**: a box that scrolls only sideways (`.View_Scroll_X`, a wide table) no longer takes an up-and-down wheel from the page around it, and Shift+wheel scrolls such a box sideways, as in a browser. A box that scrolls itself still gets the wheel as it is (a number field steps further with Shift).
 
-## [0.114.1] - 2026-11-09
+## [0.114.1] - 2026-11-09 10:51
 
 ### Fixed
 - **The tests of the toolbox build on Windows again**: the test of `start_group` is Linux's only (`#+build linux`: a file name that ends in `_test` gives Odin no system). The test of a host at rest counts its wakes: an event of the desktop may end one wait, a wait that does not sleep wakes hundreds of times.
 - **`platform.wait_event` (Wayland)**: less than a millisecond left is a millisecond of sleep. It returned at once, and a loop that waits until a deadline spun through its last millisecond (about 150 wakes).
 
-## [0.114.0] - 2026-11-09
+## [0.114.0] - 2026-11-09 10:30
 
 ### Added
 - **`ui.field_frame`, the box flag `.Focus_Within`, the theme tag `bare`**: one surface for a field and what goes with it (an icon, a count), with one focus ring around all of it while a box inside has the focus. A field built under `bare` draws no background, border or focus ring of its own: no box inside a box, no square ring inside round corners.
 
-## [0.113.0] - 2026-11-09
+## [0.113.0] - 2026-11-09 09:58
 
 ### Added
 - **`toolbox.start_group`, `toolbox.stop_group`** (Linux): a command in a process group of its own, stopped with all it started (a wrapper such as NixOS's sway leaves its real program running when only the wrapper is stopped). `tk desktop_tests` uses them.
 
-## [0.112.0] - 2026-11-09
+## [0.112.0] - 2026-11-09 09:31
 
 ### Added
 - **`platform.raise_window` (Wayland)**: asks the focus through `xdg_activation_v1`, with the seat's last input serial. It did nothing before. A program shown by a shortcut of the compositor now gets the keyboard on compositors that do not focus a new window by themselves.
 
-## [0.111.3] - 2026-11-09
+## [0.111.3] - 2026-11-09 09:17
 
 ### Fixed
 - **Tray (Linux)**: `GetAll` of the StatusNotifierItem includes `IconPixmap`. Panels that read the properties in one call (Quickshell, Waybar) showed the "missing icon" pattern.
 
-## [0.111.2] - 2026-11-09
+## [0.111.2] - 2026-11-09 03:39
 
 ### Fixed
 - **Wayland: a wait sleeps through the renderer's own traffic**: the presentation feedback and the FIFO events of the frame just shown, and the ids of the renderer's callbacks, made the connection readable at each refresh, and every wait ended there: a window at rest drew a frame at each refresh. A wait now ends on what is the window's (its input, a repaint asked for), a change of the clipboard, a wake, a bus or the time. `tests/linux_desktop` checks that a wait at rest sleeps its time.
 
-## [0.111.1] - 2026-11-09
+## [0.111.1] - 2026-11-09 03:27
 
 ### Fixed
 - **Linux: the loop sleeps at rest again**: the system's repaint request (a configure, an expose) stayed set, so every `hosts_wait` ended at once and a window drew frames for ever (60 a second; a core for a hidden one). `host_frame` now takes the request (its frame answers it), and a hidden window's request ends no wait. `tests/linux_desktop` checks that no frame is due at rest.
 
-## [0.111.0] - 2026-11-09
+## [0.111.0] - 2026-11-09 02:43
 
 ### Added
 - **`desktop`: the `Autostart` part**: the program starts with the user's session (`Options.autostart`, with `autostart_arguments`: `--hidden` for a program of the notification area). Linux: an XDG autostart entry (`$XDG_CONFIG_HOME/autostart/<slug>.desktop`, `autostart_dir`, `<prefix>AUTOSTART_DIR`); Windows: the value of the key under `HKCU\...\CurrentVersion\Run`. Status, repair when the arguments change, removal of only what is the program's.
 
-## [0.110.0] - 2026-11-09
+## [0.110.0] - 2026-11-09 02:35
 
 ### Added
 - **`host.host_hide`**, **`host.host_show`**: a window with its renderer off the screen and back, the renderer's surface released first (**`render.surface_drop`**) and made again at the first frame after the show (`render.surface_remake(r, handles)`, which now takes the window's native handles). `tk desktop_tests` builds its tests with the native text backend and tests a host's hide and show with its renderer.
@@ -1870,12 +1884,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Wayland**: a window shown again after `hide_window` no longer ends the connection (`must ack the initial configure before attaching buffer`): the hide destroys the surface with its role, since the last frames' content updates could wait behind a FIFO barrier of `wp_fifo_v1` that an unmapped surface never clears, and the new role's first commit with them.
 
-## [0.109.0] - 2026-11-09
+## [0.109.0] - 2026-11-09 02:12
 
 ### Added
 - **`platform.hide_window`**: a shown window off the screen and back with `show_window` in a few milliseconds, its interface kept (a program in the notification area): Wayland (the toplevel role made again, its first configure waited for), X11 (withdrawn), Windows (`SW_HIDE`). `Window.shown_again` counts the shows after a hide; `host_frame` then makes a new swap chain (**`render.surface_remake`**), which Vulkan's FIFO on Wayland would otherwise wait on for good.
 
-## [0.108.0] - 2026-11-09
+## [0.108.0] - 2026-11-09 01:28
 
 ### Added
 - **`platform.needs_frame_outline`**: a window with an integrated title bar and no frame of the system's (Linux: no server-side decorations, not tiled, no X11 frame extents; neither maximized nor full screen) gets a 1-pixel outline in the theme's border colour, drawn by `ui`.
@@ -1883,7 +1897,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **An integrated title bar on Linux works as a frame**: a press on the caption moves the window (Wayland `xdg_toplevel.move`, X11 `_NET_WM_MOVERESIZE`), the bands along its four sides resize it (with the resize cursor over them), a double click on the caption maximizes or restores it, and a right click there opens the compositor's window menu. Nothing of that happened: the window could not be moved. The window menu now gets the press's serial and the surface's coordinates.
 
-## [0.107.0] - 2026-11-09
+## [0.107.0] - 2026-11-09 00:19
 
 ### Added
 - **`png` package**: the one PNG codec of the toolkit. `png.encode(rgba, width, height, .Small | .Fast)` writes straight RGBA8 as a PNG file (`.Small`: the filter of least sum per row and `flate.deflate`; `.Fast`: Sub and `flate.deflate_runs`), `png.decode` reads any PNG (every colour type, bit depth, palette, `tRNS`; 16 bits rounded to 8) as straight RGBA8, `png.rgba8_of` converts any `core:image` picture. `platform.clipboard_image_decode(mime, bytes)` reads a PNG, JPEG or BMP file, `platform.clipboard_pick_mime(offered, wanted)` picks the type to read of another program's offer.
@@ -1898,12 +1912,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **Linux: pasting another program's image or files**: `platform.clipboard_get_image` read nothing unless the application had set a PNG hook, so an image copied by a screenshot tool, a browser's Copy image or `wl-copy --type image/png` did not paste. It is read now on Wayland and X11 through the toolkit's PNG codec, and an offer of `image/jpeg` or `image/bmp` alone is read too; `clipboard_formats` says `.Image` for them. `clipboard_get_files` also reads GNOME Files' `x-special/gnome-copied-files` when there is no `text/uri-list`. The tray's PNG icon is decoded the same way.
 - **`tk desktop_tests` leaves no compositor running**: a server it starts (and the test program) runs in a process group of its own, and is stopped with its whole group, also on a failure, a time limit or a signal to `tk`. A wrapper such as NixOS's sway (`dbus-run-session`, which runs sway and a session bus beside it) took the signal alone and left sway, swaybg and the bus running, holding the command's output open. Their output goes to files now, the test program's printed when it ends. `a_lost_server_closes_its_windows` stops its second server with its children, so the window hears the compositor go.
 
-## [0.106.0] - 2026-11-08
+## [0.106.0] - 2026-11-08 23:44
 
 ### Added
 - **Content that fades out at its edges**: `draw.mask_edge_fade` draws the mask of a `push_mask` that fades the content to transparent over given widths at the left, top, right and bottom edges; `ui.next({edge_fade = ...})` gives it to a box that clips, so that a list that scrolls fades out where it goes on instead of ending in a straight cut.
 
-## [0.105.0] - 2026-11-08
+## [0.105.0] - 2026-11-08 22:51
 
 ### Added
 - **`platform.can_hide_windows`**: whether a window can exist unseen, made and never shown. Yes on Windows; no on Wayland and X11, where a toplevel is shown as soon as it has a buffer: a program that needs an unseen window opens an offscreen one there.
@@ -1911,12 +1925,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Variable faces off Windows**: `font.axes` reads a face's axes from its `fvar` table, and `font.with_variations` makes an instance the native backend opens at its location (a simulation of it keeps it). Both did nothing there, so a variable font was drawn at its default instance: a web font in `font-weight: 400` whose default is 300 came out light.
 
-## [0.104.1] - 2026-11-08
+## [0.104.1] - 2026-11-08 21:06
 
 ### Fixed
 - **Docs tables on a phone, on every site**: the rule that keeps a table's columns wide enough is in the documentation's own style sheet (`docs_css`), not only in `DOCS_CODE_CSS`; Wren's docs, whose site has its own table styles, squeezed them still.
 
-## [0.104.0] - 2026-11-08
+## [0.104.0] - 2026-11-08 21:04
 
 ### Added
 - **`site.Meta.changelog_page` and `version_anchor`**: where a site tells a version (the feed's links, llms.txt), for a site whose changelog is another page or whose anchors are written otherwise (Wren's `changelog/#v0-7-0`).
@@ -1924,7 +1938,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Docs tables on a phone**: each column keeps room for its text (26 characters, at most 70 % of the screen) and the table scrolls sideways in its frame. The columns were squeezed to one word a line.
 
-## [0.103.0] - 2026-11-08
+## [0.103.0] - 2026-11-08 20:52
 
 ### Added
 - **`site.build_docs`**: a documentation site from a project's Markdown: a page per document in the site's header and footer, a menu from `docs/_nav.txt` (folded under a "Documentation" toggle on a phone, no script), a search with no server, collapsible groups, a breadcrumb, the previous and next pages, "On this page", the old addresses sent on. `site.check_links` checks a built site's links without a browser; `site.check` also checks the documentation pages at 390 px. Wren's documentation generator moved here; the toolkit's Docs section uses it.
@@ -1932,7 +1946,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **`site.render_markdown`** replaces `markdown_html`: one converter (Wren's, which reads more: blockquotes, HTML blocks, aligned tables, autolinks, titles, heading anchors, unique ids), with coloured code blocks (`site.write_code_block`, `site.Code_Language`), the headings and the plain text of a document. A `|` in a code span no longer splits a table cell, two trailing spaces are a hard break, and a title keeps a `_` inside a word.
 
-## [0.102.0] - 2026-11-08
+## [0.102.0] - 2026-11-08 19:55
 
 ### Added
 - **`toolbox` package** (`tk_toolbox`, [docs/toolbox.md](docs/toolbox.md)): what the tools of a project share. `run` (the output shown or appended to a log; a working directory, an environment, a time limit, `echo`), `capture` (the standard output and the exit code, the standard error shown on failure), `env_with`, `exit_code` and `succeeded` (a Windows exit code read as the program's signed 32-bit code), `sha256_hex` and `sha256_file`, `download_pinned` (curl with retries, GitHub's API when a release download fails, a file whose SHA-256 is wrong removed), `download_through_api`, `release_asset_id` and `system_program`. `tools/tk` uses it; its own copies of these procedures are gone.
@@ -1947,17 +1961,17 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **`tk site_check`** checks the site as it is published (the Docs pages and the 404 too) and waits for what each step leads to instead of fixed delays (opencode native's check, now shared): the old check hung when the viewer did not open. **`tk theme_shots`** reads the palettes from src/ui/theme_default.odin (tools/theme_shots.mjs still read ui/, gone since the packages moved to src/).
 
-## [0.101.0] - 2026-11-08
+## [0.101.0] - 2026-11-08 18:07
 
 ### Changed
 - **The library's packages are in `src/`** (`src/ui`, `src/platform`...): a program's collection points there (`-collection:gt=<toolkit>/src`), and the examples, tests, tools and docs apart from it. **Every step is a command of `tools/tk`**, on Windows and Linux: `build` (an example; `build.bat` and `./build.sh` are its shortcuts), `ci` (what tools/linux_ci.sh did), `desktop_tests` (what tools/linux_desktop.sh did, its fake xdg-open an Odin program), `build_text` on Linux too. The scripts are gone. `flake.nix`: the development shell on Linux (the pinned Odin with wgpu-native, Rust, the virtual desktops' servers).
 
-## [0.100.0] - 2026-11-08
+## [0.100.0] - 2026-11-08 17:32
 
 ### Added
 - **`config.Search`**: the search of a settings UI made of pages (`search_begin`, `search_page`, `search_shows`, `searching`): which preferences a query shows (every word in the name, the title or the description; a page whose title matches shows all of it) and each page's heading before its first match. The UI keeps its own layout.
 
-## [0.99.0] - 2026-11-08
+## [0.99.0] - 2026-11-08 17:21
 
 ### Added
 - **`update`** (package `tk_update`): signed updates of a program, from Wren and opencode native. A `Product` (name, signing context, public key) checks what a release publishes: one manifest per platform and channel (`manifest_name`, channels optional), signed with Ed25519, for a strictly newer version and the release's own file name (`check_release`). `place` puts the downloaded program in place of the running one after its size and SHA-256 (Windows: renamed aside, put back on failure; Linux: renamed over), `remove_leftovers` cleans up at the next start, and `manifest_of`, `manifest_bytes` and `sign` are the release tool's side. [docs/update.md](docs/update.md).
@@ -1969,49 +1983,49 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **System fonts on Linux take fontconfig's aliases and generic families**: `font.load_system` and `font.has_system_family` give "Courier New" the installed font the configuration binds to it (Liberation Mono, by 30-metric-aliases.conf), and `monospace`, `serif`, `sans-serif` and the other generic families the font fontconfig picks. They refused any answer whose family was not the one asked for, so such a name was missing and text fell to the next font.
 
-## [0.98.3] - 2026-11-08
+## [0.98.3] - 2026-11-08 10:39
 
 ### Fixed
 - **`tools/tk`'s pinned downloads** (wgpu-native, DXC, the emoji font) try again, and a file of a GitHub release whose download fails comes through GitHub's API (with `GH_TOKEN` or `GITHUB_TOKEN` when set), checked against its SHA-256 as before: GitHub's release downloads answered 504 for over an hour while its API served the same files, and a CI fetching wgpu-native failed. The tool's own tests run in `run_tests` (`tk_tool`).
 
-## [0.98.2] - 2026-11-08
+## [0.98.2] - 2026-11-08 06:25
 
 ### Fixed
 - **`platform.custom_cursor_info` on Linux** says the size and hotspot of the cursor as it is shown, the image at the scale it is shown at (`scale`, or the window's: `custom_cursor_scale`), as on Windows; it said those of the source image whatever the scale. The scaling is shared with the pixels made for X and Wayland (`custom_cursor_geometry`).
 
-## [0.98.1] - 2026-11-07
+## [0.98.1] - 2026-11-07 22:34
 
 ### Fixed
 - **A lazy column lets its view move by less than a pixel**: the item the view is on was kept in its place by its rect, rounded to whole pixels; that error, read as a move of the content, put a view moving by less than a pixel a frame (a slow glide, the wheel's click just past its dead zone) back where it was every few frames, and it did not move. Its place is now read where the layout put it, not rounded.
 
-## [0.98.0] - 2026-11-07
+## [0.98.0] - 2026-11-07 22:14
 
 ### Fixed
 - **Instance buffers go back down after a peak**: the draw context's instance list and the renderer's instance buffer (D3D11, and WebGPU's tables) are no longer kept at the size of the largest frame ever drawn; after `render.SHRINK_FRAMES` frames in a row that used less than `1/render.SHRINK_RATIO` of them, they shrink to what is drawn (`render.shrink_due`).
 - **Text outside the clip makes no instance**: a glyph placed in screen pixels and wholly outside the clip rectangle is no longer drawn (nothing recorded in a picture: it is replayed elsewhere). Text drawn again in strips, as a find in page paints the letters of its matches, made every glyph of the box in every strip: a needle with thousands of matches took 72 MB of instances and 300 MB of buffers in one frame.
 
-## [0.97.0] - 2026-11-07
+## [0.97.0] - 2026-11-07 21:40
 
 ### Changed
 - **`ui.find_sweep`** (breaking): a find in a lazy column reads the column a slice of items at each frame (`FIND_SWEEP_ITEMS`), from the top down, instead of building all of it in one frame: a long document no longer freezes the window when a needle rests. It returns the items this build makes for it, given to **`ui.lazy_begin(sweep = ...)`** (was `lazy_begin(all = find_sweep())`); the text of the scope around the items (the column's own boxes, before them and after them) is read too, in reading order. Until a sweep ends, what the last one found stands; **`ui.find_progress`** says how far it is, and `find_count` while `find_pending` is what it has read so far. A match not counted yet has the index -1.
 
-## [0.96.0] - 2026-11-07
+## [0.96.0] - 2026-11-07 15:34
 
 ### Added
 - **`ui.press_hand`**: the press held on one box goes on on another, with what it keeps (`ui.press_data`), for a gesture whose item is built in another place while it lasts: a tab dragged out of a list into a grid of pinned ones, whose boxes have other parents, stays one drag.
 
-## [0.95.0] - 2026-11-07
+## [0.95.0] - 2026-11-07 15:31
 
 ### Added
 - **Contrast**: `ui.luminance` and `ui.contrast` (WCAG's ratio), `ui.to_oklch` / `ui.from_oklch` for linear colours, and `ui.readable(fg, ground, ratio)`: the colour moved along its OKLCH lightness, its hue and chroma kept, only as far as it must to read on the ground (lighter on a dark one, darker on a light one).
 - **The system's light / dark, on Windows too, and when it changes**: `platform.dark_mode_preferred()` reads Windows' app mode (AppsUseLightTheme) as it read the portal and GTK on Linux; `platform.color_scheme_serial()` moves when the choice may have changed (WM_SETTINGCHANGE "ImmersiveColorSet", the portal's SettingChanged): an app that follows the system compares one integer a frame.
 
-## [0.94.0] - 2026-11-07
+## [0.94.0] - 2026-11-07 14:24
 
 ### Changed
 - **Selected text reads on its selection**: the selected part of a selectable box's text (labels, paragraphs, rich paragraphs) is painted again over the selection in the theme's new `"selection text"` colour (by default the text's). A faint text, a dimmed run, was lost on the selection's colour.
 
-## [0.93.0] - 2026-11-07
+## [0.93.0] - 2026-11-07 13:45
 
 ### Changed
 - **The wheel scrolls as the system says**: a notch moves `platform.wheel_lines()` lines (Windows' setting, lines per notch, characters across; three on Linux), each `ui.WHEEL_LINE_PX` (100/3 logical px, a browser's line) at the window's scale, in whole pixels; where the system says a page, a page less a line. Every view scrolls by `ui.wheel_step(box, axis)`, text fields too. Before, a notch was 4 em of the box's font whatever the setting.
@@ -2019,7 +2033,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **A tab is drawn as space**: `font.TAB_SPACES` (4) spaces wide, the same wherever it is (measured as shown), with a space's glyph. Fonts have no glyph for it: it was drawn as a missing one (a box) in code and in tools' output.
 
-## [0.92.0] - 2026-11-07
+## [0.92.0] - 2026-11-07 11:53
 
 ### Added
 - **`host.host_adopt`**, hooks **`still`** and **`after_frame`**, **`Host.times`**: a window and a renderer an application made in its own order of start become a host; a window whose picture would not change is not built; what a program does between two frames goes after the picture; the last picture's draw and present times.
@@ -2028,7 +2042,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **`ui.Reorder`** and **`ui.reorder_frame`** are gone: the drag of a reordered list is kept on the press of the item's box (ui.press_data) and ends with it (the button went up, the box went, the user left the window). The procedures take the item's box key in place of a `^Reorder` and an id: `reorder_begin(item, moved, threshold, press, slot)`, `reorder_dragging(item)`, `reorder_item_pos(item, slot, pointer, lo, hi, rate)` (its animation keyed by the item's box too). Lists whose items share ids drag apart, the box's key being its list's.
 - **`ui.Dock.held`** is gone: `ui.dock_held(&d)` asks the press whether the left button holds one of the dock's controls (a tab or a floating panel's title, a handle, a floating panel's corner). It keeps nothing, so it ends with the press (the release, the box held going, the user leaving the window) and says the same at any time of the frame. Write `ui.dock_held(&app.dock)` where `app.dock.held` was read.
 
-## [0.91.0] - 2026-11-07
+## [0.91.0] - 2026-11-07 09:53
 
 ### Added
 - **`ui.lazy_pin`**, **`ui.lazy_pinned`**: the view stays on an item, a given distance into it, placed after each layout whatever grows around it; what the last layout found of it says when it has settled.
@@ -2050,24 +2064,24 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **WebGPU second windows**: a window's frame format now goes with it through surface_use, as its offscreen target does on Direct3D 11.
 - **Scrolling**: dragging a scroll bar's thumb or stepping a long menu ends a glide under way, which could pull the view back for a frame; a ui.vlist whose rows moved during a glide no longer starts the glide over.
 
-## [0.90.0] - 2026-11-06
+## [0.90.0] - 2026-11-06 21:33
 
 ### Added
 - **`render.surface_init` `under_children`**: a composition surface below the window's child windows. A web view moved into a window with a composition surface stayed hidden behind it.
 
-## [0.89.0] - 2026-11-06
+## [0.89.0] - 2026-11-06 20:59
 
 ### Added
 - **`ui.tween`**: a value that reaches its target in a set time, gently at both ends, for what the eye follows from end to end.
 - **`draw.glyph_run_stroke`**: the outlines of a glyph run as a line of a width.
 - **`font.glyph_ink_extent`, `font.run_ink_spans`**: where the ink of a glyph or a run crosses a band, from the outlines, kept per glyph and band: the gaps of a skipping underline.
 
-## [0.88.0] - 2026-11-06
+## [0.88.0] - 2026-11-06 20:06
 
 ### Fixed
 - **Text in a dialog or a popover can be selected**: their panel took every press, so a plain `.Selectable` label in it selected nothing, showed no text cursor, and a label made `.Clickable` to get the press counted as a button. The panel is now `.Press_Stop` (new `Box_Flag`: clickable only so that what is under it gets no press): a press on it is a press on nothing, selectable text in it takes its own, and a selection stays on the surface it started on, whatever is built behind it.
 
-## [0.87.0] - 2026-11-06
+## [0.87.0] - 2026-11-06 19:44
 
 ### Added
 - **`push_clip_polygon` takes several contours**: a point past `render.POLYGON_BREAK` ends one, with no edge to the next: a clip with holes.
@@ -2077,7 +2091,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **`render.release_targets`** takes the textures to leave: a picture still on screen stays, for the program to carry over to the new generation.
 
-## [0.86.0] - 2026-11-06
+## [0.86.0] - 2026-11-06 11:52
 
 ### Added
 - **`platform.drag_silence_limit`**: for tests, how long a drag may stay silent before it is given up.
@@ -2198,7 +2212,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **D-Bus**: `r_skip` never returned from a message cut short inside a struct or a dict entry, or from an array of a type that takes no bytes; it ran on the window's thread.
 - **DevTools**: `Page.startScreencast` on a window served with no `ui.State` is refused. It woke the window for good, and an ack dereferenced the missing state.
 
-## [0.85.0] - 2026-11-06
+## [0.85.0] - 2026-11-06 11:04
 
 ### Added
 - **`ui.toast_action`**: a toast that a click acts on, and dismisses, for one that says what can be done.
@@ -2206,7 +2220,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **The corners of a floating panel**: its panels, drawn after its frame and square, covered the frame's round corners, whose border stopped short of them. They are clipped to the frame now, and its border goes over them.
 
-## [0.84.0] - 2026-11-05
+## [0.84.0] - 2026-11-05 21:10
 
 ### Added
 - **Text per colour stripe**: `font.Settings.subpixel_text` (`.Rgb`, `.Bgr`) gives text a coverage per stripe of the screen's pixels, sharper at few pixels per letter, on Direct3D 11 with the atlas (DirectWrite) and on WebGPU with Slug (three samples a third of a pixel apart). Blended per channel in the frame's own target; in a layer, or turned, the same text is grey. `font.system_subpixel_text` says what the system does, `render.text_subpixel_supported` what the renderer can.
@@ -2215,23 +2229,23 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Read-backs from several threads**: the process's table of read-backs was allocated with the allocator of whoever wrote in it first, and freed by whoever emptied it, through an allocator that could be gone. It is on the process's heap.
 
-## [0.83.0] - 2026-11-05
+## [0.83.0] - 2026-11-05 11:57
 
 ### Added
 - **The side buttons of the mouse**: `Mouse_Button.Back` and `.Forward` on Windows, X11 and Wayland, `ui.mouse_pressed(.Back)`, and `back` and `forward` over the DevTools protocol.
 
-## [0.82.0] - 2026-11-05
+## [0.82.0] - 2026-11-05 11:05
 
 ### Changed
 - **Middle-click autoscroll goes five times faster by default**: up to 15000 px/s, reached 300 px from the anchor, the speed doubling every 60 px (`DEFAULT_AUTOSCROLL`): the curve Wren settled on. It was 2800 px/s at 420 px.
 - **A `target_hz` above the screen's rate is made**: 120 on a 60 Hz screen is up to 120 frames a second while something moves (none at rest), each on its slot, none waiting for the screen, shown at once (`Cadence_Plan.above`): it stayed at the screen's rate. The screen shows the newest: not smoother, but each refresh has fresher input.
 
-## [0.81.0] - 2026-11-05
+## [0.81.0] - 2026-11-05 09:12
 
 ### Added
 - **`ui.modal_sized`**: a dialog of a size of its own, centered and always within the window: it opens at what it prefers, the person resizes it by its edges and corners (the opposite side follows, it stays centered), a double click goes back; the size is the application's to keep. `ui.modal` stays in the window too: narrower if it must, higher when what is in it would pass the bottom.
 
-## [0.80.0] - 2026-11-05
+## [0.80.0] - 2026-11-05 07:44
 
 ### Added
 - **The output of frames is the application's to choose**: `Pacer.choices` (a ceiling, a rate; read at the next frame, `render.pace_frame` planned with none), and `Cadence.uncapped`: no slot, no wait for the screen, every frame shown at once, for a diagnostic or a benchmark. A window at rest stays at rest.
@@ -2239,7 +2253,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **`platform.wait_slot`**: `render.pace_frame` no longer sleeps through a frame's slot: input is taken as it arrives (time-stamped, kept for the next `poll_events`), a key or a button ends the wait, a pointer that moves and the wheel do not. `wait_handle` has `until_press`. An offscreen window does not wait.
 
-## [0.79.0] - 2026-11-05
+## [0.79.0] - 2026-11-05 06:54
 
 ### Added
 - **`ui.find_sweep`, `ui.find_all`, `ui.find_pending`, `ui.find_refresh`**: a find in page over a lazy column reads everything once for a needle (when it rests 80 ms, and again if what is built no longer answers), and stays lazy between: `lazy_begin(all = find_sweep())`. In opencode native, a frame while finding 40 -> 1.7 ms on a conversation of 150 answers.
@@ -2250,7 +2264,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **`render.pace_frame` waits for the frame's slot**, after the swap chain and only what is left of it: `Frame_Decision.wait_ns` was worked out and not made, so nothing capped the frames of a screen that does not hold the app back. `platform.precise_sleep`: a wait under the system's tick.
 
-## [0.78.0] - 2026-11-04
+## [0.78.0] - 2026-11-04 12:52
 
 ### Added
 - **`Dock_Options.strip_last`**: boxes after a stack's fold and menu buttons, the strip's last control (a window's close button stays at the far right; `strip_end` comes before them).
@@ -2259,48 +2273,48 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
   - `ui.color_parse` / `ui.color_text`: hex, `rgb()` / `rgba()`, `hsl()` / `hsla()` and `oklch()` read and written, in the style they were written in (`Color_Style`: the format, the legacy comma syntax or the short hex); `srgb_to_hsv`, `hsv_to_srgb`, `srgb_to_hsl`, `hsl_to_srgb`, `srgb_to_oklch`, `oklch_to_srgb`.
   - `ui.alpha_picker`, `ui.checker_draw`; `hue_picker` takes `horizontal`; `sat_val_picker`, `hue_picker` and `alpha_picker` take the keyboard and tell screen readers their values.
 
-## [0.77.0] - 2026-11-04
+## [0.77.0] - 2026-11-04 08:14
 
 ### Fixed
 - **A folded pane's strip in the theme, a fold button on the stacks that fold, tooltips the size of their text**: the strip of a folded side (`pane_split`, a dock's folded split) painted nothing at rest and the palette's raw hover colour (opaque white on a dark theme) under the pointer; it now has the theme's `pane_strip background` (by default the bars' surface) and the theme's `hover_fill` over it, and its chevron is larger (`PANE_CHEVRON_EM` 1.4, also `pane_toggle`'s). A dock's stacks on a side that folds have a chevron button at the end of their strip, as large as the menu's button (`pane_toggle`, which now takes the size `next` gives it; a Tab stop, Enter folds); a strip's tabs are in the room its end's buttons leave, so tabs too many for a narrow stack are cut and the fold and menu buttons stay in view (they were pushed out of the strip). A tooltip's content inherited the app's style, so under a style that fills it was as large as the window; a size relative to the window is now the content's own in it, `ui.tooltip_text(text)` is as wide as its text up to `TOOLTIP_MAX_WIDTH_EM` and wraps past it, and `tooltip` goes above the pointer when it does not fit below (`TOOLTIP_ABOVE_EM`); its first frame measures it unseen and asks for the next one, which places it (it was placed by the size of 10 x 3 em it was taken to have, and stayed past the window's edge when nothing else made a frame). Tests `docking a_folded_strip_takes_the_theme_colours`, `the_fold_button_folds_and_the_strip_brings_it_back`, `the_end_buttons_stay_in_view_past_too_many_tabs`, `a_tooltip_over_a_tall_strip_fits_its_text`; `ui_robust tooltip_places` (above the pointer at the bottom).
 
-## [0.76.0] - 2026-11-04
+## [0.76.0] - 2026-11-04 07:50
 
 ### Added
 - **`ui.menu_at(p)` and `ui.wheel_consumed()`: the wheel over an open menu is the menu's**: `menu_at` says whether a point is on a level of the open menu (a submenu, a nested menu, a drop-down's list) as the last build laid it out, so an app that routes the wheel to its own content before it builds the interface (a browser's page) gives it nothing there; `wheel_consumed` says whether this build's wheel went to the interface (a box that scrolls under the pointer, or a menu's level, one that fits included). A menu taller than the window scrolls under the wheel, one that fits takes it and does not move, down and across; the scroller under either gets nothing (test `keyboard menu_takes_the_wheel_over_it`).
 
-## [0.75.0] - 2026-11-04
+## [0.75.0] - 2026-11-04 05:02
 
 ### Changed
 - **Slug glyph data built in half the time**: `slug_build` sorts the curves of an axis once (one `u64` key each) and puts each curve in the bands it spans, found from its bounds against the bands' own; it sorted the curves of every band and tested every curve against every band of each of the ten band counts it tries. The same data (test `slug bands_are_their_definition`); 400 glyphs of a face, best of 5: Segoe UI 5.5 -> 2.8 ms, Times New Roman 8.3 -> 3.9 ms, Nirmala UI 10.0 -> 4.6 ms.
 
-## [0.74.0] - 2026-11-04
+## [0.74.0] - 2026-11-04 03:56
 
 ### Changed
 - **`font.color_prepare`, textures zeroed on the GPU**: `font.color_prepare` makes what color glyphs are drawn with (Direct2D on a WARP device, about 20 ms) for an application to call on a thread of its own while it starts; the first color glyph a frame looked up made it on the drawing thread. Textures are made render targets too and zeroed by a clear on the GPU (`ClearRenderTargetView`) where they were zeroed by uploads of zeros: a 2048 x 2048 glyph atlas page 6 ms (R8) and 3.5 ms (RGBA) of the CPU before, its first frame's.
 
-## [0.73.0] - 2026-11-03
+## [0.73.0] - 2026-11-03 23:38
 
 ### Fixed
 - **The ASCII case helpers are package `ascii`** (`ascii/ascii.odin`: `ascii.lower`, `upper`, `lower_byte` / `upper_byte`, `equal_fold`, `has_prefix_fold`, `contains_fold`), no longer `base`'s `ascii_*`: a package named `base`, which `font`, `devtools`, `platform` and `config` now import, clashed with an app's own package of that name (Odin wants one name per package in a program).
 
-## [0.72.0] - 2026-11-03
+## [0.72.0] - 2026-11-03 23:27
 
 ### Fixed
 - **ASCII case for names and protocols**: `strings.to_lower`, `to_upper` and `equal_fold` of Odin dev-2026-11 fold by Unicode (the Kelvin sign U+212A is `k` to them, the long s U+017F `s`), where names and protocols want ASCII. New in `base` (`base/text.odin`): `ascii_lower`, `ascii_upper`, `ascii_lower_byte` / `ascii_upper_byte`, `ascii_equal_fold`, `ascii_has_prefix_fold`, `ascii_contains_fold`. Switched to them: the DevTools server's header names and Host (`Ho\u017Ft:` is no Host, `localho\u017Ft` no localhost), CSS colour keywords, `nodeName`, the accessibility roles and actions; font family names as cache keys (Windows, Linux, macOS) and fontconfig's / Core Text's answer checked against the family asked for (`DejaVu San\u017F` no longer loads DejaVu Sans); preference booleans; the GTK theme name, file extensions for MIME types on Linux; the changelog tool's type and slugs, `tk`'s checksums and emoji version line, `run_tests`' groups, the examples' option names. Unicode stays for user text (find in page, fuzzy matching, type-ahead, the settings' and DevTools' searches, the test session's text lookups), display text and Windows paths. Lint `tests/unicode_case` (a step of `run_tests`): a call of `strings.to_lower` / `to_upper` / `equal_fold` or `unicode.to_lower` / `to_upper` in the toolkit's sources fails unless `tools/unicode_case_allowed.txt` lists its line with why; an entry that matches no line fails too.
 
-## [0.71.0] - 2026-11-03
+## [0.71.0] - 2026-11-03 20:39
 
 ### Added
 - **Docking** (`ui/dock_model.odin`, `ui/docking.odin`, `docs/docking.md`): the app's panels in stacks of tabs the user rearranges. The layout is the app's `ui.Dock`, flat data: a tree of nodes in one `#soa` array (leaves: a stack of panels and the one shown; splits: an axis, a ratio, the second side folded), floating roots at a place of their own, the panels (the app's `u32` ids) in tab order; `dock_add`, `dock_move` (into a stack at a tab, at a side of one, at an edge of the space, floating), `dock_move_node`, `dock_redock`, `dock_close`, `dock_activate`, `dock_set_split`, `dock_layout`, `dock_target_at`; one line of text (`dock_format` / `dock_parse`: unknown names dropped with the stacks they leave empty, the panels it does not name placed by the app, any other text refused with the dock left as it was). `dock_begin` / `dock_panel` / `dock_end` build it: a tab dragged out shows the drop targets (five squares over the stack under the pointer, four at the edges of the space, the strips between their tabs) and a translucent preview of where it lands; let go elsewhere it floats (an overlay of the window with a frame and a shadow, moved by its strip with the drop targets, resized by its corner, docked back by a double click); Escape cancels; the handles are `pane_split`'s (minimum sizes, fold); close buttons, a middle click; the stack's menu reaches every drop target from the keyboard; the arrows along a strip, Ctrl+Shift+arrows move a tab, Ctrl+Tab goes through a stack; roles tab list, tab (controls its panel), tab panel, separator. Theme entries `dock_preview` and `dock_marker`. Example `examples/docking`; tests `tests/docking` (the model and the text; the drags, the keyboard and the menu through the test session).
 
-## [0.70.0] - 2026-11-03
+## [0.70.0] - 2026-11-03 17:38
 
 ### Changed
 - **`ui.build_events`**: a copy of the last build's input, kept by the state until the next build (it was the caller's slice, valid until its next poll).
 - **Built with Odin dev-2026-11** (pinned by SHA-256 in the CI, `docs/getting-started.md`): `core:image`'s pixels are a `[dynamic]u8`, nothing keeps a reference to a stack past its procedure (the compiler's new escape analysis: the tests' globals are cleared, `ui.use` keeps the caller's state on purpose), `core:compress/deflate` checks `flate`'s streams in the tests and `docs/flate.md` compares both (`flate` stays for streams and `deflate_runs`). wgpu-native stays 29.0.1.1.
 
-## [0.69.0] - 2026-11-03
+## [0.69.0] - 2026-11-03 16:34
 
 ### Added
 - **Menus taller than the window scroll**: a level (menu, submenu, nested menu, dropdown list) whose content is taller than the window is as tall as the window, placed again at each frame (a window made shorter while it is open), and scrolls: the wheel, its scroll bar (a press on it is not a press outside; the rows leave it room), the keyboard's selection brought into view (Up / Down / Home / End / Page Up / Page Down, type-ahead to a hidden row, a dropdown's current value from `menu_select`). A menu that fits is placed as before (flipped to the other side of its anchor, else shifted to stay whole). `ui.menu_item_rect(depth, idx)`: where an item was laid out. Tests `menu_taller_than_the_window_scrolls`, `menu_near_the_bottom_flips_or_shifts`
@@ -2308,27 +2322,27 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - **Menus are dense**: `MENU_ITEM_EM` is 1.9 (was 2.2): rows of 29 px for 15 px text, as Windows 11's and Chrome's menus (times the density: 22 px at `DENSITY_COMPACT`, 34 px at `DENSITY_MAX`); the padding above the first item and below the last is 0.25 em (was 0.3), a separator's gaps 0.2 em (were 0.25); the icon cell is as tall as the row. Test `menu_rows_follow_the_density`
 
-## [0.68.0] - 2026-11-03
+## [0.68.0] - 2026-11-03 15:17
 
 ### Added
 - **`ui.pane_split`, `ui.pane_toggle`, `ui.Pane`**: panes the user resizes from a few em (`PANE_MIN_EM`) to all the room but a few em for the other side, folds (a drag under half the minimum, a double click, Enter, a chevron button) to a strip that brings them back (a click, Enter, a pull), and places at the side or below (`pane_axis`, `pane_place_menu`); the app owns a `Pane` per split (sizes per orientation, folded, place) and saves it through `Pane_Options.on_save`; `pane_format` / `pane_parse` make it a line of text; `menu_move_to` lists "Move to" items for a tab that may go to another strip. Keyboard (arrows, Home, End, Enter) and accessible (a separator with its value, `expanded`). `examples/panes` uses them. Tests `tests/panes/pane_split_test.odin`
 
-## [0.67.0] - 2026-11-03
+## [0.67.0] - 2026-11-03 13:49
 
 ### Added
 - **`ui.set_scrollbar_arrows`**: classic arrow buttons at both ends of the scroll bars of scroll boxes, off by default (the bars stay as they were): each as long as the bar is broad, taken from the track; a press scrolls a step (3 em, eased like the wheel), held it repeats after 250 ms every 50 ms while the pointer stays on it. `ui.scrollbar_arrow_rects` gives where they are; **`draw.triangle`** fills a triangle in one-pixel rows (the arrows' glyph). Test arrow_buttons_step_and_repeat
 
-## [0.66.0] - 2026-11-03
+## [0.66.0] - 2026-11-03 11:23
 
 ### Added
 - **`ui.menu_nested_open` / `ui.menu_nested_open_rect` / `ui.menu_nested`**: a menu opened from inside an open one, at a point or under a rect (a row's context menu in a drop-down panel), over it, the menu staying open behind it. It closes like a submenu: a press outside it closes only it, Escape closes it, choosing an item closes the menu.
 
-## [0.65.0] - 2026-11-03
+## [0.65.0] - 2026-11-03 05:24
 
 ### Removed
 - **Public procedures nobody called** (neither the toolkit, nor Wren, nor opencode_gui_toolkit): `draw.damage_padded`, `layer_cache_forget` (an idle result goes after its frames anyway), `picture_slot`, `picture_version`; `dbus.arg_variant_u32`, `read_variant_string` / `_bool` / `_u32`, `w_i16`, `w_i64`; `font.native_coverage` (and the text backend's `gt_face_coverage`), `native_table`; `platform.a11y_prop_ids`; `render.canvas_pool_bytes`, `canvas_texture_changed`, `canvas_texture_size`, `damage_rects`, `heaps_reset`, `video_gpu_bytes`; `ui.autoscroll_is_enabled`, `post_queue_capacity`.
 
-## [0.64.0] - 2026-11-03
+## [0.64.0] - 2026-11-03 02:10
 
 ### Added
 - **`tests/globals`**: every package-level variable of the toolkit's packages (those of `when` blocks and the procedures' `@(static)` ones too) is in `tools/globals_allowed.txt` with its class (`const`, `process`, `thread`, `test`) and why; the test fails on one not listed, one listed that is gone, and a class the code contradicts (`@(thread_local)` is `thread`). It reads the sources next to it, not from the working directory; `-define:GLOBALS_WRITE=true` rewrites the list keeping the classes known. `docs/getting-started.md`, "Where state lives", says the rule; `CONTRIBUTING.md`: a new global needs a class.
@@ -2354,17 +2368,17 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **IME (Wayland)**: the preedit's caret and the text the input method replaces wait for the protocol's `done` like the rest (the caret moved at once, the Backspace presses went out before the `done`). The composition is `platform.Ime_Compose` (`ime_compose_preedit` / `_commit` / `_delete` / `_done` / `_reset`, pure), the caret's rectangle in the compositor's units `ime_cursor_rect_logical` (at least one unit high); `tests/ime` feeds them the protocol's events.
 - **Tray menus** (Windows): the default item of a menu is shown in bold (`AppendMenuW` ignored `MF_DEFAULT`: it is set with `SetMenuDefaultItem`). `platform.tray_menu_build` makes the native menu of a model without showing it; `tests/tray` reads it back with `GetMenuItemInfoW` (separators, check and radio marks, the default item, a disabled one, a submenu, each command's id).
 
-## [0.63.1] - 2026-11-02
+## [0.63.1] - 2026-11-02 17:38
 
 ### Changed
 - **The interface state a build works on is the thread's**: `ui`'s current state (what `begin_build` selects and the public procs use) is thread-local, so several apps of one process build and draw their interfaces at once, each on a thread of its own; before, two threads building at once broke each other's parent stack.
 
-## [0.63.0] - 2026-11-02
+## [0.63.0] - 2026-11-02 14:34
 
 ### Added
 - **`render.preload_device`**: the graphics device made early, on a thread of its own, while the program does the rest of its start; the next `render.init` / `init_window` / `init_offscreen` that asks for that kind of device (hardware or WARP) takes it, waiting for the thread if it has not finished, and makes only the swap chain or the offscreen target. The first device of a process loads the graphics driver, the longest step of a renderer's start. Its state is explicit (`render.device_preload_state`: `Not_Started`, `Creating`, `Ready`, `Failed`); a device of the other kind, or one that failed, is released and init makes its own as before; `render.release_preloaded_device` lets an unused one go. On wgpu the instance, adapter and device are made without a surface: init makes the window's surface on that instance and makes its own device when the adapter cannot present to it. `TOOLKIT_RENDER_TRACE` says how long init waited for it.
 
-## [0.62.0] - 2026-11-02
+## [0.62.0] - 2026-11-02 12:47
 
 ### Added
 - **`devtools.start_local`, `devtools.Local_Client`**: the protocol with no socket, for a program or a test that drives itself; `Toolkit.state` says how many pictures are being encoded.
@@ -2382,7 +2396,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **The plain text clipboard of an offscreen window on Linux**: `get_clipboard` gave nothing and `set_clipboard` did nothing, while `clipboard_set` kept to the process's store: a headless program could not copy and paste its own text.
 - **One clock for the interface**: a scroll bar's reveal (`scrollbar_reveal`) and the merging of typing into one undo step in a line edit read the system's clock whatever `Build_Params.time_ms` said; a replay or a test with its own clock got other results.
 
-## [0.61.0] - 2026-11-01
+## [0.61.0] - 2026-11-01 13:55
 
 ### Added
 - **Color glyphs off Windows**: the COLR interpreter gets its tables from the native backend, and CBDT bitmaps (Noto Color Emoji on most Linux systems) are drawn from their PNG images (`font/cbdt.odin`). `font.glyph_is_color` and `font.color_glyph_rgba` work there.
@@ -2390,7 +2404,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **Cursors on Linux**: on X11 from the theme (libxcb-cursor) or the server's cursor font, custom images through RENDER; on Wayland custom images through wl_shm and the theme (libwayland-cursor) where `wp_cursor_shape_v1` is missing, and the cursor is sent again on each pointer enter. `platform.cursor_on_screen` says what shows.
 - `tools/doc_check.mjs`, run by the CI: the files, flags, defines and package names the documentation cites must exist. `tools/release.ps1` retakes the About picture itself. The documentation no longer says Linux is missing where it exists, and says what it lacks (color glyphs, X11 cursors, Wayland fractional scaling).
 
-## [0.60.2] - 2026-11-01
+## [0.60.2] - 2026-11-01 12:36
 
 ### Added
 - `tools/theme_shots.mjs`: a picture of a page of `examples/whatsnew` in every palette, with no window; `--palette=<name>` on that example.
@@ -2398,7 +2412,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Command line arguments keep every character on Windows**: `os.args` came through the C runtime's ANSI code page ("Łódź" became "L\xf3dz", "Привет" "??????"), in paths and passwords too. Any program that imports `platform` now gets them from the system, in UTF-8.
 
-## [0.60.1] - 2026-11-01
+## [0.60.1] - 2026-11-01 11:50
 
 ### Changed
 - **The letters of a match are drawn dark**, in the theme's new `find_text`, on stronger `find_match` and `find_current` backgrounds: amber code and light text did not read on them (contrast 1.8 on the current match). At least 4.5 in every palette.
@@ -2406,12 +2420,12 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Find and selection show over inline code**: a rich paragraph painted its runs' backgrounds over them, leaving a pixel at each end of a match. They now lie between the backgrounds and the text.
 
-## [0.60.0] - 2026-11-01
+## [0.60.0] - 2026-11-01 11:10
 
 ### Added
 - **`Rich_Context.line_height`** and `rich_paragraph(line_height = ...)`: every line of a paragraph the same height, on a baseline from its base font, whatever other faces it holds (CSS `line-height`). Inline code no longer has to push a line apart.
 
-## [0.59.0] - 2026-11-01
+## [0.59.0] - 2026-11-01 09:03
 
 ### Added
 - **`draw.image_cover`** and `draw.cover_src`: an image that fills a box cropped rather than distorted (CSS `object-fit: cover`). `examples/effects` uses it: its photo was stretched into every thumbnail.
@@ -2420,7 +2434,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Changed
 - `tools/screenshots.mjs` replaces `tools/screenshots.ps1`: the pictures are the frames the examples render, over the DevTools protocol, with an empty settings folder; it no longer moves the mouse, raises windows or moves the user's settings aside. It also refreshes `site/img`. `fidget`, `todo`, `transforms` and `effects` answer to `TOOLKIT_DEVTOOLS`.
 
-## [0.58.0] - 2026-10-31
+## [0.58.0] - 2026-10-31 22:15
 
 ### Added
 - **`ui.scrollbar_rects`**: the track and the thumb a scroll box shows, for tests and tools.
@@ -2531,24 +2545,24 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **`devtools`**: a text replaced from Chrome's DevTools, or edits taken back when it leaves, no longer leave the boxes of the last build pointing at freed memory (`ui.Box_Edit`'s text is copied into each frame).
 - **`devtools`**: `Page.stopScreencast` while a frame was being read back no longer leaves the renderer unable to capture: `Page.captureScreenshot` answered "the renderer cannot capture now" for good and a later screencast sent nothing.
 
-## [0.57.1] - 2026-10-31
+## [0.57.1] - 2026-10-31 12:18
 
 ### Fixed
 - **The screencast could miss its last frame**: input sent while a capture was coming back, or the last step of an animation, counted as nothing changed. Tests: the end-to-end run waits for the frames to stop instead of fixed delays, and what still depends on a machine's timing (a first frame, the last one) is said as FLAKY without failing it; frames that never stop still fail it.
 - **Closing Chrome's DevTools could leave a window on freed memory**: the connection was freed while the DOM side still held it, so the edits could stay and the program could hang. They now go with the client, every time.
 
-## [0.57.0] - 2026-10-31
+## [0.57.0] - 2026-10-31 10:04
 
 ### Added
 - **Chrome's DevTools on a window**: the Elements panel shows the box tree and follows it, Styles, Computed and Layout a box's rect and colours in sRGB, Styles and the text editable live for as long as DevTools is attached, the Accessibility tab what a reader gets, hovering a node lights its box. `tools/cdp.mjs inspect` prints the address; the `devtools://devtools` Origin is taken on the WebSocket only.
 
-## [0.56.2] - 2026-10-31
+## [0.56.2] - 2026-10-31 08:56
 
 ### Fixed
 - **`examples/whatsnew` no longer stretches while it is resized**: a composition swap chain with a fixed surface, as opencode native, and `inner = true` for the frames of a live resize. The other examples keep the ordinary swap chain, which stretches.
 - **A lazy column's height changed at every frame** when an item showed nothing: its height of 0 counted as not known yet, so it stood for the mean of the others as a space and for nothing when built. A scroll box following its bottom had its scroll bar jump, without end.
 
-## [0.56.1] - 2026-10-30
+## [0.56.1] - 2026-10-30 20:43
 
 ### Added
 - **`flate.deflate_runs`**: compression at a high rate for what repeats in known ways, such as the rows of a picture: runs and matches a row above, in one block of the fixed Huffman codes.
@@ -2556,13 +2570,13 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **A screenshot of a real window took two seconds and froze it**: the wake asked for its next frame was consumed by the frame already starting, so the window slept until its next timer (about 1.2 s); reading a translucent window's fp16 target back ran `pow` on every channel (now a table); the PNG was encoded on the UI thread (now `flate.deflate_runs`, made for rate, on a thread of its own). A timeline keeps its pictures in memory and compresses, compares and writes them when it ends. An offscreen window keeps its wakes, so the end-to-end run never saw the first one.
 
-## [0.56.0] - 2026-10-30
+## [0.56.0] - 2026-10-30 19:50
 
 ### Added
 - **Timelines**: `tools/cdp.mjs record --timeline <dir>` keeps a run whole (each action with when it happened, a picture after it, every frame's time), as a page that stands alone, a `timeline.json` and a Chrome trace; `play <timeline.json> --timeline <dir>` runs it again, `--realtime` with its pauses, and fails if a picture differs. `tools/timeline.mjs` for scripts. `Toolkit.frames` and `Toolkit.pollRecording` feed it.
 - **`Page.startScreencast`**: the window's frames as events, one at a time, limited in rate, none at rest; `tools/cdp.mjs cast <dir>`.
 
-## [0.55.0] - 2026-10-30
+## [0.55.0] - 2026-10-30 18:43
 
 ### Added
 - **`tests/e2e`, in the CI**: `examples/whatsnew --headless` driven over the protocol: no layout warning, nothing a reader cannot name and the reference image on every page, the scenarios that broke before, exit code 0.
@@ -2591,17 +2605,17 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 - **The wheel moves the hover**: rolling the wheel without moving the mouse makes the pointer's position valid again, so the highlight follows the row that came under it instead of staying on one scrolled away.
 - **Embossed text by contrast** (Gradient finish): the groove or the light edge comes from the text against what is under it (the box's own background or the nearest opaque one up), not from the text alone: grey text on a dark button no longer takes a light edge under it.
 
-## [0.54.0] - 2026-10-30
+## [0.54.0] - 2026-10-30 09:51
 
 ### Added
 - **`Build_Params.smooth_scroll`** (`Follow`, `On`, `Off`): whether scrolling glides, as the interface's animations say (the default) or always / never. An application can keep the wheel's glide when the system turns animations off (Windows' "Animation effects"), where every notch used to jump.
 
-## [0.53.0] - 2026-10-30
+## [0.53.0] - 2026-10-30 09:33
 
 ### Added
 - **Find in page** (`ui.find`, `ui.find_matches`, `ui.find_count`, `ui.find_set_current`): the occurrences of a needle in the text the interface shows (labels, wrapped paragraphs, rich text, a match across the runs of a paragraph), found after each layout in reading order with their rectangles whether on screen or scrolled away, painted behind the text (theme entries "find_match background", "find_current background"); case ignored. The application owns the field and the navigation.
 
-## [0.52.0] - 2026-10-30
+## [0.52.0] - 2026-10-30 08:20
 
 ### Added
 - **`tools/slugsmall`**: DirectWrite's bitmaps against Slug with each combination of its small-text settings, stacked in one PNG per scene and scale with a 3x enlargement (`odin run tools/slugsmall -define:FONT_BACKEND=native`).
@@ -2612,7 +2626,7 @@ these in a pasted text, and says when a text is Markdown or a diff (`highlight =
 ### Fixed
 - **Segmented controls**: the labels are no longer engraved (`button segment sheen` 0): lit below on the pill and shadowed above on the track, the selected and the other labels looked a pixel apart.
 
-## [0.51.0] - 2026-10-29
+## [0.51.0] - 2026-10-29 22:46
 
 ### Added
 - **A site** on GitHub Pages ([sachahjkl.github.io/gui_toolkit](https://sachahjkl.github.io/gui_toolkit/)): `site/`, published by
@@ -2649,7 +2663,7 @@ nothing, the scope's default (`.Start`) replaced it. An explicit `cross` argumen
 the text size of its own text, which is empty, so the clickable part was a sliver at the left of the mark (a click on the
 label did nothing). A width given by `next` is kept, the label filling it as before.
 
-## [0.50.0] - 2026-10-28
+## [0.50.0] - 2026-10-28 07:11
 
 ### Added
 - **`font.glyph_outline` and a neutral `font.color_renderable`**: `glyph_outline(state, face, gid, tolerance, out)` hands a 2D canvas (or any glyph-path consumer) a glyph outline through the active backend (DirectWrite or the native Fontations backend) rather than a DirectWrite-only entry point, and `color_renderable` now answers on every system (off Windows the built-in COLR / CPAL interpreter draws colour faces). Both let an application draw glyph paths and build colour-font cascades the same way on every platform.
@@ -2678,7 +2692,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **`platform` API made system-neutral**: `platform.wake_handle` now returns an opaque `rawptr` (paired with the new `platform.wake_signal`) instead of a Win32 `HANDLE`, and the new `platform.native_surface_handles` hands a renderer the window's native handles through a neutral `Surface_Handles` (Windows HWND, Wayland `wl_display` + `wl_surface`, or X11 connection + window) so `render` can make a surface on any system without a Win32 type in the signature.
 - **`render.init` takes a neutral surface, not an `HWND`**: `render.init(&r, surface: platform.Surface_Handles, size, transparent, space)` opens the renderer on the native handles the platform package fills (`platform.native_surface_handles(window)`), the HWND on Windows and the Wayland or XCB handles on Linux; `render.init_window(&r, window, size, ...)` is the convenience form. `surface_init` / `surface_create` (second windows) take the same neutral handles. No Direct3D, DXGI or Win32 type appears in the renderer's public signatures.
 
-## [0.49.0] - 2026-10-27
+## [0.49.0] - 2026-10-27 21:38
 
 ### Added
 - **`ui.text_edit` syntax colouring** (`ui.Text_Highlight`, `ui.Text_Span`): a `highlight` parameter draws coloured runs the caller classifies per visible paragraph (`spans`), underlines paragraphs a caller's validator rejects (`error_line`), and reports the paragraph under the pointer (`Edit_Result.hover_line`) for a per-line tooltip. The editor knows no language; the cost is only the visible lines'.
@@ -2686,17 +2700,17 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **`ui.reorder_visible`**: the half-open range of items a scrolling reorderable list shows (scroll, view and pitch, with a margin on either side), so a long list builds only the rows in view and a frame's cost stays flat whatever the list's length.
 - **`fsx`**: a platform-neutral package of file helpers with the guarantees a persistent store relies on, on every system (`fsx_windows.odin`, `fsx_unix.odin`): `write_atomic` (write through a `.tmp` renamed over the file, a reader sees old or new), `read_all` / `write_parts` / `replace` / `read_at` / `stat` / `delete_file`, `make_dirs` / `list_files`, `path_kind` (links never followed), `remove_tree` (one entry at a time, not through the Windows shell) and `temp_dir`. No Windows or POSIX type crosses the boundary. See docs/fsx.md.
 
-## [0.48.1] - 2026-10-27
+## [0.48.1] - 2026-10-27 20:51
 
 ### Fixed
 - **`ui.NAMED_PALETTES`**: the text of the One Dark and Solarized palettes is lighter (One Dark's bright white `#c8ccd4`, a step between Solarized's `base1` and `base2`): their schemes' own foregrounds stood too close to the lit tab of a tab bar in Wren.
 
-## [0.48.0] - 2026-10-27
+## [0.48.0] - 2026-10-27 20:04
 
 ### Added
 - **`ui.NAMED_PALETTES`**: eleven more palettes from well-known editor schemes, each with its own accent: Gruvbox and Gruvbox Light, Naysayer, Solarized and Solarized Light, Monokai, Tokyo Night, Catppuccin (Mocha) and Catppuccin Latte, One Dark and Everforest. `palette_named` finds them by name; a test checks that every named palette keeps its text legible on its background and panels and its `dark` flag in line with its background.
 
-## [0.47.2] - 2026-10-27
+## [0.47.2] - 2026-10-27 19:25
 
 ### Changed
 - **The native libraries are built without fat LTO again** (`tools/build_text.ps1`, `tools/build_a11y.ps1`): with it (`gt_text.lib` 6.4 MB instead of 33 MB) the `text` tests crashed on the CI runner at their first test (`atlas_stress`, a signal) while they pass on a development machine; the cause is not found, and the size is not worth a crashing test run. Wren builds these crates into its own library and is not affected.
@@ -2706,28 +2720,28 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **A test package that does not end names itself** (	ools/test_windowless.ps1): each package is killed after 300 s, with its log (the state changes of its tests) in the CI's, instead of the CI cutting the whole step off after twelve minutes with nothing to read.
 - **The CI's cold build of the Rust libraries has room to end** (.github/workflows/ci.yml): with fat LTO it is slower than the step's 12 minutes, so the cache was never saved and every run was cold; the build is a step of its own with a 30 minute limit, and the cache fills at the first success.
 
-## [0.47.1] - 2026-10-27
+## [0.47.1] - 2026-10-27 06:12
 
 ### Fixed
 - **The native text backend and the accessibility adapter are built with fat LTO** (`native/text`, `native/a11y`, `tools/build_text.ps1`, `tools/build_a11y.ps1`): their crate types listed `rlib` next to `staticlib`, and rustc skips LTO whenever an `rlib` is among them: every dependency stayed a separate unoptimized object (`gt_text.lib` 33.2 MB, now 6.4 MB; `gt_a11y.lib` 16.9 MB, now 4.8 MB). The crates are now plain libraries (an application's Rust library still depends on them) and the scripts ask for the static library alone (`cargo rustc --crate-type staticlib`); they fail if an object of another crate is left in the archive.
 
-## [0.47.0] - 2026-10-27
+## [0.47.0] - 2026-10-27 06:06
 
 ### Fixed
 - **A drag inside the window is shown at the top rate of a variable refresh screen** (`platform.frame_decision`, `Cadence.variable`, `platform.cadence_adopt`): on a variable refresh screen (G-Sync, FreeSync, Windows' dynamic refresh rate, which reports 60 Hz at rest), a `Drag` frame (a splitter, a panel's handle, a tab) is presented at once with two frames queued, still one frame per slot of the top rate, instead of waiting for a refresh at the rate the screen rests at: a splitter dragged at 1 kHz went from 62 to 183 frames a second on a 180 Hz screen reported at 60 Hz. Fixed refresh screens and every other state are unchanged. `cadence_adopt(&c, plan)` takes the plan's slots and screen (instead of `c.slots = plan.slots`).
 
-## [0.46.0] - 2026-10-27
+## [0.46.0] - 2026-10-27 05:27
 
 ### Added
 - **`platform.Event.injected`**: an event made by `inject_event` (a test, a remote control, a macro) says so; an application that reads the pointer's position from the system (a window dragged across the screen) uses the event's own position for these, as the real pointer is elsewhere.
 - **`Build_Params.inactive`, `ui.inactive`**: a window that is not the one the user is in is built with `inactive = true`: its focused line and text edits keep the focus but draw no caret and ask for no wake to blink it (an application with several windows no longer blinks a caret in each).
 
-## [0.45.1] - 2026-10-27
+## [0.45.1] - 2026-10-27 03:19
 
 ### Added
 - **Text and bounds in the UI Automation test client** (`uia.document_text`, `uia.text_selection`, `uia.select_text`, `uia.bounds`; `uia_probe text`, `uia_probe select-text --start A --end B`, `uia_probe bounds`): what a text pattern holds, its selection or caret, a selection made as a screen reader does, and where an element is, for end-to-end tests.
 
-## [0.45.0] - 2026-10-27
+## [0.45.0] - 2026-10-27 01:55
 
 ### Added
 - **Accessibility, node by node and several windows**: `platform.a11y_diff_patch` sends a tree's changes from only the nodes that changed (a document that knows its mutations no longer makes its whole tree again); the children a node lost are forgotten with their subtrees, so a node put back goes whole. `ui.a11y_cost(s)` gives the nodes and the milliseconds of the last tree. A `ui.State` built for another window than its last one sends that window a whole tree. `tests/a11y` reads two windows apart through UI Automation and checks that a window a reader has read stays quiet at rest (no wake, no update). docs/accessibility.md lists the known limits (Linux and macOS, the toolkit's tree made again in each build, what grafted documents such as Wren's pages lack: iframes, caret and selection, text bounds, a second window).
@@ -2739,41 +2753,41 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 ### Fixed
 - **CI**: two tests that failed now and then are deterministic. `tests/ui_robust` (`nested_build_is_refused`) checked an assertion through `testing.expect_assert_message`, whose exception handler on Windows races the system's end of the process: the whole test program ended without a message. The assertion is now caught on a thread of the test's own. `tests/keyboard` (`caret_rect_is_where_the_caret_is_drawn`) depended on the caret's blink phase, i.e. on how long the program had run (a slow WebGPU start blinked it off); it and the double-click tests (`selection`, `panes`) now pass `time_ms`. `tools/test_windowless.ps1` and `tools/test_backends.ps1` print the exit code of a failed package (an access violation, a trap nothing caught).
 
-## [0.44.0] - 2026-10-27
+## [0.44.0] - 2026-10-27 01:30
 
 ### Added
 - **`platform.frame_decision`: the cadence model** (`platform/pacing.odin`, [docs/pacing.md](docs/pacing.md)): a plan from the screen and the application's choices (`cadence_plan`: the top useful rate of a variable refresh screen, `Frame_Slots` strict or loose), a state per frame (`Rest`, `Continuous`, `Drag`, `Input_Answer`, `Resize_Step`, `Resize_Burst`) and one pure decision (`Frame_Decision`: the wait for its slot, whether it waits for the swap chain, whether it is presented at once, the swap chain's latency), plus `cadence_inner_frame`, `cadence_echo` and the frame clock (`frame_clock_advance`, `vblank_at_or_before`). Test: `tests/pacing` (states, transitions, and simulated runs on fixed and variable refresh screens, tearing, a 1 kHz mouse, a resize, a panel dragged, AltSnap); `tests/frame_slots` and `tests/pacing` join the windowless tests of the CI.
 
-## [0.43.0] - 2026-10-26
+## [0.43.0] - 2026-10-26 22:00
 
 ### Added
 - **`platform.Frame_Gate`: the frames of a thread as one state machine** (`platform/frame_gate.odin`, [docs/frame_gate.md](docs/frame_gate.md)): `Idle -> Polling -> Work -> Building -> Drawing -> Presenting`, Full and Light frames, `frame_gate_begin` / `frame_gate_stage` / `frame_gate_end`; a frame asked for where none may begin is deferred, never nested, and a move the machine does not have is counted (a panic with `strict`). The window procedure defers a `WM_PAINT` where no frame may begin; `drag_script` pumps the thread's messages between its steps as the system's drag loop does. Test: `tests/frame_gate`.
 
-## [0.42.3] - 2026-10-26
+## [0.42.3] - 2026-10-26 21:54
 
 ### Fixed
 - **CI**: green again and about 6 minutes instead of 30 to 37. The CHANGELOG step failed on every push (`tools/changelog_test.ps1` ended with the exit code of a command it made fail on purpose; it now exits 0); a test package of a single test counted as failed (`text_backends` printed "The test was successful", not "All tests were successful"; both are accepted now). The jobs run in parallel: build (changelog, examples, shaders), the windowless tests (`tools/test_windowless.ps1`, the step's script moved there) and the WebGPU tests in four groups (`tools/test_backends.ps1 -Group ci1`..`ci4`, checked to hold every package once; `-Group sample` on pull requests) with DXC, a third of the time of FXC on WARP (FXC still runs two packages, `-Define TOOLKIT_WGPU_DX12_COMPILER=fxc`); each job and slow step has a timeout; the Rust libraries, naga's translator, the emoji font and DXC are cached; Odin is set up by `.github/actions/setup-odin`, its archive hashed with .NET rather than `Get-FileHash`. Every push to master keeps its own run (only pull requests cancel the previous one).
 - **WebGPU: `render.video_convert`** converts pictures in memory (I420, NV12; P010 and 10-bit I420 when the adapter has `TextureFormat16bitNorm`) with `video.wgsl`, crop, rotation, matrix and range included, as on Direct3D 11: it returned `false` for every picture (`render/wgpu_video.odin`). A decoder's Direct3D 11 texture (`gpu_texture`) is still refused on WebGPU (wgpu-native cannot import it); `tests/video` checks that refusal there instead of calling a Direct3D 11 device the backend does not have (it crashed).
 - **WebGPU: Slug text when the device refuses its shaders** draws nothing instead of passing a missing shader module to the pipeline: `r.slug.failed` is honoured by both backends (it was Direct3D 11 only), a refused `slug.wgsl` sets it, a recreated device asks again.
 
-## [0.42.2] - 2026-10-26
+## [0.42.2] - 2026-10-26 19:54
 
 ### Fixed
 - **`tools/fetch_emoji.ps1`, `build_naga.ps1` and `fetch_wgpu.ps1` hash their files the .NET way**, not with `Get-FileHash`: the build step of a CI run (cmd, after the MSVC environment was set) failed with "Get-FileHash is not recognized" as soon as the emoji font had to be fetched again.
 
-## [0.42.1] - 2026-10-26
+## [0.42.1] - 2026-10-26 19:41
 
 ### Added
 - **`render.surface_init(r, &s, hwnd, size, ...) -> ok`** makes a `Surface` in the one the program points to. `surface_create` (which returns it by value) is kept and calls it. A `Surface` is several kilobytes (`Present_State`'s ring of 256 frames): held in a local and copied into a record, `-o:speed -debug` split it into 12 612 values with a debug record each, and LLVM spent more than ten minutes on that module (Wren's development build and its CI did, until it called `surface_init`). The doc of `surface_create` says so.
 
-## [0.42.0] - 2026-10-26
+## [0.42.0] - 2026-10-26 17:55
 
 ### Added
 - **Accessibility: screen readers read the toolkit's windows** (`ui/a11y.odin`, `platform/a11y.odin`, `platform/a11y_diff.odin`, `platform/a11y_accesskit.odin` (Windows), `platform/a11y_stub.odin`, `native/a11y`, `docs/accessibility.md`). Each build turns the boxes into an accessibility tree (boxes with a role or text; layout boxes left out; ids are the boxes' keys; bounds, focus, states, values, actions) and [AccessKit](https://github.com/AccessKit/accesskit) 0.25 exposes it through UI Automation (`WM_GETOBJECT`). Built only once an assistive technology asked for the window; only the nodes that changed are sent (`platform.A11y_Diff`). Every widget gives its role, name and states (buttons, check boxes, radios, switches, sliders, steppers, progress, segmented, chips, dropdowns, tabs, fields and text editors with text runs and caret, lists and virtual lists, menus and menu bars, tooltips, toasts as live regions, modals, splitters, accordions, cards, form rows, title bar and caption buttons, status bar, labels, paragraphs, rich paragraphs with their links). The app names its own boxes with `ui.a11y(info)` (next box) or `ui.a11y_set(box, info)`; `ui.a11y_wanted()`, `ui.a11y_active`, `ui.a11y_tree`, `ui.a11y_find`, `ui.a11y_stats`. Requests of assistive technologies (invoke, toggle, select, expand / collapse, focus, set value, increment / decrement, text selection, scrolling, context menu) arrive as the same signals as input; the others in `ui.a11y_requests()`; `ui.a11y_request(key, action)`, `ui.a11y_numeric_request`, `ui.a11y_inject` (tests). Trees of the app's own (documents) are grafted under a node (`A11y_Info.graft`) and sent with `platform.a11y_send`. `ui.set_window_button_names` (translated caption buttons). Platform: `a11y_state`, `a11y_send`, `a11y_take_request`, `a11y_available`, the update writer (`a11y_node`, `a11y_children`, `a11y_str`...); `Event_Kind.Accessibility`. Compiled in with `-define:A11Y_ACCESSKIT=true` (`tools\build_a11y.ps1` builds `build\a11y\gt_a11y.lib`; `A11Y_NATIVE_LINK=false` when the program's own Rust library carries it). Every update is checked against a mirror of the tree before AccessKit sees it (a broken update is refused, not a crash); text runs and text selections are made safe for AccessKit's text code. `ui.a11y_box_text` (the text a box shows to a reader). `ui.a11y_focus_on(key)`: the readers' focus on a graft node while the app's view has the keyboard (a focus on a graft whose tree is not there yet waits for it in the adapter).
 - **`tools/uia`**: a small UI Automation client (COM `IUIAutomation`): elements, control types, names, states, values, invoke / toggle / select / expand / set value / focus. **`tools/uia_probe`**: the same as a command, for end-to-end tests of applications (a hidden window works).
 - Tests: `tests/a11y` (the tree, incremental updates, requests; with `-define:A11Y_ACCESSKIT=true`, a hidden window read and driven through UI Automation). CI runs both.
 
-## [0.41.1] - 2026-10-26
+## [0.41.1] - 2026-10-26 17:00
 
 ### Added
 - **`platform.Chrome_Regions.overlays`**: what the app shows over everything (the ui fills it with the open menus' panels). `hit_test_chrome` answers `Client` there before anything else, the resize bands included.
@@ -2783,7 +2797,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **The open menus are above whatever the app builds at the root after them** (`menus_raise`, in `end_build` before layout): a menu is built where its button is, and a notice, panel or dialog built later at the root was drawn over it and took its pointer. Test: `tests/chrome` open_menu_over_resize_bands_and_later_boxes.
 - **`font.glyph` gives the ink box where the ink is with the native text backend** (`native/text` `gt_glyph_box`): read-fonts 0.46 counts a glyph's extents height downward and never negative, and the bottom of the box was put a glyph's height above its top, so the box was twice as high and a glyph centred by it (Wren's tab icons, a chip's icon) was drawn a glyph lower than meant. Test: `tests/text_backends` native_glyph_box_matches_dwrite (`-define:FONT_BACKEND=native`).
 
-## [0.41.0] - 2026-10-26
+## [0.41.0] - 2026-10-26 16:08
 
 ### Added
 - **`ui.post`: calls posted from any thread** (`ui/post.odin`, `ui/post_queue.odin`, `docs/post.md`): `post(state or window, fn, data, word)` runs `fn(data, word)` on the interface's thread at the start of the next `begin_build` (or `drain_posts`), and wakes the window once per drain. `ui.Post_Queue` is a bounded lock-free ring (Vyukov's MPMC queue, no allocation per message); a full ring blocks (default, nothing lost), drops the oldest (`on_drop`), grows into a spill list or fails (`Post_Overflow`); each producer's order holds in every mode. `post_configure` (capacity, overflow, calls per build, `on_drop`), `drain_posts` (bounded; `needs_frame` while calls wait), `post_close`, `post_stats`, `set_post_wake`. Example: `examples/stream` (a thread posting simulated server-sent events). Test: `tests/post`.
@@ -2794,7 +2808,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **`ui/reorder.odin`**: a list reordered by dragging along X or Y, from Wren's tab strip: `reorder_item_size`, `reorder_offset`, `reorder_slot`, `list_move`, `reorder_edge_scroll`, `reorder_moved`, and the drag's state `Reorder` (`reorder_frame`, `reorder_begin`, `reorder_dragging`, `reorder_item_pos`: items slide to their slots, the dragged one follows the pointer).
 - Example `examples/panes`; tests `tests/panes`.
 
-## [0.40.1] - 2026-10-26
+## [0.40.1] - 2026-10-26 15:36
 
 ### Added
 - **`ui.building()`**: true between `begin_build` and `end_build` (on this thread, whatever the state). An app whose window procedure makes frames (`on_frame`, inside a loop of the system) asks it before building one.
@@ -2802,7 +2816,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 ### Fixed
 - **A build begun inside another one is refused with a clear assertion** (`ui: begin_build inside another build`) instead of breaking the one in progress: `begin_build` emptied its parent stack, freed its frame arena and selected another state under it, and the outer build failed later at an unrelated place (Wren's crash of 2026-10-26: a bounds check in `ui.spacer`, after a `TrackPopupMenu` opened during the build painted the window from `WM_PAINT`). Test: `tests/ui_robust` nested_build_test.
 
-## [0.40.0] - 2026-10-26
+## [0.40.0] - 2026-10-26 14:05
 
 ### Added
 - **`ui.rich_paragraph`** (`ui/rich_text.odin`): runs with their face, size, bold / italic, inline code, colour, background, underline, strike and links in one paragraph; lines break at the backend's opportunities on the whole text, "\n" breaks, long words are cut between clusters, `max_lines` ends with "…", `text_align` aligns; links answer hover, click and the keyboard (Tab through them, Enter); layouts are cached by content (thousands of runs laid out once). Geometry: `rich_layout`, `rich_text`, `rich_index_at`, `rich_caret`, `rich_range_rects`, `rich_link_at`; `rich_set_faces`. `Box.measure_y` (a .Text height that follows the width). Theme entries `link`, `code_bg`. Tests: `tests/keyboard` rich_text_test. Example: `examples/markdown`.
@@ -2812,7 +2826,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 ### Fixed
 - Bold runs of a system font were the regular face with simulated bold (0.02 em: hardly bolder at 24 px): they take the family's bold face now.
 
-## [0.39.0] - 2026-10-26
+## [0.39.0] - 2026-10-26 13:10
 
 ### Added
 - **Simulated bold and oblique in the native backend** (`font/simulate.odin`): as DirectWrite draws them (bold: +upem/50 per inked glyph and emboldened outlines; oblique: 0.33985 shear). `Font.sims` on every platform; `with_simulations` off Windows. Test: `tests/text_backends` simulations_test (widths to 0.01 px, Slug outline boxes).
@@ -2824,19 +2838,19 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 ### Changed
 - The Hebrew difference between the backends is explained (`docs/font-backend.md`): DirectWrite drops the XPlacement of right-to-left kerning pairs; the native backend applies it, as HarfBuzz does.
 
-## [0.38.3] - 2026-10-26
+## [0.38.3] - 2026-10-26 12:07
 
 ### Added
 - **File dialogs** (`platform/dialogs.odin`, Windows `dialogs_win32.odin`, stub elsewhere): `open_file_dialog`, `save_file_dialog` and `pick_folder_dialog` with a title, filters (`File_Filter`), an "All files" line, the starting folder (`start_dir`, or a `Known_Folder` default), a remembered folder per `remember_id`, the suggested name and default extension, several files, the overwrite question; `Dialog_Result` gives the paths and the type line chosen. Pure helpers: `filter_patterns`, `filter_matches`, `filters_from_accept` (a web page's accept list); `dialog_test_hook` stands for the real dialogs in tests. Doc: `docs/dialogs.md`. Test: `tests/dialogs`.
 - **Shell actions**: `open_url`, `open_path`, `reveal_in_folder` (`ShellExecuteExW`; the file manager with the file selected), `known_folder_path`.
 
-## [0.38.2] - 2026-10-26
+## [0.38.2] - 2026-10-26 11:52
 
 ### Added
 - **`ui.text_edit` wraps and grows** (`wrap`, `auto_height`, `min_lines`, `max_lines`): long lines break at the box's width at the font backend's line break opportunities (a word wider than the box between grapheme clusters); Up / Down / Home / End, clicks and drags follow the visual lines, the caret at the end of a wrapped line stays there (`Text_Area.upstream`); the box is as tall as its lines within the limits, then scrolls. `ui.text_visual_lines`, `ui.visual_line_of`, `ui.Visual_Line` (`ui/text_lines.odin`). Tests: `tests/keyboard` (text_edit_wrap_test.odin). Example: the composer of `examples/fidget`.
 - **Caret rectangle**: `Edit_Result.caret` (box coordinates, this build) and `ui.text_edit_caret_rect(a)` (the caret and the selection's other end, window coordinates, as last drawn) for completion popovers and input method windows.
 
-## [0.38.0] - 2026-10-26
+## [0.38.0] - 2026-10-26 07:55
 
 ### Added
 - **Native text backend** (`-define:FONT_BACKEND=native`, `font/backend_native.odin`, `native/text`, `tools/build_text.ps1`): Fontations (read-fonts' font model), HarfRust and ICU4X (line breaks with dictionaries, bidi through unicode-bidi) in a static Rust library behind a C ABI, built and pinned like Wren's image decoders. Shapes 2.6 times faster than DirectWrite on the corpus (2.0 µs a word against 5.2, without the word cache). Faces are still opened by the platform; `Settings.backend` picks either backend for one State. `font.native_table`, `font.native_coverage`, `font.native_outline_provider`. See `docs/font-backend.md`.
@@ -2858,19 +2872,19 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 ### Changed
 - `Font.features` (cascade features) are `[]Feature` instead of DirectWrite's structure; the system fallback and the script analysis of ASCII text go through the backend.
 
-## [0.36.2] - 2026-10-25
+## [0.36.2] - 2026-10-25 22:29
 
 ### Added
 - **`platform.Frame_Slots` / `frame_slot_wait`** (`platform/frame_slots.odin`, pure): the app's own cap on the cadence of its frames, a grid of slots one period apart that no frame starts before. The swap chain's latency object paces an app only where the system holds frames back until a refresh; on a variable or dynamic refresh display (G-Sync, FreeSync, Windows 11's dynamic refresh rate) it is released at once, and an app woken by a mouse at 1 kHz makes and presents a frame per move (270 to 915 a second measured on a 180 Hz G-Sync monitor). `strict` makes the grid the period itself; a loose one (0.9 of it) is a net a screen that paces the app never reaches, and tightens by itself after 8 delayed frames in a row. A frame that starts an answer to input (`immediate`) is not delayed. Test: `tests/frame_slots` (a loop woken every millisecond on a screen that paces nothing: at most one frame per period).
 - **`Display_Info.max_hz`**: the highest rate of the monitor's modes at the current size and orientation. With a dynamic refresh rate the mode and the display path say 60 Hz all the time while the screen is at 180 Hz when something moves; `platform.refresh_is_variable(hz, max_hz)` tells when to aim above `hz`.
 - **`platform.display_live_hz(w)`**: the refresh rate the compositor says it runs at right now (`DwmGetCompositionTimingInfo`, `rateRefresh`): with a dynamic refresh rate the one reading that moves with the screen. DWM answers for the primary monitor only and only to a NULL window handle (a handle gives `E_INVALIDARG`), so a window on another monitor has no answer (`ok` false). Its refresh count is no use (it counts the calls of the process).
 
-## [0.36.1] - 2026-10-25
+## [0.36.1] - 2026-10-25 21:43
 
 ### Added
 - **`Box_Flag.Scrollbar_Left`** (`ui/scrollbar.odin`, `ui/events.odin`): the overlay scrollbar of a `.View_Scroll_Y` box sits at its left edge instead of its right one (drawn, hit and dragged there; its grab margin widens toward the content). A panel docked on the left whose right edge joins the content (a tab sidebar whose current tab flows into the page) keeps its scrollbar on the outside. Test: `tests/ui_robust` scrollbar_on_the_left.
 
-## [0.36.0] - 2026-10-25
+## [0.36.0] - 2026-10-25 21:32
 
 ### Added
 - **Window placement, for apps with several windows or a saved layout** (`platform/placement.odin`, `placement_win32.odin`): `platform.get_placement(w)` / `set_placement(w, p)` (`Placement{rect, maximized}`: the outer rectangle in screen pixels where the window is restored to, and whether it is maximized; `set_placement` moves and sizes the window without showing it, on the monitor nearest to the rectangle and inside its work area, and `show_window` then shows it maximized if asked), the pure `fit_rect_to_work(rect, work)`, `outer_rect(w)`, `client_origin(w)` (where the client area starts on the screen: turns a pointer position of a window, captured outside it, into a screen position) and `move_window(w, x, y)`. `tests/placement`. A browser that moves tabs between windows used all of them.
@@ -2879,20 +2893,20 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **`set_placement` asks twice when the window changed monitor**: a window that crosses to a monitor of another DPI is resized by the system for it (640 x 480 became 896 x 672); asked again, now that it is on that monitor, the rectangle is the one wanted. Windows now open on the monitor the user is on (0.35.3), so this is the common case.
 - **`ui.init` no longer restarts the toolkit's clock** (`ui/state.odin`): the origin of `ui.now_ms()` was reset by every `init`, so opening a second window (one `ui.State` each) made the time of the first one jump back. It is set by the first `init` only.
 
-## [0.35.3] - 2026-10-25
+## [0.35.3] - 2026-10-25 21:22
 
 ### Fixed
 - **A menu row that the pointer left for a disabled row stayed selected** (`ui/popups.odin`): a disabled row gets no signal, so the selection followed the pointer over enabled rows only and kept the last one while the pointer crossed disabled ones (the burger menu, the dropdown lists). A pointer that moves onto a disabled row now leaves nothing selected. Test: `tests/keyboard` menu_pointer_over_a_disabled_row_selects_nothing.
 - **A new window opened on the primary monitor** (`platform/platform_win32.odin`): `CW_USEDEFAULT` puts it there whatever program launched it, so a window started from a program on another monitor had that monitor's refresh rate and DPI wrong until it was dragged. It is now made on the monitor of the foreground window, else the one under the pointer.
 - `ui.VERSION` said 0.35.1 in the 0.35.2 release; it follows the changelog again.
 
-## [0.35.2] - 2026-10-25
+## [0.35.2] - 2026-10-25 20:54
 
 ### Added
 - **Offscreen drawing and readback** (`draw/offscreen.odin`, `render/readback.odin`, `docs/draw.md`): `draw.offscreen_begin` / `offscreen_end` draw into a transparent target of their own, never shown and not cut by the window; `render.readback_poll` gives its pixels after the frame (straight RGBA8, sRGB, alpha kept; an `Op_Kind.Read` copies the target where it was recorded). `render.straight_srgb`. Test: `tests/layers` offscreen_draw_and_read_back (both blend spaces, WARP).
 - `ui.wake_in_ms` (the timed wake the last build asked for, measured from now) and `ui.wake_due`. `wake_ms` counts from the build: a loop that used it as its wait timeout and as "a frame is wanted" made a frame at every early wake of any message. Measured with Wren's `tools\altdrag_sim.ps1` (AltSnap sends `WM_SIZING` before each step): the extra frame of each step was made for a caret blink not yet due (`Ui_Timer` 882 of 1544 frames of the run); with `wake_due` / `wake_in_ms`, 494 presents for 500 steps.
 
-## [0.35.1] - 2026-10-25
+## [0.35.1] - 2026-10-25 20:34
 
 ### Added
 - **Drag images**: `Drag_Image` is now in `platform/dragdrop.odin` (independent of the system), with `drag_image_valid`, `drag_image_fade` (the translucent ghost of a dragged element) and `drag_image_fit` (scaled down to a size, its hot spot following). `drag_image_held` says what the system's drag image helper holds after `drag_start` (Windows: read back from the data object's `DragImageBits`).
@@ -2905,7 +2919,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - `render.capture_cancel`: forgets a capture asked for and not read.
 - `tests/dragdrop`: drag images, the scripted drag back over the window with `drop_sync_set` (enter, over, drop answered at once, the image held by the system), gestures, device rules.
 
-## [0.35.0] - 2026-10-25
+## [0.35.0] - 2026-10-25 19:25
 
 ### Added
 - **Drag and drop between applications** (`platform/dragdrop.odin`, `dragdrop_win32.odin`, `dragdrop_stub.odin`, `docs/dragdrop.md`): the API is independent of the system; Windows implements it with OLE, other systems answer "not supported". A window becomes a drop target with `drop_target_enable`; a drag over it queues `Drop_Enter` / `Drop_Over` / `Drop_Leave` / `Drop` (position, modifiers, `Event.drop_allowed`) with the data in `drop_data` (`Drag_Data`: files, text, HTML fragment, URL and its title, PNG image, the app's own MIME types); the app answers with `drop_set_effect` (the system is given the last answer). `drag_start` runs a drag of the system with a `Drag_Data` and an optional `Drag_Image`, and returns the effect the target chose. `drop_effect_for` (the Ctrl / Shift / Alt convention), `drag_data_types`, `drag_threshold`, `drop_inject` (tests, remote control), `drop_self_test` (the round trip through the window's own drop target, no mouse). Pure helpers: `drag_custom_encode` / `decode`, `uri_list_first`, `html_format_wrap` / `html_format_fragment` (CF_HTML).
@@ -2913,7 +2927,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - `Mouse_*` events carry `Event.buttons` (`Mouse_Buttons`: the buttons held after the event), so a move during a drag says which button is held.
 - `tests/dragdrop`: the pure helpers, the pointer details, the round trip of every format through the system (hidden window), injected drops.
 
-## [0.34.0] - 2026-10-25
+## [0.34.0] - 2026-10-25 18:28
 
 ### Fixed
 - **Raising then lowering `set_max_frame_latency` no longer leaves the swap chain with two frames in flight for good** (`render/present.odin`, `render/render.odin`, D3D11): the swap chain's frame latency object is a semaphore that the system raises when `MaximumFrameLatency` goes up and does not take back when it goes down. After a 1 -> 2 -> 1 (an app that allows a second frame for a resize step or an input frame, as Wren does) the object held one count more than a slot per round trip: every wait on `frame_waitable` returned at once, `Present` blocked for a whole refresh instead, and the frame on screen was one more frame behind the input, until the program restarted. The surplus is now remembered when the latency is lowered (`Present_State.latency_debt`) and consumed, without waiting, by `frame_waitable` / `wait_for_frame` as soon as the object has the counts to give. Measured on a 60 Hz window (a tab dragged at 1 kHz of pointer moves): wait for the slot 0.1 ms and `Present` 16 ms before, 16 ms and 0.6 ms after, and the time from input to the refresh that showed it, as the frame statistics give it, from 118 ms to 56 ms.
@@ -2921,7 +2935,7 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 ### Added
 - `render/latency_object_test.odin`: the surplus of the latency object against a semaphore that stands for it (lowering, raising, taking without waiting, counts that come later).
 
-## [0.33.0] - 2026-10-25
+## [0.33.0] - 2026-10-25 17:37
 
 ### Fixed
 - **A window moved by another program's drag tool is no longer taken for a window in the system's move / size loop** (`platform/size_move.odin`, `platform_win32.odin`): AltSnap (Alt + right button drag) and similar tools resize a window with `SetWindowPos` calls from their own process and POST it `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE`. The window took them for a loop of the system: it painted from `WM_PAINT` inside its own `poll_events` (a frame within the app's frame, two presents per turn) every 16 ms, while the tool waited at every step for its thread. Now the two messages open and close the modal mode only when they arrive inside the window procedure's `DefWindowProc` call, where the system's real loop runs (`size_move_step`, pure); from outside they are ignored and the size change arrives as `WM_SIZE`, drawn by the app's own loop like any other. `WM_ENTERMENULOOP` / `WM_EXITMENULOOP` are unchanged. A move that ended with `WM_EXITSIZEMOVE` from outside still refreshes the display information (another monitor's refresh rate).
@@ -2930,27 +2944,27 @@ label did nothing). A width given by `next` is kept, the label filling it as bef
 - **`platform.pump_stats(window)`** (`Pump_Stats`): how many frames were made from the window procedure (`paint_frames`, a loop of the system), how many loops of the system were entered (`modal_loops`), how many `WM_ENTERSIZEMOVE` / `WM_EXITSIZEMOVE` from outside were ignored (`ignored_size_moves`). For tests and diagnostics of the message loop.
 - `tests/size_move`: the decision `size_move_step` (messages inside / outside `DefWindowProc`, nesting, an exit with no loop open); `tests/window` checks that posted and sent `WM_ENTERSIZEMOVE` from outside open no modal mode (the frames-in-a-loop test now uses the menu loop, which a test can enter without the mouse).
 
-## [0.32.1] - 2026-10-25
+## [0.32.1] - 2026-10-25 15:37
 
 ### Changed
 - **The selected row of a menu is a filled, rounded row with no outline** (`ui/theme_default.odin`: `menu_item selected background` accent at 0.30, `menu_item selected border` transparent): it was the generic "selected" look, an opaque accent ring around a row with a 22 % fill, which read as a focus box more than as a highlight (the fill was too faint to see beside the ring). Lists, fields and every other selected item keep their look.
 
-## [0.32.0] - 2026-10-25
+## [0.32.0] - 2026-10-25 15:04
 
 ### Added
 - **Input -> screen latency, stage by stage** (`render/latency.odin`, off by default): `render.set_latency_probe(r, true)` records, for each frame that reached the screen and was built from input, the time waiting for the frame (`wait`: event received -> frame began), building and drawing (`work`), `Present` (`present`) and scan-out (`scan`: Present returned -> the refresh that showed it), then `latency_summary(r)` gives p50 / p95 / max / mean of each, the total in refreshes of the monitor, the share of frames built from input and how many presents the swap chain's statistics count as not yet shown. `latency_reset`, `latency_summarize` (pure), `latency_sample_of`. The application tells when the frame read its input with `render.set_frame_read`. `Displayed_Frame` gained `read`, `drawn` and `call` (when `frame_end` and `Present` were called). Both backends feed it; nothing is recorded or allocated while the probe is off (`render/latency_test.odin`: arithmetic and ring, no clocks).
 
-## [0.31.0] - 2026-10-25
+## [0.31.0] - 2026-10-25 13:53
 
 ### Fixed
 - Menus: the row under the pointer is drawn selected in the frame that sees the pointer on it, and the row it left is released in that same frame. The selection was decided while a row was built, so rows built before the hovered one (and the hovered row itself) showed the previous selection until the next frame: a pointer crossing a menu left two rows lit for a frame, and the new one a frame late (a refresh or two more once the frame had to wait for the screen). `Menu_Item_Info` gained `key` (the row's box): a level reads the hovered row from the previous frame's items when it begins (`tests/states`: `menu_hover_selects_in_the_same_frame`).
 
-## [0.30.1] - 2026-10-25
+## [0.30.1] - 2026-10-25 12:00
 
 ### Changed
 - Timing checks in the tests (durations, CPU and GPU times, frames in a time window) are opt-in: `base.perf_skip` (package `base`, `base/perf.odin`) runs them only with `GUI_PERF=1` or `true`, and never when `CI` is defined. The results are still checked in CI (`tests/colr`, `tests/gpufx`).
 
-## [0.30.0] - 2026-10-25
+## [0.30.0] - 2026-10-25 11:42
 
 Fixes from the review of `font`, `ui` and `platform` (0.26.0). 0.29.0 is the version of another branch (render and draw).
 
@@ -2979,7 +2993,7 @@ Fixes from the review of `font`, `ui` and `platform` (0.26.0). 0.29.0 is the ver
 - `platform.config_dir` with `%APPDATA%` over 259 characters panicked; the clipboard is read up to the size of its block, freed when it cannot be given to the system, and `GlobalLock` is checked.
 - The wake-ups of the caret blink and of a tooltip delay no longer replace each other.
 
-## [0.29.0] - 2026-10-25
+## [0.29.0] - 2026-10-25 10:05
 
 Fixes found by the review of `render` and `draw` (branch `fix/render-draw`). 0.30.0 is the font / ui / platform review branch. Each fix has a test that failed before it (`tests/lifecycle` is new).
 
@@ -3000,14 +3014,14 @@ Fixes found by the review of `render` and `draw` (branch `fix/render-draw`). 0.3
 - `push_plane` inside a recorded picture records nothing (it recorded the content flat, unprojected); `current_clip` is not empty while recording.
 - Slug text, when the device refuses the Slug shaders, is not drawn (it was one solid rounded rect per glyph); `d3d_update_texture_r8` checks the handle, the block and the pixels like the other uploads.
 
-## [0.28.0] - 2026-10-25
+## [0.28.0] - 2026-10-25 07:20
 
 0.27.0 is reserved for the fixes of the review branch.
 
 ### Added
 - **Boxes with leaning sides** (`ui.Box.slant`, `platform.Slant`): a clickable box can say that its left and right edges lean (how far each is moved inwards at its top and at its bottom). Only that trapezoid is hit (`ui.box_contains`; the topmost box under the pointer still wins), and over an integrated title bar it is a *slanted hole* (`platform.Chrome_Regions.slanted`, `platform.Slanted_Region`, `platform.slanted_contains`; `hit_test_chrome` answers `.Client` inside it), so that the corners a trapezoid tab does not cover keep dragging the window. For tab strips drawn with sloped sides. Tests in `tests/chrome`.
 
-## [0.26.0] - 2026-10-24
+## [0.26.0] - 2026-10-24 20:08
 
 Merge of three branches: the GPU 2D canvas engine, faster image uploads, the window border color. 0.20.0 and 0.21.0 (reserved below for the canvas engine and the uploads) were never released: their content is here.
 
@@ -3023,7 +3037,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 ### Fixed
 - Windows 11, integrated title bar: a line of what lay behind the window showed above the tab strip, because the system's border is half transparent there. An app now paints it opaque with `platform.set_border_color` (nothing changes until it does).
 
-## [0.25.0] - 2026-10-24
+## [0.25.0] - 2026-10-24 19:27
 
 ### Added
 - **Application shaders** (`render/app_shader.odin`, `app.wgsl`, `wgpu_app.odin`, `draw/app_shader.odin`, [docs/shaders.md](docs/shaders.md)): `render.create_app_shader(r, {name, wgsl, dxbc, hash})` registers a fragment function the application wrote in WGSL (`fn app_shade(a: AppIn) -> vec4<f32>`, linear light, straight alpha; it reads `app_param(k)` and `app_tex0..3`), and `draw.app_shader(dc, shader, rect, params, textures, blend, radii, tint)` fills a rounded rectangle with it, in order with everything else, under the transform stack, clips, alpha stack, layers and planes (the vertex stage, corner shape and clip coverage are the renderer's). Up to 64 vec4 parameters and 4 textures per draw; blend modes `Normal`, `Add`, `Screen`, `Multiply`. Refuses (returns false, draws nothing) for shader 0, while a picture is recorded, and over the limits. Both backends: WebGPU compiles the module `rect.wgsl` + `app.wgsl` + the application's WGSL; Direct3D 11 embeds the pixel shader precompiled by `odin run tools/shaders -- app <name> <file.wgsl> <dir>` (naga + D3DCompile, `<name>.dxbc` and `<name>.sha256`; the hash of the module is checked when the shader is created, a stale blob is refused with a message).
@@ -3033,17 +3047,17 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 
 0.24.0 is reserved for another branch; 0.25.0 follows 0.23.0 on purpose.
 
-## [0.23.0] - 2026-10-24
+## [0.23.0] - 2026-10-24 16:04
 
 ### Changed
 - `render.surface_create(r, hwnd, size, transparent = false, fixed_size = {})`: a second window can have a composition swap chain (`transparent`, with the window opened with `platform.open_window(..., transparent = true)`) and a fixed surface (`fixed_size`, as `set_fixed_surface` does for the renderer's own window): resized, it shows its buffers 1:1 clipped by the client area, never stretched. The default stays an opaque HWND swap chain, which stretches the last frame while the window is resized. `surface_destroy` also releases a translucent surface's DirectComposition objects (and goes through `set_teardown_wait`).
 
-## [0.22.1] - 2026-10-24
+## [0.22.1] - 2026-10-24 06:26
 
 ### Added
 - `render.set_teardown_wait(r, ms)`: `destroy` waits at most that long for the swap chain (and a translucent window's DirectComposition objects) to be released, which happens on a thread of its own; past it the release goes on by itself. Releasing a swap chain waits for the system's compositor to let go of the window's surface, and on a machine whose cores are all busy that took seconds in a program that was closing. 0 (the default): `destroy` waits as long as it takes, as before.
 
-## [0.22.0] - 2026-10-23
+## [0.22.0] - 2026-10-23 23:50
 
 ### Added
 - **Synthetic input**: `platform.inject_event(w, event)` queues an event that the next `poll_events` returns after the system's own, through the same path (hover, focus, shortcuts, text input behave as for a real device). For tests, remote control and macros.
@@ -3051,7 +3065,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 
 0.20.0 and 0.21.0 were reserved (feat/canvas-gpu and feat/gpu-accel); they were merged into 0.26.0 instead, and those two numbers stay unused.
 
-## [0.19.0] - 2026-10-23
+## [0.19.0] - 2026-10-23 23:48
 
 ### Added
 - `ui.menu_item(..., keep_open = true)`: choosing the item does not close the menu, for the switches of a settings menu (the check mark changes, the menu stays for the next one).
@@ -3062,7 +3076,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 - `render.surface_create / surface_use / surface_destroy`: a second window drawn by the same renderer (same device, textures, fonts), as a surface swapped in for the frames drawn to it (Direct3D 11).
 - `ui.tooltip_beside()`: `tooltip` placed beside the pointer (its right, or its left when there is no room), centered on it, for the rows of a list or a table, where a tooltip below the pointer hides the rows under it.
 
-## [0.18.0] - 2026-10-23
+## [0.18.0] - 2026-10-23 02:19
 
 ### Added
 - **Video pictures as textures** (`render/video.odin`, `video.wgsl`, `shaders/video.hlsl`): `render.create_video_target(r, w, h)` makes an RGBA texture for a decoded picture and `render.video_convert(r, target, picture)` fills it. A `Video_Picture` is what a decoder hands over: NV12 and P010 surfaces of the device itself (the hardware decoders of Media Foundation / DXVA write into textures of the renderer's device, shared with no copy when the surface allows it), or I420 and 10-bit I420 planes in memory. It carries the crop rectangle, the rotation (0, 90, 180, 270), the matrix (BT.709, BT.601, BT.2020), the range, and the transfer function (SDR, PQ, HLG, tone-mapped to the display's white with `hdr_peak_nits` and `sdr_white_nits`). The result is an ordinary texture to draw with `draw` as any image.
@@ -3077,7 +3091,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 - **Direct2D crash on nested PaintGlyph**: Direct2D of Windows 11 24H2 as first released (`d2d1.dll` 10.0.26100.1, the image of GitHub's `windows-2025` runners; a patched 24H2 such as 10.0.26100.8875 draws them) dies with a null read inside `d2d1.dll`, an access violation nothing can catch, when it draws a COLR v1 glyph whose paint graph has a PaintGlyph inside the paint of another PaintGlyph (a clip inside a clip, directly or through transforms, layers, compositions and PaintColrGlyph). With `Color_Engine.System` such glyphs are now drawn by the COLR interpreter (`font.colr_nests_glyph` finds them in the font's own tables, once per glyph and face); every other glyph still goes to Direct2D. `font.colr_avoids_system(state, face, gid)` tells which. Found by the CI of Wren: `tests/colr` interpreter_agrees_with_direct2d died on U+F1400 .. U+F140F of the test font, 16 glyphs, and the process with it.
 - `tests/colr`: the comparison with Direct2D leaves out the glyphs Direct2D is no longer given; `nested_glyphs_stay_off_direct2d` checks, without depending on the machine's `d2d1.dll`, that exactly those 16 glyphs are kept off it and are drawn in color by the interpreter.
 
-## [0.17.0] - 2026-10-22
+## [0.17.0] - 2026-10-22 11:06
 
 ### Added
 - **Planes that cut through each other** (`draw/bsp.odin`): `draw.draw_planes(dc, items)` draws the planes of one 3D rendering context in the order they hide each other, and when planes cut through each other (or hide each other in a cycle) splits them along each other's planes by a BSP (as Chromium's `BspTree` / `DrawPolygon`), the pieces ordered back to front for a viewer in front. A piece is the plane's layer drawn again under `Plane_Draw.cuts` (`Plane_Cut`: half-spaces of the space after the perspective divide, at most `MAX_PLANE_CUTS`, tested per pixel on the interpolated plane position in `rect.wgsl`: no seams between pieces). `Plane_Item.parts`: several layers on one plane (a plane and what rides on it) are cut and ordered together.
@@ -3091,13 +3105,13 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 ### Changed
 - `rect.wgsl`: two more flat varyings (the cuts of a projected quad); HLSL regenerated. `ui.VERSION` and the version constants agree again (they said 0.16.0 and 0.15.0).
 
-## [0.16.0] - 2026-10-22
+## [0.16.0] - 2026-10-22 08:23
 
 ### Added
 - **Planes**: layers drawn through a projective 4x4 transform (CSS Transforms 2: `perspective()`, `rotateX/Y`, `translateZ`, `preserve-3d`). `draw.push_plane` / `pop_plane` / `draw_plane` (`draw/plane.odin`): the content of a rectangle is drawn offscreen in its own frame at a chosen raster scale, then composited as a quad through a column-major 4x4 matrix (`draw.Mat4`, the order of CSS `matrix3d()`), with perspective-correct interpolation, antialiased edges, anisotropic filtering along the long axis of the pixel's footprint (`Plane_Draw.max_taps`), the clips and alpha stack of the moment, and `backface-visibility` (`Plane_Draw.cull_back`, `plane_faces_away`). `pop_plane` hands the layer back so several planes can be sorted before `draw_plane` (preserve-3d). A plane whose content did not change is kept between frames (`Plane_Fx.cache_id` / `cache_key`, the layer cache of `layer_cache.odin`): `push_plane` returns false and only the matrix changes.
 - Shader: `FLAG_PROJECT` in `rect.wgsl` (a `KIND_IMAGE` instance whose homography is in two entries of the transform table): the vertex shader writes homogeneous clip positions, so the rasterizer clips against w > 0 and interpolates with perspective. No new pipeline: D3D11 (naga's HLSL, regenerated) and wgpu share it. `tests/planes` (flat plane equals the plain rect, perspective correctness, backface, a plane crossing the eye, kept planes, nested planes), on both backends.
 
-## [0.15.0] - 2026-10-22
+## [0.15.0] - 2026-10-22 05:49
 
 ### Added
 - A WebGPU render backend (experimental), behind the same interface as the Direct3D 11 one: `-define:TOOLKIT_RENDER=wgpu` (default `d3d11`). wgpu-native over Direct3D 12 (or Vulkan with `-define:TOOLKIT_WGPU_BACKEND=vulkan`); the shaders ported to WGSL; translucent windows through a DirectComposition visual; GPU time per step. The pixel tests pass on both backends (`tools\test_backends.ps1`). See `docs/webgpu.md`.
@@ -3113,12 +3127,12 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
   - `draw`: `glyph_run` uses it when the setting says so; pictures remember their Slug pages.
   - `tools/textcompare`: atlas | Slug | difference images and measurements; `tests/slug`.
 
-## [0.13.1] - 2026-10-21
+## [0.13.1] - 2026-10-21 19:32
 
 ### Added
 - GPU profile steps `Upload`, `Acquire`, `Present` and `Idle` (only while `set_gpu_profile` is on): where a frame's GPU time goes, the swap chain's wait and the present included.
 
-## [0.13.0] - 2026-10-21
+## [0.13.0] - 2026-10-21 13:53
 
 ### Changed
 - Interaction states show at once: hover, press, focus, selection and disabled no longer fade in or out (`hot_t`, `active_t`, `focus_t`, `disabled_t` go from 0 to 1 in the frame that sees the change), and box colours jump to their targets (a selected row, the hovered menu item). A hover change asks for no further frame. A change of palette still cross-fades every colour for `ui.PALETTE_FADE_MS` (160 ms).
@@ -3136,7 +3150,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 - `draw.alpha_like_srgb`: the inverse of `alpha_like_linear` (the alpha that looks in a blend space as a given alpha blended in sRGB values).
 - `tests/states`: instant states, transitions on demand, palette cross-fade, the size of the steps in both blend spaces.
 
-## [0.12.0] - 2026-10-21
+## [0.12.0] - 2026-10-21 13:43
 
 ### Added
 - **Every CSS cursor**: `platform.Cursor` has all the values of CSS Basic User Interface 4 (`none`, `context-menu`, `help`,
@@ -3177,12 +3191,12 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
   the caption of an integrated title bar.
 - `Native_Window.cursors` is no longer an array of handles (the cursor state of cursors_win32.odin).
 
-## [0.11.1] - 2026-10-20
+## [0.11.1] - 2026-10-20 20:49
 
 ### Fixed
 - `ui.init` makes the state current: getters (`scale`, `font_size`, `focus_key`...) called before the first `begin_build` read a nil state and crashed (Wren crashed at start-up when the pointer was over its window).
 
-## [0.11.0] - 2026-10-20
+## [0.11.0] - 2026-10-20 18:01
 
 ### Changed
 - **Shaders compiled ahead of time**: `render/rect.hlsl` and `render/filter.hlsl` are embedded as DXBC
@@ -3197,12 +3211,12 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
   a step. `render.buffer_size`. The window's swap chain is created with `DXGI_SCALING_STRETCH` (with `NONE`, DWM showed
   a smaller source region magnified).
 
-## [0.10.1] - 2026-10-20
+## [0.10.1] - 2026-10-20 17:24
 
 ### Added
 - `font.Metrics.line_gap`: the face's line gap, unrounded (a layout rounds ascent, descent and gap one by one, as Blink does).
 
-## [0.10.0] - 2026-10-19
+## [0.10.0] - 2026-10-19 15:16
 
 ### Added
 
@@ -3291,7 +3305,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
   bilinearly, as the composite would).
 - `tests/chrome` and `tests/keyboard` take a lock around each test (they drive the global UI state): they no longer need `-define:ODIN_TEST_THREADS=1`, without which `tests/chrome` used to hang the test runner.
 
-## [0.9.3] - 2026-10-19
+## [0.9.3] - 2026-10-19 13:35
 
 ### Added
 
@@ -3332,7 +3346,7 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
 - `tests/masks` (both blend spaces): alpha and luminance coverage, the four operators, a gradient mask under opacity
   and a clip, no mask layer, text as a mask (background-clip: text), the fallback inside a picture.
 
-## [0.9.2] - 2026-10-19
+## [0.9.2] - 2026-10-19 12:24
 
 ### Added
 - **Frame pacing at the monitor's rate** (`platform/display_win32.odin`, `render/present.odin`):
@@ -3366,13 +3380,13 @@ Merge of three branches: the GPU 2D canvas engine, faster image uploads, the win
   statistics.
 - `stepper`: holding a button wakes the loop at the next repeat instead of drawing a frame at every refresh.
 
-## [0.9.1] - 2026-10-19
+## [0.9.1] - 2026-10-19 11:18
 
 ### Changed
 
 - Merge of 0.9.0 (DirectWrite text, retained glyph runs) with 0.8.1 (status bar, frame graph) and 0.8.2 (named palettes).
 
-## [0.9.0] - 2026-10-19
+## [0.9.0] - 2026-10-19 11:11
 
 Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged with retained drawing (0.7.0).
 
@@ -3444,13 +3458,13 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
 - A full atlas no longer resets in the middle of a frame (glyphs drawn earlier in the frame showed the glyphs
   rasterized over them: "20 ☒ 7 minutes").
 
-## [0.8.2] - 2026-10-19
+## [0.8.2] - 2026-10-19 10:55
 
 ### Added
 - The palettes of fidget are built in: `PALETTE_GRAPHITE`, `PALETTE_NORD`, `PALETTE_DRACULA`, `PALETTE_AMBER`, `PALETTE_AERO`,
   `PALETTE_BOOTSTRAP`, the `NAMED_PALETTES` table (with Midnight and Daylight) and `palette_named(name)`. fidget uses the table.
 
-## [0.8.1] - 2026-10-19
+## [0.8.1] - 2026-10-19 10:45
 
 ### Added
 - **Status bars and frame statistics** (`ui/status.odin`): `status_bar(id)` (a bar along the bottom of a window, theme
@@ -3478,7 +3492,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   layer targets).
 - `examples/fidget`: its status bar uses them (build and draw time per frame, stacked, with a tooltip per frame).
 
-## [0.8.0] - 2026-10-19
+## [0.8.0] - 2026-10-19 09:28
 
 ### Added
 - **Menus** rebuilt (`popups.odin`): any depth of submenus (`menu_submenu`, opens on click, after
@@ -3513,7 +3527,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   `State.menus` (the stack of open levels). Dropdowns open below their button (above without room) and from the
   keyboard (Down, Alt+Down, F4) with the current value selected.
 
-## [0.7.0] - 2026-10-19
+## [0.7.0] - 2026-10-19 09:17
 
 ### Added
 - **Retained drawing**: `draw.Picture`, `picture_begin` / `picture_end` (record what is drawn between them instead of
@@ -3550,7 +3564,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
 - `push_effects` / `push_layer` while recording fall back to the alpha (a picture holds no offscreen layer);
   `backdrop_capture` returns nothing.
 
-## [0.6.0] - 2026-10-19
+## [0.6.0] - 2026-10-19 07:10
 
 ### Added
 - **Blend spaces**: `render.Blend_Space` (`Linear`, `Srgb`): where colors mix (blending, antialiased edges,
@@ -3610,7 +3624,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   textures.
 - `Clip_Data` is 80 bytes (`kind`, `first`, `count`, `flags`); `CLIP_CIRCLE` moved from `parent` to `flags`.
 
-## [0.4.2] - 2026-10-18
+## [0.4.2] - 2026-10-18 21:23
 
 ### Added
 - `draw.set_circular_corners(dc, on) -> previous`: rounded rects, images and rounded clips drawn while it is on use
@@ -3618,7 +3632,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   specifications need circles). Per primitive: `render.FLAG_CIRCLE`, `render.CLIP_CIRCLE` (or-ed into
   `Clip_Data.parent`). Reset by `begin_frame`. Pixel test in `tests/layers`.
 
-## [0.4.1] - 2026-10-18
+## [0.4.1] - 2026-10-18 21:14
 
 ### Added
 - **Layers (group opacity)**: `draw.push_layer(dc, bounds, alpha)` / `draw.pop_layer` draw into an offscreen render
@@ -3637,7 +3651,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
 - The shader constant buffer is 32 bytes (adds `target_origin`). `init` is split into device creation and pipeline
   setup (shared with `init_offscreen`); `frame_end` and `resize` do nothing for an offscreen renderer.
 
-## [0.4.0] - 2026-10-18
+## [0.4.0] - 2026-10-18 20:28
 
 ### Added
 - **2D affine transforms** in `draw`: `Affine` (CSS `matrix(a, b, c, d, e, f)` convention), `push_transform` /
@@ -3665,7 +3679,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   `push_scale` / `pop_xform` keep their behaviour; the existing examples render pixel-identical to 0.3.2.
 - Soft shapes (`soft > 1`) drawn under `push_scale` scale their blur with the rest of the shape.
 
-## [0.3.2] - 2026-10-15
+## [0.3.2] - 2026-10-15 20:18
 
 ### Fixed
 - Wine (and any system without DirectComposition): `render.init(transparent = true)` fell over on
@@ -3673,7 +3687,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
 - fidget: removing one of the initial tags crashed (it deleted a string literal).
 - fidget: a clicked or dragged sticky note went to the back instead of the front.
 
-## [0.3.1] - 2026-10-15
+## [0.3.1] - 2026-10-15 20:11
 
 ### Changed
 - **Self-contained exes**: the icon font is compiled in (`ui.ICON_FONT_DATA`, `font.load_embedded`); nothing has to
@@ -3683,7 +3697,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
   (`font.load_system_or_embedded`, `font.FALLBACK_UI_DATA`, `font.FALLBACK_MONO_DATA`). fidget: `--embedded_fonts`
   forces the fallbacks.
 
-## [0.3.0] - 2026-10-15
+## [0.3.0] - 2026-10-15 20:06
 
 ### Added
 - **Arrow-key focus navigation**: once a widget that does not use arrows has the focus, the arrows move it to the
@@ -3726,7 +3740,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
 - The page and the menu bar inherited the default radius, leaving dark pixels in the window corners.
 - The sort arrow and resize lines of the table header were not aligned with the column separators.
 
-## [0.2.0] - 2026-10-15
+## [0.2.0] - 2026-10-15 18:52
 
 ### Added
 - **Multi-line editor** `ui.text_edit` with `ui.Text_Area`: selection (keyboard and mouse, double-click word),
@@ -3749,7 +3763,7 @@ Text on DirectWrite (shaping, fallback, bidi, color glyphs, atlas pages) merged 
 - `icon_button` registered its box under a key it then replaced: the button could not hold the keyboard focus.
 - A focused widget no longer steals Enter / Space from an open context menu.
 
-## [0.1.0] - 2026-10-15
+## [0.1.0] - 2026-10-15 18:14
 
 First release.
 
@@ -3779,6 +3793,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.272.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.272.0
 [0.271.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.271.0
 [0.270.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.270.0
 [0.269.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.269.0
