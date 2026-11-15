@@ -112,7 +112,10 @@ nowhere: xdg-open, an application of "Open with" (`desktop.open_with`).
 
 **A program's folders** (`user_dir.odin`) — `user_dir(kind, program)` is where a program keeps what it keeps, one folder of its own
 per kind, the same call on every system (`program` ""; the folder every program's is in). Nothing is made: the program makes it
-when it writes there.
+when it writes there. `program` is its vendor's folder, then its own: `APP_FOLDER :: "FromentSoftware" +
+platform.USER_DIR_SEPARATOR + "Papier"` (src/md/features/folders.md). `user_dirs_move(from, to)` moves a program's
+folders once from an older name (`"papier"`) to it: call it at start, before anything reads them and before any window;
+it returns how many folders moved and the first that could not.
 
 | `User_Dir` | Linux | Windows |
 |---|---|---|

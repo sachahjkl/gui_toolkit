@@ -63,6 +63,7 @@ Dialog :: struct {
 	views:     ^ui.Views,
 	options:   Setup_Options,
 	logo:      Maybe(Logo),        // the view's mark: open's, then set_logo's (the program does not write it)
+	vendor_mark: Maybe(Logo),      // its vendor's mark in the "By" line: open's, then set_vendor_mark's (nil: the name alone)
 	pending:   Event,
 	building:  bool,               // the view's build runs: a close from its buttons ends the view there
 }
@@ -96,8 +97,8 @@ Logo :: struct {
 
 // Opens the view "setup" (registered the first time) in the State in use, the window being built (ui.views()): the facts are read on its
 // thread, the places of the install are watched. `o` and `logo` are what the view draws with (the options' strings and
-// procedures are the program's constants; the logo is a texture of the window's renderer).
-open :: proc(d: ^Dialog, o: Setup_Options, logo: Maybe(Logo) = nil) {
+// procedures are the program's constants; the logo and the vendor's mark are textures of the window's renderer).
+open :: proc(d: ^Dialog, o: Setup_Options, logo: Maybe(Logo) = nil, vendor_mark: Maybe(Logo) = nil) {
 	vs := ui.views()
 	if d.open && !d.in_page && d.views == vs && ui.view_is_open(vs, VIEW) { return }
 	if !ui.view_registered(vs, VIEW) {
@@ -109,7 +110,7 @@ open :: proc(d: ^Dialog, o: Setup_Options, logo: Maybe(Logo) = nil) {
 	// (a controller already started, by the page or by the program's own facts, goes on in the view)
 	if !d.open { start(d, o) }
 	d.in_page = false
-	d.views, d.options, d.logo, d.pending = vs, o, logo, .None
+	d.views, d.options, d.logo, d.vendor_mark, d.pending = vs, o, logo, vendor_mark, .None
 	ui.view_open(vs, VIEW, d)
 }
 
@@ -132,6 +133,27 @@ start :: proc(d: ^Dialog, o: Setup_Options) {
 set_logo :: proc(d: ^Dialog, logo: Maybe(Logo)) {
 	d.logo = logo
 	if s := sync.atomic_load(&d.state); s != nil { s.anim_busy = true }   // (a frame shows it, even a window at rest)
+}
+
+// The vendor's mark in the "By" line, given or changed after `open`, as set_logo. nil: the vendor's name alone.
+set_vendor_mark :: proc(d: ^Dialog, mark: Maybe(Logo)) {
+	d.vendor_mark = mark
+	if s := sync.atomic_load(&d.state); s != nil { s.anim_busy = true }
+}
+
+// A mark made from a PNG file's bytes (a program's #load) as a texture of `r`, `size` pixels on screen ({}: the
+// image's own). ok = false: the bytes are no PNG. logo_destroy frees it, before the window's renderer goes.
+logo_make :: proc(r: ^render.Renderer, file: []u8, size: [2]f32 = {}) -> (l: Logo, ok: bool) {
+	img := platform.clipboard_image_decode("image/png", file, context.temp_allocator) or_return
+	l.texture = render.create_texture_rgba(r, img.size.x, img.size.y)
+	render.update_texture_rgba(r, l.texture, 0, 0, img.size.x, img.size.y, img.rgba)
+	l.size = size != {} ? size : {f32(img.size.x), f32(img.size.y)}
+	return l, true
+}
+
+logo_destroy :: proc(r: ^render.Renderer, l: ^Maybe(Logo)) {
+	if x, has := l.?; has { render.destroy_texture(r, x.texture) }
+	l^ = nil
 }
 
 // The install may have changed (the program's own reason: its window came back, a place no watcher sees): read again.
@@ -585,10 +607,10 @@ head :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 			if ui.tags("weak") {
 				installed := i18n.tr("not installed")
 				if d.known && f.state != .Not_Installed && f.state != .Nix_Package { installed = f.version != "" ? fmt.tprintf(i18n.tr("v%s installed"), f.version) : i18n.tr("installed") }
-				vendor := o.identity.vendor != "" ? fmt.tprintf("  ·  %s", o.identity.vendor) : ""
 				ui.next({width = ui.fill(), height = ui.px(math.round(em * 1.35)), font_size = math.round(em * 0.9), text_pad = 0})
-				ui.label(fmt.tprintf("%s%s###setup_version", fmt.tprintf(i18n.tr("This copy: v%s → %s"), o.version, installed), vendor))
+				ui.label(fmt.tprintf("%s###setup_version", fmt.tprintf(i18n.tr("This copy: v%s → %s"), o.version, installed)))
 			}
+			by_line(o, d.vendor_mark, em, "###setup_by")
 			ui.spacer(ui.px(em * 0.55))
 		}
 		if badge != "" {
@@ -601,6 +623,43 @@ head :: proc(d: ^Dialog, o: Setup_Options, em: f32, logo: Maybe(Logo)) {
 			}
 		}
 		ui.spacer(ui.px(em * 0.9))
+	}
+}
+
+// "By <mark> <vendor>", as the foot of the program's site: the vendor's name opens its site (Setup_Options.vendor_url).
+// Nothing without a vendor.
+@(private)
+by_line :: proc(o: Setup_Options, mark: Maybe(Logo), em: f32, id: string) {
+	if o.identity.vendor == "" { return }
+	line := math.round(em * 1.35)
+	size := math.round(em * 0.9)
+	ui.next({width = ui.fill(), height = ui.px(line), axis = .X, cross = .Center})
+	if ui.row(id = id) {
+		if ui.tags("weak") {
+			ui.next({width = ui.text_size(), height = ui.px(line), font_size = size, text_pad = 0})
+			ui.label(fmt.tprintf("%s###setup_by_word", i18n.tr("By")))
+		}
+		ui.spacer(ui.px(math.round(em * 0.35)))
+		if l, has := mark.?; has {
+			side := math.round(em * 0.95)
+			ui.next({width = ui.px(side), height = ui.px(side)})
+			b := ui.build_box({}, "###setup_by_mark")
+			p := ui.frame_new(Logo)
+			p^ = l
+			b.custom, b.custom_user = logo_draw, p
+			ui.spacer(ui.px(math.round(em * 0.3)))
+		}
+		if o.vendor_url == "" {
+			if ui.tags("weak") {
+				ui.next({width = ui.text_size(), height = ui.px(line), font_size = size, text_pad = 0})
+				ui.label(fmt.tprintf("%s###setup_by_name", o.identity.vendor))
+			}
+		} else {
+			ui.next({font_size = size})
+			if ui.button("###setup_by_name", o.identity.vendor, o = {face = .Link, height = line, tip = o.vendor_url}).clicked {
+				ui.open(o.vendor_url, .Url)
+			}
+		}
 	}
 }
 

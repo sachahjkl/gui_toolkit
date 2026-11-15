@@ -10,6 +10,22 @@ Three questions, one procedure each, on every system:
 
 `fsx.private_dir(path)` makes a folder that only its user can enter, and refuses one that another user made first.
 
+## A program's folder: its vendor's, then its own
+
+A program's folder is `<vendor>/<Title>` on every system (`"FromentSoftware" + USER_DIR_SEPARATOR + "Papier"`):
+`%APPDATA%\FromentSoftware\Papier`, `~/.config/FromentSoftware/Papier`. The person finds a vendor's programs together,
+under the names they read in the menu, and the same layout on Windows and Linux.
+
+- **The same on Linux, against the habit of lower-case folders.** XDG names no case; most Linux programs write
+  `~/.config/<binary>`. The user chose one layout for every system: a person moving between them finds the same place.
+  The binary, the package and the instance's socket keep the lowercase technical name.
+- **The program gives the folder as a constant**, passed wherever it names its folders (`user_dir(kind, APP_FOLDER)`).
+  `user_dir` does not learn a vendor: one string, one place to read it, no global of the process.
+- **The old folders move once** (`user_dirs_move(from, to)`, at start, before anything reads them): a person keeps their
+  settings, history and licence. A rename, not a copy: the move is the same volume's, and a second run finds the new
+  folder and does nothing. A folder whose new name is there already is left: what is new is never written over. This is
+  the one move a rename of the layout is worth; a later rename of a program moves the same way, by its own call.
+
 ## The person's folders on Linux
 
 The names come from xdg-user-dirs: `$XDG_CONFIG_HOME/user-dirs.dirs` (else `~/.config/user-dirs.dirs`), written at

@@ -1,5 +1,8 @@
 package platform
 
+import "core:fmt"
+import "core:os"
+import "core:path/filepath"
 import "core:strings"
 
 // The standard folders of a user, the same names on every system: where a program keeps its configuration, its data, its cache and
@@ -22,6 +25,43 @@ import "core:strings"
 // user made that name first. So a program's folder in it needs no check of its own. It may ask the system (a stat, a mkdir;
 // Windows: a known folder): call it from a task.
 User_Dir :: enum u8 { Config, Data, State, Cache, Runtime }
+
+// A program's folder is its vendor's, then its own, on every system ("FromentSoftware" + USER_DIR_SEPARATOR + "Papier":
+// %APPDATA%\FromentSoftware\Papier, ~/.config/FromentSoftware/Papier): a vendor's programs sit together, under the names a
+// person reads. The program gives it as a constant and passes it wherever it names its folders.
+
+// Moves a program's folders from an older name to `to`, once: for each kind (Runtime aside: it lasts a session), the
+// folder of `from` becomes the folder of `to` when `to`'s is not there yet and `from`'s is. A folder that holds another
+// kind's (Windows: %LOCALAPPDATA%\<program> holds state and cache) moves once, with them. Call it at start, before
+// anything reads the folders and before any window: it waits on the system. `moved`: how many folders moved; `why`: the
+// first that could not ("": none), the others still tried.
+user_dirs_move :: proc(from, to: string) -> (moved: int, why: string) {
+	done := make([dynamic]string, context.temp_allocator)
+	for kind in User_Dir {
+		if kind == .Runtime { continue }
+		base := user_dir_base(kind)
+		if base == "" { continue }
+		old := strings.concatenate({base, USER_DIR_SEPARATOR, from}, context.temp_allocator)
+		new := strings.concatenate({base, USER_DIR_SEPARATOR, to}, context.temp_allocator)
+		seen := false
+		for d in done { seen ||= d == old }
+		if seen { continue }
+		append(&done, old)
+		if !os.is_dir(old) || os.exists(new) { continue }
+		if parent := filepath.dir(new); !os.exists(parent) {
+			if err := os.make_directory_all(parent); err != nil {
+				if why == "" { why = fmt.tprintf("%s cannot be made: %v", parent, err) }
+				continue
+			}
+		}
+		if err := os.rename(old, new); err != nil {
+			if why == "" { why = fmt.tprintf("%s cannot move to %s: %v", old, new, err) }
+			continue
+		}
+		moved += 1
+	}
+	return
+}
 
 // The folder of `program` for `kind` ("": the folder every program's is in, as the system names it). "": the system has none
 // (no home, a known folder it would not give).

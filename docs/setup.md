@@ -20,6 +20,10 @@ d: setup.Dialog
 if setup.wanted(setup.facts(cfg), APP_VERSION, saved_choice) { setup.open(&d, cfg, logo) }
 // a logo made later (from a task's answer): set_logo, never Dialog.logo itself; shown from the next frame
 setup.set_logo(&d, logo)
+// the vendor signs the header: "By <mark> <identity.vendor>", the name a link to cfg.vendor_url ("": the name alone).
+// logo_make makes a mark (or the logo) from a PNG's bytes; logo_destroy frees it before the renderer goes.
+mark, _ := setup.logo_make(&renderer, #load("../assets/froment-software-64.png"), {16, 16})
+setup.set_vendor_mark(&d, mark)   // or setup.open(&d, cfg, logo, mark); prefs_page.Install.vendor_mark for the page too
 
 // each frame
 switch setup.update(&d, cfg) {

@@ -103,6 +103,35 @@ a_logo_given_after_open_shows :: proc(t: ^testing.T) {
 	session.wait_gone(s, "setup_logo")
 }
 
+// The vendor signs the view: "By", its mark when the program gives one, its name; a vendor without a site is its name
+// alone, a program without a vendor has no line.
+@(test)
+the_vendor_signs_the_view :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	app.cfg = {identity = desktop.Identity{name = "Sample", vendor = "Someone"}, version = "1.0.0", vendor_url = "https://someone.example"}
+	app.d.open, app.d.known = true, true
+	app.d.facts = {state = .Not_Installed}
+	app.opening = true
+	s := session.start(t, {size = {900, 640}, user = &app, build = app_build})
+	session.wait_box(s, "setup_by_name")
+	testing.expect(t, session.find(s, "setup_by_word") != nil, "the line says By")
+	testing.expect(t, session.find(s, "setup_by_mark") == nil, "no mark yet")
+	mark, made := setup.logo_make(s.renderer, #load("../../site/img/logo.png"))
+	testing.expect(t, made, "the PNG makes a mark")
+	_, bad := setup.logo_make(s.renderer, transmute([]u8)string("not an image"))
+	testing.expect(t, !bad, "other bytes make none")
+	held: Maybe(setup.Logo) = mark
+	defer setup.logo_destroy(s.renderer, &held)
+	setup.set_vendor_mark(&app.d, setup.Logo{mark.texture, {64, 64}})
+	session.wait_box(s, "setup_by_mark")
+	session.frames(s, 2)
+	session.save_png(s, "by.png")
+	app.cfg.identity.vendor = ""
+	app.d.options = app.cfg
+	session.wait_gone(s, "setup_by")
+}
+
 @(test)
 not_installed_offers_install_and_standalone :: proc(t: ^testing.T) {
 	app: App

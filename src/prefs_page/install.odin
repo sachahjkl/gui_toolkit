@@ -45,6 +45,7 @@ Install :: struct {
 	options:    setup.Setup_Options,   // the program's (its strings and procedures are its constants)
 	prefs:      ^config.Prefs,
 	logo:       Maybe(setup.Logo),     // the modal's mark (a texture of the program's renderer; nil: none)
+	vendor_mark: Maybe(setup.Logo),    // the vendor's mark in the "By" line of the modal and the page (nil: the name alone)
 	// what the start's reading found (install_offer): the program may wait for it (its updater wants to know which copy runs)
 	known:      bool,
 	running_it: bool,                  // this program is the installed copy
@@ -115,7 +116,7 @@ offer_free :: proc(data: rawptr) {
 install_open :: proc(in_: ^Install) {
 	if in_.dialog.open && !in_.dialog.in_page { return }
 	if in_.dialog.open { _ = setup.close(&in_.dialog, .Close) }   // (the page's: the view takes it over)
-	setup.open(&in_.dialog, in_.options, in_.logo)
+	setup.open(&in_.dialog, in_.options, in_.logo, in_.vendor_mark)
 }
 
 // Each frame of the window the setup belongs to: the work that ended, the view's answer, the answer kept; what happened
@@ -201,6 +202,7 @@ install_page_build :: proc(user: rawptr, em: f32) {
 	// (the modal open over the settings: the page waits for it rather than take its Dialog)
 	if in_.dialog.open && !in_.dialog.in_page { return }
 	// (the program's install_frame says what happened, this frame or the next)
+	in_.dialog.vendor_mark = in_.vendor_mark
 	if ev := setup.page(&in_.dialog, in_.options, em); ev != .None {
 		install_event(in_, ev)
 		in_.pending = ev

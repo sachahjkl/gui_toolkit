@@ -6,7 +6,7 @@ import "core:path/filepath"
 import "core:strings"
 import win "core:sys/windows"
 
-@(private) USER_DIR_SEPARATOR :: "\\"
+USER_DIR_SEPARATOR :: "\\"   // (between a folder and the next: a program's folder written as vendor and name)
 
 // %APPDATA% for the configuration, %LOCALAPPDATA% for the rest, when they are absolute paths (a test, a portable copy points them
 // elsewhere, as XDG's variables are on Linux); else the known folder they name. The runtime folder is the system's temporary

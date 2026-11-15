@@ -335,6 +335,49 @@ licence_pages :: proc(s: Shop) -> []Page {
 	return out
 }
 
+// A shop page in the site's dress, as the changelog's and the roadmap's: the home page's head (its icon, its style, its
+// tags) with the page's title, description and style, the home's bar, footer and script around the page's `main` and its
+// own scripts. The shop's own bar and footer go: the site's footer already links the shop's pages. `index`: the home
+// page, framed. A home without a bar or a footer leaves the page as the template made it.
+shop_dressed :: proc(page: Page, index: string) -> Page {
+	head := between(index, "<head>", "</head>")
+	bar := between(index, `<header class="bar">`, "</header>")
+	footer := between(index, "<footer>", "</footer>")
+	main := between(page.text, "<main", "</main>")
+	if head == "" || bar == "" || footer == "" || main == "" { return page }
+	own_head := between(page.text, "<head>", "</head>")
+	if at, end, ok := title_span(own_head); ok {
+		if h_at, h_end, h_ok := title_span(head); h_ok { head = replace_span(head, own_head[at:end], h_at, h_end) }
+	}
+	if at, end, ok := tag_span(own_head, `<meta name="description"`); ok {
+		if h_at, h_end, h_ok := tag_span(head, `<meta name="description"`); h_ok { head = replace_span(head, own_head[at:end], h_at, h_end) }
+	}
+	head = replace_text(head, "</head>", cat(between(own_head, "<style>", "</style>"), "\n</head>"))
+	scripts := ""
+	if at := strings.index(page.text, "</main>"); at >= 0 {
+		rest := page.text[at + len("</main>"):]
+		if f := strings.index(rest, "</footer>"); f >= 0 { rest = rest[f + len("</footer>"):] }
+		if b := strings.index(rest, "</body>"); b >= 0 { scripts = rest[:b] }
+	}
+	foot := replace_text(footer, CLASSIC_LINK, cat(`<a href="/`, CLASSIC, `/">Classic version</a>`))
+	home_script := between(index, "<script>", "</script>")
+	// (the home's pieces are made relative to this page; the page's own links are already, its "#q-..." its own)
+	return {page.path, cat(`<!doctype html>
+<html lang="en">
+`, from_home(head, page.path), `
+<body class="shop-page">
+`, from_home(bar, page.path), `
+
+`, main, `
+
+`, from_home(foot, page.path), `
+`, from_home(home_script, page.path), `
+`, scripts, `
+</body>
+</html>
+`)}
+}
+
 // The footer's links of a shop page (`page`: its file, "terms/index.html"): the home, the shop's pages in the order of the
 // home page's footer (SHOP_LINKS), the source and the seller. The page's own is marked current.
 @(private = "file")
@@ -377,6 +420,11 @@ LICENCE_BUY_SCRIPT :: `(function () {
             // Paddle gives the transaction id here; the thank-you page asks the Worker for its licence
             if (e.name === "checkout.completed" && e.data && e.data.transaction_id) {
               location.href = d.thanks + "?txn=" + encodeURIComponent(e.data.transaction_id);
+            }
+            // (Paddle closes its own window on an error it cannot show: a seller not yet open for sales, a price gone)
+            if (e.name === "checkout.error") {
+              Paddle.Checkout.close();
+              say("The checkout is not available right now. Nothing was charged: try again later, or ask for help.");
             }
           }
         });
