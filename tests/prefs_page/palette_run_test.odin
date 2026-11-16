@@ -6,6 +6,7 @@
 package prefs_page_test
 
 import "core:fmt"
+import "core:math"
 import "core:strings"
 import "core:testing"
 import config "gt:config"
@@ -367,6 +368,18 @@ shift_enter_goes_to_a_setting :: proc(t: ^testing.T) {
 	testing.expect(t, in_line, "the focus in its line")
 	session.frames(s, 20)
 	testing.expect(t, line.rect.max.y <= 700 && line.rect.min.y >= 0, "scrolled into view")
+	// (the light stands off the line: a ring on the line's own edge touched its words)
+	if s.state.act_light.key != 0 {
+		img := session.capture(s)
+		out := math.round(f32(line.font_size * ui.ACT_LIGHT_OUTSET))
+		y := int((line.rect.min.y + line.rect.max.y) / 2)
+		ring := session.pixel(img, int(line.rect.min.x - out) + 1, y)
+		page := session.pixel(img, int(line.rect.min.x - out) - 12, y)
+		edge := session.pixel(img, int(line.rect.min.x) + 1, y)       // (the wash, not a ring: the same as further in)
+		further := session.pixel(img, int(line.rect.min.x) + 6, y)
+		testing.expectf(t, !session.near(ring, page, 12), "the ring outside the line: %v against the page's %v", ring, page)
+		testing.expectf(t, session.near(edge, further, 6), "no ring on the line's own edge: %v against %v", edge, further)
+	}
 	// a command no frame shows: no go to
 	run_open_on(s, &app, ">rename", "rename")
 	testing.expect(t, session.find_text(s, "Go to") == nil, "no go to offered")

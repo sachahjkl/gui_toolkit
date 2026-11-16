@@ -131,6 +131,16 @@ act_light_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box, radii: [4]f32) {
 	wash.a *= 0.18 * a
 	ring := c
 	ring.a *= a
-	draw.rect_corners(dc, b.rect, colors4(wash), radii)
-	draw.rect_corners(dc, b.rect, colors4(ring), radii, max(2, math.round(2 * s.scale)))
+	// (around the box, not on it: a settings line or a button has no inset of its own, and a ring on its edge touched
+	// its words; the light stands off by ACT_LIGHT_OUTSET ems, its corners rounded as a selection's)
+	em := b.font_size > 0 ? b.font_size : 14 * s.scale
+	out := math.round(em * ACT_LIGHT_OUTSET)
+	r := Rect{b.rect.min - out, b.rect.max + out}
+	round := max(radii[0], radii[1], radii[2], radii[3]) + out
+	corners := [4]f32{round, round, round, round}
+	draw.rect_corners(dc, r, colors4(wash), corners)
+	draw.rect_corners(dc, r, colors4(ring), corners, max(2, math.round(2 * s.scale)))
 }
+
+// How far the light of go to stands off its box, in ems.
+ACT_LIGHT_OUTSET :: 0.4

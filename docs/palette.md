@@ -203,7 +203,8 @@ hint row does not say it), and Shift+Enter there does what Enter does.
 - An element states its act name at its build: `ui.act_name(box, "setting:appearance.theme")`. The settings page names
   each setting's line; a toolbar's button names its command (`"command:<id>"`): the commands source's items carry it.
 - `ui.act_shown(name)`: whether a window of the program showed it in its last frame. `ui.act_go(name)`: goes there, now
-  or within `ACT_GO_BUILDS` builds when it shows (`ACT_LIGHT_MS`: the light).
+  or within `ACT_GO_BUILDS` builds when it shows (`ACT_LIGHT_MS`: the light, a ring `ACT_LIGHT_OUTSET` ems outside the
+  element, so it never touches its words).
 - A source reaches what no frame shows with `reach`: the settings source shows the setting's page (its search cleared,
   its Advanced part unfolded for an advanced one) and calls `open`.
 
