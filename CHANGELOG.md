@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.291.0] - 2026-11-16 11:54
+
+### Added
+- **`platform.overlay_move`**: moves an overlay over another output, at that output's size and scale, on Windows and X11 (false on Wayland, where a layer surface stays on its output). An overlay that is a program's first window, which cannot be closed and opened again, can thus follow the pointer to another monitor. On Windows, an overlay moved to a monitor of another scale keeps its monitor's size.
+
 ## [0.290.0] - 2026-11-16 11:39
 
 ### Fixed
@@ -4020,6 +4025,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.291.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.291.0
 [0.290.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.290.0
 [0.289.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.289.0
 [0.288.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.288.1
