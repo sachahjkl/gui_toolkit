@@ -35,6 +35,7 @@ foreign winhttp_async {
 @(private) WINHTTP_CALLBACK_FLAG_HANDLES             :: 0x0000_0C00
 @(private) WINHTTP_CALLBACK_STATUS_HANDLE_CLOSING    :: 0x0000_0800
 @(private) WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE :: 0x0002_0000
+@(private) WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE    :: 0x0004_0000
 @(private) WINHTTP_CALLBACK_STATUS_READ_COMPLETE     :: 0x0008_0000
 @(private) WINHTTP_CALLBACK_STATUS_WRITE_COMPLETE    :: 0x0010_0000
 @(private) WINHTTP_CALLBACK_STATUS_REQUEST_ERROR     :: 0x0020_0000
@@ -94,6 +95,10 @@ on_status :: proc "system" (h: HINTERNET, ctx: uintptr, status: u32, info: rawpt
 	switch status {
 	case WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE, WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE:
 		j.failure = 0
+		win.SetEvent(j.done)
+	case WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE:
+		j.failure = 0
+		j.bytes = (^u32)(info)^
 		win.SetEvent(j.done)
 	case WINHTTP_CALLBACK_STATUS_READ_COMPLETE:
 		j.failure = 0
@@ -230,7 +235,9 @@ events_system :: proc(url: string, req: Request, parser: ^Event_Parser, on_event
 	if status, err = job_handshake(j, false, stop); err != .None { return }
 	if status < 200 || status > 299 { return status, .None }
 	for {
-		if !WinHttpReadData(j.request, raw_data(j.chunk), u32(len(j.chunk)), nil) { return status, .Unreachable }
+		// (what has come first, then that much: a read of a whole chunk waits until the chunk is full, and an open
+		// stream's first event, a hundred bytes, never filled one)
+		if !WinHttpQueryDataAvailable(j.request, nil) { return status, .Unreachable }
 		deadline, bounded := deadline_of(req.timeout)
 		switch job_wait(j, j.done, deadline, bounded, false, stop) {
 		case .Stopped:   return status, .Stopped
@@ -239,6 +246,14 @@ events_system :: proc(url: string, req: Request, parser: ^Event_Parser, on_event
 		}
 		if j.failure != 0 { return status, .Unreachable }
 		if j.bytes == 0 { return status, .None }   // (the server ended the stream)
+		if !WinHttpReadData(j.request, raw_data(j.chunk), min(j.bytes, u32(len(j.chunk))), nil) { return status, .Unreachable }
+		switch job_wait(j, j.done, deadline, bounded, false, stop) {
+		case .Stopped:   return status, .Stopped
+		case .Timed_Out: return status, .Unreachable
+		case .Done:
+		}
+		if j.failure != 0 { return status, .Unreachable }
+		if j.bytes == 0 { return status, .None }
 		if event_parser_feed(parser, j.chunk[:j.bytes], on_event, user) == .Stop {
 			return status, parser.too_large ? .Too_Large : .None
 		}

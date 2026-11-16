@@ -9,6 +9,10 @@ client now uses this package; opencode native can drop ureq and tungstenite for 
 
 - **The system's client does the connection.** libcurl on Linux, WinHTTP on Windows: the TCP, TLS and its
   certificates, a proxy. On Windows WinHTTP also does the WebSocket (the upgrade, the frames, the pings).
+- **A stream reads what has come, never a whole chunk.** On Windows `WinHttpQueryDataAvailable` first, then a read of
+  that much: `WinHttpReadData` of a 64 KiB chunk returns when the chunk fills or the server closes, so a live server's
+  first event (a hundred bytes) never came. A test server that closes after its body hid it; the test's `/open` keeps
+  the connection open.
 - **On Linux the WebSocket is ours, over curl's raw connection.** `CURLOPT_CONNECT_ONLY` = 1, then `curl_easy_send` and
   `curl_easy_recv` (libcurl 7.18.1): we write the upgrade, check `Sec-WebSocket-Accept` and speak the frames
   (`frame.odin`). Distributions build libcurl without its WebSocket API (nixpkgs: `websocketSupport ? false`; before

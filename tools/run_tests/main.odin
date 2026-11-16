@@ -89,6 +89,7 @@ STEPS := []Step{
 	{name = "changelog", oses = EVERYWHERE},
 	{name = "clipboard", oses = EVERYWHERE},
 	{name = "platform_pkg", path = "src/platform", oses = LINUX_ONLY},   // (its Linux clipboard pipes: clipboard_pipe_linux_test.odin)
+	{name = "prefs_page_pkg", path = "src/prefs_page", oses = EVERYWHERE},   // (what its private procedures own: the changelog's texts freed once)
 	{name = "clipboard_station"},
 	{name = "clock", oses = EVERYWHERE},
 	{name = "dialogs"},

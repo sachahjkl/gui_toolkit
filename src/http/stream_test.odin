@@ -284,6 +284,11 @@ loop_start :: proc(t: ^testing.T, count: int) -> ^Loop {
 				case "/events": net.send_tcp(client, transmute([]u8)fmt.tprintf("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n%s", STREAM_BODY))
 				case "/two":    net.send_tcp(client, transmute([]u8)string("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: 1\n\ndata: 2\n\n"))
 				case "/socket": serve_socket(&c, head)
+				case "/open":
+					// (one small event, the connection kept open as a live server's: the client must see it before
+					// any close, and before a whole read chunk fills)
+					net.send_tcp(client, transmute([]u8)string("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: hello\n\n"))
+					for fill(&c, len(c.buf) + 1) {}   // (until the client goes)
 				case:           net.send_tcp(client, transmute([]u8)string("HTTP/1.1 404 Not Found\r\nContent-Length: 4\r\nConnection: close\r\n\r\ndata"))
 				}
 			}
@@ -335,6 +340,19 @@ an_event_stream_over_http :: proc(t: ^testing.T) {
 
 	_, err = events("ftp://127.0.0.1/x", {}, collect, &seen)
 	testing.expect_value(t, err, Error.Bad_Url)
+}
+
+// A live stream's first event arrives while the connection stays open: WinHTTP's read of a whole chunk waited for the
+// chunk to fill or the server to close, so a server's first event (a hundred bytes) never came on Windows.
+@(test)
+an_open_stream_s_first_event_comes_at_once :: proc(t: ^testing.T) {
+	s := loop_start(t, 1)
+	defer loop_end(s)
+	seen := Seen{events = make([dynamic]Event, context.temp_allocator), stop_after = 1}
+	_, err := events(fmt.tprintf("http://127.0.0.1:%d/open", s.port), {timeout = 5 * time.Second}, collect, &seen)
+	if err == .No_Client { log.info("no HTTP client on this system: the stream is not tested"); return }
+	testing.expect_value(t, err, Error.None)
+	testing.expect_value(t, len(seen.events), 1)
 }
 
 // A WebSocket to the loopback: on Linux 127.0.0.1 is a connection of our own and `localhost` (a name) libcurl's; on
