@@ -31,7 +31,7 @@ LICENCE_CSS :: `.shop-page {
   color: var(--shop-text);
   overflow-x: hidden;
 }
-.shop-page a { color: var(--shop-accent); }
+.shop-page main.shop a { color: var(--shop-accent); }
 .shop-wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
 
 /* the bar: the program's icon and name, back to its home */
