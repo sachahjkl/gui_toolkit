@@ -24,6 +24,13 @@ Every step is a command of `tools/tk` (the head of `tools/tk/main.odin` lists th
   virtual desktop.
 - Linux: `nix develop` first (`flake.nix`: the pinned Odin with wgpu-native, Rust, the servers of the virtual desktops).
 
+## Changelog
+
+[CHANGELOG.md](CHANGELOG.md) follows Keep a Changelog and semantic versioning. Never edit it by hand: each change a
+user can see is one fragment in `changelog.d/`, in the same commit as the change (its format:
+[changelog.d/README.md](changelog.d/README.md)). `tk release` moves the fragments into a new version's section and
+deletes them; `odin run tools/changelog -- -check` checks the fragments and the file.
+
 ## Roadmap
 
 [ROADMAP.md](ROADMAP.md), beside `CHANGELOG.md`, holds the planned work: the toolkit's own and every work that touches
