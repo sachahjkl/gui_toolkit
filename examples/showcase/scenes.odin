@@ -4,6 +4,7 @@ package showcase
 
 import "core:fmt"
 import "core:math"
+import config "gt:config"
 import lucide "gt:lucide"
 import prefs_page "gt:prefs_page"
 import "gt:ui"
@@ -66,17 +67,27 @@ heading :: proc(title, words: string, em: f32) {
 	ui.spacer(ui.px(em * 1.1))
 }
 
-// Two columns side by side, `left` and `right` built in them.
-@(private = "file")
-columns :: proc(app: ^App, id: string, em: f32, left, right: proc(app: ^App, em: f32)) {
-	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-	if ui.row(id = id) {
-		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+// A column of a page is never narrower than this: narrower, the columns go one under the other.
+COLUMN_LEAST_EM :: 24
+
+// Two columns side by side, `left` and `right` built in them, one under the other when the page cannot hold both at
+// COLUMN_LEAST_EM (a flow of shares). `weights`: each column's share of the row.
+columns :: proc(app: ^App, id: string, em: f32, left, right: proc(app: ^App, em: f32), weights := [2]f32{1, 1}) {
+	gap := math.round(em * ui.ITEM_GAP)
+	if ui.flow({gap, gap}, id) {
+		ui.next({width = {kind = .Percent, value = weights[0], least = em * COLUMN_LEAST_EM}, height = ui.children_sum(), axis = .Y, gap = ui.Vec2{0, gap}})
 		if ui.column(id = "###left") { left(app, em) }
-		ui.spacer(ui.px(em))
-		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		ui.next({width = {kind = .Percent, value = weights[1], least = em * COLUMN_LEAST_EM}, height = ui.children_sum(), axis = .Y, gap = ui.Vec2{0, gap}})
 		if ui.column(id = "###right") { right(app, em) }
 	}
+}
+
+// `if stack(id, em) { ... }`: cards one under the other, ITEM_GAP between two.
+@(require_results, deferred_none = ui.pop_parent)
+stack :: proc(id: string, em: f32) -> bool {
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, gap = ui.Vec2{0, math.round(em * ui.ITEM_GAP)}})
+	ui.push_parent(ui.build_box({}, id))
+	return true
 }
 
 // A line of words in the weak text, `width` wide (0: as wide as they are).
@@ -97,48 +108,66 @@ weak :: proc(id, words: string, width: f32, em: f32, mono := false) {
 intents_build :: proc(app: ^App, em: f32) {
 	heading("Intents, faces and hues", "An intent says what an act means, and so its colour: the soft pair of one of the theme's hues, in every theme. A face says how the button sits: raised, a ghost, or held down.", em)
 	if ui.card("Buttons", lucide.SQUARE) {
-		face_row("Raised", .Raised, em)
-		face_row("Ghost", .Ghost, em)
-		ui.next({width = ui.fill(), height = ui.px(em * 2.7), axis = .X, cross = .Center})
-		if ui.row(id = "###toggled") {
-			weak("toggled_words", "Toggled", em * 5.5, em)
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, gap = ui.Vec2{0, math.round(em * ui.SPACE_2)}})
+		ui.push_parent(ui.build_box({}, "###faces"))
+		defer ui.pop_parent()
+		if face_row("Raised", em) {
+			for it in ui.Intent { ui.button(fmt.tprintf("###Raised%v", it), INTENT_WORDS[it], INTENT_GLYPHS[it], {intent = it, face = .Raised}) }
+		}
+		if face_row("Ghost", em) {
+			for it in ui.Intent { ui.button(fmt.tprintf("###Ghost%v", it), INTENT_WORDS[it], INTENT_GLYPHS[it], {intent = it, face = .Ghost}) }
+		}
+		if face_row("Toggled", em) {
+			// (a group of buttons that go together is one item of the flow: it moves to a new line whole)
 			marks := [3]string{lucide.BOLD, lucide.ITALIC, lucide.UNDERLINE}
 			names := [3]string{"Bold", "Italic", "Underline"}
 			held := [3]^bool{&app.bold, &app.italic, nil}
-			for m, i in marks {
-				ui.next({width = ui.px(em * 2.3), height = ui.px(em * 2.2), radius = em * 0.45})
-				on := held[i] != nil && held[i]^
-				if ui.button(fmt.tprintf("mark%d", i), icon = m, o = {tip = names[i], face = on ? .Toggled : .Raised}).clicked && held[i] != nil { held[i]^ = !held[i]^ }
-				ui.spacer(ui.px(em * 0.3))
+			ui.next({width = ui.children_sum(), height = ui.children_sum(), axis = .X, cross = .Center, gap = ui.Vec2{math.round(em * 0.3), 0}})
+			if ui.row(id = "###marks") {
+				for m, i in marks {
+					ui.next({width = ui.px(em * 2.3), height = ui.px(em * 2.2), radius = em * 0.45})
+					on := held[i] != nil && held[i]^
+					if ui.button(fmt.tprintf("mark%d", i), icon = m, o = {tip = names[i], face = on ? .Toggled : .Raised}).clicked && held[i] != nil { held[i]^ = !held[i]^ }
+				}
 			}
-			ui.spacer(ui.px(em * 1.2))
 			views := [2]string{"Grid", "List"}
 			view_glyphs := [2]string{lucide.SQUARE, lucide.ALIGN_LEFT}
-			for v, i in views {
-				if ui.button(fmt.tprintf("###view%d", i), v, view_glyphs[i], {face = app.view == i ? .Toggled : .Raised}).clicked { app.view = i }
-				ui.spacer(ui.px(em * 0.3))
+			ui.next({width = ui.children_sum(), height = ui.children_sum(), axis = .X, cross = .Center, gap = ui.Vec2{math.round(em * 0.3), 0}})
+			if ui.row(id = "###views") {
+				for v, i in views {
+					if ui.button(fmt.tprintf("###view%d", i), v, view_glyphs[i], {face = app.view == i ? .Toggled : .Raised}).clicked { app.view = i }
+				}
 			}
-			ui.spacer(ui.px(em * 1.2))
 			ui.button("###lit", "Lit: its menu is open", lucide.CHEVRON_RIGHT, {lit = true})
-			ui.spacer(ui.px(em * 0.45))
 			ui.button("###disabled", "Disabled", lucide.CLOUD, {disabled = true})
-			ui.spacer(ui.px(em * 0.45))
 			ui.button("###quiet", "Quiet", o = {quiet = true})
 		}
 	}
+	ui.space(ui.ITEM_GAP)
 	columns(app, "###intents_columns", em, hues_card, marks_card)
 }
 
-@(private = "file")
-face_row :: proc(words: string, face: ui.Button_Face, em: f32) {
-	ui.next({width = ui.fill(), height = ui.px(em * 2.7), axis = .X, cross = .Center})
-	if ui.row(id = fmt.tprintf("###face%v", face)) {
-		weak("face_words", words, em * 5.5, em)
-		for it in ui.Intent {
-			ui.button(fmt.tprintf("###%v%v", face, it), INTENT_WORDS[it], INTENT_GLYPHS[it], {intent = it, face = face})
-			ui.spacer(ui.px(em * 0.45))
-		}
+// `if face_row("Raised", em) { buttons }`: a face's name in a column of its own, then its buttons in a flow that goes on
+// a new line when the card is too narrow for them.
+@(private = "file", require_results, deferred_none = face_row_end)
+face_row :: proc(words: string, em: f32) -> bool {
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Start})
+	ui.push_parent(ui.build_box({}, fmt.tprintf("###face_%s", words)))
+	if ui.tags("weak") {
+		// (as tall as a button: the name stays on the first line of its buttons when they wrap)
+		ui.next({width = ui.px(em * 5.5), height = ui.px(ui.control_height()), text_pad = 0})
+		ui.label(fmt.tprintf("%s###face_words", words))
 	}
+	gap := math.round(em * 0.45)
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Start, gap = ui.Vec2{gap, gap}})
+	ui.push_parent(ui.build_box({.Wrap}, "###flow"))
+	return true
+}
+
+@(private = "file")
+face_row_end :: proc() {
+	ui.pop_parent()
+	ui.pop_parent()
 }
 
 // Each hue of the theme in its eleven shades (ui.shade, S50 to S950), then its soft pair (ui.soft_pair): the fill and
@@ -382,29 +411,36 @@ menus_build :: proc(app: ^App, em: f32) {
 @(private = "file")
 themes_build :: proc(app: ^App, em: f32) {
 	heading(fmt.tprintf("%d themes, five finishes", len(app.themes)), "Every theme in its own colours: its surface, its text and its hues. The last two are a user's, from the themes file beside the settings. A finish says how surfaces are painted: flat, a gradient, glass, machined or edged.", em)
-	ui.next({width = ui.fill(), height = ui.px(em * 2.4), axis = .X, cross = .Center})
-	if ui.row(id = "###look") {
-		weak("finish_words", "Finish", em * 4.5, em)
-		finishes := [5]string{"Flat", "Gradient", "Glass", "Machined", "Edged"}
-		f := int(app.choice.finish)
-		ui.next({width = ui.px(em * 31), height = ui.px(em * 2.1)})
-		if ui.segmented("###finish", finishes[:], &f) { app.choice.finish = ui.Finish(f) }
-		ui.spacer(ui.px(em * 2))
-		weak("mode_words", "Version", em * 4.5, em)
-		modes := [2]string{"Dark", "Light"}
-		m := app.choice.mode == .Light ? 1 : 0
-		ui.next({width = ui.px(em * 11), height = ui.px(em * 2.1)})
-		if ui.segmented("###mode", modes[:], &m) { app.choice.mode = m == 1 ? .Light : .Dark }
+	// (the look's three parts: the finish, the version and the corners; each group goes on a new line whole when the
+	// page is too narrow for them)
+	gap := math.round(em * ui.ITEM_GAP)
+	if ui.flow({math.round(em * 2), math.round(em * ui.SPACE_2)}, "###look") {
+		if look_group("Finish", em) {
+			finishes := [5]string{"Flat", "Gradient", "Glass", "Machined", "Edged"}
+			f := int(app.choice.finish)
+			ui.next({height = ui.px(ui.control_height())})
+			if ui.segmented("###finish", finishes[:], &f) { app.choice.finish = ui.Finish(f) }
+		}
+		if look_group("Version", em) {
+			modes := [2]string{"Dark", "Light"}
+			m := app.choice.mode == .Light ? 1 : 0
+			ui.next({height = ui.px(ui.control_height())})
+			if ui.segmented("###mode", modes[:], &m) { app.choice.mode = m == 1 ? .Light : .Dark }
+		}
+		// (the corners are the theme's too: the standard appearance.rounding, 0 square to 2 round, every widget at once)
+		if look_group("Corners", em) {
+			r := f32(config.float_of(&app.prefs, "appearance.rounding"))
+			ui.next({width = ui.px(em * 14), height = ui.px(ui.control_height())})
+			if ui.slider("###rounding", &r, 0, 2, 0.05, "%.2f", 1) { _ = config.set_float(&app.prefs, "appearance.rounding", f64(r)) }
+		}
 	}
-	ui.spacer(ui.px(em))
+	ui.space(ui.ITEM_GAP)
 	half := (len(app.themes) + 1) / 2
 	half += (3 - half % 3) % 3   // (whole rows of three on the left)
-	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-	if ui.row(id = "###walls") {
+	if ui.flow({gap, gap}, "###walls") {
 		lists := [2][]ui.Theme_Def{app.themes[:half], app.themes[half:]}
 		for list, i in lists {
-			if i > 0 { ui.spacer(ui.px(em * 0.5)) }
-			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+			ui.next({width = {kind = .Percent, value = 1, least = em * COLUMN_LEAST_EM}, height = ui.children_sum(), axis = .Y})
 			if ui.column(id = fmt.tprintf("###wall%d", i)) {
 				if picked := prefs_page.theme_cards(list, app.shown.def.name, app.shown.light, em); picked >= 0 {
 					app.choice.name = list[picked].name
@@ -412,6 +448,18 @@ themes_build :: proc(app: ^App, em: f32) {
 			}
 		}
 	}
+}
+
+// `if look_group("Finish", em) { control }`: a part of the look, its name then its control, one item of the look's flow.
+@(private = "file", require_results, deferred_none = ui.pop_parent)
+look_group :: proc(name: string, em: f32) -> bool {
+	ui.next({width = ui.children_sum(), height = ui.children_sum(), axis = .X, cross = .Center, gap = ui.Vec2{math.round(em * ui.SPACE_3), 0}})
+	ui.push_parent(ui.build_box({}, fmt.tprintf("###look_%s", name)))
+	if ui.tags("weak") {
+		ui.next({width = ui.text_size(), height = ui.px(ui.control_height()), text_pad = 0})
+		ui.label(fmt.tprintf("%s###name", name))
+	}
+	return true
 }
 
 ////////////////////////////////

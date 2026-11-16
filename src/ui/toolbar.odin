@@ -237,7 +237,7 @@ toolbar :: proc(id: string, o := Toolbar_Options{}) -> bool {
 	if key not_in s.toolbars { s.toolbars[key] = {} }
 	mem := &s.toolbars[key]
 	em := font_size()
-	tb := Toolbar_Build{active = true, key = key, overflow = o.overflow, align = o.align, side = math.round(em * BUTTON_LINE_EM), menu_name = toolbar_menu_name(id)}
+	tb := Toolbar_Build{active = true, key = key, overflow = o.overflow, align = o.align, side = math.round(em * CONTROL_HEIGHT_EM), menu_name = toolbar_menu_name(id)}
 	tb.labels = o.labels == {} ? toolbar_default_labels() : o.labels
 	given: f32   // the height `next` gives in pixels (0: none)
 	if s.has_next {
@@ -247,7 +247,8 @@ toolbar :: proc(id: string, o := Toolbar_Options{}) -> bool {
 	case .Fold:
 		tb.line = given > 0 ? given : tb.side
 		set_next_axis(.X, .Center)
-		tb.bar = build_box({.Clip}, fmt.tprintf("###%s", id))
+		// (it folds what does not fit: its groups ask its parent for no width, or it would never be narrow enough to fold)
+		tb.bar = build_box({.Clip, .Fits_Width}, fmt.tprintf("###%s", id))
 		// (what folds: the widths of the last builds against the bar's width in the last layout)
 		tb.folded = toolbar_fold(mem, tb.bar, tb.side + 2 * math.round(em * TOOLBAR_MORE_GAP_EM))
 		// (not measured yet: shown from the next frame, folded as it must be)
@@ -797,7 +798,7 @@ toolbar_separator :: proc() {
 	tb := &s.toolbar
 	if tb.active && tb.item_where == .Menu { return }
 	em := font_size()
-	h := math.round(em * BUTTON_LINE_EM)
+	h := math.round(em * CONTROL_HEIGHT_EM)
 	if tb.active {
 		h = tb.line
 	} else if p := parent_box(); p.pref[.Y].kind == .Pixels {

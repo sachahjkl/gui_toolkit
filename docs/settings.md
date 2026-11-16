@@ -43,7 +43,7 @@ names every standard preference.
 
 | Name | Default | Range, choices | Applied by |
 |---|---|---|---|
-| `window.system_title` | Program (`false`) | | the program (`platform.set_integrated_title`: at once, as a program can) |
+| `window.system_title` | Program (`false`) | | `Standard_Targets.window`: `platform.set_integrated_title` at once (the program's bar where the system has none); without it, the program |
 | `window.toast_position` | `bottom_right` | the eight `ui.Toast_Position` | `ui.set_toast_position` |
 | `window.placement` | `""` (hidden) | `platform.placement_text` | the program: `placement_restore` before its window shows, `placement_track` at each frame, `placement_keep` at its close |
 

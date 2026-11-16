@@ -262,7 +262,6 @@ back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) ->
 @(private = "file") NAV_SHARE_MAX   :: 0.5
 @(private = "file") NAV_ICONS_EM    :: 4
 @(private = "file") NARROW_EM       :: 40
-@(private) CONTROL_H_EM    :: 2
 @(private = "file") WORDS_MIN_EM    :: 12
 @(private) WIDE_SHARE      :: 0.45
 @(private) NUMBER_EM       :: 15
@@ -561,7 +560,7 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 			if ui.row(id = "###prefs_search_row") {
 				ui.space(NAV_SIDE_LEAD)
-				ui.next({width = ui.fill(), height = ui.px(math.round(em * CONTROL_H_EM)), radius = em * 0.45})
+				ui.next({width = ui.fill(), height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM)), radius = em * 0.45})
 				if ui.input_frame("###prefs_search") {
 					if o.icon_font != 0 && o.search_icon != "" {
 						ui.next({width = ui.px(em * 1.8), height = ui.pct(1), font = o.icon_font, text_align = .Center})

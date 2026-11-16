@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:math"
 import config "gt:config"
 import host "gt:host"
+import "gt:platform"
 import lucide "gt:lucide"
 import prefs_page "gt:prefs_page"
 import "gt:ui"
@@ -103,8 +104,10 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 @(private = "file")
 top_bar :: proc(app: ^App, em: f32) {
 	if ui.tags("bar") {
+		// (the bar is the window's title bar when the program draws it: its empty parts drag the window, its end has the
+		// window's buttons; with the system's title bar, it is a bar under it)
 		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2.8)), radius = 0})
-		if ui.row(.Center, {.Draw_Background, .Draw_Side_Bottom}, "###top") {
+		if ui.title_bar("###top", {.Draw_Background, .Draw_Side_Bottom}) {
 			ui.spacer(ui.px(em * 0.8))
 			ui.next({width = ui.px(em * 1.6), height = ui.pct(1), font = ui.lucide_icons(), text_align = .Center, fg = ui.hue_color(.Accent)})
 			ui.build_box({.Draw_Text, .No_Text_Trunc}, lucide.SPARKLES + "###logo")
@@ -135,7 +138,17 @@ top_bar :: proc(app: ^App, em: f32) {
 			if ui.button("settings", icon = lucide.SETTINGS, o = {tip = "Settings (Ctrl+,)", face = app.scene == .Settings ? .Toggled : .Ghost}).clicked {
 				app.scene = app.scene == .Settings ? .Intents : .Settings
 			}
+			// (the program's title bar or the system's: the standard setting, applied to the window by standard_watch)
+			if platform.system_title_available(app.main.win) {
+				ui.spacer(ui.px(em * 0.2))
+				own := platform.is_integrated_title(app.main.win)
+				ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2), radius = em * 0.45})
+				if ui.button("title_bar", icon = lucide.APP_WINDOW, o = {tip = own ? "The system's title bar" : "The program's title bar", face = own ? .Toggled : .Ghost}).clicked {
+					_ = config.set_bool(&app.prefs, prefs_page.SYSTEM_TITLE_PREF, own)
+				}
+			}
 			ui.spacer(ui.px(em * 0.8))
+			ui.window_buttons()
 		}
 	}
 }

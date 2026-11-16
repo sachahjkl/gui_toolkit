@@ -204,7 +204,7 @@ path_bar :: proc(id: string, st: ^Path_Bar, path: string, o := Path_Bar_Options{
 	if st.editing { path_bar_follow_focus(st, key_from_string(s.root.key, drop_id)) }
 	// (before the field: Up, Down, Tab, Enter and Escape are the bar's, the rest the field's)
 	if st.editing { path_bar_keys(st, path, sep, &ev) }
-	next_default({width = fill(), height = px(math.round(dense(em * BUTTON_LINE_EM)))})
+	next_default({width = fill(), height = px(math.round(dense(em * CONTROL_HEIGHT_EM)))})
 	// (at rest a press on its empty part types: the well takes it, its parts take their own)
 	if !st.editing { next_merge({flags = {.Clickable, .Clip}, cursor = .Text}) }
 	frame: ^Box

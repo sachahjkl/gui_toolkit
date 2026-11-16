@@ -99,7 +99,7 @@ control_width :: proc(o: Page_Options, e: ^config.Entry, c: Control, em: f32) ->
 @(private)
 control :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, c: Control, em: f32, width: ui.Size) {
 	name := e.def.name
-	h := ui.px(math.round(em * CONTROL_H_EM))
+	h := ui.px(math.round(em * ui.CONTROL_HEIGHT_EM))
 	opening := p.opening != "" && p.opening == name
 	if opening { delete(p.opening); p.opening = "" }
 	switch c {
@@ -328,7 +328,7 @@ number :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, e: ^config.Entry
 	parse: ui.Number_Parse
 	if config.is_measure(d.value_kind) { parse = {fn = number_typed, user = e} }
 	nk := ui.key_from_string(ui.parent_box().key, "###num")
-	ui.next({width = width, height = ui.px(math.round(em * CONTROL_H_EM))})
+	ui.next({width = width, height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM))})
 	ui.a11y({name = config.title_of(d)})
 	stored := d.kind == .Int ? f64(e.value.i) : e.value.f
 	value: f64
@@ -385,7 +385,7 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 	fw := width
 	if sym != "" && width.kind == .Pixels { fw = ui.px(math.round(em * NUMBER_FIELD_EM)) }
 	mono := e.def.value_kind == .Path || e.def.value_kind == .Address
-	ui.next({width = fw, height = ui.px(math.round(em * CONTROL_H_EM)), font = mono ? ui.mono_font() : ui.top_style().font})
+	ui.next({width = fw, height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM)), font = mono ? ui.mono_font() : ui.top_style().font})
 	ui.a11y({name = config.title_of(e.def)})
 	res := ui.line_edit("###field", &f.text)
 	f.box = res.box.key
@@ -400,7 +400,7 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 	if sym != "" {
 		ui.space(ui.CONTROL_GAP)
 		if ui.tags("weak") {
-			ui.next({width = ui.text_size(0), height = ui.px(math.round(em * CONTROL_H_EM)), text_pad = 0, font_size = math.round(em * 0.86)})
+			ui.next({width = ui.text_size(0), height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM)), text_pad = 0, font_size = math.round(em * 0.86)})
 			ui.label(fmt.tprintf("%s###unit", sym))
 		}
 	}

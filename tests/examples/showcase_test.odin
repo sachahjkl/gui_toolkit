@@ -80,6 +80,50 @@ VALUE_SHOTS := [?]Shot{
 	{"fraction", "fraction", false}, {"length", "length", false},
 }
 
+// Every page of the showcase, at a wide, a middle and a narrow window: no box passes its parent's edge (the width a
+// content needs goes up to the page, columns go one under the other, rows of buttons wrap: least-width.md), and every
+// control drawn with a face and an edge has rounded corners (the rounding setting reaches it: CONTROL_RADIUS_EM).
+@(test)
+every_page_fits_its_window_and_rounds_its_controls :: proc(t: ^testing.T) {
+	s, app := start_showcase(t, {"--size=1280x800"})
+	ui.set_animations(&app.main.state, .Off)
+	for w in ([]int{1280, 900, 720}) {
+		session.resize(s, {w, 800})
+		for scene in showcase.NAV {
+			if scene == .Settings || scene == .Views || scene == .Graph { continue }   // (their own layouts: a settings page, panels, a canvas)
+			app.scene = scene
+			session.frames(s, 4)
+			content := session.get(s, "content")
+			check_fits(t, content, w, scene)
+			check_rounded(t, s.state.root, w, scene)
+		}
+	}
+}
+
+// Each child within its parent along X, from `b` down; what may pass its parent's edge is not looked into: a view that
+// scrolls along X, a box that lets its children overflow or fits them itself, what floats.
+@(private = "file")
+check_fits :: proc(t: ^testing.T, b: ^ui.Box, w: int, scene: showcase.Scene) {
+	if b.flags & {.View_Scroll_X, .Allow_Overflow_X, .Fits_Width} != {} { return }
+	for c := b.first; c != nil; c = c.next {
+		if .Floating_X in c.flags { continue }
+		over := c.rect.max.x - b.rect.max.x
+		under := b.rect.min.x - c.rect.min.x
+		testing.expectf(t, over <= 1 && under <= 1, "%v at %d px: %q (%v) passes its parent %q (%v)", scene, w, c.name, c.rect, b.name, b.rect)
+		check_fits(t, c, w, scene)
+	}
+}
+
+// A control with a face and an edge (a button, a field, a list to choose from) has the corners of the rounding setting.
+@(private = "file")
+check_rounded :: proc(t: ^testing.T, b: ^ui.Box, w: int, scene: showcase.Scene) {
+	CONTROL :: ui.Box_Flags{.Focusable, .Draw_Background, .Draw_Border}
+	if b.flags & CONTROL == CONTROL && .Row not_in b.flags {
+		testing.expectf(t, b.radius > 0, "%v at %d px: the control %q has square corners", scene, w, b.name)
+	}
+	for c := b.first; c != nil; c = c.next { check_rounded(t, c, w, scene) }
+}
+
 // (opt-in: VALUES_SHOTS=1) A picture of the scene for each of VALUE_SHOTS, in the session's folder.
 @(test)
 the_values_scene_pictures :: proc(t: ^testing.T) {

@@ -269,7 +269,14 @@ button_glyph :: proc(id, icon: string, face: Button_Face, o: Button_Options) -> 
 // The toolkit's room beside a button's words (with their own text_pad), its line, its glyph's cell and its corners, in
 // font sizes.
 @(private = "file") BUTTON_PAD_EM :: 0.95
-@(private) BUTTON_LINE_EM :: 2.2   // (a button's line; the tool bar's items too)
+// The height of every control, of the font size: a button, a field, a list to choose from, a segmented control, a
+// number, a tool bar's item. One height: two controls of one form side by side or one under the other line up, and a
+// row taller than its control (a form's row, a settings line) keeps room between two controls. control_height gives it
+// in pixels, with the density.
+CONTROL_HEIGHT_EM :: 2
+
+// A control's height in pixels at the current font size and density (CONTROL_HEIGHT_EM).
+control_height :: proc() -> f32 { return math.round(dense(font_size() * CONTROL_HEIGHT_EM)) }
 @(private = "file") BUTTON_GLYPH_EM :: 1.5
 // The corners of a control, a button or a field, of the font size: one rounding for both (a square field beside a
 // rounded button read as two kinds of thing). `next` gives another.
@@ -298,7 +305,7 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 	lh := math.ceil(font.metrics(s.fonts, words_font, words_size).line_height)
 	// Its height: a line of the toolkit's, or the one asked for, at least: words wrapped onto more lines make it taller.
 	// A share of its parent's height (pct) is the parent's to give.
-	line := dense(em * BUTTON_LINE_EM)
+	line := dense(em * CONTROL_HEIGHT_EM)
 	words_text_h := true   // (the words as tall as their lines, centred in the row; else as tall as the row)
 	h := children_sum()
 	glyph_h := Size{}
@@ -314,7 +321,7 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 		}
 	}
 	if h.kind == .Children_Sum { h.least = line }
-	glyph_h = words_text_h ? px(min(line, em * BUTTON_LINE_EM)) : pct(1)
+	glyph_h = words_text_h ? px(min(line, em * CONTROL_HEIGHT_EM)) : pct(1)
 	align := Text_Align.Center
 	if o.left { align = .Left } else if a, given := m.text_align.?; given { align = a } else if top_style().text_aligned { align = top_style().text_align }
 

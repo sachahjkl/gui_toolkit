@@ -922,6 +922,8 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32, step: f32 = 0, f
 	before := [2]f32{lo_v^, hi_v^}
 	b := build_box({.Clickable}, id)
 	b.cursor = .Hand
+	// (the slider's rule: its track and its value's room are its least, never a knob alone)
+	slider_width(b, format != "")
 	sig := signal(b)
 	room := format != ""
 	k := slider_unit(lo, hi, step)
@@ -1411,6 +1413,7 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 	}
 	menu_id := fmt.tprintf("###dropdown_menu_%x", u64(key_from_string(parent_box().key, id)))
 	open := menu_is_open(menu_id)
+	next_default({radius = em * CONTROL_RADIUS_EM})   // (a button's corners)
 	btn: ^Box
 	sig: Signal
 	if tags("button") {
@@ -1591,7 +1594,7 @@ form_row :: proc(label_text: string) -> bool {
 		lbl.pref[.X].least = math.ceil(lbl.text_dim.x + 2 * lbl.text_pad)
 	}
 	push_style_copy()
-	top_style().pref = {.X = fill(), .Y = px(dense(em * 2.3))}
+	top_style().pref = {.X = fill(), .Y = px(control_height())}
 	return true
 }
 
@@ -1652,7 +1655,7 @@ well_end :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}, pad: f32 = 0
 // Its size comes from `next` (default: 19 ems wide, a field's height).
 search_launcher :: proc(id: string, hint: string, keys := "", tip := "") -> Signal {
 	em := font_size()
-	next_default({width = px(em * 19), height = px(dense(em * 2.1)), radius = em * CONTROL_RADIUS_EM})
+	next_default({width = px(em * 19), height = px(control_height()), radius = em * CONTROL_RADIUS_EM})
 	set_next_axis(.X, .Center)
 	push_tags("input")
 	b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects, .Draw_Focus_Ring, .Sunken}, id)

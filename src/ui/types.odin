@@ -103,6 +103,7 @@ Box_Flag :: enum u8 {
 	Row,                 // a row of a list, a table, a menu, a sidebar: its face (hover, selection) is inset and rounded inside it, its background a square ground (row_face.odin)
 	Chosen,              // a .Row that is selected: its background is its face, joined to the selected rows it touches
 	Gap,                 // a spacer: room between boxes (Box.gap_step: its step of the spacing scale, when space made it)
+	Fits_Width,          // it fits what it shows to its width itself (a tool bar that folds): what is in it asks its parent for no width (layout_least)
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
@@ -172,6 +173,7 @@ Box :: struct {
 
 	// layout results
 	size:        Vec2,           // computed size
+	least_x:     f32,            // the width its content needs (layout_least): no shrinking under it
 	rel_pos:     Vec2,           // position relative to the parent's origin
 	rect:        Rect,           // final screen rect
 	text_dim:    Vec2,           // measured size of `text` (without padding)
