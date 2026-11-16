@@ -344,8 +344,9 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   on a raised plate, the others flat and weak; the one shown brought into view when it changes), each a Tab stop, on a strip ([strip.md](strip.md)): too many for the
   stack, they scroll with arrows, never a bar; the "+" of the shown view's kind, right after the last tab (at the end of
   the tabs when they scroll), where the new tab appears; the shown view's moves (Float, Open in a window, Re-attach), small and weak; the program's tools of the
-  shown view (`view_header_tools`); then at the right end Minimise (zones at the top and the bottom), Maximise and
-  Close of the stack, drawn as a window's caption buttons. A lone panel shows the same strip on the hover of its top
+  shown view (`view_header_tools`); then at the right end Minimise, Maximise and Close of the stack, drawn as a
+  window's caption buttons. In a stack too narrow for them (a side zone of a few ems) the moves go (the view's menu
+  and the palette have them) and the three buttons are small icons. A lone panel shows the same strip on the hover of its top
   edge; it pushes the body down, so none of its controls lies over the body's.
   - `View_Options.new_tab: proc(data: rawptr)`: the "+" calls it with the shown view's data; the program opens a new
     instance (`view_open` with a name of its own), at once or later (a shell a server makes). Each "+" leaves the
@@ -359,8 +360,11 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   - **Maximise**: the stack fills the dock space; the other zones are not built and the program's content is laid out
     at no size (still built: its state is kept). Maximise again, or Escape with the focus in it, restores. Not
     remembered across runs. `views_space_maximised(vs, name) -> (edge, stack, ok)` says which.
-  - **Minimise**: the zone shows its strips only; a click on a tab, or Minimise again, restores it. Remembered
-    (`bottom.min=1` in the space's line). Absent at the left and the right, where the handle narrows a zone.
+  - **Minimise**: at the top and the bottom the zone shows its strips only; a click on a tab, or Minimise again,
+    restores it. At the left and the right it becomes a rail one strip wide: a Restore button, then a button per view
+    (its icon, its title as the tooltip), which restores the zone with that view shown. Remembered (`bottom.min=1` in
+    the space's line). A side zone also folds to its rail by itself when the space leaves the content less than
+    `DOCK_MIN_EM` beside it, and unfolds when the space is wide enough again; its Restore opens it meanwhile.
   - **Close** closes every view of the stack (each ends `VIEW_CANCELLED`). One tab closes by Ctrl+W in it, its menu or
     the palette.
   - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.

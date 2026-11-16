@@ -490,10 +490,20 @@ draws, except the header that a dialog always had. The rules:
    - **Maximise**: the stack takes the whole dock space for a while: the other zones are not built, the program's
      content is laid out at no size (built, its state kept, not seen). Maximise again, or Escape with the focus in it,
      restores. Not remembered across runs: a program that starts with its content hidden looks broken.
-   - **Minimise**: the zone collapses to its strips (each stack's strip, no body, no handle); a click on a tab, or the
-     button again, restores. Offered at the top and the bottom only, where a strip is the zone's height; at the left
-     and the right a strip is no narrower than the zone (the handle makes a side zone narrow). Remembered per zone
+   - **Minimise**: the zone collapses; a click on a tab, or the button again, restores. Remembered per zone
      (`bottom.min=1` in the space's line).
+     - At the top and the bottom it collapses to its strips (each stack's strip, no body, no handle).
+     - **At the left and the right it collapses to a rail** (`view_zone_rail`): a column one strip wide, with a Restore
+       button at its top, then one button per view (its icon, its title as the tooltip), the stacks one after the
+       other. A click on a view restores the zone with that view shown. A strip is no narrower than a side zone, so a
+       side zone collapses to something else: a column of icons, as an editor's side bar.
+       **Why it changed.** The side zones had no Minimise (refused: "the handle makes a side zone narrow"). The user
+       lost the way to fold opencode native's side panel (`/btw`) that its own pane had before it moved to the views:
+       the handle narrows it, never folds it.
+     - **A side zone folds itself when the space is too narrow** (`sp.folded`): when the space is narrower than the
+       zone's extent plus `DOCK_MIN_EM` for the content, the zone shows as its rail, with no change to its memory, and
+       comes back when the space is wide enough again. Its Restore then opens it over the content's minimum for as
+       long as the space stays narrow (`sp.unfolded`). opencode native's pane did this before.
    - **Close** closes every view of the stack (each ends with `VIEW_CANCELLED`): it is the stack's button, beside the
      stack's Minimise and Maximise. One tab closes by Ctrl+W in it, its menu's Close or the palette. Refused: closing
      the shown tab only (two buttons at the right end would act on the stack and one on a tab).

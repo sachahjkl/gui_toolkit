@@ -7,6 +7,7 @@ package ui
 import "core:fmt"
 import "core:math"
 import "../draw"
+import "../font"
 import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
@@ -572,23 +573,30 @@ view_title_shown :: proc(r: ^View_Record) -> string {
 	return r.title != "" ? r.title : i18n.tr(r.kind.o.title)
 }
 
+// A view's icon as it shows now, and its font: this opening's (view_icon), else its kind's; "": none.
+@(private)
+view_icon_shown :: proc(r: ^View_Record) -> (icon: string, icon_font: font.Font_Id) {
+	k := r.kind
+	// (a ready-made view's icon for this opening is Lucide's)
+	icon = r.icon != "" ? r.icon : k.o.icon
+	icon_font = k.o.icon_font != 0 ? k.o.icon_font : gs().icon_font
+	if r.icon_set {
+		if r.icon_font != 0 { icon_font = r.icon_font }   // (view_icon's, in its font)
+	} else if r.icon != "" {
+		icon_font = lucide_icons()   // (a ready-made view's)
+	}
+	return
+}
+
 // The first step, before the body: the strip, its icon and its title (never cut: it wraps). The buttons come after the
 // body (view_header_end), and the box of the program's tools only if the body asks for it (view_header_tools).
 @(private)
 view_header_begin :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	s := gs()
 	em := font_size()
-	k := r.kind
 	labels := view_labels(vs)
 	title := view_title_shown(r)
-	// (a ready-made view's icon for this opening is Lucide's)
-	icon := r.icon != "" ? r.icon : k.o.icon
-	icon_font := k.o.icon_font != 0 ? k.o.icon_font : s.icon_font
-	if r.icon_set {
-		if r.icon_font != 0 { icon_font = r.icon_font }   // (view_icon's, in its font)
-	} else if r.icon != "" {
-		icon_font = lucide_icons()   // (a ready-made view's)
-	}
+	icon, icon_font := view_icon_shown(r)
 	panel := parent_box()
 	h := math.round(dense(em * DIALOG_HEADER_EM))
 	if p == .Dialog {

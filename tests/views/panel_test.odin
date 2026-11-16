@@ -250,6 +250,58 @@ seen_center :: proc(s: ^session.Session, b: ^ui.Box) -> [2]f32 {
 	return (r.min + r.max) * 0.5
 }
 
+// A side zone minimised collapses to its rail (views.md, Minimise): one strip wide, a Restore and a button per view, no
+// body; a click on the view's button brings the zone back at its extent with the view shown.
+@(test)
+a_side_zone_minimises_to_its_rail :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side")
+	zone := wait_built(s, "view_zone_Left")
+	if zone == nil { return }
+	top := zone.rect.min
+	session.move(s, {top.x + 30, top.y + 2})
+	if wait_built(s, "view_stack_min") == nil { return }
+	stack_min := built(s, "view_stack_min")
+	testing.expectf(t, stack_min != nil && stack_min.rect.max.x <= zone.rect.max.x + 0.5, "its Minimise whole in the zone: %v in %v", stack_min.rect if stack_min != nil else ui.Rect{}, zone.rect)
+	session.click(s, "view_stack_min")
+	if wait_built(s, "view_rail_restore") == nil { return }
+	zone = built(s, "view_zone_Left")
+	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - ui.DOCK_TAB_EM * r.em) <= 1.5, "one strip wide: %v", zone.rect if zone != nil else ui.Rect{})
+	testing.expect(t, built(s, "view_panel_view_side") == nil, "no body")
+	if wait_built(s, "view_rail_Left_0_0") == nil { return }
+	session.click(s, "view_rail_Left_0_0")
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	zone = built(s, "view_zone_Left")
+	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "back at its extent: %v", zone.rect if zone != nil else ui.Rect{})
+	testing.expect(t, built(s, "view_rail_restore") == nil, "no rail")
+}
+
+// A space too narrow for a side zone and the content folds the zone to its rail, with no change to its memory; its
+// Restore opens it while the space stays narrow; a wide space again unfolds it by itself (views.md, Minimise).
+@(test)
+a_narrow_space_folds_a_side_zone :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side")
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	narrow := [2]int{int((SIDE_EM + ui.DOCK_MIN_EM * 0.5) * r.em), WINDOW.y}
+	session.resize(s, narrow)
+	if wait_built(s, "view_rail_restore") == nil { return }
+	testing.expect(t, built(s, "view_panel_view_side") == nil, "folded: no body")
+	session.click(s, "view_rail_restore")
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	testing.expect(t, built(s, "view_rail_restore") == nil, "opened again while narrow")
+	session.resize(s, WINDOW)
+	session.frames(s, 3)
+	session.resize(s, narrow)
+	if wait_built(s, "view_rail_restore") == nil { return }   // (wide again forgot the opening: narrow folds it again)
+	session.resize(s, WINDOW)
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	zone := built(s, "view_zone_Left")
+	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "wide again: at its extent: %v", zone.rect if zone != nil else ui.Rect{})
+}
+
 // Test 17: a panel alone in its zone adds no tab strip, no border, no icon at rest; its body starts at the zone's top
 // left. Its stack's strip comes on the hover of the top edge and pushes the body down (nothing of it over the body);
 // it stays while the pointer is on it, goes when the pointer goes down into the body, and does not come again by itself.

@@ -50,6 +50,26 @@ View_Space :: struct {
 	// the stack that takes the whole space for a while (its Maximise; not remembered: a start shows the content)
 	max_edge:  Maybe(View_Edge),
 	max_stack: int,
+	// a side zone folded to its rail by a space too narrow for it and the content (not remembered: it unfolds when the
+	// space is wide enough again), and one the user opened again while the space stays narrow (views.md, Minimise)
+	folded:    [View_Edge]bool,
+	unfolded:  [View_Edge]bool,
+}
+
+// Whether zone `e` shows collapsed: minimised by the user, or a side zone folded by a narrow space and not opened again.
+@(private = "file")
+view_zone_collapsed :: proc(sp: ^View_Space, e: View_Edge) -> bool {
+	return sp.mem.minimised[e] || (sp.folded[e] && !sp.unfolded[e])
+}
+
+// A side zone folds to its rail when the space (its last width) leaves the content less than DOCK_MIN_EM beside it;
+// it unfolds by itself once the space is wide enough again. Only where the centre is the program's content.
+@(private = "file")
+view_zone_fold :: proc(sp: ^View_Space, e: View_Edge, has_views, content: bool, em: f32) {
+	width := sp.rect.max.x - sp.rect.min.x
+	narrow := has_views && content && width > 0 && width - view_zone_px(sp, e, em, width) < DOCK_MIN_EM * em
+	if !narrow { sp.unfolded[e] = false }
+	sp.folded[e] = narrow
 }
 
 // What views_dock makes: with `content`, the block is its centre (the program's content); without, panels only, its
@@ -132,8 +152,10 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 	shows :: proc(e: View_Edge, maxed_e: View_Edge, maxed: bool) -> bool { return !maxed || e == maxed_e }
 	// (a zone's handle: not when it is maximised or minimised, its size is not the user's then)
 	handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32, maxed: bool) {
-		if !maxed && !sp.mem.minimised[e] { view_zone_handle(vs, sp, e, em) }
+		if !maxed && !view_zone_collapsed(sp, e) { view_zone_handle(vs, sp, e, em) }
 	}
+	view_zone_fold(sp, .Left, has(&zones[.Left]), content, em)
+	view_zone_fold(sp, .Right, has(&zones[.Right]), content, em)
 
 	// the layout: the top zone, the left, the centre, the right, the bottom; each zone's handle on the centre's side
 	mod := s.has_next ? s.next_mod : Style_Mod{width = fill(), height = fill()}
@@ -419,9 +441,12 @@ view_zone_box :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record, em: f3
 	switch {
 	case maxed:
 		next({width = fill(), height = fill(), axis = axis})   // (the one shown: the whole space)
-	case sp.mem.minimised[e] && (e == .Top || e == .Bottom):
+	case view_zone_collapsed(sp, e) && (e == .Top || e == .Bottom):
 		// (its strips only: one row of them, or one above the other along a zone laid along Y)
 		next({width = fill(), height = px(strip * f32(axis == .Y ? max(stacks, 1) : 1)), axis = axis})
+	case view_zone_collapsed(sp, e):
+		// (a side zone's rail: one strip wide, its buttons one above the other)
+		next({width = px(strip), height = fill(), axis = .Y})
 	case e == .Left || e == .Right:
 		x, frac := view_zone_extent(sp, e, first)
 		next({width = size(x, frac, em), height = fill(), axis = axis})
@@ -488,7 +513,11 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 	n := 0
 	for k in 0 ..< VIEW_STACKS_MAX { if len(z[k]) > 0 { n = k + 1 } }
 	sp.count[e] = n
-	minimised := sp.mem.minimised[e] && (e == .Top || e == .Bottom) && only < 0
+	if (e == .Left || e == .Right) && view_zone_collapsed(sp, e) && only < 0 {
+		view_zone_rail(vs, sp, e, z, zone, n)
+		return
+	}
+	minimised := view_zone_collapsed(sp, e) && (e == .Top || e == .Bottom) && only < 0
 	strip_h := math.round(DOCK_TAB_EM * em)
 	zr := sp.zone[e]
 	length := axis == .X ? zr.max.x - zr.min.x : zr.max.y - zr.min.y
@@ -552,7 +581,7 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 @(private = "file")
 view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list: []^View_Record, shown: ^View_Record, maxed: bool) {
 	em := font_size()
-	minimised := sp.mem.minimised[e] && !maxed
+	minimised := view_zone_collapsed(sp, e) && !maxed
 	next({width = fill(), height = px(math.round(DOCK_TAB_EM * em)), axis = .X, cross = .Center})
 	bar: ^Box
 	if tags("bar") { bar = build_box({.Draw_Background, .Draw_Side_Bottom}, "###view_tabs") }
@@ -600,6 +629,9 @@ view_stack_tab_input :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, 
 	if sig.dragging { view_panel_drag(vs, r, tb.key, sig, em) }
 }
 
+// The least room a stack's strip keeps for its tabs beside the shown view's moves and the stack's own buttons (em).
+@(private = "file") VIEW_STRIP_TABS_LEAST_EM :: 3
+
 // The rest of a stack's strip after its tabs and its "+": the shown view's moves, the slot of its program's tools, the
 // stack's own buttons at the right end.
 @(private = "file")
@@ -607,26 +639,46 @@ view_stack_strip_rest :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int,
 	s := gs()
 	em := font_size()
 	labels := view_labels(vs)
-	// the shown view's moves, where the eye already is
+	// a stack too narrow for its moves and its window-sized buttons (a side zone of a few ems; the tabs never give way
+	// past their largest one, strip.md): no moves (the view's menu and the palette have them), and its Minimise,
+	// Maximise and Close as small icons, so they stay whole in it
+	dpi := s.zoom > 0 ? s.scale / s.zoom : s.scale
+	stack_w := sp.stacks[e][k].max.x - sp.stacks[e][k].min.x
+	moves_w := 3 * (math.round(em * VIEW_DETACH_EM) + em * 0.3) + em * 0.8
+	least_tabs := em * VIEW_STRIP_TABS_LEAST_EM
+	wide := stack_w <= 0 || stack_w >= 3 * math.round(CAPTION_BUTTON_WIDTH * dpi) + moves_w + least_tabs
 	spacer(px(em * 0.4))
-	if view_header_icon("view_detach", lucide.PICTURE_IN_PICTURE_2, labels.floating, true) { view_float(vs, shown) }
-	if view_header_icon("view_window", lucide.EXTERNAL_LINK, labels.window, views_windows_ready(vs)) {
-		view_apply(vs, shown, {kind = .Present, as = .External})
-	}
-	if !view_machine_at_home(shown.machine) && view_header_icon("view_reattach", lucide.UNDO_2, labels.reattach, true) {
-		view_apply(vs, shown, {kind = .Reattach})
+	if wide {
+		if view_header_icon("view_detach", lucide.PICTURE_IN_PICTURE_2, labels.floating, true) { view_float(vs, shown) }
+		if view_header_icon("view_window", lucide.EXTERNAL_LINK, labels.window, views_windows_ready(vs)) {
+			view_apply(vs, shown, {kind = .Present, as = .External})
+		}
+		if !view_machine_at_home(shown.machine) && view_header_icon("view_reattach", lucide.UNDO_2, labels.reattach, true) {
+			view_apply(vs, shown, {kind = .Reattach})
+		}
 	}
 	// the program's tools of the shown view: its body fills this slot (view_header_tools)
 	spacer(px(em * 0.4))
 	next({width = children_sum(), height = pct(1), axis = .X, cross = .Center})
 	shown.strip_tools = build_box({}, "###view_strip_tools").key
 	spacer(fill())
-	// the stack's own, at the right end, as a window's: Minimise where a strip is the zone's height
-	buttons := bit_set[platform.Caption_Button]{.Maximize, .Close}
-	if e == .Top || e == .Bottom { buttons += {.Minimize} }
+	// the stack's own, at the right end, as a window's: Minimise (a side zone's to its rail), Maximise, Close
+	buttons := bit_set[platform.Caption_Button]{.Minimize, .Maximize, .Close}
+	if e == .Center { buttons -= {.Minimize} }   // (the centre has nowhere to fold to)
 	names := [4]string{minimised ? labels.restore : labels.minimize, labels.maximize, labels.close_stack, labels.restore}
 	ids := [platform.Caption_Button]string{.Minimize = "###view_stack_min", .Maximize = "###view_stack_max", .Close = "###view_stack_close"}
-	clicked, ok, _ := caption_row(ids, buttons, maxed, s.window == nil || s.window.active, names)
+	clicked: platform.Caption_Button
+	ok: bool
+	if wide {
+		clicked, ok, _ = caption_row(ids, buttons, maxed, s.window == nil || s.window.active, names)
+	} else {
+		glyphs := [platform.Caption_Button]string{.Minimize = minimised ? lucide.PANEL_LEFT_OPEN : lucide.MINUS, .Maximize = maxed ? lucide.MINIMIZE_2 : lucide.MAXIMIZE_2, .Close = lucide.X}
+		for b in platform.Caption_Button {
+			if b not_in buttons { continue }
+			if view_stack_icon(ids[b], glyphs[b], names[b == .Maximize && maxed ? 3 : int(b)]) { clicked, ok = b, true }
+		}
+		spacer(px(em * SPACE_1))
+	}
 	if !ok { return }
 	switch clicked {
 	case .Minimize:
@@ -645,11 +697,73 @@ view_stack_strip_rest :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int,
 // A zone at the top or the bottom shows its strips only (`on`), or its stacks again; remembered in the space's line.
 @(private = "file")
 view_stack_minimise :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, on: bool) {
-	if sp.mem.minimised[e] == on { return }
-	sp.mem.minimised[e] = on
-	view_space_remember(vs, sp)
+	// (a side zone folded by a narrow space opens again over the content's minimum, until the space is wide again)
+	sp.unfolded[e] = !on && sp.folded[e]
+	if sp.mem.minimised[e] != on {
+		sp.mem.minimised[e] = on
+		view_space_remember(vs, sp)
+	}
 	vs.version += 1
 	if sp.state != nil { sp.state.anim_busy = true }
+}
+
+// One of a narrow stack's own buttons: a small icon, as close to the next as a bar's tools ("###id": its key, as the
+// caption button it stands for).
+@(private = "file")
+view_stack_icon :: proc(id, glyph, label: string) -> (clicked: bool) {
+	em := font_size()
+	side := math.round(em * VIEW_STACK_ICON_EM)
+	push_tags("ghost_button", "button", "weak")
+	defer pop_tags()
+	next({width = px(side), height = px(side), font = lucide_icons(), font_size = em * 0.85, text_pad = 0, text_align = .Center, radius = em * 0.3})
+	b := build_box({.Draw_Text, .No_Text_Trunc, .Clickable, .Focusable, .Draw_Background, .Draw_Hot_Effects}, fmt.tprintf("%s%s", glyph, id))
+	a11y_default(b, {role = .Button, name = label})
+	sig := signal(b)
+	if hovered_for(sig) { if tooltip() { tooltip_text(label) } }
+	return sig.clicked
+}
+
+// A narrow stack's own buttons' side (em): three of them and its largest tab fit a side zone of 12 ems.
+@(private = "file") VIEW_STACK_ICON_EM :: 1.3
+
+// A side zone collapsed (views.md, Minimise): a column one strip wide, its Restore at the top, then a button per view
+// (its icon; its title as the tooltip), stack after stack. A view's button restores the zone with that view shown.
+@(private = "file")
+view_zone_rail :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_Lists, zone: ^Box, n: int) {
+	em := font_size()
+	labels := view_labels(vs)
+	side := math.round(DOCK_TAB_EM * em)
+	push_parent(zone)
+	defer pop_parent()
+	next({width = fill(), height = fill(), axis = .Y, cross = .Center})
+	push_parent(build_box({}, "###view_rail"))
+	defer pop_parent()
+	spacer(px(em * SPACE_1))
+	if view_header_icon("view_rail_restore", e == .Left ? lucide.PANEL_LEFT_OPEN : lucide.PANEL_RIGHT_OPEN, labels.restore, true) {
+		view_stack_minimise(vs, sp, e, false)
+	}
+	for k in 0 ..< n {
+		for r, i in z[k] {
+			icon, icon_font := view_icon_shown(r)
+			title := view_title_shown(r)
+			if icon == "" { icon, icon_font = lucide.APP_WINDOW, lucide_icons() }   // (no icon of its own: a window's)
+			spacer(px(em * SPACE_1))
+			push_tags("ghost_button", "button", "weak")
+			next({width = px(side), height = px(side), font = icon_font, font_size = em * 0.95, text_pad = 0, text_align = .Center, radius = em * 0.3})
+			b := build_box({.Draw_Text, .No_Text_Trunc, .Clickable, .Focusable, .Draw_Background, .Draw_Hot_Effects}, fmt.tprintf("%s###view_rail_%v_%d_%d", icon, e, k, i))
+			pop_tags()
+			a11y_default(b, {role = .Button, name = title})
+			sig := signal(b)
+			if hovered_for(sig) { if tooltip() { tooltip_text(title) } }
+			if sig.clicked {
+				delete(sp.active[e][k], vs.allocator)
+				sp.active[e][k] = strings.clone(r.modal_name, vs.allocator)
+				view_stack_minimise(vs, sp, e, false)
+			}
+			if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), b.key, search = false) }
+		}
+	}
+	for k in 0 ..< n { for r in z[k] { view_header_menu(vs, r, .Panel) } }
 }
 
 // Whether a stack of `vs`'s space `name` is maximised (its strip's Maximise), and which.
