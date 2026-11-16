@@ -510,7 +510,10 @@ keymap_recorder_open :: proc(p: ^Command_Palette, id, label: string) {
 	if !view_registered(vs, KEYMAP_RECORDER_VIEW) {
 		view_register(vs, KEYMAP_RECORDER_VIEW, keymap_recorder_view, View_Options{title = i18n.later("Keys of a command"), icon = lucide.KEYBOARD, width_em = 30})
 	}
-	view_open(vs, KEYMAP_RECORDER_VIEW, p, palette_instance(p))
+	// (over the palette's window, a view's window too: the person is there)
+	over := palette_window(p)
+	view_open(vs, KEYMAP_RECORDER_VIEW, p, palette_instance(p), owner = over)
+	if over != gs() { over.anim_busy = true }
 }
 
 // Whether a binding's first chord is one of the palette's: those are read only (palette_command), so a person's key on

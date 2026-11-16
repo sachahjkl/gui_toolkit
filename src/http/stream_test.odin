@@ -337,14 +337,26 @@ an_event_stream_over_http :: proc(t: ^testing.T) {
 	testing.expect_value(t, err, Error.Bad_Url)
 }
 
-// A WebSocket through the system's client: a wait that runs out keeps it, a text and a large binary message come back
-// whole, the server's close is a .Close message, then .Closed. A stop from another thread ends a waiting ws_recv.
+// A WebSocket to the loopback: on Linux 127.0.0.1 is a connection of our own and `localhost` (a name) libcurl's; on
+// Windows both are WinHTTP's.
 @(test)
 a_web_socket_over_the_loopback :: proc(t: ^testing.T) {
 	s := loop_start(t, 2)
 	defer loop_end(s)
-	url := fmt.tprintf("ws://127.0.0.1:%d/socket", s.port)
+	socket_conversation(t, fmt.tprintf("ws://127.0.0.1:%d/socket", s.port))
+}
 
+@(test)
+a_web_socket_to_localhost :: proc(t: ^testing.T) {
+	s := loop_start(t, 2)
+	defer loop_end(s)
+	socket_conversation(t, fmt.tprintf("ws://localhost:%d/socket", s.port))
+}
+
+// Two sockets to `url`, a server of loop_start's: a wait that runs out keeps it, a text and a large binary message come
+// back whole, the server's close is a .Close message, then .Closed. A stop from another thread ends a waiting ws_recv.
+@(private = "file")
+socket_conversation :: proc(t: ^testing.T, url: string) {
 	sock, err := ws_connect(url, {timeout = 10 * time.Second})
 	if err == .No_Client { log.infof("%s: the WebSocket is not tested", error_text(err)); return }
 	testing.expect_value(t, err, Error.None)
@@ -396,6 +408,37 @@ a_web_socket_over_the_loopback :: proc(t: ^testing.T) {
 	thread.destroy(stopper)
 	testing.expect_value(t, ws_send(sock, transmute([]u8)string("late")), Error.Stopped)
 	ws_close(sock)
+}
+
+when ODIN_OS == .Linux {
+	// A socket to this machine holds no libcurl handle: gt:cdp's client then works where libcurl cannot be loaded (a
+	// program's Nix shell without curl), where 0.287.0's answered .No_Client. A name (localhost) is libcurl's.
+	@(test)
+	a_web_socket_to_this_machine_needs_no_libcurl :: proc(t: ^testing.T) {
+		s := loop_start(t, 2)
+		defer loop_end(s)
+		sock, err := ws_connect(fmt.tprintf("ws://127.0.0.1:%d/socket", s.port), {timeout = 10 * time.Second})
+		testing.expect_value(t, err, Error.None)
+		if sock != nil {
+			testing.expect(t, sock.h == nil, "a connection of our own, not libcurl's")
+			ws_close(sock)
+		}
+		sock, err = ws_connect(fmt.tprintf("ws://localhost:%d/socket", s.port), {timeout = 10 * time.Second})
+		if err == .No_Client { return }
+		testing.expect_value(t, err, Error.None)
+		if sock != nil {
+			testing.expect(t, sock.h != nil, "a name goes through libcurl")
+			ws_close(sock)
+		}
+	}
+
+	@(test)
+	a_loopback_literal :: proc(t: ^testing.T) {
+		for host in ([]string{"127.0.0.1", "127.1.2.254", "::1", "[::1]"}) { testing.expectf(t, loopback_literal(host), "%s is the loopback", host) }
+		for host in ([]string{"localhost", "128.0.0.1", "127.0.0", "127.0.0.1.1", "127.0.0.256", "127.0.0.1000", "127..0.1", "127.0.0.+1", "::2", "[::1", "", "example.com"}) {
+			testing.expectf(t, !loopback_literal(host), "%s is not a loopback literal", host)
+		}
+	}
 }
 
 @(test)

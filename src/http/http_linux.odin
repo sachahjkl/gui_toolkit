@@ -4,6 +4,7 @@ package tk_http
 // libcurl, by dlopen: a program that never asks for a URL starts on a system without it.
 
 import "base:runtime"
+import "core:fmt"
 import "core:strings"
 import "core:sync"
 import "core:sys/posix"
@@ -17,6 +18,7 @@ Curl :: struct {
 	easy_perform: proc "c" (h: rawptr) -> i32,
 	easy_getinfo: proc "c" (h: rawptr, info: i32, #c_vararg args: ..any) -> i32,
 	easy_cleanup: proc "c" (h: rawptr),
+	easy_reset:   proc "c" (h: rawptr),   // the options cleared, the connections kept (the pool's; 7.12.1)
 	global_init:  proc "c" (flags: i64) -> i32,
 	slist_append:   proc "c" (list: rawptr, s: cstring) -> rawptr,
 	slist_free_all: proc "c" (list: rawptr),
@@ -79,12 +81,13 @@ curl_load :: proc() {
 		c.easy_perform = auto_cast posix.dlsym(h, "curl_easy_perform")
 		c.easy_getinfo = auto_cast posix.dlsym(h, "curl_easy_getinfo")
 		c.easy_cleanup = auto_cast posix.dlsym(h, "curl_easy_cleanup")
+		c.easy_reset = auto_cast posix.dlsym(h, "curl_easy_reset")
 		c.global_init = auto_cast posix.dlsym(h, "curl_global_init")
 		c.slist_append = auto_cast posix.dlsym(h, "curl_slist_append")
 		c.slist_free_all = auto_cast posix.dlsym(h, "curl_slist_free_all")
 		c.easy_send = auto_cast posix.dlsym(h, "curl_easy_send")
 		c.easy_recv = auto_cast posix.dlsym(h, "curl_easy_recv")
-		if c.easy_init == nil || c.easy_setopt == nil || c.easy_perform == nil || c.easy_getinfo == nil || c.easy_cleanup == nil || c.global_init == nil || c.slist_append == nil || c.slist_free_all == nil {
+		if c.easy_init == nil || c.easy_setopt == nil || c.easy_perform == nil || c.easy_getinfo == nil || c.easy_cleanup == nil || c.easy_reset == nil || c.global_init == nil || c.slist_append == nil || c.slist_free_all == nil {
 			posix.dlclose(h)
 			continue
 		}
@@ -125,13 +128,80 @@ on_header :: proc "c" (ptr: [^]u8, size, count: uint, user: rawptr) -> uint {
 	return uint(n)
 }
 
+// The idle easy handles the pool keeps at most, each with its connections (libcurl keeps 5 a handle).
+POOL_IDLE :: 8
+
+// An idle handle and the origin it last spoke to.
+@(private = "file")
+Pooled :: struct {
+	h:      rawptr,
+	origin: string,   // the heap's
+}
+
+// The requests' easy handles between two requests (src/md/features/http-connections.md): a handle holds its connections
+// open, so a request that takes one reuses them. One thread uses a handle at a time: libcurl's shared connection cache is
+// not for concurrent threads.
+@(private = "file")
+Pool :: struct {
+	lock:  sync.Mutex,
+	idle:  [POOL_IDLE]Pooled,   // the oldest first
+	count: int,
+}
+
+@(private = "file") pool: Pool
+
+// "scheme://host:port", the host in lower case: what a connection is reused for.
+@(private = "file")
+origin_of :: proc(url: string) -> string {
+	u, _ := url_parse(url)
+	return fmt.tprintf("%s://%s:%d", u.secure ? "https" : "http", ascii.lower(u.host, context.temp_allocator), u.port)
+}
+
+// The idle handle that last spoke to `origin` (its connection is open), else a new one.
+@(private = "file")
+pool_take :: proc(origin: string) -> rawptr {
+	sync.mutex_lock(&pool.lock)
+	for i := pool.count - 1; i >= 0; i -= 1 {
+		if pool.idle[i].origin != origin { continue }
+		h := pool.idle[i].h
+		delete(pool.idle[i].origin, runtime.heap_allocator())
+		copy(pool.idle[i:pool.count - 1], pool.idle[i + 1:pool.count])
+		pool.count -= 1
+		sync.mutex_unlock(&pool.lock)
+		return h
+	}
+	sync.mutex_unlock(&pool.lock)
+	return curl_lib.easy_init()
+}
+
+// The handle back, its options cleared (no pointer to the request's buffers stays in it) and its connections kept. A
+// full pool ends its oldest handle.
+@(private = "file")
+pool_give :: proc(h: rawptr, origin: string) {
+	curl_lib.easy_reset(h)
+	oldest: rawptr
+	sync.mutex_lock(&pool.lock)
+	if pool.count == POOL_IDLE {
+		oldest = pool.idle[0].h
+		delete(pool.idle[0].origin, runtime.heap_allocator())
+		copy(pool.idle[:POOL_IDLE - 1], pool.idle[1:])
+		pool.count -= 1
+	}
+	pool.idle[pool.count] = {h, strings.clone(origin, runtime.heap_allocator())}
+	pool.count += 1
+	sync.mutex_unlock(&pool.lock)
+	// (outside the lock: its connections close, a TLS one with its goodbye)
+	if oldest != nil { curl_lib.easy_cleanup(oldest) }
+}
+
 request_system :: proc(method, url: string, req: Request, allocator := context.allocator) -> (res: Response, err: Error) {
 	sync.once_do(&curl_once, curl_load)
 	if !curl_found { return {}, .No_Client }
 	c := &curl_lib
-	h := c.easy_init()
+	origin := origin_of(url)
+	h := pool_take(origin)
 	if h == nil { return {}, .No_Client }
-	defer c.easy_cleanup(h)
+	defer pool_give(h, origin)
 	sink := Sink{data = make([dynamic]u8, allocator), max_bytes = req.max_bytes, head = make([dynamic]u8, context.temp_allocator)}
 	c.easy_setopt(h, CURLOPT_URL, strings.clone_to_cstring(url, context.temp_allocator))
 	c.easy_setopt(h, CURLOPT_MAXREDIRS, i64(MAX_REDIRECTS))

@@ -280,6 +280,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.window = p.window
 	s.caption_keys = {}
 	s.caption_built = false
+	s.palette = nil   // (a program that stops calling palette_keys leaves no palette to its views' windows)
 
 	// calls posted from other threads change the app's data before the frame reads it (post.odin)
 	post_begin_build(s, p.window)

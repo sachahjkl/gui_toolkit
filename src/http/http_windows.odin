@@ -5,6 +5,7 @@ package tk_http
 // a POST becomes a GET on 301, 302 and 303, as browsers do).
 
 import "core:strings"
+import "core:sync"
 import "core:time"
 import win "core:sys/windows"
 
@@ -41,21 +42,31 @@ foreign winhttp {
 @(private) WINHTTP_DECOMPRESSION_FLAG_GZIP     :: 0x1
 @(private) WINHTTP_DECOMPRESSION_FLAG_DEFLATE  :: 0x2
 
+// The requests' session (src/md/features/http-connections.md): WinHTTP pools a session's connections by server, so one
+// session for the process reuses them. Never closed: the process's end takes it.
+@(private = "file") requests_session: HINTERNET
+@(private = "file") requests_once: sync.Once
+
 request_system :: proc(method, url: string, req: Request, allocator := context.allocator) -> (res: Response, err: Error) {
 	u, _ := url_parse(url)
 	if u64(len(req.body)) > 0xFFFF_FFFF { return {}, .Too_Large }   // (WinHTTP counts a body in 32 bits)
-	agent := req.user_agent != "" ? req.user_agent : "tk_http"
-	session := WinHttpOpen(win.utf8_to_wstring(agent), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nil, nil, 0)
-	if session == nil { return {}, .Unreachable }
-	defer WinHttpCloseHandle(session)
-	winhttp_timeouts(session, req)
-	conn := WinHttpConnect(session, win.utf8_to_wstring(u.host), u16(u.port), 0)
+	sync.once_do(&requests_once, proc() {
+		requests_session = WinHttpOpen(win.utf8_to_wstring("tk_http"), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nil, nil, 0)
+	})
+	if requests_session == nil { return {}, .Unreachable }
+	conn := WinHttpConnect(requests_session, win.utf8_to_wstring(u.host), u16(u.port), 0)
 	if conn == nil { return {}, .Unreachable }
 	defer WinHttpCloseHandle(conn)
 	h := WinHttpOpenRequest(conn, win.utf8_to_wstring(method), win.utf8_to_wstring(u.path), nil, nil, nil, u.secure ? WINHTTP_FLAG_SECURE : 0)
 	if h == nil { return {}, .Unreachable }
 	defer WinHttpCloseHandle(h)
+	// (a request's own: the session is every request's)
+	winhttp_timeouts(h, req)
 	winhttp_compression(h, req)
+	if req.user_agent != "" {
+		line := win.utf8_to_wstring(strings.concatenate({"User-Agent: ", req.user_agent}, context.temp_allocator))
+		if !WinHttpAddRequestHeaders(h, line, WINHTTP_NO_LENGTH, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE) { return {}, .Bad_Request }
+	}
 	for hd in req.headers {
 		// (ADD | REPLACE: the caller's value wins over WinHTTP's own, the User-Agent included)
 		line := win.utf8_to_wstring(strings.concatenate({hd.name, ": ", hd.value}, context.temp_allocator))
@@ -89,13 +100,13 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	return res, .None
 }
 
-// A session's time limits: the name's lookup and the connection connect_bound's, the sends and the receives `timeout`'s.
-// (WinHTTP's own lookup has no limit: an unanswered DNS server held a request for ever)
+// The time limits of a session or of one request (`h`): the name's lookup and the connection connect_bound's, the sends
+// and the receives `timeout`'s. (WinHTTP's own lookup has no limit: an unanswered DNS server held a request for ever)
 @(private)
-winhttp_timeouts :: proc(session: HINTERNET, req: Request) {
+winhttp_timeouts :: proc(h: HINTERNET, req: Request) {
 	ms := i32(min(req.timeout / time.Millisecond, 0x7FFF_FFFF))
 	connect := i32(min(connect_bound(req) / time.Millisecond, 0x7FFF_FFFF))
-	WinHttpSetTimeouts(session, connect, connect, ms, ms)
+	WinHttpSetTimeouts(h, connect, connect, ms, ms)
 }
 
 // A compressed answer asked (Request.compressed): WinHTTP sends Accept-Encoding and decodes the body as it is read. A

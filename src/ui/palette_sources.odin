@@ -138,7 +138,7 @@ palette_commands_alternate :: proc(p: ^Command_Palette, ch: Palette_Choice) -> b
 		return true
 	case {.Alt}:
 		keymap_alias(c.keymap, ch.query, ch.id)
-		palette_open(p, strings.clone(line_edit_string(&p.field), context.temp_allocator))
+		palette_open_over(p, strings.clone(line_edit_string(&p.field), context.temp_allocator), palette_window(p))
 		return true
 	}
 	return false
@@ -214,13 +214,14 @@ palette_commands_read :: proc(p: ^Command_Palette, src: ^Palette_Source, q: Pale
 	palette_answer(q, &a)
 }
 
-// (at each build while open) The moves follow the views of the window the palette is over. The views' version moves
-// with any view's step, the palette's own too (its opening, its first frame shown): the source is read again, and the
-// list ranked again, only when the moves it lists changed (a toggle flipped with the palette open ranked once more).
+// (at each build while open) The moves follow the views of the program's window the palette is over: over a view's own
+// window, those of the window it follows (style_root), which owns that view. The views' version moves with any view's
+// step, the palette's own too (its opening, its first frame shown): the source is read again, and the list ranked again,
+// only when the moves it lists changed (a toggle flipped with the palette open ranked once more).
 @(private = "file")
 palette_moves_poll :: proc(p: ^Command_Palette, src: ^Palette_Source) {
 	m := &p.moves
-	if !views_commands_update(&m.vc, views(), p.owner) { return }
+	if !views_commands_update(&m.vc, views(), p.owner != nil ? style_root(p.owner) : nil) { return }
 	// (FNV-1a over what the source lists: one pass over the open views' moves, only when the views changed)
 	h := u64(0xcbf29ce484222325)
 	mix :: proc(h: ^u64, s: string) {

@@ -294,6 +294,9 @@ view_window_close_asked :: proc(s: ^State) {
 // end_build, as in any window.
 views_window_build :: proc() {
 	s := gs()
+	// (the program's window keys: the program reads them in its own window's build only, so its palette's are read
+	// here; the palette opens over this window. src/md/features/palette.md, Keys)
+	if root := style_root(s); root != s && root.palette != nil { palette_keys_read(root.palette) }
 	for vs in s.views_attached {
 		for r in vs.records {
 			if r.w_state != s || r.machine.state == .Closed { continue }

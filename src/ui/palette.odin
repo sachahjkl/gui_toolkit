@@ -439,9 +439,23 @@ palette_answer_free :: proc(a: ^Palette_Answer) {
 }
 
 // Opens the palette over the window being built (one open comes forward), `typed` in its field ("@": the sessions);
-// `typed` given to an open palette replaces its field.
-palette_open :: proc(p: ^Command_Palette, typed := "") {
+// `typed` given to an open palette replaces its field. Open over another window, it moves here, fresh.
+palette_open :: proc(p: ^Command_Palette, typed := "") { palette_open_over(p, typed, gs()) }
+
+// The window the palette was last over, while it is one of the program's windows; else the window being built. What
+// follows a choice (the recorder of a key, the palette again after it or after an alias) shows there: the person is in
+// that window, and palette_chosen runs in the program's window's build.
+@(private)
+palette_window :: proc(p: ^Command_Palette) -> ^State {
+	for st in views().states { if st == p.owner { return st } }
+	return gs()
+}
+
+// palette_open over window `over`, one of the windows of the program's Views.
+@(private)
+palette_open_over :: proc(p: ^Command_Palette, typed: string, over: ^State) {
 	vs := views()
+	if p.owner != over && view_is_open(vs, PALETTE_VIEW, palette_instance(p)) { palette_close(p) }
 	if !view_registered(vs, PALETTE_VIEW) {
 		view_register(vs, PALETTE_VIEW, palette_view, View_Options{
 			title = "Commands", no_header = true, resizable = true, top = PALETTE_TOP,
@@ -451,7 +465,10 @@ palette_open :: proc(p: ^Command_Palette, typed := "") {
 	if !view_is_open(vs, PALETTE_VIEW, palette_instance(p)) {
 		palette_forget(p)
 		palette_shown_free(p)
-		p.fresh, p.sel, p.sel_moved, p.reveal, p.owner = true, 0, false, true, gs()
+		p.fresh, p.sel, p.sel_moved, p.reveal, p.owner = true, 0, false, true, over
+		// (the sources' answers go to the window it is over: a link kept from another window, which may close, would
+		// refuse them)
+		if p.link != nil && p.link.box != task_box_of(p.owner) { palette_unlink(p) }
 		p.ranked.valid = false
 		delete(p.text)
 		p.text, p.query, p.prefix = "", "", .None
@@ -460,8 +477,9 @@ palette_open :: proc(p: ^Command_Palette, typed := "") {
 		line_edit_set(&p.field, typed)
 		p.fresh = true
 	}
-	view_open(vs, PALETTE_VIEW, p, palette_instance(p))
+	view_open(vs, PALETTE_VIEW, p, palette_instance(p), owner = over)
 	p.was_open = true
+	if over != gs() { over.anim_busy = true }   // (it shows at that window's next build)
 }
 
 palette_is_open :: proc(p: ^Command_Palette) -> bool { return view_is_open(views(), PALETTE_VIEW, palette_instance(p)) }
@@ -473,14 +491,22 @@ palette_close :: proc(p: ^Command_Palette) {
 	p.was_open = false
 }
 
-// Opens or closes it: a program's button or menu line.
+// Opens it over the window being built, or closes it when it is open there: a program's button or menu line.
 palette_toggle :: proc(p: ^Command_Palette, typed := "") {
-	if palette_is_open(p) { palette_close(p) } else { palette_open(p, typed) }
+	if palette_is_open(p) && p.owner == gs() { palette_close(p) } else { palette_open(p, typed) }
 }
 
 // The palette's keys (palette_command: Ctrl+K, Ctrl+Shift+P), pressed: it opens or closes. The one way a program reads
 // them: once, at the top of the build, as any window command (its table has no line for the command: palette_command).
+// The windows of the views this window owns read them too, for this palette (views_window_build).
 palette_keys :: proc(p: ^Command_Palette) -> bool {
+	gs().palette = p
+	return palette_keys_read(p)
+}
+
+// The keys pressed in the window being built: the program's (palette_keys) or a view's (views_window_build).
+@(private)
+palette_keys_read :: proc(p: ^Command_Palette) -> bool {
 	palette_follow_close(p)
 	// (the recorder takes any chord, Ctrl+K too: its claim counts once it has the keyboard, this from its opening)
 	if p.recorder.id != "" { return false }
@@ -508,7 +534,7 @@ palette_chosen :: proc(p: ^Command_Palette) -> (c: Palette_Choice, ok: bool) {
 		if _, ended := view_ended(views(), KEYMAP_RECORDER_VIEW, palette_instance(p)); ended {
 			text := strings.clone(p.recorder.text, context.temp_allocator)
 			keymap_recorder_free(&p.recorder)
-			palette_open(p, text)
+			palette_open_over(p, text, palette_window(p))
 		}
 	}
 	if p.act_due {
@@ -601,11 +627,7 @@ palette_destroy :: proc(p: ^Command_Palette) {
 	palette_arguments_free(&p.chosen)
 	views_commands_destroy(&p.moves.vc)
 	choice_memory_release(p.memory)
-	if p.link != nil {
-		p.link.p = nil
-		sync.atomic_store(&p.link.latest, 0)
-		palette_link_release(p.link)
-	}
+	palette_unlink(p)
 	delete(p.text)
 	delete(p.ranked.text)
 	delete(p.sel_id)
@@ -639,6 +661,17 @@ palette_link_of :: proc(p: ^Command_Palette) -> ^Palette_Link {
 		p.link^ = {p = p, refs = 1, thread = sync.current_thread_id(), box = box}
 	}
 	return p.link
+}
+
+// The palette lets go of its link: the questions and rankings that hold it find no palette and drop their answers. The
+// next question makes a link of the window the palette is over.
+@(private = "file")
+palette_unlink :: proc(p: ^Command_Palette) {
+	if p.link == nil { return }
+	p.link.p = nil
+	sync.atomic_store(&p.link.latest, 0)
+	palette_link_release(p.link)
+	p.link = nil
 }
 
 @(private = "file")
@@ -1198,6 +1231,8 @@ palette_choose :: proc(p: ^Command_Palette, v: ^View, i: int, mods: platform.Mod
 	palette_arguments_free(&p.chosen)
 	p.chosen = {source = src, id = strings.clone(it.id), index = int(r.item), mods = mods, query = strings.clone(p.query)}
 	if src.act != nil { p.act_due = true } else { p.has_choice = true }
+	// (palette_chosen runs in the program's window's build: a choice made in a view's window wakes it)
+	if root := style_root(gs()); root != gs() { root.anim_busy = true }
 	if !it.stays {
 		view_end(v, 0)
 		palette_forget(p)

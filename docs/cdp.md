@@ -24,7 +24,8 @@ cdp.shot(&c, "out.png")
 
 - `connect(port)`: the WebSocket of the first target of `/json/list`. `open(port, path)`: the WebSocket at a path (a browser's
   own, `/devtools/browser/...`, whose pages are sessions of one connection: set `c.session`). `targets(port)` lists them.
-  The WebSocket is `gt:http`'s ([http.md](http.md)): any libcurl on Linux, WinHTTP on Windows.
+  The WebSocket is `gt:http`'s ([http.md](http.md)): WinHTTP on Windows; on Linux a TCP connection of its own to
+  127.0.0.1, so no libcurl is needed (a tool's Nix shell without curl drives a window).
 - `set_read_limit(c, limit)`: how long a call waits for its answer (`READ_LIMIT`, 75 s, unless told). A call whose answer
   is late fails; the connection stays, and the late answer is dropped when it comes.
 - `call(c, method, params)`: `params` is a JSON object as text. The result is in the temporary allocator. A failure prints

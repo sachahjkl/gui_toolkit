@@ -131,6 +131,18 @@ Rules:
   close that the palette did not make (Escape, a click outside) is followed in `palette_chosen`, which the program calls
   at each build, and in `palette_keys`. This changes a refused alternative of [commands.md](commands.md) ("no
   ready-made window commands"): homogeneity first.
+- **The keys work in every window of the program**, a view's own window too (a panel floated into a window of the
+  system). The program calls `palette_keys` in its window's build only; a view's window is built by the toolkit
+  (`views_window_build`), which reads the keys of the palette of the window it follows (`style_root`). `palette_keys`
+  notes its palette on its window's State at each build (`State.palette`). Until 0.288.1 a key pressed in a view's
+  window was never read: the program's build reads its own window's input only.
+- **The palette opens over the window it is asked from.** Asked from another window while it is open, it moves there,
+  fresh (as a new open). Asked again from the window where it is: it closes. The questions of its sources then post
+  their answers to that window (the link follows the window at each open: a link kept from a window that closed since
+  would refuse every answer). A choice made in a view's window wakes the program's window, whose build reads
+  `palette_chosen`. The recorder of a key opened from it gives the palette back in the same window. Its moves are
+  those of the program's window it follows (`style_root`), which owns the views: over a view's window it lists that
+  view's moves too (Re-attach), not only the views its window owns itself.
 - **Up, Down** move the selection and wrap. **Page Up, Page Down** move by the rows in view. The selection skips a
   disabled item.
 - **Enter** chooses; on an item that runs, it opens its run mode ([everything-palette.md](everything-palette.md)).
