@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.295.1] - 2026-11-16 17:51
+
+### Added
+- **`ui.tooltip_beside(at)`, `ui.focus_by_keys`, `ui.keyboard_focused`**: a tooltip can stand beside a box instead of the
+pointer, and a list's own Up and Down can move the focus as the keyboard does (its ring, into view), with its tooltip
+shown for the row the keyboard reached.
+
 ## [0.295.0] - 2026-11-16 17:36
 
 ### Added
@@ -4067,6 +4074,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.295.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.295.1
 [0.295.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.295.0
 [0.294.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.294.0
 [0.293.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.293.0
