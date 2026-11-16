@@ -32,6 +32,16 @@ a_missing_section_is_named :: proc(t: ^testing.T) {
 	testing.expect(t, says(errors, "line 5:", "no ## Later"), "the last section")
 }
 
+// ## Maybe is the one section a roadmap may leave out; given, it comes last.
+@(test)
+maybe_is_last_and_may_be_absent :: proc(t: ^testing.T) {
+	testing.expect_value(t, len(roadmap_errors("# Roadmap\n## Now\n## Next\n## Later\n## Maybe\n- **One.** If a library allows it.\n")), 0)
+	errors := roadmap_errors("# Roadmap\n## Now\n## Next\n## Maybe\n## Later\n")
+	testing.expect(t, says(errors, "line 5:", "## Later after ## Maybe"), "Maybe before Later")
+	errors = roadmap_errors("# Roadmap\n## Now\n## Next\n## Later\n## Someday\n")
+	testing.expect(t, says(errors, "line 5:", "the only headings are ## Now, ## Next, ## Later and ## Maybe"), "another heading")
+}
+
 @(test)
 sections_out_of_order_are_named :: proc(t: ^testing.T) {
 	errors := roadmap_errors("# Roadmap\n## Next\n## Now\n## Later\n")

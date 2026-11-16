@@ -2,14 +2,18 @@ package tk_changelog
 
 // ROADMAP.md, beside CHANGELOG.md, holds a project's planned work: plain Markdown that a reader understands without a tool,
 // "# Roadmap" then "## Now", "## Next" and "## Later", each a list of entries that start with a bold summary, no dates (a
-// plan is an order, not a promise). `check` checks it with the changelog: a project keeps both, and one check sees both.
+// plan is an order, not a promise), and, if the project has any, "## Maybe" last: what may be done one day, the paths open
+// and what each waits for, decided by no one yet. `check` checks it with the changelog: a project keeps both, and one check
+// sees both.
 
 import "core:fmt"
 import "core:strings"
 
 ROADMAP_FILE :: "ROADMAP.md"
 ROADMAP_TITLE :: "# Roadmap"
-ROADMAP_SECTIONS :: [3]string{"## Now", "## Next", "## Later"}
+ROADMAP_SECTIONS :: [4]string{"## Now", "## Next", "## Later", "## Maybe"}
+// The sections every roadmap has: the first ones of ROADMAP_SECTIONS ("## Maybe" may be absent).
+ROADMAP_SECTIONS_KEPT :: 3
 
 // What is wrong in a roadmap's text, each error naming its line (temp allocator).
 roadmap_errors :: proc(text: string) -> [dynamic]string {
@@ -42,7 +46,7 @@ roadmap_errors :: proc(text: string) -> [dynamic]string {
 			for s, k in sections { if line == s { at = k } }
 			switch {
 			case at < 0:
-				append(&errors, fmt.tprintf("line %d: %q; the only headings are ## Now, ## Next and ## Later", n, line))
+				append(&errors, fmt.tprintf("line %d: %q; the only headings are ## Now, ## Next, ## Later and ## Maybe", n, line))
 			case at < next:
 				append(&errors, fmt.tprintf("line %d: %s after %s", n, line, sections[next - 1]))
 			case at > next:
@@ -55,7 +59,7 @@ roadmap_errors :: proc(text: string) -> [dynamic]string {
 			}
 			continue
 		}
-		if !in_section { append(&errors, fmt.tprintf("line %d: text outside ## Now, ## Next and ## Later", n)); continue }
+		if !in_section { append(&errors, fmt.tprintf("line %d: text outside ## Now, ## Next, ## Later and ## Maybe", n)); continue }
 		if strings.has_prefix(line, "- ") {
 			bold := strings.has_prefix(line, "- **") && strings.contains(line[4:], "**")
 			if !bold { append(&errors, fmt.tprintf("line %d: an entry starts with a bold summary: - **...**", n)) }
@@ -65,7 +69,7 @@ roadmap_errors :: proc(text: string) -> [dynamic]string {
 		if (line[0] == ' ' || line[0] == '\t') && in_entry { continue }
 		append(&errors, fmt.tprintf("line %d: neither an entry (- **...**) nor its indented continuation", n))
 	}
-	for k in next ..< len(sections) {
+	for k in next ..< ROADMAP_SECTIONS_KEPT {
 		append(&errors, fmt.tprintf("line %d: no %s", len(lines), sections[k]))
 	}
 	return errors
