@@ -5,6 +5,35 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.289.0] - 2026-11-16 10:52
+
+### Added
+- **Views' windows in a program's own tests**: `host.view_windows` opens offscreen windows when the owner window is offscreen (they build and draw no picture: `Host.no_picture`), and `session.view_window` gives each window of an attached application as a session. A program's test of a view in its own window needs no backend of its own.
+- **`ui.views_set_window_end(vs, end, user)`**: the program sets one hook that builds its overlays (a context menu, a chip) at the end of each build of each view's window, in that window's State. A view's build no longer calls them itself.
+- **The palette's run mode** (`ui.Palette_Run`, `ui.Palette_Runner`, `prefs_page`'s runners): Enter on a setting that is no switch unfolds its control under its row, from the settings page's table (a sub-list the field filters for a closed list, a family in its face or a theme with its hues; the colour picker; keys; a number's steps and slider; a field). A change is written at once, Enter keeps it, Escape puts back the value of before (a value another path wrote since is left). Each row shows its value in use at its right; a locked setting shows its value and why. `palette_run_level`, `palette_run_item`, `palette_run_error`, `palette_sublist`.
+- **Go to by act name**: `ui.act_name(box, name)` states what an element acts on (`setting:<name>`, `command:<id>`); `ui.act_shown` and `ui.act_go` find and show it: its view forward, scrolled into view, focused and lit once. Shift+Enter in the palette goes to an item's place (`Palette_Item.act`, `Palette_Source.reach`); the settings page names each setting's line, and the settings source shows the setting's page. The hint row offers it only where it can be done.
+- **Commands with arguments**: `ui.Command.arguments` (each a `config.Def`) opens the command's form in the palette, each argument with its control; Enter on the last gives the choice with `Palette_Choice.arguments`. A closed list the program fills: `Palette_Commands_Options.choices`. `prefs_page.palette_forms_use` for a program without the settings source; `ui.palette_command_arguments`, `ui.palette_command_choices`.
+- **`ui.color_picker`'s `text`**: false leaves out the format switch and the text field, for a caller whose own field is the colour's text. `ui.font_families_read` and `ui.font_families_ask` are public, for a list of families of one's own.
+
+### Changed
+- **A view's window keeps its owner's time**: a window with no clock of its own (`ui.set_clock`) reads the clock of the window it follows, so `session.advance` moves its delays (a tooltip) too.
+- **`ui.palette_chosen` makes the run mode's writes**: call it at the top of the build, before the program's content, so a page shows a value in the same frame as the palette. Enter on a setting that is no switch no longer opens the settings page: Shift+Enter does.
+
+### Removed
+- **`Palette_Alternates.shift` and `Palette_Commands_Options.shift`**: Shift+Enter is go to in every source. A source that gave Shift+Enter its own meaning gives it on Ctrl+Enter or Alt+Enter.
+
+### Fixed
+- **A server's events arrive at once on Windows**: an event stream read whole chunks and waited for one to fill, so a live server's first event never came and a program never saw its server online; it reads what has come.
+- **No crash on closing after What's new was shown**: a release whose text had no capital letter was freed twice when the program ended, which Windows stopped as heap corruption; `ascii.lower` now always returns a copy.
+- **Closing your session no longer reads as a crash.** A program the system ends ends its crash session cleanly, so the next start no longer shows an "unclean" report after each logout. On Linux this covers SIGTERM when the desktop session closes, SIGHUP and Ctrl+C; a program that handles these signals itself keeps its own handler. On Windows it covers a sign-out or a shutdown.
+- **The light of go to stands off its element**: the ring that Shift+Enter in the palette draws around a settings line or a button no longer touches its words; it sits a little outside, with rounded corners.
+- **The palette's keys work in a view's own window**: Ctrl+K and Ctrl+Shift+P pressed in the window of a view (a panel floated into a window of the system) open the palette over that window; asked from another window it moves there, and asked again where it is it closes. A choice made there reaches `palette_chosen`; the recorder of a key opens in that window and gives the palette back there.
+- **A WebSocket to the loopback needs no libcurl (Linux)**: `ws://127.x.x.x` and `ws://[::1]` connect over a TCP connection of the package's own, so `gt:cdp` drives a program from a shell without curl again; since 0.287.0 `cdp.connect` failed there (`ws_connect` answered `.No_Client`) and a program's live test stopped at "the window serves the DevTools protocol".
+- **`http.request` reuses its connections**: requests to a server go on the connections already open (keep-alive) instead of a TCP connection and a TLS handshake each; one pool for the process, safe from any thread, with no client to keep (Linux: idle libcurl handles matched by origin, at most `POOL_IDLE`; Windows: one WinHTTP session). Five requests in a row now open one connection, not five.
+- **`session.advance` on a view's window**: it looped for ever, because that window's clock never moved. It now advances the application's clock.
+- **`ui.view_close` of a view in a window of its own closes that window**: the window and its State stayed open and empty. A closed view now keeps its record until the next step has closed its window.
+- **The shop's pages keep the site's bar as it is.** The program's name in the bar no longer turns to the accent's colour on the pricing and the other shop pages: the shop colours only its own links, in its content.
+
 ## [0.288.1] - 2026-11-16 08:22
 
 ### Added
@@ -3986,6 +4015,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.289.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.289.0
 [0.288.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.288.1
 [0.288.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.288.0
 [0.287.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.287.0
