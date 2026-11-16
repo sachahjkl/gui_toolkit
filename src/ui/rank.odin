@@ -64,9 +64,11 @@ rank :: proc(query: string, items: []$T, entry: proc(it: ^T, user: rawptr) -> Ra
 	match: Rank_Match = rank_palette, bonus: proc(it: ^T, user: rawptr) -> f64 = nil, cache: ^Fuzzy_Cache = nil, version: u64 = 0) -> []Rank_Hit {
 	keep := cache != nil && version != 0
 	if keep && cache.ranked_version == version && cache.ranked_query == query { return cache.ranked }
-	once: Fuzzy_Cache
-	c := cache != nil ? cache : &once
-	defer if cache == nil { fuzzy_cache_destroy(&once) }   // (the hits' ranges are in temp memory, not in the cache)
+	// (no cache: one for this call, in temp memory, not on the stack: the needle points into it; the hits' ranges are in
+	// temp memory, not in the cache)
+	c := cache
+	if c == nil { c = new(Fuzzy_Cache, context.temp_allocator) }
+	defer if cache == nil { fuzzy_cache_destroy(c) }
 	if cache != nil { cache.ranked_version = 0 }
 	needle := fuzzy_cache_needle(c, query)
 	hits := make([dynamic]Rank_Hit, 0, len(items), context.temp_allocator)
