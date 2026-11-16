@@ -21,9 +21,9 @@
   Cliche, Atelier, Wren, Opencode Native) while its binary and package keep the lowercase name, and keeps its settings
   in its vendor's folder (`%APPDATA%\FromentSoftware\Papier`, `~/.config/FromentSoftware/Papier`), the old folders
   moved once. Intent: [src/md/features/folders.md](src/md/features/folders.md).
-- **Every program on the spacing scale.** The toolkit's pages (settings, setup) and the programs lay out with the
-  scale's roles, cards and list cards, and stop keeping values or scales of their own (atelier's `view.odin` holds one
-  today). Intent: [src/md/features/spacing.md](src/md/features/spacing.md).
+- **Every program on the spacing scale.** Papier, classeur, inspecteur and cliche lay out with the scale's roles and
+  steps. Atelier (its own scale in `view.odin`), opencode native and Wren stop keeping values or scales of their own.
+  Intent: [src/md/features/spacing.md](src/md/features/spacing.md).
 - **opencode native and Wren answer --quit.** As papier, classeur, inspecteur and cliche do, each gives
   `Setup_Options.quit` and takes `instance.MESSAGE_QUIT` in its handler (opencode native first takes a single instance):
   atelier then closes it cleanly before it installs it, in place of ending its process. Intent:
