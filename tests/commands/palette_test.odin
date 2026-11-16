@@ -961,3 +961,63 @@ a_question_says_its_prefix :: proc(t: ^testing.T) {
 	q = last_question(&folders)
 	testing.expect(t, q.query == "do" && q.q.prefix == .None, "asked again: the plain search")
 }
+
+// A box of the last build whose text holds `part` (nil: none).
+@(private = "file")
+find_part :: proc(f: ^Fx, part: string) -> ^ui.Box {
+	walk :: proc(b: ^ui.Box, part: string) -> ^ui.Box {
+		if b == nil { return nil }
+		if strings.contains(b.text, part) { return b }
+		for c := b.first; c != nil; c = c.next { if r := walk(c, part); r != nil { return r } }
+		return nil
+	}
+	return walk(f.s.root, part)
+}
+
+// Go to (src/md/features/everything-palette.md, layer 3): a button that states its command's act name, far down a
+// list, is reached by Shift+Enter on the command: scrolled into view, focused, lit, and the program sees no choice. A
+// command that no element names offers no go to, and Shift+Enter on it is Enter.
+@(test)
+shift_enter_goes_to_a_command_s_button :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Run{table = SERVICE_COMMANDS[:]}
+	defer run_free(&r)
+	r.extra = proc(r: ^Run) {
+		ui.next({width = ui.fill(), height = ui.px(200)})
+		if ui.scroll_y("###far") {
+			for i in 0 ..< 60 {
+				ui.next({width = ui.fill(), height = ui.px(30)})
+				ui.label(fmt.tprintf("Line %d###l%d", i, i))
+			}
+			b := ui.button("###stop", "Stop the service")
+			ui.act_name(b.box, "command:service.stop")
+		}
+	}
+	open_palette(t, &f, &r, "stop")
+	testing.expect_value(t, row_id(&r, 0), "service.stop")
+	testing.expect(t, ui.act_shown("command:service.stop"), "its button shown in the last frame")
+	testing.expect(t, find_part(&f, "Go to") != nil, "the hint row offers go to")
+	frame(&f, {key(.Return, {.Shift})}, &r)
+	settle_closed(t, &f, &r)
+	for _ in 0 ..< 20 { frame(&f, nil, &r) }
+	button := find_text(&f, "Stop the service")
+	testing.expect(t, button != nil, "the button")
+	if button != nil {
+		lit := false
+		for a := button; a != nil; a = a.parent { if a.key == f.s.act_light.key { lit = true } }
+		testing.expect(t, lit, "lit")
+		testing.expect_value(t, f.s.focus_key, f.s.act_light.key)
+		testing.expect(t, button.rect.min.y >= 0 && button.rect.max.y <= 200 + 1, "scrolled into view")
+	}
+	testing.expect_value(t, r.choices, 0)
+	// a command no element names: no go to; Shift+Enter is Enter
+	open_palette(t, &f, &r, "kill")
+	testing.expect_value(t, row_id(&r, 0), "process.kill")
+	testing.expect(t, find_part(&f, "Go to") == nil, "no go to offered")
+	frame(&f, {key(.Return, {.Shift})}, &r)
+	settle_closed(t, &f, &r)
+	frame(&f, nil, &r)
+	testing.expect_value(t, chosen_command(&r), 2)
+}

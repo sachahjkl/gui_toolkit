@@ -407,8 +407,8 @@ palette_wait :: proc(s: ^session.Session, app: ^Palette_App) {
 	session.wait_until(s, app, proc(s: ^session.Session, app: ^Palette_App) -> bool { return !ui.palette_busy(&app.pal) && ui.palette_row_count(&app.pal) > 0 }, "the palette's list")
 }
 
-// The settings source: one item per preference shown (not a hidden one), under its page; the one chosen is put alone on
-// its page, and the program is asked to show its settings.
+// The settings source: one item per preference shown (not a hidden one), under its page; Enter on one that is no switch
+// unfolds its control in the palette (the run mode), and the program is not asked to show its settings.
 @(test)
 a_setting_from_the_palette :: proc(t: ^testing.T) {
 	app: Palette_App
@@ -430,11 +430,12 @@ a_setting_from_the_palette :: proc(t: ^testing.T) {
 		return !ui.palette_busy(&app.pal) && ok && id == "look.style"
 	}, "look.style first")
 	session.key(s, .Return)
-	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Palette_App) -> bool { return app.opened == 1 }, "the settings shown")
-	session.frames(s, 2)
-	testing.expect(t, session.find_text(s, "How surfaces are drawn.") != nil, "the one chosen")
-	testing.expect(t, session.find_text(s, "Keep a cache of the responses.") == nil, "alone")
-	testing.expect_value(t, app.page.current, "look")
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Palette_App) -> bool { return ui.palette_run_level(&app.pal) == .Control }, "its control unfolded")
+	_, id, _, _ := ui.palette_run_item(&app.pal)
+	testing.expect_value(t, id, "look.style")
+	testing.expect(t, ui.palette_is_open(&app.pal), "the palette stays")
+	testing.expect(t, session.find(s, "sub_1") != nil, "its choices, a sub-list under its row")
+	testing.expect_value(t, app.opened, 0)
 }
 
 // A switch from the palette: Enter flips it, the palette stays open, its mark follows, the list is not ranked again.

@@ -432,12 +432,19 @@ program's command palette ([palette.md](palette.md)): the prefix `:`, and the pl
 preference the pages show (a hidden one is not): its title is the one the page gives it, its group `Settings · <page>`,
 its icon the page's (else Lucide's sliders), its tags the preference's (`config.Def.tags`: other words the settings'
 search and the palette find it by, "colours" and "dark" for a theme), its name its last text (a search by
-`appearance.theme` finds it). A preference that a policy fixes is greyed.
+`appearance.theme` finds it), its value in use at its right. A preference that a policy or the command line fixes is
+greyed, its reason its detail.
 
 Choosing a switch flips it (`Page_Options.changed` then saves it) and the palette stays open, the switch's mark
-following. Choosing another preference calls `show(page, prefs, options, name)`, then `open(user)`: the program shows
-its settings. The page's search holds the preference's name in quotes, so it shows alone with its control, and the page
-under the search is its own (clearing the search lands there).
+following. Choosing another preference opens its run mode in the palette: its control from the same table as the page
+(`control_of`), a change written at once (and `Page_Options.changed` called), Enter keeps it, Escape puts back the
+value of before ([palette.md](palette.md), "The run mode"). Shift+Enter goes to its line: the page shows its page (its
+search cleared, its Advanced part unfolded for an advanced one), `open(user)` shows the settings, and the line, whose
+act name is `setting:<name>`, is scrolled into view, focused and lit. `palette_settings_add` also installs the commands'
+forms (`palette_forms_use(&palette)`: a program without the settings source calls it itself).
+
+`show(page, prefs, options, name)` puts one preference alone on its page for a program's own jump (a link, the
+What's new page): the page's search holds its name in quotes, and the page under the search is its own.
 
 The source reads the preferences again when one is registered, and when the language changes: a frame walks none.
 `options(user) -> Page_Options` is asked each time the source reads or acts, so its slices (the themes, the pages) are

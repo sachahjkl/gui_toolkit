@@ -55,7 +55,10 @@ and its memory, the views, the texts in the user's language.
   value's nature (value kinds and units) in one table the settings page shares; the run mode, live change and Escape;
   go to by an act name; commands with arguments. Layer 1 as built: the thirteen value kinds and what each checks and
   shows, why `Factor` and `Rate` joined, the units' table and which convert, why a family and a theme are not checked,
-  why the control table is `prefs_page`'s and a `Size` never a slider
+  why the control table is `prefs_page`'s and a `Size` never a slider. Layers 2 to 4 as built: the run mode's state
+  machine, why the palette's field keeps the keyboard and every write waits for `palette_chosen`, why every closed list
+  is a sub-list in the palette, undo and the other path that wins; act names as hashes per frame, `reach`, Shift+Enter
+  one meaning; a form's registry of its own
 - [features/palette.md](features/palette.md): one command palette for every program: sources with a closed table of prefixes, one ranking on the chores, serials that drop stale answers, choices by source and id, what each program's palette becomes
 - [features/paste.md](features/paste.md): a paste gives text, files or an image as one answer: the order of preference (files, text, image), why the kinds are asked one after the other, the image decoded on a chore, one API for every kind, the platforms' formats
 - [features/path-bar.md](features/path-bar.md): the path bar (`ui.path_bar`): why it reads nothing itself, why `wants` is said once, why its dropdown is a popover

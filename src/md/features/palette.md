@@ -41,8 +41,8 @@ A source has:
 - **a title** ("Sessions", "Tabs"), shown in the hint row and in its "reading" row;
 - **`plain`**: its items take part in a search without a prefix too;
 - **`remember`**: its choices go to the usage memory (false for the views' moves and the secrets);
-- **its alternates**: the meaning of Ctrl+Enter, Alt+Enter and Shift+Enter for its items ("Open in a new tab"), or
-  none;
+- **its alternates**: the meaning of Ctrl+Enter and Alt+Enter for its items ("Open in a new tab"), or none. Shift+Enter
+  is go to in every source ([everything-palette.md](everything-palette.md));
 - **`read`**: a procedure that the palette calls on the interface's thread when the query or the source's version
   changed, with a question. It answers at once from the program's memory, or it starts a chore and answers later
   (`palette_answer`);
@@ -89,10 +89,10 @@ Every program gets three sources, and gives them only its data:
 |---|---|---|---|
 | Commands | `>` | yes | returned to the program: the index in its `[]ui.Command` table |
 | Views' moves | `>` | yes | the toolkit runs it (`views_command_run`); the palette's own view is not listed |
-| Settings | `:` | yes | the toolkit flips a switch (the palette stays) or opens the settings on it (`prefs_page.show`) |
+| Settings | `:` | yes | the toolkit flips a switch (the palette stays) or opens the setting's run mode: its control in the palette ([everything-palette.md](everything-palette.md)) |
 
 `palette_commands` gives the commands source what `palette_set` took: the table (each command's `id` is its item's id
-and its key in the usage memory), `disabled`, the version, and the program's Shift+Enter. The keys shown, the aliases
+and its key in the usage memory), `disabled`, the version, and the choices of its commands' arguments. The keys shown, the aliases
 and Ctrl+Enter and Alt+Enter are the keymap's ([keymap.md](keymap.md)). Its first call adds the moves source too. The
 settings source is `prefs_page.palette_settings_add`: `ui` does not import `prefs_page`. A program with its own
 settings model (Wren's `about:config`) gives its own source of the same prefix instead.
@@ -133,8 +133,9 @@ Rules:
   ready-made window commands"): homogeneity first.
 - **Up, Down** move the selection and wrap. **Page Up, Page Down** move by the rows in view. The selection skips a
   disabled item.
-- **Enter** chooses. **Ctrl+Enter, Alt+Enter, Shift+Enter** choose with the source's alternate; without one, they do
-  what Enter does.
+- **Enter** chooses; on an item that runs, it opens its run mode ([everything-palette.md](everything-palette.md)).
+  **Ctrl+Enter, Alt+Enter** choose with the source's alternate; without one, they do what Enter does. **Shift+Enter**
+  goes to the item's place; an item with none does what Enter does.
 - **Tab** completes: an item that has a completion (a folder of the Paths source) puts it in the field. Else Tab does
   nothing.
 - **Escape** closes the palette. Backspace on a prefix removes it, as any character.

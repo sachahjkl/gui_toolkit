@@ -1,7 +1,8 @@
 package tk_prefs_page
 
 // The one table that gives a preference's control from its value: its storage, its value kind (config.Value_Kind), its
-// choices; never its name. The page draws every line with it (setting, setting_line); the palette's run mode will.
+// choices; never its name. The page draws every line with it (setting, setting_line); the palette's run mode reads it
+// too (palette_run.odin).
 // src/md/features/everything-palette.md, "The control comes from the value, in one table".
 
 import "core:fmt"
@@ -64,7 +65,7 @@ control_for :: proc(o: Page_Options, e: ^config.Entry) -> Control {
 }
 
 // The range of a number's slider in the stored unit: its bounds, or a share's whole (0 to 1). ok false: it has none.
-@(private = "file")
+@(private)
 number_range :: proc(d: config.Def) -> (lo, hi: f64, ok: bool) {
 	if d.bounded && d.max > d.min { return d.min, d.max, true }
 	if d.value_kind == .Fraction { return 0, 1, true }
@@ -300,7 +301,7 @@ field_unit :: proc(d: config.Def) -> string {
 }
 
 // A float's step: round, and cutting its range in at most a few hundred (0.1, 1, 10...).
-@(private = "file")
+@(private)
 float_step :: proc(span: f64) -> f64 {
 	return math.pow(10, math.ceil(math.log10(span / FLOAT_STEPS_MAX)))
 }

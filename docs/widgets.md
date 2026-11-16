@@ -375,6 +375,9 @@ Every widget that edits a value of the caller's returns `changed: bool`, true in
 `checkbox`, `radio`, `toggle`, `slider`, `range_slider`, `number`, `segmented`, `dropdown`, `tabs`, the colour pickers
 (`color_picker`, `hue_picker`, `alpha_picker`, `sat_val_picker`), `hotkey_field`.
 
+`color_picker(id, &cp, text = true)`: with `text` false, no format switch and no text field, for a caller whose own
+field holds the colour's text (the palette's run mode: the text said once).
+
 `checkbox(id, text, &value, wrap)` and `toggle(id, text, &value, wrap)`: with `wrap`, a label longer than the row goes
 on to the next lines, the row as tall as they are, the box or the switch on the first line.
 

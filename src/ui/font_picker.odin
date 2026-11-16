@@ -103,8 +103,9 @@ font_families_face :: proc(fam: ^Font_Families, family: string) -> font.Font_Id 
 	return 0
 }
 
-// The faces wanted in this build, a batch on a chore when none is there (the next batch at a build after its answer).
-@(private = "file")
+// The faces wanted in this build (font_families_face of the rows built), a batch on a chore when none is there (the
+// next batch at a build after its answer). Once per build, after the rows: a list of families of one's own (the
+// palette's run mode) calls it as the picker does.
 font_families_ask :: proc(fam: ^Font_Families) {
 	defer clear(&fam.wanted)
 	if fam.loading || len(fam.wanted) == 0 || fam.source.face == nil { return }
@@ -157,8 +158,7 @@ font_face_lost :: proc(d: rawptr) {
 	free(job, a)
 }
 
-// The list read on a chore, at the first opening of a picker.
-@(private = "file")
+// The list read on a chore, at the first opening of a picker (or of a list of one's own); not read again.
 font_families_read :: proc(fam: ^Font_Families) {
 	if fam.reading != .None { return }
 	if fam.source.families == nil { fam.reading = .Ready; return }

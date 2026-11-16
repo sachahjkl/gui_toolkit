@@ -166,6 +166,85 @@ settings page on its setting, a view's home), scrolls the element into view, giv
 program writes nothing for go to but the act name of the element. An item whose act name no view can show has no go to,
 and its hint row does not offer it.
 
+### Layer 2, as built: the run mode
+
+The run mode is a state of the palette (`ui.Palette_Run`, `src/ui/palette_run.odin`), apart from what a value is:
+
+```
+List ──Enter on an item that runs──▶ Control (a setting's value)        ──Enter: kept──▶ List
+  ▲                                │                                    ──Escape: put back──▶ List
+  │                                └▶ Form, argument 0 ──Enter──▶ argument 1 … ──Enter on the last──▶ the choice, closed
+  └──────────────── Escape at argument 0 ◀── Escape at argument n steps to n − 1
+any level ──a close the palette did not ask (a click outside, Ctrl+K, its window gone)──▶ closed, as Escape at each level
+any level ──its item gone from its source's answer──▶ List, nothing put back
+```
+
+- **The palette owns the levels and the keys; a runner owns the values** (`ui.Palette_Runner`: open, text, build,
+  write, undo, values, close). The settings source's runner and the commands' forms runner are `prefs_page`'s
+  (`prefs_page/palette_run.odin`): only it has the control table. `ui` imports `config` for `Command.arguments`
+  (`config` imports no package of the interface).
+- **The palette's field keeps the keyboard.** Its text is the control's filter (a family, a theme, any closed list) or
+  the value's text (a number, a colour, keys, a field), set when the control opens; the query is kept and put back at
+  the close. Enter and Escape are always the palette's, read before the field: a field inside the control would take
+  Enter for itself, and the run mode would not know a value was kept. Up, Down, Page Up and Page Down go to the
+  control: they move through a list or step a number.
+- **Every write happens in `palette_chosen`, at the top of the program's next build**, before the page is built. The
+  palette's view is built after the program's content; a value written there would show in the palette one frame
+  before the page (the day-one test 1). The view notes the write; `palette_chosen` makes it.
+- **In the palette every closed list is the sub-list** (`ui.palette_sublist`): rows of one height, the rows in view
+  built, a short list too. The page keeps its row of buttons for six choices or fewer, where a line has the height of
+  one button; in the palette one way through the choices by the keys is worth more than the look of the page. A
+  filter typed selects the best row and writes nothing; a move (a key, a click) writes at once; Enter writes the row
+  selected, then keeps.
+- **A number**: Up and Down step it, the slider under the row writes when it is let go (as on the page, the file is not
+  rewritten at the pointer's rate), the text typed is written at Enter. **A colour**: the picker without its own text
+  (`color_picker`'s `text = false`): the palette's field is that text, said once. **Keys**: the text, or the recorder
+  under it. **A free field** (a path, an address, a size): its text, written at Enter; a value refused stays in the
+  field, its reason under it. A path completes nothing yet (Later in the roadmap).
+- **Undo.** The runner notes the value before and whether it was the default. Escape puts it back (a reset when it was
+  the default, so the file does not gain a line), only when the value now is the last one the run mode wrote: another
+  path that wrote since wins.
+- **The run row says its title; its value is in the control** (the field, the mark in the sub-list): the value at the
+  row's right goes while it is open, said once. The hint row says the run mode's keys ("Enter Keep", "Escape Put
+  back"; a form's "Enter Next" and "Escape Back").
+- **The run mode takes the list's room.** Under the field: the run row, then the control, which fills the rest; its
+  sub-list scrolls. The other rows step aside until Enter or Escape: the palette keeps its height.
+- **A locked setting** (a policy, the command line) is a disabled row with its value at its right and its reason as
+  its detail ("Locked by a policy."): no control.
+- **Its item is kept by its source and its id**, looked up again only when the sources' answers change (the palette's
+  generation), never at each build.
+
+### Layer 3, as built: act names and go to
+
+- `ui.act_name(box, name)` states the act name of a box at its build. Each State keeps the act names of its last
+  frame (`acts`, a map of the name's 64-bit hash to the box's key, filled while the frame is built and swapped at its
+  end): the work is one insert per element built, none per frame over data. A hash and not the name: no string kept per
+  frame; two names of one hash in one window are not expected (64 bits).
+- `ui.act_shown(name)`: whether a window of the program (the States its Views build in) showed it in its last frame.
+  `ui.act_go(name)` goes there: at the end of the build that shows it (after the layout, the rects final) the box is
+  scrolled into view in each scroll box around it, its first focusable box gets the focus, its view comes forward, and
+  it is lit once (`ACT_LIGHT_MS`, a fading ring of the accent; with the animations off it stays still and goes). Not
+  shown yet: the wish waits `ACT_GO_BUILDS` builds for it (the settings opened by the same press come at the next one).
+- **A source reaches what no frame shows** (`Palette_Source.reach`): the settings source shows the setting's page
+  (its Advanced part unfolded when the setting is one, the page's search cleared) and asks the program to show its
+  settings. The commands source reaches nothing: a command is reachable when an element states its act name in a frame
+  shown (a toolbar's button).
+- **Shift+Enter is go to, in every source.** An item with an act name that a frame shows or its source reaches: the
+  palette closes and goes there. The hint row says "Shift+Enter Go to" only for it; for another item Shift+Enter does
+  what Enter does. `Palette_Alternates.shift` and `Palette_Commands_Options.shift` went: one meaning everywhere.
+- The settings page names each setting's line `setting:<name>`; the commands source names its items `command:<id>`.
+
+### Layer 4, as built: commands with arguments
+
+- `ui.Command.arguments: []config.Def`: each argument is a value as a setting is (its name, storage, value kind,
+  unit, choices, bounds, default). A closed list the program fills: `Palette_Commands_Options.choices(user, command,
+  argument)`, as `Page_Options.choices` for a setting.
+- The forms runner keeps a registry of its own for the form (`config.Prefs`, the arguments registered), so each
+  argument gets the control of the table and is checked as a setting is, with no form written for one command.
+- Enter on the last argument ends the run mode and closes the palette; `palette_chosen` returns the command with
+  `Palette_Choice.arguments`: each value as the settings file writes it (`config.value_text`), in the arguments' order.
+- A program without the settings source installs the forms runner alone: `prefs_page.palette_forms_use`.
+
 ## Decisions
 
 - **One source of truth.** The palette and the settings page both read and write the registry (`config`). A change in
@@ -199,14 +278,22 @@ and its hint row does not offer it.
 
 1. With the settings page open beside the palette, a theme changed in the palette's run mode shows on the page in the
    same frame; Escape puts the page back too.
+   (`a_theme_changed_in_the_palette_shows_on_the_page_in_the_same_frame` in `tests/prefs_page`: it counts the frames
+   whose palette and page showed two values; a write made in the palette's own build fails it.)
 2. Enter on an unfolded row while its source's table is made again (a new language) acts on the same setting, never
-   on the row that took its place.
+   on the row that took its place. (`the_row_that_runs_is_its_item`: another order of the pages; its item gone, the
+   run mode closes.)
 3. A program's new `Font_Family` setting, with no other code, gets the family list in the palette and on the page.
-   (Layer 1: on the page, `a_new_font_family_setting_gets_the_family_picker` in `tests/prefs_page`.)
+   (Layer 1: on the page, `a_new_font_family_setting_gets_the_family_picker` in `tests/prefs_page`. In the palette the
+   family list is the control the table gives a `Font_Family`: no name of a setting in the run mode.)
+
+The other tests of the layers: `escape_leaves_a_value_written_by_another_path`, `a_typed_value_is_kept_or_refused`,
+`a_locked_setting_shows_its_value_and_why`, `a_command_s_form_gives_its_values` (Escape at each level),
+`shift_enter_goes_to_a_setting` in `tests/prefs_page`; `shift_enter_goes_to_a_command_s_button` in `tests/commands`.
 
 ## Layers
 
-1. Value kinds and units in `config`; the one control table, used by the settings page (its name cases removed).
-2. The run mode in the palette for settings, with live change and Escape.
-3. Act names and go to.
-4. Commands with arguments and their form.
+1. Value kinds and units in `config`; the one control table, used by the settings page (its name cases removed). Done.
+2. The run mode in the palette for settings, with live change and Escape. Done.
+3. Act names and go to. Done.
+4. Commands with arguments and their form. Done. The programs' part is in the roadmap.

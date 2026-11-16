@@ -152,10 +152,10 @@ nothing else.
   goes: the alias was its only use.
 - **The keys shown on a row are the keys in effect**, the first of them, as a menu's line. `Palette_Commands_Options.keys`
   goes.
-- **Ctrl+Enter and Alt+Enter on a command are the toolkit's in every program.** Shift+Enter stays the program's
-  alternate: `Palette_Commands_Options.alternates` becomes `shift`, its words. Wren's "open a URL command in a new tab"
-  moves from Ctrl+Enter to Shift+Enter: one meaning per key in every program. A window without a keymap leaves Ctrl+Enter
-  and Alt+Enter to the program, as Enter.
+- **Ctrl+Enter and Alt+Enter on a command are the toolkit's in every program.** Shift+Enter was left to the program
+  (`Palette_Commands_Options.shift`) until go to took it in every source ([everything-palette.md](everything-palette.md),
+  layer 3): `shift` went. Wren's "open a URL command in a new tab" has no key of its own on a command: the program
+  gives a command of its own for it. A window without a keymap leaves Ctrl+Enter and Alt+Enter to the program, as Enter.
 
 `ui.hotkey_field` is not the recorder. It records one combination for the system (Super, a character with no key name),
 and it needs a modifier. A command's key can be F7 alone, and a sequence's second chord is often a letter alone. The
@@ -219,7 +219,7 @@ and no person asked. If a person asks, the sheet's lines get the remove button, 
 4. **opencode native.** Its `Command.id` moves into `ui.Command.id`. Its own key reading (`commands_keys`) reads through
    `command_pressed`. The server's commands get `server.<name>` and are known at each version of their list.
 5. **Wren.** `Command.name` becomes `ui.Command.id`. Its two settings go into its own model with `keymap_read` and
-   `Keymap.changed`. A URL command's new tab moves to Shift+Enter.
+   `Keymap.changed`. A URL command's new tab is a command of its own (Shift+Enter is go to).
 
 ## Subtle points
 

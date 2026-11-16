@@ -120,6 +120,9 @@ Views :: struct {
 	windows:   View_Windows,            // the backend of the external windows (views_set_windows; none: they are refused)
 	memory:    store.Store,
 	labels:    View_Labels,
+	// go to (acts.odin): the hash of the act name it waits for in its windows' frames (0: none), and the builds left
+	act_want:        u64,
+	act_want_builds: int,
 	allocator: runtime.Allocator,
 }
 

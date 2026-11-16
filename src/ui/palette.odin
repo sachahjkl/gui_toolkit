@@ -111,8 +111,12 @@ Palette_Item :: struct {
 	tags:       []string,   // other words it is found by
 	last:       string,     // a text that finds it when nothing else does (a setting's name): nothing lit
 	completion: string,     // what Tab puts in the field (a folder's path, prefix included)
+	// the act name of what it acts on ("setting:appearance.theme", "command:save"): Shift+Enter goes to the element
+	// that states it (acts.odin), when a frame shows it or its source reaches it
+	act:        string,
 	disabled:   bool,       // greyed, listed last, not chosen
 	stays:      bool,       // choosing it does not close the palette (a switch)
+	runs:       bool,       // Enter opens its run mode (its source's runner): its control, or a command's form
 }
 
 // A source's answer: its items and the arena that holds them. The source builds it (on the interface's thread for an
@@ -130,7 +134,7 @@ palette_item_clone :: proc(it: Palette_Item, allocator: runtime.Allocator) -> Pa
 	c := it
 	c.id, c.title, c.detail = strings.clone(it.id, allocator), strings.clone(it.title, allocator), strings.clone(it.detail, allocator)
 	c.icon, c.keys, c.group = strings.clone(it.icon, allocator), strings.clone(it.keys, allocator), strings.clone(it.group, allocator)
-	c.last, c.completion = strings.clone(it.last, allocator), strings.clone(it.completion, allocator)
+	c.last, c.completion, c.act = strings.clone(it.last, allocator), strings.clone(it.completion, allocator), strings.clone(it.act, allocator)
 	c.tags = make([]string, len(it.tags), allocator)
 	for t, k in it.tags { c.tags[k] = strings.clone(t, allocator) }
 	return c
@@ -148,20 +152,24 @@ Palette_Question :: struct {
 	query:  string,           // the query after the prefix; valid during `read`: a source that answers later copies it
 }
 
-// The meaning of Enter with a modifier for a source's items ("Open in a new tab"; "": what Enter does).
+// The meaning of Ctrl+Enter and Alt+Enter for a source's items ("Open in a new tab"; "": what Enter does). Shift+Enter
+// is go to in every source (Palette_Item.act).
 Palette_Alternates :: struct {
-	ctrl, alt, shift: string,
+	ctrl, alt: string,
 }
 
 // A choice: the source, the item's id, its index in the answer it came from (the commands source: its index in the
-// table, palette_chosen_command), the modifiers of the Enter ({} plain Enter or a click), and the query it was chosen
-// for, without its prefix (an alias typed: classeur's Alt+Enter).
+// table, palette_chosen_command), the modifiers of the Enter ({} plain Enter or a click), the query it was chosen for,
+// without its prefix (an alias typed: classeur's Alt+Enter), and a command's arguments given in its form.
 Palette_Choice :: struct {
-	source: ^Palette_Source,
-	id:     string,   // the palette's: valid until the next choice
-	index:  int,
-	mods:   platform.Modifiers,
-	query:  string,   // the palette's: valid until the next choice
+	source:    ^Palette_Source,
+	id:        string,     // the palette's: valid until the next choice
+	index:     int,
+	mods:      platform.Modifiers,
+	query:     string,     // the palette's: valid until the next choice
+	// a command's values (Command.arguments), in their order, as the settings file writes them (config.value_text):
+	// the palette's, valid until the next choice (nil: it takes none)
+	arguments: []string,
 }
 
 // A source of items. The program keeps it at a place that does not move while the palette has it (palette_add).
@@ -180,6 +188,13 @@ Palette_Source :: struct {
 	read:       proc(p: ^Command_Palette, src: ^Palette_Source, q: Palette_Question),
 	// the mark of an item now (a switch on, the model in use): called for the rows built only
 	mark:       proc(src: ^Palette_Source, id: string) -> bool,
+	// the value an item has now, at its row's right ("Nord", "300 ms"; "": none): called for the rows built only
+	value:      proc(src: ^Palette_Source, id: string) -> string,
+	// whether item `id`'s act name can be shown though no frame shows it (the settings, closed); with `go`, shows its
+	// place (go to then finds the element in a next build). nil: only what a frame shows is reached
+	reach:      proc(p: ^Command_Palette, src: ^Palette_Source, id: string, go: bool) -> bool,
+	// the run mode of its items that run (Palette_Item.runs): their control or their form (palette_run.odin)
+	runner:     ^Palette_Runner,
 	// what choosing an item does, run by palette_chosen; nil: the choice is the program's (palette_chosen returns it)
 	act:        proc(p: ^Command_Palette, src: ^Palette_Source, c: Palette_Choice),
 	// called at each build while the palette is open, before its version is read (a source that follows the views)
@@ -198,6 +213,15 @@ Command_Palette :: struct {
 	moves:    Palette_Moves,                   // the views' moves, beside the commands
 	recorder: Keymap_Recorder,                 // Ctrl+Enter on a command: its key recorded (keymap.odin)
 	memory:   ^Choice_Memory,                  // what the user chose: shared per file (palette_memory_open; nil: none yet)
+	run:      Palette_Run,                     // the run mode: an item's control or a command's form (palette_run.odin)
+	// the commands' forms: prefs_page's, which has the control table (palette_forms_use; none: a command with arguments
+	// is chosen without them)
+	forms:    Palette_Runner,
+	// the system's families for a form's Font_Family argument: read once, on a chore, kept as long as the palette (a
+	// run's own would be freed under its chore)
+	families: Font_Families,
+	// Shift+Enter on an item that can be reached: its source, id and act name (owned), gone to by palette_chosen
+	go:       struct { source: ^Palette_Source, id, act: string, due: bool },
 	// what a test reads: the questions asked, the rankings started, the answers and rankings dropped (another serial)
 	asks, rankings, dropped: int,
 
@@ -443,6 +467,7 @@ palette_open :: proc(p: ^Command_Palette, typed := "") {
 palette_is_open :: proc(p: ^Command_Palette) -> bool { return view_is_open(views(), PALETTE_VIEW, palette_instance(p)) }
 
 palette_close :: proc(p: ^Command_Palette) {
+	palette_run_close(p, true)   // (as Escape at each level: a value never kept is put back)
 	view_close(views(), PALETTE_VIEW, palette_instance(p))
 	palette_forget(p)
 	p.was_open = false
@@ -464,12 +489,21 @@ palette_keys :: proc(p: ^Command_Palette) -> bool {
 	return true
 }
 
-// The choice of the program's sources, taken once, in the build after it. Call it at each build: it runs the choices of
-// the toolkit's sources (a setting flips or shows its page, a view's move runs) and a command's Ctrl+Enter and Alt+Enter
-// (a key set, an alias made: keymap.odin), which return nothing; it opens the palette again when the recorder ended; and
-// it follows a close the palette did not make (Escape, a click outside), whose questions go stale.
+// The choice of the program's sources, taken once, in the build after it. Call it at each build, before the program's
+// content: it runs the choices of the toolkit's sources (a setting flips, a view's move runs), a command's Ctrl+Enter
+// and Alt+Enter (a key set, an alias made: keymap.odin) and Shift+Enter's go to, which return nothing; it makes the run
+// mode's writes (a value changed, kept, put back: palette_run.odin), so the program's content shows them in the same
+// frame as the palette; it opens the palette again when the recorder ended; and it follows a close the palette did not
+// make (Escape, a click outside), whose questions go stale and whose run mode puts its value back.
 palette_chosen :: proc(p: ^Command_Palette) -> (c: Palette_Choice, ok: bool) {
 	palette_follow_close(p)
+	palette_run_due(p)
+	if p.go.due {
+		p.go.due = false
+		if palette_source_index(p, p.go.source) >= 0 && !act_go(p.go.act) && p.go.source.reach != nil {
+			_ = p.go.source.reach(p, p.go.source, p.go.id, true)
+		}
+	}
 	if p.recorder.id != "" {
 		if _, ended := view_ended(views(), KEYMAP_RECORDER_VIEW, palette_instance(p)); ended {
 			text := strings.clone(p.recorder.text, context.temp_allocator)
@@ -556,8 +590,15 @@ palette_destroy :: proc(p: ^Command_Palette) {
 	for &st in p.states { palette_state_free(&st) }
 	delete(p.states)
 	delete(p.sources)
+	// (no value put back: the program may have let go of its registry first)
+	if p.run.level != .Closed && p.run.runner.close != nil { p.run.runner.close(p, &p.run) }
+	palette_run_strings_free(&p.run)
+	font_families_destroy(&p.families)
 	palette_commands_free(&p.commands)
 	keymap_recorder_free(&p.recorder)
+	delete(p.go.id)
+	delete(p.go.act)
+	palette_arguments_free(&p.chosen)
 	views_commands_destroy(&p.moves.vc)
 	choice_memory_release(p.memory)
 	if p.link != nil {
@@ -748,6 +789,7 @@ palette_follow_close :: proc(p: ^Command_Palette) {
 	if !view_is_open(views(), PALETTE_VIEW, palette_instance(p)) {
 		p.was_open = false
 		palette_forget(p)
+		palette_run_close(p, true)
 	}
 }
 
@@ -1128,15 +1170,32 @@ palette_choose :: proc(p: ^Command_Palette, v: ^View, i: int, mods: platform.Mod
 	it := snap.items[r.item]
 	src := snap.source
 	if palette_source_index(p, src) < 0 { return }
+	// (Shift+Enter: go to, when its place can be shown; else it is Enter)
+	mods := mods
+	if mods == {.Shift} {
+		if palette_reachable(p, src, it) {
+			delete(p.go.id); delete(p.go.act)
+			p.go = {source = src, id = strings.clone(it.id), act = strings.clone(it.act), due = true}
+			view_end(v, 0)
+			palette_forget(p)
+			p.was_open = false
+			return
+		}
+		mods = {}
+	}
+	// (Enter on an item that runs: its control or its form unfolds under it; the palette stays)
+	opens := mods == {} && it.runs && src.runner != nil
 	if snap.remember {
 		memory := palette_memory(p)
 		current := p.ranked.memory_version == memory.version
 		choice_note(memory, strings.concatenate({snap.name, ":", it.id}, context.temp_allocator))
-		// (a switch flipped, the palette open: its mark follows, the list is not ranked again for the choice)
-		if it.stays && current { p.ranked.memory_version = memory.version }
+		// (a switch flipped or a control unfolded, the palette open: the list is not ranked again for the choice)
+		if (it.stays || opens) && current { p.ranked.memory_version = memory.version }
 	}
+	if opens && palette_run_open(p, src, it) { return }
 	delete(p.chosen.id)
 	delete(p.chosen.query)
+	palette_arguments_free(&p.chosen)
 	p.chosen = {source = src, id = strings.clone(it.id), index = int(r.item), mods = mods, query = strings.clone(p.query)}
 	if src.act != nil { p.act_due = true } else { p.has_choice = true }
 	if !it.stays {
@@ -1144,6 +1203,36 @@ palette_choose :: proc(p: ^Command_Palette, v: ^View, i: int, mods: platform.Mod
 		palette_forget(p)
 		p.was_open = false
 	}
+}
+
+// Whether Shift+Enter goes to an item: it has an act name, and a frame of the program shows it or its source reaches it.
+@(private = "file")
+palette_reachable :: proc(p: ^Command_Palette, src: ^Palette_Source, it: Palette_Item) -> bool {
+	if it.act == "" || it.disabled { return false }
+	return act_shown(it.act) || (src.reach != nil && src.reach(p, src, it.id, false))
+}
+
+@(private = "file")
+palette_arguments_free :: proc(c: ^Palette_Choice) {
+	for a in c.arguments { delete(a) }
+	delete(c.arguments)
+	c.arguments = nil
+}
+
+// (palette_run_due) A form's last argument kept: its command chosen with the values (owned: the choice's now), the
+// palette closed.
+@(private)
+palette_form_chosen :: proc(p: ^Command_Palette, src: ^Palette_Source, id: string, values: []string) {
+	index := -1
+	if src == &p.commands.source { index = p.commands.index[id] or_else -1 }
+	delete(p.chosen.id)
+	delete(p.chosen.query)
+	palette_arguments_free(&p.chosen)
+	p.chosen = {source = src, id = strings.clone(id), index = index, query = strings.clone(p.query), arguments = values}
+	if src.act != nil { p.act_due = true } else { p.has_choice = true }
+	view_close(views(), PALETTE_VIEW, palette_instance(p))
+	palette_forget(p)
+	p.was_open = false
 }
 
 // The palette's view: the search band, the list, the hint row. The keys are read before the field; the query is read
@@ -1166,7 +1255,14 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 	n := palette_row_count(p)
 	row_h := math.round(dense(em * PALETTE_ROW_EM))
 	heading_h := em * PALETTE_HEADING_EM
-	if n > 0 {
+	palette_run_follow(p)
+	run := p.run.level != .Closed
+	run_keys: Palette_Run_Keys
+	if run {
+		// (the run mode's keys, before the field: Enter and Escape are the palette's, the moves the control's)
+		// (a page of the control: the palette's height less its field, its run row and its foot)
+		run_keys = palette_run_keys(p, max(int(gs().modal_stack[len(gs().modal_stack) - 1].wh.y / row_h) - 5, 1))
+	} else if n > 0 {
 		page := max(int(palette_list_h(p) / row_h), 1)
 		// (the palette's own keys, read before its field is built)
 		if key_press_any(.Down) { palette_sel_move(p, 1, true) }
@@ -1174,7 +1270,7 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 		if key_press_any(.Page_Down) { palette_sel_move(p, page, false) }
 		if key_press_any(.Page_Up) { palette_sel_move(p, -page, false) }
 	}
-	if key_press_any(.Tab) {
+	if !run && key_press_any(.Tab) {
 		if src, _, ok := palette_selected(p); ok && src != nil {
 			r := p.shown.rows[p.sel]
 			if c := p.shown.snaps[r.snap].items[r.item].completion; c != "" { line_edit_set(&p.field, c) }
@@ -1191,20 +1287,26 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 	// (a source that reads, not the ranking: that one comes in a frame, and the count would flicker at each key)
 	reading := false
 	for st in p.states { if st.reading { reading = true } }
-	res := search_band("palette_top", &p.field, {count = n, busy = reading})
-	if p.fresh { set_focus(res.box.key); p.fresh = false }
-	if res.cancelled {   // (Escape in the field: the field takes it before the dialog)
+	band := Search_Band_Options{count = n, busy = reading}
+	if run { band = {} }   // (the field is the control's: its filter or the value's text)
+	res := search_band("palette_top", &p.field, band)
+	// (in the run mode the field keeps the keyboard: a click on the control does not take Enter and Escape from it)
+	if p.fresh || (run && focus_key() != res.box.key && !hotkey_recording() && gs().active_key[.Left] == 0) {
+		set_focus(res.box.key)
+		p.fresh = false
+	}
+	if res.cancelled && !run {   // (Escape in the field: the field takes it before the dialog)
 		view_end(v, VIEW_CANCELLED)
 		palette_forget(p)
 		p.was_open = false
 		return
 	}
 	enter: Maybe(platform.Modifiers)
-	if res.committed { enter = platform.Modifiers{} }
-	// (Enter with a modifier: the source's alternate)
-	for m in ([]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}) { if key_press_any(.Return, m) { enter = m } }
-	// The query after the field: the questions and the ranking it needs.
-	if text := line_edit_string(&p.field); text != p.text || !p.ranked.valid {
+	if res.committed && !run { enter = platform.Modifiers{} }
+	// (Enter with a modifier: the source's alternate, or go to)
+	if !run { for m in ([]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}) { if key_press_any(.Return, m) { enter = m } } }
+	// The query after the field: the questions and the ranking it needs (in the run mode the field is not the query).
+	if text := line_edit_string(&p.field); !run && (text != p.text || !p.ranked.valid) {
 		delete(p.text)
 		p.text = strings.clone(text)
 		p.prefix, p.query = palette_parse(p, p.text)
@@ -1226,6 +1328,12 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 	avail := max(inner - top_h - gap_h - foot_h, 0)
 	rest := avail >= row_h ? avail - math.floor(avail / row_h) * row_h : 0
 	clicked, hovered := -1, -1
+	if run {
+		// (its row, then its control in the list's room: the palette keeps its height)
+		next({width = fill(), height = px(avail), axis = .Y})
+		if column(id = "###palette_run") { palette_run_build(p, run_keys, row_h, avail) }
+		rest = 0
+	} else {
 	next({width = fill(), height = fill()})
 	if scroll_y("###palette_list") {
 		lb := parent_box()
@@ -1259,6 +1367,7 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 		}
 		if below > 0 { spacer(px(below)) }
 		if n > 0 { palette_quiet_rows(p, row_h) }
+	}
 	}
 	spacer(px(rest))
 	if !chooser { palette_hint_row(p, foot_h) } else { spacer(px(foot_h)) }
@@ -1319,6 +1428,16 @@ palette_row_build :: proc(p: ^Command_Palette, snap: ^Palette_Snapshot, it: Pale
 				spacer(px(em * 0.6))
 			}
 		}
+		// (the value in use, read for the rows built only, as the mark)
+		if src := snap.source; src.value != nil {
+			if value := src.value(src, it.id); value != "" {
+				if tags("weak") {
+					next({width = text_size(), height = pct(1), text_pad = 0})
+					label(fmt.tprintf("%s###v", value))
+					spacer(px(em * 0.6))
+				}
+			}
+		}
 		if src := snap.source; src.mark != nil && src.mark(src, it.id) {
 			next({width = px(em * 1.4), height = pct(1), font = widget_icons(), font_size = em * 0.9, text_align = .Center, text_pad = 0})
 			build_box({.Draw_Text, .No_Text_Trunc}, ICON_CHECK + "###m")
@@ -1367,7 +1486,8 @@ palette_hint_row :: proc(p: ^Command_Palette, foot_h: f32) {
 	if row(.Center, {.Draw_Side_Top}, "###palette_foot") {
 		spacer(px(em * 0.7))
 		for x in Palette_Prefix {
-			if x == .None || (p.prefix != .None && x != p.prefix) { continue }
+			// (none in the run mode: the field is the control's, a prefix typed there means nothing)
+			if x == .None || p.run.level != .Closed || (p.prefix != .None && x != p.prefix) { continue }
 			name := palette_prefix_title(p, x)
 			if name == "" { continue }
 			text := fmt.tprintf("%c %s", rune(palette_prefix_char(x)), i18n.tr(name))
@@ -1381,13 +1501,22 @@ palette_hint_row :: proc(p: ^Command_Palette, foot_h: f32) {
 			}
 		}
 		spacer(fill())
-		if src, _, ok := palette_selected(p); ok && src != nil {
+		if p.run.level != .Closed {
+			if tags("weak") {
+				next({width = text_size(), height = pct(1), font_size = em * 0.85})
+				label(fmt.tprintf("%s###palette_keys", palette_run_hints(p)))
+			}
+		} else if src, _, ok := palette_selected(p); ok && src != nil {
+			r := p.shown.rows[p.sel]
+			it := p.shown.snaps[r.snap].items[r.item]
 			enter := src.enter != "" ? src.enter : i18n.later("Choose")
 			parts := make([dynamic]string, context.temp_allocator)
 			append(&parts, fmt.tprintf("%s %s", chord_text({.Return, {}}), i18n.tr(enter)))
-			alts := [3]string{src.alternates.ctrl, src.alternates.alt, src.alternates.shift}
-			mods := [3]platform.Modifiers{{.Ctrl}, {.Alt}, {.Shift}}
+			alts := [2]string{src.alternates.ctrl, src.alternates.alt}
+			mods := [2]platform.Modifiers{{.Ctrl}, {.Alt}}
 			for a, i in alts { if a != "" { append(&parts, fmt.tprintf("%s %s", chord_text({.Return, mods[i]}), i18n.tr(a))) } }
+			// (go to, only for an item whose place can be shown)
+			if palette_reachable(p, src, it) { append(&parts, fmt.tprintf("%s %s", chord_text({.Return, {.Shift}}), i18n.tr("Go to"))) }
 			if tags("weak") {
 				next({width = text_size(), height = pct(1), font_size = em * 0.85})
 				label(fmt.tprintf("%s###palette_keys", strings.join(parts[:], "   ", context.temp_allocator)))

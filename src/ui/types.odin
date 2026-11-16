@@ -487,6 +487,11 @@ State :: struct {
 	keys_behind_dialogs: bool,       // set_keys_behind_dialogs: keys reach code outside an open dialog
 	keys_claim:      Keys_Claim,     // keys_claim of the last build: the chords the widget with the keyboard keeps
 	keys_claim_next: Keys_Claim,     // and of this one
+	// the act names of the last frame (act_name: a name's hash -> its box's key), those of the frame being built, and
+	// the box go to lights (acts.odin)
+	acts:            map[u64]Key,
+	acts_next:       map[u64]Key,
+	act_light:       Act_Light,
 	keymap:          ^Keymap,        // keymap_use: the person's keys, the program's (nil: the commands' own keys only)
 	// A sequence's first chord, pressed in this window, and when it lapses: the next key press completes the sequence or
 	// ends it (keymap.odin). `key_second`: that press, taken out of the events at the build's start

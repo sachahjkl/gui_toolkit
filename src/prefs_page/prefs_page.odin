@@ -812,6 +812,8 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 	p.rule_before = true
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = fmt.tprintf("###set_%s", name)) {
+		// (its act name: the palette's Shift+Enter goes to this line, src/md/features/everything-palette.md)
+		ui.act_name(ui.parent_box(), fmt.tprintf("setting:%s", name))
 		// (a line of a list: ROW_PAD above its words and under them, the carved line between two)
 		ui.space(ui.ROW_PAD)
 		under := false   // the control goes under the words (a wide choice, the program's own)

@@ -5,6 +5,7 @@ package ui
 
 import "core:fmt"
 import "core:strings"
+import config "../config"
 import i18n "../i18n"
 
 // What the commands source takes beside the table. A command's id is its key in the usage memory ("command:<id>"); its
@@ -14,9 +15,9 @@ Palette_Commands_Options :: struct {
 	// keys, what can act). 0: neither changes in place; the palette knows them by their addresses. A change of the keymap
 	// needs none: the source follows its version
 	version:    u64,
-	// what Shift+Enter does with a command ("": what Enter does): a literal, or as long-lived as the palette. Ctrl+Enter
-	// and Alt+Enter are the toolkit's in every program (with a keymap: set a key, make the letters an alias)
-	shift:      string,
+	// the values a String argument without its own choices may take, and their labels (English, i18n.later), for
+	// command `index` (Command.arguments); nil, nil: a free field. Read when its form opens
+	choices:    proc(user: rawptr, index: int, argument: string) -> (labels, values: []string),
 	// each command's detail, by index ("Session · Fix the build": what it acts on), weak after its title; part of
 	// `version` (a new detail, a new version). Shown, not searched: a detail shared by many commands would find them all
 	details:    []string,
@@ -37,6 +38,7 @@ Palette_Commands :: struct {
 	count:    int,
 	made:     bool,
 	checked:  proc(user: rawptr, index: int) -> bool,
+	choices:  proc(user: rawptr, index: int, argument: string) -> (labels, values: []string),
 	user:     rawptr,
 	index:    map[string]int,   // a command's index by its id: the mark's and the alias's lookup
 	// the keymap of the window it was given in (keymap_use) and its version when the items were made: the keys shown,
@@ -73,10 +75,12 @@ palette_commands :: proc(p: ^Command_Palette, table: []Command, disabled: []bool
 	}
 	c.table = table
 	km := state_keymap()   // (nil before any window: a program may fill its palette first; a later call reads it)
-	c.source.alternates = {shift = o.shift}
+	c.source.alternates = {}
 	if km != nil { c.source.alternates.ctrl, c.source.alternates.alt = i18n.later("Set a key"), i18n.later("Make the letters its alias") }
 	c.source.user = p
-	c.checked, c.user = o.checked, o.user   // (read at each build: no version)
+	// (a command with arguments opens its form with the forms runner: prefs_page's, which has the control table)
+	c.source.runner = p.forms.open != nil ? &p.forms : nil
+	c.checked, c.choices, c.user = o.checked, o.choices, o.user   // (read at each build or each form: no version)
 	keymap_version := km != nil ? km.version : 0
 	addresses := [3]rawptr{raw_data(table), raw_data(disabled), raw_data(o.details)}
 	if c.made && o.version == c.version && len(table) == c.count && len(disabled) == len(c.disabled) && km == c.keymap &&
@@ -91,6 +95,23 @@ palette_commands :: proc(p: ^Command_Palette, table: []Command, disabled: []bool
 	clear(&c.index)
 	for cmd, i in table { c.index[cmd.id] = i }
 	c.source.version += 1
+}
+
+// The arguments of the command `id` of the commands source, and its index in the table (-1, nil: none): what a forms
+// runner opens (prefs_page.palette_forms_use).
+palette_command_arguments :: proc(p: ^Command_Palette, id: string) -> (index: int, arguments: []config.Def) {
+	c := &p.commands
+	i, ok := c.index[id]
+	if !ok || i >= len(c.table) { return -1, nil }
+	return i, c.table[i].arguments
+}
+
+// The choices the program gives a String argument of command `index` (Palette_Commands_Options.choices): their labels
+// (English) and values; nil, nil: none.
+palette_command_choices :: proc(p: ^Command_Palette, index: int, argument: string) -> (labels, values: []string) {
+	c := &p.commands
+	if c.choices == nil { return nil, nil }
+	return c.choices(c.user, index, argument)
 }
 
 // The command an alias typed whole names, by its index in the table (-1: none). The query is the palette's, its prefix
@@ -185,7 +206,8 @@ palette_commands_read :: proc(p: ^Command_Palette, src: ^Palette_Source, q: Pale
 		detail := i < len(c.details) ? c.details[i] : ""
 		it := Palette_Item{
 			id = cmd.id, title = label, detail = detail, group = group, tags = tags, icon = cmd.icon, keys = keys_first_text(c.keymap, cmd),
-			disabled = i < len(c.disabled) && c.disabled[i], stays = cmd.toggle,
+			disabled = i < len(c.disabled) && c.disabled[i], stays = cmd.toggle, runs = len(cmd.arguments) > 0,
+			act = cmd.id != "" ? fmt.tprintf("command:%s", cmd.id) : "",
 		}
 		a.items[i] = palette_item_clone(it, al)
 	}
