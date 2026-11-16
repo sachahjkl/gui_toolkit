@@ -54,7 +54,13 @@ text on its accent (`accent_text`; 0 picks the darkest step or the brightest tex
 | `finish_of(name)`, `FINISH_NAMES` | the finishes by name: "flat", "gradient", "glass", "machined", "edged" |
 
 The palette takes, from a version: `bg` = bg0, `bar` = bg1, `panel` = bg2, `panel2` = bg3, `border` = line,
-`well` = well, `weak` and `text`, `accent`, `good` = green, `warn` = yellow, `bad` = red.
+`well` = well, `faint`, `weak`, `text` and `bright`, `accent`, `good` = green, `warn` = yellow, `bad` = red.
+
+The texts are entries a program asks by name: `"text"`, `"weak text"`, `"faint text"` (a hint, a line number; a palette
+without one takes weak `FAINT_STEP` toward the page), `"soft text"` (a quiet text: weak `SOFT_STEP` toward text: code,
+a tool's output) and `"bright text"` (a title, what is selected; without one, white on dark, black on light).
+`theme_color(name)` reads any entry of the theme shown whatever tags are pushed: a custom draw, a colour computed
+outside a build, as `hue(h)` does for the hues.
 
 ## A program's own colours in any theme
 
@@ -63,6 +69,9 @@ a colour `c` of the reference to the theme shown. A grey goes to the same place 
 to the shown theme's hue nearest to it, mixed with the shown theme's grey as much as it was with the reference's. The
 alpha stays. `theme_reference(colors)` makes the reference from its colours; a program can set `levels` itself when its
 greys stand elsewhere. Cache the results: a program asks for the same few colours every frame.
+
+`with_alpha(c, a)` is `c` with its alpha times `a`; `lighten(c, t)` and `darken(c, t)` move `c` a share `t` toward
+white or black in sRGB steps (`srgb_step`), its alpha kept: the toolkit's own tints, for a program's too.
 
 ## A user's themes
 
@@ -128,7 +137,8 @@ dock panel). A frame its program draws itself gives the box its radius, so that 
 
 A box gets the machined drawing from its flags and its theme: `.Groove` is a groove (`hline`); `.Sunken` with a
 background is a well (`line_edit`, `text_edit`, `input_frame`, the track of `segmented`; a clear background sits in a
-well, as a bare field does); `.Plate` with an opaque background is a raised panel (`card`, `modal`, menus, tooltips); an
+well, as a bare field does); `.Plate` with an opaque background is a raised panel (`card`, `modal`, menus, tooltips), or
+with its own look (`Box.plate`, a `Plate_Look`: `card`'s options) in every finish, its background whatever it is; an
 opaque background with a sheen is raised (bevelled when it is `.Clickable`). An accent fill a widget paints itself
 (`paint_rect`) is a lit face, as in `Gradient` but a little stronger.
 
@@ -140,7 +150,7 @@ these two its flat form, so one call serves every finish (`machined()`: the reli
 | `machined_bevel(dc, r, radius, face, hot, pressed, glow)` | a raised face; `glow`: a halo under the pointer |
 | `machined_well(dc, r, radius, base, focus, accent, hot)` | a sunken surface, its focus a ring of `accent`; `hot` under the pointer: its face lifts a step, its lit rim brightens |
 | `machined_groove(dc, a, b, vertical)` | a carved line |
-| `machined_plate(dc, r, radius, top, bottom, shadow, rim, border, glow)` | a raised panel: cards, popovers; `border` zero (the default): the relief's edge, another colour of alpha 0: none |
+| `machined_plate(dc, r, radius, top, bottom, shadow, rim, border, glow)` | a raised panel: cards, popovers; `border` a `Maybe(Color)`: nil (the default) the relief's edge, a colour of alpha 0 (`Color{}` included) none |
 | `machined_lamp(dc, c, d, color, lit, glow)` | a status lamp: a glass bead and its halo |
 | `machined_pip(dc, c, d, color)` | a small hole with a dab of colour: what is over |
 | `relief_face(dc, r, color, radius)` | a face of colour lit along its top, shaded along its bottom (a tile, a part of a bar) |

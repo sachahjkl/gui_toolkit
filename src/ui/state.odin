@@ -117,6 +117,7 @@ destroy :: proc(s: ^State) {
 	delete(s.modals_built)
 	delete(s.list_stack)
 	delete(s.strip_stack)
+	delete(s.card_stack)
 	delete(s.strips)
 	delete(s.radios)
 	delete(s.radios_last)
@@ -221,7 +222,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.metrics.lazy_built = 0
 	selection_snapshot(s)
 	// what the last build's boxes hold of its arena goes with it: a box looked up during this build has none
-	for _, b in s.boxes { b.text, b.name, b.a11y, b.custom_user = "", "", nil, nil }
+	for _, b in s.boxes { b.text, b.name, b.a11y, b.custom_user, b.plate = "", "", nil, nil, nil }
 	virtual.arena_free_all(&s.arena)
 	clear(&s.parent_stack); clear(&s.style_stack); clear(&s.tag_stack); clear(&s.tag_marks); clear(&s.tag_keys)
 	clear(&s.tag_bases); s.tag_base = 0
@@ -343,6 +344,7 @@ end_build :: proc() {
 	assert(len(s.views_space_stack) == 0, "ui: unbalanced views_frame or views_dock")
 	assert(len(s.list_stack) == 0, "ui: unbalanced list scopes")
 	assert(len(s.strip_stack) == 0, "ui: unbalanced strip scopes")
+	assert(len(s.card_stack) == 0, "ui: unbalanced card scopes")
 	assert(len(s.menu_build) == 0, "ui: unbalanced menu scopes")
 
 	views_build(s)   // (the views shown as dialogs, the file browser among them: over the page, under the toasts and the menus)
@@ -622,6 +624,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.slant = {}
 	b.hit_outset = 0
 	b.gap_step = 0
+	b.plate = nil
 	b.a11y = nil
 	if s.a11y.has_next {
 		b.a11y = new_clone(s.a11y.next, frame_allocator())

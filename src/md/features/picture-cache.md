@@ -28,6 +28,10 @@ icons; the toolkit's replaces them.
   waits: what is on the screen stays, even over the budget.
 - **Textures are destroyed between frames.** `forget` and eviction destroy a texture in `frame`, never during a build: a
   texture drawn in the frame being built stays valid until its draw ends.
+- **The file made on the chores.** A program often holds a picture as text (base64 in JSON, a data URL). `get`'s
+  `prepare` turns it into the file on the worker, before the decode: base64 of a screenshot of several MiB takes
+  milliseconds, and the interface's thread must not spend them. It is per ask, not per cache: the caller knows each
+  picture's encoding.
 - **A serial per ask.** A picture forgotten and asked again while its old decode runs gets a new serial. The old answer
   finds another serial and is dropped: the caller's new bytes win.
 - **A failed picture stays failed.** It keeps its `why` and is not decoded again each frame. `forget` clears it.

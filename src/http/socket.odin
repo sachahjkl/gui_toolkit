@@ -23,7 +23,8 @@ Message :: struct {
 // (Socket: the system's own struct, in socket_linux.odin, socket_windows.odin and socket_other.odin)
 
 // A WebSocket to `url` (ws:// or wss://). `req.headers` go with the handshake (Authorization); `req.timeout` bounds the
-// handshake (0: TIMEOUT); `req.max_bytes` bounds one message (0: MAX_BYTES). No redirect is followed.
+// handshake (0: TIMEOUT), `req.connect_timeout` its connection; `req.max_bytes` bounds one message (0: MAX_BYTES).
+// `req.compressed` does nothing here (a handshake has no body; frames are not compressed). No redirect is followed.
 ws_connect :: proc(url: string, req := Request{}) -> (s: ^Socket, err: Error) {
 	// (url_parse knows http and https: the same address with the scheme of its handshake)
 	http_url: string
@@ -36,6 +37,7 @@ ws_connect :: proc(url: string, req := Request{}) -> (s: ^Socket, err: Error) {
 	r := req
 	if r.max_bytes <= 0 { r.max_bytes = MAX_BYTES }
 	if r.timeout <= 0 { r.timeout = TIMEOUT }
+	r.compressed = false   // (the handshake's request is the stream's job on Windows: it must not ask for a coding)
 	return ws_connect_system(url, http_url, r)
 }
 

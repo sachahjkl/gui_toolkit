@@ -54,6 +54,15 @@ client now uses this package; opencode native can drop ureq and tungstenite for 
   is larger than `max_bytes` is refused before its bytes come: `.Too_Large`.
 - **A refused upgrade is `Refused`.** A server that answers but not with 101 (401, 404), or with a wrong
   `Sec-WebSocket-Accept`, is told apart from one that cannot be reached.
+- **The connection has a bound of its own (`Request.connect_timeout`), for a request, a stream and a socket.** A
+  program that probes a server (opencode native, at its start) must learn in a second that nothing answers, while the
+  request, once connected, may take minutes. 0 keeps `timeout` as the bound (libcurl's own is 300 s, WinHTTP's 60 s with
+  no bound on the name's lookup): WinHTTP's lookup bound is set with its connection's, as libcurl's bound covers both.
+- **A compressed answer is the system client's work (`Request.compressed`).** libcurl (`CURLOPT_ACCEPT_ENCODING`) and
+  WinHTTP (`WINHTTP_OPTION_DECOMPRESSION`) decode as the bytes come, so a stream is decoded event by event and
+  `max_bytes` counts decoded bytes. Both ask for `gzip, deflate`, what WinHTTP decodes: the two systems ask a server the
+  same. Refused: our `gt:flate` over the body (a second copy, and a stream would need its own inflater per read). A
+  socket ignores it: the handshake has no body.
 
 ## Refused alternatives
 

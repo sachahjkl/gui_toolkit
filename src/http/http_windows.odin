@@ -5,6 +5,7 @@ package tk_http
 // a POST becomes a GET on 301, 302 and 303, as browsers do).
 
 import "core:strings"
+import "core:time"
 import win "core:sys/windows"
 
 foreign import winhttp "system:Winhttp.lib"
@@ -36,6 +37,9 @@ foreign winhttp {
 @(private) WINHTTP_ADDREQ_FLAG_ADD             :: 0x2000_0000
 @(private) WINHTTP_ADDREQ_FLAG_REPLACE         :: 0x8000_0000
 @(private) WINHTTP_NO_LENGTH                   :: 0xFFFF_FFFF   // (the header's string ends with a 0)
+@(private) WINHTTP_OPTION_DECOMPRESSION        :: 118
+@(private) WINHTTP_DECOMPRESSION_FLAG_GZIP     :: 0x1
+@(private) WINHTTP_DECOMPRESSION_FLAG_DEFLATE  :: 0x2
 
 request_system :: proc(method, url: string, req: Request, allocator := context.allocator) -> (res: Response, err: Error) {
 	u, _ := url_parse(url)
@@ -44,14 +48,14 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	session := WinHttpOpen(win.utf8_to_wstring(agent), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nil, nil, 0)
 	if session == nil { return {}, .Unreachable }
 	defer WinHttpCloseHandle(session)
-	ms := i32(min(req.timeout / 1_000_000, 0x7FFF_FFFF))
-	WinHttpSetTimeouts(session, ms, ms, ms, ms)
+	winhttp_timeouts(session, req)
 	conn := WinHttpConnect(session, win.utf8_to_wstring(u.host), u16(u.port), 0)
 	if conn == nil { return {}, .Unreachable }
 	defer WinHttpCloseHandle(conn)
 	h := WinHttpOpenRequest(conn, win.utf8_to_wstring(method), win.utf8_to_wstring(u.path), nil, nil, nil, u.secure ? WINHTTP_FLAG_SECURE : 0)
 	if h == nil { return {}, .Unreachable }
 	defer WinHttpCloseHandle(h)
+	winhttp_compression(h, req)
 	for hd in req.headers {
 		// (ADD | REPLACE: the caller's value wins over WinHTTP's own, the User-Agent included)
 		line := win.utf8_to_wstring(strings.concatenate({hd.name, ": ", hd.value}, context.temp_allocator))
@@ -83,6 +87,24 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	res.url = query_text(h, WINHTTP_OPTION_URL, true, allocator)
 	if res.url == "" { res.url = strings.clone(url, allocator) }
 	return res, .None
+}
+
+// A session's time limits: the name's lookup and the connection connect_bound's, the sends and the receives `timeout`'s.
+// (WinHTTP's own lookup has no limit: an unanswered DNS server held a request for ever)
+@(private)
+winhttp_timeouts :: proc(session: HINTERNET, req: Request) {
+	ms := i32(min(req.timeout / time.Millisecond, 0x7FFF_FFFF))
+	connect := i32(min(connect_bound(req) / time.Millisecond, 0x7FFF_FFFF))
+	WinHttpSetTimeouts(session, connect, connect, ms, ms)
+}
+
+// A compressed answer asked (Request.compressed): WinHTTP sends Accept-Encoding and decodes the body as it is read. A
+// system before Windows 8.1 has no such option: the request then asks for no compression and gets none.
+@(private)
+winhttp_compression :: proc(request: HINTERNET, req: Request) {
+	if !req.compressed { return }
+	flags := u32(WINHTTP_DECOMPRESSION_FLAG_GZIP | WINHTTP_DECOMPRESSION_FLAG_DEFLATE)
+	WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION, &flags, size_of(flags))
 }
 
 // A text WinHTTP gives in UTF-16, asked twice: once for its size in bytes, once for it. option: WinHttpQueryOption's,

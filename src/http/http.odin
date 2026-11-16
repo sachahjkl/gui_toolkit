@@ -21,13 +21,23 @@ Header :: struct {
 	name, value: string,
 }
 
-// What a request may take. The zero value: MAX_BYTES, TIMEOUT, no User-Agent of its own, no header, no body.
+// What a request may take. The zero value: MAX_BYTES, TIMEOUT, no User-Agent of its own, no header, no body, no
+// compression, no bound of its own on the connection.
 Request :: struct {
-	max_bytes:  int,             // the largest body of the answer (0: MAX_BYTES); a larger one is Too_Large
+	max_bytes:  int,             // the largest body of the answer, decoded (0: MAX_BYTES); a larger one is Too_Large
 	user_agent: string,          // "": the client's own
 	timeout:    time.Duration,   // the whole request, redirects and body included (0: TIMEOUT)
+	connect_timeout: time.Duration,   // the name's lookup and the connection, each time one is made (0: only `timeout` bounds them)
+	compressed: bool,            // asks for a compressed answer (Accept-Encoding: gzip, deflate) and gives its body decoded; not a WebSocket's
 	headers:    []Header,        // sent as given; a Content-Type here says what the body is (none is added)
 	body:       []u8,            // nil: none (POST, PUT and PATCH send an empty one)
+}
+
+// The bound of a connection: connect_timeout, else `timeout` (a request's whole time, a stream's silence, a socket's
+// handshake), as the system's own bound is minutes long (libcurl: 300 s; WinHTTP: 60 s, and none on the name's lookup).
+@(private)
+connect_bound :: proc(req: Request) -> time.Duration {
+	return req.connect_timeout > 0 ? req.connect_timeout : req.timeout
 }
 
 // The last answer, after the redirects. Its fields are allocated with the request's allocator: response_destroy frees them.
@@ -38,6 +48,9 @@ Response :: struct {
 	url:         string,     // the address that answered (the request's, or the last redirect's)
 	header_text: string,     // the answer's header lines, as received
 }
+
+// The encodings a compressed request asks for (Request.compressed): those both systems' clients decode.
+ACCEPT_ENCODING :: "gzip, deflate"
 
 MAX_BYTES     :: 64 << 20
 TIMEOUT       :: 5 * time.Minute

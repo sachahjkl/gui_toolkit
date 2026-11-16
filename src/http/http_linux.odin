@@ -44,6 +44,7 @@ Curl :: struct {
 @(private) CURLOPT_MAXREDIRS          :: 68
 @(private) CURLOPT_NOSIGNAL           :: 99
 @(private) CURLOPT_TIMEOUT_MS         :: 155
+@(private) CURLOPT_ACCEPT_ENCODING    :: 10102
 @(private) CURLOPT_PROTOCOLS_STR      :: 10318
 @(private) CURLOPT_REDIR_PROTOCOLS_STR :: 10319
 @(private) CURLINFO_EFFECTIVE_URL     :: 0x100001
@@ -138,6 +139,8 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	c.easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, cstring("http,https"))
 	c.easy_setopt(h, CURLOPT_NOSIGNAL, i64(1))   // (a thread of its own: no SIGALRM for the name lookup's time limit)
 	c.easy_setopt(h, CURLOPT_TIMEOUT_MS, i64(req.timeout / 1_000_000))
+	c.easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, i64(connect_bound(req) / time.Millisecond))
+	curl_compression(h, req)
 	c.easy_setopt(h, CURLOPT_WRITEFUNCTION, on_write)
 	c.easy_setopt(h, CURLOPT_WRITEDATA, rawptr(&sink))
 	c.easy_setopt(h, CURLOPT_HEADERFUNCTION, on_header)
@@ -197,6 +200,14 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	res.header_text = strings.clone(string(sink.head[:]), allocator)
 	res.headers = headers_parse(res.header_text, allocator)
 	return res, .None
+}
+
+// A compressed answer asked: libcurl sends Accept-Encoding and gives the write callback the decoded bytes (so max_bytes
+// bounds what is decoded, not what came). The encodings named, not "" (all libcurl has): WinHTTP decodes these two only,
+// and both systems then ask the server the same.
+@(private)
+curl_compression :: proc(h: rawptr, req: Request) {
+	if req.compressed { curl_lib.easy_setopt(h, CURLOPT_ACCEPT_ENCODING, cstring(ACCEPT_ENCODING)) }
 }
 
 // The headers as libcurl's list ("Name: value"); nil and true for none. !ok: libcurl had no memory.
@@ -280,7 +291,8 @@ events_system :: proc(url: string, req: Request, parser: ^Event_Parser, on_event
 	c.easy_setopt(h, CURLOPT_PROTOCOLS_STR, cstring("http,https"))
 	c.easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, cstring("http,https"))
 	c.easy_setopt(h, CURLOPT_NOSIGNAL, i64(1))
-	c.easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, i64(req.timeout / time.Millisecond))
+	c.easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, i64(connect_bound(req) / time.Millisecond))
+	curl_compression(h, req)
 	c.easy_setopt(h, CURLOPT_WRITEFUNCTION, on_stream_write)
 	c.easy_setopt(h, CURLOPT_WRITEDATA, rawptr(&sink))
 	c.easy_setopt(h, CURLOPT_HEADERFUNCTION, on_stream_header)

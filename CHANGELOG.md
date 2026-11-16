@@ -5,6 +5,79 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.286.1] - 2026-11-15 23:52
+
+### Fixed
+- **Each group once in the keyboard shortcuts**: a program whose commands alternate between groups no longer shows a group's heading twice; its commands stand together where its first one is.
+
+## [0.286.0] - 2026-11-15 23:44
+
+### Added
+- **`ui.shortcuts_sheet_set(sheet, commands, version, extra)`**: gives the sheet of the keys a new table and new extra lines without opening or closing it, so a program that makes its table again in another language no longer reopens the sheet.
+- **`ui.card_box()`**: inside a `card` or a `list_card` (a row of it too), the box of the innermost card, to give it the keyboard or read its rect; nil outside a card. It replaces `parent_box().parent.parent`, which counted the card's inner boxes.
+
+### Changed
+- **The sheet names an extra line's keys in the person's language**: `Sheet_Line.keys` is written in English as a table's keys (`"Esc, Esc"`, `"Up / Down"`) and reads as a command's keys do (`"Échap, Échap"`, `"Haut / Bas"` in French); a word that names no key (`"Middle click"`) stays as written. `platform.key_text` reads ` / ` between two keys as it reads a comma.
+- **A card can ask for no edge**: `Plate_Look.border` and the `border` of `machined_plate`, `machined_plate_corners`, `machined_plate_frame` and `machined_plate_frame_corners` are a `Maybe(Color)`: nil is the finish's edge, a colour of alpha 0 (`Color{}` included) is none. Migration: a look that left `border` zero for the finish's edge leaves it unset; a call that passed `Color{}` for the relief's edge passes nothing.
+
+## [0.285.0] - 2026-11-15 23:19
+
+### Added
+- **Faint, soft and bright text in every theme**: besides text and weak text, a program asks the theme for `faint text` (a hint, a line number), `soft text` (code, a tool's output) and `bright text` (a title, what is selected), and `ui.theme_color(name)` reads any colour of the theme shown, so a program keeps no colours of its own.
+- **`gt:http`: compressed answers and a bound on the connection**: `Request.compressed` asks for gzip or deflate and gives the body decoded (`max_bytes` counts decoded bytes), for a request and an event stream; `Request.connect_timeout` bounds the name's lookup and the connection of a request, a stream and a socket (0: `timeout`).
+- **The sheet of the keys lists keys that are no command**: `shortcuts_sheet_open`'s `extra` takes `Sheet_Line{group, keys, label}` (Up and Down in a history, a middle click), each after the last command of its group, or under its own heading; its keys are shown as written.
+- **`ui.card` with its own look**: `ui.card(title, icon, id, o)` and `ui.list_card(id, o)` take `Card_Options` (a radius, and a `Plate_Look`: a face from a top colour to a bottom one, an edge, a rim, a shadow; a zero field is the theme's), in every finish; `id` sets the box of a card without a title. A `.Plate` box takes a look through `Box.plate`.
+
+## [0.284.0] - 2026-11-15 22:42
+
+### Added
+- **A program's move of its folders can leave one kind where it is**: `platform.user_dirs_move` takes `kinds`, so a program whose older install lived in its data folder keeps that install, its menu entry and its updater working.
+
+## [0.283.0] - 2026-11-15 22:32
+
+### Added
+- **A picture held as text, decoded off the interface**: `pictures.get` takes a `prepare` that makes the picture file from what the program holds (base64, a data URL) on the chores, before the decode, so the interface never spends the time.
+
+## [0.282.0] - 2026-11-15 20:59
+
+### Added
+- **An exploded 3D view.** `ui.set_exploded` (Ctrl+Alt+Shift+E in a build with the devtools) draws the window's boxes as planes in depth, each parent behind its children, the menus, toasts and tooltips on their own planes. A drag turns it, the wheel spreads the planes, Escape closes it; the page takes no input meanwhile.
+- **macOS's folders.** `platform.user_dir` gives macOS's own places: settings, data and state in `~/Library/Application Support/<program>`, the cache in `~/Library/Caches/<program>`, the runtime files in the user's `$TMPDIR`; `log.default_dir` gives `~/Library/Logs/<program>`, and the setup's install folder is `~/Applications/<name>.app`.
+- **Event streams and WebSockets in `gt:http`.** `events` reads a server's event stream (Server-Sent Events) and calls the program for each event; `ws_connect`, `ws_send`, `ws_recv` and `ws_close` hold a WebSocket over `ws://` or `wss://`. Both run on a worker and stop at once when another thread asks. Windows uses WinHTTP; Linux uses any libcurl, also one built without WebSockets. The DevTools client (`gt:cdp`) now uses it (docs/http.md).
+- **A wireframe mode.** `ui.set_wireframe` (Ctrl+Alt+Shift+W in a build with the devtools, or Chrome DevTools' "Layer borders") draws every box of the window as its outline and each gap in the colour of its step of the spacing scale, a gap off the scale in red, with the name and size of the box under the pointer.
+- **SVG: `<use>`, and gradients an editor writes.** The SVG reader draws a `<use>` of another element (a logo's repeated arm), reads a fill or a stop colour written in the `style` attribute, and follows a gradient's `href` to the gradient whose stops it shares, as Inkscape writes them.
+- **A cache of decoded pictures.** `gt:pictures` keeps the textures of picture files under a byte budget: a program asks for a picture at each frame that shows it, at the size of its place, and gets its texture once a worker has decoded it. Places of nearly one size share one texture, the last pictures asked decode first, and what is on the screen is never evicted.
+- **Secrets sealed for the user.** `gt:secrets` seals a password or a token for the user's account: `seal` gives a field to keep in the program's file, `open` gives the secret back, `forget` removes it. Windows uses DPAPI, Linux the Secret Service. When no store is there, `seal` says so and the program chooses what to do (docs/secrets.md).
+- **One URL escaper.** `http.component_encode(s)` percent-encodes one part of a URL (a path's segment, a query's value): a space is `%20`, a slash `%2F`, as a path needs, where `form_encode` writes a form's `+`. The crash bar's issue link uses it.
+- **One spacing scale.** `ui.SPACE_1`..`ui.SPACE_6` and the roles every page uses (`PAGE_MARGIN`, `CARD_PAD`, `ROW_PAD`, `GROUP_GAP`, `ITEM_GAP`, `LINE_GAP`, `ICON_GAP`, `CONTROL_GAP`, `TOOL_GAP`, `INNER_PAD`), `ui.space(step)`, the list card (`ui.list_card`, `ui.card_row`: rows split by hairlines), and a well's `pad` and `edge`. A card's content now sits the same inset from its four edges, and a card adds no gap after itself: the page spaces its cards.
+
+### Changed
+- **A program installs into its vendor's folder, apart from its data.** A new install goes to `%LOCALAPPDATA%\Programs\FromentSoftware\Papier` on Windows and `~/.local/opt/FromentSoftware/Papier` on Linux, never beside the settings and data an uninstall leaves. An install already made stays where it is.
+- **A new setup screen.** The program comes first: its logo large on a band of its accent, its name, what it is, its state as a pill beside its version. The options are a list of switches, the details (where the parts are, Uninstall) fold under one line, and the footer signs it with the vendor's mark beside the buttons. A copy from the Nix store gets a screen of its own: Nix's snowflake, "Managed by Nix", and nothing to do. `ui.toggle` takes `wrap` for a long label, as `checkbox` does.
+- **The settings and the setup use the spacing scale.** The settings' pages, the sidebar, the changelog, the licence and Diagnostics pages, and the setup's view and page use the same steps as every other page. Two places side by side now have the same gaps and insets.
+
+### Removed
+- **`gt:cdp`'s own WebSocket frames.** `ws_encode`, `ws_decode` and the `WS_*` opcodes are no longer public: the client's WebSocket is `gt:http`'s (`ws_connect`, `ws_send`, `ws_recv`), which keeps the one codec of the toolkit.
+- **One install command line.** `desktop.parse_cli`, `desktop.cli_run` and `Identity.cli_flag` (`--desktop-integration`) are gone: no program used them any more. A program's install command line is gt:setup's (`--install`, `--uninstall`, `--setup`, `--status`, `--quit`).
+
+## [0.281.0] - 2026-11-15 20:53
+
+### Added
+- **A JSON value as a person reads it**: `json.display` shows a value without quotes, a number as written, a boolean and null in the program's own words, and a structure as indented JSON, so a program no longer keeps its own.
+
+### Changed
+- **One row of a label and its value**: `ui.stat_row` takes its options (`Stat_Row_Options`): its width (its parent's by default), a column of labels with the values after them for a list of properties, a value's colour, selectable text, its height and its insets. A program no longer keeps its own key and value row. `stat_row(id, label, value, width)` becomes `stat_row(id, label, value, {width = px(width)})`.
+
+## [0.280.2] - 2026-11-15 20:43
+
+### Added
+- **The toolkit's colour tints for programs**: `ui.with_alpha`, `ui.lighten` and `ui.darken`, which the toolkit used inside, are public, so a program no longer keeps its own copies.
+
+## [0.280.1] - 2026-11-15 20:11
+
+### Added
+- **WebP from a program's own Rust library**: `-define:IMAGE_WEBP_NATIVE_LINK=false` lets a program that builds `native/webp` into its own Rust library use `gt:image`'s WebP without linking the toolkit's native library, as with text and Mermaid.
+
 ## [0.280.0] - 2026-11-15 20:08
 
 ### Added
@@ -3880,6 +3953,15 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.286.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.1
+[0.286.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.0
+[0.285.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.285.0
+[0.284.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.284.0
+[0.283.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.283.0
+[0.282.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.282.0
+[0.281.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.281.0
+[0.280.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.2
+[0.280.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.1
 [0.280.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.280.0
 [0.279.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.279.0
 [0.278.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.278.0

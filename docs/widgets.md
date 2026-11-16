@@ -150,6 +150,36 @@ that many font sizes, on whole pixels. A program uses the roles, never values of
 page puts `GROUP_GAP` or `ITEM_GAP` between two cards. `if ui.list_card("###id") { if ui.card_row("###a") { ... } }` is
 a card of rows split by hairlines, each row `ROW_PAD` above and below, its first and last rows `CARD_PAD` from its edges.
 
+`ui.card(title, icon, id = "", o = ui.Card_Options{})`: `id` is its box's id (`""`: `"###card_<title>"`; give one to
+each card without a title in a list). `o` is its own look, in every finish; a zero field is the theme's:
+
+| `Card_Options` | |
+|---|---|
+| `radius` | its corners, logical pixels (0: 0.6 font size) |
+| `look.top`, `look.bottom` | its face, a gradient from its top to its bottom (the flat forms: their mean) |
+| `look.border` | its edge, a `Maybe(Color)` (nil: the finish's; a colour of alpha 0, `Color{}` included: none) |
+| `look.rim` | the light along its top edge, an alpha (machined, edged) |
+| `look.shadow` | its soft shadow, logical pixels (machined, edged; 0: none) |
+
+```odin
+look := ui.Plate_Look{top = warm_top, bottom = warm_bottom, border = ui.with_alpha(ui.color("accent"), 0.55), rim = 0.1, shadow = 8}
+if ui.card("", id = fmt.tprintf("###perm_%s", p.id), o = {look = look}) { ... }
+```
+
+`ui.list_card(id, o)` takes the same options. A `.Plate` box of a program's own takes a look the same way:
+`b.plate = ui.frame_new(ui.Plate_Look); b.plate^ = look` after `build_box` (this build's arena).
+
+`ui.card_box() -> ^Box`, inside a card's scope (`card` or `list_card`, a row of it too): the card's own box, its `.Plate`
+panel, of the innermost card; nil outside a card. A program gives it the keyboard or reads its rect with it, never by
+counting the card's inner boxes (`parent_box()` in a card is its body, and the boxes between are the card's own):
+
+```odin
+if ui.card("", id = fmt.tprintf("###perm_%s", p.id), o = {look = look}) {
+	if p.focus_now { ui.set_focus(ui.card_box().key) }
+	...
+}
+```
+
 `ui.set_wireframe(state, on)` draws every box as its outline and each gap in the colour of its step, a gap off the
 scale in red, the box under the pointer named: where a page leaves the scale shows at a glance. Ctrl+Alt+Shift+W
 toggles it in a build with the devtools; Chrome DevTools' "Layer borders" too.
@@ -406,6 +436,7 @@ ui.text_edit("###notes", &app.notes, {placeholder = "Notes", wrap = true, auto_h
 | `dot(id, size, intent)` | a filled disc of the intent's hue (a recording, a state); with no intent, of the text's colour where it stands (a dot in a button's words). The icon fonts have no filled circle |
 | `label_tip(text)` | a label whose whole text shows in a tooltip when its box cuts it and the pointer rests on it (`Feel.tooltip_delay_ms`); it takes no press |
 | `morph_label(text)` | a label whose text changes without a blink (a count, a state, an address another source replaces): what stays the same stays still, the rest flips through glyphs of its kind and settles left to right in `MORPH_MS`; its width is the new text's at once; with the animations off, the new text at once |
+| `stat_row(id, label, value, Stat_Row_Options{...})` | a label and its value on one line: the label weak and filling, the value right-aligned in monospace (a measure, a legend with `swatch`, a `tone`); with `key_width`, a column of labels and the values after them, left-aligned (a list of properties). `width` (its parent's by default), `height`, `label_size`, `proportional`, `value_color`, `selectable` (content: copied), `inset` (ems at its sides) |
 | `pill(id, text, icon, color, {mono})` | a short label of a colour, as wide as its words, rounded at its ends: a light wash of the colour, a line of it around, an icon (Lucide's, "": none) and the words in the colour lightened; a version, a kind of change, a state. A tile (`tile`) is a block of full colour; a pill is a mark on the page |
 
 ## Steppers

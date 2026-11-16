@@ -6,7 +6,9 @@ import "core:strconv"
 import "core:strings"
 import "core:testing"
 import "core:thread"
+import "core:time"
 import "../ascii"
+import "../flate"
 
 // A server of this process on a port of the loopback: /file, /moved (a redirect to /file), /big, /echo (the method, the
 // X-Test header and the body, sent back; the answer has an X-Echo header); anything else is 404. It answers `count`
@@ -20,6 +22,10 @@ Server :: struct {
 }
 
 @(private = "file") FILE_BODY :: "the file's bytes"
+
+// /gzip's text: 2200 bytes that compress to a few dozen, so a bound between the two tells which one it counted.
+@(private = "file")
+zipped_text :: proc() -> string { return strings.repeat("compressed ", 200, context.temp_allocator) }
 
 // One request read whole: its head, then as many body bytes as its Content-Length says (they may come in several reads).
 @(private = "file")
@@ -66,6 +72,20 @@ serve_start :: proc(t: ^testing.T, count: int) -> ^Server {
 			case "/file":  answer = fmt.tprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(FILE_BODY), FILE_BODY)
 			case "/moved": answer = fmt.tprintf("HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:%d/file\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", s.port)
 			case "/big":   answer = fmt.tprintf("HTTP/1.1 200 OK\r\nContent-Length: 4096\r\nConnection: close\r\n\r\n%s", strings.repeat("x", 4096, context.temp_allocator))
+			case "/gzip":
+				// (gzip only when asked: a client that asked for nothing gets the plain text and says so)
+				asked := false
+				for line in lines[1:] {
+					colon := strings.index_byte(line, ':')
+					if colon > 0 && ascii.lower(line[:colon], context.temp_allocator) == "accept-encoding" { asked = strings.contains(line[colon + 1:], "gzip") }
+				}
+				text := zipped_text()
+				if asked {
+					zipped := flate.deflate(.Gzip, transmute([]u8)text, context.temp_allocator)
+					answer = fmt.tprintf("HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(zipped), string(zipped))
+				} else {
+					answer = fmt.tprintf("HTTP/1.1 200 OK\r\nX-Plain: yes\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(text), text)
+				}
 			case "/echo":
 				test, content_type := "", ""
 				for line in lines[1:] {
@@ -128,6 +148,59 @@ a_get_over_http :: proc(t: ^testing.T) {
 
 	_, _, err = get("ftp://127.0.0.1/file")
 	testing.expect_value(t, err, Error.Bad_Url)
+}
+
+// A compressed answer asked: the server sees the encodings and sends gzip, the body comes decoded, and max_bytes bounds
+// the decoded body. Not asked: no encoding is asked, the server sends the text as it is.
+@(test)
+a_compressed_answer :: proc(t: ^testing.T) {
+	s := serve_start(t, 3)
+	defer serve_end(s)
+	text := zipped_text()
+
+	res, err := request("GET", at(s, "/gzip"), {compressed = true})
+	testing.expect_value(t, err, Error.None)
+	testing.expect_value(t, res.status, 200)
+	testing.expect_value(t, string(res.body), text)
+	encoding, _ := header_value(res.headers, "Content-Encoding")
+	testing.expect_value(t, encoding, "gzip")
+	response_destroy(&res)
+
+	res, err = request("GET", at(s, "/gzip"))
+	testing.expect_value(t, err, Error.None)
+	testing.expect_value(t, string(res.body), text)
+	plain, _ := header_value(res.headers, "X-Plain")
+	testing.expect_value(t, plain, "yes")
+	response_destroy(&res)
+
+	_, body, too_large := get(at(s, "/gzip"), {compressed = true, max_bytes = 1000})
+	testing.expect_value(t, too_large, Error.Too_Large)
+	testing.expect(t, body == nil)
+}
+
+// A connection that never completes ends at connect_timeout, long before the request's timeout. A listener whose queue
+// is full drops the next connection's first packet, as a host that does not answer does. (Linux: Windows refuses a
+// connection to a full queue at once, so nothing waits there.)
+@(test)
+a_connection_bounded_on_its_own :: proc(t: ^testing.T) {
+	when ODIN_OS != .Linux { return }
+	listener, err := net.listen_tcp({net.IP4_Loopback, 0}, backlog = 1)
+	if !testing.expect(t, err == nil, "listen") { return }
+	defer net.close(listener)
+	ep, _ := net.bound_endpoint(listener)
+	// (a queue of one holds two connections that were not accepted; a third waits for room that never comes)
+	fillers: [2]net.TCP_Socket
+	defer for f in fillers { if f != 0 { net.close(f) } }
+	for &f in fillers {
+		dial_err: net.Network_Error
+		f, dial_err = net.dial_tcp(ep)
+		if !testing.expect(t, dial_err == nil, "fill the queue") { return }
+	}
+	start := time.tick_now()
+	_, _, got := get(fmt.tprintf("http://127.0.0.1:%d/file", ep.port), {timeout = 60 * time.Second, connect_timeout = 300 * time.Millisecond})
+	testing.expect_value(t, got, Error.Unreachable)
+	// (a bound far above the 300 ms asked and far under the minute of the request's own timeout)
+	testing.expectf(t, time.tick_since(start) < 20 * time.Second, "the connection waited %v", time.tick_since(start))
 }
 
 // A POST and a PUT with a header and a body: the server sees the method, the header, the body and no Content-Type of the

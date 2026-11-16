@@ -37,6 +37,7 @@ MACHINED_OVERFLOW_PX :: 6
 @(private = "file") PLATE_TOP_LIGHTEN   :: 0.05
 @(private = "file") PLATE_BOTTOM_DARKEN :: 0.06
 @(private = "file") PLATE_SHADOW_PX     :: 5
+@(private = "file") PLATE_RIM_ALPHA     :: 0.07
 // Below this a state or a halo draws nothing.
 @(private = "file") VISIBLE :: 0.01
 
@@ -80,13 +81,13 @@ px1 :: proc() -> f32 { return max(1, math.round(scale())) }
 @(private = "file")
 radii4 :: proc(r: f32) -> [4]f32 { return {r, r, r, r} }
 
-@(private = "file")
+// `c` with its alpha times `a` (a tint of a colour: a selection's fill, a halo).
 with_alpha :: proc(c: Color, a: f32) -> Color { return {c.r, c.g, c.b, c.a * a} }
 
-@(private = "file")
+// `c` a share `t` of the way to white, in sRGB steps (srgb_step), its alpha kept.
 lighten :: proc(c: Color, t: f32) -> Color { return srgb_step(c, {1, 1, 1, c.a}, t) }
 
-@(private = "file")
+// `c` a share `t` of the way to black, in sRGB steps (srgb_step), its alpha kept.
 darken :: proc(c: Color, t: f32) -> Color { return srgb_step(c, {0, 0, 0, c.a}, t) }
 
 // How a relief's shades and lights are drawn on the palette shown: made for the dark, a light palette takes lighter shades
@@ -251,21 +252,22 @@ machined_groove :: proc(dc: ^draw.Context, a, b: Vec2, vertical := false) {
 }
 
 // A raised panel (cards, popover bodies): a face from `top` to `bottom`, a lit rim of `rim` (alpha), a soft shadow of
-// `shadow` logical pixels, an edge of `border`, a halo of `glow`. `border` zero (the default): the relief's own edge,
-// relief_shade(0.85) (a dark edge on a dark palette, a light one on paper); another colour of alpha 0: no edge.
+// `shadow` logical pixels, an edge of `border`, a halo of `glow`. `border` nil (the default): the relief's own edge,
+// relief_shade(0.85) (a dark edge on a dark palette, a light one on paper); a colour of alpha 0 (Color{} included): no
+// edge. (A zero colour once stood for the relief's edge, so a panel could not ask for none with a transparent colour.)
 // `frame` false: the face alone; its rim and edge come after what is in it (machined_plate_frame), a box's children drawn
 // over the face and under the frame (draw_box does it for a .Plate box).
-machined_plate :: proc(dc: ^draw.Context, r: Rect, radius: f32, top, bottom: Color, shadow: f32 = 6, rim: f32 = 0.07, border := Color{}, glow := Color{}, frame := true) {
+machined_plate :: proc(dc: ^draw.Context, r: Rect, radius: f32, top, bottom: Color, shadow: f32 = 6, rim: f32 = 0.07, border: Maybe(Color) = nil, glow := Color{}, frame := true) {
 	machined_plate_corners(dc, r, radii4(radius), top, bottom, shadow, rim, border, glow, frame)
 }
 
 // machined_plate with a radius per corner (draw.rect_corners' order): a dialog's square corner under its resize grip.
-machined_plate_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, top, bottom: Color, shadow: f32 = 6, rim: f32 = 0.07, border := Color{}, glow := Color{}, frame := true) {
+machined_plate_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, top, bottom: Color, shadow: f32 = 6, rim: f32 = 0.07, border: Maybe(Color) = nil, glow := Color{}, frame := true) {
 	s := scale()
 	p := px1()
 	if !machined() {
 		draw.rect_corners(dc, r, colors4(draw.mix(top, bottom, 0.5)), rr)
-		if (border == Color{} || border.a > 0) && frame { draw.rect_corners(dc, r, colors4(flat_edge(0)), rr, p) }
+		if c, set := border.?; (!set || c.a > 0) && frame { draw.rect_corners(dc, r, colors4(flat_edge(0)), rr, p) }
 		return
 	}
 	if shadow > 0 { draw.box_shadow(dc, draw.rect_shift(r, {0, 2 * s}), rr, shadow * s, relief_shade(0.6)) }
@@ -276,12 +278,12 @@ machined_plate_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, top, bott
 
 // A raised panel's frame: its lit rim (edged: a line of light along its top and a shade along its bottom) and its edge.
 // Drawn over what is in the panel, a child's background or line does not cover it. `border` as machined_plate's.
-machined_plate_frame :: proc(dc: ^draw.Context, r: Rect, radius: f32, rim: f32 = 0.07, border := Color{}) {
+machined_plate_frame :: proc(dc: ^draw.Context, r: Rect, radius: f32, rim: f32 = 0.07, border: Maybe(Color) = nil) {
 	machined_plate_frame_corners(dc, r, radii4(radius), rim, border)
 }
 
 // machined_plate_frame with a radius per corner (draw.rect_corners' order).
-machined_plate_frame_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, rim: f32 = 0.07, border := Color{}) {
+machined_plate_frame_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, rim: f32 = 0.07, border: Maybe(Color) = nil) {
 	p := px1()
 	if edged() {   // (a line along its top, of light at once, not a rim fading down its sides)
 		edged_lines(dc, r, max(rr[0], rr[1], rr[2], rr[3]), p, relief_shine(max(rim, 0.10)), relief_shade(EDGED_SHADE_ALPHA * 0.6))
@@ -290,8 +292,8 @@ machined_plate_frame_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, rim
 		for v, i in rr { inner[i] = max(0, v - p) }
 		draw.rect_corners(dc, draw.rect_pad(r, -p), {relief_shine(rim), relief_shine(0), relief_shine(rim), relief_shine(0)}, inner, p)
 	}
-	// (a default parameter cannot ask the palette: zero stands for the relief's edge)
-	edge := border == Color{} ? relief_shade(0.85) : border
+	// (a default parameter cannot ask the palette: nil stands for the relief's edge)
+	edge := border.? or_else relief_shade(0.85)
 	if edge.a > 0 { draw.rect_corners(dc, r, colors4(edge), rr, p) }
 }
 
@@ -344,6 +346,22 @@ machined_pip :: proc(dc: ^draw.Context, c: Vec2, d: f32, col: Color) {
 // the dimmed page around a dialog)
 @(private)
 machined_plate_over :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f32) {
+	if .Plate in b.flags && b.plate != nil {
+		look := b.plate
+		if !machined() {
+			edge := look.border.? or_else flat_edge(0)
+			if edge.a > 0 { draw.rect_corners(dc, r, colors4(edge), radii, px1()) }
+			return
+		}
+		edge := look.border
+		if edged() {
+			c := edge.? or_else (b.border.a > VISIBLE ? b.border : color_from_tags(s, b.tags_key, "border"))
+			// (lighten keeps the alpha: a plate that asked for no edge keeps none)
+			edge = lighten(c, EDGED_PLATE_EDGE_LIGHTEN)
+		}
+		machined_plate_frame_corners(dc, r, radii, look.rim.? or_else PLATE_RIM_ALPHA, edge)
+		return
+	}
 	if !machined() || .Plate not_in b.flags || .Draw_Background not_in b.flags || b.bg.a < 0.99 { return }
 	edge := relief_shade(0.85)
 	if edged() { edge = lighten(b.border.a > VISIBLE ? b.border : color_from_tags(s, b.tags_key, "border"), EDGED_PLATE_EDGE_LIGHTEN) }
@@ -353,6 +371,17 @@ machined_plate_over :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radi
 @(private)
 machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f32, keyboard_focus: bool) -> (face, whole: bool) {
 	radius := radii[0]   // (a well or a bevel: one radius; a raised panel takes each corner's)
+	// a raised panel with its own look, in every finish (the flat one included: its colours are the program's, not the
+	// theme's, so draw_face, which knows only the box's background, cannot draw it); its frame after its children
+	if .Plate in b.flags && b.plate != nil {
+		look := b.plate
+		top, bottom := look.top, look.bottom
+		if top == {} { top = lighten(b.bg, PLATE_TOP_LIGHTEN) }
+		if bottom == {} { bottom = relief_darken(b.bg, PLATE_BOTTOM_DARKEN) }
+		shadow := look.shadow.? or_else (.Draw_Shadow in b.flags ? 0 : PLATE_SHADOW_PX)
+		machined_plate_corners(dc, r, radii, top, bottom, shadow, frame = false)
+		return true, true
+	}
 	// (a row draws its own face, inset in it: row_face.odin)
 	if !machined() || .Row in b.flags { return }
 	if .Groove in b.flags {

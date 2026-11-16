@@ -117,6 +117,14 @@ Custom_Draw :: proc(box: ^Box, user: rawptr, dc: ^draw.Context)
 Corner :: enum u8 { Top_Left, Bottom_Left, Top_Right, Bottom_Right }
 Corners :: bit_set[Corner; u8]
 
+// A raised panel's own look (a .Plate box's `plate`, ui.card's options), in every finish. A zero field is the theme's.
+Plate_Look :: struct {
+	top, bottom: Color,        // its face, a gradient from its top to its bottom ({}: the box's background, lit at the top, shaded at the bottom; the flat finish: their mean)
+	border:      Maybe(Color), // its edge (nil: the finish's; a colour of alpha 0, Color{} included: none)
+	rim:         Maybe(f32),   // the light along its top edge, an alpha (machined and edged finishes)
+	shadow:      Maybe(f32),   // its soft shadow, logical pixels (machined and edged finishes; 0: none)
+}
+
 Box :: struct {
 	// tree (rebuilt every frame)
 	first, last, next, prev, parent: ^Box,
@@ -156,6 +164,7 @@ Box :: struct {
 	slant:       platform.Slant,   // a Clickable box whose sides lean (a trapezoid tab): only that shape is hit (reset each build)
 	hit_outset:  f32,              // frame pixels its hit area reaches past its rect on each side: a thin handle grabbed wider than it is drawn (reset each build)
 	gap_step:    f32,              // a .Gap made by space: its step of the spacing scale (0: a gap off the scale; reset each build)
+	plate:       ^Plate_Look,      // a .Plate box's own face and frame (nil: the theme's, from its background; this build's arena; reset each build)
 
 	// colors: targets from the theme, and the animated values actually drawn
 	target_bg, target_border, target_text: Color,
@@ -515,6 +524,7 @@ State :: struct {
 	mouse_moved:     bool,            // the pointer moved this frame
 	list_stack:      [dynamic]^List_State,  // lists being built (list.odin)
 	strip_stack:     [dynamic]Strip_Build,  // strips being built (strip.odin)
+	card_stack:      [dynamic]^Box,         // the .Plate boxes of the cards being built, innermost last (card_box)
 	strips:          [dynamic]Strip_Build,  // the strips of this build, for strips_settle after its layout
 	// the radio buttons of this build and of the last, each with its group (its `selected`): a group is one Tab stop, the
 	// arrows move its choice (radio)

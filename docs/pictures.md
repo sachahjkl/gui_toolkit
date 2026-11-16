@@ -26,7 +26,7 @@ case p.state == .Failed:    ui.label(pictures.failure_words(p.why))
 | Call | What it does |
 |---|---|
 | `cache_init(c, renderer, state, o)` | a cache whose textures are `renderer`'s and whose decodes answer to `state` |
-| `get(c, key, data, need_px) -> ^Picture` | the picture of `key` for a place whose longest side is `need_px` frame pixels; 0: the whole picture, mipmapped |
+| `get(c, key, data, need_px, prepare = nil) -> ^Picture` | the picture of `key` for a place whose longest side is `need_px` frame pixels; 0: the whole picture, mipmapped. `prepare` (a `Prepare`): `data` is not the file yet (base64, a data URL), and it makes the file on the chores, before the decode; not ok: `Unknown_Format` |
 | `frame(c)` | once a frame, before the asks: textures let go are destroyed, then the least recent go while over the budget |
 | `forget(c, key)` | every size of `key` leaves the cache (its bytes changed, or it is gone) |
 | `held_bytes(c)` | the bytes the textures hold |

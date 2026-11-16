@@ -55,6 +55,10 @@ Picture :: struct {
 	bytes:   int,   // what its texture holds
 }
 
+// What turns the bytes a program has into a picture file, on the chores (get's `prepare`). Thread-safe: no state of
+// the program but what `data` holds.
+Prepare :: #type proc(data: []u8, allocator: runtime.Allocator) -> (file: []u8, ok: bool)
+
 // 0 for a field: its default.
 Options :: struct {
 	budget_bytes: int,   // the bytes of every texture together (BUDGET_BYTES_DEFAULT)
@@ -80,8 +84,9 @@ Job :: struct {
 	link:   ^Link,
 	entry:  Entry_Key,
 	serial: u64,
-	data:   []u8,   // the file (owned, heap)
+	data:   []u8,   // the file, or what `prepare` makes it from (owned, heap)
 	side:   int,    // the longest side decoded
+	prepare: Prepare,
 	// the answer
 	img:    image.Image,   // (heap)
 	format: image.File_Format,
@@ -157,7 +162,10 @@ class_side :: proc(need_px: f32, most: int) -> int {
 // The picture of `key` for a place whose longest side is `need_px` frame pixels (0: the whole picture, mipmapped, for
 // a viewer that zooms it). The first ask of a size copies `data` and queues its decode; nil when `data` is empty and
 // the picture is not known. Call it on the interface's thread, at each frame that shows it.
-get :: proc(c: ^Cache, key: u64, data: []u8, need_px: f32) -> ^Picture {
+// `prepare` not nil: `data` is not the file yet (base64 text, a data URL); it makes the file on the chores, before the
+// decode, so that the interface's thread never decodes the text. Its file is in `allocator`; not ok: the picture
+// fails as Unknown_Format.
+get :: proc(c: ^Cache, key: u64, data: []u8, need_px: f32, prepare: Prepare = nil) -> ^Picture {
 	ek := Entry_Key{key, need_px <= 0 ? 0 : class_side(need_px, c.most)}
 	if p, ok := c.pictures[ek]; ok {
 		p.used = c.frame_no
@@ -171,7 +179,7 @@ get :: proc(c: ^Cache, key: u64, data: []u8, need_px: f32) -> ^Picture {
 	c.pictures[ek] = p
 	heap := runtime.heap_allocator()
 	j := new(Job, heap)
-	j^ = {link = c.link, entry = ek, serial = c.serial, side = ek.side == 0 ? c.most : ek.side}
+	j^ = {link = c.link, entry = ek, serial = c.serial, side = ek.side == 0 ? c.most : ek.side, prepare = prepare}
 	j.data = make([]u8, len(data), heap)
 	copy(j.data, data)
 	append(&c.queue, j)
@@ -228,6 +236,12 @@ pump :: proc(c: ^Cache) {
 decode_run :: proc(data: rawptr) {
 	j := (^Job)(data)
 	heap := runtime.heap_allocator()
+	if j.prepare != nil {
+		file, ok := j.prepare(j.data, heap)
+		delete(j.data, heap)
+		j.data = file
+		if !ok { j.format, j.ok = .Unknown, false; return }
+	}
 	img: image.Image
 	img, j.format, j.ok = image.decode(j.data, heap)
 	if !j.ok { return }

@@ -421,3 +421,38 @@ an_intent_button_is_a_soft_pair_of_its_hue :: proc(t: ^testing.T) { unwatched.ru
 		testing.expectf(t, abs(ui.to_oklch(words)[2] - ui.to_oklch(hue)[2]) < 12, "%s: its words are of its hue", pair[0])
 	}
 }) }
+
+// The toolkit's colour tints, public: alpha times a share, a step toward white or black with the alpha kept.
+@(test)
+the_colour_tints_are_the_toolkits :: proc(t: ^testing.T) {
+	c := ui.Color{0.5, 0.25, 0.75, 0.8}
+	testing.expect_value(t, ui.with_alpha(c, 0.5), ui.Color{0.5, 0.25, 0.75, 0.4})
+	l, d := ui.lighten(c, 0.5), ui.darken(c, 0.5)
+	testing.expect(t, l.r > c.r && l.g > c.g && l.a == c.a, "lighter, its alpha kept")
+	testing.expect(t, d.r < c.r && d.g < c.g && d.a == c.a, "darker, its alpha kept")
+	z := ui.lighten(c, 0)   // (no step: the same colour, within the sRGB round trip)
+	testing.expectf(t, abs(z.r - c.r) < 1e-5 && abs(z.g - c.g) < 1e-5 && abs(z.b - c.b) < 1e-5 && z.a == c.a, "no step: %v", z)
+}
+
+// The texts beside text and weak: a theme's own faint and bright (its texts[0] and [3]), soft between weak and text;
+// a palette without them derives faint toward the page and bright as white or black. ui.theme_color reads any of them.
+@(test)
+the_faint_soft_and_bright_texts :: proc(t: ^testing.T) {
+	th: ui.Theme
+	defer ui.theme_destroy(&th)
+	near :: proc(a, b: ui.Color) -> bool { return abs(a.r - b.r) < 1e-3 && abs(a.g - b.g) < 1e-3 && abs(a.b - b.b) < 1e-3 }
+	p := ui.Palette{bg = 0x0a0a0aff, panel = 0x161616ff, panel2 = 0x1e1e1eff, text = 0xedededff, weak = 0x8f8f8fff, border = 0x2a2a2aff,
+		accent = 0xfab283ff, good = 0x7fd88fff, warn = 0xf5a742ff, bad = 0xe06c75ff, dark = true, faint = 0x5a5a5aff, bright = 0xfefefeff}
+	ui.apply_palette(&th, p)
+	testing.expect(t, near(ui.theme_lookup(&th, nil, "faint text"), draw.hex(0x5a5a5aff)), "the palette's faint")
+	testing.expect(t, near(ui.theme_lookup(&th, nil, "bright text"), draw.hex(0xfefefeff)), "the palette's bright")
+	soft := ui.theme_lookup(&th, nil, "soft text")
+	testing.expect(t, near(soft, ui.srgb_step(draw.hex(p.weak), draw.hex(p.text), ui.SOFT_STEP)), "soft: between weak and text")
+	p.faint, p.bright = 0, 0
+	ui.apply_palette(&th, p)
+	faint := ui.theme_lookup(&th, nil, "faint text")
+	testing.expect(t, faint.r < draw.hex(p.weak).r && faint.r > draw.hex(p.bg).r, "no faint: weak toward the page")
+	testing.expect(t, near(ui.theme_lookup(&th, nil, "bright text"), {1, 1, 1, 1}), "no bright, dark: white")
+	pal := ui.theme_palette(ui.THEMES[0], false)
+	testing.expect(t, pal.faint != 0 && pal.bright != 0, "a theme's palette carries its faint and bright")
+}

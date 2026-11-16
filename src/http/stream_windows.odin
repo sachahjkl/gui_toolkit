@@ -145,8 +145,7 @@ job_start :: proc(method: string, u: Url, req: Request) -> (j: ^Job, err: Error)
 		job_end(j)
 		return nil, .Unreachable
 	}
-	ms := i32(min(req.timeout / time.Millisecond, 0x7FFF_FFFF))
-	WinHttpSetTimeouts(j.session, ms, ms, ms, ms)
+	winhttp_timeouts(j.session, req)
 	j.connect = WinHttpConnect(j.session, win.utf8_to_wstring(u.host), u16(u.port), 0)
 	if j.connect == nil { job_end(j); return nil, .Unreachable }
 	j.request = WinHttpOpenRequest(j.connect, win.utf8_to_wstring(method), win.utf8_to_wstring(u.path), nil, nil, nil, u.secure ? WINHTTP_FLAG_SECURE : 0)
@@ -159,6 +158,7 @@ job_start :: proc(method: string, u: Url, req: Request) -> (j: ^Job, err: Error)
 		return nil, .Unreachable
 	}
 	sync.atomic_add(&j.open, 1)
+	winhttp_compression(j.request, req)
 	for hd in req.headers {
 		line := win.utf8_to_wstring(strings.concatenate({hd.name, ": ", hd.value}, context.temp_allocator))
 		if !WinHttpAddRequestHeaders(j.request, line, WINHTTP_NO_LENGTH, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE) { job_end(j); return nil, .Bad_Request }

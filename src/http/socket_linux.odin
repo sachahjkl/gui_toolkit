@@ -51,7 +51,7 @@ ws_connect_system :: proc(url, http_url: string, req: Request) -> (^Socket, Erro
 	c.easy_setopt(h, CURLOPT_HTTP_VERSION, i64(CURL_HTTP_VERSION_1_1))   // (TLS's ALPN offers no HTTP/2: an upgrade is HTTP/1.1's)
 	c.easy_setopt(h, CURLOPT_HTTPPROXYTUNNEL, i64(1))   // (a proxy carries the bytes; it does not answer for the server)
 	c.easy_setopt(h, CURLOPT_NOSIGNAL, i64(1))
-	c.easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, i64(req.timeout / time.Millisecond))
+	c.easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, i64(connect_bound(req) / time.Millisecond))
 	if c.easy_perform(h) != 0 { c.easy_cleanup(h); return nil, .Unreachable }
 	fd, found := active_socket(h)
 	if !found { c.easy_cleanup(h); return nil, .Unreachable }

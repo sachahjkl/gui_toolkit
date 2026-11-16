@@ -43,6 +43,9 @@ under the names they read in the menu, and the same layout on Windows and Linux.
   settings, history and licence. A rename, not a copy: the move is the same volume's, and a second run finds the new
   folder and does nothing. A folder whose new name is there already is left: what is new is never written over. This is
   the one move a rename of the layout is worth; a later rename of a program moves the same way, by its own call.
+- **A kind can stay** (`kinds`). A program whose older install lived in its data folder (Linux
+  `~/.local/share/<program>`, before the vendor's install folder) leaves `.Data` out: moved, the install would leave its
+  menu entry and its updater on a path that is gone.
 
 ## The person's folders on Linux
 

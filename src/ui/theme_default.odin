@@ -13,11 +13,18 @@ Palette :: struct {
 	translucent: bool, // `bg` has alpha < 1 and the app shows the OS backdrop behind it (see platform.set_backdrop)
 	// the theme's other hues, for code's colours (0: the accent)
 	blue, purple, cyan, rose: u32,
+	// the texts beside text and weak: faint (a hint, a line number; 0: weak FAINT_STEP toward the page) and bright (a
+	// title, what is selected; 0: white on a dark palette, black on a light one)
+	faint, bright: u32,
 }
+
+// How far a palette without its own faint text takes weak toward the page, and soft text weak toward text (sRGB steps).
+FAINT_STEP :: 0.4
+SOFT_STEP :: 0.7
 
 // Slots a theme entry can point at.
 @(private)
-Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar, Well, Blue, Purple, Cyan, Rose,
+Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Faint, Soft, Bright, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar, Well, Blue, Purple, Cyan, Rose,
 	// an intent's soft pair (soft_pair_on of its hue on the page): its fill, its words
 	Accent_Soft, Accent_Ink, Info_Soft, Info_Ink, Good_Soft, Good_Ink, Warn_Soft, Warn_Ink, Bad_Soft, Bad_Ink }
 
@@ -51,7 +58,7 @@ entries := [?]Entry{
 	{"diff gap", .Weak, 1}, {"diff divider", .Border, 1},
 	{"resize_grip shade", .Border, 1},   // the bevel in a dialog's or a floating panel's corner: toward the border, darker on a light theme, lighter on a dark one
 	// variants
-	{"weak text", .Weak, 1}, {"bad text", .Bad, 1}, {"good text", .Good, 1}, {"warn text", .Warn, 1},
+	{"weak text", .Weak, 1}, {"faint text", .Faint, 1}, {"soft text", .Soft, 1}, {"bright text", .Bright, 1}, {"bad text", .Bad, 1}, {"good text", .Good, 1}, {"warn text", .Warn, 1},
 	{"bad border", .Bad, 1}, {"good border", .Good, 1}, {"warn border", .Warn, 1},
 	// (the intents' buttons: a soft fill of their hue, their words in that hue, deep enough to read: soft_pair_on)
 	{"accent_button background", .Accent_Soft, 1}, {"accent_button text", .Accent_Ink, 1}, {"accent_button border", .Accent_Soft, 1},
@@ -149,6 +156,8 @@ slot_color :: proc(p: Palette, s: Slot) -> u32 {
 	case .Panel2: return p.panel2
 	case .Text: return p.text
 	case .Weak: return p.weak
+	case .Bright: return p.bright != 0 ? p.bright : (p.dark ? 0xffffffff : 0x000000ff)
+	case .Faint, .Soft: return 0xff00ffff   // (computed colours: slot_rgba)
 	case .Border: return p.border
 	case .Accent: return p.accent
 	case .Accent_Text: return p.accent_text
@@ -186,6 +195,10 @@ slot_rgba :: proc(p: Palette, s: Slot) -> draw.Color {
 	case .Warn_Ink:    return soft(p, .Warn, true)
 	case .Bad_Soft:    return soft(p, .Bad, false)
 	case .Bad_Ink:     return soft(p, .Bad, true)
+	case .Faint:
+		if p.faint != 0 { return draw.hex(p.faint) }
+		return srgb_step(draw.hex(p.weak), draw.hex(slot_color(p, .Bg_Solid)), FAINT_STEP)
+	case .Soft:        return srgb_step(draw.hex(p.weak), draw.hex(p.text), SOFT_STEP)
 	}
 	return draw.hex(slot_color(p, s))
 }

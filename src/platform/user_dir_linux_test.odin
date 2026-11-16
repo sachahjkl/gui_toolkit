@@ -95,6 +95,30 @@ a_program_s_folders_move_once :: proc(t: ^testing.T) {
 	testing.expect_value(t, again, 0)
 }
 
+// A kind left out stays where it is (an older install in the data folder, which its menu entry names); the others move.
+@(test)
+a_kind_left_out_stays :: proc(t: ^testing.T) {
+	sync.mutex_guard(&env_lock)
+	root := test_root("kinds")
+	defer fsx.remove_tree(root)
+	saved := [?]Saved_Env{env_save("XDG_CONFIG_HOME"), env_save("XDG_DATA_HOME"), env_save("XDG_STATE_HOME"), env_save("XDG_CACHE_HOME")}
+	defer for s in saved { env_restore(s) }
+	for name in ([]string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"}) {
+		dir := fmt.tprintf("%s/%s", root, name)
+		fsx.make_dirs(dir)
+		os.set_env(name, dir)
+	}
+	NEW :: "Vendor" + USER_DIR_SEPARATOR + "Prog"
+	fsx.make_dirs(user_dir(.Config, "prog", context.temp_allocator))
+	old_data := user_dir(.Data, "prog", context.temp_allocator)
+	fsx.make_dirs(old_data)
+	moved, why := user_dirs_move("prog", NEW, {.Config, .State, .Cache})
+	testing.expect_value(t, why, "")
+	testing.expect_value(t, moved, 1)
+	testing.expect(t, os.is_dir(user_dir(.Config, NEW, context.temp_allocator)), "the configuration moved")
+	testing.expect(t, os.is_dir(old_data) && !os.exists(user_dir(.Data, NEW, context.temp_allocator)), "the data folder stayed")
+}
+
 // The mode and owner of a path, links not followed.
 @(private = "file")
 lstat_of :: proc(path: string) -> (st: posix.stat_t, ok: bool) {

@@ -1519,12 +1519,19 @@ kbd :: proc(text: string) {
 	}
 }
 
+// A card's own look (card, list_card), in every finish; zero fields are the theme's.
+Card_Options :: struct {
+	radius: f32,          // its corners, logical pixels (0: the theme's, 0.6 font size)
+	look:   Plate_Look,   // its face, edge, rim and shadow (a permission card: a warm gradient, an accent edge)
+}
+
 // `if card("Title", ICON) { ... }`: a titled panel, full width, height from its content, CARD_PAD in from each of its
 // four edges. It adds nothing after itself: the page puts GROUP_GAP or ITEM_GAP between two cards. Tags used: "card".
+// `id`: its box's id ("": "###card_<title>"; cards without a title in one list need one each). `o`: its own look.
 @(require_results, deferred_none = card_end)
-card :: proc(title: string, icon := "") -> bool {
+card :: proc(title: string, icon := "", id := "", o := Card_Options{}) -> bool {
 	em := font_size()
-	card_open(fmt.tprintf("###card_%s", title), CARD_PAD, title)
+	card_open(id != "" ? id : fmt.tprintf("###card_%s", title), CARD_PAD, title, o)
 	if title != "" {
 		next({width = fill(), height = px(dense(em * 2.2))})
 		if row(.Center) {

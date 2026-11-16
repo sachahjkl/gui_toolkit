@@ -7,9 +7,16 @@ package tk_image
 // linked and WebP is not available.
 
 IMAGE_WEBP :: #config(IMAGE_WEBP, false)
+// false: the program's own Rust library carries native/webp (as a dependency: its gt_webp_* functions stay exported),
+// as it carries native/text and native/mermaid (FONT_NATIVE_LINK, MERMAID_NATIVE_LINK): no second copy of Rust's
+// standard library, nothing more to link.
+IMAGE_WEBP_NATIVE_LINK :: #config(IMAGE_WEBP_NATIVE_LINK, true)
 
 when IMAGE_WEBP {
-	when ODIN_OS == .Windows {
+	when !IMAGE_WEBP_NATIVE_LINK {
+		// (the symbols come from the program's own Rust library, which every such program links already)
+		when ODIN_OS == .Windows { foreign import gt_webp "system:kernel32.lib" } else { foreign import gt_webp "system:c" }
+	} else when ODIN_OS == .Windows {
 		foreign import gt_webp {
 			"../../build/native/gt_native.lib",
 			"system:ntdll.lib",

@@ -16,6 +16,16 @@ status, body, err := http.get("https://github.com/me/app/releases/latest/downloa
 - `status` is the status of the last answer. A status that is not 2xx is no error: the caller reads it (404: no such file).
 - `max_bytes` bounds the body (0: `MAX_BYTES`, 64 MiB): a larger one is `.Too_Large`, and nothing is returned.
 - `timeout` bounds the whole request (0: `TIMEOUT`, 5 minutes).
+- `connect_timeout` bounds the name's lookup and the connection, each time one is made (a redirect to another host makes
+  one). 0: `timeout` bounds them. A server that does not answer is `.Unreachable` after it, not after the whole
+  `timeout`.
+- `compressed = true` asks for a compressed answer (`Accept-Encoding: gzip, deflate`, `ACCEPT_ENCODING`) and gives the
+  body decoded; `max_bytes` bounds the decoded body. The answer's headers say what came (`Content-Encoding`). An
+  `Accept-Encoding` header in `headers` with `compressed` false is sent as given, and its body is given as it came.
+
+```odin
+res, err := http.request("GET", "http://127.0.0.1:4096/session", {compressed = true, connect_timeout = 2 * time.Second})
+```
 
 ## Any request
 
@@ -76,6 +86,8 @@ status, err := http.events("https://host/event", {headers = {{"Authorization", a
   `id:` of the stream), `retry` (the last `retry:`, in milliseconds; 0: none).
 - `req.timeout` is the longest silence, not the whole stream (0: `STREAM_SILENCE`, 2 minutes). Any byte restarts it: a
   server's heartbeat comment is enough. A silence is `.Unreachable`. `req.max_bytes` bounds one line and one event.
+- `req.connect_timeout` bounds the connection (0: the silence does). `req.compressed` asks for a compressed stream,
+  decoded as it comes.
 - An `Accept: text/event-stream` header is added when `req.headers` has no Accept.
 - A status that is not 2xx gives no event and no error: read `status`. The end of the stream is no error either. There
   is no reconnection: call `events` again, with a `Last-Event-ID` header from the last `Event.id`, after `Event.retry`.
@@ -96,8 +108,9 @@ for {
 }
 ```
 
-- `ws_connect(url, req)`: `ws://` or `wss://`. `req.headers` go with the handshake; `req.timeout` bounds the handshake;
-  `req.max_bytes` bounds one message. A server that answers without the upgrade is `.Refused`.
+- `ws_connect(url, req)`: `ws://` or `wss://`. `req.headers` go with the handshake; `req.timeout` bounds the handshake,
+  `req.connect_timeout` its connection (0: `timeout`); `req.max_bytes` bounds one message; `req.compressed` does
+  nothing (a handshake has no body). A server that answers without the upgrade is `.Refused`.
 - `ws_recv(s, wait)`: the next whole message, `.Text` or `.Binary`; a ping is answered with a pong. `wait` = 0
   waits without limit; when a wait runs out, `.Timed_Out`, and the socket stays open. The server's close is a `.Close`
   message (`code`, the reason in `data`); the calls after it are `.Closed`.
