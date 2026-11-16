@@ -139,7 +139,7 @@ current_clip_is_not_empty_while_recording :: proc(t: ^testing.T) {
 	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP) or font") }
 	defer close(&f)
 	pic: draw.Picture
-	defer draw.picture_destroy(&f.dc, &pic)
+	defer draw.picture_destroy(&pic)
 	draw.begin_frame(&f.dc, {f32(N), f32(N)})
 	render.frame_begin(&f.r, {1, 1, 1, 1})
 	draw.picture_begin(&f.dc, &pic)
@@ -159,7 +159,7 @@ replay_is_identical_to_direct_drawing :: proc(t: ^testing.T) {
 		if !open(&f, space) { testing.fail_now(t, "no D3D11 device (WARP) or font") }
 		defer close(&f)
 		pic: draw.Picture
-		defer draw.picture_destroy(&f.dc, &pic)
+		defer draw.picture_destroy(&pic)
 		// glyphs are rasterized while recording: draw once directly so both see the same atlas
 		_ = frame(&f, nil, .Direct, draw.AFFINE_IDENTITY)
 		record(&f, &pic)
@@ -197,7 +197,7 @@ text_scale_makes_a_picture_stale :: proc(t: ^testing.T) {
 	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP) or font") }
 	defer close(&f)
 	pic: draw.Picture
-	defer draw.picture_destroy(&f.dc, &pic)
+	defer draw.picture_destroy(&pic)
 	record(&f, &pic)
 	testing.expect(t, !draw.picture_stale(&f.dc, &pic, draw.affine_scale({1.05, 1.05})), "within the raster tolerance: the same glyphs")
 	testing.expect(t, draw.picture_stale(&f.dc, &pic, draw.affine_scale({2, 2})), "at twice the size text is rasterized again")
@@ -242,7 +242,7 @@ page_reuse_makes_only_its_pictures_stale :: proc(t: ^testing.T) {
 		return n
 	}
 	a, b: draw.Picture
-	defer { draw.picture_destroy(&f.dc, &a); draw.picture_destroy(&f.dc, &b) }
+	defer { draw.picture_destroy(&a); draw.picture_destroy(&b) }
 	ALPHABET :: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	draw_b :: proc(f: ^Fx) { draw.text(&f.dc, f.ui, 120, {0, 100}, draw.hex(0x000000ff), "Wg") }
 	direct_b :: proc(f: ^Fx) -> []u8 {
@@ -319,7 +319,7 @@ slots_move_content_without_recording :: proc(t: ^testing.T) {
 		}
 		state := Cards{f = &f, angle = {0.1, 0.2, 0.3, 0.4}}
 		pic: draw.Picture
-		defer draw.picture_destroy(&f.dc, &pic)
+		defer draw.picture_destroy(&pic)
 		slots: [4]u32
 		draw.picture_begin(&f.dc, &pic)
 		cards(&state, &slots)
@@ -357,7 +357,7 @@ order_and_partial_recording :: proc(t: ^testing.T) {
 	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP) or font") }
 	defer close(&f)
 	a, b: draw.Picture
-	defer { draw.picture_destroy(&f.dc, &a); draw.picture_destroy(&f.dc, &b) }
+	defer { draw.picture_destroy(&a); draw.picture_destroy(&b) }
 	draw.picture_begin(&f.dc, &a)
 	draw.rect(&f.dc, {{10, 10}, {70, 70}}, draw.hex(0xff0000ff))
 	draw.picture_end(&f.dc)
@@ -389,7 +389,7 @@ order_and_partial_recording :: proc(t: ^testing.T) {
 	testing.expect(t, a.uploaded == ua && b.uploaded == b.version, "only b uploaded again")
 	// culled: outside the frame, nothing uploaded
 	c: draw.Picture
-	defer draw.picture_destroy(&f.dc, &c)
+	defer draw.picture_destroy(&c)
 	draw.picture_begin(&f.dc, &c)
 	draw.rect(&f.dc, {{0, 0}, {10, 10}}, draw.hex(0xff0000ff))
 	draw.picture_end(&f.dc)
@@ -407,7 +407,7 @@ budget_evicts_unused_pictures :: proc(t: ^testing.T) {
 	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP) or font") }
 	defer close(&f)
 	pics: [4]draw.Picture
-	defer for &p in pics { draw.picture_destroy(&f.dc, &p) }
+	defer for &p in pics { draw.picture_destroy(&p) }
 	for &p, i in pics {
 		draw.picture_begin(&f.dc, &p)
 		for k in 0 ..< 200 { draw.rect(&f.dc, {{f32(k % 20) * 6, f32(k / 20) * 6}, {f32(k % 20) * 6 + 5, f32(k / 20) * 6 + 5}}, draw.hsv(f32(i) / 4, 0.8, 0.9)) }
@@ -439,6 +439,67 @@ budget_evicts_unused_pictures :: proc(t: ^testing.T) {
 	testing.expect(t, worst == 0 && pics[0].resident, "evicted then drawn again: identical")
 }
 
+// Pictures replayed in this frame of `f`, in order; the frame's pixels.
+@(private = "file")
+shot_replays :: proc(f: ^Fx, pics: ..^draw.Picture) -> []u8 {
+	draw.begin_frame(&f.dc, {N, N})
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	for p in pics { draw.replay(&f.dc, p, draw.AFFINE_IDENTITY) }
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	return render.read_pixels(&f.r, context.temp_allocator)
+}
+
+@(private = "file")
+record_square :: proc(f: ^Fx, pic: ^draw.Picture, r: draw.Rect, color: u32) {
+	draw.picture_begin(&f.dc, pic)
+	draw.rect(&f.dc, r, draw.hex(color))
+	draw.picture_end(&f.dc)
+}
+
+@(private = "file")
+rgb_at :: proc(img: []u8, x, y: int) -> [3]u8 { o := (y * N + x) * 4; return {img[o], img[o + 1], img[o + 2]} }
+
+// A picture moved to another window replays in another context and renderer, whose heap generation is the first's: it
+// uploads there, and does not draw what that renderer holds at the offsets it had in the first.
+@(test)
+a_picture_replays_in_another_context :: proc(t: ^testing.T) {
+	a, b: Fx
+	if !open(&a, .Srgb) || !open(&b, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP) or font") }
+	defer { close(&a); close(&b) }
+	pic, other: draw.Picture
+	defer { draw.picture_destroy(&pic); draw.picture_destroy(&other) }
+	record_square(&a, &pic, {{10, 10}, {60, 60}}, 0x0000ffff)
+	record_square(&b, &other, {{10, 10}, {60, 60}}, 0xff0000ff)
+	testing.expect_value(t, rgb_at(shot_replays(&a, &pic), 30, 30), [3]u8{0, 0, 255})
+	testing.expect(t, pic.owner == &a.dc && len(a.dc.pictures) == 1, "held by the first context")
+	testing.expect_value(t, a.r.heap_generation, b.r.heap_generation)   // (what made the second read it as resident)
+	// (the second renderer's ranges at the offsets the picture had in the first: another picture's)
+	testing.expect_value(t, rgb_at(shot_replays(&b, &other), 30, 30), [3]u8{255, 0, 0})
+	testing.expect_value(t, rgb_at(shot_replays(&b, &pic), 30, 30), [3]u8{0, 0, 255})
+	testing.expect(t, pic.owner == &b.dc && len(a.dc.pictures) == 0, "its ranges went back to the first context")
+	testing.expect_value(t, rgb_at(shot_replays(&a, &pic), 30, 30), [3]u8{0, 0, 255})   // (and back)
+}
+
+// A context destroyed lets go of its pictures: they keep their recording, upload where they are replayed next, and are
+// destroyed after it without touching it.
+@(test)
+a_destroyed_context_lets_go_of_its_pictures :: proc(t: ^testing.T) {
+	a, b: Fx
+	if !open(&a, .Srgb) || !open(&b, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP) or font") }
+	defer close(&b)
+	pic, other: draw.Picture
+	defer { draw.picture_destroy(&pic); draw.picture_destroy(&other) }
+	record_square(&a, &pic, {{10, 10}, {60, 60}}, 0x0000ffff)
+	record_square(&b, &other, {{10, 10}, {60, 60}}, 0xff0000ff)
+	testing.expect_value(t, rgb_at(shot_replays(&a, &pic), 30, 30), [3]u8{0, 0, 255})
+	close(&a)
+	testing.expect(t, !pic.resident && pic.owner == nil, "not resident, no owner")
+	testing.expect_value(t, rgb_at(shot_replays(&b, &other), 30, 30), [3]u8{255, 0, 0})
+	testing.expect_value(t, rgb_at(shot_replays(&b, &pic), 30, 30), [3]u8{0, 0, 255})
+	testing.expect(t, pic.owner == &b.dc, "held by the context it was replayed in")
+}
+
 @(test)
 device_loss_recovers :: proc(t: ^testing.T) {
 	for space in render.Blend_Space {
@@ -446,7 +507,7 @@ device_loss_recovers :: proc(t: ^testing.T) {
 		if !open(&f, space) { testing.fail_now(t, "no D3D11 device (WARP) or font") }
 		defer close(&f)
 		pic: draw.Picture
-		defer draw.picture_destroy(&f.dc, &pic)
+		defer draw.picture_destroy(&pic)
 		_ = frame(&f, nil, .Direct, draw.AFFINE_IDENTITY)
 		record(&f, &pic)
 		before := frame(&f, &pic, .Replay, draw.AFFINE_IDENTITY)

@@ -381,7 +381,7 @@ plane_is_not_recorded_in_a_picture :: proc(t: ^testing.T) {
 	if !open(&f, .Srgb) { testing.fail_now(t, "no D3D11 device (WARP)") }
 	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
 	pic: draw.Picture
-	defer draw.picture_destroy(&f.dc, &pic)
+	defer draw.picture_destroy(&pic)
 	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
 	render.frame_begin(&f.r, {1, 1, 1, 1})
 	draw.picture_begin(&f.dc, &pic)

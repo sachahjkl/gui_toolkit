@@ -7,6 +7,7 @@
 package term
 
 import "base:runtime"
+import "core:hash"
 import "../draw"
 import tk_font "../font"
 import "../platform"
@@ -155,6 +156,7 @@ Row :: struct {
 	runs:  [dynamic]Run,
 	fills: [dynamic]Fill,
 	marks: [dynamic]Mark,
+	sum:   u64,             // of its text, runs, fills and marks: two rows of one sum draw the same (row_picture)
 }
 
 // Cells side by side of the same look go together: a row is a few runs of text, not one draw per cell.
@@ -194,6 +196,11 @@ View :: struct {
 	lines:     [dynamic]Row,
 	stale:     bool,     // the look of every row moved (recolour): all are built again
 	rows_built: int,     // rows built since init: what a test counts
+	// The rows as drawn: a picture per row's sum and look, kept while a row shows it (widget.odin, src/md/features/term-rows.md)
+	pictures:  map[u64]Row_Picture,
+	spare:     [dynamic]^draw.Picture,   // released pictures, recorded over by the next new rows
+	draws:     u64,      // draws since init: a picture no row asked for in the last one goes
+	rows_recorded: int,  // rows recorded since init: what a test counts
 	// The pointer
 	press:        Press,
 	press_button: platform.Mouse_Button,
@@ -205,10 +212,16 @@ View :: struct {
 init :: proc(v: ^View, source: Source, cols, rows: int, allocator := context.allocator) {
 	v^ = {source = source, zoom = 1, cols = cols, rows = rows, zone = {min = ZOOM_MIN, max = ZOOM_MAX}}
 	v.lines = make([dynamic]Row, allocator)   // (its rows take its allocator: they are built in a frame, never in its temp one)
+	v.pictures = make(map[u64]Row_Picture, allocator)
+	v.spare = make([dynamic]^draw.Picture, allocator)
 }
 
 destroy :: proc(v: ^View) {
 	ui.zoom_zone_destroy(&v.zone)
+	for _, kept in v.pictures { picture_free(v, kept.pic) }
+	for pic in v.spare { picture_free(v, pic) }
+	delete(v.pictures)
+	delete(v.spare)
 	for &r in v.lines { row_delete(&r) }
 	delete(v.lines)
 	v.lines = nil
@@ -261,7 +274,7 @@ sink_row :: proc(s: ^Sink, changed: bool) -> bool {
 	fresh := y == len(v.lines)   // (never built: whatever its flag says)
 	if fresh {
 		a := v.lines.allocator
-		append(&v.lines, Row{make([dynamic]u8, a), make([dynamic]Run, a), make([dynamic]Fill, a), make([dynamic]Mark, a)})
+		append(&v.lines, Row{text = make([dynamic]u8, a), runs = make([dynamic]Run, a), fills = make([dynamic]Fill, a), marks = make([dynamic]Mark, a)})
 	}
 	if !s.every && !fresh && !changed { return false }
 	r := &v.lines[y]
@@ -311,8 +324,44 @@ sink_cell :: proc(s: ^Sink, c: Cell) {
 
 @(private)
 sink_close :: proc(s: ^Sink) {
-	if s.row != nil { run_close(s.row, s.run_from, s.run_col, s.run_color, s.run_bold) }
+	if r := s.row; r != nil {
+		run_close(r, s.run_from, s.run_col, s.run_color, s.run_bold)
+		r.sum = row_sum(r)
+	}
 	s.row = nil
+}
+
+// Field by field: the padding of a struct is no part of what a row draws.
+@(private)
+row_sum :: proc(r: ^Row) -> u64 {
+	color :: proc(h: u64, c: Color) -> u64 {
+		h := h
+		for x in c { h = sum_mix(h, u64(transmute(u32)x)) }
+		return h
+	}
+	h := hash.fnv64a(r.text[:])
+	for run in r.runs {
+		h = sum_mix(h, u64(run.col) | u64(run.bold) << 16)
+		h = sum_mix(h, u64(run.from) | u64(run.to) << 32)
+		h = color(h, run.color)
+	}
+	h = sum_mix(h, 0x66)   // (a run's end and a fill's start never read alike)
+	for f in r.fills {
+		h = sum_mix(h, u64(f.from) | u64(f.to) << 16 | u64(f.selected) << 32)
+		h = color(h, f.color)
+	}
+	h = sum_mix(h, 0x6d)
+	for k in r.marks {
+		h = sum_mix(h, u64(k.from) | u64(k.to) << 16 | u64(k.strike) << 32)
+		h = color(h, k.color)
+	}
+	return h
+}
+
+@(private)
+sum_mix :: proc(h, x: u64) -> u64 {
+	y := (h ~ x) * 0x100000001b3
+	return y ~ (y >> 29)
 }
 
 // (fewer rows: the view is shorter, and only a full read says so)

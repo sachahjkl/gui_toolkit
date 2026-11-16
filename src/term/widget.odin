@@ -128,26 +128,108 @@ draw_view :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	draw.rect(dc, b.rect, st.background)
 	if !refresh(v) { return }
 	origin := grid_origin(v, b.rect)   // (this frame's rect: the build's may be a layout old)
+	v.draws += 1
 	m := &v.metrics
-	at :: proc(origin: f32, col: u16, w: f32) -> f32 { return origin + f32(col) * w }
+	// (a row recorded within one pixel and replayed moved by whole pixels: its glyphs land on the sub-pixel positions a
+	// direct draw gives them)
+	whole := [2]f32{math.floor(origin.x), math.floor(origin.y)}
+	frac := origin - whole
+	look := row_look(v, frac)
 	for &r, y in v.lines {
-		top := origin.y + f32(y) * m.cell_h
-		for f in r.fills {
-			draw.rect(dc, {{at(origin.x, f.from, m.cell_w), top}, {at(origin.x, f.to, m.cell_w), top + m.cell_h}}, f.selected ? st.selection : f.color)
+		if len(r.runs) == 0 && len(r.fills) == 0 && len(r.marks) == 0 { continue }
+		at := draw.affine_translate({whole.x, whole.y + f32(y) * m.cell_h})
+		pic := row_picture(v, dc, &r, sum_mix(look, r.sum), frac)
+		// (an atlas page reused under it: recorded again, once; still stale, it is drawn under a scale, as a dialog grows
+		// in: drawn directly rather than recorded at every frame of the animation)
+		if draw.replay(dc, pic, at) == .Stale {
+			row_record(v, dc, pic, &r, frac)
+			if draw.replay(dc, pic, at) == .Stale { row_paint(v, dc, &r, origin + {0, f32(y) * m.cell_h}) }
 		}
-		for k in r.marks {
-			lo := k.strike ? top + m.cell_h * 0.55 : top + m.ascent + 1
-			draw.rect(dc, {{at(origin.x, k.from, m.cell_w), lo}, {at(origin.x, k.to, m.cell_w), lo + 1}}, k.color)
-		}
-		// (each letter a cell wide: at the face's own advance a run fell behind the grid, and the next run, at its cell,
-		// left a gap after every change of colour)
-		for run in r.runs {
-			text := string(r.text[run.from:run.to])
-			face := run.bold ? st.font_bold : st.font
-			draw.text_ex(dc, face, m.font_size, {at(origin.x, run.col, m.cell_w), top + m.ascent}, run.color, text, {letter_spacing = run.bold ? m.spacing_bold : m.spacing})
+	}
+	// (what no row showed goes: rows scrolled away, rows written over)
+	gone := make([dynamic]u64, 0, 16, context.temp_allocator)
+	for key, kept in v.pictures { if kept.used != v.draws { append(&gone, key) } }
+	for key in gone {
+		pic := v.pictures[key].pic
+		delete_key(&v.pictures, key)
+		if len(v.spare) < len(v.lines) {
+			draw.picture_release(pic)
+			append(&v.spare, pic)
+		} else {
+			picture_free(v, pic)
 		}
 	}
 	draw_cursor(v, dc, origin)
+}
+
+// A row's picture kept between draws.
+Row_Picture :: struct {
+	pic:  ^draw.Picture,   // (on the heap: a context keeps its address while it holds its ranges)
+	used: u64,             // View.draws when a row last showed it
+}
+
+// The picture of a row of this content under this look: the one a row of the same cells had (the rows moved up a line,
+// the same line again), else recorded now.
+@(private)
+row_picture :: proc(v: ^View, dc: ^draw.Context, r: ^Row, key: u64, frac: [2]f32) -> ^draw.Picture {
+	if kept, ok := &v.pictures[key]; ok {
+		kept.used = v.draws
+		return kept.pic
+	}
+	pic := len(v.spare) > 0 ? pop(&v.spare) : new(draw.Picture, v.lines.allocator)
+	row_record(v, dc, pic, r, frac)
+	v.pictures[key] = {pic, v.draws}
+	return pic
+}
+
+// What decides how a row's cells look, other than its cells: the faces, their size, the cell, the selection's colour,
+// where the grid starts within a pixel.
+@(private)
+row_look :: proc(v: ^View, frac: [2]f32) -> u64 {
+	m, st := &v.metrics, &v.style
+	h: u64 = 0xcbf29ce484222325
+	for x in ([?]f32{m.font_size, m.cell_w, m.cell_h, m.ascent, m.spacing, m.spacing_bold, frac.x, frac.y,
+			st.selection.r, st.selection.g, st.selection.b, st.selection.a}) {
+		h = sum_mix(h, u64(transmute(u32)x))
+	}
+	h = sum_mix(h, u64(uintptr(st.fonts)))
+	return sum_mix(h, u64(st.font) | u64(st.font_bold) << 32)
+}
+
+@(private)
+row_record :: proc(v: ^View, dc: ^draw.Context, pic: ^draw.Picture, r: ^Row, frac: [2]f32) {
+	v.rows_recorded += 1
+	draw.picture_begin(dc, pic)
+	row_paint(v, dc, r, frac)
+	draw.picture_end(dc)
+}
+
+// The row's fills, marks and runs, its top left at `pos`.
+@(private)
+row_paint :: proc(v: ^View, dc: ^draw.Context, r: ^Row, pos: [2]f32) {
+	st, m := &v.style, &v.metrics
+	at :: proc(origin: f32, col: u16, w: f32) -> f32 { return origin + f32(col) * w }
+	top := pos.y
+	for f in r.fills {
+		draw.rect(dc, {{at(pos.x, f.from, m.cell_w), top}, {at(pos.x, f.to, m.cell_w), top + m.cell_h}}, f.selected ? st.selection : f.color)
+	}
+	for k in r.marks {
+		lo := k.strike ? top + m.cell_h * 0.55 : top + m.ascent + 1
+		draw.rect(dc, {{at(pos.x, k.from, m.cell_w), lo}, {at(pos.x, k.to, m.cell_w), lo + 1}}, k.color)
+	}
+	// (each letter a cell wide: at the face's own advance a run fell behind the grid, and the next run, at its cell,
+	// left a gap after every change of colour)
+	for run in r.runs {
+		text := string(r.text[run.from:run.to])
+		face := run.bold ? st.font_bold : st.font
+		draw.text_ex(dc, face, m.font_size, {at(pos.x, run.col, m.cell_w), top + m.ascent}, run.color, text, {letter_spacing = run.bold ? m.spacing_bold : m.spacing})
+	}
+}
+
+@(private)
+picture_free :: proc(v: ^View, pic: ^draw.Picture) {
+	draw.picture_destroy(pic)
+	free(pic, v.lines.allocator)
 }
 
 // Solid with the keyboard (in the shape the program asked for), hollow without it.

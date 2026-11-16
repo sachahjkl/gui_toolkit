@@ -98,7 +98,7 @@ STEPS := []Step{
 	{name = "flate_pkg", path = "src/flate", oses = EVERYWHERE},
 	{name = "archive", oses = EVERYWHERE},
 	{name = "syntax", path = "src/syntax", oses = EVERYWHERE},
-	{name = "term", oses = EVERYWHERE},   // (the terminal widget on a screen of its own: no window, no font)
+	{name = "term", one = true, oses = EVERYWHERE, text = true},   // (the terminal widget on a screen of its own; its rows drawn in a session)
 	{name = "remote", oses = EVERYWHERE},
 	{name = "deferred", oses = EVERYWHERE},
 	{name = "frame_gate"},

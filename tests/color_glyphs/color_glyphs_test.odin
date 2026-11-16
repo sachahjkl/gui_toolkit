@@ -334,7 +334,7 @@ kept_layer_waits_for_a_replayed_pending_glyph :: proc(t: ^testing.T) { unwatched
 	draw.init(&dc, &r, &f.s)
 	defer draw.destroy(&dc)
 	pic: draw.Picture
-	defer draw.picture_destroy(&dc, &pic)
+	defer draw.picture_destroy(&pic)
 	colr := font.cascade(&f.s, {{font = f.colr}}, nil, true)
 	record :: proc(dc: ^draw.Context, pic: ^draw.Picture, colr: font.Font_Id) {
 		draw.picture_begin(dc, pic)
@@ -413,7 +413,7 @@ async_glyphs_in_pictures :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^test
 	draw.init(&dc, &r, &f.s)
 	defer draw.destroy(&dc)
 	pic: draw.Picture
-	defer draw.picture_destroy(&dc, &pic)
+	defer draw.picture_destroy(&pic)
 	colr := font.cascade(&f.s, {{font = f.colr}}, nil, true)
 	record_and_replay :: proc(dc: ^draw.Context, r: ^render.Renderer, pic: ^draw.Picture, colr: font.Font_Id, record: bool) -> (draw.Replay_Result, []u8) {
 		draw.begin_frame(dc, {f32(DSIZE.x), f32(DSIZE.y)})
