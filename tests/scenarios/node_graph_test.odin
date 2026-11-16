@@ -110,6 +110,33 @@ a_node_dragged_moves_by_the_drag :: proc(t: ^testing.T) { unwatched.run(t, proc(
 	testing.expect_value(t, r.nodes[1].pos, [2]f32{460, 80})
 }) }
 
+// The frame of the release draws the node where it was let go: the program applies the move after that build, and a
+// node drawn back at its old place for one frame jumps there and back.
+@(test)
+a_node_let_go_stays_where_it_was_let_go :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := run_make()
+	defer run_destroy(&r)
+	s := session.start(t, {size = WINDOW, user = &r, build = build})
+	from := header_of(&r, 0)
+	to := from + {100, 50}
+	session.press(s, from)
+	for i in 1 ..= 4 {
+		at := from + (to - from) * (f32(i) / 4)
+		s.pointer = at
+		session.event(s, {kind = .Mouse_Move, pos = at})
+		session.frame(s)
+	}
+	box := session.get(s, "graph_node_1")
+	during := box.rect.min
+	// (one frame: the release's alone)
+	s.buttons -= {.Left}
+	session.event(s, {kind = .Mouse_Release, button = .Left, pos = to})
+	session.frame(s)
+	testing.expect_value(t, r.moved, 1)
+	box = session.get(s, "graph_node_1")
+	testing.expect(t, near(box.rect.min, during), "the frame of the release draws the node where it was let go")
+}) }
+
 @(test)
 two_ports_of_a_kind_link :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := run_make()
