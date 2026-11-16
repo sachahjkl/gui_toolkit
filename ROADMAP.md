@@ -73,9 +73,10 @@
   aliases typed whole become the toolkit's, so a person sets a key or an alias for a command in any program, the same
   way. The toolkit has them; the programs move to them next. Intent:
   [src/md/features/keymap.md](src/md/features/keymap.md), "Migration".
-- **Plugins in JavaScript.** A plugin builds its own screens and views, runs commands and reads settings through a
-  dynamic API over the whole toolkit, with the JavaScript engine that Wren already embeds moved into the toolkit
-  (`gt:js`). Notes: [src/md/features/plugins.md](src/md/features/plugins.md).
+- **Plugins in JavaScript.** A person adds commands, settings and views to a program with a plugin, which reaches only
+  what they granted and never slows the window. First, alone: Wren's JavaScript engine moved into the toolkit (`gt:js`),
+  Wren on it. Then a plugin adds one palette command that shows a toast, in opencode native first. Intent:
+  [src/md/features/plugins.md](src/md/features/plugins.md).
 - **Demo states injected.** A demo mode that injects states that need an account (an unlocked vault, a PIN asked), so
   a capture needs no temporary code change.
 - **A reduced wgpu-native, only if it comes ready-made.** Studied and declined: WGSL and Vulkan only save about 1 MB for
