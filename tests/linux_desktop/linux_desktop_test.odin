@@ -22,6 +22,7 @@ import "gt:dbus"
 import host "gt:host"
 import "gt:platform"
 import png "gt:png"
+import "gt:render"
 import "gt:ui"
 
 @(private = "file") desktop :: proc() -> string {
@@ -278,6 +279,52 @@ a_window_hides_and_comes_back :: proc(t: ^testing.T) {
 
 @(private = "file")
 host_build :: proc(h: ^host.Host, size: host.Vec2) { (^int)(h.user)^ += 1; ui.label("hidden and shown###l") }
+
+// The first window closes while a second is open: the renderer passes to the second (first-window.md), which draws its
+// frame, read back here; the second's close then ends what is shared.
+@(test)
+the_first_window_closes_and_the_renderer_stays :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	builds := 0
+	sh: host.Shared
+	first, second := new(host.Host), new(host.Host)
+	defer free(first)
+	defer free(second)
+	if !host.host_open(first, &sh, {title = "first window", size = {320, 200}}, host_build, &builds) {
+		testing.expect(t, false, "the renderer starts (Vulkan: lavapipe on the virtual desktop)")
+		return
+	}
+	if !host.host_open(second, &sh, {title = "second window", size = {320, 200}}, host_build, &builds) {
+		testing.expect(t, false, "a second window opens")
+		host.host_close(first)
+		return
+	}
+	second.background = {1, 0, 0, 1}
+	host.host_show(first)
+	host.host_show(second)
+	for _ in 0 ..< 3 {
+		for h in ([]^host.Host{first, second}) { h.settle = max(h.settle, 1); host.host_frame(h); pump_for(h.win, 20) }
+	}
+	host.host_close(first)
+	testing.expect(t, sh.main == second, "the second window is the first now")
+	testing.expect(t, second.paced, "and it is paced")
+	testing.expect(t, render.capture_request(&sh.r), "a capture of its next frame")
+	pixels: []u8
+	status := render.Capture_Status.Pending
+	// (a bounded wait for the copy: one frame, then polls, never a fixed delay)
+	for i := 0; i < 100 && status == .Pending; i += 1 {
+		second.settle = max(second.settle, 1)
+		host.host_frame(second)
+		pump_for(second.win, 20)
+		pixels, _, status = render.capture_poll(&sh.r)
+	}
+	testing.expect_value(t, status, render.Capture_Status.Ready)
+	if len(pixels) >= 4 { testing.expectf(t, pixels[0] > 200 && pixels[1] < 50 && pixels[2] < 50, "the second window's red clear: %v", pixels[:4]) }
+	delete(pixels)
+	host.host_close(second)
+	testing.expect(t, sh.main == nil, "the last close ends what is shared")
+}
 
 // A host's window with its renderer, hidden and shown again between frames, several times: no frame waits for a screen
 // the window left (Vulkan's FIFO on Wayland, its barriers), the compositor sees a toplevel each time, and frames come

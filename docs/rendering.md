@@ -82,7 +82,12 @@ Second windows (the developer tools, a detached panel) use the same neutral hand
 ```odin
 render.surface_init(&r, &surface, platform.native_surface_handles(second_window), size, transparent, fixed_size, under_children)
 render.surface_use(&r, &surface)   // the renderer now draws to the second window; call again to go back
+render.surface_adopt(&r, &surface) // for good: the renderer's own window is released, the first window may close
 ```
+
+`host.host_close` of the first window calls `surface_adopt` with another open window's surface: that window becomes
+`Shared.main`, paced, and the renderer goes on. With no other window (or a headless first window), it ends what is
+shared, as before.
 
 `render.surface_drop(&r)`: the window of the current surface leaves the screen (`platform.hide_window`): the wgpu surface
 and its swap chain go before the window's native surface does (Wayland destroys it); frames are skipped until

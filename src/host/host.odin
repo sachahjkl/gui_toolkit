@@ -264,7 +264,8 @@ open_failed :: proc(h: ^Host, failure: Open_Failure, title: string, box: bool) {
 	if box { open_failed_box(title, why) }
 }
 
-// Closes a window. The first one ends what is shared: it goes last. Not from inside this window's own frame.
+// Closes a window. Not from inside this window's own frame. The first one (Shared.main) hands the renderer to another
+// window that has a surface, which becomes the first (first-window.md); with none, it ends what is shared.
 host_close :: proc(h: ^Host) {
 	sh := h.shared
 	first := sh.main == h
@@ -273,7 +274,16 @@ host_close :: proc(h: ^Host) {
 		if p^ == h { p^ = h.next; break }
 	}
 	h.next = nil
-	if !first { render.surface_destroy(&sh.r, &h.surface) }
+	if first {
+		if heir := surface_heir(sh); heir != nil && render.surface_adopt(&sh.r, &heir.surface) {
+			// (the renderer draws on the heir's window now, and released the closing one's swap chain)
+			render.set_present_wait(&sh.r, true)
+			sh.main = heir
+			heir.paced = true
+			first = false
+		}
+	}
+	if !first { render.surface_destroy(&sh.r, &h.surface) }   // (a first window that handed over has none: nothing)
 	ui.destroy(&h.state)
 	if first {
 		// (ui.destroy of its State closed the windows of its views: view_windows_close)
@@ -289,6 +299,17 @@ host_close :: proc(h: ^Host) {
 	}
 	platform.destroy_window(h.win)
 	h.win = nil
+}
+
+// The open window that can take the renderer when the first one closes: one with a surface of its own (not a headless
+// window, which has none). nil: none, or the renderer is the offscreen one, which has no window to give.
+@(private = "file")
+surface_heir :: proc(sh: ^Shared) -> ^Host {
+	if render.is_offscreen(&sh.r) { return nil }
+	for o := sh.hosts; o != nil; o = o.next {
+		if o.surface.valid && !o.no_picture { return o }
+	}
+	return nil
 }
 
 // One build of this window's interface. `builds` calls it as many times as a frame needs; a build after the first takes no input

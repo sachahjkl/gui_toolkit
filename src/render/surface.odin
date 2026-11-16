@@ -136,6 +136,18 @@ surface_destroy :: proc(r: ^Renderer, s: ^Surface) {
 	}
 }
 
+// The renderer takes the window of `s` as its own, for good, and releases the one it had: that window may then close,
+// and the renderer goes on drawing on the other (first-window.md). `s` is zero after. False: `s` is no valid surface, or
+// is in use (surface_use without its return). A Surface and the renderer's own window are the same Window_Target: this
+// is surface_use with no way back, then surface_destroy of what `s` holds then.
+surface_adopt :: proc(r: ^Renderer, s: ^Surface) -> bool {
+	if !s.valid || s.held { return false }
+	surface_use(r, s)
+	s.held = false   // (surface_destroy releases the window `s` holds now, the renderer's old one, instead of giving it back)
+	surface_destroy(r, s)
+	return true
+}
+
 // Makes `s` the window the renderer draws to (its own surface goes into `s`). Call again with the same `s` to go back.
 surface_use :: proc(r: ^Renderer, s: ^Surface) {
 	if !s.valid { return }
