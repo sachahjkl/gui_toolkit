@@ -293,7 +293,9 @@ sni_props :: proc(t: ^Tray, c: ^dbus.Conn, msg: ^dbus.Message) -> bool {
 sni_write_prop :: proc(t: ^Tray, w: ^dbus.Writer, name: string) -> bool {
 	switch name {
 	case "Category":   dbus.arg_variant_string(w, "ApplicationStatus"); return true
-	case "Id":         dbus.arg_variant_string(w, "gui_toolkit"); return true
+	// The program's id, as its windows declare it: a host keeps its choices for an icon (hidden, shown, its place) by
+	// this, so one shared name would make every program's icon one.
+	case "Id":         dbus.arg_variant_string(w, app_id_or_exe()); return true
 	case "Title":      dbus.arg_variant_string(w, t.title); return true
 	case "Status":     dbus.arg_variant_string(w, "Active"); return true
 	case "IconName":   dbus.arg_variant_string(w, ""); return true
