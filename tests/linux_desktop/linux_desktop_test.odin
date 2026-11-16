@@ -1640,7 +1640,7 @@ a_tray_icon_is_in_get_all :: proc(t: ^testing.T) {
 		testing.expect(t, platform.tray_set_icon_rgba(tr, make([]u8, 4 * 4 * 4, context.temp_allocator), {4, 4}))
 		// A panel of its own: the peer's connection belongs to the peer's thread, and the tray answers only while this
 		// thread pumps the window.
-		Panel :: struct { name, path: string, width: i32, done: bool }
+		Panel :: struct { name, path, id: string, width: i32, done: bool }
 		panel: Panel
 		panel.name, panel.path = peer_item(&p, 0)
 		th := thread.create_and_start_with_data(&panel, proc(d: rawptr) {
@@ -1658,7 +1658,13 @@ a_tray_icon_is_in_get_all :: proc(t: ^testing.T) {
 			end := dbus.r_array_begin(&r, "{sv}")
 			for r.pos < end {
 				dbus.r_align_entry(&r)
-				if dbus.r_string(&r) != "IconPixmap" { dbus.read_variant_skip(&r); continue }
+				name := dbus.r_string(&r)
+				// The program's own id: a host keeps its choices for an icon by it.
+				if name == "Id" && dbus.r_variant_sig(&r) == "s" {
+					panel.id = strings.clone(dbus.r_string(&r))
+					continue
+				}
+				if name != "IconPixmap" { dbus.read_variant_skip(&r); continue }
 				if dbus.r_variant_sig(&r) != "a(iiay)" { return }
 				if dbus.r_array_begin(&r, "(iiay)") > r.pos {
 					dbus.r_align_entry(&r)
@@ -1671,6 +1677,7 @@ a_tray_icon_is_in_get_all :: proc(t: ^testing.T) {
 		start := time.tick_now()
 		for !sync.atomic_load(&panel.done) && time.duration_milliseconds(time.tick_since(start)) < 4000 { platform.poll_events(w, true, PUMP_WAIT_MS) }
 		testing.expect_value(t, panel.width, i32(4))
+		testing.expectf(t, panel.id != "" && panel.id != "gui_toolkit", "the icon's Id is the program's, not %q", panel.id)
 	})
 }
 
