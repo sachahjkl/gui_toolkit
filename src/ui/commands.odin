@@ -70,7 +70,8 @@ Command :: struct {
 	toggle: bool,
 	// what it takes, each a value as a setting is (its name, storage, value kind, unit, choices, bounds, default): Enter
 	// in the palette opens its form, each argument with the control of its value, and the choice gives the values
-	// (Palette_Choice.arguments). A closed list the program fills: Palette_Commands_Options.choices
+	// (Palette_Choice.arguments). A closed list the program fills: Palette_Commands_Options.choices; a start that follows
+	// the program's state: Palette_Commands_Options.initial; a button that opens the form: palette_open_form
 	arguments: []config.Def,
 }
 

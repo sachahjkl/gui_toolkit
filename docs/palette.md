@@ -128,7 +128,7 @@ the matcher does not find stays, after every match.
 
 | Call | Source | Prefix | What choosing does |
 |---|---|---|---|
-| `palette_commands(&p, table, disabled, Palette_Commands_Options{version, choices, details, checked, user})` | the commands; and beside them the views' moves of the window the palette is over | `>`, plain | a command: returned, `palette_chosen_command(&p, c)` its index in the table; a command with arguments opens its form first, and the choice holds their values (`c.arguments`); with Ctrl or Alt, the toolkit sets a key or an alias (below). A move: the toolkit runs it |
+| `palette_commands(&p, table, disabled, Palette_Commands_Options{version, choices, initial, details, checked, user})` | the commands; and beside them the views' moves of the window the palette is over | `>`, plain | a command: returned, `palette_chosen_command(&p, c)` its index in the table; a command with arguments opens its form first, and the choice holds their values (`c.arguments`); with Ctrl or Alt, the toolkit sets a key or an alias (below). A move: the toolkit runs it |
 | `prefs_page.palette_settings_add(&p, &settings, &prefs, &page, options, open, user)`, once | the settings the pages show, each with its value in use at its right; `options(user) -> Page_Options` is asked each time the source reads or acts (the themes' slice as it is then); a change of the pages bumps `settings.source.version`. It installs the commands' forms too | `:`, plain | a switch flips (`Page_Options.changed` is called) and the palette stays; another setting opens its run mode (below). A setting the policy or the command line fixes is disabled, its reason its detail |
 | `flow_palette(&p, &fp, g, cat, from, version)`, at each build | a node graph's add palette, `Flow_Palette`: one item per kind of the catalog (a kind at its max_count, or with no port that fits `from`, disabled). A chooser: no prefix. `flow_palette_items(g, cat, from, allocator)` gives its items (a test) | none | returned: `c.index` the kind, `c.id` its name |
 
@@ -137,7 +137,10 @@ in effect (the person's, [commands.md](commands.md)); the person's aliases of it
 `Palette_Commands_Options`: `version`, the version of the table and of `disabled` (0: neither changes in place, the
 palette compares their addresses; it never reads `disabled` at a frame; a change of the keymap needs none: the source
 follows its version); `choices(user, index, argument) -> (labels, values)`, the values a String argument of command
-`index` without its own choices may take (a closed list the program fills: the models), read when its form opens; `details`,
+`index` without its own choices may take (a closed list the program fills: the models), read once when the argument's
+step opens and kept until it closes (a list changed meanwhile shows when the step opens again); `initial(user, index,
+argument, allocator) -> (value, ok)`, the value an argument starts on now (the session's title, the model in use), as
+the settings file writes it, read once when the form opens (not ok: its `Def.default`); `details`,
 each command's detail ("Session · Fix the build": what it acts on), shown weak after its
 title and not searched (a detail that many commands share would find them all), part of `version`; `checked(user,
 index)` and `user`, whether a toggle command is on now. A command with `Command.toggle` is a switch: its row shows its
@@ -174,7 +177,8 @@ the settings page's table (`prefs_page.control_of`):
   row; Up, Down, Page Up, Page Down and a click move and write at once. A value typed is written at Enter; a value
   refused stays, its reason under the row.
 - **Enter keeps** and goes back to the list (a form: the next argument; on the last, the choice). **Escape puts back
-  the value of before** and goes back (a form: the argument before; on the first, the list). A value another path
+  the value of before** and goes back (a form: the argument before; on the first, the list, or the palette closed
+  when `palette_open_form` opened it). A value another path
   wrote since the run mode's last write is left. A close the palette did not ask (a click outside, Ctrl+K) is Escape at
   each level.
 - Every write is made in `palette_chosen`, at the top of the next build: call it before the program's content, so the
@@ -184,6 +188,24 @@ the settings page's table (`prefs_page.control_of`):
   (`"Harbour at dusk"`, `"webp"`, `"4194304"`).
 - `prefs_page.palette_forms_use(&p)`: the forms runner, for a program without the settings source (palette_settings_add
   installs it). Without it, a command with arguments is chosen without them.
+- `palette_open_form(&p, id) -> bool`: the palette opens on command `id`'s form, at its first argument (a button that
+  sets what the command sets: a model button opens "Set the model"). Escape at the first argument closes the palette:
+  there is no list it came from. False, nothing opened: no such command in the table, no argument, `disabled`, or no
+  forms runner.
+- A step's closed list (`Def.choices`, `Page_Options.choices`, `Palette_Commands_Options.choices`) is read and
+  translated once when the step opens, not at each build. A program whose list changed shows it when the step opens
+  again.
+
+```odin
+// The model button: the form of "Set the model", the model in use marked
+if ui.button("###model", model_name).clicked { ui.palette_open_form(&app.palette, "model.set") }
+ui.palette_commands(&app.palette, COMMANDS[:], disabled[:], {user = app, choices = model_choices, initial = proc(user: rawptr, index: int, argument: string, allocator: runtime.Allocator) -> (string, bool) {
+	app := (^App)(user)
+	if COMMANDS[index].id == "session.rename" { return strings.clone(app.session.title, allocator), true }
+	if COMMANDS[index].id == "model.set" { return strings.clone(app.model, allocator), true }
+	return "", false
+}})
+```
 
 | | |
 |---|---|
@@ -192,7 +214,7 @@ the settings page's table (`prefs_page.control_of`):
 | `palette_run_item(&p) -> (src, id, arg, ok)` | the item the run mode is open on, and the argument shown |
 | `palette_run_error(&p) -> string` | why its last write was refused ("": it was not) |
 | `palette_sublist(id, &st, count, step, height, row, user) -> (moved, clicked)` | the run mode's list of choices: rows of one height, only those in view built, `step` moving the selection (`Palette_Sublist{sel, reveal}`), `row(user, i, selected)` filling each row |
-| `palette_command_arguments(&p, id) -> (index, arguments)`, `palette_command_choices(&p, index, argument) -> (labels, values)` | what a forms runner reads of the commands source |
+| `palette_command_arguments(&p, id) -> (index, arguments)`, `palette_command_choices(&p, index, argument) -> (labels, values)`, `palette_command_initial(&p, index, argument, allocator) -> (value, ok)` | what a forms runner reads of the commands source |
 | `Palette_Run_Keys{step, page, enter, tab}`, `palette_run_set_text(&p, text)` | the keys `build` is given, read before the field (Tab: complete); a control puts a text in the field, the caret at its end, as typed (a path completed: prefs_page's) |
 
 A `Path` value completes in the run mode: the entries of the folder typed, read on a chore, that start with its last

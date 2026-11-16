@@ -3,6 +3,7 @@ package ui
 // The toolkit's sources of the palette that live in ui: the program's commands, and the views' moves. The settings'
 // source is prefs_page's (palette_settings_add). src/md/features/palette.md, "The toolkit's sources".
 
+import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import config "../config"
@@ -16,8 +17,13 @@ Palette_Commands_Options :: struct {
 	// needs none: the source follows its version
 	version:    u64,
 	// the values a String argument without its own choices may take, and their labels (English, i18n.later), for
-	// command `index` (Command.arguments); nil, nil: a free field. Read when its form opens
+	// command `index` (Command.arguments); nil, nil: a free field. Read once when the argument's step opens, kept until
+	// it closes: a list changed meanwhile shows at the step's next opening
 	choices:    proc(user: rawptr, index: int, argument: string) -> (labels, values: []string),
+	// the value argument `argument` of command `index` starts on, as the settings file writes it (the session's title,
+	// the model in use), in `allocator`; read once when its form opens, the form keeps a copy. Not ok, or a value the
+	// argument refuses: its Def.default
+	initial:    proc(user: rawptr, index: int, argument: string, allocator: runtime.Allocator) -> (value: string, ok: bool),
 	// each command's detail, by index ("Session · Fix the build": what it acts on), weak after its title; part of
 	// `version` (a new detail, a new version). Shown, not searched: a detail shared by many commands would find them all
 	details:    []string,
@@ -39,6 +45,7 @@ Palette_Commands :: struct {
 	made:     bool,
 	checked:  proc(user: rawptr, index: int) -> bool,
 	choices:  proc(user: rawptr, index: int, argument: string) -> (labels, values: []string),
+	initial:  proc(user: rawptr, index: int, argument: string, allocator: runtime.Allocator) -> (value: string, ok: bool),
 	user:     rawptr,
 	index:    map[string]int,   // a command's index by its id: the mark's and the alias's lookup
 	// the keymap of the window it was given in (keymap_use) and its version when the items were made: the keys shown,
@@ -80,7 +87,7 @@ palette_commands :: proc(p: ^Command_Palette, table: []Command, disabled: []bool
 	c.source.user = p
 	// (a command with arguments opens its form with the forms runner: prefs_page's, which has the control table)
 	c.source.runner = p.forms.open != nil ? &p.forms : nil
-	c.checked, c.choices, c.user = o.checked, o.choices, o.user   // (read at each build or each form: no version)
+	c.checked, c.choices, c.initial, c.user = o.checked, o.choices, o.initial, o.user   // (read at each build or each form: no version)
 	keymap_version := km != nil ? km.version : 0
 	addresses := [3]rawptr{raw_data(table), raw_data(disabled), raw_data(o.details)}
 	if c.made && o.version == c.version && len(table) == c.count && len(disabled) == len(c.disabled) && km == c.keymap &&
@@ -112,6 +119,14 @@ palette_command_choices :: proc(p: ^Command_Palette, index: int, argument: strin
 	c := &p.commands
 	if c.choices == nil { return nil, nil }
 	return c.choices(c.user, index, argument)
+}
+
+// The value the program starts argument `argument` of command `index` on (Palette_Commands_Options.initial), as the
+// settings file writes it, in `allocator`; ok false: none, its default stays.
+palette_command_initial :: proc(p: ^Command_Palette, index: int, argument: string, allocator := context.temp_allocator) -> (value: string, ok: bool) {
+	c := &p.commands
+	if c.initial == nil { return "", false }
+	return c.initial(c.user, index, argument, allocator)
 }
 
 // The command an alias typed whole names, by its index in the table (-1: none). The query is the palette's, its prefix

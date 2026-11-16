@@ -8,6 +8,7 @@ package ui
 //   Closed ──Enter on an item that runs──▶ Control ──Enter: kept / Escape: put back──▶ Closed
 //   Closed ──Enter on a command with arguments──▶ Form at 0 ──Enter──▶ … at n − 1 ──Enter──▶ the choice (closed)
 //   Form at n ──Escape──▶ Form at n − 1; at 0 ──Escape──▶ Closed
+//   palette_open_form ──▶ Form at 0, no list under it: Escape at 0 or its item gone ──▶ the palette closed
 //   any level ──a close the palette did not ask──▶ closed, as Escape at each level; its item gone ──▶ Closed, nothing put back
 //
 // Every write is made in palette_chosen, at the top of the program's next build: the palette's view is built after the
@@ -68,6 +69,8 @@ Palette_Run :: struct {
 	error:      string,   // (owned) why the last write was refused ("": none)
 	query:      string,   // (owned) the field's text before the run mode: put back when it closes
 	generation: u64,      // the palette's generation its item was last found at
+	// opened by palette_open_form: no list under it, so leaving the first step closes the palette
+	direct:     bool,
 	state:      rawptr,   // the runner's, for this run
 	// asked by the view, made by palette_chosen
 	due_write:  string,   // (owned)
@@ -76,7 +79,7 @@ Palette_Run :: struct {
 }
 
 @(private)
-Palette_Run_Due :: enum u8 { None, Keep, Back }
+Palette_Run_Due :: enum u8 { None, Keep, Back, Gone }   // Gone: its item left its source's answer
 
 // The run mode's level, for a test or a program's own hint.
 palette_run_level :: proc(p: ^Command_Palette) -> Palette_Run_Level { return p.run.level }
@@ -110,6 +113,36 @@ palette_run_open :: proc(p: ^Command_Palette, src: ^Palette_Source, it: Palette_
 	run.query = strings.clone(line_edit_string(&p.field))
 	palette_run_step_text(p)
 	return true
+}
+
+// Opens the palette over the window being built straight on command `id`'s form, at its first argument: a button that
+// sets what a command sets (a model) opens its form, and the program keeps no chooser of its own. There is no list it
+// came from: Escape at the first argument closes the palette. False, the palette left as it was: the commands source
+// has no such command, it takes no argument, it cannot act now (`disabled`), or no forms runner is installed
+// (prefs_page.palette_forms_use).
+palette_open_form :: proc(p: ^Command_Palette, id: string) -> bool {
+	c := &p.commands
+	i, ok := c.index[id]
+	if !ok || i >= len(c.table) || len(c.table[i].arguments) == 0 || c.source.runner == nil { return false }
+	if i < len(c.disabled) && c.disabled[i] { return false }
+	// (a run open on another item ends as a close the palette did not ask: its value of before put back)
+	palette_run_close(p, true)
+	palette_open(p)
+	label, _, _ := command_shown(c.table[i])
+	if !palette_run_open(p, &c.source, Palette_Item{id = id, title = label, icon = c.table[i].icon}) {
+		palette_close(p)
+		return false
+	}
+	p.run.direct = true
+	return true
+}
+
+// The run mode left from its first step (Escape, its item gone): the list it came from, or, opened by
+// palette_open_form, the palette closed.
+@(private = "file")
+palette_run_leave :: proc(p: ^Command_Palette, undo: bool) {
+	if p.run.direct { palette_close(p); return }
+	palette_run_close(p, undo)
 }
 
 // The field takes the text of the step shown (its value's, or empty for a filter), and the keyboard.
@@ -202,7 +235,9 @@ palette_run_due :: proc(p: ^Command_Palette) {
 			palette_run_step_text(p)
 			return
 		}
-		palette_run_close(p, true)
+		palette_run_leave(p, true)
+	case .Gone:
+		palette_run_leave(p, false)
 	}
 }
 
@@ -214,10 +249,17 @@ palette_run_follow :: proc(p: ^Command_Palette) {
 	if run.level == .Closed || run.generation == p.generation { return }
 	run.generation = p.generation
 	i := palette_source_index(p, run.source)
-	if i < 0 { palette_run_close(p, false); return }
-	snap := p.states[i].snap
-	if snap == nil { return }   // (read again: its answer comes)
-	for it in snap.items { if it.id == run.id { return } }
+	if i >= 0 {
+		snap := p.states[i].snap
+		if snap == nil { return }   // (read again: its answer comes)
+		for it in snap.items { if it.id == run.id { return } }
+	}
+	// (opened by palette_open_form, the palette closes: made by palette_chosen, not inside the palette's own view)
+	if run.direct {
+		run.due = .Gone
+		gs().anim_busy = true
+		return
+	}
 	palette_run_close(p, false)
 }
 
@@ -226,6 +268,7 @@ palette_run_follow :: proc(p: ^Command_Palette) {
 @(private)
 palette_run_keys :: proc(p: ^Command_Palette, page: int) -> (keys: Palette_Run_Keys) {
 	run := &p.run
+	if run.due == .Gone { return }   // (its item gone: no key acts on it any more)
 	if !hotkey_recording() && key_press_any(.Escape) { run.due = .Back }
 	if key_press_any(.Return) { run.due = .Keep; keys.enter = true }
 	if key_press_any(.Down) { keys.step = 1 }

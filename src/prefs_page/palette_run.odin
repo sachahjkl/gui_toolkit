@@ -15,6 +15,7 @@ package tk_prefs_page
 import "base:runtime"
 import "core:fmt"
 import "core:math"
+import "core:slice"
 import "core:strings"
 import "../ascii"
 import config "../config"
@@ -37,6 +38,14 @@ Run_State :: struct {
 	before:    string,              // (owned) a setting's value when it opened
 	was_default: bool,
 	written:   string,              // (owned) the last value the run mode wrote ("": none)
+	// the step's control and its closed list (labels translated), read once when the step opens (step_read): the
+	// program's choices are not called and its labels not translated at each build, and the rows kept by index point
+	// into this list whatever the program does to its own meanwhile
+	step:      int,                 // the step they were read for (-1: none)
+	step_language: u32,
+	control:   Control,
+	labels:    []string,            // (owned)
+	values:    []string,            // (owned)
 	// the step's sub-list: the rows the filter keeps (indexes in its choices), what they were made for
 	sub:       ui.Palette_Sublist,
 	rows:      [dynamic]int,
@@ -71,7 +80,7 @@ settings_open :: proc(p: ^ui.Command_Palette, run: ^ui.Palette_Run) -> int {
 	e := &s.prefs.entries[r]
 	if e.def.kind == .Bool || e.source == .Policy || e.source == .Command_Line { return 0 }
 	st := new(Run_State)
-	st.settings, st.prefs, st.palette, st.color_step = s, s.prefs, p, -1
+	st.settings, st.prefs, st.palette, st.color_step, st.step = s, s.prefs, p, -1, -1
 	append(&st.names, strings.clone(run.id))
 	st.before = strings.clone(config.value_string(s.prefs, config.Ref(r)))
 	st.was_default = e.source == .Default
@@ -84,11 +93,17 @@ form_open :: proc(p: ^ui.Command_Palette, run: ^ui.Palette_Run) -> int {
 	index, args := ui.palette_command_arguments(p, run.id)
 	if index < 0 || len(args) == 0 { return 0 }
 	st := new(Run_State)
-	st.command, st.palette, st.color_step = index, p, -1
+	st.command, st.palette, st.color_step, st.step = index, p, -1, -1
 	st.form = config.prefs_make()
 	config.register(&st.form, args)
 	st.prefs = &st.form
-	for a in args { append(&st.names, strings.clone(a.name)) }
+	for a in args {
+		append(&st.names, strings.clone(a.name))
+		// (the program's value now, read once: the registry keeps its copy; a value the argument refuses leaves the default)
+		if v, ok := ui.palette_command_initial(p, index, a.name, context.temp_allocator); ok {
+			_ = config.set_from_string(&st.form, a.name, v, .User)
+		}
+	}
 	run.state = st
 	return len(args)
 }
@@ -104,6 +119,7 @@ run_close :: proc(p: ^ui.Command_Palette, run: ^ui.Palette_Run) {
 	delete(st.written)
 	delete(st.rows)
 	delete(st.rows_query)
+	step_free(st)
 	ui.color_pick_destroy(&st.color)
 	path_completion_end(&st.path)
 	free(st)
@@ -128,6 +144,40 @@ run_entry :: proc(st: ^Run_State, run: ^ui.Palette_Run) -> (^config.Entry, confi
 	return config.entry(st.prefs, r), r
 }
 
+// The step's control and closed list, read when step `run.arg` opens or the language changes: never at each build.
+@(private = "file")
+step_read :: proc(st: ^Run_State, run: ^ui.Palette_Run, o: Page_Options, e: ^config.Entry) -> Control {
+	language := i18n.version()
+	if st.step == run.arg && st.step_language == language { return st.control }
+	step_free(st)
+	st.step, st.step_language = run.arg, language
+	custom := o.custom != nil && slice.contains(o.custom_names, e.def.name)
+	if e.def.kind == .String && !custom {
+		labels, values := choices_of(o, e)
+		st.labels, st.values = strings_clone(labels), strings_clone(values)
+	}
+	st.control = control_of(e.def, len(st.values), len(o.themes), custom)
+	st.rows_made = false   // (the filter's rows are indexes into the list: made again with it)
+	return st.control
+}
+
+@(private = "file")
+step_free :: proc(st: ^Run_State) {
+	for x in st.labels { delete(x) }
+	for x in st.values { delete(x) }
+	delete(st.labels)
+	delete(st.values)
+	st.labels, st.values, st.step = nil, nil, -1
+}
+
+@(private = "file")
+strings_clone :: proc(list: []string) -> []string {
+	if len(list) == 0 { return nil }
+	out := make([]string, len(list))
+	for x, i in list { out[i] = strings.clone(x) }
+	return out
+}
+
 // Whether a control is a list of choices in the palette: its field is the list's filter.
 @(private = "file")
 is_list :: proc(c: Control) -> bool { return c == .Switch || c == .Segments || c == .List || c == .Font_Family || c == .Theme }
@@ -137,7 +187,7 @@ run_text :: proc(p: ^ui.Command_Palette, run: ^ui.Palette_Run) -> (text: string,
 	st := (^Run_State)(run.state)
 	e, _ := run_entry(st, run)
 	if e == nil { return "", false }
-	c := control_for(run_options(st), e)
+	c := step_read(st, run, run_options(st), e)
 	if is_list(c) || c == .Custom { return "", false }
 	return value_shown(e), true
 }
@@ -226,7 +276,7 @@ run_build :: proc(p: ^ui.Command_Palette, run: ^ui.Palette_Run, query: string, k
 	if e == nil { return }
 	em := ui.font_size()
 	o := run_options(st)
-	c := control_for(o, e)
+	c := step_read(st, run, o, e)
 	used: f32 = 0
 	// (a form's argument says its title; a setting's is its run row's. The description of either, once, weak)
 	if st.settings == nil {
@@ -278,7 +328,7 @@ sub_build :: proc(st: ^Run_State, run: ^ui.Palette_Run, o: Page_Options, e: ^con
 		rows.labels = {i18n.tr("Off"), i18n.tr("On")}
 		rows.values = {"false", "true"}
 	case .Segments, .List:
-		rows.labels, rows.values = choices_of(o, e)
+		rows.labels, rows.values = st.labels, st.values   // (step_read's: read when the step opened)
 	case .Theme:
 		rows.themes = o.themes
 		rows.light = o.themes_light

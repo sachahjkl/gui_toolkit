@@ -175,6 +175,7 @@ List ──Enter on an item that runs──▶ Control (a setting's value)      
   ▲                                │                                    ──Escape: put back──▶ List
   │                                └▶ Form, argument 0 ──Enter──▶ argument 1 … ──Enter on the last──▶ the choice, closed
   └──────────────── Escape at argument 0 ◀── Escape at argument n steps to n − 1
+palette_open_form ──▶ Form, argument 0 (no list under it) ──Escape──▶ the palette closed
 any level ──a close the palette did not ask (a click outside, Ctrl+K, its window gone)──▶ closed, as Escape at each level
 any level ──its item gone from its source's answer──▶ List, nothing put back
 ```
@@ -252,6 +253,27 @@ any level ──its item gone from its source's answer──▶ List, nothing pu
 - Enter on the last argument ends the run mode and closes the palette; `palette_chosen` returns the command with
   `Palette_Choice.arguments`: each value as the settings file writes it (`config.value_text`), in the arguments' order.
 - A program without the settings source installs the forms runner alone: `prefs_page.palette_forms_use`.
+- **A form opened by the program** (`ui.palette_open_form(p, id)`): the palette opens straight on the form, at its
+  first argument, as Enter on the command's row would open it. A button that sets what a command sets opens its form
+  (a composer's model button, "Set the model"), so the program writes no chooser of its own. There is no list it came
+  from: Escape at the first argument closes the palette, and so does its item gone from the commands' answer (a
+  person never saw a list to step back to). Escape at a later argument steps back, as in a form opened from the list.
+  Refused (false, the palette left as it was): an id the commands source does not have, a command without arguments,
+  a command that cannot act now (`disabled`), no forms runner. The usage memory notes nothing: the person did not
+  choose it in the palette.
+- **A starting value that follows the program** (`Palette_Commands_Options.initial(user, index, argument, allocator)
+  -> (value, ok)`): read once for each argument when its form opens, as the settings file writes a value (the form's
+  values go out as text too, `Palette_Choice.arguments`); the form's registry takes a copy, so the program's text
+  needs to live only for the call. Not ok, or a value the argument refuses: its `Def.default` stays. "Rename the
+  session" starts on the session's title, "Set the model" on the model in use. Refused: the program rewriting the
+  table's defaults at each build (a table made again at each change, the retired strings kept while a form reads
+  them); a `config.Value` (a text value would need an owner, and every storage already reads from text).
+- **A step's choices are read once** (both runners: a setting's and a form's). When a step opens, its control and its
+  closed list (the program's `choices`, each label translated) are read and kept by the run; the step's close, the
+  run's close or another language frees them. Each build then reads the kept list: no call of the program and no
+  translation per label at each frame. The filter's rows are indexes into that list, so a list the program changes
+  during the step cannot shift them under the person: the row selected writes the value it showed. A program whose
+  list changed (a new model) shows it at the step's next opening (Escape then Enter, or the form opened again).
 
 ## Decisions
 
@@ -297,6 +319,8 @@ any level ──its item gone from its source's answer──▶ List, nothing pu
 
 The other tests of the layers: `escape_leaves_a_value_written_by_another_path`, `a_typed_value_is_kept_or_refused`,
 `a_locked_setting_shows_its_value_and_why`, `a_command_s_form_gives_its_values` (Escape at each level),
+`a_form_opened_by_the_program_runs_and_escape_closes`, `a_form_starts_on_the_program_s_value`,
+`a_step_reads_its_choices_once`,
 `shift_enter_goes_to_a_setting` in `tests/prefs_page`; `shift_enter_goes_to_a_command_s_button` in `tests/commands`.
 
 ## Layers

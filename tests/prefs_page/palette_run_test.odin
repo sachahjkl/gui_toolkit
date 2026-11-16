@@ -5,6 +5,7 @@
 //   odin test tests/prefs_page -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package prefs_page_test
 
+import "base:runtime"
 import "core:fmt"
 import "core:math"
 import "core:os"
@@ -49,6 +50,9 @@ RUN_COMMANDS := [?]ui.Command{
 
 @(private = "file", rodata) FORMAT_LABELS := [?]string{"PNG", "WebP", "JPEG"}
 @(private = "file", rodata) FORMAT_VALUES := [?]string{"png", "webp", "jpeg"}
+// (the program's list in another order: what a list changed during a form gives)
+@(private = "file", rodata) FORMAT_LABELS_MOVED := [?]string{"JPEG", "PNG", "WebP"}
+@(private = "file", rodata) FORMAT_VALUES_MOVED := [?]string{"jpeg", "png", "webp"}
 
 @(private = "file")
 Run_App :: struct {
@@ -69,6 +73,14 @@ Run_App :: struct {
 	page_saw: string,
 	split:    int,
 	changed:  int,
+	// the program's state the forms read: the picture's name (Rename's start; "": none), the formats' list now, the
+	// times the list was asked for
+	title:    string,
+	moved:    bool,
+	choices_read: int,
+	// a form the program opens in the next build (palette_open_form), and what the call answered
+	open_form: string,
+	form_opened: Maybe(bool),
 }
 
 @(private = "file")
@@ -81,13 +93,28 @@ run_options :: proc(user: rawptr) -> prefs_page.Page_Options {
 run_build :: proc(s: ^session.Session) {
 	app := (^Run_App)(s.user)
 	if app.commands {
-		ui.palette_commands(&app.pal, RUN_COMMANDS[:], nil, {choices = proc(user: rawptr, index: int, argument: string) -> (labels, values: []string) {
-			if argument != "format" { return nil, nil }
-			return FORMAT_LABELS[:], FORMAT_VALUES[:]
-		}})
+		ui.palette_commands(&app.pal, RUN_COMMANDS[:], nil, {
+			user = app,
+			choices = proc(user: rawptr, index: int, argument: string) -> (labels, values: []string) {
+				if argument != "format" { return nil, nil }
+				app := (^Run_App)(user)
+				app.choices_read += 1
+				if app.moved { return FORMAT_LABELS_MOVED[:], FORMAT_VALUES_MOVED[:] }
+				return FORMAT_LABELS[:], FORMAT_VALUES[:]
+			},
+			initial = proc(user: rawptr, index: int, argument: string, allocator: runtime.Allocator) -> (value: string, ok: bool) {
+				app := (^Run_App)(user)
+				if RUN_COMMANDS[index].id != "rename" || argument != "name" || app.title == "" { return "", false }
+				return strings.clone(app.title, allocator), true
+			},
+		})
 	}
 	ui.palette_keys(&app.pal)
 	if app.show { app.show = false; ui.palette_open(&app.pal, app.typed) }
+	if app.open_form != "" {
+		app.form_opened = ui.palette_open_form(&app.pal, app.open_form)
+		app.open_form = ""
+	}
 	// (what the last frame showed in the palette, its view built after the page: the page must have drawn the same)
 	theme := config.ref_of(&app.prefs, "look.theme") != config.NO_REF
 	if theme && app.shown && app.page_saw != "" && config.string_of(&app.prefs, "look.theme") != app.page_saw { app.split += 1 }
@@ -138,6 +165,9 @@ run_open_on :: proc(s: ^session.Session, app: ^Run_App, typed, id: string) {
 	Want :: struct { app: ^Run_App, id: string }
 	w := Want{app, id}
 	session.wait_until(s, &w, proc(s: ^session.Session, w: ^Want) -> bool {
+		// (opened first: the list a form's close left is still `shown`, and a key pressed before the build that opens
+		// the palette would reach it before its field has the focus)
+		if w.app.show { return false }
 		_, first, ok := ui.palette_row(&w.app.pal, 0)
 		return !ui.palette_busy(&w.app.pal) && ok && first == w.id
 	}, fmt.tprintf("%s first", id))
@@ -371,6 +401,135 @@ a_command_s_form_gives_its_values :: proc(t: ^testing.T) {
 	session.key(s, .Escape)
 	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return !ui.palette_is_open(&app.pal) }, "closed")
 	testing.expect_value(t, app.chosen, "")
+}
+
+@(private = "file")
+run_arg_is :: proc(s: ^session.Session, app: ^Run_App, arg: int) {
+	Want :: struct { app: ^Run_App, arg: int }
+	w := Want{app, arg}
+	session.wait_until(s, &w, proc(s: ^session.Session, w: ^Want) -> bool {
+		_, _, arg, ok := ui.palette_run_item(&w.app.pal)
+		return ok && arg == w.arg
+	}, fmt.tprintf("argument %d", arg))
+}
+
+// A form the program opens (a button): the palette opens on its first argument, what is typed and Enter give the
+// choice; Escape at the first argument closes the palette, there being no list it came from. An unknown command, or
+// one without arguments, opens nothing.
+@(test)
+a_form_opened_by_the_program_runs_and_escape_closes :: proc(t: ^testing.T) {
+	app: Run_App
+	defer run_end(&app)
+	app.commands = true
+	s := run_start(t, &app)
+	session.frames(s, 2)
+	app.open_form = "rename"
+	run_level_is(s, &app, .Form)
+	opened, asked := app.form_opened.?
+	testing.expect(t, asked && opened, "palette_open_form answered true")
+	testing.expect(t, ui.palette_is_open(&app.pal), "the palette open")
+	testing.expect_value(t, ui.line_edit_string(&app.pal.field), "Harbour")
+	session.key(s, .A, {.Ctrl})
+	session.type_text(s, "Quay")
+	session.key(s, .Return)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return app.chosen == "rename" }, "the command chosen")
+	testing.expect_value(t, len(app.values), 1)
+	if len(app.values) == 1 { testing.expect_value(t, app.values[0], "Quay") }
+	session.frames(s, 2)
+	testing.expect(t, !ui.palette_is_open(&app.pal), "the palette closed")
+
+	// Escape at the first argument: the palette closes, nothing chosen
+	app.chosen = ""
+	app.open_form = "export"
+	run_level_is(s, &app, .Form)
+	session.key(s, .Return)
+	run_arg_is(s, &app, 1)
+	session.key(s, .Escape)
+	run_arg_is(s, &app, 0)
+	testing.expect(t, ui.palette_is_open(&app.pal), "a later argument steps back")
+	session.key(s, .Escape)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return !ui.palette_is_open(&app.pal) }, "closed")
+	testing.expect_value(t, ui.palette_run_level(&app.pal), ui.Palette_Run_Level.Closed)
+	testing.expect_value(t, app.chosen, "")
+
+	// refused: the palette stays closed
+	app.form_opened = nil
+	app.open_form = "no_such_command"
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return app.form_opened != nil }, "asked")
+	opened, _ = app.form_opened.?
+	testing.expect(t, !opened, "palette_open_form answered false")
+	session.frames(s, 2)
+	testing.expect(t, !ui.palette_is_open(&app.pal), "nothing opened")
+}
+
+// A form starts on the program's value now (Palette_Commands_Options.initial), read when it opens: the program's
+// state changed between two opens gives the new value; with none, the argument's default.
+@(test)
+a_form_starts_on_the_program_s_value :: proc(t: ^testing.T) {
+	app: Run_App
+	defer run_end(&app)
+	app.commands = true
+	app.title = "Harbour at dusk"
+	s := run_start(t, &app)
+	session.frames(s, 2)
+	app.open_form = "rename"
+	run_level_is(s, &app, .Form)
+	testing.expect_value(t, ui.line_edit_string(&app.pal.field), "Harbour at dusk")
+	session.key(s, .Escape)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return !ui.palette_is_open(&app.pal) }, "closed")
+	// the program's state changed: the next form, opened from the list, starts on it
+	app.title = "Quay"
+	run_open_on(s, &app, ">rename", "rename")
+	session.key(s, .Return)
+	run_level_is(s, &app, .Form)
+	testing.expect_value(t, ui.line_edit_string(&app.pal.field), "Quay")
+	session.key(s, .Return)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return app.chosen == "rename" }, "the command chosen")
+	if len(app.values) == 1 { testing.expect_value(t, app.values[0], "Quay") }
+	// none: the default
+	app.title, app.chosen = "", ""
+	app.open_form = "rename"
+	run_level_is(s, &app, .Form)
+	testing.expect_value(t, ui.line_edit_string(&app.pal.field), "Harbour")
+}
+
+// A step's closed list is read once when the step opens, not at each build; a list the program changes during the
+// step keeps the rows shown (the row selected writes the value it showed); the step opened again reads the new list.
+@(test)
+a_step_reads_its_choices_once :: proc(t: ^testing.T) {
+	app: Run_App
+	defer run_end(&app)
+	app.commands = true
+	s := run_start(t, &app)
+	run_open_on(s, &app, ">export", "export")
+	session.key(s, .Return)
+	run_level_is(s, &app, .Form)
+	session.key(s, .Return)
+	run_arg_is(s, &app, 1)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.find_text(s, "WebP") != nil }, "the program's choices")
+	session.frames(s, 10)
+	testing.expect_value(t, app.choices_read, 1)
+	// the program's list changes under the open step: its rows stay, PNG selected, WebP under it
+	app.moved = true
+	session.frames(s, 5)
+	testing.expect_value(t, app.choices_read, 1)
+	session.key(s, .Down)
+	session.key(s, .Return)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return app.chosen == "export" }, "the command chosen")
+	if len(app.values) == 2 { testing.expect_value(t, app.values[1], "webp") }
+	// the step opened again: the new list, read once more
+	app.chosen = ""
+	run_open_on(s, &app, ">export", "export")
+	session.key(s, .Return)
+	run_level_is(s, &app, .Form)
+	session.key(s, .Return)
+	run_arg_is(s, &app, 1)
+	session.frames(s, 10)
+	testing.expect_value(t, app.choices_read, 2)
+	session.key(s, .Down)   // (png, the default, is the second row now: jpeg, png, webp)
+	session.key(s, .Return)
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return app.chosen == "export" }, "the command chosen again")
+	if len(app.values) == 2 { testing.expect_value(t, app.values[1], "webp") }
 }
 
 // Go to: Shift+Enter on a setting shows the settings on its page, its line scrolled into view, focused and lit; the
