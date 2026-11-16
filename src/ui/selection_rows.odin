@@ -25,13 +25,18 @@ Text_Rows :: struct {
 	text:  proc(user: rawptr, row: int, allocator: runtime.Allocator) -> (text: string, ok: bool),
 	user:  rawptr,
 	gap:   string,   // before each row read ("": "\n"; "\n\n": rows that are blocks of a document)
+	// row `row`'s identity, which stays when rows are inserted before it (a page of older messages loaded above a
+	// selection). nil: the index is the identity (rows only appended, a diff)
+	id:    proc(user: rawptr, row: int) -> u64,
 }
 
-// A selectable box's row: its container (the box the rows were declared in) and its index there.
+// A selectable box's row: its container (the box the rows were declared in), its index there and its identity.
 @(private)
 Sel_Row :: struct {
 	region: Key,
 	row:    int,
+	id:     u64,
+	checked: u64,   // (an end's: the build its row was found again in)
 }
 
 // A run of rows a copy reads from their container, put at `at` in the text of the boxes.
@@ -46,7 +51,7 @@ Sel_Gap :: struct {
 selection_rows_begin :: proc(rows: Text_Rows) {
 	s := gs()
 	k := parent_box().key
-	append(&s.sel.region_stack, Sel_Row{k, -1})
+	append(&s.sel.region_stack, Sel_Row{region = k, row = -1})
 	s.sel.regions[k] = rows
 }
 
@@ -54,7 +59,10 @@ selection_rows_begin :: proc(rows: Text_Rows) {
 selection_row :: proc(i: int) {
 	s := gs()
 	n := len(s.sel.region_stack)
-	if n > 0 { s.sel.region_stack[n - 1].row = i }
+	if n == 0 { return }
+	top := &s.sel.region_stack[n - 1]
+	top.row, top.id = i, 0
+	if rows := s.sel.regions[top.region]; rows.id != nil { top.id = rows.id(rows.user, i) }
 }
 
 selection_rows_end :: proc() {
@@ -69,8 +77,25 @@ selection_held_rows :: proc() -> (rows: [2]int) {
 	n := len(s.sel.region_stack)
 	if n == 0 || s.sel.phase == .None { return }
 	k := s.sel.region_stack[n - 1].region
-	for e, i in s.sel.ends { if e.region == k && k != 0 { rows[i] = e.row } }
+	if k == 0 { return }
+	sel_ends_find(s, k)
+	for e, i in s.sel.ends { if e.region == k { rows[i] = e.row } }
 	return
+}
+
+// The ends' rows found again by their identity, once a build: rows inserted before an end (a page loaded above) moved
+// it. A look at its index first; a search of the rows only when it moved, once for the move.
+@(private = "file")
+sel_ends_find :: proc(s: ^State, region: Key) {
+	rows := s.sel.regions[region]
+	if rows.id == nil { return }
+	for &e in s.sel.ends {
+		if e.region != region || e.checked == s.build_index { continue }
+		e.checked = s.build_index
+		if e.row >= 0 && e.row < rows.count && rows.id(rows.user, e.row) == e.id { continue }
+		e.row = -1
+		for r in 0 ..< rows.count { if rows.id(rows.user, r) == e.id { e.row = r; break } }
+	}
 }
 
 // Whether row `i` of this container holds an end of the selection (a lazy column asks it of each item).

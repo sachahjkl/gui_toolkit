@@ -150,7 +150,8 @@ outlives the rows it spans: `selection_rows_begin(Text_Rows{count, text, user, g
 `selection_row(i)` before row `i`'s boxes, `selection_rows_end()`. It builds the rows of `selection_held_rows()` (the
 anchor's and the moving end's, -1 for none) wherever they are, or asks `selection_holds_row(i)` of each row. A copy reads
 the rows between that are not built from `text(user, i)`: `user` is the program's lasting data, as it is read after the
-build. `gt:diff`'s `view` does it; a lazy column does it with `lazy_begin(rows = Text_Rows{...})`, its items being the rows
+build. Rows that can be inserted before others (a page of older messages loaded above) give `id(user, i)`, a row's
+identity that stays: the ends follow their rows. `gt:diff`'s `view` does it; a lazy column does it with `lazy_begin(rows = Text_Rows{...})`, its items being the rows
 in their order.
 
 `measure(s, id, size, text, o)` is `shape(...).width` without building the glyph list: what a layout engine calls.

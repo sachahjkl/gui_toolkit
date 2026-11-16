@@ -75,8 +75,14 @@ Refused:
   builds every row between the ends, thousands in a long conversation.
 - **Positions by row instead of by box**, with the end rows unbuilt: every rule of the selection would need a second
   form for a row not built (its order, its words, the text of its part before or after the end).
-- **Rows by identity.** A row is its index in the container: rows inserted above a selection move it. The containers
-  that have it (a diff, a conversation that appends) do not insert above.
+- **The program telling the shift** (`selection_rows_shift(at, count)` when it inserts rows): one more call to forget,
+  at a place far from the container (where a page of history arrives).
+
+Rows inserted before an end (opencode native loads a page of older messages above the conversation, and a drag held at
+its top does exactly that) move the end's row. A container whose rows can be inserted gives `Text_Rows.id`, a row's
+identity: each end keeps its row's identity, and once a build, if the row at its index is no longer it, the end is found
+again by a search of the rows (once for each insertion, not each build). Without `id`, the index is the identity: a
+diff, rows only appended.
 
 A lazy column without a text procedure builds the whole span, as before: correct, and costly only there.
 

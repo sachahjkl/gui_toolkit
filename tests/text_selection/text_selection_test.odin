@@ -32,6 +32,7 @@ Kind :: enum {
 }
 
 @(private = "file") LAZY_ROWS :: 300
+@(private = "file") lazy_from: int   // the first item of the lazy column (the text procedures take no fixture: one thread)
 
 @(private = "file")
 Fx :: struct {
@@ -131,12 +132,14 @@ frame :: proc(f: ^Fx, events: []platform.Event = nil) {
 			if ui.scroll_y("###lzr") {
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 				if ui.column(id = "###col") {
-					text :: proc(_: rawptr, i: int, allocator: runtime.Allocator) -> (string, bool) { return fmt.aprintf("item %d", i, allocator = allocator), true }
-					lz := ui.lazy_begin(rows = {count = LAZY_ROWS, text = text})
-					for i in 0 ..< LAZY_ROWS {
-						if ui.lazy_item(lz, fmt.tprintf("###it%d", i)) {
+					// (row i is item lazy_from + i: lowering lazy_from inserts items before every row, a page loaded above)
+					text :: proc(_: rawptr, i: int, allocator: runtime.Allocator) -> (string, bool) { return fmt.aprintf("item %d", lazy_from + i, allocator = allocator), true }
+					id :: proc(_: rawptr, i: int) -> u64 { return u64(lazy_from + i) }
+					lz := ui.lazy_begin(rows = {count = LAZY_ROWS - lazy_from, text = text, id = id})
+					for n in lazy_from ..< LAZY_ROWS {
+						if ui.lazy_item(lz, fmt.tprintf("###it%d", n)) {
 							ui.next({width = ui.fill(), height = ui.px(40), flags = {.Selectable}})
-							ui.label(fmt.tprintf("item %d###l", i))
+							ui.label(fmt.tprintf("item %d###l", n))
 						}
 					}
 				}
@@ -345,4 +348,34 @@ a_selection_outlives_its_lazy_item :: proc(t: ^testing.T) {
 	frame(f, {{kind = .Mouse_Release, button = .Left, pos = q}})
 	frame(f, {{kind = .Key_Press, key = .C, mods = {.Ctrl}}})
 	testing.expect_value(t, len(clip), len(got))
+}
+
+// Rows inserted before a standing selection (a page of older messages loaded above it) move its ends' rows: each end is
+// found again by its row's identity, so the rows built are still its own and the copy reads the same items.
+@(test)
+rows_inserted_above_keep_the_selection :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f), "the embedded face") { return }
+	defer close(f)
+	f.kind = .Lazy
+	lazy_from = 100
+	defer lazy_from = 0
+	for _ in 0 ..< 3 { frame(f) }
+	p := f.target.rect.min + {20, 60}   // (item 101)
+	frame(f, {{kind = .Mouse_Press, button = .Left, pos = p}})
+	frame(f, {{kind = .Mouse_Move, pos = p + {0, 20}}})
+	ui.view_jump(f.target, 120 * 40)
+	for _ in 0 ..< 4 { frame(f) }
+	q := f.target.rect.min + {20, 100}
+	frame(f, {{kind = .Mouse_Move, pos = q}})
+	frame(f, {{kind = .Mouse_Release, button = .Left, pos = q}})
+	before := strings.clone(ui.selected_text(&f.s, context.temp_allocator))
+	defer delete(before)
+	if !testing.expectf(t, strings.contains(before, "item 150\n"), "the selection spans: %.40q", before) { return }
+	// a page of 100 items above: every row's index moves by 100
+	lazy_from = 0
+	for _ in 0 ..< 4 { frame(f) }
+	testing.expect(t, ui.has_selection(&f.s), "the selection stands")
+	testing.expect_value(t, ui.selected_text(&f.s, context.temp_allocator), before)
 }
