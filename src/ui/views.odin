@@ -118,6 +118,9 @@ Views :: struct {
 	dock_next: u64,                     // the last stamp of a view docked (View_Record.dock_order)
 	version:   u64,                     // changes when a view opens, closes or moves (views_version)
 	windows:   View_Windows,            // the backend of the external windows (views_set_windows; none: they are refused)
+	// the program's end of each build of a view's window (views_set_window_end): its overlays there
+	window_end:      View_Window_End,
+	window_end_user: rawptr,
 	memory:    store.Store,
 	labels:    View_Labels,
 	// go to (acts.odin): the hash of the act name it waits for in its windows' frames (0: none), and the builds left
@@ -715,14 +718,15 @@ view_kind_free :: proc(k: ^View_Kind) {
 }
 
 // The records closed with no answer go. Not while views are built: a build that closes a view (its own, another) must
-// not free a record that is being built or move the ones after it.
+// not free a record that is being built or move the ones after it. Not while its window is open: the next step closes
+// it through the record (its handle), then sweeps (views.md, section 4.1, decision 16).
 @(private)
 views_sweep :: proc(vs: ^Views) {
 	if vs.building > 0 { return }
 	context.allocator = vs.allocator
 	n := 0
 	for r in vs.records {
-		if r.machine.state == .Closed && r.machine.answer == nil {
+		if r.machine.state == .Closed && r.machine.answer == nil && r.w_state == nil {
 			view_record_free(r)
 			continue
 		}

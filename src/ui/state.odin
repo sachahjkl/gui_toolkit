@@ -154,11 +154,16 @@ now_ms :: proc() -> f64 { return current != nil ? clock_ms(current) : real_ms() 
 
 // The state's time goes by `clock` (ms, above 0), which its owner moves: every delay of the interface (caret blink, double
 // clicks, timers, toasts, tooltips, a scroll bar that hides) and every wake (wake_in_ms, wake_due) follows it. nil: the system's
-// clock. A test or a replay is then deterministic, and waits for no time.
+// clock. A test or a replay is then deterministic, and waits for no time. A view's window with no clock of its own keeps
+// its owner's (State.style_owner): one time for the program's windows.
 set_clock :: proc(s: ^State, clock: ^f64) { s.clock = clock }
 
 @(private) real_ms :: proc() -> f64 { return time.duration_milliseconds(time.tick_since({sync.atomic_load(&tick_origin._nsec)})) }
-@(private) clock_ms :: proc(s: ^State) -> f64 { return s.clock != nil ? s.clock^ : real_ms() }
+@(private) clock_ms :: proc(s: ^State) -> f64 {
+	c := s.clock
+	if c == nil && s.style_owner != nil { c = style_root(s).clock }
+	return c != nil ? c^ : real_ms()
+}
 
 Build_Params :: struct {
 	window_size:    Vec2,

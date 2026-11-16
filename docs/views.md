@@ -119,6 +119,7 @@ again.
 | `views_space_format(m)`, `views_space_parse(text) -> (View_Space_Memory, ok)` | a dock space's line of the memory |
 | `views_windows_follow(s, shown)` | the windows of the views of `s` hide and show with it (host_hide, host_show call it) |
 | `views_set_windows(vs, w)`, `views_windows_ready(vs)`, `view_window_state(vs, id, instance)` | the backend of the views' windows (section External) |
+| `views_set_window_end(vs, end, user)` | the program's end of each build of a view's window: its overlays there (section External) |
 | `views_windows_step(s)`, `views_window_build()`, `view_window_close_asked(s)` | a backend's part: between frames, a window's build, its system close |
 | `state_carry(from, from_root, to, to_root)`, `style_follow(dst, src)` | what follows a view to another place; a window's settings from the main one |
 | inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_icon(v, icon, icon_font)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)` | `view_icon`: this opening's icon (one id, an icon per opening) |
@@ -271,6 +272,24 @@ ui.views_set_windows(&app.views, session.view_windows(s))        // a test (docs
   memory) is told its window once it shows, as after a move.
 - A view opened from an external view's build has that window for owner: its dialogs show over the window.
 - `view_window_state(vs, id, instance)`: the State of its window (nil: none).
+- **The program's overlays in it.** A view's window has its own State: a context menu or a chip opened there is built
+  only in that window's build. The program builds them at the end of its main window's build; for the views'
+  windows it sets one hook, once:
+
+  ```odin
+  ui.views_set_window_end(&app.views, proc(user: rawptr, v: ^ui.View) { overlays((^App)(user)) }, app)
+  ```
+
+  `end(user, v)` comes at the end of each build of each view's window, after the view, at the window's root, in its
+  State (`v`: the view it shows; `v.shown` false in an unseen layout). Its dialogs come after it. A view's own build
+  does not call the overlays.
+- **Its time is its owner's.** A view's window with no clock of its own (`set_clock`) keeps its owner's: a test's
+  `advance` moves its delays too.
+- `ui.view_close` of a view in a window of its own closes the window at the next step (its State goes with it).
+- **An offscreen owner, an offscreen window.** With `host.view_windows`, a view's window of an offscreen owner (a
+  program's test that attaches its app) is offscreen too, at the owner's scale: it builds, draws no picture
+  (`Host.no_picture`: the offscreen renderer's target is the first window's), takes the activation when it shows and
+  gives it back when it closes. `session.view_window` gives it to the test (docs/testing.md).
 
 - **It follows its owner.** A program that hides its main window (`host_hide`; papier hides instead of quitting)
   hides its views' windows with it, and `host_show` shows them again where they were (Wayland: where the compositor

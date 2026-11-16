@@ -58,6 +58,16 @@ VIEW_WINDOW_MIN :: [2]int{240, 160}
 // says so (Window_Refused).
 views_set_windows :: proc(vs: ^Views, w: View_Windows) { vs.windows = w }
 
+// What the program builds at the end of each build of a view's window, in that window's State: `v` is the view the
+// window shows (v.shown false: an unseen layout). Its overlays (a context menu, a chip) are built where they opened.
+View_Window_End :: #type proc(user: rawptr, v: ^View)
+
+// The program's end of each build of each view's window of `vs` (section 4.1, decision 17): set once, at start-up.
+// Its main window's build calls its overlays itself; this calls them in the views' windows. nil: nothing.
+views_set_window_end :: proc(vs: ^Views, end: View_Window_End, user: rawptr) {
+	vs.window_end, vs.window_end_user = end, user
+}
+
 // Whether `vs` can open windows (the header's "Detach into a window", the menu's, the palette's command are active).
 views_windows_ready :: proc(vs: ^Views) -> bool { return vs.windows.open != nil }
 
@@ -280,14 +290,17 @@ view_window_close_asked :: proc(s: ^State) {
 // The window's build
 
 // Inside a build of a view's window (the build procedure the backend gives its State): the view it is for, with its
-// header, its body and Escape. The window's own dialogs are built by end_build, as in any window.
+// header, its body and Escape, then the program's end (views_set_window_end). The window's own dialogs are built by
+// end_build, as in any window.
 views_window_build :: proc() {
 	s := gs()
 	for vs in s.views_attached {
 		for r in vs.records {
 			if r.w_state != s || r.machine.state == .Closed { continue }
 			vs.building += 1
-			view_external_build(vs, r)
+			v := view_external_build(vs, r)
+			// (still counted as building: what the overlays close is swept after, not under the record)
+			if vs.window_end != nil { vs.window_end(vs.window_end_user, &v) }
 			vs.building -= 1
 			return
 		}
@@ -295,7 +308,7 @@ views_window_build :: proc() {
 }
 
 @(private = "file")
-view_external_build :: proc(vs: ^Views, r: ^View_Record) {
+view_external_build :: proc(vs: ^Views, r: ^View_Record) -> View {
 	s := gs()
 	k := r.kind
 	shown := r.w_shown_build != 0
@@ -327,6 +340,7 @@ view_external_build :: proc(vs: ^Views, r: ^View_Record) {
 		}
 	}
 	view_build_ended(vs, r)
+	return v
 }
 
 // The buttons of an external window's header: Re-attach (not at home), Close view.

@@ -79,7 +79,9 @@ Open_Options :: struct {
 	title:            string,
 	size:             [2]int,
 	integrated_title: bool,   // platform.open_window's
-	headless:         bool,   // the first window only: no window of the system, the software renderer, the font compiled in
+	// no window of the system. The first window: the software renderer, the font compiled in. Another: no surface, and it
+	// draws no picture (Host.no_picture); it builds as any
+	headless:         bool,
 	under_children:   bool,   // render.surface_init's: a window that gets a child window from elsewhere (a web view)
 	// an overlay window (platform.open_overlay) over the output at `overlay_area` (logical, on the desktop; all zero:
 	// the system's choice), shown at once. Its frames are cleared to transparent: only what the build draws shows
@@ -98,6 +100,9 @@ Host :: struct {
 	user:       rawptr,
 	background: draw.Color,       // what the frame is cleared to (an overlay's: always transparent)
 	partial_redraw: bool,         // each frame redraws only what changed in the interface (ui.set_partial_redraw); read at every frame
+	// its frames build and draw no picture: a headless window that is not the first (host_open). The offscreen renderer has
+	// one target, the first window's, which a test reads: a picture of this one would cover it
+	no_picture: bool,
 	settle:     int,              // frames still owed, whatever else asks for one (what a change set off settles)
 	after_input: int,             // frames owed after an event
 
@@ -181,7 +186,13 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 		open_failed(h, .No_Window, o.title, box = first && !o.headless)
 		return false
 	}
-	failure := first ? shared_open(sh, h.win, o.headless) : surface_open(h, o)
+	failure := Open_Failure.None
+	if first {
+		failure = shared_open(sh, h.win, o.headless)
+	} else if !o.headless {
+		failure = surface_open(h, o)
+	}
+	h.no_picture = !first && o.headless
 	if failure != .None {
 		if first { font.destroy(&sh.fonts) }
 		platform.destroy_window(h.win)
@@ -416,6 +427,7 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 		ui.wake_within(&h.state, left)
 		return
 	}
+	if h.no_picture { return }
 	// (the input was read and built; the word that the last picture is shown asks for the next, drawn against the last one
 	// drawn)
 	if !shown {
