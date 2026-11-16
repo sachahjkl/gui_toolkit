@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.296.0] - 2026-11-16 18:49
+
+### Added
+- **`Palette_Commands_Options.initial`**: the value a command's argument starts on, read from the program when its form opens (a session's title, the model in use); without it, the argument's default.
+- **`ui.palette_open_form`**: opens the palette straight on a command's form, at its first argument, so a button that sets what a command sets (a model) needs no chooser of its own; Escape at the first argument closes the palette.
+
+### Fixed
+- **A closed list in the palette's run mode is read once per step**: the program's `choices` and the translation of each label no longer run at every frame, and a list the program changes while the step is open no longer shifts its rows; the new list shows when the step opens again.
+
 ## [0.295.1] - 2026-11-16 17:51
 
 ### Added
@@ -4074,6 +4083,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.296.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.296.0
 [0.295.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.295.1
 [0.295.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.295.0
 [0.294.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.294.0
