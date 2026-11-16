@@ -226,7 +226,15 @@ the_notices_of_the_linked_crates :: proc(t: ^testing.T) {
 	testing.expect(t, why != "")
 	_ = os.remove(fmt.tprintf("%s/dep/LICENSE-MIT", dir))
 	_, why = notices_crates(meta)
-	testing.expect(t, strings.contains(why, "dep 1.0.0 ships no licence file"), why)
+	testing.expect(t, strings.contains(why, "ship no licence file") && strings.contains(why, "dep 1.0.0"), why)
+	// (a crate whose package has no licence file takes the text the program gives for its name)
+	given := make(map[string]string, 1, context.temp_allocator)
+	given["dep"] = "Dep's licence, from its repository."
+	with, gwhy := notices_crates(meta, given)
+	testing.expect_value(t, gwhy, "")
+	found := false
+	for c in with { if c.name == "dep" { found = len(c.texts) == 1 && c.texts[0] == "Dep's licence, from its repository." } }
+	testing.expect(t, found, "the text given for the crate")
 }
 
 // A program's notices hold its own crate's crates, those of every target it ships (a Windows-only one on Linux too), and

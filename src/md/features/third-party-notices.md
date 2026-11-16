@@ -32,6 +32,11 @@ A crate without a source (a path dependency) is walked for its dependencies but 
 the toolkit's, whose licences the file already gives; neither ships a licence file of its own. A third party's crate kept
 in a project is a path crate too: the program states it as a work.
 
+A crate from the registry whose package ships no licence file (webview2-com: its repository has a LICENSE, its package
+none) takes the text the program gives for its name (`Project_Work.crate`), kept in the program's tree. The tool never
+fetches a text from the network: the notices must be the same on every run. It names every such crate in one error, so
+the program fixes them in one pass.
+
 ## Refused
 
 - A notices file per system: two files to release, a check that depends on the system.

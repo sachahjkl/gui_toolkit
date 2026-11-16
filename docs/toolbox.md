@@ -382,14 +382,16 @@ own code at `out` (`NOTICES_FILE`, `THIRD-PARTY-NOTICES`), or with `check_only` 
 - the program's works (`p.works`), in their order;
 - the Rust crates of the project's features (`native_crates(p.features)`) and of its own libraries (`p.crates`): `cargo
   metadata` of each (`--locked`, for `NOTICES_TARGETS`: Linux and Windows together), the crates the library links
-  (`notices_crates(metadata)`: the normal dependencies from its package, crate after crate; never a build script's, a
+  (`notices_crates(metadata, given)`: the normal dependencies from its package, crate after crate; never a build script's, a
   test's or a procedural macro; a path crate is walked but not listed), each with its licence files (`LICENSE*`,
   `LICENCE*`, `COPYING*`, `NOTICE*`, and its manifest's `license-file`). A crate two libraries link is listed once. A
   crate with no licence file is an error.
 
 A program states what the toolkit does not know: its own Rust libraries in `crates`, the rest in `works`. A
 `Project_Work` has `name`, `licence` (an SPDX id) and one of `file` (the licence's file, relative to the project's root)
-and `text`. A work with neither or both is an error.
+and `text`. A work with neither or both is an error. A work with `crate` (a crate's name) is that crate's licence when
+its package ships no licence file (webview2-com's repository has one, its package none): it is listed with the crates,
+not as a work. The error for crates with no licence names them all at once.
 
 ```odin
 p := toolbox.Project{name = "sample", features = {.Mermaid, .Webp},

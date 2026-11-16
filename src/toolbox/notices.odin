@@ -46,6 +46,9 @@ Notice_Work :: struct {
 Project_Work :: struct {
 	name, licence: string,
 	file, text:    string,
+	// a crate's name: this text is that crate's licence, for a crate that ships no licence file (webview2-com: its
+	// repository has one, its package none). It is listed with the crates, not as a work
+	crate:         string,
 }
 
 // A Rust crate linked into the executable.
@@ -92,6 +95,7 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 	if code != 0 || oerr != nil { return fmt.tprintf("Odin's licence cannot be read (%s)", odin_licence) }
 	append(&works, Notice_Work{"Odin's core library", "BSD-3-Clause", slice.clone([]string{string(odin_text)}, context.temp_allocator)})
 	append(&works, Notice_Work{"wgpu-native (wgpu, naga)", "MIT OR Apache-2.0", slice.clone([]string{WGPU_MIT, WGPU_APACHE}, context.temp_allocator)})
+	given := make(map[string]string, 8, context.temp_allocator)   // a crate's name: the licence text the program gives it
 	for w in p.works {
 		if (w.file == "") == (w.text == "") { return fmt.tprintf("the work %s states neither or both of a licence file and a text", w.name) }
 		text := w.text
@@ -100,6 +104,7 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 			if err != nil { return fmt.tprintf("%s (the licence of %s) cannot be read", w.file, w.name) }
 			text = string(data)
 		}
+		if w.crate != "" { given[w.crate] = text; continue }
 		append(&works, Notice_Work{w.name, w.licence, slice.clone([]string{text}, context.temp_allocator)})
 	}
 
@@ -122,7 +127,7 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 		for target in NOTICES_TARGETS { append(&cmd, "--filter-platform", target) }
 		meta, mcode := capture(cmd[:])
 		if mcode != 0 { return fmt.tprintf("cargo metadata of %s failed", manifest) }
-		linked, cwhy := notices_crates(meta)
+		linked, cwhy := notices_crates(meta, given)
 		if cwhy != "" { return cwhy }
 		for c in linked {
 			seen := false
@@ -187,9 +192,10 @@ notices_text :: proc(p: Project, works: []Notice_Work, crates: []Notice_Crate, l
 
 // The crates a library links, from its `cargo metadata` (JSON): from its own package, the dependencies of the normal kind
 // (not a build script's, not a test's, not a procedural macro), crate after crate, but the path crates; each with its licence files (those
-// named NOTICE_FILE_PREFIXES, and the file its manifest names), sorted by name. why: the metadata cannot be read, or a
-// crate ships no licence file.
-notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
+// named NOTICE_FILE_PREFIXES, and the file its manifest names), sorted by name; a crate that ships none takes the text
+// `given` holds for its name (Project_Work.crate). why: the metadata cannot be read, or crates ship no licence file and
+// none is given (every one named).
+notices_crates :: proc(metadata: string, given: map[string]string = nil) -> (out: []Notice_Crate, why: string) {
 	root, err := json.parse_string(metadata, allocator = context.temp_allocator)
 	if err != nil { return nil, "cargo metadata's output cannot be read" }
 	by_id := make(map[string]json.Value, 128, context.temp_allocator)
@@ -215,6 +221,7 @@ notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
 		}
 	}
 	list := make([dynamic]Notice_Crate, context.temp_allocator)
+	missing := make([dynamic]string, context.temp_allocator)   // (all of them in one answer, not one per run)
 	for id in linked {
 		p := by_id[id]
 		// (a path crate has no source: the program's code or the toolkit's, whose licences the file gives already. Its
@@ -246,9 +253,20 @@ notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
 		for n in names {
 			if data, rerr := os.read_entire_file(fmt.tprintf("%s/%s", folder, n), context.temp_allocator); rerr == nil { append(&texts, string(data)) }
 		}
-		if len(texts) == 0 { return nil, fmt.tprintf("the crate %s %s ships no licence file", tk_json.text(p, "name"), tk_json.text(p, "version")) }
+		if len(texts) == 0 {
+			if text, ok := given[tk_json.text(p, "name")]; ok {
+				append(&texts, text)
+			} else {
+				append(&missing, fmt.tprintf("%s %s", tk_json.text(p, "name"), tk_json.text(p, "version")))
+				continue
+			}
+		}
 		licence := tk_json.text(p, "license")
 		append(&list, Notice_Crate{tk_json.text(p, "name"), tk_json.text(p, "version"), licence != "" ? licence : "see its licence file", texts[:]})
+	}
+	if len(missing) > 0 {
+		slice.sort(missing[:])
+		return nil, fmt.tprintf("these crates ship no licence file (give each its text: a work with `crate`): %s", strings.join(missing[:], ", ", context.temp_allocator))
 	}
 	slice.sort_by(list[:], crate_less)
 	return list[:], ""
