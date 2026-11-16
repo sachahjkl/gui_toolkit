@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.297.0] - 2026-11-16 21:33
+
+### Fixed
+- **The command palette appears at once, with its rows.** It opened after three or four unseen frames, began to fade in before its rows had come, jumped when a frame was late, and redrew the whole window before it showed. Now a dialog of a known size shows in its first frame; a view can say its content is not ready yet (`ui.view_not_ready`), and its dialog waits for it, 100 ms at most; the palette waits for its first ranking; a dialog's fade moves by 25 ms a frame at most, and the palette's lasts 70 ms (`View_Options.quick`); and an unseen dialog redraws nothing.
+
 ## [0.296.0] - 2026-11-16 18:49
 
 ### Added
@@ -4083,6 +4088,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.297.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.297.0
 [0.296.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.296.0
 [0.295.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.295.1
 [0.295.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.295.0
