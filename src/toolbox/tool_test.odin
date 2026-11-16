@@ -9,6 +9,14 @@ import "core:slice"
 import "core:strings"
 import "core:testing"
 
+// A stale notices file says where it parts from what would be written.
+@(test)
+notices_name_their_first_difference :: proc(t: ^testing.T) {
+	testing.expect_value(t, first_difference("a\nb\nc\n", "a\nx\nc\n"), `line 2 is "b", would be "x"`)
+	testing.expect_value(t, first_difference("a\n", "a\nb\n"), `line 2 is "", would be "b"`)
+	testing.expect_value(t, first_difference("a\r\n", "a\n"), "they differ in their ends of line")
+}
+
 // A new empty folder of this test's, removed at its end.
 @(private = "file")
 scratch :: proc(t: ^testing.T, name: string) -> string {

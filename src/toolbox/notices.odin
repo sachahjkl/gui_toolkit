@@ -79,6 +79,18 @@ notices_run :: proc(args: []string, user: rawptr) -> cli.Exit {
 	return done(third_party_notices((^Project)(user)^, NOTICES_FILE, len(args) == 1))
 }
 
+// Where two texts part, for a person: the first line that differs, as each has it.
+@(private)
+first_difference :: proc(old, new: string) -> string {
+	a, b := old, new
+	for n := 1; ; n += 1 {
+		la, more_a := strings.split_lines_iterator(&a)
+		lb, more_b := strings.split_lines_iterator(&b)
+		if !more_a && !more_b { return "they differ in their ends of line" }
+		if la != lb || more_a != more_b { return fmt.tprintf("line %d is %q, would be %q", n, la, lb) }
+	}
+}
+
 // Writes the notices of the project's executable at `out`, or with `check_only` says whether `out` is what it would write.
 // why: "" when it is written (or up to date).
 third_party_notices :: proc(p: Project, out: string, check_only := false) -> (why: string) {
@@ -137,9 +149,13 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 	}
 	slice.sort_by(crates[:], crate_less)
 	text := notices_text(p, works[:], crates[:], libraries[:])
+	// (one file for every system: a licence read on Windows may end its lines with CRLF (Odin's own, in its Windows
+	// release), the same licence elsewhere with LF; the file is committed with LF)
+	text, _ = strings.replace_all(text, "\r\n", "\n", context.temp_allocator)
 	if check_only {
 		old, err := os.read_entire_file(out, context.temp_allocator)
-		if err != nil || string(old) != text { return fmt.tprintf("%s is not up to date (the notices command writes it)", out) }
+		if err != nil { return fmt.tprintf("%s cannot be read (the notices command writes it)", out) }
+		if string(old) != text { return fmt.tprintf("%s is not up to date (the notices command writes it): %s", out, first_difference(string(old), text)) }
 		fmt.printfln("%s is up to date", out)
 		return ""
 	}
