@@ -162,8 +162,11 @@ a_compressed_answer :: proc(t: ^testing.T) {
 	testing.expect_value(t, err, Error.None)
 	testing.expect_value(t, res.status, 200)
 	testing.expect_value(t, string(res.body), text)
-	encoding, _ := header_value(res.headers, "Content-Encoding")
-	testing.expect_value(t, encoding, "gzip")
+	// (the server sent gzip, not its plain text; the body given decoded no longer says an encoding, on every system)
+	_, sent_plain := header_value(res.headers, "X-Plain")
+	testing.expect(t, !sent_plain, "the server sent the compressed answer")
+	_, says_encoding := header_value(res.headers, "Content-Encoding")
+	testing.expect(t, !says_encoding, "a decoded body says no encoding")
 	response_destroy(&res)
 
 	res, err = request("GET", at(s, "/gzip"))

@@ -105,7 +105,19 @@ request :: proc(method, url: string, req := Request{}, allocator := context.allo
 	r := req
 	if r.max_bytes <= 0 { r.max_bytes = MAX_BYTES }
 	if r.timeout <= 0 { r.timeout = TIMEOUT }
-	return request_system(method, url, r, allocator)
+	res, err = request_system(method, url, r, allocator)
+	// (a body given decoded is no longer encoded: its Content-Encoding and the length of the encoded one go, on every
+	// system. WinHTTP drops them itself once it decodes; libcurl keeps them)
+	if err == .None && r.compressed {
+		n := 0
+		for h in res.headers {
+			if ascii.equal_fold(h.name, "Content-Encoding") || ascii.equal_fold(h.name, "Content-Length") { continue }
+			res.headers[n] = h
+			n += 1
+		}
+		res.headers = res.headers[:n]
+	}
+	return
 }
 
 response_destroy :: proc(res: ^Response, allocator := context.allocator) {

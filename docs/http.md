@@ -20,7 +20,8 @@ status, body, err := http.get("https://github.com/me/app/releases/latest/downloa
   one). 0: `timeout` bounds them. A server that does not answer is `.Unreachable` after it, not after the whole
   `timeout`.
 - `compressed = true` asks for a compressed answer (`Accept-Encoding: gzip, deflate`, `ACCEPT_ENCODING`) and gives the
-  body decoded; `max_bytes` bounds the decoded body. The answer's headers say what came (`Content-Encoding`). An
+  body decoded; `max_bytes` bounds the decoded body. The decoded body's headers say no encoding: `Content-Encoding` and
+  the encoded `Content-Length` are taken out, on every system (WinHTTP drops them itself once it decodes). An
   `Accept-Encoding` header in `headers` with `compressed` false is sent as given, and its body is given as it came.
 
 ```odin
