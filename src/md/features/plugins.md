@@ -308,13 +308,16 @@ It fails if any plugin code runs on the interface's thread, if a host procedure 
 read, or if a stopped runtime leaves something behind. A second test, in `gt:js`, makes a runtime on the process heap
 and on a reserved block, then allocates past its limit: no abort, an error. That one fails today.
 
-## Open questions for the user
+## Decided with the user
 
-- Are plugins from strangers (a catalogue, an install from a link) a goal? If yes, the host in another process comes
-  before the capabilities slice, not after.
-- Which program has plugins first? Its objects decide the `app` module and the order of the nodes of a view.
-- Moving the engine makes each of Wren's engine changes a toolkit release. Accept that, or keep the engine in a
-  repository of its own that both take as a submodule?
-- Is 2.1 MB in every program accepted, or do programs opt in (`gt:plugins` imported only by those that want it)? The
-  design assumes opt-in by import.
-- Is a plugin folder shared by all of the vendor's programs wanted from the start?
+- **A plugin is installed from a link or a path; no catalogue for now.** A plugin can thus come from anyone: the
+  plugin host moves to a process of its own before the capabilities slice (slice 3), not after. A catalogue is later.
+- **opencode native has plugins first.** Its objects (sessions, messages, the composer) make the first `app` module
+  and decide the first nodes of a view.
+- **The engine lives in the toolkit** (`gt:js`): an engine change for Wren is a toolkit version.
+- **Only a program that turns plugins on pays for them**: `gt:plugins` is imported by those programs alone (not cliche
+  for now), so the 2.1 MB stay out of the others.
+- **The engine moves first, alone**: `gt:js` with Wren on it, the reserved block and the failed allocation as an
+  error, ships one toolkit version before the first slice.
+
+Still open: a plugin folder shared by all the vendor's programs (refused for now).
