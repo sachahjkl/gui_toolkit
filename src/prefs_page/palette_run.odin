@@ -48,6 +48,7 @@ Run_State :: struct {
 	color_step: int,                // the step the picker was set for (-1: none)
 	held:      bool,                // the number's slider is held
 	held_value: f32,
+	path:      Path_Completion,     // a path's: the folder typed, read on a chore (palette_path.odin)
 }
 
 // The commands' forms of a palette: the forms runner, prefs_page's (it has the control table). palette_settings_add
@@ -104,6 +105,7 @@ run_close :: proc(p: ^ui.Command_Palette, run: ^ui.Palette_Run) {
 	delete(st.rows)
 	delete(st.rows_query)
 	ui.color_pick_destroy(&st.color)
+	path_completion_end(&st.path)
 	free(st)
 	run.state = nil
 }
@@ -258,6 +260,7 @@ run_build :: proc(p: ^ui.Command_Palette, run: ^ui.Palette_Run, query: string, k
 	case .Number:
 		write = number_build(st, o, e, keys)
 	case .Field:
+		if e.def.value_kind == .Path { path_build(st.palette, &st.path, query, keys, room) }
 	case .Custom:
 		o.custom(o.user, e.def.name, em)
 	}

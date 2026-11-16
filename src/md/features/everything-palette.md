@@ -125,8 +125,8 @@ source is in `prefs_page` too, so layer 2 draws the same controls there.
 
 A `Size` is a field and never a slider: its ranges span powers of two (1 KiB to 1 GiB), which a linear track cannot
 reach, and "4 MiB" is read and written whole. A `Theme` without a theme list, and a closed list's value the program
-fills (`Page_Options.choices`), fall to the next rule: a field, or the list. A path's field completes nothing yet: its
-completion reads folders on a chore, as the file browser does, and comes with the palette's run mode (layer 2).
+fills (`Page_Options.choices`), fall to the next rule: a field, or the list. A path's field completes in the palette's
+run mode (below, "A path completes").
 
 What only picked a control by a name went: the page's switch on the three family names, `THEME_PREF` as the cards'
 trigger, `Page_Options.hotkeys`. What stays is the program's data: `Page_Options.themes` (the list the cards show) and
@@ -200,7 +200,15 @@ any level ──its item gone from its source's answer──▶ List, nothing pu
   rewritten at the pointer's rate), the text typed is written at Enter. **A colour**: the picker without its own text
   (`color_picker`'s `text = false`): the palette's field is that text, said once. **Keys**: the text, or the recorder
   under it. **A free field** (a path, an address, a size): its text, written at Enter; a value refused stays in the
-  field, its reason under it. A path completes nothing yet (Later in the roadmap).
+  field, its reason under it.
+- **A path completes** (`prefs_page/palette_path.odin`). Under the field, the entries of the folder typed (the text up to
+  its last separator; `~` is the home folder) that start with its last part, folders first, each group by name; a name
+  that starts with a dot shows only when the part typed does. Up and Down choose one, Tab (or a click) puts it in the
+  field, a folder with its separator, so the next Tab goes on inside it; Enter keeps the field's text. The folder is
+  read on a chore when the folder typed changes, never at each build and never on the interface's thread (a share that
+  hangs costs the palette nothing but "Reading the folder…"). Tab belongs to the run mode's control
+  (`Palette_Run_Keys.tab`), and the control writes the field with `palette_run_set_text`, as the person typing would.
+  Refused: completing on each key typed (a shell's way): the field would change under the fingers.
 - **Undo.** The runner notes the value before and whether it was the default. Escape puts it back (a reset when it was
   the default, so the file does not gain a line), only when the value now is the last one the run mode wrote: another
   path that wrote since wins.

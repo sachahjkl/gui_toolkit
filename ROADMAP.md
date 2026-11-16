@@ -60,9 +60,6 @@
 
 ## Later
 
-- **A path completes in the palette.** In the run mode of a `Path` setting or argument, Tab completes the folder typed
-  from a read on a chore, as the file browser reads. Intent:
-  [src/md/features/everything-palette.md](src/md/features/everything-palette.md).
 - **OpenGL when Vulkan is missing.** On a Linux machine with OpenGL and no Vulkan driver (an old GPU, some virtual
   machines), a program draws through wgpu's GL backend instead of saying that it cannot. It waits for wgpu-native to
   take the display in its instance descriptor: today its GL instance has no backend on Linux. Intent:

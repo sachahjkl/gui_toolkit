@@ -193,6 +193,10 @@ the settings page's table (`prefs_page.control_of`):
 | `palette_run_error(&p) -> string` | why its last write was refused ("": it was not) |
 | `palette_sublist(id, &st, count, step, height, row, user) -> (moved, clicked)` | the run mode's list of choices: rows of one height, only those in view built, `step` moving the selection (`Palette_Sublist{sel, reveal}`), `row(user, i, selected)` filling each row |
 | `palette_command_arguments(&p, id) -> (index, arguments)`, `palette_command_choices(&p, index, argument) -> (labels, values)` | what a forms runner reads of the commands source |
+| `Palette_Run_Keys{step, page, enter, tab}`, `palette_run_set_text(&p, text)` | the keys `build` is given, read before the field (Tab: complete); a control puts a text in the field, the caret at its end, as typed (a path completed: prefs_page's) |
+
+A `Path` value completes in the run mode: the entries of the folder typed, read on a chore, that start with its last
+part, folders first; Tab puts the one selected in the field, Enter keeps the text.
 
 ## Go to: Shift+Enter
 

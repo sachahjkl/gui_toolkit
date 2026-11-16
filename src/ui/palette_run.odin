@@ -28,6 +28,7 @@ Palette_Run_Keys :: struct {
 	step:  int,
 	page:  bool,
 	enter: bool,
+	tab:   bool,   // Tab: the control completes the field's text (a path: palette_run_set_text)
 }
 
 // What runs an item's run mode: its values and its controls. The settings source's and the commands' forms are
@@ -231,7 +232,16 @@ palette_run_keys :: proc(p: ^Command_Palette, page: int) -> (keys: Palette_Run_K
 	if key_press_any(.Up) { keys.step = -1 }
 	if key_press_any(.Page_Down) { keys.step, keys.page = page, true }
 	if key_press_any(.Page_Up) { keys.step, keys.page = -page, true }
+	if key_press_any(.Tab) { keys.tab = true }
 	return
+}
+
+// The run mode's control puts `text` in the palette's field, the caret at its end (a path completed by Tab): from its
+// build, as the person typing it would. The field's text is the step's value text or its filter, as before.
+palette_run_set_text :: proc(p: ^Command_Palette, text: string) {
+	if p.run.level == .Closed { return }
+	line_edit_set(&p.field, text)
+	gs().anim_busy = true
 }
 
 // (the view, in the run mode) Under the field: its row, why a value was refused, then the control in the room left.

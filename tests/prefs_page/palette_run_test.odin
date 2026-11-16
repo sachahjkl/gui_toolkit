@@ -7,10 +7,12 @@ package prefs_page_test
 
 import "core:fmt"
 import "core:math"
+import "core:os"
 import "core:strings"
 import "core:testing"
 import config "gt:config"
 import prefs_page "gt:prefs_page"
+import "gt:testkit"
 import "gt:testkit/session"
 import "gt:ui"
 
@@ -272,6 +274,38 @@ a_typed_value_is_kept_or_refused :: proc(t: ^testing.T) {
 	run_level_is(s, &app, .Closed)
 	testing.expect_value(t, config.int_of(&app.prefs, "look.delay"), 1500)
 	testing.expect_value(t, ui.line_edit_string(&app.pal.field), ":delay")
+}
+
+@(private = "file")
+PATH_DEFS := [?]config.Def{
+	{name = "net.folder", description = "Where the downloads go.", kind = .String, default = {s = ""}, value_kind = .Path},
+}
+
+// A path completes (everything-palette.md, "A path completes"): the folder typed is read on a chore, its entries that
+// start with the last part are listed, folders first; Tab puts the one selected in the field with its separator; Enter
+// keeps the text.
+@(test)
+a_path_completes_with_tab :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "palette_path")
+	for d in ([]string{"alpha", "albums", "beta"}) { _ = os.make_directory(fmt.tprintf("%s/%s", dir, d)) }
+	_ = os.write_entire_file(fmt.tprintf("%s/apple.txt", dir), transmute([]u8)string("x"))
+	app: Run_App
+	defer run_end(&app)
+	app.pages = RUN_PAGES_NET[:]
+	s := run_start(t, &app, PATH_DEFS[:])
+	run_open_on(s, &app, ":folder", "net.folder")
+	session.key(s, .Return)
+	run_level_is(s, &app, .Control)
+	session.type_text(s, fmt.tprintf("%s/al", dir))
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.find_text(s, "albums") != nil && session.find_text(s, "alpha") != nil }, "the folder's entries that start with al")
+	testing.expect(t, session.find_text(s, "beta") == nil, "none that does not")
+	sep := ODIN_OS == .Windows ? "\\" : "/"
+	session.key(s, .Tab)
+	session.frames(s, 2)
+	testing.expect_value(t, ui.line_edit_string(&app.pal.field), fmt.tprintf("%s/albums%s", dir, sep))   // (folders first, by name)
+	session.key(s, .Return)
+	run_level_is(s, &app, .Closed)
+	testing.expect_value(t, config.string_of(&app.prefs, "net.folder"), fmt.tprintf("%s/albums%s", dir, sep))
 }
 
 // A locked setting (the command line) shows its value and why, and opens no control.

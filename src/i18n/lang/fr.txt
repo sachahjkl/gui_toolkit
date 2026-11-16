@@ -496,6 +496,18 @@ fr Verrouillé par une règle.
 en Set on the command line for this run.
 fr Fixé par la ligne de commande pour cette exécution.
 
+en Type a folder, then Tab completes its entries
+fr Tapez un dossier : Tab complète ses entrées
+
+en Reading the folder…
+fr Lecture du dossier…
+
+en This folder cannot be read
+fr Ce dossier ne peut pas être lu
+
+en Nothing matches
+fr Aucun résultat
+
 en Off
 fr Non
 
@@ -504,9 +516,6 @@ fr Oui
 
 en Reading the fonts…
 fr Lecture des polices…
-
-en Nothing matches
-fr Aucun résultat
 
 en Back
 fr Retour
