@@ -5,6 +5,24 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.288.0] - 2026-11-16 08:03
+
+### Added
+- **A program's own Rust libraries and works in its THIRD-PARTY-NOTICES.** `toolbox.Project` takes `crates` (the Cargo manifests of the program's own Rust libraries) and `works` (`Project_Work`: a name, a licence and the licence's file or text); `third_party_notices` gives their licences with the toolkit's. The crates are those of Linux and Windows together, so one file covers both builds and its check says the same on each system; `cargo metadata` is no longer `--offline` (a build fetches only its own target's crates). A path crate is walked, never listed: it is the program's code or the toolkit's. The list names each library (`gui_toolkit's native/text`): a program runs its `notices` command again.
+- **The showcase's Values scene**: choose how a value is stored, what it is, its unit or its closed list, and see the control the settings page gives it, live (`--scene=values --value=size`); `tk screenshots` takes four pictures of it.
+- **`ui.number`'s `parse` (`ui.Number_Parse`)**: a number's field reads what is typed with the program's own reader, a unit's suffixes for one ("1.5 s" in a field of milliseconds); `ui.font_picker_open` opens a font picker's list from elsewhere, as a click does.
+
+### Changed
+- **The glow in percent**: the settings page shows `appearance.glow` from 0 to 100 %, as every share; the file keeps 0 to 1.
+- **A setting's control comes from its value (`prefs_page.control_of`)**: the settings page gives each setting the control of its storage, value kind and choices, never of its name. A program's own font setting gets the font picker, its own theme setting the cards, a colour the colour picker in a popover under its button, keys the recorder, with no code. A closed list of up to 6 choices is a row of buttons (4 before). `Page_Options.hotkeys` is gone (a `Keys` setting records keys) and `differs_from_default` takes no `keys` argument. `setting_line` draws one setting's line out of the page, `control_open` opens a setting's control.
+- **What a setting's value is (`config.Def.value_kind`, `Def.unit`)**: a setting says what its value is (a font family, a theme, a colour, a path, an address, keys, a size, a time, a share, a length, a factor, a rate), and a number's unit comes from one table (`config.UNITS`). A size is typed "4 MiB" and shown so, a time "1.5 s", a share "45%"; a colour that does not parse, an address with no scheme or keys with an empty part are refused, with what is taken said under the field. `Def.unit` is now a `config.Unit` (it was a text) and `Def.bytes` is gone: a size is `value_kind = .Size`. src/md/features/everything-palette.md.
+- **`term`**: the grid draws each row as a retained picture keyed by the row's content: a line printed records one row, and the rows it moves up replay their pictures. In opencode native, a grid at rest costs 0.009–0.019 ms of the interface's thread instead of 0.21 ms, and a line printed costs 0.47 ms instead of 0.66 ms. On a screen of 40 by 120 cells (`-define:TERM_TIMING=true`), a draw at rest costs 0.02 ms instead of 0.9 ms. `View.rows_recorded` counts the recordings.
+
+### Fixed
+- **No rule under a settings group's last line**: the settings page draws its carved line between two lines of a group only, not under the last one.
+- **Lazy columns**: a view brought to its top by its anchor reads exactly 0 (it stopped at 0.003 near 3000 px): the anchor's move is rounded to 1/64 px, and what rounding leaves is kept for the next move, so tiny moves add up instead of drifting.
+- **`draw.Picture`**: a picture replayed in another draw context (a widget moved to a window of its own) uploads there; it drew the other renderer's pictures at its offsets. `draw.destroy` gives back the ranges of its pictures, which keep their recording. `picture_release(pic)` and `picture_destroy(pic)` take no context: the picture knows its owner (`Picture.owner`).
+
 ## [0.287.0] - 2026-11-16 06:53
 
 ### Added
@@ -3963,6 +3981,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.288.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.288.0
 [0.287.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.287.0
 [0.286.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.1
 [0.286.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.0
