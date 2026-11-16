@@ -103,6 +103,10 @@ Wl_Message :: struct {
 
 // How long a capture may take before it is given up: a compositor that never answers must not hold the worker.
 @(private = "file") CAPTURE_TIMEOUT :: 5 * time.Second
+// How long a round trip may take. A compositor answers one at once; one that does not (its side of the connection
+// gone, or stuck) held the worker for good with wl_display_roundtrip, and every capture after it with the worker.
+@(private = "file") ROUNDTRIP_TIMEOUT :: 2 * time.Second
+@(private = "file") WL_DISPLAY_SYNC :: 0
 
 @(private)
 Wl_Lib :: struct {
@@ -115,13 +119,13 @@ Wl_Lib :: struct {
 	display_read_events:      proc "c" (d: Wl_Display) -> i32,
 	display_cancel_read:      proc "c" (d: Wl_Display),
 	display_flush:            proc "c" (d: Wl_Display) -> i32,
-	display_roundtrip:        proc "c" (d: Wl_Display) -> i32,
 	display_get_error:        proc "c" (d: Wl_Display) -> i32,
 	proxy_marshal_flags:      proc "c" (p: Wl_Proxy, opcode: u32, iface: ^Wl_Interface, version: u32, flags: u32, #c_vararg args: ..any) -> Wl_Proxy,
 	proxy_add_listener:       proc "c" (p: Wl_Proxy, implementation: rawptr, data: rawptr) -> i32,
 	proxy_destroy:            proc "c" (p: Wl_Proxy),
 	proxy_get_version:        proc "c" (p: Wl_Proxy) -> u32,
 	registry_interface:       ^Wl_Interface,
+	callback_interface:       ^Wl_Interface,
 	output_interface:         ^Wl_Interface,
 	shm_interface:            ^Wl_Interface,
 	shm_pool_interface:       ^Wl_Interface,
@@ -361,6 +365,9 @@ Wl_State :: struct {
 	toplevels:        [dynamic]^Wl_Toplevel,
 	toplevel_serial:  u64,
 	places:           Places,     // where the windows are: COSMIC's and KDE's protocols (capture_places_linux.odin)
+	// a round trip went unanswered (wl_roundtrip): the connection is given up, and platform_broken has the session
+	// opened again (revive)
+	broken:           bool,
 }
 
 // The library's callbacks run inside our dispatch, on the caller's thread; they allocate with the session's allocator
@@ -390,9 +397,9 @@ wl_open :: proc(allocator: runtime.Allocator) -> (st: ^Wl_State, ok: bool) {
 	if st.registry == nil { wl_close(st); return nil, false }
 	l.proxy_add_listener(st.registry, &st.listeners.registry, st)
 	// first: the globals; then what binding them made the compositor say (the outputs' modes, the toplevels)
-	if l.display_roundtrip(st.display) < 0 { wl_close(st); return nil, false }
+	if !wl_roundtrip(st) { wl_close(st); return nil, false }
 	wl_describe_outputs(st)
-	if l.display_roundtrip(st.display) < 0 { wl_close(st); return nil, false }
+	if !wl_roundtrip(st) { wl_close(st); return nil, false }
 	return st, true
 }
 
@@ -432,13 +439,13 @@ wl_lib_load :: proc(l: ^Wl_Lib) -> bool {
 	l.display_read_events      = auto_cast posix.dlsym(h, "wl_display_read_events")
 	l.display_cancel_read      = auto_cast posix.dlsym(h, "wl_display_cancel_read")
 	l.display_flush            = auto_cast posix.dlsym(h, "wl_display_flush")
-	l.display_roundtrip        = auto_cast posix.dlsym(h, "wl_display_roundtrip")
 	l.display_get_error        = auto_cast posix.dlsym(h, "wl_display_get_error")
 	l.proxy_marshal_flags      = auto_cast posix.dlsym(h, "wl_proxy_marshal_flags")
 	l.proxy_add_listener       = auto_cast posix.dlsym(h, "wl_proxy_add_listener")
 	l.proxy_destroy            = auto_cast posix.dlsym(h, "wl_proxy_destroy")
 	l.proxy_get_version        = auto_cast posix.dlsym(h, "wl_proxy_get_version")
 	l.registry_interface       = auto_cast posix.dlsym(h, "wl_registry_interface")
+	l.callback_interface       = auto_cast posix.dlsym(h, "wl_callback_interface")
 	l.output_interface         = auto_cast posix.dlsym(h, "wl_output_interface")
 	l.shm_interface            = auto_cast posix.dlsym(h, "wl_shm_interface")
 	l.shm_pool_interface       = auto_cast posix.dlsym(h, "wl_shm_pool_interface")
@@ -446,9 +453,9 @@ wl_lib_load :: proc(l: ^Wl_Lib) -> bool {
 	l.pointer_interface        = auto_cast posix.dlsym(h, "wl_pointer_interface")
 	l.seat_interface           = auto_cast posix.dlsym(h, "wl_seat_interface")
 	return l.display_connect != nil && l.display_dispatch_pending != nil && l.display_prepare_read != nil &&
-		l.display_read_events != nil && l.display_cancel_read != nil && l.display_roundtrip != nil &&
+		l.display_read_events != nil && l.display_cancel_read != nil && l.display_flush != nil &&
 		l.proxy_marshal_flags != nil && l.proxy_add_listener != nil && l.proxy_destroy != nil && l.proxy_get_version != nil &&
-		l.registry_interface != nil && l.output_interface != nil && l.shm_interface != nil && l.shm_pool_interface != nil &&
+		l.registry_interface != nil && l.callback_interface != nil && l.output_interface != nil && l.shm_interface != nil && l.shm_pool_interface != nil &&
 		l.buffer_interface != nil
 }
 
@@ -703,13 +710,13 @@ wl_output_place :: proc(o: ^Wl_Output) -> (r: Rect, scale: f32) {
 // The outputs as the compositor says now.
 @(private)
 wl_outputs :: proc(st: ^Wl_State, s: ^Session) {
-	l := &st.lib
-	l.display_roundtrip(st.display)   // (what changed since: an output plugged in, its mode)
+	// (what changed since: an output plugged in, its mode. Unanswered: none said, the next call opens another connection)
+	if !wl_roundtrip(st) { return }
 	missing := false
 	for o in st.outputs { if o.xdg == nil && st.xdg_output_manager != nil { missing = true } }
 	if missing {
 		wl_describe_outputs(st)
-		l.display_roundtrip(st.display)
+		wl_roundtrip(st)
 	}
 	for o in st.outputs {
 		if o.mode.x <= 0 || o.mode.y <= 0 { continue }
@@ -766,7 +773,7 @@ wl_pointer :: proc(st: ^Wl_State) -> (at: [2]i32, output: u64, ok: bool) {
 		if st.pointer == nil { return }
 	}
 	for o in st.outputs { if o.cursor_session == nil { wl_cursor_session_of(st, o) } }
-	if l.display_roundtrip(st.display) < 0 { return }
+	if !wl_roundtrip(st) { return }
 	// The cursor's picture may meet two outputs: the one whose buffer holds the hotspot is where the pointer is.
 	fallback: ^Wl_Output
 	for o in st.outputs {
@@ -875,7 +882,7 @@ wl_toplevel_free :: proc(t: ^Wl_Toplevel) {
 // themselves.
 @(private)
 wl_windows :: proc(st: ^Wl_State, provider: wm.Provider, s: ^Session) {
-	if st != nil { st.lib.display_roundtrip(st.display) }
+	if st != nil { wl_roundtrip(st) }
 	if st != nil && st.places.cosmic != nil && st.toplevel_list != nil {
 		places_cosmic_windows(st, s)
 		return
@@ -1220,7 +1227,7 @@ sc_buffer_done :: proc "c" (data: rawptr, f: Wl_Proxy) {
 // frames already made are freed.
 @(private)
 wl_capture_outputs :: proc(st: ^Wl_State, ids: []u64, allocator: runtime.Allocator) -> (frames: []Frame, err: Error) {
-	st.lib.display_roundtrip(st.display)   // (an output unplugged since outputs(): Gone, not a protocol error)
+	wl_roundtrip(st)   // (an output unplugged since outputs(): Gone, not a protocol error)
 	caps := make([]Wl_Capture, len(ids), context.temp_allocator)
 	places := make([]Rect, len(ids), context.temp_allocator)
 	for id, i in ids {
@@ -1253,7 +1260,7 @@ wl_output_frame :: proc(st: ^Wl_State, id: u64, allocator: runtime.Allocator) ->
 
 @(private)
 wl_desktop :: proc(st: ^Wl_State, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
-	st.lib.display_roundtrip(st.display)
+	wl_roundtrip(st)
 	ids := make([dynamic]u64, context.temp_allocator)
 	for o in st.outputs { if o.mode.x > 0 && o.mode.y > 0 { append(&ids, u64(o.global)) } }
 	if len(ids) == 0 { return {}, .Failed }
@@ -1276,7 +1283,7 @@ wl_desktop :: proc(st: ^Wl_State, allocator: runtime.Allocator) -> (f: Frame, er
 @(private)
 wl_window_frame :: proc(st: ^Wl_State, id: u64, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
 	if st.copy_manager == nil || st.toplevel_sources == nil { return {}, .Unsupported }
-	st.lib.display_roundtrip(st.display)
+	wl_roundtrip(st)
 	t: ^Wl_Toplevel
 	for x in st.toplevels { if x.id == id { t = x } }
 	if t == nil { return {}, .Gone }
@@ -1358,7 +1365,7 @@ Wl_Stream :: struct {
 @(private)
 wl_stream_open :: proc(st: ^Wl_State, stream: ^Stream) -> (err: Error) {
 	l := &st.lib
-	l.display_roundtrip(st.display)   // (an output or a window gone since the lists: Gone, not a protocol error)
+	wl_roundtrip(st)   // (an output or a window gone since the lists: Gone, not a protocol error)
 	ws := new(Wl_Stream, stream.allocator)
 	ws^ = {st = st, cursor = stream.options.cursor}
 	defer if err != .None {
@@ -1624,6 +1631,37 @@ wl_stream_stopped :: proc(data: rawptr) -> bool { return (^Wl_Stream)(data).stop
 wl_stream_frame_settled :: proc(data: rawptr) -> bool {
 	ws := (^Wl_Stream)(data)
 	return ws.stage == .Ready || ws.stage == .Failed
+}
+
+@(private = "file")
+Wl_Callback_Listener :: struct {
+	done: proc "c" (data: rawptr, cb: Wl_Proxy, serial: u32),
+}
+@(private = "file")
+roundtrip_listener := Wl_Callback_Listener{proc "c" (data: rawptr, cb: Wl_Proxy, serial: u32) { (^bool)(data)^ = true }}
+
+// wl_display_roundtrip bounded by ROUNDTRIP_TIMEOUT: a wl_display.sync, and what comes before its answer dispatched.
+// False: no answer in time, or the connection broke; the connection is then given up (`broken`), and the next call of
+// the session opens another.
+@(private)
+wl_roundtrip :: proc(st: ^Wl_State) -> bool {
+	if st.broken { return false }
+	l := &st.lib
+	answered := false
+	cb := l.proxy_marshal_flags(Wl_Proxy(st.display), WL_DISPLAY_SYNC, l.callback_interface, l.proxy_get_version(Wl_Proxy(st.display)), 0, nil)
+	if cb == nil { st.broken = true; return false }
+	l.proxy_add_listener(cb, &roundtrip_listener, &answered)
+	start := time.tick_now()
+	for !answered {
+		left := ROUNDTRIP_TIMEOUT - time.tick_since(start)
+		if left <= 0 || !wl_dispatch_wait(st, left, proc(data: rawptr) -> bool { return (^bool)(data)^ }, &answered) {
+			st.broken = true
+			break
+		}
+	}
+	// (destroyed before `answered` goes: a late answer finds no listener)
+	l.proxy_destroy(cb)
+	return answered
 }
 
 // Dispatches what came, waiting up to `wait` for more unless `done` says it is there already. False: the connection is
