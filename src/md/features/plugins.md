@@ -8,6 +8,20 @@ A person adds to a program without a new build of it: a plugin, in JavaScript, a
 toasts, has its own settings, builds its own views, and reads files or a server when the person allows it. One
 mechanism for every program of the toolkit; a program adds its own objects to the API.
 
+**The aim behind it (the user's): the toolkit as a runtime.** An agent writes a screen on the fly, as a plugin, and the
+program shows it at once, as fast as a screen written in Odin: a dashboard of a session's work in opencode native, a
+form for one task, a view of some data, made for the moment and thrown away after. This decides several points below:
+
+- **The screen is the toolkit's own widgets, not a web page.** The display list's nodes are the toolkit's widgets
+  (rows, cards, list cards, fields, tables, graphs), so what an agent makes looks and behaves as the program does, on
+  the spacing scale and in the theme, with no layout of its own to get wrong.
+- **Loading takes no install step and no restart.** An agent hands the program a plugin (a folder, a path, or its text
+  through the program's own channel) and the view opens; a second version replaces the first in place.
+- **Fast without care.** The replay of a list costs the interface no JavaScript; lazy lists and tables keep a large
+  data set cheap whatever the agent writes. The cost is bounded by the toolkit, not by the agent's skill.
+- **The API is described for a machine too.** The `.d.ts` and a short text of what each node and call does are what an
+  agent reads before it writes a plugin: both are generated, so they never lag the API.
+
 Three constraints shape everything below:
 
 - The interface's thread runs no plugin code. A plugin that loops, collects its garbage or builds a large screen costs
