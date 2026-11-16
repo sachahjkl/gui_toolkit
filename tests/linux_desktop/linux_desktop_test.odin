@@ -248,10 +248,11 @@ a_window_hides_and_comes_back :: proc(t: ^testing.T) {
 }
 
 // How long the host's loop is watched at rest, and the wakes it may have in that time (the last wait's end included).
-// A loop that does not sleep wakes hundreds of times; the CI's window manager sends a few late events of its own (6 and
-// 7 wakes were seen there, 1 to 3 on a desktop), so the bound tells the two apart without failing on them.
+// A loop that does not sleep wakes hundreds to thousands of times; the CI's desktop sends late events of its own,
+// whose number varies from run to run (6, 7 and 16 were seen there; 1 on a desktop, run after run). The bound is the
+// order of magnitude between the two: it fails a loop that spins, never the desktop's noise.
 @(private = "file") REST_MS :: 300
-@(private = "file") REST_WAKES_MAX :: 12
+@(private = "file") REST_WAKES_MAX :: 50
 
 @(private = "file")
 host_build :: proc(h: ^host.Host, size: host.Vec2) { (^int)(h.user)^ += 1; ui.label("hidden and shown###l") }
