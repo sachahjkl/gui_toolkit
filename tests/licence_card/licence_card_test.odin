@@ -4,7 +4,7 @@
 // The pictures are compared with references/<theme>_<finish>.png; TOOLKIT_TEST_UPDATE=1 writes them (review them like code).
 package licence_card_test
 
-import "core:fmt"
+@(require) import "core:fmt"   // (the pictures' names: Linux only)
 import "core:math"
 import "core:testing"
 import "gt:render"
@@ -83,8 +83,11 @@ pictures :: proc(t: ^testing.T, light: bool) {
 			session.frames(s, 2)
 			wait_settled(s)
 			testing.expect_value(t, look(s).shaded, !flat)
-			name := fmt.tprintf("%s_%v_%s.png", light ? "light" : "dark", finish, flat ? "flat" : "foil")
-			session.expect_like(s, fmt.tprintf("%s/tests/licence_card/references/%s", session.repo_root(), name))
+			// (the references are Linux's text: Windows draws its letters with DirectWrite, other pixels at every edge)
+			when ODIN_OS == .Linux {
+				name := fmt.tprintf("%s_%v_%s.png", light ? "light" : "dark", finish, flat ? "flat" : "foil")
+				session.expect_like(s, fmt.tprintf("%s/tests/licence_card/references/%s", session.repo_root(), name))
+			}
 		}
 	}
 }

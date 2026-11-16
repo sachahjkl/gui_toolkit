@@ -174,7 +174,8 @@ STEPS := []Step{
 	{name = "font_picker", one = true, oses = EVERYWHERE, text = true},
 	{name = "diff", one = true, oses = EVERYWHERE, text = true},
 	{name = "prefs_page", one = true, oses = EVERYWHERE, text = true},
-	{name = "licence_card", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
+	// (no WebGPU group: over WARP its motion takes five minutes, past a group's time; Linux runs it on WebGPU)
+	{name = "licence_card", one = true, oses = EVERYWHERE, text = true},
 	{name = "setup", one = true, oses = EVERYWHERE, text = true},
 	{name = "scenarios", one = true, wgpu = .Ci1, sample = true, oses = EVERYWHERE, text = true},
 	{name = "cli", oses = EVERYWHERE},
