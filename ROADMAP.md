@@ -69,10 +69,9 @@
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link
   dropped in the void) is the toolkit's already.
 
-- **Personal keys and aliases for every program.** Classeur's keys of one's own (Ctrl+Enter in its palette) and its
-  aliases typed whole become the toolkit's, so a person sets a key or an alias for a command in any program, the same
-  way. The toolkit has them; the programs move to them next. Intent:
-  [src/md/features/keymap.md](src/md/features/keymap.md), "Migration".
+- **Personal keys and aliases in Wren.** A person sets a key or an alias for a command the same way in every program:
+  papier, classeur, inspecteur, cliche and opencode native read the toolkit's keymap; Wren moves to it last (its
+  `Command.name` becomes `ui.Command.id`). Intent: [src/md/features/keymap.md](src/md/features/keymap.md), "Migration".
 - **Plugins in JavaScript.** A person adds commands, settings and views to a program with a plugin, which reaches only
   what they granted and never slows the window. First, alone: Wren's JavaScript engine moved into the toolkit (`gt:js`),
   Wren on it. Then a plugin adds one palette command that shows a toast, in opencode native first. Intent:
