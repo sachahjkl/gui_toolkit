@@ -353,6 +353,7 @@ d3d_read_frame_raw :: proc(r: ^Renderer, allocator := context.allocator) -> []u8
 
 @(private)
 create_device :: proc(r: ^Renderer, driver: d3d11.DRIVER_TYPE) -> bool {
+	if fault_hit(.D3D_Device) { return false }
 	feature_levels := [?]d3d11.FEATURE_LEVEL{._11_0}
 	base_device: ^d3d11.IDevice
 	base_ctx: ^d3d11.IDeviceContext

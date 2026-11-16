@@ -24,10 +24,6 @@
 - **Every program on the spacing scale.** The toolkit's pages (settings, setup) and the programs lay out with the
   scale's roles, cards and list cards, and stop keeping values or scales of their own (atelier's `view.odin` holds one
   today). Intent: [src/md/features/spacing.md](src/md/features/spacing.md).
-- **No graphics driver on Windows, tested.** A window whose hardware Direct3D 11 device is refused falls back to WARP,
-  and a program without a console that cannot open its window says why in a message box; both are written and
-  type-checked, not yet run. A test on the Windows CI (a fault that refuses the hardware device, a child started without
-  a console) proves them. Intent: [src/md/infrastructure/no-graphics.md](src/md/infrastructure/no-graphics.md).
 - **opencode native and Wren answer --quit.** As papier, classeur, inspecteur and cliche do, each gives
   `Setup_Options.quit` and takes `instance.MESSAGE_QUIT` in its handler (opencode native first takes a single instance):
   atelier then closes it cleanly before it installs it, in place of ending its process. Intent:

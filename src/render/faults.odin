@@ -18,6 +18,7 @@ Fault :: enum {
 	Damage_Clear,     // the texture that clears a region refused
 	Resize_Buffers,   // Direct3D 11: ResizeBuffers says the device is gone
 	Composition,      // DirectComposition unavailable for a translucent window
+	D3D_Device,       // Direct3D 11: CreateDevice refused, call by call (a window's: the hardware first, then WARP)
 }
 
 @(private = "file", thread_local) fault_skip: [Fault]int

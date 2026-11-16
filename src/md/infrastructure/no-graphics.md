@@ -58,6 +58,15 @@ the desktop). A program with a console has read the line, and a box would hold a
 A window's renderer falls back to WARP, the system's software rasterizer, when no hardware device can be made, as the
 offscreen renderer already did. WARP is slow but draws everything. A failure of both is `No_Driver`.
 
+## Tested
+
+- **Linux:** a child in a headless sway whose Vulkan loader points at a driver list that does not exist.
+- **Windows:** render's fault `D3D_Device` refuses `CreateDevice` call by call (`TOOLKIT_RENDER_FAULTS`). One refusal: the
+  window draws on WARP. Two: no device. The child then runs twice: with standard error in a file (no box, the sentence
+  there), and with no console and no standard handles, as a `-subsystem:windows` program from the desktop (a box, which
+  the test finds by its class and closes). A real machine without a driver is not needed: what the program sees is the
+  same failed call.
+
 ## Not done
 
 - **The GL backend as a fallback.** The pinned wgpu-native (29.0.1.1) has its GLES backend compiled in, but its
