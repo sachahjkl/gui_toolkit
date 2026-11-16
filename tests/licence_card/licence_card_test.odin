@@ -64,10 +64,13 @@ pictures :: proc(t: ^testing.T, light: bool) {
 	sc := Scene{card = SAMPLE}
 	p := ui.palette_of("Midnight", light)
 	s := session.start(t, {size = {640, 520}, palette = p, user = &sc, build = scene_build})
-	wait_settled(s)
 	// (the foil where this backend has the shader (Direct3D 11 needs its blob) on a device of its own: on WARP, the software
-	// rasterizer of the Windows runners, a foil frame takes seconds and its pixels are not a GPU's; the flat card everywhere)
-	shaded := look(s).shaded && !render.adapter_info(s.renderer).software
+	// rasterizer of the Windows runners, a foil frame takes seconds and its pixels are not a GPU's, and the foil's relief is
+	// not even made there (the runners' chores took minutes for it); the flat card everywhere)
+	software := render.adapter_info(s.renderer).software
+	if software { ui.set_licence_card_flat(s.state, true) }
+	wait_settled(s)
+	shaded := look(s).shaded && !software
 	for flat in ([]bool{false, true}) {
 		if !flat && !shaded { continue }
 		ui.set_licence_card_flat(s.state, flat)
