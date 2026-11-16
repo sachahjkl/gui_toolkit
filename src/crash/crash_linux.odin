@@ -141,7 +141,32 @@ install_handler :: proc() -> bool {
 	act.sa_sigaction = on_thread_signal
 	act.sa_flags = {.SIGINFO, .RESTART}
 	posix.sigaction(sys.thread_signal, &act, nil)
+	// (the system asks the program to end: the end of the person's session (SIGTERM, then SIGKILL long after), a closed
+	// terminal (SIGHUP), Ctrl+C (SIGINT). That is no crash: the session file goes, then the signal does what it did.
+	// A program that handles one of them itself keeps its own handler)
+	stops := STOP_SIGNALS
+	for s in stops {
+		old: posix.sigaction_t
+		if posix.sigaction(s, nil, &old) != .OK || old.sa_handler != auto_cast posix.SIG_DFL { continue }
+		stop: posix.sigaction_t
+		stop.sa_sigaction = on_stop
+		stop.sa_flags = {.SIGINFO}
+		posix.sigaction(s, &stop, nil)
+	}
 	return true
+}
+
+// The signals by which the system asks a program to end (install_handler).
+@(private = "file") STOP_SIGNALS :: [?]posix.Signal{.SIGTERM, .SIGHUP, .SIGINT}
+
+// The system ends the program: its session ended cleanly (the session file goes: no unclean report at the next start),
+// then the signal's own action, the program's end as before. Only what a signal handler may do: unlink, sigaction, raise.
+@(private = "file")
+on_stop :: proc "c" (sig: posix.Signal, info: ^posix.siginfo_t, uctx: rawptr) {
+	if kept.dir_len > 0 { linux.unlink(cstring(&sys.session[0])) }
+	dfl: posix.sigaction_t
+	posix.sigaction(sig, &dfl, nil)
+	posix.raise(sig)
 }
 
 // The start of process `pid` after boot, in clock ticks (/proc/<pid>/stat); alive false when it is gone.
