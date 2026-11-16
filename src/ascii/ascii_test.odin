@@ -137,3 +137,13 @@ index_any_byte_is_the_scalar_one :: proc(t: ^testing.T) {
 	testing.expect_value(t, index_any_byte("plain text all along, nothing to find in it at all", "\"\\", 0x20, true), -1)
 	testing.expect_value(t, index_any_byte("plain text all along, then café", "\"\\", 0x20, true), 30)
 }
+
+// lower always gives a copy in the allocator it is given: a text with no capital came back as itself, and a caller that
+// owned both freed it twice (the What's new page's double free on Windows).
+@(test)
+lower_is_always_a_copy :: proc(t: ^testing.T) {
+	s := "already lower"
+	l := lower(s, context.temp_allocator)
+	testing.expect_value(t, l, s)
+	testing.expect(t, raw_data(l) != raw_data(s), "a copy, not the text itself")
+}

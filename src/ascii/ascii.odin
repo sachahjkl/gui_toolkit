@@ -12,11 +12,9 @@ import "core:simd"
 lower_byte :: #force_inline proc "contextless" (c: u8) -> u8 { return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c }
 upper_byte :: #force_inline proc "contextless" (c: u8) -> u8 { return c >= 'a' && c <= 'z' ? c - ('a' - 'A') : c }
 
-// `s` in ASCII lowercase: `s` itself when it has no uppercase ASCII letter (no allocation), else a copy.
+// `s` in ASCII lowercase, always a copy in `allocator`. (It returned `s` itself when nothing changed: a caller that owns
+// what it gets freed `s` a second time, the What's new page's double free on Windows.)
 lower :: proc(s: string, allocator := context.temp_allocator) -> string {
-	i := 0
-	for i < len(s) && !(s[i] >= 'A' && s[i] <= 'Z') { i += 1 }
-	if i == len(s) { return s }
 	out := make([]u8, len(s), allocator)
 	for c, k in transmute([]u8)s { out[k] = lower_byte(c) }
 	return string(out)
