@@ -8,8 +8,14 @@ import cli "../cli"
 //   - gui_toolkit (MIT) and its attributions (NOTICE.md), the fonts it embeds (Roboto, Inconsolata), Lucide's icons;
 //   - Odin's core library (the compiler's root, `odin root`);
 //   - wgpu-native (MIT or Apache-2.0), linked statically (its release archive has no licence: the texts are kept here);
-//   - the Rust crates of the toolkit's native libraries the program links (native_crates of Project.features): those a library's build
-//     links (not its build scripts' crates, not a procedural macro), from `cargo metadata`, each with its licence files.
+//   - the works the program states (Project.works): a library it links or a font it embeds, with its licence's text;
+//   - the Rust crates of the toolkit's native libraries the program links (native_crates of Project.features) and of its
+//     own (Project.crates): those a library's build links (not its build scripts' crates, not a procedural macro, not a
+//     path crate: the program's code or the toolkit's), from `cargo metadata`, each with its licence files.
+//
+// One file covers every target the program ships (NOTICES_TARGETS): it goes beside each build, and its check must say the
+// same on every system. A crate only one system links (windows on Windows) is listed for both: a licence given that a
+// binary does not need costs a line, one missing breaks the licence.
 
 import "core:encoding/json"
 import "core:fmt"
@@ -20,6 +26,8 @@ import "../ascii"
 import tk_json "../json"
 
 NOTICES_FILE :: "THIRD-PARTY-NOTICES"
+// The targets whose crates the notices give: those the programs ship.
+@(rodata) NOTICES_TARGETS := [?]string{"x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"}
 // What a crate's licence files are named, in upper case.
 @(rodata) NOTICE_FILE_PREFIXES := [?]string{"LICENSE", "LICENCE", "COPYING", "NOTICE", "PATENTS"}
 
@@ -31,6 +39,13 @@ NOTICES_FILE :: "THIRD-PARTY-NOTICES"
 Notice_Work :: struct {
 	name, licence: string,
 	texts:         []string,
+}
+
+// A work a program states (Project.works): its licence's text is the file `file` (relative to the project's root) or
+// `text`, one of them.
+Project_Work :: struct {
+	name, licence: string,
+	file, text:    string,
 }
 
 // A Rust crate linked into the executable.
@@ -52,7 +67,7 @@ Notice_Crate :: struct {
 // The `notices` command of a project's tool: `notices` writes THIRD-PARTY-NOTICES, `notices --check` fails when it is not
 // what it would write (`p` copied).
 notices_command :: proc(p: Project) -> Command {
-	return {name = "notices", usage = "[--check]: " + NOTICES_FILE + ", the licences of the toolkit, its fonts and icons, Odin's core library, wgpu-native and the native libraries' crates", run_with = notices_run, user = new_clone(p)}
+	return {name = "notices", usage = "[--check]: " + NOTICES_FILE + ", the licences of the toolkit, its fonts and icons, Odin's core library, wgpu-native, the program's works and the native libraries' crates", run_with = notices_run, user = new_clone(p)}
 }
 
 @(private = "file")
@@ -77,12 +92,36 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 	if code != 0 || oerr != nil { return fmt.tprintf("Odin's licence cannot be read (%s)", odin_licence) }
 	append(&works, Notice_Work{"Odin's core library", "BSD-3-Clause", slice.clone([]string{string(odin_text)}, context.temp_allocator)})
 	append(&works, Notice_Work{"wgpu-native (wgpu, naga)", "MIT OR Apache-2.0", slice.clone([]string{WGPU_MIT, WGPU_APACHE}, context.temp_allocator)})
+	for w in p.works {
+		if (w.file == "") == (w.text == "") { return fmt.tprintf("the work %s states neither or both of a licence file and a text", w.name) }
+		text := w.text
+		if w.file != "" {
+			data, err := os.read_entire_file(w.file, context.temp_allocator)
+			if err != nil { return fmt.tprintf("%s (the licence of %s) cannot be read", w.file, w.name) }
+			text = string(data)
+		}
+		append(&works, Notice_Work{w.name, w.licence, slice.clone([]string{text}, context.temp_allocator)})
+	}
 
 	crates := make([dynamic]Notice_Crate, context.temp_allocator)
-	native := native_crates(p.features)
-	for dir in native {
-		meta, mcode := capture({"cargo", "metadata", "--format-version", "1", "--locked", "--offline", "--filter-platform", NOTICES_TARGET, "--manifest-path", fmt.tprintf("%s/%s/Cargo.toml", gt, dir)})
-		if mcode != 0 { return fmt.tprintf("cargo metadata of %s failed (its crates are fetched by a build)", dir) }
+	// The libraries as the file names them, and their manifests.
+	libraries := make([dynamic]string, context.temp_allocator)
+	manifests := make([dynamic]string, context.temp_allocator)
+	for dir in native_crates(p.features) {
+		append(&libraries, fmt.tprintf("gui_toolkit's %s", dir))
+		append(&manifests, fmt.tprintf("%s/%s/Cargo.toml", gt, dir))
+	}
+	for m in p.crates {
+		append(&libraries, dir_of(m))
+		append(&manifests, m)
+	}
+	for manifest in manifests {
+		cmd := make([dynamic]string, context.temp_allocator)
+		// (not --offline: a system's build fetches only its own target's crates, and the file needs every target's)
+		append(&cmd, "cargo", "metadata", "--format-version", "1", "--locked", "--manifest-path", manifest)
+		for target in NOTICES_TARGETS { append(&cmd, "--filter-platform", target) }
+		meta, mcode := capture(cmd[:])
+		if mcode != 0 { return fmt.tprintf("cargo metadata of %s failed", manifest) }
 		linked, cwhy := notices_crates(meta)
 		if cwhy != "" { return cwhy }
 		for c in linked {
@@ -92,7 +131,7 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 		}
 	}
 	slice.sort_by(crates[:], crate_less)
-	text := notices_text(p, works[:], crates[:], native)
+	text := notices_text(p, works[:], crates[:], libraries[:])
 	if check_only {
 		old, err := os.read_entire_file(out, context.temp_allocator)
 		if err != nil || string(old) != text { return fmt.tprintf("%s is not up to date (the notices command writes it)", out) }
@@ -105,15 +144,15 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 }
 
 // The text of the notices: the list of the works and crates, then each work's texts, then each crate's text once with
-// the crates that ship it.
-notices_text :: proc(p: Project, works: []Notice_Work, crates: []Notice_Crate, native: []string) -> string {
+// the crates that ship it. libraries: the native libraries whose crates they are, as the list names them.
+notices_text :: proc(p: Project, works: []Notice_Work, crates: []Notice_Crate, libraries: []string) -> string {
 	b := strings.builder_make(context.temp_allocator)
 	strings.write_string(&b, "Third-party notices\n\n")
 	fmt.sbprintf(&b, "%s is under the %s licence (LICENSE). Its executable also holds the works below, each under its own\n", p.name, p.licence != "" ? p.licence : "MIT")
 	strings.write_string(&b, "licence, whose text follows. This file is written by the notices command of the project's tool.\n\n")
 	for w in works { fmt.sbprintf(&b, "- %s: %s\n", w.name, w.licence) }
 	if len(crates) > 0 {
-		fmt.sbprintf(&b, "- the Rust crates of gui_toolkit's native libraries (%s):\n", strings.join(native, ", ", context.temp_allocator))
+		fmt.sbprintf(&b, "- the Rust crates of the native libraries (%s):\n", strings.join(libraries, ", ", context.temp_allocator))
 		for c in crates { fmt.sbprintf(&b, "  - %s %s: %s\n", c.name, c.version, c.licence) }
 	}
 	for w in works {
@@ -147,7 +186,7 @@ notices_text :: proc(p: Project, works: []Notice_Work, crates: []Notice_Crate, n
 }
 
 // The crates a library links, from its `cargo metadata` (JSON): from its own package, the dependencies of the normal kind
-// (not a build script's, not a test's, not a procedural macro), crate after crate; each with its licence files (those
+// (not a build script's, not a test's, not a procedural macro), crate after crate, but the path crates; each with its licence files (those
 // named NOTICE_FILE_PREFIXES, and the file its manifest names), sorted by name. why: the metadata cannot be read, or a
 // crate ships no licence file.
 notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
@@ -178,6 +217,9 @@ notices_crates :: proc(metadata: string) -> (out: []Notice_Crate, why: string) {
 	list := make([dynamic]Notice_Crate, context.temp_allocator)
 	for id in linked {
 		p := by_id[id]
+		// (a path crate has no source: the program's code or the toolkit's, whose licences the file gives already. Its
+		// crates were walked above. A third party's crate kept in a project is one of the program's works)
+		if tk_json.text(p, "source") == "" { continue }
 		folder := os.dir(tk_json.text(p, "manifest_path"))
 		names := make([dynamic]string, context.temp_allocator)
 		licence_files :: proc(folder, under: string, names: ^[dynamic]string) {

@@ -304,6 +304,7 @@ toolbox/group_linux.odin running_count process  # how many of them (written afte
 toolbox/logo.odin ICO_SIZES const  # the sizes Windows asks an .ico for
 toolbox/notices.odin NOTICE_FILE_PREFIXES const  # what a licence file is named, a table
 toolbox/notices.odin TOOLKIT_NOTICES const  # the toolkit's works and their licence files, a table
+toolbox/notices.odin NOTICES_TARGETS const  # the targets whose crates the notices give, a table
 toolbox/tool.odin running_program process  # the tool whose command runs (one dispatch per process)
 toolbox/tool.odin running_command process  # the command that runs, for done
 toolbox/tool_test.odin seen_args test

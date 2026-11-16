@@ -181,12 +181,13 @@ a_scope_opened_under_a_negation_is_found :: proc(t: ^testing.T) {
 }
 
 // The notices of the crates a library links, from cargo metadata: the normal dependencies from the root, crate after
-// crate, never a build script's or a procedural macro; each with its licence files; a text the crates share said once.
+// crate, never a build script's or a procedural macro; a path crate walked but not listed (it has no licence file: the
+// program's code); each with its licence files; a text the crates share said once.
 @(test)
 the_notices_of_the_linked_crates :: proc(t: ^testing.T) {
 	dir := scratch(t, "notices")
 	defer os.remove_all(dir)
-	for c in ([]string{"lib", "dep", "deep", "build", "macro"}) {
+	for c in ([]string{"lib", "dep", "deep", "build", "macro", "own"}) {
 		testing.expect(t, os.make_directory_all(fmt.tprintf("%s/%s", dir, c)) == nil)
 	}
 	MIT :: "MIT License\n\nPermission is hereby granted.\n"
@@ -195,25 +196,28 @@ the_notices_of_the_linked_crates :: proc(t: ^testing.T) {
 	_ = os.write_entire_file(fmt.tprintf("%s/deep/NOTICE", dir), "Deep's notice.\n")
 	_ = os.write_entire_file(fmt.tprintf("%s/build/LICENSE", dir), "Build's.\n")
 	_ = os.write_entire_file(fmt.tprintf("%s/macro/LICENSE", dir), "Macro's.\n")
-	package_json :: proc(dir, name, kind: string) -> string {
-		return fmt.tprintf(`{{"id":"%s 1.0.0","name":"%s","version":"1.0.0","license":"MIT","manifest_path":"%s/%s/Cargo.toml","targets":[{{"kind":["%s"]}}]}}`, name, name, dir, name, kind)
+	package_json :: proc(dir, name, kind: string, path_crate := false) -> string {
+		source := path_crate ? "null" : `"registry+https://github.com/rust-lang/crates.io-index"`
+		return fmt.tprintf(`{{"id":"%s 1.0.0","name":"%s","version":"1.0.0","license":"MIT","source":%s,"manifest_path":"%s/%s/Cargo.toml","targets":[{{"kind":["%s"]}}]}}`, name, name, source, dir, name, kind)
 	}
 	normal :: `"dep_kinds":[{"kind":null,"target":null}]`
 	jdir, _ := strings.replace_all(dir, "\\", "/", context.temp_allocator)   // (a JSON string has no bare backslash)
-	meta := fmt.tprintf(`{{"packages":[%s,%s,%s,%s,%s],"resolve":{{"root":"lib 1.0.0","nodes":[`+
-		`{{"id":"lib 1.0.0","deps":[{{"pkg":"dep 1.0.0",%s}},{{"pkg":"build 1.0.0","dep_kinds":[{{"kind":"build","target":null}}]}},{{"pkg":"macro 1.0.0",%s}}]}},`+
+	meta := fmt.tprintf(`{{"packages":[%s,%s,%s,%s,%s,%s],"resolve":{{"root":"lib 1.0.0","nodes":[`+
+		`{{"id":"lib 1.0.0","deps":[{{"pkg":"own 1.0.0",%s}},{{"pkg":"build 1.0.0","dep_kinds":[{{"kind":"build","target":null}}]}},{{"pkg":"macro 1.0.0",%s}}]}},`+
+		`{{"id":"own 1.0.0","deps":[{{"pkg":"dep 1.0.0",%s}}]}},`+
 		`{{"id":"dep 1.0.0","deps":[{{"pkg":"deep 1.0.0",%s}}]}},{{"id":"deep 1.0.0","deps":[]}}]}}}}`,
-		package_json(jdir, "lib", "staticlib"), package_json(jdir, "dep", "lib"), package_json(jdir, "deep", "lib"), package_json(jdir, "build", "lib"), package_json(jdir, "macro", "proc-macro"),
-		normal, normal, normal)
+		package_json(jdir, "lib", "staticlib", true), package_json(jdir, "dep", "lib"), package_json(jdir, "deep", "lib"), package_json(jdir, "build", "lib"), package_json(jdir, "macro", "proc-macro"),
+		package_json(jdir, "own", "lib", true),
+		normal, normal, normal, normal)
 	crates, why := notices_crates(meta)
 	testing.expect_value(t, why, "")
 	testing.expect_value(t, len(crates), 2)
 	if len(crates) != 2 { return }
-	testing.expect(t, crates[0].name == "deep" && crates[1].name == "dep", "the linked crates, by name")
+	testing.expect(t, crates[0].name == "deep" && crates[1].name == "dep", "the linked crates, by name, through the path crate")
 	testing.expect_value(t, len(crates[0].texts), 2)
-	text := notices_text({name = "sample"}, {{"Odin's core library", "BSD-3-Clause", {"Odin's licence."}}}, crates, {"native/text"})
+	text := notices_text({name = "sample"}, {{"Odin's core library", "BSD-3-Clause", {"Odin's licence."}}}, crates, {"gui_toolkit's native/text", "native/own"})
 	testing.expect(t, strings.has_prefix(text, "Third-party notices\n\nsample is under the MIT licence"), text)
-	testing.expect(t, strings.contains(text, "- Odin's core library: BSD-3-Clause\n- the Rust crates of gui_toolkit's native libraries (native/text):\n  - deep 1.0.0: MIT\n  - dep 1.0.0: MIT\n"), text)
+	testing.expect(t, strings.contains(text, "- Odin's core library: BSD-3-Clause\n- the Rust crates of the native libraries (gui_toolkit's native/text, native/own):\n  - deep 1.0.0: MIT\n  - dep 1.0.0: MIT\n"), text)
 	testing.expect(t, strings.contains(text, "deep 1.0.0, dep 1.0.0\n"), "a text two crates ship is said once, with both")
 	testing.expect_value(t, strings.count(text, "Permission is hereby granted."), 1)
 	testing.expect(t, !strings.contains(text, "Build's.") && !strings.contains(text, "Macro's."))
@@ -223,6 +227,59 @@ the_notices_of_the_linked_crates :: proc(t: ^testing.T) {
 	_ = os.remove(fmt.tprintf("%s/dep/LICENSE-MIT", dir))
 	_, why = notices_crates(meta)
 	testing.expect(t, strings.contains(why, "dep 1.0.0 ships no licence file"), why)
+}
+
+// A program's notices hold its own crate's crates, those of every target it ships (a Windows-only one on Linux too), and
+// the works it states, from a file or a text; a work states one of them. The fixture's crate is one native/webp locks
+// and native/text does not (with no dependency of its own), at the version locked: a build of the toolkit fetched it, so
+// cargo needs no network.
+@(test)
+the_notices_of_a_programs_crates_and_works :: proc(t: ^testing.T) {
+	dir := scratch(t, "notices_program")
+	defer os.remove_all(dir)
+	gt := fmt.tprintf("%s/../..", #directory)
+	webp_lock, werr := os.read_entire_file(fmt.tprintf("%s/native/webp/Cargo.lock", gt), context.temp_allocator)
+	text_lock, terr := os.read_entire_file(fmt.tprintf("%s/native/text/Cargo.lock", gt), context.temp_allocator)
+	testing.expect(t, werr == nil && terr == nil, "the toolkit's locks")
+	// (the lock's format line comes first, before any package)
+	lock_version := ""
+	if end := strings.index(string(webp_lock), "\n\n"); end > 0 {
+		head := string(webp_lock)[:end]
+		lock_version = head[strings.last_index_byte(head, '\n') + 1:]
+	}
+	block, name, version := "", "", ""
+	for raw in strings.split(string(webp_lock), "\n\n", context.temp_allocator) {
+		b := strings.trim_space(raw)
+		if !strings.has_prefix(b, "[[package]]") || !strings.contains(b, "source = \"registry+") || strings.contains(b, "dependencies") { continue }
+		n := version_of(b, "name = ")
+		if strings.contains(string(text_lock), fmt.tprintf("name = \"%s\"\n", n)) { continue }
+		block, name, version = b, n, version_of(b, "version = ")
+		break
+	}
+	testing.expect(t, strings.has_prefix(lock_version, "version = ") && block != "", "the lock's format and a crate of native/webp's only")
+	testing.expect(t, os.make_directory_all(fmt.tprintf("%s/app", dir)) == nil)
+	_ = os.write_entire_file(fmt.tprintf("%s/app/Cargo.toml", dir), fmt.tprintf("[package]\nname = \"app\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\ncrate-type = [\"staticlib\"]\npath = \"lib.rs\"\n\n[target.'cfg(windows)'.dependencies]\n%s = \"=%s\"\n", name, version))
+	_ = os.write_entire_file(fmt.tprintf("%s/app/lib.rs", dir), "")
+	_ = os.write_entire_file(fmt.tprintf("%s/app/Cargo.lock", dir), fmt.tprintf("%s\n\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\n \"%s\",\n]\n\n%s\n", lock_version, name, block))
+	_ = os.write_entire_file(fmt.tprintf("%s/COPYING-vt", dir), "The terminal library's licence.\n")
+
+	works := []Project_Work{{name = "a terminal library", licence = "MIT", file = fmt.tprintf("%s/COPYING-vt", dir)}, {name = "a font", licence = "OFL-1.1", text = "The font's licence."}}
+	p := Project{name = "fixture", toolkit = gt, crates = {fmt.tprintf("%s/app/Cargo.toml", dir)}, works = works}
+	out := fmt.tprintf("%s/NOTICES", dir)
+	testing.expect_value(t, third_party_notices(p, out), "")
+	data, _ := os.read_entire_file(out, context.temp_allocator)
+	text := string(data)
+	testing.expect(t, strings.contains(text, "- a terminal library: MIT\n- a font: OFL-1.1\n"), "the works in the list")
+	testing.expect(t, strings.contains(text, "The terminal library's licence.") && strings.contains(text, "The font's licence."), "the works' texts")
+	testing.expect(t, strings.contains(text, fmt.tprintf("(gui_toolkit's native/text, %s/app):", dir)), "the program's library beside the toolkit's")
+	crate := fmt.tprintf("%s %s", name, version)
+	testing.expect(t, strings.contains(text, fmt.tprintf("  - %s: ", crate)), "the program's crate, linked on Windows only, in the list")
+	// (its licence texts' headings name it: the list once, a heading per text at least)
+	testing.expect(t, strings.count(text, crate) >= 2, "the program's crate's licence")
+	testing.expect_value(t, third_party_notices(p, out, check_only = true), "")
+
+	p.works = {{name = "nothing", licence = "MIT"}}
+	testing.expect(t, strings.contains(third_party_notices(p, out), "neither or both"))
 }
 
 // A sway session's config: no XWayland, the headless output at its mode, the caller's lines after.

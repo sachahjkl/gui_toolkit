@@ -26,7 +26,7 @@
 //	version_of       the version of the sources after its line's start; version_set writes it
 //	build_c_lib      a static C library, built again when the stamp of its sources and flags changes (stamp_holds)
 //	check_scopes     the ui package's scopes opened under a negation, which end them at once
-//	third_party_notices  THIRD-PARTY-NOTICES: the licences of the toolkit, Odin, wgpu-native and the linked crates
+//	third_party_notices  THIRD-PARTY-NOTICES: the licences of the toolkit, Odin, wgpu-native, the program's works and the linked crates
 //	sway_start       (Linux) a desktop nobody sees, for live tests and pictures; sway_program, sway_stop
 package tk_toolbox
 
