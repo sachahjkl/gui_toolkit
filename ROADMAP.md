@@ -71,8 +71,8 @@
   way. The toolkit has them; the programs move to them next. Intent:
   [src/md/features/keymap.md](src/md/features/keymap.md), "Migration".
 - **Plugins in JavaScript.** A person adds commands, settings and views to a program with a plugin, which reaches only
-  what they granted and never slows the window. First slice: a plugin adds one palette command that shows a toast,
-  with Wren's JavaScript engine moved into the toolkit (`gt:js`). Intent:
+  what they granted and never slows the window. First, alone: Wren's JavaScript engine moved into the toolkit (`gt:js`),
+  Wren on it. Then a plugin adds one palette command that shows a toast, in opencode native first. Intent:
   [src/md/features/plugins.md](src/md/features/plugins.md).
 - **Demo states injected.** A demo mode that injects states that need an account (an unlocked vault, a PIN asked), so
   a capture needs no temporary code change.
