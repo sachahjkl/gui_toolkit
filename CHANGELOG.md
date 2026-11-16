@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.288.1] - 2026-11-16 08:22
+
+### Added
+- **A crate with no licence file in its package**: a program gives that crate's licence text (`Project_Work.crate`), and the notices list it with the crates; the error names every such crate at once.
+
 ## [0.288.0] - 2026-11-16 08:03
 
 ### Added
@@ -3981,6 +3986,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.288.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.288.1
 [0.288.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.288.0
 [0.287.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.287.0
 [0.286.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.1
