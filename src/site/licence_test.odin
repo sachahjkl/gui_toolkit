@@ -76,7 +76,7 @@ licence_thanks_block_escapes :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(block, `<a class="shop-buy" id="help-link" href="https://example.org/help?a=1&amp;b=2">Ask for help</a>`), "the help, a button")
 	testing.expect(t, strings.contains(block, `<a href="../pricing/">Back to the pricing page</a>`))
 	testing.expect(t, strings.contains(block, "Open <em>About</em>, paste the key."), "register is HTML")
-	testing.expect(t, strings.contains(block, "Download the .samplelicence file"))
+	testing.expect(t, strings.contains(block, `<span>Download the file</span><code class="shop-ext">.samplelicence</code>`))
 	testing.expect(t, strings.contains(block, "/licence?txn="))
 	testing.expect(t, strings.contains(block, `data-state="waiting"`), "the waiting dots show until the script decides")
 	testing.expect(t, strings.contains(block, `<span class="shop-dots" aria-hidden="true"><i></i><i></i><i></i></span>`), "three waiting dots")

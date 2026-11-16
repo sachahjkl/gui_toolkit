@@ -227,6 +227,15 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
 }
 .shop-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; }
 .shop-actions > * { flex: 1 1 200px; width: auto; }
+/* Download: a file's icon, then its words over the extension, as on a file's label: two lines on purpose */
+.shop-download { gap: 12px; padding-top: 10px; padding-bottom: 10px; text-align: left; }
+.shop-download .shop-file { flex: none; }
+.shop-download-words { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; line-height: 1.15; }
+.shop-ext {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 1px 7px; border-radius: 6px;
+  background: rgba(0, 0, 0, 0.12); color: inherit; font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 0.82rem; font-weight: 600; letter-spacing: 0.01em;
+}
 /* both labels of Copy sit in one grid cell: the button is as wide as the longer one and never changes size */
 .shop-copy { display: grid; place-items: center; }
 .shop-copy > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 8px; }

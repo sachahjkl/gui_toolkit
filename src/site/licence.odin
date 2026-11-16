@@ -130,7 +130,9 @@ licence_thanks_block :: proc(s: Shop) -> string {
 	put(&b, `      <dl class="shop-meta"><div><dt>Order</dt><dd id="order"></dd></div><div><dt>Date</dt><dd id="date"></dd></div><div id="updates-row" hidden><dt>Updates until</dt><dd id="updates"></dd></div></dl>`, "\n")
 	put(&b, `      <p class="shop-key-label">Your key</p>`, "\n")
 	put(&b, `      <div class="shop-key" id="key" tabindex="0"></div>`, "\n")
-	put(&b, `      <div class="shop-actions"><button class="shop-buy" type="button" id="download">Download the `, esc(s.extension), ` file</button>`,
+	// (two lines on purpose: a long extension ("Download the .clichelicence file") broke the label at any place)
+	put(&b, `      <div class="shop-actions"><button class="shop-buy shop-download" type="button" id="download">`, SHOP_FILE_SVG,
+		`<span class="shop-download-words"><span>Download the file</span><code class="shop-ext">`, esc(s.extension), `</code></span></button>`,
 		`<button class="shop-quiet shop-copy" type="button" id="copy"><span class="shop-copy-ready">`, SHOP_COPY_SVG, `Copy the key</span>`,
 		`<span class="shop-copy-done" aria-hidden="true">`, SHOP_COPIED_SVG, `Copied</span></button></div>`, "\n")
 	put(&b, "    </div>\n")
@@ -153,6 +155,8 @@ licence_thanks_block :: proc(s: Shop) -> string {
 // The icons of the thank-you block, drawn in currentColor so they take the button's or the accent's colour.
 @(private = "file")
 SHOP_COPY_SVG :: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`
+@(private = "file")
+SHOP_FILE_SVG :: `<svg class="shop-file" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>`
 @(private = "file")
 SHOP_COPIED_SVG :: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`
 @(private = "file")
