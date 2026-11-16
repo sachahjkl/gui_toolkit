@@ -50,6 +50,7 @@ Fx :: struct {
 	ui_font:   font.Font_Id,
 	clock:     f64,
 	editor:    bool,                // build the text_edit (else the selectable lines)
+	header:    bool,                // a selectable line above the view, outside it
 	view:      ^ui.Box,             // the scroll view of the lines
 	lines:     [LINES]^ui.Box,
 	te:        ui.Text_Edit,
@@ -86,6 +87,10 @@ frame :: proc(f: ^Fx, events: []platform.Event = nil) {
 		ui.next({width = ui.px(300), height = ui.px(VIEW_H)})
 		f.te_box = ui.text_edit("###te", &f.te).box
 	} else {
+		if f.header {
+			ui.next({flags = {.Selectable}})
+			ui.label("the header###header")
+		}
 		ui.next({width = ui.fill(), height = ui.px(VIEW_H)})
 		if ui.scroll_y("###view") {
 			for i in 0 ..< LINES {
@@ -162,6 +167,33 @@ selection_past_the_bottom_scrolls :: proc(t: ^testing.T) {
 	last := ui.selected_text(&f.s, context.temp_allocator)
 	testing.expectf(t, strings.has_suffix(last, fmt.tprintf("line %d", LINES - 1)), "to the last line: %q", last)
 	frame(f, {release({p.x, VIEW_H + 150})})
+}
+
+// Past the top of a view that can still scroll up, a selectable box above the view (a header) is nearer than any line:
+// the moving end stays in the view, so the view scrolls and the selection reaches its first line.
+@(test)
+selection_past_the_top_scrolls_past_a_header :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f), "the embedded face") { return }
+	defer close(f)
+	f.header = true
+	frame(f)
+	frame(f)
+	ui.view_jump(f.view, ui.view_limit(f.view))
+	frame(f)
+	frame(f)
+	if !testing.expect(t, f.view.view_target.y > 0, "the view at its bottom") { return }
+	p := ui.Vec2{f.lines[0].rect.min.x + 4, f.view.rect.min.y + VIEW_H / 2}
+	frame(f, {press(p)})
+	frame(f, {move({p.x, f.view.rect.min.y - 150})})
+	n := frames_until(f, proc(f: ^Fx) -> bool {
+		return strings.has_prefix(ui.selected_text(&f.s, context.temp_allocator), "line 0")
+	})
+	got := ui.selected_text(&f.s, context.temp_allocator)
+	testing.expectf(t, n > 0, "the selection reached line 0 (frames: %d): %q", n, got)
+	testing.expectf(t, f.view.view_target.y < f.lines[0].rect.max.y - f.lines[0].rect.min.y, "scrolled to its first line: %v", f.view.view_target.y)
+	frame(f, {release({p.x, f.view.rect.min.y - 150})})
 }
 
 @(test)

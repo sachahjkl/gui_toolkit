@@ -134,7 +134,7 @@ drag_axes :: proc(axes: Autoscroll_Axes) -> (out: [Axis]bool) {
 }
 
 // Whether an offset `at` within 0 .. `limit` can still move toward the sign of `speed`.
-@(private = "file")
+@(private)
 drag_can_scroll :: proc(at, limit, speed: f32) -> bool {
 	if speed < 0 { return at > DRAG_AUTOSCROLL_END_EPS }
 	return at < limit - DRAG_AUTOSCROLL_END_EPS

@@ -365,13 +365,14 @@ sel_box_at :: proc(s: ^State, p: Vec2) -> Key {
 
 // The selectable box nearest to `p` (a drag that left the text), and the point clamped into it.
 @(private)
-sel_nearest :: proc(s: ^State, p: Vec2) -> (Key, Vec2) {
+sel_nearest :: proc(s: ^State, p: Vec2, within: ^Box = nil) -> (Key, Vec2) {
 	best: Key
 	best_d := max(f32)
 	q := p
 	for k in s.sel.order {
 		b := s.boxes[k]
 		if b == nil || sel_kind(b) == .None || !sel_same_surface(s, k, s.sel.anchor.box) { continue }
+		if within != nil && !is_descendant(b, within) { continue }
 		r := visible_rect(b)
 		// (a box scrolled out of its view: its rect is clamped to the view's edge, and the moving end would jump to a
 		// paragraph that nobody sees)
@@ -387,6 +388,32 @@ sel_nearest :: proc(s: ^State, p: Vec2) -> (Key, Vec2) {
 		if p.y >= r.max.y { q = {r.max.x + SEL_PAST_EDGE_PX, r.max.y - 0.5} }
 	}
 	return best, q
+}
+
+// While a drag is past the edge of a view around the anchor that can still scroll towards the pointer, the moving end stays
+// in that view: the pointer clamped into its visible rect, its boxes the only candidates. Else the nearest box outside (a
+// header above a conversation) takes the moving end, and the autoscroll, which follows the moving end, finds no view to
+// scroll. Once the view is at its end, the pointer is free again and the selection goes on past the view.
+@(private = "file")
+sel_drag_view :: proc(s: ^State, p: Vec2) -> (view: ^Box, q: Vec2) {
+	q = p
+	a := s.boxes[s.sel.anchor.box]
+	if a == nil { return nil, p }
+	for v := a.parent; v != nil; v = v.parent {
+		r := visible_rect(v)
+		for axis in Axis {
+			i := int(axis)
+			flag := axis == .X ? Box_Flag.View_Scroll_X : Box_Flag.View_Scroll_Y
+			if flag not_in v.flags { continue }
+			dir: f32 = p[i] < r.min[i] ? -1 : p[i] >= r.max[i] ? 1 : 0
+			if dir != 0 && drag_can_scroll(v.view_target[i], view_limit(v, axis), dir) { view = v }
+		}
+		if view != nil { break }
+	}
+	if view == nil { return nil, p }
+	r := visible_rect(view)
+	q = {clamp(p.x, r.min.x, r.max.x - 0.5), clamp(p.y, r.min.y, r.max.y - 0.5)}
+	return view, q
 }
 
 // Word bounds around byte `i`: a run of letters / digits, of spaces, or one grapheme of anything else.
@@ -530,7 +557,8 @@ selection_update :: proc(s: ^State) {
 	}
 	// dragging: the moving end follows the pointer, into the nearest selectable box
 	if sel.phase == .Dragging && s.mouse_valid {
-		k, q := sel_nearest(s, s.mouse)
+		view, p := sel_drag_view(s, s.mouse)
+		k, q := sel_nearest(s, p, view)
 		if k != 0 {
 			b := s.boxes[k]
 			idx := sel_index_at(s, b, q)

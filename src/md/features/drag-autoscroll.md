@@ -57,6 +57,11 @@ nothing scrolls.
 
 ## Subtle points
 
+- While the pointer is past an edge of a view around the anchor that can still scroll that way, the moving end stays
+  in that view: the pointer is clamped into the view's visible rect and only the view's boxes are candidates
+  (`sel_drag_view`). Else a selectable box outside the view (opencode native's session header, above its conversation)
+  is nearer than any line, the moving end goes there, and the autoscroll, which walks up from the moving end, finds no
+  view. Once the view is at its end, the pointer is free and the selection goes on past the view.
 - `sel_nearest` skips a selectable box with no visible part. A box scrolled out of the view had a clamped rect at the
   view's edge, and the moving end could jump to the end of a paragraph that no one sees.
 - Lists and tables have no range selection by drag (a press marks, Shift and Ctrl extend). If one comes, it calls

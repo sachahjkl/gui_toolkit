@@ -24,6 +24,10 @@
   the cause is on the Direct3D 11 window's path. `tests/partial_redraw_layers` holds the scene, which the Windows CI runs.
 
 ## Next
+- **A text selection across virtual rows.** A selection dragged in a `ui.vlist` (`gt:diff`'s view, opencode native's
+  long conversations) goes on when its first row scrolls out of the view, and copies every row between its ends, built
+  or not: the list gives the text of a row by its index. Today it ends when its anchor row is no longer built. Intent:
+  [src/md/features/drag-autoscroll.md](src/md/features/drag-autoscroll.md).
 - **Display titles and a vendor's folders.** Every program shows a capitalised title (Papier, Classeur, Inspecteur,
   Cliche, Atelier, Wren, Opencode Native) while its binary and package keep the lowercase name, and keeps its settings
   in its vendor's folder (`%APPDATA%\FromentSoftware\Papier`, `~/.config/FromentSoftware/Papier`), the old folders
