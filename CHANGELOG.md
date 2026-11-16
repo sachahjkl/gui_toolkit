@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.292.0] - 2026-11-16 12:59
+
+### Added
+- **`render.Fault.D3D_Device`**: with `TOOLKIT_RENDER_FAULTS`, refuses Direct3D 11's `CreateDevice` call by call, so a test sees a machine with no graphics driver. The Windows tests now prove the fallback to WARP and the message box of a program with no console that cannot open its window.
+
+### Fixed
+- **One notices file for every system.** `toolbox.third_party_notices` writes its lines with LF whatever the licences it reads end theirs with, so a file made on Linux is up to date on Windows too (cliche's Windows release failed on it). A stale file now says its first line that differs.
+
 ## [0.291.0] - 2026-11-16 11:54
 
 ### Added
@@ -4025,6 +4033,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.292.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.292.0
 [0.291.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.291.0
 [0.290.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.290.0
 [0.289.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.289.0
