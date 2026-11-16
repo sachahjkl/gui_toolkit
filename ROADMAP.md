@@ -2,16 +2,12 @@
 
 ## Now
 
-- **Wren's licence card and thank-you page, for every program.** A buyer of any program gets what a buyer of Wren gets:
-  the thank-you page with its confetti and gold (Wren's `site/thanks/index.html`, into the shop's templates), and in the
-  program a licence card as a native widget (`ui.licence_card`) that the settings' Licence page shows for every program,
-  in place of its plain lines: the engraved iridescent foil, the sweeping light, the tilt with the pointer, the seal in
-  relief, the back of the card (Wren's `about_card*.odin` and its `card-foil` and `card-seal` shaders), at least as
-  good as Wren's. Wren then shows the toolkit's card, so there is one. Intent:
+- **Wren on the toolkit's licence card.** Wren shows `ui.licence_card` and the shop's thank-you page, as every other
+  program does since this toolkit version, and drops its `about_card*.odin` and its card shaders: one card. Intent:
   [src/md/features/licence-card.md](src/md/features/licence-card.md).
-- **The programs on the everything palette.** Each program calls `palette_chosen` before its content, names the
-  elements its commands act through (`ui.act_name`, `command:<id>`) so Shift+Enter reaches them, and turns a dialog that
-  asks one value into a command with arguments (opencode native's Rename the session and Set the model). Intent:
+- **opencode native on the everything palette.** As papier, classeur, inspecteur and cliche do, it calls
+  `palette_chosen` before its content, names the elements its commands act through (`ui.act_name`,
+  `ui.act_command`), and turns Rename the session and Set the model into commands with arguments. Intent:
   [src/md/features/everything-palette.md](src/md/features/everything-palette.md).
 - **opencode native and Wren drop their copies.** Each program is a thin layer over the toolkit: what it does again
   that the toolkit has goes. opencode native: its colour helpers, PNG read, JSON helpers, key/value rows, pill,
