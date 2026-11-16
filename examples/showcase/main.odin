@@ -115,6 +115,7 @@ App :: struct {
 Open_Options :: struct {
 	args:     []string,   // the command line, without the program's name
 	headless: bool,       // no window of the system (also --headless)
+	gpu:      bool,       // headless, on the graphics card when there is one (a film; host.Open_Options.headless_gpu)
 }
 
 // The application, up to its first frame (the caller makes the frames: `frame`). nil: it cannot start, and has said why.
@@ -152,7 +153,7 @@ open :: proc(o: Open_Options) -> ^App {
 			}
 		}
 	}
-	if !host.host_open(&app.main, &app.shared, {title = "gui_toolkit showcase", size = size, headless = headless}, build, app) {
+	if !host.host_open(&app.main, &app.shared, {title = "gui_toolkit showcase", size = size, headless = headless, headless_gpu = o.gpu}, build, app) {
 		free(app)
 		return nil
 	}

@@ -82,6 +82,10 @@ Open_Options :: struct {
 	// no window of the system. The first window: the software renderer, the font compiled in. Another: no surface, and it
 	// draws no picture (Host.no_picture); it builds as any
 	headless:         bool,
+	// with `headless`: the first window draws on the graphics card when there is one (a film of the interface, a long
+	// run of pictures), else on the software one. Off: always the software one, the same pixels on every machine (tests,
+	// screenshots)
+	headless_gpu:     bool,
 	under_children:   bool,   // render.surface_init's: a window that gets a child window from elsewhere (a web view)
 	// an overlay window (platform.open_overlay) over the output at `overlay_area` (logical, on the desktop; all zero:
 	// the system's choice), shown at once. Its frames are cleared to transparent: only what the build draws shows
@@ -188,7 +192,7 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 	}
 	failure := Open_Failure.None
 	if first {
-		failure = shared_open(sh, h.win, o.headless)
+		failure = shared_open(sh, h.win, o.headless, o.headless_gpu)
 	} else if !o.headless {
 		failure = surface_open(h, o)
 	}
@@ -210,9 +214,10 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 }
 
 @(private = "file")
-shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless: bool) -> Open_Failure {
+shared_open :: proc(sh: ^Shared, w: ^platform.Window, headless, gpu: bool) -> Open_Failure {
 	if headless {
-		if !render.init_offscreen(&sh.r, w.size, warp = true) { return .No_Renderer }
+		// (the graphics card asked: init_offscreen takes the software one itself when there is none)
+		if !render.init_offscreen(&sh.r, w.size, warp = !gpu) { return .No_Renderer }
 	} else {
 		if !render.init_window(&sh.r, w, w.size, transparent = true) { return .No_Renderer }
 		render.set_fixed_surface(&sh.r, platform.monitor_size(w))

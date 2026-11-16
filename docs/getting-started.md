@@ -107,6 +107,11 @@ hosts too: `ui.views_set_windows(&app.views, host.view_windows(&app.shared))` on
 view's window is made after the frames of the window that owns the view), and `host_frame` of a window makes their
 frames after its own; `hosts_wait` counts them. Call `ui.views_destroy` before the last `host_close`.
 
+`Open_Options.headless` opens a window of no system, drawn into an image (a test, a picture, a film of the interface).
+Its first window draws on the software renderer: the same pixels on every machine. With `headless_gpu` it draws on the
+graphics card when there is one, else on the software one: a long run of pictures goes as fast as the card (a 1080p film
+of the showcase took 2.6 minutes on the card, more than 15 on the processor).
+
 **A window ready ahead.** A window that must show at once when it is asked for (a screenshot tool's editor at its
 shortcut) is opened hidden before: each turn while one is wanted, `if host.ahead_due(&app.ahead, &app.shared, wake, app)`
 opens it. With no window yet, the graphics driver is made on a thread first (`render.preload_device`), whose end calls
