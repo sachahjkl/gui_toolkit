@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.287.0] - 2026-11-16 06:53
+
+### Added
+- **A floating view can open against an edge.** `View_Options.float_edge` opens a view's floating window, the first time, against that edge of the content instead of centred: a tool window at the top right, beside what it acts on.
+- **The exploded view opens from the page and has a panel.** Turned on, the flat page eases into the turned planes in about 600 ms, and back when it is turned off. Its panel, "Exploded view", is a view in the program's look: it floats at the top right at first, and moves, docks or goes to a window of its own as any view. It sets the mode, the yaw, the pitch, the spread and the zoom, and resets them; its close cross turns the view off. In the Layers mode, a small surface (a pill, a button, a thin band) stays on its parent's plane instead of floating over the words beside it.
+
+### Fixed
+- **Notices of a crate that wraps a C library.** `notices` takes the licence files one folder down when a crate has none at its root (libwebp-sys keeps libwebp's COPYING and PATENTS in `vendor/`), and reads a PATENTS file as a notice: a program that links WebP writes its notices again.
+- **A decoded answer says no encoding, on every system.** With `compressed`, the headers of the body given decoded no longer carry `Content-Encoding` nor the encoded `Content-Length`, on Linux as WinHTTP already did on Windows: the Windows tests were failing on it.
+
 ## [0.286.1] - 2026-11-15 23:52
 
 ### Fixed
@@ -3953,6 +3963,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.287.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.287.0
 [0.286.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.1
 [0.286.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.286.0
 [0.285.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.285.0
