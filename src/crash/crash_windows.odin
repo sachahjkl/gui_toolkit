@@ -147,7 +147,46 @@ install_handler :: proc() -> bool {
 	// check raised as an exception); it only reports, the process dies as it would have.
 	win.AddVectoredExceptionHandler(0, on_fatal)
 	exit_watch_install()
+	session_end_watch_install()
 	return true
+}
+
+// The end of the person's session (a sign-out, a shutdown) is no crash: Windows sends WM_ENDSESSION to the top-level
+// windows, then ends the process. The program's own window may be a view's, hidden or not made yet: this thread keeps a
+// top-level window of its own, never shown, whose WM_ENDSESSION removes the session file (no unclean report at the next
+// start). Windows waits for the answer before it ends the process, so the file is gone first.
+@(private = "file") SESSION_END_CLASS :: "GtCrashSessionEnd"
+
+@(private = "file")
+session_end_watch_install :: proc() {
+	t := win.CreateThread(nil, 64 * 1024, session_end_thread, nil, 0, nil)
+	if t != nil { win.CloseHandle(t) }
+}
+
+@(private = "file")
+session_end_thread :: proc "system" (_: rawptr) -> win.DWORD {
+	instance := win.HINSTANCE(win.GetModuleHandleW(nil))
+	wc := win.WNDCLASSEXW{cbSize = size_of(win.WNDCLASSEXW), lpfnWndProc = session_end_proc, hInstance = instance, lpszClassName = win.L(SESSION_END_CLASS)}
+	win.RegisterClassExW(&wc)
+	// (top-level, never shown: a message-only window gets no WM_ENDSESSION)
+	if win.CreateWindowExW(win.WS_EX_TOOLWINDOW, win.L(SESSION_END_CLASS), win.L(SESSION_END_CLASS), win.WS_POPUP, 0, 0, 0, 0, nil, nil, instance, nil) == nil { return 0 }
+	msg: win.MSG
+	for win.GetMessageW(&msg, nil, 0, 0) > 0 {
+		win.TranslateMessage(&msg)
+		win.DispatchMessageW(&msg)
+	}
+	return 0
+}
+
+@(private = "file")
+session_end_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, lparam: win.LPARAM) -> win.LRESULT {
+	switch msg {
+	case win.WM_QUERYENDSESSION: return 1   // (the session may end: this window holds nothing to save)
+	case win.WM_ENDSESSION:
+		if wparam != 0 { remove_session_file() }
+		return 0
+	}
+	return win.DefWindowProcW(hwnd, msg, wparam, lparam)
 }
 
 // When process `pid` was made (FILETIME); alive false when it has ended.
