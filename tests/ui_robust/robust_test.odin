@@ -266,6 +266,50 @@ scrollbar_on_the_left :: proc(t: ^testing.T) {
 	testing.expect(t, !on_bar(&f, &r, 296), "right edge: the content")
 }
 
+Keys_Run :: struct { rows: [40]ui.Key, list: ui.Key, go: int, focused: [40]bool, by_keys: [40]bool }
+
+build_key_rows :: proc(f: ^Fx, user: rawptr) {
+	r := (^Keys_Run)(user)
+	ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(200), height = ui.px(300), axis = .Y})
+	list := ui.build_box({.Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y}, "###rows")
+	r.list = list.key
+	if ui.parent(list) {
+		for i in 0 ..< len(r.rows) {
+			ui.next({width = ui.px(200), height = ui.px(30)})
+			b := ui.build_box({.Clickable, .Focusable}, fmt.tprintf("###row%d", i))
+			r.rows[i] = b.key
+			sig := ui.signal(b)
+			r.focused[i], r.by_keys[i] = sig.focused, ui.keyboard_focused(sig)
+		}
+	}
+	if r.go >= 0 { ui.focus_by_keys(r.rows[r.go]); r.go = -1 }
+}
+
+// A list's own Up and Down (focus_by_keys): the row takes the focus as from the keyboard, and comes into view; a click
+// on a row focuses it, not as from the keyboard (keyboard_focused).
+@(test)
+the_keys_move_the_focus_into_view :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Keys_Run{go = -1}
+	for _ in 0 ..< 2 { frame(&f, nil, build_key_rows, &r) }
+	r.go = 30
+	frame(&f, nil, build_key_rows, &r)
+	frame(&f, nil, build_key_rows, &r)
+	testing.expect(t, r.focused[30] && r.by_keys[30], "row 30: focused, by the keys")
+	frame(&f, nil, build_key_rows, &r)
+	row := ui.box_at("###rows", "###row30")
+	list := ui.box_at("###rows")
+	testing.expectf(t, row != nil && list != nil && row.rect.min.y >= list.rect.min.y && row.rect.max.y <= list.rect.max.y, "row 30 in view: %v", row.rect if row != nil else ui.Rect{})
+	at := (row.rect.min + row.rect.max) * 0.5
+	ev := [?]platform.Event{{kind = .Mouse_Move, pos = at}, {kind = .Mouse_Press, button = .Left, pos = at}, {kind = .Mouse_Release, button = .Left, pos = at}}
+	frame(&f, ev[:1], build_key_rows, &r)
+	frame(&f, ev[1:], build_key_rows, &r)
+	frame(&f, nil, build_key_rows, &r)
+	testing.expect(t, r.focused[30] && !r.by_keys[30], "clicked: focused, not by the keys")
+}
+
 Wrap_Run :: struct { text: string, width: f32, lines: [][2]int }
 
 build_wrap :: proc(f: ^Fx, user: rawptr) {
@@ -345,12 +389,12 @@ wrap_cache_outlives_the_callers_allocator :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
-Tip_Run :: struct { beside: bool }
+Tip_Run :: struct { beside: bool, at: ui.Rect }
 
 @(private = "file")
 build_tip :: proc(f: ^Fx, user: rawptr) {
 	if (^Tip_Run)(user).beside {
-		if ui.tooltip_beside() { ui.label("A tooltip") }
+		if ui.tooltip_beside((^Tip_Run)(user).at) { ui.label("A tooltip") }
 	} else {
 		if ui.tooltip() { ui.label("A tooltip") }
 	}
@@ -383,6 +427,14 @@ tooltip_places :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.max.x, 790 - 15 * 1.2)
 	b = at(&f, &r, {100, 2})
 	testing.expect_value(t, b.min.y, 0)
+	// beside a box (a row the keyboard reached): the pointer, far away, does not place it
+	r.at = {{40, 200}, {80, 240}}
+	b = at(&f, &r, {700, 500})
+	testing.expect_value(t, b.min.x, math.round(f32(80 + 15 * 0.5)))
+	testing.expect(t, abs((b.min.y + b.max.y) * 0.5 - 220) <= 1, "centered on the box")
+	r.at = {{760, 200}, {800, 240}}
+	b = at(&f, &r, {100, 100})
+	testing.expect(t, abs(b.max.x - (760 - 15 * 0.5)) <= 1, "no room at its right: at its left")
 }
 
 // The bar of a scroll box (src/md/features/scroll-bar.md): thin, 9 px at the box's edge; an arrow button of 9 px at each

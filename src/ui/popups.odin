@@ -1011,13 +1011,19 @@ tooltip_text :: proc(text: string) -> Signal {
 
 // `tooltip` beside the pointer instead of below it: to its right (to its left when there is no room), centered on it. For
 // the rows of a list or a table, where a tooltip below the pointer would cover the rows under the one it is about.
+// `at`: beside that box instead (its right edge, its middle), for a row the keyboard reached: the pointer is elsewhere.
 @(require_results, deferred_none = tooltip_end)
-tooltip_beside :: proc() -> bool {
+tooltip_beside :: proc(at := Rect{}) -> bool {
 	s := gs()
 	em := font_size()
 	size := tooltip_last_size(em)
-	pos := s.mouse + {em * 1.2, -size.y * 0.5}
-	if pos.x + size.x > s.window_size.x { pos.x = s.mouse.x - em * 1.2 - size.x }
+	anchored := at.max.x > at.min.x
+	gap := anchored ? em * 0.5 : em * 1.2
+	right := anchored ? at.max.x : s.mouse.x
+	left := anchored ? at.min.x : s.mouse.x
+	mid := anchored ? (at.min.y + at.max.y) * 0.5 : s.mouse.y
+	pos := Vec2{right + gap, mid - size.y * 0.5}
+	if pos.x + size.x > s.window_size.x { pos.x = left - gap - size.x }
 	tooltip_open(clamp_popup(pos, size, s.window_size), em)
 	return true
 }

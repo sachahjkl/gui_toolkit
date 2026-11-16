@@ -413,6 +413,18 @@ active_key :: proc() -> Key { return gs().active_key[.Left] }
 focus_key :: proc() -> Key { return gs().focus_key }
 set_focus :: proc(k: Key) { gs().focus_key = k }
 
+// The keyboard's own move of the focus to box `k` (a list's Up and Down): its ring shows, as after Tab, and its scroll
+// boxes bring it into view by its last layout (`k` was built in the last build, or earlier in this one).
+focus_by_keys :: proc(k: Key) {
+	s := gs()
+	s.focus_key, s.focus_visible = k, true
+	scroll_focus_into_view(s)
+}
+
+// The focus is on the signal's box and the keyboard put it there (its ring shows): what shows on a hover shows then too,
+// beside the box (`tooltip_beside(sig.box.rect)`).
+keyboard_focused :: proc(sig: Signal) -> bool { return sig.focused && gs().focus_visible }
+
 // Inside a build: the next field built in it (a line_edit, a number's value, a text_edit: a box that takes text) takes
 // the keyboard, whatever keys its widget gives its boxes. A view focuses its field on its first build so:
 // `if first { ui.focus_next_field() }; ui.number("width", &w)`.
