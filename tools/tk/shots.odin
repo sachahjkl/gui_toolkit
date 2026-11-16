@@ -77,6 +77,11 @@ SHOWCASE_SHOTS := []Shot {
 	{name = "showcase_settings", example = "showcase", args = {"--headless", "--scene=settings", "--theme=Graphite", "--page=appearance", "--size=1280x1180"}, webp = true},
 	{name = "showcase_settings_advanced", example = "showcase", args = {"--headless", "--scene=settings", "--theme=Midnight", "--page=scrolling", "--advanced"}, webp = true},
 	{name = "showcase_settings_search", example = "showcase", args = {"--headless", "--scene=settings", "--theme=Silver", "--light"}, typed = "scroll", webp = true},
+	// (the values scene: a value kind and the control the table gives it; the family list and the colour picker opened)
+	{name = "showcase_values_font_family", example = "showcase", args = {"--headless", "--scene=values", "--value=font_family", "--open", "--theme=Graphite", "--size=1280x860"}, webp = true},
+	{name = "showcase_values_color", example = "showcase", args = {"--headless", "--scene=values", "--value=color", "--open", "--theme=Tokyo Night", "--size=1280x760"}, webp = true},
+	{name = "showcase_values_size", example = "showcase", args = {"--headless", "--scene=values", "--value=size", "--theme=Nord", "--light", "--size=1280x520"}, webp = true},
+	{name = "showcase_values_duration", example = "showcase", args = {"--headless", "--scene=values", "--value=duration", "--theme=Graphite", "--size=1280x520"}, webp = true},
 	{name = "showcase_graph", example = "showcase", args = {"--headless", "--scene=graph", "--theme=Graphite"}, webp = true},
 	{name = "showcase_graph_light", example = "showcase", args = {"--headless", "--scene=graph", "--theme=Glacier", "--light", "--finish=edged"}, webp = true},
 	{name = "showcase_toasts", example = "showcase", args = {"--headless", "--scene=toasts", "--theme=Dracula"}, ms = 1500, webp = true},

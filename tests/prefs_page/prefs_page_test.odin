@@ -18,19 +18,18 @@ import update "gt:update"
 @(private = "file")
 DEFS := [?]config.Def{
 	{name = "net.cache", description = "Keep a cache of the responses.", kind = .Bool, default = {b = true}},
-	{name = "net.max_body", description = "The largest response kept.", kind = .Int, default = {i = 1000}, bounded = true, min = 1, max = 100000, unit = "KB", bytes = true},
+	{name = "net.max_body", description = "The largest response kept.", kind = .Int, default = {i = 1000}, bounded = true, min = 1, max = 100 << 10, value_kind = .Size, unit = .Kibibyte},
+	{name = "net.timeout", description = "How long an answer may take.", kind = .Int, default = {i = 300}, bounded = true, min = 0, max = 5000, value_kind = .Duration},
+	{name = "net.mirror", description = "Where the copies are fetched.", kind = .String, default = {s = "https://example.org/"}, value_kind = .Address},
 	{name = "look.style", description = "How surfaces are drawn.", kind = .String, default = {s = "flat"}, choices = {"flat", "machined"}},
 	{name = "look.zoom", description = "How large the interface is drawn.", kind = .Float, default = {f = 1}, bounded = true, min = 0.5, max = 2},
-	{name = "look.shade", description = "How dark the screen is around a choice.", kind = .Int, default = {i = 45}, bounded = true, min = 0, max = 90, unit = "%"},
-	{name = "look.keys", description = "What shows the window.", kind = .String, default = {s = "Ctrl+Shift+U"}},
+	{name = "look.shade", description = "How dark the screen is around a choice.", kind = .Float, default = {f = 0.45}, bounded = true, min = 0, max = 0.9, value_kind = .Fraction},
+	{name = "look.keys", description = "What shows the window.", kind = .String, default = {s = "Ctrl+Shift+U"}, value_kind = .Keys},
 	{name = "net.window_size", description = "The size the window was given.", kind = .String, default = {s = ""}, hidden = true},
 }
 
 @(private = "file")
 PAGES := [?]prefs_page.Page_Info{{category = "net", title = "Network"}, {category = "gone", title = "Nothing here"}, {category = "look", title = "Look"}}
-
-@(private = "file", rodata)
-HOTKEYS := [?]string{"look.keys"}
 
 @(private = "file")
 App :: struct {
@@ -47,7 +46,7 @@ app_build :: proc(s: ^session.Session) {
 	app := (^App)(s.user)
 	if app.closed { return }
 	ui.next({width = ui.fill(), height = ui.fill()})
-	prefs_page.build(&app.page, &app.prefs, {user = app, version = "Sample 1.2.3", pages = PAGES[:], hotkeys = HOTKEYS[:], updater = app.updater, update_pref = "net.cache", problem = proc(user: rawptr, name: string) -> string {
+	prefs_page.build(&app.page, &app.prefs, {user = app, version = "Sample 1.2.3", pages = PAGES[:], updater = app.updater, update_pref = "net.cache", problem = proc(user: rawptr, name: string) -> string {
 		return name == "look.keys" && config.string_of(&(^App)(user).prefs, "look.keys") == "Ctrl+Alt+Delete" ? "Windows holds it" : ""
 	}, changed = proc(user: rawptr, name: string) {
 		app := (^App)(user)
@@ -118,13 +117,84 @@ a_field_refuses_a_value_out_of_range :: proc(t: ^testing.T) {
 	session.type_text(s, "200000")
 	session.key(s, .Return)
 	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 1000)
-	testing.expect(t, session.find_text(s, "1 to 100000 KB") != nil || session.find_text(s, "out of range: 1 to 100000 KB") != nil, "the reason shows under the line")
+	testing.expect(t, session.find_text(s, "out of range: 1 KiB to 100 MiB") != nil, "the reason shows under the line, its bounds as sizes")
 	testing.expect_value(t, len(app.changed), 0)
 	session.key(s, .A, {.Ctrl})
 	session.type_text(s, "12")
 	session.key(s, .Return)
 	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 12)
 	testing.expect(t, len(app.changed) == 1 && app.changed[0] == "net.max_body", "the program hears of the good one")
+}
+
+// The carved line is between two lines of a group: the Network page's four lines have three, none under the last.
+@(test)
+the_rule_is_between_two_lines :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app)
+	body := session.find(s, "prefs_body")
+	if !testing.expect(t, body != nil, "the page's body") { return }
+	rules, lines: int
+	last: ^ui.Box
+	for c := body.first; c != nil; c = c.next {
+		if .Groove in c.flags { rules += 1 }
+		if c.first != nil || .Groove in c.flags { last = c }
+	}
+	for name in ([]string{"set_net.cache", "set_net.max_body", "set_net.timeout", "set_net.mirror"}) {
+		if session.find(s, name) != nil { lines += 1 }
+	}
+	testing.expect_value(t, lines, 4)
+	testing.expect_value(t, rules, 3)
+	testing.expect(t, last != nil && .Groove not_in last.flags, "no rule under the last line")
+}
+
+// A size typed with a suffix is set in the setting's unit, and the field shows it in its largest exact unit.
+@(test)
+a_size_is_typed_with_its_suffix :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app, "largest")
+	testing.expect(t, session.find_text(s, "1000 KiB") != nil, "the field shows the size with its unit")
+	session.click(s, "field")
+	session.key(s, .A, {.Ctrl})
+	session.type_text(s, "4 MiB")
+	session.key(s, .Return)
+	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 4096)
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "4 MiB") != nil, "and shows it so")
+}
+
+// A time is a number with its unit after it, and its field reads the unit's suffixes.
+@(test)
+a_duration_shows_its_unit :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app, "answer may take")
+	v := session.get(s, "value")
+	if testing.expect(t, v.a11y != nil, "the number says its value") { testing.expect_value(t, v.a11y.value, "300 ms") }
+	testing.expect(t, session.find_text(s, "ms") != nil, "its unit is written")
+	session.click(s, "value")
+	session.frames(s, 2)
+	session.key(s, .A, {.Ctrl})
+	session.type_text(s, "1.5 s")
+	session.key(s, .Return)
+	session.frames(s, 2)
+	testing.expect_value(t, config.int_of(&app.prefs, "net.timeout"), 1500)
+}
+
+// An address with no scheme is refused, and the line says what an address is.
+@(test)
+an_address_without_its_scheme_is_refused :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app, "copies are fetched")
+	session.click(s, "field")
+	session.key(s, .A, {.Ctrl})
+	session.type_text(s, "example.org")
+	session.key(s, .Return)
+	testing.expect_value(t, config.string_of(&app.prefs, "net.mirror"), "https://example.org/")
+	testing.expect(t, session.find_text(s, "not a valid value for this type: an address with its scheme: https://…") != nil, "the reason says what is taken")
+	testing.expect_value(t, len(app.changed), 0)
 }
 
 @(test)
@@ -348,7 +418,7 @@ a_setting_from_the_palette :: proc(t: ^testing.T) {
 	testing.expect(t, slice_has(ui.palette_prefixes(&app.pal), ": Settings"), "the prefix of the settings")
 	app.show, app.typed = true, ":"
 	palette_wait(s, &app)
-	testing.expect_value(t, ui.palette_row_count(&app.pal), 6)   // (the seven of DEFS but the hidden one)
+	testing.expect_value(t, ui.palette_row_count(&app.pal), 8)   // (the nine of DEFS but the hidden one)
 	ids := make([dynamic]string, context.temp_allocator)
 	for i in 0 ..< ui.palette_row_count(&app.pal) { _, id, _ := ui.palette_row(&app.pal, i); append(&ids, id) }
 	testing.expect(t, slice_has(ids[:], "look.style"), "look.style is there")
@@ -401,7 +471,7 @@ the_settings_source_reads_its_options_when_it_needs_them :: proc(t: ^testing.T) 
 	s := palette_app_start(t, &app)
 	app.show, app.typed = true, ":"
 	palette_wait(s, &app)
-	testing.expect_value(t, ui.palette_row_count(&app.pal), 2)   // (net.cache, net.max_body; not the hidden one)
+	testing.expect_value(t, ui.palette_row_count(&app.pal), 4)   // (net.cache, net.max_body, net.timeout, net.mirror; not the hidden one)
 	session.key(s, .Escape)
 	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Palette_App) -> bool { return !ui.palette_is_open(&app.pal) }, "the palette closed")
 	// the program's options made again (another slice): no new add, a new version of the pages
@@ -412,8 +482,8 @@ the_settings_source_reads_its_options_when_it_needs_them :: proc(t: ^testing.T) 
 	app.show = true
 	// (the list of the last opening stays until the new read is ranked: wait for the new one, not for any list)
 	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Palette_App) -> bool {
-		return !ui.palette_busy(&app.pal) && ui.palette_row_count(&app.pal) == 6
-	}, "the six settings of every page, read again for the new version")
+		return !ui.palette_busy(&app.pal) && ui.palette_row_count(&app.pal) == 8
+	}, "the eight settings of every page, read again for the new version")
 }
 
 // The settings shown, their search field with the keyboard: the window command's key opens the palette, which finds

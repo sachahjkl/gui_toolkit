@@ -7,19 +7,20 @@
 //     page shows the pages' icons alone.
 //   * On the right: the page's title, then a line per preference: its title and its description on the left, its
 //     control on the right (a switch, a segmented choice or a list, a number, a field with its unit), a reset button
-//     while it is not at its default, a carved line under it. A control the line has no room for goes under the words.
+//     while it is not at its default, a carved line between two lines of a group. A control the line has no room for goes under the words.
 //     The preferences of an inner group (appearance.text) follow under its title; the advanced ones (Def.advanced) of
 //     the page under "Advanced", folded until a click. A page of advanced ones alone shows them, under a sentence that
 //     says they are technical (a fold would leave the page empty). A standard group whose title does not say what it is
 //     for has a sentence under it (group_intro).
 //   * While a search is typed: what matches in every page, under each page's title (config.Search).
 //
-// A preference can get a control of the program's own (Page_Options.custom). The standard preferences (standard.odin)
-// need none: the family settings are font pickers (ui.font_picker, their defaults the program's faces, named:
-// Standard_Targets.faces; standard_watch applies a choice live),
-// Page_Options.themes shows appearance.theme as cards (and the user's themes file:
-// Page_Options.themes_file), Page_Options.shortcut_prefs shows global shortcuts with what the system said of them. A program shows
-// the page in place of its main view with back_bar and escape_leaves.
+// A preference's control comes from its value, in one table (controls.odin: control_of): its storage, its value kind
+// (config.Value_Kind), its choices; never its name. A family is a font picker (its default the program's face:
+// standard_face_of; standard_watch applies a choice live), a Theme the program's themes as cards (Page_Options.themes,
+// and the user's themes file: Page_Options.themes_file), Keys a recorder (Page_Options.shortcut_prefs adds what the
+// system said of a global shortcut), a Color a swatch that opens the colour picker in a popover. A preference can get a control of
+// the program's own (Page_Options.custom). A program shows the page in place of its main view with back_bar and
+// escape_leaves; setting_line draws one preference's line anywhere.
 //
 // A change goes through config.set_from_string at the User layer, so every observer of the registry runs; then
 // Page_Options.changed, where the program applies what changed (its loop writes the file: config.user_writer_save).
@@ -36,7 +37,6 @@ import "../draw"
 import "../font"
 import i18n "../i18n"
 import lucide "../lucide"
-import "../platform"
 import host "../host"
 import shortcuts "../shortcuts"
 import "../ui"
@@ -74,11 +74,8 @@ Page_Options :: struct {
 	preview:   proc(user: rawptr, name: string, value: f64),
 	// the values a String preference without its own choices may take, and their labels (nil, nil: a free field)
 	choices:   proc(user: rawptr, name: string) -> (labels, values: []string),
-	// the preferences with a control of the program's own, under their words (the themes' cards), and that control
+	// the preferences with a control of the program's own, under their words, and that control (`custom`)
 	custom_names: []string,
-	// the String preferences that hold a key combination (platform.hotkey_text): a field that records the keys pressed
-	// (ui.hotkey_field) in place of one to type in
-	hotkeys:   []string,
 	// what the program has to say under a preference's line ("" nothing): a shortcut another program holds... (in red)
 	problem:   proc(user: rawptr, name: string) -> string,
 	// what the program says of a preference's state under its line, plainly ("" nothing): the keys a shortcut got
@@ -101,9 +98,9 @@ Page_Options :: struct {
 	file:      string,
 	// the program and its version ("Papier 0.15.0"): a line at the bottom of the pages, above the foot ("" none)
 	version:   string,
-	// the program's themes: appearance.theme shows as their cards (theme_cards), in the version appearance.mode asks
-	// (nil: appearance.theme is a field, or the program's custom control); when it asks the system's, themes_light says
-	// which version the program shows now (its ui.Theme_Shown.light: the page does not ask the system each frame)
+	// the program's themes: a Theme preference shows as their cards (theme_cards), in the version appearance.mode asks
+	// (nil: a Theme is a field, or the program's custom control); when it asks the system's, themes_light says which
+	// version the program shows now (its ui.Theme_Shown.light: the page does not ask the system each frame)
 	themes:       []ui.Theme_Def,
 	themes_light: bool,
 	// the user's own themes (themes_file.odin): under the cards, a line that says they can be made, and the file, which a
@@ -140,6 +137,7 @@ Page :: struct {
 	placed_over:  string,
 	placed_new:   bool,   // `show` ran since the last build: the gap before this build is the opening, not a close
 	last_build:   u64,    // the ui.State's build_index at the page's last build
+	lines_build:  u64,    // the build of setting_line's last line (lines without the page)
 	fields:       map[string]^Field,   // the free fields' text while typed
 	// the number held by its slider (its preference's name, owned; "": none) and where it is: the value is written when
 	// the slider is let go (not at the pointer's rate), the page shows it meanwhile
@@ -160,7 +158,14 @@ Page :: struct {
 	user:         rawptr,
 	diagnostics:  Diagnostics_View,    // the Diagnostics page's (diagnostics.odin)
 	font_families: ui.Font_Families,   // the families (ui.text_font_source), read at a picker's first opening (shared by the pickers)
-	font_pickers:  [ui.Text_Face]ui.Font_Picker,
+	font_pickers:  map[string]^ui.Font_Picker,   // each Font_Family preference's picker, by its name (keys owned)
+	// the Color preference whose picker is unfolded (owned; "": none), and that picker
+	color_open:   string,
+	color:        ui.Color_Pick,
+	color_build:  u64,      // the build that last drew it
+	rule_before:  bool,     // a line was drawn in this group: the next draws the rule between them
+	// the preference whose control opens at its next build (owned; "": none): control_open
+	opening:      string,
 }
 
 @(private)
@@ -182,8 +187,12 @@ destroy :: proc(p: ^Page) {
 	for k in p.unfolded { delete(k) }
 	delete(p.unfolded)
 	diagnostics_destroy(&p.diagnostics)
-	for &fp in p.font_pickers { ui.font_picker_destroy(&fp) }
+	for k, fp in p.font_pickers { ui.font_picker_destroy(fp); free(fp); delete(k) }
+	delete(p.font_pickers)
 	ui.font_families_destroy(&p.font_families)
+	delete(p.color_open)
+	ui.color_pick_destroy(&p.color)
+	delete(p.opening)
 	delete(p.file_of)
 	delete(p.file_shown)
 	delete(p.note)
@@ -197,7 +206,9 @@ focus_search :: proc(p: ^Page) { p.focus_search = true }
 editing :: proc(p: ^Page) -> bool {
 	if ui.hotkey_recording() { return true }   // (its Escape gives the recording up)
 	if p.number_typed { return true }
-	for &fp in p.font_pickers { if fp.open { return true } }   // (its Escape closes it)
+	for _, fp in p.font_pickers { if fp.open { return true } }   // (its Escape closes it)
+	// (the colour picker's too, while its line is built: another page shown leaves it closed for Escape)
+	if p.color_open != "" && p.state != nil && p.color_build + 1 >= p.state.build_index { return true }
 	k := ui.focus_key()
 	if k == 0 { return false }
 	for _, f in p.fields { if f.box == k { return true } }
@@ -251,15 +262,14 @@ back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) ->
 @(private = "file") NAV_SHARE_MAX   :: 0.5
 @(private = "file") NAV_ICONS_EM    :: 4
 @(private = "file") NARROW_EM       :: 40
-@(private = "file") CONTROL_H_EM    :: 2
+@(private) CONTROL_H_EM    :: 2
 @(private = "file") WORDS_MIN_EM    :: 12
-@(private = "file") WIDE_SHARE      :: 0.45
-@(private = "file") SEGMENTS_MAX    :: 4      // more choices: a list
-@(private = "file") NUMBER_EM       :: 15
-@(private = "file") LIST_EM         :: 13
-@(private = "file") FIELD_EM        :: 15
-@(private = "file") NUMBER_FIELD_EM :: 9
-@(private = "file") SWITCH_EM       :: 3.6
+@(private) WIDE_SHARE      :: 0.45
+@(private) NUMBER_EM       :: 15
+@(private) LIST_EM         :: 13
+@(private) FIELD_EM        :: 15
+@(private) NUMBER_FIELD_EM :: 9
+@(private) SWITCH_EM       :: 3.6
 @(private = "file") CARD_H_EM       :: 3.6
 @(private = "file") CARD_RADIUS_PX  :: 8
 @(private = "file") CARDS_PER_ROW   :: 3
@@ -357,7 +367,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 	if config.ref_of(prefs, SIDEBAR_PREF) == config.NO_REF { config.register(prefs, SIDEBAR_DEFS[:]) }
 	p.prefs, p.state, p.changed, p.user = prefs, ui.current_state(), o.changed, o.user
 	p.diagnostics.host, p.diagnostics.version = o.diagnostics, o.version
-	p.number_typed = false
+	p.number_typed, p.rule_before = false, false
 	placed_drop(p)
 	pages := pages_of(prefs, o, p)
 	if len(pages) == 0 { return }
@@ -487,6 +497,7 @@ sections :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, category: stri
 	}
 	for g in order {
 		first := true
+		p.rule_before = false   // (a group's first line has its title above it, no rule)
 		for name in names {
 			if group_of(name) != g { continue }
 			if first && g != category {
@@ -731,30 +742,15 @@ link :: proc(id, text, tip: string, em: f32, mono := false) -> bool {
 @(private = "file")
 page_changed :: proc(prefs: ^config.Prefs, o: Page_Options, names: []string) -> bool {
 	for name in names {
-		if differs_from_default(prefs, name, is_hotkey(o, name)) { return true }
+		if differs_from_default(prefs, name) { return true }
 	}
 	return false
-}
-
-// Whether the preference holds a key combination: a field that records the keys.
-@(private = "file")
-is_hotkey :: proc(o: Page_Options, name: string) -> bool {
-	if slice.contains(o.hotkeys, name) { return true }
-	_, ok := shortcut_of(o, name)
-	return ok
 }
 
 @(private = "file")
 shortcut_of :: proc(o: Page_Options, name: string) -> (id: string, ok: bool) {
 	for sp in o.shortcut_prefs { if sp.pref == name { return sp.id, true } }
 	return
-}
-
-// Whether the preference's control goes under its words, drawn by control_under: the themes' cards, the program's own.
-@(private = "file")
-is_custom :: proc(o: Page_Options, name: string) -> bool {
-	if len(o.themes) > 0 && name == THEME_PREF { return true }
-	return o.custom != nil && slice.contains(o.custom_names, name)
 }
 
 // The page's title, and while a preference of it is the user's, a button that puts them all back to their defaults.
@@ -784,8 +780,17 @@ page_title :: proc(title: string, em: f32) {
 	ui.space(ui.LINE_GAP)
 }
 
+// One preference's line, as the page draws it (setting), out of the page: a program's own view of a few settings, the
+// showcase's Values. `p` keeps its state (a field's text, an open picker) between builds; `o` the program's data.
+setting_line :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
+	p.prefs, p.state, p.changed, p.user = prefs, ui.current_state(), o.changed, o.user
+	// (build resets it once a build; lines alone do at their first line of a build)
+	if now := p.state.build_index; p.lines_build != now { p.lines_build = now; p.number_typed, p.rule_before = false, false }
+	setting(p, prefs, o, name, ui.font_size())
+}
+
 // A preference's line: its title and its description, its control, a reset button while it is not at its default, a
-// carved line under it. Nothing when a search hides it; the page's title before its first match in a search.
+// carved line above it when a line of its group came before. Nothing when a search hides it; the page's title before its first match in a search.
 @(private = "file")
 setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, em: f32) {
 	show, heading := config.search_shows(&p.search, prefs, name)
@@ -796,10 +801,15 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 			ui.next({width = ui.fill(), height = ui.px(em * 1.6), font_size = math.round(em * 0.78), text_pad = 0})
 			ui.label(fmt.tprintf("%s###sec_%s", strings.to_upper(heading, context.temp_allocator), heading))
 		}
+		p.rule_before = false
 	}
 	r := config.ref_of(prefs, name)
 	e := config.entry(prefs, r)
 	locked := e.source == .Policy || e.source == .Command_Line
+	c := control_for(o, e)
+	// (the carved line is between two lines of a group: none above the first, none under the last)
+	if p.rule_before { ui.hline(ui.fill()) }
+	p.rule_before = true
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = fmt.tprintf("###set_%s", name)) {
 		// (a line of a list: ROW_PAD above its words and under them, the carved line between two)
@@ -814,30 +824,32 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 				title := config.title_of(e.def)
 				ui.next({width = ui.fill(), height = ui.px(em * 1.5), font_size = math.round(em * 0.92), text_pad = 0})
 				ui.matched_label("###t", title, ui.word_ranges(title, query))
-				if ui.tags("weak") {
-					note := note_of(e)
-					ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-					if ranges := ui.word_ranges(note, query); len(ranges) > 0 {
-						runs := make([dynamic]ui.Rich_Run, context.temp_allocator)
-						ui.match_runs(note, ranges, {}, &runs)
-						ui.rich_paragraph("###d", runs[:])
-					} else {
-						ui.paragraph(fmt.tprintf("%s###d", note))
+				// (a setting whose title says it all has no description: no empty line under it)
+				if note := note_of(e); note != "" {
+					if ui.tags("weak") {
+						ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
+						if ranges := ui.word_ranges(note, query); len(ranges) > 0 {
+							runs := make([dynamic]ui.Rich_Run, context.temp_allocator)
+							ui.match_runs(note, ranges, {}, &runs)
+							ui.rich_paragraph("###d", runs[:])
+						} else {
+							ui.paragraph(fmt.tprintf("%s###d", note))
+						}
 					}
 				}
 			}
 			ui.space(ui.CONTROL_GAP)
-			if !locked && differs_from_default(prefs, name, is_hotkey(o, name)) {
+			if !locked && differs_from_default(prefs, name) {
 				if reset_button(o, em) { reset(p, prefs, o, name) }
 				ui.space(ui.CONTROL_GAP)
 			}
 			// (the line of the last build says the room: a control that leaves the words too little goes under them)
-			w, share := control_width(o, e, em)
+			w, share := control_width(o, e, c, em)
 			line := ui.parent_box()
 			room := line.rect.max.x - line.rect.min.x
 			inline := w > 0 && (room <= 0 || (w <= room * share && room - w >= em * WORDS_MIN_EM))
 			if inline {
-				if ui.disabled(locked) { control(p, prefs, o, r, e, em, ui.px(math.round(w))) }
+				if ui.disabled(locked) { control(p, prefs, o, r, e, c, em, ui.px(math.round(w))) }
 			} else {
 				under = true
 			}
@@ -847,11 +859,11 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 			if ui.column(id = "###under") {
 				if ui.disabled(locked) {
-					if is_custom(o, name) {
-						control_under(p, prefs, o, r, e, em)
+					if c == .Custom || c == .Theme {
+						control_under(p, prefs, o, e, c, em)
 					} else {
 						ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-						if ui.row(id = "###under_row") { control(p, prefs, o, r, e, em, e.def.kind == .Bool ? ui.px(math.round(em * SWITCH_EM)) : ui.fill()) }
+						if ui.row(id = "###under_row") { control(p, prefs, o, r, e, c, em, c == .Switch ? ui.px(math.round(em * SWITCH_EM)) : ui.fill()) }
 					}
 				}
 			}
@@ -886,7 +898,6 @@ setting :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, e
 			}
 		}
 		ui.space(ui.ROW_PAD)
-		ui.hline(ui.fill())
 	}
 }
 
@@ -924,258 +935,6 @@ reset_button :: proc(o: Page_Options, em: f32) -> bool {
 	return sig.clicked
 }
 
-// The width a preference's control asks on its line, and the share of the line it may take at most (a segmented
-// choice: WIDE_SHARE); 0: it goes under the words (the themes' cards, the program's own).
-@(private = "file")
-control_width :: proc(o: Page_Options, e: ^config.Entry, em: f32) -> (w: f32, share: f32) {
-	name := e.def.name
-	share = 1
-	if is_custom(o, name) { return 0, share }
-	switch e.def.kind {
-	case .Bool: return em * SWITCH_EM, share
-	case .String:
-		if is_hotkey(o, name) { return em * LIST_EM, share }
-		if _, ok := font_setting_of(name); ok { return em * FIELD_EM, share }
-		labels, values := choices_of(o, e)
-		if len(values) == 0 { return em * FIELD_EM, share }
-		if len(values) <= SEGMENTS_MAX { return ui.segmented_width(labels), WIDE_SHARE }
-		return em * LIST_EM, share
-	case .Int, .Float:
-		if is_number(e.def) { return em * NUMBER_EM, share }
-		unit: f32 = e.def.unit != "" ? math.round(em * ui.CONTROL_GAP) + ui.text_width(ui.top_style().font, math.round(em * 0.86), i18n.tr(e.def.unit)) : 0
-		return em * NUMBER_FIELD_EM + unit, share
-	}
-	return
-}
-
-// The control of a preference, `width` wide: on its line, or under its words when the line has no room.
-@(private = "file")
-control :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
-	name := e.def.name
-	h := ui.px(math.round(em * CONTROL_H_EM))
-	switch e.def.kind {
-	case .Bool:
-		v := e.value.b
-		ui.next({width = width, height = h})
-		ui.a11y({name = config.title_of(e.def)})
-		if ui.toggle("###sw", "", &v) { apply(p, prefs, o, name, v ? "true" : "false") }
-	case .String:
-		if is_hotkey(o, name) {
-			hk, _ := platform.hotkey_parse(e.value.s)
-			ui.next({width = width, height = h})
-			if ui.hotkey_field("###keys", &hk) { apply(p, prefs, o, name, platform.hotkey_text(hk)) }
-			return
-		}
-		if fs, ok := font_setting_of(name); ok {
-			font_control(p, prefs, o, e, fs, width, h)
-			return
-		}
-		labels, values := choices_of(o, e)
-		if len(values) == 0 { field(p, prefs, o, r, e, em, width); return }
-		sel := -1
-		for c, i in values { if c == e.value.s { sel = i } }
-		if len(values) <= SEGMENTS_MAX {
-			ui.next({width = width, height = h})
-			if ui.segmented("###seg", labels, &sel) && sel >= 0 { apply(p, prefs, o, name, values[sel]) }
-		} else {
-			ui.next({width = width, height = h})
-			if sel < 0 { sel = 0 }
-			if ui.dropdown("###dd", labels, &sel) { apply(p, prefs, o, name, values[sel]) }
-		}
-	case .Int, .Float:
-		if is_number(e.def) { number(p, prefs, o, r, e, em, width) } else { field(p, prefs, o, r, e, em, width) }
-	}
-}
-
-// A control under the words: the themes' cards (and the line of the user's themes file), or the program's own
-// (Page_Options.custom).
-@(private = "file")
-control_under :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, em: f32) {
-	if len(o.themes) > 0 && e.def.name == THEME_PREF && e.def.kind == .String {
-		// (the cards in the version the look shows: appearance.mode's, or the one the program shows for the system's)
-		light := o.themes_light
-		if config.ref_of(prefs, MODE_PREF) != config.NO_REF {
-			#partial switch ui.theme_mode_of(config.string_of(prefs, MODE_PREF)) {
-			case .Dark:  light = false
-			case .Light: light = true
-			}
-		}
-		if at := theme_cards(o.themes, e.value.s, light, em); at >= 0 {
-			apply(p, prefs, o, THEME_PREF, o.themes[at].name)
-		}
-		if o.themes_file != nil { themes_file_line(p, o.themes_file, em) }
-		return
-	}
-	if o.custom != nil && slice.contains(o.custom_names, e.def.name) { o.custom(o.user, e.def.name, em) }
-}
-
-// The family setting `name` is (ok false: it is none of them).
-@(private = "file")
-font_setting_of :: proc(name: string) -> (fs: ui.Text_Face, ok: bool) {
-	switch name {
-	case UI_FONT_PREF:    return .Interface, true
-	case MONO_FONT_PREF:  return .Mono, true
-	case PROSE_FONT_PREF: return .Prose, true
-	}
-	return
-}
-
-// A family setting: a font picker (ui.font_picker) that shows the family in use, its default named: the program's own
-// face (ui.program_text_face), whatever was chosen before. Its list is read at its first opening, on a chore, from the
-// program's source (ui.text_font_source: Standard_Targets.font_source); a choice is set at once, and standard_watch
-// applies it.
-@(private = "file")
-font_control :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, e: ^config.Entry, fs: ui.Text_Face, width, height: ui.Size) {
-	fam := &p.font_families
-	// (taken at each build, a copy: a source given after the page's first build is the one read)
-	fam.source = ui.text_font_source(ui.current_state())
-	value := strings.trim_space(e.value.s)
-	def := ui.program_text_face(ui.current_state(), fs)
-	ui.next({width = width, height = height})
-	if v, ok := ui.font_picker("###font", &p.font_pickers[fs], fam, value, {default_face = def, monospace = fs == .Mono, name = config.title_of(e.def)}).?; ok {
-		apply(p, prefs, o, e.def.name, v)
-	}
-}
-
-// Under the themes' cards: that one can make one's own, and the file (a click makes it when needed and opens it).
-@(private = "file")
-themes_file_line :: proc(p: ^Page, tf: ^Themes_File, em: f32) {
-	// (the cards end with their gap: the words follow at once)
-	if ui.tags("weak") {
-		ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-		ui.paragraph(fmt.tprintf("%s###themes_own", i18n.tr("Make themes of your own: each is a few lines in this file, which explains how. They show here as soon as it is saved.")))
-	}
-	ui.space(ui.LINE_GAP)
-	shown := home_short(tf.path, context.temp_allocator)
-	if link("###themes_file", shown, i18n.tr("Open the themes file in the system's editor (made at the first click)"), em, mono = true) && p.state != nil {
-		themes_file_open(tf, p.state)
-	}
-	if tf.error != "" {
-		if ui.tags("bad") {
-			ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
-			ui.paragraph(fmt.tprintf("%s###themes_error", tf.error))
-		}
-	}
-}
-
-// A String preference's choices: its own (their labels, else the values capitalised, in the language in use), or the
-// program's.
-@(private = "file")
-choices_of :: proc(o: Page_Options, e: ^config.Entry) -> (labels, values: []string) {
-	if len(e.def.choices) > 0 {
-		own := len(e.def.choice_labels) == len(e.def.choices)
-		out := make([]string, len(e.def.choices), context.temp_allocator)
-		for c, i in e.def.choices { out[i] = i18n.tr(own ? e.def.choice_labels[i] : capitalised(c)) }
-		return out, e.def.choices
-	}
-	if o.choices != nil {
-		// (the program's labels are its English, i18n.later: translated here, where they show)
-		labels, values = o.choices(o.user, e.def.name)
-		out := make([]string, len(labels), context.temp_allocator)
-		for l, i in labels { out[i] = i18n.tr(l) }
-		return out, values
-	}
-	return
-}
-
-// A value as a label: its first letter upper case, its underscores spaces ("top_right": "Top right").
-@(private = "file")
-capitalised :: proc(s: string) -> string {
-	if s == "" { return s }
-	t, _ := strings.replace_all(s, "_", " ", context.temp_allocator)
-	if t[0] < 'a' || t[0] > 'z' { return t }
-	return strings.concatenate({ascii.upper(t[:1]), t[1:]}, context.temp_allocator)   // (a value: ASCII)
-}
-
-// A bounded number is a ui.number (its slider, its field, − and +); the others, and a size in bytes, are fields.
-@(private = "file")
-is_number :: proc(d: config.Def) -> bool {
-	return d.bounded && !d.bytes && d.max > d.min
-}
-
-// A float's step: round, and cutting its range in at most a few hundred (0.1, 1, 10...).
-@(private = "file")
-float_step :: proc(span: f64) -> f64 {
-	return math.pow(10, math.ceil(math.log10(span / FLOAT_STEPS_MAX)))
-}
-@(private = "file") FLOAT_STEPS_MAX :: 200
-
-// A bounded number: ui.number with its slider. A drag is written when it is let go (the file is not rewritten at the
-// pointer's rate; while held, the page keeps the value and Page_Options.preview shows it); a key, a click, the wheel, a
-// button or what is typed, at once.
-@(private = "file")
-number :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
-	d := e.def
-	name := d.name
-	held := p.held != "" && p.held == name
-	nk := ui.key_from_string(ui.parent_box().key, "###num")
-	ui.next({width = width, height = ui.px(math.round(em * CONTROL_H_EM))})
-	ui.a11y({name = config.title_of(d)})
-	value: f64
-	if d.kind == .Int {
-		v := held ? int(math.round(p.held_value)) : int(e.value.i)
-		ui.number("###num", &v, lo = int(d.min), hi = int(d.max), unit = i18n.tr(d.unit), slider = true)
-		value = f64(v)
-	} else {
-		v := held ? p.held_value : e.value.f
-		ui.number("###num", &v, lo = d.min, hi = d.max, step = float_step(d.max - d.min), unit = i18n.tr(d.unit), slider = true)
-		value = v
-	}
-	if ui.focus_key() == ui.key_from_string(nk, "###value") { p.number_typed = true }
-	if ui.active_key() == ui.key_from_string(nk, "###slider") {
-		moved := !held || value != p.held_value
-		if !held { delete(p.held); p.held = strings.clone(name) }
-		p.held_value = value
-		if moved && o.preview != nil { o.preview(o.user, name, value) }
-		return
-	}
-	if held { delete(p.held); p.held = "" }
-	if d.kind == .Int {
-		if i64(math.round(value)) != e.value.i { apply(p, prefs, o, name, fmt.tprintf("%d", i64(math.round(value)))) }
-	} else if value != e.value.f {
-		apply(p, prefs, o, name, fmt.tprintf("%v", value))
-	}
-}
-
-// A free field, its unit after it: Enter or leaving it applies the text; a refused one says why under the line.
-@(private = "file")
-field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, em: f32, width: ui.Size) {
-	name := e.def.name
-	f, ok := p.fields[name]
-	if !ok {
-		f = new(Field)
-		p.fields[strings.clone(name)] = f
-	}
-	numeric := e.def.kind != .String
-	// (a number as the language writes it: "1,5" in French; apply reads either mark)
-	current := config.value_string(prefs, r)
-	if numeric { current = i18n.decimal_marks(current) }
-	typing := f.box != 0 && ui.focus_key() == f.box
-	if f.synced != current && !typing { ui.line_edit_set(&f.text, current); delete(f.synced); f.synced = strings.clone(current) }
-	// (a number's field: its width less its unit's, which follows it)
-	fw := width
-	if numeric && e.def.unit != "" && width.kind == .Pixels { fw = ui.px(math.round(em * NUMBER_FIELD_EM)) }
-	ui.next({width = fw, height = ui.px(math.round(em * CONTROL_H_EM))})
-	ui.a11y({name = config.title_of(e.def)})
-	res := ui.line_edit("###field", &f.text)
-	f.box = res.box.key
-	left := !res.focused && typing   // (the keyboard went elsewhere this frame)
-	if res.committed || (left && ui.line_edit_string(&f.text) != current) {
-		err := apply(p, prefs, o, name, ui.line_edit_string(&f.text))
-		delete(f.error)
-		f.error = err
-		delete(f.synced); f.synced = ""
-	}
-	if res.cancelled { delete(f.synced); f.synced = ""; delete(f.error); f.error = "" }
-	if numeric && e.def.unit != "" {
-		ui.space(ui.CONTROL_GAP)
-		if ui.tags("weak") {
-			ui.next({width = ui.text_size(0), height = ui.px(math.round(em * CONTROL_H_EM)), text_pad = 0, font_size = math.round(em * 0.86)})
-			ui.label(fmt.tprintf("%s###unit", i18n.tr(e.def.unit)))
-		}
-	}
-}
-
 // Sets a preference from text. "" when it was set; else why not (owned), with what is allowed ("out of range: 1 to 64").
 @(private)
 apply :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name, text: string) -> string {
@@ -1192,11 +951,16 @@ apply :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name, text: strin
 	msg := config.set_error_text(err)
 	if r := config.ref_of(prefs, name); r != config.NO_REF {
 		d := config.entry(prefs, r).def
-		unit := d.unit != "" ? strings.concatenate({" ", i18n.tr(d.unit)}, context.temp_allocator) : ""
-		num :: proc(v: f64, kind: config.Kind) -> string { return kind == .Int ? fmt.tprintf("%d", i64(v)) : i18n.decimal_marks(fmt.tprintf("%g", v)) }
+		// (the bounds as the value is shown: "1 KiB to 100 MiB", "0 to 90 %")
+		bound :: proc(d: config.Def, v: f64) -> string {
+			x: config.Value
+			if d.kind == .Int { x.i = i64(v) } else { x.f = v }
+			return config.shown_text(d, x)
+		}
 		#partial switch err {
-		case .Out_Of_Range: if d.bounded { msg = fmt.tprintf(i18n.tr("%s: %s to %s%s"), msg, num(d.min, d.kind), num(d.max, d.kind), unit) }
+		case .Out_Of_Range: if d.bounded { msg = fmt.tprintf(i18n.tr("%s: %s to %s"), msg, bound(d, d.min), bound(d, d.max)) }
 		case .Not_A_Choice: msg = fmt.tprintf("%s: %s", msg, strings.join(d.choices, ", ", context.temp_allocator))
+		case .Bad_Type:     if hint := config.value_hint(d); hint != "" { msg = fmt.tprintf("%s: %s", msg, hint) }
 		}
 	}
 	return strings.clone(msg)

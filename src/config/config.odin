@@ -57,9 +57,11 @@ Def :: struct {
 	bounded:     bool,
 	choices:     []string,    // String: the allowed values (empty = free text)
 	choice_labels: []string,  // how each of choices reads, in their order (nil: the value, its first letter upper case)
-	unit:        string,      // shown by about:config: "ms", "bytes", ...
+	// what the value is (a family, a colour, a size...), apart from how it is stored: it chooses its control and what
+	// is typed in it, and checks what it can (value_kind.odin)
+	value_kind:  Value_Kind,
+	unit:        Unit,        // a measure's unit, one of its kind's (UNITS; .None: the kind's first)
 	restart:     bool,        // takes effect at the next start
-	bytes:       bool,        // Int: accepts K / M / G suffixes when typed
 	advanced:    bool,        // a technical setting: shown, folded under an "Advanced" part of its group, found by a search
 	hidden:      bool,        // the program's state, no setting (a layout, a last choice): no settings page shows it, nor an export
 	// other words a search finds it by, that its name, title and description do not say ("colours", "dark" for a theme)
@@ -164,6 +166,7 @@ register :: proc(p: ^Prefs, defs: []Def) -> (refused: int) {
 			assert(p.entries[i].def.kind == d.kind, "preference registered twice with different kinds")
 			continue
 		}
+		value_kind_check(d)
 		e := Entry{def = d, value = d.default}
 		e.value.s = strings.clone(d.default.s, p.allocator)
 		idx := len(p.entries)
@@ -227,7 +230,9 @@ value_of :: proc(p: ^Prefs, name: string, kind: Kind) -> Value {
 ////////////////////////////////
 // Writes
 
-// Parses `text` according to the preference's kind (Int accepts `_` separators and K/M/G for byte-valued prefs).
+// Parses `text` according to the preference's storage and value kind: an Int accepts `_` separators; a measure its
+// kind's suffixes (measure_parse: "4 MiB", "300 ms"); a text kind is checked (text_check: a colour, an address...). A
+// Size, a Duration and a Fraction are never below 0, a Fraction never above 1.
 parse_value :: proc(d: Def, text: string) -> (v: Value, err: Set_Error) {
 	t := strings.trim_space(text)
 	switch d.kind {
@@ -238,25 +243,26 @@ parse_value :: proc(d: Def, text: string) -> (v: Value, err: Set_Error) {
 		case: return {}, .Bad_Type
 		}
 	case .Int:
-		s, _ := strings.replace_all(t, "_", "", context.temp_allocator)
-		mult := i64(1)
-		if d.bytes && len(s) > 1 {
-			switch s[len(s) - 1] {
-			case 'k', 'K': mult, s = 1 << 10, s[:len(s) - 1]
-			case 'm', 'M': mult, s = 1 << 20, s[:len(s) - 1]
-			case 'g', 'G': mult, s = 1 << 30, s[:len(s) - 1]
-			}
+		if is_measure(d.value_kind) {
+			f, ok := measure_parse(d, t)
+			if !ok { return {}, .Bad_Type }
+			f = math.round(f)
+			if f >= INT_LIMIT || f <= -INT_LIMIT { return {}, .Out_Of_Range }
+			v.i = i64(f)
+		} else {
+			s, _ := strings.replace_all(t, "_", "", context.temp_allocator)
+			n, ok := strconv.parse_i64(s, 10)
+			if !ok { return {}, .Bad_Type }
+			v.i = n
 		}
-		n, ok := strconv.parse_i64(s, 10)
-		if !ok { return {}, .Bad_Type }
-		if mult > 1 && (n > max(i64) / mult || n < min(i64) / mult) { return {}, .Out_Of_Range }
-		v.i = n * mult
-		if d.bounded && (f64(v.i) < d.min || f64(v.i) > d.max) { return {}, .Out_Of_Range }
+		if !in_kind_range(d, f64(v.i)) || (d.bounded && (f64(v.i) < d.min || f64(v.i) > d.max)) { return {}, .Out_Of_Range }
 	case .Float:
-		f, ok := strconv.parse_f64(t)
+		f: f64
+		ok: bool
+		if is_measure(d.value_kind) { f, ok = measure_parse(d, t) } else { f, ok = strconv.parse_f64(t) }
 		if !ok || math.is_nan(f) || math.is_inf(f) { return {}, .Bad_Type }
 		v.f = f
-		if d.bounded && (f < d.min || f > d.max) { return {}, .Out_Of_Range }
+		if !in_kind_range(d, f) || (d.bounded && (f < d.min || f > d.max)) { return {}, .Out_Of_Range }
 	case .String:
 		v.s = text   // not trimmed: a string may legitimately have spaces
 		if len(d.choices) > 0 {
@@ -264,8 +270,22 @@ parse_value :: proc(d: Def, text: string) -> (v: Value, err: Set_Error) {
 			for c in d.choices { if c == text { found = true; break } }
 			if !found { return {}, .Not_A_Choice }
 		}
+		if e := text_check(d, text); e != .None { return {}, e }
 	}
 	return v, .None
+}
+
+// (an i64 holds what is under 2^63; a float of that size is no longer exact)
+@(private = "file") INT_LIMIT :: f64(1 << 63)
+
+// The range a value kind has whatever its bounds: no negative size, time or share, no share above the whole.
+@(private = "file")
+in_kind_range :: proc(d: Def, n: f64) -> bool {
+	#partial switch d.value_kind {
+	case .Size, .Duration: return n >= 0
+	case .Fraction:        return n >= 0 && n <= 1
+	}
+	return true
 }
 
 // Sets by name from text, with full validation. Precedence: policy > command line > user > default. A value from a

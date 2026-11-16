@@ -53,7 +53,9 @@ and its memory, the views, the texts in the user's language.
 - [features/picture-cache.md](features/picture-cache.md): one cache of picture textures under a byte budget (`gt:pictures`): size classes and why, the last asked decoded first, what is no longer shown dropped from the queue, the upload on the interface's thread, what the budget never evicts, a serial per ask; refused: a decode in the frame, one texture per place, a cache per program
 - [features/everything-palette.md](features/everything-palette.md): each item's control in the palette, from the
   value's nature (value kinds and units) in one table the settings page shares; the run mode, live change and Escape;
-  go to by an act name; commands with arguments
+  go to by an act name; commands with arguments. Layer 1 as built: the thirteen value kinds and what each checks and
+  shows, why `Factor` and `Rate` joined, the units' table and which convert, why a family and a theme are not checked,
+  why the control table is `prefs_page`'s and a `Size` never a slider
 - [features/palette.md](features/palette.md): one command palette for every program: sources with a closed table of prefixes, one ranking on the chores, serials that drop stale answers, choices by source and id, what each program's palette becomes
 - [features/paste.md](features/paste.md): a paste gives text, files or an image as one answer: the order of preference (files, text, image), why the kinds are asked one after the other, the image decoded on a chore, one API for every kind, the platforms' formats
 - [features/path-bar.md](features/path-bar.md): the path bar (`ui.path_bar`): why it reads nothing itself, why `wants` is said once, why its dropdown is a popover

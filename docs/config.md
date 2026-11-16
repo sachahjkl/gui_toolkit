@@ -15,8 +15,10 @@ A subsystem declares its preferences next to the code that uses them, as a table
 DEFS := [?]config.Def{
     {name = "net.max_connections", description = "Connections per host.", kind = .Int,
         default = {i = 6}, bounded = true, min = 1, max = 64},
-    {name = "net.max_body", description = "Largest response kept.", kind = .Int,
-        default = {i = 256 << 20}, bytes = true, unit = "bytes", bounded = true, min = 0, max = 1 << 40},
+    {name = "net.max_body", description = "Largest response kept.", kind = .Int, value_kind = .Size,
+        default = {i = 256 << 20}, bounded = true, min = 0, max = 1 << 40},
+    {name = "net.timeout", description = "How long an answer may take.", kind = .Int, value_kind = .Duration,
+        default = {i = 300}},
     {name = "ui.theme", description = "Colour scheme.", kind = .String,
         default = {s = "auto"}, choices = {"auto", "dark", "light"}, restart = true},
 }
@@ -24,9 +26,46 @@ DEFS := [?]config.Def{
 
 A `Def` carries its dotted lower-case `name` (its segments but the last are its groups: see below), a `description` (a
 settings UI shows its first sentence and folds the rest), a `kind` (`.Bool / .Int / .Float / .String`), a `default`,
-optional `bounded` bounds, a `choices` list for strings, a `unit` ("ms", "bytes"), `bytes` (an int that accepts
-`K`/`M`/`G` when typed) and `restart` (takes effect at the next start). Its `tags` are other words a search finds it by,
-that its name, title and description do not say ("colours", "dark" for a theme).
+optional `bounded` bounds, a `choices` list for strings, its `value_kind` and a number's `unit` (below), and `restart`
+(takes effect at the next start). Its `tags` are other words a search finds it by, that its name, title and description
+do not say ("colours", "dark" for a theme).
+
+### What a value is
+
+`kind` says how a value is stored; `value_kind` (`Value_Kind`) says what it is. It chooses the value's control on a
+settings page ([prefs_page.md](prefs_page.md): `control_of`), what is typed in it, what is shown, and what is refused:
+
+| `Value_Kind` | Stored as | Refuses | Typed | Shown (`shown_text`) |
+|---|---|---|---|---|
+| `Plain` (the zero value) | any | what its storage, bounds and choices refuse | | as stored |
+| `Font_Family` | String | nothing: the list is the system's | | the name |
+| `Theme` | String | nothing: the list is the program's | | the name |
+| `Color` | String | all but `#` and 3, 4, 6 or 8 hex digits | | as stored |
+| `Path` | String | a NUL byte (the disk is not read) | | as stored |
+| `Address` | String | a text with no scheme (`https:`, `mailto:`…) | | as stored |
+| `Keys` | String | a chord with an empty part (`Ctrl+ +K`) | `Ctrl+K Ctrl+S` | as stored |
+| `Size` | Int | a negative size | `4 MiB`, `4M` (binary), `2 MB` (decimal), `512 B` | `4 MiB`: the largest unit that is exact to 2 decimals |
+| `Duration` | Int, Float | a negative time | `300 ms`, `1.5 s`, `2 min`, `1 h`, `2 d` | `300 ms` |
+| `Fraction` | Float | below 0, above 1 | `0.45`, `45%` | `45 %` |
+| `Length` | Int, Float | another unit's symbol | `12 px`, `1.5 em` | `12 px` |
+| `Factor` | Float | another symbol | `1.5×`, `1.5x` | `1.25 ×` |
+| `Rate` | Int, Float | another unit's symbol | `30/s`, `400 px/s` | `30 /s` |
+
+The empty text is a value of every text kind: none, the program's own (a family's Default). A number's `unit` is a
+`Unit` of its kind, from one table (`UNITS`, `KIND_UNITS`): `Size` in `.Byte`, `.Kibibyte` or `.Mebibyte`, `Duration`
+in `.Millisecond`, `.Second`, `.Minute`, `.Hour` or `.Day`, `Length` in `.Pixel`, `.Em` or `.Milli_Em`, `Rate` in `.Per_Second` or
+`.Pixel_Per_Second`; `.None` is the kind's first. `register` asserts that a kind fits its storage and a unit its kind.
+A bare number is in the setting's unit, and a suffix converts a size or a time to it ("4 MiB" in a setting kept in KiB
+is 4096). The file keeps the stored number, never the text shown.
+
+| Call | What it does |
+|---|---|
+| `unit_of(def)`, `unit_symbol(def)` | the setting's unit, and its symbol ("ms", "px", "%") |
+| `shown_text(def, value)` | the text a person reads ("300 ms", "4 MiB", "45 %") |
+| `measure_parse(def, text, shown)` | a measure's number in its stored unit, read with its suffixes (`shown`: a `Fraction`'s bare number is its percent) |
+| `parse_shown(def, text)` | `parse_value` of what a field shows: a `Fraction`'s bare number is its percent |
+| `value_hint(def)` | what a refused value must look like ("a colour: #rgb, #rrggbb or #rrggbbaa"; "" for none) |
+| `value_kind_stores(kind, storage)`, `is_measure(kind)`, `shown_scale(def)`, `value_kind_of(name)` | the table's facts |
 
 ### Advanced and hidden
 

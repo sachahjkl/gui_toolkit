@@ -154,6 +154,36 @@ a_font_chosen_applies_at_once :: proc(t: ^testing.T) {
 	testing.expectf(t, session.find_text(s, label) != nil, "the default named as the program's: %q", label)
 }
 
+@(private = "file", rodata)
+EDITOR_FONT := [?]config.Def{{name = "editor.font", title = "Editor font", description = "The family of the editor.", kind = .String, value_kind = .Font_Family, default = {s = ""}}}
+
+// The everything palette's day-one test 3, on the page: a program's new Font_Family setting, with no other code (no
+// name the page knows, no option), gets the family picker, its families from the program's source, and a family
+// chosen in it is its value.
+@(test)
+a_new_font_family_setting_gets_the_family_picker :: proc(t: ^testing.T) {
+	app: Fonts_App
+	defer fonts_end(&app)
+	app.prefs = config.prefs_make()
+	app.changed.allocator = runtime.heap_allocator()
+	config.register(&app.prefs, EDITOR_FONT[:])
+	s := session.start(t, {size = {1200, 800}, build = fonts_build, user = &app})
+	ui.set_text_faces(s.state, {}, fake_source(&app))
+	session.frames(s, 2)
+	b := picker_of(s, "editor.font")
+	if !testing.expect(t, b != nil, "the setting has a font picker") { return }
+	session.click_at(s, session.center(b))
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return (^Fonts_App)(s.user).page.font_families.reading == .Ready }, "the families", BOUND)
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Beta Mono") != nil, "the source's families are listed")
+	session.type_text(s, "alpha")
+	session.frames(s, 2)
+	session.key(s, .Return)
+	session.frames(s, 2)
+	testing.expect_value(t, config.string_of(&app.prefs, "editor.font"), "Alpha Sans")
+	if testing.expect(t, len(app.changed) > 0, "the program hears of it") { testing.expect_value(t, app.changed[len(app.changed) - 1], "editor.font") }
+}
+
 // A family the source has no face for leaves the program's face (the monospace one here), and the serial a program
 // watches moves only with a face that changed.
 @(test)

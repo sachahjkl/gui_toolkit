@@ -46,6 +46,7 @@ scene_build :: proc(app: ^App, s: Scene, em: f32) {
 			case .Toolbar:  toolbar_build(app, em)
 			case .Views:    views_build(app, em)
 			case .Steppers: steppers_build(app, em)
+			case .Values:   values_build(app, em)
 			}
 			ui.spacer(ui.px(em * 1.2))
 		}

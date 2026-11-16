@@ -17,6 +17,27 @@ fr hors limites
 en not one of the allowed values
 fr pas une des valeurs permises
 
+en a colour: #rgb, #rrggbb or #rrggbbaa
+fr une couleur : #rgb, #rrggbb ou #rrggbbaa
+
+en an address with its scheme: https://…
+fr une adresse avec son schéma : https://…
+
+en keys such as Ctrl+Shift+K
+fr des touches comme Ctrl+Maj+K
+
+en a path
+fr un chemin
+
+en a size: 512, 64 KiB, 4 MiB, 2 GB
+fr une taille : 512, 64 KiB, 4 MiB, 2 GB
+
+en a time: 300 ms, 1.5 s, 2 min, 1 d
+fr une durée : 300 ms, 1,5 s, 2 min, 1 d
+
+en a share: 45% or 0.45
+fr une part : 45 % ou 0,45
+
 en Last time, %s did not close normally: the system or another program ended it.
 fr La dernière fois, %s ne s'est pas fermé normalement : le système ou un autre programme l'a arrêté.
 
@@ -340,6 +361,15 @@ fr %d versions sur %d
 en Latest
 fr Dernière
 
+en Default
+fr Par défaut
+
+en Make themes of your own: each is a few lines in this file, which explains how. They show here as soon as it is saved.
+fr Créez vos propres thèmes : chacun tient en quelques lignes de ce fichier, qui explique comment faire. Ils s'affichent ici dès qu'il est enregistré.
+
+en Open the themes file in the system's editor (made at the first click)
+fr Ouvrir le fichier des thèmes dans l'éditeur du système (créé au premier clic)
+
 en Diagnostics
 fr Diagnostics
 
@@ -523,14 +553,8 @@ fr Réinitialiser
 en Back to the default
 fr Revenir à la valeur par défaut
 
-en Make themes of your own: each is a few lines in this file, which explains how. They show here as soon as it is saved.
-fr Créez vos propres thèmes : chacun tient en quelques lignes de ce fichier, qui explique comment faire. Ils s'affichent ici dès qu'il est enregistré.
-
-en Open the themes file in the system's editor (made at the first click)
-fr Ouvrir le fichier des thèmes dans l'éditeur du système (créé au premier clic)
-
-en %s: %s to %s%s
-fr %s : de %s à %s%s
+en %s: %s to %s
+fr %s : de %s à %s
 
 en Check now
 fr Vérifier maintenant
@@ -1905,9 +1929,6 @@ fr Le fichier n'a pas pu être lu : %s.
 
 en The folder could not be made: %s.
 fr Le dossier n'a pas pu être créé : %s.
-
-en Default
-fr Par défaut
 
 en %s (default)
 fr %s (par défaut)

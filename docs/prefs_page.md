@@ -137,7 +137,7 @@ What the program applies itself:
 - On the right: the page's title, then a line per preference, in the order the program registered them: its title
   (`config.title_of`) and its description (with "Locked by a policy", "Set on the command line for this run" or "Takes
   effect at the next start" when it applies) on the left, its control on the right, a reset button while the user's
-  value differs from the default, a carved line under it.
+  value differs from the default; a carved line between two lines of a group, none under the last.
 - The preferences of an inner group (`appearance.text` in Appearance) follow those of the page's own group, under the
   group's title (`config.group_title`). The advanced ones (`Def.advanced`) of the page come last, under **Advanced**,
   folded until a click (`ui.accordion`; the page keeps it open while it lives). The fold is only on a page that has
@@ -150,27 +150,38 @@ What the program applies itself:
 - Nothing goes past the window or is cut: the descriptions wrap; a control that would leave its words less than 12 ems
   goes under them, as wide as the line; the page scrolls.
 
-The controls:
+The controls come from the value, never from a name: one table, `control_of(def, choices, themes, custom) -> Control`,
+from the storage, the value kind (`Def.value_kind`, [config.md](config.md#what-a-value-is)) and the count of choices.
+The page asks it for each line; a program asks it too, to say which control a preference gets.
 
-| Preference | Control |
-|---|---|
-| `Bool` | a switch |
-| `String` with up to 4 choices (its own `choices`, or the program's `Page_Options.choices`) | a segmented choice; under the words when it takes more than 45 % of the line |
-| `String` with more choices | a list |
-| `String` with no choices | a field |
-| `Int`, `Float` bounded | a number (`ui.number` with its slider: − and +, a field for its exact value, its unit after it); a float's step is round (0.1, 1, 10...) |
-| other numbers, sizes in bytes | a field, its unit after it |
-| a name in `Page_Options.custom_names` | the program's own (`Page_Options.custom`), under the words |
-| a name in `Page_Options.hotkeys` (a key combination as text) | a field that records the keys pressed (`ui.hotkey_field`): a click, then the keys |
-| a `pref` of `Page_Options.shortcut_prefs` | the same field, and what the system made of the keys under it (see below) |
-| `appearance.theme`, with `Page_Options.themes` | the themes' cards, under the words |
-| `appearance.text.ui_font`, `mono_font`, `prose_font` | a font picker ([font-picker.md](font-picker.md)): the family in use, its default named ("Roboto (default)"), the system's families drawn in themselves, searched as one types; the monospace ones first for `mono_font` |
+| Preference | `Control` | Drawn as |
+|---|---|---|
+| a name in `Page_Options.custom_names` | `Custom` | the program's own (`Page_Options.custom`), under the words |
+| `Bool` | `Switch` | a switch |
+| `Font_Family` | `Font_Family` | a font picker ([font-picker.md](font-picker.md)): the family in use, its default named ("Roboto (default)"), the system's families drawn in themselves, searched as one types; the monospace ones first for `mono_font` |
+| `Theme`, with `Page_Options.themes` | `Theme` | the themes' cards, under the words, in the version `appearance.mode` asks |
+| `Color` | `Color` | a swatch and the value; a click opens the colour picker (`ui.color_picker`) in a popover under the button; each change is set in hex; the button, Escape or a press outside closes it |
+| `Keys` | `Keys` | a field that records the keys pressed (`ui.hotkey_field`): a click, then the keys; with `Page_Options.shortcut_prefs`, what the system made of them under it (see below) |
+| `String` with up to 6 choices (`SEGMENTS_MAX`: its own `choices`, or the program's `Page_Options.choices`) | `Segments` | a segmented choice; under the words when it takes more than 45 % of the line |
+| `String` with more choices | `List` | a list |
+| `Int`, `Float` bounded, and every `Fraction`, but a `Size` | `Number` | `ui.number` with its slider: − and +, a field for its exact value, its unit after it; a float's step is round (0.1, 1, 10...); a `Fraction` in percent; the field reads its unit's suffixes ("1.5 s" for a time in ms) |
+| the rest | `Field` | a field: a number's unit after it, a `Size` in its largest exact unit ("4 MiB") and read with its suffixes, a `Path` or an `Address` in the monospace face |
 
-The family settings name their default by the program's own face (`ui.program_text_face`): the one it gives in
-`Standard_Targets.faces`, else `Build_Params.base.font`, `State.mono_font`, the interface's for prose. A family chosen
-before does not change that name. The page reads the families from the program's source (`ui.text_font_source`:
-`Standard_Targets.font_source`, a test's; zero: the system's), at a picker's first opening, on a chore, and keeps the
-list for its life.
+A family names its default by the program's face it replaces (`standard_face_of(name)`: the monospace face for
+`mono_font`, the reading one for `prose_font`, the interface's for the others, a program's own family setting too) and
+`ui.program_text_face`: the one it gives in `Standard_Targets.faces`, else `Build_Params.base.font`, `State.mono_font`,
+the interface's for prose. A family chosen before does not change that name. The page reads the families from the
+program's source (`ui.text_font_source`: `Standard_Targets.font_source`, a test's; zero: the system's), at a picker's
+first opening, on a chore, and keeps the list for its life.
+
+A value a field refuses says why under the line, with what is taken: the bounds as the value is shown ("out of range: 1
+KiB to 100 MiB"), the choices, or the value kind's hint (`config.value_hint`: "an address with its scheme: https://…").
+
+`setting_line(page, prefs, options, name)` draws one preference's line, as the page does, anywhere: a program's own
+view of a few settings, the showcase's Values scene. `control_open(page, name)` opens a preference's control at its next
+build, as a click would (a family's list, a colour's picker).
+
+![The showcase's Values scene: a Font_Family value gets the font picker, each family in its face](screenshots/showcase_values_font_family.webp)
 
 A locked preference (a policy, the command line) shows its control disabled. `Page_Options.problem(user, name)` gives what
 the program has to say under a line (a shortcut another program holds): it shows in red. `Page_Options.status(user, name)` says a
@@ -178,7 +189,7 @@ preference's state plainly, under its line, in the weak text (the keys a shortcu
 category, em)` draws the program's own content under a page's preferences (not in a search): buttons, a list.
 
 Each line whose value is the user's and differs from its default shows the reset button, whatever its control:
-`differs_from_default(prefs, name, keys)` says when (`keys`: compared as key combinations, so "ctrl+print" is
+`differs_from_default(prefs, name)` says when (a `Keys` value is compared as key combinations, so "ctrl+print" is
 "Ctrl+Print"). A value the user set equal to the default shows none. While one line of the page shown has it, a
 **Restore defaults** button beside the page's title puts all of them back (each through `Page_Options.changed`, as its own
 reset button does).
@@ -186,7 +197,8 @@ reset button does).
 ## Global shortcuts
 
 A program with global shortcuts ([shortcuts.md](shortcuts.md)) gives its service in `Page_Options.shortcuts` and, in
-`Page_Options.shortcut_prefs`, each preference that holds a shortcut's keys with the shortcut's id in the service:
+`Page_Options.shortcut_prefs`, each preference that holds a shortcut's keys (a `Keys` Def) with the shortcut's id in the
+service:
 
 ```odin
 SHORTCUTS := [?]prefs_page.Shortcut_Pref{{pref = "shortcut.region", id = "region"}, {pref = "shortcut.screen", id = "screen"}}
@@ -201,8 +213,8 @@ keys, the page holds the service (`shortcuts.hold`): Windows would take the very
 
 ## Themes from the program
 
-With `Page_Options.themes` (the program's list: its own theme, then `ui.THEMES`), `appearance.theme` shows as the themes'
-cards and a click sets it. The cards show the version `appearance.mode` asks; for `system`, the one the program shows
+With `Page_Options.themes` (the program's list: its own theme, then `ui.THEMES`), a `Theme` preference
+(`appearance.theme`, or a program's own) shows as the themes' cards and a click sets it. The cards show the version `appearance.mode` asks; for `system`, the one the program shows
 now (`Page_Options.themes_light`: its `ui.Theme_Shown.light`; the page does not ask the system each frame).
 
 A program that updates itself (`update.Updater`, `docs/update.md`) gives it in `Page_Options.updater`, and in `update_pref` the

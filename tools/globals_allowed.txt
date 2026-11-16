@@ -16,6 +16,12 @@ config/export_test.odin EXPORT_DEFS test
 config/search_test.odin SEARCH_DEFS test
 config/snapshot_test.odin SNAP_DEFS test
 config/snapshot_test.odin LATE_DEFS test
+config/value_kind.odin UNITS const  # each unit's kind, symbol and size, a table
+config/value_kind.odin KIND_UNITS const  # each value kind's units, a table
+config/value_kind.odin VALUE_KIND_NAMES const  # the value kinds' names, a table
+config/value_kind.odin SIZE_SUFFIXES const  # what a size may be typed with, a table
+config/value_kind.odin DURATION_SUFFIXES const  # what a time may be typed with, a table
+config/value_kind_test.odin VALUE_DEFS test
 crash/crash.odin kept process  # the crash handler's settings and buffers: written once by install (an atomic flag) before a crash reads them; the session flag is atomic
 crash/crash_linux.odin sys process  # the signal handler's buffers and state, taken at install: one handler for the process (its flags atomic)
 crash/crash_windows.odin sys process  # the exception filter's buffers, events and writer thread, taken at install: one for the process (its flags atomic)

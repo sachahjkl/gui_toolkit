@@ -50,6 +50,8 @@ ui.font_families_destroy(&app.families)
   the chores. `font_system_source(&fonts)` reads the system (`font.system_families`, `font.load_system`); a test gives
   its own, with no system read.
 - `font_default_label(family)`: how a default reads ("Roboto (default)"; "Default" when the family is "").
+- `font_picker_open(&st, &families)`: opens the list as a click on the button does, from elsewhere (the settings page's
+  `control_open`, a picture of it); the families are read on a chore if they are not yet.
 
 ## The text faces (`src/ui/text_faces.odin`)
 

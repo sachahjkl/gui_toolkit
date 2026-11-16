@@ -329,9 +329,11 @@ if ui.toolbar("editor_bar", {overflow = .Fold}) {               // .Wrap: the sa
 
 ![ui.number with its track, ui.range_slider, ui.slider, a well of facts (examples/showcase)](screenshots/showcase_controls.webp)
 
-`ui.number(id, &value, lo, hi, step, unit, slider, disabled, default)` is the one widget for a number one sets, of any integer
+`ui.number(id, &value, lo, hi, step, unit, slider, disabled, default, parse)` is the one widget for a number one sets, of any integer
 or float type: − and + around a field where its exact value is typed, then its unit; with `slider = true` and both
-bounds, a slider before them. It returns whether the value changed this frame.
+bounds, a slider before them. It returns whether the value changed this frame. `parse` (`ui.Number_Parse{fn, user}`)
+reads what is typed when the field takes more than a number: a setting's unit and its suffixes ("1.5 s" in a field of
+milliseconds; the settings page gives it from the value kind); zero, a number in either decimal mark.
 
 ```odin
 ui.number("###count", &app.count, lo = 0)                                   // an int, no upper bound

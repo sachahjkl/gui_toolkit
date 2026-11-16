@@ -142,7 +142,10 @@ a_registry_without_them_reads_the_defaults :: proc(t: ^testing.T) {
 the_reset_rule :: proc(t: ^testing.T) {
 	p := standard_prefs()
 	defer config.prefs_destroy(&p)
-	keys := [?]config.Def{{name = "shortcut.region", kind = .String, default = {s = "Ctrl+Print"}}}
+	keys := [?]config.Def{
+		{name = "shortcut.region", kind = .String, value_kind = .Keys, default = {s = "Ctrl+Print"}},
+		{name = "shortcut.words", kind = .String, default = {s = "Ctrl+Print"}},
+	}
 	config.register(&p, keys[:])
 	testing.expect(t, !prefs_page.differs_from_default(&p, "appearance.mode"), "the default: no reset")
 	config.set_from_string(&p, "appearance.mode", "system", .User)
@@ -154,8 +157,9 @@ the_reset_rule :: proc(t: ^testing.T) {
 	config.set_from_string(&p, "appearance.finish", "flat", .Command_Line)
 	testing.expect(t, !prefs_page.differs_from_default(&p, "appearance.finish"), "the command line's value is not the user's")
 	config.set_from_string(&p, "shortcut.region", "ctrl+print", .User)
-	testing.expect(t, !prefs_page.differs_from_default(&p, "shortcut.region", keys = true), "the same keys in other words")
-	testing.expect(t, prefs_page.differs_from_default(&p, "shortcut.region"), "as text, they differ")
+	testing.expect(t, !prefs_page.differs_from_default(&p, "shortcut.region"), "Keys: the same keys in other words")
+	config.set_from_string(&p, "shortcut.words", "ctrl+print", .User)
+	testing.expect(t, prefs_page.differs_from_default(&p, "shortcut.words"), "as text, they differ")
 	testing.expect(t, !prefs_page.differs_from_default(&p, "no.such"), "an unknown name")
 }
 

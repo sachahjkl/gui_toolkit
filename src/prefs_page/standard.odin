@@ -4,8 +4,8 @@ package tk_prefs_page
 // the hand's feel, the timings, the rendering, the updates and the program on the desktop. Each is a setting of the
 // toolkit with today's default; nothing is blocked: a technical one is `advanced` (shown, folded on a page that has
 // ordinary ones; shown on a page of technical ones alone, Rendering), never hidden. Their
-// names are fixed: the programs' files hold them, and the page knows some of them (Page_Options.themes shows
-// appearance.theme as cards). docs/settings.md lists them all.
+// names are fixed: the programs' files hold them. Each says what its value is (Def.value_kind: a Theme, a
+// Font_Family, a Duration...), which gives its control on the page. docs/settings.md lists them all.
 //
 //	d := prefs_page.STANDARD_DEFAULTS
 //	d.theme, d.app_name = "cliche", "cliche"
@@ -237,7 +237,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	if .Appearance in sets {
 		config.title_register(prefs, "appearance", i18n.later("Appearance"), ORDER_APPEARANCE)
 		append(&defs, config.Def{
-			name = THEME_PREF, title = i18n.later("Theme"), kind = .String, default = {s = d.theme},
+			name = THEME_PREF, title = i18n.later("Theme"), kind = .String, value_kind = .Theme, default = {s = d.theme},
 			description = i18n.later("The colours of %s's windows."), program = name,
 			tags = THEME_TAGS[:],
 		})
@@ -252,26 +252,26 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			choices = FINISH_CHOICES[:], choice_labels = labels(a, i18n.later("Machined"), i18n.later("Edged"), i18n.later("Flat"), i18n.later("Gradient"), i18n.later("Glass")), tags = FINISH_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = GLOW_PREF, title = i18n.later("Glow"), kind = .Float, default = {f = decimal(d.glow)}, bounded = true, min = 0, max = 1,
+			name = GLOW_PREF, title = i18n.later("Glow"), kind = .Float, value_kind = .Fraction, default = {f = decimal(d.glow)}, bounded = true, min = 0, max = 1,
 			description = i18n.later("How much the buttons and fields of the machined finish glow. 0: no halo."),
 		})
 		append(&defs, config.Def{
 			name = FONT_SIZE_PREF, title = i18n.later("Text size"), kind = .Float, default = {f = decimal(d.font_size)},
-			description = i18n.later("The size of the text, in logical pixels."), min = FONT_SIZE_MIN, max = FONT_SIZE_MAX, bounded = true, unit = "px",
+			description = i18n.later("The size of the text, in logical pixels."), min = FONT_SIZE_MIN, max = FONT_SIZE_MAX, bounded = true, value_kind = .Length,
 			tags = FONT_SIZE_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.zoom", title = i18n.later("Zoom"), kind = .Float, default = {f = 1}, bounded = true, min = ui.ZOOM_MIN, max = ui.ZOOM_MAX, unit = "×",
+			name = "appearance.zoom", title = i18n.later("Zoom"), kind = .Float, default = {f = 1}, bounded = true, min = ui.ZOOM_MIN, max = ui.ZOOM_MAX, value_kind = .Factor,
 			description = i18n.later("How large the whole interface is drawn: text, rows and gaps. Ctrl+wheel, Ctrl+= and Ctrl+- change it for the run."),
 			tags = ZOOM_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.density", title = i18n.later("Density"), kind = .Float, default = {f = 1}, bounded = true, min = ui.DENSITY_MIN, max = ui.DENSITY_MAX, unit = "×",
+			name = "appearance.density", title = i18n.later("Density"), kind = .Float, default = {f = 1}, bounded = true, min = ui.DENSITY_MIN, max = ui.DENSITY_MAX, value_kind = .Factor,
 			description = i18n.later("The height of rows and the vertical gaps; the text keeps its size. Lower is more compact."),
 			tags = DENSITY_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "appearance.rounding", title = i18n.later("Rounding"), kind = .Float, default = {f = 1}, bounded = true, min = 0, max = 2, unit = "×",
+			name = "appearance.rounding", title = i18n.later("Rounding"), kind = .Float, default = {f = 1}, bounded = true, min = 0, max = 2, value_kind = .Factor,
 			description = i18n.later("How round the corners are. 0: square corners. The edged finish is always square."),
 			tags = ROUNDING_TAGS[:],
 		})
@@ -314,22 +314,22 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	if .Text in sets {
 		config.title_register(prefs, "appearance.text", i18n.later("Text and fonts"))
 		append(&defs, config.Def{
-			name = UI_FONT_PREF, title = i18n.later("Interface font"), kind = .String, default = {s = ""},
+			name = UI_FONT_PREF, title = i18n.later("Interface font"), kind = .String, value_kind = .Font_Family, default = {s = ""},
 			description = i18n.later("The family of the interface's text. Default: the program's."),
 			tags = FONT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = MONO_FONT_PREF, title = i18n.later("Monospace font"), kind = .String, default = {s = ""},
+			name = MONO_FONT_PREF, title = i18n.later("Monospace font"), kind = .String, value_kind = .Font_Family, default = {s = ""},
 			description = i18n.later("The family of code and of what lines up in columns. Default: the program's."),
 			tags = FONT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = PROSE_FONT_PREF, title = i18n.later("Reading font"), kind = .String, default = {s = ""},
+			name = PROSE_FONT_PREF, title = i18n.later("Reading font"), kind = .String, value_kind = .Font_Family, default = {s = ""},
 			description = i18n.later("The family of long text to read (documents, messages). Default: the program's."),
 			tags = FONT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = EMOJI_FONT_PREF, title = i18n.later("Emoji font"), kind = .String, default = {s = ""}, restart = true,
+			name = EMOJI_FONT_PREF, title = i18n.later("Emoji font"), kind = .String, value_kind = .Path, default = {s = ""}, restart = true,
 			description = i18n.later("A font file whose emoji are drawn in place of the program's. Empty: the program's."),
 		})
 		append(&defs, config.Def{
@@ -394,7 +394,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 		}
 		append(&defs, config.Def{
 			name = "appearance.text.slug_tolerance", title = i18n.later("Slug tolerance"), kind = .Float, default = {f = f64(fs.slug_tolerance) * SLUG_TOLERANCE_UNIT}, bounded = true,
-			min = 1.0 / 65536 * SLUG_TOLERANCE_UNIT, max = 1.0 / 64 * SLUG_TOLERANCE_UNIT, unit = "‰ em", advanced = true,
+			min = 1.0 / 65536 * SLUG_TOLERANCE_UNIT, max = 1.0 / 64 * SLUG_TOLERANCE_UNIT, value_kind = .Length, unit = .Milli_Em, advanced = true,
 			description = i18n.later("The largest distance between a letter's curve and the simpler curves Slug draws in its place. Lower is truer and heavier."),
 		})
 		append(&defs, config.Def{
@@ -410,7 +410,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			description = i18n.later("The pages of colour glyphs kept before the least used one is drawn over."),
 		})
 		append(&defs, config.Def{
-			name = "appearance.text.page_size", title = i18n.later("Atlas page size"), kind = .Int, default = {i = i64(fs.page_size)}, bounded = true, min = 256, max = 8192, unit = "px", advanced = true, restart = true,
+			name = "appearance.text.page_size", title = i18n.later("Atlas page size"), kind = .Int, default = {i = i64(fs.page_size)}, bounded = true, min = 256, max = 8192, value_kind = .Length, advanced = true, restart = true,
 			description = i18n.later("The side of a page of the atlas."),
 		})
 		append(&defs, config.Def{
@@ -433,7 +433,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			choices = SMOOTH_CHOICES[:], choice_labels = labels(a, i18n.later("Follow"), i18n.later("On"), i18n.later("Off")), tags = SCROLL_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "scrolling.duration", title = i18n.later("Glide"), kind = .Int, default = {i = i64(sc.duration_ms)}, bounded = true, min = 0, max = 1000, unit = "ms",
+			name = "scrolling.duration", title = i18n.later("Glide"), kind = .Int, default = {i = i64(sc.duration_ms)}, bounded = true, min = 0, max = 1000, value_kind = .Duration,
 			description = i18n.later("How long a glide lasts. 0: a jump."),
 			tags = SCROLL_TAGS[:],
 		})
@@ -465,7 +465,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			description = i18n.later("The strength of the impulse curve: higher starts faster and slows longer."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.fling_stop_speed", title = i18n.later("Fling stop speed"), kind = .Float, default = {f = decimal(feel.fling_stop_speed)}, bounded = true, min = 0, max = 1000, unit = "px/s", advanced = true,
+			name = "scrolling.fling_stop_speed", title = i18n.later("Fling stop speed"), kind = .Float, default = {f = decimal(feel.fling_stop_speed)}, bounded = true, min = 0, max = 1000, value_kind = .Rate, unit = .Pixel_Per_Second, advanced = true,
 			description = i18n.later("A fling of the finger ends under this speed."),
 		})
 		append(&defs, config.Def{
@@ -479,49 +479,49 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			tags = AUTOSCROLL_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.dead_zone", title = i18n.later("Dead zone"), kind = .Float, default = {f = decimal(au.dead_zone)}, bounded = true, min = 0, max = 100, unit = "px", advanced = true,
+			name = "scrolling.autoscroll.dead_zone", title = i18n.later("Dead zone"), kind = .Float, default = {f = decimal(au.dead_zone)}, bounded = true, min = 0, max = 100, value_kind = .Length, advanced = true,
 			description = i18n.later("No scrolling while the pointer is this close to the anchor."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.max_speed", title = i18n.later("Top speed"), kind = .Float, default = {f = decimal(au.max_speed)}, bounded = true, min = 100, max = 50000, unit = "px/s", advanced = true,
+			name = "scrolling.autoscroll.max_speed", title = i18n.later("Top speed"), kind = .Float, default = {f = decimal(au.max_speed)}, bounded = true, min = 100, max = 50000, value_kind = .Rate, unit = .Pixel_Per_Second, advanced = true,
 			description = i18n.later("The fastest it scrolls."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.full_dist", title = i18n.later("Distance to top speed"), kind = .Float, default = {f = decimal(au.full_dist)}, bounded = true, min = 10, max = 2000, unit = "px", advanced = true,
+			name = "scrolling.autoscroll.full_dist", title = i18n.later("Distance to top speed"), kind = .Float, default = {f = decimal(au.full_dist)}, bounded = true, min = 10, max = 2000, value_kind = .Length, advanced = true,
 			description = i18n.later("How far past the dead zone the top speed is reached."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.doubling", title = i18n.later("Doubling distance"), kind = .Float, default = {f = decimal(au.doubling)}, bounded = true, min = 1, max = 500, unit = "px", advanced = true,
+			name = "scrolling.autoscroll.doubling", title = i18n.later("Doubling distance"), kind = .Float, default = {f = decimal(au.doubling)}, bounded = true, min = 1, max = 500, value_kind = .Length, advanced = true,
 			description = i18n.later("The speed doubles for each this many pixels past the dead zone."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.tap", title = i18n.later("Click"), kind = .Int, default = {i = i64(au.tap_ms)}, bounded = true, min = 0, max = 2000, unit = "ms", advanced = true,
+			name = "scrolling.autoscroll.tap", title = i18n.later("Click"), kind = .Int, default = {i = i64(au.tap_ms)}, bounded = true, min = 0, max = 2000, value_kind = .Duration, advanced = true,
 			description = i18n.later("A press shorter than this, that hardly moved, is a click: it latches the mode."),
 		})
 		append(&defs, config.Def{
-			name = "scrolling.autoscroll.tap_slop", title = i18n.later("Click movement"), kind = .Float, default = {f = decimal(au.tap_slop)}, bounded = true, min = 0, max = 50, unit = "px", advanced = true,
+			name = "scrolling.autoscroll.tap_slop", title = i18n.later("Click movement"), kind = .Float, default = {f = decimal(au.tap_slop)}, bounded = true, min = 0, max = 50, value_kind = .Length, advanced = true,
 			description = i18n.later("A press that moved more than this is a drag, never a click."),
 		})
 	}
 	if .Input in sets {
 		config.title_register(prefs, "input", i18n.later("Input"), ORDER_INPUT)
 		append(&defs, config.Def{
-			name = "input.key_repeat_delay", title = i18n.later("Key repeat delay"), kind = .Int, default = {i = i64(feel.key_repeat_delay_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
+			name = "input.key_repeat_delay", title = i18n.later("Key repeat delay"), kind = .Int, default = {i = i64(feel.key_repeat_delay_ms)}, bounded = true, min = 0, max = 2000, value_kind = .Duration,
 			description = i18n.later("A held key repeats after this long, where the system does not say (Wayland, until the compositor does)."),
 			tags = REPEAT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "input.key_repeat_rate", title = i18n.later("Key repeat rate"), kind = .Int, default = {i = i64(feel.key_repeat_rate)}, bounded = true, min = 0, max = 100, unit = "/s",
+			name = "input.key_repeat_rate", title = i18n.later("Key repeat rate"), kind = .Int, default = {i = i64(feel.key_repeat_rate)}, bounded = true, min = 0, max = 100, value_kind = .Rate,
 			description = i18n.later("Then this many times a second, likewise. 0: no repeat."),
 			tags = REPEAT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "input.button_repeat_delay", title = i18n.later("Button repeat delay"), kind = .Int, default = {i = i64(feel.repeat_delay_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
+			name = "input.button_repeat_delay", title = i18n.later("Button repeat delay"), kind = .Int, default = {i = i64(feel.repeat_delay_ms)}, bounded = true, min = 0, max = 2000, value_kind = .Duration,
 			description = i18n.later("A held button (a number's − and +, a scroll bar's arrow) repeats after this long."),
 			tags = REPEAT_TAGS[:],
 		})
 		append(&defs, config.Def{
-			name = "input.button_repeat_interval", title = i18n.later("Button repeat interval"), kind = .Int, default = {i = i64(feel.repeat_interval_ms)}, bounded = true, min = 1, max = 1000, unit = "ms",
+			name = "input.button_repeat_interval", title = i18n.later("Button repeat interval"), kind = .Int, default = {i = i64(feel.repeat_interval_ms)}, bounded = true, min = 1, max = 1000, value_kind = .Duration,
 			description = i18n.later("Then once every this much."),
 			tags = REPEAT_TAGS[:],
 		})
@@ -530,27 +530,27 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			description = i18n.later("The edits a text field remembers to undo."),
 		})
 		append(&defs, config.Def{
-			name = "input.undo_merge", title = i18n.later("Undo merge"), kind = .Int, default = {i = i64(feel.undo_merge_ms)}, bounded = true, min = 0, max = 10000, unit = "ms",
+			name = "input.undo_merge", title = i18n.later("Undo merge"), kind = .Int, default = {i = i64(feel.undo_merge_ms)}, bounded = true, min = 0, max = 10000, value_kind = .Duration,
 			description = i18n.later("Typing within this much of the previous edit is the same undo step. 0: each edit is a step."),
 		})
 		append(&defs, config.Def{
-			name = "input.typeahead", title = i18n.later("Type to find"), kind = .Int, default = {i = i64(feel.typeahead_ms)}, bounded = true, min = 0, max = 5000, unit = "ms",
+			name = "input.typeahead", title = i18n.later("Type to find"), kind = .Int, default = {i = i64(feel.typeahead_ms)}, bounded = true, min = 0, max = 5000, value_kind = .Duration,
 			description = i18n.later("Keys typed in a list within this much of each other add up to one word, which the list goes to."),
 		})
 		append(&defs, config.Def{
-			name = "input.zoom_step", title = i18n.later("Zoom step"), kind = .Float, default = {f = decimal(feel.zoom_step)}, bounded = true, min = 1.01, max = 2, unit = "×",
+			name = "input.zoom_step", title = i18n.later("Zoom step"), kind = .Float, default = {f = decimal(feel.zoom_step)}, bounded = true, min = 1.01, max = 2, value_kind = .Factor,
 			description = i18n.later("Ctrl+wheel, Ctrl+= and Ctrl+- multiply or divide the zoom by this."),
 		})
 		append(&defs, config.Def{
-			name = "input.step_shift", title = i18n.later("Shift step"), kind = .Float, default = {f = feel.step_shift}, bounded = true, min = 1, max = 1000, unit = "×", advanced = true,
+			name = "input.step_shift", title = i18n.later("Shift step"), kind = .Float, default = {f = feel.step_shift}, bounded = true, min = 1, max = 1000, value_kind = .Factor, advanced = true,
 			description = i18n.later("Shift multiplies the step of a slider or a number (a key, a notch of the wheel, a button)."),
 		})
 		append(&defs, config.Def{
-			name = "input.step_ctrl", title = i18n.later("Ctrl step"), kind = .Float, default = {f = feel.step_ctrl}, bounded = true, min = 1, max = 10000, unit = "×", advanced = true,
+			name = "input.step_ctrl", title = i18n.later("Ctrl step"), kind = .Float, default = {f = feel.step_ctrl}, bounded = true, min = 1, max = 10000, value_kind = .Factor, advanced = true,
 			description = i18n.later("Ctrl multiplies the step of a number in text."),
 		})
 		append(&defs, config.Def{
-			name = "input.step_alt", title = i18n.later("Alt step"), kind = .Float, default = {f = feel.step_alt}, bounded = true, min = 0.001, max = 1, unit = "×", advanced = true,
+			name = "input.step_alt", title = i18n.later("Alt step"), kind = .Float, default = {f = feel.step_alt}, bounded = true, min = 0.001, max = 1, value_kind = .Factor, advanced = true,
 			description = i18n.later("Alt multiplies the step of a number in text."),
 		})
 		append(&defs, config.Def{
@@ -561,19 +561,19 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 	if .Timing in sets {
 		config.title_register(prefs, "timing", i18n.later("Delays and menus"), ORDER_TIMING)
 		append(&defs, config.Def{
-			name = "timing.tooltip_delay", title = i18n.later("Tooltip delay"), kind = .Int, default = {i = i64(feel.tooltip_delay_ms)}, bounded = true, min = 0, max = 5000, unit = "ms",
+			name = "timing.tooltip_delay", title = i18n.later("Tooltip delay"), kind = .Int, default = {i = i64(feel.tooltip_delay_ms)}, bounded = true, min = 0, max = 5000, value_kind = .Duration,
 			description = i18n.later("The pointer rests this long on something before its tooltip shows."),
 		})
 		append(&defs, config.Def{
-			name = "timing.menu_hover", title = i18n.later("Submenu delay"), kind = .Int, default = {i = i64(feel.menu_hover_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
+			name = "timing.menu_hover", title = i18n.later("Submenu delay"), kind = .Int, default = {i = i64(feel.menu_hover_ms)}, bounded = true, min = 0, max = 2000, value_kind = .Duration,
 			description = i18n.later("The pointer rests this long on a submenu's item before it opens, or before another closes."),
 		})
 		append(&defs, config.Def{
-			name = "timing.menu_item_height", title = i18n.later("Menu item height"), kind = .Float, default = {f = decimal(feel.menu_item_em)}, bounded = true, min = 1.2, max = 4, unit = "em",
+			name = "timing.menu_item_height", title = i18n.later("Menu item height"), kind = .Float, default = {f = decimal(feel.menu_item_em)}, bounded = true, min = 1.2, max = 4, value_kind = .Length, unit = .Em,
 			description = i18n.later("The height of a menu's item, times the density."),
 		})
 		append(&defs, config.Def{
-			name = "timing.palette_fade", title = i18n.later("Colour fade"), kind = .Int, default = {i = i64(feel.palette_fade_ms)}, bounded = true, min = 0, max = 2000, unit = "ms",
+			name = "timing.palette_fade", title = i18n.later("Colour fade"), kind = .Int, default = {i = i64(feel.palette_fade_ms)}, bounded = true, min = 0, max = 2000, value_kind = .Duration,
 			description = i18n.later("A change of theme fades every colour for this long."),
 		})
 	}
@@ -594,7 +594,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			})
 		}
 		append(&defs, config.Def{
-			name = UPDATE_BASE_URL_PREF, title = i18n.later("Address"), kind = .String, default = {s = d.update_base_url}, restart = true, advanced = true,
+			name = UPDATE_BASE_URL_PREF, title = i18n.later("Address"), kind = .String, value_kind = .Address, default = {s = d.update_base_url}, restart = true, advanced = true,
 			description = i18n.later("Where the updates are published (a folder of the web)."),
 			tags = UPDATE_TAGS[:],
 		})
@@ -621,7 +621,7 @@ standard_register :: proc(prefs: ^config.Prefs, sets: Standard, defaults: Standa
 			description = i18n.later("Each picture redraws only what changed in the interface."),
 		})
 		append(&defs, config.Def{
-			name = "rendering.blur_sigma_limit", title = i18n.later("Blur limit"), kind = .Float, default = {f = render.DEFAULT_BLUR_SIGMA_LIMIT}, bounded = true, min = 2, max = render.MAX_BLUR_SIGMA, unit = "px", advanced = true,
+			name = "rendering.blur_sigma_limit", title = i18n.later("Blur limit"), kind = .Float, default = {f = render.DEFAULT_BLUR_SIGMA_LIMIT}, bounded = true, min = 2, max = render.MAX_BLUR_SIGMA, value_kind = .Length, advanced = true,
 			description = i18n.later("A blur wider than this is computed on a smaller picture: faster, softer."),
 		})
 		append(&defs, config.Def{
@@ -799,16 +799,27 @@ appearance_choice :: proc(a: Appearance) -> ui.Theme_Choice {
 }
 
 // Whether the user's value of `name` is not its default: the page shows its reset button then, and Restore defaults
-// while one of the page's is. A value the command line or a policy decides is not the user's. `keys`: the value is a
-// key combination, compared as keys ("ctrl+print" is "Ctrl+Print").
-differs_from_default :: proc(prefs: ^config.Prefs, name: string, keys := false) -> bool {
+// while one of the page's is. A value the command line or a policy decides is not the user's. A Keys value is compared
+// as keys ("ctrl+print" is "Ctrl+Print").
+differs_from_default :: proc(prefs: ^config.Prefs, name: string) -> bool {
 	r := config.ref_of(prefs, name)
 	if r == config.NO_REF { return false }
 	e := config.entry(prefs, r)
 	if e.source != .User { return false }
 	value, default := config.value_string(prefs, r), config.default_string(prefs, r)
-	if keys { return !shortcuts.same_keys(value, default) }
+	if e.def.value_kind == .Keys { return !shortcuts.same_keys(value, default) }
 	return value != default
+}
+
+// The program's face a family preference replaces: the standard ones' (the face standard_watch gives it to); the
+// interface's for any other. A family picker names that face as its default, and lists monospaced families first for
+// the monospace one.
+standard_face_of :: proc(name: string) -> ui.Text_Face {
+	switch name {
+	case MONO_FONT_PREF:  return .Mono
+	case PROSE_FONT_PREF: return .Prose
+	}
+	return .Interface
 }
 
 ////////////////////////////////
@@ -1015,9 +1026,7 @@ apply_text :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets, name
 	switch name {
 	case UI_FONT_PREF, MONO_FONT_PREF, PROSE_FONT_PREF:
 		if config.ref_of(prefs, name) == config.NO_REF { return }
-		which := ui.Text_Face.Interface
-		if name == MONO_FONT_PREF { which = .Mono } else if name == PROSE_FONT_PREF { which = .Prose }
-		ui.use_text_family(s, which, strings.trim_space(config.string_of(prefs, name)))
+		ui.use_text_family(s, standard_face_of(name), strings.trim_space(config.string_of(prefs, name)))
 		return
 	}
 	if r := t.renderer; r != nil {

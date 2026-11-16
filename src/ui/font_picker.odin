@@ -307,7 +307,8 @@ font_picker :: proc(id: string, st: ^Font_Picker, fam: ^Font_Families, value: st
 	return
 }
 
-@(private = "file")
+// Opens the picker's list as a click on its button does (a program that opens it from elsewhere: the palette, a
+// picture of it); the families are read on a chore if they are not yet.
 font_picker_open :: proc(st: ^Font_Picker, fam: ^Font_Families) {
 	st.open, st.field_key, st.rows_made, st.select_value = true, 0, false, true
 	line_edit_clear(&st.field)
