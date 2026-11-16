@@ -89,6 +89,19 @@ clear_input_region :: proc(w: ^Window) {
 	SetWindowRgn(w.hwnd, nil, true)
 }
 
+// Moves an overlay over the monitor at `area` (as open_overlay places one), at that monitor's size and scale.
+overlay_move :: proc(w: ^Window, area: [4]int) -> bool {
+	if w == nil || w.offscreen || w.hwnd == nil || !w.overlay { return false }
+	place := overlay_monitor_place(area)
+	// (a monitor of another scale sends WM_DPICHANGED during the move, which sets dpi_scale and keeps this rect)
+	if !win.SetWindowPos(w.hwnd, win.HWND_TOPMOST, i32(place[0]), i32(place[1]), i32(max(place[2], 1)), i32(max(place[3], 1)), win.SWP_NOACTIVATE) { return false }
+	dpi := win.GetDpiForWindow(w.hwnd)
+	if dpi > 0 { w.dpi_scale = f32(dpi) / DPI_BASE }
+	w.display_stale = true
+	update_client_size(w)
+	return true
+}
+
 // Whether the window is an overlay (open_overlay).
 is_overlay :: proc(w: ^Window) -> bool { return w != nil && w.overlay }
 

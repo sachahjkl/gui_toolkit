@@ -29,6 +29,7 @@ render.init_window(&r, w, w.size, transparent = true)
 | `set_input_region(w, rects)` | only `rects` take the pointer. Window-relative logical pixels. Empty: no part of the window takes it. |
 | `open_overlay(title, area, keyboard)` | `keyboard`: `.On_Demand` (default) takes the keyboard once clicked, for a bar of buttons over a desktop still in use; `.Exclusive` takes it from its showing until it goes, for a selection read with Escape, the arrows and Enter. `host.Open_Options.overlay_keyboard` passes it. |
 | `clear_input_region(w)` | the whole window takes the pointer again. |
+| `overlay_move(w, area) -> bool` | moves the overlay over the output at `area`, at its size and scale (Windows, X11). False on Wayland: a layer surface stays on its output, so close it and open another. |
 | `is_overlay(w) -> bool` | the window was opened with `open_overlay`. |
 | `overlay_output_index(outputs, area) -> int` | the output an area names (pure; see below). |
 

@@ -180,6 +180,16 @@ clear_input_region :: proc(w: ^Window) {
 	}
 }
 
+// Moves an overlay over the output at `area` (as open_overlay places one). False when it cannot move: a Wayland layer
+// surface stays on the output it was made for (close it and open another).
+overlay_move :: proc(w: ^Window, area: [4]int) -> bool {
+	if w == nil || w.offscreen || !w.overlay { return false }
+	#partial switch w.backend {
+	case .X11: return x11_overlay_move(w, area)
+	}
+	return false
+}
+
 // Whether the window is an overlay (open_overlay).
 is_overlay :: proc(w: ^Window) -> bool { return w != nil && w.overlay }
 

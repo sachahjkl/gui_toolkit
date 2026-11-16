@@ -50,6 +50,7 @@ frame_shown_waited_ms :: proc(w: ^Window) -> int { return -1 }
 is_closed :: proc(w: ^Window) -> bool { return w.closed }
 is_offscreen :: proc(w: ^Window) -> bool { return w.offscreen }
 is_overlay :: proc(w: ^Window) -> bool { return false }
+overlay_move :: proc(w: ^Window, area: [4]int) -> bool { return false }
 is_fullscreen :: proc(w: ^Window) -> bool { return false }
 is_maximized :: proc(w: ^Window) -> bool { return false }
 is_minimized :: proc(w: ^Window) -> bool { return false }

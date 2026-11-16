@@ -1125,8 +1125,12 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 	case win.WM_DPICHANGED:
 		w.display_stale = true
 		w.dpi_scale = f32(win.HIWORD(u32(wparam))) / DPI_BASE
-		r := cast(^win.RECT)uintptr(lparam)
-		win.SetWindowPos(hwnd, nil, r.left, r.top, r.right - r.left, r.bottom - r.top, win.SWP_NOZORDER | win.SWP_NOACTIVATE)
+		// (an overlay's size is its monitor's, which overlay_move sets: the system's suggestion, its old size scaled,
+		// would cut it or spill it onto the next monitor)
+		if !w.overlay {
+			r := cast(^win.RECT)uintptr(lparam)
+			win.SetWindowPos(hwnd, nil, r.left, r.top, r.right - r.left, r.bottom - r.top, win.SWP_NOZORDER | win.SWP_NOACTIVATE)
+		}
 		cursor_on_dpi_change(w)   // drawn cursors at the new monitor's size
 		return 0
 

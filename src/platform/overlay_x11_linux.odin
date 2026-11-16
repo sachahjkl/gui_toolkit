@@ -68,6 +68,21 @@ x11_open_overlay :: proc(w: ^Window, title: string, area: [4]int, keyboard: Over
 	return true
 }
 
+// The overlay over the monitor that holds `area` (as x11_open_overlay places it); the size follows by ConfigureNotify.
+@(private)
+x11_overlay_move :: proc(w: ^Window, area: [4]int) -> bool {
+	st := x11_state(w)
+	if st == nil { return false }
+	monitors := x11_monitor_rects()
+	i := overlay_output_index(monitors, area)
+	if i < 0 { return false }
+	place := monitors[i]
+	values := [4]u32{u32(i32(place[0])), u32(i32(place[1])), u32(max(place[2], 1)), u32(max(place[3], 1))}
+	xcb.configure_window(x11c.c, st.id, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, &values[0])
+	xcb.flush(x11c.c)
+	return true
+}
+
 // A click on an overlay gives it the keyboard (Escape reaches it then).
 @(private)
 x11_overlay_focus :: proc(w: ^Window, time: u32) {

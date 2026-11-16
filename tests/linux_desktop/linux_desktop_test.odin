@@ -209,6 +209,28 @@ wake_ends_a_waiting_poll :: proc(t: ^testing.T) {
 	testing.expect(t, time.duration_milliseconds(time.tick_since(start)) >= 250, "a wake counts once")
 }
 
+// An overlay moves over another output on X11, at that output's size; a Wayland layer surface stays on its output, and
+// a window that is no overlay never moves by it. (The virtual desktop has one output: the move is onto it again.)
+@(test)
+an_overlay_moves_where_the_system_lets_it :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	o := platform.open_overlay("overlay move", {})
+	testing.expect(t, o != nil, "the overlay opens")
+	if o == nil { return }
+	defer platform.destroy_window(o)
+	pump_for(o, 200)
+	size := o.size
+	area := [4]int{0, 0, size.x, size.y}
+	testing.expect_value(t, platform.overlay_move(o, area), x11())
+	pump_for(o, 200)
+	testing.expect_value(t, o.size, size)
+	w := open("not an overlay")
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	testing.expect(t, !platform.overlay_move(w, area), "a window that is no overlay does not move by it")
+}
+
 // Whether the server shows the window: X11's map state (xwininfo), the compositor's tree on Wayland (swaymsg).
 @(private = "file")
 on_screen :: proc(w: ^platform.Window, title: string) -> bool {

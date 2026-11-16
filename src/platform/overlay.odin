@@ -7,6 +7,7 @@ package platform
 //   w := open_overlay("cliche", area)            // nil: the system has no such window
 //   set_input_region(w, {{x, y, width, height}})  // only the buttons take the pointer: the rest reaches the windows below
 //   clear_input_region(w)                         // the whole window again
+//   overlay_move(w, other)                        // over another output (Windows, X11); false on Wayland
 //
 // `area` is the output to cover: x, y, width and height in the desktop's logical coordinates (gt:capture's, xdg-output's).
 // All zero: the system's choice. The output whose place is `area` is chosen; else the one that holds the centre of
