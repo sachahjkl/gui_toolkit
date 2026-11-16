@@ -351,7 +351,6 @@ end_build :: proc() {
 	overlay_release_keys(s, .File_Browser)
 	text_reveal_build(s)   // (over the page and its dialogs, under the toasts and the menus)
 	toasts_build()   // (over everything the program built, under its menus)
-	exploded_panel_build(s)   // (the exploded view's panel while it is shown: over the page and its toasts)
 	keymap_end_build(s)   // (every reader of keys is past: the pending chord ends or shows its bubble)
 	menus_raise(s)
 	if len(s.edits) > 0 { box_edits_apply(s) }

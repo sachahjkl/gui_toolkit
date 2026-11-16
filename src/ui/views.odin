@@ -42,6 +42,9 @@ View_Options :: struct {
 	home:           View_Presentation,          // .Dialog or .Panel: where re-attach brings it
 	home_place:     View_Place,                 // with home .Panel
 	first:          Maybe(View_Presentation),   // its first opening, before the user chose (nil: home)
+	// its internal window with no rect of its own (none remembered, none given by a move) opens against this edge of
+	// the program's content, MODAL_MARGIN_EM in (Right: at the top right); nil: centred over it
+	float_edge:     Maybe(View_Edge),
 	width_em:       f32,                        // the dialog's first width (0: DIALOG_WIDTH_EM); it grows to what is in it
 	height_em:      f32,                        // 0: as tall as what is in it
 	min_width_em:   f32,                        // how small the user makes it (with `resizable`)
@@ -481,6 +484,27 @@ view_restore :: proc(vs: ^Views, id: string, data: ^$T, first_start_open := fals
 // Whether it was open when the program last quit (a side pane, a tool window): the program opens it again.
 view_was_open :: proc(vs: ^Views, id: string, instance := "") -> bool {
 	return views_memory_of(vs, view_instance_key(id, instance)).open
+}
+
+// The box that holds the whole view in window `s`, as its last build made it: an internal window's frame, a dialog's
+// panel, a panel's stack (its strip with it). 0: it is not open, or shown in another window (its own).
+@(private)
+view_box_in :: proc(vs: ^Views, id: string, s: ^State, instance := "") -> Key {
+	r := view_record_find(vs, id, instance)
+	if r == nil || r.machine.state == .Closed { return 0 }
+	p := view_shown_in(r.machine)
+	if r.machine.state == .Dragged { p = r.machine.as }   // (dragged: the floating window it is during the drag)
+	if view_state_of(r, p) != s { return 0 }
+	switch p {
+	case .Internal: return r.iframe
+	case .Dialog:   return r.panel
+	case .Panel:
+		body := s.boxes[r.roots[.Panel]] or_else nil
+		if body == nil { return 0 }
+		return body.parent != nil ? body.parent.key : body.key
+	case .External: return 0
+	}
+	return 0
 }
 
 // The presentation it has now (Closed: its last one, or its home).

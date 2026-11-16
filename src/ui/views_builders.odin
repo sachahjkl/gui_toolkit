@@ -411,7 +411,7 @@ view_internal_place :: proc(vs: ^Views, r: ^View_Record, em: f32) -> Rect {
 			// (over the content, not the whole window: the panels stay seen; its unseen builds centre it again once its
 			// width and its height are known, view_internal_fit)
 			r.iarea = view_content_area(vs, s)
-			r.irect = view_centred(r.iarea, w, hh)
+			r.irect = view_first_rect(r, w, hh)
 			if hh <= 0 { r.irect.max.y = r.irect.min.y }
 			r.ifit = true   // (width_em is its least: its unseen builds widen it to what is in it)
 		}
@@ -445,7 +445,7 @@ view_internal_fit :: proc(r: ^View_Record, frame: ^Box, w: f32) -> f32 {
 		nw := max(w, need)
 		hh := r.irect.max.y - r.irect.min.y
 		h := hh > 0 ? hh : frame.rect.max.y - frame.rect.min.y
-		at := view_centred(r.iarea, nw, h)
+		at := view_first_rect(r, nw, h)
 		if h <= 0 { at.min.y = r.irect.min.y }   // (no height known yet: where it was put)
 		r.irect = {at.min, {at.min.x + nw, at.min.y + hh}}
 		frame.fixed_pos = at.min
@@ -469,6 +469,29 @@ view_content_area :: proc(vs: ^Views, s: ^State) -> Rect {
 	b := s.boxes[sp.content] or_else nil
 	if b == nil || b.rect.max.x - b.rect.min.x <= 0 || b.rect.max.y - b.rect.min.y <= 0 { return whole }
 	return clip_rect(b.rect, whole)
+}
+
+// The first place of an internal window of no rect of its own, `w` × `h` (h 0: not known yet): centred over the
+// content it opened over (r.iarea), or against the edge its kind asks (View_Options.float_edge), MODAL_MARGIN_EM in;
+// along that edge, centred, but at the left and the right: at the top (a tool window beside what it acts on).
+@(private = "file")
+view_first_rect :: proc(r: ^View_Record, w, h: f32) -> Rect {
+	at := view_centred(r.iarea, w, h)
+	e, ok := r.kind.o.float_edge.?
+	if !ok { return at }
+	a := r.iarea
+	m := math.round(font_size() * MODAL_MARGIN_EM)
+	hh := max(h, 0)
+	x, y := at.min.x, at.min.y
+	switch e {
+	case .Right:  x, y = max(a.max.x - m - w, a.min.x), a.min.y + m
+	case .Left:   x, y = a.min.x + m, a.min.y + m
+	case .Top:    y = a.min.y + m
+	case .Bottom: y = max(a.max.y - m - hh, a.min.y)
+	case .Center:
+	}
+	x, y = math.round(x), math.round(y)
+	return {{x, y}, {x + w, y + hh}}
 }
 
 // A rect of `w` × `h` centred in `area` (its top left at the area's when it does not fit there; h 0: centred as a

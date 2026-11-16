@@ -1,5 +1,6 @@
 package ui
 
+import "core:fmt"
 import "core:math"
 import "../draw"
 import "../platform"
@@ -10,7 +11,7 @@ import "../platform"
 //
 //   ui.set_exploded(s, true)               a program's own switch
 //   Ctrl+Alt+Shift+E                       in a build with the devtools (TOOLKIT_DEVTOOLS), any window
-//   drag: turn; wheel: spread; Escape: off; the panel at the right: the mode, the angles, the spread, the zoom
+//   drag: turn; wheel: spread; Escape: off; its panel (a view, "exploded"): the mode, the angles, the spread, the zoom
 
 // How the boxes go to planes (Tab: the next one).
 //   Layers   a plane for each box that paints a surface and is at least EXPLODED_LAYER_LEAST_EM on both sides (a
@@ -37,7 +38,8 @@ Exploded_View :: struct {
 	in_panel:    bool,   // the pointer's last place was on the panel: the page sees it there
 }
 
-// Turns the view on or off: it eases from the flat page to its angles, or back (EXPLODED_TRANSITION_MS).
+// Turns the view on or off: it eases from the flat page to its angles, or back (EXPLODED_TRANSITION_MS). Its panel, a
+// view of the window's Views (EXPLODED_VIEW), opens as it eases in and closes as it eases out.
 set_exploded :: proc(s: ^State, on: bool) {
 	v := &s.exploded
 	if v.on == on { return }
@@ -51,8 +53,27 @@ set_exploded :: proc(s: ^State, on: bool) {
 		// (what partial redraw remembers is of the other picture)
 		draw.damage_memory_reset(&s.damage)
 	}
+	vs := state_views(s)
+	if on {
+		if !view_registered(vs, EXPLODED_VIEW) {
+			view_register(vs, EXPLODED_VIEW, exploded_view_build, View_Options{
+				title = "Exploded view", home = .Panel, home_place = {edge = .Right}, first = .Internal,
+				float_edge = .Right, width_em = EXPLODED_PANEL_EM, extent_em = EXPLODED_PANEL_EM,
+			})
+		}
+		view_open(vs, EXPLODED_VIEW, v, exploded_instance(s), s)
+	} else {
+		view_close(vs, EXPLODED_VIEW, exploded_instance(s))
+	}
 	s.anim_busy = true
 }
+
+// The panel's view id. One instance per window (its State): a program's Views shared by its windows holds the panel of
+// each window that shows the view.
+EXPLODED_VIEW :: "exploded"
+
+@(private = "file")
+exploded_instance :: proc(s: ^State) -> string { return fmt.tprintf("%x", uintptr(s)) }
 
 // Whether the view is on (or opening); false from the moment it is turned off, while it eases back to the page.
 exploded :: proc(s: ^State) -> bool { return s.exploded.on }
@@ -83,10 +104,9 @@ exploded_reset :: proc(v: ^Exploded_View) {
 // Layers: a surface smaller than this on either side (a pill, a button, a toggle's track, a strip of a band) stays on
 // its parent's plane.
 @(private = "file") EXPLODED_LAYER_LEAST_EM :: 3
-// The panel: its width (at most a share of the window), its id under the root.
-@(private = "file") EXPLODED_PANEL_EM :: 18
-@(private = "file") EXPLODED_PANEL_SHARE :: 0.5
-@(private = "file") EXPLODED_PANEL_ID :: "###exploded_panel"
+// The panel: its first width (floating or docked), the column of its sliders' names.
+@(private = "file") EXPLODED_PANEL_EM :: 16
+@(private = "file") EXPLODED_LABEL_EM :: 4.5
 // Degrees per pixel of a drag; the factor of the spread per wheel notch.
 @(private = "file") EXPLODED_TURN_PER_PX :: 0.4
 @(private = "file") EXPLODED_SPREAD_STEP :: 1.15
@@ -119,12 +139,16 @@ exploded_keys :: proc(s: ^State) {
 }
 
 // While the view is shown: the pointer, the wheel and the keys of the frame are the view's, the rest goes to the page
-// (a resize, a close, the window's activation, a pointer that leaves). The pointer over the panel is the panel's: the
-// page sees it there, and its widgets take it. Then `t` takes its step. Off: the events untouched.
+// (a resize, a close, the window's activation, a pointer that leaves). The pointer over the panel (its view, floating
+// or docked in this window) is the panel's: the page sees it there, and the view takes it. Then `t` takes its step.
+// Off: the events untouched.
 @(private)
 exploded_events :: proc(s: ^State, events: []platform.Event) -> []platform.Event {
 	v := &s.exploded
 	if !exploded_shown(s) { return events }
+	vs := state_views(s)
+	// (the view's close cross, or its Escape: the view goes with its panel)
+	if _, ended := view_ended(vs, EXPLODED_VIEW, exploded_instance(s)); ended && v.on { set_exploded(s, false) }
 	kept := make([dynamic]platform.Event, 0, len(events), context.temp_allocator)
 	panel, has_panel := exploded_panel_rect(s)
 	off, toggle := false, false
@@ -219,75 +243,71 @@ exploded_step :: proc(s: ^State) {
 @(private = "file")
 exploded_ease :: proc(t: f32) -> f32 { return t * t * (3 - 2 * t) }
 
+// The box of the panel's view in this window (its floating window's frame, its docked stack); 0 when it is in a window
+// of its own: then the planes' window has all of its pointer.
 @(private = "file")
-exploded_panel_key :: proc() -> Key { return key_from_string(key_from_string(0, "root"), EXPLODED_PANEL_ID) }
+exploded_panel_key :: proc(s: ^State) -> Key {
+	if s.views == nil { return 0 }
+	return view_box_in(s.views, EXPLODED_VIEW, s, exploded_instance(s))
+}
 
 // The panel's rect in the last layout, if it was built: where the pointer is the panel's.
 @(private = "file")
 exploded_panel_rect :: proc(s: ^State) -> (Rect, bool) {
-	b := s.boxes[exploded_panel_key()]
+	b := s.boxes[exploded_panel_key(s)] or_else nil
 	if b == nil || b.last_build + 1 < s.build_index { return {}, false }
 	return b.rect, true
 }
 
-// The panel, at the end of the build (end_build) while the view is shown: real widgets in a floating box at the
-// window's right, sliding in with `t`. The view draws it flat over the planes (exploded_draw).
-@(private)
-exploded_panel_build :: proc(s: ^State) {
-	v := &s.exploded
-	if !exploded_shown(s) { return }
+// The panel's body, a view's (the header, its title and its close cross are the views'): the mode, then a row per
+// slider, then Reset. In the program's theme and finish, as any view; the sliders write the view's fields. Built
+// wherever the view is (floating, docked, in its own window): `v` is the planes' window's.
+@(private = "file")
+exploded_view_build :: proc(view: ^View, v: ^Exploded_View) {
 	em := font_size()
-	margin := math.round(em * PAGE_MARGIN)
-	w := math.round(min(em * EXPLODED_PANEL_EM, s.window_size.x * EXPLODED_PANEL_SHARE))
-	// (closed: past the window's right edge, its shadow too)
-	open_x, closed_x := s.window_size.x - w - margin, s.window_size.x + margin
-	x := math.round(math.lerp(closed_x, open_x, exploded_ease(v.t)))
-	push_parent(s.root)
-	defer pop_parent()
-	push_tags("floating")
-	defer pop_tags()
-	next({fixed_x = x, fixed_y = margin, width = px(w), height = children_sum(), axis = .Y, radius = em * 0.6})
-	// (Clickable: a press on its empty part goes to no box under it)
-	panel := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate, .Clip}, EXPLODED_PANEL_ID)
-	a11y_default(panel, {role = .Group, name = "Exploded view"})
-	push_parent(panel)
-	defer pop_parent()
-	space(CARD_PAD)
+	before := v^
 	next({width = fill(), height = children_sum(), axis = .X})
 	if row() {
-		space(CARD_PAD)
+		space(INNER_PAD)
 		next({width = fill(), height = children_sum(), axis = .Y})
 		if column() {
-			if card("Planes") {
-				words := []string{"Layers", "Depths", "Outlines"}
-				mode := int(v.mode)
-				next({width = fill()})
-				if segmented("###exploded_mode", words, &mode) { v.mode = Exploded_Mode(mode) }
-			}
+			space(INNER_PAD)
+			words := []string{"Layers", "Depths", "Outlines"}
+			mode := int(v.mode)
+			next({width = fill()})
+			if segmented("###exploded_mode", words, &mode) { v.mode = Exploded_Mode(mode) }
 			space(ITEM_GAP)
-			if card("Camera") {
-				if form_row("Yaw") { _ = slider("###exploded_yaw", &v.yaw, -EXPLODED_YAW_MAX, EXPLODED_YAW_MAX, 1, "%.0f°", f32(EXPLODED_YAW)) }
-				if form_row("Pitch") { _ = slider("###exploded_pitch", &v.pitch, -EXPLODED_PITCH_MAX, EXPLODED_PITCH_MAX, 1, "%.0f°", f32(EXPLODED_PITCH)) }
-				if form_row("Spread") { _ = slider("###exploded_spread", &v.spread, EXPLODED_SPREAD_MIN, EXPLODED_SPREAD_MAX, 1, "%.0f", f32(EXPLODED_SPREAD)) }
-				if form_row("Zoom") { _ = slider("###exploded_fit", &v.fit, EXPLODED_FIT_MIN, EXPLODED_FIT_MAX, 0.01, "%.2f", f32(EXPLODED_FIT)) }
-			}
-			space(ITEM_GAP)
-			// (what the panel's widgets do not say: the pointer on the planes)
-			if tags("weak") {
-				next({width = fill(), height = text_size()})
-				build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, "Drag to turn, wheel to spread, Tab for the next mode.###exploded_hint")
-			}
+			exploded_slider_row("Yaw", "###exploded_yaw", &v.yaw, -EXPLODED_YAW_MAX, EXPLODED_YAW_MAX, 1, "%.0f°", EXPLODED_YAW, em)
+			space(LINE_GAP)
+			exploded_slider_row("Pitch", "###exploded_pitch", &v.pitch, -EXPLODED_PITCH_MAX, EXPLODED_PITCH_MAX, 1, "%.0f°", EXPLODED_PITCH, em)
+			space(LINE_GAP)
+			exploded_slider_row("Spread", "###exploded_spread", &v.spread, EXPLODED_SPREAD_MIN, EXPLODED_SPREAD_MAX, 1, "%.0f", EXPLODED_SPREAD, em)
+			space(LINE_GAP)
+			exploded_slider_row("Zoom", "###exploded_fit", &v.fit, EXPLODED_FIT_MIN, EXPLODED_FIT_MAX, 0.01, "%.2f", EXPLODED_FIT, em)
 			space(ITEM_GAP)
 			next({width = fill(), height = children_sum(), axis = .X})
 			if row(.Center) {
-				if button("exploded_reset", "Reset view").clicked { exploded_reset(v) }
 				spacer(fill())
-				if button("exploded_close", "Close").clicked { set_exploded(s, false) }
+				if button("exploded_reset", "Reset", o = {face = .Ghost}).clicked { exploded_reset(v) }
 			}
+			space(INNER_PAD)
 		}
-		space(CARD_PAD)
+		space(INNER_PAD)
 	}
-	space(CARD_PAD)
+	// (the panel in a window of its own: the planes' window draws the change; its frames come only while it moves)
+	if v^ != before && view.record.owner != nil { view.record.owner.anim_busy = true }
+}
+
+// A slider's row: its name in a column of its own at the left, the slider and its value after it.
+@(private = "file")
+exploded_slider_row :: proc(name, id: string, value: ^f32, lo, hi, step: f32, format: string, default: f32, em: f32) {
+	next({width = fill(), height = children_sum(), axis = .X})
+	if row(.Center) {
+		next({width = px(math.round(em * EXPLODED_LABEL_EM)), height = px(dense(em * 2))})
+		build_box({.Draw_Text}, name)
+		next({width = fill(), height = px(dense(em * 2))})
+		_ = slider(id, value, lo, hi, step, format, default)
+	}
 }
 
 @(private = "file")
@@ -313,12 +333,12 @@ exploded_draw :: proc(s: ^State, dc: ^draw.Context) {
 	draw.pop_alpha(dc)
 
 	levels := make([dynamic][dynamic]Exploded_Entry, 0, 16, context.temp_allocator)
-	panel_key := exploded_panel_key()
+	panel_key := exploded_panel_key(s)
 	least := EXPLODED_LAYER_LEAST_EM * math.round(s.base_style.font_size * s.scale)
 	// (`plane`: the box's plane; Layers: its parent's, one further when it is a layer of its own)
 	walk :: proc(s: ^State, b: ^Box, plane: int, mode: Exploded_Mode, least: f32, panel_key: Key, clip: Rect, clipped: bool, levels: ^[dynamic][dynamic]Exploded_Entry) {
 		// (the panel is drawn flat over the planes, not in them)
-		if !box_current(s, b) || b.key == panel_key { return }
+		if !box_current(s, b) || (panel_key != 0 && b.key == panel_key) { return }
 		d := min(plane, EXPLODED_MAX_PLANES - 1)
 		for len(levels^) <= d { append(levels, make([dynamic]Exploded_Entry, 0, 16, context.temp_allocator)) }
 		append(&levels^[d], Exploded_Entry{b = b, clip = clip, clipped = clipped})
@@ -387,7 +407,11 @@ exploded_draw :: proc(s: ^State, dc: ^draw.Context) {
 	}
 	draw.draw_planes(dc, items)
 	// (flat, over the planes: real widgets, read as the page's)
-	if p := s.boxes[panel_key]; box_current(s, p) { draw_box(s, dc, p, s.scale) }
+	if p := s.boxes[panel_key] or_else nil; panel_key != 0 && box_current(s, p) {
+		// (a docked panel paints no ground of its own: on the page it lies on the window's)
+		if .Draw_Background not_in p.flags { draw.rect(dc, p.rect, s.backdrop) }
+		draw_box(s, dc, p, s.scale)
+	}
 }
 
 // Whether a box is a layer of its own (Layers: it starts a plane): it paints a surface (a background, a drawing, an

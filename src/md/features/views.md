@@ -263,6 +263,8 @@ View_Options :: struct {
 	home:           View_Presentation, // .Dialog or .Panel: where re-attach brings it (default .Dialog)
 	home_place:     View_Place,        // with home .Panel (default: the frame's right edge)
 	first:          Maybe(View_Presentation),   // the presentation of its first opening, before the user chose (nil: home)
+	float_edge:     Maybe(View_Edge),  // an internal window of no rect of its own opens against this edge of the content,
+	                                   // MODAL_MARGIN_EM in (Right: top right, a tool window beside what it acts on); nil: centred
 	width_em:       f32,               // the first size of the dialog and of the windows (0: DIALOG_WIDTH_EM)
 	height_em:      f32,               // 0: as tall as what is in it
 	min_width_em:   f32,

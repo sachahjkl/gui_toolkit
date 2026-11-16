@@ -129,7 +129,8 @@ again.
 | `focus_next_field()` | inside a build: the next field built (a `line_edit`, a `number`'s value, a `text_edit`) takes the keyboard: a view focuses its field on its first build without rebuilding a widget's keys |
 
 `View_Options`: `title`, `icon`, `icon_font`, `home` (`.Dialog` or `.Panel`), `home_place`, `first` (the presentation
-of the first opening), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em`, `min_height_em`,
+of the first opening), `float_edge` (an internal window of no rect of its own opens against this edge of the content,
+`MODAL_MARGIN_EM` in: `.Right` at the top right, a tool window; nil: centred), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em`, `min_height_em`,
 `resizable` (grips; the size is remembered), `top` (the dialog's top at this fraction of the window), `no_header`,
 `backdrop` (drawn first, under the header and the body), `extent_em`, `extent_frac`, `tabs_always`, `new_tab`,
 `new_tab_label`, `under_children` and `moved` (the later presentations).

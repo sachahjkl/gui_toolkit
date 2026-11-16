@@ -156,9 +156,11 @@ toggles it in a build with the devtools; Chrome DevTools' "Layer borders" too.
 
 `ui.set_exploded(state, on)` draws the window's boxes as planes in depth instead of the page: each parent behind its
 children, menus, toasts and tooltips on their own planes. Turned on, the flat page eases into the view in about 600 ms;
-turned off, it eases back, then the page takes input again. A panel at the right sets the mode (Layers, Depths,
-Outlines), the yaw, the pitch, the spread and the zoom. A drag on the planes turns them, the wheel spreads them, Escape
-turns the view off; the page takes no input meanwhile. Ctrl+Alt+Shift+E toggles it in a build with the devtools.
+turned off, it eases back, then the page takes input again. Its panel is a view (`ui.EXPLODED_VIEW`, "Exploded
+view"), floating at the top right at first: it sets the mode (Layers, Depths, Outlines), the yaw, the pitch, the
+spread and the zoom, and moves, docks or goes to a window of its own as any view; its close cross turns the view off.
+A drag on the planes turns them, the wheel spreads them, Tab changes the mode, Escape turns the view off; the page
+takes no input meanwhile. Ctrl+Alt+Shift+E toggles it in a build with the devtools.
 `ui.exploded(state)` says whether it is on: false from the moment it is turned off.
 
 A well around a field that shows when the field has the keyboard (a composer, a search): `flags = {.Focus_Within,
