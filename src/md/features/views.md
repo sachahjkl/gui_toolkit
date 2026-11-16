@@ -497,6 +497,12 @@ draws, except the header that a dialog always had. The rules:
        button at its top, then one button per view (its icon, its title as the tooltip), the stacks one after the
        other. A click on a view restores the zone with that view shown. A strip is no narrower than a side zone, so a
        side zone collapses to something else: a column of icons, as an editor's side bar.
+     - **A view's own compact form** (`View_Options.rail_em`, `View.rail`): a view that states a rail width keeps that
+       column when its zone collapses (by Minimise or a narrow space), and is built in it with `View.rail` set, under
+       the zone's Restore: it draws its compact form itself (opencode native's sidebar: a column of the sessions'
+       marks with rich tooltips). A zone holding several such views takes the widest. A view without one keeps the
+       icons' rail. Refused: the toolkit drawing a view's compact form from its title (an icon says less than a list
+       of marks), and a second view registered for the compact form (two views of one list would drift).
        **Why it changed.** The side zones had no Minimise (refused: "the handle makes a side zone narrow"). The user
        lost the way to fold opencode native's side panel (`/btw`) that its own pane had before it moved to the views:
        the handle narrows it, never folds it.

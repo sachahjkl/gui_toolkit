@@ -43,6 +43,7 @@ Dock :: struct {
 	later:      bool,              // term_new only asks: the test opens the instance frames later (a server's answer)
 	hug_w:      f32,               // the width "hug" asks for this opening (view_size), in ems
 	no_frame:   bool,              // the window builds no views_frame (its content alone)
+	railed:     bool,              // "marks" was last built in its compact form (View.rail)
 }
 
 @(private = "file")
@@ -133,6 +134,14 @@ plain_view :: proc(v: ^ui.View, r: ^Dock) {
 	if ui.dialog_body("plain_body") { ui.label("A question###plain_words") }
 }
 
+// A view with a compact form: minimised, its zone keeps RAIL_EM and builds it with View.rail (a column of marks).
+@(private = "file") RAIL_EM :: 3.5
+@(private = "file")
+marks_view :: proc(v: ^ui.View, r: ^Dock) {
+	r.railed = v.rail
+	ui.label(v.rail ? "M###marks_compact" : "The marks in full###marks_full")
+}
+
 @(private = "file")
 dock_start :: proc(t: ^testing.T, r: ^Dock, want: ..string) -> ^session.Session {
 	dock_register(r)
@@ -154,6 +163,7 @@ dock_register :: proc(r: ^Dock) {
 	ui.view_register(&r.views, "ask", plain_view, ui.View_Options{title = "Question"})
 	ui.view_register(&r.views, "float", plain_view, ui.View_Options{title = "Floating", first = .Internal})
 	ui.view_register(&r.views, "low", plain_view, ui.View_Options{title = "Low", home = .Panel, home_place = {edge = .Bottom}, extent_frac = LOW_FRAC})
+	ui.view_register(&r.views, "marks", marks_view, ui.View_Options{title = "Marks", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM, rail_em = RAIL_EM})
 }
 
 @(private = "file")
@@ -275,6 +285,29 @@ a_side_zone_minimises_to_its_rail :: proc(t: ^testing.T) {
 	zone = built(s, "view_zone_Left")
 	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "back at its extent: %v", zone.rect if zone != nil else ui.Rect{})
 	testing.expect(t, built(s, "view_rail_restore") == nil, "no rail")
+}
+
+// A view that states a rail width (View_Options.rail_em): its zone minimised keeps that column, the view built in it with
+// View.rail (its compact form) under the zone's Restore, which brings the full form back.
+@(test)
+a_view_with_a_rail_width_keeps_its_compact_form :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "marks")
+	zone := wait_built(s, "view_zone_Left")
+	if zone == nil { return }
+	testing.expect(t, built(s, "marks_full") != nil && !r.railed, "its full form")
+	session.move(s, {zone.rect.min.x + 30, zone.rect.min.y + 2})
+	if wait_built(s, "view_stack_min") == nil { return }
+	session.click(s, "view_stack_min")
+	if wait_built(s, "marks_compact") == nil { return }
+	testing.expect(t, r.railed, "built with View.rail")
+	zone = built(s, "view_zone_Left")
+	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - RAIL_EM * r.em) <= 1.5, "its rail width: %v", zone.rect if zone != nil else ui.Rect{})
+	testing.expect(t, built(s, "view_rail_Left_0_0") == nil, "not the icons' rail")
+	session.click(s, "view_rail_restore")
+	if wait_built(s, "marks_full") == nil { return }
+	testing.expect(t, !r.railed, "its full form again")
 }
 
 // A space too narrow for a side zone and the content folds the zone to its rail, with no change to its memory; its

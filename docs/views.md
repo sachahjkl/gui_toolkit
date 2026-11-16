@@ -364,7 +364,9 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
     restores it. At the left and the right it becomes a rail one strip wide: a Restore button, then a button per view
     (its icon, its title as the tooltip), which restores the zone with that view shown. Remembered (`bottom.min=1` in
     the space's line). A side zone also folds to its rail by itself when the space leaves the content less than
-    `DOCK_MIN_EM` beside it, and unfolds when the space is wide enough again; its Restore opens it meanwhile.
+    `DOCK_MIN_EM` beside it, and unfolds when the space is wide enough again; its Restore opens it meanwhile. A view
+    with `View_Options.rail_em` (3.5, say) keeps that column instead of the icons' rail: it is built there with
+    `View.rail` true, under the zone's Restore, and draws its compact form (`if v.rail { ...marks... } else { ...list... }`).
   - **Close** closes every view of the stack (each ends `VIEW_CANCELLED`). One tab closes by Ctrl+W in it, its menu or
     the palette.
   - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.

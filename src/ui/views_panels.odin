@@ -53,6 +53,8 @@ View_Space :: struct {
 	// a side zone folded to its rail by a space too narrow for it and the content (not remembered: it unfolds when the
 	// space is wide enough again), and one the user opened again while the space stays narrow (views.md, Minimise)
 	folded:    [View_Edge]bool,
+	// a side zone's rail width (em) this build: the largest View_Options.rail_em of its views (0: the icons' rail)
+	rail_em:   [View_Edge]f32,
 	unfolded:  [View_Edge]bool,
 }
 
@@ -156,6 +158,10 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 	}
 	view_zone_fold(sp, .Left, has(&zones[.Left]), content, em)
 	view_zone_fold(sp, .Right, has(&zones[.Right]), content, em)
+	for e in ([]View_Edge{.Left, .Right}) {
+		sp.rail_em[e] = 0
+		for k in 0 ..< VIEW_STACKS_MAX { for r in zones[e][k] { sp.rail_em[e] = max(sp.rail_em[e], r.kind.o.rail_em) } }
+	}
 
 	// the layout: the top zone, the left, the centre, the right, the bottom; each zone's handle on the centre's side
 	mod := s.has_next ? s.next_mod : Style_Mod{width = fill(), height = fill()}
@@ -445,8 +451,10 @@ view_zone_box :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record, em: f3
 		// (its strips only: one row of them, or one above the other along a zone laid along Y)
 		next({width = fill(), height = px(strip * f32(axis == .Y ? max(stacks, 1) : 1)), axis = axis})
 	case view_zone_collapsed(sp, e):
-		// (a side zone's rail: one strip wide, its buttons one above the other)
-		next({width = px(strip), height = fill(), axis = .Y})
+		// (a side zone's rail: its views' own compact column (View_Options.rail_em), else one strip wide, its buttons one
+		// above the other)
+		w := sp.rail_em[e] > 0 ? math.round(sp.rail_em[e] * em) : strip
+		next({width = px(w), height = fill(), axis = .Y})
 	case e == .Left || e == .Right:
 		x, frac := view_zone_extent(sp, e, first)
 		next({width = size(x, frac, em), height = fill(), axis = axis})
@@ -514,7 +522,7 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 	for k in 0 ..< VIEW_STACKS_MAX { if len(z[k]) > 0 { n = k + 1 } }
 	sp.count[e] = n
 	if (e == .Left || e == .Right) && view_zone_collapsed(sp, e) && only < 0 {
-		view_zone_rail(vs, sp, e, z, zone, n)
+		if sp.rail_em[e] > 0 { view_zone_rail_views(vs, sp, e, z, zone, n) } else { view_zone_rail(vs, sp, e, z, zone, n) }
 		return
 	}
 	minimised := view_zone_collapsed(sp, e) && (e == .Top || e == .Bottom) && only < 0
@@ -707,6 +715,37 @@ view_stack_minimise :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, on: bool)
 	if sp.state != nil { sp.state.anim_busy = true }
 }
 
+// A side zone collapsed whose views state a rail width (View_Options.rail_em): its Restore at the top, then each stack's
+// shown view built in its compact form (View.rail), the stacks one under the other. The view draws its own marks: the
+// toolkit gives it the column and says it is minimised.
+@(private = "file")
+view_zone_rail_views :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_Lists, zone: ^Box, n: int) {
+	labels := view_labels(vs)
+	push_parent(zone)
+	defer pop_parent()
+	next({width = fill(), height = children_sum(), axis = .Y, cross = .Center})
+	if column(id = "###view_rail_head") {
+		space(SPACE_1)
+		if view_stack_icon("###view_rail_restore", e == .Left ? lucide.PANEL_LEFT_OPEN : lucide.PANEL_RIGHT_OPEN, labels.restore) {
+			view_stack_minimise(vs, sp, e, false)
+		}
+		space(SPACE_1)
+	}
+	for k in 0 ..< n {
+		list := z[k][:]
+		if len(list) == 0 { continue }
+		shown := list[len(list) - 1]
+		for r in list { if r.modal_name == sp.active[e][k] { shown = r } }
+		next({width = fill(), height = fill(), axis = .Y})
+		stack := build_box({.Clip}, fmt.tprintf("###view_stack_%d", k))
+		sp.stacks[e][k], sp.stack_key[e][k] = stack.rect, stack.key
+		push_parent(stack)
+		view_panel_build(vs, sp, shown, rail = true)
+		pop_parent()
+		for r in list { view_header_menu(vs, r, .Panel) }
+	}
+}
+
 // One of a narrow stack's own buttons: a small icon, as close to the next as a bar's tools ("###id": its key, as the
 // caption button it stands for).
 @(private = "file")
@@ -777,7 +816,7 @@ views_space_maximised :: proc(vs: ^Views, name: string) -> (edge: View_Edge, sta
 // The view as a panel: its body fills its stack (under the stack's strip, which holds its tabs and its controls:
 // view_stack_strip; a lone panel's on hover, view_hover_strip); its keys while the focus is in it.
 @(private = "file")
-view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record) {
+view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, rail := false) {
 	s := gs()
 	k := r.kind
 	r.flag, r.ending, r.tools, r.header = true, nil, 0, 0
@@ -790,7 +829,7 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record) {
 	r.roots[.Panel] = body.key
 	r.pbuilt = s.build_index
 	push_parent(body)
-	v := View{id = k.id, instance = r.instance, presentation = .Panel, place = r.machine.place, shown = true, record = r}
+	v := View{id = k.id, instance = r.instance, presentation = .Panel, place = r.machine.place, shown = true, rail = rail, record = r}
 	keys_root := s.view_keys_root
 	s.view_keys_root = body.key
 	k.build(&v, r.data)

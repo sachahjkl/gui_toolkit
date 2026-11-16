@@ -51,6 +51,9 @@ View_Options :: struct {
 	min_height_em:  f32,
 	extent_em:      f32,                        // a panel's width or height (step 3)
 	extent_frac:    f32,                        // ... as a share of its space's width or height instead (0: extent_em)
+	// its side zone minimised (by its Minimise, or folded by a narrow space) keeps a column this wide and builds the
+	// view in it with View.rail: its compact form (a list of marks). 0: the zone becomes the toolkit's rail of icons
+	rail_em:        f32,
 	tabs_always:    bool,                       // its stack's tab strip shows even when it is alone there (a terminal)
 	// the "+" after its stack's tabs, the band's menu and the palette: the program opens a new instance of this kind
 	// (view_open with a new name); `data` is the shown view's. Every instance of this kind opened during the call joins
@@ -73,6 +76,8 @@ View :: struct {
 	presentation: View_Presentation,
 	place:        View_Place,   // with .Panel
 	shown:        bool,         // false: this build is unseen (it is measured before it shows)
+	// built in its side zone minimised, View_Options.rail_em wide: the view builds its compact form (views.md, Minimise)
+	rail:         bool,
 	record:       ^View_Record,
 }
 
