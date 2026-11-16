@@ -20,7 +20,7 @@ Sway_Options :: struct {
 	output:   string,          // HEADLESS-1's mode ("": SWAY_OUTPUT_DEFAULT; "1280x1024@60Hz")
 	config:   string,          // more lines of sway's config (for_window [app_id="x"] floating enable...)
 	renderer: string,          // "pixman" ("": that) or "vulkan" (the GPU, as on a desktop)
-	homes:    bool,            // the programs' XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME: <dir>/config, data, state
+	homes:    bool,            // the programs' HOME, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME: <dir>/home, config, data, state
 	cache:    bool,            // and their XDG_CACHE_HOME: <dir>/cache (an empty cache makes fontconfig build it again)
 	wait:     time.Duration,   // 0: SWAY_WAIT
 }

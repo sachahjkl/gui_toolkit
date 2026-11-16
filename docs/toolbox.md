@@ -60,8 +60,9 @@ Nothing of the person's desktop is reached:
 - its own runtime directory, `<dir>/run` (mode 700): its own Wayland socket and IPC socket;
 - no `DISPLAY`, no session bus (`DBUS_SESSION_BUS_ADDRESS`), no `XDG_CURRENT_DESKTOP`;
 - one headless output at `o.output` (`SWAY_OUTPUT_DEFAULT`, 1600x1000), no XWayland, no input devices;
-- with `o.homes`, the programs' `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` are `<dir>/config`, `data`
-  and `state`; with `o.cache`, `XDG_CACHE_HOME` is `<dir>/cache`.
+- with `o.homes`, the programs' `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `XDG_STATE_HOME` are `<dir>/home`,
+  `config`, `data` and `state` (an install in `~/.local/opt` stays in the session's folder); with `o.cache`,
+  `XDG_CACHE_HOME` is `<dir>/cache`.
 
 `o.config` adds lines to sway's config (`for_window [app_id="x"] floating enable`); `o.renderer` is `pixman`
 (the CPU, default) or `vulkan`. `sway_config(o)` is that config. The session's fields: `dir`, `runtime`, `display`
