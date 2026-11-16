@@ -24,10 +24,9 @@
   the cause is on the Direct3D 11 window's path. `tests/partial_redraw_layers` holds the scene, which the Windows CI runs.
 
 ## Next
-- **Display titles and a vendor's folders.** Every program shows a capitalised title (Papier, Classeur, Inspecteur,
-  Cliche, Atelier, Wren, Opencode Native) while its binary and package keep the lowercase name, and keeps its settings
-  in its vendor's folder (`%APPDATA%\FromentSoftware\Papier`, `~/.config/FromentSoftware/Papier`), the old folders
-  moved once. Intent: [src/md/features/folders.md](src/md/features/folders.md).
+- **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
+  do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
+  (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).
 - **Every program on the spacing scale.** Papier, classeur, inspecteur and cliche lay out with the scale's roles and
   steps. Atelier (its own scale in `view.odin`), opencode native and Wren stop keeping values or scales of their own.
   Intent: [src/md/features/spacing.md](src/md/features/spacing.md).
