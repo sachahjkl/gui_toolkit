@@ -2,6 +2,10 @@
 
 ## Now
 
+- **The everything palette.** Each item of the palette shows its own control in the palette (a switch, a row of
+  choices, a list of fonts, a number with its unit), changes apply as the person moves and Escape puts them back, and
+  Shift+Enter goes where the act lives. A person drives a whole program from the palette. Intent:
+  [src/md/features/everything-palette.md](src/md/features/everything-palette.md).
 - **opencode native and Wren drop their copies.** Each program is a thin layer over the toolkit: what it does again
   that the toolkit has goes. opencode native: its colour helpers, PNG read, JSON helpers, key/value rows, pill,
   spinner, time words, segmented control, model picker (the palette's `#` source). Wren: its re-exporting `config` and

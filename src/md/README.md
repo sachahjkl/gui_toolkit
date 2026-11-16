@@ -51,6 +51,9 @@ and its memory, the views, the texts in the user's language.
 - [features/json.md](features/json.md): one JSON helper (`gt:json`): why it reads what `core:encoding/json` parses and adds no parser, path reads with defaults that never panic, one quoter (its escapes, U+FFFD for a byte that is no UTF-8), a streaming writer that places the commas
 - [features/image-decode.md](features/image-decode.md): one decoder of picture files for every program (`image.decode`): why GIF is the toolkit's own, why only a GIF's first frame and no frames API, damage refused and a short stream kept, the size limit before any allocation
 - [features/picture-cache.md](features/picture-cache.md): one cache of picture textures under a byte budget (`gt:pictures`): size classes and why, the last asked decoded first, what is no longer shown dropped from the queue, the upload on the interface's thread, what the budget never evicts, a serial per ask; refused: a decode in the frame, one texture per place, a cache per program
+- [features/everything-palette.md](features/everything-palette.md): each item's control in the palette, from the
+  value's nature (value kinds and units) in one table the settings page shares; the run mode, live change and Escape;
+  go to by an act name; commands with arguments
 - [features/palette.md](features/palette.md): one command palette for every program: sources with a closed table of prefixes, one ranking on the chores, serials that drop stale answers, choices by source and id, what each program's palette becomes
 - [features/paste.md](features/paste.md): a paste gives text, files or an image as one answer: the order of preference (files, text, image), why the kinds are asked one after the other, the image decoded on a chore, one API for every kind, the platforms' formats
 - [features/path-bar.md](features/path-bar.md): the path bar (`ui.path_bar`): why it reads nothing itself, why `wants` is said once, why its dropdown is a popover
