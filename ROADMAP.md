@@ -5,10 +5,6 @@
 - **Wren on the toolkit's licence card.** Wren shows `ui.licence_card` and the shop's thank-you page, as every other
   program does since this toolkit version, and drops its `about_card*.odin` and its card shaders: one card. Intent:
   [src/md/features/licence-card.md](src/md/features/licence-card.md).
-- **opencode native on the everything palette.** As papier, classeur, inspecteur and cliche do, it calls
-  `palette_chosen` before its content, names the elements its commands act through (`ui.act_name`,
-  `ui.act_command`), and turns Rename the session and Set the model into commands with arguments. Intent:
-  [src/md/features/everything-palette.md](src/md/features/everything-palette.md).
 - **opencode native and Wren drop their copies.** Each program is a thin layer over the toolkit: what it does again
   that the toolkit has goes. opencode native: its colour helpers, PNG read, JSON helpers, key/value rows, pill,
   spinner, time words, segmented control, model picker (the palette's `#` source). Wren: its re-exporting `config` and
@@ -26,16 +22,13 @@
 - **Every program on the spacing scale.** Papier, classeur, inspecteur and cliche lay out with the scale's roles and
   steps. Atelier (its own scale in `view.odin`), opencode native and Wren stop keeping values or scales of their own.
   Intent: [src/md/features/spacing.md](src/md/features/spacing.md).
-- **opencode native and Wren answer --quit.** As papier, classeur, inspecteur and cliche do, each gives
-  `Setup_Options.quit` and takes `instance.MESSAGE_QUIT` in its handler (opencode native first takes a single instance):
-  atelier then closes it cleanly before it installs it, in place of ending its process. Intent:
-  [src/md/features/quit.md](src/md/features/quit.md).
-- **What's new in opencode native and Wren.** As papier, classeur, inspecteur and cliche do since their 0.26 and 0.10,
-  each gives its changelog to the settings (`Page_Options.changelog`) and calls `changelog_after_update` at start:
-  after an update, a message that stays opens the page of what changed.
-- **The last settings that programs copy.** opencode native drops `advanced.frame_rate` for the toolkit's
-  `rendering.frame_rate` (`Standard_Targets.pacer`, since 0.269), and Wren its `browser.frame.*`; Wren drops its own
-  text backend, emoji and renderer settings. (The
+- **Wren answers --quit.** As papier, classeur, inspecteur, cliche and opencode native do, it gives
+  `Setup_Options.quit` and takes `instance.MESSAGE_QUIT` in its handler: atelier then closes it cleanly before it
+  installs it, in place of ending its process. Intent: [src/md/features/quit.md](src/md/features/quit.md).
+- **What's new in Wren.** As the other programs do, it gives its changelog to the settings (`Page_Options.changelog`)
+  and calls `changelog_after_update` at start: after an update, a message that stays opens the page of what changed.
+- **The last settings that Wren copies.** Wren drops its `browser.frame.*` for the toolkit's `rendering.frame_rate`
+  (`Standard_Targets.pacer`, since 0.269), and its own text backend, emoji and renderer settings. (The
   desktop's and the motion's are the standard `Session` and `Appearance` sets; the window's place and the rows' look are
   the toolkit's since 0.265; an FPS display is opencode native's alone, so it stays its own.)
 - **opencode native on the toolkit's pieces.** Its branch `toolkit-0.266` takes the toolkit's JSON, rich paste
