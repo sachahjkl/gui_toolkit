@@ -24,6 +24,13 @@ Every step is a command of `tools/tk` (the head of `tools/tk/main.odin` lists th
   virtual desktop.
 - Linux: `nix develop` first (`flake.nix`: the pinned Odin with wgpu-native, Rust, the servers of the virtual desktops).
 
+## Changelog
+
+- `CHANGELOG.md` follows Keep a Changelog and semantic versioning. Never edit it, nor `src/ui/version.odin`: `tk release`
+  writes them.
+- A change a user of the toolkit can see is one fragment in `changelog.d/` (its README says the format), in the same
+  commit as the change. `changelog -check` checks the fragments and the file.
+
 ## Roadmap
 
 [ROADMAP.md](ROADMAP.md), beside `CHANGELOG.md`, holds the planned work: the toolkit's own and every work that touches
@@ -51,8 +58,7 @@ Apply these to every task, before you write code:
 
 - What more than one program needs goes here, generic and configurable; a program keeps its own words and layout.
 - Packages import each other by relative paths. Platform code goes in files with a system suffix (`*_windows.odin`, `*_linux.odin`).
-- Every new function has its documentation (`docs/`), its test and a CHANGELOG fragment in `changelog.d/`. Never edit
-  `CHANGELOG.md` or `src/ui/version.odin`: `tk release` writes them.
+- Every new function has its documentation (`docs/`), its test and a changelog fragment (see Changelog).
 - A new global needs a class in `tools/globals_allowed.txt`. Names and protocols fold by ASCII (`ascii.lower`); a Unicode fold
   is listed in `tools/unicode_case_allowed.txt`. The tests `tests/globals` and `tests/unicode_case` check both.
 - Automation is a command of `tools/tk`, never a shell, batch, PowerShell, Python or Node script.
