@@ -201,7 +201,8 @@ element is scrolled into view, gets the focus and is lit once. An item whose pla
 hint row does not say it), and Shift+Enter there does what Enter does.
 
 - An element states its act name at its build: `ui.act_name(box, "setting:appearance.theme")`. The settings page names
-  each setting's line; a toolbar's button names its command (`"command:<id>"`): the commands source's items carry it.
+  each setting's line; a toolbar's tool of a command names it itself (`"command:<id>"`): the commands source's items
+  carry it. A program's own button of a command calls `ui.act_command(box, command.id)` at its build.
 - `ui.act_shown(name)`: whether a window of the program showed it in its last frame. `ui.act_go(name)`: goes there, now
   or within `ACT_GO_BUILDS` builds when it shows (`ACT_LIGHT_MS`: the light, a ring `ACT_LIGHT_OUTSET` ems outside the
   element, so it never touches its words).

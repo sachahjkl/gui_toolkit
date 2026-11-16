@@ -78,8 +78,32 @@ licence_thanks_block_escapes :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(block, "Open <em>About</em>, paste the key."), "register is HTML")
 	testing.expect(t, strings.contains(block, "Download the .samplelicence file"))
 	testing.expect(t, strings.contains(block, "/licence?txn="))
-	testing.expect(t, strings.contains(block, `data-state="waiting"`), "the spinner shows until the script decides")
+	testing.expect(t, strings.contains(block, `data-state="waiting"`), "the waiting dots show until the script decides")
+	testing.expect(t, strings.contains(block, `<span class="shop-dots" aria-hidden="true"><i></i><i></i><i></i></span>`), "three waiting dots")
+	testing.expect(t, strings.contains(block, `<p class="shop-warm" id="warm" hidden>`), "the warm line waits for the licence")
+	testing.expect_value(t, strings.count(block, `<i class="shop-spark" aria-hidden="true"></i>`), 6)
+	testing.expect(t, strings.contains(block, `<span class="shop-copy-ready">`) && strings.contains(block, `<span class="shop-copy-done" aria-hidden="true">`), "Copy holds both labels")
+	testing.expect(t, strings.contains(block, `searchParams.set("order", txn)`), "the order number goes in the help link")
+	testing.expect_value(t, strings.count(block, "searchParams.set("), 1)   // the order alone, never the key
 	testing.expect(t, !strings.contains(block, `id="edition"`), "one licence: no edition shown")
+}
+
+// The built thank-you page is the program's: its name, its logo on the stage, the celebration, and none of Wren's blue.
+@(test)
+licence_thanks_page_is_the_programs :: proc(t: ^testing.T) {
+	thanks := licence_pages(shop_sample())[1].text
+	testing.expect(t, strings.contains(thanks, "<title>Thank you · Sample &lt;&amp;&gt;</title>"))
+	testing.expect(t, strings.contains(thanks, `<span class="shop-stage"><img class="shop-logo" src="../img/logo.png" alt="" width="104" height="104"></span>`), "the logo, larger, on its stage")
+	testing.expect(t, strings.contains(thanks, "function celebrate()") && strings.contains(thanks, `burst.className = "shop-confetti"`), "the confetti's code")
+	testing.expect(t, strings.contains(thanks, ".shop-confetti b {") && strings.contains(thanks, "@keyframes shop-fall"), "the confetti's style")
+	testing.expect(t, strings.contains(thanks, "prefers-reduced-motion: reduce"), "motion can be refused")
+	testing.expect(t, !strings.contains(thanks, "#4cc2ff") && !strings.contains(thanks, "#4CC2FF"), "the accent is the program's, never Wren's blue")
+	testing.expect(t, !strings.contains(thanks, "rgba(76, 194, 255"), "nor Wren's blue in another spelling")
+
+	bare := shop_sample()
+	bare.icon = ""
+	thanks = licence_pages(bare)[1].text
+	testing.expect(t, !strings.contains(thanks, `class="shop-stage"`), "no icon, no stage")
 }
 
 @(test)

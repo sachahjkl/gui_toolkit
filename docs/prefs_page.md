@@ -337,23 +337,29 @@ settings at `CHANGELOG_PAGE` (`show`). The first start says nothing. `changelog_
 
 A program that sells a licence ([licence.md](licence.md)) shows it on the toolkit's **Licence** page, worded the same in
 every program, after the program's pages. The program gives its product and where it keeps the key
-(`licence.Store_Options`), its name as people read it and its site's pricing page:
+(`licence.Store_Options`), its name as people read it, its site's pricing page, and for the licence card its logo (the
+bytes of its PNG) and its vendor's name:
 
 ```odin
 prefs_page.licence_init(&app.licence, &app.main.state, {
 	store = {product = PRODUCT, program = APP_NAME, accept_dev = ODIN_DEBUG},
 	name = "Inspecteur", pricing_url = "https://inspecteur.froment.software/pricing/", owner = app.main.win,
+	logo = identity.ICONS[6].png, vendor = "Froment Software",
 })                                                         // at the start: the store, its first read (a task)
 opts.licence = &app.licence                                // the settings: the Licence page
 prefs_page.licence_install_file(&app.licence, path)        // a licence file dropped, or given on the command line
 prefs_page.licence_end(&app.licence)                       // at the end, the window's State closed
 ```
 
-- The page says the state: **Unregistered** with "`<name>` is free; a licence supports its development.", a key stored
-  that is not valid (`licence.error_text`), or **Registered** with its holder (and its edition when the product sells
-  several) and a thank-you. Then what can be done: **Buy a licence** (opens `pricing_url`; none when it is ""), a field to
-  paste a key and **Register**, **Choose a licence file…** (the system's dialog), **Remove the licence** (a second click
-  removes; Escape gives the question up). Under them, a line says the key is checked on this computer with no network.
+- The page says the state: **Unregistered** with "`<name>` is free; a licence supports its development.", or a key
+  stored that is not valid (`licence.error_text`). Then what can be done: **Buy a licence** (opens `pricing_url`; none
+  when it is ""), a field to paste a key and **Register**, **Choose a licence file…** (the system's dialog), **Remove the
+  licence** (a second click removes; Escape gives the question up). Under them, a line says the key is checked on this
+  computer with no network.
+- A registered licence is shown as its card ([licence-card.md](licence-card.md), `ui.licence_card`): the program's name
+  and logo, the edition's title (`licence.edition_title`), the holder, the e-mail, the date and the order are on it, so no
+  line under it says them again; a thank-you, **Remove the licence** and the line on the network follow. Its back says
+  "`<NAME> · <VENDOR>`" in capitals (the name alone when `vendor` is "").
 - Every read and write of the key's file is a task of the `ui.State` given to `licence_init` (`ui.task`): the answer comes
   at its next build. One task at a time; a file given meanwhile waits for its turn (`Licence.pending`).
 - `licence_registered(l)` says whether the last read found a valid licence (false until it came); `Licence.status` is

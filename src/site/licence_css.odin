@@ -14,7 +14,8 @@ package tk_site
 //   --surface or --bg2     a card
 //   --surface-2 or --bg3   inside a card (the key)
 //   --line-2 or --line     the lines (a translucent grey, which reads on dark and on light, when neither is there)
-//   --accent               the button, the check marks, the hero's glow
+//   --accent               the button, the check marks, the hero's glow; on the thank-you page also the logo's glow, the
+//                          waiting dots, the card's tint, the help's tint and edge, the first hue of the confetti
 //   --accent-ink           the text on the accent (near black when not set: a site whose light accent is dark sets it)
 //
 // A class name starts with shop-, so the site's own .btn, .card or footer never reach these pages. No remote font, no
@@ -127,25 +128,79 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
 .shop-doc .shop-eyebrow { margin: 0 0 4px; }
 .shop-doc .shop-fine { margin: 0 0 24px; }
 
-/* the thank-you page: the status, then the licence card */
-.shop-thanks { max-width: 620px; margin: 0 auto; padding: 0 20px; }
-.shop-wait { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0 0 24px; color: var(--shop-muted); text-align: center; }
-.shop-spinner {
-  flex: none; width: 18px; height: 18px; border-radius: 50%;
-  border: 2px solid var(--shop-line); border-top-color: var(--shop-accent); animation: shop-spin 0.9s linear infinite;
+/* the thank-you page: the logo floating in a glow of the accent, the status, the warm line, then the licence card.
+   The gold (the key's edge, the stars, one hue of the confetti) is the same in every program: it says "a licence", not
+   "this program"; everything else is the site's own colours. Without color-mix, a translucent accent is a pseudo-element
+   filled with the accent and given an opacity. */
+.shop-stage { position: relative; display: block; width: 104px; height: 104px; margin: 0 auto 18px; }
+.shop-stage::before {
+  content: ""; position: absolute; z-index: -1; inset: -26px; border-radius: 50%;
+  background: radial-gradient(closest-side, var(--shop-accent), transparent); opacity: 0.24;
 }
-.shop-thanks:not([data-state="waiting"]) .shop-spinner { display: none; }
+.shop-logo { display: block; width: 104px; height: 104px; max-width: none; animation: shop-bob 3.6s ease-in-out infinite; }
+.shop-thanks { max-width: 680px; margin: 0 auto; padding: 0 20px; }
+.shop-wait { display: flex; align-items: center; justify-content: center; gap: 4px; margin: -12px 0 14px; color: var(--shop-muted); text-align: center; }
 .shop-thanks[data-state="failed"] .shop-wait { color: var(--shop-text); text-align: left; }
-@keyframes shop-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .shop-spinner { animation-duration: 2.4s; }
-  .shop-buy, .shop-quiet { transition: none; }
-  .shop-buy:hover, .shop-buy:active { transform: none; }
-}
+/* three dots that breathe while the Worker makes the licence, gone once the script has an answer */
+.shop-dots { display: inline-flex; gap: 5px; margin-left: 6px; }
+.shop-thanks:not([data-state="waiting"]) .shop-dots { display: none; }
+.shop-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--shop-accent); opacity: 0.25; animation: shop-dot 1.2s infinite; }
+.shop-dots i:nth-child(2) { animation-delay: 0.2s; }
+.shop-dots i:nth-child(3) { animation-delay: 0.4s; }
+.shop-warm { max-width: 560px; margin: 0 auto 26px; color: var(--shop-muted); line-height: 1.55; text-align: center; text-wrap: balance; }
 .shop-card {
-  position: relative; overflow: hidden; padding: 26px; background: var(--shop-card); border: 1px solid var(--shop-line);
+  position: relative; isolation: isolate; overflow: hidden; padding: 26px; background: var(--shop-card); border: 1px solid var(--shop-line);
   border-radius: 18px; box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.5);
 }
+/* (z-index -1 inside the isolated card: above its background, under its text) */
+.shop-thanks .shop-card::before {
+  content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none;
+  background: linear-gradient(160deg, var(--shop-accent) 0%, transparent 62%); opacity: 0.1;
+}
+/* the sheen: a band of light that crosses the card once, when the licence arrives */
+.shop-thanks .shop-card::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; transform: translateX(-120%);
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.13) 50%, transparent 65%);
+}
+.shop-thanks[data-state="ready"] .shop-card { animation: shop-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.shop-thanks[data-state="ready"] .shop-card::after { animation: shop-sheen 1.6s 0.5s ease-out 1 both; }
+/* six gold stars that twinkle in turn at the card's corners */
+.shop-spark {
+  position: absolute; width: 14px; height: 14px; pointer-events: none; opacity: 0;
+  background: #f6d98b; filter: drop-shadow(0 0 4px rgba(255, 210, 120, 0.85));
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+  animation: shop-twinkle 3.4s ease-in-out infinite;
+}
+.shop-spark:nth-of-type(1) { top: 14px; right: 36px; }
+.shop-spark:nth-of-type(2) { top: 52px; right: 12px; width: 9px; height: 9px; animation-delay: 1.3s; }
+.shop-spark:nth-of-type(3) { top: 118px; left: 10px; width: 10px; height: 10px; animation-delay: 2.1s; }
+.shop-spark:nth-of-type(4) { top: 214px; right: 52px; width: 11px; height: 11px; animation-delay: 0.7s; }
+.shop-spark:nth-of-type(5) { top: 252px; left: 40px; width: 12px; height: 12px; animation-delay: 1.8s; }
+.shop-spark:nth-of-type(6) { bottom: 16px; right: 22px; width: 16px; height: 16px; animation-delay: 2.6s; }
+/* the confetti: a fixed layer over the page, one burst; the hues cycle with the pieces, the first is the program's */
+.shop-confetti { position: fixed; inset: 0; z-index: 50; overflow: hidden; pointer-events: none; }
+.shop-confetti b {
+  position: absolute; top: -14px; width: 8px; height: 14px; border-radius: 2px; opacity: 0;
+  animation: shop-fall var(--t, 3s) var(--d, 0s) cubic-bezier(0.25, 0.35, 0.55, 1) both;
+}
+.shop-confetti b:nth-child(6n + 1) { background: var(--shop-accent); }
+.shop-confetti b:nth-child(6n + 2) { background: #ffcf5c; }
+.shop-confetti b:nth-child(6n + 3) { background: #ffffff; }
+.shop-confetti b:nth-child(6n + 4) { background: #7bd88f; }
+.shop-confetti b:nth-child(6n + 5) { background: #ff8fa3; }
+.shop-confetti b:nth-child(6n + 6) { background: #b9a2ff; }
+@keyframes shop-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes shop-dot { 0%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+@keyframes shop-rise { from { opacity: 0; transform: translateY(18px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes shop-sheen { to { transform: translateX(120%); } }
+@keyframes shop-fall {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(0); }
+  10% { opacity: 1; }
+  60% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(var(--x, 0), 108vh, 0) rotate(var(--r, 540deg)); }
+}
+@keyframes shop-glint { 0%, 55% { left: -40%; } 85%, 100% { left: 125%; } }
+@keyframes shop-twinkle { 0%, 70%, 100% { opacity: 0; transform: scale(0.3) rotate(0); } 82% { opacity: 1; transform: scale(1) rotate(45deg); } }
 .shop-who { margin: 0 0 14px; font-size: 1.25rem; overflow-wrap: anywhere; }
 .shop-meta { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 18px; }
 .shop-meta > div { flex: 1 1 140px; padding: 10px 12px; background: var(--shop-well); border-radius: 10px; }
@@ -157,17 +212,55 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
   max-height: 9.5em; overflow: auto; padding: 12px 14px; background: var(--shop-well); border: 1px solid var(--shop-line); border-radius: 10px;
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.8rem; line-height: 1.5; word-break: break-all; white-space: pre-wrap; user-select: all;
 }
+/* the key of the thank-you page: a champagne-gold edge (a gradient on the border box under the well's padding box), a
+   slow glint across it */
+.shop-thanks .shop-key {
+  position: relative; border: 1px solid transparent;
+  background: linear-gradient(var(--shop-well), var(--shop-well)) padding-box,
+              linear-gradient(115deg, rgba(255, 214, 120, 0.7), rgba(255, 214, 120, 0.18) 45%, rgba(255, 214, 120, 0.7)) border-box;
+  box-shadow: 0 0 22px rgba(255, 205, 100, 0.08);
+}
+.shop-thanks .shop-key::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -40%; width: 30%; pointer-events: none; transform: skewX(-18deg);
+  background: linear-gradient(100deg, transparent, rgba(255, 236, 190, 0.16), transparent);
+  animation: shop-glint 7s 1.5s ease-in-out infinite;
+}
 .shop-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; }
 .shop-actions > * { flex: 1 1 200px; width: auto; }
+/* both labels of Copy sit in one grid cell: the button is as wide as the longer one and never changes size */
+.shop-copy { display: grid; place-items: center; }
+.shop-copy > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 8px; }
+.shop-copy .shop-copy-done, .shop-copy.shop-done .shop-copy-ready { visibility: hidden; }
+.shop-copy.shop-done .shop-copy-done { visibility: visible; }
 .shop-thanks .shop-h2 { margin-top: 40px; }
 .shop-thanks > div > p { color: var(--shop-muted); line-height: 1.6; }
-/* the help under the licence: what to do when something is wrong, a button to ask, the way back */
-.shop-help { margin: 40px 0 0; padding: 22px 24px; background: var(--shop-card); border: 1px solid var(--shop-line); border-radius: 14px; }
-.shop-thanks .shop-help .shop-h2 { margin: 0 0 8px; font-size: 1.2rem; }
+/* the help under the licence: what to do when something is wrong, a button to ask, the way back; its tint and its edge
+   are the accent, each a pseudo-element with an opacity */
+.shop-help {
+  position: relative; isolation: isolate; display: flex; align-items: flex-start; gap: 20px; margin: 44px 0 0; padding: 22px 26px;
+  border-radius: 14px;
+}
+.shop-help::before, .shop-help::after { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; pointer-events: none; }
+.shop-help::before { background: var(--shop-accent); opacity: 0.07; }
+.shop-help::after { border: 1px solid var(--shop-accent); opacity: 0.3; }
+.shop-help-icon { position: relative; isolation: isolate; flex: none; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; color: var(--shop-accent); }
+.shop-help-icon::before { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: 50%; background: currentColor; opacity: 0.14; }
+.shop-help-icon svg { display: block; }
+.shop-thanks .shop-help .shop-h2 { margin: 2px 0 8px; font-size: 1.2rem; }
 .shop-help p { margin: 0 0 14px; color: var(--shop-muted); line-height: 1.6; }
 .shop-help p strong { color: var(--shop-text); }
 .shop-help-links { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
 .shop-page .shop-help-links .shop-buy { width: auto; min-height: 42px; padding: 9px 20px; font-size: 0.98rem; color: var(--shop-ink); text-decoration: none; }
+
+/* less motion asked: nothing moves, the stars and the confetti are not shown (the script skips the confetti too) */
+@media (prefers-reduced-motion: reduce) {
+  .shop-buy, .shop-quiet { transition: none; }
+  .shop-buy:hover, .shop-buy:active { transform: none; }
+  .shop-logo, .shop-dots i, .shop-thanks .shop-key::after, .shop-spark, .shop-confetti b,
+  .shop-thanks[data-state="ready"] .shop-card, .shop-thanks[data-state="ready"] .shop-card::after { animation: none; }
+  .shop-dots i { opacity: 0.6; }
+  .shop-spark, .shop-confetti, .shop-thanks .shop-key::after { display: none; }
+}
 
 /* the foot: the shop's pages and the home */
 .shop-foot { border-top: 1px solid var(--shop-line); padding: 26px 0 40px; }
@@ -183,6 +276,8 @@ main.shop { max-width: none; margin: 0; padding: 0 0 56px; }
   .shop-hero { padding: 44px 16px 28px; }
   .shop-hero::before { width: 360px; margin-left: -180px; top: -120px; }
   .shop-icon { width: 72px; height: 72px; }
+  .shop-stage, .shop-logo { width: 84px; height: 84px; }
+  .shop-help { flex-direction: column; padding: 20px 18px; }
   .shop-offer { padding: 24px 20px 20px; border-radius: 16px; }
   .shop-amount { font-size: 3rem; }
   .shop-section { padding-top: 44px; }

@@ -7,7 +7,8 @@
   program a licence card as a native widget (`ui.licence_card`) that the settings' Licence page shows for every program,
   in place of its plain lines: the engraved iridescent foil, the sweeping light, the tilt with the pointer, the seal in
   relief, the back of the card (Wren's `about_card*.odin` and its `card-foil` and `card-seal` shaders), at least as
-  good as Wren's. Wren then shows the toolkit's card, so there is one.
+  good as Wren's. Wren then shows the toolkit's card, so there is one. Intent:
+  [src/md/features/licence-card.md](src/md/features/licence-card.md).
 - **The programs on the everything palette.** Each program calls `palette_chosen` before its content, names the
   elements its commands act through (`ui.act_name`, `command:<id>`) so Shift+Enter reaches them, and turns a dialog that
   asks one value into a command with arguments (opencode native's Rename the session and Set the model). Intent:

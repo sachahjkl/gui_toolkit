@@ -992,7 +992,7 @@ shift_enter_goes_to_a_command_s_button :: proc(t: ^testing.T) {
 				ui.label(fmt.tprintf("Line %d###l%d", i, i))
 			}
 			b := ui.button("###stop", "Stop the service")
-			ui.act_name(b.box, "command:service.stop")
+			ui.act_command(b.box, "service.stop")   // (the name "command:service.stop", as the commands source's item has it)
 		}
 	}
 	open_palette(t, &f, &r, "stop")

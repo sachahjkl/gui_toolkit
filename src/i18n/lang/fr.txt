@@ -442,15 +442,6 @@ fr Licence
 en Reading the licence…
 fr Lecture de la licence…
 
-en Registered
-fr Enregistré
-
-en Holder: %s
-fr Titulaire : %s
-
-en Edition: %s
-fr Édition : %s
-
 en Thank you for supporting %s.
 fr Merci de soutenir %s.
 
@@ -493,11 +484,29 @@ fr Licence %s
 en Settings
 fr Réglages
 
-en Show
-fr Afficher
+en Change
+fr Changer
 
 en Settings · %s
 fr Réglages · %s
+
+en Locked by a policy.
+fr Verrouillé par une règle.
+
+en Set on the command line for this run.
+fr Fixé par la ligne de commande pour cette exécution.
+
+en Off
+fr Non
+
+en On
+fr Oui
+
+en Reading the fonts…
+fr Lecture des polices…
+
+en Nothing matches
+fr Aucun résultat
 
 en Back
 fr Retour
@@ -537,12 +546,6 @@ fr Rétablir les valeurs par défaut
 
 en Put every setting of this page back to its default
 fr Remettre chaque réglage de cette page à sa valeur par défaut
-
-en Set on the command line for this run.
-fr Fixé par la ligne de commande pour cette exécution.
-
-en Locked by a policy.
-fr Verrouillé par une règle.
 
 en Takes effect at the next start.
 fr Prend effet au prochain démarrage.
@@ -597,9 +600,6 @@ fr Messages
 
 en Where %[0]s says what it did (copied, saved, deleted). System: the system's notifications, or %[0]s's window where the system has none. Window: only in %[0]s's window. Off: nowhere; a failure is always said.
 fr Là où %[0]s dit ce qu'il a fait (copié, enregistré, supprimé). Système : les notifications du système, ou sa propre fenêtre si le système n'en a pas. Fenêtre : seulement dans sa propre fenêtre. Non : nulle part ; un échec est toujours signalé.
-
-en Off
-fr Non
 
 en Language
 fr Langue
@@ -699,9 +699,6 @@ fr Animations
 
 en Whether transitions move: as the system asks (its setting to reduce motion), always, or never.
 fr Si les transitions bougent : comme le demande le système (son réglage de réduction des animations), toujours, ou jamais.
-
-en On
-fr Oui
 
 en The system's title bar
 fr La barre de titre du système
@@ -1936,12 +1933,6 @@ fr %s (par défaut)
 en Font
 fr Police
 
-en Reading the fonts…
-fr Lecture des polices…
-
-en Nothing matches
-fr Aucun résultat
-
 en Search fonts
 fr Chercher une police
 
@@ -1977,6 +1968,36 @@ fr Cette touche ne fait rien pendant que vous tapez dans un champ.
 
 en Keep
 fr Garder
+
+en Issued
+fr Émise
+
+en Order
+fr Commande
+
+en CERTIFIED
+fr CERTIFIÉ
+
+en %s licence, %s: %s
+fr Licence %s, %s : %s
+
+en , issued %s
+fr , émise le %s
+
+en , order %s
+fr , commande %s
+
+en Turn over
+fr Retourner
+
+en Done
+fr Terminé
+
+en Drag the card to turn it; the arrows turn it too; Escape brings it back
+fr Faites glisser la carte pour la tourner ; les flèches la tournent aussi ; Échap la ramène
+
+en Turn the card over
+fr Retourner la carte
 
 en Undo
 fr Annuler
@@ -2045,6 +2066,9 @@ fr %s : lecture…
 en %s: could not read (%s)
 fr %s : lecture impossible (%s)
 
+en Put back
+fr Remettre
+
 en Run
 fr Lancer
 
@@ -2056,6 +2080,9 @@ fr Choisir une touche
 
 en Make the letters its alias
 fr Faire des lettres son alias
+
+en Show
+fr Afficher
 
 en Hide
 fr Masquer

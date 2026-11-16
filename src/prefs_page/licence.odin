@@ -2,11 +2,14 @@ package tk_prefs_page
 
 // The Licence page, the same in every program that sells a licence (gt:licence): its state in one word (Unregistered,
 // Registered, a key that is not valid), what a licence is for, and what can be done: buy one (the site's pricing page),
-// paste a key, choose a licence file, remove it. One wording in every program; the program gives its product, its name
-// and its pricing page. Every read and write of the licence's file is a task's (ui.task), never the interface's thread.
+// paste a key, choose a licence file, remove it. A registered licence is shown as its card (ui.licence_card: the name, the
+// edition, the date and the order on it). One wording in every program; the program gives its product, its name, its
+// pricing page, its logo and its vendor. Every read and write of the licence's file is a task's (ui.task), never the
+// interface's thread.
 //
 //   prefs_page.licence_init(&app.licence, &app.ui, {store = {product = PRODUCT, program = APP}, name = "Inspecteur",
-//                           pricing_url = "https://inspecteur.froment.software/pricing/"})   at the start
+//                           pricing_url = "https://inspecteur.froment.software/pricing/", logo = LOGO_PNG,
+//                           vendor = "Froment Software"})   at the start
 //   opts.licence = &app.licence                           the settings show the Licence page
 //   prefs_page.licence_install_file(&app.licence, path)   a licence file dropped on the window, given on the command line
 //   prefs_page.licence_end(&app.licence)                  at the end, once the chores have stopped
@@ -32,12 +35,15 @@ LICENCE_PAGE :: "licence"
 @(private = "file", rodata) LICENCE_TAGS := [?]string{"licence", "license", "key", "register", "buy", "support"}
 
 // What the program gives: its product and where it keeps the licence (licence.Store_Options), its name as people read it
-// ("Inspecteur", "opencode native"), the site's pricing page (where Buy a licence goes; "": no Buy button).
+// ("Inspecteur", "opencode native"), the site's pricing page (where Buy a licence goes; "": no Buy button), and what its
+// licence card shows besides the licence (ui.licence_card): its logo, its vendor's name on the card's back.
 Licence_Options :: struct {
 	store:       licence.Store_Options,
 	name:        string,          // a constant of the program
 	pricing_url: string,          // a constant of the program
 	owner:       ^platform.Window,   // the window the file dialog belongs to (nil: none)
+	logo:        []u8,            // the program's logo, a picture file's bytes (#load of its PNG; nil: a card without one)
+	vendor:      string,          // who sells it ("Froment Software"): the back of the card says "<NAME> · <VENDOR>" ("": the name alone)
 }
 
 Licence :: struct {
@@ -187,13 +193,9 @@ licence_page_build :: proc(user: rawptr, em: f32) {
 	case !l.read:
 		if ui.tags("weak") { line("licence_state", i18n.tr("Reading the licence…"), em) }
 	case l.status.registered:
+		// (the card says who, which edition, when and which order: no line here says it again)
 		lic := l.status.licence
-		if ui.tags("good") { line("licence_state", i18n.tr("Registered"), em, em * 1.1) }
-		ui.space(ui.LINE_GAP)
-		line("licence_holder", fmt.tprintf(i18n.tr("Holder: %s"), lic.name), em)
-		if licence_editions(l.options.store.product) > 1 {
-			line("licence_edition", fmt.tprintf(i18n.tr("Edition: %s"), licence.edition_title(l.options.store.product, lic.edition)), em)
-		}
+		ui.licence_card("licence_card", licence_card_of(l, name, lic))
 		ui.space(ui.LINE_GAP)
 		if ui.tags("weak") { line("licence_thanks", fmt.tprintf(i18n.tr("Thank you for supporting %s."), name), em) }
 		ui.space(ui.ITEM_GAP)
@@ -270,12 +272,24 @@ sentence :: proc(text: string) -> string {
 	return string(b)
 }
 
-// The number of editions the product sells.
+// The card of a registered licence: the program's name and logo, the edition's title, the person, the day, the order; on
+// its back the program's name and its vendor's, in capitals (a name, not a sentence: never translated).
 @(private = "file")
-licence_editions :: proc(p: licence.Product) -> int {
-	n := 0
-	for e in p.editions { if e.id != "" { n += 1 } }
-	return n
+licence_card_of :: proc(l: ^Licence, name: string, lic: licence.Licence) -> ui.Licence_Card {
+	back := ascii_upper(name)
+	if l.options.vendor != "" { back = fmt.tprintf("%s · %s", back, ascii_upper(l.options.vendor)) }
+	return {
+		product = name, edition = licence.edition_title(l.options.store.product, lic.edition), name = lic.name, email = lic.email,
+		date = lic.date, order = lic.order, logo = l.options.logo, back_line = back,
+	}
+}
+
+// `text` with its ASCII letters in capitals (a program's or a vendor's name), in the temporary allocator.
+@(private = "file")
+ascii_upper :: proc(text: string) -> string {
+	b := transmute([]u8)strings.clone(text, context.temp_allocator)
+	for &c in b { if c >= 'a' && c <= 'z' { c -= 'a' - 'A' } }
+	return string(b)
 }
 
 // The system's Open dialog, then the file installed: both off the interface's thread.

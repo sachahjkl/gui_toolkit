@@ -413,6 +413,8 @@ State :: struct {
 	lazy_columns:    map[Key]Lazy_Column,
 	qr_codes:        map[Key]Qr_Cached,   // qr_code: each box's encoded text, kept while the box is built
 	morphs:          map[Key]Morph_Memory,   // morph_label: each label's text changing, kept while the label is built
+	licence_cards:   map[Key]^Licence_Card_Memory,   // licence_card: each card's motion, kept while it is built (the heap's)
+	licence_card_flat: bool,                 // set_licence_card_flat: every card drawn without the shader
 	toolbars:        map[Key]Toolbar_Memory,   // toolbar: each tool bar's groups, their widths, its panel
 	toolbar:         Toolbar_Build,            // the tool bar being built
 	lazy_frame:      [dynamic]^Lazy,   // this build's lazy columns (lazy_settle; frame memory)

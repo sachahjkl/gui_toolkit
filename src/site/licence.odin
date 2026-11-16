@@ -9,7 +9,8 @@ package tk_site
 // A program sells one licence at one price: the pages are made for one offer and one button.
 //
 //   <!-- licence-buy -->      the offer: the price, what the licence gives, the button and the script that opens the checkout
-//   <!-- licence-thanks -->   the licence of the purchase: who, the order, the key, a download, a copy button
+//   <!-- licence-thanks -->   the licence of the purchase: who, the order, the key, a download, a copy button, the help
+//                             (its celebration, the confetti and the card's sheen, is the block's own script and style)
 //
 // While Paddle's client token, the price id or the Worker's address is missing, the button says "Coming soon" and does
 // nothing: a site can be published before the shop is open.
@@ -115,31 +116,47 @@ info_link :: proc(question, label: string) -> string {
 SHOP_CHECK_SVG :: `<svg class="shop-check" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="10" fill="currentColor" opacity="0.16"/><path d="M5.8 10.4l2.8 2.8 5.6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 
 // The thank-you block: the status while the Worker makes the licence, then the licence card, from GET /licence?txn=.
-// data-state ("waiting", "ready", "failed") lets the style show a spinner only while the script waits.
+// data-state ("waiting", "ready", "failed") drives the style: the waiting dots only while the script waits, the card's
+// rise and sheen when the licence arrives. The page's hero (the logo, the title) is the template's, above the mark.
 licence_thanks_block :: proc(s: Shop) -> string {
 	b := strings.builder_make(context.temp_allocator)
 	put(&b, `<div class="shop-thanks" id="licence-thanks" data-state="waiting" data-worker="`, esc(strings.trim_right(s.worker, "/")), `" data-poll-seconds="3" data-give-up-seconds="150" data-help="`, esc(s.help), `">`, "\n")
-	put(&b, `  <p class="shop-wait"><span class="shop-spinner" aria-hidden="true"></span><span id="status" role="status">Making your license&hellip;</span></p>`, "\n")
+	put(&b, `  <p class="shop-wait"><span id="status" role="status">Making your license</span><span class="shop-dots" aria-hidden="true"><i></i><i></i><i></i></span></p>`, "\n")
+	put(&b, `  <p class="shop-warm" id="warm" hidden>You keep an independent program moving forward. It&nbsp;means&nbsp;a&nbsp;lot.</p>`, "\n")
 	put(&b, `  <div id="licence" hidden>`, "\n")
 	put(&b, `    <div class="shop-card">`, "\n")
+	for _ in 0 ..< 6 { put(&b, `      <i class="shop-spark" aria-hidden="true"></i>`, "\n") }
 	put(&b, `      <h2 class="shop-who" id="who"></h2>`, "\n")
 	put(&b, `      <dl class="shop-meta"><div><dt>Order</dt><dd id="order"></dd></div><div><dt>Date</dt><dd id="date"></dd></div><div id="updates-row" hidden><dt>Updates until</dt><dd id="updates"></dd></div></dl>`, "\n")
 	put(&b, `      <p class="shop-key-label">Your key</p>`, "\n")
 	put(&b, `      <div class="shop-key" id="key" tabindex="0"></div>`, "\n")
-	put(&b, `      <div class="shop-actions"><button class="shop-buy" type="button" id="download">Download the `, esc(s.extension), ` file</button><button class="shop-quiet" type="button" id="copy">Copy the key</button></div>`, "\n")
+	put(&b, `      <div class="shop-actions"><button class="shop-buy" type="button" id="download">Download the `, esc(s.extension), ` file</button>`,
+		`<button class="shop-quiet shop-copy" type="button" id="copy"><span class="shop-copy-ready">`, SHOP_COPY_SVG, `Copy the key</span>`,
+		`<span class="shop-copy-done" aria-hidden="true">`, SHOP_COPIED_SVG, `Copied</span></button></div>`, "\n")
 	put(&b, "    </div>\n")
 	put(&b, `    <h2 class="shop-h2">Registering it</h2>`, "\n")
 	put(&b, `    <p>`, s.register, "</p>\n")
 	put(&b, `    <p class="shop-fine">The same key is sent to the e-mail address you gave at the checkout, with the file attached. Keep it: it covers `, updates_words(s), `, on every computer you use. `, esc(s.name), ` checks it on your computer, without any network access.</p>`, "\n")
 	put(&b, "  </div>\n")
 	put(&b, `  <aside class="shop-help" id="questions">`, "\n")
-	put(&b, `    <h2 class="shop-h2">A problem with your license? We are here.</h2>`, "\n")
-	put(&b, `    <p>No key, a key that is refused, a wrong name: write to us with your <strong>order number</strong> (never the key itself) and we will sort it out.</p>`, "\n")
-	put(&b, `    <p class="shop-help-links"><a class="shop-buy" id="help-link" href="`, esc(s.help), `">Ask for help</a><a href="../pricing/">Back to the pricing page</a></p>`, "\n")
+	put(&b, `    <span class="shop-help-icon" aria-hidden="true">`, SHOP_HELP_SVG, "</span>\n")
+	put(&b, "    <div>\n")
+	put(&b, `      <h2 class="shop-h2">A problem with your license? We are here.</h2>`, "\n")
+	put(&b, `      <p>No key, a key that is refused, a wrong name: write to us with your <strong>order number</strong> (never the key itself) and we will sort it out.</p>`, "\n")
+	put(&b, `      <p class="shop-help-links"><a class="shop-buy" id="help-link" href="`, esc(s.help), `">Ask for help</a><a href="../pricing/">Back to the pricing page</a></p>`, "\n")
+	put(&b, "    </div>\n")
 	put(&b, "  </aside>\n")
 	put(&b, "</div>\n<script>\n", LICENCE_THANKS_SCRIPT, "</script>")
 	return strings.to_string(b)
 }
+
+// The icons of the thank-you block, drawn in currentColor so they take the button's or the accent's colour.
+@(private = "file")
+SHOP_COPY_SVG :: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`
+@(private = "file")
+SHOP_COPIED_SVG :: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>`
+@(private = "file")
+SHOP_HELP_SVG :: `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24m5.66 0 4.24-4.24m-4.24 9.9 4.24 4.24m-9.9-4.24-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>`
 
 // `page` with its licence marks replaced by the blocks of `s`. A page without the marks stays as it is.
 with_licence :: proc(page: string, s: Shop) -> string {
@@ -158,16 +175,19 @@ shop_open :: proc(s: Shop) -> bool {
 // The values of the template pages' {{placeholders}}: the HTML each puts there.
 licence_values :: proc(s: Shop) -> [][2]string {
 	retention := s.retention_days > 0 ? s.retention_days : 90
-	icon, icon_small := "", ""
+	icon, icon_small, logo := "", "", ""
 	if s.icon != "" {
 		icon = cat(`<img class="shop-icon" src="`, esc(s.icon), `" alt="" width="88" height="88">`)
 		icon_small = cat(`<img src="`, esc(s.icon), `" alt="" width="26" height="26">`)
+		// the thank-you page's logo: larger, on a stage that holds its glow while the picture bobs
+		logo = cat(`<span class="shop-stage"><img class="shop-logo" src="`, esc(s.icon), `" alt="" width="104" height="104"></span>`)
 	}
 	out := make([dynamic][2]string, context.temp_allocator)
 	append(&out,
 		[2]string{"name", esc(s.name)},
 		[2]string{"icon", icon},
 		[2]string{"icon_small", icon_small},
+		[2]string{"logo", logo},
 		[2]string{"shop_css", LICENCE_CSS},
 		[2]string{"product_title", esc(s.product_title)},
 		[2]string{"price", s.price},
@@ -460,12 +480,41 @@ LICENCE_THANKS_SCRIPT :: `(function () {
   // Paddle's checkout leads here with the transaction id (the pricing page passes txn; _ptxn is Paddle's own name for it)
   var params = new URLSearchParams(location.search);
   var txn = params.get("txn") || params.get("_ptxn") || "";
+  var valid = /^txn_[0-9a-z]{20,40}$/.test(txn);
   var started = Date.now();
   function say(text) { status.textContent = text; }
   function state(name) { box.setAttribute("data-state", name); }
   function set(id, text) { document.getElementById(id).textContent = text; }
 
-  if (!/^txn_[0-9a-z]{20,40}$/.test(txn)) {
+  // the help form opens with the order number filled in: an order number is not a secret, the key is and is never sent
+  var help = document.getElementById("help-link");
+  if (help && valid) {
+    try { var u = new URL(help.href); u.searchParams.set("order", txn); help.href = u.toString(); } catch (e) {}
+  }
+
+  // one short burst of confetti, unless the visitor asked for less motion; its hues are the style's (the accent first)
+  var celebrated = false;
+  function celebrate() {
+    if (celebrated) return;
+    celebrated = true;
+    if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var burst = document.createElement("div");
+    burst.className = "shop-confetti";
+    burst.setAttribute("aria-hidden", "true");
+    for (var i = 0; i < 56; i++) {
+      var p = document.createElement("b");
+      p.style.left = (Math.random() * 100) + "%";
+      p.style.setProperty("--x", ((Math.random() - 0.5) * 220) + "px");
+      p.style.setProperty("--r", ((Math.random() - 0.5) * 1080) + "deg");
+      p.style.setProperty("--t", (3.6 + Math.random() * 2.4) + "s");
+      p.style.setProperty("--d", (Math.random() * 1.6) + "s");
+      burst.appendChild(p);
+    }
+    document.body.appendChild(burst);
+    setTimeout(function () { burst.remove(); }, 8500);
+  }
+
+  if (!valid) {
     state("failed");
     say("This page shows the license of a purchase: it needs the transaction number that the checkout passes on. If you have just paid, your license is also on its way to your e-mail address.");
     return;
@@ -479,8 +528,10 @@ LICENCE_THANKS_SCRIPT :: `(function () {
     if (j.updates_until) { set("updates", j.updates_until); document.getElementById("updates-row").hidden = false; }
     set("key", j.licence);
     document.getElementById("licence").hidden = false;
+    document.getElementById("warm").hidden = false;
     state("ready");
     say("Your license is ready. Thank you!");
+    celebrate();
     document.getElementById("download").addEventListener("click", function () {
       var url = URL.createObjectURL(new Blob([j.file], { type: "application/octet-stream" }));
       var a = document.createElement("a");
@@ -492,8 +543,15 @@ LICENCE_THANKS_SCRIPT :: `(function () {
       setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
     });
     document.getElementById("copy").addEventListener("click", function () {
+      // (the two labels share one cell, so the button keeps its width; aria-hidden follows the label shown)
       var b = this;
-      var done = function () { b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy the key"; }, 2200); };
+      var ready = b.querySelector(".shop-copy-ready"), copied = b.querySelector(".shop-copy-done");
+      function mark(on) {
+        b.classList.toggle("shop-done", on);
+        ready.setAttribute("aria-hidden", on ? "true" : "false");
+        copied.setAttribute("aria-hidden", on ? "false" : "true");
+      }
+      var done = function () { mark(true); setTimeout(function () { mark(false); }, 2200); };
       if (navigator.clipboard) navigator.clipboard.writeText(j.licence).then(done, selectKey); else selectKey();
     });
   }

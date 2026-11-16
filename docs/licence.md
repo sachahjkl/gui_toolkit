@@ -72,7 +72,8 @@ newer licence.
 
 A program with a settings page (gt:prefs_page) does not build its own licence interface: `prefs_page.Licence` holds the
 store, runs its reads and changes as tasks and shows the **Licence** page, with one wording in every program (Unregistered,
-Buy a licence, Paste a licence key, Choose a licence file…, Remove the licence). See [prefs_page.md](prefs_page.md#the-licence).
+Buy a licence, Paste a licence key, Choose a licence file…, Remove the licence); a registered licence shows as its card
+([licence-card.md](licence-card.md)). See [prefs_page.md](prefs_page.md#the-licence).
 The store below is what it uses, and what a program without that page calls itself.
 
 ### The store
@@ -231,9 +232,22 @@ line with a small "i" that links the pricing page's question about it (`#q-once`
 button (`data-edition`, `data-price`, `data-label`), the fine print, and the script
 that opens Paddle's checkout (an overlay; Paddle.js is loaded at the first press) and goes to the thank-you page with the
 transaction id. `licence_thanks_block(shop)` asks the Worker for the licence until it is ready, then shows who it is for, the
-order, the key, a download of the file and a copy button; every value is put as text. Its `data-state` (`waiting`,
-`ready`, `failed`) shows a spinner only while it waits. Under it, Wren's help block: "A problem with your license? We are
-here.", an "Ask for help" button (`help`) and the way back to the pricing page.
+order, the key, a download of the file and a copy button; every value is put as text. It is Wren's thank-you page:
+
+- While it waits, the status line under the hero ends with three breathing dots.
+- When the licence arrives, a warm line shows ("You keep an independent program moving forward. It means a lot."), one
+  burst of confetti falls (the accent, gold, white and three fixed hues), the licence card rises in and a sheen crosses
+  it once, and six gold stars twinkle at its corners.
+- The key sits in a box with a champagne-gold edge and a slow glint. Copy holds its two labels ("Copy the key",
+  "Copied") in one grid cell, so the button keeps its width.
+- Under it, Wren's help block: an icon, "A problem with your license? We are here.", an "Ask for help" button (`help`)
+  and the way back to the pricing page. The script adds the order number to the help address (`order=txn_...`), never
+  the key.
+
+Its `data-state` (`waiting`, `ready`, `failed`) drives the style: the dots only while it waits, the card's rise and sheen
+when it is ready. The template's hero shows the program's logo (`{{logo}}`: `Shop.icon` at 104 pixels) floating with a
+slow bob in a glow of the accent. The colours are the site's (`--accent` and the surfaces); the gold is the same in every
+program. With `prefers-reduced-motion: reduce`, nothing moves: no bob, no sheen, no glint, no stars, no confetti.
 
 While the client token, the price id, the Worker's address or the thank-you page is missing, the button says "Coming soon"
 and does nothing (`shop_open` says the same): a site can be published before the shop is open.
@@ -281,7 +295,8 @@ Their words are Wren's, the reference for every shop page: what a reader sees wr
 keeps its names. The pricing page is a hero (the icon, a quiet "Pricing" label, the program's name large, one line), the
 offer's card, "Before you buy" (the seller, the platform, the license, the delivery, the withdrawal, the checkout, the
 code, the terms, questions), then the questions (the versions, work, subscription, the offline check, the code, how to
-register). The thank-you page thanks the buyer for supporting the program. The four legal pages are Wren's, with a "Legal"
+register). The thank-you page is a hero (the logo floating in its glow, "Thank you for supporting name"), then the
+thank-you block. The four legal pages are Wren's, with a "Legal"
 label and "Last updated" (`updated`): the license terms (what you buy, delivery, the key, seller and payment, warranty,
 questions), the refunds (Paddle handles them, the statutory withdrawal, the effect on the license), the privacy policy
 (the program, the site, the purchase, the rights) and the imprint (publisher, responsible for the content, hosting,

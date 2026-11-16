@@ -31,6 +31,24 @@ act_name :: proc(b: ^Box, name: string) {
 	s.acts_next[act_hash(name)] = b.key
 }
 
+// States that box `b` acts through the command `id` (its act name "command:<id>", the commands source's): the palette's
+// Shift+Enter on that command comes to it. The program's own buttons of its commands call it at their build.
+act_command :: proc(b: ^Box, id: string) {
+	if b == nil || id == "" { return }
+	s := gs()
+	s.acts_next[act_hash_command(id)] = b.key
+}
+
+// The hash of "command:<id>", with no string made per element.
+@(private = "file")
+act_hash_command :: proc(id: string) -> u64 {
+	buf: [128]u8
+	prefix :: "command:"
+	n := copy(buf[:], prefix)
+	n += copy(buf[n:], id)
+	return act_hash(string(buf[:n]))
+}
+
 // Whether a window of the program (this one, and those its views are built in) showed `name` in its last frame.
 act_shown :: proc(name: string) -> bool {
 	if name == "" { return false }

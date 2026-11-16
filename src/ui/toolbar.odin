@@ -606,6 +606,9 @@ toolbar_tool_button :: proc(id: string, t: Toolbar_Tool, label, icon, shortcut: 
 		o := Button_Options{tip = tip, face = t.on ? .Toggled : .Ghost, intent = t.on ? .Primary : t.intent, disabled = t.disabled, icon_font = t.icon_font, lit = open}
 		sig = button(id, icon = icon, o = o)
 	}
+	// (a tool of a command is where the palette's Shift+Enter goes for it: every program's bar names its commands, none
+	// writes it)
+	act_command(sig.box, t.command.id)
 	clicked := sig.clicked && !t.disabled
 	if t.menu == "" || sig.box == nil { return clicked }
 	if sig.box.a11y != nil { sig.box.a11y.popup = .Menu; sig.box.a11y.expanded = open }
