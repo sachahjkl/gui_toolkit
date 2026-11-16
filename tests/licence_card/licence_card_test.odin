@@ -68,6 +68,9 @@ pictures :: proc(t: ^testing.T, light: bool) {
 	// rasterizer of the Windows runners, a foil frame takes seconds and its pixels are not a GPU's, and the foil's relief is
 	// not even made there (the runners' chores took minutes for it); the flat card everywhere)
 	software := render.adapter_info(s.renderer).software
+	// (WebGPU over WARP: a frame costs a third of a second, ten pictures pass the test's limit; the Direct3D 11 job
+	// compares the flat card on WARP, and Linux compares both on a device of its own)
+	if software && render.USE_WGPU { return }
 	if software { ui.set_licence_card_flat(s.state, true) }
 	wait_settled(s)
 	shaded := look(s).shaded && !software

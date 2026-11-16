@@ -122,7 +122,8 @@ In the Flat finish the card keeps its relief: a licence is the one place where t
   Glass, Machined, Edged) on a dark and a light theme, compared with references (`tests/licence_card`): the flat card
   on every device, the foil on a GPU of its own. On WARP (the Windows runners' software rasterizer) a foil frame takes
   seconds and its pixels are not a GPU's: the foil pictures are not taken there, and the motion tests draw the card flat
-  (its motion does not depend on the foil).
+  (its motion does not depend on the foil). WebGPU over WARP takes no picture at all (a third of a second a frame:
+  ten pictures pass a test's limit); the Direct3D 11 job compares the flat card on WARP.
 - **The card at rest asks for no frame**: after the sweep and an ease, `hosts_due` says nothing is due.
 - **The tilt follows the pointer and comes back**: the pointer on a corner, the card's turn towards it; gone, zero.
 - **Turn over**: a drag of half a turn shows the back (its plane drawn, the front's culled); Escape brings it back.
