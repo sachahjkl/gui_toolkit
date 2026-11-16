@@ -23,7 +23,7 @@ sway_start :: proc(s: ^Sway, dir: string, o := Sway_Options{}) -> (why: string) 
 	if os.make_directory_all(s.runtime) != nil { return fmt.tprintf("%s cannot be made", s.runtime) }
 	_ = os.chmod(s.runtime, {.Read_User, .Write_User, .Execute_User})   // (a runtime directory is the user's alone)
 	homes := make([dynamic]string, context.temp_allocator)
-	if o.homes { append(&homes, "home", "config", "data", "state") }
+	if o.homes { append(&homes, "config", "data", "state") }
 	if o.cache { append(&homes, "cache") }
 	for h in homes {
 		if os.make_directory_all(fmt.tprintf("%s/%s", s.dir, h)) != nil { return fmt.tprintf("%s/%s cannot be made", s.dir, h) }
@@ -63,9 +63,10 @@ sway_start :: proc(s: ^Sway, dir: string, o := Sway_Options{}) -> (why: string) 
 	extra := make([dynamic]string, context.temp_allocator)
 	append(&extra, fmt.tprintf("XDG_RUNTIME_DIR=%s", s.runtime), fmt.tprintf("WAYLAND_DISPLAY=%s", s.display), fmt.tprintf("SWAYSOCK=%s", s.ipc))
 	if o.homes {
-		// (HOME too: what a program puts under it, an install in ~/.local/opt, stays in the session's folder, not the
-		// person's; the session bus stays the person's through DBUS_SESSION_BUS_ADDRESS)
-		append(&extra, fmt.tprintf("HOME=%s/home", s.dir), fmt.tprintf("XDG_CONFIG_HOME=%s/config", s.dir), fmt.tprintf("XDG_DATA_HOME=%s/data", s.dir), fmt.tprintf("XDG_STATE_HOME=%s/state", s.dir))
+		// (HOME is the session's folder: what a program puts under it, an install in ~/.local/opt, stays there, not in
+		// the person's home; and the folders above are under it, so a path a program shows reads "~/config/...", with
+		// no path of the machine in a picture. The session bus stays the person's through DBUS_SESSION_BUS_ADDRESS)
+		append(&extra, fmt.tprintf("HOME=%s", s.dir), fmt.tprintf("XDG_CONFIG_HOME=%s/config", s.dir), fmt.tprintf("XDG_DATA_HOME=%s/data", s.dir), fmt.tprintf("XDG_STATE_HOME=%s/state", s.dir))
 	}
 	if o.cache { append(&extra, fmt.tprintf("XDG_CACHE_HOME=%s/cache", s.dir)) }
 	env := env_with({"DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_CURRENT_DESKTOP"}, ..extra[:])
