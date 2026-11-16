@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.290.0] - 2026-11-16 11:39
+
+### Fixed
+- **A test session's programs keep out of your home folder.** With `homes`, `toolbox.sway_start` also gives its programs a `HOME` of the session's own: an install a live test makes (now in `~/.local/opt`) no longer lands in the person's home.
+
 ## [0.289.0] - 2026-11-16 10:52
 
 ### Added
@@ -4015,6 +4020,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.290.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.290.0
 [0.289.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.289.0
 [0.288.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.288.1
 [0.288.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.288.0
