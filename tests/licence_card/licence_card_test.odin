@@ -7,6 +7,7 @@ package licence_card_test
 import "core:fmt"
 import "core:math"
 import "core:testing"
+import "gt:render"
 import "gt:testkit/session"
 import "gt:ui"
 
@@ -64,8 +65,9 @@ pictures :: proc(t: ^testing.T, light: bool) {
 	p := ui.palette_of("Midnight", light)
 	s := session.start(t, {size = {640, 520}, palette = p, user = &sc, build = scene_build})
 	wait_settled(s)
-	// (the foil where this backend has the shader: Direct3D 11 needs its blob; the flat card everywhere)
-	shaded := look(s).shaded
+	// (the foil where this backend has the shader (Direct3D 11 needs its blob) on a device of its own: on WARP, the software
+	// rasterizer of the Windows runners, a foil frame takes seconds and its pixels are not a GPU's; the flat card everywhere)
+	shaded := look(s).shaded && !render.adapter_info(s.renderer).software
 	for flat in ([]bool{false, true}) {
 		if !flat && !shaded { continue }
 		ui.set_licence_card_flat(s.state, flat)
@@ -93,6 +95,7 @@ a_picture_per_finish_on_a_light_theme :: proc(t: ^testing.T) { pictures(t, true)
 at_rest_no_frame_is_due :: proc(t: ^testing.T) {
 	sc := Scene{card = SAMPLE}
 	s := session.start(t, {size = {640, 520}, animations = true, user = &sc, build = scene_build})
+	ui.set_licence_card_flat(s.state, true)   // (the motion is the same on the flat card; the foil's frames cost seconds each on WARP: the pictures test the foil)
 	session.wait_until(s, proc(s: ^session.Session) -> bool { l := look(s); return l.found && l.settled }, "the card's textures")
 	// (the first show's sweep, then the pointer on the card and away: a sweep and an ease)
 	session.advance(s, 3200)
@@ -120,6 +123,7 @@ at_rest_no_frame_is_due :: proc(t: ^testing.T) {
 the_tilt_follows_the_pointer_and_comes_back :: proc(t: ^testing.T) {
 	sc := Scene{card = SAMPLE}
 	s := session.start(t, {size = {640, 520}, animations = true, user = &sc, build = scene_build})
+	ui.set_licence_card_flat(s.state, true)   // (the motion is the same on the flat card; the foil's frames cost seconds each on WARP: the pictures test the foil)
 	wait_settled(s)
 	b := session.get(s, "licence_card")
 	session.move(s, b.rect.min + {2, 2})
@@ -142,6 +146,7 @@ the_tilt_follows_the_pointer_and_comes_back :: proc(t: ^testing.T) {
 turned_over_it_shows_its_back_and_escape_brings_it_home :: proc(t: ^testing.T) {
 	sc := Scene{card = SAMPLE}
 	s := session.start(t, {size = {720, 560}, animations = true, user = &sc, build = scene_build})
+	ui.set_licence_card_flat(s.state, true)   // (the motion is the same on the flat card; the foil's frames cost seconds each on WARP: the pictures test the foil)
 	wait_settled(s)
 	session.click(s, "licence_turn")
 	testing.expect(t, look(s).turned, "the card is free")
