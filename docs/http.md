@@ -55,6 +55,18 @@ location, found := http.header_value(res.headers, "Location")
 - `header_value(headers, name)`: the first header of that name; names compare without case.
 - A redirect of a request with a body is followed as browsers do: 303 (and 301, 302 after a POST) becomes a GET.
 
+## Connections
+
+`request` and `get` keep their connections open and reuse them: the next request to the same server (scheme, host and
+port) goes on a connection already made, with no new TCP connection and no new TLS handshake. Nothing to set up and no
+client to keep: the pool is the process's, for every thread.
+
+- Several requests at the same time to one server use one connection each; after them, those connections are reused.
+- Linux: at most `POOL_IDLE` (8) idle libcurl handles wait, each with libcurl's connections (5 at most; one idle for more
+  than 118 s is not reused). Windows: one WinHTTP session for the process, which pools its connections by server.
+- A connection that the server or a tunnel closed while it waited is found closed by the client, which connects again.
+- An event stream (`events`) and a WebSocket hold a connection of their own for their whole life.
+
 ## Form bodies
 
 Pure procedures: no system call, testable anywhere.
@@ -121,6 +133,9 @@ for {
   `ws_recv`, when no other thread uses the socket.
 - Windows: WinHTTP's WebSocket. Linux: any libcurl (7.18.1 or later), with or without its own WebSocket API: curl makes
   the connection (TLS, a proxy as a tunnel), the package writes the upgrade and the frames.
+- Linux: a `ws://` socket to a loopback address written as such (`127.x.x.x`, `[::1]`) needs no libcurl: the package
+  makes the TCP connection itself (no TLS and no proxy apply there). `gt:cdp` connects there, so a program's tools drive
+  it in a shell without curl. `ws://localhost` is a name: libcurl looks it up.
 - A frame that breaks the protocol (masked by the server, an unknown opcode) ends the socket: `.Closed`.
 
 ## Errors

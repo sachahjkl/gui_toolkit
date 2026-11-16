@@ -8,7 +8,9 @@ fold on a page of technical settings alone, found by a search), never hidden. Ea
 definitions, not the values.
 
 The columns: the name (what the file holds), the set that registers it (`Standard_Set`), its default, its range or
-choices, and what applies it. "Program" in the Default column is the program's own (`Standard_Defaults`). "Start":
+choices, and what applies it. Each number's unit is its value kind's ([config.md](config.md#what-a-value-is)): the
+times in ms are `Duration`s, the lengths in px or em `Length`s, the multipliers (×) `Factor`s, the speeds `Rate`s; the
+families are `Font_Family`, the theme a `Theme`, the emoji font a `Path`, the updates' address an `Address`. "Program" in the Default column is the program's own (`Standard_Defaults`). "Start":
 read at the next start (`Def.restart`). "Advanced": under the folded part. `tests/prefs_page` checks that this page
 names every standard preference.
 
@@ -29,7 +31,7 @@ names every standard preference.
 | `appearance.theme` | Program | the program's themes | `appearance_read`, `ui.theme_show` |
 | `appearance.mode` | Program (`system`) | `system`, `dark`, `light` | `ui.theme_show` |
 | `appearance.finish` | Program (`machined`) | `machined`, `edged`, `flat`, `gradient`, `glass` | `ui.theme_show` |
-| `appearance.glow` | Program (1) | 0 to 1 | `ui.theme_show` (`Theme_Choice.glow`) |
+| `appearance.glow` | Program (1) | 0 to 1, shown 0 to 100 % (a `Fraction`) | `ui.theme_show` (`Theme_Choice.glow`) |
 | `appearance.font_size` | Program (14 px) | 10 to 24 px | the program's base style |
 | `appearance.zoom` | 1 | 0.5 to 3 | `ui.set_zoom` |
 | `appearance.density` | 1 | 0.6 to 1.2 | `ui.set_density` |

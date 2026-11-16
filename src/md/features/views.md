@@ -859,6 +859,10 @@ after `views_init`.
 - The builds: `testkit/session` with a headless host (`Open_Options.headless`). Internal windows and panels are built
   in the owner's State. The External presentation uses a backend for tests: it opens offscreen windows
   (`open_window_offscreen`) with their own State. A flag of this backend says "no drop outside" to test Wayland's rule.
+- A program's own test (`session.attach` of an app on `gt:host`, its window offscreen) keeps the program's backend:
+  `host.view_windows` opens its windows offscreen when the owner's is (section 4.1, decision 18), and
+  `session.view_window` gives each one as a session of the attached app. Refused: a test backend per program (ocn's
+  `Aside_Window` built the window's frames by hand, and missed what the host does: the step's close, the hooks given).
 
 ---
 
@@ -950,6 +954,23 @@ View_Window_Ask :: struct { title: string, size: [2]int, at: Maybe([2]int), owne
     internal windows and dialogs shown over the view (or the content), bottom to top, as last laid out. The toolkit
     cannot draw over a web view; the program moves it aside or clips it. Refused: the toolkit moving the child window
     itself (it does not own it, and clipping a child window is per system).
+16. **A record stays while its window is open.** `view_close` (and `view_ended`, any sweep) frees the records closed
+    with no answer, but the window of one is closed by the next step (decision 1): a record freed before it lost the
+    window's handle, the backend's `close` never came, and the window and its State stayed (ocn's /btw panel closed in
+    its own window). `views_sweep` keeps a record whose window is open (`w_state`) until the step closed it; that step's
+    own sweep frees it. A view opened again in between finds its record and keeps its window.
+17. **The program's overlays in every view's window.** A program builds its overlays at the end of its main window's
+    build (a context menu, a chip); a menu opened in a view's window is that window's State's (its menus, its
+    selection), so it is built only in that window's build. `views_set_window_end(vs, end, user)` sets one hook for the
+    program: `end(user, v)` at the end of each build of each view's window, after the view, in its State (`v` the view
+    it shows; dialogs come after it, in end_build). Refused: each view's build calling the overlays (a view in a dialog
+    or a panel would build them twice, and every view had to know it), and a hook per kind (the overlays are the
+    program's, not a view's).
+18. **Offscreen with its owner.** A view's window of an offscreen owner (a test's app on `gt:host`) is offscreen too
+    (`Open_Options.headless` for a window that is not the first: no surface; the owner's scale). It builds and draws no
+    picture: the offscreen renderer has one target, the first window's, which a test reads. Its State keeps its
+    owner's clock (`set_clock` of the root owner, read through `style_owner`: a test's `advance` moves a tooltip there
+    too). Its show activates it and its close gives the owner the activation back, as a test backend's.
 
 `src/host/views.odin` implements it:
 

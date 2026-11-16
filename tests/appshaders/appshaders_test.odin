@@ -309,7 +309,7 @@ refusals :: proc(t: ^testing.T) {
 	testing.expect(t, !draw.app_shader(&f.dc, f.shader, BOX, {{0, 0, 0, 0}}), "recording a picture")
 	draw.rect(&f.dc, BOX, draw.Color{0, 0, 0, 1})
 	draw.picture_end(&f.dc)
-	draw.picture_destroy(&f.dc, &pic)
+	draw.picture_destroy(&pic)
 	img := finish(&f)
 	testing.expectf(t, near(px(img, 20, 20), {255, 255, 255}), "nothing was drawn: %v", px(img, 20, 20))
 

@@ -48,7 +48,10 @@ The rules:
   `session.hide(s)` and `session.show(s)` the application hiding its window and showing it again (its views' windows
   follow).
   `o.refuse` refuses every window; `o.no_positions` is Wayland's rule (no drop outside, no drag of a window onto the
-  owner's targets). An action that fails ends the test with its message (Linux: `testing.fail_now`; Windows: a time
+  owner's targets). An attached application on `gt:host` keeps its own backend (`host.view_windows`): with its window
+  offscreen, its views' windows are offscreen too and its frames frame them; `session.view_window(s, vs, id)` gives
+  each as a session (`find`, `click`, `key`, `advance`: the application's clock), with no pixels (`capture` is the
+  main window's). A program's test needs no backend of its own. An action that fails ends the test with its message (Linux: `testing.fail_now`; Windows: a time
   limit of 0 after the message, the runner's signal handling allows no more).
 - **Barriers, never sleeps.** `session.wait_until(s, ready, "what")`, `wait_box`, `wait_text`, `wait_gone`, `wait_idle` make frames until what they wait for holds; a bound (`bound`, 60 s by default) only ends a failing run. Every input action returns once what it caused is built.
 - **Time is the session's.** `session.advance(s, ms)` moves the clock (`ui.set_clock`) frame by frame: a tooltip's delay, a caret's blink, a held scroll bar arrow's repeat, a scroll bar that hides happen with no wait. Elsewhere: a clock passed in (`Build_Params.time_ms`, `platform.cadence_*` take theirs), a semaphore or a barrier for another thread.

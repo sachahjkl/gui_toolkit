@@ -14,6 +14,13 @@ client now uses this package; opencode native can drop ureq and tungstenite for 
   (`frame.odin`). Distributions build libcurl without its WebSocket API (nixpkgs: `websocketSupport ? false`; before
   8.11 it was off by default), and `gt:cdp` drives every program's automation through this socket: a dependency on that
   API breaks them on such a machine.
+- **A `ws://` socket to this machine is a TCP connection of our own, with no libcurl (Linux).** The host is a loopback
+  address written as such (`127.x.x.x`, `::1`). Such a socket needs no TLS, and no proxy carries a connection to this
+  machine, so libcurl adds nothing to it. `gt:cdp` connects only there, and it must work wherever a program's tool
+  runs: a Nix shell has no libcurl unless it lists curl. 0.287.0 put the DevTools client on libcurl, and every program
+  whose shell did not list curl lost its live tests: `ws_connect` answered `.No_Client`. The connection is non-blocking,
+  bounded by `connect_bound`, with `TCP_NODELAY` as libcurl sets it (a call and its answer are small writes: Nagle's
+  wait and the delayed acknowledgement add 40 ms to each). `localhost` goes through libcurl: it is a name to look up.
 - **One codec in the toolkit.** `frame.odin` is the codec `gt:cdp` had, moved here and made private; its tests came with
   it. `gt:cdp` uses `ws_*`. The devtools server (`src/devtools/server.odin`) speaks the server's side and keeps its own.
 - **TLS asks for HTTP/1.1.** `CURL_HTTP_VERSION_1_1` keeps ALPN from agreeing on HTTP/2, where an upgrade does not
@@ -69,7 +76,8 @@ client now uses this package; opencode native can drop ureq and tungstenite for 
 - **libcurl's WebSocket API (`curl_ws_*`, `CONNECT_ONLY` = 2).** The first version used it: the frames were curl's. It
   is missing from libcurl before 7.86 and from the many builds without `--enable-websockets` (nixpkgs' among them), and
   the CDP client cannot fail on them.
-- **Our own socket over `core:net`.** What CDP had: no TLS, no proxy. curl's raw connection gives both.
+- **Our own socket over `core:net` for every address.** What CDP had: no TLS, no proxy. curl's raw connection gives both.
+  Only a socket to the loopback, which needs neither, has a connection of our own.
 - **A Rust crate (tungstenite, ureq).** A second toolchain and a static library per program, and its own TLS beside the
   system's certificates.
 - **Wren's asynchronous manager.** A page's WebSocket (back-pressure, queued handshakes per host, a loop thread) is a

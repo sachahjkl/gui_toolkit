@@ -8,6 +8,9 @@ package tk_session
 //
 //   ui.views_set_windows(&app.views, session.view_windows(s))
 //   w := session.view_window(s, &app.views, "props")   // the window "props" is in (nil: none)
+//
+// An attached application on gt:host keeps its own backend (host.view_windows: offscreen windows with an offscreen
+// owner, framed by its frames); view_window gives each of them as a session too.
 
 import "core:strings"
 import "../../platform"
@@ -47,12 +50,33 @@ window_hide :: proc(user: rawptr, handle: rawptr) {
 	c.hidden = true
 }
 
-// The session of the window a view is in now (nil: it is in none).
+// The session of the window a view is in now (nil: it is in none). For an attached application, its backend's window
+// (host.view_windows opens them offscreen with an offscreen owner): a session of the application's, made at the first
+// ask; it draws no picture.
 view_window :: proc(s: ^Session, vs: ^ui.Views, id: string, instance := "") -> ^Session {
 	st := ui.view_window_state(vs, id, instance)
 	if st == nil { return nil }
-	for c in s.windows { if c.state == st { return c } }
-	return nil
+	p := s.parent != nil ? s.parent : s
+	for c in p.windows {
+		if c.state != st { continue }
+		// (a State freed and made again at its address: the window may be another)
+		if p.own == nil { c.win = st.window }
+		return c
+	}
+	if p.own != nil || st.window == nil || !platform.is_offscreen(st.window) { return nil }
+	c := new(Session)
+	c.t, c.test, c.ctx, c.thread, c.parent, c.win, c.state = p.t, p.test, p.ctx, p.thread, p, st.window, st
+	c.name, c.out = strings.clone(p.name), strings.clone(p.out)
+	append(&p.windows, c)
+	return c
+}
+
+// The session of an attached application's view's window goes (the window and its State are the application's).
+@(private)
+window_session_free :: proc(c: ^Session) {
+	delete(c.name)
+	delete(c.out)
+	free(c)
 }
 
 // Whether a view's window is on the screen (shown by the step, not closed).
@@ -119,9 +143,7 @@ window_end :: proc(c: ^Session) {
 	ui.destroy(&c.own.state)
 	platform.destroy_window(c.win)
 	free(c.own)
-	delete(c.name)
-	delete(c.out)
-	free(c)
+	window_session_free(c)
 }
 
 // After a frame of the application of `p`: the step of its views' windows, then a frame of each, in the order they

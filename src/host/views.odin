@@ -26,8 +26,9 @@ View_Window :: struct {
 view_window_of :: proc(h: ^Host) -> ^View_Window { return (^View_Window)(h) }
 
 // The backend of the views' windows of a program's windows, all of them (the hosts on `sh`): a view's window is made
-// after the frames of the Host that owns the view (View_Window_Ask.owner_state). Refused for an offscreen owner (a
-// test's host: session.view_windows is the test's backend), and for an owner State that is no Host's.
+// after the frames of the Host that owns the view (View_Window_Ask.owner_state). Refused for an owner State that is no
+// Host's. An offscreen owner (a program's test: session.attach) gets offscreen windows, which build and draw no
+// picture; session.view_window gives each to the test (src/md/features/views.md, section 4.1, decision 18).
 view_windows :: proc(sh: ^Shared) -> ui.View_Windows {
 	return {open = view_window_open, show = view_window_show, hide = view_window_hide, close = view_window_close, user = sh}
 }
@@ -52,18 +53,24 @@ view_window_hide :: proc(user: rawptr, handle: rawptr) {
 view_window_open :: proc(user: rawptr, ask: ui.View_Window_Ask) -> (state: ^ui.State, win: ^platform.Window, handle: rawptr) {
 	sh := (^Shared)(user)
 	owner := host_of_state(sh, ask.owner_state)
-	if owner == nil || owner.win == nil || platform.is_offscreen(owner.win) { return }
+	if owner == nil || owner.win == nil { return }
+	offscreen := platform.is_offscreen(owner.win)
 	vw := new(View_Window)
 	vw.owner = owner
 	h := &vw.host
 	// (the program's decorations or the system's, as its owner's window: no frame of the system's flashes first)
-	o := Open_Options{title = ask.title, size = ask.size, under_children = ask.under_children, integrated_title = ask.integrated_title}
+	o := Open_Options{title = ask.title, size = ask.size, under_children = ask.under_children, integrated_title = ask.integrated_title, headless = offscreen}
 	// (its user is the owner's: the program's hooks given to it read the program's data, as in its own windows)
 	if !host_open(h, sh, o, proc(h: ^Host, size: Vec2) { ui.views_window_build() }, owner.user) {
 		free(vw)
 		return
 	}
 	h.owner = owner
+	if offscreen {
+		// (the owner's scale, as a window of the system on its monitor: the size asked stays logical)
+		platform.set_offscreen_dpi(h.win, int(owner.win.dpi_scale * 96 + 0.5))
+		platform.set_offscreen_active(h.win, false)   // (hidden: the user is not in it before its show)
+	}
 	view_window_follow(vw)
 	// (its State follows its owner's by itself: ui.State.style_owner, its base style, its zoom, its theme, its fonts)
 	h.params = proc(h: ^Host, p: ^ui.Build_Params) { p.inactive = !h.win.active }
@@ -82,12 +89,19 @@ view_window_show :: proc(user: rawptr, handle: rawptr) {
 	vw.shown = true
 	host_show(&vw.host)
 	platform.raise_window(vw.host.win)
+	// (offscreen, no system activates it: the user is in it now, as a window of the system raised)
+	if vw.host.win.offscreen {
+		platform.set_offscreen_active(vw.owner.win, false)
+		platform.set_offscreen_active(vw.host.win, true)
+	}
 }
 
 @(private = "file")
 view_window_close :: proc(user: rawptr, handle: rawptr) {
 	vw := (^View_Window)(handle)
 	sh := vw.host.shared
+	// (offscreen: the owner gets the user back, as ui's raise_window of the owner does for a window of the system)
+	if vw.host.win.offscreen && vw.host.win.active && vw.owner.win != nil { platform.set_offscreen_active(vw.owner.win, true) }
 	for x, i in sh.views {
 		if x == vw { ordered_remove(&sh.views, i); break }
 	}

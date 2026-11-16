@@ -71,6 +71,7 @@ Lazy_Column :: struct {
 LAZY_MARGIN :: 1.0   // screens built above and below the view
 @(private = "file") LAZY_FIRST_ESTIMATE_EM :: 4   // an item's height before any was built
 @(private = "file") LAZY_ANCHOR_MOVED_PX :: 0.5   // the view follows its anchor when it moved more than this
+@(private = "file") LAZY_ANCHOR_STEPS_PER_PX :: 64   // the view follows its anchor by steps of 1/64 px: exact in f32 up to 2^18 px
 @(private = "file") LAZY_TRIM_INTERVAL_BUILDS :: 120
 @(private = "file") LAZY_KEEP_BUILDS :: 600
 
@@ -230,6 +231,7 @@ lazy_settle :: proc(s: ^State) {
 		if col := box_from_key(lz.column); col != nil { c.top, c.top_known = content_top(sb, col), true }
 		dragging := scrollbar_thumb_held(s, sb)
 		c.pin_found, c.pin_moved = false, false
+		left: f32   // what rounding left of the anchor's move: the next anchor's place keeps it (src/md/features/lazy-anchor.md)
 		if lz.pin != 0 {
 			for b in lz.items {
 				if b.key != lz.pin { continue }
@@ -245,10 +247,14 @@ lazy_settle :: proc(s: ^State) {
 		} else if c.anchor != 0 && !dragging && sb.view_off.y > 0 {
 			for b in lz.items {
 				if b.key != c.anchor { continue }
-				// (any move: one left under a threshold is taken as the next anchor's place, and such moves add up into a drift)
+				// (on a step of 1/64 px: a place in the content is a sum of f32 heights, wrong by thousandths near 3000 px,
+				// and a view brought to its top by such a move stopped at 0.003. What is under a step is not dropped: it stays
+				// with the next anchor's place, and such moves add up instead of drifting)
 				moved := content_top(sb, b) - c.anchor_top
-				if moved != 0 {
-					view_shift(sb, moved, view_limit(sb))
+				step := math.round(moved * LAZY_ANCHOR_STEPS_PER_PX) / LAZY_ANCHOR_STEPS_PER_PX
+				left = moved - step
+				if step != 0 {
+					view_shift(sb, step, view_limit(sb))
 					layout_positions(sb, .Y)
 				}
 				break
@@ -266,7 +272,7 @@ lazy_settle :: proc(s: ^State) {
 		for b, i in lz.items {
 			if b.rect.max.y > sb.rect.min.y + 0.5 {
 				c.anchor = b.key
-				c.anchor_top = content_top(sb, b)
+				c.anchor_top = content_top(sb, b) - left
 				c.anchor_guessed = lz.guessed_at[i]
 				break
 			}

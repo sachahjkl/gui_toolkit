@@ -49,6 +49,7 @@ Picture :: struct {
 	raster_scale: f32,
 	version:    u64,                         // bumps at each recording
 	// GPU residency (retained heaps)
+	owner:      ^Context,                    // the context whose renderer holds its ranges, nil: none (src/md/infrastructure/picture-owner.md)
 	resident:   bool,
 	heap_gen:   u64,
 	uploaded:   u64,                         // version uploaded
@@ -398,6 +399,8 @@ batch_scissor :: proc(pic: ^Picture, shape: u32, l: Affine) -> Rect {
 @(private)
 picture_upload :: proc(c: ^Context, pic: ^Picture) -> bool {
 	r := c.renderer
+	// (another window's renderer: its heap generation can match this one's by chance, so the ranges go back to their own)
+	if pic.owner != nil && pic.owner != c { picture_release(pic) }
 	if pic.resident && pic.heap_gen != r.heap_generation { pic.resident = false }   // heaps emptied: ranges are gone
 	pic.last_used = c.frame_no
 	counts := [render.Heap_Kind]int{
@@ -410,7 +413,7 @@ picture_upload :: proc(c: ^Context, pic: ^Picture) -> bool {
 		}
 		return true
 	}
-	if pic.resident && counts != pic.counts { picture_release(c, pic) }
+	if pic.resident && counts != pic.counts { picture_release(pic) }
 	if !pic.resident {
 		need := 0
 		for n, k in counts { need += n * render.HEAP_STRIDE[k] }
@@ -425,6 +428,7 @@ picture_upload :: proc(c: ^Context, pic: ^Picture) -> bool {
 		}
 		pic.counts = counts
 		pic.resident = true
+		pic.owner = c
 		pic.heap_gen = r.heap_generation
 		register_picture(c, pic)
 	}
@@ -471,22 +475,25 @@ evict_for :: proc(c: ^Context, need: int) {
 			if oldest < 0 || p.last_used < c.pictures[oldest].last_used { oldest = i }
 		}
 		if oldest < 0 { return }   // the frame's own pictures do not fit: the heaps grow past the budget
-		picture_release(c, c.pictures[oldest])
+		picture_release(c.pictures[oldest])
 	}
 }
 
-// Gives the picture's GPU ranges back (it keeps its recording and uploads again when replayed).
-picture_release :: proc(c: ^Context, pic: ^Picture) {
-	if pic.resident && pic.heap_gen == c.renderer.heap_generation {
+// Gives the picture's GPU ranges back to the context that holds them (it keeps its recording and uploads again when
+// replayed, in whichever context).
+picture_release :: proc(pic: ^Picture) {
+	c, resident := pic.owner, pic.resident
+	pic.resident, pic.owner = false, nil
+	if c == nil { return }
+	if resident && pic.heap_gen == c.renderer.heap_generation {
 		for n, k in pic.counts { render.heap_free(c.renderer, k, pic.offsets[k], n) }
 	}
-	pic.resident = false
 	for p, i in c.pictures { if p == pic { unordered_remove(&c.pictures, i); break } }
 }
 
 // Frees the picture: its GPU ranges and its recording.
-picture_destroy :: proc(c: ^Context, pic: ^Picture) {
-	picture_release(c, pic)
+picture_destroy :: proc(pic: ^Picture) {
+	picture_release(pic)
 	delete(pic.insts); delete(pic.batches); delete(pic.batch_bounds); delete(pic.slots); delete(pic.clips); delete(pic.clip_rects)
 	delete(pic.points); delete(pic.grads); delete(pic.pages); delete(pic.slug_pages); delete(pic.slug_runs)
 	pic^ = {}

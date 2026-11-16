@@ -1,7 +1,7 @@
-// The terminal widget (src/term) on a screen of the test's own (Fake): no emulator, no window, no font. The row cache and its
-// dirty flags, the selection made with the pointer and copied, the keys turned into bytes, the paste keys, the press held
-// and let go, the zoom keys.
-//   odin test tests/term -collection:gt=src -vet
+// The terminal widget (src/term) on a screen of the test's own (Fake): no emulator. The row cache and its dirty flags, the
+// selection made with the pointer and copied, the keys turned into bytes, the paste keys, the press held and let go, the
+// zoom keys: no window, no font. The rows drawn as pictures: in a session (offscreen).
+//   odin test tests/term -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package term_test
 
 import "base:runtime"
@@ -9,6 +9,8 @@ import "core:strings"
 import "core:testing"
 import "gt:platform"
 import "gt:term"
+import "gt:testkit/session"
+import "gt:testkit/unwatched"
 import "gt:ui"
 
 // A screen of a few rows of ASCII, each cell a byte. The selection is on one row, as the widget asks for it.
@@ -332,6 +334,39 @@ the_zoom_keys_and_the_wheel :: proc(t: ^testing.T) {
 	term.event(&v, {kind = .Key_Press, key = .Page_Up, mods = {.Shift}})
 	testing.expect_value(t, f.scrolled, -v.rows)
 }
+
+// Each row drawn is a picture keyed by its content, not its place. A line printed moves every row up: only the new one is
+// recorded, the others replay the pictures their content had a line lower. At rest nothing is recorded. Scrolled back, the
+// rows find their pictures again but the one that had left the screen.
+@(test)
+rows_are_pictures_of_their_content :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Grid :: struct { f: Fake, v: term.View }
+	g := new(Grid)   // (the session's draws hold its address)
+	defer free(g)
+	g.f = Fake{lines = {"one", "two", "three", "four"}, dirty = .All}
+	defer delete(g.f.out)
+	term.init(&g.v, fake_source(&g.f), 80, 4)
+	defer term.destroy(&g.v)
+	s := session.start(t, {size = {700, 300}, user = g, build = proc(s: ^session.Session) {
+		g := (^Grid)(s.user)
+		term.build(&g.v, {fonts = &s.own.fonts, font = s.own.mono_font, font_bold = s.own.mono_font, font_size = 14,
+			pad = 4, background = {0, 0, 0, 1}, selection = {0.2, 0.4, 0.8, 1}, faint = 0.5, cursor_alpha = 1})
+	}})
+	session.frames(s, 2)
+	testing.expect_value(t, g.v.rows_recorded, 4)
+	at_rest, draws := g.v.rows_recorded, g.v.draws
+	session.frames(s, 3)
+	testing.expect(t, g.v.draws > draws, "drawn at rest")
+	testing.expect_value(t, g.v.rows_recorded, at_rest)
+	g.f.lines, g.f.dirty = {"two", "three", "four", "five"}, .All   // (a line printed: the screen moved up)
+	session.frames(s, 2)
+	testing.expect_value(t, g.v.rows_recorded, at_rest + 1)
+	testing.expect_value(t, len(g.v.pictures), 4)   // ("one" left the screen: its picture went)
+	g.f.lines, g.f.dirty = {"one", "two", "three", "four"}, .All   // (scrolled back a line)
+	session.frames(s, 2)
+	testing.expect_value(t, g.v.rows_recorded, at_rest + 2)
+	testing.expect_value(t, len(g.v.pictures), 4)
+}) }
 
 // The grid is centered in its box: what the whole cells leave goes half on each side, not all under the last row (an empty
 // band at the bottom the prompt never reached). The pointer finds the cell drawn under it, and a program that tracks the

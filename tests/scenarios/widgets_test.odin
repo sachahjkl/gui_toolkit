@@ -521,6 +521,41 @@ a_lazy_column_keeps_its_view_while_its_last_item_grows :: proc(t: ^testing.T) { 
 	}
 }) }
 
+// A lazy column whose items above the view fold to nothing: the view follows its anchor to the top, and reads 0 there, not
+// the error of a sum of fractional heights near 3000 px (0.003 without the rounding: not at its top).
+@(test)
+a_lazy_column_moved_to_its_top_by_its_anchor_reads_zero :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Run :: struct { jump: f32, folded: bool }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if ui.scroll_y("###view") {
+			sb := ui.parent_box()
+			if r.jump > 0 { ui.view_jump(sb, r.jump); r.jump = 0 }
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+			if ui.column() {
+				lz := ui.lazy_begin(all = true)
+				for i in 0 ..< 200 {
+					if ui.lazy_item(lz, fmt.tprintf("###it%d", i)) {
+						ui.next({width = ui.fill(), height = ui.px(r.folded && i < 100 ? 0 : 30.7)})
+						ui.build_box({}, "###in")
+					}
+				}
+			}
+		}
+	}})
+	session.frames(s, 3)
+	r.jump = 3070   // (the top of item 100 in exact sums; the layout's f32 sum of the hundred items above is not quite that)
+	session.frames(s, 3)
+	sb := session.get(s, "view")
+	testing.expectf(t, sb.view_off.y > 3000, "read far down: %v", sb.view_off.y)
+	r.folded = true
+	session.frames(s, 3)
+	sb = session.get(s, "view")
+	testing.expect_value(t, sb.view_off.y, 0)
+}) }
+
 // A menu's heading is no item: the keyboard goes over it.
 @(test)
 a_menu_heading_is_not_an_item :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {

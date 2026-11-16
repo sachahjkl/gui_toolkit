@@ -9,7 +9,7 @@ import "../fsx"
 @(private = "file")
 DEFS := [?]Def{
 	{name = "net.max_conns", description = "Connections per host", kind = .Int, default = {i = 6}, bounded = true, min = 1, max = 64},
-	{name = "net.max_body", description = "Largest response", kind = .Int, default = {i = 256 << 20}, bytes = true, unit = "bytes", bounded = true, min = 0, max = 1 << 40},
+	{name = "net.max_body", description = "Largest response", kind = .Int, default = {i = 256 << 20}, value_kind = .Size, bounded = true, min = 0, max = 1 << 40},
 	{name = "net.enabled", description = "Network on", kind = .Bool, default = {b = true}},
 	{name = "net.agent", description = "UA", kind = .String, default = {s = "wb/1"}},
 	{name = "ui.scale", description = "Scale", kind = .Float, default = {f = 1.0}, bounded = true, min = 0.5, max = 3},
@@ -59,7 +59,7 @@ validation :: proc(t: ^testing.T) {
 	testing.expect_value(t, int_of(&p, "net.max_conns"), 10, )
 	testing.expect_value(t, set_from_string(&p, "net.max_body", "64M", .User), Set_Error.None)
 	testing.expect_value(t, int_of(&p, "net.max_body"), 64 << 20)
-	testing.expect_value(t, set_from_string(&p, "net.max_conns", "4K", .User), Set_Error.Bad_Type)   // suffixes only for byte prefs
+	testing.expect_value(t, set_from_string(&p, "net.max_conns", "4K", .User), Set_Error.Bad_Type)   // suffixes only for a measure
 	testing.expect_value(t, set_from_string(&p, "net.enabled", "off", .User), Set_Error.None)
 	testing.expect_value(t, bool_of(&p, "net.enabled"), false)
 	testing.expect_value(t, set_from_string(&p, "net.enabled", "maybe", .User), Set_Error.Bad_Type)

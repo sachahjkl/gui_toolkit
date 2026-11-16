@@ -227,7 +227,7 @@ pictures_keep_their_stripes :: proc(t: ^testing.T) {
 	testing.expect_value(t, tinted(turned), 0)
 	r := ink(turned) / ink(direct)
 	testing.expectf(t, r > 0.7 && r < 1.3, "turned, the ink is %.3f of the direct text's", r)
-	draw.picture_destroy(&a.dc, &pic)
+	draw.picture_destroy(&pic)
 }
 
 // The setting can change while the program runs: what was cached and recorded for the other mode is not reused.

@@ -418,8 +418,12 @@ changes, as for immediate drawing) and a small constant buffer, whatever the num
   fall back to the alpha alone and `backdrop_capture` returns nothing while recording; apply effects around a replay.
 - **Memory**: `set_retained_budget(dc, bytes)`: past it, pictures not drawn in the current frame give their ranges back,
   least recently drawn first, and upload again from their recording (kept on the CPU) when drawn next.
-  `retained_bytes` tells what is used and reserved. `picture_release` gives the GPU ranges back explicitly,
-  `picture_destroy` frees everything (call it before freeing the `Picture`).
+  `retained_bytes` tells what is used and reserved. `picture_release(pic)` gives the GPU ranges back explicitly,
+  `picture_destroy(pic)` frees everything (call it before freeing the `Picture`). Neither takes a context: the picture
+  knows the one that holds its ranges (`Picture.owner`).
+- **Any context**: a picture replayed in another draw context (a widget moved to another window, another renderer)
+  gives its ranges back to its owner and uploads in the new one. `draw.destroy` gives back the ranges of every picture
+  it holds; the pictures keep their recording and upload again where they are replayed next.
 
 Measured with `examples/transforms --stress=N --bench=200` (`-define:GPU_TIMING=true`, release, 2244 x 1489):
 

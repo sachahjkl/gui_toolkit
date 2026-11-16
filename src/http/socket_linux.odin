@@ -4,8 +4,10 @@ package tk_http
 // A WebSocket over libcurl's raw connection (CONNECT_ONLY = 1, curl_easy_send and curl_easy_recv, libcurl 7.18.1 and
 // later): curl does the TCP, the TLS and a proxy's tunnel; the upgrade and the frames are ours (frame.odin).
 // Distributions build libcurl without its WebSocket API (src/md/features/streams.md). curl_easy_recv never blocks: a
-// wait is a poll of the socket and of a pipe that ws_stop writes to.
+// wait is a poll of the socket and of a pipe that ws_stop writes to. A socket to the loopback (`127.x.x.x`, `::1`) is a
+// non-blocking TCP connection of our own, with no libcurl: gt:cdp's must work where libcurl cannot be loaded.
 
+import "core:c"
 import "core:crypto"
 import "core:crypto/legacy/sha1"
 import "core:encoding/base64"
@@ -23,7 +25,7 @@ import "core:time"
 @(private = "file") CLOSE_LIMIT :: time.Second
 
 Socket :: struct {
-	h:          rawptr,        // libcurl's handle: the connection, TLS included
+	h:          rawptr,        // libcurl's handle: the connection, TLS included; nil: a connection of our own (the loopback)
 	lock:       sync.Mutex,    // one libcurl call at a time, and a frame sent whole: the reader's (a pong, a close), the senders'
 	fd:         posix.FD,
 	wake:       [2]posix.FD,   // ws_stop writes to [1]; a wait polls [0] beside the socket
@@ -37,11 +39,16 @@ Socket :: struct {
 }
 
 ws_connect_system :: proc(url, http_url: string, req: Request) -> (^Socket, Error) {
+	u, _ := url_parse(http_url)
+	if !u.secure && loopback_literal(u.host) {
+		fd, connected := direct_connect(u, connect_bound(req))
+		if !connected { return nil, .Unreachable }
+		return socket_start(nil, fd, u, req)
+	}
 	sync.once_do(&curl_once, curl_load)
 	if !curl_found { return nil, .No_Client }
 	c := &curl_lib
 	if c.easy_send == nil || c.easy_recv == nil { return nil, .No_Client }
-	u, _ := url_parse(http_url)
 	h := c.easy_init()
 	if h == nil { return nil, .No_Client }
 	// (the scheme of the upgrade's request: curl connects, with TLS for https, and sends nothing)
@@ -55,10 +62,16 @@ ws_connect_system :: proc(url, http_url: string, req: Request) -> (^Socket, Erro
 	if c.easy_perform(h) != 0 { c.easy_cleanup(h); return nil, .Unreachable }
 	fd, found := active_socket(h)
 	if !found { c.easy_cleanup(h); return nil, .Unreachable }
+	return socket_start(h, fd, u, req)
+}
+
+// The socket over a connection made (libcurl's `h`, or nil: our own `fd`), once the upgrade is done.
+@(private = "file")
+socket_start :: proc(h: rawptr, fd: posix.FD, u: Url, req: Request) -> (^Socket, Error) {
 	s := new(Socket)
 	s.h, s.fd, s.max_bytes = h, fd, req.max_bytes
 	if posix.pipe(&s.wake) != .OK {
-		c.easy_cleanup(h)
+		if h != nil { curl_lib.easy_cleanup(h) } else { posix.close(fd) }
 		free(s)
 		return nil, .Unreachable
 	}
@@ -69,6 +82,113 @@ ws_connect_system :: proc(url, http_url: string, req: Request) -> (^Socket, Erro
 		return nil, err
 	}
 	return s, .None
+}
+
+// A loopback address written as such: 127.0.0.0/8 in four decimal parts, or ::1 (in brackets in a URL). A name
+// (`localhost`) is not one: it is looked up, libcurl's work.
+@(private)
+loopback_literal :: proc(host: string) -> bool {
+	h := host
+	if len(h) >= 2 && h[0] == '[' && h[len(h) - 1] == ']' { h = h[1:len(h) - 1] }
+	if h == "::1" { return true }
+	parts := 0
+	value, digits := 0, 0
+	for i := 0; i <= len(h); i += 1 {
+		if i == len(h) || h[i] == '.' {
+			if digits == 0 || digits > 3 || value > 255 || (parts == 0 && value != 127) { return false }
+			parts += 1
+			value, digits = 0, 0
+			continue
+		}
+		if h[i] < '0' || h[i] > '9' { return false }
+		value = value * 10 + int(h[i] - '0')
+		digits += 1
+	}
+	return parts == 4
+}
+
+// A TCP connection to a loopback literal (`u.host`), non-blocking, within `bound` (0: none). A full listening queue drops
+// the connection's first packet: without a bound the connect waits for the system's own limit, minutes.
+@(private = "file")
+direct_connect :: proc(u: Url, bound: time.Duration) -> (fd: posix.FD, ok: bool) {
+	host := u.host
+	if len(host) >= 2 && host[0] == '[' { host = host[1:len(host) - 1] }
+	v6 := strings.contains_rune(host, ':')
+	fd = posix.socket(v6 ? .INET6 : .INET, .STREAM, .TCP)
+	if fd < 0 { return -1, false }
+	defer if !ok { posix.close(fd) }
+	flags := posix.fcntl(fd, .GETFL)
+	if flags < 0 || posix.fcntl(fd, .SETFL, flags | transmute(c.int)posix.O_Flags{.NONBLOCK}) < 0 { return }
+	// (a call and its answer are small writes: Nagle's wait behind a delayed acknowledgement would add 40 ms to each; libcurl
+	// sets it too)
+	one: c.int = 1
+	posix.setsockopt(fd, c.int(posix.Protocol.TCP), posix.Sock_Option(posix.TCP_NODELAY), &one, size_of(one))
+	chost := strings.clone_to_cstring(host, context.temp_allocator)
+	r: posix.result
+	if v6 {
+		addr := posix.sockaddr_in6{sin6_family = .INET6, sin6_port = posix.in_port_t(u.port)}
+		if posix.inet_pton(.INET6, chost, &addr.sin6_addr) != .SUCCESS { return }
+		r = posix.connect(fd, (^posix.sockaddr)(&addr), size_of(addr))
+	} else {
+		addr := posix.sockaddr_in{sin_family = .INET, sin_port = posix.in_port_t(u.port)}
+		if posix.inet_pton(.INET, chost, &addr.sin_addr) != .SUCCESS { return }
+		r = posix.connect(fd, (^posix.sockaddr)(&addr), size_of(addr))
+	}
+	if r != .OK {
+		if posix.errno() != .EINPROGRESS { return }
+		deadline, bounded := deadline_of(bound)
+		for {
+			pfd := posix.pollfd{fd = fd, events = {.OUT}}
+			n := posix.poll(&pfd, 1, i32(ms_left(deadline, bounded)))
+			if n < 0 && posix.errno() == .EINTR { continue }
+			if n <= 0 { return }   // (the bound ran out)
+			break
+		}
+		failure: c.int
+		size := posix.socklen_t(size_of(failure))
+		if posix.getsockopt(fd, posix.SOL_SOCKET, .ERROR, &failure, &size) != .OK || failure != 0 { return }
+	}
+	return fd, true
+}
+
+// Some of `bytes` sent on the connection: `again` when it can take none now (poll it for writing).
+@(private = "file")
+transport_send :: proc(s: ^Socket, bytes: []u8) -> (sent: int, again: bool, ok: bool) {
+	if s.h != nil {
+		n: uint
+		code := curl_lib.easy_send(s.h, raw_data(bytes), uint(len(bytes)), &n)
+		return int(n), code == CURLE_AGAIN, code == 0 || code == CURLE_AGAIN
+	}
+	for {
+		// (NOSIGNAL: a server gone ends the socket with an error, not the program with SIGPIPE)
+		n := posix.send(s.fd, raw_data(bytes), uint(len(bytes)), {.NOSIGNAL})
+		if n >= 0 { return int(n), false, true }
+		#partial switch posix.errno() {
+		case .EINTR:  continue
+		case .EAGAIN: return 0, true, true   // (EWOULDBLOCK on Linux)
+		}
+		return 0, false, false
+	}
+}
+
+// What the connection has now, into `buf`: `again` when nothing is there (poll it for reading); 0 bytes and ok: the
+// server ended the connection.
+@(private = "file")
+transport_recv :: proc(s: ^Socket, buf: []u8) -> (got: int, again: bool, ok: bool) {
+	if s.h != nil {
+		n: uint
+		code := curl_lib.easy_recv(s.h, raw_data(buf), uint(len(buf)), &n)
+		return int(n), code == CURLE_AGAIN, code == 0 || code == CURLE_AGAIN
+	}
+	for {
+		n := posix.recv(s.fd, raw_data(buf), uint(len(buf)), {})
+		if n >= 0 { return int(n), false, true }
+		#partial switch posix.errno() {
+		case .EINTR:  continue
+		case .EAGAIN: return 0, true, true   // (EWOULDBLOCK on Linux)
+		}
+		return 0, false, false
+	}
 }
 
 @(private = "file")
@@ -165,13 +285,11 @@ wait_ready :: proc(s: ^Socket, write: bool, deadline: time.Tick, bounded: bool) 
 // Sends `bytes` whole. The caller holds the lock (or is the only thread: the handshake).
 @(private = "file")
 send_all :: proc(s: ^Socket, bytes: []u8, deadline: time.Tick, bounded: bool) -> Error {
-	c := &curl_lib
 	at := 0
 	for at < len(bytes) {
-		sent: uint
-		code := c.easy_send(s.h, raw_data(bytes[at:]), uint(len(bytes[at:])), &sent)
-		at += int(sent)
-		if code == CURLE_AGAIN {
+		sent, again, ok := transport_send(s, bytes[at:])
+		at += sent
+		if again {
 			switch wait_ready(s, true, deadline, bounded) {
 			case .Stopped:   return .Stopped
 			case .Timed_Out: return .Timed_Out
@@ -179,24 +297,22 @@ send_all :: proc(s: ^Socket, bytes: []u8, deadline: time.Tick, bounded: bool) ->
 			}
 			continue
 		}
-		if code != 0 { return .Closed }
+		if !ok { return .Closed }
 	}
 	return .None
 }
 
-// What comes next, into s.input. libcurl is asked before any poll: TLS may hold decrypted bytes the socket no longer
-// shows. CURLE_AGAIN is the only "poll now".
+// What comes next, into s.input. The connection is asked before any poll: libcurl's TLS may hold decrypted bytes the
+// socket no longer shows. `again` is the only "poll now".
 @(private = "file")
 read_more :: proc(s: ^Socket, deadline: time.Tick, bounded: bool) -> Error {
-	c := &curl_lib
 	chunk: [RECV_CHUNK]u8
 	for {
 		if sync.atomic_load(&s.stopped) { return .Stopped }
-		got: uint
 		sync.mutex_lock(&s.lock)
-		code := c.easy_recv(s.h, &chunk[0], len(chunk), &got)
+		got, again, ok := transport_recv(s, chunk[:])
 		sync.mutex_unlock(&s.lock)
-		if code == CURLE_AGAIN {
+		if again {
 			switch wait_ready(s, false, deadline, bounded) {
 			case .Stopped:   return .Stopped
 			case .Timed_Out: return .Timed_Out
@@ -204,7 +320,7 @@ read_more :: proc(s: ^Socket, deadline: time.Tick, bounded: bool) -> Error {
 			}
 			continue
 		}
-		if code != 0 || got == 0 { return .Closed }   // (0 bytes: the server ended the connection)
+		if !ok || got == 0 { return .Closed }   // (0 bytes: the server ended the connection)
 		append(&s.input, ..chunk[:got])
 		return .None
 	}
@@ -311,7 +427,7 @@ ws_close_system :: proc(s: ^Socket) {
 
 @(private = "file")
 socket_free :: proc(s: ^Socket) {
-	curl_lib.easy_cleanup(s.h)
+	if s.h != nil { curl_lib.easy_cleanup(s.h) } else { posix.close(s.fd) }
 	posix.close(s.wake[0])
 	posix.close(s.wake[1])
 	delete(s.input)

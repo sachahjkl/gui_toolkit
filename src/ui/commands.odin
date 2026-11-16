@@ -26,6 +26,7 @@ package ui
 import "core:fmt"
 import "core:slice"
 import "core:strings"
+import config "../config"
 import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
@@ -67,6 +68,10 @@ Command :: struct {
 	// the program's state), the palette its mark (Palette_Commands_Options.checked) and stays open when it is chosen,
 	// as a setting's switch does. What it is, constant; whether it is on, the program's at each read
 	toggle: bool,
+	// what it takes, each a value as a setting is (its name, storage, value kind, unit, choices, bounds, default): Enter
+	// in the palette opens its form, each argument with the control of its value, and the choice gives the values
+	// (Palette_Choice.arguments). A closed list the program fills: Palette_Commands_Options.choices
+	arguments: []config.Def,
 }
 
 // Where a command's keys work (src/md/features/commands.md, "Window commands").

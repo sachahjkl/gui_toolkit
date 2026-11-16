@@ -138,6 +138,8 @@ destroy :: proc(s: ^State) {
 	selection_destroy(s)
 	a11y_destroy(s)
 	delete(s.mouse_events)
+	delete(s.acts)
+	delete(s.acts_next)
 	delete(s.last_events)
 	virtual.arena_destroy(&s.arena)
 	if current == s { current = nil }
@@ -152,11 +154,16 @@ now_ms :: proc() -> f64 { return current != nil ? clock_ms(current) : real_ms() 
 
 // The state's time goes by `clock` (ms, above 0), which its owner moves: every delay of the interface (caret blink, double
 // clicks, timers, toasts, tooltips, a scroll bar that hides) and every wake (wake_in_ms, wake_due) follows it. nil: the system's
-// clock. A test or a replay is then deterministic, and waits for no time.
+// clock. A test or a replay is then deterministic, and waits for no time. A view's window with no clock of its own keeps
+// its owner's (State.style_owner): one time for the program's windows.
 set_clock :: proc(s: ^State, clock: ^f64) { s.clock = clock }
 
 @(private) real_ms :: proc() -> f64 { return time.duration_milliseconds(time.tick_since({sync.atomic_load(&tick_origin._nsec)})) }
-@(private) clock_ms :: proc(s: ^State) -> f64 { return s.clock != nil ? s.clock^ : real_ms() }
+@(private) clock_ms :: proc(s: ^State) -> f64 {
+	c := s.clock
+	if c == nil && s.style_owner != nil { c = style_root(s).clock }
+	return c != nil ? c^ : real_ms()
+}
 
 Build_Params :: struct {
 	window_size:    Vec2,
@@ -230,6 +237,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	clear(&s.disabled_stack); s.disabled_depth = 0
 	clear(&s.tab_stops_off); s.tab_skip = 0
 	clear(&s.focus_order)
+	clear(&s.acts_next)
 	s.modals_open, s.modals_built = s.modals_built, s.modals_open
 	clear(&s.modals_built)
 	s.find.waiting = false
@@ -272,6 +280,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	s.window = p.window
 	s.caption_keys = {}
 	s.caption_built = false
+	s.palette = nil   // (a program that stops calling palette_keys leaves no palette to its views' windows)
 
 	// calls posted from other threads change the app's data before the frame reads it (post.odin)
 	post_begin_build(s, p.window)
@@ -361,6 +370,7 @@ end_build :: proc() {
 	layout(s)
 	lazy_settle(s)   // (the view stays on what it showed: before anything reads the rects)
 	strips_place(s)  // (each strip's arrows by this layout: on their edges or hidden, before anything reads the rects)
+	acts_end_build(s)   // (go to: the rects are final, the focus moves before the Tab and the tree read it)
 	s.metrics.layout_ms = real_ms() - t_layout
 	// the title bar's regions: for the window when its title bar is integrated, for chrome_regions in any case
 	if s.caption_built || s.caption_keys != {} {

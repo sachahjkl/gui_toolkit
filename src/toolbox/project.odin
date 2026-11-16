@@ -33,6 +33,9 @@ Project :: struct {
 	launcher:      Launcher,      // Windows: the rules of its console launcher, <name>.com beside the program
 	licence:       string,        // the program's licence, for its notices ("": "MIT")
 	features:      Features,      // what it takes of the toolkit beyond the core: its defines, native builds and crates
+	crates:        []string,      // its own Rust libraries, for its notices: their Cargo.toml, relative to its root
+	                              // ("native/ocn_native/Cargo.toml")
+	works:         []Project_Work,// what else it links or embeds, for its notices (libghostty-vt)
 
 	// What Windows shows of the program: its resource (windows_resource.odin) and the group of its windows.
 	title:         string,        // the program as people read it ("Papier"; "": name): the file's description, which

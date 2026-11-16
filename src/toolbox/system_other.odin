@@ -10,8 +10,6 @@ system_program :: proc(name: string) -> string { return name }
 STAMP_NEWLINE :: "\n"
 // What a program's -extra-linker-flags must hold for its reports to be named: the build id.
 CRASH_LINKER_FLAGS :: "-Wl,--build-id"
-// The target the crates are linked for: this system's.
-NOTICES_TARGET :: "x86_64-unknown-linux-gnu"
 
 // The exit code of a finished process; -1 when it did not exit.
 exit_code :: proc(state: os.Process_State) -> int {

@@ -69,6 +69,13 @@ without building them. `recolour(&v)` (a new theme: the source's colours moved) 
 `v.hold = true` keeps the picture drawn last (a program that awaits a whole new screen after a resize).
 `rows_built` counts the rows built, and `row_text(&v, y)` gives a row's text as drawn: what a test reads.
 
+Each row is drawn as a retained picture (`draw.Picture`) keyed by its content (`Row.sum`) and its look (the faces, their
+size, the cell, the selection's colour, where the grid starts within a pixel). A frame at rest replays every row; a line
+printed records only the new row, as the rows moved up find the pictures their content had a line lower. A picture no
+row showed in a draw is released; `destroy` frees them all. `rows_recorded` counts the rows recorded: what a test
+reads. A grid moved to another window replays its pictures there (they upload in the new draw context). The intent:
+[src/md/features/term-rows.md](../src/md/features/term-rows.md).
+
 ## Input
 
 - Keys: a printable key alone gives nothing, its `Text` event types the character; Ctrl with Alt is AltGr. Ctrl+Shift+C
@@ -89,4 +96,6 @@ without building them. `recolour(&v)` (a new theme: the source's colours moved) 
 ## Tests
 
 `tests/term` drives the widget on a screen of its own, without a window or a font: the row cache, the selection, the
-keys, the paste keys, the press held and let go, the zoom keys left to the interface.
+keys, the paste keys, the press held and let go, the zoom keys left to the interface. In a session (an offscreen window),
+the rows as pictures: one line printed records one row, a draw at rest none. `-define:TERM_TIMING=true` (with `-o:speed`)
+times the box's draw of 40 rows of 120 cells, at rest and while lines are printed (`tests/term/bench_test.odin`).

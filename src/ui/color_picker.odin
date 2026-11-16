@@ -74,7 +74,8 @@ swatch_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	draw.rect(dc, b.rect, draw.srgb(d.c.r, d.c.g, d.c.b, d.c.a), box_drawn_radius(gs(), b))
 }
 
-color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {
+// `text` false: no format switch and no text field (a caller whose own field holds the colour's text).
+color_picker :: proc(id: string, cp: ^Color_Pick, text := true) -> (changed: bool) {
 	em := font_size()
 	w := color_picker_width()
 	gap := math.round(em * GAP_EM)
@@ -115,6 +116,8 @@ color_picker :: proc(id: string, cp: ^Color_Pick) -> (changed: bool) {
 			if alpha_picker("###alpha", cp.hue, cp.sat, cp.val, &cp.alpha, .X) { changed = true; cp.typed = false }
 		}
 	}
+	// (`text` false: the caller's own field is the colour's text, the palette's run mode; written once)
+	if !text { return }
 	spacer(px(gap))
 	format := int(cp.style.format)
 	next({width = px(w), height = px(math.round(em * ROW_EM))})

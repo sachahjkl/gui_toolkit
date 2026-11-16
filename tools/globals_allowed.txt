@@ -16,6 +16,12 @@ config/export_test.odin EXPORT_DEFS test
 config/search_test.odin SEARCH_DEFS test
 config/snapshot_test.odin SNAP_DEFS test
 config/snapshot_test.odin LATE_DEFS test
+config/value_kind.odin UNITS const  # each unit's kind, symbol and size, a table
+config/value_kind.odin KIND_UNITS const  # each value kind's units, a table
+config/value_kind.odin VALUE_KIND_NAMES const  # the value kinds' names, a table
+config/value_kind.odin SIZE_SUFFIXES const  # what a size may be typed with, a table
+config/value_kind.odin DURATION_SUFFIXES const  # what a time may be typed with, a table
+config/value_kind_test.odin VALUE_DEFS test
 crash/crash.odin kept process  # the crash handler's settings and buffers: written once by install (an atomic flag) before a crash reads them; the session flag is atomic
 crash/crash_linux.odin sys process  # the signal handler's buffers and state, taken at install: one handler for the process (its flags atomic)
 crash/crash_windows.odin sys process  # the exception filter's buffers, events and writer thread, taken at install: one for the process (its flags atomic)
@@ -113,6 +119,12 @@ font/shape.odin words_epochs process  # the epochs of the word caches, unique in
 font/shape.odin l1_words thread  # the thread's own cache of short words' widths
 font/slug_dwrite.odin outline_sink_vtable const  # a COM vtable (passed by address)
 font/slug_dwrite.odin IID_ID2D1SimplifiedGeometrySink const  # a COM interface id (passed by address)
+http/http_linux.odin curl_lib process  # libcurl's procedures, loaded once (curl_once) before any read
+http/http_linux.odin curl_once process  # libcurl loaded and initialised once for the process
+http/http_linux.odin curl_found process  # whether libcurl loaded: written once under curl_once, then only read
+http/http_linux.odin pool process  # the requests' idle easy handles and their connections, one pool for the process (locked)
+http/http_windows.odin requests_session process  # the requests' WinHTTP session and its connections, opened once (requests_once); WinHTTP's handles are for any thread
+http/http_windows.odin requests_once process  # the requests' session opened once for the process
 i18n/i18n.odin in_use process  # the language in use, set at the start and at each change of language (atomic); a language once in use is never freed
 i18n/i18n.odin generation process  # counts the changes of language (atomic): a cached answer of another is not taken
 i18n/i18n.odin cache thread  # the address of a literal to its entry, per thread (tr is contextless and takes no lock)
@@ -304,6 +316,7 @@ toolbox/group_linux.odin running_count process  # how many of them (written afte
 toolbox/logo.odin ICO_SIZES const  # the sizes Windows asks an .ico for
 toolbox/notices.odin NOTICE_FILE_PREFIXES const  # what a licence file is named, a table
 toolbox/notices.odin TOOLKIT_NOTICES const  # the toolkit's works and their licence files, a table
+toolbox/notices.odin NOTICES_TARGETS const  # the targets whose crates the notices give, a table
 toolbox/tool.odin running_program process  # the tool whose command runs (one dispatch per process)
 toolbox/tool.odin running_command process  # the command that runs, for done
 toolbox/tool_test.odin seen_args test

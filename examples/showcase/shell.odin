@@ -5,26 +5,27 @@ package showcase
 
 import "core:fmt"
 import "core:math"
+import config "gt:config"
 import host "gt:host"
 import lucide "gt:lucide"
 import prefs_page "gt:prefs_page"
 import "gt:ui"
 
 // The scenes the sidebar lists (the overlays' scenes stand on one of them), their titles and icons.
-NAV := [?]Scene{.Intents, .Controls, .Steppers, .Menus, .Toolbar, .Views, .Graph, .Themes, .Settings}
+NAV := [?]Scene{.Intents, .Controls, .Values, .Steppers, .Menus, .Toolbar, .Views, .Graph, .Themes, .Settings}
 
 SCENE_TITLES := [Scene]string{
 	.Intents = "Intents and hues", .Controls = "Numbers and ranges", .Palette = "Command palette", .Menus = "Menus",
 	.Dialog = "Dialogs", .Confirm = "Confirmation", .Prompt = "Prompt", .Settings = "Settings", .Graph = "Node graph",
 	.Toasts = "Toasts", .Themes = "Themes", .Toolbar = "Tool bars", .Views = "Views", .Files = "File browser",
-	.Steppers = "Steppers",
+	.Steppers = "Steppers", .Values = "Values",
 }
 
 SCENE_ICONS := [Scene]string{
 	.Intents = lucide.PALETTE, .Controls = lucide.SLIDERS_HORIZONTAL, .Palette = lucide.COMMAND, .Menus = lucide.FOLDER_OPEN,
 	.Dialog = lucide.DOWNLOAD, .Confirm = lucide.TRASH_2, .Prompt = lucide.KEY_ROUND, .Settings = lucide.SETTINGS,
 	.Graph = lucide.GIT_BRANCH, .Toasts = lucide.BELL, .Themes = lucide.SUN, .Toolbar = lucide.PENCIL_RULER,
-	.Views = lucide.LAYOUT_DASHBOARD, .Files = lucide.FOLDER_OPEN, .Steppers = lucide.LIST_CHECKS,
+	.Views = lucide.LAYOUT_DASHBOARD, .Files = lucide.FOLDER_OPEN, .Steppers = lucide.LIST_CHECKS, .Values = lucide.SHAPES,
 }
 
 // The page under an overlay's scene.
@@ -37,13 +38,25 @@ page_of :: proc(s: Scene) -> Scene {
 	return s
 }
 
+// What the commands with arguments take: a text, and a closed list the showcase fills (palette_command_choices).
+RENAME_ARGUMENTS := [?]config.Def{
+	{name = "name", title = "Name", description = "The picture's new name.", kind = .String, default = {s = "Harbour at dusk"}},
+}
+EXPORT_ARGUMENTS := [?]config.Def{
+	{name = "format", title = "Format", description = "The file's format.", kind = .String, default = {s = "webp"}},
+}
+EXPORT_LABELS := [?]string{"PNG", "WebP", "JPEG", "AVIF"}
+EXPORT_VALUES := [?]string{"png", "webp", "jpeg", "avif"}
+
 // The commands of the palette (its commands source); its settings source lists the preferences, its moves source the
-// views' moves.
+// views' moves. Two take arguments: Enter opens their form in the palette.
 COMMANDS := [?]ui.Command{
 	{id = "window.new", label = "New window", group = "File", keys = {{.N, {.Ctrl, .Shift}}}, icon = lucide.PLUS},
 	{id = "open", label = "Open…", group = "File", keys = {{.O, {.Ctrl}}}, icon = lucide.FOLDER_OPEN},
 	{id = "save", label = "Save", group = "File", keys = {{.S, {.Ctrl}}}, icon = lucide.SAVE},
 	{id = "export", label = "Export pictures…", group = "File", keys = {{.E, {.Ctrl, .Shift}}}, icon = lucide.DOWNLOAD},
+	{id = "picture.rename", label = "Rename the picture", group = "File", icon = lucide.PENCIL, arguments = RENAME_ARGUMENTS[:]},
+	{id = "picture.export_as", label = "Export the picture as", group = "File", icon = lucide.DOWNLOAD, arguments = EXPORT_ARGUMENTS[:]},
 	{id = "theme.next", label = "Theme: next", group = "View", tags = {"colours", "look"}, keys = {{.T, {.Ctrl}}}, icon = lucide.PALETTE},
 	{id = "theme.mode", label = "Theme: light or dark", group = "View", tags = {"mode", "night", "day"}, keys = {{.L, {.Ctrl, .Shift}}}, icon = lucide.MOON},
 	{id = "theme.file", label = "Theme: open the themes file", group = "View", tags = {"colours", "custom"}, icon = lucide.FILE_TEXT},
@@ -65,6 +78,8 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 	views_scene_follow(app)   // (the views scene's panels go with it: their space is built in that scene only)
 	palette_sources(app)   // (before the keys open it; O(1) once added)
 	ui.palette_keys(&app.palette)
+	// (before the content: a value the palette's run mode writes shows on the page in the same frame)
+	palette_chosen(app)
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 	if ui.column(id = "###app") {
 		top_bar(app, em)
@@ -215,10 +230,27 @@ scene_open :: proc(app: ^App, s: Scene) {
 // asks for the page options when it reads, the themes' slice as it is then).
 @(private = "file")
 palette_sources :: proc(app: ^App) {
-	ui.palette_commands(&app.palette, COMMANDS[:], nil)
+	ui.palette_commands(&app.palette, COMMANDS[:], nil, {choices = proc(user: rawptr, index: int, argument: string) -> (labels, values: []string) {
+		if argument != "format" { return nil, nil }
+		return EXPORT_LABELS[:], EXPORT_VALUES[:]
+	}})
 	prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page,
 		proc(user: rawptr) -> prefs_page.Page_Options { return settings_options((^App)(user)) },
 		proc(user: rawptr) { (^App)(user).scene = .Settings }, app)
+}
+
+// The palette's choices (a setting, a view's move and the run mode act in palette_chosen): the commands with arguments
+// say what they were given; the showcase's other commands only show themselves.
+@(private = "file")
+palette_chosen :: proc(app: ^App) {
+	c, ok := ui.palette_chosen(&app.palette)
+	if !ok { return }
+	i, is := ui.palette_chosen_command(&app.palette, c)
+	if !is || len(c.arguments) == 0 { return }
+	switch COMMANDS[i].id {
+	case "picture.rename":    ui.announce(&app.announcer, .Good, fmt.tprintf("Renamed to %s", c.arguments[0]))
+	case "picture.export_as": ui.announce(&app.announcer, .Good, fmt.tprintf("Exported as harbour-at-dusk.%s", c.arguments[0]))
+	}
 }
 
 @(private = "file")
@@ -245,8 +277,6 @@ status_line :: proc(app: ^App, em: f32) {
 // scene's own.
 @(private = "file")
 overlays :: proc(app: ^App, em: f32) {
-	// (a setting or a view's move acts in palette_chosen; the showcase's own commands only show themselves)
-	_, _ = ui.palette_chosen(&app.palette)
 	if ui.confirm_answer("delete") == .Confirmed { ui.announce(&app.announcer, .Good, "4 pictures deleted") }
 	switch ui.prompt_answer("unlock") {
 	case .Confirmed, .Cancelled: ui.line_edit_wipe(&app.pin)

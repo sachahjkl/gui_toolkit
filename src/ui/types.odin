@@ -477,6 +477,9 @@ State :: struct {
 	views_space_stack: [dynamic]bool,    // views_frame and views_dock being built: did each push the content's box?
 	view_keys_root: Key,                 // a panel's or an internal window's body being built: its keys only while the focus is under it
 	views_hidden: bool,                  // the window is hidden: its views' windows are too (views_windows_follow)
+	// the palette its keys open: palette_keys notes it at each build, and the windows of its views open it too
+	// (views_window_build reads their style_root's); nil from begin_build until palette_keys
+	palette:      ^Command_Palette,
 	key_rooted:   bool,                  // the next build_box's key is its id's alone, not its parent's (a panel's body, built in two places)
 	focus_field_next: bool,              // focus_next_field: the next field built in this build takes the keyboard
 	modals_open:  [dynamic]Modal_Open,   // the dialogs of the last build, bottom to top (modal_phase)
@@ -487,6 +490,11 @@ State :: struct {
 	keys_behind_dialogs: bool,       // set_keys_behind_dialogs: keys reach code outside an open dialog
 	keys_claim:      Keys_Claim,     // keys_claim of the last build: the chords the widget with the keyboard keeps
 	keys_claim_next: Keys_Claim,     // and of this one
+	// the act names of the last frame (act_name: a name's hash -> its box's key), those of the frame being built, and
+	// the box go to lights (acts.odin)
+	acts:            map[u64]Key,
+	acts_next:       map[u64]Key,
+	act_light:       Act_Light,
 	keymap:          ^Keymap,        // keymap_use: the person's keys, the program's (nil: the commands' own keys only)
 	// A sequence's first chord, pressed in this window, and when it lapses: the next key press completes the sequence or
 	// ends it (keymap.odin). `key_second`: that press, taken out of the events at the build's start

@@ -673,26 +673,35 @@ wheel_steps :: proc(b: ^Box, focused: bool) -> f32 {
 // times as much, Ctrl a hundred, Alt a tenth (num_step_delta). The wheel over the field or the slider steps it (Shift:
 // ten); in a view that scrolls, once it has the keyboard (wheel_steps). The buttons step it (Shift: ten), held they
 // repeat (repeat_pressed); at a bound its button is disabled. A screen reader sees a spin button (and the slider).
-// `disabled`: shown faded, not changed. Its size: `next` (the slider takes the room the rest
-// leaves; without one, as wide as what is in it). True when the value changed this frame.
+// `disabled`: shown faded, not changed. `parse`: how the field reads what is typed when it takes more than a number
+// ("1.5 s" for a field in ms: a setting's unit and its suffixes); zero, a number in either decimal mark. Its size:
+// `next` (the slider takes the room the rest leaves; without one, as wide as what is in it). True when the value
+// changed this frame.
 //
 //   ui.number("###width", &app.width, lo = 1, hi = 40, unit = "px", slider = true)
 //   ui.number("###count", &app.count, lo = 0)
 number :: proc{number_int, number_f32, number_f64}
 
-number_int :: proc(id: string, value: ^int, lo: Maybe(int) = nil, hi: Maybe(int) = nil, step := 0, unit := "", slider := false, disabled := false, default: Maybe(int) = nil) -> (changed: bool) {
-	return number_of(id, value, lo, hi, step, unit, slider, disabled, default)
+// A number field's reader of typed text (ui.number's `parse`): the value in the number's unit, ok false when the text
+// is none. `user` is given back to `fn`; it must hold until the build ends.
+Number_Parse :: struct {
+	fn:   proc(user: rawptr, text: string) -> (value: f64, ok: bool),
+	user: rawptr,
 }
-number_f32 :: proc(id: string, value: ^f32, lo: Maybe(f32) = nil, hi: Maybe(f32) = nil, step: f32 = 0, unit := "", slider := false, disabled := false, default: Maybe(f32) = nil) -> (changed: bool) {
-	return number_of(id, value, lo, hi, step, unit, slider, disabled, default)
+
+number_int :: proc(id: string, value: ^int, lo: Maybe(int) = nil, hi: Maybe(int) = nil, step := 0, unit := "", slider := false, disabled := false, default: Maybe(int) = nil, parse := Number_Parse{}) -> (changed: bool) {
+	return number_of(id, value, lo, hi, step, unit, slider, disabled, default, parse)
 }
-number_f64 :: proc(id: string, value: ^f64, lo: Maybe(f64) = nil, hi: Maybe(f64) = nil, step: f64 = 0, unit := "", slider := false, disabled := false, default: Maybe(f64) = nil) -> (changed: bool) {
-	return number_of(id, value, lo, hi, step, unit, slider, disabled, default)
+number_f32 :: proc(id: string, value: ^f32, lo: Maybe(f32) = nil, hi: Maybe(f32) = nil, step: f32 = 0, unit := "", slider := false, disabled := false, default: Maybe(f32) = nil, parse := Number_Parse{}) -> (changed: bool) {
+	return number_of(id, value, lo, hi, step, unit, slider, disabled, default, parse)
+}
+number_f64 :: proc(id: string, value: ^f64, lo: Maybe(f64) = nil, hi: Maybe(f64) = nil, step: f64 = 0, unit := "", slider := false, disabled := false, default: Maybe(f64) = nil, parse := Number_Parse{}) -> (changed: bool) {
+	return number_of(id, value, lo, hi, step, unit, slider, disabled, default, parse)
 }
 
 // (one body for every type: an Odin default of a parameter of a polymorphic type cannot be had, so the group above gives them)
 @(private = "file")
-number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: string, with_slider, disabled: bool, default: Maybe(T)) -> (changed: bool) where intrinsics.type_is_integer(T) || intrinsics.type_is_float(T) {
+number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: string, with_slider, disabled: bool, default: Maybe(T), parse: Number_Parse) -> (changed: bool) where intrinsics.type_is_integer(T) || intrinsics.type_is_float(T) {
 	s := gs()
 	em := font_size()
 	low, has_lo := lo.?
@@ -717,7 +726,7 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 		f := &s.number_edit
 		// (the keyboard went elsewhere: what was typed applies)
 		if s.number_key == fkey && !typing {
-			number_parse(value, line_edit_string(f), lo, hi, step)
+			number_parse(value, line_edit_string(f), lo, hi, step, parse)
 			s.number_key = 0
 		}
 		came := false
@@ -764,7 +773,7 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 						d := num_step_delta(e.key, e.mods) or_continue
 						s.events.consumed[i] = true
 						base := f64(value^)
-						if v, ok := i18n.parse_decimal(line_edit_string(f)); ok { base = v }
+						if v, ok := number_read(line_edit_string(f), parse); ok { base = v }
 						number_set(value, base + d * k, lo, hi, step)
 						moved = true
 					}
@@ -778,7 +787,7 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 					// (after the field's first build: the press that gave it the keyboard placed its caret there)
 					if came { line_edit_select_all(f) }
 					fsig = res.signal
-					if res.committed { number_parse(value, line_edit_string(f), lo, hi, step); moved = true }
+					if res.committed { number_parse(value, line_edit_string(f), lo, hi, step, parse); moved = true }
 					if res.cancelled { s.number_key = 0 }   // (and the keyboard goes: the value stays)
 				} else {
 					// (the field while nobody types in it: the value, as the field shows its text; the key is the field's, so
@@ -851,9 +860,16 @@ number_set :: proc(value: ^$T, v: f64, lo, hi: Maybe(T), step: T) {
 
 // What is typed, when it is a number, as the value (number_set); else the value stays.
 @(private = "file")
-number_parse :: proc(value: ^$T, text: string, lo, hi: Maybe(T), step: T) {
-	// (either decimal mark: "7,8" as the language writes it, "7.8" as a person may type it)
-	if v, ok := i18n.parse_decimal(text); ok { number_set(value, v, lo, hi, step) }
+number_parse :: proc(value: ^$T, text: string, lo, hi: Maybe(T), step: T, parse: Number_Parse) {
+	if v, ok := number_read(text, parse); ok { number_set(value, v, lo, hi, step) }
+}
+
+// What is typed, read by the number's own reader, else as a number in either decimal mark ("7,8" as the language
+// writes it, "7.8" as a person may type it).
+@(private = "file")
+number_read :: proc(text: string, parse: Number_Parse) -> (f64, bool) {
+	if parse.fn != nil { return parse.fn(parse.user, text) }
+	return i18n.parse_decimal(text)
 }
 
 // The text of a number: its digits, a float's as many after the language's decimal mark as its `step` has (step 0: as

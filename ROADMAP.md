@@ -2,9 +2,9 @@
 
 ## Now
 
-- **The everything palette.** Each item of the palette shows its own control in the palette (a switch, a row of
-  choices, a list of fonts, a number with its unit), changes apply as the person moves and Escape puts them back, and
-  Shift+Enter goes where the act lives. A person drives a whole program from the palette. Intent:
+- **The programs on the everything palette.** Each program calls `palette_chosen` before its content, names the
+  elements its commands act through (`ui.act_name`, `command:<id>`) so Shift+Enter reaches them, and turns a dialog that
+  asks one value into a command with arguments (opencode native's Rename the session and Set the model). Intent:
   [src/md/features/everything-palette.md](src/md/features/everything-palette.md).
 - **opencode native and Wren drop their copies.** Each program is a thin layer over the toolkit: what it does again
   that the toolkit has goes. opencode native: its colour helpers, PNG read, JSON helpers, key/value rows, pill,
@@ -57,6 +57,9 @@
 
 ## Later
 
+- **A path completes in the palette.** In the run mode of a `Path` setting or argument, Tab completes the folder typed
+  from a read on a chore, as the file browser reads. Intent:
+  [src/md/features/everything-palette.md](src/md/features/everything-palette.md).
 - **OpenGL when Vulkan is missing.** On a Linux machine with OpenGL and no Vulkan driver (an old GPU, some virtual
   machines), a program draws through wgpu's GL backend instead of saying that it cannot. It waits for wgpu-native to
   take the display in its instance descriptor: today its GL instance has no backend on Linux. Intent:

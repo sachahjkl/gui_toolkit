@@ -329,9 +329,11 @@ if ui.toolbar("editor_bar", {overflow = .Fold}) {               // .Wrap: the sa
 
 ![ui.number with its track, ui.range_slider, ui.slider, a well of facts (examples/showcase)](screenshots/showcase_controls.webp)
 
-`ui.number(id, &value, lo, hi, step, unit, slider, disabled, default)` is the one widget for a number one sets, of any integer
+`ui.number(id, &value, lo, hi, step, unit, slider, disabled, default, parse)` is the one widget for a number one sets, of any integer
 or float type: − and + around a field where its exact value is typed, then its unit; with `slider = true` and both
-bounds, a slider before them. It returns whether the value changed this frame.
+bounds, a slider before them. It returns whether the value changed this frame. `parse` (`ui.Number_Parse{fn, user}`)
+reads what is typed when the field takes more than a number: a setting's unit and its suffixes ("1.5 s" in a field of
+milliseconds; the settings page gives it from the value kind); zero, a number in either decimal mark.
 
 ```odin
 ui.number("###count", &app.count, lo = 0)                                   // an int, no upper bound
@@ -372,6 +374,9 @@ It shares its keys, its rounding and its drawing with `slider`.
 Every widget that edits a value of the caller's returns `changed: bool`, true in the frame the value changed:
 `checkbox`, `radio`, `toggle`, `slider`, `range_slider`, `number`, `segmented`, `dropdown`, `tabs`, the colour pickers
 (`color_picker`, `hue_picker`, `alpha_picker`, `sat_val_picker`), `hotkey_field`.
+
+`color_picker(id, &cp, text = true)`: with `text` false, no format switch and no text field, for a caller whose own
+field holds the colour's text (the palette's run mode: the text said once).
 
 `checkbox(id, text, &value, wrap)` and `toggle(id, text, &value, wrap)`: with `wrap`, a label longer than the row goes
 on to the next lines, the row as tall as they are, the box or the switch on the first line.

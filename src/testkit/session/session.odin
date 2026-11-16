@@ -254,6 +254,10 @@ session_end :: proc(s: ^Session) {
 		font.destroy(&own.fonts)
 		platform.destroy_window(s.win)
 		free(own)
+	} else {
+		// (an attached application's views' windows are its own: only their sessions go)
+		for c in s.windows { window_session_free(c) }
+		delete(s.windows)
 	}
 	context = s.test
 	runtime.default_temp_allocator_destroy(&s.temp)
@@ -365,6 +369,8 @@ frames :: proc(s: ^Session, n: int) { for _ in 0 ..< n { frame(s) } }
 // `ms` of the clock go by, frame by frame: what is due on the way (a caret's blink, a tooltip's delay, the end of an animation) happens.
 advance :: proc(s: ^Session, ms: f64, loc := #caller_location) {
 	if ui.building() { failed(s, "advance inside a build: no frame can be made, the clock would never move", loc) }
+	// (a view's window: its frames and its clock are its application's)
+	if s.parent != nil { advance(s.parent, ms, loc); return }
 	end := s.clock + ms
 	for s.clock < end {
 		frame(s)

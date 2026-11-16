@@ -541,13 +541,11 @@ Replayed :: struct {
 	color:    draw.Color,
 	slot_x:   f32,    // where the slot puts its square
 	compare:  bool,
-	dc:       ^draw.Context,
 }
 
 @(private = "file")
 replayed_draw :: proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
 	r := (^Replayed)(user)
-	r.dc = dc
 	if r.record {
 		r.record = false
 		draw.picture_begin(dc, &r.pic)
@@ -573,7 +571,7 @@ a_compared_replay_redraws_only_when_it_changed :: proc(t: ^testing.T) {
 		b := ui.build_box({}, "###replayed")
 		b.custom, b.custom_user = replayed_draw, r
 	}})
-	defer if r.dc != nil { draw.picture_destroy(r.dc, &r.pic) }
+	defer draw.picture_destroy(&r.pic)
 	session.damage_verify(s)
 	session.damage_settle(s, 5)
 	for _ in 0 ..< 3 {

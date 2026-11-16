@@ -1,6 +1,6 @@
 // gui_toolkit example: the showcase. Each scene is composed to be looked at, and to be a screenshot: the intents and their
 // hues, the numbers and ranges, the command palette, a menu that searches, the dialogs, the settings page, a node graph
-// with its inspector, the toasts, the steppers, every theme. Its data is fixed: no clock, no chance, the same picture each run.
+// with its inspector, the toasts, the steppers, every theme, the values and the controls they get. Its data is fixed: no clock, no chance, the same picture each run.
 //   odin run tools/tk -- build showcase
 //   build/showcase --scene=graph                      a scene by its name (SCENE_NAMES)
 //   build/showcase --theme="Tokyo Night" --light      a theme of ui.THEMES (or of THEMES_OF_THE_USER), its light version
@@ -9,6 +9,7 @@
 //   build/showcase --scene=views --views=floating     the views scene: docked (panels), floating (and a floating
 //                                                     window), dialog (and a dialog), tabs (every terminal)
 //   build/showcase --scene=files                      the file browser over the page, on a demo source (files.odin)
+//   build/showcase --scene=values --value=size        a value and the control it gets (values.odin: --unit=, --open)
 //   build/showcase --headless                         no window of the system: what tk screenshots runs
 //   build/showcase --size=1280x800                    the window's size
 //   build/showcase --rounding=0                       the rounding setting (0 square .. 2), over the default 1
@@ -30,13 +31,13 @@ import "gt:render"
 import "gt:ui"
 import "gt:ascii"
 
-Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views, Files, Steppers }
+Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views, Files, Steppers, Values }
 
 // The scenes' names on the command line (--scene=), and their titles in the sidebar.
 SCENE_NAMES := [Scene]string{
 	.Intents = "intents", .Controls = "controls", .Palette = "palette", .Menus = "menus", .Dialog = "dialog",
 	.Confirm = "confirm", .Prompt = "prompt", .Settings = "settings", .Graph = "graph", .Toasts = "toasts", .Themes = "themes",
-	.Toolbar = "toolbar", .Views = "views", .Files = "files", .Steppers = "steppers",
+	.Toolbar = "toolbar", .Views = "views", .Files = "files", .Steppers = "steppers", .Values = "values",
 }
 
 WINDOW_SIZE :: [2]int{1280, 800}
@@ -85,6 +86,9 @@ App :: struct {
 	// the file browser's scene (files.odin): its demo source, read by the dialog while it is open
 	files:          ui.File_Source,
 
+	// the values scene (values.odin): its registry, its page's state, the value chosen
+	values:         Values,
+
 	// the overlays: views of the window's own Views, shown as dialogs (in memory only: the showcase keeps no file)
 	palette:      ui.Command_Palette,   // (its usage memory in memory only: the showcase keeps no file)
 	palette_settings: prefs_page.Palette_Settings,
@@ -120,12 +124,16 @@ open :: proc(o: Open_Options) -> ^App {
 	size := WINDOW_SIZE
 	app.choice = {name = "Graphite", mode = .Dark, finish = .Machined, glow = 1}
 	page, advanced := "", false
+	value, unit, open := "", "", false
 	rounding := -1.0   // (< 0: the setting's own)
 	for a in o.args {
 		switch {
 		case a == "--headless": headless = true
 		case a == "--light": app.choice.mode = .Light
 		case a == "--advanced": advanced = true
+		case a == "--open": open = true
+		case strings.has_prefix(a, "--value="): value = a[len("--value="):]
+		case strings.has_prefix(a, "--unit="): unit = a[len("--unit="):]
 		case strings.has_prefix(a, "--scene="):
 			for name, s in SCENE_NAMES { if ascii.equal_fold(name, a[len("--scene="):]) { app.scene = s } }
 		case strings.has_prefix(a, "--theme="): app.choice.name = a[len("--theme="):]
@@ -167,6 +175,7 @@ open :: proc(o: Open_Options) -> ^App {
 	themes_make(app)
 	values_reset(app)
 	settings_open(app, page, advanced)
+	values_open(&app.values, value, unit, open)
 	// (after the settings: the command line's rounding, a picture at another rounding than the setting's default)
 	if rounding >= 0 { _ = config.set_float(&app.prefs, "appearance.rounding", rounding) }
 	graph_make(app)
@@ -179,6 +188,7 @@ open :: proc(o: Open_Options) -> ^App {
 close :: proc(app: ^App) {
 	devtools.stop(app.devtools)
 	graph_destroy(app)
+	values_close(&app.values)
 	settings_close(app)
 	ui.palette_destroy(&app.palette)
 	ui.line_edit_destroy(&app.file_name)

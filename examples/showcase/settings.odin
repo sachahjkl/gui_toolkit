@@ -1,8 +1,9 @@
 package showcase
 
-// The settings scene: every standard preference of the toolkit (prefs_page.STANDARD_ALL) on prefs_page's page, its
-// sidebar, its groups and its folded Advanced part, the themes as cards with the user's own under them. Nothing is read
-// from or written to the disk: the registry starts at its defaults, and the paths shown are examples.
+// The settings scene: every standard preference of the toolkit (prefs_page.STANDARD_ALL) and a colour of the showcase's
+// on prefs_page's page, its sidebar, its groups and its folded Advanced part, the themes as cards with the user's own
+// under them. The palette changes them too (its run mode) and goes to them (Shift+Enter). Nothing is read from or
+// written to the disk: the registry starts at its defaults, and the paths shown are examples.
 
 import "core:strings"
 import config "gt:config"
@@ -23,6 +24,13 @@ SETTINGS_PAGES := [?]prefs_page.Page_Info{
 	{category = "timing", title = "Timing", icon = lucide.TIMER},
 	{category = "rendering", title = "Rendering", icon = lucide.CPU},
 	{category = "update", title = "Update", icon = lucide.REFRESH_CW},
+	{category = "graph", title = "Node graph", icon = lucide.GIT_BRANCH},
+}
+
+// The showcase's own settings: a colour, whose control (the picker) no standard setting shows.
+SHOWCASE_DEFS := [?]config.Def{
+	{name = "graph.selection", title = "Selection colour", description = "The outline of the nodes selected in the node graph.",
+		kind = .String, default = {s = "#7c8cff"}, value_kind = .Color},
 }
 
 // `page`: the category shown first ("": the first one); `advanced`: its Advanced part unfolded.
@@ -34,6 +42,7 @@ settings_open :: proc(app: ^App, page: string, advanced: bool) {
 	d.mode = app.choice.mode == .Light ? "light" : "dark"
 	d.finish = ui.FINISH_NAMES[app.choice.finish]
 	prefs_page.standard_register(&app.prefs, prefs_page.STANDARD_ALL, d)
+	config.register(&app.prefs, SHOWCASE_DEFS[:])
 	prefs_page.standard_watch(&app.watch, &app.prefs, &app.main.state, {renderer = &app.shared.r, fonts = &app.shared.fonts})
 	prefs_page.themes_file_init(&app.themes_file, THEMES_FILE, app.themes[:])
 	if page != "" {

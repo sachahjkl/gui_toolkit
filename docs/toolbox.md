@@ -277,6 +277,8 @@ that are not flags; a lone `-` is plain).
 | `launcher` | Windows: the rules of its console launcher, a `Launcher` (below) |
 | `licence` | its licence, for its notices (`""`: MIT) |
 | `features` | what it takes of the toolkit beyond the core, a `Features` (below) |
+| `crates` | its own Rust libraries, for its notices: their `Cargo.toml`, relative to its root (`rust/core/Cargo.toml`) |
+| `works` | what else it links or embeds, for its notices: `Project_Work`s (Third-party notices, below) |
 | `title`, `description`, `publisher`, `copyright`, `icon` | what Windows shows of it: its resource (above) |
 
 - `version_of(source, line)` is the version in quotes after `line` (`""`: no such line); `version_set(source, line, version)`
@@ -377,10 +379,29 @@ own code at `out` (`NOTICES_FILE`, `THIRD-PARTY-NOTICES`), or with `check_only` 
 - gui_toolkit (MIT) and its attributions (`NOTICE.md`), Roboto, Inconsolata and Lucide's icons, from the toolkit's checkout;
 - Odin's core library (`<odin root>/LICENSE`, BSD-3-Clause);
 - wgpu-native (MIT or Apache-2.0), whose texts the toolbox keeps (`src/toolbox/licences`: its release archive has none);
-- the Rust crates of the project's features (`native_crates(p.features)`): `cargo metadata` of each (`--locked --offline`, for `NOTICES_TARGET`, this
-  system's), the crates the library links (`notices_crates(metadata)`: the normal dependencies from its package, crate after
-  crate; never a build script's, a test's or a procedural macro), each with its licence files (`LICENSE*`, `LICENCE*`,
-  `COPYING*`, `NOTICE*`, and its manifest's `license-file`). A crate with no licence file is an error.
+- the program's works (`p.works`), in their order;
+- the Rust crates of the project's features (`native_crates(p.features)`) and of its own libraries (`p.crates`): `cargo
+  metadata` of each (`--locked`, for `NOTICES_TARGETS`: Linux and Windows together), the crates the library links
+  (`notices_crates(metadata, given)`: the normal dependencies from its package, crate after crate; never a build script's, a
+  test's or a procedural macro; a path crate is walked but not listed), each with its licence files (`LICENSE*`,
+  `LICENCE*`, `COPYING*`, `NOTICE*`, and its manifest's `license-file`). A crate two libraries link is listed once. A
+  crate with no licence file is an error.
 
-`notices_text(p, works, crates, native)` is the file: the list, then each work's texts, then each crate's text once with
-the crates that ship it. `notices_command(p)` is the `notices [--check]` command of a project's tool.
+A program states what the toolkit does not know: its own Rust libraries in `crates`, the rest in `works`. A
+`Project_Work` has `name`, `licence` (an SPDX id) and one of `file` (the licence's file, relative to the project's root)
+and `text`. A work with neither or both is an error. A work with `crate` (a crate's name) is that crate's licence when
+its package ships no licence file (webview2-com's repository has one, its package none): it is listed with the crates,
+not as a work. The error for crates with no licence names them all at once.
+
+```odin
+p := toolbox.Project{name = "sample", features = {.Mermaid, .Webp},
+	crates = {"rust/core/Cargo.toml"},
+	works = {{name = "libghostty-vt", licence = "MIT", file = "vendor/ghostty/LICENSE"}}}
+```
+
+One file covers Linux and Windows: it goes beside each build, and its check says the same on each system. A Linux
+archive lists a Windows-only crate too. `cargo metadata` is not offline: a build fetches only its own target's crates,
+and the check fetches the other target's once. Why: [src/md/features/third-party-notices.md](../src/md/features/third-party-notices.md).
+
+`notices_text(p, works, crates, libraries)` is the file: the list, then each work's texts, then each crate's text once with
+the crates that ship it (`libraries`: the native libraries as the list names them, `gui_toolkit's native/text`). `notices_command(p)` is the `notices [--check]` command of a project's tool.

@@ -284,7 +284,7 @@ recorded_mask_falls_back :: proc(t: ^testing.T) {
 	})
 	testing.expect(t, close_rgb(px(img, 40, 32), red_at(1)), "the content is drawn")
 	testing.expect(t, close_rgb(px(img, 130, 32), {255, 255, 255}), "the mask is not drawn")
-	draw.picture_destroy(&f.dc, &pic)
+	draw.picture_destroy(&pic)
 }
 
 // mask_edge_fade: the content fades to nothing at a faded edge, linearly over its width; two faded axes multiply.

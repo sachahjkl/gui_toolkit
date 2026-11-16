@@ -148,7 +148,7 @@ slug_in_pictures :: proc(t: ^testing.T) {
 	if !open(t, f, .Slug, pages = 1) { testing.fail_now(t, "no offscreen renderer or Segoe UI") }
 	defer close(f)
 	@(static) pic: draw.Picture
-	defer draw.picture_destroy(&f.dc, &pic)
+	defer draw.picture_destroy(&pic)
 	record :: proc(f: ^Fx) {
 		draw.picture_begin(&f.dc, &pic)
 		draw.text(&f.dc, f.ui, 16, {4, 20}, BLACK, "Picture text 123")
@@ -194,7 +194,7 @@ slug_switch_at_run_time :: proc(t: ^testing.T) {
 	if !open(t, f, .Atlas) { testing.fail_now(t, "no offscreen renderer or Segoe UI") }
 	defer close(f)
 	@(static) pic: draw.Picture
-	defer draw.picture_destroy(&f.dc, &pic)
+	defer draw.picture_destroy(&pic)
 	@(static) result: draw.Replay_Result
 	frame(f, proc(f: ^Fx) {
 		draw.picture_begin(&f.dc, &pic)

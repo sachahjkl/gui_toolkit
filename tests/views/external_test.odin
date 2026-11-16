@@ -24,6 +24,8 @@ Ext :: struct {
 	moves:   [dynamic]^platform.Window,   // what `moved` got
 	frame:   bool,                  // build views_frame (its dock targets)
 	count:   int,                   // the owner's data the view shows (a new sample)
+	ends:    int,                   // the program's ends of a view's window's builds (views_set_window_end)
+	t:       ^testing.T,            // (what a hook checks with)
 }
 
 @(private = "file")
@@ -162,7 +164,8 @@ the_window_s_close_and_escape_close_the_view :: proc(t: ^testing.T) {
 	if !wait(s, &r, proc(s: ^session.Session, r: ^Ext) -> bool { return len(r.answers) == 1 }, "the answer") { return }
 	testing.expect_value(t, r.answers[0], ui.VIEW_CANCELLED)
 	session.frames(s, 2)
-	testing.expect(t, session.view_window(s, &r.views, "ask") == nil, "its window went")
+	testing.expect(t, session.view_window(s, &r.views, "ask") == nil, "its view is in no window")
+	testing.expect(t, len(s.windows) == 0, "its window closed (the answer taken before the step)")
 
 	r.want = "ask"
 	w = shown_as_window(s, &r)
@@ -170,6 +173,55 @@ the_window_s_close_and_escape_close_the_view :: proc(t: ^testing.T) {
 	session.key(w, .Escape)
 	if !wait(s, &r, proc(s: ^session.Session, r: ^Ext) -> bool { return len(r.answers) == 2 }, "Escape's answer") { return }
 	testing.expect_value(t, r.answers[1], ui.VIEW_CANCELLED)
+}
+
+// The program closes a view that is in a window of its own (view_close, between two frames or in a build): the next step
+// closes the window and frees its State. (view_close freed the record at once: the step never saw it, and the window
+// stayed, built with nothing.)
+@(test)
+view_close_closes_its_window :: proc(t: ^testing.T) {
+	r: Ext
+	defer ext_end(&r)
+	r.want = "ask"
+	s := ext_start(t, &r, first = .External)
+	if shown_as_window(s, &r) == nil { return }
+	testing.expect_value(t, len(s.windows), 1)
+	ui.view_close(&r.views, "ask")
+	session.frames(s, 2)
+	testing.expect(t, !ui.view_is_open(&r.views, "ask"), "closed")
+	testing.expect_value(t, len(s.windows), 0)   // (the backend's close: window_end, its State destroyed)
+	testing.expect_value(t, len(r.answers), 0)
+	// (opened again: a new window, the view in it)
+	r.want = "ask"
+	if shown_as_window(s, &r) == nil { return }
+	testing.expect_value(t, len(s.windows), 1)
+}
+
+// The program's end of each build of a view's window (views_set_window_end): its overlays are built in that window's
+// State, after the view, and never in the owner's; it is told which view the window shows.
+@(test)
+the_program_s_end_builds_in_each_view_s_window :: proc(t: ^testing.T) {
+	r: Ext
+	defer ext_end(&r)
+	r.want = "ask"
+	s := ext_start(t, &r, first = .External)
+	ui.views_set_window_end(&r.views, proc(user: rawptr, v: ^ui.View) {
+		r := (^Ext)(user)
+		r.ends += 1
+		testing.expect_value(r.t, v.id, "ask")
+		testing.expect_value(r.t, v.presentation, ui.View_Presentation.External)
+		ui.label("The overlay###ext_overlay")
+	}, &r)
+	r.t = t
+	w := shown_as_window(s, &r)
+	if w == nil { return }
+	testing.expect(t, r.ends > 0, "called")
+	overlay := drawn(w, "ext_overlay")
+	testing.expect(t, overlay != nil, "built in the view's window")
+	testing.expect(t, session.find(s, "ext_overlay") == nil, "not in the owner's")
+	// (after the view: a sibling of its frame at the root, not inside its body)
+	frame := drawn(w, "external_view_ask")
+	if overlay != nil && frame != nil { testing.expect(t, overlay.parent == frame.parent, "at the window's root, after the view") }
 }
 
 // The owner hides (papier hides instead of quitting): its view's window goes off the screen with it, and comes back

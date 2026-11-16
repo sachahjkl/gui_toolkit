@@ -266,6 +266,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 		if !keyboard_focus { c.a *= b.focus_t }
 		draw.rect_corners(dc, ring, colors4(c), ring_radii, FOCUS_RING_PX * scale)
 	}
+	if s.act_light.key != 0 && s.act_light.key == b.key { act_light_draw(s, dc, b, radii) }
 	if squished { draw.pop_xform(dc) }
 	if fade { draw.pop_alpha(dc) }
 	if b.transparency != 0 { draw.pop_alpha(dc) }

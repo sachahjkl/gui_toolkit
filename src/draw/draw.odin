@@ -260,10 +260,11 @@ init :: proc(c: ^Context, r: ^render.Renderer, fonts: ^font.State) {
 	c.raster_scale = 1
 }
 
-// Frees the context's memory. Pictures recorded with it should be destroyed first (picture_destroy); one still being
-// recorded keeps what was recorded.
+// Frees the context's memory. The pictures it holds give their GPU ranges back and keep their recording: replayed in
+// another context, they upload there; picture_destroy frees them. One still being recorded keeps what was recorded.
 destroy :: proc(c: ^Context) {
 	picture_end(c)
+	for len(c.pictures) > 0 { picture_release(c.pictures[len(c.pictures) - 1]) }
 	delete(c.insts); delete(c.batches); delete(c.clips); delete(c.alphas); delete(c.xforms)
 	delete(c.xform_table); delete(c.clip_table); delete(c.clip_points); delete(c.layers); delete(c.ops)
 	delete(c.open_layers); delete(c.planes); delete(c.filter_store); delete(c.grads); delete(c.replays); delete(c.replay_idents); delete(c.replay_bounds); delete(c.pictures); delete(c.slug_runs)
