@@ -145,6 +145,14 @@ selectable text, the selection is drawn in the theme's "selection" colour behind
 `has_selection`, `selection_serial` (moves with every change) and `selection_changed` (this build), `clear_selection`,
 `select_box`. Example: `examples/markdown`.
 
+**Rows built only in view.** A container that builds only the rows near the view declares them, so that a selection
+outlives the rows it spans: `selection_rows_begin(Text_Rows{count, text, user, gap})` in the container's box,
+`selection_row(i)` before row `i`'s boxes, `selection_rows_end()`. It builds the rows of `selection_held_rows()` (the
+anchor's and the moving end's, -1 for none) wherever they are, or asks `selection_holds_row(i)` of each row. A copy reads
+the rows between that are not built from `text(user, i)`: `user` is the program's lasting data, as it is read after the
+build. `gt:diff`'s `view` does it; a lazy column does it with `lazy_begin(rows = Text_Rows{...})`, its items being the rows
+in their order.
+
 `measure(s, id, size, text, o)` is `shape(...).width` without building the glyph list: what a layout engine calls.
 `text_width(s, id, size, text)` is `measure` with default options.
 

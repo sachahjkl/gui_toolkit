@@ -23,7 +23,8 @@ import "core:math"
 // showed (the first one visible keeps its place on screen: lazy_settle, after the layout), so nothing jumps.
 // `lazy_begin(all = true)` builds every item; `sweep`: these items too, by their order ([first, end): `sweep = find_sweep()`, a find in
 // page reads a slice of them at each frame); `always`: build this item
-// whatever (the item that grows while streaming; a focus in an item left behind waits for it). One lazy column to a
+// whatever (the item that grows while streaming; a focus in an item left behind waits for it); `rows`: the items are the
+// text selection's rows (selection_rows.odin): the items of its two ends are built, a copy reads the others by index. One lazy column to a
 // parent: what a column keeps between frames goes by that parent's key.
 
 Lazy :: struct {
@@ -46,6 +47,7 @@ Lazy :: struct {
 	pin_dy:  f32,
 	sweep:   [2]int,  // the items built for a find's sweep, [first, end) by their order
 	n:       int,     // items met so far
+	rows:    bool,    // its items are rows of the text selection (lazy_begin's `rows`): an item holding an end is built
 }
 
 @(private)
@@ -78,13 +80,14 @@ LAZY_MARGIN :: 1.0   // screens built above and below the view
 // In the column the items go in. `all`: build every item this frame; `sweep`: these ones too (find_sweep). (The space of the last
 // items skipped is put in when the block lazy_begin was called in ends: before the column closes.)
 @(deferred_out = lazy_end)
-lazy_begin :: proc(all := false, sweep := [2]int{}) -> (lz: ^Lazy) {
+lazy_begin :: proc(all := false, sweep := [2]int{}, rows := Text_Rows{}) -> (lz: ^Lazy) {
 	s := gs()
 	lz = new(Lazy, frame_allocator())
 	lz.items.allocator = frame_allocator()
 	lz.guessed_at.allocator = frame_allocator()
 	lz.sweep = sweep
 	col := parent_box()
+	if rows.text != nil { lz.rows = true; selection_rows_begin(rows) }
 	lz.column = col.key
 	if sweep[1] > sweep[0] { s.find.column = col.key }
 	c := s.lazy_columns[col.key] or_else {}
@@ -150,8 +153,10 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	top := lz.y
 	lz.y += h
 	swept := lz.n >= lz.sweep[0] && lz.n < lz.sweep[1]
+	row := lz.n
 	lz.n += 1
-	if lz.on && !always && !swept && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {
+	held := lz.rows && selection_holds_row(row)
+	if lz.on && !always && !swept && !held && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {
 		lz.skip += h
 		if !e.known { lz.guessed += 1 }
 		next_drop(s)
@@ -165,6 +170,7 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	append(&lz.guessed_at, lz.guessed)
 	if lz.sweep[1] > lz.sweep[0] { append(&s.find.built, lz.last.key) }
 	if swept { append(&s.find.chunk, lz.last.key) }
+	if lz.rows { selection_row(row) }
 	push_parent(lz.last)
 	return true
 }
@@ -192,6 +198,7 @@ lazy_end :: proc(lz: ^Lazy) {
 	lazy_count(lz)
 	s := gs()
 	if lz.on { s.virtual_depth -= 1 }
+	if lz.rows { selection_rows_end() }
 	if lz.sweep[1] > lz.sweep[0] { s.find.total = lz.n }   // (where the sweep ends)
 	// (on a whole pixel: a fraction moves the view by a fraction at each new estimate, and the rects, rounded at each level of
 	// boxes, show what it reads by a pixel up or down)

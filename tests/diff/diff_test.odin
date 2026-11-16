@@ -223,6 +223,44 @@ long_patch :: proc() -> string {
 	return strings.to_string(b)
 }
 
+// A selection from a line, dragged to a line hundreds of rows below: its first row stays built (two rows, not the span),
+// and a copy has every line between, read from the patch.
+@(test)
+a_selection_spans_rows_not_built :: proc(t: ^testing.T) {
+	app := App{patch = long_patch()}
+	defer delete(app.patch)
+	defer diff.doc_destroy(&app.doc)
+	s := session.start(t, {build = build, user = &app, no_renderer = true})
+	session.frames(s, 3)
+	first := session.find(s, "l5")
+	if !testing.expect(t, first != nil, "the row of the press") { return }
+	from := [2]f32{first.rect.max.x - 40, (first.rect.min.y + first.rect.max.y) * 0.5}
+	session.press(s, from)
+	session.move(s, from + {0, 30})
+	view := session.find(s, "view")
+	ui.view_jump(view, 400 * 20)
+	session.frames(s, 2)
+	view = session.find(s, "view")
+	to := [2]f32{from.x, (view.rect.min.y + view.rect.max.y) * 0.5}
+	session.move(s, to)
+	session.frames(s, 2)
+	testing.expect(t, session.find(s, "l5") != nil, "the row of the anchor is built")
+	testing.expect(t, session.find(s, "l200") == nil, "the rows between are not")
+	got := ui.selected_text(s.state, context.temp_allocator)
+	at := 0
+	for i in 6 ..< 300 {   // (row 400 and below: a changed line takes two rows, line 300 is above the pointer)
+		want := i % 10 == 3 ? fmt.tprintf("old %d\n", i) : fmt.tprintf("line %d\n", i)
+		k := strings.index(got[at:], want)
+		if !testing.expectf(t, k >= 0, "line %d in the copy, in order", i) { break }
+		at += k + len(want)
+	}
+	testing.expect(t, !strings.contains(got, "line 4\n"), "nothing before the press")
+	session.release(s, to)
+	// the copy outside a build reads the same
+	session.frames(s, 1)
+	testing.expect_value(t, len(ui.selected_text(s.state, context.temp_allocator)), len(got))
+}
+
 @(test)
 a_patch_is_read_once_across_frames :: proc(t: ^testing.T) {
 	app := App{patch = long_patch()}

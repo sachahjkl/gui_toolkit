@@ -9,8 +9,10 @@ package tk_diff
 // both), "diff_added sign", "diff_removed sign", "diff sign", "diff mark_text", "diff line_number", "diff gap", "diff divider" (between
 // the sides of a split view). A program sets its own with ui.theme_add before the palette.
 
+import "base:runtime"
 import "core:fmt"
 import "core:math"
+import "core:slice"
 import "core:strings"
 import tk_font "../font"
 import syntax "../syntax"
@@ -113,9 +115,22 @@ view :: proc(id: string, d: ^Doc, layout: Layout, o: View_Options = {}) -> ^ui.B
 		if ui.parent(box) {
 			h := k.row_height
 			count := layout == .Stacked ? len(d.lines) : len(d.rows)
+			d.shown = {layout, k.tab, k.max_bytes}
+			// (the rows are the selection's: the rows of its ends are built wherever they are, and a copy reads the others)
+			ui.selection_rows_begin({count = count, text = row_text, user = d})
+			defer ui.selection_rows_end()
 			first, last := visible_rows(box.view_off.y, box.view_target.y, box.size.y, h, count)
-			ui.spacer(ui.px(f32(first) * h))
-			for i in first ..< last {
+			held := ui.selection_held_rows()
+			build := make([dynamic]int, 0, last - first + 2, context.temp_allocator)
+			for e in held { if e >= 0 && e < count && (e < first || e >= last) { append(&build, e) } }
+			if len(build) == 2 && build[0] == build[1] { pop(&build) }
+			for i in first ..< last { append(&build, i) }
+			slice.sort(build[:])
+			at := 0   // the row the content has reached
+			for i in build {
+				if i > at { ui.spacer(ui.px(f32(i - at) * h), exact = true) }
+				at = i + 1
+				ui.selection_row(i)
 				switch layout {
 				case .Stacked:
 					l := d.lines[i]
@@ -132,7 +147,7 @@ view :: proc(id: string, d: ^Doc, layout: Layout, o: View_Options = {}) -> ^ui.B
 					}
 				}
 			}
-			ui.spacer(ui.px(f32(count - last) * h))
+			if count > at { ui.spacer(ui.px(f32(count - at) * h), exact = true) }
 		}
 	}
 	return box
@@ -240,6 +255,38 @@ line_runs :: proc(l: Line, k: ^Look, runs: ^[dynamic]ui.Rich_Run) {
 		}
 	}
 	if cut { append(runs, ui.Rich_Run{text = "…", style = base}) }
+}
+
+// A row's text as its boxes give it to a copy (ui.Text_Rows.text): a line as line_runs shows it, a split row's two
+// sides joined by a line break, nothing for a gap.
+@(private)
+row_text :: proc(user: rawptr, i: int, allocator: runtime.Allocator) -> (string, bool) {
+	d := (^Doc)(user)
+	line :: proc(d: ^Doc, n: int, allocator: runtime.Allocator) -> string {
+		l := d.lines[n]
+		text := l.text
+		cut := d.shown.max_bytes > 0 && len(text) > d.shown.max_bytes
+		if cut {
+			end := d.shown.max_bytes
+			for end > 0 && text[end] & 0xC0 == 0x80 { end -= 1 }
+			text = text[:end]
+		}
+		if text == "" { return " " }
+		text = opened(text, d.shown.tab)
+		return cut ? strings.concatenate({text, "…"}, allocator) : strings.clone(text, allocator)
+	}
+	switch d.shown.layout {
+	case .Stacked:
+		if i < 0 || i >= len(d.lines) || d.lines[i].kind == .Gap { return "", false }
+		return line(d, i, allocator), true
+	case .Split:
+		if i < 0 || i >= len(d.rows) { return "", false }
+		r := d.rows[i]
+		if r.left >= 0 && d.lines[r.left].kind == .Gap { return "", false }
+		if r.left >= 0 && r.right >= 0 { return strings.concatenate({line(d, r.left, allocator), "\n", line(d, r.right, allocator)}, allocator), true }
+		return line(d, max(r.left, r.right), allocator), true
+	}
+	return "", false
 }
 
 @(private)

@@ -66,5 +66,6 @@ nothing scrolls.
   view's edge, and the moving end could jump to the end of a paragraph that no one sees.
 - Lists and tables have no range selection by drag (a press marks, Shift and Ctrl extend). If one comes, it calls
   `drag_autoscroll` with its list's box.
-- A virtual list builds only the rows it shows. A text selection whose anchor box is no longer built ends, as it did
-  before this feature.
+- A container that builds only the rows it shows keeps a text selection when it declares its rows (`gt:diff`'s view,
+  a lazy column with `rows`): it builds the rows of the two ends wherever they are (text-selection.md, "Rows built
+  only in view"). A container that does not declare them ends a selection whose anchor box is no longer built.

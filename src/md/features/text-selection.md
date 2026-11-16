@@ -52,6 +52,34 @@ program, and the selection still shows: a Copy button reads it on its release.
 Refused: the selection takes Ctrl+C whenever it shows. A person who selected words in the inspector, then picked
 files in the list, copied the words.
 
+## Rows built only in view
+
+A container that builds only the rows near the view (`gt:diff`'s view, a lazy column) loses the boxes of a selection
+whose ends scroll out, and a selection whose box is gone ends. A drag that autoscrolls past a screen took its first row
+out, and the selection went. Two facts are needed, nothing more:
+
+- **The ends are built.** The container declares its rows (`selection_rows_begin(Text_Rows)`, `selection_row(i)` before
+  row `i`'s boxes, `selection_rows_end`) and builds a row whatever when `selection_holds_row(i)`: the row of the anchor
+  and the row of the moving end. Two rows, whatever the span: the selection keeps its `Sel_Pos` by box, and every rule
+  of the boxes (order, highlight, words, keys) stays as it is.
+- **The rows between are read, not built.** `Text_Rows.text(user, i)` gives row `i`'s text from the program's data.
+  A copy that goes from a built row to a later one of the same container puts the rows between from that procedure,
+  each after `Text_Rows.gap` ("\n" by default). The rows between that are built are copied from their boxes.
+
+Copying costs the span once, when it is asked. A build costs no row more than the two ends: the text of the last build
+is kept as pieces (built text, and ranges of rows to read), and the rows are read when `selected_text` is called.
+
+Refused:
+
+- **The span built whatever** (opencode native's first answer): correct without the program's data, but each frame
+  builds every row between the ends, thousands in a long conversation.
+- **Positions by row instead of by box**, with the end rows unbuilt: every rule of the selection would need a second
+  form for a row not built (its order, its words, the text of its part before or after the end).
+- **Rows by identity.** A row is its index in the container: rows inserted above a selection move it. The containers
+  that have it (a diff, a conversation that appends) do not insert above.
+
+A lazy column without a text procedure builds the whole span, as before: correct, and costly only there.
+
 ## Subtle points
 
 - A copy joins two boxes by a line break, and by a blank line before a box with `.Selection_Block`: a block of a

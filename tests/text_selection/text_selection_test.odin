@@ -5,6 +5,8 @@
 //   odin run tools/run_tests -- text_selection
 package text_selection_test
 
+import "base:runtime"
+import "core:fmt"
 import "core:strings"
 import "core:testing"
 import tk_diff "gt:diff"
@@ -26,7 +28,10 @@ Kind :: enum {
 	Diff,
 	Markdown,
 	Row,             // a .Selectable label in a clickable row
+	Lazy,            // LAZY_ROWS items of a lazy column, declared as the selection's rows; `target`: its scroll box
 }
+
+@(private = "file") LAZY_ROWS :: 300
 
 @(private = "file")
 Fx :: struct {
@@ -120,6 +125,23 @@ frame :: proc(f: ^Fx, events: []platform.Event = nil) {
 			}
 			if ui.signal(row).clicked { f.clicks += 1 }
 			if f.on_para { f.row, f.target = f.target, para }
+		case .Lazy:
+			// (a lazy column whose items are the selection's rows: a label each, its text read by index)
+			ui.next({width = ui.fill(), height = ui.px(200)})
+			if ui.scroll_y("###lzr") {
+				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+				if ui.column(id = "###col") {
+					text :: proc(_: rawptr, i: int, allocator: runtime.Allocator) -> (string, bool) { return fmt.aprintf("item %d", i, allocator = allocator), true }
+					lz := ui.lazy_begin(rows = {count = LAZY_ROWS, text = text})
+					for i in 0 ..< LAZY_ROWS {
+						if ui.lazy_item(lz, fmt.tprintf("###it%d", i)) {
+							ui.next({width = ui.fill(), height = ui.px(40), flags = {.Selectable}})
+							ui.label(fmt.tprintf("item %d###l", i))
+						}
+					}
+				}
+			}
+			f.target = ui.prev_box("###lzr")
 		}
 	}
 	ui.end_build()
@@ -291,4 +313,36 @@ the_selection_takes_ctrl_c_from_a_command :: proc(t: ^testing.T) {
 	frame(f)
 	testing.expect_value(t, f.copies, 1)
 	testing.expect_value(t, clip, "")
+}
+
+// A selection in a lazy column, its first item scrolled screens away: the item stays built, the selection stands, and a
+// copy has every item between, read by index (src/md/features/text-selection.md, "Rows built only in view").
+@(test)
+a_selection_outlives_its_lazy_item :: proc(t: ^testing.T) {
+	f := new(Fx)
+	defer free(f)
+	if !testing.expect(t, open(f), "the embedded face") { return }
+	defer close(f)
+	f.kind = .Lazy
+	for _ in 0 ..< 3 { frame(f) }
+	p := f.target.rect.min + {20, 60}   // (item 1)
+	frame(f, {{kind = .Mouse_Press, button = .Left, pos = p}})
+	frame(f, {{kind = .Mouse_Move, pos = p + {0, 20}}})
+	ui.view_jump(f.target, 200 * 40)
+	for _ in 0 ..< 4 { frame(f) }
+	q := f.target.rect.min + {20, 100}
+	frame(f, {{kind = .Mouse_Move, pos = q}})
+	frame(f)
+	got := ui.selected_text(&f.s, context.temp_allocator)
+	testing.expectf(t, strings.contains(got[:min(len(got), 8)], " 1\n"), "from item 1: %.40q", got)
+	at := 0
+	for i in 2 ..< 200 {
+		want := fmt.tprintf("item %d\n", i)
+		k := strings.index(got[at:], want)
+		if !testing.expectf(t, k >= 0, "item %d in the copy, in order", i) { break }
+		at += k + len(want)
+	}
+	frame(f, {{kind = .Mouse_Release, button = .Left, pos = q}})
+	frame(f, {{kind = .Key_Press, key = .C, mods = {.Ctrl}}})
+	testing.expect_value(t, len(clip), len(got))
 }

@@ -50,6 +50,13 @@ Selection :: struct {
 	order:         [dynamic]Key,  // selectable boxes of the build, in order
 	pos_of:        map[Key]int,
 	snapshot:      [dynamic]u8,   // the selected text when this build began: what selected_text answers during it
+	snapshot_gaps: [dynamic]Sel_Gap,   // ... and the rows it reads from their containers (selection_rows.odin)
+	// rows built only in view (selection_rows.odin): each selectable box's row this build, the containers declared this
+	// build, the one being built, and the rows of the two ends (anchor, focus) at the end of the last build
+	row_of:        map[Key]Sel_Row,
+	regions:       map[Key]Text_Rows,
+	region_stack:  [dynamic]Sel_Row,
+	ends:          [2]Sel_Row,
 	// a press on selectable text inside a clickable box: a drag past SEL_DRAG_SLOP_PX selects from here, a click is the box's
 	waiting:       bool,
 	waiting_at:    Sel_Pos,
@@ -66,12 +73,20 @@ Selection :: struct {
 // far are not all of them (a Copy button above the text), and the others' text is in memory that is gone.
 selected_text :: proc(s: ^State, allocator := context.allocator) -> string {
 	if s.sel.phase == .None { return "" }
-	if build_of == s { return strings.clone(string(s.sel.snapshot[:]), allocator) }
+	if build_of == s { return sel_text_with_gaps(string(s.sel.snapshot[:]), s.sel.snapshot_gaps[:], allocator) }
 	return selected_text_of_boxes(s, allocator)
 }
 
 @(private)
 selected_text_of_boxes :: proc(s: ^State, allocator: runtime.Allocator) -> string {
+	gaps := make([dynamic]Sel_Gap, context.temp_allocator)
+	text := sel_built_text(s, &gaps, context.temp_allocator)
+	return sel_text_with_gaps(text, gaps[:], allocator)
+}
+
+// The selected text of the boxes built, and where the rows between them that are not built go (`gaps`).
+@(private)
+sel_built_text :: proc(s: ^State, gaps: ^[dynamic]Sel_Gap, allocator: runtime.Allocator) -> string {
 	sel := &s.sel
 	a, b := sel_ordered(s)
 	if a.box == 0 { return "" }
@@ -83,6 +98,7 @@ selected_text_of_boxes :: proc(s: ^State, allocator: runtime.Allocator) -> strin
 		lo := i == ia ? a.index : 0
 		hi := i == ib ? b.index : len(text)
 		lo, hi = clamp(lo, 0, len(text)), clamp(hi, 0, len(text))
+		if i > ia { sel_gaps_between(s, sel.order[i - 1], sel.order[i], strings.builder_len(sb), gaps) }
 		// (a block of a document after another: a blank line between, as its source has)
 		if i > ia { strings.write_string(&sb, .Selection_Block in box.flags ? "\n\n" : "\n") }
 		if hi > lo { strings.write_string(&sb, text[lo:hi]) }
@@ -131,28 +147,37 @@ selection_drag_end :: proc(s: ^State) { if s.sel.phase == .Dragging { s.sel.phas
 sel_bump :: proc(s: ^State) { s.sel.serial += 1; s.sel.changed_build = s.build_index }
 
 @(private)
-selection_destroy :: proc(s: ^State) { delete(s.sel.order); delete(s.sel.pos_of); delete(s.sel.snapshot) }
+selection_destroy :: proc(s: ^State) {
+	delete(s.sel.order); delete(s.sel.pos_of); delete(s.sel.snapshot); delete(s.sel.snapshot_gaps)
+	delete(s.sel.row_of); delete(s.sel.regions); delete(s.sel.region_stack)
+}
 
-// begin_build, before the last build's memory goes: what selected_text answers during this build.
+// begin_build, before the last build's memory goes: what selected_text answers during this build. The rows read from
+// their containers are kept as ranges: a build costs the boxes built, not the span.
 @(private)
 selection_snapshot :: proc(s: ^State) {
 	clear(&s.sel.snapshot)
-	if has_selection(s) { append(&s.sel.snapshot, selected_text_of_boxes(s, context.temp_allocator)) }
+	clear(&s.sel.snapshot_gaps)
+	if has_selection(s) { append(&s.sel.snapshot, sel_built_text(s, &s.sel.snapshot_gaps, context.temp_allocator)) }
 }
 
-// begin_build: last build's list goes.
+// begin_build: last build's lists go.
 @(private)
 selection_begin :: proc(s: ^State) {
 	clear(&s.sel.order)
 	clear(&s.sel.pos_of)
+	clear(&s.sel.row_of)
+	clear(&s.sel.regions)
+	clear(&s.sel.region_stack)
 }
 
-// build_box: a selectable box takes its place in the order.
+// build_box: a selectable box takes its place in the order (and its row, in a container of rows).
 @(private)
 selection_note :: proc(s: ^State, b: ^Box) {
 	if .Selectable not_in b.flags { return }
 	s.sel.pos_of[b.key] = len(s.sel.order)
 	append(&s.sel.order, b.key)
+	if n := len(s.sel.region_stack); n > 0 && s.sel.region_stack[n - 1].row >= 0 { s.sel.row_of[b.key] = s.sel.region_stack[n - 1] }
 }
 
 // The anchor and the focus in document order.
@@ -616,6 +641,9 @@ selection_update :: proc(s: ^State) {
 		}
 		if over || sel.phase == .Dragging { s.cursor_request = .Text }
 	}
+	// the rows that hold the ends, which their containers build whatever at the next build (selection_held_rows)
+	sel.ends = {}
+	if sel.phase != .None { sel.ends = {sel.row_of[sel.anchor.box], sel.row_of[sel.focus.box]} }
 	after := [3]Sel_Pos{sel.anchor, sel.focus, {Key(u64(sel.phase != .None)), 0}}
 	if after != before { sel_bump(s) }
 	if sel.phase == .Dragging { s.anim_busy = true }   // keep frames coming while the pointer drags

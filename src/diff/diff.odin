@@ -258,6 +258,16 @@ Doc :: struct {
 	using parsed:   Parsed,
 	rows:           []Row,   // the split view's
 	version:        u64,
+	// how `view` showed it last: a copy of a selection reads the lines it does not build as they would show
+	// (ui.Text_Rows, read after the build)
+	shown:          Shown,
+}
+
+// What a line's text becomes on screen (view.odin: line_runs), kept for the copy of lines not built.
+Shown :: struct {
+	layout:    Layout,
+	tab:       string,   // (a constant: View_Options.tab, or the default)
+	max_bytes: int,
 }
 
 // `patch` is the doc's: read when it differs from the one it has (false: the same, nothing read).
