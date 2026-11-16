@@ -37,6 +37,7 @@ Every step is a command of `tools/tk` (the head of `tools/tk/main.odin` lists th
 several programs. No project keeps its plans in a global to-do file.
 
 - Plain Markdown, no front matter: `# Roadmap`, then `## Now`, `## Next` and `## Later`, in this order, each a list.
+  An optional `## Maybe` comes last: what may be done one day, the ways open and what each waits for.
 - An entry starts with a bold summary, then one or two sentences on what it gives the user; its continuation lines are
   indented. No dates. If a design exists, the entry links its intent file in `src/md`.
 - When a work is done, its entry goes in the same commit as its changelog fragment.
