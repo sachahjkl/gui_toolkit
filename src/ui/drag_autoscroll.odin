@@ -6,16 +6,19 @@ package ui
 // The speed is the middle-click curve (autoscroll_axis_speed), so the two autoscrolls feel the same.
 
 // The speed curve of a selecting drag, in logical pixels: autoscroll_axis_speed of the distance past the inner edge of
-// the band, with no dead zone. About 70 px/s at the view's edge, 560 px/s 100 px past it, 3000 px/s from 280 px past it.
+// the band, with no dead zone. 600 px/s as soon as the pointer is in the band (a maximised window leaves the pointer no
+// room past the edge: the band alone must scroll fast), about 830 px/s at the view's edge, 3000 px/s 100 px past it,
+// 8000 px/s from 170 px past it.
 DRAG_AUTOSCROLL :: Autoscroll_Settings{
 	dead_zone = 0,
-	max_speed = 3000,
-	full_dist = 300,
-	doubling  = 96,
+	min_speed = 600,
+	max_speed = 8000,
+	full_dist = 200,
+	doubling  = 50,
 }
 
 // The band inside each edge of a view where a selecting drag starts to scroll it, in ems of the dragged box's font.
-DRAG_AUTOSCROLL_BAND_EM :: 1.5
+DRAG_AUTOSCROLL_BAND_EM :: 2
 
 // An offset this close to an end of its range is at that end: the next view out takes the drag.
 @(private = "file") DRAG_AUTOSCROLL_END_EPS :: 0.5
@@ -148,6 +151,7 @@ drag_band :: proc(b: ^Box) -> f32 { return max(b.font_size, 1) * DRAG_AUTOSCROLL
 @(private = "file")
 drag_frame_settings :: proc(s: ^State) -> Autoscroll_Settings {
 	cfg := DRAG_AUTOSCROLL
+	cfg.min_speed *= s.scale
 	cfg.max_speed *= s.scale
 	cfg.full_dist *= s.scale
 	cfg.doubling *= s.scale

@@ -94,9 +94,10 @@ ui.autoscroll_cancel(&auto)
 ## A selection dragged to an edge (`ui.drag_autoscroll`)
 
 A selection that the person drags near or past the edge of a scroll view scrolls that view, so a selection can span
-several screens. Near means in a band of 1.5 em inside the edge. The speed is the curve above with no dead zone, of the
-distance past the inner edge of the band: about 70 px/s at the edge, 560 px/s 100 px past it, 3000 px/s from 280 px past
-it (`DRAG_AUTOSCROLL`). The view is the innermost one around the dragged box that can still scroll that way, so a list
+several screens. Near means in a band of 2 em inside the edge. The speed is the curve above with no dead zone, of the
+distance past the inner edge of the band, from a floor: 600 px/s as soon as the pointer is in the band, about 830 px/s
+at the edge, 3000 px/s 100 px past it, 8000 px/s from 170 px past it (`DRAG_AUTOSCROLL`; `Autoscroll_Settings.min_speed`
+is the floor). The view is the innermost one around the dragged box that can still scroll that way, so a list
 in a page scrolls to its end, then the page.
 
 The toolkit's selecting drags already do it: the selection of `.Selectable` text (labels, paragraphs, rich text,

@@ -29,6 +29,7 @@ Autoscroll_Settings :: struct {
 	max_speed:  f32,   // speed cap, scroll units per second, reached at `full_dist` from the edge of the dead zone
 	full_dist:  f32,   // distance past the dead zone at which the speed reaches `max_speed`
 	doubling:   f32,   // geometric growth: the speed doubles for every `doubling` px of distance past the dead zone (see autoscroll_axis_speed)
+	min_speed:  f32,   // the speed as soon as the pointer leaves the dead zone (the curve grows from it to `max_speed`)
 	toggle:     bool,  // a quick tap latches the mode on (toggle mode); always paired with hold here
 	tap_ms:     f32,   // a press shorter than this, with little movement, is a tap: it latches toggle mode
 	tap_slop:   f32,   // a press that moved more than this many px before release is a drag, never a tap
@@ -95,7 +96,8 @@ autoscroll_axis_speed :: proc(off: f32, cfg: Autoscroll_Settings) -> f32 {
 	d := max(cfg.doubling, AUTOSCROLL_DOUBLING_MIN_PX)
 	span := math.pow(2, full / d) - 1               // the growth between the dead zone and the cap
 	shaped := span > AUTOSCROLL_SPAN_EPS ? (math.pow(2, x / d) - 1) / span : x / full
-	speed := shaped * cfg.max_speed
+	lo := clamp(cfg.min_speed, 0, cfg.max_speed)
+	speed := lo + shaped * (cfg.max_speed - lo)
 	return off < 0 ? -speed : speed
 }
 // The velocity vector (scroll units per second) for a pointer at `pointer`, given the anchor and the axes the area

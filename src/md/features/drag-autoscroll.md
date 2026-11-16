@@ -31,13 +31,20 @@ first, so the moving end is on the last line shown, and the next line becomes th
 
 ## The speed
 
-The band is 1.5 em of the marked box's font, inside each edge of the visible rect. The speed on an axis is
+The band is 2 em of the marked box's font, inside each edge of the visible rect. The speed on an axis is
 `autoscroll_axis_speed` (the middle-click curve, one implementation) of the distance past the inner edge of the band,
-with no dead zone. Its settings are `DRAG_AUTOSCROLL`, in logical pixels, scaled by the window's scale:
+with no dead zone, from a floor (`min_speed`). Its settings are `DRAG_AUTOSCROLL`, in logical pixels, scaled by the
+window's scale:
 
-- at the view's edge (one band deep): about 70 px/s, a few lines per second, to pick a line;
-- 100 px past the edge: about 560 px/s;
-- 280 px past the edge or more: the cap, 3000 px/s.
+- as soon as the pointer is in the band: 600 px/s, a screen in about a second;
+- at the view's edge (one band deep): about 830 px/s;
+- 100 px past the edge: about 3000 px/s;
+- 170 px past the edge or more: the cap, 8000 px/s.
+
+The floor is the point. A maximised window, or a view at the bottom of the screen, leaves the pointer no room past
+the edge: the band alone must scroll fast. The first curve grew from zero (70 px/s at the edge, three lines a second)
+and a person dragging to the bottom of a conversation in a maximised window waited for minutes. Picking a line is done
+by moving the pointer back into the view, where nothing scrolls, not by a slow band.
 
 A view smaller than two bands splits its size between its two bands, so a short view still has a middle where
 nothing scrolls.

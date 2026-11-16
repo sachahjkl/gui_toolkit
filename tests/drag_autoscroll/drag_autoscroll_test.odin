@@ -32,6 +32,9 @@ speed_curve :: proc(t: ^testing.T) {
 	far := ui.drag_autoscroll_speed(hi + 5000, lo, hi, band)
 	testing.expectf(t, 0 < in_band && in_band < at_edge && at_edge < past && past < far, "grows: %v %v %v %v", in_band, at_edge, past, far)
 	testing.expect_value(t, far, ui.DRAG_AUTOSCROLL.max_speed)
+	// a maximised window gives the pointer no room past the edge: the band alone scrolls a screen in about a second
+	testing.expectf(t, in_band >= 600, "fast in the band already: %v px/s", in_band)
+	testing.expectf(t, past >= 2500, "100 px past the edge: %v px/s", past)
 	testing.expect_value(t, ui.drag_autoscroll_speed(lo + 4, lo, hi, band), -in_band)
 	// a view smaller than two bands: each band is half of it, and its middle does not scroll
 	testing.expect_value(t, ui.drag_autoscroll_speed(10, 0, 20, band), 0)
@@ -187,8 +190,10 @@ selection_past_the_top_scrolls_past_a_header :: proc(t: ^testing.T) {
 	p := ui.Vec2{f.lines[0].rect.min.x + 4, f.view.rect.min.y + VIEW_H / 2}
 	frame(f, {press(p)})
 	frame(f, {move({p.x, f.view.rect.min.y - 150})})
+	// (the view at its top, the pointer is free again: the header may join the selection then)
 	n := frames_until(f, proc(f: ^Fx) -> bool {
-		return strings.has_prefix(ui.selected_text(&f.s, context.temp_allocator), "line 0")
+		got := ui.selected_text(&f.s, context.temp_allocator)
+		return strings.has_prefix(got, "line 0") || strings.has_prefix(got, "the header\nline 0")
 	})
 	got := ui.selected_text(&f.s, context.temp_allocator)
 	testing.expectf(t, n > 0, "the selection reached line 0 (frames: %d): %q", n, got)
