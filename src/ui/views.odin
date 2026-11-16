@@ -63,6 +63,7 @@ View_Options :: struct {
 	                                            // i18n.later: translated when shown); "": "New tab"
 	resizable:      bool,                       // the dialog has grips; its size is remembered
 	top:            Maybe(f32),                 // the dialog's top at this fraction of the window (a palette); nil: centred
+	quick:          bool,                       // summoned by a key and left as fast (a palette): its dialog fades in faster
 	no_header:      bool,                       // the build draws the top itself (a palette's search band): no header strip
 	// drawn first in the view's box, under its header and its body (a blur of the window behind a dialog)
 	backdrop:       proc(v: ^View, data: rawptr),
@@ -83,6 +84,14 @@ View :: struct {
 
 // The build procedure as the registry keeps it. It builds the body only: the header is the toolkit's.
 View_Build :: #type proc(v: ^View, data: rawptr)
+
+// Said during the view's build: what it shows waits for an answer (a source's, a worker's). A dialog opening stays unseen,
+// built at each frame, until a build no longer says it, for MODAL_READY_WAIT_MS (100 ms) at most from its opening; then it
+// shows what it holds. Once shown, it is not hidden again; another presentation shows as it would (views.md 3.4).
+view_not_ready :: proc(v: ^View) {
+	if v.presentation != .Dialog || v.record == nil { return }
+	modal_not_ready(v.record.panel)
+}
 
 // The words of the views' header and menus (a word left empty: view_default_labels', in the language in use). The
 // program gives its source words (English, i18n.later): they are translated when shown, at each build.

@@ -772,7 +772,7 @@ row, or after six builds (`MODAL_MEASURES_MAX`). Each unseen build comes at once
 
 | Presentation | Unseen builds | The first frame shown |
 |---|---|---|
-| Dialog | today's `Measuring`, `Ready`, `Showing`, `Shown`, with `modal_layout_signature` | the scrim and the panel fade in together, `MODAL_FADE_MS` (120 ms), at once with the animations off. What had the focus loses it on that frame. |
+| Dialog | today's `Measuring`, `Ready`, `Showing`, `Shown`, with `modal_layout_signature`; none for a dialog of a known size, unless it is not ready (below) | the scrim and the panel fade in together, `MODAL_FADE_MS` (120 ms; `quick`: 70 ms), at once with the animations off. What had the focus loses it on that frame. |
 | Internal | built in its floating frame at its place, `transparency = 1` | it shows at once, above the content |
 | External | built in the window's State, offscreen: the window is open but not shown. With no remembered size, the window takes the content's natural size (`natural_width`, `modal_content_height`), clamped to the work area. | the first picture is drawn at the settled size, then the window is shown (`host_show`) |
 | Panel | built in a floating box of the dock area's size, unseen, in the owner's State | the dock area is inserted and the panel shows in the same frame |
@@ -780,6 +780,34 @@ row, or after six builds (`MODAL_MEASURES_MAX`). Each unseen build comes at once
 | a drag inside one State | none | the drop's frame |
 
 No presentation has a fade out. A view closes at once.
+
+#### A dialog that appears at once, with its content
+
+The palette (Ctrl+K) stuttered as it opened, at under 4 ms a frame on the GPU: the fault was in the opening's logic,
+not in its cost. Measured in classeur, headless, on the GPU: three or four frames unseen (50 to 65 ms at 60 Hz) though
+its size was known; a fade that started before its rows had come from the workers (its rows came the frame after);
+a late frame that moved the 120 ms fade by a third or a half; and a first unseen frame that redrew the whole window.
+Four rules make it come at once and whole:
+
+1. **A dialog of a known size has nothing to measure.** Resizable (its size is the person's or the asked one: width
+   and height given) or maximised, its rects do not depend on what is in it. It shows in its first build: its
+   layout of that build is the one drawn. A dialog as wide or as tall as what is in it keeps its unseen builds.
+   (`Modal_Open.sized`; Showing goes to Shown with no second layout to compare.)
+2. **A dialog whose content waits for an answer does not show before it.** The view's build calls `view_not_ready(v)`
+   while what it shows is not there (the palette: until the first ranking of the question being asked comes). The
+   dialog stays unseen, built each frame, for at most `MODAL_READY_WAIT_MS` (100 ms) from its opening; then it shows
+   whatever it holds, so a worker that never answers cannot hide it. A known-size dialog shows in its first build
+   unless that build said not ready; then that build is made unseen again (its scrim and panel transparent), as one
+   whose layout moved is.
+   Refused: `View_Options.ready`, a value fixed at registration that cannot say when an answer came; a procedure the
+   toolkit calls to ask, an indirection where the build already knows.
+3. **The fade's step is bounded.** A late frame (the scheduler, a busy core) moved `tween` by its whole `dt`: one frame
+   of 50 ms was a third of the fade. The dialog's fade advances by at most `MODAL_FADE_STEP_MAX_MS` (25 ms, a frame
+   and a half at 60 Hz) a frame (`tween`'s `step_max_ms`). A dialog summoned by a key and left as fast
+   (`View_Options.quick`: the palette) fades in over `MODAL_QUICK_FADE_MS` (70 ms) instead of 120 ms.
+4. **What cannot be seen damages nothing.** A box with `transparency` 1 is not drawn: it has no part for the partial
+   redraw. Drawn at alpha 0, the scrim of a dialog still unseen was a part the size of the window, and its first
+   unseen frame redrew all of it. Its parts come in the frame it shows.
 
 ### 3.5 Focus and keyboard
 

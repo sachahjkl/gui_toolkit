@@ -267,7 +267,7 @@ view_dialog_build :: proc(vs: ^Views, r: ^View_Record) {
 	s := gs()
 	k := r.kind
 	key := modal_key(s, r.modal_name)
-	o := Modal_Options{width_em = k.o.width_em, height_em = k.o.height_em, min_width_em = k.o.min_width_em, min_height_em = k.o.min_height_em, top = k.o.top}
+	o := Modal_Options{width_em = k.o.width_em, height_em = k.o.height_em, min_width_em = k.o.min_width_em, min_height_em = k.o.min_height_em, top = k.o.top, quick = k.o.quick}
 	// (view_size of this opening: a non-resizable dialog of a width asked past DIALOG_MAX_WIDTH_EM keeps it, modal's `most`)
 	if r.asked.x > 0 { o.width_em = r.asked.x }
 	if r.asked.y > 0 { o.height_em = r.asked.y }

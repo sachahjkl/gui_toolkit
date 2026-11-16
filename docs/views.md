@@ -140,9 +140,16 @@ of the first opening), `float_edge` (an internal window of no rect of its own op
 
 A dialog that opens is built and laid out unseen, the next frame at once, until two layouts in a row agree: the rects
 of its panel and of every box in it. The first frame that shows it has it at its size and place. One that never
-settles shows after six layouts. From the first frame shown, its scrim and its panel fade in together
-(`MODAL_FADE_MS`, 120 ms; at once with the animations off). What had the focus loses it on that first frame shown, not
-before.
+settles shows after six layouts. A dialog of a known size (resizable with `height_em`, or a size the person gave it,
+or maximised) has nothing to measure: it shows in its first build. From the first frame shown, its scrim and its panel
+fade in together (`MODAL_FADE_MS`, 120 ms; `View_Options.quick`, a dialog summoned by a key as the palette, 70 ms; at
+once with the animations off). A frame moves the fade by 25 ms at most, so a late frame does not jump it. What had the
+focus loses it on that first frame shown, not before.
+
+A view whose content waits for an answer (a source's, a worker's) calls `view_not_ready(v)` in its build: its dialog
+stays unseen, built at each frame, until a build no longer calls it, for 100 ms at most from its opening. The palette
+does so until the ranking of its question has seen every source's answer, so it appears with its rows. A dialog shown
+is not hidden again. A box wholly transparent (`transparency` 1) is not drawn: a dialog's unseen frames redraw nothing.
 
 - A dialog that is not resizable is as wide as what is in it asks (its title on one line, its row of buttons on one
   line), `width_em` at least, `DIALOG_MAX_WIDTH_EM` (46) at most. Past that, its title and the words of a button wrap.

@@ -35,8 +35,10 @@ close :: proc(f: ^Fx) {
 
 @(private = "file")
 frame :: proc(f: ^Fx, events: []platform.Event, r: ^Run) {
+	dt := f.dt > 0 ? f.dt : 1.0 / 60
+	if f.animate { f.clock += f64(dt) * 1000 }
 	ui.begin_build(&f.s, {
-		window_size = WINDOW, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1,
+		window_size = WINDOW, events = events, dt = dt, animations = f.animate, dpi_scale = 1, time_ms = f.clock,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.base_font, font_size = 15, text_pad = 6},
 	})
 	run_build(r)
@@ -1020,4 +1022,102 @@ shift_enter_goes_to_a_command_s_button :: proc(t: ^testing.T) {
 	settle_closed(t, &f, &r)
 	frame(&f, nil, &r)
 	testing.expect_value(t, chosen_command(&r), 2)
+}
+
+////////////////////////////////
+// Its dialog's appearance (views.md 3.4, "A dialog that appears at once")
+
+// How much of the palette's dialog shows in the last build: 0 unseen (or not built), 1 whole.
+@(private = "file")
+dialog_shown :: proc(f: ^Fx) -> f32 {
+	if f.s.root == nil { return 0 }   // (no build yet)
+	for c := f.s.root.first; c != nil; c = c.next {
+		if .Press_Stop in c.flags && .Draw_Shadow in c.flags && c.last_build == f.s.build_index { return 1 - c.transparency }
+	}
+	return 0
+}
+
+// The dialog shows with its rows: its source answers four frames late, and no frame before the answer draws any of it;
+// the first frame that draws it has the palette's first row, and that row's text is built.
+@(test)
+the_palette_shows_with_its_rows :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	f.animate = true
+	late: Test_Source
+	source_make(&late, "closed", "Closed tabs", .Go_To, LATE_ITEMS[:], plain = true, later = true)
+	late.src.listed = true   // (its rows show while nothing is typed)
+	r: Run
+	append(&r.sources, &late)
+	defer run_free(&r)
+	defer source_free(&late)
+	r.open_now = true
+	for _ in 0 ..< 4 {
+		frame(&f, nil, &r)
+		testing.expectf(t, dialog_shown(&f) == 0, "unseen while its source has not answered: %v", dialog_shown(&f))
+	}
+	if !testing.expect(t, len(late.questions) == 1, "the source was asked") { return }
+	testing.expect(t, answer_last(&late, LATE_ITEMS[:]), "the answer kept")
+	// (frames spin faster than the ranking's chore: a clock of 1 ms a frame keeps the wait's bound, 100 ms, out of the test)
+	f.dt = 0.001
+	start := time.tick_now()
+	for dialog_shown(&f) == 0 {
+		frame(&f, nil, &r)
+		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the palette never showed") }
+	}
+	testing.expect_value(t, row_id(&r, 0), "a0")
+	testing.expect(t, find_text(&f, "Alpha") != nil, "the first row is built in the frame that first draws the dialog")
+}
+
+// A palette of a known size whose answers are there shows in the build where its ranking comes: no unseen build to measure
+// it after that; and it shows something in that very build (its fade moved by that frame).
+@(test)
+a_palette_of_a_known_size_shows_at_once :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	f.animate = true
+	f.dt = 0.001   // (frames spin faster than the ranking's chore: the wait's bound, 100 ms, stays out of the test)
+	r := Run{table = NEW_COMMANDS[:]}
+	defer run_free(&r)
+	r.open_now = true
+	start := time.tick_now()
+	for {
+		frame(&f, nil, &r)
+		answered := r.pal.pending == 0 && r.pal.shown != nil
+		if answered {
+			testing.expectf(t, dialog_shown(&f) > 0, "shown in the build its answers came: %v", dialog_shown(&f))
+			break
+		}
+		testing.expect_value(t, dialog_shown(&f), 0)
+		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the palette's ranking did not come") }
+	}
+	testing.expect_value(t, row_id(&r, 0), "notes")
+}
+
+// A late frame (50 ms) moves the dialog's fade by MODAL_FADE_STEP_MAX_MS at most: what a 25 ms frame moves it.
+@(test)
+a_late_frame_moves_the_fade_by_a_bounded_step :: proc(t: ^testing.T) {
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	f.animate = true
+	f.dt = 0.001   // (as above: frames of 1 ms until the ranking comes)
+	r := Run{table = NEW_COMMANDS[:]}
+	defer run_free(&r)
+	r.open_now = true
+	start := time.tick_now()
+	for dialog_shown(&f) == 0 {
+		frame(&f, nil, &r)
+		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the palette never showed") }
+	}
+	// (its first frame shown is one frame, 1 ms, into the quick fade, 70 ms)
+	smooth :: proc(ms: f32) -> f32 { p := min(ms / 70, 1); return p * p * (3 - 2 * p) }
+	first := dialog_shown(&f)
+	testing.expectf(t, abs(first - smooth(1)) < 1e-3, "one frame in: %v", first)
+	f.dt = 0.050
+	frame(&f, nil, &r)
+	late := dialog_shown(&f)
+	testing.expectf(t, abs(late - smooth(1 + 25)) < 1e-3, "a 50 ms frame moves it by 25 ms: %v, not %v", late, smooth(1 + 50))
 }

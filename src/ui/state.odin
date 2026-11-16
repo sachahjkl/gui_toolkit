@@ -885,8 +885,9 @@ anim :: proc(key: Key, target: f32, rate: f32 = ANIM_RATE_DEFAULT, initial: Mayb
 
 // Goes to `target` in `ms`, leaving and arriving gently (a smoothstep): for what the eye follows from end to end, where anim's first
 // step, its largest, looks like a jolt. A new target sets off from where the value is, for the whole time. It asks for frames while it
-// moves; 0 ms, or animations off: at once.
-tween :: proc(key: Key, target: f32, ms: f32, initial: Maybe(f32) = nil) -> f32 {
+// moves; 0 ms, or animations off: at once. `step_max_ms` bounds what one frame adds to it: a short tween (a dialog's fade)
+// that a late frame would move by a third.
+tween :: proc(key: Key, target: f32, ms: f32, initial: Maybe(f32) = nil, step_max_ms: f32 = 0) -> f32 {
 	s := gs()
 	a, found := s.anims[key]
 	if !found {
@@ -900,7 +901,8 @@ tween :: proc(key: Key, target: f32, ms: f32, initial: Maybe(f32) = nil) -> f32 
 		a.from, a.to, a.elapsed_s = a.value, target, 0   // (this frame is its start: the time since the last one is not part of it)
 		s.anim_busy = true
 	} else if a.value != a.to {
-		a.elapsed_s += s.dt
+		// (`step_max_ms`: a late frame moves it by that much at most, not by its whole dt)
+		a.elapsed_s += step_max_ms > 0 ? min(s.dt, step_max_ms / 1000) : s.dt
 		p := min(a.elapsed_s * 1000 / ms, 1)
 		a.value = p >= 1 ? a.to : a.from + (a.to - a.from) * p * p * (3 - 2 * p)
 		s.anim_busy = true

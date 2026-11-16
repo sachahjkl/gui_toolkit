@@ -177,6 +177,9 @@ ROUND_LEAST_PX :: 3
 // `children` false: the box's own face alone, its subtree skipped (the exploded view draws each depth on its own plane).
 @(private)
 draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := true) {
+	// (wholly transparent, it and what is in it show nothing: not drawn, it has no part for the partial redraw. Drawn at
+	// alpha 0, a dialog's scrim still unseen was a part the size of the window, and redrew all of it: views.md 3.4)
+	if b.transparency >= 1 { return }
 	// what the box draws, its children apart, is compared with its last frame's (set_partial_redraw)
 	draw.damage_span_begin(dc, u64(b.key))
 	defer draw.damage_span_end(dc)

@@ -116,6 +116,78 @@ under_scene :: proc(t: ^testing.T, half: bool) {
 	session.damage_expect_exact(t, s, "a change under a dialog")
 }
 
+@(private = "file")
+Pal :: struct {
+	pal:  ui.Command_Palette,
+	open: bool,
+}
+
+@(private = "file") PAL_COMMANDS := [?]ui.Command{{id = "a", label = "Alpha"}, {id = "b", label = "Bravo"}}
+
+@(private = "file")
+pal_build :: proc(s: ^session.Session) {
+	p := (^Pal)(s.user)
+	ui.palette_commands(&p.pal, PAL_COMMANDS[:], nil)
+	if p.open { p.open = false; ui.palette_open(&p.pal) }
+	_, _ = ui.palette_chosen(&p.pal)
+	ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(f32(UNDER_WINDOW.x)), height = ui.px(f32(UNDER_WINDOW.y)), radius = 0, bg = {0.85, 0.85, 0.8, 1}})
+	ui.build_box({.Draw_Background}, "###page")
+}
+
+// The palette opening: its frames before it shows redraw nothing.
+@(test)
+the_palette_redraws_nothing_before_it_shows :: proc(t: ^testing.T) {
+	p: Pal
+	defer ui.palette_destroy(&p.pal)
+	s := session.start(t, {size = UNDER_WINDOW, build = pal_build, user = &p, animations = true, palette = ui.palette_of("Midnight", light = true)})
+	session.damage_verify(s)
+	session.frames(s, 3)
+	session.damage_settle(s)
+	p.open = true
+	for k in 0 ..< 30 {
+		session.frame(s)
+		px, active := session.damage_px(s)
+		shown := false
+		for c := s.state.root.first; c != nil; c = c.next {
+			if .Press_Stop in c.flags && .Draw_Shadow in c.flags && c.last_build == s.state.build_index && c.transparency < 1 { shown = true }
+		}
+		if shown {
+			testing.expectf(t, active && px > 0, "the frame that shows it redraws it (%d px)", px)
+			break
+		}
+		testing.expectf(t, active && px == 0, "unseen frame %d: %d px redrawn (why whole: %v)", k, px, ui.damage_stats(s.state).whole)
+	}
+	session.damage_expect_exact(t, s, "the palette opening")
+}
+
+// A dialog still unseen (measured, its scrim and panel wholly transparent) damages nothing: its frames redraw no pixel,
+// where its scrim at alpha 0 was a part the size of the window. The frame that shows it redraws it.
+@(test)
+an_unseen_dialog_redraws_nothing :: proc(t: ^testing.T) {
+	u: Under
+	defer ui.views_destroy(&u.views)
+	ui.view_register(&u.views, "files", under_view, ui.View_Options{title = "Files"})
+	s := session.start(t, {size = UNDER_WINDOW, build = under_build, user = &u, palette = ui.palette_of("Midnight", light = true)})
+	session.damage_verify(s)
+	session.frames(s, 3)
+	session.damage_settle(s)
+	u.want = true
+	unseen := 0
+	for k in 0 ..< 20 {
+		session.frame(s)
+		panel := session.find(s, "modal_view_files")
+		px, active := session.damage_px(s)
+		if panel != nil && panel.transparency < 1 {
+			testing.expectf(t, active && px > 0, "the frame that shows it redraws it (%d px)", px)
+			break
+		}
+		unseen += 1
+		testing.expectf(t, active && px == 0, "unseen frame %d: %d px redrawn (why whole: %v)", k, px, ui.damage_stats(s.state).whole)
+	}
+	testing.expect(t, unseen > 0, "it had unseen frames (a dialog as tall as what is in it is measured)")
+	session.damage_expect_exact(t, s, "a dialog that opens")
+}
+
 // An internal window (a view floated in the window: its frame, its shadow, its plate) over lines of text that change
 // each step (a shell's output under it, opencode native's Statistics over a conversation): the text never shows through
 // the window. Each partial frame is the whole frame to the bit, in both frame formats, in opencode native's finish

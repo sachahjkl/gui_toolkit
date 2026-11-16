@@ -458,7 +458,7 @@ palette_open_over :: proc(p: ^Command_Palette, typed: string, over: ^State) {
 	if p.owner != over && view_is_open(vs, PALETTE_VIEW, palette_instance(p)) { palette_close(p) }
 	if !view_registered(vs, PALETTE_VIEW) {
 		view_register(vs, PALETTE_VIEW, palette_view, View_Options{
-			title = "Commands", no_header = true, resizable = true, top = PALETTE_TOP,
+			title = "Commands", no_header = true, resizable = true, top = PALETTE_TOP, quick = true,
 			width_em = PALETTE_WIDTH_EM, height_em = PALETTE_HEIGHT_EM, min_width_em = PALETTE_MIN_EM.x, min_height_em = PALETTE_MIN_EM.y,
 		})
 	}
@@ -587,6 +587,17 @@ palette_row :: proc(p: ^Command_Palette, i: int) -> (src: ^Palette_Source, id: s
 
 // The row selected (ok false: none).
 palette_selected :: proc(p: ^Command_Palette) -> (src: ^Palette_Source, id: string, ok: bool) { return palette_row(p, p.sel) }
+
+// Whether the list shown answers the question being asked: no source in its scope has a question in flight, and the
+// ranking of their answers came (none in flight, made after the last answer). Its dialog waits for it as it opens.
+@(private)
+palette_answered :: proc(p: ^Command_Palette) -> bool {
+	if p.shown == nil || p.pending != 0 || !p.ranked.valid || p.ranked.generation != p.generation { return false }
+	for src, i in p.sources {
+		if palette_in_scope(p.prefix, src.prefix, src.plain) && src.read != nil && p.states[i].asked != 0 { return false }
+	}
+	return true
+}
 
 // Whether the list shown was ranked for the field's text `text`, and no ranking is in flight: what a test waits for
 // after it typed (the list on screen is the one of that text).
@@ -1350,6 +1361,8 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 	}
 	palette_ask(p)
 	palette_rank_start(p)
+	// (its dialog shows with its rows: not before the first ranking of this question that saw every source's answer)
+	if !palette_answered(p) { view_not_ready(v) }
 	if mods, ok := enter.?; ok {
 		// (a ranking in flight, for a new query, a late answer, a change of the memory: Enter chooses from it)
 		if p.pending != 0 { p.enter_wait, p.enter_moved = mods, p.sel_moved } else { palette_choose(p, v, p.sel, mods) }

@@ -24,6 +24,10 @@ Fx :: struct {
 	theme: ui.Theme,
 	s:     ui.State,
 	base_font: font.Font_Id,
+	// (palette_test's frame) the animations on and a clock that moves by `dt` a frame (0: 1/60 s); off, no clock
+	animate:   bool,
+	clock:     f64,
+	dt:        f32,
 }
 
 @(private = "file")

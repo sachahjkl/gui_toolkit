@@ -235,6 +235,7 @@ Modal_Options :: struct {
 	top:           Maybe(f32),   // its top held at this fraction of the window's height (a command palette; resized, its bottom edge alone follows the pointer); nil: centered
 	first_h:       f32,          // its height when no layout of it is known yet (a dialog shown back at once, views_builders.odin); 0: none
 	maximised:     bool,         // the window's whole room minus MODAL_MARGIN_EM, whatever its sizes; no grips (`size` untouched)
+	quick:         bool,         // summoned by a key and left as fast (a command palette): it fades in over MODAL_QUICK_FADE_MS
 }
 
 // A dialog's width when its options give none, in ems: its least. It grows to what is in it (a long title, a row of
@@ -274,7 +275,15 @@ Modal_Open :: struct {
 	show:     Modal_Show,
 	measures: int,
 	layout:   u64,
+	// its rects do not depend on what is in it (a size given, or maximised): nothing to measure, it shows in its first
+	// build (views.md 3.4, "A dialog that appears at once")
+	sized:     bool,
+	waiting:   bool,   // this build said its content waits for an answer (modal_not_ready): it stays unseen
+	opened_ms: f64,    // the build it opened in (State.time_ms): it waits MODAL_READY_WAIT_MS at most
 }
+
+// How long a dialog whose content is not ready stays unseen at most, from its opening: then it shows what it holds.
+@(private) MODAL_READY_WAIT_MS :: 100
 
 // A dialog's opening. Measuring: built and laid out unseen, until two layouts in a row agree (modals_settle; a layout that
 // depends on the last one, as a dialog's height or a program's own measure does, settles in two or three). Ready: its
@@ -343,22 +352,35 @@ modals_measure :: proc(s: ^State) {
 		sig := modal_layout_signature(panel)
 		settled := m.measures > 0 && sig == m.layout
 		m.layout = sig
+		// (its content waits for an answer: unseen, for MODAL_READY_WAIT_MS at most)
+		waiting := m.waiting && s.time_ms - m.opened_ms < MODAL_READY_WAIT_MS
 		switch m.show {
 		case .Measuring:
 			m.measures += 1
-			if settled || m.measures >= MODAL_MEASURES_MAX { m.show = .Ready }
+			if !waiting && (settled || m.sized || m.measures >= MODAL_MEASURES_MAX) { m.show = .Ready }
 			s.anim_busy = true   // (the next frame at once: it is not drawn)
 		case .Showing:
-			if settled || m.measures >= MODAL_MEASURES_MAX { m.show = .Shown; continue }
-			// (it moved as it showed: unseen again, the scrim with it)
+			if !waiting && (settled || m.sized || m.measures >= MODAL_MEASURES_MAX) { m.show = .Shown; continue }
+			// (it moved as it showed, or what is in it is not there yet: unseen again, the scrim with it, its fade from
+			// nothing at the frame it shows)
 			m.show = .Measuring
 			m.measures += 1
 			panel.transparency = 1
 			if scrim := s.boxes[m.scrim] or_else nil; scrim != nil { scrim.transparency = 1 }
+			if a, ok := &s.anims[key_from_string(m.panel, "fade")]; ok { a.value, a.from, a.to = 0, 0, 0 }
 			s.anim_busy = true
 		case .Ready, .Shown:
 		}
 	}
+}
+
+// The dialog being built shows nothing yet: what is in it waits for an answer (a worker's, a source's). It stays unseen,
+// built at each frame, until a build no longer says so, for MODAL_READY_WAIT_MS at most from its opening. A dialog shown
+// is not hidden again. (A view's build calls view_not_ready.)
+@(private)
+modal_not_ready :: proc(panel: Key) {
+	s := gs()
+	for &m in s.modals_built { if m.panel == panel { m.waiting = true } }
 }
 
 // What a dialog's layout is, in one number: the rects of its panel and of every box in it. Two layouts with the same
@@ -397,7 +419,7 @@ modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 		// (all the room a dialog may have, from this window's size at each build: a resized window keeps it filling. No
 		// size, no fit: no grips, and the person's size in `size` stays theirs for the restore)
 		wh := Vec2{math.round(hi.x), math.round(hi.y)}
-		modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), math.round((s.window_size.y - wh.y) * 0.5)}, wh)
+		modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), math.round((s.window_size.y - wh.y) * 0.5)}, wh, true, o.quick)
 		s.modal_stack[len(s.modal_stack) - 1].em = em
 		return true
 	}
@@ -421,7 +443,10 @@ modal :: proc(id: string, open: ^bool, o: Modal_Options) -> bool {
 		// held at `top` of the window's height, unless it would go past its bottom
 		y = math.round(clamp(s.window_size.y * top, margin, max(s.window_size.y - margin - h, margin)))
 	}
-	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), y}, wh)
+	// (resizable with a height given, or the person's size kept: its rects are not what is in it, nothing to measure. A
+	// resizable one with no height is as tall as what is in it at its first opening: measured)
+	sized := o.size != nil && (o.size^ != {} || o.height_em > 0)
+	modal_begin(s, id, open, {math.round((s.window_size.x - wh.x) * 0.5), y}, wh, sized, o.quick)
 	m := &s.modal_stack[len(s.modal_stack) - 1]
 	m.em = em
 	if o.size == nil {
@@ -462,8 +487,12 @@ modal_content_height :: proc(panel: ^Box) -> f32 {
 	return math.ceil(v + 2 * border_inset(panel))
 }
 
-// How long a dialog takes to appear: its scrim and its panel fade in together.
+// How long a dialog takes to appear: its scrim and its panel fade in together. A quick one (Modal_Options.quick, the
+// palette) faster. A frame adds MODAL_FADE_STEP_MAX_MS at most to it (a frame and a half at 60 Hz): a late frame
+// moved a 120 ms fade by a third.
 @(private = "file") MODAL_FADE_MS :: 120
+@(private = "file") MODAL_QUICK_FADE_MS :: 70
+@(private) MODAL_FADE_STEP_MAX_MS :: 25
 
 // The scrim and the panel at `at`, `wh` its size (a height of 0: that of what is in it). A dialog that opens is built and
 // laid out unseen, the next frame at once, until its layout is the same two frames in a row (Modal_Show, modals_measure):
@@ -471,27 +500,39 @@ modal_content_height :: proc(panel: ^Box) -> f32 {
 // too. The first frame that shows it has it at its size and place, and what is in it where it stays. From that frame,
 // the scrim and the panel fade in together, one value for both (MODAL_FADE_MS; at once with animations off).
 @(private = "file")
-modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2) {
+modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2, sized, quick: bool) {
 	em := font_size()
 	key := modal_key(s, id)
 	phase, last := modal_phase(s, key)
 	cur := last
 	if phase == .Opening {
-		cur = {panel = key, scrim = key_from_string(s.root.key, fmt.tprintf("###modal_scrim_%s", id)), focus = s.focus_key}
-	} else if cur.show == .Ready {
+		cur = {panel = key, scrim = key_from_string(s.root.key, fmt.tprintf("###modal_scrim_%s", id)), focus = s.focus_key, opened_ms = s.time_ms}
+	}
+	cur.sized, cur.waiting = sized, false
+	// (a known size: no layout to wait for, it shows in this build, unless what is in it says it is not ready:
+	// modals_measure makes the build unseen again then)
+	if cur.show == .Measuring && sized { cur.show = .Ready }
+	if cur.show == .Ready {
 		// keyboard: what had the focus loses it as the dialog shows, not while it is unseen: the focus ring behind goes in
 		// the frame the dialog comes. (What the dialog's own unseen builds focused keeps it.)
 		if s.focus_key == cur.focus { s.focus_key = 0 }
 		cur.show = .Showing
 	}
 	fade_key := key_from_string(key, "fade")
+	fade_ms: f32 = quick ? MODAL_QUICK_FADE_MS : MODAL_FADE_MS
 	shown: f32
 	if cur.show == .Showing || cur.show == .Shown {
-		shown = tween(fade_key, 1, MODAL_FADE_MS)
+		// (a fade not started by unseen builds (a known size, or one made unseen again) starts in this build and moves
+		// by this frame: the build that shows it draws it, not the next one)
+		if a, ok := s.anims[fade_key]; !ok || a.to != 1 {
+			_ = tween(fade_key, 0, 0)
+			_ = tween(fade_key, 1, fade_ms)
+		}
+		shown = tween(fade_key, 1, fade_ms, step_max_ms = MODAL_FADE_STEP_MAX_MS)
 	} else {
 		// (from nothing while unseen: the fade starts here each frame, and moves from the first frame that shows it)
 		_ = tween(fade_key, 0, 0)
-		_ = tween(fade_key, 1, MODAL_FADE_MS)
+		_ = tween(fade_key, 1, fade_ms, step_max_ms = MODAL_FADE_STEP_MAX_MS)
 		s.anim_busy = true   // (the next frame at once)
 	}
 	push_parent(s.root)
