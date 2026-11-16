@@ -5,6 +5,30 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.295.0] - 2026-11-16 17:36
+
+### Added
+- **A roadmap's `## Maybe`.** A project's `ROADMAP.md` may end with a `## Maybe` section: what may be done one day and is not decided, each entry with the ways open and what each waits for. The changelog's check accepts it after `## Later`, and only there.
+- **A path completes in the palette.** A path setting or argument changed in the palette lists the entries of the folder typed that start with its last part, folders first; Tab puts the one chosen in the field, Enter keeps it. The folder is read off the interface's thread. For a run mode's control: `Palette_Run_Keys.tab` and `ui.palette_run_set_text`.
+- **`ui.act_command`**: a program's own button of a command states it with `ui.act_command(box, command.id)`, and the palette's Shift+Enter on that command goes to the button. A toolbar's tool of a command does it by itself.
+- **`ui.licence_card`**: a registered licence shown as a card, the same in every program: a dark foil engraved like a
+banknote, iridescent, a light that sweeps across it, the name raised in brushed silver, a gold-and-enamel seal, and a back
+with the program's logo raised. It tilts towards the pointer, turns over (Turn over, a drag, the arrows; Escape brings it
+back), and asks for no frame at rest; with less motion it stays still. Where its shader cannot be had it is drawn flat and
+reads as well. The settings' Licence page shows it for a registered licence: `prefs_page.Licence_Options` takes the
+program's `logo` and its `vendor` for it.
+- **A side panel folds to a rail.** A stack of views at the left or the right has a Minimise: its zone becomes a narrow column with a Restore and a button per view, and a click on one brings the zone back with that view shown. A side zone also folds by itself when the window is too narrow for it and the content, and unfolds when the window is wide again. A view that states `View_Options.rail_em` keeps a column that wide instead, built with `View.rail` set so it draws its own compact form (a column of marks). In a narrow stack, its Minimise, Maximise and Close are small icons and the view's moves go to its menu, so the buttons are never cut.
+- **A text selection across rows built only in view.** A selection in a diff's view or in a lazy column now stays when its first row scrolls far out, and a copy has every row between. A container declares its rows with `ui.selection_rows_begin(ui.Text_Rows{...})`, `ui.selection_row` and `ui.selection_rows_end`, builds the rows of `ui.selection_held_rows()` wherever they are, and gives a row's text by its index, and its identity (`Text_Rows.id`) when rows can be inserted above a selection, as a page of older messages; `ui.lazy_begin(rows = ...)` does it for a lazy column, `gt:diff`'s view does it already.
+
+### Changed
+- **The shop's thank-you page is Wren's, for every program** (`site.licence_thanks_block`, `licence_pages/thanks.html`): the program's logo floats in a glow of its accent, three dots breathe while the Worker makes the licence, and on its arrival a warm line, one burst of confetti, the card rising in with a sheen and six gold stars. The key has a champagne-gold edge with a slow glint, Copy keeps its width when it says "Copied", and the help block fills the order number in the help address, never the key. The colours are the site's own; `prefers-reduced-motion` stops every motion, the confetti included.
+  - The template's hero takes the new placeholder `{{logo}}` (the icon at 104 pixels on its stage) instead of `{{icon}}`, and loses its lead line: the warm line now comes with the licence. The block's spinner (`.shop-spinner`) is gone, replaced by `.shop-dots`. A program that keeps its own thank-you page puts `<span class="shop-stage"><img class="shop-logo" ...></span>` in its hero.
+- **A selection dragged to the edge of a view scrolls fast.** It scrolled three lines a second at the edge, and a maximised window left no room to go past it. Now the view scrolls a screen a second as soon as the pointer nears its edge, and up to 8000 pixels a second past it.
+
+### Fixed
+- **A selection dragged past a view's edge scrolls the view, even with text beyond it.** Dragged above a conversation with a header over it, the selection jumped to the header and the conversation did not scroll. Now the selection stays in the view while the view can still scroll towards the pointer, then goes on past it.
+- **Notification-area icons on Linux carry the program's own id**: the panel kept one choice (hidden, shown, its place) for the icons of every program made with the toolkit, as they all said `gui_toolkit`; each now says its program's id (`platform.set_app_id`, else the executable's name).
+
 ## [0.294.0] - 2026-11-16 14:26
 
 ### Added
@@ -4043,6 +4067,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.295.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.295.0
 [0.294.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.294.0
 [0.293.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.293.0
 [0.292.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.292.0
