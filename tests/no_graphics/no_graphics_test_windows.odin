@@ -17,7 +17,6 @@ package no_graphics_test
 @(require) import host "gt:host"
 @(require) import "gt:platform"
 @(require) import "gt:render"
-@(require) import "gt:testkit"
 
 when render.RENDER_FAULTS && !render.USE_WGPU {
 
@@ -66,19 +65,20 @@ no_hardware_device_draws_with_warp :: proc(t: ^testing.T) {
 // with its own code.
 @(test)
 no_device_with_standard_error_shows_no_box :: proc(t: ^testing.T) {
-	// (a file, not a pipe: a child held by a box would hold a read of its pipe with no bound)
-	path := fmt.tprintf("%s/child.log", testkit.temp_folder(t, "no_graphics"))
-	f, ferr := os.create(path)
-	if !testing.expect(t, ferr == nil, "the child's log") { return }
+	// (the pipe is read once the child has ended or been stopped, so a child held by a box holds no read; what it writes,
+	// two short lines, fits in the pipe's buffer without blocking it)
+	r, w, perr := os.pipe()
+	if !testing.expect(t, perr == nil, "a pipe") { return }
 	env := make([dynamic]string, context.temp_allocator)
 	if all, err := os.environ(context.temp_allocator); err == nil { append(&env, ..all) }
 	append(&env, fmt.tprintf("%s=1", WINDOWS_CHILD_ENV))
-	p, err := os.process_start({command = {os.args[0]}, env = env[:], stdout = f, stderr = f})
-	os.close(f)
-	if !testing.expect(t, err == nil, "the child starts") { return }
+	p, err := os.process_start({command = {os.args[0]}, env = env[:], stdout = w, stderr = w})
+	os.close(w)
+	if !testing.expect(t, err == nil, "the child starts") { os.close(r); return }
 	state, werr := os.process_wait(p, WINDOWS_CHILD_LIMIT)
 	if werr != nil { _ = os.process_kill(p) }
-	out, _ := os.read_entire_file(path, context.temp_allocator)
+	out, _ := os.read_entire_file(r, context.temp_allocator)
+	os.close(r)
 	testing.expectf(t, werr == nil && state.exited && state.exit_code == WINDOWS_EXIT_NO_WINDOW, "the child ends with %d, no box held it: %v\n%s", WINDOWS_EXIT_NO_WINDOW, state, string(out))
 	testing.expectf(t, strings.contains(string(out), "Direct3D 11 gives no device"), "the sentence on standard error:\n%s", string(out))
 }
