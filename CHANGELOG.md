@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.307.0] - 2026-11-17 23:35
+
+### Changed
+- **`Page_Options.diagnostics` is a `prefs_page.Diagnostics_Source`, so a program with a loop of its own shows the Diagnostics page.** The source is plain data: the renderer, the window, a `host.Frame_Ring` and whether partial redraw is on. A program on the host writes `diagnostics = prefs_page.diagnostics_of(&app.main)` in place of `&app.main`. `host.frame_add` records one picture in a ring, and `prefs_page.diagnostics_rows` gives the page's lines.
+
+### Fixed
+- **The tooltip of an icon button shows its words**: it took the icon font of its button, which measured the words at almost no width, so only their first letter showed. A tooltip now always writes in the interface's font.
+- **What's new shows its versions in every program**: its search field and its count of versions had no height of their own and could take the whole page, which pushed the list of versions out of view. Each now has the height of its content. The "Latest" pill keeps the card's margin on its right.
+
 ## [0.306.0] - 2026-11-17 23:06
 
 ### Added
@@ -4266,6 +4275,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.307.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.307.0
 [0.306.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.306.0
 [0.305.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.305.0
 [0.304.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.304.0
