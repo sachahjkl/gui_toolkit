@@ -33,10 +33,13 @@ viewer_view :: proc(v: ^ui.View, r: ^Viewer) {
 
 @(test)
 a_size_asked_while_opening_is_the_first_drawn :: proc(t: ^testing.T) {
-	r: Viewer
-	defer ui.views_destroy(&r.views)
+	// (the views outlive the session: its end destroys the window's state, which closes the dialog still open; a cleanup
+	// made before the session runs after it. A defer freed them first, and the end read freed memory: Windows crashed a
+	// later test of the package)
+	r := new(Viewer)
+	testing.cleanup(t, proc(p: rawptr) { v := (^Viewer)(p); ui.views_destroy(&v.views); free(v) }, r)
 	ui.view_register(&r.views, "viewer", viewer_view, ui.View_Options{title = "Viewer", resizable = true, width_em = REGISTERED_EM.x, height_em = REGISTERED_EM.y})
-	s := session.start(t, {size = {1200, 900}, user = &r, build = viewer_build})
+	s := session.start(t, {size = {1200, 900}, user = r, build = viewer_build})
 	r.want = true
 	for _ in 0 ..< FRAMES_MAX {
 		session.frame(s)
