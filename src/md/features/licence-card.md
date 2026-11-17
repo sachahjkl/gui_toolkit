@@ -107,6 +107,20 @@ The card is an object, not a surface of the theme: its foil, its silver and its 
 every theme, as a bank card is the same on any table. What the theme gives is around it: the page, the button's look.
 In the Flat finish the card keeps its relief: a licence is the one place where the toolkit shows off.
 
+### The engraved code (planned)
+
+Not built yet (ROADMAP, Later). What is decided:
+
+- **Where**: on the back, in the bottom right corner, small, engraved in the foil like the rest of the back.
+- **An enigma, not a sticker**: seen straight on, the code is part of the foil's iridescence and does not scan. Turned
+  to one angle, the light makes its light cells clean white against the dark ones: only then a phone reads it. The
+  person who finds it has to look for that angle, as one tilts a banknote to see its hologram.
+- **Readable at that angle**: the effect never breaks the code itself. The cells keep the contrast and the quiet zone a
+  QR reader needs once the angle is found; the iridescence only hides it the rest of the time.
+- **With less motion** (no tilt): the card is lit at a fixed angle; whether the code shows there is not decided.
+- **Its destination**: a link to the first step of a hunt across the programs and their sites. The link and the hunt are
+  not decided.
+
 ## Decisions refused
 
 - **The card as a picture** (a pre-rendered PNG per program). It cannot tilt, catch the light or be turned over, and the
