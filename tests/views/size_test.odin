@@ -39,7 +39,9 @@ a_size_asked_while_opening_is_the_first_drawn :: proc(t: ^testing.T) {
 	r := new(Viewer)
 	testing.cleanup(t, proc(p: rawptr) { v := (^Viewer)(p); ui.views_destroy(&v.views); free(v) }, r)
 	ui.view_register(&r.views, "viewer", viewer_view, ui.View_Options{title = "Viewer", resizable = true, width_em = REGISTERED_EM.x, height_em = REGISTERED_EM.y})
-	s := session.start(t, {size = {1200, 900}, user = r, build = viewer_build})
+	// (the session's default size, as the package's other tests: at 1200 x 900 a later test of the package crashed on
+	// Windows' WARP; the dialog asked, 36 x 18 em, fits in it)
+	s := session.start(t, {user = r, build = viewer_build})
 	r.want = true
 	for _ in 0 ..< FRAMES_MAX {
 		session.frame(s)
