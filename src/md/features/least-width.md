@@ -23,6 +23,14 @@ A box whose width comes from a split, never from its content, has `.Fits_Width` 
 zones' extents and what they leave decide those widths. Without it, a tool bar or a wide row in the content pushed the
 right zone out of the window (0.297.0). A program's own boxes inside them keep their least.
 
+The settings' body (`prefs_page.build`, `###prefs_share`) is such a box: its width is what the sidebar and its handle
+leave. Without it, What's new in a dialog 1000 px wide ran 280 px past the dialog's edge (opencode native 0.73.0): its
+tools in one row (a search, four toggles, the count) and a card's head (number, day, Latest) asked for more than the
+share, and nothing clipped them. `.Fits_Width` alone moves the overflow one level down, under the scroll's clip: the
+content is still laid out wider than what shows. So a page's own rows of whole items flow (`ui.flow`), each item whole;
+a page's least is then its widest item, never a row's sum. `tests/prefs_page/dialog_width_test.odin` checks every page
+of the common set in dialogs 1000 and 700 px wide: no box past the body's right edge.
+
 `shrinkable` and `wrap_room` read `least_x`. Before, they read `Size.least` alone, which a program almost never sets:
 a card shrank to its share of a row, then its children overflowed it or were squeezed to nothing. A slider kept a knob
 and no track. A stepper's words broke one letter per line ("Unp", "ack"). The old floor of a wrapped line, 3 em, broke

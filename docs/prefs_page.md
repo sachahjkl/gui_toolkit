@@ -138,7 +138,8 @@ What the program applies itself:
   page title or heading on one line, nor than the search's placeholder whole, in the language in use (`ui.button_width`):
   the handle does not go under that; at
   half of the page, a longer title wraps onto two lines. A page narrower than 40 ems shows the pages' icons alone.
-- On the right: the page's title, then a line per preference, in the order the program registered them: its title
+- On the right, in what the sidebar leaves (never wider: a page's wide row wraps or scrolls in it, as in a dialog
+  narrower than the page's natural width): the page's title, then a line per preference, in the order the program registered them: its title
   (`config.title_of`) and its description (with "Locked by a policy", "Set on the command line for this run" or "Takes
   effect at the next start" when it applies) on the left, its control on the right, a reset button while the user's
   value differs from the default; a carved line between two lines of a group, none under the last.
@@ -328,7 +329,8 @@ number, its day and time, "Latest"), its changes by type under a pill of the typ
 `gt:markdown`. Every version is there (only those near the view are built: a lazy column). Over them, a search keeps the
 versions whose number, day or changes hold its words (ASCII case folded), a toggle per kind the changelog has hides or
 shows that kind's changes, and "N of M versions" says how many are kept; the list is worked out again only when the
-search, the kinds or the text change. The changelog is written in English (`Changelog.english`, often
+search, the kinds or the text change. On a narrow page (the settings in a dialog) the search, the toggles and the count
+flow onto more lines, each whole, and so do a card's number, day and "Latest". The changelog is written in English (`Changelog.english`, often
 `#load("../CHANGELOG.md", string)`); `translations` may give it in other languages (`Changelog_Text{language, text}`),
 and the page shows the one of the language in use, else the English one (`changelog_text`).
 
