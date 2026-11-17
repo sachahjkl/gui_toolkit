@@ -5,6 +5,20 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.302.0] - 2026-11-17 15:40
+
+### Changed
+- **gt:js: two runtimes run at once**: each runtime keeps its own state, so several run in one process, each on its own
+thread, and a contextless entry point (the members of a lazy object) allocates through the runtime's allocator, not
+the process heap. The embedding API changes:
+  - The hooks are `Host_Config` fields, set at `engine_new` or later in `rt.config`: `date_now_hook`,
+    `timezone_offset_proc`, `clock_hook`, `span_hook`, `poll_hook`, `stack_move_hook`, `native_stack_low_hook`,
+    `auto_init_getter`. They were package globals (`js.date_now_hook = ...`, `jsdate.timezone_offset_proc = ...`).
+  - The poll word is `rt.poll_word`; the JIT's settings `rt.jit_cfg`; `jit_configure(rt, ...)` and `jit_stat(rt, which)`
+    take the runtime; `-define:JSRT_TRACE_LAST_OP` writes `rt.trace`.
+  - `gt:js/datetime`: `get_date_fields`, `set_date_fields`, `parse` and `parse_bytes` take the time zone, a
+    `Timezone_Offset`, as their last argument (nil: UTC).
+
 ## [0.301.0] - 2026-11-17 15:07
 
 ### Added
@@ -4189,6 +4203,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.302.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.302.0
 [0.301.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.301.0
 [0.300.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.300.1
 [0.300.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.300.0
