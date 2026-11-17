@@ -14,9 +14,9 @@ EXE :: ".exe" when ODIN_OS == .Windows else ""
 gt_collection :: proc(root: string) -> string { return fmt.tprintf("-collection:gt=%s", join({root, "src"})) }
 
 // The examples, and the ones the CI builds on each system.
-EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "stream", "panes", "docking", "cursors", "markdown", "whatsnew", "showcase"}
-CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking", "showcase"}
-CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", "docking", "whatsnew", "showcase"}
+EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "stream", "panes", "docking", "cursors", "markdown", "whatsnew", "showcase", "plugins"}
+CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking", "showcase", "plugins"}
+CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", "docking", "whatsnew", "showcase", "plugins"}
 // gt:js and its sub-packages, checked for freestanding_wasm32 too (Wren's target for them).
 JS_WASM_PACKAGES :: [?]string{"js", "js/bigint", "js/datetime", "js/frontend", "js/numconv", "js/regexp", "js/unicode"}
 
@@ -188,6 +188,8 @@ run_ci :: proc(args: []string) -> string {
 		have, _ := os.read_entire_file(join({root, "src", "lucide", "lucide.odin"}), context.temp_allocator)
 		if why != "" || string(have) != lucide_source(icons) { append(&failed, "src/lucide/lucide.odin is not what gen_lucide makes of lucide.ttf") }
 	}
+	// (the plugin API's files as its declarations make them: a call changed without its .d.ts, or an old level broken)
+	if why := run_plugin_api({"-check"}); why != "" { append(&failed, fmt.tprintf("plugin_api: %s", why)) }
 	// (the GitHub job's Documentation step: without it here, a name the docs lost passed locally and failed there)
 	if problems, why := doc_check(root, nil); why != "" {
 		append(&failed, fmt.tprintf("doc_check: %s", why))

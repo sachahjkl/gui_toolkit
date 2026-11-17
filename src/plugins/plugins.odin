@@ -1,0 +1,316 @@
+// Package plugins: a program's plugins in JavaScript (src/md/features/plugins.md; docs/plugins.md). The folder is read on
+// a chore, each manifest gives commands to the palette, and a plugin's thread and runtime start at its first use. The
+// interface's thread never runs JavaScript and never waits for a plugin: it sends messages and reads what was posted.
+//
+//	plugins.host_open(&app.plugins, &app.ui, {program = APP_FOLDER, announcer = &app.announcer})
+//	plugins.host_build(&app.plugins, &app.palette)   // each build, before ui.palette_chosen: the source, the bounds
+//	o.pages = {..., plugins.page_info(&app.plugins)}  // the settings' Plugins page
+//	plugins.host_close(&app.plugins)                 // before ui.destroy
+//
+// Only a program that imports this package links the engine (2 MB): the toolkit's other packages never import it.
+package tk_plugins
+
+import "base:runtime"
+import "core:fmt"
+import "core:strings"
+import "core:sync"
+import "core:time"
+import "../tasks"
+import "../ui"
+
+// A plugin's state (plugins.md, decision 5): one enum, the Plugins page's words.
+//
+//	Found -> Refused        (manifest, level, program)
+//	Found -> Off -> Ready   (turned on; contributions registered, no runtime)
+//	Ready -> Starting -> Running -> Ready      (stopped, reloaded)
+//	Running -> Not_Responding -> Ready         (stopped by the person)
+//	Running -> Failed                          (activate threw, memory limit)
+//	any -> Suspended                           (the program ended badly inside it)
+Plugin_State :: enum u8 {
+	Found,
+	Refused,
+	Off,
+	Ready,
+	Starting,
+	Running,
+	Not_Responding,
+	Failed,
+	Suspended,
+}
+
+PLUGIN_STATE_WORDS :: [Plugin_State]string{
+	.Found = "Found", .Refused = "Refused", .Off = "Off", .Ready = "Ready", .Starting = "Starting",
+	.Running = "Running", .Not_Responding = "Not responding", .Failed = "Failed", .Suspended = "Suspended",
+}
+
+// How long a message may go without a turn of the plugin's queue before it is Not_Responding.
+NOT_RESPONDING_MS :: 2000
+// A plugin's heap budget (Host_Config.malloc_limit), and the addresses its runtime reserves for its cells.
+MEMORY_LIMIT :: 64 << 20
+RESERVE_BYTES :: 1 << 30
+// How long host_close waits for the plugins' threads to end after their Stop.
+CLOSE_BOUND :: 2 * time.Second
+// The command that reads the folder again, an item of the palette's plugin source.
+RELOAD_COMMAND :: "plugins.reload"
+// The prefix of a plugin's commands: plugin.<plugin id>.<command id>.
+COMMAND_PREFIX :: "plugin."
+
+Host_Options :: struct {
+	program:      string,   // the program's folder (platform.user_dir's `program`: "<vendor>/<Title>")
+	program_id:   string,   // what a manifest's "program" must say ("": a manifest that names a program is refused)
+	folder:       string,   // the plugins' folder ("": user_dir(.Data, program)/plugins)
+	config_dir:   string,   // where plugins.toml is ("": user_dir(.Config, program))
+	state_dir:    string,   // the logs and the markers ("": user_dir(.State, program)/plugins)
+	announcer:    ^ui.Announcer,   // where a plugin's messages go (nil: the window's toasts)
+	bound_ms:     int,      // 0: NOT_RESPONDING_MS
+	memory_limit: i64,      // 0: MEMORY_LIMIT
+}
+
+// The program's plugins, kept by the program between frames (host_open to host_close), at a place that does not move.
+Host :: struct {
+	o:         Host_Options,   // (strings owned)
+	state:     ^ui.State,
+	plugins:   [dynamic]^Plugin,
+	link:      ^Host_Link,
+	// the paths the folder's chore found (owned; "" until the first read came)
+	folder, toml_path, state_dir: string,
+	read_serial: u64,      // the read in flight's (a reload's answer replaces an older one's)
+	read_once:   bool,     // the first read was asked
+	loaded:      bool,     // a read came
+	source:      ui.Palette_Source,
+	palette:     ^ui.Command_Palette,   // the palette host_build added the source to (host_close removes it)
+	window_announcer: ui.Announcer,   // Host_Options.announcer nil: the window's toasts
+	// what a test reads: the toasts said (count), and the last one's words (owned)
+	toasts:      int,
+	last_toast:  string,
+}
+
+// What the chores and the plugins' threads reach the host by: `open` false once host_close ran (under `lock`, which a
+// post holds: no post can reach a State after host_close).
+@(private)
+Host_Link :: struct {
+	lock:  sync.Mutex,
+	open:  bool,
+	state: ^ui.State,
+	host:  ^Host,  // (the interface thread's: a chore's answer finds the host by it; nil once closed)
+	refs:  i32,    // (atomic) the host's and each job's
+}
+
+@(private)
+link_release :: proc(l: ^Host_Link) {
+	if sync.atomic_sub(&l.refs, 1) == 1 { free(l, runtime.heap_allocator()) }
+}
+
+// Posts `fn(data)` to the host's interface thread. False: the host is closed, or the queue refused it; the caller frees
+// `data`.
+@(private)
+link_post :: proc(l: ^Host_Link, fn: ui.Post_Proc, data: rawptr) -> bool {
+	sync.lock(&l.lock)
+	defer sync.unlock(&l.lock)
+	return l.open && ui.post(l.state, fn, data)
+}
+
+// Starts the host: the folder is read on a chore at the first host_build. Call it on the interface's thread.
+host_open :: proc(h: ^Host, s: ^ui.State, o: Host_Options) {
+	context.allocator = runtime.heap_allocator()
+	h^ = {}
+	h.state = s
+	h.o = o
+	h.o.program, h.o.program_id = strings.clone(o.program), strings.clone(o.program_id)
+	h.o.folder, h.o.config_dir, h.o.state_dir = strings.clone(o.folder), strings.clone(o.config_dir), strings.clone(o.state_dir)
+	if h.o.bound_ms <= 0 { h.o.bound_ms = NOT_RESPONDING_MS }
+	if h.o.memory_limit <= 0 { h.o.memory_limit = MEMORY_LIMIT }
+	h.window_announcer = {mode = .Window, state = s}
+	h.link = new(Host_Link)
+	h.link^ = {open = true, state = s, host = h, refs = 1}
+	h.source = {
+		name = "plugin", title = "Plugins", prefix = .Commands, plain = true, listed = true, remember = true,
+		read = source_read, act = source_act, user = h,
+	}
+}
+
+// Stops every plugin, waits for their threads within CLOSE_BOUND, and frees the host. Call it before ui.destroy (a
+// thread that did not end in time posts nothing after this).
+host_close :: proc(h: ^Host) {
+	context.allocator = runtime.heap_allocator()
+	for p in h.plugins { plugin_stop(p) }
+	began := time.tick_now()
+	for time.tick_since(began) < CLOSE_BOUND {
+		all := true
+		for p in h.plugins { all &&= !p.alive || sync.atomic_load(&p.ended) }
+		if all { break }
+		time.sleep(time.Millisecond)   // (the program's end: the window is gone, nothing waits for a frame)
+	}
+	sync.lock(&h.link.lock)
+	h.link.open = false
+	h.link.host = nil
+	sync.unlock(&h.link.lock)
+	link_release(h.link)
+	plugins_drop(h)
+	// (the palette outlives the host in most programs: it must not ask a source that is gone)
+	if h.palette != nil { ui.palette_remove(h.palette, &h.source) }
+	delete(h.plugins)
+	delete(h.o.program); delete(h.o.program_id); delete(h.o.folder); delete(h.o.config_dir); delete(h.o.state_dir)
+	delete(h.folder); delete(h.toml_path); delete(h.state_dir)
+	delete(h.last_toast)
+	h^ = {}
+}
+
+// Each build of the window, before ui.palette_chosen: the first read of the folder, the palette's source (nil: none),
+// and the plugins whose message ran past the bound (Not_Responding). Reads atomics only: it never waits.
+host_build :: proc(h: ^Host, palette: ^ui.Command_Palette) {
+	context.allocator = runtime.heap_allocator()
+	if !h.read_once {
+		h.read_once = true
+		folder_read(h)
+	}
+	if palette != nil && !ui.palette_has(palette, &h.source) {
+		ui.palette_add(palette, &h.source)
+		h.palette = palette
+	}
+	now := -1.0
+	for p in h.plugins {
+		since := sync.atomic_load(&p.busy_since)
+		if since == 0 || p.state != .Running && p.state != .Starting { continue }
+		if now < 0 { now = f64(now_ms()) }
+		if now - f64(since) > f64(h.o.bound_ms) {
+			p.state = .Not_Responding
+			say(h, .Warn, fmt.tprintf("%s is not responding", p.manifest.name), "Stop it in the settings' Plugins page")
+		}
+	}
+}
+
+// The plugins found, in the folder's order: what the Plugins page lists.
+host_plugins :: proc(h: ^Host) -> []^Plugin { return h.plugins[:] }
+
+// The plugin of id `id` (nil: none).
+find :: proc(h: ^Host, id: string) -> ^Plugin {
+	for p in h.plugins { if p.manifest.id == id { return p } }
+	return nil
+}
+
+// The state of plugin `id` (Found: no such plugin, or the folder not read yet).
+state_of :: proc(h: ^Host, id: string) -> Plugin_State {
+	p := find(h, id)
+	return p != nil ? p.state : .Found
+}
+
+// Whether the folder was read (a test waits for it).
+loaded :: proc(h: ^Host) -> bool { return h.loaded }
+
+// Runs a command of the palette's plugin source: RELOAD_COMMAND, or plugin.<plugin id>.<command id>. False: no such
+// command, or its plugin cannot run now (off, refused, failed, suspended).
+run_command :: proc(h: ^Host, full_id: string) -> bool {
+	context.allocator = runtime.heap_allocator()
+	if full_id == RELOAD_COMMAND { reload(h); return true }
+	plugin_id, command, ok := command_split(full_id)
+	if !ok { return false }
+	p := find(h, plugin_id)
+	if p == nil || !can_run(p) { return false }
+	known := false
+	for c in p.manifest.commands { known ||= c.id == command }
+	if !known { return false }
+	if !p.alive { plugin_start(h, p) }
+	queue_push(p, {kind = .Command, command = strings.clone(command)})
+	wake_after(h, h.o.bound_ms + WAKE_MARGIN_MS)
+	return true
+}
+
+// plugin.<plugin id>.<command id> as its two ids (the plugin's has no dot).
+command_split :: proc(full_id: string) -> (plugin_id, command: string, ok: bool) {
+	if !strings.has_prefix(full_id, COMMAND_PREFIX) { return }
+	rest := full_id[len(COMMAND_PREFIX):]
+	dot := strings.index_byte(rest, '.')
+	if dot <= 0 || dot == len(rest) - 1 { return }
+	return rest[:dot], rest[dot + 1:], true
+}
+
+// The palette's id of a plugin's command.
+command_id :: proc(plugin_id, command: string, allocator := context.temp_allocator) -> string {
+	return strings.concatenate({COMMAND_PREFIX, plugin_id, ".", command}, allocator)
+}
+
+// Turns a plugin on or off: kept in plugins.toml (written on a chore). Off stops its runtime. On also ends a
+// suspension.
+set_enabled :: proc(h: ^Host, id: string, on: bool) {
+	context.allocator = runtime.heap_allocator()
+	p := find(h, id)
+	if p == nil || p.state == .Refused { return }
+	p.enabled = on
+	p.suspended = false
+	if on {
+		if !p.alive { p.state = .Ready }
+	} else {
+		plugin_stop(p)
+		if !p.alive { p.state = .Off }
+	}
+	h.source.version += 1
+	toml_write(h)
+}
+
+// Stops a plugin's runtime (its JavaScript is interrupted at its next loop or call): Ready once its thread ended.
+stop :: proc(h: ^Host, id: string) {
+	if p := find(h, id); p != nil { plugin_stop(p) }
+}
+
+// Reads the folder again: every runtime stops, the manifests and plugins.toml are read on a chore, and the commands are
+// registered again at the next build. The JavaScript state is lost.
+reload :: proc(h: ^Host) {
+	context.allocator = runtime.heap_allocator()
+	folder_read(h)
+}
+
+@(private)
+can_run :: proc(p: ^Plugin) -> bool {
+	#partial switch p.state {
+	case .Ready, .Starting, .Running, .Not_Responding: return true
+	}
+	return false
+}
+
+// A plugin's message, or the host's: a toast (`title` and `text` owned by the caller), counted for a test.
+@(private)
+say :: proc(h: ^Host, kind: ui.Toast_Kind, title: string, text := "") {
+	h.toasts += 1
+	delete(h.last_toast)
+	h.last_toast = strings.clone(text != "" ? fmt.tprintf("%s: %s", title, text) : title)
+	a := h.o.announcer != nil ? h.o.announcer : &h.window_announcer
+	ui.announce(a, kind, title, text)
+}
+
+// The plugins dropped from the host: their runtimes stopped, their posts ignored from now on (`dropped`), each freed
+// when its thread and its posts let go of it.
+@(private)
+plugins_drop :: proc(h: ^Host) {
+	for p in h.plugins {
+		plugin_stop(p)
+		p.dropped = true
+		plugin_release(p)
+	}
+	clear(&h.plugins)
+	h.source.version += 1
+}
+
+// The margin of the wake after the bound: the build that sees the bound passed comes after it.
+@(private)
+WAKE_MARGIN_MS :: 50
+
+// A build of the window in `ms`: a plugin that hangs makes no post, and the window may have nothing else to draw.
+@(private)
+wake_after :: proc(h: ^Host, ms: int) {
+	sync.atomic_add(&h.link.refs, 1)
+	if !tasks.add(ui.chores(), wake_work, h.link, {after_ms = ms}) { link_release(h.link) }
+}
+
+@(private)
+wake_work :: proc(data: rawptr) {
+	l := (^Host_Link)(data)
+	link_post(l, proc(data: rawptr, word: u64) {}, nil)
+	link_release(l)
+}
+
+@(private)
+now_ms :: proc "contextless" () -> i64 {
+	// (never 0: 0 is "waiting" in Plugin.busy_since)
+	return max(time.tick_now()._nsec / 1_000_000, 1)
+}

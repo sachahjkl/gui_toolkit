@@ -56,9 +56,10 @@
   papier, classeur, inspecteur, cliche and opencode native read the toolkit's keymap; Wren moves to it last (its
   `Command.name` becomes `ui.Command.id`). Intent: [src/md/features/keymap.md](src/md/features/keymap.md), "Migration".
 - **Plugins in JavaScript.** A person adds commands, settings and views to a program with a plugin, which reaches only
-  what they granted and never slows the window. First, alone: Wren's JavaScript engine moved into the toolkit (`gt:js`),
-  Wren on it. Then a plugin adds one palette command that shows a toast, in opencode native first. Intent:
-  [src/md/features/plugins.md](src/md/features/plugins.md).
+  what they granted and never slows the window. Slice 1 is done: `gt:plugins` and `gt:plugin_api` level 1 (a palette
+  command, a toast, the Plugins page, Stop, the suspended state), with `examples/plugins`. Next: opencode native turns
+  plugins on; then `gt-runtime`, which runs one plugin as an application, with the JavaScript demos; the API explorer
+  on the site; then slice 2, the plugin's settings. Intent: [src/md/features/plugins.md](src/md/features/plugins.md).
 
 ## Maybe
 

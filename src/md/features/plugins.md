@@ -1,6 +1,7 @@
 # Plugins in JavaScript
 
-Asked by the user on 2026-11-14, for after the views. Designed on 2026-11-16; nothing is written yet.
+Asked by the user on 2026-11-14, for after the views. Designed on 2026-11-16. Slice 1 written on 2026-11-17 (see "The
+state of slice 1"); `gt-runtime` and the explorer are designed, not written.
 
 ## Purpose
 
@@ -90,8 +91,20 @@ Also found: the test262 judge does not build on Linux (`prof_start` exists for W
 - **Each runtime lives in one reserved block of addresses** (`virtual.reserve`, committed as it grows). This fixes the
   chunk table, gives the plugin's memory a hard limit (`Host_Config.malloc_limit`, 64 MB by default), and frees a
   stopped plugin in one call.
+  - As built: the block holds the **cells' chunks** (`Host_Config.reserve_bytes`, 8 GiB of addresses natively when 0;
+    none in Wasm). The chunks are never given back before the runtime ends, so a bump is the whole allocator of the
+    block. A block larger than 64 KiB (an array's values, a long string) still comes from the embedder's allocator: a
+    general heap inside the block was refused (`core:mem` has only a buddy allocator, whose search is linear), and
+    those blocks do not reach the chunk table. The limit is `malloc_limit`, counted over both.
+  - The 64 MB default is the plugin host's (`gt:plugins`), not `js.DEFAULT_CONFIG`'s, which stays unlimited: Wren's
+    pages run on it.
 - **An allocation that fails raises the engine's uncatchable error**, on every path. The remaining `panic` sites of
   `jsrt` (15 today) are read one by one during the move; each becomes an error or keeps a written reason.
+  - As built: four sites were left after the move, all allocations. The last eighth of the block is a **spare**: a
+    chunk past the block's soft end, or a block the allocator refused, is served from the spare and raises the
+    uncatchable "out of memory" at the next poll (`Runtime.memory_failed`; the poll comes within a few thousand back
+    edges or calls). The caller writes the memory at once, so a nil was never an option. Only a spent spare is still a
+    panic, with its reason written: a script would have to allocate a gigabyte between two polls.
 - **The loop JIT stays out of the native build.** It emits Wasm and already compiles only for wasm32.
 
 Refused:
@@ -333,5 +346,79 @@ and on a reserved block, then allocates past its limit: no abort, an error. That
   for now), so the 2.1 MB stay out of the others.
 - **The engine moves first, alone**: `gt:js` with Wren on it, the reserved block and the failed allocation as an
   error, ships one toolkit version before the first slice.
+
+Decided on 2026-11-17:
+
+- **The toolkit as a runtime: `gt-runtime`.** A small program shipped with each toolkit release, beside the demos, that
+  hosts one plugin as an application: `gt-runtime <folder or main.js>`. The window, the theme, the palette, the
+  settings and the toasts are the toolkit's; the application brings only its JavaScript. It is the same host and the
+  same API as a program's plugins (`gt:plugins`, `gt:plugin_api`): no second mechanism. A bare `main.js` is a plugin
+  whose manifest is implied (its id from the file's name, the current level, no permission).
+  - **Its grant rule**: the first start of an application shows what its manifest asks, in words, once. The person's
+    yes is kept in gt-runtime's own `plugins.toml`, keyed by the folder's path and the set of permissions asked. Later
+    starts with the same or a smaller set start at once; a larger set asks again (decision 4's rule). A manifest that
+    asks nothing starts at once, the first time too. Refused: granting on the command line (`--allow net`): a link
+    that a person clicks would carry its own grant.
+- **An API explorer on the toolkit's site**, generated from the declarations so that it never lags: `tk plugin_api`
+  writes `plugin-api/gt.d.ts`, the snapshot of each level, the reference page `docs/plugin-api.md`, and
+  `plugin-api/api.json`: the modules, their calls with their arguments and results, the nodes (from slice 4), the
+  level that added each, and its capability. The site renders the JSON; it reads nothing else.
+- **JavaScript demos** run by gt-runtime, beside the Odin demos: the plugins of `examples/plugins` first, each a folder
+  that `gt-runtime` opens as it is.
+
+## As built in slice 1
+
+These points were open in the design and are decided by the code:
+
+- **A declaration is the struct of its arguments, not a procedure type.** Odin cannot call a procedure type with
+  arguments made at run time, and a compile-time bridge needs polymorphism over a procedure's parameters, which the
+  language does not give. So `gt:plugin_api` declares `Toast_Show :: struct { text: string, options: Toast_Options
+  \`optional\` }`, an entry names its module, JavaScript name, capability, level and result. The one bridge
+  (`plugin_api.bridge`) reads the struct's fields by reflection, converts each argument (a string, a number, a
+  boolean, an enum by its name, a nested struct from an object, a `Handler` from a function), checks the
+  capability, then calls the host's implementation, typed by `plugin_api.implement($A, proc(^Call, ^A) -> Value)`.
+  `tk plugin_api` reads the same structs with `core:odin/parser`.
+- **The module `gt` is compiled from text** that the declarations generate: `const g = import.meta.gt; export const
+  commands = g.commands; ...`. The host's `import_meta` hook gives `import.meta.gt` to that module alone: no global
+  of the realm holds the API, so a plugin reaches it only through `import`.
+- **The entry is started by a module of the host** (`gt:boot`), which imports the manifest's `main` dynamically and
+  calls `activate(context)`: a syntax error, a missing export and a throw in `activate` all end in one place, the
+  promise's rejection, and make the plugin `Failed`.
+- **Modules are the plugin's files only**: `gt`, and specifiers that start with `./` or `../` and stay inside the
+  plugin's folder. Each module is read once (a map by its name), on the plugin's thread.
+- **The Plugins page is `gt:plugins`'s** (`plugins.page_info`), a `prefs_page.Page_Info` that a program puts in its
+  `Page_Options.pages`. In `prefs_page` itself it would make every program with settings link the engine.
+- **The commands are a palette source** (`plugin`, prefix `>`, listed), not rows of the program's command table: the
+  table is a program's constant array, and its indices are the program's `Cmd` enum. An item's id is
+  `plugin.<plugin id>.<command id>`; the source's `act` sends the command to the plugin. Keys for them through the
+  keymap come with slice 7.
+- **`plugins.toml`** is the program's configuration folder's, written on a chore, read with the folder: a table
+  `[enabled]` of `<id> = true`. A plugin absent from it is off.
+- **The marker of a crash inside a plugin** is `<state>/plugins/inside-<pid>.txt`: the plugin's thread writes it (the
+  process id, its start, the plugin's id) before it enters the engine for a message and removes it after. The folder's
+  chore reads the markers: one whose process is gone (or whose id names another process now) makes its plugin
+  `Suspended`, then goes. A marker of a process that still runs is another instance's and is left. Writing in
+  `gt:crash`'s own session file was refused: that file belongs to `gt:crash`, written once a session.
+- **The plugin's log** is `<state>/plugins/<id>.log`, appended on the plugin's thread.
+- **Not_Responding** is read on the interface's thread from one atomic word, the time its thread took its message
+  (0: waiting). When a message goes, a chore is timed for the bound and posts a call that wakes the window: a plugin
+  that hangs is said so even when nothing else draws.
+
+### The state of slice 1
+
+1. Done: the reserved block, the spare, the failed allocation as the engine's error (`src/js/chunk_block.odin`), with
+   `tests/js` `past_the_memory_limit`. The move of the engine was done before.
+2. Done: `gt:plugins` (`src/plugins`): the folder on a chore, the manifest, the states, a thread and a runtime per
+   plugin at first use, the queue, Stop, the bound, the log and one toast per run, `plugins.toml`, the palette
+   source, the marker and `Suspended`.
+3. Done: `gt:plugin_api` level 1, `tk plugin_api`, the committed `plugin-api/` files.
+4. Done: the Plugins page (`plugins.page_info`).
+5. Done: the suspended state. It is said by a toast at the start, not yet in the crash bar: the crash bar names a
+   report of `gt:crash`, and a plugin's suspension writes none.
+
+Left for later slices, known: a plugin's command has no key of its own yet (the keymap's entries for
+`plugin.<id>.<command>` come with the palette sources of slice 7); a handler's promise does not hold its command
+"running"; the plugin's time zone is UTC (`timezone_offset_proc` is not set); `examples/plugins` is not among the
+shipped demos (its folder `sample/` would have to go in the archive with it: with `gt-runtime`).
 
 Still open: a plugin folder shared by all the vendor's programs (refused for now).

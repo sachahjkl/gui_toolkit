@@ -103,6 +103,8 @@ STEPS := []Step{
 	{name = "js_pkg", path = "src/js", oses = EVERYWHERE},
 	{name = "js_regexp", path = "src/js/regexp", oses = EVERYWHERE},
 	{name = "js", oses = EVERYWHERE},
+	// (gt:plugins: an endless handler chosen in a headless window's palette, Stop, the states; one window at a time)
+	{name = "plugins", one = true, oses = EVERYWHERE, text = true},
 	{name = "term", one = true, oses = EVERYWHERE, text = true},   // (the terminal widget on a screen of its own; its rows drawn in a session)
 	{name = "remote", oses = EVERYWHERE},
 	{name = "deferred", oses = EVERYWHERE},

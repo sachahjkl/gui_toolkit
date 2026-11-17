@@ -52,9 +52,12 @@ through it. Wren's glue gives the guest heap; a test gives a tracker; a plugin h
   guest's, so Wren saw no difference). The saved context's temp allocator, when it is Odin's default (a thread-local
   arena), is bound again to the thread that enters, as `core:thread` does: a runtime may run on another thread than
   engine_new's.
-- Natively, a runtime needs one reserved block of addresses today: the collector's table of chunks spans the lowest
-  chunk to the highest (plugins.md, Measures). The reserved block in `gt:js` itself is part of the ROADMAP entry
-  "Plugins in JavaScript" (plugins.md, slice 1).
+- Natively, the cells' chunks live in one block of addresses the runtime reserves itself (`chunk_block.odin`): the
+  collector's table of chunks spans the lowest chunk to the highest (plugins.md, Measures), which a process heap makes
+  too wide. The embedder's allocator still gives everything else, so its tracker sees those allocations. The block's
+  last eighth is a spare that turns a failed allocation into the uncatchable "out of memory" at the next poll
+  (plugins.md, decision 1, "As built"). Refused: the embedder reserving the block (tests/js did it by hand): every
+  embedder had to know of the chunk table.
 
 ## State: a runtime's is in its Runtime
 

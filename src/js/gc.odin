@@ -107,6 +107,21 @@ Pool_Block :: struct {
 	next: ^Pool_Block,
 }
 
+// The runtime's reserved addresses (chunk_block.odin): its pool chunks one after the other, and the spare. Chunks are
+// never given back before the runtime ends, so a bump is the whole allocator, and the block goes in one call.
+Cell_Block :: struct {
+	base:      uintptr,
+	reserved:  int, // 0: no block (Wasm, or the system refused the reserve): chunks come from the allocator
+	committed: int,
+	used:      int,
+}
+
+// Is `p` in the runtime's block? (a block of the spare is not the allocator's to free)
+cell_block_has :: #force_inline proc "contextless" (rt: ^Runtime, p: rawptr) -> bool {
+	a := uintptr(p)
+	return rt.block.reserved > 0 && a >= rt.block.base && a < rt.block.base + uintptr(rt.block.reserved)
+}
+
 // A chunk of the pool: this, the bits of its cells (Chunk_Bits, one per CHUNK_GROUP_GRAINS grains of the chunk), then its blocks.
 // The sweep reads the bits, not the cells: a cell that lives is not touched, and a group whose cells all live is one load.
 Pool_Chunk :: struct {
@@ -125,9 +140,18 @@ Chunk_Bits :: struct {
 @(private = "file")
 pool_refill :: proc(rt: ^Runtime) {
 	size := pool_chunk_size(rt.pool_chunk_count)
-	p, err := mem.alloc(size, CHUNK_UNIT, rt.allocator)
-	if err != nil || p == nil {
-		panic("jsrt: out of memory")
+	p: rawptr
+	if rt.block.reserved > 0 {
+		p = cell_block_take(rt, size)
+	} else {
+		err: mem.Allocator_Error
+		p, err = mem.alloc(size, CHUNK_UNIT, rt.allocator)
+		if err != nil {p = nil}
+	}
+	if p == nil {
+		// (no way back from here: the caller writes the cell at once. Natively it means the block's spare is spent
+		// too, so a script allocated the whole reserve between two polls; in Wasm, the linear memory is full)
+		panic("jsrt: out of memory: the runtime's block and its spare are spent")
 	}
 	ch := cast(^Pool_Chunk)p
 	ch.next = rt.pool_chunks
@@ -154,12 +178,11 @@ chunk_table_add :: proc(rt: ^Runtime, ch: ^Pool_Chunk) {
 		new_lo := rt.chunk_table == nil ? lo : min(lo, old_lo)
 		new_hi := rt.chunk_table == nil ? hi : max(hi, old_hi + (old_hi - old_lo) / 2) // (room to grow upward, where a heap grows)
 		n := int((new_hi - new_lo) >> CHUNK_UNIT_SHIFT)
-		block, err := mem.alloc(n * size_of(^Pool_Chunk), align_of(rawptr), rt.allocator) // (not from the pool: a chunk is what it is making)
-		if err != nil || block == nil {panic("jsrt: out of memory")}
+		block := big_alloc(rt, n * size_of(^Pool_Chunk), align_of(rawptr)) // (not from the pool: a chunk is what it is making)
 		table := cast([^]^Pool_Chunk)block
 		if rt.chunk_table != nil {
 			copy(table[(old_lo - new_lo) >> CHUNK_UNIT_SHIFT:][:rt.chunk_table_len], rt.chunk_table[:rt.chunk_table_len])
-			mem.free(rt.chunk_table, rt.allocator)
+			big_free(rt, rt.chunk_table)
 		}
 		rt.chunk_table, rt.chunk_table_len, rt.chunk_lo = table, n, new_lo
 	}
@@ -206,10 +229,10 @@ pool_chunk_size :: #force_inline proc "contextless" (index: int) -> int {
 pool_free_chunks :: proc(rt: ^Runtime) {
 	for c := rt.pool_chunks; c != nil; {
 		next := c.next
-		mem.free(c, rt.allocator)
+		big_free(rt, c) // (a chunk of the block goes with the block, cell_block_close)
 		c = next
 	}
-	if rt.chunk_table != nil {mem.free(rt.chunk_table, rt.allocator)}
+	if rt.chunk_table != nil {big_free(rt, rt.chunk_table)}
 	rt.chunk_table, rt.chunk_table_len, rt.chunk_lo = nil, 0, 0
 	rt.pool_chunks = nil
 	rt.pool_chunk_count = 0
@@ -244,11 +267,24 @@ raw_alloc :: #force_inline proc(rt: ^Runtime, size: int) -> rawptr {
 		rt.pool_left -= n
 		return p
 	}
-	p, err := mem.alloc(size, 16, rt.allocator)
-	if err != nil || p == nil {
-		panic("jsrt: out of memory")
-	}
+	return big_alloc(rt, size, 16)
+}
+
+// A block outside the pool, from the embedder's allocator. Refused there, it comes from the spare of the runtime's
+// block, and the next poll raises the uncatchable "out of memory": the caller writes the block at once, so a nil
+// would be a crash, and the error unwinds the script instead. Only with no block left is it a panic.
+big_alloc :: proc(rt: ^Runtime, size, alignment: int) -> rawptr {
+	p, err := mem.alloc(size, alignment, rt.allocator)
+	if err == nil && p != nil {return p}
+	p = cell_block_spare(rt, size)
+	if p == nil {panic("jsrt: out of memory: the allocator refused a block and the runtime's block is spent")}
 	return p
+}
+
+// A block of big_alloc's given back. One of the runtime's block stays there until cell_block_close.
+big_free :: proc(rt: ^Runtime, p: rawptr) {
+	if cell_block_has(rt, p) {return}
+	mem.free(p, rt.allocator)
 }
 
 @(private = "file")
@@ -260,7 +296,7 @@ raw_free :: #force_inline proc(rt: ^Runtime, p: rawptr, size: int) {
 		rt.pool_free[c] = b
 		return
 	}
-	mem.free(p, rt.allocator)
+	big_free(rt, p)
 }
 
 mem_alloc :: proc(rt: ^Runtime, size: int) -> rawptr {
@@ -293,9 +329,13 @@ mem_resize :: proc(rt: ^Runtime, p: rawptr, old_size, new_size: int) -> rawptr {
 		}
 	} else {
 		var_err: mem.Allocator_Error
-		np, var_err = mem.resize(p, old_size, new_size, 16, rt.allocator)
-		if var_err != nil || np == nil {
-			panic("jsrt: out of memory")
+		if !cell_block_has(rt, p) {np, var_err = mem.resize(p, old_size, new_size, 16, rt.allocator)}
+		if cell_block_has(rt, p) || var_err != nil || np == nil {
+			// (a block of the spare, or a resize refused: a new block, from the spare if need be, then the copy;
+			// a refused resize leaves the old block in place)
+			np = big_alloc(rt, new_size, 16)
+			intrinsics.mem_copy_non_overlapping(np, p, min(old_size, new_size))
+			big_free(rt, p)
 		}
 	}
 	rt.heap_bytes += i64(new_size - old_size)

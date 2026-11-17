@@ -1,0 +1,18 @@
+{
+	"level": 1,
+	"oldest": 1,
+	"modules": [
+		{"name": "commands", "calls": [
+			{"name": "on", "doc": "Registers the handler of one of the manifest's commands: choosing the command in the palette calls it. A second call for the same command replaces the handler.", "level": 1, "capability": "None", "result": "undefined", "arguments": [{"name": "id", "type": "string", "optional": false, "doc": "The command's id, as the manifest's `commands` declares it."}, {"name": "handler", "type": "() => void | Promise<void>", "optional": false, "doc": "Called with no argument when the command is chosen. It may return a promise."}]}
+		]},
+		{"name": "toast", "calls": [
+			{"name": "show", "doc": "Shows a message to the person: a toast of the window, or the system's notification when the program says its messages there.", "level": 1, "capability": "None", "result": "undefined", "arguments": [{"name": "text", "type": "string", "optional": false, "doc": "What it says."}, {"name": "options", "type": "Toast_Options", "optional": true, "doc": ""}]}
+		]}
+	],
+	"types": [
+		{"name": "Toast_Kind", "doc": "How a toast looks.", "kind": "enum", "values": ["info", "good", "warn", "bad"]},
+		{"name": "Toast_Options", "doc": "A toast's options.", "kind": "object", "fields": [{"name": "kind", "type": "Toast_Kind", "optional": true, "doc": "Its look (\"info\" when absent)."}, {"name": "title", "type": "string", "optional": true, "doc": "A line in bold above the text."}]},
+		{"name": "Activate_Context", "doc": "What the entry file's activate(context) is given (gt:plugins makes it: plugins/runtime.odin, context_object).", "kind": "object", "fields": [{"name": "id", "type": "string", "optional": false, "doc": "The plugin's id, as plugin.json says it."}, {"name": "name", "type": "string", "optional": false, "doc": "Its name."}, {"name": "version", "type": "string", "optional": false, "doc": "Its version (\"\" when plugin.json says none)."}, {"name": "api", "type": "number", "optional": false, "doc": "The level of the API this program gives."}]}
+	],
+	"nodes": []
+}
