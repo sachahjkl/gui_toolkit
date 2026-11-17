@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.301.0] - 2026-11-17 15:07
+
+### Added
+- **Demo states**: a program names the screens that need an account (a vault unlocked, a PIN asked) with
+`devtools.demo_state(srv, name, enter, user)`, and its tool enters one before a picture, with no change to the code.
+`Toolkit.demoStates` lists the names and `Toolkit.demoState {name}` enters one. In a tool: `cdp.demo_state` and
+`cdp.demo_states`; in a script, a timeline or `tk cdp`: `demo <name>`, and `tk cdp demos` lists them. A build without
+the devtools endpoint keeps none of it.
+
 ## [0.300.1] - 2026-11-17 14:17
 
 ### Added
@@ -4180,6 +4189,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.301.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.301.0
 [0.300.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.300.1
 [0.300.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.300.0
 [0.299.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.299.0
