@@ -34,11 +34,16 @@ Api_Type :: struct {
 @(private = "file")
 Api_Call :: struct { module, name, arguments, result, capability: string, level: int }
 
+// A kind of node of a view (NODES): its name in JavaScript, its struct, whether it has children, its level.
+@(private = "file")
+Api_Node :: struct { name, props: string, container: bool, level: int }
+
 @(private = "file")
 Api :: struct {
 	level, oldest: int,
 	types: [dynamic]Api_Type,   // in the file's order
 	calls: [dynamic]Api_Call,
+	nodes: [dynamic]Api_Node,
 }
 
 run_plugin_api :: proc(args: []string) -> string {
@@ -133,6 +138,26 @@ api_read :: proc(path: string) -> (api: Api, why: string) {
 		case ^ast.Distinct_Type:
 			// (Handler: a function of the plugin, written as its type in TypeScript)
 		case ^ast.Comp_Lit:
+			if name == "NODES" {
+				for e in v.elems {
+					entry, is_lit := e.derived.(^ast.Comp_Lit)
+					if !is_lit { continue }
+					nd: Api_Node
+					for fe in entry.elems {
+						fv, is_fv := fe.derived.(^ast.Field_Value)
+						if !is_fv { continue }
+						value := expr_text(fv.value)
+						switch ident_name(fv.field) {
+						case "name":      nd.name = value
+						case "props":     nd.props = value
+						case "container": nd.container = value == "true"
+						case "level":     nd.level, _ = strconv.parse_int(value)
+						}
+					}
+					append(&api.nodes, nd)
+				}
+				continue
+			}
 			if name != "DECLARATIONS" { continue }
 			for e in v.elems {
 				entry, is_lit := e.derived.(^ast.Comp_Lit)
@@ -161,22 +186,32 @@ api_read :: proc(path: string) -> (api: Api, why: string) {
 		if _, known := type_of_name(api, c.arguments); !known { return {}, fmt.tprintf("%s: %s.%s's arguments %s is not a struct of the file", path, c.module, c.name, c.arguments) }
 		if c.level < 1 || c.level > api.level { return {}, fmt.tprintf("%s: %s.%s has level %d", path, c.module, c.name, c.level) }
 	}
-	api_keep_reachable(&api)
+	for n in api.nodes {
+		if _, known := type_of_name(api, n.props); !known { return {}, fmt.tprintf("%s: the node %s's props %s is not a struct of the file", path, n.name, n.props) }
+		if n.level < 1 || n.level > api.level { return {}, fmt.tprintf("%s: the node %s has level %d", path, n.name, n.level) }
+	}
+	seen := api_reachable(api, api.level)
+	kept := make([dynamic]Api_Type)
+	for t in api.types { if t.name in seen { append(&kept, t) } }
+	delete(api.types)
+	api.types = kept
 	return api, ""
 }
 
-// Only what a plugin can meet goes out: the calls' arguments, `activate`'s context, and every type their fields name.
-// The file also holds the bridge's own vocabulary (Declaration, its Capability and Result), which no plugin sees.
+// What a plugin of level `level` can meet: the calls' arguments, the nodes' structs, `activate`'s context, and every
+// type their fields name. The file also holds the bridge's own vocabulary (Declaration, its Capability and Result, the
+// list's Node_Kind), which no plugin sees; and a type a later level added is not in an older level's snapshot.
 @(private = "file")
-api_keep_reachable :: proc(api: ^Api) {
+api_reachable :: proc(api: Api, level: int) -> map[string]bool {
 	seen := make(map[string]bool, context.temp_allocator)
 	todo := make([dynamic]string, context.temp_allocator)
 	append(&todo, "Activate_Context")
-	for c in api.calls { append(&todo, c.arguments) }
+	for c in api.calls { if c.level <= level { append(&todo, c.arguments) } }
+	for n in api.nodes { if n.level <= level { append(&todo, n.props) } }
 	for len(todo) > 0 {
 		name := pop(&todo)
 		if name in seen { continue }
-		t, known := type_of_name(api^, name)
+		t, known := type_of_name(api, name)
 		if !known { continue }
 		seen[name] = true
 		for f in t.fields {
@@ -185,10 +220,14 @@ api_keep_reachable :: proc(api: ^Api) {
 			}
 		}
 	}
-	kept := make([dynamic]Api_Type)
-	for t in api.types { if t.name in seen { append(&kept, t) } }
-	delete(api.types)
-	api.types = kept
+	return seen
+}
+
+// The node whose struct is `type_name` (ok false: it is no node's).
+@(private = "file")
+node_of :: proc(api: Api, type_name: string) -> (Api_Node, bool) {
+	for n in api.nodes { if n.props == type_name { return n, true } }
+	return {}, false
 }
 
 // Whether the field's type text names `name` as a whole word ("Maybe(Toast_Kind)", "[]Toast_Kind").
@@ -273,8 +312,23 @@ ts_type :: proc(odin_type: string) -> string {
 	case "f64", "f32", "int", "i64", "i32": return "number"
 	case "bool":                            return "boolean"
 	case "Handler":                         return "() => void | Promise<void>"
+	case "Text_Handler":                    return "(value: string) => void | Promise<void>"
+	case "Flag_Handler":                    return "(value: boolean) => void | Promise<void>"
+	case "Render":                          return "() => Node"
+	case "Children":                        return "(Node | null | undefined | false)[]"
+	case "Setting_Handler":                 return "(id: string, value: string | number | boolean) => void | Promise<void>"
 	}
 	return odin_type
+}
+
+// A call's result (plugin_api.Result) as TypeScript writes it.
+@(private = "file")
+result_ts :: proc(result: string) -> string {
+	switch result {
+	case "Undefined":     return "void"
+	case "Setting_Value": return "string | number | boolean"
+	}
+	return "unknown"
 }
 
 @(private = "file")
@@ -288,8 +342,9 @@ api_dts :: proc(api: Api, level: int) -> string {
 	b := strings.builder_make(context.temp_allocator)
 	fmt.sbprintf(&b, "// The module \"gt\" of a plugin, level %d. Made by `odin run tools/tk -- plugin_api` from %s: do not edit.\n", level, PLUGIN_API_SOURCE)
 	strings.write_string(&b, "declare module \"gt\" {\n")
+	reachable := api_reachable(api, level)
 	for t in api.types {
-		if is_arguments(api, t.name) { continue }
+		if is_arguments(api, t.name) || t.name not_in reachable { continue }
 		ts_doc(&b, "\t", t.doc)
 		if t.is_enum {
 			fmt.sbprintf(&b, "\texport type %s =", t.name)
@@ -298,13 +353,27 @@ api_dts :: proc(api: Api, level: int) -> string {
 			continue
 		}
 		fmt.sbprintf(&b, "\texport interface %s {{\n", t.name)
+		if n, is_node := node_of(api, t.name); is_node {
+			// (every node says its kind, and may have a key: the writer reads both, display.odin)
+			fmt.sbprintf(&b, "\t\tkind: \"%s\";\n", n.name)
+			strings.write_string(&b, "\t\t/** Unique in the view: what the host knows the node by between two renders. */\n\t\tkey?: string | number;\n")
+		}
 		for f in t.fields {
 			ts_doc(&b, "\t\t", f.doc)
 			fmt.sbprintf(&b, "\t\t%s%s: %s;\n", f.name, f.optional ? "?" : "", ts_type(f.type))
 		}
 		strings.write_string(&b, "\t}\n\n")
 	}
+	shown_nodes := make([dynamic]string, context.temp_allocator)
+	for n in api.nodes { if n.level <= level { append(&shown_nodes, n.props) } }
+	if len(shown_nodes) > 0 {
+		strings.write_string(&b, "\t/** A node of a view: what a render returns, and a container's children. */\n")
+		fmt.sbprintf(&b, "\texport type Node = %s;\n\n", strings.join(shown_nodes[:], " | ", context.temp_allocator))
+	}
 	for m in api_modules(api) {
+		has := false
+		for c in api.calls { has ||= c.module == m && c.level <= level }
+		if !has { continue }   // (a module a later level added)
 		fmt.sbprintf(&b, "\texport const %s: {{\n", m)
 		for c in api.calls {
 			if c.module != m || c.level > level { continue }
@@ -314,7 +383,7 @@ api_dts :: proc(api: Api, level: int) -> string {
 			for f, i in t.fields {
 				fmt.sbprintf(&b, "%s%s%s: %s", i == 0 ? "" : ", ", f.name, f.optional ? "?" : "", ts_type(f.type))
 			}
-			fmt.sbprintf(&b, "): %s;\n", c.result == "Undefined" ? "void" : "unknown")
+			fmt.sbprintf(&b, "): %s;\n", result_ts(c.result))
 		}
 		strings.write_string(&b, "\t};\n\n")
 	}
@@ -347,7 +416,7 @@ api_json :: proc(api: Api) -> string {
 			if c.module != m { continue }
 			t, _ := type_of_name(api, c.arguments)
 			fmt.sbprintf(&b, "%s\t\t\t{{\"name\": %s, \"doc\": %s, \"level\": %d, \"capability\": %s, \"result\": %s, \"arguments\": [",
-				first ? "" : ",\n", tk_json.quote(c.name), tk_json.quote(t.doc), c.level, tk_json.quote(c.capability), tk_json.quote(c.result == "Undefined" ? "undefined" : "unknown"))
+				first ? "" : ",\n", tk_json.quote(c.name), tk_json.quote(t.doc), c.level, tk_json.quote(c.capability), tk_json.quote(result_ts(c.result)))
 			first = false
 			for f, i in t.fields { json_field(&b, f, i == 0) }
 			strings.write_string(&b, "]}")
@@ -356,7 +425,10 @@ api_json :: proc(api: Api) -> string {
 	}
 	strings.write_string(&b, "\t],\n\t\"types\": [\n")
 	shown := make([dynamic]Api_Type, context.temp_allocator)
-	for t in api.types { if !is_arguments(api, t.name) { append(&shown, t) } }
+	for t in api.types {
+		_, is_node := node_of(api, t.name)
+		if !is_arguments(api, t.name) && !is_node { append(&shown, t) }   // (a node's struct is under "nodes")
+	}
 	for t, ti in shown {
 		fmt.sbprintf(&b, "\t\t{{\"name\": %s, \"doc\": %s, \"kind\": %s", tk_json.quote(t.name), tk_json.quote(t.doc), tk_json.quote(t.is_enum ? "enum" : "object"))
 		if t.is_enum {
@@ -370,8 +442,15 @@ api_json :: proc(api: Api) -> string {
 		}
 		fmt.sbprintf(&b, "}}%s\n", ti + 1 < len(shown) ? "," : "")
 	}
-	// (the nodes of a view come with slice 4: the explorer already reads the list)
-	strings.write_string(&b, "\t],\n\t\"nodes\": []\n}\n")
+	strings.write_string(&b, "\t],\n\t\"nodes\": [\n")
+	for n, ni in api.nodes {
+		t, _ := type_of_name(api, n.props)
+		fmt.sbprintf(&b, "\t\t{{\"name\": %s, \"type\": %s, \"doc\": %s, \"level\": %d, \"container\": %v, \"fields\": [",
+			tk_json.quote(n.name), tk_json.quote(n.props), tk_json.quote(t.doc), n.level, n.container)
+		for f, i in t.fields { json_field(&b, f, i == 0) }
+		fmt.sbprintf(&b, "]}}%s\n", ni + 1 < len(api.nodes) ? "," : "")
+	}
+	strings.write_string(&b, "\t]\n}\n")
 	return strings.to_string(b)
 }
 
@@ -407,9 +486,35 @@ api_page :: proc(api: Api) -> string {
 			}
 		}
 	}
+	if len(api.nodes) > 0 {
+		strings.write_string(&b, "\n## Nodes\n\nA view's render returns a tree of nodes: plain objects, each with its `kind`, an optional `key` (unique in the view; a node without one is known by its place), and the fields of its kind. A container's `children` is an array; `null`, `undefined` and `false` in it are skipped.\n\n")
+		strings.write_string(&b, "```js\nimport { views } from \"gt\";\n\nlet count = 0;\nexport function activate() {\n\tviews.register(\"main\", () => ({ kind: \"column\", children: [\n\t\t{ kind: \"text\", text: `Count: ${count}` },\n\t\t{ kind: \"button\", key: \"add\", label: \"Add\", onClick: () => { count += 1; } },\n\t] }));\n}\n```\n")
+		for n in api.nodes {
+			t, _ := type_of_name(api, n.props)
+			fmt.sbprintf(&b, "\n### `%s`\n\n%s%s\n\n", n.name, t.doc, n.container ? " It has children." : "")
+			fmt.sbprintf(&b, "Level %d.\n", n.level)
+			fields := 0
+			for f in t.fields { if f.type != "Children" { fields += 1 } }
+			if fields > 0 {
+				strings.write_string(&b, "\n| Field | Type | |\n|---|---|---|\n")
+				for f in t.fields {
+					if f.type == "Children" { continue }
+					fmt.sbprintf(&b, "| `%s` | `%s`%s | %s |\n", f.name, ts_type(f.type), f.optional ? ", optional" : "", f.doc)
+				}
+			}
+		}
+	}
+	strings.write_string(&b, "\n## The explorer's file\n\n`plugin-api/api.json` describes the same API for the site's explorer, which reads nothing else. Its shape:\n\n")
+	strings.write_string(&b, "- `level`, `oldest`: the level this toolkit gives and the oldest it accepts.\n")
+	strings.write_string(&b, "- `modules`: each with its `name` and its `calls`; a call has `name`, `doc`, `level`, `capability` (`\"None\"`: no permission), `result` and `arguments`.\n")
+	strings.write_string(&b, "- `types`: the objects and enums the calls and nodes name; an object has `fields`, an enum `values`.\n")
+	strings.write_string(&b, "- `nodes`: each kind of node of a view, with `name` (its `kind` in JavaScript), `type`, `doc`, `level`, `container` and `fields`.\n")
+	strings.write_string(&b, "- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional` and `doc`.\n\n")
+	strings.write_string(&b, "A key is only added: a site reading this file keeps working when a level adds calls, types, nodes or keys.\n")
 	strings.write_string(&b, "\n## Types\n")
 	for t in api.types {
 		if is_arguments(api, t.name) { continue }
+		if _, is_node := node_of(api, t.name); is_node { continue }
 		fmt.sbprintf(&b, "\n### `%s`\n\n%s\n\n", t.name, t.doc)
 		if t.is_enum {
 			quoted := make([dynamic]string, context.temp_allocator)

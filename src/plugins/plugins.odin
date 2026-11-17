@@ -15,6 +15,7 @@ import "core:fmt"
 import "core:strings"
 import "core:sync"
 import "core:time"
+import config "../config"
 import "../tasks"
 import "../ui"
 
@@ -61,6 +62,12 @@ Host_Options :: struct {
 	folder:       string,   // the plugins' folder ("": user_dir(.Data, program)/plugins)
 	config_dir:   string,   // where plugins.toml is ("": user_dir(.Config, program))
 	state_dir:    string,   // the logs and the markers ("": user_dir(.State, program)/plugins)
+	// one plugin instead of the folder: its folder, or a lone .js file whose manifest is implied (gt-runtime). It is
+	// on from the start; `folder` is not read
+	single:       string,
+	// the program's preferences: the plugins' settings are registered there (plugins.<plugin id>.<setting id>), shown
+	// by its settings (settings_pages) and kept in its file. nil: a plugin's settings keep their defaults
+	prefs:        ^config.Prefs,
 	announcer:    ^ui.Announcer,   // where a plugin's messages go (nil: the window's toasts)
 	bound_ms:     int,      // 0: NOT_RESPONDING_MS
 	memory_limit: i64,      // 0: MEMORY_LIMIT
@@ -71,6 +78,7 @@ Host :: struct {
 	o:         Host_Options,   // (strings owned)
 	state:     ^ui.State,
 	plugins:   [dynamic]^Plugin,
+	views:     [dynamic]^View_Record,   // every plugin view declared since host_open, kept across reloads (view.odin)
 	link:      ^Host_Link,
 	// the paths the folder's chore found (owned; "" until the first read came)
 	folder, toml_path, state_dir: string,
@@ -79,6 +87,7 @@ Host :: struct {
 	loaded:      bool,     // a read came
 	source:      ui.Palette_Source,
 	palette:     ^ui.Command_Palette,   // the palette host_build added the source to (host_close removes it)
+	watch:       int,                   // config.watch's id of the plugins' preferences (0: none)
 	window_announcer: ui.Announcer,   // Host_Options.announcer nil: the window's toasts
 	// what a test reads: the toasts said (count), and the last one's words (owned)
 	toasts:      int,
@@ -118,11 +127,13 @@ host_open :: proc(h: ^Host, s: ^ui.State, o: Host_Options) {
 	h.o = o
 	h.o.program, h.o.program_id = strings.clone(o.program), strings.clone(o.program_id)
 	h.o.folder, h.o.config_dir, h.o.state_dir = strings.clone(o.folder), strings.clone(o.config_dir), strings.clone(o.state_dir)
+	h.o.single = strings.clone(o.single)
 	if h.o.bound_ms <= 0 { h.o.bound_ms = NOT_RESPONDING_MS }
 	if h.o.memory_limit <= 0 { h.o.memory_limit = MEMORY_LIMIT }
 	h.window_announcer = {mode = .Window, state = s}
 	h.link = new(Host_Link)
 	h.link^ = {open = true, state = s, host = h, refs = 1}
+	if h.o.prefs != nil { h.watch = config.watch(h.o.prefs, SETTINGS_PREFIX, setting_changed, h) }
 	h.source = {
 		name = "plugin", title = "Plugins", prefix = .Commands, plain = true, listed = true, remember = true,
 		read = source_read, act = source_act, user = h,
@@ -147,10 +158,18 @@ host_close :: proc(h: ^Host) {
 	sync.unlock(&h.link.lock)
 	link_release(h.link)
 	plugins_drop(h)
+	if h.o.prefs != nil && h.watch != 0 { config.unwatch(h.o.prefs, h.watch) }
+	// (the window's views of the plugins close: their build's record goes)
+	vs := ui.state_views(h.state)
+	for r in h.views {
+		if r.registered && ui.view_is_open(vs, r.ui_id) { ui.view_close(vs, r.ui_id) }
+		view_record_free(r)
+	}
+	delete(h.views)
 	// (the palette outlives the host in most programs: it must not ask a source that is gone)
 	if h.palette != nil { ui.palette_remove(h.palette, &h.source) }
 	delete(h.plugins)
-	delete(h.o.program); delete(h.o.program_id); delete(h.o.folder); delete(h.o.config_dir); delete(h.o.state_dir)
+	delete(h.o.program); delete(h.o.program_id); delete(h.o.folder); delete(h.o.config_dir); delete(h.o.state_dir); delete(h.o.single)
 	delete(h.folder); delete(h.toml_path); delete(h.state_dir)
 	delete(h.last_toast)
 	h^ = {}
@@ -164,6 +183,7 @@ host_build :: proc(h: ^Host, palette: ^ui.Command_Palette) {
 		h.read_once = true
 		folder_read(h)
 	}
+	views_build(h)
 	if palette != nil && !ui.palette_has(palette, &h.source) {
 		ui.palette_add(palette, &h.source)
 		h.palette = palette
@@ -203,6 +223,11 @@ loaded :: proc(h: ^Host) -> bool { return h.loaded }
 run_command :: proc(h: ^Host, full_id: string) -> bool {
 	context.allocator = runtime.heap_allocator()
 	if full_id == RELOAD_COMMAND { reload(h); return true }
+	if strings.has_prefix(full_id, VIEW_PREFIX) {
+		rest := full_id[len(VIEW_PREFIX):]
+		dot := strings.index_byte(rest, '.')
+		return dot > 0 && open_view(h, rest[:dot], rest[dot + 1:])
+	}
 	plugin_id, command, ok := command_split(full_id)
 	if !ok { return false }
 	p := find(h, plugin_id)

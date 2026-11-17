@@ -47,6 +47,10 @@ plugins.host_close(&app.plugins)
 | `stop(h, id)` | Stops a plugin's runtime. The plugin is `Ready` again when its thread has ended. |
 | `reload(h)` | Stops every runtime and reads the folder again. |
 | `state_of(h, id)`, `find(h, id)`, `host_plugins(h)`, `loaded(h)` | What the host knows, for a page or a test. |
+| `open_view(h, plugin_id, view_id)` | Opens a plugin's view among the window's views, at its manifest's place, and starts the plugin when it does not run. The palette's `plugin-view.<plugin id>.<view id>` items call it. |
+| `view_body(h, plugin_id, view_id)` | Builds a plugin's view in the box being built, in the program's own layout (gt-runtime's window). |
+| `view_field(h, plugin_id, view_id, key)`, `view_keys(h, plugin_id, view_id)` | A field's shown and rendered text, the keys of a view's last list: what a test reads. |
+| `settings_pages(h)` | One settings page per plugin that has settings, for `Page_Options.pages`. |
 
 `Host_Options`:
 
@@ -58,6 +62,8 @@ plugins.host_close(&app.plugins)
 | `announcer` | Where a plugin's messages go. nil: the window's toasts. |
 | `bound_ms` | How long a message can run before its plugin is `Not_Responding` (0: 2000). |
 | `memory_limit` | A plugin's heap budget in bytes (0: 64 MB). |
+| `prefs` | The program's preferences: the plugins' settings are registered there as `plugins.<plugin id>.<setting id>`. nil: a plugin's settings keep their defaults. |
+| `single` | One plugin instead of the folder: its folder, or a lone `.js` file whose manifest is implied. It is on from the start (gt-runtime). |
 
 ## Where things are
 
@@ -98,8 +104,53 @@ The manifest's fields:
 - `main`: the entry file, `main.js` by default.
 - `program`: the program the plugin is for. When it is absent, the plugin is for any program.
 - `commands`: each with `id`, `label`, and optionally `group`, `icon` and `tags`.
+- `views`: each with `id`, `title`, and `place`: `internal` (a window inside the program's, the default), `dialog`,
+  `panel` or `window`. The person moves it from there; the window's views remember where.
+- `settings`: each with `id`, `title`, `description`, `kind` (`bool`, `int`, `float` or `string`), `default`, and
+  optionally `min` and `max`, or `choices` for a string. A default out of its bounds or its choices is refused.
 
 A plugin imports `"gt"` and its own files (`"./lib/words.js"`), nothing else.
+
+## A view
+
+A view's render returns a tree of nodes ([plugin-api.md](plugin-api.md), "Nodes"). The host writes it as a display
+list on the plugin's thread; the window replays the last list at each build with the toolkit's widgets. A click, a
+change or Enter is a message to the plugin: its handler runs, then the view renders again.
+
+```js
+import { views } from "gt";
+
+let count = 0;
+export function activate() {
+	views.register("main", () => ({ kind: "column", children: [
+		{ kind: "text", text: `Count: ${count}` },
+		{ kind: "button", key: "add", label: "Add", onClick: () => { count += 1; } },
+	] }));
+}
+```
+
+- A node's `key` is unique in the view. A node without one is known by its place. A key given twice drops the second
+  node, and the plugin's log says so.
+- What the person types in a field is the host's. A field with `value` shows the plugin's value, unless the person typed
+  since the change the plugin last heard of. A field without `value` keeps its own text. Check boxes (`checked`) and
+  switches (`on`) follow the same rule.
+- `views.update(id)` renders a view again after a command or a promise.
+- When the plugin stops, the view keeps its last list and says why: Not responding (with Stop), Stopped (with Start),
+  or the failure.
+
+## gt-runtime
+
+`gt-runtime` runs one plugin as an application: the window, the theme, the palette, the settings and the toasts are the
+toolkit's.
+
+```
+gt-runtime examples/js/todo              a plugin's folder
+gt-runtime examples/js/counter/main.js   a lone file: one view "main", its name the file's
+```
+
+The plugin's first view fills the window. Its commands are in the palette (Ctrl+K). The settings (Ctrl+,) hold the look,
+the plugin's own settings and the Plugins page. `odin run tools/tk -- build gt-runtime` builds it into `build/`. A
+release attaches `gt-runtime-windows-x64.zip`, with the JavaScript demos in its `js` folder.
 
 ## What a plugin cannot do to the program
 

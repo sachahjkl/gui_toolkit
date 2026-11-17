@@ -1,0 +1,12 @@
+{
+	"id": "todo",
+	"name": "Todo",
+	"version": "1.0.0",
+	"api": 2,
+	"main": "main.js",
+	"views": [{ "id": "main", "title": "Todo", "place": "internal" }],
+	"commands": [
+		{ "id": "clear-done", "label": "Clear the tasks done", "tags": ["remove", "completed"] },
+		{ "id": "all-done", "label": "Mark every task done", "tags": ["complete"] }
+	]
+}

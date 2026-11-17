@@ -88,30 +88,44 @@ tool_check_flags :: proc(name, root: string) -> []string {
 // Linux: the native library first (build_native).
 run_build :: proc(args: []string) -> string {
 	example := len(toolbox.plain_args(args)) > 0 ? toolbox.plain_args(args)[0] : "fidget"
+	for a in APPS { if a == example { return build_app(toolkit_root(), example, toolbox.has_flag(args, "debug")) } }
 	known := false
 	for e in EXAMPLES { known ||= e == example }
 	all := EXAMPLES
-	if !known { return fmt.tprintf("no example %s (%s)", example, strings.join(all[:], ", ", context.temp_allocator)) }
+	if !known { return fmt.tprintf("no example nor program %s (%s, %s)", example, strings.join(all[:], ", ", context.temp_allocator), "gt-runtime") }
 	return build_example(toolkit_root(), example, toolbox.has_flag(args, "debug"))
 }
 
 // `devtools`: the inspection endpoint the tools and the tests drive; a demo handed to a person goes without it.
 build_example :: proc(root, example: string, debug: bool, devtools := true) -> string {
+	return build_program(root, "examples", example, debug, devtools)
+}
+
+// The programs the toolkit ships (apps/<name>), built as an example is: gt-runtime, which runs one plugin as an
+// application (src/md/features/plugins.md). Without the devtools endpoint unless asked: a person runs them.
+APPS :: [?]string{"gt-runtime"}
+
+build_app :: proc(root, app: string, debug: bool, devtools := false) -> string {
+	return build_program(root, "apps", app, debug, devtools)
+}
+
+// A program of `folder` (examples, apps) -> build/<name>[.exe].
+build_program :: proc(root, folder, name: string, debug: bool, devtools: bool) -> string {
 	when ODIN_OS != .Windows {
 		if why := build_native_default(root); why != "" { return why }
 	}
-	out := join({root, "build", fmt.tprintf("%s%s", example, EXE)})
+	out := join({root, "build", fmt.tprintf("%s%s", name, EXE)})
 	_ = os.make_directory_all(join({root, "build"}))
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "build", join({root, "examples", example}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed", fmt.tprintf("-define:TOOLKIT_DEVTOOLS=%v", devtools), gt_collection(root))
+	append(&cmd, "odin", "build", join({root, folder, name}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed", fmt.tprintf("-define:TOOLKIT_DEVTOOLS=%v", devtools), gt_collection(root))
 	when ODIN_OS == .Windows {
 		append(&cmd, "-subsystem:windows")
-		rc := join({root, "examples", example, fmt.tprintf("%s.rc", example)})
+		rc := join({root, folder, name, fmt.tprintf("%s.rc", name)})
 		if os.exists(rc) { append(&cmd, fmt.tprintf("-resource:%s", rc)) }
 	} else {
 		append(&cmd, toolbox.LINUX_LINK_FLAG)   // (the examples link the native text backend themselves)
 	}
-	if !toolbox.run(cmd[:]) { return fmt.tprintf("building examples/%s failed", example) }
+	if !toolbox.run(cmd[:]) { return fmt.tprintf("building %s/%s failed", folder, name) }
 	fmt.printfln("built %s", out)
 	return ""
 }
@@ -202,6 +216,9 @@ run_ci :: proc(args: []string) -> string {
 	examples := CI_EXAMPLES_WINDOWS when ODIN_OS == .Windows else CI_EXAMPLES_LINUX
 	for e in examples {
 		if why := build_example(root, e, false); why != "" { append(&failed, why) }
+	}
+	for a in APPS {
+		if why := build_app(root, a, false); why != "" { append(&failed, why) }
 	}
 	if !toolbox.run({"odin", "run", join({root, "tools", "run_tests"}), "-vet", "-keep-executable", fmt.tprintf("-out:%s", join({root, "build", fmt.tprintf("run_tests%s", EXE)}))}, {dir = root}) {
 		append(&failed, "tools/run_tests")

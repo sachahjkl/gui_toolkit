@@ -34,5 +34,41 @@ run_demos :: proc(args: []string) -> string {
 		if zerr := archive.zip_end(&w); zerr != .None { return fmt.tprintf("%s cannot be written: %v", zip, zerr) }
 		fmt.printfln("packed %s", zip)
 	}
+	return pack_runtime(root, out)
+}
+
+// gt-runtime-windows-x64.zip: gt-runtime.exe and the JavaScript demos beside it (examples/js/<demo> as js/<demo>), so that
+// `gt-runtime js\todo` runs one where the zip was opened. (The release job runs on Windows: no Linux archive yet.)
+@(private = "file")
+pack_runtime :: proc(root, out: string) -> string {
+	if why := build_app(root, "gt-runtime", false); why != "" { return why }
+	exe_name := fmt.tprintf("gt-runtime%s", EXE)
+	exe, err := os.read_entire_file(join({root, "build", exe_name}), context.temp_allocator)
+	if err != nil { return fmt.tprintf("build/%s cannot be read: %v", exe_name, err) }
+	zip := join({out, "gt-runtime-windows-x64.zip"})
+	w: archive.Zip_Writer
+	archive.zip_begin(&w, zip)
+	archive.zip_add(&w, exe_name, exe, mode = 0o755)
+	if why := zip_folder(&w, join({root, "examples", "js"}), "js"); why != "" { return why }
+	if zerr := archive.zip_end(&w); zerr != .None { return fmt.tprintf("%s cannot be written: %v", zip, zerr) }
+	fmt.printfln("packed %s", zip)
+	return ""
+}
+
+// Every file under `dir`, as `prefix`/<its path under dir> (with '/', as a zip names them).
+@(private = "file")
+zip_folder :: proc(w: ^archive.Zip_Writer, dir, prefix: string) -> string {
+	entries, err := os.read_all_directory_by_path(dir, context.temp_allocator)
+	if err != nil { return fmt.tprintf("%s cannot be read: %v", dir, err) }
+	for e in entries {
+		name := fmt.tprintf("%s/%s", prefix, e.name)
+		if e.type == .Directory {
+			if why := zip_folder(w, e.fullpath, name); why != "" { return why }
+			continue
+		}
+		data, rerr := os.read_entire_file(e.fullpath, context.temp_allocator)
+		if rerr != nil { return fmt.tprintf("%s cannot be read: %v", e.fullpath, rerr) }
+		archive.zip_add(w, name, data)
+	}
 	return ""
 }
