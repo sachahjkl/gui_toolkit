@@ -1051,6 +1051,9 @@ tooltip_open :: proc(pos: Vec2, em: f32) {
 	push_style_copy()
 	st := top_style()
 	for a in Axis { if st.pref[a].kind == .Percent { st.pref[a] = text_size() } }
+	// (the words in the interface's font: an icon button builds its tooltip under its icon font, which measured the
+	// words at nearly nothing and wrapped them after their first letter)
+	st.font = s.style_stack[0].font
 	set_next_axis(.Y)
 	s.next_mod.fixed_x = pos.x
 	s.next_mod.fixed_y = pos.y

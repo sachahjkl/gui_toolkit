@@ -92,12 +92,15 @@ a_glyph_alone_shows_its_tip_and_is_named_by_it :: proc(t: ^testing.T) { unwatche
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Tips)(s.user)
 		ui.next({width = ui.px(BUTTON_HEIGHT), height = ui.px(BUTTON_HEIGHT)})
-		if ui.button("bell", icon = ui.ICON_UP, o = {tip = "Notifications", intent = .Primary, disabled = r.on}).clicked { r.clicks += 1 }
+		if ui.button("bell", icon = ui.ICON_UP, o = {tip = "Notifications", intent = .Primary, disabled = r.on, icon_font = ui.lucide_icons()}).clicked { r.clicks += 1 }
 	}})
 	ui.a11y_capture(s.state, true)
 	session.hover(s, "bell")
 	testing.expect(t, session.find_text(s, "Notifications") == nil, "no tooltip at once")
 	session.wait_text(s, "Notifications")
+	// (its words in the interface's font, not the glyph's: measured in the icon font, they wrapped after one letter)
+	words := session.find_text(s, "Notifications")
+	testing.expect(t, words != nil && words.font != ui.lucide_icons(), "the tip's words are not in the icon font")
 	bell := session.get(s, "bell")
 	testing.expect(t, bell.a11y != nil && bell.a11y.name == "Notifications", "its tip names it")
 	session.click(s, "bell")
