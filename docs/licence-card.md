@@ -27,6 +27,9 @@ ui.licence_card("licence", {
 The strings are read during the build and the frame's draw; `logo` is a constant of the program (its address keys the
 textures made from it).
 
+Every card carries the same code engraved at the bottom right of its back (`ui.LICENCE_CARD_SEAL_URL`, a step of a hunt
+across the programs): there is nothing to set.
+
 It is as wide as `ui.LICENCE_CARD_WIDTH_EM` font sizes (440 pixels at a font of 15), or its parent when that is narrower;
 its height follows its width (a bank card's shape, `LICENCE_CARD_ASPECT`), with room above and below for its tilt. It
 returns the card's signal. To a screen reader it is an image named by all it says.
@@ -72,8 +75,11 @@ that is missing or stale is refused, and the card is drawn flat.
 ```odin
 ui.licence_card_look(state, "licence")   // found, settled, shaded, plain_text, turned, back, rx, ry, sweeping, moving
 ui.set_licence_card_flat(state, true)     // every card of the State drawn flat
+ui.licence_card_seal_module(x, y)         // whether module (x, y) of the back's code is dark (LICENCE_CARD_SEAL_MODULES a side)
+ui.licence_card_seal_reveal(rx, ry)       // 0 .. 1: how much of the code's contrast the back shows at that turn (degrees)
 ```
 
 `tests/licence_card`: a picture per finish on a dark and a light theme (the foil and the flat card), no frame due at rest
 after the sweep and an ease, the tilt that follows the pointer and comes back, the turn over and Escape, the flat card
-whole with a long name.
+whole with a long name; the back's code decodes to its address, shows only at its turn, and on a device of its own reads
+from the pixels at that turn and not straight on.

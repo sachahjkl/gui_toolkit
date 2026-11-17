@@ -1,12 +1,14 @@
 // The licence card (ui.licence_card, src/md/features/licence-card.md): a picture per finish on a dark and a light theme, no
 // frame at rest after the sweep and an ease, the tilt that follows the pointer and comes back, the turn over and its way
-// home, the flat card when the shader is refused.   odin run tools/run_tests -- licence_card
+// home, the flat card when the shader is refused, the code engraved on the back and the turn that reveals it.
+//   odin run tools/run_tests -- licence_card
 // The pictures are compared with references/<theme>_<finish>.png; TOOLKIT_TEST_UPDATE=1 writes them (review them like code).
 package licence_card_test
 
 @(require) import "core:fmt"   // (the pictures' names: Linux only)
 import "core:math"
 import "core:testing"
+import "gt:qr"
 import "gt:render"
 import "gt:testkit/session"
 import "gt:ui"
@@ -149,6 +151,22 @@ the_tilt_follows_the_pointer_and_comes_back :: proc(t: ^testing.T) {
 	testing.expect(t, !look(s).moving, "at rest")
 }
 
+// A drag of the free card from `from` to `to` in 20 moves, let go once still (no fling).
+@(private = "file")
+drag :: proc(s: ^session.Session, from, to: [2]f32) {
+	session.press(s, from)
+	steps :: 20
+	for i in 1 ..= steps {
+		at := from + (to - from) * (f32(i) / steps)
+		s.pointer = at
+		session.event(s, {kind = .Mouse_Move, pos = at})
+		session.frame(s)
+	}
+	session.advance(s, 200)
+	session.release(s, to)
+	session.wait_idle(s)
+}
+
 // Turn over: the button frees the card; a drag of half a turn (let go once still: no fling) shows the back, its front not
 // drawn; Escape brings it back by the short way.
 @(test)
@@ -162,18 +180,7 @@ turned_over_it_shows_its_back_and_escape_brings_it_home :: proc(t: ^testing.T) {
 	b := session.get(s, "licence_card")
 	from := [2]f32{b.rect.min.x + 10, (b.rect.min.y + b.rect.max.y) * 0.5}
 	// (180 degrees at DRAG_DEG_PER_PX = 0.45 a logical pixel: 400 pixels)
-	to := from + {400, 0}
-	session.press(s, from)
-	steps :: 20
-	for i in 1 ..= steps {
-		at := from + (to - from) * (f32(i) / steps)
-		s.pointer = at
-		session.event(s, {kind = .Mouse_Move, pos = at})
-		session.frame(s)
-	}
-	session.advance(s, 200)
-	session.release(s, to)
-	session.wait_idle(s)
+	drag(s, from, from + {400, 0})
 	l := look(s)
 	half := math.mod(abs(l.ry), 360)
 	testing.expectf(t, abs(half - 180) < 3, "half a turn: %v", l.ry)
@@ -220,4 +227,103 @@ the_flat_card_reads_whole :: proc(t: ^testing.T) {
 	// the product and the date are there too
 	testing.expect(t, bright(img, lo.x + 22 * k, lo.x + 200 * k, lo.y + 22 * k, lo.y + 42 * k) > 20, "the product")
 	testing.expect(t, bright(img, lo.x + 22 * k, lo.x + 120 * k, lo.y + 242 * k, lo.y + 258 * k) > 10, "the date")
+}
+
+// The code engraved on the back, as the shader and the flat card read it, is the hunt's address: as a matrix, and drawn black
+// on white with its quiet zone, 4 pixels a module, as a phone sees it at its turn. (An address that needs another version
+// than the place on the back is made for engraves no code: this fails.)
+@(test)
+the_engraved_code_reads_the_hunts_address :: proc(t: ^testing.T) {
+	n :: ui.LICENCE_CARD_SEAL_MODULES
+	modules := make([]bool, n * n, context.temp_allocator)
+	for y in 0 ..< n {
+		for x in 0 ..< n { modules[y * n + x] = ui.licence_card_seal_module(x, y) }
+	}
+	m, err := qr.decode_modules(modules, n)
+	defer qr.decoded_destroy(&m)
+	testing.expect_value(t, err, qr.Decode_Error.None)
+	testing.expect_value(t, string(m.data), ui.LICENCE_CARD_SEAL_URL)
+
+	k :: 4
+	side := (n + 2 * qr.QUIET_ZONE) * k
+	gray := make([]u8, side * side, context.temp_allocator)
+	for y in 0 ..< side {
+		for x in 0 ..< side {
+			dark := ui.licence_card_seal_module(x / k - qr.QUIET_ZONE, y / k - qr.QUIET_ZONE)
+			gray[y * side + x] = dark ? 0 : 255
+		}
+	}
+	p, perr := qr.decode_gray(gray, side, side, side)
+	defer qr.decoded_destroy(&p)
+	testing.expect_value(t, perr, qr.Decode_Error.None)
+	testing.expect_value(t, string(p.data), ui.LICENCE_CARD_SEAL_URL)
+}
+
+// The ramp of the code's contrast: none straight on (the back at rotateY 180), whole at its turn and a little off it (a person
+// holds it there), part of the way between, none far from it (the opposite tilt, the front's side).
+@(test)
+the_code_shows_at_its_turn_alone :: proc(t: ^testing.T) {
+	reveal :: ui.licence_card_seal_reveal
+	testing.expectf(t, reveal(0, 180) < 0.01, "straight on: %v", reveal(0, 180))
+	testing.expectf(t, reveal(-11, 191) > 0.99, "at its turn: %v", reveal(-11, 191))
+	testing.expectf(t, reveal(-11, -169) > 0.99, "at its turn, a whole turn less: %v", reveal(-11, -169))
+	testing.expectf(t, reveal(-10, 192) > 0.99, "held a degree off: %v", reveal(-10, 192))
+	r := reveal(-11, 186)
+	testing.expectf(t, r > 0.05 && r < 0.95, "5 degrees off, on its way: %v", r)
+	testing.expectf(t, reveal(-11, 182) < 0.01, "9 degrees off: %v", reveal(-11, 182))
+	testing.expectf(t, reveal(11, 169) < 0.01, "the opposite tilt: %v", reveal(11, 169))
+	testing.expectf(t, reveal(0, 0) < 0.01, "the front towards the eye: %v", reveal(0, 0))
+}
+
+// On a device of its own, the code on the foil: the back seen straight on does not decode from its pixels; turned to the
+// code's angle (from the back, a drag 24.4 logical pixels right and down: 11 degrees on each axis) it does. A screen at 200 %:
+// 4 pixels a module.
+@(test)
+the_engraved_code_scans_at_its_angle_alone :: proc(t: ^testing.T) {
+	sc := Scene{card = SAMPLE}
+	s := session.start(t, {size = {1440, 1120}, dpi_scale = 2, animations = true, user = &sc, build = scene_build})
+	// (the foil only: on WARP its frames take seconds, and the flat card shows no code by design; Mesa's software
+	// rasterizer draws it in a few seconds, so Linux scans it)
+	if ODIN_OS == .Windows && render.adapter_info(s.renderer).software { return }
+	wait_settled(s)
+	if !look(s).shaded { return }
+	scale := s.state.scale > 0 ? s.state.scale : 1
+	session.click(s, "licence_turn")
+	b := session.get(s, "licence_card")
+	mid := (b.rect.min + b.rect.max) * 0.5
+	// (DRAG_DEG_PER_PX = 0.45 a logical pixel: 400 for half a turn)
+	from := [2]f32{b.rect.min.x + 10 * scale, mid.y}
+	drag(s, from, from + [2]f32{400, 0} * scale)
+	wait_settled(s)
+	testing.expect(t, look(s).back, "the back shows")
+	lo, hi := card_rect(s)
+	_, err := read_corner(s, lo, hi)
+	testing.expect(t, err != .None, "straight on, the code does not read")
+
+	turn := f32(11) / 0.45
+	drag(s, mid, mid + [2]f32{turn, turn} * scale)
+	l := look(s)
+	testing.expectf(t, ui.licence_card_seal_reveal(l.rx, l.ry) > 0.99, "at the code's turn: %v, %v", l.rx, l.ry)
+	address, err2 := read_corner(s, lo, hi)
+	testing.expect_value(t, err2, qr.Decode_Error.None)
+	testing.expect(t, address, "the code reads the hunt's address")
+}
+
+// Whether a code in the bottom right of the card on the last frame reads the hunt's address, and why none was read (lo, hi:
+// the card at rest; a tilt moves it a little, so a margin).
+@(private = "file")
+read_corner :: proc(s: ^session.Session, lo, hi: [2]f32) -> (bool, qr.Decode_Error) {
+	img := session.capture(s)
+	w, h := hi.x - lo.x, hi.y - lo.y
+	x0, y0 := int(lo.x + w * 0.6), int(lo.y + h * 0.35)
+	x1, y1 := min(int(hi.x + w * 0.04), img.width), min(int(hi.y + h * 0.04), img.height)
+	cw, ch := x1 - x0, y1 - y0
+	crop := make([]u8, cw * ch * 4, context.temp_allocator)
+	for y in 0 ..< ch {
+		copy(crop[y * cw * 4:][:cw * 4], img.rgba[((y0 + y) * img.width + x0) * 4:][:cw * 4])
+	}
+	// (the decoder's own temporary memory is released before it returns: its data in the heap)
+	d, err := qr.decode_rgba(crop, cw, ch, cw * 4)
+	defer qr.decoded_destroy(&d)
+	return err == .None && string(d.data) == ui.LICENCE_CARD_SEAL_URL, err
 }

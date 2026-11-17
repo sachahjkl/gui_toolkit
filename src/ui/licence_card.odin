@@ -828,9 +828,11 @@ card_seal_edge :: proc(dc: ^draw.Context, vw, world: draw.Mat4) {
 	}
 }
 
-// The shader's parameters: the engine's slot, the pass, the light, the mode and the turn.
+// The shader's parameters: the engine's slot, the pass, the light, the mode and the turn (licence_card.wgsl reads the back's
+// engraved code from the slot after them).
+@(private = "file") CARD_PARAMS :: 5
 @(private = "file")
-card_params :: proc(d: ^Card_Draw, size: Vec2, k: f32, pass: int, engrave: f32, mode: f32) -> [5]draw.Vec4 {
+card_params :: proc(d: ^Card_Draw, size: Vec2, k: f32, pass: int, engrave: f32, mode: f32) -> [CARD_PARAMS]draw.Vec4 {
 	return {
 		{size.x, size.y, k, d.motion ? 0 : 1},
 		{f32(pass), 0, 0, 0},
@@ -975,8 +977,28 @@ card_medal :: proc(dc: ^draw.Context, d: ^Card_Draw) {
 	draw.polyline(dc, pts[:], LICENCE_SEAL_TICK_W, draw.hex(0xfbf0c4ff))
 }
 
-// The back, in units of the design: the ground turned the other way, the foil struck from behind with the logo raised (or,
-// flat, the logo faint), the line along the bottom.
+// The engraved code on the flat back: its dark modules, a row's run at a time, a shade darker than the ground. A few levels
+// of grey: an eye that looks closely finds it, a reader takes it for no code (it shows only at its turn, on the foil).
+@(private = "file")
+card_seal_flat :: proc(dc: ^draw.Context) {
+	bits := kept_seal()
+	n :: LICENCE_CARD_SEAL_MODULES
+	m :: f32(LICENCE_SEAL_MODULE)
+	for y in 0 ..< n {
+		x := 0
+		for x < n {
+			if !seal_dark(bits, x, y) { x += 1; continue }
+			end := x
+			for end < n && seal_dark(bits, end, y) { end += 1 }
+			at := Vec2{LICENCE_SEAL_X + f32(x) * m, LICENCE_SEAL_Y + f32(y) * m}
+			draw.rect(dc, {at, at + {f32(end - x) * m, m}}, {0, 0, 0, 0.1})
+			x = end
+		}
+	}
+}
+
+// The back, in units of the design: the ground turned the other way, the foil struck from behind with the logo raised and
+// the code engraved (or, flat, the logo and the code faint), the line along the bottom.
 @(private = "file")
 card_back :: proc(dc: ^draw.Context, d: ^Card_Draw, t: ^Card_Textures) {
 	card_ground(dc, 210)
@@ -984,13 +1006,20 @@ card_back :: proc(dc: ^draw.Context, d: ^Card_Draw, t: ^Card_Textures) {
 	engrave: f32 = t.back_lettering != 0 ? 1 : 0
 	if t.back {
 		for pass in 0 ..< 2 {
-			p := card_params(d, size, 1, pass, engrave, 2)
+			// (the card's parameters, then the engraved code's: its place, the turn that reveals it, its matrix)
+			base := card_params(d, size, 1, pass, engrave, 2)
+			p: [CARD_PARAMS + LICENCE_SEAL_PARAMS]draw.Vec4
+			copy(p[:], base[:])
+			seal_params(p[CARD_PARAMS:])
 			draw.app_shader(dc, t.shader, {{0, 0}, size}, p[:], {t.back_relief, t.back_lettering}, pass == 0 ? .Normal : .Add, {RADIUS, RADIUS, RADIUS, RADIUS})
 		}
-	} else if t.logo != 0 {
-		side: f32 = 140
-		at := Vec2{DESIGN_W / 2, DESIGN_H / 2 - 8} - side / 2
-		draw.image(dc, t.logo, {at, at + side}, tint = {1, 1, 1, 0.22})
+	} else {
+		if t.logo != 0 {
+			side: f32 = 140
+			at := Vec2{DESIGN_W / 2, DESIGN_H / 2 - 8} - side / 2
+			draw.image(dc, t.logo, {at, at + side}, tint = {1, 1, 1, 0.22})
+		}
+		card_seal_flat(dc)
 	}
 	card_edge(dc)
 	if !t.back || engrave == 0 {

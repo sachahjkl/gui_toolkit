@@ -61,6 +61,10 @@ Kept :: struct {
 	shader:   render.App_Shader, // 0: refused (not tried again on this renderer)
 	entries:  [dynamic]Kept_Entry,   // the heap's
 	epoch:    u64,               // bumps when the entries start again: a chore's answer of before is dropped
+	// the engraved code's matrix packed for the shader (licence_card_back.odin): the same for every renderer, so it outlives
+	// the entries; packed once, as encoding it at every draw of the back would be the same work each frame
+	seal:      Seal_Bits,
+	seal_made: bool,
 }
 
 // More entries than this: the one asked for least recently goes (its texture destroyed).
@@ -89,6 +93,13 @@ kept_sync :: proc(r: ^render.Renderer) -> render.App_Shader {
 	}
 	if kept.shader != 0 && !render.app_shader_ready(r, kept.shader) { return 0 }
 	return kept.shader
+}
+
+// The engraved code's packed matrix, packed at its first ask on this thread.
+@(private)
+kept_seal :: proc() -> ^Seal_Bits {
+	if !kept.seal_made { kept.seal, kept.seal_made = seal_pack(), true }
+	return &kept.seal
 }
 
 // What a chore makes an entry from (the inputs the interface's thread took).

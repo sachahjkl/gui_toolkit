@@ -55,7 +55,8 @@ The card is two faces and a thickness, composed in 3D with the toolkit's planes 
 - **The seal**: a medal stuck on the card, its own plane a few pixels above it with a cast shadow (Wren's
   `about_card_seal.odin`): a reeded gold edge, a domed green face with fine rings, CERTIFIED and a tick raised.
 - **The back**: the front's relief inside out, the program's logo raised in the middle (its picture, taken as a height
-  field), a line of lettering with the vendor's name. Nothing of the person is on this side.
+  field), a line of lettering with the vendor's name, a QR code engraved at the bottom right (below: The engraved
+  code). Nothing of the person is on this side.
 - **The thickness**: the rim of a bank card, flat strips edge-on behind the front, shaded by their orientation, so a
   tilt shows a solid and not a sheet.
 
@@ -107,19 +108,43 @@ The card is an object, not a surface of the theme: its foil, its silver and its 
 every theme, as a bank card is the same on any table. What the theme gives is around it: the page, the button's look.
 In the Flat finish the card keeps its relief: a licence is the one place where the toolkit shows off.
 
-### The engraved code (planned)
+### The engraved code
 
-Not built yet (ROADMAP, Later). What is decided:
+A QR code engraved in the back's foil, the first step of a hunt across the programs and their sites. Every program's
+card carries the same code, since the hunt spans the programs; a program sets nothing.
 
-- **Where**: on the back, in the bottom right corner, small, engraved in the foil like the rest of the back.
-- **An enigma, not a sticker**: seen straight on, the code is part of the foil's iridescence and does not scan. Turned
-  to one angle, the light makes its light cells clean white against the dark ones: only then a phone reads it. The
-  person who finds it has to look for that angle, as one tilts a banknote to see its hologram.
-- **Readable at that angle**: the effect never breaks the code itself. The cells keep the contrast and the quiet zone a
-  QR reader needs once the angle is found; the iridescence only hides it the rest of the time.
-- **With less motion** (no tilt): the card is lit at a fixed angle; whether the code shows there is not decided.
-- **Its destination**: a link to the first step of a hunt across the programs and their sites. The link and the hunt are
-  not decided.
+- **Its address**: `ui.LICENCE_CARD_SEAL_URL`, `https://froment.software/filigrane?sceau=gf1MDAWPoTGY`. It must match
+  the token of the site's hunt (froment.software, `docs/intent/features/filigrane.md`): a change on one side is a change
+  on the other.
+- **Its size**: the address in bytes at level Medium is version 4, 33 modules a side. A module is 2 units of the 440
+  wide design (2 pixels at a font of 15 and 100 %, 4 on a screen at 200 %): 66 units, 82 with the quiet zone of 4
+  modules. Level Low would give version 3 (29 modules) for 13 % more room per module; Medium was kept because the foil's
+  glitter and grain are noise a reader must correct. Larger modules would reach the logo.
+- **Where**: the quiet zone's square from (340, 158) to (422, 240) of the design: clear of the logo (its room ends at
+  318), of the lip and its groove (the last 15 units), and above the line of lettering (its capitals start at 245).
+- **Engraved**: its dark modules are pits 0.12 deep in the back's height field (`seal_engrave`), cut through the
+  guilloche, which runs on across the code. The pits catch the same light and tilt with the card; they are shallower
+  than the guilloche's waves (0.30), so seen straight on they read as one more texture of the foil.
+- **Revealed at one turn**: the shader knows the eye's direction in the back's frame (`to_face`). When it nears the
+  direction of the turn rotateX -11, rotateY 191 (the back turned about 11 degrees on each axis, its top left corner
+  towards the eye), the light modules and the quiet zone go white and the dark modules nearly black. The ramp is a
+  smoothstep of the angle between the two directions: none past 7 degrees, whole within 3. Straight on (rotateY 180) the
+  angle is 15 degrees: nothing shows. From the back seen straight on, a drag of about 24 pixels to the right and 24
+  down finds it, and a person can hold it within the 3 degrees.
+- **Only brightness changes**: the cells and the quiet zone come from the same matrix, at the same place, at every
+  angle; the shader reads the matrix exactly (one bit a module, in the draw's parameters: no texture to blur its edges).
+  The Odin side (`licence_card_seal_reveal`) and the shader compute the same ramp from the same numbers, which the
+  draw passes.
+- **With less motion** the card cannot be turned over: the back and its code are never shown. The code stays an enigma
+  that needs the tilt.
+- **The flat card** (no shader) engraves it faintly: its dark modules a shade darker than the ground, a few levels of
+  grey that no reader takes for a code. It is there for an eye that looks closely, consistent with "hidden unless
+  tilted".
+
+Refused: a code printed plainly on the back (a sticker, no enigma); a code in a texture of its own (a sampler blurs a
+module's edge, and a whole texture for 1089 bits); the reveal tied to the moving lights (the pointer's light moves
+with the pointer, so the angle would not be one place a person can find and hold); a level High code (version 5, a
+smaller module for no need).
 
 ## Decisions refused
 
@@ -143,6 +168,9 @@ Not built yet (ROADMAP, Later). What is decided:
 - **The tilt follows the pointer and comes back**: the pointer on a corner, the card's turn towards it; gone, zero.
 - **Turn over**: a drag of half a turn shows the back (its plane drawn, the front's culled); Escape brings it back.
 - **The fallback**: with the shader refused, the card is drawn flat with its plain text, whole.
+- **The engraved code**: its matrix, as the shader and the flat card read it, drawn black on white, decodes to the
+  address; the ramp is none straight on and far from the turn, whole at the turn; on a device of its own, the back
+  turned straight on does not decode from its pixels, turned to the angle it does.
 - **The thank-you page**: the site's test builds it for a program and checks the program's name, logo and accent, and
   that the script, given a 200 from a fake Worker, shows the key and the buttons.
 

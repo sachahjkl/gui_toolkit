@@ -28,6 +28,7 @@
 //              text is drawn plain over the foil), mode, rx
 //   4.x        ry: the card's turn in degrees (rotateX(rx) rotateY(ry)): the eye and both lights are placed in the frame of the
 //              face from it
+//   5 ..       the back only: the engraved code (seal_cell below; licence_card_back.odin, seal_params)
 
 const PI: f32 = 3.14159265;
 
@@ -188,6 +189,36 @@ fn seal_shade(a: AppIn) -> vec4<f32> {
 	return float4(col * arg2.x, 1.0);
 }
 
+// ---- the engraved code ------------------------------------------------------------------------------------------------------------
+// A QR code cut into the back's foil (its pits are in the relief: licence_card_back.odin, seal_engrave). Seen from most angles it
+// is one more texture of the foil; as the eye nears the direction of one turn of the card, its light modules and its quiet zone
+// go white and its dark modules nearly black, so that a phone reads it. Only the brightness changes: the cells are read here
+// from the matrix itself, one bit a module, at the place the relief cuts them. Parameters:
+//   5          the code's top left, a module, its modules a side (design units)
+//   6          the eye of the turn that reveals it (the frame of the face), the cosine of the angle where it is whole
+//   7          the cosine where it is gone, the quiet zone (modules)
+//   8 ..       the matrix: module (x, y) is bit i % 24 of float i / 24, i = y * size + x (an f32 holds 24 bits exactly)
+// At a point `p` of the design, the eye `V` in the frame of the face: x how much of the code shows there (0 outside it and its
+// quiet zone), y 1 on a dark module. The same ramp as licence_card_seal_reveal.
+fn seal_cell(p: float2, V: float3) -> float2 {
+	let g = app_param(5u);
+	let e = app_param(6u);
+	let f = app_param(7u);
+	let n = g.w;
+	let c = floor((p - g.xy) / g.z);
+	if (any(c < float2(-f.y)) || any(c >= float2(n + f.y))) { return float2(0.0); }
+	let reveal = smoothstep(f.x, e.w, dot(V, e.xyz));
+	var dark = 0.0;
+	if (all(c >= float2(0.0)) && all(c < float2(n))) {
+		let i = u32(c.y) * u32(n) + u32(c.x);
+		let word = i / 24u;
+		let slot = app_param(8u + word / 4u);
+		let bits = u32(slot[word % 4u]);
+		dark = f32((bits >> (i % 24u)) & 1u);
+	}
+	return float2(reveal, dark);
+}
+
 fn app_shade(a: AppIn) -> vec4<f32> {
 	let mode = app_param(3u).z;
 	if (mode > 0.5 && mode < 1.5) { return seal_shade(a); }
@@ -216,19 +247,24 @@ fn app_shade(a: AppIn) -> vec4<f32> {
 	let height = t.b;
 	let cavity = t.a * (1.0 - 0.9 * halo);
 
-	if (ctl.x < 0.5) {
-		var k = clamp(cavity * 0.9 + (1.0 - N.z) * 0.35, 0.0, 0.6) * (1.0 - 0.5 * halo);
-		// the letters' shadow on the card, then a dark floor under the silver (the guilloche does not show through it)
-		k = 1.0 - (1.0 - k) * (1.0 - 0.7 * dropped * (1.0 - cov));
-		k = mix(k, 0.92, cov);
-		return float4(0.0, 0.0, 0.0, k);
-	}
-
 	// the eye: the card is turned by rotateX(rx) rotateY(ry) (the pointer's small tilt, or the whole turn of the free mode), the
 	// eye looks straight at the screen; in the frame of the face (to_face) the back is seen from behind
 	let rx = app_param(3u).w * 0.0174533;
 	let ry = app_param(4u).x * 0.0174533;
 	let V = to_face(float3(0.0, 0.0, 1.0), rx, ry, back);
+	// the engraved code of the back (none on the front: its parameters stop at slot 4); the point in design units
+	var seal = float2(0.0);
+	if (back) { seal = seal_cell(uv * app_param(0u).xy, V); }
+
+	if (ctl.x < 0.5) {
+		var k = clamp(cavity * 0.9 + (1.0 - N.z) * 0.35, 0.0, 0.6) * (1.0 - 0.5 * halo);
+		// the letters' shadow on the card, then a dark floor under the silver (the guilloche does not show through it)
+		k = 1.0 - (1.0 - k) * (1.0 - 0.7 * dropped * (1.0 - cov));
+		k = mix(k, 0.92, cov);
+		// the code at its turn: no shade on the light cells (the light pass makes them white), a dark floor in the dark ones
+		k = mix(k, select(0.0, 0.95, seal.y > 0.5), seal.x);
+		return float4(0.0, 0.0, 0.0, k);
+	}
 	// how far the eye is off the face, as the pointer's tilt was (1 at the tilt's end): the thin film's hue follows it
 	let tilt = float2(-V.x / 0.309, -V.y / 0.242);
 	let cc = float3(aspect * 0.5, 0.5, 0.0);
@@ -285,5 +321,9 @@ fn app_shade(a: AppIn) -> vec4<f32> {
 	col *= (1.0 - 0.5 * halo) * (1.0 - 0.85 * dropped * (1.0 - cov));
 	col = mix(col, lit, cov);
 	col = 1.0 - exp(-col * 1.35);
+	// the code at its turn: a light cell white with a breath of the film's hue, a dark one the foil's own colour nearly put
+	// out (a reader needs the contrast; the hue keeps it metal)
+	let white = float3(0.93) + 0.07 * foil_film(phase);
+	col = mix(col, select(white, col * 0.12, seal.y > 0.5), seal.x);
 	return float4(col * arg2.x, 1.0);
 }

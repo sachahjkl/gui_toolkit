@@ -174,6 +174,8 @@ relief_map :: proc(in_: Relief_Input, allocator := context.allocator) -> []u8 {
 			hf[y * W + x] = h + (hash2(x, y) - 0.5) * 0.10   // the grain
 		}
 	}
+	// (the back carries the hunt's code, cut through its guilloche: licence_card_back.odin)
+	if in_.emboss != nil { seal_engrave(hf) }
 	for y in 0 ..< H {
 		for x in 0 ..< W {
 			s: f32

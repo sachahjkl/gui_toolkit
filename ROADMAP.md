@@ -48,10 +48,6 @@
 
 ## Later
 
-- **An easter egg on the licence card.** A small QR code engraved in the foil at the bottom right of the back, which
-  turns clean white and scans only at one angle of the card: an enigma that leads to the first step of a hunt (an ARG)
-  across the programs and their sites. The link and the hunt are still to decide. Intent:
-  [src/md/features/licence-card.md](src/md/features/licence-card.md).
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link
   dropped in the void) is the toolkit's already.
