@@ -11,9 +11,6 @@
   `i18n` packages, header parsing, size and duration words, JSON quoters and writer, crash bar and crash marker, command
   line (`gt:cli`), licence, install, diagnostics and update pages and its own updater, syntax colours, changelog and
   release tools. The smallest first; each session has the list with its files.
-- **No black strip under machined buttons on Windows.** With partial redraw on, Windows 11 shows thin black strips just
-  under a row of quiet machined buttons (atelier's Programs step); WebGPU on Linux draws the same scene exactly, so
-  the cause is on the Direct3D 11 window's path. `tests/partial_redraw_layers` holds the scene, which the Windows CI runs.
 
 ## Next
 - **classeur and papier on `install_follow`.** classeur keeps its own `desktop_follow` (and papier its hidden switches)
