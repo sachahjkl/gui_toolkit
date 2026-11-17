@@ -97,6 +97,25 @@ click_text :: proc(c: ^Client, text: string) -> bool {
 	return ok
 }
 
+// Enters the program's demo state `name` (Toolkit.demoState): a screen that needs an account, for a picture. The
+// program's build of the same frame shows it; wait for its box or for rest before the picture. !ok: an unknown name
+// (c.failure lists the names) or no such method.
+demo_state :: proc(c: ^Client, name: string) -> bool {
+	_, ok := call(c, "Toolkit.demoState", fmt.tprintf(`{{"name":%s}}`, tk_json.quote(name)))
+	return ok
+}
+
+// The names of the program's demo states (Toolkit.demoStates), in the temporary allocator. !ok: the call failed.
+demo_states :: proc(c: ^Client) -> (names: []string, ok: bool) {
+	r, called := call(c, "Toolkit.demoStates")
+	if !called { return nil, false }
+	o, _ := r.(json.Object)
+	list, _ := o["names"].(json.Array)
+	out := make([]string, len(list), context.temp_allocator)
+	for n, i in list { out[i] = str(n) }
+	return out, true
+}
+
 type_text :: proc(c: ^Client, text: string) -> bool {
 	_, ok := call(c, "Input.insertText", fmt.tprintf(`{{"text":%s}}`, tk_json.quote(text)))
 	return ok

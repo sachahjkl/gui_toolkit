@@ -64,7 +64,11 @@ App :: struct {
 	needle:     ui.Line_Edit,
 	smooth:     int,
 	under:      [2]int,   // the wheel page's row under the pointer: this build, the last one
+	signed_in:  bool,     // the demo state "account.signed_in" (a tool enters it: devtools.demo_state)
 }
+
+// The name a tool enters the signed-in banner by (Toolkit.demoState); there is no account behind it.
+DEMO_SIGNED_IN :: "account.signed_in"
 
 the_app: ^App
 
@@ -121,6 +125,11 @@ build :: proc(app: ^App) {
 			ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 			if ui.column(id = "###content") {
 				gap(em * 1.2)
+				if app.signed_in {
+					ui.next({width = ui.fill(), height = ui.text_size(), bg = ui.theme_lookup(&app.theme, {}, "track"), text_pad = em * 0.5})
+					ui.build_box({.Draw_Background, .Draw_Text}, "Signed in as demo###demo_account")
+					gap(em)
+				}
 				switch app.page {
 				case .Pacing:  page_pacing(app, em)
 				case .Lazy:    page_lazy(app, em)
@@ -496,10 +505,17 @@ open :: proc(args: []string, headless_default := false) -> ^App {
 	app.s.mono_font = app.mono
 	ui.line_edit_set(&app.needle, "the")
 	platform.set_dark_title(app.win, true)
-	app.devtools = devtools.start_from_env(app.win, title)
+	serve(app, devtools.start_from_env(app.win, title))
 	app.win.user = app
 	app.win.on_frame = proc(user: rawptr) { frame((^App)(user), inner = true) }
 	return app
+}
+
+// The application served by `srv` (nil: none), its demo states registered on it. A test that serves the application in
+// its own process (devtools.start_local) calls it with its server.
+serve :: proc(app: ^App, srv: ^devtools.Server) {
+	app.devtools = srv
+	devtools.demo_state(srv, DEMO_SIGNED_IN, proc(user: rawptr) { (^App)(user).signed_in = true }, app)
 }
 
 // The end of what `open` made.

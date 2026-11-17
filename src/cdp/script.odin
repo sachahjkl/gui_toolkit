@@ -125,6 +125,8 @@ act :: proc(c: ^Client, command: string, args: []string) -> (known, ok: bool) {
 		return true, len(o.rest) > 0 && key(c, o.rest[0])
 	case "type":
 		return true, type_text(c, strings.join(o.rest[:], " ", context.temp_allocator))
+	case "demo":
+		return true, len(o.rest) > 0 && demo_state(c, o.rest[0])
 	case "wait":
 		time.sleep(time.Duration(arg(&o, 0) * f64(time.Millisecond)))
 		return true, true

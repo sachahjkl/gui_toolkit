@@ -101,7 +101,7 @@ start_whatsnew :: proc(t: ^testing.T, loc := #caller_location) -> ^Rig {
 	}, new_rig(app))
 	r := the_rig
 	r.srv = devtools.start_local(app.win, "whatsnew")
-	app.devtools = r.srv
+	whatsnew.serve(app, r.srv)
 	r.s = session.attach(t, {win = app.win, state = &app.s, renderer = &app.r, user = app, allocator = context.allocator,
 		frame = proc(user: rawptr) { whatsnew.frame((^whatsnew.App)(user)) }}, loc)
 	session.frames(r.s, 2)
@@ -373,6 +373,22 @@ whatsnew_find_then_leaving_its_page :: proc(t: ^testing.T) {
 	send(c, "Toolkit.click", `{"text":"1  Frame pacing"}`)
 	idle(c)
 	send(c, "Toolkit.waitFor", `{"text":"1  Frame pacing","timeout":2000}`)
+}
+
+// A demo state is listed, entered by its name (its banner shows), and a wrong name is refused with the names it could be.
+@(test)
+devtools_a_demo_state_is_entered :: proc(t: ^testing.T) {
+	r := start_whatsnew(t)
+	c := r.c
+	names := list_of(field(send(c, "Toolkit.demoStates"), "names"))
+	testing.expectf(t, len(names) == 1 && text_of(names[0]) == whatsnew.DEMO_SIGNED_IN, "the names: %v", names)
+	testing.expect_value(t, count_named(c, "demo_account"), 0)
+	_, refused := ask(c, "Toolkit.demoState", `{"name":"account.signed"}`)
+	testing.expectf(t, strings.contains(refused, whatsnew.DEMO_SIGNED_IN), "a wrong name lists the names: %q", refused)
+	testing.expect(t, !r.app.signed_in, "a wrong name enters nothing")
+	send(c, "Toolkit.demoState", fmt.tprintf(`{{"name":%q}}`, whatsnew.DEMO_SIGNED_IN))
+	send(c, "Toolkit.waitFor", `{"name":"demo_account","timeout":2000}`)
+	testing.expect_value(t, len(list_of(field(send(c, "Toolkit.find", `{"text":"Signed in as demo"}`), "nodes"))), 1)
 }
 
 // A wait that cannot end says so.

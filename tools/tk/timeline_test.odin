@@ -2,7 +2,7 @@ package tk
 
 // timeline_test [-exe:file] [-out:folder] [-port:n]: the timelines of src/cdp against examples/whatsnew as a program of its own
 // (--headless) over a real socket: a timeline's files, played again, a difference found, a timeline recorded (from a second
-// connection, while the first one records) and played back. The program must end by itself with exit code 0. (What the protocol
+// connection, while the first one records) and played back, a demo state entered. The program must end by itself with exit code 0. (What the protocol
 // does is tested in the process: tests/examples/whatsnew_test.odin; the socket by itself: tests/devtools; the client's parts that
 // need no window: src/cdp's tests.)
 //   tk build whatsnew, then tk timeline_test           (default: build/whatsnew[.exe], build/e2e, a free port)
@@ -142,6 +142,18 @@ timeline_test :: proc(exe, out: string, port: int) -> string {
 			if back.steps != 4 || last_differs { fail(&t, fmt.tprintf("timeline recorded, played: %d steps, the last one differs: %v", back.steps, last_differs)) } else {
 				pass(fmt.tprintf("timeline recorded and played: %d actions at %s ms", len(wanted), strings.join(times[:], ", ", context.temp_allocator)))
 			}
+		}
+		// a demo state: listed, a wrong name refused, then entered by a script's step (last: its banner would differ from the
+		// timelines' pictures above)
+		demo: {
+			names, listed := cdp.demo_states(&c)
+			if !listed || len(names) != 1 || names[0] != "account.signed_in" { fail(&t, fmt.tprintf("demo states: %v", names)); break demo }
+			wrong := cdp.demo_state(&c, "account.signed")   // (start_program made the client quiet: the refusal is not printed)
+			if wrong || !strings.contains(c.failure, "account.signed_in") { fail(&t, fmt.tprintf("demo state: a wrong name: %s", c.failure)); break demo }
+			line := cdp.words(`demo "account.signed_in"`)
+			if known, ok := cdp.act(&c, line[0], line[1:]); !known || !ok { fail(&t, fmt.tprintf("demo state: the script's step: %s", c.failure)); break demo }
+			if !cdp.wait_name(&c, "demo_account", IDLE_LIMIT, text = "Signed in as demo") { fail(&t, "demo state: its banner"); break demo }
+			pass("demo state: listed, a wrong name refused, entered by a script")
 		}
 		// a crash waits here: ends by itself, exit code 0
 		cdp.call(&c, "Browser.close")

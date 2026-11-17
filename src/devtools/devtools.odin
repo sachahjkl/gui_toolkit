@@ -9,7 +9,7 @@
 // Standard domains: Input.dispatchMouseEvent / dispatchKeyEvent / insertText (injected into the window's queue),
 // Page.captureScreenshot (the renderer's capture, PNG), Page.getLayoutMetrics, Accessibility.getFullAXTree, Browser /
 // Target discovery. The Toolkit domain reads the box tree and waits on it: Toolkit.getTree, find, click, waitFor,
-// waitIdle, metrics, axAction, axAudit, startRecording. Listens on 127.0.0.1 only and refuses browsers' pages (server.odin);
+// waitIdle, metrics, axAction, axAudit, startRecording, demoStates, demoState. Listens on 127.0.0.1 only and refuses browsers' pages (server.odin);
 // what runs as this user can still reach it and drive the window, so it is opt-in.
 package devtools
 
@@ -93,6 +93,7 @@ Server :: struct {
 	screencast: Cast,               // Page.startScreencast
 	casts:    u64,                // how many there have been: each one's number
 	dom:      Dom,                // the box tree as Chrome's DevTools sees it (dom.odin)
+	demos:    [dynamic]Demo_State,   // the program's demo states (demo.odin)
 	samples:  [METRIC_RING]Metric_Sample,   // the last frames (Toolkit.metrics)
 	sampled:  int,
 	sample_build: u64,
@@ -215,6 +216,7 @@ stop :: proc(srv: ^Server, s: ^ui.State = nil) {
 		delete(srv.later)
 		rec_destroy(&srv.rec)
 		dom_destroy(srv)
+		demos_destroy(srv)
 		delete(srv.title)
 		delete(srv.id)
 		free(srv)
@@ -578,6 +580,12 @@ cmd_toolkit :: proc(c: ^Cmd) -> Answer {
 		if str(p["name"]) == "" && str(p["text"]) == "" { error_reply(to, CDP_ERROR_INVALID_PARAMS, "click: a name or a text"); return .Sent }
 		wait_add(srv, s, to, .Click, p)
 		return .Sent
+	case "Toolkit.demoStates":
+		demo_list(sb, srv)
+	case "Toolkit.demoState":
+		if e := demo_enter(srv, str(p["name"])); e != "" { error_reply(to, CDP_ERROR_INVALID_PARAMS, e); return .Sent }
+		cast_touch(srv)   // (the screencast's next frame shows the state)
+		strings.write_string(sb, "{}")
 	case "Toolkit.state":
 		d := dpi(srv)
 		fmt.sbprintf(sb, `{{"build":%d,"focus":"%x","hot":"%x","width":%.0f,"height":%.0f,"dpi":%g,"encoding":%d}}`, s.build_index, u64(ui.focus_key_of(s)), u64(ui.hot_key_of(s)), f64(srv.win.size.x) / d, f64(srv.win.size.y) / d, d, sync.atomic_load(&srv.encoding))

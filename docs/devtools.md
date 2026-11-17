@@ -93,7 +93,45 @@ The `Toolkit` domain reads the box tree (rects in CSS pixels):
 | `Toolkit.warnings` | the layout's warnings of this build (`ui.set_layout_warnings`). |
 | `Toolkit.axAction` `{role? name? exact? index? nodeId? action? value?}` | an action on an accessible node, as a screen reader asks it (`ui.a11y_inject`): `Click` by default, `Focus`, `Set_Value`, `Increment`, `Scroll_Into_View`... (`platform.A11y_Action`). An error if the node does not offer it. |
 | `Toolkit.axAudit` | `unnamed`: the enabled controls with no name, no text in them and no placeholder (`ui.a11y_unnamed`). A clickable box without one is not even a node: a reader does not know it exists. |
+| `Toolkit.demoStates` | `names`: the program's demo states, in the order it registered them (see "Demo states"). |
+| `Toolkit.demoState` `{name}` | enters a demo state: its procedure runs on the interface thread before this frame's build, then `{}`. An unknown name is an error that lists the names. |
 | `Toolkit.startRecording` `{injected?}`, `Toolkit.stopRecording` | what a person does in the window, as lines of a script for `tk cdp play`. Clicks by what they hit (a name, a text), drags and what names nothing by coordinates; typed text as is; the wheel both ways (`wheel x y notches across`). `injected`: the protocol's events too, and `Toolkit.axAction` as `press`. `Toolkit.pollRecording` gives the lines since the last time with when they happened (`t`, as `Toolkit.frames`). A recording is its asker's: another client's commands on it are refused, and when the asker goes it ends and what it held is dropped. A right drag is `down` and `up` with `--button right`; a drag cut by `stopRecording` gets its `up`. |
+
+## Demo states
+
+Some screens exist only after an account action: a vault unlocked, a PIN asked, a licence active, a sync signed in. A
+tool cannot reach them with clicks, so the program names them, and a tool enters one before its picture. No code
+changes for the time of a capture.
+
+```odin
+srv := devtools.start_from_env(win, "My app")
+devtools.demo_state(srv, "vault.unlocked", proc(user: rawptr) {
+	app := (^App)(user)
+	app.vault = demo_vault()   // entries made up for the picture, in memory
+	app.locked = false
+}, app)
+devtools.demo_state(srv, "pin.asked", proc(user: rawptr) { (^App)(user).asking_pin = true }, app)
+```
+
+- Register once, on the interface thread, after `start_from_env`. A nil server and a build without the endpoint register
+  nothing, so the calls stay in the code of a release build.
+- A name is stable: the scripts hold it. Use `area.state` in lower case. A name registered again replaces the first.
+- The procedure runs on the interface thread, before `poll_events` and `begin_build`: the build of the same frame shows
+  the state.
+- **The procedure sets the program's state in memory only.** It never writes the person's files (a vault, preferences,
+  a licence) and never calls a server. The toolkit cannot check this: the program's author keeps it so.
+- A test that serves the program in its own process (`start_local`) registers the states on that server too
+  (`examples/whatsnew`'s `serve`).
+
+Then a capture:
+
+```
+odin run tools/tk -- cdp demos                                   # the names
+odin run tools/tk -- cdp demo vault.unlocked , wait-for --name vault_list , idle , shot vault.png
+```
+
+In a tool of your own: `cdp.demo_state(&c, "vault.unlocked")`, then `cdp.wait_name` or `cdp.wait_idle`, then the
+picture ([cdp.md](cdp.md)). In a script or a timeline the step is `demo vault.unlocked`.
 
 ## tk cdp
 

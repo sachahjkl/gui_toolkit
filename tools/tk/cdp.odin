@@ -21,6 +21,8 @@ package tk
 //   ax [role] [--name text]      the accessibility tree a screen reader gets, or the nodes that answer
 //   press <name> [--role button] [--action Click] [--value v | --number n] [--index n]   an action as a screen reader asks it
 //   audit                        what a screen reader cannot name
+//   demos                        the program's demo states (devtools.demo_state)
+//   demo <name>                  enters one: a screen that needs an account, for a picture
 //   record <file>                records what a person does until Enter, as a script for `play`
 //   record [<file>] --timeline <dir>   the same with a picture after each action: dir/index.html, timeline.json, trace.json
 //   play <file>                  runs a script: a command per line, # for comments
@@ -150,6 +152,11 @@ cdp_command :: proc(c: ^cdp.Client, command: string, args: []string) -> string {
 			fmt.printfln("%s %s @%s,%s %sx%s", name_or_dot(b["name"]), plain(b["key"]), num(b["x"]), num(b["y"]), num(b["w"]), num(b["h"]))
 		}
 		fmt.printfln("%d without a name", len(unnamed))
+	case "demos":
+		names, ok := cdp.demo_states(c)
+		if !ok { return failed(c) }
+		for n in names { fmt.println(n) }
+		if len(names) == 0 { fmt.println("no demo state") }
 	case "record":
 		return record(c, &o)
 	case "play":

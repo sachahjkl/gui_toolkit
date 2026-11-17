@@ -45,6 +45,9 @@ cdp.shot(&c, "out.png")
   of samples that must grow) is the program's to make ready, for example at once in its demo mode.
 - `click_name`, `click_text`, `type_text`, `key`: input. A key is a name: `Enter`, `Tab`, `Escape` (`esc`), `ArrowDown`
   (`down`), `PageUp`, `F3`, `a`, `ctrl+f`, `shift+Tab`. `key_parts` gives the key, its modifiers and the text it types.
+- `demo_state(c, name)`: enters the program's demo state `name` (`Toolkit.demoState`), a screen that needs an account,
+  for a picture; wait for its box or for rest before the picture. An unknown name fails, and `c.failure` lists the
+  names. `demo_states(c)` gives the names ([devtools.md](devtools.md), "Demo states").
 - `screenshot` (the PNG's bytes) and `shot` (a file), optionally a `Clip` in CSS pixels. `window_size`.
 - `json.quote(text)` of `gt:json` ([json.md](json.md)) writes a string as JSON for a call's parameters. `number`,
   `integer` and `str` read a JSON value. `stringify` writes a value as
@@ -65,7 +68,7 @@ cdp.screencast_stop(&c)
 
 A script is a command per line, as the window's recorder writes it (`Toolkit.startRecording`). `words(line)` splits a line
 (JSON's quoted strings are one word). `options(words)` reads `--name value` and `--name` alone. `act(c, command, args)` runs an
-action: `click`, `move`, `down`, `up`, `wheel`, `key`, `type`, `wait`, `wait-for`, `idle`, `press`. `read_script(file)` reads a
+action: `click`, `move`, `down`, `up`, `wheel`, `key`, `type`, `wait`, `wait-for`, `idle`, `press`, `demo <name>`. `read_script(file)` reads a
 script, or the actions of a `timeline.json` with their times.
 
 ## Timelines
