@@ -89,8 +89,26 @@ View_Build :: #type proc(v: ^View, data: rawptr)
 // built at each frame, until a build no longer says it, for MODAL_READY_WAIT_MS (100 ms) at most from its opening; then it
 // shows what it holds. Once shown, it is not hidden again; another presentation shows as it would (views.md 3.4).
 view_not_ready :: proc(v: ^View) {
-	if v.presentation != .Dialog || v.record == nil { return }
-	modal_not_ready(v.record.panel)
+	if v.record == nil { return }
+	#partial switch v.presentation {
+	case .Dialog:   modal_not_ready(v.record.panel)
+	case .Internal: if !v.shown { v.record.inot_ready = true }   // (view_settle holds its unseen builds, as a dialog's)
+	}
+}
+
+// Where a refit of an internal window is (view_refit).
+@(private)
+Internal_Refit :: enum u8 { None, Asked, Measured }
+
+// Said during the view's build: what is in it changed size, its content came late (a plugin's first list, an answer of a
+// worker). An internal window the person did not resize takes the height of what is in it again: its next build is
+// as tall as what is in it, and the one after keeps that height (within the window). A dialog as tall as what is in it
+// follows it already, a panel and a window of the system keep their size. Cheap: one layout at the content's height.
+view_refit :: proc(v: ^View) {
+	r := v.record
+	if r == nil || v.presentation != .Internal || r.isized || r.irefit != .None { return }
+	r.irefit = .Asked
+	gs().anim_busy = true   // (the next build measures it)
 }
 
 // The words of the views' header and menus (a word left empty: view_default_labels', in the language in use). The
@@ -203,6 +221,13 @@ View_Record :: struct {
 	inatural:   f32,         // what is in it needs this width, on one line (window px, its last build): its least width
 	imeasures:  int,
 	ilayout:    u64,
+	// a content that comes late (views.md 3.4): its last build said view_not_ready, since when it is measured unseen
+	// (build_now_ms; 0: shown), a refit asked (view_refit: its next build is as tall as what is in it, then that height is
+	// its own), and whether the person resized it (a refit leaves the person's height)
+	inot_ready: bool,
+	iopen_ms:   f64,
+	irefit:     Internal_Refit,
+	isized:     bool,
 	z:          u64,
 	focus_back: Key,
 	focus_in:   bool,

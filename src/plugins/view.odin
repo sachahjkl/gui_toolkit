@@ -33,6 +33,7 @@ View_Record :: struct {
 	list:       ^plugin_api.List,   // the last list come
 	old:        ^plugin_api.List,   // the one before, kept until `list` was replayed once (a widget may hold its strings)
 	replayed:   bool,
+	fitted_nodes: int,   // the nodes of the list the window last fitted to (ui.view_refit)
 	controls:   map[string]^Control,   // the host's state of each field and box, by key (keys owned)
 }
 
@@ -191,11 +192,21 @@ view_tell_open :: proc(h: ^Host, r: ^View_Record) -> bool {
 @(private)
 view_build :: proc(v: ^ui.View, r: ^View_Record) {
 	context.allocator = runtime.heap_allocator()
-	view_draw(r)
+	// (the plugin's first list is the content's first real build: the window waits for it, bounded, and takes the
+	// height of what is in it once it comes, and again when a list of another shape comes)
+	if r.list == nil {
+		ui.view_not_ready(v)
+	} else if !r.replayed && len(r.list.nodes) != r.fitted_nodes {
+		ui.view_refit(v)
+		r.fitted_nodes = len(r.list.nodes)
+	}
+	view_draw(r, true)
 }
 
+// `scroll`: the body scrolls when what is in it is taller than its room (a view of the window's; a program's own layout
+// scrolls itself).
 @(private)
-view_draw :: proc(r: ^View_Record) {
+view_draw :: proc(r: ^View_Record, scroll := false) {
 	h := r.host
 	em := ui.font_size()
 	// (the list before the last one was replayed once already: no widget holds its strings now)
@@ -211,6 +222,19 @@ view_draw :: proc(r: ^View_Record) {
 		}
 		return
 	}
+	if scroll {
+		// (as tall as what is in it, and shrinking to the room when there is less: a window as tall as what is in it
+		// shows it all, a smaller one scrolls it)
+		ui.next({width = ui.fill(), height = ui.children_sum(0)})
+		if ui.scroll_y("###pv_scroll") { view_nodes(r) }
+	} else {
+		view_nodes(r)
+	}
+	r.replayed = true
+}
+
+@(private)
+view_nodes :: proc(r: ^View_Record) {
 	nodes := r.list.nodes[:]
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = "###pv_body") {
@@ -220,7 +244,6 @@ view_draw :: proc(r: ^View_Record) {
 			replay(r, nodes, &i, false)
 		}
 	}
-	r.replayed = true
 }
 
 // A line above the view when its plugin is not running as it should: not responding (Stop), stopped (Start), failed.

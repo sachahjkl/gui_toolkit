@@ -10,6 +10,7 @@ package gt_runtime
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import config "gt:config"
 import host "gt:host"
@@ -59,7 +60,7 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 	app := (^App)(h.user)
 	em := ui.font_size()
 	plugins.host_build(&app.plugins, &app.palette)
-	ui.palette_commands(&app.palette, COMMANDS[:], nil)
+	ui.palette_commands(&app.palette, slice.enumerated_array(&COMMANDS), nil)
 	prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs, &app.page,
 		proc(user: rawptr) -> prefs_page.Page_Options { return settings_options((^App)(user)) },
 		proc(user: rawptr) { (^App)(user).scene = .Settings }, app)

@@ -123,6 +123,7 @@ again.
 | `views_windows_step(s)`, `views_window_build()`, `view_window_close_asked(s)` | a backend's part: between frames, a window's build, its system close |
 | `state_carry(from, from_root, to, to_root)`, `style_follow(dst, src)` | what follows a view to another place; a window's settings from the main one |
 | inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_icon(v, icon, icon_font)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)`, `view_fold_button(v) -> Signal` | `view_icon`: this opening's icon (one id, an icon per opening); `view_fold_button`: its side zone's Minimise or Restore, where the view places it (section Panels) |
+| inside a build: `view_not_ready(v)`, `view_refit(v)` | what is in it waits for an answer: a dialog or an internal window stays unseen, 100 ms at most; what is in it came late or changed size: an internal window the person did not resize takes its height again |
 | inside a build: `view_size(v, width_em, height_em)` | this opening's dialog size (an axis of 0: the kind's): a dialog that hugs what it shows; it wins over the remembered size, a resize by the user wins over it; past `DIALOG_MAX_WIDTH_EM` too |
 | inside a build: `view_occluders(v, allocator) -> []Rect`; `views_floating_rects(vs, s, allocator) -> []Rect` | the floating views (internal windows, dialogs) over this view, or over the content of window `s`, bottom to top, window pixels: a native child window (a web view) steps aside or clips |
 | `state_families(s)` | the bold and italic faces' families of `s` (a view's window: its owner's, one map): what `Rich_Context.faces` takes |
@@ -146,8 +147,11 @@ fade in together (`MODAL_FADE_MS`, 120 ms; `View_Options.quick`, a dialog summon
 once with the animations off). A frame moves the fade by 25 ms at most, so a late frame does not jump it. What had the
 focus loses it on that first frame shown, not before.
 
-A view whose content waits for an answer (a source's, a worker's) calls `view_not_ready(v)` in its build: its dialog
-stays unseen, built at each frame, until a build no longer calls it, for 100 ms at most from its opening. The palette
+A view whose content waits for an answer (a source's, a worker's) calls `view_not_ready(v)` in its build: its dialog,
+or its internal window, stays unseen, built at each frame, until a build no longer calls it, for 100 ms at most from its
+opening. A content that came later than that, or that changed size, calls `view_refit(v)`: an internal window the person
+did not resize takes the height of what is in it again (one build as tall as its content, then that height). A plugin's
+view does both with its first list (docs/plugins.md). The palette
 does so until the ranking of its question has seen every source's answer, so it appears with its rows. A dialog shown
 is not hidden again. `view_size` with another size before the dialog shows holds it too: the first frame drawn has the
 size asked. The toolkit's dialogs that a key summons are `quick`: the palette, the shortcuts' sheet, a prompt, the file
