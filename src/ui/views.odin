@@ -616,6 +616,9 @@ view_size :: proc(v: ^View, width_em, height_em: f32) {
 	r.asked = asked
 	// (the remembered size gives way for this opening; size_kept with it: nothing is written until the user resizes)
 	if r.kind.o.resizable { r.size, r.size_kept = {}, {} }
+	// (a dialog not shown yet was laid out at the old size in this build: unseen, the next one at this size is the first
+	// drawn; views.md 3.4)
+	if v.presentation == .Dialog && !v.shown { modal_not_ready(r.panel) }
 	gs().anim_busy = true
 }
 

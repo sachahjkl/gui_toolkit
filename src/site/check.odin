@@ -22,6 +22,7 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import cdp "../cdp"
+import tk_json "../json"
 
 CHECK_CLASSIC      :: CLASSIC + "/"
 CHECK_MADE_TEMP     :: "tk_site_check_pages_*"
@@ -414,7 +415,7 @@ check_expect :: proc(s: ^Check, ok: bool, what: string) {
 check_js :: proc(s: ^Check, expression: string) -> (value: json.Value, ok: bool) {
 	s.threw = ""
 	if site_gone(s) { s.threw = "the browser is gone"; return nil, false }
-	r, called := cdp.call(&s.client, "Runtime.evaluate", fmt.tprintf(`{{"expression":%s,"awaitPromise":true,"returnByValue":true}}`, cdp.quote(expression)))
+	r, called := cdp.call(&s.client, "Runtime.evaluate", fmt.tprintf(`{{"expression":%s,"awaitPromise":true,"returnByValue":true}}`, tk_json.quote(expression)))
 	if !called { return nil, false }
 	o, _ := r.(json.Object)
 	if details, threw := o["exceptionDetails"].(json.Object); threw {
@@ -471,7 +472,7 @@ check_key :: proc(s: ^Check, key: string) {
 	case "Escape":     code = 27
 	case "Tab":        code = 9
 	}
-	name := cdp.quote(key)
+	name := tk_json.quote(key)
 	check_call(s, "Input.dispatchKeyEvent", fmt.tprintf(`{{"type":"rawKeyDown","key":%s,"code":%s,"windowsVirtualKeyCode":%d}}`, name, name, code))
 	check_call(s, "Input.dispatchKeyEvent", fmt.tprintf(`{{"type":"keyUp","key":%s,"code":%s}}`, name, name))
 }
@@ -481,16 +482,16 @@ check_view :: proc(s: ^Check, view: Site_View) {
 }
 
 check_scheme :: proc(s: ^Check, value: string) {
-	check_call(s, "Emulation.setEmulatedMedia", fmt.tprintf(`{{"features":[{{"name":"prefers-color-scheme","value":%s}}]}}`, cdp.quote(value)))
+	check_call(s, "Emulation.setEmulatedMedia", fmt.tprintf(`{{"features":[{{"name":"prefers-color-scheme","value":%s}}]}}`, tk_json.quote(value)))
 }
 
 check_go :: proc(s: ^Check, path: string) -> bool {
 	url := fmt.tprintf("%s/%s", s.origin, path)
-	r, ok := check_call(s, "Page.navigate", fmt.tprintf(`{{"url":%s}}`, cdp.quote(url)))
+	r, ok := check_call(s, "Page.navigate", fmt.tprintf(`{{"url":%s}}`, tk_json.quote(url)))
 	o, _ := r.(json.Object)
 	failure, _ := o["errorText"].(json.String)
 	if failure != "" { fmt.eprintfln("%s: %s", url, failure) }
-	loaded := ok && failure == "" && check_wait(s, fmt.tprintf(`location.href === %s && document.readyState === 'complete'`, cdp.quote(url)), CHECK_PAGE_LIMIT)
+	loaded := ok && failure == "" && check_wait(s, fmt.tprintf(`location.href === %s && document.readyState === 'complete'`, tk_json.quote(url)), CHECK_PAGE_LIMIT)
 	if !loaded { check_expect(s, false, fmt.tprintf("%s: the page loads", path)) }
 	return loaded
 }
@@ -523,7 +524,7 @@ site_viewer :: proc(s: ^Check, path: string) {
 	check_click(s, cdp.number(spot[0]), cdp.number(spot[1]))
 	check_expect(s, check_wait(s, CHECK_OPEN, CHECK_INPUT_LIMIT), fmt.tprintf("%s: a click opens the viewer", path))
 	// (that nothing follows cannot be awaited: what says so is the link's click, prevented, on a page that is still this one)
-	check_expect(s, check_true(s, fmt.tprintf(`location.pathname === %s && !!window.tkSiteClick && window.tkSiteClick.defaultPrevented`, cdp.quote(fmt.tprintf("/%s", path)))), fmt.tprintf("%s: the page stays where it is", path))
+	check_expect(s, check_true(s, fmt.tprintf(`location.pathname === %s && !!window.tkSiteClick && window.tkSiteClick.defaultPrevented`, tk_json.quote(fmt.tprintf("/%s", path)))), fmt.tprintf("%s: the page stays where it is", path))
 	check_expect(s, check_wait(s, CHECK_LOADED, CHECK_PICTURE_LIMIT), fmt.tprintf("%s: the picture loads", path))
 	check_expect(s, check_true(s, check_count_is(3, count)), fmt.tprintf("%s: it is the capture clicked", path))
 	check_expect(s, check_number(s, `document.querySelector('.lightbox-caption').textContent.length`) > 0, fmt.tprintf("%s: its caption is shown", path))
@@ -611,7 +612,7 @@ site_page :: proc(s: ^Check, path: string, pages: []string) {
 	// (only the pages the changelog step pairs have the other presentation: the docs pages and the 404 have none)
 	if !classic && path != HOME_PAGE && path != CHANGELOG_PAGE { return }
 	other := classic ? "Modern version" : "Classic version"
-	found, _ := check_js(s, fmt.tprintf(`[...document.querySelectorAll('footer a')].filter((a) => a.textContent === %s).map((a) => new URL(a.href).pathname)`, cdp.quote(other)))
+	found, _ := check_js(s, fmt.tprintf(`[...document.querySelectorAll('footer a')].filter((a) => a.textContent === %s).map((a) => new URL(a.href).pathname)`, tk_json.quote(other)))
 	list, _ := found.(json.Array)
 	to := make([]string, len(list), context.temp_allocator)
 	for item, i in list { to[i], _ = item.(json.String) }
@@ -630,7 +631,7 @@ site_checks :: proc(s: ^Check, pages: []string) -> bool {
 	if !made { return false }
 	o, _ := r.(json.Object)
 	target, _ := o["targetId"].(json.String)
-	r, made = cdp.call(&s.client, "Target.attachToTarget", fmt.tprintf(`{{"targetId":%s,"flatten":true}}`, cdp.quote(target)))
+	r, made = cdp.call(&s.client, "Target.attachToTarget", fmt.tprintf(`{{"targetId":%s,"flatten":true}}`, tk_json.quote(target)))
 	if !made { return false }
 	o, _ = r.(json.Object)
 	s.client.session, _ = o["sessionId"].(json.String)

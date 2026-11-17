@@ -26,11 +26,15 @@
 //	path_kind      what a path names, links never followed: a junction / symlink to a directory is a Link
 //	remove_tree    a file, or a directory with everything in it, one entry at a time
 //	temp_dir       the directory for temporary files
+//	path_join      a name in a folder, by this system's separator or a given one (text only: no system call)
+//	safe_file_name a name with the characters a system refuses in a file name replaced (text only)
 package fsx
 
 import "base:runtime"
 import "core:fmt"
 import "core:os"
+import "core:strings"
+import "../ascii"
 import base "../base"
 
 // The most one system call is asked to read or write: a larger request is split.
@@ -114,6 +118,49 @@ temp_dir :: proc(allocator := context.allocator) -> string {
 	if t := os.get_env("TEMP", allocator); t != "" { return t }
 	d, err := os.temp_directory(allocator)
 	return err == nil ? d : ""
+}
+
+// `name` in the folder `dir`, joined by `sep` (this system's by default; a remote source's own, or "/" for the relative
+// paths of a site). With `\` the `/` of `name` become `\`: a manifest's relative names are written with `/` on every
+// system. The separators that end `dir` are one (a root such as "/" or "C:\" keeps its own, a UNC "\\" its two); an
+// empty `dir` gives `name` (its separators as said). Only the text changes: nothing is read, so the interface's thread
+// may call it.
+path_join :: proc(dir, name: string, sep: u8 = os.Path_Separator, allocator := context.temp_allocator) -> string {
+	n := name
+	if sep == '\\' { n, _ = strings.replace_all(name, "/", "\\", context.temp_allocator) }
+	if dir == "" { return strings.clone(n, allocator) }
+	s := [1]u8{sep}
+	d := strings.trim_right(dir, sep == '\\' ? "\\/" : string(s[:]))
+	// (a folder of separators alone is a root, "/" or a UNC "\\": kept whole, the name right after it)
+	if d == "" { return strings.concatenate({dir, n}, allocator) }
+	return strings.concatenate({d, string(s[:]), n}, allocator)
+}
+
+// `name` as a file's: the characters that a system refuses in a file name (`/ \ : * ? " < > |` and the control
+// characters) become "_", and the spaces and dots that end or start it go (Windows drops the last ones silently).
+// Text past ASCII stays: a person's name for a thing stays readable in a folder. `fallback` when nothing is left.
+safe_file_name :: proc(name, fallback: string, allocator := context.temp_allocator) -> string {
+	b := strings.builder_make(0, len(name), context.temp_allocator)
+	for c in transmute([]u8)name {
+		switch c {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|', 0 ..< 0x20, 0x7f: strings.write_byte(&b, '_')
+		case:                                                               strings.write_byte(&b, c)
+		}
+	}
+	out := strings.trim(strings.to_string(b), " .")
+	if out == "" { return strings.clone(fallback, allocator) }
+	// (Windows refuses the names of its devices, whatever their extension and case: "CON", "nul.txt", "COM1"; ASCII names,
+	// folded by ASCII)
+	stem := out[:strings.index_byte(out, '.') if strings.contains_rune(out, '.') else len(out)]
+	reserved := [?]string{
+		"CON", "PRN", "AUX", "NUL",
+		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+	}
+	for r in reserved {
+		if ascii.equal_fold(stem, r) { return strings.concatenate({"_", out}, allocator) }
+	}
+	return strings.clone(out, allocator)
 }
 
 // Removes a file, or a directory with everything in it, one entry at a time (what a program does when it cleans up

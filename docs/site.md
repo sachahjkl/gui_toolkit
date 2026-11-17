@@ -187,6 +187,24 @@ no window over `src/cdp`:
 `check_arguments` reads `--site folder`, `--shot file.png` and `--browser program`. What the browser leaves (its processes,
 its profile) is removed, and a run that cannot remove it fails.
 
+## The vendor's fields
+
+`meta_default(name, url, repository, tagline, theme, accent, card = "img/main.png") -> Meta` is a program's `Meta` with
+the vendor's fields filled: `author`, `author_url` and `publisher` from `SELLER_FROMENT` ([licence.md](licence.md)),
+`publisher_logo` (`img/froment-software-64.png`), `licence` (`"MIT"`), `ld_type` (`"SoftwareApplication"`), `changes`
+(`CHANGELOG.md`), `logo` (`img/logo.png`), `logo_file` (`site/img/logo.png`) and `root_domain` off. A site that differs
+sets a field after the call; `ld_fields` and `shop` stay the program's.
+
+```odin
+site_meta :: proc() -> site.Meta {
+	m := site.meta_default(name = "Papier", url = "https://papier.froment.software/", repository = REPOSITORY,
+		tagline = "A fast clipboard history, searched as you type", theme = "#131315", accent = "#cbbca3")
+	m.ld_fields = SITE_LD[:]
+	m.shop = SHOP
+	return m
+}
+```
+
 ## The site command of a project's tool
 
 `command(Project_Site) -> toolbox.Command` is the `site` command of a project's tool ([toolbox.md](toolbox.md)). The

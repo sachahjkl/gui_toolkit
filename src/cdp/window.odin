@@ -6,9 +6,11 @@ import "core:encoding/base64"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:time"
 import "../ascii"
+import tk_json "../json"
 
 Box :: struct {
 	name, text: string,
@@ -17,11 +19,11 @@ Box :: struct {
 
 // The boxes whose text holds `text` (Toolkit.find), in the temporary allocator.
 find :: proc(c: ^Client, text: string) -> []Box {
-	return boxes(c, fmt.tprintf(`{{"text":%s}}`, quote(text)))
+	return boxes(c, fmt.tprintf(`{{"text":%s}}`, tk_json.quote(text)))
 }
 
 find_name :: proc(c: ^Client, name: string) -> []Box {
-	return boxes(c, fmt.tprintf(`{{"name":%s}}`, quote(name)))
+	return boxes(c, fmt.tprintf(`{{"name":%s}}`, tk_json.quote(name)))
 }
 
 @(private)
@@ -42,12 +44,14 @@ has :: proc(c: ^Client, text: string) -> bool { return len(find(c, text)) > 0 }
 
 // Until the text is there (or gone): the window waits, nothing here sleeps.
 wait_for :: proc(c: ^Client, text: string, limit: time.Duration, gone := false) -> bool {
-	_, ok := call(c, "Toolkit.waitFor", fmt.tprintf(`{{"text":%s,"gone":%v,"timeout":%d}}`, quote(text), gone, int(time.duration_milliseconds(limit))))
+	_, ok := call(c, "Toolkit.waitFor", fmt.tprintf(`{{"text":%s,"gone":%v,"timeout":%d}}`, tk_json.quote(text), gone, int(time.duration_milliseconds(limit))))
 	return ok
 }
 
-wait_name :: proc(c: ^Client, name: string, limit: time.Duration, gone := false) -> bool {
-	_, ok := call(c, "Toolkit.waitFor", fmt.tprintf(`{{"name":%s,"gone":%v,"timeout":%d}}`, quote(name), gone, int(time.duration_milliseconds(limit))))
+// Until the box named `name` is there (or gone). `text`: only a box of that name whose text holds it (a cell that shows
+// its value).
+wait_name :: proc(c: ^Client, name: string, limit: time.Duration, gone := false, text := "") -> bool {
+	_, ok := call(c, "Toolkit.waitFor", fmt.tprintf(`{{"name":%s,"text":%s,"gone":%v,"timeout":%d}}`, tk_json.quote(name), tk_json.quote(text), gone, int(time.duration_milliseconds(limit))))
 	return ok
 }
 
@@ -60,18 +64,41 @@ wait_idle :: proc(c: ^Client, limit: time.Duration) -> (idle, ok: bool) {
 	return bool(still), true
 }
 
+// Until the window's picture has not changed for `still`, at most `limit`: for what the box tree does not show and the
+// window does not count as moving (a terminal's grid, an icon decoded on a chore). Two captures of the same pixels are
+// the same PNG bytes (one encoder), so nothing is decoded. !still: it still changed at the limit (the calls went through).
+wait_still :: proc(c: ^Client, still, limit: time.Duration) -> (is_still, ok: bool) {
+	start := time.tick_now()
+	last: []byte
+	defer delete(last)
+	since := start
+	for {
+		png, captured := screenshot(c)
+		if !captured { return false, false }
+		now := time.tick_now()
+		if last == nil || !slice.equal(png, last) {
+			delete(last)
+			last, since = png, now
+		} else {
+			delete(png)
+			if time.tick_diff(since, now) >= still { return true, true }
+		}
+		if time.tick_diff(start, now) >= limit { return false, true }
+	}
+}
+
 click_name :: proc(c: ^Client, name: string) -> bool {
-	_, ok := call(c, "Toolkit.click", fmt.tprintf(`{{"name":%s,"index":0,"count":1,"button":"left"}}`, quote(name)))
+	_, ok := call(c, "Toolkit.click", fmt.tprintf(`{{"name":%s,"index":0,"count":1,"button":"left"}}`, tk_json.quote(name)))
 	return ok
 }
 
 click_text :: proc(c: ^Client, text: string) -> bool {
-	_, ok := call(c, "Toolkit.click", fmt.tprintf(`{{"text":%s,"index":0,"count":1,"button":"left"}}`, quote(text)))
+	_, ok := call(c, "Toolkit.click", fmt.tprintf(`{{"text":%s,"index":0,"count":1,"button":"left"}}`, tk_json.quote(text)))
 	return ok
 }
 
 type_text :: proc(c: ^Client, text: string) -> bool {
-	_, ok := call(c, "Input.insertText", fmt.tprintf(`{{"text":%s}}`, quote(text)))
+	_, ok := call(c, "Input.insertText", fmt.tprintf(`{{"text":%s}}`, tk_json.quote(text)))
 	return ok
 }
 
@@ -112,8 +139,8 @@ key_parts :: proc(name: string) -> (key: string, mods: int, text: string) {
 // A key by its name ("Enter", "ctrl+f", "shift+Tab"): down and up.
 key :: proc(c: ^Client, name: string) -> bool {
 	k, mods, text := key_parts(name)
-	_, down := call(c, "Input.dispatchKeyEvent", fmt.tprintf(`{{"type":"keyDown","key":%s,"text":%s,"modifiers":%d}}`, quote(k), quote(text), mods))
-	_, up := call(c, "Input.dispatchKeyEvent", fmt.tprintf(`{{"type":"keyUp","key":%s,"modifiers":%d}}`, quote(k), mods))
+	_, down := call(c, "Input.dispatchKeyEvent", fmt.tprintf(`{{"type":"keyDown","key":%s,"text":%s,"modifiers":%d}}`, tk_json.quote(k), tk_json.quote(text), mods))
+	_, up := call(c, "Input.dispatchKeyEvent", fmt.tprintf(`{{"type":"keyUp","key":%s,"modifiers":%d}}`, tk_json.quote(k), mods))
 	return down && up
 }
 

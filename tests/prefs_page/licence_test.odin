@@ -12,6 +12,16 @@ import "gt:testkit/session"
 import "gt:ui"
 
 @(private = "file")
+SAMPLE_LOGO :: #load("../../site/img/logo.png")
+
+// A page without the program's logo or vendor is refused at its start: its card would have a bare back.
+@(test)
+a_licence_page_needs_a_logo_and_a_vendor :: proc(t: ^testing.T) {
+	testing.expect_assert_message(t, prefs_page.LICENCE_NEEDS_LOGO)
+	l: prefs_page.Licence
+	prefs_page.licence_init(&l, nil, {store = {product = SAMPLE_PRODUCT, memory = true}, name = "sample"})
+}
+
 SAMPLE_PRODUCT :: licence.Product{
 	name = "sample", title = "sample", version_tag = "SAMPLE1", sign_context = "sample-licence-v1\n",
 	file_extension = ".samplelicence", editions = {0 = {id = "supporter", title = "Supporter"}},
@@ -44,7 +54,7 @@ the_licence_page_says_its_state :: proc(t: ^testing.T) {
 		ui.next({width = ui.fill(), height = ui.fill()})
 		prefs_page.build(&app.page, &app.prefs, {user = app, pages = LICENCE_PAGES[:], licence = &app.licence})
 	}})
-	prefs_page.licence_init(&app.licence, s.state, {store = {product = SAMPLE_PRODUCT, memory = true}, name = "sample", pricing_url = "https://example.invalid/pricing/"})
+	prefs_page.licence_init(&app.licence, s.state, {store = {product = SAMPLE_PRODUCT, memory = true}, name = "sample", pricing_url = "https://example.invalid/pricing/", logo = SAMPLE_LOGO, vendor = "Sample Vendor"})
 	defer prefs_page.licence_end(&app.licence)
 	session.wait_text(s, "Unregistered")
 	// (the name in lower case starts its sentence in capitals)

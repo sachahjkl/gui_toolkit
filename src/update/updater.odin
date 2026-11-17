@@ -7,7 +7,7 @@ package tk_update
 // the new program is in place, the running one goes on.
 //
 //	u := update.updater_start({product = PRODUCT, folder = "https://github.com/o/app/releases/latest/download/",
-//	                           current = APP_VERSION, exe = process.executable_path(), news = on_news, user = app})
+//	                           current = APP_VERSION, news = on_news, user = app})   // (exe "": found on its thread)
 //	update.set_auto(u, .Install)
 //	...   // on_news (the updater's thread) posts to the interface's thread, which reads update.status(u)
 //	update.updater_stop(u)
@@ -25,6 +25,7 @@ import "core:thread"
 import "core:time"
 import http "../http"
 import i18n "../i18n"
+import process "../process"
 
 CHECK_EVERY :: 24 * time.Hour
 RETRY_AFTER :: time.Hour
@@ -48,7 +49,7 @@ Updater_Options :: struct {
 	channels:    []Channel,       // a product with channels: each one's folder (nil: none; the caller's, read at the start only)
 	channel:     string,          // the channel followed, a name of `channels` ("": a product without channels); set_channel changes it
 	current:     string,          // the running version (X.Y.Z)
-	exe:         string,          // the running program, the one replaced
+	exe:         string,          // the running program, the one replaced ("": its own executable, found on the updater's thread)
 	user_agent:  string,          // "": tk_http's
 	every:       time.Duration,   // between two checks (0: CHECK_EVERY)
 	retry:       time.Duration,   // after a check that failed (0: RETRY_AFTER)
@@ -194,6 +195,12 @@ folder_of :: proc(o: Updater_Options, channel: string) -> string {
 	return ""
 }
 
+// The folder of the files of a GitHub repository's latest release ("owner/name"), "/" at the end: what
+// Updater_Options.folder takes for a product published there.
+latest_release_folder :: proc(repository: string, allocator := context.allocator) -> string {
+	return strings.concatenate({"https://github.com/", repository, "/releases/latest/download/"}, allocator)
+}
+
 status :: proc(u: ^Updater, allocator := context.temp_allocator) -> Status {
 	sync.guard(&u.mutex)
 	version := u.phase == .Installed ? u.version : (u.phase == .Available || u.phase == .Downloading) ? u.offer.version : ""
@@ -272,7 +279,20 @@ tell :: proc(u: ^Updater) {
 
 @(private = "file")
 updater_run :: proc(u: ^Updater) {
-	// (here, not in updater_start: the caller is the interface's thread, which touches no disk; options.exe never changes)
+	// (here, not in updater_start: the caller is the interface's thread, which makes no system call; options.exe never
+	// changes once known)
+	if u.options.exe == "" {
+		exe := process.executable_path(heap())
+		sync.lock(&u.mutex)
+		u.options.exe = exe
+		if strings.has_prefix(exe, "/nix/store/") {   // (desktop.in_nix_store: Nix updates it)
+			u.phase = .Managed
+			tell(u)
+			updater_release(u)   // (unlocks)
+			return
+		}
+		sync.unlock(&u.mutex)
+	}
 	remove_leftovers(u.options.exe)
 	sync.lock(&u.mutex)
 	for !u.stopped {

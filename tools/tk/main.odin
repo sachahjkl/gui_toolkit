@@ -36,6 +36,8 @@
 //                                             step-th emoji of emoji-test.txt and a few hard ones -> <out-dir>/side.png and the numbers
 //   build [example] [-debug]                 an example (default fidget) -> build/<example>[.exe], optimized or with debug
 //                                             information; Windows: no console, its .rc; Linux: the native text backend first
+//   demos [-out:dir]                          Windows: the demo examples (demos.odin) built as build builds them, each alone in
+//                                             <dir>/<example>-windows-x64.zip (default build/demos): what the Release workflow attaches
 //   ci                                        what the CI checks on this system: odin check of every package and tool (gt:js's also for
 //                                             freestanding_wasm32), the examples, the tests (tools/run_tests); every step runs, then the
 //                                             failures are said
@@ -57,7 +59,7 @@
 //                                             docs/screenshots/*.png and site/img from the examples, their own frames (shots.odin)
 //   theme_shots [-build] [-out:dir] [-page:Find] [-find:the] [-only:a,b]
 //                                             examples/whatsnew in every named palette, no window -> build/theme_shots
-//   timeline_test [-exe:file] [-out:dir] [-port:9477]
+//   timeline_test [-exe:file] [-out:dir] [-port:n] (0: a free one)
 //                                             the timelines of src/cdp against examples/whatsnew --headless over a real socket
 //   i18n <language> [-check]                  src/i18n/lang/<language>.txt from the tr calls of src (docs/i18n.md)
 //   doc_check [--root folder] [--extra folder]...
@@ -95,6 +97,7 @@ COMMANDS := []toolbox.Command {
 	{name = "js_test262", usage = "[-filter:text] [-stride:k] [-jobs:n]: test262 on gt:js with the native judge (tools/js_judge) -> build/test262", checked = true, flags = {"filter:", "stride:", "jobs:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_js_test262(args)) }},
 	{name = "release", usage = "<patch|minor|major|x.y.z> [-summary:text] [-no-push]: publishes a version of the toolkit (release.odin)", checked = true, flags = {"summary:", "no-push"}, positionals = 1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_release(args)) }},
 	{name = "build", usage = "[example] [-debug]: an example (default fidget) -> build/<example>, optimized or with debug information", checked = true, flags = {"debug"}, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build(args)) }},
+	{name = "demos", usage = "[-out:dir]: Windows: the demo examples, each in <dir>/<example>-windows-x64.zip (default build/demos)", checked = true, flags = {"out:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_demos(args)) }},
 	{name = "site_docs", usage = "<site> <out>: every docs/*.md as a page of <out>/docs, docs/_nav.txt the menu", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_docs(args)) }},
 	{name = "site_build", usage = "<site> <out>: the site as published (site_changelog, site_meta, site_docs), then its links", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_build(args)) }},
 	{name = "site_changelog", usage = "<site> <out>: a copy of <site> with the history from CHANGELOG.md and the classic pages", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_changelog(args)) }},
@@ -106,7 +109,7 @@ COMMANDS := []toolbox.Command {
 	{name = "theme_shots", usage = "[-build] [-out:dir] [-page:Find] [-find:the] [-only:a,b]: examples/whatsnew in every named palette", checked = true, flags = {"build", "out:", "page:", "find:", "only:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_theme_shots(args)) }},
 	{name = "finish_shots", usage = "[-build] [-out:dir] [-page:0] [-theme:0]: fidget's page in every finish", checked = true, flags = {"build", "out:", "page:", "theme:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_finish_shots(args)) }},
 	{name = "film", usage = "[name...] [-out:dir] [-list]: the toolkit's films (tools/film), the showcase driven as a person uses it -> build/films/<name>.mp4", run = proc(args: []string) -> cli.Exit { return toolbox.done(run_film(args)) }},
-	{name = "timeline_test", usage = "[-exe:file] [-out:dir] [-port:9477]: the timelines of src/cdp against examples/whatsnew --headless", checked = true, flags = {"exe:", "out:", "port:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_timeline_test(args)) }},
+	{name = "timeline_test", usage = "[-exe:file] [-out:dir] [-port:n] (0: a free one): the timelines of src/cdp against examples/whatsnew --headless", checked = true, flags = {"exe:", "out:", "port:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_timeline_test(args)) }},
 	{name = "doc_check", usage = "[--root folder] [--extra folder]...: the files, flags and names the documentation cites exist", run = proc(args: []string) -> cli.Exit { return toolbox.done(run_doc_check(args)) }},
 	{name = "ci", usage = ": what the CI checks on this system: odin check of every package, the examples, the tests", checked = true, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_ci(args)) }},
 	{name = "desktop_tests", usage = "[x11|randr|wayland]: Linux: the backends against real servers on a virtual desktop nobody sees", checked = true, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_desktop_tests(args)) }},

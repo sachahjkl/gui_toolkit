@@ -19,6 +19,7 @@ import "core:mem"
 import "core:mem/virtual"
 import "core:slice"
 import "core:strings"
+import "../fsx"
 import i18n "../i18n"
 import lucide "../lucide"
 
@@ -421,7 +422,7 @@ path_bar_keys :: proc(st: ^Path_Bar, path: string, sep: u8, ev: ^Path_Bar_Events
 			p, branch := path_bar_row_go(st, st.rows[st.sel], sep)
 			ev.go, ev.branch = p, branch
 		} else if typed := strings.trim_space(text); typed != "" {
-			ev.go = file_path_root(typed, sep) > 0 ? strings.clone(typed, context.temp_allocator) : file_path_join(path, typed, sep)
+			ev.go = file_path_root(typed, sep) > 0 ? strings.clone(typed, context.temp_allocator) : fsx.path_join(path, typed, sep)
 		}
 		path_bar_leave(st)
 	}
@@ -451,7 +452,7 @@ path_bar_split :: proc(text, base: string, sep: u8) -> (folder, rest: string) {
 	if sep == '\\' { cut = max(cut, strings.last_index_byte(text, '/')) }   // (what a person types on Windows)
 	if cut < 0 { return file_path_trim(base, sep), text }
 	dir := text[:cut + 1]
-	if file_path_root(dir, sep) == 0 { dir = file_path_join(base, dir, sep) }
+	if file_path_root(dir, sep) == 0 { dir = fsx.path_join(base, dir, sep) }
 	return file_path_trim(file_path_clean(dir, sep), sep), text[cut + 1:]
 }
 
@@ -486,7 +487,7 @@ path_bar_row_entry :: proc(st: ^Path_Bar, r: Path_Bar_Row) -> ^Path_Bar_Entry {
 path_bar_row_go :: proc(st: ^Path_Bar, r: Path_Bar_Row, sep: u8) -> (path: string, branch: bool) {
 	e := path_bar_row_entry(st, r)
 	if e == nil { return "", false }
-	if r.kind == .Child { return file_path_join(st.wanted, e.name, sep), e.branch }
+	if r.kind == .Child { return fsx.path_join(st.wanted, e.name, sep), e.branch }
 	return strings.clone(e.path != "" ? e.path : e.name, context.temp_allocator), e.branch
 }
 

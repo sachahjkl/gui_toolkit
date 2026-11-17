@@ -149,7 +149,9 @@ focus loses it on that first frame shown, not before.
 A view whose content waits for an answer (a source's, a worker's) calls `view_not_ready(v)` in its build: its dialog
 stays unseen, built at each frame, until a build no longer calls it, for 100 ms at most from its opening. The palette
 does so until the ranking of its question has seen every source's answer, so it appears with its rows. A dialog shown
-is not hidden again. A box wholly transparent (`transparency` 1) is not drawn: a dialog's unseen frames redraw nothing.
+is not hidden again. `view_size` with another size before the dialog shows holds it too: the first frame drawn has the
+size asked. The toolkit's dialogs that a key summons are `quick`: the palette, the shortcuts' sheet, a prompt, the file
+browser, the key recorder. A box wholly transparent (`transparency` 1) is not drawn: a dialog's unseen frames redraw nothing.
 
 - A dialog that is not resizable is as wide as what is in it asks (its title on one line, its row of buttons on one
   line), `width_em` at least, `DIALOG_MAX_WIDTH_EM` (46) at most. Past that, its title and the words of a button wrap.

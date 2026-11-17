@@ -42,6 +42,9 @@ the last tag (`release.publish`, [docs/release.md](docs/release.md)), then:
 2. on Windows, the About picture (it shows the version) is taken again from fidget; elsewhere it stays;
 3. it commits that as `<version>: <summary>`, tags it `v<version>` (annotated), pushes `master` and the tag at once
    (`--atomic`; when origin moved meanwhile, it starts again with the next number), and creates the GitHub release with the section as its notes (`tools/changelog -section -version:<version>`).
+4. once the release is published, the Release workflow (`.github/workflows/release.yml`) builds the demo programs for
+   Windows x64 from its tag and attaches them, one zip each; `odin run tools/tk -- demos` builds the same zips locally
+   (Windows), in `build/demos`. A manual run of the workflow with a tag attaches them to a release already out.
 
 `-no-push` stops after the tag, to look at the commit first. Semantic versioning: while the version is `0.x`, a minor
 bump may change the API.

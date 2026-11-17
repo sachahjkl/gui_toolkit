@@ -54,6 +54,8 @@
 
 ## Later
 
+- **An easter egg on the licence card.** A small code engraved on the card (a kind of QR code in the foil, found by
+  turning it) leads to a link: the first step of a playful hunt (an ARG) across the programs and their sites.
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link
   dropped in the void) is the toolkit's already.

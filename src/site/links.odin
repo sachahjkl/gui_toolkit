@@ -9,6 +9,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "../ascii"
+import "../fsx"
 
 Link_Rules :: struct {
 	not_files: []string,   // the starts of addresses that are not files of the site (a scheme the project's program opens)
@@ -134,7 +135,7 @@ visit_link :: proc(a: Tag_Attr, data: rawptr) {
 
 	path := c.page.rel
 	if target != "" {
-		path = path_normalize(path_join(path_dir(c.page.rel), target))
+		path = path_normalize(fsx.path_join(path_dir(c.page.rel), target, '/'))
 		if strings.has_prefix(path, "..") {
 			append(c.dead, fmt.aprintf("%s: %s climbs out of the site", c.page.rel, href))
 			return

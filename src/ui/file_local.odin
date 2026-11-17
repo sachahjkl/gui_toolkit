@@ -216,7 +216,7 @@ local_entry :: proc(f: fsx.Folder_Entry, dir: string, sep: u8, allocator: mem.Al
 	case .Directory: e.kind = .Folder
 	case .Link:
 		e.link = true
-		full := file_path_join(dir, f.name, sep, allocator)
+		full := fsx.path_join(dir, f.name, sep, allocator)
 		defer delete(full, allocator)
 		if to, to_err := os.stat(full, allocator); to_err == nil {
 			if to.type == .Directory { e.kind = .Folder }
@@ -333,7 +333,7 @@ local_find_work :: proc(d: rawptr) {
 	visited := 0
 	walk: for head := 0; head < len(folders); head += 1 {
 		rel := folders[head]
-		full := rel == "" ? j.path : file_path_join(j.path, rel, j.sep)
+		full := rel == "" ? j.path : fsx.path_join(j.path, rel, j.sep)
 		found, err := fsx.read_folder(full, context.temp_allocator)
 		if err != nil {
 			// (the folder itself: said; a subfolder that cannot be read: left out)
@@ -347,7 +347,7 @@ local_find_work :: proc(d: rawptr) {
 			// (before local_entry: a hidden link is not followed for nothing)
 			if !j.reply.hidden && file_entry_hidden({name = f.name, hidden = f.hidden}) { continue }
 			e := local_entry(f, full, j.sep, context.temp_allocator)
-			path := rel == "" ? f.name : file_path_join(rel, f.name, j.sep)
+			path := rel == "" ? f.name : fsx.path_join(rel, f.name, j.sep)
 			// (a link is not entered: a link to a folder above would loop)
 			if f.kind == .Directory { append(&folders, strings.clone(path, virtual.arena_allocator(&paths))) }
 			resize(&low, len(path))

@@ -3,6 +3,7 @@ package font
 import "base:runtime"
 import "core:slice"
 import "core:strings"
+import base "../base"
 
 // Families as a person chooses them: the system's list (system_families), and the family a face is (family_of). The
 // font picker (ui.font_picker, src/md/features/font-picker.md) reads both.
@@ -74,15 +75,14 @@ face_name_family :: proc(f: ^Font) -> string {
 // American English, then any Windows one, then Unicode's, then Macintosh's English in Mac Roman (its ASCII alone).
 @(private)
 name_table_family :: proc(data: []u8, allocator := context.allocator) -> string {
-	be16 :: proc(d: []u8, at: int) -> int { return int(d[at]) << 8 | int(d[at + 1]) }
 	if len(data) < NAME_HEADER_BYTES { return "" }
-	count, storage := be16(data, 2), be16(data, 4)
+	count, storage := base.read_be16(data, 2), base.read_be16(data, 4)
 	best, best_rank := -1, 0
 	for i in 0 ..< count {
 		at := NAME_HEADER_BYTES + i * NAME_RECORD_BYTES
 		if at + NAME_RECORD_BYTES > len(data) { break }
-		platform, encoding, language, name := be16(data, at), be16(data, at + 2), be16(data, at + 4), be16(data, at + 6)
-		length, offset := be16(data, at + 8), be16(data, at + 10)
+		platform, encoding, language, name := base.read_be16(data, at), base.read_be16(data, at + 2), base.read_be16(data, at + 4), base.read_be16(data, at + 6)
+		length, offset := base.read_be16(data, at + 8), base.read_be16(data, at + 10)
 		if storage + offset + length > len(data) || length == 0 { continue }
 		rank := 0
 		switch name {
@@ -101,8 +101,8 @@ name_table_family :: proc(data: []u8, allocator := context.allocator) -> string 
 	}
 	if best < 0 { return "" }
 	at := NAME_HEADER_BYTES + best * NAME_RECORD_BYTES
-	platform := be16(data, at)
-	length, offset := be16(data, at + 8), be16(data, at + 10)
+	platform := base.read_be16(data, at)
+	length, offset := base.read_be16(data, at + 8), base.read_be16(data, at + 10)
 	raw := data[storage + offset:][:length]
 	sb := strings.builder_make(allocator)
 	if platform == NAME_PLATFORM_MAC {
@@ -110,9 +110,9 @@ name_table_family :: proc(data: []u8, allocator := context.allocator) -> string 
 	} else {
 		// UTF-16, big-endian
 		for i := 0; i + 1 < len(raw); i += 2 {
-			u := rune(be16(raw, i))
+			u := rune(base.read_be16(raw, i))
 			if u >= 0xd800 && u < 0xdc00 && i + 3 < len(raw) {
-				lo := rune(be16(raw, i + 2))
+				lo := rune(base.read_be16(raw, i + 2))
 				if lo >= 0xdc00 && lo < 0xe000 { u = 0x10000 + (u - 0xd800) << 10 + (lo - 0xdc00); i += 2 }
 			}
 			if u >= 0xd800 && u < 0xe000 { continue }   // (a lone surrogate)

@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:strings"
+import tk_json "../json"
 import "../platform"
 import "../ui"
 
@@ -63,7 +64,7 @@ rec_line :: proc(r: ^Recorder, line: string) {
 @(private)
 rec_flush :: proc(r: ^Recorder) {
 	if len(r.text) > 0 {
-		append(&r.lines, Rec_Line{fmt.aprintf("type %s", json_quote(string(r.text[:])), allocator = runtime.heap_allocator()), r.text_at})
+		append(&r.lines, Rec_Line{fmt.aprintf("type %s", tk_json.quote(string(r.text[:])), allocator = runtime.heap_allocator()), r.text_at})
 		clear(&r.text)
 	}
 	if r.scroll != {} {
@@ -118,7 +119,7 @@ rec_stop :: proc(srv: ^Server, sb: ^strings.Builder) {
 	strings.write_string(sb, `{"lines":[`)
 	for l, i in r.lines {
 		if i > 0 { strings.write_byte(sb, ',') }
-		strings.write_string(sb, json_quote(l.text))
+		strings.write_string(sb, tk_json.quote(l.text))
 	}
 	strings.write_string(sb, "]}")
 	rec_clear(r)
@@ -133,7 +134,7 @@ rec_take :: proc(srv: ^Server, sb: ^strings.Builder) {
 	fmt.sbprintf(sb, `{{"now":%.3f,"lines":[`, ui.now_ms())
 	for l, i in r.lines[r.taken:] {
 		if i > 0 { strings.write_byte(sb, ',') }
-		fmt.sbprintf(sb, `{{"line":%s,"t":%.3f}}`, json_quote(l.text), l.at)
+		fmt.sbprintf(sb, `{{"line":%s,"t":%.3f}}`, tk_json.quote(l.text), l.at)
 	}
 	strings.write_string(sb, "]}")
 	r.taken = len(r.lines)
@@ -222,12 +223,12 @@ rec_press :: proc(srv: ^Server, u: ^platform.A11y_Update, node: int, action: pla
 	if !r.on || !r.injected { return }
 	role, name := ax_role_name(platform.A11y_Role(u.nodes[node].role)), ax_name_of(u, node)
 	sb := strings.builder_make(context.temp_allocator)
-	fmt.sbprintf(&sb, "press %s --role %s", json_quote(name), role)
+	fmt.sbprintf(&sb, "press %s --role %s", tk_json.quote(name), role)
 	if action != .Click { fmt.sbprintf(&sb, " --action %v", action) }
 	for m, i in ax_matching(u, role, name, false) { if m == node { if i > 0 { fmt.sbprintf(&sb, " --index %d", i) }; break } }
 	if v, has := p["value"]; has {
 		#partial switch x in v {
-		case json.String:           fmt.sbprintf(&sb, " --value %s", json_quote(x))
+		case json.String:           fmt.sbprintf(&sb, " --value %s", tk_json.quote(x))
 		case json.Integer, json.Float: fmt.sbprintf(&sb, " --number %g", num(v))
 		}
 	}
@@ -248,7 +249,7 @@ rec_target :: proc(s: ^ui.State) -> string {
 		return ""
 	}
 	if b.name != "" {
-		if w := try(s, b, b.name, "", fmt.tprintf("--name %s", json_quote(b.name))); w != "" { return w }
+		if w := try(s, b, b.name, "", fmt.tprintf("--name %s", tk_json.quote(b.name))); w != "" { return w }
 	}
 	text :: proc(b: ^ui.Box) -> string {
 		if t := ui.box_text(b); t != "" { return t }
@@ -256,7 +257,7 @@ rec_target :: proc(s: ^ui.State) -> string {
 		return ""
 	}
 	if t := text(b); t != "" {
-		if w := try(s, b, "", t, json_quote(t)); w != "" { return w }
+		if w := try(s, b, "", t, tk_json.quote(t)); w != "" { return w }
 	}
 	return ""
 }

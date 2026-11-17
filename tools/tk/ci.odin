@@ -95,14 +95,15 @@ run_build :: proc(args: []string) -> string {
 	return build_example(toolkit_root(), example, toolbox.has_flag(args, "debug"))
 }
 
-build_example :: proc(root, example: string, debug: bool) -> string {
+// `devtools`: the inspection endpoint the tools and the tests drive; a demo handed to a person goes without it.
+build_example :: proc(root, example: string, debug: bool, devtools := true) -> string {
 	when ODIN_OS != .Windows {
 		if why := build_native_default(root); why != "" { return why }
 	}
 	out := join({root, "build", fmt.tprintf("%s%s", example, EXE)})
 	_ = os.make_directory_all(join({root, "build"}))
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "build", join({root, "examples", example}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed", "-define:TOOLKIT_DEVTOOLS=true", gt_collection(root))
+	append(&cmd, "odin", "build", join({root, "examples", example}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed", fmt.tprintf("-define:TOOLKIT_DEVTOOLS=%v", devtools), gt_collection(root))
 	when ODIN_OS == .Windows {
 		append(&cmd, "-subsystem:windows")
 		rc := join({root, "examples", example, fmt.tprintf("%s.rc", example)})

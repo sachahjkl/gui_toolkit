@@ -5,6 +5,55 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.298.0] - 2026-11-17 11:07
+
+### Added
+- **`fsx.path_join`, `fsx.safe_file_name`, `base.read_be16` and `base.read_be32`**: a program joins a name to a folder by
+its system's separator or a given one, turns a person's name for a thing into a file name that every system accepts,
+and reads big-endian integers without a panic past the end. `ui.file_path_join` is gone: call `fsx.path_join(dir, name,
+sep)`. A licence file's name is made by `safe_file_name` too: an order number with other characters than letters,
+digits, `_` and `-` now keeps them where a system allows them.
+- **`ui.elide`, `timefmt.stopwatch`, `timefmt.rate`, `timefmt.weekday`, `timefmt.iso_date`**: `ui.elide(font, size, text, width, at = .End | .Middle)` cuts a text to a width with "…" at its end or in its middle, between characters, found in a few measures and cached, so a program's own drawing needs no cutter of its own; a box's cut text now measures its kerning and drops the spaces before its ellipsis. `timefmt.stopwatch(ms, {padded, days})` writes "0:07", "1:02:03", "00:07" or an uptime "3:04:12:09". `timefmt.size` takes `Size_Options{decimal}` (powers of 1000 and "kB", as browsers count network bytes) and no longer writes "10.0 KB" nor "1024 KB" (it writes "10 KB", "1.0 MB"); `timefmt.rate` writes a size per second ("1.2 MB/s"); `timefmt.write_size` and `timefmt.write_rate` write them into a buffer without allocating, for a column of rows. `timefmt.weekday` names the day ("Monday"), `timefmt.iso_date` writes "2026-11-10" (and "2026-11-10 14:32"), `timefmt.date` takes `year`, and `timefmt.moment` takes `weekdays` ("Monday 14:32" from 2 to 6 days back), all translated.
+- **A program's start, its updates and its vendor mark in the toolkit**: the lines every program wrote around them are calls now.
+  - `host.program_start({name, folder, version}) -> Program` opens the log, installs the crash handler, begins the session and reads the last report, in that order (`Program.logger`, `Program.last_crash`); `host.program_end(&p)` is the clean end.
+  - A window owes `host.AFTER_INPUT` (3) frames after an event by default (`Host.after_input`, when the program set no count), and `host.host_settle(h)` owes them after a change that came with no event: a program drops its `FRAMES_AFTER_INPUT`.
+  - `prefs_page.updates_start`, `updates_follow` and `updates_stop` run a program's Updater: the folder from `update.base_url` or the repository's latest release (`update.latest_release_folder`), `update.auto` for the installed copy only, followed with no call of the program, and the installed copy's manifest written on a chore. `updates_follow` says when to show the change (`update.notice`); the restart stays the program's.
+  - `prefs_page.install_vendor_mark(&install, &renderer, png)` makes the "By" line's mark once; `install_end` frees it.
+- **`toolbox.Program_Session`, `toolbox.free_port`, `cdp.connect_wait`, `cdp.wait_still`**: a tool's `live`, `shots` or `bench` starts its program on a desktop nobody sees with its DevTools server on a free port (`program_session_start`, with files written before the start and the program's own quit command), connects with a bound that fails at once when the program ended or another program took the port (`program_session_connect`), restarts it (`program_session_restart`) and ends it with its exit code (`program_session_stop`). `cdp.connect_wait(port, limit, program)` is the bounded connection for a program started without the desktop. `cdp.wait_name` takes a `text` (the box of that name whose text holds it), and `cdp.wait_still(c, still, limit)` waits until the window's picture stops changing, for what the box tree does not show: a tool now waits for a condition instead of sleeping. `cdp.quote` is removed: use `json.quote` of `gt:json`.
+- **`toolbox.build_commands`: a program's `build`, `test` and `check` commands from its `Project` and a `Build_Options`.** A program's tool no longer writes them: it gives its test packages, its catalogues, whether it ships notices, what it builds first (`prepare`) and its own checks (`checks`). Every program's check now runs the same steps in the same order: the changelog and the roadmap, the scopes, its own checks, every catalogue of its folder, the notices, `odin check` for this system, for Windows and macOS, of its tool, the tests, a release build without a console on Windows, then its console launcher. `test` takes test names in every program. `program_build`, `program_test` and `program_check` are the same steps for a tool's other commands. `write_if_changed` is now public: the one writer of a generated file, under `write_stamp`.
+- **The demo programs on each release**: every GitHub release of the toolkit offers its demo programs for Windows to
+download, one zip each (`showcase-windows-x64.zip`, `fidget-windows-x64.zip`...), built from the release's tag.
+`tk demos` builds the same zips locally.
+- **`instance.running` and `instance.quit`, and a default wait.** A program asks whether its copy runs, or asks it to quit, with one call each, in place of a `send` of `MESSAGE_PING` or `MESSAGE_QUIT` it wrote itself. `Instance_Options.wait_ms` 0 now waits `instance.WAIT_MS_DEFAULT` (2 s), so a program gives no number of its own; a single try, which 0 meant before, is now a value below 0.
+- **`render.read_pixels_bgra`**: an offscreen frame as the card stores it, in B, G, R, A order, with no copy and no pass over its pixels.
+- **A segmented control too wide for its row becomes a dropdown.** With no width given, `ui.segmented` asks for its labels' width and gives way to a dropdown's: in a row that cannot hold its labels it shows a dropdown of the same choices, and its segments again when the row holds them. `ui.dropdown_width` gives a dropdown's own width.
+- **`ui.box_find`** finds a box of the last build by its name or its words, under a box or from the root: what a film and a test's session act on (`tk_session.find` uses it).
+- **`gt:film` and `tk film`: videos of an interface.** A program made with the toolkit is recorded as a person uses it: a pointer that glides and clicks, keys, typed words, on the film's clock and on the graphics card, each frame raw to ffmpeg (NVENC, else x264) on a thread of its own; a window smaller than the film stands on a stage. `tk film` makes the toolkit's own films of the showcase into build/films: the exploded view, themes, the command palette, a layout that narrows, tool bars, each with a title card drawn by the toolkit. docs/film.md.
+- **`host.Open_Options.headless_gpu`**: a window with no system's window draws on the graphics card when there is one, else on the software renderer as before. Tests and screenshots keep the software one, the same pixels everywhere; a long run of pictures (a film of the interface) goes as fast as the card.
+- **`Standard_Targets.window`: the title bar setting applied by the toolkit.** With it, `standard_watch` gives the window the system's title bar or the program's own at once when `window.system_title` changes (the program's where the system has none). `ui.Box_Flag.Fits_Width` marks a box that fits what it shows to its width itself (a folding tool bar has it).
+- **One height for every control: `ui.CONTROL_HEIGHT_EM` and `ui.control_height()`.** Buttons, fields, lists to choose from, numbers, segmented controls in form rows and tool bar items are all 2 em tall (a button was 2.2, a form row's control 2.3, a field 2.1): controls one under the other no longer touch, and those side by side line up.
+- **Columns that go one under the other.** In a `ui.flow`, children sized as a share of the width are columns: side by side while the line holds them at the width their content needs (or their own `least`), one under the other when it does not, the rest of each line shared by their values; a column starts at the top of its line. And a row or a column puts its `gap` between its children, as CSS's `gap`: a stack of cards takes `gap = {0, em * ui.ITEM_GAP}`.
+
+### Changed
+- **The vendor's facts and the logo's shrink, once in the toolkit**: a program no longer copies them.
+  - `site.SELLER_FROMENT` is the imprint's seller, `site.meta_default(name, url, repository, tagline, theme, accent, card)` a site's `Meta` with the vendor's fields filled, and `site.NETWORK_UPDATES_ONLY` the privacy sentence of a program that only connects for its updates.
+  - `desktop.identity_of(vendor, title, slug)` derives an `Identity`'s key, vendor key, marks, manifest and environment prefix; a program sets only its own lines after it.
+  - `toolbox.Logo.render(size, user)` is replaced by `draw(pixels, size, user)`: `write_logo` draws each size at `draw_size` (0: `master`) or more and shrinks it by `LOGO_SHRINK_STEP` at most per step. `logo_picture` and `logo_shrink` are public.
+- **`prefs_page.licence_init` needs the logo and the vendor**: `Licence_Options.logo` and `.vendor` are required (an
+assertion at the start), so no program ships a licence card with a bare back.
+- **The showcase's commands act.** In its palette, Theme: next, Theme: light or dark, Finish: machined and Settings change the look or the page; the others say what they would do. Its top bar gives way in a narrow window (the version cut, the search field down to 10 em): the window's buttons stay.
+- **The showcase holds any window size and draws its own title bar.** Its columns go one under the other when narrow, its rows of buttons wrap, the Values choices become a list when seven words do not fit, and stacked cards have room between them. Its top bar is the window's title bar with the window's buttons, and a button beside the settings switches to the system's title bar and back. The Themes page sets the corners with the finish and the version.
+
+### Fixed
+- **The toolkit's dialogs summoned by a key appear as fast as the palette, at their size.** The shortcuts' sheet (F1), a question to type such as Rename (F2), the file browser (Ctrl+P) and the key recorder fade in over 70 ms. A dialog whose build asks another size with `ui.view_size` as it opens shows first at that size, not one frame at the size it was registered with.
+- **Fonts compiled into a program, loaded many times**: on Windows, a program or a test package that loads a font
+compiled into it many times, in one font state or in many, no longer crashes or hangs.
+- **Escape closes a submenu under the pointer.** With the pointer resting on a submenu's row, Escape closed the submenu and the row opened it again at once: Escape seemed to do nothing. The row now waits for the pointer to move, as the system's menus do; a second Escape closes the menu.
+- **A compositor that stops answering no longer holds a capture for good (Wayland).** Each round trip of `gt:capture` waits two seconds at most. Without an answer, the session's connection is given up and the next call opens another. A program's worker waited forever before, and every capture after it with it.
+- **A node let go in `ui.node_graph` stays where it was let go.** The frame of the release drew the moved nodes back at their old place, before the program applied `Graph_Moved`: they jumped there and back, and the widgets in them glided both ways.
+- **The font picker and `ui.dropdown` follow the rounding setting.** Their buttons had square corners whatever `appearance.rounding` said; they now have a control's corners, as buttons and fields.
+- **Nothing spills past its box when the window narrows.** A box is never narrower than its content needs: a card with a row of fields stays as wide as the row instead of letting the fields and their + buttons pass its edge, a slider or a range slider keeps its track, and wrapped words break between words, never between letters (a stepper said "Unp / ack"); only a path or an address longer than 8 em may break. What is too wide goes up to the view that scrolls. Design: src/md/features/least-width.md.
+
 ## [0.297.0] - 2026-11-16 21:33
 
 ### Fixed
@@ -4088,6 +4137,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.298.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.298.0
 [0.297.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.297.0
 [0.296.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.296.0
 [0.295.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.295.1

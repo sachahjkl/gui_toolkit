@@ -51,10 +51,13 @@ Platform_State :: struct {
 	color_queue:  Color_Queue,         // the color glyph thread (color_async.odin)
 }
 
+// The memory font loader is registered with the shared factory once per process and never unregistered: the factory
+// caches, for the process, the font files it has seen by (loader, key), and a loader unregistered and registered again
+// while that cache holds its files made CreateFontFace crash or hang.
 @(private)
 loader_mu: sync.Mutex
 @(private)
-loader_users: int
+loader_registered: bool
 
 // DirectWrite's factory, collection, analyzer and fallback. false: no DirectWrite (every face then fails to load).
 @(private)
@@ -71,8 +74,7 @@ platform_init :: proc(s: ^State) -> bool {
 		if s.factory2->GetSystemFontFallback(&s.fallback) < 0 { s.fallback = nil }
 	}
 	sync.mutex_lock(&loader_mu)
-	if loader_users == 0 { s.factory->RegisterFontFileLoader(&memory_loader.iface) }
-	loader_users += 1
+	if !loader_registered { loader_registered = s.factory->RegisterFontFileLoader(&memory_loader.iface) >= 0 }
 	sync.mutex_unlock(&loader_mu)
 	s.system_fonts = &dwrite_system
 	return true
@@ -88,12 +90,7 @@ platform_stop :: proc(s: ^State) {
 
 @(private)
 platform_destroy :: proc(s: ^State) {
-	if s.factory != nil {
-		sync.mutex_lock(&loader_mu)
-		loader_users -= 1
-		if loader_users == 0 { s.factory->UnregisterFontFileLoader(&memory_loader.iface) }
-		sync.mutex_unlock(&loader_mu)
-	}
+	// (the memory font loader stays registered: see loader_registered)
 	com_release(s.fallback)
 	com_release(s.analyzer)
 	com_release(s.system)

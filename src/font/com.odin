@@ -20,22 +20,51 @@ Memory_Font :: struct {
 	key:       u64,
 }
 
-// Memory fonts by key. A key is never used twice: DirectWrite's shared factory caches files by (loader, key), so a key
-// made from an address could bring back the faces of a font freed before at that address.
+// Memory fonts by key. DirectWrite's shared factory keeps, for the process, every file it has seen by (loader, key),
+// and CreateFontFace crashes or hangs once it holds a few hundred. Owned bytes get a new key per load: a key made from
+// their address could bring back the faces of a font freed before at that address. Bytes compiled into the exe never
+// move nor get freed, so they keep one key for the process (`memory_static_keys`): a program that loads them in each
+// window, or again after a settings change, adds no file to the factory.
 @(private) memory_mu: sync.Mutex
 @(private) memory_fonts: map[u64]^Memory_Font
 @(private) memory_next: u64
+@(private) memory_static_keys: map[Memory_Static_Data]u64
 
+// Bytes compiled into the exe, by where they are.
+@(private)
+Memory_Static_Data :: struct {
+	data: rawptr,
+	size: int,
+}
+
+// A reference for one load: the caller releases it once (memory_font_release). Static bytes loaded twice share one
+// Memory_Font and one key, so DirectWrite opens the same file for both faces.
 @(private)
 memory_font_new :: proc(data: []byte, owned: bool) -> ^Memory_Font {
 	context.allocator = runtime.heap_allocator()
-	m := new(Memory_Font)
-	m.refs, m.data, m.owned = 1, data, owned
 	sync.mutex_lock(&memory_mu)
-	memory_next += 1
-	m.key = memory_next
-	memory_fonts[m.key] = m
-	sync.mutex_unlock(&memory_mu)
+	defer sync.mutex_unlock(&memory_mu)
+	key: u64
+	if !owned {
+		place := Memory_Static_Data{raw_data(data), len(data)}
+		if k, known := memory_static_keys[place]; known {
+			if live := memory_fonts[k]; live != nil {
+				live.refs += 1
+				return live
+			}
+			key = k
+		} else {
+			memory_next += 1
+			key = memory_next
+			memory_static_keys[place] = key
+		}
+	} else {
+		memory_next += 1
+		key = memory_next
+	}
+	m := new(Memory_Font)
+	m.refs, m.data, m.owned, m.key = 1, data, owned, key
+	memory_fonts[key] = m
 	return m
 }
 
@@ -109,7 +138,9 @@ memory_stream_vtable := IDWriteFontFileStream_VTable{
 	},
 }
 
-// One loader per process: the key of a file is a number never used twice (`memory_next`), not an address.
+// One loader per process, registered once with the shared factory and never unregistered (`loader_registered`,
+// font_windows.odin): the key of a file is a number (`memory_next`), not an address; owned bytes get a new one per
+// load, bytes compiled into the exe keep theirs for the process (`memory_static_keys`).
 @(private)
 Memory_Loader :: struct {
 	using iface: IDWriteFontFileLoader,

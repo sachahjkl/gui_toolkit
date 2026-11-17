@@ -37,7 +37,9 @@ case .Unresponsive:    // the owner did not answer in time: carry on by yourself
 - **`wait_ms`** is how long `acquire` keeps trying while the owner is starting (no window / socket yet) or closing. A silent
   owner (busy or hung) ends the wait at once: a second start never waits for ever and never loses its message. The timeout
   covers the whole exchange, and an owner that wakes later does not handle a message whose sender gave up (on Linux the
-  sender's hang-up says so: one that gives up while the handler is running is the one case left).
+  sender's hang-up says so: one that gives up while the handler is running is the one case left). `0` waits
+  `WAIT_MS_DEFAULT` (2 s): give it only for a reason of the program's own. Below 0: one try (the owner still gets a
+  moment to answer).
 
 ## Being the owner
 
@@ -107,9 +109,12 @@ program (an installer, gt:setup's `--status` and `--quit`) can talk to any of th
 | `instance.MESSAGE_PING` | nothing: the answer alone says that a copy runs (`Setup_Options.running`) |
 | `instance.MESSAGE_QUIT` | it ends, as its own Quit does (`Setup_Options.quit`): its window closes, its work is saved |
 
+The asking side is `instance.running(o)` (a PING: whether a copy owns the name and answers) and `instance.quit(o)` (a
+QUIT: whether it took it): a program gives them to `Setup_Options.running` and `.quit` with its own options.
+
 ```odin
-app_running :: proc() -> bool { return instance.send({name = app_instance_name(), wait_ms = 2000}, transmute([]u8)string(instance.MESSAGE_PING)) == .Forwarded }
-app_quit    :: proc() -> bool { return instance.send({name = app_instance_name(), wait_ms = 2000}, transmute([]u8)string(instance.MESSAGE_QUIT)) == .Forwarded }
+app_running :: proc() -> bool { return instance.running({name = app_instance_name()}) }
+app_quit    :: proc() -> bool { return instance.quit({name = app_instance_name()}) }
 
 app_message :: proc(user: rawptr, message: []byte) {
 	switch string(message) {

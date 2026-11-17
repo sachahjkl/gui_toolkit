@@ -24,11 +24,8 @@ import "core:time"
 import cdp "../../src/cdp"
 import toolbox "../../src/toolbox"
 
-SHOTS_PORT        :: 9390
-THEME_SHOTS_PORT  :: 9393
 SHOTS_WIDTH       :: 1400
-@(private = "file") START_TRIES :: 100
-@(private = "file") START_POLL :: 100 * time.Millisecond
+@(private = "file") START_LIMIT :: 10 * time.Second
 @(private = "file") END_LIMIT :: 5 * time.Second
 @(private = "file") IDLE_LIMIT :: 5 * time.Second
 
@@ -149,8 +146,15 @@ screenshots :: proc(root: string, o: Shots_Options) -> string {
 	return ""
 }
 
-// A program of the toolkit with its devtools on `port`, until its client answers. The process is the caller's to end (end_program).
-start_program :: proc(command: []string, port: int, extra_env: []string, dir := "", stderr: ^os.File = nil) -> (p: os.Process, c: cdp.Client, why: string) {
+// A program of the toolkit with its devtools on `port` (0: a free one, so that two tools never drive each other's
+// program), until its client answers. The process is the caller's to end (end_program).
+start_program :: proc(command: []string, extra_env: []string, dir := "", stderr: ^os.File = nil, port := 0) -> (p: os.Process, c: cdp.Client, why: string) {
+	port := port
+	if port == 0 {
+		free, ok := toolbox.free_port()
+		if !ok { return p, c, "no free port for the devtools" }
+		port = free
+	}
 	env := make([dynamic]string, context.temp_allocator)
 	all, _ := os.environ(context.temp_allocator)
 	next: for e in all {
@@ -165,16 +169,15 @@ start_program :: proc(command: []string, port: int, extra_env: []string, dir := 
 	err: os.Error
 	p, err = os.process_start({command = command, env = env[:], working_dir = dir, stderr = stderr})
 	if err != nil { return p, c, fmt.tprintf("%s does not start: %v", command[0], err) }
-	for _ in 0 ..< START_TRIES {
-		connected: bool
-		if c, connected = cdp.connect(port); connected {
-			c.quiet = true
-			if _, ok := cdp.call(&c, "Browser.getVersion"); ok { return p, c, "" }   // (transforms and effects have no box tree)
-			cdp.close(&c)
-		}
-		if state, _ := os.process_wait(p, 0); state.exited { return p, c, fmt.tprintf("%s ended (%d)", filepath.base(command[0]), state.exit_code) }
-		time.sleep(START_POLL)
+	connected: bool
+	ended: os.Process_State
+	if c, connected, ended = cdp.connect_wait(port, START_LIMIT, p); connected {
+		c.quiet = true
+		if _, ok := cdp.call(&c, "Browser.getVersion"); ok { return p, c, "" }   // (transforms and effects have no box tree)
+		cdp.close(&c)
 	}
+	// (an end the wait saw was collected there: its state is the wait's)
+	if ended.exited { return p, c, fmt.tprintf("%s ended (%d)", filepath.base(command[0]), ended.exit_code) }
 	end_program(p)
 	return p, c, fmt.tprintf("%s does not answer on port %d", filepath.base(command[0]), port)
 }
@@ -197,7 +200,7 @@ capture_shot :: proc(root: string, s: Shot, width: int, out_dir := "") -> string
 	command := make([dynamic]string, context.temp_allocator)
 	append(&command, exe)
 	append(&command, ..s.args)
-	p, c, why := start_program(command[:], SHOTS_PORT, {fmt.tprintf("APPDATA=%s", settings), fmt.tprintf("XDG_CONFIG_HOME=%s", settings)}, filepath.dir(exe))
+	p, c, why := start_program(command[:], {fmt.tprintf("APPDATA=%s", settings), fmt.tprintf("XDG_CONFIG_HOME=%s", settings)}, filepath.dir(exe))
 	if why != "" { return why }
 	defer end_program(p)
 	defer cdp.close(&c)
@@ -308,7 +311,7 @@ theme_shots :: proc(root: string, o: Theme_Shots_Options) -> string {
 
 @(private = "file")
 theme_shot :: proc(exe, name: string, o: Theme_Shots_Options) -> string {
-	p, c, why := start_program({exe, "--headless", fmt.tprintf("--page=%s", o.page), fmt.tprintf("--palette=%s", name)}, THEME_SHOTS_PORT, nil)
+	p, c, why := start_program({exe, "--headless", fmt.tprintf("--page=%s", o.page), fmt.tprintf("--palette=%s", name)}, nil)
 	if why != "" { return why }
 	defer end_program(p)
 	defer cdp.close(&c)

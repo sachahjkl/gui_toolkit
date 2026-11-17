@@ -6,8 +6,6 @@ import i18n "../i18n"
 
 // What an executable's file name ends with: nothing.
 @(private) EXE_SUFFIX :: ""
-// What separates a path's folders.
-@(private) SEPARATOR :: "/"
 
 // Why `d` is not a full path to an install folder, "" when it is: absolute, not the root.
 @(private)

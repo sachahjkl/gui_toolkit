@@ -8,6 +8,7 @@ import "core:strings"
 import "core:testing"
 import "../fsx"
 import signing "../signing"
+import testkit "../testkit"
 
 @(private = "file")
 STORE_PRODUCT :: Product{
@@ -32,19 +33,9 @@ issued :: proc(seed_text: string) -> string {
 	return text
 }
 
-// A folder of its own under the temporary one, removed by the caller.
-@(private = "file")
-scratch :: proc(name: string) -> string {
-	dir, _ := filepath.join({fsx.temp_dir(context.temp_allocator), fmt.tprintf("gt-licence-%s-%d", name, os.get_pid())}, context.temp_allocator)
-	_ = fsx.remove_tree(dir)
-	fsx.make_dirs(dir)
-	return dir
-}
-
 @(test)
 store_install_read_remove :: proc(t: ^testing.T) {
-	dir := scratch("file")
-	defer fsx.remove_tree(dir)
+	dir := testkit.temp_folder(t, "licence-file")
 	path, _ := filepath.join({dir, "sub", "licence.samplelicence"}, context.temp_allocator)
 	s := new(Store)
 	defer free(s)
@@ -93,8 +84,7 @@ store_install_read_remove :: proc(t: ^testing.T) {
 
 @(test)
 store_install_file_and_dev :: proc(t: ^testing.T) {
-	dir := scratch("dev")
-	defer fsx.remove_tree(dir)
+	dir := testkit.temp_folder(t, "licence-dev")
 	path, _ := filepath.join({dir, "licence.samplelicence"}, context.temp_allocator)
 	file, _ := filepath.join({dir, "Jeanne.samplelicence"}, context.temp_allocator)
 	s := new(Store)
@@ -122,8 +112,7 @@ store_install_file_and_dev :: proc(t: ^testing.T) {
 
 @(test)
 store_seed_once :: proc(t: ^testing.T) {
-	dir := scratch("seed")
-	defer fsx.remove_tree(dir)
+	dir := testkit.temp_folder(t, "licence-seed")
 	path, _ := filepath.join({dir, "licence.samplelicence"}, context.temp_allocator)
 	key := issued(STORE_RELEASE_SEED)
 	s := new(Store)
@@ -140,8 +129,7 @@ store_seed_once :: proc(t: ^testing.T) {
 	testing.expect(t, !st.stored)
 
 	// a store that holds a licence keeps its own; a seed the store does not accept goes nowhere
-	other_dir := scratch("seed-refused")
-	defer fsx.remove_tree(other_dir)
+	other_dir := testkit.temp_folder(t, "licence-seed-refused")
 	other_path, _ := filepath.join({other_dir, "licence.samplelicence"}, context.temp_allocator)
 	r := new(Store)
 	defer free(r)

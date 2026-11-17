@@ -303,7 +303,9 @@ the_pointer_reaches_a_second_free_window :: proc(t: ^testing.T) {
 			platform.show_window(b)
 			platform.test_show_plain(b)
 			pump_for(b, 300)
+			// (shown again, it is placed anew by the window manager, on X11 as on Wayland: back where the pointer goes)
 			if wayland() { sh("swaymsg -q '[title=\"free b\"]' floating enable, move position 600 60") }
+			if x11() { sh("xdotool windowmove --sync ", window_id(b), " 600 60") }
 			pump_for(b, 300)
 		}
 		seen_a, seen_b: Seen

@@ -30,6 +30,7 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import "core:unicode/utf8"
+import tk_json "../json"
 import "../platform"
 import png "../png"
 import "../render"
@@ -125,7 +126,7 @@ reply :: proc(to: Reply_To, result: string) {
 	if to.session == "" {
 		send_text(to.conn, fmt.tprintf(`{{"id":%d,"result":%s}}`, to.id, result))
 	} else {
-		send_text(to.conn, fmt.tprintf(`{{"id":%d,"sessionId":%s,"result":%s}}`, to.id, json_quote(to.session), result))
+		send_text(to.conn, fmt.tprintf(`{{"id":%d,"sessionId":%s,"result":%s}}`, to.id, tk_json.quote(to.session), result))
 	}
 }
 
@@ -550,7 +551,7 @@ cmd_toolkit :: proc(c: ^Cmd) -> Answer {
 		strings.write_string(sb, `{"layout":[`)
 		for w, i in ui.layout_warnings() {
 			if i > 0 { strings.write_byte(sb, ',') }
-			strings.write_string(sb, json_quote(w))
+			strings.write_string(sb, tk_json.quote(w))
 		}
 		strings.write_string(sb, "]}")
 	case "Toolkit.frames":
@@ -612,7 +613,7 @@ new_session :: proc(srv: ^Server) -> string {
 
 @(private)
 target_info :: proc(srv: ^Server) -> string {
-	return fmt.tprintf(`{{"targetId":"%s","type":"page","title":%s,"url":"toolkit://window","attached":true,"canAccessOpener":false,"browserContextId":"default"}}`, srv.id, json_quote(srv.title))
+	return fmt.tprintf(`{{"targetId":"%s","type":"page","title":%s,"url":"toolkit://window","attached":true,"canAccessOpener":false,"browserContextId":"default"}}`, srv.id, tk_json.quote(srv.title))
 }
 
 @(private)
@@ -626,16 +627,16 @@ event :: proc(c: ^Conn, session, method, params: string) {
 	if session == "" {
 		send_text(c, fmt.tprintf(`{{"method":"%s","params":%s}}`, method, params))
 	} else {
-		send_text(c, fmt.tprintf(`{{"sessionId":%s,"method":"%s","params":%s}}`, json_quote(session), method, params))
+		send_text(c, fmt.tprintf(`{{"sessionId":%s,"method":"%s","params":%s}}`, tk_json.quote(session), method, params))
 	}
 }
 
 @(private)
 error_reply :: proc(to: Reply_To, code: int, msg: string) {
 	if to.session == "" {
-		send_text(to.conn, fmt.tprintf(`{{"id":%d,"error":{{"code":%d,"message":%s}}}}`, to.id, code, json_quote(msg)))
+		send_text(to.conn, fmt.tprintf(`{{"id":%d,"error":{{"code":%d,"message":%s}}}}`, to.id, code, tk_json.quote(msg)))
 	} else {
-		send_text(to.conn, fmt.tprintf(`{{"id":%d,"sessionId":%s,"error":{{"code":%d,"message":%s}}}}`, to.id, json_quote(to.session), code, json_quote(msg)))
+		send_text(to.conn, fmt.tprintf(`{{"id":%d,"sessionId":%s,"error":{{"code":%d,"message":%s}}}}`, to.id, tk_json.quote(to.session), code, tk_json.quote(msg)))
 	}
 }
 
@@ -818,9 +819,9 @@ write_node :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, b: ^ui.Box,
 	if b == nil || !ui.box_current(s, b) { if top { strings.write_string(sb, "null") }; return false }
 	text := ui.box_text(b)
 	d := f32(dpi(srv))
-	fmt.sbprintf(sb, `{{"key":"%x","name":%s,"text":%s,%s`, u64(b.key), json_quote(b.name), json_quote(text), rect_json(b, d))
+	fmt.sbprintf(sb, `{{"key":"%x","name":%s,"text":%s,%s`, u64(b.key), tk_json.quote(b.name), tk_json.quote(text), rect_json(b, d))
 	if b.a11y != nil && b.a11y.role != .Unknown { fmt.sbprintf(sb, `,"role":"%v"`, b.a11y.role) }
-	if b.a11y != nil && b.a11y.name != "" { fmt.sbprintf(sb, `,"label":%s`, json_quote(b.a11y.name)) }
+	if b.a11y != nil && b.a11y.name != "" { fmt.sbprintf(sb, `,"label":%s`, tk_json.quote(b.a11y.name)) }
 	if b.key == ui.focus_key_of(s) { strings.write_string(sb, `,"focused":true`) }
 	if b.key == ui.hot_key_of(s) { strings.write_string(sb, `,"hot":true`) }
 	n := 0
@@ -898,7 +899,7 @@ write_matches :: proc(sb: ^strings.Builder, srv: ^Server, ms: [dynamic]^ui.Box) 
 	for b, i in ms {
 		if i > 0 { strings.write_byte(sb, ',') }
 		d := f32(dpi(srv))
-		fmt.sbprintf(sb, `{{"key":"%x","name":%s,"text":%s,%s}}`, u64(b.key), json_quote(b.name), json_quote(ui.box_text(b)), rect_json(b, d))
+		fmt.sbprintf(sb, `{{"key":"%x","name":%s,"text":%s,%s}}`, u64(b.key), tk_json.quote(b.name), tk_json.quote(ui.box_text(b)), rect_json(b, d))
 	}
 	strings.write_string(sb, "]}")
 }
@@ -983,25 +984,6 @@ str :: proc(v: json.Value) -> string {
 bool_of :: proc(v: json.Value) -> bool {
 	b, _ := v.(json.Boolean)
 	return b
-}
-
-@(private)
-json_quote :: proc(s: string, allocator := context.temp_allocator) -> string {
-	sb := strings.builder_make(allocator)
-	strings.write_byte(&sb, '"')
-	for r in s {
-		switch r {
-		case '"':  strings.write_string(&sb, `\"`)
-		case '\\': strings.write_string(&sb, `\\`)
-		case '\n': strings.write_string(&sb, `\n`)
-		case '\r': strings.write_string(&sb, `\r`)
-		case '\t': strings.write_string(&sb, `\t`)
-		case:
-			if r < 0x20 { fmt.sbprintf(&sb, `\u%04x`, int(r)) } else { strings.write_rune(&sb, r) }
-		}
-	}
-	strings.write_byte(&sb, '"')
-	return strings.to_string(sb)
 }
 
 // A picture read back goes to a thread of its own: even at a high rate, encoding the pixels of a large window is more than

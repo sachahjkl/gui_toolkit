@@ -39,6 +39,8 @@ allocate, take a lock or wait. Copy a snapshot that the program keeps up to date
 when they change).
 
 This package imports neither the log nor the configuration. The program joins them with the two Sources.
+`host.program_start` does it for a program: the log, `install` with its tail, `begin_session`, then `last_report`
+([getting-started.md](getting-started.md), "The start of a program").
 
 - Linux: the handler catches SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT and SIGTRAP on an alternate signal stack of 256 KiB (a
   stack overflow on the main thread is reported). It allocates nothing and writes with system calls only. Every other thread

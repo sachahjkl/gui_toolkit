@@ -181,7 +181,8 @@ Prompt_Options :: struct {
 // Opens the prompt `id` (registered the first time) on `field`. One already open takes these options.
 prompt_open :: proc(id: string, field: ^Line_Edit, o: Prompt_Options, instance := "") {
 	vs := views()
-	if !view_registered(vs, id) { view_register(vs, id, prompt_view, View_Options{width_em = o.width_em}) }
+	// (a question to type is summoned by a key, Rename's F2: quick, views.md 3.4)
+	if !view_registered(vs, id) { view_register(vs, id, prompt_view, View_Options{width_em = o.width_em, quick = true}) }
 	p := new(Prompt_View, vs.allocator)
 	p.field, p.allocator = field, vs.allocator
 	p.o = o

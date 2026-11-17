@@ -84,6 +84,49 @@ p, why := toolbox.sway_program(&s, {"build/papier", "--hidden"}, {"TOOLKIT_DEVTO
 
 `tk desktop_tests wayland` runs the toolkit's desktop tests in this session.
 
+## A program driven by its tool: the program session
+
+A tool's `live`, `shots` or `bench` starts its program on the desktop above, drives its window over the DevTools
+protocol ([cdp.md](cdp.md)), then ends it. `Program_Session` does the whole of it
+([src/md/infrastructure/program-session.md](../src/md/infrastructure/program-session.md) says why each part is so).
+
+- `program_session_start(&s, dir, o)` starts the desktop in `dir` (made anew, `o.desktop`: `Sway_Options`), writes
+  `o.files` (`Program_File{path, text}`, `path` under the session's folder, its folders made), then starts `o.command`
+  with `TOOLKIT_DEVTOOLS` on a free port and `o.env` over the desktop's environment. Its output goes to `o.log`
+  (`""`: `<dir>/<program>.log`). It returns "" when the program runs, else why not. It does not connect: a program may
+  show its window later.
+- `program_session_connect(&s)` connects to the window, tried until it answers, at most `o.wait`
+  (`PROGRAM_START_WAIT`, 60 s). It fails at once when the program ended, and when the program's log says that its
+  DevTools server could not listen (another program took the port first). It returns the client, or why not. Connect
+  as many times as needed (a window hidden and shown again).
+- `program_session_restart(&s)` asks the program to quit and starts it again in the same desktop and folders. It
+  returns the first run's exit code and why the new run did not start.
+- `program_session_stop(&s)` asks the program to quit, waits at most `PROGRAM_END_WAIT` (8 s), then stops the desktop
+  and frees the session. It returns the program's exit code (-1: it was stopped, or it did not run). It is safe after a
+  start that failed.
+- The quit is `o.quit`, a command run in the session (`{"build/papier", "quit"}`); none closes the window over the
+  protocol (`Browser.close`).
+- The session's fields: `dir`, `port`, `env` (the program's whole environment: run a command of the session with
+  `capture(command, {env = s.env})`), `program`, `log`, `started`.
+- `free_port()` gives a port of 127.0.0.1 that no program listens on now. Use it for any program a tool starts with
+  `TOOLKIT_DEVTOOLS`, with or without the desktop. Never a fixed port: a second run cannot listen on it, and its tool
+  then drives the first run's window as its own.
+
+```odin
+s: toolbox.Program_Session
+defer toolbox.program_session_stop(&s)
+if why := toolbox.program_session_start(&s, "build/shots", {
+	command = {"build/papier", "--hidden"},
+	desktop = {config = `for_window [app_id="papier"] floating enable`, homes = true},
+	files   = {{"config/FromentSoftware/Papier/prefs", "wbprefs 1\nappearance.mode\tdark\n"}},
+	quit    = {"build/papier", "quit"},
+}); why != "" { return fail(why) }
+_, _ = toolbox.capture({"build/papier", "show"}, {env = s.env})
+c, why := toolbox.program_session_connect(&s)
+if why != "" { return fail(why) }
+defer cdp.close(&c)
+```
+
 ## Hashes
 
 `sha256_hex(data)` and `sha256_file(path)` give the SHA-256 as 64 lower-case hex digits. `sha256_file` returns ok = false
@@ -134,12 +177,15 @@ a WebP's width from its header (pure).
 ## A program's logo
 
 Each program draws its own logo; `write_logo(logo)` writes what every program makes of it. The program gives
-`render(size, user)`, which draws the logo at that size (a canvas the toolbox frees), and says which files it wants:
+`draw(pixels, size, user)`, which draws the logo `pixels` wide as it must read once shrunk to `size` (a small size drops
+its details; a canvas the toolbox frees). The toolbox draws each size at `draw_size` or more (0: `master`; with neither,
+at its size), by multiples of `LOGO_SHRINK_STEP` (4), then shrinks it by 4 at most at each step, so its edges stay clean
+at 16 px ([logo-files.md](../src/md/infrastructure/logo-files.md)). The program says which files it wants:
 
 - `dir` and `master`: `<dir>/logo.png` at `master` pixels (0: none).
 - `sizes`: `<dir>/logo_<size>.png` each (the desktop entry, the site, the program's window).
 - `ico`: the `.ico` of the Windows executable, with the sizes `ico_sizes` (nil: `ICO_SIZES`, 16 to 256 px). Each size
-  is drawn at its size. The sizes from `ico_png_from` are PNG entries, the ones below are classic DIBs (0: all PNG).
+  is drawn for itself. The sizes from `ico_png_from` are PNG entries, the ones below are classic DIBs (0: all PNG).
 - `project_image`: `PROJECT_IMAGE` (`.project/image.png`, 512 px), the picture of the repository and of opencode's
   sessions of it.
 - `files`: more PNG files, each a `Logo_File` (a path and a size): the site's logo.
@@ -147,9 +193,16 @@ Each program draws its own logo; `write_logo(logo)` writes what every program ma
 It says each file it writes and returns "" when all are written, else the file that is not. Folders are made.
 
 ```odin
-why := toolbox.write_logo({render = logo_render, dir = "assets", master = 1024, sizes = {16, 32, 64, 128, 256},
+detail_for :: proc(size: int) -> int { return size <= 24 ? 0 : size <= 48 ? 1 : 2 }
+logo_draw :: proc(pixels, size: int, _: rawptr) -> paint.Canvas { /* draws at pixels, with detail_for(size) */ }
+
+why := toolbox.write_logo({draw = logo_draw, dir = "assets", master = 1024, sizes = {16, 32, 64, 128, 256},
                            ico = "assets/papier.ico", project_image = true})
 ```
+
+`logo_picture(logo, size) -> paint.Canvas` is one size as `write_logo` makes it (a sheet of the sizes, a test).
+`logo_shrink(big, size) -> paint.Canvas` is the shrink alone: `big` destroyed, the picture `size` square. A logo made
+of layers shrinks each layer with it before it draws the next one over it.
 
 `logo_command(logo) -> Command` is the `logo` command of a project's tool: `write_logo` of `logo` (copied; its slices
 must live as long as the tool).
@@ -343,6 +396,48 @@ if !toolbox.build_native(p) { return "the native parts failed" }
 if !toolbox.run(toolbox.odin_command(p, "build", extra = {"-o:speed", "-out:build/classeur"})) { return "the build failed" }
 ```
 
+## A program's build, test and check
+
+`build_commands(o: Build_Options) -> [3]Command` are a program's `build [release]`, `test [names]` and `check`, the same
+steps in every program ([the intent](../src/md/infrastructure/build-commands.md)). `Build_Options` is the `Project`
+(`using project`) and what the program adds:
+
+| Field | What it is |
+|---|---|
+| `changelog_command` | the project's `changelog.command(project)`: check runs its `check` (the fragments and the roadmap) |
+| `tests` | the `Test_Package`s (`path`, `one_thread`: its tests one after the other, each said as it starts); nil: the program's package |
+| `tool` | the tool's package (`""`: `tools/<name>tool`): checked with `-vet`; in `tests`, tested with no native library |
+| `catalogues` | an `I18n_Catalogues` (`folder` `""`: none): every `<folder>/<language>.txt` checked against the code |
+| `notices` | `THIRD-PARTY-NOTICES` checked up to date |
+| `prepare` | `proc(p: Project) -> bool`, after `build_native`, before an odin build or test: what the program builds itself |
+| `checks` | `[]Build_Check` (`proc(p: Project) -> bool`): the program's own checks, each says why it fails |
+
+Its slices must outlive the tool's commands: package arrays (`@(rodata) TESTS := [?]toolbox.Test_Package{...}`), not a
+literal in the procedure that makes the options.
+
+- `program_build(o, release = false) -> bool`: `build_native`, `prepare`, then the program at `Project.program`,
+  `-debug -o:none` (the fastest build), or `-o:speed` and on Windows `-subsystem:windows` for a release.
+- `program_test(o, names = "") -> bool`: each test package to `build/test_<path>`; `names`
+  (`pkg.test_a,pkg.test_b`): those tests of the program's package alone, in that order, on one thread.
+- `program_check(o) -> bool`: the steps of `check_steps(o, ODIN_OS)` in the order of `Check_Step`: `Changelog`, `Scopes`,
+  `Checks`, `Catalogues`, `Notices`, `Odin_Check`, `Check_Windows` and `Check_Darwin` (from another system),
+  `Tool`, `Tests`, `Release_Build`, `Launcher` (Windows). The first that fails ends it.
+
+A tool's other commands call them (`live` builds with `program_build(build_options())`), and `release.commands` takes
+the check: `check = proc() -> cli.Exit { return toolbox.ended(toolbox.program_check(build_options())) }`.
+
+```odin
+@(rodata) TESTS := [?]toolbox.Test_Package{{path = "src", one_thread = true}}   // (and a package of its own: {path = "src/<name>"})
+@(rodata) CHECKS := [?]toolbox.Build_Check{check_systems}
+
+build_options :: proc() -> toolbox.Build_Options {
+	p := project()
+	return {project = p, changelog_command = changelog.command(p), tests = TESTS[:], catalogues = I18N, checks = CHECKS[:]}
+}
+
+b := toolbox.build_commands(build_options())   // b[0], b[1], b[2]: build, test, check
+```
+
 ## Font subsets
 
 `font_subset(data, codes, allocator)` is a TrueType font (glyf outlines) with only the glyphs of the characters `codes`
@@ -371,6 +466,8 @@ steps ([lucide.md](lucide.md)).
 A build that is slow makes its output once: a stamp beside it holds the hash of what it is made from.
 `stamp_holds(output, stamp, expected)` is true when the output is there and the stamp says `expected` (its line end aside).
 `write_stamp(path, text)` writes one, with this system's line end (`STAMP_NEWLINE`).
+`write_if_changed(path, text) -> bool` is the one writer of a generated file (a stamp too): it makes the file's folder and
+writes nothing when the file holds the text already, so what is built from it keeps its time.
 
 `build_c_lib(name, sources, out, cflags)` builds `<out>/lib<name>.a` from `sources`: each `.c` file compiled by `cc` with
 `cflags`, then `ar`; another file (a header) is hashed only. It does nothing when `<out>/STAMP` says these sources and flags

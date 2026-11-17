@@ -3,6 +3,7 @@ package devtools
 import "core:encoding/json"
 import "core:fmt"
 import "core:strings"
+import tk_json "../json"
 import "../platform"
 import "../ui"
 import "../ascii"
@@ -41,11 +42,11 @@ ax_name_of :: proc(u: ^platform.A11y_Update, i: int) -> string {
 ax_write_node :: proc(sb: ^strings.Builder, srv: ^Server, u: ^platform.A11y_Update, i: int, parent: map[u64]u64) {
 	n := u.nodes[i]
 	role := platform.A11y_Role(n.role)
-	fmt.sbprintf(sb, `{{"nodeId":"%x","ignored":false,"role":{{"type":"role","value":%s}},"name":{{"type":"computedString","value":%s}},"backendDOMNodeId":%d`, n.id, json_quote(ax_role_name(role)), json_quote(ax_name_of(u, i)), dom_id(srv, ui.Key(n.id)))
+	fmt.sbprintf(sb, `{{"nodeId":"%x","ignored":false,"role":{{"type":"role","value":%s}},"name":{{"type":"computedString","value":%s}},"backendDOMNodeId":%d`, n.id, tk_json.quote(ax_role_name(role)), tk_json.quote(ax_name_of(u, i)), dom_id(srv, ui.Key(n.id)))
 	if role != .Label {
-		if v := platform.a11y_node_string(u, i, .Value); v != "" { fmt.sbprintf(sb, `,"value":{{"type":"string","value":%s}}`, json_quote(v)) }
+		if v := platform.a11y_node_string(u, i, .Value); v != "" { fmt.sbprintf(sb, `,"value":{{"type":"string","value":%s}}`, tk_json.quote(v)) }
 	}
-	if d := platform.a11y_node_string(u, i, .Description); d != "" { fmt.sbprintf(sb, `,"description":{{"type":"computedString","value":%s}}`, json_quote(d)) }
+	if d := platform.a11y_node_string(u, i, .Description); d != "" { fmt.sbprintf(sb, `,"description":{{"type":"computedString","value":%s}}`, tk_json.quote(d)) }
 	strings.write_string(sb, `,"properties":[`)
 	count := 0
 	prop :: proc(sb: ^strings.Builder, count: ^int, name, kind, value: string) {
@@ -179,7 +180,7 @@ ax_action :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, p: json.Obje
 	ui.a11y_inject(s, r)
 	platform.wake(srv.win)
 	rec_press(srv, u, node, action, p)
-	fmt.sbprintf(sb, `{{"nodeId":"%x","name":%s}}`, n.id, json_quote(ax_name_of(u, node)))
+	fmt.sbprintf(sb, `{{"nodeId":"%x","name":%s}}`, n.id, tk_json.quote(ax_name_of(u, node)))
 	return ""
 }
 
@@ -190,7 +191,7 @@ ax_audit :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State) {
 	d := f32(dpi(srv))
 	for b, i in ui.a11y_unnamed(s) {
 		if i > 0 { strings.write_byte(sb, ',') }
-		fmt.sbprintf(sb, `{{"key":"%x","name":%s,%s}}`, u64(b.key), json_quote(b.name), rect_json(b, d))
+		fmt.sbprintf(sb, `{{"key":"%x","name":%s,%s}}`, u64(b.key), tk_json.quote(b.name), rect_json(b, d))
 	}
 	strings.write_string(sb, "]}")
 }

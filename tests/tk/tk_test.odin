@@ -35,6 +35,8 @@ the_command_line :: proc(t: ^testing.T) {
 	testing.expect_value(t, line({"ppm_diff", "a.ppm", "b.ppm", "-tolerance:5"}), "")
 	testing.expect_value(t, line({"crash_symbolize", "crash-20261113-170300-1.txt", "build/x-5F00000012345.map"}), "")
 	testing.expect(t, line({"crash_symbolize", "crash-20261113-170300-1.txt"}) != "", "a report and its symbols")
+	testing.expect_value(t, line({"demos", "-out:build/demos"}), "")
+	testing.expect(t, line({"demos", "fidget"}) != "", "demos builds them all, it takes no example")
 	refused := [][]string{
 		{"fetch_fonts"},                       // no such command
 		{"fetch_emoji", "-Unicode"},           // the flags are the lower case ones
@@ -52,6 +54,13 @@ the_command_line :: proc(t: ^testing.T) {
 		testing.expectf(t, c.usage != "" && (c.run != nil || c.run_with != nil), "%s says what it does", c.name)
 		seen[c.name] = true
 	}
+}
+
+// A demo renamed or removed from examples/ fails here, not in the Release workflow after the release is out.
+@(test)
+every_demo_is_an_example :: proc(t: ^testing.T) {
+	examples, demos := tk.EXAMPLES, tk.DEMOS
+	for d in demos { testing.expectf(t, slice.contains(examples[:], d), "the demo %s is not in tk.EXAMPLES", d) }
 }
 
 @(private = "file")

@@ -93,7 +93,7 @@ forward_once :: proc(name, identity: string, message: []byte, timeout_ms: int) -
 // Hands `message` to the owner of `o.name` without trying to become the owner: a pure "ping the running copy". Returns
 // Forwarded (taken), Other_Instance, or Unresponsive (no owner, a different identity refused, or no answer).
 send :: proc(o: Instance_Options, message: []byte) -> Outcome {
-	switch forward_once(o.name, o.identity, message, max(o.wait_ms, FORWARD_MIN_MS)) {
+	switch forward_once(o.name, o.identity, message, max(wait_of(o), FORWARD_MIN_MS)) {
 	case .Accepted:        return .Forwarded
 	case .Other_Instance:  return .Other_Instance
 	case .No_Window, .Refused, .Timeout: return .Unresponsive
@@ -104,7 +104,7 @@ send :: proc(o: Instance_Options, message: []byte) -> Outcome {
 // Takes the name of `o.name` or hands `message` to the copy that has it. Tries for up to `o.wait_ms` while the owner is
 // starting or closing; a silent owner ends the wait at once (it is busy or hung: not worth waiting for).
 acquire :: proc(o: Instance_Options, message: []byte) -> (Outcome, Owner) {
-	deadline := time.tick_add(time.tick_now(), time.Duration(o.wait_ms) * time.Millisecond)
+	deadline := time.tick_add(time.tick_now(), time.Duration(wait_of(o)) * time.Millisecond)
 	for {
 		mutex, existing := claim(o.name)
 		if mutex == nil { return .Unresponsive, {} }   // (no kernel object: carry on as if it was not asked)

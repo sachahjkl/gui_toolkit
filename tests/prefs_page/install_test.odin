@@ -7,6 +7,8 @@ import "core:testing"
 import config "gt:config"
 import prefs_page "gt:prefs_page"
 import setup "gt:setup"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(test)
 the_offer_obeys_the_choice_in_force :: proc(t: ^testing.T) {
@@ -50,3 +52,24 @@ an_uninstall_is_a_choice_to_run_standalone :: proc(t: ^testing.T) {
 	c, _ := prefs_page.choice_after(.Uninstalled, false, setup.CHOICE_INSTALLED, "1.0")
 	testing.expect(t, !setup.wanted({state = .Not_Installed}, "1.0", c), "not offered after an uninstall")
 }
+
+// The vendor's mark is made once, whatever the count of calls (a window that opens again calls it again), and
+// install_end frees it: no program frees it by hand.
+@(test)
+the_vendor_mark_is_made_once_and_freed_by_the_end :: proc(t: ^testing.T) {
+	s := session.start(t, {size = {320, 200}, build = proc(s: ^session.Session) { ui.label("install###install") }})
+	session.frames(s, 1)
+	in_: prefs_page.Install
+	testing.expect(t, !prefs_page.install_vendor_mark(&in_, s.renderer, transmute([]u8)string("not an image")), "other bytes make none")
+	testing.expect(t, in_.vendor_mark == nil, "the name alone")
+	testing.expect(t, prefs_page.install_vendor_mark(&in_, s.renderer, MARK_PNG), "the PNG makes the mark")
+	first, made := in_.vendor_mark.?
+	testing.expect(t, made, "a mark")
+	testing.expect(t, prefs_page.install_vendor_mark(&in_, s.renderer, MARK_PNG), "a second call")
+	again, _ := in_.vendor_mark.?
+	testing.expect_value(t, again.texture, first.texture)   // (the same texture: none made twice)
+	prefs_page.install_end(&in_)
+	testing.expect(t, in_.vendor_mark == nil, "freed by the end")
+}
+
+@(private = "file") MARK_PNG :: #load("../../site/img/logo.png")

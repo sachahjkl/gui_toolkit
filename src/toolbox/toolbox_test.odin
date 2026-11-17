@@ -6,6 +6,7 @@ import "core:path/filepath"
 import "core:strings"
 import "core:testing"
 import "core:time"
+import testkit "../testkit"
 
 @(private = "file") ABC_SHA256 :: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 @(private = "file") EMPTY_SHA256 :: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -23,16 +24,6 @@ shell :: proc(line: string) -> []string {
 	}
 }
 
-// A new empty folder of this test's, under the system's temporary folder.
-@(private = "file")
-temp_folder :: proc(t: ^testing.T, name: string) -> string {
-	base, _ := os.temp_directory(context.temp_allocator)
-	dir, _ := filepath.join({base, fmt.tprintf("tk_toolbox_%s_%d", name, os.get_pid())}, context.temp_allocator)
-	_ = os.remove_all(dir)
-	testing.expect(t, os.make_directory_all(dir) == nil, dir)
-	return dir
-}
-
 @(private = "file")
 file_url :: proc(path: string) -> string {
 	slashes, _ := strings.replace_all(path, "\\", "/", context.temp_allocator)
@@ -43,8 +34,7 @@ file_url :: proc(path: string) -> string {
 sha256_of_bytes_and_of_a_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, sha256_hex(transmute([]byte)string("abc")), ABC_SHA256)
 	testing.expect_value(t, sha256_hex(nil), EMPTY_SHA256)
-	dir := temp_folder(t, "hash")
-	defer os.remove_all(dir)
+	dir := testkit.temp_folder(t, "hash")
 	path := fmt.tprintf("%s/abc.txt", dir)
 	_ = os.write_entire_file(path, transmute([]byte)string("abc"))
 	sum, ok := sha256_file(path)
@@ -105,8 +95,7 @@ a_command_run :: proc(t: ^testing.T) {
 	testing.expect(t, !run({"tk-toolbox-no-such-program"}), "nothing to start")
 	testing.expect(t, !run(nil), "no command")
 
-	dir := temp_folder(t, "run")
-	defer os.remove_all(dir)
+	dir := testkit.temp_folder(t, "run")
 	log := fmt.tprintf("%s/log.txt", dir)
 	_ = os.write_entire_file(log, transmute([]byte)string("before\n"))
 	testing.expect(t, run(shell("echo out && echo err 1>&2"), {log = log, echo = true}))
@@ -127,8 +116,7 @@ a_command_run :: proc(t: ^testing.T) {
 
 @(test)
 a_command_captured :: proc(t: ^testing.T) {
-	dir := temp_folder(t, "capture")
-	defer os.remove_all(dir)
+	dir := testkit.temp_folder(t, "capture")
 	when ODIN_OS == .Windows {
 		line := "echo %TK_TOOLBOX_SEEN%&& cd"
 	} else {
@@ -149,8 +137,7 @@ a_command_captured :: proc(t: ^testing.T) {
 // Offline: a file as pinned is kept, a file: URL is fetched and checked, a file that does not match is refused and removed.
 @(test)
 a_pinned_file :: proc(t: ^testing.T) {
-	dir := temp_folder(t, "pinned")
-	defer os.remove_all(dir)
+	dir := testkit.temp_folder(t, "pinned")
 	have := fmt.tprintf("%s/have.txt", dir)
 	_ = os.write_entire_file(have, transmute([]byte)string("abc"))
 	// as pinned: kept, nothing fetched (the address would not answer)
@@ -192,8 +179,7 @@ a_release_names_its_assets :: proc(t: ^testing.T) {
 // Only a file of a GitHub release goes through the API; anything else is not asked of it (and nothing is written).
 @(test)
 only_a_release_goes_through_the_api :: proc(t: ^testing.T) {
-	dir := temp_folder(t, "api")
-	defer os.remove_all(dir)
+	dir := testkit.temp_folder(t, "api")
 	path := fmt.tprintf("%s/not_a_release.bin", dir)
 	testing.expect(t, !download_through_api("https://example.com/a/b/releases/download/v1/x.zip", path, quiet = true), "another host")
 	testing.expect(t, !download_through_api("https://github.com/owner/repo/archive/refs/tags/v1.zip", path, quiet = true), "not a release's file")

@@ -61,6 +61,20 @@ code point or a cluster), `is_grapheme_boundary`, `grapheme_count`. The arrows, 
 `ui.text_edit`, clicks (`hit_index`), the cut of a toast and the line breaks of `ui.wrap_lines` work on clusters: nothing
 is ever left of a half emoji.
 
+**A text cut to a width** (`ui.elide(f, size, text, width, at = .End)`, intent: `src/md/features/elide.md`): `text` whole
+when it fits in `width` pixels at font `f` and `size` (the same string, no allocation), else cut between clusters with
+`ui.ELLIPSIS` ("…") at its end (`.End`: "A long tit…") or in its middle (`.Middle`: "report-20…final.pdf", the end that
+names the file kept), the spaces beside the cut removed; "" when not even the ellipsis fits. The cut is found by halves
+over the shaped text and cached by text, font, size and width: a list may ask at every frame. A box's own text needs no
+call (a cut `.Draw_Text` box does it, and its ellipsis shows the whole text). A line that must end in the ellipsis
+whatever its width (more text follows) is cut with it already there: `ui.elide(f, size, fmt.tprintf("%s%s", line,
+ui.ELLIPSIS), width)`.
+
+```odin
+st := ui.top_style()
+name := ui.elide(st.font, st.font_size, file_name, room, .Middle)
+```
+
 **A field's keys** (`ui.line_edit_key(f, owner, key, mods)`): what a key does to a `Line_Edit`, as `ui.line_edit` does it (the
 caret by clusters and by words, Shift for the selection, Backspace and Delete with Ctrl for a word, Ctrl+A, the clipboard,
 undo and redo). A field the keyboard reaches another way gives it its keys: the search of a menu opened with

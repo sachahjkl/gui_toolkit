@@ -23,6 +23,7 @@ import "core:slice"
 import "core:strings"
 import "core:time"
 import "../ascii"
+import "../fsx"
 import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
@@ -496,11 +497,11 @@ file_browser_listed :: proc(fb: ^File_Browser, ticket: u64, entries: []File_Entr
 		return
 	}
 	if act && fb.entries[i].kind == .Folder {
-		file_browser_go(fb, file_path_join(fb.folder, name, fb.sep))
+		file_browser_go(fb, fsx.path_join(fb.folder, name, fb.sep))
 		return
 	}
 	if act && fb.kind == .Open {
-		paths := [1]string{file_path_join(fb.folder, name, fb.sep)}
+		paths := [1]string{fsx.path_join(fb.folder, name, fb.sep)}
 		file_browser_finish(fb, .Chosen, paths[:])
 		return
 	}
@@ -640,7 +641,7 @@ file_browser_make :: proc(fb: ^File_Browser) {
 	delete(fb.making_name, a)
 	fb.making_name = strings.clone(name, a)
 	ticket := remote.begin(&fb.making)
-	fb.source.make_folder(&fb.source, file_path_join(fb.folder, name, fb.sep), {state = fb.state, dialog = fb.serial, ticket = ticket, kind = .Make})
+	fb.source.make_folder(&fb.source, fsx.path_join(fb.folder, name, fb.sep), {state = fb.state, dialog = fb.serial, ticket = ticket, kind = .Make})
 }
 
 @(private)
@@ -752,7 +753,7 @@ file_browser_type_filters :: proc(fb: ^File_Browser) -> []platform.File_Filter {
 }
 
 // The entries the rows were made of: the folder's, or the find's (their names: paths relative to the folder). Either
-// joins to the folder by file_path_join.
+// joins to the folder by fsx.path_join.
 @(private)
 file_rows_entries :: proc(fb: ^File_Browser) -> []File_Entry { return fb.made_for.found ? fb.found[:] : fb.entries[:] }
 
@@ -812,13 +813,13 @@ file_browser_act :: proc(fb: ^File_Browser) {
 	case .Open:
 		paths := make([dynamic]string, context.temp_allocator)
 		for i in file_browser_chosen(fb) {
-			if list[i].kind == .File { append(&paths, file_path_join(fb.folder, list[i].name, fb.sep)) }
+			if list[i].kind == .File { append(&paths, fsx.path_join(fb.folder, list[i].name, fb.sep)) }
 		}
 		if len(paths) > 0 { file_browser_finish(fb, .Chosen, paths[:]) }
 	case .Folder:
 		path := fb.folder
 		if chosen := file_browser_chosen(fb); len(chosen) == 1 && list[chosen[0]].kind == .Folder {
-			path = file_path_join(fb.folder, list[chosen[0]].name, fb.sep)
+			path = fsx.path_join(fb.folder, list[chosen[0]].name, fb.sep)
 		}
 		if path != "" {
 			paths := [1]string{strings.clone(path, context.temp_allocator)}
@@ -836,7 +837,7 @@ file_browser_activate :: proc(fb: ^File_Browser, double: bool) {
 	e := file_row_entry(fb, table_selected(&fb.table))
 	if e == nil { return }
 	if e.kind == .Folder {
-		file_browser_go(fb, file_path_join(fb.folder, e.name, fb.sep))
+		file_browser_go(fb, fsx.path_join(fb.folder, e.name, fb.sep))
 		return
 	}
 	switch fb.kind {
@@ -857,16 +858,16 @@ file_browser_save :: proc(fb: ^File_Browser) {
 	has_sep := strings.index_byte(typed, fb.sep) >= 0 || (fb.sep == '\\' && strings.index_byte(typed, '/') >= 0)
 	if !has_sep {
 		if i := file_entry_named(fb, typed); i >= 0 && fb.entries[i].kind == .Folder {
-			file_browser_go(fb, file_path_join(fb.folder, typed, fb.sep))
+			file_browser_go(fb, fsx.path_join(fb.folder, typed, fb.sep))
 			line_edit_set(&fb.name, file_path_name(fb.d.suggested_name, fb.sep))
 			return
 		}
 	}
 	path: string
 	switch {
-	case !has_sep:                           path = file_path_join(fb.folder, typed, fb.sep)
+	case !has_sep:                           path = fsx.path_join(fb.folder, typed, fb.sep)
 	case file_path_root(typed, fb.sep) > 0: path = file_path_clean(typed, fb.sep)
-	case:                                    path = file_path_clean(file_path_join(fb.folder, typed, fb.sep), fb.sep)
+	case:                                    path = file_path_clean(fsx.path_join(fb.folder, typed, fb.sep), fb.sep)
 	}
 	path = file_browser_with_extension(fb, path)
 	name := file_path_name(path, fb.sep)
@@ -910,7 +911,7 @@ file_browser_with_extension :: proc(fb: ^File_Browser, path: string) -> string {
 file_browser_path_typed :: proc(fb: ^File_Browser, typed: string) {
 	text := strings.trim_space(typed)
 	if text == "" { return }
-	if file_path_root(text, fb.sep) == 0 { text = file_path_join(fb.folder, text, fb.sep) }
+	if file_path_root(text, fb.sep) == 0 { text = fsx.path_join(fb.folder, text, fb.sep) }
 	ends := text[len(text) - 1] == fb.sep || text[len(text) - 1] == '/'
 	clean := file_path_clean(text, fb.sep)
 	parent := file_path_parent(clean, fb.sep)
