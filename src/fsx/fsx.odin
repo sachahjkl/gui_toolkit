@@ -34,6 +34,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "../ascii"
 import base "../base"
 
 // The most one system call is asked to read or write: a larger request is split.
@@ -148,20 +149,18 @@ safe_file_name :: proc(name, fallback: string, allocator := context.temp_allocat
 	}
 	out := strings.trim(strings.to_string(b), " .")
 	if out == "" { return strings.clone(fallback, allocator) }
-	// (Windows refuses the names of its devices, whatever their extension and case: "CON", "nul.txt", "COM1")
+	// (Windows refuses the names of its devices, whatever their extension and case: "CON", "nul.txt", "COM1"; ASCII names,
+	// folded by ASCII)
 	stem := out[:strings.index_byte(out, '.') if strings.contains_rune(out, '.') else len(out)]
-	for r in RESERVED_NAMES {
-		if strings.equal_fold(stem, r) { return strings.concatenate({"_", out}, allocator) }
+	reserved := [?]string{
+		"CON", "PRN", "AUX", "NUL",
+		"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+		"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+	}
+	for r in reserved {
+		if ascii.equal_fold(stem, r) { return strings.concatenate({"_", out}, allocator) }
 	}
 	return strings.clone(out, allocator)
-}
-
-// The device names Windows keeps for itself (safe_file_name).
-@(private = "file", rodata)
-RESERVED_NAMES := [?]string{
-	"CON", "PRN", "AUX", "NUL",
-	"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-	"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 }
 
 // Removes a file, or a directory with everything in it, one entry at a time (what a program does when it cleans up
