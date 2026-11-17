@@ -399,6 +399,10 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 				_ = config.set_from_string(prefs, SIDEBAR_PREF, fmt.tprintf("%v", p.nav_em), .User)
 			}
 		}
+		// (.Fits_Width: the body's width is what the sidebar leaves, a split, never its page's (least-width.md); else a
+		// wide row of a page pushed the body past the edge of a dialog the settings are shown in)
+		ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
+		ui.push_parent(ui.build_box({.Fits_Width}, "###prefs_share"))
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if ui.scroll_y("###prefs_scroll") {
 			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
@@ -454,6 +458,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 				ui.space(ui.PAGE_MARGIN)
 			}
 		}
+		ui.pop_parent()   // the body's share
 	}
 }
 

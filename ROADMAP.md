@@ -11,14 +11,11 @@
   `i18n` packages, header parsing, size and duration words, JSON quoters and writer, crash bar and crash marker, command
   line (`gt:cli`), licence, install, diagnostics and update pages and its own updater, syntax colours, changelog and
   release tools. The smallest first; each session has the list with its files.
-- **No black strip under machined buttons on Windows.** With partial redraw on, Windows 11 shows thin black strips just
-  under a row of quiet machined buttons (atelier's Programs step); WebGPU on Linux draws the same scene exactly, so
-  the cause is on the Direct3D 11 window's path. `tests/partial_redraw_layers` holds the scene, which the Windows CI runs.
 
 ## Next
-- **A Windows notification that does not wait.** `platform.notify_async` on Windows calls `notify` on the caller's
-  thread: `ui.announce` from a build then makes WinRT calls on the interface's thread (feuille's test caught it with
-  `TOOLKIT_BLOCKING_CHECK`). It goes to a task, and `done` comes back by a post, as on Linux.
+- **classeur and papier on `install_follow`.** classeur keeps its own `desktop_follow` (and papier its hidden switches)
+  for the settings "In the application menu" and "Start with the session": once each points at the toolkit's commit
+  that has `prefs_page.install_follow`, they drop theirs and pass their announcer to `install_init`.
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).
@@ -65,12 +62,5 @@
 
 ## Maybe
 
-- **OpenGL when Vulkan is missing.** On a Linux machine with OpenGL and no Vulkan driver (an old GPU, some virtual
-  machines), a program would draw through wgpu's GL backend instead of saying that it cannot. wgpu's GL backend needs
-  the display connection (Wayland or X11) when its instance is made, for its EGL context, and wgpu-native's
-  `wgpuCreateInstance` has no field for it: an instance of GL alone has no backend on Linux. Two ways open: wait for
-  wgpu-native to take the display in its instance descriptor, or keep a fork of wgpu-native that does, built by the
-  toolkit (a Rust fork to maintain, for a rare machine). Intent:
-  [src/md/infrastructure/no-graphics.md](src/md/infrastructure/no-graphics.md).
 - **A reduced wgpu-native, only if it comes ready-made.** Studied and declined: WGSL and Vulkan only save about 1 MB for
   a harder build. Revisit only if gfx-rs publishes a reduced build.

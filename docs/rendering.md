@@ -53,11 +53,31 @@ if !render.init_window(&r, w, w.size) {
 | `No_Window` | a device exists but cannot draw into this window |
 | `Failed` | the device, its swap chain or its pipelines failed after the driver answered |
 
-`render.graphics_api()` names the API ("Vulkan", "Direct3D 12", "Direct3D 11"). A machine without a driver never ends the
-process: on WebGPU the adapter is asked for before the window's surface is made, because wgpu-native aborts the process
-when it makes a surface on an instance with no backend. On Direct3D 11 a window falls back to WARP, the software
-rasterizer, when no hardware device can be made. Why: [src/md/infrastructure/no-graphics.md](../src/md/infrastructure/no-graphics.md).
+`render.graphics_api()` names the API ("Vulkan", "Direct3D 12", "Direct3D 11", "OpenGL" when forced). A machine without
+a driver never ends the process: on WebGPU the adapter is asked for before the window's surface is made, because
+wgpu-native aborts the process when it makes a surface on an instance with no backend. On Direct3D 11 a window falls back
+to WARP, the software rasterizer, when no hardware device can be made. Why: [src/md/infrastructure/no-graphics.md](../src/md/infrastructure/no-graphics.md).
 `host.host_open` reports it by itself (getting-started.md).
+
+**OpenGL on Linux.** When Vulkan gives no adapter, the renderer asks wgpu's GL backend for one (EGL on the window's
+Wayland or X11 connection; EGL surfaceless offscreen), and draws the same frames with it. It writes one line on standard
+error: `render: wgpu: Vulkan gives no adapter (...): drawing with OpenGL`. A GL device that lacks what the renderer
+needs (storage buffers in vertex shaders, half-float targets, the limits of its bind groups, a GLSL version whose shaders
+can read storage buffers: the renderer's pipelines are made at start on GL to find out) is refused, and init fails with
+`No_Driver` and both reasons. Vulkan is never left for GL when it gives an adapter. `TOOLKIT_WGPU_BACKEND=gl` in the
+environment forces GL (read once per process), for a test or a machine whose Vulkan driver misbehaves. On GL the window
+presents at the display's rate only (FIFO), opaque, and every frame is composed into the kept target and drawn to the
+surface (a GL surface cannot be copied from). `adapter_info(&r).api` is "OpenGL" for a desktop context (what Mesa gives)
+or "OpenGL ES" for an ES one.
+
+GLSL samples a texture through one sampler only (a `sampler2D` is both), and naga refuses a shader that samples one texture
+through two. The renderer's own WGSL samples one texture through two samplers in one place: an image clamps, or repeats
+for `draw.image_tiled`. On GL the modules that hold `rect.wgsl` get a variant, made by text replacement when the module is
+compiled, where `image` has one sampler of its own beside it in group 1. That sampler is chosen per batch: repeating for
+tiled images, clamping otherwise. `render.image_wrap_splits_batches(&r)` is true there, and `gt:draw` then starts a new
+batch where a draw of the same texture changes from clamped to tiled or back (`Batch.image_wrap`). Elsewhere it is false,
+and batches and shaders are what they were. An application shader (`draw.app_shader`) that samples one of its textures
+through two samplers does not compile on GL: its draws are skipped there, and the process goes on.
 
 The device can be made before the window exists, on a thread of its own: the first device of a process loads the graphics
 driver, the longest step of a renderer's start. The init of the same kind (hardware, or WARP with `warp = true`) takes it,
@@ -100,7 +120,7 @@ Everything else — `frame_begin` / `frame_submit` / `frame_end`, textures, pool
 system; each dispatches to its backend behind `when USE_WGPU`.
 
 `render.adapter_info(&r)` says what draws the frames, for a report of slowness: the adapter's `name`, the graphics `api`
-("Direct3D 11", "Vulkan"), and `software`, true for a software rasterizer (WARP on Windows: DXGI's vendor 0x1414 and device
+("Direct3D 11", "Vulkan", "D3D12", "OpenGL", "OpenGL ES"), and `software`, true for a software rasterizer (WARP on Windows: DXGI's vendor 0x1414 and device
 0x8C; llvmpipe and the like on WebGPU: a CPU adapter). It waits on nothing: WebGPU's names were read when the device was
 made, Direct3D's come from the device's adapter object. The settings' Diagnostics page shows it ([prefs_page.md](prefs_page.md)).
 

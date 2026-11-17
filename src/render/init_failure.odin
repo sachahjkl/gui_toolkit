@@ -23,9 +23,11 @@ Init_Failure :: struct {
 	detail_len: int,
 }
 
-// The graphics API the renderer draws with, as a person knows it.
+// The graphics API the renderer draws with, as a person knows it: the one asked for first (OpenGL only when
+// TOOLKIT_WGPU_BACKEND=gl forces it; as a fallback it is not what a person is told to install).
 graphics_api :: proc() -> string {
 	when USE_WGPU {
+		if wgpu_gl_forced() { return "OpenGL" }
 		return WGPU_BACKEND == "vulkan" ? "Vulkan" : "Direct3D 12"
 	} else {
 		return "Direct3D 11"
@@ -47,18 +49,24 @@ init_failure_text :: proc(r: ^Renderer, allocator := context.allocator) -> strin
 init_failure_sentence :: proc(error: Init_Error, detail: string, allocator := context.allocator) -> string {
 	api := graphics_api()
 	why := detail != "" ? fmt.tprintf(": %s", detail) : ""
+	hint := INSTALL_HINT
+	when USE_WGPU { if wgpu_gl_forced() { hint = INSTALL_HINT_GL } }
 	switch error {
 	case .None:
 		return ""
 	case .No_Driver:
-		return fmt.aprintf("no graphics device this program can draw with (%s)%s. %s", api, why, INSTALL_HINT, allocator = allocator)
+		return fmt.aprintf("no graphics device this program can draw with (%s)%s. %s", api, why, hint, allocator = allocator)
 	case .No_Window:
-		return fmt.aprintf("the graphics device (%s) cannot draw into this window%s. %s", api, why, INSTALL_HINT, allocator = allocator)
+		return fmt.aprintf("the graphics device (%s) cannot draw into this window%s. %s", api, why, hint, allocator = allocator)
 	case .Failed:
-		return fmt.aprintf("the graphics device (%s) failed to start%s. %s", api, why, INSTALL_HINT, allocator = allocator)
+		return fmt.aprintf("the graphics device (%s) failed to start%s. %s", api, why, hint, allocator = allocator)
 	}
 	return ""
 }
+
+// (GL forced by TOOLKIT_WGPU_BACKEND=gl: the person asked for it, and may not have meant to)
+@(private)
+INSTALL_HINT_GL :: "Install your system's EGL and OpenGL driver (the package libegl-mesa0 on Debian and Ubuntu), or unset TOOLKIT_WGPU_BACKEND."
 
 // (what a person does about it differs by system: a package to install on Linux, an update on Windows)
 @(private)

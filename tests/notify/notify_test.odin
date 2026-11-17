@@ -1,7 +1,8 @@
 // System notifications (platform/notify.odin): what every system's code is made of, tested on every system: the
 // arguments of org.freedesktop.Notifications.Notify (read back as a server reads them), the escaping of markup and XML,
 // the image of the image-data hint, the toast's XML and the arguments of its activation. notify_test_linux.odin runs the
-// Linux side against a notification server of its own, on a bus of its own.
+// Linux side against a notification server of its own, on a bus of its own; notify_test_windows.odin runs the Windows
+// side's notification thread with a hook in place of the system.
 //   odin test tests/notify -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package notify_test
 

@@ -355,7 +355,7 @@ replay :: proc(c: ^Context, pic: ^Picture, m: Affine, compare := false) -> Repla
 		tex := bb.gray >= 0 ? glyph_texture(c, int(bb.gray)) : c.atlas
 		image := bb.color >= 0 ? glyph_texture(c, int(bb.color)) : b.image
 		append(&c.batches, render.Batch{
-			clip = {sc.min.x, sc.min.y, sc.max.x, sc.max.y}, tex = tex, image = image,
+			clip = {sc.min.x, sc.min.y, sc.max.x, sc.max.y}, tex = tex, image = image, image_wrap = bb.color < 0 && b.image_wrap,
 			first = base + b.first, count = b.count, target = c.target, replay = idx,
 		})
 	}

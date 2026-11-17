@@ -8,7 +8,7 @@ PowerShell 5.1).
 
 | What | Version | Needed for |
 |---|---|---|
-| Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan (`tools/tk fetch_wgpu`), Rust for the text library (the native text backend, `FONT_BACKEND`'s default off Windows). No macOS backend. |
+| Windows 10 or 11 x64, or Linux x64 | | Windows: Win32, Direct3D 11 by default. Linux: X11 or Wayland, WebGPU over Vulkan, or OpenGL without a Vulkan driver (`tools/tk fetch_wgpu`), Rust for the text library (the native text backend, `FONT_BACKEND`'s default off Windows). No macOS backend. |
 | [Odin](https://github.com/odin-lang/Odin/releases/tag/dev-2026-11) | **`dev-2026-11`** (`odin version` says `dev-2026-11-nightly:9a69916`) | everything. The CI pins this archive by SHA-256 (`.github/actions/setup-odin/action.yml`); another nightly may not build the toolkit |
 | MSVC: Visual Studio 2022 or its Build Tools, workload "Desktop development with C++" (MSVC x64 and a Windows 10/11 SDK) | | Odin links with `link.exe` and finds it by itself (no developer prompt needed); `rc.exe` for an exe icon (`-resource:`) |
 | PowerShell 5.1 or 7 | | the scripts of `tools\` |

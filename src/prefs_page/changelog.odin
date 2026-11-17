@@ -260,15 +260,17 @@ changelog_build :: proc(user: rawptr, em: f32) {
 	}
 }
 
-// The search over the versions and a toggle per kind the changelog has (on: shown), and how many versions are kept.
+// The search over the versions and a toggle per kind the changelog has (on: shown), and how many versions are kept. They
+// flow: on a page narrower than all of them (the settings in a dialog), the toggles and the count go to the next line,
+// each whole; in one row their sum pushed the page past its edge.
 @(private = "file")
 changelog_tools_build :: proc(c: ^Changelog, em: f32) {
-	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
-	if ui.row(.Start, {}, "###whats_new_tools") {
+	gap := math.round(em * ui.CONTROL_GAP)
+	ui.next({width = ui.fill(), height = ui.children_sum()})
+	if ui.flow({gap, gap}, "###whats_new_tools") {
 		// (its height said: left to the program's style, a field could take the whole page and push the versions out of it)
 		ui.next({width = ui.px(math.round(em * 16)), height = ui.px(ui.dense(em * 1.9))})
 		ui.line_edit("###whats_new_search", &c.search, {placeholder = i18n.tr("Search the versions"), clearable = true})
-		ui.space(ui.CONTROL_GAP)
 		for k in Change_Kind {
 			if k not_in c.kinds_in { continue }
 			on := k not_in c.kinds_off
@@ -278,11 +280,16 @@ changelog_tools_build :: proc(c: ^Changelog, em: f32) {
 			o := ui.Button_Options{face = on ? .Toggled : .Ghost, quiet = !on, icon_font = ui.lucide_icons(), icon_color = on ? ui.hue(change_hue(word)) : ui.color("weak text"),
 				tip = on ? fmt.tprintf(i18n.tr("Hide the changes of kind %s"), word) : fmt.tprintf(i18n.tr("Show the changes of kind %s"), word)}
 			if ui.button(fmt.tprintf("###kind_%v", k), word, change_icon(word), o).clicked { c.kinds_off ~= {k} }
-			ui.space(ui.CONTROL_GAP)
 		}
-		ui.spacer(ui.fill())
-		ui.next({height = ui.text_size()})   // (a label's height left to the style was the view's: the row took the page)
-		if ui.tags("weak") { ui.label(fmt.tprintf("%s###whats_new_count", fmt.tprintf(i18n.tr("%d of %d versions"), len(c.shown), len(c.releases)))) }
+		// (a share of what its line leaves, its words its least: at the end of the line its words fit on, whole. A fill()
+		// spacer before it went to a line of its own once the line was full, and took it all)
+		count := fmt.tprintf(i18n.tr("%d of %d versions"), len(c.shown), len(c.releases))
+		if ui.tags("weak") {
+			w := ui.fill()
+			w.least = math.ceil(ui.text_width(ui.top_style().font, em, count) + 2 * ui.top_style().text_pad)
+			ui.next({width = w, height = ui.px(ui.dense(em * 1.9)), text_align = .Right})
+			ui.label(fmt.tprintf("%s###whats_new_count", count))
+		}
 	}
 }
 
@@ -328,16 +335,21 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, s: Changel
 			defer ui.pop_parent()
 			// (ui.card's inset: CARD_PAD on its four sides)
 			ui.space(ui.CARD_PAD)
-			// its head: the version, its day and time, Latest
-			ui.next({width = ui.fill(), height = ui.px(head)})
-			if ui.row(.Center, {}, "###release_head") {
+			// its head: the version, its day and time, Latest. They flow, each whole, a line as tall as the head: on a narrow
+			// page the day goes under the version (the first line stays level with the rail's dot); in one row the three
+			// pushed the page past its edge
+			gap := math.round(em * ui.CONTROL_GAP)
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+			if ui.row(.Start, {}, "###release_head") {
 				ui.space(ui.CARD_PAD)
-				ui.pill("ver", r.version, lucide.TAG, newest ? ui.color("accent") : ui.color("weak text"), {mono = true})
-				ui.space(ui.CONTROL_GAP)
-				if ui.tags("weak") { ui.label(fmt.tprintf("%s###stamp", r.stamp)) }
-				if newest {
-					ui.space(ui.CONTROL_GAP)
-					ui.pill("latest", i18n.tr("Latest"), lucide.ROCKET, ui.hue(.Green))
+				ui.next({width = ui.fill(), height = ui.children_sum()})
+				if ui.flow({gap, 0}, "###release_head_flow") {
+					ui.pill("ver", r.version, lucide.TAG, newest ? ui.color("accent") : ui.color("weak text"), {mono = true})
+					if ui.tags("weak") {
+						ui.next({width = ui.text_size(), height = ui.px(head)})
+						ui.label(fmt.tprintf("%s###stamp", r.stamp))
+					}
+					if newest { ui.pill("latest", i18n.tr("Latest"), lucide.ROCKET, ui.hue(.Green)) }
 				}
 				ui.space(ui.CARD_PAD)   // (the card's inset on the right too: Latest stood against its edge)
 			}

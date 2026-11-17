@@ -88,21 +88,28 @@ wgpu_wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -
 	return wgpu_wait_frame(r, timeout_ms)
 }
 
-// A pass over the whole frame target that only clears it (a frame that drew nothing).
+// A pass over the whole frame target that only clears it (a frame that drew nothing). A surface that cannot be copied
+// from (GL's: wgpu_configure_surface) has the kept target cleared and drawn to it instead, as every frame of it is: the
+// kept target then holds what the window shows, and a capture of this frame has its source (wgpu_frame_end).
 @(private)
 wgpu_clear_frame :: proc(r: ^Renderer) {
 	g := &r.wg
 	g.clear_pending = false
 	if g.frame_rtv == nil { return }
-	enc := wgpu.DeviceCreateCommandEncoder(g.device)
-	att := wgpu.RenderPassColorAttachment{view = g.frame_rtv, depthSlice = wgpu.DEPTH_SLICE_UNDEFINED, loadOp = .Clear, storeOp = .Store, clearValue = g.clear}
-	pass := wgpu.CommandEncoderBeginRenderPass(enc, &{colorAttachmentCount = 1, colorAttachments = &att})
+	through := g.surface != nil && !g.surface_copy && wgpu_damage_ensure_target(r)
+	s := Submit{r = r, enc = wgpu.DeviceCreateCommandEncoder(g.device)}
+	att := wgpu.RenderPassColorAttachment{view = through ? g.damage_view : g.frame_rtv, depthSlice = wgpu.DEPTH_SLICE_UNDEFINED, loadOp = .Clear, storeOp = .Store, clearValue = g.clear}
+	pass := wgpu.CommandEncoderBeginRenderPass(s.enc, &{colorAttachmentCount = 1, colorAttachments = &att})
 	wgpu.RenderPassEncoderEnd(pass)
 	wgpu.RenderPassEncoderRelease(pass)
-	cb := wgpu.CommandEncoderFinish(enc)
+	if through { wgpu_damage_blit_to_surface(r, &s) }   // (sets damage_ready: the kept target is the frame now)
+	cb := wgpu.CommandEncoderFinish(s.enc)
 	wgpu_submit(r, cb)
 	wgpu.CommandBufferRelease(cb)
-	wgpu.CommandEncoderRelease(enc)
+	wgpu.CommandEncoderRelease(s.enc)
+	for bg in s.groups { wgpu.BindGroupRelease(bg) }
+	for v in s.views { wgpu.TextureViewRelease(v) }
+	delete(s.groups); delete(s.views)
 }
 
 ////////////////////////////////
@@ -132,6 +139,7 @@ Submit :: struct {
 	bound_replay: int,
 	bound_pipe: wgpu.RenderPipeline,
 	bound_tex, bound_image, bound_backdrop: Texture,
+	bound_wrap:    bool,               // GL: the sampler of `image` bound with them repeats (Batch.image_wrap)
 	vb_retained, vb_set: bool,
 	replace:    bool,                  // the batch's composite replaces what it read (FLAG_BLEND)
 	slug_ok:    bool,
@@ -371,18 +379,20 @@ walk_bind :: proc(r: ^Renderer, s: ^Submit, f: Frame_Data, b: Batch, rc: [4]i32)
 		wgpu.RenderPassEncoderSetBindGroup(s.pass, 0, s.bg0, offs[:])
 	}
 	s.replace = b.backdrop != 0
-	if b.tex != s.bound_tex || b.image != s.bound_image || b.backdrop != s.bound_backdrop {
-		e1 := [5]wgpu.BindGroupEntry{
+	if b.tex != s.bound_tex || b.image != s.bound_image || b.backdrop != s.bound_backdrop || (g.gl && b.image_wrap != s.bound_wrap) {
+		// (GL: binding 5, the batch's sampler of `image`, repeating for a tiled image: gt:draw keeps the two apart)
+		e1 := [6]wgpu.BindGroupEntry{
 			{binding = 0, textureView = tex_view(r, b.tex, g.dummy_r8_view)},
 			{binding = 1, textureView = tex_view(r, b.image, g.dummy_rgba_view)},
 			{binding = 2, textureView = tex_view(r, b.backdrop, g.dummy_rgba_view)},
 			{binding = 3, textureView = tex_view(r, f.slug_curves, g.dummy_curves_view)},
 			{binding = 4, textureView = tex_view(r, f.slug_bands, g.dummy_bands_view)},
+			{binding = 5, sampler = b.image_wrap ? g.s_wrap : g.s_img},
 		}
-		bg := wgpu.DeviceCreateBindGroup(g.device, &{label = "textures", layout = g.bgl1, entryCount = 5, entries = raw_data(e1[:])})
+		bg := wgpu.DeviceCreateBindGroup(g.device, &{label = "textures", layout = g.bgl1, entryCount = g.gl ? 6 : 5, entries = raw_data(e1[:])})
 		append(&s.groups, bg)
 		wgpu.RenderPassEncoderSetBindGroup(s.pass, 1, bg)
-		s.bound_tex, s.bound_image, s.bound_backdrop = b.tex, b.image, b.backdrop
+		s.bound_tex, s.bound_image, s.bound_backdrop, s.bound_wrap = b.tex, b.image, b.backdrop, b.image_wrap
 	}
 	wgpu.RenderPassEncoderSetScissorRect(s.pass, u32(rc[0]), u32(rc[1]), u32(rc[2] - rc[0]), u32(rc[3] - rc[1]))
 }

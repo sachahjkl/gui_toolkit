@@ -273,7 +273,11 @@ platform/linux_lib.odin xkb process  # a library of the system, loaded once (syn
 platform/linux_lib.odin xkb_once process  # a library of the system, loaded once (sync.Once), then only read
 platform/linux_lib.odin xcb process  # a library of the system, loaded once (sync.Once), then only read
 platform/linux_lib.odin xcb_once process  # a library of the system, loaded once (sync.Once), then only read
+platform/linux_lib.odin xlib process  # a library of the system, loaded once (sync.Once), then only read
+platform/linux_lib.odin xlib_once process  # a library of the system, loaded once (sync.Once), then only read
 platform/notify.odin notify_app const  # what the program is to the notification system, set once at start before the first notification
+platform/notify_windows.odin notify_test_hook process  # a test's hook, set before the calls it answers and cleared after (not locked)
+platform/notify_windows.odin toasts process  # the notification thread and its jobs: every WinRT call of the notifications (locked: Toast_Thread.mutex; started once, sync.Once)
 platform/platform.odin CURSOR_CSS_NAMES const  # a table
 platform/platform.odin input_defaults_set thread  # this thread's input defaults (ui.set_feel): its interface sets them, its windows read them
 platform/platform_linux.odin app_id const  # the program's id on the desktop, set once at start before the first window opens
@@ -385,6 +389,7 @@ render/capture.odin capture_map_held thread  # the capture mapped by this thread
 render/capture.odin srgb_table_bytes const  # a table, made once (srgb_table_once)
 render/capture.odin srgb_table_once process  # the once of a table
 render/damage.odin damage_verify_env.state process  # a switch of the environment, read once (atomic)
+render/wgpu_gl_linux.odin wgpu_gl_forced.state process  # a switch of the environment, read once (atomic)
 render/damage.odin damage_check_frames process  # the damage check's counts over every renderer of the process (atomic)
 render/damage.odin damage_check_partial process  # the damage check's counts over every renderer of the process (atomic)
 render/damage.odin damage_check_differences process  # the damage check's counts over every renderer of the process (atomic)

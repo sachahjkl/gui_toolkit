@@ -27,6 +27,13 @@ USE_WGPU :: RENDER_BACKEND == "wgpu"
 // The backend this program was built with: "d3d11" or "wgpu".
 backend_name :: proc() -> string { return RENDER_BACKEND }
 
+// Whether the images of one batch must all repeat or all clamp (Batch.image_wrap): on wgpu's GL backend, where GLSL
+// samples a texture through one sampler only, so t1's sampler is the batch's. A batch builder (gt:draw) starts a new
+// batch where the mode changes. Elsewhere the shader picks the sampler per instance, and batches stay as they are.
+image_wrap_splits_batches :: proc(r: ^Renderer) -> bool {
+	when USE_WGPU { return r != nil && r.wg.gl } else { return false }
+}
+
 // Opens the renderer on a window from the neutral native handles the platform package fills (platform.Surface_Handles,
 // from platform.native_surface_handles(window)): the HWND on Windows, the Wayland or XCB handles on Linux. An offscreen
 // window has no handles (backend .None): use init_offscreen instead. `transparent`: the window shows through where the

@@ -201,6 +201,7 @@ Batch :: struct {
 	first: int,
 	count: int,
 	image: Texture,       // RGBA texture of the batch's KIND_IMAGE instances (t1), 0 = none
+	image_wrap: bool,     // its images repeat (FLAG_TILE), where image_wrap_splits_batches: t1's one sampler repeats, else clamps
 	target: int,          // 0 = the frame; k > 0 = layers[k - 1] (offscreen, see Layer)
 	backdrop: Texture,    // FLAG_BLEND composites: what the target held under them (t5); the batch does not blend
 	op:    int,           // > 0: not a draw call: Frame_Data.ops[op - 1]

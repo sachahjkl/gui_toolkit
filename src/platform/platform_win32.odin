@@ -609,6 +609,7 @@ poll_events :: proc(w: ^Window, wait: bool, timeout_ms := 0) -> []Event {
 			win.WaitForSingleObject(w.off_event, timeout_ms > 0 ? u32(timeout_ms) : win.INFINITE)
 		}
 		win.WaitForSingleObject(w.off_event, 0)   // (the signal of what is taken here: the next wait is for what comes after)
+		notify_window_message(w)   // (no NOTIFY_MESSAGE without a queue: the notification thread signalled off_event)
 		take_injected(w)
 		return hand_out(w)
 	}
