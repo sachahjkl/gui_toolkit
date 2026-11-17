@@ -841,15 +841,19 @@ Standard_Targets :: struct {
 	// the program's keymap (Standard_Set.Keys): keys.custom and keys.aliases read into it; with standard_watch, its
 	// changes (the palette's recorder and aliases) written back to them
 	keymap:         ^ui.Keymap,
+	// the window whose title bar window.system_title chooses: the system's, or the program's own (integrated, its
+	// ui.title_bar and ui.window_buttons). Where the system cannot draw one (GNOME on Wayland), always the program's.
+	window:         ^platform.Window,
 }
 
 // Applies every standard preference that is registered, at its default too (a program's own defaults are
 // Standard_Defaults.values: they reach the interface as the user's do), to the toolkit's setters (ui.set_feel, set_zoom, set_density,
 // set_rounding, set_animations, set_smooth_scroll, the scroll and autoscroll settings, set_toast_position, the text
 // faces of the families named (ui.use_text_family: loaded on a chore, swapped in when they come); the renderer's and the
-// fonts' when `t` gives them). What is not registered is left as it is. The theme (appearance.theme, mode, finish, glow,
-// font_size) stays the program's to show (appearance_read, ui.theme_show), as do the emoji font, the title bar, the
-// updates and the session (read at the start: Def.restart, or by the program's Updater and desktop.apply).
+// fonts' when `t` gives them; the title bar of `t.window`). What is not registered is left as it is. The theme
+// (appearance.theme, mode, finish, glow, font_size) stays the program's to show (appearance_read, ui.theme_show), as do
+// the emoji font, the updates and the session (read at the start: Def.restart, or by the program's Updater and
+// desktop.apply).
 standard_apply :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets = {}) {
 	ui.set_text_faces(s, t.faces, t.font_source)
 	for e in prefs.entries { standard_apply_one(prefs, s, t, e.def.name) }
@@ -953,6 +957,12 @@ apply_appearance :: proc(prefs: ^config.Prefs, s: ^ui.State, t: Standard_Targets
 		if i, ok := choice_value(prefs, name, ANIMATION_CHOICES[:]); ok { ui.set_animations(s, ui.Animations(i)) }
 	case "window.toast_position":
 		if i, ok := choice_value(prefs, name, TOAST_CHOICES[:]); ok { ui.set_toast_position(s, ui.Toast_Position(i)) }
+	case SYSTEM_TITLE_PREF:
+		if t.window != nil {
+			system := config.bool_of(prefs, name) && platform.system_title_available(t.window)
+			platform.set_integrated_title(t.window, !system)
+			s.anim_busy = true   // (the bar's buttons come or go in the next frame)
+		}
 	}
 }
 

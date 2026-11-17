@@ -5,6 +5,7 @@ package showcase
 // fixed: each node's state is written below, not computed.
 
 import "core:fmt"
+import "core:math"
 import flowgraph "gt:flowgraph"
 import lucide "gt:lucide"
 import "gt:ui"
@@ -168,7 +169,7 @@ graph_apply :: proc(app: ^App, events: []ui.Graph_Event) {
 // The panel of the node selected: its icon and title, its parameters by its kind's schema, then the run in words.
 @(private = "file")
 inspector_build :: proc(app: ^App, em: f32) {
-	ui.next({width = ui.px(em * 19), height = ui.fill(), axis = .Y})
+	ui.next({width = ui.px(em * 19), height = ui.fill(), axis = .Y, gap = ui.Vec2{0, math.round(em * ui.ITEM_GAP)}})
 	if ui.column(id = "###inspector") {
 		n: ^flowgraph.Node
 		if len(app.selected) == 1 { n = flowgraph.graph_node(&app.graph, app.selected[0]) }

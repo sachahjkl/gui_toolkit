@@ -278,7 +278,7 @@ font_picker :: proc(id: string, st: ^Font_Picker, fam: ^Font_Families, value: st
 	// the button
 	shown := value != "" ? value : default_label
 	face := value != "" ? font_families_face(fam, value) : default_face
-	next_default({width = px(math.round(em * FONT_PICKER_WIDTH_EM)), height = px(math.round(dense(em * BUTTON_LINE_EM)))})
+	next_default({width = px(math.round(em * FONT_PICKER_WIDTH_EM)), height = px(math.round(dense(em * CONTROL_HEIGHT_EM))), radius = em * CONTROL_RADIUS_EM})
 	btn: ^Box
 	sig: Signal
 	if tags("button") {
@@ -394,7 +394,7 @@ font_picker_drop :: proc(st: ^Font_Picker, fam: ^Font_Families, drop_id: string,
 			spacer(px(pad))
 			// (a letter typed while the list has the keyboard goes to the field)
 			if st.field_key != 0 && s.focus_key == st.vl.key { type_to_field(st.field_key) }
-			next({width = fill(), height = px(math.round(dense(em * BUTTON_LINE_EM)))})
+			next({width = fill(), height = px(math.round(dense(em * CONTROL_HEIGHT_EM)))})
 			a11y({role = .Editable_Combo_Box, name = o.name != "" ? o.name : i18n.tr("Font"), expanded = true, popup = .Listbox})
 			res := line_edit("###fp_field", &st.field, {placeholder = i18n.tr("Search fonts"), placeholder_focused = true, clearable = true})
 			if st.field_key == 0 { s.focus_key = res.box.key }

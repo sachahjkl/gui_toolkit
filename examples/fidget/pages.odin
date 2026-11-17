@@ -165,11 +165,11 @@ page_controls :: proc(app: ^App) {
 				}
 				// (last of its column: the cards above keep their places, where the tests find them)
 				if ui.card("Tool bars", ICON_PENCIL) {
-					if ui.tags("weak") { ui.label("Wrap: narrow the window, each group moves to the next line whole.") }
+					if ui.tags("weak") { ui.next({height = ui.text_size()}); ui.label("Wrap: narrow the window, each group moves to the next line whole.") }
 					ui.spacer(ui.px(em * 0.3))
 					demo_toolbar(app, "demo_wrap", .Wrap)
 					ui.spacer(ui.px(em * 0.6))
-					if ui.tags("weak") { ui.label("Fold: what does not fit goes into the \"…\" menu, by section.") }
+					if ui.tags("weak") { ui.next({height = ui.text_size()}); ui.label("Fold: what does not fit goes into the \"…\" menu, by section.") }
 					ui.spacer(ui.px(em * 0.3))
 					demo_toolbar(app, "demo_fold", .Fold)
 				}

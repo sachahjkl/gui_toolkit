@@ -922,6 +922,8 @@ range_slider :: proc(id: string, lo_v, hi_v: ^f32, lo, hi: f32, step: f32 = 0, f
 	before := [2]f32{lo_v^, hi_v^}
 	b := build_box({.Clickable}, id)
 	b.cursor = .Hand
+	// (the slider's rule: its track and its value's room are its least, never a knob alone)
+	slider_width(b, format != "")
 	sig := signal(b)
 	room := format != ""
 	k := slider_unit(lo, hi, step)
@@ -1103,11 +1105,22 @@ segmented_width :: proc(labels: []string) -> f32 {
 // Sliding-pill segmented control. Returns true when the selection changed. `tips`: a tooltip per segment, shown when the
 // pointer rests on it ("" or a missing entry: none); a screen reader reads it as the segment's description. `look`
 // .Text: words in a line, as wide as they are. With no width given (next), it is segmented_width wide: no label is cut,
-// in any language; a width given is kept.
+// in any language; a width given is kept. With no width given, a row too narrow for its labels makes it a dropdown of the
+// same choices, at the room the row has (never narrower than the dropdown's own width): its size asks for its labels and
+// gives way to the dropdown's, the layout gives it the room there is, and the next build draws the form that room holds.
+// The size asked is the same in both forms: it never goes from one to the other and back.
 segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string = nil, look := Segmented_Look.Pills) -> (changed: bool) {
 	if look == .Text { return segmented_text(id, labels, selected, tips) }
 	s := gs()
-	if !s.has_next || s.next_mod.width == nil { s.next_mod.width = px(segmented_width(labels)); s.has_next = true }
+	if !s.has_next || s.next_mod.width == nil {
+		natural := segmented_width(labels)
+		s.next_mod.width = Size{kind = .Pixels, value = natural, strictness = 0, least = min(dropdown_width(labels), natural)}
+		s.has_next = true
+		// (the room of the last layout: narrower than the labels, the dropdown)
+		if prev := prev_box(id); prev != nil && prev.last_build + 1 >= s.build_index && prev.rect.max.x - prev.rect.min.x + 0.5 < natural {
+			return dropdown(id, labels, selected)
+		}
+	}
 	em := font_size()
 	t := anim(key_from_string(parent_box().key, fmt.tprintf("%s_t", id)), f32(selected^), SEGMENTED_RATE, f32(selected^))
 	accent := color("accent")
@@ -1397,20 +1410,26 @@ dot_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 @(private = "file") DROPDOWN_LEAD_EM :: 0.8
 @(private = "file") DROPDOWN_ARROW_EM :: 1.8
 
+// The width a dropdown of `items` takes with no width given, in the style in effect: its widest item, its padding, its
+// arrow and its border.
+dropdown_width :: proc(items: []string) -> f32 {
+	em := font_size()
+	st := top_style()
+	widest: f32
+	for it in items { widest = max(widest, text_width(st.font, st.font_size, display_part(it))) }
+	return math.ceil(widest + 2 * st.text_pad + em * (DROPDOWN_LEAD_EM + DROPDOWN_ARROW_EM) + 2 * max(1, math.round(gs().scale)))
+}
+
 // Button showing the current item; opens a menu of `items`. Returns true when the selection changed. Without a width
 // from `next`, it is as wide as its widest item, its padding and its arrow: the style's width (a share of its parent)
 // left nothing in a row as wide as its children, a view's header tools, and it showed as an empty sliver.
 dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool) {
 	em := font_size()
 	s := gs()
-	if !s.has_next || s.next_mod.width == nil {
-		st := top_style()
-		widest: f32
-		for it in items { widest = max(widest, text_width(st.font, st.font_size, display_part(it))) }
-		next_default({width = px(math.ceil(widest + 2 * st.text_pad + em * (DROPDOWN_LEAD_EM + DROPDOWN_ARROW_EM) + 2 * max(1, math.round(s.scale))))})
-	}
+	if !s.has_next || s.next_mod.width == nil { next_default({width = px(dropdown_width(items))}) }
 	menu_id := fmt.tprintf("###dropdown_menu_%x", u64(key_from_string(parent_box().key, id)))
 	open := menu_is_open(menu_id)
+	next_default({radius = em * CONTROL_RADIUS_EM})   // (a button's corners)
 	btn: ^Box
 	sig: Signal
 	if tags("button") {
@@ -1591,7 +1610,7 @@ form_row :: proc(label_text: string) -> bool {
 		lbl.pref[.X].least = math.ceil(lbl.text_dim.x + 2 * lbl.text_pad)
 	}
 	push_style_copy()
-	top_style().pref = {.X = fill(), .Y = px(dense(em * 2.3))}
+	top_style().pref = {.X = fill(), .Y = px(control_height())}
 	return true
 }
 
@@ -1652,7 +1671,7 @@ well_end :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}, pad: f32 = 0
 // Its size comes from `next` (default: 19 ems wide, a field's height).
 search_launcher :: proc(id: string, hint: string, keys := "", tip := "") -> Signal {
 	em := font_size()
-	next_default({width = px(em * 19), height = px(dense(em * 2.1)), radius = em * CONTROL_RADIUS_EM})
+	next_default({width = px(em * 19), height = px(control_height()), radius = em * CONTROL_RADIUS_EM})
 	set_next_axis(.X, .Center)
 	push_tags("input")
 	b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects, .Draw_Focus_Ring, .Sunken}, id)

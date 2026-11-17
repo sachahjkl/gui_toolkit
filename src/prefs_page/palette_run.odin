@@ -304,7 +304,7 @@ run_build :: proc(p: ^ui.Command_Palette, run: ^ui.Palette_Run, query: string, k
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 		if ui.row(id = "###keys_row") {
 			ui.space(ui.INNER_PAD)
-			ui.next({width = ui.px(math.round(em * LIST_EM)), height = ui.px(math.round(em * CONTROL_H_EM))})
+			ui.next({width = ui.px(math.round(em * LIST_EM)), height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM))})
 			if ui.hotkey_field("###keys", &hk) { write = strings.clone(platform.hotkey_text(hk), context.temp_allocator) }
 		}
 	case .Number:
@@ -502,7 +502,7 @@ number_build :: proc(st: ^Run_State, o: Page_Options, e: ^config.Entry, keys: ui
 	if ui.row(.Center, id = "###number_row") {
 		ui.space(ui.INNER_PAD)
 		v := st.held ? st.held_value : f32(stored * scale)
-		ui.next({width = ui.fill(), height = ui.px(math.round(em * CONTROL_H_EM))})
+		ui.next({width = ui.fill(), height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM))})
 		sk := ui.key_from_string(ui.parent_box().key, "###slider")
 		_ = ui.slider("###slider", &v, f32(lo * scale), f32(hi * scale), f32(step), format = "")
 		held := ui.active_key() == sk

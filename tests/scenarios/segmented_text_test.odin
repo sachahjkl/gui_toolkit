@@ -12,6 +12,40 @@ import "gt:ui"
 @(private = "file")
 Words :: struct { sel: int }
 
+@(private = "file")
+Narrow :: struct { sel: int, width: f32 }
+
+// A row too narrow for a segmented control's labels makes it a dropdown of the same choices, at the room the row has; a
+// row that holds them again makes it a segmented control again. The size it asks is the same in both forms: it stays in
+// one form from one frame to the next.
+@(test)
+a_segmented_control_too_wide_for_its_row_is_a_dropdown :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	n := Narrow{sel = 1, width = 1100}
+	s := session.start(t, {size = {1160, 80}, user = &n, build = proc(s: ^session.Session) {
+		n := (^Narrow)(s.user)
+		ui.next({fixed_x = 10, fixed_y = 10, width = ui.px(n.width), height = ui.px(40), axis = .X})
+		if ui.row(id = "###row") {
+			ui.segmented("###kind", {"Plain", "Font family", "Theme", "Colour", "Path", "Address", "Keys"}, &n.sel)
+		}
+	}})
+	session.frames(s, 3)
+	testing.expect(t, session.find(s, "seg0") != nil, "its segments while the row holds them")
+	n.width = 220
+	session.frames(s, 3)
+	kind := session.find(s, "kind")
+	testing.expect(t, session.find(s, "seg0") == nil, "no segment in a row that cannot hold them")
+	if testing.expect(t, kind != nil, "a dropdown in its place") {
+		testing.expectf(t, kind.rect.max.x <= 10 + 220 + 0.5, "within its row: %v", kind.rect)
+		testing.expect(t, kind.a11y != nil && kind.a11y.role == .Combo_Box, "a list to choose from")
+	}
+	session.frames(s, 3)
+	testing.expect(t, session.find(s, "seg0") == nil, "the same form from one frame to the next")
+	n.width = 1100
+	session.frames(s, 3)
+	testing.expect(t, session.find(s, "seg0") != nil, "its segments again when the row holds them")
+	testing.expect_value(t, n.sel, 1)
+}) }
+
 @(test)
 a_segmented_control_in_words :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	w: Words

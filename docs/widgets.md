@@ -25,6 +25,13 @@ for decides how it is laid out:
 | `button(id, icon = g)` | a glyph alone (a tool of a bar, a close cross): one box, its size the style's or `next`'s, a ghost unless told |
 | `button(id, text, icon, {face = .Link})` | words (and a glyph) with no face, weak like a hint, lit under the pointer, as a link |
 
+Every control has one height: `ui.CONTROL_HEIGHT_EM` (2 em) of the font size, `ui.control_height()` in pixels with the
+density. A button, a field, a list to choose from (`dropdown`, the font picker), a number, a segmented control in a form
+row, a tool bar's item: two controls one beside or under the other line up. A row taller than its control (a form's
+row, a settings line) keeps room between two controls. Every control with a face and an edge has the corners of
+`CONTROL_RADIUS_EM`, scaled by the rounding setting (`appearance.rounding`); the showcase's test checks every page for
+a square one.
+
 `Button_Options`:
 
 - **`intent`** (`Intent`: Neutral, Primary, Info, Success, Warning, Danger): what the act means, and so its
@@ -233,6 +240,21 @@ A row `label … spacer(fill()) … buttons` therefore lays out as before when i
 the right edge. The label is cut only when the row truly lacks room for it. A spacer that asks for the whole row
 (`spacer(fill())` at the end of a row of fixed parts) never takes the room of a label.
 
+No child gives up width under the width its content needs (`Box.least_x`, as CSS's `min-width: auto`): wrapped words
+their widest word (a path or an address longer than 8 em may break), a box of its own size what its strictness keeps, a
+row the sum of its children's, a column the widest. A card whose row of fields is wider than its share of the page
+stays as wide as the row, and the overflow goes up to the view that scrolls. A box that scrolls along X, lets its
+children overflow or has `.Fits_Width` (a tool bar that folds what does not fit) asks nothing of its parent for what is
+in it. Design: [src/md/features/least-width.md](../src/md/features/least-width.md).
+
+A row or a column puts its `gap` (`next({gap = ...})`) between two children along its axis, as CSS's `gap`: a stack of
+cards takes `gap = {0, em * ui.ITEM_GAP}` instead of a spacer between each two.
+
+In a `flow`, a child sized as a share of the width (`fill()`, `pct`, `fill_least`) is a column: a line takes as many as
+fit at the width their content needs (at least their own `least`), then they split the rest of the line by their
+values. Two columns of cards `{kind = .Percent, value = 1, least = em * 24}` stand side by side when the page holds
+both, one under the other when it does not. A column starts at the top of its line; a button is centred in it.
+
 A grid of equal columns gives each cell `pct(1.0 / columns)` and puts its part of the gaps inside the cell (column `c`
 of `n`: `c / n` of a gap before, `(n - 1 - c) / n` after). Every cell then has the same width, the cells of a last row
 that is not full too. `prefs_page.theme_cards` is built so.
@@ -241,8 +263,8 @@ that is not full too. `prefs_page.theme_cards` is built so.
 
 A row whose children are wider together than it, once what may shrink did (its `fill()` spacers and shares, what has a
 strictness under 1), does not let them spill past its edge to be cut: the words of a `.Text_Wrap` box of a text width
-(a button's) wrap onto more lines (`wrap_room`: down to `WRAP_LEAST_EM` of its font size; a text that is never cut,
-`.No_Text_Trunc`, down to its widest word, `widest_word_cached`), and the box holding them grows taller. The same in a column narrower than a child, and in a `.Wrap` row (`flow`) for an item wider than the row on its
+(a button's) wrap onto more lines (`wrap_room`: down to its widest word, `widest_word_cached`; never between the
+letters of a word of a sentence), and the box holding them grows taller. The same in a column narrower than a child, and in a `.Wrap` row (`flow`) for an item wider than the row on its
 own. A box that scrolls or lets its children overflow gives nothing: they fit already. `natural_width(b)` is the width a
 box asks for before any layout (its words on one line, its children's): what a dialog and a popover measure to grow to
 what is in them.
@@ -382,7 +404,13 @@ field holds the colour's text (the palette's run mode: the text said once).
 on to the next lines, the row as tall as they are, the box or the switch on the first line.
 
 `dropdown(id, items, &selected)` takes the width `next` gives it; without one, it is as wide as its widest item, its
-padding and its arrow, so a header's tools or any row as wide as its children shows it whole.
+padding and its arrow (`dropdown_width(items)`), so a header's tools or any row as wide as its children shows it whole.
+
+A `segmented` control with no width from `next` asks for its labels' width and gives way down to a dropdown's. In a row
+that cannot hold its labels it is a dropdown of the same choices, at the room the row has; when the row holds them
+again it is a segmented control again. The size it asks is the same in both forms, so it stays in one form from one
+frame to the next. Seven kinds of value in a narrow window, or the five finishes on a narrow themes page, need no choice
+of the program's.
 
 A group of choices, `segmented` (pills or words), `tabs` and the `radio` buttons of one `selected`, is one Tab stop: the
 chosen one. While it has the

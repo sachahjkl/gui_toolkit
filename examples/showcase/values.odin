@@ -8,6 +8,7 @@ package showcase
 //   build/showcase --scene=values --value=duration --unit=s --open   its unit by its symbol; its control opened
 
 import "core:fmt"
+import "core:math"
 import "core:strings"
 import config "gt:config"
 import lucide "gt:lucide"
@@ -84,8 +85,10 @@ values_build :: proc(app: ^App, em: f32) {
 	v := &app.values
 	heading("Values", "A setting says what its value is: a family, a theme, a colour, a size, a time. The control comes from that, in one table: no program draws one for a name. Choose a value; the settings page's line for it is under the choice.", em)
 	if ui.card("The value", lucide.SLIDERS_HORIZONTAL) {
-		values_choice(v)
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y, gap = ui.Vec2{0, math.round(em * ui.SPACE_2)}})
+		if ui.column(id = "###choices") { values_choice(v) }
 	}
+	ui.space(ui.ITEM_GAP)
 	name := values_name(v)
 	values_register(v, name)
 	e := config.entry(&v.prefs, config.ref_of(&v.prefs, name))
@@ -110,7 +113,8 @@ values_build :: proc(app: ^App, em: f32) {
 // The choice: the storage, the kinds it keeps, a measure's unit, a text's closed list.
 @(private = "file")
 values_choice :: proc(v: ^Values) {
-	if ui.form_row("Stored as") {
+	// (a segmented control that its row cannot hold becomes a dropdown by itself: seven kinds of value in a narrow window)
+	if choice_row("Stored as") {
 		at := 0
 		for s, i in STORAGES { if s == v.storage { at = i } }
 		if ui.segmented("###storage", STORAGE_WORDS[:], &at) {
@@ -129,20 +133,37 @@ values_choice :: proc(v: ^Values) {
 		append(&kinds, k)
 		append(&words, KIND_WORDS[k])
 	}
-	if ui.form_row("Value kind") {
+	if choice_row("Value kind") {
 		if ui.segmented("###kind", words[:], &at) { v.kind, v.unit, v.list = kinds[at], 0, .None }
 	}
 	if units := config.KIND_UNITS[v.kind]; len(units) > 1 {
 		symbols := make([]string, len(units), context.temp_allocator)
 		for u, i in units { symbols[i] = config.UNITS[u].symbol }
-		if ui.form_row("Unit") { ui.segmented("###unit", symbols, &v.unit) }
+		if choice_row("Unit") { ui.segmented("###unit", symbols, &v.unit) }
 	}
 	if v.storage == .String && v.kind == .Plain {
 		list := int(v.list)
-		if ui.form_row("Closed list") {
+		if choice_row("Closed list") {
 			if ui.segmented("###list", LIST_WORDS[:], &list) { v.list = Values_List(list) }
 		}
 	}
+}
+
+// `if choice_row("Unit") { control }`: a choice laid out as the settings page's line under it, so the two cards align:
+// its name at the left, its control at the right edge, as wide as it is.
+@(private = "file", require_results, deferred_none = ui.pop_parent)
+choice_row :: proc(name: string) -> bool {
+	em := ui.font_size()
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center, gap = ui.Vec2{math.round(em * ui.ITEM_GAP), 0}})
+	ui.push_parent(ui.build_box({}, fmt.tprintf("###choice_%s", name)))
+	if ui.tags("weak") {
+		ui.next({width = ui.fill(), height = ui.px(math.round(em * 2.5)), text_pad = 0})
+		// (a name is never cut: its words on one line are its least, the row goes on growing past them)
+		b := ui.label(fmt.tprintf("%s###name", name)).box
+		b.pref[.X].least = math.ceil(b.text_dim.x)
+	}
+	ui.next({height = ui.px(ui.control_height())})
+	return true
 }
 
 // The preference of the combination chosen (a test finds its line by it: "set_" and this name).

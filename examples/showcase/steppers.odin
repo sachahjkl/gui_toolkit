@@ -17,17 +17,12 @@ Install :: struct {
 
 steppers_build :: proc(app: ^App, em: f32) {
 	heading("Steppers", "ui.stepper shows the stages of a long work, each pending, under way, done, failed or skipped. A change animates: the arc turns, the disc pops and its check draws itself, the connector fills. The program gives the states; the words go below, above or beside, in the colours it wants.", em)
-	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-	if ui.row(id = "###steppers_columns") {
-		ui.next({width = ui.pct(0.6), height = ui.children_sum(), axis = .Y})
-		if ui.column(id = "###left") { installer_card(em) }
-		ui.spacer(ui.px(em))
-		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
-		if ui.column(id = "###right") {
-			release_card(em)
-			forms_card(em)
-		}
+	left :: proc(app: ^App, em: f32) { installer_card(em) }
+	right :: proc(app: ^App, em: f32) {
+		release_card(em)
+		forms_card(em)
 	}
+	columns(app, "###steppers_columns", em, left, right, {1.5, 1})
 }
 
 @(private = "file")

@@ -71,10 +71,11 @@ tool_packages :: proc(root: string) -> []Tool {
 	return out[:]
 }
 
-// The flags of a tool's check: no entry point (some tools are packages), and its defines.
-tool_check_flags :: proc(name: string) -> []string {
+// The flags of a tool's check: no entry point (some tools are packages), the collection gt (a tool that films an example
+// imports it as a program does), and its defines.
+tool_check_flags :: proc(name, root: string) -> []string {
 	flags := make([dynamic]string, context.temp_allocator)
-	append(&flags, "-no-entry-point")
+	append(&flags, "-no-entry-point", gt_collection(root))
 	for d in TOOL_DEFINES { if d[0] == name { append(&flags, d[1]) } }
 	return flags[:]
 }
@@ -150,7 +151,7 @@ run_ci :: proc(args: []string) -> string {
 		if !t.windows_only || ODIN_OS == .Windows {
 			cmd := make([dynamic]string, context.temp_allocator)
 			append(&cmd, "odin", "check", path, "-vet")
-			append(&cmd, ..tool_check_flags(t.name))
+			append(&cmd, ..tool_check_flags(t.name, root))
 			if toolbox.run(cmd[:]) {
 				fmt.printfln("check ok   tools/%s", t.name)
 			} else {
@@ -159,7 +160,7 @@ run_ci :: proc(args: []string) -> string {
 			}
 		}
 		when ODIN_OS != .Windows {
-			if toolbox.odin_check(path, "windows_amd64", tool_check_flags(t.name), join({root, toolbox.CHECK_ROOT_DEFAULT})) {
+			if toolbox.odin_check(path, "windows_amd64", tool_check_flags(t.name, root), join({root, toolbox.CHECK_ROOT_DEFAULT})) {
 				fmt.printfln("check ok   tools/%s (windows)", t.name)
 			} else {
 				fmt.printfln("check FAIL tools/%s (windows)", t.name)

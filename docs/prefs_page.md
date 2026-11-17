@@ -102,8 +102,12 @@ What the program applies itself:
 
 - the theme (`appearance.theme`, `mode`, `finish`, `glow`, `font_size`): `appearance_read`, `appearance_choice`,
   `ui.theme_show`. After a change of `appearance.text.blend_space`, show the theme again with `render.blend_space(r)`;
-- the emoji font (`appearance.text.emoji_font`), `appearance.text.page_size`,
-  `window.system_title` and `update.base_url`: read at the start (`Def.restart`: "Takes effect at the next start");
+- the emoji font (`appearance.text.emoji_font`), `appearance.text.page_size` and `update.base_url`: read at the start
+  (`Def.restart`: "Takes effect at the next start");
+- `window.system_title` with no `Standard_Targets.window`. With it, `standard_apply` and `standard_watch` give that
+  window the system's title bar or the program's own (`platform.set_integrated_title`) at once, the program's where the
+  system cannot draw one (`platform.system_title_available`). The program's bar is its `ui.title_bar` with
+  `ui.window_buttons` at its end: they show only while the title bar is the program's;
 - `update.channel`: at once, by `update.set_channel` on the program's Updater ([update.md](update.md), "Channels");
 - `general.language`: `language_start(prefs, catalogues)` at the start, which then switches the language at once at each
   change of it ([i18n.md](i18n.md), "Changing the language");

@@ -270,6 +270,57 @@ a_window_hides_and_comes_back :: proc(t: ^testing.T) {
 	}
 }
 
+// A window with its own title bar, floating where `at` says (sway's criteria by its title; X11: moved there).
+@(private = "file")
+open_free :: proc(title: string, at: [2]int) -> ^platform.Window {
+	w := platform.open_window(title, {300, 200}, integrated_title = true)
+	if w == nil { return nil }
+	platform.show_window(w)
+	platform.test_show_plain(w)
+	pump_for(w, 300)
+	if wayland() { sh("swaymsg -q '[title=\"", title, "\"]' floating enable, move position ", at.x, " ", at.y) }
+	if x11() { sh("xdotool windowmove --sync ", window_id(w), " ", at.x, " ", at.y) }
+	pump_for(w, 300)
+	return w
+}
+
+// The pointer comes over a second window with its own title bar, beside a first one: shown, then hidden and shown again
+// (an editor kept for the next picture). Each time the second hears it.
+@(test)
+the_pointer_reaches_a_second_free_window :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	a := open_free("free a", {40, 60})
+	b := open_free("free b", {600, 60})
+	testing.expect(t, a != nil && b != nil, "both open")
+	if a == nil || b == nil { return }
+	defer platform.destroy_window(a)
+	defer platform.destroy_window(b)
+	for round in 0 ..< 2 {
+		if round == 1 {
+			platform.hide_window(b)
+			pump_for(b, 300)
+			platform.show_window(b)
+			platform.test_show_plain(b)
+			pump_for(b, 300)
+			if wayland() { sh("swaymsg -q '[title=\"free b\"]' floating enable, move position 600 60") }
+			pump_for(b, 300)
+		}
+		seen_a, seen_b: Seen
+		// (into a, then into b: the second enters from the first)
+		if wayland() {
+			sh("swaymsg -q seat seat0 cursor set 150 150; sleep 0.3; swaymsg -q seat seat0 cursor set 160 160; sleep 0.3; swaymsg -q seat seat0 cursor set 700 150; sleep 0.3; swaymsg -q seat seat0 cursor set 710 160 &")
+		} else {
+			sh("xdotool mousemove 150 150 sleep 0.3 mousemove 700 150 sleep 0.3 mousemove 710 160 &")
+		}
+		pump_for(a, 700, &seen_a)
+		ok := wait_kind(b, &seen_b, .Mouse_Move, 3000)
+		testing.expectf(t, ok, "round %d: the second window hears the pointer", round)
+		delete(seen_a.events)
+		delete(seen_b.events)
+	}
+}
+
 // How long the host's loop is watched at rest, and the wakes it may have in that time (the last wait's end included).
 // A loop that does not sleep wakes hundreds to thousands of times; the CI's desktop sends late events of its own,
 // whose number varies from run to run (6, 7 and 16 were seen there; 1 on a desktop, run after run). The bound is the

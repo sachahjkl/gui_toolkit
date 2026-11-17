@@ -40,6 +40,9 @@ Node_Graph_Frame :: struct {
 	sel:      map[u64]bool,            // the selected nodes
 	events:   [dynamic]Graph_Event,
 	sc, em:   f32,                     // the interface's scale; its em in graph units
+	// a move let go in this frame: the program applies its Graph_Moved after the build, so until then its nodes are
+	// drawn where they were let go (drawn back at their old place, they would jump there and back)
+	landed:   Maybe(Graph_Gesture_Move),
 }
 
 // What is under a point of the area.
@@ -98,27 +101,26 @@ node_graph_local :: proc(f: ^Node_Graph_Frame, p: [2]f32) -> [2]f32 {
 	return (f.view.offset + p * graph_zoom(f.view)) * f.sc
 }
 
-// Whether node `i` follows the pointer now (a move gesture past its threshold).
+// The move whose nodes are drawn away from their place: the one in progress past its threshold, else the one let go in
+// this frame.
 @(private)
-node_graph_moving :: proc(f: ^Node_Graph_Frame, i: int) -> bool {
-	m, ok := f.view.gesture.(Graph_Gesture_Move)
-	if !ok || !m.moved { return false }
-	id := f.nodes[i].id
-	return id == m.node || (!m.alone && f.sel[id])
+node_graph_shift :: proc(f: ^Node_Graph_Frame) -> (m: Graph_Gesture_Move, ok: bool) {
+	m, ok = f.view.gesture.(Graph_Gesture_Move)
+	if !ok { m, ok = f.landed.? }
+	return m, ok && m.moved
 }
 
 @(private)
 node_graph_shapes :: proc(f: ^Node_Graph_Frame) {
 	if f.geo == nil { f.geo = make([]Node_Graph_Geometry, len(f.nodes), context.temp_allocator) }
 	detail := graph_zoom(f.view) >= GRAPH_DETAIL_ZOOM
-	delta: [2]f32
-	if m, ok := f.view.gesture.(Graph_Gesture_Move); ok { delta = m.delta }
+	m, shifted := node_graph_shift(f)
 	for &n, i in f.nodes {
 		body := detail && f.o.body != nil ? node_graph_body_height(f.view, n.id) : 0
 		f.geo[i] = node_graph_geometry(&n, f.em, body, detail)
-		if node_graph_moving(f, i) {
-			f.geo[i].rect.min += delta
-			f.geo[i].rect.max += delta
+		if shifted && (n.id == m.node || (!m.alone && f.sel[n.id])) {
+			f.geo[i].rect.min += m.delta
+			f.geo[i].rect.max += m.delta
 		}
 	}
 }
@@ -461,6 +463,7 @@ node_graph_follow :: proc(f: ^Node_Graph_Frame, s: ^State, sig: Signal) {
 		if held { break }
 		if g.moved && g.delta != {} {
 			append(&f.events, Graph_Moved{nodes = node_graph_moved_ids(f, g), delta = g.delta})
+			f.landed = g
 		} else if !g.moved && g.collapse {
 			one := make([]u64, 1, context.temp_allocator)
 			one[0] = g.node

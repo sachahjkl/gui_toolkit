@@ -43,7 +43,7 @@ settings_open :: proc(app: ^App, page: string, advanced: bool) {
 	d.finish = ui.FINISH_NAMES[app.choice.finish]
 	prefs_page.standard_register(&app.prefs, prefs_page.STANDARD_ALL, d)
 	config.register(&app.prefs, SHOWCASE_DEFS[:])
-	prefs_page.standard_watch(&app.watch, &app.prefs, &app.main.state, {renderer = &app.shared.r, fonts = &app.shared.fonts})
+	prefs_page.standard_watch(&app.watch, &app.prefs, &app.main.state, {renderer = &app.shared.r, fonts = &app.shared.fonts, window = app.main.win})
 	prefs_page.themes_file_init(&app.themes_file, THEMES_FILE, app.themes[:])
 	if page != "" {
 		app.page.current = strings.clone(page)
