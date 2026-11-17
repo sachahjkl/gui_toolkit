@@ -303,6 +303,12 @@ the results become `Notify_*` events of the icon. Same public API as `tray_win32
 `desktop-entry`, `urgency` and `image-data` hints; `ActionInvoked`, `NotificationClosed` and `ActivationToken` become
 `Notification_*` events of the window ([notifications.md](notifications.md)).
 
+`notify_windows.odin` shows **toast notifications** through the Windows Runtime. Every WinRT call of the notifications
+runs on one notification thread of the process (multithreaded apartment), which owns the notifiers and the toasts. The
+window's thread gives it jobs and gives the ids. The answer of `notify_async` and the toasts' `Activated`, `Dismissed`
+and `Failed` events come back in one queue: `NOTIFY_MESSAGE` to the window, and `done` and the `Notification_*` events
+are made on the window's thread.
+
 ### Dialogs, shell and live theme
 
 `portal_linux.odin` adds the **XDG portals**: `org.freedesktop.portal.FileChooser` (OpenFile / SaveFile / a folder,
