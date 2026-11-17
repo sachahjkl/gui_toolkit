@@ -25,9 +25,9 @@
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).
-- **Every program on the spacing scale.** Papier, classeur, inspecteur and cliche lay out with the scale's roles and
-  steps. Atelier (its own scale in `view.odin`), opencode native and Wren stop keeping values or scales of their own.
-  Intent: [src/md/features/spacing.md](src/md/features/spacing.md).
+- **Every program on the spacing scale.** Atelier (its own scale in `view.odin`), opencode native and Wren stop
+  keeping values or scales of their own, as papier, classeur, inspecteur and cliche already do. Intent:
+  [src/md/features/spacing.md](src/md/features/spacing.md).
 - **Wren answers --quit.** As papier, classeur, inspecteur, cliche and opencode native do, it gives
   `Setup_Options.quit` and takes `instance.MESSAGE_QUIT` in its handler: atelier then closes it cleanly before it
   installs it, in place of ending its process. Intent: [src/md/features/quit.md](src/md/features/quit.md).
