@@ -93,18 +93,19 @@ every_page_fits_its_window_and_rounds_its_controls :: proc(t: ^testing.T) {
 			if scene == .Settings || scene == .Views || scene == .Graph { continue }   // (their own layouts: a settings page, panels, a canvas)
 			app.scene = scene
 			session.frames(s, 4)
-			content := session.get(s, "content")
-			check_fits(t, content, w, scene)
+			// (from the root: a page wider than the window is cut by the window's edge)
+			check_fits(t, s.state.root, w, scene)
 			check_rounded(t, s.state.root, w, scene)
 		}
 	}
 }
 
 // Each child within its parent along X, from `b` down; what may pass its parent's edge is not looked into: a view that
-// scrolls along X, a box that lets its children overflow or fits them itself, what floats.
+// scrolls along X, a box that lets its children overflow, what floats. (A box that fits its children itself, a folding
+// tool bar, is looked into: what it keeps must fit.)
 @(private = "file")
 check_fits :: proc(t: ^testing.T, b: ^ui.Box, w: int, scene: showcase.Scene) {
-	if b.flags & {.View_Scroll_X, .Allow_Overflow_X, .Fits_Width} != {} { return }
+	if b.flags & {.View_Scroll_X, .Allow_Overflow_X} != {} { return }
 	for c := b.first; c != nil; c = c.next {
 		if .Floating_X in c.flags { continue }
 		over := c.rect.max.x - b.rect.max.x

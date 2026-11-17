@@ -495,6 +495,10 @@ pixels := render.read_pixels(&r)                    // RGBA8, sRGB, top-down
 render.destroy(&r)                                  // releases every GPU object
 ```
 
+`render.read_pixels_bgra(&r)` gives the same pixels in B, G, R, A order: an 8-bit frame's texels as the card stores
+them, with no copy and no pass over them. A film writes them to its encoder as they come (`ffmpeg -pix_fmt bgr0`,
+[film.md](film.md)).
+
 `tests/layers` uses it to check group opacity against direct drawing pixel by pixel; `tests/effects` checks every
 filter and blend mode against the formulas of the specifications on flat colors, the blur's energy, symmetry and
 gaussian profile, the antialiased coverage of ellipse and polygon clips, backdrops, and target reuse;

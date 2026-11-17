@@ -116,10 +116,13 @@ top_bar :: proc(app: ^App, em: f32) {
 			ui.label("gui_toolkit###brand")
 			ui.spacer(ui.px(em * 0.5))
 			if ui.tags("weak") {
-				ui.next({width = ui.text_size(), height = ui.pct(1), text_pad = 0})
+				// (a narrow window cuts it first: the window's buttons at the bar's end stay)
+				ui.next({width = ui.text_size(0, 0), height = ui.pct(1), text_pad = 0})
 				ui.label(fmt.tprintf("showcase  ·  %s###what", ui.VERSION))
 			}
 			ui.spacer(ui.fill())
+			// (19 em, down to 10 when the window narrows)
+			ui.next({width = {kind = .Pixels, value = math.round(em * 19), strictness = 0, least = math.round(em * 10)}})
 			if ui.search_launcher("###search", "Search the commands", "Ctrl+K", tip = "The command palette").clicked {
 				palette_show(app)
 			}
@@ -259,10 +262,20 @@ palette_chosen :: proc(app: ^App) {
 	c, ok := ui.palette_chosen(&app.palette)
 	if !ok { return }
 	i, is := ui.palette_chosen_command(&app.palette, c)
-	if !is || len(c.arguments) == 0 { return }
+	if !is { return }
+	// (what the look's commands do, the others say it: a palette whose commands do nothing shows nothing)
 	switch COMMANDS[i].id {
-	case "picture.rename":    ui.announce(&app.announcer, .Good, fmt.tprintf("Renamed to %s", c.arguments[0]))
-	case "picture.export_as": ui.announce(&app.announcer, .Good, fmt.tprintf("Exported as harbour-at-dusk.%s", c.arguments[0]))
+	case "picture.rename":    if len(c.arguments) > 0 { ui.announce(&app.announcer, .Good, fmt.tprintf("Renamed to %s", c.arguments[0])) }
+	case "picture.export_as": if len(c.arguments) > 0 { ui.announce(&app.announcer, .Good, fmt.tprintf("Exported as harbour-at-dusk.%s", c.arguments[0])) }
+	case "theme.next":
+		at := 0
+		for t, k in app.themes { if t.name == app.choice.name { at = k } }
+		app.choice.name = app.themes[(at + 1) % len(app.themes)].name
+	case "theme.mode":        app.choice.mode = app.shown.light ? .Dark : .Light
+	case "finish.machined":   app.choice.finish = .Machined
+	case "settings":          app.scene = .Settings
+	case "zoom.in", "zoom.out", "graph.fit", "shortcuts", "theme.file", "window.new", "open", "save", "export":
+		ui.announce(&app.announcer, .Info, COMMANDS[i].label)
 	}
 }
 

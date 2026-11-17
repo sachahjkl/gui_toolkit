@@ -105,6 +105,20 @@ read_pixels :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
 	return out
 }
 
+// The offscreen image as read_pixels gives it, but in B, G, R, A order: an 8-bit frame's texels as the card stores them,
+// with no copy and no pass over them (a film writes them to its encoder as they come). A half-float frame is encoded as
+// read_pixels encodes it. nil: not offscreen.
+read_pixels_bgra :: proc(r: ^Renderer, allocator := context.allocator) -> []u8 {
+	raw := read_frame_raw(r, allocator)
+	if raw == nil || !frame_is_half(r) { return raw }
+	defer delete(raw, allocator)
+	n := r.size.x * r.size.y
+	out := make([]u8, n * 4, allocator)
+	half_texels_to_rgba8(out, raw, n, r.space)
+	for i in 0 ..< n { out[i * 4], out[i * 4 + 2] = out[i * 4 + 2], out[i * 4] }
+	return out
+}
+
 // The offscreen image's values as they are stored: RGBA, four f32 a pixel, premultiplied. A half-float frame: its halves,
 // unclamped (a value past [0, 1], an infinity or a NaN is kept); an 8-bit frame: its bytes / 255. nil: not offscreen.
 read_pixels_float :: proc(r: ^Renderer, allocator := context.allocator) -> [][4]f32 {

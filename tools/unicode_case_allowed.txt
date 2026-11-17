@@ -36,8 +36,8 @@ src/instance/instance.odin when PATHS_FOLD_CASE { p = strings.to_lower(p  # a Wi
 src/instance/instance.odin return strings.equal_fold(x, y)  # Windows paths (identities are often paths; the file system folds by Unicode)
 src/platform/dialogs.odin strings.equal_fold(name[len(name) - len(ext):], ext)  # a file name against a dialog's filter, as the system's dialog matches it
 src/platform/dialogs.odin } else if strings.equal_fold(p, name) {  # a file name against a dialog's filter, as the system's dialog matches it
-src/testkit/session/input.odin strings.to_lower(text, s.ctx.temp_allocator)  # user text: the text of a box a test looks for, as the interface shows it
-src/testkit/session/input.odin strings.contains(strings.to_lower(ui.box_text(b)  # user text: the text of a box a test looks for
+src/ui/box_find.odin lower := strings.to_lower(text  # user text: the words of a box a film or a test looks for, as the interface shows them
+src/ui/box_find.odin strings.contains(strings.to_lower(box_text(b)  # user text: the text of a box a film or a test looks for
 tools/tk/main.odin !strings.equal_fold(fi.name, name)  # a file name on Windows (the file system folds by Unicode)
 src/ui/find.odin n0 = unicode.to_lower(n0)  # user text: find in page
 src/ui/find.odin if unicode.to_lower(r) == n0 {  # user text: find in page

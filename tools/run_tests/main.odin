@@ -197,6 +197,7 @@ STEPS := []Step{
 	// real windows, hidden, on the runner's own desktop
 	{name = "window"},
 	{name = "host", one = true, oses = EVERYWHERE, text = true},   // (Linux: its windows without a screen; those of the system are host_test_windows.odin's)
+	{name = "film", one = true, oses = EVERYWHERE, text = true},   // (a headless window filmed; with no ffmpeg on the PATH, no film is made)
 	// (Linux: a child in a headless sway whose Vulkan has no driver, sway from the flake; Windows: render's faults refuse
 	// the Direct3D 11 devices)
 	{name = "no_graphics", oses = Oses{.Linux, .Windows}, text = true, defines = {"TOOLKIT_RENDER_FAULTS=true"}},

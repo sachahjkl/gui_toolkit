@@ -22,10 +22,8 @@ INSERT_MENU :: "insert_menu"
 toolbar_build :: proc(app: ^App, em: f32) {
 	heading("Tool bars", "One tool bar, declared once: its groups, tools and controls. Too narrow, it wraps onto more lines, each group whole (above), or folds what does not fit into its \"…\" menu, a section per group (below).", em)
 	// (the wrapping bar first: the "…" menu opens down, over what stands under the folding bar)
-	// (BAR_WIDTH_EM, or the page's width when it is narrower: its last layout's)
-	width := math.round(em * BAR_WIDTH_EM)
-	if page := ui.parent_box().rect; page.max.x > page.min.x { width = min(width, page.max.x - page.min.x) }
-	ui.next({width = ui.px(width), height = ui.children_sum(), axis = .Y})
+	// (BAR_WIDTH_EM, giving way to a narrower page down to what its bars need: the wrapping bar's widest group)
+	ui.next({width = ui.px(math.round(em * BAR_WIDTH_EM), 0), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = "###bars") {
 		bar_caption("Wrap, centred: the bar takes more lines, each one centred", em)
 		editor_bar(app, "editor_wrap", .Wrap, .Center, em)

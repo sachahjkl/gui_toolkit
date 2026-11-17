@@ -142,29 +142,12 @@ type_slowly :: proc(s: ^Session, text: string) {
 // The box with this name (the part of its id after ###), nil when there is none. `index`: the nth of them, in the order of the tree.
 // `within`: only under that box (a row of a page whose rows share their parts' names).
 find :: proc(s: ^Session, name: string, index := 0, within: ^ui.Box = nil) -> ^ui.Box {
-	found := 0
-	return walk_find(s.state, within != nil ? within : s.state.root, name, "", index, &found)
+	return ui.box_find(s.state, name, "", index, within)
 }
 
-// The box that shows this text (letter case does not count), the innermost first of the tree. nil: none.
+// The box that shows this text (letter case does not count), the outermost first of the tree. nil: none.
 find_text :: proc(s: ^Session, text: string, index := 0) -> ^ui.Box {
-	found := 0
-	return walk_find(s.state, s.state.root, "", strings.to_lower(text, s.ctx.temp_allocator), index, &found)
-}
-
-@(private)
-walk_find :: proc(state: ^ui.State, b: ^ui.Box, name, ltext: string, index: int, found: ^int) -> ^ui.Box {
-	if b == nil || !ui.box_current(state, b) { return nil }
-	ok := name == "" || b.name == name
-	if ok && ltext != "" { ok = strings.contains(strings.to_lower(ui.box_text(b), context.temp_allocator), ltext) }
-	if ok && (name != "" || ltext != "") && b.rect.max.x > b.rect.min.x {
-		if found^ == index { return b }
-		found^ += 1
-	}
-	for c := b.first; c != nil; c = c.next {
-		if r := walk_find(state, c, name, ltext, index, found); r != nil { return r }
-	}
-	return nil
+	return ui.box_find(s.state, "", text, index)
 }
 
 // The box with this name (`within`: under that box): none ends the test.

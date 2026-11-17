@@ -453,7 +453,8 @@ themes_build :: proc(app: ^App, em: f32) {
 // `if look_group("Finish", em) { control }`: a part of the look, its name then its control, one item of the look's flow.
 @(private = "file", require_results, deferred_none = ui.pop_parent)
 look_group :: proc(name: string, em: f32) -> bool {
-	ui.next({width = ui.children_sum(), height = ui.children_sum(), axis = .X, cross = .Center, gap = ui.Vec2{math.round(em * ui.SPACE_3), 0}})
+	// (it gives way down to what it holds needs: a segmented control in it becomes a dropdown on a narrow page)
+	ui.next({width = ui.children_sum(0), height = ui.children_sum(), axis = .X, cross = .Center, gap = ui.Vec2{math.round(em * ui.SPACE_3), 0}})
 	ui.push_parent(ui.build_box({}, fmt.tprintf("###look_%s", name)))
 	if ui.tags("weak") {
 		ui.next({width = ui.text_size(), height = ui.px(ui.control_height()), text_pad = 0})

@@ -404,7 +404,13 @@ field holds the colour's text (the palette's run mode: the text said once).
 on to the next lines, the row as tall as they are, the box or the switch on the first line.
 
 `dropdown(id, items, &selected)` takes the width `next` gives it; without one, it is as wide as its widest item, its
-padding and its arrow, so a header's tools or any row as wide as its children shows it whole.
+padding and its arrow (`dropdown_width(items)`), so a header's tools or any row as wide as its children shows it whole.
+
+A `segmented` control with no width from `next` asks for its labels' width and gives way down to a dropdown's. In a row
+that cannot hold its labels it is a dropdown of the same choices, at the room the row has; when the row holds them
+again it is a segmented control again. The size it asks is the same in both forms, so it stays in one form from one
+frame to the next. Seven kinds of value in a narrow window, or the five finishes on a narrow themes page, need no choice
+of the program's.
 
 A group of choices, `segmented` (pills or words), `tabs` and the `radio` buttons of one `selected`, is one Tab stop: the
 chosen one. While it has the
