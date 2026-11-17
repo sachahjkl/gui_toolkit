@@ -68,15 +68,7 @@ emit_plane :: proc(c: ^Context, pl: Plane_Layer, m: Mat4, alpha: f32, o: Plane_D
 		colors = {{1, 1, 1, al}, {taps, f32(ncuts), pl.mips ? 1 : 0, 0}, {0, 0, w, h}, {0, 0, w, h}},
 		soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, xform = first, clip = shape, flags = flags,
 	}
-	b := &c.batches[len(c.batches) - 1]
-	if b.image != pl.img.tex {
-		if b.image != 0 && len(c.insts) > b.first {
-			close_batch(c)
-			start_batch(c)
-			b = &c.batches[len(c.batches) - 1]
-		}
-		b.image = pl.img.tex
-	}
+	image_batch(c, pl.img.tex, false)
 	append(&c.insts, inst)
 }
 

@@ -252,6 +252,14 @@ through wgpu's platform surface descriptors:
 - Wayland: `wgpu.SurfaceSourceWaylandSurface{ display = wl_display, surface = wl_surface }`.
 - X11 (XCB): `wgpu.SurfaceSourceXCBWindow{ connection = xcb_connection, window = xcb_window }`.
 
+When Vulkan has no adapter (no driver: an old graphics card, some virtual machines), the renderer draws with OpenGL
+through wgpu's GL backend, whose EGL display is made for the window's `wl_display`, or on X11 for an Xlib connection of
+its own (wgpu's EGL code takes no XCB connection; libX11 is loaded on this path only, and the window is drawn through
+it by its id: `platform.xlib_display_open()` gives that connection and its default screen, or why not;
+`platform.xlib_display_close(display)` ends it). `TOOLKIT_WGPU_BACKEND=gl` in the environment forces it. An offscreen renderer uses EGL
+surfaceless. See [rendering.md](rendering.md) and
+[src/md/infrastructure/no-graphics.md](../src/md/infrastructure/no-graphics.md).
+
 The platform package exposes these handles for the renderer through `native_surface_handles(w)`; `render.init` takes a neutral handle instead of a `win.HWND` so the same call opens the renderer on
 every system. The present mode (`Vsync`: wgpu's Fifo; `Tearing`: its Immediate, where the surface offers it), resize, DPI and capture (`src/render/capture.odin`) are the
 same code as the Windows wgpu path (`wgpu_surface.odin`), which the Linux surface slots into.

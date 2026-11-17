@@ -11,6 +11,7 @@ package linux_desktop_test
 import "base:runtime"
 import "core:c/libc"
 import "core:fmt"
+import "core:log"
 import "core:os"
 import "core:strings"
 import "core:sync"
@@ -419,6 +420,78 @@ the_first_window_closes_and_the_renderer_stays :: proc(t: ^testing.T) {
 	delete(pixels)
 	host.host_close(second)
 	testing.expect(t, sh.main == nil, "the last close ends what is shared")
+}
+
+@(private = "file") GL_CHILD_ENV :: "GT_DESKTOP_GL_CHILD"
+@(private = "file") GL_CHILD_LIMIT :: 60 * time.Second
+@(private = "file") GL_EXIT_DREW :: 3
+@(private = "file") GL_EXIT_NO_WINDOW :: 1
+
+// The child of a_window_draws_with_opengl_es: a host's window on wgpu's GL backend (TOOLKIT_WGPU_BACKEND=gl, read once
+// for the process: hence a process of its own), its red frame presented and read back.
+@(init, private = "file")
+gl_child :: proc "contextless" () {
+	context = runtime.default_context()
+	if _, is_child := os.lookup_env(GL_CHILD_ENV, context.temp_allocator); !is_child { return }
+	sh: host.Shared
+	h: host.Host
+	if !host.host_open(&h, &sh, {title = "opengl es", size = {320, 200}}, proc(h: ^host.Host, size: host.Vec2) {}) {
+		fmt.printfln("open_error: %s", host.open_error(&h))
+		os.exit(GL_EXIT_NO_WINDOW)
+	}
+	fmt.printfln("api: %s", render.adapter_info(&sh.r).api)
+	h.background = {1, 0, 0, 1}
+	host.host_show(&h)
+	_ = render.capture_request(&sh.r)
+	pixels: []u8
+	status := render.Capture_Status.Pending
+	// (a bounded wait for the copy: frames, then polls, never a fixed delay)
+	for i := 0; i < 200 && status == .Pending; i += 1 {
+		h.settle = max(h.settle, 1)
+		host.host_frame(&h)
+		pump_for(h.win, 10)
+		pixels, _, status = render.capture_poll(&sh.r)
+	}
+	red := len(pixels) >= 4 && pixels[0] > 200 && pixels[1] < 50 && pixels[2] < 50
+	fmt.printfln("capture: %v, %s, presents %d", status, red ? "red" : "not red", sh.r.present.presents)
+	host.host_close(&h)
+	os.exit(GL_EXIT_DREW)
+}
+
+// TOOLKIT_WGPU_BACKEND=gl on this desktop's server (X11: EGL on the XCB connection; Wayland: on the wl_display): the
+// window opens on OpenGL and presents its frame, which a capture reads back from the target it was composed into.
+// Where the system has no EGL, the log says the test drew nothing.
+@(test)
+a_window_draws_with_opengl_es :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	r, w, perr := os.pipe()
+	if !testing.expect(t, perr == nil, "a pipe") { return }
+	env := make([dynamic]string, context.temp_allocator)
+	if all, err := os.environ(context.temp_allocator); err == nil { append(&env, ..all) }
+	append(&env, GL_CHILD_ENV + "=1", "TOOLKIT_WGPU_BACKEND=gl")
+	// (Mesa's EGL vendor alone, where the dev shell names it: NVIDIA's, glvnd's first choice on a machine with that card,
+	// gives wgpu a GLSL 330 context, which it refuses; a machine without Vulkan has Mesa's)
+	if mesa := os.get_env("TOOLKIT_TEST_MESA_EGL", context.temp_allocator); mesa != "" {
+		append(&env, fmt.tprintf("__EGL_VENDOR_LIBRARY_FILENAMES=%s", mesa))
+	}
+	// (what the child writes, a few lines, fits in the pipe's buffer: it is read once the child has ended)
+	p, err := os.process_start({command = {os.args[0]}, env = env[:], stdout = w, stderr = w})
+	os.close(w)
+	if !testing.expect(t, err == nil, "the child starts") { os.close(r); return }
+	state, werr := os.process_wait(p, GL_CHILD_LIMIT)
+	if werr != nil { _ = os.process_kill(p) }
+	data, _ := os.read_entire_file(r, context.temp_allocator)
+	os.close(r)
+	out := string(data)
+	// (a GL adapter that exists and is refused, "OpenGL has ...", is a failure: only no EGL at all is a skip)
+	if werr == nil && state.exited && state.exit_code == GL_EXIT_NO_WINDOW && strings.contains(out, "no graphics device") && !strings.contains(out, "OpenGL has") {
+		log.warnf("SKIPPED (%s): no OpenGL on this system (EGL), the GL window was not drawn:\n%s", desktop(), out)
+		return
+	}
+	testing.expectf(t, werr == nil && state.exited && state.exit_code == GL_EXIT_DREW, "%s: the child draws (exit %d): %v\n%s", desktop(), GL_EXIT_DREW, state, out)
+	testing.expectf(t, strings.contains(out, "api: OpenGL"), "%s: on OpenGL:\n%s", desktop(), out)
+	testing.expectf(t, strings.contains(out, "capture: Ready, red"), "%s: its red frame is presented and read back:\n%s", desktop(), out)
+	testing.expectf(t, !strings.contains(out, "presents 0"), "%s: a frame was presented:\n%s", desktop(), out)
 }
 
 // A host's window with its renderer, hidden and shown again between frames, several times: no frame waits for a screen

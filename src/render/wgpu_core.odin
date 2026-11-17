@@ -81,6 +81,9 @@ Wgpu_Device :: struct {
 	queue:    wgpu.Queue,
 	surface:  wgpu.Surface,
 	panel:    ^Panel,
+	gl:       bool,     // (Wgpu_State's: what the instance is, and the display it presents to)
+	gl_display: rawptr,
+	gl_xlib:  rawptr,
 }
 
 // What is one window's among the wgpu objects: Wgpu_State has the one drawn to, a Surface one set aside (Window_Target
@@ -132,6 +135,13 @@ Wgpu_State :: struct {
 	can_timestamp: bool,                 // TimestampQuery (+ inside encoders)
 	can_norm16:    bool,                 // TextureFormat16bitNorm: R16Unorm / RG16Unorm planes (10-bit video, wgpu_video.odin)
 	fxc:           bool,                 // Direct3D 12 compiles the shaders with FXC (slow: seconds for the first frame's pipelines)
+	gl:            bool,                 // the instance is wgpu's GL backend (wgpu_gl_linux.odin): Vulkan gave no adapter, or TOOLKIT_WGPU_BACKEND=gl
+	gl_display:    rawptr,               // the display connection its EGL display was made for (nil: surfaceless, no window)
+	gl_xlib:       rawptr,               // X11: the Xlib Display of its own its EGL display was made from (closed after the instance)
+	gl_vulkan_why: [INIT_DETAIL_BYTES]u8, // Vulkan's refusal before GL was tried (empty: GL forced): the first half of a GL refusal's detail
+	gl_vulkan_why_len: int,
+	gl_errors:     int,                  // the device's error count at the last submit (wgpu_submit, on GL)
+	surface_copy:  bool,                 // the surface's textures can be copied from (GL's cannot: a frame is composed into the kept target)
 	// shaders, layouts, pipelines
 	module_rect, module_fx, module_mip, module_slug, module_slug_dual: wgpu.ShaderModule,
 	can_dual: bool,   // the device has dual-source blending
@@ -197,6 +207,17 @@ wgpu_lost_poll :: proc(r: ^Renderer) {
 wgpu_submit :: proc(r: ^Renderer, cb: wgpu.CommandBuffer) -> bool {
 	wgpu_lost_poll(r)
 	if r.lost { return false }
+	// GL: a pipeline made later than wgpu_gl_pipelines (an application shader, a filter of another format) that the
+	// driver refuses invalidates the commands that use it, and QueueSubmit ends the process on invalid commands. wgpu
+	// reports the error to uncaptured_error during the call that made it, so an error since the last submit skips this
+	// one: the frame is lost, the process is not. (Vulkan keeps its behaviour: its errors are the renderer's bugs.)
+	if r.wg.gl && r.wg.shared != nil {
+		errors := sync.atomic_load(&r.wg.shared.errors)
+		if errors != r.wg.gl_errors {
+			r.wg.gl_errors = errors
+			return false
+		}
+	}
 	wgpu.QueueSubmit(r.wg.queue, {cb})
 	return true
 }
@@ -216,8 +237,15 @@ Request :: struct {
 	device:  wgpu.Device,
 	done:    bool,
 	ok:      bool,
+	backend: string,                  // wgpu's name of the backend asked for, whose clause the reason is ("vulkan", "gl")
 	why:     [INIT_DETAIL_BYTES]u8,   // a refusal's reason (the callback's message lives only during the callback)
 	why_len: int,
+}
+
+// A request's reason, else `none`.
+@(private)
+request_why :: proc(req: ^Request, none: string) -> string {
+	return req.why_len > 0 ? string(req.why[:req.why_len]) : none
 }
 
 // wgpu's clause about the backend asked for, from a refused adapter request's message: "No suitable graphics adapter
@@ -257,50 +285,118 @@ wait_request :: proc(g: ^Wgpu_State, req: ^Request) -> bool {
 // DirectComposition; wgpu_surface_linux.odin: Wayland / XCB). The renderer's device, present, resize and capture are the
 // same code afterwards, whatever made the surface.
 // Never on an instance that has given no adapter: wgpuInstanceCreateSurface ends the process when the instance has no
-// backend (no-graphics.md), and an adapter is the proof that it has one.
+// backend (no-graphics.md), and an adapter is the proof that it has one. Nor on a GL instance made for another display
+// connection (or for none): its EGL display cannot present to this window.
 @(private)
 wgpu_make_surface :: proc(r: ^Renderer, h: platform.Surface_Handles) -> wgpu.Surface {
 	if h.backend == .None || r.wg.instance == nil || r.wg.adapter == nil { return nil }
+	if r.wg.gl && h.display != r.wg.gl_display { return nil }
 	return wgpu_surface_from_handles(r, h)
 }
 
+// `display`: the window whose display connection a GL instance is made for (the window's own handles, or those of a
+// recovery that makes no surface yet); {}: none, an offscreen renderer.
 @(private)
-wgpu_create_device :: proc(r: ^Renderer, surface: platform.Surface_Handles, fallback: bool) -> bool {
-	Job :: struct { r: ^Renderer, surface: platform.Surface_Handles, fallback, ok: bool }
+wgpu_create_device :: proc(r: ^Renderer, surface: platform.Surface_Handles, fallback: bool, display := platform.Surface_Handles{}) -> bool {
+	Job :: struct { r: ^Renderer, surface, display: platform.Surface_Handles, fallback, ok: bool }
 	if r.wg.shared == nil { r.wg.shared = new(Wgpu_Shared) }   // with the caller's allocator (a thread's default one differs under a tracking allocator)
-	job := Job{r, surface, fallback, false}
+	job := Job{r, surface, surface.backend != .None ? surface : display, fallback, false}
 	t0 := time.tick_now()
 	defer r.wg.t_device = time.duration_milliseconds(time.tick_since(t0))
 	th := thread.create_and_start_with_data(&job, proc(data: rawptr) {
 		j := (^Job)(data)
-		j.ok = wgpu_create_device_here(j.r, j.surface, j.fallback)
+		j.ok = wgpu_create_device_here(j.r, j.surface, j.fallback, j.display)
 	})
 	thread.join(th)
 	thread.destroy(th)
 	return job.ok
 }
 
+// The instance and its adapter, Vulkan (or Direct3D 12) first. Linux: when that gives none, or TOOLKIT_WGPU_BACKEND=gl,
+// an instance of wgpu's GL backend for the display of `display` (no-graphics.md, "The GL fallback"). Never GL when
+// Vulkan gave an adapter: Vulkan draws everything the renderer has, GL only most of it. Vulkan's refusal, when GL was
+// tried after it, is kept (Wgpu_State.gl_vulkan_why): it is the sentence's, the driver a person is told to install.
 @(private)
-wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles, fallback: bool) -> bool {
+wgpu_open_adapter :: proc(r: ^Renderer, req: ^Request, fallback: bool, display: platform.Surface_Handles) -> bool {
 	g := &r.wg
-	dxc_path := WGPU_DX12_COMPILER != "fxc" ? find_dxc() : ""
+	forced := wgpu_gl_forced()
+	if !forced && wgpu_open_instance(g, req, false, {}, fallback) { return true }
+	if !WGPU_GL_FALLBACK { return init_fail(r, .No_Driver, request_why(req, "no adapter")) }
+	vulkan := forced ? "" : request_why(req, "no adapter")
+	g.gl_vulkan_why_len = copy(g.gl_vulkan_why[:], vulkan)
+	if !forced && g.instance != nil { wgpu.InstanceRelease(g.instance); g.instance = nil }
+	req^ = {}
+	// X11: an Xlib connection of the GL instance's own (wgpu-hal's EGL takes an Xlib display only; XCB is a todo!() there)
+	xlib: rawptr
+	screen: i32
+	when WGPU_GL_FALLBACK {
+		if display.backend == .X11 {
+			why: string
+			xlib, screen, why = platform.xlib_display_open()
+			if xlib == nil {
+				buf: [INIT_DETAIL_BYTES]u8
+				return wgpu_gl_refuse(r, fmt.bprintf(buf[:], "no Xlib connection for its EGL display on X11 (%s)", why))
+			}
+		}
+	}
+	if wgpu_open_instance(g, req, true, wgpu_gl_display(display, xlib, screen), fallback) {
+		g.gl_display, g.gl_xlib = display.display, xlib
+		return true
+	}
+	when WGPU_GL_FALLBACK {
+		if g.instance != nil { wgpu.InstanceRelease(g.instance); g.instance = nil }   // (before its Xlib connection)
+		platform.xlib_display_close(xlib)
+	}
+	return init_fail(r, .No_Driver, forced ? request_why(req, "no adapter") : string(g.gl_vulkan_why[:g.gl_vulkan_why_len]))
+}
+
+// A GL adapter refused for what it lacks: after Vulkan's refusal, both reasons (Vulkan's first: the sentence tells the
+// person to install it).
+@(private)
+wgpu_gl_refuse :: proc(r: ^Renderer, why: string) -> bool {
+	g := &r.wg
+	buf: [INIT_DETAIL_BYTES]u8
+	fmt.eprintfln("render: wgpu: OpenGL (%s) refused: it has %s", string(g.adapter_name[:g.adapter_name_len]), why)
+	if g.gl_vulkan_why_len == 0 { return init_fail(r, .No_Driver, fmt.bprintf(buf[:], "OpenGL has %s", why)) }
+	return init_fail(r, .No_Driver, fmt.bprintf(buf[:], "%s; OpenGL has %s", string(g.gl_vulkan_why[:g.gl_vulkan_why_len]), why))
+}
+
+// Makes the instance (`gl`: wgpu's GL backend, with `display`) and asks it for an adapter. False: no instance, or no
+// adapter (req.why says why).
+@(private)
+wgpu_open_instance :: proc(g: ^Wgpu_State, req: ^Request, gl: bool, display: wgpu.NativeDisplayHandle, fallback: bool) -> bool {
+	dxc_path := !gl && WGPU_DX12_COMPILER != "fxc" ? find_dxc() : ""
+	backends := WGPU_BACKEND == "vulkan" ? wgpu.InstanceBackendFlags{.Vulkan} : wgpu.InstanceBackendFlags{.DX12}
+	if gl { backends = {.GL} }
 	extras := wgpu.InstanceExtras{
 		chain = {sType = .InstanceExtras},
-		backends = WGPU_BACKEND == "vulkan" ? wgpu.InstanceBackendFlags{.Vulkan} : wgpu.InstanceBackendFlags{.DX12},
+		backends = backends,
 		dx12ShaderCompiler = dxc_path != "" ? .Dxc : .Fxc,
 		dxcPath = dxc_path,
 		dcxMaxShaderModel = .V6_0,
+		// (no gles3MinorVersion: wgpu-hal ignores it when EGL offers desktop OpenGL, and on an ES-only EGL a forced 3.2
+		// refuses a 3.1 driver whose shaders can run. Whether they run is decided by wgpu_gl_pipelines)
+		displayHandle = display,
 	}
-	g.fxc = SYSTEM_DIRECT3D && WGPU_BACKEND != "vulkan" && dxc_path == ""
+	g.fxc = SYSTEM_DIRECT3D && !gl && WGPU_BACKEND != "vulkan" && dxc_path == ""
+	g.gl, g.gl_display = gl, nil
+	req.backend = gl ? "gl" : WGPU_BACKEND
 	g.instance = wgpu.CreateInstance(&{nextInChain = &extras.chain})
-	if g.instance == nil { return init_fail(r, .No_Driver, "no instance") }
+	if g.instance == nil {
+		req.why_len = copy(req.why[:], "no instance")
+		return false
+	}
+	return wgpu_request_adapter(g, req, nil, fallback)
+}
+
+@(private)
+wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles, fallback: bool, display: platform.Surface_Handles) -> bool {
+	g := &r.wg
 	// The adapter before the surface: wgpuInstanceCreateSurface ends the process (a Rust panic) on an instance with no
 	// backend, a machine without the driver; the adapter request says so and returns (no-graphics.md). On one GPU the
 	// adapter found without the surface is the one that presents to it: asked again only when it cannot.
 	req: Request
-	if !wgpu_request_adapter(g, &req, nil, fallback) {
-		return init_fail(r, .No_Driver, req.why_len > 0 ? string(req.why[:req.why_len]) : "no adapter")
-	}
+	if !wgpu_open_adapter(r, &req, fallback, display) { return false }
 	g.adapter = req.adapter
 	if surface.backend != .None {
 		g.surface = wgpu_make_surface(r, surface)
@@ -311,7 +407,7 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 		if !wgpu_surface_fits(g) {
 			wgpu.AdapterRelease(g.adapter)
 			g.adapter = nil
-			req = {}
+			req = {backend = req.backend}
 			if !wgpu_request_adapter(g, &req, g.surface, fallback) {
 				return init_fail(r, .No_Window, req.why_len > 0 ? string(req.why[:req.why_len]) : "no adapter presents to it")
 			}
@@ -323,10 +419,16 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 	g.backend_type = info.backendType
 	g.cpu_adapter = info.adapterType == .CPU
 	g.adapter_name_len = copy(g.adapter_name[:], info.description)
+	// (GL: what the context is, for a report: wgpu-hal puts GL_VERSION in one of these, and its GLSL version decides what
+	// naga can write, wgpu_gl_pipelines)
+	if g.gl { fmt.eprintfln("render: wgpu: GL adapter: vendor %q, device %q, description %q, architecture %q", info.vendor, info.device, info.description, info.architecture) }
 	wgpu.AdapterInfoFreeMembers(info)
 
 	limits, _ := wgpu.AdapterGetLimits(g.adapter)
 	g.max_tex = int(limits.maxTextureDimension2D)
+	when WGPU_GL_FALLBACK {
+		if g.gl { if why := wgpu_gl_lacks(limits); why != "" { return wgpu_gl_refuse(r, why) } }
+	}
 	features: [dynamic]wgpu.FeatureName
 	defer delete(features)
 	if wgpu.AdapterHasFeature(g.adapter, .TimestampQuery) && wgpu.AdapterHasFeature(g.adapter, .TimestampQueryInsideEncoders) {
@@ -341,24 +443,32 @@ wgpu_create_device_here :: proc(r: ^Renderer, surface: platform.Surface_Handles,
 	dd := wgpu.DeviceDescriptor{
 		label = "gui_toolkit",
 		requiredFeatureCount = len(features), requiredFeatures = raw_data(features),
-		requiredLimits = WGPU_ADAPTER_LIMITS ? &limits : nil,
+		// (GL: its own limits, every one of them below WebGPU's defaults on some driver, where asking for the defaults
+		// fails the device; wgpu_gl_lacks checked those the renderer needs)
+		requiredLimits = WGPU_ADAPTER_LIMITS || g.gl ? &limits : nil,
 		deviceLostCallbackInfo = {mode = .AllowSpontaneos, callback = device_lost_cb, userdata1 = g.shared, userdata2 = rawptr(serial)},
 		uncapturedErrorCallbackInfo = {callback = uncaptured_error, userdata1 = g.shared},
 	}
-	req = {}
+	req = {backend = req.backend}
 	device_cb :: proc "c" (status: wgpu.RequestDeviceStatus, device: wgpu.Device, message: wgpu.StringView, u1, u2: rawptr) {
 		req := (^Request)(u1)
 		req.done, req.ok, req.device = true, status == .Success, device
 		if status != .Success {
 			context = runtime.default_context()
-			req.why_len = copy(req.why[:], wgpu_failure_reason(string(message), WGPU_BACKEND))
+			req.why_len = copy(req.why[:], wgpu_failure_reason(string(message), req.backend))
 		}
 	}
 	wgpu.AdapterRequestDevice(g.adapter, &dd, {mode = .AllowSpontaneos, callback = device_cb, userdata1 = &req})
-	if !wait_request(g, &req) { return init_fail(r, .Failed, req.why_len > 0 ? string(req.why[:req.why_len]) : "the adapter gave no device") }
+	if !wait_request(g, &req) { return init_fail(r, .Failed, request_why(&req, "the adapter gave no device")) }
 	g.device = req.device
 	g.queue = wgpu.DeviceGetQueue(g.device)
 	if g.queue == nil { return init_fail(r, .Failed, "the device has no queue") }
+	when WGPU_GL_FALLBACK {
+		if g.gl {
+			buf: [INIT_DETAIL_BYTES]u8
+			if why := wgpu_gl_probe(g, buf[:]); why != "" { return wgpu_gl_refuse(r, why) }
+		}
+	}
 	return true
 }
 
@@ -371,7 +481,7 @@ wgpu_request_adapter :: proc(g: ^Wgpu_State, req: ^Request, surface: wgpu.Surfac
 		req.done, req.ok, req.adapter = true, status == .Success, adapter
 		if status != .Success {
 			context = runtime.default_context()
-			req.why_len = copy(req.why[:], wgpu_failure_reason(string(message), WGPU_BACKEND))
+			req.why_len = copy(req.why[:], wgpu_failure_reason(string(message), req.backend))
 		}
 	}
 	opts := wgpu.RequestAdapterOptions{powerPreference = .HighPerformance, forceFallbackAdapter = b32(fallback), compatibleSurface = surface}
@@ -407,7 +517,7 @@ wgpu_surface_fits :: proc(g: ^Wgpu_State) -> bool {
 // The name of the adapter and the graphics API wgpu chose, for logs and reports ("NVIDIA GeForce RTX 4070 SUPER (D3D12)").
 adapter_description :: proc(r: ^Renderer) -> string {
 	when USE_WGPU {
-		return fmt.tprintf("%s (%v)", string(r.wg.adapter_name[:r.wg.adapter_name_len]), r.wg.backend_type)
+		return fmt.tprintf("%s (%s)", string(r.wg.adapter_name[:r.wg.adapter_name_len]), wgpu_api_name(r.wg.backend_type))
 	} else {
 		return "Direct3D 11"
 	}
@@ -417,15 +527,26 @@ adapter_description :: proc(r: ^Renderer) -> string {
 // it is a software rasterizer (WARP, llvmpipe), which is slow whatever the program does. Strings in temp memory.
 Adapter_Info :: struct {
 	name:     string,   // "NVIDIA GeForce RTX 4070 SUPER", "Microsoft Basic Render Driver"
-	api:      string,   // "Direct3D 11", "Vulkan", "D3D12"
+	api:      string,   // "Direct3D 11", "Vulkan", "D3D12", "OpenGL", "OpenGL ES"
 	software: bool,
+}
+
+// The graphics API of a wgpu backend as a person reads it. wgpu's GL backend reports the context it got: OpenGL for a
+// desktop core context (what wgpu-hal asks first where EGL offers it, as Mesa's does), OpenGL ES for an ES one.
+@(private)
+wgpu_api_name :: proc(t: wgpu.BackendType) -> string {
+	#partial switch t {
+	case .OpenGLES: return "OpenGL ES"
+	case .OpenGL:   return "OpenGL"
+	}
+	return fmt.tprintf("%v", t)
 }
 
 // The adapter of the renderer's device. Asks the driver nothing that waits: the names were read when the device was made
 // (WebGPU), or come from the device's own adapter object (Direct3D).
 adapter_info :: proc(r: ^Renderer) -> Adapter_Info {
 	when USE_WGPU {
-		return {name = strings.clone(string(r.wg.adapter_name[:r.wg.adapter_name_len]), context.temp_allocator), api = fmt.tprintf("%v", r.wg.backend_type), software = r.wg.cpu_adapter}
+		return {name = strings.clone(string(r.wg.adapter_name[:r.wg.adapter_name_len]), context.temp_allocator), api = wgpu_api_name(r.wg.backend_type), software = r.wg.cpu_adapter}
 	} else {
 		return d3d_adapter_info(r)
 	}
@@ -457,6 +578,10 @@ wgpu_frame_formats :: proc(r: ^Renderer) {
 	if r.half_float_offscreen && g.surface == nil { fp16 = true }   // (init_offscreen's half_float: a translucent window's frame, for a test)
 	g.surface_format = fp16 ? .RGBA16Float : .BGRA8Unorm
 	g.view_format = fp16 ? .RGBA16Float : (r.space == .Srgb ? .BGRA8Unorm : .BGRA8UnormSrgb)
+	// (GL: no view of another format, wgpu's downlevel flags VIEW_FORMATS and SURFACE_VIEW_FORMATS. The frame is then
+	// stored in its view format: BGRA8UnormSrgb holds the same bytes, sRGB-encoded, that the Unorm frame read through an
+	// sRGB view does, so captures and read-backs read it the same)
+	if g.gl { g.surface_format = g.view_format }
 	r.frame_format = fp16 ? dxgi.FORMAT.R16G16B16A16_FLOAT : dxgi.FORMAT.B8G8R8A8_UNORM
 }
 
@@ -470,7 +595,7 @@ wgpu_init :: proc(r: ^Renderer, surface: platform.Surface_Handles, size: [2]int,
 	if !wgpu_take_preloaded_device(r, surface) { wgpu_create_device(r, surface, false) or_return }
 	wgpu_frame_formats(r)
 	if !wgpu_configure_surface(r) { return init_fail(r, .No_Window, "the surface cannot be configured") }
-	if !wgpu_init_pipeline(r) { return init_fail(r, .Failed, "the shaders cannot be made") }
+	if !wgpu_init_pipeline(r) { return r.failure.error != .None ? false : init_fail(r, .Failed, "the shaders cannot be made") }
 	return true
 }
 
@@ -486,7 +611,7 @@ wgpu_init_offscreen :: proc(r: ^Renderer, size: [2]int, warp := false, space := 
 	}
 	wgpu_frame_formats(r)
 	if !wgpu_create_offscreen(r) { return init_fail(r, .Failed, "the offscreen image cannot be made") }
-	if !wgpu_init_pipeline(r) { return init_fail(r, .Failed, "the shaders cannot be made") }
+	if !wgpu_init_pipeline(r) { return r.failure.error != .None ? false : init_fail(r, .Failed, "the shaders cannot be made") }
 	return true
 }
 
@@ -550,9 +675,27 @@ wgpu_configure_surface :: proc(r: ^Renderer) -> bool {
 	wgpu_query_tearing(r)
 	vf := [1]wgpu.TextureFormat{g.view_format}
 	extras := wgpu.SurfaceConfigurationExtras{chain = {sType = .SurfaceConfigurationExtras}, desiredMaximumFrameLatency = wgpu_frame_latency(r)}
+	// CopySrc only where the surface offers it: SurfaceConfigure ends the process on a usage it lacks, and GL's surface
+	// is a render target only. Without it a frame is composed into the kept target (wgpu_damage_setup), which a copy
+	// and a capture then read.
+	// (and only a format it offers, for the same reason: GL's sRGB format depends on the EGL config. Vulkan's surfaces
+	// all offer the two the renderer uses)
+	g.surface_copy = false
+	if caps, st := wgpu.SurfaceGetCapabilities(g.surface, g.adapter); st == .Success {
+		g.surface_copy = .CopySrc in caps.usages
+		offered := false
+		for f in caps.formats[:caps.formatCount] { if f == g.surface_format { offered = true } }
+		wgpu.SurfaceCapabilitiesFreeMembers(caps)
+		if !offered {
+			fmt.eprintfln("render: wgpu: the surface offers no %v", g.surface_format)
+			return false
+		}
+	}
+	usage := wgpu.TextureUsageFlags{.RenderAttachment}
+	if g.surface_copy { usage += {.CopySrc} }
 	cfg := wgpu.SurfaceConfiguration{
 		nextInChain = &extras.chain,
-		device = g.device, format = g.surface_format, usage = {.RenderAttachment, .CopySrc},
+		device = g.device, format = g.surface_format, usage = usage,
 		width = u32(max(r.size.x, 1)), height = u32(max(r.size.y, 1)),
 		viewFormatCount = g.view_format != g.surface_format ? 1 : 0, viewFormats = raw_data(vf[:]),
 		alphaMode = wgpu_surface_alpha(r), presentMode = wgpu_pick_present_mode(r),
@@ -632,7 +775,12 @@ wgpu_retarget :: proc(r: ^Renderer) {
 
 @(private)
 wgpu_module :: proc(g: ^Wgpu_State, label: string, code: string) -> wgpu.ShaderModule {
-	src := wgpu.ShaderSourceWGSL{chain = {sType = .ShaderSourceWGSL}, code = code}
+	source := code
+	owned := false
+	// (GL: `image` through one sampler, wgpu_gl_source. Every other backend compiles the WGSL as it is)
+	when WGPU_GL_FALLBACK { if g.gl { source, owned = wgpu_gl_source(code, runtime.heap_allocator()) } }
+	defer if owned { delete(source, runtime.heap_allocator()) }
+	src := wgpu.ShaderSourceWGSL{chain = {sType = .ShaderSourceWGSL}, code = source}
 	return wgpu.DeviceCreateShaderModule(g.device, &{nextInChain = &src.chain, label = label})
 }
 
@@ -678,11 +826,14 @@ wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 	}
 	g.bgl0 = wgpu.DeviceCreateBindGroupLayout(g.device, &{label = "tables", entryCount = len(e0), entries = raw_data(e0[:])})
 	// the glyph atlas, images, the backdrop of a blend; the Slug curve and band textures (the rect shaders do not use the last two)
+	// (GL: binding 5, the one sampler of `image`, the batch's: wgpu_gl_source, walk_bind)
 	e1 := [?]wgpu.BindGroupLayoutEntry{
 		bgl_texture(0, F), bgl_texture(1, F), bgl_texture(2, F), bgl_texture(3, F),
 		{binding = 4, visibility = F, texture = {sampleType = .Uint, viewDimension = ._2D}},
+		bgl_sampler(5, F),
 	}
-	g.bgl1 = wgpu.DeviceCreateBindGroupLayout(g.device, &{label = "textures", entryCount = len(e1), entries = raw_data(e1[:])})
+	n1 := g.gl ? len(e1) : len(e1) - 1
+	g.bgl1 = wgpu.DeviceCreateBindGroupLayout(g.device, &{label = "textures", entryCount = uint(n1), entries = raw_data(e1[:])})
 	efx := [?]wgpu.BindGroupLayoutEntry{
 		bgl_buffer(0, F, .Uniform, true, PASS_CONSTANTS_SIZE), bgl_texture(1, F), bgl_texture(2, F), bgl_sampler(3, F),
 	}
@@ -733,6 +884,18 @@ wgpu_init_pipeline :: proc(r: ^Renderer) -> bool {
 		r.text = text_rendering_default(r.space)
 	}
 	ok := g.module_rect != nil && g.module_fx != nil && g.module_mip != nil
+	// GL: the pipelines of every frame, before anything is submitted and before the pre-warming thread (error scopes are
+	// the calling thread's in wgpu). A refusal is the renderer's failure (`r.failure`), which the callers keep.
+	when WGPU_GL_FALLBACK {
+		if ok && g.gl {
+			buf: [INIT_DETAIL_BYTES]u8
+			if why := wgpu_gl_pipelines(r, buf[:]); why != "" { return wgpu_gl_refuse(r, why) }
+			if g.gl_vulkan_why_len > 0 {
+				fmt.eprintfln("render: wgpu: Vulkan gives no adapter (%s): drawing with OpenGL (%s)", string(g.gl_vulkan_why[:g.gl_vulkan_why_len]), string(g.adapter_name[:g.adapter_name_len]))
+				g.gl_vulkan_why_len = 0   // (once per device: a second window's pipelines are the same device's)
+			}
+		}
+	}
 	// (a window's: its start hides the compiles. An offscreen renderer (a test, an export) makes a pipeline when it first
 	// draws with it: pre-warmed, each one compiled all eight and waited for them at its end, used or not)
 	if ok && g.surface != nil { wgpu_prewarm_start(r) }
@@ -1159,14 +1322,16 @@ wgpu_release_objects :: proc(r: ^Renderer) {
 // Takes what the renderer's device is made of out of it.
 @(private)
 wgpu_device_take :: proc(g: ^Wgpu_State) -> (d: Wgpu_Device) {
-	d = {g.instance, g.adapter, g.device, g.queue, g.surface, g.panel}
+	d = {g.instance, g.adapter, g.device, g.queue, g.surface, g.panel, g.gl, g.gl_display, g.gl_xlib}
 	g.instance, g.adapter, g.device, g.queue, g.surface, g.panel = nil, nil, nil, nil, nil, nil
+	g.gl, g.gl_display, g.gl_xlib = false, nil, nil
 	return
 }
 
 @(private)
 wgpu_device_put :: proc(g: ^Wgpu_State, d: Wgpu_Device) {
 	g.instance, g.adapter, g.device, g.queue, g.surface, g.panel = d.instance, d.adapter, d.device, d.queue, d.surface, d.panel
+	g.gl, g.gl_display, g.gl_xlib = d.gl, d.gl_display, d.gl_xlib
 }
 
 // Surface, device, adapter, instance.
@@ -1180,6 +1345,8 @@ wgpu_release_device :: proc(r: ^Renderer) {
 	if g.device != nil { wgpu.DeviceDestroy(g.device); wgpu.DeviceRelease(g.device); g.device = nil }
 	if g.adapter != nil { wgpu.AdapterRelease(g.adapter); g.adapter = nil }
 	if g.instance != nil { wgpu.InstanceRelease(g.instance); g.instance = nil }
+	// (after the instance: its EGL display, terminated with it, was made on this Xlib connection)
+	when WGPU_GL_FALLBACK { if g.gl_xlib != nil { platform.xlib_display_close(g.gl_xlib); g.gl_xlib = nil } }
 }
 
 @(private)
@@ -1211,7 +1378,8 @@ wgpu_recover :: proc(r: ^Renderer) -> bool {
 	// the calls that end the process on one wait for `r.lost` to clear (wgpu_submit, wgpu_poll, wgpu_configure_surface, wgpu_ensure_frame).
 	// (No surface for it yet: a window takes one surface at a time, and the old one holds it until it is released below.)
 	old := wgpu_device_take(g)
-	if fault_hit(.Create_Device) || !wgpu_create_device(r, {}, r.warp) {
+	// (the handles still give a GL instance the window's display: its surface, made below, presents only through that)
+	if fault_hit(.Create_Device) || !wgpu_create_device(r, {}, r.warp, display = handles) {
 		wgpu_release_device(r)   // what was made of it
 		wgpu_device_put(g, old)
 		r.lost = true

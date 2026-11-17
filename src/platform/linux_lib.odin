@@ -416,6 +416,58 @@ xcb_lib :: proc() -> ^Xcb_Lib {
 	return &xcb
 }
 
+////////////////////////////////
+// libX11, for the renderer's GL backend only
+
+// wgpu's GL backend makes its EGL display from an Xlib Display only: in wgpu-hal 29 the XCB case is a todo!() (a panic).
+// The windows stay XCB's; this library is loaded the first time a GL renderer opens on X11, never otherwise.
+@(private)
+Xlib_Lib :: struct {
+	ok:             bool,
+	init_threads:   proc "c" () -> i32,                    // XInitThreads
+	open_display:   proc "c" (name: cstring) -> rawptr,    // XOpenDisplay
+	close_display:  proc "c" (display: rawptr) -> i32,     // XCloseDisplay
+	default_screen: proc "c" (display: rawptr) -> i32,     // XDefaultScreen
+}
+
+// (loaded once, as xcb)
+@(private) xlib: Xlib_Lib
+@(private) xlib_once: sync.Once
+
+@(private)
+xlib_lib :: proc() -> ^Xlib_Lib {
+	sync.once_do(&xlib_once, proc() {
+		h := lib_open({"libX11.so.6", "libX11.so"})
+		if h == nil { return }
+		xlib.init_threads   = auto_cast lib_sym(h, "XInitThreads")
+		xlib.open_display   = auto_cast lib_sym(h, "XOpenDisplay")
+		xlib.close_display  = auto_cast lib_sym(h, "XCloseDisplay")
+		xlib.default_screen = auto_cast lib_sym(h, "XDefaultScreen")
+		xlib.ok = xlib.init_threads != nil && xlib.open_display != nil && xlib.close_display != nil && xlib.default_screen != nil
+		// (before any other Xlib call of the process: EGL uses the Display from the renderer's threads, the device's, the
+		// render thread and the pre-warming one)
+		if xlib.ok { xlib.init_threads() }
+	})
+	return &xlib
+}
+
+// An Xlib connection of its own to the X server of DISPLAY, and its default screen, for a renderer's EGL display on X11
+// (wgpu's GL backend). An X window id is the server's: a window of the toolkit's XCB connection is drawn through this
+// one. nil and why when libX11 is not there or the server refuses. xlib_display_close ends it.
+xlib_display_open :: proc() -> (display: rawptr, screen: i32, why: string) {
+	x := xlib_lib()
+	if !x.ok { return nil, 0, "libX11.so.6 cannot be loaded" }
+	display = x.open_display(nil)
+	if display == nil { return nil, 0, "XOpenDisplay failed" }
+	return display, x.default_screen(display), ""
+}
+
+// Ends a connection of xlib_display_open (nil: nothing).
+xlib_display_close :: proc(display: rawptr) {
+	if display == nil { return }
+	if x := xlib_lib(); x.ok { x.close_display(display) }
+}
+
 // Which backend open_window will drive, decided from the environment and from what loaded. Wayland is preferred when a
 // Wayland compositor is reachable; X11 otherwise. `missing` names the library a backend needs when neither is usable.
 @(private) Backend_Kind :: enum u8 { None, Wayland, X11 }
