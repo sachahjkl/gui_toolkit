@@ -5,6 +5,45 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.306.0] - 2026-11-17 23:06
+
+### Added
+- **`prefs_page.install_follow`: the settings "In the application menu" and "Start with the session" work in every program.** The installed copy's launcher and its start with the session follow the two settings, on a task, from the start's reading of the install, after an install or an uninstall and at each change; a copy that is not installed writes nothing and the settings page hides the two. `install_init` takes an `announcer` to say when the desktop refuses. A program needs no code of its own for them.
+- **`gt:pdf`: PDF files opened, rendered and written, inside the program.** `pdf.open` (with a password), `page_count`, `page_size`, `render` (the page's own content, or with its annotations' layer), `write` (a new file from the program's list of pages: turned, removed, added, moved, from several files, the base file's outlines, form and metadata kept, removed pages gone from the file), stamps of text in the standard fonts with a background (`Stamp`, `stamp_size`). The engine is hayro in `native/pdf`, a part of the native library: `toolbox.Feature.Pdf` builds it in, nothing ships beside the program. The notices also take a crate's licence files one folder down when its root has some (hayro-font's Foxit fonts).
+- **`platform.add_recent_file` on Windows**: a file opened goes to the user's Recent folder and to the program's jump list (`SHAddToRecentDocs`), as it goes to `recently-used.xbel` on Linux; the call exists on every system (a no-op where there is no list). It is a blocking call: a debug build says so when the interface's thread makes it.
+- **Print a document (`platform.print_document`)**: the system's print dialog with its page range and copies, then every page chosen. The program gives its page count, each page's size and a callback that renders a band of a page's rows; it runs on the calling thread, which blocks: run it on a worker. On Linux the XDG print portal gets the program's own PDF when it has one (the printer gets vectors), else a PDF of the rendered pages (`print_document_pdf`). On Windows each page is rendered at the printer's resolution, placed by `print_page_fit`, its sheet turned to its orientation. docs/printing.md.
+- **OpenGL when Vulkan is missing**: on Linux, a machine with OpenGL and no Vulkan driver (an old graphics card, some virtual machines) draws through OpenGL instead of saying it cannot; TOOLKIT_WGPU_BACKEND=gl forces it.
+- **`ui.find_bar`, `ui.find_open`, `ui.find_close`**: one find per window over a view, with its bar at the view's top right
+(left of its scroll bar): the field, the count ("3/17", "No results", "12…" while counting), previous and next (Enter,
+Shift+Enter, F3, Shift+F3), match case (Alt+C) and whole word (Alt+W), the program's scopes (`Find_Options.scopes`) as a
+segmented choice, Escape to close. A view whose rows a lazy column declares (`lazy_begin(rows = ...)`, `ui.find_rows` for
+another view) is counted whole, built or not, folded parts included, in bounded slices at each frame; a step to a match in a
+row not built builds it and brings it in, a match in a folded part asks the program to open it (`Text_Rows.reveal`), then
+lights it. Every match is a tick on the view's scroll bar (`ui.find_ticks`). `ui.find_count`, `ui.find_index`,
+`ui.find_pending`, `ui.find_needle`, `ui.find_matches` and `ui.find_row_matches` read it. Design:
+`src/md/features/find-in-view.md`; use: `docs/find.md`.
+- **`desktop.Integration_Options.document_types`, `open_documents` and `default_documents`**: a program registers itself as a handler of its document types (`Document_Type`: extension, MIME type, description), as the parts `Part.Documents` and `Part.Default_Documents` that `install`, `remove`, `status` and `apply` handle like the others, so a setup `Choice` can offer "Open PDF files with the program" and show its state. On Linux the desktop entry lists the types in `MimeType=` and takes one file as `%f` (hidden from the menu with `NoDisplay=true` when the launcher is off), and the default is the types' line of `mimeapps.list`, the former default given back on removal. On Windows a ProgID per type, `OpenWithProgids`, `Applications\<exe>\SupportedTypes` and Capabilities named by `RegisteredApplications` put the program in "Open with" and in Settings > Default apps; Windows lets only the person choose a default, so `default_documents` opens Settings at the program's page instead. `opens_documents` says whether options ask for the association.
+
+### Changed
+- **`ui.scroll_marks`**: the magnifier above a bar with marks opens the find over its view (a second press closes it), and a
+character typed while the marks have the keyboard opens it with that character; the find's matches are ticks on the same
+bar, over the marks.
+- **`ui.Text_Rows`**: its `text` takes `whole` (false: a row's text as its boxes show it, for a copy; true: with every part the
+program can open opened, for the find), and it gains `stamp` (a row's text changed), `version` (any row changed) and
+`reveal` (open the folded part that holds a match). A program's row text procedure takes the new parameter.
+
+### Removed
+- **The marks' filter and the find in page's own calls**: `ui.scroll_marks_shown`, `ui.scroll_marks_query` and the marks'
+filter field are gone (the find bar and its scopes do it); so are `ui.find(needle, scope)`, `ui.find_set_current`,
+`ui.find_sweep`, `ui.find_all`, `ui.find_progress`, `ui.find_refresh` and `lazy_begin`'s `sweep` (a lazy column's rows are
+counted by their text, never built for a sweep): a program opens the find over its view and calls `ui.find_bar`.
+
+### Fixed
+- **Notifications no longer pause the window on Windows**: `platform.notify_async` (and so `ui.announce`) returns at once. A notification thread of the toolkit shows the toast, and `done` runs from the window loop when it answers, as on Linux. A replace, `notify_close` and the click and button events work as before. On an offscreen window `notify_async` now returns false, and `done` does not run.
+- **The notices of a program with `gt:pdf`.** alloc-stdlib (of hayro's Brotli decoder) ships no licence file in its package: the toolkit gives its BSD-3-Clause text (`native/pdf/licences`), as it does AccessKit's.
+- **The settings fit a dialog narrower than their page** (`prefs_page`): the page's body is what the sidebar leaves, never its content's width; What's new no longer runs past the dialog's edge (280 px in a 1000 px dialog). Its search, kind toggles and count, and a version's number, day and "Latest", flow onto more lines, each whole, and the changes wrap at the width shown.
+- **The notices of a program with accessibility.** AccessKit's crates ship no licence file in their package: the toolkit now gives their texts (MIT, Apache-2.0 and the part from Chromium, `native/a11y/licences`), so `notices` of a program with `Feature.Accessibility` no longer fails asking the program for them.
+
 ## [0.305.0] - 2026-11-17 20:45
 
 ### Changed
@@ -4227,6 +4266,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.306.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.306.0
 [0.305.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.305.0
 [0.304.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.304.0
 [0.303.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.303.0
