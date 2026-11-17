@@ -2,6 +2,7 @@ package ui
 
 import "base:runtime"
 import "core:math"
+import "../draw"
 import "../font"
 import "../qr"
 
@@ -103,8 +104,23 @@ LICENCE_CARD_SEAL_MODULES :: 33
 @(private) LICENCE_SEAL_X :: 348.0
 @(private) LICENCE_SEAL_Y :: 166.0
 // How deep a dark module is cut: shallower than the guilloche's waves (0.30), so that straight on the pits read as one more
-// texture of the foil.
+// texture of the foil. The guilloche runs on across the plate and into the pits: it is the camouflage straight on, and it
+// shows faintly in the dark modules at the turn.
 @(private = "file") SEAL_DEPTH :: 0.12
+// The plate under the code: the quiet zone's square with the card's corner radius at the plate's scale (14 units on a card
+// 277 high, the plate 82: about 4), lifted a little with a bevel of a unit, and a thin rim just inside its edge. Low, so that
+// straight on it is a hint of something, not a shape a reader takes for a code.
+@(private) LICENCE_SEAL_PLATE_R :: 4.0
+@(private = "file") SEAL_PLATE_LIFT :: 0.08
+@(private = "file") SEAL_RIM :: 0.22
+// How each module is drawn, in modules (the relief and the shader both, from seal_params' numbers): a dark data module a
+// rounded dot 2 * SEAL_DOT_HALF wide; a finder pattern a punch's hallmark, its outer ring and centre square rounded (their
+// edges on the axes through the centre stay where the square ones were: 1:1:3:1:1 along every row and column).
+@(private = "file") SEAL_DOT_HALF :: 0.45
+@(private = "file") SEAL_DOT_R :: 0.22
+@(private = "file") SEAL_RING_R :: 1.0
+@(private = "file") SEAL_HOLE_R :: 0.5
+@(private = "file") SEAL_CENTRE_R :: 0.5
 // The turn that reveals the code (rotateX, rotateY, degrees): the back turned about 11 degrees on each axis, its top left
 // corner towards the eye. Within SEAL_WHOLE_DEG of that turn's eye the code shows whole; past SEAL_GONE_DEG not at all.
 // Straight on, the eye is 15 degrees from it.
@@ -113,10 +129,11 @@ LICENCE_CARD_SEAL_MODULES :: 33
 @(private = "file") SEAL_WHOLE_DEG :: 3.0
 @(private = "file") SEAL_GONE_DEG :: 7.0
 // The matrix in the shader's parameters: 24 modules a float (an f32 holds an integer of 24 bits exactly), four floats a slot.
-// The back's draw gives 3 slots of place and ramp, then these.
+// The back's draw gives LICENCE_SEAL_HEAD slots of place, ramp and shapes, then these.
 @(private) LICENCE_SEAL_WORDS :: (LICENCE_CARD_SEAL_MODULES * LICENCE_CARD_SEAL_MODULES + 23) / 24
 @(private) LICENCE_SEAL_SLOTS :: (LICENCE_SEAL_WORDS + 3) / 4
-@(private) LICENCE_SEAL_PARAMS :: 3 + LICENCE_SEAL_SLOTS
+@(private) LICENCE_SEAL_HEAD :: 5
+@(private) LICENCE_SEAL_PARAMS :: LICENCE_SEAL_HEAD + LICENCE_SEAL_SLOTS
 @(private) Seal_Bits :: [LICENCE_SEAL_SLOTS][4]f32
 
 // The code as the card engraves it, in `allocator`; no modules when the address does not give LICENCE_CARD_SEAL_MODULES.
@@ -175,30 +192,73 @@ seal_cosines :: proc() -> (whole, gone: f32) {
 }
 
 // How much of the code's contrast the back shows turned by rotateX(rx) rotateY(ry), degrees: 0, the foil alone; 1, its
-// light modules white and its dark ones nearly black. The shader computes the same ramp from what seal_params gives it.
-// For a test or a tool.
+// light modules polished silver on a brushed plate and its dark ones the foil's dark tone. The shader computes the same
+// ramp from what seal_params gives it. For a test or a tool.
 licence_card_seal_reveal :: proc(rx, ry: f32) -> f32 {
 	e, t := seal_eye(rx, ry), seal_eye(LICENCE_SEAL_RX, LICENCE_SEAL_RY)
 	whole, gone := seal_cosines()
 	return smooth_step(gone, whole, e.x * t.x + e.y * t.y + e.z * t.z)
 }
 
-// The back's shader parameters of the code (LICENCE_SEAL_PARAMS slots, from slot 5 of its draw): the code's top left, a
-// module and its modules a side (design units); the eye of the turn that reveals it and the cosine where it is whole; the
-// cosine where it is gone and the quiet zone; then the matrix.
+// The back's shader parameters of the code (LICENCE_SEAL_PARAMS slots, from slot 5 of its draw), `px_per_unit` the card's
+// pixels per unit of the design (the width of an edge's smoothing):
+//   0  the code's top left, a module and its modules a side (design units)
+//   1  the eye of the turn that reveals it, the cosine of the angle where it is whole
+//   2  the cosine where it is gone, the quiet zone (modules), the edge's half width (design units), the plate's corner radius
+//   3  a dot's half width and corner radius, a finder's outer and inner ring radius (modules)
+//   4  a finder's centre radius (modules)
+//   5 ..  the matrix
+// The shapes are numbers given here, not constants of the shader: the relief cuts the same shapes the light paints.
 @(private)
-seal_params :: proc(out: [][4]f32) {
+seal_params :: proc(out: [][4]f32, px_per_unit: f32) {
 	t := seal_eye(LICENCE_SEAL_RX, LICENCE_SEAL_RY)
 	whole, gone := seal_cosines()
 	out[0] = {LICENCE_SEAL_X, LICENCE_SEAL_Y, LICENCE_SEAL_MODULE, LICENCE_CARD_SEAL_MODULES}
 	out[1] = {t.x, t.y, t.z, whole}
-	out[2] = {gone, qr.QUIET_ZONE, 0, 0}
+	// (about three quarters of a pixel each side: smooth at 100 %, still sharp at 200 %)
+	out[2] = {gone, qr.QUIET_ZONE, 0.75 / max(px_per_unit, 0.25), LICENCE_SEAL_PLATE_R}
+	out[3] = {SEAL_DOT_HALF, SEAL_DOT_R, SEAL_RING_R, SEAL_HOLE_R}
+	out[4] = {SEAL_CENTRE_R, 0, 0, 0}
 	bits := kept_seal()
-	copy(out[3:], bits^[:])
+	copy(out[LICENCE_SEAL_HEAD:], bits^[:])
 }
 
-// The code's dark modules cut into the back's height field (LICENCE_RELIEF_W x LICENCE_RELIEF_H, the grain included). The
-// cut is the matrix's, module for module: the light the shader adds at the turn falls on the same cells. On a chore.
+// The signed distance from `p` to a square of half width `half` with corners of radius `r` about the origin: negative inside.
+// (licence_card.wgsl: seal_box)
+@(private = "file")
+seal_box :: proc(p: [2]f32, half, r: f32) -> f32 {
+	dx, dy := abs(p.x) - (half - r), abs(p.y) - (half - r)
+	ox, oy := max(dx, 0), max(dy, 0)
+	return math.sqrt(ox * ox + oy * oy) + min(max(dx, dy), 0) - r
+}
+
+// The signed distance from `q` (modules from the code's top left, inside the code) to the ink, in modules: negative on a
+// dark dot or on a finder's ring or centre. A finder is drawn from its place, not from its bits (they are its pattern
+// anyway); a data module from its bit. `dark` tells module (x, y). (licence_card.wgsl: seal_ink)
+@(private = "file")
+seal_ink :: proc(q: [2]f32, n: int, dark: proc(user: rawptr, x, y: int) -> bool, user: rawptr) -> f32 {
+	fn := f32(n)
+	o := [2]f32{-1, -1}
+	if q.x < 7 && q.y < 7 {
+		o = {0, 0}
+	} else if q.x >= fn - 7 && q.y < 7 {
+		o = {fn - 7, 0}
+	} else if q.x < 7 && q.y >= fn - 7 {
+		o = {0, fn - 7}
+	}
+	if o.x >= 0 {
+		r := q - o - [2]f32{3.5, 3.5}
+		ring := max(seal_box(r, 3.5, SEAL_RING_R), -seal_box(r, 2.5, SEAL_HOLE_R))
+		return min(ring, seal_box(r, 1.5, SEAL_CENTRE_R))
+	}
+	x, y := int(q.x), int(q.y)
+	if !dark(user, x, y) { return 1 }
+	return seal_box(q - [2]f32{f32(x) + 0.5, f32(y) + 0.5}, SEAL_DOT_HALF, SEAL_DOT_R)
+}
+
+// The code engraved in the back's height field (LICENCE_RELIEF_W x LICENCE_RELIEF_H, the grain included): the plate lifted
+// with its bevel and its rim, the ink cut as pits, through the guilloche. The shapes are the shader's (seal_ink): the light
+// it paints at the turn falls on the same cells. On a chore.
 @(private)
 seal_engrave :: proc(hf: []f32) {
 	heap := runtime.heap_allocator()
@@ -207,11 +267,57 @@ seal_engrave :: proc(hf: []f32) {
 	if code.modules == nil { return }
 	W :: LICENCE_RELIEF_W
 	texels_per_unit :: f32(W) / 440
-	m := int(LICENCE_SEAL_MODULE * texels_per_unit)
-	x0, y0 := int(LICENCE_SEAL_X * texels_per_unit), int(LICENCE_SEAL_Y * texels_per_unit)
-	for y in 0 ..< code.size * m {
-		for x in 0 ..< code.size * m {
-			if qr.module(code, x / m, y / m) { hf[(y0 + y) * W + x0 + x] -= SEAL_DEPTH }
+	n := code.size
+	m := f32(LICENCE_SEAL_MODULE)
+	quiet := f32(qr.QUIET_ZONE) * m
+	half := f32(n) * m * 0.5 + quiet
+	centre := [2]f32{LICENCE_SEAL_X, LICENCE_SEAL_Y} + f32(n) * m * 0.5
+	// (half a texel of smoothing on each side of an edge, in modules)
+	soft := 0.5 / texels_per_unit / m
+	module_of :: proc(user: rawptr, x, y: int) -> bool { return qr.module((^qr.Code)(user)^, x, y) }
+	lo_x, lo_y := int((centre.x - half - 2) * texels_per_unit), int((centre.y - half - 2) * texels_per_unit)
+	hi_x, hi_y := int((centre.x + half + 2) * texels_per_unit), int((centre.y + half + 2) * texels_per_unit)
+	for y in lo_y ..< hi_y {
+		for x in lo_x ..< hi_x {
+			p := [2]f32{(f32(x) + 0.5) / texels_per_unit, (f32(y) + 0.5) / texels_per_unit}
+			dp := seal_box(p - centre, half, LICENCE_SEAL_PLATE_R)
+			if dp > 2 { continue }
+			rim := (dp + 0.75) / 0.5
+			h := hf[y * W + x] + SEAL_PLATE_LIFT * (1 - smooth_step(-1, 0, dp)) + SEAL_RIM * math.exp(-rim * rim)
+			q := (p - [2]f32{LICENCE_SEAL_X, LICENCE_SEAL_Y}) / m
+			if q.x >= 0 && q.y >= 0 && q.x < f32(n) && q.y < f32(n) {
+				ink := 1 - smooth_step(-soft, soft, seal_ink(q, n, module_of, &code))
+				h -= SEAL_DEPTH * ink
+			}
+			hf[y * W + x] = h
+		}
+	}
+}
+
+// The code on the flat back (no shader): the plate a breath lighter than the ground, the ink a shade darker, in the shapes
+// of the foil's. A few levels of grey: an eye that looks closely finds it, a reader takes it for no code (it shows only at
+// its turn, on the foil). One rounded rectangle a dark module: about 550, a fixed cost while the flat back shows.
+@(private)
+seal_draw_flat :: proc(dc: ^draw.Context) {
+	bits := kept_seal()
+	n :: LICENCE_CARD_SEAL_MODULES
+	m :: f32(LICENCE_SEAL_MODULE)
+	at := Vec2{LICENCE_SEAL_X, LICENCE_SEAL_Y}
+	quiet := f32(qr.QUIET_ZONE) * m
+	draw.rect(dc, {at - quiet, at + n * m + quiet}, {1, 1, 1, 0.035}, LICENCE_SEAL_PLATE_R)
+	ink :: draw.Color{0, 0, 0, 0.1}
+	for o in ([3][2]int{{0, 0}, {n - 7, 0}, {0, n - 7}}) {
+		c := at + Vec2{f32(o.x), f32(o.y)} * m
+		// (an outline is drawn inside its rectangle, as the card's edge is)
+		draw.rect(dc, {c, c + 7 * m}, ink, SEAL_RING_R * m, m)
+		draw.rect(dc, {c + 2 * m, c + 5 * m}, ink, SEAL_CENTRE_R * m)
+	}
+	finder :: proc(x, y: int) -> bool { return (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7) }
+	for y in 0 ..< n {
+		for x in 0 ..< n {
+			if finder(x, y) || !seal_dark(bits, x, y) { continue }
+			c := at + (Vec2{f32(x), f32(y)} + 0.5) * m
+			draw.rect(dc, {c - SEAL_DOT_HALF * m, c + SEAL_DOT_HALF * m}, ink, SEAL_DOT_R * m)
 		}
 	}
 }

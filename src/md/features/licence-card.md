@@ -122,29 +122,56 @@ card carries the same code, since the hunt spans the programs; a program sets no
   glitter and grain are noise a reader must correct. Larger modules would reach the logo.
 - **Where**: the quiet zone's square from (340, 158) to (422, 240) of the design: clear of the logo (its room ends at
   318), of the lip and its groove (the last 15 units), and above the line of lettering (its capitals start at 245).
-- **Engraved**: its dark modules are pits 0.12 deep in the back's height field (`seal_engrave`), cut through the
-  guilloche, which runs on across the code. The pits catch the same light and tilt with the card; they are shallower
-  than the guilloche's waves (0.30), so seen straight on they read as one more texture of the foil.
+- **Its shapes**: a hallmark struck in the foil, not a printed square. A dark data module is a rounded dot 0.84 of a
+  module wide (corner radius 0.22); the timing and alignment patterns are dots too. Each finder is drawn from its
+  place, not its bits, as a punch's rounded rings: the outer ring with corners of radius 1 module (0.5 inside), the
+  centre square of radius 0.5. Only corners are rounded, so the 1:1:3:1:1 runs along every row and column through a
+  finder's centre are the square pattern's: a reader finds them. A cell's bit and place never change: only how the
+  module is drawn.
+- **Its plate**: the quiet zone is a plate engraved in the relief: the square with the card's corner radius at its
+  scale (14 units on a card 277 high, about 4 on the 82 unit plate), lifted 0.08 with a bevel of a unit and a thin rim
+  (0.22) just inside its edge.
+- **Engraved**: the ink is cut as pits 0.12 deep in the back's height field (`seal_engrave`), through the guilloche,
+  which runs on across the plate and into the pits. The relief and the shader draw the same shapes from the same
+  numbers (`seal_params` passes them; `seal_ink` and `seal_box` are written in both languages). The pits are shallower
+  than the guilloche's waves (0.30), so straight on they read as one more texture of the foil.
+- **Its look at the turn**, luminance once in sRGB (what a camera sees):
+  - the light modules polished silver, the front lettering's cool grey with a trace of the foil's hue and the key
+    light held to a narrow range: 0.71 to 0.86, the brightest channel at most 226 of 255;
+  - the plate the same silver brushed and darker: 0.60 to 0.76, still light for a reader, since the quiet zone must be
+    light; the polish eases into it over half a module past the code's edge;
+  - the pits the foil's ground with a quarter of the foil's own light, so the guilloche shows faintly in them, held to
+    at most 0.18 (about 0.13 with no light on them).
+  The gap is above 0.5, which a reader needs; neither tone is pure. Pure black and white was the first version: it read
+  well and looked like a sticker on the card. A reader needs a luminance gap and clean finders, not paper's contrast,
+  so the code keeps the card's metals. Under the plate the shader puts the ground out in its shade pass at the turn,
+  so the light pass alone sets these tones, whatever the ground's gradient.
+- **Away from the turn**: the plate's rim and lift and the pits catch a little light, and the plate gets a breath of its
+  silver, the same on the dots and between them: a hint that something is there, a reason to look for the angle, with no
+  contrast between modules beyond the relief's, which the guilloche scrambles.
 - **Revealed at one turn**: the shader knows the eye's direction in the back's frame (`to_face`). When it nears the
   direction of the turn rotateX -11, rotateY 191 (the back turned about 11 degrees on each axis, its top left corner
-  towards the eye), the light modules and the quiet zone go white and the dark modules nearly black. The ramp is a
-  smoothstep of the angle between the two directions: none past 7 degrees, whole within 3. Straight on (rotateY 180) the
-  angle is 15 degrees: nothing shows. From the back seen straight on, a drag of about 24 pixels to the right and 24
-  down finds it, and a person can hold it within the 3 degrees.
-- **Only brightness changes**: the cells and the quiet zone come from the same matrix, at the same place, at every
-  angle; the shader reads the matrix exactly (one bit a module, in the draw's parameters: no texture to blur its edges).
-  The Odin side (`licence_card_seal_reveal`) and the shader compute the same ramp from the same numbers, which the
-  draw passes.
+  towards the eye), the code takes the tones above. The ramp is a smoothstep of the angle between the two directions:
+  none past 7 degrees, whole within 3. Straight on (rotateY 180) the angle is 15 degrees: nothing shows. From the back
+  seen straight on, a drag of about 24 pixels to the right and 24 down finds it, and a person can hold it within the 3
+  degrees.
+- **Only how it is drawn changes with the angle**: the cells and the quiet zone come from the same matrix, at the same
+  place, at every angle; the shader reads the matrix exactly (one bit a module, in the draw's parameters: no texture to
+  blur its edges). The Odin side (`licence_card_seal_reveal`) and the shader compute the same ramp from the same
+  numbers, which the draw passes. An edge is smoothed over about three quarters of a pixel on each side, from the card's
+  pixels per unit.
 - **With less motion** the card cannot be turned over: the back and its code are never shown. The code stays an enigma
   that needs the tilt.
-- **The flat card** (no shader) engraves it faintly: its dark modules a shade darker than the ground, a few levels of
-  grey that no reader takes for a code. It is there for an eye that looks closely, consistent with "hidden unless
-  tilted".
+- **The flat card** (no shader) engraves it faintly in the same shapes: the plate a breath lighter than the ground, the
+  dots and the rings a shade darker, a few levels of grey that no reader takes for a code. It is there for an eye that
+  looks closely, consistent with "hidden unless tilted".
 
-Refused: a code printed plainly on the back (a sticker, no enigma); a code in a texture of its own (a sampler blurs a
-module's edge, and a whole texture for 1089 bits); the reveal tied to the moving lights (the pointer's light moves
-with the pointer, so the angle would not be one place a person can find and hold); a level High code (version 5, a
-smaller module for no need).
+Refused: a code printed plainly on the back (a sticker, no enigma); pure white and black at the turn (it read as a
+sticker pasted on the card, see above); a code in a texture of its own (a sampler blurs a module's edge, and a whole
+texture for 1089 bits); the reveal tied to the moving lights (the pointer's light moves with the pointer, so the angle
+would not be one place a person can find and hold); a level High code (version 5, a smaller module for no need);
+circles for the finders (a reader's run counts through the centre would still hold, but the diagonal checks some
+readers make need the rings' corners).
 
 ## Decisions refused
 
@@ -170,7 +197,9 @@ smaller module for no need).
 - **The fallback**: with the shader refused, the card is drawn flat with its plain text, whole.
 - **The engraved code**: its matrix, as the shader and the flat card read it, drawn black on white, decodes to the
   address; the ramp is none straight on and far from the turn, whole at the turn; on a device of its own, the back
-  turned straight on does not decode from its pixels, turned to the angle it does.
+  turned straight on does not decode from its pixels, turned to the angle it does; there no channel of the code
+  reaches white (under 245), the silver's mean luminance is 0.55 to 0.92, the pits' under 0.3, and the gap above 0.35
+  (the pixels at the dots' edges pull both means towards each other).
 - **The thank-you page**: the site's test builds it for a program and checks the program's name, logo and accent, and
   that the script, given a 200 from a fake Worker, shows the key and the buttons.
 

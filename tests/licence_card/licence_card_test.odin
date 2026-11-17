@@ -7,6 +7,7 @@ package licence_card_test
 
 @(require) import "core:fmt"   // (the pictures' names: Linux only)
 import "core:math"
+import "core:slice"
 import "core:testing"
 import "gt:qr"
 import "gt:render"
@@ -307,6 +308,32 @@ the_engraved_code_scans_at_its_angle_alone :: proc(t: ^testing.T) {
 	address, err2 := read_corner(s, lo, hi)
 	testing.expect_value(t, err2, qr.Decode_Error.None)
 	testing.expect(t, address, "the code reads the hunt's address")
+
+	// Its look at the turn: metal, not a sticker, and still far enough apart for a reader. The middle of the code (36 units
+	// square about its centre at (381, 199) of the design: the turn moves it by less than 9 units on the screen, its half
+	// side is 33) holds dots and the silver between them. A dot is 3 to 4 pixels wide, so its smoothed edge is a large
+	// share of it: the pits' tone is their core (a low percentile of the luminance), the silver's its bright side (the
+	// 90th); the silver under white, the pits dark, the gap above what a reader needs, and no channel reaches white.
+	img := session.capture(s)
+	k := (hi.x - lo.x) / 440
+	lumas := make([dynamic]f32, context.temp_allocator)
+	brightest := 0
+	for y in int(lo.y + (199 - 18) * k) ..< int(lo.y + (199 + 18) * k) {
+		for x in int(lo.x + (381 - 18) * k) ..< int(lo.x + (381 + 18) * k) {
+			c := session.pixel(img, x, y)
+			brightest = max(brightest, int(c[0]), int(c[1]), int(c[2]))
+			append(&lumas, (0.2126 * f32(c[0]) + 0.7152 * f32(c[1]) + 0.0722 * f32(c[2])) / 255)
+		}
+	}
+	testing.expectf(t, brightest < 245, "no pure white in the code: %v", brightest)
+	if !testing.expect(t, len(lumas) > 100, "the code's middle sampled") { return }
+	slice.sort(lumas[:])
+	// (the pits are a small share of the middle: their core is the 2nd percentile; on lavapipe it is about 0.14, the
+	// silver's 90th percentile about 0.79)
+	dark, light := lumas[len(lumas) / 50], lumas[len(lumas) * 9 / 10]
+	testing.expectf(t, light > 0.55 && light < 0.92, "the silver's luminance: %v", light)
+	testing.expectf(t, dark < 0.25, "the pits' luminance: %v", dark)
+	testing.expectf(t, light - dark > 0.4, "the gap a reader needs: %v - %v", light, dark)
 }
 
 // Whether a code in the bottom right of the card on the last frame reads the hunt's address, and why none was read (lo, hi:

@@ -190,34 +190,87 @@ fn seal_shade(a: AppIn) -> vec4<f32> {
 }
 
 // ---- the engraved code ------------------------------------------------------------------------------------------------------------
-// A QR code cut into the back's foil (its pits are in the relief: licence_card_back.odin, seal_engrave). Seen from most angles it
-// is one more texture of the foil; as the eye nears the direction of one turn of the card, its light modules and its quiet zone
-// go white and its dark modules nearly black, so that a phone reads it. Only the brightness changes: the cells are read here
-// from the matrix itself, one bit a module, at the place the relief cuts them. Parameters:
+// A QR code engraved in the back's foil: a plate of brushed silver (the quiet zone, its corners rounded like the card's), the
+// light modules polished silver, the dark ones rounded dots and the finders rounded rings, cut as pits into the dark foil (the
+// relief: licence_card_back.odin, seal_engrave, cuts the same shapes from the same numbers). Seen from most angles it is a faint
+// plate in the foil; as the eye nears the direction of one turn of the card, the silver and the pits take their tones, so that
+// a phone reads it. Neither tone is pure: a reader needs a gap of luminance, not black and white, and the code stays metal.
+// Parameters (seal_params):
 //   5          the code's top left, a module, its modules a side (design units)
 //   6          the eye of the turn that reveals it (the frame of the face), the cosine of the angle where it is whole
-//   7          the cosine where it is gone, the quiet zone (modules)
-//   8 ..       the matrix: module (x, y) is bit i % 24 of float i / 24, i = y * size + x (an f32 holds 24 bits exactly)
-// At a point `p` of the design, the eye `V` in the frame of the face: x how much of the code shows there (0 outside it and its
-// quiet zone), y 1 on a dark module. The same ramp as licence_card_seal_reveal.
-fn seal_cell(p: float2, V: float3) -> float2 {
+//   7          the cosine where it is gone, the quiet zone (modules), an edge's half width (design units), the plate's radius
+//   8          a dot's half width and radius, a finder's outer and inner ring radius (modules)
+//   9.x        a finder's centre radius (modules)
+//   10 ..      the matrix: module (x, y) is bit i % 24 of float i / 24, i = y * size + x (an f32 holds 24 bits exactly)
+
+// The signed distance from `p` to a square of half width `h` with corners of radius `r` about the origin: negative inside.
+fn seal_box(p: float2, h: f32, r: f32) -> f32 {
+	let d = abs(p) - float2(h - r);
+	return length(max(d, float2(0.0))) + min(max(d.x, d.y), 0.0) - r;
+}
+
+// Whether module `c` (inside the code) is dark.
+fn seal_bit(c: float2, n: f32) -> bool {
+	let i = u32(c.y) * u32(n) + u32(c.x);
+	let word = i / 24u;
+	let slot = app_param(10u + word / 4u);
+	let bits = u32(slot[word % 4u]);
+	return ((bits >> (i % 24u)) & 1u) == 1u;
+}
+
+// The signed distance from `q` (modules from the code's top left, inside it) to the ink, in modules: negative on a dark dot or
+// on a finder's ring or centre. A finder is drawn from its place: its ring and centre keep 1:1:3:1:1 on the axes through its
+// centre, only their corners are rounded. (licence_card_back.odin: seal_ink)
+fn seal_ink(q: float2, n: f32) -> f32 {
+	let s = app_param(8u);
+	var o = float2(-1.0);
+	if (q.x < 7.0 && q.y < 7.0) {
+		o = float2(0.0);
+	} else if (q.x >= n - 7.0 && q.y < 7.0) {
+		o = float2(n - 7.0, 0.0);
+	} else if (q.x < 7.0 && q.y >= n - 7.0) {
+		o = float2(0.0, n - 7.0);
+	}
+	if (o.x >= 0.0) {
+		let r = q - o - 3.5;
+		let ring = max(seal_box(r, 3.5, s.z), -seal_box(r, 2.5, s.w));
+		return min(ring, seal_box(r, 1.5, app_param(9u).x));
+	}
+	let c = floor(q);
+	if (!seal_bit(c, n)) { return 1.0; }
+	return seal_box(q - c - 0.5, s.x, s.y);
+}
+
+// At a point `p` of the design, the eye `V` in the frame of the face: x how much of the code's look shows there (the plate's
+// coverage times the ramp), y the ink (1 in a pit), z the polish (1 on the code's own square, easing to the plate's brushed
+// silver over half a module), w the plate's coverage. The same ramp as licence_card_seal_reveal.
+fn seal_cell(p: float2, V: float3) -> float4 {
 	let g = app_param(5u);
 	let e = app_param(6u);
 	let f = app_param(7u);
 	let n = g.w;
-	let c = floor((p - g.xy) / g.z);
-	if (any(c < float2(-f.y)) || any(c >= float2(n + f.y))) { return float2(0.0); }
+	let aa = f.z;
+	let half_side = (n * 0.5 + f.y) * g.z;
+	let dp = seal_box(p - (g.xy + n * 0.5 * g.z), half_side, f.w);
+	if (dp > aa) { return float4(0.0); }
+	let plate = 1.0 - smoothstep(-aa, aa, dp);
 	let reveal = smoothstep(f.x, e.w, dot(V, e.xyz));
-	var dark = 0.0;
-	if (all(c >= float2(0.0)) && all(c < float2(n))) {
-		let i = u32(c.y) * u32(n) + u32(c.x);
-		let word = i / 24u;
-		let slot = app_param(8u + word / 4u);
-		let bits = u32(slot[word % 4u]);
-		dark = f32((bits >> (i % 24u)) & 1u);
+	let q = (p - g.xy) / g.z;
+	let outside = max(max(-q.x, q.x - n), max(-q.y, q.y - n));
+	let polish = 1.0 - smoothstep(0.0, 0.5, outside);
+	var ink = 0.0;
+	if (outside < 0.0) {
+		let soft = aa / g.z;
+		ink = 1.0 - smoothstep(-soft, soft, seal_ink(q, n));
 	}
-	return float2(reveal, dark);
+	return float4(plate * reveal, ink, polish, plate);
 }
+
+// The luminance of a linear colour (Rec. 709).
+const SEAL_LUMA: float3 = float3(0.2126, 0.7152, 0.0722);
+// The most a pit's tone may reach at the turn, linear (0.027: 0.18 once in sRGB): the foil's dark, never lifted by the light
+// into the silver's range.
+const SEAL_DARK_MOST: f32 = 0.027;
 
 fn app_shade(a: AppIn) -> vec4<f32> {
 	let mode = app_param(3u).z;
@@ -253,7 +306,7 @@ fn app_shade(a: AppIn) -> vec4<f32> {
 	let ry = app_param(4u).x * 0.0174533;
 	let V = to_face(float3(0.0, 0.0, 1.0), rx, ry, back);
 	// the engraved code of the back (none on the front: its parameters stop at slot 4); the point in design units
-	var seal = float2(0.0);
+	var seal = float4(0.0);
 	if (back) { seal = seal_cell(uv * app_param(0u).xy, V); }
 
 	if (ctl.x < 0.5) {
@@ -261,8 +314,9 @@ fn app_shade(a: AppIn) -> vec4<f32> {
 		// the letters' shadow on the card, then a dark floor under the silver (the guilloche does not show through it)
 		k = 1.0 - (1.0 - k) * (1.0 - 0.7 * dropped * (1.0 - cov));
 		k = mix(k, 0.92, cov);
-		// the code at its turn: no shade on the light cells (the light pass makes them white), a dark floor in the dark ones
-		k = mix(k, select(0.0, 0.95, seal.y > 0.5), seal.x);
+		// the code at its turn: the ground put out under the plate, so that the light pass alone sets its tones (the silver and
+		// the pits' dark are exact there, whatever the ground's gradient)
+		k = mix(k, 1.0, seal.x);
 		return float4(0.0, 0.0, 0.0, k);
 	}
 	// how far the eye is off the face, as the pointer's tilt was (1 at the tilt's end): the thin film's hue follows it
@@ -321,9 +375,24 @@ fn app_shade(a: AppIn) -> vec4<f32> {
 	col *= (1.0 - 0.5 * halo) * (1.0 - 0.85 * dropped * (1.0 - cov));
 	col = mix(col, lit, cov);
 	col = 1.0 - exp(-col * 1.35);
-	// the code at its turn: a light cell white with a breath of the film's hue, a dark one the foil's own colour nearly put
-	// out (a reader needs the contrast; the hue keeps it metal)
-	let white = float3(0.93) + 0.07 * foil_film(phase);
-	col = mix(col, select(white, col * 0.12, seal.y > 0.5), seal.x);
+	if (back && seal.w > 0.0) {
+		// the code's metal (linear here; its luminance in sRGB at the turn: the polished modules 0.71 to 0.86, the brushed plate
+		// 0.60 to 0.76, the pits 0.13 to 0.18). Polished silver: the lettering's cool grey, a trace of the film's hue, the key
+		// light held to a narrow range (the guilloche's slopes under it must not dim a light module towards the pits' tone);
+		// its brightest channel stays under 0.77 (0.89 in sRGB, 226 of 255): never white.
+		let shine = clamp(0.9 + 0.1 * kd, 0.9, 1.06);
+		let film = mix(float3(1.0), 0.88 + 0.24 * foil_film(phase), 0.3);
+		let polished = mix(float3(0.54, 0.56, 0.61), float3(0.62, 0.64, 0.69), gt) * film * (0.96 + 0.05 * streak) * shine;
+		// the plate: the same silver brushed, a little darker (still light for a reader: the quiet zone must be)
+		let brushed = polished * 0.74 * (0.93 + 0.10 * streak);
+		// a pit: the foil's ground with its own light (the guilloche shows faintly in it), held to the dark range
+		let pit = float3(0.011, 0.015, 0.032) + col * 0.25;
+		let pit_dark = pit * min(1.0, SEAL_DARK_MOST / max(dot(pit, SEAL_LUMA), 1e-4));
+		let metal = mix(mix(brushed, polished, seal.z), pit_dark, seal.y);
+		// away from the turn, a breath of the plate's silver over the foil: a hint that something is there, the same over the
+		// dots and between them (the relief alone draws them, too faint for a reader)
+		col += polished * 0.025 * seal.w * (1.0 - seal.x);
+		col = mix(col, metal, seal.x);
+	}
 	return float4(col * arg2.x, 1.0);
 }
