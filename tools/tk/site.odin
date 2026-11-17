@@ -2,8 +2,10 @@ package tk
 
 // The toolkit's site, made when it is deployed (.github/workflows/pages.yml) so that it cannot be behind a release. The steps are
 // src/site's; this file says what the toolkit's site is (its address, names, colours).
-//   site_build <site> <out>        the three steps below, in order, the pictures made light (site.build_images, cwebp), then the
-//                                  links of <out> (site.check_links): <out> is what is published
+//   site_build <site> <out>        the three steps below, in order, the plugin API's explorer (plugins/api/, from
+//                                  plugin-api/api.json, site_explorer.odin; it fails without a valid file), the pictures made
+//                                  light (site.build_images, cwebp), then the links of <out> (site.check_links): <out> is what
+//                                  is published
 //   site_changelog <site> <out>    <out> gets a copy of <site>, the history and the classic pages (site.build_changelog)
 //   site_meta <site> <out>         what a page says when it is shared, the feed, the sitemap, the files around the pages (site.build_meta)
 //   site_docs <site> <out>         docs/*.md as pages, docs/_nav.txt their menu (site.build_docs; site_docs.odin)
@@ -77,6 +79,8 @@ run_site_card :: proc(args: []string) -> string {
 // The site as it is published.
 site_build :: proc(site, out: string) -> string {
 	if !site_changelog(site, out) { return "the changelog's pages were not made" }
+	// (before build_meta: the explorer is a page of the sitemap, with its canonical address)
+	if why := build_api_explorer(join({toolkit_root(), PLUGIN_API_DIR}), site, out); why != "" { return why }
 	if !tk_site.build_meta(site_meta(toolkit_root()), out, out) { return "what the pages say when shared was not made" }
 	if why := build_docs(join({toolkit_root(), "docs"}), site, out); why != "" { return why }
 	encoder, why := toolbox.webp_encoder(join({toolkit_root(), "build"}))

@@ -3,7 +3,8 @@
 `gt:plugins` lets a person add commands to a program without a new build of it. A plugin is a folder with a
 `plugin.json` and its JavaScript; its commands appear in the command palette, and a command's handler can show a toast.
 The design and its reasons are in [src/md/features/plugins.md](../src/md/features/plugins.md). What a plugin's
-JavaScript can call is in [plugin-api.md](plugin-api.md).
+JavaScript can call is in [plugin-api.md](plugin-api.md) and the site's
+[API explorer](https://gt.sacha.house/plugins/api/). A plugin's author starts with [gt-runtime.md](gt-runtime.md).
 
 ```odin
 import plugins "gt:plugins"

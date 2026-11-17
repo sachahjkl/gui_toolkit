@@ -57,8 +57,8 @@
   `Command.name` becomes `ui.Command.id`). Intent: [src/md/features/keymap.md](src/md/features/keymap.md), "Migration".
 - **Plugins in JavaScript.** A person adds commands, settings and views to a program with a plugin, which reaches only
   what they granted and never slows the window. Done: commands and toasts, views, settings (API level 3), `gt-runtime`
-  with its JavaScript demos. Next: opencode native turns plugins on; the API explorer's page on the site (it reads
-  `plugin-api/api.json`); the plugin host in its own process, then capabilities and tasks (files, `fetch`, the
+  with its JavaScript demos, the API explorer on the site. Next: opencode native turns plugins on; the plugin host in its
+  own process, then capabilities and tasks (files, `fetch`, the
   clipboard); lazy lists; a program's own module (`app`); palette sources, menu and tool bar entries. Intent:
   [src/md/features/plugins.md](src/md/features/plugins.md).
 

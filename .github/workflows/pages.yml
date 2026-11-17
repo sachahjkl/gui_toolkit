@@ -9,6 +9,7 @@ on:
       - "site/**"
       - "CHANGELOG.md"
       - "docs/**"
+      - "plugin-api/**"
       - "tools/tk/**"
       - "src/site/**"
       - ".github/workflows/pages.yml"

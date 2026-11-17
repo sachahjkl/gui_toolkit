@@ -210,7 +210,8 @@ footer p { max-width: 760px; margin: 0 auto; }
 .release > p { margin: 0 0 10px; color: var(--weak); font-size: 0.95rem; }
 .release strong { font-weight: 600; }
 
-@media (max-width: 680px) {
+/* (800 px: the bar's eight links and the brand need about 770) */
+@media (max-width: 800px) {
   .burger { display: block; }
   /* the menu drops under the bar, one carved row per link */
   .bar nav {

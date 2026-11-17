@@ -364,6 +364,14 @@ Decided on 2026-11-17:
   writes `plugin-api/gt.d.ts`, the snapshot of each level, the reference page `docs/plugin-api.md`, and
   `plugin-api/api.json`: the modules, their calls with their arguments and results, the nodes (from slice 4), the
   level that added each, and its capability. The site renders the JSON; it reads nothing else.
+  - **As built**: `tk site_build` writes `plugins/api/` (tools/tk/site_explorer.odin) from the JSON, before the pages
+    get their shared tags, and copies `api.json` and `gt.d.ts` beside it. One static page, a small script for the
+    search; no framework. Each call's anchor is its JavaScript name (`#views.register`), each node's `#node.<kind>`,
+    each type's `#type.<name>`, each level's `#level.<n>`: a doc or an agent links them. A field tagged `state` in the
+    declarations (a field's value, a box's state: the host keeps it, the serial rule) is `"state": true` in the JSON.
+    A missing or malformed file fails the build, with where it is wrong: the site never ships a stale explorer.
+    Refused: reading `api.odin` from the site's build (a second reader of the declarations), and rendering in the
+    browser from the JSON (a page without JavaScript would be empty, and a search engine would see nothing).
 - **JavaScript demos** run by gt-runtime, beside the Odin demos: the plugins of `examples/plugins` first, each a folder
   that `gt-runtime` opens as it is.
 
