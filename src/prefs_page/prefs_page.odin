@@ -37,7 +37,6 @@ import "../draw"
 import "../font"
 import i18n "../i18n"
 import lucide "../lucide"
-import host "../host"
 import shortcuts "../shortcuts"
 import "../ui"
 import update "../update"
@@ -114,11 +113,11 @@ Page_Options :: struct {
 	shortcut_prefs: []Shortcut_Pref,
 	// the toolkit's own pages, after the program's: the licence (licence.odin: its state, Buy, a key, a file, Remove),
 	// the installation (install.odin: the state, Install, Repair, Uninstall) and the diagnostics of the window the
-	// settings are in (diagnostics.odin: its graphics adapter, its frame times, the versions, with a Copy button). nil:
-	// not shown
+	// settings are in (diagnostics.odin: its graphics adapter, its frame times, the versions, with a Copy button; a
+	// host's window: diagnostics_of). nil (licence, install), no renderer (diagnostics): not shown
 	licence:     ^Licence,
 	install:     ^Install,
-	diagnostics: ^host.Host,
+	diagnostics: Diagnostics_Source,
 	// the program's changelog (changelog.odin): a What's new page, first of the toolkit's own (nil: not shown)
 	changelog:   ^Changelog,
 }
@@ -287,7 +286,7 @@ SIDEBAR_DEFS := [?]config.Def{
 @(private)
 pages_of :: proc(prefs: ^config.Prefs, o: Page_Options, p: ^Page = nil) -> []Page_Info {
 	out := program_pages_of(prefs, o)
-	if o.changelog == nil && o.licence == nil && o.install == nil && o.diagnostics == nil { return out }
+	if o.changelog == nil && o.licence == nil && o.install == nil && o.diagnostics.renderer == nil { return out }
 	all := make([dynamic]Page_Info, 0, len(out) + 3, context.temp_allocator)
 	append(&all, ..out)
 	if o.changelog != nil {
@@ -305,7 +304,7 @@ pages_of :: proc(prefs: ^config.Prefs, o: Page_Options, p: ^Page = nil) -> []Pag
 		pg.title = i18n.tr(pg.title)
 		append(&all, pg)
 	}
-	if o.diagnostics != nil {
+	if o.diagnostics.renderer != nil {
 		pg := diagnostics_page_info(p)
 		pg.title = i18n.tr(pg.title)
 		append(&all, pg)
@@ -365,7 +364,7 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 	// (the sidebar's width is the page's own preference: registered at its first build)
 	if config.ref_of(prefs, SIDEBAR_PREF) == config.NO_REF { config.register(prefs, SIDEBAR_DEFS[:]) }
 	p.prefs, p.state, p.changed, p.user = prefs, ui.current_state(), o.changed, o.user
-	p.diagnostics.host, p.diagnostics.version = o.diagnostics, o.version
+	p.diagnostics.source, p.diagnostics.version = o.diagnostics, o.version
 	p.number_typed, p.rule_before = false, false
 	placed_drop(p)
 	pages := pages_of(prefs, o, p)

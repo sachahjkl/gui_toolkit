@@ -5,6 +5,9 @@ package tk_prefs_page
 // is a software rasterizer, which no setting makes fast), the window's size and scale, the last frames' build and draw
 // times (host.frame_stats: kept in every build, a release too), and partial redraw with the share of pixels it drew. A
 // Copy button puts it all on the clipboard as text.
+//
+// The page reads a Diagnostics_Source, plain data: a program on the toolkit's host gives diagnostics_of(&its_host); a
+// program with a loop of its own (Wren) gives its renderer, its window and a host.Frame_Ring it fills (host.frame_add).
 
 import "core:fmt"
 import "core:math"
@@ -13,14 +16,29 @@ import si "core:sys/info"
 import host "../host"
 import i18n "../i18n"
 import lucide "../lucide"
+import "../platform"
 import "../render"
 import "../ui"
 
 // How often the page makes its numbers again while it is shown: a sort of the frames kept, not each frame.
 DIAGNOSTICS_REFRESH_MS :: 1000
 
+// What the page reads, at each build: no field is kept past it. `renderer` nil: no page.
+Diagnostics_Source :: struct {
+	renderer:       ^render.Renderer,   // the adapter and its API
+	window:         ^platform.Window,   // its size and scale (nil: no such line)
+	frames:         ^host.Frame_Ring,   // the last pictures' times (nil: none drawn yet)
+	partial_redraw: bool,               // each frame redraws only what changed (ui.set_partial_redraw)
+}
+
+// The source of a window on the toolkit's host.
+diagnostics_of :: proc(h: ^host.Host) -> Diagnostics_Source {
+	if h == nil || h.shared == nil { return {} }
+	return {renderer = &h.shared.r, window = h.win, frames = &h.frames, partial_redraw = h.partial_redraw}
+}
+
 Diagnostics_View :: struct {
-	host:       ^host.Host,   // Page_Options.diagnostics, at each build
+	source:     Diagnostics_Source,   // Page_Options.diagnostics, at each build
 	version:    string,       // Page_Options.version, at each build
 	rows:       [dynamic]Diagnostics_Row,   // owned: what the page shows, made again every DIAGNOSTICS_REFRESH_MS
 	text:       string,       // owned: the same as text, for Copy
@@ -67,7 +85,7 @@ diagnostics_text :: proc(rows: []Diagnostics_Row) -> string {
 diagnostics_build :: proc(user: rawptr, em: f32) {
 	p := (^Page)(user)
 	v := &p.diagnostics
-	if v.host == nil { return }
+	if v.source.renderer == nil { return }
 	// (the system's version is in files on Linux: read once, on a task)
 	if v.system == "" && !v.reading && p.state != nil {
 		v.reading = true
@@ -137,37 +155,48 @@ diagnostics_build :: proc(user: rawptr, em: f32) {
 	if copied { ui.wake_within(p.state, 1600) }
 }
 
-// The rows, from the window's host, its renderer and what the page knows.
 @(private = "file")
 diagnostics_make :: proc(v: ^Diagnostics_View) {
 	diagnostics_rows_free(v)
-	h := v.host
-	add :: proc(v: ^Diagnostics_View, key, value: string) { append(&v.rows, Diagnostics_Row{strings.clone(key), strings.clone(value)}) }
-	if v.version != "" { add(v, i18n.tr("Program"), v.version) }
-	add(v, "gui_toolkit", ui.VERSION)   // (a product's name: never translated)
-	add(v, i18n.tr("System"), fmt.tprintf("%s (%v %v)", v.system != "" ? v.system : "…", ODIN_OS, ODIN_ARCH))
-	a := render.adapter_info(&h.shared.r)
-	v.software = a.software
-	adapter := a.name != "" ? a.name : "?"
-	add(v, i18n.tr("Graphics adapter"), a.software ? fmt.tprintf(i18n.tr("%s (software rasterizer)"), adapter) : adapter)
-	add(v, i18n.tr("Graphics API"), fmt.tprintf("%s (%s)", a.api, render.backend_name()))
-	if h.win != nil {
-		add(v, i18n.tr("Window"), fmt.tprintf(i18n.tr("%d × %d pixels, scale %s"), h.win.size.x, h.win.size.y, i18n.decimal(f64(h.win.dpi_scale), 2)))
-	}
-	s := host.frame_stats(&h.frames)
-	ms :: proc(v: f64) -> string { return i18n.decimal(v, 1) }
-	if s.frames == 0 {
-		add(v, i18n.tr("Frames"), i18n.tr("none drawn yet"))
-	} else {
-		add(v, i18n.tr("Frames"), fmt.tprintf(i18n.tr("the last %d: median %s ms, 95th percentile %s ms"), s.frames, ms(f64(s.total_p50)), ms(f64(s.total_p95))))
-		add(v, i18n.tr("Build"), fmt.tprintf(i18n.tr("median %s ms, 95th percentile %s ms"), ms(f64(s.build_p50)), ms(f64(s.build_p95))))
-		add(v, i18n.tr("Draw"), fmt.tprintf(i18n.tr("median %s ms, 95th percentile %s ms"), ms(f64(s.draw_p50)), ms(f64(s.draw_p95))))
-	}
-	if h.partial_redraw {
-		add(v, i18n.tr("Partial redraw"), s.drawn_share > 0 ? fmt.tprintf(i18n.tr("on: %s of the pixels drawn"), i18n.percent(f64(s.drawn_share))) : i18n.tr("on"))
-	} else {
-		add(v, i18n.tr("Partial redraw"), i18n.tr("off"))
-	}
+	rows, software := diagnostics_rows(v.source, v.version, v.system)
+	for r in rows { append(&v.rows, Diagnostics_Row{strings.clone(r.key), strings.clone(r.value)}) }
+	v.software = software
 	delete(v.text)
 	v.text = strings.clone(diagnostics_text(v.rows[:]))
+}
+
+// The page's rows, from a source, the program's version ("": no line) and the system's name ("": not read yet), in the
+// temporary allocator; `software`: the adapter is a software rasterizer. What the page shows and Copy copies.
+diagnostics_rows :: proc(s: Diagnostics_Source, version, system: string) -> (rows: []Diagnostics_Row, software: bool) {
+	out := make([dynamic]Diagnostics_Row, context.temp_allocator)
+	add :: proc(out: ^[dynamic]Diagnostics_Row, key, value: string) { append(out, Diagnostics_Row{key, value}) }
+	if version != "" { add(&out, i18n.tr("Program"), version) }
+	add(&out, "gui_toolkit", ui.VERSION)   // (a product's name: never translated)
+	add(&out, i18n.tr("System"), fmt.tprintf("%s (%v %v)", system != "" ? system : "…", ODIN_OS, ODIN_ARCH))
+	if s.renderer != nil {
+		a := render.adapter_info(s.renderer)
+		software = a.software
+		adapter := a.name != "" ? a.name : "?"
+		add(&out, i18n.tr("Graphics adapter"), a.software ? fmt.tprintf(i18n.tr("%s (software rasterizer)"), adapter) : adapter)
+		add(&out, i18n.tr("Graphics API"), fmt.tprintf("%s (%s)", a.api, render.backend_name()))
+	}
+	if w := s.window; w != nil {
+		add(&out, i18n.tr("Window"), fmt.tprintf(i18n.tr("%d × %d pixels, scale %s"), w.size.x, w.size.y, i18n.decimal(f64(w.dpi_scale), 2)))
+	}
+	st: host.Frame_Stats
+	if s.frames != nil { st = host.frame_stats(s.frames) }
+	ms :: proc(v: f64) -> string { return i18n.decimal(v, 1) }
+	if st.frames == 0 {
+		add(&out, i18n.tr("Frames"), i18n.tr("none drawn yet"))
+	} else {
+		add(&out, i18n.tr("Frames"), fmt.tprintf(i18n.tr("the last %d: median %s ms, 95th percentile %s ms"), st.frames, ms(f64(st.total_p50)), ms(f64(st.total_p95))))
+		add(&out, i18n.tr("Build"), fmt.tprintf(i18n.tr("median %s ms, 95th percentile %s ms"), ms(f64(st.build_p50)), ms(f64(st.build_p95))))
+		add(&out, i18n.tr("Draw"), fmt.tprintf(i18n.tr("median %s ms, 95th percentile %s ms"), ms(f64(st.draw_p50)), ms(f64(st.draw_p95))))
+	}
+	if s.partial_redraw {
+		add(&out, i18n.tr("Partial redraw"), st.drawn_share > 0 ? fmt.tprintf(i18n.tr("on: %s of the pixels drawn"), i18n.percent(f64(st.drawn_share))) : i18n.tr("on"))
+	} else {
+		add(&out, i18n.tr("Partial redraw"), i18n.tr("off"))
+	}
+	return out[:], software
 }

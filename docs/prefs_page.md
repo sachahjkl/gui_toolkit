@@ -425,8 +425,11 @@ The command line is `setup.command_of` and `setup.command_run` (`--install`, `--
 
 ## Diagnostics
 
-`Page_Options.diagnostics` (the `host.Host` of the window the settings are in) adds a **Diagnostics** page after the
-installation: what a person on a slow machine copies and sends. One line each: the program (`Page_Options.version`), the
+`Page_Options.diagnostics` (a `Diagnostics_Source` of the window the settings are in) adds a **Diagnostics** page after
+the installation: what a person on a slow machine copies and sends. A program on the toolkit's host gives
+`prefs_page.diagnostics_of(&app.main)`; a program with a loop of its own fills the source itself: its renderer, its
+window, a `host.Frame_Ring` it feeds with `host.frame_add`, and whether partial redraw is on. No renderer: no page.
+`diagnostics_rows(source, version, system)` gives the lines the page shows. One line each: the program (`Page_Options.version`), the
 toolkit (`ui.VERSION`), the system (`core:sys/info`, read once on a task), the graphics adapter and API
 (`render.adapter_info`, with a warning above the lines when it is a software rasterizer), the window's size in pixels and
 its scale, the last frames' total, build and draw times (median and 95th percentile: `host.frame_stats`, kept in every

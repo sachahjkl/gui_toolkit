@@ -517,6 +517,12 @@ frame_record :: proc(ring: ^Frame_Ring, h: ^Host) {
 		st := ui.damage_stats(&h.state)
 		x.px_drawn, x.px_window = i32(st.px_drawn), i32(st.px_window)
 	}
+	frame_add(ring, x)
+}
+
+// One picture's times into the ring, over the oldest when it is full. The host calls it at each picture; a program with
+// a loop of its own calls it at each of its pictures, and its Diagnostics page reads the same numbers.
+frame_add :: proc(ring: ^Frame_Ring, x: Frame_Sample) {
 	ring.slots[ring.count % FRAME_RING] = x
 	ring.count += 1
 }

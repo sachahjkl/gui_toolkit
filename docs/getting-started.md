@@ -77,7 +77,8 @@ program that shows it its own way; `Host.failure` says which step failed (`Open_
 Each host keeps the times of its last pictures (`Host.frames`, `host.FRAME_RING` of them, in every build: a few stores a
 frame, no allocation): the interface's builds and the draw up to the present, and with partial redraw on the pixels drawn.
 `host.frame_stats(&h.frames)` gives their median and 95th percentile and the share of pixels drawn; it sorts at most
-`FRAME_RING` numbers, so call it when they are shown (the settings' Diagnostics page does, once a second).
+`FRAME_RING` numbers, so call it when they are shown (the settings' Diagnostics page does, once a second). A program
+with a loop of its own keeps a `host.Frame_Ring` per window and calls `host.frame_add(&ring, sample)` at each picture.
 
 `build :: proc(h: ^host.Host, size: host.Vec2)` holds the widgets (`h.user` is the `app` given to `host_open`). What it does
 for you, in order:

@@ -330,8 +330,7 @@ the_frame_ring_says_its_percentiles :: proc(t: ^testing.T) {
 	for i in 0 ..< host.FRAME_RING + 28 {
 		// (the first 28 are overwritten: their 1000 ms never shows)
 		ms := f32(i < 28 ? 1000 : i - 28)
-		ring.slots[ring.count % host.FRAME_RING] = {build_ms = ms, draw_ms = 1, px_drawn = 25, px_window = 100}
-		ring.count += 1
+		host.frame_add(&ring, {build_ms = ms, draw_ms = 1, px_drawn = 25, px_window = 100})
 	}
 	s := host.frame_stats(&ring)
 	testing.expect_value(t, s.frames, host.FRAME_RING)
