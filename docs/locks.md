@@ -17,7 +17,7 @@ held for a few nanoseconds per glyph, and won where a whole run of glyphs or a w
 | `Face_Colr.mu` (`src/font/colr_glyph.odin`, one per COLR face) | the face's outline cache | whoever draws a COLR glyph | per COLR glyph drawn, per outline it needs | a map lookup or insert; a flush of the cache when it is over budget |
 | `Emoji_Source.mu` (`src/font/emoji.odin`) | the emoji font's source and its loading | shaping threads until the font is loaded (then an atomic load), the interface thread | once (a load), or per emoji while no source is set | the whole font load the first time |
 | `memory_mu` (`src/font/com.odin`) | the fonts loaded from memory and their references | loads, derived faces, unloads, DirectWrite's own threads opening a stream | rare | a map change |
-| `loader_mu` (`src/font/font_windows.odin`) | the registration of the memory font loader | `init`, `destroy` | once per state | a counter, the registration call |
+| `loader_mu` (`src/font/font_windows.odin`) | the registration of the memory font loader (once per process, never undone) | `init` | once per state; only the first `init` of the process registers | a flag check; the first time, the registration call |
 
 ## The others
 

@@ -109,7 +109,8 @@ memory_stream_vtable := IDWriteFontFileStream_VTable{
 	},
 }
 
-// One loader per process: the key of a file is a number never used twice (`memory_next`), not an address.
+// One loader per process, registered once with the shared factory and never unregistered (`loader_registered`,
+// font_windows.odin): the key of a file is a number never used twice (`memory_next`), not an address.
 @(private)
 Memory_Loader :: struct {
 	using iface: IDWriteFontFileLoader,

@@ -237,6 +237,7 @@ STEPS := []Step{
 	{name = "color_glyphs_builtin", path = "tests/color_glyphs", defines = {"COLR_ENGINE=builtin"}},
 	{name = "color_native", oses = LINUX_ONLY, text = true},
 	{name = "text_backends"},
+	{name = "font_memory", oses = EVERYWHERE},
 	{name = "font_default", oses = EVERYWHERE},   // (built with no define: the backend each system gets by default)
 	{name = "lucide_subset", oses = EVERYWHERE, text = true},
 	{name = "lean_build", oses = EVERYWHERE, defines = {"TOOLKIT_DEVTOOLS=false", "FONT_EMBED_FALLBACK=false"}, text = true},
