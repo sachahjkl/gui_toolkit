@@ -265,7 +265,8 @@ changelog_build :: proc(user: rawptr, em: f32) {
 changelog_tools_build :: proc(c: ^Changelog, em: f32) {
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X, cross = .Center})
 	if ui.row(.Start, {}, "###whats_new_tools") {
-		ui.next({width = ui.px(math.round(em * 16))})
+		// (its height said: left to the program's style, a field could take the whole page and push the versions out of it)
+		ui.next({width = ui.px(math.round(em * 16)), height = ui.px(ui.dense(em * 1.9))})
 		ui.line_edit("###whats_new_search", &c.search, {placeholder = i18n.tr("Search the versions"), clearable = true})
 		ui.space(ui.CONTROL_GAP)
 		for k in Change_Kind {
@@ -280,6 +281,7 @@ changelog_tools_build :: proc(c: ^Changelog, em: f32) {
 			ui.space(ui.CONTROL_GAP)
 		}
 		ui.spacer(ui.fill())
+		ui.next({height = ui.text_size()})   // (a label's height left to the style was the view's: the row took the page)
 		if ui.tags("weak") { ui.label(fmt.tprintf("%s###whats_new_count", fmt.tprintf(i18n.tr("%d of %d versions"), len(c.shown), len(c.releases)))) }
 	}
 }
