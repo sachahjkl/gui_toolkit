@@ -1,6 +1,6 @@
 // image: transformations of RGBA8 pictures on the CPU, for a screenshot before it is saved or sent: crop, resize, rotate,
 // margins, borders, rounded corners, a shadow, a background, colour adjustments, blur, sharpen, pixelate, one picture
-// over another, a watermark. Pure Odin, any target, deterministic. Every procedure blocks for the time of a pass over the
+// over another, a watermark; the screens of a scrolling capture stitched into one picture. Pure Odin, any target, deterministic. Every procedure blocks for the time of a pass over the
 // pixels: a program calls them on a worker. See docs/image.md.
 //
 // Pixels are packed RGBA8 with straight alpha, as png.decode and capture give them. A procedure that returns an Image

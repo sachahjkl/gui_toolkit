@@ -113,6 +113,59 @@ image.watermark_text(shot, &fonts, face, "example.com", 18, image.WHITE, .Bottom
 On Linux, text is shaped by the native text backend, the default there, as everything that shapes text is
 ([font-backend.md](font-backend.md)).
 
+## Stitching
+
+A scrolling capture's screens joined into one tall picture of the page. The frames have one size. The rows that do
+not move between two frames that differ are the header (at the top) and the footer (at the bottom): the picture keeps
+the first frame's header and the last frame's footer once. The middle of each frame is joined where its first rows
+match the last rows of the middle before: equal row hashes, then the bytes, the largest such overlap. The intent:
+[src/md/features/stitch.md](../src/md/features/stitch.md).
+
+A capture loop adds each frame as it comes and stops when a frame adds nothing:
+
+```odin
+s := image.stitch_begin({min_overlap = 16, max_height = 20000})   // a zero field takes its default
+for {
+	frame := capture_the_window()                                  // the program's own capture
+	_, result := image.stitch_add(&s, frame)
+	image.destroy(&frame)
+	if result != .Added { break }   // .No_Overlap: or scroll less and add again
+	scroll_down()
+}
+page, ok := image.stitch_end(&s)
+defer image.destroy(&page)
+```
+
+| Call | What it does |
+|---|---|
+| `stitch_begin(options, allocator)` | a `Stitcher`; its memory and the picture are in `allocator` |
+| `stitch_add(&s, frame) -> (moved, result)` | adds a frame (read, not kept); `moved` is the rows it appended |
+| `stitch_end(&s) -> (img, ok)` | the picture; frees the rest; ok is false when no frame was added |
+| `stitch(frames, options, allocator) -> (img, used, ok)` | the same over frames already taken; it stops at the first `.Same` or `.Full`; `used` is the frames that gave rows; a `.No_Overlap` or `.Refused` frame gives ok = false and no picture |
+
+`Stitch_Options`:
+
+- `min_overlap` (`STITCH_MIN_OVERLAP`, 16): the least overlap in rows that joins two frames. Under it, the frames do not
+  overlap.
+- `max_height` (`STITCH_MAX_HEIGHT`, 32768): the picture's height is never more. At 1920 columns it is 240 MiB.
+
+`Stitch_Result`:
+
+- `.Added`: the frame's new rows were appended (the first frame: all its rows).
+- `.Same`: the frame shows what the frame before showed. The page did not move: its end.
+- `.No_Overlap`: no overlap of `min_overlap` rows. The frame is refused and nothing changes. A step of more than a
+  screen gives it.
+- `.Full`: `max_height` is reached. The rows past it are cut, the footer still ends the picture, later frames add
+  nothing.
+- `.Refused`: the frame's size is not the first frame's, or its pixels do not match its size.
+
+Rules a caller can count on:
+
+- The first two frames that differ fix the header and the footer for the rest of the stitch.
+- On rows that repeat (a page of equal lines), two moves can match. The largest overlap, the smallest move, is taken.
+- Matches are exact: a row that changed (a caret that blinks in the middle) breaks the overlap.
+- Each frame costs one hash per row and a search of rows times candidate overlaps. Add frames on a worker.
+
 ## Files
 
 | Procedure | What it makes |
@@ -149,4 +202,7 @@ face lands at its anchor; a JPEG reads back (core:image/jpeg) close to its pictu
 file; WebP is available (`tools/run_tests` builds the tests with `-define:IMAGE_WEBP=true`), a WebP file is a RIFF WEBP
 file, and a lossless one reads back pixel for pixel. `decode`
 reads each format by its signature (a PNG, a BMP and a GIF pixel for pixel, a JPEG close to its picture) and refuses an
-unknown format and a file cut short.
+unknown format and a file cut short. The stitcher (`stitch_test.odin`) rebuilds a synthetic page (a sticky header, a
+footer, 770 rows that scroll) exactly from screens at irregular steps, refuses a screen that overlaps too little and
+goes on, reports a repeated screen as the end, stops at `max_height`, aligns a page with blocks of equal rows, and
+takes the smallest move on a page whose rows all repeat.
