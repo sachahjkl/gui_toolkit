@@ -174,8 +174,10 @@ the settings page's table (`prefs_page.control_of`):
 | the rest (a path, an address, a size, a text) | the field is its text |
 
 - The field keeps the keyboard: its text is the control's filter or the value's text. A filter typed selects the best
-  row; Up, Down, Page Up, Page Down and a click move and write at once. A value typed is written at Enter; a value
-  refused stays, its reason under the row.
+  row; Up, Down, Page Up and Page Down move and write at once. A click on a row is Enter on it: written and kept (a
+  form: the next argument, or the command run on the last). The second click of a double click (`Signal.second_click`: its press was
+  the second of a double click) acts on no row. A
+  value typed is written at Enter; a value refused stays, its reason under the row.
 - **Enter keeps** and goes back to the list (a form: the next argument; on the last, the choice). **Escape puts back
   the value of before** and goes back (a form: the argument before; on the first, the list, or the palette closed
   when `palette_open_form` opened it). A value another path
@@ -213,7 +215,8 @@ ui.palette_commands(&app.palette, COMMANDS[:], disabled[:], {user = app, choices
 | `palette_run_level(&p) -> Palette_Run_Level` | `.Closed`, `.Control` (a value), `.Form` (a command's arguments) |
 | `palette_run_item(&p) -> (src, id, arg, ok)` | the item the run mode is open on, and the argument shown |
 | `palette_run_error(&p) -> string` | why its last write was refused ("": it was not) |
-| `palette_sublist(id, &st, count, step, height, row, user) -> (moved, clicked)` | the run mode's list of choices: rows of one height, only those in view built, `step` moving the selection (`Palette_Sublist{sel, reveal}`), `row(user, i, selected)` filling each row |
+| `palette_sublist(id, &st, count, step, height, row, user) -> (moved, clicked)` | the run mode's list of choices: rows of one height, only those in view built, `step` moving the selection (`Palette_Sublist{sel, reveal}`), `row(user, i, selected)` filling each row; `clicked` ignores the second click of a double one |
+| `palette_run_keep(&p)` | the run mode's control asks what Enter does (a row of its sub-list clicked): the step kept, then the list, the next argument or the choice |
 | `palette_command_arguments(&p, id) -> (index, arguments)`, `palette_command_choices(&p, index, argument) -> (labels, values)`, `palette_command_initial(&p, index, argument, allocator) -> (value, ok)` | what a forms runner reads of the commands source |
 | `Palette_Run_Keys{step, page, enter, tab}`, `palette_run_set_text(&p, text)` | the keys `build` is given, read before the field (Tab: complete); a control puts a text in the field, the caret at its end, as typed (a path completed: prefs_page's) |
 

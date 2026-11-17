@@ -279,6 +279,15 @@ palette_run_keys :: proc(p: ^Command_Palette, page: int) -> (keys: Palette_Run_K
 	return
 }
 
+// The run mode's control asks what Enter does (a row of its sub-list clicked: a click is a choice): the step's value
+// kept, then the list, the next argument or the form's choice, made by palette_chosen after the control's write.
+palette_run_keep :: proc(p: ^Command_Palette) {
+	run := &p.run
+	if run.level == .Closed || run.due != .None { return }   // (its item gone, or a key that asked first, wins)
+	run.due = .Keep
+	gs().anim_busy = true
+}
+
 // The run mode's control puts `text` in the palette's field, the caret at its end (a path completed by Tab): from its
 // build, as the person typing it would. The field's text is the step's value text or its filter, as before.
 palette_run_set_text :: proc(p: ^Command_Palette, text: string) {
@@ -359,7 +368,8 @@ Palette_Sublist :: struct {
 // The run mode's list of choices (a family, a theme, a closed list): `count` rows of one height (PALETTE_ROW_EM), only
 // those in view built, `height` high. `step` moves the selection (the run mode's keys), which comes into view. `row`
 // builds row `i`'s content inside its row box (the icon, the name, the mark). `moved`: the selection moved by `step`;
-// `clicked`: the row clicked (-1: none), selected too.
+// `clicked`: the row clicked (-1: none), selected too; a runner keeps it as Enter would (palette_run_keep). The
+// second click of a double one is no click: the first kept its row.
 palette_sublist :: proc(id: string, st: ^Palette_Sublist, count: int, step: int, height: f32, row_build: proc(user: rawptr, i: int, selected: bool), user: rawptr) -> (moved: bool, clicked: int) {
 	clicked = -1
 	em := font_size()
@@ -395,7 +405,8 @@ palette_sublist :: proc(id: string, st: ^Palette_Sublist, count: int, step: int,
 			if sel { flags += {.Draw_Background, .Chosen} }
 			rb := build_box(flags, fmt.tprintf("###sub_%d", i))
 			a11y_default(rb, {role = .List_Box_Option, selected = sel, position = i + 1})
-			if signal(rb).clicked { clicked = i }
+			// (the first click of a double one kept its row: the step after it is under the pointer now)
+			if sig := signal(rb); sig.clicked && !sig.second_click { clicked = i }
 			if parent(rb) { row_build(user, i, sel) }
 			if sel { pop_tags() }
 			pop_tags()

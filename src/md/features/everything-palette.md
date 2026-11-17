@@ -195,8 +195,17 @@ any level ──its item gone from its source's answer──▶ List, nothing pu
 - **In the palette every closed list is the sub-list** (`ui.palette_sublist`): rows of one height, the rows in view
   built, a short list too. The page keeps its row of buttons for six choices or fewer, where a line has the height of
   one button; in the palette one way through the choices by the keys is worth more than the look of the page. A
-  filter typed selects the best row and writes nothing; a move (a key, a click) writes at once; Enter writes the row
-  selected, then keeps.
+  filter typed selects the best row and writes nothing; a key's move (Up, Down, a page) writes at once; Enter writes the
+  row selected, then keeps.
+- **A click on a row is Enter on it** (`ui.palette_run_keep`), in a setting's list and in a form's: it writes the row,
+  keeps it, and steps on (the list again; the form's next argument, or its command run on the last). A click is a
+  choice; the keys are a walk through the choices to see each one. Refused: a click that only writes, as a key's move
+  does: in a form nothing showed the value written, the person clicked and saw nothing happen and had to find Enter
+  (a model chosen from the composer's button). Refused too: a click that keeps a setting's list but leaves it open:
+  the person would then press Enter or Escape on a choice already made, and Escape would undo it.
+- **A double click acts once.** Its first click keeps the row and the step after it comes under the pointer (the
+  form's next argument, the list with another row there). Its second click (`Signal.second_click`: the press was the
+  second of a double click) acts on no row of the palette, in the run mode's sub-list or in the list.
 - **A number**: Up and Down step it, the slider under the row writes when it is let go (as on the page, the file is not
   rewritten at the pointer's rate), the text typed is written at Enter. **A colour**: the picker without its own text
   (`color_picker`'s `text = false`): the palette's field is that text, said once. **Keys**: the text, or the recorder

@@ -213,6 +213,9 @@ Signal :: struct {
 	clicked:         bool,    // left press and release both on this box, or Enter, Space or a screen reader activated it
 	pointer_clicked: bool,    // the click was the button's: the pointer is where it says
 	double_clicked:  bool,
+	// clicked, its press the second of a double click: a box that acted at the first click (a row chosen, what it
+	// showed gone or changed under the pointer) ignores it, so a double click does not act twice
+	second_click:    bool,
 	right_clicked:   bool,
 	middle_clicked:  bool,
 	dragging:        bool,    // left button is held and this box was pressed
@@ -451,6 +454,7 @@ State :: struct {
 	released_key: [platform.Mouse_Button]Key,
 	clicked_key:  [platform.Mouse_Button]Key,
 	double_key:   Key,
+	press_double: bool,                          // the last left press was the second of a double click (Signal.second_click)
 	release_owed: Key,                           // a left press ended with its box: `released` when that box is back
 	press_serial: [platform.Mouse_Button]u64,    // bumps at each press: a press of the same box again is another one
 	press_kept:   map[Press_Data_Key]Press_Data, // press_data: what each gesture keeps on its press

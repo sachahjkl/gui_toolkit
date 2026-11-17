@@ -213,7 +213,7 @@ button :: proc(id: string, text := "", icon := "", o := Button_Options{}) -> Sig
 	case:               sig = button_row(id, text, icon, face, o)
 	}
 	// (a busy button keeps its place and its look; only its act waits)
-	if o.busy { sig.clicked, sig.pressed, sig.pointer_clicked, sig.pointer_pressed, sig.double_clicked = false, false, false, false, false }
+	if o.busy { sig.clicked, sig.pressed, sig.pointer_clicked, sig.pointer_pressed, sig.double_clicked, sig.second_click = false, false, false, false, false, false }
 	return sig
 }
 

@@ -1411,7 +1411,8 @@ palette_view :: proc(v: ^View, p: ^Command_Palette) {
 			}
 			sig := palette_row_build(p, snap, it, r, k, row_h, icons, k == p.sel)
 			if sig.hovering && moved { hovered = k }
-			if sig.clicked { clicked = k }
+			// (the first click of a double one acted: a row run, a run mode opened under the pointer)
+			if sig.clicked && !sig.second_click { clicked = k }
 		}
 		if below > 0 { spacer(px(below)) }
 		if n > 0 { palette_quiet_rows(p, row_h) }

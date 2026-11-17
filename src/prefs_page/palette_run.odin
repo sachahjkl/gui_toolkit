@@ -10,7 +10,7 @@ package tk_prefs_page
 //                the choice (ui.Palette_Choice.arguments)
 //
 // The field of the palette is the control's filter (a closed list, a family, a theme) or the value's text (a number, a
-// colour, keys, a field). A filter typed selects the best row; a move writes at once.
+// colour, keys, a field). A filter typed selects the best row; a key's move writes at once; a click keeps, as Enter.
 
 import "base:runtime"
 import "core:fmt"
@@ -317,8 +317,8 @@ run_build :: proc(p: ^ui.Command_Palette, run: ^ui.Palette_Run, query: string, k
 	return
 }
 
-// The sub-list of a closed list, a family or a theme: filtered by the field, the value in use marked; a move writes at
-// once, Enter writes the row selected.
+// The sub-list of a closed list, a family or a theme: filtered by the field, the value in use marked; a key's move
+// writes at once, Enter or a click writes the row and keeps it.
 @(private = "file")
 sub_build :: proc(st: ^Run_State, run: ^ui.Palette_Run, o: Page_Options, e: ^config.Entry, c: Control, query: string, keys: ui.Palette_Run_Keys, height: f32) -> (write: Maybe(string)) {
 	em := ui.font_size()
@@ -401,6 +401,8 @@ sub_build :: proc(st: ^Run_State, run: ^ui.Palette_Run, o: Page_Options, e: ^con
 			if !ascii.equal_fold(v, rows.current) { write = strings.clone(v, context.temp_allocator) }
 		}
 	}
+	// (a click is a choice, as Enter: kept, and a form goes on; the keys' moves only write)
+	if clicked >= 0 { ui.palette_run_keep(st.palette) }
 	return
 }
 

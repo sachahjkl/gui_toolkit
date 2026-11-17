@@ -42,10 +42,20 @@ EXPORT_ARGS := [?]config.Def{
 	{name = "name", title = "Name", kind = .String, default = {s = "picture"}},
 	{name = "format", title = "Format", kind = .String, default = {s = "png"}},
 }
+// A command with one closed list the program fills (a model button's "Set the model"), and one with two closed lists.
+@(private = "file")
+CONVERT_ARGS := [?]config.Def{{name = "format", title = "Format", kind = .String, default = {s = "png"}}}
+@(private = "file")
+PACK_ARGS := [?]config.Def{
+	{name = "format", title = "Format", kind = .String, default = {s = "png"}},
+	{name = "quality", title = "Quality", kind = .String, default = {s = "high"}, choices = {"low", "high"}},
+}
 @(private = "file")
 RUN_COMMANDS := [?]ui.Command{
 	{id = "rename", label = "Rename the picture", group = "File", arguments = RENAME_ARGS[:]},
 	{id = "export", label = "Export as", group = "File", arguments = EXPORT_ARGS[:]},
+	{id = "convert", label = "Convert to", group = "File", arguments = CONVERT_ARGS[:]},
+	{id = "pack", label = "Pack", group = "File", arguments = PACK_ARGS[:]},
 }
 
 @(private = "file", rodata) FORMAT_LABELS := [?]string{"PNG", "WebP", "JPEG"}
@@ -530,6 +540,77 @@ a_step_reads_its_choices_once :: proc(t: ^testing.T) {
 	session.key(s, .Return)
 	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return app.chosen == "export" }, "the command chosen again")
 	if len(app.values) == 2 { testing.expect_value(t, app.values[1], "webp") }
+}
+
+// A click on a row of a form's closed list is Enter on it (everything-palette.md, "A click on a row is Enter on it"):
+// on the only argument the command runs with that row and the palette closes; on the first of two, the form steps to
+// the second. A double click acts once: its second click, on the next argument's row now under the pointer, chooses
+// nothing.
+@(test)
+a_click_on_a_form_s_row_keeps_it_and_steps_on :: proc(t: ^testing.T) {
+	app: Run_App
+	defer run_end(&app)
+	app.commands = true
+	s := run_start(t, &app)
+	session.frames(s, 2)
+	app.open_form = "convert"
+	run_level_is(s, &app, .Form)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.find_text(s, "WebP") != nil }, "the program's choices")
+	session.click_text(s, "WebP")
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return app.chosen == "convert" }, "the command run by the click")
+	testing.expect_value(t, len(app.values), 1)
+	if len(app.values) == 1 { testing.expect_value(t, app.values[0], "webp") }
+	session.frames(s, 2)
+	testing.expect(t, !ui.palette_is_open(&app.pal), "the palette closed")
+
+	// two arguments: a click on the first's row steps to the second
+	app.chosen = ""
+	app.open_form = "pack"
+	run_level_is(s, &app, .Form)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.find_text(s, "WebP") != nil }, "the first argument's choices")
+	session.click_text(s, "WebP")
+	run_arg_is(s, &app, 1)
+	testing.expect(t, ui.palette_is_open(&app.pal), "the form goes on")
+	testing.expect_value(t, app.chosen, "")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.find_text(s, "Low") != nil }, "the second argument's choices")
+	session.click_text(s, "Low")
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return app.chosen == "pack" }, "the command run by the second click")
+	testing.expect_value(t, len(app.values), 2)
+	if len(app.values) == 2 {
+		testing.expect_value(t, app.values[0], "webp")
+		testing.expect_value(t, app.values[1], "low")
+	}
+
+	// a double click on the first's row: the second argument, and nothing chosen by its second click (WebP's row is
+	// the second, as High's is under it now)
+	app.chosen = ""
+	session.frames(s, 2)
+	app.open_form = "pack"
+	run_level_is(s, &app, .Form)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.find_text(s, "WebP") != nil }, "the choices again")
+	session.click_text(s, "WebP", count = 2)
+	run_arg_is(s, &app, 1)
+	session.frames(s, 3)
+	testing.expect_value(t, app.chosen, "")
+	testing.expect(t, ui.palette_is_open(&app.pal), "the second click ran nothing")
+	testing.expect_value(t, ui.palette_run_level(&app.pal), ui.Palette_Run_Level.Form)
+}
+
+// A click on a row of a setting's list is Enter on it: the value written and kept, the list again, the palette open.
+@(test)
+a_click_on_a_setting_s_row_keeps_it :: proc(t: ^testing.T) {
+	app: Run_App
+	defer run_end(&app)
+	s := run_start(t, &app)
+	run_open_on(s, &app, ":style", "look.style")
+	session.key(s, .Return)
+	run_level_is(s, &app, .Control)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.find_text(s, "Glass") != nil }, "its choices")
+	session.click_text(s, "Glass")
+	run_level_is(s, &app, .Closed)
+	testing.expect_value(t, config.string_of(&app.prefs, "look.style"), "glass")
+	testing.expect(t, ui.palette_is_open(&app.pal), "the palette stays, on its list")
+	testing.expect_value(t, ui.line_edit_string(&app.pal.field), ":style")
 }
 
 // Go to: Shift+Enter on a setting shows the settings on its page, its line scrolled into view, focused and lit; the

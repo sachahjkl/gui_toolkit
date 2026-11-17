@@ -76,7 +76,9 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 				if hot != 0 && hot == s.last_click_key && s.time_ms - s.last_click_ms < DOUBLE_CLICK_MS && near {
 					s.double_key = hot
 					s.last_click_key = 0
+					s.press_double = true
 				} else {
+					s.press_double = false
 					s.last_click_key = hot
 					s.last_click_ms = s.time_ms
 					s.last_click_pos = e.pos
@@ -445,6 +447,8 @@ signal :: proc(b: ^Box) -> (sig: Signal) {
 		sig.released = s.released_key[.Left] == b.key || s.release_owed == b.key
 		sig.clicked = s.clicked_key[.Left] == b.key
 		sig.pointer_clicked = sig.clicked && s.a11y.pressed != b.key
+		// (the release can come frames after the press that made the double: the press notes it, the click reads it)
+		sig.second_click = sig.pointer_clicked && s.press_double
 		sig.double_clicked = s.double_key == b.key
 		sig.right_clicked = s.clicked_key[.Right] == b.key
 		sig.middle_clicked = s.clicked_key[.Middle] == b.key
