@@ -339,6 +339,7 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, s: Changel
 					ui.space(ui.CONTROL_GAP)
 					ui.pill("latest", i18n.tr("Latest"), lucide.ROCKET, ui.hue(.Green))
 				}
+				ui.space(ui.CARD_PAD)   // (the card's inset on the right too: Latest stood against its edge)
 			}
 			// its changes, by type
 			for &g, k in r.groups {
