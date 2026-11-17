@@ -642,12 +642,12 @@ inner_evaluate :: proc(ctx: ^Context, m: ^Module, index: int, stack_top: ^^Modul
 	if m.pending_async > 0 {
 		m.async_evaluation = true
 		m.async_ts = i64(rt.gc_count) << 32 | i64(len(rt.modules)) // monotonic enough within a runtime
-		module_async_counter += 1
-		m.async_ts = module_async_counter
+		rt.module_async_counter += 1
+		m.async_ts = rt.module_async_counter
 	} else if m.has_tla {
 		m.async_evaluation = true
-		module_async_counter += 1
-		m.async_ts = module_async_counter
+		rt.module_async_counter += 1
+		m.async_ts = rt.module_async_counter
 		execute_async_module(ctx, m)
 	} else {
 		err, ok := execute_sync_module(ctx, m)
@@ -664,9 +664,6 @@ inner_evaluate :: proc(ctx: ^Context, m: ^Module, index: int, stack_top: ^^Modul
 	}
 	return idx, UNDEFINED
 }
-
-@(private = "file")
-module_async_counter: i64
 
 // Evaluate(): returns the module's evaluation promise.
 module_evaluate :: proc(ctx: ^Context, m_in: ^Module) -> Value {

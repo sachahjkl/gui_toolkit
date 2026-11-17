@@ -1,19 +1,21 @@
 package jsrt
 
 // Date (ECMA-262 Ã‚Â§21.4) on the calendar arithmetic of src/js/datetime (package jsdate). The clock
-// and the local time zone come from the host (date_now_hook, jsdate.timezone_offset_proc).
+// and the local time zone come from the host, each runtime's own (Host_Config.date_now_hook, timezone_offset_proc).
 
 import "core:math"
 import jsdate "datetime"
 
-// Milliseconds since the epoch (the host sets it; without one the clock reads 0).
-date_now_hook: proc() -> f64
-
+// Milliseconds since the epoch (without the host's clock, it reads 0).
 @(private = "file")
-date_now :: proc() -> f64 {
-	if date_now_hook != nil {return math.trunc(date_now_hook())}
+date_now :: proc(rt: ^Runtime) -> f64 {
+	if rt.config.date_now_hook != nil {return math.trunc(rt.config.date_now_hook())}
 	return 0
 }
+
+// The local time zone of the runtime, for jsdate's procedures that read local time.
+@(private = "file")
+date_tz :: #force_inline proc(ctx: ^Context) -> jsdate.Timezone_Offset {return ctx.rt.config.timezone_offset_proc}
 
 @(private = "file")
 this_date :: proc(ctx: ^Context, this: Value) -> (^Object, bool) {
@@ -29,12 +31,12 @@ date_value :: #force_inline proc(o: ^Object) -> f64 {return o.data.(^Date_Data).
 date_ctor :: proc(ctx: ^Context, nt: Value, args: []Value, magic: i32) -> Value {
 	rt := ctx.rt
 	if is_undefined(nt) {
-		return date_to_string_value(ctx, date_now(), .ToString, .All, true)
+		return date_to_string_value(ctx, date_now(ctx.rt), .ToString, .All, true)
 	}
 	t: f64
 	switch len(args) {
 	case 0:
-		t = date_now()
+		t = date_now(ctx.rt)
 	case 1:
 		v := args[0]
 		if v.tag == .object && as_obj(v).class == .date {
@@ -43,7 +45,7 @@ date_ctor :: proc(ctx: ^Context, nt: Value, args: []Value, magic: i32) -> Value 
 			p := to_primitive(ctx, v)
 			if is_exception(p) {return EXCEPTION}
 			if p.tag == .string {
-				t = jsdate.parse(str_to_utf8(rt, as_str(p), tmp(rt)))
+				t = jsdate.parse(str_to_utf8(rt, as_str(p), tmp(rt)), date_tz(ctx))
 			} else {
 				d, ok := to_number(ctx, p)
 				if !ok {return EXCEPTION}
@@ -53,7 +55,7 @@ date_ctor :: proc(ctx: ^Context, nt: Value, args: []Value, magic: i32) -> Value 
 	case:
 		f, ok := fields_from_args(ctx, args)
 		if !ok {return EXCEPTION}
-		t = jsdate.time_clip(jsdate.set_date_fields(f, true))
+		t = jsdate.time_clip(jsdate.set_date_fields(f, true, date_tz(ctx)))
 		if math.is_nan(f[0]) {t = NAN}
 	}
 	proto, ok := proto_from_ctor(ctx, nt, .date)
@@ -84,7 +86,7 @@ date_utc :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) -> Value
 	f, ok := fields_from_args(ctx, args)
 	if !ok {return EXCEPTION}
 	if math.is_nan(f[0]) {return mk_float(NAN)}
-	return mk_number(jsdate.time_clip(jsdate.set_date_fields(f, false)))
+	return mk_number(jsdate.time_clip(jsdate.set_date_fields(f, false, date_tz(ctx))))
 }
 
 @(private = "file")
@@ -92,12 +94,12 @@ date_parse_fn :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) -> 
 	rt := ctx.rt
 	s := to_str(ctx, arg(args, 0))
 	if s == nil {return EXCEPTION}
-	return mk_number(jsdate.parse(str_to_utf8(rt, s, tmp(rt))))
+	return mk_number(jsdate.parse(str_to_utf8(rt, s, tmp(rt)), date_tz(ctx)))
 }
 
 @(private = "file")
 date_now_fn :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) -> Value {
-	return mk_number(date_now())
+	return mk_number(date_now(ctx.rt))
 }
 
 // getters: magic = field << 4 | is_local
@@ -105,7 +107,7 @@ date_now_fn :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) -> Va
 date_get_field :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) -> Value {
 	o, ok := this_date(ctx, this)
 	if !ok {return EXCEPTION}
-	f, valid := jsdate.get_date_fields(date_value(o), magic & 1 != 0, false)
+	f, valid := jsdate.get_date_fields(date_value(o), magic & 1 != 0, false, date_tz(ctx))
 	if !valid {return mk_float(NAN)}
 	field := magic >> 4
 	if field == 9 {return mk_number(f[0] - 1900)} // getYear
@@ -125,8 +127,9 @@ date_tz_offset :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) ->
 	if !ok {return EXCEPTION}
 	t := date_value(o)
 	if math.is_nan(t) {return mk_float(NAN)}
-	if jsdate.timezone_offset_proc == nil {return mk_int(0)}
-	return mk_int(i32(jsdate.timezone_offset_proc(i64(t))))
+	tz := date_tz(ctx)
+	if tz == nil {return mk_int(0)}
+	return mk_int(i32(tz(i64(t))))
 }
 
 // setters: magic = first << 8 | end << 4 | is_local
@@ -138,7 +141,7 @@ date_set_field :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) ->
 	end := int((magic >> 4) & 0xf)
 	is_local := magic & 1 != 0
 	t := date_value(o)
-	f, res := jsdate.get_date_fields(t, is_local, first == 0)
+	f, res := jsdate.get_date_fields(t, is_local, first == 0, date_tz(ctx))
 	valid_before := res
 	n := min(len(args), end - first)
 	for i in 0 ..< n {
@@ -150,7 +153,7 @@ date_set_field :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) ->
 	// an invalid date stays untouched (the arguments are still converted, in order)
 	if !valid_before {return mk_float(NAN)}
 	d := NAN
-	if res && len(args) > 0 {d = jsdate.time_clip(jsdate.set_date_fields(f, is_local))}
+	if res && len(args) > 0 {d = jsdate.time_clip(jsdate.set_date_fields(f, is_local, date_tz(ctx)))}
 	set_date(ctx.rt, o, d)
 	return mk_number(d)
 }
@@ -173,7 +176,7 @@ date_set_year :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) -> 
 	y, ok2 := to_number(ctx, arg(args, 0))
 	if !ok2 {return EXCEPTION}
 	t := date_value(o)
-	f, _ := jsdate.get_date_fields(t, true, true)
+	f, _ := jsdate.get_date_fields(t, true, true, date_tz(ctx))
 	if !is_finite_f64(y) {
 		set_date(ctx.rt, o, NAN)
 		return mk_float(NAN)
@@ -181,7 +184,7 @@ date_set_year :: proc(ctx: ^Context, this: Value, args: []Value, magic: i32) -> 
 	yi := math.trunc(y)
 	if yi >= 0 && yi <= 99 {yi += 1900}
 	f[0] = yi
-	d := jsdate.time_clip(jsdate.set_date_fields(f, true))
+	d := jsdate.time_clip(jsdate.set_date_fields(f, true, date_tz(ctx)))
 	set_date(ctx.rt, o, d)
 	return mk_number(d)
 }
@@ -192,7 +195,7 @@ date_to_string_value :: proc(ctx: ^Context, t: f64, fmt: jsdate.Format, part: js
 		if fmt == .ISO {return throw_range_error(ctx, "Date value is NaN")}
 		return new_string(ctx, "Invalid Date")
 	}
-	f, _ := jsdate.get_date_fields(t, local, false)
+	f, _ := jsdate.get_date_fields(t, local, false, date_tz(ctx))
 	buf: [96]u8
 	n := jsdate.format_date(buf[:], f, fmt, part)
 	if n < 0 {return throw_range_error(ctx, "Date value is NaN")}

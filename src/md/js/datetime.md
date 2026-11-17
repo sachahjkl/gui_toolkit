@@ -12,12 +12,14 @@ The package is named `jsdate` so that it never collides with `core:time/datetime
 
 ## The time zone is the host's
 
-The one thing it cannot compute alone is the local time zone offset: `jsdate.timezone_offset_proc`, a contextless
-callback that returns minutes west of UTC for an instant (`getTimezoneOffset(t)`). When it is nil, local time is UTC, so
-UTC-only code and tests work with no host. The clock is the host's too: `Date.now` and `new Date()` read
-`date_now_hook` of the runtime.
+The one thing it cannot compute alone is the local time zone offset: a `Timezone_Offset`, a contextless callback that
+returns minutes west of UTC for an instant (`getTimezoneOffset(t)`). When it is nil, local time is UTC, so UTC-only
+code and tests work with no host. The clock is the host's too: `Date.now` and `new Date()` read
+`Host_Config.date_now_hook` of the runtime.
 
-This callback is a package global: one runtime's state natively ([README.md](README.md), the risk).
+The callback is a parameter of each procedure that reads local time (`get_date_fields`, `set_date_fields`, `parse`).
+The runtime passes its own, `Host_Config.timezone_offset_proc`. Refused: a package global. It was one in Wren, where
+each runtime had a Wasm instance of its own; natively it would be every runtime's ([README.md](README.md), State).
 
 ## Subtleties
 

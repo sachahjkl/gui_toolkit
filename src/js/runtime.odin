@@ -13,6 +13,7 @@ package jsrt
 import "base:runtime"
 import "base:intrinsics"
 import "core:mem"
+import jsdate "datetime"
 
 // Back edges and calls between two polls of the interrupt hook.
 INTERRUPT_POLL_EVERY :: 10_000
@@ -94,6 +95,29 @@ Host_Config :: struct {
 	// resolving functions. false with an exception pending rejects the promise at once.
 	dynamic_import:      proc(ctx: ^Context, base: Value, specifier: Value, attributes: Value, resolve: Value, reject: Value, user: rawptr) -> bool,
 	dynamic_import_user: rawptr,
+
+	// The embedder's clocks, stack and polls. They were package globals while each runtime had a Wasm instance of its
+	// own; natively every runtime of the process would share them, so each runtime has its own here. A field of the
+	// config, not of Runtime's state: the embedder chooses them, at engine_new or later (`rt.config.x = ...`), and the
+	// engine only reads them, one load through the rt the code already has.
+	// Milliseconds since the epoch, for Date (nil: the clock reads 0).
+	date_now_hook:         proc() -> f64,
+	// The offset in minutes of local time from UTC at an instant, getTimezoneOffset's (nil: local time is UTC).
+	timezone_offset_proc:  jsdate.Timezone_Offset,
+	// A monotonic clock in nanoseconds, for the collector's statistics (nil: they read 0).
+	clock_hook:            proc() -> i64,
+	// What the engine does (Span_Stage), for the embedder's measures (WREN_SPANS).
+	span_hook:             proc "c" (kind: i32, begin: bool),
+	// Moves the stack pointer to `sp`, returns where it was: 0 when it did not move. nil: the stack cannot move
+	// (stack.odin). native_stack_low_hook must be set with it.
+	stack_move_hook:       proc "contextless" (sp: uintptr) -> uintptr,
+	// Has the machine's stack little left?
+	native_stack_low_hook: proc "contextless" () -> bool,
+	// Called at a safe point when Runtime.poll_word is up: the host takes the thread (it may stop the call there).
+	poll_hook:             proc "contextless" (),
+	// The embedder's property made on first read (the C API's JS_DefineHostAutoInitProperty): is this the getter of
+	// one? Asking what such a property is makes it (b_object.odin).
+	auto_init_getter:      proc(fn: ^Object) -> bool,
 }
 
 Wait_Result :: enum u8 {ok, not_equal, timed_out}
@@ -197,7 +221,26 @@ Runtime :: struct {
 	host_snapshot_next: int,
 	host_cache:         ^Host_Cache,
 	allocator:      runtime.Allocator,
+	// The context of engine_new's caller, with the runtime's allocator: what a contextless entry point (shape_realize, a
+	// callback of the embedder's) runs under, through runtime_context. runtime.default_context() there gave the
+	// process heap, which escaped the embedder's allocator and its tracker.
+	caller_context: runtime.Context,
 	config:         Host_Config,
+
+	// Raised by the embedder's timer while a script runs (volatile reads), lowered by its poll_hook. Here, not a
+	// package global: two runtimes on two threads each have their own timer. The interpreter reads it through the
+	// rt it already holds at a safe point, and compiled code (jit.odin) loads it from its address, which a runtime
+	// keeps for its life: the cost of the global it was.
+	poll_word:      i32,
+	// The order of the async modules' evaluation ([[AsyncEvaluationOrder]], module.odin).
+	module_async_counter: i64,
+	// The loop JIT (jit.odin): its settings (jit_configure), the mark of a frame that makes one instruction for
+	// compiled code (its address is compared), its counters (jit_stat). A runtime's own, as its code is.
+	jit_cfg:        Jit_Cfg,
+	jit_stepping:   Jit_Loop,
+	jit_stats:      Jit_Stats,
+	// -define:JSRT_TRACE_LAST_OP=true: what ran last, for a crash handler (interp.odin).
+	trace:          Trace_Last_Op,
 
 	// heap
 	big_cells:      [dynamic]^Cell, // the cells over POOL_MAX_BYTES, oldest first (those of the pool are in the bits of their chunks)
@@ -439,6 +482,10 @@ Error_Kind :: enum u8 {
 runtime_new :: proc(allocator := context.allocator, config := DEFAULT_CONFIG) -> ^Runtime {
 	rt := new(Runtime, allocator)
 	rt.allocator = allocator
+	// (the allocator given wins over the caller's: a contextless entry point allocates for this runtime, and every
+	// allocation of a runtime goes through the allocator it was made with)
+	rt.caller_context = context
+	rt.caller_context.allocator = allocator
 	rt.config = config
 	if rt.config.max_stack_depth <= 0 {rt.config.max_stack_depth = DEFAULT_MAX_STACK_DEPTH}
 	if rt.config.max_stack_bytes <= 0 {rt.config.max_stack_bytes = DEFAULT_MAX_STACK_BYTES}
@@ -470,6 +517,19 @@ runtime_new :: proc(allocator := context.allocator, config := DEFAULT_CONFIG) ->
 	atoms_init(rt)
 	rt.gc_disabled -= 1
 	return rt
+}
+
+// The context a contextless entry point of the runtime runs under: engine_new's caller's, with the runtime's allocator.
+// The default temp allocator is a thread-local arena; the one saved is engine_new's thread's, and a runtime may run on
+// another thread later, so it is this thread's (what core:thread does with a context given to a new thread).
+runtime_context :: proc "contextless" (rt: ^Runtime) -> runtime.Context {
+	c := rt.caller_context
+	when !runtime.NO_DEFAULT_TEMP_ALLOCATOR {
+		if c.temp_allocator.procedure == runtime.default_temp_allocator_proc {
+			c.temp_allocator.data = &runtime.global_default_temp_allocator_data
+		}
+	}
+	return c
 }
 
 runtime_free :: proc(rt: ^Runtime) {
@@ -564,13 +624,11 @@ take_exception :: proc(ctx: ^Context) -> Value {
 
 // --- the interrupt/limit checks run at safe points ---
 
-// A word the host raises every few milliseconds while a script runs, and what to do when it is: hand it the thread (it may stop the call there and then). In Wasm the
-// image's loops look at it too (src/wasm/poll.odin); here are the places that run a script without passing a loop of the image.
-poll_word: i32
-poll_hook: proc "contextless" ()
-
-poll_host :: #force_inline proc "contextless" () {
-	if intrinsics.volatile_load(&poll_word) != 0 && poll_hook != nil {poll_hook()}
+// Runtime.poll_word, the word the host raises every few milliseconds while a script runs, and what to do when it is:
+// hand it the thread (Host_Config.poll_hook: it may stop the call there and then). In Wasm the image's loops look at
+// it too (Wren's src/wasm/poll.odin); here are the places that run a script without passing a loop of the image.
+poll_host :: #force_inline proc "contextless" (rt: ^Runtime) {
+	if intrinsics.volatile_load(&rt.poll_word) != 0 && rt.config.poll_hook != nil {rt.config.poll_hook()}
 }
 
 // A native loop that calls no JS polls every NATIVE_LOOP_POLL_STEPS of its steps (`i & NATIVE_LOOP_POLL_MASK == 0`), each
@@ -589,8 +647,8 @@ poll_interrupt :: proc(ctx: ^Context) -> bool {
 	rt.interrupt_counter += 1
 	if rt.interrupt_counter < INTERRUPT_POLL_EVERY {return false}
 	rt.interrupt_counter = 0
-	poll_host()
-	if jit_cfg.trace {jit_note_sample(rt)}
+	poll_host(rt)
+	if rt.jit_cfg.trace {jit_note_sample(rt)}
 	if rt.config.interrupt != nil && rt.config.interrupt(rt, rt.config.interrupt_user) {
 		throw_uncatchable(ctx, "interrupted")
 		return true

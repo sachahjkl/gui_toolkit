@@ -158,8 +158,9 @@ The linear memory of a Wasm module only grows, so what counts there is the high-
   call `shape_realize` first, which runs the glue's callback. It defines the members the eager code defined, with the
   same keys, order, descriptors, names and lengths. A realm then creates the function objects of the interfaces a script
   looks at, not all of them. In Wren: an empty realm went from 6 592 to 4 352 KiB of linear memory, and from 2.3 to
-  1.3 ms to create. `shape_realize` is contextless and makes `runtime.default_context()`: the exception of
-  [README.md](README.md), Memory.
+  1.3 ms to create. `shape_realize` is contextless (so is `shape_find`, which hot lookups call): it runs the callback
+  under the context `engine_new` saved, the runtime's allocator in it ([README.md](README.md), Memory). It reaches
+  the runtime through the lazy members' realm.
 - **Native functions.** A function object has exactly the two slots (`length`, `name`) it is born with. A C function of
   the glue without user data keeps its pointer in `Native_Data.data` (low bit set, `native_data_is_raw`). Its `name` is
   the string of the property key's atom when there is one (`str_interned`).
@@ -210,10 +211,13 @@ with the pc on the instruction for the full dispatch in `interp.odin`. The hot l
   stack. `Host_Config.max_stack_depth` bounds all of it, with a `RangeError` at the limit.
 - On Wasm the host stack is two stacks (`stack.odin`): the shadow stack in linear memory is 2 MiB, every page of which is
   committed for each realm, and a recursion that runs past it goes on in blocks of the heap (the host moves the stack
-  pointer, `stack_move_hook`; the blocks go when the outermost call returns). The machine's stack ends in a trap, so the
-  engine asks the host (`native_stack_low_hook`) at each move and at each entry into a running engine, and stops with the
+  pointer, `Host_Config.stack_move_hook`; the blocks go when the outermost call returns). The machine's stack ends in a
+  trap, so the engine asks the host (`Host_Config.native_stack_low_hook`) at each move and at each entry into a running engine, and stops with the
   same `RangeError`. Natively: one stack, and `Host_Config.max_stack_bytes`.
-- The interrupt hook runs on a budget from the loop back edge. Operators follow the specification (`+` through
+- The interrupt hook runs on a budget from the loop back edge. There, and at each call, the engine looks at the
+  runtime's `poll_word`, which the host's timer raises: when it is up, `Host_Config.poll_hook` takes the thread. Each
+  runtime has its word, its hooks, its JIT state and its order of async modules in its `Runtime`, so runtimes run at
+  once on several threads ([README.md](README.md), State). Operators follow the specification (`+` through
   ToPrimitive, ModRing bitwise, BigInt paths, loose and strict equality). Try/catch uses a per-frame handler stack
   (`catch`/`gosub`/`ret`/`nip_catch`).
 

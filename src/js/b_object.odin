@@ -249,14 +249,13 @@ obj_define_properties :: proc(ctx: ^Context, this: Value, args: []Value, magic: 
 	return o
 }
 
-// The embedder's property made on first read (auto_init_getter: JS_DefineHostAutoInitProperty) is a data property to a script:
-// asking what it is makes it.
-auto_init_getter: proc(fn: ^Object) -> bool
-
+// The embedder's property made on first read (Host_Config.auto_init_getter: JS_DefineHostAutoInitProperty) is a data
+// property to a script: asking what it is makes it.
 @(private = "file")
 get_own_property_resolved :: proc(ctx: ^Context, o: ^Object, a: Atom, d: ^Prop_Desc) -> int {
 	r := get_own_property(ctx, o, a, d)
-	if r > 0 && auto_init_getter != nil && desc_is_accessor(d) && d.getter.tag == .object && auto_init_getter(as_obj(d.getter)) {
+	is_auto_init := ctx.rt.config.auto_init_getter
+	if r > 0 && is_auto_init != nil && desc_is_accessor(d) && d.getter.tag == .object && is_auto_init(as_obj(d.getter)) {
 		if is_exception(call(ctx, d.getter, mk_obj(o), nil)) {return -1}
 		d^ = {}
 		return get_own_property(ctx, o, a, d)

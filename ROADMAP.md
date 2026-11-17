@@ -2,12 +2,6 @@
 
 ## Now
 
-- **gt:js runtimes of their own.** The engine's package globals (polls, hooks, JIT state, the async modules' counter) move into `Runtime`,
-  so two runtimes run in one process on two threads; `tests/js`'s two-thread test turns on. Intent:
-  [src/md/js/README.md](src/md/js/README.md).
-- **gt:js keeps its caller's context.** The contextless entry points (`shape_realize`) restore the context saved in
-  `Runtime` at `engine_new`, not `runtime.default_context()`, so every allocation goes through the program's
-  allocator. Intent: [src/md/js/README.md](src/md/js/README.md).
 - **Wren on the toolkit's licence card.** Wren shows `ui.licence_card` and the shop's thank-you page, as every other
   program does since this toolkit version, and drops its `about_card*.odin` and its card shaders: one card. Intent:
   [src/md/features/licence-card.md](src/md/features/licence-card.md).

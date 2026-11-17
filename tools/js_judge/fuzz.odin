@@ -254,7 +254,6 @@ compile_to_bytes :: proc(source: string, filename: string) -> ([]u8, bool) {
 
 // judge fuzzrun <image>: load and run one bytecode image (a fuzz reproducer).
 fuzz_run_one :: proc(path: string) -> int {
-	fuzz_crash_report_install()   // fuzz_crash_*.odin
 	img, err := os.read_entire_file(path, context.allocator)
 	if err != nil {return 2}
 	h := Fuzz_Host{deadline = time.tick_add(time.tick_now(), FUZZ_REPLAY_BUDGET)}
@@ -262,6 +261,7 @@ fuzz_run_one :: proc(path: string) -> int {
 	cfgr.interrupt = fuzz_interrupt
 	cfgr.interrupt_user = &h
 	rt := judge_engine_new(cfgr)
+	fuzz_crash_report_install(rt)   // fuzz_crash_*.odin
 	ctx := js.context_new(rt)
 	r := js.eval_bytecode(ctx, img)
 	if js.is_exception(r) {

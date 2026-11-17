@@ -45,27 +45,48 @@ through it. Wren's glue gives the guest heap; a test gives a tracker; a plugin h
   instance built with `-default-to-nil-allocator`, where no process allocator exists. A library takes its allocator
   from its caller, as `core:` packages do.
 - Refused: `runtime.heap_allocator()` in the engine. The program's tracker then sees every allocation.
-- One known exception: `shape_realize` (`object.odin`) is contextless and makes `runtime.default_context()`. Its
-  context's allocator is the heap's: an allocation under it that does not name the runtime's allocator escapes the
-  embedder's. In Wasm the heap is the guest's, so Wren sees no difference. The ROADMAP entry
-  "gt:js keeps its caller's context" replaces it with the context saved in `Runtime` at `engine_new`.
+- A contextless entry point (`shape_realize` in `object.odin`, which hot lookups reach through `shape_find`) runs
+  under the context that `engine_new` saved in `Runtime.caller_context`: its caller's, with the runtime's allocator
+  (`runtime_context`). An allocation there that names no allocator goes through the embedder's, which its tracker
+  sees. Refused: `runtime.default_context()`, the process heap, which escaped the embedder (in Wasm it was the
+  guest's, so Wren saw no difference). The saved context's temp allocator, when it is Odin's default (a thread-local
+  arena), is bound again to the thread that enters, as `core:thread` does: a runtime may run on another thread than
+  engine_new's.
 - Natively, a runtime needs one reserved block of addresses today: the collector's table of chunks spans the lowest
   chunk to the highest (plugins.md, Measures). The reserved block in `gt:js` itself is part of the ROADMAP entry
   "Plugins in JavaScript" (plugins.md, slice 1).
 
-## The risk: package globals that are one runtime's state
+## State: a runtime's is in its Runtime
 
 In Wasm, each instance has its own memory, so a package global was one runtime's for free. Natively, every runtime of
-the process shares it. These globals are one runtime's state: `poll_word`, `poll_hook`, `module_async_counter`, the
-`trace_*` of `JSRT_TRACE_LAST_OP`, `jit_cfg`, `jit_stepping`, `jit_stats`, and the embedder's hooks
-(`date_now_hook`, `clock_hook`, `span_hook`, `stack_move_hook`, `native_stack_low_hook`, `auto_init_getter`,
-`jsdate.timezone_offset_proc`).
+the process shares it. So no package global of `gt:js` is one runtime's state. Each moved from Wren's engine to where
+the code reaches it through the runtime it already holds (`ctx.rt`, `rt`, `f.ctx.rt`, the JIT's `c.rt`):
 
-`tools/globals_allowed.txt` classes them `process`, with the note "one runtime per process today". That is true of
-Wren, which has one runtime per Wasm instance. It is not true of a plugin host. The ROADMAP entry "gt:js runtimes of
-their own" moves them into `Runtime`.
+- **The embedder's hooks are `Host_Config` fields**: `date_now_hook`, `timezone_offset_proc`, `clock_hook`,
+  `span_hook`, `stack_move_hook`, `native_stack_low_hook`, `poll_hook`, `auto_init_getter`. The embedder chooses them
+  like the other hooks of the config, at `engine_new` or later in `rt.config`; the engine only reads them. The names
+  stayed, so that Wren's glue changes `js.x = ...` into `rt.config.x = ...` and nothing else.
+- **The runtime's own state is a `Runtime` field**: `poll_word` (a timer writes it), `module_async_counter`, the
+  JIT's `jit_cfg` (`jit_configure(rt, ...)`), `jit_stepping` and `jit_stats` (`jit_stat(rt, which)`), and `trace`
+  (`JSRT_TRACE_LAST_OP`).
+- **The leaf package `jsdate` takes the time zone as a parameter** of each procedure that reads local time. It has no
+  runtime to reach, and a global there would be every runtime's again.
 
-Two globals of that list are no runtime's state, so they stay globals:
+The cost on the hot paths is one load through a pointer the code already holds. The interpreter reads `rt.jit_cfg`
+and `&rt.jit_stepping` through its local `rt`; a call reads `rt.poll_word` where it read the global. Compiled code
+loads the poll word from its address, a constant of the code as the global's was: the code is one runtime's, and the
+runtime keeps the word for its life.
+
+Refused:
+
+- **Thread-locals.** A runtime is used by one thread at a time, not always the same one: a plugin host may hand a
+  runtime to another worker. And two runtimes on one thread would share them.
+- **A global table keyed by the runtime.** A lookup, and a lock, on the hot path (every call reads the poll word), for
+  state the code can reach in one load.
+- **Setters such as `set_poll_hook(rt, p)`.** A config field is the pattern the other hooks already follow, and it can
+  be set before the runtime exists.
+
+Two globals are no runtime's state, so they stay globals:
 
 - `atomics_lock` is a spin lock around Atomics on a SharedArrayBuffer. Agents on several threads share one buffer, so
   the lock is the process's.
@@ -74,10 +95,13 @@ Two globals of that list are no runtime's state, so they stay globals:
 
 ## The test that breaks it
 
-`tests/js`: two runtimes, each `engine_new` with its own block, each evaluates a module that awaits in a loop, matches
-regular expressions and adds with Atomics on a SharedArrayBuffer, calls a native function, then a host call of a
-function it left. Each checks its own result, collects, frees, and leaves no allocation.
+`tests/js`: two runtimes, each `engine_new` with its own block and tracker and its own hooks, each evaluates a module
+that awaits in a loop, matches regular expressions, adds with Atomics on its own SharedArrayBuffer, spins past the
+interrupt checks, reads a lazy object, calls a native function, then a host call of a function it left. Each checks
+its own result, collects, frees, and leaves no allocation.
 
-- By default the two runtimes run one after the other. That passes: it proves the embedding and the teardown.
-- With `-define:JS_TWO_THREADS=true`, they run at the same time on two threads, with a bounded wait. It fails as soon
-  as one global of the list above is a runtime's state. It turns on when the globals move into `Runtime`.
+- Each script sees its own runtime's `Date.now()` and time zone. Only the first runtime's poll word is raised: its
+  hook runs, the second's never does. Each runtime's async module order ends at 1. The lazy object's members are made
+  under the runtime's allocator, and its tracker sees what they allocate.
+- One test runs the two runtimes one after the other; the other at the same time on two threads (a barrier starts
+  them together), with a bounded wait. The second fails as soon as one runtime's state is shared.

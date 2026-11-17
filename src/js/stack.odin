@@ -34,16 +34,13 @@ STACK_SEGMENT_NATIVE_ROOM :: 256 << 10
 // What a stack keeps under the point where calls move on.
 STACK_SEGMENT_KEPT :: STACK_SEGMENT_RESERVE + STACK_SEGMENT_NATIVE_ROOM
 
-// Moves the stack pointer to `sp`, returns where it was: 0 when it did not move. nil: the stack cannot move.
-stack_move_hook: proc "contextless" (sp: uintptr) -> uintptr
-// Has the machine's stack little left?
-native_stack_low_hook: proc "contextless" () -> bool
+// (the embedder's hands on the stack are Host_Config.stack_move_hook and native_stack_low_hook)
 
 // Where a call must not go on, and where a native must not.
 stack_bounds_at :: proc(rt: ^Runtime, limit: uintptr) {
 	rt.stack_bound = limit
 	rt.stack_limit = limit
-	rt.stack_floor = stack_move_hook != nil && limit > STACK_SEGMENT_NATIVE_ROOM ? limit - STACK_SEGMENT_NATIVE_ROOM : limit
+	rt.stack_floor = rt.config.stack_move_hook != nil && limit > STACK_SEGMENT_NATIVE_ROOM ? limit - STACK_SEGMENT_NATIVE_ROOM : limit
 }
 
 // Too deep for a native that recurses without calling anything (the stack does not move for it).
@@ -55,7 +52,7 @@ stack_out :: #force_inline proc "contextless" (rt: ^Runtime) -> bool {
 // An entry of the host into the running engine: its frames are on the machine's stack. Too little left: the next call
 // finds out (call_on_more_stack), and an error is thrown there, at a point that can throw one.
 stack_host_entered :: proc "contextless" (rt: ^Runtime) {
-	if rt.host_depth > 0 && native_stack_low_hook != nil && native_stack_low_hook() {rt.stack_limit = max(uintptr)}
+	if rt.host_depth > 0 && rt.config.native_stack_low_hook != nil && rt.config.native_stack_low_hook() {rt.stack_limit = max(uintptr)}
 }
 
 Stack_Segments :: struct {
@@ -67,7 +64,7 @@ Stack_Segments :: struct {
 // puts the stack pointer back where its own frame began. bound: for stack_segment_leave. False: there is none to take, for
 // a RangeError.
 stack_segment_enter :: proc(rt: ^Runtime) -> (top: uintptr, bound: uintptr, ok: bool) {
-	if stack_move_hook == nil || native_stack_low_hook() {return}
+	if rt.config.stack_move_hook == nil || rt.config.native_stack_low_hook() {return}
 	s := &rt.stack_segments
 	if s.used == len(s.blocks) {return}
 	if s.blocks[s.used] == nil {
@@ -92,19 +89,19 @@ stack_segment_leave :: proc(rt: ^Runtime, bound: uintptr) {
 call_on_more_stack :: #force_no_inline proc(ctx: ^Context, f: Value, this: Value, new_target: Value, args: []Value, is_construct: bool) -> Value {
 	rt := ctx.rt
 	if rt.stack_limit != rt.stack_bound {
-		if native_stack_low_hook() {return stack_overflow(ctx)}
+		if rt.config.native_stack_low_hook() {return stack_overflow(ctx)}
 		rt.stack_limit = rt.stack_bound
 		if !stack_exhausted(rt) {return call_internal(ctx, f, this, new_target, args, is_construct)}
 	}
 	top, bound, ok := stack_segment_enter(rt)
 	if !ok {return stack_overflow(ctx)}
-	sp := stack_move_hook(top)
+	sp := rt.config.stack_move_hook(top)
 	if sp == 0 {
 		stack_segment_leave(rt, bound)
 		return stack_overflow(ctx)
 	}
 	r := call_internal(ctx, f, this, new_target, args, is_construct)
-	stack_move_hook(sp)
+	rt.config.stack_move_hook(sp)
 	stack_segment_leave(rt, bound)
 	return r
 }

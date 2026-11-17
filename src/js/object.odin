@@ -457,9 +457,11 @@ atom_mix :: #force_inline proc "contextless" (a: Atom) -> u32 {
 }
 
 // Defines the members of a lazy shape's object (once: the mark is cleared first, the definitions look their keys up).
+// Contextless because shape_find is, which hot paths call; the context it needs is its runtime's, reached through the
+// lazy members' realm.
 shape_realize :: #force_no_inline proc "contextless" (sh: ^Shape) {
-	context = runtime.default_context() // memcheck: the JavaScript engine's own heap (a guest allocator), not the browser's process memory
 	lz := sh.lazy
+	context = runtime_context(lz.ctx.rt)
 	sh.lazy = nil
 	lz.fn(lz.ctx, lz.o, lz.p, lz.user)
 	mem_free(lz.ctx.rt, lz, size_of(Lazy_Members))

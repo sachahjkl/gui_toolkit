@@ -132,40 +132,22 @@ i18n/i18n.odin cache thread  # the address of a literal to its entry, per thread
 instance/instance_linux.odin owners_mu process  # the instance owners started in the process (locked: owners_mu)
 instance/instance_linux.odin owners process  # the instance owners started in the process (locked: owners_mu)
 js/atoms_table.odin predef_atom_text const  # the predefined atoms' text in quickjs-atom.h's order, a table
-js/b_date.odin date_now_hook process  # the embedder's wall clock for Date, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
 js/b_global.odin uri_reserved const  # ECMAScript's uriReserved set, a table
 js/b_global.odin uri_unescaped_extra const  # the marks of ECMAScript's uriUnescaped set, a table
 js/b_iterator.odin BUILTIN_FROM_ASYNC const  # the bytecode of Array.fromAsync, compiled in (#load), only read
 js/b_iterator.odin BUILTIN_ZIP const  # the bytecode of Iterator.zip, compiled in (#load), only read
 js/b_iterator.odin BUILTIN_ZIP_KEYED const  # the bytecode of Iterator.zipKeyed, compiled in (#load), only read
-js/b_object.odin auto_init_getter process  # the embedder's hook for its properties made on first read (the C API's), set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
 js/b_string.odin html_table const  # Annex B's HTML methods: name, tag, attribute, a table
 js/b_typed.odin elem_size const  # each typed array element's size, a table
 js/b_typed.odin elem_names const  # each typed array's constructor name, a table
 js/b_typed.odin atomics_lock process  # a spin lock (atomic) around Atomics on a SharedArrayBuffer: one for the process, so that agents on any thread exclude each other
 js/b_typed.odin B64 const  # base64's alphabet (RFC 4648), a table
 js/b_typed.odin B64URL const  # base64url's alphabet (RFC 4648), a table
-js/gc.odin clock_hook process  # the embedder's monotonic clock for the collector's statistics, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/gc.odin span_hook process  # the embedder's measure of the engine's stages, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/interp.odin trace_last_op process  # debug (JSRT_TRACE_LAST_OP): the last instruction run, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/interp.odin trace_last_bc process  # debug (JSRT_TRACE_LAST_OP): the function of the last instruction, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/interp.odin trace_native process  # debug (JSRT_TRACE_LAST_OP): the last native called, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/interp.odin trace_native_obj process  # debug (JSRT_TRACE_LAST_OP): the last native's function object, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/interp.odin trace_native_args process  # debug (JSRT_TRACE_LAST_OP): the last native's arguments, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/jit.odin jit_cfg process  # the loop JIT's settings and the embedder's compile procedures, set by jit_configure (wasm32 only); one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/jit.odin jit_stepping process  # the mark of a frame that makes one instruction for compiled code: its address is compared, its counts are written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/jit.odin jit_stats process  # the loop JIT's counters, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/module.odin module_async_counter process  # the order of the async modules' evaluation ([[AsyncEvaluationOrder]]), written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
 js/opcodes.odin opcode_info const  # each opcode's size, stack effect and format, a table
-js/runtime.odin poll_word process  # raised by the embedder's timer while a script runs (volatile reads); one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/runtime.odin poll_hook process  # what the interpreter calls when poll_word is up, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
 js/serialize.odin LAZY_CODE const  # the one instruction of a function not read yet: its address marks it, never written
-js/stack.odin stack_move_hook process  # the embedder's move of the stack pointer, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
-js/stack.odin native_stack_low_hook process  # the embedder's test of the machine's stack, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
 js/value.odin TRUE const  # the value true, never written
 js/value.odin FALSE const  # the value false, never written
 js/bigint/strconv.odin digit_chars const  # the digits of radixes 2 to 36, a table
-js/datetime/datetime.odin timezone_offset_proc process  # the embedder's offset of local time, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
 js/datetime/datetime.odin month_days const  # the days of each month, a table
 js/datetime/datetime.odin month_names const  # the months' short names, a table
 js/datetime/datetime.odin day_names const  # the days' short names, a table

@@ -5,11 +5,11 @@ package jsdate
 // buffer is read with a sentinel (0 past the end), matching the C's NUL-terminated scan; a character
 // above 255 is folded to '-' (for U+2212) or 'x' by the caller before parse (QuickJS does the same).
 // Returns the time value in ms (NaN when nothing parses). The local-time offset, when needed, comes
-// from the same host callback as the rest of the package.
+// from the host's callback the caller passes (tz), as for the rest of the package.
 
 // Parse a Date string. The input should already be ASCII-folded (see note above); callers that hold a
 // UTF-8 string can use parse (below), which does the fold.
-parse_bytes :: proc(sp: []u8) -> f64 {
+parse_bytes :: proc(sp: []u8, tz: Timezone_Offset) -> f64 {
 	fields: [9]int
 	is_local: bool
 	if date_parse_isostring(sp, &fields, &is_local) || date_parse_otherstring(sp, &fields, &is_local) {
@@ -28,7 +28,7 @@ parse_bytes :: proc(sp: []u8) -> f64 {
 			for i in 0 ..< 7 {
 				f[i] = f64(fields[i])
 			}
-			d := set_date_fields(f, is_local) - f64(fields[8]) * 60000
+			d := set_date_fields(f, is_local, tz) - f64(fields[8]) * 60000
 			return d
 		}
 	}
@@ -37,7 +37,7 @@ parse_bytes :: proc(sp: []u8) -> f64 {
 
 // Parse a UTF-8 Date string: fold non-ASCII (U+2212 -> '-', anything else > 255 -> 'x'), cap at 127
 // bytes like QuickJS, and parse. A tiny decode is enough; we only distinguish U+2212 from the rest.
-parse :: proc(str: string) -> f64 {
+parse :: proc(str: string, tz: Timezone_Offset) -> f64 {
 	src := transmute([]u8)str
 	buf: [128]u8
 	i := 0
@@ -62,7 +62,7 @@ parse :: proc(str: string) -> f64 {
 		}
 	}
 	buf[j] = 0
-	return parse_bytes(buf[:j + 1])
+	return parse_bytes(buf[:j + 1], tz)
 }
 
 @(private)

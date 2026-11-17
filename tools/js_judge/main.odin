@@ -26,7 +26,6 @@ import "core:strings"
 import "core:sync"
 import "core:time"
 import js "../../src/js"
-import jsdate "../../src/js/datetime"
 
 // The judge runs with a 64 MiB main-thread stack (tk js_test262: /STACK on Windows, the stack's limit on Linux); the engine may use 48 MiB of it.
 JUDGE_STACK_BYTES :: 48 << 20
@@ -41,10 +40,10 @@ PROGRESS_REPORT_EVERY :: 10 * time.Second
 WORKER_POLL_INTERVAL :: 50 * time.Millisecond
 
 // Monotonic clock for GC statistics, wall clock for Date; local time is UTC in the judge.
-set_host_hooks :: proc() {
-	js.clock_hook = proc() -> i64 {return time.tick_now()._nsec}
-	js.date_now_hook = proc() -> f64 {return f64(time.now()._nsec / 1_000_000)}
-	jsdate.timezone_offset_proc = proc "contextless" (t: i64) -> int {return 0}
+set_host_hooks :: proc(cfg: ^js.Host_Config) {
+	cfg.clock_hook = proc() -> i64 {return time.tick_now()._nsec}
+	cfg.date_now_hook = proc() -> f64 {return f64(time.now()._nsec / 1_000_000)}
+	cfg.timezone_offset_proc = proc "contextless" (t: i64) -> int {return 0}
 }
 
 // --- the reference compiler DLL ---
@@ -553,9 +552,9 @@ run_test262_file :: proc(cfg: ^Config, hc: ^Harness_Cache, rel: string, verbose:
 	cfgr.can_block = can_block
 	cfgr.malloc_limit = 1 << 30
 	agent_hooks(&cfgr)
+	set_host_hooks(&cfgr)
 	rt := judge_engine_new(cfgr)
 	rt.host_data = h
-	set_host_hooks()
 	ctx := js.context_new(rt)
 	install_helpers(ctx)
 	t0 := time.tick_now()
@@ -977,9 +976,9 @@ eval_main :: proc(path: string) -> int {
 	cfgr.load_user = h
 	cfgr.interrupt = judge_interrupt
 	cfgr.interrupt_user = h
+	set_host_hooks(&cfgr)
 	rt := judge_engine_new(cfgr)
 	rt.host_data = h
-	set_host_hooks()
 	ctx := js.context_new(rt)
 	install_helpers(ctx)
 	console := js.new_plain_object(ctx)

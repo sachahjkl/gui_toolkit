@@ -482,7 +482,7 @@ call_native :: proc(ctx: ^Context, o: ^Object, nd: ^Native_Data, this: Value, ar
 	}
 	saved := rt.native_self
 	rt.native_self = o
-	when JSRT_TRACE_LAST_OP {trace_native = nd.fn; trace_native_obj = o; trace_native_args = args}
+	when JSRT_TRACE_LAST_OP {rt.trace.native = nd.fn; rt.trace.native_obj = o; rt.trace.native_args = args}
 	rt.stack_depth += 1
 	r := nd.fn(realm, this, args, i32(o.magic))
 	rt.stack_depth -= 1
@@ -551,8 +551,8 @@ function_realm :: proc(ctx: ^Context, f_in: Value) -> ^Context {
 // --- interpreter activation ---
 
 interp_call :: proc(ctx: ^Context, fo: ^Object, this: Value, new_target: Value, args: []Value) -> Value {
-	poll_host()
 	rt := ctx.rt
+	poll_host(rt)
 	fd := &fo.data.(Func_Data)
 	b := fd.bc
 	realm := b.realm != nil ? b.realm : ctx
@@ -580,7 +580,7 @@ interp_call :: proc(ctx: ^Context, fo: ^Object, this: Value, new_target: Value, 
 	rt.cur_frame = &f
 	rt.stack_depth += 1
 	r: Value
-	if jit_cfg.enabled && jit_entered(&f, fd.var_refs) {
+	if rt.jit_cfg.enabled && jit_entered(&f, fd.var_refs) {
 		// the whole function's compiled code returned (jit.odin)
 		r = jit_result(&f)
 		temp_reset(rt, f.root_base)
@@ -600,8 +600,8 @@ interp_call :: proc(ctx: ^Context, fo: ^Object, this: Value, new_target: Value, 
 // function's compiled code may run on it at once: the frame returned is then where it left (f.pc, f.sp), or the
 // caller's when the callee returned (its result pushed at the caller's sp).
 frame_push :: proc(ctx: ^Context, fo: ^Object, this: Value, args: []Value, jit := true) -> ^Frame {
-	poll_host()   // (a recursion that branches has no back edge, and takes the age of the universe to reach the stack's end)
 	rt := ctx.rt
+	poll_host(rt)   // (a recursion that branches has no back edge, and takes the age of the universe to reach the stack's end)
 	fd := &fo.data.(Func_Data)
 	b := fd.bc
 	arg_buf_len := max(len(args), int(b.arg_count))
@@ -629,7 +629,7 @@ frame_push :: proc(ctx: ^Context, fo: ^Object, this: Value, args: []Value, jit :
 	f.prev = rt.cur_frame
 	rt.cur_frame = f
 	rt.stack_depth += 1
-	if jit && jit_cfg.enabled {return jit_pushed(f)}
+	if jit && rt.jit_cfg.enabled {return jit_pushed(f)}
 	return f
 }
 
@@ -651,7 +651,7 @@ frame_push_construct :: #force_no_inline proc(ctx: ^Context, fo: ^Object, new_ta
 	f := frame_push(ctx, fo, this, args, false)
 	f.new_target = new_target
 	if !derived {f.stackless = .construct}
-	if jit_cfg.enabled {return jit_pushed(f)}
+	if ctx.rt.jit_cfg.enabled {return jit_pushed(f)}
 	return f
 }
 
@@ -721,11 +721,11 @@ coro_resume :: proc(ctx: ^Context, f: ^Frame) -> (Value, Exit_Kind) {
 			stack_overflow(ctx)
 			return EXCEPTION, .exception
 		}
-		sp := stack_move_hook(top)
+		sp := rt.config.stack_move_hook(top)
 		r, k := EXCEPTION, Exit_Kind.exception
 		if sp != 0 {
 			r, k = coro_resume(ctx, f)
-			stack_move_hook(sp)
+			rt.config.stack_move_hook(sp)
 		} else {
 			stack_overflow(ctx)
 		}

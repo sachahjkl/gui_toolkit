@@ -538,8 +538,8 @@ LAZY_CODE := [1]u8{u8(Opcode.lazy_body)}
 // Reads and verifies the function's body if it never ran. "": it may run. Else why not: it stays as it was, each call fails again.
 bytecode_check :: proc(ctx: ^Context, b: ^Function_Bytecode) -> string {
 	if b.body_len == 0 {return ""}
-	span_stage(.deserialize, true)
-	defer span_stage(.deserialize, false)
+	span_stage(ctx.rt, .deserialize, true)
+	defer span_stage(ctx.rt, .deserialize, false)
 	return function_body(ctx, b)
 }
 

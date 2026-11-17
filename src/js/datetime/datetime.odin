@@ -3,8 +3,8 @@ package jsdate
 // ECMAScript Date time-value math, ported from QuickJS-ng quickjs.c (the Date section) to native
 // Odin. It covers the proleptic Gregorian calendar used by ECMAScript: time <-> broken-down fields,
 // MakeDay / MakeTime / MakeDate, TimeClip, and the day/year helpers. The local-time offset comes from
-// a host callback (timezone_offset), exactly as the Wren host provides js.timezone_offset; UTC math
-// needs no callback. No allocation, no OS dependency: builds for windows_amd64, linux_amd64 and
+// a host callback (Timezone_Offset), which the caller passes to each procedure that reads local time; UTC
+// math needs no callback. No allocation, no OS dependency: builds for windows_amd64, linux_amd64 and
 // freestanding_wasm32.
 //
 // Time values are milliseconds since the Unix epoch as f64 (NaN for an invalid Date). The valid range
@@ -18,14 +18,15 @@ MS_PER_DAY :: 24 * MS_PER_HOUR
 MAX_TIME :: 8.64e15 // ms
 
 // The host supplies the offset, in minutes, between UTC and local time for a given instant: the value
-// of getTimezoneOffset(t) (positive west of UTC). The engine sets this to js.timezone_offset. When it
-// is nil, local time equals UTC (offset 0), so UTC-only code works without a host.
-timezone_offset_proc: proc "contextless" (time_ms: i64) -> int
+// of getTimezoneOffset(t) (positive west of UTC). nil: local time equals UTC (offset 0), so UTC-only
+// code works without a host. The caller passes it to each procedure that reads local time: it is one
+// runtime's (jsrt's Host_Config.timezone_offset_proc), and a package global would be every runtime's.
+Timezone_Offset :: proc "contextless" (time_ms: i64) -> int
 
 @(private)
-tz_offset :: proc(time_ms: i64) -> int {
-	if timezone_offset_proc != nil {
-		return timezone_offset_proc(time_ms)
+tz_offset :: proc(tz: Timezone_Offset, time_ms: i64) -> int {
+	if tz != nil {
+		return tz(time_ms)
 	}
 	return 0
 }
@@ -109,10 +110,10 @@ time_clip :: proc(t: f64) -> f64 {
 }
 
 // Broken-down fields from a time value. Returns ok=false when t is NaN and force is false (the caller
-// then reports "Invalid Date"); with force, fields are filled from t=0. is_local applies the host tz.
-get_date_fields :: proc(dval: f64, is_local: bool, force: bool) -> (fields: Fields, ok: bool) {
+// then reports "Invalid Date"); with force, fields are filled from t=0. is_local applies the host's tz.
+get_date_fields :: proc(dval: f64, is_local: bool, force: bool, tz: Timezone_Offset) -> (fields: Fields, ok: bool) {
 	d: i64
-	tz: i64 = 0
+	offset: i64 = 0
 	if is_nan(dval) {
 		if !force {
 			return fields, false
@@ -121,8 +122,8 @@ get_date_fields :: proc(dval: f64, is_local: bool, force: bool) -> (fields: Fiel
 	} else {
 		d = i64(dval)
 		if is_local {
-			tz = -i64(tz_offset(d))
-			d += tz * MS_PER_MINUTE
+			offset = -i64(tz_offset(tz, d))
+			d += offset * MS_PER_MINUTE
 		}
 	}
 
@@ -156,14 +157,14 @@ get_date_fields :: proc(dval: f64, is_local: bool, force: bool) -> (fields: Fiel
 	fields[5] = f64(s)
 	fields[6] = f64(ms)
 	fields[7] = f64(wd)
-	fields[8] = f64(tz)
+	fields[8] = f64(offset)
 	return fields, true
 }
 
 // MakeDate(MakeDay(y,mon,d), MakeTime(h,m,s,ms)) then TimeClip, with optional local-time adjustment.
 // Mirrors set_date_fields: the spec mandates f64 and a specific order of operations; we follow it so
 // the results match QuickJS and test262 (including fp-evaluation-order). Only fields[0..6] are read.
-set_date_fields :: proc(fields: Fields, is_local: bool) -> f64 {
+set_date_fields :: proc(fields: Fields, is_local: bool, tz: Timezone_Offset) -> f64 {
 	y := fields[0]
 	m := fields[1]
 	dt := fields[2]
@@ -215,7 +216,7 @@ set_date_fields :: proc(fields: Fields, is_local: bool) -> f64 {
 		} else {
 			ti = i64(tv)
 		}
-		tv += f64(tz_offset(ti)) * 60000
+		tv += f64(tz_offset(tz, ti)) * 60000
 	}
 	return time_clip(tv)
 }

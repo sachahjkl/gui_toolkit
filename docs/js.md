@@ -62,9 +62,24 @@ memory" past it), `max_stack_depth`, `max_stack_bytes` (it must fit the stack of
 `rejection`, `import_meta`, `dynamic_import`, `atomics_wait` and `atomics_notify` (agents on other threads).
 `compile` is nil for the engine's own front-end.
 
-The clock and the time zone are the program's: set `js.date_now_hook` (milliseconds since the epoch, for `Date`),
-`js.clock_hook` (a monotonic clock for the collector's numbers) and `jsdate.timezone_offset_proc` from `gt:js/datetime`.
-Without them, `Date.now()` is 0 and local time is UTC.
+The clock and the time zone are the program's, one runtime's each. Set them in the `Host_Config` given to
+`engine_new`, or later in `rt.config`:
+
+| Field | What it is | Without it |
+|---|---|---|
+| `date_now_hook` | Milliseconds since the epoch, for `Date`. | `Date.now()` is 0. |
+| `timezone_offset_proc` | The minutes of local time west of UTC at an instant (`getTimezoneOffset`). | Local time is UTC. |
+| `clock_hook` | A monotonic clock in nanoseconds, for the collector's numbers. | They are 0. |
+| `poll_hook` | Called at a safe point while `rt.poll_word` is not 0: a timer of the program raises the word, the hook takes the thread. | The word is not looked at. |
+| `span_hook` | The engine's stages (compile, collection, bytecode read, JIT), for the program's measures. | Nothing is said. |
+| `stack_move_hook`, `native_stack_low_hook` | The stack moved to a block of the heap, and the machine's stack nearly out (Wren's Wasm host). Set both or neither. | A recursion ends at `max_stack_bytes`. |
+| `auto_init_getter` | The C API's properties made at their first read (Wren's `jscapi`). | None. |
+
+The loop JIT runs only in Wren's Wasm host: `jit_configure(rt, ...)` turns it on, `rt.jit_cfg` holds its other
+settings, `jit_stat(rt, which)` reads its counters.
+
+A contextless entry point of the engine (the members of a lazy object, `shape_realize`) runs under the context of
+`engine_new`'s caller, with the runtime's allocator: what it allocates goes through that allocator too.
 
 ## Memory
 
@@ -78,11 +93,11 @@ far apart and the table does not fit. `tests/js` shows a block with a tracker ab
 
 ## Threads
 
-One runtime per process, for now. Some of the engine's state is in package globals: the interrupt word and its hook,
-the hooks above, the JIT's state and the order of async modules. Two runtimes on two threads share them. Two runtimes
-one after the other are correct. The ROADMAP moves this state into `Runtime`.
+Several runtimes run at once, each on its own thread. A runtime's state is in its `Runtime`: the poll word, the hooks
+above, the JIT's state, the order of async modules. The engine's package globals are constant tables, and the lock of
+`Atomics` on a `SharedArrayBuffer`, which agents on several threads share.
 
-A runtime is used by one thread at a time.
+A runtime is used by one thread at a time. It can move to another thread between two calls.
 
 ## The libraries
 
@@ -109,7 +124,8 @@ st := rx.exec_search(&re, rx.input_utf8_string(text), 0, &caps, limits, allocato
 - `gt:js/numconv`: `f64_to_shortest`, `f64_to_radix`, `f64_to_fixed`, `f64_to_exponential`, `f64_to_precision` into a
   buffer of `MAX_STR_LEN` bytes; `parse_number`, `parse_float`, `parse_int`. The bytes are QuickJS's.
 - `gt:js/datetime` (package `jsdate`): `get_date_fields`, `set_date_fields`, `format_date` (`.ISO`, `.UTC`, `.ToString`,
-  `.Locale`) and `parse`, on `f64` milliseconds since the epoch. Local time is UTC until `timezone_offset_proc` is set.
+  `.Locale`) and `parse`, on `f64` milliseconds since the epoch. The procedures that read local time take the time
+  zone, a `Timezone_Offset`, as their last argument; nil is UTC.
 
 ## Wren
 
@@ -133,5 +149,5 @@ toolkit runs `gt:js` natively.
 - The judge also profiles on Windows (`JSRT_PROF=1 js_judge eval f.js`, built with `-debug`), counts the heap by kind of cell
   (`JSRT_MEMPROF=1`), and fuzzes (`js_judge fuzz <dir>` mutates serialized bytecode; `fuzzsrc <dir>` mutates source
   text; `JSRT_FUZZ_RUN=1` also runs the mutants that load).
-- `odin run tools/run_tests -- js js_pkg js_regexp`: two runtimes embedded as a program embeds one, and the
-  engine's unit tests.
+- `odin run tools/run_tests -- js js_pkg js_regexp`: two runtimes embedded as a program embeds one, one after the
+  other and at once on two threads, and the engine's unit tests.

@@ -516,8 +516,8 @@ gc_mark :: proc(rt: ^Runtime) {
 	gc_sweep_finish(rt)
 	rt.in_gc = true
 	defer rt.in_gc = false
-	span_stage(.gc, true)
-	defer span_stage(.gc, false)
+	span_stage(rt, .gc, true)
+	defer span_stage(rt, .gc, false)
 	t0 := now_ns(rt)
 	if rt.config.gc_prologue != nil {rt.config.gc_prologue(rt, rt.config.gc_prologue_user)}
 	gc_clear_marks(rt) // (after the prologue: what it makes, the host's groups, is traced like the rest)
@@ -546,21 +546,17 @@ gc_mark :: proc(rt: ^Runtime) {
 	rt.gc_ns += dt
 }
 
+// The embedder's monotonic clock (Host_Config.clock_hook: wasm has none of its own), for the collector's statistics.
 now_ns :: proc(rt: ^Runtime) -> i64 {
-	if clock_hook != nil {return clock_hook()}
+	if rt.config.clock_hook != nil {return rt.config.clock_hook()}
 	return 0
 }
-
-// Optional monotonic clock for GC pause statistics (the host sets it; wasm has none of its own).
-clock_hook: proc() -> i64
 
 // What the engine does, for the embedder's measures (WREN_SPANS). The values are the embedder's: base.Span_Kind.
 Span_Stage :: enum i32 {compile = 7, deserialize = 8, gc = 9, jit = 10}
 
-span_hook: proc "c" (kind: i32, begin: bool)
-
-span_stage :: #force_inline proc(s: Span_Stage, begin: bool) {
-	if span_hook != nil {span_hook(i32(s), begin)}
+span_stage :: #force_inline proc(rt: ^Runtime, s: Span_Stage, begin: bool) {
+	if rt.config.span_hook != nil {rt.config.span_hook(i32(s), begin)}
 }
 
 @(private = "file")
@@ -861,8 +857,8 @@ gc_clear_weak_caches :: proc(rt: ^Runtime) {
 gc_sweep_step :: proc(rt: ^Runtime, all := false) {
 	rt.in_gc = true
 	defer rt.in_gc = false
-	span_stage(.gc, true)
-	defer span_stage(.gc, false)
+	span_stage(rt, .gc, true)
+	defer span_stage(rt, .gc, false)
 	t0 := now_ns(rt)
 	defer rt.gc_ns += now_ns(rt) - t0
 	sw := &rt.sweep

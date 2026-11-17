@@ -195,6 +195,7 @@ agent_main :: proc(data: rawptr) {
 	cfgr.can_block = true
 	cfgr.malloc_limit = 1 << 29
 	agent_hooks(&cfgr)
+	set_host_hooks(&cfgr)   // (an agent's runtime had them from its test's while they were the process's)
 	rt := judge_engine_new(cfgr)
 	rt.host_data = h
 	ctx := js.context_new(rt)
