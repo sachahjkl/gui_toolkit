@@ -511,7 +511,8 @@ dock_build_leaf :: proc(d: ^Dock, leaf: i32) {
 		// the tabs and the rest of the strip, in the room the end's buttons leave (tabs too many for it scroll with the
 		// toolkit's arrows, as every row of tabs: the buttons stay in view)
 		next({width = fill(), height = pct(1), axis = .X, cross = .Center})
-		if parent(build_box({.Clip}, DOCK_TABS_ID)) {
+		// (.Fits_Width: its tabs scroll in it, its least is not theirs, or a narrow stack would push its buttons out)
+		if parent(build_box({.Clip, .Fits_Width}, DOCK_TABS_ID)) {
 			if strip(DOCK_TAB_STRIP_ID) {
 				for p, i in tabs { dock_build_tab(d, leaf, p, i, len(tabs)) }
 			}

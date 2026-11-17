@@ -577,10 +577,12 @@ wrapped_text_is_cached :: proc(t: ^testing.T) {
 		ui.paragraph("The quick brown fox jumps over the lazy dog, again and again, until the line has to wrap.###p")
 	}
 	for _ in 0 ..< 5 { frame(f, nil, body, &w) }
-	testing.expect_value(t, ui.wrap_cache_len(&f.s), 1)   // layout and drawing share it, every frame
+	// (layout and drawing share its lines at its width, every frame; its widest word, the least of its width
+	// (least-width.md), is one more entry, of no width)
+	testing.expect_value(t, ui.wrap_cache_len(&f.s), 2)
 	w.width = 200
 	frame(f, nil, body, &w)
-	testing.expect_value(t, ui.wrap_cache_len(&f.s), 2)
+	testing.expect_value(t, ui.wrap_cache_len(&f.s), 3)
 	lines := ui.wrap_lines_cached(f.base_font, 15, "a b c", 1000)
 	testing.expect_value(t, len(lines), 1)
 }
