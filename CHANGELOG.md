@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.305.0] - 2026-11-17 20:45
+
+### Changed
+- **The engraving on the back of the licence card blends into the foil**: it is struck in the card's own silver now, and still waits for the right angle.
+
 ## [0.304.0] - 2026-11-17 20:33
 
 ### Changed
@@ -4222,6 +4227,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.305.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.305.0
 [0.304.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.304.0
 [0.303.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.303.0
 [0.302.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.302.0
