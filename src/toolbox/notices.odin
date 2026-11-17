@@ -67,14 +67,17 @@ Notice_Crate :: struct {
 	{"The Nix snowflake (the setup's screen for a copy from the Nix store)", "CC-BY-4.0", "src/setup/nix-snowflake-LICENSE.txt"},
 }
 
-// The licence texts of crates the toolkit links that ship no licence file in their package (AccessKit's: its repository
-// has them), in the toolkit's checkout: a program never states them itself.
-@(rodata) TOOLKIT_CRATE_LICENCES := [?][2]string{
-	{"accesskit", "native/a11y/licences"},
-	{"accesskit_consumer", "native/a11y/licences"},
-	{"accesskit_windows", "native/a11y/licences"},
+// The licence texts of crates the toolkit links that ship no licence file in their package (their repositories have
+// them), in the toolkit's checkout: a crate's name, then its files. A program never states them itself.
+@(rodata) ACCESSKIT_LICENCE_FILES := [?]string{"native/a11y/licences/accesskit-LICENSE-MIT", "native/a11y/licences/accesskit-LICENSE-APACHE", "native/a11y/licences/accesskit-LICENSE.chromium"}
+// (alloc-stdlib: hayro's Brotli decoder's; alloc-no-stdlib, of the same repository, ships the text)
+@(rodata) ALLOC_STDLIB_LICENCE_FILES := [?]string{"native/pdf/licences/alloc-stdlib-LICENSE"}
+TOOLKIT_CRATE_LICENCES := [?]struct{ crate: string, files: []string }{
+	{"accesskit", ACCESSKIT_LICENCE_FILES[:]},
+	{"accesskit_consumer", ACCESSKIT_LICENCE_FILES[:]},
+	{"accesskit_windows", ACCESSKIT_LICENCE_FILES[:]},
+	{"alloc-stdlib", ALLOC_STDLIB_LICENCE_FILES[:]},
 }
-@(rodata) ACCESSKIT_LICENCE_FILES := [?]string{"accesskit-LICENSE-MIT", "accesskit-LICENSE-APACHE", "accesskit-LICENSE.chromium"}
 
 // The `notices` command of a project's tool: `notices` writes THIRD-PARTY-NOTICES, `notices --check` fails when it is not
 // what it would write (`p` copied).
@@ -119,12 +122,12 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 	given := make(map[string]string, 8, context.temp_allocator)   // a crate's name: the licence text the program gives it
 	for c in TOOLKIT_CRATE_LICENCES {
 		texts := make([dynamic]string, context.temp_allocator)
-		for f in ACCESSKIT_LICENCE_FILES {
-			data, err := os.read_entire_file(fmt.tprintf("%s/%s/%s", gt, c[1], f), context.temp_allocator)
-			if err != nil { return fmt.tprintf("%s/%s/%s cannot be read", gt, c[1], f) }
+		for f in c.files {
+			data, err := os.read_entire_file(fmt.tprintf("%s/%s", gt, f), context.temp_allocator)
+			if err != nil { return fmt.tprintf("%s/%s cannot be read", gt, f) }
 			append(&texts, string(data))
 		}
-		given[c[0]] = strings.join(texts[:], "\n\n", context.temp_allocator)
+		given[c.crate] = strings.join(texts[:], "\n\n", context.temp_allocator)
 	}
 	for w in p.works {
 		if (w.file == "") == (w.text == "") { return fmt.tprintf("the work %s states neither or both of a licence file and a text", w.name) }
