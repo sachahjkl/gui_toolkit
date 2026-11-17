@@ -99,6 +99,10 @@ STEPS := []Step{
 	{name = "flate_pkg", path = "src/flate", oses = EVERYWHERE},
 	{name = "archive", oses = EVERYWHERE},
 	{name = "syntax", path = "src/syntax", oses = EVERYWHERE},
+	// (gt:js: the engine's own unit tests, then two runtimes embedded as a program embeds one)
+	{name = "js_pkg", path = "src/js", oses = EVERYWHERE},
+	{name = "js_regexp", path = "src/js/regexp", oses = EVERYWHERE},
+	{name = "js", oses = EVERYWHERE},
 	{name = "term", one = true, oses = EVERYWHERE, text = true},   // (the terminal widget on a screen of its own; its rows drawn in a session)
 	{name = "remote", oses = EVERYWHERE},
 	{name = "deferred", oses = EVERYWHERE},

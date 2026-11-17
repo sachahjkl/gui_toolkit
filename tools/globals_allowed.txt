@@ -130,6 +130,125 @@ i18n/i18n.odin generation process  # counts the changes of language (atomic): a 
 i18n/i18n.odin cache thread  # the address of a literal to its entry, per thread (tr is contextless and takes no lock)
 instance/instance_linux.odin owners_mu process  # the instance owners started in the process (locked: owners_mu)
 instance/instance_linux.odin owners process  # the instance owners started in the process (locked: owners_mu)
+js/atoms_table.odin predef_atom_text const  # the predefined atoms' text in quickjs-atom.h's order, a table
+js/b_date.odin date_now_hook process  # the embedder's wall clock for Date, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/b_global.odin uri_reserved const  # ECMAScript's uriReserved set, a table
+js/b_global.odin uri_unescaped_extra const  # the marks of ECMAScript's uriUnescaped set, a table
+js/b_iterator.odin BUILTIN_FROM_ASYNC const  # the bytecode of Array.fromAsync, compiled in (#load), only read
+js/b_iterator.odin BUILTIN_ZIP const  # the bytecode of Iterator.zip, compiled in (#load), only read
+js/b_iterator.odin BUILTIN_ZIP_KEYED const  # the bytecode of Iterator.zipKeyed, compiled in (#load), only read
+js/b_object.odin auto_init_getter process  # the embedder's hook for its properties made on first read (the C API's), set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/b_string.odin html_table const  # Annex B's HTML methods: name, tag, attribute, a table
+js/b_typed.odin elem_size const  # each typed array element's size, a table
+js/b_typed.odin elem_names const  # each typed array's constructor name, a table
+js/b_typed.odin atomics_lock process  # a spin lock (atomic) around Atomics on a SharedArrayBuffer: one for the process, so that agents on any thread exclude each other
+js/b_typed.odin B64 const  # base64's alphabet (RFC 4648), a table
+js/b_typed.odin B64URL const  # base64url's alphabet (RFC 4648), a table
+js/gc.odin clock_hook process  # the embedder's monotonic clock for the collector's statistics, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/gc.odin span_hook process  # the embedder's measure of the engine's stages, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/interp.odin trace_last_op process  # debug (JSRT_TRACE_LAST_OP): the last instruction run, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/interp.odin trace_last_bc process  # debug (JSRT_TRACE_LAST_OP): the function of the last instruction, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/interp.odin trace_native process  # debug (JSRT_TRACE_LAST_OP): the last native called, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/interp.odin trace_native_obj process  # debug (JSRT_TRACE_LAST_OP): the last native's function object, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/interp.odin trace_native_args process  # debug (JSRT_TRACE_LAST_OP): the last native's arguments, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/jit.odin jit_cfg process  # the loop JIT's settings and the embedder's compile procedures, set by jit_configure (wasm32 only); one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/jit.odin jit_stepping process  # the mark of a frame that makes one instruction for compiled code: its address is compared, its counts are written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/jit.odin jit_stats process  # the loop JIT's counters, written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/module.odin module_async_counter process  # the order of the async modules' evaluation ([[AsyncEvaluationOrder]]), written unlocked; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/opcodes.odin opcode_info const  # each opcode's size, stack effect and format, a table
+js/runtime.odin poll_word process  # raised by the embedder's timer while a script runs (volatile reads); one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/runtime.odin poll_hook process  # what the interpreter calls when poll_word is up, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/serialize.odin LAZY_CODE const  # the one instruction of a function not read yet: its address marks it, never written
+js/stack.odin stack_move_hook process  # the embedder's move of the stack pointer, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/stack.odin native_stack_low_hook process  # the embedder's test of the machine's stack, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/value.odin TRUE const  # the value true, never written
+js/value.odin FALSE const  # the value false, never written
+js/bigint/strconv.odin digit_chars const  # the digits of radixes 2 to 36, a table
+js/datetime/datetime.odin timezone_offset_proc process  # the embedder's offset of local time, set before a script runs; one runtime per process today (Wren's Wasm instance); ROADMAP: into Runtime
+js/datetime/datetime.odin month_days const  # the days of each month, a table
+js/datetime/datetime.odin month_names const  # the months' short names, a table
+js/datetime/datetime.odin day_names const  # the days' short names, a table
+js/datetime/parse.odin js_tzabbr const  # the time zone abbreviations Date.parse knows, a table
+js/frontend/atoms.odin PREDEFINED_ATOMS const  # the predefined atoms in quickjs-atom.h's order, a table
+js/frontend/js_defs.odin A_using const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_length const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_name const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_eval const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_prototype const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_constructor const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_value const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_get const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_set const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_of const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A___proto__ const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_undefined const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_arguments const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A__eval_ const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A__ret_ const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A__var_ const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A__arg_var_ const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A__with_ const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A__using_dispose_ const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_use const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_dispose const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_disposeAsync const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_target const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_concat const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_done const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_next const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_raw const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_new_target const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_this_active_func const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_home_object const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_computed_field const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_static_computed_field const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_class_fields_init const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_brand const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_hash_constructor const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_as const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_from const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_meta const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A__default_ const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A__star_ const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_async const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_default const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_return const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_function const  # a predefined atom's number, found in PREDEFINED_ATOMS once at start (@(init)): the same for every runtime
+js/frontend/js_defs.odin A_ECMAScript_ignore const  # never written: it stays the null atom (0), and no code reads it
+js/frontend/js_regexp.odin reop_size const  # each regexp opcode's size, a table
+js/frontend/js_regexp.odin re_gc_names const  # the General_Category values \p{} takes, a table
+js/frontend/js_regexp.odin re_script_names const  # the Script values \p{} takes, a table
+js/frontend/js_regexp.odin re_prop_names const  # the binary properties \p{} takes, a table
+js/frontend/js_regexp.odin re_sequence_prop_names const  # the properties of strings \p{} takes (v flag), a table
+js/frontend/opcodes.odin op_info const  # each opcode's size, stack effect and format, a table
+js/frontend/opcodes.odin temp_op_info const  # each temporary opcode's size and format, a table
+js/frontend/settings.odin PREFS const  # the front-end's preference definitions, a table (config.register copies them)
+js/numconv/dtoa.odin pow5_table const  # a table of the number conversions (QuickJS's dtoa)
+js/numconv/dtoa.odin pow5h_table const  # a table of the number conversions (QuickJS's dtoa)
+js/numconv/dtoa.odin pow5_inv_table const  # a table of the number conversions (QuickJS's dtoa)
+js/numconv/dtoa.odin mul_log2_radix_table const  # a table of the number conversions (QuickJS's dtoa)
+js/numconv/dtoa.odin digits_per_limb_table const  # a table of the number conversions (QuickJS's dtoa)
+js/numconv/dtoa.odin radix_base_table const  # a table of the number conversions (QuickJS's dtoa)
+js/numconv/dtoa.odin dtoa_max_digits_table const  # a table of the number conversions (QuickJS's dtoa)
+js/numconv/dtoa.odin atod_max_digits_table const  # a table of the number conversions (QuickJS's dtoa)
+js/numconv/dtoa.odin max_exponent const  # a table of the number conversions (QuickJS's dtoa)
+js/numconv/dtoa.odin min_exponent const  # a table of the number conversions (QuickJS's dtoa)
+js/regexp/settings.odin PREFS const  # the regexp engine's preference definitions, a table (config.register copies them)
+js/unicode/settings.odin PREFS const  # the Unicode data's preference definition, a table (config.register copies it)
+js/unicode/tables_generated.odin general_category_tables const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin binary_prop_tables const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin script_tables const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin script_ext_tables const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin simple_fold_table const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin full_fold_table const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin special_lower_table const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin special_upper_table const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin simple_upper_table const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin simple_lower_table const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin decomp_table const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin combining_class_table const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin compose_table const  # generated from the pinned UCD (tools/js_unicode_gen), a table
+js/unicode/tables_generated.odin sequence_prop_tables const  # generated from the pinned UCD (tools/js_unicode_gen), a table
 ocr/ocr.odin LANGUAGE_CODES const  # a table: ISO 639-1 to Tesseract's codes
 ocr/ocr_linux.odin tess process  # a library of the system, loaded once (sync.Once), then only read
 ocr/ocr_linux.odin tess_once process  # a library of the system, loaded once (sync.Once), then only read
