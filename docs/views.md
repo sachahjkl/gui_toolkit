@@ -380,6 +380,10 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
     `DOCK_MIN_EM` beside it, and unfolds when the space is wide enough again; its Restore opens it meanwhile. A view
     with `View_Options.rail_em` (3.5, say) keeps that column instead of the icons' rail: it is built there with
     `View.rail` true, under the zone's Restore, and draws its compact form (`if v.rail { ...marks... } else { ...list... }`).
+    Expanded, such a zone's lone panel at its top outer corner shows the zone's Minimise at Restore's place: the same
+    small button, in its own row above the body, so it does not move when the person folds and unfolds the zone. That
+    panel's strip on hover comes under it, without a Minimise of its own. A zone without `rail_em` has no such row: its
+    Minimise is on the strip.
   - **Close** closes every view of the stack (each ends `VIEW_CANCELLED`). One tab closes by Ctrl+W in it, its menu or
     the palette.
   - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.

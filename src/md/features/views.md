@@ -436,7 +436,9 @@ draws, except the header that a dialog always had. The rules:
 1. **A panel alone in its stack has no tab strip**, unless its kind says `tabs_always` (ocn's terminals: a strip
    with one tab and its "+" says that more can come). A tab strip appears when two or more views share a stack, or
    one of them is `tabs_always`, or its zone is minimised. A panel alone otherwise adds no strip and no border: its
-   body starts at the zone's top edge. A test checks this (section 7.4, test 17).
+   body starts at the zone's top edge. A test checks this (section 7.4, test 17). One exception: a side zone that
+   folds to its views' compact form (`rail_em`) shows its Minimise where its rail shows Restore, a row above the body
+   (rule 2b, Minimise).
 2. **A lone panel's strip comes on hover, and pushes its body down** (`view_hover_strip`). At rest nothing is added.
    When the pointer touches the stack's top edge (a band of `VIEW_HOVER_EDGE_EM`), the stack's strip shows as if the
    panel had company: its tab (its title, its menu), its moves, its Minimise, Maximise and Close (rule 2b). The strip
@@ -506,6 +508,24 @@ draws, except the header that a dialog always had. The rules:
        **Why it changed.** The side zones had no Minimise (refused: "the handle makes a side zone narrow"). The user
        lost the way to fold opencode native's side panel (`/btw`) that its own pane had before it moved to the views:
        the handle narrows it, never folds it.
+     - **Its Minimise where its Restore is** (`view_rail_head`): a zone whose rail is its views' compact form
+       (`rail_em > 0`), expanded, shows its Minimise at the place of the rail's Restore, as the same small button: the
+       top row of the zone, the rail's width at the zone's outer edge (the left one at the left, the right one at the
+       right), the button centred in it. One builder draws both heads, so the button stays under the pointer when the
+       person folds and unfolds. Its stack is the one at that corner, when it is lone at rest (no strip); a strip at
+       rest has its own Minimise. Its row pushes the body down, as the rail's Restore pushes the compact form. That
+       stack's strip on hover comes under the head and has no Minimise (said once). Its tooltip is the strip's
+       Minimise's (`labels.minimize`); the rail's is Restore.
+       **Why.** The user (opencode native): minimised, the sidebar's rail shows Restore at its top; expanded, the lone
+       sidebar has no strip (rule 1), and its Minimise only comes on the hover of a 0.6 em band that nothing shows, so
+       the person folded it by narrowing the window. The two states must mirror each other.
+       **Why only `rail_em`.** A view that states a compact form says that its zone folded is a place where the person
+       works (the sidebar's marks): folding it is a frequent act and earns a button at rest. A zone that folds to the
+       icons' rail (classeur's sidebar and inspector, cliché's preview, inspecteur's Mission panels) folds rarely; a
+       head row in each would take two ems from every lone side panel, against rule 1. No option turns it off: the one
+       program with `rail_em` wants it.
+       Refused: the button over the body's top corner (it lies over the body's controls, as the 0.267 icons did:
+       opencode native's server tabs are there); the button at the right end of the row (it moves when the zone folds).
      - **A side zone folds itself when the space is too narrow** (`sp.folded`): when the space is narrower than the
        zone's extent plus `DOCK_MIN_EM` for the content, the zone shows as its rail, with no change to its memory, and
        comes back when the space is wide enough again. Its Restore then opens it over the content's minimum for as

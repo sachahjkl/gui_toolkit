@@ -45,6 +45,7 @@ Dock :: struct {
 	no_frame:   bool,              // the window builds no views_frame (its content alone)
 	railed:     bool,              // "marks" was last built in its compact form (View.rail)
 	wide:       bool,              // the content holds a row of WIDE_BOXES boxes, wider than the window
+	bare:       bool,              // build the space "bare", without content (a centre zone)
 }
 
 // A row of boxes of their own width, wider than the window: what a tool bar or a program's row asks of its parent.
@@ -82,6 +83,10 @@ dock_build :: proc(s: ^session.Session) {
 		if r.tools {
 			ui.next({width = ui.fill(), height = ui.px(200)})
 			if ui.views_dock(&r.views, "tools", {content = true}) { ui.label("The tools' centre###tools_centre") }
+		}
+		if r.bare {
+			ui.next({width = ui.fill(), height = ui.px(200)})
+			if ui.views_dock(&r.views, "bare", {}) {}
 		}
 	}
 }
@@ -186,6 +191,8 @@ dock_register :: proc(r: ^Dock) {
 	ui.view_register(&r.views, "float", plain_view, ui.View_Options{title = "Floating", first = .Internal})
 	ui.view_register(&r.views, "low", plain_view, ui.View_Options{title = "Low", home = .Panel, home_place = {edge = .Bottom}, extent_frac = LOW_FRAC})
 	ui.view_register(&r.views, "marks", marks_view, ui.View_Options{title = "Marks", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM, rail_em = RAIL_EM})
+	ui.view_register(&r.views, "marks_low", marks_view, ui.View_Options{title = "Low marks", home = .Panel, home_place = {edge = .Bottom}, rail_em = RAIL_EM})
+	ui.view_register(&r.views, "marks_mid", marks_view, ui.View_Options{title = "Middle marks", home = .Panel, home_place = {space = "bare", edge = .Center}, rail_em = RAIL_EM})
 	ui.view_register(&r.views, "right", plain_view, ui.View_Options{title = "Right", home = .Panel, home_place = {edge = .Right}, extent_em = SIDE_EM})
 	ui.view_register(&r.views, "wide", wide_view, ui.View_Options{title = "Wide", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM})
 }
@@ -311,8 +318,15 @@ a_side_zone_minimises_to_its_rail :: proc(t: ^testing.T) {
 	testing.expect(t, built(s, "view_rail_restore") == nil, "no rail")
 }
 
-// A view that states a rail width (View_Options.rail_em): its zone minimised keeps that column, the view built in it with
-// View.rail (its compact form) under the zone's Restore, which brings the full form back.
+// Whether two rects are the same within a pixel.
+@(private = "file")
+same_rect :: proc(a, b: ui.Rect) -> bool {
+	return abs(a.min.x - b.min.x) <= 1 && abs(a.min.y - b.min.y) <= 1 && abs(a.max.x - b.max.x) <= 1 && abs(a.max.y - b.max.y) <= 1
+}
+
+// A view that states a rail width (View_Options.rail_em): lone in its zone, at rest, it shows the zone's Minimise at the
+// place of the rail's Restore, the body under it; its zone minimised keeps that column, the view built in it with
+// View.rail (its compact form) under the zone's Restore, at the same rect, which brings the full form back.
 @(test)
 a_view_with_a_rail_width_keeps_its_compact_form :: proc(t: ^testing.T) {
 	r: Dock
@@ -321,17 +335,65 @@ a_view_with_a_rail_width_keeps_its_compact_form :: proc(t: ^testing.T) {
 	zone := wait_built(s, "view_zone_Left")
 	if zone == nil { return }
 	testing.expect(t, built(s, "marks_full") != nil && !r.railed, "its full form")
-	session.move(s, {zone.rect.min.x + 30, zone.rect.min.y + 2})
-	if wait_built(s, "view_stack_min") == nil { return }
-	session.click(s, "view_stack_min")
+	mini := wait_built(s, "view_rail_min")
+	if mini == nil { return }
+	at := mini.rect
+	testing.expect(t, built(s, "view_tabs") == nil, "at rest: no strip")
+	body := built(s, "view_panel_view_marks")
+	testing.expectf(t, body != nil && body.rect.min.y >= at.max.y - 0.5, "the body under the head: %v, %v", body.rect if body != nil else ui.Rect{}, at)
+	testing.expectf(t, at.min.x >= zone.rect.min.x && at.max.x <= zone.rect.min.x + RAIL_EM * r.em + 0.5, "in the rail's column: %v in %v", at, zone.rect)
+	session.click(s, "view_rail_min")
 	if wait_built(s, "marks_compact") == nil { return }
 	testing.expect(t, r.railed, "built with View.rail")
 	zone = built(s, "view_zone_Left")
 	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - RAIL_EM * r.em) <= 1.5, "its rail width: %v", zone.rect if zone != nil else ui.Rect{})
 	testing.expect(t, built(s, "view_rail_Left_0_0") == nil, "not the icons' rail")
+	testing.expect(t, built(s, "view_rail_min") == nil, "folded: Restore in its place")
+	restore := built(s, "view_rail_restore")
+	testing.expectf(t, restore != nil && same_rect(restore.rect, at), "Restore at Minimise's place: %v, %v", restore.rect if restore != nil else ui.Rect{}, at)
 	session.click(s, "view_rail_restore")
 	if wait_built(s, "marks_full") == nil { return }
 	testing.expect(t, !r.railed, "its full form again")
+	mini = wait_built(s, "view_rail_min")
+	testing.expectf(t, mini != nil && same_rect(mini.rect, at), "Minimise back at its place: %v, %v", mini.rect if mini != nil else ui.Rect{}, at)
+	text, _ := store.get(&r.views.memory, "#")
+	sm, _ := ui.views_space_parse(text)
+	testing.expectf(t, !sm.minimised[.Left], "restored, remembered: %q", text)
+}
+
+// The panel under its zone's rail head: its strip on hover comes under the head, the head stays, and the strip has no
+// Minimise of its own (said once).
+@(test)
+a_rail_head_s_panel_strip_says_minimise_once :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "marks")
+	mini := wait_built(s, "view_rail_min")
+	body := built(s, "view_panel_view_marks")
+	if mini == nil || body == nil { testing.expect(t, false, "the head and the body"); return }
+	at := mini.rect
+	session.move(s, {body.rect.min.x + RAIL_EM * r.em + 30, body.rect.min.y + 2})
+	tabs := wait_built(s, "view_tabs")
+	if tabs == nil { return }
+	testing.expectf(t, tabs.rect.min.y >= at.max.y - 0.5, "the strip under the head: %v, %v", tabs.rect, at)
+	testing.expect(t, built(s, "view_stack_max") != nil, "the strip's own buttons")
+	testing.expect(t, built(s, "view_stack_min") == nil, "no second Minimise")
+	mini = built(s, "view_rail_min")
+	testing.expectf(t, mini != nil && same_rect(mini.rect, at), "the head stays: %v, %v", mini.rect if mini != nil else ui.Rect{}, at)
+}
+
+// A view with a rail width lone at the bottom or in a space's centre: no rail head there (a bottom zone folds to its
+// strips, the centre does not fold).
+@(test)
+a_rail_width_elsewhere_adds_no_head :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	r.bare = true
+	s := dock_start(t, &r, "marks_low", "marks_mid")
+	if wait_built(s, "view_panel_view_marks_low") == nil || wait_built(s, "view_panel_view_marks_mid") == nil { return }
+	session.frames(s, 2)
+	testing.expect(t, built(s, "view_rail_min") == nil, "no Minimise head")
+	testing.expect(t, built(s, "view_rail_head") == nil, "no head row")
 }
 
 // A space too narrow for a side zone and the content folds the zone to its rail, with no change to its memory; its
