@@ -20,6 +20,9 @@
 //   gen_js_unicode [-force]                   src/js/unicode/tables_generated.odin from the Unicode Character Database 17.0.0, each
 //                                             file pinned by SHA-256 and cached in build/ucd (-force: downloaded again), through
 //                                             tools/js_unicode_gen (js.odin)
+//   plugin_api [-check]                       from the declarations of src/plugin_api/api.odin: plugin-api/gt.d.ts, the snapshot
+//                                             of each level (plugin-api/level-<n>.d.ts), plugin-api/api.json (the site's explorer)
+//                                             and docs/plugin-api.md; -check writes nothing and fails on a file that differs (ci)
 //   js_test262 [-filter:text] [-stride:k] [-jobs:n]
 //                                             test262 on gt:js: the suite and QuickJS-ng 0.17.0's test262.conf (toolbox.test262_fetch)
 //                                             -> build/test262/run, tools/js_judge built with a 64 MiB main stack, its results
@@ -94,6 +97,7 @@ COMMANDS := []toolbox.Command {
 	{name = "crash_symbolize", usage = "<report> <symbols>: a crash report with the program's frames named (a map, a folder of maps, or the executable)", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_crash_symbolize(args)) }},
 	{name = "gen_lucide", usage = ": src/lucide/lucide.odin from lucide.ttf, a constant per icon", checked = true, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_gen_lucide(args)) }},
 	{name = "gen_js_unicode", usage = "[-force]: src/js/unicode/tables_generated.odin from the pinned Unicode Character Database (tools/js_unicode_gen)", checked = true, flags = {"force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_gen_js_unicode(args)) }},
+	{name = "plugin_api", usage = "[-check]: plugin-api/gt.d.ts, its levels, api.json and docs/plugin-api.md from src/plugin_api/api.odin (-check: compares only)", checked = true, flags = {"check"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_plugin_api(args)) }},
 	{name = "js_test262", usage = "[-filter:text] [-stride:k] [-jobs:n]: test262 on gt:js with the native judge (tools/js_judge) -> build/test262", checked = true, flags = {"filter:", "stride:", "jobs:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_js_test262(args)) }},
 	{name = "release", usage = "<patch|minor|major|x.y.z> [-summary:text] [-no-push]: publishes a version of the toolkit (release.odin)", checked = true, flags = {"summary:", "no-push"}, positionals = 1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_release(args)) }},
 	{name = "build", usage = "[example] [-debug]: an example (default fidget) -> build/<example>, optimized or with debug information", checked = true, flags = {"debug"}, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build(args)) }},

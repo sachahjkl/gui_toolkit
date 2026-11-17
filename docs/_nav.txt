@@ -85,6 +85,8 @@ Platform and system
   store.md            store: small files of keys and values
   json.md             json: JSON read and written
   js.md               js: a JavaScript engine
+  plugins.md          plugins: plugins in JavaScript
+  plugin-api.md       The plugin API
   notices.md          notices: what the user missed
   capture.md          capture: screens and windows as pictures
   film.md             film: videos of an interface

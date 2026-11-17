@@ -8,6 +8,7 @@ package js_test
 import "base:intrinsics"
 import "core:mem"
 import vmem "core:mem/virtual"
+import "core:strings"
 import "core:sync"
 import "core:testing"
 import "core:thread"
@@ -223,6 +224,51 @@ two_runtimes_one_after_the_other :: proc(t: ^testing.T) {
 	run_runtime(&second)
 	expect_outcome(t, &second, "the second runtime")
 	expect_polls(t)
+}
+
+// A script that grows forever: the heap's budget (malloc_limit) or the end of the block's reserve stops it with an
+// "out of memory" error, and the process goes on. On the process heap first (the chunk table aborted there before the
+// block), then on a static arena, then with no budget at all, where only the reserve's soft end stops it: a chunk from
+// the spare and the uncatchable error, not a panic. Under a budget the error may be the catchable RangeError of a large
+// block refused before it is allocated (mem_may_grow), so the script there has no try; with no budget it has one, which
+// must not see the error.
+GROW_SCRIPT :: `
+const a = [];
+for (;;) a.push({ n: a.length });
+`
+GROW_SCRIPT_CAUGHT :: `
+const a = [];
+try { for (;;) a.push({ n: a.length }); } catch (e) { globalThis.caught = String(e); }
+`
+GROW_LIMIT :: 16 << 20
+GROW_RESERVE :: 64 << 20
+
+@(test)
+past_the_memory_limit :: proc(t: ^testing.T) {
+	Case :: struct {name: string, arena: bool, limit: i64}
+	cases := [?]Case{{"the process heap", false, GROW_LIMIT}, {"a static arena", true, GROW_LIMIT}, {"no budget", false, -1}}
+	for c in cases {
+		block: vmem.Arena
+		allocator := context.allocator
+		if c.arena {
+			if !testing.expectf(t, vmem.arena_init_static(&block, BLOCK_RESERVE) == nil, "%s: the arena is not reserved", c.name) { continue }
+			allocator = mem.Allocator{block_proc, &block}
+		}
+		cfg := js.DEFAULT_CONFIG
+		cfg.malloc_limit = c.limit
+		cfg.reserve_bytes = GROW_RESERVE
+		rt := js.engine_new(allocator, cfg)
+		ctx := js.context_new(rt)
+		r := js.eval_source(ctx, c.limit < 0 ? GROW_SCRIPT_CAUGHT : GROW_SCRIPT, "grow.js")
+		testing.expectf(t, js.is_exception(r), "%s: the script ended without an error", c.name)
+		text, _ := js.to_utf8(ctx, js.pending_exception(ctx), context.allocator)
+		testing.expectf(t, strings.has_suffix(text, "out of memory"), "%s: the error is '%s', not out of memory", c.name, text)
+		delete(text)
+		caught := js.get_property_str(ctx, js.global_object(ctx), "caught")
+		testing.expectf(t, js.is_undefined(caught), "%s: the script caught the out of memory error", c.name)
+		js.engine_free(rt)
+		if c.arena { vmem.arena_destroy(&block) }
+	}
 }
 
 // Each runtime on a thread of its own, at the same time (a barrier starts them together), each with its own allocator

@@ -38,6 +38,10 @@ Host_Config :: struct {
 	// Heap budget in bytes (-1: unlimited). Checked at safe points and by large allocations; going
 	// over raises an uncatchable "out of memory" error.
 	malloc_limit:    i64,
+	// The addresses reserved for the runtime's block of cells, committed as it grows (0: DEFAULT_RESERVE_BYTES).
+	// Natively the cells' chunks live there: the chunk table spans the lowest chunk to the highest, which a process
+	// heap makes too wide. In Wasm no block is reserved; the linear memory already is one.
+	reserve_bytes:   int,
 	// Maximum interpreter call depth (0: 10_000). Native recursion is bounded by this, so a deep JS
 	// recursion raises a RangeError instead of overflowing the host stack.
 	max_stack_depth: int,
@@ -280,6 +284,10 @@ Runtime :: struct {
 	chunk_table:    [^]^Pool_Chunk, // the chunk of each CHUNK_UNIT of the addresses from chunk_lo (cell_bits)
 	chunk_table_len: int,
 	chunk_lo:       uintptr,
+	block:          Cell_Block,  // the reserved addresses of the cells' chunks (chunk_block.odin); empty in Wasm
+	// An allocation went past the block's soft end or was refused by the allocator, and was served from the block's
+	// spare: the next poll raises the uncatchable "out of memory" (poll_interrupt), instead of a panic here.
+	memory_failed:  bool,
 
 	// atoms (atom.odin)
 	atoms:          [dynamic]Atom_Entry,
@@ -513,6 +521,7 @@ runtime_new :: proc(allocator := context.allocator, config := DEFAULT_CONFIG) ->
 	rt.join_stack = make([dynamic]^Object, allocator)
 	mem.dynamic_arena_init(&rt.scratch, allocator, allocator, SCRATCH_BLOCK_BYTES, SCRATCH_OUT_BAND_BYTES)
 	mem.dynamic_arena_init(&rt.regexp_arena, allocator, allocator, REGEXP_ARENA_BLOCK_BYTES, REGEXP_ARENA_OUT_BAND_BYTES)
+	cell_block_open(rt) // (before the first cell: atoms_init makes some)
 	rt.gc_disabled += 1
 	atoms_init(rt)
 	rt.gc_disabled -= 1
@@ -570,6 +579,7 @@ runtime_free :: proc(rt: ^Runtime) {
 	mem.dynamic_arena_destroy(&rt.scratch)
 	mem.dynamic_arena_destroy(&rt.regexp_arena)
 	pool_free_chunks(rt)
+	cell_block_close(rt)
 	free(rt, allocator)
 }
 
@@ -647,6 +657,13 @@ poll_interrupt :: proc(ctx: ^Context) -> bool {
 	rt.interrupt_counter += 1
 	if rt.interrupt_counter < INTERRUPT_POLL_EVERY {return false}
 	rt.interrupt_counter = 0
+	if rt.memory_failed {
+		// (cleared: each chunk taken past the soft end raises one error, so an embedder that goes on after the
+		// error is told again, not at every poll)
+		rt.memory_failed = false
+		throw_uncatchable(ctx, "out of memory")
+		return true
+	}
 	poll_host(rt)
 	if rt.jit_cfg.trace {jit_note_sample(rt)}
 	if rt.config.interrupt != nil && rt.config.interrupt(rt, rt.config.interrupt_user) {

@@ -86,10 +86,16 @@ A contextless entry point of the engine (the members of a lazy object, `shape_re
 `gt:js` chooses no allocator. The program gives one to `engine_new`, and every allocation of the runtime goes through
 it, so a program's tracking allocator sees them all. `gt:js` never calls `runtime.heap_allocator()`.
 
-Today, give a runtime one reserved block of addresses, for example a static `core:mem/virtual` arena. The
-collector's table of chunks covers the addresses from its lowest chunk to its highest. On a native heap, the chunks are
-far apart and the table does not fit. `tests/js` shows a block with a tracker above it. The ROADMAP puts this block in
-`gt:js` itself, with a failed allocation as the engine's error.
+Natively, a runtime reserves one block of addresses for its cells at `engine_new` (`Host_Config.reserve_bytes`; 0:
+`DEFAULT_RESERVE_BYTES`, 8 GiB) and commits it as it grows. The collector's table of chunks covers the addresses from
+the lowest chunk to the highest, so the chunks must be near each other: in the block they are, whatever allocator the
+program gives. A block larger than 512 bytes (the values of an array, a long string) still comes from the allocator.
+`engine_free` releases the block in one call. In Wasm no block is reserved: the linear memory is one already.
+
+The heap's budget is `malloc_limit`. Past it, the script gets the uncatchable "out of memory" error at its next safe
+point. The last eighth of the block is a spare: when the allocator refuses a block, or a chunk goes past the block's
+soft end, the allocation is served from the spare and the next poll raises the same error. The process ends only when
+the spare is spent too.
 
 ## Threads
 
