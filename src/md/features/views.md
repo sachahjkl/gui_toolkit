@@ -1157,7 +1157,15 @@ is the terminal whose view has the focus.
   the grips stop there. A label the user must read is never cut (the showcase's Colour window cut "Saturation" at
   `width_em` 19). Decided: width only. Its height is the user's, what does not fit is clipped and the program's scroll
   regions scroll: a whole height as a floor would forbid a small window over a long list. Refused: making the body a
-  scroll region (a view that fills the window, a terminal, would then be as tall as its content). The root of that
+  scroll region (a view that fills the window, a terminal, would then be as tall as its content).
+  **A content that comes late** (a plugin's first display list, after its runtime started on its own thread): its
+  height settled at the first layout, a line of "Starting…", and the content that came was cut under it, buttons
+  included. Two rules, as for a dialog: `view_not_ready` holds its unseen builds too (`MODAL_READY_WAIT_MS` at most),
+  and `view_refit` asks for its height again: its next build is as tall as what is in it (a height of 0), the one
+  after keeps the height that build was laid out at. A window the person resized keeps theirs (`isized`, set by a
+  grip's drag; a rect from the memory is not the person's in this run). Refused: an internal window always as tall as
+  what is in it, while the person has not resized it: it has no grips then, and a content that grows pushes its
+  bottom out of the window. The root of that
   cut was also `form_row`'s label, 34 % of the row with no least: its words on one line are now its least, so the
   measure sees them and the widget gives way.
 - Several internal windows float at once. A press on one brings it to the front, before its boxes are built (in front

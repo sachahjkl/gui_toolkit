@@ -219,6 +219,14 @@ run_ci :: proc(args: []string) -> string {
 	}
 	for a in APPS {
 		if why := build_app(root, a, false); why != "" { append(&failed, why) }
+		// (the other systems' build of a shipped program, checked from here: run_tests -check reads no apps/)
+		other := "linux_amd64" when ODIN_OS == .Windows else "windows_amd64"
+		if toolbox.odin_check(join({root, "apps", a}), other, {gt_collection(root)}, join({root, toolbox.CHECK_ROOT_DEFAULT})) {
+			fmt.printfln("check ok   apps/%s (%s)", a, other)
+		} else {
+			fmt.printfln("check FAIL apps/%s (%s)", a, other)
+			append(&failed, fmt.tprintf("check apps/%s (%s)", a, other))
+		}
 	}
 	if !toolbox.run({"odin", "run", join({root, "tools", "run_tests"}), "-vet", "-keep-executable", fmt.tprintf("-out:%s", join({root, "build", fmt.tprintf("run_tests%s", EXE)}))}, {dir = root}) {
 		append(&failed, "tools/run_tests")

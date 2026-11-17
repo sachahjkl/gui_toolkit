@@ -155,6 +155,11 @@ view_settle :: proc(vs: ^Views, r: ^View_Record) {
 		s.anim_busy = true   // (each unseen build at once)
 		f := s.boxes[r.iframe] or_else nil
 		if f == nil || f.last_build + 1 != s.build_index { return }
+		// (its content waits for an answer: unseen until it says ready, MODAL_READY_WAIT_MS at most, as a dialog)
+		if r.inot_ready && build_now_ms() - r.iopen_ms < MODAL_READY_WAIT_MS {
+			r.imeasures, r.ilayout = 0, 0
+			return
+		}
 		sig := modal_layout_signature(f)
 		settled := r.imeasures > 0 && sig == r.ilayout
 		r.ilayout = sig
@@ -327,6 +332,24 @@ view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
 	k := r.kind
 	em := font_size()
 	r.flag, r.ending, r.tools, r.header = true, nil, 0, 0
+	if unseen {
+		if r.iopen_ms == 0 { r.iopen_ms = build_now_ms() }
+	} else {
+		r.iopen_ms = 0
+	}
+	r.inot_ready = false   // (its build says it again while its content waits)
+	// (view_refit: this build is as tall as what is in it, the next one keeps the height it was laid out at)
+	switch r.irefit {
+	case .None:
+	case .Asked:
+		r.irect.max.y = r.irect.min.y
+		r.irefit = .Measured
+	case .Measured:
+		if f := s.boxes[r.iframe] or_else nil; f != nil && f.last_build + 1 == s.build_index && r.irect.max.y <= r.irect.min.y {
+			r.irect.max.y = r.irect.min.y + (f.rect.max.y - f.rect.min.y)
+		}
+		r.irefit = .None
+	}
 	rect := view_internal_place(vs, r, em)
 	w, h := rect.max.x - rect.min.x, rect.max.y - rect.min.y
 	title := view_title_shown(r)
@@ -534,6 +557,7 @@ view_internal_grips :: proc(r: ^View_Record, frame: ^Box, w, h, em: f32) {
 		p := press_data(View_Grip_Press, b.key)
 		if p != nil && !p.taken { p^ = {from = r.irect, taken = true} }
 		if !sig.dragging || p == nil { continue }
+		r.isized = true   // (the person's size from now on: view_refit leaves it)
 		nr, d := p.from, sig.drag_delta
 		if g.dir.x < 0 { nr.min.x = min(p.from.min.x + d.x, p.from.max.x - lo.x) }
 		if g.dir.x > 0 { nr.max.x = max(p.from.max.x + d.x, p.from.min.x + lo.x) }
