@@ -18,9 +18,9 @@ track, at the height where its item stands in the content. The marks and the bar
   it does on every bar.
 - The wheel over the bar scrolls the view, as over the view.
 - The keyboard: Up and Down go from mark to mark. Home and End go to the first and the last mark. Enter or Space jumps.
-- The filter: the magnifier button above the bar, or a character typed while the marks have the keyboard, opens a field
-  beside the button. Only the marks whose text holds every word typed stay on the bar. Up, Down and Enter work in the
-  field too. Escape empties the filter and closes the field.
+- The find: the magnifier button above the bar opens the find over the view ([find.md](find.md)); a second press closes
+  it. A character typed while the marks have the keyboard opens it with that character. Its matches are ticks on the same
+  bar, over the marks. To search only the marked items, the program gives the find a scope that keeps them.
 
 `src/ui/scroll_marks.odin` (the bar's part is in `src/ui/scrollbar.odin`); the scenario test is
 `tests/scenarios/scroll_marks_test.odin`.
@@ -54,7 +54,7 @@ if ui.scroll_y("###doc") {
 ```
 
 - `ui.scroll_marks(id, marks, view, options) -> int` puts the marks on the vertical bar of the scroll box `view`: the last
-  build's (`prev_box`), or the one being built. `id` is the filter's button, built over the view above the bar: it is
+  build's (`prev_box`), or the one being built. `id` is the find's button (the magnifier), built over the view above the bar: it is
   the marks' own box, the keyboard's stop and what a screen reader reads. The result is the mark that the view jumped to
   in this build, or -1. The program can give the keyboard to that item. A view whose content fits shows no bar, and no
   marks.
@@ -64,8 +64,8 @@ if ui.scroll_y("###doc") {
   a lesser item: its mark is shorter and fainter. `ui.scroll_marks_stale(marks, version)` says that other marks are kept.
 - `ui.scroll_marks_place(marks, i, top)` gives where mark `i` starts in the view's content at this build. A lazy column's
   `Lazy.y` before its item is that place, built or not. Out of range, it does nothing.
-- `ui.scroll_marks_id`, `ui.scroll_marks_shown` (the marks that the filter keeps, by index), `ui.scroll_marks_query` (the
-  filter's text) and `ui.scroll_marks_at` (where a mark is on the bar, in window pixels) are for the program and its tests.
+- `ui.scroll_marks_id` and `ui.scroll_marks_at` (where a mark is on the bar, in window pixels) are for the program and its
+  tests.
 
 ## Give them before the view's content
 
@@ -73,19 +73,20 @@ Call `scroll_marks` before the view's content: before the view, with `prev_box`,
 the view before the content is built, and the lazy column builds the items at the new place in the same build. Called
 before the view, the marks also take Up and Down before keys that the program reads for the view.
 
-The filter's button and its field are built at the window's root. They show over what is built after them.
+The magnifier is built at the window's root. It shows over what is built after it.
 
 ## What it costs
 
-The marks are copied and filtered only when they change or when the filter changes. They are merged only when they, their
-places, the filter, the content's height or the bar's length change. At each build, the bar reads only the marks near the
+The marks are copied only when they change. They are merged only when they, their places, the content's height or the
+bar's length change. At each build, the bar reads only the marks near the
 pointer: the marks are in the content's order, so it finds them with a binary search. The drawing reads each merged mark
 once: no more than the bar has room for. The places are the program's: it gives them where it already goes over its items,
 so the marks add no pass over the content.
 
-Tags used: `scroll_marks`; its field has `input`. Colours: a mark is a thin tick (2 px, short of the track's sides) in a
+Tags used: `scroll_marks`. Colours: a mark is a thin tick (2 px, short of the track's sides) in a
 muted `accent` (a weak mark fainter, and shorter). The marks within the thumb's span are drawn over it, a little brighter:
 they say where the view is. The mark under the pointer and the keyboard's are the full `accent`, twice as tall, across the
 track. The bar is the toolkit's ([scroll-bar.md](scroll-bar.md)), wider; its thumb has no grip lines, which would cross
-the marks drawn over it. The magnifier is `weak text`, `accent` under the pointer and while a filter is typed. With `set_scrollbar_autohide`, a bar
+the marks drawn over it. The magnifier is `weak text`, `accent` under the pointer and while the find is open over the view. The find's ticks
+are drawn over the marks, in `find_match background`. With `set_scrollbar_autohide`, a bar
 with marks still shows.

@@ -21,11 +21,11 @@ import "core:math"
 // An item never built stands as the mean height of those that were; one built at another width keeps its old height
 // until it is built again. Either is corrected when the item comes near the view, and the view stays on the item it
 // showed (the first one visible keeps its place on screen: lazy_settle, after the layout), so nothing jumps.
-// `lazy_begin(all = true)` builds every item; `sweep`: these items too, by their order ([first, end): `sweep = find_sweep()`, a find in
-// page reads a slice of them at each frame); `always`: build this item
-// whatever (the item that grows while streaming; a focus in an item left behind waits for it); `rows`: the items are the
-// text selection's rows (selection_rows.odin): the items of its two ends are built, a copy reads the others by index. One lazy column to a
-// parent: what a column keeps between frames goes by that parent's key.
+// `lazy_begin(all = true)` builds every item; `always`: build this item whatever (the item that grows while streaming; a
+// focus in an item left behind waits for it); `rows`: the items are the text selection's rows (selection_rows.odin): the
+// items of its two ends are built, a copy reads the others by index; and the rows of a find open over the column's view
+// (find.odin): it counts them by their text, built or not, and the item of its current match is built wherever it is. One
+// lazy column to a parent: what a column keeps between frames goes by that parent's key.
 
 Lazy :: struct {
 	lo, hi:  f32,    // the content's band that is built (the view and a screen each side), in the scroll box's content
@@ -45,9 +45,9 @@ Lazy :: struct {
 	guessed_at: [dynamic]int,   // `guessed` before each item built, parallel to `items`
 	pin:     Key,     // the item the view stays on, whatever moves around it (lazy_pin), 0: none
 	pin_dy:  f32,
-	sweep:   [2]int,  // the items built for a find's sweep, [first, end) by their order
 	n:       int,     // items met so far
 	rows:    bool,    // its items are rows of the text selection (lazy_begin's `rows`): an item holding an end is built
+	find:    bool,    // ... and of the find open over its view: the item of its current match is built, each item placed
 }
 
 @(private)
@@ -77,19 +77,17 @@ LAZY_MARGIN :: 1.0   // screens built above and below the view
 @(private = "file") LAZY_TRIM_INTERVAL_BUILDS :: 120
 @(private = "file") LAZY_KEEP_BUILDS :: 600
 
-// In the column the items go in. `all`: build every item this frame; `sweep`: these ones too (find_sweep). (The space of the last
-// items skipped is put in when the block lazy_begin was called in ends: before the column closes.)
+// In the column the items go in. `all`: build every item this frame. (The space of the last items skipped is put in when the
+// block lazy_begin was called in ends: before the column closes.)
 @(deferred_out = lazy_end)
-lazy_begin :: proc(all := false, sweep := [2]int{}, rows := Text_Rows{}) -> (lz: ^Lazy) {
+lazy_begin :: proc(all := false, rows := Text_Rows{}) -> (lz: ^Lazy) {
 	s := gs()
 	lz = new(Lazy, frame_allocator())
 	lz.items.allocator = frame_allocator()
 	lz.guessed_at.allocator = frame_allocator()
-	lz.sweep = sweep
 	col := parent_box()
 	if rows.text != nil { lz.rows = true; selection_rows_begin(rows) }
 	lz.column = col.key
-	if sweep[1] > sweep[0] { s.find.column = col.key }
 	c := s.lazy_columns[col.key] or_else {}
 	c.seen = s.build_index
 	s.lazy_columns[col.key] = c
@@ -98,6 +96,11 @@ lazy_begin :: proc(all := false, sweep := [2]int{}, rows := Text_Rows{}) -> (lz:
 	for sb != nil && (Box_Flag.View_Scroll_Y not_in sb.flags) { sb = sb.parent }
 	lz.scroll = sb
 	if sb == nil { return }
+	if lz.rows && s.find.open && sb.key == s.find.view {
+		find_rows(sb.key, rows)
+		lz.find = true
+		s.find.lazy_build = s.build_index
+	}
 	// the column's top in the content, from the last layout. Not from its rect: that was placed at the offset of the last layout,
 	// and the view may have moved since (a jump to the bottom of a conversation just read, before this build): the rect and the
 	// new offset together put every item off by the jump, and the ones in view were not built. (With `all` too: `y` says where
@@ -152,11 +155,14 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	if !e.known { h = lz.est } else if h > 0 { lz.known_h += h; lz.known_n += 1 }
 	top := lz.y
 	lz.y += h
-	swept := lz.n >= lz.sweep[0] && lz.n < lz.sweep[1]
 	row := lz.n
 	lz.n += 1
 	held := lz.rows && selection_holds_row(row)
-	if lz.on && !always && !swept && !held && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {
+	if lz.find {
+		find_place_row(row, top)
+		if row == s.find.want_row { held = true }
+	}
+	if lz.on && !always && !held && (top + h < lz.lo || top > lz.hi) && (top + h < lz.tlo || top > lz.thi) {
 		lz.skip += h
 		if !e.known { lz.guessed += 1 }
 		next_drop(s)
@@ -168,8 +174,7 @@ lazy_item :: proc(lz: ^Lazy, id: string, always := false) -> bool {
 	lz.last = build_box({}, id)
 	append(&lz.items, lz.last)
 	append(&lz.guessed_at, lz.guessed)
-	if lz.sweep[1] > lz.sweep[0] { append(&s.find.built, lz.last.key) }
-	if swept { append(&s.find.chunk, lz.last.key) }
+	if lz.find { append(&s.find.built, Find_Built_Row{row, lz.last.key}) }
 	if lz.rows { selection_row(row) }
 	push_parent(lz.last)
 	return true
@@ -199,7 +204,6 @@ lazy_end :: proc(lz: ^Lazy) {
 	s := gs()
 	if lz.on { s.virtual_depth -= 1 }
 	if lz.rows { selection_rows_end() }
-	if lz.sweep[1] > lz.sweep[0] { s.find.total = lz.n }   // (where the sweep ends)
 	// (on a whole pixel: a fraction moves the view by a fraction at each new estimate, and the rects, rounded at each level of
 	// boxes, show what it reads by a pixel up or down)
 	if c, ok := &s.lazy_columns[lz.column]; ok && lz.known_n > 0 { c.est = max(1, math.round(lz.known_h / f32(lz.known_n))) }

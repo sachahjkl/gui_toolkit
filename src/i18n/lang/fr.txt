@@ -1975,6 +1975,32 @@ fr Le fichier n'a pas pu être lu : %s.
 en The folder could not be made: %s.
 fr Le dossier n'a pas pu être créé : %s.
 
+en Find
+fr Rechercher
+
+en No results
+fr Aucun résultat
+
+en %d result
+en+ %d results
+fr %d résultat
+fr+ %d résultats
+
+en Match case (Alt+C)
+fr Respecter la casse (Alt+C)
+
+en Whole word (Alt+W)
+fr Mot entier (Alt+W)
+
+en Previous match (Shift+Enter)
+fr Résultat précédent (Maj+Entrée)
+
+en Next match (Enter)
+fr Résultat suivant (Entrée)
+
+en Close (Escape)
+fr Fermer (Échap)
+
 en %s (default)
 fr %s (par défaut)
 

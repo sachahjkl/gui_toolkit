@@ -2,8 +2,8 @@ package scenarios_test
 
 // Marks on a view's scroll bar (ui/scroll_marks.odin): each mark where its item is, a press on one puts the item at the
 // view's top at once (no glide, with smooth scrolling on), a press on the thumb over a mark drags it, the keyboard goes from
-// mark to mark, the filter keeps the marks that say what is typed, marks too close to tell apart are one. The places come
-// from a lazy column (its `y` before each item).
+// mark to mark, marks too close to tell apart are one. The places come from a lazy column (its `y` before each item). The
+// magnifier opens the find: find_test.odin.
 
 import "core:fmt"
 import "core:testing"
@@ -181,49 +181,6 @@ the_keyboard_goes_from_mark_to_mark :: proc(t: ^testing.T) { unwatched.run(t, pr
 	testing.expect_value(t, run.marks.current, 0)   // (the first stays)
 }) }
 
-// A word typed while the marks have the keyboard opens their filter: only the marks that hold it are shown, the keyboard
-// goes among them, Enter jumps, Escape gives them all back.
-@(test)
-the_filter_keeps_the_marks_that_say_what_is_typed :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	run: Marks_Run
-	defer ui.scroll_marks_destroy(&run.marks)
-	s := marks_start(t, &run)
-	view := session.get(s, "view")
-	testing.expect_value(t, len(ui.scroll_marks_shown(&run.marks)), len(MARKS_NAMES))
-	at, _ := ui.scroll_marks_at(&run.marks, view, 1)
-	session.click_at(s, at)
-	session.type_text(s, "et")   // beta, zeta (and not the others)
-	session.frames(s, 1)
-	testing.expect_value(t, ui.scroll_marks_query(&run.marks), "et")
-	shown := ui.scroll_marks_shown(&run.marks)
-	if !testing.expect_value(t, len(shown), 2) { return }
-	testing.expect(t, shown[0] == 1 && shown[1] == 5, "beta and zeta")
-	_, hidden := ui.scroll_marks_at(&run.marks, view, 2)
-	testing.expect(t, !hidden, "gamma is not shown")
-	session.key(s, .Down)
-	testing.expect_value(t, run.marks.current, 5)
-	session.key(s, .Return)
-	testing.expect_value(t, run.jumped, 5)
-	testing.expect_value(t, view.view_off.y, f32(50 * MARKS_ROW_H - MARKS_MARGIN))
-	session.key(s, .Escape)
-	testing.expect_value(t, ui.scroll_marks_query(&run.marks), "")
-	testing.expect_value(t, len(ui.scroll_marks_shown(&run.marks)), len(MARKS_NAMES))
-	testing.expect(t, !run.marks.filtering, "the field closed")
-}) }
-
-// The magnifier above the bar opens the filter's field; a second press closes it.
-@(test)
-the_magnifier_opens_the_filter :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
-	run: Marks_Run
-	defer ui.scroll_marks_destroy(&run.marks)
-	s := marks_start(t, &run)
-	session.click(s, "marks")
-	testing.expect(t, run.marks.filtering, "open")
-	testing.expect(t, session.find(s, "field") != nil, "its field")
-	session.click(s, "marks")
-	testing.expect(t, !run.marks.filtering, "closed")
-}) }
-
 // New marks (a version of the program's) are taken; the old ones' texts are let go (the test's allocator says so).
 @(test)
 a_new_version_replaces_the_marks :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
@@ -236,6 +193,6 @@ a_new_version_replaces_the_marks :: proc(t: ^testing.T) { unwatched.run(t, proc(
 	testing.expect_value(t, ui.scroll_marks_id(&k, 1), "b")
 	testing.expect_value(t, ui.scroll_marks_id(&k, 2), "")
 	ui.scroll_marks_set(&k, 8, {{id = "c", text = "x", weak = true}})
-	testing.expect_value(t, len(ui.scroll_marks_shown(&k)), 1)
+	testing.expect_value(t, ui.scroll_marks_id(&k, 0), "c")
 	ui.scroll_marks_place(&k, 4, 10)   // (out of range: passed over)
 }) }

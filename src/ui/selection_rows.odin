@@ -15,19 +15,28 @@ import "core:strings"
 //   ui.selection_rows_end()
 //
 // The rows of the selection's two ends are built whatever; a copy reads the rows between that are not built from `text`.
+// The same rows are what a find in their view searches (find.odin, src/md/features/find-in-view.md): `whole` text, `stamp`,
+// `version` and `reveal` are the find's.
 
-// A container's rows for the text selection. `text` and `user` are read when the selection's text is asked, after the
-// build: `user` is the program's lasting data, not temp memory.
+// A container's rows for the text selection and the find. `text` and `user` are read after the build: `user` is the
+// program's lasting data, not temp memory.
 Text_Rows :: struct {
 	count: int,
-	// row `row`'s selectable text, as its boxes would give it (two boxes of one row: joined by "\n"); ok false: the row
-	// has none (a gap's mark)
-	text:  proc(user: rawptr, row: int, allocator: runtime.Allocator) -> (text: string, ok: bool),
+	// row `row`'s selectable text, as its .Selectable boxes would give it, in tree order (two boxes of one row: joined by
+	// "\n"); ok false: the row has none (a gap's mark). `whole` false: as they are now, for a copy; true: with every part
+	// the program can open opened (a folded output, a long reasoning, a diagram's source), for the find
+	text:  proc(user: rawptr, row: int, allocator: runtime.Allocator, whole: bool) -> (text: string, ok: bool),
 	user:  rawptr,
 	gap:   string,   // before each row read ("": "\n"; "\n\n": rows that are blocks of a document)
 	// row `row`'s identity, which stays when rows are inserted before it (a page of older messages loaded above a
 	// selection). nil: the index is the identity (rows only appended, a diff)
 	id:    proc(user: rawptr, row: int) -> u64,
+	// changes when row `row`'s whole text changes (a counter, a length: cheap, asked of many rows at each frame). nil:
+	// `version` is every row's stamp
+	stamp: proc(user: rawptr, row: int) -> u64,
+	version: u64,    // changes when any row changes
+	// the find's current match is at byte `offset` of row `row`'s whole text, in a part not shown: open it (nil: none can be)
+	reveal: proc(user: rawptr, row: int, offset: int),
 }
 
 // A selectable box's row: its container (the box the rows were declared in), its index there and its identity.
@@ -137,7 +146,7 @@ sel_text_with_gaps :: proc(text: string, gaps: []Sel_Gap, allocator: runtime.All
 		from = g.at
 		gap := g.rows.gap != "" ? g.rows.gap : "\n"
 		for r in g.lo ..< g.hi {
-			t, ok := g.rows.text(g.rows.user, r, context.temp_allocator)
+			t, ok := g.rows.text(g.rows.user, r, context.temp_allocator, false)
 			if !ok { continue }
 			strings.write_string(&sb, gap)
 			strings.write_string(&sb, t)

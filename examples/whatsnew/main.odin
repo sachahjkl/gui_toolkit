@@ -61,7 +61,7 @@ App :: struct {
 	warnings:   int,   // layout warnings shown
 	found:      int,   // find in page matches shown
 	versions:   bool,
-	needle:     ui.Line_Edit,
+	find_shown: bool,   // the find page opened its find once
 	smooth:     int,
 	under:      [2]int,   // the wheel page's row under the pointer: this build, the last one
 	signed_in:  bool,     // the demo state "account.signed_in" (a tool enters it: devtools.demo_state)
@@ -97,7 +97,6 @@ gap :: proc(em: f32, k: f32 = 1) { ui.spacer(ui.px(em * k)) }
 build :: proc(app: ^App) {
 	em := ui.font_size()
 	app.n = 0
-	if app.page != .Find { ui.find("") }   // (the find page sets its needle each build; elsewhere none)
 	ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
 	if ui.row(id = "###main") {
 		// the pages
@@ -341,18 +340,12 @@ page_wheel :: proc(app: ^App, em: f32) {
 }
 
 page_find :: proc(app: ^App, em: f32) {
-	heading("Find in page", em)
-	para("ui.find(needle, scope) every build while searching, ui.find_matches() for the rects of the last layout, ui.find_set_current(i) for the one painted as current. Matches span the runs of a rich paragraph; not across boxes, and text the build did not make is not searched.")
+	heading("Find in a view", em)
+	para("ui.find_open(view) opens the find bar over a view (the program's Ctrl+F, or the magnifier above a bar with marks); ui.find_bar(view), at each build of the view, draws it while it is open there: the count, previous and next, match case, whole word, the program's scopes. A view whose rows a lazy column declares (Text_Rows) is counted whole, built or not, folded parts included.")
 	gap(em * 0.6)
-	ui.next({width = ui.px(em * 20)})
-	ui.line_edit("###needle", &app.needle, {placeholder = "Find in the text below"})
-	needle := ui.line_edit_string(&app.needle)
-	scope := ui.box_at("###main", "###page", "###content", "###text")   // the column below, found by its path
-	ui.find(needle, scope != nil ? scope.key : 0)
-	ui.find_set_current(0)
-	gap(em * 0.4)
-	ui.next({width = ui.fill(), height = ui.text_size(), font = ui.mono_font()})
-	if ui.tags("weak") { ui.label(needle == "" ? "type a word###c" : fmt.tprintf("%d matches###c", ui.find_count())) }
+	text := ui.box_at("###main", "###page", "###content", "###text")   // the column below, found by its path
+	if ui.button("###open", "Find in the text below").clicked && text != nil { ui.find_open(text.key) }
+	if text != nil && !app.find_shown { ui.find_open(text.key, "the"); app.find_shown = true }
 	gap(em * 0.6)
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = "###text") {
@@ -362,6 +355,7 @@ page_find :: proc(app: ^App, em: f32) {
 		ui.next({width = ui.fill()})
 		ui.rich_paragraph("###rp", runs[:], version = 1)
 	}
+	ui.find_bar(ui.prev_box("###text"))
 }
 
 page_smooth :: proc(app: ^App, em: f32) {
@@ -503,7 +497,6 @@ open :: proc(args: []string, headless_default := false) -> ^App {
 	ui.apply_palette(&app.theme, ui.palette_of("Midnight"), render.blend_space(&app.r))
 	ui.init(&app.s, &app.fonts, &app.theme)
 	app.s.mono_font = app.mono
-	ui.line_edit_set(&app.needle, "the")
 	platform.set_dark_title(app.win, true)
 	serve(app, devtools.start_from_env(app.win, title))
 	app.win.user = app
@@ -521,7 +514,6 @@ serve :: proc(app: ^App, srv: ^devtools.Server) {
 // The end of what `open` made.
 close :: proc(app: ^App) {
 	devtools.stop(app.devtools)
-	ui.line_edit_destroy(&app.needle)
 	ui.destroy(&app.s)
 	ui.theme_destroy(&app.theme)
 	draw.destroy(&app.dc)

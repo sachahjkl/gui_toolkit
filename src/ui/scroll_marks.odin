@@ -11,8 +11,8 @@ package ui
 // a long glide over a long content is a wait). A mark under the thumb is the thumb's: a press there drags it, as a press
 // on the track away from any mark does what it does on every bar. The keyboard (once a mark was pressed, or Tab to the
 // marks' button): Up and Down go from mark to mark (Home, End: the first, the last), Enter or Space jumps. A button above
-// the bar (a magnifier), or a character typed while the marks have the keyboard, opens a filter: only the marks whose text
-// holds every word typed stay.
+// the bar (a magnifier), or a character typed while the marks have the keyboard, opens the find over the view (find_bar.odin):
+// its matches are ticks on the same bar, its scopes restrict it (to the marked items, if the program gives that scope).
 //
 //   marks: ui.Scroll_Marks                                    // the program's, kept between builds
 //   if ui.scroll_marks_stale(&marks, version) {               // the items changed: a version of the program's
@@ -28,8 +28,8 @@ package ui
 //       }
 //   }
 //
-// What it costs: the marks are copied and filtered only when they or the filter change; they are merged only when they,
-// their places, the filter, the content's height or the bar's length change. A build reads only the marks near the pointer
+// What it costs: the marks are copied only when they change; they are merged only when they, their places, the content's
+// height or the bar's length change. A build reads only the marks near the pointer
 // (a binary search). The drawing reads each merged mark once: no more than the bar has room for.
 //
 // Give them before the view's content (before the view, with prev_box, or first in it): a jump then builds the content at
@@ -38,6 +38,7 @@ package ui
 import "core:fmt"
 import "core:math"
 import "core:strings"
+import "core:unicode/utf8"
 import "../draw"
 import i18n "../i18n"
 import "../timefmt"
@@ -45,7 +46,7 @@ import "../timefmt"
 // A mark given to the bar.
 Scroll_Mark :: struct {
 	id:      string,   // what the program calls its item (scroll_marks_id gives it back); copied
-	text:    string,   // what the item says: its first lines show under the pointer, the filter reads all of it; copied
+	text:    string,   // what the item says: its first lines show under the pointer; copied
 	label:   string,   // its short name, first on its card ("#12"; "": none); copied
 	time_ms: f64,      // when the item was made, ms since 1970 (UTC): on its card, as timefmt.moment says it (0: none)
 	weak:    bool,     // a lesser mark: shorter and fainter
@@ -60,8 +61,8 @@ Scroll_Mark_Kept :: struct {
 	top:  f32,
 }
 
-// Marks shown that would overlap on the bar, drawn as one: `first` ..= `last` of `shown`, from `y0` to `y1` down the
-// track (pixels from its top).
+// Marks that would overlap on the bar, drawn as one: `first` ..= `last`, from `y0` to `y1` down the track (pixels from its
+// top).
 @(private)
 Scroll_Mark_Group :: struct {
 	first, last: int,
@@ -72,7 +73,7 @@ Scroll_Mark_Group :: struct {
 // What the groups were made for: made again when it changes.
 @(private)
 Scroll_Marks_Merged :: struct {
-	placed, filtered: u64,
+	placed: u64,
 	track, content, gap: f32,
 }
 
@@ -81,20 +82,13 @@ Scroll_Marks :: struct {
 	marks:       [dynamic]Scroll_Mark_Kept,
 	version:     u64,
 	made:        bool,
-	filter:      Line_Edit,
-	filtering:   bool,           // the filter's field is open
-	query:       string,         // the filter `shown` was made for (owned)
-	shown:       [dynamic]int,   // the marks the filter keeps, in their order
 	current:     int,            // the mark of the keyboard, and the last one jumped to (-1: none; at first the first)
 	hot:         int,            // the mark under the pointer at this build (-1: none)
-	focus_field: bool,           // the field takes the keyboard when it is next built
-	head:        f32,            // the room above the bar for the filter's button, pixels (scrollbar_parts)
+	head:        f32,            // the room above the bar for the find's button, pixels (scrollbar_parts)
 	head_key:    Key,            // the button: the marks' keyboard stop
-	field_key:   Key,
 	groups:      [dynamic]Scroll_Mark_Group,
 	merged:      Scroll_Marks_Merged,
-	placed:      u64,            // counts the changes of places (scroll_marks_place)
-	filtered:    u64,            // counts the changes of `shown`
+	placed:      u64,            // counts the changes of places (scroll_marks_place, scroll_marks_set)
 }
 
 Scroll_Marks_Options :: struct {
@@ -109,7 +103,7 @@ Scroll_Marks_Options :: struct {
 // The bar with marks: its width at rest, and under the pointer or with the keyboard.
 @(private = "file") SCROLL_MARKS_BAR_EM :: 0.7
 @(private = "file") SCROLL_MARKS_BAR_WIDE_EM :: 1.05
-@(private = "file") SCROLL_MARKS_HEAD_EM :: 1.05      // the filter's button, square, above the bar
+@(private = "file") SCROLL_MARKS_HEAD_EM :: 1.05      // the find's button, square, above the bar
 // A mark: thin, short of the track's sides, so that many of them read as ticks and not as a striped column
 @(private = "file") SCROLL_MARKS_THICK_PX :: 2
 @(private = "file") SCROLL_MARKS_INSET_PX :: 2        // from each side of the track
@@ -125,18 +119,14 @@ Scroll_Marks_Options :: struct {
 @(private = "file") SCROLL_MARKS_CARD_EM :: 22        // a card's text, at most
 @(private = "file") SCROLL_MARKS_CARD_PAD_EM :: 0.7   // around it
 @(private = "file") SCROLL_MARKS_CARD_SMALL :: 0.85   // its name and its time, of the font size
-@(private = "file") SCROLL_MARKS_FILTER_EM :: 16      // the filter's field
-@(private = "file") SCROLL_MARKS_GAP_EM :: 0.5        // between the bar and its tooltip or field
+@(private = "file") SCROLL_MARKS_GAP_EM :: 0.5        // between the bar and its tooltip
 @(private = "file") SCROLL_MARKS_MARGIN_EM :: 0.5
 @(private = "file") SCROLL_MARKS_HEAD_RADIUS_EM :: 0.25
 
 scroll_marks_destroy :: proc(k: ^Scroll_Marks) {
 	marks_free(k)
 	delete(k.marks)
-	delete(k.shown)
 	delete(k.groups)
-	delete(k.query)
-	line_edit_destroy(&k.filter)
 	k^ = {}
 }
 
@@ -155,7 +145,6 @@ scroll_marks_set :: proc(k: ^Scroll_Marks, version: u64, marks: []Scroll_Mark) {
 	k.current = min(k.current, len(k.marks) - 1)
 	k.hot = -1
 	k.placed += 1
-	marks_filter(k)
 }
 
 // Where mark `i` starts in the content of the view, at this build (a lazy column's `y` before its item, a box's top in
@@ -169,17 +158,10 @@ scroll_marks_place :: proc(k: ^Scroll_Marks, i: int, top: f32) {
 // The id the program gave mark `i` ("" out of range).
 scroll_marks_id :: proc(k: ^Scroll_Marks, i: int) -> string { return i >= 0 && i < len(k.marks) ? k.marks[i].id : "" }
 
-// The marks the filter keeps, by their index, in order.
-scroll_marks_shown :: proc(k: ^Scroll_Marks) -> []int { return k.shown[:] }
-
-// The filter's text.
-scroll_marks_query :: proc(k: ^Scroll_Marks) -> string { return line_edit_string(&k.filter) }
-
-// Where mark `i` is on the bar of `view`, in window pixels, by the last layout (ok = false: the mark is not shown, has no
-// place yet, or the view's bar does not show these marks). For tests and tools: a press there is on it, unless the thumb is
-// over it.
+// Where mark `i` is on the bar of `view`, in window pixels, by the last layout (ok = false: the mark has no place yet, or
+// the view's bar does not show these marks). For tests and tools: a press there is on it, unless the thumb is over it.
 scroll_marks_at :: proc(k: ^Scroll_Marks, view: ^Box, i: int) -> (at: Vec2, ok: bool) {
-	if view == nil || scroll_marks_of(view) != k || view.view_bounds.y <= 0 || i < 0 || i >= len(k.marks) || k.marks[i].top < 0 || marks_shown_at(k, i) < 0 { return }
+	if view == nil || scroll_marks_of(view) != k || view.view_bounds.y <= 0 || i < 0 || i >= len(k.marks) || k.marks[i].top < 0 { return }
 	parts, has := scrollbar_parts(view)
 	if !has { return }
 	track := parts.track
@@ -187,13 +169,12 @@ scroll_marks_at :: proc(k: ^Scroll_Marks, view: ^Box, i: int) -> (at: Vec2, ok: 
 }
 
 // The marks `k` on the vertical bar of the scroll box `view` (the last build's, prev_box, or the one being built), and
-// their filter's button above it, `id`. The index of the mark the view jumped to in this build, -1 none: the program
-// gives its item the keyboard if it wants. Tags used: "scroll_marks"; its field "input".
+// the find's button above it, `id`. The index of the mark the view jumped to in this build, -1 none: the program
+// gives its item the keyboard if it wants. Tags used: "scroll_marks".
 scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks_Options{}) -> (jumped: int) {
 	s := gs()
 	jumped = -1
 	k.hot = -1
-	if line_edit_string(&k.filter) != k.query { marks_filter(k) }
 	k.current = min(k.current, len(k.marks) - 1)   // (a zero Scroll_Marks has none, its current 0)
 	if view == nil || .View_Scroll_Y not_in view.flags { return }
 	em := view.font_size
@@ -205,7 +186,7 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 	bar, track := parts.bar, parts.track
 	if !ok {
 		// (all of it in view: no bar, no marks)
-		k.head_key, k.field_key = 0, 0
+		k.head_key = 0
 		return
 	}
 	content := view.view_bounds.y
@@ -213,7 +194,7 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 	left := .Scrollbar_Left in view.flags
 	sbk := scrollbar_key(view)
 
-	// the filter's button above the bar, built at the root (over the view, which it is not part of): the marks' own box, the
+	// the find's button above the bar, built at the root (over the view, which it is not part of): the marks' own box, the
 	// keyboard's stop and what a screen reader reads. (Scroll_Self: the wheel over it is the view's)
 	head := Rect{{left ? bar.min.x : bar.max.x - head_w, view.rect.min.y + inset}, {}}
 	head.max = head.min + head_w
@@ -224,18 +205,14 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 	pop_tags()
 	pop_parent()
 	k.head_key = hb.key
-	field_key := key_from_string(marks_field_parent_key(hb), "###field")
-	k.field_key = field_key
 	sig := signal(hb)
-	held := s.active_key[.Left] == hb.key
 	if sig.scrolled.y != 0 {
 		view.view_target.y = clamp(view.view_target.y + scroll_view_delta(s).y * wheel_step(view, .Y), 0, view_limit(view))
 	}
-	toggled := false
+	// (the find over this view: opened, or closed when it is open there)
+	finding := find_is_open(view.key)
 	if sig.pointer_clicked {
-		toggled = true
-		k.filtering = !k.filtering
-		if k.filtering { k.focus_field = true } else { line_edit_clear(&k.filter); s.focus_key = hb.key }
+		if finding { find_close(); s.focus_key = hb.key } else { find_open(view.key) }
 	}
 
 	// the pointer on the bar: the mark under it; a press on one goes there (the bar left that press to it: scrollbar_press)
@@ -247,59 +224,29 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 		s.focus_key = hb.key   // (the keyboard goes on from there)
 	}
 
-	// the keyboard, on the button or in the field
-	in_field := s.focus_key == field_key && k.filtering
-	if sig.focused || in_field {
+	// the keyboard, on the button
+	if sig.focused {
 		if step := marks_key_step(); step != 0 { k.current = marks_step(k, step) }
-		if key_press(.Home) && sig.focused && len(k.shown) > 0 { k.current = k.shown[0] }
-		if key_press(.End) && sig.focused && len(k.shown) > 0 { k.current = k.shown[len(k.shown) - 1] }
+		if key_press(.Home) && len(k.marks) > 0 { k.current = 0 }
+		if key_press(.End) && len(k.marks) > 0 { k.current = len(k.marks) - 1 }
 	}
 	if sig.focused && sig.pressed && !sig.pointer_pressed && k.current >= 0 {
 		jumped = k.current
 		marks_jump(view, k.marks[k.current].top, margin)
 	}
-	if sig.focused && !k.filtering {
-		// a character typed on the marks opens their filter, which takes it
-		for c in s.typed {
-			if c >= ' ' && c != 0x7f && .Ctrl not_in s.typed_mods && .Alt not_in s.typed_mods { k.filtering, k.focus_field = true, true; break }
+	if sig.focused {
+		// a character typed on the marks opens the find, which takes it
+		typed := make([dynamic]rune, context.temp_allocator)
+		for c in s.typed { if c >= ' ' && c != 0x7f && .Ctrl not_in s.typed_mods && .Alt not_in s.typed_mods { append(&typed, c) } }
+		if len(typed) > 0 {
+			find_open(view.key, utf8.runes_to_string(typed[:], context.temp_allocator))
+			clear(&s.typed)
 		}
 	}
-	if sig.focused && key_press(.Escape) && marks_query_text(k) != "" { line_edit_clear(&k.filter) }
-
-	// the filter's field, over the content beside the button
-	if k.filtering {
-		w := math.round(em * SCROLL_MARKS_FILTER_EM)
-		gap := math.round(em * SCROLL_MARKS_GAP_EM * 0.5)
-		push_parent(s.root)
-		next({fixed_x = left ? head.max.x + gap : head.min.x - gap - w, fixed_y = head.min.y, width = px(w), height = children_sum(), axis = .Y})
-		frame := build_box({}, marks_field_id(hb))
-		if parent(frame) {
-			if k.focus_field { s.focus_key = field_key; k.focus_field = false }
-			next({width = fill()})
-			res := line_edit("###field", &k.filter, {placeholder = i18n.tr("Filter"), clearable = true})
-			if res.committed && k.current >= 0 {
-				jumped = k.current
-				marks_jump(view, k.marks[k.current].top, margin)
-			}
-			if res.cancelled {
-				line_edit_clear(&k.filter)
-				k.filtering = false
-				s.focus_key = hb.key
-			}
-			// (left with nothing in it, it closes; with a query it stays, for what it keeps. Not while its button is held:
-			// the press took the keyboard, and the click that follows closes it)
-			if k.filtering && s.focus_key != field_key && !toggled && !held && marks_query_text(k) == "" {
-				k.filtering = false
-			}
-		}
-		pop_parent()
-	}
-	if line_edit_string(&k.filter) != k.query { marks_filter(k) }
-	if k.current >= 0 && marks_shown_at(k, k.current) < 0 { k.current = len(k.shown) > 0 ? marks_step_from(k, k.current, 1) : -1 }
 
 	// the card of the mark under the pointer (a line for each item of a merged one), else of the keyboard's
 	tip, merged := k.hot, k.hot >= 0
-	if tip < 0 && (sig.focused && s.focus_visible || in_field) { tip = k.current }
+	if tip < 0 && sig.focused && s.focus_visible { tip = k.current }
 	if tip >= 0 && content > 0 && k.marks[tip].top >= 0 {
 		group := merged ? marks_group(k, tip) : nil
 		if len(group) > 1 || k.marks[tip].line != "" {
@@ -314,14 +261,14 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 	}
 
 	d := frame_new(Color)
-	// (weak at rest, as the bar's other greys; the accent under the pointer, and while a filter keeps some marks out)
-	d^ = color(sig.hovering || marks_query_text(k) != "" ? "accent" : "weak text")
+	// (weak at rest, as the bar's other greys; the accent under the pointer, and while the find is open over the view)
+	d^ = color(sig.hovering || find_is_open(view.key) ? "accent" : "weak text")
 	hb.custom, hb.custom_user = marks_magnifier_draw, d
 	name := o.name != "" ? o.name : i18n.tr("Marks")
-	info := A11y_Info{role = .Slider, name = name, orientation = .Y, min = 1, max = f64(max(len(k.shown), 1))}
+	info := A11y_Info{role = .Slider, name = name, orientation = .Y, min = 1, max = f64(max(len(k.marks), 1))}
 	if k.current >= 0 {
 		info.value = k.marks[k.current].line
-		if at := marks_shown_at(k, k.current); at >= 0 { info.numeric = f64(at + 1) }
+		info.numeric = f64(k.current + 1)
 	}
 	a11y_default(hb, info)
 	return
@@ -354,8 +301,7 @@ scroll_marks_rest_width :: proc(b: ^Box) -> f32 {
 scroll_marks_wide :: proc(s: ^State, b: ^Box, k: ^Scroll_Marks) -> bool {
 	sbk := scrollbar_key(b)
 	if s.hot_key == sbk || s.active_key[.Left] == sbk { return true }
-	if k.head_key != 0 && (s.hot_key == k.head_key || s.focus_key == k.head_key) { return true }
-	return k.filtering && k.field_key != 0 && s.focus_key == k.field_key
+	return k.head_key != 0 && (s.hot_key == k.head_key || s.focus_key == k.head_key)
 }
 
 // The mark a press at `p` on the bar of `b` is on (-1: none, or the thumb is there: the press is the thumb's).
@@ -372,7 +318,7 @@ scroll_marks_hit :: proc(k: ^Scroll_Marks, b: ^Box, p: Vec2) -> int {
 @(private)
 scroll_marks_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box, k: ^Scroll_Marks, track, thumb: Rect, over: bool) {
 	content := b.view_bounds.y
-	if content <= 0 || len(k.shown) == 0 { return }
+	if content <= 0 || len(k.marks) == 0 { return }
 	thick := max(1, math.round(SCROLL_MARKS_THICK_PX * s.scale))
 	inset := math.round(SCROLL_MARKS_INSET_PX * s.scale)
 	marks_merge(k, track, content, math.round(SCROLL_MARKS_PITCH_PX * s.scale))
@@ -391,9 +337,9 @@ scroll_marks_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box, k: ^Scroll_Mark
 	}
 	if !over { return }
 	big := thick * SCROLL_MARKS_HOT_THICK
-	keyboard := s.focus_key == k.head_key || (k.filtering && s.focus_key == k.field_key)
+	keyboard := s.focus_key == k.head_key
 	for i in ([2]int{keyboard ? k.current : -1, k.hot}) {
-		if i < 0 || i >= len(k.marks) || k.marks[i].top < 0 || marks_shown_at(k, i) < 0 { continue }
+		if i < 0 || i >= len(k.marks) || k.marks[i].top < 0 { continue }
 		c := accent
 		y := math.round(marks_y(track, k.marks[i].top, content) - big * 0.5)
 		draw.rect(dc, {{track.min.x, y}, {track.max.x, y + big}}, tuned(c), shape_rad(big * 0.5))
@@ -406,16 +352,15 @@ marks_y :: proc(track: Rect, top, content: f32) -> f32 {
 	return track.min.y + clamp(top / content, 0, 1) * (track.max.y - track.min.y)
 }
 
-// The marks shown, merged where they would be closer than `gap` on a track as long as `track` for a content as tall as
-// `content`. Only when one of these, the places or the filter changed: not at each frame.
+// The marks, merged where they would be closer than `gap` on a track as long as `track` for a content as tall as
+// `content`. Only when one of these or the places changed: not at each frame.
 @(private = "file")
 marks_merge :: proc(k: ^Scroll_Marks, track: Rect, content, gap: f32) {
-	want := Scroll_Marks_Merged{placed = k.placed, filtered = k.filtered, track = track.max.y - track.min.y, content = content, gap = gap}
+	want := Scroll_Marks_Merged{placed = k.placed, track = track.max.y - track.min.y, content = content, gap = gap}
 	if want == k.merged { return }
 	k.merged = want
 	clear(&k.groups)
-	for i, at in k.shown {
-		m := k.marks[i]
+	for m, at in k.marks {
 		if m.top < 0 { continue }
 		y := clamp(m.top / content, 0, 1) * want.track
 		if n := len(k.groups); n > 0 && y - k.groups[n - 1].y0 < gap {
@@ -428,12 +373,11 @@ marks_merge :: proc(k: ^Scroll_Marks, track: Rect, content, gap: f32) {
 	}
 }
 
-// The marks of the merged mark that holds mark `i`, as indexes of `shown` (`i`'s alone when it is not merged; none when the
-// filter leaves it out). Temp memory.
+// The marks of the merged mark that holds mark `i` (`i`'s alone when it is not merged). Temp memory.
 @(private = "file")
 marks_group :: proc(k: ^Scroll_Marks, i: int) -> []int {
-	at := marks_shown_at(k, i)
-	if at < 0 { return nil }
+	at := i
+	if at < 0 || at >= len(k.marks) { return nil }
 	// (the groups of the last drawing: what is on the screen)
 	lo, hi := 0, len(k.groups)
 	for lo < hi {
@@ -447,7 +391,7 @@ marks_group :: proc(k: ^Scroll_Marks, i: int) -> []int {
 	}
 	g := k.groups[lo]
 	out := make([]int, g.last - g.first + 1, context.temp_allocator)
-	for j in g.first ..= g.last { out[j - g.first] = k.shown[j] }
+	for j in g.first ..= g.last { out[j - g.first] = j }
 	return out
 }
 
@@ -572,22 +516,22 @@ marks_jump :: proc(view: ^Box, top, margin: f32) {
 	view_jump(view, clamp(top - margin, 0, view_limit(view)))
 }
 
-// The mark shown nearest `y` on the track, within `reach` (-1: none). The marks are in the content's order, so their
-// places only go down: a binary search.
+// The mark nearest `y` on the track, within `reach` (-1: none). The marks are in the content's order, so their places only
+// go down: a binary search.
 @(private = "file")
 marks_nearest :: proc(k: ^Scroll_Marks, track: Rect, content, y, reach: f32) -> int {
-	n := len(k.shown)
+	n := len(k.marks)
 	if n == 0 { return -1 }
 	lo, hi := 0, n
 	for lo < hi {
 		mid := (lo + hi) / 2
-		if marks_y(track, k.marks[k.shown[mid]].top, content) < y { lo = mid + 1 } else { hi = mid }
+		if marks_y(track, k.marks[mid].top, content) < y { lo = mid + 1 } else { hi = mid }
 	}
 	best, best_d := -1, reach
 	for j in max(lo - 1, 0) ..< min(lo + 1, n) {
-		m := k.marks[k.shown[j]]
+		m := k.marks[j]
 		if m.top < 0 { continue }
-		if dist := abs(marks_y(track, m.top, content) - y); dist <= best_d { best, best_d = k.shown[j], dist }
+		if dist := abs(marks_y(track, m.top, content) - y); dist <= best_d { best, best_d = j, dist }
 	}
 	return best
 }
@@ -600,63 +544,13 @@ marks_key_step :: proc() -> int {
 	return 0
 }
 
-// The mark `dir` steps from the keyboard's among those shown (none yet: the first going down, the last going up).
+// The mark `dir` steps to from the keyboard's (none yet: the first going down, the last going up); at an end, that end.
 @(private = "file")
 marks_step :: proc(k: ^Scroll_Marks, dir: int) -> int {
-	if len(k.shown) == 0 { return -1 }
-	if k.current < 0 { return dir > 0 ? k.shown[0] : k.shown[len(k.shown) - 1] }
-	return marks_step_from(k, k.current, dir)
-}
-
-// The mark shown after (`dir` 1) or before (-1) mark `from`, which may not be shown; at an end, the one at that end.
-@(private = "file")
-marks_step_from :: proc(k: ^Scroll_Marks, from, dir: int) -> int {
-	n := len(k.shown)
+	n := len(k.marks)
 	if n == 0 { return -1 }
-	// (the first shown at or after `from`)
-	lo, hi := 0, n
-	for lo < hi {
-		mid := (lo + hi) / 2
-		if k.shown[mid] < from { lo = mid + 1 } else { hi = mid }
-	}
-	at := lo
-	if at < n && k.shown[at] == from { at += dir } else if dir < 0 { at -= 1 }
-	return k.shown[clamp(at, 0, n - 1)]
-}
-
-// Where mark `i` is among those shown (-1: not shown).
-@(private = "file")
-marks_shown_at :: proc(k: ^Scroll_Marks, i: int) -> int {
-	lo, hi := 0, len(k.shown)
-	for lo < hi {
-		mid := (lo + hi) / 2
-		if k.shown[mid] < i { lo = mid + 1 } else { hi = mid }
-	}
-	return lo < len(k.shown) && k.shown[lo] == i ? lo : -1
-}
-
-@(private = "file")
-marks_query_text :: proc(k: ^Scroll_Marks) -> string { return strings.trim_space(line_edit_string(&k.filter)) }
-
-// The marks that hold every word of the filter, in any case (all of them with no filter). When the marks or the filter
-// change, not at each build.
-@(private = "file")
-marks_filter :: proc(k: ^Scroll_Marks) {
-	delete(k.query)
-	k.query = strings.clone(line_edit_string(&k.filter))
-	clear(&k.shown)
-	k.filtered += 1
-	q := fold_lower(strings.trim_space(k.query))
-	words := strings.fields(q, context.temp_allocator)
-	for &m, i in k.marks {
-		if len(words) > 0 {
-			low := fold_lower(m.text)
-			all := true
-			for w in words { if !strings.contains(low, w) { all = false; break } }
-			if !all { continue }
-		}
-		append(&k.shown, i)
-	}
+	if k.current < 0 { return dir > 0 ? 0 : n - 1 }
+	return clamp(k.current + dir, 0, n - 1)
 }
 
 @(private = "file")
@@ -673,13 +567,6 @@ marks_first_line :: proc(text: string) -> string {
 	}
 	return ""
 }
-
-// The filter's field is built at the window's root, above what is built after the marks: its ids come from the button's key.
-@(private = "file")
-marks_field_id :: proc(b: ^Box) -> string { return fmt.tprintf("###scroll_marks_filter_%x", u64(b.key)) }
-
-@(private = "file")
-marks_field_parent_key :: proc(b: ^Box) -> Key { return key_from_string(gs().root.key, marks_field_id(b)) }
 
 @(private = "file")
 marks_magnifier_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {

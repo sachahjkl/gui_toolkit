@@ -3,6 +3,7 @@
 //   odin test tests/keyboard -collection:gt=src -vet -define:ODIN_TEST_THREADS=1
 package keyboard_test
 
+import "base:runtime"
 import "core:sync"
 import "core:fmt"
 import "core:testing"
@@ -798,24 +799,29 @@ paragraph_wraps :: proc(t: ^testing.T) {
 
 @(private = "file")
 build_find :: proc(f: ^Fx, user: rawptr) {
-	ui.find("fox", 0)
-	ui.next({width = ui.px(300)})
-	ui.label("The Fox and the fox###a")
-	runs := []ui.Rich_Run{{text = "a quick "}, {text = "fo", bold = true}, {text = "x jumps, FOX"}}
-	ui.next({width = ui.px(300)})
-	ui.rich_paragraph("###r", runs)
-	ui.next({width = ui.px(300)})
-	ui.label("no match here###b")
+	ui.next({width = ui.px(320), height = ui.children_sum(), axis = .Y})
+	if ui.column(id = "###page") {
+		ui.next({width = ui.px(300)})
+		ui.label("The Fox and the fox###a")
+		runs := []ui.Rich_Run{{text = "a quick "}, {text = "fo", bold = true}, {text = "x jumps, FOX"}}
+		ui.next({width = ui.px(300)})
+		ui.rich_paragraph("###r", runs)
+		ui.next({width = ui.px(300)})
+		ui.label("no match here###b")
+	}
+	ui.find_bar(ui.prev_box("###page"))
 }
 
-// Find in page: occurrences in labels and rich paragraphs, case ignored, a match across runs, in reading order, each
-// with a rectangle inside its box.
+// Find in a view with no rows (box mode): occurrences in labels and rich paragraphs, case ignored, a match across runs, in
+// reading order, each with a rectangle inside its box.
 @(test)
 find_in_page :: proc(t: ^testing.T) {
 	f := new(Fx)
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
 	defer close(f)
+	frame(f, nil, build_find, nil)
+	ui.find_open(ui.box_at("###page").key, "fox")
 	for _ in 0 ..< 2 { frame(f, nil, build_find, nil) }
 	testing.expect_value(t, ui.find_count(), 4)
 	ms := ui.find_matches()
@@ -828,8 +834,8 @@ find_in_page :: proc(t: ^testing.T) {
 		testing.expect(t, m.rect.min.y >= b.rect.min.y - 1 && m.rect.max.y <= b.rect.max.y + 1, "inside its box")
 	}
 	testing.expect(t, ms[0].rect.min.x < ms[1].rect.min.x, "reading order")
-	frame(f, nil, proc(f: ^Fx, user: rawptr) { ui.find("", 0) }, nil)
-	frame(f, nil, nothing, nil)
+	ui.find_close()
+	frame(f, nil, build_find, nil)
 	testing.expect_value(t, ui.find_count(), 0)
 }
 
@@ -1111,136 +1117,69 @@ modal_stays_in_the_window :: proc(t: ^testing.T) {
 @(private = "file")
 find_items: int
 @(private = "file")
-find_around: bool   // a match in the scope before the lazy column and one after it
+find_version: u64
+
+@(private = "file")
+find_item_text :: proc(user: rawptr, i: int, allocator: runtime.Allocator, whole: bool) -> (string, bool) {
+	return fmt.aprintf("fox %d", i, allocator = allocator), true
+}
 
 @(private = "file")
 build_lazy_find :: proc(f: ^Fx, user: rawptr) {
 	lazy_built = 0
 	ui.next({width = ui.px(300), height = ui.px(200)})
 	if ui.scroll_y("###fz") {
-		ui.find("fox", ui.parent_box().key)
-		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
-		if ui.column(id = "###fout") {
-		ui.next({width = ui.fill(), height = ui.px(20)})
-		ui.label(find_around ? "a fox before###before" : "before###before")
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column(id = "###fcol") {
-			ui.next({width = ui.fill(), height = ui.px(20)})
-			ui.label(find_around ? "a fox at the column's top###ctop" : "the column's top###ctop")
-			lz := ui.lazy_begin(sweep = ui.find_sweep())
+			lz := ui.lazy_begin(rows = {count = find_items, text = find_item_text, version = find_version})
 			for i in 0 ..< find_items {
 				if ui.lazy_item(lz, fmt.tprintf("###fi%d", i), always = i == find_items - 1) {
 					lazy_built += 1
-					ui.next({width = ui.fill(), height = ui.px(40)})
+					ui.next({width = ui.fill(), height = ui.px(40), flags = {.Selectable}})
 					ui.label(fmt.tprintf("fox %d###l", i))
 				}
 			}
-			ui.next({width = ui.fill(), height = ui.px(20)})
-			ui.label(find_around ? "a fox at the column's foot###cfoot" : "the column's foot###cfoot")
-		}
-		ui.next({width = ui.fill(), height = ui.px(20)})
-		ui.label(find_around ? "a fox after###after" : "after###after")
 		}
 	}
 	lazy_scroller = ui.prev_box("###fz")
+	ui.find_bar(lazy_scroller)
 }
 
-// A find over a lazy column: read once when the needle rests, a slice of items at each frame (no frame builds the whole column), then
-// lazy again, the indices those of the whole text; a match far from the view is known without being built, and text that comes in is
-// read by a new sweep.
+// A find over a lazy column counts its rows by their text, built or not: no frame builds more than a screen's worth for it;
+// the built matches carry their ordinals in the whole; a row that comes is counted when the rows' version moves; closed,
+// nothing is lit nor counted.
 @(test)
-find_sweeps_a_lazy_column_once :: proc(t: ^testing.T) {
+find_counts_a_lazy_column_by_its_rows :: proc(t: ^testing.T) {
 	f := new(Fx)
 	defer free(f)
 	if !testing.expect(t, open(f)) { return }
 	defer close(f)
-	clock: f64 = 1000
-	ui.set_clock(&f.s, &clock)
-	defer ui.set_clock(&f.s, nil)
-	find_items = 50
+	find_items, find_version = 50, 1
+	for _ in 0 ..< 2 { frame(f, nil, build_lazy_find, nil) }
+	ui.find_open(lazy_scroller.key, "fox")
 	for _ in 0 ..< 3 { frame(f, nil, build_lazy_find, nil) }
-	testing.expect(t, ui.find_pending(), "the needle has not rested")
-	testing.expect(t, ui.wake_ms(&f.s) > 0, "its sweep is waited for")
-	testing.expect_value(t, ui.find_count(), 0)
-	testing.expectf(t, lazy_built <= 16, "typing builds a screen's worth: %d", lazy_built)
-
-	clock += ui.FIND_QUIET_MS
-	frame(f, nil, build_lazy_find, nil)
-	testing.expectf(t, lazy_built <= 16 + ui.FIND_SWEEP_ITEMS, "a slice, not the column: %d", lazy_built)
-	testing.expect(t, ui.find_pending(), "under way")
-	testing.expect_value(t, ui.find_count(), ui.FIND_SWEEP_ITEMS)   // (what it has read so far)
-	testing.expect(t, ui.find_progress() < 1, "it says how far it is")
-	testing.expect(t, ui.needs_frame(&f.s), "the next slice is due at once")
-	frames := 1
-	for ui.find_pending() && frames < 10 {
-		frame(f, nil, build_lazy_find, nil)
-		testing.expectf(t, lazy_built <= 16 + ui.FIND_SWEEP_ITEMS, "a slice, not the column: %d", lazy_built)
-		frames += 1
-	}
-	testing.expect_value(t, frames, (50 + ui.FIND_SWEEP_ITEMS - 1) / ui.FIND_SWEEP_ITEMS)
-	testing.expect(t, !ui.find_pending())
+	testing.expect(t, !ui.find_pending(), "counted")
 	testing.expect_value(t, ui.find_count(), 50)
-	testing.expect_value(t, ui.find_progress(), 1)
-	all := ui.find_all()
-	testing.expect_value(t, len(all), 50)
-	testing.expect(t, all[49].rect.min.y > 1940 && all[49].rect.max.y <= 2040, "the last match, in the content (under the labels before the items)")
-	testing.expect(t, ui.needs_frame(&f.s), "the answer is read by a frame, whatever else happens")
-
-	for _ in 0 ..< 3 { frame(f, nil, build_lazy_find, nil) }
-	testing.expectf(t, lazy_built <= 17, "lazy again: %d", lazy_built)
-	testing.expect_value(t, ui.find_count(), 50)
-	testing.expect(t, !ui.needs_frame(&f.s), "nothing is due")
+	testing.expectf(t, lazy_built <= 16, "a screen's worth built: %d", lazy_built)
 	testing.expect_value(t, ui.find_matches()[0].index, 0)
+	testing.expect_value(t, ui.find_index(), 0)
 
-	// what the sweep found, far from where it was read: lit there, with its index in the whole
+	// far from where the find began: lit there, with its ordinal in the whole
 	lazy_scroller.view_target.y = 1800
 	lazy_scroller.view_off.y = 1800
 	for _ in 0 ..< 3 { frame(f, nil, build_lazy_find, nil) }
 	ms := ui.find_matches()
 	testing.expect(t, len(ms) < 50, "only what is built")
 	testing.expect_value(t, ms[len(ms) - 1].index, 49)
-	testing.expect_value(t, ui.find_count(), 50)
 
-	// a new item with a match: known to be missing at once, read no sooner than the gap
-	find_items = 51
-	frame(f, nil, build_lazy_find, nil)
-	frame(f, nil, build_lazy_find, nil)
-	testing.expect_value(t, ui.find_count(), 50)
-	testing.expect(t, ui.wake_ms(&f.s) > 0, "a new sweep is due")
-	clock += ui.FIND_SWEEP_GAP_MS
-	frame(f, nil, build_lazy_find, nil)
-	testing.expect_value(t, ui.find_count(), 50)   // (what the last sweep found stands while the next one reads)
-	testing.expectf(t, lazy_built <= 16 + ui.FIND_SWEEP_ITEMS, "a slice: %d", lazy_built)
-	for i := 0; ui.find_count() != 51 && i < 10; i += 1 { frame(f, nil, build_lazy_find, nil) }
-	testing.expect_value(t, ui.find_count(), 51)
-
-	// text the application knows of, far from what is built
+	// a row that comes, and the version that says so
+	find_items, find_version = 51, 2
 	for _ in 0 ..< 2 { frame(f, nil, build_lazy_find, nil) }
-	testing.expect(t, !ui.needs_frame(&f.s), "nothing is due")
-	ui.find_refresh()
-	clock += ui.FIND_SWEEP_GAP_MS
-	frame(f, nil, build_lazy_find, nil)
-	testing.expect(t, ui.find_progress() < 1, "read again")
-	for i := 0; ui.find_progress() < 1 && i < 10; i += 1 { frame(f, nil, build_lazy_find, nil) }
 	testing.expect_value(t, ui.find_count(), 51)
+	testing.expect(t, !ui.needs_frame(&f.s), "nothing is due")
 
-	// text of the scope around the column: counted too, in reading order
-	find_around = true
-	defer find_around = false
-	ui.find_refresh()
-	clock += ui.FIND_SWEEP_GAP_MS
-	for i := 0; ui.find_count() != 55 && i < 10; i += 1 { frame(f, nil, build_lazy_find, nil) }
-	testing.expect_value(t, ui.find_count(), 55)
-	around := ui.find_all()
-	if testing.expect_value(t, len(around), 55) {
-		testing.expect(t, around[0].rect.max.y <= 20, "the text before the column, first")
-		testing.expect(t, around[1].rect.max.y <= 40, "then the column's own, before its items")
-		for i in 1 ..< 55 { testing.expectf(t, around[i].rect.min.y >= around[i - 1].rect.max.y, "in reading order at %d", i) }
-	}
-
-	// another needle starts over; none stops
-	frame(f, nil, proc(f: ^Fx, user: rawptr) { ui.find("", 0) }, nil)
-	frame(f, nil, nothing, nil)
+	ui.find_close()
+	for _ in 0 ..< 2 { frame(f, nil, build_lazy_find, nil) }
 	testing.expect_value(t, ui.find_count(), 0)
 	testing.expect(t, !ui.find_pending())
 	testing.expect_value(t, len(ui.find_matches()), 0)
@@ -1500,16 +1439,20 @@ find_with_a_scope_no_longer_built :: proc(t: ^testing.T) {
 				ui.next({width = ui.fill()})
 				ui.rich_paragraph("###rp", runs[:])
 			}
-			if b := ui.box_at("###scope"); b != nil { ui.find("needle", b.key) }
 		}
+		// (asked whether the view was built in this build or not)
+		ui.find_bar(ui.prev_box("###scope"))
 	}
 	show = true
+	frame(f, nil, build, nil)
+	ui.find_open(ui.box_at("###scope").key, "needle")
 	for _ in 0 ..< 3 { frame(f, nil, build, nil) }
 	testing.expect_value(t, ui.find_count(), 1)
 	show = false
 	for _ in 0 ..< 3 { frame(f, nil, build, nil) }
-	testing.expect_value(t, ui.find_count(), 0)
-	ui.find("")
+	testing.expect_value(t, len(ui.find_matches()), 0)
+	ui.find_close()
+	frame(f, nil, build, nil)
 }
 
 // A wheel's big jump: the frame that applies it shows items, not the spaces of the items built around the old place.
