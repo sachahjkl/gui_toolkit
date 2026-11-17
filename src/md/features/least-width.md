@@ -18,6 +18,11 @@ never breaks between its letters, and the overflow goes up to the nearest box th
   fold).
 - Never under the program's own `Size.least`.
 
+A box whose width comes from a split, never from its content, has `.Fits_Width` too. The views' frame and docks
+(`views_frame`, `views_dock`) set it on their central content, their zones, their stacks and their panels' bodies: the
+zones' extents and what they leave decide those widths. Without it, a tool bar or a wide row in the content pushed the
+right zone out of the window (0.297.0). A program's own boxes inside them keep their least.
+
 `shrinkable` and `wrap_room` read `least_x`. Before, they read `Size.least` alone, which a program almost never sets:
 a card shrank to its share of a row, then its children overflowed it or were squeezed to nothing. A slider kept a knob
 and no track. A stepper's words broke one letter per line ("Unp", "ack"). The old floor of a wrapped line, 3 em, broke

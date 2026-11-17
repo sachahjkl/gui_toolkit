@@ -339,6 +339,10 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   `views_dock(vs, name, {content = true})` is a space in the program's layout, the block its centre;
   `views_dock(vs, name, {})` has no content: its centre is a fifth zone, `.Center` (Mission Control's main area). A
   zone with no panel is not built: a frame with no panel costs one box around the content.
+- The widths come from the splits: a zone's extent, and what the zones leave to the centre. The content and the panels
+  ask the space for no width (`.Fits_Width`, [least-width.md](../src/md/features/least-width.md)), so a wide tool bar or
+  row in them never pushes a zone out of the window. What does not fit overflows inside them: a program scrolls it or
+  folds it there.
 - A zone holds one stack or several in a row along its axis: one above the other at the left, the right and the
   centre, side by side at the top and the bottom (the first split of a zone's one stack may choose the other). A
   handle between two stacks moves their share of the zone. A view's place says its stack: `View_Place.stack`, its

@@ -165,7 +165,8 @@ SIZE_TEXT_MOST :: 48
 
 // A size in bytes as the systems' file managers say it, in powers of 1024: "512 B", "7.0 KB", "12 MB", "1.2 GB" (one
 // decimal under 10, none above), the decimal mark and the units of the language in use ("7,8 Go" in French). A negative
-// size is 0 B.
+// size is 0 B. From 1 KB on, a no-break space (U+00A0, i18n.NO_BREAK_SPACE) is between the number and its unit, so the
+// unit never goes alone to the next line: a test writes "7.0 KB", not "7.0 KB".
 size :: proc(bytes: i64, o := Size_Options{}, allocator := context.temp_allocator) -> string {
 	buf: [SIZE_TEXT_MOST]u8
 	return strings.clone(write_size(buf[:], bytes, o), allocator)
@@ -179,7 +180,8 @@ write_size :: proc(buf: []u8, bytes: i64, o := Size_Options{}) -> string {
 	return strings.to_string(b)
 }
 
-// A rate in bytes per second, as `size` says the bytes: "340 KB/s", "1.2 MB/s" ("0 B/s" when nothing moves).
+// A rate in bytes per second, as `size` says the bytes: "340 KB/s", "1.2 MB/s" ("0 B/s" when nothing moves). Its
+// space is size's: a no-break space from 1 KB on ("340 KB/s").
 rate :: proc(bytes_per_s: f64, o := Size_Options{}, allocator := context.temp_allocator) -> string {
 	buf: [SIZE_TEXT_MOST]u8
 	return strings.clone(write_rate(buf[:], bytes_per_s, o), allocator)
@@ -219,6 +221,6 @@ size_to :: proc(b: ^strings.Builder, bytes: i64, o: Size_Options) {
 		for &c in b.buf[start:] { if c == '.' { c = mark } }
 	}
 	// (a no-break space: the number and its unit stay on one line)
-	strings.write_string(b, " ")
+	strings.write_string(b, i18n.NO_BREAK_SPACE)
 	strings.write_string(b, units[u])
 }

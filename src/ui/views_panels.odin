@@ -193,7 +193,9 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 	} else {
 		// (maximised elsewhere: at no size, clipped; the same box, its content's state kept)
 		next({width = maxed ? px(0) : fill(), height = maxed ? px(0) : fill(), axis = .Y})
-		centre = build_box(maxed ? Box_Flags{.Clip} : Box_Flags{}, "###views_content")
+		// (.Fits_Width: its width is what the zones leave, a split; least-width.md: else a wide content pushes the right
+		// zone out of the space)
+		centre = build_box(maxed ? Box_Flags{.Clip, .Fits_Width} : Box_Flags{.Fits_Width}, "###views_content")
 	}
 	sp.content = centre.key
 	if has(&zones[.Right]) && shows(.Right, maxed_e, maxed) {
@@ -465,7 +467,8 @@ view_zone_box :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record, em: f3
 		next({width = fill(), height = fill(), axis = axis})
 	}
 	// (no background, no border of its own: a lone panel adds nothing, rule 1)
-	b := build_box({.Clip}, fmt.tprintf("###view_zone_%v", e))
+	// (.Fits_Width: its width is its extent or the space's, a split, never its views'; least-width.md)
+	b := build_box({.Clip, .Fits_Width}, fmt.tprintf("###view_zone_%v", e))
 	sp.zone[e], sp.zone_key[e] = b.rect, b.key
 	return b
 }
@@ -555,7 +558,9 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 		} else {
 			next({width = fill(), height = px(size), axis = .Y})
 		}
-		stack := build_box({.Clip}, fmt.tprintf("###view_stack_%d", k))
+		// (.Fits_Width: its width is its share of the zone, a split; least-width.md: else the last stack of a row of
+		// stacks keeps its view's width and passes the zone's edge)
+		stack := build_box({.Clip, .Fits_Width}, fmt.tprintf("###view_stack_%d", k))
 		sp.stacks[e][k], sp.stack_key[e][k] = stack.rect, stack.key
 		shown := list[len(list) - 1]
 		for r in list { if r.modal_name == sp.active[e][k] { shown = r } }
@@ -737,7 +742,8 @@ view_zone_rail_views :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View
 		shown := list[len(list) - 1]
 		for r in list { if r.modal_name == sp.active[e][k] { shown = r } }
 		next({width = fill(), height = fill(), axis = .Y})
-		stack := build_box({.Clip}, fmt.tprintf("###view_stack_%d", k))
+		// (.Fits_Width: its width is the rail's; least-width.md)
+		stack := build_box({.Clip, .Fits_Width}, fmt.tprintf("###view_stack_%d", k))
 		sp.stacks[e][k], sp.stack_key[e][k] = stack.rect, stack.key
 		push_parent(stack)
 		view_panel_build(vs, sp, shown, rail = true)
@@ -824,7 +830,8 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, rail := f
 	// (its key its name's alone: a panel opened late is built at end_build first, then in its zone; its field keeps its
 	// key, and the focus its first build gave it)
 	s.key_rooted = true
-	body := build_box({.Clip}, fmt.tprintf("###view_panel_%s", r.modal_name))
+	// (.Fits_Width: its width is its stack's, a split, never its content's; least-width.md)
+	body := build_box({.Clip, .Fits_Width}, fmt.tprintf("###view_panel_%s", r.modal_name))
 	r.panel = body.key
 	r.roots[.Panel] = body.key
 	r.pbuilt = s.build_index

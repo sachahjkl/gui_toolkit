@@ -35,6 +35,10 @@ reads the same value: a change of zone or of daylight saving shows everywhere wi
 | `moment(ms, now_ms, offset_minutes, Clock_Options, short, weekdays)` | when it was, seen from now: "today 14:32", "yesterday 14:32", "Nov 10, 14:32", its year when not this one's ("Nov 10 2024, 14:32"); `short` (a line among others): "14:32", "yesterday", "Nov 10"; `weekdays`: from 2 to `MOMENT_WEEKDAYS_MOST` (6) days back, "Monday 14:32" (short: "Monday"); `now_ms` 0: date and time |
 | `local_day(ms, offset_minutes)` | days since 1970-01-01 on the local clock: two times are on the same day when their days are equal |
 
+From 1 KB on, `size`, `rate`, `write_size` and `write_rate` put a no-break space (U+00A0, `i18n.NO_BREAK_SPACE`)
+between the number and its unit: the unit never goes alone to the next line. A test that compares the text writes
+`"7.0 KB"` or `"1.5 MB/s"` in its Odin string, not a plain space. Under 1 KB the space is plain ("512 B").
+
 The constants `MS_PER_S`, `SECS_PER_MINUTE`, `SECS_PER_HOUR`, `SECS_PER_DAY`, `SECS_PER_WEEK`, `MINUTES_PER_HOUR` and
 `MINUTES_PER_DAY` are exported for the arithmetic around them.
 
