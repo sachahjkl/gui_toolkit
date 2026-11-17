@@ -44,6 +44,8 @@ a_prompt_answers_at_enter_and_gives_up_at_escape :: proc(t: ^testing.T) { unwatc
 	defer delete(r.answers)
 	s := session.start(t, {size = WINDOW, user = &r, build = ask_build})
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return session.focused_name(s) == "prompt_field" }, "the field to have the keyboard")
+	// (a key summons it, Rename's F2: its dialog fades in quick; views.md 3.4)
+	if k, ok := ui.state_views(s.state).kinds["pin"]; testing.expect(t, ok, "registered") { testing.expect(t, k.o.quick, "a prompt is quick") }
 	session.type_text(s, "1234")
 	session.key(s, .Return)
 	answers_reach(s, 1)

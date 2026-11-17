@@ -432,7 +432,7 @@ sheet_instance :: proc(sheet: ^Shortcuts_Sheet) -> string { return fmt.tprintf("
 shortcuts_sheet_open :: proc(sheet: ^Shortcuts_Sheet, commands: []Command, title := "", version: u64 = 0, extra: []Sheet_Line = nil) {
 	vs := views()
 	if !view_registered(vs, SHORTCUTS_VIEW) {
-		view_register(vs, SHORTCUTS_VIEW, sheet_view, View_Options{title = "Keyboard shortcuts", width_em = SHEET_WIDTH_EM})
+		view_register(vs, SHORTCUTS_VIEW, sheet_view, View_Options{title = "Keyboard shortcuts", width_em = SHEET_WIDTH_EM, quick = true})
 	}
 	shortcuts_sheet_set(sheet, commands, version, extra)
 	r := view_open_raw(vs, SHORTCUTS_VIEW, sheet, typeid_of(Shortcuts_Sheet), sheet_instance(sheet), nil)

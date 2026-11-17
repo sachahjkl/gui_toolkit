@@ -47,6 +47,7 @@ file_browser_view_open :: proc(fb: ^File_Browser, s: ^State) {
 		view_register(vs, FILE_DIALOG_VIEW, file_dialog_view, View_Options{
 			title = "Open", width_em = FILE_BROWSER_WIDTH_EM, height_em = FILE_BROWSER_HEIGHT_EM,
 			min_width_em = FILE_BROWSER_MIN_WIDTH_EM, min_height_em = FILE_BROWSER_MIN_HEIGHT_EM, resizable = true,
+			quick = true,   // (summoned by a key, Ctrl+P, every time: views.md 3.4)
 		})
 		// (the person's close, the close cross or a press outside, is the browser's Cancel: `done` is called once)
 		vs.kinds[FILE_DIALOG_VIEW].on_end = proc(data: rawptr, code: int) {

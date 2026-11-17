@@ -508,7 +508,7 @@ keymap_recorder_open :: proc(p: ^Command_Palette, id, label: string) {
 	r.id, r.label, r.text = strings.clone(id), strings.clone(label), strings.clone(line_edit_string(&p.field))
 	vs := views()
 	if !view_registered(vs, KEYMAP_RECORDER_VIEW) {
-		view_register(vs, KEYMAP_RECORDER_VIEW, keymap_recorder_view, View_Options{title = i18n.later("Keys of a command"), icon = lucide.KEYBOARD, width_em = 30})
+		view_register(vs, KEYMAP_RECORDER_VIEW, keymap_recorder_view, View_Options{title = i18n.later("Keys of a command"), icon = lucide.KEYBOARD, width_em = 30, quick = true})
 	}
 	// (over the palette's window, a view's window too: the person is there)
 	over := palette_window(p)

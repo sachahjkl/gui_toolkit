@@ -805,6 +805,15 @@ Four rules make it come at once and whole:
    of 50 ms was a third of the fade. The dialog's fade advances by at most `MODAL_FADE_STEP_MAX_MS` (25 ms, a frame
    and a half at 60 Hz) a frame (`tween`'s `step_max_ms`). A dialog summoned by a key and left as fast
    (`View_Options.quick`: the palette) fades in over `MODAL_QUICK_FADE_MS` (70 ms) instead of 120 ms.
+   The toolkit's own dialogs that a key summons are `quick` from their registration: the palette, the keyboard
+   shortcuts' sheet (F1), a question to type (`prompt`: Rename, F2), the file browser (Ctrl+P) and the key recorder.
+   A program cannot reach their options, and they open at a key every time. A confirmation keeps 120 ms: it interrupts,
+   nobody summons it.
+   **A size asked while opening holds the dialog.** `view_size` in the view's build, with a size other than the one
+   asked so far, while the dialog has not shown yet: that build is laid out at the old size, so the dialog is made not
+   ready (`modal_not_ready`), and the next build, at the new size, is the first drawn. Without it, a known-size
+   dialog showed one frame at its old size, and a program kept the last size it asked to work around it (opencode
+   native's image viewer, `Image_Viewer.asked`).
 4. **What cannot be seen damages nothing.** A box with `transparency` 1 is not drawn: it has no part for the partial
    redraw. Drawn at alpha 0, the scrim of a dialog still unseen was a part the size of the window, and its first
    unseen frame redrew all of it. Its parts come in the frame it shows.
