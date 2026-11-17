@@ -21,7 +21,7 @@ PLUGIN_API_DIR :: "plugin-api"
 PLUGIN_API_PAGE :: "docs/plugin-api.md"
 
 @(private = "file")
-Api_Field :: struct { name, type, doc: string, optional: bool }
+Api_Field :: struct { name, type, doc: string, optional, state: bool }   // state: tagged `state`, the host keeps it
 
 @(private = "file")
 Api_Type :: struct {
@@ -126,7 +126,7 @@ api_read :: proc(path: string) -> (api: Api, why: string) {
 				for f in v.fields.list {
 					tag := f.tag.text
 					for n in f.names {
-						append(&t.fields, Api_Field{name = ident_name(n), type = type_text(f.type), doc = doc_text(f.docs), optional = strings.contains(tag, "optional")})
+						append(&t.fields, Api_Field{name = ident_name(n), type = type_text(f.type), doc = doc_text(f.docs), optional = strings.contains(tag, "optional"), state = strings.contains(tag, "state")})
 					}
 				}
 			}
@@ -456,8 +456,8 @@ api_json :: proc(api: Api) -> string {
 
 @(private = "file")
 json_field :: proc(b: ^strings.Builder, f: Api_Field, first: bool) {
-	fmt.sbprintf(b, "%s{{\"name\": %s, \"type\": %s, \"optional\": %v, \"doc\": %s}}", first ? "" : ", ",
-		tk_json.quote(f.name), tk_json.quote(ts_type(f.type)), f.optional, tk_json.quote(f.doc))
+	fmt.sbprintf(b, "%s{{\"name\": %s, \"type\": %s, \"optional\": %v, \"state\": %v, \"doc\": %s}}", first ? "" : ", ",
+		tk_json.quote(f.name), tk_json.quote(ts_type(f.type)), f.optional, f.state, tk_json.quote(f.doc))
 }
 
 ////////////////////////////////
@@ -509,7 +509,8 @@ api_page :: proc(api: Api) -> string {
 	strings.write_string(&b, "- `modules`: each with its `name` and its `calls`; a call has `name`, `doc`, `level`, `capability` (`\"None\"`: no permission), `result` and `arguments`.\n")
 	strings.write_string(&b, "- `types`: the objects and enums the calls and nodes name; an object has `fields`, an enum `values`.\n")
 	strings.write_string(&b, "- `nodes`: each kind of node of a view, with `name` (its `kind` in JavaScript), `type`, `doc`, `level`, `container` and `fields`.\n")
-	strings.write_string(&b, "- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional` and `doc`.\n\n")
+	strings.write_string(&b, "- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional`, `state` and `doc`. A `state` field is kept by the host (a field's text, a box's state): what the person changed stays until the plugin has heard of it.\n\n")
+	strings.write_string(&b, "The site's [API explorer](https://gt.sacha.house/plugins/api/) is made from this file by `tk site_build`, which fails when the file is missing or malformed.\n\n")
 	strings.write_string(&b, "A key is only added: a site reading this file keeps working when a level adds calls, types, nodes or keys.\n")
 	strings.write_string(&b, "\n## Types\n")
 	for t in api.types {

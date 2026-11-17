@@ -302,6 +302,109 @@ site_docs_writes_pages_in_the_sites_header :: proc(t: ^testing.T) {
 	has(t, css, ".table-box { overflow-x: auto;")
 }
 
+// The plugin API's explorer (site_explorer.odin): a page per site from api.json, its anchors the names a doc links
+// (#views.register, #node.field), its signatures in TypeScript; a missing or malformed file stops the site.
+@(private = "file")
+EXPLORER_FIXTURE :: `{
+	"level": 2,
+	"oldest": 1,
+	"modules": [
+		{"name": "toast", "calls": [
+			{"name": "show", "doc": "Shows a <message>.", "level": 1, "capability": "None", "result": "void", "arguments": [{"name": "text", "type": "string", "optional": false, "doc": "What it says."}, {"name": "options", "type": "Toast_Options", "optional": true, "doc": ""}]}
+		]},
+		{"name": "views", "calls": [
+			{"name": "register", "doc": "Registers a view.", "level": 2, "capability": "Files", "result": "void", "arguments": [{"name": "id", "type": "string", "optional": false, "doc": ""}, {"name": "render", "type": "() => Node", "optional": false, "doc": ""}]}
+		]}
+	],
+	"types": [
+		{"name": "Toast_Kind", "doc": "How a toast looks.", "kind": "enum", "values": ["info", "bad"]},
+		{"name": "Toast_Options", "doc": "A toast's options.", "kind": "object", "fields": [{"name": "kind", "type": "Toast_Kind", "optional": true, "doc": ""}]}
+	],
+	"nodes": [
+		{"name": "field", "type": "Field_Node", "doc": "A line of text.", "level": 2, "container": false, "future": 1, "fields": [{"name": "value", "type": "string", "optional": true, "state": true, "doc": ""}, {"name": "placeholder", "type": "string", "optional": true, "state": false, "doc": ""}]}
+	]
+}`
+
+@(test)
+site_explorer_renders_api_json :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "tk-site-explorer")
+	site, api_dir, out := fmt.tprintf("%s/site", dir), fmt.tprintf("%s/plugin-api", dir), fmt.tprintf("%s/out", dir)
+	_ = os.make_directory_all(site)
+	_ = os.make_directory_all(api_dir)
+	write(fmt.tprintf("%s/index.html", site), transmute([]byte)string(`<header class="bar"><a href="docs/">Docs</a> <a href="#start">S</a></header><script>var menu = 1</script>`))
+
+	// no api.json: no page
+	testing.expect(t, tk.build_api_explorer(api_dir, site, out) != "", "a missing api.json stops the build")
+	testing.expect(t, !os.exists(fmt.tprintf("%s/plugins/api/index.html", out)), "and writes nothing")
+
+	write(fmt.tprintf("%s/gt.d.ts", api_dir), transmute([]byte)string("declare module \"gt\" {}\n"))
+	write(fmt.tprintf("%s/api.json", api_dir), transmute([]byte)string(EXPLORER_FIXTURE))
+	testing.expect_value(t, tk.build_api_explorer(api_dir, site, out), "")
+	page := string(read(fmt.tprintf("%s/plugins/api/index.html", out)))
+	has(t, page, `<header class="bar"><a href="../../docs/">Docs</a> <a href="../../#start">S</a></header>`)
+	has(t, page, "<script>var menu = 1</script>")
+	has(t, page, `<article class="api-item" id="views.register">`)
+	has(t, page, `<code>views.register(id: string, render: () =&gt; <a href="#nodes">Node</a>): void</code>`)
+	has(t, page, `<span class="pill cap">needs Files</span>`)
+	has(t, page, `<code>toast.show(text: string, options?: <a href="#type.Toast_Options">Toast_Options</a>): void</code>`)
+	has(t, page, "<p>Shows a &lt;message&gt;.</p>")
+	has(t, page, `<article class="api-item" id="node.field">`)
+	has(t, page, "  kind: &quot;field&quot;;\n  key?: string | number;\n  value?: string;\n")
+	has(t, page, `<td><code>value</code> <span class="pill">optional</span> <span class="pill state"`)
+	testing.expect(t, !strings.contains(page, `<td><code>placeholder</code> <span class="pill">optional</span> <span class="pill state"`), "placeholder is no state")
+	has(t, page, `<article class="api-type" id="type.Toast_Kind">`)
+	has(t, page, `type <a href="#type.Toast_Kind">Toast_Kind</a> = &quot;info&quot; | &quot;bad&quot;;`)
+	has(t, page, `<li id="level.2"><strong>Level 2</strong> <span class="pill now">current</span>`)
+	has(t, page, `<li id="level.1"><strong>Level 1</strong> <span class="pill">oldest</span> <span class="api-added"><a href="#toast.show">`)
+	has(t, page, `<span class="small" id="api-count">2 calls, 1 nodes</span>`)
+	has(t, page, `href="gt.d.ts" download="gt.d.ts"`)
+	has(t, page, `href="../../docs/gt-runtime/"`)
+	testing.expect(t, !strings.contains(page, ` href="/`), "every link of the site is relative")
+	testing.expect_value(t, string(read(fmt.tprintf("%s/plugins/api/api.json", out))), EXPLORER_FIXTURE)
+	testing.expect_value(t, string(read(fmt.tprintf("%s/plugins/api/gt.d.ts", out))), "declare module \"gt\" {}\n")
+
+	// a malformed file names what is wrong, and stops the build
+	broken := [][2]string{
+		{"{", "not JSON"},
+		{`[]`, "not an object"},
+		{`{"level": 2, "oldest": 3, "modules": [], "types": [], "nodes": []}`, "not two levels"},
+		{`{"level": 1, "oldest": 1, "modules": [], "types": [], "nodes": []}`, "no module"},
+		{`{"level": 1, "oldest": 1, "modules": [{"name": "a", "calls": [{"name": "b", "doc": "", "level": 2, "capability": "None", "result": "void", "arguments": []}]}], "types": [], "nodes": []}`, "a.b: level 2"},
+		{`{"level": 1, "oldest": 1, "modules": [{"name": "a", "calls": [{"name": "b", "doc": "", "level": 1, "capability": "None", "result": "void"}]}], "types": [], "nodes": []}`, `no array "arguments"`},
+		{`{"level": 1, "oldest": 1, "modules": [{"name": "a", "calls": [{"name": "b", "doc": "", "level": 1, "capability": "None", "result": "void", "arguments": []}, {"name": "b", "doc": "", "level": 1, "capability": "None", "result": "void", "arguments": []}]}], "types": [], "nodes": []}`, "a.b twice"},
+	}
+	for b in broken {
+		_, why := tk.explorer_read(b[0])
+		testing.expectf(t, strings.contains(why, b[1]), "%s: %q, not %q", b[0], why, b[1])
+	}
+	write(fmt.tprintf("%s/api.json", api_dir), transmute([]byte)string(`{"level": 1}`))
+	testing.expect(t, tk.build_api_explorer(api_dir, site, out) != "", "a malformed api.json stops the build")
+}
+
+// The toolkit's own api.json is one the explorer reads (tk plugin_api writes it; ci checks that it is current).
+@(test)
+site_explorer_reads_the_toolkits_api :: proc(t: ^testing.T) {
+	text, ok := tk.read_text(fmt.tprintf("%s/../../plugin-api/api.json", #directory))
+	testing.expect(t, ok, "plugin-api/api.json is there")
+	api, why := tk.explorer_read(text)
+	testing.expect_value(t, why, "")
+	testing.expect(t, len(api.calls) > 0 && api.level >= 1, "it has calls and a level")
+}
+
+// The guide shows the demos as they are: a demo changed and its page not is a failure here, not a stale page.
+@(test)
+the_guide_shows_the_js_demos :: proc(t: ^testing.T) {
+	root := fmt.tprintf("%s/../..", #directory)
+	guide, ok := tk.read_text(fmt.tprintf("%s/docs/gt-runtime.md", root))
+	testing.expect(t, ok, "docs/gt-runtime.md is there")
+	for demo in ([?]string{"examples/js/counter/main.js", "examples/js/todo/plugin.json", "examples/js/todo/main.js"}) {
+		source, found := tk.read_text(fmt.tprintf("%s/%s", root, demo))
+		testing.expectf(t, found, "%s is there", demo)
+		source, _ = strings.replace_all(source, "\r\n", "\n", context.temp_allocator)
+		testing.expectf(t, strings.contains(guide, strings.trim_space(source)), "docs/gt-runtime.md shows %s as it is", demo)
+	}
+}
+
 // A command that reads its own arguments (cdp, doc_check, site_check) gets them all, its "--name value" ones too.
 @(test)
 a_raw_command_gets_every_argument :: proc(t: ^testing.T) {

@@ -218,7 +218,9 @@ Level 2.
 - `modules`: each with its `name` and its `calls`; a call has `name`, `doc`, `level`, `capability` (`"None"`: no permission), `result` and `arguments`.
 - `types`: the objects and enums the calls and nodes name; an object has `fields`, an enum `values`.
 - `nodes`: each kind of node of a view, with `name` (its `kind` in JavaScript), `type`, `doc`, `level`, `container` and `fields`.
-- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional` and `doc`.
+- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional`, `state` and `doc`. A `state` field is kept by the host (a field's text, a box's state): what the person changed stays until the plugin has heard of it.
+
+The site's [API explorer](https://gt.sacha.house/plugins/api/) is made from this file by `tk site_build`, which fails when the file is missing or malformed.
 
 A key is only added: a site reading this file keeps working when a level adds calls, types, nodes or keys.
 

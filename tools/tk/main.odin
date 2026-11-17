@@ -46,8 +46,9 @@
 //                                             failures are said
 //   desktop_tests [x11|randr|wayland]       Linux: the backends against real servers on a virtual desktop nobody sees (Xvfb and
 //                                             openbox, Xorg's dummy driver with two monitors, headless sway): tests/linux_desktop
-//   site_build <site> <out>                   the site as published: site_changelog, site_meta, site_docs into <out>, its pictures in WebP
-//                                             (cwebp), then its links (site.odin)
+//   site_build <site> <out>                   the site as published: site_changelog, the plugin API's explorer (<out>/plugins/api/ from
+//                                             plugin-api/api.json, which must be there and valid), site_meta, site_docs into <out>, its
+//                                             pictures in WebP (cwebp), then its links (site.odin)
 //   site_changelog <site> <out>               a copy of <site> with the history from CHANGELOG.md and the classic pages (src/site)
 //   site_meta <site> <out>                    what each page says when shared, the feed, the sitemap, the files around the pages
 //   site_docs <site> <out>                    every docs/*.md as <out>/docs/<name>/index.html with src/site's menu, search and contents,
@@ -103,7 +104,7 @@ COMMANDS := []toolbox.Command {
 	{name = "build", usage = "[example] [-debug]: an example (default fidget) -> build/<example>, optimized or with debug information", checked = true, flags = {"debug"}, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build(args)) }},
 	{name = "demos", usage = "[-out:dir]: Windows: the demo examples, each in <dir>/<example>-windows-x64.zip (default build/demos)", checked = true, flags = {"out:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_demos(args)) }},
 	{name = "site_docs", usage = "<site> <out>: every docs/*.md as a page of <out>/docs, docs/_nav.txt the menu", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_docs(args)) }},
-	{name = "site_build", usage = "<site> <out>: the site as published (site_changelog, site_meta, site_docs), then its links", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_build(args)) }},
+	{name = "site_build", usage = "<site> <out>: the site as published (site_changelog, the plugin API's explorer, site_meta, site_docs), then its links", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_build(args)) }},
 	{name = "site_changelog", usage = "<site> <out>: a copy of <site> with the history from CHANGELOG.md and the classic pages", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_changelog(args)) }},
 	{name = "site_meta", usage = "<site> <out>: what each page says when shared, the feed, the sitemap, the files around the pages", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_meta(args)) }},
 	{name = "site_card", usage = ": draws site/img/card.png in a local Chromium, once, by hand", checked = true, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_card(args)) }},
