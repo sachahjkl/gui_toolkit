@@ -1,7 +1,8 @@
 # Plugins in JavaScript
 
 Asked by the user on 2026-11-14, for after the views. Designed on 2026-11-16. Slice 1 written on 2026-11-17 (see "The
-state of slice 1"); `gt-runtime` and the explorer are designed, not written.
+state of slice 1"); then the views (slice 4), `gt-runtime` and the settings (slice 2): see "As built: views, gt-runtime,
+settings". The site's explorer reads `plugin-api/api.json`; the site's page is not written.
 
 ## Purpose
 
@@ -420,5 +421,78 @@ Left for later slices, known: a plugin's command has no key of its own yet (the 
 `plugin.<id>.<command>` come with the palette sources of slice 7); a handler's promise does not hold its command
 "running"; the plugin's time zone is UTC (`timezone_offset_proc` is not set); `examples/plugins` is not among the
 shipped demos (its folder `sample/` would have to go in the archive with it: with `gt-runtime`).
+
+## As built: views (slice 4, API level 2), gt-runtime, settings (slice 2, API level 3)
+
+Asked by the user on 2026-11-17: the view and gt-runtime first, then the settings. So the levels follow the order of
+the work, not the order of the slices: views are level 2, settings level 3.
+
+### Views
+
+- **The API is two calls**: `views.register(id, render)` and `views.update(id)`. A view is declared in the manifest
+  (`views`: `id`, `title`, `place`: `internal` by default, `dialog`, `panel`, `window`), as a command is. A render
+  takes nothing and returns the tree. Refused: a view object with `update()` returned by `register`: a call's
+  result would need objects made by the bridge; an id is what the rest of the API already uses.
+- **A node's handlers are functions in the tree** (`onClick`, `onChange`, `onSubmit`), as a web author writes them.
+  The writer gives each to the plugin's side by the node's key and the field's name, retained until the next render
+  of the view replaces them; an event finds its handler there. No function crosses to the interface's thread.
+- **The nodes are declared as the calls are**: a struct per kind and one entry of `NODES` (its JavaScript name, its
+  struct, whether it has children, its level). The writer (`plugin_api/display.odin`) fills a node's struct with the
+  bridge's `fill`, so a node's fields are checked as a call's arguments are, and `tk plugin_api` writes their types
+  and the `Node` union from the same text.
+- **The list is one arena**: an array of nodes in the order of a walk (kind, key, children's count, the person's last
+  change the plugin had heard of, a pointer to its struct), the structs and their strings in the same arena. The
+  interface's thread frees it whole.
+- **Keys.** A node without a key is keyed by its place under its parent (`/0/2`). A key with `#` (the toolkit's id
+  syntax) or a leading `/` is refused for the place's. A key given twice: the second node and its children are
+  dropped, and the plugin's log says so. A child that is `null`, `undefined` or `false` is skipped (`cond && node`).
+- **What the host owns.** A field's text, a check box's and a switch's state are the host's (`Control`), with the
+  number of changes the person made. A node gives its state only through a field tagged `state` (`value`, `checked`,
+  `on`); without it, the host's state stays whatever the plugin renders (a field read on submit only). With it, the
+  replay shows the plugin's value unless the person changed it since the change the plugin last heard of: the rule of
+  "A text field in a plugin's view", for boxes too.
+- **The replay adds the layout's gaps** between a container's children (`CONTROL_GAP` across, `LINE_GAP` down), and none
+  next to a `space` node. A plugin needs no spacing to look as the program does.
+- **A view's record outlives its plugin's reloads**: the window's views keep their id (`plugin.<plugin id>.<view id>`),
+  and an open view shows its new first list. When its plugin's thread ends, the last list stays, with a line that says
+  why (Not responding with Stop, Stopped with Start, the failure).
+- **A view in a program's own layout**: `view_body` builds it in the box being built, never as one of the window's
+  views. gt-runtime's window is one.
+- One instance per view: two windows of a program that open the same view share its list.
+
+### gt-runtime
+
+- **A program of the toolkit's, `apps/gt-runtime`**, built by `tk build gt-runtime`, checked by `tk ci`, shipped in the
+  release as `gt-runtime-windows-x64.zip` with the JavaScript demos (`examples/js`, as `js/<demo>`). The release job
+  runs on Windows: no Linux archive yet.
+- **One plugin, by `Host_Options.single`**: a folder with its `plugin.json`, or a lone `.js` file whose manifest is
+  implied (its id and name from the file's name, this toolkit's level, one view `main`). It is on from the start: the
+  program was started to run it. A suspension still holds it, with "Run it again".
+- **The window**: the plugin's first view in the page's margins (`view_body`), the palette with its commands (Ctrl+K),
+  the settings (Ctrl+,) with the look, the plugin's settings and the Plugins page.
+- **The grant rule waits for slice 3**: no call needs a permission yet, so there is nothing to show. When one does, the
+  rule of "Decided on 2026-11-17" applies, kept in gt-runtime's own `plugins.toml`.
+
+### Settings
+
+- **A setting is a preference of the program**, `plugins.<plugin id>.<setting id>`, registered when the folder is read
+  (`Host_Options.prefs`). The program's settings show it (`settings_pages`: one page per plugin), its file keeps it,
+  the registry checks it. The manifest's `settings`: `id`, `title`, `description`, `kind` (`bool`, `int`, `float`,
+  `string`), `default`, `min` and `max`, `choices`; a default out of its bounds or its choices is refused at the read,
+  since the registry asserts on a bad definition.
+- **The plugin's thread never reads the registry** (the interface thread's). It gets the values when it starts, then
+  each change as a message (`config.watch` on `plugins.`); `settings.get` answers from that copy at once, and
+  `settings.onChange`'s handlers run on the message, then the open views render again.
+- **A definition is the registry's for its life**: the registry has no unregister, so its strings are kept for the
+  process (a few bytes per setting ever declared). A setting declared again with another kind keeps the first until the
+  program's next start.
+
+### The state of slices 4 and 2
+
+Written on 2026-11-17: the views with their tests (`tests/plugins/views_test.odin`: a click round trip, a slow
+plugin's field, a key twice, a handler that never returns, a lone file), gt-runtime with `examples/js/counter` and
+`examples/js/todo`, the settings (`tests/plugins/settings_test.odin`). Left: lazy lists (slice 5), the nodes the first
+real plugins ask for, capabilities (slice 3, with the plugin host in its own process first), a program's `app`
+module, palette sources and menus.
 
 Still open: a plugin folder shared by all the vendor's programs (refused for now).

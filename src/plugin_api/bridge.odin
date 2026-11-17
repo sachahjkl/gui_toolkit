@@ -114,9 +114,15 @@ bridge :: proc(ctx: ^js.Context, this: js.Value, args: []js.Value, magic: i32) -
 	r := impl(&c, buf)
 	if js.is_exception(r) { return r }
 	switch d.result {
-	case .Undefined: return js.UNDEFINED
+	case .Undefined:     return js.UNDEFINED
+	case .Setting_Value: return r
 	}
 	return r
+}
+
+// A function of the plugin: Handler, Text_Handler, Flag_Handler, Render (each a distinct js.Value).
+is_function_type :: proc(id: typeid) -> bool {
+	return id == typeid_of(Handler) || id == typeid_of(Text_Handler) || id == typeid_of(Flag_Handler) || id == typeid_of(Render) || id == typeid_of(Setting_Handler)
 }
 
 @(private)
@@ -132,9 +138,10 @@ fill :: proc(ctx: ^js.Context, v: js.Value, ti: ^runtime.Type_Info, out: rawptr,
 		js.throw_type_error(ctx, fmt.tprintf("%s: %s is missing", call, what))
 		return false
 	}
-	if ti.id == typeid_of(Handler) {
+	if ti.id == typeid_of(Children) { return true }   // (a node's children: the list's writer reads them, display.odin)
+	if is_function_type(ti.id) {
 		if !js.is_callable(v) { return wrong(ctx, call, what, "a function") }
-		(^Handler)(out)^ = Handler(v)
+		(^js.Value)(out)^ = v
 		return true
 	}
 	base := reflect.type_info_base(ti)

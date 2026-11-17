@@ -9,6 +9,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "core:time"
+import config "gt:config"
 import plugins "gt:plugins"
 import "gt:testkit"
 import "gt:testkit/session"
@@ -45,6 +46,9 @@ Fx :: struct {
 	opened:  bool,
 	builds:  int,
 	open_with: string,   // the palette opens at the next build with this typed (a literal; "": not asked)
+	open_view: [2]string,   // a plugin's view (plugin id, view id) opens at the next build (literals; "": not asked)
+	body:      [2]string,   // a plugin's view built in the window's own layout at each build (plugins.view_body)
+	prefs:     config.Prefs,   // the program's preferences, where the plugins' settings are registered
 }
 
 // A plugin's folder under `root`/plugins, and the toolkit's folders of the test.
@@ -65,7 +69,7 @@ enable :: proc(root: string, ids: ..string) {
 }
 
 // A headless window whose builds run the host and the palette, the host reading `root`.
-open :: proc(t: ^testing.T, fx: ^Fx, root: string) -> ^session.Session {
+open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "") -> ^session.Session {
 	s := session.start(t, {user = fx, no_renderer = true, build = proc(s: ^session.Session) {
 		fx := (^Fx)(s.user)
 		fx.builds += 1
@@ -75,12 +79,19 @@ open :: proc(t: ^testing.T, fx: ^Fx, root: string) -> ^session.Session {
 			ui.palette_open(&fx.palette, fx.open_with)
 			fx.open_with = ""
 		}
+		if fx.open_view[0] != "" {
+			_ = plugins.open_view(&fx.host, fx.open_view[0], fx.open_view[1])
+			fx.open_view = {}
+		}
+		if fx.body[0] != "" { _ = plugins.view_body(&fx.host, fx.body[0], fx.body[1]) }
 		_, _ = ui.palette_chosen(&fx.palette)   // (the plugin source's act runs here)
 	}})
+	fx.prefs = config.prefs_make()
 	plugins.host_open(&fx.host, s.state, {
+		prefs = &fx.prefs,
 		program = "gui_toolkit_plugins_test", program_id = "plugins_test",
 		folder = fmt.tprintf("%s/plugins", root), config_dir = fmt.tprintf("%s/config", root), state_dir = fmt.tprintf("%s/state", root),
-		bound_ms = BOUND_MS,
+		bound_ms = BOUND_MS, single = single,
 	})
 	fx.opened = true
 	// (before the session's end, which destroys the State: cleanups run last first)
@@ -88,6 +99,7 @@ open :: proc(t: ^testing.T, fx: ^Fx, root: string) -> ^session.Session {
 		fx := (^Fx)(p)
 		plugins.host_close(&fx.host)
 		ui.palette_destroy(&fx.palette)
+		config.prefs_destroy(&fx.prefs)
 		free(fx)
 	}, fx)
 	session.wait_until(s, fx, proc(s: ^session.Session, fx: ^Fx) -> bool { return plugins.loaded(&fx.host) }, "the plugins' folder", WAIT)
@@ -194,6 +206,10 @@ manifests_refused :: proc(t: ^testing.T) {
 		{`{"id": "a", "api": 1, "main": "../x.js"}`, "not a file of its folder"},
 		{`{"id": "a", "api": 1, "commands": [{"id": "Go"}]}`, "command id"},
 		{`{"id": "a", "api": 1, "commands": [{"id": "go"}, {"id": "go"}]}`, "twice"},
+		{`{"id": "a", "api": 2, "views": [{"id": "v", "place": "sky"}]}`, "not in internal"},
+		{`{"id": "a", "api": 3, "settings": [{"id": "n", "kind": "int", "default": 9, "min": 0, "max": 5}]}`, "out of its bounds"},
+		{`{"id": "a", "api": 3, "settings": [{"id": "s", "kind": "string", "default": "x", "choices": ["a", "b"]}]}`, "not one of its choices"},
+		{`{"id": "a", "api": 3, "settings": [{"id": "s", "kind": "colour"}]}`, "not bool, int, float or string"},
 		{`[1, 2]`, "not an object"},
 		{`{"id": `, "not JSON"},
 	}

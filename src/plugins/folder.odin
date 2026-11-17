@@ -12,6 +12,7 @@ import "core:strings"
 import "core:sync"
 import "../fsx"
 import "../platform"
+import plugin_api "../plugin_api"
 import "../process"
 import "../ui"
 
@@ -25,7 +26,7 @@ MARKER_SUFFIX :: ".txt"
 Read_Job :: struct {
 	link:      ^Host_Link,   // (counted)
 	serial:    u64,
-	program, program_id, folder_opt, config_opt, state_opt: string,
+	program, program_id, folder_opt, config_opt, state_opt, single: string,
 	// made by the chore
 	folder, toml_path, state_dir: string,
 	plugins:   [dynamic]^Plugin,
@@ -42,6 +43,7 @@ folder_read :: proc(h: ^Host) {
 		link = h.link, serial = h.read_serial,
 		program = strings.clone(h.o.program), program_id = strings.clone(h.o.program_id),
 		folder_opt = strings.clone(h.o.folder), config_opt = strings.clone(h.o.config_dir), state_opt = strings.clone(h.o.state_dir),
+		single = strings.clone(h.o.single),
 	}
 	sync.atomic_add(&h.link.refs, 1)
 	ui.task(h.state, read_work, read_done, j, read_lost)
@@ -54,7 +56,7 @@ read_job_free :: proc(j: ^Read_Job) {
 	delete(j.plugins)
 	for s in j.suspended_now { delete(s) }
 	delete(j.suspended_now)
-	delete(j.program); delete(j.program_id); delete(j.folder_opt); delete(j.config_opt); delete(j.state_opt)
+	delete(j.program); delete(j.program_id); delete(j.folder_opt); delete(j.config_opt); delete(j.state_opt); delete(j.single)
 	delete(j.folder); delete(j.toml_path); delete(j.state_dir)
 	link_release(j.link)
 	free(j)
@@ -81,11 +83,14 @@ read_work :: proc(data: rawptr) {
 		delete(suspended)
 	}
 	markers_read(j)
+	if j.single != "" {
+		single_read(j, suspended)
+		return
+	}
 	if j.folder == "" { return }
 	entries, err := fsx.read_folder(j.folder, context.temp_allocator)
 	if err != nil { return }
 	slice.sort_by(entries, proc(a, b: fsx.Folder_Entry) -> bool { return a.name < b.name })
-	pid := os.get_pid()
 	for e in entries {
 		if e.kind != .Directory { continue }
 		dir := fsx.path_join(j.folder, e.name)
@@ -109,23 +114,88 @@ read_work :: proc(data: rawptr) {
 				p.refused = fmt.aprintf("another folder has the id \"%s\"", p.manifest.id)
 			}
 		}
-		id := p.manifest.id
-		if j.state_dir != "" && id_valid(id, false) {
-			p.log_path = strings.clone(fsx.path_join(j.state_dir, fmt.tprintf("%s.log", id)))
-			p.marker_path = strings.clone(fsx.path_join(j.state_dir, fmt.tprintf("%s%d-%s%s", MARKER_PREFIX, pid, id, MARKER_SUFFIX)))
-		}
-		now_suspended := false
-		for s in j.suspended_now { now_suspended ||= s == id }
-		p.suspended = suspended[id] || now_suspended
-		p.enabled = enabled[id] && !p.suspended
-		switch {
-		case p.refused != "": p.state = .Refused
-		case p.suspended:     p.state = .Suspended
-		case p.enabled:       p.state = .Ready
-		case:                 p.state = .Off
-		}
-		append(&j.plugins, p)
+		plugin_place(j, p, enabled[p.manifest.id], suspended)
 	}
+}
+
+// A plugin read: its log, its marker, its state from what the person decided and what the markers said.
+@(private)
+plugin_place :: proc(j: ^Read_Job, p: ^Plugin, on: bool, suspended: map[string]bool) {
+	id := p.manifest.id
+	if j.state_dir != "" && id_valid(id, false) {
+		p.log_path = strings.clone(fsx.path_join(j.state_dir, fmt.tprintf("%s.log", id)))
+		p.marker_path = strings.clone(fsx.path_join(j.state_dir, fmt.tprintf("%s%d-%s%s", MARKER_PREFIX, os.get_pid(), id, MARKER_SUFFIX)))
+	}
+	now_suspended := false
+	for s in j.suspended_now { now_suspended ||= s == id }
+	p.suspended = suspended[id] || now_suspended
+	p.enabled = on && !p.suspended
+	switch {
+	case p.refused != "": p.state = .Refused
+	case p.suspended:     p.state = .Suspended
+	case p.enabled:       p.state = .Ready
+	case:                 p.state = .Off
+	}
+	append(&j.plugins, p)
+}
+
+// Host_Options.single: one plugin, a folder with its plugin.json or a lone entry file whose manifest is implied (its
+// id and name from the file's name, this toolkit's level, one view "main"). It is on: the program was started to run
+// it (gt-runtime); only a suspension stops it.
+@(private)
+single_read :: proc(j: ^Read_Job, suspended: map[string]bool) {
+	p := plugin_new()
+	path := j.single
+	if fsx.path_kind(path) == .Directory {
+		p.folder = strings.clone(path)
+		text, ok := fsx.read_all(fsx.path_join(path, MANIFEST_FILE), context.temp_allocator, MANIFEST_MAX_BYTES)
+		if !ok {
+			p.refused = fmt.aprintf("%s has no plugin.json", path)
+		} else {
+			p.manifest, p.refused = manifest_parse(string(text), j.program_id)
+		}
+	} else if fsx.path_kind(path) == .File && (strings.has_suffix(path, ".js") || strings.has_suffix(path, ".mjs")) {
+		dir, file := dir_of(path), base_of(path)
+		p.folder = strings.clone(dir != "" ? dir : ".")
+		p.manifest = manifest_implied(file)
+	} else {
+		p.refused = fmt.aprintf("%s is neither a plugin's folder nor a .js file", path)
+	}
+	if p.manifest.name == "" {
+		delete(p.manifest.name)
+		p.manifest.name = strings.clone(base_of(path))
+	}
+	plugin_place(j, p, true, suspended)
+}
+
+// The manifest of a lone entry file `file` ("todo.js"): what single_read gives a plugin without plugin.json.
+manifest_implied :: proc(file: string, allocator := context.allocator) -> Manifest {
+	context.allocator = allocator
+	stem := file
+	if dot := strings.last_index_byte(stem, '.'); dot > 0 { stem = stem[:dot] }
+	b := strings.builder_make(context.temp_allocator)
+	for c in transmute([]u8)stem {
+		switch c {
+		case 'a' ..= 'z', '0' ..= '9', '_', '-': strings.write_byte(&b, c)
+		case 'A' ..= 'Z':                        strings.write_byte(&b, c + 'a' - 'A')
+		case:                                    strings.write_byte(&b, '-')
+		}
+		if strings.builder_len(b) == ID_MAX_BYTES { break }
+	}
+	id := strings.to_string(b)
+	if id == "" { id = "app" }
+	views := make([]View_Decl, 1)
+	views[0] = {id = strings.clone("main"), title = strings.clone(stem), place = .Internal}
+	return Manifest{
+		id = strings.clone(id), name = strings.clone(stem), version = strings.clone(""), api = plugin_api.PLUGIN_API_LEVEL,
+		main = strings.clone(file), program = strings.clone(""), views = views,
+	}
+}
+
+@(private)
+base_of :: proc(path: string) -> string {
+	i := max(strings.last_index_byte(path, '/'), strings.last_index_byte(path, '\\'))
+	return path[i + 1:]
 }
 
 // The markers of the state folder: one of a process that is gone (or whose id now names another process) names the
@@ -171,6 +241,8 @@ read_done :: proc(data: rawptr, word: u64) {
 		append(&h.plugins, p)
 	}
 	clear(&j.plugins)   // (the host's now)
+	views_declare(h)
+	settings_register(h)
 	delete(h.folder); delete(h.toml_path); delete(h.state_dir)
 	h.folder, h.toml_path, h.state_dir = j.folder, j.toml_path, j.state_dir
 	j.folder, j.toml_path, j.state_dir = "", "", ""

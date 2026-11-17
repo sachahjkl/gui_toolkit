@@ -7,6 +7,8 @@ import "base:runtime"
 import "core:strings"
 import "core:sync"
 import "core:thread"
+import config "../config"
+import plugin_api "../plugin_api"
 import "../ui"
 
 Plugin :: struct {
@@ -27,6 +29,7 @@ Plugin :: struct {
 	log_path:    string,
 	marker_path: string,
 	memory_limit: i64,
+	settings_start: []Setting_Now,   // its settings' values when its thread starts (heap: the thread takes and frees them)
 	link:        ^Host_Link,   // (counted while its thread runs: the thread lets go of it as it ends)
 	// shared with its thread
 	queue:      Queue,
@@ -64,6 +67,7 @@ plugin_start :: proc(h: ^Host, p: ^Plugin) {
 	p.alive = true
 	p.state = .Starting
 	p.memory_limit = h.o.memory_limit
+	p.settings_start = settings_snapshot(h, p)
 	p.link = h.link
 	sync.atomic_add(&h.link.refs, 1)
 	sync.atomic_add(&p.refs, 1)
@@ -73,6 +77,8 @@ plugin_start :: proc(h: ^Host, p: ^Plugin) {
 	if t == nil {
 		// (no thread to be had: the plugin is said failed, as an activate that threw)
 		p.alive = false
+		for s in p.settings_start { setting_now_free(s) }
+		delete(p.settings_start, runtime.heap_allocator())
 		p.state = .Failed
 		delete(p.failure)
 		p.failure = strings.clone("no thread could be started for it")
@@ -93,12 +99,38 @@ plugin_stop :: proc(p: ^Plugin) {
 // The queue
 
 @(private)
-Message_Kind :: enum u8 { Command, Quit }
+Message_Kind :: enum u8 {
+	Command,      // `command`
+	Quit,
+	View_Open,    // `view` is shown: its render runs
+	View_Close,   // `view` is closed: no render until it opens again
+	View_Event,   // a node of `view` was used: `key`, `event`, and `text`, `flag`, `serial` for a change
+	Setting,      // the setting `key` changed: its kind in `setting`, its value in `flag`, `number` or `text`
+}
+
+// What happened to a node of a view: the name of the field of its kind's struct that is called (plugin_api's nodes).
+@(private)
+View_Event :: enum u8 { onClick, onChange, onSubmit }
 
 @(private)
 Message :: struct {
 	kind:    Message_Kind,
-	command: string,   // (heap, owned by the message)
+	command: string,   // (heap, owned by the message; the same for the strings below)
+	view:    string,
+	key:     string,
+	event:   View_Event,
+	text:    string,   // a field's text
+	flag:    bool,     // a check box's or a switch's state
+	is_flag: bool,     // the change is a box's (`flag`), not a field's (`text`)
+	serial:  u64,      // a change's: the person's changes of this key so far (the replay's Control.changes)
+	setting: config.Kind,
+	number:  f64,      // an Int or Float setting's value
+}
+
+@(private)
+message_free :: proc(m: Message) {
+	a := runtime.heap_allocator()
+	delete(m.command, a); delete(m.view, a); delete(m.key, a); delete(m.text, a)
 }
 
 @(private)
@@ -131,7 +163,7 @@ queue_take :: proc(p: ^Plugin) -> Message {
 @(private)
 queue_clear :: proc(q: ^Queue) {
 	sync.lock(&q.lock)
-	for m in q.messages { delete(m.command, runtime.heap_allocator()) }
+	for m in q.messages { message_free(m) }
 	clear(&q.messages)
 	sync.unlock(&q.lock)
 }
@@ -152,6 +184,7 @@ Event_Kind :: enum u8 {
 	Failed,      // activate threw, or the memory limit: `text`
 	Toast,       // toast.show, or an uncaught exception's one toast: `title`, `text`, `toast`
 	Ended,       // its thread left the engine: Ready (or Off, or Failed stays)
+	List,        // a view's new display list: `title` is the view's id, `list` the list
 }
 
 @(private)
@@ -162,14 +195,15 @@ Event :: struct {
 	toast:  ui.Toast_Kind,
 	title:  string,    // (heap, owned)
 	text:   string,
+	list:   ^plugin_api.List,   // (owned until a view's record takes it)
 }
 
 // Posts an event of `p`'s runtime `serial` (the plugin's thread). Lost when the host is closed.
 @(private)
-event_post :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info) {
+event_post :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil) {
 	context.allocator = runtime.heap_allocator()
 	e := new(Event)
-	e^ = {p = p, serial = serial, kind = kind, toast = toast, title = strings.clone(title), text = strings.clone(text)}
+	e^ = {p = p, serial = serial, kind = kind, toast = toast, title = strings.clone(title), text = strings.clone(text), list = list}
 	sync.atomic_add(&p.refs, 1)
 	if !link_post(p.link, event_run, e) { event_free(e) }
 }
@@ -178,6 +212,7 @@ event_post :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text 
 event_free :: proc(e: ^Event) {
 	context.allocator = runtime.heap_allocator()
 	delete(e.title); delete(e.text)
+	plugin_api.list_free(e.list)
 	plugin_release(e.p)
 	free(e)
 }
@@ -208,6 +243,12 @@ event_run :: proc(data: rawptr, word: u64) {
 		p.alive = false
 		queue_clear(&p.queue)   // (a command sent while it ended: dropped, as its Stop asked)
 		if p.state != .Failed && p.state != .Suspended { p.state = p.enabled ? .Ready : .Off }
+		views_ended(h, p)
+	case .List:
+		if r := view_record(h, p.manifest.id, e.title); r != nil {
+			view_take_list(r, e.list)
+			e.list = nil
+		}
 	}
 }
 

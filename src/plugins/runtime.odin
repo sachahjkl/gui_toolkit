@@ -48,6 +48,9 @@ Run :: struct {
 	gt_source:  string,
 	modules:    map[string]js.Value,       // each module read, by its name (retained; keys owned)
 	handlers:   map[string]js.Value,       // commands.on's, by command id (retained; keys owned)
+	views:      map[string]^Run_View,      // the views the plugin registered or the interface opened, by id (keys owned)
+	settings:   map[string]Setting_Now,    // its settings' values, by id (settings_run.odin)
+	setting_handlers: [dynamic]js.Value,   // settings.onChange's (retained)
 	rejections: [dynamic][2]js.Value,      // the promises rejected with no handler yet, and their reasons (retained)
 	boot_done:  bool,
 	boot_error: string,
@@ -65,9 +68,9 @@ plugin_thread :: proc(p: ^Plugin) {
 	if opened {
 		for !r.ended {
 			m := queue_take(p)
-			if m.kind == .Quit { delete(m.command); break }
-			run_turn(&r, m.command)
-			delete(m.command)
+			if m.kind == .Quit { message_free(m); break }
+			run_turn(&r, m)
+			message_free(m)
 			// (what a turn made in the temporary memory, the bridge's strings among it: a plugin's thread lives long)
 			free_all(context.temp_allocator)
 		}
@@ -95,6 +98,11 @@ run_open :: proc(r: ^Run) -> bool {
 	r.realm.user = r
 	plugin_api.realm_set(&r.realm, "commands", "on", plugin_api.implement(plugin_api.Commands_On, commands_on))
 	plugin_api.realm_set(&r.realm, "toast", "show", plugin_api.implement(plugin_api.Toast_Show, toast_show))
+	plugin_api.realm_set(&r.realm, "views", "register", plugin_api.implement(plugin_api.Views_Register, views_register))
+	plugin_api.realm_set(&r.realm, "views", "update", plugin_api.implement(plugin_api.Views_Update, views_update))
+	plugin_api.realm_set(&r.realm, "settings", "get", plugin_api.implement(plugin_api.Settings_Get, settings_get))
+	plugin_api.realm_set(&r.realm, "settings", "onChange", plugin_api.implement(plugin_api.Settings_On_Change, settings_on_change))
+	settings_take(r)
 	// (no script runs until eval_source, so nothing is collected between these cells and their retain)
 	r.api = js.retain(r.rt, plugin_api.install(r.ctx, &r.realm))
 	r.gt_source = plugin_api.module_source()
@@ -141,29 +149,48 @@ run_close :: proc(r: ^Run) {
 	delete(r.modules)
 	for k in r.handlers { delete(k) }
 	delete(r.handlers)
+	for k, rv in r.views { delete(k); run_view_free(rv) }
+	delete(r.views)
+	settings_free(r)
 	delete(r.rejections)
 	delete(r.gt_source)
 	delete(r.boot_error)
 	delete(r.marker)
 }
 
-// One message: the command's handler, then the jobs it left.
+// One message: a command's handler, a view's opening or a node's handler, the jobs they left, then the renders of the
+// views they made dirty. All of it counts as the message's time (Not_Responding).
 @(private)
-run_turn :: proc(r: ^Run, command: string) {
+run_turn :: proc(r: ^Run, m: Message) {
 	turn_begin(r)
-	h, ok := r.handlers[command]
-	if !ok {
-		uncaught(r, fmt.tprintf("no handler for its command %s: call commands.on(\"%s\", handler) in activate", command, command))
-	} else {
-		v := js.call_function(r.ctx, h, js.UNDEFINED, {})
-		if js.is_exception(v) || !js.run_jobs(r.rt) {
-			exception(r)
+	switch m.kind {
+	case .Command:
+		h, ok := r.handlers[m.command]
+		if !ok {
+			uncaught(r, fmt.tprintf("no handler for its command %s: call commands.on(\"%s\", handler) in activate", m.command, m.command))
 		} else {
-			rejections_report(r)
+			call_settled(r, h, {})
 		}
+	case .View_Open:  view_opened(r, m.view, true)
+	case .View_Close: view_opened(r, m.view, false)
+	case .View_Event: view_event(r, m)
+	case .Setting:    setting_message(r, m)
+	case .Quit:
 	}
+	if !r.ended { renders(r) }
 	turn_end(r)   // (before the post: the interface reads the time's end as the turn's)
 	if !r.ended { event_post(r.p, r.serial, .Turn_Done) }
+}
+
+// Calls a function of the plugin, then runs the jobs it left; an exception goes to `exception`.
+@(private)
+call_settled :: proc(r: ^Run, f: js.Value, args: []js.Value) {
+	v := js.call_function(r.ctx, f, js.UNDEFINED, args)
+	if js.is_exception(v) || !js.run_jobs(r.rt) {
+		exception(r)
+	} else {
+		rejections_report(r)
+	}
 }
 
 // The message's time begins (the bound of Not_Responding counts from it), and the marker says the process is inside
