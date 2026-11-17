@@ -44,6 +44,22 @@ Dock :: struct {
 	hug_w:      f32,               // the width "hug" asks for this opening (view_size), in ems
 	no_frame:   bool,              // the window builds no views_frame (its content alone)
 	railed:     bool,              // "marks" was last built in its compact form (View.rail)
+	wide:       bool,              // the content holds a row of WIDE_BOXES boxes, wider than the window
+}
+
+// A row of boxes of their own width, wider than the window: what a tool bar or a program's row asks of its parent.
+@(private = "file") WIDE_BOXES :: 30
+@(private = "file") WIDE_BOX_PX :: 100
+
+@(private = "file")
+wide_row :: proc(id: string) {
+	ui.next({width = ui.children_sum(), height = ui.px(20), axis = .X})
+	if ui.row(id = fmt.tprintf("###%s", id)) {
+		for i in 0 ..< WIDE_BOXES {
+			ui.next({width = ui.px(WIDE_BOX_PX), height = ui.px(20)})
+			ui.build_box({.Draw_Background}, fmt.tprintf("###%s_box%d", id, i))
+		}
+	}
 }
 
 @(private = "file")
@@ -62,6 +78,7 @@ dock_build :: proc(s: ^session.Session) {
 		if r.own_f6 && ui.key_press(.F6) { r.f6_taken += 1 }
 		ui.next({width = ui.px(200)})
 		ui.button("content_button", "In the content")
+		if r.wide { wide_row("content_row") }
 		if r.tools {
 			ui.next({width = ui.fill(), height = ui.px(200)})
 			if ui.views_dock(&r.views, "tools", {content = true}) { ui.label("The tools' centre###tools_centre") }
@@ -143,6 +160,11 @@ marks_view :: proc(v: ^ui.View, r: ^Dock) {
 }
 
 @(private = "file")
+wide_view :: proc(v: ^ui.View, r: ^Dock) {
+	wide_row("panel_row")
+}
+
+@(private = "file")
 dock_start :: proc(t: ^testing.T, r: ^Dock, want: ..string) -> ^session.Session {
 	dock_register(r)
 	for w in want { append(&r.want, w) }
@@ -164,6 +186,8 @@ dock_register :: proc(r: ^Dock) {
 	ui.view_register(&r.views, "float", plain_view, ui.View_Options{title = "Floating", first = .Internal})
 	ui.view_register(&r.views, "low", plain_view, ui.View_Options{title = "Low", home = .Panel, home_place = {edge = .Bottom}, extent_frac = LOW_FRAC})
 	ui.view_register(&r.views, "marks", marks_view, ui.View_Options{title = "Marks", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM, rail_em = RAIL_EM})
+	ui.view_register(&r.views, "right", plain_view, ui.View_Options{title = "Right", home = .Panel, home_place = {edge = .Right}, extent_em = SIDE_EM})
+	ui.view_register(&r.views, "wide", wide_view, ui.View_Options{title = "Wide", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM})
 }
 
 @(private = "file")
@@ -949,6 +973,41 @@ a_floating_window_opens_over_the_content :: proc(t: ^testing.T) {
 	d := mid(frame.rect) - mid(content.rect)
 	testing.expectf(t, abs(d.x) <= 2 && abs(d.y) <= 2, "centred over the content: %v in %v", frame.rect, content.rect)
 	testing.expectf(t, frame.rect.min.x >= zone.rect.max.x, "not over the panel: %v, the zone %v", frame.rect, zone.rect)
+}
+
+// A content wider than the window (a row of boxes of their own width) asks the frame for no width
+// (src/md/features/least-width.md): the right zone stays in the window, the content ends at its handle.
+@(test)
+a_wide_content_leaves_the_dock_zones_in_the_window :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	r.wide = true
+	s := dock_start(t, &r, "side", "right")
+	if wait_built(s, "view_panel_view_side") == nil || wait_built(s, "view_panel_view_right") == nil { return }
+	session.frames(s, 3)
+	content := built(s, "views_content")
+	handle := built(s, "view_handle_Right")
+	zone := built(s, "view_zone_Right")
+	if content == nil || handle == nil || zone == nil { testing.expect(t, false, "the content, the handle and the right zone"); return }
+	testing.expectf(t, zone.rect.max.x <= f32(WINDOW.x) + 0.5, "the right zone in the window: %v", zone.rect)
+	testing.expectf(t, abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "the right zone at its extent: %v", zone.rect)
+	testing.expectf(t, abs(content.rect.max.x - handle.rect.min.x) <= 0.5 && abs(handle.rect.max.x - zone.rect.min.x) <= 0.5,
+		"the content ends where the right zone begins: %v, its handle %v, the zone %v", content.rect, handle.rect, zone.rect)
+}
+
+// A panel whose content is wider than its zone keeps the zone's extent: its body is as wide as the zone.
+@(test)
+a_wide_panel_keeps_its_zone_s_extent :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "wide")
+	if wait_built(s, "view_panel_view_wide") == nil { return }
+	session.frames(s, 3)
+	body := built(s, "view_panel_view_wide")
+	zone := built(s, "view_zone_Left")
+	if body == nil || zone == nil { testing.expect(t, false, "the panel and its zone"); return }
+	testing.expectf(t, abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "the zone at its extent: %v", zone.rect)
+	testing.expectf(t, abs(body.rect.min.x - zone.rect.min.x) <= 0.5 && abs(body.rect.max.x - zone.rect.max.x) <= 0.5, "the body as wide as the zone: %v in %v", body.rect, zone.rect)
 }
 
 // view_size: this opening's dialog as wide as asked, past DIALOG_MAX_WIDTH_EM (a viewer that hugs its picture).
