@@ -5,6 +5,21 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.300.1] - 2026-11-17 14:17
+
+### Added
+- **A stitch that leaves a scroll bar out**: `image.Stitch_Options.ignore_right` leaves columns at the right edge out of
+the comparison between frames (still in the picture). A window's scroll bar, whose thumb moves with every step, no
+longer stops a scrolling capture from joining its screens.
+- **`platform.send_wheel`**: turns the mouse wheel by a number of notches for whatever window is under the pointer,
+another program's (a scrolling capture scrolls it a step at a time); positive notches scroll down, to read further.
+Windows: `SendInput`; X11: XTEST (`libxcb-xtest`); Wayland: none (false), as only the RemoteDesktop portal can do it.
+See docs/platform.md.
+- **`ui.Signal.second_click`**: clicked, its press the second of a double click, so a box that acted at the first click ignores it; **`ui.palette_run_keep`**: a run mode's control asks what Enter does (a row clicked).
+
+### Fixed
+- **A click on a row of the palette's closed list is Enter on it**: in a command's form it writes the row and steps on (the next argument, or the command run on the last), where it only wrote and the person had to press Enter; in a setting's list it keeps the value and goes back to the list. The second click of a double click acts on no row of the palette.
+
 ## [0.300.0] - 2026-11-17 13:21
 
 ### Added
@@ -4165,6 +4180,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.300.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.300.1
 [0.300.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.300.0
 [0.299.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.299.0
 [0.298.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.298.0
