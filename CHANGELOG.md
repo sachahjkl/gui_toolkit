@@ -5,6 +5,20 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.304.0] - 2026-11-17 20:33
+
+### Changed
+- **Go to brings the element to the top**: Shift+Enter in the palette (`ui.act_go`) puts the setting or the element it
+reaches at the top of its view, where one starts reading, instead of just inside its bottom edge; the end of the page
+stops it lower.
+- **A side zone's fold button is the view's to place, and its rail opens by a pull.** `ui.view_fold_button(v)` draws the zone's Minimise when it is expanded and its Restore when it is collapsed, in a row the view already has. Put it at the same place in both forms and it stays under the pointer. The row that 0.300 added above a view with `rail_em` is gone: such a view must call the button in its compact form, and the toolkit's rail no longer draws a Restore for it. A strip leaves its Minimise out when the view shows the button. A minimised side zone (both rails) keeps its edge line against the content. Pull that edge outward and the zone opens and follows the pointer; drag an open zone down to its rail and it folds.
+
+### Fixed
+- **A capture started from a menu no longer shows the menu**: on Windows, `capture.output` and `capture.desktop` wait at
+most 400 ms for a popup menu (a tray icon's, a context menu) to finish its fade-out and leave the screen, then take the
+picture. A menu that stays longer is captured with it, and the capture does not fail.
+- **`ui.segmented`: the hover no longer looks like a second choice.** A hovered segment's face stops short of its cell's edges, so it never touches the key beside it; the chosen segment has no hover face, which covered the key; in the finishes other than machined the chosen label takes the theme's text colour for the accent (the new colour name `accent_text`).
+
 ## [0.303.0] - 2026-11-17 18:05
 
 ### Added
@@ -4208,6 +4222,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.304.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.304.0
 [0.303.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.303.0
 [0.302.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.302.0
 [0.301.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.301.0
