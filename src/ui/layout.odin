@@ -363,12 +363,20 @@ shrinkable :: proc(c: ^Box, axis: Axis) -> f32 {
 	return max(0, min(c.size[ai] * (1 - p.strictness), c.size[ai] - least))
 }
 
-// What a fill() share of a row's width (a box with children) has beyond what is in it (natural_width), and gives first
-// when the row is too narrow; 0 for a box of another size or with nothing in it.
+// What a fill() share of a row's width has beyond what is in it, and gives first when the row is too narrow: a box of
+// boxes beyond its natural width, a box of words beyond its words (a setting's name beside its control gives the room
+// it does not show before the control gives any: CSS's `flex: 1`, a basis of 0). 0 for a box of another size or with
+// nothing in it.
 @(private = "file")
 share_slack :: proc(c: ^Box) -> f32 {
-	if c.pref[.X].kind != .Percent || c.first == nil { return 0 }
-	return max(0, min(c.size.x - natural_width(c), shrinkable(c, .X)))
+	if c.pref[.X].kind != .Percent { return 0 }
+	keep: f32
+	switch {
+	case c.first != nil: keep = natural_width(c)
+	case c.text != "":   keep = max(c.least_x, math.ceil(c.text_dim.x + 2 * c.text_pad))
+	case:                return 0
+	}
+	return max(0, min(c.size.x - keep, shrinkable(c, .X)))
 }
 
 // An empty box sized as a share of its parent's width (spacer(fill()), a pct pad): no children, no text, nothing drawn,

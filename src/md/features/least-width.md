@@ -34,6 +34,14 @@ made as `layout_wrap_positions` makes them: the same widths in the same order gi
 A share of the width starts at the top of its line. An item of its own size, such as a button, is centred in its line.
 A column of cards lined up on the middle of its line next to a taller one read as a mistake.
 
+## A share of words gives first
+
+A `fill()` share asks for the whole row, then gives way when the row is too narrow. A share of boxes gave first what it
+had beyond its natural width (`share_slack`); a share of words gave by its size, with every other box that may shrink.
+A setting's name in `fill()` beside a segmented control that may give way: both gave in proportion, and the control
+turned into a dropdown in a row that held it. A share of words now gives first what it has beyond its words, as CSS's
+`flex: 1` has a basis of 0: it takes only the room that is left.
+
 ## Gaps in rows and columns
 
 `Box.gap` was the gap of `.Wrap` boxes only. A row or a column now puts its gap along its axis between two children

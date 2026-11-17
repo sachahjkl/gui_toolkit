@@ -107,6 +107,7 @@ Menu_Level :: struct {
 	panel:        Key,
 	hover_item:   int,       // item under the pointer and since when (submenus open / close after a delay)
 	hover_since:  f64,
+	hover_held:   bool,      // a key closed its submenu: the row under the pointer opens it again only once the pointer moves
 	scrolls:      bool,      // its content is taller than the window: as tall as the window, scrolled
 	reveal:       bool,      // the keyboard moved the selection: scroll its row into view
 	search:       bool,      // typing searches its items (menu_open's `search`)
@@ -562,6 +563,12 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 			case .Escape, .Left:
 				if e.key == .Left && depth == 0 { continue }
 				menu_pop_to(depth)
+				// (the pointer still rests on the row of the submenu just closed: it would open it again at once, and
+				// Escape would seem to do nothing; as the system's menus, it waits for the pointer to move)
+				if depth > 0 {
+					p := &s.menus[depth - 1]
+					p.hover_item, p.hover_held = -1, true
+				}
 				next_drop(s)
 				append(&s.popup_stack, false)
 				return false
@@ -789,7 +796,8 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checke
 	}
 	if sig.hovering {
 		if s.mouse_moved || lv.sel < 0 { lv.sel = idx }
-		if lv.hover_item != idx { lv.hover_item = idx; lv.hover_since = s.time_ms }
+		if s.mouse_moved { lv.hover_held = false }
+		if !lv.hover_held && lv.hover_item != idx { lv.hover_item = idx; lv.hover_since = s.time_ms }
 	} else if lv.hover_item == idx {
 		lv.hover_item = -1
 	} else if !enabled && s.mouse_moved && sig.box != nil && draw.rect_contains(sig.box.rect, s.mouse) {
