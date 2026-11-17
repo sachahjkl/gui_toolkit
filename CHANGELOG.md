@@ -5,6 +5,19 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.300.0] - 2026-11-17 13:21
+
+### Added
+- **`image.Stitcher`**: joins the screens of a scrolling capture into one tall picture of the page (`stitch_begin`,
+`stitch_add`, `stitch_end`, or `stitch` over frames already taken). A sticky header and footer are kept once, each
+frame's overlap with the one before is found by exact rows, a frame that adds nothing reports the page's end, and
+`max_height` bounds the picture.
+- **A side zone's Minimise at its Restore's place**: a lone panel whose view has a compact form (`View_Options.rail_em`) shows its zone's Minimise as a small button at the top of the zone, at the place and size of the rail's Restore, so the person folds and unfolds it from one place; its strip on hover has no second Minimise. A zone without `rail_em` is unchanged.
+
+### Fixed
+- **A text area cuts its lines at its padding**: a line scrolled half out of a multi-line field (`ui.text_edit`) stops at
+the text's edge, above and below, instead of running under the field's border and its rounded corners.
+
 ## [0.299.0] - 2026-11-17 12:37
 
 ### Added
@@ -4152,6 +4165,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.300.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.300.0
 [0.299.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.299.0
 [0.298.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.298.0
 [0.297.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.297.0
