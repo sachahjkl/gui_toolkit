@@ -33,6 +33,25 @@ the_offer_obeys_the_choice_in_force :: proc(t: ^testing.T) {
 	testing.expect(t, !setup.wanted({state = .Not_Installed}, "1.0", prefs_page.install_choice(&in_)), "nothing offered")
 }
 
+// general.menu and general.autostart act only on an installed copy (install_follow): until the install is read and
+// says this copy is the installed one, the settings do not show them, and a change of either writes nothing.
+@(test)
+the_desktop_settings_wait_for_the_installed_copy :: proc(t: ^testing.T) {
+	p := config.prefs_make()
+	defer config.prefs_destroy(&p)
+	prefs_page.standard_register(&p, {.Session}, prefs_page.STANDARD_DEFAULTS, context.temp_allocator)
+	in_: prefs_page.Install
+	prefs_page.install_init(&in_, &p, {version = "1.0"})
+	defer prefs_page.install_end(&in_)
+	for name in ([2]string{prefs_page.MENU_PREF, prefs_page.AUTOSTART_PREF}) {
+		r := config.ref_of(&p, name)
+		testing.expectf(t, r != config.NO_REF && config.entry(&p, r).def.hidden, "%s hidden before the install is read", name)
+	}
+	// (no window: no install read, nothing followed, nothing written)
+	_ = config.set_bool(&p, prefs_page.MENU_PREF, false)
+	testing.expect(t, !in_.following, "nothing runs without the install's reading")
+}
+
 @(test)
 an_uninstall_is_a_choice_to_run_standalone :: proc(t: ^testing.T) {
 	expect :: proc(t: ^testing.T, ev: setup.Event, upgrade: bool, saved, want: string, set: bool, loc := #caller_location) {

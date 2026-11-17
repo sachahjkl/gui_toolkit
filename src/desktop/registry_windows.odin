@@ -101,6 +101,23 @@ reg_delete_if_empty :: proc(path: string) -> bool {
 	return RegDeleteKeyW(win.HKEY_CURRENT_USER, wide(path)) == 0
 }
 
+// The names of the values of a key, the default value left out (nil when the key is missing; temp memory).
+@(private)
+reg_value_names :: proc(path: string) -> []string {
+	key: win.HKEY
+	if win.RegOpenKeyExW(win.HKEY_CURRENT_USER, wide(path), 0, win.KEY_READ, &key) != 0 { return nil }
+	defer win.RegCloseKey(key)
+	out := make([dynamic]string, context.temp_allocator)
+	buf := make([]u16, 16384, context.temp_allocator)   // (a value's name is at most 16383 characters)
+	for i: win.DWORD = 0; ; i += 1 {
+		n := win.DWORD(len(buf))
+		if win.RegEnumValueW(key, i, raw_data(buf), &n, nil, nil, nil, nil) != 0 { break }
+		if n == 0 { continue }
+		if s, err := win.utf16_to_utf8(buf[:n], context.temp_allocator); err == nil { append(&out, s) }
+	}
+	return out[:]
+}
+
 @(private)
 reg_delete_value :: proc(path, name: string) -> bool {
 	key: win.HKEY

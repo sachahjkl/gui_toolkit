@@ -1,7 +1,7 @@
 package tk_desktop
 
-// The edit of a mimeapps.list (the MIME Applications specification) that the File_Manager part of Linux makes: the
-// default application of one type, in [Default Applications]. Pure text, so the tests run it on every system; the
+// The edit of a mimeapps.list (the MIME Applications specification) that the File_Manager and Default_Documents parts
+// of Linux make: the default application of one type, in [Default Applications]. Pure text, so the tests run it on every system; the
 // backend reads and writes the file (integration_linux.odin). open_with_linux.odin reads the same files for a whole
 // database; this edits one line and keeps every other byte of the person's file.
 

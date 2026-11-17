@@ -256,12 +256,10 @@ notices_crates :: proc(metadata: string, given: map[string]string = nil) -> (out
 			}
 		}
 		licence_files(folder, "", &names)
-		// (a crate that wraps a C library's sources keeps that library's licence with them: libwebp-sys's vendor/COPYING
-		// and PATENTS. None at its root: one level down)
-		if len(names) == 0 {
-			if fis, ferr := os.read_all_directory_by_path(folder, context.temp_allocator); ferr == nil {
-				for fi in fis { if fi.type == .Directory { licence_files(fmt.tprintf("%s/%s", folder, fi.name), fi.name, &names) } }
-			}
+		// (a crate that carries another work keeps that work's licence with it, one level down, whatever its root has:
+		// libwebp-sys's vendor/COPYING and PATENTS, hayro-font's assets/LICENSE_FOXIT for the fonts it embeds)
+		if fis, ferr := os.read_all_directory_by_path(folder, context.temp_allocator); ferr == nil {
+			for fi in fis { if fi.type == .Directory { licence_files(fmt.tprintf("%s/%s", folder, fi.name), fi.name, &names) } }
 		}
 		if lf := tk_json.text(p, "license_file"); lf != "" && !slice.contains(names[:], lf) { append(&names, lf) }
 		slice.sort(names[:])

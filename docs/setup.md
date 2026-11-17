@@ -74,6 +74,26 @@ facts first come and a program is installed, its box starts on when those parts 
 otherwise, whatever its `on` says (`choices_from_facts`). Before an install, the box starts from `on`. A file manager
 offers "open folders with it" this way, and the box never claims a part that someone took away.
 
+A PDF reader offers its documents the same way ([desktop.md](desktop.md#a-handler-of-document-types)). It gives the
+types whatever the boxes say, so that removal takes them away. The default's box exists only where the system has the
+part:
+
+```odin
+PDF := [?]desktop.Document_Type{{".pdf", "application/pdf", "PDF Document"}}
+
+choices = {
+	{label = i18n.later("Open PDF files with Feuille"), on = true, parts = {.Documents}},
+	{label = i18n.later("Make Feuille the default PDF reader"), on = false, parts = {.Default_Documents}},
+},
+prepare = proc(o: ^desktop.Integration_Options, choices: []bool, user: rawptr) {
+	o.document_types = PDF[:]
+	o.open_documents, o.default_documents = choices[0], choices[1]
+},
+```
+
+On Windows the second box has no part (`supported_parts()` lacks `Default_Documents`): give it `parts = {}` there. Its
+Install then opens Settings at the program's page, where the person makes it the default.
+
 ```odin
 choices = {
 	{label = i18n.later("Put the program on the PATH"), on = true, parts = {.Path}},

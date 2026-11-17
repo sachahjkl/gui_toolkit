@@ -60,6 +60,55 @@ X-Sample-Integration=sample
 	testing.expect_value(t, desktop_entry_text(&o), want)
 }
 
+@(private = "file") PDF_TYPES := [?]Document_Type{{".pdf", "application/pdf", "PDF Document"}, {".fdf", "application/vnd.fdf", ""}, {".xfdf", "application/vnd.fdf", ""}}
+
+// A handler of documents: its types in MimeType (each once), one file as %f, and hidden from the menu without the
+// launcher; a browser's %U and a file manager's %F come first.
+@(test)
+desktop_entry_of_a_document_handler :: proc(t: ^testing.T) {
+	id := test_identity()
+	id.url_schemes = nil
+	o := Integration_Options{identity = id, exe = "/opt/sample/sample", document_types = PDF_TYPES[:], open_documents = true}
+	text := desktop_entry_text(&o)
+	mime, _ := entry_value(text, "MimeType")
+	testing.expect_value(t, mime, "application/pdf;application/vnd.fdf;")
+	exec, _ := entry_value(text, "Exec")
+	testing.expect_value(t, exec, "/opt/sample/sample %f")
+	testing.expect(t, !strings.contains(text, "NoDisplay"), "in the menu")
+	hidden, _ := entry_value(desktop_entry_text(&o, no_display = true), "NoDisplay")
+	testing.expect_value(t, hidden, "true")
+
+	o.default_file_manager = true
+	exec, _ = entry_value(desktop_entry_text(&o), "Exec")
+	testing.expect_value(t, exec, "/opt/sample/sample %F")
+	mime, _ = entry_value(desktop_entry_text(&o), "MimeType")
+	testing.expect_value(t, mime, "inode/directory;application/pdf;application/vnd.fdf;")
+
+	// the default alone asks for the association; no type, nothing
+	o.default_file_manager, o.open_documents, o.default_documents = false, false, true
+	testing.expect(t, opens_documents(&o), "default_documents implies open_documents")
+	o.document_types = nil
+	testing.expect(t, !opens_documents(&o), "no type: nothing to open")
+	testing.expect(t, !strings.contains(desktop_entry_text(&o), "MimeType"), "no type, no MimeType")
+}
+
+// A document type reaches a ProgID and the lines of MimeType= and mimeapps.list: a malformed one is refused.
+@(test)
+document_types_are_validated :: proc(t: ^testing.T) {
+	o := Integration_Options{identity = test_identity(), exe = "x", document_types = PDF_TYPES[:]}
+	testing.expect_value(t, validate(&o, false).error, Error.None)
+	bad := [?]Document_Type{
+		{"pdf", "application/pdf", ""}, {".PDF", "application/pdf", ""}, {".p-f", "application/pdf", ""}, {".", "application/pdf", ""},
+		{".pdf", "application", ""}, {".pdf", "application/pdf;x", ""}, {".pdf", "a/b/c", ""}, {".pdf", "/pdf", ""},
+		{".pdf", "application/pdf", "two\nlines"},
+	}
+	for b in bad {
+		one := [1]Document_Type{b}
+		o.document_types = one[:]
+		testing.expectf(t, validate(&o, false).error == .Bad_Options, "refused: %v", b)
+	}
+}
+
 @(test)
 desktop_entry_without_browser_registration :: proc(t: ^testing.T) {
 	o := Integration_Options{identity = browser_identity(), exe = "/opt/sample/sample", register_browser = false}

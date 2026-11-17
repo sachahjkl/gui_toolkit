@@ -96,6 +96,7 @@ desktop/thumbnail_linux.odin thumbnailer_cache process  # the thumbnailers read 
 desktop/thumbnail_windows.odin IID_IShellItemImageFactory const  # a COM interface id (a variable: the call takes its address)
 desktop/open_with_linux.odin mime_cache process  # the XDG MIME database read last, for every window of the process (locked: mime_cache.mutex)
 desktop/desktop_entry_test.odin BROWSER_SCHEMES test
+desktop/desktop_entry_test.odin PDF_TYPES test
 desktop/identity_test.odin TEST_SCHEMES test
 desktop/identity_test.odin TEST_LIBRARIES test
 desktop/identity_test.odin TEST_SCRATCH_ROOTS test
@@ -104,6 +105,8 @@ desktop/identity_test.odin BAD_SCHEMES test
 desktop/install_test.odin TEST_PAYLOAD test
 desktop/integration_linux.odin LINUX_BACKEND const  # a backend's table of procedures
 desktop/integration_linux.odin ICON_SIZES const  # a table: the sizes of the icon theme's folders
+desktop/integration_test_linux.odin PDF test
+desktop/integration_test_windows.odin DOCUMENT_TYPES test
 desktop/integration_test_windows.odin watch_counter test
 desktop/integration_test_windows.odin windows_watcher_wakes_on_every_place_it_watches.sc test
 desktop/integration_windows.odin WINDOWS_BACKEND const  # a backend's table of procedures

@@ -58,6 +58,7 @@ Feature :: enum u8 {
 	Lucide_Subset,      // only the Lucide icons the sources name are compiled in (lucide_subset, LUCIDE_SUBSET)
 	No_Fallback_Fonts,  // no Roboto or Inconsolata compiled in (FONT_EMBED_FALLBACK=false): the system's fonts only
 	Webp,               // WebP read and written (IMAGE_WEBP=true, native/webp): libwebp built into the program, every system
+	Pdf,                // PDF files opened, rendered and written (GT_PDF=true, native/pdf): gt:pdf, hayro built into the program
 }
 Features :: bit_set[Feature; u8]
 
@@ -173,6 +174,7 @@ feature_defines :: proc(features: Features, target: runtime.Odin_OS_Type, lucide
 	if .Lucide_Subset in features && lucide != "" { append(&out, fmt.tprintf("-define:LUCIDE_SUBSET=%s", lucide)) }
 	if .No_Fallback_Fonts in features { append(&out, "-define:FONT_EMBED_FALLBACK=false") }
 	if .Webp in features { append(&out, "-define:IMAGE_WEBP=true") }
+	if .Pdf in features { append(&out, "-define:GT_PDF=true") }
 	return out[:]
 }
 
@@ -198,6 +200,7 @@ native_crates :: proc(features: Features) -> []string {
 	if .Accessibility in features { append(&out, "native/a11y") }
 	if .Mermaid in features { append(&out, "native/mermaid") }
 	if .Webp in features { append(&out, "native/webp") }
+	if .Pdf in features { append(&out, "native/pdf") }
 	return out[:]
 }
 
@@ -215,6 +218,7 @@ build_native :: proc(p: Project) -> bool {
 	system_native_parts(p, &parts)   // (project_windows.odin, project_unix.odin)
 	if .Mermaid in p.features { append(&parts, "mermaid") }
 	if .Webp in p.features { append(&parts, "webp") }
+	if .Pdf in p.features { append(&parts, "pdf") }
 	if len(parts) > 0 {
 		_ = os.make_directory_all(fmt.tprintf("%s/build", gt))   // (a fresh checkout has none: the linker writes tk there)
 		root, err := os.get_absolute_path(gt, context.temp_allocator)

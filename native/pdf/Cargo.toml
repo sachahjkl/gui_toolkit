@@ -1,0 +1,18 @@
+# The toolkit's PDF engine (src/pdf): hayro reads and renders, pdf-writer writes. A part of the one native library
+# (native/gt, feature pdf: tools/tk build_native -features:pdf). Versions pinned here and by Cargo.lock; the build runs
+# with --locked. See src/md/features/pdf.md.
+[package]
+name = "gt_pdf"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["rlib"]   # (linked into native/gt's static library; its release profile is native/gt's)
+path = "src/lib.rs"
+
+[dependencies]
+hayro = "=0.9.0"
+pdf-writer = "=0.15.0"
+phf = { version = "=0.13.1", default-features = false, features = ["macros"] }

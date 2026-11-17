@@ -800,6 +800,103 @@ windows_autostart :: proc(t: ^testing.T) {
 	testing.expect(t, !ok, "removed")
 }
 
+@(private = "file") DOCUMENT_TYPES := [?]Document_Type{{".pdf", "application/pdf", "PDF Document"}, {".fdf", "application/vnd.fdf", ""}}
+
+// The Documents part: a ProgID per type and the three lists that name it; to repair when a piece goes; a type taken out
+// of the list goes at the next install; the option off and remove take it all away, and leave another program's
+// ProgID, its OpenWithProgids value and the person's UserChoice. (A scratch registry root: the user's own Classes are
+// never touched.)
+@(test)
+windows_documents :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	o.register_browser = false
+	o.document_types = DOCUMENT_TYPES[:]
+	o.open_documents = true
+	classes := fmt.tprintf("%s\\Classes", s.root)
+	progid := fmt.tprintf("%s\\GuiToolkitTest.Sample.pdf", classes)
+	open_with := fmt.tprintf("%s\\.pdf\\OpenWithProgids", classes)
+	app := fmt.tprintf("%s\\Applications\\sample.exe", classes)
+	caps := fmt.tprintf("%s\\GuiToolkitTest\\Sample\\Capabilities", s.root)
+	registered := fmt.tprintf("%s\\RegisteredApplications", s.root)
+	choice := fmt.tprintf("%s\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.pdf\\UserChoice", s.root)
+	testing.expect(t, reg_set(choice, "ProgId", "OtherPDF"), "the person's default")
+	testing.expect(t, reg_set(fmt.tprintf("%s\\OtherPDF\\shell\\open\\command", classes), "", `"C:\other\other.exe" "%1"`), "another program's ProgID")
+	testing.expect(t, reg_set(open_with, "OtherPDF", ""), "another program in Open with")
+
+	testing.expect_value(t, install(o).error, Error.None)
+	get :: proc(t: ^testing.T, path, name, want: string, loc := #caller_location) {
+		v, ok := reg_get(path, name)
+		testing.expectf(t, ok && v == want, "%s [%s] = %q (found %v), want %q", path, name, v, ok, want, loc = loc)
+	}
+	get(t, progid, "", "PDF Document")
+	get(t, progid, "AppUserModelID", "GuiToolkit.Sample.Test")
+	get(t, fmt.tprintf("%s\\DefaultIcon", progid), "", fmt.tprintf("%s,0", s.exe))
+	get(t, fmt.tprintf("%s\\shell\\open\\command", progid), "", fmt.tprintf("\"%s\" \"%%1\"", s.exe))
+	get(t, fmt.tprintf("%s\\GuiToolkitTest.Sample.fdf", classes), "", "Sample")   // (no description: the program's name)
+	get(t, open_with, "GuiToolkitTest.Sample.pdf", "")
+	get(t, fmt.tprintf("%s\\SupportedTypes", app), ".pdf", "")
+	get(t, fmt.tprintf("%s\\shell\\open\\command", app), "", fmt.tprintf("\"%s\" \"%%1\"", s.exe))
+	get(t, caps, "ApplicationName", "Sample")
+	get(t, fmt.tprintf("%s\\FileAssociations", caps), ".pdf", "GuiToolkitTest.Sample.pdf")
+	get(t, fmt.tprintf("%s\\FileAssociations", caps), ".fdf", "GuiToolkitTest.Sample.fdf")
+	get(t, registered, "Sample.Documents", caps)
+	state, st := state_of(o)
+	testing.expect_value(t, state, State.Installed)
+	testing.expect(t, st.parts[.Documents].present && !st.parts[.Documents].partial && !st.parts[.Documents].stale, "the part is there")
+	testing.expect(t, .Default_Documents not_in supported_parts(), "Windows has no default part")
+
+	// a piece gone: to repair, then repaired
+	testing.expect(t, reg_delete_value(open_with, "GuiToolkitTest.Sample.pdf"), "out of Open with")
+	_, st = state_of(o)
+	testing.expect(t, st.parts[.Documents].partial, "a list does not name the ProgID")
+	testing.expect_value(t, install(o).error, Error.None)
+	state, _ = state_of(o)
+	testing.expect_value(t, state, State.Installed)
+
+	// the program moved: stale
+	moved := o^
+	moved.exe = s.exe2
+	_, st = state_of(&moved)
+	testing.expect(t, st.parts[.Documents].stale, "it runs the old program")
+
+	// a type taken out of the list goes at the next install
+	o.document_types = DOCUMENT_TYPES[:1]
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, !reg_key_exists(fmt.tprintf("%s\\GuiToolkitTest.Sample.fdf", classes)), "the old type's ProgID")
+	testing.expect(t, !reg_key_exists(fmt.tprintf("%s\\.fdf", classes)), "its extension's keys, left empty")
+	_, still := reg_get(fmt.tprintf("%s\\FileAssociations", caps), ".fdf")
+	testing.expect(t, !still, "its association")
+
+	// the option off: all of it goes, the neighbours stay
+	o.open_documents = false
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, !reg_key_exists(progid) && !reg_key_exists(app) && !reg_key_exists(caps), "the keys went with the option")
+	_, still = reg_get(registered, "Sample.Documents")
+	testing.expect(t, !still, "the list entry went")
+	_, still = reg_get(open_with, "GuiToolkitTest.Sample.pdf")
+	testing.expect(t, !still, "out of Open with")
+	_, still = reg_get(open_with, "OtherPDF")
+	testing.expect(t, still, "another program stays in Open with")
+	testing.expect(t, reg_key_exists(fmt.tprintf("%s\\OtherPDF", classes)), "another program's ProgID stays")
+	_, st = state_of(o)
+	testing.expect(t, !st.parts[.Documents].present, "taken out with the option")
+
+	// remove: the same, and the person's choice is never edited
+	o.document_types, o.open_documents, o.default_documents = DOCUMENT_TYPES[:], false, true   // (the default implies the association)
+	testing.expect_value(t, install(o).error, Error.None)
+	_, st = state_of(o)
+	testing.expect(t, st.parts[.Documents].present, "the default asks for the association")
+	testing.expect(t, documents_default_elsewhere(o), "the person's default is another program")
+	testing.expect_value(t, remove(o).error, Error.None)
+	testing.expect(t, !reg_key_exists(progid) && !reg_key_exists(app) && !reg_key_exists(caps), "removed")
+	_, st = state_of(o)
+	testing.expect(t, !st.parts[.Documents].present, "removed")
+	v, _ := reg_get(choice, "ProgId")
+	testing.expect_value(t, v, "OtherPDF")
+}
+
 // The File_Manager part: Win+E's new window and the default verb of folders and drives run the program; to repair when
 // a piece goes; taken out with the option and by remove, the system's default verb back and another program's left.
 // (A scratch registry root: the user's own Classes are never touched.)

@@ -14,6 +14,10 @@ package tk_desktop
 //   $XDG_CONFIG_HOME/mimeapps.list                   the File_Manager part: [Default Applications]
 //                                                    inode/directory=<slug>.desktop, the person's former default kept
 //                                                    after it; the entry then takes inode/directory (MimeType) and %F
+//   the entry's MimeType=                            the Documents part: the MIME type of each document type, and %f;
+//                                                    without the Launcher the entry stays, NoDisplay=true
+//   $XDG_CONFIG_HOME/mimeapps.list                   the Default_Documents part: <mime>=<slug>.desktop for each of them,
+//                                                    as the File_Manager part does for folders
 //
 // $XDG_DATA_HOME defaults to ~/.local/share (and must be an absolute path, as the specification says). After a change
 // `update-desktop-database <applications>` rebuilds the MIME cache when that tool is installed.
@@ -32,7 +36,7 @@ import "../platform"
 @(private = "file")
 LINUX_BACKEND := Backend{
 	name = "linux",
-	parts = {.Launcher, .Desktop_Shortcut, .Icons, .Path, .Autostart, .File_Manager},
+	parts = {.Launcher, .Desktop_Shortcut, .Icons, .Path, .Autostart, .File_Manager, .Documents, .Default_Documents},
 	status = linux_status,
 	install = linux_install,
 	remove = linux_remove,
@@ -107,16 +111,30 @@ linux_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> S
 		exec, _ := entry_value(content, "Exec")
 		target := exec_program(exec)
 		if mark == o.identity.slug || same_path(target, o.exe) {
-			ps := &s.parts[.Launcher]
-			ps.present = true
-			ps.target = clone_or_empty(target, allocator)
-			ps.stale = !same_path(target, o.exe)
-			if o.register_browser {
-				mime, _ := entry_value(content, "MimeType")
-				ps.partial = !strings.contains(mime, "x-scheme-handler/https")
-				for name in o.identity.url_schemes {   // (an entry of a version without the schemes: Repair adds them)
-					if !strings.contains(mime, strings.concatenate({SCHEME_MIME_PREFIX, name, ";"}, context.temp_allocator)) { ps.partial = true }
+			mime, _ := entry_value(content, "MimeType")
+			// (a hidden entry is there for "Open with" alone: the menu does not list it)
+			if hidden, _ := entry_value(content, "NoDisplay"); hidden != "true" {
+				ps := &s.parts[.Launcher]
+				ps.present = true
+				ps.target = clone_or_empty(target, allocator)
+				ps.stale = !same_path(target, o.exe)
+				if o.register_browser {
+					ps.partial = !strings.contains(mime, "x-scheme-handler/https")
+					for name in o.identity.url_schemes {   // (an entry of a version without the schemes: Repair adds them)
+						if !strings.contains(mime, strings.concatenate({SCHEME_MIME_PREFIX, name, ";"}, context.temp_allocator)) { ps.partial = true }
+					}
 				}
+			}
+			// Documents: the entry lists the types (partial: some of them; a %f, %F or %U takes the file)
+			listed := 0
+			mimes := document_mimes(o)
+			for m in mimes { if mime_listed(mime, m) { listed += 1 } }
+			if listed > 0 {
+				ps := &s.parts[.Documents]
+				ps.present = true
+				ps.target = clone_or_empty(target, allocator)
+				ps.stale = !same_path(target, o.exe)
+				ps.partial = listed < len(mimes) || !exec_takes_file(exec)
 			}
 		}
 	}
@@ -163,8 +181,12 @@ linux_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> S
 
 	// File_Manager: present when mimeapps.list makes the entry the default of folders. The default counts only for an
 	// entry that takes inode/directory: partial without one (when the options have the entry, Install writes it so).
+	mimeapps := ""
 	if path := mimeapps_path(o); path != "" {
-		if data, err := os.read_entire_file(path, context.temp_allocator); err == nil && mimeapps_default(string(data), DIRECTORY_MIME) == entry_id(o) {
+		if data, err := os.read_entire_file(path, context.temp_allocator); err == nil { mimeapps = string(data) }
+	}
+	if mimeapps != "" {
+		if mimeapps_default(mimeapps, DIRECTORY_MIME) == entry_id(o) {
 			ps := &s.parts[.File_Manager]
 			ps.present = true
 			ours, target, text := entry_ours(o, l.entry)
@@ -175,8 +197,44 @@ linux_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> S
 			mime, _ := entry_value(text, "MimeType")
 			ps.partial = o.start_menu && !(ours && strings.contains(mime, DIRECTORY_MIME + ";"))
 		}
+		// Default_Documents: mimeapps.list makes the entry the default of the types (partial: of some of them, or an
+		// entry that does not list one: its default does not count)
+		{
+			mimes := document_mimes(o)
+			defaults := 0
+			for m in mimes { if mimeapps_default(mimeapps, m) == entry_id(o) { defaults += 1 } }
+			if defaults > 0 {
+				ps := &s.parts[.Default_Documents]
+				ps.present = true
+				ours, target, text := entry_ours(o, l.entry)
+				if ours {
+					ps.target = clone_or_empty(target, allocator)
+					ps.stale = !same_path(target, o.exe)
+				}
+				mime, _ := entry_value(text, "MimeType")
+				ps.partial = defaults < len(mimes)
+				for m in mimes { if !(ours && mime_listed(mime, m)) { ps.partial = true } }
+			}
+		}
 	}
 	return s
+}
+
+// The MimeType value lists `mime` (a whole item: "application/pdf" is not in "application/pdfx;").
+@(private = "file")
+mime_listed :: proc(value, mime: string) -> bool {
+	rest := value
+	for item in strings.split_iterator(&rest, ";") { if strings.trim_space(item) == mime { return true } }
+	return false
+}
+
+// The Exec value passes a file to the program (one of the file codes, an argument of its own).
+@(private = "file")
+exec_takes_file :: proc(exec_value: string) -> bool {
+	for a in exec_arguments(exec_value) {
+		if !a.quoted && (a.text == "%f" || a.text == "%F" || a.text == "%u" || a.text == "%U") { return true }
+	}
+	return false
 }
 
 // <config_dir>/mimeapps.list ($XDG_CONFIG_HOME/mimeapps.list): the person's own defaults, which the File_Manager part
@@ -194,10 +252,12 @@ entry_id :: proc(o: ^Integration_Options) -> string {
 	return strings.concatenate({o.identity.slug, ".desktop"}, context.temp_allocator)
 }
 
-// Makes the entry the default of folders (`on`), or takes it out of that line (the person's former default comes back).
-// The file is written only when it changes, and in one rename: another program reads it at any time.
+// Makes the entry the default of each of `mimes` (`on`: folders for the File_Manager part, the document types for
+// Default_Documents), or takes it out of their lines (the person's former default comes back). The file is written
+// only when it changes, and in one rename: another program reads it at any time.
 @(private = "file")
-file_manager_set :: proc(o: ^Integration_Options, on: bool) -> Result {
+defaults_set :: proc(o: ^Integration_Options, mimes: []string, on: bool) -> Result {
+	if len(mimes) == 0 { return {} }
 	path := mimeapps_path(o)
 	if path == "" {
 		if on { return {.System, "neither $XDG_CONFIG_HOME nor the home directory is known"} }
@@ -206,15 +266,21 @@ file_manager_set :: proc(o: ^Integration_Options, on: bool) -> Result {
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil && os.exists(path) { return {.Io, strings.concatenate({"cannot read ", path}, context.temp_allocator)} }
 	text := string(data)
-	ids := mimeapps_defaults(text, DIRECTORY_MIME)
 	id := entry_id(o)
-	if on {
-		if len(ids) > 0 && ids[0] == id { return {} }
-	} else if !slice.contains(ids, id) {
-		return {}
+	changed := false
+	for mime in mimes {
+		ids := mimeapps_defaults(text, mime)
+		if on {
+			if len(ids) > 0 && ids[0] == id { continue }
+		} else if !slice.contains(ids, id) {
+			continue
+		}
+		text = mimeapps_with_default(text, mime, id, on)
+		changed = true
 	}
+	if !changed { return {} }
 	if on && !ensure_dir(filepath.dir(path)) { return {.Io, strings.concatenate({"cannot create the directory of ", path}, context.temp_allocator)} }
-	if !fsx.write_atomic(path, transmute([]byte)mimeapps_with_default(text, DIRECTORY_MIME, id, on)) { return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)} }
+	if !fsx.write_atomic(path, transmute([]byte)text) { return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)} }
 	return {}
 }
 
@@ -273,8 +339,9 @@ linux_install :: proc(o: ^Integration_Options) -> Result {
 		if !ensure_dir(filepath.dir(path)) { return {.Io, strings.concatenate({"cannot create the directory of ", path}, context.temp_allocator)} }
 		if !fsx.write_atomic(path, ic.png) { return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)} }
 	}
-	if o.start_menu {
-		if !fsx.write_atomic(l.entry, transmute([]byte)desktop_entry_text(o)) { return {.Io, strings.concatenate({"cannot write ", l.entry}, context.temp_allocator)} }
+	// (the Documents part lives in the entry: without the Launcher it stays, hidden from the menu)
+	if o.start_menu || opens_documents(o) {
+		if !fsx.write_atomic(l.entry, transmute([]byte)desktop_entry_text(o, no_display = !o.start_menu)) { return {.Io, strings.concatenate({"cannot write ", l.entry}, context.temp_allocator)} }
 	} else if text, rerr := os.read_entire_file(l.entry, context.temp_allocator); rerr == nil {
 		// the option is off: an entry of ours goes (another program's file of that name stays)
 		content := string(text)
@@ -323,7 +390,9 @@ linux_install :: proc(o: ^Integration_Options) -> Result {
 	}
 
 	// File_Manager: the entry the default of folders with the option; taken out of that line without it
-	if r := file_manager_set(o, o.default_file_manager); r.error != .None { return r }
+	if r := defaults_set(o, {DIRECTORY_MIME}, o.default_file_manager); r.error != .None { return r }
+	// Default_Documents: the same for each document type
+	if r := defaults_set(o, document_mimes(o), o.default_documents); r.error != .None { return r }
 
 	// (the icon theme's cache is checked against the directories' times: there is nothing to run for the icons)
 	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }
@@ -376,7 +445,9 @@ linux_remove :: proc(o: ^Integration_Options) -> Result {
 		}
 	}
 	// File_Manager: the entry's id goes from the folders' line (the rest of the person's file stays).
-	if r := file_manager_set(o, false); r.error != .None && res.error == .None { res = r }
+	if r := defaults_set(o, {DIRECTORY_MIME}, false); r.error != .None && res.error == .None { res = r }
+	// Default_Documents: the entry's id goes from the lines of the document types
+	if r := defaults_set(o, document_mimes(o), false); r.error != .None && res.error == .None { res = r }
 	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }
 	return res
 }

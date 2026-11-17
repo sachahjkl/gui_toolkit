@@ -402,8 +402,14 @@ prefs_page.install_launch(&app.install)
   a page left answers nothing; an Uninstall is `standalone`: the next start offers nothing). `choice_after(ev, upgrade,
   saved, version)` says what each event leaves; the offer obeys `install_choice(in)`, the value for the run (a
   `--pref install.choice=…` over the user's file). It returns what happened: `Launched`, the program ends and `install_launch` starts the
-  installed copy; `Installed` and `Uninstalled`, a program that applies its own desktop settings (`general.menu`) does
-  it again.
+  installed copy; `Installed` and `Uninstalled`: `install_follow` runs again.
+- `install_follow(in)` applies `general.menu` and `general.autostart` to the installed copy, on a task: when the
+  install's reading says this copy is the installed one, its launcher in the applications menu and its start with the
+  session follow the two settings, its other parts stay as the install left them. A copy that is not installed (a
+  build, a Nix package) writes nothing, and the settings page hides the two. It runs by itself after the start's
+  reading, after an install or an uninstall, and when either setting changes; one at a time, the last change winning.
+  `install_init`'s `announcer` says when the desktop refuses (nil: the log only). A program writes no code of its own
+  for these two settings.
 - `install_end(in)` before the window's State goes: what an uninstall left is deleted once the process ends, the dialog's
   thread is waited for. `install_launch(in)` last, once the program's single instance is released: the installed copy
   asked for starts (started earlier, it would find this copy running and hand itself over to it).

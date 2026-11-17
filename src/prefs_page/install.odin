@@ -7,7 +7,9 @@ package tk_prefs_page
 //
 //   prefs_page.install_init(&app.install, &app.prefs, setup_options())   at the start, its settings loaded
 //   prefs_page.install_vendor_mark(&app.install, &renderer, VENDOR_PNG)   its renderer made: the "By" line's mark
-//   prefs_page.install_offer(&app.install, &state, offer)                 its window open: reads the install on a task
+//   prefs_page.install_offer(&app.install, &state, offer)                 its window open: reads the install on a task,
+//                                                                         then follows general.menu and general.autostart
+//                                                                         (install_follow) for the installed copy
 //   if prefs_page.install_frame(&app.install) == .Launched { quit() }      each frame: the work that ended, the answer
 //   prefs_page.install_open(&app.install)                                 --setup: the setup's view now (during a build)
 //   opts.install = &app.install                                           the settings show the Installation page
@@ -16,6 +18,7 @@ package tk_prefs_page
 //
 // The command line (--install, --uninstall, --setup) is setup.command_of and setup.command_run.
 
+import "core:log"
 import "core:strings"
 import config "../config"
 import desktop "../desktop"
@@ -58,13 +61,99 @@ Install :: struct {
 	reading:    bool,                  // the start's reading is out on a task
 	pending:    setup.Event,           // what the page's build met: install_frame says it
 	launch:     string,                // owned: the installed copy install_launch starts ("": none)
+	// install_follow: the window whose tasks run it (install_offer's), where its failure is said, and its state
+	// machine: idle, running, or running with another asked (the last change wins)
+	state:      ^ui.State,
+	announcer:  ^ui.Announcer,
+	following:  bool,
+	follow_again: bool,
+	watch:      int,
 }
 
 // The program's declaration. Registers install.choice when the program did not (a value read from the file before
-// waits for it in the registry).
-install_init :: proc(in_: ^Install, prefs: ^config.Prefs, o: setup.Setup_Options) {
-	in_.prefs, in_.options = prefs, o
+// waits for it in the registry). general.menu and general.autostart are hidden until install_follow finds this copy
+// integrated, and followed from then on; `announcer` says when the desktop refuses them (nil: the log only).
+install_init :: proc(in_: ^Install, prefs: ^config.Prefs, o: setup.Setup_Options, announcer: ^ui.Announcer = nil) {
+	in_.prefs, in_.options, in_.announcer = prefs, o, announcer
 	if config.ref_of(prefs, INSTALL_CHOICE_PREF) == config.NO_REF { config.register(prefs, INSTALL_DEFS[:]) }
+	follow_show(in_, false)
+	if in_.watch == 0 {
+		in_.watch = config.watch(prefs, "general.", proc(user: rawptr, name: string, _: ^config.Prefs) {
+			if name == MENU_PREF || name == AUTOSTART_PREF { install_follow((^Install)(user)) }
+		}, in_)
+	}
+}
+
+@(private = "file")
+Follow_Job :: struct {
+	in_:        ^Install,
+	o:          setup.Setup_Options,
+	menu:       bool,
+	autostart:  bool,
+	integrated: bool,     // out: this copy is the installed one
+	failed:     string,   // out, owned: what the desktop said went wrong
+}
+
+// The settings general.menu and general.autostart made true for the installed copy: on a task, the install is read;
+// when this copy is the installed one, its launcher in the applications menu and its start with the session are
+// written as the two say, the program's other parts as the install left them. A copy that is not installed (a build,
+// Nix's, which Nix integrates) never writes anything because of a setting, and the two are hidden. Called by
+// install_offer's answer, by install_frame after an install or an uninstall, and on a change of either setting: a
+// program calls it only to run it again for another reason. One at a time; one asked during a run runs after it.
+install_follow :: proc(in_: ^Install) {
+	if !desktop.supported() || in_.state == nil || in_.prefs == nil { return }
+	if in_.following { in_.follow_again = true; return }
+	in_.following = true
+	j := new(Follow_Job)
+	j^ = {in_ = in_, o = in_.options, menu = config.bool_of(in_.prefs, MENU_PREF), autostart = config.bool_of(in_.prefs, AUTOSTART_PREF)}
+	ui.task(in_.state, proc(data: rawptr) {
+		j := (^Follow_Job)(data)
+		defer free_all(context.temp_allocator)
+		f := setup.facts(j.o)
+		j.integrated = f.running_it && f.exe_there && !f.from_nix
+		if !j.integrated { return }
+		choices := make([]bool, len(j.o.choices), context.temp_allocator)
+		for x, i in j.o.choices { choices[i] = x.on }
+		setup.choices_from_facts(f, j.o, choices)
+		o, _ := setup.options(j.o, choices)
+		o.exe = f.exe
+		o.start_menu, o.autostart = j.menu, j.autostart
+		// (a default the system keeps itself, Windows': asking for it opens the system's page, never on a setting's change)
+		o.default_documents = o.default_documents && .Default_Documents in f.parts
+		if r := desktop.apply(&o); r.error != .None {
+			j.failed = strings.concatenate({desktop.error_text(r.error), " ", r.detail})
+		}
+	}, proc(data: rawptr, _: u64) {
+		j := (^Follow_Job)(data)
+		defer follow_free(j)
+		in_ := j.in_
+		in_.following = false
+		follow_show(in_, j.integrated)
+		if j.failed != "" {
+			log.errorf("install: the desktop's launcher cannot be changed: %s", j.failed)
+			if in_.announcer != nil { ui.announce(in_.announcer, .Bad, i18n.tr("The desktop's launcher cannot be changed"), j.failed) }
+		}
+		if in_.follow_again {
+			in_.follow_again = false
+			install_follow(in_)
+		}
+	}, j, follow_free)
+}
+
+@(private = "file")
+follow_free :: proc(data: rawptr) {
+	j := (^Follow_Job)(data)
+	delete(j.failed)
+	free(j)
+}
+
+// general.menu and general.autostart shown on the settings' page only where install_follow applies them.
+@(private = "file")
+follow_show :: proc(in_: ^Install, on: bool) {
+	names := [?]string{MENU_PREF, AUTOSTART_PREF}
+	for name in names {
+		if r := config.ref_of(in_.prefs, name); r != config.NO_REF { config.entry(in_.prefs, r).def.hidden = !on }
+	}
 }
 
 @(private = "file")
@@ -86,6 +175,7 @@ install_offer :: proc(in_: ^Install, state: ^ui.State, offer: bool) {
 	j := new(Offer_Job)
 	j^ = {in_ = in_, o = in_.options, choice = strings.clone(install_choice(in_)), offer = offer}
 	in_.reading = true
+	in_.state = state
 	ui.task(state, proc(data: rawptr) {
 		j := (^Offer_Job)(data)
 		f := setup.facts(j.o)
@@ -105,6 +195,7 @@ install_offer :: proc(in_: ^Install, state: ^ui.State, offer: bool) {
 		delete(in_.running)
 		in_.running, j.running = j.running, ""
 		if j.offer { install_open(in_) }
+		install_follow(in_)
 	}, j, offer_free)
 }
 
@@ -146,12 +237,15 @@ install_frame :: proc(in_: ^Install) -> (ev: setup.Event) {
 	install_event(in_, ev)
 	if ev == .None { ev = in_.pending }
 	in_.pending = .None
+	if ev == .Installed || ev == .Uninstalled { install_follow(in_) }
 	return
 }
 
 // At the end of the process, before the window's State goes: what an uninstall left because this process held it is
 // deleted once it ends; the dialog's thread is waited for.
 install_end :: proc(in_: ^Install) {
+	if in_.watch != 0 && in_.prefs != nil { config.unwatch(in_.prefs, in_.watch) }
+	in_.watch, in_.state = 0, nil
 	setup.finish(&in_.dialog, in_.options)
 	setup.destroy(&in_.dialog)
 	if in_.mark_renderer != nil { setup.logo_destroy(in_.mark_renderer, &in_.vendor_mark) }

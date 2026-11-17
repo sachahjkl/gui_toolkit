@@ -1,8 +1,8 @@
 package platform
 
 // Smaller desktop services, behind a neutral API used on every system (the Windows forms live in platform_win32.odin
-// where present; here is the Linux side): keeping the screen awake (idle inhibition), and the recent-files list. Open
-// a URL is open_url (dialogs). These are thin and degrade to no-ops when the service is absent.
+// where present; here is the Linux side): keeping the screen awake (idle inhibition). The recent-files list is
+// recent_files.odin. Open a URL is open_url (dialogs). These are thin and degrade to no-ops when the service is absent.
 
 // A handle to an active screen-wake request (sleep_inhibit); 0 means none.
 Idle_Inhibit :: distinct u64
@@ -20,8 +20,3 @@ idle_uninhibit :: proc(h: Idle_Inhibit) {
 	when ODIN_OS == .Linux { idle_uninhibit_linux(h) }
 }
 
-// Adds a file to the desktop's recent-documents list (the "Recent" section of file managers and open dialogs), with
-// its MIME type (""=guessed from the extension). A no-op where the list is not supported.
-add_recent_file :: proc(path: string, mime := "") {
-	when ODIN_OS == .Linux { add_recent_file_linux(path, mime) }
-}

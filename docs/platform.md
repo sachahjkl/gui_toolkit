@@ -315,7 +315,13 @@ reads `org.freedesktop.appearance color-scheme` and `watch_color_scheme(cb)` fir
   `ime_cursor_rect_logical` turns the caret's rectangle into the compositor's units. On **X11**, text comes from the key and the modifiers through libxkbcommon as `.Text`:
   no input method, and no dead keys or Compose sequences (Known gaps).
 - **Smaller services** (`services_linux.odin`): `idle_inhibit` / `idle_uninhibit` keep the screen awake through
-  `org.freedesktop.ScreenSaver`; `add_recent_file` appends to the freedesktop `recently-used.xbel`.
+  `org.freedesktop.ScreenSaver`.
+- **Recent documents** (`recent_files.odin`): `add_recent_file(path, mime = "")` adds a file to the system's recent
+  documents. Linux appends it to the freedesktop `recently-used.xbel`, with its MIME type (`""`: guessed from the
+  extension). Windows calls `SHAddToRecentDocs` (`SHARD_PATHW`): the file goes to the user's Recent folder and to the
+  jump list of the program that the type's ProgID names (gt:desktop's Documents part writes that ProgID with the
+  program's AppUserModelID). Other systems: nothing. It writes a file or calls the shell: call it from a worker, never
+  from the interface's thread (`base.blocking` says so in a debug build).
 - **Cursors** (`cursors_wl_linux.odin`): Wayland names a shape to the compositor through `wp_cursor_shape_v1`, so the
   pointer matches the user's theme with no pixel upload.
 

@@ -316,6 +316,89 @@ linux_file_manager :: proc(t: ^testing.T) {
 	testing.expect_value(t, string(text), person)
 }
 
+@(private = "file") PDF := [?]Document_Type{{".pdf", "application/pdf", "PDF Document"}}
+
+// The Documents and Default_Documents parts: the entry lists the type and takes one file, and with the default the
+// type's line of mimeapps.list names it first, the person's former default after it; without the launcher the entry
+// stays, hidden; the option off and remove take each away, and give the former default back.
+@(test)
+linux_documents :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	o.register_browser = false
+	o.identity.url_schemes = nil   // (a program of no addresses: one file as %f)
+	o.document_types = PDF[:]
+	list := fmt.tprintf("%s/mimeapps.list", o.config_dir)
+	entry := fmt.tprintf("%s/sample.desktop", o.applications_dir)
+	_ = os.make_directory_all(o.config_dir)
+	person := "[Default Applications]\napplication/pdf=org.gnome.Evince.desktop;\ntext/plain=gedit.desktop\n"
+	_ = os.write_entire_file(list, person)
+
+	// in "Open with": the entry, no default
+	o.open_documents = true
+	expect_ok(t, install(o))
+	content, _ := os.read_entire_file(entry, context.temp_allocator)
+	mime, _ := entry_value(string(content), "MimeType")
+	exec, _ := entry_value(string(content), "Exec")
+	testing.expect_value(t, mime, "application/pdf;")
+	testing.expect(t, strings.has_suffix(exec, " %f"), "one file is its argument")
+	text, _ := os.read_entire_file(list, context.temp_allocator)
+	testing.expect_value(t, string(text), person)
+	st := status(o, context.temp_allocator)
+	testing.expect_value(t, st.state, State.Installed)
+	testing.expect(t, st.parts[.Documents].present && !st.parts[.Documents].partial, "the part is there")
+	testing.expect(t, !st.parts[.Default_Documents].present, "not the default")
+
+	// the default: first in the type's line, the former default after it
+	o.default_documents = true
+	testing.expect_value(t, status(o, context.temp_allocator).state, State.Repair)
+	expect_ok(t, install(o))
+	text, _ = os.read_entire_file(list, context.temp_allocator)
+	ids := mimeapps_defaults(string(text), "application/pdf")
+	testing.expectf(t, len(ids) == 2 && ids[0] == "sample.desktop" && ids[1] == "org.gnome.Evince.desktop", "the type's line: %v", ids)
+	testing.expect(t, strings.contains(string(text), "text/plain=gedit.desktop"), "the person's other lines stay")
+	st = status(o, context.temp_allocator)
+	testing.expect_value(t, st.state, State.Installed)
+	testing.expect(t, st.parts[.Default_Documents].present && !st.parts[.Default_Documents].partial, "the default is there")
+
+	// without the launcher: the entry stays for "Open with", hidden from the menu
+	o.start_menu = false
+	expect_ok(t, install(o))
+	content, _ = os.read_entire_file(entry, context.temp_allocator)
+	hidden, _ := entry_value(string(content), "NoDisplay")
+	testing.expect_value(t, hidden, "true")
+	st = status(o, context.temp_allocator)
+	testing.expect_value(t, st.state, State.Installed)
+	testing.expect(t, !st.parts[.Launcher].present && st.parts[.Documents].present, "no launcher, the documents")
+	expect_ok(t, apply(o))   // (Installed, nothing unwanted: nothing written)
+
+	// the default off: the former default comes back, the association stays
+	o.start_menu, o.default_documents = true, false
+	expect_ok(t, install(o))
+	text, _ = os.read_entire_file(list, context.temp_allocator)
+	testing.expect_value(t, mimeapps_default(string(text), "application/pdf"), "org.gnome.Evince.desktop")
+	testing.expect(t, !strings.contains(string(text), "sample.desktop"), "nothing of ours is left")
+	testing.expect(t, status(o, context.temp_allocator).parts[.Documents].present, "still in Open with")
+
+	// the association off: the entry no longer lists the type
+	o.open_documents = false
+	expect_ok(t, install(o))
+	content, _ = os.read_entire_file(entry, context.temp_allocator)
+	testing.expect(t, !strings.contains(string(content), "application/pdf"), "the type went with the option")
+	testing.expect(t, !status(o, context.temp_allocator).parts[.Documents].present, "taken out with the option")
+
+	// remove takes everything away, the file as the person had it
+	o.open_documents, o.default_documents = true, true
+	expect_ok(t, install(o))
+	expect_ok(t, remove(o))
+	testing.expect(t, !os.exists(entry), "the entry is gone")
+	text, _ = os.read_entire_file(list, context.temp_allocator)
+	testing.expect_value(t, string(text), person)
+	st = status(o, context.temp_allocator)
+	testing.expect_value(t, st.state, State.Absent)
+}
+
 // What the settings ask (apply): the launcher, then the start with the session alone (the launcher goes), then nothing.
 @(test)
 linux_apply_follows_the_settings :: proc(t: ^testing.T) {

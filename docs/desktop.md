@@ -80,7 +80,7 @@ s := desktop.status(&o)               // .Absent, .Installed or .Repair, part by
 defer desktop.status_destroy(&s)
 ```
 
-`Integration_Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `autostart` with its `autostart_arguments` (a program of the notification area starts hidden), `default_file_manager` (the program opens folders in place of the system's file manager, [below](#the-default-file-manager)), `register_browser` with its
+`Integration_Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `autostart` with its `autostart_arguments` (a program of the notification area starts hidden), `default_file_manager` (the program opens folders in place of the system's file manager, [below](#the-default-file-manager)), `open_documents` and `default_documents` with the `document_types` (the program in "Open with" of its documents and their default, [below](#a-handler-of-document-types)), `register_browser` with its
 `file_types`, the `launcher` bytes, the `icons`) and where everything goes. `install` writes the parts that are on and takes
 away the ones that are off: applying a change of options is the same call. `status` says `Repair` when a wanted part is
 missing or incomplete, or when a part runs another executable (`stale_exe`: the program was moved). `describe` says it in one
@@ -117,6 +117,7 @@ if r := desktop.apply(&o); r.error != .None { report(r.detail) }
 | `Autostart` | with `autostart`: the value `<key>` of `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, `"<exe>" <autostart_arguments>` |
 | `Registration` | only with `register_browser`: `Software\Clients\StartMenuInternet\<key>`, `Software\RegisteredApplications`, the ProgID `Software\Classes\<key>HTML`, the http and https URL associations, the file types, and `Software\Classes\<scheme>` for each of `url_schemes` |
 | `File_Manager` | with `default_file_manager`: in `Software\Classes`, `CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\opennewwindow\command` (`"<exe>"`, `DelegateExecute` empty: Win+E), the verb `Directory\shell\<key>.open` (`"<exe>" "%1"`) and `Drive\shell\<key>.open` (`"<exe>" %1`: a quoted `"C:\"` reads as `C:"`), each the default of its `shell` key |
+| `Documents` | with `open_documents` (or `default_documents`): in `Software\Classes`, the ProgID `<vendor_key>.<key>.<ext>` of each type (its description, `DefaultIcon`, `shell\open\command` `"<exe>" "%1"`, `AppUserModelID`), an empty value `<ProgID>` in `<ext>\OpenWithProgids`, `Applications\<exe name>` with `SupportedTypes\<ext>`; `Software\<vendor_key>\<key>\Capabilities` with `FileAssociations\<ext>` = the ProgID; the value `<key>.Documents` of `Software\RegisteredApplications` |
 
 The installed copy goes to `%LOCALAPPDATA%\Programs\<vendor_key>\<name>` (Linux: `~/.local/opt/<vendor_key>/<name>`) unless `install_dir` says otherwise. `record_install` writes
 `Software\Microsoft\Windows\CurrentVersion\Uninstall\<key>`, which Settings > Apps lists and `install_target` reads back
@@ -151,9 +152,12 @@ all. `--cli` anywhere makes the launcher wait, and the program never sees it. A 
 | `Path` | a link `~/.local/bin/<slug>` to the executable |
 | `Autostart` | with `autostart`: `$XDG_CONFIG_HOME/autostart/<slug>.desktop` (the XDG Autostart specification), `Exec` the executable and `autostart_arguments`, marked as the desktop entry is |
 | `File_Manager` | with `default_file_manager`: `inode/directory=<slug>.desktop;` first in `[Default Applications]` of `$XDG_CONFIG_HOME/mimeapps.list`; the entry then has `inode/directory;` in `MimeType=` and `%F` in `Exec` |
+| `Documents` | with `open_documents` (or `default_documents`): the MIME type of each of `document_types` in the entry's `MimeType=`, and `%f` in `Exec`; without `start_menu` the entry stays with `NoDisplay=true` |
+| `Default_Documents` | with `default_documents`: `<mime>=<slug>.desktop;` first in the line of each type in `[Default Applications]` of `$XDG_CONFIG_HOME/mimeapps.list` |
 
-The entry has `MimeType=` (http, https, the URL schemes and the file types) only with `register_browser`, and `Exec` takes
-`%U` when the program is a browser or has URL schemes. `StartupWMClass=` is the slug, the window's class (`platform.set_app_id`
+The entry has `MimeType=` with `register_browser` (http, https, the URL schemes and the file types), `default_file_manager`
+(`inode/directory`) and the Documents part (the document types). `Exec` takes `%U` when the program is a browser or has
+URL schemes, else `%F` for a file manager, else `%f` for a handler of documents. `StartupWMClass=` is the slug, the window's class (`platform.set_app_id`
 with the slug): a launcher and a dock match the window to the entry by it. After a change `update-desktop-database` runs when it is installed.
 The installed copy goes to `$XDG_DATA_HOME/<slug>`; nothing records it but its manifest.
 
@@ -188,6 +192,51 @@ it is off; `remove` takes it away.
 `mimeapps_default(text, mime)`, `mimeapps_defaults(text, mime)` and `mimeapps_with_default(text, mime, id, on)` read and
 edit the text of a `mimeapps.list` (no file read, on every system): the first id of a type's default line, all its
 ids, and the text with `id` put first in that line or taken out of it.
+
+## A handler of document types
+
+A program that opens files of its own types (a PDF reader) lists them in `document_types`, a `Document_Type` each:
+
+| Field | Example | What it is |
+|---|---|---|
+| `extension` | `.pdf` | with its dot, lower case letters and digits: Windows names the type by it (a ProgID holds no other character) |
+| `mime` | `application/pdf` | Linux names the type by it |
+| `description` | `PDF Document` | what Windows calls a file of the type (`""`: the program's name) |
+
+```odin
+PDF := [?]desktop.Document_Type{{".pdf", "application/pdf", "PDF Document"}}
+
+o := desktop.options_make(IDENTITY)
+o.document_types = PDF[:]   // always: removal reads them to take the types away
+o.open_documents = true     // "Open with" lists the program
+o.default_documents = true  // and it is their default (Linux); Windows: Settings opens at the program's page
+```
+
+Two parts say what is there. `Part.Documents`: the program is in "Open with" of each type. `Part.Default_Documents`:
+it is their default. `default_documents` implies `open_documents`, as a default counts only for a program associated
+with the type (`opens_documents(&o)` says whether the options ask for the association). `install` writes the parts
+that are on and takes away the ones that are off; `remove` takes both away. The types are the program's constants:
+`options_clone` shares them. Give them whatever the boxes say: `remove` and an install with the options off read them
+to know what to take away.
+
+- Linux: the entry lists the types in `MimeType=` and takes one file as `%f`. The launcher runs one process per file,
+  as Windows does: a program that takes one path needs nothing more (`%U` of a browser and `%F` of a file manager come
+  first). Without `start_menu` the entry stays, with `NoDisplay=true`: the menu does not show it, "Open with" does, and
+  the `Launcher` part reads as absent. The default is the type's line of `mimeapps.list`, edited as the default file
+  manager's: the program's id first, the former default after it and given back on removal.
+- Windows: a ProgID per type and three lists that name it (the table above): "Open with" of a file, "Choose another
+  app", and Settings > Default apps. The program's ProgIDs also carry its AppUserModelID: the files it opens go to its
+  jump list (`platform.add_recent_file`). A type taken out of `document_types` goes at the next install (the
+  Capabilities list the types of the last one). Windows lets only the person choose a default (`UserChoice`, which
+  removal never edits): there is no `Default_Documents` part, and with `default_documents` `install` opens Settings at
+  the program's page (`ms-settings:defaultapps?registeredAppUser=<key>.Documents`; Windows 10 opens the general page)
+  when a type's default is another program's. It does so only with `notify_system`: a test's scratch roots open no
+  window.
+- Elsewhere: no such part (`supported_parts`).
+
+A setup `Choice` ties a box to each part ([setup.md](setup.md#the-programs-options)). Offer the default's box only
+where `supported_parts()` has `Default_Documents`. On Windows a box of no part sets `default_documents`: each Install
+then opens Settings while a type's default is another program's.
 
 ## Open with
 

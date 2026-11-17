@@ -222,8 +222,9 @@ group_value :: proc(text, group, key: string) -> (value: string, found: bool) {
 
 // The desktop entry of an integration of `o`. Lines are LF-terminated and in the order the specification's own examples
 // use; every value is escaped, the Exec line quoted. A program that opens addresses (a browser, URL schemes of its own)
-// takes them as `%U`.
-desktop_entry_text :: proc(o: ^Integration_Options, allocator := context.temp_allocator) -> string {
+// takes them as `%U`, a file manager its folders as `%F`, a handler of documents one file as `%f`. `no_display`: the
+// menu does not list the entry, and "Open with" still does (the Documents part without the Launcher).
+desktop_entry_text :: proc(o: ^Integration_Options, no_display := false, allocator := context.temp_allocator) -> string {
 	id := o.identity
 	sb := strings.builder_make(allocator)
 	line :: proc(sb: ^strings.Builder, key, value: string) { fmt.sbprintf(sb, "%s=%s\n", key, value) }
@@ -234,24 +235,35 @@ desktop_entry_text :: proc(o: ^Integration_Options, allocator := context.temp_al
 	if id.generic_name != "" { line(&sb, "GenericName", escape_value(id.generic_name)) }
 	if id.description != "" { line(&sb, "Comment", escape_value(id.description)) }
 	opens := o.register_browser || len(id.url_schemes) > 0
-	// (a folder as a path, %F: a file manager opens local folders, and a file:// address would be one more form to read)
-	code := opens ? " %U" : o.default_file_manager ? " %F" : ""
+	documents := opens_documents(o)
+	// (a folder as a path, %F: a file manager opens local folders, and a file:// address would be one more form to read;
+	// a document as one path, %f: one process per file, as Windows runs "%1", so a program that takes one path needs
+	// nothing more. One file code per line: the wider one wins)
+	code := opens ? " %U" : o.default_file_manager ? " %F" : documents ? " %f" : ""
 	line(&sb, "Exec", escape_value(strings.concatenate({quote_exec_argument(o.exe), code}, context.temp_allocator)))
 	line(&sb, "TryExec", escape_value(o.exe))
 	line(&sb, "Icon", id.slug)
 	line(&sb, "Terminal", "false")
+	if no_display { line(&sb, "NoDisplay", "true") }
 	line(&sb, "StartupNotify", "true")
 	// (the window's class is the slug: a launcher and a dock match the window to this entry by it, on X11 and Wayland)
 	line(&sb, "StartupWMClass", id.slug)
 	if id.categories != "" { line(&sb, "Categories", escape_value(id.categories)) }
 	if id.keywords != "" { line(&sb, "Keywords", escape_value(id.keywords)) }
-	if o.register_browser || o.default_file_manager {
-		sb2 := strings.builder_make(context.temp_allocator)
+	if o.register_browser || o.default_file_manager || documents {
+		listed := make([dynamic]string, context.temp_allocator)
+		add :: proc(listed: ^[dynamic]string, m: string) {
+			for x in listed { if x == m { return } }
+			append(listed, m)
+		}
 		if o.register_browser {
-			for m in mime_types(o.file_types, id.url_schemes) { strings.write_string(&sb2, m); strings.write_byte(&sb2, ';') }
+			for m in mime_types(o.file_types, id.url_schemes) { add(&listed, m) }
 		}
 		// (the default of a type counts only for an entry associated with it: the MIME Applications specification)
-		if o.default_file_manager { strings.write_string(&sb2, DIRECTORY_MIME); strings.write_byte(&sb2, ';') }
+		if o.default_file_manager { add(&listed, DIRECTORY_MIME) }
+		if documents { for m in document_mimes(o) { add(&listed, m) } }
+		sb2 := strings.builder_make(context.temp_allocator)
+		for m in listed { strings.write_string(&sb2, m); strings.write_byte(&sb2, ';') }
 		line(&sb, "MimeType", strings.to_string(sb2))
 	}
 	if len(id.actions) > 0 {

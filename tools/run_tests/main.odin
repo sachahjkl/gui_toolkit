@@ -118,6 +118,7 @@ STEPS := []Step{
 	{name = "gif", oses = EVERYWHERE},
 	// (text = true: watermark_text's test draws the embedded face; WebP: the native library's part webp, built in)
 	{name = "image", text = true, need = .Native_Lib, defines = {"IMAGE_WEBP=true"}, oses = EVERYWHERE},
+	{name = "pdf", need = .Native_Lib, defines = {"GT_PDF=true"}, oses = EVERYWHERE},   // (the native library's part pdf, built in)
 	{name = "h264", oses = EVERYWHERE},
 	{name = "mux", oses = EVERYWHERE},
 	{name = "shortcuts", oses = EVERYWHERE},

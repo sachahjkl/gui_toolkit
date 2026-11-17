@@ -26,6 +26,7 @@ package tk_desktop
 //                                                                          default verb set to it (a folder's double click)
 //                         Drive\shell\<key>.open\command, Drive\shell      (the same for a drive, `%1` unquoted)
 //                       Removal puts back what the system had: the keys go, and a default verb that names ours.
+//   Documents           (open_documents) a ProgID per document type and the lists that name it (documents_windows.odin)
 //
 // Marks: the shortcut carries the AppUserModelID; the keys carry `Identity.registry_mark` (set to the AppUserModelID)
 // or run the executable. Removal deletes what has a mark and nothing else.
@@ -40,7 +41,8 @@ import ascii "../ascii"
 @(private = "file")
 WINDOWS_BACKEND := Backend{
 	name = "windows",
-	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart, .File_Manager},
+	// (no Default_Documents: Windows keeps the default in a UserChoice that only the shell may write)
+	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart, .File_Manager, .Documents},
 	status = windows_status,
 	install = windows_install,
 	remove = windows_remove,
@@ -194,6 +196,7 @@ windows_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) ->
 	}
 
 	s.parts[.File_Manager] = file_manager_status(o, l, allocator)
+	s.parts[.Documents] = documents_status(o, allocator)
 	return s
 }
 
@@ -309,6 +312,10 @@ windows_install :: proc(o: ^Integration_Options) -> Result {
 		if r := write_file_manager(o, l); r.error != .None { return r }
 	} else if r := remove_file_manager(o, l); r.error != .None { return r }
 
+	if opens_documents(o) {
+		if r := documents_write(o); r.error != .None { return r }
+	} else if r := documents_remove(o); r.error != .None { return r }
+
 	path_changed := false
 	if dir := exe_dir(o.exe); dir != "" {
 		if o.add_to_path {
@@ -332,6 +339,9 @@ windows_install :: proc(o: ^Integration_Options) -> Result {
 	if o.notify_system {
 		notify_associations()
 		if path_changed { broadcast_environment() }
+		// (Windows lets only the person make a program the default: Settings at its page, when some type is another's;
+		// not for scratch roots, whose install shows no window)
+		if o.default_documents && opens_documents(o) && documents_default_elsewhere(o) { _ = documents_open_defaults(o) }
 	}
 	return {}
 }
@@ -515,6 +525,7 @@ windows_remove :: proc(o: ^Integration_Options) -> Result {
 	}
 	if r := remove_registration(o, l); r.error != .None && res.error == .None { res = r }
 	if r := remove_file_manager(o, l); r.error != .None && res.error == .None { res = r }
+	if r := documents_remove(o); r.error != .None && res.error == .None { res = r }
 	path_changed := false
 	if dir := exe_dir(o.exe); dir != "" {
 		had := path_contains(o, dir)

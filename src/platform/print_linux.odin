@@ -4,8 +4,10 @@ package platform
 // Printing through the XDG print portal (print.odin): PreparePrint shows the system's dialog and answers, on its
 // request's Response signal, with a token and the page setup the person chose; Print then takes the page as a PDF
 // (print_pdf), in a memory file passed as a descriptor, with that token: no second dialog. Both on a connection of
-// their own on the calling thread, which waits for the person as the file dialogs do.
+// their own on the calling thread, which waits for the person as the file dialogs do. A document (print_document)
+// takes the same two steps with its own PDF, or one of its rendered pages.
 
+import "core:io"
 import "core:strings"
 import "core:sys/linux"
 import "../dbus"
@@ -34,22 +36,8 @@ print_image :: proc(owner: ^Window, title: string, rgba: []u8, size: [2]int) -> 
 	defer dbus.conn_close(conn)
 	if !dbus.conn_unix_fds(conn) { return .Unsupported }
 
-	// the dialog
-	prepared: Print_Answer
-	{
-		token := portal_token()
-		w := dbus.body_writer()
-		dbus.w_string(&w, "")   // parent_window ("" is fine: the portal centres it)
-		dbus.w_string(&w, title)
-		sl, sc := dbus.arg_dict_begin(&w); dbus.arg_dict_end(&w, sl, sc)   // settings: the system's last
-		pl, pc := dbus.arg_dict_begin(&w); dbus.arg_dict_end(&w, pl, pc)   // page setup: the system's last
-		ol, oc := dbus.arg_dict_begin(&w)
-		dbus.arg_dict_entry(&w, "handle_token"); dbus.arg_variant_string(&w, token)
-		dbus.arg_dict_end(&w, ol, oc)
-		if !print_request(conn, token, "PreparePrint", "ssa{sv}a{sv}a{sv}", w.buf[:], nil, &prepared) { return .Unsupported }
-	}
-	if !prepared.done { return .Failed }
-	if prepared.code != 0 || !prepared.has_token { return .Cancelled }
+	prepared, status := print_prepare(conn, title)
+	if status != .Printed { return status }
 
 	// the page, as a PDF in a memory file
 	page := prepared.page.x > 0 && prepared.page.y > 0 ? prepared.page : PRINT_A4_PT
@@ -60,15 +48,60 @@ print_image :: proc(owner: ^Window, title: string, rgba: []u8, size: [2]int) -> 
 	fd, err := linux.memfd_create("print.pdf", {.CLOEXEC})
 	if err != .NONE { return .Failed }
 	defer linux.close(fd)
-	for rest := pdf; len(rest) > 0; {
-		n, werr := linux.write(fd, rest)
-		if werr == .EINTR { continue }
-		if werr != .NONE || n <= 0 { return .Failed }
-		rest = rest[n:]
+	if !print_write_all(fd, pdf) { return .Failed }
+	return print_send(conn, title, prepared.token, fd)
+}
+
+// The document: the portal's dialog, then the file it prints, made after the dialog (the pages are not rendered for
+// a person who cancels): the program's PDF as it is, else the pages rendered into one (print_document_pdf), written
+// to a memory file as they are made. The portal's page setup is not used: the pages keep their own sizes, and the
+// print system fits them to its paper.
+print_document :: proc(owner: ^Window, doc: Print_Document) -> Print_Status {
+	if doc.page_count <= 0 { return .Failed }
+	if doc.pdf == nil && (doc.page_size == nil || doc.render == nil) { return .Failed }
+	conn := dbus.connect_bus(.Session, unix_fds = true)
+	if conn == nil { return .Unsupported }
+	defer dbus.conn_close(conn)
+	if !dbus.conn_unix_fds(conn) { return .Unsupported }
+
+	prepared, status := print_prepare(conn, doc.title)
+	if status != .Printed { return status }
+
+	fd, err := linux.memfd_create("print.pdf", {.CLOEXEC})
+	if err != .NONE { return .Failed }
+	defer linux.close(fd)
+	if doc.pdf != nil {
+		if !print_write_all(fd, doc.pdf) { return .Failed }
+	} else {
+		out := io.Writer{procedure = print_fd_stream, data = rawptr(uintptr(fd))}
+		if !print_document_pdf(doc, out) { return .Failed }
 	}
+	return print_send(conn, doc.title, prepared.token, fd)
+}
+
+// PreparePrint: the dialog. Printed: the person chose to print, and the answer has the token Print needs.
+@(private = "file")
+print_prepare :: proc(conn: ^dbus.Conn, title: string) -> (prepared: Print_Answer, status: Print_Status) {
+	token := portal_token()
+	w := dbus.body_writer()
+	dbus.w_string(&w, "")   // parent_window ("" is fine: the portal centres it)
+	dbus.w_string(&w, title)
+	sl, sc := dbus.arg_dict_begin(&w); dbus.arg_dict_end(&w, sl, sc)   // settings: the system's last
+	pl, pc := dbus.arg_dict_begin(&w); dbus.arg_dict_end(&w, pl, pc)   // page setup: the system's last
+	ol, oc := dbus.arg_dict_begin(&w)
+	dbus.arg_dict_entry(&w, "handle_token"); dbus.arg_variant_string(&w, token)
+	dbus.arg_dict_end(&w, ol, oc)
+	if !print_request(conn, token, "PreparePrint", "ssa{sv}a{sv}a{sv}", w.buf[:], nil, &prepared) { return prepared, .Unsupported }
+	if !prepared.done { return prepared, .Failed }
+	if prepared.code != 0 || !prepared.has_token { return prepared, .Cancelled }
+	return prepared, .Printed
+}
+
+// Print: the file in `fd`, with PreparePrint's token (no second dialog).
+@(private = "file")
+print_send :: proc(conn: ^dbus.Conn, title: string, prepared_token: u32, fd: linux.Fd) -> Print_Status {
 	// (the portal reads its copy of the descriptor from where it stands)
 	if _, serr := linux.lseek(fd, 0, .SET); serr != .NONE { return .Failed }
-
 	printed: Print_Answer
 	token := portal_token()
 	w := dbus.body_writer()
@@ -77,7 +110,7 @@ print_image :: proc(owner: ^Window, title: string, rgba: []u8, size: [2]int) -> 
 	dbus.w_u32(&w, 0)   // (the 'h': the first descriptor of the call)
 	ol, oc := dbus.arg_dict_begin(&w)
 	dbus.arg_dict_entry(&w, "handle_token"); dbus.arg_variant_string(&w, token)
-	dbus.arg_dict_entry(&w, "token"); dbus.w_signature(&w, "u"); dbus.w_u32(&w, prepared.token)
+	dbus.arg_dict_entry(&w, "token"); dbus.w_signature(&w, "u"); dbus.w_u32(&w, prepared_token)
 	dbus.arg_dict_end(&w, ol, oc)
 	fds := [1]i32{i32(fd)}
 	if !print_request(conn, token, "Print", "ssha{sv}", w.buf[:], fds[:], &printed) { return .Failed }
@@ -87,6 +120,30 @@ print_image :: proc(owner: ^Window, title: string, rgba: []u8, size: [2]int) -> 
 	case 1: return .Cancelled
 	}
 	return .Failed
+}
+
+@(private = "file")
+print_write_all :: proc(fd: linux.Fd, bytes: []u8) -> bool {
+	for rest := bytes; len(rest) > 0; {
+		n, werr := linux.write(fd, rest)
+		if werr == .EINTR { continue }
+		if werr != .NONE || n <= 0 { return false }
+		rest = rest[n:]
+	}
+	return true
+}
+
+// The memory file as an io.Writer, for print_document_pdf, which writes the pages as it renders them.
+@(private = "file")
+print_fd_stream :: proc(data: rawptr, mode: io.Stream_Mode, p: []byte, offset: i64, whence: io.Seek_From) -> (n: i64, err: io.Error) {
+	#partial switch mode {
+	case .Write:
+		if !print_write_all(linux.Fd(i32(uintptr(data))), p) { return 0, .Unknown }
+		return i64(len(p)), nil
+	case .Query:
+		return io.query_utility({.Write, .Query})
+	}
+	return 0, .Unsupported
 }
 
 // A call of the print portal that answers on a request's Response, waited for (the person takes their time). False:

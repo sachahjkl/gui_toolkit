@@ -7,8 +7,10 @@
 //
 //     integration_windows.odin   Start menu and desktop shortcuts (IShellLink, with the AppUserModelID), the user's PATH
 //                                with a console launcher, and, for a browser, the registration as a candidate browser
-//                                (StartMenuInternet, RegisteredApplications, a ProgID) with the program's URL schemes
-//     integration_linux.odin     the XDG .desktop file, the icons of the hicolor theme, a link in ~/.local/bin
+//                                (StartMenuInternet, RegisteredApplications, a ProgID) with the program's URL schemes,
+//                                the default file manager, and a ProgID per document type (documents_windows.odin)
+//     integration_linux.odin     the XDG .desktop file, the icons of the hicolor theme, a link in ~/.local/bin, the
+//                                defaults of mimeapps.list
 //     integration_darwin.odin    nothing that makes sense for an executable outside a bundle (documented stub)
 //     integration_other.odin     every other target: unsupported
 //
@@ -87,11 +89,24 @@ Icon :: struct {
 	png:  []byte,
 }
 
+// A type of document the program opens (Integration_Options.document_types): the program's constant.
+Document_Type :: struct {
+	extension:   string,   // with its dot, letters and digits (".pdf"): Windows names the type by it
+	mime:        string,   // "application/pdf": Linux names the type by it
+	description: string,   // "PDF Document": what Windows calls a file of the type ("" = the program's name)
+}
+
 Integration_Options :: struct {
 	identity:         Identity,
 	exe:              string,     // the program to integrate (absolute); "" = the running executable
 	register_browser: bool,       // also register as a browser: http(s) addresses, the file types, the program's URL schemes
 	file_types:       []string,   // extensions with their dot (".html"): registered when register_browser
+
+	// The program as a handler of its documents (src/md/features/document-handler.md). The types are shared by
+	// options_clone, as the icons are.
+	document_types:    []Document_Type,
+	open_documents:    bool,   // the program is in "Open with" of each type (Part.Documents)
+	default_documents: bool,   // and their default (Part.Default_Documents, Linux; Windows: install opens Settings at the program's page); implies open_documents
 
 	// What an installation of these options has (`install` writes the parts that are on and takes away the ones that are
 	// off: that is what "Modify" does; `remove` takes away all of them).
@@ -128,6 +143,8 @@ Part :: enum u8 {
 	Path,               // the program on the user's PATH (Windows: its folder; Linux: a link in ~/.local/bin)
 	Autostart,          // the program starts with the user's session (Linux: an XDG autostart entry; Windows: HKCU\...\Run)
 	File_Manager,       // the program opens folders (Linux: the default of inode/directory; Windows: folders, drives and Win+E)
+	Documents,          // the program is in "Open with" of its document types (Linux: the entry's MimeType; Windows: a ProgID each)
+	Default_Documents,  // the program is the default of its document types (Linux: mimeapps.list; Windows has no such part)
 }
 Parts :: bit_set[Part]
 
@@ -266,8 +283,28 @@ parts_wanted :: proc(b: ^Backend, o: ^Integration_Options) -> Parts {
 	if !o.autostart { w -= {.Autostart} }
 	if !o.default_file_manager { w -= {.File_Manager} }
 	if !o.register_browser { w -= {.Registration} }
+	if !opens_documents(o) { w -= {.Documents} }
+	if !o.default_documents || len(o.document_types) == 0 { w -= {.Default_Documents} }
 	if len(o.icons) == 0 { w -= {.Icons} }   // nothing to install: nothing to miss
 	return w
+}
+
+// The options ask for the Documents part: a default counts only for a program associated with the type, so
+// default_documents asks for it too; no type, nothing to associate.
+opens_documents :: proc(o: ^Integration_Options) -> bool {
+	return (o.open_documents || o.default_documents) && len(o.document_types) > 0
+}
+
+// The MIME types of the program's documents, each once, in order (temp memory).
+@(private)
+document_mimes :: proc(o: ^Integration_Options) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	for d in o.document_types {
+		seen := false
+		for m in out { if m == d.mime { seen = true; break } }
+		if !seen { append(&out, d.mime) }
+	}
+	return out[:]
 }
 
 // What the platform's integration of `o` looks like on the disk. `o.exe` is the program it should run.
@@ -344,6 +381,14 @@ validate :: proc(o: ^Integration_Options, need_exe: bool) -> Result {
 	for a in id.actions {
 		if a.id == "" || !all_of(a.id, key_char) || a.name == "" { return {.Bad_Options, "identity.actions have an id of letters, digits and '-', and a name"} }
 	}
+	// (an extension makes a ProgID, which holds letters, digits and periods only; a MIME type is written in a line of
+	// MimeType= and of mimeapps.list, where ';' and '=' separate)
+	for d in o.document_types {
+		if len(d.extension) < 2 || d.extension[0] != '.' || !all_of(d.extension[1:], lower_or_digit) { return {.Bad_Options, "a document type's extension is a dot, then lower case letters and digits"} }
+		slash := strings.index_byte(d.mime, '/')
+		if slash <= 0 || slash == len(d.mime) - 1 || strings.count(d.mime, "/") != 1 || !all_of(d.mime, mime_char) { return {.Bad_Options, "a document type's mime is a MIME type (\"application/pdf\")"} }
+		if strings.contains_any(d.description, "\n\r\t\x00") { return {.Bad_Options, "a document type's description is one line"} }
+	}
 	if len(launcher_bytes(o)) > 0 && launcher_mark_of(id) == "" { return {.Bad_Options, "a launcher needs identity.launcher_mark"} }
 	if o.exe == "" { o.exe = process.executable_path() }
 	if need_exe {
@@ -367,6 +412,12 @@ slug_char :: proc(c: u8, _: bool) -> bool { return c >= 'a' && c <= 'z' || c >= 
 
 @(private = "file")
 key_char :: proc(c: u8, first: bool) -> bool { return letter_or_digit(c, first) || c == '-' }
+
+@(private = "file")
+lower_or_digit :: proc(c: u8, _: bool) -> bool { return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' }
+
+@(private = "file")
+mime_char :: proc(c: u8, first: bool) -> bool { return letter_or_digit(c, first) || c == '/' || c == '-' || c == '+' || c == '.' || c == '_' }
 
 @(private = "file")
 scheme_char :: proc(c: u8, first: bool) -> bool { return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '+' || c == '.' }
