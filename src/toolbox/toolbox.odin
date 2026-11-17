@@ -10,6 +10,7 @@
 //	sha256_hex       the SHA-256 of bytes, 64 lower-case hex digits
 //	sha256_file      the same of a file
 //	download_pinned  a file kept when its SHA-256 is the pinned one, else downloaded (curl) and checked
+//	test262_fetch    the ECMAScript test suite and QuickJS-ng's test262.conf, pinned, in a run folder (test262.odin)
 //	start_group      (Linux) a command in a process group of its own; stop_group stops all of that group
 //	system_program   a program of the system (curl, tar) by its full path on Windows, by its name elsewhere
 //	write_logo       the files of a program's logo, from its drawing: PNG sizes, the .ico, the project's picture

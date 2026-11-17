@@ -2,7 +2,7 @@ package jsrt_judge
 
 // A poor man's sampling profiler for `judge eval` (JSRT_PROF=1): a thread suspends the interpreter thread every
 // ~0.5 ms, records its RIP, and prints the hottest functions and source lines at exit. Needs a build with -debug
-// (the PDB gives the names). Not part of the engine; a measuring aid for src/engine/jsrt.
+// (the PDB gives the names). Not part of the engine; a measuring aid for src/js.
 
 import "core:fmt"
 import "core:slice"

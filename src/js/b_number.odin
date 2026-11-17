@@ -1,7 +1,7 @@
 package jsrt
 
 // Number, Math and BigInt (ECMA-262 Â§21). Number<->string conversions come from
-// src/engine/numconv (exact, QuickJS-compatible dtoa), arbitrary precision from src/engine/bigint.
+// src/js/numconv (exact, QuickJS-compatible dtoa), arbitrary precision from src/js/bigint.
 
 import "core:math"
 import "bigint"

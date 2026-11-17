@@ -17,6 +17,13 @@
 //                                             -odin: the compiler whose vendor folder it is (default: odin on the PATH)
 //   gen_lucide                                src/lucide/lucide.odin from lucide.ttf: a constant per icon, named after its glyph
 //   gen_emoji_data [-data:file]               font/emoji_data.odin from Unicode's emoji-data.txt (default build/emoji/emoji-data.txt)
+//   gen_js_unicode [-force]                   src/js/unicode/tables_generated.odin from the Unicode Character Database 17.0.0, each
+//                                             file pinned by SHA-256 and cached in build/ucd (-force: downloaded again), through
+//                                             tools/js_unicode_gen (js.odin)
+//   js_test262 [-filter:text] [-stride:k] [-jobs:n]
+//                                             test262 on gt:js: the suite and QuickJS-ng 0.17.0's test262.conf (toolbox.test262_fetch)
+//                                             -> build/test262/run, tools/js_judge built with a 64 MiB main stack, its results
+//                                             -> build/test262/jsrt_errors.txt and jsrt_table.md; not part of ci (a download, minutes)
 //   make_icon -png:file -out:file             a multi-size .ico (PNG, 16 to 256 px) from the 512 px logo
 //   make_logo [-out:file]                     draws the logo, 512 px (default .project/image.png)
 //   ppm_diff a.ppm b.ppm [-tolerance:2]       two P6 PPM files (tools/render_probe): the largest and mean difference of a channel, and
@@ -29,8 +36,9 @@
 //                                             step-th emoji of emoji-test.txt and a few hard ones -> <out-dir>/side.png and the numbers
 //   build [example] [-debug]                 an example (default fidget) -> build/<example>[.exe], optimized or with debug
 //                                             information; Windows: no console, its .rc; Linux: the native text backend first
-//   ci                                        what the CI checks on this system: odin check of every package and tool, the examples, the
-//                                             tests (tools/run_tests); every step runs, then the failures are said
+//   ci                                        what the CI checks on this system: odin check of every package and tool (gt:js's also for
+//                                             freestanding_wasm32), the examples, the tests (tools/run_tests); every step runs, then the
+//                                             failures are said
 //   desktop_tests [x11|randr|wayland]       Linux: the backends against real servers on a virtual desktop nobody sees (Xvfb and
 //                                             openbox, Xorg's dummy driver with two monitors, headless sway): tests/linux_desktop
 //   site_build <site> <out>                   the site as published: site_changelog, site_meta, site_docs into <out>, its pictures in WebP
@@ -83,6 +91,8 @@ COMMANDS := []toolbox.Command {
 	{name = "emoji_board", usage = "[-size:32] [-scale:1] [-step:37] [-font:ttf] [-out-dir:dir]: the COLR interpreter against a headless Edge", checked = true, flags = {"size:", "scale:", "step:", "font:", "out-dir:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_emoji_board(args)) }},
 	{name = "crash_symbolize", usage = "<report> <symbols>: a crash report with the program's frames named (a map, a folder of maps, or the executable)", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_crash_symbolize(args)) }},
 	{name = "gen_lucide", usage = ": src/lucide/lucide.odin from lucide.ttf, a constant per icon", checked = true, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_gen_lucide(args)) }},
+	{name = "gen_js_unicode", usage = "[-force]: src/js/unicode/tables_generated.odin from the pinned Unicode Character Database (tools/js_unicode_gen)", checked = true, flags = {"force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_gen_js_unicode(args)) }},
+	{name = "js_test262", usage = "[-filter:text] [-stride:k] [-jobs:n]: test262 on gt:js with the native judge (tools/js_judge) -> build/test262", checked = true, flags = {"filter:", "stride:", "jobs:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_js_test262(args)) }},
 	{name = "release", usage = "<patch|minor|major|x.y.z> [-summary:text] [-no-push]: publishes a version of the toolkit (release.odin)", checked = true, flags = {"summary:", "no-push"}, positionals = 1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_release(args)) }},
 	{name = "build", usage = "[example] [-debug]: an example (default fidget) -> build/<example>, optimized or with debug information", checked = true, flags = {"debug"}, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build(args)) }},
 	{name = "site_docs", usage = "<site> <out>: every docs/*.md as a page of <out>/docs, docs/_nav.txt the menu", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_docs(args)) }},

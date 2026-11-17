@@ -67,7 +67,7 @@ fuzz_main :: proc(dir: string, iterations: int, seed: u64) -> int {
 	{
 		cfgr := js.DEFAULT_CONFIG
 		cfgr.compile = compile_hook()
-		rt := js.engine_new(context.allocator, cfgr)
+		rt := judge_engine_new(cfgr)
 		ctx := js.context_new(rt)
 		for p in files {
 			data, err := os.read_entire_file(p, context.temp_allocator)
@@ -77,7 +77,7 @@ fuzz_main :: proc(dir: string, iterations: int, seed: u64) -> int {
 			free_all(context.temp_allocator)
 		}
 		_ = ctx
-		js.engine_free(rt)
+		judge_engine_free(rt)
 	}
 	run_mutants := os.get_env("JSRT_FUZZ_RUN", context.temp_allocator) == "1"
 	fmt.eprintf("fuzz: %d files, %d bytecode images, %d iterations, seed %d%s\n", len(files), len(corpus), iterations, seed, run_mutants ? ", running the accepted mutants" : "")
@@ -114,7 +114,7 @@ fuzz_main :: proc(dir: string, iterations: int, seed: u64) -> int {
 		cfgr.interrupt = fuzz_interrupt
 		cfgr.interrupt_user = &h
 		cfgr.malloc_limit = FUZZ_HEAP_LIMIT
-		rt := js.engine_new(context.allocator, cfgr)
+		rt := judge_engine_new(cfgr)
 		ctx := js.context_new(rt)
 		v := js.read_object(ctx, img)
 		if !js.is_exception(v) && (v.tag != .function_bc || js.bytecode_read_all(ctx, cast(^js.Function_Bytecode)v.u.ptr)) {
@@ -129,7 +129,7 @@ fuzz_main :: proc(dir: string, iterations: int, seed: u64) -> int {
 		} else {
 			js.pending_exception(ctx)
 		}
-		js.engine_free(rt)
+		judge_engine_free(rt)
 		free_all(context.temp_allocator)
 		if (it + 1) % FUZZ_BC_REPORT_EVERY == 0 {
 			fmt.eprintf("fuzz: %d/%d (accepted %d, threw %d, completed %d) %.0f s\n", it + 1, iterations, accepted, threw, completed, time.duration_seconds(time.tick_since(t0)))
@@ -209,7 +209,7 @@ fuzz_src_main :: proc(dir: string, iterations: int, seed: u64) -> int {
 		cfgr.interrupt_user = &h
 		cfgr.malloc_limit = FUZZ_HEAP_LIMIT
 		cfgr.max_stack_bytes = FUZZ_SRC_STACK_BYTES
-		rt := js.engine_new(context.allocator, cfgr)
+		rt := judge_engine_new(cfgr)
 		ctx := js.context_new(rt)
 		for hs, i in harness {
 			js.eval_source(ctx, hs, harness_names[i])
@@ -218,7 +218,7 @@ fuzz_src_main :: proc(dir: string, iterations: int, seed: u64) -> int {
 		r := js.eval_source(ctx, string(buf[:]), "fuzz.js")
 		if js.is_exception(r) {threw += 1; js.pending_exception(ctx)} else {compiled += 1}
 		js.run_jobs(rt)
-		js.engine_free(rt)
+		judge_engine_free(rt)
 		free_all(context.temp_allocator)
 		if (it + 1) % FUZZ_SRC_REPORT_EVERY == 0 {
 			fmt.eprintf("fuzzsrc: %d/%d (ran %d, threw or failed to compile %d) %.0f s\n", it + 1, iterations, compiled, threw, time.duration_seconds(time.tick_since(t0)))
@@ -261,7 +261,7 @@ fuzz_run_one :: proc(path: string) -> int {
 	cfgr := js.DEFAULT_CONFIG
 	cfgr.interrupt = fuzz_interrupt
 	cfgr.interrupt_user = &h
-	rt := js.engine_new(context.allocator, cfgr)
+	rt := judge_engine_new(cfgr)
 	ctx := js.context_new(rt)
 	r := js.eval_bytecode(ctx, img)
 	if js.is_exception(r) {
@@ -271,7 +271,7 @@ fuzz_run_one :: proc(path: string) -> int {
 	} else {
 		fmt.println("completed")
 	}
-	js.engine_free(rt)
+	judge_engine_free(rt)
 	return 0
 }
 

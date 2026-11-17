@@ -1,7 +1,7 @@
 package jsrt
 
 // The regexp matcher: executes libregexp bytecode, the format QuickJS-ng 0.17's lre_compile emits and
-// that the Odin front-end (src/engine/frontend, fe.lre_compile) reproduces byte for byte. Regexp
+// that the Odin front-end (src/js/frontend, fe.lre_compile) reproduces byte for byte. Regexp
 // literals reach the runtime already compiled in this format (the second operand of OP_regexp), and
 // the RegExp constructor compiles with the same front-end function, so one matcher serves both.
 //

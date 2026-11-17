@@ -84,6 +84,33 @@ one after the other are correct. The ROADMAP moves this state into `Runtime`.
 
 A runtime is used by one thread at a time.
 
+## The libraries
+
+Each sub-package works alone. Each makes no system call and builds for `freestanding_wasm32` too.
+
+```odin
+import rx "gt:js/regexp"
+re, err := rx.compile(pattern, rx.parse_flags("giu"), allocator)   // err.message, err.pos
+defer rx.destroy(&re)
+caps: rx.Captures
+st := rx.exec_search(&re, rx.input_utf8_string(text), 0, &caps, limits, allocator)   // .Match, .No_Match, .Out_Of_Steps, .Stack_Overflow
+```
+
+- `gt:js/regexp`: ECMAScript regular expressions, flags `d g i m s u v y`. Input is UTF-16 (`input_utf16`, offsets in
+  UTF-16 units) or UTF-8 (`input_utf8`, `input_utf8_string`, offsets in bytes). `exec` tries one start, `exec_search`
+  scans from `start` (the `y` flag forbids it to advance). `named_group_index` finds a named group. `Exec_Limits` bounds a
+  run; `limits_from_prefs` reads the preferences `regexp.exec.max_steps` and `regexp.exec.max_stack`.
+- `gt:js/unicode` (package `ucd`): `Char_Range` interval sets (`cr_init`, `general_category`, `cr_op_inplace`,
+  `cr_invert`, `cr_contains`), `simple_case`, `full_case`, `canonicalize`, the identifier and white space predicates,
+  and `normalize` (NFC, NFD, NFKC, NFKD).
+- `gt:js/bigint`: `from_i64`, `from_u64`, `from_f64`, `from_string` (bases 2–36) and back; `add`, `sub`, `mul`, `div`,
+  `rem`, `divmod`, `pow`, `shl`, `shr`, the bitwise operations, `as_intn`, `as_uintn`, `cmp`. Each result is allocated in
+  `context.allocator`: free it with `destroy`. Division by zero returns zero: check it first.
+- `gt:js/numconv`: `f64_to_shortest`, `f64_to_radix`, `f64_to_fixed`, `f64_to_exponential`, `f64_to_precision` into a
+  buffer of `MAX_STR_LEN` bytes; `parse_number`, `parse_float`, `parse_int`. The bytes are QuickJS's.
+- `gt:js/datetime` (package `jsdate`): `get_date_fields`, `set_date_fields`, `format_date` (`.ISO`, `.UTC`, `.ToString`,
+  `.Locale`) and `parse`, on `f64` milliseconds since the epoch. Local time is UTC until `timezone_offset_proc` is set.
+
 ## Wren
 
 Wren builds the same packages for `freestanding_wasm32` and runs the engine in Wasmtime, with its web glue and its
@@ -94,7 +121,17 @@ toolkit runs `gt:js` natively.
 
 - `tools/js_judge`: runs a script (`eval`), one test262 test (`test`) or the test262 suite (`test262`), natively.
   Link it with a 64 MiB main stack.
-- `tools/js_parse_judge`: the front-end's judge.
-- `tools/js_unicode_gen`: makes `src/js/unicode/tables_generated.odin` from the pinned Unicode Character Database.
+- `odin run tools/tk -- js_test262 [-filter:text] [-stride:k] [-jobs:n]`: fetches the pinned suite and QuickJS-ng's
+  `test262.conf` into `build/test262/run`, builds the judge with its stack, and runs the suite in worker processes (a
+  crash or a hang costs one test). The failures are in `build/test262/jsrt_errors.txt`, the table by directory in
+  `jsrt_table.md`. Every directory passes all that QuickJS-ng passes; the tests that fail are the ones QuickJS-ng fails too.
+- `tools/js_parse_judge`: the front-end's judge. `emit` and `emit-module` write the serialized bytecode of a file;
+  `batch` and `diff-batch` compare a folder with a reference compiler's output; `decode` disassembles; `speed` and
+  `prof` measure; `fuzz` mutates sources.
+- `odin run tools/tk -- gen_js_unicode [-force]`: makes `src/js/unicode/tables_generated.odin` from the pinned Unicode
+  Character Database (`tools/js_unicode_gen`). The tables are committed: a build needs no network.
+- The judge also profiles on Windows (`JSRT_PROF=1 js_judge eval f.js`, built with `-debug`), counts the heap by kind of cell
+  (`JSRT_MEMPROF=1`), and fuzzes (`js_judge fuzz <dir>` mutates serialized bytecode; `fuzzsrc <dir>` mutates source
+  text; `JSRT_FUZZ_RUN=1` also runs the mutants that load).
 - `odin run tools/run_tests -- js js_pkg js_regexp`: two runtimes embedded as a program embeds one, and the
   engine's unit tests.

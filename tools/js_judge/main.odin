@@ -1,6 +1,6 @@
 package jsrt_judge
 
-// The judge of the Odin JavaScript runtime: runs scripts and test262 on src/engine/jsrt.
+// The judge of the Odin JavaScript runtime: runs scripts and test262 on src/js.
 //
 //   judge eval <file.js>            run a script (print() available), show the completion value
 //   judge test <test262 file>       run one test262 test, verbosely
@@ -13,7 +13,7 @@ package jsrt_judge
 //       -out <dir>       results: errors.txt, table.md (default build/test262)
 //   judge worker <list> internal: run the listed tests, one result line per test
 //
-// Front-end: source text is compiled by the engine's own Odin front-end (src/engine/frontend, through
+// Front-end: source text is compiled by the engine's own Odin front-end (src/js/frontend, through
 // jsrt.frontend_compile).
 
 import "base:runtime"
@@ -28,7 +28,7 @@ import "core:time"
 import js "../../src/js"
 import jsdate "../../src/js/datetime"
 
-// The judge is linked with a 64 MiB main-thread stack (/STACK, see wrentool engine test262); the engine may use 48 MiB of it.
+// The judge runs with a 64 MiB main-thread stack (tk js_test262: /STACK on Windows, the stack's limit on Linux); the engine may use 48 MiB of it.
 JUDGE_STACK_BYTES :: 48 << 20
 // How long a test may run, and an agent thread of one; the interrupt hook ends it past this.
 TEST_DEADLINE :: 20 * time.Second
@@ -553,7 +553,7 @@ run_test262_file :: proc(cfg: ^Config, hc: ^Harness_Cache, rel: string, verbose:
 	cfgr.can_block = can_block
 	cfgr.malloc_limit = 1 << 30
 	agent_hooks(&cfgr)
-	rt := js.engine_new(context.allocator, cfgr)
+	rt := judge_engine_new(cfgr)
 	rt.host_data = h
 	set_host_hooks()
 	ctx := js.context_new(rt)
@@ -562,7 +562,7 @@ run_test262_file :: proc(cfg: ^Config, hc: ^Harness_Cache, rel: string, verbose:
 	defer {
 		res.ms = time.duration_milliseconds(time.tick_since(t0))
 		agent_stop_all()
-		js.engine_free(rt)
+		judge_engine_free(rt)
 		strings.builder_destroy(&h.output)
 		delete(h.modules)
 		free(h)
@@ -935,7 +935,7 @@ report :: proc(cfg: ^Config, results: ^map[string]Result, out_dir: string) {
 	_ = os.write_entire_file(fmt.tprintf("%s/jsrt_errors.txt", out_dir), errs.buf[:])
 	md := strings.builder_make()
 	pct :: proc(a, b: int) -> f64 {return b == 0 ? 100 : 100 * f64(a) / f64(b)}
-	fmt.sbprintf(&md, "# test262 on the Odin runtime (src/engine/jsrt)\n\n")
+	fmt.sbprintf(&md, "# test262 on the Odin runtime (src/js)\n\n")
 	fmt.sbprintf(&md, "Overall: %d/%d passed (%.2f %%); of the tests QuickJS-ng passes: %d/%d (%.2f %%); skipped %d\n\n", all.pass, all.total, pct(all.pass, all.total), all.both_pass, all.qjs_pass, pct(all.both_pass, all.qjs_pass), all.skip)
 	write_table :: proc(md: ^strings.Builder, m: map[string]Bucket, title: string) {
 		names := make([dynamic]string, context.temp_allocator)
@@ -977,7 +977,7 @@ eval_main :: proc(path: string) -> int {
 	cfgr.load_user = h
 	cfgr.interrupt = judge_interrupt
 	cfgr.interrupt_user = h
-	rt := js.engine_new(context.allocator, cfgr)
+	rt := judge_engine_new(cfgr)
 	rt.host_data = h
 	set_host_hooks()
 	ctx := js.context_new(rt)
@@ -1022,7 +1022,7 @@ eval_main :: proc(path: string) -> int {
 		js.collect(rt)
 		print_heap_profile(rt)
 	}
-	js.engine_free(rt)
+	judge_engine_free(rt)
 	return code
 }
 

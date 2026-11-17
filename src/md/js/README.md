@@ -25,7 +25,16 @@ What stays in Wren, and why:
 - **The Wasm test262 runner**: it tests the shipped image. The native judge (`tools/js_judge`) tests `gt:js`.
 
 What moved: the engine and its six libraries, the judges (`tools/js_judge`, `tools/js_parse_judge`) and the generator
-of the Unicode tables (`tools/js_unicode_gen`).
+of the Unicode tables (`tools/js_unicode_gen`), with their automation (`tk gen_js_unicode`, `tk js_test262`,
+`toolbox.test262_fetch`: one pin of test262 for Wren's runner and the toolkit's).
+
+## The parts
+
+- [runtime.md](runtime.md): the runtime, `src/js`: values, objects, the collector, the bytecode reader, the interpreter.
+- [frontend.md](frontend.md): the compiler to QuickJS-ng bytecode.
+- [jit.md](jit.md): the JIT to WebAssembly, which runs only in Wren's Wasm host.
+- [regexp.md](regexp.md), [unicode.md](unicode.md), [bigint.md](bigint.md), [numconv.md](numconv.md),
+  [datetime.md](datetime.md): the leaf libraries.
 
 ## Memory: the embedder passes the allocator
 

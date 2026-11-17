@@ -195,12 +195,12 @@ agent_main :: proc(data: rawptr) {
 	cfgr.can_block = true
 	cfgr.malloc_limit = 1 << 29
 	agent_hooks(&cfgr)
-	rt := js.engine_new(context.allocator, cfgr)
+	rt := judge_engine_new(cfgr)
 	rt.host_data = h
 	ctx := js.context_new(rt)
 	install_helpers(ctx)
 	defer {
-		js.engine_free(rt)
+		judge_engine_free(rt)
 		strings.builder_destroy(&h.output)
 		free(h)
 	}

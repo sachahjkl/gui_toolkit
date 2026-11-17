@@ -107,6 +107,19 @@ program of that name earlier on the PATH. On other systems, `system_program` ret
 
 `release_asset_id(release_json, name)` reads the id of an asset from the answer of GitHub's API for a release ("": none).
 
+## test262
+
+`test262_fetch(dir, log)` puts in `dir` what a run of the ECMAScript test suite reads, and returns "" or why not:
+
+- `dir/test262`: tc39/test262 at the commit QuickJS-ng 0.17.0 runs (`TEST262_COMMIT`), from a GitHub archive pinned by
+  SHA-256. Its `COMMIT` file says which commit is unpacked. If it is another, the suite is unpacked again.
+- `dir/test262.conf`, `test262-fast.conf` and `test262_errors.txt`: QuickJS-ng's runner configuration
+  (`TEST262_QJS_VERSION`), unchanged, from its release source. A file is written only when it differs, so two runs can
+  share `dir`.
+
+The archives and QuickJS-ng's source stay in `dir`. `tk js_test262` (the toolkit's native judge) and Wren's runner of its
+Wasm image call it, so both judge against the same suite and the same reference.
+
 The tests (`odin test src/toolbox`) run without a network: the hashes, `env_with`, a run with a log and a time limit, a
 capture in another folder and environment, a pinned file kept, a `file:` URL downloaded, and a wrong SHA-256 refused.
 

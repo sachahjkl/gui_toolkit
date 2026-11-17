@@ -1,6 +1,6 @@
 package jsrt
 
-// The engine's own compiler: the Odin front-end (src/engine/frontend) turns source text into
+// The engine's own compiler: the Odin front-end (src/js/frontend) turns source text into
 // QuickJS-ng 0.17 bytecode, serialized with JS_WriteObject's layout, which read_object loads. This is
 // the default Host_Config.compile; the front-end works in a scratch arena released after each call.
 

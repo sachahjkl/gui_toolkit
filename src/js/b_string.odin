@@ -1,7 +1,7 @@
 package jsrt
 
 // String: the constructor, the statics, String.prototype and the String iterator (ECMA-262 §22.1).
-// Case mapping and normalization come from the Unicode tables of src/engine/unicode.
+// Case mapping and normalization come from the Unicode tables of src/js/unicode.
 
 import "base:intrinsics"
 import ucd "unicode"

@@ -17,6 +17,8 @@ gt_collection :: proc(root: string) -> string { return fmt.tprintf("-collection:
 EXAMPLES       :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "stream", "panes", "docking", "cursors", "markdown", "whatsnew", "showcase"}
 CI_EXAMPLES_WINDOWS :: [?]string{"hello", "fidget", "todo", "smoke", "transforms", "effects", "docking", "showcase"}
 CI_EXAMPLES_LINUX   :: [?]string{"hello", "smoke", "todo", "markdown", "panes", "docking", "whatsnew", "showcase"}
+// gt:js and its sub-packages, checked for freestanding_wasm32 too (Wren's target for them).
+JS_WASM_PACKAGES :: [?]string{"js", "js/bigint", "js/datetime", "js/frontend", "js/numconv", "js/regexp", "js/unicode"}
 
 
 // The packages of the library: every folder under src/ that holds Odin files (a list written by hand forgot ten).
@@ -114,7 +116,8 @@ build_example :: proc(root, example: string, debug: bool) -> string {
 }
 
 // ci: what the CI checks on this system, every step run whatever an earlier one said, then the failures. odin check -vet of every
-// package and of every tool under tools/ (Linux: for Linux, with the native text backend, and for Windows), doc_check, the CI's examples built, and the tests of tools/run_tests (its list
+// package and of every tool under tools/ (Linux: for Linux, with the native text backend, and for Windows), gt:js's packages
+// for freestanding_wasm32, doc_check, the CI's examples built, and the tests of tools/run_tests (its list
 // says which run here; Linux's pixels: Vulkan's software rasterizer).
 run_ci :: proc(args: []string) -> string {
 	root := toolkit_root()
@@ -144,6 +147,16 @@ run_ci :: proc(args: []string) -> string {
 				fmt.printfln("check FAIL %s (windows)", p)
 				append(&failed, fmt.tprintf("check %s (windows)", p))
 			}
+		}
+	}
+	// (Wren builds gt:js into its engine's image for wasm32: without this a change to config, fsx, i18n or base, which
+	// gt:js imports, breaks Wren's image and no check of the toolkit sees it)
+	for p in JS_WASM_PACKAGES {
+		if toolbox.odin_check(join({root, "src", p}), "freestanding_wasm32", {"-no-entry-point"}, join({root, toolbox.CHECK_ROOT_DEFAULT})) {
+			fmt.printfln("check ok   %s (wasm32)", p)
+		} else {
+			fmt.printfln("check FAIL %s (wasm32)", p)
+			append(&failed, fmt.tprintf("check %s (wasm32)", p))
 		}
 	}
 	for t in tool_packages(root) {

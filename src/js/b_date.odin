@@ -1,6 +1,6 @@
 package jsrt
 
-// Date (ECMA-262 Ã‚Â§21.4) on the calendar arithmetic of src/engine/datetime (package jsdate). The clock
+// Date (ECMA-262 Ã‚Â§21.4) on the calendar arithmetic of src/js/datetime (package jsdate). The clock
 // and the local time zone come from the host (date_now_hook, jsdate.timezone_offset_proc).
 
 import "core:math"
