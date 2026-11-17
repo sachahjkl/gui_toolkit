@@ -20,6 +20,7 @@ package tk_desktop
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "../fsx"
 import i18n "../i18n"
 import "../process"
 
@@ -95,16 +96,16 @@ installed_info :: proc(o: ^Integration_Options, dir: string, allocator := contex
 	i: Install_Info
 	if dir == "" { return i }
 	i.dir = strings.clone(dir, allocator)
-	i.exe = strings.clone(join_path(dir, exe_name_of(o.identity)), allocator)
+	i.exe = strings.clone(fsx.path_join(dir, exe_name_of(o.identity)), allocator)
 	i.exe_present = os.is_file(i.exe)
-	m, ok := manifest_read(join_path(dir, o.identity.manifest_name), context.temp_allocator)
+	m, ok := manifest_read(fsx.path_join(dir, o.identity.manifest_name), context.temp_allocator)
 	if ok {
 		i.manifest = true
 		i.version = strings.clone(m.version, allocator)
 		i.channel = strings.clone(m.channel, allocator)
 		i.files = len(m.files)
 		// (exists, not is_file: NixOS's runtime is a link to a folder; a link whose target is gone counts as missing)
-		for f in m.files { if !os.exists(join_path(dir, f)) { i.missing += 1 } }
+		for f in m.files { if !os.exists(fsx.path_join(dir, f)) { i.missing += 1 } }
 	}
 	return i
 }
@@ -149,7 +150,7 @@ probe_dir :: proc(dir: string) -> string {
 		if anc == "" || (len(anc) == 2 && anc[1] == ':') { anc = strings.concatenate({anc, "\\"}, context.temp_allocator); break }
 	}
 	if !os.is_dir(anc) { return fmt.tprintf(i18n.tr("%s is a file, not a folder."), anc) }
-	probe := join_path(anc, PROBE_NAME)
+	probe := fsx.path_join(anc, PROBE_NAME)
 	if err := os.write_entire_file(probe, "x"); err != nil { return fmt.tprintf(i18n.tr("Cannot write in %s."), anc) }
 	_ = os.remove(probe)
 	return ""
@@ -233,7 +234,7 @@ files_install :: proc(plan: Install_Plan) -> Result {
 	// a folder of the package is copied whole: the install folder cannot be that folder or inside it (it would be copied into itself)
 	for name in plan.payload {
 		rel, _ := strings.replace_all(strings.trim(name, "\\/"), "\\", "/", context.temp_allocator)
-		src := join_path(process.parent_dir(plan.src_exe), rel)
+		src := fsx.path_join(process.parent_dir(plan.src_exe), rel)
 		if rel != "" && !strings.contains(rel, "..") && os.is_dir(src) && (same_path(plan.dir, src) || is_inside(plan.dir, src)) {
 			return {.Bad_Options, strings.concatenate({"the install folder ", plan.dir, " is inside ", src, ", which is copied into it"}, context.temp_allocator)}
 		}
@@ -241,7 +242,7 @@ files_install :: proc(plan: Install_Plan) -> Result {
 	if !ensure_dir(plan.dir) { return {.Io, strings.concatenate({"cannot create ", plan.dir}, context.temp_allocator)} }
 
 	files := make([dynamic]string, context.temp_allocator)
-	if r := place_file(plan.src_exe, join_path(plan.dir, plan.exe_name)); r.error != .None { return r }
+	if r := place_file(plan.src_exe, fsx.path_join(plan.dir, plan.exe_name)); r.error != .None { return r }
 	append(&files, plan.exe_name)
 
 	src_dir := process.parent_dir(plan.src_exe)
@@ -249,19 +250,19 @@ files_install :: proc(plan: Install_Plan) -> Result {
 		rel, _ := strings.replace_all(strings.trim(name, "\\/"), "\\", "/", context.temp_allocator)
 		if rel == "" || strings.contains(rel, "..") || strings.contains(rel, ":") { continue }
 		if rel == plan.exe_name { continue }
-		src := join_path(src_dir, rel)
+		src := fsx.path_join(src_dir, rel)
 		if os.is_file(src) {
-			if r := place_file(src, join_path(plan.dir, rel)); r.error != .None { return r }
+			if r := place_file(src, fsx.path_join(plan.dir, rel)); r.error != .None { return r }
 			append(&files, rel)
 		} else if os.is_dir(src) {
-			if r := place_tree(src, join_path(plan.dir, rel), rel, &files); r.error != .None { return r }
+			if r := place_tree(src, fsx.path_join(plan.dir, rel), rel, &files); r.error != .None { return r }
 		}
 	}
 	if plan.adapt {
 		if r := nixos_adapt(plan.identity, plan.dir, plan.exe_name, &files); r.error != .None { return r }
 	}
 	text := manifest_text(plan, files[:])
-	manifest := join_path(plan.dir, plan.identity.manifest_name)
+	manifest := fsx.path_join(plan.dir, plan.identity.manifest_name)
 	if err := os.write_entire_file(manifest, text); err != nil { return {.Io, strings.concatenate({"cannot write ", manifest}, context.temp_allocator)} }
 	return {}
 }
@@ -275,10 +276,10 @@ place_tree :: proc(src_dir, dst_dir, rel: string, files: ^[dynamic]string) -> Re
 		rel_child := strings.concatenate({rel, "/", fi.name}, context.temp_allocator)
 		switch fi.type {
 		case .Regular:
-			if r := place_file(join_path(src_dir, fi.name), join_path(dst_dir, fi.name)); r.error != .None { return r }
+			if r := place_file(fsx.path_join(src_dir, fi.name), fsx.path_join(dst_dir, fi.name)); r.error != .None { return r }
 			append(files, rel_child)
 		case .Directory:
-			if r := place_tree(join_path(src_dir, fi.name), join_path(dst_dir, fi.name), rel_child, files); r.error != .None { return r }
+			if r := place_tree(fsx.path_join(src_dir, fi.name), fsx.path_join(dst_dir, fi.name), rel_child, files); r.error != .None { return r }
 		case .Undetermined, .Symlink, .Named_Pipe, .Socket, .Block_Device, .Character_Device:   // (a link is not followed: it could leave the folder)
 		}
 	}
@@ -315,10 +316,10 @@ place_file :: proc(src, dst: string) -> Result {
 
 // Removes the `.old` files an earlier replacement left in `dir` (those of the manifest's files only).
 clean_old :: proc(o: ^Integration_Options, dir: string) {
-	m, ok := manifest_read(join_path(dir, o.identity.manifest_name), context.temp_allocator)
+	m, ok := manifest_read(fsx.path_join(dir, o.identity.manifest_name), context.temp_allocator)
 	if !ok { return }
 	for f in m.files {
-		old := strings.concatenate({join_path(dir, f), OLD_SUFFIX}, context.temp_allocator)
+		old := strings.concatenate({fsx.path_join(dir, f), OLD_SUFFIX}, context.temp_allocator)
 		if os.is_file(old) { _ = os.remove(old) }
 	}
 }
@@ -341,19 +342,19 @@ files_remove :: proc(o: ^Integration_Options, dir: string) -> Remove_Files_Resul
 	r.leftovers = make([dynamic]string, context.temp_allocator)
 	if dir == "" || !os.is_dir(dir) { return r }
 	if o.identity.manifest_name == "" { r.result = {.Bad_Options, "identity.manifest_name is empty"}; return r }
-	manifest_path := join_path(dir, o.identity.manifest_name)
+	manifest_path := fsx.path_join(dir, o.identity.manifest_name)
 	m, has := manifest_read(manifest_path, context.temp_allocator)
 	names := make([dynamic]string, context.temp_allocator)
 	if has { for f in m.files { append(&names, f) } } else { append(&names, exe_name_of(o.identity)) }
 	// the console launcher is not in the manifest (the PATH option writes and takes it away): it goes with the rest, so that a
 	// launcher a running terminal holds is reported as a leftover like any other file
-	if lf := launcher_file(join_path(dir, exe_name_of(o.identity))); launcher_is_ours(o, lf) {
+	if lf := launcher_file(fsx.path_join(dir, exe_name_of(o.identity))); launcher_is_ours(o, lf) {
 		append(&names, lf[len(strings.trim_right(dir, "\\/")) + 1:])
 	}
 
 	dirs := make(map[string]bool, 8, context.temp_allocator)
 	for f in names {
-		path := join_path(dir, f)
+		path := fsx.path_join(dir, f)
 		for cand in ([]string{path, strings.concatenate({path, OLD_SUFFIX}, context.temp_allocator)}) {
 			if _, lerr := os.lstat(cand, context.temp_allocator); lerr != nil { continue }   // (lstat: a link whose target is gone goes too)
 			if err := os.remove(cand); err == nil {
@@ -388,7 +389,7 @@ files_remove :: proc(o: ^Integration_Options, dir: string) -> Remove_Files_Resul
 		for b >= 0 && len(order[b]) < len(v) { order[b + 1] = order[b]; b -= 1 }
 		order[b + 1] = v
 	}
-	for d in order { _ = os.remove(join_path(dir, d)) }   // (a non-empty folder refuses)
+	for d in order { _ = os.remove(fsx.path_join(dir, d)) }   // (a non-empty folder refuses)
 
 	if len(r.leftovers) == 0 {
 		_ = os.remove(manifest_path)
@@ -427,19 +428,6 @@ version_parts :: proc(v: string) -> []int {
 }
 
 ////////////////////////////////
-// Paths
-
-@(private)
-join_path :: proc(dir, name: string) -> string {
-	d := strings.trim_right(dir, "\\/")
-	n, _ := strings.replace_all(name, "/", sep(), context.temp_allocator)
-	return strings.concatenate({d, sep(), n}, context.temp_allocator)
-}
-
-@(private)
-sep :: proc() -> string { return SEPARATOR }
-
-////////////////////////////////
 // Uninstall: the whole installed copy
 
 // The outcome of a full uninstall: the integration, the PATH entry, the system's record and the files are all gone,
@@ -468,7 +456,7 @@ uninstall :: proc(o: ^Integration_Options, running_exe: string, allocator := con
 	// the integration is measured against (and so removes the marks of) the installed executable when there is one, else
 	// the running one: remove() deletes only what carries this program's mark, so the right executable matters.
 	prev_exe := o.exe
-	installed_exe := dir != "" ? join_path(dir, exe_name) : running_exe
+	installed_exe := dir != "" ? fsx.path_join(dir, exe_name) : running_exe
 	o.exe = installed_exe
 	defer o.exe = prev_exe
 	if r := remove(o); r.error != .None && ur.result.error == .None { ur.result = r }

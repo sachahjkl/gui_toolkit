@@ -6,6 +6,7 @@ package tk_prefs_page
 // its version, its own parts) and calls:
 //
 //   prefs_page.install_init(&app.install, &app.prefs, setup_options())   at the start, its settings loaded
+//   prefs_page.install_vendor_mark(&app.install, &renderer, VENDOR_PNG)   its renderer made: the "By" line's mark
 //   prefs_page.install_offer(&app.install, &state, offer)                 its window open: reads the install on a task
 //   if prefs_page.install_frame(&app.install) == .Launched { quit() }      each frame: the work that ended, the answer
 //   prefs_page.install_open(&app.install)                                 --setup: the setup's view now (during a build)
@@ -21,6 +22,7 @@ import desktop "../desktop"
 import i18n "../i18n"
 import lucide "../lucide"
 import process "../process"
+import "../render"
 import setup "../setup"
 import "../ui"
 
@@ -45,7 +47,10 @@ Install :: struct {
 	options:    setup.Setup_Options,   // the program's (its strings and procedures are its constants)
 	prefs:      ^config.Prefs,
 	logo:       Maybe(setup.Logo),     // the modal's mark (a texture of the program's renderer; nil: none)
-	vendor_mark: Maybe(setup.Logo),    // the vendor's mark in the "By" line of the modal and the page (nil: the name alone)
+	// the vendor's mark in the "By" line of the modal and the page (nil: the name alone): install_vendor_mark makes it,
+	// install_end frees it
+	vendor_mark: Maybe(setup.Logo),
+	mark_renderer: ^render.Renderer,   // the renderer that holds vendor_mark's texture
 	// what the start's reading found (install_offer): the program may wait for it (its updater wants to know which copy runs)
 	known:      bool,
 	running_it: bool,                  // this program is the installed copy
@@ -111,6 +116,19 @@ offer_free :: proc(data: rawptr) {
 	free(j)
 }
 
+// The vendor's mark of the "By" line in the modal and on the Installation page, from the bytes of its PNG (a program's
+// #load), as a texture of `r`, the renderer of the windows they show in. Once: a second call does nothing, so a
+// window that opens again calls it again freely. A view already open takes it at once. install_end frees it. False:
+// the bytes are no PNG (the "By" line names the vendor alone).
+install_vendor_mark :: proc(in_: ^Install, r: ^render.Renderer, png: []u8) -> bool {
+	if in_.mark_renderer != nil { return true }
+	mark, ok := setup.logo_make(r, png)
+	if !ok { return false }
+	in_.vendor_mark, in_.mark_renderer = mark, r
+	if in_.dialog.open { setup.set_vendor_mark(&in_.dialog, in_.vendor_mark) }
+	return true
+}
+
 // Shows the setup's view now (--setup, Settings > Apps' Uninstall), in the window being built (a task's answer runs
 // in its build).
 install_open :: proc(in_: ^Install) {
@@ -136,6 +154,8 @@ install_frame :: proc(in_: ^Install) -> (ev: setup.Event) {
 install_end :: proc(in_: ^Install) {
 	setup.finish(&in_.dialog, in_.options)
 	setup.destroy(&in_.dialog)
+	if in_.mark_renderer != nil { setup.logo_destroy(in_.mark_renderer, &in_.vendor_mark) }
+	in_.mark_renderer = nil
 	delete(in_.running)
 	in_.running = ""
 }

@@ -84,3 +84,17 @@ does not survive being called from a process under AddressSanitizer. A junction 
 
 `temp_dir` reads `TEMP` first: a test harness points it at a throwaway folder (on every system) so that tests do not
 leave files in the real temporary directory.
+
+## Names
+
+```odin
+path := fsx.path_join(dir, name)                  // name in dir, by this system's separator (temp memory by default)
+path = fsx.path_join(folder, name, source.sep)    // by a given one: a remote source's "\", or '/' for a site's relative paths
+name := fsx.safe_file_name(order, "licence")      // the characters a system refuses become "_"; the fallback when empty
+```
+
+Both change text only: no system call, so the interface's thread may call them. `path_join` keeps a root whole ("/",
+`C:\`), makes the separators that end `dir` one, and on a `\` path turns the `/` of `name` into `\` (a manifest's
+relative names use `/` on every system); an empty `dir` gives `name`. `safe_file_name` replaces `/ \ : * ? " < > |`, the
+control characters and DEL by `_`, and drops the spaces and dots at both ends (Windows drops the last ones without a
+word); text past ASCII stays, so a person's name for a thing stays readable in a folder.

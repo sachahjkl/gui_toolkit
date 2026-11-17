@@ -24,6 +24,7 @@ import "core:path/filepath"
 import "core:strings"
 import "core:sync"
 import "core:time"
+import tk_json "../json"
 
 // A pixel counts as different over this (of 255 on any channel); a step may differ on this share of its pixels (numbers shown
 // live, a caret).
@@ -251,16 +252,16 @@ time_text :: proc(t: time.Time) -> string {
 @(private)
 timeline_json :: proc(r: ^Run, failure: string, end: f64, when_: string, inline: bool) -> string {
 	b := strings.builder_make(context.temp_allocator)
-	fmt.sbprintf(&b, `{{"kind":%s,"when":%s,"durationMs":%s,"failed":%d`, quote(r.kind), quote(when_), json_number(end), r.failed)
-	if failure != "" { fmt.sbprintf(&b, `,"error":%s`, quote(failure)) }
+	fmt.sbprintf(&b, `{{"kind":%s,"when":%s,"durationMs":%s,"failed":%d`, tk_json.quote(r.kind), tk_json.quote(when_), json_number(end), r.failed)
+	if failure != "" { fmt.sbprintf(&b, `,"error":%s`, tk_json.quote(failure)) }
 	strings.write_string(&b, `,"steps":[`)
 	for s, i in r.steps {
 		if i > 0 { strings.write_byte(&b, ',') }
 		image := inline ? data_url(fmt.tprintf("%s/%s", r.dir, s.image)) : s.image
-		fmt.sbprintf(&b, "\n {{\"t\":%s,\"line\":%s,\"image\":%s,\"settled\":%v", json_number(s.t), quote(s.line), quote(image), s.settled)
-		if s.compared { fmt.sbprintf(&b, `,"against":%s`, s.in_reference ? quote(s.against) : "null") }
+		fmt.sbprintf(&b, "\n {{\"t\":%s,\"line\":%s,\"image\":%s,\"settled\":%v", json_number(s.t), tk_json.quote(s.line), tk_json.quote(image), s.settled)
+		if s.compared { fmt.sbprintf(&b, `,"against":%s`, s.in_reference ? tk_json.quote(s.against) : "null") }
 		if s.has_share { fmt.sbprintf(&b, `,"share":%s`, json_number(s.share)) }
-		if s.diff != "" { fmt.sbprintf(&b, `,"diff":%s`, quote(inline ? data_url(fmt.tprintf("%s/%s", r.dir, s.diff)) : s.diff)) }
+		if s.diff != "" { fmt.sbprintf(&b, `,"diff":%s`, tk_json.quote(inline ? data_url(fmt.tprintf("%s/%s", r.dir, s.diff)) : s.diff)) }
 		if s.compared { fmt.sbprintf(&b, `,"differs":%v`, s.differs) }
 		strings.write_byte(&b, '}')
 	}
@@ -299,7 +300,7 @@ chrome_trace :: proc(r: ^Run) -> string {
 		fmt.sbprintf(&b, `,{{"ph":"C","pid":1,"tid":1,"name":"frame ms","ts":%d,"args":{{"frameMs":%s}}}}`, us(f.t), json_number(f.frame_ms))
 	}
 	for s in r.steps {
-		fmt.sbprintf(&b, `,{{"ph":"i","pid":1,"tid":1,"s":"t","name":%s,"cat":"step","ts":%d}}`, quote(s.line), us(s.t))
+		fmt.sbprintf(&b, `,{{"ph":"i","pid":1,"tid":1,"s":"t","name":%s,"cat":"step","ts":%d}}`, tk_json.quote(s.line), us(s.t))
 	}
 	strings.write_string(&b, `],"displayTimeUnit":"ms"}`)
 	return strings.to_string(b)

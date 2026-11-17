@@ -16,14 +16,25 @@ a_logo_writes_its_files :: proc(t: ^testing.T) {
 	dir, _ := filepath.join({base, fmt.tprintf("tk_toolbox_logo_%d", os.get_pid())}, context.temp_allocator)
 	_ = os.remove_all(dir)
 	defer os.remove_all(dir)
-	drawn := 0
+	Drawn :: struct { count: int, pixels: [8][2]int }
+	drawn: Drawn
 	ico := fmt.tprintf("%s/res/x.ico", dir)
-	why := write_logo({render = proc(size: int, user: rawptr) -> paint.Canvas {
-		(^int)(user)^ += 1
-		return paint.canvas_make(size, size)
+	why := write_logo({draw = proc(pixels, size: int, user: rawptr) -> paint.Canvas {
+		d := (^Drawn)(user)
+		if d.count < len(d.pixels) { d.pixels[d.count] = {pixels, size} }
+		d.count += 1
+		return paint.canvas_make(pixels, pixels)
 	}, user = &drawn, dir = dir, master = 64, sizes = {16, 32}, ico = ico, ico_sizes = {16, 48}, ico_png_from = 32})
 	testing.expect_value(t, why, "")
-	testing.expect_value(t, drawn, 5)
+	testing.expect_value(t, drawn.count, 5)
+	// (each drawn at the master's size or more, by steps of LOGO_SHRINK_STEP, and told the size it is for)
+	testing.expect_value(t, drawn.pixels[0], [2]int{64, 64})
+	testing.expect_value(t, drawn.pixels[1], [2]int{64, 16})
+	testing.expect_value(t, drawn.pixels[2], [2]int{128, 32})
+	testing.expect_value(t, drawn.pixels[4], [2]int{192, 48})
+	small, _ := os.read_entire_file(fmt.tprintf("%s/logo_16.png", dir), context.temp_allocator)
+	width, _ := endian.get_u32(small[16:], .Big)
+	testing.expect_value(t, width, 16)
 	for name in ([]string{"logo.png", "logo_16.png", "logo_32.png"}) {
 		testing.expectf(t, os.exists(fmt.tprintf("%s/%s", dir, name)), "%s", name)
 	}
@@ -37,6 +48,23 @@ a_logo_writes_its_files :: proc(t: ^testing.T) {
 	testing.expect_value(t, string(data[png_at + 1:png_at + 4]), "PNG")
 	dib_at, _ := endian.get_u32(data[6 + 12:], .Little)
 	testing.expect(t, string(data[dib_at + 1:dib_at + 4]) != "PNG", "16 px: a DIB")
+}
+
+// A shrink reaches its size exactly, from any width; a picture already that size is given back as it is.
+@(test)
+a_logo_shrinks_to_its_size :: proc(t: ^testing.T) {
+	c := logo_shrink(paint.canvas_make(1000, 1000), 24)
+	testing.expect_value(t, c.width, 24)
+	testing.expect_value(t, c.height, 24)
+	paint.canvas_destroy(&c)
+	same := paint.canvas_make(16, 16)
+	kept := logo_shrink(same, 16)
+	testing.expect(t, raw_data(kept.pixels) == raw_data(same.pixels), "no copy of a picture at its size")
+	paint.canvas_destroy(&kept)
+	// (without a master nor a draw_size, a size is drawn at its size)
+	at := logo_picture({draw = proc(pixels, size: int, _: rawptr) -> paint.Canvas { return paint.canvas_make(pixels, pixels) }}, 20)
+	testing.expect_value(t, at.width, 20)
+	paint.canvas_destroy(&at)
 }
 
 // A manifest signed by the key of the environment is the one the program reads; a program not named as a release's is refused.

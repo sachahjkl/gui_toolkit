@@ -22,6 +22,9 @@ cdp.wait_idle(&c, 5 * time.Second)
 cdp.shot(&c, "out.png")
 ```
 
+- `connect_wait(port, limit, program)`: `connect`, tried every `CONNECT_POLL` (50 ms) until it answers, at most
+  `limit`. `program` (optional): the process that serves the port; once it has ended, the wait fails at once. A tool
+  that starts its program uses it with `toolbox.free_port` ([toolbox.md](toolbox.md), "A program driven by its tool").
 - `connect(port)`: the WebSocket of the first target of `/json/list`. `open(port, path)`: the WebSocket at a path (a browser's
   own, `/devtools/browser/...`, whose pages are sessions of one connection: set `c.session`). `targets(port)` lists them.
   The WebSocket is `gt:http`'s ([http.md](http.md)): WinHTTP on Windows; on Linux a TCP connection of its own to
@@ -32,11 +35,19 @@ cdp.shot(&c, "out.png")
   "method: message (code)" once and is kept in `c.failure`; `c.quiet = true` keeps it silent for a caller that says it itself.
 - `send(c, method, params)`: a call nobody waits for (an acknowledgement).
 - `find`, `find_name`, `has`: the boxes whose text holds a text, or with a name (`Toolkit.find`), as `Box` values.
-- `wait_for`, `wait_name` (with `gone`), `wait_idle`: the window waits; nothing in the tool sleeps.
+- `wait_for`, `wait_name` (with `gone`), `wait_idle`: the window waits; nothing in the tool sleeps. `wait_name`'s
+  `text` asks for the box of that name whose text holds it (a cell that shows its value). `wait_idle` ends after three
+  builds in a row with no animation and no posted call.
+- `wait_still(c, still, limit)`: until the window's picture has not changed for `still`, at most `limit`. Use it for
+  what the box tree does not show and the window does not count as moving: a terminal's grid, an icon decoded on a
+  chore. It compares the PNG bytes of successive captures. `!is_still`: the picture still changed at the limit.
+- A tool never sleeps a fixed delay: it waits for one of these conditions, with a bound. What no wait can see (a history
+  of samples that must grow) is the program's to make ready, for example at once in its demo mode.
 - `click_name`, `click_text`, `type_text`, `key`: input. A key is a name: `Enter`, `Tab`, `Escape` (`esc`), `ArrowDown`
   (`down`), `PageUp`, `F3`, `a`, `ctrl+f`, `shift+Tab`. `key_parts` gives the key, its modifiers and the text it types.
 - `screenshot` (the PNG's bytes) and `shot` (a file), optionally a `Clip` in CSS pixels. `window_size`.
-- `quote(text)` writes a string as JSON. `number`, `integer` and `str` read a JSON value. `stringify` writes a value as
+- `json.quote(text)` of `gt:json` ([json.md](json.md)) writes a string as JSON for a call's parameters. `number`,
+  `integer` and `str` read a JSON value. `stringify` writes a value as
   `JSON.stringify` does, whole numbers without `.0`.
 
 ## Screencasts

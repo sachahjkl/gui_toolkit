@@ -47,6 +47,11 @@ are not read; `folder_of(options, channel)` says which folder a channel reads. `
 other channel's) and its result; a check under way is made again for the new channel; a download under way goes on, from
 the folder of the channel its offer came from. With `set_auto` on, the new channel is checked at once.
 
+`latest_release_folder("owner/name")` is the folder of a GitHub repository's latest release
+(`https://github.com/owner/name/releases/latest/download/`). A program with the standard settings and the install page does
+not start the Updater itself: `prefs_page.updates_start` does, with the rule of `update.auto` and the installed copy's
+manifest ([prefs_page.md](prefs_page.md), "The updates").
+
 The standard Updates set (`prefs_page`, `Standard_Defaults.update_channels`) shows `update.channel` as a choice of the
 program's channels, and only for a program that has some. `prefs_page.update_source(prefs)` reads `update.base_url` and
 `update.channel` for `updater_start`; the program calls `set_channel` when `update.channel` changes.

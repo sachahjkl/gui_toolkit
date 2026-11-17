@@ -58,6 +58,10 @@ DT_MAX_S :: 0.1
 // time slept is no animation's: a switch clicked then would make most of its way in the first frame.
 DT_RESTED_S :: 1.0 / 60
 
+// The frames a window still draws after an event (Host.after_input): what the event set off (a hover's fade, a layout
+// that a measure changed, a task's answer) settles in them. Three is what every program came to.
+AFTER_INPUT :: 3
+
 // The base style's defaults, in logical pixels (Build_Params.base; `params` changes them).
 BASE_ROW_HEIGHT :: 30
 BASE_FONT_SIZE :: 15
@@ -104,7 +108,7 @@ Host :: struct {
 	// one target, the first window's, which a test reads: a picture of this one would cover it
 	no_picture: bool,
 	settle:     int,              // frames still owed, whatever else asks for one (what a change set off settles)
-	after_input: int,             // frames owed after an event
+	after_input: int,             // frames owed after an event, and by host_settle (host_open and host_adopt: AFTER_INPUT)
 
 	build: proc(h: ^Host, size: Vec2),   // the widgets, between begin_build and end_build
 
@@ -146,6 +150,7 @@ Host_Times :: struct { draw, present: time.Duration }
 host_adopt :: proc(h: ^Host, sh: ^Shared, w: ^platform.Window, build: proc(h: ^Host, size: Vec2), user: rawptr = nil) {
 	first := sh.main == nil
 	h.shared, h.win, h.build, h.user, h.paced = sh, w, build, user, first
+	if h.after_input == 0 { h.after_input = AFTER_INPUT }
 	if first { sh.main = h }
 	h.next, sh.hosts = sh.hosts, h
 	h.last_ms = ui.now_ms()
@@ -169,6 +174,8 @@ host_open :: proc(h: ^Host, sh: ^Shared, o: Open_Options, build: proc(h: ^Host, 
 	first := sh.main == nil
 	h.shared, h.build, h.user, h.paced = sh, build, user, first
 	h.failure = .None
+	// (only when not set: a program that wants another count sets it before; one that wants none sets 0 after)
+	if h.after_input == 0 { h.after_input = AFTER_INPUT }
 	if first {
 		font.init(&sh.fonts)
 		// (the system's light or dark, read once before any frame: a frame then reads the kept value and waits on nothing)
@@ -408,9 +415,15 @@ host_hide :: proc(h: ^Host) {
 // surface again (host_frame, Window.shown_again).
 host_show :: proc(h: ^Host) {
 	platform.show_window(h.win)
-	h.settle = max(h.settle, h.after_input)
+	host_settle(h)
 	// (the windows of its views come back with it, where they were)
 	ui.views_windows_follow(&h.state, true)
+}
+
+// A change that came without input (a task's answer, a file read, an update's news) owes the window the frames an
+// event would: what it set off settles in them. From the window's thread.
+host_settle :: proc(h: ^Host) {
+	h.settle = max(h.settle, h.after_input)
 }
 
 // The wait of the frame, on this window's swap chain. (Its own scope: the surface goes back before the input is read.)
@@ -430,7 +443,7 @@ host_picture :: proc(h: ^Host, read: []platform.Event, at_once, shown: bool) {
 	render.surface_scope(r, &h.surface)
 	render.mark_input(r)
 	events := read
-	if len(events) > 0 { h.settle = max(h.settle, h.after_input) }
+	if len(events) > 0 { host_settle(h) }
 	if h.still != nil && h.still(h, events) { return }
 	if h.input != nil { events = h.input(h, events) }
 	size := Vec2{f32(h.win.size.x), f32(h.win.size.y)}

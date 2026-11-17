@@ -8,6 +8,7 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "core:testing"
+import testkit "../testkit"
 
 // A stale notices file says where it parts from what would be written.
 @(test)
@@ -15,16 +16,6 @@ notices_name_their_first_difference :: proc(t: ^testing.T) {
 	testing.expect_value(t, first_difference("a\nb\nc\n", "a\nx\nc\n"), `line 2 is "b", would be "x"`)
 	testing.expect_value(t, first_difference("a\n", "a\nb\n"), `line 2 is "", would be "b"`)
 	testing.expect_value(t, first_difference("a\r\n", "a\n"), "they differ in their ends of line")
-}
-
-// A new empty folder of this test's, removed at its end.
-@(private = "file")
-scratch :: proc(t: ^testing.T, name: string) -> string {
-	base, _ := os.temp_directory(context.temp_allocator)
-	dir, _ := filepath.join({base, fmt.tprintf("tk_toolbox_tool_%s_%d", name, os.get_pid())}, context.temp_allocator)
-	_ = os.remove_all(dir)
-	testing.expect(t, os.make_directory_all(dir) == nil, "a scratch folder")
-	return dir
 }
 
 @(private = "file") seen_args: int
@@ -100,8 +91,7 @@ a_flag_split_at_its_colon_is_joined :: proc(t: ^testing.T) {
 // A tool finds its project's root from any folder below it by its mark; outside a project it finds none.
 @(test)
 the_root_is_found_by_its_mark :: proc(t: ^testing.T) {
-	dir := scratch(t, "root")
-	defer os.remove_all(dir)
+	dir := testkit.temp_folder(t, "root")
 	deep := fmt.tprintf("%s/src/a/b", dir)
 	testing.expect(t, os.make_directory_all(deep) == nil)
 	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/odin.version", dir), "dev\n") == nil)
@@ -147,8 +137,7 @@ an_odin_command_of_the_project :: proc(t: ^testing.T) {
 // library is up to date when it is there and its stamp says so (a stamp ending with a line end too).
 @(test)
 the_stamp_of_a_c_library :: proc(t: ^testing.T) {
-	dir := scratch(t, "stamp")
-	defer os.remove_all(dir)
+	dir := testkit.temp_folder(t, "stamp")
 	c, h := fmt.tprintf("%s/lib.c", dir), fmt.tprintf("%s/lib.h", dir)
 	testing.expect(t, os.write_entire_file(c, "int x;\n") == nil && os.write_entire_file(h, "extern int x;\n") == nil)
 	first, ok := c_lib_stamp({c, h}, {"-O2"})
@@ -193,8 +182,7 @@ a_scope_opened_under_a_negation_is_found :: proc(t: ^testing.T) {
 // program's code); each with its licence files; a text the crates share said once.
 @(test)
 the_notices_of_the_linked_crates :: proc(t: ^testing.T) {
-	dir := scratch(t, "notices")
-	defer os.remove_all(dir)
+	dir := testkit.temp_folder(t, "notices")
 	for c in ([]string{"lib", "dep", "deep", "build", "macro", "own"}) {
 		testing.expect(t, os.make_directory_all(fmt.tprintf("%s/%s", dir, c)) == nil)
 	}
@@ -251,8 +239,7 @@ the_notices_of_the_linked_crates :: proc(t: ^testing.T) {
 // cargo needs no network.
 @(test)
 the_notices_of_a_programs_crates_and_works :: proc(t: ^testing.T) {
-	dir := scratch(t, "notices_program")
-	defer os.remove_all(dir)
+	dir := testkit.temp_folder(t, "notices_program")
 	gt := fmt.tprintf("%s/../..", #directory)
 	webp_lock, werr := os.read_entire_file(fmt.tprintf("%s/native/webp/Cargo.lock", gt), context.temp_allocator)
 	text_lock, terr := os.read_entire_file(fmt.tprintf("%s/native/text/Cargo.lock", gt), context.temp_allocator)

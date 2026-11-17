@@ -142,7 +142,7 @@ send_all :: proc(s: linux.Fd, data: []u8, deadline: time.Tick) -> Reply {
 
 // Hands `message` to the owner of `o.name` without trying to become the owner: a pure "ping the running copy".
 send :: proc(o: Instance_Options, message: []byte) -> Outcome {
-	switch forward_once(o.name, o.identity, message, max(o.wait_ms, FORWARD_MIN_MS)) {
+	switch forward_once(o.name, o.identity, message, max(wait_of(o), FORWARD_MIN_MS)) {
 	case .Accepted:        return .Forwarded
 	case .Other_Instance:  return .Other_Instance
 	case .No_Window, .Refused, .Timeout: return .Unresponsive
@@ -153,7 +153,7 @@ send :: proc(o: Instance_Options, message: []byte) -> Outcome {
 // Takes the name of `o.name` or hands `message` to the copy that has it. Tries for up to `o.wait_ms` while the owner is
 // starting or closing; a silent owner ends the wait at once (it is busy or hung: not worth waiting for).
 acquire :: proc(o: Instance_Options, message: []byte) -> (Outcome, Owner) {
-	deadline := time.tick_add(time.tick_now(), time.Duration(o.wait_ms) * time.Millisecond)
+	deadline := time.tick_add(time.tick_now(), time.Duration(wait_of(o)) * time.Millisecond)
 	lock_path := strings.clone_to_cstring(path_of(o.name, ".lock"), context.temp_allocator)
 	for {
 		fd, err := linux.open(lock_path, {.RDWR, .CREAT, .CLOEXEC}, {.IRUSR, .IWUSR})

@@ -17,6 +17,7 @@ package tk_desktop
 
 import "core:os"
 import "core:strings"
+import "../fsx"
 
 NIX_RUNTIME_NAME :: "nix-runtime"
 
@@ -41,12 +42,12 @@ nixos_runtime_expression :: proc(id: Identity, allocator := context.temp_allocat
 // manifest's list) and patches the executable to it. Nothing on another system, for a copy of the Nix store, or for an
 // identity without libraries.
 nixos_adapt :: proc(id: Identity, dir, exe_name: string, files: ^[dynamic]string) -> Result {
-	exe := join_path(dir, exe_name)
+	exe := fsx.path_join(dir, exe_name)
 	if !is_nixos() || in_nix_store(exe) || len(id.nixos_libraries) == 0 { return {} }
 	if !all_attributes({id.nix_runtime_name}) || !all_attributes(id.nixos_libraries) { return {.Bad_Options, "identity.nix_runtime_name or a library is not a Nix name"} }
 	nix_build, found := find_on_path("nix-build")
 	if !found { return {.System, "NixOS: nix-build is not on the PATH"} }
-	runtime := join_path(dir, NIX_RUNTIME_NAME)
+	runtime := fsx.path_join(dir, NIX_RUNTIME_NAME)
 	if r := run_checked({nix_build, "--extra-experimental-features", "nix-command flakes", "--out-link", runtime, "-E", nixos_runtime_expression(id)}); r.error != .None { return r }
 	append(files, NIX_RUNTIME_NAME)
 
@@ -55,8 +56,8 @@ nixos_adapt :: proc(id: Identity, dir, exe_name: string, files: ^[dynamic]string
 	_ = os.remove(patched)
 	if err := os.copy_file(patched, exe); err != nil { return {.Io, strings.concatenate({"cannot copy ", exe}, context.temp_allocator)} }
 	_ = os.chmod(patched, os.perm_number(0o755))   // (a copy of a program from the Nix store is read-only)
-	lib := join_path(runtime, "lib")
-	patchelf := join_path(runtime, "bin/patchelf")
+	lib := fsx.path_join(runtime, "lib")
+	patchelf := fsx.path_join(runtime, "bin/patchelf")
 	// the runtime's folder first: its libc must be the one of its loader. Then the program's own search path (the release's
 	// is $ORIGIN), unless an earlier install put the runtime there already.
 	state, out, _, perr := os.process_exec(os.Process_Desc{command = {patchelf, "--print-rpath", patched}}, context.temp_allocator)
@@ -66,7 +67,7 @@ nixos_adapt :: proc(id: Identity, dir, exe_name: string, files: ^[dynamic]string
 			rpath = strings.has_prefix(old, lib) ? old : strings.concatenate({lib, ":", old}, context.temp_allocator)
 		}
 	}
-	r := run_checked({patchelf, "--set-interpreter", join_path(lib, "ld-linux-x86-64.so.2"), "--set-rpath", rpath, patched})
+	r := run_checked({patchelf, "--set-interpreter", fsx.path_join(lib, "ld-linux-x86-64.so.2"), "--set-rpath", rpath, patched})
 	if r.error == .None && os.rename(patched, exe) != nil { r = {.Io, strings.concatenate({"cannot replace ", exe}, context.temp_allocator)} }
 	if r.error != .None { _ = os.remove(patched) }
 	return r

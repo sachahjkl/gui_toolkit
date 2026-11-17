@@ -9,6 +9,7 @@ import "core:math"
 import "core:strconv"
 import "core:strings"
 import "core:time"
+import tk_json "../json"
 
 Command_Options :: struct {
 	rest:  [dynamic]string,       // the words that are no option
@@ -95,8 +96,8 @@ quoted_end :: proc(s: string, at: int) -> int {
 // A box by its name (--name) or by its text (the other words).
 @(private)
 query :: proc(o: ^Command_Options) -> string {
-	if name := option(o, "name"); name != "" { return fmt.tprintf(`"name":%s`, quote(name)) }
-	return fmt.tprintf(`"text":%s`, quote(strings.join(o.rest[:], " ", context.temp_allocator)))
+	if name := option(o, "name"); name != "" { return fmt.tprintf(`"name":%s`, tk_json.quote(name)) }
+	return fmt.tprintf(`"text":%s`, tk_json.quote(strings.join(o.rest[:], " ", context.temp_allocator)))
 }
 
 @(private)
@@ -111,13 +112,13 @@ act :: proc(c: ^Client, command: string, args: []string) -> (known, ok: bool) {
 	switch command {
 	case "click":
 		method = "Toolkit.click"
-		params = fmt.tprintf(`{{%s,"index":%v,"count":%v,"button":%s}}`, query(&o), json_number(word_number(option(&o, "index", "0"))), json_number(word_number(option(&o, "count", "1"))), quote(button))
+		params = fmt.tprintf(`{{%s,"index":%v,"count":%v,"button":%s}}`, query(&o), json_number(word_number(option(&o, "index", "0"))), json_number(word_number(option(&o, "count", "1"))), tk_json.quote(button))
 	case "move":
 		params = fmt.tprintf(`{{"type":"mouseMoved","x":%s,"y":%s}}`, json_number(arg(&o, 0)), json_number(arg(&o, 1)))
 	case "down":
-		params = fmt.tprintf(`{{"type":"mousePressed","x":%s,"y":%s,"button":%s,"buttons":%d,"clickCount":1}}`, json_number(arg(&o, 0)), json_number(arg(&o, 1)), quote(button), button == "right" ? 2 : 1)
+		params = fmt.tprintf(`{{"type":"mousePressed","x":%s,"y":%s,"button":%s,"buttons":%d,"clickCount":1}}`, json_number(arg(&o, 0)), json_number(arg(&o, 1)), tk_json.quote(button), button == "right" ? 2 : 1)
 	case "up":
-		params = fmt.tprintf(`{{"type":"mouseReleased","x":%s,"y":%s,"button":%s,"buttons":0,"clickCount":1}}`, json_number(arg(&o, 0)), json_number(arg(&o, 1)), quote(button))
+		params = fmt.tprintf(`{{"type":"mouseReleased","x":%s,"y":%s,"button":%s,"buttons":0,"clickCount":1}}`, json_number(arg(&o, 0)), json_number(arg(&o, 1)), tk_json.quote(button))
 	case "wheel":
 		params = fmt.tprintf(`{{"type":"mouseWheel","x":%s,"y":%s,"deltaX":%s,"deltaY":%s}}`, json_number(arg(&o, 0)), json_number(arg(&o, 1)), json_number(arg(&o, 3) * 100), json_number(arg(&o, 2) * 100))
 	case "key":
@@ -141,9 +142,9 @@ act :: proc(c: ^Client, command: string, args: []string) -> (known, ok: bool) {
 	case "press":
 		method = "Toolkit.axAction"
 		b := strings.builder_make(context.temp_allocator)
-		fmt.sbprintf(&b, `{{"name":%s,"action":%s,"index":%s`, quote(strings.join(o.rest[:], " ", context.temp_allocator)), quote(option(&o, "action", "Click")), json_number(word_number(option(&o, "index", "0"))))
-		if role := option(&o, "role"); role != "" { fmt.sbprintf(&b, `,"role":%s`, quote(role)) }
-		if has_option(&o, "value") { fmt.sbprintf(&b, `,"value":%s`, quote(o.named["value"])) }
+		fmt.sbprintf(&b, `{{"name":%s,"action":%s,"index":%s`, tk_json.quote(strings.join(o.rest[:], " ", context.temp_allocator)), tk_json.quote(option(&o, "action", "Click")), json_number(word_number(option(&o, "index", "0"))))
+		if role := option(&o, "role"); role != "" { fmt.sbprintf(&b, `,"role":%s`, tk_json.quote(role)) }
+		if has_option(&o, "value") { fmt.sbprintf(&b, `,"value":%s`, tk_json.quote(o.named["value"])) }
 		if has_option(&o, "number") { fmt.sbprintf(&b, `,"value":%s`, json_number(word_number(o.named["number"]))) }
 		strings.write_string(&b, "}")
 		params = strings.to_string(b)

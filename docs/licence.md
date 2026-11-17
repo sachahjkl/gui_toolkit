@@ -286,6 +286,11 @@ and does nothing (`shop_open` says the same): a site can be published before the
 | `registry` (HTML), `registered` | the register the seller is in and the day ("Registered with ... on ...") |
 | `vat` (HTML) | what follows "VAT: ", a number or why there is none (`"not applicable, article 293 B of the French General Tax Code (<em>franchise en base de TVA</em>)"`) |
 
+`SELLER_FROMENT` is that block for every program of Froment Software: a program writes `seller = site.SELLER_FROMENT`
+and keeps no copy. `NETWORK_UPDATES_ONLY` is the `network` sentence of a program whose only connection is its updates
+(it says "It": the paragraph before it names the program). Both are constants, so a program's `Shop` can be one
+([vendor-facts.md](../src/md/features/vendor-facts.md)).
+
 `src/site/licence_pages/` holds six template pages in neutral words: pricing, thanks, terms, refunds, privacy, imprint,
 with `{{placeholders}}` (`licence_values` lists them). A program copies them into its site and adapts them, or
 `licence_pages(shop)` fills them (`fill_placeholders`, one pass) and gives the six `Page`s. Their legal words are a starting

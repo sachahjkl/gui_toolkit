@@ -107,6 +107,35 @@ hosts too: `ui.views_set_windows(&app.views, host.view_windows(&app.shared))` on
 view's window is made after the frames of the window that owns the view), and `host_frame` of a window makes their
 frames after its own; `hosts_wait` counts them. Call `ui.views_destroy` before the last `host_close`.
 
+**Frames after a change.** A window draws `Host.after_input` frames after each event (`host_open` and `host_adopt` set
+`host.AFTER_INPUT`, 3, when the program has not set another count): what the event set off settles in them. A change that
+comes with no event (a task's answer, a file read, an update's news) owes the same frames: `host.host_settle(&app.main)`.
+
+**The start of a program.** Its log ([log.md](log.md)) and its crash reports ([crash.md](crash.md)) in one call, in main
+before any thread and any window (it reads the report folder there):
+
+```odin
+p := host.program_start({name = APP_NAME, folder = APP_FOLDER, version = APP_VERSION})
+context.logger = p.logger
+defer host.program_end(&p)                       // the clean end: the next start says no crash
+crash_bar.init(&app.crash_bar, p.last_crash)     // the last session's report, "" when it ended cleanly
+```
+
+| `Program_Start_Options` | |
+|---|---|
+| `name` | the technical name: `<name>.log` and the reports' `program` line |
+| `folder` | the program's folder in its vendor's: the log goes to `tk_log.default_dir(folder)`, the reports to `crash.default_report_dir(folder)` |
+| `version` | the program's version, in each report |
+| `dir` | "": as above; else `<dir>/logs` and `<dir>/crashes` (a test's or a portable profile's folder) |
+| `quiet` | the log's lines are not echoed on standard error |
+| `settings` | a `crash.Source`: the settings that differ from their default |
+| `no_session` | a process that is not the program's session (a torn-off window's): no session mark, no last report |
+
+`program_start` installs the log, then the crash handler with the log's tail, begins the session, then reads the last
+report: `begin_session` is what turns a session that ended with no report (a kill) into the report `last_report` gives.
+It logs a warning with the report's path. `Program_Start.last_crash` is owned; `program_end` frees it, ends the session and
+closes the log; the caller's `context.logger` must not log after it.
+
 **A window ready ahead.** A window that must show at once when it is asked for (a screenshot tool's editor at its
 shortcut) is opened hidden before: each turn while one is wanted, `if host.ahead_due(&app.ahead, &app.shared, wake, app)`
 opens it. With no window yet, the graphics driver is made on a thread first (`render.preload_device`), whose end calls

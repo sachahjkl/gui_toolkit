@@ -85,7 +85,7 @@ owner_ignores :: proc(user: rawptr, message: []byte) {}
 @(private = "file")
 owner_main :: proc(th: ^thread.Thread) {
 	d := (^Owner_Thread)(th.data)
-	outcome, owner := inst.acquire({name = d.name, identity = d.identity, wait_ms = 0}, nil)
+	outcome, owner := inst.acquire({name = d.name, identity = d.identity, wait_ms = -1}, nil)
 	d.started = outcome == .First
 	sync.sema_post(&d.ready)
 	// (real time: the second start tries again by the system's clock, and nothing shows that it has tried)
@@ -191,7 +191,7 @@ instance_a_message_given_up_is_not_handled :: proc(t: ^testing.T) {
 	name := inst.key("test", fmt.tprintf("C:\\tk_instance_test\\%s", unique()))
 	d, th := owner_begin(name, `C:\a\app.exe`, pump = false)
 	defer owner_end(d, th)
-	outcome, _ := inst.acquire({name = name, identity = `C:\a\app.exe`, wait_ms = 0}, msg(false, {"about:config"}))
+	outcome, _ := inst.acquire({name = name, identity = `C:\a\app.exe`, wait_ms = -1}, msg(false, {"about:config"}))
 	testing.expect_value(t, outcome, inst.Outcome.Unresponsive)
 	sync.atomic_store(&d.pump, true)
 	testing.expect(t, testkit.await(d, proc(d: ^Owner_Thread) -> bool { return sync.atomic_load(&d.pumps) >= PUMPS_TO_BE_SURE }), "the owner wakes")
@@ -208,7 +208,7 @@ instance_a_large_message_does_not_hold_the_second_start :: proc(t: ^testing.T) {
 	defer owner_end(d, th)
 	large := make([]byte, inst.ENVELOPE_MAX / 2, context.temp_allocator)
 	t0 := time.tick_now()
-	outcome, _ := inst.acquire({name = name, identity = `C:\a\app.exe`, wait_ms = 0}, large)
+	outcome, _ := inst.acquire({name = name, identity = `C:\a\app.exe`, wait_ms = -1}, large)
 	testing.expect_value(t, outcome, inst.Outcome.Unresponsive)
 	testing.expect(t, time.duration_milliseconds(time.tick_since(t0)) < 3000, "it gave up after about the timeout")
 }
@@ -217,7 +217,7 @@ instance_a_large_message_does_not_hold_the_second_start :: proc(t: ^testing.T) {
 @(test)
 instance_an_owner_starts_once :: proc(t: ^testing.T) {
 	name := inst.key("test", fmt.tprintf("C:\\tk_instance_test\\%s", unique()))
-	outcome, owner := inst.acquire({name = name, identity = "", wait_ms = 0}, nil)
+	outcome, owner := inst.acquire({name = name, identity = "", wait_ms = -1}, nil)
 	testing.expect_value(t, outcome, inst.Outcome.First)
 	testing.expect_value(t, owner.state, inst.Owner_State.Claimed)
 	testing.expect(t, inst.owner_start(&owner, owner_ignores, nil))

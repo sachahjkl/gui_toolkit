@@ -8,6 +8,7 @@ import "core:testing"
 import "../fsx"
 import signing "../signing"
 import licence "../licence"
+import testkit "../testkit"
 
 @(private = "file")
 TOOL_PRODUCT :: licence.Product{
@@ -26,13 +27,6 @@ tool_in :: proc(dir: string) -> Licence_Tool {
 		paddle = {name = "Sample User Licence", description = "A licence of Sample.", amounts = "supporter=2900", currency = "EUR"}}
 }
 
-@(private = "file")
-scratch_dir :: proc(name: string) -> string {
-	dir := fmt.tprintf("%s/gt-toolbox-licence-%s-%d", fsx.temp_dir(context.temp_allocator), name, os.get_pid())
-	_ = fsx.remove_tree(dir)
-	return dir
-}
-
 @(test)
 licence_commands_are_named :: proc(t: ^testing.T) {
 	c := licence_commands(tool_in(""))
@@ -45,8 +39,7 @@ licence_commands_are_named :: proc(t: ^testing.T) {
 
 @(test)
 licence_keys_and_issue :: proc(t: ^testing.T) {
-	dir := scratch_dir("keys")
-	defer fsx.remove_tree(dir)
+	dir := testkit.temp_folder(t, "toolbox-licence-keys")
 	tool := tool_in(fmt.tprintf("%s/not/made/yet", dir))
 	testing.expect_value(t, licence_keygen(tool, nil), "")
 	key_file := fmt.tprintf("%s/not/made/yet/private.key", dir)

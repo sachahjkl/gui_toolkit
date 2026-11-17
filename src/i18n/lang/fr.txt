@@ -1624,6 +1624,10 @@ ctx date
 en %s %d
 fr %[1]d %[0]s
 
+ctx date and year
+en %s %d
+fr %s %d
+
 en today %s
 fr aujourd'hui %s
 
@@ -1633,12 +1637,50 @@ fr hier
 en yesterday %s
 fr hier %s
 
-ctx date and year
-en %s %d
-fr %s %d
+ctx weekday and clock
+en %s %s
+fr %s %s
 
 en %s, %s
 fr %s, %s
+
+ctx weekday
+en Sunday
+fr dimanche
+
+ctx weekday
+en Monday
+fr lundi
+
+ctx weekday
+en Tuesday
+fr mardi
+
+ctx weekday
+en Wednesday
+fr mercredi
+
+ctx weekday
+en Thursday
+fr jeudi
+
+ctx weekday
+en Friday
+fr vendredi
+
+ctx weekday
+en Saturday
+fr samedi
+
+ctx per second
+en /s
+fr /s
+
+en %d B
+fr %d o
+
+en kB
+fr ko
 
 en KB
 fr Ko
@@ -1654,9 +1696,6 @@ fr To
 
 en PB
 fr Po
-
-en %d B
-fr %d o
 
 en Previous
 fr Précédent

@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:math"
 import "core:strconv"
 import "core:strings"
+import tk_json "../json"
 import "../render"
 import "../ui"
 import "../ascii"
@@ -119,11 +120,11 @@ css_write_style :: proc(sb: ^strings.Builder, id: int, text: string) {
 	fmt.sbprintf(sb, `{{"styleSheetId":"toolkit-%d","cssProperties":[`, id)
 	for p, i in css_parse(text) {
 		if i > 0 { strings.write_byte(sb, ',') }
-		fmt.sbprintf(sb, `{{"name":%s,"value":%s,"text":%s,"implicit":false,"disabled":%v,"range":`, json_quote(p.name), json_quote(p.value), json_quote(text[p.start:p.end]), p.disabled)
+		fmt.sbprintf(sb, `{{"name":%s,"value":%s,"text":%s,"implicit":false,"disabled":%v,"range":`, tk_json.quote(p.name), tk_json.quote(p.value), tk_json.quote(text[p.start:p.end]), p.disabled)
 		css_write_range(sb, text, p.start, p.end)
 		strings.write_byte(sb, '}')
 	}
-	fmt.sbprintf(sb, `],"shorthandEntries":[],"cssText":%s,"range":`, json_quote(text))
+	fmt.sbprintf(sb, `],"shorthandEntries":[],"cssText":%s,"range":`, tk_json.quote(text))
 	css_write_range(sb, text, 0, len(text))
 	strings.write_byte(sb, '}')
 }
@@ -325,7 +326,7 @@ dom_edit_aria :: proc(srv: ^Server, s: ^ui.State, id: int, key: ui.Key, has: boo
 	to := srv.dom.to
 	if to.conn == nil { return }
 	if value != "" {
-		event(to.conn, to.session, "DOM.attributeModified", fmt.tprintf(`{{"nodeId":%d,"name":"aria-label","value":%s}}`, id, json_quote(value)))
+		event(to.conn, to.session, "DOM.attributeModified", fmt.tprintf(`{{"nodeId":%d,"name":"aria-label","value":%s}}`, id, tk_json.quote(value)))
 	} else {
 		event(to.conn, to.session, "DOM.attributeRemoved", fmt.tprintf(`{{"nodeId":%d,"name":"aria-label"}}`, id))
 	}

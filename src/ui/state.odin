@@ -54,7 +54,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	s.toolbars = make(map[Key]Toolbar_Memory)
 	s.color_memo = make(map[[2]u64]Color)
 	s.wrap_cache = make(map[Wrap_Key]Wrap_Entry)
-	s.trunc_cache = make(map[Trunc_Key]Trunc_Entry)
+	s.elide_cache = make(map[Elide_Key]Elide_Entry)
 	post_init(s)
 	_, _ = sync.atomic_compare_exchange_strong(&tick_origin._nsec, 0, time.tick_now()._nsec)
 	// (every program's dates on the local clock: the machine's offset, read on its own thread; the first init starts it)
@@ -125,7 +125,7 @@ destroy :: proc(s: ^State) {
 	menus_destroy(s)
 	platform.chrome_regions_destroy(&s.chrome)
 	wrap_cache_destroy(s)
-	delete(s.trunc_cache)
+	delete(s.elide_cache)
 	rich_cache_destroy(s)
 	text_faces_destroy(s)
 	for _, m in s.layout_warned { delete(m) }
@@ -381,7 +381,7 @@ end_build :: proc() {
 		chrome_collect(s)   // none any more (full screen bars hidden...): the window forgets the last ones
 	}
 	wrap_cache_trim(s)
-	trunc_cache_trim(s)
+	elide_cache_trim(s)
 	rich_cache_trim(s)
 	lazy_trim(s)
 	qr_trim(s)

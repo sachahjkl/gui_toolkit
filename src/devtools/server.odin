@@ -9,6 +9,7 @@ import "core:strings"
 import "core:sync"
 import "core:thread"
 import "core:time"
+import tk_json "../json"
 import "../platform"
 import "../ascii"
 
@@ -261,7 +262,7 @@ conn_loop :: proc(c: ^Conn) {
 		case strings.has_prefix(path, "/json/version"):
 			http_reply(c, "200 OK", "application/json", fmt.tprintf(`{{"Browser":"gui_toolkit/%s","Protocol-Version":"1.3","User-Agent":"gui_toolkit","webSocketDebuggerUrl":"ws://127.0.0.1:%d/devtools/browser/%s"}}`, VERSION, srv.port, srv.id))
 		case path == "/json" || strings.has_prefix(path, "/json/list"):
-			http_reply(c, "200 OK", "application/json", fmt.tprintf(`[{{"description":"","devtoolsFrontendUrl":"devtools://devtools/bundled/inspector.html?ws=127.0.0.1:%d/devtools/page/%s","id":"%s","title":%s,"type":"page","url":"toolkit://window","webSocketDebuggerUrl":"ws://127.0.0.1:%d/devtools/page/%s"}}]`, srv.port, srv.id, srv.id, json_quote(srv.title, context.temp_allocator), srv.port, srv.id))
+			http_reply(c, "200 OK", "application/json", fmt.tprintf(`[{{"description":"","devtoolsFrontendUrl":"devtools://devtools/bundled/inspector.html?ws=127.0.0.1:%d/devtools/page/%s","id":"%s","title":%s,"type":"page","url":"toolkit://window","webSocketDebuggerUrl":"ws://127.0.0.1:%d/devtools/page/%s"}}]`, srv.port, srv.id, srv.id, tk_json.quote(srv.title, context.temp_allocator), srv.port, srv.id))
 		case:
 			http_reply(c, "404 Not Found", "text/plain", "not found: /json/version, /json/list, or a WebSocket on /devtools/page/<id>")
 		}

@@ -2,9 +2,11 @@ package tk_cdp
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:net"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import "core:time"
 
 @(test)
 an_answer_is_the_one_of_its_call :: proc(t: ^testing.T) {
@@ -27,7 +29,28 @@ an_answer_is_the_one_of_its_call :: proc(t: ^testing.T) {
 a_call_names_its_session_only_when_it_has_one :: proc(t: ^testing.T) {
 	testing.expect_value(t, request(3, "Page.enable", "{}", ""), `{"id":3,"method":"Page.enable","params":{}}`)
 	testing.expect_value(t, request(4, "Page.enable", "{}", "S1"), `{"id":4,"method":"Page.enable","params":{},"sessionId":"S1"}`)
-	testing.expect_value(t, quote("a\"b\n"), `"a\"b\n"`)
+	testing.expect_value(t, request(5, "a\"b\n", "{}", ""), `{"id":5,"method":"a\"b\n","params":{}}`)
+}
+
+// A port nobody listens on: the wait ends at its bound, with no client. (The port is one the system just gave back.)
+@(test)
+a_connection_waited_for_ends_at_its_bound :: proc(t: ^testing.T) {
+	l, err := net.listen_tcp({address = net.IP4_Loopback, port = 0})
+	testing.expect(t, err == nil, "a listener on port 0")
+	if err != nil { return }
+	at, _ := net.bound_endpoint(l)
+	net.close(l)
+	c, ok, _ := connect_wait(at.port, 3 * CONNECT_POLL)
+	testing.expect(t, !ok, "no window answers")
+	testing.expect(t, c.socket == nil, "no socket is kept")
+}
+
+// A client with no connection: the wait for a still picture fails at once, it does not loop to its bound.
+@(test)
+a_still_wait_without_a_window_fails :: proc(t: ^testing.T) {
+	c := Client{quiet = true}
+	still, ok := wait_still(&c, CONNECT_POLL, time.Hour)
+	testing.expect(t, !ok && !still)
 }
 
 @(test)

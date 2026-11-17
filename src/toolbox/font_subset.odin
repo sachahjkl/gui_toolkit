@@ -5,6 +5,7 @@ package tk_toolbox
 
 import "core:fmt"
 import "core:slice"
+import base "../base"
 
 // The tables a subset keeps; every other one (GSUB's ligatures by name, kerning, hinting) goes.
 @(private = "file")
@@ -36,13 +37,13 @@ Sfnt_Table :: struct { tag: string, data: []u8 }
 // The tables of a TrueType font (a single face, not a collection). why: it is not one.
 sfnt_tables :: proc(data: []u8, allocator := context.temp_allocator) -> (tables: []Sfnt_Table, why: string) {
 	if len(data) < 12 { return nil, "not a font: too short" }
-	if be32(data, 0) != SFNT_TRUETYPE { return nil, "not a TrueType font (CFF outlines and collections are not read)" }
-	n := be16(data, 4)
+	if base.read_be32(data, 0) != SFNT_TRUETYPE { return nil, "not a TrueType font (CFF outlines and collections are not read)" }
+	n := base.read_be16(data, 4)
 	out := make([dynamic]Sfnt_Table, allocator)
 	for i in 0 ..< n {
 		at := 12 + 16 * i
 		if at + 16 > len(data) { return nil, "a truncated table directory" }
-		off, length := be32(data, at + 8), be32(data, at + 12)
+		off, length := base.read_be32(data, at + 8), base.read_be32(data, at + 12)
 		if off + length > len(data) { return nil, fmt.tprintf("the table %s ends past the file", string(data[at:at + 4])) }
 		append(&out, Sfnt_Table{string(data[at:at + 4]), data[off:off + length]})
 	}
@@ -59,34 +60,34 @@ sfnt_table :: proc(tables: []Sfnt_Table, tag: string) -> []u8 {
 sfnt_cmap :: proc(cmap: []u8, allocator := context.temp_allocator) -> (glyphs: map[rune]int, why: string) {
 	if len(cmap) < 4 { return nil, "no character map" }
 	sub, format := -1, 0
-	for i in 0 ..< be16(cmap, 2) {
+	for i in 0 ..< base.read_be16(cmap, 2) {
 		at := 4 + 8 * i
 		if at + 8 > len(cmap) { return nil, "a truncated character map" }
-		off := be32(cmap, at + 4)
+		off := base.read_be32(cmap, at + 4)
 		if off + 2 > len(cmap) { continue }
-		f := be16(cmap, off)
+		f := base.read_be16(cmap, off)
 		if f == 12 || (f == 4 && format != 12) { sub, format = off, f }
 	}
 	if sub < 0 { return nil, "no format 4 or 12 character map" }
 	out := make(map[rune]int, allocator)
 	if format == 12 {
-		for g in 0 ..< be32(cmap, sub + 12) {
+		for g in 0 ..< base.read_be32(cmap, sub + 12) {
 			at := sub + 16 + 12 * g
 			if at + 12 > len(cmap) { return nil, "a truncated character map" }
-			first, last, gid := be32(cmap, at), be32(cmap, at + 4), be32(cmap, at + 8)
+			first, last, gid := base.read_be32(cmap, at), base.read_be32(cmap, at + 4), base.read_be32(cmap, at + 8)
 			for c in first ..= last { out[rune(c)] = gid + (c - first) }
 		}
 		return out, ""
 	}
-	segs := be16(cmap, sub + 6) / 2
+	segs := base.read_be16(cmap, sub + 6) / 2
 	ends := sub + 14
 	starts := ends + 2 * segs + 2
 	deltas := starts + 2 * segs
 	ranges := deltas + 2 * segs
 	if ranges + 2 * segs > len(cmap) { return nil, "a truncated character map" }
 	for s in 0 ..< segs {
-		first, last := be16(cmap, starts + 2 * s), be16(cmap, ends + 2 * s)
-		delta, range := be16(cmap, deltas + 2 * s), be16(cmap, ranges + 2 * s)
+		first, last := base.read_be16(cmap, starts + 2 * s), base.read_be16(cmap, ends + 2 * s)
+		delta, range := base.read_be16(cmap, deltas + 2 * s), base.read_be16(cmap, ranges + 2 * s)
 		if first == BMP_LAST || first > last { continue }
 		for c in first ..= last {
 			gid: int
@@ -95,7 +96,7 @@ sfnt_cmap :: proc(cmap: []u8, allocator := context.temp_allocator) -> (glyphs: m
 			} else {
 				at := ranges + 2 * s + range + 2 * (c - first)
 				if at + 2 > len(cmap) { continue }
-				gid = be16(cmap, at)
+				gid = base.read_be16(cmap, at)
 				if gid != 0 { gid = (gid + delta) & 0xffff }
 			}
 			if gid != 0 { out[rune(c)] = gid }
@@ -110,10 +111,10 @@ sfnt_glyph :: proc(glyf, loca: []u8, long: bool, gid: int) -> []u8 {
 	a, b: int
 	if long {
 		if 4 * gid + 8 > len(loca) { return nil }
-		a, b = be32(loca, 4 * gid), be32(loca, 4 * gid + 4)
+		a, b = base.read_be32(loca, 4 * gid), base.read_be32(loca, 4 * gid + 4)
 	} else {
 		if 2 * gid + 4 > len(loca) { return nil }
-		a, b = 2 * be16(loca, 2 * gid), 2 * be16(loca, 2 * gid + 2)
+		a, b = 2 * base.read_be16(loca, 2 * gid), 2 * base.read_be16(loca, 2 * gid + 2)
 	}
 	if a > b || b > len(glyf) { return nil }
 	return glyf[a:b]
@@ -130,9 +131,9 @@ font_subset :: proc(data: []u8, codes: []rune, allocator := context.allocator) -
 	if len(head) < 54 || len(hhea) < 36 || len(maxp) < 6 || loca == nil || glyf == nil || hmtx == nil || cmap == nil {
 		return nil, "not a TrueType font with outlines (head, hhea, maxp, loca, glyf, hmtx, cmap)"
 	}
-	long := be16(head, 50) == 1
-	glyphs := be16(maxp, 4)
-	metrics := be16(hhea, 34)
+	long := base.read_be16(head, 50) == 1
+	glyphs := base.read_be16(maxp, 4)
+	metrics := base.read_be16(hhea, 34)
 	if metrics == 0 || 4 * metrics > len(hmtx) { return nil, "hhea.numberOfHMetrics does not fit hmtx" }
 	char_map, cwhy := sfnt_cmap(cmap)
 	if cwhy != "" { return nil, cwhy }
@@ -173,11 +174,11 @@ font_subset :: proc(data: []u8, codes: []rune, allocator := context.allocator) -
 		for len(new_glyf) % 4 != 0 { append(&new_glyf, 0) }
 		advance, lsb: int
 		if g < metrics {
-			advance, lsb = be16(hmtx, 4 * g), be16(hmtx, 4 * g + 2)
+			advance, lsb = base.read_be16(hmtx, 4 * g), base.read_be16(hmtx, 4 * g + 2)
 		} else {
-			advance = be16(hmtx, 4 * (metrics - 1))
+			advance = base.read_be16(hmtx, 4 * (metrics - 1))
 			at := 4 * metrics + 2 * (g - metrics)
-			lsb = at + 2 <= len(hmtx) ? be16(hmtx, at) : 0
+			lsb = at + 2 <= len(hmtx) ? base.read_be16(hmtx, at) : 0
 		}
 		put16(&new_hmtx, advance)
 		put16(&new_hmtx, lsb)
@@ -243,10 +244,10 @@ font_subset :: proc(data: []u8, codes: []rune, allocator := context.allocator) -
 composite_parts :: proc(g: []u8) -> []int {
 	out := make([dynamic]int, context.temp_allocator)
 	at := 10
-	if len(g) < at || i16(be16(g, 0)) >= 0 { return nil }
+	if len(g) < at || i16(base.read_be16(g, 0)) >= 0 { return nil }
 	for at + 4 <= len(g) {
-		flags := be16(g, at)
-		append(&out, be16(g, at + 2))
+		flags := base.read_be16(g, at)
+		append(&out, base.read_be16(g, at + 2))
 		at += component_size(flags)
 		if flags & COMPONENT_MORE == 0 { break }
 	}
@@ -257,10 +258,10 @@ composite_parts :: proc(g: []u8) -> []int {
 @(private = "file")
 composite_renumber :: proc(g: []u8, new_of: map[int]int) {
 	at := 10
-	if len(g) < at || i16(be16(g, 0)) >= 0 { return }
+	if len(g) < at || i16(base.read_be16(g, 0)) >= 0 { return }
 	for at + 4 <= len(g) {
-		flags := be16(g, at)
-		set16(g, at + 2, new_of[be16(g, at + 2)])
+		flags := base.read_be16(g, at)
+		set16(g, at + 2, new_of[base.read_be16(g, at + 2)])
 		at += component_size(flags)
 		if flags & COMPONENT_MORE == 0 { break }
 	}
@@ -360,10 +361,6 @@ sfnt_checksum :: proc(d: []u8) -> u32 {
 	return sum
 }
 
-@(private = "file")
-be16 :: proc(d: []u8, at: int) -> int { return int(d[at]) << 8 | int(d[at + 1]) }
-@(private = "file")
-be32 :: proc(d: []u8, at: int) -> int { return be16(d, at) << 16 | be16(d, at + 2) }
 @(private = "file")
 set16 :: proc(d: []u8, at, v: int) { d[at], d[at + 1] = u8(v >> 8), u8(v) }
 @(private = "file")

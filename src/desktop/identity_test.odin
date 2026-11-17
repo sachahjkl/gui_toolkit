@@ -62,6 +62,28 @@ identity_is_validated :: proc(t: ^testing.T) {
 	testing.expect_value(t, validate(&o, true).error, Error.No_Executable)
 }
 
+// The marks the programs wrote by hand, from their vendor, title and slug: an installed copy's marks stay its own.
+@(test)
+an_identity_derives_its_marks :: proc(t: ^testing.T) {
+	papier := identity_of("Froment Software", "Papier", "papier", context.temp_allocator)
+	testing.expect_value(t, papier.name, "Papier")
+	testing.expect_value(t, papier.key, "Papier")
+	testing.expect_value(t, papier.vendor, "Froment Software")
+	testing.expect_value(t, papier.vendor_key, "FromentSoftware")
+	testing.expect_value(t, papier.entry_marker, "X-Papier-Integration")
+	testing.expect_value(t, papier.registry_mark, "PapierIntegration")
+	testing.expect_value(t, papier.manifest_name, "papier_install.txt")
+	testing.expect_value(t, papier.env_prefix, "PAPIER_DESKTOP_")
+	testing.expect_value(t, identity_aumid(papier), "FromentSoftware.Papier")
+	two := identity_of("Froment Software", "opencode native", "opencode-native", context.temp_allocator)
+	testing.expect_value(t, two.key, "OpencodeNative")
+	testing.expect_value(t, two.entry_marker, "X-OpencodeNative-Integration")
+	testing.expect_value(t, two.registry_mark, "OpencodeNativeIntegration")
+	testing.expect_value(t, two.env_prefix, "OPENCODE_NATIVE_DESKTOP_")
+	o := Integration_Options{identity = papier, exe = "x"}
+	testing.expect_value(t, validate(&o, false).error, Error.None)
+}
+
 @(test)
 roots_come_from_the_environment :: proc(t: ^testing.T) {
 	o := Integration_Options{identity = test_identity(), notify_system = true}

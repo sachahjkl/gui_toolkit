@@ -48,6 +48,23 @@ them with a job on another thread.
 | `cleanup_name` | `wren_cleanup` | the stem of the batch file of a deferred deletion (`""`: the slug) |
 | `scratch_roots` | `Software\WrenTest_` | the registry keys `delete_scratch_root` may delete (prefixes) |
 
+`identity_of(vendor, title, slug, allocator = context.allocator) -> Identity` derives the names and the marks by one rule
+([vendor-facts.md](../src/md/features/vendor-facts.md)): `name` the title, `key` and `vendor_key` the title and the vendor in
+PascalCase (the AppUserModelID's rule: `opencode native` gives `OpencodeNative`), `entry_marker` `X-<key>-Integration`,
+`registry_mark` `<key>Integration`, `manifest_name` `<slug>_install.txt`, `env_prefix` `<SLUG>_DESKTOP_` (upper case,
+hyphens as underscores). The program sets its own lines after the call, and a mark of another rule that its installed
+copies already carry. The strings are allocated in `allocator`: they must live as long as the identity.
+
+```odin
+papier_identity :: proc() -> desktop.Identity {
+	id := desktop.identity_of("Froment Software", APP_TITLE, APP_NAME)
+	id.description = "The clipboard's history: text, rich text, images and files, searched and put back in a keystroke."
+	id.generic_name, id.categories, id.keywords = "Clipboard Manager", "Utility;", "clipboard;history;copy;paste;"
+	id.uninstall_arguments = "--setup"
+	return id
+}
+```
+
 `install`, `remove` and `status` refuse an identity that could reach another program's files (`Bad_Options`): an empty
 `name`, `key`, `slug`, `registry_mark`, `vendor_key` or `manifest_name`, a malformed one, an `entry_marker` without
 `X-`, a URL scheme that is not lower case, schemes without `url_flag`, a launcher without `launcher_mark`.

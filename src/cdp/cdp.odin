@@ -5,10 +5,12 @@ package tk_cdp
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:time"
 import http "../http"
+import tk_json "../json"
 
 // (above what any wait asks of a window: it answers at its own timeout)
 READ_LIMIT :: 75 * time.Second
@@ -26,12 +28,6 @@ Client :: struct {
 	screencast: ^Screencast,   // a screencast in progress: where its frames go
 	failure:    string,   // what the last call that failed said
 	quiet:      bool,     // a failure is not printed (the caller says it)
-}
-
-// A string as JSON, quotes included: what goes into the parameters of a call.
-quote :: proc(s: string) -> string {
-	data, err := json.marshal(s, allocator = context.temp_allocator)
-	return err == nil ? string(data) : `""`
 }
 
 integer :: proc(v: json.Value) -> (int, bool) {
@@ -75,7 +71,7 @@ write_value :: proc(b: ^strings.Builder, v: json.Value, indent, depth: int) {
 	case json.Boolean:           strings.write_string(b, x ? "true" : "false")
 	case json.Integer:           fmt.sbprintf(b, "%d", x)
 	case json.Float:             strings.write_string(b, json_number(x))
-	case json.String:            strings.write_string(b, quote(x))
+	case json.String:            strings.write_string(b, tk_json.quote(x))
 	case json.Array:
 		if len(x) == 0 { strings.write_string(b, "[]"); return }
 		strings.write_byte(b, '[')
@@ -95,7 +91,7 @@ write_value :: proc(b: ^strings.Builder, v: json.Value, indent, depth: int) {
 		for k, i in keys {
 			if i > 0 { strings.write_byte(b, ',') }
 			newline(b, indent, depth + 1)
-			strings.write_string(b, quote(k))
+			strings.write_string(b, tk_json.quote(k))
 			strings.write_string(b, indent > 0 ? ": " : ":")
 			write_value(b, x[k], indent, depth + 1)
 		}
@@ -106,8 +102,8 @@ write_value :: proc(b: ^strings.Builder, v: json.Value, indent, depth: int) {
 
 // A call as it is sent. `params`: a JSON object. `session`: "" for the connection's own target.
 request :: proc(id: int, method, params, session: string) -> string {
-	if session == "" { return fmt.tprintf(`{{"id":%d,"method":%s,"params":%s}}`, id, quote(method), params) }
-	return fmt.tprintf(`{{"id":%d,"method":%s,"params":%s,"sessionId":%s}}`, id, quote(method), params, quote(session))
+	if session == "" { return fmt.tprintf(`{{"id":%d,"method":%s,"params":%s}}`, id, tk_json.quote(method), params) }
+	return fmt.tprintf(`{{"id":%d,"method":%s,"params":%s,"sessionId":%s}}`, id, tk_json.quote(method), params, tk_json.quote(session))
 }
 
 // Is `text` the answer to the call `id`? Its result, or its error's message.
@@ -159,6 +155,26 @@ connect :: proc(port: int) -> (c: Client, ok: bool) {
 	path := socket_path(list[0].web_socket_url)
 	if path == "" { return }
 	return open(port, path)
+}
+
+// The step of connect_wait's tries: a program's server starts in a fraction of a second.
+CONNECT_POLL :: 50 * time.Millisecond
+
+// connect, tried until it answers, at most `limit`: a program just started listens only once its window exists.
+// `program`: the process that serves the port, when the caller started it; once it has ended, the wait fails at once,
+// not at its bound, and `ended` says how it ended (`exited` true). Its end was collected here (on Linux the process is
+// reaped): the caller does not wait for it again, and keeps its exit code from `ended`.
+connect_wait :: proc(port: int, limit: time.Duration, program: Maybe(os.Process) = nil) -> (c: Client, ok: bool, ended: os.Process_State) {
+	deadline := time.tick_add(time.tick_now(), limit)
+	for {
+		if c, ok = connect(port); ok { return }
+		if p, started := program.?; started {
+			// (a wait of 0 answers for a program still running too: its state says whether it ended)
+			if state, _ := os.process_wait(p, 0); state.exited { return c, false, state }
+		}
+		if time.tick_diff(time.tick_now(), deadline) <= 0 { return }
+		time.sleep(CONNECT_POLL)
+	}
 }
 
 // The WebSocket at `path` of this machine's `port` (a browser's own, whose pages are sessions of one connection, or a window's).

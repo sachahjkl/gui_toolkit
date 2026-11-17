@@ -3,6 +3,7 @@ package font
 
 import "base:runtime"
 import "core:math"
+import base "../base"
 import png "../png"
 
 // Bitmap color glyphs off Windows: the CBLC / CBDT tables (Noto Color Emoji as most Linux systems ship it), PNG images at
@@ -19,18 +20,6 @@ import png "../png"
 @(private = "file") CBDT_SCALED_MAX_PX :: 1024
 
 @(private = "file")
-be16 :: proc(d: []u8, o: int) -> (v: int, ok: bool) {
-	if o < 0 || o + 2 > len(d) { return }
-	return int(d[o]) << 8 | int(d[o + 1]), true
-}
-
-@(private = "file")
-be32 :: proc(d: []u8, o: int) -> (v: int, ok: bool) {
-	if o < 0 || o + 4 > len(d) { return }
-	return int(d[o]) << 24 | int(d[o + 1]) << 16 | int(d[o + 2]) << 8 | int(d[o + 3]), true
-}
-
-@(private = "file")
 Cbdt_Metrics :: struct { w, h, bx, by: int }
 
 @(private = "file")
@@ -43,7 +32,7 @@ Cbdt_Glyph :: struct {
 // The strike to draw `size` from: the smallest at or above it, else the largest. -1: none.
 @(private = "file")
 cbdt_strike :: proc(cblc: []u8, size: f32) -> int {
-	n, ok := be32(cblc, 4)
+	n, ok := base.read_be32(cblc, 4)
 	if !ok { return -1 }
 	best, best_ppem := -1, 0
 	for i in 0 ..< n {
@@ -61,18 +50,18 @@ cbdt_strike :: proc(cblc: []u8, size: f32) -> int {
 @(private = "file")
 cbdt_locate :: proc(cblc: []u8, strike, gid: int) -> (offset, length, format: int, big: Cbdt_Metrics, found: bool) {
 	s := CBLC_HEADER_BYTES + strike * BITMAP_SIZE_BYTES
-	array := be32(cblc, s) or_return
-	count := be32(cblc, s + 8) or_return
+	array := base.read_be32(cblc, s) or_return
+	count := base.read_be32(cblc, s + 8) or_return
 	for i in 0 ..< count {
 		e := array + i * INDEX_ARRAY_ENTRY_BYTES
-		first := be16(cblc, e) or_return
-		last := be16(cblc, e + 2) or_return
+		first := base.read_be16(cblc, e) or_return
+		last := base.read_be16(cblc, e + 2) or_return
 		if gid < first || gid > last { continue }
-		add := be32(cblc, e + 4) or_return
+		add := base.read_be32(cblc, e + 4) or_return
 		h := array + add
-		kind := be16(cblc, h) or_return
-		format = be16(cblc, h + 2) or_return
-		base := be32(cblc, h + 4) or_return
+		kind := base.read_be16(cblc, h) or_return
+		format = base.read_be16(cblc, h + 2) or_return
+		image_offset := base.read_be32(cblc, h + 4) or_return
 		at := h + INDEX_HEADER_BYTES
 		metrics :: proc(d: []u8, o: int) -> (m: Cbdt_Metrics, ok: bool) {
 			if o < 0 || o + BIG_METRICS_BYTES > len(d) { return }
@@ -80,36 +69,36 @@ cbdt_locate :: proc(cblc: []u8, strike, gid: int) -> (offset, length, format: in
 		}
 		switch kind {
 		case 1:
-			a := be32(cblc, at + (gid - first) * 4) or_return
-			b := be32(cblc, at + (gid - first + 1) * 4) or_return
-			return base + a, b - a, format, {}, b > a
+			a := base.read_be32(cblc, at + (gid - first) * 4) or_return
+			b := base.read_be32(cblc, at + (gid - first + 1) * 4) or_return
+			return image_offset + a, b - a, format, {}, b > a
 		case 3:
-			a := be16(cblc, at + (gid - first) * 2) or_return
-			b := be16(cblc, at + (gid - first + 1) * 2) or_return
-			return base + a, b - a, format, {}, b > a
+			a := base.read_be16(cblc, at + (gid - first) * 2) or_return
+			b := base.read_be16(cblc, at + (gid - first + 1) * 2) or_return
+			return image_offset + a, b - a, format, {}, b > a
 		case 2:
-			size := be32(cblc, at) or_return
+			size := base.read_be32(cblc, at) or_return
 			big = metrics(cblc, at + 4) or_return
-			return base + (gid - first) * size, size, format, big, size > 0
+			return image_offset + (gid - first) * size, size, format, big, size > 0
 		case 4:
-			n := be32(cblc, at) or_return
+			n := base.read_be32(cblc, at) or_return
 			for k in 0 ..< n {
 				p := at + 4 + k * 4
-				g := be16(cblc, p) or_return
+				g := base.read_be16(cblc, p) or_return
 				if g != gid { continue }
-				a := be16(cblc, p + 2) or_return
-				b := be16(cblc, p + 6) or_return
-				return base + a, b - a, format, {}, b > a
+				a := base.read_be16(cblc, p + 2) or_return
+				b := base.read_be16(cblc, p + 6) or_return
+				return image_offset + a, b - a, format, {}, b > a
 			}
 			return
 		case 5:
-			size := be32(cblc, at) or_return
+			size := base.read_be32(cblc, at) or_return
 			big = metrics(cblc, at + 4) or_return
-			n := be32(cblc, at + 4 + BIG_METRICS_BYTES) or_return
+			n := base.read_be32(cblc, at + 4 + BIG_METRICS_BYTES) or_return
 			ids := at + 8 + BIG_METRICS_BYTES
 			for k in 0 ..< n {
-				g := be16(cblc, ids + k * 2) or_return
-				if g == gid { return base + k * size, size, format, big, size > 0 }
+				g := base.read_be16(cblc, ids + k * 2) or_return
+				if g == gid { return image_offset + k * size, size, format, big, size > 0 }
 			}
 			return
 		}
@@ -143,7 +132,7 @@ cbdt_glyph :: proc(fc: ^Face_Colr, gid: u16, size: f32) -> (g: Cbdt_Glyph, ok: b
 	case:
 		return
 	}
-	n := be32(entry, at) or_return
+	n := base.read_be32(entry, at) or_return
 	at += 4
 	if n <= 0 || n > CBDT_PNG_MAX_BYTES || at + n > len(entry) { return }
 	g.png = entry[at:at + n]

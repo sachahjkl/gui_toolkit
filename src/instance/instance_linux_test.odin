@@ -7,6 +7,20 @@ import "core:sys/linux"
 import "core:testing"
 import "core:time"
 
+// Options that give no wait wait WAIT_MS_DEFAULT; a name nobody owns is not running, and asks to quit go nowhere, at once:
+// no owner is no socket, and the default wait is for an owner that starts or closes.
+@(test)
+no_wait_given_is_the_default_and_nobody_answers_at_once :: proc(t: ^testing.T) {
+	testing.expect_value(t, wait_of({}), WAIT_MS_DEFAULT)
+	testing.expect_value(t, wait_of({wait_ms = 5}), 5)
+	testing.expect_value(t, wait_of({wait_ms = -1}), 0)   // (once)
+	o := Instance_Options{name = fmt.tprintf("tk_instance_nobody_%d", time.to_unix_nanoseconds(time.now()))}
+	start := time.tick_now()
+	testing.expect(t, !running(o), "nobody owns it")
+	testing.expect(t, !quit(o), "nobody takes the quit")
+	testing.expectf(t, time.tick_since(start) < time.Duration(WAIT_MS_DEFAULT) * time.Millisecond, "no owner, no wait: %v", time.tick_since(start))
+}
+
 // A listener nobody serves, whose backlog is full: a blocking connect would wait there for ever.
 @(test)
 a_full_backlog_does_not_hold_a_start :: proc(t: ^testing.T) {

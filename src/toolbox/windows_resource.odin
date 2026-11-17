@@ -13,7 +13,6 @@ package tk_toolbox
 
 import "core:fmt"
 import "core:os"
-import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
 import "../fsx"
@@ -152,12 +151,4 @@ write_windows_resource :: proc(p: Project, dir := WINDOWS_RESOURCE_DIR) -> (why:
 	script := windows_resource_path(p, dir)
 	if !write_if_changed(script, windows_resource_script(p, v, icon_abs, manifest_abs)) { return fmt.tprintf("%s cannot be written", script) }
 	return ""
-}
-
-// Writes `text` at `path` unless the file holds it already.
-@(private)
-write_if_changed :: proc(path, text: string) -> bool {
-	if old, err := os.read_entire_file(path, context.temp_allocator); err == nil && string(old) == text { return true }
-	_ = os.make_directory_all(filepath.dir(path))
-	return os.write_entire_file(path, transmute([]u8)text) == nil
 }

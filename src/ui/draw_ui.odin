@@ -1,7 +1,6 @@
 package ui
 
 import "core:math"
-import "core:strings"
 import "../draw"
 import "../font"
 import "../platform"
@@ -346,8 +345,7 @@ draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	avail := (b.rect.max.x - b.rect.min.x) - 2 * b.text_pad
 	cut := false
 	if width > avail && .No_Text_Trunc not_in b.flags {
-		text, width = truncate(s, b, avail)
-		cut = text != ""
+		text, width, cut = truncate(s, b, avail)
 	}
 	pos := text_origin(s, b, {width, b.text_dim.y})
 	b.ellipsis = {}
@@ -380,70 +378,13 @@ draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	draw.text(dc, b.font, b.font_size, pos, b.text_color, text)
 }
 
-// Where a text is cut for a width (`truncate`): the measure goes rune by rune, and a list of titles asks at every frame.
-// Entries not used for WRAP_CACHE_KEEP builds go.
+// `b.text` cut at its end so that it and TRUNC_ELLIPSIS fit in `avail` pixels (elide.odin's cutter and its cache), and
+// its width; whole when it fits after all (the box's measure and the shaped one can differ by a fraction of a pixel).
 @(private)
-Trunc_Key :: struct {
-	text_hash: u64,
-	text_len:  int,
-	font:      font.Font_Id,
-	size:      f32,
-	avail:     f32,
-}
-
-@(private)
-Trunc_Entry :: struct {
-	end:        int,   // bytes kept (-1: not even the ellipsis fits)
-	width:      f32,   // of what is kept and the ellipsis
-	last_build: u64,
-}
-
-// Shortens `b.text` so that it plus an ellipsis fits in `avail` pixels.
-@(private)
-truncate :: proc(s: ^State, b: ^Box, avail: f32) -> (string, f32) {
-	ell :: TRUNC_ELLIPSIS
-	k := Trunc_Key{text_hash = hash_bytes(transmute([]u8)b.text), text_len = len(b.text), font = b.font, size = b.font_size, avail = avail}
-	e, known := &s.trunc_cache[k]
-	if !known {
-		s.trunc_cache[k] = truncate_measure(s, b, avail, ell)
-		e = &s.trunc_cache[k]
-	}
-	e.last_build = s.build_index
-	if e.end < 0 { return "", 0 }
-	return strings.concatenate({b.text[:e.end], ell}, frame_allocator()), e.width
-}
-
-@(private = "file")
-truncate_measure :: proc(s: ^State, b: ^Box, avail: f32, ell: string) -> Trunc_Entry {
-	ell_w := font.text_width(s.fonts, b.font, b.font_size, ell)
-	if avail <= ell_w { return {end = -1} }
-	x: f32
-	end := 0
-	for r, i in b.text {
-		w := font.glyph(s.fonts, b.font, b.font_size, r).advance
-		if x + w + ell_w > avail { break }
-		x += w
-		end = i + len_utf8(r)
-	}
-	return {end = end, width = x + ell_w}
-}
-
-@(private)
-trunc_cache_trim :: proc(s: ^State) {
-	if s.build_index % CACHE_TRIM_INTERVAL_BUILDS != 0 { return }
-	dead := make([dynamic]Trunc_Key, context.temp_allocator)
-	for k, e in s.trunc_cache { if e.last_build + WRAP_CACHE_KEEP < s.build_index { append(&dead, k) } }
-	for k in dead { delete_key(&s.trunc_cache, k) }
-}
-
-@(private)
-len_utf8 :: proc(r: rune) -> int {
-	switch {
-	case r < 0x80:    return 1
-	case r < 0x800:   return 2
-	case r < 0x10000: return 3
-	}
-	return 4
+truncate :: proc(s: ^State, b: ^Box, avail: f32) -> (text: string, width: f32, cut: bool) {
+	e := elide_cut(s, b.font, b.font_size, b.text, avail, .End, TRUNC_ELLIPSIS)
+	if e.head < 0 { return "", 0, false }
+	return elide_text(b.text, e, TRUNC_ELLIPSIS, frame_allocator()), e.width, e.head < len(b.text)
 }
 
 ////////////////////////////////

@@ -13,6 +13,7 @@ import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "../ascii"
+import "../fsx"
 
 // What a project says of its documentation site, and what build_docs makes of it.
 Docs :: struct {
@@ -535,7 +536,7 @@ rewrite_link :: proc(href: string, user: rawptr) -> string {
 	if href == "" || is_external(href) || strings.has_prefix(href, "#") || strings.has_prefix(href, "/") { return "" }
 	path, frag := href, ""
 	if h := strings.index_byte(href, '#'); h >= 0 { path, frag = href[:h], href[h:] }
-	normalized := path_normalize(path_join(path_dir(rc.cur), path))
+	normalized := path_normalize(fsx.path_join(path_dir(rc.cur), path, '/'))
 	if strings.has_suffix(path, "/") && normalized != "" { normalized = strings.concatenate({normalized, "/"}, context.temp_allocator) }
 	inside := !strings.has_prefix(normalized, "../")
 
@@ -558,11 +559,6 @@ rewrite_link :: proc(href: string, user: rawptr) -> string {
 path_dir :: proc(p: string) -> string {
 	i := strings.last_index_byte(p, '/')
 	return i < 0 ? "" : p[:i]
-}
-
-@(private)
-path_join :: proc(dir, rel: string) -> string {
-	return dir == "" ? rel : strings.concatenate({dir, "/", rel}, context.temp_allocator)
 }
 
 // "a/./b" -> "a/b", "a/b/../c" -> "a/c"; a leading run of ".." stays (it leaves the folder).
@@ -635,7 +631,7 @@ root_of :: proc(href, dir: string) -> string {
 	if href == "" || strings.has_prefix(href, "#") || strings.has_prefix(href, "/") || has_scheme(href) { return href }
 	target, frag := href, ""
 	if h := strings.index_byte(href, '#'); h >= 0 { target, frag = href[:h], href[h:] }
-	path := path_normalize(path_join(dir, target))
+	path := path_normalize(fsx.path_join(dir, target, '/'))
 	folder := target == "." || target == ".." || strings.has_suffix(target, "/") || strings.has_suffix(target, "/..")
 	if folder && path != "" { path = strings.concatenate({path, "/"}, context.temp_allocator) }
 	return strings.concatenate({"/", path, frag}, context.temp_allocator)

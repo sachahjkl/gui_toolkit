@@ -49,7 +49,7 @@
 //                                             docs/screenshots/*.png and site/img from the examples, their own frames (shots.odin)
 //   theme_shots [-build] [-out:dir] [-page:Find] [-find:the] [-only:a,b]
 //                                             examples/whatsnew in every named palette, no window -> build/theme_shots
-//   timeline_test [-exe:file] [-out:dir] [-port:9477]
+//   timeline_test [-exe:file] [-out:dir] [-port:n] (0: a free one)
 //                                             the timelines of src/cdp against examples/whatsnew --headless over a real socket
 //   i18n <language> [-check]                  src/i18n/lang/<language>.txt from the tr calls of src (docs/i18n.md)
 //   doc_check [--root folder] [--extra folder]...
@@ -95,7 +95,7 @@ COMMANDS := []toolbox.Command {
 	{name = "screenshots", usage = "[-build] [-only:a,b] [-width:1400]: docs/screenshots and site/img from the examples, their own frames", checked = true, flags = {"build", "only:", "width:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_screenshots(args)) }},
 	{name = "theme_shots", usage = "[-build] [-out:dir] [-page:Find] [-find:the] [-only:a,b]: examples/whatsnew in every named palette", checked = true, flags = {"build", "out:", "page:", "find:", "only:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_theme_shots(args)) }},
 	{name = "finish_shots", usage = "[-build] [-out:dir] [-page:0] [-theme:0]: fidget's page in every finish", checked = true, flags = {"build", "out:", "page:", "theme:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_finish_shots(args)) }},
-	{name = "timeline_test", usage = "[-exe:file] [-out:dir] [-port:9477]: the timelines of src/cdp against examples/whatsnew --headless", checked = true, flags = {"exe:", "out:", "port:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_timeline_test(args)) }},
+	{name = "timeline_test", usage = "[-exe:file] [-out:dir] [-port:n] (0: a free one): the timelines of src/cdp against examples/whatsnew --headless", checked = true, flags = {"exe:", "out:", "port:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_timeline_test(args)) }},
 	{name = "doc_check", usage = "[--root folder] [--extra folder]...: the files, flags and names the documentation cites exist", run = proc(args: []string) -> cli.Exit { return toolbox.done(run_doc_check(args)) }},
 	{name = "ci", usage = ": what the CI checks on this system: odin check of every package, the examples, the tests", checked = true, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_ci(args)) }},
 	{name = "desktop_tests", usage = "[x11|randr|wayland]: Linux: the backends against real servers on a virtual desktop nobody sees", checked = true, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_desktop_tests(args)) }},

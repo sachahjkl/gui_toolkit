@@ -71,7 +71,7 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
   best first (a click on a column sorts them). The search is asked when the query changed and then stayed the same
   `FILE_FIND_QUIET_MS`; at most `FILE_FIND_LIMIT` entries; the answer of an older query is dropped. "Searching…" shows
   after `FILE_BROWSER_SLOW_MS`, "Nothing found." when the answer is empty. A folder found is entered (the query
-  cleared); a file found is chosen, previewed and named as one of the folder (`file_path_join(folder, relative)`).
+  cleared); a file found is chosen, previewed and named as one of the folder (`fsx.path_join(folder, relative, sep)`).
   With the toggle off, the filter is the folder's only.
 - **The preview**, at the right (a split the person resizes, `splitter`; hidden when the dialog is narrower than
   `FILE_PREVIEW_SHOWN_EM` beside the places, and when the source cannot read): the selected file's text, coloured by its
@@ -169,8 +169,8 @@ come on the interface's thread).
 `examples/showcase/files.odin` is a whole source in memory, one table of folders and files that answers each call at
 once: a start for a program's own source.
 
-The paths of any separator are read by `file_path_root`, `file_path_parent`, `file_path_name`, `file_path_join`,
-`file_path_clean`, `file_path_parts`, `file_path_within`; `file_entry_hidden`, `file_entry_look` and `file_look_icon`
+The paths of any separator are read by `file_path_root`, `file_path_parent`, `file_path_name`, `file_path_clean`,
+`file_path_parts`, `file_path_within`, and joined by `fsx.path_join` (docs/fsx.md); `file_entry_hidden`, `file_entry_look` and `file_look_icon`
 say what an entry is.
 
 ## State kept

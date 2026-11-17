@@ -5,7 +5,7 @@ package tk
 // connection, while the first one records) and played back. The program must end by itself with exit code 0. (What the protocol
 // does is tested in the process: tests/examples/whatsnew_test.odin; the socket by itself: tests/devtools; the client's parts that
 // need no window: src/cdp's tests.)
-//   tk build whatsnew, then tk timeline_test           (default: build/whatsnew[.exe], build/e2e, port 9477)
+//   tk build whatsnew, then tk timeline_test           (default: build/whatsnew[.exe], build/e2e, a free port)
 
 import "core:encoding/json"
 import "core:fmt"
@@ -17,7 +17,6 @@ import "core:time"
 import cdp "../../src/cdp"
 import toolbox "../../src/toolbox"
 
-TIMELINE_TEST_PORT :: 9477
 // What the recording waits around each action: what a person leaves between two.
 @(private = "file") RECORD_PAUSE :: 400 * time.Millisecond
 @(private = "file") TYPED_PAUSE :: 900 * time.Millisecond
@@ -49,7 +48,7 @@ idle :: proc(t: ^Test) {
 
 run_timeline_test :: proc(args: []string) -> string {
 	root := toolkit_root()
-	port, why := toolbox.int_flag(args, "port", TIMELINE_TEST_PORT)
+	port, why := toolbox.int_flag(args, "port", 0)   // (0: a free one)
 	if why != "" { return why }
 	return timeline_test(toolbox.flag_value(args, "exe", join({root, "build", fmt.tprintf("whatsnew%s", EXE)})), toolbox.flag_value(args, "out", join({root, "build", "e2e"})), port)
 }
@@ -68,7 +67,7 @@ timeline_test :: proc(exe, out: string, port: int) -> string {
 	log_path := join({out, "whatsnew.stderr.txt"})
 	log, log_err := os.create(log_path)
 	if log_err != nil { return fmt.tprintf("%s cannot be written", log_path) }
-	p, c, why := start_program({exe, "--headless"}, port, nil, stderr = log)
+	p, c, why := start_program({exe, "--headless"}, nil, stderr = log, port = port)
 	os.close(log)
 	if why != "" { return why }
 	t := Test{c = &c}

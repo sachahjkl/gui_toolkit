@@ -7,8 +7,6 @@ import i18n "../i18n"
 
 // What an executable's file name ends with.
 @(private) EXE_SUFFIX :: ".exe"
-// What separates a path's folders.
-@(private) SEPARATOR :: "\\"
 
 // Why `d` is not a full path to an install folder, "" when it is: a drive path, C:\dir; a colon only after the drive
 // letter; no network share (a program is not installed there); not the root of a drive.

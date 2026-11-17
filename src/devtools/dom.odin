@@ -4,6 +4,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:strconv"
 import "core:strings"
+import tk_json "../json"
 import "../platform"
 import "../render"
 import "../ui"
@@ -118,7 +119,7 @@ dom_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, id, depth: i
 	b := dom_box(srv, s, id)
 	if id % 2 == 1 {
 		text := b != nil ? ui.box_text(b) : ""
-		fmt.sbprintf(sb, `{{"nodeId":%d,"backendNodeId":%d,"parentId":%d,"nodeType":3,"nodeName":"#text","localName":"","nodeValue":%s}}`, id, id, id - 1, json_quote(text))
+		fmt.sbprintf(sb, `{{"nodeId":%d,"backendNodeId":%d,"parentId":%d,"nodeType":3,"nodeName":"#text","localName":"","nodeValue":%s}}`, id, id, id - 1, tk_json.quote(text))
 		if remember { dom_text_sent(srv, id, text) }
 		return
 	}
@@ -129,7 +130,7 @@ dom_write :: proc(sb: ^strings.Builder, srv: ^Server, s: ^ui.State, id, depth: i
 	tag := dom_tag(s, b)
 	kids := dom_children(srv, s, id)
 	fmt.sbprintf(sb, `{{"nodeId":%d,"backendNodeId":%d,"nodeType":1,"nodeName":%s,"localName":%s,"nodeValue":"","childNodeCount":%d,"attributes":[`, id, id,
-		json_quote(ascii.upper(tag)), json_quote(tag), len(kids))
+		tk_json.quote(ascii.upper(tag)), tk_json.quote(tag), len(kids))
 	dom_write_attrs(sb, b)
 	strings.write_string(sb, "]")
 	only_text := len(kids) == 1 && kids[0] == id + 1
@@ -156,7 +157,7 @@ dom_attrs :: proc(b: ^ui.Box) -> [dynamic][2]string {
 
 @(private)
 dom_write_attrs :: proc(sb: ^strings.Builder, b: ^ui.Box) {
-	for kv, i in dom_attrs(b) { fmt.sbprintf(sb, `%s"%s",%s`, i > 0 ? "," : "", kv[0], json_quote(kv[1])) }
+	for kv, i in dom_attrs(b) { fmt.sbprintf(sb, `%s"%s",%s`, i > 0 ? "," : "", kv[0], tk_json.quote(kv[1])) }
 }
 
 // DOM.requestChildNodes: the children of a node the client does not have. Those it has are not sent again: each node of an
@@ -308,7 +309,7 @@ dom_sync_node :: proc(srv: ^Server, s: ^ui.State, id: int) {
 		if k % 2 == 1 {
 			b := dom_box(srv, s, k)
 			if t, ok := srv.dom.texts[k]; ok && b != nil && t != ui.box_text(b) {
-				event(to.conn, to.session, "DOM.characterDataModified", fmt.tprintf(`{{"nodeId":%d,"characterData":%s}}`, k, json_quote(ui.box_text(b))))
+				event(to.conn, to.session, "DOM.characterDataModified", fmt.tprintf(`{{"nodeId":%d,"characterData":%s}}`, k, tk_json.quote(ui.box_text(b))))
 				dom_text_sent(srv, k, ui.box_text(b))
 			}
 		} else {
@@ -404,7 +405,7 @@ dom_style_fixed :: proc(srv: ^Server, b: ^ui.Box) -> [dynamic][2]string {
 dom_write_props :: proc(sb: ^strings.Builder, props: [dynamic][2]string) {
 	for kv, i in props {
 		if i > 0 { strings.write_byte(sb, ',') }
-		fmt.sbprintf(sb, `{{"name":"%s","value":%s}}`, kv[0], json_quote(kv[1]))
+		fmt.sbprintf(sb, `{{"name":"%s","value":%s}}`, kv[0], tk_json.quote(kv[1]))
 	}
 }
 

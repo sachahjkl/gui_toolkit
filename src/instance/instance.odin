@@ -60,8 +60,28 @@ Owner_State :: enum u8 {
 Instance_Options :: struct {
 	name:     string,   // the unique key (letters, digits and dots): build one with `key`
 	identity: string,   // the owner hands over only to a sender with this same identity; "" means any sender is trusted
-	wait_ms:  int,      // how long to keep trying while the owner is starting or closing (a silent owner ends it at once)
+	// how long to keep trying while the owner is starting or closing (a silent owner ends it at once); 0: WAIT_MS_DEFAULT;
+	// below 0: once (the owner still gets FORWARD_MIN_MS to answer)
+	wait_ms:  int,
 }
+
+// How long a start or a message keeps trying when its options say nothing: an owner that is starting or closing is
+// there again well within it. (Every program wrote its own 1500 or 2000.)
+WAIT_MS_DEFAULT :: 2000
+
+@(private)
+wait_of :: proc(o: Instance_Options) -> int {
+	if o.wait_ms < 0 { return 0 }
+	return o.wait_ms > 0 ? o.wait_ms : WAIT_MS_DEFAULT
+}
+
+// Whether a copy owns the name and answers: an installer's --status (gt:setup's Setup_Options.running). The PING asks
+// it nothing.
+running :: proc(o: Instance_Options) -> bool { return send(o, transmute([]byte)string(MESSAGE_PING)) == .Forwarded }
+
+// Asks the copy that owns the name to end, as its own Quit does (gt:setup's Setup_Options.quit, an installer before it
+// replaces the program). Whether it took the message.
+quit :: proc(o: Instance_Options) -> bool { return send(o, transmute([]byte)string(MESSAGE_QUIT)) == .Forwarded }
 
 // The messages every program's handler takes the same way (docs/instance.md), so that another program reaches any of
 // them: an installer, gt:setup's --status (Setup_Options.running) and --quit (Setup_Options.quit). The byte 0x02 first:

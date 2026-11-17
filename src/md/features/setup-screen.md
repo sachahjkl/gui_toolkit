@@ -26,7 +26,9 @@ glance; the eye had nowhere to go first; the vendor was a line of small grey wor
   NixOS and what the last action said fold under "Details". Uninstall stays on the details' line, a danger link, open
   or folded: one click away, never a primary button beside Install.
 - **A footer for the maker and the acts.** Under a hairline: "By <mark> <vendor>" on the left (the same signature as
-  the sites' foot), what closes and what installs on the right.
+  the sites' foot), what closes and what installs on the right. The mark's PNG is the program's (the vendor is the
+  program's identity, not the toolkit's); its texture is the install's (`prefs_page.install_vendor_mark`: made once,
+  freed by `install_end`), so a window that opens again makes none twice and no program frees it by hand.
 - **A copy from the Nix store has a screen of its own.** Under the hero, the rest of the dialog is Nix's snowflake on
   a disc of Nix's two blues, "Managed by Nix", why there is nothing to do here, and the store path: it cannot be read
   as an install that failed. What an earlier install left, if any, can still go from the details.

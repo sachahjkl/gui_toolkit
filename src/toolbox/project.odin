@@ -126,7 +126,7 @@ toolkit_dir :: proc(p: Project) -> string {
 }
 
 // The flags every odin command of the project gets: the collections and -vet.
-@(private = "file")
+@(private)
 collection_flags :: proc(p: Project, out: ^[dynamic]string) {
 	append(out, fmt.tprintf("-collection:gt=%s/src", toolkit_dir(p)))
 	for c in p.collections { append(out, fmt.tprintf("-collection:%s=%s", c[0], c[1])) }
@@ -151,8 +151,8 @@ odin_command :: proc(p: Project, verb: string, pkg := "", extra: []string = nil)
 // What an odin command of the program gets on Windows from what build_windows made: the console launcher it embeds
 // (-define:GT_CONSOLE_LAUNCHER=<file>, GT_CONSOLE_LAUNCHER_MARK: desktop.install writes it beside the program with the
 // PATH entry), the AppUserModelID of its windows (GT_AUMID) and, for the program's executable (`linked`), its resource.
-// A file not made yet is not given: a check from Linux has none, and builds without them. For a tool that builds the
-// program with its own odin command (opencode native's).
+// A file not made yet is not given: a check from Linux has none, and builds without them. Public for a tool that builds
+// the program with its own odin command: opencode native's ocntools, until it builds through the toolbox's commands.
 windows_flags :: proc(p: Project, linked: bool) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
 	if launcher := absolute_slashed(launcher_path(p)); launcher != "" {

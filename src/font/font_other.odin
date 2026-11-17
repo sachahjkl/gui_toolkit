@@ -8,6 +8,7 @@ import "base:runtime"
 import "core:os"
 import "core:strings"
 import "../ascii"
+import base "../base"
 
 // The platform part of the package off Windows. Faces come from files and memory, opened by the text backend itself
 // (the native one: Fontations). The system's fonts come from the platform's font service: fontconfig on Linux
@@ -181,10 +182,9 @@ axes :: proc(s: ^State, id: Font_Id, allocator := context.allocator) -> []Axis {
 
 @(private)
 fvar_axes :: proc(t: []u8, allocator := context.allocator) -> []Axis {
-	be16 :: proc(b: []u8, at: int) -> int { return int(b[at]) << 8 | int(b[at + 1]) }
 	fixed :: proc(b: []u8, at: int) -> f32 { return f32(i32(u32(b[at]) << 24 | u32(b[at + 1]) << 16 | u32(b[at + 2]) << 8 | u32(b[at + 3]))) / 65536 }
-	if len(t) < 16 || be16(t, 0) != 1 { return nil }
-	first, count, size := be16(t, 4), be16(t, 8), be16(t, 10)
+	if len(t) < 16 || base.read_be16(t, 0) != 1 { return nil }
+	first, count, size := base.read_be16(t, 4), base.read_be16(t, 8), base.read_be16(t, 10)
 	if count == 0 || size < 20 || first + count * size > len(t) { return nil }
 	out := make([]Axis, count, allocator)
 	for i in 0 ..< count {

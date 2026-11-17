@@ -13,6 +13,7 @@ import "../draw"
 import i18n "../i18n"
 import img "../image"
 import "../render"
+import "../fsx"
 import remote "../remote"
 import syntax "../syntax"
 import timefmt "../timefmt"
@@ -78,7 +79,7 @@ file_preview_follow :: proc(fb: ^File_Browser, shown: bool) {
 	e: ^File_Entry
 	if shown && .Read in fb.source.caps && fb.source.read != nil && list_selected_count(&fb.table.vl) <= 1 {
 		e = file_row_entry(fb, table_selected(&fb.table))
-		if e != nil && e.kind == .File { want = file_path_join(fb.folder, e.name, fb.sep) }
+		if e != nil && e.kind == .File { want = fsx.path_join(fb.folder, e.name, fb.sep) }
 	}
 	if want == fb.preview.path { return }
 	file_preview_clear(fb)

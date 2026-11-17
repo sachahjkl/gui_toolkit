@@ -155,14 +155,6 @@ file_path_name :: proc(path: string, sep: u8) -> string {
 	return i < 0 ? p[root:] : p[root + i + 1:]
 }
 
-// `name` in the folder `dir`.
-file_path_join :: proc(dir, name: string, sep: u8, allocator := context.temp_allocator) -> string {
-	if dir == "" { return strings.clone(name, allocator) }
-	if dir[len(dir) - 1] == sep { return strings.concatenate({dir, name}, allocator) }
-	s := [1]u8{sep}
-	return strings.concatenate({dir, string(s[:]), name}, allocator)
-}
-
 // `path` with its "." and ".." parts walked and its separators single; a path typed with "/" on a source of "\" reads
 // as one of "\" (what a person types on Windows).
 file_path_clean :: proc(path: string, sep: u8, allocator := context.temp_allocator) -> string {

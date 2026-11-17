@@ -2,8 +2,9 @@ package tk_toolbox
 
 import cli "../cli"
 
-// The files a program makes from its logo: the program draws it (a proc that gives a canvas of a size), the toolbox writes
-// what every program needs of it: its PNG files, the .ico of its Windows executable, the project's picture.
+// The files a program makes from its logo: the program draws it (a proc that gives a canvas of a size), the toolbox draws
+// each size large and shrinks it (src/md/infrastructure/logo-files.md), then writes what every program needs of it: its
+// PNG files, the .ico of its Windows executable, the project's picture.
 
 import "core:fmt"
 import "core:os"
@@ -17,10 +18,16 @@ import "../paint"
 PROJECT_IMAGE      :: ".project/image.png"
 PROJECT_IMAGE_SIZE :: 512
 
-// What write_logo writes. A size is drawn at that size (render), never scaled from another.
+// A shrink's step at most: the cubic filter of paint.resize keeps a clean edge down to a quarter, not below.
+LOGO_SHRINK_STEP :: 4
+
+// What write_logo writes. Each size is drawn for itself (draw), never scaled from another size's file.
 Logo :: struct {
-	render:        proc(size: int, user: rawptr) -> paint.Canvas,
+	// The picture `pixels` wide as it must read once shrunk to `size` (a small size drops its details): a canvas the
+	// toolbox frees. `pixels` is `size` times LOGO_SHRINK_STEP as often as it takes to reach draw_size.
+	draw:          proc(pixels, size: int, user: rawptr) -> paint.Canvas,
 	user:          rawptr,
+	draw_size:     int,      // the least width a size is drawn at before it is shrunk (0: master; with neither, at its size)
 	dir:           string,   // the folder of the PNG files ("assets")
 	master:        int,      // <dir>/logo.png at that size; 0: none
 	sizes:         []int,    // <dir>/logo_<size>.png
@@ -37,10 +44,32 @@ Logo_File :: struct {
 	size: int,
 }
 
+// The logo at `size` pixels square: drawn at Logo.draw_size or more, then shrunk (logo_shrink). A canvas to free.
+logo_picture :: proc(logo: Logo, size: int) -> paint.Canvas {
+	least := logo.draw_size > 0 ? logo.draw_size : logo.master
+	side := max(size, 1)
+	pixels := side
+	for pixels < least { pixels *= LOGO_SHRINK_STEP }
+	return logo_shrink(logo.draw(pixels, side, logo.user), side)
+}
+
+// `big` shrunk to `size` pixels square, by LOGO_SHRINK_STEP at most at each step. `big` is destroyed, or returned when
+// it is no wider than `size`. A logo of layers (Wren's) shrinks each layer with it before it draws the next one over it.
+logo_shrink :: proc(big: paint.Canvas, size: int) -> paint.Canvas {
+	c := big
+	for c.width > size {
+		next := max(size, c.width / LOGO_SHRINK_STEP)
+		small := paint.resize(c, next, next)
+		paint.canvas_destroy(&c)
+		c = small
+	}
+	return c
+}
+
 // Writes the files of the logo and says each. why: "" when all are written, else the file that is not.
 write_logo :: proc(logo: Logo) -> (why: string) {
 	png :: proc(logo: Logo, size: int, path: string) -> string {
-		c := logo.render(size, logo.user)
+		c := logo_picture(logo, size)
 		defer paint.canvas_destroy(&c)
 		_ = os.make_directory_all(filepath.dir(path))
 		if !paint.write_png(c, path) { return fmt.tprintf("%s cannot be written", path) }
@@ -57,7 +86,7 @@ write_logo :: proc(logo: Logo) -> (why: string) {
 		sizes := logo.ico_sizes != nil ? logo.ico_sizes : ICO_SIZES[:]
 		entries := make([]paint.Ico_Entry, len(sizes), context.temp_allocator)
 		for size, i in sizes {
-			c := logo.render(size, logo.user)
+			c := logo_picture(logo, size)
 			defer paint.canvas_destroy(&c)
 			data := size >= logo.ico_png_from ? paint.png_encode(c, context.temp_allocator) : paint.dib_encode(c, context.temp_allocator)
 			entries[i] = {size, data}

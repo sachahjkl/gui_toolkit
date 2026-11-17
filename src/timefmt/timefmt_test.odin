@@ -97,8 +97,64 @@ the_watch_reads_the_machines_offset :: proc(t: ^testing.T) {
 @(test)
 a_size_reads_in_powers_of_1024 :: proc(t: ^testing.T) {
 	testing.expect_value(t, size(512), "512 B")
+	testing.expect_value(t, size(-3), "0 B")
 	// (a no-break space between the number and its unit)
 	testing.expect_value(t, size(7 * 1024), "7.0 KB")
 	testing.expect_value(t, size(12 * 1024 * 1024), "12 MB")
 	testing.expect_value(t, size(1288490188), "1.2 GB")
+	// (rounded up to the next decimal or unit: never "10.0 KB" nor "1024 KB")
+	testing.expect_value(t, size(10219), "10 KB")
+	testing.expect_value(t, size(1024 * 1024 - 100), "1.0 MB")
+}
+
+// Powers of 1000 and "kB" when asked, and a rate is a size per second; both write into a buffer without allocating.
+@(test)
+a_decimal_size_and_a_rate :: proc(t: ^testing.T) {
+	testing.expect_value(t, size(999, {decimal = true}), "999 B")
+	testing.expect_value(t, size(1500, {decimal = true}), "1.5 kB")
+	testing.expect_value(t, size(12_600_000, {decimal = true}), "13 MB")
+	testing.expect_value(t, rate(0), "0 B/s")
+	testing.expect_value(t, rate(-5), "0 B/s")
+	testing.expect_value(t, rate(1.5 * 1024 * 1024), "1.5 MB/s")
+	buf: [SIZE_TEXT_MOST]u8
+	testing.expect_value(t, write_size(buf[:], 340 * 1024), "340 KB")
+	testing.expect_value(t, write_rate(buf[:], 2048, {decimal = true}), "2.0 kB/s")
+	// (a buffer too small keeps what fits: no overflow, no allocation)
+	small: [3]u8
+	testing.expect_value(t, write_size(small[:], 340 * 1024), "340")
+}
+
+// A stopwatch to the second: minutes and seconds, the hours from one; padded minutes and days when asked.
+@(test)
+a_stopwatch_reads_hours_minutes_seconds :: proc(t: ^testing.T) {
+	testing.expect_value(t, stopwatch(-1_000), "0:00")
+	testing.expect_value(t, stopwatch(7_900), "0:07")
+	testing.expect_value(t, stopwatch(7_900, {padded = true}), "00:07")
+	testing.expect_value(t, stopwatch(754_000), "12:34")
+	testing.expect_value(t, stopwatch(3_723_000), "1:02:03")
+	testing.expect_value(t, stopwatch(3_723_000, {padded = true}), "1:02:03")
+	testing.expect_value(t, stopwatch(3 * DAY_MS + 4 * 3_600_000 + 12 * 60_000 + 9_000, {days = true}), "3:04:12:09")
+	testing.expect_value(t, stopwatch(9_000, {days = true}), "0:00:00:09")
+}
+
+// The weekday, the ISO date and the date with its year, on the local clock.
+@(test)
+a_weekday_and_an_iso_date :: proc(t: ^testing.T) {
+	at := 1794309600000.0   // (Tuesday 2026-11-10 11:20 UTC)
+	testing.expect_value(t, weekday(at, 0), "Tuesday")
+	testing.expect_value(t, weekday(at, 13 * 60), "Wednesday")
+	testing.expect_value(t, iso_date(at, 0), "2026-11-10")
+	testing.expect_value(t, iso_date(at, -12 * 60, with_clock = true), "2026-11-09 23:20")
+	testing.expect_value(t, date(at, 0, year = true), "Nov 10 2026")
+}
+
+// A moment names the weekday from 2 to 6 days back when asked; 7 days back, the weekday is today's again: the date.
+@(test)
+a_moment_names_the_weekday_when_asked :: proc(t: ^testing.T) {
+	now := 1794309600000.0   // (Tuesday 2026-11-10 11:20 UTC)
+	testing.expect_value(t, moment(now - 2 * DAY_MS, now, 0, weekdays = true), "Sunday 11:20")
+	testing.expect_value(t, moment(now - 6 * DAY_MS, now, 0, short = true, weekdays = true), "Wednesday")
+	testing.expect_value(t, moment(now - 7 * DAY_MS, now, 0, short = true, weekdays = true), "Nov 3")
+	testing.expect_value(t, moment(now - DAY_MS, now, 0, short = true, weekdays = true), "yesterday")
+	testing.expect_value(t, moment(now - 2 * DAY_MS, now, 0, short = true), "Nov 8")
 }

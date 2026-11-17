@@ -23,6 +23,7 @@ import "core:strings"
 import "core:time"
 import http "../http"
 import "../fsx"
+import tk_json "../json"
 import signing "../signing"
 import licence "../licence"
 import "../platform"
@@ -198,7 +199,7 @@ licence_issue :: proc(tool: Licence_Tool, args: []string) -> (why: string) {
 	if path == "" {
 		dir := licence_key_dir(tool)
 		if dir == "" { return "no folder for the issued licences: pass -out:FILE" }
-		path, _ = filepath.join({dir, "issued", fmt.tprintf("%s%s", safe_file_name(l.order), p.file_extension)}, context.temp_allocator)
+		path, _ = filepath.join({dir, "issued", fmt.tprintf("%s%s", fsx.safe_file_name(l.order, "licence"), p.file_extension)}, context.temp_allocator)
 	}
 	fsx.make_dirs(filepath.dir(path))
 	if !fsx.write_atomic(path, transmute([]byte)licence.file_text(p, back, text, tool.hint, context.temp_allocator)) { return fmt.tprintf("cannot write %s", path) }
@@ -240,14 +241,6 @@ licence_verify :: proc(tool: Licence_Tool, args: []string) -> (why: string) {
 
 @(private = "file")
 licence_title :: proc(p: licence.Product) -> string { return p.title != "" ? p.title : p.name }
-
-// An order number as a file name.
-@(private = "file")
-safe_file_name :: proc(s: string) -> string {
-	b := transmute([]byte)strings.clone(s, context.temp_allocator)
-	for &c in b { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { c = '_' } }
-	return len(b) > 0 ? string(b) : "licence"
-}
 
 ////////////////////////////////
 // The worker's secrets, from sops
@@ -314,7 +307,7 @@ paddle_amounts :: proc(p: licence.Product, text: string, allocator := context.te
 
 // The body of POST /products.
 paddle_product_body :: proc(c: Paddle_Catalog) -> string {
-	return fmt.tprintf(`{{"name":%s,"tax_category":"standard","description":%s}}`, paddle_quote(c.name), paddle_quote(c.description))
+	return fmt.tprintf(`{{"name":%s,"tax_category":"standard","description":%s}}`, tk_json.quote(c.name), tk_json.quote(c.description))
 }
 
 // The body of POST /prices: one payment (no billing cycle, no trial), the tax in the price (the buyer pays what is shown),
@@ -322,9 +315,9 @@ paddle_product_body :: proc(c: Paddle_Catalog) -> string {
 paddle_price_body :: proc(p: licence.Product, c: Paddle_Catalog, product_id: string, a: Paddle_Amount) -> string {
 	title := licence.edition_title(p, a.edition)
 	return fmt.tprintf(`{{%s"description":%s,"name":%s,"unit_price":{{"amount":%s,"currency_code":%s}},"tax_mode":"internal","quantity":{{"minimum":1,"maximum":1}},"custom_data":{{"edition":%s}}}}`,
-		product_id != "" ? fmt.tprintf(`"product_id":%s,`, paddle_quote(product_id)) : "",
-		paddle_quote(fmt.tprintf("%s, %s, one payment, taxes included", c.name, title)), paddle_quote(title),
-		paddle_quote(a.amount), paddle_quote(c.currency), paddle_quote(a.edition))
+		product_id != "" ? fmt.tprintf(`"product_id":%s,`, tk_json.quote(product_id)) : "",
+		tk_json.quote(fmt.tprintf("%s, %s, one payment, taxes included", c.name, title)), tk_json.quote(title),
+		tk_json.quote(a.amount), tk_json.quote(c.currency), tk_json.quote(a.edition))
 }
 
 // The worker's PRICES (price id -> edition) as the JSON text of its setting.
@@ -333,7 +326,7 @@ paddle_prices_setting :: proc(ids: []string, amounts: []Paddle_Amount) -> string
 	strings.write_byte(&b, '{')
 	for a, i in amounts {
 		if i > 0 { strings.write_byte(&b, ',') }
-		fmt.sbprintf(&b, "%s:%s", paddle_quote(ids[i]), paddle_quote(a.edition))
+		fmt.sbprintf(&b, "%s:%s", tk_json.quote(ids[i]), tk_json.quote(a.edition))
 	}
 	strings.write_byte(&b, '}')
 	return strings.to_string(b)
@@ -408,7 +401,7 @@ paddle_apply :: proc(p: licence.Product, c: Paddle_Catalog, amounts: []Paddle_Am
 	}
 	fmt.printfln("\nEnvironment: %s\nProduct:     %s  %s", environment, c.name, product_id)
 	for a, i in amounts { fmt.printfln("Price:       %s %s %s, one payment, taxes included  %s", a.edition, a.amount, c.currency, ids[i]) }
-	fmt.printfln("\nThe worker's setting (licence-worker/products/<program>.jsonc, this environment):\n  \"PRICES\": %s", paddle_quote(paddle_prices_setting(ids, amounts)))
+	fmt.printfln("\nThe worker's setting (licence-worker/products/<program>.jsonc, this environment):\n  \"PRICES\": %s", tk_json.quote(paddle_prices_setting(ids, amounts)))
 	fmt.println("The site's buy block: site.Shop.price_id, the same id.")
 	return ""
 }
@@ -441,8 +434,3 @@ paddle_text :: proc(v: json.Value, key: string) -> string {
 	return string(s)
 }
 
-@(private = "file")
-paddle_quote :: proc(s: string) -> string {
-	q, _ := json.marshal(s, {}, context.temp_allocator)
-	return string(q)
-}

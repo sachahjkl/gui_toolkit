@@ -38,9 +38,7 @@ package ui
 import "core:fmt"
 import "core:math"
 import "core:strings"
-import "core:unicode/utf8"
 import "../draw"
-import "../font"
 import i18n "../i18n"
 import "../timefmt"
 
@@ -471,7 +469,10 @@ marks_card :: proc(k: ^Scroll_Marks, i: int, o: Scroll_Marks_Options, em: f32) {
 	for l, n in lines {
 		if n == SCROLL_MARKS_CARD_LINES { break }
 		line := body[l[0]:l[1]]
-		if n == SCROLL_MARKS_CARD_LINES - 1 && n + 1 < len(lines) { line = marks_elide(st.font, st.font_size, line, most) }
+		// (more follows: the line ends in the ellipsis even when it fits, so it is cut with the ellipsis already at its end)
+		if n == SCROLL_MARKS_CARD_LINES - 1 && n + 1 < len(lines) {
+			line = elide(st.font, st.font_size, fmt.tprintf("%s%s", strings.trim_right_space(line), ELLIPSIS), most)
+		}
 		append(&shown, line)
 	}
 	head_w := text_width(st.font, small, m.label) + text_width(st.font, small, when_) + em * 1.5
@@ -562,18 +563,6 @@ marks_card_lines :: proc(k: ^Scroll_Marks, group: []int, o: Scroll_Marks_Options
 		}
 		spacer(px(pad))
 	}
-}
-
-// `line` with "…" at its end, cut so that both fit in `width` (whole when it already does with it).
-@(private = "file")
-marks_elide :: proc(f: font.Font_Id, size: f32, line: string, width: f32) -> string {
-	dots :: "…"
-	t := strings.trim_right_space(line)
-	for len(t) > 0 && text_width(f, size, t) + text_width(f, size, dots) > width {
-		_, n := utf8.decode_last_rune_in_string(t)
-		t = strings.trim_right_space(t[:len(t) - n])
-	}
-	return fmt.tprintf("%s%s", t, dots)
 }
 
 // The view goes to the item at `top`, `margin` above it, at once.

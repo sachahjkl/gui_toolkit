@@ -12,9 +12,17 @@ import "../fsx"
 // The stamp beside a library build_c_lib makes.
 C_LIB_STAMP :: "STAMP"
 
-// Writes the stamp `text` at `path`, with its line end.
+// Writes `text` at `path`, its folder made, unless the file holds it already: a generated file that did not change keeps
+// its time, so what is built from it is not built again. The toolkit's one writer of a generated file (a stamp too).
+write_if_changed :: proc(path, text: string) -> bool {
+	if old, err := os.read_entire_file(path, context.temp_allocator); err == nil && string(old) == text { return true }
+	_ = os.make_directory_all(filepath.dir(path))
+	return os.write_entire_file(path, transmute([]u8)text) == nil
+}
+
+// Writes the stamp `text` at `path`: its format, this system's line end (STAMP_NEWLINE), over write_if_changed.
 write_stamp :: proc(path, text: string) -> bool {
-	return os.write_entire_file(path, fmt.tprintf("%s%s", text, STAMP_NEWLINE)) == nil
+	return write_if_changed(path, fmt.tprintf("%s%s", text, STAMP_NEWLINE))
 }
 
 // The output is there and the stamp beside it says `expected` (its line end aside).

@@ -376,6 +376,7 @@ folder, its icons, its own options and `prepare` for its parts: the PATH, the st
 
 ```odin
 prefs_page.install_init(&app.install, &app.prefs, setup_options())   // its settings loaded (registers install.choice)
+prefs_page.install_vendor_mark(&app.install, &app.shared.r, VENDOR_MARK_PNG)   // the "By" line's mark
 prefs_page.install_offer(&app.install, &app.main.state, offer = !app.demo)   // its window open: read on a task
 // each frame
 if prefs_page.install_frame(&app.install) == .Launched { quit() }   // the work that ended, the view's answer
@@ -402,6 +403,10 @@ prefs_page.install_launch(&app.install)
 - `install_end(in)` before the window's State goes: what an uninstall left is deleted once the process ends, the dialog's
   thread is waited for. `install_launch(in)` last, once the program's single instance is released: the installed copy
   asked for starts (started earlier, it would find this copy running and hand itself over to it).
+- `install_vendor_mark(in, &renderer, png) -> bool`, once the renderer exists: the vendor's mark of the "By" line of the
+  modal and the page, a texture made from the PNG's bytes (a `#load`). Once: a later call does nothing (a window that
+  opens again may call it again). A view already open takes it at once; `install_end` frees it. False: the bytes are no
+  PNG, and the line names the vendor alone. `Install.vendor_mark` is the texture, for a program's own "By" line.
 - `install_open(in)` shows the modal (`--setup`, Settings > Apps' Uninstall). `install_open_now(in)`: the modal is open,
   a program leaves the keyboard to it.
 - The page (`Page_Options.install`, category `INSTALL_PAGE`) is `setup.page`: while the modal is open it waits.
@@ -462,6 +467,35 @@ prefs_page.palette_settings_add(&app.palette, &app.palette_settings, &app.prefs,
     proc(user: rawptr) -> prefs_page.Page_Options { return settings_options((^App)(user)) },
     proc(user: rawptr) { (^App)(user).settings_open = true }, app)
 ```
+
+## The updates
+
+`Updates` is a program's Updater ([update.md](update.md)) with what every program wrote around it:
+
+```odin
+prefs_page.updates_start(&app.updates, {
+    product = PRODUCT, repository = "owner/app", version = APP_VERSION,
+    prefs = &app.prefs, install = &app.install, state = &app.main.state, window = app.main.win,
+})
+// each frame
+if changed, st := prefs_page.updates_follow(&app.updates); changed {
+    host.host_settle(&app.main)                                    // the badge and the settings show the new state
+    if words, bad := update.notice(st); words != "" { say(app, bad, words) }
+    if st.phase == .Installed && !app.visible { restart(app) }    // the program's own restart
+}
+prefs_page.updates_stop(&app.updates)   // at the end, before the windows go
+```
+
+- `updates_start(u, o)` reads the folder from `update.base_url` (`update_source`), else the repository's latest release
+  (`update.latest_release_folder`); the user agent is `<product>/<version>`; at each news it wakes `o.window` (or calls
+  `o.news(o.user)`, on the updater's thread, for a program with several windows to wake).
+- `updates_follow(u) -> (changed, status)` applies `update.auto` first: `Install` when the preference is on and
+  `Install.known` and `running_it` say this is the installed copy (`install_offer`'s reading), else `Off` (Check now still
+  works); a change of either is followed with no call of the program. Then `changed` is true once per change of the
+  updater. When a version is in place, the installed copy's manifest gets it (`setup.updated` with `Install.options`, on
+  a chore of `o.state`; a failure goes to the log).
+- `u.updater` is what `Page_Options.updater` and `update_badge` take; `u.folder` is the folder read (a program that reads
+  more files of its release there).
 
 ## The update in the status bar
 

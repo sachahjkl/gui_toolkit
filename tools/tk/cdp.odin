@@ -44,6 +44,7 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 import cdp "../../src/cdp"
+import tk_json "../../src/json"
 
 CDP_PORT :: 9222
 @(private = "file") TREE_TEXT_LONGEST :: 60
@@ -95,7 +96,7 @@ wait_for_enter :: proc(pressed: ^bool) -> ^thread.Thread {
 cdp_command :: proc(c: ^cdp.Client, command: string, args: []string) -> string {
 	o := cdp.options(args)
 	failed :: proc(c: ^cdp.Client) -> string { return c.failure }
-	query := cdp.option(&o, "name") != "" ? fmt.tprintf(`{{"name":%s}}`, cdp.quote(cdp.option(&o, "name"))) : fmt.tprintf(`{{"text":%s}}`, cdp.quote(strings.join(o.rest[:], " ", context.temp_allocator)))
+	query := cdp.option(&o, "name") != "" ? fmt.tprintf(`{{"name":%s}}`, tk_json.quote(cdp.option(&o, "name"))) : fmt.tprintf(`{{"text":%s}}`, tk_json.quote(strings.join(o.rest[:], " ", context.temp_allocator)))
 	switch command {
 	case "tree":
 		r, ok := cdp.call(c, "Toolkit.getTree", fmt.tprintf(`{{"all":%v}}`, cdp.has_option(&o, "all")))
@@ -130,8 +131,8 @@ cdp_command :: proc(c: ^cdp.Client, command: string, args: []string) -> string {
 	case "ax":
 		b := strings.builder_make(context.temp_allocator)
 		strings.write_byte(&b, '{')
-		if len(o.rest) > 0 { fmt.sbprintf(&b, `"role":%s`, cdp.quote(o.rest[0])) }
-		if name := cdp.option(&o, "name"); name != "" { fmt.sbprintf(&b, `%s"accessibleName":%s`, len(o.rest) > 0 ? "," : "", cdp.quote(name)) }
+		if len(o.rest) > 0 { fmt.sbprintf(&b, `"role":%s`, tk_json.quote(o.rest[0])) }
+		if name := cdp.option(&o, "name"); name != "" { fmt.sbprintf(&b, `%s"accessibleName":%s`, len(o.rest) > 0 ? "," : "", tk_json.quote(name)) }
 		strings.write_byte(&b, '}')
 		method := len(o.rest) > 0 || cdp.option(&o, "name") != "" ? "Accessibility.queryAXTree" : "Accessibility.getFullAXTree"
 		r, ok := cdp.call(c, method, strings.to_string(b))
