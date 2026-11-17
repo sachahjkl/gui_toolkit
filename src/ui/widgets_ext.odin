@@ -1126,7 +1126,9 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 	accent := color("accent")
 	mach := machined()
 	text_on, text_off: Color
-	// (machined: the chosen label on a metal key, in the text's colour; flat: on the accent)
+	// (machined: the chosen label on a metal key, in the text's colour; the other finishes: on the accent, in the colour
+	// the theme made to read on it)
+	text_on = color("accent_text")
 	if mach { text_on = color("text") } else if tags(intent_tag(.Primary)) { text_on = color("text") }
 	if tags("weak") { text_off = color("text") }
 	if tags("button") {
@@ -1156,15 +1158,25 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 			items := make([]^Box, len(labels), frame_allocator())
 			on_one := false
 			chosen := clamp(selected^, 0, len(labels) - 1)
+			// (a hovered segment's face stops this far from its cell's edges: full width, it touched the key beside it
+			// and the two read as one wider choice)
+			gap := d.pad
 			for label, i in labels {
 				fg := i == selected^ ? text_on : text_off
-				next({width = pct(1 / f32(len(labels))), height = pct(1), text_align = .Center, fg = fg, radius = d.key_radius})
+				next({width = pct(1 / f32(len(labels))), height = pct(1), axis = .X, radius = 0})
+				cell := build_box({}, fmt.tprintf("###segc%d", i))
+				push_parent(cell)
+				spacer(px(gap))
+				next({width = fill(), height = pct(1), text_align = .Center, fg = fg, radius = d.key_radius})
 				push_tags("segment")
-				// (Fixed_Radius: key_radius is as drawn, concentric with the track's drawn corners; one Tab stop, the chosen)
-				flags := Box_Flags{.Clickable, .Draw_Text, .Draw_Hot_Effects, .Fixed_Radius}
-				if i == chosen { flags += {.Focusable} }
+				// (Fixed_Radius: key_radius is as drawn, concentric with the track's drawn corners; one Tab stop, the chosen.
+				// The chosen one has no face of its own: the key is its face, and a hover's face, opaque, hid the key)
+				flags := Box_Flags{.Clickable, .Draw_Text, .Fixed_Radius}
+				if i == chosen { flags += {.Focusable} } else { flags += {.Draw_Hot_Effects} }
 				item := build_box(flags, fmt.tprintf("%s###seg%d", label, i))
 				pop_tags()
+				spacer(px(gap))
+				pop_parent()
 				items[i] = item
 				isig := signal(item)
 				if isig.focused { on_one = true }
@@ -1180,7 +1192,7 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 				set_focus(items[to].key)
 			}
 			// (the item clicked this frame is the selected one: the earlier items said otherwise)
-			if changed { for c := inner.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
+			if changed { for c in items { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
 		}
 	}
 	return

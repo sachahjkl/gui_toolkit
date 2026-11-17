@@ -41,7 +41,7 @@ entries := [?]Entry{
 	// the hues, for what a program colours by meaning (hue())
 	{"hue_accent", .Accent, 1}, {"hue_blue", .Blue, 1}, {"hue_purple", .Purple, 1}, {"hue_green", .Good, 1}, {"hue_yellow", .Warn, 1},
 	{"hue_red", .Bad, 1}, {"hue_cyan", .Cyan, 1}, {"hue_rose", .Rose, 1},
-	{"accent", .Accent, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0}, {"well", .Well, 1},
+	{"accent", .Accent, 1}, {"accent_text", .Accent_Text, 1}, {"track", .Panel2, 1}, {"sheen", .White, 0}, {"well", .Well, 1},
 	{"find_match background", .Warn, 0.62}, {"find_current background", .Warn, 0.85}, {"find_text", .Black, 1},
 	{"link", .Accent, 1}, {"code_bg", .Panel2, 1},   // rich_paragraph: links, inline code
 	// what a search found in a line (match.odin): the text's own colour on a tint of the accent (the accent's own colour on

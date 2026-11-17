@@ -54,6 +54,28 @@ a_segmented_control_is_one_tab_stop_and_the_arrows_choose :: proc(t: ^testing.T)
 	}
 }) }
 
+// The key is the chosen segment's face: under the pointer it does not change, nothing is drawn over it. Another
+// segment's hover face keeps clear of its cell's edges: full width, it touched the key and read as a wider choice.
+@(test)
+a_hovered_segment_never_covers_or_touches_the_key :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Group_Run{seg = 1}
+	s := session.start(t, {size = {400, 140}, user = &r, build = group_build})
+	session.frames(s, 2)
+	chosen, other := session.get(s, "seg1"), session.get(s, "seg2")
+	testing.expect(t, .Draw_Hot_Effects not_in chosen.flags, "the chosen segment has no hover face over the key")
+	testing.expect(t, .Draw_Hot_Effects in other.flags, "another segment has one")
+	cell := other.parent
+	testing.expectf(t, other.rect.min.x - cell.rect.min.x >= 1 && cell.rect.max.x - other.rect.max.x >= 1,
+		"its face stops short of its cell's edges (%v in %v)", other.rect, cell.rect)
+	before := session.capture(s)
+	at := session.center(chosen)
+	session.move(s, at)
+	session.frames(s, 20)
+	after := session.capture(s)
+	testing.expect(t, session.near(session.pixel(before, int(at.x) - 20, int(at.y)), session.pixel(after, int(at.x) - 20, int(at.y))),
+		"the key under the pointer looks as it did")
+}) }
+
 @(private = "file")
 radios_build :: proc(s: ^session.Session) {
 	r := (^Group_Run)(s.user)
