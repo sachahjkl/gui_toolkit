@@ -163,6 +163,13 @@ shortcuts to commands. `send_hotkey(w, hk)` is the other way: it presses `hk` fo
 program's: a clipboard history pastes with Ctrl+V into the program it was called from). Windows: `SendInput`. Wayland: a
 virtual keyboard of the seat (`zwp_virtual_keyboard_v1`, with a keymap that has the key alone; false when the compositor
 has none); the window's thread calls it. X11: false.
+`send_wheel(w, notches)` turns the mouse wheel for whatever window is under the pointer (a scrolling capture of another
+program's window). Positive notches turn it down, towards the user: the content moves up, as to read further (a window
+of the toolkit gets a `Scroll` with `delta.y = +1` per notch). Each notch goes alone, as a real wheel sends it: programs
+read one wheel message as one step. Windows: `SendInput` (`MOUSEEVENTF_WHEEL`, `WHEEL_DELTA` per notch). X11: XTEST
+(buttons 4 and 5; false without `libxcb-xtest` or the extension), from the window's thread. Wayland: false: no protocol
+lets a client drive the seat's pointer, only the RemoteDesktop portal (libei), which asks the person each session.
+`0` notches sends nothing: the answer says whether the wheel can be turned there.
 
 **Drag and drop** (`dragdrop.odin`), **tray** (`tray.odin`), **accessibility** (`a11y.odin`): optional; a backend that
 has none keeps the shared stubs (neither Windows nor Linux), which answer "not supported".

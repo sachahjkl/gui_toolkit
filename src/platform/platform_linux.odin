@@ -341,6 +341,13 @@ send_hotkey :: proc(w: ^Window, hk: Hotkey) -> bool {
 	return wl_send_hotkey(w, hk)
 }
 
+// Turns the wheel for the window under the pointer (hotkey.odin): X11's XTEST; Wayland has no way without the
+// RemoteDesktop portal (libei), which asks the person each session.
+send_wheel :: proc(w: ^Window, notches: int) -> bool {
+	if w == nil || w.offscreen || w.backend != .X11 { return false }
+	return x11_send_wheel(notches)
+}
+
 raise_window :: proc(w: ^Window) {
 	if w == nil || w.offscreen { return }
 	switch w.backend {

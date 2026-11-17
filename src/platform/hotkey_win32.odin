@@ -53,6 +53,21 @@ send_hotkey :: proc(w: ^Window, hk: Hotkey) -> bool {
 	return win.SendInput(u32(len(inputs)), raw_data(inputs), size_of(win.INPUT)) == u32(len(inputs))
 }
 
+// SendInput: one MOUSEEVENTF_WHEEL input per notch, in one batch. One per notch, not one with the total: a real wheel
+// sends a WHEEL_DELTA per click, and many programs (browsers, Office) read each message as one step and drop or clamp a
+// larger delta. WHEEL_DELTA positive turns the wheel away from the user (content up), so a notch down is -WHEEL_DELTA.
+send_wheel :: proc(w: ^Window, notches: int) -> bool {
+	if notches == 0 { return true }
+	delta := notches > 0 ? -win.WHEEL_DELTA : win.WHEEL_DELTA
+	inputs := make([]win.INPUT, abs(notches), context.temp_allocator)
+	for &i in inputs {
+		i.type = .MOUSE
+		i.mi.mouseData = cast(u32)i32(delta)   // (a signed amount in a DWORD: its bits kept)
+		i.mi.dwFlags = win.MOUSEEVENTF_WHEEL
+	}
+	return win.SendInput(u32(len(inputs)), raw_data(inputs), size_of(win.INPUT)) == u32(len(inputs))
+}
+
 // The virtual key of a hotkey's key: by its name, or the one that types its character on the user's layout
 // (VkKeyScanW), whose modifiers join the hotkey's (a character typed with Shift: Shift too). 0: none.
 @(private = "file")

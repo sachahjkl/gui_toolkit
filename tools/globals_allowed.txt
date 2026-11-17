@@ -384,6 +384,7 @@ platform/wl_protocol_linux.odin t_seat_resize const  # a protocol table, built o
 platform/wl_protocol_linux.odin t_output_opt const  # a protocol table, built once (wayland_lib), then read
 platform/x11_ext_linux.odin xfixes thread  # a library and what was made with it on this thread's connection
 platform/x11_ext_linux.odin randr thread  # a library and what was made with it on this thread's connection
+platform/x11_ext_linux.odin xtest thread  # a library and whether this thread's connection's server has it
 process/console_windows.odin console_out process  # the parent's console, attached once for the process (console_once)
 process/console_windows.odin console_once process  # the attachment of the parent's console: once for the process
 qr/qr.odin MODE_BITS const  # a table of ISO/IEC 18004 (the mode indicators)

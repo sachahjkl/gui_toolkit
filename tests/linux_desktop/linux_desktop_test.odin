@@ -190,6 +190,48 @@ a_hotkey_sent_reaches_the_window_that_has_the_keyboard :: proc(t: ^testing.T) {
 	testing.expect(t, typed, "é")
 }
 
+@(private = "file")
+Wheel_Sum :: struct { want: f32 }
+
+@(private = "file")
+wheel_reached :: proc(s: ^Seen, data: rawptr) -> bool {
+	sum: f32
+	for e in s.events { if e.kind == .Scroll { sum += e.delta.y } }
+	return sum == (^Wheel_Sum)(data).want
+}
+
+// send_wheel turns the wheel for whatever is under the pointer: here the window itself, which hears one Scroll per
+// notch, +y for a notch down (X11's XTEST; Wayland has no way without the RemoteDesktop portal: false).
+@(test)
+a_wheel_sent_reaches_the_window_under_the_pointer :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	w := open("wheel")
+	testing.expect(t, w != nil, "the window opens")
+	if w == nil { return }
+	defer platform.destroy_window(w)
+	if wayland() {
+		testing.expect(t, !platform.send_wheel(w, 1), "Wayland: none")
+		return
+	}
+	id := window_id(w)
+	sh("xdotool mousemove --window ", id, " 50 40")
+	seen: Seen
+	defer delete(seen.events)
+	testing.expect(t, wait_kind(w, &seen, .Mouse_Move), "the pointer is over the window")
+	clear(&seen.events)
+	testing.expect(t, platform.send_wheel(w, 3), "the server has XTEST")
+	down := Wheel_Sum{3}
+	testing.expect(t, pump_until(w, 3000, &seen, &down, wheel_reached), "three notches down: +3")
+	scrolls := 0
+	for e in seen.events { if e.kind == .Scroll { scrolls += 1 } }
+	testing.expect_value(t, scrolls, 3)   // one event per notch
+	clear(&seen.events)
+	testing.expect(t, platform.send_wheel(w, -2))
+	up := Wheel_Sum{-2}
+	testing.expect(t, pump_until(w, 3000, &seen, &up, wheel_reached), "two notches up: -2")
+}
+
 // The window is shown; a click before any motion, at a scale: the position on entering. (Scale 2 only on a scaled output.)
 @(test)
 wake_ends_a_waiting_poll :: proc(t: ^testing.T) {

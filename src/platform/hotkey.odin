@@ -12,6 +12,14 @@ package platform
 // program's: a clipboard history pastes into the program it was called from with Ctrl+V). Windows: SendInput. Wayland:
 // a virtual keyboard (zwp_virtual_keyboard_v1; false when the compositor has none). X11, elsewhere: false. On Wayland it
 // is the window's thread that calls it (its connection).
+//
+// send_wheel(w, notches) turns the mouse wheel as the user would, for whatever window is under the pointer (a scrolling
+// capture scrolls another program's window a step at a time). Positive notches turn it down, towards the user, as to
+// read further: the content moves up, and a window of this toolkit gets a Scroll with delta.y = +1 per notch. Each notch
+// is sent alone, as a real wheel sends it. Windows: SendInput (MOUSEEVENTF_WHEEL, WHEEL_DELTA per notch). X11: XTEST
+// (buttons 4 and 5; false without libxcb-xtest or the extension), from the window's thread. Wayland: false, as no
+// protocol lets a client move the pointer of the seat: only the RemoteDesktop portal (libei), which asks the person each
+// session. Elsewhere: false. 0 notches sends nothing: the answer says whether the wheel can be turned there.
 
 import "core:fmt"
 import "core:strings"

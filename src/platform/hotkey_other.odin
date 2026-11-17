@@ -8,4 +8,5 @@ hotkey_unregister :: proc(w: ^Window, id: int) {}
 
 when ODIN_OS != .Linux {
 	send_hotkey :: proc(w: ^Window, hk: Hotkey) -> bool { return false }
+	send_wheel :: proc(w: ^Window, notches: int) -> bool { return false }
 }

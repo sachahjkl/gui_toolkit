@@ -3,10 +3,11 @@ package platform
 
 import "core:sys/posix"
 
-// The two X extensions the X11 backend asks of the server, by dlopen as the rest (each its own library, each optional):
+// The X extensions the X11 backend asks of the server, by dlopen as the rest (each its own library, each optional):
 // XFIXES tells when any program takes the clipboard (and cuts a window out of the pointer's way, for a drag image); RandR
 // gives the refresh rate of the monitor a window is on. Without them: no change signal between two other programs, and
-// DISPLAY_FALLBACK_HZ.
+// DISPLAY_FALLBACK_HZ. XTEST turns the wheel as the user would (send_wheel), loaded on its first use only: most programs
+// never send input.
 
 @(private = "file") XFIXES_VERSION_MAJOR :: 5
 @(private = "file") XFIXES_SELECTION_EVENT_MASK_SET_OWNER :: 1
@@ -68,6 +69,47 @@ Randr_Lib :: struct {
 }
 // (of this thread: with its connection, x11c)
 @(private = "file", thread_local) randr: Randr_Lib
+
+@(private = "file")
+Xtest_Lib :: struct {
+	tried:      bool,
+	ok:         bool,      // the library loaded and the server has the extension
+	fake_input: proc "c" (c: Xcb_Connection, type, detail: u8, time: u32, root: Xcb_Window, x, y: i16, device: u8) -> Xcb_Void_Cookie,
+}
+// (of this thread: with its connection, x11c)
+@(private = "file", thread_local) xtest: Xtest_Lib
+
+// The X buttons of a wheel's notch (as window_x11_linux.odin reads them).
+@(private = "file") XTEST_WHEEL_UP :: 4
+@(private = "file") XTEST_WHEEL_DOWN :: 5
+
+// A notch is a press and a release of button 4 or 5 on the server's pointer, which the server gives to the window under
+// it. False without libxcb-xtest or the extension: a request of an extension the server lacks would close the connection.
+@(private)
+x11_send_wheel :: proc(notches: int) -> bool {
+	if x11c.c == nil { return false }   // (not this thread's window: its connection is another thread's)
+	if !xtest.tried {
+		xtest.tried = true
+		if h := lib_open({"libxcb-xtest.so.0", "libxcb-xtest.so"}); h != nil && xcb.get_extension_data != nil {
+			id := lib_sym(h, "xcb_test_id")
+			xtest.fake_input = auto_cast lib_sym(h, "xcb_test_fake_input")
+			if id != nil && xtest.fake_input != nil {
+				r := (^Xcb_Extension_Reply)(xcb.get_extension_data(x11c.c, id))
+				xtest.ok = r != nil && r.present != 0
+			}
+		}
+	}
+	if !xtest.ok { return false }
+	if notches == 0 { return true }
+	button := u8(notches > 0 ? XTEST_WHEEL_DOWN : XTEST_WHEEL_UP)
+	// (time 0: now; root and position 0: the pointer stays where it is; device 0: the core pointer)
+	for _ in 0 ..< abs(notches) {
+		xtest.fake_input(x11c.c, XCB_BUTTON_PRESS, button, 0, 0, 0, 0, 0)
+		xtest.fake_input(x11c.c, XCB_BUTTON_RELEASE, button, 0, 0, 0, 0, 0)
+	}
+	xcb.flush(x11c.c)
+	return true
+}
 
 // The event an extension's id starts at, 0 when the server does not have it.
 @(private = "file")
