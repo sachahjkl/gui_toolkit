@@ -218,3 +218,41 @@ stitch_aligns_repeated_rows :: proc(t: ^testing.T) {
 	end, _ := image.stitch_end(&s)
 	image.destroy(&end)
 }
+
+// A scroll bar at the right edge: its two columns change on every screen (the thumb moves), so no row of a screen is a
+// row of the next. Without ignore_right the screens do not join; with it they do, and the page's other columns come back.
+@(test)
+stitch_leaves_out_a_scroll_bar :: proc(t: ^testing.T) {
+	BAR :: 2
+	page := stitch_page()
+	steps := [?]int{37, 43, 61}
+	frames, _ := screens(page, steps[:])
+	for frame, i in frames {
+		for y in HEADER ..< HEADER + VIEW {
+			for x in W - BAR ..< W {
+				p := frame.pixels[(y * W + x) * 4:][:4]
+				p[0], p[1], p[2] = u8(i * 50), u8(y), 200
+			}
+		}
+	}
+
+	plain := image.stitch_begin()
+	_, first := image.stitch_add(&plain, frames[0])
+	testing.expect_value(t, first, image.Stitch_Result.Added)
+	_, second := image.stitch_add(&plain, frames[1])
+	testing.expect_value(t, second, image.Stitch_Result.No_Overlap)
+	none, _ := image.stitch_end(&plain)
+	image.destroy(&none)
+
+	out, used, ok := image.stitch(frames, {ignore_right = BAR})
+	if !testing.expect(t, ok, "joined with the bar left out") { return }
+	defer image.destroy(&out)
+	testing.expect_value(t, used, len(frames))
+	if !testing.expect_value(t, out.height, PAGE) { return }
+	for y in 0 ..< PAGE {
+		if !slice.equal(out.pixels[y * W * 4:][:(W - BAR) * 4], page.pixels[y * W * 4:][:(W - BAR) * 4]) {
+			testing.expectf(t, false, "row %d differs outside the bar", y)
+			return
+		}
+	}
+}

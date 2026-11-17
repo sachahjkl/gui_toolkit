@@ -19,6 +19,9 @@ STITCH_MAX_HEIGHT :: 32768
 Stitch_Options :: struct {
 	min_overlap: int,   // the least overlap, in rows, that joins two frames (STITCH_MIN_OVERLAP)
 	max_height:  int,   // the picture's height is never more (STITCH_MAX_HEIGHT)
+	// Columns at the right edge left out of the comparison (still in the picture): a window's scroll bar, whose thumb
+	// moves with every step, would make no row of one frame equal to a row of the next.
+	ignore_right: int,
 }
 
 // What a frame did to the picture.
@@ -33,7 +36,9 @@ Stitch_Result :: enum {
 // A stitch in progress. Its fields belong to the stitch procedures: begin, add frames, end.
 Stitcher :: struct {
 	min_overlap, max_height: int,
+	ignore_right:            int,
 	width, height:           int,    // every frame's, from the first
+	compared:                int,    // the bytes of a row that are compared (the width less ignore_right)
 	header, footer:          int,    // rows that do not move, known once two frames differed (`fixed`)
 	fixed:                   bool,
 	full:                    bool,
@@ -48,6 +53,7 @@ stitch_begin :: proc(o := Stitch_Options{}, allocator := context.allocator) -> S
 	return {
 		min_overlap = o.min_overlap > 0 ? o.min_overlap : STITCH_MIN_OVERLAP,
 		max_height = o.max_height > 0 ? o.max_height : STITCH_MAX_HEIGHT,
+		ignore_right = max(o.ignore_right, 0),
 		body = make([dynamic]u8, allocator),
 		allocator = allocator,
 	}
@@ -60,8 +66,10 @@ stitch_add :: proc(s: ^Stitcher, frame: Image) -> (moved: int, result: Stitch_Re
 	stride := frame.width * 4
 	if s.prev == nil {
 		s.width, s.height = frame.width, frame.height
+		// (at least one column compared: a frame narrower than the columns left out compares its first)
+		s.compared = max(frame.width - s.ignore_right, 1) * 4
 		s.prev = make([]u64, frame.height, s.allocator)
-		row_hashes(frame, s.prev)
+		row_hashes(frame, s.compared, s.prev)
 		rows := min(frame.height, s.max_height)
 		append(&s.body, ..frame.pixels[:rows * stride])
 		s.full = rows < frame.height
@@ -71,7 +79,7 @@ stitch_add :: proc(s: ^Stitcher, frame: Image) -> (moved: int, result: Stitch_Re
 	if s.full { return 0, .Full }
 
 	next := make([]u64, s.height, s.allocator)
-	row_hashes(frame, next)
+	row_hashes(frame, s.compared, next)
 	header, footer := s.header, s.footer
 	if !s.fixed {
 		// The first pair that differs decides the rows that do not move; later frames keep them, as the top of the
@@ -167,15 +175,20 @@ stitch :: proc(frames: []Image, o := Stitch_Options{}, allocator := context.allo
 }
 
 @(private = "file")
-row_hashes :: proc(img: Image, out: []u64) {
+row_hashes :: proc(img: Image, compared: int, out: []u64) {
 	stride := img.width * 4
-	for y in 0 ..< img.height { out[y] = xxhash.XXH3_64_default(img.pixels[y * stride:][:stride]) }
+	for y in 0 ..< img.height { out[y] = xxhash.XXH3_64_default(img.pixels[y * stride:][:compared]) }
 }
 
-// Whether the `l` rows of `frame` from `first` are the body's `l` rows that end at row `end`.
+// Whether the `l` rows of `frame` from `first` are the body's `l` rows that end at row `end` (their compared bytes).
 @(private = "file")
 body_matches :: proc(s: ^Stitcher, frame: Image, end, first, l: int) -> bool {
 	stride := frame.width * 4
 	if l > end { return false }
-	return slice.equal(s.body[(end - l) * stride:][:l * stride], frame.pixels[first * stride:][:l * stride])
+	for i in 0 ..< l {
+		a := s.body[(end - l + i) * stride:][:s.compared]
+		b := frame.pixels[(first + i) * stride:][:s.compared]
+		if !slice.equal(a, b) { return false }
+	}
+	return true
 }

@@ -148,6 +148,8 @@ defer image.destroy(&page)
 - `min_overlap` (`STITCH_MIN_OVERLAP`, 16): the least overlap in rows that joins two frames. Under it, the frames do not
   overlap.
 - `max_height` (`STITCH_MAX_HEIGHT`, 32768): the picture's height is never more. At 1920 columns it is 240 MiB.
+- `ignore_right` (0): columns at the right edge left out of the comparison, still in the picture. A window's scroll bar
+  goes there: its thumb moves with every step, so with it no row of one frame is a row of the next.
 
 `Stitch_Result`:
 

@@ -35,6 +35,10 @@ any program that captures a view that scrolls needs the same join.
   and the stitcher answers `.Full`.
 - **Frames of one size.** Every frame has the first frame's width and height; another size is refused (`.Refused`).
   A window resized during a capture is a new capture.
+- **A scroll bar left out of the comparison (`ignore_right`).** A window's scroll bar is in every frame, and its
+  thumb moves with every step: no row of a frame is then a row of the next. The caller says how many columns at the
+  right edge to leave out; they are still copied into the picture (each from the frame that gave the row). Refused: a
+  scroll bar found by the stitcher, which would guess at what a program draws, and a tolerance for the whole row.
 - **Pure, on a worker.** Hashing and the search are passes over the pixels. A caller adds frames on a worker; the
   interface's thread only receives the answers.
 
