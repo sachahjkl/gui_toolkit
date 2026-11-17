@@ -1,4 +1,8 @@
+#+build linux
 package capture_test
+
+// (the tag: Odin reads a system only at the very end of a file's name, `_linux.odin`; `_linux_test.odin` is compiled
+// everywhere, and its sys/linux calls are Linux's)
 
 // A compositor that never answers: a socket that listens and says nothing. Opening a session on it gives up within a
 // bound, instead of holding its thread for good (a program's worker, and every capture after it).
