@@ -63,6 +63,13 @@ Recording :: struct {
 
 timeline_test :: proc(exe, out: string, port: int) -> string {
 	if !os.exists(exe) { return fmt.tprintf("%s is missing: tk build whatsnew", exe) }
+	// (the free port is taken here, not by start_program: the recording opens a second connection to the same port)
+	port := port
+	if port == 0 {
+		free, ok := toolbox.free_port()
+		if !ok { return "no free port for the devtools" }
+		port = free
+	}
 	_ = os.make_directory_all(out)
 	log_path := join({out, "whatsnew.stderr.txt"})
 	log, log_err := os.create(log_path)
