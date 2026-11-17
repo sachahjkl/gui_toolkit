@@ -152,9 +152,10 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 		sp.max_edge, maxed = nil, false
 	}
 	shows :: proc(e: View_Edge, maxed_e: View_Edge, maxed: bool) -> bool { return !maxed || e == maxed_e }
-	// (a zone's handle: not when it is maximised or minimised, its size is not the user's then)
+	// (a zone's handle: not when it is maximised, nor a top or bottom zone minimised to its strips; a side zone's rail
+	// keeps it: its edge line, and the pull that opens it)
 	handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32, maxed: bool) {
-		if !maxed && !view_zone_collapsed(sp, e) { view_zone_handle(vs, sp, e, em) }
+		if !maxed && (!view_zone_collapsed(sp, e) || e == .Left || e == .Right) { view_zone_handle(vs, sp, e, em) }
 	}
 	view_zone_fold(sp, .Left, has(&zones[.Left]), content, em)
 	view_zone_fold(sp, .Right, has(&zones[.Right]), content, em)
@@ -453,10 +454,7 @@ view_zone_box :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record, em: f3
 		// (its strips only: one row of them, or one above the other along a zone laid along Y)
 		next({width = fill(), height = px(strip * f32(axis == .Y ? max(stacks, 1) : 1)), axis = axis})
 	case view_zone_collapsed(sp, e):
-		// (a side zone's rail: its views' own compact column (View_Options.rail_em), else one strip wide, its buttons one
-		// above the other)
-		w := sp.rail_em[e] > 0 ? math.round(sp.rail_em[e] * em) : strip
-		next({width = px(w), height = fill(), axis = .Y})
+		next({width = px(view_rail_px(sp, e, em)), height = fill(), axis = .Y})
 	case e == .Left || e == .Right:
 		x, frac := view_zone_extent(sp, e, first)
 		next({width = size(x, frac, em), height = fill(), axis = axis})
@@ -473,6 +471,13 @@ view_zone_box :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record, em: f3
 	return b
 }
 
+// A side zone's rail width in pixels: its views' own compact column (View_Options.rail_em), else one strip wide, its
+// buttons one above the other.
+@(private = "file")
+view_rail_px :: proc(sp: ^View_Space, e: View_Edge, em: f32) -> f32 {
+	return math.round((sp.rail_em[e] > 0 ? sp.rail_em[e] : DOCK_TAB_EM) * em)
+}
+
 // Where a zone's handle draws its rule.
 @(private = "file")
 VIEW_HANDLE_LINE :: Splitter_Line.Middle
@@ -480,8 +485,8 @@ VIEW_HANDLE_LINE :: Splitter_Line.Middle
 // Where zone `e`'s handle draws its rule in the space `space` ("": the window's frame), in window pixels: from this
 // frame's layout when called after it (a box's custom draw), else from the last one. A program's own line that goes on
 // across a bar (a title bar's, a status bar's) takes its place from here, never from a width of its own: one value, the
-// same pixel column during a drag and after it. ok = false: no handle there in its last build (nothing docked, a zone
-// minimised, a stack maximised).
+// same pixel column during a drag and after it; a side zone's rail has it too. ok = false: no handle there in its last
+// build (nothing docked, a top or bottom zone minimised, a stack maximised).
 view_dock_line :: proc(vs: ^Views, e: View_Edge, space := "") -> (line: Rect, ok: bool) {
 	sp, found := vs.spaces[space]
 	if !found || sp.state == nil || sp.handle_key[e] == 0 { return }
@@ -490,7 +495,19 @@ view_dock_line :: proc(vs: ^Views, e: View_Edge, space := "") -> (line: Rect, ok
 	return splitter_line(b.rect, VIEW_HANDLE_LINE, splitter_line_width(sp.state.scale)), true
 }
 
+// How far past its rail's width a side zone's handle is pulled before the zone opens (em). With the rails' widths
+// (DOCK_TAB_EM, a view's rail_em) it is past DOCK_MIN_EM: the zone opens at the pointer, with no jump.
+VIEW_RAIL_PULL_EM :: f32(1)
+
+// What a drag of a side zone's handle keeps from its press: the zone's width shown then (logical px), and its extent
+// then, which a fold during the drag puts back (Restore brings it).
+@(private = "file")
+View_Zone_Pull :: struct { from, extent, frac: f32, taken: bool }
+
 // The handle between a zone and the centre: the centre keeps DOCK_MIN_EM; the extent is written when it is let go.
+// A side zone's handle is built collapsed too (its rail's edge line), and its drag says the state (views.md, Minimise:
+// pulling the rail opens the zone): under the rail's width plus VIEW_RAIL_PULL_EM the zone is collapsed, past it
+// expanded at the pointer. The keys never fold it.
 @(private = "file")
 view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
 	s := gs()
@@ -498,17 +515,46 @@ view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
 	across := e == .Left || e == .Right
 	total := (across ? sp.rect.max.x - sp.rect.min.x : sp.rect.max.y - sp.rect.min.y) / sc
 	least := DOCK_MIN_EM * em / sc
-	size := view_zone_px(sp, e, em, total * sc) / sc
-	res := splitter(fmt.tprintf("###view_handle_%v", e), across ? .X : .Y, &size, least, max(total - least, least),
+	most := max(total - least, least)
+	collapsed := view_zone_collapsed(sp, e)
+	rail := view_rail_px(sp, e, em) / sc
+	size := collapsed ? rail : view_zone_px(sp, e, em, total * sc) / sc
+	shown := size
+	res := splitter(fmt.tprintf("###view_handle_%v", e), across ? .X : .Y, &size, collapsed ? rail : least, most,
 		{after = e == .Right || e == .Bottom, total = total > 0 ? total : 0, min_other = least, line_at = VIEW_HANDLE_LINE})
-	if res.box != nil { sp.handle_key[e] = res.box.key }
-	// (the drag kept in the zone's unit: a share stays a share, it goes on following the window)
-	if res.changed {
+	if res.box == nil { return }
+	sp.handle_key[e] = res.box.key
+	// (the extent in the zone's unit: a share stays a share, it goes on following the window)
+	write :: proc(sp: ^View_Space, e: View_Edge, size, total, sc, em: f32) {
 		if sp.mem.frac[e] > 0 {
 			if total > 0 { sp.mem.frac[e] = clamp(size / total, 0.01, 0.95) }
 		} else {
 			sp.mem.extent[e] = size * sc / em
 		}
+	}
+	if !across {
+		if res.changed { write(sp, e, size, total, sc, em) }
+		if res.finished { view_space_remember(vs, sp) }
+		return
+	}
+	pull := press_data(View_Zone_Pull, res.box.key)
+	if pull != nil && !pull.taken { pull^ = {from = shown, extent = sp.mem.extent[e], frac = sp.mem.frac[e], taken = true} }
+	if res.dragging && pull != nil {
+		d := res.drag_delta.x / sc
+		if e == .Right { d = -d }
+		raw := pull.from + d
+		fold := raw < rail + VIEW_RAIL_PULL_EM * em / sc
+		if fold != collapsed {
+			sp.max_edge = nil
+			view_stack_minimise(vs, sp, e, fold)
+		}
+		if fold {
+			sp.mem.extent[e], sp.mem.frac[e] = pull.extent, pull.frac
+		} else {
+			write(sp, e, clamp(raw, least, most), total, sc, em)
+		}
+	} else if res.changed && !collapsed {
+		write(sp, e, size, total, sc, em)
 	}
 	if res.finished { view_space_remember(vs, sp) }
 }
@@ -567,20 +613,13 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 		push_parent(stack)
 		with_strip := minimised || len(list) >= 2
 		for r in list { if r.kind.o.tabs_always { with_strip = true } }
-		// (a zone that folds to its views' compact form: its lone stack at the zone's top outer corner shows the zone's
-		// Minimise where the rail shows Restore; a strip at rest has its own)
-		corner := e == .Right && axis == .X ? n - 1 : 0
-		head := !with_strip && only < 0 && k == corner && (e == .Left || e == .Right) && sp.rail_em[e] > 0
-		band := stack.rect
-		if head {
-			h := view_rail_head(vs, sp, e, false)
-			band.min.y += h.rect.max.y - h.rect.min.y   // (the strip on hover comes under the head)
-		}
 		// (a lone panel's strip comes on the hover of its top edge and pushes its body down: its controls never lie over
 		// the body's)
-		if !with_strip { with_strip = view_hover_strip(shown, stack, band, strip_h) }
+		if !with_strip { with_strip = view_hover_strip(shown, stack, strip_h) }
 		shown.strip_tools = 0
-		if with_strip { view_stack_strip(vs, sp, e, k, list, shown, only >= 0, minimise = !head) }
+		// (the shown view placed its zone's fold button in its last build: the strip says Minimise no second time)
+		folds := shown.fold_built != 0 && shown.fold_built + 1 >= s.build_index
+		if with_strip { view_stack_strip(vs, sp, e, k, list, shown, only >= 0, minimise = !folds) }
 		if !minimised { view_panel_build(vs, sp, shown) }
 		pop_parent()
 		for r in list { view_header_menu(vs, r, .Panel) }
@@ -599,7 +638,7 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 // a zone minimised, a drag takes it out as an internal window, a right click opens its menu); the "+" of the shown
 // view's kind (new_tab), where its new tab will be; the shown view's moves, small and weak; the slot of its program's
 // tools (view_header_tools); at the right end, the stack's Minimise (top and bottom zones), Maximise and Close, drawn
-// as a window's caption buttons (caption_row). `minimise` false: the zone's rail head above it has the Minimise.
+// as a window's caption buttons (caption_row). `minimise` false: the shown view places its zone's fold button.
 @(private = "file")
 view_stack_strip :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, list: []^View_Record, shown: ^View_Record, maxed: bool, minimise := true) {
 	em := font_size()
@@ -687,7 +726,7 @@ view_stack_strip_rest :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int,
 	// the stack's own, at the right end, as a window's: Minimise (a side zone's to its rail), Maximise, Close
 	buttons := bit_set[platform.Caption_Button]{.Minimize, .Maximize, .Close}
 	if e == .Center { buttons -= {.Minimize} }   // (the centre has nowhere to fold to)
-	if !minimise { buttons -= {.Minimize} }      // (said once: the rail head's, above the strip)
+	if !minimise { buttons -= {.Minimize} }      // (said once: the view's fold button, view_fold_button)
 	names := [4]string{minimised ? labels.restore : labels.minimize, labels.maximize, labels.close_stack, labels.restore}
 	ids := [platform.Caption_Button]string{.Minimize = "###view_stack_min", .Maximize = "###view_stack_max", .Close = "###view_stack_close"}
 	clicked: platform.Caption_Button
@@ -698,7 +737,7 @@ view_stack_strip_rest :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int,
 		glyphs := [platform.Caption_Button]string{.Minimize = minimised ? lucide.PANEL_LEFT_OPEN : lucide.MINUS, .Maximize = maxed ? lucide.MINIMIZE_2 : lucide.MAXIMIZE_2, .Close = lucide.X}
 		for b in platform.Caption_Button {
 			if b not_in buttons { continue }
-			if view_stack_icon(ids[b], glyphs[b], names[b == .Maximize && maxed ? 3 : int(b)]) { clicked, ok = b, true }
+			if view_stack_icon(ids[b], glyphs[b], names[b == .Maximize && maxed ? 3 : int(b)]).clicked { clicked, ok = b, true }
 		}
 		spacer(px(em * SPACE_1))
 	}
@@ -730,14 +769,13 @@ view_stack_minimise :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, on: bool)
 	if sp.state != nil { sp.state.anim_busy = true }
 }
 
-// A side zone collapsed whose views state a rail width (View_Options.rail_em): its Restore at the top, then each stack's
-// shown view built in its compact form (View.rail), the stacks one under the other. The view draws its own marks: the
-// toolkit gives it the column and says it is minimised.
+// A side zone collapsed whose views state a rail width (View_Options.rail_em): each stack's shown view built in its
+// compact form (View.rail), the stacks one under the other. The view draws its own marks and its zone's Restore
+// (view_fold_button): the toolkit gives it the column and says it is minimised.
 @(private = "file")
 view_zone_rail_views :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_Lists, zone: ^Box, n: int) {
 	push_parent(zone)
 	defer pop_parent()
-	view_rail_head(vs, sp, e, true)
 	for k in 0 ..< n {
 		list := z[k][:]
 		if len(list) == 0 { continue }
@@ -749,45 +787,53 @@ view_zone_rail_views :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View
 		sp.stacks[e][k], sp.stack_key[e][k] = stack.rect, stack.key
 		push_parent(stack)
 		view_panel_build(vs, sp, shown, rail = true)
+		// (the toolkit's rail has no Restore for a compact form: its view places it, views.md, Minimise)
+		when ODIN_DEBUG {
+			if shown.kind.o.rail_em > 0 {
+				assert(shown.fold_built == gs().build_index, "a view with rail_em calls ui.view_fold_button in its compact form")
+			}
+		}
 		pop_parent()
 		for r in list { view_header_menu(vs, r, .Panel) }
 	}
 }
 
-// The head of a side zone whose rail is its views' compact form (views.md, Minimise): its own row at the zone's top, a
-// column of the rail's width at the zone's outer edge, its button centred in it: Restore when the zone is collapsed,
-// Minimise when it is expanded. One builder for both, so the button stays at one place when the person folds and
-// unfolds. Returns the row.
-@(private = "file")
-view_rail_head :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, collapsed: bool) -> ^Box {
+// Inside a build: the fold button of the side zone that holds the view, where the view places it (a row it already
+// has; views.md, Minimise): Minimise when the zone is expanded, Restore when it is collapsed, the same small icon. It
+// acts as the strip's Minimise and the rail's Restore, and the view's strip then leaves its Minimise out. A view with
+// View_Options.rail_em calls it in its compact form (View.rail): its zone's rail has no other Restore. Elsewhere (not
+// a panel at the left or the right) it builds nothing and returns {}. Its key: "###view_fold".
+view_fold_button :: proc(v: ^View) -> Signal {
+	if v == nil || v.record == nil || v.presentation != .Panel { return {} }
+	r := v.record
+	e := view_panel_place(r.machine).edge
+	if e != .Left && e != .Right { return {} }
+	vs := r.vs
+	sp := view_space_of(vs, view_panel_place(r.machine).space)
 	labels := view_labels(vs)
-	w := math.round(sp.rail_em[e] * font_size())
-	next({width = fill(), height = children_sum(), axis = .X})
-	head := build_box({}, "###view_rail_head")
-	push_parent(head)
-	defer pop_parent()
-	if e == .Right { spacer(fill()) }
-	next({width = px(w), height = children_sum(), cross = .Center})
-	if column(id = "###view_rail_column") {
-		space(SPACE_1)
-		left := e == .Left
-		if collapsed {
-			if view_stack_icon("###view_rail_restore", left ? lucide.PANEL_LEFT_OPEN : lucide.PANEL_RIGHT_OPEN, labels.restore) {
-				view_stack_minimise(vs, sp, e, false)
-			}
-		} else if view_stack_icon("###view_rail_min", left ? lucide.PANEL_LEFT_CLOSE : lucide.PANEL_RIGHT_CLOSE, labels.minimize) {
-			sp.max_edge = nil
-			view_stack_minimise(vs, sp, e, true)
-		}
-		space(SPACE_1)
+	collapsed := view_zone_collapsed(sp, e)
+	left := e == .Left
+	glyph: string
+	label := collapsed ? labels.restore : labels.minimize
+	switch {
+	case collapsed && left: glyph = lucide.PANEL_LEFT_OPEN
+	case collapsed:         glyph = lucide.PANEL_RIGHT_OPEN
+	case left:              glyph = lucide.PANEL_LEFT_CLOSE
+	case:                   glyph = lucide.PANEL_RIGHT_CLOSE
 	}
-	return head
+	r.fold_built = gs().build_index
+	sig := view_stack_icon("###view_fold", glyph, label)
+	if sig.clicked {
+		sp.max_edge = nil
+		view_stack_minimise(vs, sp, e, !collapsed)
+	}
+	return sig
 }
 
 // One of a narrow stack's own buttons: a small icon, as close to the next as a bar's tools ("###id": its key, as the
 // caption button it stands for).
 @(private = "file")
-view_stack_icon :: proc(id, glyph, label: string) -> (clicked: bool) {
+view_stack_icon :: proc(id, glyph, label: string) -> Signal {
 	em := font_size()
 	side := math.round(em * VIEW_STACK_ICON_EM)
 	push_tags("ghost_button", "button", "weak")
@@ -797,7 +843,7 @@ view_stack_icon :: proc(id, glyph, label: string) -> (clicked: bool) {
 	a11y_default(b, {role = .Button, name = label})
 	sig := signal(b)
 	if hovered_for(sig) { if tooltip() { tooltip_text(label) } }
-	return sig.clicked
+	return sig
 }
 
 // A narrow stack's own buttons' side (em): three of them and its largest tab fit a side zone of 12 ems.
@@ -894,13 +940,12 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, rail := f
 // Whether a lone panel shows its stack's strip, on hover (section 2.5, rule 2): it comes when the pointer is in the
 // stack's top band (VIEW_HOVER_EDGE_EM, by the last layout), and pushes the body down; it stays while the pointer is on
 // it or just under it (VIEW_HOVER_KEEP_EM), while a box of it is held (a tab dragged out), or while the view's menu is
-// open. No control of the strip ever lies over the body's: the strip takes its room. `band`: the stack's area above
-// which nothing of the toolkit's is (under its zone's rail head, view_rail_head).
+// open. No control of the strip ever lies over the body's: the strip takes its room.
 @(private = "file")
-view_hover_strip :: proc(r: ^View_Record, stack: ^Box, band: Rect, strip_h: f32) -> bool {
+view_hover_strip :: proc(r: ^View_Record, stack: ^Box, strip_h: f32) -> bool {
 	s := gs()
 	em := font_size()
-	a, p := band, mouse_pos()
+	a, p := stack.rect, mouse_pos()
 	reach := r.hover_strip ? strip_h + em * VIEW_HOVER_KEEP_EM : em * VIEW_HOVER_EDGE_EM
 	on := s.mouse_valid && p.x >= a.min.x && p.x < a.max.x && p.y >= a.min.y && p.y < a.min.y + reach
 	if r.hover_strip && !on {

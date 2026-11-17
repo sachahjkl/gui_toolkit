@@ -44,6 +44,7 @@ Dock :: struct {
 	hug_w:      f32,               // the width "hug" asks for this opening (view_size), in ems
 	no_frame:   bool,              // the window builds no views_frame (its content alone)
 	railed:     bool,              // "marks" was last built in its compact form (View.rail)
+	fold:       ui.Signal,         // what "marks"'s fold button gave in its last build (view_fold_button)
 	wide:       bool,              // the content holds a row of WIDE_BOXES boxes, wider than the window
 	bare:       bool,              // build the space "bare", without content (a centre zone)
 }
@@ -156,11 +157,19 @@ plain_view :: proc(v: ^ui.View, r: ^Dock) {
 	if ui.dialog_body("plain_body") { ui.label("A question###plain_words") }
 }
 
-// A view with a compact form: minimised, its zone keeps RAIL_EM and builds it with View.rail (a column of marks).
+// A view with a compact form: minimised, its zone keeps RAIL_EM and builds it with View.rail (a column of marks). Its
+// first row starts with its zone's fold button, FOLD_INSET from the left in both forms (opencode native's servers' row
+// and the top of its rail).
 @(private = "file") RAIL_EM :: 3.5
+@(private = "file") FOLD_INSET :: 6
 @(private = "file")
 marks_view :: proc(v: ^ui.View, r: ^Dock) {
 	r.railed = v.rail
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+	if ui.row(id = "###marks_row") {
+		ui.spacer(ui.px(FOLD_INSET))
+		r.fold = ui.view_fold_button(v)
+	}
 	ui.label(v.rail ? "M###marks_compact" : "The marks in full###marks_full")
 }
 
@@ -324,76 +333,178 @@ same_rect :: proc(a, b: ui.Rect) -> bool {
 	return abs(a.min.x - b.min.x) <= 1 && abs(a.min.y - b.min.y) <= 1 && abs(a.max.x - b.max.x) <= 1 && abs(a.max.y - b.max.y) <= 1
 }
 
-// A view that states a rail width (View_Options.rail_em): lone in its zone, at rest, it shows the zone's Minimise at the
-// place of the rail's Restore, the body under it; its zone minimised keeps that column, the view built in it with
-// View.rail (its compact form) under the zone's Restore, at the same rect, which brings the full form back.
+// A view that states a rail width (View_Options.rail_em) places its zone's fold button in a row it has (views.md,
+// Minimise): lone in its zone, at rest, no row of the toolkit's (its body starts at the zone's top), the button's
+// Minimise folds the zone to that column, where the view is built with View.rail (its compact form) and its button,
+// at the same rect, is the zone's Restore (the toolkit's rail draws none), which brings the full form back.
 @(test)
-a_view_with_a_rail_width_keeps_its_compact_form :: proc(t: ^testing.T) {
+a_view_with_a_rail_width_places_its_fold_button :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "marks")
 	zone := wait_built(s, "view_zone_Left")
 	if zone == nil { return }
 	testing.expect(t, built(s, "marks_full") != nil && !r.railed, "its full form")
-	mini := wait_built(s, "view_rail_min")
-	if mini == nil { return }
-	at := mini.rect
+	fold := wait_built(s, "view_fold")
+	if fold == nil { return }
+	at := fold.rect
 	testing.expect(t, built(s, "view_tabs") == nil, "at rest: no strip")
 	body := built(s, "view_panel_view_marks")
-	testing.expectf(t, body != nil && body.rect.min.y >= at.max.y - 0.5, "the body under the head: %v, %v", body.rect if body != nil else ui.Rect{}, at)
-	testing.expectf(t, at.min.x >= zone.rect.min.x && at.max.x <= zone.rect.min.x + RAIL_EM * r.em + 0.5, "in the rail's column: %v in %v", at, zone.rect)
-	session.click(s, "view_rail_min")
+	testing.expectf(t, body != nil && abs(body.rect.min.y - zone.rect.min.y) <= 0.5, "no row above the body: %v in %v", body.rect if body != nil else ui.Rect{}, zone.rect)
+	testing.expectf(t, abs(at.min.x - (zone.rect.min.x + FOLD_INSET)) <= 1, "where the view put it: %v in %v", at, zone.rect)
+	session.click(s, "view_fold")
 	if wait_built(s, "marks_compact") == nil { return }
 	testing.expect(t, r.railed, "built with View.rail")
 	zone = built(s, "view_zone_Left")
 	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - RAIL_EM * r.em) <= 1.5, "its rail width: %v", zone.rect if zone != nil else ui.Rect{})
 	testing.expect(t, built(s, "view_rail_Left_0_0") == nil, "not the icons' rail")
-	testing.expect(t, built(s, "view_rail_min") == nil, "folded: Restore in its place")
-	restore := built(s, "view_rail_restore")
-	testing.expectf(t, restore != nil && same_rect(restore.rect, at), "Restore at Minimise's place: %v, %v", restore.rect if restore != nil else ui.Rect{}, at)
-	session.click(s, "view_rail_restore")
-	if wait_built(s, "marks_full") == nil { return }
-	testing.expect(t, !r.railed, "its full form again")
-	mini = wait_built(s, "view_rail_min")
-	testing.expectf(t, mini != nil && same_rect(mini.rect, at), "Minimise back at its place: %v, %v", mini.rect if mini != nil else ui.Rect{}, at)
+	testing.expect(t, built(s, "view_rail_restore") == nil, "no Restore of the toolkit's")
 	text, _ := store.get(&r.views.memory, "#")
 	sm, _ := ui.views_space_parse(text)
+	testing.expectf(t, sm.minimised[.Left], "minimised, remembered: %q", text)
+	fold = built(s, "view_fold")
+	testing.expectf(t, fold != nil && same_rect(fold.rect, at), "Restore at Minimise's place: %v, %v", fold.rect if fold != nil else ui.Rect{}, at)
+	session.click(s, "view_fold")
+	if wait_built(s, "marks_full") == nil { return }
+	testing.expect(t, !r.railed, "its full form again")
+	fold = wait_built(s, "view_fold")
+	testing.expectf(t, fold != nil && same_rect(fold.rect, at), "Minimise back at its place: %v, %v", fold.rect if fold != nil else ui.Rect{}, at)
+	text, _ = store.get(&r.views.memory, "#")
+	sm, _ = ui.views_space_parse(text)
 	testing.expectf(t, !sm.minimised[.Left], "restored, remembered: %q", text)
 }
 
-// The panel under its zone's rail head: its strip on hover comes under the head, the head stays, and the strip has no
-// Minimise of its own (said once).
+// The panel that places its fold button: its strip on hover has the strip's own buttons but no Minimise (said once).
 @(test)
-a_rail_head_s_panel_strip_says_minimise_once :: proc(t: ^testing.T) {
+a_fold_button_s_strip_says_minimise_once :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "marks")
-	mini := wait_built(s, "view_rail_min")
+	fold := wait_built(s, "view_fold")
 	body := built(s, "view_panel_view_marks")
-	if mini == nil || body == nil { testing.expect(t, false, "the head and the body"); return }
-	at := mini.rect
+	if fold == nil || body == nil { testing.expect(t, false, "the fold button and the body"); return }
 	session.move(s, {body.rect.min.x + RAIL_EM * r.em + 30, body.rect.min.y + 2})
-	tabs := wait_built(s, "view_tabs")
-	if tabs == nil { return }
-	testing.expectf(t, tabs.rect.min.y >= at.max.y - 0.5, "the strip under the head: %v, %v", tabs.rect, at)
+	if wait_built(s, "view_tabs") == nil { return }
 	testing.expect(t, built(s, "view_stack_max") != nil, "the strip's own buttons")
 	testing.expect(t, built(s, "view_stack_min") == nil, "no second Minimise")
-	mini = built(s, "view_rail_min")
-	testing.expectf(t, mini != nil && same_rect(mini.rect, at), "the head stays: %v, %v", mini.rect if mini != nil else ui.Rect{}, at)
+	testing.expect(t, built(s, "view_fold") != nil, "the view's button stays")
 }
 
-// A view with a rail width lone at the bottom or in a space's centre: no rail head there (a bottom zone folds to its
-// strips, the centre does not fold).
+// A view with a rail width lone at the bottom or in a space's centre: its fold button builds nothing there (a bottom
+// zone folds to its strips, the centre does not fold).
 @(test)
-a_rail_width_elsewhere_adds_no_head :: proc(t: ^testing.T) {
+a_fold_button_elsewhere_builds_nothing :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	r.bare = true
 	s := dock_start(t, &r, "marks_low", "marks_mid")
 	if wait_built(s, "view_panel_view_marks_low") == nil || wait_built(s, "view_panel_view_marks_mid") == nil { return }
 	session.frames(s, 2)
-	testing.expect(t, built(s, "view_rail_min") == nil, "no Minimise head")
-	testing.expect(t, built(s, "view_rail_head") == nil, "no head row")
+	testing.expect(t, built(s, "view_fold") == nil, "no fold button")
+	testing.expect(t, r.fold == {}, "no signal")
+}
+
+// The two rails: the icons' ("side", its toolkit Restore) and a compact form ("marks", the view's button).
+@(private = "file") RAILS :: [2]string{"side", "marks"}
+
+// Its zone minimised by the rail's kind of button: the strip's Minimise (on hover) or the view's fold button.
+@(private = "file")
+rail_minimise :: proc(s: ^session.Session, id: string) -> (rail: ^ui.Box) {
+	zone := wait_built(s, "view_zone_Left")
+	if zone == nil { return }
+	if id == "marks" {
+		if wait_built(s, "view_fold") == nil { return }
+		session.click(s, "view_fold")
+		return wait_built(s, "marks_compact") != nil ? built(s, "view_zone_Left") : nil
+	}
+	session.move(s, {zone.rect.min.x + 30, zone.rect.min.y + 2})
+	if wait_built(s, "view_stack_min") == nil { return }
+	session.click(s, "view_stack_min")
+	return wait_built(s, "view_rail_restore") != nil ? built(s, "view_zone_Left") : nil
+}
+
+// The zone's width shown, and whether its memory says minimised.
+@(private = "file")
+zone_state :: proc(s: ^session.Session) -> (width: f32, minimised: bool) {
+	r := (^Dock)(s.user)
+	if z := built(s, "view_zone_Left"); z != nil { width = z.rect.max.x - z.rect.min.x }
+	text, _ := store.get(&r.views.memory, "#")
+	sm, _ := ui.views_space_parse(text)
+	return width, sm.minimised[.Left]
+}
+
+// A side zone's rail keeps the expanded zone's edge line (views.md, Minimise): its handle, at the rail's inner edge,
+// the line view_dock_line names inside it; for both rails.
+@(test)
+a_rail_keeps_its_zone_s_edge_line :: proc(t: ^testing.T) {
+	for id in RAILS {
+		r: Dock
+		defer dock_end(&r)
+		s := dock_start(t, &r, id)
+		rail := rail_minimise(s, id)
+		if rail == nil { testing.expectf(t, false, "%s: its rail", id); continue }
+		session.frames(s, 2)
+		rail = built(s, "view_zone_Left")
+		handle := built(s, "view_handle_Left")
+		if rail == nil || handle == nil { testing.expectf(t, false, "%s: the rail and its handle", id); continue }
+		testing.expectf(t, abs(handle.rect.min.x - rail.rect.max.x) <= 0.5, "%s: the handle at the rail's inner edge: %v, %v", id, handle.rect, rail.rect)
+		line, ok := ui.view_dock_line(&r.views, .Left)
+		testing.expectf(t, ok && line.min.x >= handle.rect.min.x && line.max.x <= handle.rect.max.x, "%s: its line in its handle: %v in %v", id, line, handle.rect)
+	}
+}
+
+// Pulling a rail's edge opens its zone (views.md, Minimise): less than VIEW_RAIL_PULL_EM, or inward, does nothing;
+// past it the zone is no longer minimised and follows the pointer; let go, the width is kept and remembered. The same
+// drag down to the rail folds it again, its extent kept. For both rails.
+@(test)
+pulling_a_rail_opens_its_zone :: proc(t: ^testing.T) {
+	for id in RAILS {
+		r: Dock
+		defer dock_end(&r)
+		s := dock_start(t, &r, id)
+		if rail_minimise(s, id) == nil { testing.expectf(t, false, "%s: its rail", id); continue }
+		session.frames(s, 2)
+		handle := built(s, "view_handle_Left")
+		if handle == nil { testing.expectf(t, false, "%s: the rail's handle", id); continue }
+		rail_w, _ := zone_state(s)
+		at := session.center(handle)
+		em := r.em
+
+		session.drag(s, at, at - {2 * em, 0})
+		w, mini := zone_state(s)
+		testing.expectf(t, mini && abs(w - rail_w) <= 0.5, "%s: inward, nothing: %v, %v", id, w, mini)
+		session.drag(s, at, at + {0.5 * em, 0})
+		w, mini = zone_state(s)
+		testing.expectf(t, mini && abs(w - rail_w) <= 0.5, "%s: under the threshold, nothing: %v, %v", id, w, mini)
+
+		session.press(s, at)
+		session.move(s, at + {2 * em, 0})
+		session.move(s, at + {4 * em, 0})
+		w, mini = zone_state(s)
+		testing.expectf(t, !mini && abs(w - (rail_w + 4 * em)) <= 1.5, "%s: open, at the pointer: %v, %v", id, w, mini)
+		session.move(s, at + {6 * em, 0})
+		w, mini = zone_state(s)
+		testing.expectf(t, !mini && abs(w - (rail_w + 6 * em)) <= 1.5, "%s: it follows: %v", id, w)
+		session.release(s, at + {6 * em, 0})
+		session.frames(s, 2)
+		w, mini = zone_state(s)
+		text, _ := store.get(&r.views.memory, "#")
+		sm, _ := ui.views_space_parse(text)
+		testing.expectf(t, !mini && abs(w - (rail_w + 6 * em)) <= 1.5, "%s: let go, kept: %v", id, w)
+		testing.expectf(t, abs(sm.extent[.Left] * em - (rail_w + 6 * em)) <= 1.5, "%s: remembered: %q", id, text)
+
+		// (from expanded, the same drag down to the rail folds it; its extent stays the one it had)
+		handle = built(s, "view_handle_Left")
+		if handle == nil { testing.expectf(t, false, "%s: the open zone's handle", id); continue }
+		from := session.center(handle)
+		session.drag(s, from, from - {6 * em, 0})
+		session.frames(s, 2)
+		w, mini = zone_state(s)
+		text, _ = store.get(&r.views.memory, "#")
+		sm, _ = ui.views_space_parse(text)
+		testing.expectf(t, mini && abs(w - rail_w) <= 0.5, "%s: folded to its rail: %v, %v", id, w, mini)
+		testing.expectf(t, abs(sm.extent[.Left] * em - (rail_w + 6 * em)) <= 1.5, "%s: its extent kept: %q", id, text)
+	}
 }
 
 // A space too narrow for a side zone and the content folds the zone to its rail, with no change to its memory; its

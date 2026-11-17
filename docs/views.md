@@ -114,7 +114,7 @@ again.
 | `views_frame(vs, o = {})`, `views_dock(vs, name, o)` | the window's dock space around its content; a space of the program's (section Panels); `o`: `View_Dock_Options` |
 | `views_space_maximised(vs, name) -> (edge, stack, ok)` | the stack of a space that its strip's Maximise shows alone |
 | `views_space_reset(vs, name)` | the layout of a space as at first: its zones, axes and shares the defaults, its views back home (section Panels) |
-| `view_dock_line(vs, edge, space) -> (Rect, ok)` | where a zone's handle draws its rule, window pixels (this frame's layout from a custom draw, else the last): a program's line across its title or status bar takes its place from here, so both meet on one pixel column; `ok` false with no handle there |
+| `view_dock_line(vs, edge, space) -> (Rect, ok)` | where a zone's handle draws its rule, window pixels (this frame's layout from a custom draw, else the last): a program's line across its title or status bar takes its place from here, so both meet on one pixel column; a side zone's rail has it too; `ok` false with no handle there |
 | `views_commands(vs, allocator) -> (commands, acts)`, `views_command_run(vs, act)`, `views_version(vs)` | the palette's commands of the views |
 | `views_space_format(m)`, `views_space_parse(text) -> (View_Space_Memory, ok)` | a dock space's line of the memory |
 | `views_windows_follow(s, shown)` | the windows of the views of `s` hide and show with it (host_hide, host_show call it) |
@@ -122,7 +122,7 @@ again.
 | `views_set_window_end(vs, end, user)` | the program's end of each build of a view's window: its overlays there (section External) |
 | `views_windows_step(s)`, `views_window_build()`, `view_window_close_asked(s)` | a backend's part: between frames, a window's build, its system close |
 | `state_carry(from, from_root, to, to_root)`, `style_follow(dst, src)` | what follows a view to another place; a window's settings from the main one |
-| inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_icon(v, icon, icon_font)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)` | `view_icon`: this opening's icon (one id, an icon per opening) |
+| inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_icon(v, icon, icon_font)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)`, `view_fold_button(v) -> Signal` | `view_icon`: this opening's icon (one id, an icon per opening); `view_fold_button`: its side zone's Minimise or Restore, where the view places it (section Panels) |
 | inside a build: `view_size(v, width_em, height_em)` | this opening's dialog size (an axis of 0: the kind's): a dialog that hugs what it shows; it wins over the remembered size, a resize by the user wins over it; past `DIALOG_MAX_WIDTH_EM` too |
 | inside a build: `view_occluders(v, allocator) -> []Rect`; `views_floating_rects(vs, s, allocator) -> []Rect` | the floating views (internal windows, dialogs) over this view, or over the content of window `s`, bottom to top, window pixels: a native child window (a web view) steps aside or clips |
 | `state_families(s)` | the bold and italic faces' families of `s` (a view's window: its owner's, one map): what `Rich_Context.faces` takes |
@@ -379,11 +379,18 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
     the space's line). A side zone also folds to its rail by itself when the space leaves the content less than
     `DOCK_MIN_EM` beside it, and unfolds when the space is wide enough again; its Restore opens it meanwhile. A view
     with `View_Options.rail_em` (3.5, say) keeps that column instead of the icons' rail: it is built there with
-    `View.rail` true, under the zone's Restore, and draws its compact form (`if v.rail { ...marks... } else { ...list... }`).
-    Expanded, such a zone's lone panel at its top outer corner shows the zone's Minimise at Restore's place: the same
-    small button, in its own row above the body, so it does not move when the person folds and unfolds the zone. That
-    panel's strip on hover comes under it, without a Minimise of its own. A zone without `rail_em` has no such row: its
-    Minimise is on the strip.
+    `View.rail` true and draws its compact form (`if v.rail { ...marks... } else { ...list... }`). The toolkit draws no
+    Restore in that column: the view calls `ui.view_fold_button(v)` in a row it already has, in both forms. The button
+    is the zone's Minimise when the zone is expanded and its Restore when it is collapsed (key `view_fold`). Put it at
+    the same place in both forms (the start of the first row, say): it then stays under the pointer when the person
+    folds and unfolds the zone. A debug build asserts that a view with `rail_em` calls it in its compact form. A view
+    that calls it has no Minimise on its strip. Outside a left or right zone it builds nothing and returns `{}`. A
+    zone without `rail_em` keeps the strip's Minimise and the icons' rail's Restore.
+  - **A rail keeps its edge line and opens by a pull.** A side zone's rail keeps the zone's handle: the same line
+    against the content as expanded, and `view_dock_line` names it. Drag that handle outward past
+    `VIEW_RAIL_PULL_EM` (1 em) and the zone opens and follows the pointer; let go, its width is remembered. A drag
+    inward, or a shorter one, does nothing. A drag of an expanded zone's handle down to its rail folds it, and its
+    extent stays as it was before the drag.
   - **Close** closes every view of the stack (each ends `VIEW_CANCELLED`). One tab closes by Ctrl+W in it, its menu or
     the palette.
   - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.

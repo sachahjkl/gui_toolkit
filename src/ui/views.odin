@@ -188,6 +188,9 @@ View_Record :: struct {
 	panel:      Key,         // the dialog's panel, or the internal window's frame (view_room)
 	strip_tools: Key,        // as a panel shown in its stack's strip: the strip's slot of its tools, in this build (0: none)
 	hover_strip: bool,       // a lone panel: its stack's strip shown on the hover of its top edge (view_hover_strip)
+	// the build that last placed its zone's fold button (view_fold_button): its strip, built before its body, reads the
+	// last one and leaves its Minimise out
+	fold_built: u64,
 	// the internal window: its frame, its rect (window px; a height of 0: as tall as what is in it, until it settles),
 	// the rect the memory has, its unseen layouts (view_settle), its place among the internal windows, the focus to
 	// give back when it closes and whether the focus goes into it at its next build, the press of a dialog's header that

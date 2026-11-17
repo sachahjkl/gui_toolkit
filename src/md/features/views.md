@@ -436,9 +436,9 @@ draws, except the header that a dialog always had. The rules:
 1. **A panel alone in its stack has no tab strip**, unless its kind says `tabs_always` (ocn's terminals: a strip
    with one tab and its "+" says that more can come). A tab strip appears when two or more views share a stack, or
    one of them is `tabs_always`, or its zone is minimised. A panel alone otherwise adds no strip and no border: its
-   body starts at the zone's top edge. A test checks this (section 7.4, test 17). One exception: a side zone that
-   folds to its views' compact form (`rail_em`) shows its Minimise where its rail shows Restore, a row above the body
-   (rule 2b, Minimise).
+   body starts at the zone's top edge. A test checks this (section 7.4, test 17). A side zone that folds to its views'
+   compact form (`rail_em`) adds no row either: its view places the fold button in a row of its own (rule 2b,
+   Minimise).
 2. **A lone panel's strip comes on hover, and pushes its body down** (`view_hover_strip`). At rest nothing is added.
    When the pointer touches the stack's top edge (a band of `VIEW_HOVER_EDGE_EM`), the stack's strip shows as if the
    panel had company: its tab (its title, its menu), its moves, its Minimise, Maximise and Close (rule 2b). The strip
@@ -500,32 +500,48 @@ draws, except the header that a dialog always had. The rules:
        other. A click on a view restores the zone with that view shown. A strip is no narrower than a side zone, so a
        side zone collapses to something else: a column of icons, as an editor's side bar.
      - **A view's own compact form** (`View_Options.rail_em`, `View.rail`): a view that states a rail width keeps that
-       column when its zone collapses (by Minimise or a narrow space), and is built in it with `View.rail` set, under
-       the zone's Restore: it draws its compact form itself (opencode native's sidebar: a column of the sessions'
-       marks with rich tooltips). A zone holding several such views takes the widest. A view without one keeps the
-       icons' rail. Refused: the toolkit drawing a view's compact form from its title (an icon says less than a list
-       of marks), and a second view registered for the compact form (two views of one list would drift).
+       column when its zone collapses (by Minimise or a narrow space), and is built in it with `View.rail` set: it
+       draws its compact form itself (opencode native's sidebar: a column of the sessions' marks with rich tooltips).
+       The toolkit draws nothing else in that column: the view places the zone's Restore itself (the fold button,
+       below). A zone holding several such views takes the widest. A view without one keeps the icons' rail. Refused:
+       the toolkit drawing a view's compact form from its title (an icon says less than a list of marks), and a second
+       view registered for the compact form (two views of one list would drift).
        **Why it changed.** The side zones had no Minimise (refused: "the handle makes a side zone narrow"). The user
        lost the way to fold opencode native's side panel (`/btw`) that its own pane had before it moved to the views:
        the handle narrows it, never folds it.
-     - **Its Minimise where its Restore is** (`view_rail_head`): a zone whose rail is its views' compact form
-       (`rail_em > 0`), expanded, shows its Minimise at the place of the rail's Restore, as the same small button: the
-       top row of the zone, the rail's width at the zone's outer edge (the left one at the left, the right one at the
-       right), the button centred in it. One builder draws both heads, so the button stays under the pointer when the
-       person folds and unfolds. Its stack is the one at that corner, when it is lone at rest (no strip); a strip at
-       rest has its own Minimise. Its row pushes the body down, as the rail's Restore pushes the compact form. That
-       stack's strip on hover comes under the head and has no Minimise (said once). Its tooltip is the strip's
-       Minimise's (`labels.minimize`); the rail's is Restore.
-       **Why.** The user (opencode native): minimised, the sidebar's rail shows Restore at its top; expanded, the lone
-       sidebar has no strip (rule 1), and its Minimise only comes on the hover of a 0.6 em band that nothing shows, so
-       the person folded it by narrowing the window. The two states must mirror each other.
-       **Why only `rail_em`.** A view that states a compact form says that its zone folded is a place where the person
-       works (the sidebar's marks): folding it is a frequent act and earns a button at rest. A zone that folds to the
-       icons' rail (classeur's sidebar and inspector, cliché's preview, inspecteur's Mission panels) folds rarely; a
-       head row in each would take two ems from every lone side panel, against rule 1. No option turns it off: the one
-       program with `rail_em` wants it.
-       Refused: the button over the body's top corner (it lies over the body's controls, as the 0.267 icons did:
-       opencode native's server tabs are there); the button at the right end of the row (it moves when the zone folds).
+     - **The fold button, placed by the view** (`view_fold_button(v)`): a view in a side zone calls it in its own build,
+       in a row it already has; it draws the zone's Minimise when the zone is expanded and its Restore when it is
+       collapsed: the same small icon button (`PANEL_LEFT_CLOSE` and `PANEL_LEFT_OPEN`, `RIGHT` at the right), its
+       tooltip `labels.minimize` or `labels.restore`. It acts as the strip's Minimise and the rail's Restore: one
+       transition (`view_stack_minimise`), remembered (`left.min=1`). Elsewhere (a zone at the top, the bottom or the
+       centre, a dialog, a window) it builds nothing. A view with `rail_em` must call it in its compact form: the
+       toolkit's rail draws no Restore for it (a debug assertion says so). Expanded, a view that called it in its last
+       build has no Minimise on its stack's strip (said once); the icons' rail (`rail_em = 0`) keeps the toolkit's own
+       Restore, and its views their strip's Minimise.
+       opencode native puts it at the start of its servers' row expanded and at the top of its rail minimised, at the
+       same pixel in both states: the button stays under the pointer when the person folds and unfolds.
+       **Why it changed (0.304, the head of 0.300 refused).** The toolkit drew the Minimise in a row of its own above
+       the body, at the rail's Restore's place. The row was empty but for the button: a band across the sidebar that
+       the user saw as a strange black line. The view knows its rows; the toolkit does not.
+       Refused: the head row (an empty band); a button in the window's title bar (there is no place for it with the
+       system's title bar); the button at the far end of a row (it jumps when the zone folds: the rail is narrower than
+       the zone); the button over the body's top corner (it lies over the body's controls, as the 0.267 icons did).
+     - **The rail keeps the zone's edge line** (`view_zone_handle`): a side zone collapsed (both rails) keeps its
+       handle, so the line between it and the content is the expanded zone's: one splitter, one colour, one width, one
+       side, and `view_dock_line` says where it is in both states. **Why.** The user: the rail had no line against the
+       content, unlike every other zone and panel. Refused: a border drawn by the rail (a second drawing of one line).
+     - **Pulling the rail opens the zone** (one state machine with Minimise): a drag of a side zone's handle maps the
+       pointer to a raw width, from the zone's width shown at the press. Collapsed or expanded follows from it: under
+       the rail's width plus `VIEW_RAIL_PULL_EM` the zone is collapsed, past it expanded, its width the raw one held to
+       `DOCK_MIN_EM` and the space less the content's minimum. So a pull outward from the rail past the threshold
+       restores the zone and the zone follows the pointer from there (no jump: the threshold is past `DOCK_MIN_EM`
+       for both rails), and the width let go is remembered; a pull inward, or less than the threshold, does nothing.
+       The same drag from an expanded zone down to the rail folds it, and its extent stays the one it had at the press
+       (Restore brings it back). Each change of state goes through `view_stack_minimise`, as the buttons do: a zone
+       folded by a narrow space opens over the content's minimum. The keys on the handle keep the width's limits and
+       never fold. **Why.** The user: pulling the rail must bring the zone back. Before, a drag under the minimum
+       stopped at it and the collapsed zone had no handle. Refused: a threshold of its own for the fold (two
+       thresholds on one drag are two state machines).
      - **A side zone folds itself when the space is too narrow** (`sp.folded`): when the space is narrower than the
        zone's extent plus `DOCK_MIN_EM` for the content, the zone shows as its rail, with no change to its memory, and
        comes back when the space is wide enough again. Its Restore then opens it over the content's minimum for as
