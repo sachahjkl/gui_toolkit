@@ -151,6 +151,8 @@ STEPS := []Step{
 	{name = "panes", one = true},
 	{name = "docking", one = true},
 	{name = "views", one = true, oses = EVERYWHERE, text = true},
+	// (a process of its own: in views', its session left Windows' WARP so that a later test crashed or hung)
+	{name = "view_size", one = true, oses = EVERYWHERE, text = true},
 	{name = "keyboard", one = true, wgpu = .Ci2},
 	{name = "commands", one = true, oses = EVERYWHERE, text = true},
 	{name = "keymap", one = true, oses = EVERYWHERE, text = true},   // (the person's keys: one language for the process)
