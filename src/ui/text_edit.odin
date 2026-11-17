@@ -336,7 +336,9 @@ text_edit_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	lo, hi := min(d.cursor, d.mark), max(d.cursor, d.mark)
 	first := max(0, int(d.scroll.y / lh) - 1)
 	last := min(len(d.lines) - 1, int((d.scroll.y + (r.max.y - r.min.y)) / lh) + 1)
-	draw.push_clip(dc, {{r.min.x + d.gutter, r.min.y}, r.max - d.room})
+	// (cut at the inner edge of the padding, above and below: a line scrolled half out ends at the text's edge, never
+	// under the field's border and its rounded corners. At either end of the scroll the text starts and ends there)
+	draw.push_clip(dc, {{r.min.x + d.gutter, r.min.y + d.pad}, {r.max.x - d.room.x, r.max.y - d.room.y - d.pad}})
 	for li in first ..= last {
 		l := d.lines[li]
 		y := top + f32(li) * lh

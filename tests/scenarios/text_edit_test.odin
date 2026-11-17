@@ -2,6 +2,7 @@ package scenarios_test
 
 // Editing text: a line edit and a text area, by the keyboard and the mouse, the undo steps by the session's clock, the caret by its pixels.
 
+import "core:math"
 import "core:strings"
 import "core:testing"
 import "gt:font"
@@ -431,6 +432,32 @@ the_caret_blinks_by_the_clock :: proc(t: ^testing.T) { unwatched.run(t, proc(t: 
 	session.activate(s, false)
 	testing.expect(t, session.near(session.pixel(session.capture(s), at.x, at.y), background), "a window in the back shows no caret")
 	session.activate(s, true)
+}) }
+
+// A line scrolled half out at the top is cut at the inner edge of the padding: nothing of it shows between the field's
+// border and its text, where it ran under the rounded corners.
+@(test)
+a_line_scrolled_half_out_stays_inside_the_padding :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s, e := editors_start(t, no_renderer = false)
+	b := strings.builder_make(context.temp_allocator)
+	for _ in 0 ..< LONG_LINES { strings.write_string(&b, "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM\n") }
+	ui.text_edit_set(&e.area, strings.to_string(b))
+	session.frames(s, 2)
+	box := session.get(s, "area")
+	pad := box.text_pad
+	// (half a line down: the first line's lower half is in view, its upper half above the text's edge)
+	e.area.scroll.y = math.round(box.font_size * 0.6)
+	session.frames(s, 2)
+	img := session.capture(s)
+	r := box.rect
+	// the band between the border and the text's top edge, over the text's columns; its colour is the padding's at its left
+	top, bottom := int(r.min.y) + 2, int(r.min.y + pad) - 1
+	left, right := int(r.min.x + pad), int(r.max.x - pad) - 20   // (short of the scrollbar)
+	if !testing.expectf(t, bottom > top, "a padding: %v", pad) { return }
+	background := session.pixel(img, int(r.min.x + pad * 0.5), (top + bottom) / 2)
+	testing.expect_value(t, session.count_other(img, {left, top}, {right, bottom}, background, tolerance = 8), 0)
+	// and the text is there, under the band
+	testing.expect(t, session.count_other(img, {left, int(r.min.y + pad)}, {right, int(r.min.y + pad) + 4}, background, tolerance = 8) > 0, "the cut line shows below the padding")
 }) }
 
 // The cursor the window asks for follows what the pointer is over.
