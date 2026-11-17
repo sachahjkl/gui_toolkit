@@ -26,6 +26,10 @@ FILMS := [?]Film{
 	{"palette", "The command palette: every command, setting and view, found by a few letters", palette_film},
 	{"layout", "A window that narrows: columns go one under the other, rows wrap, nothing spills", layout_film},
 	{"toolbars", "One tool bar, two ways to narrow: wrap onto lines, or fold into its menu", toolbars_film},
+	{"menus", "Menus as wide as their widest row; typing searches them and their submenus", menus_film},
+	{"dialogs", "A view in a dialog, a confirmation, a prompt: they fade in and answer", dialogs_film},
+	{"values", "A setting's value kind, and the control it gets", values_film},
+	{"settings", "The settings page every program has: its pages, its search, a change at once", settings_film},
 }
 
 // The film's size, and the windows' logical size: the showcase at 125 % stands on the stage (1600 x 900 on 1920 x 1080),

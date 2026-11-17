@@ -612,6 +612,37 @@ a_menu_that_searches :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.
 	testing.expect_value(t, r.chosen, "date")
 }) }
 
+// Escape with the pointer resting on a submenu's row closes the submenu and keeps it closed (the row waits for the
+// pointer to move before it opens it again); a second Escape closes the menu. It reopened at once, and Escape seemed to
+// do nothing.
+@(test)
+escape_over_a_submenu_s_row_closes_it :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
+		key := "menu"
+		if s.frames == 1 { ui.menu_open(key, ui.Vec2{50, 50}) }
+		if ui.menu(key) {
+			_ = ui.menu_item("Open")
+			if ui.menu_submenu("Share") {
+				_ = ui.menu_item("Send by mail")
+			}
+		}
+	}})
+	session.frames(s, 2)
+	session.move(s, session.center(session.find_text(s, "Share")))
+	session.advance(s, 900)
+	testing.expect_value(t, len(s.state.menus), 2)
+	session.key(s, .Escape)
+	session.advance(s, 900)
+	testing.expect_value(t, len(s.state.menus), 1)
+	session.move(s, session.center(session.find_text(s, "Share")) + {4, 0})
+	session.advance(s, 900)
+	testing.expect_value(t, len(s.state.menus), 2)   // (the pointer moved: the row opens it again)
+	session.key(s, .Escape)
+	session.key(s, .Escape)
+	session.frames(s, 2)
+	testing.expect(t, !ui.menu_any_open(), "two Escapes close the menu")
+}) }
+
 // A menu's search is a field: Ctrl+A and Backspace empty it, Ctrl+Backspace takes a word back, the caret moves. While
 // it filters the menu keeps its corner and its width (it ran from under the pointer, narrower at each letter).
 @(test)
