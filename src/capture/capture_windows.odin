@@ -192,6 +192,7 @@ platform_output :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 		m = monitor_find(impl, id)
 	}
 	if m == nil { return {}, .Gone }
+	menus_wait()
 	return output_frame(impl, m, allocator)
 }
 
@@ -231,6 +232,7 @@ platform_window :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (Frame, Error) {
 	impl := (^Impl)(s.impl)
 	impl.cursor = s.cursor
+	menus_wait()   // (once for every output of the picture)
 	monitors_read(impl)
 	if len(impl.monitors) == 0 { return {}, .Failed }
 	logical := make([]Rect, len(impl.monitors), context.temp_allocator)
@@ -354,6 +356,43 @@ monitor_find :: proc(impl: ^Impl, id: u64) -> ^Monitor {
 }
 
 ////////////////////////////////
+// Popup menus
+
+@(private = "file") MENU_CLASS :: "#32768"   // the system's class of every popup menu (a tray icon's, a context menu)
+@(private = "file") MENU_WINDOWS_MAX :: 64   // top-level menus looked at: a submenu chain is a few
+
+// Waits, at most WIN32_MENU_WAIT_MS, until no popup menu is on the screen. An action picked from a menu (a tray icon's
+// "Capture a region") starts the capture at once, while the menu still fades out: without this, the picture holds it.
+// Once a menu was seen and went, DwmFlush waits for the compositor's next frame, the first one without the menu, so
+// that Desktop Duplication's next frame (or GDI's copy) is that one. A window's own capture (Windows.Graphics.Capture)
+// does not wait: no menu is in a window's own content. Sleeps: the capture's worker calls it, never an interface's
+// thread. With no menu it costs one FindWindowExW.
+@(private = "file")
+menus_wait :: proc() {
+	steps := Win32_Wait_Steps{
+		present = proc(_: rawptr) -> bool { return menu_visible() },
+		now_ms  = proc(_: rawptr) -> i64 { return monotonic_ns() / 1_000_000 },
+		sleep   = proc(_: rawptr, ms: i64) { win.Sleep(u32(ms)) },
+	}
+	seen, _ := win32_wait_until_gone(steps, WIN32_MENU_WAIT_MS, WIN32_MENU_POLL_MS)
+	// (a menu still there past the bound is captured with it: a capture never fails for a menu)
+	if seen { win.DwmFlush() }
+}
+
+// Whether a popup menu is visible. A menu that fades out is a layered window still visible until the fade ends, so
+// IsWindowVisible covers the fade too.
+@(private = "file")
+menu_visible :: proc() -> bool {
+	after: win.HWND
+	for _ in 0 ..< MENU_WINDOWS_MAX {
+		after = win.FindWindowExW(nil, after, win.L(MENU_CLASS), nil)
+		if after == nil { return false }
+		if win.IsWindowVisible(after) { return true }
+	}
+	return false
+}
+
+////////////////////////////////
 // An output's picture
 
 // Desktop Duplication, else GDI.
@@ -389,7 +428,8 @@ duplication_frame :: proc(impl: ^Impl, m: ^Monitor, allocator: runtime.Allocator
 			continue acquire
 		}
 		if hr == dxgi.ERROR_WAIT_TIMEOUT {
-			// Nothing changed since the last frame: staging is the screen, once a frame with a picture filled it.
+			// Nothing changed since the last frame: staging is the screen, once a frame with a picture filled it. (A menu
+			// that left after that frame is a change, so a timeout after menus_wait never gives the menu back.)
 			if d.filled && d.presented { break acquire }
 			continue acquire
 		}

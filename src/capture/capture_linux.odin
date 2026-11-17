@@ -140,6 +140,9 @@ platform_window :: proc(s: ^Session, id: u64, allocator: runtime.Allocator) -> (
 	return {}, .Unsupported
 }
 
+// No wait for a menu to leave the screen, unlike Windows (menus_wait): a tray icon's menu is the shell's own surface
+// (StatusNotifierItem's menu, drawn by the panel), with no class a client can look for, and on Wayland the compositor
+// (or the portal) composes the frame it gives.
 @(private)
 platform_desktop :: proc(s: ^Session, allocator: runtime.Allocator) -> (f: Frame, err: Error) {
 	impl := (^Linux_Impl)(s.impl)

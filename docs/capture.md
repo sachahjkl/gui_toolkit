@@ -200,6 +200,9 @@ a window's rect gives the window's physical pixels.
 - If duplication is unavailable for an output (some remote sessions, some drivers), the backend uses GDI for that
   output: `BitBlt` with `CAPTUREBLT` from the screen DC into a 32-bit top-down DIB section. It tries duplication again
   only when that output changes.
+- Before `output` and `desktop` read the screen, they wait at most 400 ms for every popup menu (class `#32768`) to
+  leave it, then for the compositor's next frame (`DwmFlush`). An action picked from a menu thus captures the screen
+  without that menu. If a menu stays longer, the capture is taken with it (`capture.win32_wait_until_gone`).
 - Rotated outputs are turned upright (`capture.win32_rotated_source`).
 - `desktop` draws every output at the highest scale. An output at that scale is copied. An output at a smaller scale is
   scaled with bilinear filtering.

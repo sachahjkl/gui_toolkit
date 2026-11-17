@@ -1,7 +1,7 @@
 package capture
 
 // The decisions of the Windows backend that need no system call: which windows a screenshot tool lists, how a rotated
-// output's picture is read, an executable's name from its path. Pure, so that tests/capture checks them on every system;
+// output's picture is read, an executable's name from its path, the bounded wait for a menu to leave the screen. Pure, so that tests/capture checks them on every system;
 // capture_windows.odin gathers the facts and calls them.
 
 // What the Windows backend reads about a top-level window before it decides to list it.
@@ -41,6 +41,34 @@ win32_window_listed :: proc(f: Win32_Window_Facts) -> bool {
 	if !f.minimized && (f.frame.w <= 0 || f.frame.h <= 0) { return false }
 	if f.title != "" { return true }
 	return app_window && !f.has_owner
+}
+
+// How long a screen capture waits, at most, for a popup menu to leave the screen, and how often it looks. A menu's
+// fade-out takes up to about 200 ms; past the bound the capture is taken anyway, never failed for this.
+WIN32_MENU_WAIT_MS :: 400
+WIN32_MENU_POLL_MS :: 10
+
+// What win32_wait_until_gone asks of the system: whether the thing waited on is still there, the time, and a sleep.
+// Passed in so that a test drives the wait with its own clock and never sleeps.
+Win32_Wait_Steps :: struct {
+	present: proc(data: rawptr) -> bool,
+	now_ms:  proc(data: rawptr) -> i64,
+	sleep:   proc(data: rawptr, ms: i64),
+	data:    rawptr,
+}
+
+// Waits until `present` says false, at most `limit_ms`, looking every `poll_ms`. `seen`: it was present at least once
+// (the caller then lets the compositor catch up); `gone`: it was absent at the last look. Blocks the calling thread:
+// call it on a capture's worker, never on an interface's thread.
+win32_wait_until_gone :: proc(steps: Win32_Wait_Steps, limit_ms, poll_ms: i64) -> (seen, gone: bool) {
+	start := steps.now_ms(steps.data)
+	for {
+		if !steps.present(steps.data) { return seen, true }
+		seen = true
+		elapsed := steps.now_ms(steps.data) - start
+		if elapsed >= limit_ms { return seen, false }
+		steps.sleep(steps.data, clamp(poll_ms, 1, limit_ms - elapsed))
+	}
 }
 
 // DXGI_MODE_ROTATION, as IDXGIOutputDuplication::GetDesc says it.
