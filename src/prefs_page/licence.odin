@@ -42,9 +42,11 @@ Licence_Options :: struct {
 	name:        string,          // a constant of the program
 	pricing_url: string,          // a constant of the program
 	owner:       ^platform.Window,   // the window the file dialog belongs to (nil: none)
-	logo:        []u8,            // the program's logo, a picture file's bytes (#load of its PNG; nil: a card without one)
-	vendor:      string,          // who sells it ("Froment Software"): the back of the card says "<NAME> · <VENDOR>" ("": the name alone)
+	logo:        []u8,            // the program's logo, a picture file's bytes (#load of its PNG): required
+	vendor:      string,          // who sells it ("Froment Software"): the back of the card says "<NAME> · <VENDOR>"; required
 }
+
+LICENCE_NEEDS_LOGO :: "prefs_page.licence_init: the licence card needs the program's logo and vendor (Licence_Options.logo, .vendor)"
 
 Licence :: struct {
 	options: Licence_Options,
@@ -64,6 +66,9 @@ Licence :: struct {
 
 // The store and its first read (a task of `state`, the window the settings are built in).
 licence_init :: proc(l: ^Licence, state: ^ui.State, o: Licence_Options) {
+	// (a program that left them out shipped a card with a bare back: opencode native until 0.69.2. Said at the first
+	// start of any build, not found by a person on the settings' last page)
+	assert(len(o.logo) > 0 && o.vendor != "", LICENCE_NEEDS_LOGO)
 	l.options, l.state = o, state
 	l.store = new(licence.Store, runtime.heap_allocator())
 	licence.store_init(l.store, o.store)
