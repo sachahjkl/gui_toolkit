@@ -29,6 +29,8 @@
 //                                             step-th emoji of emoji-test.txt and a few hard ones -> <out-dir>/side.png and the numbers
 //   build [example] [-debug]                 an example (default fidget) -> build/<example>[.exe], optimized or with debug
 //                                             information; Windows: no console, its .rc; Linux: the native text backend first
+//   demos [-out:dir]                          Windows: the demo examples (demos.odin) built as build builds them, each alone in
+//                                             <dir>/<example>-windows-x64.zip (default build/demos): what the Release workflow attaches
 //   ci                                        what the CI checks on this system: odin check of every package and tool, the examples, the
 //                                             tests (tools/run_tests); every step runs, then the failures are said
 //   desktop_tests [x11|randr|wayland]       Linux: the backends against real servers on a virtual desktop nobody sees (Xvfb and
@@ -85,6 +87,7 @@ COMMANDS := []toolbox.Command {
 	{name = "gen_lucide", usage = ": src/lucide/lucide.odin from lucide.ttf, a constant per icon", checked = true, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_gen_lucide(args)) }},
 	{name = "release", usage = "<patch|minor|major|x.y.z> [-summary:text] [-no-push]: publishes a version of the toolkit (release.odin)", checked = true, flags = {"summary:", "no-push"}, positionals = 1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_release(args)) }},
 	{name = "build", usage = "[example] [-debug]: an example (default fidget) -> build/<example>, optimized or with debug information", checked = true, flags = {"debug"}, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build(args)) }},
+	{name = "demos", usage = "[-out:dir]: Windows: the demo examples, each in <dir>/<example>-windows-x64.zip (default build/demos)", checked = true, flags = {"out:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_demos(args)) }},
 	{name = "site_docs", usage = "<site> <out>: every docs/*.md as a page of <out>/docs, docs/_nav.txt the menu", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_docs(args)) }},
 	{name = "site_build", usage = "<site> <out>: the site as published (site_changelog, site_meta, site_docs), then its links", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_build(args)) }},
 	{name = "site_changelog", usage = "<site> <out>: a copy of <site> with the history from CHANGELOG.md and the classic pages", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_changelog(args)) }},

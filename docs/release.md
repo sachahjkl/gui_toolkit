@@ -65,3 +65,7 @@ with `notes`' output (classeur's and papier's `.github/workflows/release.yml`).
 When origin moved meanwhile (another session published), the atomic push is refused and nothing went out: the commit and
 the tag are undone and it starts again at 1 with the next number, `Publish.tries` times (3). A tag is never published
 without its commit on master. `Publish.no_push` stops after the tag.
+
+The toolkit's own release (`tk release`, [CONTRIBUTING.md](../CONTRIBUTING.md)) gets its demo programs from the Release
+workflow (`.github/workflows/release.yml`): one Windows x64 zip per demo, attached once the release is published.
+`odin run tools/tk -- demos` builds the same zips locally, in `build/demos`.
