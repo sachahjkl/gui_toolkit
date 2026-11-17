@@ -258,9 +258,9 @@ line_runs :: proc(l: Line, k: ^Look, runs: ^[dynamic]ui.Rich_Run) {
 }
 
 // A row's text as its boxes give it to a copy (ui.Text_Rows.text): a line as line_runs shows it, a split row's two
-// sides joined by a line break, nothing for a gap.
+// sides joined by a line break, nothing for a gap. (`whole` is the same: a diff folds nothing it could open)
 @(private)
-row_text :: proc(user: rawptr, i: int, allocator: runtime.Allocator) -> (string, bool) {
+row_text :: proc(user: rawptr, i: int, allocator: runtime.Allocator, whole: bool) -> (string, bool) {
 	d := (^Doc)(user)
 	line :: proc(d: ^Doc, n: int, allocator: runtime.Allocator) -> string {
 		l := d.lines[n]

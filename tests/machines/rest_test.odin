@@ -1,7 +1,7 @@
 package machines_test
 
 // The rest of what lasts over frames: what a colour's text says after it was left, a focus stepped into a paragraph from
-// behind, what a sweep measures while the view glides, what a screen reader is told of what went, the title bar forgotten.
+// behind, where a find lights a match while the view glides, what a screen reader is told of what went, the title bar forgotten.
 
 import "core:testing"
 import "gt:platform"
@@ -14,8 +14,7 @@ import "gt:ui"
 @(private = "file") LINE_HEIGHT :: 30
 @(private = "file") WHEEL_NOTCHES :: 3
 @(private = "file") SETTLE_FRAMES :: 4
-@(private = "file") SWEEP_WAIT_MS :: 600
-// The sweep's coordinates are the content's, whatever the scroll: to a fraction of a pixel.
+// A match's rect is its box's layout, whatever the scroll: to a fraction of a pixel.
 @(private = "file") SAME_PLACE_PX :: 0.5
 
 @(private = "file")
@@ -77,56 +76,48 @@ a_step_back_enters_a_paragraph_by_its_last_link :: proc(t: ^testing.T) {
 }
 
 @(private = "file")
-Sweep :: struct { refresh: bool }
-
-@(private = "file")
-sweep_build :: proc(s: ^session.Session) {
-	r := (^Sweep)(s.user)
-	ui.find("needle", ui.key_from_string(ui.key_from_string(0, "root"), "###region"))   // (the scope whose content find_all speaks of)
-	if r.refresh { r.refresh = false; ui.find_refresh() }
-	sweep := ui.find_sweep()
+glide_build :: proc(s: ^session.Session) {
 	ui.next({width = ui.px(SCROLL_SIZE), height = ui.px(SCROLL_SIZE)})
 	if ui.scroll_y("###region") {
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.column() {
-			lz := ui.lazy_begin(sweep = sweep)
 			for i in 0 ..< LINES {
-				if ui.lazy_item(lz, item_id(i)) {
-					ui.next({height = ui.px(LINE_HEIGHT)})
-					ui.label(i == LINES - 1 ? "the needle" : "words")
-				}
+				ui.next({height = ui.px(LINE_HEIGHT)})
+				ui.label(i == LINES / 2 ? "the needle###t" : "words###t")
 			}
 		}
 	}
+	ui.find_bar(ui.prev_box("###region"))
 }
 
+// The match lit, against its box's top.
 @(private = "file")
-item_id :: proc(i: int) -> string {
-	buf := make([]u8, 8, context.temp_allocator)
-	buf[0], buf[1], buf[2] = '#', '#', '#'
-	buf[3], buf[4] = 'a' + u8(i / 26), 'a' + u8(i % 26)
-	return string(buf[:5])
+match_in_box :: proc() -> f32 {
+	ms := ui.find_matches()
+	if len(ms) == 0 { return -1 }
+	b := ui.box_from_key(ms[0].box)
+	return ms[0].rect.min.y - b.rect.min.y
 }
 
-// A sweep that runs while the view glides says where the match is in the content, as one at rest does.
+// A match lit while the view glides is on its letters, as one at rest is: its rect is the layout's, with the scroll that
+// layout had (the find reads it before the glide moves the view).
 @(test)
-a_sweep_in_a_glide_finds_the_same_place :: proc(t: ^testing.T) {
-	r: Sweep
-	s := session.start(t, {size = WINDOW, user = &r, smooth_scroll = .On, animations = true, build = sweep_build})
-	session.advance(s, SWEEP_WAIT_MS)
+a_match_in_a_glide_stays_on_its_letters :: proc(t: ^testing.T) {
+	s := session.start(t, {size = WINDOW, smooth_scroll = .On, animations = true, build = glide_build})
+	session.frames(s, 2)
+	ui.find_open(session.get(s, "region").key, "needle")
+	session.frames(s, 3)
 	testing.expect_value(t, ui.find_count(), 1)
-	at_rest := ui.find_all()[0].rect.min.y
-	session.advance(s, SWEEP_WAIT_MS)
+	at_rest := match_in_box()
 	at := session.center(session.get(s, "region"))
 	session.move(s, at)
 	session.event(s, {kind = .Scroll, pos = at, delta = {0, WHEEL_NOTCHES}})
 	session.frame(s)
-	r.refresh = true
-	session.frame(s)
 	b := session.get(s, "region")
 	testing.expect(t, b.view_off.y != b.view_target.y, "the view is on its way")
-	gliding := ui.find_all()[0].rect.min.y
+	gliding := match_in_box()
 	testing.expectf(t, abs(gliding - at_rest) < SAME_PLACE_PX, "at rest %v, gliding %v", at_rest, gliding)
+	ui.find_close()
 }
 
 // No tree made is no tree: not the last one made.

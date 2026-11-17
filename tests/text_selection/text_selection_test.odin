@@ -133,7 +133,7 @@ frame :: proc(f: ^Fx, events: []platform.Event = nil) {
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 				if ui.column(id = "###col") {
 					// (row i is item lazy_from + i: lowering lazy_from inserts items before every row, a page loaded above)
-					text :: proc(_: rawptr, i: int, allocator: runtime.Allocator) -> (string, bool) { return fmt.aprintf("item %d", lazy_from + i, allocator = allocator), true }
+					text :: proc(_: rawptr, i: int, allocator: runtime.Allocator, _: bool) -> (string, bool) { return fmt.aprintf("item %d", lazy_from + i, allocator = allocator), true }
 					id :: proc(_: rawptr, i: int) -> u64 { return u64(lazy_from + i) }
 					lz := ui.lazy_begin(rows = {count = LAZY_ROWS - lazy_from, text = text, id = id})
 					for n in lazy_from ..< LAZY_ROWS {

@@ -21,7 +21,8 @@ Rx :: struct {
 	theme: ui.Theme,
 	s:     ui.State,
 	ui_font, mono: font.Font_Id,
-	needle: string,   // searched in the frame (ui.find)
+	needle: string,   // searched in the frame (ui.find_bar)
+	finding: bool,    // a find test: the paragraph in a view with its find bar
 	clear: draw.Color,   // under everything (alpha 0: black)
 	runs:  []ui.Rich_Run,
 	res:   ui.Rich_Result,
@@ -61,9 +62,21 @@ frame :: proc(f: ^Rx, events: []platform.Event = nil, draw_it := false) -> []u8 
 		window_size = {f32(SIZE.x), f32(SIZE.y)}, events = events, dt = 1.0 / 60, animations = false, dpi_scale = 1,
 		base = ui.Style{pref = {.X = ui.text_size(), .Y = ui.px(30)}, font = f.ui_font, font_size = 15, text_pad = 6},
 	})
-	ui.next({fixed_x = 10, fixed_y = 10, width = ui.px(f.width)})
-	f.res = ui.rich_paragraph("###rich", f.runs, f.max_lines)
-	ui.find(f.needle)
+	// (a find test: the paragraph in a view of the window's size, below its find bar's corner)
+	if f.finding {
+		if page := ui.box_at("###page"); page != nil {
+			if f.needle == "" { ui.find_close() } else if !ui.find_is_open(page.key) || ui.find_needle() != f.needle { ui.find_open(page.key, f.needle) }
+		}
+		ui.next({width = ui.px(f32(SIZE.x)), height = ui.px(f32(SIZE.y))})
+		if ui.column(id = "###page") {
+			ui.next({fixed_x = 10, fixed_y = 60, width = ui.px(f.width)})
+			f.res = ui.rich_paragraph("###rich", f.runs, f.max_lines)
+		}
+		ui.find_bar(ui.prev_box("###page"))
+	} else {
+		ui.next({fixed_x = 10, fixed_y = 10, width = ui.px(f.width)})
+		f.res = ui.rich_paragraph("###rich", f.runs, f.max_lines)
+	}
 	ui.end_build()
 	px: []u8
 	if draw_it {
@@ -351,7 +364,7 @@ rich_find_shows_over_inline_code :: proc(t: ^testing.T) {
 	defer free(f)
 	if !testing.expect(t, open(f), "renderer and fonts") { close(f); return }
 	defer close(f)
-	f.width = 380
+	f.width, f.finding = 380, true
 	f.runs = {{text = "see "}, {text = "needle", style = {code = true}}, {text = " here"}}
 	// the top row of the code's background, in the middle of the word: above the letters
 	delete(frame(f))
@@ -384,7 +397,8 @@ rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 	defer close(f)
 	linear :: proc(v: u8) -> f64 { c := f64(v) / 255; return c <= 0.03928 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4) }
 	luma :: proc(px: []u8, at: int) -> f64 { return 0.2126 * linear(px[at]) + 0.7152 * linear(px[at + 1]) + 0.0722 * linear(px[at + 2]) }
-	f.width = 400
+	f.width, f.finding = 400, true
+	defer ui.find_close()
 	f.needle = "HH"
 	gold := draw.Color{0.9, 0.75, 0.48, 1}
 	// large letters reach their full colour; those of the text one reads are thin, and what counts
@@ -402,7 +416,7 @@ rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 		delete(frame(f))
 		ms := ui.find_matches()
 		if !testing.expect_value(t, len(ms), 2) { continue }
-		ui.find_set_current(0)
+		testing.expect_value(t, ui.find_index(), 0)   // (the first one, current)
 		rects := [2]ui.Rect{ms[0].rect, ms[1].rect}
 		px := frame(f, draw_it = true)
 		defer delete(px)

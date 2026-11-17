@@ -39,9 +39,7 @@ src/platform/dialogs.odin } else if strings.equal_fold(p, name) {  # a file name
 src/ui/box_find.odin lower := strings.to_lower(text  # user text: the words of a box a film or a test looks for, as the interface shows them
 src/ui/box_find.odin strings.contains(strings.to_lower(box_text(b)  # user text: the text of a box a film or a test looks for
 tools/tk/main.odin !strings.equal_fold(fi.name, name)  # a file name on Windows (the file system folds by Unicode)
-src/ui/find.odin n0 = unicode.to_lower(n0)  # user text: find in page
-src/ui/find.odin if unicode.to_lower(r) == n0 {  # user text: find in page
-src/ui/find.odin if unicode.to_lower(a) != unicode.to_lower(b)  # user text: find in page
+src/ui/find.odin fold :: proc(r: rune, match_case: bool) -> rune { return match_case ? r : unicode.to_lower(r) }  # user text: find in a view
 src/ui/fuzzy.odin l := unicode.to_lower(r)  # user text: the fuzzy match of what is typed
 tests/commands/fuzzy_fold_test.odin l := unicode.to_lower(r)  # user text: the fuzzy match's fold a rune at a time, the reference of its ASCII path
 src/ui/list.odin strings.has_prefix(strings.to_lower(label[  # user text: a list's type-ahead

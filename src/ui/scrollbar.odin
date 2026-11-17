@@ -527,6 +527,8 @@ scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Part
 		}
 	}
 	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, true) }
+	// (the find's matches, over the program's marks: they go when it closes)
+	if axis == .Y { find_ticks_draw(s, dc, b, p.track) }
 }
 
 // An arrow button's triangle, in rows of pixels: rows of 1, 3, 5… (one unit tall each, two units wider each), its point

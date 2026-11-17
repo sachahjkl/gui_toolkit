@@ -633,8 +633,11 @@ a_matched_label_is_centred_as_a_label :: proc(t: ^testing.T) {
 			ui.next({width = ui.text_size(), height = ui.pct(1), text_pad = 0})
 			ui.matched_label("###m", "Hp", {{1, 2}})
 		}
-		ui.find("H")
+		ui.find_bar(ui.prev_box("###r"))
 	}
+	frame(&f, nil, body, nil)
+	ui.find_open(ui.box_at("###r").key, "H")
+	defer ui.find_close()
 	for _ in 0 ..< 3 { frame(&f, nil, body, nil) }
 	ms := ui.find_matches()
 	if !testing.expect_value(t, len(ms), 2) { return }

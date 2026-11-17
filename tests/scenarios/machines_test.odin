@@ -1,8 +1,11 @@
 package scenarios_test
 
-// What goes on over several frames, each in a state of its own: dialogs on one another, a sweep left behind, a word held
+// What goes on over several frames, each in a state of its own: dialogs on one another, a find left behind, a word held
 // by a double click, a press that no pointer made.
 
+import "base:runtime"
+import "core:fmt"
+import "core:strings"
 import "core:testing"
 import "gt:testkit/session"
 import "gt:testkit/unwatched"
@@ -108,20 +111,33 @@ a_closed_dialog_gives_the_focus_back :: proc(t: ^testing.T) { unwatched.run(t, p
 	testing.expect_value(t, ui.line_edit_string(&d.page), "back")
 }) }
 
-// The sweep that was due when the page went away is due no longer: the loop goes back to sleep.
+// A find counting a long list asks for frames until it is done; its view gone (another page), nothing waits for it: the
+// loop goes back to sleep.
 @(test)
-a_sweep_nobody_asks_for_lets_the_loop_sleep :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+a_find_whose_view_is_gone_lets_the_loop_sleep :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { on_page: bool }
 	r := Run{on_page = true}
+	ROWS :: 50_000
 	s := session.start(t, {size = WINDOW, user = &r, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
-		ui.find("word")
-		if r.on_page { _ = ui.find_sweep() }
-		ui.label("a word")
+		if !r.on_page { ui.label("another page"); return }
+		ui.next({width = ui.px(300), height = ui.px(200)})
+		if ui.scroll_y("###view") {
+			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+			if ui.column(id = "###col") {
+				text :: proc(user: rawptr, i: int, allocator: runtime.Allocator, whole: bool) -> (string, bool) { return strings.clone("a word", allocator), true }
+				lz := ui.lazy_begin(rows = {count = ROWS, text = text})
+				for i in 0 ..< ROWS {
+					if ui.lazy_item(lz, fmt.tprintf("###r%d", i)) { ui.label("a word###t") }
+				}
+			}
+		}
+		ui.find_bar(ui.prev_box("###view"))
 	}})
-	session.frame(s)
-	testing.expect(t, ui.wake_ms(s.state) > 0, "the sweep is on its way: a wake when its time comes")
-	testing.expect(t, !ui.needs_frame(s.state), "and no frame until then")
+	session.frames(s, 2)
+	ui.find_open(session.get(s, "view").key, "word")
+	session.frames(s, 2)
+	testing.expect(t, ui.find_pending() && ui.needs_frame(s.state), "counting: the next frame is asked for")
 	r.on_page = false
 	for _ in 0 ..< SETTLE_FRAMES { session.frame(s) }
 	testing.expect(t, !ui.needs_frame(s.state), "nothing is waiting for it")
