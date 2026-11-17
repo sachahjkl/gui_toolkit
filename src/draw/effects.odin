@@ -320,11 +320,7 @@ pop_layer :: proc(c: ^Context) {
 			colors = {{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}}, soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1,
 			flags = render.FLAG_SCREEN | (im.space == .Srgb ? render.FLAG_TEX_SRGB : 0), clip = shape,
 		}
-		b := &c.batches[len(c.batches) - 1]
-		if b.image != im.tex {
-			if b.image != 0 && len(c.insts) > b.first { close_batch(c); start_batch(c); b = &c.batches[len(c.batches) - 1] }
-			b.image = im.tex
-		}
+		image_batch(c, im.tex, false)
 		append(&c.insts, inst)
 		return
 	}
@@ -421,15 +417,7 @@ composite :: proc(c: ^Context, f: Filtered, alpha: f32, blend: Blend_Mode, kept:
 	}
 	// the composite: the layer's pixels at their screen place (no transform: the content already went through it), cut
 	// by the clip shapes around the layer
-	b := &c.batches[len(c.batches) - 1]
-	if b.image != img.tex {
-		if b.image != 0 && len(c.insts) > b.first {
-			close_batch(c)
-			start_batch(c)
-			b = &c.batches[len(c.batches) - 1]
-		}
-		b.image = img.tex
-	}
+	image_batch(c, img.tex, false)
 	append(&c.insts, inst)
 	if !kept { render.release_target(c.renderer, img.tex) }
 }

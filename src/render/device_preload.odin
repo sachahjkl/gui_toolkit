@@ -107,7 +107,9 @@ take_preloaded_device :: proc(r: ^Renderer, warp: bool) -> bool {
 make_preloaded_device :: proc() {
 	ok: bool
 	when USE_WGPU {
-		ok = wgpu_create_device_here(&preload.held, {}, preload.warp)   // (no surface: the window's is made by init)
+		// (no surface: the window's is made by init. No display either: a GL device made here is surfaceless, and a
+		// window does not take it, wgpu_make_surface)
+		ok = wgpu_create_device_here(&preload.held, {}, preload.warp, {})
 	} else {
 		ok = create_device(&preload.held, preload.warp ? .WARP : .HARDWARE)
 	}

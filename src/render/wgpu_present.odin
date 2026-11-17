@@ -118,7 +118,12 @@ wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {
 	}
 	if g.clear_pending { wgpu_clear_frame(r) }
 	// the capture copies the frame target before the present consumes the surface texture (one more command on the queue)
-	if r.capture.requested { capture_copy_wgpu(r, g.frame_tex, g.surface_format, r.space) }
+	if r.capture.requested {
+		// (a surface that cannot be copied from: the frame was composed into the kept target, wgpu_damage_setup)
+		src := g.frame_tex
+		if g.surface != nil && !g.surface_copy { src = g.damage_ready ? g.damage_target : nil }
+		capture_copy_wgpu(r, src, g.surface_format, r.space)
+	}
 	if g.surface == nil {   // offscreen
 		wgpu_poll(r, true)   // (no present paces an offscreen frame: on a slow device they would pile up, and a read-back wait behind them)
 		return

@@ -72,10 +72,14 @@ wgpu_damage_setup :: proc(r: ^Renderer, region: bool, f: Frame_Data) -> (use_tar
 	// only when a region is in effect this frame (the app called damage_begin for this window and mode is On): a frame
 	// with no region is drawn straight to the surface, exactly as without partial redraw. This also keeps a second
 	// window that does not track damage off the persistent target entirely.
-	use_target = region && wgpu_damage_ensure_target(r)
+	// A surface that cannot be copied from (GL's, wgpu_configure_surface) has every frame composed into the target: the
+	// copies of a frame (a backdrop, a snapshot) and a capture read the target instead.
+	use_target = (region || (g.surface != nil && !g.surface_copy)) && wgpu_damage_ensure_target(r)
 	if !use_target { g.damage_ready = false }   // what is drawn goes past it
-	// a partial frame is only safe when the target already holds the last frame; otherwise compose a full one now
-	do_partial = use_target && g.damage_ready && !damage_frame_reads_itself(f)
+	// a partial frame is only safe when the target already holds the last frame; otherwise compose a full one now. Only
+	// with a region: a frame composed into the target because the surface cannot be copied from (no region, partial
+	// redraw off) is drawn whole, or it would draw nothing new over the kept one
+	do_partial = region && use_target && g.damage_ready && !damage_frame_reads_itself(f)
 	r.damage.have_region = do_partial
 	r.damage.skip_present = damage_skips_present(r, do_partial)
 	return

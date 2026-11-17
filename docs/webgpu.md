@@ -6,7 +6,7 @@ On Linux it is the only backend. On Windows it is an option and Direct3D 11 is t
 
 ```
 odin build examples/fidget -collection:gt=src -define:TOOLKIT_RENDER=d3d11   # Direct3D 11, the default
-odin build examples/fidget -collection:gt=src -define:TOOLKIT_RENDER=wgpu    # WebGPU (wgpu-native): Direct3D 12 on Windows, Vulkan on Linux
+odin build examples/fidget -collection:gt=src -define:TOOLKIT_RENDER=wgpu    # WebGPU (wgpu-native): Direct3D 12 on Windows, Vulkan on Linux (OpenGL without a Vulkan driver)
 ```
 
 The procedures of the interface (`render.init`, `frame_begin`, `frame_submit`, `frame_end`, textures, targets, retained heaps,
@@ -55,6 +55,10 @@ DXC next to the program (found by itself) is what makes Direct3D 12 start in a r
 to compile the main shader, DXC 0.3 s. `-define:TOOLKIT_WGPU_DX12_COMPILER=fxc|dxc|auto`. Vulkan: `-define:TOOLKIT_WGPU_BACKEND=vulkan`.
 
 ## Environment
+
+`TOOLKIT_WGPU_BACKEND=gl` (Linux): wgpu's GL backend (OpenGL over EGL) instead of Vulkan, read once per process. Without
+it, GL is used only when Vulkan gives no adapter ([rendering.md](rendering.md)). The define of the same name chooses the
+compiled backend; this variable chooses GL at run time.
 
 `TOOLKIT_RENDER_TRACE=1`: the time of the first present, the surface calls, the CPU time per phase of a frame (once per second).
 A program's own steps join that list: `render.trace_start(what)` at a trigger (a shortcut), `render.trace_mark(what)` at each

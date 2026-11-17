@@ -228,6 +228,8 @@ STEPS := []Step{
 	{name = "video", wgpu = .Ci2, sample = true},
 	{name = "textures", wgpu = .Ci4},
 	{name = "render_pkg", path = "src/render"},
+	// (wgpu's GL backend, forced: EGL surfaceless, llvmpipe where there is no GPU; no EGL: the log says the tests drew nothing)
+	{name = "gl_fallback", oses = LINUX_ONLY, text = true},
 	// text
 	{name = "text", wgpu = .Ci1},
 	{name = "subpixel"},

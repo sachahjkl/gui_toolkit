@@ -65,6 +65,7 @@
     runtime = with pkgs; [
       vulkan-loader
       mesa
+      libglvnd # libEGL.so.1: wgpu's GL backend (the fallback when Vulkan has no driver, TOOLKIT_WGPU_BACKEND=gl)
       libxkbcommon
       wayland
       libx11
@@ -125,6 +126,11 @@
         preCommitCheck.shellHook
         + ''
           export LD_LIBRARY_PATH=${lib.makeLibraryPath runtime}
+          # (libglvnd's EGL finds its vendors there: NixOS's drivers first, then Mesa's, which off NixOS is the only one)
+          export __EGL_VENDOR_LIBRARY_DIRS=''${__EGL_VENDOR_LIBRARY_DIRS:-/run/opengl-driver/share/glvnd/egl_vendor.d:${pkgs.mesa}/share/glvnd/egl_vendor.d}
+          # (Mesa's EGL vendor alone: the GL tests run on it, the driver a machine without Vulkan has. On NVIDIA's, glvnd's first
+          # choice here, wgpu's GL backend gets GLSL 330 and refuses it: tests/gl_fallback, tests/no_graphics, tests/linux_desktop)
+          export TOOLKIT_TEST_MESA_EGL=${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json
           export XORG_MODULES=${pkgs.xf86-video-dummy}/lib/xorg/modules,${pkgs.xorg-server}/lib/xorg/modules
         '';
     };

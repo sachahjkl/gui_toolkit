@@ -333,6 +333,26 @@ close_batch :: proc(c: ^Context) {
 	b.count = len(c.insts) - b.first
 }
 
+// The batch an image instance of `tex` joins. t1 holds one image per batch: a different image starts a new batch (glyphs
+// and shapes do not care). On a renderer whose batches keep one address mode for their images (wgpu's GL backend:
+// render.image_wrap_splits_batches), a repeated image after a clamped one of the same texture, or the reverse, starts one
+// too: there t1's single sampler is the batch's.
+@(private)
+image_batch :: proc(c: ^Context, tex: render.Texture, wrap: bool) -> ^render.Batch {
+	b := &c.batches[len(c.batches) - 1]
+	by_wrap := render.image_wrap_splits_batches(c.renderer)
+	if b.image != tex || (by_wrap && b.image_wrap != wrap) {
+		if b.image != 0 && len(c.insts) > b.first {
+			close_batch(c)
+			start_batch(c)
+			b = &c.batches[len(c.batches) - 1]
+		}
+		b.image = tex
+		if by_wrap { b.image_wrap = wrap }
+	}
+	return b
+}
+
 ////////////////////////////////
 // Clips
 
@@ -642,16 +662,7 @@ image_tiled :: proc(c: ^Context, tex: render.Texture, dst: Rect, tile: Rect, tin
 @(private)
 image_inst :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: [4]f32, tint: Color, radii: [4]f32, flags: u32) {
 	xf, alpha, shape := cur(c)
-	// t1 holds one image per batch: a different image starts a new batch (glyphs and shapes do not care)
-	b := &c.batches[len(c.batches) - 1]
-	if b.image != tex {
-		if b.image != 0 && len(c.insts) > b.first {
-			close_batch(c)
-			start_batch(c)
-			b = &c.batches[len(c.batches) - 1]
-		}
-		b.image = tex
-	}
+	image_batch(c, tex, flags & render.FLAG_TILE != 0)
 	col := tint
 	col.a *= alpha
 	inst := render.Rect_Inst{src = src, colors = {col, col, col, col}, soft = 1, use_tex = render.KIND_IMAGE, tex_size = 1, clip = shape, flags = flags | (c.circular ? render.FLAG_CIRCLE : 0)}

@@ -65,12 +65,5 @@
 
 ## Maybe
 
-- **OpenGL when Vulkan is missing.** On a Linux machine with OpenGL and no Vulkan driver (an old GPU, some virtual
-  machines), a program would draw through wgpu's GL backend instead of saying that it cannot. wgpu's GL backend needs
-  the display connection (Wayland or X11) when its instance is made, for its EGL context, and wgpu-native's
-  `wgpuCreateInstance` has no field for it: an instance of GL alone has no backend on Linux. Two ways open: wait for
-  wgpu-native to take the display in its instance descriptor, or keep a fork of wgpu-native that does, built by the
-  toolkit (a Rust fork to maintain, for a rare machine). Intent:
-  [src/md/infrastructure/no-graphics.md](src/md/infrastructure/no-graphics.md).
 - **A reduced wgpu-native, only if it comes ready-made.** Studied and declined: WGSL and Vulkan only save about 1 MB for
   a harder build. Revisit only if gfx-rs publishes a reduced build.
