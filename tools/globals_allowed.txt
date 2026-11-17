@@ -46,6 +46,7 @@ font/colr.odin tls_arena_ok thread  # the COLR interpreter's scratch arena, of t
 font/com.odin memory_mu process  # the fonts loaded from memory: DirectWrite's shared factory knows them by key for the process (locked: memory_mu)
 font/com.odin memory_fonts process  # the fonts loaded from memory: DirectWrite's shared factory knows them by key for the process (locked: memory_mu)
 font/com.odin memory_next process  # the fonts loaded from memory: DirectWrite's shared factory knows them by key for the process (locked: memory_mu)
+font/com.odin memory_static_keys process  # the key of each font compiled into the exe, kept for the process: DirectWrite's shared factory keeps every key it has seen (locked: memory_mu)
 font/com.odin memory_stream_vtable const  # a COM vtable (passed by address)
 font/com.odin memory_loader_vtable const  # a COM vtable (passed by address)
 font/com.odin memory_loader const  # the memory font loader's COM object: its vtable only (registered once per process, never unregistered: loader_registered)
