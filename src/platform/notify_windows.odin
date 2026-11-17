@@ -8,10 +8,20 @@ package platform
 //     first notification). ToastNotificationManager.CreateToastNotifierWithId(id) gives the notifier.
 //   * A toast is toast_xml's document (ToastGeneric), its Tag the notification's id and its Group "gt": a toast with the
 //     same Tag and Group replaces the earlier one in place (Notification.replace).
-//   * The toast's Activated, Dismissed and Failed events come on a thread of the system's. Their handlers queue what
-//     happened on the window's Notify_Sink and post NOTIFY_MESSAGE; the window procedure makes the events on the
-//     window's thread. The sink is counted (the window and each handler hold it): a handler the system still runs after
-//     the window went finds no window and drops what it heard.
+//   * Every Windows Runtime call of the notifications runs on one thread of the process, the notification thread
+//     (Toast_Thread), in the multithreaded apartment: the window's thread makes no system call for a notification, and
+//     the notifier, the toasts and their handlers are made, used and released in the one apartment they belong to. The
+//     window's thread hands it jobs (Toast_Job: show, hide, drop, detach) and never touches those objects; the thread
+//     keeps them in the window's Toast_Host.
+//   * The window's thread gives the ids (Notify_State.next_id), so a replace is decided without asking the thread. The
+//     answer of a show comes back the way the toasts' events do: queued on the window's Notify_Sink, NOTIFY_MESSAGE
+//     posted (an offscreen window's event signalled), and notify_window_message calls `done` on the window's thread.
+//     One queue keeps the answer and the events in the order they happened.
+//   * The toast's Activated, Dismissed and Failed events come on a thread of the system's. Their handlers find the
+//     toast's id in the sink's keys (the toasts on the screen: the notification thread adds one before Show, removes it
+//     when it drops the toast) and queue what happened. The window's thread takes a key out when it makes the toast's
+//     last event or closes it (notify_close), so no event of a toast comes after its Notification_Closed. The sink is
+//     counted (the window, the host and each handler hold it): what is heard after the window went is dropped.
 //   * A toast that left the screen by itself (Dismissed, TimedOut) is still in the notification centre, where a click
 //     still comes (while the program runs): no event for it. A click or a button ends the notification: its event, then
 //     Notification_Closed (Dismissed). A click once the program has ended starts nothing (no COM activator).
@@ -21,6 +31,7 @@ import "core:fmt"
 import "core:hash"
 import "core:os"
 import "core:sync"
+import "core:thread"
 import "core:time"
 import win "core:sys/windows"
 import winrt "../winrt"
@@ -131,22 +142,37 @@ foreign ole32_notify {
 	CoTaskMemFree :: proc(p: rawptr) ---
 }
 
-// What the toasts' handlers heard, for the window's thread (locked: mutex). Counted (atomic): the window holds one
-// reference, each handler one; freed with the last.
+// What comes back to the window's thread, and the toasts on the screen (locked: mutex). The handlers and the
+// notification thread write it, the window's thread reads it. Counted (atomic): the window, its host and each handler
+// hold one reference; freed with the last.
 @(private)
 Notify_Sink :: struct {
 	refs:  i32,
 	mutex: sync.Mutex,
-	hwnd:  win.HWND,             // nil once the window went
+	gone:  bool,                 // the window went: nothing more is queued
+	hwnd:  win.HWND,             // NOTIFY_MESSAGE goes there (nil: an offscreen window)
+	wake:  win.HANDLE,           // an offscreen window's event (off_event), signalled in place of the message
+	keys:  [dynamic]Toast_Key,   // the toasts that can still have an event
 	queue: [dynamic]Toast_Heard,
 }
 
 @(private)
+Toast_Key :: struct {
+	key: uintptr,   // the toast's identity (its IUnknown)
+	id:  Notification_Id,
+}
+
+// A toast's event (kind a Notification_* one), or the answer of a show (kind None: ok, done, user).
+@(private)
 Toast_Heard :: struct {
-	toast:  uintptr,       // the toast's identity (its IUnknown)
+	id:     Notification_Id,
+	key:    uintptr,
 	kind:   Event_Kind,
 	action: int,
 	reason: Notification_Reason,
+	ok:     bool,
+	done:   Notify_Done,
+	user:   rawptr,
 }
 
 @(private)
@@ -157,16 +183,70 @@ Toast_Record :: struct {
 	tokens: [3]Event_Token,   // Activated, Dismissed, Failed
 }
 
-// The toasts a window showed and what shows them (Window.notify). Made at the window's first notification.
+// What shows a window's toasts: the notification thread's alone (made by the window's thread at its first notification,
+// then only read and written by the notification thread, which frees it at the Detach job).
+@(private)
+Toast_Host :: struct {
+	sink:      ^Notify_Sink,
+	offscreen: bool,       // no HWND: no toasts (the test hook still answers)
+	tried:     bool,
+	notifier:  rawptr,     // IToastNotifier (nil: no toasts)
+	factory:   rawptr,     // IToastNotificationFactory
+	handlers:  [3]^winrt.Event_Handler,   // Activated, Dismissed, Failed
+	records:   [dynamic]Toast_Record,
+}
+
+// A window's notifications, as its thread sees them (Window.notify): no Windows Runtime object, only the host it hands
+// jobs for, the sink it reads, and the next id.
 Notify_State :: struct {
-	tried:    bool,
-	joined:   bool,       // the window's thread joined an apartment for it (left at the window's end)
-	notifier: rawptr,     // IToastNotifier (nil: no toasts)
-	factory:  rawptr,     // IToastNotificationFactory
-	sink:     ^Notify_Sink,
-	handlers: [3]^winrt.Event_Handler,   // Activated, Dismissed, Failed
-	records:  [dynamic]Toast_Record,
-	next_id:  u32,
+	host:    ^Toast_Host,
+	sink:    ^Notify_Sink,
+	next_id: u32,
+}
+
+// Test hook: when set, the notification thread calls it in place of the system to show a toast (no toast is made, so no
+// toast's event comes; a hide does nothing), and an offscreen window takes notifications. The result stands for the
+// system's answer. It runs on the notification thread.
+notify_test_hook: proc(n: Notification, id: Notification_Id) -> bool
+
+// The notification thread: started at the process's first notification, it lives as long as the process (it holds no
+// window: each job names its host). Its jobs are a queue, so they run in the order they were given.
+@(private = "file")
+Toast_Thread :: struct {
+	once:   sync.Once,
+	mutex:  sync.Mutex,
+	cond:   sync.Cond,
+	jobs:   [dynamic]Toast_Job,
+	thread: ^thread.Thread,
+}
+
+@(private = "file") toasts: Toast_Thread
+
+@(private = "file")
+Toast_Job_Kind :: enum u8 {
+	Show,     // n (owned), id; the answer to `answer` (notify) or to the sink (notify_async)
+	Hide,     // id: notify_close
+	Drop,     // key: its last event was made, the toast is released
+	Detach,   // the window went: everything of the host is released, the host freed
+}
+
+@(private = "file")
+Toast_Job :: struct {
+	kind:   Toast_Job_Kind,
+	host:   ^Toast_Host,
+	n:      Notification,
+	id:     Notification_Id,
+	key:    uintptr,
+	done:   Notify_Done,
+	user:   rawptr,
+	answer: ^Toast_Answer,
+}
+
+// What notify waits on: the show's result.
+@(private = "file")
+Toast_Answer :: struct {
+	sema: sync.Sema,
+	ok:   bool,
 }
 
 @(private)
@@ -231,17 +311,261 @@ register_aumid :: proc(aumid: string) {
 	if notify_app.icon_path != "" { set(key, "IconUri", notify_app.icon_path) }
 }
 
-// The window's notifier, made at its first notification: false when the system has no toasts.
+////////////////////////////////
+// The window's thread: ids, jobs, the answers
+
+// notify, without waiting for the system: the notification (copied) goes to the notification thread, `done` runs from
+// the window loop once the toast is shown or refused, with the notification's id, or ok false (no toasts on this
+// system). `w` must outlive the answer (a program's long-lived window: its anchor, its main window); after
+// destroy_window the answer is dropped. False: nothing was sent (no window, or an offscreen one): `done` will not run.
+notify_async :: proc(w: ^Window, n: Notification, done: Notify_Done = nil, user: rawptr = nil) -> bool {
+	if !notify_attach(w) { return false }
+	toast_post({kind = .Show, host = w.notify.host, n = notification_clone(n, runtime.heap_allocator()), id = notify_next_id(w, n.replace), done = done, user = user})
+	return true
+}
+
+// Shows `n` and waits for the notification thread's answer. Called on the window's thread (Window.notify is its), which it
+// blocks: an interface calls notify_async.
+notify :: proc(w: ^Window, n: Notification, loc := #caller_location) -> (id: Notification_Id, ok: bool) {
+	base.blocking("platform.notify", loc)
+	if !notify_attach(w) { return 0, false }
+	id = notify_next_id(w, n.replace)
+	answer: Toast_Answer
+	toast_post({kind = .Show, host = w.notify.host, n = notification_clone(n, runtime.heap_allocator()), id = id, answer = &answer})
+	sync.sema_wait(&answer.sema)
+	if !answer.ok { return 0, false }
+	return id, true
+}
+
+// The window's host and sink, made at its first notification (no system call: the notification thread opens the
+// notifier at its first show). False when the window cannot show toasts.
 @(private = "file")
-notify_open :: proc(w: ^Window) -> bool {
+notify_attach :: proc(w: ^Window) -> bool {
+	if w == nil { return false }
+	if w.hwnd == nil && notify_test_hook == nil { return false }   // (offscreen: a service, a CI runner, a program's test)
 	s := &w.notify
-	if s.tried { return s.notifier != nil }
-	s.tried = true
-	if w.hwnd == nil { return false }   // (an offscreen window has no queue the handlers could post to)
+	if s.sink != nil { return true }
+	sink := new(Notify_Sink, runtime.heap_allocator())
+	sink.refs = 2   // (the window and its host; the notification thread adds the handlers')
+	sink.hwnd = w.hwnd
+	sink.wake = w.off_event
+	sink.keys = make([dynamic]Toast_Key, runtime.heap_allocator())
+	sink.queue = make([dynamic]Toast_Heard, runtime.heap_allocator())
+	host := new(Toast_Host, runtime.heap_allocator())
+	host.sink = sink
+	host.offscreen = w.hwnd == nil
+	host.records = make([dynamic]Toast_Record, runtime.heap_allocator())
+	s.sink, s.host = sink, host
+	return true
+}
+
+// The id of a new notification: the one it replaces when the window gave it (the toast's Tag is the id, so the system
+// swaps them), else a new one. Given here so that the caller's next replace needs no answer first.
+@(private = "file")
+notify_next_id :: proc(w: ^Window, replace: Notification_Id) -> Notification_Id {
+	s := &w.notify
+	if replace != 0 && u32(replace) <= s.next_id { return replace }
+	s.next_id += 1
+	return Notification_Id(s.next_id)
+}
+
+// Takes it off the screen and out of the notification centre: Notification_Closed (reason Closed) follows. Nothing
+// when the notification has ended already.
+notify_close :: proc(w: ^Window, id: Notification_Id) {
+	if w == nil || w.notify.sink == nil || id == 0 { return }
+	s := &w.notify
+	if !sink_key_take_id(s.sink, id) { return }
+	toast_post({kind = .Hide, host = s.host, id = id})
+	append(&w.events, Event{kind = .Notification_Closed, notification = {id = id, reason = .Closed}, stamp = time.tick_now()})
+}
+
+// Windows gives no activation token: "".
+notify_activation_token :: proc(w: ^Window) -> string { return "" }
+
+// NOTIFY_MESSAGE (an offscreen window: its poll_events): the shows' answers run `done`, what the handlers heard becomes
+// the window's events.
+@(private)
+notify_window_message :: proc(w: ^Window) {
+	s := &w.notify
+	if s.sink == nil { return }
+	sync.mutex_lock(&s.sink.mutex)
+	heard := make([]Toast_Heard, len(s.sink.queue), context.temp_allocator)
+	copy(heard, s.sink.queue[:])
+	clear(&s.sink.queue)
+	sync.mutex_unlock(&s.sink.mutex)
+	for h in heard {
+		if h.kind == .None {
+			if h.done != nil { h.done(h.user, h.ok ? h.id : 0, h.ok) }
+			continue
+		}
+		// (a toast closed or replaced since, or one whose last event was made: no event of it any more)
+		if !sink_key_take(s.sink, h.key) { continue }
+		append(&w.events, Event{kind = h.kind, notification = {id = h.id, action = h.action, reason = h.reason}, stamp = time.tick_now()})
+		if h.kind != .Notification_Closed {
+			// a click takes the toast away, from the notification centre too
+			append(&w.events, Event{kind = .Notification_Closed, notification = {id = h.id, reason = .Dismissed}, stamp = time.tick_now()})
+		}
+		toast_post({kind = .Drop, host = s.host, key = h.key})
+	}
+}
+
+// The window is going (destroy_window): its toasts stay on the screen, their events and the answers still to come go
+// nowhere. The notification thread releases what the host holds.
+@(private)
+notify_detach :: proc(w: ^Window) {
+	s := &w.notify
+	if s.sink == nil { return }
+	sync.mutex_lock(&s.sink.mutex)
+	s.sink.gone = true
+	s.sink.hwnd, s.sink.wake = nil, nil   // (the off_event is closed after this)
+	sync.mutex_unlock(&s.sink.mutex)
+	toast_post({kind = .Detach, host = s.host})
+	sink_release(s.sink)
+	s^ = {}
+}
+
+////////////////////////////////
+// The sink: any thread
+
+// Queues `h` for the window's thread and wakes it. False once the window went.
+@(private = "file")
+sink_post :: proc(sink: ^Notify_Sink, h: Toast_Heard) -> bool {
+	sync.mutex_lock(&sink.mutex)
+	defer sync.mutex_unlock(&sink.mutex)
+	if sink.gone { return false }
+	append(&sink.queue, h)
+	if sink.hwnd != nil {
+		win.PostMessageW(sink.hwnd, NOTIFY_MESSAGE, 0, 0)
+	} else if sink.wake != nil {
+		win.SetEvent(sink.wake)
+	}
+	return true
+}
+
+@(private = "file")
+sink_key_add :: proc(sink: ^Notify_Sink, key: uintptr, id: Notification_Id) {
+	sync.mutex_lock(&sink.mutex)
+	defer sync.mutex_unlock(&sink.mutex)
+	append(&sink.keys, Toast_Key{key = key, id = id})
+}
+
+// Takes the toast `key` out of the keys: true when it was there.
+@(private = "file")
+sink_key_take :: proc(sink: ^Notify_Sink, key: uintptr) -> bool {
+	sync.mutex_lock(&sink.mutex)
+	defer sync.mutex_unlock(&sink.mutex)
+	for k, i in sink.keys {
+		if k.key == key { unordered_remove(&sink.keys, i); return true }
+	}
+	return false
+}
+
+// Takes the toast of `id` out of the keys: true when one was there.
+@(private = "file")
+sink_key_take_id :: proc(sink: ^Notify_Sink, id: Notification_Id) -> bool {
+	sync.mutex_lock(&sink.mutex)
+	defer sync.mutex_unlock(&sink.mutex)
+	for k, i in sink.keys {
+		if k.id == id { unordered_remove(&sink.keys, i); return true }
+	}
+	return false
+}
+
+// The id of the toast `key`; ok false when no event of it is to come.
+@(private = "file")
+sink_key_id :: proc(sink: ^Notify_Sink, key: uintptr) -> (id: Notification_Id, ok: bool) {
+	for k in sink.keys { if k.key == key { return k.id, true } }
+	return 0, false
+}
+
+@(private = "file")
+sink_done :: proc(user: rawptr) { sink_release((^Notify_Sink)(user)) }
+
+@(private = "file")
+sink_release :: proc(sink: ^Notify_Sink) {
+	if sync.atomic_sub(&sink.refs, 1) - 1 > 0 { return }
+	delete(sink.keys)
+	delete(sink.queue)
+	free(sink, runtime.heap_allocator())
+}
+
+////////////////////////////////
+// The notification thread
+
+@(private = "file")
+toast_post :: proc(job: Toast_Job) {
+	sync.once_do(&toasts.once, proc() {
+		toasts.jobs = make([dynamic]Toast_Job, runtime.heap_allocator())
+		toasts.thread = thread.create_and_start(toast_thread_run, runtime.default_context())
+	})
+	sync.mutex_lock(&toasts.mutex)
+	append(&toasts.jobs, job)
+	sync.mutex_unlock(&toasts.mutex)
+	sync.cond_signal(&toasts.cond)
+}
+
+@(private = "file")
+toast_thread_run :: proc() {
+	// (the multithreaded apartment: a thread that pumps no messages, and the toasts' handlers are called on the system's
+	// threads anyway. Joined for the life of the process: the thread never ends)
+	winrt.init(.Multi)
+	for {
+		sync.mutex_lock(&toasts.mutex)
+		for len(toasts.jobs) == 0 { sync.cond_wait(&toasts.cond, &toasts.mutex) }
+		job := pop_front(&toasts.jobs)
+		sync.mutex_unlock(&toasts.mutex)
+		toast_job_run(job)
+		free_all(context.temp_allocator)
+	}
+}
+
+@(private = "file")
+toast_job_run :: proc(job: Toast_Job) {
+	job := job
+	host := job.host
+	switch job.kind {
+	case .Show:
+		ok: bool
+		if notify_test_hook != nil {
+			ok = notify_test_hook(job.n, job.id)
+			// (a key that stands for the toast, so that notify_close and a replace behave as with a real one)
+			sink_key_take_id(host.sink, job.id)
+			if ok { sink_key_add(host.sink, uintptr(job.id), job.id) }
+		} else {
+			ok = toast_show(host, job.n, job.id)
+		}
+		notification_destroy(&job.n, runtime.heap_allocator())
+		if job.answer != nil {
+			job.answer.ok = ok
+			sync.sema_post(&job.answer.sema)
+			return
+		}
+		sink_post(host.sink, {kind = .None, id = job.id, ok = ok, done = job.done, user = job.user})
+	case .Hide:
+		if i := toast_find(host, job.id); i >= 0 {
+			winrt.vtable(host.notifier, IToastNotifier_Vtbl).Hide(host.notifier, host.records[i].toast)
+			toast_drop(host, i)
+		}
+	case .Drop:
+		for r, i in host.records { if r.key == job.key { toast_drop(host, i); break } }
+	case .Detach:
+		for r in host.records { toast_release(r) }
+		delete(host.records)
+		for h in host.handlers { if h != nil { winrt.release(h) } }
+		winrt.release(host.notifier)
+		winrt.release(host.factory)
+		sink_release(host.sink)
+		free(host, runtime.heap_allocator())
+	}
+}
+
+// The host's notifier, made at its first show: false when the system has no toasts.
+@(private = "file")
+host_open :: proc(host: ^Toast_Host) -> bool {
+	if host.tried { return host.notifier != nil }
+	host.tried = true
+	if host.offscreen { return false }   // (an offscreen window shows no toasts: a service, a CI runner, a test)
 	if windows_build() < FIRST_TOAST_BUILD { return false }
-	hr := winrt.init(.Single)
-	s.joined = winrt.ok(hr)
-	if !s.joined && hr != winrt.RPC_E_CHANGED_MODE { return false }   // (a thread of the other kind: its apartment does)
 	aumid := notify_aumid()
 	register_aumid(aumid)
 	statics, got := winrt.factory("Windows.UI.Notifications.ToastNotificationManager", IID_IToastNotificationManagerStatics)
@@ -253,54 +577,38 @@ notify_open :: proc(w: ^Window) -> bool {
 	if !winrt.ok(winrt.vtable(statics, IToastNotificationManagerStatics_Vtbl).CreateToastNotifierWithId(statics, haumid, &notifier)) { return false }
 	factory, fgot := winrt.factory("Windows.UI.Notifications.ToastNotification", IID_IToastNotificationFactory)
 	if !winrt.ok(fgot) { winrt.release(notifier); return false }
-	s.notifier, s.factory = notifier, factory
-	sink := new(Notify_Sink, runtime.heap_allocator())
-	sink.refs = 1 + len(s.handlers)
-	sink.hwnd = w.hwnd
-	sink.queue = make([dynamic]Toast_Heard, runtime.heap_allocator())
-	s.sink = sink
+	host.notifier, host.factory = notifier, factory
+	sink := host.sink
+	sync.atomic_add(&sink.refs, i32(len(host.handlers)))
 	toast_sig := winrt.sig_class("Windows.UI.Notifications.ToastNotification", IID_IToastNotification)
-	s.handlers[0] = winrt.event_handler_make(winrt.typed_event_handler_iid(toast_sig, winrt.SIG_INSPECTABLE), toast_activated, sink, sink_done)
-	s.handlers[1] = winrt.event_handler_make(winrt.typed_event_handler_iid(toast_sig,
+	host.handlers[0] = winrt.event_handler_make(winrt.typed_event_handler_iid(toast_sig, winrt.SIG_INSPECTABLE), toast_activated, sink, sink_done)
+	host.handlers[1] = winrt.event_handler_make(winrt.typed_event_handler_iid(toast_sig,
 		winrt.sig_class("Windows.UI.Notifications.ToastDismissedEventArgs", IID_IToastDismissedEventArgs)), toast_dismissed, sink, sink_done)
-	s.handlers[2] = winrt.event_handler_make(winrt.typed_event_handler_iid(toast_sig,
+	host.handlers[2] = winrt.event_handler_make(winrt.typed_event_handler_iid(toast_sig,
 		winrt.sig_class("Windows.UI.Notifications.ToastFailedEventArgs", IID_IToastFailedEventArgs)), toast_failed, sink, sink_done)
 	return true
 }
 
-// notify_linux.odin's notify_async: Windows shows a toast at once, so `done` runs before it returns.
-notify_async :: proc(w: ^Window, n: Notification, done: Notify_Done = nil, user: rawptr = nil) -> bool {
-	id, ok := notify(w, n)
-	if done != nil { done(user, id, ok) }
-	return true
-}
-
-notify :: proc(w: ^Window, n: Notification, loc := #caller_location) -> (id: Notification_Id, ok: bool) {
-	base.blocking("platform.notify", loc)
-	if w == nil || !notify_open(w) { return 0, false }
-	s := &w.notify
+@(private = "file")
+toast_show :: proc(host: ^Toast_Host, n: Notification, id: Notification_Id) -> bool {
+	if !host_open(host) { return false }
 	xml := toast_xml(n, notify_icon_uri(n.icon_png))
 	doc, dgot := winrt.activate("Windows.Data.Xml.Dom.XmlDocument")
-	if !winrt.ok(dgot) { return 0, false }
+	if !winrt.ok(dgot) { return false }
 	defer winrt.release(doc)
 	io := winrt.query(doc, IID_IXmlDocumentIO)
-	if io == nil { return 0, false }
+	if io == nil { return false }
 	hxml := winrt.string_make(xml)
 	loaded := winrt.vtable(io, IXmlDocumentIO_Vtbl).LoadXml(io, hxml)
 	winrt.string_delete(hxml)
 	winrt.release(io)
-	if !winrt.ok(loaded) { return 0, false }
+	if !winrt.ok(loaded) { return false }
 	content := winrt.query(doc, IID_IXmlDocument)
-	if content == nil { return 0, false }
+	if content == nil { return false }
 	defer winrt.release(content)
 	toast: rawptr
-	if !winrt.ok(winrt.vtable(s.factory, IToastNotificationFactory_Vtbl).CreateToastNotification(s.factory, content, &toast)) { return 0, false }
+	if !winrt.ok(winrt.vtable(host.factory, IToastNotificationFactory_Vtbl).CreateToastNotification(host.factory, content, &toast)) { return false }
 
-	id = n.replace
-	if id == 0 || toast_find(w, id) < 0 {
-		s.next_id += 1
-		id = Notification_Id(s.next_id)
-	}
 	if t2 := winrt.query(toast, IID_IToastNotification2); t2 != nil {
 		v := winrt.vtable(t2, IToastNotification2_Vtbl)
 		tag := winrt.string_make(fmt.tprintf("%d", id))
@@ -314,32 +622,21 @@ notify :: proc(w: ^Window, n: Notification, loc := #caller_location) -> (id: Not
 	}
 	rec := Toast_Record{id = id, toast = toast, key = identity_of(toast)}
 	tv := winrt.vtable(toast, IToastNotification_Vtbl)
-	tv.add_Activated(toast, s.handlers[0], &rec.tokens[0])
-	tv.add_Dismissed(toast, s.handlers[1], &rec.tokens[1])
-	tv.add_Failed(toast, s.handlers[2], &rec.tokens[2])
+	tv.add_Activated(toast, host.handlers[0], &rec.tokens[0])
+	tv.add_Dismissed(toast, host.handlers[1], &rec.tokens[1])
+	tv.add_Failed(toast, host.handlers[2], &rec.tokens[2])
 	// (the toast it replaces: its Tag is this one's, the system swaps them; its events end here)
-	if i := toast_find(w, id); i >= 0 { toast_drop(w, i) }
-	if !winrt.ok(winrt.vtable(s.notifier, IToastNotifier_Vtbl).Show(s.notifier, toast)) {
+	if i := toast_find(host, id); i >= 0 { toast_drop(host, i) }
+	// (its key before Show: a toast can fail, or be clicked, before Show returns)
+	sink_key_add(host.sink, rec.key, id)
+	if !winrt.ok(winrt.vtable(host.notifier, IToastNotifier_Vtbl).Show(host.notifier, toast)) {
+		sink_key_take(host.sink, rec.key)
 		toast_release(rec)
-		return 0, false
+		return false
 	}
-	append(&s.records, rec)
-	return id, true
+	append(&host.records, rec)
+	return true
 }
-
-// Takes it off the screen and out of the notification centre: Notification_Closed (reason Closed) follows.
-notify_close :: proc(w: ^Window, id: Notification_Id) {
-	if w == nil || w.notify.notifier == nil { return }
-	i := toast_find(w, id)
-	if i < 0 { return }
-	s := &w.notify
-	winrt.vtable(s.notifier, IToastNotifier_Vtbl).Hide(s.notifier, s.records[i].toast)
-	toast_drop(w, i)
-	append(&w.events, Event{kind = .Notification_Closed, notification = {id = id, reason = .Closed}, stamp = time.tick_now()})
-}
-
-// Windows gives no activation token: "".
-notify_activation_token :: proc(w: ^Window) -> string { return "" }
 
 // A PNG of the notification as a file a toast can show: %TEMP%\gt_notify\<hash>.png ("" when it cannot be written).
 // Named by its content, so that the same picture is one file, kept for the notification centre.
@@ -363,8 +660,8 @@ identity_of :: proc(object: rawptr) -> uintptr {
 }
 
 @(private = "file")
-toast_find :: proc(w: ^Window, id: Notification_Id) -> int {
-	for r, i in w.notify.records { if r.id == id { return i } }
+toast_find :: proc(host: ^Toast_Host, id: Notification_Id) -> int {
+	for r, i in host.records { if r.id == id { return i } }
 	return -1
 }
 
@@ -378,33 +675,28 @@ toast_release :: proc(r: Toast_Record) {
 }
 
 @(private = "file")
-toast_drop :: proc(w: ^Window, i: int) {
-	toast_release(w.notify.records[i])
-	ordered_remove(&w.notify.records, i)
+toast_drop :: proc(host: ^Toast_Host, i: int) {
+	r := host.records[i]
+	sink_key_take(host.sink, r.key)   // (no event of it any more)
+	toast_release(r)
+	ordered_remove(&host.records, i)
 }
 
 ////////////////////////////////
 // The handlers: on a thread of the system's
 
+// Queues what a toast's handler heard, with the toast's id: nothing for a toast that has no event to come (closed,
+// replaced, dropped).
 @(private = "file")
 sink_hear :: proc(sink: ^Notify_Sink, sender: rawptr, heard: Toast_Heard) {
 	h := heard
-	h.toast = identity_of(sender)
+	h.key = identity_of(sender)
 	sync.mutex_lock(&sink.mutex)
-	defer sync.mutex_unlock(&sink.mutex)
-	if sink.hwnd == nil { return }
-	append(&sink.queue, h)
-	win.PostMessageW(sink.hwnd, NOTIFY_MESSAGE, 0, 0)
-}
-
-@(private = "file")
-sink_done :: proc(user: rawptr) { sink_release((^Notify_Sink)(user)) }
-
-@(private = "file")
-sink_release :: proc(sink: ^Notify_Sink) {
-	if sync.atomic_sub(&sink.refs, 1) - 1 > 0 { return }
-	delete(sink.queue)
-	free(sink, runtime.heap_allocator())
+	id, known := sink_key_id(sink, h.key)
+	sync.mutex_unlock(&sink.mutex)
+	if !known { return }
+	h.id = id
+	sink_post(sink, h)
 }
 
 @(private = "file")
@@ -441,50 +733,4 @@ toast_dismissed :: proc(user: rawptr, sender: rawptr, args: rawptr) {
 @(private = "file")
 toast_failed :: proc(user: rawptr, sender: rawptr, args: rawptr) {
 	sink_hear((^Notify_Sink)(user), sender, {kind = .Notification_Closed, reason = .Failed})
-}
-
-////////////////////////////////
-// The window's thread
-
-// NOTIFY_MESSAGE: what the handlers heard becomes the window's events.
-@(private)
-notify_window_message :: proc(w: ^Window) {
-	s := &w.notify
-	if s.sink == nil { return }
-	sync.mutex_lock(&s.sink.mutex)
-	heard := make([]Toast_Heard, len(s.sink.queue), context.temp_allocator)
-	copy(heard, s.sink.queue[:])
-	clear(&s.sink.queue)
-	sync.mutex_unlock(&s.sink.mutex)
-	for h in heard {
-		i := -1
-		for r, j in s.records { if r.key == h.toast { i = j; break } }
-		if i < 0 { continue }   // (closed or replaced since)
-		id := s.records[i].id
-		append(&w.events, Event{kind = h.kind, notification = {id = id, action = h.action, reason = h.reason}, stamp = time.tick_now()})
-		if h.kind != .Notification_Closed {
-			// a click takes the toast away, from the notification centre too
-			append(&w.events, Event{kind = .Notification_Closed, notification = {id = id, reason = .Dismissed}, stamp = time.tick_now()})
-		}
-		toast_drop(w, i)
-	}
-}
-
-// The window is going (destroy_window): its toasts stay on the screen, their events go nowhere.
-@(private)
-notify_detach :: proc(w: ^Window) {
-	s := &w.notify
-	if s.sink != nil {
-		sync.mutex_lock(&s.sink.mutex)
-		s.sink.hwnd = nil
-		sync.mutex_unlock(&s.sink.mutex)
-	}
-	for r in s.records { toast_release(r) }
-	delete(s.records)
-	for h in s.handlers { if h != nil { winrt.release(h) } }
-	winrt.release(s.notifier)
-	winrt.release(s.factory)
-	if s.sink != nil { sink_release(s.sink) }
-	if s.joined { winrt.uninit() }
-	s^ = {}
 }

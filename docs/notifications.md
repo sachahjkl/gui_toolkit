@@ -29,8 +29,8 @@ for e in platform.poll_events(w, true) {
 |---|---|
 | `notify_set_app(Notify_App)` | the program's name, its Windows AppUserModelID and its icon file; once, at start, before the first window |
 | `notify_supported() -> bool` | Linux: a notification server answers on the session bus. Windows: Windows 10 or later, with toasts |
-| `notify(w, Notification) -> (Notification_Id, bool)` | shows a notification; its results come as events of `w` |
-| `notify_async(w, Notification, done, user) -> bool` | the same without waiting: the call goes out at once, `done(user, id, ok)` runs from the window loop when the system answers (Linux: the D-Bus reply; Windows: at once). What the interface's thread calls |
+| `notify(w, Notification) -> (Notification_Id, bool)` | shows a notification and waits for the system (a blocking call); its results come as events of `w` |
+| `notify_async(w, Notification, done, user) -> bool` | the same without waiting: it returns at once, `done(user, id, ok)` runs from the window loop when the system answers (Linux: the D-Bus reply; Windows: the notification thread's answer). False: nothing was sent, and `done` does not run. What the interface's thread calls |
 | `notification_clone`, `notification_destroy` | a notification that owns its text, kept until it is sent |
 | `notify_close(w, id)` | takes it away; `Notification_Closed` (reason `Closed`) follows |
 | `notify_activation_token(w) -> string` | Linux: the xdg-activation token of the last click on a notification of `w`, for 10 s |
@@ -76,8 +76,13 @@ uses the server's activation token, so the compositor gives the window the focus
 
 - Toasts need Windows 10 (build 10240) or later. On an older Windows, `notify_supported` is false and `notify` fails.
   There is no fallback to a tray balloon.
+- Every Windows Runtime call of the notifications runs on one thread of the process, the notification thread, in the
+  multithreaded apartment. It starts at the first notification and makes, uses and releases the notifiers and the toasts.
+  The window's thread only gives it jobs (show, hide, release) and gives the ids itself, so a `replace` does not wait
+  for an answer. `notify_async` returns at once; the answer comes back to the window like the toasts' events, and
+  `done` runs on the window's thread. `notify` waits for that answer.
 - A program that is not packaged shows toasts under an AppUserModelID registered for the user. At a window's first
-  notification, `notify` writes `HKCU\Software\Classes\AppUserModelId\<id>` with `DisplayName` (`Notify_App.name`, else
+  notification, the notification thread writes `HKCU\Software\Classes\AppUserModelId\<id>` with `DisplayName` (`Notify_App.name`, else
   the executable's name) and `IconUri` (`icon_path`). The id is `Notify_App.aumid`, else the process's explicit
   AppUserModelID (`desktop.set_process_identity` sets one), else the executable's name.
 - `notify_set_app` with an `aumid` sets the process's AppUserModelID when the process has none. The taskbar groups the
@@ -93,7 +98,7 @@ uses the server's activation token, so the compositor gives the window the focus
 - A click or a button ends the notification: its event, then `Notification_Closed` (`Dismissed`). A toast that left the
   screen by itself (`TimedOut`) stays in the notification centre, where a click still comes: no event for it.
 - A click after the program has ended starts nothing: the toolkit registers no COM activator.
-- The window needs its HWND: an offscreen window shows no toasts.
+- The window needs its HWND: an offscreen window shows no toasts, and `notify_async` returns false for it.
 - Windows gives no activation token: `notify_activation_token` is `""`.
 
 ## Saying what was done: ui.announce
@@ -132,4 +137,7 @@ back here: a click on it does `action(user)` and dismisses it.
 toast's XML, the arguments of a toast's activation. On Linux it also starts a `dbus-daemon` of its own, with no service
 directory (no real notification server can start on it), and a fake `org.freedesktop.Notifications` on a thread. It
 checks the recorded `Notify` calls and the events that offscreen windows receive for `ActionInvoked`,
-`NotificationClosed` and `ActivationToken`. `src/winrt`'s tests check the IDs of the toasts' event handlers.
+`NotificationClosed` and `ActivationToken`. On Windows it replaces the system with `platform.notify_test_hook`, so no
+toast is shown. It checks that `notify_async` returns before the notification thread answers, makes no blocking call,
+and that `done` comes through the window loop on the window's thread, within a bound. It also checks a replace and
+`notify_close`. `src/winrt`'s tests check the IDs of the toasts' event handlers.
