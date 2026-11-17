@@ -240,7 +240,9 @@ any level ──its item gone from its source's answer──▶ List, nothing pu
   frame; two names of one hash in one window are not expected (64 bits).
 - `ui.act_shown(name)`: whether a window of the program (the States its Views build in) showed it in its last frame.
   `ui.act_go(name)` goes there: at the end of the build that shows it (after the layout, the rects final) the box is
-  scrolled into view in each scroll box around it, its first focusable box gets the focus, its view comes forward, and
+  brought to the top of each scroll box around it, a font size under its top edge, where the reader starts (the end of
+  the content stops it lower). Refused: the least scroll of a reveal, which left a line reached from above at the
+  view's bottom edge, the rest of its block below the fold. Its first focusable box gets the focus, its view comes forward, and
   it is lit once (`ACT_LIGHT_MS`, a fading ring of the accent; with the animations off it stays still and goes). Not
   shown yet: the wish waits `ACT_GO_BUILDS` builds for it (the settings opened by the same press come at the next one).
 - **A source reaches what no frame shows** (`Palette_Source.reach`): the settings source shows the setting's page

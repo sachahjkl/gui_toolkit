@@ -455,7 +455,7 @@ following. Choosing another preference opens its run mode in the palette: its co
 (`control_of`), a change written at once (and `Page_Options.changed` called), Enter keeps it, Escape puts back the
 value of before ([palette.md](palette.md), "The run mode"). Shift+Enter goes to its line: the page shows its page (its
 search cleared, its Advanced part unfolded for an advanced one), `open(user)` shows the settings, and the line, whose
-act name is `setting:<name>`, is scrolled into view, focused and lit. `palette_settings_add` also installs the commands'
+act name is `setting:<name>`, is brought to the top of the page, focused and lit. `palette_settings_add` also installs the commands'
 forms (`palette_forms_use(&palette)`: a program without the settings source calls it itself).
 
 `show(page, prefs, options, name)` puts one preference alone on its page for a program's own jump (a link, the

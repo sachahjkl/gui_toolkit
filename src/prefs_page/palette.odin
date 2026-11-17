@@ -4,7 +4,7 @@ package tk_prefs_page
 // per preference the pages show, under "Settings · <page>", its value in use at its right. Enter on a switch flips it
 // and the palette stays open, its mark following; Enter on another setting unfolds its control under its row (the run
 // mode: palette_run.odin), a change written at once, Enter keeps it, Escape puts back the value of before. Shift+Enter
-// goes to it: the settings show its page, its line scrolled into view, focused and lit (its act name,
+// goes to it: the settings show its page, its line at the top of the page, focused and lit (its act name,
 // "setting:<name>"). A setting the policy or the command line fixes shows its value and why, no control.
 // src/md/features/palette.md, src/md/features/everything-palette.md.
 //

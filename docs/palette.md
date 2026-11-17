@@ -226,7 +226,7 @@ part, folders first; Tab puts the one selected in the field, Enter keeps the tex
 ## Go to: Shift+Enter
 
 Shift+Enter on an item goes where it lives: the palette closes, the view that shows its act name comes forward, the
-element is scrolled into view, gets the focus and is lit once. An item whose place cannot be shown offers no go to (its
+element is brought to the top of its view, gets the focus and is lit once. An item whose place cannot be shown offers no go to (its
 hint row does not say it), and Shift+Enter there does what Enter does.
 
 - An element states its act name at its build: `ui.act_name(box, "setting:appearance.theme")`. The settings page names

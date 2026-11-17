@@ -658,3 +658,27 @@ shift_enter_goes_to_a_setting :: proc(t: ^testing.T) {
 	run_open_on(s, &app, ">rename", "rename")
 	testing.expect(t, session.find_text(s, "Go to") == nil, "no go to offered")
 }
+
+// Go to puts the line at the top of the view, where the reader starts, not at its bottom edge as a reveal would: a line
+// far down a long page, with many lines after it, ends a font size or so under the view's top.
+@(test)
+go_to_puts_the_line_at_the_top :: proc(t: ^testing.T) {
+	app: Run_App
+	defer run_end(&app)
+	app.commands = true
+	defs := make([dynamic]config.Def, context.temp_allocator)
+	for i in 0 ..< 30 { append(&defs, config.Def{name = fmt.tprintf("net.item%02d", i), description = "A line.", kind = .Bool}) }
+	append(&defs, config.Def{name = "net.proxy", description = "Where the requests go.", kind = .String, default = {s = ""}})
+	for i in 30 ..< 60 { append(&defs, config.Def{name = fmt.tprintf("net.item%02d", i), description = "A line.", kind = .Bool}) }
+	app.pages = RUN_PAGES_NET[:]
+	s := run_start(t, &app, defs[:])
+	run_open_on(s, &app, ":proxy", "net.proxy")
+	session.key(s, .Return, {.Shift})
+	session.wait_until(s, &app, proc(s: ^session.Session, app: ^Run_App) -> bool { return s.state.act_light.key != 0 }, "lit")
+	line := s.state.boxes[s.state.act_light.key]
+	if !testing.expect(t, line != nil, "its line lit") { return }
+	session.frames(s, 30)   // (the glide to the target)
+	view := session.get(s, "prefs_scroll")
+	from_top := line.rect.min.y - view.rect.min.y
+	testing.expectf(t, from_top >= 0 && from_top <= 3 * line.font_size, "the line near the view's top: %v below it", from_top)
+}

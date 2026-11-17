@@ -2,7 +2,7 @@ package ui
 
 // Act names and go to (src/md/features/everything-palette.md, "Layer 3, as built"). An element states the act name of
 // what it acts on ("setting:appearance.theme", "command:save"); each window keeps the act names of its last frame. Go
-// to shows the element that holds a name: its view comes forward, the box is scrolled into view, its first focusable
+// to shows the element that holds a name: its view comes forward, the box comes to the top of its view, its first focusable
 // box gets the focus, and it is lit once.
 //
 //   ui.act_name(ui.parent_box(), "setting:appearance.theme")   at its build, each build
@@ -114,11 +114,26 @@ acts_end_build :: proc(s: ^State) {
 	vs.act_want = 0
 	b := s.boxes[k] or_else nil
 	if b == nil { return }
-	scroll_into_view(b)
+	scroll_to_top(b)
 	if stop := view_first_stop(b); stop != 0 { s.focus_key = stop }
 	act_view_raise(vs, s, b)
 	s.act_light = {key = k, start = s.time_ms}
 	s.anim_busy = true
+}
+
+// Go to's scroll: `b` at the top of each view that scrolls it, a font size below its top edge (clear of its faded edge),
+// where the reader starts; the end of the content stops it lower (the view's clamp). A reveal (scroll_into_view) moves as
+// little as it can, which leaves an element reached from above at the view's bottom edge, the rest of its block unseen.
+@(private = "file")
+scroll_to_top :: proc(b: ^Box) {
+	for p := b.parent; p != nil; p = p.parent {
+		if .View_Scroll_Y in p.flags {
+			margin := max(b.font_size, p.edge_hold[1] + p.edge_fade[1])
+			top := b.rect.min.y - p.rect.min.y + p.view_off.y
+			p.view_target.y = max(0, top - margin)
+		}
+		if .View_Scroll_X in p.flags { view_reveal_box(p, b, .X) }
+	}
 }
 
 // The view whose body holds `b` comes forward (a dialog on top, a panel's tab chosen, a window raised).
