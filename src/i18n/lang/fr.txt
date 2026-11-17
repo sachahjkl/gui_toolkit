@@ -427,6 +427,9 @@ fr activé
 en off
 fr désactivé
 
+en The desktop's launcher cannot be changed
+fr Le lanceur du bureau ne peut pas être modifié
+
 en Installation
 fr Installation
 

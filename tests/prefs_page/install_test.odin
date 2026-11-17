@@ -52,6 +52,27 @@ the_desktop_settings_wait_for_the_installed_copy :: proc(t: ^testing.T) {
 	testing.expect(t, !in_.following, "nothing runs without the install's reading")
 }
 
+// A program that reads its settings anew calls install_init with the new registry: the old one loses the watch, the new
+// one has it (kept, the id would name another observer of the new registry, which install_end would remove).
+@(test)
+install_init_again_watches_the_new_registry :: proc(t: ^testing.T) {
+	a := config.prefs_make()
+	defer config.prefs_destroy(&a)
+	b := config.prefs_make()
+	defer config.prefs_destroy(&b)
+	prefs_page.standard_register(&a, {.Session}, prefs_page.STANDARD_DEFAULTS, context.temp_allocator)
+	prefs_page.standard_register(&b, {.Session}, prefs_page.STANDARD_DEFAULTS, context.temp_allocator)
+	before_a, before_b := len(a.observers), len(b.observers)
+	in_: prefs_page.Install
+	prefs_page.install_init(&in_, &a, {version = "1.0"})
+	testing.expect_value(t, len(a.observers), before_a + 1)
+	prefs_page.install_init(&in_, &b, {version = "1.0"})
+	testing.expect_value(t, len(a.observers), before_a)
+	testing.expect_value(t, len(b.observers), before_b + 1)
+	prefs_page.install_end(&in_)
+	testing.expect_value(t, len(b.observers), before_b)
+}
+
 @(test)
 an_uninstall_is_a_choice_to_run_standalone :: proc(t: ^testing.T) {
 	expect :: proc(t: ^testing.T, ev: setup.Event, upgrade: bool, saved, want: string, set: bool, loc := #caller_location) {

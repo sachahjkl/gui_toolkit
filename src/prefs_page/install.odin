@@ -72,8 +72,16 @@ Install :: struct {
 
 // The program's declaration. Registers install.choice when the program did not (a value read from the file before
 // waits for it in the registry). general.menu and general.autostart are hidden until install_follow finds this copy
-// integrated, and followed from then on; `announcer` says when the desktop refuses them (nil: the log only).
+// integrated, and followed from then on; `announcer` says when the desktop refuses them (nil: the log only). Called again
+// with another registry (a program that reads its settings anew), it leaves the old one's watch: call it before the old
+// registry is destroyed.
 install_init :: proc(in_: ^Install, prefs: ^config.Prefs, o: setup.Setup_Options, announcer: ^ui.Announcer = nil) {
+	// (a watch is an id in one registry: kept across registries it would name another observer of the new one, which
+	// install_end would then remove, and the new registry's two settings would go unfollowed)
+	if in_.watch != 0 && in_.prefs != prefs {
+		if in_.prefs != nil { config.unwatch(in_.prefs, in_.watch) }
+		in_.watch = 0
+	}
 	in_.prefs, in_.options, in_.announcer = prefs, o, announcer
 	if config.ref_of(prefs, INSTALL_CHOICE_PREF) == config.NO_REF { config.register(prefs, INSTALL_DEFS[:]) }
 	follow_show(in_, false)
