@@ -5,6 +5,21 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.299.0] - 2026-11-17 12:37
+
+### Added
+- **`toolbox.test262_fetch`**: a project's tool fetches the ECMAScript test suite and QuickJS-ng 0.17.0's runner
+configuration, pinned by SHA-256, into one run folder, so that every runner of test262 judges against the same
+suite. `tk js_test262` runs it on `gt:js` with the native judge; `tk gen_js_unicode` makes `gt:js`'s Unicode tables.
+- **`gt:js`, a JavaScript engine**: a program runs ECMAScript scripts and modules in Odin, natively, with no C and no
+download: Wren's engine, with its own compiler, Promises and async functions, regular expressions, BigInt, typed
+arrays, SharedArrayBuffer and Atomics, and Date without Intl. The program gives the allocator and every procedure a
+script reaches ([docs/js.md](docs/js.md)). `tools/js_judge` runs test262 on it natively; `tools/js_parse_judge` judges
+its compiler.
+
+### Fixed
+- **The views' frame keeps its zones in the window**: the central content and the docked panels of `views_frame` keep the width their split gives them; a tool bar inside no longer pushes the dock zones out of the window (a program needed `.Fits_Width` on them since 0.297.0).
+
 ## [0.298.0] - 2026-11-17 11:07
 
 ### Added
@@ -4137,6 +4152,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.299.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.299.0
 [0.298.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.298.0
 [0.297.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.297.0
 [0.296.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.296.0
