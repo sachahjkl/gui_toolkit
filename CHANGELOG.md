@@ -5,6 +5,20 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.317.0] - 2026-11-18 15:27
+
+### Added
+- **A lazy list's active row and `onActivate` (plugin API level 8)**: a plugin's `list` shows its active row as the
+toolkit's lists do; a press on a row sets it, and Up, Down, Page Up, Page Down, Home and End move it while the list has
+the keyboard. Enter on the active row, or a double click on a row, calls the list's new `onActivate(index)`. A move of
+the active row is not sent to the plugin. `plugins.List_Info` gives the active row and whether the list has the
+keyboard. Plugins of levels 1 to 7 keep working.
+
+### Fixed
+- **A plugin's settings in the person's language at once**: when the person changes the language, the titles and
+descriptions of a plugin's settings take the translations of its manifest's `l10n` at the next build, with no reload
+of the plugins and no restart of the plugin. Before, they changed only at the next read of the plugins' folder.
+
 ## [0.316.1] - 2026-11-18 14:53
 
 ### Fixed
@@ -4476,6 +4490,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.317.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.317.0
 [0.316.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.316.1
 [0.316.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.316.0
 [0.315.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.315.0
