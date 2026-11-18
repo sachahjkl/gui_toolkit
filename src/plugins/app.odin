@@ -11,6 +11,9 @@ import "core:mem"
 import "core:strings"
 import plugin_api "../plugin_api"
 
+// (strings is used only by app_emit, a procedure of a type parameter: checked alone, with no program to instantiate
+// it, the package would call the import unused)
+_ :: strings
 // A call that waits for the program's answer (App_Run returned pending).
 @(private)
 App_Waiting :: struct {
