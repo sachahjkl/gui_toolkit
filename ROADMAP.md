@@ -51,6 +51,9 @@
 
 ## Later
 
+- **A theme's knobs and switches.** A theme gives the form of a slider's knob and of a switch, as it gives its scroll
+  bar's: under Old Head a slider's knob is still round and a switch keeps its rounded track, where 1995 had a raised
+  rectangular thumb and a check box. Intent: [src/md/features/theme-design.md](src/md/features/theme-design.md).
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link
   dropped in the void) is the toolkit's already.
