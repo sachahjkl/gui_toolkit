@@ -40,7 +40,16 @@ Changelog :: struct {
 	shown_kinds:  bit_set[Change_Kind],
 	shown_from:   string,                   // the text it was made from
 	kinds_in:     bit_set[Change_Kind],     // the kinds the changelog has: a toggle each
+	// the layout chosen from the page's width at the last layout (whats-new.md): a narrow page stacks each kind's pill
+	// over its bullets, with no rail
+	stacked:      bool,
 }
+
+// Under this page width (em), What's new stacks; from it plus the gap, wide again. 34 em: the wide layout's rail, pill
+// column and insets take 10.5 em, and less than 24 em left wraps the bullets every few words (whats-new.md). The 1 em
+// gap is more than the scroll bar's room, whose coming and going would otherwise flip the layout each frame.
+@(private = "file") CHANGELOG_STACKED_EM :: 34
+@(private = "file") CHANGELOG_WIDE_AGAIN_EM :: CHANGELOG_STACKED_EM + 1
 
 // A version of the changelog, as the page shows it: its number, its day and time, its groups of changes.
 Changelog_Release :: struct {
@@ -235,8 +244,9 @@ changelog_page_info :: proc(c: ^Changelog) -> Page_Info {
 
 // The page: a search and a toggle per kind of change over a timeline, newest first. A rail on the left, a dot on it at
 // each version (the newest lit in the accent); beside it each version's card: its number as a pill, its day and time,
-// "Latest" on the newest, then its changes by kind, each under a pill of its hue. Every version is there: only those
-// near the view are built (a lazy column), the others stand as their height.
+// "Latest" on the newest, then its changes by kind, each beside a pill of its hue. On a narrow page, stacked: no rail,
+// each pill on its own line over its changes. Every version is there: only those near the view are built (a lazy
+// column), the others stand as their height.
 @(private = "file")
 changelog_build :: proc(user: rawptr, em: f32) {
 	c := (^Changelog)(user)
@@ -244,6 +254,10 @@ changelog_build :: proc(user: rawptr, em: f32) {
 	changelog_filter(c)
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = "###whats_new") {
+		// (the page's width at the last layout; none yet: the last choice stands)
+		if w := ui.parent_box().size.x; w > 0 && em > 0 {
+			if w < em * CHANGELOG_STACKED_EM { c.stacked = true } else if w >= em * CHANGELOG_WIDE_AGAIN_EM { c.stacked = false }
+		}
 		changelog_tools_build(c, em)
 		ui.space(ui.ITEM_GAP)
 		if len(c.shown) == 0 {
@@ -317,15 +331,18 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, s: Changel
 	i := s.release
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 	if ui.row(.Start, {}, "###release") {
-		// the rail, drawn by the row in its left gutter (as tall as the card beside it): its line, not past the last dot;
-		// the dot level with the version's chip (the middle of the card's head, CARD_PAD under its top)
-		row := ui.parent_box()
-		d := ui.frame_new(Rail_Draw)
 		head := ui.dense(em * 1.9)
-		dot_y := math.round(em * ui.CARD_PAD) + math.round(head * 0.5)
-		d^ = {line = ui.color("border"), dot = newest ? ui.color("accent") : ui.color("weak text"), last = last, lit = newest, dot_y = dot_y, gutter = math.round(em * 2)}
-		row.custom, row.custom_user = rail_draw, d
-		ui.spacer(ui.px(d.gutter))
+		// the rail, drawn by the row in its left gutter (as tall as the card beside it): its line, not past the last dot;
+		// the dot level with the version's chip (the middle of the card's head, CARD_PAD under its top). Stacked: none,
+		// the card has the page's width (the version's pill says the order, the newest's is lit)
+		if !c.stacked {
+			row := ui.parent_box()
+			d := ui.frame_new(Rail_Draw)
+			dot_y := math.round(em * ui.CARD_PAD) + math.round(head * 0.5)
+			d^ = {line = ui.color("border"), dot = newest ? ui.color("accent") : ui.color("weak text"), last = last, lit = newest, dot_y = dot_y, gutter = math.round(em * 2)}
+			row.custom, row.custom_user = rail_draw, d
+			ui.spacer(ui.px(d.gutter))
+		}
 		// the card
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 		if ui.tags("card") {
@@ -356,15 +373,25 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, s: Changel
 			// its changes, by type
 			for &g, k in r.groups {
 				if k >= 64 || s.groups & (1 << u64(k)) == 0 { continue }
-				ui.space(ui.LINE_GAP)
+				// (stacked: a group's pill under the head's Latest read as one of the head's marks at LINE_GAP)
+				ui.space(c.stacked ? ui.ITEM_GAP : ui.LINE_GAP)
 				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 				if ui.row(.Start, {}, fmt.tprintf("###group_%d", k)) {
 					ui.space(ui.CARD_PAD)
-					ui.next({width = ui.px(math.round(em * 6.5)), height = ui.children_sum(), axis = .Y})
-					// (its type in English, as the changelog)
-					if ui.column(id = "###type") { ui.pill("type", g.type, change_icon(g.type), ui.hue(change_hue(g.type))) }
-					ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
-					if ui.column(id = "###list") { markdown.view(&g.doc, fmt.tprintf("list_%d_%d", i, k), g.list, {}) }
+					// (its type in English, as the changelog). Wide: its pill in a column of its own beside the bullets.
+					// Stacked: the pill on its line, the bullets under it at the card's whole inner width
+					if c.stacked {
+						ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+						if ui.column(id = "###group_stack") {
+							ui.pill("type", g.type, change_icon(g.type), ui.hue(change_hue(g.type)))
+							ui.space(ui.LINE_GAP)
+							group_list_build(&g, i, k)
+						}
+					} else {
+						ui.next({width = ui.px(math.round(em * 6.5)), height = ui.children_sum(), axis = .Y})
+						if ui.column(id = "###type") { ui.pill("type", g.type, change_icon(g.type), ui.hue(change_hue(g.type))) }
+						group_list_build(&g, i, k)
+					}
 					ui.space(ui.CARD_PAD)
 				}
 			}
@@ -372,6 +399,13 @@ changelog_release_build :: proc(c: ^Changelog, r: ^Changelog_Release, s: Changel
 		}
 	}
 	if !last { ui.space(ui.ITEM_GAP) }
+}
+
+// A group's bullets, laid out by gt:markdown at the width left to them.
+@(private = "file")
+group_list_build :: proc(g: ^Changelog_Group, release, k: int) {
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+	if ui.column(id = "###list") { markdown.view(&g.doc, fmt.tprintf("list_%d_%d", release, k), g.list, {}) }
 }
 
 @(private = "file")

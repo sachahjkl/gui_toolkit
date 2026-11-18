@@ -13,7 +13,7 @@ import prefs_page "gt:prefs_page"
 import "gt:testkit/session"
 import "gt:ui"
 
-@(private = "file")
+@(private)
 Dialog_App :: struct {
 	prefs:     config.Prefs,
 	page:      prefs_page.Page,
@@ -22,7 +22,7 @@ Dialog_App :: struct {
 }
 
 // A changelog as a real program's: many versions, the four common kinds, bullets of long sentences.
-@(private = "file")
+@(private)
 dialog_changelog :: proc() -> string {
 	b := strings.builder_make()   // (owned: the frames free the temporary memory)
 	strings.write_string(&b, "# Changelog\n\n")
@@ -37,7 +37,7 @@ dialog_changelog :: proc() -> string {
 	return strings.to_string(b)
 }
 
-@(private = "file")
+@(private)
 dialog_build :: proc(s: ^session.Session) {
 	app := (^Dialog_App)(s.user)
 	// (a dialog: a box of a fixed width in the window's middle, which clips what is in it)
@@ -55,7 +55,7 @@ dialog_build :: proc(s: ^session.Session) {
 }
 
 // The boxes under `b` whose right edge passes `right` (half a pixel of rounding left aside): their ids, for the message.
-@(private = "file")
+@(private)
 past_edge :: proc(b: ^ui.Box, right: f32, out: ^[dynamic]string) {
 	for c := b.first; c != nil; c = c.next {
 		if c.rect.max.x > c.rect.min.x && c.rect.max.x > right + 0.5 {

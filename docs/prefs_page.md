@@ -330,7 +330,10 @@ number, its day and time, "Latest"), its changes by type under a pill of the typ
 versions whose number, day or changes hold its words (ASCII case folded), a toggle per kind the changelog has hides or
 shows that kind's changes, and "N of M versions" says how many are kept; the list is worked out again only when the
 search, the kinds or the text change. On a narrow page (the settings in a dialog) the search, the toggles and the count
-flow onto more lines, each whole, and so do a card's number, day and "Latest". The changelog is written in English (`Changelog.english`, often
+flow onto more lines, each whole, and so do a card's number, day and "Latest". A page narrower than 34 em (510 px at
+the default font) is stacked: no rail, each kind's pill on a line of its own over its changes, which take the card's
+whole width; from 35 em it is wide again (the page's width at the last layout decides,
+[whats-new.md](../src/md/features/whats-new.md)). The changelog is written in English (`Changelog.english`, often
 `#load("../CHANGELOG.md", string)`); `translations` may give it in other languages (`Changelog_Text{language, text}`),
 and the page shows the one of the language in use, else the English one (`changelog_text`).
 
