@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.323.0] - 2026-11-18 21:01
+
+### Added
+- **`ui.find_set_current(s, index)`**: a program makes a match of the open find current by its index, clamped to the matches, and the view brings it in as the arrows do; asked before every row is counted, it waits for the count.
+- **`Find_Result.scrolled`**: the find bar's result says when the find moved the view to bring a match in, so a program can react (a log stops following its bottom).
+
+### Changed
+- **The find bar keeps the keyboard in its field**: a click on match case, whole word, a scope or an arrow leaves the keyboard in the field, as a browser's find bar does, so the person goes on typing. A click on an unchosen scope no longer leaves the keyboard nowhere.
+- **`ui.find_open(s, view, text)`, `ui.find_close(s)`** (breaking): they take the window's State, and work between two builds on the interface thread as in a build, for any window, not only the current one: a program opens its find from its command line, a menu or a key it routes itself. The next build of that window applies the change; `ui.needs_frame(s)` asks for it. A program adds the State to each call (`ui.current_state()` in a build).
+
 ## [0.322.1] - 2026-11-18 20:31
 
 ### Fixed
@@ -4546,6 +4556,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.323.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.323.0
 [0.322.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.322.1
 [0.322.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.322.0
 [0.321.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.321.0
