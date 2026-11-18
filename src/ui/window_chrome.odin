@@ -63,9 +63,7 @@ title_bar :: proc(id: string, flags: Box_Flags = {}) -> bool {
 	}
 	// (the ink goes down as a selected row's does: a child with a face of its own, a field, a button, keeps its text)
 	if c.ink != 0 { b.ink = draw.hex(c.ink) }
-	// (always a style of its own, so that title_bar_end pops one whatever the theme)
-	push_style_copy()
-	if c.bold { top_style().font = styled_face(top_style().font, true, false) }
+	_ = caption_text_push()
 	return true
 }
 
@@ -73,6 +71,20 @@ title_bar :: proc(id: string, flags: Box_Flags = {}) -> bool {
 title_bar_end :: proc() {
 	pop_style()
 	pop_parent()
+}
+
+// `if ui.caption_text() { ... }`: what the block builds takes the text of the theme's band (its bold face when the
+// theme says so), for a program that draws its own title bar with caption_band. Its ink goes on the bar's box:
+// `b.ink = ink` from caption_band_ink.
+@(deferred_none = pop_style)
+caption_text :: proc() -> bool { return caption_text_push() }
+
+// (always a style of its own, so that the scope pops one whatever the theme)
+@(private)
+caption_text_push :: proc() -> bool {
+	push_style_copy()
+	if caption_shown().bold { top_style().font = styled_face(top_style().font, true, false) }
+	return true
 }
 
 @(private)

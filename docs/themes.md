@@ -147,6 +147,7 @@ from these:
 | `caption_band(dc, r, active) -> bool` | draws the band of the theme shown over `r`; false: the theme gives none, nothing drawn |
 | `caption_band_ink() -> Maybe(Color)` | the text on the band; nil: no band, or the text as it is |
 | `caption_band_bold() -> bool` | whether the text on the band is bold |
+| `if caption_text() { ... }` | what the block builds takes the band's text: the bold face when the theme says so (the ink goes on the bar's box, `Box.ink`) |
 
 ### A theme's knob and switch
 
