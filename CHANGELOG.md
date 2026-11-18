@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.322.0] - 2026-11-18 19:57
+
+### Added
+- **A panel's menu on a right click of its top area**: a right click on the free part of a docked panel's top area (the
+strip's free part, or the band at the body's top) opens the view's menu, as the header, a tab and the fold button do;
+the body's own right clicks there still come first. The menu now has a panel's Minimise (or Restore) beside its
+Maximise, and a resizable dialog's Maximise. Its moves are the palette's: an act that does nothing where the view is
+(Detach into a window without a backend of windows, the Dock items without a frame) is absent instead of inactive.
+
 ## [0.321.0] - 2026-11-18 19:18
 
 ### Added
@@ -4529,6 +4538,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.322.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.322.0
 [0.321.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.321.0
 [0.320.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.320.0
 [0.319.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.319.0
