@@ -287,11 +287,13 @@ file_browser_open :: proc(s: ^State, kind: File_Dialog_Kind, d: platform.File_Di
 	fb.table.shown[FILE_COLUMN_MODIFIED] = .Modified in fb.source.caps
 	file_local_warm(s)   // (the computer's places)
 	file_browser_places_refresh(fb)
+	// (the order: the folder asked, the one this dialog was left in, the system's folder asked, the source's start)
 	start := d.start_dir
 	if start == "" && m != nil { start = m.folder }
+	if start == "" { start = file_browser_known(fb) }
 	if start == "" && fb.source.start != nil { start = fb.source.start(&fb.source, context.temp_allocator) }
 	if start == "" && len(fb.source_places) > 0 { start = fb.source_places[0].path }
-	// (the computer's first folder is read on the chores: the dialog starts once it is known)
+	// (the computer's folders are read on the chores: the dialog starts once they are known, file_browser_local_ready)
 	if start != "" { file_browser_go(fb, start) }
 	// (a view, as every dialog: built by the views in the frame it opens, in the presentation the person chooses)
 	file_browser_view_open(fb, s)
@@ -304,10 +306,19 @@ file_browser_local_ready :: proc(fb: ^File_Browser) {
 	context.allocator = runtime.heap_allocator()
 	file_browser_places_refresh(fb)
 	if fb.folder != "" { return }
-	start := fb.source.start != nil ? fb.source.start(&fb.source, context.temp_allocator) : ""
+	start := file_browser_known(fb)
+	if start == "" && fb.source.start != nil { start = fb.source.start(&fb.source, context.temp_allocator) }
 	if start == "" && len(fb.source_places) > 0 { start = fb.source_places[0].path }
 	if start == "" { start = string([]u8{fb.sep}) }
 	file_browser_go(fb, start)
+}
+
+// The folder of the dialog's start_known, as its source knows it ("": None, a source with no such folders, a folder
+// the person never made, or the computer's folders not read yet). Temporary memory.
+@(private)
+file_browser_known :: proc(fb: ^File_Browser) -> string {
+	if fb.d.start_known == .None || fb.source.known == nil { return "" }
+	return fb.source.known(&fb.source, fb.d.start_known, context.temp_allocator)
 }
 
 // The source's places, again (they may come later than the dialog: the computer's).

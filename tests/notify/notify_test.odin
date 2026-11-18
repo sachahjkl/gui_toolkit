@@ -24,6 +24,7 @@ Notify_Call :: struct {
 	image_alpha:   bool,
 	image_bytes:   int,
 	timeout:       i32,
+	value:         int,      // the progress hint; -1: none
 	ok:            bool,     // read to the end without error
 }
 
@@ -32,6 +33,7 @@ parse_notify :: proc(body: []u8, big := false, allocator := context.allocator) -
 	context.allocator = allocator
 	r := dbus.reader_make(body, big)
 	c.urgency = -1
+	c.value = -1
 	c.app_name = strings.clone(dbus.r_string(&r))
 	c.replaces = dbus.r_u32(&r)
 	c.app_icon = strings.clone(dbus.r_string(&r))
@@ -49,6 +51,7 @@ parse_notify :: proc(body: []u8, big := false, allocator := context.allocator) -
 		case key == "desktop-entry" && sig == "s": c.desktop_entry = strings.clone(dbus.r_string(&r))
 		case key == "urgency" && sig == "y":       c.urgency = int(dbus.r_u8(&r))
 		case key == "suppress-sound" && sig == "b": c.silent = dbus.r_bool(&r)
+		case key == "value" && sig == "i":         c.value = int(dbus.r_i32(&r))
 		case key == "image-data" && sig == "(iiibiiay)":
 			dbus.r_align_entry(&r)
 			c.image = {dbus.r_i32(&r), dbus.r_i32(&r), dbus.r_i32(&r)}
@@ -170,6 +173,80 @@ toast_xml_is_built_and_escaped :: proc(t: ^testing.T) {
 	many := []platform.Notification_Action{{1, "a"}, {2, "b"}, {3, "c"}, {4, "d"}, {5, "e"}, {6, "f"}}
 	x := platform.toast_xml({title = "t", actions = many}, "")
 	testing.expect_value(t, strings.count(x, "<action "), platform.TOAST_MAX_ACTIONS)
+}
+
+// A progress as a server reads it: the `value` hint in percent (none when not known, none without a bar), its status a
+// line after the body (escaped with it).
+@(test)
+a_progress_as_a_server_reads_it :: proc(t: ^testing.T) {
+	n := platform.Notification{title = "report.pdf", body = "From <server>", progress = {shown = true, value = 0.426, status = "4 MB of 10 MB"}}
+	c := parse_notify(platform.notify_dbus_body(n, "app", "", "", {.Body_Markup}), allocator = context.temp_allocator)
+	testing.expect(t, c.ok, "the body reads to its end")
+	testing.expect_value(t, c.value, 43)
+	testing.expect_value(t, c.body, "From &lt;server&gt;\n4 MB of 10 MB")
+
+	unknown := n
+	unknown.progress.value = -1
+	unknown.body = ""
+	c = parse_notify(platform.notify_dbus_body(unknown, "app", "", "", {}), allocator = context.temp_allocator)
+	testing.expect(t, c.ok)
+	testing.expect_value(t, c.value, -1)   // (no server draws a bar that runs without a value)
+	testing.expect_value(t, c.body, "4 MB of 10 MB")
+
+	over := n
+	over.progress.value = 7
+	c = parse_notify(platform.notify_dbus_body(over, "app", "", "", {}), allocator = context.temp_allocator)
+	testing.expect_value(t, c.value, 100)
+
+	hidden := n
+	hidden.progress.shown = false
+	c = parse_notify(platform.notify_dbus_body(hidden, "app", "", "", {}), allocator = context.temp_allocator)
+	testing.expect_value(t, c.value, -1)
+	testing.expect_value(t, c.body, "From <server>")   // (no bar, no status line)
+
+	zero: f32 = 0
+	_, known := platform.notify_progress_percent({shown = true, value = zero / zero})
+	testing.expect(t, !known, "a NaN is not known")
+}
+
+// A toast's bar is bound to data: the XML names the data, the values are plain strings; the shape is what the bar's
+// update keeps.
+@(test)
+a_toast_s_progress_is_bound_to_data :: proc(t: ^testing.T) {
+	n := platform.Notification{title = "report.pdf", progress = {shown = true, value = 0.5, status = "A & B"}}
+	testing.expect_value(t, platform.toast_xml(n, ""),
+		`<toast launch="default"><visual><binding template="ToastGeneric"><text>report.pdf</text>` +
+		`<progress value="{progressValue}" status="{progressStatus}"/></binding></visual></toast>`)
+	value, status := platform.toast_progress_values(n.progress)
+	testing.expect_value(t, value, "0.500")
+	testing.expect_value(t, status, "A & B")   // (data, not XML: nothing escaped)
+	value, _ = platform.toast_progress_values({shown = true, value = -1})
+	testing.expect_value(t, value, "indeterminate")
+	value, _ = platform.toast_progress_values({shown = true, value = 3})
+	testing.expect_value(t, value, "1.000")
+
+	// the same shape whatever the bar says; another title, another button or no bar is another shape
+	moved := n
+	moved.progress = {shown = true, value = 0.9, status = "almost"}
+	testing.expect_value(t, platform.notification_shape(moved), platform.notification_shape(n))
+	retitled := n
+	retitled.title = "other.pdf"
+	testing.expect(t, platform.notification_shape(retitled) != platform.notification_shape(n))
+	buttons := n
+	buttons.actions = {{1, "Cancel"}}
+	testing.expect(t, platform.notification_shape(buttons) != platform.notification_shape(n))
+	done := n
+	done.progress.shown = false
+	testing.expect(t, platform.notification_shape(done) != platform.notification_shape(n))
+	split := platform.Notification{title = "ab", body = "c"}
+	joined := platform.Notification{title = "a", body = "bc"}
+	testing.expect(t, platform.notification_shape(split) != platform.notification_shape(joined))
+
+	// a copy owns the status too
+	c := platform.notification_clone(n)
+	testing.expect_value(t, c.progress.status, "A & B")
+	testing.expect(t, raw_data(c.progress.status) != raw_data(n.progress.status))
+	platform.notification_destroy(&c)
 }
 
 @(test)

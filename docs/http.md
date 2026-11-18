@@ -65,7 +65,38 @@ client to keep: the pool is the process's, for every thread.
 - Linux: at most `POOL_IDLE` (8) idle libcurl handles wait, each with libcurl's connections (5 at most; one idle for more
   than 118 s is not reused). Windows: one WinHTTP session for the process, which pools its connections by server.
 - A connection that the server or a tunnel closed while it waited is found closed by the client, which connects again.
-- An event stream (`events`) and a WebSocket hold a connection of their own for their whole life.
+- An event stream (`events`) and a WebSocket hold a connection of their own for their whole life. A body received in
+  chunks (`receive`) takes its connection from the pool on Linux, as `request` does.
+
+## A body received in chunks
+
+```odin
+on_part :: proc(user: rawptr, p: http.Body_Part) -> http.Keep_Going {
+	w := (^fsx.Writer)(user)
+	if !fsx.writer_append(w, p.bytes) { return .Stop }   // p.bytes is valid during the call only
+	// p.received of p.length (-1: not known): post it to the interface's thread
+	return .Continue
+}
+stop: http.Stop                  // another thread: http.stop_ask(&stop)
+res, err := http.receive("GET", url, {headers = {{"Authorization", auth}}}, on_part, &writer, &stop)
+defer http.response_destroy(&res)
+```
+
+- `receive(method, url, req, on_part, user, stop)` gives the answer's body to `on_part` chunk by chunk and keeps none
+  of it: a file of any size takes the memory of one chunk. It blocks: call it on a worker. `on_part` runs on that
+  thread (Linux: from libcurl's call, with `runtime.default_context()`); it never runs on the interface's thread.
+- `Body_Part`: `bytes`, the answer's `status`, the bytes `received` so far (this chunk's included) and the body's
+  `length` (its Content-Length; -1 when there is none, or with `req.compressed`, whose chunks come decoded).
+- It ends when the body is whole, when `on_part` returns `.Stop` (`.None`: what came stands), or when `stop_ask(&stop)`
+  is called from another thread (seen within about a second: `.Stopped`).
+- `req.timeout` is the longest silence, not the whole transfer (0: `STREAM_SILENCE`): a download of any length goes on
+  while bytes come. A silence is `.Unreachable`. `req.max_bytes` bounds the body only when it is above 0 (past it:
+  `.Too_Large`); the default is no bound, as nothing is kept.
+- A status that is not 2xx gives no chunk and no error: read `res.status` (a 404 page never reaches a file). The answer
+  is the last one, after the redirects; `res` has its status, its headers and its address, never a body
+  (`response_destroy` frees it). With an error, `res` is empty.
+- A body is sent as `request` sends it (`req.body`, `req.headers`); `req.no_redirects` and `req.connect_timeout` too.
+- `fsx.Writer` (docs/fsx.md) writes the chunks to a temporary file and renames it over the target at the end.
 
 ## Form bodies
 

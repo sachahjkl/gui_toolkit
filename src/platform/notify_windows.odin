@@ -51,6 +51,50 @@ import base "../base"
 @(private = "file") IID_IToastFailedEventArgs :: winrt.GUID{0x35176862, 0xcfd4, 0x44f8, {0xad, 0x64, 0xf5, 0x00, 0xfd, 0x89, 0x6c, 0x3b}}
 @(private = "file") IID_IXmlDocument :: winrt.GUID{0xf7f3a506, 0x1e87, 0x42d6, {0xbc, 0xfb, 0xb8, 0xc8, 0x09, 0xfa, 0x54, 0x94}}
 @(private = "file") IID_IXmlDocumentIO :: winrt.GUID{0x6cd0e74e, 0xee65, 0x4489, {0x9e, 0xbf, 0xca, 0x43, 0xe8, 0x7b, 0xa6, 0x37}}
+// (the progress bar's bound data: Windows 10 1607 and later)
+@(private = "file") IID_INotificationData :: winrt.GUID{0x9ffd2312, 0x9d6a, 0x4aaf, {0xb6, 0xac, 0xff, 0x17, 0xf0, 0xc1, 0xf2, 0x80}}
+@(private = "file") IID_IToastNotification4 :: winrt.GUID{0x15154935, 0x28ea, 0x4727, {0x88, 0xe9, 0xc5, 0x86, 0x80, 0xe2, 0xd1, 0x18}}
+@(private = "file") IID_IToastNotifier2 :: winrt.GUID{0x354389c6, 0x7c01, 0x4bd5, {0x9c, 0x20, 0x60, 0x43, 0x40, 0xcd, 0x2b, 0x74}}
+
+@(private = "file")
+INotificationData_Vtbl :: struct {
+	using base:         winrt.IInspectable_Vtbl,
+	get_Values:         proc "system" (this: rawptr, values: ^rawptr) -> winrt.HRESULT,   // IMap<String, String>
+	get_SequenceNumber: rawptr,
+	put_SequenceNumber: proc "system" (this: rawptr, value: u32) -> winrt.HRESULT,
+}
+
+// IMap<String, String> (windows.foundation.h's __FIMap_2_HSTRING_HSTRING)
+@(private = "file")
+IMap_String_String_Vtbl :: struct {
+	using base: winrt.IInspectable_Vtbl,
+	Lookup:     rawptr,
+	get_Size:   rawptr,
+	HasKey:     rawptr,
+	GetView:    rawptr,
+	Insert:     proc "system" (this: rawptr, key, value: winrt.HSTRING, replaced: ^bool) -> winrt.HRESULT,
+	Remove:     rawptr,
+	Clear:      rawptr,
+}
+
+@(private = "file")
+IToastNotification4_Vtbl :: struct {
+	using base:   winrt.IInspectable_Vtbl,
+	get_Data:     rawptr,
+	put_Data:     proc "system" (this: rawptr, data: rawptr) -> winrt.HRESULT,
+	get_Priority: rawptr,
+	put_Priority: rawptr,
+}
+
+@(private = "file")
+IToastNotifier2_Vtbl :: struct {
+	using base:            winrt.IInspectable_Vtbl,
+	UpdateWithTagAndGroup: proc "system" (this: rawptr, data: rawptr, tag, group: winrt.HSTRING, result: ^i32) -> winrt.HRESULT,
+	UpdateWithTag:         rawptr,
+}
+
+// NotificationUpdateResult
+@(private = "file") NOTIFICATION_UPDATE_SUCCEEDED :: 0
 
 @(private = "file")
 IToastNotificationManagerStatics_Vtbl :: struct {
@@ -177,10 +221,13 @@ Toast_Heard :: struct {
 
 @(private)
 Toast_Record :: struct {
-	id:     Notification_Id,
-	toast:  rawptr,           // IToastNotification
-	key:    uintptr,          // its identity
-	tokens: [3]Event_Token,   // Activated, Dismissed, Failed
+	id:       Notification_Id,
+	toast:    rawptr,           // IToastNotification
+	key:      uintptr,          // its identity
+	tokens:   [3]Event_Token,   // Activated, Dismissed, Failed
+	shape:    u64,              // notification_shape of what it shows: the same shape updates its bar in place
+	bound:    bool,             // its progress bar is bound to data (an update can move it)
+	sequence: u32,              // its data's: each update one more (Windows drops an older one that comes late)
 }
 
 // What shows a window's toasts: the notification thread's alone (made by the window's thread at its first notification,
@@ -533,6 +580,9 @@ toast_job_run :: proc(job: Toast_Job) {
 			// (a key that stands for the toast, so that notify_close and a replace behave as with a real one)
 			sink_key_take_id(host.sink, job.id)
 			if ok { sink_key_add(host.sink, uintptr(job.id), job.id) }
+		} else if i := toast_find(host, job.id); i >= 0 && toast_update(host, &host.records[i], job.n) {
+			// (the same toast, its bar moved: no popup again, no sound; its key and events stay)
+			ok = true
 		} else {
 			ok = toast_show(host, job.n, job.id)
 		}
@@ -622,7 +672,18 @@ toast_show :: proc(host: ^Toast_Host, n: Notification, id: Notification_Id) -> b
 		winrt.string_delete(group)
 		winrt.release(t2)
 	}
-	rec := Toast_Record{id = id, toast = toast, key = identity_of(toast)}
+	rec := Toast_Record{id = id, toast = toast, key = identity_of(toast), shape = notification_shape(n)}
+	if n.progress.shown {
+		// (without data the bar's bindings show nothing; a system without them shows the toast without its bar)
+		if t4 := winrt.query(toast, IID_IToastNotification4); t4 != nil {
+			if data := toast_data_make(n.progress, 1); data != nil {
+				rec.bound = winrt.ok(winrt.vtable(t4, IToastNotification4_Vtbl).put_Data(t4, data))
+				rec.sequence = 1
+				winrt.release(data)
+			}
+			winrt.release(t4)
+		}
+	}
 	tv := winrt.vtable(toast, IToastNotification_Vtbl)
 	tv.add_Activated(toast, host.handlers[0], &rec.tokens[0])
 	tv.add_Dismissed(toast, host.handlers[1], &rec.tokens[1])
@@ -637,6 +698,60 @@ toast_show :: proc(host: ^Toast_Host, n: Notification, id: Notification_Id) -> b
 		return false
 	}
 	append(&host.records, rec)
+	return true
+}
+
+// The data a toast's progress bar is bound to (toast_xml: {progressValue}, {progressStatus}), at `sequence`; nil when
+// the system has none (before Windows 10 1607). The caller releases it.
+@(private = "file")
+toast_data_make :: proc(p: Notification_Progress, sequence: u32) -> rawptr {
+	object, got := winrt.activate("Windows.UI.Notifications.NotificationData")
+	if !winrt.ok(got) { return nil }
+	data := winrt.query(object, IID_INotificationData)
+	winrt.release(object)
+	if data == nil { return nil }
+	v := winrt.vtable(data, INotificationData_Vtbl)
+	values: rawptr
+	if !winrt.ok(v.get_Values(data, &values)) || values == nil {
+		winrt.release(data)
+		return nil
+	}
+	defer winrt.release(values)
+	value, status := toast_progress_values(p)
+	pairs := [2][2]string{{TOAST_PROGRESS_VALUE, value}, {TOAST_PROGRESS_STATUS, status}}
+	for pair in pairs {
+		key, text := winrt.string_make(pair[0]), winrt.string_make(pair[1])
+		replaced: bool
+		inserted := winrt.vtable(values, IMap_String_String_Vtbl).Insert(values, key, text, &replaced)
+		winrt.string_delete(key)
+		winrt.string_delete(text)
+		if !winrt.ok(inserted) {
+			winrt.release(data)
+			return nil
+		}
+	}
+	v.put_SequenceNumber(data, sequence)
+	return data
+}
+
+// Moves the bar of the toast `rec` in place: true when the system did (the same shape, a bar bound to data, the toast
+// still there). False: the caller shows it again (another shape, no IToastNotifier2, the person closed it).
+@(private = "file")
+toast_update :: proc(host: ^Toast_Host, rec: ^Toast_Record, n: Notification) -> bool {
+	if !n.progress.shown || !rec.bound || rec.shape != notification_shape(n) { return false }
+	notifier2 := winrt.query(host.notifier, IID_IToastNotifier2)
+	if notifier2 == nil { return false }
+	defer winrt.release(notifier2)
+	data := toast_data_make(n.progress, rec.sequence + 1)
+	if data == nil { return false }
+	defer winrt.release(data)
+	tag := winrt.string_make(fmt.tprintf("%d", rec.id))
+	group := winrt.string_make(TOAST_GROUP)
+	defer { winrt.string_delete(tag); winrt.string_delete(group) }
+	result: i32 = -1
+	if !winrt.ok(winrt.vtable(notifier2, IToastNotifier2_Vtbl).UpdateWithTagAndGroup(notifier2, data, tag, group, &result)) { return false }
+	if result != NOTIFICATION_UPDATE_SUCCEEDED { return false }
+	rec.sequence += 1
 	return true
 }
 

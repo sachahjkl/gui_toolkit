@@ -30,7 +30,9 @@ if r.status == .Chosen { for p in r.paths { ... } }
 `File_Dialog`: `owner` (disabled while the dialog is up), `title`, `filters` (`File_Filter`: a name and patterns
 `"*.ext"`; a bare `"ext"` or `".ext"` is accepted), `all_files` (a last "All files" line), `filter_index`, `start_dir`
 (an explicit folder) or `start_known` (a default), `remember_id` (the system keeps the last folder per id),
-`suggested_name`, `default_ext`, `multiple`, `overwrite_prompt`. `Dialog_Result`: `status` (`Chosen`, `Cancelled`,
+`suggested_name`, `default_ext`, `multiple`, `overwrite_prompt`. The toolkit's file browser honours `start_known` too
+and reads `places`, `find_deep`, `act` and `row_actions` (a program's acts in a row's context menu), which the system's
+dialogs ignore ([file-browser.md](file-browser.md)). `Dialog_Result`: `status` (`Chosen`, `Cancelled`,
 `Unsupported`, `Failed`), `paths`, `filter` (the type line selected).
 
 **Threads.** The dialogs are modal and return when the user closed them: call them from a thread that may block (a

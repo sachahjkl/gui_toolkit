@@ -126,7 +126,7 @@ winhttp_compression :: proc(request: HINTERNET, req: Request) {
 
 // A text WinHTTP gives in UTF-16, asked twice: once for its size in bytes, once for it. option: WinHttpQueryOption's,
 // else a header query's.
-@(private = "file")
+@(private)
 query_text :: proc(h: HINTERNET, what: u32, option: bool, allocator := context.allocator) -> string {
 	size: u32
 	if option { WinHttpQueryOption(h, what, nil, &size) } else { WinHttpQueryHeaders(h, what, nil, nil, &size, nil) }

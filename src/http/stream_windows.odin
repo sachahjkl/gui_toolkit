@@ -196,10 +196,12 @@ job_wait :: proc(j: ^Job, event: win.HANDLE, deadline: time.Tick, bounded: bool,
 	}
 }
 
-// Sends the request and waits for its answer's headers: its status.
+// Sends the request, with `body` (receive's POST), and waits for its answer's headers: its status. The body is read by
+// WinHTTP until the send completes, which this waits for.
 @(private)
-job_handshake :: proc(j: ^Job, stoppable: bool, stop: ^Stop) -> (status: int, err: Error) {
-	if !WinHttpSendRequest(j.request, nil, 0, nil, 0, 0, uintptr(j)) { return 0, .Unreachable }
+job_handshake :: proc(j: ^Job, stoppable: bool, stop: ^Stop, body: []u8 = nil) -> (status: int, err: Error) {
+	data: rawptr = len(body) > 0 ? rawptr(raw_data(body)) : nil
+	if !WinHttpSendRequest(j.request, nil, 0, data, u32(len(body)), u32(len(body)), uintptr(j)) { return 0, .Unreachable }
 	if job_wait(j, j.done, {}, false, stoppable, stop) != .Done { return 0, .Stopped }
 	if j.failure != 0 { return 0, .Unreachable }
 	if !WinHttpReceiveResponse(j.request, nil) { return 0, .Unreachable }
@@ -258,4 +260,49 @@ events_system :: proc(url: string, req: Request, parser: ^Event_Parser, on_event
 			return status, parser.too_large ? .Too_Large : .None
 		}
 	}
+}
+
+// receive on the asynchronous job, as a stream: a stop or a silence leaves a read in flight instead of waiting for it.
+receive_system :: proc(method, url: string, req: Request, sink: ^Receive_Sink, stop: ^Stop, allocator := context.allocator) -> (res: Response, err: Error) {
+	u, _ := url_parse(url)
+	if u64(len(req.body)) > 0xFFFF_FFFF { return {}, .Too_Large }   // (WinHTTP counts a body in 32 bits)
+	j: ^Job
+	if j, err = job_start(method, u, req); err != .None { return }
+	defer job_end(j)
+	if req.no_redirects {
+		policy := u32(WINHTTP_OPTION_REDIRECT_POLICY_NEVER)
+		WinHttpSetOption(j.request, WINHTTP_OPTION_REDIRECT_POLICY, &policy, size_of(policy))
+	}
+	status: int
+	if status, err = job_handshake(j, false, stop, req.body); err != .None { return {}, err }
+	head := query_text(j.request, WINHTTP_QUERY_RAW_HEADERS_CRLF, false, context.temp_allocator)
+	receive_head(sink, status, headers_parse(head, context.temp_allocator), req.compressed)
+	reading: if !sink.refused && method != "HEAD" {
+		for {
+			// (what has come first, then that much: a read of a whole chunk waits until the chunk is full)
+			if !WinHttpQueryDataAvailable(j.request, nil) { return {}, .Unreachable }
+			deadline, bounded := deadline_of(req.timeout)
+			switch job_wait(j, j.done, deadline, bounded, false, stop) {
+			case .Stopped:   return {}, .Stopped
+			case .Timed_Out: return {}, .Unreachable   // (silence)
+			case .Done:
+			}
+			if j.failure != 0 { return {}, .Unreachable }
+			if j.bytes == 0 { break reading }   // (the whole body came)
+			if !WinHttpReadData(j.request, raw_data(j.chunk), min(j.bytes, u32(len(j.chunk))), nil) { return {}, .Unreachable }
+			switch job_wait(j, j.done, deadline, bounded, false, stop) {
+			case .Stopped:   return {}, .Stopped
+			case .Timed_Out: return {}, .Unreachable
+			case .Done:
+			}
+			if j.failure != 0 { return {}, .Unreachable }
+			if j.bytes == 0 { break reading }
+			if !receive_feed(sink, j.chunk[:j.bytes]) {
+				if sink.too_large { return {}, .Too_Large }
+				break reading   // (the caller's .Stop: its answer stands)
+			}
+		}
+	}
+	effective := query_text(j.request, WINHTTP_OPTION_URL, true, context.temp_allocator)
+	return receive_response(status, effective != "" ? effective : url, head, allocator), .None
 }

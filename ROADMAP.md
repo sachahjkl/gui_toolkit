@@ -13,10 +13,6 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
-- **Downloads in the toolkit.** For opencode native's file downloads: a streamed HTTP body in `gt:http` (a callback per
-  chunk, and a stop), a notification updated in place with its progress and several buttons, a program's actions on
-  an entry of the file browser, `File_Dialog.start_known = .Downloads` honoured by the browser, and an `fsx` writer
-  that appends to a temporary file then renames it.
 - **opencode native's build in the toolkit's commands.** `toolbox.build_commands` covers what opencode native's tool
   does by hand: defines on every system, Windows link options (a static vcruntime), stripped symbols in a Linux
   release, `-o:minimal` with its `.mode` file, a fresh build in `build/ocn-new`, a pinned Odin version.
