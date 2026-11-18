@@ -674,6 +674,13 @@ three do. It is skipped where the kernel has no Landlock.
   Odin, starts in a container with the system DLLs it imports; that `os.process_wait` and `os.process_kill` work on the
   handle made by `CreateProcessW`; that the test's temporary folder (the person's `%TEMP%`) is closed to the container;
   that `CREATE_NO_WINDOW` keeps a console program's child quiet. Each failure says its step and Windows' error code.
+- **Found by the CI (2026-11-18): the child dies with 0xC0000142 (STATUS_DLL_INIT_FAILED)** in the container, before
+  any of its code runs. The program's executable imports user32, whose initialisation opens the session's window
+  station and desktop, and their access lists name no container. Not merged until one of two ways is tried: (1) grant
+  the container's SID the least access to the window station and the desktop that lets user32 start (read only, never
+  the rights that read other windows' input), or (2) a plugin host of its own, an executable that imports no user32
+  (the child needs no window: its runtime, its pipes and the broker's messages), which goes back on "the same
+  executable" and ships a second binary. (2) is the sounder: (1) gives a stranger's code a handle on the desktop.
 - **What the test does not try on Windows**: the network. The container's refusal of a connection is Windows' own;
   trying it needs a listener in the test, the next step of this test.
 
