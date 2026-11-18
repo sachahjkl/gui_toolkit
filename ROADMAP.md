@@ -65,9 +65,9 @@
   files, `fetch` by origin, the clipboard, all done by the program's broker), lazy lists (API level 5), the process's
   sandbox on Linux, rich views (API level 6: icons by name, tones, badges, highlights), a program's own module
   (`from "app"`: the mechanism, its calls, events, permissions and generated `app.d.ts`), palette sources, menu and
-  tool bar entries and a manifest's languages (API level 7). Next: opencode native turns plugins on and writes its
-  module (sessions, messages, the composer) in its own repository; the settings' titles of a plugin following a
-  change of language without a reload; a lazy list's active row and Enter sent to the plugin. Intent:
+  tool bar entries and a manifest's languages (API level 7), a plugin's settings' titles that follow the language
+  without a reload, a lazy list's active row and its `onActivate` (API level 8). Next: opencode native turns plugins
+  on and writes its module (sessions, messages, the composer) in its own repository. Intent:
   [src/md/features/plugins.md](src/md/features/plugins.md).
 - **A plugin's process sandboxed by the system on Windows and macOS.** On Linux a plugin's process opens no file and no
   socket by itself (Landlock and a seccomp filter); elsewhere it still has the person's rights. Left: Windows, an

@@ -50,7 +50,7 @@ plugins.host_close(&app.plugins)
 | `stop(h, id)` | Stops a plugin's runtime; its process is killed when it has not ended 1 s later. The plugin is `Ready` again when its process has ended. |
 | `grant(h, id)`, `revoke(h, id)` | Grants a plugin what its manifest asks and turns it on (the grant dialog's Allow); takes back its permissions and the files it was given. |
 | `path_resolve(path, data_dir, granted, picked)`, `net_allowed(granted, url)`, `permission_parse(word)`, `origin_of(url)`, `host_is_private(host)`, `url_join(base, location)` | The broker's checks, for a test or a program's own page. |
-| `list_info(h, plugin_id, view_id, key)`, `list_scroll_to(h, plugin_id, view_id, key, row)` | What the host knows of a view's lazy list (its rows built, its asks, the answers dropped); scrolls it to a row. For a test or a program's own page. |
+| `list_info(h, plugin_id, view_id, key)`, `list_scroll_to(h, plugin_id, view_id, key, row)` | What the host knows of a view's lazy list (its rows built, its asks, the answers dropped, its active row and whether it has the keyboard); scrolls it to a row. For a test or a program's own page. |
 | `restart(h, id)` | A `Failed` plugin is `Ready` again: its next use starts a new process. A failed view's Restart calls it. |
 | `test_crash(h, id)`, `test_hang(h, id)` | A test's hooks: the plugin's process panics at its next turn, or waits there where no interrupt reaches it. |
 | `test_escape(h, id, read_path, create_dir)` | A test's hook: the plugin's process tries to read a file, create one and open a TCP socket; a toast says which it could (`escaped: none` when isolated). |
@@ -164,8 +164,8 @@ palette.source("lines", async (query) => find(query).map((l) => ({ id: l.id, lab
   entry runs its command as the palette does. A plugin that is off, refused or suspended gives none.
 - **`l10n`** translates the manifest's labels and titles (commands, views, settings, palette sources, and so the menus
   and the tool bar) for a language's tag or its primary subtag, the toolkit's language in use; the English stays for
-  what it does not translate. The palette, the menus, the tool bar and the views' titles follow a change of language
-  at once; the settings' titles at the next read of the folder.
+  what it does not translate. The palette, the menus, the tool bar, the views' titles and the settings' titles and
+  descriptions follow a change of language at the next build, with no reload and no restart of the plugin.
 - **The plugin's own texts** are its to translate: `context.language` in `activate`'s context is the tag (`"en"` for
   English). When it changes, `context.language` is the new tag and every open view renders again.
 
@@ -253,6 +253,17 @@ views.register("main", () => ({ kind: "list", key: "items", count: items.length,
 ```
 
 - A key in a row is that row's: `key: "open"` in each row is fine. A list inside a row of a list is dropped.
+- The list has an active row, the program's, drawn as a list's active row: a press on a row sets it, and while the
+  list has the keyboard Up, Down, Page Up, Page Down, Home and End move it. `onActivate: (i) => ...` (API level 8) is
+  called with its index on Enter, or on a double click of a row; a placeholder row can be activated too. A move of the
+  active row is not sent to the plugin: each key would be a turn and a render.
+
+```js
+views.register("main", () => ({ kind: "list", key: "items", count: items.length, version,
+	row: (i) => ({ kind: "text", text: items[i].name }),
+	onActivate: (i) => open(items[i]),
+}));
+```
 - A button repeated in each row reads better with `look: "ghost"` (no face until the pointer is over it) and
   `size: "small"`. A button's `look` is `raised`, `ghost` or `link`; its `size` `small`, `medium` or `large`. A program
   older than these two fields shows a raised, medium button.

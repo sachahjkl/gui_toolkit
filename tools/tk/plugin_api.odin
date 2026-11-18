@@ -319,6 +319,7 @@ ts_type :: proc(odin_type: string) -> string {
 	case "Flag_Handler":                    return "(value: boolean) => void | Promise<void>"
 	case "Render":                          return "() => Node"
 	case "Row_Render":                      return "(index: number) => Node"
+	case "Index_Handler":                   return "(index: number) => void | Promise<void>"
 	case "Palette_Search":                  return "(query: string) => Palette_Row[] | Promise<Palette_Row[]>"
 	case "Palette_Choose_Handler":          return "(row: Palette_Row) => void | Promise<void>"
 	case "Children":                        return "(Node | null | undefined | false)[]"

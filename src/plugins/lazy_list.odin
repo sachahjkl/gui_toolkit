@@ -82,6 +82,8 @@ List_Info :: struct {
 	answered:   int,   // the rows answered and kept
 	waiting:    bool,  // an ask waits for its answer
 	dropped:    int,   // the answers dropped: an older version's, an ask past the bound, rows no longer wanted
+	active:     int,   // the active row (-1: none), the host's (level 8: Enter on it is the plugin's onActivate)
+	focused:    bool,  // the list has the keyboard
 }
 
 // Plugin `plugin_id`'s view `view_id`'s lazy list `key`, as the host knows it. False: no such list was built.
@@ -95,6 +97,7 @@ list_info :: proc(h: ^Host, plugin_id, view_id, key: string) -> (info: List_Info
 	return List_Info{
 		count = lz.count, version = lz.version, shown_from = lz.shown_from, shown_to = lz.shown_to, asks = lz.asks,
 		asked_most = lz.asked_most, answered = answered, waiting = lz.asked.seq != 0, dropped = lz.dropped,
+		active = lz.vl.sel, focused = lz.vl.focused,
 	}, true
 }
 
@@ -189,24 +192,33 @@ lazy_replay :: proc(r: ^View_Record, n: plugin_api.List_Node) {
 		lz.shown_from, lz.shown_to = rows.first, rows.last
 		lz.guessed = rows.guessed
 		for i in rows.first ..< rows.last {
-			// (the row box is the virtual list's name for row i: the list measures its height)
-			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
-			if ui.column(id = ui.vlist_row_name(i)) {
-				a, at := lazy_row(lz, i)
-				switch {
-				case a == nil:
-					// (not answered yet: its place, as high as a row is thought to be)
-					if ui.tags("weak") {
-						ui.next({width = ui.fill(), height = ui.px(lz.vl.est)})
-						ui.label("…###pv_wait")
+			// (a row of the list, under the virtual list's name for row i: the list measures its height, draws it as
+			// the active row, and a press on it makes it active; the plugin's row goes in a column inside)
+			row := ui.list_row(&lz.vl, i, "")
+			if ui.parent(row.box) {
+				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+				if ui.column(id = "###pv_row") {
+					a, at := lazy_row(lz, i)
+					switch {
+					case a == nil:
+						// (not answered yet: its place, as high as a row is thought to be)
+						if ui.tags("weak") {
+							ui.next({width = ui.fill(), height = ui.px(lz.vl.est)})
+							ui.label("…###pv_wait")
+						}
+					case a.list != nil:
+						nodes := a.list.nodes[:]
+						k := at + 1
+						replay_children(r, nodes, &k, nodes[at].children, false)
 					}
-				case a.list != nil:
-					nodes := a.list.nodes[:]
-					k := at + 1
-					replay_children(r, nodes, &k, nodes[at].children, false)
 				}
 			}
 		}
+	}
+	// (Enter on the active row or a double click, seen by the list this build: the plugin's onActivate, level 8. A
+	// change of the active row alone is not sent: plugins.md, "As built: a lazy list's active row")
+	if lz.vl.activated && lz.vl.sel >= 0 && lz.vl.sel < lz.count {
+		view_send(r, n.key, .onActivate, number = f64(lz.vl.sel))
 	}
 	lazy_ask(r, lz)
 }

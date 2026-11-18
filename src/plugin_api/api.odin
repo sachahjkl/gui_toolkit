@@ -12,7 +12,7 @@ import js "../js"
 
 // The level of the API this toolkit gives, and the oldest a plugin may ask: a manifest's `api` between the two is
 // accepted. A level only adds; a removal or a change raises the oldest.
-PLUGIN_API_LEVEL :: 7
+PLUGIN_API_LEVEL :: 8
 PLUGIN_API_OLDEST :: 1
 
 // What a call needs the person to have granted (the manifest's "permissions"). `.None`: nothing. The bridge refuses a
@@ -274,9 +274,14 @@ Separator_Node :: struct {}
 // in view and a margin, as the person scrolls.
 Row_Render :: distinct js.Value
 
+// A function of the plugin called with a row's index (a list's onActivate; level 8).
+Index_Handler :: distinct js.Value
+
 // A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows
 // costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content
-// changes: the rows kept are dropped and asked again (an answer for an older version is dropped).
+// changes: the rows kept are dropped and asked again (an answer for an older version is dropped). It has an active
+// row, the program's: Up, Down, Page Up, Page Down, Home and End move it while the list has the keyboard, and a press
+// on a row makes it active.
 Lazy_List_Node :: struct {
 	// How many rows it has (1 000 000 at most).
 	count:       int,
@@ -288,6 +293,9 @@ Lazy_List_Node :: struct {
 	visibleRows: int `optional`,
 	// Each row's node.
 	row:         Row_Render,
+	// Called with the active row's index when the person presses Enter on it, or double-clicks a row. A row not
+	// answered yet can be activated too.
+	onActivate:  Index_Handler `optional level=8`,
 }
 
 // The kinds of nodes, in the order of NODES.

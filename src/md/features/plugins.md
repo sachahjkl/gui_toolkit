@@ -702,8 +702,41 @@ Refused:
 - **A list inside a row of a list**: each row of the outer one would ask for rows of its own; such a node is dropped
   and said in the log.
 
-Still open: the keyboard's active row and Enter are the virtual list's and are not sent to the plugin (a row's own
-button is); the rows of a list have one look (no selection drawn).
+The active row and Enter: see "As built: a lazy list's active row (API level 8)".
+
+## As built: a lazy list's active row (API level 8)
+
+Written on 2026-11-18.
+
+- **The keyboard is the virtual list's.** `ui.vlist` already moved an active row (Up, Down, Page Up, Page Down,
+  Home, End) while the list had the focus, over all the rows, built or not, and saw Enter; nothing showed it and
+  nothing reached the plugin. Now each row (an answer or a placeholder) is a `ui.list_row` of the list: it is drawn as
+  the active row (the "selected" tags, strong while the list has the focus), a press makes it active and gives the list
+  the focus, and the screen reader hears it as an option of a list box. The plugin's row is replayed inside it. No
+  state is the plugin's: the active row is the host's, as a field's text is.
+- **`onActivate(index)`** on the `list` node: Enter on the active row, or a double click on a row, calls it with the
+  row's index. The name follows `onClick`, `onChange` and `onSubmit` (the event of the node, the field of its struct)
+  and the toolkit's own `List_State.activated`. It is a field of the list, not of a row: the index is what the plugin
+  needs (its data is by index), and a row may not be answered yet when Enter comes (a placeholder is active too).
+  The event is a `View_Event` (`onActivate`) with the index in the message's `number`: a person's act, like a click,
+  so `clipboard.read` and `files.pick` work in its handler. The program sends it whether or not the list has the
+  handler (the list's props carry no function); the process drops an event with no handler without a render, so a
+  list without `onActivate` costs a message per Enter and nothing else.
+- **The active row's change is not sent** (no `onActive`). Each Up or Down would be a turn of the plugin and a render
+  of the whole view, at the speed of a key's repeat: a plugin that shows the active row's details would render 30
+  times a second for a held key, and one that does not would pay the turns anyway. A plugin that wants to follow the
+  active row shows what Enter chose; if a plugin asks for it later, it comes as an event sent at most once per build
+  that changed the row, with the last row only.
+- **Older plugins.** A plugin of level 5 to 7 gets the look and the keyboard (they are the program's), and no event: it
+  gives no `onActivate`. A program older than level 8 ignores the field (the bridge reads only its struct's fields).
+- **Placeholders are rows too**: a row not answered yet can be made active and activated; the plugin gets its index.
+
+Refused:
+
+- **The active row as a state field of the node** (`active`, the serial rule of a field's value): a plugin that sets
+  it would fight the keys of a person who scrolls; nothing asked for it.
+- **A selection of several rows** (`multi`): its events (each change of a set of a million rows) need a design of
+  their own.
 
 ## As built: rich views (API level 6)
 
@@ -836,10 +869,20 @@ Written on 2026-11-18.
   commands' labels and groups, views' titles, settings' titles and descriptions, palette sources' labels, menus and
   the tool bar (their commands' labels). The language is the toolkit's (`i18n.current()`): a translation of its tag
   ("fr-CA"), else of its primary subtag ("fr"), else the manifest's English. The palette, the menus, the tool bar and a
-  view's title read it at each build (a lookup in a few dozen texts), so a change of language shows at once; the
-  settings' titles are registered with the program's preferences when the folder is read, so they change at the next
-  read. Refused: a plugin's catalogue file in the toolkit's format (a second file to keep beside the manifest for a
-  dozen labels).
+  view's title read it at each build (a lookup in a few dozen texts), so a change of language shows at once. Refused:
+  a plugin's catalogue file in the toolkit's format (a second file to keep beside the manifest for a dozen labels).
+- **The settings' titles follow the language too, without a reload.** A setting's title and description live in its
+  `config.Def`, which the registry keeps and the settings page reads (`title_of`, at each build). The registry has no
+  call to change a definition and `register` does nothing for a known name, but a plugin's Def is this package's own
+  (its strings are the host's, on the heap). So `settings_label` writes the two strings again in place, in the
+  language in use: after each read of the folder (a manifest read again has new words too) and when
+  `language_follow` sees `i18n.version()` move. Never per build: the work is one pass over the plugins' settings per
+  change of language. No reload, no restart of a plugin's process: the process never had the titles. The words
+  replaced are kept until the next relabel (`Host.labels_retired`), since a widget may hold a string of the build
+  before for one build; `host_close` frees them, and the registry keeps the current ones (it outlives the host).
+  Refused: unregistering and registering the settings again (the registry has no unregister, and a value read before
+  its definition would go through `pending` again); a title translated at each build by the settings page (it reads
+  the program's catalogue, `i18n.tr`, and knows nothing of a plugin's manifest).
 - **The plugin's code** reads the language as `context.language` in `activate`'s context (the tag, "en" for English).
   When the person changes the language, the program sends it to the running plugins (a Language message): the
   context's `language` changes and every open view renders again, so a render that reads `context.language` shows the

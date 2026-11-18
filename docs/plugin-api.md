@@ -1,6 +1,6 @@
 # The plugin API
 
-Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 7 of the API and accepts plugins written for levels 1 to 7. How a program turns plugins on: [plugins.md](plugins.md).
+Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 8 of the API and accepts plugins written for levels 1 to 8. How a program turns plugins on: [plugins.md](plugins.md).
 
 A plugin imports the API as an ES module, and its entry file exports `activate(context)`:
 
@@ -312,7 +312,7 @@ Level 2.
 
 ### `list`
 
-A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content changes: the rows kept are dropped and asked again (an answer for an older version is dropped).
+A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content changes: the rows kept are dropped and asked again (an answer for an older version is dropped). It has an active row, the program's: Up, Down, Page Up, Page Down, Home and End move it while the list has the keyboard, and a press on a row makes it active.
 
 Level 5.
 
@@ -323,6 +323,7 @@ Level 5.
 | `rowHeight` | `number`, optional | A row's height in lines of text, before its rows are measured (2 when absent). |
 | `visibleRows` | `number`, optional | How many rows high the list is (10 when absent). |
 | `row` | `(index: number) => Node` | Each row's node. |
+| `onActivate` | `(index: number) => void \| Promise<void>`, optional | Called with the active row's index when the person presses Enter on it, or double-clicks a row. A row not answered yet can be activated too. Level 8. |
 
 ### `badge`
 

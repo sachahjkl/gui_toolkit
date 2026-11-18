@@ -12,7 +12,7 @@ the palette, the settings and the toasts are the toolkit's.
 The program draws a view with its own widgets. The plugin only returns a tree of plain objects, so the view looks and
 behaves as the program does. You write no layout code, no spacing and no colours.
 
-This toolkit gives API level 7.
+This toolkit gives API level 8.
 
 ## Read first
 
@@ -54,7 +54,7 @@ In a program, the folder goes in `<data>/<program>/plugins/<id>/`, named as the 
 	"id": "hello",
 	"name": "Hello",
 	"version": "1.0.0",
-	"api": 7,
+	"api": 8,
 	"main": "main.js",
 	"program": "papier",
 	"commands": [{ "id": "greet", "label": "Say hello", "tags": ["welcome"] }],
@@ -90,7 +90,8 @@ A level only adds calls, nodes and optional fields. Each in `references/plugin-a
 - level 6: rich views: `icon` on button, text, heading, field and switch; `tone`, `mono` and `highlight` on text; the
   `badge` node;
 - level 7: palette sources (`palette.source`, `palette.onChoose`), the manifest's `palette`, `menus`, `toolbar` and
-  `l10n`, and `context.language`.
+  `l10n`, and `context.language`;
+- level 8: a lazy list's `onActivate(index)` (Enter on its active row, or a double click).
 
 A program older than a field ignores it: an `icon` on a level-5 program draws no icon, and the view still works. A
 node it does not know (`badge`) is refused, so write `api: 6` when you use one.
@@ -235,6 +236,8 @@ views.register("main", () => ({ kind: "list", key: "items", count: items.length,
 - Increment `version` when what the rows show changes. With the same version, the program keeps the rows it has.
 - A key in a row is that row's: `key: "open"` in each row is correct.
 - `rowHeight` is in lines of text. `visibleRows` is the list's height in rows (10 when absent).
+- The list has an active row, the program's: Up and Down move it, a click sets it. `onActivate: (i) => open(items[i])`
+  runs on Enter or a double click (level 8). The active row's moves are not sent: show what Enter chose.
 
 ## Permissions
 

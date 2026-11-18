@@ -133,6 +133,8 @@ Host :: struct {
 	app_tokens:  App_Token,   // the last token given
 	sources:     [dynamic]^Plugin_Source,   // the plugins' palette sources (palette_sources.odin)
 	language:    u32,                       // i18n.version() the running plugins were told (l10n.odin)
+	// the settings' words that settings_label replaced, freed at its next run (heap)
+	labels_retired: [dynamic]string,
 }
 
 // What the chores and the plugins' threads reach the host by: `open` false once host_close ran (under `lock`, which a
@@ -181,6 +183,7 @@ host_open :: proc(h: ^Host, s: ^ui.State, o: Host_Options) {
 	}
 	h.window_announcer = {mode = .Window, state = s}
 	h.language = i18n.version()   // (a plugin's start says the language: only a later change is sent)
+	h.labels_retired = make([dynamic]string)
 	h.link = new(Host_Link)
 	h.link^ = {open = true, state = s, host = h, refs = 1}
 	if h.o.prefs != nil { h.watch = config.watch(h.o.prefs, SETTINGS_PREFIX, setting_changed, h) }
@@ -229,6 +232,9 @@ host_close :: proc(h: ^Host) {
 	delete(h.last_toast)
 	app_waiting_free(h)
 	delete(h.sources)   // (emptied by plugins_drop)
+	// (the Defs in the registry keep their current words: the registry outlives the host)
+	for old in h.labels_retired { delete(old) }
+	delete(h.labels_retired)
 	for place in h.o.menu_places { delete(place) }
 	delete(h.o.menu_places)
 	h^ = {}

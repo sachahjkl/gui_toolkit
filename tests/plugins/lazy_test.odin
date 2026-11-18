@@ -108,6 +108,90 @@ a_version_change_drops_stale_answers :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, " v1") == nil, "a row of version 1 is still shown")
 }
 
+PICKER_MANIFEST :: `{
+	"id": "picker", "name": "Picker", "api": 8, "main": "main.js",
+	"views": [{"id": "main", "title": "Pick", "place": "internal"}]
+}`
+
+// A row is a text and the room after it: a press on that room is the row's, not the text's.
+PICKER_MAIN :: `import { toast, views } from "gt";
+export function activate() {
+	views.register("main", () => ({ kind: "list", key: "rows", count: 1000, visibleRows: 10, rowHeight: 2,
+		row: (i) => ({ kind: "row", children: [{ kind: "text", text: "item " + i }, { kind: "space", size: "fill" }] }),
+		onActivate: (i) => toast.show("activated " + i),
+	}));
+}
+`
+
+@(private = "file")
+Active :: struct { fx: ^Fx, row: int }
+
+@(private = "file")
+picker_active :: proc(fx: ^Fx) -> (active: int, focused: bool) {
+	info, ok := plugins.list_info(&fx.host, "picker", "main", "rows")
+	if !ok { return -1, false }
+	return info.active, info.focused
+}
+
+// A press on a row (on its room past its text, where no widget of the plugin's is) makes it active and gives the list
+// the keyboard.
+@(private = "file")
+press_row :: proc(s: ^session.Session, row: string, count := 1) {
+	b := session.get(s, row)
+	session.click_at(s, {b.rect.min.x + (b.rect.max.x - b.rect.min.x) * 0.75, (b.rect.min.y + b.rect.max.y) * 0.5}, count = count)
+}
+
+// Level 8: the list's active row is the host's (a press sets it, Down moves it); Enter on it and a double click reach
+// the plugin's onActivate with the row's index.
+@(test)
+the_active_row_and_enter_reach_the_plugin :: proc(t: ^testing.T) {
+	root := testkit.temp_folder(t, "plugin-picker")
+	write_plugin(root, "picker", PICKER_MANIFEST, PICKER_MAIN)
+	enable(root, "picker")
+	fx := new(Fx)   // (freed by open's cleanup)
+	s := open(t, fx, root)
+	wait_started(s, fx, "picker")
+	fx.open_view = {"picker", "main"}
+	session.wait_text(s, "item 2", WAIT)
+	// (the view's window takes its content's height as it comes: a press before it settles can miss its row)
+	session.wait_idle(s, WAIT)
+	press_row(s, "lrow_2")
+	session.wait_until(s, Active{fx, 2}, proc(s: ^session.Session, w: Active) -> bool {
+		active, focused := picker_active(w.fx)
+		return active == w.row && focused
+	}, "row 2 active, the list focused", WAIT)
+	session.key(s, .Down)
+	session.wait_until(s, Active{fx, 3}, proc(s: ^session.Session, w: Active) -> bool {
+		active, _ := picker_active(w.fx)
+		return active == w.row
+	}, "row 3 active", WAIT)
+	toasts := fx.host.toasts
+	session.key(s, .Return)
+	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "onActivate's toast", WAIT)
+	testing.expect_value(t, fx.host.last_toast, "activated 3")
+	// a double click activates the row it is on
+	toasts = fx.host.toasts
+	press_row(s, "lrow_5", count = 2)
+	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the double click's toast", WAIT)
+	testing.expect_value(t, fx.host.last_toast, "activated 5")
+}
+
+// A list of an older level has no onActivate: its Enter reaches the process, which drops it with no render and no
+// error; the list goes on answering.
+@(test)
+enter_on_a_list_without_on_activate :: proc(t: ^testing.T) {
+	s, fx := open_lazy(t)
+	session.wait_until(s, fx, settled, "the first rows answered", WAIT)
+	b := session.get(s, "lrow_1")
+	session.click_at(s, {b.rect.min.x + (b.rect.max.x - b.rect.min.x) * 0.75, (b.rect.min.y + b.rect.max.y) * 0.5})
+	toasts := fx.host.toasts
+	session.key(s, .Return)
+	session.frames(s, 10)
+	testing.expect_value(t, fx.host.toasts, toasts)
+	testing.expect_value(t, plugins.state_of(&fx.host, "lazy"), plugins.Plugin_State.Running)
+	testing.expect_value(t, info_of(fx).active, 1)
+}
+
 @(test)
 a_slow_plugin_keeps_the_window_scrolling :: proc(t: ^testing.T) {
 	s, fx := open_lazy(t)

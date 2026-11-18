@@ -172,7 +172,7 @@ declare module "gt" {
 		key?: string | number;
 	}
 
-	/** A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content changes: the rows kept are dropped and asked again (an answer for an older version is dropped). */
+	/** A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content changes: the rows kept are dropped and asked again (an answer for an older version is dropped). It has an active row, the program's: Up, Down, Page Up, Page Down, Home and End move it while the list has the keyboard, and a press on a row makes it active. */
 	export interface Lazy_List_Node {
 		kind: "list";
 		/** Unique in the view: what the host knows the node by between two renders. */

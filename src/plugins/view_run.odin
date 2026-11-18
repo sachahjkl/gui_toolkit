@@ -65,16 +65,18 @@ view_event :: proc(r: ^Run, m: Message) {
 	if m.event == .onChange {
 		if _, had := rv.seen[m.key]; had { rv.seen[m.key] = m.serial } else { rv.seen[strings.clone(m.key)] = m.serial }
 	}
-	names := [View_Event]string{.onClick = "onClick", .onChange = "onChange", .onSubmit = "onSubmit"}
+	names := [View_Event]string{.onClick = "onClick", .onChange = "onChange", .onSubmit = "onSubmit", .onActivate = "onActivate"}
 	hk := handler_key(m.key, names[m.event])
 	f, ok := rv.handlers[hk]
 	// (a node of a lazy list's row: its handler came with its row, not with the render)
 	if !ok { for _, rl in rv.lists { if g, has := rl.handlers[hk]; has { f, ok = g, true; break } } }
+	// (the program sends a list's Enter whether or not it has onActivate: none, no render)
 	if !ok { return }
 	arg: js.Value
 	switch {
-	case m.event == .onClick: call_settled(r, f, {})
-	case m.is_flag:           call_settled(r, f, {js.new_bool(m.flag)})
+	case m.event == .onClick:    call_settled(r, f, {})
+	case m.event == .onActivate: call_settled(r, f, {js.new_number(m.number)})
+	case m.is_flag:              call_settled(r, f, {js.new_bool(m.flag)})
 	case:
 		arg = js.new_string(r.ctx, m.text)
 		call_settled(r, f, {arg})
