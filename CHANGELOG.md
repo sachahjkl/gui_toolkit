@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.312.1] - 2026-11-18 09:11
+
+### Added
+- **A runtime can take its cells from the program's allocator alone**: `Host_Config.reserve_bytes` below 0 reserves no block of addresses natively, so every chunk of cells comes from the allocator given to `engine_new`. A program whose values hold 32-bit pointers keeps every cell in its own low range again; with the block, the system placed the cells anywhere.
+
+### Changed
+- **What's new stacks on a narrow page**: under 34 em of page (the settings in a dialog), no timeline rail, and each kind of change is its pill on a line of its own over its changes, which take the card's whole width instead of about a third of it. A wider page keeps the rail and the pill beside its changes.
+
 ## [0.312.0] - 2026-11-18 08:28
 
 ### Added
@@ -4412,6 +4420,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.312.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.312.1
 [0.312.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.312.0
 [0.311.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.311.1
 [0.311.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.311.0
