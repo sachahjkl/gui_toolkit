@@ -33,6 +33,17 @@ close :: proc(f: ^Fx) {
 	font.destroy(&f.fonts)
 }
 
+// Waits, with no frame, until the ranking in flight posted its answer: each frame moves the test's clock, and frames
+// spun while the chore runs went past the dialog's wait (100 ms) on the Windows CI, which then showed it with no rows.
+@(private = "file")
+wait_answer :: proc(t: ^testing.T, f: ^Fx, r: ^Run) {
+	start := time.tick_now()
+	for ui.palette_busy(&r.pal) && !ui.posts_pending(&f.s) {
+		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the ranking never answered") }
+		time.sleep(time.Millisecond)
+	}
+}
+
 @(private = "file")
 frame :: proc(f: ^Fx, events: []platform.Event, r: ^Run) {
 	dt := f.dt > 0 ? f.dt : 1.0 / 60
@@ -1063,6 +1074,7 @@ the_palette_shows_with_its_rows :: proc(t: ^testing.T) {
 	f.dt = 0.001
 	start := time.tick_now()
 	for dialog_shown(&f) == 0 {
+		wait_answer(t, &f, &r)
 		frame(&f, nil, &r)
 		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the palette never showed") }
 	}
@@ -1084,6 +1096,7 @@ a_palette_of_a_known_size_shows_at_once :: proc(t: ^testing.T) {
 	r.open_now = true
 	start := time.tick_now()
 	for {
+		wait_answer(t, &f, &r)
 		frame(&f, nil, &r)
 		answered := r.pal.pending == 0 && r.pal.shown != nil
 		if answered {
@@ -1109,6 +1122,7 @@ a_late_frame_moves_the_fade_by_a_bounded_step :: proc(t: ^testing.T) {
 	r.open_now = true
 	start := time.tick_now()
 	for dialog_shown(&f) == 0 {
+		wait_answer(t, &f, &r)
 		frame(&f, nil, &r)
 		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the palette never showed") }
 	}

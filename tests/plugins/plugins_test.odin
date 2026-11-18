@@ -7,6 +7,7 @@ package plugins_test
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import "core:testing"
 import "core:time"
 import config "gt:config"
@@ -26,13 +27,23 @@ START_WAIT :: 60 * time.Second
 // Starts plugin `id` and waits, with its own bound, until it runs (or failed, which the test then says): what the test
 // waits for next is bounded by WAIT from a started plugin.
 wait_started :: proc(s: ^session.Session, fx: ^Fx, id: string, loc := #caller_location) {
-	Started :: struct { fx: ^Fx, id: string }
-	session.wait_until(s, Started{fx, id}, proc(s: ^session.Session, w: Started) -> bool {
+	end := time.tick_add(time.tick_now(), START_WAIT)
+	for {
 		// (asked at each look: nothing to start until the folder is read, nothing more once it runs)
-		_ = plugins.start(&w.fx.host, w.id)
-		st := plugins.state_of(&w.fx.host, w.id)
-		return st == .Running || st == .Failed
-	}, fmt.tprintf("%s started", id), START_WAIT, loc)
+		_ = plugins.start(&fx.host, id)
+		st := plugins.state_of(&fx.host, id)
+		if st == .Running || st == .Failed { return }
+		if time.tick_diff(time.tick_now(), end) <= 0 {
+			// (where the start stopped: the Windows CI once waited a minute here with no event from the process)
+			p := plugins.find(&fx.host, id)
+			if p == nil { testing.fail_now(s.t, fmt.tprintf("%s: no such plugin", id), loc) }
+			// (no turn in flight: the start's thread never wrote it, so the process or its pipes never came)
+			busy := sync.atomic_load(&p.busy_since) != 0
+			testing.fail_now(s.t, fmt.tprintf("%v passed waiting for %s to start: %v, alive %v, crashes %d, a turn in flight %v, last failure %q",
+				START_WAIT, id, st, p.alive, p.crashes, busy, p.failure), loc)
+		}
+		session.frame(s)
+	}
 }
 // The builds the window must still make while the plugin loops.
 MORE_BUILDS :: 30

@@ -2,6 +2,7 @@ package ui
 
 import "base:runtime"
 import "core:fmt"
+import "core:log"
 import "core:strings"
 import "core:math"
 import "core:mem"
@@ -67,7 +68,11 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 // is the caller's and stays selected until `destroy` forgets it, wherever it lives (rawptr: kept on purpose).
 use :: proc(s: ^State) { current = (^State)(rawptr(s)) }
 
-// Frees everything `init` and the builds allocated (the fonts and the theme are the caller's).
+// How long destroy waits for the family loads that still read the fonts (State.font_jobs).
+FONT_JOBS_BOUND :: 5 * time.Second
+
+// Frees everything `init` and the builds allocated (the fonts and the theme are the caller's). It waits for the
+// family loads still reading the fonts (at most FONT_JOBS_BOUND), so the caller may free them once it returns.
 destroy :: proc(s: ^State) {
 	// (the file browser first: its view is closed as the program's close, its `done` not called; then the other views
 	// end with VIEW_CANCELLED and their Views forget it)
@@ -78,6 +83,12 @@ destroy :: proc(s: ^State) {
 	draw.damage_memory_destroy(&s.damage)
 	task_box_shut(s)  // (first: a task that ends from now on posts nothing to this State)
 	post_destroy(s)   // (then: the threads still posting get false from now on)
+	// A family's load still reads `fonts` on a chore, and the owner frees them once this returns: wait for it, bounded
+	// (a system's font lookup ends; the bound only keeps a hung lookup from holding the window's close forever).
+	for start := time.tick_now(); sync.atomic_load(&s.font_jobs) > 0; {
+		if time.tick_since(start) > FONT_JOBS_BOUND { log.warnf("ui.destroy: %d font loads still running", sync.atomic_load(&s.font_jobs)); break }
+		time.sleep(time.Millisecond)
+	}
 	for _, b in s.boxes { free(b, runtime.heap_allocator()) }
 	for b in s.free_boxes { free(b, runtime.heap_allocator()) }
 	delete(s.boxes)
