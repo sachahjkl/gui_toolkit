@@ -13,9 +13,6 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
-- **classeur and papier on `install_follow`.** classeur keeps its own `desktop_follow` (and papier its hidden switches)
-  for the settings "In the application menu" and "Start with the session": once each points at the toolkit's commit
-  that has `prefs_page.install_follow`, they drop theirs and pass their announcer to `install_init`.
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).
