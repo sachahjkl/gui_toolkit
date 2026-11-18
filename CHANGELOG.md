@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.320.0] - 2026-11-18 18:47
+
+### Added
+- **`ui.caption_text()`**: a program that draws its own title bar gives the words in it the bold face of the theme's band,
+as `ui.title_bar` does.
+
 ## [0.319.0] - 2026-11-18 18:20
 
 ### Added
@@ -4517,6 +4523,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.320.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.320.0
 [0.319.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.319.0
 [0.318.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.2
 [0.318.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.1
