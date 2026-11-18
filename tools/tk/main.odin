@@ -23,6 +23,9 @@
 //   plugin_api [-check]                       from the declarations of src/plugin_api/api.odin: plugin-api/gt.d.ts, the snapshot
 //                                             of each level (plugin-api/level-<n>.d.ts), plugin-api/api.json (the site's explorer)
 //                                             and docs/plugin-api.md; -check writes nothing and fails on a file that differs (ci)
+//   skills [<out>] [-zip:file] [-check]       the agent skills of skills/ with the references their SKILL.md names, copied from
+//                                             the repository (skills.odin): <out> an opencode HTTP catalog (index.json, the
+//                                             toolkit's version), -zip their folders in a zip; -check writes nothing (ci)
 //   js_test262 [-filter:text] [-stride:k] [-jobs:n]
 //                                             test262 on gt:js: the suite and QuickJS-ng 0.17.0's test262.conf (toolbox.test262_fetch)
 //                                             -> build/test262/run, tools/js_judge built with a 64 MiB main stack, its results
@@ -40,14 +43,16 @@
 //   build [example] [-debug]                 an example (default fidget) -> build/<example>[.exe], optimized or with debug
 //                                             information; Windows: no console, its .rc; Linux: the native text backend first
 //   demos [-out:dir]                          Windows: the demo examples (demos.odin) built as build builds them, each alone in
-//                                             <dir>/<example>-windows-x64.zip (default build/demos): what the Release workflow attaches
+//                                             <dir>/<example>-windows-x64.zip (default build/demos), gt-runtime's zip and
+//                                             gt-skills.zip (skills.odin): what the Release workflow attaches
 //   ci                                        what the CI checks on this system: odin check of every package and tool (gt:js's also for
 //                                             freestanding_wasm32), the examples, the tests (tools/run_tests); every step runs, then the
 //                                             failures are said
 //   desktop_tests [x11|randr|wayland]       Linux: the backends against real servers on a virtual desktop nobody sees (Xvfb and
 //                                             openbox, Xorg's dummy driver with two monitors, headless sway): tests/linux_desktop
 //   site_build <site> <out>                   the site as published: site_changelog, the plugin API's explorer (<out>/plugins/api/ from
-//                                             plugin-api/api.json, which must be there and valid), site_meta, site_docs into <out>, its
+//                                             plugin-api/api.json, which must be there and valid), the skills' catalog (<out>/skills/),
+//                                             site_meta, site_docs into <out>, its
 //                                             pictures in WebP (cwebp), then its links (site.odin)
 //   site_changelog <site> <out>               a copy of <site> with the history from CHANGELOG.md and the classic pages (src/site)
 //   site_meta <site> <out>                    what each page says when shared, the feed, the sitemap, the files around the pages
@@ -99,6 +104,7 @@ COMMANDS := []toolbox.Command {
 	{name = "gen_lucide", usage = ": src/lucide/lucide.odin from lucide.ttf, a constant per icon", checked = true, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_gen_lucide(args)) }},
 	{name = "gen_js_unicode", usage = "[-force]: src/js/unicode/tables_generated.odin from the pinned Unicode Character Database (tools/js_unicode_gen)", checked = true, flags = {"force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_gen_js_unicode(args)) }},
 	{name = "plugin_api", usage = "[-check]: plugin-api/gt.d.ts, its levels, api.json and docs/plugin-api.md from src/plugin_api/api.odin (-check: compares only)", checked = true, flags = {"check"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_plugin_api(args)) }},
+	{name = "skills", usage = "[<out>] [-zip:file] [-check]: the agent skills of skills/ and their references, as an opencode catalog in <out>, a zip, or checked only", checked = true, flags = {"zip:", "check"}, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_skills(args)) }},
 	{name = "js_test262", usage = "[-filter:text] [-stride:k] [-jobs:n]: test262 on gt:js with the native judge (tools/js_judge) -> build/test262", checked = true, flags = {"filter:", "stride:", "jobs:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_js_test262(args)) }},
 	{name = "release", usage = "<patch|minor|major|x.y.z> [-summary:text] [-no-push]: publishes a version of the toolkit (release.odin)", checked = true, flags = {"summary:", "no-push"}, positionals = 1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_release(args)) }},
 	{name = "build", usage = "[example] [-debug]: an example (default fidget) -> build/<example>, optimized or with debug information", checked = true, flags = {"debug"}, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build(args)) }},

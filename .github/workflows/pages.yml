@@ -10,6 +10,7 @@ on:
       - "CHANGELOG.md"
       - "docs/**"
       - "plugin-api/**"
+      - "skills/**"
       - "tools/tk/**"
       - "src/site/**"
       - ".github/workflows/pages.yml"
@@ -37,7 +38,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
       # the site, made by tk (Odin, the same pinned archive as the Linux job of ci.yml): the changelog's pages, what each page says
-      # when shared, the Docs section, the pictures in WebP (webp: cwebp)
+      # when shared, the Docs section, the agent skills' catalog (skills/), the pictures in WebP (webp: cwebp)
       - name: Odin dev-2026-11a
         env:
           ODIN_TAG: dev-2026-11a

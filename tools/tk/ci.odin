@@ -204,6 +204,9 @@ run_ci :: proc(args: []string) -> string {
 	}
 	// (the plugin API's files as its declarations make them: a call changed without its .d.ts, or an old level broken)
 	if why := run_plugin_api({"-check"}); why != "" { append(&failed, fmt.tprintf("plugin_api: %s", why)) }
+	// (the skills as the release and the site will publish them: a reference renamed in docs/, or a level the skill no
+	// longer names, fails here and not in the Release workflow)
+	if why := run_skills({"-check"}); why != "" { append(&failed, fmt.tprintf("skills: %s", why)) }
 	// (the GitHub job's Documentation step: without it here, a name the docs lost passed locally and failed there)
 	if problems, why := doc_check(root, nil); why != "" {
 		append(&failed, fmt.tprintf("doc_check: %s", why))

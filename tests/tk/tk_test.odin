@@ -7,6 +7,7 @@ package tk_test
 import cli "gt:cli"
 
 import "core:encoding/endian"
+import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:slice"
@@ -15,6 +16,7 @@ import "core:testing"
 import tk "../../tools/tk"
 import "gt:testkit"
 import "gt:ascii"
+import archive "gt:archive"
 import toolbox "gt:toolbox"
 
 @(private = "file") PNG_SIGNATURE :: "\x89PNG\r\n\x1a\n"
@@ -403,6 +405,85 @@ the_guide_shows_the_js_demos :: proc(t: ^testing.T) {
 		source, _ = strings.replace_all(source, "\r\n", "\n", context.temp_allocator)
 		testing.expectf(t, strings.contains(guide, strings.trim_space(source)), "docs/gt-runtime.md shows %s as it is", demo)
 	}
+}
+
+// The agent skills (skills.odin): the catalog opencode reads names both skills at the toolkit's version, every file it
+// lists is there, the zip holds the same folders; a SKILL.md broken in a copy is refused by the check.
+@(private = "file")
+Skills_Index :: struct {
+	skills: []struct {
+		name, version: string,
+		files:         []string,
+	},
+}
+
+@(test)
+the_skills_catalog :: proc(t: ^testing.T) {
+	root := fmt.tprintf("%s/../..", #directory)
+	dir := testkit.temp_folder(t, "tk-skills")
+	out := fmt.tprintf("%s/out", dir)
+	testing.expect_value(t, tk.skills_catalog(root, out), "")
+	version, vwhy := tk.toolkit_version(root)
+	testing.expect_value(t, vwhy, "")
+
+	index: Skills_Index
+	testing.expect(t, json.unmarshal(read(fmt.tprintf("%s/index.json", out)), &index, allocator = context.temp_allocator) == nil, "index.json is JSON")
+	names := make([dynamic]string, context.temp_allocator)
+	for s in index.skills {
+		append(&names, s.name)
+		testing.expectf(t, s.version == version, "%s: version %q, the toolkit's is %q", s.name, s.version, version)
+		testing.expectf(t, len(s.files) > 1 && s.files[0] == "SKILL.md", "%s: SKILL.md and its references", s.name)
+		for f in s.files { testing.expectf(t, os.exists(fmt.tprintf("%s/%s/%s", out, s.name, f)), "%s/%s is written", s.name, f) }
+	}
+	testing.expect_value(t, strings.join(names[:], ",", context.temp_allocator), "gt-plugin,gui-toolkit")
+	testing.expect_value(t, string(read(fmt.tprintf("%s/gt-plugin/references/gt.d.ts", out))), string(read(fmt.tprintf("%s/plugin-api/gt.d.ts", root))))
+
+	zip := fmt.tprintf("%s/gt-skills.zip", dir)
+	testing.expect_value(t, tk.skills_zip(root, zip), "")
+	idx, zerr := archive.open(zip, context.temp_allocator)
+	testing.expect_value(t, zerr, archive.Error.None)
+	for s in index.skills {
+		for f in s.files { testing.expectf(t, archive.find(&idx, fmt.tprintf("%s/%s", s.name, f)) != nil, "the zip holds %s/%s", s.name, f) }
+	}
+	archive.index_destroy(&idx)
+
+	// a copy of skills/ with one SKILL.md broken at a time
+	copy_skills := proc(root, to: string) {
+		for name in ([?]string{"gt-plugin", "gui-toolkit"}) {
+			_ = os.make_directory_all(fmt.tprintf("%s/%s", to, name))
+			write(fmt.tprintf("%s/%s/SKILL.md", to, name), read(fmt.tprintf("%s/skills/%s/SKILL.md", root, name)))
+		}
+	}
+	plugin := string(read(fmt.tprintf("%s/skills/gt-plugin/SKILL.md", root)))
+	level, lwhy := tk.plugin_api_level(root)
+	testing.expect_value(t, lwhy, "")
+	named := fmt.tprintf("API level %d", level)
+	testing.expect(t, strings.contains(plugin, named), "gt-plugin names the API's level")
+	no_description, _ := strings.replace(plugin, "\ndescription:", "\nsummary:", 1, context.temp_allocator)
+	other_level, _ := strings.replace_all(plugin, named, fmt.tprintf("API level %d", level + 1), context.temp_allocator)
+	broken := [][2]string{
+		{fmt.tprintf("%s\nRead `references/no-such-page.md`.\n", plugin), "references/no-such-page.md has no source"},
+		{no_description, "no description"},
+		{other_level, "the API is at level"},
+	}
+	for b, i in broken {
+		skills := fmt.tprintf("%s/skills-%d", dir, i)
+		copy_skills(root, skills)
+		_, _, why := tk.skills_read(root, skills)
+		testing.expectf(t, why == "", "the copy as it is passes: %q", why)
+		write(fmt.tprintf("%s/gt-plugin/SKILL.md", skills), transmute([]byte)b[0])
+		_, _, why = tk.skills_read(root, skills)
+		testing.expectf(t, strings.contains(why, b[1]), "%q, not %q", why, b[1])
+	}
+	// a folder that SKILLS does not name is no skill published by accident
+	extra := fmt.tprintf("%s/skills-extra", dir)
+	copy_skills(root, extra)
+	_ = os.make_directory_all(fmt.tprintf("%s/draft", extra))
+	_, _, why := tk.skills_read(root, extra)
+	testing.expect(t, strings.contains(why, "not a skill of SKILLS"), why)
+
+	refs := tk.skill_references("See `references/a.md`, references/b.d.ts. Then references/a.md again; x/references/c.md is another's.")
+	testing.expect_value(t, strings.join(refs, ",", context.temp_allocator), "a.md,b.d.ts")
 }
 
 // A command that reads its own arguments (cdp, doc_check, site_check) gets them all, its "--name value" ones too.
