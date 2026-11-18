@@ -524,6 +524,33 @@ no_caption_keeps_the_title_bar :: proc(t: ^testing.T) {
 	}
 }
 
+@(private = "file")
+own_bar_build :: proc(s: ^session.Session) {
+	ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(BAR_W), height = ui.px(BAR_H)})
+	row := ui.build_box({}, "###tabs")
+	row.custom = proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) { _ = ui.caption_band(dc, b.rect, true) }
+}
+
+// A program that draws its own title bar (a row of tabs, as Wren's) takes the theme's band, its ink and its bold; a
+// theme with no band draws nothing and says so.
+@(test)
+a_programs_own_bar_takes_the_band :: proc(t: ^testing.T) {
+	s := session.start(t, {size = {BAR_W, WINDOW_H}, palette = old_head(), build = own_bar_build})
+	session.frames(s, 2)
+	img := session.capture(s)
+	check_at(t, img, 0, 1, 0x000080ff, "the band's left, navy")
+	check_at(t, img, f32(BAR_W - 1), 1, 0x1084d0ff, "its right, blue")
+	ui.use(s.state)
+	ink, has := ui.caption_band_ink().?
+	testing.expect(t, has && ink == draw.hex(WHITE), "the band's ink, white")
+	testing.expect(t, ui.caption_band_bold(), "its text bold")
+	p := ui.palette_of("Midnight")
+	plain := session.start(t, {size = {BAR_W, WINDOW_H}, palette = p, no_renderer = true, build = own_bar_build})
+	ui.use(plain.state)
+	testing.expect(t, ui.caption_band_ink() == nil, "no band: no ink")
+	testing.expect(t, !ui.caption_band_bold(), "no band: not bold")
+}
+
 ////////////////////////////////
 // Layer 10: a relief of rings in every widget
 
