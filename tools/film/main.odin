@@ -30,6 +30,7 @@ FILMS := [?]Film{
 	{"dialogs", "A view in a dialog, a confirmation, a prompt: they fade in and answer", dialogs_film},
 	{"values", "A setting's value kind, and the control it gets", values_film},
 	{"settings", "The settings page every program has: its pages, its search, a change at once", settings_film},
+	{"runtime", "A plugin written, then run by gt-runtime: a log explorer of 250 000 lines in a lazy list", nil},
 }
 
 // The film's size, and the windows' logical size: the showcase at 125 % stands on the stage (1600 x 900 on 1920 x 1080),
@@ -93,6 +94,8 @@ contains :: proc(list: []string, s: string) -> bool {
 // One film: the showcase and the title card opened, the recorder on the title card first, the script, the end.
 @(private = "file")
 shoot :: proc(f: Film, path: string) -> string {
+	// (gt-runtime's film is its own application, not the showcase)
+	if f.run == nil { return shoot_runtime(path) }
 	t := new(Take)
 	defer free(t)
 	t.full = f.name == "exploded"

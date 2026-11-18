@@ -26,6 +26,12 @@ declare module "gt" {
 	/** What a button's colour says. */
 	export type Button_Intent = "neutral" | "primary" | "success" | "warning" | "danger";
 
+	/** How a button sits: `raised` has a face of its own; `ghost` none until the pointer is over it (an act repeated in each row of a list); `link` reads as a link. */
+	export type Button_Look = "raised" | "ghost" | "link";
+
+	/** A button's size, all its measures together; `small` for an act in each row of a list, `large` for the one act of a view. */
+	export type Button_Size = "medium" | "small" | "large";
+
 	/** A step of the toolkit's spacing scale; `fill` takes the room left in a row. */
 	export type Space_Size = "small" | "medium" | "large" | "fill";
 
@@ -54,6 +60,9 @@ declare module "gt" {
 		key?: string | number;
 		label: string;
 		intent?: Button_Intent;
+		/** How it sits and its size. A program older than these fields shows a raised, medium button. */
+		look?: Button_Look;
+		size?: Button_Size;
 		disabled?: boolean;
 		/** Called when it is pressed. */
 		onClick?: () => void | Promise<void>;

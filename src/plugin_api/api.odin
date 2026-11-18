@@ -128,6 +128,22 @@ Button_Intent :: enum u8 {
 	danger,
 }
 
+// How a button sits: `raised` has a face of its own; `ghost` none until the pointer is over it (an act repeated in
+// each row of a list); `link` reads as a link.
+Button_Look :: enum u8 {
+	raised,
+	ghost,
+	link,
+}
+
+// A button's size, all its measures together; `small` for an act in each row of a list, `large` for the one act of a
+// view.
+Button_Size :: enum u8 {
+	medium,
+	small,
+	large,
+}
+
 // A step of the toolkit's spacing scale; `fill` takes the room left in a row.
 Space_Size :: enum u8 {
 	small,
@@ -152,6 +168,9 @@ Heading_Node :: struct {
 Button_Node :: struct {
 	label:    string,
 	intent:   Button_Intent `optional`,
+	// How it sits and its size. A program older than these fields shows a raised, medium button.
+	look:     Button_Look `optional`,
+	size:     Button_Size `optional`,
 	disabled: bool `optional`,
 	// Called when it is pressed.
 	onClick:  Handler `optional`,

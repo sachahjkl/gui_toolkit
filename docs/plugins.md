@@ -186,12 +186,15 @@ let items = [], version = 0;
 views.register("main", () => ({ kind: "list", key: "items", count: items.length, version, rowHeight: 2,
 	row: (i) => ({ kind: "row", children: [
 		{ kind: "text", text: items[i].name },
-		{ kind: "button", key: "open", label: "Open", onClick: () => open(items[i]) },
+		{ kind: "button", key: "open", label: "Open", look: "ghost", size: "small", onClick: () => open(items[i]) },
 	] }),
 }));
 ```
 
 - A key in a row is that row's: `key: "open"` in each row is fine. A list inside a row of a list is dropped.
+- A button repeated in each row reads better with `look: "ghost"` (no face until the pointer is over it) and
+  `size: "small"`. A button's `look` is `raised`, `ghost` or `link`; its `size` `small`, `medium` or `large`. A program
+  older than these two fields shows a raised, medium button.
 - When the plugin stops, the view keeps its last list and says why: Not responding (with Stop), Stopped (with Start),
   or the failure.
 

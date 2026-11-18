@@ -162,8 +162,27 @@ Button_Face :: enum u8 {
 }
 
 // How a button looks and is laid out, apart from its id, its words and its glyph (button).
+// A button's size: every measure of it (its line, its room, its words, its glyph) is of the font size, so a size is a
+// font size for the button alone.
+Button_Size :: enum u8 {
+	Medium,   // the toolkit's: a control's height (CONTROL_HEIGHT_EM)
+	Small,    // a row's act among many rows (an "Open" in each line of a list)
+	Large,    // the one act of a page (a welcome screen's start)
+}
+
+// The font size of a Button_Size, of the current one.
+button_size_scale :: proc(s: Button_Size) -> f32 {
+	switch s {
+	case .Small: return 0.85
+	case .Large: return 1.2
+	case .Medium:
+	}
+	return 1
+}
+
 Button_Options :: struct {
 	intent:    Intent,               // what the act means, and so its colour (its soft pair: a tinted fill, its words of the same hue)
+	size:      Button_Size,          // its size, all its measures together (Medium: the toolkit's)
 	face:      Maybe(Button_Face),   // how it sits (nil: Raised, a glyph alone a Ghost)
 	width:     Size,                 // over `next`'s: {} as wide as what is in it; fill() a share of the row; px(...) its least
 	height:    f32,                  // over `next`'s, in pixels, a least (0: `next`'s, else the toolkit's line)
@@ -203,6 +222,13 @@ Button_Options :: struct {
 //   if ui.button("save", "Save", lucide.SAVE, {intent = .Success, icon_font = ui.lucide_icons()}).clicked { save(app) }
 //   if ui.button("close", icon = ui.ICON_X, o = {tip = "Close"}).clicked { app.open = false }
 button :: proc(id: string, text := "", icon := "", o := Button_Options{}) -> Signal {
+	if o.size != .Medium {
+		// (one font size for the button alone: its line, its room and its corners are of it)
+		inner := o
+		inner.size = .Medium
+		if style({font_size = math.round(font_size() * button_size_scale(o.size))}) { return button(id, text, icon, inner) }
+		return {}
+	}
 	face := o.face.? or_else (text == "" && icon != "" ? Button_Face.Ghost : .Raised)
 	push_disabled(o.disabled)
 	defer pop_disabled()
