@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.315.0] - 2026-11-18 12:22
+
+### Changed
+- **A lone panel's strip waits for a rest at its top edge**: the strip (tab, moves, Maximise, Close) shows after the pointer rests `ui.VIEW_HOVER_DWELL_MS` (300 ms) in the top band with no button down, stays while the pointer is anywhere in the panel, and goes when the pointer leaves it, on Escape or after a click on the strip. A pointer that crosses the band to a control near the top (a fold button) moves nothing, and its click reaches that control. `VIEW_HOVER_KEEP_EM` is removed. A right click on `ui.view_fold_button` opens the view's menu, which now has Maximise or Restore for a panel; `ui.side_fold_button` takes a tooltip `hint`, and `View_Labels.menu_hint` gives the fold button's.
+
 ## [0.314.0] - 2026-11-18 11:54
 
 ### Added
@@ -4454,6 +4459,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.315.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.315.0
 [0.314.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.314.0
 [0.313.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.313.0
 [0.312.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.312.1
