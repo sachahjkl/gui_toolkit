@@ -559,7 +559,10 @@ print_tail :: proc(path: string) {
 	report := -1
 	for l, i in lines { if strings.has_prefix(l, "---- crash report") { report = i; break } }
 	if report < 0 {
-		for l in lines[max(len(lines) - FAILURE_LINES, 0):] { fmt.println(l) }
+		// (a failed wait's words: on Windows its test ends as "Test timed out", far below them)
+		first := max(len(lines) - FAILURE_LINES, 0)
+		for l in lines[:first] { if strings.contains(l, "[ERROR]") { fmt.println(l) } }
+		for l in lines[first:] { fmt.println(l) }
 		return
 	}
 	// a crash: what the runtime said before it (an assertion's or a bounds check's words come before its trap), the
