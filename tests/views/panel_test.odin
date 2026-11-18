@@ -638,6 +638,74 @@ a_sweep_around_the_threshold_does_not_flap :: proc(t: ^testing.T) {
 	testing.expectf(t, changes == 0, "a jitter around the threshold: %d changes", changes)
 }
 
+// opencode native's frame (side-panels.md, Two sides): a sidebar at the left (BAR_EM, its least BAR_MIN_EM) and an
+// aside of ASIDE_PX at the right (its least ASIDE_MIN_EM). As the window narrows, the aside narrows to its least, then
+// folds to its rail; then the sidebar narrows to its least and folds. At no width does a zone or the content pass the
+// window's edge.
+@(private = "file") BAR_EM :: 20
+@(private = "file") BAR_MIN_EM :: 14
+@(private = "file") ASIDE_PX :: 448
+@(private = "file") ASIDE_MIN_EM :: 18
+@(test)
+both_sides_fit_a_narrow_window :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r)
+	session.frames(s, 2)   // (the font size, before the aside's extent in ems)
+	if r.em <= 0 { testing.expect(t, false, "a build"); return }
+	ui.view_register(&r.views, "bar", plain_view, ui.View_Options{title = "Sessions", home = .Panel, home_place = {edge = .Left},
+		extent_em = BAR_EM, min_width_em = BAR_MIN_EM})
+	ui.view_register(&r.views, "aside", plain_view, ui.View_Options{title = "Aside", home = .Panel, home_place = {edge = .Right},
+		extent_em = ASIDE_PX / r.em, min_width_em = ASIDE_MIN_EM})
+	append(&r.want, "bar", "aside")
+	if wait_built(s, "view_zone_Right") == nil { return }
+	fold :: proc(s: ^session.Session, e: ui.View_Edge) -> bool {
+		text, _ := store.get(&(^Dock)(s.user).views.memory, "#")
+		sm, _ := ui.views_space_parse(text)
+		return sm.fold[e].folded
+	}
+	wide :: proc(b: ^ui.Box) -> f32 { return b != nil ? b.rect.max.x - b.rect.min.x : 0 }
+	// (each width in ems, what it must show: the aside open and narrowed, the aside folded, the sidebar narrowed, both
+	// folded)
+	Step :: struct { em: f32, aside_open, aside_narrow, bar_open, bar_narrow: bool }
+	steps := []Step{
+		{60, true, false, true, false},
+		{46, true, true, true, false},
+		{40, false, false, true, false},
+		{22, false, false, true, true},
+		{16, false, false, false, false},
+	}
+	for st in steps {
+		size := window_em(&r, st.em)
+		session.resize(s, size)
+		session.frames(s, 4)
+		w := f32(size.x)
+		for name in ([]string{"view_zone_Left", "views_content", "view_zone_Right"}) {
+			b := built(s, name)
+			if b == nil { testing.expectf(t, false, "%v em: %s built", st.em, name); continue }
+			testing.expectf(t, b.rect.min.x >= -0.5 && b.rect.max.x <= w + 0.5, "%v em: %s inside the window (%v): %v", st.em, name, w, b.rect)
+		}
+		left, right := wide(built(s, "view_zone_Left")), wide(built(s, "view_zone_Right"))
+		testing.expectf(t, fold(s, .Right) == !st.aside_open, "%v em: the aside open %v", st.em, st.aside_open)
+		testing.expectf(t, fold(s, .Left) == !st.bar_open, "%v em: the sidebar open %v", st.em, st.bar_open)
+		if st.aside_open {
+			full := abs(right - ASIDE_PX) <= 1.5
+			testing.expectf(t, full == !st.aside_narrow, "%v em: the aside at its extent %v: %v", st.em, !st.aside_narrow, right)
+			testing.expectf(t, right >= ASIDE_MIN_EM * r.em - 1.5, "%v em: the aside no narrower than its least: %v", st.em, right)
+		}
+		if st.bar_open {
+			full := abs(left - BAR_EM * r.em) <= 1.5
+			testing.expectf(t, full == !st.bar_narrow, "%v em: the sidebar at its extent %v: %v", st.em, !st.bar_narrow, left)
+			testing.expectf(t, left >= BAR_MIN_EM * r.em - 1.5, "%v em: the sidebar no narrower than its least: %v", st.em, left)
+		}
+	}
+	// (wide again: both at their extents, which the fit did not change)
+	session.resize(s, WINDOW)
+	session.frames(s, 4)
+	left, right := wide(built(s, "view_zone_Left")), wide(built(s, "view_zone_Right"))
+	testing.expectf(t, abs(left - BAR_EM * r.em) <= 1.5 && abs(right - ASIDE_PX) <= 1.5, "wide again: at their extents: %v, %v", left, right)
+}
+
 // A restart keeps a manual choice when the window is on the same side of the threshold: a Minimise while wide, restarted
 // wide, is still folded; restarted narrow (a crossing) it is the automatic state, and wide again it opens.
 @(test)

@@ -124,7 +124,7 @@ again.
 | `state_carry(from, from_root, to, to_root)`, `style_follow(dst, src)` | what follows a view to another place; a window's settings from the main one |
 | inside a build: `view_end(v, code)`, `view_title(v, title)`, `view_icon(v, icon, icon_font)`, `view_room(v)`, `view_header_tools(v)`, `view_drag_handle(v, box)`, `view_fold_button(v) -> Signal` | `view_icon`: this opening's icon (one id, an icon per opening); `view_fold_button`: its side zone's Minimise or Restore, where the view places it (section Panels) |
 | inside a build: `view_not_ready(v)`, `view_refit(v)` | what is in it waits for an answer: a dialog or an internal window stays unseen, 100 ms at most; what is in it came late or changed size: an internal window the person did not resize takes its height again |
-| inside a build: `view_size(v, width_em, height_em)` | this opening's dialog size (an axis of 0: the kind's): a dialog that hugs what it shows; it wins over the remembered size, a resize by the user wins over it; past `DIALOG_MAX_WIDTH_EM` too |
+| inside a build: `view_size(v, width_em, height_em, min_width_em = 0)` | this opening's dialog size (an axis of 0: the kind's): a dialog that hugs what it shows; it wins over the remembered size, a resize by the user wins over it; past `DIALOG_MAX_WIDTH_EM` too. `min_width_em`: this opening's least width (0: the kind's) |
 | inside a build: `view_occluders(v, allocator) -> []Rect`; `views_floating_rects(vs, s, allocator) -> []Rect` | the floating views (internal windows, dialogs) over this view, or over the content of window `s`, bottom to top, window pixels: a native child window (a web view) steps aside or clips |
 | `state_families(s)` | the bold and italic faces' families of `s` (a view's window: its owner's, one map): what `Rich_Context.faces` takes |
 | `pointer_only_build(s)`, `view_window_due(s)` | a backend's: the owner's last frame came only from the pointer moving (its views' windows skip it), a view's window has a frame of its own to make |
@@ -132,7 +132,7 @@ again.
 
 `View_Options`: `title`, `icon`, `icon_font`, `home` (`.Dialog` or `.Panel`), `home_place`, `first` (the presentation
 of the first opening), `float_edge` (an internal window of no rect of its own opens against this edge of the content,
-`MODAL_MARGIN_EM` in: `.Right` at the top right, a tool window; nil: centred), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em`, `min_height_em`,
+`MODAL_MARGIN_EM` in: `.Right` at the top right, a tool window; nil: centred), `width_em`, `height_em` (0: as tall as what is in it), `min_width_em` (a dialog's least; a side panel's least before its zone folds), `min_height_em`,
 `resizable` (grips; the size is remembered), `top` (the dialog's top at this fraction of the window), `no_header`,
 `backdrop` (drawn first, under the header and the body), `extent_em`, `extent_frac`, `tabs_always`, `new_tab`,
 `new_tab_label`, `under_children` and `moved` (the later presentations).
@@ -163,6 +163,9 @@ browser, the key recorder. A box wholly transparent (`transparency` 1) is not dr
 - `view_size(v, width_em, height_em)` sizes this opening's dialog (an image viewer hugs its picture): it wins over the
   size the user gave the id's dialog, a resize of this opening wins over it and is remembered, and a width past
   `DIALOG_MAX_WIDTH_EM` holds (the window's edge still does).
+- `view_size(v, width_em, height_em, min_width_em)` gives this opening a least width too (an image viewer's bar of
+  buttons under its picture). The dialog is never narrower: not its size asked, not its fit to what is in it, not
+  the user's grips. The window's edge still holds it. A change of the least alone keeps the user's size.
 - It stays within the window however small, and never past its bottom.
 - `resizable`: the user resizes it by its edges and corners; it stays centred. A double click on an edge goes back to
   `width_em` × `height_em`. The size is remembered when the grip is let go. Its bottom right corner is square, with the
@@ -404,6 +407,11 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
     again. A Minimise, a Restore or a pull holds only until the space's width next crosses that threshold, either way:
     then the zone takes the automatic state again. The space's memory keeps both (`left.min=1 left.narrow=1`), so a
     restart in a window of the same size keeps the person's choice.
+  - **Both side zones fit together.** With a zone at the left and one at the right, the right zone gives way first:
+    it narrows down to its least, then folds to its rail; then the left zone does the same. A zone's least is the
+    largest `min_width_em` of its views; with none, it does not narrow, it folds at its extent. No zone passes the
+    space's edge. A narrowed zone's handle moves from the width shown, and the width let go is its new extent.
+    ([side-panels.md](../src/md/features/side-panels.md#two-sides))
   - **Close** closes every view of the stack (each ends `VIEW_CANCELLED`). One tab closes by Ctrl+W in it, its menu or
     the palette.
   - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.
