@@ -415,6 +415,9 @@ THEMES := [?]Theme_Def{
 			scroll_bar = {form = .Keys},
 			// (Windows 98's caption: navy to blue, grey to light grey behind; Windows 95's was the first stop alone)
 			caption = {active = {0x000080ff, 0x1084d0ff}, inactive = {0x808080ff, 0xb5b5b5ff}, ink = 0xffffffff, bold = true, buttons = .Keys},
+			// (a trackbar's thumb; 1995 had no switch: a setting was a check box)
+			knob = .Keys,
+			toggle = .Check,
 		}},
 	// silver on near black; in the light version graphite on white (silver would vanish there)
 	{"Silver",

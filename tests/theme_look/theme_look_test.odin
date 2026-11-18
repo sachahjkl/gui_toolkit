@@ -522,6 +522,132 @@ a_lamp_and_a_tile_take_the_rings :: proc(t: ^testing.T) {
 	testing.expectf(t, !session.near(hl, mid, 3), "the machined bead keeps its highlight: %v, %v", hl, mid)
 }
 
+////////////////////////////////
+// Layer 11: a slider's knob and a switch's form
+
+@(private = "file")
+Controls :: struct { v, lo, hi: f32, on, off: bool }
+
+@(private = "file")
+controls_build :: proc(s: ^session.Session) {
+	c := (^Controls)(s.user)
+	ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(240), height = ui.px(30)})
+	ui.slider("s", &c.v, 0, 1)
+	ui.next({fixed_x = 20, fixed_y = 70, width = ui.px(240), height = ui.px(30)})
+	ui.range_slider("r", &c.lo, &c.hi, 0, 1)
+	ui.next({fixed_x = 20, fixed_y = 120, width = ui.px(200), height = ui.px(30)})
+	ui.toggle("on", "On", &c.on)
+	ui.next({fixed_x = 20, fixed_y = 170, width = ui.px(200), height = ui.px(30)})
+	ui.toggle("off", "Off", &c.off)
+}
+
+@(private = "file")
+controls_start :: proc(t: ^testing.T, p: ui.Palette, c: ^Controls) -> (s: ^session.Session, img: session.Image) {
+	c^ = {v = 0.5, lo = 0.25, hi = 0.75, on = true}
+	s = session.start(t, {size = {300, 220}, palette = p, user = c, build = controls_build})
+	session.frames(s, 2)
+	ui.use(s.state)
+	return s, session.capture(s)
+}
+
+// A slider's track ends and its line, as slider_geom lays them out: a pad of 0.75 em at each end, the value's room of
+// 4.6 em at the right.
+@(private = "file")
+slider_ends :: proc(b: ^ui.Box) -> (x0, x1, cy: f32) {
+	return b.rect.min.x + EM * 0.75, b.rect.max.x - EM * 4.6 - EM * 0.75, (b.rect.min.y + b.rect.max.y) * 0.5
+}
+
+// Old Head's knob: a key of its rings (white along its top and left, black along its bottom and right, the grey face),
+// on a well of its rings with no lit run; the range slider's knobs too. The standard form, on the same theme, keeps its
+// round knob (the key's corner is not white) and its lit run.
+@(test)
+old_heads_knob_is_a_key :: proc(t: ^testing.T) {
+	for form in ([]ui.Knob_Form{.Keys, .Standard}) {
+		p := old_head()
+		p.look.knob = form
+		c: Controls
+		s, img := controls_start(t, p, &c)
+		check :: check_at
+		x0, x1, cy := slider_ends(session.get(s, "s"))
+		key := ui.slider_key_rect(math.lerp(x0, x1, f32(0.5)), cy, EM)
+		run := x0 + 10   // (left of the knob: the lit run of the standard form)
+		if form == .Standard {
+			k := session.pixel(img, int(key.min.x), int(key.min.y))
+			testing.expectf(t, !near_hex(k, WHITE), "the standard's knob is round: %v at the key's corner", k)
+			r := session.pixel(img, int(run), int(cy))
+			testing.expectf(t, !near_hex(r, 0xdfdfdfff), "the standard lights its run: %v", r)
+			continue
+		}
+		check(t, img, key.min.x, key.min.y, 0xffffffff, "the key's top left, white")
+		check(t, img, key.min.x + 1, key.min.y + 1, 0xdfdfdfff, "inside it, the light")
+		check(t, img, key.max.x - 1, key.max.y - 1, 0x000000ff, "its bottom right, black")
+		check(t, img, math.floor((key.min.x + key.max.x) * 0.5), math.floor((key.min.y + key.max.y) * 0.5), 0xc0c0c0ff, "its face, the grey: no dot")
+		testing.expectf(t, key.max.y - key.min.y > key.max.x - key.min.x, "a key taller than wide: %v", key)
+		track := ui.slider_key_track(x0, x1, cy)
+		check(t, img, run, track.min.y, 0x808080ff, "the well's top, the shadow")
+		check(t, img, run, track.min.y + 1, 0x000000ff, "under it, black")
+		check(t, img, run, track.max.y - 2, 0xdfdfdfff, "over its bottom, the light: no lit run")
+		check(t, img, run, track.max.y - 1, 0xffffffff, "its bottom, white")
+		r0, r1, rcy := slider_ends(session.get(s, "r"))
+		for at in ([]f32{0.25, 0.75}) {
+			lo := ui.slider_key_rect(math.lerp(r0, r1, at), rcy, EM)
+			check(t, img, lo.min.x, lo.min.y, 0xffffffff, "a range knob's top left, white")
+			check(t, img, lo.max.x - 1, lo.max.y - 1, 0x000000ff, "its bottom right, black")
+		}
+	}
+}
+
+// The square a switch drawn as a check box takes: the switch's height, centred in its box, on whole pixels (as
+// toggle_draw places it).
+@(private = "file")
+switch_square :: proc(b: ^ui.Box) -> ui.Rect {
+	h := math.round(b.rect.max.y - b.rect.min.y)
+	c := (b.rect.min + b.rect.max) * 0.5
+	at := ui.Vec2{math.round(c.x - h * 0.5), math.round(c.y - h * 0.5)}
+	return {at, at + ui.Vec2{h, h}}
+}
+
+// Old Head's switch is its check box: a white well of its sunken rings; on, a navy key of its raised rings in it. Left
+// of the square, in the switch's box, the page shows. The standard form, on the same theme, fills its channel there.
+@(test)
+old_heads_switch_is_a_check_box :: proc(t: ^testing.T) {
+	for form in ([]ui.Toggle_Form{.Check, .Standard}) {
+		p := old_head()
+		p.look.toggle = form
+		c: Controls
+		s, img := controls_start(t, p, &c)
+		check :: check_at
+		on := session.get(s, "track", session.get(s, "on"))
+		off := session.get(s, "track", session.get(s, "off"))
+		side := on.rect.min.x + 3
+		mid := math.floor((on.rect.min.y + on.rect.max.y) * 0.5)
+		if form == .Standard {
+			k := session.pixel(img, int(side), int(mid))
+			testing.expectf(t, !near_hex(k, 0xc0c0c0ff), "the standard's channel, lit, reaches its box's side: %v", k)
+			continue
+		}
+		check(t, img, side, mid, 0xc0c0c0ff, "beside the square, the page")
+		sq := switch_square(on)
+		check(t, img, sq.min.x, sq.min.y, 0x808080ff, "on: the well's top left, the shadow")
+		check(t, img, sq.min.x + 1, sq.min.y + 1, 0xffffffff, "the key's top left, white")
+		check(t, img, sq.max.x - 2, sq.max.y - 2, 0x000000ff, "its bottom right, black")
+		check(t, img, sq.max.x - 1, sq.max.y - 1, 0xffffffff, "the well's bottom right, white")
+		sq = switch_square(off)
+		check(t, img, sq.min.x, sq.min.y, 0x808080ff, "off: the well's top left, the shadow")
+		check(t, img, sq.min.x + 1, sq.min.y + 1, 0x000000ff, "inside it, black")
+		check(t, img, math.floor((sq.min.x + sq.max.x) * 0.5), math.floor((sq.min.y + sq.max.y) * 0.5), 0xffffffff, "its inside, the white of a field")
+	}
+}
+
+// A theme that says nothing keeps both forms of before.
+@(test)
+no_look_keeps_the_knob_and_the_switch :: proc(t: ^testing.T) {
+	look: ui.Theme_Look
+	testing.expect_value(t, look.knob, ui.Knob_Form.Standard)
+	testing.expect_value(t, look.toggle, ui.Toggle_Form.Standard)
+	testing.expect_value(t, ui.palette_of("Midnight").look.knob, ui.Knob_Form.Standard)
+}
+
 // Old Head's selected row: navy, its text white.
 @(test)
 old_heads_selected_row_is_white_on_navy :: proc(t: ^testing.T) {

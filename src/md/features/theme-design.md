@@ -200,7 +200,8 @@ Old Head is one `THEMES` entry and nothing else: its colours (one grey `#c0c0c0`
 - `focus = {style = .Dotted, inset = 4, color = black}`: Windows' focus rectangle;
 - every selection navy with a white ink;
 - `still`;
-- a bar of keys (layer 8) and a caption band with square keys (layer 9).
+- a bar of keys (layer 8) and a caption band with square keys (layer 9);
+- a slider's knob a key on a well, a switch a check box (layer 11).
 
 Its finish is nil: its relief wins over whatever finish the program asks. `Finish.Bevel` and its `bevel()` tests, the
 experiment's, do not exist. Its film (`tools/film/oldhead.odin`, `tk film oldhead`) shows the showcase in it.
@@ -283,6 +284,38 @@ The halos already followed `no_glow` (`glow_of`); the node's halo did not ask it
 
 Refused: a new ring set per widget (`lamp`, `knob`, …): Windows drew them all with the four rings it had; a new set is
 wanted only when a theme needs a look the sets cannot say.
+
+## Layer 11: a slider's knob and a switch's form (built)
+
+Layer 10 gave a slider's knob and a switch the relief's colours, not their form: under Old Head the knob was still a
+disc on a lit run and the switch a rounded channel, where 1995 had a rectangular thumb and a check box. Two fields of
+`Theme_Look`, each with its zero value the form of before:
+
+- `knob: Knob_Form`. `Standard`: the round knob of [the slider](../../ui/widgets_ext.odin) as it was. `Keys`: a key of
+  the relief (`machined_bevel`, radius 0), 0.6 em wide and 1.1 em tall on whole pixels (`slider_key_rect`), on a well
+  of the relief 4 logical pixels tall (`slider_key_track`) with no lit run: the value is the key's place. The key does
+  not grow under the pointer nor sink while it is dragged (Windows' thumb did neither; the scroll bar's `Keys` thumb is
+  the same). The range slider draws its two knobs by the same code. The value's text, the hit area and the thumbs'
+  focus boxes stay.
+- `toggle: Toggle_Form` (`switch` is a keyword). `Standard`: the rounded track as it was. `Check`: the check box of
+  the same theme, drawn by the check box's own code (`mark_face`), a square of the switch's height centred in the
+  switch's box, as a `Keys` caption button is a key centred in the system's box. The switch's box, its row, its hit area
+  and its role for a screen reader stay: the form changes what is drawn, not what it is.
+
+Old Head: `knob = .Keys`, `toggle = .Check`.
+
+Each `Standard` returns into the code of before untouched: a new branch at the top of `slider_draw` and `toggle_draw`.
+
+Refused:
+
+- **The form decided by the relief** (a relief of rings draws keys and checks): the same reason as the scroll bar's;
+  a theme of rings with today's switch is a look too.
+- **One struct `controls` for both**: two fields of one word each say as much, and a struct adds a level to every
+  literal for nothing it groups.
+- **A `Check` switch laid out as a check box** (the mark before the label, the row as wide as a check box's): a
+  program lays out its settings around the switch's box; moving it under one theme moves the program's rows.
+- **The knob's width and height as theme data**: one theme needs them, and the sizes are Windows', not a choice a
+  second theme has made yet.
 
 ## Left for later
 
