@@ -323,6 +323,19 @@ it does not take. Only `tool_main` turns it into the process's exit code: 0, 1 a
 `<tool> <command>: why`. `ended(ok) -> Exit` is `.Done` or `.Failed` for a step that said why itself.
 `command_find(commands, name)` and `args_check(command, args)` are the dispatcher's steps.
 
+`generated_files(root, files, check, command = "") -> string` writes each `[path from root, text]` of a tool's files
+made from a declaration (a program's `app.d.ts` and its reference page, `plugin_api.app_module_dts`), only those that
+changed; with `check` it writes nothing and says which differ, `command` named as the way to make them again. `tk
+plugin_api` uses it for the toolkit's own `gt.d.ts`.
+
+```odin
+{name = "app_api", usage = "[-check]: app.d.ts and app-api.md from the module's declaration", run = proc(args: []string) -> cli.Exit {
+	m := my_app_module.declaration()
+	files := [][2]string{{"plugin-api/app.d.ts", plugin_api.app_module_dts(&m)}, {"app-api.md", plugin_api.app_module_markdown(&m)}}
+	return toolbox.done(toolbox.generated_files(".", files, toolbox.has_flag(args, "check"), "mytool app_api"))
+}},
+```
+
 The flags of a line: `has_flag(args, name)`, `flag_value(args, name, default)` (the last one given wins),
 `int_flag(args, name, default)` and `f64_flag(args, name, default)` (why: not a number), `plain_args(args)` (the arguments
 that are not flags; a lone `-` is plain).

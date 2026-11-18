@@ -10,6 +10,10 @@ Every call and every node of a view is in the [API explorer](https://gt.sacha.ho
 
 A coding agent writes plugins with the skill `gt-plugin`: [skills.md](skills.md) says how to install it.
 
+gt-runtime gives only the module `"gt"`. A program may give its plugins a module of its own, `"app"` (opencode
+native's sessions, say), which its own docs list; gt-runtime has none, so a plugin that imports `"app"` fails at its
+start there, and one whose manifest says `"app": n` is refused.
+
 ## Get gt-runtime
 
 Download `gt-runtime-windows-x64.zip` from the [latest release](https://github.com/sachahjkl/gui_toolkit/releases/latest)

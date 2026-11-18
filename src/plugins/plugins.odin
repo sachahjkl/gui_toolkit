@@ -16,6 +16,7 @@ import "core:strings"
 import "core:sync"
 import "core:time"
 import config "../config"
+import plugin_api "../plugin_api"
 import "../tasks"
 import "../ui"
 
@@ -74,7 +75,18 @@ Host_Options :: struct {
 	bound_ms:     int,      // 0: NOT_RESPONDING_MS
 	memory_limit: i64,      // 0: MEMORY_LIMIT
 	sandbox:      Sandbox_Mode,   // whether a plugin's process is isolated by the system (sandbox_linux.odin)
+	// the program's own module, `import { ... } from "app"` (app.odin; nil: none). The program keeps it, unchanged,
+	// while the host is open
+	app:          ^App_Module,
 }
+
+// A program's own module and its parts (plugin_api's: the same reflection as the module "gt"; plugins.md, "As built:
+// a program's own module").
+App_Module :: plugin_api.App_Module
+App_Call :: plugin_api.App_Call
+App_Event :: plugin_api.App_Event
+App_Permission :: plugin_api.App_Permission
+App_Token :: plugin_api.App_Token
 
 // How a plugin's process is isolated by the system (plugins.md, "As built: the sandbox").
 Sandbox_Mode :: enum u8 {
@@ -112,6 +124,9 @@ Host :: struct {
 	// what a test reads: the toasts said (count), and the last one's words (owned)
 	toasts:      int,
 	last_toast:  string,
+	// the program's module's calls that wait for the program's answer, by their token (app.odin)
+	app_waiting: map[App_Token]App_Waiting,
+	app_tokens:  App_Token,   // the last token given
 }
 
 // What the chores and the plugins' threads reach the host by: `open` false once host_close ran (under `lock`, which a
@@ -150,6 +165,11 @@ host_open :: proc(h: ^Host, s: ^ui.State, o: Host_Options) {
 	h.o.single, h.o.data_dir = strings.clone(o.single), strings.clone(o.data_dir)
 	if h.o.bound_ms <= 0 { h.o.bound_ms = NOT_RESPONDING_MS }
 	if h.o.memory_limit <= 0 { h.o.memory_limit = MEMORY_LIMIT }
+	if h.o.app != nil {
+		// (a declaration that is wrong is the program's bug, found at its first run, not by a plugin's author)
+		why := plugin_api.app_module_check(h.o.app)
+		fmt.assertf(why == "", "plugins: Host_Options.app: %s", why)
+	}
 	h.window_announcer = {mode = .Window, state = s}
 	h.link = new(Host_Link)
 	h.link^ = {open = true, state = s, host = h, refs = 1}
@@ -197,6 +217,7 @@ host_close :: proc(h: ^Host) {
 	delete(h.o.program); delete(h.o.program_id); delete(h.o.folder); delete(h.o.config_dir); delete(h.o.state_dir); delete(h.o.single); delete(h.o.data_dir)
 	delete(h.folder); delete(h.toml_path); delete(h.state_dir)
 	delete(h.last_toast)
+	app_waiting_free(h)
 	h^ = {}
 }
 

@@ -21,6 +21,8 @@ Read_Job :: struct {
 	link:      ^Host_Link,   // (counted)
 	serial:    u64,
 	program, program_id, folder_opt, config_opt, state_opt, data_opt, single: string,
+	// the program's module (its declaration: the program's, unchanged while the host is open, so read on the chore)
+	app:       ^App_Module,
 	// made by the chore
 	folder, toml_path, state_dir: string,
 	data_dir:  string,   // <data>/<program>/plugin-data: each plugin's own folder is in it
@@ -37,7 +39,7 @@ folder_read :: proc(h: ^Host) {
 		link = h.link, serial = h.read_serial,
 		program = strings.clone(h.o.program), program_id = strings.clone(h.o.program_id),
 		folder_opt = strings.clone(h.o.folder), config_opt = strings.clone(h.o.config_dir), state_opt = strings.clone(h.o.state_dir),
-		single = strings.clone(h.o.single), data_opt = strings.clone(h.o.data_dir),
+		single = strings.clone(h.o.single), data_opt = strings.clone(h.o.data_dir), app = h.o.app,
 	}
 	sync.atomic_add(&h.link.refs, 1)
 	ui.task(h.state, read_work, read_done, j, read_lost)
@@ -88,7 +90,7 @@ read_work :: proc(data: rawptr) {
 		if !ok {
 			p.refused = strings.clone("its folder has no plugin.json")
 		} else {
-			p.manifest, p.refused = manifest_parse(string(text), j.program_id)
+			p.manifest, p.refused = manifest_parse(string(text), j.program_id, j.app)
 			if p.refused == "" && p.manifest.id != e.name {
 				p.refused = fmt.aprintf("its id is \"%s\" and its folder \"%s\": they must be the same", p.manifest.id, e.name)
 			}
@@ -144,7 +146,7 @@ single_read :: proc(j: ^Read_Job, t: ^Toml_State) {
 		if !ok {
 			p.refused = fmt.aprintf("%s has no plugin.json", path)
 		} else {
-			p.manifest, p.refused = manifest_parse(string(text), j.program_id)
+			p.manifest, p.refused = manifest_parse(string(text), j.program_id, j.app)
 		}
 	} else if fsx.path_kind(path) == .File && (strings.has_suffix(path, ".js") || strings.has_suffix(path, ".mjs")) {
 		dir, file := dir_of(path), base_of(path)

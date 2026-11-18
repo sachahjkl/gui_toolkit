@@ -746,3 +746,58 @@ Refused:
 - **Icons as SVG or images from the plugin**: a second set beside Lucide's, of any size and colour, in a window that
   draws one set.
 
+## As built: a program's own module (slice 6, the mechanism)
+
+Written on 2026-11-18. The toolkit gives the mechanism; opencode native writes its module (sessions, messages, the
+composer) in its own repository.
+
+- **A declaration, not code.** A program gives `Host_Options.app`, a `plugins.App_Module` (`plugin_api.App_Module`):
+  its name (the program's, for its docs), its own level, its calls, its events and its permission words. A call is a
+  name (`"notes.list"`: a group and a call), an argument struct, a result struct (typeids), a permission word or none,
+  a line of doc, and `run`. An event is a name (`"note.added"`), a payload struct and a permission. `host_open` checks
+  it (`plugin_api.app_module_check`): names, types, words; a bad declaration is the program's bug and asserts.
+- **The same reflection as `gt`.** The argument is filled from JavaScript by the bridge's `fill`, the values cross the
+  pipe by the wire's value codec, a result becomes a plain object by `value_to_js`: one set of procedures for both
+  modules, which grew structs and slices (an array of `{id, title}`). The supported types are strings, booleans,
+  numbers, enums (as their names), structs and slices of them; a function, a pointer, a map or a union is refused by
+  the check.
+- **Typeids cross the pipe.** The plugin's process is the program's own executable (`--gt-plugin-host`), so a typeid
+  names the same type on both sides. The start frame carries each call's and event's name and typeids, the child
+  checks each one (`type_info_of(id).id == id`) and builds the module from them; `run` stays in the program. Refused:
+  a schema of the types sent as data (a second description of what reflection already knows), and registering the
+  module in an `@(init)` (the child's `@(init)` runs before the program's main makes its module).
+- **One argument object.** `notes.add({ title })`, not `gt`'s positional arguments: a program's calls grow by fields,
+  and an object keeps an older plugin's call valid. A call whose struct has no required field may be called with none.
+- **Where a call runs.** The program's objects live on its interface thread, so a call runs there, in the request's
+  event (`event_run`, at the start of a build), as the broker's requests do: the child sends a Request (`App_Call`, the
+  call's name and its encoded argument), the program checks the grant, decodes, calls `run`. `run` must be quick: it
+  fills the result and returns, or returns `pending` and keeps its token; the program answers later with
+  `plugins.app_answer(host, token, &result)` or `plugins.app_fail(host, token, why)`, from its own task's answer. A
+  token whose plugin's process ended answers nothing (the answer checks the process's serial, as the broker's).
+  Refused: running `run` on a chore (the program's objects are not shared with the chores).
+- **Every call returns a promise**, as every call that waits in `gt`. A failure rejects with an `Error` of the
+  program's words; a missing grant with `PermissionError`.
+- **Events.** `plugins.app_emit(host, "note.added", &payload)` sends the payload to each running plugin that listens
+  and may hear it (its grant). A plugin says it listens when `app.on(name, f)` first registers a handler for that name
+  (an `App_Listen` event to the program, kept per process): a plugin that does not listen is not woken, and a plugin
+  that does not run is not started (an event is not a person's act). `app_emit` returns how many it reached.
+- **Permissions.** A word `app:<name>` is declared by the module with its words for the grant dialog
+  (`App_Permission`); a manifest asking an undeclared one is refused. The program checks the grant at each call and
+  event, as the broker does; the child does not (its check would be the plugin's own).
+- **Levels and absence.** The manifest's optional `"app": n` is the level of the program's module the plugin needs:
+  a program without a module, or with a lower level, refuses the plugin with a sentence. A plugin that imports `"app"`
+  without saying so, in a program that gives none, fails at its start: "cannot import "app": this program gives no
+  module "app"". gt-runtime gives none.
+- **Declarations for an author.** `plugin_api.app_module_dts(module)` and `app_module_markdown(module)` write
+  `app.d.ts` and a reference page from the declaration; a field's doc is its tag's `doc:"…"`. The helpers they share
+  with `tk plugin_api` (a TypeScript doc comment, a Markdown cell, the TypeScript of a primitive) are in
+  `plugin_api/dts`, a package without the engine, which tools import. A program's tool writes the files with
+  `toolbox.generated_files(root, files, check)`, the same check as `tk plugin_api`'s.
+
+Refused:
+
+- **The program's objects as JavaScript objects** (a session with methods): a live object crosses no process; a call
+  and a plain result do.
+- **Synchronous calls** (`notes.listSync()`): host procedures never wait (decision 5).
+- **Events to every plugin, listening or not**: a plugin with no handler would take a turn for nothing at each event.
+

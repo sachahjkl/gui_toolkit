@@ -24,7 +24,7 @@ import "../ui"
 
 // What a request asks.
 @(private)
-Broker_Op :: enum u8 { Files_Read, Files_Write, Files_Pick, Fetch, Clipboard_Read, Clipboard_Write }
+Broker_Op :: enum u8 { Files_Read, Files_Write, Files_Pick, Fetch, Clipboard_Read, Clipboard_Write, App_Call }
 
 // A request of a plugin's process: its call id (unique in the process), what it asks, its arguments (heap, owned), and
 // whether the turn that sent it is a person's act (the program's reader says it; the process cannot).
@@ -83,6 +83,8 @@ broker_request :: proc(h: ^Host, p: ^Plugin, serial: u64, req: Request) {
 		if !net_allowed(p.granted[:], req.args[0]) { refuse(p, serial, req, "this address's origin was not granted"); return }
 		job := work_new(p, serial, req)
 		if !tasks.add(ui.chores(), fetch_work, job) { work_lost(job) }
+	case .App_Call:
+		app_request(h, p, serial, req)
 	}
 }
 
@@ -187,7 +189,7 @@ file_work :: proc(data: rawptr) {
 		// (an atomic write renames a new file over the name: a link put there since the check is replaced, not followed)
 		if !fsx.write_atomic(full, transmute([]u8)text) { answer(w.p, w.serial, w.req.call, ok = false, error = FILE_ERROR, text = "the file cannot be written"); return }
 		answer(w.p, w.serial, w.req.call, ok = true)
-	case .Files_Pick, .Fetch, .Clipboard_Read, .Clipboard_Write:
+	case .Files_Pick, .Fetch, .Clipboard_Read, .Clipboard_Write, .App_Call:
 	}
 }
 

@@ -69,6 +69,7 @@ Manifest :: struct {
 	views:    []View_Decl,
 	settings: []Setting_Decl,
 	permissions: []string,   // what it asks, each in its one form (permission_parse)
+	app:      int,           // the level of the program's module "app" it needs (0: none said)
 }
 
 manifest_destroy :: proc(m: ^Manifest) {
@@ -114,8 +115,10 @@ id_valid :: proc(s: string, dots: bool) -> bool {
 
 // Reads a manifest's text. `refused`: why the plugin cannot load ("": none), in words for the Plugins page. A plugin
 // refused keeps what was read of it (its id and name, when they are good), for the page to name it. `program`: the
-// program's id (Host_Options.program_id); a manifest that names another program is refused.
-manifest_parse :: proc(text: string, program: string, allocator := context.allocator) -> (m: Manifest, refused: string) {
+// program's id (Host_Options.program_id); a manifest that names another program is refused. `app`: the program's own
+// module (Host_Options.app; nil: none): a manifest that needs a level of it the program does not give, or asks for a
+// permission word it does not declare, is refused.
+manifest_parse :: proc(text: string, program: string, app: ^App_Module = nil, allocator := context.allocator) -> (m: Manifest, refused: string) {
 	context.allocator = allocator
 	v, err := json.parse_string(text, json.DEFAULT_SPECIFICATION, false, context.temp_allocator)
 	if err != nil { return {}, fmt.aprintf("plugin.json is not JSON (%v)", err) }
@@ -204,9 +207,23 @@ manifest_parse :: proc(text: string, program: string, allocator := context.alloc
 		known := false
 		for p in perms { known ||= p == normal }
 		if known { delete(normal); continue }
+		if strings.has_prefix(normal, "app:") && plugin_api.app_permission_words(app, normal) == "" {
+			delete(normal)
+			m.permissions = perms[:]
+			if app == nil { return m, fmt.aprintf("it asks for \"%s\", but this program gives no module \"app\"", word) }
+			return m, fmt.aprintf("it asks for \"%s\", which %s's module \"app\" does not have", word, app.name)
+		}
 		append(&perms, normal)
 	}
 	m.permissions = perms[:]
+	// (the level of the program's module it needs: the program's own, beside the API's)
+	need := tk_json.number(v, "app", default = 0)
+	if need != math.floor(need) || need < 0 { return m, strings.clone("its \"app\" is not the level of the program's module it needs") }
+	m.app = int(need)
+	if m.app > 0 {
+		if app == nil { return m, fmt.aprintf("it needs level %d of a program's module \"app\"; this program gives none", m.app) }
+		if m.app > app.level { return m, fmt.aprintf("it needs level %d of %s's module \"app\"; this program gives level %d", m.app, app.name, app.level) }
+	}
 	return m, ""
 }
 

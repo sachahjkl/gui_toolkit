@@ -48,6 +48,15 @@ Plugin :: struct {
 	granted_caps: plugin_api.Capabilities,
 	// the child's only: its modules' sources, read before its sandbox, by their path in its folder (owned)
 	sources:    map[string]string,
+	// the program's module "app" (app.odin). The program's: the declaration (the program's, not owned), set at a start
+	// for the sender, and the events its process listens to (owned; a start clears them). The child's: what the start
+	// frame said of it (owned)
+	app_module:  ^App_Module,
+	app_listens: [dynamic]string,
+	app_given:   bool,
+	app_name:    string,
+	app_calls:   []plugin_api.App_Spec,
+	app_events:  []plugin_api.App_Spec,
 }
 
 @(private)
@@ -72,6 +81,13 @@ plugin_release :: proc(p: ^Plugin) {
 	delete(p.settings_start)
 	for k, s in p.sources { delete(k); delete(s) }
 	delete(p.sources)
+	for e in p.app_listens { delete(e) }
+	delete(p.app_listens)
+	delete(p.app_name)
+	for s in p.app_calls { delete(s.name) }
+	delete(p.app_calls)
+	for s in p.app_events { delete(s.name) }
+	delete(p.app_events)
 	if p.ch != nil { channel_release(p.ch) }
 	queue_destroy(&p.queue)
 	free(p)
@@ -92,6 +108,10 @@ plugin_start :: proc(h: ^Host, p: ^Plugin) {
 	p.state = .Starting
 	p.memory_limit = h.o.memory_limit
 	p.sandbox = h.o.sandbox
+	p.app_module = h.o.app
+	// (a new process listens to nothing yet: its app.on calls say what)
+	for e in p.app_listens { delete(e, runtime.heap_allocator()) }
+	clear(&p.app_listens)
 	p.settings_start = settings_snapshot(h, p)
 	p.link = h.link
 	sync.atomic_add(&h.link.refs, 1)
@@ -141,6 +161,7 @@ Message_Kind :: enum u8 {
 	// the child tries to leave its sandbox (test_escape): read the file `text`, create a file in the folder
 	// `command`, open a TCP socket; a toast says which of them it could
 	Test_Escape,
+	App_Event,    // the program's module's event `command`, its payload encoded in `text` (app.odin)
 }
 
 // What happened to a node of a view: the name of the field of its kind's struct that is called (plugin_api's nodes).
@@ -252,6 +273,7 @@ Event_Kind :: enum u8 {
 	Rows,        // a lazy list's rows: `title` the view's id, `text` the list's key, `list` the rows, `rows` the ask
 	Alive,       // its process read its start: the bound counts from here (the program's reader only)
 	Log,         // a line of its log, `text`: the program's reader appends it (the child opens no file: its sandbox)
+	App_Listen,  // its runtime listens to the program's module's event `title` (app.on): app_emit sends it there
 }
 
 @(private)
@@ -306,6 +328,11 @@ event_run :: proc(data: rawptr, word: u64) {
 	h := p.host
 	switch e.kind {
 	case .Alive, .Log:   // (the reader's: never posted)
+	case .App_Listen:
+		// (kept until its process ends: a start clears them)
+		known := false
+		for l in p.app_listens { known ||= l == e.title }
+		if !known { append(&p.app_listens, strings.clone(e.title)) }
 	case .Started:
 		if p.state == .Starting { p.state = .Running }
 	case .Turn_Done:

@@ -28,6 +28,19 @@ permission_parse :: proc(word: string, allocator := context.temp_allocator) -> (
 	case "clipboard.write":  return {capability = .Clipboard_Write}, strings.clone(word, allocator), true
 	case "net:*":            return {capability = .Net, origin = "*"}, strings.clone(word, allocator), true
 	}
+	// (a word of the program's module, "app:notes.write": its form only here; whether the module declares it is the
+	// manifest's check, which has the module)
+	if strings.has_prefix(word, "app:") {
+		rest := word[len("app:"):]
+		if rest == "" { return }
+		for c in transmute([]u8)rest {
+			switch c {
+			case 'a' ..= 'z', 'A' ..= 'Z', '0' ..= '9', '_', '.', '-':
+			case: return
+			}
+		}
+		return {capability = .None}, strings.clone(word, allocator), true
+	}
 	if !strings.has_prefix(word, "net:") { return }
 	rest := word[len("net:"):]
 	// (an origin, not an address: a path or a query says more than an origin is)
@@ -94,7 +107,8 @@ net_allowed :: proc(granted: []string, url: string) -> bool {
 capabilities_of :: proc(granted: []string) -> plugin_api.Capabilities {
 	caps: plugin_api.Capabilities
 	for g in granted {
-		if p, _, ok := permission_parse(g); ok { caps += {p.capability} }
+		// (a word of the program's module is the program's to check: no capability of the bridge's)
+		if p, _, ok := permission_parse(g); ok && p.capability != .None { caps += {p.capability} }
 	}
 	return caps
 }
@@ -109,8 +123,13 @@ permissions_covered :: proc(asked, granted: []string) -> bool {
 	return true
 }
 
-// What a permission lets the plugin do, in words, for the grant dialog.
-permission_words :: proc(word: string) -> string {
+// What a permission lets the plugin do, in words, for the grant dialog: the program's own words for a word of its
+// module (`app`, Host_Options.app).
+permission_words :: proc(word: string, app: ^App_Module = nil) -> string {
+	if strings.has_prefix(word, "app:") {
+		if w := plugin_api.app_permission_words(app, word); w != "" { return w }
+		return word
+	}
 	switch word {
 	case "files":            return "Open the files and folders you pick for it"
 	case "folder:documents": return "Read and write in your Documents folder"

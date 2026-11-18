@@ -161,6 +161,24 @@ A view that is only words reads flat. Say what each thing is with the toolkit's 
 - `highlight` (a string or an array of them) marks each match, as the find bar marks, case aside.
 - An act repeated in each row of a list: a button with `look: "ghost"` and `size: "small"`, with an icon.
 
+## A program's own module
+
+A program may give its plugins a module of its own, `import { ... } from "app"`, with its objects (opencode native's
+sessions, say) and its own level. Its calls, events and permissions are in that program's docs (its `app.d.ts`), not
+in `references/`. gt-runtime gives none.
+
+```js
+import { notes, on } from "app";
+on("note.added", (e) => toast.show(e.note.title));   // the program's events, while the plugin runs
+const { items } = await notes.list();                 // one argument object; every call returns a promise
+```
+
+- Say the level you need in the manifest: `"app": 1`. A program without the module, or with a lower level, refuses
+  the plugin with a sentence.
+- Its permissions are words `app:...` in `permissions`, shown in the grant dialog in the program's words. A call
+  without its grant rejects with `PermissionError`.
+- An event does not start a plugin: only a running plugin that called `on(name, f)` hears it.
+
 ## Settings
 
 ```js

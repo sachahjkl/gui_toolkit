@@ -91,7 +91,7 @@ grant_dialog :: proc(v: ^ui.View, h: ^Host) {
 		ui.space(ui.LINE_GAP)
 		for w, i in p.manifest.permissions {
 			ui.next({width = ui.fill(), font_size = math.round(em * 0.95)})
-			ui.paragraph(fmt.tprintf("• %s###grant_word_%d", i18n.tr(permission_words(w)), i))
+			ui.paragraph(fmt.tprintf("• %s###grant_word_%d", i18n.tr(permission_words(w, h.o.app)), i))
 		}
 		ui.space(ui.LINE_GAP)
 		if ui.tags("weak") {

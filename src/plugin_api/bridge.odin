@@ -36,6 +36,9 @@ Realm :: struct {
 	impls:   [len(DECLARATIONS)]Impl,
 	granted: Capabilities,
 	user:    rawptr,
+	// the program's module "app" (app.odin): its calls as the start frame named them, and the host's side of each
+	app_calls: []App_Spec,
+	app_impl:  App_Impl,
 }
 
 // Gives declaration `module`.`name` its implementation. False: no such declaration (the host and the declarations
@@ -231,12 +234,33 @@ fill :: proc(ctx: ^js.Context, v: js.Value, ti: ^runtime.Type_Info, out: rawptr,
 			js.root(ctx.rt, fv)   // (a getter may run a collection before the next property)
 			if !fill(ctx, fv, f.type, rawptr(uintptr(out) + f.offset), call, fmt.tprintf("%s.%s", what, f.name), is_optional(f.tag)) { return false }
 		}
+	case runtime.Type_Info_Slice:
+		// (an array: its elements in the temporary memory, as the struct they fill; a program's call's argument)
+		if !js.is_object(v) { return wrong(ctx, call, what, "an array") }
+		js.root(ctx.rt, v)
+		length_v := js.get_property_str(ctx, v, "length")
+		if js.is_exception(length_v) { return false }
+		if !js.is_number(length_v) { return wrong(ctx, call, what, "an array") }
+		n, _ := js.to_number(ctx, length_v)
+		count := int(clamp(n, 0, f64(SLICE_MAX_ITEMS)))
+		if count == 0 { return true }
+		data, _ := mem.alloc(count * info.elem_size, info.elem.align, context.temp_allocator)
+		for k in 0 ..< count {
+			item := js.get_property_str(ctx, v, fmt.tprintf("%d", k))
+			if js.is_exception(item) { return false }
+			js.root(ctx.rt, item)
+			if !fill(ctx, item, info.elem, rawptr(uintptr(data) + uintptr(k * info.elem_size)), call, fmt.tprintf("%s[%d]", what, k), false) { return false }
+		}
+		(^runtime.Raw_Slice)(out)^ = {data = data, len = count}
 	case:
 		js.throw_type_error(ctx, fmt.tprintf("%s: %s has a type the bridge does not convert", call, what))
 		return false
 	}
 	return true
 }
+
+// The most items an array argument fills: past them the rest is not read.
+SLICE_MAX_ITEMS :: 100_000
 
 // The words of a string, or of an array of strings (`string | string[]`), as one string: each word after a
 // WORDS_SEPARATOR, the empty ones left out. One string, so that the display list and the wire carry it as any field.
