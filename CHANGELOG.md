@@ -5,6 +5,20 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.311.0] - 2026-11-18 06:29
+
+### Added
+- **`ui.vlist_row_top`, `ui.vlist_total`, `ui.vlist_row_at`**: the top of a virtual list's row, the content's height and
+the row at a place in the content, each in O(log n) rows, as `vlist_row_extent` gives a row's top and height.
+
+### Changed
+- **A long list stays smooth while its rows are measured**: scrolling a `ui.vlist` of a million rows, a plugin's lazy list
+among them, no longer makes each build that lays out new rows go over every row. A row measured at a new height costs
+the same in a list of a hundred rows or a million; only new ids, or heights forgotten, place every row again.
+
+### Fixed
+- **A task's data is freed when its window goes before its answer runs**: an answer of `ui.task` already queued when its `State` was destroyed was dropped without calling `lost`, so its data leaked. The install's jobs also keep their memory in the heap from start to end: a program that checks its memory saw blocks made on the chores freed by its own allocator, which Windows' checks could take for a double free.
+
 ## [0.310.0] - 2026-11-18 05:05
 
 ### Added
@@ -4349,6 +4363,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.311.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.311.0
 [0.310.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.310.0
 [0.309.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.309.0
 [0.308.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.308.0
