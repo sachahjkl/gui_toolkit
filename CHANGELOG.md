@@ -5,6 +5,28 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.309.0] - 2026-11-18 02:38
+
+### Added
+- **`platform.sigpipe_ignore`**: a write to a pipe whose reader is gone is an error of that write, not the end of the
+program, on Linux and macOS. A plugin's process that dies no longer takes the program down with it.
+- **`http.Request.no_redirects`**: a request whose redirect is its answer (its status and its Location), so that the caller
+checks each hop before it follows it.
+- **A plugin's permissions, files, network and clipboard (plugin API level 4)**: a manifest asks for `permissions`
+(`files`, `folder:documents`, `folder:downloads`, `net:*` or `net:<origin>`, `clipboard.read`, `clipboard.write`); a
+plugin that asks is off until the person allows it in a dialog that says each one in words, and a version that asks
+more asks again. `files.read`, `files.write`, `files.pick`, `http.fetch`, `clipboard.read` and `clipboard.write` are
+done by the program, which checks the grant: a call without it rejects with `PermissionError`, a path that leaves its
+folder or goes through a link is refused, each redirect is checked, and the clipboard is read only while the person acts
+in the plugin. Each plugin has a data folder of its own. `plugins.grant` and `plugins.revoke` give and take back.
+
+### Changed
+- **A plugin runs in a process of its own**: its first use starts the program's own executable again as the plugin's host,
+and every command, view, event and setting crosses its pipes. A crash of a plugin's engine no longer ends the program:
+the plugin is Failed, its views say so with Restart, and three crashes in one run suspend it. Stop kills a process that
+does not answer within a second. A program needs nothing new in its `main`. `plugins.restart` makes a failed plugin ready
+again; `plugins.test_crash` and `plugins.test_hang` are a test's hooks.
+
 ## [0.308.0] - 2026-11-18 00:12
 
 ### Added
@@ -4316,6 +4338,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.309.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.309.0
 [0.308.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.308.0
 [0.307.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.307.0
 [0.306.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.306.0
