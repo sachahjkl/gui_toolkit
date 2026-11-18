@@ -556,10 +556,27 @@ print_tail :: proc(path: string) {
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil { return }
 	lines := strings.split_lines(string(data), context.temp_allocator)
-	first := max(len(lines) - FAILURE_LINES, 0)
-	// (a crash report is said whole, with the lines before it: which test ran)
-	for l, i in lines {
-		if strings.has_prefix(l, "---- crash report") { first = max(min(first, i - FAILURE_LINES / 4), 0); break }
+	report := -1
+	for l, i in lines { if strings.has_prefix(l, "---- crash report") { report = i; break } }
+	if report < 0 {
+		for l in lines[max(len(lines) - FAILURE_LINES, 0):] { fmt.println(l) }
+		return
 	}
-	for l in lines[first:] { fmt.println(l) }
+	// a crash: what the runtime said before it (an assertion's or a bounds check's words come before its trap), the
+	// tests that had started, then the reports without their list of modules
+	for l in lines[:report] {
+		if strings.contains(l, "changed state to Running") || is_runtime_words(l) { fmt.println(l) }
+	}
+	for l in lines[report:] {
+		if strings.has_prefix(l, "  0x") && (strings.contains(l, ".so") || strings.contains(l, ".dll") || strings.contains(l, ".exe")) { continue }
+		fmt.println(l)
+	}
+}
+
+// The words of Odin's runtime when it stops the process: an assertion, a bounds check, a panic, a bad free.
+is_runtime_words :: proc(l: string) -> bool {
+	for w in ([]string{"assertion", "Index ", "out of bounds", "panic", "Panic", "Invalid slice", "unreachable"}) {
+		if strings.contains(l, w) { return true }
+	}
+	return false
 }
