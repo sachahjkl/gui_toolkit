@@ -216,6 +216,8 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	bg := draw.hex(slot_color(p, .Bg_Solid))
 	changed := false
 	for e, i in entries {
+		e := e
+		if p.finish == .Bevel { e = bevel_entry(e) }
 		c := slot_rgba(p, e.slot)
 		c.a *= e.alpha
 		c.a = draw.alpha_like_linear(space, c, c.a, bg)
@@ -234,6 +236,24 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	if t.finish != p.finish { t.finish = p.finish; changed = true }
 	if t.dark != p.dark { t.dark = p.dark; changed = true }
 	if changed { t.serial += 1 }
+}
+
+// The entries the bevel finish draws otherwise: Windows 95 selected text white on an opaque navy, and drew no shadow
+// under a menu nor a dim behind a dialog. A palette has no field for an entry's alpha nor for the text on a selection:
+// the finish carries them (src/md/features/theme-oldhead.md, what a theme cannot say).
+// (a constant, not a global: it never changes, and tests/globals asks a class for each global)
+@(private = "file")
+BEVEL_ENTRIES :: [?]Entry{
+	{"selection", .Accent, 1}, {"selection text", .White, 1},
+	{"drop_shadow", .Black, 0}, {"scrim background", .Black, 0},
+}
+
+// `e` as the bevel finish has it: its entry of BEVEL_ENTRIES, else itself.
+@(private = "file")
+bevel_entry :: proc(e: Entry) -> Entry {
+	overrides := BEVEL_ENTRIES
+	for o in overrides { if o.tags == e.tags { return o } }
+	return e
 }
 
 // The face of an interaction state ("hover_fill", "press_fill") under the tags of `b`: `under` (the face at rest, or the

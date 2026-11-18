@@ -12,9 +12,10 @@ import "core:math"
 import "../draw"
 
 // Corner rounding factor for every rounded shape the toolkit draws: 0 = square corners, 1 = default, up to 2. The edged
-// finish has square corners whatever it is set to (rounding returns 0 there): its hairlines run straight to the corners.
+// and bevel finishes have square corners whatever it is set to (rounding returns 0 there): their lines run straight to
+// the corners.
 set_rounding :: proc(s: ^State, r: f32) { s.rounding = clamp(r, 0, 2) }
-rounding :: proc(s: ^State) -> f32 { return s.theme != nil && s.theme.finish == .Edged ? 0 : s.rounding }
+rounding :: proc(s: ^State) -> f32 { return s.theme != nil && (s.theme.finish == .Edged || s.theme.finish == .Bevel) ? 0 : s.rounding }
 
 // A radius scaled by the current rounding (for custom draw procs that want to follow the setting).
 rad :: proc(r: f32) -> f32 { return radius_drawn(gs(), r) }
@@ -470,6 +471,10 @@ scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Part
 	if shows <= SCROLLBAR_HIDDEN_ALPHA { return }
 	draw.push_alpha(dc, shows)
 	defer draw.pop_alpha(dc)
+	if bevel() {
+		scrollbar_paint_bevel(s, dc, b, p, look)
+		return
+	}
 	c := scrollbar_colors(s, b)
 	u := scrollbar_unit(s)
 	axis := p.axis
@@ -529,6 +534,32 @@ scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Part
 	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, true) }
 	// (the find's matches, over the program's marks: they go when it closes)
 	if axis == .Y { find_ticks_draw(s, dc, b, p.track) }
+}
+
+// The bevel finish's bar (Windows 95): a pale track, the arrow buttons and the thumb raised keys of the theme's grey,
+// a held arrow sunken with its triangle a pixel down and right. No state under the pointer, no grip. (The track was a
+// dither of grey and white; a plain colour half way is what the draw list draws without a pattern.)
+@(private = "file")
+scrollbar_paint_bevel :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Parts, look: Scrollbar_Look) {
+	face := color_from_tags(s, b.tags_key, "button background")
+	face.a = 1
+	glyph := color_from_tags(s, b.tags_key, "text")
+	glyph.a = 1
+	u := scrollbar_unit(s)
+	draw.rect(dc, p.bar, srgb_step(face, {1, 1, 1, 1}, 0.5))
+	marks := p.axis == .Y ? scroll_marks_of(b) : nil
+	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, false) }
+	if p.arrows {
+		for part in ([2]Scrollbar_Part{.Start, .End}) {
+			r := part == .Start ? p.start : p.end
+			held := look.held == part
+			machined_bevel(dc, r, 0, face, 0, held ? 1 : 0)
+			scrollbar_triangle(s, dc, held ? draw.rect_shift(r, {u, u}) : r, p.axis, part == .Start, glyph)
+		}
+	}
+	machined_bevel(dc, p.thumb, 0, face, 0, 0)
+	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, true) }
+	if p.axis == .Y { find_ticks_draw(s, dc, b, p.track) }
 }
 
 // An arrow button's triangle, in rows of pixels: rows of 1, 3, 5… (one unit tall each, two units wider each), its point

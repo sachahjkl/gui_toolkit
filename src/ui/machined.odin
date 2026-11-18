@@ -41,10 +41,97 @@ MACHINED_OVERFLOW_PX :: 6
 // Below this a state or a halo draws nothing.
 @(private = "file") VISIBLE :: 0.01
 
-// Whether the machined reliefs are drawn now: the machined finish, or the edged one (the same reliefs, crisp).
+// Whether the machined reliefs are drawn now: the machined finish, or the edged one (the same reliefs, crisp), or the
+// bevel one (the same surfaces, as Windows 95 bevelled them). The widgets ask this to carve their wells and raise their
+// keys; each primitive then draws the finish's own form.
 machined :: proc() -> bool {
 	s := gs()
-	return s != nil && s.theme != nil && (s.theme.finish == .Machined || s.theme.finish == .Edged)
+	return s != nil && s.theme != nil && (s.theme.finish == .Machined || s.theme.finish == .Edged || s.theme.finish == .Bevel)
+}
+
+// Whether the bevel finish is the one drawn now: two rings of one pixel, of two tones each, around every raised and
+// sunken surface; square corners; no shadow, halo nor hover light.
+bevel :: proc() -> bool {
+	s := gs()
+	return s != nil && s.theme != nil && s.theme.finish == .Bevel
+}
+
+// The bevel finish's four tones around a face: its highlight (white), its light (half way to white: #dfdfdf on #c0c0c0),
+// its shadow (a third of the way to black: #808080) and its dark (black). Made from the face, not from the theme: an
+// accent face (a check box's key) is bevelled in its own tones, and a theme has no entry for them.
+@(private = "file") BEVEL_LIGHT_STEP  :: 0.5
+@(private = "file") BEVEL_SHADOW_STEP :: 1.0 / 3.0
+// The dotted focus rectangle: how far inside the face (in pixels of px1) and the pitch of its dots.
+@(private = "file") BEVEL_FOCUS_INSET :: 4
+@(private = "file") BEVEL_FOCUS_PITCH :: 2
+
+@(private = "file")
+bevel_tones :: proc(face: Color) -> (light, shadow: Color) {
+	return srgb_step(face, {1, 1, 1, 1}, BEVEL_LIGHT_STEP), srgb_step(face, {0, 0, 0, 1}, BEVEL_SHADOW_STEP)
+}
+
+// The face the bevels of a well and a groove are cut in: the theme's raised grey. (A well's own colour is its inside,
+// white for a field: its tones would be white on white.)
+@(private = "file")
+bevel_face :: proc() -> Color { return color_from_tags(gs(), 0, "button background") }
+
+// Two rings of `p` around the inside of `r`: the outer one `otl` along its top and left, `obr` along its bottom and right;
+// the inner one `itl` and `ibr`. The bottom and right lines run to the corners over the top and left ones: the top-right
+// and bottom-left pixels are the shade's, as Windows drew them.
+@(private = "file")
+bevel_frame :: proc(dc: ^draw.Context, r: Rect, p: f32, otl, obr, itl, ibr: Color) {
+	for ring in 0 ..< 2 {
+		q := draw.rect_pad(r, -f32(ring) * p)
+		if q.max.x - q.min.x < 2 * p || q.max.y - q.min.y < 2 * p { return }
+		tl, br := ring == 0 ? otl : itl, ring == 0 ? obr : ibr
+		draw.rect(dc, {q.min, {q.max.x - p, q.min.y + p}}, tl)
+		draw.rect(dc, {q.min, {q.min.x + p, q.max.y - p}}, tl)
+		draw.rect(dc, {{q.min.x, q.max.y - p}, q.max}, br)
+		draw.rect(dc, {{q.max.x - p, q.min.y}, q.max}, br)
+	}
+}
+
+// A round shape (a radio, a switch's knob: shape_rad) cannot take rings of straight lines: its light and its shade are
+// two discs a pixel apart, the face over them, so the light still falls from the top left.
+@(private = "file")
+bevel_round :: proc(dc: ^draw.Context, r: Rect, radius, p: f32, face, tl, br: Color) {
+	draw.rect(dc, {r.min, r.max - Vec2{p, p}}, tl, radius)
+	draw.rect(dc, {r.min + Vec2{p, p}, r.max}, br, radius)
+	draw.rect(dc, draw.rect_pad(r, -p), face, max(0, radius - p))
+}
+
+// The focus of a bevelled key: a dotted rectangle inside its face, in the text's colour (Windows' focus rectangle). Dots
+// of one pixel every BEVEL_FOCUS_PITCH; the draw list has no dashed stroke for a rectangle, a dot is a rect.
+@(private)
+bevel_focus :: proc(dc: ^draw.Context, r: Rect) {
+	p := px1()
+	q := draw.rect_pad(r, -BEVEL_FOCUS_INSET * p)
+	if q.max.x - q.min.x < 2 * p || q.max.y - q.min.y < 2 * p { return }
+	c := color_from_tags(gs(), 0, "text")
+	step := BEVEL_FOCUS_PITCH * p
+	for x := q.min.x; x < q.max.x; x += step {
+		draw.rect(dc, {{x, q.min.y}, {x + p, q.min.y + p}}, c)
+		draw.rect(dc, {{x, q.max.y - p}, {x + p, q.max.y}}, c)
+	}
+	for y := q.min.y + step; y < q.max.y - p; y += step {
+		draw.rect(dc, {{q.min.x, y}, {q.min.x + p, y + p}}, c)
+		draw.rect(dc, {{q.max.x - p, y}, {q.max.x, y + p}}, c)
+	}
+}
+
+// A raised key in the bevel finish: highlight and light along its top and left, dark and shadow along its bottom and
+// right; pressed, sunken (the rings turned over). No state under the pointer: Windows 95 lit nothing there.
+@(private = "file")
+bevel_key :: proc(dc: ^draw.Context, r: Rect, radius: f32, face: Color, pressed: bool) {
+	p := px1()
+	light, shadow := bevel_tones(face)
+	white, black := Color{1, 1, 1, face.a}, Color{0, 0, 0, face.a}
+	if radius > p {
+		if pressed { bevel_round(dc, r, radius, p, face, shadow, white) } else { bevel_round(dc, r, radius, p, face, white, shadow) }
+		return
+	}
+	draw.rect(dc, r, face)
+	if pressed { bevel_frame(dc, r, p, black, white, shadow, light) } else { bevel_frame(dc, r, p, white, black, light, shadow) }
 }
 
 // Whether the edged finish is the one drawn now: no blurred shadow under a raised face nor inside a well; hairlines say
@@ -129,6 +216,8 @@ relief_darken :: proc(c: Color, t: f32) -> Color { return darken(c, relief_dark(
 @(private = "file")
 glow_of :: proc() -> f32 {
 	s := gs()
+	// (the bevel finish has no halo, whatever the program's glow: Theme.glow is the program's, not the theme's)
+	if bevel() { return 0 }
 	return s.theme != nil ? s.theme.glow : 0
 }
 
@@ -150,6 +239,10 @@ machined_bevel :: proc(dc: ^draw.Context, r: Rect, radius: f32, face_color: Colo
 		face := draw.mix(face_color, text, FLAT_HOT * hot)
 		draw.rect(dc, r, pressed < 0.5 ? face : draw.mix(face_color, text, FLAT_PRESSED), radius)
 		draw.rect(dc, r, flat_edge(hot), radius, p)
+		return
+	}
+	if bevel() {
+		bevel_key(dc, r, radius, face_color, pressed >= 0.5)
 		return
 	}
 	face := lighten(face_color, BEVEL_HOT_LIGHTEN * hot)
@@ -205,10 +298,23 @@ machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focu
 	p := px1()
 	rr := radii4(radius)
 	base := base
-	if hot > VISIBLE { base = srgb_step(base, state_tint(), WELL_HOT_LIFT * hot) }
+	if hot > VISIBLE && !bevel() { base = srgb_step(base, state_tint(), WELL_HOT_LIFT * hot) }
 	if !machined() {
 		draw.rect(dc, r, base, radius)
 		draw.rect(dc, r, draw.mix(flat_edge(hot), with_alpha(accent, 0.9), focus), radius, p)
+		return
+	}
+	if bevel() {
+		// sunken: shadow and dark along its top and left, highlight and light along its bottom and right; its tones are
+		// the surface's it is cut in. No focus ring and no hover lift: a Windows 95 field showed its focus by its caret.
+		light, shadow := bevel_tones(bevel_face())
+		white, black := Color{1, 1, 1, 1}, Color{0, 0, 0, 1}
+		if radius > p {
+			bevel_round(dc, r, radius, p, base, shadow, white)
+			return
+		}
+		draw.rect(dc, r, base)
+		bevel_frame(dc, r, p, shadow, white, black, light)
 		return
 	}
 	machined_focus_glow(dc, r, rr, accent, focus)
@@ -242,6 +348,18 @@ machined_groove :: proc(dc: ^draw.Context, a, b: Vec2, vertical := false) {
 		draw.rect(dc, vertical ? Rect{a, {a.x + p, b.y}} : Rect{a, {b.x, a.y + p}}, color_from_tags(gs(), 0, "border"))
 		return
 	}
+	if bevel() {   // (Windows' etched line: the shadow, the highlight under it, opaque)
+		_, shadow := bevel_tones(bevel_face())
+		white := Color{1, 1, 1, 1}
+		if vertical {
+			draw.rect(dc, {a, {a.x + p, b.y}}, shadow)
+			draw.rect(dc, {{a.x + p, a.y}, {a.x + 2 * p, b.y}}, white)
+		} else {
+			draw.rect(dc, {a, {b.x, a.y + p}}, shadow)
+			draw.rect(dc, {{a.x, a.y + p}, {b.x, a.y + 2 * p}}, white)
+		}
+		return
+	}
 	if vertical {
 		draw.rect(dc, {a, {a.x + p, b.y}}, relief_shade(0.9))
 		draw.rect(dc, {{a.x + p, a.y}, {a.x + 2 * p, b.y}}, relief_shine(0.05))
@@ -270,6 +388,11 @@ machined_plate_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, top, bott
 		if c, set := border.?; (!set || c.a > 0) && frame { draw.rect_corners(dc, r, colors4(flat_edge(0)), rr, p) }
 		return
 	}
+	if bevel() {   // (a window of Windows 95: one plain face, no shadow, no gradient; its raised frame over its children)
+		draw.rect_corners(dc, r, colors4(draw.mix(top, bottom, 0.5)), rr)
+		if frame { machined_plate_frame_corners(dc, r, rr, rim, border) }
+		return
+	}
 	if shadow > 0 { draw.box_shadow(dc, draw.rect_shift(r, {0, 2 * s}), rr, shadow * s, relief_shade(0.6)) }
 	if g := glow_of(); glow.a > 0 && g > 0 { draw.box_shadow(dc, r, rr, 6 * s, with_alpha(glow, glow.a * 0.5 * g)) }
 	draw.rect_corners(dc, r, {top, bottom, top, bottom}, rr)
@@ -285,6 +408,15 @@ machined_plate_frame :: proc(dc: ^draw.Context, r: Rect, radius: f32, rim: f32 =
 // machined_plate_frame with a radius per corner (draw.rect_corners' order).
 machined_plate_frame_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, rim: f32 = 0.07, border: Maybe(Color) = nil) {
 	p := px1()
+	if bevel() {
+		// a window's raised frame: light and highlight along its top and left, dark and shadow along its bottom and
+		// right. A panel that asked for no edge (a colour of alpha 0) has none.
+		if c, set := border.?; set && c.a <= 0 { return }
+		face := bevel_face()
+		light, shadow := bevel_tones(face)
+		bevel_frame(dc, r, p, light, {0, 0, 0, 1}, {1, 1, 1, 1}, shadow)
+		return
+	}
 	if edged() {   // (a line along its top, of light at once, not a rim fading down its sides)
 		edged_lines(dc, r, max(rr[0], rr[1], rr[2], rr[3]), p, relief_shine(max(rim, 0.10)), relief_shade(EDGED_SHADE_ALPHA * 0.6))
 	} else if rim > 0 {
@@ -416,6 +548,12 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 	if b.bg.a < 0.99 || box_sheen(s, b) <= VISIBLE { return }
 	if .Clickable in b.flags {
 		machined_bevel(dc, r, radius, b.bg, box_hot(b), box_held(b))
+		// (the bevel finish: the focus is a dotted rectangle inside the key, drawn here; the theme's ring and the box's
+		// border, drawn by draw_box, would cover the bevel's outer ring)
+		if bevel() {
+			if keyboard_focus { bevel_focus(dc, r) }
+			return true, true
+		}
 		return true, !keyboard_focus   // (a keyboard's focus keeps the theme's ring)
 	}
 	// a raised panel (a bar, a key cap): its face, a lit rim along its top
@@ -423,6 +561,15 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 	// box_rimmed; the rim, inset by a pixel, framed it and doubled the edge next to it)
 	draw.rect_corners(dc, r, colors4(b.bg), radii)
 	if !box_rimmed(s, b) { return true, false }
+	if bevel() {   // (a bar or a key cap of its own: one ring, highlight above and shadow below, as a toolbar's band)
+		_, shadow := bevel_tones(b.bg)
+		p := px1()
+		draw.rect(dc, {r.min, {r.max.x, r.min.y + p}}, {1, 1, 1, 1})
+		draw.rect(dc, {r.min, {r.min.x + p, r.max.y}}, {1, 1, 1, 1})
+		draw.rect(dc, {{r.min.x, r.max.y - p}, r.max}, shadow)
+		draw.rect(dc, {{r.max.x - p, r.min.y}, r.max}, shadow)
+		return true, true   // (the theme's line over it would hide the ring)
+	}
 	if edged() {
 		edged_lines(dc, r, radius, px1(), relief_shine(0.09), relief_shade(EDGED_SHADE_ALPHA * 0.6))
 		return true, false

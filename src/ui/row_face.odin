@@ -150,7 +150,7 @@ row_face_paint :: proc(dc: ^draw.Context, r: Rect, radii: [4]f32, c: Color, k, s
 	if r.max.y - r.min.y < 2 || c.a <= ROW_EPS { return }
 	p := max(1, math.round(s.scale))
 	switch finish {
-	case .Flat:
+	case .Flat, .Bevel:   // (Windows 95's selected row is a plain block)
 		draw.rect_corners(dc, r, colors4(c), radii)
 	case .Gradient:
 		lit_face(dc, r, c, radii, ROW_GRADIENT_TOP_WHITE * k, ROW_GRADIENT_BOTTOM_BLACK * k, ROW_GRADIENT_RIM_ALPHA * k, sunk)

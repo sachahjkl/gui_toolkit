@@ -389,6 +389,12 @@ THEMES := [?]Theme_Def{
 	{"Bootstrap", {},
 		{{0xf5f5f5ff, 0xffffffff, 0xf5f5f5ff, 0xf5f5f5ff, 0xe9e9e9ff, 0xccccccff}, {0xb0b0b0ff, 0x8a8a8aff, 0x333333ff, 0x000000ff},
 			{0x0a6fd1ff, 0x0a6fd1ff, 0x7a43b6ff, 0x51a351ff, 0xf89406ff, 0xd2463fff, 0x2f96b4ff, 0xc7317aff}}, .Light_Only, .Gradient, false, 0xffffffff},
+	// Windows 95: one grey for every surface, white fields, navy selection, the 16-colour hues; made for Bevel
+	// (src/md/features/theme-oldhead.md: what it shows of the theming's limits). The hues are the deep ones of that
+	// palette: the bright ones (red, yellow, cyan) do not read as text on the grey.
+	{"Old Head", {},
+		{{0xffffffff, 0xc0c0c0ff, 0xc0c0c0ff, 0xc0c0c0ff, 0xc0c0c0ff, 0x808080ff}, {0x808080ff, 0x404040ff, 0x000000ff, 0x000000ff},
+			{0x000080ff, 0x0000ffff, 0x800080ff, 0x008000ff, 0x808000ff, 0x800000ff, 0x008080ff, 0xff00ffff}}, .Light_Only, .Bevel, false, 0xffffffff},
 	// silver on near black; in the light version graphite on white (silver would vanish there)
 	{"Silver",
 		{{0x050506ff, 0x08090aff, 0x0d0e10ff, 0x131417ff, 0x1b1c20ff, 0x2a2c31ff}, {0x5d6067ff, 0x8e9198ff, 0xe6e7eaff, 0xffffffff},
@@ -495,7 +501,7 @@ THEMES := [?]Theme_Def{
 }
 
 // The finishes by their names, for settings.
-FINISH_NAMES := [Finish]string{.Flat = "flat", .Gradient = "gradient", .Glass = "glass", .Machined = "machined", .Edged = "edged"}
+FINISH_NAMES := [Finish]string{.Flat = "flat", .Gradient = "gradient", .Glass = "glass", .Machined = "machined", .Edged = "edged", .Bevel = "bevel"}
 
 // The finish of a name of FINISH_NAMES (ASCII case ignored); Flat for any other.
 finish_of :: proc(name: string) -> Finish {

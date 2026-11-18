@@ -283,6 +283,7 @@ Finish :: enum u8 {
 	Glass,      // glossy upper half, glow at the bottom, white inner rim (Windows 7 Aero)
 	Machined,   // bevelled buttons, sunken wells, carved lines (machined.odin); on a light palette, light shades and strong lights
 	Edged,      // the machined reliefs drawn crisp: a dark hairline around, a lit line along the top, a shade along the bottom, no blur
+	Bevel,      // two-pixel, two-tone bevels and square corners, nothing blurred, no hover light (Windows 95; theme Old Head)
 }
 
 // Interaction states (hover, press, focus, selection, disabled) show at once by default: the frame that sees the pointer

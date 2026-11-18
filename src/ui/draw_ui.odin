@@ -204,7 +204,8 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 	// (a row's ring goes round its face, what the user sees of it, not round its box)
 	ring, ring_radii := r, radii
 	if focus_ring && .Row in flags { ring, ring_radii, _, _, _ = row_face_of(s, b) }
-	if focus_ring && s.theme != nil && s.theme.finish != .Flat {
+	// (no halo in the bevel finish: Windows 95 had none)
+	if focus_ring && s.theme != nil && s.theme.finish != .Flat && s.theme.finish != .Bevel {
 		// glow around the focused widget, under its background
 		c := color_from_tags(s, b.tags_key, "focus border")
 		c.a *= (keyboard_focus ? 1 : b.focus_t) * FOCUS_GLOW_ALPHA
@@ -263,7 +264,9 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 		// Windows 10 draws no top edge over an integrated title bar
 		draw.rect(dc, {{r.min.x, 0}, {r.max.x, 1}}, color_from_tags(s, b.tags_key, "border"))
 	}
-	if focus_ring {
+	if focus_ring && s.theme != nil && s.theme.finish == .Bevel {
+		bevel_focus(dc, ring)   // (Windows' dotted focus rectangle, not a ring of the accent)
+	} else if focus_ring {
 		c := color_from_tags(s, b.tags_key, "focus border")
 		if !keyboard_focus { c.a *= b.focus_t }
 		draw.rect_corners(dc, ring, colors4(c), ring_radii, FOCUS_RING_PX * scale)
@@ -425,7 +428,8 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, k: f32 = 1, rim := true, sunk: f32 = 0) {
 	s := gs()
 	finish := s.theme != nil ? s.theme.finish : .Flat
-	if finish == .Flat || k <= DRAW_INVISIBLE_EPS || c.a <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 2 {
+	// (the bevel finish's accent fills are plain: Windows 95 lit no face; its reliefs are machined_box's)
+	if finish == .Flat || finish == .Bevel || k <= DRAW_INVISIBLE_EPS || c.a <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 2 {
 		draw.rect_corners(dc, r, colors4(c), radii)
 		return
 	}
@@ -434,7 +438,7 @@ paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, 
 	px := max(1, math.round(s.scale))
 	rk: f32 = rim ? k : 0
 	switch finish {
-	case .Flat:
+	case .Flat, .Bevel:
 	case .Machined, .Edged:   // (the reliefs are machined_box's; a surface painted here, an accent fill, is a lit face)
 		lit_face(dc, r, c, radii, MACHINED_TOP_WHITE * k, MACHINED_BOTTOM_BLACK * k, MACHINED_RIM_ALPHA * rk, sunk)
 	case .Gradient:

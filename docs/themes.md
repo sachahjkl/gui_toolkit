@@ -51,7 +51,7 @@ text on its accent (`accent_text`; 0 picks the darkest step or the brightest tex
 | `palette_of(name, light)` | a palette of `THEMES` by name: examples and tests |
 | `theme_wants_light(mode)` | whether a mode shows the light version now (`System`: `platform.dark_mode_preferred`) |
 | `theme_mode_of(name)`, `THEME_MODE_NAMES` | the modes by name: "system", "dark", "light" |
-| `finish_of(name)`, `FINISH_NAMES` | the finishes by name: "flat", "gradient", "glass", "machined", "edged" |
+| `finish_of(name)`, `FINISH_NAMES` | the finishes by name: "flat", "gradient", "glass", "machined", "edged", "bevel" |
 
 The palette takes, from a version: `bg` = bg0, `bar` = bg1, `panel` = bg2, `panel2` = bg3, `border` = line,
 `well` = well, `faint`, `weak`, `text` and `bright`, `accent`, `good` = green, `warn` = yellow, `bad` = red.
@@ -107,6 +107,7 @@ commented template, opens it in the system's editor and reads it again when it c
 | `Glass` | a glossy upper half, a white rim | plain | a line |
 | `Machined` | bevelled: a soft shadow, a lit rim, a dark edge, engraved text; pressed, it sinks. Panels (cards, dialogs, menus, tooltips) are plates: a shaded face, a lit rim, a shadow | a well: inner shadow, lit lip, a ring of the accent when focused. Check boxes, radios, switches, sliders and progress bars are wells, what is on a raised key or a lit face in them | a carved groove |
 | `Edged` | the machined reliefs drawn crisp, nothing blurred: a dark hairline around, a lit line along the top, a shade along the bottom; pressed, the shade along the top. Panels: a lit line along their top, a shadow | a well: a dark hairline around, dark lines under its top, a lit lip under it | a carved groove |
+| `Bevel` | Windows 95's: two rings of one pixel, white and the face's light along the top and left, black and its shadow along the bottom and right; pressed, sunken. No light under the pointer, no shadow, no halo. The keyboard's focus: a dotted rectangle inside the key. Panels (dialogs, menus): the raised frame of a window | the same rings turned over, in the tones of the theme's grey | a shadow line over a white one |
 
 The machined and edged reliefs are drawn on both palettes. They are made for the dark: strong black shadows and edges,
 faint white rims. On a light palette (`Theme.dark` false, set by `apply_palette`) the same reliefs are drawn by their
@@ -115,6 +116,9 @@ light: lighter shades and stronger white rims, lips and highlights (`RELIEF_ON_L
 colours from `relief_shade_for(alpha, theme.dark)` and `relief_shine_for(alpha, theme.dark)`, with the alpha written for
 the dark.
 The theme `Kernel` (blue black, square tiles of colour) is made for `Edged`: it brings it whatever the program's finish.
+The theme `Old Head` (Windows 95's grey, white fields, navy) is made for `Bevel` and brings it the same way. The bevel
+finish has square corners as the edged one, selects text white on an opaque accent, and draws no drop shadow and no
+dim behind a dialog. Its scroll bars are a pale track with raised arrow buttons and a raised thumb.
 The edged finish has square corners whatever the rounding asked (`rounding(s)` is 0 there, and `rad(r)` with it). What
 is round by its shape keeps it: a radio's disc, a switch's pill, a slider's slot and knob, a lamp (`shape_rad(r)`: a
 radius the rounding setting scales and the edged finish leaves).
