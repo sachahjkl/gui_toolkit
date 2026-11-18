@@ -661,6 +661,160 @@ the_act_says_the_programs_word :: proc(t: ^testing.T) {
 }
 
 ////////////////////////////////
+// The program's acts on a row, and the folder the system names
+
+// What the program's acts were called with.
+@(private = "file")
+Acts :: struct {
+	downloaded: [dynamic]string,
+	revealed:   [dynamic]string,
+	actions:    [2]platform.File_Row_Action,   // (the options' slice: alive until the dialog copied them)
+}
+
+@(private = "file")
+acts_destroy :: proc(a: ^Acts) {
+	for p in a.downloaded { delete(p) }
+	for p in a.revealed { delete(p) }
+	delete(a.downloaded)
+	delete(a.revealed)
+}
+
+@(private = "file")
+acts_options :: proc(a: ^Acts, multiple := false) -> platform.File_Dialog {
+	a.actions[0] = {label = "Download", act = proc(user: rawptr, path: string) {
+		append(&(^Acts)(user).downloaded, strings.clone(path))
+	}, user = a}
+	a.actions[1] = {label = "Reveal", folders = true, act = proc(user: rawptr, path: string) {
+		append(&(^Acts)(user).revealed, strings.clone(path))
+	}, user = a}
+	return {start_dir = "/f", row_actions = a.actions[:], multiple = multiple}
+}
+
+// A right click on a file opens its menu with the program's acts; an act gets the file's path and the dialog stays open.
+// A folder's menu has only the acts that take folders.
+@(test)
+a_programs_act_on_a_row :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	acts: Acts
+	defer acts_destroy(&acts)
+	app.fake.folders["/f"] = []ui.File_Entry{F("docs", .Folder), F("a.txt"), F("b.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, acts_options(&acts))
+	session.click_text(s, "a.txt", .Right)
+	if !testing.expect(t, session.find_text(s, "Download") != nil, "the row's menu") { return }
+	testing.expect(t, session.find_text(s, "Reveal") != nil)
+	session.click_text(s, "Download")
+	if testing.expect_value(t, len(acts.downloaded), 1) { testing.expect_value(t, acts.downloaded[0], "/f/a.txt") }
+	testing.expect(t, counts(s).open, "an act is no answer: the dialog stays")
+	testing.expect_value(t, app.answers, 0)
+	testing.expect(t, session.find_text(s, "Download") == nil, "the menu closed")
+
+	session.click_text(s, "docs", .Right)
+	testing.expect(t, session.find_text(s, "Download") == nil, "an act on files only is not offered on a folder")
+	session.click_text(s, "Reveal")
+	if testing.expect_value(t, len(acts.revealed), 1) { testing.expect_value(t, acts.revealed[0], "/f/docs") }
+	testing.expect_value(t, len(acts.downloaded), 1)
+
+	// without acts, a right click opens no menu
+	open(s, &app, .Open, {start_dir = "/f"})
+	session.click_text(s, "a.txt", .Right)
+	testing.expect(t, session.find_text(s, "Download") == nil && session.find_text(s, "Reveal") == nil)
+}
+
+// Several files selected: the Menu key opens their menu, and an act runs once per file, in the folder's order.
+@(test)
+a_programs_act_on_several_rows :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	acts: Acts
+	defer acts_destroy(&acts)
+	app.fake.folders["/f"] = []ui.File_Entry{F("a.txt"), F("b.txt"), F("c.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, acts_options(&acts, multiple = true))
+	session.click(s, "lrow_0")
+	session.key(s, .A, {.Ctrl})
+	session.key(s, .Menu)
+	if !testing.expect(t, session.find_text(s, "Download") != nil, "the Menu key opens the rows' menu") { return }
+	session.click_text(s, "Download")
+	testing.expect_value(t, len(acts.downloaded), 3)
+	if len(acts.downloaded) == 3 {
+		testing.expect_value(t, acts.downloaded[0], "/f/a.txt")
+		testing.expect_value(t, acts.downloaded[2], "/f/c.txt")
+	}
+	testing.expect(t, counts(s).open)
+}
+
+// start_known: a source that knows the folder starts there (after start_dir and the dialog's memory); a source that
+// knows none starts where it would without it.
+@(test)
+start_known_is_asked_of_the_source :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/home/me/Downloads"] = []ui.File_Entry{F("got.zip")}
+	app.fake.folders["/elsewhere"] = []ui.File_Entry{F("x.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	app.source.known = proc(src: ^ui.File_Source, folder: platform.Known_Folder, allocator: runtime.Allocator) -> string {
+		return folder == .Downloads ? strings.clone("/home/me/Downloads", allocator) : ""
+	}
+	open(s, &app, .Save, {start_known = .Downloads, suggested_name = "got.zip"})
+	testing.expect_value(t, counts(s).folder, "/home/me/Downloads")
+	testing.expect(t, session.find_text(s, "got.zip") != nil)
+	session.key(s, .Escape)
+	// start_dir first
+	open(s, &app, .Save, {start_dir = "/elsewhere", start_known = .Downloads})
+	testing.expect_value(t, counts(s).folder, "/elsewhere")
+	session.key(s, .Escape)
+	// a folder the source does not know: not that one
+	open(s, &app, .Save, {start_dir = "", start_known = .Music})
+	testing.expect(t, counts(s).folder != "/home/me/Downloads")
+}
+
+// The computer's files: start_known = .Downloads opens the person's Downloads folder (Linux: the one user-dirs.dirs
+// names, here a folder of the test's; Windows: the system's).
+@(test)
+the_local_source_starts_in_downloads :: proc(t: ^testing.T) {
+	root := fmt.tprintf("%s/gui_toolkit_file_known_%d", fsx.temp_dir(context.temp_allocator), os.get_pid())
+	fsx.remove_tree(root)
+	defer fsx.remove_tree(root)
+	expected: string
+	before, had := os.lookup_env("XDG_CONFIG_HOME", context.temp_allocator)
+	defer {
+		when ODIN_OS == .Linux {
+			if had { os.set_env("XDG_CONFIG_HOME", before) } else { os.unset_env("XDG_CONFIG_HOME") }
+		} else {
+			_, _ = before, had
+		}
+	}
+	when ODIN_OS == .Linux {
+		// (a user-dirs.dirs of the test's own: known_folder_path reads it again when its path changes)
+		config := fmt.tprintf("%s/config", root)
+		expected = fmt.tprintf("%s/Téléchargements", root)
+		fsx.make_dirs(config)
+		fsx.make_dirs(expected)
+		dirs := fmt.tprintf("XDG_DOWNLOAD_DIR=\"%s\"\n", expected)
+		testing.expect(t, os.write_entire_file(fmt.tprintf("%s/user-dirs.dirs", config), transmute([]byte)dirs) == nil)
+		testing.expect(t, os.write_entire_file(fmt.tprintf("%s/arrived.bin", expected), transmute([]byte)string("x")) == nil)
+		os.set_env("XDG_CONFIG_HOME", config)
+	} else {
+		expected = platform.known_folder_path(.Downloads, context.temp_allocator)
+		if expected == "" || fsx.path_kind(expected) != .Directory { return }   // (a system with no Downloads folder)
+	}
+	app: App
+	defer app_destroy(&app)
+	app.local = true
+	s := start(t, &app)
+	open(s, &app, .Save, {start_known = .Downloads, suggested_name = "file.bin"})
+	session.wait_until(s, expected, proc(s: ^session.Session, want: string) -> bool { return ui.file_browser_counts(s.state).folder == want }, "the Downloads folder", BOUND)
+	when ODIN_OS == .Linux {
+		session.wait_text(s, "arrived.bin", BOUND)
+	}
+}
+
+////////////////////////////////
 // The path bar
 
 // Ctrl+L: the path as a field, answered from the folder's entries (no reading); a path typed and Enter go there (its

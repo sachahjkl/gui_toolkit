@@ -87,6 +87,22 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
   word with `File_Dialog.act`: "Start here"). The act is
   disabled while nothing can be chosen (Open with no file selected; Folder mode chooses the selected folder, or the
   folder shown when none is).
+- **The program's acts on a row** (`File_Dialog.row_actions`): a right click on a row (it is selected), or the Menu key
+  (Shift+F10) on the rows selected, opens their context menu with the program's acts, each a `File_Row_Action`:
+  `label`, `icon` (a Lucide glyph), `folders` (offered on a folder too; by default on files only), `act(user, path)`.
+  An act runs on the interface's thread, once per entry chosen that it takes (a multiple selection gives each, in the
+  folder's order), with the entry's path in the source's form (valid during the call). The dialog stays open: an act is
+  no answer of the dialog. It must not block: ocn's Download starts a task (`http.receive`, docs/http.md). No menu
+  opens when no act takes the rows chosen. The system's dialogs do not show them.
+
+  ```odin
+  download :: proc(user: rawptr, path: string) { app_download_start((^App)(user), path) }
+  acts := []platform.File_Row_Action{{label = "Download", icon = lucide.DOWNLOAD, act = download, user = app}}
+  ui.file_dialog(&app.ui, .Open, {row_actions = acts}, done, app, source = &app.server_files)
+  ```
+- **The first folder**: `start_dir`; else the folder this `remember_id` was left in; else `start_known`, the system's
+  folder of that name (`.Downloads`), asked of the source (`File_Source.known`; the computer's source answers it from
+  its places, read once per State: a folder the person never made is none); else the source's start, its first place.
 - **States**: reading (a line that says so, after `FILE_BROWSER_SLOW_MS` only: a fast folder does not flash), empty
   folder, refused or failed (the source's words, and Try again), a folder that no longer exists (the source says
   `missing`: it goes up to the nearest one that does).
@@ -135,6 +151,7 @@ File_Source :: struct {
 	find:        proc(src: ^File_Source, folder, query: string, limit: int, reply: File_Reply),  // search in subfolders
 	places:      proc(src: ^File_Source, allocator: mem.Allocator) -> []platform.File_Place,  // cheap: what it knows already
 	start:       proc(src: ^File_Source, allocator: mem.Allocator) -> string,        // where a dialog starts with no folder known ("": the source's first place)
+	known:       proc(src: ^File_Source, folder: platform.Known_Folder, allocator: mem.Allocator) -> string,  // a dialog's start_known ("": none; nil: no such folders)
 }
 ```
 
@@ -201,4 +218,6 @@ to the entries runs in a frame that did not change them; `-define:FILE_BROWSER_T
 a reading under way; the keyboard (Enter, Backspace, typing, Escape's order, Shift+↓, Ctrl+A); Folder mode; the
 program's places; New folder; the search in subfolders (a file three folders deep, a hidden folder, a late answer of an
 older query, no request per frame); the program's `key_press` and typed text while the browser is open; the path bar
-(Ctrl+L and a path typed, Tab and its own reading beside the list, a part clicked, Escape's order).
+(Ctrl+L and a path typed, Tab and its own reading beside the list, a part clicked, Escape's order); the program's acts
+on a row (a right click on a file and on a folder, the Menu key on several files, no menu without acts); `start_known`
+(a source that knows the folder, `start_dir` first, the computer's Downloads named by a `user-dirs.dirs` of the test's).

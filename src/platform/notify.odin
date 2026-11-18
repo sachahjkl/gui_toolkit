@@ -13,6 +13,7 @@ package platform
 // The pure parts (the D-Bus arguments, the toast's XML, the escaping, the image) are here, tested on every system.
 
 import "core:fmt"
+import "core:hash"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
@@ -41,6 +42,18 @@ Notification :: struct {
 	actions:  []Notification_Action,   // buttons (a system may show fewer: Windows at most 5)
 	replace:  Notification_Id,         // an earlier notification of the window this one updates in place (0: a new one)
 	silent:   bool,                    // no sound
+	progress: Notification_Progress,   // a bar (shown: false, none); a replace with a new value moves it
+}
+
+// A notification's progress bar (src/md/features/downloads.md). Sent again with `replace` and a new value, it moves in
+// place. Windows: the toast's bar, bound to data, so that an update of the same shape (notification_shape) moves it
+// without a new popup; an unknown value is an indeterminate bar. Linux: the `value` hint (0 to 100), which KDE Plasma,
+// dunst, mako and Xfce draw and other servers ignore; an unknown value sends none (no bar). A system that has no bar
+// shows the notification without it.
+Notification_Progress :: struct {
+	shown:  bool,
+	value:  f32,      // 0 to 1 (more is 1); below 0: not known
+	status: string,   // the words under the bar ("Downloading"; "": none). Linux: a line after the body
 }
 
 // What notify_async calls once the system answered: the notification's id, or ok false (no notification server, or it
@@ -55,16 +68,39 @@ notification_clone :: proc(n: Notification, allocator := context.allocator) -> N
 	out.icon_png = slice.clone(n.icon_png, allocator)
 	out.actions = make([]Notification_Action, len(n.actions), allocator)
 	for a, i in n.actions { out.actions[i] = {id = a.id, label = strings.clone(a.label, allocator)} }
+	out.progress.status = strings.clone(n.progress.status, allocator)
 	return out
 }
 
 notification_destroy :: proc(n: ^Notification, allocator := context.allocator) {
 	delete(n.title, allocator)
 	delete(n.body, allocator)
+	delete(n.progress.status, allocator)
 	delete(n.icon_png, allocator)
 	for a in n.actions { delete(a.label, allocator) }
 	delete(n.actions, allocator)
 	n^ = {}
+}
+
+// What a notification shows but its progress (its value and its status): two notifications of one shape differ only in
+// their bar. Windows updates the bar of a toast of the same shape in place (no popup again, no sound); another shape is
+// shown again.
+notification_shape :: proc(n: Notification) -> u64 {
+	sep := [1]u8{0}   // (between two texts: "ab" + "c" and "a" + "bc" differ)
+	h := hash.fnv64a(transmute([]u8)n.title)
+	h = hash.fnv64a(sep[:], h)
+	h = hash.fnv64a(transmute([]u8)n.body, h)
+	h = hash.fnv64a(sep[:], h)
+	h = hash.fnv64a(n.icon_png, h)
+	flags := [3]u8{u8(n.urgency), u8(n.silent), u8(n.progress.shown)}
+	h = hash.fnv64a(flags[:], h)
+	for a in n.actions {
+		id := i64(a.id)
+		h = hash.fnv64a(([^]u8)(&id)[:size_of(id)], h)
+		h = hash.fnv64a(transmute([]u8)a.label, h)
+		h = hash.fnv64a(sep[:], h)
+	}
+	return h
 }
 
 // Why a notification is gone.
@@ -184,14 +220,20 @@ notify_image_of_png :: proc(png_bytes: []u8, allocator := context.temp_allocator
 // The body of a Notify call (NOTIFY_SIGNATURE) for `n`, as `caps` allow: a "default" action (a click on the body) and
 // the buttons when the server shows actions (their keys are their ids in decimal), the body escaped when it reads
 // markup, and the hints: `desktop-entry` (the server groups the notifications and raises the program by it), `urgency`,
-// `suppress-sound`, `image-data` (the icon, when it is a PNG that decodes). The server's default time on screen.
+// `suppress-sound`, `image-data` (the icon, when it is a PNG that decodes), `value` (a progress that is known: 0 to
+// 100); a progress's status is a line after the body. The server's default time on screen.
 notify_dbus_body :: proc(n: Notification, app_name, app_icon, desktop_entry: string, caps: Notify_Caps, allocator := context.temp_allocator) -> []u8 {
 	w := dbus.body_writer(allocator)
 	dbus.w_string(&w, app_name)
 	dbus.w_u32(&w, u32(n.replace))
 	dbus.w_string(&w, app_icon)
 	dbus.w_string(&w, n.title)
-	dbus.w_string(&w, .Body_Markup in caps ? notify_escape(n.body, false, allocator) : n.body)
+	body := n.body
+	if n.progress.shown && n.progress.status != "" {
+		// (no server shows a bar's words: a line of the body, which every server shows)
+		body = body == "" ? n.progress.status : strings.concatenate({body, "\n", n.progress.status}, allocator)
+	}
+	dbus.w_string(&w, .Body_Markup in caps ? notify_escape(body, false, allocator) : body)
 	alen, acontent := dbus.w_array_begin(&w, STRING_ALIGN)
 	if .Actions in caps {
 		dbus.w_string(&w, NOTIFY_DEFAULT_ACTION)
@@ -218,6 +260,11 @@ notify_dbus_body :: proc(n: Notification, app_name, app_icon, desktop_entry: str
 		dbus.arg_dict_entry(&w, "suppress-sound")
 		dbus.arg_variant_bool(&w, true)
 	}
+	if percent, known := notify_progress_percent(n.progress); known {
+		dbus.arg_dict_entry(&w, "value")
+		dbus.w_signature(&w, "i")
+		dbus.w_i32(&w, percent)
+	}
 	if len(n.icon_png) > 0 {
 		if img, ok := notify_image_of_png(n.icon_png, allocator); ok {
 			dbus.arg_dict_entry(&w, "image-data")
@@ -237,6 +284,13 @@ notify_dbus_body :: proc(n: Notification, app_name, app_icon, desktop_entry: str
 	dbus.arg_dict_end(&w, hlen, hcontent)
 	dbus.w_i32(&w, -1)   // expire_timeout: the server's default
 	return w.buf[:]
+}
+
+// The `value` hint of a progress, 0 to 100 (a value past 1 is 100). known = false: no bar, or a value not known (no
+// server draws a bar that runs without a value).
+notify_progress_percent :: proc(p: Notification_Progress) -> (percent: i32, known: bool) {
+	if !p.shown || !(p.value >= 0) { return 0, false }   // (a NaN is not known either)
+	return i32(min(p.value, 1) * 100 + 0.5), true
 }
 
 // What an ActionInvoked key is: the body's click, or a button of that id. ok = false for a key the toolkit did not send.
@@ -267,8 +321,20 @@ TOAST_ACTION_PREFIX :: "action:"
 // Windows shows at most this many buttons on a toast (more: the toast fails).
 TOAST_MAX_ACTIONS :: 5
 
+// The names of a toast's data its progress bar is bound to (toast_xml, toast_progress_values).
+TOAST_PROGRESS_VALUE :: "progressValue"
+TOAST_PROGRESS_STATUS :: "progressStatus"
+
+// The values bound to a toast's progress bar: its value ("0.425"; "indeterminate" when not known) and its status. They
+// are data, not XML: nothing is escaped.
+toast_progress_values :: proc(p: Notification_Progress, allocator := context.temp_allocator) -> (value, status: string) {
+	if !(p.value >= 0) { return strings.clone("indeterminate", allocator), strings.clone(p.status, allocator) }
+	return fmt.aprintf("%.3f", min(p.value, 1), allocator = allocator), strings.clone(p.status, allocator)
+}
+
 // The XML of a toast (the ToastGeneric template, Windows 10 and later) for `n`: the title and the body as two texts,
-// the icon (`image_uri`, a file:/// URI; "" none) as the app logo, the buttons, the sound, the duration.
+// the icon (`image_uri`, a file:/// URI; "" none) as the app logo, a progress bar bound to the toast's data, the
+// buttons, the sound, the duration.
 toast_xml :: proc(n: Notification, image_uri: string, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
 	strings.write_string(&b, `<toast launch="`)
@@ -287,6 +353,14 @@ toast_xml :: proc(n: Notification, image_uri: string, allocator := context.temp_
 		strings.write_string(&b, `<image placement="appLogoOverride" src="`)
 		strings.write_string(&b, notify_escape(image_uri, true, allocator))
 		strings.write_string(&b, `"/>`)
+	}
+	if n.progress.shown {
+		// (bound to the toast's data: an update of the data moves the bar, toast_progress_values)
+		strings.write_string(&b, `<progress value="{`)
+		strings.write_string(&b, TOAST_PROGRESS_VALUE)
+		strings.write_string(&b, `}" status="{`)
+		strings.write_string(&b, TOAST_PROGRESS_STATUS)
+		strings.write_string(&b, `}"/>`)
 	}
 	strings.write_string(&b, `</binding></visual>`)
 	if len(n.actions) > 0 {

@@ -28,6 +28,7 @@
 //	temp_dir       the directory for temporary files
 //	path_join      a name in a folder, by this system's separator or a given one (text only: no system call)
 //	safe_file_name a name with the characters a system refuses in a file name replaced (text only)
+//	Writer         a file written in parts beside its target, renamed over it at the end or removed (writer.odin)
 package fsx
 
 import "base:runtime"

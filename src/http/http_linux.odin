@@ -203,18 +203,45 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	if h == nil { return {}, .No_Client }
 	defer pool_give(h, origin)
 	sink := Sink{data = make([dynamic]u8, allocator), max_bytes = req.max_bytes, head = make([dynamic]u8, context.temp_allocator)}
+	list, listed := curl_request_setup(h, method, url, req)
+	if !listed { delete(sink.data); return {}, .Unreachable }
+	defer if list != nil { c.slist_free_all(list) }
+	c.easy_setopt(h, CURLOPT_TIMEOUT_MS, i64(req.timeout / 1_000_000))
+	c.easy_setopt(h, CURLOPT_WRITEFUNCTION, on_write)
+	c.easy_setopt(h, CURLOPT_WRITEDATA, rawptr(&sink))
+	c.easy_setopt(h, CURLOPT_HEADERFUNCTION, on_header)
+	c.easy_setopt(h, CURLOPT_HEADERDATA, rawptr(&sink))
+
+	code := c.easy_perform(h)
+	if code != 0 {
+		delete(sink.data)
+		return {}, sink.too_large && code == CURLE_WRITE_ERROR ? .Too_Large : .Unreachable
+	}
+	answer: i64
+	c.easy_getinfo(h, CURLINFO_RESPONSE_CODE, &answer)
+	effective: cstring
+	c.easy_getinfo(h, CURLINFO_EFFECTIVE_URL, &effective)
+	res.status = int(answer)
+	res.body = sink.data[:]
+	res.url = strings.clone(effective != nil ? string(effective) : url, allocator)
+	res.header_text = strings.clone(string(sink.head[:]), allocator)
+	res.headers = headers_parse(res.header_text, allocator)
+	return res, .None
+}
+
+// The options of a request on `h` that request and receive share: the address and its redirects, the method and its
+// body, the headers, the compression, the user agent, the connection's bound. `list` holds the headers, which libcurl
+// reads during perform: the caller frees it after (nil: none). !ok: libcurl had no memory.
+@(private = "file")
+curl_request_setup :: proc(h: rawptr, method, url: string, req: Request) -> (list: rawptr, ok: bool) {
+	c := &curl_lib
 	c.easy_setopt(h, CURLOPT_URL, strings.clone_to_cstring(url, context.temp_allocator))
 	c.easy_setopt(h, CURLOPT_MAXREDIRS, i64(MAX_REDIRECTS))
 	c.easy_setopt(h, CURLOPT_PROTOCOLS_STR, cstring("http,https"))
 	c.easy_setopt(h, CURLOPT_REDIR_PROTOCOLS_STR, cstring("http,https"))
 	c.easy_setopt(h, CURLOPT_NOSIGNAL, i64(1))   // (a thread of its own: no SIGALRM for the name lookup's time limit)
-	c.easy_setopt(h, CURLOPT_TIMEOUT_MS, i64(req.timeout / 1_000_000))
 	c.easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, i64(connect_bound(req) / time.Millisecond))
 	curl_compression(h, req)
-	c.easy_setopt(h, CURLOPT_WRITEFUNCTION, on_write)
-	c.easy_setopt(h, CURLOPT_WRITEDATA, rawptr(&sink))
-	c.easy_setopt(h, CURLOPT_HEADERFUNCTION, on_header)
-	c.easy_setopt(h, CURLOPT_HEADERDATA, rawptr(&sink))
 	if req.user_agent != "" { c.easy_setopt(h, CURLOPT_USERAGENT, strings.clone_to_cstring(req.user_agent, context.temp_allocator)) }
 
 	has_body := req.body != nil || method == "POST" || method == "PUT" || method == "PATCH"
@@ -236,13 +263,14 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	// libcurl reads any value but 0 as "follow".)
 	c.easy_setopt(h, CURLOPT_FOLLOWLOCATION, req.no_redirects ? i64(0) : i64(custom ? CURLFOLLOW_OBEYCODE : CURLFOLLOW_ALL))
 
-	list: rawptr
-	defer if list != nil { c.slist_free_all(list) }
 	content_type := false
 	for hd in req.headers {
 		if ascii.equal_fold(hd.name, "Content-Type") { content_type = true }
 		next := c.slist_append(list, strings.clone_to_cstring(strings.concatenate({hd.name, ": ", hd.value}, context.temp_allocator), context.temp_allocator))
-		if next == nil { delete(sink.data); return {}, .Unreachable }
+		if next == nil {
+			if list != nil { c.slist_free_all(list) }
+			return nil, false
+		}
 		list = next
 	}
 	// libcurl adds what nobody asked for: a form's Content-Type to a body, and "Expect: 100-continue" to a large one (a
@@ -254,22 +282,108 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 		if next := c.slist_append(list, "Expect:"); next != nil { list = next }
 	}
 	if list != nil { c.easy_setopt(h, CURLOPT_HTTPHEADER, list) }
+	return list, true
+}
+
+// What one received body's callbacks share (receive): they run on the thread of easy_perform.
+@(private = "file")
+Receive_Curl :: struct {
+	h:          rawptr,
+	sink:       ^Receive_Sink,
+	stop:       ^Stop,
+	silence:    time.Duration,
+	last:       time.Tick,       // the last byte received, of a header or of the body
+	head:       [dynamic]u8,     // the header lines of the last answer
+	compressed: bool,
+	headed:     bool,            // the head of the answer kept was read (at its first body bytes)
+	stopped:    bool,            // stop was asked
+	silent:     bool,            // nothing came for `silence`
+	head_large: bool,            // the header lines passed MAX_HEADER_BYTES
+}
+
+// The answer kept is the one whose body comes: its status and its header lines, read once.
+@(private = "file")
+receive_curl_head :: proc(r: ^Receive_Curl) {
+	r.headed = true
+	code: i64
+	curl_lib.easy_getinfo(r.h, CURLINFO_RESPONSE_CODE, &code)
+	receive_head(r.sink, int(code), headers_parse(string(r.head[:]), context.temp_allocator), r.compressed)
+}
+
+@(private = "file")
+on_receive_write :: proc "c" (ptr: [^]u8, size, count: uint, user: rawptr) -> uint {
+	context = runtime.default_context()
+	r := (^Receive_Curl)(user)
+	n := int(size * count)
+	r.last = time.tick_now()
+	if !r.headed {
+		receive_curl_head(r)
+		if r.sink.refused { return 0 }   // (not 2xx: its body is not given; fewer bytes than given, libcurl stops)
+	}
+	if stop_asked(r.stop) { r.stopped = true; return 0 }
+	if !receive_feed(r.sink, ptr[:n]) { return 0 }
+	return uint(n)
+}
+
+// One header line at a time, of every answer (a redirect's too): a status line starts the answer kept.
+@(private = "file")
+on_receive_header :: proc "c" (ptr: [^]u8, size, count: uint, user: rawptr) -> uint {
+	context = runtime.default_context()
+	r := (^Receive_Curl)(user)
+	n := int(size * count)
+	r.last = time.tick_now()
+	if strings.has_prefix(string(ptr[:n]), "HTTP/") { clear(&r.head) }
+	if len(r.head) + n > MAX_HEADER_BYTES { r.head_large = true; return 0 }
+	append(&r.head, ..ptr[:n])
+	return uint(n)
+}
+
+// libcurl calls it about once a second, bytes or not: where a stop and the silence are seen between two chunks.
+@(private = "file")
+on_receive_progress :: proc "c" (user: rawptr, dltotal, dlnow, ultotal, ulnow: i64) -> i32 {
+	r := (^Receive_Curl)(user)
+	if r.stop != nil && sync.atomic_load(&r.stop.asked) { r.stopped = true; return 1 }
+	if time.tick_since(r.last) > r.silence { r.silent = true; return 1 }
+	return 0
+}
+
+// receive on libcurl: an easy handle of the pool (its connection reused), the shared options, the body to the sink.
+receive_system :: proc(method, url: string, req: Request, sink: ^Receive_Sink, stop: ^Stop, allocator := context.allocator) -> (res: Response, err: Error) {
+	sync.once_do(&curl_once, curl_load)
+	if !curl_found { return {}, .No_Client }
+	c := &curl_lib
+	origin := origin_of(url)
+	h := pool_take(origin)
+	if h == nil { return {}, .No_Client }
+	defer pool_give(h, origin)
+	// (the head in the heap: the callbacks append to it from libcurl's call, with a context of their own)
+	r := Receive_Curl{h = h, sink = sink, stop = stop, silence = req.timeout, last = time.tick_now(), compressed = req.compressed}
+	r.head = make([dynamic]u8, runtime.heap_allocator())
+	defer delete(r.head)
+	list, listed := curl_request_setup(h, method, url, req)
+	if !listed { return {}, .Unreachable }
+	defer if list != nil { c.slist_free_all(list) }
+	c.easy_setopt(h, CURLOPT_WRITEFUNCTION, on_receive_write)
+	c.easy_setopt(h, CURLOPT_WRITEDATA, rawptr(&r))
+	c.easy_setopt(h, CURLOPT_HEADERFUNCTION, on_receive_header)
+	c.easy_setopt(h, CURLOPT_HEADERDATA, rawptr(&r))
+	c.easy_setopt(h, CURLOPT_XFERINFOFUNCTION, on_receive_progress)
+	c.easy_setopt(h, CURLOPT_XFERINFODATA, rawptr(&r))
+	c.easy_setopt(h, CURLOPT_NOPROGRESS, i64(0))
 
 	code := c.easy_perform(h)
-	if code != 0 {
-		delete(sink.data)
-		return {}, sink.too_large && code == CURLE_WRITE_ERROR ? .Too_Large : .Unreachable
+	// (an answer with no body, a HEAD's or an empty one, called no write: its head is read now)
+	if !r.headed { receive_curl_head(&r) }
+	switch {
+	case r.stopped:                         return {}, .Stopped
+	case sink.too_large, r.head_large:      return {}, .Too_Large
+	case sink.status == 0:                  return {}, .Unreachable   // (no answer: the name, the network, TLS)
+	case sink.refused, sink.by_caller:      // (an answer, and what the caller wanted of it)
+	case r.silent, code != 0:               return {}, .Unreachable
 	}
-	answer: i64
-	c.easy_getinfo(h, CURLINFO_RESPONSE_CODE, &answer)
 	effective: cstring
 	c.easy_getinfo(h, CURLINFO_EFFECTIVE_URL, &effective)
-	res.status = int(answer)
-	res.body = sink.data[:]
-	res.url = strings.clone(effective != nil ? string(effective) : url, allocator)
-	res.header_text = strings.clone(string(sink.head[:]), allocator)
-	res.headers = headers_parse(res.header_text, allocator)
-	return res, .None
+	return receive_response(sink.status, effective != nil ? string(effective) : url, string(r.head[:]), allocator), .None
 }
 
 // A compressed answer asked: libcurl sends Accept-Encoding and gives the write callback the decoded bytes (so max_bytes

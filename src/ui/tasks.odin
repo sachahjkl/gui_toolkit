@@ -267,6 +267,13 @@ file_dialog_options_clone :: proc(d: platform.File_Dialog, a: runtime.Allocator)
 	places := make([]platform.File_Place, len(d.places), a)
 	for p, i in d.places { places[i] = {name = strings.clone(p.name, a), path = strings.clone(p.path, a), icon = strings.clone(p.icon, a)} }
 	c.places = places
+	actions := make([]platform.File_Row_Action, len(d.row_actions), a)
+	for x, i in d.row_actions {
+		actions[i] = x
+		actions[i].label = strings.clone(x.label, a)
+		actions[i].icon = strings.clone(x.icon, a)
+	}
+	c.row_actions = actions
 	return c
 }
 
@@ -282,5 +289,7 @@ file_dialog_options_free :: proc(d: ^platform.File_Dialog, a: runtime.Allocator)
 	delete(d.filters, a)
 	for p in d.places { delete(p.name, a); delete(p.path, a); delete(p.icon, a) }
 	delete(d.places, a)
+	for x in d.row_actions { delete(x.label, a); delete(x.icon, a) }
+	delete(d.row_actions, a)
 	d^ = {}
 }
