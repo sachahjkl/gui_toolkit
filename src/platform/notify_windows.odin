@@ -330,8 +330,10 @@ notify :: proc(w: ^Window, n: Notification, loc := #caller_location) -> (id: Not
 	base.blocking("platform.notify", loc)
 	if !notify_attach(w) { return 0, false }
 	id = notify_next_id(w, n.replace)
-	answer: Toast_Answer
-	toast_post({kind = .Show, host = w.notify.host, n = notification_clone(n, runtime.heap_allocator()), id = id, answer = &answer})
+	// (in the heap, not on this stack: the notification thread holds it until it posts the answer we wait for)
+	answer := new(Toast_Answer, runtime.heap_allocator())
+	defer free(answer, runtime.heap_allocator())
+	toast_post({kind = .Show, host = w.notify.host, n = notification_clone(n, runtime.heap_allocator()), id = id, answer = answer})
 	sync.sema_wait(&answer.sema)
 	if !answer.ok { return 0, false }
 	return id, true

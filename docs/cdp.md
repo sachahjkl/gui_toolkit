@@ -22,8 +22,10 @@ cdp.wait_idle(&c, 5 * time.Second)
 cdp.shot(&c, "out.png")
 ```
 
-- `connect_wait(port, limit, program)`: `connect`, tried every `CONNECT_POLL` (50 ms) until it answers, at most
-  `limit`. `program` (optional): the process that serves the port; once it has ended, the wait fails at once. A tool
+- `connect_wait(port, limit, program, step)`: `connect`, tried every `step` (`CONNECT_POLL`, 50 ms, by default) until
+  it answers, at most `limit`. A tool that measures a program's first screen gives a finer `step`, since the wait adds
+  up to one step to what it measures. `program` (optional): the process that serves the port; once it has ended, the
+  wait fails at once. A tool
   that starts its program uses it with `toolbox.free_port` ([toolbox.md](toolbox.md), "A program driven by its tool").
 - `connect(port)`: the WebSocket of the first target of `/json/list`. `open(port, path)`: the WebSocket at a path (a browser's
   own, `/devtools/browser/...`, whose pages are sessions of one connection: set `c.session`). `targets(port)` lists them.

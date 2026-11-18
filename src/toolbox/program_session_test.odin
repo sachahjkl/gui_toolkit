@@ -6,11 +6,20 @@ import "core:testing"
 // The port free_port gives is one a listener can take now.
 @(test)
 a_free_port_can_be_listened_on :: proc(t: ^testing.T) {
-	port, ok := free_port()
-	testing.expect(t, ok, "the system gives a port")
-	if !ok { return }
-	testing.expect(t, port > 0 && port < 65536, "a port")
-	l, err := net.listen_tcp({address = net.IP4_Loopback, port = port})
+	// (a few tries: a test running beside this one can take the port between its choice and the listen, as it did on
+	// the Linux CI; a port no listener could ever take fails every try)
+	port: int
+	l: net.TCP_Socket
+	err: net.Network_Error
+	for _ in 0 ..< 5 {
+		ok: bool
+		port, ok = free_port()
+		testing.expect(t, ok, "the system gives a port")
+		if !ok { return }
+		testing.expect(t, port > 0 && port < 65536, "a port")
+		l, err = net.listen_tcp({address = net.IP4_Loopback, port = port})
+		if err == nil { break }
+	}
 	testing.expect(t, err == nil, "a listener takes it")
 	if err != nil { return }
 	defer net.close(l)
