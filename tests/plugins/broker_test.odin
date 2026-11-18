@@ -66,6 +66,7 @@ a_plugin_that_asks_is_off_until_allowed :: proc(t: ^testing.T) {
 	session.wait_idle(s, WAIT)
 	session.click(s, "grant_allow")
 	wait_state(s, fx, "broker", .Ready)
+	wait_started(s, fx, "broker")
 	testing.expectf(t, strings.contains(said(s, fx, "copy"), "ok"), "clipboard.write granted: '%s'", fx.host.last_toast)
 	// a call it did not ask for: refused at once
 	testing.expectf(t, strings.contains(said(s, fx, "paste"), "PermissionError"), "clipboard.read not granted: '%s'", fx.host.last_toast)

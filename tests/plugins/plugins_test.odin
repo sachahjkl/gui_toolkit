@@ -134,11 +134,11 @@ choose :: proc(s: ^session.Session, fx: ^Fx, label: string) {
 	session.frames(s, 2)
 }
 
-wait_state :: proc(s: ^session.Session, fx: ^Fx, id: string, want: plugins.Plugin_State, loc := #caller_location) {
+wait_state :: proc(s: ^session.Session, fx: ^Fx, id: string, want: plugins.Plugin_State, bound := WAIT, loc := #caller_location) {
 	Wanted :: struct { fx: ^Fx, id: string, want: plugins.Plugin_State }
 	session.wait_until(s, Wanted{fx, id, want}, proc(s: ^session.Session, w: Wanted) -> bool {
 		return plugins.state_of(&w.fx.host, w.id) == w.want
-	}, fmt.tprintf("the state %v", want), WAIT, loc)
+	}, fmt.tprintf("the state %v", want), bound, loc)
 }
 
 @(test)

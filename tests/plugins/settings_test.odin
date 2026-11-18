@@ -42,6 +42,7 @@ a_plugin_reads_its_settings_and_hears_their_changes :: proc(t: ^testing.T) {
 		testing.expect_value(t, pages[0].title, "Greeter")
 		testing.expect_value(t, len(pages[0].names), 2)
 	}
+	wait_started(s, fx, "greeter")
 	fx.open_view = {"greeter", "main"}
 	session.wait_text(s, "Hello x2", WAIT)
 	testing.expect_value(t, config.set_string(&fx.prefs, "plugins.greeter.greeting", "Hi"), config.Set_Error.None)

@@ -117,8 +117,10 @@ a_lone_file_runs_with_an_implied_manifest :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.manifest.id, "my-counter")
 	testing.expect_value(t, p.manifest.name, "My Counter")
 	testing.expect_value(t, p.state, plugins.Plugin_State.Ready)
+	wait_started(s, fx, "my-counter")
 	fx.body = {"my-counter", "main"}
 	session.wait_text(s, "Count: 0", WAIT)
+	session.wait_idle(s, WAIT)
 	session.click(s, "pv:add")
 	session.wait_text(s, "Count: 1", WAIT)
 }
@@ -140,6 +142,7 @@ a_handler_that_never_returns_leaves_the_window_building :: proc(t: ^testing.T) {
 	session.wait_text(s, "Stopped.", WAIT)
 	testing.expect(t, session.find_text(s, "Count: 1") != nil, "the last list is gone after the stop")
 	session.click(s, "pv_status_act")
+	// (a new process: its start has START_WAIT, as wait_started's)
+	wait_state(s, fx, "counter", .Running, START_WAIT)
 	session.wait_text(s, "Count: 0", WAIT)
-	wait_state(s, fx, "counter", .Running)
 }
