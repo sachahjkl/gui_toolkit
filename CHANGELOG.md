@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.316.1] - 2026-11-18 14:53
+
+### Fixed
+- **`session.save_png` without a renderer**: in a session started with `no_renderer`, it ends the test with "this session
+has no renderer", as `capture` does, instead of crashing it.
+
 ## [0.316.0] - 2026-11-18 13:18
 
 ### Added
@@ -4470,6 +4476,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.316.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.316.1
 [0.316.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.316.0
 [0.315.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.315.0
 [0.314.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.314.0
