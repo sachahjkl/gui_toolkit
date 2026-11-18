@@ -18,6 +18,7 @@ package tk_prefs_page
 //
 // The command line (--install, --uninstall, --setup) is setup.command_of and setup.command_run.
 
+import "base:runtime"
 import "core:log"
 import "core:strings"
 import config "../config"
@@ -112,7 +113,9 @@ install_follow :: proc(in_: ^Install) {
 	if !desktop.supported() || in_.state == nil || in_.prefs == nil { return }
 	if in_.following { in_.follow_again = true; return }
 	in_.following = true
-	j := new(Follow_Job)
+	// (the job in the heap: its work makes `failed` on the chores, and `lost` may free it there; the program's
+	// allocator, a test's tracker, would see a block it never gave)
+	j := new(Follow_Job, runtime.heap_allocator())
 	j^ = {in_ = in_, o = in_.options, menu = config.bool_of(in_.prefs, MENU_PREF), autostart = config.bool_of(in_.prefs, AUTOSTART_PREF)}
 	ui.task(in_.state, proc(data: rawptr) {
 		j := (^Follow_Job)(data)
@@ -129,7 +132,7 @@ install_follow :: proc(in_: ^Install) {
 		// (a default the system keeps itself, Windows': asking for it opens the system's page, never on a setting's change)
 		o.default_documents = o.default_documents && .Default_Documents in f.parts
 		if r := desktop.apply(&o); r.error != .None {
-			j.failed = strings.concatenate({desktop.error_text(r.error), " ", r.detail})
+			j.failed = strings.concatenate({desktop.error_text(r.error), " ", r.detail}, runtime.heap_allocator())
 		}
 	}, proc(data: rawptr, _: u64) {
 		j := (^Follow_Job)(data)
@@ -151,8 +154,8 @@ install_follow :: proc(in_: ^Install) {
 @(private = "file")
 follow_free :: proc(data: rawptr) {
 	j := (^Follow_Job)(data)
-	delete(j.failed)
-	free(j)
+	delete(j.failed, runtime.heap_allocator())
+	free(j, runtime.heap_allocator())
 }
 
 // general.menu and general.autostart shown on the settings' page only where install_follow applies them.
@@ -180,15 +183,16 @@ Offer_Job :: struct {
 // never the modal (a test, a demo, a disposable profile); the reading still says which copy runs (known, running_it).
 install_offer :: proc(in_: ^Install, state: ^ui.State, offer: bool) {
 	if !desktop.supported() || in_.reading { return }
-	j := new(Offer_Job)
-	j^ = {in_ = in_, o = in_.options, choice = strings.clone(install_choice(in_)), offer = offer}
+	// (the job in the heap, as install_follow's: its work makes `running` on the chores, and `lost` may free it there)
+	j := new(Offer_Job, runtime.heap_allocator())
+	j^ = {in_ = in_, o = in_.options, choice = strings.clone(install_choice(in_), runtime.heap_allocator()), offer = offer}
 	in_.reading = true
 	in_.state = state
 	ui.task(state, proc(data: rawptr) {
 		j := (^Offer_Job)(data)
 		f := setup.facts(j.o)
 		j.running_it = f.running_it
-		j.running = strings.clone(f.running)
+		j.running = strings.clone(f.running, runtime.heap_allocator())
 		if f.running_it {
 			integration, _ := setup.options(j.o)
 			desktop.clean_old(&integration, process.parent_dir(f.running))
@@ -200,8 +204,9 @@ install_offer :: proc(in_: ^Install, state: ^ui.State, offer: bool) {
 		defer offer_free(j)
 		in_ := j.in_
 		in_.reading, in_.known, in_.running_it = false, true, j.running_it
+		// (Install's own copy, in the program's allocator, which install_end frees: the job's is the heap's)
 		delete(in_.running)
-		in_.running, j.running = j.running, ""
+		in_.running = strings.clone(j.running)
 		if j.offer { install_open(in_) }
 		install_follow(in_)
 	}, j, offer_free)
@@ -210,9 +215,9 @@ install_offer :: proc(in_: ^Install, state: ^ui.State, offer: bool) {
 @(private = "file")
 offer_free :: proc(data: rawptr) {
 	j := (^Offer_Job)(data)
-	delete(j.choice)
-	delete(j.running)
-	free(j)
+	delete(j.choice, runtime.heap_allocator())
+	delete(j.running, runtime.heap_allocator())
+	free(j, runtime.heap_allocator())
 }
 
 // The vendor's mark of the "By" line in the modal and on the Installation page, from the bytes of its PNG (a program's
