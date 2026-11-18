@@ -137,6 +137,15 @@ as on the standard bar. Every bar takes it, a text area's too.
 The buttons' boxes keep `CAPTION_BUTTON_WIDTH`: they are the window's hit regions. A dialog's `title_strip` takes the
 band too, active.
 
+A program that draws its own title bar (a row of tabs with `window_buttons`, in place of `title_bar`) takes the band
+from these:
+
+| Procedure | What it does |
+|---|---|
+| `caption_band(dc, r, active) -> bool` | draws the band of the theme shown over `r`; false: the theme gives none, nothing drawn |
+| `caption_band_ink() -> Maybe(Color)` | the text on the band; nil: no band, or the text as it is |
+| `caption_band_bold() -> bool` | whether the text on the band is bold |
+
 | Procedure | What it does |
 |---|---|
 | `theme_find(list, name)` | the theme of this name (ASCII case ignored), and its index |

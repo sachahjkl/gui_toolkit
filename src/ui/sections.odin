@@ -199,7 +199,7 @@ caption_face :: proc(dc: ^draw.Context, r: Rect, top, bottom: Color, lit := true
 		return
 	case relief_ringed() != nil:
 		// (a relief of rings: the theme's caption band, active when lit; else one colour and the rings of a bar)
-		if c := caption_shown(); caption_has_band(c) { caption_band(dc, r, c, lit); return }
+		if c := caption_shown(); caption_has_band(c) { caption_band_fill(dc, r, c, lit); return }
 		face := draw.mix(top, bottom, 0.5)
 		draw.rect(dc, r, face)
 		relief_rings(dc, r, relief_ringed().bar, face)
@@ -238,7 +238,7 @@ Strip_Draw :: struct { top: Color }
 strip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Strip_Draw)(user)
 	// (a theme's caption band is every caption's, a dialog's title too: theme-design.md, layer 9)
-	if c := caption_shown(); caption_has_band(c) { caption_band(dc, b.rect, c, true); return }
+	if c := caption_shown(); caption_has_band(c) { caption_band_fill(dc, b.rect, c, true); return }
 	if edged() { caption_face(dc, b.rect, d.top, d.top); return }
 	// (outside the edged finish a strip is the accent fading out all the same: it is what the strip is)
 	r := b.rect
