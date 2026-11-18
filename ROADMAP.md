@@ -17,9 +17,6 @@
   chunk, and a stop), a notification updated in place with its progress and several buttons, a program's actions on
   an entry of the file browser, `File_Dialog.start_known = .Downloads` honoured by the browser, and an `fsx` writer
   that appends to a temporary file then renames it.
-- **Side areas that fit a narrow window.** Under 52 em, a right area of a fixed 448 px beside the side bar runs past
-  the window (opencode native's /btw panel): a side area gives way as a side panel does. And a dialog's opening takes a
-  least width (the image viewer's handles can fall under its footer's measured width).
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).

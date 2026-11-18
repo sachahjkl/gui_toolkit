@@ -57,6 +57,12 @@ View_Space :: struct {
 	max_stack: int,
 	// a side zone's rail width (em) this build: the largest View_Options.rail_em of its views (0: the icons' rail)
 	rail_em:   [View_Edge]f32,
+	// a side zone's least open (em): the largest View_Options.min_width_em of its views (0: its extent, it does not narrow)
+	least_em:  [View_Edge]f32,
+	// what view_sides_fit gave a side zone this build (px): the width it shows (0: its extent, unfitted), and its room
+	// (the space less the other side; 0: the space's)
+	shown:     [View_Edge]f32,
+	room:      [View_Edge]f32,
 }
 
 // Whether zone `e` shows collapsed: its fold (a side zone's Side_Fold: by the rule or by the user; a top or bottom
@@ -64,17 +70,44 @@ View_Space :: struct {
 @(private = "file")
 view_zone_collapsed :: proc(sp: ^View_Space, e: View_Edge) -> bool { return sp.mem.fold[e].folded }
 
-// A side zone's rule (side-panels.md): it folds to its rail when the space (its last width) less the zone's extent
-// leaves the content less than DOCK_MIN_EM, and opens again past DOCK_MIN_EM plus SIDE_FOLD_GAP_EM. A crossing ends a
-// Minimise or a Restore of the user's, and is remembered. Only where the centre is the program's content.
+// The side zones' rule, both together (side-panels.md, Two sides), on the space's last width: the right zone narrows
+// to its least, then folds to its rail when even its least leaves the content less than DOCK_MIN_EM (open again past
+// DOCK_MIN_EM plus SIDE_FOLD_GAP_EM); then the left does the same, its room the space less the right's rail. The left
+// is decided first, and the right's room is what the left shows: the left never reads the right's state, so the two
+// cannot wait for each other. A crossing ends a Minimise or a Restore of the user's, and is remembered. Only where the
+// centre is the program's content; elsewhere (and before the first layout) each zone shows at its extent or its rail.
 @(private = "file")
-view_zone_follow :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, has_views, content: bool, em: f32) {
-	if !has_views || !content { return }
+view_sides_fit :: proc(vs: ^Views, sp: ^View_Space, left, right: ^View_Record, content: bool, em: f32) {
+	sp.shown, sp.room = {}, {}
 	width := sp.rect.max.x - sp.rect.min.x
-	if side_fold_follow(&sp.mem.fold[e], width, view_zone_px(sp, e, em, width), DOCK_MIN_EM * em, SIDE_FOLD_GAP_EM * em) {
-		view_space_remember(vs, sp)
-		vs.version += 1
+	if !content || width <= 0 { return }
+	has_left, has_right := left != nil, right != nil
+	// (a side zone's handle takes this much of the row, folded too: its rail's edge line)
+	handle := math.round(SPLITTER_THICKNESS_PX * max(gs().scale, 0.01))
+	content_min, gap := DOCK_MIN_EM * em, SIDE_FOLD_GAP_EM * em
+	side :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, first: ^View_Record, room, width, handle, content_min, gap, em: f32) {
+		// (the zone's extent as its box will take it in this build: a zone that just opened has none remembered yet)
+		_, _ = view_zone_extent(sp, e, first)
+		extent := view_zone_px(sp, e, em, width)
+		least := sp.least_em[e] > 0 ? min(math.round(sp.least_em[e] * em), extent) : extent
+		if side_fold_follow(&sp.mem.fold[e], room, least, content_min, gap) {
+			view_space_remember(vs, sp)
+			vs.version += 1
+		}
+		rail := view_rail_px(sp, e, em)
+		// (open: its extent, or narrower down to its least so the content keeps its own; never past the space's edge,
+		// even opened by the person while narrow)
+		w := sp.mem.fold[e].folded ? rail : clamp(room - content_min, least, extent)
+		sp.shown[e] = max(min(w, room - handle), min(rail, max(room - handle, 0)))
+		sp.room[e] = room
 	}
+	left_room, right_room := width, width
+	if has_right { left_room -= view_rail_px(sp, .Right, em) + handle }
+	if has_left {
+		side(vs, sp, .Left, left, left_room, width, handle, content_min, gap, em)
+		right_room -= sp.shown[.Left] + handle
+	}
+	if has_right { side(vs, sp, .Right, right, right_room, width, handle, content_min, gap, em) }
 }
 
 // What views_dock makes: with `content`, the block is its centre (the program's content); without, panels only, its
@@ -160,12 +193,18 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 	handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32, maxed: bool) {
 		if !maxed && (!view_zone_collapsed(sp, e) || e == .Left || e == .Right) { view_zone_handle(vs, sp, e, em) }
 	}
-	view_zone_follow(vs, sp, .Left, has(&zones[.Left]), content, em)
-	view_zone_follow(vs, sp, .Right, has(&zones[.Right]), content, em)
 	for e in ([]View_Edge{.Left, .Right}) {
-		sp.rail_em[e] = 0
-		for k in 0 ..< VIEW_STACKS_MAX { for r in zones[e][k] { sp.rail_em[e] = max(sp.rail_em[e], r.kind.o.rail_em) } }
+		sp.rail_em[e], sp.least_em[e] = 0, 0
+		for k in 0 ..< VIEW_STACKS_MAX {
+			for r in zones[e][k] {
+				sp.rail_em[e] = max(sp.rail_em[e], r.kind.o.rail_em)
+				sp.least_em[e] = max(sp.least_em[e], r.kind.o.min_width_em)
+			}
+		}
 	}
+	// (after the rails and the leasts: the fit reads both)
+	first :: proc(z: ^View_Zone_Lists) -> ^View_Record { return len(z[0]) > 0 ? z[0][0] : nil }
+	view_sides_fit(vs, sp, first(&zones[.Left]), first(&zones[.Right]), content, em)
 
 	// the layout: the top zone, the left, the centre, the right, the bottom; each zone's handle on the centre's side
 	mod := s.has_next ? s.next_mod : Style_Mod{width = fill(), height = fill()}
@@ -460,7 +499,10 @@ view_zone_box :: proc(sp: ^View_Space, e: View_Edge, first: ^View_Record, em: f3
 		next({width = px(view_rail_px(sp, e, em)), height = fill(), axis = .Y})
 	case e == .Left || e == .Right:
 		x, frac := view_zone_extent(sp, e, first)
-		next({width = size(x, frac, em), height = fill(), axis = axis})
+		// (narrowed by the fit of both sides: the width it gave, in pixels; else its extent, a share following a resize)
+		w := size(x, frac, em)
+		if sp.shown[e] > 0 && sp.shown[e] < view_zone_px(sp, e, em, sp.rect.max.x - sp.rect.min.x) { w = px(sp.shown[e]) }
+		next({width = w, height = fill(), axis = axis})
 	case e == .Top || e == .Bottom:
 		x, frac := view_zone_extent(sp, e, first)
 		next({width = fill(), height = size(x, frac, em), axis = axis})
@@ -534,9 +576,13 @@ view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
 		return
 	}
 	collapsed := view_zone_collapsed(sp, e)
-	size := view_zone_px(sp, e, em, total * sc) / sc
-	h := side_handle(id, collapsed, &size, view_rail_px(sp, e, em) / sc, least, most,
-		{after = after, total = max(total, 0), min_other = least, line_at = VIEW_HANDLE_LINE})
+	// (a zone narrowed by the fit of both sides is dragged from the width it shows, and within its own room: the space
+	// less the other side)
+	extent := view_zone_px(sp, e, em, total * sc)
+	size := (sp.shown[e] > 0 ? min(sp.shown[e], extent) : extent) / sc
+	room := sp.room[e] > 0 ? sp.room[e] / sc : total
+	h := side_handle(id, collapsed, &size, view_rail_px(sp, e, em) / sc, least, max(room - least, least),
+		{after = after, total = max(room, 0), min_other = least, line_at = VIEW_HANDLE_LINE})
 	if h.box == nil { return }
 	sp.handle_key[e] = h.box.key
 	pull := press_data(View_Zone_Pull, h.box.key)

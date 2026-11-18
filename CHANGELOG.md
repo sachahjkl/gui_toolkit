@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.324.0] - 2026-11-18 22:07
+
+### Added
+- **`ui.view_size(v, width_em, height_em, min_width_em)`**: a dialog's opening takes a least width. The dialog is never narrower: not its size asked, not its fit to what is in it, not the user's grips; the window's edge still holds it (an image viewer's bar of buttons under its picture).
+
+### Fixed
+- **Side zones that fit a narrow window**: a panel docked at the right beside one at the left no longer runs past the window's edge (opencode native's /btw panel beside its sidebar, under about 52 em). The right zone gives way first: it narrows down to its least (the largest `View_Options.min_width_em` of its views), then folds to its rail; then the left zone does the same. A zone whose views give no `min_width_em` folds at its extent, as before. A narrowed zone's handle moves from the width shown.
+
 ## [0.323.0] - 2026-11-18 21:01
 
 ### Added
@@ -4556,6 +4564,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.324.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.324.0
 [0.323.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.323.0
 [0.322.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.322.1
 [0.322.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.322.0
