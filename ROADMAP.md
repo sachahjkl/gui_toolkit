@@ -48,13 +48,6 @@
 - **No test that crashes by chance on Linux.** Two CI runs stopped on an illegal instruction (an assertion or a bounds
   check) that no local run made again: once in `plugins`, once in `process` (`each_signal_is_its_own`). A crashed
   package's log now has its crash reports and the runtime's words before the trap: the next one names its place.
-- **Relief as data.** Every finish (flat, gradient, glass, machined, edged) is drawn by one routine from data: rings
-  with their width, their tone of the face and their blur, and a preset's extras where rings do not fit (glass's
-  gloss, machined's blurred shadows). A theme then gives a relief of its own; the finish setting still picks a preset.
-  Intent: [src/md/features/theme-design.md](src/md/features/theme-design.md), "Layer 6".
-- **Old Head, a theme of data.** A Windows 95 theme made only of its look (its colours, square corners, a bevel
-  relief, a dotted focus, white on navy, no motion) and its film, with no finish of its own. It waits for the relief as
-  data. Intent: [src/md/features/theme-design.md](src/md/features/theme-design.md), "Layer 7".
 
 ## Later
 
@@ -64,6 +57,9 @@
 - **A theme's title bar.** A theme gives the caption band (a colour or a gradient, active and inactive) and its
   caption buttons' style; a separate design. Intent:
   [src/md/features/theme-design.md](src/md/features/theme-design.md), "Left for later".
+- **A relief of rings in every widget.** Under a theme's own relief (Old Head), the widgets' own machined touches (a
+  radio's lit bead, a section's caption face, the lamps) still draw their machined forms; each takes the relief's
+  rings. Intent: [src/md/features/theme-design.md](src/md/features/theme-design.md), "Layer 6".
 
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link

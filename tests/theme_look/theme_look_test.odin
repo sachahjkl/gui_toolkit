@@ -27,7 +27,8 @@ the_default_shape_is_the_old_radii :: proc(t: ^testing.T) {
 	testing.expect_value(t, d[.Tooltip], 0.4)
 	testing.expect_value(t, d[.Scroll_Thumb], 3)
 	testing.expect_value(t, d[.Scroll_Arrow], 2)
-	for th in ui.THEMES { testing.expectf(t, th.look == {}, "%s says no look of its own yet", th.name) }
+	// (Old Head is made of its look: theme-design.md, layer 7)
+	for th in ui.THEMES { if th.name != "Old Head" { testing.expectf(t, th.look == {}, "%s says no look of its own", th.name) } }
 }
 
 @(private = "file")
@@ -276,4 +277,92 @@ the_persons_family_wins_over_the_themes :: proc(t: ^testing.T) {
 	testing.expect(t, ui.state_text_face(s.state, .Interface) != themed, "the person's word wins")
 	ui.use_text_family(s.state, .Interface, "")
 	testing.expect_value(t, ui.state_text_face(s.state, .Interface), themed)
+}
+
+////////////////////////////////
+// Layer 6: relief as data
+
+// Each finish is a preset whose flags say what each test of the finish said before: the same drawing, by its data.
+@(test)
+the_finishes_are_presets :: proc(t: ^testing.T) {
+	for f in ui.Finish {
+		rl := ui.relief_of(f)
+		testing.expectf(t, rl.carved == (f == .Machined || f == .Edged), "%v: carved", f)
+		testing.expectf(t, rl.square == (f == .Edged), "%v: square", f)
+		testing.expectf(t, rl.sheen == (f != .Flat), "%v: sheen", f)
+		testing.expectf(t, rl.engrave == (f == .Machined), "%v: engraved", f)
+		testing.expectf(t, rl.extra != .None || f == .Flat, "%v: its look is its extra", f)
+		testing.expectf(t, !rl.no_glow && !rl.no_hover && !rl.no_shadow && !rl.surface_tones, "%v: halos, hover, shadows kept", f)
+		testing.expectf(t, rl.raised == {} && rl.sunken == {}, "%v: no rings: its edges are its extra's", f)
+	}
+	testing.expect_value(t, ui.relief_of(.Flat), ui.Relief{})
+	testing.expect_value(t, ui.relief_of(.Gradient).face, ui.Face_Paint.Lit)
+	testing.expect_value(t, ui.relief_of(.Glass).face, ui.Face_Paint.Gloss)
+	testing.expect_value(t, ui.relief_of(.Machined).face, ui.Face_Paint.Strong)
+	testing.expect_value(t, ui.relief_of(.Edged).face, ui.Face_Paint.Strong)
+	testing.expect_value(t, ui.relief_of(.Glass).row, ui.Row_Paint.Glass)
+	testing.expect_value(t, ui.relief_of(.Edged).row, ui.Row_Paint.Edged)
+	// the finish picks the preset; a theme's own relief wins over it
+	th: ui.Theme
+	defer ui.theme_destroy(&th)
+	p := ui.palette_of("Midnight")
+	p.finish = .Machined
+	ui.apply_palette(&th, p)
+	testing.expect_value(t, th.relief, ui.RELIEF_MACHINED)
+	p.look.relief = ui.RELIEF_BEVEL
+	ui.apply_palette(&th, p)
+	testing.expect_value(t, th.relief, ui.RELIEF_BEVEL)
+}
+
+////////////////////////////////
+// Layer 7: Old Head, a theme of data
+
+@(private = "file")
+old_head :: proc(finish := ui.Finish.Machined) -> ui.Palette {
+	p := ui.palette_of("Old Head")
+	p.finish = finish   // (the program's finish: the theme's relief wins over it)
+	return p
+}
+
+@(private = "file")
+near_hex :: proc(c: session.Color, v: u32) -> bool {
+	want := session.Color{u8(v >> 24), u8(v >> 16), u8(v >> 8), 255}
+	return session.near(c, want, 3)
+}
+
+// Old Head's button: square, two rings of two tones (white and light along its top and left, black and shadow along
+// its bottom and right), on the theme's grey.
+@(test)
+old_heads_button_is_a_two_tone_bevel :: proc(t: ^testing.T) {
+	s := session.start(t, {size = {200, 120}, palette = old_head(), build = key_build})
+	session.frames(s, 2)
+	ok := session.get(s, "ok")
+	testing.expect_value(t, ok.radius, 0)
+	testing.expect_value(t, s.state.theme.relief, ui.RELIEF_BEVEL)
+	img := session.capture(s)
+	x, y := int(KEY.min.x + KEY.max.x) / 2, int(KEY.min.y + KEY.max.y) / 2
+	x0, y0, x1, y1 := int(KEY.min.x), int(KEY.min.y), int(KEY.max.x) - 1, int(KEY.max.y) - 1
+	check :: proc(t: ^testing.T, img: session.Image, x, y: int, v: u32, what: string) {
+		c := session.pixel(img, x, y)
+		testing.expectf(t, near_hex(c, v), "%s at %d,%d: %v, not %08x", what, x, y, c, v)
+	}
+	check(t, img, x, y0, 0xffffffff, "its top, white")
+	check(t, img, x, y0 + 1, 0xdfdfdfff, "under it, the light")
+	check(t, img, x0, y, 0xffffffff, "its left, white")
+	check(t, img, x, y1, 0x000000ff, "its bottom, black")
+	check(t, img, x, y1 - 1, 0x808080ff, "over it, the shadow")
+	check(t, img, x1, y, 0x000000ff, "its right, black")
+	check(t, img, x0 + 4, y1 - 4, 0xc0c0c0ff, "its face, the grey")
+	testing.expect_value(t, ui.theme_lookup(s.state.theme, nil, "drop_shadow").a, 0)
+}
+
+// Old Head's selected row: navy, its text white.
+@(test)
+old_heads_selected_row_is_white_on_navy :: proc(t: ^testing.T) {
+	r: Rows
+	defer ui.list_state_destroy(&r.list)
+	s := rows_selected(t, old_head(), &r)
+	testing.expect_value(t, session.get(s, "lrow_1").bg, draw.hex(NAVY))
+	testing.expect_value(t, session.get(s, "lbl_1").text_color, draw.hex(WHITE))
+	testing.expect_value(t, session.get(s, "lbl_0").text_color, draw.hex(0x000000ff))
 }

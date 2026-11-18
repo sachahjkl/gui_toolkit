@@ -395,6 +395,24 @@ THEMES := [?]Theme_Def{
 	{"Bootstrap", {},
 		{{0xf5f5f5ff, 0xffffffff, 0xf5f5f5ff, 0xf5f5f5ff, 0xe9e9e9ff, 0xccccccff}, {0xb0b0b0ff, 0x8a8a8aff, 0x333333ff, 0x000000ff},
 			{0x0a6fd1ff, 0x0a6fd1ff, 0x7a43b6ff, 0x51a351ff, 0xf89406ff, 0xd2463fff, 0x2f96b4ff, 0xc7317aff}}, .Light_Only, .Gradient, false, 0xffffffff, {}},
+	// Windows 95, made of data alone (src/md/features/theme-design.md, layer 7): one grey for every surface, white fields,
+	// the 16-colour hues (the deep ones: the bright red, yellow and cyan do not read as text on the grey); square
+	// corners, the bevel's relief, a dotted focus, white on navy for every selection, no motion. Its relief wins over the
+	// program's finish.
+	{"Old Head", {},
+		{{0xffffffff, 0xc0c0c0ff, 0xc0c0c0ff, 0xc0c0c0ff, 0xc0c0c0ff, 0x808080ff}, {0x808080ff, 0x404040ff, 0x000000ff, 0x000000ff},
+			{0x000080ff, 0x0000ffff, 0x800080ff, 0x008000ff, 0x808000ff, 0x800000ff, 0x008080ff, 0xff00ffff}}, .Light_Only, nil, false, 0xffffffff,
+		Theme_Look{
+			shape = Theme_Shape{},
+			selections = {
+				.Text = {fill = 0x000080ff, ink = 0xffffffff}, .List = {fill = 0x000080ff, ink = 0xffffffff},
+				.Menu = {fill = 0x000080ff, ink = 0xffffffff}, .Nav = {fill = 0x000080ff, ink = 0xffffffff},
+				.Weak = {fill = 0x000080ff, ink = 0xffffffff},
+			},
+			focus = {style = .Dotted, inset = 4, color = 0x000000ff},
+			still = true,
+			relief = RELIEF_BEVEL,
+		}},
 	// silver on near black; in the light version graphite on white (silver would vanish there)
 	{"Silver",
 		{{0x050506ff, 0x08090aff, 0x0d0e10ff, 0x131417ff, 0x1b1c20ff, 0x2a2c31ff}, {0x5d6067ff, 0x8e9198ff, 0xe6e7eaff, 0xffffffff},

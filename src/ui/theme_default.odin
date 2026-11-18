@@ -219,10 +219,13 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	bg := draw.hex(slot_color(p, .Bg_Solid))
 	changed := false
 	own_selection := p.look.selections != {}
+	// (the theme's own relief wins over the program's finish, as a theme's own finish does)
+	relief := p.look.relief.? or_else relief_of(p.finish)
 	for e, i in entries {
 		c := slot_rgba(p, e.slot)
 		c.a *= e.alpha
 		if own_selection { if o, ok := selection_entry(p.look, e.tags); ok { c = o } }
+		if relief.no_shadow && (e.tags == "drop_shadow" || e.tags == "scrim background") { c.a = 0 }
 		c.a = draw.alpha_like_linear(space, c, c.a, bg)
 		k := t.palette_at + i
 		if t.patterns[k].color != c { t.patterns[k].color = c; changed = true }
@@ -239,6 +242,7 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	if t.finish != p.finish { t.finish = p.finish; changed = true }
 	if t.dark != p.dark { t.dark = p.dark; changed = true }
 	if t.look != p.look { t.look = p.look; changed = true }
+	if t.relief != relief { t.relief = relief; changed = true }
 	if changed { t.serial += 1 }
 }
 

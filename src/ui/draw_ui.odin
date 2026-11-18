@@ -205,7 +205,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 	ring, ring_radii := r, radii
 	if focus_ring && .Row in flags { ring, ring_radii, _, _, _ = row_face_of(s, b) }
 	focus_look := s.theme != nil ? s.theme.look.focus : Theme_Focus{}
-	if focus_ring && s.theme != nil && s.theme.finish != .Flat && focus_look.style == .Ring_Glow {
+	if focus_ring && s.theme != nil && s.theme.relief.sheen && focus_look.style == .Ring_Glow {
 		// glow around the focused widget, under its background
 		c := color_from_tags(s, b.tags_key, "focus border")
 		c.a *= (keyboard_focus ? 1 : b.focus_t) * FOCUS_GLOW_ALPHA
@@ -264,24 +264,30 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 		// Windows 10 draws no top edge over an integrated title bar
 		draw.rect(dc, {{r.min.x, 0}, {r.max.x, 1}}, color_from_tags(s, b.tags_key, "border"))
 	}
-	if focus_ring {
-		c := focus_look.color != 0 ? draw.hex(focus_look.color) : color_from_tags(s, b.tags_key, "focus border")
-		if !keyboard_focus { c.a *= b.focus_t }
-		if focus_look.style == .Dotted {
-			// (inside a box; a row's on its face, which is what the user sees of it. On a selected row the dots take its
-			// ink: what reads on the selection, as Windows' dots in XOR did)
-			if b.ink.a > 0 { c = Color{b.ink.r, b.ink.g, b.ink.b, c.a} }
-			p := max(1, math.round((focus_look.width > 0 ? focus_look.width : 1) * scale))
-			inset: f32 = .Row in flags ? 0 : math.round(focus_look.inset * scale)
-			focus_dots(dc, draw.rect_pad(ring, -inset), p, c)
-		} else {
-			draw.rect_corners(dc, ring, colors4(c), ring_radii, (focus_look.width > 0 ? focus_look.width : FOCUS_RING_PX) * scale)
-		}
-	}
+	if focus_ring { focus_mark(s, dc, b, ring, ring_radii, keyboard_focus, scale) }
 	if s.act_light.key != 0 && s.act_light.key == b.key { act_light_draw(s, dc, b, radii) }
 	if squished { draw.pop_xform(dc) }
 	if fade { draw.pop_alpha(dc) }
 	if b.transparency != 0 { draw.pop_alpha(dc) }
+}
+
+// The theme's focus of box `b` on `ring` (its rect, a row's face): a ring, or dots (Theme_Focus). `keyboard_focus`
+// false: its focus fading (focus_t). Draw_box draws it over the box; a relief of rings over a key's rings (machined_box).
+@(private)
+focus_mark :: proc(s: ^State, dc: ^draw.Context, b: ^Box, ring: Rect, ring_radii: [4]f32, keyboard_focus: bool, scale: f32) {
+	focus_look := s.theme != nil ? s.theme.look.focus : Theme_Focus{}
+	c := focus_look.color != 0 ? draw.hex(focus_look.color) : color_from_tags(s, b.tags_key, "focus border")
+	if !keyboard_focus { c.a *= b.focus_t }
+	if focus_look.style == .Dotted {
+		// (inside a box; a row's on its face, which is what the user sees of it. On a selected row the dots take its
+		// ink: what reads on the selection, as Windows' dots in XOR did)
+		if b.ink.a > 0 { c = Color{b.ink.r, b.ink.g, b.ink.b, c.a} }
+		p := max(1, math.round((focus_look.width > 0 ? focus_look.width : 1) * scale))
+		inset: f32 = .Row in b.flags ? 0 : math.round(focus_look.inset * scale)
+		focus_dots(dc, draw.rect_pad(ring, -inset), p, c)
+	} else {
+		draw.rect_corners(dc, ring, colors4(c), ring_radii, (focus_look.width > 0 ? focus_look.width : FOCUS_RING_PX) * scale)
+	}
 }
 
 // How much a box is drawn as under the pointer: all of it while .Lit (its menu is open).
@@ -308,7 +314,7 @@ focus_glow :: proc(dc: ^draw.Context, r: Rect, radii: [4]f32, c: Color, focus: f
 	s := gs()
 	if s.theme == nil || focus <= DRAW_INVISIBLE_EPS || s.theme.look.focus.style != .Ring_Glow { return }
 	if machined() { machined_focus_glow(dc, r, radii, c, focus); return }
-	if s.theme.finish == .Flat { return }
+	if !s.theme.relief.sheen { return }
 	k := c
 	k.a *= focus * FOCUS_GLOW_ALPHA
 	glow := FOCUS_GLOW_PX * s.scale
@@ -375,7 +381,7 @@ draw_box_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 		}
 	}
 	// (engraved: the machined finish's alone; on a shaded face the text reads as on the plain colour)
-	if s.theme != nil && s.theme.finish == .Machined {
+	if s.theme != nil && s.theme.relief.engrave {
 		if k := box_sheen(s, b); k > DRAW_INVISIBLE_EPS {
 			// text lighter than what is under it sits in a groove (a dark shadow above); darker text is lit from below. (By
 			// the contrast, not the text alone: grey text on a dark panel took a light edge under it, a pixel low to the eye.)
@@ -424,7 +430,7 @@ truncate :: proc(s: ^State, b: ^Box, avail: f32) -> (text: string, width: f32, c
 @(private = "file") SUNK_TOP_SHADE :: 1.2
 @(private = "file") SUNK_BOTTOM_LIGHT :: 0.4
 
-// Fills a raised surface with the theme's finish (see `Finish`). `k` (0..1) is how strongly: 0 is a plain fill.
+// Fills a raised surface with the theme's relief (its Face_Paint, relief.odin). `k` (0..1) is how strongly: 0 is a plain fill.
 // Custom draw procs use it for their accent fills so they match the buttons.
 paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1) {
 	paint_rect_corners(dc, r, c, {radius, radius, radius, radius}, k)
@@ -435,8 +441,8 @@ paint_rect :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32, k: f32 = 1
 // bottom lit, no rim), glass loses most of its gloss.
 paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, k: f32 = 1, rim := true, sunk: f32 = 0) {
 	s := gs()
-	finish := s.theme != nil ? s.theme.finish : .Flat
-	if finish == .Flat || k <= DRAW_INVISIBLE_EPS || c.a <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 2 {
+	paint := s.theme != nil ? s.theme.relief.face : .Plain
+	if paint == .Plain || k <= DRAW_INVISIBLE_EPS || c.a <= DRAW_INVISIBLE_EPS || r.max.y - r.min.y < 2 {
 		draw.rect_corners(dc, r, colors4(c), radii)
 		return
 	}
@@ -444,13 +450,13 @@ paint_rect_corners :: proc(dc: ^draw.Context, r: Rect, c: Color, radii: [4]f32, 
 	black := Color{0, 0, 0, c.a}
 	px := max(1, math.round(s.scale))
 	rk: f32 = rim ? k : 0
-	switch finish {
-	case .Flat:
-	case .Machined, .Edged:   // (the reliefs are machined_box's; a surface painted here, an accent fill, is a lit face)
+	switch paint {
+	case .Plain:
+	case .Strong:   // (the machined and edged reliefs are machined_box's; a surface painted here, an accent fill, is a lit face)
 		lit_face(dc, r, c, radii, MACHINED_TOP_WHITE * k, MACHINED_BOTTOM_BLACK * k, MACHINED_RIM_ALPHA * rk, sunk)
-	case .Gradient:
+	case .Lit:
 		lit_face(dc, r, c, radii, GRADIENT_TOP_WHITE * k, GRADIENT_BOTTOM_BLACK * k, GRADIENT_RIM_ALPHA * rk, sunk)
-	case .Glass:
+	case .Gloss:
 		mid := math.round((r.min.y + r.max.y) * 0.5)
 		// saturated fills keep more of their colour so white text stays readable on them
 		lum := LUMA_R * c.r + LUMA_G * c.g + LUMA_B * c.b
@@ -520,6 +526,6 @@ box_draws_face :: proc(b: ^Box) -> bool {
 // Sheen of the box's tags (0 when the theme is flat).
 @(private)
 box_sheen :: proc(s: ^State, b: ^Box) -> f32 {
-	if s.theme == nil || s.theme.finish == .Flat { return 0 }
+	if s.theme == nil || !s.theme.relief.sheen { return 0 }
 	return color_from_tags(s, b.tags_key, "sheen").a
 }

@@ -502,9 +502,8 @@ stepper_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	if l.disc > 0 {
 		rr := R * l.disc
 		disc := Rect{c - rr, c + rr}
-		finish := s.theme != nil ? s.theme.finish : .Flat
 		// (glass paints a face as two halves: no disc)
-		if finish == .Glass { draw.rect(dc, disc, d.disc, rr) } else { paint_rect_corners(dc, disc, d.disc, {rr, rr, rr, rr}, rim = false) }
+		if s.theme != nil && s.theme.relief.face == .Gloss { draw.rect(dc, disc, d.disc, rr) } else { paint_rect_corners(dc, disc, d.disc, {rr, rr, rr, rr}, rim = false) }
 	}
 	switch l.mark {
 	case .None:

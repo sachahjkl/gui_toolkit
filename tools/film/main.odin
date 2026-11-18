@@ -30,6 +30,7 @@ FILMS := [?]Film{
 	{"dialogs", "A view in a dialog, a confirmation, a prompt: they fade in and answer", dialogs_film},
 	{"values", "A setting's value kind, and the control it gets", values_film},
 	{"settings", "The settings page every program has: its pages, its search, a change at once", settings_film},
+	{"oldhead", "Old Head: the whole showcase in a theme of 1995, grey bevels and a navy selection", oldhead_film},
 	{"runtime", "A plugin written, then run by gt-runtime: a log explorer of 250 000 lines in a lazy list", nil},
 }
 
@@ -99,7 +100,10 @@ shoot :: proc(f: Film, path: string) -> string {
 	t := new(Take)
 	defer free(t)
 	t.full = f.name == "exploded"
-	t.app = showcase.open({args = {fmt.tprintf("--size=%dx%d", WINDOW_LOGICAL.x, WINDOW_LOGICAL.y)}, headless = true, gpu = true})
+	size := fmt.tprintf("--size=%dx%d", WINDOW_LOGICAL.x, WINDOW_LOGICAL.y)
+	// (Old Head's film: the showcase in that theme)
+	args := f.name == "oldhead" ? []string{size, "--theme=Old Head"} : []string{size}
+	t.app = showcase.open({args = args, headless = true, gpu = true})
 	if t.app == nil { return "the showcase does not open" }
 	defer showcase.close(t.app)
 	platform.set_offscreen_dpi(t.app.main.win, t.full ? DPI_FULL : DPI_STAGED)

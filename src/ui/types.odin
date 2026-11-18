@@ -279,7 +279,7 @@ Theme_Pattern :: struct {
 	source: string,     // the text `tags` came from: a copy the theme owns
 }
 
-// How raised surfaces (buttons, bars, selected items) are painted.
+// How raised surfaces (buttons, bars, selected items) are painted: the name of a relief preset (relief_of, relief.odin).
 Finish :: enum u8 {
 	Flat,       // plain colour
 	Gradient,   // a face a few percent lighter at its top than at its bottom, a fine lit line along its top, glowing focus
@@ -302,6 +302,7 @@ Theme :: struct {
 	press_squish:  f32,   // 0: none (default); 0.04 is the old press "squish"
 	glow:          f32,   // the halos of the machined finish (a focused well, a lamp, a hot accent button), 0..1; 0: none
 	look:          Theme_Look,   // the palette's (apply_palette): radii, selections, focus, motion, font (theme_look.odin)
+	relief:        Relief,       // what is drawn (apply_palette): the look's relief, else the finish's preset (relief.odin)
 	serial:        u64,   // bumped when the look changes: a colour, the finish, the glow, the look (theme_add, theme_set, apply_palette, theme_show)
 }
 

@@ -82,7 +82,7 @@ VALUE_SHOTS := [?]Shot{
 
 // Every page of the showcase, at a wide, a middle and a narrow window: no box passes its parent's edge (the width a
 // content needs goes up to the page, columns go one under the other, rows of buttons wrap: least-width.md), and every
-// control drawn with a face and an edge has rounded corners (the rounding setting reaches it: CONTROL_RADIUS_EM).
+// control drawn with a face and an edge has rounded corners (the rounding setting reaches it: the theme's shape_of(.Control)).
 @(test)
 every_page_fits_its_window_and_rounds_its_controls :: proc(t: ^testing.T) {
 	s, app := start_showcase(t, {"--size=1280x800"})

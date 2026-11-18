@@ -106,7 +106,7 @@ box_face :: proc(s: ^State, b: ^Box) -> Face {
 // surface in the machined and edged finishes.
 draw_face :: proc(s: ^State, dc: ^draw.Context, r: Rect, radii: [4]f32, f: Face) {
 	if f.color.a <= FACE_EPS { return }
-	if s.theme == nil || s.theme.finish == .Flat {
+	if s.theme == nil || !s.theme.relief.sheen {
 		draw.rect_corners(dc, r, colors4(f.color), radii)
 		return
 	}

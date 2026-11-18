@@ -364,7 +364,10 @@ menus_build :: proc(app: ^App, em: f32) {
 			b: ^ui.Box
 			if chosen { ui.push_tags("menu_item", "selected") } else { ui.push_tags("menu_item") }
 			ui.next({width = ui.fill(), height = ui.px(em * 2.1), axis = .X, cross = .Center, radius = math.round(em * 0.4)})
-			b = ui.build_box({.Clickable, .Draw_Background, .Draw_Hot_Effects}, fmt.tprintf("###file%d", i))
+			// (.Chosen as a list's own row has it: the theme's ink for a selected row reaches the words in it)
+			flags: ui.Box_Flags = {.Clickable, .Draw_Background, .Draw_Hot_Effects}
+			if chosen { flags += {.Chosen} }
+			b = ui.build_box(flags, fmt.tprintf("###file%d", i))
 			if ui.parent(b) {
 				ui.spacer(ui.px(em * 0.6))
 				ui.next({width = ui.px(em * 1.6), height = ui.pct(1), font = ui.lucide_icons(), text_align = .Center})

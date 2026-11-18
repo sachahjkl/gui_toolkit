@@ -14,6 +14,11 @@ package ui
 //
 // What it draws reaches out of a box by up to MACHINED_OVERFLOW_PX (scaled): its shadow, a halo, the lip of a well. A
 // damaged region must hold that much around the boxes it holds.
+//
+// This file's machined and edged drawing is the Machined and Edged presets' extra (relief.odin): their tones are alphas
+// of black and white over what is under, their edges filled rounded shapes, their lines kept off the corners, their
+// shadows blurred and offset, none of it rings of the face. A relief of rings (a theme's bevel) is drawn by its data in
+// each primitive instead (relief_ringed).
 
 import "core:math"
 import "../draw"
@@ -41,17 +46,19 @@ MACHINED_OVERFLOW_PX :: 6
 // Below this a state or a halo draws nothing.
 @(private = "file") VISIBLE :: 0.01
 
-// Whether the machined reliefs are drawn now: the machined finish, or the edged one (the same reliefs, crisp).
+// Whether the reliefs are drawn now (Relief.carved): the machined finish, the edged one (the same reliefs, crisp), a
+// relief of rings (a theme's bevel). The widgets ask this to carve their wells and raise their keys; each primitive
+// then draws the relief's own form.
 machined :: proc() -> bool {
-	s := gs()
-	return s != nil && s.theme != nil && (s.theme.finish == .Machined || s.theme.finish == .Edged)
+	rl := relief_shown()
+	return rl != nil && rl.carved
 }
 
-// Whether the edged finish is the one drawn now: no blurred shadow under a raised face nor inside a well; hairlines say
-// the relief (a lit one along a top, a dark one along a bottom, a dark one around).
+// Whether the edged finish's reliefs are drawn now: no blurred shadow under a raised face nor inside a well; hairlines
+// say the relief (a lit one along a top, a dark one along a bottom, a dark one around).
 edged :: proc() -> bool {
-	s := gs()
-	return s != nil && s.theme != nil && s.theme.finish == .Edged
+	rl := relief_shown()
+	return rl != nil && rl.extra == .Edged
 }
 
 // The edged finish: a raised face's top and bottom toward white and black; its lit top line, its dark bottom line; a well's
@@ -129,6 +136,8 @@ relief_darken :: proc(c: Color, t: f32) -> Color { return darken(c, relief_dark(
 @(private = "file")
 glow_of :: proc() -> f32 {
 	s := gs()
+	// (Theme.glow is the program's: a relief without halos has none whatever it is)
+	if rl := relief_shown(); rl != nil && rl.no_glow { return 0 }
 	return s.theme != nil ? s.theme.glow : 0
 }
 
@@ -150,6 +159,13 @@ machined_bevel :: proc(dc: ^draw.Context, r: Rect, radius: f32, face_color: Colo
 		face := draw.mix(face_color, text, FLAT_HOT * hot)
 		draw.rect(dc, r, pressed < 0.5 ? face : draw.mix(face_color, text, FLAT_PRESSED), radius)
 		draw.rect(dc, r, flat_edge(hot), radius, p)
+		return
+	}
+	if rl := relief_ringed(); rl != nil {   // (a relief of rings: its data, no light under the pointer)
+		rings := pressed >= 0.5 ? rl.pressed : rl.raised
+		if radius > p { relief_round(dc, r, radius, rings, face_color, face_color); return }
+		draw.rect(dc, r, face_color)
+		relief_rings(dc, r, rings, face_color)
 		return
 	}
 	face := lighten(face_color, BEVEL_HOT_LIGHTEN * hot)
@@ -205,10 +221,18 @@ machined_well :: proc(dc: ^draw.Context, r: Rect, radius: f32, base: Color, focu
 	p := px1()
 	rr := radii4(radius)
 	base := base
-	if hot > VISIBLE { base = srgb_step(base, state_tint(), WELL_HOT_LIFT * hot) }
+	if rl := relief_shown(); hot > VISIBLE && (rl == nil || !rl.no_hover) { base = srgb_step(base, state_tint(), WELL_HOT_LIFT * hot) }
 	if !machined() {
 		draw.rect(dc, r, base, radius)
 		draw.rect(dc, r, draw.mix(flat_edge(hot), with_alpha(accent, 0.9), focus), radius, p)
+		return
+	}
+	if rl := relief_ringed(); rl != nil {
+		// (a relief of rings: its sunken rings, no ring of the accent: a field shows its focus by its caret)
+		face := relief_surface(rl, base)
+		if radius > p { relief_round(dc, r, radius, rl.sunken, face, base); return }
+		draw.rect(dc, r, base)
+		relief_rings(dc, r, rl.sunken, face)
 		return
 	}
 	machined_focus_glow(dc, r, rr, accent, focus)
@@ -242,6 +266,10 @@ machined_groove :: proc(dc: ^draw.Context, a, b: Vec2, vertical := false) {
 		draw.rect(dc, vertical ? Rect{a, {a.x + p, b.y}} : Rect{a, {b.x, a.y + p}}, color_from_tags(gs(), 0, "border"))
 		return
 	}
+	if rl := relief_ringed(); rl != nil {
+		relief_lines(dc, a, b, vertical, rl.groove, relief_surface(rl, color_from_tags(gs(), 0, "border")))
+		return
+	}
 	if vertical {
 		draw.rect(dc, {a, {a.x + p, b.y}}, relief_shade(0.9))
 		draw.rect(dc, {{a.x + p, a.y}, {a.x + 2 * p, b.y}}, relief_shine(0.05))
@@ -270,6 +298,11 @@ machined_plate_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, top, bott
 		if c, set := border.?; (!set || c.a > 0) && frame { draw.rect_corners(dc, r, colors4(flat_edge(0)), rr, p) }
 		return
 	}
+	if rl := relief_ringed(); rl != nil {   // (one plain face, no shadow, no halo; its frame of rings over its children)
+		draw.rect_corners(dc, r, colors4(draw.mix(top, bottom, 0.5)), rr)
+		if frame { machined_plate_frame_corners(dc, r, rr, rim, border) }
+		return
+	}
 	if shadow > 0 { draw.box_shadow(dc, draw.rect_shift(r, {0, 2 * s}), rr, shadow * s, relief_shade(0.6)) }
 	if g := glow_of(); glow.a > 0 && g > 0 { draw.box_shadow(dc, r, rr, 6 * s, with_alpha(glow, glow.a * 0.5 * g)) }
 	draw.rect_corners(dc, r, {top, bottom, top, bottom}, rr)
@@ -285,6 +318,12 @@ machined_plate_frame :: proc(dc: ^draw.Context, r: Rect, radius: f32, rim: f32 =
 // machined_plate_frame with a radius per corner (draw.rect_corners' order).
 machined_plate_frame_corners :: proc(dc: ^draw.Context, r: Rect, rr: [4]f32, rim: f32 = 0.07, border: Maybe(Color) = nil) {
 	p := px1()
+	if rl := relief_ringed(); rl != nil {
+		// (its frame rings; a panel that asked for no edge, a colour of alpha 0, has none)
+		if c, set := border.?; set && c.a <= 0 { return }
+		relief_rings(dc, r, rl.frame, relief_surface(rl, color_from_tags(gs(), 0, "background")))
+		return
+	}
 	if edged() {   // (a line along its top, of light at once, not a rim fading down its sides)
 		edged_lines(dc, r, max(rr[0], rr[1], rr[2], rr[3]), p, relief_shine(max(rim, 0.10)), relief_shade(EDGED_SHADE_ALPHA * 0.6))
 	} else if rim > 0 {
@@ -416,6 +455,12 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 	if b.bg.a < 0.99 || box_sheen(s, b) <= VISIBLE { return }
 	if .Clickable in b.flags {
 		machined_bevel(dc, r, radius, b.bg, box_hot(b), box_held(b))
+		if relief_ringed() != nil {
+			// (a relief of rings is the key's whole edge: the box's border over it would cover its outer ring. So the
+			// theme's focus is drawn here, over the rings)
+			if keyboard_focus { focus_mark(s, dc, b, r, radii, true, s.scale) }
+			return true, true
+		}
 		return true, !keyboard_focus   // (a keyboard's focus keeps the theme's ring)
 	}
 	// a raised panel (a bar, a key cap): its face, a lit rim along its top
@@ -423,6 +468,10 @@ machined_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, r: Rect, radii: [4]f
 	// box_rimmed; the rim, inset by a pixel, framed it and doubled the edge next to it)
 	draw.rect_corners(dc, r, colors4(b.bg), radii)
 	if !box_rimmed(s, b) { return true, false }
+	if rl := relief_ringed(); rl != nil {
+		relief_rings(dc, r, rl.bar, b.bg)
+		return true, true   // (the theme's line over it would hide the ring)
+	}
 	if edged() {
 		edged_lines(dc, r, radius, px1(), relief_shine(0.09), relief_shade(EDGED_SHADE_ALPHA * 0.6))
 		return true, false

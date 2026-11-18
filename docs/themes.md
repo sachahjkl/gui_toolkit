@@ -55,6 +55,7 @@ its focus, its motion, its font. `{}` is the toolkit's look; each part says only
 | `focus: Theme_Focus` | a ring and its glow | `style`, `width`, `inset`, `color` |
 | `still: bool` | false | no motion in its look |
 | `font: Theme_Font` | the program's | `family`, `size` (a factor) |
+| `relief: Maybe(Relief)` | the program's finish's preset | how surfaces are raised and sunk ("Reliefs" below); it wins over the finish |
 
 The person's choices win over the theme's: the rounding setting scales its radii, the person's font family wins over
 its family, the person's `Animations.On` keeps the motion a still theme removes.
@@ -184,10 +185,40 @@ light: lighter shades and stronger white rims, lips and highlights (`RELIEF_ON_L
 colours from `relief_shade_for(alpha, theme.dark)` and `relief_shine_for(alpha, theme.dark)`, with the alpha written for
 the dark.
 The theme `Kernel` (blue black, square tiles of colour) is made for `Edged`: it brings it whatever the program's finish.
-The edged finish has square corners whatever the rounding asked (`rounding(s)` is 0 there, and `rad(r)` with it). What
-is round by its shape keeps it: a radio's disc, a switch's pill, a slider's slot and knob, a lamp (`shape_rad(r)`: a
+The edged finish (and a square relief: `Relief.square`) has square corners whatever the rounding asked (`rounding(s)`
+is 0 there, and `rad(r)` with it). What is round by its shape keeps it: a radio's disc, a switch's pill, a slider's slot and knob, a lamp (`shape_rad(r)`: a
 radius the rounding setting scales and the edged finish leaves).
 `Theme.glow` (0..1) sets the strength of its halos: a focused well, a lamp.
+
+### Reliefs
+
+A finish is the name of a relief preset: `ui.relief_of(finish)` gives it (`RELIEF_FLAT`, `RELIEF_GRADIENT`,
+`RELIEF_GLASS`, `RELIEF_MACHINED`, `RELIEF_EDGED`). `Theme.relief` is the relief drawn: `apply_palette` sets it from the
+theme's `look.relief` when it has one, else from the palette's finish. A `ui.Relief` is:
+
+| Field | What it says |
+|---|---|
+| `carved` | wells, keys, grooves and panels are drawn by the relief (`machined()` is true) |
+| `square` | square corners whatever the rounding (`rounding(s)` is 0) |
+| `sheen` | raised faces take their light; a ring of focus glows |
+| `engrave` | the text on a raised face is engraved |
+| `face`, `row` | how a fill (`paint_rect`) and a row's face are painted (`Face_Paint`, `Row_Paint`) |
+| `extra` | the finish's own code: what of its look is not rings (`Relief_Extra`; `.None`: rings alone) |
+| `no_glow`, `no_hover`, `no_shadow` | no halo whatever `Theme.glow`, no light under the pointer, no drop shadow nor dim behind a dialog |
+| `surface_tones` | a well's, a groove's and a panel's rings take the tones of the raised face (`button background`) |
+| `raised`, `pressed`, `sunken`, `groove`, `frame`, `bar` | the rings of a key, a pressed key, a well, a groove, a panel's frame, a rimmed bar |
+
+A `Relief_Ring` has a `width` (pixels of one device pixel at least, rounded), `top_left` and `bottom_right` tones (a
+step of the face toward white, above 0, or black, below 0: 1 is white, -1 black) and a `blur` (logical pixels). A
+relief of rings (`carved`, `extra = .None`) is drawn from its rings by the same primitives a program calls
+(`machined_bevel`, `machined_well`, `machined_groove`, `machined_plate`): a round shape takes its first ring as two
+discs. `relief_rings(dc, r, rings, face)`, `relief_round` and `relief_lines` draw rings for a program's own surface;
+`relief_tone(face, t)` is one tone.
+
+`RELIEF_BEVEL` is Windows 95's: two rings of one pixel (white and the face's light along the top and left, black and
+its shadow along the bottom and right, turned over when pressed or sunken), square, no halo, no hover light, no shadow.
+The theme `Old Head` is made of it: one grey `#c0c0c0`, white fields, navy, square corners, a dotted focus, white on
+navy for every selection, still. Its relief wins over the program's finish.
 
 ### Corners in corners
 
@@ -211,8 +242,9 @@ with its own look (`Box.plate`, a `Plate_Look`: `card`'s options) in every finis
 opaque background with a sheen is raised (bevelled when it is `.Clickable`). An accent fill a widget paints itself
 (`paint_rect`) is a lit face, as in `Gradient` but a little stronger.
 
-A program draws its own surfaces with the same primitives; in the edged finish each one draws its crisp form, outside
-these two its flat form, so one call serves every finish (`machined()`: the reliefs are drawn; `edged()`: crisp):
+A program draws its own surfaces with the same primitives; in the edged finish each one draws its crisp form, in a
+relief of rings its rings, outside these its flat form, so one call serves every finish (`machined()`: the reliefs are
+drawn; `edged()`: crisp):
 
 | Procedure | What it draws |
 |---|---|

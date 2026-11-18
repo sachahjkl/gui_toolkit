@@ -9,6 +9,27 @@ The decision: a theme carries its look as data (`Theme_Look`, in `Theme_Def.look
 of data, with no finish of its own. The work goes in layers, in the order of the finding's gaps. Each layer leaves every
 existing theme looking as it did: the pixel baselines do not move.
 
+## The finding, and where each gap went
+
+The experiment's file stays on its branch; what it found is here. Its gaps, each with the value that decided it then:
+
+| # | Gap | Then | Now |
+|---|---|---|---|
+| 1 | the corner radius | each widget's em constant (`CONTROL_RADIUS_EM` 0.45, cards, menus, dialogs), times the rounding; square only in a finish | layer 1 |
+| 2 | the bevel geometry | each finish's private constants (`BEVEL_*`, `EDGED_*`, `PLATE_*`, `GRADIENT_*`, `GLASS_*`, `ROW_*`) | layer 6: rings for a bevel, the finishes' extras |
+| 3 | the focus style | a ring of `FOCUS_RING_PX` 1.5 and a glow of 5 px, the colour alone the theme's | layer 3 |
+| 4 | the selection per control | one accent, each selection's alpha fixed; `list_row` and `menu_row` pop `selected` before the label | layer 2 |
+| 5 | the motion | the program's and the person's only | layer 4 |
+| 6 | the font | the program's family and size | layer 5 |
+| 7 | the scroll bar | the toolkit's one form, its colours fixed mixes of five entries | left for later |
+| 8 | the title bar | the program's box, Windows 10's caption buttons | left for later |
+| 9 | the check mark and the state lights | a white check on the accent's key; a row lifts under the pointer | left: the widgets' |
+| 10 | small faults | a pressed key's label does not move; the focus inset is the same in a row | the row's focus is on its face (layer 3) |
+| 11 | the halo strength | `Theme.glow`, the program's | layer 6: `Relief.no_glow` |
+
+The experiment's way, a `Finish` per look, cost a value in the enum, a branch in about ten procedures and two
+exhaustive switches each time. Refused for that.
+
 ## The rule that keeps every theme as it was
 
 Every part of `Theme_Look` has a zero value that is the toolkit's look before this design. A theme says only what
@@ -112,34 +133,77 @@ size; 0: 1).
   sets it.
 - The theme's family is the interface face's only: the monospace and the reading faces are a program's content.
 
-## Layer 6: relief as data (designed, not built)
+## Layer 6: relief as data (built)
 
-Edged, Machined, Gradient, Glass and Old Head's Bevel each draw a raised and a sunken edge with constants private to
-their files (`machined.odin`, `draw_ui.odin`'s `GRADIENT_*` and `GLASS_*`, `row_face.odin`'s `ROW_*`).
+`Relief` (`src/ui/relief.odin`) says how raised and sunken surfaces are drawn. `Theme.relief` is the one drawn:
+`apply_palette` sets it from `Theme_Look.relief` when the theme gives one, else from the program's finish
+(`relief_of(finish)`). Every test of the finish in the drawing now asks the relief; no code compares a `Finish` any more.
 
-A relief is data: per surface kind (raised, pressed, sunken, groove, plate, a row's face, an accent fill) a list of
-rings, each with its width (device pixels or logical ones), its tone per side (top and left, bottom and right) as light
-or dark of the face (a step toward white or black, or a relief shade or shine of an alpha), its blur (0: crisp) and
-its offset; plus the face's own gradient (top and bottom steps). One routine draws every finish from that data.
-`Finish` stays as the names of presets of relief data, so a program's setting still picks one.
+A relief is two parts.
 
-What does not fit rings stays a preset's extra, named in the preset: Glass's gloss (two half-faces of four stops),
-Machined's inset shadow of a well and its blurred drop shadow under a key, the lamp's bead. The routine draws the
-extras of a preset after its rings.
+- **Flags**, one per decision a finish used to take by its name: `carved` (wells, keys, grooves and plates drawn by the
+  relief: `machined()`), `square` (`rounding()` is 0), `sheen` (raised faces lit, a focus ring that glows), `engrave`,
+  `face` (how `paint_rect` lights a fill: `Face_Paint`), `row` (a row's face: `Row_Paint`), `no_glow` (the halos'
+  strength capped at 0 whatever `Theme.glow`), `no_hover`, `no_shadow` (the `drop_shadow` and `scrim background`
+  entries at 0), `surface_tones`.
+- **Rings**, per surface kind: `raised`, `pressed`, `sunken`, `groove`, `frame` (a panel), `bar` (a rimmed bar or key
+  cap). A ring has its width (in pixels of `px1`), the tone of its top and left sides and of its bottom and right sides
+  (a step of the face toward white, above 0, or black, below 0), and its blur. `relief_rings` draws them, outermost
+  first; `relief_round` draws a round shape's first ring as two discs a ring apart (straight rings cannot go round);
+  `relief_lines` draws a groove, each ring a line.
 
-The first test: every finish drawn through the routine gives the same pixels as today's code, for each surface kind,
-on a dark and a light palette. Until that test passes on the five finishes, the old code stays.
+`extra` names the code a preset draws by, beside or in place of rings. A relief of rings has none (`extra = .None`,
+`carved`): every primitive of `machined.odin` (`machined_bevel`, `machined_well`, `machined_groove`, the plate and its
+frame, `machined_box`'s rimmed bar) then draws its rings.
 
-Also in this layer: the square corners of the edged finish become the preset's (`rounding()` asks the relief, not
-`finish == .Edged`), and the halos' strength (`Theme.glow`, the program's) is capped by the preset (Bevel: 0).
+`Finish` stays: its values are the names of the presets `RELIEF_FLAT` (the zero value), `RELIEF_GRADIENT`,
+`RELIEF_GLASS`, `RELIEF_MACHINED` and `RELIEF_EDGED`, so a program's setting still picks one. `RELIEF_BEVEL` is a preset
+of rings alone, with no finish name: a theme gives it.
 
-## Layer 7: Old Head as data (designed, not built)
+### Why the five finishes are their extras, not rings
 
-Old Head becomes one `THEMES` entry: its colours (one grey `#c0c0c0`, white fields, navy `#000080`), `shape` all 0,
-the bevel relief preset (two one-pixel rings: white and the face's light along the top and left, black and its shadow
-along the bottom and right; turned over when pressed or sunken), `focus = {style = .Dotted, inset = 4, color = black}`,
-every selection navy with a white ink, `still`, no drop shadow and no scrim (preset data). Its film
-(`tools/film/oldhead.odin`) comes with it. No `Finish.Bevel`, no `bevel()` test anywhere.
+The first test of the design was: every finish drawn from rings gives today's pixels. No finish passes it, so each
+preset keeps its code as its extra and its rings are empty. A preset that moves a pixel is worse than an extra. What
+does not reduce to rings of the face:
+
+- **The tones are not steps of the face.** Machined's and Edged's edges, rims, lips and shades are alphas of black and
+  white over what is under (`relief_shade`, `relief_shine`), and on a light palette they go through `RELIEF_ON_LIGHT`'s
+  scales and floor. A ring's tone is a step of the face.
+- **The edges are filled rounded shapes, drawn from the outside in**, each over the antialiased edge of the one under it
+  (the dark edge, then the face inset by a pixel). Straight rings at a radius leave gaps in the curves; that is why the
+  machined code stopped drawing strokes side by side.
+- **The lines stay off the corners.** Edged's hairlines and machined's under-shade are inset by a share of the radius
+  (`radius * 0.6`, `* 0.8`), not by a ring's width.
+- **Blurred and offset shadows** (`box_shadow` under a key, `inset_shadow` in a well and a pressed key) are a shape's
+  blur moved down, not a ring's.
+- **Hover and focus mix into the edge** (a rim brighter by `BEVEL_RIM_HOT * hot`, a well's edge toward the accent by its
+  focus), and the gradients of the faces run from their top to their bottom.
+- **Glass's gloss** is two half-faces of four stops, and **Gradient's** lit face is a gradient with a rim fading down
+  its sides (`lit_face`): no ring at all.
+
+Written as data, each of these would add a field per case, and the "rings" would become the old code as a table. So
+the presets carry the flags (what used to be `finish ==` tests) and their extra; a theme that wants another look gives
+rings. The flat finish is `Relief{}`: its plain face and thin edge are the primitives' flat path.
+
+A relief of rings has a known limit: the widgets' own machined touches (a radio's lit bead, a section's caption face,
+the lamps) still draw their machined forms when `carved` is set.
+
+## Layer 7: Old Head as data (built)
+
+Old Head is one `THEMES` entry and nothing else: its colours (one grey `#c0c0c0` for every surface, white fields, navy
+`#000080`, the deep hues of the 16-colour palette), and its look:
+
+- `shape = Theme_Shape{}`: every role square;
+- `relief = RELIEF_BEVEL`: two one-pixel rings, white and the face's light (`#dfdfdf`) along the top and left, black and
+  its shadow (`#808080`) along the bottom and right; pressed and sunken, turned over; wells, grooves and frames in the
+  grey's tones (`surface_tones`); plain faces and rows; no halo, no light under the pointer, no drop shadow, no dim
+  behind a dialog;
+- `focus = {style = .Dotted, inset = 4, color = black}`: Windows' focus rectangle;
+- every selection navy with a white ink;
+- `still`.
+
+Its finish is nil: its relief wins over whatever finish the program asks. `Finish.Bevel` and its `bevel()` tests, the
+experiment's, do not exist. Its film (`tools/film/oldhead.odin`, `tk film oldhead`) shows the showcase in it.
 
 ## Left for later
 

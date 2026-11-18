@@ -60,6 +60,7 @@ Theme_Look :: struct {
 	focus:      Theme_Focus,
 	still:      bool,                               // its look has no motion (under Animations.System)
 	font:       Theme_Font,
+	relief:     Maybe(Relief),                      // nil: the program's finish's preset (relief_of); set: it wins
 }
 
 // The radius of `role` in the theme shown, before the rounding setting: ems of the font size (a widget multiplies it

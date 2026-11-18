@@ -142,15 +142,15 @@ row_draw :: proc(s: ^State, dc: ^draw.Context, b: ^Box) {
 	}
 }
 
-// Paints a row's face `c` on `r` in the finish shown: `k` its strength (1 selected, less under the pointer alone),
+// Paints a row's face `c` on `r` in the relief shown (its Row_Paint): `k` its strength (1 selected, less under the pointer alone),
 // `sunk` pressed in, `edge` the accent's fine edge of a selection in glass (alpha 0: none).
 row_face_paint :: proc(dc: ^draw.Context, r: Rect, radii: [4]f32, c: Color, k, sunk: f32, edge := Color{}) {
 	s := gs()
-	finish := s.theme != nil ? s.theme.finish : .Flat
+	paint := s.theme != nil ? s.theme.relief.row : .Plain
 	if r.max.y - r.min.y < 2 || c.a <= ROW_EPS { return }
 	p := max(1, math.round(s.scale))
-	switch finish {
-	case .Flat:
+	switch paint {
+	case .Plain:
 		draw.rect_corners(dc, r, colors4(c), radii)
 	case .Gradient:
 		lit_face(dc, r, c, radii, ROW_GRADIENT_TOP_WHITE * k, ROW_GRADIENT_BOTTOM_BLACK * k, ROW_GRADIENT_RIM_ALPHA * k, sunk)

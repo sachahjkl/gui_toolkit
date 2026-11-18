@@ -11,10 +11,11 @@ package ui
 import "core:math"
 import "../draw"
 
-// Corner rounding factor for every rounded shape the toolkit draws: 0 = square corners, 1 = default, up to 2. The edged
-// finish has square corners whatever it is set to (rounding returns 0 there): its hairlines run straight to the corners.
+// Corner rounding factor for every rounded shape the toolkit draws: 0 = square corners, 1 = default, up to 2. A square
+// relief (Relief.square: the edged finish, a bevel) has square corners whatever it is set to (rounding returns 0
+// there): its lines run straight to the corners.
 set_rounding :: proc(s: ^State, r: f32) { s.rounding = clamp(r, 0, 2) }
-rounding :: proc(s: ^State) -> f32 { return s.theme != nil && s.theme.finish == .Edged ? 0 : s.rounding }
+rounding :: proc(s: ^State) -> f32 { return s.theme != nil && s.theme.relief.square ? 0 : s.rounding }
 
 // A radius scaled by the current rounding (for custom draw procs that want to follow the setting).
 rad :: proc(r: f32) -> f32 { return radius_drawn(gs(), r) }
