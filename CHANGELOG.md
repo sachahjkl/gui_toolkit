@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.316.0] - 2026-11-18 13:18
+
+### Added
+- **The theme Old Head**: Windows 95, made of data alone: one grey for every surface, white fields, the 16-colour hues, square corners, two-tone bevels around keys, fields and panels, a dotted focus rectangle, white on navy for every selection, no motion, no shadow. Its look wins over the program's finish. Its film: `tk film oldhead`.
+- **Relief as data** (`ui.Relief`, `Theme_Look.relief`, `Theme.relief`): how surfaces are raised and sunk is a value. Each finish names a preset (`relief_of(finish)`: `RELIEF_FLAT`, `RELIEF_GRADIENT`, `RELIEF_GLASS`, `RELIEF_MACHINED`, `RELIEF_EDGED`) that draws as before; a theme can give its own relief, which wins over the program's finish. A relief of rings (each ring's width, its tones as steps of the face toward white or black, its blur) is drawn by the primitives a program calls (`machined_bevel`, `machined_well`, `machined_groove`, `machined_plate`) and by `relief_rings`, `relief_round`, `relief_lines`; `RELIEF_BEVEL` is Windows 95's two-tone bevel.
+- **A theme's font** (`Theme_Look.font`): a theme can name the interface's family, loaded as the person's family is, and a factor of the program's font size. The family the person chose wins over the theme's; the factor scales the person's text size.
+- **A still theme** (`Theme_Look.still`): a theme can have no motion in its look. While the person's motion setting follows the system, such a theme turns the animations off as the system's "less motion" does; the person's "on" keeps them.
+- **A theme's focus style** (`Theme_Look.focus`): the keyboard's focus is a ring and its glow (as before), a ring alone, or a dotted rectangle inside the box (on a row's face; on a selected row in its text colour), with its width, its inset and its colour.
+- **A theme's selections and the text on them** (`Theme_Look.selections`): for the text, a list's row, a menu's item, a navigation's row and a list without the keyboard, a theme gives the fill and the text colour (the ink). What a selected row holds (a list's, a menu's, the palette's, the file browser's, the font picker's, a dialog's choices) takes the ink as its text, down to a box with a face of its own: white on navy is now possible. A theme that gives none looks as before.
+- **A theme's corners** (`Theme_Def.look`, `Palette.look`: `Theme_Look.shape`): a theme gives the radius of each role (`Shape_Role`: a control, a row, a card, a dialog, a menu, a tooltip, the scroll bar's thumb and arrows), which the rounding setting still scales; `ui.shape_of(role)` reads it for a program's own controls. A theme that gives none keeps `SHAPE_DEFAULT`, the corners every theme had. `CONTROL_RADIUS_EM` and `DIALOG_RADIUS_EM` are gone: ask `shape_of(.Control)` and `shape_of(.Dialog)`. A program's own `Theme_Def` literals take the new last field (`{}`).
+
 ## [0.315.0] - 2026-11-18 12:22
 
 ### Changed
@@ -4459,6 +4470,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.316.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.316.0
 [0.315.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.315.0
 [0.314.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.314.0
 [0.313.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.313.0
