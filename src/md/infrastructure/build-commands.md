@@ -42,6 +42,40 @@ release.
 - Refused: a step list the program builds itself (the drift again), a `Build_Options` per command (the three share
   every field), a hook before each step (no program needs more than `prepare` and `checks`).
 
+## The options of a build
+
+opencode native built itself by hand: defines on every system, its own linker flags, a third build mode, a build that
+cannot overwrite the running program, a pinned Odin. Each is an option of the one path above, off by default, so
+papier, classeur, inspecteur and cliche build as they did.
+
+- **`Project.defines`**: what every odin command of the program gets, on every system (`IMAGE_WEBP_NATIVE_LINK=false`:
+  a program that links a part inside its own Rust library). They go to `check` too, and to the check of another
+  system, because a define changes what compiles. `linux_defines` stays for the defines of one system.
+- **`Project.link`**: what the linker gets. Odin keeps only the last `-extra-linker-flags`, so `linker_flag(p, target,
+  verb, release)` makes the one flag of a command from every source: Linux's `--allow-multiple-definition` (always),
+  Linux's `-s` in a release with `strip` (the symbol table is a quarter of the file, and a panic says its place from
+  `#caller_location`), Windows' static C runtime with `static_vcruntime` (no `vcruntime140.dll` to ship). A flag that
+  each source appended would lose all but one in silence. `check` links nothing and gets none.
+- **`Build_Mode`**: `Debug` (`-debug -o:none`, the console on Windows), `Dev` (`-o:minimal`: Odin keeps the modules
+  apart and between builds, a second at most), `Release` (`-o:speed`). `Build_Options.iterate` is the build with no
+  word; `Debug` is its default. `build debug` and `build release` ask for the others. Every mode but `Debug` has no
+  console of its own on Windows: the console launcher gives its text.
+- **The mode file.** Every build writes its mode to `<program>.mode` (`build_mode_of`). Odin writes nothing in the
+  executable that says how it was built, and a program's tool must know: a package refuses what is not a release, a
+  measure of speed reads only a release. One small file in `build/` is the cost for the programs that do not read it.
+- **`Build_Options.fresh`**: the build goes to `<dir>/<name>-new`, then takes the program's place (`swap_in`). Windows
+  refuses to write a running executable but lets it be renamed: the program goes to `<name>-old`, the fresh file to
+  the program's path, and `<name>-old` is removed when nothing runs it (else by the next build). On Linux the same
+  renames are harmless. A failed build leaves the program as it was. A Windows `-debug` build's `.pdb` keeps the name
+  `<name>-new.pdb`: the executable names it, and a renamed `.pdb` would not be found.
+- **`Build_Options.pinned_odin`**: before a build, a test or a check, `odin version` must hold the text of
+  `odin.version` (the root mark). A version that is a prefix of the found one holds (`dev-2026-11` in `dev-2026-11a`),
+  as opencode native's tool did. `GT_ANY_ODIN=1` builds anyway: a try of a new Odin needs no edit.
+- Refused: a `build_line` the program writes itself (the second build routine again); one list of extra odin flags
+  (the linker flags would overwrite each other, and the toolkit could not test what each option gives); the swap on
+  every program by default (it changes what is in `build/` for programs that did not ask); a `strip` step after the
+  link (a second program to run and to find, where the linker's `-s` does the same).
+
 ## One file writer
 
 `write_if_changed(path, text)` is the toolkit's only writer of a generated file: it writes nothing when the file holds
