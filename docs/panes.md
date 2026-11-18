@@ -183,7 +183,7 @@ if ui.column(.Start, {.Fits_Width}, "###preview") { preview(app) }
 | `side_fold_set(&f, folded) -> changed`, `side_fold_manual(f)` | a manual act; whether a manual choice shows (`folded != narrow`) |
 | `side_fold_format(f)`, `side_fold_parse(text)` | the fold as words for a settings file, and back |
 | `side_handle(id, folded, &size, rail, lo, hi, o) -> Side_Handle_Result` | the handle: open it resizes, folded it is the rail's edge; a drag under `max(rail + SIDE_PULL_EM, lo)` folds, past it opens at the pointer (`fold`, `fold_changed`) |
-| `side_fold_button(id, folded, after, fold_label, open_label)` | the panel icon that folds and opens (`PANEL_LEFT_CLOSE` / `OPEN`, `RIGHT` with `after`) |
+| `side_fold_button(id, folded, after, fold_label, open_label, hint = "")` | the panel icon that folds and opens (`PANEL_LEFT_CLOSE` / `OPEN`, `RIGHT` with `after`); `hint`: what else it does, after the label in its tooltip only |
 | `Side_Panel`, `side_panel_begin`, `side_panel_handle` | the three above for a program's split, with the width it keeps (`Side_Panel_Options`: its unit, widths, rail, the content's least) |
 
 - Put the fold button at the same pixel in both states (the start of the panel's first row): it stays under the pointer.

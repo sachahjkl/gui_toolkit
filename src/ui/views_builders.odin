@@ -837,6 +837,19 @@ view_header_menu_items :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation
 	if !view_machine_at_home(r.machine) {
 		if menu_item(fmt.tprintf("%s###vm_reattach", labels.reattach), icon = lucide.UNDO_2, icon_font = lucide_icons()).clicked { view_apply(vs, r, {kind = .Reattach}) }
 	}
+	// (a panel's stack's Maximise, as its strip's: the strip of a lone panel waits for a rest at its top edge)
+	if p == .Panel {
+		place := view_panel_place(r.machine)
+		sp := view_space_of(vs, place.space)
+		e, maxed := sp.max_edge.?
+		maxed = maxed && e == place.edge && sp.max_stack == place.stack
+		word, glyph := labels.maximize, lucide.MAXIMIZE_2
+		if maxed { word, glyph = labels.restore, lucide.MINIMIZE_2 }
+		if menu_item(fmt.tprintf("%s###vm_maximise", word), icon = glyph, icon_font = lucide_icons()).clicked {
+			if maxed { sp.max_edge = nil } else { sp.max_edge, sp.max_stack = place.edge, place.stack }
+			if sp.state != nil { sp.state.anim_busy = true }
+		}
+	}
 	if menu_item(fmt.tprintf("%s###vm_close", labels.close), icon = lucide.X, icon_font = lucide_icons()).clicked {
 		// (a panel's menu is built after its body, past the check of its flag; a tab not shown is not built at all)
 		if p == .Panel { view_apply(vs, r, {kind = .User_Close}) } else { r.flag = false }
@@ -883,6 +896,7 @@ view_labels :: proc(vs: ^Views) -> View_Labels {
 	word(&l.restore, d.restore)
 	word(&l.close_stack, d.close_stack)
 	word(&l.new_tab, d.new_tab)
+	word(&l.menu_hint, d.menu_hint)
 	return l
 }
 

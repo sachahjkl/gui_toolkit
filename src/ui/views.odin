@@ -121,6 +121,7 @@ View_Labels :: struct {
 	// a stack's strip: its right end (minimise, maximise, restore either, close every view of the stack), its "+";
 	// maximise and restore are a resizable dialog's header button too
 	minimize, maximize, restore, close_stack, new_tab: string,
+	menu_hint: string,   // after the fold button's own words in its tooltip (view_fold_button): its right click
 }
 
 view_default_labels :: proc() -> View_Labels {
@@ -130,6 +131,7 @@ view_default_labels :: proc() -> View_Labels {
 		dock_left = i18n.tr("Dock left"), dock_right = i18n.tr("Dock right"), dock_bottom = i18n.tr("Dock bottom"),
 		minimize = i18n.tr("Minimise the panel"), maximize = i18n.tr("Maximise"), restore = i18n.tr("Restore"),
 		close_stack = i18n.tr("Close the panel"), new_tab = i18n.tr("New tab"),
+		menu_hint = i18n.tr("right click: the panel's menu"),
 	}
 }
 
@@ -205,7 +207,9 @@ View_Record :: struct {
 	header:     Key,         // the header strip, in this build (view_room)
 	panel:      Key,         // the dialog's panel, or the internal window's frame (view_room)
 	strip_tools: Key,        // as a panel shown in its stack's strip: the strip's slot of its tools, in this build (0: none)
-	hover_strip: bool,       // a lone panel: its stack's strip shown on the hover of its top edge (view_hover_strip)
+	// a lone panel: its stack's strip on a rest at its top edge (view_hover_strip), and when the arming began (State.time_ms)
+	hover:       View_Hover,
+	hover_since: f64,
 	// the build that last placed its zone's fold button (view_fold_button): its strip, built before its body, reads the
 	// last one and leaves its Minimise out
 	fold_built: u64,

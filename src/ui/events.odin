@@ -68,6 +68,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			s.press_pos[e.button] = e.pos
 			s.pressed_key[e.button] = hot
 			s.pressed_any[e.button] = true
+			s.buttons_down += {e.button}
 			if e.button == .Right { s.caption_right_down = hot == 0 && on_empty_caption(s, e.pos) }
 			if e.button == .Left { scrollbar_press(s, hot, e.pos) }
 			if e.button == .Left {
@@ -103,6 +104,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 				if !e.lost && hot == 0 && on_empty_caption(s, e.pos) { s.caption_clicked, s.caption_click_at = true, e.pos }
 			}
 			s.active_key[e.button] = 0
+			s.buttons_down -= {e.button}
 		case .Scroll:
 			s.mouse = e.pos
 			s.mouse_valid = true   // (the wheel is where its event says: a first notch with no move before it scrolls too)
@@ -169,6 +171,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 @(private)
 window_left :: proc(s: ^State) {
 	for &k in s.active_key { k = 0 }
+	s.buttons_down = {}
 	s.caption_right_down = false
 	s.mods = {}
 	s.keys_held = {}

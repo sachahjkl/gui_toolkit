@@ -439,13 +439,37 @@ draws, except the header that a dialog always had. The rules:
    body starts at the zone's top edge. A test checks this (section 7.4, test 17). A side zone that folds to its views'
    compact form (`rail_em`) adds no row either: its view places the fold button in a row of its own (rule 2b,
    Minimise).
-2. **A lone panel's strip comes on hover, and pushes its body down** (`view_hover_strip`). At rest nothing is added.
-   When the pointer touches the stack's top edge (a band of `VIEW_HOVER_EDGE_EM`), the stack's strip shows as if the
-   panel had company: its tab (its title, its menu), its moves, its Minimise, Maximise and Close (rule 2b). The strip
-   takes its room: the body moves down under it, and no control of the panel lies over a control of the body. It stays
-   while the pointer is on it or just under it (`VIEW_HOVER_KEEP_EM`), while one of its boxes is held, or while the
-   view's menu is open. The keep reach is past the edge band: when the strip goes, the body comes back up under a
-   pointer already past the band, and the strip does not come again by itself (no flicker).
+2. **A lone panel's strip comes on a rest at its top edge, pushes its body down, and goes when the pointer leaves the
+   panel** (`view_hover_strip`). At rest nothing is added. The strip is the stack's strip, as if the panel had
+   company: its tab (its title, its menu), its moves, its Minimise, Maximise and Close (rule 2b). It takes its room:
+   the body moves down under it, and no control of the panel lies over a control of the body. Its state machine, per
+   view (`View_Record.hover`, `View_Hover`):
+   - **Rest → Armed**: the pointer is in the stack's top band (`VIEW_HOVER_EDGE_EM`, by the last layout), no mouse
+     button is down (`State.buttons_down`: a drag holds one) and none was pressed in this build. The time is noted.
+   - **Armed → Rest**: the pointer leaves the band, or a button goes down. A new arming starts from zero.
+   - **Armed → Shown**: the pointer stayed in the band for `VIEW_HOVER_DWELL_MS` (300 ms). While armed, the build asks
+     for one timed frame at the deadline (`wake_within`), not a frame each refresh.
+   - **Shown → Rest**: the pointer leaves the stack's rect (the pointer outside the window too), unless one of the
+     strip's boxes is held (a tab dragged out) or the view's menu is open; Escape (read, not taken: the body still gets
+     it); a click on the strip (its act is done in that build, the strip goes in the next one).
+   - From Rest the strip comes back only by a new arming and a full dwell: the body never jumps back and forth by
+     itself.
+   So the body never moves while the pointer only passes the band, and never moves up under a pointer inside the
+   panel. The fold button and the controls at the body's top stay where the pointer goes to them.
+   **Why the dwell, its own delay.** The tooltip delay (`Feel.tooltip_delay_ms`, 500 ms) is too long for an act, and
+   a person who makes it longer to see fewer tooltips would not mean a slower strip. The submenu delay
+   (`Feel.menu_hover_ms`, 280 ms) is close, but a person may set it to 0 for quick menus, and a dwell of 0 brings the
+   defect below back. So the strip has its constant.
+   **Why it changed (0.314).** The strip came on the first build in the band and went as soon as the pointer was
+   past `strip + VIEW_HOVER_KEEP_EM`. In opencode native the sidebar's fold button is 1 em under the panel's top,
+   under the title bar: a pointer going down to it crossed the band, the button dropped by the strip's height, and the
+   click landed on the strip's tab (a press and a small move detached the panel). Chasing the button down left the
+   keep reach: the strip went, the button jumped back up. The fold button could not be reached while the strip showed.
+   Refused: the strip over the body (0.267's defect, below: it covers the body's controls); a band kept for it at all
+   times (two ems taken from every lone panel, against rule 1); the strip only with a modifier held (Alt: no one finds
+   it); fading icons in the corner (the corner is the body's: its strips, its buttons).
+   The panel's menu holds the strip's acts too, for a person who does not wait: a right click on the fold button
+   (`view_fold_button`) opens it, and it has Maximise (or Restore) for a panel.
    **Why it changed (0.267).** Two small icons, Detach and Close, floated over the body's top right corner on the hover
    of its top area. They took no room, so they lay over the body's own controls: the user could not click on purpose
    either the panel's icon or the button under it (opencode native's browser panel), and the icons had no plate. The
@@ -519,7 +543,9 @@ draws, except the header that a dialog always had. The rules:
        centre, a dialog, a window) it builds nothing. A view with `rail_em` must call it in its compact form: the
        toolkit's rail draws no Restore for it (a debug assertion says so). Expanded, a view that called it in its last
        build has no Minimise on its stack's strip (said once); the icons' rail (`rail_em = 0`) keeps the toolkit's own
-       Restore, and its views their strip's Minimise.
+       Restore, and its views their strip's Minimise. A right click on it opens the view's menu (rule 3, Maximise
+       included), and its tooltip says so after its act (`View_Labels.menu_hint`): a lone panel's strip waits for a
+       rest at its top edge (rule 2), the menu is at the button the pointer is on.
        opencode native puts it at the start of its servers' row expanded and at the top of its rail minimised, at the
        same pixel in both states: the button stays under the pointer when the person folds and unfolds.
        **Why it changed (0.304, the head of 0.300 refused).** The toolkit drew the Minimise in a row of its own above
@@ -567,7 +593,7 @@ draws, except the header that a dialog always had. The rules:
    captions); the drag of the header onto the owner's dock targets with the program's decorations (the system moves
    the window there; the menu and the palette still dock it).
 3. **A right-click menu on a panel's top area** has: Detach into a window, Open as a floating window, Dock left, Dock
-   right, Dock bottom, Close. The same acts are palette commands, made by the toolkit for every registered view:
+   right, Dock bottom, Close; a panel's has Maximise (or Restore, its stack maximised) before Close. The same acts are palette commands, made by the toolkit for every registered view:
    "Detach <title>", "Float <title>", "Dock <title> to the left", "Dock <title> to the right", "Dock <title> to the
    bottom", "Close <title>". A program adds them to its palette with `views_commands` (step 3).
    The top area is the body's too (ocn's sidebar has its server tabs there, each with its own menu): the view's menu
@@ -591,7 +617,7 @@ cut (today's `dialog_header` rule).
 | Internal | the internal window's title strip | icon, title, tools, Re-attach, Detach, Close |
 | External, the program's decorations | the header is the window's title bar (rule 2c) | icon, title, tools, Re-attach, Close view, then the window's minimise, maximise, close (close: re-attach) |
 | External, the system's decorations | a strip under the system's title bar | icon, title, tools, Re-attach, Close view |
-| Panel | none at rest (rule 1). With two views or more in its stack, `tabs_always`, or its zone minimised: the stack's strip (rule 2b) | tabs, "+", moves, tools, then Minimise, Maximise, Close of the stack; a lone panel: the same strip on the hover of its top edge, the body pushed down (rule 2) |
+| Panel | none at rest (rule 1). With two views or more in its stack, `tabs_always`, or its zone minimised: the stack's strip (rule 2b) | tabs, "+", moves, tools, then Minimise, Maximise, Close of the stack; a lone panel: the same strip after a rest at its top edge, the body pushed down, until the pointer leaves the panel (rule 2) |
 
 The attachment acts. Each is absent where it does nothing:
 
@@ -1615,9 +1641,12 @@ In `tests/views` (the toolkit). Each test that builds runs with `ODIN_TEST_THREA
     back.
 16. **A window refused**: the backend returns nil. The view opens as Internal, the memory is not changed.
 17. **No chrome at rest**: a panel alone in its zone adds no tab strip and no extra border: its body's first box starts
-    at the zone's top edge, and no box of the dock is drawn between them. Its strip shows only on the hover of its top
-    edge, and pushes the body down: no control of the panel over the body's (a strip's arrow in the body keeps its
-    click: tests/views/panel_test.odin, a_strip_in_a_panel_s_band_keeps_its_scroll). A dialog's header has the title, the Detach icon and the close cross, and nothing else.
+    at the zone's top edge, and no box of the dock is drawn between them. Its strip shows only after a rest at its top
+    edge (rule 2), and pushes the body down: no control of the panel over the body's (a strip's arrow in the body keeps
+    its click: tests/views/panel_test.odin, a_strip_in_a_panel_s_band_keeps_its_scroll). A pointer that goes down
+    across the band to a control near the top (the fold button) moves nothing on its way and clicks that control
+    (a_pointer_travelling_to_the_fold_button_moves_nothing). A dialog's header has the title, the Detach icon and the
+    close cross, and nothing else.
 
 Each program adds tests for its own views: the answer acts (classeur deletes, inspecteur kills), the pattern F views
 close when their request ends, the side panes reopen at start.
