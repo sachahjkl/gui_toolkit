@@ -599,7 +599,7 @@ Still open: a plugin folder shared by all the vendor's programs (refused for now
 
 ## As built: lazy lists (slice 5, API level 5)
 
-Written on 2026-11-18.
+Written on 2026-11-18; the Fenwick tree of the rows' places the same day.
 
 - **The node.** `{ kind: "list", count, version, rowHeight, visibleRows, row: (i) => node }`. `count` is at most
   1 000 000 (the host keeps 8 bytes a row: the virtual list's ids). `rowHeight` is in lines of text, the height of a
@@ -628,6 +628,17 @@ Written on 2026-11-18.
   says the rows it keeps). A render that no longer has the list lets go of all of them.
 - **A new render keeps the rows** when the version is the same: the plugin changes `version` when what the rows show
   changes. Rows are asked again then; the placeholders show until they come.
+- **The rows' places are a Fenwick tree** (`src/ui/fenwick.odin`, the find bar's too). The virtual list kept the top of
+  every row in an array, made again whenever a row was measured at a new height: a lazy list of a million rows went
+  over all of them at each scroll that laid out new rows. Now a measure is a point update and a top, the total and the
+  row at a place are each a logarithm of the rows; every row is placed again only when the ids change (here: the
+  count) or the heights are forgotten (a new version, a new width). The tree keeps per row its measured height and
+  whether it was measured, not the estimate: the estimate is the average of the heights measured and moves with each
+  measure, so it is applied when a top is asked, else a new average would rewrite every row never measured. The sums
+  are f64: a million f32 heights added up keep their exact value. The view's anchor keeps its index too: with the same
+  ids it is found at once, and the search over the rows runs only in a build whose new ids were placed anyway. A map
+  from id to row was refused: some 30 MB and a hash per row at each change of a million ids, to save a pass that a
+  change of the ids already makes.
 
 Refused:
 

@@ -217,7 +217,7 @@ an_unchanged_long_list_is_not_walked :: proc(t: ^testing.T) { unwatched.run(t, p
 			}
 		}
 	}})
-	// (the first builds measure the rows in view: their heights make the offsets again)
+	// (the first builds place the rows, again when the list's width is first known)
 	session.frames(s, 4)
 	made := r.st.offsets_made
 	session.frames(s, 5)

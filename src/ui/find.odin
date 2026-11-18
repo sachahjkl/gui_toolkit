@@ -101,7 +101,7 @@ Find_State :: struct {
 	lazy_build:  u64,            // a lazy column fed them in that build (lazy_item builds want_row)
 	version:     u64,            // rows.version at the last build
 	order:       [dynamic]Find_Row,
-	tree:        [dynamic]i32,   // Fenwick tree over the rows' counts, 1-based
+	tree:        Fenwick(i32),   // over the rows' counts
 	total:       int,
 	cache:       map[u64]Find_Text,
 	cursor, left, unknown: int,  // the pass: where it reads, rows still to visit, rows not known for `gen`
@@ -196,7 +196,7 @@ find_destroy :: proc(s: ^State) {
 	delete(f.needle)
 	line_edit_destroy(&f.field)
 	delete(f.order)
-	delete(f.tree)
+	fenwick_destroy(&f.tree)
 	delete(f.cache)
 	delete(f.built)
 	delete(f.tops)
@@ -212,7 +212,7 @@ find_rows_free :: proc(f: ^Find_State) {
 	for _, t in f.cache { delete(t.text) }
 	clear(&f.cache)
 	clear(&f.order)
-	clear(&f.tree)
+	fenwick_clear(&f.tree)
 	clear(&f.tops)
 	f.total, f.cursor, f.left, f.unknown, f.rows_build, f.version = 0, 0, 0, 0, 0, 0
 }
@@ -222,7 +222,7 @@ find_rows_free :: proc(f: ^Find_State) {
 find_query_changed :: proc(f: ^Find_State) {
 	f.gen += 1
 	for &e in f.order { e.n, e.kept = 0, false }
-	slice.zero(f.tree[:])
+	fenwick_zero(&f.tree)
 	f.total = 0
 	f.unknown, f.left, f.cursor = len(f.order), len(f.order), 0
 	find_drop_current(f)
@@ -230,36 +230,26 @@ find_query_changed :: proc(f: ^Find_State) {
 	f.counted += 1
 }
 
-// ---- the Fenwick tree over the rows' counts
+// ---- the Fenwick tree over the rows' counts (fenwick.odin)
 
 @(private = "file")
 fen_add :: proc(f: ^Find_State, i: int, d: i32) {
 	if d == 0 { return }
-	for j := i + 1; j < len(f.tree); j += j & -j { f.tree[j] += d }
+	fenwick_add(&f.tree, i, d)
 	f.total += int(d)
 }
 
 // The matches in rows [0, i).
 @(private = "file")
 fen_sum :: proc(f: ^Find_State, i: int) -> int {
-	n := 0
-	for j := min(i, len(f.tree) - 1); j > 0; j -= j & -j { n += int(f.tree[j]) }
-	return n
+	return int(fenwick_sum(&f.tree, i))
 }
 
 // The row that holds the k-th match (0-based; k < total).
 @(private = "file")
 fen_find :: proc(f: ^Find_State, k: int) -> int {
-	pos, rest := 0, k
-	step := 1
-	for step * 2 < len(f.tree) { step *= 2 }
-	for ; step > 0; step /= 2 {
-		if pos + step < len(f.tree) && int(f.tree[pos + step]) <= rest {
-			pos += step
-			rest -= int(f.tree[pos])
-		}
-	}
-	return pos   // (1-based pos is the last row whose prefix is <= k: the row is pos, 0-based)
+	// (the most rows whose matches are <= k: the next row, that number 0-based, holds match k)
+	return fenwick_find(&f.tree, i32(k))
 }
 
 // ---- matching
@@ -421,8 +411,7 @@ find_pass :: proc(s: ^State, f: ^Find_State) {
 		// (rows came or went: by their identities again, from the cache)
 		resize(&f.order, count)
 		slice.zero(f.order[:])
-		resize(&f.tree, count + 1)
-		slice.zero(f.tree[:])
+		fenwick_reset(&f.tree, count)
 		old := len(f.tops)
 		resize(&f.tops, count)
 		for i in old ..< count { f.tops[i] = -1 }
