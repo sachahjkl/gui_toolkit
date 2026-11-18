@@ -13,6 +13,22 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
+- **A panel's menu on a right click.** views.md rule 3 says a right click on the free part of a panel's top area opens
+  the view's menu (detach, float, dock, close); no code opens it. Build it, or take the rule out. Intent:
+  [src/md/features/views.md](src/md/features/views.md), rule 3.
+- **A find bar a program drives.** `find_open` and `find_close` act on any window's State, not only the current one
+  (opencode native defers Ctrl+F and `--find` today); `Find_Result` says when the find moved the view; a click on a
+  scope or an option leaves the keyboard in the field; a public call sets the current match.
+- **Downloads in the toolkit.** For opencode native's file downloads: a streamed HTTP body in `gt:http` (a callback per
+  chunk, and a stop), a notification updated in place with its progress and several buttons, a program's actions on
+  an entry of the file browser, `File_Dialog.start_known = .Downloads` honoured by the browser, and an `fsx` writer
+  that appends to a temporary file then renames it.
+- **opencode native's build in the toolkit's commands.** `toolbox.build_commands` covers what opencode native's tool
+  does by hand: defines on every system, Windows link options (a static vcruntime), stripped symbols in a Linux
+  release, `-o:minimal` with its `.mode` file, a fresh build in `build/ocn-new`, a pinned Odin version.
+- **Side areas that fit a narrow window.** Under 52 em, a right area of a fixed 448 px beside the side bar runs past
+  the window (opencode native's /btw panel): a side area gives way as a side panel does. And a dialog's opening takes a
+  least width (the image viewer's handles can fall under its footer's measured width).
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).

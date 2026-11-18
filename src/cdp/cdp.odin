@@ -163,8 +163,9 @@ CONNECT_POLL :: 50 * time.Millisecond
 // connect, tried until it answers, at most `limit`: a program just started listens only once its window exists.
 // `program`: the process that serves the port, when the caller started it; once it has ended, the wait fails at once,
 // not at its bound, and `ended` says how it ended (`exited` true). Its end was collected here (on Linux the process is
-// reaped): the caller does not wait for it again, and keeps its exit code from `ended`.
-connect_wait :: proc(port: int, limit: time.Duration, program: Maybe(os.Process) = nil) -> (c: Client, ok: bool, ended: os.Process_State) {
+// reaped): the caller does not wait for it again, and keeps its exit code from `ended`. `step`: the time between two
+// tries; a tool that measures a program's first screen takes a finer one, as the wait adds up to a step to what it reads.
+connect_wait :: proc(port: int, limit: time.Duration, program: Maybe(os.Process) = nil, step := CONNECT_POLL) -> (c: Client, ok: bool, ended: os.Process_State) {
 	deadline := time.tick_add(time.tick_now(), limit)
 	for {
 		if c, ok = connect(port); ok { return }
@@ -173,7 +174,7 @@ connect_wait :: proc(port: int, limit: time.Duration, program: Maybe(os.Process)
 			if state, _ := os.process_wait(p, 0); state.exited { return c, false, state }
 		}
 		if time.tick_diff(time.tick_now(), deadline) <= 0 { return }
-		time.sleep(CONNECT_POLL)
+		time.sleep(max(step, time.Millisecond))
 	}
 }
 
