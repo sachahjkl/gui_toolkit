@@ -31,6 +31,9 @@ Request :: struct {
 	compressed: bool,            // asks for a compressed answer (Accept-Encoding: gzip, deflate) and gives its body decoded; not a WebSocket's
 	headers:    []Header,        // sent as given; a Content-Type here says what the body is (none is added)
 	body:       []u8,            // nil: none (POST, PUT and PATCH send an empty one)
+	// a redirect is the answer, not followed: its status and its Location header are the caller's (a plugin's broker
+	// checks each hop's origin before it goes there)
+	no_redirects: bool,
 }
 
 // The bound of a connection: connect_timeout, else `timeout` (a request's whole time, a stream's silence, a socket's

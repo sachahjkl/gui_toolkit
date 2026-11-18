@@ -91,6 +91,7 @@ open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "") -> ^session.Ses
 		prefs = &fx.prefs,
 		program = "gui_toolkit_plugins_test", program_id = "plugins_test",
 		folder = fmt.tprintf("%s/plugins", root), config_dir = fmt.tprintf("%s/config", root), state_dir = fmt.tprintf("%s/state", root),
+		data_dir = fmt.tprintf("%s/data", root),
 		bound_ms = BOUND_MS, single = single,
 	})
 	fx.opened = true
@@ -209,6 +210,8 @@ manifests_refused :: proc(t: ^testing.T) {
 		{`{"id": "a", "api": 3, "settings": [{"id": "n", "kind": "int", "default": 9, "min": 0, "max": 5}]}`, "out of its bounds"},
 		{`{"id": "a", "api": 3, "settings": [{"id": "s", "kind": "string", "default": "x", "choices": ["a", "b"]}]}`, "not one of its choices"},
 		{`{"id": "a", "api": 3, "settings": [{"id": "s", "kind": "colour"}]}`, "not bool, int, float or string"},
+		{`{"id": "a", "api": 4, "permissions": ["camera"]}`, "which is no permission"},
+		{`{"id": "a", "api": 4, "permissions": ["net:https://a.com/path"]}`, "which is no permission"},
 		{`[1, 2]`, "not an object"},
 		{`{"id": `, "not JSON"},
 	}

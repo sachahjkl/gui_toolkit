@@ -68,6 +68,7 @@ Manifest :: struct {
 	commands: []Command_Decl,
 	views:    []View_Decl,
 	settings: []Setting_Decl,
+	permissions: []string,   // what it asks, each in its one form (permission_parse)
 }
 
 manifest_destroy :: proc(m: ^Manifest) {
@@ -86,6 +87,8 @@ manifest_destroy :: proc(m: ^Manifest) {
 		delete(s.choices)
 	}
 	delete(m.settings)
+	for p in m.permissions { delete(p) }
+	delete(m.permissions)
 	m^ = {}
 }
 
@@ -189,6 +192,21 @@ manifest_parse :: proc(text: string, program: string, allocator := context.alloc
 		}
 	}
 	if why := settings_parse(&m, v); why != "" { return m, why }
+	words := tk_json.array(v, "permissions")
+	perms := make([dynamic]string, 0, len(words))
+	for w in words {
+		word := tk_json.text(w)
+		_, normal, ok := permission_parse(word, context.allocator)
+		if !ok {
+			m.permissions = perms[:]
+			return m, fmt.aprintf("it asks for \"%s\", which is no permission", word)
+		}
+		known := false
+		for p in perms { known ||= p == normal }
+		if known { delete(normal); continue }
+		append(&perms, normal)
+	}
+	m.permissions = perms[:]
 	return m, ""
 }
 

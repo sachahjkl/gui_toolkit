@@ -22,6 +22,10 @@ Plugin :: struct {
 	enabled:   bool,        // plugins.toml says it is on
 	suspended: bool,        // its process crashed CRASHES_TO_SUSPEND times: off until the person turns it on
 	crashes:   int,         // its process's crashes in this run of the program
+	granted:   [dynamic]string,   // the permissions the person granted it (owned; plugins.toml)
+	picked:    [dynamic]string,   // the files and folders the person picked for it, granted until revoked (owned)
+	asks_more: bool,        // its manifest asks what was not granted: off until the person grants it (grant dialog)
+	data_dir:  string,      // its own data folder, no permission needed (owned; "" when the system has none)
 	alive:     bool,        // its process runs (from plugin_start to its Ended post)
 	dropped:   bool,        // the host let go of it (reload, close): its posts change nothing
 	host:      ^Host,       // read only while !dropped
@@ -38,8 +42,9 @@ Plugin :: struct {
 	stop:       bool,       // (atomic) the program: a Stop was asked; the child: the engine's interrupt flag
 	busy_since: i64,        // (atomic) now_ms since the oldest message no turn answered; 0: none
 	ended:      bool,       // (atomic) its process ended and was read for good
-	// the child's only: where its events go (nil in the program)
+	// the child's only: where its events go (nil in the program), and what its bridge lets through (the start's)
 	out:        ^Child_Out,
+	granted_caps: plugin_api.Capabilities,
 }
 
 @(private)
@@ -55,7 +60,11 @@ plugin_release :: proc(p: ^Plugin) {
 	context.allocator = runtime.heap_allocator()
 	manifest_destroy(&p.manifest)
 	delete(p.refused); delete(p.failure)
-	delete(p.folder); delete(p.log_path)
+	delete(p.folder); delete(p.log_path); delete(p.data_dir)
+	for g in p.granted { delete(g) }
+	delete(p.granted)
+	for g in p.picked { delete(g) }
+	delete(p.picked)
 	for s in p.settings_start { setting_now_free(s) }
 	delete(p.settings_start)
 	if p.ch != nil { channel_release(p.ch) }
@@ -71,6 +80,9 @@ plugin_start :: proc(h: ^Host, p: ^Plugin) {
 	sync.atomic_store(&p.ended, false)
 	sync.atomic_store(&p.busy_since, 0)
 	queue_clear(&p.queue)
+	sync.lock(&p.queue.lock)
+	append(&p.queue.turns, false)   // (the start's turn: activate, no person's act)
+	sync.unlock(&p.queue.lock)
 	p.alive = true
 	p.state = .Starting
 	p.memory_limit = h.o.memory_limit
@@ -115,6 +127,10 @@ Message_Kind :: enum u8 {
 	Stop,         // the child's reader raises the interrupt flag at once (it is read while a script runs)
 	Test_Crash,   // the child's runtime panics at this turn (test_crash)
 	Test_Hang,    // the child's runtime waits for ever outside the engine, where no interrupt reaches it (test_hang)
+	// the broker's answer to the request `serial` (broker.odin): `flag` ok; `is_flag` a value is there (files.pick:
+	// none, the person picked nothing); `text` the value or the error's message; `key` the error's name; `number` a
+	// response's status; `command` its address
+	Answer,
 }
 
 // What happened to a node of a view: the name of the field of its kind's struct that is called (plugin_api's nodes).
@@ -147,6 +163,10 @@ Queue :: struct {
 	lock:     sync.Mutex,
 	came:     sync.Cond,
 	messages: [dynamic]Message,
+	// the program's: the turns pushed and not answered yet, oldest first, each true when it is a person's act (a
+	// command, a node of a view used). The reader stamps each request of the process with the oldest: clipboard.read
+	// and files.pick need one. Popped as busy_less is called (Started, Turn_Done, Failed).
+	turns:    [dynamic]bool,
 }
 
 // `front`: before what waits (a Stop).
@@ -156,8 +176,27 @@ queue_push :: proc(p: ^Plugin, m: Message, front := false) {
 	q := &p.queue
 	sync.lock(&q.lock)
 	if front { inject_at(&q.messages, 0, m) } else { append(&q.messages, m) }
+	// (the program's only: the process's own queue has no requests to stamp)
+	if p.out == nil && m.kind != .Quit && m.kind != .Stop { append(&q.turns, m.kind == .Command || m.kind == .View_Event) }
 	sync.unlock(&q.lock)
 	sync.broadcast(&q.came)
+}
+
+// Whether the turn running in the process is a person's act (the program's reader, at a request), and the turn's end.
+@(private)
+turn_is_gesture :: proc(p: ^Plugin) -> bool {
+	q := &p.queue
+	sync.lock(&q.lock)
+	defer sync.unlock(&q.lock)
+	return len(q.turns) > 0 && q.turns[0]
+}
+
+@(private)
+turn_done :: proc(p: ^Plugin) {
+	q := &p.queue
+	sync.lock(&q.lock)
+	defer sync.unlock(&q.lock)
+	if len(q.turns) > 0 { ordered_remove(&q.turns, 0) }
 }
 
 // The next message, waiting for it (the plugin's thread, in its process).
@@ -175,6 +214,7 @@ queue_clear :: proc(q: ^Queue) {
 	sync.lock(&q.lock)
 	for m in q.messages { message_free(m) }
 	clear(&q.messages)
+	clear(&q.turns)
 	sync.unlock(&q.lock)
 }
 
@@ -182,6 +222,7 @@ queue_clear :: proc(q: ^Queue) {
 queue_destroy :: proc(q: ^Queue) {
 	queue_clear(q)
 	delete(q.messages)
+	delete(q.turns)
 }
 
 ////////////////////////////////
@@ -196,6 +237,7 @@ Event_Kind :: enum u8 {
 	Ended,       // its runtime ended: Ready (or Off, or Failed stays)
 	List,        // a view's new display list: `title` is the view's id, `list` the list
 	Crashed,     // its process ended with no word of its runtime (the program's reader says it): `text`
+	Request,     // a call for the broker (files, the network, the clipboard): `req`
 }
 
 @(private)
@@ -207,22 +249,23 @@ Event :: struct {
 	title:  string,    // (heap, owned)
 	text:   string,
 	list:   ^plugin_api.List,   // (owned until a view's record takes it)
+	req:    Request,   // (owned)
 }
 
 // An event of the plugin's runtime (its thread, inside its process): written to the program. `serial` is the
 // program's to set (the reader's).
 @(private)
-event_post :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil) {
-	child_event(p, kind, title, text, toast, list)
+event_post :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil, req := Request{}) {
+	child_event(p, kind, title, text, toast, list, req)
 }
 
 // An event of the plugin's process `serial`, posted to the interface's thread (the program's reader and sender).
-// Lost when the host is closed. Takes `list`.
+// Lost when the host is closed. Takes `list`; copies `req`.
 @(private)
-event_deliver :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil) {
+event_deliver :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil, req := Request{}) {
 	context.allocator = runtime.heap_allocator()
 	e := new(Event)
-	e^ = {p = p, serial = serial, kind = kind, toast = toast, title = strings.clone(title), text = strings.clone(text), list = list}
+	e^ = {p = p, serial = serial, kind = kind, toast = toast, title = strings.clone(title), text = strings.clone(text), list = list, req = request_clone(req)}
 	sync.atomic_add(&p.refs, 1)
 	if !link_post(p.link, event_run, e) { event_free(e) }
 }
@@ -232,6 +275,7 @@ event_free :: proc(e: ^Event) {
 	context.allocator = runtime.heap_allocator()
 	delete(e.title); delete(e.text)
 	plugin_api.list_free(e.list)
+	request_free(&e.req)
 	plugin_release(e.p)
 	free(e)
 }
@@ -282,6 +326,8 @@ event_run :: proc(data: rawptr, word: u64) {
 			view_take_list(r, e.list)
 			e.list = nil
 		}
+	case .Request:
+		broker_request(h, p, e.serial, e.req)
 	}
 }
 

@@ -1,6 +1,6 @@
 # The plugin API
 
-Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 3 of the API and accepts plugins written for levels 1 to 3. How a program turns plugins on: [plugins.md](plugins.md).
+Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 4 of the API and accepts plugins written for levels 1 to 4. How a program turns plugins on: [plugins.md](plugins.md).
 
 A plugin imports the API as an ES module, and its entry file exports `activate(context)`:
 
@@ -84,6 +84,71 @@ Level 3. Permission: none.
 | Argument | Type | |
 |---|---|---|
 | `handler` | `(id: string, value: string | number | boolean) => void | Promise<void>` |  |
+
+## files
+
+### `files.read(path)`
+
+Reads a text file.
+
+Level 4. Permission: none.
+
+| Argument | Type | |
+|---|---|---|
+| `path` | `string` | Where it is. |
+
+### `files.write(path, text)`
+
+Writes a text file, its folders made when they are missing.
+
+Level 4. Permission: none.
+
+| Argument | Type | |
+|---|---|---|
+| `path` | `string` | Where it goes. |
+| `text` | `string` | What it holds. |
+
+### `files.pick(options?)`
+
+Asks the person for a file or a folder in the system's dialog, while they act in the plugin. What they pick is granted until they revoke it in the Plugins page; null: they picked nothing.
+
+Level 4. Permission: `files`.
+
+| Argument | Type | |
+|---|---|---|
+| `options` | `Files_Pick_Options`, optional |  |
+
+## http
+
+### `http.fetch(url, options?)`
+
+Asks an address of an origin the manifest names (or any public one with "net:*"). Each redirect is checked as the first address was: a hop to an origin not granted fails the call.
+
+Level 4. Permission: `net:<origin>`.
+
+| Argument | Type | |
+|---|---|---|
+| `url` | `string` |  |
+| `options` | `Fetch_Options`, optional |  |
+
+## clipboard
+
+### `clipboard.read()`
+
+Reads the clipboard's text, while the person acts in the plugin (a command, a click in its view).
+
+Level 4. Permission: `clipboard.read`.
+
+
+### `clipboard.write(text)`
+
+Puts text on the clipboard.
+
+Level 4. Permission: `clipboard.write`.
+
+| Argument | Type | |
+|---|---|---|
+| `text` | `string` |  |
 
 ## Nodes
 
@@ -215,7 +280,7 @@ Level 2.
 `plugin-api/api.json` describes the same API for the site's explorer, which reads nothing else. Its shape:
 
 - `level`, `oldest`: the level this toolkit gives and the oldest it accepts.
-- `modules`: each with its `name` and its `calls`; a call has `name`, `doc`, `level`, `capability` (`"None"`: no permission), `result` and `arguments`.
+- `modules`: each with its `name` and its `calls`; a call has `name`, `doc`, `level`, `capability` (`"None"`: no permission), `permission` (the manifest's word for it, `""` for none), `result` and `arguments`.
 - `types`: the objects and enums the calls and nodes name; an object has `fields`, an enum `values`.
 - `nodes`: each kind of node of a view, with `name` (its `kind` in JavaScript), `type`, `doc`, `level`, `container` and `fields`.
 - A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional`, `state` and `doc`. A `state` field is kept by the host (a field's text, a box's state): what the person changed stays until the plugin has heard of it.
@@ -263,3 +328,32 @@ One of `"neutral"`, `"primary"`, `"success"`, `"warning"`, `"danger"`.
 A step of the toolkit's spacing scale; `fill` takes the room left in a row.
 
 One of `"small"`, `"medium"`, `"large"`, `"fill"`.
+
+### `Files_Pick_Options`
+
+What the system's dialog of files.pick offers.
+
+| Field | Type | |
+|---|---|---|
+| `folder` | `boolean`, optional | A folder, not a file. |
+| `title` | `string`, optional | The dialog's title. |
+
+### `Fetch_Options`
+
+A request's options.
+
+| Field | Type | |
+|---|---|---|
+| `method` | `string`, optional | "GET" when absent. |
+| `body` | `string`, optional | The request's body, as text. |
+| `contentType` | `string`, optional | Its Content-Type. |
+
+### `Fetch_Response`
+
+An answer to http.fetch.
+
+| Field | Type | |
+|---|---|---|
+| `status` | `number` | Its HTTP status. |
+| `url` | `string` | The address that answered, after the redirects. |
+| `text` | `string` | Its body, as text. |

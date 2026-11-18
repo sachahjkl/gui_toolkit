@@ -12,18 +12,30 @@ import js "../js"
 
 // The level of the API this toolkit gives, and the oldest a plugin may ask: a manifest's `api` between the two is
 // accepted. A level only adds; a removal or a change raises the oldest.
-PLUGIN_API_LEVEL :: 3
+PLUGIN_API_LEVEL :: 4
 PLUGIN_API_OLDEST :: 1
 
-// What a call needs the person to have granted. `.None`: nothing (a call the realm may always make).
+// What a call needs the person to have granted (the manifest's "permissions"). `.None`: nothing. The bridge refuses a
+// call without its grant at once (PermissionError); the program's broker checks again, and checks what depends on the
+// arguments (a path's folder, an address's origin).
 Capability :: enum u8 {
 	None,
+	Files,             // "files": the files and folders the person picks in the system's dialog
+	Documents,         // "folder:documents"
+	Downloads,         // "folder:downloads"
+	Net,               // "net:<origin>" or "net:*": the addresses of the origins named, or any public one
+	Clipboard_Read,    // "clipboard.read": only while the person acts in the plugin (a command, a click in its view)
+	Clipboard_Write,   // "clipboard.write"
 }
 
 // What a call gives back to JavaScript.
 Result :: enum u8 {
 	Undefined,
-	Setting_Value,   // a boolean, a number or a string: what the implementation returns
+	Setting_Value,      // a boolean, a number or a string: what the implementation returns
+	Promise_Text,       // a promise of a string
+	Promise_Void,       // a promise of nothing
+	Promise_Path,       // a promise of a path, or null when the person picked nothing
+	Promise_Response,   // a promise of a Fetch_Response
 }
 
 // A function of the plugin (commands.on's handler). The bridge checks that it is callable; the host retains it
@@ -254,6 +266,75 @@ Settings_On_Change :: struct {
 	handler: Setting_Handler,
 }
 
+////////////////////////////////
+// Files, the network, the clipboard (level 4): each call is a request to the program's broker, which checks the grant
+// and does the work on its workers; the promise settles with its answer. A path is one of: a relative path, in the
+// plugin's own data folder (no permission); "~documents/..." or "~downloads/..." (their permission); an absolute path
+// the person picked (files.pick). A path that leaves its folder (`..`) or goes through a link is refused.
+
+// Reads a text file.
+Files_Read :: struct {
+	// Where it is.
+	path: string,
+}
+
+// Writes a text file, its folders made when they are missing.
+Files_Write :: struct {
+	// Where it goes.
+	path: string,
+	// What it holds.
+	text: string,
+}
+
+// What the system's dialog of files.pick offers.
+Files_Pick_Options :: struct {
+	// A folder, not a file.
+	folder: bool `optional`,
+	// The dialog's title.
+	title:  string `optional`,
+}
+
+// Asks the person for a file or a folder in the system's dialog, while they act in the plugin. What they pick is
+// granted until they revoke it in the Plugins page; null: they picked nothing.
+Files_Pick :: struct {
+	options: Files_Pick_Options `optional`,
+}
+
+// A request's options.
+Fetch_Options :: struct {
+	// "GET" when absent.
+	method:      string `optional`,
+	// The request's body, as text.
+	body:        string `optional`,
+	// Its Content-Type.
+	contentType: string `optional`,
+}
+
+// An answer to http.fetch.
+Fetch_Response :: struct {
+	// Its HTTP status.
+	status: int,
+	// The address that answered, after the redirects.
+	url:    string,
+	// Its body, as text.
+	text:   string,
+}
+
+// Asks an address of an origin the manifest names (or any public one with "net:*"). Each redirect is checked as the
+// first address was: a hop to an origin not granted fails the call.
+Http_Fetch :: struct {
+	url:     string,
+	options: Fetch_Options `optional`,
+}
+
+// Reads the clipboard's text, while the person acts in the plugin (a command, a click in its view).
+Clipboard_Read :: struct {}
+
+// Puts text on the clipboard.
+Clipboard_Write :: struct {
+	text: string,
+}
+
 // One call of the API.
 Declaration :: struct {
 	module:     string,     // the export of "gt" that holds it ("commands")
@@ -271,4 +352,10 @@ DECLARATIONS :: [?]Declaration{
 	{module = "views", name = "update", arguments = Views_Update, result = .Undefined, capability = .None, level = 2},
 	{module = "settings", name = "get", arguments = Settings_Get, result = .Setting_Value, capability = .None, level = 3},
 	{module = "settings", name = "onChange", arguments = Settings_On_Change, result = .Undefined, capability = .None, level = 3},
+	{module = "files", name = "read", arguments = Files_Read, result = .Promise_Text, capability = .None, level = 4},
+	{module = "files", name = "write", arguments = Files_Write, result = .Promise_Void, capability = .None, level = 4},
+	{module = "files", name = "pick", arguments = Files_Pick, result = .Promise_Path, capability = .Files, level = 4},
+	{module = "http", name = "fetch", arguments = Http_Fetch, result = .Promise_Response, capability = .Net, level = 4},
+	{module = "clipboard", name = "read", arguments = Clipboard_Read, result = .Promise_Text, capability = .Clipboard_Read, level = 4},
+	{module = "clipboard", name = "write", arguments = Clipboard_Write, result = .Promise_Void, capability = .Clipboard_Write, level = 4},
 }

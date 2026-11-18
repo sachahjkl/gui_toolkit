@@ -206,7 +206,11 @@ api_reachable :: proc(api: Api, level: int) -> map[string]bool {
 	seen := make(map[string]bool, context.temp_allocator)
 	todo := make([dynamic]string, context.temp_allocator)
 	append(&todo, "Activate_Context")
-	for c in api.calls { if c.level <= level { append(&todo, c.arguments) } }
+	for c in api.calls {
+		if c.level > level { continue }
+		append(&todo, c.arguments)
+		if t := result_type(c.result); t != "" { append(&todo, t) }
+	}
 	for n in api.nodes { if n.level <= level { append(&todo, n.props) } }
 	for len(todo) > 0 {
 		name := pop(&todo)
@@ -325,10 +329,35 @@ ts_type :: proc(odin_type: string) -> string {
 @(private = "file")
 result_ts :: proc(result: string) -> string {
 	switch result {
-	case "Undefined":     return "void"
-	case "Setting_Value": return "string | number | boolean"
+	case "Undefined":        return "void"
+	case "Setting_Value":    return "string | number | boolean"
+	case "Promise_Text":     return "Promise<string>"
+	case "Promise_Void":     return "Promise<void>"
+	case "Promise_Path":     return "Promise<string | null>"
+	case "Promise_Response": return "Promise<Fetch_Response>"
 	}
 	return "unknown"
+}
+
+// The type a call's result names, which the declarations must then show ("": none).
+@(private = "file")
+result_type :: proc(result: string) -> string {
+	return result == "Promise_Response" ? "Fetch_Response" : ""
+}
+
+// The manifest's word of a capability (plugin_api.Capability): what a plugin's author writes in "permissions".
+@(private = "file")
+capability_word :: proc(capability: string) -> string {
+	switch capability {
+	case "None":            return ""
+	case "Files":           return "files"
+	case "Documents":       return "folder:documents"
+	case "Downloads":       return "folder:downloads"
+	case "Net":             return "net:<origin>"
+	case "Clipboard_Read":  return "clipboard.read"
+	case "Clipboard_Write": return "clipboard.write"
+	}
+	return capability
 }
 
 @(private = "file")
@@ -378,7 +407,7 @@ api_dts :: proc(api: Api, level: int) -> string {
 		for c in api.calls {
 			if c.module != m || c.level > level { continue }
 			t, _ := type_of_name(api, c.arguments)
-			ts_doc(&b, "\t\t", fmt.tprintf("%s (level %d%s)", t.doc, c.level, c.capability != "None" ? fmt.tprintf(", needs %s", c.capability) : ""))
+			ts_doc(&b, "\t\t", fmt.tprintf("%s (level %d%s)", t.doc, c.level, c.capability != "None" ? fmt.tprintf(", needs the permission %s", capability_word(c.capability)) : ""))
 			fmt.sbprintf(&b, "\t\t%s(", c.name)
 			for f, i in t.fields {
 				fmt.sbprintf(&b, "%s%s%s: %s", i == 0 ? "" : ", ", f.name, f.optional ? "?" : "", ts_type(f.type))
@@ -415,8 +444,8 @@ api_json :: proc(api: Api) -> string {
 		for c in api.calls {
 			if c.module != m { continue }
 			t, _ := type_of_name(api, c.arguments)
-			fmt.sbprintf(&b, "%s\t\t\t{{\"name\": %s, \"doc\": %s, \"level\": %d, \"capability\": %s, \"result\": %s, \"arguments\": [",
-				first ? "" : ",\n", tk_json.quote(c.name), tk_json.quote(t.doc), c.level, tk_json.quote(c.capability), tk_json.quote(result_ts(c.result)))
+			fmt.sbprintf(&b, "%s\t\t\t{{\"name\": %s, \"doc\": %s, \"level\": %d, \"capability\": %s, \"permission\": %s, \"result\": %s, \"arguments\": [",
+				first ? "" : ",\n", tk_json.quote(c.name), tk_json.quote(t.doc), c.level, tk_json.quote(c.capability), tk_json.quote(capability_word(c.capability)), tk_json.quote(result_ts(c.result)))
 			first = false
 			for f, i in t.fields { json_field(&b, f, i == 0) }
 			strings.write_string(&b, "]}")
@@ -479,7 +508,7 @@ api_page :: proc(api: Api) -> string {
 			names := make([dynamic]string, context.temp_allocator)
 			for f in t.fields { append(&names, f.optional ? fmt.tprintf("%s?", f.name) : f.name) }
 			fmt.sbprintf(&b, "\n### `%s.%s(%s)`\n\n%s\n\n", m, c.name, strings.join(names[:], ", ", context.temp_allocator), t.doc)
-			fmt.sbprintf(&b, "Level %d. Permission: %s.\n\n", c.level, c.capability == "None" ? "none" : c.capability)
+			fmt.sbprintf(&b, "Level %d. Permission: %s.\n\n", c.level, c.capability == "None" ? "none" : fmt.tprintf("`%s`", capability_word(c.capability)))
 			if len(t.fields) > 0 {
 				strings.write_string(&b, "| Argument | Type | |\n|---|---|---|\n")
 				for f in t.fields { fmt.sbprintf(&b, "| `%s` | `%s`%s | %s |\n", f.name, ts_type(f.type), f.optional ? ", optional" : "", f.doc) }
@@ -506,7 +535,7 @@ api_page :: proc(api: Api) -> string {
 	}
 	strings.write_string(&b, "\n## The explorer's file\n\n`plugin-api/api.json` describes the same API for the site's explorer, which reads nothing else. Its shape:\n\n")
 	strings.write_string(&b, "- `level`, `oldest`: the level this toolkit gives and the oldest it accepts.\n")
-	strings.write_string(&b, "- `modules`: each with its `name` and its `calls`; a call has `name`, `doc`, `level`, `capability` (`\"None\"`: no permission), `result` and `arguments`.\n")
+	strings.write_string(&b, "- `modules`: each with its `name` and its `calls`; a call has `name`, `doc`, `level`, `capability` (`\"None\"`: no permission), `permission` (the manifest's word for it, `\"\"` for none), `result` and `arguments`.\n")
 	strings.write_string(&b, "- `types`: the objects and enums the calls and nodes name; an object has `fields`, an enum `values`.\n")
 	strings.write_string(&b, "- `nodes`: each kind of node of a view, with `name` (its `kind` in JavaScript), `type`, `doc`, `level`, `container` and `fields`.\n")
 	strings.write_string(&b, "- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional`, `state` and `doc`. A `state` field is kept by the host (a field's text, a box's state): what the person changed stays until the plugin has heard of it.\n\n")

@@ -49,6 +49,8 @@ Run :: struct {
 	views:      map[string]^Run_View,      // the views the plugin registered or the interface opened, by id (keys owned)
 	settings:   map[string]Setting_Now,    // its settings' values, by id (settings_run.odin)
 	setting_handlers: [dynamic]js.Value,   // settings.onChange's (retained)
+	calls:      map[u64]Pending_Call,      // the broker's calls waiting for their answers (broker_run.odin)
+	next_call:  u64,
 	rejections: [dynamic][2]js.Value,      // the promises rejected with no handler yet, and their reasons (retained)
 	boot_done:  bool,
 	boot_error: string,
@@ -98,6 +100,14 @@ run_open :: proc(r: ^Run) -> bool {
 	plugin_api.realm_set(&r.realm, "views", "update", plugin_api.implement(plugin_api.Views_Update, views_update))
 	plugin_api.realm_set(&r.realm, "settings", "get", plugin_api.implement(plugin_api.Settings_Get, settings_get))
 	plugin_api.realm_set(&r.realm, "settings", "onChange", plugin_api.implement(plugin_api.Settings_On_Change, settings_on_change))
+	plugin_api.realm_set(&r.realm, "files", "read", plugin_api.implement(plugin_api.Files_Read, files_read))
+	plugin_api.realm_set(&r.realm, "files", "write", plugin_api.implement(plugin_api.Files_Write, files_write))
+	plugin_api.realm_set(&r.realm, "files", "pick", plugin_api.implement(plugin_api.Files_Pick, files_pick))
+	plugin_api.realm_set(&r.realm, "http", "fetch", plugin_api.implement(plugin_api.Http_Fetch, http_fetch))
+	plugin_api.realm_set(&r.realm, "clipboard", "read", plugin_api.implement(plugin_api.Clipboard_Read, clipboard_read))
+	plugin_api.realm_set(&r.realm, "clipboard", "write", plugin_api.implement(plugin_api.Clipboard_Write, clipboard_write))
+	// (a call without its grant is refused here at once; the program's broker checks again whatever this says)
+	r.realm.granted = p.granted_caps
 	settings_take(r)
 	// (no script runs until eval_source, so nothing is collected between these cells and their retain)
 	r.api = js.retain(r.rt, plugin_api.install(r.ctx, &r.realm))
@@ -142,6 +152,7 @@ run_close :: proc(r: ^Run) {
 	for k, rv in r.views { delete(k); run_view_free(rv) }
 	delete(r.views)
 	settings_free(r)
+	delete(r.calls)   // (their values went with the runtime)
 	delete(r.rejections)
 	delete(r.gt_source)
 	delete(r.boot_error)
@@ -164,6 +175,7 @@ run_turn :: proc(r: ^Run, m: Message) {
 	case .View_Close: view_opened(r, m.view, false)
 	case .View_Event: view_event(r, m)
 	case .Setting:    setting_message(r, m)
+	case .Answer:     broker_answer(r, m)
 	case .Test_Crash:
 		// (what an engine's bug does to a process: it ends here, and only here)
 		panic("plugins.test_crash: this plugin's process was asked to crash")

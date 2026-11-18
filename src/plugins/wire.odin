@@ -80,6 +80,8 @@ start_encode :: proc(w: ^plugin_api.Wire_Writer, p: ^Plugin) {
 	plugin_api.put_string(w, m.name)
 	plugin_api.put_string(w, m.version)
 	plugin_api.put_string(w, m.main)
+	// (what its bridge lets through at once; the program's broker checks each request again)
+	plugin_api.put_u64(w, u64(transmute(u8)capabilities_of(p.granted[:])))
 	plugin_api.put_u64(w, u64(len(m.commands)))
 	for c in m.commands { plugin_api.put_string(w, c.id) }
 	plugin_api.put_u64(w, u64(len(m.views)))
@@ -109,6 +111,7 @@ start_decode :: proc(r: ^plugin_api.Wire_Reader) -> ^Plugin {
 	m.version = plugin_api.get_string(r)
 	m.main = plugin_api.get_string(r)
 	m.api = plugin_api.PLUGIN_API_LEVEL
+	p.granted_caps = transmute(plugin_api.Capabilities)u8(plugin_api.get_u64(r))
 	commands := make([]Command_Decl, plugin_api.get_count(r, 8))
 	for &c in commands { c.id = plugin_api.get_string(r) }
 	m.commands = commands
@@ -179,18 +182,25 @@ message_decode :: proc(r: ^plugin_api.Wire_Reader) -> (m: Message, ok: bool) {
 }
 
 @(private)
-event_encode :: proc(w: ^plugin_api.Wire_Writer, kind: Event_Kind, title, text: string, toast: ui.Toast_Kind, list: ^plugin_api.List) {
+event_encode :: proc(w: ^plugin_api.Wire_Writer, kind: Event_Kind, title, text: string, toast: ui.Toast_Kind, list: ^plugin_api.List, req: Request) {
 	plugin_api.put_u8(w, u8(kind))
 	plugin_api.put_u8(w, u8(toast))
 	plugin_api.put_string(w, title)
 	plugin_api.put_string(w, text)
 	plugin_api.put_bool(w, list != nil)
 	if list != nil { plugin_api.list_encode(w, list) }
+	if kind == .Request {
+		// (the gesture is not sent: the program knows which turn runs, the process could say anything)
+		plugin_api.put_u64(w, req.call)
+		plugin_api.put_u8(w, u8(req.op))
+		for a in req.args { plugin_api.put_string(w, a) }
+	}
 }
 
-// An event as the child wrote it: its kind, words and list (heap; the list's own arena). ok false: not an event.
+// An event as the child wrote it: its kind, words, list and request (heap; the list's own arena). ok false: not an
+// event.
 @(private)
-event_decode :: proc(r: ^plugin_api.Wire_Reader) -> (kind: Event_Kind, toast: ui.Toast_Kind, title, text: string, list: ^plugin_api.List, ok: bool) {
+event_decode :: proc(r: ^plugin_api.Wire_Reader) -> (kind: Event_Kind, toast: ui.Toast_Kind, title, text: string, list: ^plugin_api.List, req: Request, ok: bool) {
 	k := plugin_api.get_u8(r)
 	t := plugin_api.get_u8(r)
 	title = plugin_api.get_string(r)
@@ -199,10 +209,18 @@ event_decode :: proc(r: ^plugin_api.Wire_Reader) -> (kind: Event_Kind, toast: ui
 		list = plugin_api.list_decode(r)
 		if list == nil { r.bad = true }
 	}
+	if k == u8(Event_Kind.Request) {
+		req.call = plugin_api.get_u64(r)
+		op := plugin_api.get_u8(r)
+		if op > u8(max(Broker_Op)) { r.bad = true }
+		req.op = Broker_Op(op)
+		for &a in req.args { a = plugin_api.get_string(r) }
+	}
 	if r.bad || k > u8(max(Event_Kind)) || t > u8(max(ui.Toast_Kind)) {
 		delete(title); delete(text)
 		plugin_api.list_free(list)
-		return {}, {}, "", "", nil, false
+		request_free(&req)
+		return {}, {}, "", "", nil, {}, false
 	}
-	return Event_Kind(k), ui.Toast_Kind(t), title, text, list, true
+	return Event_Kind(k), ui.Toast_Kind(t), title, text, list, req, true
 }

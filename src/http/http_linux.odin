@@ -234,7 +234,7 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	}
 	// A custom method is kept on every redirect unless told otherwise: OBEYCODE makes a 303 a GET, as browsers do. (Older
 	// libcurl reads any value but 0 as "follow".)
-	c.easy_setopt(h, CURLOPT_FOLLOWLOCATION, i64(custom ? CURLFOLLOW_OBEYCODE : CURLFOLLOW_ALL))
+	c.easy_setopt(h, CURLOPT_FOLLOWLOCATION, req.no_redirects ? i64(0) : i64(custom ? CURLFOLLOW_OBEYCODE : CURLFOLLOW_ALL))
 
 	list: rawptr
 	defer if list != nil { c.slist_free_all(list) }

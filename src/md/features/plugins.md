@@ -537,9 +537,59 @@ capabilities. Written on 2026-11-18.
   is no plugin's fault.
 - **Tests' hooks**: `test_crash` panics in the child's runtime (what an engine's bug does), `test_hang` waits there
   where no interrupt is read.
-- **What this does not do yet**: the child runs with the person's rights, as the program does. The capabilities are
-  still the bridge's checks, now in the child; an exploit of the engine escapes them to the person's rights, no more
-  to the program's memory. A sandbox of the system (seccomp, an AppContainer) is later, if strangers' plugins become
-  common.
+- **What this does not do**: the child runs with the person's rights, as the program does: the system does not
+  sandbox it yet (seccomp, an AppContainer). Since slice 3 every call that reaches files, the network or the clipboard
+  is the program's broker's (see below), so what the API reaches is closed; but a compromised engine can make system
+  calls itself. The sandbox of the system is the next step (ROADMAP).
+
+## As built: capabilities (slice 3, API level 4)
+
+Written on 2026-11-18. Decided with the user: the work runs in the program, not in the child.
+
+- **The program is the broker.** The grants live in the program (`plugins.toml`); a check made in the child is one the
+  plugin's own process could skip if the engine were exploited. So a call of `files`, `http` or `clipboard` makes a
+  promise in the child and sends a request (a call id, the operation, its arguments). The program checks the grant on
+  its interface's thread (in memory: no wait), does the work on the chores (a file, a request, a dialog: system calls,
+  never the interface's thread), and answers with the call id; the child resolves or rejects the promise. The answer is
+  a message like the others, a turn: the promise's continuations run then. The child's bridge refuses a call without
+  its grant at once too (a rejected promise), only to answer sooner: the broker checks again whatever it said.
+- **Ids of calls are unique across a plugin's processes** (the process's serial in the high bits): an answer meant for
+  a process that ended never settles a call of the next one.
+- **The manifest's `permissions` are words**: `files`, `folder:documents`, `folder:downloads`, `clipboard.read`,
+  `clipboard.write`, `net:*`, `net:<origin>`. Each is read into one form (an origin in lower case without its default
+  port), so a grant compares by text. A word that is no permission refuses the manifest.
+- **The grant.** A plugin that asks is off until the person turns it on; turning it on opens a dialog that says each
+  permission in words, with Allow and Not now. Allow keeps the set in `plugins.toml` (`[granted]`) and turns it on. A
+  later version whose set is not inside the granted one is off again, and its line in the Plugins page says what it
+  asks; one that asks the same or less starts as before. "Take back its permissions" clears the set and the files
+  picked. gt-runtime's plugin asks at its start (Host_Options.single): the program was started to run it.
+- **A person's act** is the program's to say, not the process's: the program keeps the turns it wrote, in their
+  order, each marked when it is a command or a node of a view used (`Queue.turns`); its reader stamps each request with
+  the turn running when the request was read. `clipboard.read` and `files.pick` need one. A promise's continuation runs
+  in the answer's turn: no act any more.
+- **Files.** A relative path is in the plugin's own data folder (`<data>/<program>/plugin-data/<id>/`: no permission,
+  kept when the code is replaced); `~documents/...` and `~downloads/...` need their permission; an absolute path must be
+  a file the person picked, or under a folder they picked (`files.pick`, a grant by the gesture kept in `[picked]`
+  until taken back). The path is resolved on the worker, component by component under its folder: `..` and a link
+  anywhere are refused, never followed. A write is atomic (a new file renamed over the name), so a link put there since
+  the check is replaced, not followed. A read follows a link put between the check and the read: the gap is a
+  `stat` and an `open`, closed when the toolkit opens files without following links (an `O_NOFOLLOW` of `fsx`).
+- **The network.** By origin, through `gt:http`, which now follows no redirect when asked (`Request.no_redirects`): the
+  worker checks each hop's origin before it goes there, ten hops at most, a 303 (and a 301 or 302 after a POST) going
+  on as a GET. `net:*` reaches any public host; the machine's own and the local network's (localhost, `*.local`, the
+  loopback, the private and link ranges) only an origin named for them. By the host's text only: a public name whose
+  system's answer is a private address is not seen (a DNS rebinding), noted for the sandbox's step.
+- **The clipboard.** A write is the window's (`platform.set_clipboard`); a read asks the window as a paste does
+  (`ui.paste_request`, answered in a later build): one waits at a time, a newer one replaces it.
+- **Errors.** A refusal is a `PermissionError`; a file's failure a `FileError`; a request's a `NetworkError`. The
+  explorer shows each call's permission as the manifest's word (`api.json`'s `permission`).
+
+Refused:
+
+- **The work in the child, checked there.** Simpler (no request, no answer), but the check is the plugin's own.
+- **Granting each call when it comes** (a prompt per request, as a browser's): a plugin's view would block on dialogs;
+  the manifest says what it needs, once, in words.
+- **A synchronous call that waits for the broker** (`files.readSync`): host procedures never wait (decision 5), or
+  Stop could not reach a plugin waiting for an answer.
 
 Still open: a plugin folder shared by all the vendor's programs (refused for now).

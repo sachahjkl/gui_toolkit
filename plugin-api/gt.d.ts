@@ -1,4 +1,4 @@
-// The module "gt" of a plugin, level 3. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
+// The module "gt" of a plugin, level 4. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
 declare module "gt" {
 	/** How a toast looks. */
 	export type Toast_Kind = "info" | "good" | "warn" | "bad";
@@ -134,6 +134,34 @@ declare module "gt" {
 		key?: string | number;
 	}
 
+	/** What the system's dialog of files.pick offers. */
+	export interface Files_Pick_Options {
+		/** A folder, not a file. */
+		folder?: boolean;
+		/** The dialog's title. */
+		title?: string;
+	}
+
+	/** A request's options. */
+	export interface Fetch_Options {
+		/** "GET" when absent. */
+		method?: string;
+		/** The request's body, as text. */
+		body?: string;
+		/** Its Content-Type. */
+		contentType?: string;
+	}
+
+	/** An answer to http.fetch. */
+	export interface Fetch_Response {
+		/** Its HTTP status. */
+		status: number;
+		/** The address that answered, after the redirects. */
+		url: string;
+		/** Its body, as text. */
+		text: string;
+	}
+
 	/** A node of a view: what a render returns, and a container's children. */
 	export type Node = Text_Node | Heading_Node | Button_Node | Row_Node | Column_Node | Card_Node | Space_Node | Field_Node | Check_Node | Switch_Node | Separator_Node;
 
@@ -159,6 +187,27 @@ declare module "gt" {
 		get(id: string): string | number | boolean;
 		/** Registers a function called after each change of one of the plugin's settings, in the settings or their file. The views are rendered again after it. (level 3) */
 		onChange(handler: (id: string, value: string | number | boolean) => void | Promise<void>): void;
+	};
+
+	export const files: {
+		/** Reads a text file. (level 4) */
+		read(path: string): Promise<string>;
+		/** Writes a text file, its folders made when they are missing. (level 4) */
+		write(path: string, text: string): Promise<void>;
+		/** Asks the person for a file or a folder in the system's dialog, while they act in the plugin. What they pick is granted until they revoke it in the Plugins page; null: they picked nothing. (level 4, needs the permission files) */
+		pick(options?: Files_Pick_Options): Promise<string | null>;
+	};
+
+	export const http: {
+		/** Asks an address of an origin the manifest names (or any public one with "net:*"). Each redirect is checked as the first address was: a hop to an origin not granted fails the call. (level 4, needs the permission net:<origin>) */
+		fetch(url: string, options?: Fetch_Options): Promise<Fetch_Response>;
+	};
+
+	export const clipboard: {
+		/** Reads the clipboard's text, while the person acts in the plugin (a command, a click in its view). (level 4, needs the permission clipboard.read) */
+		read(): Promise<string>;
+		/** Puts text on the clipboard. (level 4, needs the permission clipboard.write) */
+		write(text: string): Promise<void>;
 	};
 
 }

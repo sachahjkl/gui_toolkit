@@ -119,6 +119,19 @@ serve_end :: proc(s: ^Server) {
 @(private = "file")
 at :: proc(s: ^Server, path: string) -> string { return fmt.tprintf("http://127.0.0.1:%d%s", s.port, path) }
 
+// A redirect not followed (Request.no_redirects): its status and its Location are the answer.
+@(test)
+a_redirect_not_followed :: proc(t: ^testing.T) {
+	s := serve_start(t, 1)
+	defer serve_end(s)
+	res, err := request("GET", at(s, "/moved"), {no_redirects = true})
+	defer response_destroy(&res)
+	testing.expect_value(t, err, Error.None)
+	testing.expect_value(t, res.status, 302)
+	location, has := header_value(res.headers, "Location")
+	testing.expect(t, has && location == at(s, "/file"), "the Location is not the redirect's")
+}
+
 // A body, a redirect followed to it, a missing file said by its status, a body over the bound refused.
 @(test)
 a_get_over_http :: proc(t: ^testing.T) {

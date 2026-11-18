@@ -334,6 +334,66 @@ ctx key
 en Print
 fr Impr. écran
 
+en Permissions
+fr Autorisations
+
+en %s asks to:
+fr %s demande à :
+
+en You can take this back in the settings' Plugins page.
+fr Vous pouvez retirer cette autorisation dans la page Plugins des réglages.
+
+en Not now
+fr Pas maintenant
+
+en Allow
+fr Autoriser
+
+en Plugins
+fr Plugins
+
+en Reload plugins
+fr Recharger les plugins
+
+en Reading the plugins' folder…
+fr Lecture du dossier des plugins…
+
+en No plugin. A plugin is a folder in %s.
+fr Aucun plugin. Un plugin est un dossier dans %s.
+
+en Stop
+fr Arrêter
+
+en Restart
+fr Redémarrer
+
+en It asks to
+fr Il demande à
+
+en It may
+fr Il peut
+
+en Take back its permissions
+fr Retirer ses autorisations
+
+en Starting…
+fr Démarrage…
+
+en This plugin is gone.
+fr Ce plugin n'existe plus.
+
+en Not responding.
+fr Ne répond pas.
+
+en Suspended: its process crashed again and again. Turn it on in the settings' Plugins page.
+fr Suspendu : son processus a planté à plusieurs reprises. Réactivez-le dans la page Plugins des réglages.
+
+en Stopped.
+fr Arrêté.
+
+en Start
+fr Démarrer
+
 en Updated to %s
 fr Mis à jour en %s
 
@@ -1456,9 +1516,6 @@ fr Copier %s
 
 en Close
 fr Fermer
-
-en Not now
-fr Pas maintenant
 
 en Do not install
 fr Ne pas installer

@@ -20,9 +20,10 @@ TOML_MAX_BYTES :: 1 << 20
 Read_Job :: struct {
 	link:      ^Host_Link,   // (counted)
 	serial:    u64,
-	program, program_id, folder_opt, config_opt, state_opt, single: string,
+	program, program_id, folder_opt, config_opt, state_opt, data_opt, single: string,
 	// made by the chore
 	folder, toml_path, state_dir: string,
+	data_dir:  string,   // <data>/<program>/plugin-data: each plugin's own folder is in it
 	plugins:   [dynamic]^Plugin,
 }
 
@@ -36,7 +37,7 @@ folder_read :: proc(h: ^Host) {
 		link = h.link, serial = h.read_serial,
 		program = strings.clone(h.o.program), program_id = strings.clone(h.o.program_id),
 		folder_opt = strings.clone(h.o.folder), config_opt = strings.clone(h.o.config_dir), state_opt = strings.clone(h.o.state_dir),
-		single = strings.clone(h.o.single),
+		single = strings.clone(h.o.single), data_opt = strings.clone(h.o.data_dir),
 	}
 	sync.atomic_add(&h.link.refs, 1)
 	ui.task(h.state, read_work, read_done, j, read_lost)
@@ -47,8 +48,8 @@ read_job_free :: proc(j: ^Read_Job) {
 	context.allocator = runtime.heap_allocator()
 	for p in j.plugins { plugin_release(p) }
 	delete(j.plugins)
-	delete(j.program); delete(j.program_id); delete(j.folder_opt); delete(j.config_opt); delete(j.state_opt); delete(j.single)
-	delete(j.folder); delete(j.toml_path); delete(j.state_dir)
+	delete(j.program); delete(j.program_id); delete(j.folder_opt); delete(j.config_opt); delete(j.state_opt); delete(j.single); delete(j.data_opt)
+	delete(j.folder); delete(j.toml_path); delete(j.state_dir); delete(j.data_dir)
 	link_release(j.link)
 	free(j)
 }
@@ -65,16 +66,13 @@ read_work :: proc(data: rawptr) {
 	j.toml_path = config != "" ? strings.clone(fsx.path_join(config, TOML_FILE)) : strings.clone("")
 	j.state_dir = j.state_opt != "" ? strings.clone(j.state_opt) : in_user_dir(.State, j.program, "plugins")
 	if j.state_dir != "" { fsx.make_dirs(j.state_dir) }
+	// (a plugin's data is beside its code, not in it: an update or a removal of the folder does not lose it)
+	j.data_dir = j.data_opt != "" ? strings.clone(j.data_opt) : in_user_dir(.Data, j.program, "plugin-data")
 
-	enabled, suspended := toml_read(j.toml_path)
-	defer {
-		for k in enabled { delete(k) }
-		delete(enabled)
-		for k in suspended { delete(k) }
-		delete(suspended)
-	}
+	t := toml_read(j.toml_path)
+	defer toml_state_free(&t)
 	if j.single != "" {
-		single_read(j, suspended)
+		single_read(j, &t)
 		return
 	}
 	if j.folder == "" { return }
@@ -104,24 +102,31 @@ read_work :: proc(data: rawptr) {
 				p.refused = fmt.aprintf("another folder has the id \"%s\"", p.manifest.id)
 			}
 		}
-		plugin_place(j, p, enabled[p.manifest.id], suspended)
+		plugin_place(j, p, t.enabled[p.manifest.id], &t)
 	}
 }
 
 // A plugin read: its log, its state from what the person decided and what plugins.toml kept of its crashes.
 @(private)
-plugin_place :: proc(j: ^Read_Job, p: ^Plugin, on: bool, suspended: map[string]bool) {
+plugin_place :: proc(j: ^Read_Job, p: ^Plugin, on: bool, t: ^Toml_State) {
 	id := p.manifest.id
 	if j.state_dir != "" && id_valid(id, false) {
 		p.log_path = strings.clone(fsx.path_join(j.state_dir, fmt.tprintf("%s.log", id)))
 	}
-	p.suspended = suspended[id]
+	if j.data_dir != "" && id_valid(id, false) {
+		p.data_dir = strings.clone(fsx.path_join(j.data_dir, id))
+	}
+	if l, has := t.granted[id]; has { for g in l { append(&p.granted, strings.clone(g)) } }
+	if l, has := t.picked[id]; has { for g in l { append(&p.picked, strings.clone(g)) } }
+	p.suspended = t.suspended[id]
 	p.enabled = on && !p.suspended
+	// (a version that asks more than the person granted asks again: off until they do)
+	p.asks_more = len(p.manifest.permissions) > 0 && !permissions_covered(p.manifest.permissions, p.granted[:])
 	switch {
-	case p.refused != "": p.state = .Refused
-	case p.suspended:     p.state = .Suspended
-	case p.enabled:       p.state = .Ready
-	case:                 p.state = .Off
+	case p.refused != "":           p.state = .Refused
+	case p.suspended:               p.state = .Suspended
+	case p.enabled && !p.asks_more: p.state = .Ready
+	case:                           p.state = .Off
 	}
 	append(&j.plugins, p)
 }
@@ -130,7 +135,7 @@ plugin_place :: proc(j: ^Read_Job, p: ^Plugin, on: bool, suspended: map[string]b
 // id and name from the file's name, this toolkit's level, one view "main"). It is on: the program was started to run
 // it (gt-runtime); only a suspension stops it.
 @(private)
-single_read :: proc(j: ^Read_Job, suspended: map[string]bool) {
+single_read :: proc(j: ^Read_Job, t: ^Toml_State) {
 	p := plugin_new()
 	path := j.single
 	if fsx.path_kind(path) == .Directory {
@@ -152,7 +157,7 @@ single_read :: proc(j: ^Read_Job, suspended: map[string]bool) {
 		delete(p.manifest.name)
 		p.manifest.name = strings.clone(base_of(path))
 	}
-	plugin_place(j, p, true, suspended)
+	plugin_place(j, p, true, t)
 }
 
 // The manifest of a lone entry file `file` ("todo.js"): what single_read gives a plugin without plugin.json.
@@ -207,11 +212,35 @@ read_done :: proc(data: rawptr, word: u64) {
 	h.source.version += 1
 }
 
-// What plugins.toml says: the plugins turned on, and those suspended. Keys owned.
+// What plugins.toml says (keys and words owned; toml_state_free).
 @(private)
-toml_read :: proc(path: string) -> (enabled, suspended: map[string]bool) {
-	enabled = make(map[string]bool)
-	suspended = make(map[string]bool)
+Toml_State :: struct {
+	enabled:   map[string]bool,
+	suspended: map[string]bool,
+	granted:   map[string][dynamic]string,   // the permissions the person granted, by plugin
+	picked:    map[string][dynamic]string,   // the files and folders the person picked for it (files.pick)
+}
+
+@(private)
+toml_state_free :: proc(t: ^Toml_State) {
+	for k in t.enabled { delete(k) }
+	delete(t.enabled)
+	for k in t.suspended { delete(k) }
+	delete(t.suspended)
+	for k, l in t.granted { delete(k); for s in l { delete(s) }; delete(l) }
+	delete(t.granted)
+	for k, l in t.picked { delete(k); for s in l { delete(s) }; delete(l) }
+	delete(t.picked)
+}
+
+// The sections [enabled] and [suspended] (`<id> = true`), [granted] (`<id> = "word word"`) and [picked] (`<id> =
+// "path"`, a line per path, `\"` and `\\` escaped).
+@(private)
+toml_read :: proc(path: string) -> (t: Toml_State) {
+	t.enabled = make(map[string]bool)
+	t.suspended = make(map[string]bool)
+	t.granted = make(map[string][dynamic]string)
+	t.picked = make(map[string][dynamic]string)
 	if path == "" { return }
 	data, ok := fsx.read_all(path, context.temp_allocator, TOML_MAX_BYTES)
 	if !ok { return }
@@ -223,24 +252,80 @@ toml_read :: proc(path: string) -> (enabled, suspended: map[string]bool) {
 		if line[0] == '[' { section = strings.trim(line, "[] "); continue }
 		key, _, value := strings.partition(line, "=")
 		key = strings.trim(strings.trim_space(key), "\"")
-		if strings.trim_space(value) != "true" || !id_valid(key, false) { continue }
+		value = strings.trim_space(value)
+		if !id_valid(key, false) { continue }
 		switch section {
-		case "enabled":   enabled[strings.clone(key)] = true
-		case "suspended": suspended[strings.clone(key)] = true
+		case "enabled":   if value == "true" { t.enabled[strings.clone(key)] = true }
+		case "suspended": if value == "true" { t.suspended[strings.clone(key)] = true }
+		case "granted":
+			list := toml_list(&t.granted, key)
+			for w in strings.fields(toml_unquote(value), context.temp_allocator) {
+				if _, normal, good := permission_parse(w, context.allocator); good { append(list, normal) }
+			}
+		case "picked":
+			if p := toml_unquote(value); p != "" { append(toml_list(&t.picked, key), strings.clone(p)) }
 		}
 	}
 	return
+}
+
+@(private)
+toml_list :: proc(m: ^map[string][dynamic]string, key: string) -> ^[dynamic]string {
+	if key not_in m^ { m^[strings.clone(key)] = make([dynamic]string) }
+	return &m^[key]
+}
+
+// A quoted value's text ("a \"b\" c\\d" -> a "b" c\d), in the temporary memory.
+@(private)
+toml_unquote :: proc(value: string) -> string {
+	if len(value) < 2 || value[0] != '"' || value[len(value) - 1] != '"' { return "" }
+	b := strings.builder_make(context.temp_allocator)
+	inner := value[1:len(value) - 1]
+	for i := 0; i < len(inner); i += 1 {
+		if inner[i] == '\\' && i + 1 < len(inner) { i += 1 }
+		strings.write_byte(&b, inner[i])
+	}
+	return strings.to_string(b)
+}
+
+@(private)
+toml_quote :: proc(b: ^strings.Builder, s: string) {
+	strings.write_byte(b, '"')
+	for c in transmute([]u8)s {
+		if c == '"' || c == '\\' { strings.write_byte(b, '\\') }
+		if c == '\n' || c == '\r' { continue }
+		strings.write_byte(b, c)
+	}
+	strings.write_byte(b, '"')
 }
 
 // plugins.toml from the host's plugins, written on a chore. Interface thread.
 @(private)
 toml_write :: proc(h: ^Host) {
 	if h.toml_path == "" { return }
+	// (what goes to the chore is freed there with the heap's allocator: the caller's may be a test's, or a frame's)
+	context.allocator = runtime.heap_allocator()
 	b := strings.builder_make()
-	strings.write_string(&b, "# The plugins turned on, and those suspended because the program ended while they ran (gt:plugins).\n[enabled]\n")
+	strings.write_string(&b, "# The plugins turned on, those suspended because their process crashed again and again, what the person granted each (gt:plugins).\n[enabled]\n")
 	for p in h.plugins { if p.enabled && p.refused == "" { fmt.sbprintf(&b, "%s = true\n", p.manifest.id) } }
 	strings.write_string(&b, "\n[suspended]\n")
 	for p in h.plugins { if p.suspended && p.refused == "" { fmt.sbprintf(&b, "%s = true\n", p.manifest.id) } }
+	strings.write_string(&b, "\n[granted]\n")
+	for p in h.plugins {
+		if p.refused != "" || len(p.granted) == 0 { continue }
+		fmt.sbprintf(&b, "%s = ", p.manifest.id)
+		toml_quote(&b, strings.join(p.granted[:], " ", context.temp_allocator))
+		strings.write_byte(&b, '\n')
+	}
+	strings.write_string(&b, "\n[picked]\n")
+	for p in h.plugins {
+		if p.refused != "" { continue }
+		for path in p.picked {
+			fmt.sbprintf(&b, "%s = ", p.manifest.id)
+			toml_quote(&b, path)
+			strings.write_byte(&b, '\n')
+		}
+	}
 	w := new(Toml_Write)
 	w^ = {path = strings.clone(h.toml_path), text = strings.to_string(b)}
 	ui.task(h.state, toml_work, nil, w, toml_free)

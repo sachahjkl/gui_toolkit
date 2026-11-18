@@ -63,6 +63,7 @@ Host_Options :: struct {
 	folder:       string,   // the plugins' folder ("": user_dir(.Data, program)/plugins)
 	config_dir:   string,   // where plugins.toml is ("": user_dir(.Config, program))
 	state_dir:    string,   // the plugins' logs ("": user_dir(.State, program)/plugins)
+	data_dir:     string,   // each plugin's own data folder is in it ("": user_dir(.Data, program)/plugin-data)
 	// one plugin instead of the folder: its folder, or a lone .js file whose manifest is implied (gt-runtime). It is
 	// on from the start; `folder` is not read
 	single:       string,
@@ -89,6 +90,11 @@ Host :: struct {
 	source:      ui.Palette_Source,
 	palette:     ^ui.Command_Palette,   // the palette host_build added the source to (host_close removes it)
 	watch:       int,                   // config.watch's id of the plugins' preferences (0: none)
+	clip:        Clip_Wait,             // a clipboard.read waiting for the window's answer (broker.odin)
+	grant_for:   string,                // the plugin whose grant dialog is open or due (owned; "": none; grant.odin)
+	grant_due:   bool,                  // the dialog opens at the next build
+	grant_view:  bool,                  // the dialog's view is registered
+	single_asked: bool,                 // gt-runtime's plugin was looked at for a grant at its start
 	window_announcer: ui.Announcer,   // Host_Options.announcer nil: the window's toasts
 	// what a test reads: the toasts said (count), and the last one's words (owned)
 	toasts:      int,
@@ -128,7 +134,7 @@ host_open :: proc(h: ^Host, s: ^ui.State, o: Host_Options) {
 	h.o = o
 	h.o.program, h.o.program_id = strings.clone(o.program), strings.clone(o.program_id)
 	h.o.folder, h.o.config_dir, h.o.state_dir = strings.clone(o.folder), strings.clone(o.config_dir), strings.clone(o.state_dir)
-	h.o.single = strings.clone(o.single)
+	h.o.single, h.o.data_dir = strings.clone(o.single), strings.clone(o.data_dir)
 	if h.o.bound_ms <= 0 { h.o.bound_ms = NOT_RESPONDING_MS }
 	if h.o.memory_limit <= 0 { h.o.memory_limit = MEMORY_LIMIT }
 	h.window_announcer = {mode = .Window, state = s}
@@ -169,10 +175,13 @@ host_close :: proc(h: ^Host) {
 		view_record_free(r)
 	}
 	delete(h.views)
+	if h.grant_view && ui.view_is_open(vs, GRANT_VIEW) { ui.view_close(vs, GRANT_VIEW) }
+	delete(h.grant_for)
+	if h.clip.p != nil { plugin_release(h.clip.p) }
 	// (the palette outlives the host in most programs: it must not ask a source that is gone)
 	if h.palette != nil { ui.palette_remove(h.palette, &h.source) }
 	delete(h.plugins)
-	delete(h.o.program); delete(h.o.program_id); delete(h.o.folder); delete(h.o.config_dir); delete(h.o.state_dir); delete(h.o.single)
+	delete(h.o.program); delete(h.o.program_id); delete(h.o.folder); delete(h.o.config_dir); delete(h.o.state_dir); delete(h.o.single); delete(h.o.data_dir)
 	delete(h.folder); delete(h.toml_path); delete(h.state_dir)
 	delete(h.last_toast)
 	h^ = {}
@@ -187,6 +196,8 @@ host_build :: proc(h: ^Host, palette: ^ui.Command_Palette) {
 		folder_read(h)
 	}
 	views_build(h)
+	grant_build(h)
+	clipboard_poll(h)
 	if palette != nil && !ui.palette_has(palette, &h.source) {
 		ui.palette_add(palette, &h.source)
 		h.palette = palette
@@ -264,6 +275,11 @@ set_enabled :: proc(h: ^Host, id: string, on: bool) {
 	context.allocator = runtime.heap_allocator()
 	p := find(h, id)
 	if p == nil || p.state == .Refused { return }
+	// (one that asks for what was not granted: the person sees what it asks first, its Allow turns it on: grant)
+	if on && len(p.manifest.permissions) > 0 && !permissions_covered(p.manifest.permissions, p.granted[:]) {
+		grant_ask(h, id)
+		return
+	}
 	p.enabled = on
 	p.suspended = false
 	if on {

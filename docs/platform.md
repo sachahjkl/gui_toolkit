@@ -176,6 +176,10 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
 
 ## Differences the app should know
 
+- **A pipe whose reader is gone.** On Linux and macOS a write to it raises SIGPIPE, which ends the process.
+  `sigpipe_ignore()` makes it an error of that write instead, and keeps a handler the program set itself. The Wayland
+  backend and a plugin's process (`gt:plugins`) call it; a program that writes to a pipe or a socket of its own calls it
+  too. Windows has no SIGPIPE: the procedure does nothing there.
 - **Threads.** A window's procedures run on the thread that opened it. Windows' messages are the thread's; on Linux each
   thread that opens windows has its own connection to the display server (its events, its seat's focus and serials) and its
   own session bus, so several apps of a process each run on a thread of their own. The process's resources (the clipboard

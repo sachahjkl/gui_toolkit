@@ -12,7 +12,7 @@ import "core:reflect"
 import "core:strings"
 import js "../js"
 
-Capabilities :: bit_set[Capability]
+Capabilities :: bit_set[Capability; u8]   // (a byte: the program sends it to the plugin's process)
 
 // What a call sees: its realm, and which declaration it is.
 Call :: struct {
@@ -97,7 +97,10 @@ bridge :: proc(ctx: ^js.Context, this: js.Value, args: []js.Value, magic: i32) -
 	if realm == nil || i < 0 || i >= len(decls) { return js.throw_type_error(ctx, "this call has no host") }
 	d := decls[i]
 	if d.capability != .None && d.capability not_in realm.granted {
-		return js.throw_error(ctx, .plain, fmt.tprintf("PermissionError: %s needs the permission %v, which the person did not grant", declaration_name(i), d.capability))
+		e := permission_error(ctx, fmt.tprintf("%s needs the permission %v, which the person did not grant", declaration_name(i), d.capability))
+		// (a call that answers later rejects, as its answer would: a plugin awaits it in one place)
+		if is_promise_result(d.result) { return promise_rejected(ctx, e) }
+		return js.throw(ctx, e)
 	}
 	impl := realm.impls[i]
 	if impl == nil { return js.throw_type_error(ctx, fmt.tprintf("%s is not available in this program", declaration_name(i))) }
@@ -114,10 +117,46 @@ bridge :: proc(ctx: ^js.Context, this: js.Value, args: []js.Value, magic: i32) -
 	r := impl(&c, buf)
 	if js.is_exception(r) { return r }
 	switch d.result {
-	case .Undefined:     return js.UNDEFINED
-	case .Setting_Value: return r
+	case .Undefined: return js.UNDEFINED
+	case .Setting_Value, .Promise_Text, .Promise_Void, .Promise_Path, .Promise_Response: return r
 	}
 	return r
+}
+
+// A result that is a promise: the program's broker answers it later.
+is_promise_result :: proc(r: Result) -> bool {
+	#partial switch r {
+	case .Promise_Text, .Promise_Void, .Promise_Path, .Promise_Response: return true
+	}
+	return false
+}
+
+// An Error whose name is PermissionError: a call without its grant.
+permission_error :: proc(ctx: ^js.Context, message: string) -> js.Value {
+	return named_error(ctx, "PermissionError", message)
+}
+
+// An Error of `name` ("PermissionError", "NetworkError"), with its message.
+named_error :: proc(ctx: ^js.Context, name, message: string) -> js.Value {
+	js.throw_error(ctx, .plain, message)
+	e := js.pending_exception(ctx)
+	js.root(ctx.rt, e)
+	js.set_property_str(ctx, e, "name", js.new_string(ctx, name))
+	return e
+}
+
+// A new promise and its resolving functions (ok false: an exception is pending).
+promise_new :: proc(ctx: ^js.Context) -> (js.Capability, bool) {
+	return js.new_promise_capability(ctx, js.mk_obj(ctx.promise_ctor))
+}
+
+// A promise already rejected with `reason`.
+promise_rejected :: proc(ctx: ^js.Context, reason: js.Value) -> js.Value {
+	c, ok := promise_new(ctx)
+	if !ok { return js.EXCEPTION }
+	js.root(ctx.rt, c.promise)
+	_ = js.call_function(ctx, c.reject, js.UNDEFINED, {reason})
+	return c.promise
 }
 
 // A function of the plugin: Handler, Text_Handler, Flag_Handler, Render (each a distinct js.Value).

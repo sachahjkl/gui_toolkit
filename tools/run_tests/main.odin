@@ -139,6 +139,7 @@ STEPS := []Step{
 	{name = "pacing", oses = EVERYWHERE},
 	{name = "sleep", oses = EVERYWHERE},
 	{name = "netif", oses = EVERYWHERE},
+	{name = "sigpipe", oses = EVERYWHERE},
 	{name = "placement"},
 	{name = "placement_text", oses = EVERYWHERE},
 	{name = "render_trace", oses = EVERYWHERE},

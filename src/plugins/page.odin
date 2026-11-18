@@ -6,6 +6,7 @@ package tk_plugins
 
 import "core:fmt"
 import "core:math"
+import "core:strings"
 import i18n "../i18n"
 import lucide "../lucide"
 import prefs_page "../prefs_page"
@@ -44,7 +45,7 @@ page_build :: proc(user: rawptr, em: f32) {
 				ui.next({width = ui.fill(), height = ui.pct(1)})
 				ui.label(fmt.tprintf("%s###plugin_name_%s", title, key))
 			} else {
-				on := p.enabled
+				on := p.enabled && !p.asks_more   // (on in plugins.toml, but asking for more: off until the person allows it)
 				ui.next({width = ui.fill(), height = ui.pct(1)})
 				if ui.toggle(fmt.tprintf("###plugin_switch_%s", key), title, &on) { set_enabled(h, p.manifest.id, on) }
 			}
@@ -69,6 +70,17 @@ page_build :: proc(user: rawptr, em: f32) {
 		why := p.state == .Refused ? p.refused : p.state == .Failed ? p.failure : ""
 		if why != "" {
 			if ui.tags("weak") { line(fmt.tprintf("plugin_why_%s", key), why, em) }
+		}
+		// (what it asks, said once: before a grant as what turning it on will ask, after it as what it has)
+		if len(p.manifest.permissions) > 0 && p.state != .Refused {
+			words := make([dynamic]string, context.temp_allocator)
+			for w in p.manifest.permissions { append(&words, i18n.tr(permission_words(w))) }
+			lead := p.asks_more ? i18n.tr("It asks to") : i18n.tr("It may")
+			if ui.tags("weak") { line(fmt.tprintf("plugin_asks_%s", key), fmt.tprintf("%s: %s.", lead, strings.join(words[:], "; ", context.temp_allocator)), em) }
+		}
+		if len(p.granted) > 0 || len(p.picked) > 0 {
+			ui.next({width = ui.text_size(em * 0.6), height = ui.px(math.round(em * 1.8))})
+			if ui.button(fmt.tprintf("plugin_revoke_%s", key), i18n.tr("Take back its permissions")).clicked { revoke(h, p.manifest.id) }
 		}
 		ui.space(ui.LINE_GAP)
 	}

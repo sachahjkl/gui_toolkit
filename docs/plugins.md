@@ -46,6 +46,8 @@ plugins.host_close(&app.plugins)
 | `run_command(h, id)` | Runs `plugin.<plugin id>.<command id>`, or `plugins.reload`. False: no such command, or its plugin cannot run now. |
 | `set_enabled(h, id, on)` | Turns a plugin on or off, and writes `plugins.toml` on a chore. |
 | `stop(h, id)` | Stops a plugin's runtime; its process is killed when it has not ended 1 s later. The plugin is `Ready` again when its process has ended. |
+| `grant(h, id)`, `revoke(h, id)` | Grants a plugin what its manifest asks and turns it on (the grant dialog's Allow); takes back its permissions and the files it was given. |
+| `path_resolve(path, data_dir, granted, picked)`, `net_allowed(granted, url)`, `permission_parse(word)`, `origin_of(url)`, `host_is_private(host)`, `url_join(base, location)` | The broker's checks, for a test or a program's own page. |
 | `restart(h, id)` | A `Failed` plugin is `Ready` again: its next use starts a new process. A failed view's Restart calls it. |
 | `test_crash(h, id)`, `test_hang(h, id)` | A test's hooks: the plugin's process panics at its next turn, or waits there where no interrupt reaches it. |
 | `reload(h)` | Stops every runtime and reads the folder again. |
@@ -65,6 +67,7 @@ plugins.host_close(&app.plugins)
 | `announcer` | Where a plugin's messages go. nil: the window's toasts. |
 | `bound_ms` | How long a message can run before its plugin is `Not_Responding` (0: 2000). |
 | `memory_limit` | A plugin's heap budget in bytes (0: 64 MB). |
+| `data_dir` | The folder of the plugins' own data folders (`""`: `<data>/<program>/plugin-data`). |
 | `prefs` | The program's preferences: the plugins' settings are registered there as `plugins.<plugin id>.<setting id>`. nil: a plugin's settings keep their defaults. |
 | `single` | One plugin instead of the folder: its folder, or a lone `.js` file whose manifest is implied. It is on from the start (gt-runtime). |
 
@@ -113,7 +116,38 @@ The manifest's fields:
 - `settings`: each with `id`, `title`, `description`, `kind` (`bool`, `int`, `float` or `string`), `default`, and
   optionally `min` and `max`, or `choices` for a string. A default out of its bounds or its choices is refused.
 
+- `permissions`: what it needs beyond its own data folder, each a word: `files` (what the person picks in the
+  system's dialog), `folder:documents`, `folder:downloads`, `clipboard.read`, `clipboard.write`, `net:*` (any public
+  address) or `net:<origin>` (`"net:https://api.example.com"`, `"net:http://localhost:8080"`).
+
 A plugin imports `"gt"` and its own files (`"./lib/words.js"`), nothing else.
+
+## Permissions
+
+A plugin that asks for permissions is off until the person turns it on. Turning it on shows a dialog with each
+permission in words; Allow keeps the grant in `plugins.toml` and turns the plugin on. A new version that asks for more
+is off again until the person allows the new set. The Plugins page says what each plugin may do, with "Take back its
+permissions".
+
+The work is the program's, never the plugin's process's: a call of `files`, `http` or `clipboard` is a request to the
+program's broker, which checks the grant, does the work on the chores and answers. A call without its grant rejects
+with `PermissionError`.
+
+```js
+import { files, http, clipboard } from "gt";
+
+await files.write("notes/today.txt", "…");          // its own data folder: no permission
+const text = await files.read("~documents/a.txt");   // "folder:documents"
+const path = await files.pick();                     // "files", during a command or a click in its view
+const res = await http.fetch("https://api.example.com/v1/items");   // "net:https://api.example.com"
+await clipboard.write("copied");                     // "clipboard.write"
+```
+
+- A relative path is in the plugin's data folder, `<data>/<program>/plugin-data/<id>/`, kept when its code is
+  replaced. `..` and links are refused everywhere.
+- Each redirect of a request is checked as its first address. `net:*` never reaches the machine's own addresses nor the
+  local network's: name such an origin.
+- `clipboard.read` and `files.pick` work only while the person acts in the plugin (a command, a click in its view).
 
 ## A view
 

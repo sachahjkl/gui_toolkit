@@ -14,6 +14,7 @@ import "core:fmt"
 import "core:os"
 import "core:sync"
 import "core:thread"
+import "../platform"
 import plugin_api "../plugin_api"
 import "../process"
 import "../tasks"
@@ -116,6 +117,8 @@ channel_open :: proc(p: ^Plugin, ch: ^Channel) -> string {
 		return fmt.tprintf("its process cannot start: no pipe (%v)", e2)
 	}
 	sync.lock(&start_lock)
+	// (a process that dies leaves its input closed: the sender's next write must be an error, not the program's end)
+	platform.sigpipe_ignore()
 	child, err := os.process_start({command = {exe, CHILD_ARG}, stdin = in_r, stdout = out_w, stderr = os.stderr})
 	sync.unlock(&start_lock)
 	// (the child's ends are the child's: the program keeps the two it uses, and sees the end of the output when the
@@ -180,14 +183,21 @@ channel_read :: proc(p: ^Plugin, ch: ^Channel) {
 		if !ok { break }
 		if kind != .Event { broken = "it wrote something that is not an event"; break }
 		r := plugin_api.Wire_Reader{data = payload}
-		ek, toast, title, text, list, good := event_decode(&r)
+		ek, toast, title, text, list, req, good := event_decode(&r)
 		free_all(context.temp_allocator)
 		if !good { broken = "it wrote an event that cannot be read"; break }
 		#partial switch ek {
-		case .Started, .Turn_Done, .Failed: busy_less(p, ch)
-		case .Ended:                        ch.ended_seen = true
+		case .Started, .Turn_Done, .Failed:
+			busy_less(p, ch)
+			turn_done(p)
+		case .Ended:
+			ch.ended_seen = true
+		case .Request:
+			// (stamped here, while its turn runs: by the interface's thread the turn may be over)
+			req.gesture = turn_is_gesture(p)
 		}
-		event_deliver(p, serial, ek, title = title, text = text, toast = toast, list = list)
+		event_deliver(p, serial, ek, title = title, text = text, toast = toast, list = list, req = req)
+		request_free(&req)
 		delete(title); delete(text)
 	}
 	os.close(ch.output)

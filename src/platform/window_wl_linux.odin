@@ -207,7 +207,7 @@ wl_connect_now :: proc() -> bool {
 	wlc.outputs.allocator = runtime.heap_allocator()
 	wlc.display = l.display_connect(nil)
 	if wlc.display == nil { return false }
-	sigpipe_ignored()
+	sigpipe_ignore()   // (a data source's reader may close its pipe while it is written)
 	wlc.fd = l.display_get_fd(wlc.display)
 	wlc.output_scale = 1
 	// the registry, and bind the globals it advertises
@@ -229,14 +229,6 @@ wl_connect_now :: proc() -> bool {
 		if wlc.text_input != nil { l.proxy_add_listener(wlc.text_input, &text_input_listener, nil) }
 	}
 	return wlc.xdg_wm_base != nil && wlc.compositor != nil
-}
-
-// A peer that closes its pipe while a data source writes to it is an EPIPE, not the end of the process. (An app that handles
-// SIGPIPE itself keeps its handler.)
-@(private = "file")
-sigpipe_ignored :: proc() {
-	old: posix.sigaction_t
-	if posix.sigaction(.SIGPIPE, nil, &old) == .OK && old.sa_handler == auto_cast posix.SIG_DFL { posix.signal(.SIGPIPE, auto_cast posix.SIG_IGN) }
 }
 
 @(private)

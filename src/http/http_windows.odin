@@ -41,6 +41,8 @@ foreign winhttp {
 @(private) WINHTTP_OPTION_DECOMPRESSION        :: 118
 @(private) WINHTTP_DECOMPRESSION_FLAG_GZIP     :: 0x1
 @(private) WINHTTP_DECOMPRESSION_FLAG_DEFLATE  :: 0x2
+@(private) WINHTTP_OPTION_REDIRECT_POLICY       :: 88
+@(private) WINHTTP_OPTION_REDIRECT_POLICY_NEVER :: 0
 
 // The requests' session (src/md/features/http-connections.md): WinHTTP pools a session's connections by server, so one
 // session for the process reuses them. Never closed: the process's end takes it.
@@ -63,6 +65,10 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	// (a request's own: the session is every request's)
 	winhttp_timeouts(h, req)
 	winhttp_compression(h, req)
+	if req.no_redirects {
+		policy := u32(WINHTTP_OPTION_REDIRECT_POLICY_NEVER)
+		WinHttpSetOption(h, WINHTTP_OPTION_REDIRECT_POLICY, &policy, size_of(policy))
+	}
 	if req.user_agent != "" {
 		line := win.utf8_to_wstring(strings.concatenate({"User-Agent: ", req.user_agent}, context.temp_allocator))
 		if !WinHttpAddRequestHeaders(h, line, WINHTTP_NO_LENGTH, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE) { return {}, .Bad_Request }

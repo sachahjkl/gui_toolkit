@@ -55,9 +55,17 @@
 - **Plugins in JavaScript.** A person adds commands, settings and views to a program with a plugin, which reaches only
   what they granted and never slows the window. Done: commands and toasts, views, settings (API level 3), `gt-runtime`
   with its JavaScript demos, the API explorer on the site, the plugin host in a process of its own (a crash or a hang of
-  a plugin no longer reaches the program). Next: capabilities and tasks (the grant dialog, the plugin's data folder,
-  files, `fetch`, the clipboard); opencode native turns plugins on; lazy lists; a program's own module (`app`); palette sources, menu and tool bar entries. Intent:
+  a plugin no longer reaches the program), capabilities (API level 4: the grant dialog, the plugin's data folder,
+  files, `fetch` by origin, the clipboard, all done by the program's broker). Next: opencode native turns plugins on;
+  lazy lists; a program's own module (`app`); palette sources, menu and tool bar entries. Intent:
   [src/md/features/plugins.md](src/md/features/plugins.md).
+- **A plugin's process sandboxed by the system.** A compromised engine in a plugin's process could make system calls
+  itself: the broker closes what the API reaches, not what the process can do. The ways open: Linux, seccomp-bpf that
+  allows only the calls of the engine, its pipes and its log (or a Landlock rule set that denies the file system), set
+  by the child before it reads its start; Windows, an AppContainer or a restricted token with a low integrity level for
+  the child (its pipes inherited, the program's folder readable); macOS, the sandbox profile of `sandbox_init` once the
+  toolkit builds there. Each waits on a test that a plugin's process cannot open a file nor a socket by itself.
+  Intent: [src/md/features/plugins.md](src/md/features/plugins.md).
 
 ## Maybe
 
