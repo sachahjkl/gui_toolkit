@@ -13,9 +13,6 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
-- **A find bar a program drives.** `find_open` and `find_close` act on any window's State, not only the current one
-  (opencode native defers Ctrl+F and `--find` today); `Find_Result` says when the find moved the view; a click on a
-  scope or an option leaves the keyboard in the field; a public call sets the current match.
 - **Downloads in the toolkit.** For opencode native's file downloads: a streamed HTTP body in `gt:http` (a callback per
   chunk, and a stop), a notification updated in place with its progress and several buttons, a program's actions on
   an entry of the file browser, `File_Dialog.start_known = .Downloads` honoured by the browser, and an `fsx` writer
