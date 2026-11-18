@@ -13,7 +13,8 @@ DEMOS :: [?]string{"hello", "fidget", "todo", "transforms", "effects", "panes", 
 
 DEMOS_OUT_DEFAULT :: "build/demos"
 
-// demos [-out:dir]: every demo built as `tk build <demo>` builds it, without the devtools endpoint, each in <dir>/<demo>-windows-x64.zip. The zip holds the
+// demos [-out:dir]: every demo built as `tk build <demo>` builds it, without the devtools endpoint, each in <dir>/<demo>-windows-x64.zip,
+// then gt-runtime-windows-x64.zip and gt-skills.zip (skills.odin). A demo's zip holds the
 // exe alone: on Windows a demo needs nothing beside it (D3D11 and DirectWrite are the system's, the native library is not
 // linked by default, the icons are in the .rc, transforms #loads its picture, what docking writes it makes itself).
 run_demos :: proc(args: []string) -> string {
@@ -34,7 +35,12 @@ run_demos :: proc(args: []string) -> string {
 		if zerr := archive.zip_end(&w); zerr != .None { return fmt.tprintf("%s cannot be written: %v", zip, zerr) }
 		fmt.printfln("packed %s", zip)
 	}
-	return pack_runtime(root, out)
+	if why := pack_runtime(root, out); why != "" { return why }
+	// (the agent skills of this release beside its programs: their references are this tag's docs)
+	skills := join({out, SKILLS_ZIP_NAME})
+	if why := skills_zip(root, skills); why != "" { return fmt.tprintf("%s: %s", skills, why) }
+	fmt.printfln("packed %s", skills)
+	return ""
 }
 
 // gt-runtime-windows-x64.zip: gt-runtime.exe and the JavaScript demos beside it (examples/js/<demo> as js/<demo>), so that

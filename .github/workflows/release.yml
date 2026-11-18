@@ -1,7 +1,8 @@
 name: Release
 
 # The demo programs of a release: when `tk release` publishes a GitHub release, the examples meant to be shown
-# (tools/tk/demos.odin) are built for Windows x64 from its tag and attached to it, one zip each (tk demos). A manual run
+# (tools/tk/demos.odin) are built for Windows x64 from its tag and attached to it, one zip each (tk demos), with
+# gt-runtime-windows-x64.zip and gt-skills.zip, the agent skills with that tag's references (tools/tk/skills.odin). A manual run
 # with a tag attaches them to a release that is already out (one published before this workflow, or a failed run).
 on:
   release:

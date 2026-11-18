@@ -11,6 +11,7 @@ Plugins
   gt-runtime.md       Plugins and gt-runtime
   plugin-api.md       The plugin API
   plugins.md          plugins: plugins in a program
+  skills.md           Agent skills
 
 Drawing and text
   draw.md             Drawing

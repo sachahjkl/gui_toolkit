@@ -8,6 +8,8 @@ Every call and every node of a view is in the [API explorer](https://gt.sacha.ho
 [gt.d.ts](../plugin-api/gt.d.ts), for an editor's completion. How a program in Odin turns plugins on is in
 [plugins.md](plugins.md).
 
+A coding agent writes plugins with the skill `gt-plugin`: [skills.md](skills.md) says how to install it.
+
 ## Get gt-runtime
 
 Download `gt-runtime-windows-x64.zip` from the [latest release](https://github.com/sachahjkl/gui_toolkit/releases/latest)

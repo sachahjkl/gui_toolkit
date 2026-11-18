@@ -5,6 +5,7 @@
 The design and its reasons are in [src/md/features/plugins.md](../src/md/features/plugins.md). What a plugin's
 JavaScript can call is in [plugin-api.md](plugin-api.md) and the site's
 [API explorer](https://gt.sacha.house/plugins/api/). A plugin's author starts with [gt-runtime.md](gt-runtime.md).
+A coding agent has the skills of [skills.md](skills.md): `gt-plugin` for a plugin, `gui-toolkit` for a program.
 
 ```odin
 import plugins "gt:plugins"
