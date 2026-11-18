@@ -5,6 +5,47 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.308.0] - 2026-11-18 00:12
+
+### Added
+- **The plugin API explorer and a guide to gt-runtime on the site**: [gt.sacha.house/plugins/api/](https://gt.sacha.house/plugins/api/)
+shows every call of each module with its TypeScript signature, its level and its permission, every node of a view with
+its fields (the ones the host keeps marked as state), and what each level added. A search box filters the calls and
+nodes; each has its own anchor (`#views.register`, `#node.field`); `gt.d.ts` downloads from the page. The page is made
+from `plugin-api/api.json` at each build of the site, and the build fails when that file is missing or malformed.
+"Plugins and gt-runtime" in the Docs says what a plugin is, its manifest, a first plugin, and the counter and todo demos
+with their source. `api.json` gives each field a `state`.
+- **`ui.view_refit`, and `ui.view_not_ready` for internal windows**: a view whose content comes late holds its internal
+window unseen until it is there (100 ms at most), and asks for the height of what is in it once it came or changed size.
+The window the person resized keeps its height.
+- **A plugin's settings (`settings.get`, `settings.onChange`, plugin API level 3)**: the settings a plugin's manifest
+declares are the program's preferences (`plugins.<plugin id>.<setting id>`), shown on a page of their own in its
+settings (`plugins.settings_pages`) and kept in its file. A plugin reads them at once and hears each change.
+- **gt-runtime**: a program that runs one plugin as an application, `gt-runtime <folder>` or `gt-runtime <main.js>` (a lone
+file's manifest is implied). The plugin's first view fills the window; the palette, the settings and the toasts are the
+toolkit's. A release attaches `gt-runtime-windows-x64.zip`, with two JavaScript demos, a counter and a todo list.
+- **A plugin's views (`views.register`, `views.update`, plugin API level 2)**: a plugin declares views in its manifest and
+gives each a render that returns a tree of nodes (text, heading, button, row, column, card, space, field, check box,
+switch, separator). The window shows the view with the toolkit's own widgets, among its views (`plugins.open_view`, or the
+palette) or in a program's own layout (`plugins.view_body`). A click, a change or Enter runs the plugin's handler on its
+own thread, then the view renders again. What the person types stays while a slow plugin catches up, a key given twice is
+dropped and logged, and a view whose plugin hangs keeps drawing with a Stop button.
+- **Plugins in JavaScript (`gt:plugins`, `gt:plugin_api`)**: a program that imports `gt:plugins` reads the plugins'
+folder, puts each plugin's commands in the command palette, and runs a command in the plugin's own thread and runtime,
+started at its first use. A plugin calls `commands.on` and `toast.show` from `import { commands, toast } from "gt"`.
+The settings' Plugins page (`plugins.page_info`) shows each plugin's state, turns it on (it is off until then), stops
+it and reloads the folder. A handler that never returns leaves the window drawing: the plugin is said not to respond,
+and Stop interrupts it. A plugin inside which the program ended is suspended at the next start. `tk plugin_api` writes
+`plugin-api/gt.d.ts`, `plugin-api/api.json` and `docs/plugin-api.md` from the declarations, and `tk ci` checks them.
+  - `gt:js`: a runtime's cells live in a block of reserved addresses (`Host_Config.reserve_bytes`), so `engine_new`
+    works on any allocator. An allocation that fails, or one past the block's soft end, raises the uncatchable "out of
+    memory" error instead of ending the process.
+
+### Fixed
+- **`install_init` with a new settings registry**: called again with another registry (a program that reads its
+settings anew), it moves its watch of "In the application menu" and "Start with the session" to the new one, instead
+of keeping an id that named another observer there; the refusal's message is in French too.
+
 ## [0.307.0] - 2026-11-17 23:35
 
 ### Changed
@@ -4275,6 +4316,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.308.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.308.0
 [0.307.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.307.0
 [0.306.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.306.0
 [0.305.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.305.0
