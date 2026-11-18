@@ -26,6 +26,9 @@ folder under the user's profile is that user's already: it asks nothing more.
 `<path>.<pid>.<thread>.tmp` in full, then renames it over `path` (`replace`, atomic on both systems). A reader that opened the
 old file keeps reading it; a reader that opens after the rename sees the new one. Two writers each write their own
 temporary file, and the last rename stays. A failed write removes its temporary file; a crash leaves it behind.
+On Windows a reader that opened `path` without sharing its deletion (another program, an antivirus, the indexer) makes
+the rename fail while it holds the file: `replace` tries again six times, 5 ms more apart each time (75 ms at most),
+before the write returns false.
 
 `read_all` reads between two `stat`s that agree, and tries again when they do not: a file replaced meanwhile comes back
 whole, the old or the new one, or not at all after a few tries.
