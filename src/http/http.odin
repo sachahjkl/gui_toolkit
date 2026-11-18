@@ -7,7 +7,8 @@
 //	form, content_type := http.multipart({{name = "file", file_name = "a.png", content_type = "image/png", value = png}})
 //	res, err := http.request("POST", "https://example.com/upload", {headers = {{"Content-Type", content_type}}, body = form})
 //
-// A server's event stream (stream.odin) and WebSockets (socket.odin) block the same way, on a worker.
+// A body received in chunks (receive.odin), a server's event stream (stream.odin) and WebSockets (socket.odin) block
+// the same way, on a worker.
 package tk_http
 
 import "core:strconv"

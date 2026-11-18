@@ -64,6 +64,10 @@ File_Source :: struct {
 	places:      proc(src: ^File_Source, allocator: mem.Allocator) -> []platform.File_Place,
 	// Where a dialog starts that knows no folder ("": the first of its places), in `allocator`. nil: its first place.
 	start:       proc(src: ^File_Source, allocator: mem.Allocator) -> string,
+	// The path of a folder the system names (a dialog's start_known: Downloads), at once (cheap: no reading), in
+	// `allocator`; "": none, or not known yet. nil: a source with no such folders (a server's); the dialog starts as if
+	// start_known were None.
+	known:       proc(src: ^File_Source, folder: platform.Known_Folder, allocator: mem.Allocator) -> string,
 }
 
 // The entries of the folder asked. They are copied: the source frees its own after the call.

@@ -38,16 +38,18 @@ local_files :: proc() -> File_Source {
 		find        = local_find,
 		places      = local_places,
 		start       = local_start,
+		known       = local_known,
 	}
 }
 
-// What the local source reads once per State: its places and its first folder.
+// What the local source reads once per State: its places, its first folder and the person's folders.
 @(private)
 File_Local :: struct {
 	ready:  bool,             // read (the places below are there)
 	asked:  bool,             // a reading is on its way
 	places: [dynamic]platform.File_Place,   // (strings in the heap)
 	home:   string,
+	known:  [platform.Known_Folder]string,  // the person's folders that are there ("": none; heap)
 }
 
 @(private)
@@ -56,6 +58,7 @@ file_local_destroy :: proc(l: ^File_Local) {
 	for p in l.places { delete(p.name, a); delete(p.path, a) }
 	delete(l.places)
 	delete(l.home, a)
+	for k in l.known { delete(k, a) }
 	l^ = {}
 }
 
@@ -65,6 +68,7 @@ Local_Warm :: struct {
 	state:  ^State,
 	places: [dynamic]platform.File_Place,
 	home:   string,
+	known:  [platform.Known_Folder]string,
 }
 
 // Asks for the places of `s` once (nothing when they are read or on their way).
@@ -93,6 +97,7 @@ file_local_warm :: proc(s: ^State) {
 			// (a folder the system names but the person never made is no place)
 			if k.k != .Home && !os.is_directory(p) { delete(p, a); continue }
 			if k.k == .Home { w.home = strings.clone(p, a) }
+			w.known[k.k] = strings.clone(p, a)   // (a dialog's start_known: local_known)
 			append(&w.places, platform.File_Place{name = strings.clone(k.name, a), path = p, icon = k.icon})
 		}
 		roots := platform.file_roots(a)
@@ -103,20 +108,25 @@ file_local_warm :: proc(s: ^State) {
 		w := (^Local_Warm)(d)
 		if fb := w.state.files; fb != nil {
 			file_local_destroy(&fb.local)
-			fb.local = {ready = true, places = w.places, home = w.home}
+			fb.local = {ready = true, places = w.places, home = w.home, known = w.known}
 			file_browser_local_ready(fb)
+			free(w, runtime.heap_allocator())
+			return
 		}
-		free(w, runtime.heap_allocator())
+		local_warm_free(w)   // (the browser went meanwhile: nothing holds what was read)
 	}
-	lost :: proc(d: rawptr) {
-		w := (^Local_Warm)(d)
-		a := runtime.heap_allocator()
-		for p in w.places { delete(p.name, a); delete(p.path, a) }
-		delete(w.places)
-		delete(w.home, a)
-		free(w, a)
-	}
+	lost :: proc(d: rawptr) { local_warm_free((^Local_Warm)(d)) }
 	task(s, work, done, w, lost)
+}
+
+@(private = "file")
+local_warm_free :: proc(w: ^Local_Warm) {
+	a := runtime.heap_allocator()
+	for p in w.places { delete(p.name, a); delete(p.path, a) }
+	delete(w.places)
+	delete(w.home, a)
+	for k in w.known { delete(k, a) }
+	free(w, a)
 }
 
 // (what the State's reading found; nothing before it came)
@@ -133,6 +143,13 @@ local_places :: proc(src: ^File_Source, allocator: mem.Allocator) -> []platform.
 local_start :: proc(src: ^File_Source, allocator: mem.Allocator) -> string {
 	if current == nil || current.files == nil { return "" }
 	return strings.clone(current.files.local.home, allocator)
+}
+
+// (what the State's reading found: a folder the person never made is none; nothing before it came)
+@(private = "file")
+local_known :: proc(src: ^File_Source, folder: platform.Known_Folder, allocator: mem.Allocator) -> string {
+	if current == nil || current.files == nil || !current.files.local.ready { return "" }
+	return strings.clone(current.files.local.known[folder], allocator)
 }
 
 // One call of the local source, carried to the chores and back.

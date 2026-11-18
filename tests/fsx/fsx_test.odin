@@ -65,6 +65,71 @@ a_failed_write_leaves_no_temporary_file :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(fsx.list_files(root)), 0)
 }
 
+// A file written in parts: the target keeps its old content until the commit, then has every part in order; no part
+// file stays beside it.
+@(test)
+a_writer_commits_its_parts_over_the_target :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_writer_commit")
+	defer fsx.remove_tree(root)
+	path := fmt.tprintf("%s/download.bin", root)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)string("old")) == nil)
+	w: fsx.Writer
+	if !testing.expect(t, fsx.writer_open(&w, path)) { return }
+	testing.expect(t, fsx.writer_append(&w, transmute([]byte)string("first, ")))
+	testing.expect(t, fsx.writer_append(&w, nil), "an empty part")
+	testing.expect(t, fsx.writer_append(&w, transmute([]byte)string("second")))
+	testing.expect_value(t, w.written, 13)
+	data, ok := fsx.read_all(path, context.temp_allocator)
+	testing.expect(t, ok && string(data) == "old", "the target as it was until the commit")
+	testing.expect_value(t, len(fsx.list_files(root)), 2)   // (the target and its part file)
+	testing.expect(t, fsx.writer_commit(&w, flush = true))
+	data, ok = fsx.read_all(path, context.temp_allocator)
+	testing.expect(t, ok && string(data) == "first, second")
+	files := fsx.list_files(root)
+	testing.expect(t, len(files) == 1 && files[0].name == "download.bin", "no part file left")
+	testing.expect_value(t, w, fsx.Writer{})
+	testing.expect(t, !fsx.writer_append(&w, transmute([]byte)string("x")), "a committed writer takes nothing")
+	testing.expect(t, !fsx.writer_commit(&w))
+	fsx.writer_abort(&w)   // (nothing: it holds nothing)
+	data, ok = fsx.read_all(path, context.temp_allocator)
+	testing.expect(t, ok && string(data) == "first, second")
+
+	// a target that did not exist is made
+	fresh := fmt.tprintf("%s/new.bin", root)
+	if !testing.expect(t, fsx.writer_open(&w, fresh)) { return }
+	testing.expect(t, fsx.writer_append(&w, transmute([]byte)string("made")))
+	testing.expect(t, fsx.writer_commit(&w))
+	data, ok = fsx.read_all(fresh, context.temp_allocator)
+	testing.expect(t, ok && string(data) == "made")
+}
+
+// An abort leaves the target as it was and nothing beside it; a writer in a missing folder does not open.
+@(test)
+a_writer_aborted_leaves_the_target_alone :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_writer_abort")
+	defer fsx.remove_tree(root)
+	path := fmt.tprintf("%s/download.bin", root)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)string("old")) == nil)
+	w: fsx.Writer
+	if !testing.expect(t, fsx.writer_open(&w, path)) { return }
+	testing.expect(t, fsx.writer_append(&w, transmute([]byte)string("half of it")))
+	fsx.writer_abort(&w)
+	fsx.writer_abort(&w)   // (twice: nothing more)
+	data, ok := fsx.read_all(path, context.temp_allocator)
+	testing.expect(t, ok && string(data) == "old")
+	files := fsx.list_files(root)
+	testing.expect(t, len(files) == 1 && files[0].name == "download.bin", "no part file left")
+	// a target that never was stays absent
+	absent := fmt.tprintf("%s/absent.bin", root)
+	if testing.expect(t, fsx.writer_open(&w, absent)) {
+		fsx.writer_abort(&w)
+		testing.expect_value(t, fsx.path_kind(absent), fsx.Path_Kind.Absent)
+	}
+	testing.expect(t, !fsx.writer_open(&w, fmt.tprintf("%s/missing/x.bin", root)), "a folder that is not there")
+	testing.expect_value(t, w, fsx.Writer{})
+	testing.expect_value(t, len(fsx.list_files(root)), 1)
+}
+
 @(private = "file")
 Rewriter :: struct { path: string, stop: bool }
 

@@ -875,6 +875,8 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 		least := table_min_width(&t.layout)
 		next({width = fill(), height = fill(), flags = {.View_Scroll_X, .Allow_Overflow_X}})
 		if rows, ok := vlist("###rows", &t.vl, t.ids[:], ids_version = t.ids_version); ok {
+			// (vlist says whether the list has the keyboard; the line below makes `focused` the selection's look)
+			list_keys := t.vl.focused
 			// (the keyboard may be in a filter field, yet the selection is the window's: strong while the window is the user's)
 			t.vl.focused = !inactive()
 			for i in rows.first ..< rows.last {
@@ -888,6 +890,11 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 				if row.double_clicked { ev.activated = true }
 				// (list_row made the row the selection, or kept the selection it is in)
 				if row.right_clicked { ev.menu, ev.menu_at = true, mouse_pos() }
+			}
+			// (the Menu key while the list has the keyboard: table_keys only takes it while the keyboard is elsewhere)
+			if list_keys && t.vl.sel >= 0 && (key_press(.Menu) || key_press(.F10, {.Shift})) {
+				ev.menu, ev.keyboard = true, true
+				ev.menu_at = {t.sel_rect.min.x + font_size() * TABLE_MENU_INSET_EM, t.sel_rect.max.y}
 			}
 			if len(t.ids) == 0 && empty != "" {
 				if tags("weak") {

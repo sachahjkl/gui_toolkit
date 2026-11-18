@@ -13,10 +13,6 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
-- **Downloads in the toolkit.** For opencode native's file downloads: a streamed HTTP body in `gt:http` (a callback per
-  chunk, and a stop), a notification updated in place with its progress and several buttons, a program's actions on
-  an entry of the file browser, `File_Dialog.start_known = .Downloads` honoured by the browser, and an `fsx` writer
-  that appends to a temporary file then renames it.
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).

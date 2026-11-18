@@ -10,6 +10,10 @@ request_system :: proc(method, url: string, req: Request, allocator := context.a
 	return {}, .No_Client
 }
 
+receive_system :: proc(method, url: string, req: Request, sink: ^Receive_Sink, stop: ^Stop, allocator := context.allocator) -> (res: Response, err: Error) {
+	return {}, .No_Client
+}
+
 events_system :: proc(url: string, req: Request, parser: ^Event_Parser, on_event: Event_Proc, user: rawptr, stop: ^Stop) -> (status: int, err: Error) {
 	return 0, .No_Client
 }

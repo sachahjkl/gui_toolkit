@@ -33,6 +33,32 @@ before the write returns false.
 `read_all` reads between two `stat`s that agree, and tries again when they do not: a file replaced meanwhile comes back
 whole, the old or the new one, or not at all after a few tries.
 
+## A file written in parts
+
+```odin
+w: fsx.Writer
+if !fsx.writer_open(&w, path) { return }          // <path>.<pid>.<id>.part, beside path
+for chunk in chunks {
+	if !fsx.writer_append(&w, chunk) { break }      // false: the write failed; the commit refuses
+}
+ok := fsx.writer_commit(&w, flush = true)         // renamed over path (replace); false: path as it was, the part gone
+fsx.writer_abort(&w)                              // instead of the commit: the part removed, path as it was
+```
+
+`Writer` is for a file whose content comes in parts over time (a download, `http.receive`): the target keeps its old
+content, or stays absent, until the whole new one is there. The temporary file is in the target's folder, so the
+rename never crosses a disk; its name ends with `.part`, which tells a person who finds it after a crash what it is.
+
+- `writer_open(&w, target, private)`: false when the file cannot be made (a missing or refused folder). `private` is
+  `write_atomic`'s.
+- `writer_append(&w, bytes)`: at the end, all of it. After a failure every append and the commit return false.
+  `w.written` counts the bytes appended.
+- `writer_commit(&w, flush)`: closes the file and renames it over the target (`replace`, its tries on Windows). Its
+  answer is false when an append failed, the close failed or the rename failed; the part is removed then.
+- `writer_abort(&w)`: closes and removes the part. It does nothing for a writer that holds nothing, so a program may
+  call it at the end of every path (after a commit too).
+- One thread uses a writer at a time. Every call blocks on the disk: call them off the interface's thread.
+
 ## Pieces of a file
 
 ```odin

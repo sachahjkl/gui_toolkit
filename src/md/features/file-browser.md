@@ -86,7 +86,11 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   (and opens each entry to stat it), and a `GetFileAttributesW` per entry would be one more call per entry of a walk of
   200 000. Refused: a `when ODIN_OS` in `file_local.odin` (the system's code is in `fsx_<os>.odin`), and a second read
   of each folder for the attributes alone (two readings that can disagree).
-- **`File_Place` is in `platform`.** `platform.File_Dialog` stays the one options struct, with `places`.
+- **`File_Place` is in `platform`.** `platform.File_Dialog` stays the one options struct, with `places`, and with
+  `row_actions`: a program's acts in a row's context menu (downloads.md says why data of the options and why the
+  dialog stays open).
+- **`start_known` is the source's to answer** (`File_Source.known`), after `start_dir` and the dialog's memory: only
+  the computer's source has a Downloads folder, and it reads it with its places, on the chores (downloads.md).
 - **A picture's texture is made at the first draw.** The build has no renderer; the draw callback has it.
 - **`dialog_test_hook` still answers for the computer's files.** The end-to-end tests of programs set it.
 - **The memory is in memory for the run; a file only when the program gives one** (`file_dialog_memory`). The toolkit

@@ -5,6 +5,19 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.325.0] - 2026-11-18 22:35
+
+### Added
+- **`fsx.Writer`**: a file written in parts (`writer_open`, `writer_append`, `writer_commit`, `writer_abort`). The parts go to a temporary file beside the target, which takes the target's name only when the commit comes; an abort, or a failed write, leaves the target as it was and no file beside it.
+- **`File_Dialog.row_actions`**: a program puts its own acts ("Download") in the context menu of an entry of the toolkit's file browser, opened by a right click or the Menu key. An act gets the path of each entry chosen that it takes (files, or folders too), and the dialog stays open.
+- **`platform.Notification.progress`**: a notification shows a progress bar (a value from 0 to 1, or not known, and the words under it), and a `replace` with a new value moves it in place. Windows 10 1607 and later: the toast's bar, updated without a new popup or sound while the rest of the notification stays the same (`notification_shape`). Linux: the `value` hint that KDE Plasma, dunst, mako and Xfce draw; the words are a line of the body. A system without a bar shows the notification without it.
+- **`http.receive`**: a request whose body comes to a callback chunk by chunk, on the request's thread, and is kept nowhere: a download of any size takes the memory of one chunk. Each `Body_Part` carries the answer's status, the bytes received so far and the body's length; the callback's `.Stop` or a `Stop` asked from another thread ends it. Its `timeout` is the longest silence, and the body has no bound unless `max_bytes` gives one. Windows and Linux.
+
+### Fixed
+- **The Menu key opens a table's row menu while its list has the keyboard**: Shift+F10 too. Before, only a right click or
+the keyboard in a filter field opened it.
+- **The toolkit's file browser opens in `File_Dialog.start_known`**: a dialog asked to start in Downloads (or another folder the system names) now opens there, after `start_dir` and the folder the dialog was last left in. A program's source answers it with `File_Source.known`; a source without such folders starts as before.
+
 ## [0.324.0] - 2026-11-18 22:07
 
 ### Added
@@ -4564,6 +4577,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.325.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.325.0
 [0.324.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.324.0
 [0.323.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.323.0
 [0.322.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.322.1

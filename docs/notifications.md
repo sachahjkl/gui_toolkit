@@ -45,6 +45,26 @@ for e in platform.poll_events(w, true) {
 | `actions` | buttons: `{id, label}`; the id comes back in `Event.notification.action` |
 | `replace` | an earlier notification of the window that this one updates in place (`0`: a new one) |
 | `silent` | no sound |
+| `progress` | a bar: `{shown, value, status}`; `value` from 0 to 1 (below 0: not known), `status` the words under it |
+
+A notification of a long task (a download) shows its bar and is sent again with `replace` as the task goes on:
+
+```odin
+n := platform.Notification{title = "report.pdf", actions = {{1, "Cancel"}, {2, "Show"}}, silent = true,
+	progress = {shown = true, value = 0.42, status = "4.2 MB of 10 MB"}, replace = app.download_id}
+platform.notify_async(app.anchor, n, on_shown, app)   // on_shown keeps the id for the next update
+```
+
+| system | the bar | an update of the same notification |
+|---|---|---|
+| Windows 10 1607 and later | the toast's bar, indeterminate when `value` is below 0 | moves in place: no popup, no sound |
+| Windows 10 before 1607 | none (no bound data) | the toast is shown again |
+| Linux, KDE Plasma, dunst, mako, Xfce | the `value` hint, 0 to 100 | in place (`replaces_id`) |
+| Linux, GNOME and other servers | none: the hint is ignored | in place (`replaces_id`) |
+
+`status` is a line after the body on Linux, where no server shows a bar's words. A value that is not known sends no
+`value` hint on Linux: no server draws a bar without a value. A system that has no bar shows the rest of the
+notification: never an error.
 
 The events carry `Event.notification` (`id`, `action`, `reason`):
 
@@ -64,7 +84,8 @@ uses the server's activation token, so the compositor gives the window the focus
   - `actions`: `"default"` (a click on the body) and the buttons (their keys are their ids in decimal), only when the
     server has the `actions` capability.
   - hints: `desktop-entry` (the app id: the server groups the notifications by the `.desktop` file and focuses the
-    program), `urgency` (0, 1, 2), `suppress-sound`, `image-data` (the PNG decoded to RGBA rows).
+    program), `urgency` (0, 1, 2), `suppress-sound`, `image-data` (the PNG decoded to RGBA rows), `value` (a known
+    progress, 0 to 100: `notify_progress_percent`).
   - `expire_timeout`: -1, the server's default. A server does not expire a `Critical` notification.
 - The body is escaped (`&`, `<`, `>`) when the server has `body-markup`. The summary is plain text for every server.
 - The window listens to `ActionInvoked`, `NotificationClosed` and `ActivationToken` from its first notification. A signal
@@ -93,6 +114,10 @@ uses the server's activation token, so the compositor gives the window the focus
 - An icon is written to `%TEMP%\gt_notify\<hash>.png`: a toast reads its picture from a file. The files stay there for
   the notification centre.
 - The toast's `Tag` is the id and its `Group` is `"gt"`: a toast with the same tag replaces the earlier one.
+- A progress bar is `<progress value="{progressValue}" status="{progressStatus}"/>`, bound to the toast's
+  `NotificationData` (`toast_progress_values`). A replace of the same shape (`notification_shape`: everything but the
+  progress) updates the data with `IToastNotifier2.UpdateWithTagAndGroup`; another shape, or an update the system
+  refuses (the toast is gone), shows the toast again.
 - The toast's `Activated`, `Dismissed` and `Failed` events come on a thread of the system. Their handlers queue what
   happened and post a message to the window; the window procedure makes the events on the window's thread.
 - A click or a button ends the notification: its event, then `Notification_Closed` (`Dismissed`). A toast that left the

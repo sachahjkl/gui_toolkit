@@ -23,6 +23,7 @@ Probe :: struct {
 	waited:      bool,        // the hook was let go within the bound
 	hook_thread: int,
 	title:       string,      // (heap) the notification's title, read after the caller reused its buffer
+	status:      string,      // (heap) its progress's status
 	ids:         [dynamic]platform.Notification_Id,
 }
 
@@ -35,6 +36,8 @@ probe_hook :: proc(n: platform.Notification, id: platform.Notification_Id) -> bo
 	probe.saw_return = sync.atomic_load(&probe.returned)
 	delete(probe.title, runtime.heap_allocator())
 	probe.title = strings.clone(n.title, runtime.heap_allocator())
+	delete(probe.status, runtime.heap_allocator())
+	probe.status = strings.clone(n.progress.status, runtime.heap_allocator())
 	append(&probe.ids, id)
 	return true
 }
@@ -73,6 +76,7 @@ notify_async_returns_at_once_and_done_comes_by_the_loop :: proc(t: ^testing.T) {
 	probe = {ids = make([dynamic]platform.Notification_Id, runtime.heap_allocator())}
 	defer {
 		delete(probe.title, runtime.heap_allocator())
+		delete(probe.status, runtime.heap_allocator())
 		delete(probe.ids)
 		probe = {}
 	}
@@ -115,6 +119,13 @@ notify_async_returns_at_once_and_done_comes_by_the_loop :: proc(t: ^testing.T) {
 	testing.expect_value(t, answers.id, first)
 	testing.expect_value(t, probe.title, "second")
 	testing.expect_value(t, len(probe.ids), 2)
+
+	// a progress sent again with the same id: the notification thread gets its own copy of the bar's words
+	sync.sema_post(&probe.release)
+	testing.expect(t, platform.notify_async(w, {title = "second", replace = first, progress = {shown = true, value = 0.5, status = "half"}}, answer_done, &answers))
+	if !testing.expect(t, wait_answers(w, &answers, 3, &seen)) { return }
+	testing.expect_value(t, answers.id, first)
+	testing.expect_value(t, probe.status, "half")
 
 	// closed by the program: Notification_Closed (Closed) at once, and only once
 	platform.notify_close(w, first)

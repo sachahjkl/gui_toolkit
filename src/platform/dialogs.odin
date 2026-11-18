@@ -43,6 +43,19 @@ File_Dialog :: struct {
 	                                // system's dialogs do not show them)
 	find_deep:      bool,           // the toolkit's file browser: its filter starts searching the subfolders too
 	act:            string,         // the toolkit's file browser: the act button's word ("": the mode's, Open, Choose, Save)
+	row_actions:    []File_Row_Action,   // the toolkit's file browser: the program's acts in an entry's context menu
+}
+
+// A program's act on an entry of the toolkit's file browser (File_Dialog.row_actions), in the entry's context menu
+// (a right click, the Menu key): "Download". `act` runs on the interface's thread, once per entry chosen (a multiple
+// selection gives each), with the entry's path in the source's form (valid during the call only); the dialog stays
+// open. It must not block: a download starts a task. The system's dialogs do not show them.
+File_Row_Action :: struct {
+	label:   string,
+	icon:    string,   // a glyph of the Lucide icons ("": none)
+	folders: bool,     // offered on a folder too (false: on files only)
+	act:     proc(user: rawptr, path: string),
+	user:    rawptr,
 }
 
 // A folder a file dialog lists among its places, to go to at once.
