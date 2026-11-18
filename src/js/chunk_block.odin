@@ -20,6 +20,9 @@ CELL_BLOCK_SPARE_PART :: 8
 CELL_BLOCK_COMMIT_STEP :: 4 << 20
 
 cell_block_open :: proc(rt: ^Runtime) {
+	// (below 0: no block. An embedder whose allocator keeps every cell in a range of its own, a 32-bit pointer's, needs
+	// the chunks from that allocator: the system would place the block anywhere)
+	if rt.config.reserve_bytes < 0 {return}
 	size := rt.config.reserve_bytes > 0 ? rt.config.reserve_bytes : DEFAULT_RESERVE_BYTES
 	size = (size + CHUNK_UNIT - 1) &~ (CHUNK_UNIT - 1)
 	data, err := vmem.reserve(uint(size))
