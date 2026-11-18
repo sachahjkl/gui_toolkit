@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.311.1] - 2026-11-18 07:38
+
+### Fixed
+- **A program no longer hangs or crashes when a background task answers at once.** Since 0.311.0, a task's answer could
+run on the interface's thread while the worker that posted it was still unlocking: it unlocked freed memory, and closing
+the window then waited for ever, or the program crashed. Rare, and possible in every program on 0.311.0.
+
 ## [0.311.0] - 2026-11-18 06:29
 
 ### Added
@@ -4363,6 +4370,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.311.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.311.1
 [0.311.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.311.0
 [0.310.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.310.0
 [0.309.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.309.0
