@@ -1,16 +1,15 @@
 #+build !linux
+#+build !windows
 package tk_plugins
 
-// A plugin's process on a system with no sandbox written yet (plugins.md, "As built: the sandbox"): it runs with the
-// person's rights, as the program does, and its log says so once. Windows' sandbox will be the parent's to give (an
-// AppContainer or a restricted token, set when the process is made): sandbox_spawn is where it goes; sandbox_enter
-// is the child's part, nothing here.
+// A plugin's process on a system with no sandbox written yet (macOS: plugins.md, "As built: the sandbox"): it runs
+// with the person's rights, as the program does, and its log says so once.
 
 import "core:os"
 import "../fsx"
 
 @(private)
-sandbox_spawn :: proc(exe: string, stdin, stdout: ^os.File) -> (os.Process, os.Error) {
+sandbox_spawn :: proc(exe: string, stdin, stdout: ^os.File, mode: Sandbox_Mode) -> (os.Process, os.Error) {
 	return os.process_start({command = {exe, CHILD_ARG}, stdin = stdin, stdout = stdout, stderr = os.stderr})
 }
 

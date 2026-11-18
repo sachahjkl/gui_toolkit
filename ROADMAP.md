@@ -64,12 +64,11 @@
   plugins on; a program's own module (`app`); palette sources, menu and tool bar entries; a lazy list's active row
   and Enter sent to the plugin. Intent:
   [src/md/features/plugins.md](src/md/features/plugins.md).
-- **A plugin's process sandboxed by the system on Windows and macOS.** On Linux a plugin's process opens no file and no
-  socket by itself (Landlock and a seccomp filter); elsewhere it still has the person's rights. Left: Windows, an
-  AppContainer or a restricted token with a low integrity level, given by the program when it starts the process
-  (`sandbox_spawn`; its pipes inherited, nothing else); macOS, the profile of `sandbox_init` once the toolkit builds
-  there. Each is done when `tests/plugins/sandbox_test.odin` sees "escaped: none" there. Intent:
-  [src/md/features/plugins.md](src/md/features/plugins.md), "As built: the sandbox".
+- **A plugin's process sandboxed by the system on macOS.** On Linux a plugin's process opens no file and no socket by
+  itself (Landlock and a seccomp filter); on Windows it runs in an AppContainer with no capability. Left: macOS, the
+  profile of `sandbox_init` once the toolkit builds there; done when `tests/plugins/sandbox_test.odin` sees
+  "escaped: none" there. Windows' network refusal is the container's (no internetClient) and is not tried by that test
+  yet. Intent: [src/md/features/plugins.md](src/md/features/plugins.md), "As built: the sandbox".
 
 ## Maybe
 

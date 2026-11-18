@@ -13,6 +13,7 @@ base/blocking.odin blocking_sites process  # the call sites already said (locked
 changelog/changelog.odin TYPE_NAMES const  # Keep a Changelog's types, a table
 plugins/page.odin PAGE_TAGS const  # the words the palette finds the Plugins page by, a table
 plugins/channel.odin start_lock process  # one start of a plugin's process at a time: os.process_start changes the inheritance of handles for the whole process
+plugins/sandbox_windows.odin granted_exe process  # the executable granted to the plugins' AppContainer in this run, once: read and written under start_lock
 config/config_test.odin DEFS test
 config/export_test.odin EXPORT_DEFS test
 config/search_test.odin SEARCH_DEFS test

@@ -264,6 +264,11 @@ else:
 - From Landlock's ABI 6, it signals no process out of itself.
 - What it reaches beyond that is the broker's: what the person granted.
 
+On Windows the program starts the process in an AppContainer with no capability: it reaches none of the person's files
+and no network, the machine's own included, and inherits only its two pipes and the standard error. The container is
+the program's, named from its executable; the first start of a run adds read and execute for it to the executable's
+access list, so a program built or installed in the person's folders can run there.
+
 `Host_Options.sandbox` says what happens where the system cannot isolate it (a kernel with no Landlock):
 
 | Mode | |

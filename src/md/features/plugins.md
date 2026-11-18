@@ -652,6 +652,31 @@ The test (`tests/plugins/sandbox_test.odin`) is the ROADMAP's condition: `test_e
 test made, create one in the test's folder and open a TCP socket; with the sandbox none succeeds, with `Off` all
 three do. It is skipped where the kernel has no Landlock.
 
+## As built: the sandbox (Windows)
+
+- **An AppContainer, not a restricted token.** A restricted token with a low integrity level still reads every file the
+  person can read: low integrity stops writes up, not reads. A container reaches only the objects that name it or ALL
+  APPLICATION PACKAGES, which the person's files do not: both reads and writes are closed, as Landlock closes them.
+- **No capability.** Without internetClient (and without the loopback exemption) the container reaches no network, the
+  machine's own included. The broker's `fetch` is the program's and keeps its own checks.
+- **The parent gives it.** A process cannot put itself in a container: `sandbox_spawn` calls `CreateProcessW` with
+  `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`, and `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` so that the child inherits its
+  two pipes and the standard error, nothing else. `sandbox_enter` in the child only reads `TokenIsAppContainer` and
+  says what it found; a token is the whole process's, so no thread is counted.
+- **One container per program**, named from its executable's path (`gt.plugins.<fnv64>`): the same at each run, so
+  the profile is made once and found again (`DeriveAppContainerSidFromAppContainerName`).
+- **The executable must be readable by the container.** A program installed per user, or built in a checkout, is in
+  folders the container cannot read: `sandbox_spawn` adds read and execute for the container's SID to the access list
+  of that one file, once per run, on the sender's thread (never the interface's). The entry stays in the file's list:
+  the same entry each time, removed when the file is replaced by an update. Refused: granting it to ALL APPLICATION
+  PACKAGES (every packaged app of the machine would read the program), or to the folder (its other files too).
+- **Unverified without a Windows machine** (the CI's Windows runner is the first to run it): that the child, built by
+  Odin, starts in a container with the system DLLs it imports; that `os.process_wait` and `os.process_kill` work on the
+  handle made by `CreateProcessW`; that the test's temporary folder (the person's `%TEMP%`) is closed to the container;
+  that `CREATE_NO_WINDOW` keeps a console program's child quiet. Each failure says its step and Windows' error code.
+- **What the test does not try on Windows**: the network. The container's refusal of a connection is Windows' own;
+  trying it needs a listener in the test, the next step of this test.
+
 ## As built: lazy lists (slice 5, API level 5)
 
 Written on 2026-11-18; the Fenwick tree of the rows' places the same day.

@@ -16,7 +16,8 @@ import "../fsx"
 
 // The program starts the child as before: Linux's sandbox is the child's own to set (sandbox_enter).
 @(private)
-sandbox_spawn :: proc(exe: string, stdin, stdout: ^os.File) -> (os.Process, os.Error) {
+sandbox_spawn :: proc(exe: string, stdin, stdout: ^os.File, mode: Sandbox_Mode) -> (os.Process, os.Error) {
+	// (the child isolates itself on Linux: sandbox_enter, from the mode its start carries)
 	return os.process_start({command = {exe, CHILD_ARG}, stdin = stdin, stdout = stdout, stderr = os.stderr})
 }
 

@@ -120,7 +120,7 @@ channel_open :: proc(p: ^Plugin, ch: ^Channel) -> string {
 	sync.lock(&start_lock)
 	// (a process that dies leaves its input closed: the sender's next write must be an error, not the program's end)
 	platform.sigpipe_ignore()
-	child, err := sandbox_spawn(exe, in_r, out_w)
+	child, err := sandbox_spawn(exe, in_r, out_w, p.sandbox)
 	sync.unlock(&start_lock)
 	// (the child's ends are the child's: the program keeps the two it uses, and sees the end of the output when the
 	// child's goes)

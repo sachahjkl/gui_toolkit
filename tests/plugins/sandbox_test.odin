@@ -66,7 +66,8 @@ a_sandboxed_process_reaches_no_file_nor_socket :: proc(t: ^testing.T) {
 	testing.expectf(t, said == "escaped: none", "the sandboxed process: '%s'", said)
 	// (the log is the program's to write: the child's line about its sandbox reaches it)
 	data, err := os.read_entire_file(fmt.tprintf("%s/state/escape.log", root), context.temp_allocator)
-	testing.expectf(t, err == nil && strings.contains(string(data), "isolated: Landlock"), "the log says no sandbox: '%s'", string(data))
+	sandbox := ODIN_OS == .Windows ? "isolated: AppContainer" : "isolated: Landlock"
+	testing.expectf(t, err == nil && strings.contains(string(data), sandbox), "the log says no sandbox: '%s'", string(data))
 }
 
 @(test)
