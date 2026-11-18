@@ -136,10 +136,13 @@ mark_colors :: proc(st: Face_State, t: f32, ring, accent, under, tint: Color) ->
 }
 
 @(private)
-mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+mark_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) { mark_face(dc, b, b.rect, (^Mark_Draw)(user)) }
+
+// A check box's or a radio's mark in `r`, its colours read under `b`'s tags and over what is under `b`: a mark's own box,
+// or a switch's drawn as a check box (Toggle_Form.Check), whose box is wider than its mark.
+@(private = "file")
+mark_face :: proc(dc: ^draw.Context, b: ^Box, r: Rect, d: ^Mark_Draw) {
 	s := gs()
-	d := (^Mark_Draw)(user)
-	r := b.rect
 	w := r.max.x - r.min.x
 	radius := d.radio ? w * 0.5 : rad(w * MARK_BOX_RADIUS_FRACTION)
 	st := face_state(d.row)
@@ -360,13 +363,24 @@ knob_face :: proc(b: ^Box) -> Color {
 }
 
 // A switch: `t` how far it is on, `row` its row (the target; its states read when drawn, as a check box's mark).
-Toggle_Draw :: struct { t: f32, row: ^Box, hot, active: f32, track, accent: Color }
+// `mark`: the check box it is drawn as (Toggle_Form.Check), nil for the standard track.
+Toggle_Draw :: struct { t: f32, row: ^Box, hot, active: f32, track, accent: Color, mark: ^Mark_Draw }
 
 @(private)
 toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Toggle_Draw)(user)
 	st := face_state(d.row)
 	d.hot, d.active = st.hot, st.pressing
+	if d.mark != nil {
+		// (a square of the switch's height, on whole pixels so a relief's one-pixel rings stay crisp, centred in the
+		// switch's box: the box, its row and its hit area are the switch's in every form)
+		h := math.round(b.rect.max.y - b.rect.min.y)
+		c := draw.rect_center(b.rect)
+		at := Vec2{math.round(c.x - h * 0.5), math.round(c.y - h * 0.5)}
+		d.mark.t = d.t
+		mark_face(dc, b, {at, at + Vec2{h, h}}, d.mark)
+		return
+	}
 	r := b.rect
 	h := r.max.y - r.min.y
 	pad := h * TOGGLE_KNOB_PAD_FRACTION
@@ -447,6 +461,17 @@ toggle :: proc(id: string, text: string, value: ^bool, wrap := false) -> (change
 		d.row = row_box
 		d.track = off_track()
 		d.accent = color("accent")
+		if toggle_shown() == .Check {
+			// (the colours a check box's mark takes in mark_row, read here under the same tags)
+			_ = widget_icons()   // (the check is drawn in it: loaded before the draw)
+			m := frame_new(Mark_Draw)
+			m.row, m.accent = row_box, d.accent
+			m.ring = color("text")
+			m.ring.a = MARK_RING_ALPHA
+			m.ring = tuned(m.ring)
+			m.size = em * 0.95
+			d.mark = m
+		}
 		custom("track", toggle_draw, d)
 		if lined { pop_parent() }
 		spacer(px(em * 0.4))
@@ -514,6 +539,26 @@ slider_geom :: proc(r: Rect, em: f32, value_room := true) -> (x0, x1: f32) {
 	return
 }
 
+// Knob_Form.Keys: the key's width and height (ems of the font size) and the well's height (logical pixels).
+@(private = "file") SLIDER_KEY_WIDTH_EM :: 0.6
+@(private = "file") SLIDER_KEY_HEIGHT_EM :: 1.1
+@(private = "file") SLIDER_KEY_TRACK_PX :: 4
+
+// The key of a Keys knob (Knob_Form.Keys) centred at `kx` on the track's line `cy`, `em` the slider's font size: on
+// whole pixels, since a relief's rings are one pixel each and a fraction would blur them.
+slider_key_rect :: proc(kx, cy, em: f32) -> Rect {
+	w, h := math.round(em * SLIDER_KEY_WIDTH_EM), math.round(em * SLIDER_KEY_HEIGHT_EM)
+	at := Vec2{math.round(kx - w * 0.5), math.round(cy - h * 0.5)}
+	return {at, at + Vec2{w, h}}
+}
+
+// The well of a Keys slider from `x0` to `x1` (slider_geom's ends) on the line `cy`, on whole pixels.
+slider_key_track :: proc(x0, x1, cy: f32) -> Rect {
+	h := math.round(SLIDER_KEY_TRACK_PX * scale())
+	y := math.round(cy - h * 0.5)
+	return {{math.round(x0), y}, {math.round(x1), y + h}}
+}
+
 @(private)
 slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Slider_Draw)(user)
@@ -529,6 +574,16 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	kr := em * (SLIDER_KNOB_EM + SLIDER_KNOB_HOT_EM * d.hot + SLIDER_KNOB_ACTIVE_EM * d.active)
 	knobs := [2]f32{math.lerp(x0, x1, d.t0), fx1}
 	sc := scale()
+	if knob_shown() == .Keys {
+		// (a well and keys of the relief; no lit run: the key's place says the value. The key keeps its size and does
+		// not sink, held or not: Windows' thumb did neither, nor does the scroll bar's Keys thumb)
+		machined_well(dc, slider_key_track(x0, x1, cy), 0, color_from_tags(gs(), b.tags_key, "well"))
+		for i in (d.range ? 0 : 1) ..< 2 {
+			machined_bevel(dc, slider_key_rect(knobs[i], cy, em), 0, knob_face(b), 0, 0)
+		}
+		slider_value(dc, d, r, cy, em, sc)
+		return
+	}
 	if machined() {   // a slot carved in the surface, its run lit with the accent; the knobs raised keys on it
 		mth := math.round(th * SLIDER_MACHINED_TRACK)
 		slot := Rect{{x0, math.round(cy - mth * 0.5)}, {x1, math.round(cy - mth * 0.5) + mth}}

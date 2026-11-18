@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.319.0] - 2026-11-18 18:20
+
+### Added
+- **A theme's knob and switch (`Theme_Look.knob`, `Theme_Look.toggle`)**: a theme gives the form of a slider's knob and of a switch. `Knob_Form.Keys` draws a slider's knob, and a range slider's two, as a key of the relief, taller than wide, on a well of the relief with no lit run (`ui.slider_key_rect`, `ui.slider_key_track` place them); `Toggle_Form.Check` draws a switch as the theme's check box, centred in the switch's box, its hit area and layout unchanged. Old Head takes both: a trackbar's thumb and a check box. A theme that says nothing keeps the round knob and the rounded track.
+
 ## [0.318.2] - 2026-11-18 17:45
 
 ### Added
@@ -4512,6 +4517,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.319.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.319.0
 [0.318.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.2
 [0.318.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.1
 [0.318.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.0

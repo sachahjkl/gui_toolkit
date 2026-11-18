@@ -2,7 +2,7 @@ package ui
 
 // What a theme says of its look beside its colours (src/md/features/theme-design.md): the radius of each role, the
 // selection of each role and the text on it, the focus style, whether it moves, its font, its relief, its scroll bar's
-// form, its caption. Each part's zero value is the
+// form, its caption, its slider's knob and its switch. Each part's zero value is the
 // toolkit's look from before themes carried one, so a theme, a program's palette and a test's palette say only what
 // differs, and every theme that says nothing looks as it did.
 
@@ -80,6 +80,18 @@ Theme_Caption :: struct {
 	buttons: Caption_Buttons,
 }
 
+// How a slider's knob (slider, range_slider) is drawn.
+Knob_Form :: enum u8 {
+	Standard,   // a round knob on a track, the part before it lit with the accent
+	Keys,       // a rectangular key of the relief, taller than wide, on a well of the relief with no lit part
+}
+
+// How a switch (toggle) is drawn; its box, its row and its hit area are the same in each form.
+Toggle_Form :: enum u8 {
+	Standard,   // a rounded track with a sliding knob
+	Check,      // the theme's check box (checkbox's own drawing), centred in the switch's box
+}
+
 Theme_Look :: struct {
 	shape:      Maybe(Theme_Shape),                 // nil: SHAPE_DEFAULT
 	selections: [Selection_Role]Theme_Selection,
@@ -89,6 +101,8 @@ Theme_Look :: struct {
 	relief:     Maybe(Relief),                      // nil: the program's finish's preset (relief_of); set: it wins
 	scroll_bar: Theme_Scroll_Bar,
 	caption:    Theme_Caption,
+	knob:       Knob_Form,
+	toggle:     Toggle_Form,                        // (not `switch`: an Odin keyword)
 }
 
 // The scroll bar and the caption of the theme shown; their zero values (the toolkit's) with no theme.
@@ -96,6 +110,19 @@ Theme_Look :: struct {
 scroll_bar_shown :: proc() -> Theme_Scroll_Bar {
 	if s := current; s != nil && s.theme != nil { return s.theme.look.scroll_bar }
 	return {}
+}
+
+// The knob's and the switch's forms of the theme shown; Standard with no theme.
+@(private)
+knob_shown :: proc() -> Knob_Form {
+	if s := current; s != nil && s.theme != nil { return s.theme.look.knob }
+	return .Standard
+}
+
+@(private)
+toggle_shown :: proc() -> Toggle_Form {
+	if s := current; s != nil && s.theme != nil { return s.theme.look.toggle }
+	return .Standard
 }
 
 @(private)

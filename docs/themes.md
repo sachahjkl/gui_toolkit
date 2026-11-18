@@ -58,6 +58,8 @@ its focus, its motion, its font. `{}` is the toolkit's look; each part says only
 | `relief: Maybe(Relief)` | the program's finish's preset | how surfaces are raised and sunk ("Reliefs" below); it wins over the finish |
 | `scroll_bar: Theme_Scroll_Bar` | the standard bar | the bar's `form` and a `Keys` bar's `track` |
 | `caption: Theme_Caption` | the program's title bar, the system's buttons | a band (`active`, `inactive`), its `ink`, `bold`, the `buttons`' style |
+| `knob: Knob_Form` | the round knob | `Keys`: a slider's knob a key of the relief |
+| `toggle: Toggle_Form` | the rounded track | `Check`: a switch drawn as the theme's check box |
 
 The person's choices win over the theme's: the rounding setting scales its radii, the person's font family wins over
 its family, the person's `Animations.On` keeps the motion a still theme removes.
@@ -145,6 +147,18 @@ from these:
 | `caption_band(dc, r, active) -> bool` | draws the band of the theme shown over `r`; false: the theme gives none, nothing drawn |
 | `caption_band_ink() -> Maybe(Color)` | the text on the band; nil: no band, or the text as it is |
 | `caption_band_bold() -> bool` | whether the text on the band is bold |
+
+### A theme's knob and switch
+
+`Knob_Form.Keys` draws a slider's knob, and both knobs of a range slider, as a key of the relief (`machined_bevel`,
+square): 0.6 em wide and 1.1 em tall, at rest whatever the pointer does. The track is a well of the relief 4 logical
+pixels tall, with no lit run before the knob. `slider_key_rect(kx, cy, em)` is the key centred at `kx` on the track's
+line `cy`; `slider_key_track(x0, x1, cy)` is the well from `x0` to `x1`. Both are on whole pixels. The value's text,
+the hit area and the keys stay the slider's.
+
+`Toggle_Form.Check` draws a switch as the theme's check box (the drawing of `checkbox`'s mark): a square of the
+switch's height, centred in the switch's box. The switch keeps its box, its row, its hit area and its role for a screen
+reader.
 
 | Procedure | What it does |
 |---|---|
@@ -256,7 +270,8 @@ or a slider's knob is the theme's `button background`.
 its shadow along the bottom and right, turned over when pressed or sunken), square, no halo, no hover light, no shadow.
 The theme `Old Head` is made of it: one grey `#c0c0c0`, white fields, navy, square corners, a dotted focus, white on
 navy for every selection, still, scroll bars of keys, a caption band from navy to blue (grey behind) with white bold
-text and square keys. Its relief wins over the program's finish.
+text and square keys, a slider's knob of keys and a switch drawn as a check box. Its relief wins over the program's
+finish.
 
 ### Corners in corners
 
