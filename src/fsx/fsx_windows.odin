@@ -33,8 +33,21 @@ write_parts :: proc(path: string, parts: [][]byte, flush: bool, private := false
 replace :: proc(from, to: string, durable: bool) -> bool {
 	flags: win.DWORD = win.MOVEFILE_REPLACE_EXISTING
 	if durable { flags |= win.MOVEFILE_WRITE_THROUGH }
-	return bool(win.MoveFileExW(wide(from), wide(to), flags))
+	wfrom, wto := wide(from), wide(to)
+	// (a reader that opened the file without sharing its deletion, an antivirus or the indexer, makes the move fail for
+	// as long as it holds it: a few tries, a few milliseconds apart, before the write is said to fail)
+	for try in 0 ..< REPLACE_TRIES {
+		if win.MoveFileExW(wfrom, wto, flags) { return true }
+		e := win.GetLastError()
+		if e != win.ERROR_SHARING_VIOLATION && e != win.ERROR_ACCESS_DENIED || try == REPLACE_TRIES - 1 { break }
+		win.Sleep(win.DWORD(REPLACE_WAIT_MS * (try + 1)))
+	}
+	return false
 }
+
+// How many times replace tries a file another holds, and the first wait between two tries (each wait longer).
+@(private = "file") REPLACE_TRIES :: 6
+@(private = "file") REPLACE_WAIT_MS :: 5
 
 delete_file :: proc(path: string, loc := #caller_location) -> bool {
 	base.blocking("fsx.delete_file", loc)

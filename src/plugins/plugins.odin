@@ -107,6 +107,7 @@ Host :: struct {
 	// two writes on two chores could end in either order, the older content last)
 	toml_writing: bool,
 	toml_again:   bool,
+	toml_failures: int,   // the writes that failed one after another (TOML_RETRIES)
 	window_announcer: ui.Announcer,   // Host_Options.announcer nil: the window's toasts
 	// what a test reads: the toasts said (count), and the last one's words (owned)
 	toasts:      int,

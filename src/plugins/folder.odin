@@ -339,13 +339,18 @@ toml_write :: proc(h: ^Host) {
 Toml_Write :: struct {
 	path, text: string,
 	link:       ^Host_Link,   // (counted) the host, when the write is done: its next write, if one was asked
+	written:    bool,         // the chore's: the file holds the text
 }
+
+// The writes of plugins.toml tried again after one failed (another program held the file), before giving up until the
+// next change.
+@(private) TOML_RETRIES :: 5
 
 @(private)
 toml_work :: proc(data: rawptr) {
 	w := (^Toml_Write)(data)
 	if dir := dir_of(w.path); dir != "" { fsx.make_dirs(dir) }
-	_ = fsx.write_atomic(w.path, transmute([]u8)w.text)
+	w.written = fsx.write_atomic(w.path, transmute([]u8)w.text)
 }
 
 // The write done, on the interface's thread: the one asked meanwhile goes now.
@@ -354,6 +359,13 @@ toml_done :: proc(data: rawptr, word: u64) {
 	w := (^Toml_Write)(data)
 	if h := w.link.host; h != nil {
 		h.toml_writing = false
+		// (a write that failed is made again, of the state now, a few times)
+		if w.written {
+			h.toml_failures = 0
+		} else if h.toml_failures < TOML_RETRIES {
+			h.toml_failures += 1
+			h.toml_again = true
+		}
 		if h.toml_again {
 			h.toml_again = false
 			toml_write(h)
