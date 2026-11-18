@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.318.0] - 2026-11-18 15:52
+
+### Added
+- **A theme's title bar** (`Theme_Look.caption`): a theme gives the caption band of the title bar a program draws (`title_bar`): one colour or two stops from left to right, for the active window and for a window behind. It also gives the text on the band, bold or not, and the caption buttons' style: the system's, or square keys of its relief. Old Head's caption runs from navy to blue (grey behind), with white bold text and square keys; a dialog's title strip takes the band too. Every other theme keeps the program's title bar and the system's buttons.
+- **A theme's scroll bar** (`Theme_Look.scroll_bar`): a theme gives the bar's form, not only its colours. `Keys` draws a flat light trough, and arrow buttons and a thumb that are keys of the theme's relief. Old Head's bars are keys of its two-tone bevel. Every other theme keeps the standard bar.
+
+### Changed
+- **A relief of rings in every widget**: under a theme's relief of rings (Old Head), a lamp and a radio's dot are flat discs of their colour, a pip is a round well, a tile and a stacked bar's part have the raised rings, a caption's face is the theme's band, a switch's and a slider's knob take the theme's raised face, and a selected node has no halo. They no longer show the machined finish's beads, lines and metal. The finishes look as before.
+
 ## [0.317.0] - 2026-11-18 15:27
 
 ### Added
@@ -4490,6 +4499,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.318.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.0
 [0.317.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.317.0
 [0.316.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.316.1
 [0.316.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.316.0
