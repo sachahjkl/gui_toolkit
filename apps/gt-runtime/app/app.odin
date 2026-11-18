@@ -172,13 +172,14 @@ Options :: struct {
 	headless: bool,
 	gpu:      bool,     // headless on the graphics card (a film's), not the software renderer
 	dirs:     string,   // "": the user's folders; else <dirs>/config, <dirs>/state, <dirs>/data
+	size:     [2]int,   // the window's logical size ({}: WINDOW_SIZE)
 }
 
 // The application, up to its first frame. nil: it cannot start, and has said why.
 open :: proc(o: Options) -> ^App {
 	app := new(App)
 	app.path = strings.clone(o.path)
-	if !host.host_open(&app.main, &app.shared, {title = "gt-runtime", size = WINDOW_SIZE, headless = o.headless, headless_gpu = o.gpu}, build, app) {
+	if !host.host_open(&app.main, &app.shared, {title = "gt-runtime", size = o.size != {} ? o.size : WINDOW_SIZE, headless = o.headless, headless_gpu = o.gpu}, build, app) {
 		free(app)
 		return nil
 	}

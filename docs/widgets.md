@@ -49,6 +49,9 @@ a square one.
   than that (a share of a narrow row, a dialog, a column), its words wrap onto more lines, its padding kept, and it grows
   taller. Its lines break only between words: a word wider than the room makes the button wider, never split. A height that is a share of the parent's (`pct`) stays that. `button_width(text, glyph)` is the width a button
   takes on one line in the style in use: what a column of buttons measures to be as wide as its longest.
+- **`size`** (`Button_Size`: Medium, Small, Large): all its measures together, its line, its room, its words and its
+  glyph, because each is of the font size: a size is a font size for the button alone (`button_size_scale`: 0.85 and
+  1.2). Small for an act in each row of a list, often with the Ghost face; Large for the one act of a page.
 - **`left`**: what is in a row wider than it at its left, whatever the style's `text_align`.
 - **`quiet`**: a secondary act, smaller; a Neutral one's words weak until the pointer is over it.
 - **`disabled`**: shown faded, takes no press and no focus.

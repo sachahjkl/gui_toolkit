@@ -312,7 +312,9 @@ replay :: proc(r: ^View_Record, nodes: []plugin_api.List_Node, i: ^int, in_row: 
 	case .Button:
 		b := plugin_api.node_props(n, plugin_api.Button_Node)
 		intents := [plugin_api.Button_Intent]ui.Intent{.neutral = .Neutral, .primary = .Primary, .success = .Success, .warning = .Warning, .danger = .Danger}
-		if ui.button(id, b.label, o = {intent = intents[b.intent], disabled = b.disabled}).clicked {
+		looks := [plugin_api.Button_Look]ui.Button_Face{.raised = .Raised, .ghost = .Ghost, .link = .Link}
+		sizes := [plugin_api.Button_Size]ui.Button_Size{.medium = .Medium, .small = .Small, .large = .Large}
+		if ui.button(id, b.label, o = {intent = intents[b.intent], face = looks[b.look], size = sizes[b.size], disabled = b.disabled}).clicked {
 			view_send(r, n.key, .onClick)
 		}
 	case .Row, .Column:

@@ -29,6 +29,7 @@ export function activate() {
 			{ kind: "button", key: "add", label: "Add", intent: "primary", onClick: () => { count += 1; } },
 			{ kind: "button", key: "hang", label: "Hang", onClick: () => { for (;;) {} } },
 			{ kind: "check", key: "agree", label: "Checked in a row", checked: false, onChange: () => {} },
+			{ kind: "button", key: "quiet", label: "Open", look: "ghost", size: "small", onClick: () => { count += 10; } },
 		] },
 		{ kind: "field", key: "name", value: name, placeholder: "Your name", onChange: (v) => {
 			const t = Date.now(); while (Date.now() - t < SLOW_MS) {}
@@ -62,8 +63,13 @@ a_view_is_built_and_a_click_renders_it_again :: proc(t: ^testing.T) {
 	if label := session.find_text(s, "Checked in a row"); testing.expect(t, label != nil, "the check box's label is not built") {
 		testing.expectf(t, label.rect.max.x - label.rect.min.x > 40, "the check box's label is %v wide", label.rect.max.x - label.rect.min.x)
 	}
+	// a ghost, small button: lower than a medium one, and clicked as any
+	quiet, add := session.get(s, "pv:quiet"), session.get(s, "pv:add")
+	testing.expectf(t, quiet.rect.max.y - quiet.rect.min.y < add.rect.max.y - add.rect.min.y, "the small button is %v high, the medium %v", quiet.rect.max.y - quiet.rect.min.y, add.rect.max.y - add.rect.min.y)
+	session.click(s, "pv:quiet")
+	session.wait_text(s, "Count: 10", WAIT)
 	session.click(s, "pv:add")
-	session.wait_text(s, "Count: 1", WAIT)
+	session.wait_text(s, "Count: 11", WAIT)
 	session.wait_text(s, "More than none", WAIT)
 
 	// a key given twice: the second node is dropped, and the plugin's log says so

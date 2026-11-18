@@ -30,7 +30,7 @@ FILMS := [?]Film{
 	{"dialogs", "A view in a dialog, a confirmation, a prompt: they fade in and answer", dialogs_film},
 	{"values", "A setting's value kind, and the control it gets", values_film},
 	{"settings", "The settings page every program has: its pages, its search, a change at once", settings_film},
-	{"runtime", "gt-runtime runs a plugin in JavaScript as an application: a todo list, its view the toolkit's widgets", nil},
+	{"runtime", "A plugin written, then run by gt-runtime: a log explorer of 250 000 lines in a lazy list", nil},
 }
 
 // The film's size, and the windows' logical size: the showcase at 125 % stands on the stage (1600 x 900 on 1920 x 1080),

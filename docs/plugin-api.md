@@ -197,6 +197,8 @@ Level 2.
 |---|---|---|
 | `label` | `string` |  |
 | `intent` | `Button_Intent`, optional |  |
+| `look` | `Button_Look`, optional | How it sits and its size. A program older than these fields shows a raised, medium button. |
+| `size` | `Button_Size`, optional |  |
 | `disabled` | `boolean`, optional |  |
 | `onClick` | `() => void | Promise<void>`, optional | Called when it is pressed. |
 
@@ -336,6 +338,18 @@ What the entry file's activate(context) is given (gt:plugins makes it: plugins/r
 What a button's colour says.
 
 One of `"neutral"`, `"primary"`, `"success"`, `"warning"`, `"danger"`.
+
+### `Button_Look`
+
+How a button sits: `raised` has a face of its own; `ghost` none until the pointer is over it (an act repeated in each row of a list); `link` reads as a link.
+
+One of `"raised"`, `"ghost"`, `"link"`.
+
+### `Button_Size`
+
+A button's size, all its measures together; `small` for an act in each row of a list, `large` for the one act of a view.
+
+One of `"medium"`, `"small"`, `"large"`.
 
 ### `Space_Size`
 

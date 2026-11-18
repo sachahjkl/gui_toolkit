@@ -58,6 +58,29 @@ the_colour_pickers_take_a_press :: proc(t: ^testing.T) { unwatched.run(t, proc(t
 }) }
 
 // A toast comes, in its place, says what it was given, and goes by the clock.
+// A button's size scales all its measures: small is lower and narrower than medium, large higher and wider, and a
+// small button is still clicked.
+@(test)
+a_buttons_size_scales_it :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Run :: struct { clicked: int }
+	r: Run
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		if ui.row(id = "###sizes") {
+			if ui.button("small", "Open", o = {size = .Small, face = .Ghost}).clicked { r.clicked += 1 }
+			_ = ui.button("medium", "Open")
+			_ = ui.button("large", "Open", o = {size = .Large})
+		}
+	}})
+	small, medium, large := session.get(s, "small"), session.get(s, "medium"), session.get(s, "large")
+	h :: proc(b: ^ui.Box) -> f32 { return b.rect.max.y - b.rect.min.y }
+	w :: proc(b: ^ui.Box) -> f32 { return b.rect.max.x - b.rect.min.x }
+	testing.expectf(t, h(small) < h(medium) && h(medium) < h(large), "heights %v %v %v", h(small), h(medium), h(large))
+	testing.expectf(t, w(small) < w(medium) && w(medium) < w(large), "widths %v %v %v", w(small), w(medium), w(large))
+	session.click(s, "small")
+	testing.expect_value(t, r.clicked, 1)
+})}
+
 @(test)
 a_toast_goes_by_the_clock :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	Run :: struct { say, clear: bool }

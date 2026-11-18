@@ -1,0 +1,13 @@
+{
+	"id": "logs",
+	"name": "Log explorer",
+	"version": "1.0.0",
+	"api": 5,
+	"main": "main.js",
+	"commands": [
+		{ "id": "errors", "label": "Show only the errors", "group": "Logs", "tags": ["filter", "level"] },
+		{ "id": "everything", "label": "Show every line", "group": "Logs", "tags": ["filter", "clear", "reset"] },
+		{ "id": "newest", "label": "Open the newest error", "group": "Logs", "tags": ["last", "latest"] }
+	],
+	"views": [{ "id": "main", "title": "Log explorer", "place": "internal" }]
+}
