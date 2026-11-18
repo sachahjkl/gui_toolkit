@@ -170,6 +170,9 @@ Box :: struct {
 	// colors: targets from the theme, and the animated values actually drawn
 	target_bg, target_border, target_text: Color,
 	bg, border, text_color:                Color,
+	// the text colour this box gives what is built in it, down to a box with a face of its own: a selected row's ink
+	// (Theme_Selection.ink; alpha 0: none; set each build)
+	ink:                                   Color,
 
 	// layout results
 	size:        Vec2,           // computed size
@@ -298,7 +301,8 @@ Theme :: struct {
 	transition_ms: f32,   // 0: states change at once (default)
 	press_squish:  f32,   // 0: none (default); 0.04 is the old press "squish"
 	glow:          f32,   // the halos of the machined finish (a focused well, a lamp, a hot accent button), 0..1; 0: none
-	serial:        u64,   // bumped when the look changes: a colour, the finish, the glow (theme_add, theme_set, apply_palette, theme_show)
+	look:          Theme_Look,   // the palette's (apply_palette): radii, selections, focus, motion, font (theme_look.odin)
+	serial:        u64,   // bumped when the look changes: a colour, the finish, the glow, the look (theme_add, theme_set, apply_palette, theme_show)
 }
 
 Timer :: struct {
@@ -376,6 +380,7 @@ State :: struct {
 	text_own:    Text_Faces,
 	text_source: Font_Source,
 	text_chosen: [Text_Face]Family_Face,
+	text_themed: Family_Face,           // the interface's family the theme names (Theme_Font.family), under the person's
 	text_serial: u64,
 	timers:      map[Key]Timer,
 	drag_payload: Drag_Payload,         // data stored at press time for the active drag (see drag_store / drag_load)

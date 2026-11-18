@@ -76,7 +76,7 @@ card_open :: proc(id: string, pad_y: f32, name := "", o := Card_Options{}) {
 	set_next_axis(.Y)
 	gs().next_mod.width = fill()
 	gs().next_mod.height = children_sum()
-	gs().next_mod.radius = o.radius > 0 ? o.radius * scale() : em * 0.6
+	gs().next_mod.radius = o.radius > 0 ? o.radius * scale() : em * shape_of(.Card)
 	c := build_box({.Draw_Background, .Draw_Border, .Plate}, id)
 	if o.look != {} { c.plate = new_clone(o.look, frame_allocator()) }
 	a11y_default(c, {role = .Group, name = name})

@@ -253,6 +253,8 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	animate := p.animations
 	switch s.animations {
 	case .System:
+		// (a still theme removes motion as the system's "less motion" does; the person's On keeps it)
+		if s.theme != nil && s.theme.look.still { animate = false }
 	case .On:     animate = true
 	case .Off:    animate = false
 	}
@@ -322,7 +324,10 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	if o := style_root(s); o != s && o.base_style.font_size > 0 { base = o.base_style }
 	// (the family chosen for the interface once its face is loaded, else the program's own when it gave one
 	// (set_text_faces): s.base_style keeps what the build was given)
+	text_theme_follow(s)
 	if f := state_text_face(s, .Interface); f != 0 { base.font = f }
+	// (the theme's factor scales the program's size, the person's text size: they still set it. 0 or 1: the old path)
+	if k := s.theme != nil ? s.theme.look.font.size : 0; k > 0 && k != 1 { base.font_size *= k }
 	base.font_size = math.round(base.font_size * s.scale)
 	base.text_pad = math.round(base.text_pad * s.scale)
 	base.radius = math.round(base.radius * s.scale)
@@ -331,6 +336,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	key := key_from_string(0, "root")
 	root := touch_box(s, key)
 	root.flags = {}
+	root.ink = {}   // (what is built at the root takes no ink: build_box)
 	root.pref = {.X = px(p.window_size.x), .Y = px(p.window_size.y)}
 	root.layout_axis = .Y
 	root.text = ""
@@ -674,6 +680,16 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 		if c, ok := mod.bg.?; ok { b.target_bg = c }
 		if c, ok := mod.border.?; ok { b.target_border = c }
 		if c, ok := mod.fg.?; ok { b.target_text = c }
+	}
+	// a selected row's ink (Theme_Selection.ink): the text of what is built in it, down to a box with a face of its own,
+	// after `next`'s colours (its background says whether it has one, its `fg` wins). (Not the row's "selected" tag kept
+	// over its children: the selected entries, its border and its sheen, would reach them too: theme-design.md, layer 2)
+	b.ink = {}
+	if .Chosen in b.flags {
+		b.ink = color("ink")
+	} else if parent.ink.a > 0 && !(.Draw_Background in b.flags && b.target_bg.a >= 0.5) {
+		b.ink = parent.ink
+		if !has_mod || mod.fg == nil { b.target_text = parent.ink }
 	}
 	if .Disabled in b.flags {
 		// neutral look: an accent or danger fill would keep its colour while its text faded away

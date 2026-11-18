@@ -28,9 +28,9 @@ for decides how it is laid out:
 Every control has one height: `ui.CONTROL_HEIGHT_EM` (2 em) of the font size, `ui.control_height()` in pixels with the
 density. A button, a field, a list to choose from (`dropdown`, the font picker), a number, a segmented control in a form
 row, a tool bar's item: two controls one beside or under the other line up. A row taller than its control (a form's
-row, a settings line) keeps room between two controls. Every control with a face and an edge has the corners of
-`CONTROL_RADIUS_EM`, scaled by the rounding setting (`appearance.rounding`); the showcase's test checks every page for
-a square one.
+row, a settings line) keeps room between two controls. Every control with a face and an edge has the theme's corners
+of a control (`ui.shape_of(.Control)`, 0.45 em unless the theme says another: [themes.md](themes.md), "A theme's
+shape"), scaled by the rounding setting (`appearance.rounding`); the showcase's test checks every page for a square one.
 
 `Button_Options`:
 
@@ -114,8 +114,8 @@ pointer. A press shows at once and eases out on release; a hover eases in and ou
 - A selected row is the theme's `selected` tint as its face; under the pointer it lifts. A list's selection is
   `weak_selected` when the list does not have the keyboard or the window is not the user's (`inactive`).
 - A row (`.Row`: a row of a list, a table, a menu, the palette, a file browser's places, a sidebar) draws its face
-  inset in it, `ROW_FACE_INSET_EM` from its sides and `ROW_FACE_GAP_PX` from its top and bottom, rounded as a button
-  (the box's radius, `CONTROL_RADIUS_EM` by default, scaled by the rounding setting; at most half the face's height),
+  inset in it, `ROW_FACE_INSET_EM` from its sides and `ROW_FACE_GAP_PX` from its top and bottom, rounded as a row
+  (the box's radius, the theme's `shape_of(.Row)` by default, scaled by the rounding setting; at most half the face's height),
   in the finish: a plain fill (flat), a soft gradient and a faint lit line (gradient), a calm gloss with a fine edge of
   the accent (glass), a low plate (machined, edged). The content does not move. Selected rows that touch (`.Chosen`)
   are one rounded block. A navigation's selected row (tag `nav`: a sidebar's page, a place, the palette's row) has a

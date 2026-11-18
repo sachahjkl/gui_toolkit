@@ -126,8 +126,6 @@ Scrollbar_Look :: struct {
 @(private = "file") SCROLLBAR_GRIP_LINES :: 4
 @(private = "file") SCROLLBAR_GRIP_THUMB_PX :: 20   // a thumb shorter than this has no grip
 @(private = "file") SCROLLBAR_THUMB_LEAST :: 0.08   // of the track
-@(private = "file") SCROLLBAR_THUMB_RADIUS_PX :: 3
-@(private = "file") SCROLLBAR_ARROW_RADIUS_PX :: 2
 @(private = "file") SCROLLBAR_REPEAT_DELAY_MS :: 400
 @(private = "file") SCROLLBAR_REPEAT_INTERVAL_MS :: 60
 // Where the stops of the gradients across the bar are, 0..1: the trough's middle stop, the thumb's two middle ones.
@@ -483,7 +481,7 @@ scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Part
 	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, false) }
 
 	if p.arrows {
-		radius := radius_drawn(s, SCROLLBAR_ARROW_RADIUS_PX * s.scale)
+		radius := radius_drawn(s, shape_of(.Scroll_Arrow) * s.scale)
 		for part in ([2]Scrollbar_Part{.Start, .End}) {
 			r := part == .Start ? p.start : p.end
 			hot := look.hot == part
@@ -506,7 +504,7 @@ scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Part
 
 	// the thumb, over the trough's border: the whole thickness of the bar
 	thumb := p.thumb
-	radius := radius_drawn(s, SCROLLBAR_THUMB_RADIUS_PX * s.scale)
+	radius := radius_drawn(s, shape_of(.Scroll_Thumb) * s.scale)
 	stops := look.held == .Thumb ? c.thumb_held : (look.lit ? c.thumb_lit : c.thumb_rest)
 	scrollbar_fill(dc, thumb, axis, stops[:], thumb_at[:], radius)
 	draw.rect(dc, draw.rect_pad(thumb, -u), tuned(c.thumb_line), max(radius - u, 0), u)

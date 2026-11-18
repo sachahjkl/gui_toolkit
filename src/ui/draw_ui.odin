@@ -204,7 +204,8 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 	// (a row's ring goes round its face, what the user sees of it, not round its box)
 	ring, ring_radii := r, radii
 	if focus_ring && .Row in flags { ring, ring_radii, _, _, _ = row_face_of(s, b) }
-	if focus_ring && s.theme != nil && s.theme.finish != .Flat {
+	focus_look := s.theme != nil ? s.theme.look.focus : Theme_Focus{}
+	if focus_ring && s.theme != nil && s.theme.finish != .Flat && focus_look.style == .Ring_Glow {
 		// glow around the focused widget, under its background
 		c := color_from_tags(s, b.tags_key, "focus border")
 		c.a *= (keyboard_focus ? 1 : b.focus_t) * FOCUS_GLOW_ALPHA
@@ -264,9 +265,18 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 		draw.rect(dc, {{r.min.x, 0}, {r.max.x, 1}}, color_from_tags(s, b.tags_key, "border"))
 	}
 	if focus_ring {
-		c := color_from_tags(s, b.tags_key, "focus border")
+		c := focus_look.color != 0 ? draw.hex(focus_look.color) : color_from_tags(s, b.tags_key, "focus border")
 		if !keyboard_focus { c.a *= b.focus_t }
-		draw.rect_corners(dc, ring, colors4(c), ring_radii, FOCUS_RING_PX * scale)
+		if focus_look.style == .Dotted {
+			// (inside a box; a row's on its face, which is what the user sees of it. On a selected row the dots take its
+			// ink: what reads on the selection, as Windows' dots in XOR did)
+			if b.ink.a > 0 { c = Color{b.ink.r, b.ink.g, b.ink.b, c.a} }
+			p := max(1, math.round((focus_look.width > 0 ? focus_look.width : 1) * scale))
+			inset: f32 = .Row in flags ? 0 : math.round(focus_look.inset * scale)
+			focus_dots(dc, draw.rect_pad(ring, -inset), p, c)
+		} else {
+			draw.rect_corners(dc, ring, colors4(c), ring_radii, (focus_look.width > 0 ? focus_look.width : FOCUS_RING_PX) * scale)
+		}
 	}
 	if s.act_light.key != 0 && s.act_light.key == b.key { act_light_draw(s, dc, b, radii) }
 	if squished { draw.pop_xform(dc) }
@@ -292,10 +302,11 @@ box_radii :: proc(radius: f32, square: Corners) -> (radii: [4]f32) {
 
 // Radii of a shape grown by `d` around it (shrunk when negative): a round corner follows, a square one stays square.
 // The halo of a focused box as the theme draws it around a field (focus 0..1, `c` its "focus border" colour): a box
-// drawn by a program that sits on a field's edge (a part of it of its own colour) glows as the field does.
+// drawn by a program that sits on a field's edge (a part of it of its own colour) glows as the field does. None when
+// the theme's focus style has no glow (Theme_Focus).
 focus_glow :: proc(dc: ^draw.Context, r: Rect, radii: [4]f32, c: Color, focus: f32) {
 	s := gs()
-	if s.theme == nil || focus <= DRAW_INVISIBLE_EPS { return }
+	if s.theme == nil || focus <= DRAW_INVISIBLE_EPS || s.theme.look.focus.style != .Ring_Glow { return }
 	if machined() { machined_focus_glow(dc, r, radii, c, focus); return }
 	if s.theme.finish == .Flat { return }
 	k := c

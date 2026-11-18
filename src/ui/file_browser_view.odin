@@ -346,7 +346,7 @@ file_place_row :: proc(fb: ^File_Browser, p: platform.File_Place, marked: string
 	defer pop_tags()
 	if on { push_tags("selected") }
 	defer if on { pop_tags() }
-	next({width = fill(), height = px(dense(em * 1.9)), axis = .X, cross = .Center, radius = em * CONTROL_RADIUS_EM})
+	next({width = fill(), height = px(dense(em * 1.9)), axis = .X, cross = .Center, radius = em * shape_of(.Row)})
 	flags := Box_Flags{.Clickable, .Focusable, .Draw_Hot_Effects, .Row}
 	if on { flags += {.Draw_Background, .Chosen} }
 	b := build_box(flags, fmt.tprintf("###fb_place_%d", n))

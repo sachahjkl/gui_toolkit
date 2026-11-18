@@ -23,7 +23,6 @@ Find_Options :: struct {
 
 @(private = "file") FIND_BAR_EM :: 24          // the bar's width with no scopes
 @(private = "file") FIND_BAR_HEIGHT_EM :: 2.2
-@(private = "file") FIND_BAR_RADIUS_EM :: 0.45
 @(private = "file") FIND_BAR_SHADOW_PX :: 8
 @(private = "file") FIND_BAR_BUTTON_EM :: 1.7
 
@@ -109,7 +108,7 @@ find_bar :: proc(view: ^Box, o := Find_Options{}) -> (res: Find_Result) {
 	w := max(min(math.round(em * FIND_BAR_EM) + seg_w, right - left - 2 * gap), 0)
 	x := right - gap - w
 	y := view.rect.min.y + edge + gap
-	radius := math.round(em * FIND_BAR_RADIUS_EM)
+	radius := math.round(em * shape_of(.Control))
 	bh := math.round(em * FIND_BAR_BUTTON_EM)
 	focusables := make([dynamic]Key, context.temp_allocator)
 

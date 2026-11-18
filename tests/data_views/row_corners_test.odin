@@ -12,7 +12,7 @@ import "gt:ui"
 @(private = "file")
 Rows :: struct { list: ui.List_State, menu_open: bool, table: ui.Table }
 
-// A button's corners, of the font size (widgets.odin's CONTROL_RADIUS_EM): a row's face takes the same.
+// A row's corners, of the font size (the theme's shape: a theme without one has ui.SHAPE_DEFAULT, a button's corners).
 @(private = "file") CONTROL_RADIUS_EM :: 0.45
 
 @(test)

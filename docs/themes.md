@@ -16,7 +16,7 @@ translucent entries (hover, selection) get the alpha that looks right in that sp
 Call `theme_show` once per frame. It applies again when one of these changes:
 
 - the choice: the name, the mode, the finish, the glow;
-- the definition of the theme shown: its colours, its versions, its own finish (a themes file read again with the same names);
+- the definition of the theme shown: its colours, its versions, its own finish, its look (a themes file read again with the same names);
 - the blend space;
 - in the `System` mode, `platform.color_scheme_serial`.
 
@@ -41,6 +41,75 @@ text on its accent (`accent_text`; 0 picks the darkest step or the brightest tex
 
 `ui.THEMES` lists the toolkit's themes; the first is the default. A program puts its own first and appends
 `ui.THEMES[:]`, or shows only its own.
+
+`look` (a `ui.Theme_Look`, last in the literal) is the theme's form beside its colours: its corners, its selections,
+its focus, its motion, its font. `{}` is the toolkit's look; each part says only what differs from it. It rides in
+`Palette.look` and in `Theme.look` (`apply_palette` copies it), so a program's palette and a test's carry one too.
+
+## A theme's look
+
+| Part | Its zero value | What a theme gives |
+|---|---|---|
+| `shape: Maybe(Theme_Shape)` | `SHAPE_DEFAULT` | the radius of each `Shape_Role` |
+| `selections: [Selection_Role]Theme_Selection` | the accent's tint, the text kept | each selection's `fill` and `ink` (0xRRGGBBAA) |
+| `focus: Theme_Focus` | a ring and its glow | `style`, `width`, `inset`, `color` |
+| `still: bool` | false | no motion in its look |
+| `font: Theme_Font` | the program's | `family`, `size` (a factor) |
+
+The person's choices win over the theme's: the rounding setting scales its radii, the person's font family wins over
+its family, the person's `Animations.On` keeps the motion a still theme removes.
+
+### A theme's shape
+
+`ui.shape_of(role)` is the radius of a role in the theme shown, before the rounding setting: in ems of the font size
+(a widget multiplies it by its font size), the scroll bar's two roles in logical pixels. The widgets ask it; a program's
+own control of the same kind asks it too.
+
+| `Shape_Role` | `SHAPE_DEFAULT` | Who takes it |
+|---|---|---|
+| `Control` | 0.45 | a button, a field, `input_frame`, a dropdown, a number's field, the search launcher, the hot-key field, the font picker's button, the find bar |
+| `Row` | 0.45 | a row's face: `list_row`, a menu's item, the palette's row, `choice_row`, the file browser's places, the font picker's rows, a button with `face = .Row` |
+| `Card` | 0.6 | `card`, `list_card` (unless `Card_Options.radius`) |
+| `Dialog` | 0.8 | `modal`, a view's internal window |
+| `Menu` | 0.5 | a menu's panel |
+| `Tooltip` | 0.4 | a tooltip |
+| `Scroll_Thumb` | 3 px | the scroll bar's thumb |
+| `Scroll_Arrow` | 2 px | the scroll bar's arrow buttons |
+
+The other radii are their widget's own: a tab, a swatch, a strip's arrow, a node of a graph. A shape that is round by
+its form (`shape_rad`: a radio, a switch, a slider's knob) keeps its radius.
+
+### A theme's selections
+
+| `Selection_Role` | Its fill (default alpha of the accent) | Its ink |
+|---|---|---|
+| `Text` | `selection` (0.35) | `selection text` |
+| `List` | `selected background` (0.22) | `selected ink` |
+| `Menu` | `menu_item selected background` (0.30) | `menu_item selected ink` |
+| `Nav` | `nav selected background` (0.13) | `nav selected ink` |
+| `Weak` | `weak_selected background` (0.09) | `weak_selected ink` |
+
+A `fill` of 0 keeps the accent's tint; an `ink` of 0 keeps the text as it is. A selected row (a box built with
+`.Chosen` under its selection's tags) reads its ink when it is built (`Box.ink`); every box built in it takes the ink
+as its text colour, down to a box that draws an opaque face of its own (a button in the row keeps its text) or gives
+its own `fg`. A program's own selected row gets it by building its box `.Chosen` with the tag `selected` pushed.
+
+### A theme's focus
+
+`Theme_Focus.style`: `Ring_Glow` (a solid ring of `FOCUS_RING_PX` and, in every finish but `Flat`, a glow around it),
+`Ring` (the ring alone; `focus_glow` draws nothing) or `Dotted` (a dotted rectangle, one-pixel dots every two pixels,
+`inset` logical pixels inside the box; a row's on its face; on a selected row in its ink). `width`: the ring's or the
+dots' width in logical pixels (0: `FOCUS_RING_PX`, or 1 for the dots). `color`: 0 is the theme's `focus border`.
+A relief's own focus (the machined well's ring of the accent) is the finish's.
+
+### A still theme, a theme's font
+
+`still`: while the person's `Animations` is `System`, a still theme turns the animations off as the system's "less
+motion" does: states, fades, tweens, a palette's cross-fade, the scroll's easing when it follows the animations.
+
+`font.family` is the interface's family of the theme, loaded on a chore as the person's family is
+([font-picker.md](font-picker.md)); a family the person chose (`use_text_family`) wins over it, even while it loads.
+`font.size` multiplies the program's font size (the person's text size) before the zoom; 0 and 1 leave it.
 
 | Procedure | What it does |
 |---|---|

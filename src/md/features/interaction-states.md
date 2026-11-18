@@ -75,9 +75,10 @@ angle". A row now draws its face as a control does, inside its box (row_face.odi
   the bottom: two rows under the pointer one after the other, or a row under the pointer under a selected one, read as
   two faces. The face is behind the row's content: nothing in the row moves, the box's rect and layout are unchanged.
 - **Rounded as the controls.** Its radius is the box's own, through `box_drawn_radius`, the path of a button's: the row
-  widgets give their box `CONTROL_RADIUS_EM` unless the program's `next` says otherwise. So the rounding setting scales
-  it, rounding 0 and the edged finish make it square, and a program that wants square rows gives the row
-  `radius = 0`. No radius of the rows' own. It is at most half the face's height (a pill, never a blob).
+  widgets give their box the theme's row radius (`shape_of(.Row)`, a control's 0.45 em by default:
+  [theme-design.md](theme-design.md)) unless the program's `next` says otherwise. So the rounding setting scales it,
+  rounding 0 and the edged finish make it square, and a program that wants square rows gives the row `radius = 0`. It
+  is at most half the face's height (a pill, never a blob).
 - **Consecutive selected rows are one block.** A selected row whose neighbour above (or below) is selected and touches
   it is joined to it: no gap there, square corners there. The run is one rounded block, as Finder draws a selection of
   several files; separate pills with a pixel between them read as a striped column. Each row paints the whole run's

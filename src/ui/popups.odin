@@ -63,7 +63,6 @@ import "../platform"
 // Where a tooltip goes: right of and below the pointer (below its arrow); above it, this far, when it does not fit below.
 @(private = "file") TOOLTIP_BELOW_EM :: Vec2{0.8, 1.4}
 TOOLTIP_ABOVE_EM :: 0.5
-@(private = "file") TOOLTIP_RADIUS_EM :: 0.4
 // tooltip_text wraps its lines past this width.
 TOOLTIP_MAX_WIDTH_EM :: 24
 
@@ -625,7 +624,7 @@ menu_level_begin :: proc(depth: int, width: f32) -> bool {
 	s.next_mod.fixed_y = pos.y
 	s.next_mod.width = children_sum()
 	s.next_mod.height = lv.scrolls ? px(s.window_size.y) : children_sum()
-	s.next_mod.radius = em * 0.5
+	s.next_mod.radius = em * shape_of(.Menu)
 	if first { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, shown on the next
 	p := build_box({.Clickable, .Draw_Background, .Draw_Border, .Draw_Shadow, .Clip, .View_Scroll_Y, .View_Clamp_Y, .Allow_Overflow_Y, .Plate}, id)
 	p.cursor = .Arrow
@@ -740,8 +739,8 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checke
 			set_next_axis(.X, .Center)
 			s.next_mod.width = px(width)
 			s.next_mod.height = px(dense(em * s.feel.menu_item_em))
-			// (a row: its face inset in it, a control's corners: row_face.odin)
-			if s.next_mod.radius == nil { s.next_mod.radius = em * CONTROL_RADIUS_EM }
+			// (a row: its face inset in it, a row's corners: row_face.odin)
+			if s.next_mod.radius == nil { s.next_mod.radius = em * shape_of(.Row) }
 			if !highlight { s.next_mod.border = Color{} }   // always bordered (layout space), visible only when selected
 			flags := Box_Flags{.Clickable, .Draw_Hot_Effects, .Draw_Background, .Draw_Border, .Row}
 			if highlight { flags += {.Chosen} }
@@ -1059,7 +1058,7 @@ tooltip_open :: proc(pos: Vec2, em: f32) {
 	s.next_mod.fixed_y = pos.y
 	s.next_mod.width = children_sum()
 	s.next_mod.height = children_sum()
-	s.next_mod.radius = em * TOOLTIP_RADIUS_EM
+	s.next_mod.radius = em * shape_of(.Tooltip)
 	prev := s.boxes[key_from_string(s.root.key, "###tooltip")]
 	if prev == nil || prev.last_build + 1 != s.build_index { s.next_mod.transparency = 1; s.anim_busy = true }   // measured on this frame, placed and shown on the next
 	p := build_box({.Draw_Background, .Draw_Border, .Draw_Shadow, .Plate}, "###tooltip")

@@ -134,7 +134,21 @@ text_font_source :: proc(s: ^State) -> Font_Source {
 state_text_face :: proc(s: ^State, which: Text_Face) -> font.Font_Id {
 	r := style_root(s)
 	if f := r.text_chosen[which].face; f != 0 { return f }
+	// (the theme's family is the interface's alone, and only while the person asked none: the person's word wins, even
+	// while their family loads or is missing)
+	if which == .Interface && r.text_chosen[which].family == "" {
+		if f := r.text_themed.face; f != 0 { return f }
+	}
 	return text_own_face(r, which)
+}
+
+// Asks the interface family of the theme shown (Theme_Font.family; "": none), once per change of it: begin_build calls
+// it. A view's window reads its owner's (style_root), so only the owner asks.
+@(private)
+text_theme_follow :: proc(s: ^State) {
+	if style_root(s) != s { return }
+	family := s.theme != nil ? s.theme.look.font.family : ""
+	family_face_set(s, &s.text_themed, family, s.text_source)
 }
 
 text_face :: proc(which: Text_Face) -> font.Font_Id { return state_text_face(gs(), which) }
@@ -156,7 +170,7 @@ text_family :: proc(s: ^State, which: Text_Face) -> (family: string, loading: bo
 // with them (its own cache of measured text, a face of its own derived from them) makes it again when this moves.
 text_faces_serial :: proc(s: ^State) -> u64 {
 	r := style_root(s)
-	n := r.text_serial
+	n := r.text_serial + r.text_themed.serial
 	for ff in r.text_chosen { n += ff.serial }
 	return n
 }
@@ -182,4 +196,5 @@ text_own_face :: proc(r: ^State, which: Text_Face) -> font.Font_Id {
 @(private)
 text_faces_destroy :: proc(s: ^State) {
 	for &ff in s.text_chosen { family_face_destroy(&ff) }
+	family_face_destroy(&s.text_themed)
 }

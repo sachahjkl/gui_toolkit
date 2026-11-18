@@ -66,7 +66,7 @@ choice_row :: proc(id: string, index: int, sel: ^int, title, detail: string, ico
 	if selected { push_tags("selected") }
 	defer if selected { pop_tags() }
 	h := dense(em * (detail != "" && !beside ? CHOICE_ROW_TWO_EM : CHOICE_ROW_ONE_EM))
-	next({width = fill(), height = px(h), axis = .X, cross = .Center, radius = em * CONTROL_RADIUS_EM})
+	next({width = fill(), height = px(h), axis = .X, cross = .Center, radius = em * shape_of(.Row)})
 	flags := Box_Flags{.Clickable, .Draw_Hot_Effects, .Row}
 	if selected { flags += {.Draw_Background, .Chosen} }
 	rb := build_box(flags, strings.concatenate({"###", id}, frame_allocator()))

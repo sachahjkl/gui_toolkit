@@ -1448,7 +1448,7 @@ palette_row_build :: proc(p: ^Command_Palette, snap: ^Palette_Snapshot, it: Pale
 	defer pop_tags()
 	if sel { push_tags("selected") }
 	defer if sel { pop_tags() }
-	next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = em * CONTROL_RADIUS_EM})
+	next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = em * shape_of(.Row)})
 	flags := Box_Flags{.Clickable, .Draw_Hot_Effects, .Row}
 	if sel { flags += {.Draw_Background, .Chosen} }
 	if it.disabled { flags += {.Disabled} }

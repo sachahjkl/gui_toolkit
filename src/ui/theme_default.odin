@@ -16,6 +16,7 @@ Palette :: struct {
 	// the texts beside text and weak: faint (a hint, a line number; 0: weak FAINT_STEP toward the page) and bright (a
 	// title, what is selected; 0: white on a dark palette, black on a light one)
 	faint, bright: u32,
+	look: Theme_Look,   // the theme's form beside its colours (theme_look.odin); {}: the toolkit's
 }
 
 // How far a palette without its own faint text takes weak toward the page, and soft text weak toward text (sRGB steps).
@@ -38,6 +39,8 @@ entries := [?]Entry{
 	// generic names
 	{"background", .Bg, 1}, {"text", .Text, 1}, {"border", .Border, 1}, {"hover", .Hover, 1},
 	{"drop_shadow", .Black, 0.6}, {"selection", .Accent, 0.35}, {"selection text", .Text, 1}, {"cursor", .Text, 1}, {"focus border", .Accent, 1},
+	// the text a selected row gives what it holds (Box.ink, Theme_Selection.ink): none unless the theme says one
+	{"ink", .Text, 0},
 	// the hues, for what a program colours by meaning (hue())
 	{"hue_accent", .Accent, 1}, {"hue_blue", .Blue, 1}, {"hue_purple", .Purple, 1}, {"hue_green", .Good, 1}, {"hue_yellow", .Warn, 1},
 	{"hue_red", .Bad, 1}, {"hue_cyan", .Cyan, 1}, {"hue_rose", .Rose, 1},
@@ -76,16 +79,16 @@ entries := [?]Entry{
 	// shadowed above on the track) set them a pixel apart to the eye
 	{"button segment sheen", .White, 0},
 	{"menu_item background", .Panel2, 0}, {"menu_item sheen", .White, 0},
-	{"selected background", .Accent, 0.22}, {"selected border", .Accent, 1}, {"selected sheen", .White, 0.6},
+	{"selected background", .Accent, 0.22}, {"selected border", .Accent, 1}, {"selected sheen", .White, 0.6}, {"selected ink", .Text, 0},
 	// the accent's bar at the leading edge of a navigation's selected row (a sidebar's page, a place, the palette's row:
 	// tag "nav"; row_face.odin); a list's or a table's row has none. Its bar says where the user is: its face is a
 	// calmer tint than a list's or a menu's selection, and a weak text on it (the palette's keys) stays readable. (Before
 	// the menu_item's: the palette's row is both, and ties go to the first.)
-	{"nav row_mark", .Accent, 1}, {"row_mark", .Accent, 0}, {"nav selected background", .Accent, 0.13},
+	{"nav row_mark", .Accent, 1}, {"row_mark", .Accent, 0}, {"nav selected background", .Accent, 0.13}, {"nav selected ink", .Text, 0},
 	// the selected row of a menu is a filled, rounded row (a tint of the accent, no outline): the outline of a selected
 	// item belongs to lists and fields, and a ring around a row with a faint fill reads as a focus box, not as a highlight
-	{"menu_item selected background", .Accent, 0.30}, {"menu_item selected border", .Accent, 0},
-	{"weak_selected background", .Accent, 0.09}, {"weak_selected border", .Accent, 0.35},
+	{"menu_item selected background", .Accent, 0.30}, {"menu_item selected border", .Accent, 0}, {"menu_item selected ink", .Text, 0},
+	{"weak_selected background", .Accent, 0.09}, {"weak_selected border", .Accent, 0.35}, {"weak_selected ink", .Text, 0},
 	{"kbd sheen", .White, 0.7},
 	{"remove_button hot text", .Bad, 1},   // "hot": the box is under the pointer (build_box)
 	{"zebra background", .Bg_Solid, 0.45},
@@ -215,9 +218,11 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	}
 	bg := draw.hex(slot_color(p, .Bg_Solid))
 	changed := false
+	own_selection := p.look.selections != {}
 	for e, i in entries {
 		c := slot_rgba(p, e.slot)
 		c.a *= e.alpha
+		if own_selection { if o, ok := selection_entry(p.look, e.tags); ok { c = o } }
 		c.a = draw.alpha_like_linear(space, c, c.a, bg)
 		k := t.palette_at + i
 		if t.patterns[k].color != c { t.patterns[k].color = c; changed = true }
@@ -233,7 +238,32 @@ apply_palette :: proc(t: ^Theme, p: Palette, space := draw.Blend_Space.Linear) {
 	// machined.odin's relief_shade and relief_shine)
 	if t.finish != p.finish { t.finish = p.finish; changed = true }
 	if t.dark != p.dark { t.dark = p.dark; changed = true }
+	if t.look != p.look { t.look = p.look; changed = true }
 	if changed { t.serial += 1 }
+}
+
+// The entries of each selection role: its fill's and its ink's (theme-design.md, layer 2).
+@(private = "file")
+Selection_Entries :: struct { fill, ink: string }
+@(private = "file")
+SELECTION_ENTRIES :: [Selection_Role]Selection_Entries{
+	.Text = {"selection", "selection text"},
+	.List = {"selected background", "selected ink"},
+	.Menu = {"menu_item selected background", "menu_item selected ink"},
+	.Nav  = {"nav selected background", "nav selected ink"},
+	.Weak = {"weak_selected background", "weak_selected ink"},
+}
+
+// The colour a look gives the entry `tags` when it is a selection role's fill or ink it sets; ok false otherwise.
+@(private = "file")
+selection_entry :: proc(look: Theme_Look, tags: string) -> (c: draw.Color, ok: bool) {
+	names := SELECTION_ENTRIES
+	for n, role in names {
+		sel := look.selections[role]
+		if sel.fill != 0 && n.fill == tags { return draw.hex(sel.fill), true }
+		if sel.ink != 0 && n.ink == tags { return draw.hex(sel.ink), true }
+	}
+	return {}, false
 }
 
 // The face of an interaction state ("hover_fill", "press_fill") under the tags of `b`: `under` (the face at rest, or the

@@ -267,8 +267,8 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = children_sum() }
 	m.axis = .X
-	// (its face's corners, inset in it, are a control's: the rounding scales them; `next`'s radius = 0 squares them)
-	if m.radius == nil { m.radius = font_size() * CONTROL_RADIUS_EM }
+	// (its face's corners, inset in it, are a row's (the theme's): the rounding scales them; `next`'s radius = 0 squares them)
+	if m.radius == nil { m.radius = font_size() * shape_of(.Row) }
 	s.next_mod = m
 	s.has_next = true
 	flags := Box_Flags{.Clickable, .Row}

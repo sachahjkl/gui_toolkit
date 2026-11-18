@@ -13,7 +13,7 @@ import "gt:ui"
 @(private = "file")
 row_lock: sync.Mutex
 
-// The font size of these rows, and a button's corner of it (widgets.odin's CONTROL_RADIUS_EM: the rows take the same).
+// The font size of these rows, and a row's corner of it (the theme's shape; ui.SHAPE_DEFAULT: a button's corner).
 @(private = "file") EM :: f32(15)
 @(private = "file") CONTROL_RADIUS :: EM * 0.45
 @(private = "file") ROW_H :: f32(30)

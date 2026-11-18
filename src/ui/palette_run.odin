@@ -302,7 +302,7 @@ palette_run_build :: proc(p: ^Command_Palette, keys: Palette_Run_Keys, row_h, he
 	run := &p.run
 	em := font_size()
 	icons := run.icon != "" && gs().icon_font != 0
-	next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = em * CONTROL_RADIUS_EM})
+	next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = em * shape_of(.Row)})
 	if row(.Center, {.Draw_Background}, "###palette_run_row") {
 		spacer(px(em * 0.7))
 		if icons {
@@ -400,7 +400,7 @@ palette_sublist :: proc(id: string, st: ^Palette_Sublist, count: int, step: int,
 			sel := i == st.sel
 			push_tags("menu_item", "nav")
 			if sel { push_tags("selected") }
-			next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = em * CONTROL_RADIUS_EM})
+			next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = em * shape_of(.Row)})
 			flags := Box_Flags{.Clickable, .Draw_Hot_Effects, .Row}
 			if sel { flags += {.Draw_Background, .Chosen} }
 			rb := build_box(flags, fmt.tprintf("###sub_%d", i))

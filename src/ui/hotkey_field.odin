@@ -37,7 +37,7 @@ hotkey_field :: proc(id: string, hk: ^platform.Hotkey) -> (changed: bool) {
 	empty := hk.key == .None && hk.char == 0
 	text := recording ? i18n.tr("Press the keys…") : empty ? i18n.tr("Click, then press the keys") : platform.key_text(hk^)
 	if !s.has_next || s.next_mod.height == nil { next_default({height = px(math.round(em * 2))}) }
-	next_default({radius = em * CONTROL_RADIUS_EM})   // (a button's corners)
+	next_default({radius = em * shape_of(.Control)})   // (a button's corners)
 	push_tags("input")
 	if recording || empty { push_tags("weak") }
 	b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Focus_Ring, .Sunken, .Draw_Text}, fmt.tprintf("%s%s", text, id_part(id)))

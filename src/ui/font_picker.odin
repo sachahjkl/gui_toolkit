@@ -278,7 +278,7 @@ font_picker :: proc(id: string, st: ^Font_Picker, fam: ^Font_Families, value: st
 	// the button
 	shown := value != "" ? value : default_label
 	face := value != "" ? font_families_face(fam, value) : default_face
-	next_default({width = px(math.round(em * FONT_PICKER_WIDTH_EM)), height = px(math.round(dense(em * CONTROL_HEIGHT_EM))), radius = em * CONTROL_RADIUS_EM})
+	next_default({width = px(math.round(em * FONT_PICKER_WIDTH_EM)), height = px(math.round(dense(em * CONTROL_HEIGHT_EM))), radius = em * shape_of(.Control)})
 	btn: ^Box
 	sig: Signal
 	if tags("button") {
@@ -472,7 +472,7 @@ font_picker_row :: proc(st: ^Font_Picker, fam: ^Font_Families, i: int, value, de
 	defer pop_tags()
 	if selected { push_tags("selected") }
 	defer if selected { pop_tags() }
-	next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = font_size() * CONTROL_RADIUS_EM})
+	next({width = fill(), height = px(row_h), axis = .X, cross = .Center, radius = font_size() * shape_of(.Row)})
 	flags := Box_Flags{.Clickable, .Draw_Hot_Effects, .Row}
 	if selected { flags += {.Draw_Background, .Chosen} }
 	rb := build_box(flags, vlist_row_name(i))

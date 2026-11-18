@@ -191,6 +191,7 @@ STEPS := []Step{
 	{name = "cli", oses = EVERYWHERE},
 	{name = "prewarm", oses = EVERYWHERE, wgpu = .Ci3},   // (Linux's renderer is wgpu: it runs there as it is)
 	{name = "edged", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (the edged finish, Kernel, the dashboard's pieces: a process of their own)
+	{name = "theme_look", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (a theme's look beside its colours: its values reach the drawing)
 	{name = "system_title", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (the system's title bar: a process of its own, the scenarios' is full)
 	{name = "resize_grip", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (a dialog's grips and corner control: a process of its own, the scenarios' is full)
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)

@@ -557,7 +557,7 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2, sized, qui
 	s.next_mod.fixed_y = at.y
 	s.next_mod.width = px(wh.x)
 	s.next_mod.height = wh.y > 0 ? px(wh.y) : children_sum()
-	s.next_mod.radius = DIALOG_RADIUS_EM * em
+	s.next_mod.radius = shape_of(.Dialog) * em
 	s.next_mod.transparency = 1 - shown
 	panel := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate}, fmt.tprintf("###modal_%s", id))
 	panel.cursor = .Arrow
@@ -569,9 +569,6 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2, sized, qui
 	append(&s.modals_built, cur)
 	append(&s.modal_stack, Modal_Scope{panel = panel.key, order = len(s.modals_built), open = open, wh = wh})
 }
-
-// A dialog's corners (before the rounding), in ems: what a strip across its top (top_strip_draw) takes too.
-DIALOG_RADIUS_EM :: 0.8
 
 // The control in the top right corner of the dialog being built, whose dialog_header asked for one (`close`): a box of
 // `flags`, a square, the same margin from the dialog's top and from its right edge, centered on the header, its corners

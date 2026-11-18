@@ -792,7 +792,7 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 				} else {
 					// (the field while nobody types in it: the value, as the field shows its text; the key is the field's, so
 					// a press gives it the keyboard and the next build types in it)
-					next_default({radius = em * CONTROL_RADIUS_EM})   // (a button's corners)
+					next_default({radius = em * shape_of(.Control)})   // (a button's corners)
 					push_tags("input")
 					fb := build_box({.Clickable, .Focusable, .Text_Input, .Clip, .Draw_Background, .Draw_Border, .Draw_Hot_Effects, .Draw_Focus_Ring, .Sunken, .Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###value", text_shown(text)))
 					pop_tags()
@@ -1441,7 +1441,7 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 	if !s.has_next || s.next_mod.width == nil { next_default({width = px(dropdown_width(items))}) }
 	menu_id := fmt.tprintf("###dropdown_menu_%x", u64(key_from_string(parent_box().key, id)))
 	open := menu_is_open(menu_id)
-	next_default({radius = em * CONTROL_RADIUS_EM})   // (a button's corners)
+	next_default({radius = em * shape_of(.Control)})   // (a button's corners)
 	btn: ^Box
 	sig: Signal
 	if tags("button") {
@@ -1683,7 +1683,7 @@ well_end :: proc(id: string, axis := Axis.Y, flags: Box_Flags = {}, pad: f32 = 0
 // Its size comes from `next` (default: 19 ems wide, a field's height).
 search_launcher :: proc(id: string, hint: string, keys := "", tip := "") -> Signal {
 	em := font_size()
-	next_default({width = px(em * 19), height = px(control_height()), radius = em * CONTROL_RADIUS_EM})
+	next_default({width = px(em * 19), height = px(control_height()), radius = em * shape_of(.Control)})
 	set_next_axis(.X, .Center)
 	push_tags("input")
 	b := build_box({.Clickable, .Focusable, .Draw_Background, .Draw_Border, .Draw_Hot_Effects, .Draw_Focus_Ring, .Sunken}, id)

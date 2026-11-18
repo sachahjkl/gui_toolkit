@@ -358,7 +358,7 @@ view_internal_build :: proc(vs: ^Views, r: ^View_Record, unseen: bool) {
 	push_tags_isolated("floating")   // (a window is a window, whatever the tags where it is built)
 	push_style_copy()
 	next({fixed_x = rect.min.x, fixed_y = rect.min.y, width = px(w), height = h > 0 ? px(h) : children_sum(), axis = .Y,
-		radius = DIALOG_RADIUS_EM * em, transparency = unseen ? 1 : 0})
+		radius = shape_of(.Dialog) * em, transparency = unseen ? 1 : 0})
 	frame := build_box({.Clickable, .Press_Stop, .Draw_Background, .Draw_Border, .Draw_Shadow, .Plate, .Clip}, fmt.tprintf("###internal_%s", r.modal_name))
 	frame.cursor = .Arrow
 	frame.square_corners = {.Bottom_Right}   // (the grip's corner, as a floating panel's)

@@ -44,7 +44,7 @@ row :: proc(cross := Cross_Align.Start, flags: Box_Flags = {}, id: string = "") 
 @(require_results, deferred_none = pop_parent)
 input_frame :: proc(id: string) -> bool {
 	set_next_axis(.X, .Center)
-	next_default({radius = font_size() * CONTROL_RADIUS_EM})   // (a button's corners)
+	next_default({radius = font_size() * shape_of(.Control)})   // (a button's corners)
 	push_tags("input")
 	// (the frame is the field's face: it reacts while the pointer is on what it holds; the bare field inside draws no
 	// state, a face of its own was a second, smaller one inside the frame)
@@ -266,7 +266,7 @@ button_glyph :: proc(id, icon: string, face: Button_Face, o: Button_Options) -> 
 	if face == .Ghost { if ink, ok := button_ink(o.intent).?; ok { next_default({fg = ink}) } }
 	if c, ok := o.icon_color.?; ok { next_default({fg = c}) }
 	next_size(o.width, o.height)
-	if face == .Row { next_default({radius = font_size() * CONTROL_RADIUS_EM}) }
+	if face == .Row { next_default({radius = font_size() * shape_of(.Row)}) }
 	if style({font = o.icon_font != 0 ? o.icon_font : s.icon_font}) {
 		aligned := text_align_given()
 		flags := button_flags(face, o) + {.No_Text_Trunc}
@@ -304,9 +304,8 @@ CONTROL_HEIGHT_EM :: 2
 // A control's height in pixels at the current font size and density (CONTROL_HEIGHT_EM).
 control_height :: proc() -> f32 { return math.round(dense(font_size() * CONTROL_HEIGHT_EM)) }
 @(private = "file") BUTTON_GLYPH_EM :: 1.5
-// The corners of a control, a button or a field, of the font size: one rounding for both (a square field beside a
-// rounded button read as two kinds of thing). `next` gives another.
-@(private) CONTROL_RADIUS_EM :: 0.45
+// (The corners of a control, a button or a field, are the theme's: shape_of(.Control), one rounding for both, as a
+// square field beside a rounded button read as two kinds of thing. `next` gives another.)
 // A quiet button's words, of the font size.
 @(private = "file") BUTTON_QUIET_SCALE :: 0.9
 
@@ -356,7 +355,7 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 	set_next_axis(.X, .Center)
 	s.next_mod.width = w == {} ? children_sum() : w
 	s.next_mod.height = h
-	if s.next_mod.radius == nil { s.next_mod.radius = em * CONTROL_RADIUS_EM }
+	if s.next_mod.radius == nil { s.next_mod.radius = em * shape_of(face == .Row ? Shape_Role.Row : Shape_Role.Control) }
 	ink := face == .Ghost ? button_ink(o.intent) : nil
 	fg := m.fg
 	if fg == nil { fg = ink }
