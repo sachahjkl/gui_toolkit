@@ -46,9 +46,10 @@ broker_manifest :: proc(permissions: string, base := "") -> string {
 said :: proc(s: ^session.Session, fx: ^Fx, command: string) -> string {
 	toasts := fx.host.toasts
 	testing.expectf(s.t, plugins.run_command(&fx.host, fmt.tprintf("plugin.broker.%s", command)), "the command %s did not run", command)
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the call's answer", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the call's answer", WAIT)
 	return fx.host.last_toast
 }
+
 
 @(test)
 a_plugin_that_asks_is_off_until_allowed :: proc(t: ^testing.T) {

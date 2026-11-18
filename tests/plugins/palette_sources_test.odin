@@ -91,7 +91,7 @@ choosing_a_row_reaches_the_plugin :: proc(t: ^testing.T) {
 	session.wait_text(s, "[x]", WAIT)
 	toasts := fx.host.toasts
 	session.key(s, .Return)
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the choice's toast", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the choice's toast", WAIT)
 	testing.expect_value(t, fx.host.last_toast, "chose row-x a line")
 }
 
@@ -112,7 +112,7 @@ menu_and_tool_bar_entries_come_from_the_manifest :: proc(t: ^testing.T) {
 		// (choosing it runs its command, which starts the plugin)
 		toasts := fx.host.toasts
 		testing.expect(t, plugins.run_command(&fx.host, tools[0].command), "the entry's command did not run")
-		session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the command's toast", WAIT)
+		session.wait_until(s, Count{fx, toasts + 1}, answered, "the command's toast", WAIT)
 		testing.expect_value(t, fx.host.last_toast, "hello en")
 	}
 	plugins.set_enabled(&fx.host, "finder", false)
@@ -137,7 +137,7 @@ the_manifests_words_in_the_persons_language :: proc(t: ^testing.T) {
 	// the plugin's code reads the language in its context
 	toasts := fx.host.toasts
 	testing.expect(t, plugins.run_command(&fx.host, "plugin.finder.hello"), "the command did not run")
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the command's toast", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the command's toast", WAIT)
 	testing.expect_value(t, fx.host.last_toast, "hello fr")
 	// the palette's source under its French label (its "reading…" row is the toolkit's, in French)
 	fx.open_with = "@loop"

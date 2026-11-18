@@ -32,7 +32,7 @@ export function activate(context) {
 toast_after :: proc(s: ^session.Session, fx: ^Fx, act: proc(fx: ^Fx, data: [2]string), data: [2]string = {}) -> string {
 	toasts := fx.host.toasts
 	act(fx, data)
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the plugin's toast", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the plugin's toast", WAIT)
 	return fx.host.last_toast
 }
 

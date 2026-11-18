@@ -141,7 +141,7 @@ open_notes :: proc(t: ^testing.T) -> (s: ^session.Session, fx: ^Fx, n: ^Notes) {
 toast_of :: proc(s: ^session.Session, fx: ^Fx, command: string) -> string {
 	toasts := fx.host.toasts
 	testing.expectf(s.t, plugins.run_command(&fx.host, command), "the command %s did not run", command)
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the call's answer", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the call's answer", WAIT)
 	return fx.host.last_toast
 }
 
@@ -163,7 +163,7 @@ a_call_answered_at_a_later_build :: proc(t: ^testing.T) {
 	testing.expect_value(t, fx.host.toasts, toasts)
 	first := n.waiting[0]
 	notes_answer(fx, n)
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the add's answer", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the add's answer", WAIT)
 	testing.expectf(t, fx.host.last_toast == "added 2", "the answer: '%s'", fx.host.last_toast)
 	testing.expect_value(t, len(n.items), 2)
 	// (a token answered once: a second answer finds no call)
@@ -182,7 +182,7 @@ an_event_reaches_only_a_plugin_that_listens :: proc(t: ^testing.T) {
 	toasts := fx.host.toasts
 	payload := Note_Added{note = {id = 9, title = "bread"}}
 	testing.expect_value(t, plugins.app_emit(&fx.host, "note.added", &payload), 1)
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the event heard", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the event heard", WAIT)
 	testing.expectf(t, fx.host.last_toast == "heard 9:bread", "the event: '%s'", fx.host.last_toast)
 	// (an event of no such name, and a payload of another type)
 	testing.expect_value(t, plugins.app_emit(&fx.host, "note.removed", &payload), -1)

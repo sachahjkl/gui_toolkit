@@ -167,12 +167,12 @@ the_active_row_and_enter_reach_the_plugin :: proc(t: ^testing.T) {
 	}, "row 3 active", WAIT)
 	toasts := fx.host.toasts
 	session.key(s, .Return)
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "onActivate's toast", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "onActivate's toast", WAIT)
 	testing.expect_value(t, fx.host.last_toast, "activated 3")
 	// a double click activates the row it is on
 	toasts = fx.host.toasts
 	press_row(s, "lrow_5", count = 2)
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the double click's toast", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the double click's toast", WAIT)
 	testing.expect_value(t, fx.host.last_toast, "activated 5")
 }
 

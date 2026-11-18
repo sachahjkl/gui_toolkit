@@ -45,6 +45,12 @@ wait_started :: proc(s: ^session.Session, fx: ^Fx, id: string, loc := #caller_lo
 		session.frame(s)
 	}
 }
+// A toast came after `c.at - 1`, and it is the plugin's, not the host's warning that it is not responding: on the CI's
+// slow machine the warning came first, was read as the answer, and the answer itself was then read as the next call's.
+answered :: proc(s: ^session.Session, c: Count) -> bool {
+	return c.fx.host.toasts >= c.at && !strings.contains(c.fx.host.last_toast, "is not responding")
+}
+
 // The builds the window must still make while the plugin loops.
 MORE_BUILDS :: 30
 
@@ -196,7 +202,7 @@ an_endless_handler_does_not_stop_the_window :: proc(t: ^testing.T) {
 	// 4. its other command: a new runtime, and its toast
 	toasts := fx.host.toasts
 	choose(s, fx, "Say hello")
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the plugin's toast", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the plugin's toast", WAIT)
 	testing.expectf(t, strings.contains(fx.host.last_toast, "Hello from Sample"), "the toast says '%s'", fx.host.last_toast)
 	wait_state(s, fx, "sample", .Running)
 }
