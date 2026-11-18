@@ -9,11 +9,11 @@ package tk
 import "core:fmt"
 import "core:odin/ast"
 import "core:odin/parser"
-import "core:os"
 import "core:slice"
 import "core:strconv"
 import "core:strings"
 import tk_json "../../src/json"
+import dts "../../src/plugin_api/dts"
 import toolbox "../../src/toolbox"
 
 PLUGIN_API_SOURCE :: "src/plugin_api/api.odin"
@@ -65,22 +65,7 @@ run_plugin_api :: proc(args: []string) -> string {
 	root := toolkit_root()
 	files, why := plugin_api_files(root)
 	if why != "" { return why }
-	differ := make([dynamic]string, context.temp_allocator)
-	for f in files {
-		path := join({root, f[0]})
-		have, err := os.read_entire_file(path, context.temp_allocator)
-		if err == nil && string(have) == f[1] { continue }
-		if check {
-			append(&differ, f[0])
-			continue
-		}
-		if dir := path_dir(path); dir != "" { _ = os.make_directory_all(dir) }
-		if os.write_entire_file(path, transmute([]u8)f[1]) != nil { return fmt.tprintf("cannot write %s", path) }
-		fmt.printfln("wrote %s", f[0])
-	}
-	if len(differ) > 0 {
-		return fmt.tprintf("not what the declarations make (odin run tools/tk -- plugin_api): %s", strings.join(differ[:], ", ", context.temp_allocator))
-	}
+	if why = toolbox.generated_files(root, files, check, "odin run tools/tk -- plugin_api"); why != "" { return why }
 	if check { fmt.println("plugin_api ok") }
 	return ""
 }
@@ -235,7 +220,8 @@ api_reachable :: proc(api: Api, level: int) -> map[string]bool {
 		for f in t.fields {
 			if f.level > level { continue }   // (Tone, of a field level 6 added: not in level 5's snapshot)
 			for other in api.types {
-				if other.name not_in seen && type_names(f.type, other.name) { append(&todo, other.name) }
+				// (a function's TypeScript names the types it takes and gives: Palette_Search's Palette_Row)
+				if other.name not_in seen && (type_names(f.type, other.name) || type_names(ts_type(f.type), other.name)) { append(&todo, other.name) }
 			}
 		}
 	}
@@ -326,15 +312,15 @@ is_arguments :: proc(api: Api, name: string) -> bool {
 
 @(private = "file")
 ts_type :: proc(odin_type: string) -> string {
+	if ts, primitive := dts.primitive(odin_type); primitive { return ts }
 	switch odin_type {
-	case "string":                          return "string"
-	case "f64", "f32", "int", "i64", "i32": return "number"
-	case "bool":                            return "boolean"
 	case "Handler":                         return "() => void | Promise<void>"
 	case "Text_Handler":                    return "(value: string) => void | Promise<void>"
 	case "Flag_Handler":                    return "(value: boolean) => void | Promise<void>"
 	case "Render":                          return "() => Node"
 	case "Row_Render":                      return "(index: number) => Node"
+	case "Palette_Search":                  return "(query: string) => Palette_Row[] | Promise<Palette_Row[]>"
+	case "Palette_Choose_Handler":          return "(row: Palette_Row) => void | Promise<void>"
 	case "Children":                        return "(Node | null | undefined | false)[]"
 	case "Setting_Handler":                 return "(id: string, value: string | number | boolean) => void | Promise<void>"
 	// (distinct strings of the bridge's: a Lucide name, and what the bridge fills from a string or an array of them)
@@ -342,13 +328,6 @@ ts_type :: proc(odin_type: string) -> string {
 	case "Words":                           return "string | string[]"
 	}
 	return odin_type
-}
-
-// A type as a cell of a Markdown table writes it: a union's "|" would end the cell, even in a code span.
-@(private = "file")
-md_type :: proc(odin_type: string) -> string {
-	s, _ := strings.replace_all(ts_type(odin_type), "|", "\\|", context.temp_allocator)
-	return s
 }
 
 // A call's result (plugin_api.Result) as TypeScript writes it.
@@ -388,7 +367,7 @@ capability_word :: proc(capability: string) -> string {
 
 @(private = "file")
 ts_doc :: proc(b: ^strings.Builder, indent, doc: string) {
-	if doc != "" { fmt.sbprintf(b, "%s/** %s */\n", indent, doc) }
+	dts.doc(b, indent, doc)
 }
 
 // The module "gt" at level `level`: the calls of that level and before, and every type they name.
@@ -537,8 +516,8 @@ api_page :: proc(api: Api) -> string {
 			fmt.sbprintf(&b, "\n### `%s.%s(%s)`\n\n%s\n\n", m, c.name, strings.join(names[:], ", ", context.temp_allocator), t.doc)
 			fmt.sbprintf(&b, "Level %d. Permission: %s.\n\n", c.level, c.capability == "None" ? "none" : fmt.tprintf("`%s`", capability_word(c.capability)))
 			if len(t.fields) > 0 {
-				strings.write_string(&b, "| Argument | Type | |\n|---|---|---|\n")
-				for f in t.fields { fmt.sbprintf(&b, "| `%s` | `%s`%s | %s |\n", f.name, md_type(f.type), f.optional ? ", optional" : "", f.doc) }
+				dts.field_head(&b, "Argument")
+				for f in t.fields { dts.field_row(&b, f.name, ts_type(f.type), f.optional, f.doc) }
 			}
 		}
 	}
@@ -552,10 +531,11 @@ api_page :: proc(api: Api) -> string {
 			fields := 0
 			for f in t.fields { if f.type != "Children" { fields += 1 } }
 			if fields > 0 {
-				strings.write_string(&b, "\n| Field | Type | |\n|---|---|---|\n")
+				strings.write_string(&b, "\n")
+				dts.field_head(&b, "Field")
 				for f in t.fields {
 					if f.type == "Children" { continue }
-					fmt.sbprintf(&b, "| `%s` | `%s`%s | %s%s |\n", f.name, md_type(f.type), f.optional ? ", optional" : "", f.doc, f.level > 0 ? fmt.tprintf(" Level %d.", f.level) : "")
+					dts.field_row(&b, f.name, ts_type(f.type), f.optional, f.level > 0 ? fmt.tprintf("%s Level %d.", f.doc, f.level) : f.doc)
 				}
 			}
 		}
@@ -578,8 +558,8 @@ api_page :: proc(api: Api) -> string {
 			for v in t.values { append(&quoted, fmt.tprintf("`\"%s\"`", v)) }
 			fmt.sbprintf(&b, "One of %s.\n", strings.join(quoted[:], ", ", context.temp_allocator))
 		} else {
-			strings.write_string(&b, "| Field | Type | |\n|---|---|---|\n")
-			for f in t.fields { fmt.sbprintf(&b, "| `%s` | `%s`%s | %s |\n", f.name, md_type(f.type), f.optional ? ", optional" : "", f.doc) }
+			dts.field_head(&b, "Field")
+			for f in t.fields { dts.field_row(&b, f.name, ts_type(f.type), f.optional, f.doc) }
 		}
 	}
 	return strings.to_string(b)

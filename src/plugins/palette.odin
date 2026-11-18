@@ -21,7 +21,7 @@ source_read :: proc(pal: ^ui.Command_Palette, src: ^ui.Palette_Source, q: ui.Pal
 		for c in p.manifest.commands {
 			it := ui.Palette_Item{
 				// (no detail: the group is the plugin's name unless its manifest names another)
-				id = command_id(p.manifest.id, c.id), title = c.label, group = c.group, icon = c.icon, tags = c.tags,
+				id = command_id(p.manifest.id, c.id), title = manifest_tr(&p.manifest, c.label), group = manifest_tr(&p.manifest, c.group), icon = c.icon, tags = c.tags,
 				disabled = p.state == .Failed,
 			}
 			append(&items, ui.palette_item_clone(it, al))
@@ -30,7 +30,7 @@ source_read :: proc(pal: ^ui.Command_Palette, src: ^ui.Palette_Source, q: ui.Pal
 			// (a view the program builds in its own layout is always shown: nothing to open)
 			if r := view_record(h, p.manifest.id, v.id); r != nil && r.embedded { continue }
 			id := strings.concatenate({VIEW_PREFIX, p.manifest.id, ".", v.id}, context.temp_allocator)
-			append(&items, ui.palette_item_clone({id = id, title = v.title, group = p.manifest.name, tags = {"view", "open"}, disabled = p.state == .Failed}, al))
+			append(&items, ui.palette_item_clone({id = id, title = manifest_tr(&p.manifest, v.title), group = p.manifest.name, tags = {"view", "open"}, disabled = p.state == .Failed}, al))
 		}
 	}
 	a.items = items[:]

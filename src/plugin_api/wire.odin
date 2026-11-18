@@ -154,9 +154,17 @@ children_fit :: proc(nodes: []List_Node) -> bool {
 }
 
 @(private = "file")
-field_encode :: proc(w: ^Wire_Writer, ti: ^runtime.Type_Info, at: rawptr) {
+field_encode :: proc(w: ^Wire_Writer, ti: ^runtime.Type_Info, at: rawptr) { value_encode(w, ti, at) }
+
+@(private = "file")
+field_decode :: proc(r: ^Wire_Reader, ti: ^runtime.Type_Info, at: rawptr, al: runtime.Allocator) { value_decode(r, ti, at, al) }
+
+// A value of type `ti` at `at`, by reflection: a node's field, a program's call's argument or result (app.odin). A
+// struct is its fields in order, a slice its count then its elements; a function and a node's children are not sent
+// (they stay with the plugin).
+value_encode :: proc(w: ^Wire_Writer, ti: ^runtime.Type_Info, at: rawptr) {
 	if is_function_type(ti.id) || ti.id == typeid_of(Children) { return }
-	#partial switch _ in reflect.type_info_base(ti).variant {
+	#partial switch info in reflect.type_info_base(ti).variant {
 	case runtime.Type_Info_String:  put_string(w, (^string)(at)^)
 	case runtime.Type_Info_Boolean: put_bool(w, (^bool)(at)^)
 	case runtime.Type_Info_Float:   put_f64(w, ti.size == 4 ? f64((^f32)(at)^) : (^f64)(at)^)
@@ -164,12 +172,39 @@ field_encode :: proc(w: ^Wire_Writer, ti: ^runtime.Type_Info, at: rawptr) {
 		x: i64
 		mem.copy(&x, at, ti.size)   // (little-endian: the low bytes)
 		put_i64(w, x)
+	case runtime.Type_Info_Struct:
+		for k in 0 ..< int(info.field_count) { value_encode(w, info.types[k], rawptr(uintptr(at) + info.offsets[k])) }
+	case runtime.Type_Info_Slice:
+		s := (^runtime.Raw_Slice)(at)
+		put_u64(w, u64(s.len))
+		for k in 0 ..< s.len { value_encode(w, info.elem, rawptr(uintptr(s.data) + uintptr(k * info.elem_size))) }
 	}
 }
 
-@(private = "file")
-field_decode :: proc(r: ^Wire_Reader, ti: ^runtime.Type_Info, at: rawptr, al: runtime.Allocator) {
+// What value_encode wrote, at `at` (zeroed by the caller), its strings and slices in `al`. A count past what is left
+// or an enum's value the type does not have makes `r` bad.
+value_decode :: proc(r: ^Wire_Reader, ti: ^runtime.Type_Info, at: rawptr, al: runtime.Allocator) {
 	if is_function_type(ti.id) || ti.id == typeid_of(Children) { return }
+	#partial switch info in reflect.type_info_base(ti).variant {
+	case runtime.Type_Info_Struct:
+		for k in 0 ..< int(info.field_count) {
+			value_decode(r, info.types[k], rawptr(uintptr(at) + info.offsets[k]), al)
+			if r.bad { return }
+		}
+		return
+	case runtime.Type_Info_Slice:
+		// (an element is at least a byte on the wire: a count larger than what is left is a lie)
+		n := get_count(r, 1)
+		if r.bad || n == 0 { return }
+		data, err := mem.alloc(n * info.elem_size, info.elem.align, al)
+		if err != nil { r.bad = true; return }
+		for k in 0 ..< n {
+			value_decode(r, info.elem, rawptr(uintptr(data) + uintptr(k * info.elem_size)), al)
+			if r.bad { return }
+		}
+		(^runtime.Raw_Slice)(at)^ = {data = data, len = n}
+		return
+	}
 	#partial switch _ in reflect.type_info_base(ti).variant {
 	case runtime.Type_Info_String:  (^string)(at)^ = get_string(r, al)
 	case runtime.Type_Info_Boolean: (^bool)(at)^ = get_bool(r)

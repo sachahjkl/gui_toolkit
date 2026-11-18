@@ -29,6 +29,8 @@ export function activate() {
 			{ kind: "button", key: "add", label: "Add", intent: "primary", onClick: () => { count += 1; } },
 			{ kind: "button", key: "hang", label: "Hang", onClick: () => { for (;;) {} } },
 			{ kind: "check", key: "agree", label: "Checked in a row", checked: false, onChange: () => {} },
+		] },
+		{ kind: "row", children: [
 			{ kind: "button", key: "quiet", label: "Open", look: "ghost", size: "small", onClick: () => { count += 10; } },
 		] },
 		{ kind: "field", key: "name", value: name, placeholder: "Your name", onChange: (v) => {
@@ -48,8 +50,11 @@ open_counter :: proc(t: ^testing.T) -> (s: ^session.Session, fx: ^Fx, root: stri
 	enable(root, "counter")
 	fx = new(Fx)   // (freed by open's cleanup)
 	s = open(t, fx, root)
+	wait_started(s, fx, "counter")
 	fx.open_view = {"counter", "main"}
 	session.wait_text(s, "Count: 0", WAIT)
+	// (the view's window takes its content's height as it comes: a click before it settles can miss its node)
+	session.wait_idle(s, WAIT)
 	return
 }
 
@@ -112,8 +117,10 @@ a_lone_file_runs_with_an_implied_manifest :: proc(t: ^testing.T) {
 	testing.expect_value(t, p.manifest.id, "my-counter")
 	testing.expect_value(t, p.manifest.name, "My Counter")
 	testing.expect_value(t, p.state, plugins.Plugin_State.Ready)
+	wait_started(s, fx, "my-counter")
 	fx.body = {"my-counter", "main"}
 	session.wait_text(s, "Count: 0", WAIT)
+	session.wait_idle(s, WAIT)
 	session.click(s, "pv:add")
 	session.wait_text(s, "Count: 1", WAIT)
 }
@@ -135,6 +142,7 @@ a_handler_that_never_returns_leaves_the_window_building :: proc(t: ^testing.T) {
 	session.wait_text(s, "Stopped.", WAIT)
 	testing.expect(t, session.find_text(s, "Count: 1") != nil, "the last list is gone after the stop")
 	session.click(s, "pv_status_act")
+	// (a new process: its start has START_WAIT, as wait_started's)
+	wait_state(s, fx, "counter", .Running, START_WAIT)
 	session.wait_text(s, "Count: 0", WAIT)
-	wait_state(s, fx, "counter", .Running)
 }

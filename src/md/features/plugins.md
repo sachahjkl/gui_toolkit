@@ -746,3 +746,103 @@ Refused:
 - **Icons as SVG or images from the plugin**: a second set beside Lucide's, of any size and colour, in a window that
   draws one set.
 
+## As built: a program's own module (slice 6, the mechanism)
+
+Written on 2026-11-18. The toolkit gives the mechanism; opencode native writes its module (sessions, messages, the
+composer) in its own repository.
+
+- **A declaration, not code.** A program gives `Host_Options.app`, a `plugins.App_Module` (`plugin_api.App_Module`):
+  its name (the program's, for its docs), its own level, its calls, its events and its permission words. A call is a
+  name (`"notes.list"`: a group and a call), an argument struct, a result struct (typeids), a permission word or none,
+  a line of doc, and `run`. An event is a name (`"note.added"`), a payload struct and a permission. `host_open` checks
+  it (`plugin_api.app_module_check`): names, types, words; a bad declaration is the program's bug and asserts.
+- **The same reflection as `gt`.** The argument is filled from JavaScript by the bridge's `fill`, the values cross the
+  pipe by the wire's value codec, a result becomes a plain object by `value_to_js`: one set of procedures for both
+  modules, which grew structs and slices (an array of `{id, title}`). The supported types are strings, booleans,
+  numbers, enums (as their names), structs and slices of them; a function, a pointer, a map or a union is refused by
+  the check.
+- **Typeids cross the pipe.** The plugin's process is the program's own executable (`--gt-plugin-host`), so a typeid
+  names the same type on both sides. The start frame carries each call's and event's name and typeids, the child
+  checks each one (`type_info_of(id).id == id`) and builds the module from them; `run` stays in the program. Refused:
+  a schema of the types sent as data (a second description of what reflection already knows), and registering the
+  module in an `@(init)` (the child's `@(init)` runs before the program's main makes its module).
+- **One argument object.** `notes.add({ title })`, not `gt`'s positional arguments: a program's calls grow by fields,
+  and an object keeps an older plugin's call valid. A call whose struct has no required field may be called with none.
+- **Where a call runs.** The program's objects live on its interface thread, so a call runs there, in the request's
+  event (`event_run`, at the start of a build), as the broker's requests do: the child sends a Request (`App_Call`, the
+  call's name and its encoded argument), the program checks the grant, decodes, calls `run`. `run` must be quick: it
+  fills the result and returns, or returns `pending` and keeps its token; the program answers later with
+  `plugins.app_answer(host, token, &result)` or `plugins.app_fail(host, token, why)`, from its own task's answer. A
+  token whose plugin's process ended answers nothing (the answer checks the process's serial, as the broker's).
+  Refused: running `run` on a chore (the program's objects are not shared with the chores).
+- **Every call returns a promise**, as every call that waits in `gt`. A failure rejects with an `Error` of the
+  program's words; a missing grant with `PermissionError`.
+- **Events.** `plugins.app_emit(host, "note.added", &payload)` sends the payload to each running plugin that listens
+  and may hear it (its grant). A plugin says it listens when `app.on(name, f)` first registers a handler for that name
+  (an `App_Listen` event to the program, kept per process): a plugin that does not listen is not woken, and a plugin
+  that does not run is not started (an event is not a person's act). `app_emit` returns how many it reached.
+- **Permissions.** A word `app:<name>` is declared by the module with its words for the grant dialog
+  (`App_Permission`); a manifest asking an undeclared one is refused. The program checks the grant at each call and
+  event, as the broker does; the child does not (its check would be the plugin's own).
+- **Levels and absence.** The manifest's optional `"app": n` is the level of the program's module the plugin needs:
+  a program without a module, or with a lower level, refuses the plugin with a sentence. A plugin that imports `"app"`
+  without saying so, in a program that gives none, fails at its start: "cannot import "app": this program gives no
+  module "app"". gt-runtime gives none.
+- **Declarations for an author.** `plugin_api.app_module_dts(module)` and `app_module_markdown(module)` write
+  `app.d.ts` and a reference page from the declaration; a field's doc is its tag's `doc:"…"`. The helpers they share
+  with `tk plugin_api` (a TypeScript doc comment, a Markdown cell, the TypeScript of a primitive) are in
+  `plugin_api/dts`, a package without the engine, which tools import. A program's tool writes the files with
+  `toolbox.generated_files(root, files, check)`, the same check as `tk plugin_api`'s.
+
+Refused:
+
+- **The program's objects as JavaScript objects** (a session with methods): a live object crosses no process; a call
+  and a plain result do.
+- **Synchronous calls** (`notes.listSync()`): host procedures never wait (decision 5).
+- **Events to every plugin, listening or not**: a plugin with no handler would take a turn for nothing at each event.
+
+## As built: palette sources, menus, the tool bar, a plugin's languages (slice 7, API level 7)
+
+Written on 2026-11-18.
+
+- **A palette source is declared, then answered.** The manifest's `"palette": [{ id, label, prefix }]` makes one
+  `ui.Palette_Source` per entry (`plugin.<plugin id>.<source id>`, a searching source: asked again at each query),
+  added to the program's palette by `host_build` and removed when the folder is read again. Its code answers with
+  `palette.source(id, async (query) => rows)`; rows are `{ id, label, detail?, icon?, group? }`, 200 at most (the rest
+  is dropped and said in the log). Choosing a row calls the source's `onChoose` (given in `palette.source`'s options,
+  or by `palette.onChoose(id, f)`) with the row as the plugin gave it: the process keeps the last answer's rows.
+- **The prefix is one of the palette's** (`ui.Palette_Prefix`): `@` (go to), `#` (choose), `/` (paths), or none (the
+  plain search only). The toolkit's table is closed: a prefix means the same in every program, so a plugin chooses a
+  meaning, not a character. `>` (commands), `:` (settings) and `$` (secrets) are refused: a plugin's rows there would
+  pass for the program's commands, settings or secrets. Two sources may share a prefix, as the palette allows.
+- **One question to the plugin at a time per source, no timer.** The palette asks at each letter; the host sends the
+  question only when none is in flight, and keeps the newest one waiting (the one it replaces is dropped: its serial
+  is old, the palette would drop its answer). When an answer comes, the waiting question goes. A fast plugin answers
+  each letter; a slow one is asked only as fast as it answers, and the palette shows its own "reading…" row for the
+  source meanwhile. Refused: a debounce delay (the toolkit has none for the palette; it would make every plugin as slow
+  as the delay). An answer for an older question is dropped by its number, and by the palette by its serial. A question
+  in flight past the bound is answered with an error row ("not responding"), and an answer that comes after is dropped.
+  A process that ends drops its source's questions. Asking starts the plugin (typing in its source is using it).
+- **Menus and the tool bar are data.** The manifest's `"menus": [{ command, where }]` and `"toolbar": [{ command,
+  icon }]` name the plugin's own commands. The program names its places (`Host_Options.menu_places`: "file", "edit",
+  "item" for a context menu); an entry for a place the program does not have gives nothing (a plugin of several
+  programs is not refused for another's place). `plugins.menu_entries(host, place)` and `plugins.toolbar_entries(host)`
+  give `Menu_Entry`s (the command, its label in the person's language, its icon's glyph, disabled when its plugin
+  failed), read from the manifests: no plugin runs to make a menu. An entry fits `ui.menu_item` and `ui.Toolbar_Tool`
+  (`toolbar_tool(entry)`); choosing it is `run_command(host, entry.command)`, which starts the plugin as the palette
+  does. A plugin that is off, refused or suspended gives no entry. Refused: a plugin's own menu built by its code (a
+  menu is shown before any plugin runs).
+- **A manifest's languages.** `"l10n": { "fr": { "Say hello": "Dire bonjour" } }` translates the manifest's own words:
+  commands' labels and groups, views' titles, settings' titles and descriptions, palette sources' labels, menus and
+  the tool bar (their commands' labels). The language is the toolkit's (`i18n.current()`): a translation of its tag
+  ("fr-CA"), else of its primary subtag ("fr"), else the manifest's English. The palette, the menus, the tool bar and a
+  view's title read it at each build (a lookup in a few dozen texts), so a change of language shows at once; the
+  settings' titles are registered with the program's preferences when the folder is read, so they change at the next
+  read. Refused: a plugin's catalogue file in the toolkit's format (a second file to keep beside the manifest for a
+  dozen labels).
+- **The plugin's code** reads the language as `context.language` in `activate`'s context (the tag, "en" for English).
+  When the person changes the language, the program sends it to the running plugins (a Language message): the
+  context's `language` changes and every open view renders again, so a render that reads `context.language` shows the
+  new texts. Refused: `context.onLanguage(f)`: what changes is what a view shows, and a view renders again anyway; a
+  plugin that keeps other texts reads `context.language` when it uses them.
+

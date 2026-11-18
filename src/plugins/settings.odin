@@ -51,7 +51,8 @@ settings_register :: proc(h: ^Host) {
 				if config.entry(prefs, r).def.kind != s.kind { continue }   // (see above: the registry asserts on a new kind)
 			}
 			d := config.Def{
-				name = strings.clone(name, a), title = strings.clone(s.title, a), description = strings.clone(s.description, a),
+				// (in the language in use when the folder is read: a change of language applies at the next read)
+				name = strings.clone(name, a), title = strings.clone(manifest_tr(&p.manifest, s.title), a), description = strings.clone(manifest_tr(&p.manifest, s.description), a),
 				kind = s.kind, default = s.default, min = s.min, max = s.max, bounded = s.bounded,
 			}
 			d.default.s = strings.clone(s.default.s, a)

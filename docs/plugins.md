@@ -46,6 +46,7 @@ plugins.host_close(&app.plugins)
 | `page_info(h)` | The Plugins page, a `prefs_page.Page_Info`: each plugin, its state, its switch, Stop, and Reload plugins. |
 | `run_command(h, id)` | Runs `plugin.<plugin id>.<command id>`, or `plugins.reload`. False: no such command, or its plugin cannot run now. |
 | `set_enabled(h, id, on)` | Turns a plugin on or off, and writes `plugins.toml` on a chore. |
+| `start(h, id)` | Starts a plugin's process now instead of at its first use: a program that knows it will be used soon, a test that waits for the start apart from what it tests. False when there is no such plugin, it cannot run, or it runs already. |
 | `stop(h, id)` | Stops a plugin's runtime; its process is killed when it has not ended 1 s later. The plugin is `Ready` again when its process has ended. |
 | `grant(h, id)`, `revoke(h, id)` | Grants a plugin what its manifest asks and turns it on (the grant dialog's Allow); takes back its permissions and the files it was given. |
 | `path_resolve(path, data_dir, granted, picked)`, `net_allowed(granted, url)`, `permission_parse(word)`, `origin_of(url)`, `host_is_private(host)`, `url_join(base, location)` | The broker's checks, for a test or a program's own page. |
@@ -60,6 +61,9 @@ plugins.host_close(&app.plugins)
 | `view_body(h, plugin_id, view_id)` | Builds a plugin's view in the box being built, in the program's own layout (gt-runtime's window). |
 | `view_field(h, plugin_id, view_id, key)`, `view_keys(h, plugin_id, view_id)` | A field's shown and rendered text, the keys of a view's last list: what a test reads. |
 | `settings_pages(h)` | One settings page per plugin that has settings, for `Page_Options.pages`. |
+| `menu_entries(h, place)`, `toolbar_entries(h)`, `toolbar_tool(entry)` | The plugins' commands for a menu place and for the tool bar (`Menu_Entry`: command, label, icon's glyph, group, disabled), and an entry as a `ui.Toolbar_Tool`. Temp memory. |
+| `source_info(h, plugin_id, source_id)` | What the host knows of a plugin's palette source (its asks, its answers taken and dropped): what a test reads. |
+| `manifest_tr(&manifest, text)`, `language_tag()` | A manifest's word in the language in use; the tag a plugin's `context.language` gets. |
 
 `Host_Options`:
 
@@ -75,6 +79,8 @@ plugins.host_close(&app.plugins)
 | `data_dir` | The folder of the plugins' own data folders (`""`: `<data>/<program>/plugin-data`). |
 | `prefs` | The program's preferences: the plugins' settings are registered there as `plugins.<plugin id>.<setting id>`. nil: a plugin's settings keep their defaults. |
 | `single` | One plugin instead of the folder: its folder, or a lone `.js` file whose manifest is implied. It is on from the start (gt-runtime). |
+| `app` | The program's own module, `from "app"` (nil: none): see "A program's own module". |
+| `menu_places` | The names of the program's menu places plugins may add their commands to (`"file"`, `"item"`): see "Palette sources, menus and the tool bar". Copied. |
 
 ## Where things are
 
@@ -124,8 +130,62 @@ The manifest's fields:
 - `permissions`: what it needs beyond its own data folder, each a word: `files` (what the person picks in the
   system's dialog), `folder:documents`, `folder:downloads`, `clipboard.read`, `clipboard.write`, `net:*` (any public
   address) or `net:<origin>` (`"net:https://api.example.com"`, `"net:http://localhost:8080"`).
+- `palette`, `menus`, `toolbar`, `l10n` (API level 7): see "Palette sources, menus and the tool bar".
 
 A plugin imports `"gt"` and its own files (`"./lib/words.js"`), nothing else.
+
+## Palette sources, menus and the tool bar
+
+```json
+{
+	"commands": [{ "id": "hello", "label": "Say hello" }],
+	"palette": [{ "id": "lines", "label": "Lines", "prefix": "@" }],
+	"menus": [{ "command": "hello", "where": "file" }],
+	"toolbar": [{ "command": "hello", "icon": "search" }],
+	"l10n": { "fr": { "Say hello": "Dire bonjour", "Lines": "Lignes" } }
+}
+```
+
+```js
+import { palette } from "gt";
+palette.source("lines", async (query) => find(query).map((l) => ({ id: l.id, label: l.text, detail: l.time })), {
+	onChoose: (row) => open(row.id),
+});
+```
+
+- **A palette source** answers what the person types after its prefix: `@` (go to), `#` (choose), `/` (paths), or no
+  prefix (the plain search). `>`, `:` and `$` are the program's commands, settings and secrets: a manifest that takes
+  one is refused. The search returns rows `{ id, label, detail?, icon?, group? }` or a promise of them, 200 at most.
+  The plugin is asked one query at a time: while it answers, only the newest query waits, and an answer for an older
+  one is dropped. The palette shows "Lines: reading…" meanwhile; past the bound, "could not read (not responding)".
+  Choosing a row calls `onChoose` (in the options, or `palette.onChoose(id, f)`) with the row as the plugin gave it.
+- **Menus and the tool bar** are the manifest's data: the program reads them without running the plugin. A menu's
+  `where` is one of the program's places (`Host_Options.menu_places`); another program's place gives nothing. An
+  entry runs its command as the palette does. A plugin that is off, refused or suspended gives none.
+- **`l10n`** translates the manifest's labels and titles (commands, views, settings, palette sources, and so the menus
+  and the tool bar) for a language's tag or its primary subtag, the toolkit's language in use; the English stays for
+  what it does not translate. The palette, the menus, the tool bar and the views' titles follow a change of language
+  at once; the settings' titles at the next read of the folder.
+- **The plugin's own texts** are its to translate: `context.language` in `activate`'s context is the tag (`"en"` for
+  English). When it changes, `context.language` is the new tag and every open view renders again.
+
+In the program:
+
+```odin
+plugins.host_open(&app.plugins, &app.ui, {..., menu_places = {"file", "edit", "item"}})
+
+if ui.menu("file") {
+	...
+	for e in plugins.menu_entries(&app.plugins, "file") {
+		if ui.menu_item(e.label, icon = e.icon, icon_font = ui.lucide_icons(), disabled = e.disabled).clicked { plugins.run_command(&app.plugins, e.command) }
+	}
+}
+for e in plugins.toolbar_entries(&app.plugins) {
+	if ui.toolbar_tool(e.command, plugins.toolbar_tool(e)) { plugins.run_command(&app.plugins, e.command) }
+}
+```
+
+The palette sources need nothing: `host_build(h, palette)` adds them to the palette it is given.
 
 ## Permissions
 
@@ -276,6 +336,83 @@ else:
 person's rights, as the program has. The sandbox does not bound the processor nor the memory: Stop's bound and the
 memory budget do.
 
+## A program's own module
+
+A program gives its plugins a module of its own, `import { ... } from "app"`, with its own level, beside `"gt"`. It
+declares its calls and events with structs, as `"gt"` is declared; the same reflection fills an argument, carries it
+to the program and gives a result back as a plain object. gt-runtime gives none.
+
+```odin
+Note :: struct {
+	id:    int `doc:"Its id"`,
+	title: string `doc:"Its title"`,
+}
+Notes_List :: struct {}
+Notes_List_Result :: struct { items: []Note }
+Notes_Add :: struct { title: string }
+Notes_Add_Result :: struct { id: int }
+Note_Added :: struct { note: Note }
+
+// kept by the program while the host is open
+calls := [?]plugins.App_Call{
+	{name = "notes.list", arguments = Notes_List, result = Notes_List_Result, doc = "The notes.", run = notes_list},
+	{name = "notes.add", arguments = Notes_Add, result = Notes_Add_Result, permission = "app:notes.write", run = notes_add},
+}
+events := [?]plugins.App_Event{{name = "note.added", payload = Note_Added}}
+permissions := [?]plugins.App_Permission{{word = "app:notes.write", words = "Add notes"}}
+app.module = {name = "Notes", level = 1, calls = calls[:], events = events[:], permissions = permissions[:], user = app}
+plugins.host_open(&app.plugins, &app.ui, {..., app = &app.module})
+
+// a call runs on the interface's thread, in the request's event, at the start of a build: quick, or pending
+notes_list :: proc(user: rawptr, token: plugins.App_Token, args, result: rawptr) -> (pending: bool, error: string) {
+	(^Notes_List_Result)(result).items = (^App)(user).notes[:]
+	return false, ""
+}
+notes_add :: proc(user: rawptr, token: plugins.App_Token, args, result: rawptr) -> (pending: bool, error: string) {
+	start_saving((^App)(user), (^Notes_Add)(args).title, token)   // the program's own task
+	return true, ""
+}
+// later, when its task ends (interface thread)
+result := Notes_Add_Result{id = note.id}
+plugins.app_answer(&app.plugins, token, &result)
+payload := Note_Added{note = note}
+plugins.app_emit(&app.plugins, "note.added", &payload)
+```
+
+```js
+import { notes, on } from "app";
+on("note.added", (e) => toast.show(`Added ${e.note.title}`));
+const { items } = await notes.list();
+await notes.add({ title: "milk" });   // needs "app:notes.write"
+```
+
+- **A call** is `"<group>.<call>"`, one argument object (its struct's fields; none when they are all optional), and a
+  promise of its result struct. Its `run` runs on the program's interface thread and must be quick: it fills the
+  result, or returns `pending` and keeps its token, then `app_answer(host, token, &result)` or `app_fail(host, token,
+  why)` answers later. An `error` rejects the promise with an `Error` of these words.
+- **The types** a call, an event or a field may have: strings, booleans, numbers, enums (their names), structs (plain
+  objects) and slices (arrays). A field tagged `optional` may be absent; `doc:"…"` is its doc. `host_open` asserts
+  when the declaration is wrong (`plugin_api.app_module_check` says why).
+- **An event** goes to every running plugin that listens (`on(name, f)`) and may hear it. A plugin that does not run is
+  not started for an event. `app_emit` returns how many it reached (-1: no such event, or another payload type).
+- **A permission** `app:<word>` is declared with the words the grant dialog shows. A call without its grant rejects with
+  `PermissionError`; an event is not sent. A manifest asking a word the module does not declare is refused.
+- **The level**: a manifest's `"app": n` is the level of the program's module it needs; a program with a lower level,
+  or none, refuses the plugin. A plugin that imports `"app"` in a program that gives none fails at its start: "cannot
+  import "app": this program gives no module "app"".
+- **An author's declarations**: `plugin_api.app_module_dts(&module)` writes `app.d.ts`, `app_module_markdown(&module)`
+  its reference page. A program's tool writes them with `toolbox.generated_files(root, files, check)`: with `check`
+  it writes nothing and fails when a file differs (its CI). Keep the declaration (the types, names and docs) in a
+  package of its own, so that the tool imports it without the program.
+
+| Call | What it does |
+|---|---|
+| `app_answer(h, token, &result)` | Answers a call that waited; false when no call waits for the token, or `result` is of another type. |
+| `app_fail(h, token, why)` | Fails a call that waited. |
+| `app_emit(h, event, &payload)` | Sends an event to the plugins that listen; returns how many. |
+| `plugin_api.app_module_check(&m)` | Why a declaration is wrong (`""`: it is right). |
+| `plugin_api.app_module_dts(&m)`, `plugin_api.app_module_markdown(&m)` | The author's `app.d.ts` and reference page. |
+
 ## Adding a call to the API
 
 The calls are declared in `src/plugin_api/api.odin` (`gt:plugin_api`). A call is the struct of its arguments and one
@@ -305,6 +442,8 @@ source := plugin_api.module_source()                    // the text of the modul
 | `install(ctx, realm)` | The API object of a realm. It sets `rt.host_data` to the realm, where the bridge finds it. |
 | `module_source()` | The text of the module `"gt"`: each module exported from `import.meta.gt`. |
 | `declaration_name(i)` | A declaration's JavaScript name (`"toast.show"`). |
+| `value_encode(w, ti, at)`, `value_decode(r, ti, at, allocator)`, `value_to_js(ctx, ti, at)` | A value of a type by reflection on the wire, and as JavaScript: the display list's fields and a program's module's values (structs and slices included). |
+| `app_install(ctx, realm, on)`, `app_module_source(realm)`, `typeid_known(id)` | The module `"app"` in the plugin's process, from what the start frame named. |
 
 A field's type is `string`, `f64`, `int`, `bool`, `Handler` (a function of the plugin), an enum (its value's name) or a
 struct of the file (an object). A field tagged `optional` may be absent. After a change, run

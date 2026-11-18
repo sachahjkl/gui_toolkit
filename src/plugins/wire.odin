@@ -6,6 +6,7 @@ package tk_plugins
 // display list (plugins.md, decision 2): this file only gives them bytes.
 
 import "core:os"
+import "core:strings"
 import config "../config"
 import plugin_api "../plugin_api"
 import "../ui"
@@ -86,6 +87,10 @@ start_encode :: proc(w: ^plugin_api.Wire_Writer, p: ^Plugin) {
 	for c in m.commands { plugin_api.put_string(w, c.id) }
 	plugin_api.put_u64(w, u64(len(m.views)))
 	for v in m.views { plugin_api.put_string(w, v.id) }
+	plugin_api.put_u64(w, u64(len(m.palette)))
+	for d in m.palette { plugin_api.put_string(w, d.id) }
+	// (the language now: context.language; a later change comes as a Language message)
+	plugin_api.put_string(w, language_tag())
 	plugin_api.put_u64(w, u64(len(p.settings_start)))
 	for s in p.settings_start {
 		plugin_api.put_string(w, s.id)
@@ -95,6 +100,48 @@ start_encode :: proc(w: ^plugin_api.Wire_Writer, p: ^Plugin) {
 		plugin_api.put_f64(w, s.value.f)
 		plugin_api.put_string(w, s.value.s)
 	}
+	// (the program's module: names and typeids, which name the same types in the child, the program's own executable)
+	app := p.app_module
+	plugin_api.put_bool(w, app != nil)
+	if app != nil {
+		plugin_api.put_string(w, app.name)
+		plugin_api.put_u64(w, u64(len(app.calls)))
+		for c in app.calls {
+			plugin_api.put_string(w, c.name)
+			plugin_api.put_u64(w, transmute(u64)c.arguments)
+			plugin_api.put_u64(w, transmute(u64)c.result)
+		}
+		plugin_api.put_u64(w, u64(len(app.events)))
+		for e in app.events {
+			plugin_api.put_string(w, e.name)
+			plugin_api.put_u64(w, transmute(u64)e.payload)
+		}
+	}
+}
+
+// What the start frame says of the program's module (start_encode). False: what came is not one.
+@(private)
+app_decode :: proc(r: ^plugin_api.Wire_Reader, p: ^Plugin) -> bool {
+	p.app_given = plugin_api.get_bool(r)
+	if !p.app_given { return !r.bad }
+	p.app_name = plugin_api.get_string(r)
+	calls := make([]plugin_api.App_Spec, plugin_api.get_count(r, 24))
+	p.app_calls = calls
+	for &c in calls {
+		c.name = plugin_api.get_string(r)
+		c.types[0] = transmute(typeid)plugin_api.get_u64(r)
+		c.types[1] = transmute(typeid)plugin_api.get_u64(r)
+		// (a type this executable does not have: the frame is not its program's)
+		if !plugin_api.typeid_known(c.types[0]) || !plugin_api.typeid_known(c.types[1]) || strings.index_byte(c.name, '.') <= 0 { return false }
+	}
+	events := make([]plugin_api.App_Spec, plugin_api.get_count(r, 16))
+	p.app_events = events
+	for &e in events {
+		e.name = plugin_api.get_string(r)
+		e.types[0] = transmute(typeid)plugin_api.get_u64(r)
+		if !plugin_api.typeid_known(e.types[0]) { return false }
+	}
+	return !r.bad
 }
 
 // The child's plugin from the start's bytes (heap). nil: what came is not a start.
@@ -120,6 +167,10 @@ start_decode :: proc(r: ^plugin_api.Wire_Reader) -> ^Plugin {
 	views := make([]View_Decl, plugin_api.get_count(r, 8))
 	for &v in views { v.id = plugin_api.get_string(r) }
 	m.views = views
+	sources := make([]Palette_Decl, plugin_api.get_count(r, 8))
+	for &d in sources { d.id = plugin_api.get_string(r) }
+	m.palette = sources
+	p.language = plugin_api.get_string(r)
 	settings := make([]Setting_Now, plugin_api.get_count(r, 34))
 	for &s in settings {
 		s.id = plugin_api.get_string(r)
@@ -132,6 +183,7 @@ start_decode :: proc(r: ^plugin_api.Wire_Reader) -> ^Plugin {
 		s.value.s = plugin_api.get_string(r)
 	}
 	p.settings_start = settings
+	if !r.bad && !app_decode(r, p) { r.bad = true }
 	if r.bad {
 		for s in p.settings_start { setting_now_free(s) }
 		delete(p.settings_start)
@@ -218,7 +270,7 @@ event_encode :: proc(w: ^plugin_api.Wire_Writer, kind: Event_Kind, title, text: 
 		plugin_api.put_u8(w, u8(req.op))
 		for a in req.args { plugin_api.put_string(w, a) }
 	}
-	if kind == .Rows { rows_encode(w, rows) }
+	if kind == .Rows || kind == .Palette_Rows { rows_encode(w, rows) }
 }
 
 // An event as the child wrote it: its kind, words, list and request (heap; the list's own arena). ok false: not an
@@ -240,7 +292,7 @@ event_decode :: proc(r: ^plugin_api.Wire_Reader) -> (kind: Event_Kind, toast: ui
 		req.op = Broker_Op(op)
 		for &a in req.args { a = plugin_api.get_string(r) }
 	}
-	if k == u8(Event_Kind.Rows) { rows = rows_decode(r) }
+	if k == u8(Event_Kind.Rows) || k == u8(Event_Kind.Palette_Rows) { rows = rows_decode(r) }
 	if r.bad || k > u8(max(Event_Kind)) || t > u8(max(ui.Toast_Kind)) {
 		delete(title); delete(text)
 		plugin_api.list_free(list)

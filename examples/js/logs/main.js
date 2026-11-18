@@ -1,7 +1,7 @@
 // Log explorer, run by gt-runtime: `gt-runtime examples/js/logs`. A quarter of a million lines in a lazy list: the
 // program asks only for the rows on screen. The search and the level switches filter every line in this plugin's own
 // process, while the window stays fluid. Its commands are in the palette (Ctrl+K).
-import { commands, toast, views } from "gt";
+import { commands, palette, toast, views } from "gt";
 import { COUNT, LEVELS, SERVICES, generate, filter, levelOf, message, clock, fmt } from "./lib/logs.js";
 
 // How each level looks: its badge's tone and its icon (lucide.dev's names).
@@ -90,6 +90,10 @@ function render() {
 
 export function activate() {
 	views.register("main", render);
+	// "@" in the palette searches every line; choosing one opens it in the view
+	palette.source("lines", (query) => filter(data, query, [true, true, true]).rows.slice(0, 200).map((at) => ({
+		id: String(at), label: message(data, at), detail: `${LEVELS[levelOf(data, at)]} · ${SERVICES[data.svc[at]]} · ${clock(data, at)}`,
+	})), { onChoose: (row) => { open = Number(row.id); views.update("main"); } });
 	commands.on("errors", () => {
 		shown = [false, false, true];
 		refilter();

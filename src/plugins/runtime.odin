@@ -56,6 +56,15 @@ Run :: struct {
 	boot_error: string,
 	toasted:    bool,                      // an uncaught exception was said once in this run
 	icons_said: map[string]bool,           // the unknown icons' names its log said (keys owned: view_run.odin)
+	// the program's module "app" (app_run.odin): its object (retained), its source, its events' handlers (keys owned)
+	app_api:      js.Value,
+	app_source:   string,
+	app_handlers: map[string][dynamic]js.Value,
+	// the palette sources it answers (palette_run.odin), by id (keys owned), and the answers that wait for a promise
+	palette_sources: map[string]Run_Source,
+	palette_asks:    map[i32]Run_Ask,
+	next_ask:        i32,
+	context_object:  js.Value,             // activate's context (retained): its language changes (Language)
 	ended:      bool,                      // stopped or failed: the thread leaves its loop
 }
 
@@ -107,15 +116,19 @@ run_open :: proc(r: ^Run) -> bool {
 	plugin_api.realm_set(&r.realm, "http", "fetch", plugin_api.implement(plugin_api.Http_Fetch, http_fetch))
 	plugin_api.realm_set(&r.realm, "clipboard", "read", plugin_api.implement(plugin_api.Clipboard_Read, clipboard_read))
 	plugin_api.realm_set(&r.realm, "clipboard", "write", plugin_api.implement(plugin_api.Clipboard_Write, clipboard_write))
+	plugin_api.realm_set(&r.realm, "palette", "source", plugin_api.implement(plugin_api.Palette_Source_Call, palette_source))
+	plugin_api.realm_set(&r.realm, "palette", "onChoose", plugin_api.implement(plugin_api.Palette_On_Choose, palette_on_choose))
 	// (a call without its grant is refused here at once; the program's broker checks again whatever this says)
 	r.realm.granted = p.granted_caps
 	settings_take(r)
 	// (no script runs until eval_source, so nothing is collected between these cells and their retain)
 	r.api = js.retain(r.rt, plugin_api.install(r.ctx, &r.realm))
 	r.gt_source = plugin_api.module_source()
+	app_open(r)
 	boot := js.new_object(r.ctx)
 	js.set_property_str(r.ctx, boot, "done", js.new_function(r.ctx, boot_done, "done", 1))
-	js.set_property_str(r.ctx, boot, "context", context_object(r))
+	r.context_object = js.retain(r.rt, context_object(r))
+	js.set_property_str(r.ctx, boot, "context", r.context_object)
 	r.boot = js.retain(r.rt, boot)
 
 	main := p.manifest.main
@@ -157,6 +170,8 @@ run_close :: proc(r: ^Run) {
 	delete(r.rejections)
 	for k in r.icons_said { delete(k) }
 	delete(r.icons_said)
+	app_close(r)
+	palette_close(r)
 	delete(r.gt_source)
 	delete(r.boot_error)
 }
@@ -180,6 +195,10 @@ run_turn :: proc(r: ^Run, m: Message) {
 	case .Setting:    setting_message(r, m)
 	case .Answer:     broker_answer(r, m)
 	case .Rows:       rows_message(r, m)
+	case .App_Event:  app_event_message(r, m)
+	case .Palette_Query:  palette_query(r, m)
+	case .Palette_Choose: palette_choose(r, m)
+	case .Language:       language_changed(r, m)
 	case .Test_Crash:
 		// (what an engine's bug does to a process: it ends here, and only here)
 		panic("plugins.test_crash: this plugin's process was asked to crash")
@@ -272,6 +291,7 @@ context_object :: proc(r: ^Run) -> js.Value {
 	js.set_property_str(r.ctx, o, "name", js.new_string(r.ctx, m.name))
 	js.set_property_str(r.ctx, o, "version", js.new_string(r.ctx, m.version))
 	js.set_property_str(r.ctx, o, "api", js.new_number(f64(plugin_api.PLUGIN_API_LEVEL)))
+	js.set_property_str(r.ctx, o, "language", js.new_string(r.ctx, r.p.language != "" ? r.p.language : "en"))
 	return o
 }
 
@@ -325,16 +345,24 @@ rejection_hook :: proc(ctx: ^js.Context, promise: js.Value, reason: js.Value, ha
 load_module :: proc(ctx: ^js.Context, referrer: string, specifier: string, attr_type: string, user: rawptr) -> js.Value {
 	r := (^Run)(user)
 	name := GT_MODULE
-	if specifier != GT_MODULE {
+	switch specifier {
+	case GT_MODULE:
+	case plugin_api.APP_MODULE:
+		// (a program's own: absent from gt-runtime and from a program that declares none)
+		if !r.p.app_given { return js.throw_type_error(ctx, "cannot import \"app\": this program gives no module \"app\"") }
+		name = plugin_api.APP_MODULE
+	case:
 		ok: bool
 		name, ok = module_resolve(referrer, specifier)
 		if !ok {
-			return js.throw_type_error(ctx, fmt.tprintf("cannot import \"%s\": a plugin imports \"gt\" and the files of its own folder (\"./...\")", specifier))
+			return js.throw_type_error(ctx, fmt.tprintf("cannot import \"%s\": a plugin imports \"gt\", \"app\" when its program gives one, and the files of its own folder (\"./...\")", specifier))
 		}
 	}
 	if v, had := r.modules[name]; had { return v }
 	source := r.gt_source
-	if name != GT_MODULE {
+	if name == plugin_api.APP_MODULE {
+		source = r.app_source
+	} else if name != GT_MODULE {
 		// (read at the process's start, before its sandbox: sources_read)
 		data, ok := r.p.sources[name]
 		if !ok { return js.throw_error(ctx, .reference, fmt.tprintf("cannot read the module %s of its folder (its .js and .mjs files are read at its start)", name)) }
@@ -380,6 +408,7 @@ import_meta :: proc(ctx: ^js.Context, module_name: string, meta: js.Value, user:
 	switch module_name {
 	case GT_MODULE:   js.set_property_str(ctx, meta, "gt", r.api)
 	case BOOT_MODULE: js.set_property_str(ctx, meta, "boot", r.boot)
+	case plugin_api.APP_MODULE: js.set_property_str(ctx, meta, "app", r.app_api)
 	}
 }
 

@@ -40,8 +40,11 @@ open_rich :: proc(t: ^testing.T) -> (s: ^session.Session, fx: ^Fx, root: string)
 	enable(root, "rich")
 	fx = new(Fx)   // (freed by open's cleanup)
 	s = open(t, fx, root)
+	wait_started(s, fx, "rich")
 	fx.open_view = {"rich", "main"}
 	session.wait_text(s, "It failed", WAIT)
+	// (the view's window takes its content's height as it comes: a click before it settles can miss its node)
+	session.wait_idle(s, WAIT)
 	return
 }
 

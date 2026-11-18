@@ -137,6 +137,25 @@ Each row names the reference to read. The list follows the toolkit's documentati
 A package that this table does not name has its page in the toolkit's `docs/` folder, or on
 <https://gt.sacha.house/docs/>.
 
+## A program's own plugin module
+
+A program gives its plugins its own objects through a module `"app"` (`references/plugins.md`, "A program's own
+module"):
+
+- Declare it as data: a `plugins.App_Module` (its name, its own level, its calls, events and `app:` permission words)
+  in `Host_Options.app`. A call is `"<group>.<call>"` with an argument struct and a result struct (typeids); an event
+  a name and a payload struct. Use strings, booleans, numbers, enums, structs and slices only.
+- A call's `run` runs on the interface's thread, in the request's event. Keep it quick: fill the result, or return
+  `pending` and keep the token, then answer from your own task's answer with `plugins.app_answer(host, token,
+  &result)` or `plugins.app_fail`. Never wait in `run`.
+- Send an event with `plugins.app_emit(host, name, &payload)`: it reaches the running plugins that listen.
+- Keep the declaration (types, names, docs) in a package of its own. Your tool writes `app.d.ts` and the reference
+  page from it (`plugin_api.app_module_dts`, `app_module_markdown`, `toolbox.generated_files` with `-check` in CI).
+- Do not subset Lucide in a program with plugins (their icons are named at run time).
+- Name the menu places plugins may use in `Host_Options.menu_places`, and add `plugins.menu_entries(host, place)` to
+  each such menu's build and `plugins.toolbar_entries(host)` to the tool bar's (`plugins.toolbar_tool(e)`); list the
+  places in your docs for plugin authors. The plugins' palette sources need nothing more than `host_build(h, palette)`.
+
 ## Tests
 
 A test of an interface is an `@(test)` procedure that drives the program with `gt:testkit/session`:

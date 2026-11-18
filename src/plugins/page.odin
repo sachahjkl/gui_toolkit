@@ -74,7 +74,7 @@ page_build :: proc(user: rawptr, em: f32) {
 		// (what it asks, said once: before a grant as what turning it on will ask, after it as what it has)
 		if len(p.manifest.permissions) > 0 && p.state != .Refused {
 			words := make([dynamic]string, context.temp_allocator)
-			for w in p.manifest.permissions { append(&words, i18n.tr(permission_words(w))) }
+			for w in p.manifest.permissions { append(&words, i18n.tr(permission_words(w, h.o.app))) }
 			lead := p.asks_more ? i18n.tr("It asks to") : i18n.tr("It may")
 			if ui.tags("weak") { line(fmt.tprintf("plugin_asks_%s", key), fmt.tprintf("%s: %s.", lead, strings.join(words[:], "; ", context.temp_allocator)), em) }
 		}

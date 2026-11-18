@@ -16,9 +16,24 @@ import "gt:testkit/session"
 import "gt:ui"
 
 // The bound of Not_Responding in these tests (the default is 2 s), and how long each wait may take.
-// (a second: the Windows CI's machine, on WARP, took more than 300 ms for a first turn that loops on nothing)
-BOUND_MS :: 1000
+// (3 s: the Windows CI's machine, on WARP, took more than a second for a turn of a plugin it had just started)
+BOUND_MS :: 3000
 WAIT :: 10 * time.Second
+// A plugin's process started and its activate run (wait_started): on the CI's Windows machine (WARP) the executable's
+// start and the first compile took longer than WAIT, which bounds what a test waits for after it
+START_WAIT :: 60 * time.Second
+
+// Starts plugin `id` and waits, with its own bound, until it runs (or failed, which the test then says): what the test
+// waits for next is bounded by WAIT from a started plugin.
+wait_started :: proc(s: ^session.Session, fx: ^Fx, id: string, loc := #caller_location) {
+	Started :: struct { fx: ^Fx, id: string }
+	session.wait_until(s, Started{fx, id}, proc(s: ^session.Session, w: Started) -> bool {
+		// (asked at each look: nothing to start until the folder is read, nothing more once it runs)
+		_ = plugins.start(&w.fx.host, w.id)
+		st := plugins.state_of(&w.fx.host, w.id)
+		return st == .Running || st == .Failed
+	}, fmt.tprintf("%s started", id), START_WAIT, loc)
+}
 // The builds the window must still make while the plugin loops.
 MORE_BUILDS :: 30
 
@@ -70,7 +85,7 @@ enable :: proc(root: string, ids: ..string) {
 }
 
 // A headless window whose builds run the host and the palette, the host reading `root`.
-open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plugins.Sandbox_Mode.If_Available) -> ^session.Session {
+open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plugins.Sandbox_Mode.If_Available, app: ^plugins.App_Module = nil, menu_places: []string = nil) -> ^session.Session {
 	crash_reports()
 	s := session.start(t, {user = fx, no_renderer = true, build = proc(s: ^session.Session) {
 		fx := (^Fx)(s.user)
@@ -94,7 +109,7 @@ open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plug
 		program = "gui_toolkit_plugins_test", program_id = "plugins_test",
 		folder = fmt.tprintf("%s/plugins", root), config_dir = fmt.tprintf("%s/config", root), state_dir = fmt.tprintf("%s/state", root),
 		data_dir = fmt.tprintf("%s/data", root),
-		bound_ms = BOUND_MS, single = single, sandbox = sandbox,
+		bound_ms = BOUND_MS, single = single, sandbox = sandbox, app = app, menu_places = menu_places,
 	})
 	fx.opened = true
 	// (before the session's end, which destroys the State: cleanups run last first)
@@ -119,11 +134,11 @@ choose :: proc(s: ^session.Session, fx: ^Fx, label: string) {
 	session.frames(s, 2)
 }
 
-wait_state :: proc(s: ^session.Session, fx: ^Fx, id: string, want: plugins.Plugin_State, loc := #caller_location) {
+wait_state :: proc(s: ^session.Session, fx: ^Fx, id: string, want: plugins.Plugin_State, bound := WAIT, loc := #caller_location) {
 	Wanted :: struct { fx: ^Fx, id: string, want: plugins.Plugin_State }
 	session.wait_until(s, Wanted{fx, id, want}, proc(s: ^session.Session, w: Wanted) -> bool {
 		return plugins.state_of(&w.fx.host, w.id) == w.want
-	}, fmt.tprintf("the state %v", want), WAIT, loc)
+	}, fmt.tprintf("the state %v", want), bound, loc)
 }
 
 @(test)

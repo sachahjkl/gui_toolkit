@@ -396,7 +396,7 @@ palette_answer :: proc(q: Palette_Question, a: ^Palette_Answer) -> bool {
 	if st.snap != nil { palette_snapshot_release(st.snap) }
 	st.snap = palette_snapshot_take(q.source, a, st.version, st.language, st.query, st.place)
 	st.asked, st.reading, st.failed = 0, false, false
-	delete(st.error)
+	delete(st.error, runtime.heap_allocator())
 	st.error = ""
 	p.generation += 1
 	return true
@@ -413,8 +413,9 @@ palette_answer_error :: proc(q: Palette_Question, message: string) -> bool {
 	if !ok { return false }
 	st := &p.states[i]
 	st.asked, st.reading, st.failed = 0, false, true
-	delete(st.error)
-	st.error = strings.clone(message)
+	// (a source's state keeps its strings in the heap: it is freed wherever the source is removed, under any allocator)
+	delete(st.error, runtime.heap_allocator())
+	st.error = strings.clone(message, runtime.heap_allocator())
 	return true
 }
 
@@ -853,8 +854,8 @@ palette_ask :: proc(p: ^Command_Palette) {
 		if (st.asked != 0 || st.failed) && st.version == src.version && st.language == language && st.query == query && st.place == place { continue }
 		p.serial += 1
 		st.asked, st.reading, st.failed, st.version, st.language, st.place = p.serial, true, false, src.version, language, place
-		delete(st.query)
-		st.query = strings.clone(query)
+		delete(st.query, runtime.heap_allocator())
+		st.query = strings.clone(query, runtime.heap_allocator())
 		p.asks += 1
 		sync.atomic_add(&link.refs, 1)   // (the question's handle)
 		src.read(p, src, {link = link, source = src, serial = st.asked, prefix = p.prefix, query = st.query})
@@ -887,8 +888,8 @@ palette_snapshot_release :: proc(snap: ^Palette_Snapshot) {
 @(private = "file")
 palette_state_free :: proc(st: ^Palette_Source_State) {
 	if st.snap != nil { palette_snapshot_release(st.snap) }
-	delete(st.error)
-	delete(st.query)
+	delete(st.error, runtime.heap_allocator())
+	delete(st.query, runtime.heap_allocator())
 	st^ = {}
 }
 
