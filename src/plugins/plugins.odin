@@ -341,6 +341,17 @@ set_enabled :: proc(h: ^Host, id: string, on: bool) {
 	toml_write(h)
 }
 
+// Starts a plugin's process now instead of at its first use (a command, a view, a palette's question): a program that
+// knows a plugin will be used soon, or a test that waits for the start apart from what it tests. False: no such plugin,
+// it cannot run (off, refused, suspended, asking for a grant), or it runs already. Interface thread.
+start :: proc(h: ^Host, id: string) -> bool {
+	context.allocator = runtime.heap_allocator()
+	p := find(h, id)
+	if p == nil || p.alive || !can_run(p) { return false }
+	plugin_start(h, p)
+	return true
+}
+
 // Stops a plugin's runtime (its JavaScript is interrupted at its next loop or call; its process is killed when that
 // does not end it within STOP_BOUND_MS): Ready once its process ended.
 stop :: proc(h: ^Host, id: string) {

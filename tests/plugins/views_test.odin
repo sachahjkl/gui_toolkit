@@ -48,6 +48,7 @@ open_counter :: proc(t: ^testing.T) -> (s: ^session.Session, fx: ^Fx, root: stri
 	enable(root, "counter")
 	fx = new(Fx)   // (freed by open's cleanup)
 	s = open(t, fx, root)
+	wait_started(s, fx, "counter")
 	fx.open_view = {"counter", "main"}
 	session.wait_text(s, "Count: 0", WAIT)
 	return

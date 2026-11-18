@@ -16,9 +16,24 @@ import "gt:testkit/session"
 import "gt:ui"
 
 // The bound of Not_Responding in these tests (the default is 2 s), and how long each wait may take.
-// (a second: the Windows CI's machine, on WARP, took more than 300 ms for a first turn that loops on nothing)
-BOUND_MS :: 1000
+// (3 s: the Windows CI's machine, on WARP, took more than a second for a turn of a plugin it had just started)
+BOUND_MS :: 3000
 WAIT :: 10 * time.Second
+// A plugin's process started and its activate run (wait_started): on the CI's Windows machine (WARP) the executable's
+// start and the first compile took longer than WAIT, which bounds what a test waits for after it
+START_WAIT :: 60 * time.Second
+
+// Starts plugin `id` and waits, with its own bound, until it runs (or failed, which the test then says): what the test
+// waits for next is bounded by WAIT from a started plugin.
+wait_started :: proc(s: ^session.Session, fx: ^Fx, id: string, loc := #caller_location) {
+	Started :: struct { fx: ^Fx, id: string }
+	session.wait_until(s, Started{fx, id}, proc(s: ^session.Session, w: Started) -> bool {
+		// (asked at each look: nothing to start until the folder is read, nothing more once it runs)
+		_ = plugins.start(&w.fx.host, w.id)
+		st := plugins.state_of(&w.fx.host, w.id)
+		return st == .Running || st == .Failed
+	}, fmt.tprintf("%s started", id), START_WAIT, loc)
+}
 // The builds the window must still make while the plugin loops.
 MORE_BUILDS :: 30
 

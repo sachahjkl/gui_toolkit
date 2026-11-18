@@ -41,6 +41,7 @@ open_finder :: proc(t: ^testing.T) -> (s: ^session.Session, fx: ^Fx) {
 	enable(root, "finder")
 	fx = new(Fx)   // (freed by open's cleanup)
 	s = open(t, fx, root, menu_places = {"file", "edit"})
+	wait_started(s, fx, "finder")
 	return
 }
 

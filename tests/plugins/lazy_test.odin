@@ -45,6 +45,7 @@ open_lazy :: proc(t: ^testing.T) -> (s: ^session.Session, fx: ^Fx) {
 	enable(root, "lazy")
 	fx = new(Fx)   // (freed by open's cleanup)
 	s = open(t, fx, root)
+	wait_started(s, fx, "lazy")
 	fx.open_view = {"lazy", "main"}
 	session.wait_text(s, "row 0 v1", WAIT)
 	return

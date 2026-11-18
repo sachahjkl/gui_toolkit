@@ -40,6 +40,7 @@ open_rich :: proc(t: ^testing.T) -> (s: ^session.Session, fx: ^Fx, root: string)
 	enable(root, "rich")
 	fx = new(Fx)   // (freed by open's cleanup)
 	s = open(t, fx, root)
+	wait_started(s, fx, "rich")
 	fx.open_view = {"rich", "main"}
 	session.wait_text(s, "It failed", WAIT)
 	return

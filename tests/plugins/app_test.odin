@@ -132,6 +132,7 @@ open_notes :: proc(t: ^testing.T) -> (s: ^session.Session, fx: ^Fx, n: ^Notes) {
 	fx = new(Fx)   // (freed by open's cleanup)
 	s = open(t, fx, root, app = &n.module)
 	testing.expect(t, plugins.grant(&fx.host, "notes"), "no grant")
+	wait_started(s, fx, "notes")
 	return
 }
 

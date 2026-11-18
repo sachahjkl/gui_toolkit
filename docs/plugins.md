@@ -46,6 +46,7 @@ plugins.host_close(&app.plugins)
 | `page_info(h)` | The Plugins page, a `prefs_page.Page_Info`: each plugin, its state, its switch, Stop, and Reload plugins. |
 | `run_command(h, id)` | Runs `plugin.<plugin id>.<command id>`, or `plugins.reload`. False: no such command, or its plugin cannot run now. |
 | `set_enabled(h, id, on)` | Turns a plugin on or off, and writes `plugins.toml` on a chore. |
+| `start(h, id)` | Starts a plugin's process now instead of at its first use: a program that knows it will be used soon, a test that waits for the start apart from what it tests. False when there is no such plugin, it cannot run, or it runs already. |
 | `stop(h, id)` | Stops a plugin's runtime; its process is killed when it has not ended 1 s later. The plugin is `Ready` again when its process has ended. |
 | `grant(h, id)`, `revoke(h, id)` | Grants a plugin what its manifest asks and turns it on (the grant dialog's Allow); takes back its permissions and the files it was given. |
 | `path_resolve(path, data_dir, granted, picked)`, `net_allowed(granted, url)`, `permission_parse(word)`, `origin_of(url)`, `host_is_private(host)`, `url_join(base, location)` | The broker's checks, for a test or a program's own page. |
