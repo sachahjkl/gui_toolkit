@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.326.0] - 2026-11-18 23:00
+
+### Added
+- **A program's build takes what opencode native's built by hand**: `Project.defines` (every system, every odin
+command), `Project.link` (`static_vcruntime` on Windows, `strip` for a Linux release, in the one `-extra-linker-flags`
+of `linker_flag`), `Build_Mode` with `Dev` (`-o:minimal`) as `Build_Options.iterate` and `build debug`, the mode
+written beside the program (`build_mode_of`), `Build_Options.fresh` (built into `<name>-new`, then swapped in, so a
+running program is never overwritten) and `Build_Options.pinned_odin` (`odin version` against `odin.version`,
+`GT_ANY_ODIN=1` to build anyway). Every option is off by default.
+
 ## [0.325.0] - 2026-11-18 22:35
 
 ### Added
@@ -4577,6 +4587,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.326.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.326.0
 [0.325.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.325.0
 [0.324.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.324.0
 [0.323.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.323.0

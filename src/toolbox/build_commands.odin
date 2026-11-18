@@ -26,7 +26,25 @@ Build_Options :: struct {
 	notices:           bool,                        // NOTICES_FILE checked up to date: a program that ships it
 	prepare:           proc(p: Project) -> bool,    // after build_native, before an odin build or test: what the program builds itself
 	checks:            []Build_Check,               // the program's own checks
+	iterate:           Build_Mode,                  // the build with no word (.Debug; .Dev: -o:minimal)
+	// built into <dir>/<name>-new, then swapped in (swap_in): a running program's file is never written, which
+	// Windows refuses
+	fresh:             bool,
+	pinned_odin:       bool,                        // `odin version` must hold the text of ODIN_PIN_FILE (odin_pin_says)
 }
+
+// How the program is compiled.
+Build_Mode :: enum u8 {
+	Debug,     // -debug -o:none: the fastest build, its debug information, a console on Windows
+	Dev,       // -o:minimal: Odin keeps the modules apart and between builds; no console on Windows
+	Release,   // -o:speed: what ships, what alone is measured for speed
+}
+
+// Beside the program, its mode ("<program>.mode"): Odin writes nothing in the executable that says how it was built.
+MODE_SUFFIX :: ".mode"
+// The project's pinned Odin (Build_Options.pinned_odin), and the variable that builds with another one anyway.
+ODIN_PIN_FILE :: ROOT_MARK_DEFAULT
+ANY_ODIN_ENV  :: "GT_ANY_ODIN"
 
 // A program's own check: true when it holds; else it said why.
 Build_Check :: proc(p: Project) -> bool
@@ -60,7 +78,7 @@ Check_Steps :: bit_set[Check_Step; u16]
 build_commands :: proc(o: Build_Options) -> [3]Command {
 	kept := new_clone(o)
 	return {
-		{name = "build", usage = fmt.aprintf("[release]: what the program needs built first, then %s (release: optimised, what ships)", o.program),
+		{name = "build", usage = fmt.aprintf("[release|debug]: what the program needs built first, then %s (release: optimised, what ships; debug: its debug information)", o.program),
 			run_with = build_run, user = kept, checked = true, positionals = -1},
 		{name = "test", usage = "[names]: the tests of the program, its packages and its tool (names, pkg.test_a,pkg.test_b: those tests of the program alone, in that order)",
 			run_with = test_run, user = kept, checked = true, positionals = -1},
@@ -71,8 +89,9 @@ build_commands :: proc(o: Build_Options) -> [3]Command {
 
 @(private = "file")
 build_run :: proc(args: []string, user: rawptr) -> cli.Exit {
-	if len(args) > 0 && args[0] != "release" { fmt.eprintfln("build: %q is not release", args[0]); return .Usage }
-	return ended(program_build((^Build_Options)(user)^, release = len(args) > 0))
+	word := len(args) > 0 ? args[0] : ""
+	if word != "" && word != "release" && word != "debug" { fmt.eprintfln("build: %q is not release or debug", word); return .Usage }
+	return ended(program_build((^Build_Options)(user)^, release = word == "release", debug = word == "debug"))
 }
 
 @(private = "file")
@@ -83,12 +102,87 @@ test_run :: proc(args: []string, user: rawptr) -> cli.Exit {
 @(private = "file")
 check_run :: proc(args: []string, user: rawptr) -> cli.Exit { return ended(program_check((^Build_Options)(user)^)) }
 
-// The program built: a debug build while iterating (no optimisation, the fastest), else a release. Each step says why it
-// fails.
-program_build :: proc(o: Build_Options, release := false) -> bool {
+// The program built: a release, a debug build, else the mode of Build_Options.iterate; its mode written beside it
+// (build_mode_of). With Build_Options.fresh, built beside it, then swapped in. Each step says why it fails.
+program_build :: proc(o: Build_Options, release := false, debug := false) -> bool {
+	mode := release ? Build_Mode.Release : debug ? Build_Mode.Debug : o.iterate
 	if !program_prepare(o) { return false }
-	if !run(build_line(o, release), {echo = true}) { return false }
-	fmt.printfln("built %s%s", o.program, release ? " (release)" : "")
+	if !run(build_line(o, mode), {echo = true}) { return false }
+	if o.fresh {
+		fresh, old := fresh_paths(o.project)
+		if !swap_in(fresh, o.program, old) { return false }
+	}
+	mode_file := fmt.tprintf("%s%s", o.program, MODE_SUFFIX)
+	if !write_if_changed(mode_file, build_mode_name(mode)) { fmt.eprintfln("build: %s cannot be written", mode_file); return false }
+	fmt.printfln("built %s, %s", o.program, build_mode_name(mode))
+	return true
+}
+
+// The mode the program at `program` was built in, as its build wrote it beside it; known = false: built otherwise.
+build_mode_of :: proc(program: string) -> (mode: Build_Mode, known: bool) {
+	data, err := os.read_entire_file(fmt.tprintf("%s%s", program, MODE_SUFFIX), context.temp_allocator)
+	if err != nil { return }
+	text := strings.trim_space(string(data))
+	for m in Build_Mode {
+		if text == build_mode_name(m) { return m, true }
+	}
+	return
+}
+
+// The word of a mode: its mode file's text and the build's.
+build_mode_name :: proc(mode: Build_Mode) -> string {
+	switch mode {
+	case .Debug:   return "debug"
+	case .Dev:     return "dev"
+	case .Release: return "release"
+	}
+	return ""
+}
+
+// Where a fresh build goes and where the program it replaces waits: <dir>/<name>-new and <dir>/<name>-old, beside the
+// program, with its suffix.
+@(private)
+fresh_paths :: proc(p: Project) -> (fresh, old: string) {
+	dir := dir_of(p.program)
+	return fmt.tprintf("%s/%s-new%s", dir, p.name, EXE_SUFFIX), fmt.tprintf("%s/%s-old%s", dir, p.name, EXE_SUFFIX)
+}
+
+// The file at `fresh` in the place of `program`. Windows refuses to write a running executable but lets it be
+// renamed: the program goes to `old` first, removed when nothing runs it (else by the next build). The same renames on
+// every system: one path.
+@(private)
+swap_in :: proc(fresh, program, old: string) -> bool {
+	if !os.exists(fresh) { fmt.eprintfln("build: no %s: the build wrote nothing", fresh); return false }
+	_ = os.remove(old)
+	if os.exists(program) {
+		if err := os.rename(program, old); err != nil {
+			fmt.eprintfln("build: %s cannot make way for %s (%v): does %s still run?", program, fresh, err, old)
+			return false
+		}
+	}
+	if err := os.rename(fresh, program); err != nil { fmt.eprintfln("build: %s cannot become %s (%v)", fresh, program, err); return false }
+	// (a running program keeps its file on Windows: the next build removes it)
+	_ = os.remove(old)
+	return true
+}
+
+// "" when `found`, what `odin version` printed, holds the version `pinned` (the text of ODIN_PIN_FILE), else why. A
+// pinned version that is the start of the found one holds (dev-2026-11 in dev-2026-11a): opencode native's tool did so.
+odin_pin_says :: proc(pinned, found: string) -> string {
+	want := strings.trim_space(pinned)
+	if want != "" && strings.contains(found, want) { return "" }
+	return fmt.tprintf("this project needs Odin %s (%s); found: %s. Install that release, or set %s=1 to build anyway.",
+		want, ODIN_PIN_FILE, strings.trim_space(found), ANY_ODIN_ENV)
+}
+
+// The odin on the path is the project's pinned one (Build_Options.pinned_odin), unless ANY_ODIN_ENV is set.
+@(private = "file")
+odin_is_pinned :: proc() -> bool {
+	if os.get_env(ANY_ODIN_ENV, context.temp_allocator) != "" { return true }
+	pinned, err := os.read_entire_file(ODIN_PIN_FILE, context.temp_allocator)
+	if err != nil { fmt.eprintfln("build: no %s, the Odin version this project pins", ODIN_PIN_FILE); return false }
+	found, code := capture({"odin", "version"})
+	if why := odin_pin_says(string(pinned), code == 0 ? found : ""); why != "" { fmt.eprintfln("build: %s", why); return false }
 	return true
 }
 
@@ -187,9 +281,12 @@ catalogues_check :: proc(c: I18n_Catalogues) -> bool {
 	return true
 }
 
-// build_native, the program's own part, the build folder: what an odin build or test of the program needs first.
+// The pinned Odin, build_native, the program's own part, the build folder: what an odin build or test of the program
+// needs first.
 @(private = "file")
 program_prepare :: proc(o: Build_Options) -> bool {
+	// (first: a wrong Odin fails later in a way that does not name it)
+	if o.pinned_odin && !odin_is_pinned() { return false }
 	if !build_native(o.project) { return false }
 	if o.prepare != nil && !o.prepare(o.project) { return false }
 	// (odin makes no folder for its output)
@@ -198,15 +295,22 @@ program_prepare :: proc(o: Build_Options) -> bool {
 	return true
 }
 
-// The odin command of the program's build.
+// The odin command of the program's build in `mode`: to the program's path, or to its fresh path (fresh_paths).
 @(private)
-build_line :: proc(o: Build_Options, release: bool) -> []string {
+build_line :: proc(o: Build_Options, mode: Build_Mode) -> []string {
+	out := o.program
+	if o.fresh { out, _ = fresh_paths(o.project) }
 	extra := make([dynamic]string, context.temp_allocator)
-	append(&extra, fmt.tprintf("-out:%s", o.program))
-	if release { append(&extra, "-o:speed") } else { append(&extra, "-debug", "-o:none") }
-	// (no console of its own: a command line's text goes through the console launcher, <name>.com)
-	if release && ODIN_OS == .Windows { append(&extra, "-subsystem:windows") }
-	return odin_command(o.project, "build", "", extra[:])
+	append(&extra, fmt.tprintf("-out:%s", out))
+	switch mode {
+	case .Debug:   append(&extra, "-debug", "-o:none")
+	case .Dev:     append(&extra, "-o:minimal")
+	case .Release: append(&extra, "-o:speed")
+	}
+	// (no console of its own: a command line's text goes through the console launcher, <name>.com; a debug build keeps
+	// its console for what the debugger and the program print)
+	if mode != .Debug && ODIN_OS == .Windows { append(&extra, "-subsystem:windows") }
+	return odin_command(o.project, "build", "", extra[:], release = mode == .Release)
 }
 
 // The odin commands of the tests, one per test package (names given: one, of the program's package).

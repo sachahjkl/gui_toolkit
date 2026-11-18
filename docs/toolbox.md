@@ -354,7 +354,9 @@ that are not flags; a lone `-` is plain).
 | `src` | the program's package (`""`: `src`) |
 | `toolkit` | the toolkit's checkout (`""`: `$GT`, else `TOOLKIT_DEFAULT`, `ext/gui_toolkit`) |
 | `collections` | more collections than `gt`: a name and its folder |
+| `defines` | what every odin command of the program gets, on every system (`check` too, of every system) |
 | `linux_defines` | what every odin command of the program gets on Linux |
+| `link` | what the linker gets beyond the toolkit's own, a `Link`: `static_vcruntime` (Windows: the C runtime linked in, no `vcruntime140.dll` to ship), `strip` (Linux: a release build has no symbol table) |
 | `launcher` | Windows: the rules of its console launcher, a `Launcher` (below) |
 | `licence` | its licence, for its notices (`""`: MIT) |
 | `features` | what it takes of the toolkit beyond the core, a `Features` (below) |
@@ -370,10 +372,13 @@ that are not flags; a lone `-` is plain).
   `opencode native` give `FromentSoftware.OpencodeNative`). `desktop.Identity` derives the same from its `vendor` and its
   `name`, so the windows group with the shortcuts in the taskbar. No `publisher`: `""`, no id (the taskbar groups by the
   executable).
-- `odin_command(p, verb, pkg = "", extra = nil)` is `odin <verb> <pkg> -collection:gt=<toolkit>/src <collections> -vet`,
-  the defines of the features, on Windows `windows_flags`, on Linux `linux_defines` and, but for `check`,
-  `LINUX_LINK_FLAG` (the native text backend and wgpu-native carry the same Rust standard library), then `extra`. `pkg`
-  `""`: the program's.
+- `odin_command(p, verb, pkg = "", extra = nil, release = false)` is `odin <verb> <pkg> -collection:gt=<toolkit>/src
+  <collections> -vet`, the defines of the features, `defines`, on Windows `windows_flags`, on Linux `linux_defines`, the
+  linker flag (`linker_flag`), then `extra`. `pkg` `""`: the program's. `release`: the command of a release build.
+- `linker_flag(p, target, verb, release)` is the one `-extra-linker-flags` of a command for `target` (`""`: none). Odin
+  keeps only the last such flag, so every source goes in this one: on Linux `LINUX_LINK` (the native text backend and
+  wgpu-native carry the same Rust standard library; `LINUX_LINK_FLAG` is its flag alone) and, in a release with
+  `link.strip`, `-s`; on Windows `WINDOWS_STATIC_VCRUNTIME` with `link.static_vcruntime`. `check` gets none.
 - `windows_flags(p, linked)` is what `build_windows` made, for a Windows odin command: the console launcher
   (`-define:GT_CONSOLE_LAUNCHER=<file>` and `GT_CONSOLE_LAUNCHER_MARK`: gt:desktop embeds it and writes it with the PATH
   entry), `-define:GT_AUMID=<project_aumid(p)>` (gt:platform declares it before the first window) and, when `linked`, the resource.
@@ -411,7 +416,7 @@ if !toolbox.run(toolbox.odin_command(p, "build", extra = {"-o:speed", "-out:buil
 
 ## A program's build, test and check
 
-`build_commands(o: Build_Options) -> [3]Command` are a program's `build [release]`, `test [names]` and `check`, the same
+`build_commands(o: Build_Options) -> [3]Command` are a program's `build [release|debug]`, `test [names]` and `check`, the same
 steps in every program ([the intent](../src/md/infrastructure/build-commands.md)). `Build_Options` is the `Project`
 (`using project`) and what the program adds:
 
@@ -424,12 +429,29 @@ steps in every program ([the intent](../src/md/infrastructure/build-commands.md)
 | `notices` | `THIRD-PARTY-NOTICES` checked up to date |
 | `prepare` | `proc(p: Project) -> bool`, after `build_native`, before an odin build or test: what the program builds itself |
 | `checks` | `[]Build_Check` (`proc(p: Project) -> bool`): the program's own checks, each says why it fails |
+| `iterate` | the `Build_Mode` of `build` with no word: `Debug` (the default) or `Dev` |
+| `fresh` | built into `<dir>/<name>-new`, then swapped in: a running program's file is never written (Windows refuses it) |
+| `pinned_odin` | `odin version` must hold the text of `odin.version` (`ODIN_PIN_FILE`); `GT_ANY_ODIN=1` builds anyway |
 
 Its slices must outlive the tool's commands: package arrays (`@(rodata) TESTS := [?]toolbox.Test_Package{...}`), not a
 literal in the procedure that makes the options.
 
-- `program_build(o, release = false) -> bool`: `build_native`, `prepare`, then the program at `Project.program`,
-  `-debug -o:none` (the fastest build), or `-o:speed` and on Windows `-subsystem:windows` for a release.
+A `Build_Mode` is how the program is compiled:
+
+| `Build_Mode` | Flags | What for |
+|---|---|---|
+| `Debug` | `-debug -o:none`, a console on Windows | the fastest build, its debug information |
+| `Dev` | `-o:minimal`, `-subsystem:windows` | Odin keeps the modules apart and between builds |
+| `Release` | `-o:speed`, `-subsystem:windows`, `link.strip` | what ships, what alone is measured for speed |
+
+- `program_build(o, release = false, debug = false) -> bool`: with `pinned_odin` the Odin version first, then
+  `build_native`, `prepare`, then the program at `Project.program` in its mode (`Release`, `Debug`, else `iterate`).
+  With `fresh`, the build goes to `<dir>/<name>-new`; the program moves to `<name>-old` (Windows lets a running
+  executable be renamed, not written), the fresh file takes its place, and `<name>-old` is removed when nothing runs
+  it. Every build writes its mode beside the program, `<program>.mode` (`MODE_SUFFIX`).
+- `build_mode_of(program) -> (mode, known)`: the mode the program was built in, from its mode file (`known = false`:
+  built otherwise). A tool's package command refuses what is not a `Release`; a measure of speed reads only one.
+- `odin_pin_says(pinned, found) -> string`: `""` when `found` (what `odin version` printed) holds `pinned`, else why.
 - `program_test(o, names = "") -> bool`: each test package to `build/test_<path>`; `names`
   (`pkg.test_a,pkg.test_b`): those tests of the program's package alone, in that order, on one thread.
 - `program_check(o) -> bool`: the steps of `check_steps(o, ODIN_OS)` in the order of `Check_Step`: `Changelog`, `Scopes`,

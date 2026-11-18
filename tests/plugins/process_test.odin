@@ -22,7 +22,7 @@ say_hello :: proc(s: ^session.Session, fx: ^Fx) {
 	wait_started(s, fx, "sample")
 	toasts := fx.host.toasts
 	testing.expect(s.t, plugins.run_command(&fx.host, "plugin.sample.hello"), "the command did not run")
-	session.wait_until(s, Count{fx, toasts + 1}, proc(s: ^session.Session, c: Count) -> bool { return c.fx.host.toasts >= c.at }, "the plugin's toast", WAIT)
+	session.wait_until(s, Count{fx, toasts + 1}, answered, "the plugin's toast", WAIT)
 }
 
 @(test)

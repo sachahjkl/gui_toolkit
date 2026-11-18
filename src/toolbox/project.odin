@@ -12,7 +12,10 @@ import "../platform"
 
 // What a program of the toolkit links on Linux: the native text backend and wgpu-native both carry Rust's standard
 // library, whose few unmangled symbols are the same code.
-LINUX_LINK_FLAG :: "-extra-linker-flags:-Wl,--allow-multiple-definition"
+LINUX_LINK      :: "-Wl,--allow-multiple-definition"
+LINUX_LINK_FLAG :: "-extra-linker-flags:" + LINUX_LINK
+// Windows: the C runtime linked in, as Odin links its own (Link.static_vcruntime).
+WINDOWS_STATIC_VCRUNTIME :: "/NODEFAULTLIB:vcruntime.lib /DEFAULTLIB:libvcruntime.lib"
 // The toolkit's checkout in a program's, and the variable that names another one (its root, not its src).
 TOOLKIT_DEFAULT :: "ext/gui_toolkit"
 TOOLKIT_ENV     :: "GT"
@@ -29,7 +32,9 @@ Project :: struct {
 	src:           string,        // the program's package ("": "src")
 	toolkit:       string,        // the toolkit's checkout ("": $GT, else TOOLKIT_DEFAULT)
 	collections:   [][2]string,   // more collections than gt: a name and its folder
+	defines:       []string,      // what every odin command of the program gets, on every system ("-define:IMAGE_WEBP=true")
 	linux_defines: []string,      // what every odin command of the program gets on Linux ("-define:FONT_BACKEND=native")
+	link:          Link,          // what the linker gets beyond the toolkit's own (linker_flag)
 	launcher:      Launcher,      // Windows: the rules of its console launcher, <name>.com beside the program
 	licence:       string,        // the program's licence, for its notices ("": "MIT")
 	features:      Features,      // what it takes of the toolkit beyond the core: its defines, native builds and crates
@@ -61,6 +66,12 @@ Feature :: enum u8 {
 	Pdf,                // PDF files opened, rendered and written (GT_PDF=true, native/pdf): gt:pdf, hayro built into the program
 }
 Features :: bit_set[Feature; u8]
+
+// What the linker gets beyond the toolkit's own flags. Every field is off by default.
+Link :: struct {
+	static_vcruntime: bool,   // Windows: the C runtime linked in (WINDOWS_STATIC_VCRUNTIME): no vcruntime140.dll to ship
+	strip:            bool,   // Linux: a release build has no symbol table (-s): a panic says its place without it
+}
 
 // The rules of a program's console launcher (the toolkit's tools/console_launcher). Every program with a window has one
 // on Windows: launcher_path(p), its mark launcher_mark(p).
@@ -134,19 +145,39 @@ collection_flags :: proc(p: Project, out: ^[dynamic]string) {
 	append(out, "-vet")
 }
 
-// `odin <verb> <package> <collections> -vet`, the defines of the project's features (feature_defines), on Windows the
-// program's own (windows_flags), on Linux the project's defines and (but for check, which links nothing)
-// LINUX_LINK_FLAG, then `extra`. `pkg` "": the program's.
-odin_command :: proc(p: Project, verb: string, pkg := "", extra: []string = nil) -> []string {
+// `odin <verb> <package> <collections> -vet`, the defines of the project's features (feature_defines), the project's
+// defines, on Windows the program's own (windows_flags), on Linux the project's Linux defines, the linker flag
+// (linker_flag; `release`: of a release build), then `extra`. `pkg` "": the program's.
+odin_command :: proc(p: Project, verb: string, pkg := "", extra: []string = nil, release := false) -> []string {
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", verb, pkg != "" ? pkg : project_src(p))
 	collection_flags(p, &cmd)
 	append(&cmd, ..feature_defines(p.features, ODIN_OS, verb != "check" ? lucide_subset_path() : ""))
+	append(&cmd, ..p.defines)
 	system_odin_flags(p, verb, pkg, &cmd)   // (project_windows.odin, project_linux.odin, project_other.odin)
+	if flag := linker_flag(p, ODIN_OS, verb, release); flag != "" { append(&cmd, flag) }
 	// (the tests say a call that waits on the system in a frame: a session's test fails for it, testkit/session)
 	if verb == "test" { append(&cmd, "-define:TOOLKIT_BLOCKING_CHECK=true") }
 	append(&cmd, ..extra)
 	return cmd[:]
+}
+
+// The one -extra-linker-flags of an odin command of the program built for `target` ("": none). Odin keeps only the
+// last such flag, so every source of a linker flag goes in this one: on Linux LINUX_LINK (the native text backend and
+// wgpu-native carry the same Rust standard library) and, in a release with Link.strip, -s; on Windows the static C
+// runtime with Link.static_vcruntime. check links nothing: none.
+linker_flag :: proc(p: Project, target: runtime.Odin_OS_Type, verb: string, release: bool) -> string {
+	if verb == "check" { return "" }
+	parts := make([dynamic]string, context.temp_allocator)
+	#partial switch target {
+	case .Linux:
+		append(&parts, LINUX_LINK)
+		if release && p.link.strip { append(&parts, "-s") }
+	case .Windows:
+		if p.link.static_vcruntime { append(&parts, WINDOWS_STATIC_VCRUNTIME) }
+	}
+	if len(parts) == 0 { return "" }
+	return fmt.tprintf("-extra-linker-flags:%s", strings.join(parts[:], " ", context.temp_allocator))
 }
 
 // What an odin command of the program gets on Windows from what build_windows made: the console launcher it embeds
@@ -246,6 +277,8 @@ check_other :: proc(p: Project, target: string) -> bool {
 	extra := make([dynamic]string, context.temp_allocator)
 	collection_flags(p, &extra)
 	ordered_remove(&extra, len(extra) - 1)   // (odin_check passes -vet itself)
+	// (a define changes what compiles: the other system's check sees the program's)
+	append(&extra, ..p.defines)
 	return odin_check(project_src(p), target, extra[:], o = {echo = true})
 }
 

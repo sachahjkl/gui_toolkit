@@ -13,9 +13,6 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
-- **opencode native's build in the toolkit's commands.** `toolbox.build_commands` covers what opencode native's tool
-  does by hand: defines on every system, Windows link options (a static vcruntime), stripped symbols in a Linux
-  release, `-o:minimal` with its `.mode` file, a fresh build in `build/ocn-new`, a pinned Odin version.
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).
