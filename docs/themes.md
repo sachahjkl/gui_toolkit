@@ -56,6 +56,8 @@ its focus, its motion, its font. `{}` is the toolkit's look; each part says only
 | `still: bool` | false | no motion in its look |
 | `font: Theme_Font` | the program's | `family`, `size` (a factor) |
 | `relief: Maybe(Relief)` | the program's finish's preset | how surfaces are raised and sunk ("Reliefs" below); it wins over the finish |
+| `scroll_bar: Theme_Scroll_Bar` | the standard bar | the bar's `form` and a `Keys` bar's `track` |
+| `caption: Theme_Caption` | the program's title bar, the system's buttons | a band (`active`, `inactive`), its `ink`, `bold`, the `buttons`' style |
 
 The person's choices win over the theme's: the rounding setting scales its radii, the person's font family wins over
 its family, the person's `Animations.On` keeps the motion a still theme removes.
@@ -111,6 +113,29 @@ motion" does: states, fades, tweens, a palette's cross-fade, the scroll's easing
 `font.family` is the interface's family of the theme, loaded on a chore as the person's family is
 ([font-picker.md](font-picker.md)); a family the person chose (`use_text_family`) wins over it, even while it loads.
 `font.size` multiplies the program's font size (the person's text size) before the zoom; 0 and 1 leave it.
+
+### A theme's scroll bar
+
+`Theme_Scroll_Bar.form`: `Standard` (the desktop's bar of [scroll-bar.md](scroll-bar.md)) or `Keys`. A `Keys` bar has
+the standard's parts at the standard's places: a flat trough (`track`, 0xRRGGBBAA; 0: the raised face half way to
+white), and arrow buttons and a thumb that are keys of the relief (`machined_bevel` on `button background`: the rings
+of a relief of rings). A held arrow is a pressed key, its triangle in the theme's `text`; the thumb does not light and
+has no grip. The radii stay the roles' (`Scroll_Arrow`, `Scroll_Thumb`); marks and the find's ticks lie on the track
+as on the standard bar. Every bar takes it, a text area's too.
+
+### A theme's title bar
+
+`Theme_Caption` dresses the title bar the program draws (`title_bar`, `window_buttons`):
+
+| Field | What it does |
+|---|---|
+| `active`, `inactive` | the band's two stops from left to right (0xRRGGBBAA), drawn over the bar's face; both 0: no band; the second 0: one colour. The window's `active` picks them (no window: active) |
+| `ink` | the text of what is built in the bar, down to a box with a face of its own (`Box.ink`, as a selected row's) |
+| `bold` | what is built in the bar takes the bold face of the style's font, unless it gives its own |
+| `buttons` | `System` (Windows 10's caption buttons) or `Keys`: a square key of the relief (8 : 7, 0.62 of the bar's height) in the middle of each button's box, its glyph drawn as shapes |
+
+The buttons' boxes keep `CAPTION_BUTTON_WIDTH`: they are the window's hit regions. A dialog's `title_strip` takes the
+band too, active.
 
 | Procedure | What it does |
 |---|---|
@@ -213,12 +238,16 @@ step of the face toward white, above 0, or black, below 0: 1 is white, -1 black)
 relief of rings (`carved`, `extra = .None`) is drawn from its rings by the same primitives a program calls
 (`machined_bevel`, `machined_well`, `machined_groove`, `machined_plate`): a round shape takes its first ring as two
 discs. `relief_rings(dc, r, rings, face)`, `relief_round` and `relief_lines` draw rings for a program's own surface;
-`relief_tone(face, t)` is one tone.
+`relief_tone(face, t)` is one tone. The widgets' own touches follow it too: under a relief of rings `machined_lamp` is a
+flat disc of its colour (a radio's dot, a node's state), `machined_pip` a round well, `relief_face` (a tile, a stacked
+bar's part) has the raised rings, `caption_face` is the theme's band or one colour in a bar's rings, and a switch's
+or a slider's knob is the theme's `button background`.
 
 `RELIEF_BEVEL` is Windows 95's: two rings of one pixel (white and the face's light along the top and left, black and
 its shadow along the bottom and right, turned over when pressed or sunken), square, no halo, no hover light, no shadow.
 The theme `Old Head` is made of it: one grey `#c0c0c0`, white fields, navy, square corners, a dotted focus, white on
-navy for every selection, still. Its relief wins over the program's finish.
+navy for every selection, still, scroll bars of keys, a caption band from navy to blue (grey behind) with white bold
+text and square keys. Its relief wins over the program's finish.
 
 ### Corners in corners
 

@@ -350,6 +350,12 @@ machined_lamp :: proc(dc: ^draw.Context, c: Vec2, d: f32, col: Color, lit: f32 =
 		draw.rect(dc, draw.rect_pad(r, -d * 0.12), draw.mix(darken(col, 0.45), col, lit), d * 0.5)
 		return
 	}
+	if relief_ringed() != nil {
+		// (a relief of rings has no light: no rim, no highlight, no halo; the lamp is its colour, dimmed as the flat one:
+		// theme-design.md, layer 10)
+		draw.rect(dc, r, draw.mix(darken(col, 0.45), col, lit), d * 0.5)
+		return
+	}
 	if g := glow_of(); halo > VISIBLE && g > 0 { draw.box_shadow(dc, r, rr, d * 0.45, with_alpha(col, 0.4 * halo * g)) }
 	draw.rect(dc, draw.rect_pad(r, 1 * s), relief_shade(0.8), d * 0.5 + s)
 	body := draw.mix(darken(col, 0.3), col, lit)   // (dimmed, not browned: the colour stays clean through a pulse)
@@ -368,6 +374,12 @@ machined_pip :: proc(dc: ^draw.Context, c: Vec2, d: f32, col: Color) {
 	if !machined() {
 		in_f := draw.rect_pad(r, -max(p, math.round(d * 0.25)))
 		draw.rect(dc, in_f, with_alpha(col, 0.8), (in_f.max.x - in_f.min.x) * 0.5)
+		return
+	}
+	if rl := relief_ringed(); rl != nil {   // (a round well of its rings, the dab at its bottom: theme-design.md, layer 10)
+		relief_round(dc, r, d * 0.5, rl.sunken, relief_surface(rl, col), color_from_tags(gs(), 0, "well"))
+		in_r := draw.rect_pad(r, -max(p, math.round(d * 0.22)))
+		draw.rect(dc, in_r, with_alpha(col, 0.8), (in_r.max.x - in_r.min.x) * 0.5)
 		return
 	}
 	draw.rect(dc, r, relief_shade(0.75), d * 0.5)

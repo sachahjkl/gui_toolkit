@@ -1,7 +1,8 @@
 package ui
 
 // What a theme says of its look beside its colours (src/md/features/theme-design.md): the radius of each role, the
-// selection of each role and the text on it, the focus style, whether it moves, its font. Each part's zero value is the
+// selection of each role and the text on it, the focus style, whether it moves, its font, its relief, its scroll bar's
+// form, its caption. Each part's zero value is the
 // toolkit's look from before themes carried one, so a theme, a program's palette and a test's palette say only what
 // differs, and every theme that says nothing looks as it did.
 
@@ -54,6 +55,31 @@ Theme_Font :: struct {
 	size:   f32,      // a factor of the program's font size; 0: 1
 }
 
+// How a scroll bar is drawn (scrollbar.odin); its parts and their places are the standard's in each form.
+Scroll_Bar_Form :: enum u8 {
+	Standard,   // the desktop's bar (src/md/features/scroll-bar.md): gradients, a lit thumb, a grip
+	Keys,       // a flat track; the arrow buttons and the thumb keys of the relief (machined_bevel)
+}
+
+Theme_Scroll_Bar :: struct {
+	form:  Scroll_Bar_Form,
+	track: u32,   // Keys: the trough, 0xRRGGBBAA, sRGB; 0: the raised face half way to white
+}
+
+// How a caption button (window_buttons) is drawn.
+Caption_Buttons :: enum u8 {
+	System,   // Windows 10's: a fill under the pointer, the close button red, the icon font's glyphs
+	Keys,     // a square key of the relief centred in the button's box, its glyph drawn as shapes
+}
+
+// The title bar the program draws (title_bar). Each colour 0xRRGGBBAA, sRGB.
+Theme_Caption :: struct {
+	active, inactive: [2]u32,   // the band, from its left to its right; both 0: no band; the second 0: the first
+	ink:     u32,               // the text on the band; 0: the text as it is
+	bold:    bool,              // the band's text bold
+	buttons: Caption_Buttons,
+}
+
 Theme_Look :: struct {
 	shape:      Maybe(Theme_Shape),                 // nil: SHAPE_DEFAULT
 	selections: [Selection_Role]Theme_Selection,
@@ -61,6 +87,44 @@ Theme_Look :: struct {
 	still:      bool,                               // its look has no motion (under Animations.System)
 	font:       Theme_Font,
 	relief:     Maybe(Relief),                      // nil: the program's finish's preset (relief_of); set: it wins
+	scroll_bar: Theme_Scroll_Bar,
+	caption:    Theme_Caption,
+}
+
+// The scroll bar and the caption of the theme shown; their zero values (the toolkit's) with no theme.
+@(private)
+scroll_bar_shown :: proc() -> Theme_Scroll_Bar {
+	if s := current; s != nil && s.theme != nil { return s.theme.look.scroll_bar }
+	return {}
+}
+
+@(private)
+caption_shown :: proc() -> Theme_Caption {
+	if s := current; s != nil && s.theme != nil { return s.theme.look.caption }
+	return {}
+}
+
+// Whether a caption gives a band (Theme_Caption.active or .inactive).
+@(private)
+caption_has_band :: proc(c: Theme_Caption) -> bool { return c.active != {} || c.inactive != {} }
+
+// The two stops of a caption's band, active or not, as colours (the second 0: the first; one side 0: the other's).
+@(private)
+caption_stops :: proc(c: Theme_Caption, active: bool) -> (left, right: Color) {
+	stops := active ? c.active : c.inactive
+	if stops == {} { stops = active ? c.inactive : c.active }
+	if stops[1] == 0 { stops[1] = stops[0] }
+	return draw.hex(stops[0]), draw.hex(stops[1])
+}
+
+// A caption's band over `r`: its two stops from left to right, interpolated in sRGB values as Windows drew them.
+@(private)
+caption_band :: proc(dc: ^draw.Context, r: Rect, c: Theme_Caption, active: bool) {
+	left, right := caption_stops(c, active)
+	if left == right { draw.rect(dc, r, left); return }
+	stops := [2]draw.Gradient_Stop{{color = left, pos = 0}, {color = right, pos = 1}}
+	g := draw.Gradient{kind = .Linear, space = .Srgb, end = Vec2{r.max.x - r.min.x, 0}, stops = stops[:]}
+	draw.gradient(dc, r, g, {})
 }
 
 // The radius of `role` in the theme shown, before the rounding setting: ems of the font size (a widget multiplies it

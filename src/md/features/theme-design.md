@@ -21,8 +21,8 @@ The experiment's file stays on its branch; what it found is here. Its gaps, each
 | 4 | the selection per control | one accent, each selection's alpha fixed; `list_row` and `menu_row` pop `selected` before the label | layer 2 |
 | 5 | the motion | the program's and the person's only | layer 4 |
 | 6 | the font | the program's family and size | layer 5 |
-| 7 | the scroll bar | the toolkit's one form, its colours fixed mixes of five entries | left for later |
-| 8 | the title bar | the program's box, Windows 10's caption buttons | left for later |
+| 7 | the scroll bar | the toolkit's one form, its colours fixed mixes of five entries | layer 8 |
+| 8 | the title bar | the program's box, Windows 10's caption buttons | layer 9 |
 | 9 | the check mark and the state lights | a white check on the accent's key; a row lifts under the pointer | left: the widgets' |
 | 10 | small faults | a pressed key's label does not move; the focus inset is the same in a row | the row's focus is on its face (layer 3) |
 | 11 | the halo strength | `Theme.glow`, the program's | layer 6: `Relief.no_glow` |
@@ -185,8 +185,7 @@ Written as data, each of these would add a field per case, and the "rings" would
 the presets carry the flags (what used to be `finish ==` tests) and their extra; a theme that wants another look gives
 rings. The flat finish is `Relief{}`: its plain face and thin edge are the primitives' flat path.
 
-A relief of rings has a known limit: the widgets' own machined touches (a radio's lit bead, a section's caption face,
-the lamps) still draw their machined forms when `carved` is set.
+The widgets' own machined touches (a radio's lit bead, a caption's face, the lamps) took the relief's rings in layer 10.
 
 ## Layer 7: Old Head as data (built)
 
@@ -200,15 +199,91 @@ Old Head is one `THEMES` entry and nothing else: its colours (one grey `#c0c0c0`
   behind a dialog;
 - `focus = {style = .Dotted, inset = 4, color = black}`: Windows' focus rectangle;
 - every selection navy with a white ink;
-- `still`.
+- `still`;
+- a bar of keys (layer 8) and a caption band with square keys (layer 9).
 
 Its finish is nil: its relief wins over whatever finish the program asks. `Finish.Bevel` and its `bevel()` tests, the
 experiment's, do not exist. Its film (`tools/film/oldhead.odin`, `tk film oldhead`) shows the showcase in it.
 
+## Layer 8: the scroll bar's form (built)
+
+`Theme_Look.scroll_bar: Theme_Scroll_Bar`: `form` (`Standard`, the zero value: the bar of
+[scroll-bar.md](scroll-bar.md), every pixel as before; `Keys`: the bar of the relief) and `track` (0xRRGGBBAA, the
+trough of a `Keys` bar; 0: the raised face half way to white, `#dfdfdf` on Old Head's grey).
+
+A `Keys` bar is the parts of the standard, laid out by the same code (`scrollbar_layout`: the thickness, the least thumb,
+the arrows' room), drawn as the relief's keys:
+
+- the trough: one flat colour, no border, no gradient;
+- each arrow button: a key (`machined_bevel` on the theme's `button background`), pressed while it is held; its
+  triangle in the theme's `text`, the standard's rows of pixels;
+- the thumb: a key at rest, whatever the pointer does (Windows did not light it), no grip, no inner line.
+
+The radii are still the roles' (`Scroll_Arrow`, `Scroll_Thumb`): Old Head's are 0. A key is the relief's: rings on Old
+Head, the machined bevel on a theme that gives `Keys` with the machined relief. A bar with marks keeps its marks on the
+track, the find's ticks too: the form changes the parts, not what lies on them. The person's thickness setting stays
+the person's.
+
+Old Head: `form = .Keys`, its track the default (`#dfdfdf`).
+
+Refused:
+
+- **A dithered track** (Windows 95's checker of white and grey, a pixel each): one rect per pixel, thousands for each
+  bar in each frame; a pattern needs an image in the draw list, which the bar has never needed. The flat light grey is
+  what the checker reads as.
+- **The form decided by the relief** (every relief of rings draws a `Keys` bar): a theme with rings and the desktop's
+  bar is a look too; the form is its own word.
+- **A table of colours per part** (the standard's sixteen colours, written by the theme): the standard's colours are
+  mixes of the theme's already; what a theme lacked was the form.
+
+## Layer 9: the title bar (built)
+
+`Theme_Look.caption: Theme_Caption`, for the title bar the program draws (`title_bar`, `window_buttons`):
+
+- `active`, `inactive`: the caption band, two stops from left to right (0xRRGGBBAA). Both 0: no band, the program's box
+  as it is. The second 0: one colour.
+- `ink`: the text on the band (0: the text as it is), given down as a selected row's ink is (`Box.ink`, layer 2): what
+  has a face of its own (a field, a button) keeps its text.
+- `bold`: the band's text bold (`styled_face`), by a style pushed for the title bar's children: a child that gives its
+  own font keeps it.
+- `buttons`: `System` (the zero value: Windows 10's caption buttons, every pixel as before) or `Keys`: each caption
+  button a square key of the relief centred in its box, its glyph drawn as shapes in the theme's `text`.
+
+The band is the title bar's box's custom drawing, over its face and under its children. The window says which stops
+apply (`Window.active`; no window, a test's: active). The buttons' boxes keep the system's width
+(`CAPTION_BUTTON_WIDTH`): the window's hit tests, Snap Layouts over the maximise button, the chrome tests stay. A `Keys`
+button is a key in that box, not the box.
+
+A dialog's title strip (`title_strip`) is a caption too: under a theme with a band, its face is the band, active.
+
+Old Head: `#000080` to `#1084d0` active, `#808080` to `#b5b5b5` inactive, white bold text, `Keys` buttons.
+
+Refused:
+
+- **The band as the bar's background** (`Box.bg`): one colour, and the program's `next({bg})` would win over the theme.
+- **Caption buttons of Windows 95's width** (16 × 14 px, side by side): the boxes are the window's hit regions and the
+  system's width; a narrower box moves every program's title bar and the chrome tests' numbers.
+- **The icon font for a `Keys` button**: Segoe's glyphs are Windows 10's; the shapes are what a key of 1995 shows.
+
+## Layer 10: a relief of rings in every widget (built)
+
+Under a relief of rings (`relief_ringed`), what a widget drew by the machined code whatever the relief now draws the
+relief's data. The default finishes take the same paths as before: each change is a branch for a relief of rings.
+
+| Place | Before | Under a relief of rings |
+|---|---|---|
+| a lamp (`machined_lamp`; a radio's dot, a node's state) | a glass bead: a dark rim, a lit and shaded body, a highlight, a halo | a flat disc of its colour: a relief of rings has no light |
+| a pip (`machined_pip`) | a drilled hole: a shade and a lit lip | a round well: the sunken ring around the dab |
+| a raised tile, a bar's part, a close block (`relief_face`) | a lit line along the top, a shade along the bottom, a dark hairline | the raised rings |
+| a caption's face (`caption_face`) | a vertical gradient with a lit top line | the theme's band (layer 9), else one colour and the bar's rings |
+| a switch's and a slider's knob | a fixed metal grey | the theme's `button background` |
+| a selected node's halo | a blurred accent halo | none: `no_glow` |
+
+The halos already followed `no_glow` (`glow_of`); the node's halo did not ask it.
+
+Refused: a new ring set per widget (`lamp`, `knob`, …): Windows drew them all with the four rings it had; a new set is
+wanted only when a theme needs a look the sets cannot say.
+
 ## Left for later
 
-- The scroll bar's form (a pale track, raised arrows and thumb for Old Head): the bar's form is the toolkit's standard
-  (scroll-bar.md); a theme's bar is a separate design.
-- The title bar and its caption buttons: a caption band (colour or gradient), active and inactive, a caption-button
-  style. A separate design.
-- A themes file's keys for the look (a radius, a focus style): the file says colours today.
+- A themes file's keys for the look (a radius, a focus style, the bar's form): the file says colours today.

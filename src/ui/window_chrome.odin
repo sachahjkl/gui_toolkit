@@ -46,13 +46,45 @@ CAPTION_CLOSE_HOT    :: 0xc42b1cff   // the system's close button under the poin
 @(private = "file") CAPTION_RESTORE_OFFSET :: 0.2   // the back square of the restore shape, of the glyph's size
 
 // `if title_bar(id) { ... }`: a row (size from `next` / the style) whose empty parts drag the window.
-@(require_results, deferred_none = pop_parent)
+// Under a theme's caption (Theme_Caption, theme-design.md layer 9) the bar draws its band over its face, and what is
+// built in it takes the caption's ink and, when it says so, the bold face.
+@(require_results, deferred_none = title_bar_end)
 title_bar :: proc(id: string, flags: Box_Flags = {}) -> bool {
+	s := gs()
 	set_next_axis(.X, .Center)
 	b := build_box(flags + {.Window_Caption}, id)
 	a11y_default(b, {role = .Title_Bar})
 	push_parent(b)
+	c := caption_shown()
+	if caption_has_band(c) {
+		d := frame_new(Caption_Band_Draw)
+		d^ = {caption = c, active = s.window == nil || s.window.active}
+		b.custom, b.custom_user = caption_band_draw, d
+	}
+	// (the ink goes down as a selected row's does: a child with a face of its own, a field, a button, keeps its text)
+	if c.ink != 0 { b.ink = draw.hex(c.ink) }
+	// (always a style of its own, so that title_bar_end pops one whatever the theme)
+	push_style_copy()
+	if c.bold { top_style().font = styled_face(top_style().font, true, false) }
 	return true
+}
+
+@(private)
+title_bar_end :: proc() {
+	pop_style()
+	pop_parent()
+}
+
+@(private)
+Caption_Band_Draw :: struct {
+	caption: Theme_Caption,
+	active:  bool,
+}
+
+@(private)
+caption_band_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
+	d := (^Caption_Band_Draw)(user)
+	caption_band(dc, b.rect, d.caption, d.active)
 }
 
 // What screen readers call the caption buttons of the window of `s`: minimize, maximize, restore, close (the strings must
@@ -71,6 +103,7 @@ Caption_Draw :: struct {
 	under:  Color,   // what the button is drawn over (the title bar's background)
 	glyph_font: font.Font_Id,
 	dpi:    f32,
+	keys:   bool,    // the theme's keys (Caption_Buttons.Keys), not the system's buttons
 }
 
 // The caption buttons (minimize, maximize or restore, close) in the current row, as tall as it, at the system's width
@@ -117,13 +150,14 @@ caption_row :: proc(ids: [platform.Caption_Button]string, shown: bit_set[platfor
 	under := parent_box().bg
 	if under.a < 0.5 { under = s.backdrop }
 	dark := color("hover").r > 0.5   // the palette's hover tint is white on dark themes
+	as_keys := caption_shown().buttons == .Keys
 	for b in platform.Caption_Button {
 		if b not_in shown { continue }
 		next({width = px(w), height = pct(1)})
 		box := build_box({.Clickable}, ids[b])
 		box.cursor = .Arrow
 		d := frame_new(Caption_Draw)
-		d^ = {button = b, maxed = maxed, active = active, dark = dark, under = under, glyph_font = s.caption_font, dpi = dpi}
+		d^ = {button = b, maxed = maxed, active = active, dark = dark, under = under, glyph_font = s.caption_font, dpi = dpi, keys = as_keys}
 		box.custom, box.custom_user = caption_draw, d
 		keys[b] = box.key
 		at := b == .Maximize && maxed ? 3 : int(b)
@@ -136,6 +170,7 @@ caption_row :: proc(ids: [platform.Caption_Button]string, shown: bit_set[platfor
 @(private)
 caption_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Caption_Draw)(user)
+	if d.keys { caption_key_draw(b, d, dc); return }
 	hot := b.hot_t
 	press := b.active_t
 	// the system's fills (WinUI: subtle fill secondary / tertiary), mixed in sRGB over the title bar as it does
@@ -175,6 +210,37 @@ caption_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		}
 	}
 	caption_shape(dc, d, c, glyph_size, glyph)
+}
+
+// A caption button of the theme's keys: a key's height of the bar's, its width of its height (Windows 95's 16 x 14), its
+// glyph's size of its height.
+@(private = "file") CAPTION_KEY_HEIGHT :: 0.62
+@(private = "file") CAPTION_KEY_ASPECT :: 8.0 / 7.0
+@(private = "file") CAPTION_KEY_GLYPH :: 0.5
+
+// A caption button of the theme's keys (Caption_Buttons.Keys): a square key of the relief in the middle of its box, its
+// glyph drawn as shapes in the theme's text, a pixel down and right while held (the key went in). The box keeps the
+// system's width: it is the window's hit region (Snap Layouts over the maximise button).
+@(private = "file")
+caption_key_draw :: proc(b: ^Box, d: ^Caption_Draw, dc: ^draw.Context) {
+	s := gs()
+	h := math.round((b.rect.max.y - b.rect.min.y) * CAPTION_KEY_HEIGHT)
+	w := math.round(h * CAPTION_KEY_ASPECT)
+	c := draw.rect_center(b.rect)
+	at := Vec2{math.round(c.x - w * 0.5), math.round(c.y - h * 0.5)}
+	key := Rect{at, at + Vec2{w, h}}
+	k := color_from_tags(s, b.tags_key, "button background")
+	held := b.active_t >= 0.5
+	pressed: f32 = held ? 1 : 0
+	machined_bevel(dc, key, 0, {k.r, k.g, k.b, 1}, b.hot_t, pressed)
+	ink := color_from_tags(s, b.tags_key, "text")
+	ink.a = 1
+	size := math.round(h * CAPTION_KEY_GLYPH)
+	gc := draw.rect_center(key)
+	if held { p := px1(); gc += Vec2{p, p} }
+	// (the minimise bar lies at the foot of the glyph's square, as Windows drew it)
+	if d.button == .Minimize { gc.y += math.round(size * 0.5) - max(1, math.round(d.dpi)) }
+	caption_shape(dc, d, gc, size, ink)
 }
 
 // The glyphs drawn as shapes, when no icon font is installed: 1 px strokes on whole pixels.

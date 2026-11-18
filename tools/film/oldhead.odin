@@ -4,8 +4,9 @@ import "../../examples/showcase"
 import "gt:film"
 
 // Old Head: the showcase in a theme of 1995 made of data alone (grey faces, two-tone bevels, square corners, a navy
-// selection), its densest scenes one after another: the controls, a tool bar, docked views, the file browser, a menu,
-// the palette, the settings.
+// selection, a navy caption band with square keys, scroll bars of keys), its densest scenes one after another: the
+// controls, a tool bar, docked views, the file browser, a menu, the palette, the settings. (The showcase's top bar is its
+// title_bar: the band is in every frame. The wheel over the controls shows their bar.)
 oldhead_film :: proc(t: ^Take) {
 	t.app.scene = .Controls
 	open_with(t, "Old Head", "Every control of the toolkit, as it looked in 1995")

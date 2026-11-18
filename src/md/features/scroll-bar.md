@@ -197,7 +197,8 @@ Midnight's indigo, Graphite's sky blue, Amber's amber.
 - **A bar with marks is wider** (`scroll_marks`): its marks need a lane. It keeps every part of the bar; its thumb has
   no grip, which would cross the marks drawn over it.
 - **Every finish draws the same bar.** The flat finish drew a tint of the text before. A scroll bar is a control, and
-  the standard's form is the toolkit's form of it.
+  the standard's form is the toolkit's form of it. A theme can give another form of the same parts
+  (`Theme_Scroll_Bar.form = .Keys`, Old Head's: [theme-design.md](theme-design.md), layer 8); a finish cannot.
 
 ## Refused forms
 

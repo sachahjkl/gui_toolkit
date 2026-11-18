@@ -320,7 +320,8 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	// the selection's ring, outside the face
 	if d.selected {
 		ring := draw.rect_pad(r, 2 * p)
-		if machined() { draw.box_shadow(dc, ring, {radius, radius, radius, radius}, 4 * d.sc, {c.accent.r, c.accent.g, c.accent.b, 0.35}) }
+		// (a relief without halos has none here either: Relief.no_glow)
+		if rl := relief_shown(); machined() && !rl.no_glow { draw.box_shadow(dc, ring, {radius, radius, radius, radius}, 4 * d.sc, {c.accent.r, c.accent.g, c.accent.b, 0.35}) }
 		draw.rect(dc, ring, c.accent, radius + 2 * p, 2 * p)
 	}
 	machined_plate(dc, r, radius, c.panel, relief_darken(c.panel, 0.06), 6 * min(d.k / d.sc, 1))

@@ -94,6 +94,11 @@ tile_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 relief_face :: proc(dc: ^draw.Context, r: Rect, c: Color, radius: f32) {
 	draw.rect(dc, r, c, radius)
 	if !machined() || r.max.y - r.min.y < 4 { return }
+	// (a relief of rings: its raised rings, not the machined lines: theme-design.md, layer 10)
+	if rl := relief_ringed(); rl != nil {
+		if radius > px1() { relief_round(dc, r, radius, rl.raised, c, c) } else { relief_rings(dc, r, rl.raised, c) }
+		return
+	}
 	p := px1()
 	inset := max(p, radius * 0.6)
 	draw.rect(dc, {{r.min.x + inset, r.min.y}, {r.max.x - inset, r.min.y + p}}, relief_shine(0.22))
@@ -183,13 +188,21 @@ stacked_bar :: proc(id: string, parts: []Bar_Part) {
 
 // The face of a title bar (a window's, a dialog's) in the finish shown. In the edged one: the accent fading to `top` from
 // the left, a lit line along its top, a dark one along its bottom (a console's window). In the others: `top` at its top to
-// `bottom` at its bottom, lit along its top in the machined finish; flat, the colour between them. `lit` false: the one not in
-// use (the accent dimmed toward `top`, edged only).
+// `bottom` at its bottom, lit along its top in the machined finish; flat, the colour between them. Under a relief of rings:
+// the theme's caption band (Theme_Caption), else the colour between them in the rings of a bar. `lit` false: the one not
+// in use (the accent dimmed toward `top` in the edged finish; a band's inactive stops).
 caption_face :: proc(dc: ^draw.Context, r: Rect, top, bottom: Color, lit := true) {
 	p := px1()
 	switch {
 	case !machined():   // (flat: one colour, between the two)
 		draw.rect(dc, r, draw.mix(top, bottom, 0.5))
+		return
+	case relief_ringed() != nil:
+		// (a relief of rings: the theme's caption band, active when lit; else one colour and the rings of a bar)
+		if c := caption_shown(); caption_has_band(c) { caption_band(dc, r, c, lit); return }
+		face := draw.mix(top, bottom, 0.5)
+		draw.rect(dc, r, face)
+		relief_rings(dc, r, relief_ringed().bar, face)
 		return
 	case !edged():
 		draw.rect_corners(dc, r, {top, bottom, top, bottom}, {})
@@ -205,9 +218,15 @@ caption_face :: proc(dc: ^draw.Context, r: Rect, top, bottom: Color, lit := true
 	draw.rect(dc, {{r.min.x, r.max.y - p}, r.max}, relief_shade(0.45))
 }
 
-// The colour words of colour `c` take on a caption_face: in the edged finish toward white (they stand on the accent), else
-// `c` itself.
+// The colour words of colour `c` take on a caption_face: in the edged finish toward white (they stand on the accent); under
+// a relief of rings with a theme's band, the band's ink; else `c` itself.
 caption_ink :: proc(c: Color) -> Color {
+	if relief_ringed() != nil {
+		if k := caption_shown(); caption_has_band(k) && k.ink != 0 {
+			i := draw.hex(k.ink)
+			return {i.r, i.g, i.b, c.a}
+		}
+	}
 	if !edged() { return c }
 	return draw.mix(c, Color{1, 1, 1, c.a}, CAPTION_INK_WHITE)
 }
@@ -218,6 +237,8 @@ Strip_Draw :: struct { top: Color }
 @(private)
 strip_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Strip_Draw)(user)
+	// (a theme's caption band is every caption's, a dialog's title too: theme-design.md, layer 9)
+	if c := caption_shown(); caption_has_band(c) { caption_band(dc, b.rect, c, true); return }
 	if edged() { caption_face(dc, b.rect, d.top, d.top); return }
 	// (outside the edged finish a strip is the accent fading out all the same: it is what the strip is)
 	r := b.rect

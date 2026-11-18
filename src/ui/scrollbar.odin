@@ -469,6 +469,11 @@ scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Part
 	if shows <= SCROLLBAR_HIDDEN_ALPHA { return }
 	draw.push_alpha(dc, shows)
 	defer draw.pop_alpha(dc)
+	// (a theme's form: its own drawing of the same parts; the standard's below stays as it was, pixel for pixel)
+	if form := scroll_bar_shown(); form.form == .Keys {
+		scrollbar_paint_keys(s, dc, b, p, look, form)
+		return
+	}
 	c := scrollbar_colors(s, b)
 	u := scrollbar_unit(s)
 	axis := p.axis
@@ -528,6 +533,41 @@ scrollbar_paint :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Part
 	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, true) }
 	// (the find's matches, over the program's marks: they go when it closes)
 	if axis == .Y { find_ticks_draw(s, dc, b, p.track) }
+}
+
+// A Keys trough with no colour of the theme's: its raised face this far toward white (#dfdfdf on #c0c0c0).
+@(private = "file") SCROLLBAR_KEYS_TRACK_LIGHT :: 0.5
+
+// A bar of keys (Scroll_Bar_Form.Keys, theme-design.md layer 8): a flat trough with no border, each arrow button and the
+// thumb a key of the relief (machined_bevel: rings under a relief of rings). The thumb stays a key at rest under the
+// pointer and while held: Windows did not light it. No grip: a key has none.
+@(private = "file")
+scrollbar_paint_keys :: proc(s: ^State, dc: ^draw.Context, b: ^Box, p: Scrollbar_Parts, look: Scrollbar_Look, form: Theme_Scroll_Bar) {
+	k := color_from_tags(s, b.tags_key, "button background")
+	face := Color{k.r, k.g, k.b, 1}
+	trough := form.track != 0 ? draw.hex(form.track) : relief_tone(face, SCROLLBAR_KEYS_TRACK_LIGHT)
+	draw.rect(dc, p.bar, trough)
+	marks := p.axis == .Y ? scroll_marks_of(b) : nil
+	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, false) }
+	glyph := color_from_tags(s, b.tags_key, "text")
+	glyph.a = 1
+	u := scrollbar_unit(s)
+	if p.arrows {
+		radius := radius_drawn(s, shape_of(.Scroll_Arrow) * s.scale)
+		for part in ([2]Scrollbar_Part{.Start, .End}) {
+			r := part == .Start ? p.start : p.end
+			held := look.held == part
+			hot: f32 = look.hot == part ? 1 : 0
+			pressed: f32 = held ? 1 : 0
+			machined_bevel(dc, r, radius, face, hot, pressed)
+			// (held, the triangle moves a unit down and right, as the label of a pressed key: the key went in)
+			if held { r = draw.rect_shift(r, {u, u}) }
+			scrollbar_triangle(s, dc, r, p.axis, part == .Start, glyph)
+		}
+	}
+	machined_bevel(dc, p.thumb, radius_drawn(s, shape_of(.Scroll_Thumb) * s.scale), face, 0, 0)
+	if marks != nil { scroll_marks_draw(s, dc, b, marks, p.track, p.thumb, true) }
+	if p.axis == .Y { find_ticks_draw(s, dc, b, p.track) }
 }
 
 // An arrow button's triangle, in rows of pixels: rows of 1, 3, 5… (one unit tall each, two units wider each), its point

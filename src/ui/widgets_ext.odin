@@ -350,6 +350,15 @@ a11y_state_toggled :: proc(b: ^Box, on: bool) {
 @(private = "file") TOGGLE_MACHINED_LIT :: 0.85
 @(private = "file") TOGGLE_MACHINED_KNOB :: Color{0.62, 0.62, 0.62, 1}
 
+// The face of a switch's or a slider's knob when the relief draws it: the machined metal, or under a relief of rings the
+// theme's raised face (its rings are tones of it: a metal grey in Old Head's grey was a key of another set).
+@(private = "file")
+knob_face :: proc(b: ^Box) -> Color {
+	if relief_ringed() == nil { return TOGGLE_MACHINED_KNOB }
+	c := color_from_tags(gs(), b.tags_key, "button background")
+	return {c.r, c.g, c.b, 1}
+}
+
 // A switch: `t` how far it is on, `row` its row (the target; its states read when drawn, as a check box's mark).
 Toggle_Draw :: struct { t: f32, row: ^Box, hot, active: f32, track, accent: Color }
 
@@ -374,7 +383,7 @@ toggle_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		x = math.round(math.lerp(r.min.x + pad, r.max.x - pad - kw, d.t))
 		well := color_from_tags(gs(), b.tags_key, "well")
 		machined_well(dc, r, shape_rad(h * 0.5), draw.mix(well, d.accent, d.t * TOGGLE_MACHINED_LIT), hot = d.hot)
-		machined_bevel(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, shape_rad(kd * 0.5), TOGGLE_MACHINED_KNOB, d.hot, d.active)
+		machined_bevel(dc, {{x, r.min.y + pad}, {x + kw, r.max.y - pad}}, shape_rad(kd * 0.5), knob_face(b), d.hot, d.active)
 		return
 	}
 	// (the track is the switch's face: it lifts under the pointer and sinks pressed, as a check box's does)
@@ -528,7 +537,7 @@ slider_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		prev := draw.set_circular_corners(dc, true)
 		for i in (d.range ? 0 : 1) ..< 2 {
 			kx := knobs[i]
-			machined_bevel(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, kr, TOGGLE_MACHINED_KNOB, d.hot, d.active)
+			machined_bevel(dc, {{kx - kr, cy - kr}, {kx + kr, cy + kr}}, kr, knob_face(b), d.hot, d.active)
 			dot := kr * SLIDER_KNOB_DOT_FRACTION
 			draw.rect(dc, {{kx - dot, cy - dot}, {kx + dot, cy + dot}}, d.accent, dot)
 		}

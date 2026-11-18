@@ -51,16 +51,6 @@
 
 ## Later
 
-- **A theme's scroll bar.** A theme gives the bar's form (Old Head: a pale track, raised arrows and thumb), not only
-  its colours; a separate design over the bar's standard. Intent:
-  [src/md/features/theme-design.md](src/md/features/theme-design.md), "Left for later".
-- **A theme's title bar.** A theme gives the caption band (a colour or a gradient, active and inactive) and its
-  caption buttons' style; a separate design. Intent:
-  [src/md/features/theme-design.md](src/md/features/theme-design.md), "Left for later".
-- **A relief of rings in every widget.** Under a theme's own relief (Old Head), the widgets' own machined touches (a
-  radio's lit bead, a section's caption face, the lamps) still draw their machined forms; each takes the relief's
-  rings. Intent: [src/md/features/theme-design.md](src/md/features/theme-design.md), "Layer 6".
-
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link
   dropped in the void) is the toolkit's already.

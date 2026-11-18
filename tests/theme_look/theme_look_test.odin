@@ -356,6 +356,172 @@ old_heads_button_is_a_two_tone_bevel :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.theme_lookup(s.state.theme, nil, "drop_shadow").a, 0)
 }
 
+////////////////////////////////
+// Layer 8: the scroll bar's form
+
+// The pixel at x, y (window pixels, cut to whole ones) is the colour `v` (0xRRGGBBAA).
+@(private = "file")
+check_at :: proc(t: ^testing.T, img: session.Image, x, y: f32, v: u32, what: string) {
+	c := session.pixel(img, int(x), int(y))
+	testing.expectf(t, near_hex(c, v), "%s at %v,%v: %v, not %08x", what, x, y, c, v)
+}
+
+@(private = "file")
+bar_build :: proc(s: ^session.Session) {
+	ui.next({fixed_x = 20, fixed_y = 20, width = ui.px(200), height = ui.px(200)})
+	if ui.scroll_y("###view") {
+		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###col") {
+			for i in 0 ..< 60 {
+				ui.next({width = ui.fill(), height = ui.px(20)})
+				ui.label(fmt.tprintf("Line %d###line%d", i, i))
+			}
+		}
+	}
+}
+
+// Old Head's bar: a flat light grey trough, arrow buttons and a thumb that are keys of its rings (white along their top
+// and left, black along their bottom and right, the grey face inside). The standard form, on the same theme, keeps the
+// standard's thumb: its corner is its border's colour, not a key's white.
+@(test)
+old_heads_scroll_bar_is_keys :: proc(t: ^testing.T) {
+	for form in ([]ui.Scroll_Bar_Form{.Keys, .Standard}) {
+		p := old_head()
+		p.look.scroll_bar.form = form
+		s := session.start(t, {size = {260, 260}, palette = p, build = bar_build})
+		session.frames(s, 2)
+		view := session.get(s, "view")
+		start, end, arrows := ui.scrollbar_arrow_rects(view)
+		track, thumb, has := ui.scrollbar_rects(view)
+		if !testing.expect(t, has && arrows, "a bar with its arrows") { return }
+		img := session.capture(s)
+		check :: check_at
+		if form == .Standard {
+			c := session.pixel(img, int(thumb.min.x), int(thumb.min.y))
+			testing.expectf(t, !near_hex(c, 0xffffffff), "the standard's thumb corner is its border: %v", c)
+			continue
+		}
+		check(t, img, start.min.x, start.min.y, 0xffffffff, "the start arrow's top left, white")
+		check(t, img, start.max.x - 1, start.max.y - 1, 0x000000ff, "its bottom right, black")
+		check(t, img, start.min.x + 1, start.min.y + 1, 0xdfdfdfff, "inside it, the light")
+		check(t, img, end.max.x - 1, end.max.y - 1, 0x000000ff, "the end arrow's bottom right, black")
+		check(t, img, thumb.min.x, thumb.min.y, 0xffffffff, "the thumb's top left, white")
+		check(t, img, thumb.max.x - 1, thumb.max.y - 1, 0x000000ff, "its bottom right, black")
+		check(t, img, math.floor((thumb.min.x + thumb.max.x) * 0.5), math.floor((thumb.min.y + thumb.max.y) * 0.5), 0xc0c0c0ff, "its face, the grey: no grip")
+		check(t, img, math.floor((track.min.x + track.max.x) * 0.5), track.max.y - 2, 0xdfdfdfff, "the trough, flat light grey")
+		check(t, img, track.min.x, track.max.y - 2, 0xdfdfdfff, "its side, no border")
+	}
+}
+
+////////////////////////////////
+// Layer 9: the title bar
+
+@(private = "file") BAR_H :: 30
+@(private = "file") BAR_W :: 400
+@(private = "file") WINDOW_H :: 120
+
+@(private = "file")
+caption_build :: proc(s: ^session.Session) {
+	ui.next({width = ui.fill(), height = ui.px(BAR_H)})
+	if ui.title_bar("###tb") {
+		ui.next({width = ui.px(120), height = ui.pct(1)})
+		ui.label("Title###title")
+		ui.spacer(ui.fill())
+		_, _ = ui.window_buttons()
+	}
+	ui.next({fixed_x = 10, fixed_y = 60, width = ui.px(120)})
+	ui.label("Words###out")
+}
+
+// Old Head's caption: a band from navy to blue (grey to light grey while the window is behind), its text white and bold,
+// its buttons square keys of its rings in the system's boxes.
+@(test)
+old_heads_title_bar_is_a_band :: proc(t: ^testing.T) {
+	s := session.start(t, {size = {BAR_W, WINDOW_H}, palette = old_head(), integrated_title = true, build = caption_build})
+	session.frames(s, 2)
+	img := session.capture(s)
+	check :: check_at
+	right := f32(BAR_W - 1)
+	check(t, img, 0, 1, 0x000080ff, "the band's left, navy")
+	check(t, img, right, 1, 0x1084d0ff, "its right, blue")
+	title, out := session.get(s, "title"), session.get(s, "out")
+	testing.expect_value(t, title.text_color, draw.hex(WHITE))
+	testing.expect(t, title.font != out.font, "the caption's text is bold")
+	close := ui.box_from_key(s.state.caption_keys[.Close])
+	if testing.expect(t, close != nil, "a close button") {
+		testing.expect_value(t, close.rect.max.x - close.rect.min.x, f32(ui.CAPTION_BUTTON_WIDTH))
+		// (the key's place as caption_key_draw makes it: 0.62 of the bar's height, 8 / 7 as wide)
+		h := math.round(f32(BAR_H) * 0.62)
+		w := math.round(h * 8.0 / 7.0)
+		c := (close.rect.min + close.rect.max) * 0.5
+		at := [2]f32{math.round(c.x - w * 0.5), math.round(c.y - h * 0.5)}
+		check(t, img, at.x, at.y, 0xffffffff, "the close key's top left, white")
+		check(t, img, at.x + w - 1, at.y + h - 1, 0x000000ff, "its bottom right, black")
+		check(t, img, at.x + 3, at.y + 3, 0xc0c0c0ff, "its face, the grey")
+		check(t, img, close.rect.max.x - 2, at.y - 2, 0x1084d0ff, "the band around it")
+	}
+	s.win.active = false
+	session.frames(s, 2)
+	img = session.capture(s)
+	check(t, img, 0, 1, 0x808080ff, "behind, the band's left, grey")
+	check(t, img, right, 1, 0xb5b5b5ff, "its right, light grey")
+}
+
+// A theme without a caption keeps the program's title bar: no band (the page shows through it), the text as it is, and
+// the system's buttons, which draw nothing at rest.
+@(test)
+no_caption_keeps_the_title_bar :: proc(t: ^testing.T) {
+	p := ui.palette_of("Midnight")
+	p.finish = .Flat
+	s := session.start(t, {size = {BAR_W, WINDOW_H}, palette = p, integrated_title = true, build = caption_build})
+	session.frames(s, 2)
+	img := session.capture(s)
+	page := session.pixel(img, 1, WINDOW_H - 2)
+	testing.expectf(t, session.near(session.pixel(img, 1, 1), page, 2), "no band: %v", session.pixel(img, 1, 1))
+	title, out := session.get(s, "title"), session.get(s, "out")
+	testing.expect_value(t, title.text_color, out.text_color)
+	testing.expect_value(t, title.font, out.font)
+	if close := ui.box_from_key(s.state.caption_keys[.Close]); testing.expect(t, close != nil, "a close button") {
+		c := session.pixel(img, int(close.rect.min.x) + 3, int(close.rect.min.y) + 3)
+		testing.expectf(t, session.near(c, page, 2), "a system button at rest draws nothing: %v", c)
+	}
+}
+
+////////////////////////////////
+// Layer 10: a relief of rings in every widget
+
+@(private = "file")
+lamp_build :: proc(s: ^session.Session) {
+	ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(200), height = ui.px(120), bg = ui.Color{0.75, 0.75, 0.75, 1}})
+	ground := ui.build_box({.Draw_Background}, "###ground")
+	ground.custom = proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) {
+		ui.machined_lamp(dc, {60, 60}, 20, draw.hex(0x008000ff))
+		ui.relief_face(dc, {{120, 40}, {180, 80}}, draw.hex(0xc0c0c0ff), 0)
+	}
+}
+
+// Under Old Head's rings a lamp is a flat disc of its colour (no highlight, no rim), and a raised tile has the raised
+// rings; the machined finish keeps its bead's highlight.
+@(test)
+a_lamp_and_a_tile_take_the_rings :: proc(t: ^testing.T) {
+	s := session.start(t, {size = {200, 120}, palette = old_head(), build = lamp_build})
+	session.frames(s, 2)
+	img := session.capture(s)
+	// (the bead's highlight was up and left of its centre; a flat disc is its colour there too)
+	hl, mid := session.pixel(img, 57, 54), session.pixel(img, 60, 60)
+	testing.expectf(t, session.near(hl, mid, 3), "a flat disc: %v at the highlight, %v at the centre", hl, mid)
+	testing.expectf(t, near_hex(mid, 0x008000ff), "its colour: %v", mid)
+	testing.expectf(t, near_hex(session.pixel(img, 120, 40), 0xffffffff), "the tile's top left, white: %v", session.pixel(img, 120, 40))
+	testing.expectf(t, near_hex(session.pixel(img, 179, 79), 0x000000ff), "its bottom right, black: %v", session.pixel(img, 179, 79))
+	p := ui.palette_of("Midnight")
+	p.finish = .Machined
+	lit := session.start(t, {size = {200, 120}, palette = p, build = lamp_build})
+	session.frames(lit, 2)
+	img = session.capture(lit)
+	hl, mid = session.pixel(img, 57, 54), session.pixel(img, 60, 60)
+	testing.expectf(t, !session.near(hl, mid, 3), "the machined bead keeps its highlight: %v, %v", hl, mid)
+}
+
 // Old Head's selected row: navy, its text white.
 @(test)
 old_heads_selected_row_is_white_on_navy :: proc(t: ^testing.T) {
