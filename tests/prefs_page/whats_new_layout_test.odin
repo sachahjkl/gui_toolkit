@@ -11,7 +11,9 @@ import config "gt:config"
 import prefs_page "gt:prefs_page"
 import "gt:testkit/session"
 
-// A dialog of `width` over the settings at What's new, the sidebar 380 px as in the report, laid out.
+// A dialog of `width` over the settings at What's new, the sidebar 380 px as in the report, laid out. The sidebar is
+// open (side-panels.md: a dialog under 380 px + BODY_MIN_EM folds it; the person opened it there, a manual choice that
+// holds while the dialog stays narrow), so the page is about 300 px in the narrow dialogs.
 @(private = "file")
 whats_new_start :: proc(t: ^testing.T, app: ^Dialog_App, width: f32) -> ^session.Session {
 	app.width = width
@@ -24,6 +26,9 @@ whats_new_start :: proc(t: ^testing.T, app: ^Dialog_App, width: f32) -> ^session
 	s := session.start(t, {size = {1500, 800}, user = app, build = dialog_build})
 	session.frames(s, 1)
 	_ = config.set_from_string(&app.prefs, prefs_page.SIDEBAR_PREF, fmt.tprintf("%v", 380 / session.BASE_FONT_SIZE), .User)
+	if width < 380 + prefs_page.BODY_MIN_EM * session.BASE_FONT_SIZE {
+		_ = config.set_from_string(&app.prefs, prefs_page.SIDEBAR_FOLD_PREF, "narrow", .User)
+	}
 	session.frames(s, 4)
 	return s
 }

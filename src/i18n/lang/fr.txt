@@ -595,20 +595,29 @@ fr Ce sont des réglages techniques : leurs valeurs par défaut conviennent à l
 en Advanced
 fr Avancé
 
+en Fold the sidebar
+fr Replier la barre latérale
+
+en Open the sidebar
+fr Ouvrir la barre latérale
+
 en Search settings
 fr Rechercher un réglage
 
-en Open the settings file
-fr Ouvrir le fichier des réglages
+en More
+fr Plus
 
 en Export…
 fr Exporter…
 
-en Export the settings to a file (JSON, TOML, INI or this program's own)
-fr Exporter les réglages dans un fichier (JSON, TOML, INI ou le format de ce programme)
-
 en Import…
 fr Importer…
+
+en Open the settings file
+fr Ouvrir le fichier des réglages
+
+en Export the settings to a file (JSON, TOML, INI or this program's own)
+fr Exporter les réglages dans un fichier (JSON, TOML, INI ou le format de ce programme)
 
 en Import settings exported by this program
 fr Importer des réglages exportés par ce programme

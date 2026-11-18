@@ -493,7 +493,9 @@ draws, except the header that a dialog always had. The rules:
      content is laid out at no size (built, its state kept, not seen). Maximise again, or Escape with the focus in it,
      restores. Not remembered across runs: a program that starts with its content hidden looks broken.
    - **Minimise**: the zone collapses; a click on a tab, or the button again, restores. Remembered per zone
-     (`bottom.min=1` in the space's line).
+     (`bottom.min=1` in the space's line). A side zone's Minimise and Restore are the manual acts of its fold
+     ([side-panels.md](side-panels.md)): they hold until the space's width next crosses the zone's threshold
+     (`left.min=1 left.narrow=1`: both bits of its `Side_Fold`).
      - At the top and the bottom it collapses to its strips (each stack's strip, no body, no handle).
      - **At the left and the right it collapses to a rail** (`view_zone_rail`): a column one strip wide, with a Restore
        button at its top, then one button per view (its icon, its title as the tooltip), the stacks one after the
@@ -530,22 +532,24 @@ draws, except the header that a dialog always had. The rules:
        handle, so the line between it and the content is the expanded zone's: one splitter, one colour, one width, one
        side, and `view_dock_line` says where it is in both states. **Why.** The user: the rail had no line against the
        content, unlike every other zone and panel. Refused: a border drawn by the rail (a second drawing of one line).
-     - **Pulling the rail opens the zone** (one state machine with Minimise): a drag of a side zone's handle maps the
-       pointer to a raw width, from the zone's width shown at the press. Collapsed or expanded follows from it: under
-       the rail's width plus `VIEW_RAIL_PULL_EM` the zone is collapsed, past it expanded, its width the raw one held to
-       `DOCK_MIN_EM` and the space less the content's minimum. So a pull outward from the rail past the threshold
-       restores the zone and the zone follows the pointer from there (no jump: the threshold is past `DOCK_MIN_EM`
-       for both rails), and the width let go is remembered; a pull inward, or less than the threshold, does nothing.
-       The same drag from an expanded zone down to the rail folds it, and its extent stays the one it had at the press
-       (Restore brings it back). Each change of state goes through `view_stack_minimise`, as the buttons do: a zone
-       folded by a narrow space opens over the content's minimum. The keys on the handle keep the width's limits and
-       never fold. **Why.** The user: pulling the rail must bring the zone back. Before, a drag under the minimum
-       stopped at it and the collapsed zone had no handle. Refused: a threshold of its own for the fold (two
-       thresholds on one drag are two state machines).
-     - **A side zone folds itself when the space is too narrow** (`sp.folded`): when the space is narrower than the
-       zone's extent plus `DOCK_MIN_EM` for the content, the zone shows as its rail, with no change to its memory, and
-       comes back when the space is wide enough again. Its Restore then opens it over the content's minimum for as
-       long as the space stays narrow (`sp.unfolded`). opencode native's pane did this before.
+     - **Pulling the rail opens the zone** (one state machine with Minimise): the zone's handle is `side_handle`
+       ([side-panels.md](side-panels.md), the handle and the pull). Under the rail's width plus `SIDE_PULL_EM` the
+       zone is collapsed, past it expanded, its width the raw one held to `DOCK_MIN_EM` and the space less the
+       content's minimum. So a pull outward from the rail past the threshold restores the zone and the zone follows
+       the pointer from there, and the width let go is remembered; a pull inward, or less than the threshold, does
+       nothing. The same drag from an expanded zone down to the rail folds it, and its extent stays the one it had at
+       the press (Restore brings it back). Each change of state goes through `view_stack_minimise`, as the buttons
+       do. The keys on the handle keep the width's limits and never fold. **Why.** The user: pulling the rail must
+       bring the zone back. Before, a drag under the minimum stopped at it and the collapsed zone had no handle.
+       Refused: a threshold of its own for the fold (two thresholds on one drag are two state machines).
+     - **A side zone folds itself when the space is too narrow** (the rule of [side-panels.md](side-panels.md)): when
+       the space less the zone's extent leaves the content less than `DOCK_MIN_EM`, the zone folds to its rail; once
+       it leaves `DOCK_MIN_EM` plus `SIDE_FOLD_GAP_EM`, it opens again. A Minimise or a Restore holds until the next
+       crossing, either way: a zone opened while narrow opens over the content's minimum until the space is wide,
+       and a zone minimised while wide comes back when the space has been narrow and is wide again. Only where the
+       centre is the program's content (`views_dock` without `content` never folds by width). **Why it changed
+       (0.313).** A Minimise was kept forever and a narrow fold was a second state outside the memory
+       (`sp.folded`, `sp.unfolded`); see side-panels.md.
    - **Close** closes every view of the stack (each ends with `VIEW_CANCELLED`): it is the stack's button, beside the
      stack's Minimise and Maximise. One tab closes by Ctrl+W in it, its menu's Close or the palette. Refused: closing
      the shown tab only (two buttons at the right end would act on the stack and one on a tab).

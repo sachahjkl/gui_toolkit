@@ -132,12 +132,20 @@ What the program applies itself:
   `build(user, em)` under it (a server's state, a list the program keeps). A search does not look in it. `heading`
   puts a small title above a page, which starts a group ("CLIENT", "SERVER"): one sidebar for the settings and the
   program's pages, not two.
-- The sidebar's handle (`ui.splitter`) resizes it with the mouse; a double click puts 14 ems back. Its width is kept in
-  the hidden preference `prefs_page.sidebar_width` (`SIDEBAR_PREF`, in ems; the page registers it at its first build),
-  written when the handle is let go. It stays between 9 ems and half of the page. It is never narrower than its longest
-  page title or heading on one line, nor than the search's placeholder whole, in the language in use (`ui.button_width`):
-  the handle does not go under that; at
-  half of the page, a longer title wraps onto two lines. A page narrower than 40 ems shows the pages' icons alone.
+- The sidebar's handle (`ui.side_panel_handle`) resizes it with the mouse; a double click puts 14 ems back. Its width is
+  kept in the hidden preference `prefs_page.sidebar_width` (`SIDEBAR_PREF`, in ems; the page registers it at its first
+  build), written when the handle is let go. It stays between 9 ems and half of the page. It is never narrower than its
+  longest page title or heading on one line, nor than the search's placeholder whole, in the language in use
+  (`ui.button_width`): the handle does not go under that; at half of the page, a longer title wraps onto two lines.
+- **The sidebar folds to a rail** (`ui.Side_Panel`, [panes.md](panes.md#a-side-panel-that-folds)): when, open, it leaves
+  the page less than `BODY_MIN_EM` (26 ems), in a window or in a dialog, and again by its fold button (at the start of
+  the search's row, and at the top of the rail at the same pixel). It opens again when the page has `BODY_MIN_EM` plus
+  1 em. A fold or an opening by hand holds until the width next crosses that threshold. The rail (`RAIL_EM`, 3.5 ems)
+  holds a magnifier (it opens the sidebar with the search field focused), the pages' icons (the title as the tooltip,
+  the page shown lit, Up and Down for the page before and after; a page without an icon shows the first letter of its
+  title), and a **…** button whose menu holds the version, the settings file, Export… and Import…. A pull of the
+  rail's edge opens the sidebar. The fold is kept in the hidden preference `prefs_page.sidebar_fold`
+  (`SIDEBAR_FOLD_PREF`, `ui.side_fold_format`).
 - On the right, in what the sidebar leaves (never wider: a page's wide row wraps or scrolls in it, as in a dialog
   narrower than the page's natural width): the page's title, then a line per preference, in the order the program registered them: its title
   (`config.title_of`) and its description (with "Locked by a policy", "Set on the command line for this run" or "Takes
