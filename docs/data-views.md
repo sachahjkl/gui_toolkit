@@ -146,12 +146,28 @@ A program that builds its own grid or list (a grid of thumbnails, where Up goes 
 
 ### A long list's cost (`src/ui/vlist.odin`)
 
-A `vlist` builds the rows in view only. A build where the ids and the measured heights are the same as the last build's
-does no pass over the rows: the copy of the ids and the rows' offsets are made again only when the ids change or a row
-is measured at another height. `vlist(id, st, ids, labels, selectable, ids_version)`: with `ids_version` 0 the list
-compares the ids with the last build's (one `memcmp`); a program that keeps its ids passes a count it raises at each
-change of them, and the list compares nothing. Pass nil `labels` with no type-ahead and nil `selectable` when every row
-can be selected: neither is then read per row. `offsets_made` counts the builds that made the offsets again.
+A `vlist` builds the rows in view only. The rows' heights are in a Fenwick tree, so a build does no pass over the rows
+unless the ids change. With n rows:
+
+| Work | Cost |
+|---|---|
+| a build with the same ids, rows measured or not | O(log n) per row built: each row measured at a new height is a point update |
+| a new average height (the estimate of the rows never measured) | nothing: it is applied when a top is asked |
+| new ids (another slice, another `ids_version`, another count), `vlist_invalidate`, a new width, scale or font size | one pass over the rows: the copy of the ids and every row placed again |
+| `vlist_row_top(st, i)`, `vlist_total(st)`, `vlist_row_extent(st, i)`, `vlist_row_at(st, y)` | O(log n) |
+
+`vlist(id, st, ids, labels, selectable, ids_version)`: with `ids_version` 0 the list compares the ids with the last
+build's (one `memcmp`, a pass over the rows); a program that keeps its ids passes a count it raises at each change of
+them, and the list compares nothing. Pass nil `labels` with no type-ahead and nil `selectable` when every row can be
+selected: neither is then read per row. `offsets_made` counts the builds that placed every row again. The tree holds
+16 bytes per row (a height and whether it was measured, in f64: a million rows add up without drift).
+
+| Procedure | |
+|---|---|
+| `vlist_row_top(st, i)` | the top of row `i` in the content: the heights above it, measured or estimated; `i` = the row count gives the total |
+| `vlist_total(st)` | the content's height |
+| `vlist_row_extent(st, i)` | the top and the height of row `i` |
+| `vlist_row_at(st, y)` | the row at content position `y`: the last whose top is at or above `y` |
 
 A program that builds its rows itself (its own look, no `list_row`) names each row `vlist_row_name(i)`: the list measures
 the rows under that name. `list_select(&st.list, i)` makes a row active and brings it into view, for a list whose keys
