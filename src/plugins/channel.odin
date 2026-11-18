@@ -154,7 +154,8 @@ sender_take :: proc(p: ^Plugin, ch: ^Channel) -> (m: Message, ok: bool) {
 	sync.lock(&q.lock)
 	defer sync.unlock(&q.lock)
 	for len(q.messages) == 0 && !sync.atomic_load(&ch.closed) { sync.wait(&q.came, &q.lock) }
-	if len(q.messages) == 0 { return }
+	// (a closed channel's child is gone: what waits in the queue is for the next process)
+	if sync.atomic_load(&ch.closed) || len(q.messages) == 0 { return }
 	return pop_front(&q.messages), true
 }
 
@@ -209,6 +210,12 @@ channel_read :: proc(p: ^Plugin, ch: ^Channel) {
 	sync.unlock(&ch.lock)
 	sync.atomic_store(&ch.pending, 0)
 	sync.atomic_store(&p.busy_since, 0)
+	// (the sender stops before the interface hears of the end: once it has, a restart pushes the next process's
+	// messages to the same queue, which this sender must not take to a dead pipe)
+	sync.atomic_store(&ch.closed, true)
+	sync.lock(&p.queue.lock)
+	sync.broadcast(&p.queue.came)
+	sync.unlock(&p.queue.lock)
 	if !ch.ended_seen {
 		// (the runtime did not say it ended: the process crashed, was killed, or broke its channel)
 		if !sync.atomic_load(&p.stop) || broken != "" {
@@ -217,11 +224,6 @@ channel_read :: proc(p: ^Plugin, ch: ^Channel) {
 		}
 		event_deliver(p, serial, .Ended)
 	}
-	// (the sender stops: nothing more goes to this child)
-	sync.atomic_store(&ch.closed, true)
-	sync.lock(&p.queue.lock)
-	sync.broadcast(&p.queue.came)
-	sync.unlock(&p.queue.lock)
 	sync.atomic_store(&p.ended, true)
 	link_release(p.link)
 }

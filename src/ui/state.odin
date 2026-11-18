@@ -1,5 +1,6 @@
 package ui
 
+import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import "core:math"
@@ -77,8 +78,8 @@ destroy :: proc(s: ^State) {
 	draw.damage_memory_destroy(&s.damage)
 	task_box_shut(s)  // (first: a task that ends from now on posts nothing to this State)
 	post_destroy(s)   // (then: the threads still posting get false from now on)
-	for _, b in s.boxes { free(b) }
-	for b in s.free_boxes { free(b) }
+	for _, b in s.boxes { free(b, runtime.heap_allocator()) }
+	for b in s.free_boxes { free(b, runtime.heap_allocator()) }
 	delete(s.boxes)
 	delete(s.free_boxes)
 	delete(s.anims)
@@ -502,7 +503,9 @@ scale_of :: proc(s: ^State) -> f32 { return s.scale }
 touch_box :: proc(s: ^State, key: Key) -> ^Box {
 	b, found := s.boxes[key]
 	if !found {
-		if len(s.free_boxes) > 0 { b = pop(&s.free_boxes); b^ = {} } else { b = new(Box) }
+		// (the heap's, not the build's allocator: a caller that changes it around a build would leave destroy to free
+		// a box with another allocator than the one that made it)
+		if len(s.free_boxes) > 0 { b = pop(&s.free_boxes); b^ = {} } else { b = new(Box, runtime.heap_allocator()) }
 		b.key = key
 		b.first_build = s.build_index
 		s.boxes[key] = b
