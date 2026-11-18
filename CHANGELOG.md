@@ -5,6 +5,48 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.312.0] - 2026-11-18 08:28
+
+### Added
+- **`ui.box_rich_runs`**: the runs of a rich paragraph's box as built, so a test or a tool can read their styles (a
+highlight's background, a run's face).
+- **`lucide.glyph_of(name)` and `lucide.NAMES`**: a Lucide icon found by its name at run time ("search",
+"alert-triangle"), from a table that `tk gen_lucide` generates with the constants.
+- **Rich views in plugins (plugin API level 6)**: a plugin's button, text, heading, field and switch take an `icon` by
+its Lucide name; a text takes a `tone` (`info`, `good`, `warn`, `bad`, `weak`), `mono` for the monospace face and
+`highlight` to mark what a search found in the find bar's colours; a new `badge` node shows a level, a state or a count
+in its tone's colour. An unknown icon draws nothing and the plugin's log says it once. A program older than level 6
+ignores these fields. The log explorer demo uses all of them.
+- **Button sizes.** `Button_Options.size` is Small, Medium or Large: its line, its room, its words and its glyph change
+together. A plugin's button also takes a `look` (`raised`, `ghost`, `link`) and a `size`, so an act repeated in each
+row of a list can be a small ghost button instead of a block of full buttons.
+- **Agent skills for opencode and Claude Code**: `gt-plugin` teaches a coding agent to write, run and test a plugin in
+JavaScript or a small application for gt-runtime; `gui-toolkit` teaches it to build a program in Odin on the toolkit
+and points it to the page to read per subject. Add `"skills": ["https://gt.sacha.house/skills/"]` to `opencode.json`,
+or unpack `gt-skills.zip`, attached to each release, into `~/.config/opencode/skills` or `~/.claude/skills`
+([docs/skills.md](docs/skills.md)). `odin run tools/tk -- skills <out>` writes the catalog, `-zip:<file>` the zip,
+and `tk ci` checks the skills (`skills -check`).
+
+### Fixed
+- **A file another program reads is still written on Windows.** `fsx.write_atomic` replaced a file in one try: while a
+reader, an antivirus or the indexer held it, the write failed and the settings it held were lost. It tries again a few
+times now; plugins.toml is also written again after a failed write.
+- **The Plugins page keeps the last change.** Changes made one after another (a plugin turned on, then off, a grant)
+were each written on their own, and an older write could land last: the plugin was on again at the next start. They
+are written one at a time now, the last state last.
+- **A field's hint is kept with its build.** A field kept its caller's hint, which a plugin's view frees when its next
+display list comes. Reading the window between two frames (the accessibility tree, the developer tools, a test's
+record of a failure) then read freed memory and could crash the program.
+- **A plugin's check box or switch in a row shows its label.** Built in a row of a plugin's view, it had the width of a
+box with no text, and its label did not show.
+
+### Security
+- **A plugin's process is isolated by the system on Linux**: before the plugin's code runs, its process takes away its
+own access to every file (Landlock), every socket (a seccomp filter) and, on recent kernels, its signals to other
+processes. It reads its modules before that, and the program writes its log. `Host_Options.sandbox` (`If_Available` by
+default, `Required`, `Off`) says what happens where the kernel has no Landlock; `plugins.sandbox_available` says
+whether this system can, and `plugins.test_escape` lets a test check it.
+
 ## [0.311.1] - 2026-11-18 07:38
 
 ### Fixed
@@ -4370,6 +4412,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.312.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.312.0
 [0.311.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.311.1
 [0.311.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.311.0
 [0.310.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.310.0
