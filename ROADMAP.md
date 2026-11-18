@@ -42,6 +42,13 @@
   `font/backend_native.odin` and `mermaid.odin`: a `foreign import` is its file's.)
 - **Colours by intent in opencode native.** Its 85 `HEX_*` constants become the theme's intents and hues, so a theme
   changes them all, as cliche's graph colours do since its 0.8.
+- **A long list that stays smooth at a million rows.** Each row of a `ui.vlist` measured at a new height makes the list
+  compute every row's offset again: one pass over all the rows in a build, which a plugin's lazy list of 1 000 000 rows
+  makes at each scroll. The offsets in a Fenwick tree (as the find bar's counts already are) make a measure cost the
+  logarithm of the rows. Intent: [src/md/features/plugins.md](src/md/features/plugins.md), "As built: lazy lists".
+- **No test that crashes by chance on Linux.** Two CI runs stopped on an illegal instruction (an assertion or a bounds
+  check) that no local run made again: once in `plugins`, once in `process` (`each_signal_is_its_own`). A crashed
+  package's log now has its crash reports and the runtime's words before the trap: the next one names its place.
 
 ## Later
 
