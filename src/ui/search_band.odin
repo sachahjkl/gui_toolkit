@@ -52,7 +52,7 @@ search_band :: proc(id: string, field: ^Line_Edit, o := Search_Band_Options{}) -
 		since := now_ms() - field.edited_ms
 		caret_wake(s, since)
 		d := frame_new(Line_Edit_Draw)
-		d^ = {text = strings.clone(text, frame_allocator()), placeholder = hint, placeholder_focused = true,
+		d^ = {text = strings.clone(text, frame_allocator()), placeholder = strings.clone(hint, frame_allocator()), placeholder_focused = true,
 			cursor = field.cursor, mark = field.mark, focused = true,
 			caret_on = !s.inactive && (since < CARET_SOLID_MS || (int(since) / CARET_BLINK_MS) % 2 == 0),
 			selection = color("selection"), caret = color("cursor"), pad = pad}

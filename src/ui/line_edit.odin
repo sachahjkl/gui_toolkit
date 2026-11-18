@@ -533,7 +533,9 @@ line_edit :: proc(id: string, f: ^Line_Edit, o := Line_Edit_Options{}) -> (res: 
 
 		d := frame_new(Line_Edit_Draw)
 		d.text = strings.clone(shown, frame_allocator())
-		d.placeholder, d.placeholder_focused = o.placeholder, o.placeholder_focused
+		// (the hint in the build's arena, as the text: the caller's string may be gone before an inspection between two
+		// frames reads it, as a plugin's display list is when its next one comes)
+		d.placeholder, d.placeholder_focused = strings.clone(o.placeholder, frame_allocator()), o.placeholder_focused
 		d.cursor, d.mark, d.scroll_x = cursor, mark, f.scroll_x
 		d.focused = focused
 		since := now - f.edited_ms

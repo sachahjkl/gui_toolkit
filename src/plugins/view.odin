@@ -360,7 +360,13 @@ replay :: proc(r: ^View_Record, nodes: []plugin_api.List_Node, i: ^int, in_row: 
 		}
 		c := control(r, n.key)
 		if n.controlled && n.seen >= c.changes { c.on = state }
-		ui.next({width = in_row ? ui.text_size(0) : ui.fill(), height = ui.px(ui.dense(em * 2))})
+		// (in a row, no width: a check box and a switch are a mark and a label, which fit their row themselves; the size of
+		// their own text, which they have none of, left the label no room)
+		if in_row {
+			ui.next({height = ui.px(ui.dense(em * 2))})
+		} else {
+			ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2))})
+		}
 		changed := n.kind == .Check ? ui.checkbox(box, label, &c.on) : ui.toggle(box, label, &c.on)
 		if changed {
 			c.changes += 1

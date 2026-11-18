@@ -28,6 +28,7 @@ export function activate() {
 		{ kind: "row", children: [
 			{ kind: "button", key: "add", label: "Add", intent: "primary", onClick: () => { count += 1; } },
 			{ kind: "button", key: "hang", label: "Hang", onClick: () => { for (;;) {} } },
+			{ kind: "check", key: "agree", label: "Checked in a row", checked: false, onChange: () => {} },
 		] },
 		{ kind: "field", key: "name", value: name, placeholder: "Your name", onChange: (v) => {
 			const t = Date.now(); while (Date.now() - t < SLOW_MS) {}
@@ -57,6 +58,10 @@ a_view_is_built_and_a_click_renders_it_again :: proc(t: ^testing.T) {
 	keys := plugins.view_keys(&fx.host, "counter", "main")
 	testing.expectf(t, slice.contains(keys, "add") && slice.contains(keys, "count"), "the list's keys: %v", keys)
 	testing.expect(t, session.find_text(s, "More than none") == nil, "a false child was built")
+	// a check box in a row shows its label (given the size of its own text, which it has none of, its label had no room)
+	if label := session.find_text(s, "Checked in a row"); testing.expect(t, label != nil, "the check box's label is not built") {
+		testing.expectf(t, label.rect.max.x - label.rect.min.x > 40, "the check box's label is %v wide", label.rect.max.x - label.rect.min.x)
+	}
 	session.click(s, "pv:add")
 	session.wait_text(s, "Count: 1", WAIT)
 	session.wait_text(s, "More than none", WAIT)
