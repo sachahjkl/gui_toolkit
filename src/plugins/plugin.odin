@@ -343,7 +343,9 @@ event_run :: proc(data: rawptr, word: u64) {
 		for l in p.app_listens { known ||= l == e.title }
 		if !known { append(&p.app_listens, strings.clone(e.title)) }
 	case .Started:
-		if p.state == .Starting { p.state = .Running }
+		// (an activate slower than the bound was said Not_Responding meanwhile: its end answers it, as a turn's does;
+		// before, the plugin stayed Not_Responding for ever, with no turn in flight)
+		if p.state == .Starting || p.state == .Not_Responding { p.state = .Running }
 	case .Turn_Done:
 		if p.state == .Not_Responding || p.state == .Starting { p.state = .Running }
 	case .Failed:

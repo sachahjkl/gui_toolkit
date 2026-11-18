@@ -96,7 +96,7 @@ enable :: proc(root: string, ids: ..string) {
 }
 
 // A headless window whose builds run the host and the palette, the host reading `root`.
-open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plugins.Sandbox_Mode.If_Available, app: ^plugins.App_Module = nil, menu_places: []string = nil) -> ^session.Session {
+open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plugins.Sandbox_Mode.If_Available, app: ^plugins.App_Module = nil, menu_places: []string = nil, bound_ms := BOUND_MS) -> ^session.Session {
 	crash_reports()
 	s := session.start(t, {user = fx, no_renderer = true, build = proc(s: ^session.Session) {
 		fx := (^Fx)(s.user)
@@ -120,7 +120,7 @@ open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plug
 		program = "gui_toolkit_plugins_test", program_id = "plugins_test",
 		folder = fmt.tprintf("%s/plugins", root), config_dir = fmt.tprintf("%s/config", root), state_dir = fmt.tprintf("%s/state", root),
 		data_dir = fmt.tprintf("%s/data", root),
-		bound_ms = BOUND_MS, single = single, sandbox = sandbox, app = app, menu_places = menu_places,
+		bound_ms = bound_ms, single = single, sandbox = sandbox, app = app, menu_places = menu_places,
 	})
 	fx.opened = true
 	// (before the session's end, which destroys the State: cleanups run last first)
@@ -150,6 +150,29 @@ wait_state :: proc(s: ^session.Session, fx: ^Fx, id: string, want: plugins.Plugi
 	session.wait_until(s, Wanted{fx, id, want}, proc(s: ^session.Session, w: Wanted) -> bool {
 		return plugins.state_of(&w.fx.host, w.id) == w.want
 	}, fmt.tprintf("the state %v", want), bound, loc)
+}
+
+SLOW_MANIFEST :: `{"id": "slow", "name": "Slow", "version": "1.0", "api": 1, "main": "main.js"}`
+
+// An activate that takes longer than the bound: a busy wait, as a slow machine's first compile was on the Windows CI.
+SLOW_MAIN :: `export function activate() {
+	const end = Date.now() + 1500;
+	while (Date.now() < end) {}
+}
+`
+
+// An activate slower than the bound is said Not_Responding while it runs, then Running once it ends: before, its end
+// was not heard (only a Starting plugin took it), and the plugin stayed Not_Responding with no turn in flight.
+@(test)
+a_slow_start_runs_once_it_ends :: proc(t: ^testing.T) {
+	root := testkit.temp_folder(t, "plugin-slow")
+	write_plugin(root, "slow", SLOW_MANIFEST, SLOW_MAIN)
+	enable(root, "slow")
+	fx := new(Fx)   // (freed by open's cleanup)
+	s := open(t, fx, root, bound_ms = 300)
+	session.wait_until(s, fx, proc(s: ^session.Session, fx: ^Fx) -> bool { return plugins.start(&fx.host, "slow") }, "the start", WAIT)
+	wait_state(s, fx, "slow", .Not_Responding)
+	wait_state(s, fx, "slow", .Running, START_WAIT)
 }
 
 @(test)
