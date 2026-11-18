@@ -681,6 +681,10 @@ three do. It is skipped where the kernel has no Landlock.
   the rights that read other windows' input), or (2) a plugin host of its own, an executable that imports no user32
   (the child needs no window: its runtime, its pipes and the broker's messages), which goes back on "the same
   executable" and ships a second binary. (2) is the sounder: (1) gives a stranger's code a handle on the desktop.
+  Tried and not enough (the same 0xC0000142): the test's executable linked with its windowing DLLs delay-loaded
+  (`run_tests`' `delay_load`, `/DELAYLOAD` of user32, gdi32, shell32, ole32 and the others), so another import still
+  starts user32, or the failure is elsewhere. The next try needs a Windows machine (loader snaps: `gflags +sls`, or
+  Process Monitor) to name the DLL that fails; the CI's runner only gives the exit code.
 - **What the test does not try on Windows**: the network. The container's refusal of a connection is Windows' own;
   trying it needs a listener in the test, the next step of this test.
 
