@@ -6,6 +6,7 @@ package tk_plugins
 // same or less starts as before. gt-runtime's plugin (Host_Options.single) asks at its start: the program was
 // started to run it.
 
+import "base:runtime"
 import "core:fmt"
 import "core:math"
 import "core:strings"
@@ -18,6 +19,7 @@ GRANT_VIEW :: "plugins.grant"
 // Grants plugin `id` what its manifest asks, and turns it on. Interface thread: the dialog's Allow calls it, a test
 // too. False: no such plugin, or refused.
 grant :: proc(h: ^Host, id: string) -> bool {
+	context.allocator = runtime.heap_allocator()   // (a plugin's memory is freed on its reader's thread, by the heap)
 	p := find(h, id)
 	if p == nil || p.refused != "" { return false }
 	for g in p.granted { delete(g) }
@@ -35,6 +37,7 @@ grant :: proc(h: ^Host, id: string) -> bool {
 // Takes back what plugin `id` was granted: its permissions and the files it was given. A plugin that asks for
 // permissions is off until they are granted again; its process stops.
 revoke :: proc(h: ^Host, id: string) {
+	context.allocator = runtime.heap_allocator()
 	p := find(h, id)
 	if p == nil { return }
 	for g in p.granted { delete(g) }

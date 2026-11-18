@@ -10,6 +10,7 @@ import "core:strings"
 import "core:testing"
 import "core:time"
 import config "gt:config"
+import crash "gt:crash"
 import plugins "gt:plugins"
 import "gt:testkit"
 import "gt:testkit/session"
@@ -70,6 +71,11 @@ enable :: proc(root: string, ids: ..string) {
 
 // A headless window whose builds run the host and the palette, the host reading `root`.
 open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "") -> ^session.Session {
+	// (run_tests names a folder for crash reports: a crash of this process then says its stack in the CI's log; a
+	// second install does nothing)
+	if dir := os.get_env("TOOLKIT_TEST_CRASH_DIR", context.temp_allocator); dir != "" {
+		_ = crash.install({program = "plugins_test", report_dir = dir})
+	}
 	s := session.start(t, {user = fx, no_renderer = true, build = proc(s: ^session.Session) {
 		fx := (^Fx)(s.user)
 		fx.builds += 1

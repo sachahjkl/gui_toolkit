@@ -277,6 +277,9 @@ BUILD_DIR :: "build/tests"
 // folder, so the tests could live in a repository of their own.
 gt_collection :: proc(root: string) -> string { return fmt.tprintf("-collection:gt=%s/src", root) }
 LOG_DIR :: "build/test_logs"
+// The crash reports of a test package (gt:crash's report_dir): build/crashes/<package>, named to it by CRASH_DIR_ENV.
+CRASH_DIR :: "build/crashes"
+CRASH_DIR_ENV :: "TOOLKIT_TEST_CRASH_DIR"
 THIS_OS :: Os.Windows when ODIN_OS == .Windows else Os.Linux
 EXE_SUFFIX :: ".exe" when ODIN_OS == .Windows else ""
 
@@ -489,8 +492,18 @@ carry_out :: proc(s: ^Step, o: ^Run_Options, r: ^Result) {
 		return
 	}
 	if s.kind == .Test {
-		if !run_to_log({exe_path}, log_file, o.limit, r) {
+		// (a test package that installs gt:crash writes its reports there: a crash's stack then reaches the log, which
+		// is all a CI run keeps)
+		crash_dir := fmt.tprintf("%s/%s/%s", here, CRASH_DIR, s.name)
+		_ = os.remove_all(crash_dir)
+		_ = os.make_directory_all(crash_dir)
+		env, _ := os.environ(context.temp_allocator)
+		env_crash := make([dynamic]string, 0, len(env) + 1, context.temp_allocator)
+		append(&env_crash, ..env)
+		append(&env_crash, fmt.tprintf("%s=%s", CRASH_DIR_ENV, crash_dir))
+		if !run_to_log({exe_path}, log_file, o.limit, r, env_crash[:]) {
 			if r.why == "" { r.why = "a test failed" }
+			reports_to_log(crash_dir, log_file)
 			return
 		}
 		text, _ := os.read_entire_file(log_path(s), context.temp_allocator)
@@ -524,11 +537,29 @@ run_to_log :: proc(cmd: []string, log: ^os.File, limit: int, r: ^Result, env: []
 	}
 }
 
+// The crash reports a failed test package left, at the end of its log (the stack's symbols come last in a report, so
+// the log's tail shows them).
+reports_to_log :: proc(dir: string, log: ^os.File) {
+	entries, err := os.read_all_directory_by_path(dir, context.temp_allocator)
+	if err != nil { return }
+	for e in entries {
+		if e.type == .Directory || !strings.has_suffix(e.name, ".txt") { continue }
+		data, rerr := os.read_entire_file(e.fullpath, context.temp_allocator)
+		if rerr != nil { continue }
+		fmt.fprintfln(log, "\n---- crash report %s ----", e.name)
+		_, _ = os.write(log, data)
+	}
+}
+
 // The end of a log: what failed, and for a hang which test it was in (ODIN_TEST_LOG_STATE_CHANGES).
 print_tail :: proc(path: string) {
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil { return }
 	lines := strings.split_lines(string(data), context.temp_allocator)
 	first := max(len(lines) - FAILURE_LINES, 0)
+	// (a crash report is said whole, with the lines before it: which test ran)
+	for l, i in lines {
+		if strings.has_prefix(l, "---- crash report") { first = max(min(first, i - FAILURE_LINES / 4), 0); break }
+	}
 	for l in lines[first:] { fmt.println(l) }
 }
