@@ -9,6 +9,8 @@ native/*/target/
 .pre-commit-config.yaml
 /tk
 /run_tests
+# a test package built from the root without -out: (odin build tests/js leaves ./js)
+/js
 # the site as tk site_build makes it (the Pages workflow's output, a local preview)
 /_site/
 # licences: a private signing key, an issued licence and a decrypted secret never belong here (docs/licence.md)

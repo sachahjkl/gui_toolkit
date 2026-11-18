@@ -90,7 +90,9 @@ Natively, a runtime reserves one block of addresses for its cells at `engine_new
 `DEFAULT_RESERVE_BYTES`, 8 GiB) and commits it as it grows. The collector's table of chunks covers the addresses from
 the lowest chunk to the highest, so the chunks must be near each other: in the block they are, whatever allocator the
 program gives. A block larger than 512 bytes (the values of an array, a long string) still comes from the allocator.
-`engine_free` releases the block in one call. In Wasm no block is reserved: the linear memory is one already.
+`engine_free` releases the block in one call. In Wasm no block is reserved: the linear memory is one already. A
+`reserve_bytes` below 0 reserves no block natively either: the chunks then come from the allocator, for a program whose
+allocator must keep every cell in a range of its own (a value that holds a 32-bit pointer).
 
 The heap's budget is `malloc_limit`. Past it, the script gets the uncatchable "out of memory" error at its next safe
 point. The last eighth of the block is a spare: when the allocator refuses a block, or a chunk goes past the block's

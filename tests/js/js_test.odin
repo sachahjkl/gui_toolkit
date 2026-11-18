@@ -271,6 +271,31 @@ past_the_memory_limit :: proc(t: ^testing.T) {
 	}
 }
 
+// reserve_bytes below 0: no block of the runtime's own, the cells' chunks come from the program's allocator (an
+// embedder whose values hold 32-bit pointers keeps every cell in its own low range). With a block, the arena would
+// see none of them.
+@(test)
+no_block_takes_the_chunks_from_the_allocator :: proc(t: ^testing.T) {
+	block: vmem.Arena
+	if !testing.expect(t, vmem.arena_init_static(&block, BLOCK_RESERVE) == nil, "the arena is not reserved") { return }
+	defer vmem.arena_destroy(&block)
+	cfg := js.DEFAULT_CONFIG
+	cfg.reserve_bytes = -1
+	rt := js.engine_new(mem.Allocator{block_proc, &block}, cfg)
+	ctx := js.context_new(rt)
+	before := block.total_used
+	// (a chain of small objects: cells alone, no block above 512 bytes that the allocator would get anyway)
+	r := js.eval_source(ctx, "var head = null; for (let i = 0; i < 20000; i++) head = {next: head}; 1", "cells.js")
+	testing.expect(t, !js.is_exception(r), "the script ran")
+	testing.expect_value(t, rt.block.reserved, 0)
+	testing.expectf(t, block.total_used - before >= NO_BLOCK_CELLS_BYTES, "the cells' chunks are not the allocator's (%d bytes)", block.total_used - before)
+	js.engine_free(rt)
+}
+
+// 20000 objects of one property each take more than this in cells (about 3 MiB; with a block, the allocator gets
+// about 300 KiB, its big blocks alone).
+@(private = "file") NO_BLOCK_CELLS_BYTES :: 1 << 20
+
 // Each runtime on a thread of its own, at the same time (a barrier starts them together), each with its own allocator
 // and hooks.
 @(test)

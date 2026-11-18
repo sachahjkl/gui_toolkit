@@ -38,7 +38,8 @@ Host_Config :: struct {
 	// Heap budget in bytes (-1: unlimited). Checked at safe points and by large allocations; going
 	// over raises an uncatchable "out of memory" error.
 	malloc_limit:    i64,
-	// The addresses reserved for the runtime's block of cells, committed as it grows (0: DEFAULT_RESERVE_BYTES).
+	// The addresses reserved for the runtime's block of cells, committed as it grows (0: DEFAULT_RESERVE_BYTES; below 0:
+	// none, the chunks come from the allocator, for an allocator that must hold every cell in its own range).
 	// Natively the cells' chunks live there: the chunk table spans the lowest chunk to the highest, which a process
 	// heap makes too wide. In Wasm no block is reserved; the linear memory already is one.
 	reserve_bytes:   int,
