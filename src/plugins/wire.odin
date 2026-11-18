@@ -75,7 +75,7 @@ start_encode :: proc(w: ^plugin_api.Wire_Writer, p: ^Plugin) {
 	plugin_api.put_u64(w, p.serial)
 	plugin_api.put_i64(w, p.memory_limit)
 	plugin_api.put_string(w, p.folder)
-	plugin_api.put_string(w, p.log_path)
+	plugin_api.put_u8(w, u8(p.sandbox))
 	plugin_api.put_string(w, m.id)
 	plugin_api.put_string(w, m.name)
 	plugin_api.put_string(w, m.version)
@@ -104,7 +104,9 @@ start_decode :: proc(r: ^plugin_api.Wire_Reader) -> ^Plugin {
 	p.serial = plugin_api.get_u64(r)
 	p.memory_limit = plugin_api.get_i64(r)
 	p.folder = plugin_api.get_string(r)
-	p.log_path = plugin_api.get_string(r)
+	sandbox := plugin_api.get_u8(r)
+	// (a mode it does not know: the strictest, never none)
+	p.sandbox = sandbox <= u8(max(Sandbox_Mode)) ? Sandbox_Mode(sandbox) : .Required
 	m := &p.manifest
 	m.id = plugin_api.get_string(r)
 	m.name = plugin_api.get_string(r)

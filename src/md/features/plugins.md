@@ -540,10 +540,10 @@ capabilities. Written on 2026-11-18.
   is no plugin's fault.
 - **Tests' hooks**: `test_crash` panics in the child's runtime (what an engine's bug does), `test_hang` waits there
   where no interrupt is read.
-- **What this does not do**: the child runs with the person's rights, as the program does: the system does not
-  sandbox it yet (seccomp, an AppContainer). Since slice 3 every call that reaches files, the network or the clipboard
-  is the program's broker's (see below), so what the API reaches is closed; but a compromised engine can make system
-  calls itself. The sandbox of the system is the next step (ROADMAP).
+- **What this does not do**: the child runs with the person's rights, as the program does. Since slice 3 every call
+  that reaches files, the network or the clipboard is the program's broker's (see below), so what the API reaches is
+  closed; on Linux the system's sandbox takes the rest away ("As built: the sandbox"); Windows and macOS are next
+  (ROADMAP).
 
 ## As built: capabilities (slice 3, API level 4)
 
@@ -596,6 +596,61 @@ Refused:
   Stop could not reach a plugin waiting for an answer.
 
 Still open: a plugin folder shared by all the vendor's programs (refused for now).
+
+## As built: the sandbox (Linux)
+
+Written on 2026-11-18.
+
+- **The threat.** A plugin written by a stranger, or a bug of the engine that a plugin's script exploits, runs code
+  of its own in the plugin's process with the person's rights. The broker closes what the API reaches; the process could
+  still open a file, a socket or another program by its own system calls. The sandbox takes those away from the
+  process itself, so that what it reaches is its two pipes and the program's broker.
+- **Where.** In the child (`child_main`), right after it reads its Start and says Alive, before any of the plugin's
+  code runs and before its second thread starts: Landlock binds the calling thread and the threads it makes later, so
+  the child checks that it is alone (`/proc/self/stat`) and refuses to call itself isolated when another thread ran
+  first (an `@(init)` of a package that started one).
+- **The child opens no file after it.** It needs two things of the disk: its modules and its log.
+  - **The modules are read before the restriction**: every `.js` and `.mjs` file of the plugin's folder (links not
+    followed, 2 000 files and 64 MB at most, 8 MB a file), kept by their path in the folder. An `import()` later finds
+    its source there. Refused: a read-only rule for the plugin's folder. It is one line, but it leaves the process a
+    path to reach, and a folder that grows (a `node_modules`) is the plugin's to keep small, said in its log.
+  - **The log is the program's to write**: a line is an event (`Log`) that the program's reader thread appends to the
+    plugin's log (a thread of the program, never the interface's). The Start no longer carries the log's path.
+- **Landlock** (`landlock_create_ruleset`, ABI 1 or later): a rule set that handles every access right of the file
+  system the kernel knows (execute, read, write, the makes and removes; refer from ABI 2, truncate from 3, the devices'
+  ioctl from 5), with no rule: no path is allowed. From ABI 4 it handles TCP's bind and connect, with no port allowed;
+  from ABI 6 it scopes abstract Unix sockets and signals, so the process cannot signal the program nor another process
+  of the person's. Landlock also forbids the process to ptrace a process out of its domain. `PR_SET_NO_NEW_PRIVS`
+  comes first: neither layer can be set without it, and a set-uid program cannot be used to leave them.
+- **seccomp-bpf** (by hand, nine instructions or so): `socket`, `socketpair` and `io_uring_setup` give `EPERM`;
+  everything else is allowed. Landlock's network rights cover TCP only (UDP, raw, netlink and Unix sockets are not
+  theirs); the child needs no socket at all, so none is made. `io_uring` goes too: its ring can make a socket without
+  the `socket` call. The filter checks `seccomp_data.arch` first and kills the process when it is not the one the
+  child was built for (a 32-bit call on a 64-bit system has other numbers), and on x86_64 refuses the x32 numbers.
+- **`Host_Options.sandbox`**: `If_Available` (the default, gt-runtime's), `Required`, `Off`. With `If_Available` a
+  child that cannot isolate itself (no Landlock: an old kernel, or one that did not enable it) runs as before and says
+  so once in its log. `Required` makes the plugin Failed: "this system cannot isolate a plugin's process". `Off` is
+  for a program's own debugging. Isolated means both layers: Landlock alone leaves the sockets, seccomp alone the files.
+- **The seam for the other systems.** Two procedures, one file per system: `sandbox_spawn` (the program starts the
+  child: Linux and the others start it as before; Windows will start it in an AppContainer or with a restricted token,
+  which only the parent can give) and `sandbox_enter` (the child, after its Start: Landlock and seccomp on Linux;
+  nothing elsewhere, and it says so). `sandbox_other.odin` is the rest, `#+build !linux`.
+
+What it does not stop:
+
+- **The processor and the memory.** A loop is Stop's (the bound, then the kill); the memory is the engine's limit. A
+  child that allocates outside the engine (a bug of its own) is bound by nothing but the system.
+- **What the broker does for it.** A grant is a grant: a `net:*` plugin reaches any public host, and a public name
+  whose system's answer is a private address (DNS rebinding) is still reached through the broker (capabilities, "The
+  network").
+- **What the system shows without a file**: the metadata of a path (`stat`), the process list's numbers, the time.
+  Landlock restricts opening, not looking.
+- **A kernel's bug.** The sandbox is the kernel's; an exploit of the kernel leaves it.
+- **Signals before ABI 6**: on a kernel with Landlock 1 to 5, the child can still signal the person's processes.
+
+The test (`tests/plugins/sandbox_test.odin`) is the ROADMAP's condition: `test_escape` makes the child read a file the
+test made, create one in the test's folder and open a TCP socket; with the sandbox none succeeds, with `Off` all
+three do. It is skipped where the kernel has no Landlock.
 
 ## As built: lazy lists (slice 5, API level 5)
 

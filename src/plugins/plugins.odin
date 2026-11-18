@@ -73,6 +73,14 @@ Host_Options :: struct {
 	announcer:    ^ui.Announcer,   // where a plugin's messages go (nil: the window's toasts)
 	bound_ms:     int,      // 0: NOT_RESPONDING_MS
 	memory_limit: i64,      // 0: MEMORY_LIMIT
+	sandbox:      Sandbox_Mode,   // whether a plugin's process is isolated by the system (sandbox_linux.odin)
+}
+
+// How a plugin's process is isolated by the system (plugins.md, "As built: the sandbox").
+Sandbox_Mode :: enum u8 {
+	If_Available,   // isolated where the system can; elsewhere it runs as before, and its log says so once
+	Required,       // a plugin whose process cannot be isolated is Failed
+	Off,            // not isolated (a program's own debugging)
 }
 
 // The program's plugins, kept by the program between frames (host_open to host_close), at a place that does not move.
@@ -95,6 +103,10 @@ Host :: struct {
 	grant_due:   bool,                  // the dialog opens at the next build
 	grant_view:  bool,                  // the dialog's view is registered
 	single_asked: bool,                 // gt-runtime's plugin was looked at for a grant at its start
+	// plugins.toml's writer, one write at a time: idle, writing, or writing with another asked (the last state wins;
+	// two writes on two chores could end in either order, the older content last)
+	toml_writing: bool,
+	toml_again:   bool,
 	window_announcer: ui.Announcer,   // Host_Options.announcer nil: the window's toasts
 	// what a test reads: the toasts said (count), and the last one's words (owned)
 	toasts:      int,

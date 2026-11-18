@@ -12,6 +12,7 @@ package tk_plugins
 import "base:runtime"
 import "core:fmt"
 import "core:os"
+import "core:strings"
 import "core:sync"
 import "core:thread"
 import "../platform"
@@ -119,7 +120,7 @@ channel_open :: proc(p: ^Plugin, ch: ^Channel) -> string {
 	sync.lock(&start_lock)
 	// (a process that dies leaves its input closed: the sender's next write must be an error, not the program's end)
 	platform.sigpipe_ignore()
-	child, err := os.process_start({command = {exe, CHILD_ARG}, stdin = in_r, stdout = out_w, stderr = os.stderr})
+	child, err := sandbox_spawn(exe, in_r, out_w)
 	sync.unlock(&start_lock)
 	// (the child's ends are the child's: the program keeps the two it uses, and sees the end of the output when the
 	// child's goes)
@@ -192,6 +193,13 @@ channel_read :: proc(p: ^Plugin, ch: ^Channel) {
 			// (the bound of the start counted the system's start of the process, slow on a busy machine: it counts
 			// again from the child's first word, as the plugin's code begins)
 			if sync.atomic_load(&ch.pending) > 0 { sync.atomic_store(&p.busy_since, now_ms()) }
+			request_free(&req)
+			delete(title); delete(text)
+			plugin_api.list_free(list)
+			continue
+		case .Log:
+			// (this thread is the program's and not the interface's: a file's write may wait here)
+			log_append(p.log_path, text)
 			request_free(&req)
 			delete(title); delete(text)
 			plugin_api.list_free(list)
@@ -270,6 +278,16 @@ stop_bound :: proc(p: ^Plugin) {
 // panics there. The program goes on; the plugin is Failed. Interface thread.
 test_crash :: proc(h: ^Host, id: string) {
 	if p := find(h, id); p != nil && p.alive { queue_push(p, {kind = .Test_Crash}) }
+}
+
+// Makes a plugin's process try what its sandbox must stop, a test's way to see it: read the file `read_path`, create
+// a file in the folder `create_dir`, open a TCP socket. Its next turn tries them, then a toast says "escaped: none",
+// or which it could ("escaped: read, create, socket"). Interface thread.
+test_escape :: proc(h: ^Host, id: string, read_path, create_dir: string) {
+	context.allocator = runtime.heap_allocator()   // (the message's strings are freed by the sender: the heap's)
+	if p := find(h, id); p != nil && p.alive {
+		queue_push(p, {kind = .Test_Escape, text = strings.clone(read_path), command = strings.clone(create_dir)})
+	}
 }
 
 // Makes a plugin's process hang where its interrupt flag is not read, a test's way to see Stop's kill: its next turn

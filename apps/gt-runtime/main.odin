@@ -191,7 +191,7 @@ open :: proc(path: string, headless := false) -> ^App {
 	}
 	prefs_page.standard_watch(&app.watch, &app.prefs, &h.state, {renderer = &app.shared.r, fonts = &app.shared.fonts, window = h.win})
 	app.announcer = {mode = prefs_page.announce_mode(&app.prefs), window = h.win, state = &h.state}
-	plugins.host_open(&app.plugins, &h.state, {program = APP_FOLDER, program_id = PROGRAM_ID, single = path, announcer = &app.announcer, prefs = &app.prefs})
+	plugins.host_open(&app.plugins, &h.state, {program = APP_FOLDER, program_id = PROGRAM_ID, single = path, announcer = &app.announcer, prefs = &app.prefs, sandbox = .If_Available})
 	return app
 }
 

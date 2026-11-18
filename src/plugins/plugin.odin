@@ -32,8 +32,9 @@ Plugin :: struct {
 	serial:    u64,         // its process's: a post of an older process is dropped
 	// set before its process starts, read by the sender (owned)
 	folder:      string,    // its folder, absolute
-	log_path:    string,
+	log_path:    string,    // (the program's reader writes it: the child sends its lines, Event_Kind.Log)
 	memory_limit: i64,
+	sandbox:     Sandbox_Mode,
 	settings_start: []Setting_Now,   // its settings' values when its process starts (heap: the sender sends and frees them)
 	link:        ^Host_Link,   // (counted while its process runs: the last of its threads lets go of it)
 	ch:          ^Channel,     // its process now (nil: none started yet)
@@ -45,6 +46,8 @@ Plugin :: struct {
 	// the child's only: where its events go (nil in the program), and what its bridge lets through (the start's)
 	out:        ^Child_Out,
 	granted_caps: plugin_api.Capabilities,
+	// the child's only: its modules' sources, read before its sandbox, by their path in its folder (owned)
+	sources:    map[string]string,
 }
 
 @(private)
@@ -67,6 +70,8 @@ plugin_release :: proc(p: ^Plugin) {
 	delete(p.picked)
 	for s in p.settings_start { setting_now_free(s) }
 	delete(p.settings_start)
+	for k, s in p.sources { delete(k); delete(s) }
+	delete(p.sources)
 	if p.ch != nil { channel_release(p.ch) }
 	queue_destroy(&p.queue)
 	free(p)
@@ -86,6 +91,7 @@ plugin_start :: proc(h: ^Host, p: ^Plugin) {
 	p.alive = true
 	p.state = .Starting
 	p.memory_limit = h.o.memory_limit
+	p.sandbox = h.o.sandbox
 	p.settings_start = settings_snapshot(h, p)
 	p.link = h.link
 	sync.atomic_add(&h.link.refs, 1)
@@ -132,6 +138,9 @@ Message_Kind :: enum u8 {
 	// response's status; `command` its address
 	Answer,
 	Rows,         // the rows `rows` of the lazy list `key` of `view` (lazy_list.odin)
+	// the child tries to leave its sandbox (test_escape): read the file `text`, create a file in the folder
+	// `command`, open a TCP socket; a toast says which of them it could
+	Test_Escape,
 }
 
 // What happened to a node of a view: the name of the field of its kind's struct that is called (plugin_api's nodes).
@@ -242,6 +251,7 @@ Event_Kind :: enum u8 {
 	Request,     // a call for the broker (files, the network, the clipboard): `req`
 	Rows,        // a lazy list's rows: `title` the view's id, `text` the list's key, `list` the rows, `rows` the ask
 	Alive,       // its process read its start: the bound counts from here (the program's reader only)
+	Log,         // a line of its log, `text`: the program's reader appends it (the child opens no file: its sandbox)
 }
 
 @(private)
@@ -295,7 +305,7 @@ event_run :: proc(data: rawptr, word: u64) {
 	if p.dropped || e.serial != p.serial { return }
 	h := p.host
 	switch e.kind {
-	case .Alive:   // (the reader's: never posted)
+	case .Alive, .Log:   // (the reader's: never posted)
 	case .Started:
 		if p.state == .Starting { p.state = .Running }
 	case .Turn_Done:
