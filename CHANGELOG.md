@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.313.0] - 2026-11-18 09:31
+
+### Added
+- **The settings' sidebar folds to a rail**: in a narrow window or dialog (when the page would get less than 26 ems), or by its fold button at the start of the search's row. The rail shows the pages' icons (the title as the tooltip, the page shown lit, Up and Down change the page), a magnifier that opens the sidebar with the search focused, and a … menu with the version, the settings file, Export and Import. A pull of the rail's edge opens it. The icons-only column under 40 ems is gone.
+
+### Changed
+- **A side panel folds by one rule, and a choice by hand holds until the next crossing** (`ui.Side_Fold`, `ui.side_fold_follow`, `ui.side_fold_set`, `ui.side_handle`, `ui.side_fold_button`, `ui.Side_Panel`): a views side zone folds to its rail when the space leaves the content less than its least, and opens again 1 em past it (`SIDE_FOLD_GAP_EM`: a width swept around the threshold no longer flaps). A Minimise, a Restore or a pull now holds only until the width next crosses that threshold, either way; before, a Minimise was kept forever and an opening while narrow was lost at the next start. The space's memory keeps both bits (`left.min=1 left.narrow=1`). `VIEW_RAIL_PULL_EM` is now `SIDE_PULL_EM`; a program's own split (a list beside its preview) can use the same panel.
+
 ## [0.312.1] - 2026-11-18 09:11
 
 ### Added
@@ -4420,6 +4428,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.313.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.313.0
 [0.312.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.312.1
 [0.312.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.312.0
 [0.311.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.311.1
