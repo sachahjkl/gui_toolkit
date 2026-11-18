@@ -523,6 +523,15 @@ capabilities. Written on 2026-11-18.
   a length, a kind and its bytes (`wire.odin`): the start, a message, an event. A display list crosses node by node, its
   structs field by field by the declarations (`plugin_api/wire.odin`), and the reader checks every count and every
   enum's value before the replay sees it. The standard error stays the program's, for a panic's words.
+- **No other process holds a plugin's pipe.** On Windows `os.pipe` makes both ends inheritable and `os.process_start`
+  passes every inheritable handle on, so a second plugin's process started meanwhile held the first one's ends: a child
+  that died at its start would leave its output open and its reader waiting for ever. The program's two ends are made
+  not inheritable at once, and the pipes are made, given and closed under the start's lock, so the child's ends exist
+  only while their own process starts. On Linux `os.pipe` sets close-on-exec already.
+- **A slow start ends in Running.** An activate longer than the bound is said Not_Responding while it runs (the
+  watchdog reads the start's turn like any other); its end, `Started`, makes the plugin Running from Starting or from
+  Not_Responding, as `Turn_Done` does. It took Starting only, and on the Windows CI's slow machine the plugin stayed
+  Not_Responding for ever with no turn in flight.
 - **Two threads of the program per process**: a sender, which starts the process (`os.process_start` is not safe on two
   threads at once: `start_lock`) and writes the plugin's queue; a reader, which posts the events as the plugin's thread
   did and reads the process's end. The interface's thread pushes messages and reads atomics, as before.

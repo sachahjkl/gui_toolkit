@@ -110,22 +110,27 @@ channel_send :: proc(p: ^Plugin, ch: ^Channel) {
 channel_open :: proc(p: ^Plugin, ch: ^Channel) -> string {
 	exe := process.executable_path()
 	if exe == "" { return "its process cannot start: the program's executable is not known" }
+	// (the pipes are made under the start's lock too: on Windows the child's ends are inheritable until they are closed
+	// below, and another plugin's process started meanwhile took them, so this child's end never came)
+	sync.lock(&start_lock)
 	in_r, in_w, e1 := os.pipe()
-	if e1 != nil { return fmt.tprintf("its process cannot start: no pipe (%v)", e1) }
+	if e1 != nil { sync.unlock(&start_lock); return fmt.tprintf("its process cannot start: no pipe (%v)", e1) }
 	out_r, out_w, e2 := os.pipe()
 	if e2 != nil {
+		sync.unlock(&start_lock)
 		os.close(in_r); os.close(in_w)
 		return fmt.tprintf("its process cannot start: no pipe (%v)", e2)
 	}
-	sync.lock(&start_lock)
+	pipe_not_inherited(in_w)
+	pipe_not_inherited(out_r)
 	// (a process that dies leaves its input closed: the sender's next write must be an error, not the program's end)
 	platform.sigpipe_ignore()
 	child, err := sandbox_spawn(exe, in_r, out_w)
-	sync.unlock(&start_lock)
 	// (the child's ends are the child's: the program keeps the two it uses, and sees the end of the output when the
 	// child's goes)
 	os.close(in_r)
 	os.close(out_w)
+	sync.unlock(&start_lock)
 	if err != nil {
 		os.close(in_w); os.close(out_r)
 		return fmt.tprintf("its process cannot start (%v)", err)

@@ -626,6 +626,7 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 		}
 		if !minimised { view_panel_build(vs, sp, shown) }
 		pop_parent()
+		view_panel_menu_press(shown, stack, with_strip ? strip_h : em * VIEW_HOVER_EDGE_EM)
 		for r in list { view_header_menu(vs, r, .Panel) }
 		if last || length <= 0 || (minimised && axis == .Y) { continue }
 		// (the handle after it: its share of the zone, written when it is let go)
@@ -822,6 +823,48 @@ view_fold_button :: proc(v: ^View) -> Signal {
 	}
 	if sig.right_clicked && sig.box != nil { menu_open(view_menu_id(r), mouse_pos(), sig.box.key, search = false) }
 	return sig
+}
+
+// The view's menu, for a panel: its stack's Minimise (or Restore, its zone folded) and Maximise (or Restore), the acts
+// of the strip's buttons and of the fold button, by their own transitions. Minimise is absent at the centre (nowhere
+// to fold to) and while the stack is maximised (two items would say "Restore").
+@(private)
+view_panel_menu_items :: proc(vs: ^Views, r: ^View_Record) {
+	labels := view_labels(vs)
+	place := view_panel_place(r.machine)
+	sp := view_space_of(vs, place.space)
+	if sp == nil { return }
+	e, maxed := sp.max_edge.?
+	maxed = maxed && e == place.edge && sp.max_stack == place.stack
+	if place.edge != .Center && !maxed {
+		folded := view_zone_collapsed(sp, place.edge)
+		word, glyph := labels.minimize, lucide.MINUS
+		if folded { word, glyph = labels.restore, place.edge == .Right ? lucide.PANEL_RIGHT_OPEN : lucide.PANEL_LEFT_OPEN }
+		if menu_item(fmt.tprintf("%s###vm_minimise", word), icon = glyph, icon_font = lucide_icons()).clicked {
+			view_stack_minimise(vs, sp, place.edge, !folded)
+		}
+	}
+	word, glyph := labels.maximize, lucide.MAXIMIZE_2
+	if maxed { word, glyph = labels.restore, lucide.MINIMIZE_2 }
+	if menu_item(fmt.tprintf("%s###vm_maximise", word), icon = glyph, icon_font = lucide_icons()).clicked {
+		if maxed { sp.max_edge = nil } else { sp.max_edge, sp.max_stack = place.edge, place.stack }
+		if sp.state != nil { sp.state.anim_busy = true }
+	}
+}
+
+// A right press on the free part of a panel's top area opens its view's menu (views.md, section 2.5, rule 3): the
+// strip's free part when it shows, else the band at the body's top where a rest brings the strip. The top area is the
+// body's too, so the press is the view's only when no clickable box lies under it (a tab, a body's button: theirs,
+// at the release) and nothing took it in this build (a body's context_take, a field's menu). Called after the stack's
+// strip and body are built.
+@(private = "file")
+view_panel_menu_press :: proc(r: ^View_Record, stack: ^Box, top: f32) {
+	s := gs()
+	if !s.pressed_any[.Right] || s.pressed_key[.Right] != 0 { return }
+	p := s.press_pos[.Right]
+	if p.y >= stack.rect.min.y + top { return }
+	if !context_take(stack) { return }
+	menu_open(view_menu_id(r), p, stack.key, search = false)
 }
 
 // One of a narrow stack's own buttons: a small icon, as the fold button ("###id": its key, as the caption button it
@@ -1236,6 +1279,26 @@ View_Command :: struct {
 	act:          View_Act,
 }
 
+// The acts that do something for `r` where it is now. The palette's commands (views_commands) and the view's menu
+// (view_header_menu) both read this one set: an act is in both or in neither, and a menu never shows it disabled.
+@(private)
+view_acts :: proc(vs: ^Views, r: ^View_Record) -> (acts: bit_set[View_Act]) {
+	m := r.machine
+	acts = {.Close}
+	if r.kind.o.new_tab != nil { acts += {.New_Tab} }
+	if m.as != .External && views_windows_ready(vs) { acts += {.Window} }
+	if m.as != .Internal { acts += {.Float} }
+	// (the frame's edges, when the owner window has a frame space: views_frame; not the edge the panel is at)
+	if view_frame_built(vs, r.owner) {
+		docked := m.as == .Panel && m.place.space == ""
+		if !(docked && m.place.edge == .Left) { acts += {.Dock_Left} }
+		if !(docked && m.place.edge == .Right) { acts += {.Dock_Right} }
+		if !(docked && m.place.edge == .Bottom) { acts += {.Dock_Bottom} }
+	}
+	if !view_machine_at_home(m) { acts += {.Reattach} }
+	return
+}
+
 // A command per act of each open view of `vs`, in the language in use ("Float Properties", "Dock Properties to the
 // right"...): an act that does nothing where the view is is absent. `acts[i]` is what `commands[i]` does
 // (views_command_run). Make them again when views_version changes.
@@ -1254,25 +1317,19 @@ views_commands :: proc(vs: ^Views, allocator := context.temp_allocator, owner: ^
 			append(cmds, Command{label = fmt.aprintf(word, title, allocator = allocator), group = group, icon = icon})
 			append(what, View_Command{id = r.kind.id, instance = r.instance, act = act})
 		}
-		if r.kind.o.new_tab != nil && !(r.kind in new_tabs) {
+		acts := view_acts(vs, r)
+		if .New_Tab in acts && !(r.kind in new_tabs) {
 			new_tabs[r.kind] = true
 			// (the program's words, whole: no title in them)
 			append(&cmds, Command{label = strings.clone(view_new_tab_label(vs, r.kind), allocator), group = group, icon = lucide.PLUS})
 			append(&what, View_Command{id = r.kind.id, instance = r.instance, act = .New_Tab})
 		}
-		if m.as != .External && views_windows_ready(vs) { add(&cmds, &what, r, .Window, i18n.tr("Open %s in a window"), title, group, lucide.EXTERNAL_LINK, allocator) }
-		if m.as != .Internal { add(&cmds, &what, r, .Float, i18n.tr("Float %s"), title, group, lucide.PICTURE_IN_PICTURE_2, allocator) }
-		if view_frame_built(vs, r.owner) {
-			edges := [3]View_Edge{.Left, .Right, .Bottom}
-			words := [3]string{i18n.tr("Dock %s to the left"), i18n.tr("Dock %s to the right"), i18n.tr("Dock %s to the bottom")}
-			icons := [3]string{lucide.PANEL_LEFT, lucide.PANEL_RIGHT, lucide.PANEL_BOTTOM}
-			dock_acts := [3]View_Act{.Dock_Left, .Dock_Right, .Dock_Bottom}
-			for e, i in edges {
-				if m.as == .Panel && m.place.space == "" && m.place.edge == e { continue }
-				add(&cmds, &what, r, dock_acts[i], words[i], title, group, icons[i], allocator)
-			}
-		}
-		if !view_machine_at_home(m) { add(&cmds, &what, r, .Reattach, i18n.tr("Re-attach %s"), title, group, lucide.UNDO_2, allocator) }
+		if .Window in acts { add(&cmds, &what, r, .Window, i18n.tr("Open %s in a window"), title, group, lucide.EXTERNAL_LINK, allocator) }
+		if .Float in acts { add(&cmds, &what, r, .Float, i18n.tr("Float %s"), title, group, lucide.PICTURE_IN_PICTURE_2, allocator) }
+		if .Dock_Left in acts { add(&cmds, &what, r, .Dock_Left, i18n.tr("Dock %s to the left"), title, group, lucide.PANEL_LEFT, allocator) }
+		if .Dock_Right in acts { add(&cmds, &what, r, .Dock_Right, i18n.tr("Dock %s to the right"), title, group, lucide.PANEL_RIGHT, allocator) }
+		if .Dock_Bottom in acts { add(&cmds, &what, r, .Dock_Bottom, i18n.tr("Dock %s to the bottom"), title, group, lucide.PANEL_BOTTOM, allocator) }
+		if .Reattach in acts { add(&cmds, &what, r, .Reattach, i18n.tr("Re-attach %s"), title, group, lucide.UNDO_2, allocator) }
 		add(&cmds, &what, r, .Close, i18n.tr("Close %s"), title, group, lucide.X, allocator)
 	}
 	return cmds[:], what[:]
