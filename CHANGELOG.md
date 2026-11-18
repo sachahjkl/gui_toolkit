@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.318.1] - 2026-11-18 17:14
+
+### Fixed
+- **A window closed while a font family loads no longer crashes**: `ui.destroy` waits for the family loads that still
+read the fonts (at most 5 s), so the program may free its fonts once it returns.
+
 ## [0.318.0] - 2026-11-18 15:52
 
 ### Added
@@ -4499,6 +4505,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.318.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.1
 [0.318.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.0
 [0.317.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.317.0
 [0.316.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.316.1
