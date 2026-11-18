@@ -146,3 +146,50 @@ A program's side panes are views now ([views.md](views.md), "Panels"): `examples
 for a split inside a program's own layout. Tests: `tests/panes/pane_split_test.odin` (from the minimum to all but the other side's,
 folding by a drag, a double click, Enter and the button, the strip's click and pull, the keyboard, the save callback,
 the text, the place, what the strip draws).
+
+## A side panel that folds (`src/ui/side_panel.odin`)
+
+One mechanism for every side panel beside a content that folds to a rail: the views' side zones, the settings'
+sidebar, a program's own split (a list beside its preview). Its intent: `src/md/features/side-panels.md`.
+
+**The rule.** Open at its width, the panel folds when it leaves the content less than the content's least; it opens again
+when the content would have its least plus `SIDE_FOLD_GAP_EM` (1 em). No window breakpoint: the room is the split's
+own, so the rule is the same in a window and in a dialog. **A manual choice** (the fold button, a pull, a key of the
+program's) holds until the room next crosses the threshold, either way; then the automatic state is back.
+
+```odin
+// what the program keeps and saves: its width, its fold ("folded narrow", "folded", "narrow", "")
+app.side: ui.Side_Panel
+o := ui.Side_Panel_Options{default_width = 280, min_width = 160, max_width = 600, rail = 44, content_min = 320, flush = true}
+room := ui.parent_box().size.x                              // the split's width at the last layout
+w, folded, crossed := ui.side_panel_begin(&app.side, room, o)
+ui.next({width = ui.px(w), height = ui.fill(), axis = .Y})
+if ui.column(id = "###list") {
+	if ui.side_fold_button("###fold", folded, false, "Fold the list", "Open the list").clicked {
+		_ = ui.side_fold_set(&app.side.fold, !folded)
+		save(app)
+	}
+	if folded { list_rail(app) } else { list(app) }
+}
+h := ui.side_panel_handle("###split", &app.side, room, o)
+if crossed || h.fold_changed || h.finished { save(app) }    // ui.side_fold_format(app.side.fold), app.side.width
+ui.next({width = ui.fill(), height = ui.fill()})
+if ui.column(.Start, {.Fits_Width}, "###preview") { preview(app) }
+```
+
+| Procedure | |
+|---|---|
+| `Side_Fold`, `side_fold_follow(&f, room, open, content_min, gap) -> crossed` | the state machine: two bits (`folded`, `narrow`); a crossing gives the automatic state |
+| `side_fold_set(&f, folded) -> changed`, `side_fold_manual(f)` | a manual act; whether a manual choice shows (`folded != narrow`) |
+| `side_fold_format(f)`, `side_fold_parse(text)` | the fold as words for a settings file, and back |
+| `side_handle(id, folded, &size, rail, lo, hi, o) -> Side_Handle_Result` | the handle: open it resizes, folded it is the rail's edge; a drag under `max(rail + SIDE_PULL_EM, lo)` folds, past it opens at the pointer (`fold`, `fold_changed`) |
+| `side_fold_button(id, folded, after, fold_label, open_label)` | the panel icon that folds and opens (`PANEL_LEFT_CLOSE` / `OPEN`, `RIGHT` with `after`) |
+| `Side_Panel`, `side_panel_begin`, `side_panel_handle` | the three above for a program's split, with the width it keeps (`Side_Panel_Options`: its unit, widths, rail, the content's least) |
+
+- Put the fold button at the same pixel in both states (the start of the panel's first row): it stays under the pointer.
+- The room is the whole split, never the content's width: the fold does not change it, so a fold never makes the next
+  measure cross back. A room of 0 (the first frame) changes nothing.
+- A restart keeps both bits: in a window of the same size the choice holds; on the other side of the threshold the
+  first measure is a crossing.
+- Tests: `tests/views/side_fold_test.odin` (the machine), `tests/views/panel_test.odin` (the side zones),
+  `tests/prefs_page/sidebar_rail_test.odin` (the settings' rail).

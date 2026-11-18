@@ -47,6 +47,7 @@ src/ui/list.odin utf8.encode_rune(unicode.to_lower(r))  # user text: a list's ty
 src/ui/popups.odin want := unicode.to_lower(e.text)  # user text: a menu's type-ahead (the letter typed)
 src/ui/popups.odin return unicode.to_lower(r)  # user text: a menu's type-ahead (an item's first letter)
 src/prefs_page/prefs_page.odin strings.to_upper(heading  # display text: a page's title above its matches, in capitals
+src/prefs_page/prefs_page.odin return strings.to_upper(s[:end]  # display text: a page's first letter in the settings' rail
 src/desktop/icons_windows.odin {"folder:", strings.to_lower(path  # a path: Windows folds a file's name by Unicode (one icon's key per folder)
 src/desktop/icons_windows.odin {"file:", strings.to_lower(path  # a path: Windows folds a file's name by Unicode (one icon's key per file)
 src/platform/platform_win32.odin unicode_lower :: proc(r: rune) -> rune { return unicode.to_lower(  # a key's character on the user's layout (MapVirtualKeyW gives a letter in capitals): user text

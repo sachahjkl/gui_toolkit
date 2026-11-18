@@ -50,28 +50,26 @@ View_Space :: struct {
 	// the stack that takes the whole space for a while (its Maximise; not remembered: a start shows the content)
 	max_edge:  Maybe(View_Edge),
 	max_stack: int,
-	// a side zone folded to its rail by a space too narrow for it and the content (not remembered: it unfolds when the
-	// space is wide enough again), and one the user opened again while the space stays narrow (views.md, Minimise)
-	folded:    [View_Edge]bool,
 	// a side zone's rail width (em) this build: the largest View_Options.rail_em of its views (0: the icons' rail)
 	rail_em:   [View_Edge]f32,
-	unfolded:  [View_Edge]bool,
 }
 
-// Whether zone `e` shows collapsed: minimised by the user, or a side zone folded by a narrow space and not opened again.
+// Whether zone `e` shows collapsed: its fold (a side zone's Side_Fold: by the rule or by the user; a top or bottom
+// zone's Minimise).
 @(private = "file")
-view_zone_collapsed :: proc(sp: ^View_Space, e: View_Edge) -> bool {
-	return sp.mem.minimised[e] || (sp.folded[e] && !sp.unfolded[e])
-}
+view_zone_collapsed :: proc(sp: ^View_Space, e: View_Edge) -> bool { return sp.mem.fold[e].folded }
 
-// A side zone folds to its rail when the space (its last width) leaves the content less than DOCK_MIN_EM beside it;
-// it unfolds by itself once the space is wide enough again. Only where the centre is the program's content.
+// A side zone's rule (side-panels.md): it folds to its rail when the space (its last width) less the zone's extent
+// leaves the content less than DOCK_MIN_EM, and opens again past DOCK_MIN_EM plus SIDE_FOLD_GAP_EM. A crossing ends a
+// Minimise or a Restore of the user's, and is remembered. Only where the centre is the program's content.
 @(private = "file")
-view_zone_fold :: proc(sp: ^View_Space, e: View_Edge, has_views, content: bool, em: f32) {
+view_zone_follow :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, has_views, content: bool, em: f32) {
+	if !has_views || !content { return }
 	width := sp.rect.max.x - sp.rect.min.x
-	narrow := has_views && content && width > 0 && width - view_zone_px(sp, e, em, width) < DOCK_MIN_EM * em
-	if !narrow { sp.unfolded[e] = false }
-	sp.folded[e] = narrow
+	if side_fold_follow(&sp.mem.fold[e], width, view_zone_px(sp, e, em, width), DOCK_MIN_EM * em, SIDE_FOLD_GAP_EM * em) {
+		view_space_remember(vs, sp)
+		vs.version += 1
+	}
 }
 
 // What views_dock makes: with `content`, the block is its centre (the program's content); without, panels only, its
@@ -157,8 +155,8 @@ views_space_begin :: proc(vs: ^Views, name: string, content: bool, o: View_Dock_
 	handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32, maxed: bool) {
 		if !maxed && (!view_zone_collapsed(sp, e) || e == .Left || e == .Right) { view_zone_handle(vs, sp, e, em) }
 	}
-	view_zone_fold(sp, .Left, has(&zones[.Left]), content, em)
-	view_zone_fold(sp, .Right, has(&zones[.Right]), content, em)
+	view_zone_follow(vs, sp, .Left, has(&zones[.Left]), content, em)
+	view_zone_follow(vs, sp, .Right, has(&zones[.Right]), content, em)
 	for e in ([]View_Edge{.Left, .Right}) {
 		sp.rail_em[e] = 0
 		for k in 0 ..< VIEW_STACKS_MAX { for r in zones[e][k] { sp.rail_em[e] = max(sp.rail_em[e], r.kind.o.rail_em) } }
@@ -495,19 +493,14 @@ view_dock_line :: proc(vs: ^Views, e: View_Edge, space := "") -> (line: Rect, ok
 	return splitter_line(b.rect, VIEW_HANDLE_LINE, splitter_line_width(sp.state.scale)), true
 }
 
-// How far past its rail's width a side zone's handle is pulled before the zone opens (em). With the rails' widths
-// (DOCK_TAB_EM, a view's rail_em) it is past DOCK_MIN_EM: the zone opens at the pointer, with no jump.
-VIEW_RAIL_PULL_EM :: f32(1)
-
-// What a drag of a side zone's handle keeps from its press: the zone's width shown then (logical px), and its extent
-// then, which a fold during the drag puts back (Restore brings it).
+// What a drag of a side zone's handle keeps from its press: the zone's extent then, in its own unit, which a fold
+// during the drag puts back exactly (Restore brings it).
 @(private = "file")
-View_Zone_Pull :: struct { from, extent, frac: f32, taken: bool }
+View_Zone_Pull :: struct { extent, frac: f32, taken: bool }
 
 // The handle between a zone and the centre: the centre keeps DOCK_MIN_EM; the extent is written when it is let go.
-// A side zone's handle is built collapsed too (its rail's edge line), and its drag says the state (views.md, Minimise:
-// pulling the rail opens the zone): under the rail's width plus VIEW_RAIL_PULL_EM the zone is collapsed, past it
-// expanded at the pointer. The keys never fold it.
+// A side zone's handle is side_handle (side-panels.md): built collapsed too (its rail's edge line), its drag says the
+// state (pulling the rail opens the zone, a push into it folds it). The keys never fold it.
 @(private = "file")
 view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
 	s := gs()
@@ -516,14 +509,8 @@ view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
 	total := (across ? sp.rect.max.x - sp.rect.min.x : sp.rect.max.y - sp.rect.min.y) / sc
 	least := DOCK_MIN_EM * em / sc
 	most := max(total - least, least)
-	collapsed := view_zone_collapsed(sp, e)
-	rail := view_rail_px(sp, e, em) / sc
-	size := collapsed ? rail : view_zone_px(sp, e, em, total * sc) / sc
-	shown := size
-	res := splitter(fmt.tprintf("###view_handle_%v", e), across ? .X : .Y, &size, collapsed ? rail : least, most,
-		{after = e == .Right || e == .Bottom, total = total > 0 ? total : 0, min_other = least, line_at = VIEW_HANDLE_LINE})
-	if res.box == nil { return }
-	sp.handle_key[e] = res.box.key
+	id := fmt.tprintf("###view_handle_%v", e)
+	after := e == .Right || e == .Bottom
 	// (the extent in the zone's unit: a share stays a share, it goes on following the window)
 	write :: proc(sp: ^View_Space, e: View_Edge, size, total, sc, em: f32) {
 		if sp.mem.frac[e] > 0 {
@@ -533,30 +520,32 @@ view_zone_handle :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, em: f32) {
 		}
 	}
 	if !across {
+		size := view_zone_px(sp, e, em, total * sc) / sc
+		res := splitter(id, .Y, &size, least, most, {after = after, total = max(total, 0), min_other = least, line_at = VIEW_HANDLE_LINE})
+		if res.box == nil { return }
+		sp.handle_key[e] = res.box.key
 		if res.changed { write(sp, e, size, total, sc, em) }
 		if res.finished { view_space_remember(vs, sp) }
 		return
 	}
-	pull := press_data(View_Zone_Pull, res.box.key)
-	if pull != nil && !pull.taken { pull^ = {from = shown, extent = sp.mem.extent[e], frac = sp.mem.frac[e], taken = true} }
-	if res.dragging && pull != nil {
-		d := res.drag_delta.x / sc
-		if e == .Right { d = -d }
-		raw := pull.from + d
-		fold := raw < rail + VIEW_RAIL_PULL_EM * em / sc
-		if fold != collapsed {
-			sp.max_edge = nil
-			view_stack_minimise(vs, sp, e, fold)
-		}
-		if fold {
-			sp.mem.extent[e], sp.mem.frac[e] = pull.extent, pull.frac
-		} else {
-			write(sp, e, clamp(raw, least, most), total, sc, em)
-		}
-	} else if res.changed && !collapsed {
+	collapsed := view_zone_collapsed(sp, e)
+	size := view_zone_px(sp, e, em, total * sc) / sc
+	h := side_handle(id, collapsed, &size, view_rail_px(sp, e, em) / sc, least, most,
+		{after = after, total = max(total, 0), min_other = least, line_at = VIEW_HANDLE_LINE})
+	if h.box == nil { return }
+	sp.handle_key[e] = h.box.key
+	pull := press_data(View_Zone_Pull, h.box.key)
+	if pull != nil && !pull.taken { pull^ = {extent = sp.mem.extent[e], frac = sp.mem.frac[e], taken = true} }
+	if h.fold_changed {
+		sp.max_edge = nil
+		view_stack_minimise(vs, sp, e, h.fold)
+	}
+	if h.dragging && h.fold && pull != nil {
+		sp.mem.extent[e], sp.mem.frac[e] = pull.extent, pull.frac
+	} else if h.changed && !h.fold {
 		write(sp, e, size, total, sc, em)
 	}
-	if res.finished { view_space_remember(vs, sp) }
+	if h.finished { view_space_remember(vs, sp) }
 }
 
 // A zone's stacks in a row along its axis, a handle between two; in each, its tab strip (two views or more, a view
@@ -756,15 +745,12 @@ view_stack_strip_rest :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int,
 	s.anim_busy = true
 }
 
-// A zone at the top or the bottom shows its strips only (`on`), or its stacks again; remembered in the space's line.
+// The user's Minimise (`on`) or Restore of a zone: a top or bottom zone shows its strips only, or its stacks again; a
+// side zone's is a manual act of its fold, which holds until the space next crosses its threshold (side-panels.md).
+// Remembered in the space's line.
 @(private = "file")
 view_stack_minimise :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, on: bool) {
-	// (a side zone folded by a narrow space opens again over the content's minimum, until the space is wide again)
-	sp.unfolded[e] = !on && sp.folded[e]
-	if sp.mem.minimised[e] != on {
-		sp.mem.minimised[e] = on
-		view_space_remember(vs, sp)
-	}
+	if side_fold_set(&sp.mem.fold[e], on) { view_space_remember(vs, sp) }
 	vs.version += 1
 	if sp.state != nil { sp.state.anim_busy = true }
 }
@@ -812,17 +798,8 @@ view_fold_button :: proc(v: ^View) -> Signal {
 	sp := view_space_of(vs, view_panel_place(r.machine).space)
 	labels := view_labels(vs)
 	collapsed := view_zone_collapsed(sp, e)
-	left := e == .Left
-	glyph: string
-	label := collapsed ? labels.restore : labels.minimize
-	switch {
-	case collapsed && left: glyph = lucide.PANEL_LEFT_OPEN
-	case collapsed:         glyph = lucide.PANEL_RIGHT_OPEN
-	case left:              glyph = lucide.PANEL_LEFT_CLOSE
-	case:                   glyph = lucide.PANEL_RIGHT_CLOSE
-	}
 	r.fold_built = gs().build_index
-	sig := view_stack_icon("###view_fold", glyph, label)
+	sig := side_fold_button("###view_fold", collapsed, e == .Right, labels.minimize, labels.restore)
 	if sig.clicked {
 		sp.max_edge = nil
 		view_stack_minimise(vs, sp, e, !collapsed)
@@ -830,24 +807,10 @@ view_fold_button :: proc(v: ^View) -> Signal {
 	return sig
 }
 
-// One of a narrow stack's own buttons: a small icon, as close to the next as a bar's tools ("###id": its key, as the
-// caption button it stands for).
+// One of a narrow stack's own buttons: a small icon, as the fold button ("###id": its key, as the caption button it
+// stands for).
 @(private = "file")
-view_stack_icon :: proc(id, glyph, label: string) -> Signal {
-	em := font_size()
-	side := math.round(em * VIEW_STACK_ICON_EM)
-	push_tags("ghost_button", "button", "weak")
-	defer pop_tags()
-	next({width = px(side), height = px(side), font = lucide_icons(), font_size = em * 0.85, text_pad = 0, text_align = .Center, radius = em * 0.3})
-	b := build_box({.Draw_Text, .No_Text_Trunc, .Clickable, .Focusable, .Draw_Background, .Draw_Hot_Effects}, fmt.tprintf("%s%s", glyph, id))
-	a11y_default(b, {role = .Button, name = label})
-	sig := signal(b)
-	if hovered_for(sig) { if tooltip() { tooltip_text(label) } }
-	return sig
-}
-
-// A narrow stack's own buttons' side (em): three of them and its largest tab fit a side zone of 12 ems.
-@(private = "file") VIEW_STACK_ICON_EM :: 1.3
+view_stack_icon :: proc(id, glyph, label: string) -> Signal { return side_icon_button(id, glyph, label) }
 
 // A side zone collapsed (views.md, Minimise): a column one strip wide, its Restore at the top, then a button per view
 // (its icon; its title as the tooltip), stack after stack. A view's button restores the zone with that view shown.

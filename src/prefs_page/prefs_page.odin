@@ -1,10 +1,12 @@
 // Package prefs_page: a program's settings, built from its preferences (gt:config) with no code per preference, in the
 // look of opencode native's settings.
 //
-//   * On the left, a sidebar the mouse resizes (its width kept: prefs_page.sidebar_width): the search in a well, then
-//     the pages (a page is a top group of the registry: its title and its icon from Page_Options.pages), the one shown
-//     pressed in; at its foot, the program's version, the settings file (a click opens it) and Export / Import. A narrow
-//     page shows the pages' icons alone.
+//   * On the left, a sidebar the mouse resizes (its width kept: prefs_page.sidebar_width): its fold button and the search
+//     in a well, then the pages (a page is a top group of the registry: its title and its icon from Page_Options.pages),
+//     the one shown pressed in; at its foot, the program's version, the settings file (a click opens it) and Export /
+//     Import. It folds to a rail (ui.Side_Panel, src/md/features/side-panels.md; its fold kept: prefs_page.sidebar_fold)
+//     when it leaves the page less than BODY_MIN_EM, or by its fold button: a magnifier, the pages' icons, a "…" menu
+//     with the foot.
 //   * On the right: the page's title, then a line per preference: its title and its description on the left, its
 //     control on the right (a switch, a segmented choice or a list, a number, a field with its unit), a reset button
 //     while it is not at its default, a carved line between two lines of a group. A control the line has no room for goes under the words.
@@ -144,8 +146,11 @@ Page :: struct {
 	held_value:   f64,
 	number_typed: bool,                // a number's field had the keyboard at the last build (editing)
 	unfolded:     map[string]bool,     // the pages whose Advanced part is open (keys owned)
-	nav_em:       f32,                 // the sidebar's width while its handle moves (ems)
+	// the sidebar (side-panels.md): its width (ems; the preference's, but while its handle moves) and its fold (the
+	// preference's, read at each build)
+	side:         ui.Side_Panel,
 	nav_moving:   bool,
+	nav_focus:    int,                 // 1 + the page whose button takes the focus at its next build (Up, Down; 0: none)
 	file_of:      string,              // the file `file_shown` was made for (owned)
 	file_shown:   string,              // Page_Options.file shortened with ~ (owned)
 	note:         string,              // what the last export or import did, at the sidebar's foot (owned; "": nothing)
@@ -251,16 +256,16 @@ back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) ->
 	return
 }
 
-// Sizes, in ems: the sidebar (its default, least and most width, and the share of the page it may take), its icons
-// alone and the page width under which it shows them, a control's height, the least width of the words beside a
-// control, the share of its line past which a segmented choice goes under its words, a theme's card. (The gaps are the
-// toolkit's scale: ui.PAGE_MARGIN and the other roles.)
+// Sizes, in ems: the sidebar (its default, least and most width, and the share of the page it may take), its rail
+// (folded, side-panels.md), the least a page keeps beside the open sidebar (under it the sidebar folds), a control's
+// height, the least width of the words beside a control, the share of its line past which a segmented choice goes under
+// its words, a theme's card. (The gaps are the toolkit's scale: ui.PAGE_MARGIN and the other roles.)
 @(private = "file") NAV_EM          :: 14
 @(private = "file") NAV_MIN_EM      :: 9
 @(private = "file") NAV_MAX_EM      :: 30
 @(private = "file") NAV_SHARE_MAX   :: 0.5
-@(private = "file") NAV_ICONS_EM    :: 4
-@(private = "file") NARROW_EM       :: 40
+RAIL_EM     :: 3.5
+BODY_MIN_EM :: 26
 @(private = "file") WORDS_MIN_EM    :: 12
 @(private) WIDE_SHARE      :: 0.45
 @(private) NUMBER_EM       :: 15
@@ -272,13 +277,17 @@ back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) ->
 @(private = "file") CARD_RADIUS_PX  :: 8
 @(private = "file") CARDS_PER_ROW   :: 3
 
-// The sidebar's width, in ems: the page's own state, kept with the settings (hidden: no page shows it).
+// The sidebar's width, in ems, and its fold (ui.side_fold_format: "folded narrow", ""): the page's own state, kept with
+// the settings (hidden: no page shows them).
 SIDEBAR_PREF :: "prefs_page.sidebar_width"
+SIDEBAR_FOLD_PREF :: "prefs_page.sidebar_fold"
 
 @(private = "file", rodata)
 SIDEBAR_DEFS := [?]config.Def{
 	{name = SIDEBAR_PREF, description = "The width of the settings' sidebar, in ems.", kind = .Float, default = {f = NAV_EM},
 		bounded = true, min = NAV_MIN_EM, max = NAV_MAX_EM, hidden = true},
+	{name = SIDEBAR_FOLD_PREF, description = "Whether the settings' sidebar is folded to its rail, and on which side of its threshold.",
+		kind = .String, hidden = true},
 }
 
 // The pages of `o`, or each category of the registry by name; then the toolkit's own (Page_Options.changelog, licence, install,
@@ -375,29 +384,27 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 	if o.shortcuts != nil && len(o.shortcut_prefs) > 0 { shortcuts.hold(o.shortcuts, ui.hotkey_recording()) }
 	config.search_begin(&p.search, ui.line_edit_string(&p.query))
 	if ui.row(.Start, {.Draw_Background}, "###prefs_page") {
+		// (the split's width at the last layout: the fold does not change it, side-panels.md)
 		total := ui.parent_box().size.x
-		narrow := total > 0 && total < em * NARROW_EM
-		icons := narrow && o.icon_font != 0
 		hi: f32 = NAV_MAX_EM
 		if total > 0 { hi = clamp(total / em * NAV_SHARE_MAX, NAV_MIN_EM, NAV_MAX_EM) }
 		// (as wide as its longest page title in the language in use, up to `hi`: past that a title wraps, never cut. The
 		// person's width is kept when it is wider; the handle does not go under it)
 		lo := clamp(nav_need_em(pages, o, em), NAV_MIN_EM, hi)
-		width := p.nav_moving ? p.nav_em : f32(config.float_of(prefs, SIDEBAR_PREF))
-		width = clamp(width, lo, hi)
-		nav(p, pages, cur, o, icons, icons ? NAV_ICONS_EM : width, em)
-		if icons {
-			ui.next({width = ui.px(max(2, math.round(2 * ui.scale()))), height = ui.fill(), bg = ui.color("border")})
-			ui.build_box({.Draw_Background, .Groove}, "###prefs_div")
-		} else {
-			size := width
-			res := ui.splitter("###prefs_split", .X, &size, lo, hi, {default_size = max(NAV_EM, lo), unit = em, flush = true})
-			if res.changed { p.nav_em = size; p.nav_moving = true }
-			if p.nav_moving && (res.finished || !res.dragging) {
-				p.nav_moving = false
-				// (written once, when the handle is let go: the file is not rewritten at the pointer's rate)
-				_ = config.set_from_string(prefs, SIDEBAR_PREF, fmt.tprintf("%v", p.nav_em), .User)
-			}
+		if !p.nav_moving { p.side.width = f32(config.float_of(prefs, SIDEBAR_PREF)) }
+		p.side.fold, _ = ui.side_fold_parse(config.string_of(prefs, SIDEBAR_FOLD_PREF))
+		so := ui.Side_Panel_Options{unit = em, default_width = max(NAV_EM, lo), min_width = lo, max_width = hi, rail = RAIL_EM,
+			content_min = BODY_MIN_EM, flush = true}
+		width, folded, crossed := ui.side_panel_begin(&p.side, total, so)
+		if crossed { fold_save(p, prefs) }
+		nav(p, prefs, pages, cur, o, folded, width, em)
+		h := ui.side_panel_handle("###prefs_split", &p.side, total, so)
+		if h.fold_changed { fold_save(p, prefs) }
+		if h.changed && !h.fold { p.nav_moving = true }
+		if p.nav_moving && (h.finished || !h.dragging) {
+			p.nav_moving = false
+			// (written once, when the handle is let go: the file is not rewritten at the pointer's rate)
+			_ = config.set_from_string(prefs, SIDEBAR_PREF, fmt.tprintf("%v", p.side.width), .User)
 		}
 		// (.Fits_Width: the body's width is what the sidebar leaves, a split, never its page's (least-width.md); else a
 		// wide row of a page pushed the body past the edge of a dialog the settings are shown in)
@@ -553,18 +560,25 @@ advanced_part :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, category:
 	}
 }
 
-// The pages: the search above them, each page a button (its icon, its title), the one shown pressed in; at the foot the
-// program's version, its settings file, Export and Import. `width`: in ems.
+// The sidebar (side-panels.md). Open: the fold button and the search in their row, each page a button (its icon, its
+// title), the one shown pressed in; at the foot the program's version, its settings file, Export and Import. Folded to
+// its rail: the fold button at the same pixel, a magnifier, the pages' icons, a "…" menu with the foot. `width`: frame
+// pixels.
 @(private = "file")
-nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool, width: f32, em: f32) {
-	ui.next({width = ui.px(math.round(em * width)), height = ui.fill(), axis = .Y})
+nav :: proc(p: ^Page, prefs: ^config.Prefs, pages: []Page_Info, cur: int, o: Page_Options, folded: bool, width: f32, em: f32) {
+	ui.next({width = ui.px(width), height = ui.fill(), axis = .Y})
 	if ui.column(id = "###prefs_nav") {
 		ui.space(PAGE_TOP)
-		if !icons {
-			ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-			if ui.row(id = "###prefs_search_row") {
-				ui.space(NAV_SIDE_LEAD)
-				ui.next({width = ui.fill(), height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM)), radius = em * 0.45})
+		ui.next({width = ui.fill(), height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM)), axis = .X, cross = .Center})
+		if ui.row(id = "###prefs_search_row") {
+			// (the fold button's centre on the rail's centre, open and folded: it stays under the pointer that folds)
+			ui.spacer(ui.px(fold_lead(em)))
+			if ui.side_fold_button("###prefs_fold", folded, false, i18n.tr("Fold the sidebar"), i18n.tr("Open the sidebar")).clicked {
+				fold_set(p, prefs, !folded)
+			}
+			if !folded {
+				ui.space(ui.SPACE_1)
+				ui.next({width = ui.fill(), height = ui.pct(1), radius = em * 0.45})
 				if ui.input_frame("###prefs_search") {
 					if o.icon_font != 0 && o.search_icon != "" {
 						ui.next({width = ui.px(em * 1.8), height = ui.pct(1), font = o.icon_font, text_align = .Center})
@@ -581,11 +595,21 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 				ui.space(NAV_SIDE_TRAIL)
 			}
 		}
+		if folded {
+			// (the magnifier opens the sidebar with its field focused: the results show in the page, as any search's)
+			ui.space(ui.LINE_GAP)
+			if rail_button("###prefs_rail_search", lucide.SEARCH, ui.lucide_icons(), i18n.tr("Search settings"), false, em).clicked {
+				fold_set(p, prefs, false)
+				p.focus_search = true
+			}
+		}
 		ui.next({width = ui.fill(), height = ui.fill()})
 		if ui.scroll_y("###prefs_nav_list") {
 			ui.space(ui.LINE_GAP)
+			keys := make([]ui.Key, len(pages), context.temp_allocator)
+			move := -1
 			for pg, i in pages {
-				if pg.heading != "" && !icons {
+				if pg.heading != "" && !folded {
 					if i > 0 { ui.space(ui.ITEM_GAP) }
 					ui.next({width = ui.fill(), height = ui.px(em * 1.5), axis = .X, cross = .Center})
 					if ui.row(id = fmt.tprintf("###nh%d", i)) {
@@ -598,35 +622,136 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 				} else if pg.heading != "" && i > 0 {
 					ui.space(ui.ITEM_GAP)
 				}
-				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-				if ui.row(id = fmt.tprintf("###nv%d", i)) {
-					ui.space(NAV_LEAD_EM)
-					shown := i == cur && !config.searching(&p.search)
-					glyph := o.icon_font != 0 ? pg.icon : ""
-					line := ui.Button_Options{face = .Row, selected = shown, width = ui.fill(), height = math.round(em * NAV_LINE_HEIGHT_EM), left = true, icon_font = o.icon_font}
-					if ui.button(fmt.tprintf("###nav%d", i), icons ? "" : pg.title, glyph, line).clicked {
-						delete(p.current)
-						p.current = strings.clone(pg.category)
-						ui.line_edit_set(&p.query, "")   // (a page chosen: the search is done)
+				shown := i == cur && !config.searching(&p.search)
+				sig: ui.Signal
+				if folded {
+					// (a page with no icon: the first letter of its title, in the page's font)
+					glyph, glyph_font := pg.icon, o.icon_font
+					if glyph_font == 0 || glyph == "" { glyph, glyph_font = first_letter(pg.title), ui.top_style().font }
+					sig = rail_button(fmt.tprintf("###nav%d", i), glyph, glyph_font, pg.title, shown, em)
+				} else {
+					ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+					if ui.row(id = fmt.tprintf("###nv%d", i)) {
+						ui.space(NAV_LEAD_EM)
+						glyph := o.icon_font != 0 ? pg.icon : ""
+						line := ui.Button_Options{face = .Row, selected = shown, width = ui.fill(), height = math.round(em * NAV_LINE_HEIGHT_EM), left = true, icon_font = o.icon_font}
+						sig = ui.button(fmt.tprintf("###nav%d", i), pg.title, glyph, line)
+						ui.space(NAV_TRAIL_EM)
 					}
-					ui.space(NAV_TRAIL_EM)
+				}
+				keys[i] = sig.box != nil ? sig.box.key : 0
+				if p.nav_focus == i + 1 && sig.box != nil { p.nav_focus = 0; ui.focus_by_keys(sig.box.key) }
+				if sig.clicked { page_choose(p, pg) }
+				// (Up and Down on a page's button: the page before or after it, the focus with it)
+				if sig.focused {
+					if ui.key_press(.Up) && i > 0 { move = i - 1 }
+					if ui.key_press(.Down) && i + 1 < len(pages) { move = i + 1 }
 				}
 				ui.space(ui.SPACE_1)
 			}
-		}
-		if o.version != "" {
-			ui.next({width = ui.fill(), height = ui.px(em * 1.6), axis = .X, cross = .Center})
-			if ui.row(id = "###prefs_version") {
-				ui.space(icons ? ui.SPACE_2 : NAV_SIDE_TRAIL)
-				if ui.tags("weak") {
-					ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.8), text_pad = 0})
-					ui.label(fmt.tprintf("%s###version", o.version))
-				}
+			if move >= 0 {
+				page_choose(p, pages[move])
+				// (a page before this one was built in this build: its key is known; one after, at its next build)
+				if move < len(keys) && keys[move] != 0 { ui.focus_by_keys(keys[move]) } else { p.nav_focus = move + 1 }
 			}
 		}
-		if !icons { nav_foot(p, o, em) }
+		if folded {
+			nav_more(p, o, em)
+		} else {
+			if o.version != "" {
+				ui.next({width = ui.fill(), height = ui.px(em * 1.6), axis = .X, cross = .Center})
+				if ui.row(id = "###prefs_version") {
+					ui.space(NAV_SIDE_TRAIL)
+					if ui.tags("weak") {
+						ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 0.8), text_pad = 0})
+						ui.label(fmt.tprintf("%s###version", o.version))
+					}
+				}
+			}
+			nav_foot(p, o, em)
+		}
 		ui.space(ui.LINE_GAP)
 	}
+}
+
+// A page chosen in the sidebar: shown, and the search done.
+@(private = "file")
+page_choose :: proc(p: ^Page, pg: Page_Info) {
+	delete(p.current)
+	p.current = strings.clone(pg.category)
+	ui.line_edit_set(&p.query, "")
+}
+
+// The space before the fold button: its centre on the rail's centre (the button's own side, the toolkit's).
+@(private = "file")
+fold_lead :: proc(em: f32) -> f32 {
+	return math.round((math.round(RAIL_EM * em) - math.round(ui.SIDE_ICON_EM * em)) * 0.5)
+}
+
+// A manual fold or opening of the sidebar (it holds until the room next crosses its threshold), saved.
+@(private = "file")
+fold_set :: proc(p: ^Page, prefs: ^config.Prefs, folded: bool) {
+	if ui.side_fold_set(&p.side.fold, folded) { fold_save(p, prefs) }
+	if p.state != nil { p.state.anim_busy = true }
+}
+
+@(private = "file")
+fold_save :: proc(p: ^Page, prefs: ^config.Prefs) {
+	_ = config.set_from_string(prefs, SIDEBAR_FOLD_PREF, ui.side_fold_format(p.side.fold), .User)
+}
+
+// A square button of the rail, centred in it: a glyph of `font`, its tooltip and accessible name `tip`, lit when
+// `selected` (the page shown).
+@(private = "file")
+rail_button :: proc(id, glyph: string, glyph_font: font.Font_Id, tip: string, selected: bool, em: f32) -> (sig: ui.Signal) {
+	side := math.round(em * NAV_LINE_HEIGHT_EM)
+	ui.next({width = ui.fill(), height = ui.px(side), axis = .X, cross = .Center})
+	if ui.row(id = fmt.tprintf("%s_row", id)) {
+		ui.spacer(ui.fill())
+		sig = ui.button(id, "", glyph, {face = .Row, selected = selected, width = ui.px(side), height = side, icon_font = glyph_font, tip = tip})
+		ui.a11y_default(sig.box, {name = tip})
+		ui.spacer(ui.fill())
+	}
+	return
+}
+
+// The first letter of `s` (a page with no icon in the rail).
+@(private = "file")
+first_letter :: proc(s: string) -> string {
+	end := len(s)
+	for _, i in s { if i > 0 { end = i; break } }
+	return strings.to_upper(s[:end], context.temp_allocator)
+}
+
+// The rail's foot: a "…" button whose menu holds what the open sidebar's foot shows: the version, the settings file,
+// Export and Import, and what the last of them did.
+@(private = "file")
+nav_more :: proc(p: ^Page, o: Page_Options, em: f32) {
+	MENU :: "###prefs_more_menu"
+	sig := rail_button("###prefs_more", lucide.ELLIPSIS, ui.lucide_icons(), i18n.tr("More"), ui.menu_is_open(MENU), em)
+	if sig.clicked && sig.box != nil {
+		if ui.menu_is_open(MENU) { ui.menu_close() } else { ui.menu_open(MENU, sig.box.rect, sig.box.key, search = false) }
+	}
+	if ui.menu(MENU) {
+		if o.version != "" { ui.menu_heading(o.version) }
+		if o.file != "" {
+			file_short(p, o)
+			if ui.menu_item(p.file_shown, icon = lucide.FILE_TEXT, icon_font = ui.lucide_icons()).clicked { ui.open(o.file) }
+		}
+		if o.version != "" || o.file != "" { ui.menu_separator() }
+		if ui.menu_item(i18n.tr("Export…"), icon = lucide.DOWNLOAD, icon_font = ui.lucide_icons()).clicked { export_ask(p) }
+		if ui.menu_item(i18n.tr("Import…"), icon = lucide.UPLOAD, icon_font = ui.lucide_icons()).clicked { import_ask(p) }
+		if p.note != "" { ui.menu_separator(); ui.menu_heading(p.note) }
+	}
+}
+
+// Page_Options.file shortened with ~, made again when the file changes.
+@(private = "file")
+file_short :: proc(p: ^Page, o: Page_Options) {
+	if p.file_of == o.file { return }
+	delete(p.file_of); delete(p.file_shown)
+	p.file_of = strings.clone(o.file)
+	p.file_shown = home_short(o.file)
 }
 
 // A line of the sidebar: as tall as this many font sizes (at least: a title that wraps makes it taller).
@@ -647,13 +772,14 @@ nav :: proc(p: ^Page, pages: []Page_Info, cur: int, o: Page_Options, icons: bool
 @(private = "file") NAV_HEADING_SIZE :: 0.75
 
 // The width, in ems, the sidebar needs to show each page's title and each heading on one line, and the search's
-// placeholder whole: its pages' buttons as button_width measures them, the sidebar's room beside them; the search field's
-// glyph, padding and border around its placeholder (nav builds them).
+// placeholder whole: its pages' buttons as button_width measures them, the sidebar's room beside them; the fold button
+// before the search field, the field's glyph, padding and border around its placeholder (nav builds them).
 @(private = "file")
 nav_need_em :: proc(pages: []Page_Info, o: Page_Options, em: f32) -> f32 {
 	glyph := o.icon_font != 0 && o.search_icon != "" ? em * 1.8 : em * 0.4
 	border := 2 * max(1, math.round(ui.scale()))
-	need := em * (NAV_SIDE_LEAD + NAV_SIDE_TRAIL) + glyph + 2 * em * 0.2 + border + em * 0.5 +
+	fold := fold_lead(em) + math.round(ui.SIDE_ICON_EM * em) + em * ui.SPACE_1
+	need := fold + em * NAV_SIDE_TRAIL + glyph + 2 * em * 0.2 + border + em * 0.5 +
 		ui.text_width(ui.top_style().font, em, i18n.tr("Search settings"))
 	for pg in pages {
 		need = max(need, em * (NAV_LEAD_EM + NAV_TRAIL_EM) + ui.button_width(pg.title, o.icon_font != 0 && pg.icon != ""))
@@ -668,11 +794,7 @@ nav_need_em :: proc(pages: []Page_Info, o: Page_Options, em: f32) -> f32 {
 @(private = "file")
 nav_foot :: proc(p: ^Page, o: Page_Options, em: f32) {
 	if o.file != "" {
-		if p.file_of != o.file {
-			delete(p.file_of); delete(p.file_shown)
-			p.file_of = strings.clone(o.file)
-			p.file_shown = home_short(o.file)
-		}
+		file_short(p, o)
 		ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
 		if ui.row(id = "###prefs_file") {
 			ui.space(NAV_SIDE_TRAIL)

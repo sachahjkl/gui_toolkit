@@ -392,9 +392,14 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
     zone without `rail_em` keeps the strip's Minimise and the icons' rail's Restore.
   - **A rail keeps its edge line and opens by a pull.** A side zone's rail keeps the zone's handle: the same line
     against the content as expanded, and `view_dock_line` names it. Drag that handle outward past
-    `VIEW_RAIL_PULL_EM` (1 em) and the zone opens and follows the pointer; let go, its width is remembered. A drag
+    `SIDE_PULL_EM` (1 em) and the zone opens and follows the pointer; let go, its width is remembered. A drag
     inward, or a shorter one, does nothing. A drag of an expanded zone's handle down to its rail folds it, and its
-    extent stays as it was before the drag.
+    extent stays as it was before the drag. The handle is `ui.side_handle` ([panes.md](panes.md#a-side-panel-that-folds)).
+  - **A narrow space folds a side zone.** When the space less the zone's extent leaves the content less than
+    `DOCK_MIN_EM`, the zone folds to its rail; when it leaves `DOCK_MIN_EM` plus `SIDE_FOLD_GAP_EM` (1 em), it opens
+    again. A Minimise, a Restore or a pull holds only until the space's width next crosses that threshold, either way:
+    then the zone takes the automatic state again. The space's memory keeps both (`left.min=1 left.narrow=1`), so a
+    restart in a window of the same size keeps the person's choice.
   - **Close** closes every view of the stack (each ends `VIEW_CANCELLED`). One tab closes by Ctrl+W in it, its menu or
     the palette.
   - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.

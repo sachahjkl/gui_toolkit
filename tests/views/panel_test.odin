@@ -361,7 +361,7 @@ a_view_with_a_rail_width_places_its_fold_button :: proc(t: ^testing.T) {
 	testing.expect(t, built(s, "view_rail_restore") == nil, "no Restore of the toolkit's")
 	text, _ := store.get(&r.views.memory, "#")
 	sm, _ := ui.views_space_parse(text)
-	testing.expectf(t, sm.minimised[.Left], "minimised, remembered: %q", text)
+	testing.expectf(t, sm.fold[.Left].folded, "minimised, remembered: %q", text)
 	fold = built(s, "view_fold")
 	testing.expectf(t, fold != nil && same_rect(fold.rect, at), "Restore at Minimise's place: %v, %v", fold.rect if fold != nil else ui.Rect{}, at)
 	session.click(s, "view_fold")
@@ -371,7 +371,7 @@ a_view_with_a_rail_width_places_its_fold_button :: proc(t: ^testing.T) {
 	testing.expectf(t, fold != nil && same_rect(fold.rect, at), "Minimise back at its place: %v, %v", fold.rect if fold != nil else ui.Rect{}, at)
 	text, _ = store.get(&r.views.memory, "#")
 	sm, _ = ui.views_space_parse(text)
-	testing.expectf(t, !sm.minimised[.Left], "restored, remembered: %q", text)
+	testing.expectf(t, !sm.fold[.Left].folded, "restored, remembered: %q", text)
 }
 
 // The panel that places its fold button: its strip on hover has the strip's own buttons but no Minimise (said once).
@@ -430,7 +430,7 @@ zone_state :: proc(s: ^session.Session) -> (width: f32, minimised: bool) {
 	if z := built(s, "view_zone_Left"); z != nil { width = z.rect.max.x - z.rect.min.x }
 	text, _ := store.get(&r.views.memory, "#")
 	sm, _ := ui.views_space_parse(text)
-	return width, sm.minimised[.Left]
+	return width, sm.fold[.Left].folded
 }
 
 // A side zone's rail keeps the expanded zone's edge line (views.md, Minimise): its handle, at the rail's inner edge,
@@ -453,7 +453,7 @@ a_rail_keeps_its_zone_s_edge_line :: proc(t: ^testing.T) {
 	}
 }
 
-// Pulling a rail's edge opens its zone (views.md, Minimise): less than VIEW_RAIL_PULL_EM, or inward, does nothing;
+// Pulling a rail's edge opens its zone (views.md, Minimise): less than SIDE_PULL_EM, or inward, does nothing;
 // past it the zone is no longer minimised and follows the pointer; let go, the width is kept and remembered. The same
 // drag down to the rail folds it again, its extent kept. For both rails.
 @(test)
@@ -507,29 +507,143 @@ pulling_a_rail_opens_its_zone :: proc(t: ^testing.T) {
 	}
 }
 
-// A space too narrow for a side zone and the content folds the zone to its rail, with no change to its memory; its
-// Restore opens it while the space stays narrow; a wide space again unfolds it by itself (views.md, Minimise).
+// The zone's fold as its memory says it (side-panels.md: both bits).
+@(private = "file")
+zone_fold :: proc(s: ^session.Session) -> ui.Side_Fold {
+	text, _ := store.get(&(^Dock)(s.user).views.memory, "#")
+	sm, _ := ui.views_space_parse(text)
+	return sm.fold[.Left]
+}
+
+// A window `w` ems of the font wide (the test window's height).
+@(private = "file")
+window_em :: proc(r: ^Dock, w: f32) -> [2]int { return {int(math.round(w * r.em)), WINDOW.y} }
+
+// A space too narrow for a side zone and the content folds the zone to its rail (side-panels.md), remembered as the
+// automatic state; a Restore while narrow holds through another narrow width, until the width crosses the threshold:
+// wide, then narrow again, it folds again by itself; wide again it is at its extent.
+// (Before 0.313: "with no change to its memory" is replaced by the memory's two bits; the other checks still hold.)
 @(test)
 a_narrow_space_folds_a_side_zone :: proc(t: ^testing.T) {
 	r: Dock
 	defer dock_end(&r)
 	s := dock_start(t, &r, "side")
 	if wait_built(s, "view_panel_view_side") == nil { return }
-	narrow := [2]int{int((SIDE_EM + ui.DOCK_MIN_EM * 0.5) * r.em), WINDOW.y}
+	narrow := window_em(&r, SIDE_EM + ui.DOCK_MIN_EM * 0.5)
 	session.resize(s, narrow)
 	if wait_built(s, "view_rail_restore") == nil { return }
 	testing.expect(t, built(s, "view_panel_view_side") == nil, "folded: no body")
+	testing.expectf(t, zone_fold(s) == {folded = true, narrow = true}, "the automatic state, remembered: %v", zone_fold(s))
 	session.click(s, "view_rail_restore")
 	if wait_built(s, "view_panel_view_side") == nil { return }
 	testing.expect(t, built(s, "view_rail_restore") == nil, "opened again while narrow")
+	testing.expectf(t, zone_fold(s) == {folded = false, narrow = true}, "a manual opening, remembered: %v", zone_fold(s))
+	session.resize(s, window_em(&r, SIDE_EM + ui.DOCK_MIN_EM * 0.8))
+	session.frames(s, 3)
+	testing.expect(t, built(s, "view_panel_view_side") != nil, "another narrow width: the opening holds")
 	session.resize(s, WINDOW)
 	session.frames(s, 3)
+	testing.expectf(t, zone_fold(s) == {}, "wide: the automatic state again: %v", zone_fold(s))
 	session.resize(s, narrow)
-	if wait_built(s, "view_rail_restore") == nil { return }   // (wide again forgot the opening: narrow folds it again)
+	if wait_built(s, "view_rail_restore") == nil { return }   // (the crossing ended the opening: narrow folds it again)
 	session.resize(s, WINDOW)
 	if wait_built(s, "view_panel_view_side") == nil { return }
 	zone := built(s, "view_zone_Left")
 	testing.expectf(t, zone != nil && abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "wide again: at its extent: %v", zone.rect if zone != nil else ui.Rect{})
+}
+
+// A Minimise while wide holds through another wide width, until the width crosses the threshold: narrow, the zone stays
+// folded (now the automatic state); wide again, it opens by itself. (Before 0.313 a Minimise was kept forever.)
+@(test)
+a_minimise_while_wide_holds_until_the_next_crossing :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side")
+	if rail_minimise(s, "side") == nil { return }
+	testing.expectf(t, zone_fold(s) == {folded = true}, "a manual fold, remembered: %v", zone_fold(s))
+	session.resize(s, window_em(&r, SIDE_EM + ui.DOCK_MIN_EM + 10))
+	session.frames(s, 3)
+	testing.expect(t, built(s, "view_rail_restore") != nil, "another wide width: the fold holds")
+	session.resize(s, window_em(&r, SIDE_EM + ui.DOCK_MIN_EM * 0.5))
+	session.frames(s, 3)
+	testing.expect(t, built(s, "view_rail_restore") != nil, "narrow: folded")
+	testing.expectf(t, zone_fold(s) == {folded = true, narrow = true}, "the automatic state: %v", zone_fold(s))
+	session.resize(s, WINDOW)
+	if wait_built(s, "view_panel_view_side") == nil { return }   // (wide again: open by itself)
+	testing.expectf(t, zone_fold(s) == {}, "the automatic state: %v", zone_fold(s))
+}
+
+// A sweep of the window's width around the threshold, down and up and jittering: the zone folds once on the way down,
+// under the threshold, and opens once on the way up, past the threshold plus SIDE_FOLD_GAP_EM; never more.
+@(test)
+a_sweep_around_the_threshold_does_not_flap :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side")
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	threshold := (SIDE_EM + ui.DOCK_MIN_EM) * r.em   // (the space less the zone leaves the content its least)
+	changes := 0
+	was := false
+	folded_at, opened_at: f32
+	step :: proc(s: ^session.Session, w: f32) -> bool {
+		session.resize(s, {int(w), WINDOW.y})
+		session.frames(s, 2)
+		return zone_fold(s).folded
+	}
+	widths := make([dynamic]f32, context.temp_allocator)
+	for w := threshold + 2 * r.em; w >= threshold - 2 * r.em; w -= 3 { append(&widths, w) }
+	for w := threshold - 2 * r.em; w <= threshold + 2 * r.em; w += 3 { append(&widths, w) }
+	for w in widths {
+		now := step(s, w)
+		if now != was {
+			changes += 1
+			if now { folded_at = w } else { opened_at = w }
+		}
+		was = now
+	}
+	testing.expectf(t, changes == 2, "once each way: %d changes", changes)
+	testing.expectf(t, folded_at < threshold, "folded under the threshold: %v < %v", folded_at, threshold)
+	testing.expectf(t, opened_at >= threshold + ui.SIDE_FOLD_GAP_EM * r.em - 1, "opened past the gap: %v, %v", opened_at, threshold)
+	// (folded again, then a jitter of a few pixels around the threshold: no change)
+	_ = step(s, threshold - r.em)
+	changes = 0
+	was = zone_fold(s).folded
+	for i in 0 ..< 20 {
+		now := step(s, threshold + f32(i % 2 == 0 ? 3 : -3))
+		if now != was { changes += 1 }
+		was = now
+	}
+	testing.expectf(t, changes == 0, "a jitter around the threshold: %d changes", changes)
+}
+
+// A restart keeps a manual choice when the window is on the same side of the threshold: a Minimise while wide, restarted
+// wide, is still folded; restarted narrow (a crossing) it is the automatic state, and wide again it opens.
+@(test)
+a_restart_keeps_a_manual_choice_on_its_side :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r)
+	path, _ := filepath.join({s.out, "views_side_fold.txt"}, context.temp_allocator)
+	_ = os.remove(path)   // (the session's folder stays between runs)
+	restart :: proc(s: ^session.Session, r: ^Dock, path: string) {
+		ui.views_destroy(&r.views)
+		ui.views_init(&r.views, {path = path})
+		dock_register(r)
+		ui.view_open(&r.views, "side", r, owner = s.state)
+	}
+	restart(s, &r, path)
+	if rail_minimise(s, "side") == nil { return }
+	restart(s, &r, path)
+	session.frames(s, 3)
+	testing.expect(t, wait_built(s, "view_rail_restore") != nil, "restarted wide: the Minimise holds")
+	// (the memory says a manual fold while wide; the first measure of the new start is narrow: a crossing)
+	restart(s, &r, path)
+	testing.expectf(t, zone_fold(s) == {folded = true}, "the memory read back: %v", zone_fold(s))
+	session.resize(s, window_em(&r, SIDE_EM + ui.DOCK_MIN_EM * 0.5))
+	session.frames(s, 3)
+	testing.expectf(t, zone_fold(s) == {folded = true, narrow = true}, "restarted narrow: the automatic state: %v", zone_fold(s))
+	session.resize(s, WINDOW)
+	testing.expect(t, wait_built(s, "view_panel_view_side") != nil, "wide again: open by itself")
 }
 
 // Test 17: a panel alone in its zone adds no tab strip, no border, no icon at rest; its body starts at the zone's top
@@ -1115,7 +1229,7 @@ a_stack_maximises_minimises_and_closes :: proc(t: ^testing.T) {
 	testing.expect(t, built(s, "view_panel_view_term") == nil, "no body")
 	text, _ := store.get(&r.views.memory, "#")
 	sm, _ := ui.views_space_parse(text)
-	testing.expectf(t, sm.minimised[.Bottom], "remembered: %q", text)
+	testing.expectf(t, sm.fold[.Bottom].folded, "remembered: %q", text)
 	if !click_named(s, "view_tab_view_term") { return }
 	if wait_built(s, "view_panel_view_term") == nil { return }
 
