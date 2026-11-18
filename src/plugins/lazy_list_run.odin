@@ -32,7 +32,7 @@ rows_message :: proc(r: ^Run, m: Message) {
 		rv.lists[strings.clone(m.key)] = rl
 	}
 	rows_release(r.rt, rl, m.key, a.keep_from, a.keep_to)
-	s := Render_Sink{rv = rv, rt = r.rt, handlers = make(map[string]js.Value)}
+	s := Render_Sink{run = r, rv = rv, rt = r.rt, handlers = make(map[string]js.Value)}
 	list, good := plugin_api.list_write_rows(r.ctx, f, m.key, a.from, a.to, render_sink(&s))
 	if !good {
 		handlers_release(r.rt, &s.handlers)

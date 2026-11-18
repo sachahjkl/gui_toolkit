@@ -21,7 +21,21 @@ PLUGIN_API_DIR :: "plugin-api"
 PLUGIN_API_PAGE :: "docs/plugin-api.md"
 
 @(private = "file")
-Api_Field :: struct { name, type, doc: string, optional, state: bool }   // state: tagged `state`, the host keeps it
+// state: tagged `state`, the host keeps it. level: tagged `level=N`, a field a later level added to its struct (0: its
+// struct's own), which an older level's snapshot does not show.
+Api_Field :: struct { name, type, doc: string, optional, state: bool, level: int }
+
+// The level of a field's tag (`optional level=6`); 0 when it has none.
+@(private = "file")
+tag_level :: proc(tag: string) -> int {
+	at := strings.index(tag, "level=")
+	if at < 0 { return 0 }
+	rest := tag[at + len("level="):]
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' { end += 1 }
+	n, _ := strconv.parse_int(rest[:end])
+	return n
+}
 
 @(private = "file")
 Api_Type :: struct {
@@ -126,7 +140,7 @@ api_read :: proc(path: string) -> (api: Api, why: string) {
 				for f in v.fields.list {
 					tag := f.tag.text
 					for n in f.names {
-						append(&t.fields, Api_Field{name = ident_name(n), type = type_text(f.type), doc = doc_text(f.docs), optional = strings.contains(tag, "optional"), state = strings.contains(tag, "state")})
+						append(&t.fields, Api_Field{name = ident_name(n), type = type_text(f.type), doc = doc_text(f.docs), optional = strings.contains(tag, "optional"), state = strings.contains(tag, "state"), level = tag_level(tag)})
 					}
 				}
 			}
@@ -219,6 +233,7 @@ api_reachable :: proc(api: Api, level: int) -> map[string]bool {
 		if !known { continue }
 		seen[name] = true
 		for f in t.fields {
+			if f.level > level { continue }   // (Tone, of a field level 6 added: not in level 5's snapshot)
 			for other in api.types {
 				if other.name not_in seen && type_names(f.type, other.name) { append(&todo, other.name) }
 			}
@@ -322,8 +337,18 @@ ts_type :: proc(odin_type: string) -> string {
 	case "Row_Render":                      return "(index: number) => Node"
 	case "Children":                        return "(Node | null | undefined | false)[]"
 	case "Setting_Handler":                 return "(id: string, value: string | number | boolean) => void | Promise<void>"
+	// (distinct strings of the bridge's: a Lucide name, and what the bridge fills from a string or an array of them)
+	case "Icon_Name":                       return "string"
+	case "Words":                           return "string | string[]"
 	}
 	return odin_type
+}
+
+// A type as a cell of a Markdown table writes it: a union's "|" would end the cell, even in a code span.
+@(private = "file")
+md_type :: proc(odin_type: string) -> string {
+	s, _ := strings.replace_all(ts_type(odin_type), "|", "\\|", context.temp_allocator)
+	return s
 }
 
 // A call's result (plugin_api.Result) as TypeScript writes it.
@@ -389,7 +414,8 @@ api_dts :: proc(api: Api, level: int) -> string {
 			strings.write_string(&b, "\t\t/** Unique in the view: what the host knows the node by between two renders. */\n\t\tkey?: string | number;\n")
 		}
 		for f in t.fields {
-			ts_doc(&b, "\t\t", f.doc)
+			if f.level > level { continue }   // (what was promised at an older level does not change)
+			ts_doc(&b, "\t\t", f.level > 0 ? fmt.tprintf("%s (level %d)", f.doc, f.level) : f.doc)
 			fmt.sbprintf(&b, "\t\t%s%s: %s;\n", f.name, f.optional ? "?" : "", ts_type(f.type))
 		}
 		strings.write_string(&b, "\t}\n\n")
@@ -486,8 +512,8 @@ api_json :: proc(api: Api) -> string {
 
 @(private = "file")
 json_field :: proc(b: ^strings.Builder, f: Api_Field, first: bool) {
-	fmt.sbprintf(b, "%s{{\"name\": %s, \"type\": %s, \"optional\": %v, \"state\": %v, \"doc\": %s}}", first ? "" : ", ",
-		tk_json.quote(f.name), tk_json.quote(ts_type(f.type)), f.optional, f.state, tk_json.quote(f.doc))
+	fmt.sbprintf(b, "%s{{\"name\": %s, \"type\": %s, \"optional\": %v, \"state\": %v, \"level\": %d, \"doc\": %s}}", first ? "" : ", ",
+		tk_json.quote(f.name), tk_json.quote(ts_type(f.type)), f.optional, f.state, f.level, tk_json.quote(f.doc))
 }
 
 ////////////////////////////////
@@ -512,7 +538,7 @@ api_page :: proc(api: Api) -> string {
 			fmt.sbprintf(&b, "Level %d. Permission: %s.\n\n", c.level, c.capability == "None" ? "none" : fmt.tprintf("`%s`", capability_word(c.capability)))
 			if len(t.fields) > 0 {
 				strings.write_string(&b, "| Argument | Type | |\n|---|---|---|\n")
-				for f in t.fields { fmt.sbprintf(&b, "| `%s` | `%s`%s | %s |\n", f.name, ts_type(f.type), f.optional ? ", optional" : "", f.doc) }
+				for f in t.fields { fmt.sbprintf(&b, "| `%s` | `%s`%s | %s |\n", f.name, md_type(f.type), f.optional ? ", optional" : "", f.doc) }
 			}
 		}
 	}
@@ -529,7 +555,7 @@ api_page :: proc(api: Api) -> string {
 				strings.write_string(&b, "\n| Field | Type | |\n|---|---|---|\n")
 				for f in t.fields {
 					if f.type == "Children" { continue }
-					fmt.sbprintf(&b, "| `%s` | `%s`%s | %s |\n", f.name, ts_type(f.type), f.optional ? ", optional" : "", f.doc)
+					fmt.sbprintf(&b, "| `%s` | `%s`%s | %s%s |\n", f.name, md_type(f.type), f.optional ? ", optional" : "", f.doc, f.level > 0 ? fmt.tprintf(" Level %d.", f.level) : "")
 				}
 			}
 		}
@@ -539,7 +565,7 @@ api_page :: proc(api: Api) -> string {
 	strings.write_string(&b, "- `modules`: each with its `name` and its `calls`; a call has `name`, `doc`, `level`, `capability` (`\"None\"`: no permission), `permission` (the manifest's word for it, `\"\"` for none), `result` and `arguments`.\n")
 	strings.write_string(&b, "- `types`: the objects and enums the calls and nodes name; an object has `fields`, an enum `values`.\n")
 	strings.write_string(&b, "- `nodes`: each kind of node of a view, with `name` (its `kind` in JavaScript), `type`, `doc`, `level`, `container` and `fields`.\n")
-	strings.write_string(&b, "- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional`, `state` and `doc`. A `state` field is kept by the host (a field's text, a box's state): what the person changed stays until the plugin has heard of it.\n\n")
+	strings.write_string(&b, "- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional`, `state`, `level` (the level that added it to its struct, `0` for the struct's own) and `doc`. A `state` field is kept by the host (a field's text, a box's state): what the person changed stays until the plugin has heard of it.\n\n")
 	strings.write_string(&b, "The site's [API explorer](https://gt.sacha.house/plugins/api/) is made from this file by `tk site_build`, which fails when the file is missing or malformed.\n\n")
 	strings.write_string(&b, "A key is only added: a site reading this file keeps working when a level adds calls, types, nodes or keys.\n")
 	strings.write_string(&b, "\n## Types\n")
@@ -553,7 +579,7 @@ api_page :: proc(api: Api) -> string {
 			fmt.sbprintf(&b, "One of %s.\n", strings.join(quoted[:], ", ", context.temp_allocator))
 		} else {
 			strings.write_string(&b, "| Field | Type | |\n|---|---|---|\n")
-			for f in t.fields { fmt.sbprintf(&b, "| `%s` | `%s`%s | %s |\n", f.name, ts_type(f.type), f.optional ? ", optional" : "", f.doc) }
+			for f in t.fields { fmt.sbprintf(&b, "| `%s` | `%s`%s | %s |\n", f.name, md_type(f.type), f.optional ? ", optional" : "", f.doc) }
 		}
 	}
 	return strings.to_string(b)

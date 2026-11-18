@@ -1,4 +1,4 @@
-// The module "gt" of a plugin, level 5. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
+// The module "gt" of a plugin, level 6. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
 declare module "gt" {
 	/** How a toast looks. */
 	export type Toast_Kind = "info" | "good" | "warn" | "bad";
@@ -35,6 +35,9 @@ declare module "gt" {
 	/** A step of the toolkit's spacing scale; `fill` takes the room left in a row. */
 	export type Space_Size = "small" | "medium" | "large" | "fill";
 
+	/** What a text's colour says, by the theme (level 6). `weak` is the old `weak: true`; `info` the accent's colour. */
+	export type Tone = "plain" | "info" | "good" | "warn" | "bad" | "weak";
+
 	/** A paragraph of text; it wraps in a column. */
 	export interface Text_Node {
 		kind: "text";
@@ -43,6 +46,14 @@ declare module "gt" {
 		text: string;
 		/** Drawn in the weak colour. */
 		weak?: boolean;
+		/** Its colour, by what it says. (level 6) */
+		tone?: Tone;
+		/** In the monospace face (a time, an id, a number that changes). (level 6) */
+		mono?: boolean;
+		/** An icon before it. (level 6) */
+		icon?: string;
+		/** Each occurrence of the word, or of each word, case aside (ASCII letters), marked as the find bar marks. (level 6) */
+		highlight?: string | string[];
 	}
 
 	/** A title of a part of the view. */
@@ -51,6 +62,18 @@ declare module "gt" {
 		/** Unique in the view: what the host knows the node by between two renders. */
 		key?: string | number;
 		text: string;
+		/** An icon before it. (level 6) */
+		icon?: string;
+	}
+
+	/** A short state, a count or a kind, in the colour of its tone: a mark, not a button (it takes no press). */
+	export interface Badge_Node {
+		kind: "badge";
+		/** Unique in the view: what the host knows the node by between two renders. */
+		key?: string | number;
+		text: string;
+		tone?: Tone;
+		icon?: string;
 	}
 
 	/** A button. */
@@ -59,6 +82,8 @@ declare module "gt" {
 		/** Unique in the view: what the host knows the node by between two renders. */
 		key?: string | number;
 		label: string;
+		/** A glyph before its words. (level 6) */
+		icon?: string;
 		intent?: Button_Intent;
 		/** How it sits and its size. A program older than these fields shows a raised, medium button. */
 		look?: Button_Look;
@@ -108,6 +133,8 @@ declare module "gt" {
 		key?: string | number;
 		value?: string;
 		placeholder?: string;
+		/** A glyph at its start, inside it ("search"). (level 6) */
+		icon?: string;
 		/** Called with the text at each change. */
 		onChange?: (value: string) => void | Promise<void>;
 		/** Called with the text when Enter is pressed. */
@@ -132,6 +159,8 @@ declare module "gt" {
 		key?: string | number;
 		label: string;
 		on?: boolean;
+		/** A glyph before it. (level 6) */
+		icon?: string;
 		/** Called with its new state when the person changes it. */
 		onChange?: (value: boolean) => void | Promise<void>;
 	}
@@ -189,7 +218,7 @@ declare module "gt" {
 	}
 
 	/** A node of a view: what a render returns, and a container's children. */
-	export type Node = Text_Node | Heading_Node | Button_Node | Row_Node | Column_Node | Card_Node | Space_Node | Field_Node | Check_Node | Switch_Node | Separator_Node | Lazy_List_Node;
+	export type Node = Text_Node | Heading_Node | Button_Node | Row_Node | Column_Node | Card_Node | Space_Node | Field_Node | Check_Node | Switch_Node | Separator_Node | Lazy_List_Node | Badge_Node;
 
 	export const commands: {
 		/** Registers the handler of one of the manifest's commands: choosing the command in the palette calls it. A second call for the same command replaces the handler. (level 1) */

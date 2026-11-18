@@ -295,26 +295,30 @@ replay :: proc(r: ^View_Record, nodes: []plugin_api.List_Node, i: ^int, in_row: 
 	box := fmt.tprintf("###pv:%s", n.key)
 	switch n.kind {
 	case .Text:
-		t := plugin_api.node_props(n, plugin_api.Text_Node)
-		if t.weak { ui.push_tags("weak") }
-		if in_row {
-			ui.next({width = ui.text_size(0), height = ui.px(ui.dense(em * 2))})
-			ui.label(fmt.tprintf("%s%s", t.text, box))
-		} else {
-			ui.next({width = ui.fill()})
-			ui.paragraph(fmt.tprintf("%s%s", t.text, box))
-		}
-		if t.weak { ui.pop_tags() }
+		text_replay(r, n, plugin_api.node_props(n, plugin_api.Text_Node), box, in_row)
 	case .Heading:
 		t := plugin_api.node_props(n, plugin_api.Heading_Node)
-		ui.next({width = in_row ? ui.text_size(0) : ui.fill(), height = ui.px(math.round(em * 2)), font_size = math.round(em * 1.25), text_pad = 0})
-		ui.label(fmt.tprintf("%s%s", t.text, box))
+		size := math.round(em * 1.25)
+		if glyph := icon_glyph(t.icon); glyph != "" {
+			ui.next({width = in_row ? ui.children_sum() : ui.fill(), height = ui.px(math.round(em * 2))})
+			if ui.row(.Center, id = fmt.tprintf("###pv_icon_row:%s", n.key)) {
+				icon_cell(glyph)
+				ui.space(ui.CONTROL_GAP)
+				ui.next({width = ui.text_size(0), height = ui.pct(1), font_size = size, text_pad = 0})
+				ui.label(fmt.tprintf("%s%s", t.text, box))
+			}
+		} else {
+			ui.next({width = in_row ? ui.text_size(0) : ui.fill(), height = ui.px(math.round(em * 2)), font_size = size, text_pad = 0})
+			ui.label(fmt.tprintf("%s%s", t.text, box))
+		}
+	case .Badge:
+		badge_replay(n, plugin_api.node_props(n, plugin_api.Badge_Node))
 	case .Button:
 		b := plugin_api.node_props(n, plugin_api.Button_Node)
 		intents := [plugin_api.Button_Intent]ui.Intent{.neutral = .Neutral, .primary = .Primary, .success = .Success, .warning = .Warning, .danger = .Danger}
 		looks := [plugin_api.Button_Look]ui.Button_Face{.raised = .Raised, .ghost = .Ghost, .link = .Link}
 		sizes := [plugin_api.Button_Size]ui.Button_Size{.medium = .Medium, .small = .Small, .large = .Large}
-		if ui.button(id, b.label, o = {intent = intents[b.intent], face = looks[b.look], size = sizes[b.size], disabled = b.disabled}).clicked {
+		if ui.button(id, b.label, icon_glyph(b.icon), o = {intent = intents[b.intent], face = looks[b.look], size = sizes[b.size], disabled = b.disabled, icon_font = ui.lucide_icons()}).clicked {
 			view_send(r, n.key, .onClick)
 		}
 	case .Row, .Column:
@@ -343,33 +347,53 @@ replay :: proc(r: ^View_Record, nodes: []plugin_api.List_Node, i: ^int, in_row: 
 		c := control(r, n.key)
 		// (the plugin's value, unless the person typed since the plugin last heard: plugins.md, "Subtle points")
 		if n.controlled && n.seen >= c.changes && ui.line_edit_string(&c.edit) != f.value { ui.line_edit_set(&c.edit, f.value) }
-		ui.next({width = in_row ? ui.px(math.round(em * 14), 0) : ui.fill(), height = ui.px(ui.dense(em * 2.2))})
-		res := ui.line_edit(box, &c.edit, {placeholder = f.placeholder})
+		width := in_row ? ui.px(math.round(em * 14), 0) : ui.fill()
+		res: ui.Edit_Result
+		if glyph := icon_glyph(f.icon); glyph != "" {
+			res = field_with_icon(box, glyph, &c.edit, {placeholder = f.placeholder}, width)
+		} else {
+			ui.next({width = width, height = ui.px(ui.dense(em * 2.2))})
+			res = ui.line_edit(box, &c.edit, {placeholder = f.placeholder})
+		}
 		if res.changed {
 			c.changes += 1
 			view_send(r, n.key, .onChange, text = ui.line_edit_string(&c.edit), serial = c.changes)
 		}
 		if res.committed { view_send(r, n.key, .onSubmit, text = ui.line_edit_string(&c.edit)) }
 	case .Check, .Switch:
-		label: string
+		label, glyph: string
 		state: bool
 		if n.kind == .Check {
 			b := plugin_api.node_props(n, plugin_api.Check_Node)
 			label, state = b.label, b.checked
 		} else {
 			b := plugin_api.node_props(n, plugin_api.Switch_Node)
-			label, state = b.label, b.on
+			label, state, glyph = b.label, b.on, icon_glyph(b.icon)
 		}
 		c := control(r, n.key)
 		if n.controlled && n.seen >= c.changes { c.on = state }
-		// (in a row, no width: a check box and a switch are a mark and a label, which fit their row themselves; the size of
-		// their own text, which they have none of, left the label no room)
-		if in_row {
-			ui.next({height = ui.px(ui.dense(em * 2))})
+		changed: bool
+		if glyph != "" {
+			// (the glyph before the switch, in a row of their own: the switch's row is the press's target)
+			ui.next({width = in_row ? ui.children_sum() : ui.fill(), height = ui.px(ui.dense(em * 2))})
+			if ui.row(.Center, id = fmt.tprintf("###pv_icon_row:%s", n.key)) {
+				icon_cell(glyph)
+				ui.space(ui.CONTROL_GAP)
+				m := ui.Style_Mod{height = ui.pct(1)}
+				if !in_row { m.width = ui.fill() }
+				ui.next(m)
+				changed = ui.toggle(box, label, &c.on)
+			}
 		} else {
-			ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2))})
+			// (in a row, no width: a check box and a switch are a mark and a label, which fit their row themselves; the
+			// size of their own text, which they have none of, left the label no room)
+			if in_row {
+				ui.next({height = ui.px(ui.dense(em * 2))})
+			} else {
+				ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 2))})
+			}
+			changed = n.kind == .Check ? ui.checkbox(box, label, &c.on) : ui.toggle(box, label, &c.on)
 		}
-		changed := n.kind == .Check ? ui.checkbox(box, label, &c.on) : ui.toggle(box, label, &c.on)
 		if changed {
 			c.changes += 1
 			view_send(r, n.key, .onChange, flag = c.on, is_flag = true, serial = c.changes)

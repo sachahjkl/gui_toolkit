@@ -13,6 +13,7 @@ import "core:mem/virtual"
 import "core:reflect"
 import "core:strings"
 import js "../js"
+import lucide "../lucide"
 
 // The most nodes a list holds, and how deep a tree goes: past them, the rest is dropped and said.
 LIST_MAX_NODES :: 20_000
@@ -42,6 +43,8 @@ List_Sink :: struct {
 	user:    rawptr,
 	seen:    proc(user: rawptr, key: string) -> u64,
 	handler: proc(user: rawptr, key: string, event: string, f: js.Value),
+	// an icon's name the font does not have (the node draws none): the caller says it once (nil: not said)
+	icon_unknown: proc(user: rawptr, name: string),
 }
 
 // A node's struct, typed: nil when the list's node is of another kind.
@@ -212,7 +215,16 @@ write_node :: proc(w: ^Writer, v: js.Value, parent_key: string, index, depth: in
 				(^js.Value)(at)^ = {}   // (no value of the engine crosses to the interface's thread)
 			} else if f.type.id == typeid_of(Children) {
 				(^js.Value)(at)^ = {}
-			} else if f.type.id == typeid_of(string) {
+			} else if f.type.id == typeid_of(Icon_Name) {
+				// (a name the font does not have draws nothing: "" on the wire, and the plugin told once)
+				s := (^string)(at)
+				if _, known := lucide.glyph_of(s^); s^ != "" && !known {
+					if w.sink.icon_unknown != nil { w.sink.icon_unknown(w.sink.user, s^) }
+					s^ = ""
+				}
+				s^ = strings.clone(s^, w.al)
+			} else if _, is_string := reflect.type_info_base(f.type).variant.(runtime.Type_Info_String); is_string {
+				// (a string, or a distinct one: Words)
 				s := (^string)(at)
 				s^ = strings.clone(s^, w.al)
 			}

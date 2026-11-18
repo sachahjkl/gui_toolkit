@@ -196,6 +196,32 @@ views.register("main", () => ({ kind: "list", key: "items", count: items.length,
 - A button repeated in each row reads better with `look: "ghost"` (no face until the pointer is over it) and
   `size: "small"`. A button's `look` is `raised`, `ghost` or `link`; its `size` `small`, `medium` or `large`. A program
   older than these two fields shows a raised, medium button.
+
+### Rich views (API level 6)
+
+```js
+{ kind: "heading", text: "Log explorer", icon: "scroll-text" },
+{ kind: "field", key: "query", icon: "search", placeholder: "Search" },
+{ kind: "row", children: [
+	{ kind: "text", text: "12:04:31", mono: true, weak: true },
+	{ kind: "badge", text: "ERROR", tone: "bad", icon: "octagon-x" },
+	{ kind: "text", text: line, highlight: query },
+] },
+```
+
+- `icon` on a button, a text, a heading, a field (a glyph at its start, inside it) and a switch: a Lucide name, as the
+  toolkit's font names its glyph (`lucide.glyph_of`; `"alert-triangle"`, `"panel-right-open"`). An unknown name draws
+  nothing, and the plugin's log says it once.
+- `tone` on a text: `plain`, `info`, `good`, `warn`, `bad` or `weak`, the theme's colour of each (`weak: true` is
+  `tone: "weak"`). `mono: true` sets it in the monospace face.
+- `highlight` on a text: a string or an array of strings. Each occurrence, case aside for ASCII letters, is drawn in
+  the find bar's colours (`find_match background`, `find_text`).
+- A `badge` (`text`, `tone`, `icon`) is a pill in its tone's colour. It takes no press.
+- A program older than level 6 ignores these fields: the view shows, without them. It refuses a `badge` node: a
+  plugin that uses one writes `"api": 6`.
+- **A program with plugins does not subset Lucide.** With `Feature.Lucide_Subset` (`-define:LUCIDE_SUBSET`), its font
+  holds only the icons its sources name (`lucide.NAME`, found by `toolbox.lucide_subset`); a plugin's icon is named at
+  run time, so it is not in the font and draws nothing. No program of the toolkit sets the feature today.
 - When the plugin stops, the view keeps its last list and says why: Not responding (with Stop), Stopped (with Start),
   or the failure.
 

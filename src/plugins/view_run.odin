@@ -105,6 +105,7 @@ renders :: proc(r: ^Run) {
 
 @(private)
 Render_Sink :: struct {
+	run:      ^Run,
 	rv:       ^Run_View,
 	rt:       ^js.Runtime,
 	handlers: map[string]js.Value,   // the new render's
@@ -117,7 +118,7 @@ render :: proc(r: ^Run, id: string, rv: ^Run_View) {
 	// (kept while the list is written: a getter of a node may run a collection between two reads)
 	js.retain(r.rt, tree)
 	defer js.release(r.rt, tree)
-	s := Render_Sink{rv = rv, rt = r.rt, handlers = make(map[string]js.Value)}
+	s := Render_Sink{run = r, rv = rv, rt = r.rt, handlers = make(map[string]js.Value)}
 	list, ok := plugin_api.list_write(r.ctx, tree, render_sink(&s))
 	if !ok {
 		handlers_release(r.rt, &s.handlers)
@@ -143,6 +144,13 @@ render_sink :: proc(s: ^Render_Sink) -> plugin_api.List_Sink {
 			s := (^Render_Sink)(user)
 			// (the plugin's thread's context: the heap, which run_view_free gives the keys back to)
 			s.handlers[handler_key(key, event, context.allocator)] = js.retain(s.rt, f)
+		},
+		icon_unknown = proc(user: rawptr, name: string) {
+			// (once per name in this runtime: a render runs at every change, its log would repeat it each time)
+			r := (^Render_Sink)(user).run
+			if name in r.icons_said { return }
+			r.icons_said[strings.clone(name)] = true
+			log_write(r.p, fmt.tprintf("no icon is named \"%s\" (lucide.dev's names): it is not drawn", name))
 		},
 	}
 }

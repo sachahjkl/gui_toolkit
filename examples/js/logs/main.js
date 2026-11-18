@@ -4,6 +4,13 @@
 import { commands, toast, views } from "gt";
 import { COUNT, LEVELS, SERVICES, generate, filter, levelOf, message, clock, fmt } from "./lib/logs.js";
 
+// How each level looks: its badge's tone and its icon (lucide.dev's names).
+const LOOK = [
+	{ tone: "info", icon: "info" },
+	{ tone: "warn", icon: "alert-triangle" },
+	{ tone: "bad", icon: "octagon-x" },
+];
+
 const data = generate();
 let query = "";
 let shown = [true, true, true];
@@ -16,17 +23,19 @@ function refilter() {
 	version += 1;
 }
 
+const badge = (level) => ({ kind: "badge", text: LEVELS[level].toUpperCase(), ...LOOK[level] });
+
 function line(i) {
 	const at = found.rows[i];
 	return {
 		kind: "row",
 		children: [
-			{ kind: "text", text: clock(data, at), weak: true },
-			{ kind: "text", text: LEVELS[levelOf(data, at)].toUpperCase() },
+			{ kind: "text", text: clock(data, at), mono: true, weak: true },
+			badge(levelOf(data, at)),
 			{ kind: "text", text: SERVICES[data.svc[at]], weak: true },
-			{ kind: "text", text: message(data, at) },
+			{ kind: "text", text: message(data, at), highlight: query },
 			{ kind: "space", size: "fill" },
-			{ kind: "button", key: "open", label: "Open", look: "ghost", size: "small", onClick: () => { open = at; } },
+			{ kind: "button", key: "open", label: "Open", icon: "panel-right-open", look: "ghost", size: "small", onClick: () => { open = at; } },
 		],
 	};
 }
@@ -35,27 +44,43 @@ function render() {
 	return {
 		kind: "column",
 		children: [
-			{ kind: "heading", text: "Log explorer" },
-			{ kind: "text", key: "summary", weak: true, text: `${fmt(found.rows.length)} of ${fmt(COUNT)} lines` },
+			{ kind: "heading", text: "Log explorer", icon: "scroll-text" },
+			{
+				kind: "row",
+				key: "summary",
+				children: [
+					{ kind: "text", weak: true, text: `${fmt(found.rows.length)} of ${fmt(COUNT)} lines` },
+					...LEVELS.map((name, level) => ({ ...badge(level), key: `count-${name}`, text: fmt(found.counts[level]) })),
+				],
+			},
 			{
 				kind: "row",
 				key: "levels",
 				children: LEVELS.map((name, level) => ({
-					kind: "switch", key: `level-${name}`, label: `${name} · ${fmt(found.counts[level])}`, on: shown[level],
+					kind: "switch", key: `level-${name}`, label: name, icon: LOOK[level].icon, on: shown[level],
 					onChange: (on) => { shown[level] = on; refilter(); },
 				})),
 			},
 			{
-				kind: "field", key: "query", value: query, placeholder: "Search every line: a word, a service, a number",
+				kind: "field", key: "query", value: query, icon: "search", placeholder: "Search every line: a word, a service, a number",
 				onChange: (text) => { query = text; refilter(); },
 			},
 			open >= 0 && {
 				kind: "card",
 				key: "detail",
-				title: `Line ${fmt(open + 1)} · ${LEVELS[levelOf(data, open)]} · ${SERVICES[data.svc[open]]} · ${clock(data, open)}`,
+				title: `Line ${fmt(open + 1)}`,
 				children: [
-					{ kind: "text", key: "detail-message", text: message(data, open) },
-					{ kind: "button", key: "close", label: "Close", onClick: () => { open = -1; } },
+					{
+						kind: "row",
+						key: "detail-head",
+						children: [
+							badge(levelOf(data, open)),
+							{ kind: "text", icon: "server", text: SERVICES[data.svc[open]], weak: true },
+							{ kind: "text", icon: "clock-4", text: clock(data, open), mono: true, weak: true },
+						],
+					},
+					{ kind: "text", key: "detail-message", text: message(data, open), highlight: query },
+					{ kind: "button", key: "close", label: "Close", icon: "x", onClick: () => { open = -1; } },
 				],
 			},
 			{ kind: "list", key: "lines", count: found.rows.length, version, rowHeight: 1.6, visibleRows: 14, row: line },

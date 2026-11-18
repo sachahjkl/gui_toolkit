@@ -55,6 +55,7 @@ Run :: struct {
 	boot_done:  bool,
 	boot_error: string,
 	toasted:    bool,                      // an uncaught exception was said once in this run
+	icons_said: map[string]bool,           // the unknown icons' names its log said (keys owned: view_run.odin)
 	ended:      bool,                      // stopped or failed: the thread leaves its loop
 }
 
@@ -154,6 +155,8 @@ run_close :: proc(r: ^Run) {
 	settings_free(r)
 	delete(r.calls)   // (their values went with the runtime)
 	delete(r.rejections)
+	for k in r.icons_said { delete(k) }
+	delete(r.icons_said)
 	delete(r.gt_source)
 	delete(r.boot_error)
 }

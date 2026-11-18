@@ -132,11 +132,43 @@ when LUCIDE_SUBSET != "" {
 `)
 	width := 0
 	for ic in icons { width = max(width, len(ic.name)) }
-	for ic in icons {
+	constants := make([]string, len(icons), context.temp_allocator)
+	for ic, i in icons {
 		upper := ascii.upper(ic.name)
 		constant, _ := strings.replace_all(upper, "-", "_", context.temp_allocator)
 		if len(constant) > 0 && constant[0] >= '0' && constant[0] <= '9' { constant = fmt.tprintf("N%s", constant) }
+		constants[i] = constant
 		fmt.sbprintf(&b, "%-*s :: \"\\u%04x\"   // %s\n", width, constant, int(ic.code), ic.name)
 	}
+	// (by name, for what names an icon at run time: a plugin's node, a setting. `icons` is sorted by its bytes, the
+	// order glyph_of searches in)
+	strings.write_string(&b, `
+// An icon and its name, as the font names its glyph ("arrow-up-down").
+Named :: struct {
+	name:  string,
+	glyph: string,
+}
+
+// Every icon by its name, sorted by the bytes of the name: glyph_of's table.
+@(rodata)
+NAMES := [?]Named{
+`)
+	for ic, i in icons { fmt.sbprintf(&b, "\t{{%q, %s}},\n", ic.name, constants[i]) }
+	strings.write_string(&b, `}
+
+// The icon named ` + "`name`" + ` (the font's name, "search", "alert-triangle"). False: no such icon in this font.
+glyph_of :: proc(name: string) -> (glyph: string, ok: bool) {
+	lo, hi := 0, len(NAMES)
+	for lo < hi {
+		mid := lo + (hi - lo) / 2
+		switch {
+		case NAMES[mid].name < name: lo = mid + 1
+		case NAMES[mid].name > name: hi = mid
+		case:                        return NAMES[mid].glyph, true
+		}
+	}
+	return "", false
+}
+`)
 	return strings.to_string(b)
 }

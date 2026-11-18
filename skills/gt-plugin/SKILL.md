@@ -1,6 +1,6 @@
 ---
 name: gt-plugin
-description: Write, run and test a JavaScript plugin for a gui_toolkit program (papier, classeur, inspecteur, cliche, opencode native, atelier or any program built on gui_toolkit), or a small JavaScript application for gt-runtime. Use this skill whenever the task touches a plugin.json, a main.js that does `import ... from "gt"`, gt-runtime, a plugin's commands, toasts, views, display lists, nodes, settings, lazy lists (a `list` node with `row(i)`), permissions (files, net, clipboard), PermissionError, or the Plugins page, even when the user only says "a plugin", "a small app", "a dashboard" or "a screen" for one of these programs.
+description: Write, run and test a JavaScript plugin for a gui_toolkit program (papier, classeur, inspecteur, cliche, opencode native, atelier or any program built on gui_toolkit), or a small JavaScript application for gt-runtime. Use this skill whenever the task touches a plugin.json, a main.js that does `import ... from "gt"`, gt-runtime, a plugin's commands, toasts, views, display lists, nodes, settings, lazy lists (a `list` node with `row(i)`), icons, badges, tones and highlights in a view, permissions (files, net, clipboard), PermissionError, or the Plugins page, even when the user only says "a plugin", "a small app", "a dashboard" or "a screen" for one of these programs.
 ---
 
 # A plugin for a gui_toolkit program
@@ -12,7 +12,7 @@ the palette, the settings and the toasts are the toolkit's.
 The program draws a view with its own widgets. The plugin only returns a tree of plain objects, so the view looks and
 behaves as the program does. You write no layout code, no spacing and no colours.
 
-This toolkit gives API level 5.
+This toolkit gives API level 6.
 
 ## Read first
 
@@ -54,7 +54,7 @@ In a program, the folder goes in `<data>/<program>/plugins/<id>/`, named as the 
 	"id": "hello",
 	"name": "Hello",
 	"version": "1.0.0",
-	"api": 5,
+	"api": 6,
 	"main": "main.js",
 	"program": "papier",
 	"commands": [{ "id": "greet", "label": "Say hello", "tags": ["welcome"] }],
@@ -80,13 +80,18 @@ first use: a command chosen, a view shown.
 
 ## The levels
 
-A level only adds calls. Each call in `references/plugin-api.md` says the level that added it:
+A level only adds calls, nodes and optional fields. Each in `references/plugin-api.md` says the level that added it:
 
 - level 1: `commands.on`, `toast.show`;
 - level 2: views (`views.register`, `views.update`);
 - level 3: `settings.get`, `settings.onChange`;
 - level 4: `files`, `http`, `clipboard`, and the permissions;
-- level 5: the lazy list node (`kind: "list"`).
+- level 5: the lazy list node (`kind: "list"`);
+- level 6: rich views: `icon` on button, text, heading, field and switch; `tone`, `mono` and `highlight` on text; the
+  `badge` node.
+
+A program older than a field ignores it: an `icon` on a level-5 program draws no icon, and the view still works. A
+node it does not know (`badge`) is refused, so write `api: 6` when you use one.
 
 ## activate, commands and toasts
 
@@ -131,6 +136,30 @@ export function activate() {
   unless the person typed since the change you last heard of. This keeps a slow plugin from erasing key presses.
 - The program adds the gaps between nodes. Add a `space` node only for more room, or `size: "fill"` to push the rest
   of a row to its end.
+
+## Make it rich
+
+A view that is only words reads flat. Say what each thing is with the toolkit's means, never with a colour of yours:
+
+```js
+{ kind: "heading", text: "Log explorer", icon: "scroll-text" },
+{ kind: "field", key: "query", icon: "search", placeholder: "Search" },
+{ kind: "row", children: [
+	{ kind: "text", text: "12:04:31", mono: true, weak: true },
+	{ kind: "badge", text: "ERROR", tone: "bad", icon: "octagon-x" },
+	{ kind: "text", text: line, highlight: query },
+	{ kind: "space", size: "fill" },
+	{ kind: "button", key: "open", label: "Open", icon: "panel-right-open", look: "ghost", size: "small", onClick },
+] },
+```
+
+- `icon`: a Lucide name, as lucide.dev and the toolkit's font name it (`"alert-triangle"`, not `"triangle-alert"`). An
+  unknown name draws nothing, and the log says it once.
+- `tone` on text and badges: `info`, `good`, `warn`, `bad`, `weak`. The theme gives the colour, light or dark.
+- `mono` for a time, an id or a number that changes; `weak` for what is secondary (a service, a date).
+- `badge` for a level, a state or a count: a mark, not a button.
+- `highlight` (a string or an array of them) marks each match, as the find bar marks, case aside.
+- An act repeated in each row of a list: a button with `look: "ghost"` and `size: "small"`, with an icon.
 
 ## Settings
 

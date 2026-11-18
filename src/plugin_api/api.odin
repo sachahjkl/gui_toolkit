@@ -12,7 +12,7 @@ import js "../js"
 
 // The level of the API this toolkit gives, and the oldest a plugin may ask: a manifest's `api` between the two is
 // accepted. A level only adds; a removal or a change raises the oldest.
-PLUGIN_API_LEVEL :: 5
+PLUGIN_API_LEVEL :: 6
 PLUGIN_API_OLDEST :: 1
 
 // What a call needs the person to have granted (the manifest's "permissions"). `.None`: nothing. The bridge refuses a
@@ -152,21 +152,57 @@ Space_Size :: enum u8 {
 	fill,
 }
 
+// A Lucide icon by its name ("search", "alert-triangle": lucide.dev's names, as the toolkit's font has them; level 6).
+// An unknown name draws nothing, and the plugin's log says it once.
+Icon_Name :: distinct string
+
+// A word to find, or several: each occurrence is marked (level 6).
+Words :: distinct string
+
+// What a text's colour says, by the theme (level 6). `weak` is the old `weak: true`; `info` the accent's colour.
+Tone :: enum u8 {
+	plain,
+	info,
+	good,
+	warn,
+	bad,
+	weak,
+}
+
 // A paragraph of text; it wraps in a column.
 Text_Node :: struct {
-	text: string,
+	text:      string,
 	// Drawn in the weak colour.
-	weak: bool `optional`,
+	weak:      bool `optional`,
+	// Its colour, by what it says.
+	tone:      Tone `optional level=6`,
+	// In the monospace face (a time, an id, a number that changes).
+	mono:      bool `optional level=6`,
+	// An icon before it.
+	icon:      Icon_Name `optional level=6`,
+	// Each occurrence of the word, or of each word, case aside (ASCII letters), marked as the find bar marks.
+	highlight: Words `optional level=6`,
 }
 
 // A title of a part of the view.
 Heading_Node :: struct {
 	text: string,
+	// An icon before it.
+	icon: Icon_Name `optional level=6`,
+}
+
+// A short state, a count or a kind, in the colour of its tone: a mark, not a button (it takes no press).
+Badge_Node :: struct {
+	text: string,
+	tone: Tone `optional`,
+	icon: Icon_Name `optional`,
 }
 
 // A button.
 Button_Node :: struct {
 	label:    string,
+	// A glyph before its words.
+	icon:     Icon_Name `optional level=6`,
 	intent:   Button_Intent `optional`,
 	// How it sits and its size. A program older than these fields shows a raised, medium button.
 	look:     Button_Look `optional`,
@@ -202,6 +238,8 @@ Space_Node :: struct {
 Field_Node :: struct {
 	value:       string `optional state`,
 	placeholder: string `optional`,
+	// A glyph at its start, inside it ("search").
+	icon:        Icon_Name `optional level=6`,
 	// Called with the text at each change.
 	onChange:    Text_Handler `optional`,
 	// Called with the text when Enter is pressed.
@@ -220,6 +258,8 @@ Check_Node :: struct {
 Switch_Node :: struct {
 	label:    string,
 	on:       bool `optional state`,
+	// A glyph before it.
+	icon:     Icon_Name `optional level=6`,
 	// Called with its new state when the person changes it.
 	onChange: Flag_Handler `optional`,
 }
@@ -261,6 +301,7 @@ Node_Kind :: enum u8 {
 	Switch,
 	Separator,
 	List,
+	Badge,
 }
 
 // One kind of node: its name in JavaScript, its struct, whether it has children, and the level that added it.
@@ -285,6 +326,7 @@ NODES :: [?]Node_Declaration{
 	{kind = .Switch, name = "switch", props = Switch_Node, level = 2},
 	{kind = .Separator, name = "separator", props = Separator_Node, level = 2},
 	{kind = .List, name = "list", props = Lazy_List_Node, level = 5},
+	{kind = .Badge, name = "badge", props = Badge_Node, level = 6},
 }
 
 ////////////////////////////////

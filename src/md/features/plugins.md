@@ -704,3 +704,45 @@ Refused:
 
 Still open: the keyboard's active row and Enter are the virtual list's and are not sent to the plugin (a row's own
 button is); the rows of a list have one look (no selection drawn).
+
+## As built: rich views (API level 6)
+
+Written on 2026-11-18, after the film of `examples/js/logs`: its view had no icon, no colour that says something, and
+its search did not show what it found. The toolkit had all of it; the API did not reach it.
+
+- **Icons by name.** A node's `icon` is a Lucide name (`"search"`, `"alert-triangle"`), the font's own glyph name.
+  `tk gen_lucide` writes beside the constants a table of every icon by name, sorted by its bytes, and
+  `lucide.glyph_of(name)` finds one by a binary search (11 steps for 1 879 icons: no map, nothing made at the start).
+  The table is generated with the constants from the same font, so a name and its constant never disagree. Fields:
+  button, text, heading, field (its leading glyph, inside the field as the find bar's magnifier), switch, badge.
+- **An unknown name draws nothing, and is said once.** The plugin's process checks each name when it writes the list
+  (`Icon_Name`, a distinct string): an unknown one becomes "" and the sink is told, which logs it once per name in the
+  runtime (a render runs at every change: a log line per render would fill the log). The program looks the name up
+  again when it replays (a binary search per icon per build: no state). Refused: throwing a TypeError, which would
+  break a whole view for an icon that a newer font renamed.
+- **Tone and type.** `tone` (`plain`, `info`, `good`, `warn`, `bad`, `weak`) colours a text by the theme: the
+  `<tone> text` colours (`info` is the accent, as an info toast). `weak: true` stays and means `tone: "weak"`. `mono`
+  sets the text in the monospace face (a time, an id). Refused: a colour by value (`color: "#c33"`): it ignores the
+  theme, light or dark, and the person's choices.
+- **Highlight.** `highlight` (a string or an array of strings: `Words`, a distinct string the bridge fills from either,
+  its words joined by "\x1f") marks each occurrence in the text, by an ASCII fold of case (`ascii.lower` per byte: a
+  plugin's query is matched as the find bar's is, and the unicode_case test checks it). The text is then a rich
+  paragraph whose matches are runs of the find bar's colours (`find_match background`, `find_text`): the toolkit draws
+  them as any run. Refused: the find bar itself over the view (it finds what the person typed in it, not what the
+  plugin filters by) and painting rectangles in the replay (the runs already lay out, wrap and select).
+- **`badge`**: `{ kind: "badge", text, tone, icon }`, a `ui.pill` in the tone's colour. It takes no press: a state is
+  read, not pressed (a button says the act).
+- **Older programs.** Every new field is optional; a program older than level 6 ignores the fields (the bridge reads
+  only its struct's fields) and refuses a `badge` node by its kind (a TypeError names it), as for any node of a later
+  level. A plugin that wants both checks `context.api`.
+- **Subsets.** A program built with `Lucide_Subset` compiles in only the icons its sources name (`lucide.NAME`); a
+  plugin's name is not in its sources, so its icon is absent from the font and draws nothing. A program with plugins
+  does not subset. No program of the toolkit sets the feature today.
+
+Refused:
+
+- **A rich text node** (`{ kind: "rich", runs: [...] }`): it gives everything and says nothing; tone, mono and
+  highlight on `text` are what a view needs, and the host keeps the look.
+- **Icons as SVG or images from the plugin**: a second set beside Lucide's, of any size and colour, in a window that
+  draws one set.
+

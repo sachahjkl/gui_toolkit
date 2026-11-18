@@ -178,6 +178,7 @@ fill :: proc(ctx: ^js.Context, v: js.Value, ti: ^runtime.Type_Info, out: rawptr,
 		return false
 	}
 	if ti.id == typeid_of(Children) { return true }   // (a node's children: the list's writer reads them, display.odin)
+	if ti.id == typeid_of(Words) { return fill_words(ctx, v, (^Words)(out), call, what) }
 	if is_function_type(ti.id) {
 		if !js.is_callable(v) { return wrong(ctx, call, what, "a function") }
 		(^js.Value)(out)^ = v
@@ -234,6 +235,39 @@ fill :: proc(ctx: ^js.Context, v: js.Value, ti: ^runtime.Type_Info, out: rawptr,
 		js.throw_type_error(ctx, fmt.tprintf("%s: %s has a type the bridge does not convert", call, what))
 		return false
 	}
+	return true
+}
+
+// The words of a string, or of an array of strings (`string | string[]`), as one string: each word after a
+// WORDS_SEPARATOR, the empty ones left out. One string, so that the display list and the wire carry it as any field.
+WORDS_SEPARATOR :: "\x1f"
+WORDS_MAX :: 64
+
+@(private)
+fill_words :: proc(ctx: ^js.Context, v: js.Value, out: ^Words, call, what: string) -> bool {
+	if js.is_string(v) {
+		s, ok := js.to_utf8(ctx, v, context.temp_allocator)
+		if !ok { return false }
+		out^ = Words(s)
+		return true
+	}
+	if !js.is_object(v) { return wrong(ctx, call, what, "a string or an array of strings") }
+	js.root(ctx.rt, v)
+	length_v := js.get_property_str(ctx, v, "length")
+	if js.is_exception(length_v) { return false }
+	n, _ := js.to_number(ctx, length_v)
+	b := strings.builder_make(context.temp_allocator)
+	for k in 0 ..< min(int(max(n, 0)), WORDS_MAX) {
+		item := js.get_property_str(ctx, v, fmt.tprintf("%d", k))
+		if js.is_exception(item) { return false }
+		if !js.is_string(item) { return wrong(ctx, call, fmt.tprintf("%s[%d]", what, k), "a string") }
+		s, ok := js.to_utf8(ctx, item, context.temp_allocator)
+		if !ok { return false }
+		if s == "" { continue }
+		if strings.builder_len(b) > 0 { strings.write_string(&b, WORDS_SEPARATOR) }
+		strings.write_string(&b, s)
+	}
+	out^ = Words(strings.to_string(b))
 	return true
 }
 

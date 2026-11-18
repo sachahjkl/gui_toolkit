@@ -16,6 +16,11 @@ in the font (`arrow-up-down` is `ARROW_UP_DOWN`; a name that starts with a digit
 font, then the command again. The names are the font's own, which are older than lucide.dev's for a few icons
 (`ALERT_TRIANGLE` for triangle-alert, `SEND_HORIZONAL` for send-horizontal).
 
+An icon named at run time (a plugin's node, a setting) is found by its name: `lucide.glyph_of("alert-triangle")` gives
+its character, false for a name the font does not have. `lucide.NAMES` is the table it searches, every icon by its name,
+sorted by the bytes of the name, generated with the constants. An icon found this way is not in a subset (below): a
+program that draws icons by name does not subset.
+
 A program may make it its icon font (`ui.State.icon_font = icons`): `ui.icon`, `ui.button`'s `icon` and a menu item's
 `icon` then draw Lucide's characters. The widgets' own marks (a menu's or a check box's check, a
 dropdown's arrow, a submenu's arrow, a number's − and +, a toast's sign) are characters of the toolkit's icon font

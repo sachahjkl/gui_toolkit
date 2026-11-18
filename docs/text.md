@@ -118,7 +118,8 @@ rejects. `Edit_Result.hover_line` is the paragraph under the pointer (or -1): sh
 cost is only the visible lines'. Example: an editor of content-blocker filters colours Adblock
 syntax and underlines lines its engine would drop.
 
-**Rich text** (`src/ui/rich_text.odin`). `ui.rich_paragraph(id, runs, max_lines)` draws a paragraph of `Rich_Run`s:
+**Rich text** (`src/ui/rich_text.odin`). `ui.box_rich_runs(box)` gives a rich paragraph's runs as built, for a test or
+a tool that reads their styles (nil for any other box); `ui.box_text(box)` its words. `ui.rich_paragraph(id, runs, max_lines)` draws a paragraph of `Rich_Run`s:
 each run has its text and a `Rich_Style` (face, size, `bold`, `italic`, `code` (mono font, the theme's `code_bg`),
 colour, background, `underline`, `strike`, `link`). Lines break at the backend's opportunities computed on the whole
 text, so a word whose style changes in the middle is not broken there; "\n" always breaks; a word wider than the line is

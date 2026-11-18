@@ -6,6 +6,13 @@ import "../platform"
 
 // What a tool reads of a box from outside a build (devtools, tests): its text as shown, plain or rich. Between end_build
 // and the next begin_build (the frame memory it points into is freed then). Temp memory for a rich paragraph's text.
+// The runs of a rich paragraph's box, as built (nil: the box is no rich paragraph): what a test or a tool reads of its
+// styles, a highlight's background among them.
+box_rich_runs :: proc(b: ^Box) -> []Rich_Run {
+	if b == nil || b.custom != rich_draw || b.custom_user == nil { return nil }
+	return (^Rich_Draw)(b.custom_user).runs
+}
+
 box_text :: proc(b: ^Box) -> string {
 	if b == nil { return "" }
 	if b.custom == rich_draw && b.custom_user != nil {

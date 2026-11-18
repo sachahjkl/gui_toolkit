@@ -2,7 +2,7 @@
 	"id": "logs",
 	"name": "Log explorer",
 	"version": "1.0.0",
-	"api": 5,
+	"api": 6,
 	"main": "main.js",
 	"commands": [
 		{ "id": "errors", "label": "Show only the errors", "group": "Logs", "tags": ["filter", "level"] },

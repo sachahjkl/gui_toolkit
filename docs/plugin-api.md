@@ -1,6 +1,6 @@
 # The plugin API
 
-Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 5 of the API and accepts plugins written for levels 1 to 5. How a program turns plugins on: [plugins.md](plugins.md).
+Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 6 of the API and accepts plugins written for levels 1 to 6. How a program turns plugins on: [plugins.md](plugins.md).
 
 A plugin imports the API as an ES module, and its entry file exports `activate(context)`:
 
@@ -25,7 +25,7 @@ Level 1. Permission: none.
 | Argument | Type | |
 |---|---|---|
 | `id` | `string` | The command's id, as the manifest's `commands` declares it. |
-| `handler` | `() => void | Promise<void>` | Called with no argument when the command is chosen. It may return a promise. |
+| `handler` | `() => void \| Promise<void>` | Called with no argument when the command is chosen. It may return a promise. |
 
 ## toast
 
@@ -83,7 +83,7 @@ Level 3. Permission: none.
 
 | Argument | Type | |
 |---|---|---|
-| `handler` | `(id: string, value: string | number | boolean) => void | Promise<void>` |  |
+| `handler` | `(id: string, value: string \| number \| boolean) => void \| Promise<void>` |  |
 
 ## files
 
@@ -176,6 +176,10 @@ Level 2.
 |---|---|---|
 | `text` | `string` |  |
 | `weak` | `boolean`, optional | Drawn in the weak colour. |
+| `tone` | `Tone`, optional | Its colour, by what it says. Level 6. |
+| `mono` | `boolean`, optional | In the monospace face (a time, an id, a number that changes). Level 6. |
+| `icon` | `string`, optional | An icon before it. Level 6. |
+| `highlight` | `string \| string[]`, optional | Each occurrence of the word, or of each word, case aside (ASCII letters), marked as the find bar marks. Level 6. |
 
 ### `heading`
 
@@ -186,6 +190,7 @@ Level 2.
 | Field | Type | |
 |---|---|---|
 | `text` | `string` |  |
+| `icon` | `string`, optional | An icon before it. Level 6. |
 
 ### `button`
 
@@ -196,11 +201,12 @@ Level 2.
 | Field | Type | |
 |---|---|---|
 | `label` | `string` |  |
+| `icon` | `string`, optional | A glyph before its words. Level 6. |
 | `intent` | `Button_Intent`, optional |  |
 | `look` | `Button_Look`, optional | How it sits and its size. A program older than these fields shows a raised, medium button. |
 | `size` | `Button_Size`, optional |  |
 | `disabled` | `boolean`, optional |  |
-| `onClick` | `() => void | Promise<void>`, optional | Called when it is pressed. |
+| `onClick` | `() => void \| Promise<void>`, optional | Called when it is pressed. |
 
 ### `row`
 
@@ -244,8 +250,9 @@ Level 2.
 |---|---|---|
 | `value` | `string`, optional |  |
 | `placeholder` | `string`, optional |  |
-| `onChange` | `(value: string) => void | Promise<void>`, optional | Called with the text at each change. |
-| `onSubmit` | `(value: string) => void | Promise<void>`, optional | Called with the text when Enter is pressed. |
+| `icon` | `string`, optional | A glyph at its start, inside it ("search"). Level 6. |
+| `onChange` | `(value: string) => void \| Promise<void>`, optional | Called with the text at each change. |
+| `onSubmit` | `(value: string) => void \| Promise<void>`, optional | Called with the text when Enter is pressed. |
 
 ### `check`
 
@@ -257,7 +264,7 @@ Level 2.
 |---|---|---|
 | `label` | `string` |  |
 | `checked` | `boolean`, optional |  |
-| `onChange` | `(value: boolean) => void | Promise<void>`, optional | Called with its new state when the person changes it. |
+| `onChange` | `(value: boolean) => void \| Promise<void>`, optional | Called with its new state when the person changes it. |
 
 ### `switch`
 
@@ -269,7 +276,8 @@ Level 2.
 |---|---|---|
 | `label` | `string` |  |
 | `on` | `boolean`, optional |  |
-| `onChange` | `(value: boolean) => void | Promise<void>`, optional | Called with its new state when the person changes it. |
+| `icon` | `string`, optional | A glyph before it. Level 6. |
+| `onChange` | `(value: boolean) => void \| Promise<void>`, optional | Called with its new state when the person changes it. |
 
 ### `separator`
 
@@ -291,6 +299,18 @@ Level 5.
 | `visibleRows` | `number`, optional | How many rows high the list is (10 when absent). |
 | `row` | `(index: number) => Node` | Each row's node. |
 
+### `badge`
+
+A short state, a count or a kind, in the colour of its tone: a mark, not a button (it takes no press).
+
+Level 6.
+
+| Field | Type | |
+|---|---|---|
+| `text` | `string` |  |
+| `tone` | `Tone`, optional |  |
+| `icon` | `string`, optional |  |
+
 ## The explorer's file
 
 `plugin-api/api.json` describes the same API for the site's explorer, which reads nothing else. Its shape:
@@ -299,7 +319,7 @@ Level 5.
 - `modules`: each with its `name` and its `calls`; a call has `name`, `doc`, `level`, `capability` (`"None"`: no permission), `permission` (the manifest's word for it, `""` for none), `result` and `arguments`.
 - `types`: the objects and enums the calls and nodes name; an object has `fields`, an enum `values`.
 - `nodes`: each kind of node of a view, with `name` (its `kind` in JavaScript), `type`, `doc`, `level`, `container` and `fields`.
-- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional`, `state` and `doc`. A `state` field is kept by the host (a field's text, a box's state): what the person changed stays until the plugin has heard of it.
+- A field (of an argument list, an object or a node) has `name`, `type` (as TypeScript writes it), `optional`, `state`, `level` (the level that added it to its struct, `0` for the struct's own) and `doc`. A `state` field is kept by the host (a field's text, a box's state): what the person changed stays until the plugin has heard of it.
 
 The site's [API explorer](https://gt.sacha.house/plugins/api/) is made from this file by `tk site_build`, which fails when the file is missing or malformed.
 
@@ -356,6 +376,12 @@ One of `"medium"`, `"small"`, `"large"`.
 A step of the toolkit's spacing scale; `fill` takes the room left in a row.
 
 One of `"small"`, `"medium"`, `"large"`, `"fill"`.
+
+### `Tone`
+
+What a text's colour says, by the theme (level 6). `weak` is the old `weak: true`; `info` the accent's colour.
+
+One of `"plain"`, `"info"`, `"good"`, `"warn"`, `"bad"`, `"weak"`.
 
 ### `Files_Pick_Options`
 
