@@ -5,8 +5,11 @@ package theme_look_test
 
 import "core:fmt"
 import "core:math"
+import "core:sync"
 import "core:testing"
+import "core:time"
 import "gt:draw"
+import "gt:font"
 import "gt:testkit/session"
 import "gt:ui"
 
@@ -277,6 +280,40 @@ the_persons_family_wins_over_the_themes :: proc(t: ^testing.T) {
 	testing.expect(t, ui.state_text_face(s.state, .Interface) != themed, "the person's word wins")
 	ui.use_text_family(s.state, .Interface, "")
 	testing.expect_value(t, ui.state_text_face(s.state, .Interface), themed)
+}
+
+@(private = "file")
+Slow_Source :: struct { started, ended: bool }
+
+// A family's load that is still reading the fonts when its State goes: destroy waits for it, so the owner may free the
+// fonts once destroy returns (the Windows CI crashed at the exit of this package: a load outlived its session's fonts).
+@(test)
+destroy_waits_for_a_family_load :: proc(t: ^testing.T) {
+	fonts: font.State
+	font.init(&fonts)
+	defer font.destroy(&fonts)
+	theme: ui.Theme
+	ui.apply_palette(&theme, ui.palette_of("Midnight"))
+	defer ui.theme_destroy(&theme)
+	st: ui.State
+	ui.init(&st, &fonts, &theme)
+	slow: Slow_Source
+	st.text_source = {user = &slow, face = proc(user: rawptr, family: string) -> font.Font_Id {
+		w := (^Slow_Source)(user)
+		sync.atomic_store(&w.started, true)
+		time.sleep(300 * time.Millisecond)   // (a slow system lookup: the State goes meanwhile)
+		sync.atomic_store(&w.ended, true)
+		return 0
+	}}
+	ui.use_text_family(&st, .Interface, "A slow family")
+	start := time.tick_now()
+	for !sync.atomic_load(&slow.started) {
+		if time.tick_since(start) > 10 * time.Second { testing.fail_now(t, "the load never started") }
+		time.sleep(time.Millisecond)
+	}
+	ui.destroy(&st)
+	testing.expect(t, sync.atomic_load(&slow.ended), "destroy returned while the load still read the fonts")
+	testing.expect_value(t, sync.atomic_load(&st.font_jobs), 0)
 }
 
 ////////////////////////////////

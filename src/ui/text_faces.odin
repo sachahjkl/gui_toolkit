@@ -14,6 +14,7 @@ package ui
 import "base:runtime"
 import "core:log"
 import "core:strings"
+import "core:sync"
 import "../ascii"
 import "../font"
 
@@ -58,6 +59,7 @@ family_face_set :: proc(s: ^State, ff: ^Family_Face, family: string, source := F
 	ff.loading = true
 	job := new(Family_Face_Job, a)
 	job^ = {ff = ff, s = s, source = src, fonts = s.fonts, family = strings.clone(family, a), asked = ff.asked}
+	sync.atomic_add(&s.font_jobs, 1)
 	task(s, family_face_work, family_face_done, job, family_face_lost)
 }
 
@@ -70,11 +72,15 @@ Family_Face_Job :: struct {
 	family: string,   // (the job's: the Family_Face may ask another meanwhile)
 	asked:  u64,
 	id:     font.Font_Id,
+	worked: bool,   // its work ran (and counted itself out of State.font_jobs)
 }
 
 @(private = "file")
 family_face_work :: proc(d: rawptr) {
 	job := (^Family_Face_Job)(d)
+	// (the last read of fonts and of the State's counter: once it drops, destroy may return and the owner free both)
+	job.worked = true
+	defer sync.atomic_sub(&job.s.font_jobs, 1)
 	job.id = job.source.face(job.source.user, job.family)
 	if job.id == 0 || job.fonts == nil { return }
 	// (warmed here, off the interface's thread: font.styled_face loads a system face's bold from the disk)
@@ -100,6 +106,8 @@ family_face_done :: proc(d: rawptr, _: u64) {
 family_face_lost :: proc(d: rawptr) {
 	a := runtime.heap_allocator()
 	job := (^Family_Face_Job)(d)
+	// (refused before it ran: its work never counted itself out)
+	if !job.worked { sync.atomic_sub(&job.s.font_jobs, 1) }
 	delete(job.family, a)
 	free(job, a)
 }

@@ -382,6 +382,8 @@ State :: struct {
 	text_source: Font_Source,
 	text_chosen: [Text_Face]Family_Face,
 	text_themed: Family_Face,           // the interface's family the theme names (Theme_Font.family), under the person's
+	// family loads still reading `fonts` on a chore (atomic): destroy waits for them, as the owner frees `fonts` next
+	font_jobs:   i32,
 	text_serial: u64,
 	timers:      map[Key]Timer,
 	drag_payload: Drag_Payload,         // data stored at press time for the active drag (see drag_store / drag_load)
