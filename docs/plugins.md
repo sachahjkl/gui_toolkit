@@ -41,11 +41,13 @@ plugins.host_close(&app.plugins)
 |---|---|
 | `host_open(h, state, options)` | Starts the host. The folder is read on a chore at the first `host_build`. |
 | `host_build(h, palette)` | Each build: adds the palette's `plugin` source, applies what the plugins posted, and marks a plugin `Not_Responding` past the bound. It reads atomics only. |
-| `host_close(h)` | Stops every plugin and waits for their threads for at most 2 s. Call it before `ui.destroy`. |
+| `host_close(h)` | Stops every plugin and waits for their processes for at most 2 s, then kills the ones left. Call it before `ui.destroy`. |
 | `page_info(h)` | The Plugins page, a `prefs_page.Page_Info`: each plugin, its state, its switch, Stop, and Reload plugins. |
 | `run_command(h, id)` | Runs `plugin.<plugin id>.<command id>`, or `plugins.reload`. False: no such command, or its plugin cannot run now. |
 | `set_enabled(h, id, on)` | Turns a plugin on or off, and writes `plugins.toml` on a chore. |
-| `stop(h, id)` | Stops a plugin's runtime. The plugin is `Ready` again when its thread has ended. |
+| `stop(h, id)` | Stops a plugin's runtime; its process is killed when it has not ended 1 s later. The plugin is `Ready` again when its process has ended. |
+| `restart(h, id)` | A `Failed` plugin is `Ready` again: its next use starts a new process. A failed view's Restart calls it. |
+| `test_crash(h, id)`, `test_hang(h, id)` | A test's hooks: the plugin's process panics at its next turn, or waits there where no interrupt reaches it. |
 | `reload(h)` | Stops every runtime and reads the folder again. |
 | `state_of(h, id)`, `find(h, id)`, `host_plugins(h)`, `loaded(h)` | What the host knows, for a page or a test. |
 | `open_view(h, plugin_id, view_id)` | Opens a plugin's view among the window's views, at its manifest's place, and starts the plugin when it does not run. The palette's `plugin-view.<plugin id>.<view id>` items call it. |
@@ -59,7 +61,7 @@ plugins.host_close(&app.plugins)
 |---|---|
 | `program` | The program's folder, as `platform.user_dir` takes it (`"FromentSoftware/Papier"`). |
 | `program_id` | What a manifest's `"program"` must say. A manifest that names another program is refused. |
-| `folder`, `config_dir`, `state_dir` | The plugins' folder, the folder of `plugins.toml`, and the folder of the logs and markers. Each is `""` for the user's folder. |
+| `folder`, `config_dir`, `state_dir` | The plugins' folder, the folder of `plugins.toml`, and the folder of the logs. Each is `""` for the user's folder. |
 | `announcer` | Where a plugin's messages go. nil: the window's toasts. |
 | `bound_ms` | How long a message can run before its plugin is `Not_Responding` (0: 2000). |
 | `memory_limit` | A plugin's heap budget in bytes (0: 64 MB). |
@@ -71,8 +73,9 @@ plugins.host_close(&app.plugins)
 - The plugins: `<data>/<program>/plugins/<id>/`, each folder named as its plugin's id.
 - What the person decided: `<config>/<program>/plugins.toml`. A plugin is off until the person turns it on.
 - A plugin's log: `<state>/<program>/plugins/<id>.log`.
-- The marker of a crash: `<state>/<program>/plugins/inside-<pid>-<id>.txt`. The plugin's thread writes it while it runs
-  a message. A marker of a process that has ended makes its plugin `Suspended` at the next start.
+- A plugin's process: the program's own executable, started again with `--gt-plugin-host` at the plugin's first use.
+  The program's `main` needs nothing for it: `gt:plugins` takes that argument before `main` runs. Its standard input and
+  output are the plugin's channel to the program; its standard error is the program's.
 
 ## A plugin
 
@@ -115,7 +118,7 @@ A plugin imports `"gt"` and its own files (`"./lib/words.js"`), nothing else.
 ## A view
 
 A view's render returns a tree of nodes ([plugin-api.md](plugin-api.md), "Nodes"). The host writes it as a display
-list on the plugin's thread; the window replays the last list at each build with the toolkit's widgets. A click, a
+list in the plugin's process, which sends it to the program; the window replays the last list at each build with the toolkit's widgets. A click, a
 change or Enter is a message to the plugin: its handler runs, then the view renders again.
 
 ```js
@@ -155,12 +158,14 @@ release attaches `gt-runtime-windows-x64.zip`, with the JavaScript demos in its 
 
 ## What a plugin cannot do to the program
 
-- It runs on a thread of its own, with a runtime of its own, started at its first use. The interface's thread runs no
-  JavaScript and never waits for a plugin.
+- It runs in a process of its own, with a runtime of its own, started at its first use. The program runs no
+  JavaScript, and its interface's thread never waits for a plugin: it sends messages and replays the lists that come.
 - A handler that does not return makes the plugin `Not_Responding` after the bound. Stop interrupts it at its next loop
-  or call.
+  or call; a process that does not answer within 1 s is killed.
 - An exception that nothing catches goes to the plugin's log and shows one toast. The plugin goes on.
 - Past its memory budget, the plugin is `Failed` and its memory is freed.
+- A crash of its process (a bug of the engine, an abort) makes it `Failed`; the program goes on, and Restart starts a
+  new process. Three crashes in one run make it `Suspended` until the person turns it on.
 
 The states, as the Plugins page shows them: `Found`, `Refused`, `Off`, `Ready`, `Starting`, `Running`,
 `Not_Responding`, `Failed`, `Suspended`.

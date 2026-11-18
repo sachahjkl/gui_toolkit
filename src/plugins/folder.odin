@@ -1,26 +1,20 @@
 package tk_plugins
 
-// The plugins' folder, plugins.toml and the markers, read on a chore (the interface's thread makes no system call),
-// the result posted back whole: the plugins of a read replace those of the last.
+// The plugins' folder and plugins.toml, read on a chore (the interface's thread makes no system call), the result
+// posted back whole: the plugins of a read replace those of the last.
 
 import "base:runtime"
 import "core:fmt"
-import "core:os"
 import "core:slice"
-import "core:strconv"
 import "core:strings"
 import "core:sync"
 import "../fsx"
 import "../platform"
 import plugin_api "../plugin_api"
-import "../process"
 import "../ui"
 
 TOML_FILE :: "plugins.toml"
 TOML_MAX_BYTES :: 1 << 20
-// A marker's file name: inside-<pid>-<plugin id>.txt in the state folder.
-MARKER_PREFIX :: "inside-"
-MARKER_SUFFIX :: ".txt"
 
 @(private)
 Read_Job :: struct {
@@ -30,7 +24,6 @@ Read_Job :: struct {
 	// made by the chore
 	folder, toml_path, state_dir: string,
 	plugins:   [dynamic]^Plugin,
-	suspended_now: [dynamic]string,   // the plugins the last run of a process ended inside
 }
 
 // Drops the plugins (their runtimes stop) and reads the folder again. Interface thread.
@@ -54,8 +47,6 @@ read_job_free :: proc(j: ^Read_Job) {
 	context.allocator = runtime.heap_allocator()
 	for p in j.plugins { plugin_release(p) }
 	delete(j.plugins)
-	for s in j.suspended_now { delete(s) }
-	delete(j.suspended_now)
 	delete(j.program); delete(j.program_id); delete(j.folder_opt); delete(j.config_opt); delete(j.state_opt); delete(j.single)
 	delete(j.folder); delete(j.toml_path); delete(j.state_dir)
 	link_release(j.link)
@@ -82,7 +73,6 @@ read_work :: proc(data: rawptr) {
 		for k in suspended { delete(k) }
 		delete(suspended)
 	}
-	markers_read(j)
 	if j.single != "" {
 		single_read(j, suspended)
 		return
@@ -118,17 +108,14 @@ read_work :: proc(data: rawptr) {
 	}
 }
 
-// A plugin read: its log, its marker, its state from what the person decided and what the markers said.
+// A plugin read: its log, its state from what the person decided and what plugins.toml kept of its crashes.
 @(private)
 plugin_place :: proc(j: ^Read_Job, p: ^Plugin, on: bool, suspended: map[string]bool) {
 	id := p.manifest.id
 	if j.state_dir != "" && id_valid(id, false) {
 		p.log_path = strings.clone(fsx.path_join(j.state_dir, fmt.tprintf("%s.log", id)))
-		p.marker_path = strings.clone(fsx.path_join(j.state_dir, fmt.tprintf("%s%d-%s%s", MARKER_PREFIX, os.get_pid(), id, MARKER_SUFFIX)))
 	}
-	now_suspended := false
-	for s in j.suspended_now { now_suspended ||= s == id }
-	p.suspended = suspended[id] || now_suspended
+	p.suspended = suspended[id]
 	p.enabled = on && !p.suspended
 	switch {
 	case p.refused != "": p.state = .Refused
@@ -198,36 +185,6 @@ base_of :: proc(path: string) -> string {
 	return path[i + 1:]
 }
 
-// The markers of the state folder: one of a process that is gone (or whose id now names another process) names the
-// plugin it ended inside. It goes; another instance's, alive, stays.
-@(private)
-markers_read :: proc(j: ^Read_Job) {
-	if j.state_dir == "" { return }
-	own := u64(os.get_pid())
-	for f in fsx.list_files(j.state_dir, context.temp_allocator) {
-		if !strings.has_prefix(f.name, MARKER_PREFIX) || !strings.has_suffix(f.name, MARKER_SUFFIX) { continue }
-		path := fsx.path_join(j.state_dir, f.name)
-		text, ok := fsx.read_all(path, context.temp_allocator, 4096)
-		if !ok { continue }
-		pid, start: u64
-		plugin := ""
-		rest := string(text)
-		for line in strings.split_lines_iterator(&rest) {
-			key, _, value := strings.partition(line, ": ")
-			switch key {
-			case "pid":    pid, _ = strconv.parse_u64(value, 10)
-			case "start":  start, _ = strconv.parse_u64(value, 10)
-			case "plugin": plugin = value
-			}
-		}
-		if pid == 0 || pid == own { continue }   // (this process's own: a runtime of a reload that still ends)
-		now, alive := process.process_start_time(i32(pid))
-		if alive && now == start { continue }
-		if plugin != "" { append(&j.suspended_now, strings.clone(plugin)) }
-		_ = fsx.delete_file(path)
-	}
-}
-
 @(private)
 read_done :: proc(data: rawptr, word: u64) {
 	context.allocator = runtime.heap_allocator()
@@ -248,14 +205,6 @@ read_done :: proc(data: rawptr, word: u64) {
 	j.folder, j.toml_path, j.state_dir = "", "", ""
 	h.loaded = true
 	h.source.version += 1
-	if len(j.suspended_now) > 0 {
-		toml_write(h)
-		for id in j.suspended_now {
-			if p := find(h, id); p != nil {
-				say(h, .Warn, fmt.tprintf("%s is suspended", p.manifest.name), "The program ended while it ran. Turn it on again in the settings' Plugins page.")
-			}
-		}
-	}
 }
 
 // What plugins.toml says: the plugins turned on, and those suspended. Keys owned.

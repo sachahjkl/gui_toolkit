@@ -26,7 +26,8 @@ import "../ui"
 //	Ready -> Starting -> Running -> Ready      (stopped, reloaded)
 //	Running -> Not_Responding -> Ready         (stopped by the person)
 //	Running -> Failed                          (activate threw, memory limit)
-//	any -> Suspended                           (the program ended badly inside it)
+//	Running -> Failed -> Ready                 (its process crashed; Restart)
+//	any -> Suspended                           (its process crashed CRASHES_TO_SUSPEND times in a run)
 Plugin_State :: enum u8 {
 	Found,
 	Refused,
@@ -61,7 +62,7 @@ Host_Options :: struct {
 	program_id:   string,   // what a manifest's "program" must say ("": a manifest that names a program is refused)
 	folder:       string,   // the plugins' folder ("": user_dir(.Data, program)/plugins)
 	config_dir:   string,   // where plugins.toml is ("": user_dir(.Config, program))
-	state_dir:    string,   // the logs and the markers ("": user_dir(.State, program)/plugins)
+	state_dir:    string,   // the plugins' logs ("": user_dir(.State, program)/plugins)
 	// one plugin instead of the folder: its folder, or a lone .js file whose manifest is implied (gt-runtime). It is
 	// on from the start; `folder` is not read
 	single:       string,
@@ -152,6 +153,8 @@ host_close :: proc(h: ^Host) {
 		if all { break }
 		time.sleep(time.Millisecond)   // (the program's end: the window is gone, nothing waits for a frame)
 	}
+	// (a process that did not end in time does not outlive the program's interest in it)
+	for p in h.plugins { if p.alive && !sync.atomic_load(&p.ended) && p.ch != nil { channel_kill(p.ch) } }
 	sync.lock(&h.link.lock)
 	h.link.open = false
 	h.link.host = nil
@@ -273,9 +276,20 @@ set_enabled :: proc(h: ^Host, id: string, on: bool) {
 	toml_write(h)
 }
 
-// Stops a plugin's runtime (its JavaScript is interrupted at its next loop or call): Ready once its thread ended.
+// Stops a plugin's runtime (its JavaScript is interrupted at its next loop or call; its process is killed when that
+// does not end it within STOP_BOUND_MS): Ready once its process ended.
 stop :: proc(h: ^Host, id: string) {
 	if p := find(h, id); p != nil { plugin_stop(p) }
+}
+
+// A Failed plugin, Ready again: its next use starts a new process (its views' Restart). False: it is not Failed, or
+// its process has not ended yet.
+restart :: proc(h: ^Host, id: string) -> bool {
+	p := find(h, id)
+	if p == nil || p.state != .Failed || p.alive { return false }
+	p.state = p.enabled ? .Ready : .Off
+	h.source.version += 1
+	return p.enabled
 }
 
 // Reads the folder again: every runtime stops, the manifests and plugins.toml are read on a chore, and the commands are

@@ -60,6 +60,10 @@ page_build :: proc(user: rawptr, em: f32) {
 				ui.space(ui.CONTROL_GAP)
 				ui.next({width = ui.text_size(em * 0.6), height = ui.px(math.round(em * 1.8))})
 				if ui.button(fmt.tprintf("plugin_stop_%s", key), i18n.tr("Stop")).clicked { stop(h, p.manifest.id) }
+			} else if p.state == .Failed {
+				ui.space(ui.CONTROL_GAP)
+				ui.next({width = ui.text_size(em * 0.6), height = ui.px(math.round(em * 1.8))})
+				if ui.button(fmt.tprintf("plugin_restart_%s", key), i18n.tr("Restart")).clicked { _ = restart(h, p.manifest.id) }
 			}
 		}
 		why := p.state == .Refused ? p.refused : p.state == .Failed ? p.failure : ""

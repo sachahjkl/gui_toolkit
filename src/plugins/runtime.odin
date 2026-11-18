@@ -4,14 +4,12 @@ package tk_plugins
 // what the interface must know goes back as an Event (plugin.odin).
 
 import "core:fmt"
-import "core:os"
 import "core:strings"
 import "core:sync"
 import "core:time"
 import "../fsx"
 import js "../js"
 import plugin_api "../plugin_api"
-import "../process"
 import "../ui"
 
 // The names of the host's modules: the API, and the one that starts the plugin's entry.
@@ -56,12 +54,12 @@ Run :: struct {
 	boot_error: string,
 	toasted:    bool,                      // an uncaught exception was said once in this run
 	ended:      bool,                      // stopped or failed: the thread leaves its loop
-	marker:     string,                    // the marker's text
 }
 
+// The plugin's runtime in its process (child.odin): its start, then its turns until a Stop, a Quit or the end of the
+// program's channel.
 @(private)
 plugin_thread :: proc(p: ^Plugin) {
-	link := p.link
 	r := Run{p = p, serial = p.serial}
 	opened := run_open(&r)
 	free_all(context.temp_allocator)
@@ -77,8 +75,6 @@ plugin_thread :: proc(p: ^Plugin) {
 	}
 	run_close(&r)
 	event_post(p, r.serial, .Ended)
-	sync.atomic_store(&p.ended, true)
-	link_release(link)
 	plugin_release(p)
 }
 
@@ -110,16 +106,11 @@ run_open :: proc(r: ^Run) -> bool {
 	js.set_property_str(r.ctx, boot, "done", js.new_function(r.ctx, boot_done, "done", 1))
 	js.set_property_str(r.ctx, boot, "context", context_object(r))
 	r.boot = js.retain(r.rt, boot)
-	pid := u64(os.get_pid())
-	start, _ := process.process_start_time(i32(pid))
-	r.marker = fmt.aprintf("pid: %d\nstart: %d\nplugin: %s\n", pid, start, p.manifest.id)
 
-	turn_begin(r)
 	main := p.manifest.main
 	spec := strings.concatenate({BOOT_HEAD, quoted("./", main), BOOT_TAIL}, context.temp_allocator)
 	v := js.eval_source(r.ctx, spec, BOOT_MODULE, .module)
 	ok := !js.is_exception(v) && js.run_jobs(r.rt)
-	turn_end(r)
 	failure := ""
 	if !ok {
 		uncatchable := r.rt.uncatchable
@@ -143,7 +134,6 @@ run_open :: proc(r: ^Run) -> bool {
 
 @(private)
 run_close :: proc(r: ^Run) {
-	if r.marker != "" && r.p.marker_path != "" { _ = fsx.delete_file(r.p.marker_path) }
 	if r.rt != nil { js.engine_free(r.rt) }   // (its block goes whole: every value retained above with it)
 	for k in r.modules { delete(k) }
 	delete(r.modules)
@@ -155,14 +145,13 @@ run_close :: proc(r: ^Run) {
 	delete(r.rejections)
 	delete(r.gt_source)
 	delete(r.boot_error)
-	delete(r.marker)
 }
 
 // One message: a command's handler, a view's opening or a node's handler, the jobs they left, then the renders of the
-// views they made dirty. All of it counts as the message's time (Not_Responding).
+// views they made dirty. All of it counts as the message's time (the program's bound of Not_Responding counts from
+// the message's write to its Turn_Done).
 @(private)
 run_turn :: proc(r: ^Run, m: Message) {
-	turn_begin(r)
 	switch m.kind {
 	case .Command:
 		h, ok := r.handlers[m.command]
@@ -175,10 +164,15 @@ run_turn :: proc(r: ^Run, m: Message) {
 	case .View_Close: view_opened(r, m.view, false)
 	case .View_Event: view_event(r, m)
 	case .Setting:    setting_message(r, m)
-	case .Quit:
+	case .Test_Crash:
+		// (what an engine's bug does to a process: it ends here, and only here)
+		panic("plugins.test_crash: this plugin's process was asked to crash")
+	case .Test_Hang:
+		// (a host procedure stuck in the system: the interrupt flag is never read, only a kill ends it)
+		for { time.sleep(time.Second) }
+	case .Quit, .Stop:   // (the child's reader takes them: never queued for a turn)
 	}
 	if !r.ended { renders(r) }
-	turn_end(r)   // (before the post: the interface reads the time's end as the turn's)
 	if !r.ended { event_post(r.p, r.serial, .Turn_Done) }
 }
 
@@ -191,20 +185,6 @@ call_settled :: proc(r: ^Run, f: js.Value, args: []js.Value) {
 	} else {
 		rejections_report(r)
 	}
-}
-
-// The message's time begins (the bound of Not_Responding counts from it), and the marker says the process is inside
-// the plugin.
-@(private)
-turn_begin :: proc(r: ^Run) {
-	sync.atomic_store(&r.p.busy_since, now_ms())
-	if r.p.marker_path != "" { _ = fsx.write_atomic(r.p.marker_path, transmute([]u8)r.marker) }
-}
-
-@(private)
-turn_end :: proc(r: ^Run) {
-	if r.p.marker_path != "" { _ = fsx.delete_file(r.p.marker_path) }
-	sync.atomic_store(&r.p.busy_since, 0)
 }
 
 // The exception pending after a call: a Stop (the interrupt), the memory limit (Failed), or the plugin's own error

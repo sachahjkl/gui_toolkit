@@ -1,12 +1,13 @@
 package tk_plugins
 
-// A plugin: what the interface's thread knows of it, its queue of messages, and the words its thread shares (the stop
-// flag the engine's interrupt hook reads, the time its message began). Counted: the host's, its thread's, each post's.
+// A plugin: what the interface's thread knows of it, its queue of messages, and the words its process's threads share
+// with it (the program's sender and reader: channel.odin). The same struct is the plugin inside its process
+// (child.odin), where `out` is set, the queue is read by the plugin's thread and `stop` is the engine's interrupt flag.
+// Counted: the host's, each thread's, each post's.
 
 import "base:runtime"
 import "core:strings"
 import "core:sync"
-import "core:thread"
 import config "../config"
 import plugin_api "../plugin_api"
 import "../ui"
@@ -19,23 +20,26 @@ Plugin :: struct {
 	failure:   string,      // why it failed last (owned)
 	state:     Plugin_State,
 	enabled:   bool,        // plugins.toml says it is on
-	suspended: bool,        // the program ended inside it: off until the person turns it on
-	alive:     bool,        // its thread runs (from plugin_start to its Ended post)
+	suspended: bool,        // its process crashed CRASHES_TO_SUSPEND times: off until the person turns it on
+	crashes:   int,         // its process's crashes in this run of the program
+	alive:     bool,        // its process runs (from plugin_start to its Ended post)
 	dropped:   bool,        // the host let go of it (reload, close): its posts change nothing
 	host:      ^Host,       // read only while !dropped
-	serial:    u64,         // its runtime's: a post of an older runtime is dropped
-	// set before its thread starts, read by it (owned)
+	serial:    u64,         // its process's: a post of an older process is dropped
+	// set before its process starts, read by the sender (owned)
 	folder:      string,    // its folder, absolute
 	log_path:    string,
-	marker_path: string,
 	memory_limit: i64,
-	settings_start: []Setting_Now,   // its settings' values when its thread starts (heap: the thread takes and frees them)
-	link:        ^Host_Link,   // (counted while its thread runs: the thread lets go of it as it ends)
-	// shared with its thread
+	settings_start: []Setting_Now,   // its settings' values when its process starts (heap: the sender sends and frees them)
+	link:        ^Host_Link,   // (counted while its process runs: the last of its threads lets go of it)
+	ch:          ^Channel,     // its process now (nil: none started yet)
+	// shared with its threads
 	queue:      Queue,
-	stop:       bool,       // (atomic) read by the engine's interrupt hook: true unwinds the script
-	busy_since: i64,        // (atomic) now_ms when its thread took the message it runs; 0: waiting
-	ended:      bool,       // (atomic) its thread left the engine for good
+	stop:       bool,       // (atomic) the program: a Stop was asked; the child: the engine's interrupt flag
+	busy_since: i64,        // (atomic) now_ms since the oldest message no turn answered; 0: none
+	ended:      bool,       // (atomic) its process ended and was read for good
+	// the child's only: where its events go (nil in the program)
+	out:        ^Child_Out,
 }
 
 @(private)
@@ -51,12 +55,15 @@ plugin_release :: proc(p: ^Plugin) {
 	context.allocator = runtime.heap_allocator()
 	manifest_destroy(&p.manifest)
 	delete(p.refused); delete(p.failure)
-	delete(p.folder); delete(p.log_path); delete(p.marker_path)
+	delete(p.folder); delete(p.log_path)
+	for s in p.settings_start { setting_now_free(s) }
+	delete(p.settings_start)
+	if p.ch != nil { channel_release(p.ch) }
 	queue_destroy(&p.queue)
 	free(p)
 }
 
-// Its thread and runtime, now (its first use). Interface thread.
+// Its process and runtime, now (its first use): started by its sender's thread. Interface thread.
 @(private)
 plugin_start :: proc(h: ^Host, p: ^Plugin) {
 	p.serial += 1
@@ -70,29 +77,28 @@ plugin_start :: proc(h: ^Host, p: ^Plugin) {
 	p.settings_start = settings_snapshot(h, p)
 	p.link = h.link
 	sync.atomic_add(&h.link.refs, 1)
-	sync.atomic_add(&p.refs, 1)
-	c := runtime.default_context()
-	c.allocator = runtime.heap_allocator()
-	t := thread.create_and_start_with_poly_data(p, plugin_thread, init_context = c, self_cleanup = true)
-	if t == nil {
+	if !channel_start(p) {
 		// (no thread to be had: the plugin is said failed, as an activate that threw)
 		p.alive = false
 		for s in p.settings_start { setting_now_free(s) }
 		delete(p.settings_start, runtime.heap_allocator())
+		p.settings_start = nil
 		p.state = .Failed
 		delete(p.failure)
-		p.failure = strings.clone("no thread could be started for it")
+		p.failure = strings.clone("no thread could be started for its process")
 		link_release(h.link)
-		sync.atomic_sub(&p.refs, 1)
 	}
 }
 
-// Stop: the flag for the interrupt hook, and Quit for a thread that waits on its queue. Interface thread.
+// Stop: the child's interrupt flag first (ahead of what waits in the queue), then Quit; a child still there after
+// STOP_BOUND_MS is killed. Interface thread.
 @(private)
 plugin_stop :: proc(p: ^Plugin) {
 	if !p.alive { return }
 	sync.atomic_store(&p.stop, true)
+	queue_push(p, {kind = .Stop}, front = true)
 	queue_push(p, {kind = .Quit})
+	stop_bound(p)
 }
 
 ////////////////////////////////
@@ -106,6 +112,9 @@ Message_Kind :: enum u8 {
 	View_Close,   // `view` is closed: no render until it opens again
 	View_Event,   // a node of `view` was used: `key`, `event`, and `text`, `flag`, `serial` for a change
 	Setting,      // the setting `key` changed: its kind in `setting`, its value in `flag`, `number` or `text`
+	Stop,         // the child's reader raises the interrupt flag at once (it is read while a script runs)
+	Test_Crash,   // the child's runtime panics at this turn (test_crash)
+	Test_Hang,    // the child's runtime waits for ever outside the engine, where no interrupt reaches it (test_hang)
 }
 
 // What happened to a node of a view: the name of the field of its kind's struct that is called (plugin_api's nodes).
@@ -140,17 +149,18 @@ Queue :: struct {
 	messages: [dynamic]Message,
 }
 
+// `front`: before what waits (a Stop).
 @(private)
-queue_push :: proc(p: ^Plugin, m: Message) {
+queue_push :: proc(p: ^Plugin, m: Message, front := false) {
 	context.allocator = runtime.heap_allocator()
 	q := &p.queue
 	sync.lock(&q.lock)
-	append(&q.messages, m)
+	if front { inject_at(&q.messages, 0, m) } else { append(&q.messages, m) }
 	sync.unlock(&q.lock)
-	sync.signal(&q.came)
+	sync.broadcast(&q.came)
 }
 
-// The next message, waiting for it (the plugin's thread only).
+// The next message, waiting for it (the plugin's thread, in its process).
 @(private)
 queue_take :: proc(p: ^Plugin) -> Message {
 	q := &p.queue
@@ -175,7 +185,7 @@ queue_destroy :: proc(q: ^Queue) {
 }
 
 ////////////////////////////////
-// What a plugin's thread posts
+// What a plugin's process says
 
 @(private)
 Event_Kind :: enum u8 {
@@ -183,8 +193,9 @@ Event_Kind :: enum u8 {
 	Turn_Done,   // a message ran: back from Not_Responding
 	Failed,      // activate threw, or the memory limit: `text`
 	Toast,       // toast.show, or an uncaught exception's one toast: `title`, `text`, `toast`
-	Ended,       // its thread left the engine: Ready (or Off, or Failed stays)
+	Ended,       // its runtime ended: Ready (or Off, or Failed stays)
 	List,        // a view's new display list: `title` is the view's id, `list` the list
+	Crashed,     // its process ended with no word of its runtime (the program's reader says it): `text`
 }
 
 @(private)
@@ -198,9 +209,17 @@ Event :: struct {
 	list:   ^plugin_api.List,   // (owned until a view's record takes it)
 }
 
-// Posts an event of `p`'s runtime `serial` (the plugin's thread). Lost when the host is closed.
+// An event of the plugin's runtime (its thread, inside its process): written to the program. `serial` is the
+// program's to set (the reader's).
 @(private)
 event_post :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil) {
+	child_event(p, kind, title, text, toast, list)
+}
+
+// An event of the plugin's process `serial`, posted to the interface's thread (the program's reader and sender).
+// Lost when the host is closed. Takes `list`.
+@(private)
+event_deliver :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil) {
 	context.allocator = runtime.heap_allocator()
 	e := new(Event)
 	e^ = {p = p, serial = serial, kind = kind, toast = toast, title = strings.clone(title), text = strings.clone(text), list = list}
@@ -237,6 +256,20 @@ event_run :: proc(data: rawptr, word: u64) {
 		p.failure = strings.clone(e.text)
 		h.source.version += 1
 		say(h, .Bad, fmt_failed(p.manifest.name), e.text)
+	case .Crashed:
+		p.crashes += 1
+		delete(p.failure)
+		p.failure = strings.clone(e.text)
+		h.source.version += 1
+		if p.crashes >= CRASHES_TO_SUSPEND {
+			// (it crashes each time it runs: it stays off until the person turns it on again, plugins.toml keeps it)
+			p.state, p.suspended, p.enabled = .Suspended, true, false
+			toml_write(h)
+			say(h, .Bad, strings.concatenate({p.manifest.name, " is suspended"}, context.temp_allocator), "Its process crashed three times. Turn it on again in the settings' Plugins page.")
+		} else {
+			p.state = .Failed
+			say(h, .Bad, fmt_failed(p.manifest.name), e.text)
+		}
 	case .Toast:
 		say(h, e.toast, e.title != "" ? e.title : e.text, e.title != "" ? e.text : "")
 	case .Ended:

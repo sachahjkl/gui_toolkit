@@ -255,7 +255,8 @@ view_status :: proc(h: ^Host, r: ^View_Record, em: f32) {
 	switch {
 	case p == nil:                   words = i18n.tr("This plugin is gone.")
 	case p.state == .Not_Responding: words, button = i18n.tr("Not responding."), i18n.tr("Stop")
-	case p.state == .Failed:         words = p.failure
+	case p.state == .Failed:         words, button = p.failure, p.alive ? "" : i18n.tr("Restart")
+	case p.state == .Suspended:      words = i18n.tr("Suspended: its process crashed again and again. Turn it on in the settings' Plugins page.")
 	case !p.alive && r.list != nil:  words, button = i18n.tr("Stopped."), i18n.tr("Start")
 	}
 	if words == "" { return }
@@ -268,7 +269,11 @@ view_status :: proc(h: ^Host, r: ^View_Record, em: f32) {
 		if button != "" {
 			ui.space(ui.CONTROL_GAP)
 			if ui.button("pv_status_act", button).clicked {
-				if p.state == .Not_Responding { plugin_stop(p) } else { _ = view_tell_open(h, r) }
+				switch p.state {
+				case .Not_Responding: plugin_stop(p)
+				case .Failed:         if restart(h, p.manifest.id) { _ = view_tell_open(h, r) }
+				case .Found, .Refused, .Off, .Ready, .Starting, .Running, .Suspended: _ = view_tell_open(h, r)
+				}
 			}
 		}
 	}

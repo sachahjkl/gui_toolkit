@@ -13,6 +13,7 @@ import plugin_api "../plugin_api"
 settings_take :: proc(r: ^Run) {
 	for s in r.p.settings_start { r.settings[s.id] = s }   // (the keys are the values' ids: one allocation each)
 	delete(r.p.settings_start)
+	r.p.settings_start = nil   // (the runtime's now: plugin_release frees what is left there)
 }
 
 @(private)

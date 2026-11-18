@@ -251,7 +251,7 @@ Found -> Off -> Ready   (turned on, granted; contributions registered, no runtim
 Ready -> Starting -> Running -> Ready      (stopped, reloaded)
 Running -> Not_Responding -> Ready         (stopped by the person or by the bound)
 Running -> Failed                          (activate threw, memory limit)
-any -> Suspended                           (the program ended badly inside it)
+any -> Suspended                           (its process crashed three times in a run)
 ```
 
 Containment:
@@ -403,11 +403,9 @@ These points were open in the design and are decided by the code:
   keymap come with slice 7.
 - **`plugins.toml`** is the program's configuration folder's, written on a chore, read with the folder: a table
   `[enabled]` of `<id> = true`. A plugin absent from it is off.
-- **The marker of a crash inside a plugin** is `<state>/plugins/inside-<pid>.txt`: the plugin's thread writes it (the
-  process id, its start, the plugin's id) before it enters the engine for a message and removes it after. The folder's
-  chore reads the markers: one whose process is gone (or whose id names another process now) makes its plugin
-  `Suspended`, then goes. A marker of a process that still runs is another instance's and is left. Writing in
-  `gt:crash`'s own session file was refused: that file belongs to `gt:crash`, written once a session.
+- **The marker of a crash inside a plugin** (`<state>/plugins/inside-<pid>-<id>.txt`) was removed when the plugin
+  host moved to a process of its own: a crash of the engine no longer ends the program (see "The plugin host in its own
+  process").
 - **The plugin's log** is `<state>/plugins/<id>.log`, appended on the plugin's thread.
 - **Not_Responding** is read on the interface's thread from one atomic word, the time its thread took its message
   (0: waiting). When a message goes, a chore is timed for the bound and posts a call that wakes the window: a plugin
@@ -502,5 +500,46 @@ plugin's field, a key twice, a handler that never returns, a lone file), gt-runt
 `examples/js/todo`, the settings (`tests/plugins/settings_test.odin`). Left: lazy lists (slice 5), the nodes the first
 real plugins ask for, capabilities (slice 3, with the plugin host in its own process first), a program's `app`
 module, palette sources and menus.
+
+## As built: the plugin host in its own process
+
+Decided with the user: a plugin comes from a link or a path, so the host moves to a process of its own before the
+capabilities. Written on 2026-11-18.
+
+- **One process per plugin, started at its first use.** A crash, a hang that only a kill ends, memory taken: each is
+  one plugin's, and Stop's kill ends that plugin alone. The cost is a process per plugin in use (a few MB, a start of a
+  few ms on Linux, tens on Windows); a plugin that is not used costs its manifest, as before. Refused: one process for
+  every plugin of a program: a crash of one is every plugin's crash, and a kill to end one hang ends them all.
+- **The program's own executable, started again with a hidden argument** (`--gt-plugin-host`). An `@(init)` of
+  `gt:plugins` sees it before the program's `main`, runs the one plugin the first frame names, and ends the process:
+  the program's window, settings and files are never opened there. So a program needs no line in its `main`, a test
+  program is a plugin host too (the tests cross a real process boundary), and there is no second binary to ship, sign
+  and install. The start is the system's (an executable of 30 MB is mapped, not read) plus the toolkit's `@(init)`s,
+  which build constant tables. Refused: a small dedicated executable: one more file per program and per platform, kept
+  at the program's version, and a test program could not host its plugins.
+- **The child's standard input and output are the channel** (`os.pipe`, `os.process_start`: the same calls on both
+  systems). No socket: nothing has a name another process can find, no port, no path to clean. A frame is a magic word,
+  a length, a kind and its bytes (`wire.odin`): the start, a message, an event. A display list crosses node by node, its
+  structs field by field by the declarations (`plugin_api/wire.odin`), and the reader checks every count and every
+  enum's value before the replay sees it. The standard error stays the program's, for a panic's words.
+- **Two threads of the program per process**: a sender, which starts the process (`os.process_start` is not safe on two
+  threads at once: `start_lock`) and writes the plugin's queue; a reader, which posts the events as the plugin's thread
+  did and reads the process's end. The interface's thread pushes messages and reads atomics, as before.
+- **Not_Responding counts from the write of a message to its Turn_Done.** A message written while none waits starts the
+  time; each Turn_Done starts it again for the next one, or ends it.
+- **Stop**: the child's reader raises the interrupt flag at once (it reads while the plugin's thread runs a script);
+  a child whose runtime has not ended `STOP_BOUND_MS` (1 s) later is killed. A kill after a Stop makes the plugin Ready,
+  not Failed: the person asked for its end.
+- **A crash** (the process's output ends with no `Ended`, or a frame that cannot be read) makes the plugin Failed with
+  the exit code; its views say so with Restart (`restart`). Three crashes in one run make it Suspended, kept in
+  `plugins.toml` until the person turns it on. The markers of slice 1 went: they told a crash of the whole program
+  inside a plugin, which cannot happen any more; a program killed takes its children with it (their input ends), which
+  is no plugin's fault.
+- **Tests' hooks**: `test_crash` panics in the child's runtime (what an engine's bug does), `test_hang` waits there
+  where no interrupt is read.
+- **What this does not do yet**: the child runs with the person's rights, as the program does. The capabilities are
+  still the bridge's checks, now in the child; an exploit of the engine escapes them to the person's rights, no more
+  to the program's memory. A sandbox of the system (seccomp, an AppContainer) is later, if strangers' plugins become
+  common.
 
 Still open: a plugin folder shared by all the vendor's programs (refused for now).
