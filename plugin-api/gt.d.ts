@@ -1,4 +1,4 @@
-// The module "gt" of a plugin, level 7. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
+// The module "gt" of a plugin, level 8. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
 declare module "gt" {
 	/** How a toast looks. */
 	export type Toast_Kind = "info" | "good" | "warn" | "bad";
@@ -174,7 +174,7 @@ declare module "gt" {
 		key?: string | number;
 	}
 
-	/** A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content changes: the rows kept are dropped and asked again (an answer for an older version is dropped). */
+	/** A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content changes: the rows kept are dropped and asked again (an answer for an older version is dropped). It has an active row, the program's: Up, Down, Page Up, Page Down, Home and End move it while the list has the keyboard, and a press on a row makes it active. */
 	export interface Lazy_List_Node {
 		kind: "list";
 		/** Unique in the view: what the host knows the node by between two renders. */
@@ -189,6 +189,8 @@ declare module "gt" {
 		visibleRows?: number;
 		/** Each row's node. */
 		row: (index: number) => Node;
+		/** Called with the active row's index when the person presses Enter on it, or double-clicks a row. A row not answered yet can be activated too. (level 8) */
+		onActivate?: (index: number) => void | Promise<void>;
 	}
 
 	/** What the system's dialog of files.pick offers. */

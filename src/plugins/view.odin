@@ -442,14 +442,14 @@ control :: proc(r: ^View_Record, key: string) -> ^Control {
 
 // A node was used: a message to the plugin. A plugin that does not run hears nothing (the view says Stopped, Start).
 @(private)
-view_send :: proc(r: ^View_Record, key: string, event: View_Event, text := "", flag := false, is_flag := false, serial: u64 = 0) {
+view_send :: proc(r: ^View_Record, key: string, event: View_Event, text := "", flag := false, is_flag := false, serial: u64 = 0, number: f64 = 0) {
 	context.allocator = runtime.heap_allocator()
 	h := r.host
 	p := find(h, r.plugin_id)
 	if p == nil || !p.alive || !r.told_open { return }
 	queue_push(p, Message{
 		kind = .View_Event, view = strings.clone(r.view_id), key = strings.clone(key), event = event,
-		text = strings.clone(text), flag = flag, is_flag = is_flag, serial = serial,
+		text = strings.clone(text), flag = flag, is_flag = is_flag, serial = serial, number = number,
 	})
 	wake_after(h, h.o.bound_ms + WAKE_MARGIN_MS)
 }

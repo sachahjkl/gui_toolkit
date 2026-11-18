@@ -170,8 +170,9 @@ Message_Kind :: enum u8 {
 }
 
 // What happened to a node of a view: the name of the field of its kind's struct that is called (plugin_api's nodes).
+// onActivate: a lazy list's active row, its index in the message's `number` (level 8).
 @(private)
-View_Event :: enum u8 { onClick, onChange, onSubmit }
+View_Event :: enum u8 { onClick, onChange, onSubmit, onActivate }
 
 @(private)
 Message :: struct {
@@ -185,7 +186,7 @@ Message :: struct {
 	is_flag: bool,     // the change is a box's (`flag`), not a field's (`text`)
 	serial:  u64,      // a change's: the person's changes of this key so far (the replay's Control.changes)
 	setting: config.Kind,
-	number:  f64,      // an Int or Float setting's value
+	number:  f64,      // an Int or Float setting's value; a lazy list's row for onActivate
 	rows:    Rows_Ask, // a lazy list's ask
 }
 

@@ -51,7 +51,7 @@ settings_register :: proc(h: ^Host) {
 				if config.entry(prefs, r).def.kind != s.kind { continue }   // (see above: the registry asserts on a new kind)
 			}
 			d := config.Def{
-				// (in the language in use when the folder is read: a change of language applies at the next read)
+				// (in the language in use now; settings_label gives them the next language's words)
 				name = strings.clone(name, a), title = strings.clone(manifest_tr(&p.manifest, s.title), a), description = strings.clone(manifest_tr(&p.manifest, s.description), a),
 				kind = s.kind, default = s.default, min = s.min, max = s.max, bounded = s.bounded,
 			}
@@ -64,6 +64,41 @@ settings_register :: proc(h: ^Host) {
 			append(&defs, d)
 		}
 		config.register(prefs, defs[:])
+	}
+	// (a setting registered by an earlier read keeps its first Def: register does nothing for a known name, so the
+	// words of a manifest read again come from here)
+	settings_label(h)
+}
+
+// The titles and descriptions of the plugins' settings in the registry, in the language in use: after a read, and at
+// each change of language (language_follow), never per build. The registry has no call to relabel a definition, but
+// the Def of a plugin's setting is this package's own (settings_register cloned its strings on the heap), so its two
+// strings are replaced in place. The words replaced are kept until the next relabel: a widget may hold a string of
+// the build before for one build. Interface thread.
+@(private)
+settings_label :: proc(h: ^Host) {
+	prefs := h.o.prefs
+	if prefs == nil { return }
+	a := runtime.heap_allocator()
+	for old in h.labels_retired { delete(old, a) }
+	clear(&h.labels_retired)
+	for p in h.plugins {
+		if p.refused != "" || len(p.manifest.settings) == 0 { continue }
+		for s in p.manifest.settings {
+			r := config.ref_of(prefs, setting_pref(p.manifest.id, s.id))
+			if r == config.NO_REF { continue }
+			d := &config.entry(prefs, r).def
+			if d.kind != s.kind { continue }   // (another kind's Def, kept by the registry: settings_register)
+			title, description := manifest_tr(&p.manifest, s.title), manifest_tr(&p.manifest, s.description)
+			if d.title != title {
+				append(&h.labels_retired, d.title)
+				d.title = strings.clone(title, a)
+			}
+			if d.description != description {
+				append(&h.labels_retired, d.description)
+				d.description = strings.clone(description, a)
+			}
+		}
 	}
 }
 

@@ -37,6 +37,7 @@ language_follow :: proc(h: ^Host) {
 		if p.alive && !p.dropped { queue_push(p, Message{kind = .Language, text = strings.clone(tag, runtime.heap_allocator())}) }
 	}
 	h.source.version += 1   // (the plugins' palette items: their labels)
+	settings_label(h)       // (the registry's titles of the plugins' settings: once per change, not per build)
 }
 
 // The language's tag a plugin's code reads (`context.language`): the toolkit's, "en" for English.
