@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.327.0] - 2026-11-18 23:51
+
+### Changed
+- **`ui.find_is_open(s, view = 0)` takes the window's State**, as `find_open` and `find_close` do: a program asks it between two builds, for any window, and closes the find when a panel closes without a flag of its own. The form without a State is gone: pass `s`.
+
+### Fixed
+- **A jump to a far match ends with the match in view**: `ui.find_set_current`, a step or a revealed part over rows a lazy column never built no longer stops where the match stood before those rows were measured (the top of the view, the match below it). The view follows the match at each build until it rests with the match inside, for at most `ui.FIND_SETTLE_BUILDS` builds; a wheel turn or a drag of the scroll bar's thumb ends it.
+
 ## [0.326.0] - 2026-11-18 23:00
 
 ### Added
@@ -4587,6 +4595,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.327.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.327.0
 [0.326.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.326.0
 [0.325.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.325.0
 [0.324.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.324.0
