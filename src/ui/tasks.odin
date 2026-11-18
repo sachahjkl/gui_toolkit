@@ -121,11 +121,15 @@ task_run :: proc(d: rawptr) {
 	if t.work != nil { t.work(t.data) }
 	if t.done == nil { task_end(t, true); return }
 	posted := false
-	sync.lock(&t.box.lock)
+	// (the box held here, not read through t: once posted, the answer may run on the interface's thread and free t
+	// before this thread unlocks; the box lives on, the State's reference to it waits for this lock in task_box_shut)
+	box := t.box
+	sync.lock(&box.lock)
 	// (the task itself is posted, not its data: an answer still queued when the State goes reaches task_dropped through
 	// pq_drop, and `lost` frees the data; posting `done` alone left that data to a queue that knows nothing of it)
-	if t.box.s != nil { posted = post_state(t.box.s, task_answer, t) }
-	sync.unlock(&t.box.lock)
+	if box.s != nil { posted = post_state(box.s, task_answer, t) }
+	sync.unlock(&box.lock)
+	// (t is read again only when it was not posted: then nothing else has it)
 	if !posted { task_end(t, false) }
 }
 
