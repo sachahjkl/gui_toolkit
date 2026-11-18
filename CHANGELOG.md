@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.310.0] - 2026-11-18 05:05
+
+### Added
+- **`Vlist_Rows.guessed`**: the first build of a virtual list says that its rows are a guess made from the window's
+height, and asks for the next build, which has the real rows. A program that fetches rows for a list waits for it
+instead of fetching more than the list shows.
+- **Lazy lists in a plugin's view (plugin API level 5)**: a `list` node shows up to a million rows and asks the plugin
+only for those in view and a margin, as the person scrolls, with `row(i)`. A row not answered yet shows a placeholder,
+a slow plugin leaves the window scrolling, and a new `version` asks the rows again. `plugins.list_info` and
+`plugins.list_scroll_to` read and scroll such a list. A plugin's own key can no longer hold `~`.
+
 ## [0.309.0] - 2026-11-18 02:38
 
 ### Added
@@ -4338,6 +4349,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.310.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.310.0
 [0.309.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.309.0
 [0.308.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.308.0
 [0.307.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.307.0
