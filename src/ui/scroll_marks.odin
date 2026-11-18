@@ -212,7 +212,7 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 	// (the find over this view: opened, or closed when it is open there)
 	finding := find_is_open(view.key)
 	if sig.pointer_clicked {
-		if finding { find_close(); s.focus_key = hb.key } else { find_open(view.key) }
+		if finding { find_close(s); s.focus_key = hb.key } else { find_open(s, view.key) }
 	}
 
 	// the pointer on the bar: the mark under it; a press on one goes there (the bar left that press to it: scrollbar_press)
@@ -239,7 +239,7 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 		typed := make([dynamic]rune, context.temp_allocator)
 		for c in s.typed { if c >= ' ' && c != 0x7f && .Ctrl not_in s.typed_mods && .Alt not_in s.typed_mods { append(&typed, c) } }
 		if len(typed) > 0 {
-			find_open(view.key, utf8.runes_to_string(typed[:], context.temp_allocator))
+			find_open(s, view.key, utf8.runes_to_string(typed[:], context.temp_allocator))
 			clear(&s.typed)
 		}
 	}

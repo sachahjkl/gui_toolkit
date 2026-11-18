@@ -821,7 +821,7 @@ find_in_page :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(f)) { return }
 	defer close(f)
 	frame(f, nil, build_find, nil)
-	ui.find_open(ui.box_at("###page").key, "fox")
+	ui.find_open(&f.s, ui.box_at("###page").key, "fox")
 	for _ in 0 ..< 2 { frame(f, nil, build_find, nil) }
 	testing.expect_value(t, ui.find_count(), 4)
 	ms := ui.find_matches()
@@ -834,7 +834,7 @@ find_in_page :: proc(t: ^testing.T) {
 		testing.expect(t, m.rect.min.y >= b.rect.min.y - 1 && m.rect.max.y <= b.rect.max.y + 1, "inside its box")
 	}
 	testing.expect(t, ms[0].rect.min.x < ms[1].rect.min.x, "reading order")
-	ui.find_close()
+	ui.find_close(&f.s)
 	frame(f, nil, build_find, nil)
 	testing.expect_value(t, ui.find_count(), 0)
 }
@@ -1156,7 +1156,7 @@ find_counts_a_lazy_column_by_its_rows :: proc(t: ^testing.T) {
 	defer close(f)
 	find_items, find_version = 50, 1
 	for _ in 0 ..< 2 { frame(f, nil, build_lazy_find, nil) }
-	ui.find_open(lazy_scroller.key, "fox")
+	ui.find_open(&f.s, lazy_scroller.key, "fox")
 	for _ in 0 ..< 3 { frame(f, nil, build_lazy_find, nil) }
 	testing.expect(t, !ui.find_pending(), "counted")
 	testing.expect_value(t, ui.find_count(), 50)
@@ -1178,7 +1178,7 @@ find_counts_a_lazy_column_by_its_rows :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.find_count(), 51)
 	testing.expect(t, !ui.needs_frame(&f.s), "nothing is due")
 
-	ui.find_close()
+	ui.find_close(&f.s)
 	for _ in 0 ..< 2 { frame(f, nil, build_lazy_find, nil) }
 	testing.expect_value(t, ui.find_count(), 0)
 	testing.expect(t, !ui.find_pending())
@@ -1445,13 +1445,13 @@ find_with_a_scope_no_longer_built :: proc(t: ^testing.T) {
 	}
 	show = true
 	frame(f, nil, build, nil)
-	ui.find_open(ui.box_at("###scope").key, "needle")
+	ui.find_open(&f.s, ui.box_at("###scope").key, "needle")
 	for _ in 0 ..< 3 { frame(f, nil, build, nil) }
 	testing.expect_value(t, ui.find_count(), 1)
 	show = false
 	for _ in 0 ..< 3 { frame(f, nil, build, nil) }
 	testing.expect_value(t, len(ui.find_matches()), 0)
-	ui.find_close()
+	ui.find_close(&f.s)
 	frame(f, nil, build, nil)
 }
 

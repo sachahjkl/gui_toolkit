@@ -135,7 +135,7 @@ a_find_whose_view_is_gone_lets_the_loop_sleep :: proc(t: ^testing.T) { unwatched
 		ui.find_bar(ui.prev_box("###view"))
 	}})
 	session.frames(s, 2)
-	ui.find_open(session.get(s, "view").key, "word")
+	ui.find_open(s.state, session.get(s, "view").key, "word")
 	session.frames(s, 2)
 	testing.expect(t, ui.find_pending() && ui.needs_frame(s.state), "counting: the next frame is asked for")
 	r.on_page = false

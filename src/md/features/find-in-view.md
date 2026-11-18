@@ -135,6 +135,22 @@ A view with rows and no lazy column (a terminal that draws its own grid) has no 
 match's row and range when it changed (`Find_Result.moved`), the program scrolls to it and paints the ranges it reads with
 `find_row_matches`.
 
+**The find says when it moved the view** (`Find_Result.scrolled`): the build before set the view's scroll target to bring
+the current match in. A program that follows the bottom of a log stops following then, or the next line pulls the view
+away from the match. `moved` does not say it: a match already well inside the view is made current without a scroll, and a
+step to a row not built scrolls over several builds. The flag is set where the target is written (`find_bring_in`), so
+every way to the screen (box mode, a built row, a row not built, a revealed part) reports it. Refused: the program
+comparing its scroll offset before and after (a wheel, a glide, its own follow would read as the find's).
+
+### A current match the program chooses
+
+`find_set_current(s, index)` makes the `index`-th match current (clamped to the matches), then brings it in as a step
+does: the same `find_make_current`, the same goal **Seek**. The index is an ordinal over every row, so it is applied once
+the count is known (no row left to count): before that, the k-th known match is not the k-th match. Until then it waits
+in the State (`asked`), with no frame of its own: the pass already asks for the next frame while it counts. No needle, or a
+needle with no match, drops it; a close or a move to another view drops it. Called in the same build as a step, it wins. Refused: a
+step of `index - current` (wrong while the count grows, and a wrap at the ends).
+
 ## Box mode
 
 A view that gives no rows is searched in its built boxes after each layout, every `.Draw_Text` box and rich paragraph of its
@@ -153,13 +169,28 @@ a step brings its rect in. This is the find in page that was, kept for views tha
 - Enter and Shift+Enter in the field, F3 and Shift+F3 anywhere in the window while it is open, step; Escape closes and gives
   the keyboard back to what had it.
 
-**One find per window.** The State holds one find: its view, its field, its options. `find_open(view)` opens it over that view,
+**A pointer press in the bar leaves the keyboard in the field**, as a browser's find bar does: the options, the scopes, the
+arrows act on what the field holds, and the person goes on typing. The press gives the keyboard to what it hits (an
+unchosen scope is not even focusable: the keyboard went nowhere); the bar takes it back for the field in the build of the
+press, before anything is drawn. A press is a pointer's (`pressed_any`): Tab to a button and Space keep the keyboard on the
+button, and a screen reader's activation does not move it. The scopes' dropdown (a narrow view) is left alone: its menu
+takes the keyboard and gives it back to its button. Refused: a flag on each button that keeps the focus where it is (a
+change in the button, the segmented control and the dropdown for one caller).
+
+**The program drives it outside a build.** `find_open(s, view)`, `find_close(s)` and `find_set_current(s, index)` take the
+window's State: a program calls them from its command line (`--find`), its menu or a key it routes itself, on the
+interface thread, between two builds, for a window that is not the thread's current one. They write the State only (the
+field, the flags, the focus key); the next build of that State applies them, and `needs_frame(s)` is true until it runs.
+One form, with the State: the bar's own calls pass theirs. Refused: a second form on the current State beside it (two
+names for one act); a queue of requests (the State already holds what the next build reads).
+
+**One find per window.** The State holds one find: its view, its field, its options. `find_open(s, view)` opens it over that view,
 or focuses its field when it is open there already (its text selected); open over another view, it moves. So there is at most
 one bar per view by construction, and two bars in one corner cannot happen. Refused: a find state per view kept by the
 program (each program would wire the magnifier, the keys and the corner by hand, and two finds could light the same boxes).
 
 **Nothing else in its corner.** The marks rail's filter field is gone; the magnifier above a bar with marks opens this find
-(`find_open(view)`), and a character typed while the marks have the keyboard opens it with that character.
+(`find_open(s, view)`), and a character typed while the marks have the keyboard opens it with that character.
 
 **The text stays** while the bar is closed: Ctrl+F again shows it, selected. A change of what the view shows (another
 session) is the program's to say: `find_close`, or nothing (the rows' identities change and the pass counts again).

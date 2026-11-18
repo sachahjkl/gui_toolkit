@@ -105,7 +105,7 @@ match_in_box :: proc() -> f32 {
 a_match_in_a_glide_stays_on_its_letters :: proc(t: ^testing.T) {
 	s := session.start(t, {size = WINDOW, smooth_scroll = .On, animations = true, build = glide_build})
 	session.frames(s, 2)
-	ui.find_open(session.get(s, "region").key, "needle")
+	ui.find_open(s.state, session.get(s, "region").key, "needle")
 	session.frames(s, 3)
 	testing.expect_value(t, ui.find_count(), 1)
 	at_rest := match_in_box()
@@ -117,7 +117,7 @@ a_match_in_a_glide_stays_on_its_letters :: proc(t: ^testing.T) {
 	testing.expect(t, b.view_off.y != b.view_target.y, "the view is on its way")
 	gliding := match_in_box()
 	testing.expectf(t, abs(gliding - at_rest) < SAME_PLACE_PX, "at rest %v, gliding %v", at_rest, gliding)
-	ui.find_close()
+	ui.find_close(s.state)
 }
 
 // No tree made is no tree: not the last one made.

@@ -14,6 +14,9 @@ The bar has:
 - previous and next: Shift+Enter and Enter in the field, Shift+F3 and F3 anywhere in the window while the bar is open;
 - close: Escape, which gives the keyboard back to what had it.
 
+A pointer press on an option, a scope or an arrow leaves the keyboard in the field: the person goes on typing. Tab and
+Space still reach and press each button.
+
 Every match is painted behind its letters in the theme's `find_match background`, the current one in
 `find_current background`, their letters in `find_text`. Every match is also a tick on the view's vertical scroll bar, the
 current one twice as tall, over the program's own marks ([scroll-marks.md](scroll-marks.md)).
@@ -22,27 +25,34 @@ current one twice as tall, over the program's own marks ([scroll-marks.md](scrol
 
 ```odin
 // the program's Ctrl+F (a command of its own): open over the view, or give the field the keyboard
-if ui.command_pressed(app.find_cmd) { ui.find_open(app.doc_key) }
+if ui.command_pressed(app.find_cmd) { ui.find_open(app.state, app.doc_key) }
 
 ui.next({width = ui.fill(), height = ui.fill()})
 if ui.scroll_y("###doc") {
 	... the content ...
 }
 res := ui.find_bar(ui.prev_box("###doc"), {placeholder = "Find in the document"})
+if res.scrolled { app.follow_bottom = false }   // the find moved the view to a match
 ```
 
-- `ui.find_open(view, text = "")` opens the find over the scroll box `view` (its key). Open there already, it gives the
-  field the keyboard and selects its text. Open over another view, it moves: there is one find per window, so there is at
-  most one bar per view. `text` replaces the field's text.
-- `ui.find_close()` closes it: nothing lit, nothing counted, its cache freed.
+- `ui.find_open(s, view, text = "")` opens the find of window `s` over the scroll box `view` (its key). Open there
+  already, it gives the field the keyboard and selects its text. Open over another view, it moves: there is one find per
+  window, so there is at most one bar per view. `text` replaces the field's text.
+- `ui.find_close(s)` closes it: nothing lit, nothing counted, its cache freed.
+- `ui.find_set_current(s, index)` makes the `index`-th match current (0-based, over every row), clamped to the matches,
+  and brings it in as the arrows do. It waits until every row is counted; with no needle or no match it does nothing.
+- These three take the window's State: call them in a build, or between two builds on the interface thread (a command
+  line option, a menu, a key the program routes itself), for any window. The next build of `s` applies them, and
+  `ui.needs_frame(s)` is true until it runs.
 - `ui.find_is_open(view = 0)`: open over `view` (0: over any).
 - `ui.find_bar(view, options) -> Find_Result` at each build of the view, before or after its content, with the view's box
   of this build or of the last one (`prev_box`). It builds the bar only while the find is open over that view. A build that
   does not call it lights nothing: a page that is not shown has no find.
 - `Find_Options`: `placeholder` (the field's hint; "" is "Find"), `scopes` (below).
-- `Find_Result`: `moved` (a step or a new needle chose another current match in the build before), `row`, `start`, `end`
-  (its row and its bytes in the row's whole text; row -1 with no rows). A view that paints its own rows (a terminal) brings
-  that row in itself.
+- `Find_Result`: `moved` (a step or a new needle chose another current match in the build before), `scrolled` (the build
+  before moved the view to bring the current match in: a program that follows the bottom of a log stops following),
+  `row`, `start`, `end` (its row and its bytes in the row's whole text; row -1 with no rows). A view that paints its own
+  rows (a terminal) brings that row in itself.
 - `ui.find_count()`, `ui.find_index()` (the current match, -1 none), `ui.find_pending()` (rows not counted yet),
   `ui.find_needle()` (the field's text), `ui.find_matches()` (what the last layout lit: box, window rect, ordinal),
   `ui.find_row_matches(row)` (a row's byte ranges), `ui.find_ticks(view)` (the ticks' places on the bar, for tests).

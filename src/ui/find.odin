@@ -14,10 +14,11 @@ import "../font"
 // from that text in bounded slices at each frame, whatever is built, and found again in the built boxes to be lit. A view
 // that builds all of its content gives no rows: its built boxes are searched after each layout (box mode).
 //
-//   ui.find_open(view.key)                 // Ctrl+F, the marks' magnifier: open, or focus the field when open there
+//   ui.find_open(s, view.key)              // Ctrl+F, the marks' magnifier: open, or focus the field when open there
 //   res := ui.find_bar(view, {scopes = ...})   // at each build of the view: the bar while the find is open over it
 //   ui.find_rows(view.key, rows)           // a view with rows and no lazy column (lazy_begin(rows = ...) does it)
 //   ui.find_place_row(row, top)            // where a row starts in the content, for the ticks (a lazy column does it)
+//   ui.find_set_current(s, i)              // the i-th match current, brought in (once counted)
 //   ui.find_count(), ui.find_index(), ui.find_pending(), ui.find_matches(), ui.find_row_matches(row)
 //
 // Painting: every match in the theme's "find_match background", the current one in "find_current background", their
@@ -36,9 +37,11 @@ Find_Scope :: struct {
 }
 
 // What the find's current match is, for a view that draws its own rows (a terminal): `moved` in the build after a step or
-// a new needle chose it, the program brings it in. row -1: none, or the view is in box mode.
+// a new needle chose it, the program brings it in. row -1: none, or the view is in box mode. `scrolled`: the build before
+// set the view's scroll to bring the current match in (a program that follows the bottom of a log stops following).
 Find_Result :: struct {
 	moved:      bool,
+	scrolled:   bool,
 	row:        int,
 	start, end: int,   // bytes of the row's whole text
 }
@@ -121,6 +124,9 @@ Find_State :: struct {
 	reveal_builds: int,
 	picked:      bool,           // a first match was chosen for this needle
 	moved:       bool,           // the current changed: find_bar's result says it once
+	scrolled:    bool,           // the view's scroll target was set to bring it in: find_bar's result says it once
+	asked:       bool,           // find_set_current asked for a match: made current once the count is known
+	asked_index: int,
 	// what is lit, of the last layout
 	matches:     [dynamic]Find_Match,
 	count:       int,            // box mode: the occurrences found
@@ -481,14 +487,18 @@ find_make_current :: proc(f: ^Find_State, ordinal: int) {
 	}
 }
 
-// The view brings the content's band [y0, y1) in, when it is not already well inside.
+// The view brings the content's band [y0, y1) in, when it is not already well inside. Every way of a match to the screen
+// goes through here, so the find's result says each scroll it made (Find_Result.scrolled).
 @(private = "file")
-find_bring_in :: proc(view: ^Box, y0, y1: f32) {
+find_bring_in :: proc(f: ^Find_State, view: ^Box, y0, y1: f32) {
 	h := view.size.y
 	em := view.font_size
 	off := view.view_target.y
 	if y0 >= off + em * FIND_TOP_MARGIN_EM && y1 <= off + h - em * FIND_BOTTOM_MARGIN_EM { return }
-	view.view_target.y = clamp(y0 - h * FIND_LAND_AT, 0, view_limit(view))
+	to := clamp(y0 - h * FIND_LAND_AT, 0, view_limit(view))
+	if to == off { return }
+	view.view_target.y = to
+	f.scrolled = true
 }
 
 // After the layout: the rows counted (a slice), the built text lit, the current match brought in.
@@ -507,7 +517,7 @@ find_collect :: proc(s: ^State) {
 		find_query_changed(f)
 	}
 	if !f.open { if len(f.cache) > 0 || len(f.order) > 0 { find_rows_free(f) }; return }
-	if f.needle == "" { f.count = 0; return }
+	if f.needle == "" { f.count, f.asked = 0, false; return }
 	view := s.boxes[f.view] or_else nil
 	// (a view not built this build: its subtree points into freed frame memory)
 	if view == nil || view.last_build != s.build_index { return }
@@ -536,8 +546,12 @@ find_collect :: proc(s: ^State) {
 		}
 		f.counted += 1
 		defer { f.step, f.picked = 0, true }
-		if f.count == 0 { f.current, f.goal = -1, .None; return }
-		if f.step != 0 || !f.picked {
+		if f.count == 0 { f.current, f.goal, f.asked = -1, .None, false; return }
+		if f.asked {
+			// (a layout counts every box: the count is known, the asked index applies now)
+			f.current, f.asked = min(f.asked_index, f.count - 1), false
+			f.goal, f.moved = .Seek, true
+		} else if f.step != 0 || !f.picked {
 			if f.current < 0 {
 				// (the first at or below the view's top; none: the last above it)
 				f.current = f.count - 1
@@ -552,7 +566,7 @@ find_collect :: proc(s: ^State) {
 		if f.goal != .None {
 			for m in f.matches {
 				if m.index != f.current { continue }
-				find_bring_in(view, content_y(view, m.rect.min.y), content_y(view, m.rect.max.y))
+				find_bring_in(f, view, content_y(view, m.rect.min.y), content_y(view, m.rect.max.y))
 				break
 			}
 			f.goal = .None
@@ -569,7 +583,11 @@ find_collect :: proc(s: ^State) {
 	// find it there. (Its index is found again by its identity when rows came before it: the pass meets it)
 	if f.cur_row >= 0 && (f.cur_row >= len(f.order) || f.order[f.cur_row].id != f.cur_id) { f.cur_row = -1 }
 	if f.has_cur && f.cur_row >= 0 && f.cur_occ >= int(f.order[f.cur_row].n) && f.order[f.cur_row].gen == f.gen { find_drop_current(f) }
-	if f.step != 0 && f.total > 0 {
+	if f.asked && f.unknown == 0 {
+		// (an ordinal over every row: only once every row is counted is the k-th known match the k-th match)
+		if f.total > 0 { find_make_current(f, min(f.asked_index, f.total - 1)) }
+		f.asked, f.picked, f.step = false, true, 0
+	} else if f.step != 0 && f.total > 0 {
 		if f.has_cur && f.cur_row >= 0 {
 			find_make_current(f, fen_sum(f, f.cur_row) + f.cur_occ + f.step)
 		} else {
@@ -622,7 +640,7 @@ find_collect :: proc(s: ^State) {
 		case !cur_built:
 			if f.lazy_build == s.build_index {
 				f.want_row = f.cur_row
-				if f.cur_row < len(f.tops) && f.tops[f.cur_row] >= 0 { find_bring_in(view, f.tops[f.cur_row], f.tops[f.cur_row] + view.font_size) }
+				if f.cur_row < len(f.tops) && f.tops[f.cur_row] >= 0 { find_bring_in(f, view, f.tops[f.cur_row], f.tops[f.cur_row] + view.font_size) }
 				f.waiting = true
 			} else {
 				f.goal = .None   // (a view that draws its rows: find_bar's result tells it)
@@ -630,7 +648,7 @@ find_collect :: proc(s: ^State) {
 		case cur_nb >= 0 && len(cur_rects) > 0:
 			y0, y1 := max(f32), min(f32)
 			for m in cur_rects { y0, y1 = min(y0, m.rect.min.y), max(y1, m.rect.max.y) }
-			find_bring_in(view, content_y(view, y0), content_y(view, y1))
+			find_bring_in(f, view, content_y(view, y0), content_y(view, y1))
 			f.goal = .None
 		case f.goal == .Seek && f.rows.reveal != nil:
 			f.rows.reveal(f.rows.user, f.cur_row, f.cur_range[0])
@@ -643,7 +661,7 @@ find_collect :: proc(s: ^State) {
 			f.waiting = true
 		case:
 			// (it could not be shown: the view goes to its row)
-			if f.cur_row < len(f.tops) && f.tops[f.cur_row] >= 0 { find_bring_in(view, f.tops[f.cur_row], f.tops[f.cur_row] + view.font_size) }
+			if f.cur_row < len(f.tops) && f.tops[f.cur_row] >= 0 { find_bring_in(f, view, f.tops[f.cur_row], f.tops[f.cur_row] + view.font_size) }
 			f.goal = .None
 		}
 	}

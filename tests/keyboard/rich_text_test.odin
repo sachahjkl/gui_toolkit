@@ -65,7 +65,7 @@ frame :: proc(f: ^Rx, events: []platform.Event = nil, draw_it := false) -> []u8 
 	// (a find test: the paragraph in a view of the window's size, below its find bar's corner)
 	if f.finding {
 		if page := ui.box_at("###page"); page != nil {
-			if f.needle == "" { ui.find_close() } else if !ui.find_is_open(page.key) || ui.find_needle() != f.needle { ui.find_open(page.key, f.needle) }
+			if f.needle == "" { ui.find_close(&f.s) } else if !ui.find_is_open(page.key) || ui.find_needle() != f.needle { ui.find_open(&f.s, page.key, f.needle) }
 		}
 		ui.next({width = ui.px(f32(SIZE.x)), height = ui.px(f32(SIZE.y))})
 		if ui.column(id = "###page") {
@@ -398,7 +398,7 @@ rich_find_is_legible_in_every_palette :: proc(t: ^testing.T) {
 	linear :: proc(v: u8) -> f64 { c := f64(v) / 255; return c <= 0.03928 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4) }
 	luma :: proc(px: []u8, at: int) -> f64 { return 0.2126 * linear(px[at]) + 0.7152 * linear(px[at + 1]) + 0.0722 * linear(px[at + 2]) }
 	f.width, f.finding = 400, true
-	defer ui.find_close()
+	defer ui.find_close(&f.s)
 	f.needle = "HH"
 	gold := draw.Color{0.9, 0.75, 0.48, 1}
 	// large letters reach their full colour; those of the text one reads are thin, and what counts

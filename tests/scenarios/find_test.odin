@@ -3,7 +3,8 @@ package scenarios_test
 // Find in a view (ui/find.odin, ui/find_bar.odin; src/md/features/find-in-view.md): the bar opens over its view, counts the
 // matches of every row, built or not, steps from one to the next and brings it in, lights them, asks the program to open
 // a folded part, takes its options and scopes, stands alone in its view, closes with Escape, puts its matches on the
-// scroll bar, and counts a long list in bounded slices.
+// scroll bar, and counts a long list in bounded slices. A program drives it between builds, reads when it scrolled, and
+// sets the current match; a press in the bar leaves the keyboard in its field.
 
 import "base:runtime"
 import "core:fmt"
@@ -38,6 +39,7 @@ Find_Run :: struct {
 	plain:     bool,          // a view with no rows: box mode
 	second:    bool,          // a second view beside the first
 	res:       ui.Find_Result,
+	scrolls:   int,           // builds whose result said the find moved the view
 }
 
 @(private = "file")
@@ -117,6 +119,7 @@ find_build :: proc(s: ^session.Session) {
 		if r.marks_on { ui.scroll_marks("###marks", &r.marks, ui.prev_box("###view")) }
 		find_view(s, r, "###view")
 		r.res = ui.find_bar(ui.prev_box("###view"), {scopes = r.scopes})
+		if r.res.scrolled { r.scrolls += 1 }
 		if r.second {
 			find_view(s, r, "###other")
 			ui.find_bar(ui.prev_box("###other"))
@@ -136,7 +139,7 @@ find_start :: proc(t: ^testing.T, r: ^Find_Run) -> ^session.Session {
 // Opens the find over the view, types `needle` and waits for its count.
 @(private = "file")
 find_type :: proc(s: ^session.Session, needle: string, view := "view") {
-	ui.find_open(session.get(s, view).key)
+	ui.find_open(s.state, session.get(s, view).key)
 	session.frames(s, 2)
 	session.type_text(s, needle)
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return !ui.find_pending() && ui.find_count() > 0 }, "the count")
@@ -163,7 +166,7 @@ find_current_shown :: proc(s: ^session.Session) -> bool {
 the_bar_counts_steps_and_lights :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := Find_Run{folded = FIND_FOLDED}
 	s := find_start(t, &r)
-	ui.find_open(session.get(s, "view").key)
+	ui.find_open(s.state, session.get(s, "view").key)
 	session.frames(s, 2)
 	testing.expect_value(t, session.focused_name(s), "field")
 	session.type_text(s, "needle")
@@ -251,18 +254,18 @@ one_bar_per_view :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	r := Find_Run{folded = -1, second = true}
 	s := find_start(t, &r)
 	view, other := session.get(s, "view"), session.get(s, "other")
-	ui.find_open(view.key)
+	ui.find_open(s.state, view.key)
 	session.frames(s, 2)
 	bar_of :: proc(s: ^session.Session, v: ^ui.Box) -> ^ui.Box { return session.find(s, fmt.tprintf("find_bar_%x", u64(v.key))) }
 	testing.expect(t, bar_of(s, view) != nil && bar_of(s, other) == nil, "a bar over the first view")
 	b := bar_of(s, view)
 	testing.expectf(t, b.rect.max.x <= view.rect.max.x && b.rect.min.y >= view.rect.min.y, "inside it, at its top right: %v in %v", b.rect, view.rect)
 	ui.set_focus(0)
-	ui.find_open(view.key)
+	ui.find_open(s.state, view.key)
 	session.frames(s, 2)
 	testing.expect_value(t, session.focused_name(s), "field")
 	testing.expect(t, bar_of(s, other) == nil, "still one bar")
-	ui.find_open(other.key)
+	ui.find_open(s.state, other.key)
 	session.frames(s, 2)
 	testing.expect(t, bar_of(s, view) == nil && bar_of(s, other) != nil, "moved to the other view")
 }) }
@@ -280,7 +283,7 @@ escape_closes_the_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing
 	testing.expect_value(t, len(ui.find_matches()), 0)
 	testing.expect_value(t, ui.find_count(), 0)
 	testing.expect(t, session.focused_name(s) != "field", "the field let the keyboard go")
-	ui.find_open(session.get(s, "view").key)
+	ui.find_open(s.state, session.get(s, "view").key)
 	session.frames(s, 2)
 	testing.expect_value(t, ui.find_needle(), "needle")   // (its text stays for the next time)
 }) }
@@ -322,7 +325,7 @@ matches_are_ticks_on_the_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^
 		testing.expectf(t, y >= track.min.y && y <= track.max.y, "tick %d on the track: %v in %v", i, y, track)
 		if i > 0 { testing.expectf(t, y > ticks[i - 1], "tick %d below the one before", i) }
 	}
-	ui.find_close()
+	ui.find_close(s.state)
 	session.frames(s, 1)
 	testing.expect_value(t, len(ui.find_ticks(view)), 0)
 }) }
@@ -361,7 +364,7 @@ a_long_list_is_counted_in_bounded_slices :: proc(t: ^testing.T) { unwatched.run(
 	for &h, i in hits { h = i * 100 + 7 }
 	r := Find_Run{folded = -1, count = FIND_LONG, hits = hits}
 	s := find_start(t, &r)
-	ui.find_open(session.get(s, "view").key)
+	ui.find_open(s.state, session.get(s, "view").key)
 	session.frames(s, 2)
 	session.type_text(s, "needle")
 	frames, most := 0, 0
@@ -383,4 +386,87 @@ a_long_list_is_counted_in_bounded_slices :: proc(t: ^testing.T) { unwatched.run(
 	session.key(s, .Backspace)
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return !ui.find_pending() && ui.find_count() == FIND_LONG / 100 }, "\"needl\" counted")
 	testing.expect_value(t, r.reads, 0)
+}) }
+
+// A program opens and closes a window's find between two builds, while another window's State is the current one (its
+// command line, its menu): that window's next build applies it, and it asks for that build.
+@(test)
+the_program_drives_a_window_s_find_between_builds :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Find_Run{folded = -1}
+	s := find_start(t, &r)
+	other := session.start(t, {size = {300, 200}, build = proc(s: ^session.Session) {}})
+	view := session.get(s, "view")
+	ui.use(other.state)
+	ui.find_open(s.state, view.key, "needle")
+	testing.expect(t, !ui.find_is_open(), "not the current window's find")
+	testing.expect(t, ui.needs_frame(s.state), "the build that applies it is asked for")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return !ui.find_pending() && ui.find_count() == 3 }, "counted in its window")
+	testing.expect(t, ui.find_is_open(view.key), "open over its view")
+	testing.expect_value(t, session.focused_name(s), "field")
+	ui.use(other.state)
+	ui.find_close(s.state)
+	testing.expect(t, ui.needs_frame(s.state), "the build that closes it is asked for")
+	session.frames(s, 2)
+	testing.expect(t, !ui.find_is_open(), "closed")
+	testing.expect_value(t, len(ui.find_matches()), 0)
+}) }
+
+// The bar's result says the build in which the find moved the view to bring a match in, and only then.
+@(test)
+the_result_says_when_the_find_scrolled :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Find_Run{folded = -1}
+	s := find_start(t, &r)
+	find_type(s, "needle")
+	session.wait_until(s, find_current_shown, "the first match lit in view")
+	session.frames(s, 3)
+	r.scrolls = 0
+	session.frames(s, 3)
+	testing.expect_value(t, r.scrolls, 0)   // (nothing moved: nothing said)
+	session.key(s, .F3)   // row 20, below the view
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.find_index() == 1 && find_current_shown(s) }, "row 20 brought in")
+	testing.expect(t, r.scrolls > 0, "the result said the view moved")
+	session.frames(s, 3)
+	r.scrolls = 0
+	session.frames(s, 3)
+	testing.expect_value(t, r.scrolls, 0)
+}) }
+
+// A pointer press on an option, a scope or an arrow of the bar leaves the keyboard in the field: what is typed next goes on
+// with the needle.
+@(test)
+a_press_in_the_bar_leaves_the_keyboard_in_the_field :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	scopes := [?]ui.Find_Scope{{name = "All"}, {name = "Tens", keep = proc(user: rawptr, row: int) -> bool { return row % 10 == 0 }}}
+	r := Find_Run{folded = -1, scopes = scopes[:]}
+	s := find_start(t, &r)
+	find_type(s, "needle")
+	testing.expect_value(t, session.focused_name(s), "field")
+	session.click(s, "case")
+	testing.expect_value(t, session.focused_name(s), "field")
+	session.click(s, "word")
+	testing.expect_value(t, session.focused_name(s), "field")
+	session.click(s, "seg1")   // (an unchosen scope: not focusable, the press gave the keyboard to nothing)
+	testing.expect_value(t, session.focused_name(s), "field")
+	session.click(s, "next")
+	testing.expect_value(t, session.focused_name(s), "field")
+	session.type_text(s, "s")
+	session.frames(s, 1)
+	testing.expect_value(t, ui.find_needle(), "needles")
+}) }
+
+// find_set_current makes a match current by its index, clamped, and brings it in as a step does; asked before the count
+// is known, it waits for it.
+@(test)
+the_program_sets_the_current_match :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := Find_Run{folded = -1}
+	s := find_start(t, &r)
+	ui.find_open(s.state, session.get(s, "view").key, "needle")
+	ui.find_set_current(s.state, 1)   // (before any row is counted)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return !ui.find_pending() && ui.find_index() == 1 && find_current_shown(s) }, "the second, brought in")
+	testing.expect(t, strings.contains(find_lit_current().text, "row 20"), "on row 20")
+	ui.find_set_current(s.state, 99)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.find_index() == 2 && find_current_shown(s) }, "clamped to the last")
+	testing.expect(t, strings.contains(find_lit_current().text, "row 50"), "on row 50")
+	ui.find_set_current(s.state, -5)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.find_index() == 0 && find_current_shown(s) }, "clamped to the first")
+	testing.expect(t, strings.contains(find_lit_current().text, "row 5 "), "on row 5")
 }) }

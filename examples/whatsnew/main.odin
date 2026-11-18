@@ -341,11 +341,12 @@ page_wheel :: proc(app: ^App, em: f32) {
 
 page_find :: proc(app: ^App, em: f32) {
 	heading("Find in a view", em)
-	para("ui.find_open(view) opens the find bar over a view (the program's Ctrl+F, or the magnifier above a bar with marks); ui.find_bar(view), at each build of the view, draws it while it is open there: the count, previous and next, match case, whole word, the program's scopes. A view whose rows a lazy column declares (Text_Rows) is counted whole, built or not, folded parts included.")
+	para("ui.find_open(s, view) opens the find bar over a view (the program's Ctrl+F, or the magnifier above a bar with marks); ui.find_bar(view), at each build of the view, draws it while it is open there: the count, previous and next, match case, whole word, the program's scopes. A view whose rows a lazy column declares (Text_Rows) is counted whole, built or not, folded parts included.")
 	gap(em * 0.6)
 	text := ui.box_at("###main", "###page", "###content", "###text")   // the column below, found by its path
-	if ui.button("###open", "Find in the text below").clicked && text != nil { ui.find_open(text.key) }
-	if text != nil && !app.find_shown { ui.find_open(text.key, "the"); app.find_shown = true }
+	s := ui.current_state()
+	if ui.button("###open", "Find in the text below").clicked && text != nil { ui.find_open(s, text.key) }
+	if text != nil && !app.find_shown { ui.find_open(s, text.key, "the"); app.find_shown = true }
 	gap(em * 0.6)
 	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .Y})
 	if ui.column(id = "###text") {
