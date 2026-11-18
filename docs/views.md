@@ -391,8 +391,8 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
     is the zone's Minimise when the zone is expanded and its Restore when it is collapsed (key `view_fold`). Put it at
     the same place in both forms (the start of the first row, say): it then stays under the pointer when the person
     folds and unfolds the zone. A debug build asserts that a view with `rail_em` calls it in its compact form. A view
-    that calls it has no Minimise on its strip. A right click on it opens the view's menu (its moves, Maximise or
-    Restore, Close); its tooltip says so (`View_Labels.menu_hint`). Outside a left or right zone it builds nothing and returns `{}`. A
+    that calls it has no Minimise on its strip. A right click on it opens the view's menu (its moves, Minimise and
+    Maximise or Restore, Close); its tooltip says so (`View_Labels.menu_hint`). Outside a left or right zone it builds nothing and returns `{}`. A
     zone without `rail_em` keeps the strip's Minimise and the icons' rail's Restore.
   - **A rail keeps its edge line and opens by a pull.** A side zone's rail keeps the zone's handle: the same line
     against the content as expanded, and `view_dock_line` names it. Drag that handle outward past
@@ -407,8 +407,8 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   - **Close** closes every view of the stack (each ends `VIEW_CANCELLED`). One tab closes by Ctrl+W in it, its menu or
     the palette.
   - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.
-- The view's menu (a right click on its strip's tab, or on its fold button) has Detach into a window, Open as a
-  floating window, the Dock items, Re-attach away from home, Maximise or Restore for a panel, and Close.
+- The view's menu (a right click on its strip's tab, on the free part of its top area, or on its fold button) has
+  its moves, its stack's Minimise and Maximise (or Restore), and Close ([The header's menu](#the-headers-menu)).
 - `view_drag_handle(v, box)` marks the program's title box of a view: a lone panel moves by it (it floats, and a drop
   docks it again). A panel without one shows no grip; it moves by its icon, its menu or the palette.
 - A zone's extent is the space's: its handle resizes it (the content keeps `DOCK_MIN_EM`), and the memory keeps it
@@ -500,11 +500,27 @@ says what `commands[i]` does: `views_command_run(vs, acts[i])` does it (nothing 
 
 ## The header's menu
 
-A right click on a view's header (on a panel: on its top area or its tab) opens its menu: Detach into a window
-(inactive without a backend of windows, absent in an external window), Open as a floating window (absent in an internal window), Dock left, Dock
-right, Dock bottom (the window's frame edges: inactive when the owner window builds no `views_frame`; the edge where
-it is now is absent), Re-attach (absent at home), Close. Its words are `View_Labels`' (`window`, `floating`, `dock_left`,
-`dock_right`, `dock_bottom`, `reattach`, `close`); a word left empty is the toolkit's, in the language in use.
+A right click opens the view's menu, the same one wherever it opens:
+
+- a dialog's, a floating window's or a window's header;
+- a panel's tab;
+- the free part of a docked panel's top area: the strip's free part when the strip shows, else the band at the
+  body's top (a maximised panel's too);
+- the side zone's fold button (`view_fold_button`) and a view's button on the icons' rail.
+
+On a panel's top area, the body's own right clicks come first: a press on a clickable box of the body (a tab, a
+button) or one the body took (`context_take`) opens no view's menu. A program needs nothing for it.
+
+The menu has New tab (a kind with `new_tab`), Detach into a window, Open as a floating window, Dock left, Dock
+right, Dock bottom, Re-attach; then, on a panel, its stack's Minimise (or Restore when its zone is folded) and
+Maximise (or Restore when its stack is maximised), on a resizable dialog its Maximise (or Restore); then Close. Each
+move does what the palette's command does, and the menu shows the moves the palette lists (`views_commands`): an act
+that does nothing where the view is is absent, never shown inactive. So Detach into a window needs a backend of
+windows and is absent in an external window; Open as a floating window is absent in an internal window; the Dock
+items need a `views_frame` in the owner window, and the edge where the panel is now is absent; Re-attach is absent at
+home; Minimise is absent at the centre and while the stack is maximised. Its words are `View_Labels`' (`window`,
+`floating`, `dock_left`, `dock_right`, `dock_bottom`, `reattach`, `minimize`, `maximize`, `restore`, `close`); a word
+left empty is the toolkit's, in the language in use.
 
 `dialog_body("id")` holds what a dialog says and asks, with its margins (`DIALOG_MARGIN_EM`) and gaps
 (`DIALOG_GAP_EM`). `dialog_buttons("id")` is its row of buttons at its right end, the main act last; buttons that do

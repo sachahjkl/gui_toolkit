@@ -1207,6 +1207,94 @@ the_band_s_menu_gives_way_to_the_body_s :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.menu_is_open("tab_menu"))
 }
 
+// Whether a menu item with these words is in the last build.
+@(private = "file")
+item_shown :: proc(s: ^session.Session, words: string) -> bool {
+	x := session.find_text(s, words)
+	return x != nil && x.last_build == s.state.build_index
+}
+
+// A right press on the free part of a lone panel's top area opens the view's menu at the press (a tab's opens at the
+// release), with no strip shown; a right press lower in the body opens nothing. Its item floats the panel.
+@(test)
+the_free_part_of_a_panel_s_top_area_opens_its_menu :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "tabbed")
+	panel := wait_built(s, "view_panel_view_tabbed")
+	if panel == nil || wait_built(s, "tab_in_band") == nil { return }
+	low := [2]f32{panel.rect.min.x + TAB_W + 40, panel.rect.min.y + 4 * r.em}
+	session.press(s, low, .Right)
+	testing.expect(t, !ui.menu_is_open(VIEW_MENU_TABBED), "no menu of the view's below the top area")
+	session.release(s, low, .Right)
+	at := [2]f32{panel.rect.min.x + TAB_W + 40, panel.rect.min.y + 2}
+	ui.use(s.state)
+	testing.expect(t, ui.hit_box_at(at) == nil, "nothing clickable there: the area's free part")
+	session.press(s, at, .Right)
+	testing.expect(t, ui.menu_is_open(VIEW_MENU_TABBED), "the view's menu, at the press")
+	testing.expect(t, !ui.menu_is_open("tab_menu"), "not the body's tab's")
+	session.release(s, at, .Right)
+	if !click_item(s, "Open as a floating window") { return }
+	if wait_built(s, "internal_view_tabbed") == nil { return }
+	testing.expect_value(t, ui.view_presentation(&r.views, "tabbed"), ui.View_Presentation.Internal)
+}
+
+// The view's menu shows the acts that apply where the view is, as the palette lists them: a panel at the left has no
+// "Dock left", no "Re-attach" at home, no "Detach into a window" while the program opens no windows, and its stack's
+// Minimise and Maximise; none of them is ever there inactive.
+@(test)
+a_panel_s_menu_has_only_the_acts_that_apply :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	// ("marks": its compact form keeps the fold button, so the menu also opens on the folded zone)
+	s := dock_start(t, &r, "marks")
+	fold := wait_built(s, "view_fold")
+	if fold == nil { return }
+	session.click_at(s, session.center(fold), .Right)
+	for _ in 0 ..< WAIT_FRAMES {
+		if item_shown(s, "Close") { break }
+		session.frame(s)
+	}
+	for words in ([]string{"Open as a floating window", "Dock right", "Dock bottom", "Minimise the panel", "Maximise", "Close"}) {
+		testing.expectf(t, item_shown(s, words), "the item %q", words)
+	}
+	for words in ([]string{"Dock left", "Re-attach", "Detach into a window", "Restore"}) {
+		testing.expectf(t, !item_shown(s, words), "no item %q", words)
+	}
+	// its Minimise is the fold button's: the zone folds
+	if !click_item(s, "Minimise the panel") { return }
+	if wait_built(s, "marks_compact") == nil { return }
+	fold = wait_built(s, "view_fold")
+	if fold == nil { return }
+	session.click_at(s, session.center(fold), .Right)
+	if !click_item(s, "Restore") { return }
+	testing.expect(t, wait_built(s, "marks_full") != nil, "the zone open again, the marks in full")
+}
+
+// A floating window in a program with no frame space: its menu has no Dock items (absent, not inactive), and its other
+// acts are there.
+@(test)
+a_floating_window_s_menu_without_a_frame_has_no_dock_items :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	r.no_frame = true
+	s := dock_start(t, &r, "float")
+	frame := wait_built(s, "internal_view_float")
+	if frame == nil { return }
+	session.wait_idle(s)
+	header := session.find(s, "view_header", within = frame)
+	if header == nil { testing.expect(t, false, "the window's header"); return }
+	session.click_at(s, {header.rect.min.x + 10, (header.rect.min.y + header.rect.max.y) * 0.5}, .Right)
+	for _ in 0 ..< WAIT_FRAMES {
+		if item_shown(s, "Close") { break }
+		session.frame(s)
+	}
+	testing.expect(t, item_shown(s, "Close"), "the menu, its Close")
+	for words in ([]string{"Dock left", "Dock right", "Dock bottom", "Open as a floating window", "Detach into a window"}) {
+		testing.expectf(t, !item_shown(s, words), "no item %q", words)
+	}
+}
+
 // hit_box_at and pointer_on_at: what is at a point, by the last layout, wherever the pointer is.
 @(test)
 what_is_at_a_point :: proc(t: ^testing.T) {

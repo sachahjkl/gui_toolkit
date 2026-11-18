@@ -468,8 +468,9 @@ draws, except the header that a dialog always had. The rules:
    Refused: the strip over the body (0.267's defect, below: it covers the body's controls); a band kept for it at all
    times (two ems taken from every lone panel, against rule 1); the strip only with a modifier held (Alt: no one finds
    it); fading icons in the corner (the corner is the body's: its strips, its buttons).
-   The panel's menu holds the strip's acts too, for a person who does not wait: a right click on the fold button
-   (`view_fold_button`) opens it, and it has Maximise (or Restore) for a panel.
+   The panel's menu (rule 3) holds the strip's acts too, for a person who does not wait: a right click on the free part
+   of the top band or on the fold button (`view_fold_button`) opens it, and it has Minimise and Maximise (or Restore)
+   for a panel.
    **Why it changed (0.267).** Two small icons, Detach and Close, floated over the body's top right corner on the hover
    of its top area. They took no room, so they lay over the body's own controls: the user could not click on purpose
    either the panel's icon or the button under it (opencode native's browser panel), and the icons had no plate. The
@@ -488,7 +489,7 @@ draws, except the header that a dialog always had. The rules:
    they do not show at all, wherever the pointer is in the top area: shown when the pointer came to the area's free
    start, they covered the strip's right arrow, and the person had to go around them to reach it. The test is the
    strip's box, not its arrows: the arrows come and go with the scroll, the icons would have come and gone with them.
-   The panel's menu (a right click on the area's free part) and the palette still detach and close it. Refused: moving
+   The panel's menu (a right click on the area's free part, rule 3) and the palette still detach and close it. Refused: moving
    them past the strip (a sidebar's row of tabs ends near the panel's edge: no room is left there) and putting them under
    the strip's row (over the content that follows it, a "New session" button).
 2b. **The tab strip, left to right** (`view_stack_strip`): the tabs, in the look of every row of tabs (`tab_box`) and on
@@ -543,8 +544,8 @@ draws, except the header that a dialog always had. The rules:
        centre, a dialog, a window) it builds nothing. A view with `rail_em` must call it in its compact form: the
        toolkit's rail draws no Restore for it (a debug assertion says so). Expanded, a view that called it in its last
        build has no Minimise on its stack's strip (said once); the icons' rail (`rail_em = 0`) keeps the toolkit's own
-       Restore, and its views their strip's Minimise. A right click on it opens the view's menu (rule 3, Maximise
-       included), and its tooltip says so after its act (`View_Labels.menu_hint`): a lone panel's strip waits for a
+       Restore, and its views their strip's Minimise. A right click on it opens the view's menu (rule 3, Minimise and
+       Maximise included), and its tooltip says so after its act (`View_Labels.menu_hint`): a lone panel's strip waits for a
        rest at its top edge (rule 2), the menu is at the button the pointer is on.
        opencode native puts it at the start of its servers' row expanded and at the top of its rail minimised, at the
        same pixel in both states: the button stays under the pointer when the person folds and unfolds.
@@ -592,14 +593,37 @@ draws, except the header that a dialog always had. The rules:
    header under it without the window's buttons. Refused: a title bar of the view windows' own (a second code of
    captions); the drag of the header onto the owner's dock targets with the program's decorations (the system moves
    the window there; the menu and the palette still dock it).
-3. **A right-click menu on a panel's top area** has: Detach into a window, Open as a floating window, Dock left, Dock
-   right, Dock bottom, Close; a panel's has Maximise (or Restore, its stack maximised) before Close. The same acts are palette commands, made by the toolkit for every registered view:
-   "Detach <title>", "Float <title>", "Dock <title> to the left", "Dock <title> to the right", "Dock <title> to the
-   bottom", "Close <title>". A program adds them to its palette with `views_commands` (step 3).
-   The top area is the body's too (ocn's sidebar has its server tabs there, each with its own menu): the view's menu
-   opens at the right press only when the box that press acts on (the last layout's hot box) is not one of the body's
-   and the body opened no menu in that build. Refused: opening it after any body's build regardless (it replaced the
-   tab's menu, which opens at the release); a box of the band's own (it would cover the body's controls for clicks).
+3. **The view's menu, on a right click** (`view_header_menu`): New tab (a kind with `new_tab`), Detach into a window,
+   Open as a floating window, Dock left, Dock right, Dock bottom, Re-attach; then the presentation's size acts (a
+   panel: its stack's Minimise, or Restore its zone folded, and Maximise, or Restore its stack maximised; a resizable
+   dialog: Maximise or Restore); then Close. The same moves are palette commands, made by the toolkit for every
+   registered view: "Open <title> in a window", "Float <title>", "Dock <title> to the left", "Dock <title> to the
+   right", "Dock <title> to the bottom", "Re-attach <title>", "Close <title>". A program adds them to its palette with
+   `views_commands` (step 3).
+   - **Where it opens.** One builder for every place: a dialog's, a floating window's and a window's header; a stack's
+     tab; the free part of a docked panel's top area (`view_panel_menu_press`), a maximised stack's included; the side
+     zone's fold button (`view_fold_button`); a view's button on the icons' rail.
+   - **One set of acts, absent where they do nothing.** `view_acts` says which moves apply to the view where it is: the
+     palette lists them, the menu shows them, and each item runs the palette's command (`views_command_run`): no second
+     path. An act that does nothing there is absent from the menu, never disabled, as the toolkit's menus and the
+     palette do: Detach into a window while the program opens no windows (`views_windows_ready`), the Dock items with
+     no frame space (`view_frame_built`) and the edge the panel is at, Float in a floating window, Re-attach at home.
+     Minimise is absent at the centre (nowhere to fold to) and while the stack is maximised (two items would say
+     "Restore"). Close keeps its presentation's path: a panel's menu is built after its body, so it closes as the
+     palette does (`User_Close`); a dialog's or a window's is built before `view_build_ended`, which reads its flag as
+     its close button's. Refused: disabled items (the menu said "you cannot" about an act the person had no reason to
+     look for, and it disagreed with the palette, which never listed them); a menu builder per place (the fold
+     button's had Maximise, the header's did not).
+   - **The free part of a panel's top area.** The strip's free part when the strip shows (two tabs, `tabs_always`, a
+     zone minimised, a lone panel's hover), else the band at the body's top where a rest brings the strip
+     (`VIEW_HOVER_EDGE_EM`). The top area is the body's too (ocn's sidebar has its server tabs there, each with its own
+     menu): the view's menu opens at the right press only when no clickable box lies under the press (the last
+     layout's hit: a tab, a body's button, whose menus open at the release), the press is on the stack with nothing
+     drawn over it, and nothing took it in that build (`context_take`: a body's block, a field's menu). It is read after
+     the stack's strip and body are built, so the body always asks first. Refused: opening it after any body's build
+     regardless (it replaced the tab's menu, which opens at the release); a box of the band's own (it would cover the
+     body's controls for clicks); the whole body (a right click in a list is the list's, and a body without a menu of
+     its own would show the view's in the middle of its content).
 4. **Dragging starts from the existing header.** A panel with a title moves by its title. A panel without a title (a
    sidebar) shows no grip: it detaches by its strip on hover (rule 2), its menu or the palette.
 5. **Dialogs keep their look.** The header strip, the title and the close cross stay as `dialog_header` drew them. The
@@ -634,9 +658,8 @@ header is built in two steps (`view_header_begin`, `view_header_end`): the icon 
 buttons after it. The box of the program's tools is made only when the body calls `view_header_tools`: a header with
 no tools has no tools box.
 
-The header's right-click menu, in every presentation: Detach into a window (inactive until step 4), Open as a floating
-window (absent when Internal), Dock left, Dock right, Dock bottom (inactive until step 3), Re-attach (absent at home),
-Close.
+The header's right-click menu is the view's menu of rule 3, in every presentation: each move present only where it
+does something (`view_acts`, the palette's set), never inactive.
 
 **The close of an external window is re-attach.** The system's close (the system title bar's close button, Alt+F4,
 the compositor, the taskbar's "Close window") acts on the window, not on the view. It brings the view back to its home,
@@ -1203,7 +1226,7 @@ is the terminal whose view has the focus.
 - Focus: when it shows, the focus goes to its first stop; what had the focus is kept, and gets it back when it closes,
   if the focus was inside it. Escape and Ctrl+W close it while the focus is inside it. It holds no key of the content.
 - Its header holds: the icon, the title, the program's tools, Re-attach (absent at home), Detach into a window
-  (inactive until step 4) and Close. Its right-click menu is the header's menu of every presentation (section 2.5,
+  (inactive without a backend of windows) and Close. Its right-click menu is the header's menu of every presentation (section 2.5,
   rule 3).
 
 The moves of step 2, and why each is built as it is:

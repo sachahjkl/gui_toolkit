@@ -801,7 +801,10 @@ view_header_icon :: proc(id, glyph, label: string, active: bool) -> (clicked: bo
 @(private)
 view_menu_id :: proc(r: ^View_Record) -> string { return fmt.tprintf("###view_menu_%s", r.modal_name) }
 
-// The header's right-click menu: the same acts in every presentation (src/md/features/views.md, section 2.5).
+// The view's right-click menu, one builder for every place that opens it (src/md/features/views.md, section 2.5, rule
+// 3): a dialog's, a floating window's and a window's header, a stack's tab, a panel's free top area, the fold button,
+// the icons' rail. Its moves are the palette's (view_acts, views_command_run): an act that does nothing where the
+// view is is absent, never disabled, as in the palette.
 @(private)
 view_header_menu :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	if menu(view_menu_id(r)) { view_header_menu_items(vs, r, p) }
@@ -810,49 +813,46 @@ view_header_menu :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 @(private = "file")
 view_header_menu_items :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	labels := view_labels(vs)
-	if r.kind.o.new_tab != nil {
-		if menu_item(fmt.tprintf("%s###vm_new_tab", view_new_tab_label(vs, r.kind)), icon = lucide.PLUS, icon_font = lucide_icons()).clicked { view_new_tab(vs, r) }
+	acts := view_acts(vs, r)
+	cmd := View_Command{id = r.kind.id, instance = r.instance}
+	Item :: struct { act: View_Act, word, glyph, id: string }
+	moves := [?]Item{
+		{.Window, labels.window, lucide.EXTERNAL_LINK, "vm_window"},
+		{.Float, labels.floating, lucide.PICTURE_IN_PICTURE_2, "vm_float"},
+		{.Dock_Left, labels.dock_left, lucide.PANEL_LEFT, "vm_left"},
+		{.Dock_Right, labels.dock_right, lucide.PANEL_RIGHT, "vm_right"},
+		{.Dock_Bottom, labels.dock_bottom, lucide.PANEL_BOTTOM, "vm_bottom"},
+		{.Reattach, labels.reattach, lucide.UNDO_2, "vm_reattach"},
+	}
+	if .New_Tab in acts {
+		if menu_item(fmt.tprintf("%s###vm_new_tab", view_new_tab_label(vs, r.kind)), icon = lucide.PLUS, icon_font = lucide_icons()).clicked {
+			cmd.act = .New_Tab
+			views_command_run(vs, cmd)
+		}
 		menu_separator()
 	}
-	if p != .External {
-		if menu_item(fmt.tprintf("%s###vm_window", labels.window), icon = lucide.EXTERNAL_LINK, icon_font = lucide_icons(), disabled = !views_windows_ready(vs)).clicked {
-			view_apply(vs, r, {kind = .Present, as = .External})
+	shown := false
+	for it in moves {
+		if it.act not_in acts { continue }
+		shown = true
+		if menu_item(fmt.tprintf("%s###%s", it.word, it.id), icon = it.glyph, icon_font = lucide_icons()).clicked {
+			cmd.act = it.act
+			views_command_run(vs, cmd)
 		}
 	}
-	if p != .Internal {
-		if menu_item(fmt.tprintf("%s###vm_float", labels.floating), icon = lucide.PICTURE_IN_PICTURE_2, icon_font = lucide_icons()).clicked { view_float(vs, r) }
-	}
-	// (the frame's edges, when the owner window has a frame space: views_frame)
-	no_frame := !view_frame_built(vs, r.owner)
-	Dock_Item :: struct { edge: View_Edge, word, glyph, id: string }
-	items := [3]Dock_Item{{.Left, labels.dock_left, lucide.PANEL_LEFT, "vm_left"}, {.Right, labels.dock_right, lucide.PANEL_RIGHT, "vm_right"}, {.Bottom, labels.dock_bottom, lucide.PANEL_BOTTOM, "vm_bottom"}}
-	for it in items {
-		here := p == .Panel && r.machine.place.space == "" && r.machine.place.edge == it.edge
-		if here { continue }
-		if menu_item(fmt.tprintf("%s###%s", it.word, it.id), icon = it.glyph, icon_font = lucide_icons(), disabled = no_frame).clicked {
-			view_dock_at(vs, r, it.edge)
-		}
-	}
-	menu_separator()
-	if !view_machine_at_home(r.machine) {
-		if menu_item(fmt.tprintf("%s###vm_reattach", labels.reattach), icon = lucide.UNDO_2, icon_font = lucide_icons()).clicked { view_apply(vs, r, {kind = .Reattach}) }
-	}
-	// (a panel's stack's Maximise, as its strip's: the strip of a lone panel waits for a rest at its top edge)
-	if p == .Panel {
-		place := view_panel_place(r.machine)
-		sp := view_space_of(vs, place.space)
-		e, maxed := sp.max_edge.?
-		maxed = maxed && e == place.edge && sp.max_stack == place.stack
+	if shown { menu_separator() }
+	// (the size acts of this presentation: a panel's stack's, as its strip's buttons; a resizable dialog's, as its
+	// header's Maximise)
+	if p == .Panel { view_panel_menu_items(vs, r) }
+	if p == .Dialog && r.kind.o.resizable {
 		word, glyph := labels.maximize, lucide.MAXIMIZE_2
-		if maxed { word, glyph = labels.restore, lucide.MINIMIZE_2 }
-		if menu_item(fmt.tprintf("%s###vm_maximise", word), icon = glyph, icon_font = lucide_icons()).clicked {
-			if maxed { sp.max_edge = nil } else { sp.max_edge, sp.max_stack = place.edge, place.stack }
-			if sp.state != nil { sp.state.anim_busy = true }
-		}
+		if r.maximised { word, glyph = labels.restore, lucide.MINIMIZE_2 }
+		if menu_item(fmt.tprintf("%s###vm_maximise", word), icon = glyph, icon_font = lucide_icons()).clicked { view_maximise_record(r, !r.maximised) }
 	}
 	if menu_item(fmt.tprintf("%s###vm_close", labels.close), icon = lucide.X, icon_font = lucide_icons()).clicked {
-		// (a panel's menu is built after its body, past the check of its flag; a tab not shown is not built at all)
-		if p == .Panel { view_apply(vs, r, {kind = .User_Close}) } else { r.flag = false }
+		// (a panel's menu is built after its body, past the check of its flag, so it closes as the palette does; the
+		// other presentations build it before view_build_ended, which reads the flag as their close button's)
+		if p == .Panel { cmd.act = .Close; views_command_run(vs, cmd) } else { r.flag = false }
 	}
 }
 
