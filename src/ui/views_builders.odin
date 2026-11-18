@@ -276,6 +276,8 @@ view_dialog_build :: proc(vs: ^Views, r: ^View_Record) {
 	// (view_size of this opening: a non-resizable dialog of a width asked past DIALOG_MAX_WIDTH_EM keeps it, modal's `most`)
 	if r.asked.x > 0 { o.width_em = r.asked.x }
 	if r.asked.y > 0 { o.height_em = r.asked.y }
+	// (this opening's least, the kind's at least: modal holds its size, its fit and its grips at it)
+	o.min_width_em = max(o.min_width_em, r.least_w)
 	o.maximised = r.maximised   // (its sizes stay as asked: Restore is the flag going off)
 	if r.dialog_back {
 		// (a drag of its header cancelled: it was laid out a moment ago, at this rect; it shows in this build, with no

@@ -16,9 +16,6 @@
 - **opencode native's build in the toolkit's commands.** `toolbox.build_commands` covers what opencode native's tool
   does by hand: defines on every system, Windows link options (a static vcruntime), stripped symbols in a Linux
   release, `-o:minimal` with its `.mode` file, a fresh build in `build/ocn-new`, a pinned Odin version.
-- **Side areas that fit a narrow window.** Under 52 em, a right area of a fixed 448 px beside the side bar runs past
-  the window (opencode native's /btw panel): a side area gives way as a side panel does. And a dialog's opening takes a
-  least width (the image viewer's handles can fall under its footer's measured width).
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).

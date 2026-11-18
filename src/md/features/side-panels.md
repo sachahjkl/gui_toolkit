@@ -31,6 +31,44 @@ A side panel folds when, open at its width, it leaves the content less than the 
 - No fixed breakpoint of the window: the rule is the same in a window, in a dialog (the settings as a dialog) and in a
   dock space of a program's own.
 
+## Two sides
+
+A space can have a side at the left and a side at the right: opencode native's sessions' sidebar at the left, its /btw
+panel of 32 em (448 px at its 14 px font) at the right, both views docked in the frame's zones. Each side once read the
+rule alone, on the whole space: under about 52 em, each side passed, the sum did not, and the right zone ran past
+the window's edge. The rule now reads both sides together (`view_sides_fit`, views_panels.odin), in one order:
+
+1. **The right side gives way first, then the left.** The left is a program's navigation (sessions, places, pages),
+   the right a tool or an aside beside the content.
+2. **A side narrows before it folds.** Its least is the largest `View_Options.min_width_em` of its views. A side
+   open at its extent that leaves the content less than its least shows narrower, down to its least. With no
+   `min_width_em`, its least is its extent: it does not narrow, it folds as before.
+3. **The rule's `open` is the side's least**, not its extent: a side folds when even at its least it leaves the content
+   less than `content_min`. With no `min_width_em` this is the rule above, unchanged.
+4. **The room of each side:**
+   - the left: the space less the right side's rail and its handle. The left keeps its width while the right can still
+     give way; it narrows and folds only when the right is a rail;
+   - the right: the space less what the left shows this build (its width, narrowed or not, or its rail) and its handle.
+   The left is decided first, so the right reads a width that does not change in this build. The left never reads the
+   right's state: no loop between the two, and each side keeps its own hysteresis (`SIDE_FOLD_GAP_EM`).
+5. **Never past the edge.** A side opened by the person while narrow (a manual choice) shows at its least, held to its
+   room. The content then gets less than its least, down to nothing; no side passes the space's edge.
+6. **A drag starts from what shows.** The handle of a narrowed side moves from the width shown, not from the extent kept.
+   The width let go is the new extent.
+
+The rooms are read on the space's last layout, as the fold always was: a window that shrinks shows the old widths for
+one frame, then the fit.
+
+Refused:
+- Both sides narrow in proportion, as CSS's `flex-shrink`: the sessions' list then shrinks at once, while the aside could
+  give room.
+- The side opened last gives way first: one more state to remember, and the order changes with what the person did
+  before.
+- Each side reads the other side's fold of the last build: two sides that wait for each other can flap at each frame.
+- A least of `DOCK_MIN_EM` for every side: a sidebar of 3 em before it folds. Only a view that says it can narrow does.
+- The layout's own shrink (zones of a weak strictness): the content gives first, to nothing, and the order of the sides
+  is lost.
+
 ## The state machine
 
 The state is two bits: `narrow`, the side of the threshold that was seen last, and `folded`, what shows. The automatic

@@ -47,7 +47,9 @@ View_Options :: struct {
 	float_edge:     Maybe(View_Edge),
 	width_em:       f32,                        // the dialog's first width (0: DIALOG_WIDTH_EM); it grows to what is in it
 	height_em:      f32,                        // 0: as tall as what is in it
-	min_width_em:   f32,                        // how small the user makes it (with `resizable`)
+	// a dialog: how small the user makes it (with `resizable`), and the least of every opening. A panel at the left or
+	// the right: how narrow its zone gets in a narrow space before it folds (0: it folds at its extent; side-panels.md)
+	min_width_em:   f32,
 	min_height_em:  f32,
 	extent_em:      f32,                        // a panel's width or height (step 3)
 	extent_frac:    f32,                        // ... as a share of its space's width or height instead (0: extent_em)
@@ -195,6 +197,7 @@ View_Record :: struct {
 	size:       Vec2,        // the dialog's size in ems ({}: its first size)
 	size_kept:  Vec2,        // the size the memory has
 	asked:      Vec2,        // view_size's for this opening, in ems (an axis of 0: the kind's)
+	least_w:    f32,         // view_size's least width for this opening, in ems (0: the kind's min_width_em)
 	// its dialog fills the window (view_maximise, the header's button): this opening's only, never the memory's, and
 	// off once it leaves the Dialog presentation (src/md/features/views.md, section 2.9)
 	maximised:  bool,
@@ -640,14 +643,18 @@ view_icon :: proc(v: ^View, icon: string, icon_font: font.Font_Id = 0) {
 // view_title gives a title: a dialog that hugs what it shows (a picture's viewer). It wins over the size the user gave
 // the id's dialog before (the memory's); a resize of this opening by the user wins over it, and is remembered. A
 // non-resizable dialog is that wide even past DIALOG_MAX_WIDTH_EM (the window's edge holds it). Shown from the next
-// build, which comes at once (a dialog that opens is measured unseen: its first frame drawn has it).
-view_size :: proc(v: ^View, width_em, height_em: f32) {
+// build, which comes at once (a dialog that opens is measured unseen: its first frame drawn has it). `min_width_em`
+// (0: the kind's min_width_em): this opening's least width. Its size asked, its fit to what is in it and the user's grips
+// are all held at it, the window's edge excepted (a viewer's bar under its picture).
+view_size :: proc(v: ^View, width_em, height_em: f32, min_width_em: f32 = 0) {
 	r := v.record
 	asked := Vec2{max(width_em, 0), max(height_em, 0)}
-	if r.asked == asked { return }
-	r.asked = asked
-	// (the remembered size gives way for this opening; size_kept with it: nothing is written until the user resizes)
-	if r.kind.o.resizable { r.size, r.size_kept = {}, {} }
+	least := max(min_width_em, 0)
+	if r.asked == asked && r.least_w == least { return }
+	// (the remembered size gives way for this opening; size_kept with it: nothing is written until the user resizes. A
+	// new least alone keeps the user's size: the dialog holds it at the least)
+	if r.asked != asked && r.kind.o.resizable { r.size, r.size_kept = {}, {} }
+	r.asked, r.least_w = asked, least
 	// (a dialog not shown yet was laid out at the old size in this build: unseen, the next one at this size is the first
 	// drawn; views.md 3.4)
 	if v.presentation == .Dialog && !v.shown { modal_not_ready(r.panel) }
@@ -739,7 +746,7 @@ view_record_reset :: proc(r: ^View_Record) {
 	r.title, r.icon = "", ""
 	delete(r.icon_own, r.allocator)
 	r.icon_own, r.icon_font, r.icon_set = "", 0, false
-	r.asked = {}
+	r.asked, r.least_w = {}, 0
 	r.maximised = false
 	if r.owned != nil && r.owned_free != nil { r.owned_free(r.owned) }
 	r.owned, r.owned_free = nil, nil

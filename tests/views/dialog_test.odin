@@ -20,6 +20,8 @@ import "gt:ui"
 @(private = "file")
 Body :: struct {
 	grows: int,
+	least: f32,   // the least width "least" and "least_sized" ask for this opening (em)
+	em:    f32,   // the font size of their last build (frame px)
 }
 
 @(private = "file")
@@ -274,6 +276,49 @@ the_header_adds_nothing_else :: proc(t: ^testing.T) {
 		return n
 	}
 	testing.expect_value(t, clickable(header) - 1, 1)   // (the strip, and the Detach icon)
+}
+
+// A dialog that asks a least width for its opening (view_size's min_width_em) measures at least that: fitted to a small
+// content, sized narrower by view_size, or resizable with a size of its own; and never past the window's edge.
+@(private = "file") LEAST_EM :: 36
+@(private = "file") ASKED_EM :: 10   // the width asked: under the least
+@(test)
+a_dialog_opened_with_a_least_width_measures_at_least_that :: proc(t: ^testing.T) {
+	r: Run
+	defer run_end(&r)
+	least_view :: proc(v: ^ui.View, b: ^Body) {
+		b.em = ui.font_size()
+		ui.view_size(v, ASKED_EM, 0, b.least)
+		if ui.dialog_body("least_body") { ui.label("A small picture###least_words") }
+	}
+	ui.view_register(&r.views, "least", least_view, ui.View_Options{title = "Least"})
+	ui.view_register(&r.views, "least_sized", least_view, ui.View_Options{title = "Least, resizable", resizable = true, height_em = 12})
+	s := run_start(t, &r)
+	width :: proc(s: ^session.Session, panel: string) -> f32 {
+		b := session.find(s, panel)
+		return b != nil ? b.rect.max.x - b.rect.min.x : 0
+	}
+	for id in ([]string{"least", "least_sized"}) {
+		panel := id == "least" ? "modal_view_least" : "modal_view_least_sized"
+		r.body.least = LEAST_EM
+		r.want = id
+		wait_shown(s, panel)
+		w := width(s, panel)
+		testing.expectf(t, w >= LEAST_EM * r.body.em - 0.5, "%s: at least its least: %v < %v", id, w, LEAST_EM * r.body.em)
+		ui.view_close(&r.views, id)
+		session.wait_gone(s, panel)
+		// (a least wider than the window: the window's edge holds it, its margins kept)
+		r.body.least = 200
+		r.want = id
+		wait_shown(s, panel)
+		w = width(s, panel)
+		margin := ui.MODAL_MARGIN_EM * r.body.em
+		testing.expectf(t, w <= f32(WINDOW.x) - 2 * margin + 0.5, "%s: held by the window: %v", id, w)
+		b := session.find(s, panel)
+		testing.expectf(t, b != nil && b.rect.min.x >= 0 && b.rect.max.x <= f32(WINDOW.x), "%s: inside the window: %v", id, b.rect if b != nil else ui.Rect{})
+		ui.view_close(&r.views, id)
+		session.wait_gone(s, panel)
+	}
 }
 
 // A body that asks for tools gets them in its header, after the title.
