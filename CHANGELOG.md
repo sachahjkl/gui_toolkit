@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.318.2] - 2026-11-18 17:45
+
+### Added
+- **A program's own title bar takes the theme's band**: `ui.caption_band(dc, r, active)` draws the band of the theme shown,
+and `ui.caption_band_ink()` and `ui.caption_band_bold()` give its text, for a program that draws its own bar (a row of
+tabs) in place of `ui.title_bar`.
+
 ## [0.318.1] - 2026-11-18 17:14
 
 ### Fixed
@@ -4505,6 +4512,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.318.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.2
 [0.318.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.1
 [0.318.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.318.0
 [0.317.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.317.0
