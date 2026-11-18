@@ -529,6 +529,10 @@ own_bar_build :: proc(s: ^session.Session) {
 	ui.next({fixed_x = 0, fixed_y = 0, width = ui.px(BAR_W), height = ui.px(BAR_H)})
 	row := ui.build_box({}, "###tabs")
 	row.custom = proc(b: ^ui.Box, user: rawptr, dc: ^draw.Context) { _ = ui.caption_band(dc, b.rect, true) }
+	if ui.parent(row) {
+		if ui.caption_text() { ui.label("Tab###tab") }
+		ui.label("Plain###plain")
+	}
 }
 
 // A program that draws its own title bar (a row of tabs, as Wren's) takes the theme's band, its ink and its bold; a
@@ -544,8 +548,11 @@ a_programs_own_bar_takes_the_band :: proc(t: ^testing.T) {
 	ink, has := ui.caption_band_ink().?
 	testing.expect(t, has && ink == draw.hex(WHITE), "the band's ink, white")
 	testing.expect(t, ui.caption_band_bold(), "its text bold")
+	testing.expect(t, session.get(s, "tab").font != session.get(s, "plain").font, "caption_text: the tab's text bold")
 	p := ui.palette_of("Midnight")
 	plain := session.start(t, {size = {BAR_W, WINDOW_H}, palette = p, no_renderer = true, build = own_bar_build})
+	session.frame(plain)
+	testing.expect_value(t, session.get(plain, "tab").font, session.get(plain, "plain").font)
 	ui.use(plain.state)
 	testing.expect(t, ui.caption_band_ink() == nil, "no band: no ink")
 	testing.expect(t, !ui.caption_band_bold(), "no band: not bold")
