@@ -94,7 +94,8 @@ Task :: struct {
 
 // `work(data)` on the chores, then `done(data, 0)` on the interface's thread of `s` at the start of its next build.
 // Call it on that thread. When `s` is destroyed by then (or the chores stopped), `done` never runs: `lost(data)` does,
-// on the thread that found it out, to free the data (nil: nothing). `done` nil: nothing comes back.
+// on the thread that found it out, to free the data (nil: nothing). That holds for an answer already queued and not yet
+// run when `s` goes too. `done` nil: nothing comes back.
 task :: proc(s: ^State, work: tasks.Work, done: Post_Proc, data: rawptr, lost: tasks.Work = nil) {
 	b := task_box_of(s)
 	sync.atomic_add(&b.refs, 1)
@@ -118,14 +119,27 @@ chore_add :: proc(work: tasks.Work, data: rawptr) -> bool {
 task_run :: proc(d: rawptr) {
 	t := (^Task)(d)
 	if t.work != nil { t.work(t.data) }
+	if t.done == nil { task_end(t, true); return }
 	posted := false
-	if t.done != nil {
-		sync.lock(&t.box.lock)
-		if t.box.s != nil { posted = post_state(t.box.s, t.done, t.data) }
-		sync.unlock(&t.box.lock)
-	}
-	task_end(t, posted || t.done == nil)
+	sync.lock(&t.box.lock)
+	// (the task itself is posted, not its data: an answer still queued when the State goes reaches task_dropped through
+	// pq_drop, and `lost` frees the data; posting `done` alone left that data to a queue that knows nothing of it)
+	if t.box.s != nil { posted = post_state(t.box.s, task_answer, t) }
+	sync.unlock(&t.box.lock)
+	if !posted { task_end(t, false) }
 }
+
+// The answer, at a build of the State: `done`, then the task goes.
+@(private)
+task_answer :: proc(d: rawptr, word: u64) {
+	t := (^Task)(d)
+	t.done(t.data, 0)
+	task_end(t, true)
+}
+
+// An answer that will never run (the State destroyed with it still queued): `lost` frees the data.
+@(private)
+task_dropped :: proc(d: rawptr) { task_end((^Task)(d), false) }
 
 @(private = "file")
 task_end :: proc(t: ^Task, delivered: bool) {

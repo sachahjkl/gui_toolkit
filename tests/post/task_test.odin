@@ -71,3 +71,23 @@ a_task_that_ends_after_its_state_is_lost :: proc(t: ^testing.T) {
 	testing.expect_value(t, sync.atomic_load(&r.lost), 1)
 	testing.expect_value(t, r.done, 0)
 }
+
+// The answer is queued, and the State is destroyed before a build runs it: done never runs, lost gets the data (it
+// leaked: the queue dropped the answer with nothing to free it).
+@(test)
+a_task_whose_answer_waits_when_its_state_goes_is_lost :: proc(t: ^testing.T) {
+	r := new(Task_Run)
+	defer free(r)
+	font.init(&r.fonts)
+	defer font.destroy(&r.fonts)
+	ui.init(&r.s, &r.fonts, &r.theme)
+	ui.task(&r.s, work, done, r, lost)
+	sync.sema_post(&r.gate)
+	testing.expect(t, sync.sema_wait_with_timeout(&r.worked, TASK_WAIT), "the work ran")
+	began := time.tick_now()
+	for !ui.posts_pending(&r.s) && time.tick_since(began) < TASK_WAIT { time.sleep(time.Millisecond) }
+	testing.expect(t, ui.posts_pending(&r.s), "the answer is queued")
+	ui.destroy(&r.s)
+	testing.expect_value(t, sync.atomic_load(&r.lost), 1)
+	testing.expect_value(t, r.done, 0)
+}

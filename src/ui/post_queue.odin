@@ -317,5 +317,7 @@ pq_refuse :: proc(q: ^Post_Queue) { sync.atomic_add(&q.stats.refused, 1) }
 @(private = "file")
 pq_drop :: proc(q: ^Post_Queue, m: Post_Message) {
 	sync.atomic_add(&q.stats.dropped, 1)
+	// (a ui.task's answer frees what it carries by its own `lost`, whatever the queue's on_drop does)
+	if m.fn == task_answer { task_dropped(m.data); return }
 	if q.on_drop != nil { q.on_drop(m.data, m.word) }
 }
