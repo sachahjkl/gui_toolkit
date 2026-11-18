@@ -527,7 +527,9 @@ capabilities. Written on 2026-11-18.
   threads at once: `start_lock`) and writes the plugin's queue; a reader, which posts the events as the plugin's thread
   did and reads the process's end. The interface's thread pushes messages and reads atomics, as before.
 - **Not_Responding counts from the write of a message to its Turn_Done.** A message written while none waits starts the
-  time; each Turn_Done starts it again for the next one, or ends it.
+  time; each Turn_Done starts it again for the next one, or ends it. The start is the exception: the child's first
+  word (Alive, as soon as it read its Start) starts the time again. The system's start of a process took more than the
+  bound on a busy Windows machine, and a plugin was said not to respond before any of its code ran.
 - **Stop**: the child's reader raises the interrupt flag at once (it reads while the plugin's thread runs a script);
   a child whose runtime has not ended `STOP_BOUND_MS` (1 s) later is killed. A kill after a Stop makes the plugin Ready,
   not Failed: the person asked for its end.

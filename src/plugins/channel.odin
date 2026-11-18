@@ -188,6 +188,14 @@ channel_read :: proc(p: ^Plugin, ch: ^Channel) {
 		free_all(context.temp_allocator)
 		if !good { broken = "it wrote an event that cannot be read"; break }
 		#partial switch ek {
+		case .Alive:
+			// (the bound of the start counted the system's start of the process, slow on a busy machine: it counts
+			// again from the child's first word, as the plugin's code begins)
+			if sync.atomic_load(&ch.pending) > 0 { sync.atomic_store(&p.busy_since, now_ms()) }
+			request_free(&req)
+			delete(title); delete(text)
+			plugin_api.list_free(list)
+			continue
 		case .Started, .Turn_Done, .Failed:
 			busy_less(p, ch)
 			turn_done(p)

@@ -45,6 +45,8 @@ child_main :: proc() -> int {
 	out := new(Child_Out)
 	out.file = os.stdout
 	p.out = out
+	// (before the plugin's code: the time the system took to start this process is not the plugin's)
+	child_event(p, .Alive, "", "", .Info, nil, {}, {})
 	free_all(context.temp_allocator)
 	c := runtime.default_context()
 	c.allocator = runtime.heap_allocator()

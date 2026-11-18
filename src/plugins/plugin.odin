@@ -241,6 +241,7 @@ Event_Kind :: enum u8 {
 	Crashed,     // its process ended with no word of its runtime (the program's reader says it): `text`
 	Request,     // a call for the broker (files, the network, the clipboard): `req`
 	Rows,        // a lazy list's rows: `title` the view's id, `text` the list's key, `list` the rows, `rows` the ask
+	Alive,       // its process read its start: the bound counts from here (the program's reader only)
 }
 
 @(private)
@@ -294,6 +295,7 @@ event_run :: proc(data: rawptr, word: u64) {
 	if p.dropped || e.serial != p.serial { return }
 	h := p.host
 	switch e.kind {
+	case .Alive:   // (the reader's: never posted)
 	case .Started:
 		if p.state == .Starting { p.state = .Running }
 	case .Turn_Done:
