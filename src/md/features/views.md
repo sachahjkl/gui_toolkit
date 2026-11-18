@@ -365,7 +365,10 @@ view_room :: proc(v: ^View) -> Vec2
 // id's remembered size (forgotten for this opening, not rewritten); the user's resize of this opening wins over it.
 // A width past DIALOG_MAX_WIDTH_EM holds: the cap is for a dialog sized by its words, not one sized by its picture.
 // Refused: an option of view_open (the size is known only once the picture is, in a build).
-view_size :: proc(v: ^View, width_em, height_em: f32)
+// `min_width_em` (0: the kind's min_width_em): this opening's least width. The dialog is never narrower: not its size
+// asked, not what is in it measured (a dialog that fits its content: max(content, least)), not the user's grips; the
+// window's edge holds it. A change of the least alone keeps the user's size.
+view_size :: proc(v: ^View, width_em, height_em: f32, min_width_em: f32 = 0)
 
 // Inside a build: `if ui.view_header_tools(v) { ... }` builds controls in the header, after the title.
 @(require_results, deferred_none = view_header_tools_end)
@@ -577,6 +580,10 @@ draws, except the header that a dialog always had. The rules:
        centre is the program's content (`views_dock` without `content` never folds by width). **Why it changed
        (0.313).** A Minimise was kept forever and a narrow fold was a second state outside the memory
        (`sp.folded`, `sp.unfolded`); see side-panels.md.
+     - **Both side zones fit the space together** (side-panels.md, Two sides): the right zone narrows to its least
+       (the largest `min_width_em` of its views), then folds; then the left does the same. No zone passes the space's
+       edge. **Why.** Each zone read the rule alone: opencode native's sidebar and its /btw panel of 448 px each left
+       the content its least, and together ran past a window under about 52 em.
    - **Close** closes every view of the stack (each ends with `VIEW_CANCELLED`): it is the stack's button, beside the
      stack's Minimise and Maximise. One tab closes by Ctrl+W in it, its menu's Close or the palette. Refused: closing
      the shown tab only (two buttons at the right end would act on the stack and one on a tab).
@@ -903,6 +910,12 @@ Four rules make it come at once and whole:
    ready (`modal_not_ready`), and the next build, at the new size, is the first drawn. Without it, a known-size
    dialog showed one frame at its old size, and a program kept the last size it asked to work around it (opencode
    native's image viewer, `Image_Viewer.asked`).
+   **A least width for the opening** (`view_size`'s `min_width_em`). opencode native's image viewer hugs its picture,
+   and its bar (Zoom, Copy, Close) must hold under it. It measured the bar itself and asked for that width: the
+   dialog's grips could still make it narrower than the bar's measured width. The least is now the dialog's own: its asked size, its fit to what is in it and its
+   grips are all held at it. The kind's `min_width_em` stays the least of every opening; the opening's is the larger.
+   Refused: the dialog measures its content's least (`least_x`) itself. A picture's dialog sizes its picture by the
+   dialog's room: a least from the content that follows the room grows each frame. The program knows its bar.
 4. **What cannot be seen damages nothing.** A box with `transparency` 1 is not drawn: it has no part for the partial
    redraw. Drawn at alpha 0, the scrim of a dialog still unseen was a part the size of the window, and its first
    unseen frame redrew all of it. Its parts come in the frame it shows.
