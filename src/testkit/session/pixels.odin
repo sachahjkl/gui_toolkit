@@ -95,7 +95,8 @@ count_different :: proc(a, b: Image, delta := PIXEL_DELTA) -> (n: int) {
 }
 
 // The last frame to a PNG of this test's folder.
-save_png :: proc(s: ^Session, name: string) {
+save_png :: proc(s: ^Session, name: string, loc := #caller_location) {
+	if s.renderer == nil { failed(s, "save_png: this session has no renderer", loc) }
 	px := render.read_pixels(s.renderer, s.test.temp_allocator)
 	if px == nil { return }
 	data := png.encode(px, s.renderer.size.x, s.renderer.size.y, .Fast)
