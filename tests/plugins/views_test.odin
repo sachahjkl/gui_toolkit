@@ -53,6 +53,8 @@ open_counter :: proc(t: ^testing.T) -> (s: ^session.Session, fx: ^Fx, root: stri
 	wait_started(s, fx, "counter")
 	fx.open_view = {"counter", "main"}
 	session.wait_text(s, "Count: 0", WAIT)
+	// (the view's window takes its content's height as it comes: a click before it settles can miss its node)
+	session.wait_idle(s, WAIT)
 	return
 }
 
