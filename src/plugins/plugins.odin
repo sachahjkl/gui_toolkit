@@ -16,6 +16,7 @@ import "core:strings"
 import "core:sync"
 import "core:time"
 import config "../config"
+import i18n "../i18n"
 import plugin_api "../plugin_api"
 import "../tasks"
 import "../ui"
@@ -78,6 +79,9 @@ Host_Options :: struct {
 	// the program's own module, `import { ... } from "app"` (app.odin; nil: none). The program keeps it, unchanged,
 	// while the host is open
 	app:          ^App_Module,
+	// the names of the program's menu places that plugins may add their commands to ("file", "edit", "item"): what a
+	// manifest's "menus" say in "where" (menu_entries). Copied by host_open
+	menu_places:  []string,
 }
 
 // A program's own module and its parts (plugin_api's: the same reflection as the module "gt"; plugins.md, "As built:
@@ -127,6 +131,8 @@ Host :: struct {
 	// the program's module's calls that wait for the program's answer, by their token (app.odin)
 	app_waiting: map[App_Token]App_Waiting,
 	app_tokens:  App_Token,   // the last token given
+	sources:     [dynamic]^Plugin_Source,   // the plugins' palette sources (palette_sources.odin)
+	language:    u32,                       // i18n.version() the running plugins were told (l10n.odin)
 }
 
 // What the chores and the plugins' threads reach the host by: `open` false once host_close ran (under `lock`, which a
@@ -163,6 +169,9 @@ host_open :: proc(h: ^Host, s: ^ui.State, o: Host_Options) {
 	h.o.program, h.o.program_id = strings.clone(o.program), strings.clone(o.program_id)
 	h.o.folder, h.o.config_dir, h.o.state_dir = strings.clone(o.folder), strings.clone(o.config_dir), strings.clone(o.state_dir)
 	h.o.single, h.o.data_dir = strings.clone(o.single), strings.clone(o.data_dir)
+	places := make([]string, len(o.menu_places))
+	for place, i in o.menu_places { places[i] = strings.clone(place) }
+	h.o.menu_places = places
 	if h.o.bound_ms <= 0 { h.o.bound_ms = NOT_RESPONDING_MS }
 	if h.o.memory_limit <= 0 { h.o.memory_limit = MEMORY_LIMIT }
 	if h.o.app != nil {
@@ -171,6 +180,7 @@ host_open :: proc(h: ^Host, s: ^ui.State, o: Host_Options) {
 		fmt.assertf(why == "", "plugins: Host_Options.app: %s", why)
 	}
 	h.window_announcer = {mode = .Window, state = s}
+	h.language = i18n.version()   // (a plugin's start says the language: only a later change is sent)
 	h.link = new(Host_Link)
 	h.link^ = {open = true, state = s, host = h, refs = 1}
 	if h.o.prefs != nil { h.watch = config.watch(h.o.prefs, SETTINGS_PREFIX, setting_changed, h) }
@@ -218,6 +228,9 @@ host_close :: proc(h: ^Host) {
 	delete(h.folder); delete(h.toml_path); delete(h.state_dir)
 	delete(h.last_toast)
 	app_waiting_free(h)
+	delete(h.sources)   // (emptied by plugins_drop)
+	for place in h.o.menu_places { delete(place) }
+	delete(h.o.menu_places)
 	h^ = {}
 }
 
@@ -236,6 +249,8 @@ host_build :: proc(h: ^Host, palette: ^ui.Command_Palette) {
 		ui.palette_add(palette, &h.source)
 		h.palette = palette
 	}
+	sources_build(h, palette)
+	language_follow(h)
 	now := -1.0
 	for p in h.plugins {
 		since := sync.atomic_load(&p.busy_since)
@@ -371,6 +386,7 @@ say :: proc(h: ^Host, kind: ui.Toast_Kind, title: string, text := "") {
 // when its thread and its posts let go of it.
 @(private)
 plugins_drop :: proc(h: ^Host) {
+	sources_drop(h)
 	for p in h.plugins {
 		plugin_stop(p)
 		p.dropped = true

@@ -12,7 +12,7 @@ the palette, the settings and the toasts are the toolkit's.
 The program draws a view with its own widgets. The plugin only returns a tree of plain objects, so the view looks and
 behaves as the program does. You write no layout code, no spacing and no colours.
 
-This toolkit gives API level 6.
+This toolkit gives API level 7.
 
 ## Read first
 
@@ -54,7 +54,7 @@ In a program, the folder goes in `<data>/<program>/plugins/<id>/`, named as the 
 	"id": "hello",
 	"name": "Hello",
 	"version": "1.0.0",
-	"api": 6,
+	"api": 7,
 	"main": "main.js",
 	"program": "papier",
 	"commands": [{ "id": "greet", "label": "Say hello", "tags": ["welcome"] }],
@@ -88,7 +88,9 @@ A level only adds calls, nodes and optional fields. Each in `references/plugin-a
 - level 4: `files`, `http`, `clipboard`, and the permissions;
 - level 5: the lazy list node (`kind: "list"`);
 - level 6: rich views: `icon` on button, text, heading, field and switch; `tone`, `mono` and `highlight` on text; the
-  `badge` node.
+  `badge` node;
+- level 7: palette sources (`palette.source`, `palette.onChoose`), the manifest's `palette`, `menus`, `toolbar` and
+  `l10n`, and `context.language`.
 
 A program older than a field ignores it: an `icon` on a level-5 program draws no icon, and the view still works. A
 node it does not know (`badge`) is refused, so write `api: 6` when you use one.
@@ -160,6 +162,28 @@ A view that is only words reads flat. Say what each thing is with the toolkit's 
 - `badge` for a level, a state or a count: a mark, not a button.
 - `highlight` (a string or an array of them) marks each match, as the find bar marks, case aside.
 - An act repeated in each row of a list: a button with `look: "ghost"` and `size: "small"`, with an icon.
+
+## The palette, menus, the tool bar, languages
+
+```json
+"palette": [{ "id": "lines", "label": "Lines", "prefix": "@" }],
+"menus": [{ "command": "hello", "where": "file" }],
+"toolbar": [{ "command": "hello", "icon": "search" }],
+"l10n": { "fr": { "Say hello": "Dire bonjour", "Lines": "Lignes" } }
+```
+
+```js
+palette.source("lines", async (query) => rows(query), { onChoose: (row) => open(row.id) });
+```
+
+- A palette source answers what the person types after its prefix: `@` (go to), `#` (choose), `/` (paths), or none
+  (the plain search). `>`, `:` and `$` are refused. Return `{ id, label, detail?, icon?, group? }`, 200 at most.
+- You are asked one query at a time; an answer for an older query is dropped. Answer fast: filter in memory, never
+  loop over a network per letter.
+- `menus` and `toolbar` name your own commands. `where` is a place the program names in its docs ("file", "edit");
+  another program's place gives nothing. They show without your code running.
+- `l10n` translates your manifest's words (labels, titles). Your view's texts are yours to translate: read
+  `context.language` ("fr", "en"); when it changes, your open views render again.
 
 ## A program's own module
 

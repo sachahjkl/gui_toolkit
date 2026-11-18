@@ -220,7 +220,8 @@ api_reachable :: proc(api: Api, level: int) -> map[string]bool {
 		for f in t.fields {
 			if f.level > level { continue }   // (Tone, of a field level 6 added: not in level 5's snapshot)
 			for other in api.types {
-				if other.name not_in seen && type_names(f.type, other.name) { append(&todo, other.name) }
+				// (a function's TypeScript names the types it takes and gives: Palette_Search's Palette_Row)
+				if other.name not_in seen && (type_names(f.type, other.name) || type_names(ts_type(f.type), other.name)) { append(&todo, other.name) }
 			}
 		}
 	}
@@ -318,6 +319,8 @@ ts_type :: proc(odin_type: string) -> string {
 	case "Flag_Handler":                    return "(value: boolean) => void | Promise<void>"
 	case "Render":                          return "() => Node"
 	case "Row_Render":                      return "(index: number) => Node"
+	case "Palette_Search":                  return "(query: string) => Palette_Row[] | Promise<Palette_Row[]>"
+	case "Palette_Choose_Handler":          return "(row: Palette_Row) => void | Promise<void>"
 	case "Children":                        return "(Node | null | undefined | false)[]"
 	case "Setting_Handler":                 return "(id: string, value: string | number | boolean) => void | Promise<void>"
 	// (distinct strings of the bridge's: a Lucide name, and what the bridge fills from a string or an array of them)

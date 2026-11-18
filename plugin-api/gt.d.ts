@@ -1,4 +1,4 @@
-// The module "gt" of a plugin, level 6. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
+// The module "gt" of a plugin, level 7. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
 declare module "gt" {
 	/** How a toast looks. */
 	export type Toast_Kind = "info" | "good" | "warn" | "bad";
@@ -21,6 +21,8 @@ declare module "gt" {
 		version: string;
 		/** The level of the API this program gives. */
 		api: number;
+		/** The person's language, as the toolkit's tag ("fr", "fr-CA"; "en": English). It changes while the plugin runs when the person changes it: every open view renders again then. (level 7) */
+		language: string;
 	}
 
 	/** What a button's colour says. */
@@ -217,6 +219,26 @@ declare module "gt" {
 		text: string;
 	}
 
+	/** A row of a palette source's answer. */
+	export interface Palette_Row {
+		/** Stable in its source: what the choice gives back. */
+		id: string;
+		/** What the row says, and what the query lights. */
+		label: string;
+		/** Weak, after the label (a folder, a time). */
+		detail?: string;
+		/** A Lucide icon by its name. */
+		icon?: string;
+		/** Its heading. */
+		group?: string;
+	}
+
+	/** What a palette source does beside its search. */
+	export interface Palette_Source_Options {
+		/** Called with the row chosen. */
+		onChoose?: (row: Palette_Row) => void | Promise<void>;
+	}
+
 	/** A node of a view: what a render returns, and a container's children. */
 	export type Node = Text_Node | Heading_Node | Button_Node | Row_Node | Column_Node | Card_Node | Space_Node | Field_Node | Check_Node | Switch_Node | Separator_Node | Lazy_List_Node | Badge_Node;
 
@@ -263,6 +285,13 @@ declare module "gt" {
 		read(): Promise<string>;
 		/** Puts text on the clipboard. (level 4, needs the permission clipboard.write) */
 		write(text: string): Promise<void>;
+	};
+
+	export const palette: {
+		/** Answers the palette source `id` of plugin.json's "palette": the program asks while the person types after its prefix, one question at a time (a newer query replaces one that waits). (level 7) */
+		source(id: string, search: (query: string) => Palette_Row[] | Promise<Palette_Row[]>, options?: Palette_Source_Options): void;
+		/** Gives the palette source `id` what choosing a row does (the same as palette.source's onChoose). (level 7) */
+		onChoose(id: string, handler: (row: Palette_Row) => void | Promise<void>): void;
 	};
 
 }

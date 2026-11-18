@@ -1,6 +1,6 @@
 # The plugin API
 
-Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 6 of the API and accepts plugins written for levels 1 to 6. How a program turns plugins on: [plugins.md](plugins.md).
+Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 7 of the API and accepts plugins written for levels 1 to 7. How a program turns plugins on: [plugins.md](plugins.md).
 
 A plugin imports the API as an ES module, and its entry file exports `activate(context)`:
 
@@ -149,6 +149,31 @@ Level 4. Permission: `clipboard.write`.
 | Argument | Type | |
 |---|---|---|
 | `text` | `string` |  |
+
+## palette
+
+### `palette.source(id, search, options?)`
+
+Answers the palette source `id` of plugin.json's "palette": the program asks while the person types after its prefix, one question at a time (a newer query replaces one that waits).
+
+Level 7. Permission: none.
+
+| Argument | Type | |
+|---|---|---|
+| `id` | `string` |  |
+| `search` | `(query: string) => Palette_Row[] \| Promise<Palette_Row[]>` |  |
+| `options` | `Palette_Source_Options`, optional |  |
+
+### `palette.onChoose(id, handler)`
+
+Gives the palette source `id` what choosing a row does (the same as palette.source's onChoose).
+
+Level 7. Permission: none.
+
+| Argument | Type | |
+|---|---|---|
+| `id` | `string` |  |
+| `handler` | `(row: Palette_Row) => void \| Promise<void>` |  |
 
 ## Nodes
 
@@ -352,6 +377,7 @@ What the entry file's activate(context) is given (gt:plugins makes it: plugins/r
 | `name` | `string` | Its name. |
 | `version` | `string` | Its version ("" when plugin.json says none). |
 | `api` | `number` | The level of the API this program gives. |
+| `language` | `string` | The person's language, as the toolkit's tag ("fr", "fr-CA"; "en": English). It changes while the plugin runs when the person changes it: every open view renders again then. |
 
 ### `Button_Intent`
 
@@ -411,3 +437,23 @@ An answer to http.fetch.
 | `status` | `number` | Its HTTP status. |
 | `url` | `string` | The address that answered, after the redirects. |
 | `text` | `string` | Its body, as text. |
+
+### `Palette_Row`
+
+A row of a palette source's answer.
+
+| Field | Type | |
+|---|---|---|
+| `id` | `string` | Stable in its source: what the choice gives back. |
+| `label` | `string` | What the row says, and what the query lights. |
+| `detail` | `string`, optional | Weak, after the label (a folder, a time). |
+| `icon` | `string`, optional | A Lucide icon by its name. |
+| `group` | `string`, optional | Its heading. |
+
+### `Palette_Source_Options`
+
+What a palette source does beside its search.
+
+| Field | Type | |
+|---|---|---|
+| `onChoose` | `(row: Palette_Row) => void \| Promise<void>`, optional | Called with the row chosen. |

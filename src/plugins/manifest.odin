@@ -6,9 +6,12 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:math"
 import "core:strings"
+import "../ascii"
 import config "../config"
 import tk_json "../json"
+import lucide "../lucide"
 import plugin_api "../plugin_api"
+import "../ui"
 
 MANIFEST_FILE :: "plugin.json"
 // The most a manifest may weigh: it is read whole, at each start.
@@ -70,6 +73,36 @@ Manifest :: struct {
 	settings: []Setting_Decl,
 	permissions: []string,   // what it asks, each in its one form (permission_parse)
 	app:      int,           // the level of the program's module "app" it needs (0: none said)
+	palette:  []Palette_Decl,   // its palette sources (palette_sources.odin)
+	menus:    []Menu_Decl,      // its commands in the program's menus (menus.odin)
+	toolbar:  []Toolbar_Decl,   // its commands in the program's tool bar
+	l10n:     []L10n_Text,      // its own words in other languages (l10n.odin)
+}
+
+// A palette source a manifest declares: its id, its label (the palette's "reading…" row, its hint), its prefix.
+Palette_Decl :: struct {
+	id:     string,
+	label:  string,
+	prefix: ui.Palette_Prefix,   // .None: the plain search only
+}
+
+// A command of the plugin's in a menu of the program: the program's place's name ("file", "item").
+Menu_Decl :: struct {
+	command: string,   // the plugin's command id
+	place:   string,   // the manifest's "where": the program's place (Host_Options.menu_places)
+}
+
+// A command of the plugin's in the program's tool bar, its icon (a Lucide name; "": the command's).
+Toolbar_Decl :: struct {
+	command: string,
+	icon:    string,
+}
+
+// One of the manifest's words in a language: the "l10n" object's.
+L10n_Text :: struct {
+	language:    string,   // "fr", "fr-ca" (in lower case)
+	text:        string,   // the manifest's English
+	translation: string,
 }
 
 manifest_destroy :: proc(m: ^Manifest) {
@@ -90,6 +123,14 @@ manifest_destroy :: proc(m: ^Manifest) {
 	delete(m.settings)
 	for p in m.permissions { delete(p) }
 	delete(m.permissions)
+	for d in m.palette { delete(d.id); delete(d.label) }
+	delete(m.palette)
+	for d in m.menus { delete(d.command); delete(d.place) }
+	delete(m.menus)
+	for d in m.toolbar { delete(d.command); delete(d.icon) }
+	delete(m.toolbar)
+	for t in m.l10n { delete(t.language); delete(t.text); delete(t.translation) }
+	delete(m.l10n)
 	m^ = {}
 }
 
@@ -224,7 +265,72 @@ manifest_parse :: proc(text: string, program: string, app: ^App_Module = nil, al
 		if app == nil { return m, fmt.aprintf("it needs level %d of a program's module \"app\"; this program gives none", m.app) }
 		if m.app > app.level { return m, fmt.aprintf("it needs level %d of %s's module \"app\"; this program gives level %d", m.app, app.name, app.level) }
 	}
+	if why := contributions_parse(&m, v); why != "" { return m, why }
 	return m, ""
+}
+
+// The manifest's palette sources, menus, tool bar and languages (slice 7). Each part is the manifest's as soon as it
+// is read, refused or not: manifest_destroy frees it.
+@(private)
+contributions_parse :: proc(m: ^Manifest, v: json.Value) -> string {
+	has_command :: proc(m: ^Manifest, id: string) -> bool {
+		for c in m.commands { if c.id == id { return true } }
+		return false
+	}
+	sources := make([dynamic]Palette_Decl)
+	defer m.palette = sources[:]
+	for d in tk_json.array(v, "palette") {
+		id := tk_json.text(d, "id")
+		mark := tk_json.text(d, "prefix")
+		// (the palette's own table: a prefix means the same in every program; commands, settings and secrets are the
+		// program's alone)
+		prefix: ui.Palette_Prefix
+		switch mark {
+		case "":  prefix = .None
+		case "@": prefix = .Go_To
+		case "#": prefix = .Choose
+		case "/": prefix = .Paths
+		case ">", ":", "$":
+			return fmt.aprintf("its palette source \"%s\" takes the prefix \"%s\", which is the program's own (one of @, # or /, or none)", id, mark)
+		case:
+			return fmt.aprintf("its palette source \"%s\" has the prefix \"%s\", which is no prefix of the palette (one of @, # or /, or none)", id, mark)
+		}
+		append(&sources, Palette_Decl{id = strings.clone(id), label = strings.clone(tk_json.text(d, "label", default = m.name)), prefix = prefix})
+		if !id_valid(id, false) { return fmt.aprintf("its palette source id \"%s\" is not an id", id) }
+		for o in sources[:len(sources) - 1] { if o.id == id { return fmt.aprintf("it declares the palette source \"%s\" twice", id) } }
+	}
+	menus := make([dynamic]Menu_Decl)
+	defer m.menus = menus[:]
+	for d in tk_json.array(v, "menus") {
+		// (the manifest's key is "where"; Odin keeps the word for itself)
+		command, place := tk_json.text(d, "command"), tk_json.text(d, "where")
+		append(&menus, Menu_Decl{command = strings.clone(command), place = strings.clone(place)})
+		if !has_command(m, command) { return fmt.aprintf("its menu entry names \"%s\", which is none of its commands", command) }
+		if place == "" { return fmt.aprintf("its menu entry of \"%s\" says no \"where\"", command) }
+	}
+	tools := make([dynamic]Toolbar_Decl)
+	defer m.toolbar = tools[:]
+	for d in tk_json.array(v, "toolbar") {
+		command, icon := tk_json.text(d, "command"), tk_json.text(d, "icon")
+		append(&tools, Toolbar_Decl{command = strings.clone(command), icon = strings.clone(icon)})
+		if !has_command(m, command) { return fmt.aprintf("its tool bar entry names \"%s\", which is none of its commands", command) }
+		// (a tool shows its icon alone: one the font does not have would be an empty button)
+		if icon != "" {
+			if _, known := lucide.glyph_of(icon); !known { return fmt.aprintf("its tool bar entry of \"%s\" has the icon \"%s\", which is no Lucide icon", command, icon) }
+		}
+	}
+	texts := make([dynamic]L10n_Text)
+	defer m.l10n = texts[:]
+	for language, words in tk_json.object(v, "l10n") {
+		table, is_object := words.(json.Object)
+		if !is_object { return fmt.aprintf("its l10n's \"%s\" is not an object of texts", language) }
+		for text, translation in table {
+			t, is_text := translation.(json.String)
+			if !is_text { return fmt.aprintf("its l10n's \"%s\" translates \"%s\" with something that is not a text", language, text) }
+			append(&texts, L10n_Text{language = ascii.lower(language, context.allocator), text = strings.clone(text), translation = strings.clone(string(t))})
+		}
+	}
+	return ""
 }
 
 // The manifest's "settings". `why`: the first that is not a setting.

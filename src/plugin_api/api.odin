@@ -12,7 +12,7 @@ import js "../js"
 
 // The level of the API this toolkit gives, and the oldest a plugin may ask: a manifest's `api` between the two is
 // accepted. A level only adds; a removal or a change raises the oldest.
-PLUGIN_API_LEVEL :: 6
+PLUGIN_API_LEVEL :: 7
 PLUGIN_API_OLDEST :: 1
 
 // What a call needs the person to have granted (the manifest's "permissions"). `.None`: nothing. The bridge refuses a
@@ -85,6 +85,9 @@ Activate_Context :: struct {
 	version: string,
 	// The level of the API this program gives.
 	api:     int,
+	// The person's language, as the toolkit's tag ("fr", "fr-CA"; "en": English). It changes while the plugin runs
+	// when the person changes it: every open view renders again then.
+	language: string `level=7`,
 }
 
 ////////////////////////////////
@@ -418,6 +421,50 @@ Clipboard_Write :: struct {
 	text: string,
 }
 
+////////////////////////////////
+// Palette sources (level 7): a source the manifest declares ("palette"), answered by the plugin as the person types.
+
+// A row of a palette source's answer.
+Palette_Row :: struct {
+	// Stable in its source: what the choice gives back.
+	id:     string,
+	// What the row says, and what the query lights.
+	label:  string,
+	// Weak, after the label (a folder, a time).
+	detail: string `optional`,
+	// A Lucide icon by its name.
+	icon:   Icon_Name `optional`,
+	// Its heading.
+	group:  string `optional`,
+}
+
+// A function of the plugin called with what the person typed after the source's prefix; it returns the rows, or a
+// promise of them (200 at most).
+Palette_Search :: distinct js.Value
+
+// A function of the plugin called with the row the person chose.
+Palette_Choose_Handler :: distinct js.Value
+
+// What a palette source does beside its search.
+Palette_Source_Options :: struct {
+	// Called with the row chosen.
+	onChoose: Palette_Choose_Handler `optional`,
+}
+
+// Answers the palette source `id` of plugin.json's "palette": the program asks while the person types after its
+// prefix, one question at a time (a newer query replaces one that waits).
+Palette_Source_Call :: struct {
+	id:      string,
+	search:  Palette_Search,
+	options: Palette_Source_Options `optional`,
+}
+
+// Gives the palette source `id` what choosing a row does (the same as palette.source's onChoose).
+Palette_On_Choose :: struct {
+	id:      string,
+	handler: Palette_Choose_Handler,
+}
+
 // One call of the API.
 Declaration :: struct {
 	module:     string,     // the export of "gt" that holds it ("commands")
@@ -441,4 +488,6 @@ DECLARATIONS :: [?]Declaration{
 	{module = "http", name = "fetch", arguments = Http_Fetch, result = .Promise_Response, capability = .Net, level = 4},
 	{module = "clipboard", name = "read", arguments = Clipboard_Read, result = .Promise_Text, capability = .Clipboard_Read, level = 4},
 	{module = "clipboard", name = "write", arguments = Clipboard_Write, result = .Promise_Void, capability = .Clipboard_Write, level = 4},
+	{module = "palette", name = "source", arguments = Palette_Source_Call, result = .Undefined, capability = .None, level = 7},
+	{module = "palette", name = "onChoose", arguments = Palette_On_Choose, result = .Undefined, capability = .None, level = 7},
 }

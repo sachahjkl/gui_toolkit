@@ -60,6 +60,9 @@ plugins.host_close(&app.plugins)
 | `view_body(h, plugin_id, view_id)` | Builds a plugin's view in the box being built, in the program's own layout (gt-runtime's window). |
 | `view_field(h, plugin_id, view_id, key)`, `view_keys(h, plugin_id, view_id)` | A field's shown and rendered text, the keys of a view's last list: what a test reads. |
 | `settings_pages(h)` | One settings page per plugin that has settings, for `Page_Options.pages`. |
+| `menu_entries(h, place)`, `toolbar_entries(h)`, `toolbar_tool(entry)` | The plugins' commands for a menu place and for the tool bar (`Menu_Entry`: command, label, icon's glyph, group, disabled), and an entry as a `ui.Toolbar_Tool`. Temp memory. |
+| `source_info(h, plugin_id, source_id)` | What the host knows of a plugin's palette source (its asks, its answers taken and dropped): what a test reads. |
+| `manifest_tr(&manifest, text)`, `language_tag()` | A manifest's word in the language in use; the tag a plugin's `context.language` gets. |
 
 `Host_Options`:
 
@@ -76,6 +79,7 @@ plugins.host_close(&app.plugins)
 | `prefs` | The program's preferences: the plugins' settings are registered there as `plugins.<plugin id>.<setting id>`. nil: a plugin's settings keep their defaults. |
 | `single` | One plugin instead of the folder: its folder, or a lone `.js` file whose manifest is implied. It is on from the start (gt-runtime). |
 | `app` | The program's own module, `from "app"` (nil: none): see "A program's own module". |
+| `menu_places` | The names of the program's menu places plugins may add their commands to (`"file"`, `"item"`): see "Palette sources, menus and the tool bar". Copied. |
 
 ## Where things are
 
@@ -125,8 +129,62 @@ The manifest's fields:
 - `permissions`: what it needs beyond its own data folder, each a word: `files` (what the person picks in the
   system's dialog), `folder:documents`, `folder:downloads`, `clipboard.read`, `clipboard.write`, `net:*` (any public
   address) or `net:<origin>` (`"net:https://api.example.com"`, `"net:http://localhost:8080"`).
+- `palette`, `menus`, `toolbar`, `l10n` (API level 7): see "Palette sources, menus and the tool bar".
 
 A plugin imports `"gt"` and its own files (`"./lib/words.js"`), nothing else.
+
+## Palette sources, menus and the tool bar
+
+```json
+{
+	"commands": [{ "id": "hello", "label": "Say hello" }],
+	"palette": [{ "id": "lines", "label": "Lines", "prefix": "@" }],
+	"menus": [{ "command": "hello", "where": "file" }],
+	"toolbar": [{ "command": "hello", "icon": "search" }],
+	"l10n": { "fr": { "Say hello": "Dire bonjour", "Lines": "Lignes" } }
+}
+```
+
+```js
+import { palette } from "gt";
+palette.source("lines", async (query) => find(query).map((l) => ({ id: l.id, label: l.text, detail: l.time })), {
+	onChoose: (row) => open(row.id),
+});
+```
+
+- **A palette source** answers what the person types after its prefix: `@` (go to), `#` (choose), `/` (paths), or no
+  prefix (the plain search). `>`, `:` and `$` are the program's commands, settings and secrets: a manifest that takes
+  one is refused. The search returns rows `{ id, label, detail?, icon?, group? }` or a promise of them, 200 at most.
+  The plugin is asked one query at a time: while it answers, only the newest query waits, and an answer for an older
+  one is dropped. The palette shows "Lines: reading…" meanwhile; past the bound, "could not read (not responding)".
+  Choosing a row calls `onChoose` (in the options, or `palette.onChoose(id, f)`) with the row as the plugin gave it.
+- **Menus and the tool bar** are the manifest's data: the program reads them without running the plugin. A menu's
+  `where` is one of the program's places (`Host_Options.menu_places`); another program's place gives nothing. An
+  entry runs its command as the palette does. A plugin that is off, refused or suspended gives none.
+- **`l10n`** translates the manifest's labels and titles (commands, views, settings, palette sources, and so the menus
+  and the tool bar) for a language's tag or its primary subtag, the toolkit's language in use; the English stays for
+  what it does not translate. The palette, the menus, the tool bar and the views' titles follow a change of language
+  at once; the settings' titles at the next read of the folder.
+- **The plugin's own texts** are its to translate: `context.language` in `activate`'s context is the tag (`"en"` for
+  English). When it changes, `context.language` is the new tag and every open view renders again.
+
+In the program:
+
+```odin
+plugins.host_open(&app.plugins, &app.ui, {..., menu_places = {"file", "edit", "item"}})
+
+if ui.menu("file") {
+	...
+	for e in plugins.menu_entries(&app.plugins, "file") {
+		if ui.menu_item(e.label, icon = e.icon, icon_font = ui.lucide_icons(), disabled = e.disabled).clicked { plugins.run_command(&app.plugins, e.command) }
+	}
+}
+for e in plugins.toolbar_entries(&app.plugins) {
+	if ui.toolbar_tool(e.command, plugins.toolbar_tool(e)) { plugins.run_command(&app.plugins, e.command) }
+}
+```
+
+The palette sources need nothing: `host_build(h, palette)` adds them to the palette it is given.
 
 ## Permissions
 

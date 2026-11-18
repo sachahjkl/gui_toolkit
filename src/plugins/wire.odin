@@ -87,6 +87,10 @@ start_encode :: proc(w: ^plugin_api.Wire_Writer, p: ^Plugin) {
 	for c in m.commands { plugin_api.put_string(w, c.id) }
 	plugin_api.put_u64(w, u64(len(m.views)))
 	for v in m.views { plugin_api.put_string(w, v.id) }
+	plugin_api.put_u64(w, u64(len(m.palette)))
+	for d in m.palette { plugin_api.put_string(w, d.id) }
+	// (the language now: context.language; a later change comes as a Language message)
+	plugin_api.put_string(w, language_tag())
 	plugin_api.put_u64(w, u64(len(p.settings_start)))
 	for s in p.settings_start {
 		plugin_api.put_string(w, s.id)
@@ -163,6 +167,10 @@ start_decode :: proc(r: ^plugin_api.Wire_Reader) -> ^Plugin {
 	views := make([]View_Decl, plugin_api.get_count(r, 8))
 	for &v in views { v.id = plugin_api.get_string(r) }
 	m.views = views
+	sources := make([]Palette_Decl, plugin_api.get_count(r, 8))
+	for &d in sources { d.id = plugin_api.get_string(r) }
+	m.palette = sources
+	p.language = plugin_api.get_string(r)
 	settings := make([]Setting_Now, plugin_api.get_count(r, 34))
 	for &s in settings {
 		s.id = plugin_api.get_string(r)
@@ -262,7 +270,7 @@ event_encode :: proc(w: ^plugin_api.Wire_Writer, kind: Event_Kind, title, text: 
 		plugin_api.put_u8(w, u8(req.op))
 		for a in req.args { plugin_api.put_string(w, a) }
 	}
-	if kind == .Rows { rows_encode(w, rows) }
+	if kind == .Rows || kind == .Palette_Rows { rows_encode(w, rows) }
 }
 
 // An event as the child wrote it: its kind, words, list and request (heap; the list's own arena). ok false: not an
@@ -284,7 +292,7 @@ event_decode :: proc(r: ^plugin_api.Wire_Reader) -> (kind: Event_Kind, toast: ui
 		req.op = Broker_Op(op)
 		for &a in req.args { a = plugin_api.get_string(r) }
 	}
-	if k == u8(Event_Kind.Rows) { rows = rows_decode(r) }
+	if k == u8(Event_Kind.Rows) || k == u8(Event_Kind.Palette_Rows) { rows = rows_decode(r) }
 	if r.bad || k > u8(max(Event_Kind)) || t > u8(max(ui.Toast_Kind)) {
 		delete(title); delete(text)
 		plugin_api.list_free(list)

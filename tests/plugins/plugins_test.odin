@@ -70,7 +70,7 @@ enable :: proc(root: string, ids: ..string) {
 }
 
 // A headless window whose builds run the host and the palette, the host reading `root`.
-open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plugins.Sandbox_Mode.If_Available, app: ^plugins.App_Module = nil) -> ^session.Session {
+open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plugins.Sandbox_Mode.If_Available, app: ^plugins.App_Module = nil, menu_places: []string = nil) -> ^session.Session {
 	crash_reports()
 	s := session.start(t, {user = fx, no_renderer = true, build = proc(s: ^session.Session) {
 		fx := (^Fx)(s.user)
@@ -94,7 +94,7 @@ open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plug
 		program = "gui_toolkit_plugins_test", program_id = "plugins_test",
 		folder = fmt.tprintf("%s/plugins", root), config_dir = fmt.tprintf("%s/config", root), state_dir = fmt.tprintf("%s/state", root),
 		data_dir = fmt.tprintf("%s/data", root),
-		bound_ms = BOUND_MS, single = single, sandbox = sandbox, app = app,
+		bound_ms = BOUND_MS, single = single, sandbox = sandbox, app = app, menu_places = menu_places,
 	})
 	fx.opened = true
 	// (before the session's end, which destroys the State: cleanups run last first)

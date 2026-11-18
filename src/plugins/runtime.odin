@@ -60,6 +60,11 @@ Run :: struct {
 	app_api:      js.Value,
 	app_source:   string,
 	app_handlers: map[string][dynamic]js.Value,
+	// the palette sources it answers (palette_run.odin), by id (keys owned), and the answers that wait for a promise
+	palette_sources: map[string]Run_Source,
+	palette_asks:    map[i32]Run_Ask,
+	next_ask:        i32,
+	context_object:  js.Value,             // activate's context (retained): its language changes (Language)
 	ended:      bool,                      // stopped or failed: the thread leaves its loop
 }
 
@@ -111,6 +116,8 @@ run_open :: proc(r: ^Run) -> bool {
 	plugin_api.realm_set(&r.realm, "http", "fetch", plugin_api.implement(plugin_api.Http_Fetch, http_fetch))
 	plugin_api.realm_set(&r.realm, "clipboard", "read", plugin_api.implement(plugin_api.Clipboard_Read, clipboard_read))
 	plugin_api.realm_set(&r.realm, "clipboard", "write", plugin_api.implement(plugin_api.Clipboard_Write, clipboard_write))
+	plugin_api.realm_set(&r.realm, "palette", "source", plugin_api.implement(plugin_api.Palette_Source_Call, palette_source))
+	plugin_api.realm_set(&r.realm, "palette", "onChoose", plugin_api.implement(plugin_api.Palette_On_Choose, palette_on_choose))
 	// (a call without its grant is refused here at once; the program's broker checks again whatever this says)
 	r.realm.granted = p.granted_caps
 	settings_take(r)
@@ -120,7 +127,8 @@ run_open :: proc(r: ^Run) -> bool {
 	app_open(r)
 	boot := js.new_object(r.ctx)
 	js.set_property_str(r.ctx, boot, "done", js.new_function(r.ctx, boot_done, "done", 1))
-	js.set_property_str(r.ctx, boot, "context", context_object(r))
+	r.context_object = js.retain(r.rt, context_object(r))
+	js.set_property_str(r.ctx, boot, "context", r.context_object)
 	r.boot = js.retain(r.rt, boot)
 
 	main := p.manifest.main
@@ -163,6 +171,7 @@ run_close :: proc(r: ^Run) {
 	for k in r.icons_said { delete(k) }
 	delete(r.icons_said)
 	app_close(r)
+	palette_close(r)
 	delete(r.gt_source)
 	delete(r.boot_error)
 }
@@ -187,6 +196,9 @@ run_turn :: proc(r: ^Run, m: Message) {
 	case .Answer:     broker_answer(r, m)
 	case .Rows:       rows_message(r, m)
 	case .App_Event:  app_event_message(r, m)
+	case .Palette_Query:  palette_query(r, m)
+	case .Palette_Choose: palette_choose(r, m)
+	case .Language:       language_changed(r, m)
 	case .Test_Crash:
 		// (what an engine's bug does to a process: it ends here, and only here)
 		panic("plugins.test_crash: this plugin's process was asked to crash")
@@ -279,6 +291,7 @@ context_object :: proc(r: ^Run) -> js.Value {
 	js.set_property_str(r.ctx, o, "name", js.new_string(r.ctx, m.name))
 	js.set_property_str(r.ctx, o, "version", js.new_string(r.ctx, m.version))
 	js.set_property_str(r.ctx, o, "api", js.new_number(f64(plugin_api.PLUGIN_API_LEVEL)))
+	js.set_property_str(r.ctx, o, "language", js.new_string(r.ctx, r.p.language != "" ? r.p.language : "en"))
 	return o
 }
 

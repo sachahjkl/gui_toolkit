@@ -2,12 +2,22 @@
 	"id": "logs",
 	"name": "Log explorer",
 	"version": "1.0.0",
-	"api": 6,
+	"api": 7,
 	"main": "main.js",
 	"commands": [
 		{ "id": "errors", "label": "Show only the errors", "group": "Logs", "tags": ["filter", "level"] },
 		{ "id": "everything", "label": "Show every line", "group": "Logs", "tags": ["filter", "clear", "reset"] },
 		{ "id": "newest", "label": "Open the newest error", "group": "Logs", "tags": ["last", "latest"] }
 	],
-	"views": [{ "id": "main", "title": "Log explorer", "place": "internal" }]
+	"views": [{ "id": "main", "title": "Log explorer", "place": "internal" }],
+	"palette": [{ "id": "lines", "label": "Log lines", "prefix": "@" }],
+	"l10n": {
+		"fr": {
+			"Show only the errors": "N'afficher que les erreurs",
+			"Show every line": "Afficher toutes les lignes",
+			"Open the newest error": "Ouvrir la dernière erreur",
+			"Log explorer": "Explorateur de journaux",
+			"Log lines": "Lignes du journal"
+		}
+	}
 }

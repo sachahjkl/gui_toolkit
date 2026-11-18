@@ -801,3 +801,48 @@ Refused:
 - **Synchronous calls** (`notes.listSync()`): host procedures never wait (decision 5).
 - **Events to every plugin, listening or not**: a plugin with no handler would take a turn for nothing at each event.
 
+## As built: palette sources, menus, the tool bar, a plugin's languages (slice 7, API level 7)
+
+Written on 2026-11-18.
+
+- **A palette source is declared, then answered.** The manifest's `"palette": [{ id, label, prefix }]` makes one
+  `ui.Palette_Source` per entry (`plugin.<plugin id>.<source id>`, a searching source: asked again at each query),
+  added to the program's palette by `host_build` and removed when the folder is read again. Its code answers with
+  `palette.source(id, async (query) => rows)`; rows are `{ id, label, detail?, icon?, group? }`, 200 at most (the rest
+  is dropped and said in the log). Choosing a row calls the source's `onChoose` (given in `palette.source`'s options,
+  or by `palette.onChoose(id, f)`) with the row as the plugin gave it: the process keeps the last answer's rows.
+- **The prefix is one of the palette's** (`ui.Palette_Prefix`): `@` (go to), `#` (choose), `/` (paths), or none (the
+  plain search only). The toolkit's table is closed: a prefix means the same in every program, so a plugin chooses a
+  meaning, not a character. `>` (commands), `:` (settings) and `$` (secrets) are refused: a plugin's rows there would
+  pass for the program's commands, settings or secrets. Two sources may share a prefix, as the palette allows.
+- **One question to the plugin at a time per source, no timer.** The palette asks at each letter; the host sends the
+  question only when none is in flight, and keeps the newest one waiting (the one it replaces is dropped: its serial
+  is old, the palette would drop its answer). When an answer comes, the waiting question goes. A fast plugin answers
+  each letter; a slow one is asked only as fast as it answers, and the palette shows its own "reading…" row for the
+  source meanwhile. Refused: a debounce delay (the toolkit has none for the palette; it would make every plugin as slow
+  as the delay). An answer for an older question is dropped by its number, and by the palette by its serial. A question
+  in flight past the bound is answered with an error row ("not responding"), and an answer that comes after is dropped.
+  A process that ends drops its source's questions. Asking starts the plugin (typing in its source is using it).
+- **Menus and the tool bar are data.** The manifest's `"menus": [{ command, where }]` and `"toolbar": [{ command,
+  icon }]` name the plugin's own commands. The program names its places (`Host_Options.menu_places`: "file", "edit",
+  "item" for a context menu); an entry for a place the program does not have gives nothing (a plugin of several
+  programs is not refused for another's place). `plugins.menu_entries(host, place)` and `plugins.toolbar_entries(host)`
+  give `Menu_Entry`s (the command, its label in the person's language, its icon's glyph, disabled when its plugin
+  failed), read from the manifests: no plugin runs to make a menu. An entry fits `ui.menu_item` and `ui.Toolbar_Tool`
+  (`toolbar_tool(entry)`); choosing it is `run_command(host, entry.command)`, which starts the plugin as the palette
+  does. A plugin that is off, refused or suspended gives no entry. Refused: a plugin's own menu built by its code (a
+  menu is shown before any plugin runs).
+- **A manifest's languages.** `"l10n": { "fr": { "Say hello": "Dire bonjour" } }` translates the manifest's own words:
+  commands' labels and groups, views' titles, settings' titles and descriptions, palette sources' labels, menus and
+  the tool bar (their commands' labels). The language is the toolkit's (`i18n.current()`): a translation of its tag
+  ("fr-CA"), else of its primary subtag ("fr"), else the manifest's English. The palette, the menus, the tool bar and a
+  view's title read it at each build (a lookup in a few dozen texts), so a change of language shows at once; the
+  settings' titles are registered with the program's preferences when the folder is read, so they change at the next
+  read. Refused: a plugin's catalogue file in the toolkit's format (a second file to keep beside the manifest for a
+  dozen labels).
+- **The plugin's code** reads the language as `context.language` in `activate`'s context (the tag, "en" for English).
+  When the person changes the language, the program sends it to the running plugins (a Language message): the
+  context's `language` changes and every open view renders again, so a render that reads `context.language` shows the
+  new texts. Refused: `context.onLanguage(f)`: what changes is what a view shows, and a view renders again anyway; a
+  plugin that keeps other texts reads `context.language` when it uses them.
+

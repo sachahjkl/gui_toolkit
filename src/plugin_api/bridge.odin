@@ -164,12 +164,18 @@ promise_rejected :: proc(ctx: ^js.Context, reason: js.Value) -> js.Value {
 
 // A function of the plugin: Handler, Text_Handler, Flag_Handler, Render (each a distinct js.Value).
 is_function_type :: proc(id: typeid) -> bool {
-	return id == typeid_of(Handler) || id == typeid_of(Text_Handler) || id == typeid_of(Flag_Handler) || id == typeid_of(Render) || id == typeid_of(Setting_Handler) || id == typeid_of(Row_Render)
+	return id == typeid_of(Handler) || id == typeid_of(Text_Handler) || id == typeid_of(Flag_Handler) || id == typeid_of(Render) || id == typeid_of(Setting_Handler) || id == typeid_of(Row_Render) || id == typeid_of(Palette_Search) || id == typeid_of(Palette_Choose_Handler)
 }
 
 @(private)
 is_optional :: proc(tag: reflect.Struct_Tag) -> bool {
 	return strings.contains(string(tag), "optional")
+}
+
+// A JavaScript value as a value of type `ti` at `out` (zeroed by the caller), by the bridge's own reflection: what a
+// plugin returns to the host (a palette source's rows). `what` names it in the TypeError that is pending when false.
+value_from_js :: proc(ctx: ^js.Context, v: js.Value, ti: ^runtime.Type_Info, out: rawptr, what: string) -> bool {
+	return fill(ctx, v, ti, out, what, "its value", false)
 }
 
 // Writes `v` as a value of type `ti` at `out`. False: a TypeError is pending, which names the call and the argument.

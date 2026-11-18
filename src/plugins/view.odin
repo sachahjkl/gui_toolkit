@@ -195,6 +195,8 @@ view_tell_open :: proc(h: ^Host, r: ^View_Record) -> bool {
 @(private)
 view_build :: proc(v: ^ui.View, r: ^View_Record) {
 	context.allocator = runtime.heap_allocator()
+	// (its title in the person's language, read at each build: a change of language shows at once)
+	if p := find(r.host, r.plugin_id); p != nil { ui.view_title(v, manifest_tr(&p.manifest, r.title)) }
 	// (the plugin's first list is the content's first real build: the window waits for it, bounded, and takes the
 	// height of what is in it once it comes, and again when a list of another shape comes)
 	if r.list == nil {

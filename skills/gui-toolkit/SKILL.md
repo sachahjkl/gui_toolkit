@@ -152,6 +152,9 @@ module"):
 - Keep the declaration (types, names, docs) in a package of its own. Your tool writes `app.d.ts` and the reference
   page from it (`plugin_api.app_module_dts`, `app_module_markdown`, `toolbox.generated_files` with `-check` in CI).
 - Do not subset Lucide in a program with plugins (their icons are named at run time).
+- Name the menu places plugins may use in `Host_Options.menu_places`, and add `plugins.menu_entries(host, place)` to
+  each such menu's build and `plugins.toolbar_entries(host)` to the tool bar's (`plugins.toolbar_tool(e)`); list the
+  places in your docs for plugin authors. The plugins' palette sources need nothing more than `host_build(h, palette)`.
 
 ## Tests
 

@@ -57,6 +57,7 @@ Plugin :: struct {
 	app_name:    string,
 	app_calls:   []plugin_api.App_Spec,
 	app_events:  []plugin_api.App_Spec,
+	language:    string,   // the child's: the language's tag at its start (owned)
 }
 
 @(private)
@@ -88,6 +89,7 @@ plugin_release :: proc(p: ^Plugin) {
 	delete(p.app_calls)
 	for s in p.app_events { delete(s.name) }
 	delete(p.app_events)
+	delete(p.language)
 	if p.ch != nil { channel_release(p.ch) }
 	queue_destroy(&p.queue)
 	free(p)
@@ -162,6 +164,9 @@ Message_Kind :: enum u8 {
 	// `command`, open a TCP socket; a toast says which of them it could
 	Test_Escape,
 	App_Event,    // the program's module's event `command`, its payload encoded in `text` (app.odin)
+	Palette_Query,    // the palette source `key` asks for the rows of `text`, the source's ask number `serial`
+	Palette_Choose,   // the row `text` of the palette source `key` was chosen: a person's act
+	Language,         // the person's language is now `text` (a tag): context.language, the open views render again
 }
 
 // What happened to a node of a view: the name of the field of its kind's struct that is called (plugin_api's nodes).
@@ -209,7 +214,7 @@ queue_push :: proc(p: ^Plugin, m: Message, front := false) {
 	sync.lock(&q.lock)
 	if front { inject_at(&q.messages, 0, m) } else { append(&q.messages, m) }
 	// (the program's only: the process's own queue has no requests to stamp)
-	if p.out == nil && m.kind != .Quit && m.kind != .Stop { append(&q.turns, m.kind == .Command || m.kind == .View_Event) }
+	if p.out == nil && m.kind != .Quit && m.kind != .Stop { append(&q.turns, m.kind == .Command || m.kind == .View_Event || m.kind == .Palette_Choose) }
 	sync.unlock(&q.lock)
 	sync.broadcast(&q.came)
 }
@@ -274,6 +279,9 @@ Event_Kind :: enum u8 {
 	Alive,       // its process read its start: the bound counts from here (the program's reader only)
 	Log,         // a line of its log, `text`: the program's reader appends it (the child opens no file: its sandbox)
 	App_Listen,  // its runtime listens to the program's module's event `title` (app.on): app_emit sends it there
+	// a palette source's answer: `title` the source's id, `rows.seq` the ask it answers, `rows.version` 1 for rows
+	// (`text` their encoding) or 0 for a failure (`text` its words)
+	Palette_Rows,
 }
 
 @(private)
@@ -364,6 +372,9 @@ event_run :: proc(data: rawptr, word: u64) {
 		queue_clear(&p.queue)   // (a command sent while it ended: dropped, as its Stop asked)
 		if p.state != .Failed && p.state != .Suspended { p.state = p.enabled ? .Ready : .Off }
 		views_ended(h, p)
+		sources_ended(h, p)
+	case .Palette_Rows:
+		source_take(h, p, e.title, e.rows.seq, e.rows.version == 1, e.text)
 	case .List:
 		if r := view_record(h, p.manifest.id, e.title); r != nil {
 			view_take_list(r, e.list)

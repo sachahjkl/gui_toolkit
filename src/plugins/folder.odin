@@ -206,6 +206,7 @@ read_done :: proc(data: rawptr, word: u64) {
 	}
 	clear(&j.plugins)   // (the host's now)
 	views_declare(h)
+	sources_declare(h)
 	settings_register(h)
 	delete(h.folder); delete(h.toml_path); delete(h.state_dir)
 	h.folder, h.toml_path, h.state_dir = j.folder, j.toml_path, j.state_dir
