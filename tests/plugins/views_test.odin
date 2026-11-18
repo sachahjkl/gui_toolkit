@@ -29,6 +29,8 @@ export function activate() {
 			{ kind: "button", key: "add", label: "Add", intent: "primary", onClick: () => { count += 1; } },
 			{ kind: "button", key: "hang", label: "Hang", onClick: () => { for (;;) {} } },
 			{ kind: "check", key: "agree", label: "Checked in a row", checked: false, onChange: () => {} },
+		] },
+		{ kind: "row", children: [
 			{ kind: "button", key: "quiet", label: "Open", look: "ghost", size: "small", onClick: () => { count += 10; } },
 		] },
 		{ kind: "field", key: "name", value: name, placeholder: "Your name", onChange: (v) => {
