@@ -54,7 +54,15 @@ Step :: struct {
 	sample:  bool,              // ... and in a pull request's quick set
 	target:  string,            // Check: the system
 	text:    bool,              // needs fonts: on Linux that is the native text backend (no system text stack is linked there)
+	// Windows: its windowing DLLs loaded at their first call, not at the start (WINDOWS_DELAY_LOAD): a plugin's process,
+	// this executable started again in an AppContainer, never initialises user32, which a container cannot
+	delay_load: bool,
 }
+
+// The windowing DLLs a program's executable loads at their first call on Windows, and the library that does it. user32
+// (and those that load it) opens the session's window station and desktop when it starts: in an AppContainer it cannot
+// (STATUS_DLL_INIT_FAILED), and a plugin's process needs no window.
+WINDOWS_DELAY_LOAD :: "/DELAYLOAD:user32.dll /DELAYLOAD:gdi32.dll /DELAYLOAD:shell32.dll /DELAYLOAD:ole32.dll /DELAYLOAD:comctl32.dll /DELAYLOAD:comdlg32.dll /DELAYLOAD:uxtheme.dll /DELAYLOAD:dwmapi.dll /DELAYLOAD:shcore.dll /DELAYLOAD:imm32.dll /DELAYLOAD:opengl32.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:dxgi.dll delayimp.lib"
 
 STEPS := []Step{
 	// no interface, no device
@@ -104,7 +112,7 @@ STEPS := []Step{
 	{name = "js_regexp", path = "src/js/regexp", oses = EVERYWHERE},
 	{name = "js", oses = EVERYWHERE},
 	// (gt:plugins: an endless handler chosen in a headless window's palette, Stop, the states; one window at a time)
-	{name = "plugins", one = true, oses = EVERYWHERE, text = true},
+	{name = "plugins", one = true, oses = EVERYWHERE, text = true, delay_load = true},
 	{name = "term", one = true, oses = EVERYWHERE, text = true},   // (the terminal widget on a screen of its own; its rows drawn in a session)
 	{name = "remote", oses = EVERYWHERE},
 	{name = "deferred", oses = EVERYWHERE},
@@ -474,6 +482,9 @@ carry_out :: proc(s: ^Step, o: ^Run_Options, r: ^Result) {
 		append(&cmd, "-define:ODIN_TEST_FANCY=false", "-define:ODIN_TEST_LOG_STATE_CHANGES=true")
 		if s.one || o.backend == "wgpu" { append(&cmd, "-define:ODIN_TEST_THREADS=1") }
 		if o.backend != "" { append(&cmd, fmt.tprintf("-define:TOOLKIT_RENDER=%s", o.backend)) }
+		when ODIN_OS == .Windows {
+			if s.delay_load { append(&cmd, fmt.tprintf("-extra-linker-flags:%s", WINDOWS_DELAY_LOAD)) }
+		}
 		when ODIN_OS == .Linux {
 			if !s.one { append(&cmd, "-define:ODIN_TEST_FAIL_ON_BAD_MEMORY=true") }
 			// (wgpu-native is the other Rust library in them: its few unmangled symbols of Rust's standard library are the same code)
