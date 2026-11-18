@@ -1,0 +1,3 @@
+type: Changed
+
+**A lone panel's strip waits for a rest at its top edge**: the strip (tab, moves, Maximise, Close) shows after the pointer rests `ui.VIEW_HOVER_DWELL_MS` (300 ms) in the top band with no button down, stays while the pointer is anywhere in the panel, and goes when the pointer leaves it, on Escape or after a click on the strip. A pointer that crosses the band to a control near the top (a fold button) moves nothing, and its click reaches that control. `VIEW_HOVER_KEEP_EM` is removed. A right click on `ui.view_fold_button` opens the view's menu, which now has Maximise or Restore for a panel; `ui.side_fold_button` takes a tooltip `hint`, and `View_Labels.menu_hint` gives the fold button's.

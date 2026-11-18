@@ -47,7 +47,10 @@ Dock :: struct {
 	fold:       ui.Signal,         // what "marks"'s fold button gave in its last build (view_fold_button)
 	wide:       bool,              // the content holds a row of WIDE_BOXES boxes, wider than the window
 	bare:       bool,              // build the space "bare", without content (a centre zone)
+	title_bar:  bool,              // a bar of TITLE_BAR_PX above the frame (a program's title bar)
 }
+
+@(private = "file") TITLE_BAR_PX :: 30
 
 // A row of boxes of their own width, wider than the window: what a tool bar or a program's row asks of its parent.
 @(private = "file") WIDE_BOXES :: 30
@@ -74,6 +77,10 @@ dock_build :: proc(s: ^session.Session) {
 	if r.no_frame {
 		ui.label("The page alone###page_alone")
 		return
+	}
+	if r.title_bar {
+		ui.next({width = ui.fill(), height = ui.px(TITLE_BAR_PX)})
+		ui.build_box({}, "###title_bar")
 	}
 	if ui.views_frame(&r.views, r.frame_o) {
 		if ui.key_press(.F2) { r.content_k += 1 }
@@ -173,6 +180,20 @@ marks_view :: proc(v: ^ui.View, r: ^Dock) {
 	ui.label(v.rail ? "M###marks_compact" : "The marks in full###marks_full")
 }
 
+// opencode native's sidebar: its fold button in its first row, under a margin of half an em, its words under it.
+@(private = "file") FOLD_MARGIN_EM :: 0.5
+@(private = "file")
+fold_view :: proc(v: ^ui.View, r: ^Dock) {
+	ui.next({width = ui.fill(), height = ui.px(math.round(ui.font_size() * FOLD_MARGIN_EM))})
+	ui.build_box({}, "###fold_margin")
+	ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+	if ui.row(id = "###fold_row") {
+		ui.spacer(ui.px(FOLD_INSET))
+		r.fold = ui.view_fold_button(v)
+	}
+	ui.label("The sidebar's words###fold_words")
+}
+
 @(private = "file")
 wide_view :: proc(v: ^ui.View, r: ^Dock) {
 	wide_row("panel_row")
@@ -203,6 +224,7 @@ dock_register :: proc(r: ^Dock) {
 	ui.view_register(&r.views, "marks_low", marks_view, ui.View_Options{title = "Low marks", home = .Panel, home_place = {edge = .Bottom}, rail_em = RAIL_EM})
 	ui.view_register(&r.views, "marks_mid", marks_view, ui.View_Options{title = "Middle marks", home = .Panel, home_place = {space = "bare", edge = .Center}, rail_em = RAIL_EM})
 	ui.view_register(&r.views, "right", plain_view, ui.View_Options{title = "Right", home = .Panel, home_place = {edge = .Right}, extent_em = SIDE_EM})
+	ui.view_register(&r.views, "sidebar", fold_view, ui.View_Options{title = "Sidebar", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM})
 	ui.view_register(&r.views, "wide", wide_view, ui.View_Options{title = "Wide", home = .Panel, home_place = {edge = .Left}, extent_em = SIDE_EM})
 }
 
@@ -647,8 +669,8 @@ a_restart_keeps_a_manual_choice_on_its_side :: proc(t: ^testing.T) {
 }
 
 // Test 17: a panel alone in its zone adds no tab strip, no border, no icon at rest; its body starts at the zone's top
-// left. Its stack's strip comes on the hover of the top edge and pushes the body down (nothing of it over the body);
-// it stays while the pointer is on it, goes when the pointer goes down into the body, and does not come again by itself.
+// left. Its stack's strip comes after a rest of VIEW_HOVER_DWELL_MS at the top edge, and pushes the body down (nothing
+// of it over the body); it stays while the pointer is anywhere in the panel, and goes when the pointer leaves it.
 @(test)
 a_lone_panel_adds_nothing :: proc(t: ^testing.T) {
 	r: Dock
@@ -662,29 +684,136 @@ a_lone_panel_adds_nothing :: proc(t: ^testing.T) {
 	testing.expect(t, session.find(s, "view_tabs") == nil, "no tab strip")
 	testing.expect(t, .Draw_Background not_in zone.flags && .Draw_Border not_in zone.flags, "the zone draws nothing")
 	testing.expect(t, .Draw_Background not_in body.flags && .Draw_Border not_in body.flags, "the body draws nothing of its own")
-	// (a pointer in the body, past the edge's band: nothing)
+	// (a pointer in the body, past the edge's band: nothing, however long it rests)
 	session.move(s, {top.x + 30, top.y + r.em * 1.5})
-	session.frames(s, 2)
+	session.advance(s, 2 * ui.VIEW_HOVER_DWELL_MS)
 	testing.expect(t, built(s, "view_tabs") == nil, "nothing on the hover of the body")
-	// the top edge: the strip, the body under it
+	// the top edge: nothing before the dwell; then the strip, the body under it
 	session.move(s, {top.x + 30, top.y + 2})
-	session.frames(s, 2)
+	session.advance(s, ui.VIEW_HOVER_DWELL_MS - 100)
+	testing.expect(t, built(s, "view_tabs") == nil, "no strip before the dwell")
+	session.advance(s, 150)
 	tabs := built(s, "view_tabs")
-	if !testing.expect(t, tabs != nil, "the strip on the hover of the top edge") { return }
+	if !testing.expect(t, tabs != nil, "the strip after a rest at the top edge") { return }
 	body = built(s, "view_panel_view_side")
 	testing.expectf(t, body.rect.min.y >= tabs.rect.max.y - 0.5, "the body pushed under it: %v under %v", body.rect, tabs.rect)
 	testing.expect(t, session.find(s, "view_tab_view_side") != nil, "its tab: its title, its menu")
-	// on the strip: it stays; down into the body: it goes, and the body back up does not bring it again
+	// on the strip, then down into the body: it stays (the body never moves up under the pointer); out: it goes
 	session.move(s, {top.x + 30, (tabs.rect.min.y + tabs.rect.max.y) * 0.5})
 	session.frames(s, 2)
 	testing.expect(t, built(s, "view_tabs") != nil, "it stays while the pointer is on it")
 	session.move(s, {top.x + 30, tabs.rect.max.y + r.em * 2})
 	session.frames(s, 4)
-	testing.expect(t, built(s, "view_tabs") == nil, "gone when the pointer goes down into the body, and not back")
+	testing.expect(t, built(s, "view_tabs") != nil, "it stays while the pointer is in the body")
 	session.move(s, OUT)
 	session.frames(s, 2)
 	testing.expect(t, built(s, "view_tabs") == nil, "none when the pointer leaves")
 	testing.expectf(t, abs((zone.rect.max.x - zone.rect.min.x) - SIDE_EM * r.em) <= 1.5, "its extent_em: %v", zone.rect)
+}
+
+// The strip's state machine (views.md, section 2.5, rule 2): a press during the dwell starts it again; shown, the strip
+// stays down to the body's bottom and goes when the pointer leaves the stack; it does not come back by itself, only
+// after a new full dwell; Escape hides it.
+@(test)
+a_lone_panel_s_strip_waits_for_a_rest :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side")
+	zone := wait_built(s, "view_zone_Left")
+	if zone == nil { return }
+	band := [2]f32{zone.rect.min.x + 30, zone.rect.min.y + 2}
+	session.move(s, band)
+	session.advance(s, ui.VIEW_HOVER_DWELL_MS - 100)
+	session.press(s, band)
+	session.release(s, band)
+	session.advance(s, ui.VIEW_HOVER_DWELL_MS - 100)
+	testing.expect(t, built(s, "view_tabs") == nil, "a press during the dwell: it starts again")
+	session.advance(s, 150)
+	if !testing.expect(t, built(s, "view_tabs") != nil, "a full dwell after the press") { return }
+	session.move(s, {band.x, zone.rect.max.y - 3})
+	session.frames(s, 2)
+	testing.expect(t, built(s, "view_tabs") != nil, "it stays down to the body's bottom")
+	session.move(s, OUT)
+	session.frames(s, 2)
+	testing.expect(t, built(s, "view_tabs") == nil, "gone when the pointer leaves the stack")
+	// back in the panel: no strip by itself
+	session.move(s, {band.x, zone.rect.min.y + r.em * 4})
+	session.advance(s, 2 * ui.VIEW_HOVER_DWELL_MS)
+	testing.expect(t, built(s, "view_tabs") == nil, "back in the body: it does not come back")
+	session.move(s, band)
+	testing.expect(t, built(s, "view_tabs") == nil, "back in the band: not before a new dwell")
+	session.advance(s, ui.VIEW_HOVER_DWELL_MS)
+	if !testing.expect(t, built(s, "view_tabs") != nil, "after a new dwell") { return }
+	session.key(s, .Escape)
+	testing.expect(t, built(s, "view_tabs") == nil, "Escape hides it")
+	session.advance(s, ui.VIEW_HOVER_DWELL_MS)
+	testing.expect(t, built(s, "view_tabs") != nil, "a new dwell in the band brings it back")
+}
+
+// opencode native's sidebar: its fold button under a half em margin at the panel's top, under the title bar. The
+// pointer goes down from the title bar to it, a frame a step, across the top band: nothing moves on its way, no strip
+// comes, and the click folds the zone (before, the strip came at once, the button dropped, the click hit the strip).
+@(test)
+a_pointer_travelling_to_the_fold_button_moves_nothing :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	r.title_bar = true
+	s := dock_start(t, &r, "sidebar")
+	fold := wait_built(s, "view_fold")
+	zone := built(s, "view_zone_Left")
+	if fold == nil || zone == nil { testing.expect(t, false, "the fold button and its zone"); return }
+	at := fold.rect
+	top := zone.rect.min.y
+	testing.expectf(t, top >= TITLE_BAR_PX - 1, "the panel under the title bar: %v", zone.rect)
+	c := session.center(fold)
+	in_band := false
+	for y := top - 10; ; y += 4 {
+		p := [2]f32{c.x, min(y, c.y)}
+		if p.y >= top && p.y < top + ui.VIEW_HOVER_EDGE_EM * r.em { in_band = true }
+		s.pointer = p
+		session.event(s, {kind = .Mouse_Move, pos = p})
+		session.frame(s)
+		now := built(s, "view_fold")
+		if !testing.expectf(t, now != nil && now.rect == at, "at %v the fold button stays: %v, %v", p, now.rect if now != nil else ui.Rect{}, at) { return }
+		if !testing.expectf(t, built(s, "view_tabs") == nil, "at %v no strip", p) { return }
+		if p.y >= c.y { break }
+	}
+	testing.expect(t, in_band, "the way crossed the top band")
+	session.click_at(s, c)
+	for _ in 0 ..< WAIT_FRAMES {
+		if zone_fold(s).folded { break }
+		session.frame(s)
+	}
+	testing.expectf(t, zone_fold(s).folded, "the click folded the zone: %v", zone_fold(s))
+	testing.expect(t, ui.view_presentation(&r.views, "sidebar") == .Panel, "still a panel")
+}
+
+// A right click on the fold button opens the view's menu, which has the strip's Maximise (and then Restore).
+@(test)
+a_right_click_on_the_fold_button_opens_the_panel_s_menu :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "sidebar")
+	fold := wait_built(s, "view_fold")
+	if fold == nil { return }
+	session.click_at(s, session.center(fold), .Right)
+	if !click_item(s, "Maximise") { return }
+	for _ in 0 ..< WAIT_FRAMES {
+		if _, _, ok := ui.views_space_maximised(&r.views, ""); ok { break }
+		session.frame(s)
+	}
+	e, _, ok := ui.views_space_maximised(&r.views, "")
+	testing.expectf(t, ok && e == .Left, "its stack maximised: %v %v", e, ok)
+	fold = wait_built(s, "view_fold")
+	if fold == nil { return }
+	session.click_at(s, session.center(fold), .Right)
+	if !click_item(s, "Restore") { return }
+	for _ in 0 ..< WAIT_FRAMES {
+		if _, _, ok2 := ui.views_space_maximised(&r.views, ""); !ok2 { break }
+		session.frame(s)
+	}
+	_, _, ok = ui.views_space_maximised(&r.views, "")
+	testing.expect(t, !ok, "restored")
 }
 
 // A strip in a lone panel's top band, its first tab chosen: a click on its right arrow scrolls the strip and keeps it
@@ -724,7 +853,7 @@ a_panel_s_strip_pushes_the_body_s_strip :: proc(t: ^testing.T) {
 	body := wait_built(s, "view_panel_view_striped")
 	if body == nil || wait_built(s, "striped_strip") == nil { return }
 	session.move(s, {body.rect.min.x + 40, body.rect.min.y + 2})
-	session.frames(s, 2)
+	wait_built(s, "view_tabs")   // (after the dwell, VIEW_HOVER_DWELL_MS)
 	tabs, strip := built(s, "view_tabs"), built(s, "striped_strip")
 	if !testing.expect(t, tabs != nil && strip != nil, "the panel's strip and the body's") { return }
 	testing.expectf(t, strip.rect.min.y >= tabs.rect.max.y - 0.5, "the body's strip under the panel's: %v under %v", strip.rect, tabs.rect)
@@ -1053,8 +1182,8 @@ a_panel_knows_what_floats_over_it :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(ui.views_floating_rects(&r.views, s.state)), 0)
 }
 
-// A right click on a tab of the body in the panel's top band opens the tab's menu, not the view's; on an empty part of
-// the band, the view's menu.
+// A right click on a tab of the body in the panel's top band opens the tab's menu, not the view's; after a rest on an
+// empty part of the band, the panel's strip comes, and a right click on its tab opens the view's menu.
 @(test)
 the_band_s_menu_gives_way_to_the_body_s :: proc(t: ^testing.T) {
 	r: Dock
@@ -1069,10 +1198,12 @@ the_band_s_menu_gives_way_to_the_body_s :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.menu_is_open(VIEW_MENU_TABBED), "not the view's")
 	session.key(s, .Escape)
 	session.frames(s, 2)
-	empty := [2]f32{panel.rect.min.x + TAB_W + 40, panel.rect.min.y + 8}
-	session.click_at(s, empty, .Right)
+	session.move(s, {panel.rect.min.x + TAB_W + 40, panel.rect.min.y + 2})
+	strip_tab := wait_built(s, "view_tab_view_tabbed")   // (after the dwell, VIEW_HOVER_DWELL_MS)
+	if strip_tab == nil { return }
+	session.click_at(s, session.center(strip_tab), .Right)
 	session.frames(s, 2)
-	testing.expect(t, ui.menu_is_open(VIEW_MENU_TABBED), "the view's menu on the empty band")
+	testing.expect(t, ui.menu_is_open(VIEW_MENU_TABBED), "the view's menu on the strip's tab")
 	testing.expect(t, !ui.menu_is_open("tab_menu"))
 }
 

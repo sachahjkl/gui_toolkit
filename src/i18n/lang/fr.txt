@@ -2368,6 +2368,9 @@ fr Fermer le panneau
 en New tab
 fr Nouvel onglet
 
+en right click: the panel's menu
+fr clic droit : le menu du panneau
+
 en No window: the system refused it.
 fr Pas de fenêtre : le système l'a refusée.
 

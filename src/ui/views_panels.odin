@@ -22,11 +22,16 @@ import store "../store"
 
 // A zone's extent when nothing else gives one (ems).
 VIEW_ZONE_EM :: f32(18)
-// A lone panel's strip on hover (view_hover_strip): it comes when the pointer is this near the stack's top edge, and
-// stays while the pointer is on it or this far under it (ems). The second is past the first: when the strip goes, the
-// body comes back up under a pointer that is past the edge's band, and the strip does not come again by itself.
+// A lone panel's strip (view_hover_strip): the band at the stack's top edge where the pointer arms it (ems), and how
+// long the pointer rests there before it shows (ms). Its own delay, not a Feel one: a submenu delay set to 0 would
+// show the strip on the first build of a pointer that only crosses the band (views.md, section 2.5, rule 2).
 VIEW_HOVER_EDGE_EM :: f32(0.6)
-VIEW_HOVER_KEEP_EM :: f32(0.8)
+VIEW_HOVER_DWELL_MS :: 300
+
+// The states of a lone panel's strip: at rest; armed (the pointer rests in the top band since View_Record.hover_since);
+// shown until the pointer leaves the stack.
+@(private)
+View_Hover :: enum u8 { Rest, Armed, Shown }
 
 // A dock space: what is remembered of it (the memory's `#<space>` line) and what its last build laid out.
 @(private)
@@ -602,13 +607,23 @@ view_zone_fill :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 		push_parent(stack)
 		with_strip := minimised || len(list) >= 2
 		for r in list { if r.kind.o.tabs_always { with_strip = true } }
-		// (a lone panel's strip comes on the hover of its top edge and pushes its body down: its controls never lie over
-		// the body's)
-		if !with_strip { with_strip = view_hover_strip(shown, stack, strip_h) }
+		// (a lone panel's strip comes on a rest at its top edge and pushes its body down: its controls never lie over
+		// the body's; with company it is the stack's strip, and its hover starts again from rest)
+		on_hover := false
+		if with_strip {
+			for r in list { r.hover = .Rest }
+		} else {
+			with_strip = view_hover_strip(shown, stack)
+			on_hover = with_strip
+		}
 		shown.strip_tools = 0
 		// (the shown view placed its zone's fold button in its last build: the strip says Minimise no second time)
 		folds := shown.fold_built != 0 && shown.fold_built + 1 >= s.build_index
 		if with_strip { view_stack_strip(vs, sp, e, k, list, shown, only >= 0, minimise = !folds) }
+		// (a click on the strip did its act in this build: the strip goes in the next one)
+		if on_hover && s.clicked_key[.Left] != 0 && view_key_within(s, s.clicked_key[.Left], key_from_string(stack.key, "###view_tabs")) {
+			shown.hover = .Rest
+		}
 		if !minimised { view_panel_build(vs, sp, shown) }
 		pop_parent()
 		for r in list { view_header_menu(vs, r, .Panel) }
@@ -788,7 +803,8 @@ view_zone_rail_views :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View
 // has; views.md, Minimise): Minimise when the zone is expanded, Restore when it is collapsed, the same small icon. It
 // acts as the strip's Minimise and the rail's Restore, and the view's strip then leaves its Minimise out. A view with
 // View_Options.rail_em calls it in its compact form (View.rail): its zone's rail has no other Restore. Elsewhere (not
-// a panel at the left or the right) it builds nothing and returns {}. Its key: "###view_fold".
+// a panel at the left or the right) it builds nothing and returns {}. A right click on it opens the view's menu (its
+// moves, Maximise, Close: a lone panel's strip waits for a rest at its top edge). Its key: "###view_fold".
 view_fold_button :: proc(v: ^View) -> Signal {
 	if v == nil || v.record == nil || v.presentation != .Panel { return {} }
 	r := v.record
@@ -799,11 +815,12 @@ view_fold_button :: proc(v: ^View) -> Signal {
 	labels := view_labels(vs)
 	collapsed := view_zone_collapsed(sp, e)
 	r.fold_built = gs().build_index
-	sig := side_fold_button("###view_fold", collapsed, e == .Right, labels.minimize, labels.restore)
+	sig := side_fold_button("###view_fold", collapsed, e == .Right, labels.minimize, labels.restore, labels.menu_hint)
 	if sig.clicked {
 		sp.max_edge = nil
 		view_stack_minimise(vs, sp, e, !collapsed)
 	}
+	if sig.right_clicked && sig.box != nil { menu_open(view_menu_id(r), mouse_pos(), sig.box.key, search = false) }
 	return sig
 }
 
@@ -900,29 +917,44 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, rail := f
 	view_build_ended(vs, r)
 }
 
-// Whether a lone panel shows its stack's strip, on hover (section 2.5, rule 2): it comes when the pointer is in the
-// stack's top band (VIEW_HOVER_EDGE_EM, by the last layout), and pushes the body down; it stays while the pointer is on
-// it or just under it (VIEW_HOVER_KEEP_EM), while a box of it is held (a tab dragged out), or while the view's menu is
-// open. No control of the strip ever lies over the body's: the strip takes its room.
+// Whether a lone panel shows its stack's strip (section 2.5, rule 2), by its state machine (View_Hover): armed while
+// the pointer rests in the stack's top band (VIEW_HOVER_EDGE_EM, by the last layout) with no button down, shown after
+// VIEW_HOVER_DWELL_MS there; then kept while the pointer is in the stack, a box of the strip is held (a tab dragged
+// out) or the view's menu is open, and gone on Escape. Shown, it pushes the body down: no control of it lies over the
+// body's. (A click on the strip ends it too: view_zone_fill, after the strip did its act.)
 @(private = "file")
-view_hover_strip :: proc(r: ^View_Record, stack: ^Box, strip_h: f32) -> bool {
+view_hover_strip :: proc(r: ^View_Record, stack: ^Box) -> bool {
 	s := gs()
 	em := font_size()
 	a, p := stack.rect, mouse_pos()
-	reach := r.hover_strip ? strip_h + em * VIEW_HOVER_KEEP_EM : em * VIEW_HOVER_EDGE_EM
-	on := s.mouse_valid && p.x >= a.min.x && p.x < a.max.x && p.y >= a.min.y && p.y < a.min.y + reach
-	if r.hover_strip && !on {
-		on = view_held_within(s, key_from_string(stack.key, "###view_tabs")) || menu_is_open(view_menu_id(r))
+	inside := s.mouse_valid && p.x >= a.min.x && p.x < a.max.x && p.y >= a.min.y && p.y < a.max.y
+	switch r.hover {
+	case .Shown:
+		held := s.active_key[.Left] != 0 && view_key_within(s, s.active_key[.Left], key_from_string(stack.key, "###view_tabs"))
+		keep := inside || held || menu_is_open(view_menu_id(r))
+		// (peeked, not taken: an Escape the body reads still reaches it)
+		if !keep || key_pressed_peek(.Escape) { r.hover = .Rest }
+	case .Rest, .Armed:
+		band := inside && p.y < a.min.y + em * VIEW_HOVER_EDGE_EM
+		pressed := s.buttons_down != {} || s.pressed_any != {}
+		if !band || pressed {
+			r.hover = .Rest
+			break
+		}
+		if r.hover == .Rest { r.hover, r.hover_since = .Armed, s.time_ms }
+		waited := s.time_ms - r.hover_since
+		if waited >= VIEW_HOVER_DWELL_MS {
+			r.hover = .Shown
+		} else {
+			wake_within(s, max(1, int(VIEW_HOVER_DWELL_MS - waited) + WAKE_MARGIN_MS))   // (one frame at the deadline)
+		}
 	}
-	r.hover_strip = on
-	return on
+	return r.hover == .Shown
 }
 
-// Whether the left button holds a box under `root` (a tab of a strip on hover, dragged out of it: the strip stays).
+// Whether the box `k` is `root` or lies under it (a box of a strip on hover: held, or clicked).
 @(private = "file")
-view_held_within :: proc(s: ^State, root: Key) -> bool {
-	k := s.active_key[.Left]
-	if k == 0 { return false }
+view_key_within :: proc(s: ^State, k: Key, root: Key) -> bool {
 	for b := s.boxes[k] or_else nil; b != nil; b = b.parent {
 		if b.key == root { return true }
 	}

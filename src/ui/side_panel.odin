@@ -11,6 +11,7 @@ package ui
 //   * side_fold_button: the fold button (a panel icon), which the program places in a row it has.
 //   * Side_Panel, side_panel_begin, side_panel_handle: the three for a program's own split, with its width.
 
+import "core:fmt"
 import "core:math"
 import "core:strings"
 import lucide "../lucide"
@@ -138,8 +139,9 @@ side_handle :: proc(id: string, folded: bool, size: ^f32, rail, lo, hi: f32, o :
 // The fold button of a panel `folded` or open, at the left or (`after`) at the right: the panel icon that says what a
 // click does (PANEL_LEFT_CLOSE open, PANEL_LEFT_OPEN folded), its tooltip and its accessible name `fold_label` or
 // `open_label`. The program places it in a row it already has, at the same pixel in both states, and on a click calls
-// side_fold_set(!folded). `id`: its key ("###fold").
-side_fold_button :: proc(id: string, folded, after: bool, fold_label, open_label: string) -> Signal {
+// side_fold_set(!folded). `id`: its key ("###fold"). `hint` ("": none): what else the button does, after the label in
+// its tooltip only (its accessible name stays the label).
+side_fold_button :: proc(id: string, folded, after: bool, fold_label, open_label: string, hint := "") -> Signal {
 	glyph: string
 	switch {
 	case folded && !after: glyph = lucide.PANEL_LEFT_OPEN
@@ -147,7 +149,7 @@ side_fold_button :: proc(id: string, folded, after: bool, fold_label, open_label
 	case !after:           glyph = lucide.PANEL_LEFT_CLOSE
 	case:                  glyph = lucide.PANEL_RIGHT_CLOSE
 	}
-	return side_icon_button(id, glyph, folded ? open_label : fold_label)
+	return side_icon_button(id, glyph, folded ? open_label : fold_label, hint)
 }
 
 // The side of the fold button and of a stack's small buttons (em): three of them and a stack's largest tab fit a side
@@ -155,9 +157,9 @@ side_fold_button :: proc(id: string, folded, after: bool, fold_label, open_label
 SIDE_ICON_EM :: f32(1.3)
 
 // A small icon button, as close to the next as a bar's tools ("###id": its key): the fold button and a narrow stack's
-// own buttons.
+// own buttons. `hint`: after the label in its tooltip ("": none).
 @(private)
-side_icon_button :: proc(id, glyph, label: string) -> Signal {
+side_icon_button :: proc(id, glyph, label: string, hint := "") -> Signal {
 	em := font_size()
 	side := math.round(em * SIDE_ICON_EM)
 	push_tags("ghost_button", "button", "weak")
@@ -166,7 +168,7 @@ side_icon_button :: proc(id, glyph, label: string) -> Signal {
 	b := build_box({.Draw_Text, .No_Text_Trunc, .Clickable, .Focusable, .Draw_Background, .Draw_Hot_Effects}, strings.concatenate({glyph, id}, context.temp_allocator))
 	a11y_default(b, {role = .Button, name = label})
 	sig := signal(b)
-	if hovered_for(sig) { if tooltip() { tooltip_text(label) } }
+	if hovered_for(sig) { if tooltip() { tooltip_text(hint == "" ? label : fmt.tprintf("%s — %s", label, hint)) } }
 	return sig
 }
 

@@ -363,8 +363,11 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   the tabs when they scroll), where the new tab appears; the shown view's moves (Float, Open in a window, Re-attach), small and weak; the program's tools of the
   shown view (`view_header_tools`); then at the right end Minimise, Maximise and Close of the stack, drawn as a
   window's caption buttons. In a stack too narrow for them (a side zone of a few ems) the moves go (the view's menu
-  and the palette have them) and the three buttons are small icons. A lone panel shows the same strip on the hover of its top
-  edge; it pushes the body down, so none of its controls lies over the body's.
+  and the palette have them) and the three buttons are small icons. A lone panel shows the same strip after the
+  pointer rests `VIEW_HOVER_DWELL_MS` (300 ms) in its top band (`VIEW_HOVER_EDGE_EM`) with no button down; it pushes
+  the body down, so none of its controls lies over the body's. It stays while the pointer is in the panel, and goes
+  when the pointer leaves it, on Escape, or after a click on the strip; only a new rest brings it back. A pointer that
+  only crosses the band moves nothing.
   - `View_Options.new_tab: proc(data: rawptr)`: the "+" calls it with the shown view's data; the program opens a new
     instance (`view_open` with a name of its own), at once or later (a shell a server makes). Each "+" leaves the
     stack waiting for one instance of that kind: the next one that opens within `NEW_TAB_WAIT_MS` (10 s) joins the
@@ -388,7 +391,8 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
     is the zone's Minimise when the zone is expanded and its Restore when it is collapsed (key `view_fold`). Put it at
     the same place in both forms (the start of the first row, say): it then stays under the pointer when the person
     folds and unfolds the zone. A debug build asserts that a view with `rail_em` calls it in its compact form. A view
-    that calls it has no Minimise on its strip. Outside a left or right zone it builds nothing and returns `{}`. A
+    that calls it has no Minimise on its strip. A right click on it opens the view's menu (its moves, Maximise or
+    Restore, Close); its tooltip says so (`View_Labels.menu_hint`). Outside a left or right zone it builds nothing and returns `{}`. A
     zone without `rail_em` keeps the strip's Minimise and the icons' rail's Restore.
   - **A rail keeps its edge line and opens by a pull.** A side zone's rail keeps the zone's handle: the same line
     against the content as expanded, and `view_dock_line` names it. Drag that handle outward past
@@ -403,11 +407,8 @@ ui.view_register(&app.views, "files", files_view, {title = "Files", home = .Pane
   - **Close** closes every view of the stack (each ends `VIEW_CANCELLED`). One tab closes by Ctrl+W in it, its menu or
     the palette.
   - A strip exists in a stack of panels only: an internal window and a window of its own hold one view each.
-- On the hover of a panel's top area (`VIEW_HOVER_EM`), two icons show at its top right, in the weak colour: Float
-  (an internal window) and Close. They do not show over a control of the body the pointer is on in their corner (a
-  button): that control keeps its click. When a strip (`ui.strip`) of the body lies in their corner, they do not show
-  at all: its arrows are never covered; the panel's menu and the palette float and close it. A right click there opens its menu, unless the body takes it: the press is on a
-  clickable box of the body (a tab of its own there, with its own menu), or the body opened a menu in that build.
+- The view's menu (a right click on its strip's tab, or on its fold button) has Detach into a window, Open as a
+  floating window, the Dock items, Re-attach away from home, Maximise or Restore for a panel, and Close.
 - `view_drag_handle(v, box)` marks the program's title box of a view: a lone panel moves by it (it floats, and a drop
   docks it again). A panel without one shows no grip; it moves by its icon, its menu or the palette.
 - A zone's extent is the space's: its handle resizes it (the content keeps `DOCK_MIN_EM`), and the memory keeps it
