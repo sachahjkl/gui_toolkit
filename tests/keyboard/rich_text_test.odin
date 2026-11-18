@@ -65,7 +65,7 @@ frame :: proc(f: ^Rx, events: []platform.Event = nil, draw_it := false) -> []u8 
 	// (a find test: the paragraph in a view of the window's size, below its find bar's corner)
 	if f.finding {
 		if page := ui.box_at("###page"); page != nil {
-			if f.needle == "" { ui.find_close(&f.s) } else if !ui.find_is_open(page.key) || ui.find_needle() != f.needle { ui.find_open(&f.s, page.key, f.needle) }
+			if f.needle == "" { ui.find_close(&f.s) } else if !ui.find_is_open(&f.s, page.key) || ui.find_needle() != f.needle { ui.find_open(&f.s, page.key, f.needle) }
 		}
 		ui.next({width = ui.px(f32(SIZE.x)), height = ui.px(f32(SIZE.y))})
 		if ui.column(id = "###page") {

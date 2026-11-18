@@ -41,10 +41,11 @@ if res.scrolled { app.follow_bottom = false }   // the find moved the view to a 
 - `ui.find_close(s)` closes it: nothing lit, nothing counted, its cache freed.
 - `ui.find_set_current(s, index)` makes the `index`-th match current (0-based, over every row), clamped to the matches,
   and brings it in as the arrows do. It waits until every row is counted; with no needle or no match it does nothing.
-- These three take the window's State: call them in a build, or between two builds on the interface thread (a command
-  line option, a menu, a key the program routes itself), for any window. The next build of `s` applies them, and
-  `ui.needs_frame(s)` is true until it runs.
-- `ui.find_is_open(view = 0)`: open over `view` (0: over any).
+- `ui.find_is_open(s, view = 0)`: the find of window `s` is open over `view` (0: over any). It reads what the last call
+  of the others wrote, so a program that closes a panel asks it and calls `find_close` with no flag of its own.
+- These four take the window's State: call them in a build, or between two builds on the interface thread (a command
+  line option, a menu, a key the program routes itself), for any window. The next build of `s` applies the three that
+  change it, and `ui.needs_frame(s)` is true until it runs.
 - `ui.find_bar(view, options) -> Find_Result` at each build of the view, before or after its content, with the view's box
   of this build or of the last one (`prev_box`). It builds the bar only while the find is open over that view. A build that
   does not call it lights nothing: a page that is not shown has no find.
@@ -90,6 +91,9 @@ lz := ui.lazy_begin(rows = rows)
   `stamp` moves: a new needle, an option, a scope count again from what it kept. Without `stamp`, `version` stands for every
   row's: give `stamp` for a long list.
 - A step to a match in a row that is not built builds that row in the next build, wherever it is, and brings it in.
+  The rows on the way stand as the column's estimate until they are built and measured, which moves the match; the view
+  follows it at each build until it rests with the match inside, for at most `ui.FIND_SETTLE_BUILDS` builds. A wheel
+  turn or a drag of the scroll bar's thumb ends this: the person took the view.
 - A match in a part that is not shown: the boxes of its row hold fewer matches than its whole text. The find calls `reveal`
   once with the match's byte offset; the program opens that part; once the row's boxes hold as many matches as its text, the
   match is lit and brought in. A program that cannot open it leaves it: after a few builds the view goes to the row.

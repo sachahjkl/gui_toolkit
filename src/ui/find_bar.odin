@@ -76,9 +76,10 @@ find_set_current :: proc(s: ^State, index: int) {
 // What the bar's field holds (kept while it is closed).
 find_needle :: proc() -> string { return line_edit_string(&gs().find.field) }
 
-// The find is open over `view` (0: over any).
-find_is_open :: proc(view: Key = 0) -> bool {
-	f := &gs().find
+// The find of window `s` is open over `view` (0: over any). In a build or between two, on the interface thread: a program
+// that closes a panel closes the find over it without a flag of its own.
+find_is_open :: proc(s: ^State, view: Key = 0) -> bool {
+	f := &s.find
 	return f.open && (view == 0 || f.view == view)
 }
 

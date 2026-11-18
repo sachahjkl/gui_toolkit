@@ -4,7 +4,8 @@ package scenarios_test
 // matches of every row, built or not, steps from one to the next and brings it in, lights them, asks the program to open
 // a folded part, takes its options and scopes, stands alone in its view, closes with Escape, puts its matches on the
 // scroll bar, and counts a long list in bounded slices. A program drives it between builds, reads when it scrolled, and
-// sets the current match; a press in the bar leaves the keyboard in its field.
+// sets the current match, which the view follows while the heights of a lazy column settle; a press in the bar leaves the
+// keyboard in its field.
 
 import "base:runtime"
 import "core:fmt"
@@ -17,6 +18,7 @@ import "gt:ui"
 @(private = "file") FIND_VIEW_W :: 560
 @(private = "file") FIND_VIEW_H :: 200
 @(private = "file") FIND_ROW_H :: 30
+@(private = "file") FIND_TALL_H :: 120
 @(private = "file") FIND_ROWS :: 60
 @(private = "file") FIND_HITS := [?]int{5, 20, 50}   // the rows that say "needle"
 @(private = "file") FIND_FOLDED :: 30                 // a row whose folded part says "needle"
@@ -40,6 +42,7 @@ Find_Run :: struct {
 	second:    bool,          // a second view beside the first
 	res:       ui.Find_Result,
 	scrolls:   int,           // builds whose result said the find moved the view
+	tall:      int,           // the rows before this one are FIND_TALL_H high, the others FIND_ROW_H
 }
 
 @(private = "file")
@@ -94,7 +97,7 @@ find_view :: proc(s: ^session.Session, r: ^Find_Run, id: string) {
 			for i in 0 ..< r.count {
 				if r.marks_on && (i - r.inserted) % 10 == 0 { ui.scroll_marks_place(&r.marks, (i - r.inserted) / 10, lz.y) }
 				if ui.lazy_item(lz, fmt.tprintf("###r%d", find_id_of(r, i))) {
-					ui.next({width = ui.fill(), height = ui.px(FIND_ROW_H), flags = {.Selectable}})
+					ui.next({width = ui.fill(), height = ui.px(i - r.inserted < r.tall ? FIND_TALL_H : FIND_ROW_H), flags = {.Selectable}})
 					ui.label(fmt.tprintf("%s###t", find_row_text(r, i)))
 					if i - r.inserted == r.folded && r.open {
 						ui.next({width = ui.fill(), height = ui.px(FIND_ROW_H), flags = {.Selectable}})
@@ -279,7 +282,7 @@ escape_closes_the_bar :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return len(ui.find_matches()) > 0 }, "a match lit")
 	session.key(s, .Escape)
 	session.frames(s, 2)
-	testing.expect(t, !ui.find_is_open(), "closed")
+	testing.expect(t, !ui.find_is_open(s.state), "closed")
 	testing.expect_value(t, len(ui.find_matches()), 0)
 	testing.expect_value(t, ui.find_count(), 0)
 	testing.expect(t, session.focused_name(s) != "field", "the field let the keyboard go")
@@ -298,15 +301,15 @@ the_magnifier_opens_the_find :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^
 	view := session.get(s, "view")
 	session.click(s, "marks")
 	session.frames(s, 1)
-	testing.expect(t, ui.find_is_open(view.key), "open over the marks' view")
+	testing.expect(t, ui.find_is_open(s.state, view.key), "open over the marks' view")
 	testing.expect_value(t, session.focused_name(s), "field")
 	session.click(s, "marks")
 	session.frames(s, 1)
-	testing.expect(t, !ui.find_is_open(), "closed")
+	testing.expect(t, !ui.find_is_open(s.state), "closed")
 	testing.expect_value(t, session.focused_name(s), "marks")
 	session.type_text(s, "n")
 	session.frames(s, 2)
-	testing.expect(t, ui.find_is_open(view.key), "a letter opens it")
+	testing.expect(t, ui.find_is_open(s.state, view.key), "a letter opens it")
 	testing.expect_value(t, ui.find_needle(), "n")
 }) }
 
@@ -398,16 +401,20 @@ the_program_drives_a_window_s_find_between_builds :: proc(t: ^testing.T) { unwat
 	view := session.get(s, "view")
 	ui.use(other.state)
 	ui.find_open(s.state, view.key, "needle")
-	testing.expect(t, !ui.find_is_open(), "not the current window's find")
+	// (read between builds, by the State: the window's find, not the current one's)
+	testing.expect(t, ui.find_is_open(s.state, view.key), "open over its view at once")
+	testing.expect(t, !ui.find_is_open(s.state, view.key + 1), "not over another view")
+	testing.expect(t, !ui.find_is_open(other.state), "not the current window's find")
 	testing.expect(t, ui.needs_frame(s.state), "the build that applies it is asked for")
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return !ui.find_pending() && ui.find_count() == 3 }, "counted in its window")
-	testing.expect(t, ui.find_is_open(view.key), "open over its view")
+	testing.expect(t, ui.find_is_open(s.state, view.key), "open over its view")
 	testing.expect_value(t, session.focused_name(s), "field")
 	ui.use(other.state)
 	ui.find_close(s.state)
+	testing.expect(t, !ui.find_is_open(s.state), "closed at once")
 	testing.expect(t, ui.needs_frame(s.state), "the build that closes it is asked for")
 	session.frames(s, 2)
-	testing.expect(t, !ui.find_is_open(), "closed")
+	testing.expect(t, !ui.find_is_open(s.state), "closed")
 	testing.expect_value(t, len(ui.find_matches()), 0)
 }) }
 
@@ -469,4 +476,44 @@ the_program_sets_the_current_match :: proc(t: ^testing.T) { unwatched.run(t, pro
 	ui.find_set_current(s.state, -5)
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.find_index() == 0 && find_current_shown(s) }, "clamped to the first")
 	testing.expect(t, strings.contains(find_lit_current().text, "row 5 "), "on row 5")
+}) }
+
+// The current match's letters are inside the view, by the last layout (its row's box may be taller than the view's margins).
+@(private = "file")
+find_current_match_in_view :: proc(s: ^session.Session) -> bool {
+	v := session.find(s, "view")
+	if v == nil { return false }
+	for m in ui.find_matches() {
+		if m.index >= 0 && m.index == ui.find_index() { return m.rect.min.y >= v.rect.min.y && m.rect.max.y <= v.rect.max.y }
+	}
+	return false
+}
+
+// A jump to a match far above, over rows the lazy column never built: each stands as the column's estimate (rows 15 to 59
+// smaller than they are, rows 60 to 289 taller) until the view passes it and it is measured. The view follows the match
+// as they settle, and rests with it inside (opencode native: a jump from match 59 to match 10 stopped at the top, the
+// match below the view).
+@(test)
+a_jump_over_estimated_rows_ends_on_its_match :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	hits := [?]int{3, 40, 50, 290}
+	r := Find_Run{folded = -1, count = 300, hits = hits[:], tall = 60}
+	s := find_start(t, &r)
+	view := session.get(s, "view")
+	// (the find opens at the top, on the first match, row 3: the rows past the first view stay unbuilt)
+	ui.find_open(s.state, view.key, "needle")
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return !ui.find_pending() && ui.find_count() == 4 }, "the four matches counted")
+	// to the last match, at the bottom, as opencode native's jump started
+	ui.find_set_current(s.state, 3)
+	session.wait_until(s, proc(s: ^session.Session) -> bool {
+		v := session.find(s, "view")
+		return ui.find_index() == 3 && v != nil && v.view_off.y == v.view_target.y && find_current_match_in_view(s)
+	}, "on row 290, at rest")
+	ui.find_set_current(s.state, 1)
+	session.wait_until(s, proc(s: ^session.Session) -> bool {
+		v := session.find(s, "view")
+		return ui.find_index() == 1 && v != nil && v.view_off.y == v.view_target.y && find_current_match_in_view(s)
+	}, "row 40's match inside the view, at rest")
+	session.frames(s, 10)
+	testing.expect(t, find_current_match_in_view(s), "still inside once the heights settled")
+	testing.expect(t, strings.contains(find_lit_current().text, "row 40"), "on row 40")
 }) }

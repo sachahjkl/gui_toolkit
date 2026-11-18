@@ -48,7 +48,7 @@ Find_Result :: struct {
 
 // The way of the current match to the screen (find-in-view.md, "The current match's way to the screen").
 @(private)
-Find_Goal :: enum u8 { None, Seek, Reveal }
+Find_Goal :: enum u8 { None, Seek, Reveal, Settle }
 
 // A row's place in the order: what was known of it at its last visit.
 @(private)
@@ -121,7 +121,7 @@ Find_State :: struct {
 	cur_range:   [2]int,
 	current:     int,            // its ordinal, painted (-1: none)
 	goal:        Find_Goal,
-	reveal_builds: int,
+	goal_builds: int,            // the builds spent in .Reveal or .Settle (both bounded)
 	picked:      bool,           // a first match was chosen for this needle
 	moved:       bool,           // the current changed: find_bar's result says it once
 	scrolled:    bool,           // the view's scroll target was set to bring it in: find_bar's result says it once
@@ -146,6 +146,7 @@ Find_Hit :: struct { rect: Rect, same: bool }
 FIND_ROWS_PER_FRAME  :: 2048      // rows a pass visits at each frame, at most
 FIND_BYTES_PER_FRAME :: 1 << 18   // bytes a pass reads or matches at each frame (at least one row)
 FIND_REVEAL_BUILDS   :: 4         // builds a revealed part has to show its match
+FIND_SETTLE_BUILDS   :: 180       // builds the view follows a match brought in while the heights around it settle
 @(private = "file") FIND_TOP_MARGIN_EM :: 1
 @(private = "file") FIND_BOTTOM_MARGIN_EM :: 3
 @(private = "file") FIND_LAND_AT :: 0.35   // where a match brought in lands, from the view's top
@@ -478,7 +479,7 @@ find_make_current :: proc(f: ^Find_State, ordinal: int) {
 	k := ((ordinal % f.total) + f.total) % f.total
 	row := fen_find(f, k)
 	f.cur_row, f.cur_occ, f.cur_id, f.has_cur = row, k - fen_sum(f, row), f.order[row].id, true
-	f.goal, f.reveal_builds, f.moved = .Seek, 0, true
+	f.goal, f.goal_builds, f.moved = .Seek, 0, true
 	f.cur_range = {}
 	if t, ok := f.cache[f.cur_id]; ok {
 		hits := make([dynamic][2]int, context.temp_allocator)
@@ -488,9 +489,9 @@ find_make_current :: proc(f: ^Find_State, ordinal: int) {
 }
 
 // The view brings the content's band [y0, y1) in, when it is not already well inside. Every way of a match to the screen
-// goes through here, so the find's result says each scroll it made (Find_Result.scrolled).
+// goes through here, so the find's result says each scroll it made (Find_Result.scrolled). `moved`: the target was set.
 @(private = "file")
-find_bring_in :: proc(f: ^Find_State, view: ^Box, y0, y1: f32) {
+find_bring_in :: proc(f: ^Find_State, view: ^Box, y0, y1: f32) -> (moved: bool) {
 	h := view.size.y
 	em := view.font_size
 	off := view.view_target.y
@@ -499,6 +500,7 @@ find_bring_in :: proc(f: ^Find_State, view: ^Box, y0, y1: f32) {
 	if to == off { return }
 	view.view_target.y = to
 	f.scrolled = true
+	return true
 }
 
 // After the layout: the rows counted (a slice), the built text lit, the current match brought in.
@@ -635,6 +637,11 @@ find_collect :: proc(s: ^State) {
 
 	// its way to the screen
 	f.want_row = -1
+	if f.goal == .Settle {
+		f.goal_builds += 1
+		// (the person took the view: the find does not pull it back; and a layout that never settles is let go)
+		if f.goal_builds > FIND_SETTLE_BUILDS || s.scroll_delta.y != 0 || scrollbar_thumb_held(s, view) { f.goal = .None }
+	}
 	if f.goal != .None && f.cur_row >= 0 {
 		switch {
 		case !cur_built:
@@ -646,17 +653,25 @@ find_collect :: proc(s: ^State) {
 				f.goal = .None   // (a view that draws its rows: find_bar's result tells it)
 			}
 		case cur_nb >= 0 && len(cur_rects) > 0:
+			// (a lazy column measures the rows the glide passes: what stood as an estimate above or around the match moves it
+			// under a target set once. So the view follows it, build after build, until the view rests with it inside)
 			y0, y1 := max(f32), min(f32)
 			for m in cur_rects { y0, y1 = min(y0, m.rect.min.y), max(y1, m.rect.max.y) }
-			find_bring_in(f, view, content_y(view, y0), content_y(view, y1))
-			f.goal = .None
+			moved := find_bring_in(f, view, content_y(view, y0), content_y(view, y1))
+			if f.goal != .Settle { f.goal, f.goal_builds = .Settle, 0 }
+			if !moved && view.view_off.y == view.view_target.y && !s.lazy_more {
+				f.goal = .None
+			} else {
+				f.want_row = f.cur_row
+				f.waiting = true
+			}
 		case f.goal == .Seek && f.rows.reveal != nil:
 			f.rows.reveal(f.rows.user, f.cur_row, f.cur_range[0])
-			f.goal, f.reveal_builds = .Reveal, 0
+			f.goal, f.goal_builds = .Reveal, 0
 			f.want_row = f.cur_row
 			f.waiting = true
-		case f.goal == .Reveal && f.reveal_builds < FIND_REVEAL_BUILDS:
-			f.reveal_builds += 1
+		case f.goal == .Reveal && f.goal_builds < FIND_REVEAL_BUILDS:
+			f.goal_builds += 1
 			f.want_row = f.cur_row
 			f.waiting = true
 		case:

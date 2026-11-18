@@ -210,7 +210,7 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 		view.view_target.y = clamp(view.view_target.y + scroll_view_delta(s).y * wheel_step(view, .Y), 0, view_limit(view))
 	}
 	// (the find over this view: opened, or closed when it is open there)
-	finding := find_is_open(view.key)
+	finding := find_is_open(s, view.key)
 	if sig.pointer_clicked {
 		if finding { find_close(s); s.focus_key = hb.key } else { find_open(s, view.key) }
 	}
@@ -262,7 +262,7 @@ scroll_marks :: proc(id: string, k: ^Scroll_Marks, view: ^Box, o := Scroll_Marks
 
 	d := frame_new(Color)
 	// (weak at rest, as the bar's other greys; the accent under the pointer, and while the find is open over the view)
-	d^ = color(sig.hovering || find_is_open(view.key) ? "accent" : "weak text")
+	d^ = color(sig.hovering || find_is_open(s, view.key) ? "accent" : "weak text")
 	hb.custom, hb.custom_user = marks_magnifier_draw, d
 	name := o.name != "" ? o.name : i18n.tr("Marks")
 	info := A11y_Info{role = .Slider, name = name, orientation = .Y, min = 1, max = f64(max(len(k.marks), 1))}

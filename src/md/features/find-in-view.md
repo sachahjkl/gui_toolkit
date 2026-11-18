@@ -124,12 +124,27 @@ The current match is a small state machine (`Find_Goal`):
 - **None**: nothing to bring in.
 - **Seek**: a step chose it. If its row is not built, the lazy column builds that row in the next build wherever it is (as it
   builds the selection's ends), and the view goes to it. Once built: `nb == n` → the view brings the match's rect in (a glide
-  to put it at a third of the view's height, only when it is not already well inside) → None. `nb != n` with a `reveal` →
-  **Reveal**.
+  to put it at a third of the view's height, only when it is not already well inside) → **Settle**. `nb != n` with a
+  `reveal` → **Reveal**.
 - **Reveal**: `Text_Rows.reveal(user, row, offset)` was called once, `offset` the match's byte in the row's whole text. The
   program unfolds the part that holds it. At each build the row is looked at again; when `nb == n` the match is lit and
-  brought in → None. After `FIND_REVEAL_BUILDS` builds without it (the program could not reveal it) the view goes to the row's
-  top → None, the count unchanged.
+  brought in → **Settle**. After `FIND_REVEAL_BUILDS` builds without it (the program could not reveal it) the view goes to
+  the row's top → None, the count unchanged.
+- **Settle**: the target was set from a layout whose rows between the view and the match were estimates. At each build the
+  row stays built and the match is brought in again from its rects of that layout. When the bring-in has nothing to change,
+  the view rests on its target and the lazy column built all it shows (`lazy_more` false) → None. A wheel turn or a held
+  thumb → None: the person took the view. After `FIND_SETTLE_BUILDS` builds → None: a layout that never rests (a row that
+  grows at each frame) does not hold the view for ever.
+
+**Why Settle.** A lazy column replaces the estimate of a row with its height when it builds it; the glide toward a far
+match builds the rows it passes. Those above the column's anchor move the view and its target together (`view_shift`,
+clamped at 0); those between the anchor and the match move the match under a fixed target. A jump set once lands where
+the match was in the first layout (opencode native: from match 59 to match 10, the view stopped at 0, the match below
+it). F3 seldom showed it: its step lands on a row next to built ones, whose heights are measured. The fix is the same
+bring-in, done again until the layout rests, so a step, `find_set_current` and a revealed part share it. Refused: a
+height for the rows on the way before the jump (building them is the cost the lazy column avoids); a jump with no glide
+(the anchor still moves the match); following `Vlist_Rows.guessed` (it says a vlist's first build, not a lazy column's
+estimates).
 
 A view with rows and no lazy column (a terminal that draws its own grid) has no boxes: `find_bar` returns the current
 match's row and range when it changed (`Find_Result.moved`), the program scrolls to it and paints the ranges it reads with
@@ -181,8 +196,11 @@ change in the button, the segmented control and the dropdown for one caller).
 window's State: a program calls them from its command line (`--find`), its menu or a key it routes itself, on the
 interface thread, between two builds, for a window that is not the thread's current one. They write the State only (the
 field, the flags, the focus key); the next build of that State applies them, and `needs_frame(s)` is true until it runs.
-One form, with the State: the bar's own calls pass theirs. Refused: a second form on the current State beside it (two
-names for one act); a queue of requests (the State already holds what the next build reads).
+`find_is_open(s, view)` reads the same flag they write, so it answers at once after them: a program that closes a panel
+closes the find over it without a flag of its own (opencode native kept one, because the query read the current State
+only). One form, with the State: the bar's own calls pass theirs. Refused: a second form on the current State beside it
+(two names for one act); a queue of requests (the State already holds what the next build reads); `Find_State` made
+public (the program would read the find's working state).
 
 **One find per window.** The State holds one find: its view, its field, its options. `find_open(s, view)` opens it over that view,
 or focuses its field when it is open there already (its text selected); open over another view, it moves. So there is at most
