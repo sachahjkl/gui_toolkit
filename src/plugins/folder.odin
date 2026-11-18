@@ -303,7 +303,10 @@ toml_quote :: proc(b: ^strings.Builder, s: string) {
 @(private)
 toml_write :: proc(h: ^Host) {
 	if h.toml_path == "" { return }
-	// (what goes to the chore is freed there with the heap's allocator: the caller's may be a test's, or a frame's)
+	// (one write at a time: the one under way is followed by another, of the state then)
+	if h.toml_writing { h.toml_again = true; return }
+	h.toml_writing = true
+	// (what goes to the chore is freed with the heap's allocator: the caller's may be a test's, or a frame's)
 	context.allocator = runtime.heap_allocator()
 	b := strings.builder_make()
 	strings.write_string(&b, "# The plugins turned on, those suspended because their process crashed again and again, what the person granted each (gt:plugins).\n[enabled]\n")
@@ -327,26 +330,47 @@ toml_write :: proc(h: ^Host) {
 		}
 	}
 	w := new(Toml_Write)
-	w^ = {path = strings.clone(h.toml_path), text = strings.to_string(b)}
-	ui.task(h.state, toml_work, nil, w, toml_free)
+	w^ = {path = strings.clone(h.toml_path), text = strings.to_string(b), link = h.link}
+	sync.atomic_add(&h.link.refs, 1)
+	ui.task(h.state, toml_work, toml_done, w, toml_lost)
 }
 
 @(private)
-Toml_Write :: struct { path, text: string }
+Toml_Write :: struct {
+	path, text: string,
+	link:       ^Host_Link,   // (counted) the host, when the write is done: its next write, if one was asked
+}
 
 @(private)
 toml_work :: proc(data: rawptr) {
 	w := (^Toml_Write)(data)
 	if dir := dir_of(w.path); dir != "" { fsx.make_dirs(dir) }
 	_ = fsx.write_atomic(w.path, transmute([]u8)w.text)
+}
+
+// The write done, on the interface's thread: the one asked meanwhile goes now.
+@(private)
+toml_done :: proc(data: rawptr, word: u64) {
+	w := (^Toml_Write)(data)
+	if h := w.link.host; h != nil {
+		h.toml_writing = false
+		if h.toml_again {
+			h.toml_again = false
+			toml_write(h)
+		}
+	}
 	toml_free(w)
 }
 
+// The window went before the write's answer: the host goes with it, nothing more is written.
 @(private)
-toml_free :: proc(data: rawptr) {
+toml_lost :: proc(data: rawptr) { toml_free((^Toml_Write)(data)) }
+
+@(private)
+toml_free :: proc(w: ^Toml_Write) {
 	context.allocator = runtime.heap_allocator()
-	w := (^Toml_Write)(data)
 	delete(w.path); delete(w.text)
+	link_release(w.link)
 	free(w)
 }
 

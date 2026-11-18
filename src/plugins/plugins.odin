@@ -103,6 +103,10 @@ Host :: struct {
 	grant_due:   bool,                  // the dialog opens at the next build
 	grant_view:  bool,                  // the dialog's view is registered
 	single_asked: bool,                 // gt-runtime's plugin was looked at for a grant at its start
+	// plugins.toml's writer, one write at a time: idle, writing, or writing with another asked (the last state wins;
+	// two writes on two chores could end in either order, the older content last)
+	toml_writing: bool,
+	toml_again:   bool,
 	window_announcer: ui.Announcer,   // Host_Options.announcer nil: the window's toasts
 	// what a test reads: the toasts said (count), and the last one's words (owned)
 	toasts:      int,
