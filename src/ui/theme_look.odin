@@ -144,9 +144,31 @@ caption_stops :: proc(c: Theme_Caption, active: bool) -> (left, right: Color) {
 	return draw.hex(stops[0]), draw.hex(stops[1])
 }
 
+// The band of the theme shown over `r`, active or not, for a program that draws its own title bar (a row of tabs with
+// window_buttons) instead of title_bar. False: the theme gives no band, nothing is drawn.
+caption_band :: proc(dc: ^draw.Context, r: Rect, active: bool) -> bool {
+	c := caption_shown()
+	if !caption_has_band(c) { return false }
+	caption_band_fill(dc, r, c, active)
+	return true
+}
+
+// The text on the band of the theme shown (nil: no band, or a band that keeps the text as it is).
+caption_band_ink :: proc() -> Maybe(Color) {
+	c := caption_shown()
+	if !caption_has_band(c) || c.ink == 0 { return nil }
+	return draw.hex(c.ink)
+}
+
+// Whether the text on the band of the theme shown is bold.
+caption_band_bold :: proc() -> bool {
+	c := caption_shown()
+	return caption_has_band(c) && c.bold
+}
+
 // A caption's band over `r`: its two stops from left to right, interpolated in sRGB values as Windows drew them.
 @(private)
-caption_band :: proc(dc: ^draw.Context, r: Rect, c: Theme_Caption, active: bool) {
+caption_band_fill :: proc(dc: ^draw.Context, r: Rect, c: Theme_Caption, active: bool) {
 	left, right := caption_stops(c, active)
 	if left == right { draw.rect(dc, r, left); return }
 	stops := [2]draw.Gradient_Stop{{color = left, pos = 0}, {color = right, pos = 1}}

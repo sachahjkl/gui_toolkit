@@ -84,7 +84,7 @@ Caption_Band_Draw :: struct {
 @(private)
 caption_band_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Caption_Band_Draw)(user)
-	caption_band(dc, b.rect, d.caption, d.active)
+	caption_band_fill(dc, b.rect, d.caption, d.active)
 }
 
 // What screen readers call the caption buttons of the window of `s`: minimize, maximize, restore, close (the strings must
