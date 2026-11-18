@@ -10,14 +10,14 @@ import "core:strings"
 import "core:testing"
 import "core:time"
 import config "gt:config"
-import crash "gt:crash"
 import plugins "gt:plugins"
 import "gt:testkit"
 import "gt:testkit/session"
 import "gt:ui"
 
 // The bound of Not_Responding in these tests (the default is 2 s), and how long each wait may take.
-BOUND_MS :: 300
+// (a second: the Windows CI's machine, on WARP, took more than 300 ms for a first turn that loops on nothing)
+BOUND_MS :: 1000
 WAIT :: 10 * time.Second
 // The builds the window must still make while the plugin loops.
 MORE_BUILDS :: 30
@@ -70,12 +70,8 @@ enable :: proc(root: string, ids: ..string) {
 }
 
 // A headless window whose builds run the host and the palette, the host reading `root`.
-open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "") -> ^session.Session {
-	// (run_tests names a folder for crash reports: a crash of this process then says its stack in the CI's log; a
-	// second install does nothing)
-	if dir := os.get_env("TOOLKIT_TEST_CRASH_DIR", context.temp_allocator); dir != "" {
-		_ = crash.install({program = "plugins_test", report_dir = dir})
-	}
+open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "", sandbox := plugins.Sandbox_Mode.If_Available) -> ^session.Session {
+	crash_reports()
 	s := session.start(t, {user = fx, no_renderer = true, build = proc(s: ^session.Session) {
 		fx := (^Fx)(s.user)
 		fx.builds += 1
@@ -98,7 +94,7 @@ open :: proc(t: ^testing.T, fx: ^Fx, root: string, single := "") -> ^session.Ses
 		program = "gui_toolkit_plugins_test", program_id = "plugins_test",
 		folder = fmt.tprintf("%s/plugins", root), config_dir = fmt.tprintf("%s/config", root), state_dir = fmt.tprintf("%s/state", root),
 		data_dir = fmt.tprintf("%s/data", root),
-		bound_ms = BOUND_MS, single = single,
+		bound_ms = BOUND_MS, single = single, sandbox = sandbox,
 	})
 	fx.opened = true
 	// (before the session's end, which destroys the State: cleanups run last first)

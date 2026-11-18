@@ -18,7 +18,7 @@ LAZY_MANIFEST :: `{
 // answered for the version that is gone by then.
 LAZY_MAIN :: `import { commands, views } from "gt";
 let version = 1, hang = false;
-const BUMP_MS = 1000;
+const BUMP_MS = 1500;
 export function activate() {
 	commands.on("bump", () => {
 		const t = Date.now(); while (Date.now() - t < BUMP_MS) {}

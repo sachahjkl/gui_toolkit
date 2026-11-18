@@ -51,6 +51,8 @@ plugins.host_close(&app.plugins)
 | `list_info(h, plugin_id, view_id, key)`, `list_scroll_to(h, plugin_id, view_id, key, row)` | What the host knows of a view's lazy list (its rows built, its asks, the answers dropped); scrolls it to a row. For a test or a program's own page. |
 | `restart(h, id)` | A `Failed` plugin is `Ready` again: its next use starts a new process. A failed view's Restart calls it. |
 | `test_crash(h, id)`, `test_hang(h, id)` | A test's hooks: the plugin's process panics at its next turn, or waits there where no interrupt reaches it. |
+| `test_escape(h, id, read_path, create_dir)` | A test's hook: the plugin's process tries to read a file, create one and open a TCP socket; a toast says which it could (`escaped: none` when isolated). |
+| `sandbox_available()` | Whether this system can isolate a plugin's process, and why not. |
 | `reload(h)` | Stops every runtime and reads the folder again. |
 | `state_of(h, id)`, `find(h, id)`, `host_plugins(h)`, `loaded(h)` | What the host knows, for a page or a test. |
 | `open_view(h, plugin_id, view_id)` | Opens a plugin's view among the window's views, at its manifest's place, and starts the plugin when it does not run. The palette's `plugin-view.<plugin id>.<view id>` items call it. |
@@ -68,6 +70,7 @@ plugins.host_close(&app.plugins)
 | `announcer` | Where a plugin's messages go. nil: the window's toasts. |
 | `bound_ms` | How long a message can run before its plugin is `Not_Responding` (0: 2000). |
 | `memory_limit` | A plugin's heap budget in bytes (0: 64 MB). |
+| `sandbox` | `If_Available` (the default), `Required` or `Off`: see "What a plugin's process can do". |
 | `data_dir` | The folder of the plugins' own data folders (`""`: `<data>/<program>/plugin-data`). |
 | `prefs` | The program's preferences: the plugins' settings are registered there as `plugins.<plugin id>.<setting id>`. nil: a plugin's settings keep their defaults. |
 | `single` | One plugin instead of the folder: its folder, or a lone `.js` file whose manifest is implied. It is on from the start (gt-runtime). |
@@ -219,6 +222,29 @@ release attaches `gt-runtime-windows-x64.zip`, with the JavaScript demos in its 
 
 The states, as the Plugins page shows them: `Found`, `Refused`, `Off`, `Ready`, `Starting`, `Running`,
 `Not_Responding`, `Failed`, `Suspended`.
+
+## What a plugin's process can do
+
+On Linux the process isolates itself before the plugin's code runs. It keeps its two pipes to the program and nothing
+else:
+
+- It opens and creates no file (Landlock, with no path allowed). Its `.js` and `.mjs` files are read before that, at
+  its start (2 000 files and 64 MB at most); its log lines go to the program, which writes the log.
+- It makes no socket (a seccomp filter), and no TCP connection (Landlock, from kernel ABI 4).
+- From Landlock's ABI 6, it signals no process out of itself.
+- What it reaches beyond that is the broker's: what the person granted.
+
+`Host_Options.sandbox` says what happens where the system cannot isolate it (a kernel with no Landlock):
+
+| Mode | |
+|---|---|
+| `If_Available` (the default) | The plugin runs as before; its log says it is not isolated, and why. |
+| `Required` | The plugin is `Failed`: "this system cannot isolate a plugin's process". |
+| `Off` | Never isolated (a program's own debugging). |
+
+`sandbox_available()` says whether this system can. Windows and macOS do not yet: a plugin's process there has the
+person's rights, as the program has. The sandbox does not bound the processor nor the memory: Stop's bound and the
+memory budget do.
 
 ## Adding a call to the API
 

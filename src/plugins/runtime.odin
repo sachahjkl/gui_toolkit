@@ -183,6 +183,14 @@ run_turn :: proc(r: ^Run, m: Message) {
 	case .Test_Hang:
 		// (a host procedure stuck in the system: the interrupt flag is never read, only a kill ends it)
 		for { time.sleep(time.Second) }
+	case .Test_Escape:
+		read, create, socket := escape_try(m.text, m.command)
+		got := make([dynamic]string, context.temp_allocator)
+		if read { append(&got, "read") }
+		if create { append(&got, "create") }
+		if socket { append(&got, "socket") }
+		words := len(got) > 0 ? strings.join(got[:], ", ", context.temp_allocator) : "none"
+		event_post(r.p, r.serial, .Toast, text = fmt.tprintf("escaped: %s", words))
 	case .Quit, .Stop:   // (the child's reader takes them: never queued for a turn)
 	}
 	if !r.ended { renders(r) }
@@ -324,9 +332,10 @@ load_module :: proc(ctx: ^js.Context, referrer: string, specifier: string, attr_
 	if v, had := r.modules[name]; had { return v }
 	source := r.gt_source
 	if name != GT_MODULE {
-		data, ok := fsx.read_all(fsx.path_join(r.p.folder, name), context.temp_allocator, MODULE_MAX_BYTES)
-		if !ok { return js.throw_error(ctx, .reference, fmt.tprintf("cannot read the module %s of its folder", name)) }
-		source = string(data)
+		// (read at the process's start, before its sandbox: sources_read)
+		data, ok := r.p.sources[name]
+		if !ok { return js.throw_error(ctx, .reference, fmt.tprintf("cannot read the module %s of its folder (its .js and .mjs files are read at its start)", name)) }
+		source = data
 	}
 	req := js.Compile_Request{kind = .module, source = source, filename = name}
 	v := js.compile(ctx, &req)
@@ -413,16 +422,22 @@ toast_show :: proc(c: ^plugin_api.Call, a: ^plugin_api.Toast_Show) -> js.Value {
 ////////////////////////////////
 // The plugin's log
 
-// A line at the end of the plugin's log, the oldest lines dropped past LOG_MAX_BYTES.
+// A line of the plugin's log, from its process: the program writes it (log_append), the process opens no file.
 @(private)
 log_write :: proc(p: ^Plugin, text: string) {
-	if p.log_path == "" { return }
-	old, _ := fsx.read_all(p.log_path, context.temp_allocator, LOG_MAX_BYTES * 2)
+	child_event(p, .Log, "", text, .Info, nil, {}, {})
+}
+
+// A line at the end of a plugin's log, the oldest lines dropped past LOG_MAX_BYTES. The program's reader thread.
+@(private)
+log_append :: proc(path, text: string) {
+	if path == "" { return }
+	old, _ := fsx.read_all(path, context.temp_allocator, LOG_MAX_BYTES * 2)
 	line := fmt.tprintf("%d %s\n", time.to_unix_seconds(time.now()), text)
 	all := strings.concatenate({string(old), line}, context.temp_allocator)
 	if len(all) > LOG_MAX_BYTES {
 		all = all[len(all) - LOG_MAX_BYTES:]
 		if nl := strings.index_byte(all, '\n'); nl >= 0 { all = all[nl + 1:] }
 	}
-	_ = fsx.write_atomic(p.log_path, transmute([]u8)all)
+	_ = fsx.write_atomic(path, transmute([]u8)all)
 }

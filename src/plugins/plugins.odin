@@ -73,6 +73,14 @@ Host_Options :: struct {
 	announcer:    ^ui.Announcer,   // where a plugin's messages go (nil: the window's toasts)
 	bound_ms:     int,      // 0: NOT_RESPONDING_MS
 	memory_limit: i64,      // 0: MEMORY_LIMIT
+	sandbox:      Sandbox_Mode,   // whether a plugin's process is isolated by the system (sandbox_linux.odin)
+}
+
+// How a plugin's process is isolated by the system (plugins.md, "As built: the sandbox").
+Sandbox_Mode :: enum u8 {
+	If_Available,   // isolated where the system can; elsewhere it runs as before, and its log says so once
+	Required,       // a plugin whose process cannot be isolated is Failed
+	Off,            // not isolated (a program's own debugging)
 }
 
 // The program's plugins, kept by the program between frames (host_open to host_close), at a place that does not move.
