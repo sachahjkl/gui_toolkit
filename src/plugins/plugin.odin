@@ -131,6 +131,7 @@ Message_Kind :: enum u8 {
 	// none, the person picked nothing); `text` the value or the error's message; `key` the error's name; `number` a
 	// response's status; `command` its address
 	Answer,
+	Rows,         // the rows `rows` of the lazy list `key` of `view` (lazy_list.odin)
 }
 
 // What happened to a node of a view: the name of the field of its kind's struct that is called (plugin_api's nodes).
@@ -150,6 +151,7 @@ Message :: struct {
 	serial:  u64,      // a change's: the person's changes of this key so far (the replay's Control.changes)
 	setting: config.Kind,
 	number:  f64,      // an Int or Float setting's value
+	rows:    Rows_Ask, // a lazy list's ask
 }
 
 @(private)
@@ -238,6 +240,7 @@ Event_Kind :: enum u8 {
 	List,        // a view's new display list: `title` is the view's id, `list` the list
 	Crashed,     // its process ended with no word of its runtime (the program's reader says it): `text`
 	Request,     // a call for the broker (files, the network, the clipboard): `req`
+	Rows,        // a lazy list's rows: `title` the view's id, `text` the list's key, `list` the rows, `rows` the ask
 }
 
 @(private)
@@ -250,22 +253,23 @@ Event :: struct {
 	text:   string,
 	list:   ^plugin_api.List,   // (owned until a view's record takes it)
 	req:    Request,   // (owned)
+	rows:   Rows_Ask,
 }
 
 // An event of the plugin's runtime (its thread, inside its process): written to the program. `serial` is the
 // program's to set (the reader's).
 @(private)
-event_post :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil, req := Request{}) {
-	child_event(p, kind, title, text, toast, list, req)
+event_post :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil, req := Request{}, rows := Rows_Ask{}) {
+	child_event(p, kind, title, text, toast, list, req, rows)
 }
 
 // An event of the plugin's process `serial`, posted to the interface's thread (the program's reader and sender).
 // Lost when the host is closed. Takes `list`; copies `req`.
 @(private)
-event_deliver :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil, req := Request{}) {
+event_deliver :: proc(p: ^Plugin, serial: u64, kind: Event_Kind, title := "", text := "", toast := ui.Toast_Kind.Info, list: ^plugin_api.List = nil, req := Request{}, rows := Rows_Ask{}) {
 	context.allocator = runtime.heap_allocator()
 	e := new(Event)
-	e^ = {p = p, serial = serial, kind = kind, toast = toast, title = strings.clone(title), text = strings.clone(text), list = list, req = request_clone(req)}
+	e^ = {p = p, serial = serial, kind = kind, toast = toast, title = strings.clone(title), text = strings.clone(text), list = list, req = request_clone(req), rows = rows}
 	sync.atomic_add(&p.refs, 1)
 	if !link_post(p.link, event_run, e) { event_free(e) }
 }
@@ -328,6 +332,8 @@ event_run :: proc(data: rawptr, word: u64) {
 		}
 	case .Request:
 		broker_request(h, p, e.serial, e.req)
+	case .Rows:
+		if r := view_record(h, p.manifest.id, e.title); r != nil && lazy_take(r, e.text, e.rows, e.list) { e.list = nil }
 	}
 }
 

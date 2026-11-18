@@ -157,6 +157,10 @@ A program that builds its rows itself (its own look, no `list_row`) names each r
 the rows under that name. `list_select(&st.list, i)` makes a row active and brings it into view, for a list whose keys
 are read elsewhere (a palette's field keeps the keyboard).
 
+The first build of a list comes before its layout: the list takes the window's height for its view, and builds more rows
+than it shows. Its `Vlist_Rows.guessed` says so, and the list asks for the next build, which has the real rows. A
+program that fetches the rows it builds (from a disk, a process, a plugin) skips a guessed build.
+
 ### Stripes, rules and a row's tint
 
 Two fields of the list's state (`List_State`, so a `vlist`'s and a `Table`'s `vl` too) set the look of its rows:

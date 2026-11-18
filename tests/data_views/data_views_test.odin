@@ -442,6 +442,44 @@ a_row_tinted_in_place_of_its_stripe :: proc(t: ^testing.T) {
 	testing.expect(t, !app.animations, "animations_on says so")
 }
 
+@(private = "file")
+Guess_App :: struct {
+	vl:       ui.Virtual_List,
+	ids:      [1000]u64,
+	builds:   int,
+	guessed:  [dynamic]bool,   // each build's Vlist_Rows.guessed
+	built:    [dynamic]int,    // each build's rows
+}
+
+@(private = "file")
+build_guess :: proc(s: ^session.Session) {
+	app := (^Guess_App)(s.user)
+	ui.next({width = ui.px(TABLE_W), height = ui.px(120)})
+	if rows, ok := ui.vlist("###guess", &app.vl, app.ids[:]); ok {
+		append(&app.guessed, rows.guessed)
+		append(&app.built, rows.last - rows.first)
+		for i in rows.first ..< rows.last {
+			ui.next({height = ui.px(24)})
+			ui.list_row(&app.vl, i, "")
+		}
+	}
+}
+
+// A list's first build is laid out at the window's height, a guess; it says so, and the next build has the real rows,
+// fewer (a caller that fetches rows, as a plugin's lazy list, waits for it).
+@(test)
+a_lists_first_build_says_its_rows_are_a_guess :: proc(t: ^testing.T) {
+	app := new(Guess_App)
+	defer { ui.vlist_destroy(&app.vl); delete(app.guessed); delete(app.built); free(app) }
+	for &id, i in app.ids { id = u64(i) + 1 }
+	s := session.start(t, {build = build_guess, user = app, no_renderer = true})
+	session.wait_until(s, app, proc(s: ^session.Session, app: ^Guess_App) -> bool { return len(app.guessed) >= 3 }, "three builds")
+	testing.expect(t, app.guessed[0], "the first build is a guess")
+	last := len(app.guessed) - 1
+	testing.expect(t, !app.guessed[last], "a later build is not")
+	testing.expectf(t, app.built[last] < app.built[0], "the real rows (%d) are fewer than the guess (%d)", app.built[last], app.built[0])
+}
+
 @(private = "file") NARROW_W :: 160
 
 @(private = "file")

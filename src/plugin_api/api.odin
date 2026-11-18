@@ -12,7 +12,7 @@ import js "../js"
 
 // The level of the API this toolkit gives, and the oldest a plugin may ask: a manifest's `api` between the two is
 // accepted. A level only adds; a removal or a change raises the oldest.
-PLUGIN_API_LEVEL :: 4
+PLUGIN_API_LEVEL :: 5
 PLUGIN_API_OLDEST :: 1
 
 // What a call needs the person to have granted (the manifest's "permissions"). `.None`: nothing. The bridge refuses a
@@ -208,6 +208,26 @@ Switch_Node :: struct {
 // A line across the view.
 Separator_Node :: struct {}
 
+// A list's row: called with a row's index, it returns that row's node (level 5). The program calls it only for the rows
+// in view and a margin, as the person scrolls.
+Row_Render :: distinct js.Value
+
+// A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows
+// costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content
+// changes: the rows kept are dropped and asked again (an answer for an older version is dropped).
+Lazy_List_Node :: struct {
+	// How many rows it has (1 000 000 at most).
+	count:       int,
+	// Its rows' content: rows kept for another version are dropped.
+	version:     int `optional`,
+	// A row's height in lines of text, before its rows are measured (2 when absent).
+	rowHeight:   f64 `optional`,
+	// How many rows high the list is (10 when absent).
+	visibleRows: int `optional`,
+	// Each row's node.
+	row:         Row_Render,
+}
+
 // The kinds of nodes, in the order of NODES.
 Node_Kind :: enum u8 {
 	Text,
@@ -221,6 +241,7 @@ Node_Kind :: enum u8 {
 	Check,
 	Switch,
 	Separator,
+	List,
 }
 
 // One kind of node: its name in JavaScript, its struct, whether it has children, and the level that added it.
@@ -244,6 +265,7 @@ NODES :: [?]Node_Declaration{
 	{kind = .Check, name = "check", props = Check_Node, level = 2},
 	{kind = .Switch, name = "switch", props = Switch_Node, level = 2},
 	{kind = .Separator, name = "separator", props = Separator_Node, level = 2},
+	{kind = .List, name = "list", props = Lazy_List_Node, level = 5},
 }
 
 ////////////////////////////////

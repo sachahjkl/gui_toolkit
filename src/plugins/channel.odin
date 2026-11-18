@@ -184,7 +184,7 @@ channel_read :: proc(p: ^Plugin, ch: ^Channel) {
 		if !ok { break }
 		if kind != .Event { broken = "it wrote something that is not an event"; break }
 		r := plugin_api.Wire_Reader{data = payload}
-		ek, toast, title, text, list, req, good := event_decode(&r)
+		ek, toast, title, text, list, req, rows, good := event_decode(&r)
 		free_all(context.temp_allocator)
 		if !good { broken = "it wrote an event that cannot be read"; break }
 		#partial switch ek {
@@ -197,7 +197,7 @@ channel_read :: proc(p: ^Plugin, ch: ^Channel) {
 			// (stamped here, while its turn runs: by the interface's thread the turn may be over)
 			req.gesture = turn_is_gesture(p)
 		}
-		event_deliver(p, serial, ek, title = title, text = text, toast = toast, list = list, req = req)
+		event_deliver(p, serial, ek, title = title, text = text, toast = toast, list = list, req = req, rows = rows)
 		request_free(&req)
 		delete(title); delete(text)
 	}

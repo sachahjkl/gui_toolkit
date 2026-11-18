@@ -35,6 +35,7 @@ View_Record :: struct {
 	replayed:   bool,
 	fitted_nodes: int,   // the nodes of the list the window last fitted to (ui.view_refit)
 	controls:   map[string]^Control,   // the host's state of each field and box, by key (keys owned)
+	lazies:     map[string]^Lazy,      // its lazy lists' rows, by the list node's key (lazy_list.odin)
 }
 
 // What the host keeps of a field or a box: the text typed or the state, and how many changes the person made.
@@ -88,6 +89,8 @@ view_record_free :: proc(r: ^View_Record) {
 		delete(k)
 	}
 	delete(r.controls)
+	for _, lz in r.lazies { lazy_free(lz) }   // (the map's keys are the lists' own)
+	delete(r.lazies)
 	delete(r.plugin_id); delete(r.view_id); delete(r.ui_id); delete(r.title)
 	free(r)
 }
@@ -213,6 +216,7 @@ view_draw :: proc(r: ^View_Record, scroll := false) {
 	if r.replayed && r.old != nil {
 		plugin_api.list_free(r.old)
 		r.old = nil
+		lazies_prune(r)   // (the lazy lists the new list no longer has: none was built since)
 	}
 	view_status(h, r, em)
 	if r.list == nil {
@@ -364,6 +368,8 @@ replay :: proc(r: ^View_Record, nodes: []plugin_api.List_Node, i: ^int, in_row: 
 		}
 	case .Separator:
 		ui.hline(ui.fill())
+	case .List:
+		lazy_replay(r, n)
 	}
 }
 

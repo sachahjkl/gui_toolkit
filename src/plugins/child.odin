@@ -89,9 +89,9 @@ child_reader :: proc(p: ^Plugin) {
 
 // An event of the child's plugin, written to the program. A program gone: the plugin stops.
 @(private)
-child_event :: proc(p: ^Plugin, kind: Event_Kind, title, text: string, toast: ui.Toast_Kind, list: ^plugin_api.List, req: Request) {
+child_event :: proc(p: ^Plugin, kind: Event_Kind, title, text: string, toast: ui.Toast_Kind, list: ^plugin_api.List, req: Request, rows: Rows_Ask) {
 	w := plugin_api.Wire_Writer{buf = make([dynamic]u8, context.temp_allocator)}
-	event_encode(&w, kind, title, text, toast, list, req)
+	event_encode(&w, kind, title, text, toast, list, req, rows)
 	plugin_api.list_free(list)
 	sync.lock(&p.out.lock)
 	ok := frame_write(p.out.file, .Event, w.buf[:])

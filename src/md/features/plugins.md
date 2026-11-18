@@ -135,9 +135,10 @@ Neither of the two options of the notes is taken.
 - **An event is a message.** The replay sees `clicked` and posts `(view, node key, event, value)` to the plugin. Its
   handler runs, `render` runs, a new list comes. The person sees it one or two frames later.
 - **A lazy list is a node `list` with a count, a row height and a version.** The host asks for the rows in view plus a
-  margin (`rows(first, last)`), keeps the answers by index, and draws a placeholder row until an answer comes. An
-  answer carries the serial of its question; an answer for another version is dropped (the palette's rule,
-  [palette.md](palette.md)). The cost follows the rows in view, never the count.
+  margin, by range, keeps the answers by index, and draws a placeholder row until an answer comes. An answer carries
+  the serial of its question; an answer for another version is dropped (the palette's rule, [palette.md](palette.md)).
+  The cost follows the rows in view, never the count. As built (slice 5): the node's `row(i)` gives one row, see
+  "As built: lazy lists".
 
 The cost:
 
@@ -593,3 +594,45 @@ Refused:
   Stop could not reach a plugin waiting for an answer.
 
 Still open: a plugin folder shared by all the vendor's programs (refused for now).
+
+## As built: lazy lists (slice 5, API level 5)
+
+Written on 2026-11-18.
+
+- **The node.** `{ kind: "list", count, version, rowHeight, visibleRows, row: (i) => node }`. `count` is at most
+  1 000 000 (the host keeps 8 bytes a row: the virtual list's ids). `rowHeight` is in lines of text, the height of a
+  row before it is measured; `visibleRows` the list's height in rows (10 when absent, 100 at most). The list is a box of
+  its own that scrolls inside the view.
+- **`row(i)` and not `rows(from, to)`.** The plugin says what one row is; the process calls it for each row of an ask.
+  So the plugin never handles a range, never returns an array of the wrong length, and each row is keyed and checked
+  on its own (a row that gives `null` is an empty row). The function is kept as the node's handler (its field's name,
+  `row`), as an `onClick` is: it is the one of the last render, and no new call of the API exists.
+- **The program's side is the toolkit's virtual list** (`ui.vlist`): it says which rows are built (the view and its
+  margin), measures each row's height and keeps the view on its row when heights change above it. A row's identity is
+  its index; a new version forgets the heights (`vlist_invalidate`). The host wants the rows built and as many again
+  on each side; the answers with none of those rows are let go of (freed two builds later: a widget may hold their
+  strings for one build), and with them the state of their fields and boxes.
+- **One ask waits at a time per list**: the first rows wanted and not answered, those in view first, 200 at most
+  (`ROWS_MAX_PER_ASK`). A plugin that is slow gets no more work than it can do; the window builds the placeholders and
+  scrolls meanwhile. An ask with no answer within the bound (Host_Options.bound_ms) lets one more go, for the rows
+  wanted then; the plugin is Not responding by then, as for any turn (an ask is a turn). The ask carries its number
+  and the list's version; the answer echoes them, and the host drops it when it is not the ask that waits (a later
+  ask, or a version changed since) or when none of its rows is wanted now.
+- **Keys.** A row is one column node keyed `<list>~<row>`, and the row's node under it; the program builds its own
+  row box in its place (the virtual list's name for the row) and replays the children. A row's keys are under its
+  column's: `<list>~<row>/0/2` by place, `<list>~<row>~<own>` for the plugin's own key. So two rows never share a key,
+  and a click in a row reaches the handler of that row. `~` is no longer allowed in a plugin's own key.
+- **Handlers of rows** live with their list in the process, by key, until the program lets go of the row (each ask
+  says the rows it keeps). A render that no longer has the list lets go of all of them.
+- **A new render keeps the rows** when the version is the same: the plugin changes `version` when what the rows show
+  changes. Rows are asked again then; the placeholders show until they come.
+
+Refused:
+
+- **A list the plugin fills by itself** (`views.rows(id, from, items)`): the plugin would have to know what is in view.
+- **The rows in the render's display list** (all of them, or a window the plugin picks): the cost follows the count.
+- **A list inside a row of a list**: each row of the outer one would ask for rows of its own; such a node is dropped
+  and said in the log.
+
+Still open: the keyboard's active row and Enter are the virtual list's and are not sent to the plugin (a row's own
+button is); the rows of a list have one look (no selection drawn).

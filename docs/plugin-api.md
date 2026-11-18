@@ -1,6 +1,6 @@
 # The plugin API
 
-Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 4 of the API and accepts plugins written for levels 1 to 4. How a program turns plugins on: [plugins.md](plugins.md).
+Made by `odin run tools/tk -- plugin_api` from `src/plugin_api/api.odin`: do not edit. This toolkit gives level 5 of the API and accepts plugins written for levels 1 to 5. How a program turns plugins on: [plugins.md](plugins.md).
 
 A plugin imports the API as an ES module, and its entry file exports `activate(context)`:
 
@@ -274,6 +274,20 @@ Level 2.
 A line across the view.
 
 Level 2.
+
+### `list`
+
+A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content changes: the rows kept are dropped and asked again (an answer for an older version is dropped).
+
+Level 5.
+
+| Field | Type | |
+|---|---|---|
+| `count` | `number` | How many rows it has (1 000 000 at most). |
+| `version` | `number`, optional | Its rows' content: rows kept for another version are dropped. |
+| `rowHeight` | `number`, optional | A row's height in lines of text, before its rows are measured (2 when absent). |
+| `visibleRows` | `number`, optional | How many rows high the list is (10 when absent). |
+| `row` | `(index: number) => Node` | Each row's node. |
 
 ## The explorer's file
 

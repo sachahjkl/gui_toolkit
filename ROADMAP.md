@@ -56,8 +56,8 @@
   what they granted and never slows the window. Done: commands and toasts, views, settings (API level 3), `gt-runtime`
   with its JavaScript demos, the API explorer on the site, the plugin host in a process of its own (a crash or a hang of
   a plugin no longer reaches the program), capabilities (API level 4: the grant dialog, the plugin's data folder,
-  files, `fetch` by origin, the clipboard, all done by the program's broker). Next: opencode native turns plugins on;
-  lazy lists; a program's own module (`app`); palette sources, menu and tool bar entries. Intent:
+  files, `fetch` by origin, the clipboard, all done by the program's broker), lazy lists (API level 5). Next: opencode
+  native turns plugins on; a program's own module (`app`); palette sources, menu and tool bar entries. Intent:
   [src/md/features/plugins.md](src/md/features/plugins.md).
 - **A plugin's process sandboxed by the system.** A compromised engine in a plugin's process could make system calls
   itself: the broker closes what the API reaches, not what the process can do. The ways open: Linux, seccomp-bpf that

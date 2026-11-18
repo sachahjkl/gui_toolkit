@@ -156,6 +156,26 @@ message_encode :: proc(w: ^plugin_api.Wire_Writer, m: Message) {
 	plugin_api.put_u64(w, m.serial)
 	plugin_api.put_u8(w, u8(m.setting))
 	plugin_api.put_f64(w, m.number)
+	rows_encode(w, m.rows)
+}
+
+@(private)
+rows_encode :: proc(w: ^plugin_api.Wire_Writer, a: Rows_Ask) {
+	plugin_api.put_u64(w, a.seq)
+	plugin_api.put_i64(w, a.version)
+	for v in ([4]int{a.from, a.to, a.keep_from, a.keep_to}) { plugin_api.put_i64(w, i64(v)) }
+}
+
+// (each side checks what the range means where it is used: lazy_take, rows_message)
+@(private)
+rows_decode :: proc(r: ^plugin_api.Wire_Reader) -> (a: Rows_Ask) {
+	a.seq = plugin_api.get_u64(r)
+	a.version = plugin_api.get_i64(r)
+	a.from = int(plugin_api.get_i64(r))
+	a.to = int(plugin_api.get_i64(r))
+	a.keep_from = int(plugin_api.get_i64(r))
+	a.keep_to = int(plugin_api.get_i64(r))
+	return
 }
 
 // A message (its strings in the heap, message_free's). ok false: not a message.
@@ -173,6 +193,7 @@ message_decode :: proc(r: ^plugin_api.Wire_Reader) -> (m: Message, ok: bool) {
 	m.serial = plugin_api.get_u64(r)
 	setting := plugin_api.get_u8(r)
 	m.number = plugin_api.get_f64(r)
+	m.rows = rows_decode(r)
 	if r.bad || kind > u8(max(Message_Kind)) || event > u8(max(View_Event)) || setting > u8(config.Kind.String) {
 		message_free(m)
 		return {}, false
@@ -182,7 +203,7 @@ message_decode :: proc(r: ^plugin_api.Wire_Reader) -> (m: Message, ok: bool) {
 }
 
 @(private)
-event_encode :: proc(w: ^plugin_api.Wire_Writer, kind: Event_Kind, title, text: string, toast: ui.Toast_Kind, list: ^plugin_api.List, req: Request) {
+event_encode :: proc(w: ^plugin_api.Wire_Writer, kind: Event_Kind, title, text: string, toast: ui.Toast_Kind, list: ^plugin_api.List, req: Request, rows: Rows_Ask) {
 	plugin_api.put_u8(w, u8(kind))
 	plugin_api.put_u8(w, u8(toast))
 	plugin_api.put_string(w, title)
@@ -195,12 +216,13 @@ event_encode :: proc(w: ^plugin_api.Wire_Writer, kind: Event_Kind, title, text: 
 		plugin_api.put_u8(w, u8(req.op))
 		for a in req.args { plugin_api.put_string(w, a) }
 	}
+	if kind == .Rows { rows_encode(w, rows) }
 }
 
 // An event as the child wrote it: its kind, words, list and request (heap; the list's own arena). ok false: not an
 // event.
 @(private)
-event_decode :: proc(r: ^plugin_api.Wire_Reader) -> (kind: Event_Kind, toast: ui.Toast_Kind, title, text: string, list: ^plugin_api.List, req: Request, ok: bool) {
+event_decode :: proc(r: ^plugin_api.Wire_Reader) -> (kind: Event_Kind, toast: ui.Toast_Kind, title, text: string, list: ^plugin_api.List, req: Request, rows: Rows_Ask, ok: bool) {
 	k := plugin_api.get_u8(r)
 	t := plugin_api.get_u8(r)
 	title = plugin_api.get_string(r)
@@ -216,11 +238,12 @@ event_decode :: proc(r: ^plugin_api.Wire_Reader) -> (kind: Event_Kind, toast: ui
 		req.op = Broker_Op(op)
 		for &a in req.args { a = plugin_api.get_string(r) }
 	}
+	if k == u8(Event_Kind.Rows) { rows = rows_decode(r) }
 	if r.bad || k > u8(max(Event_Kind)) || t > u8(max(ui.Toast_Kind)) {
 		delete(title); delete(text)
 		plugin_api.list_free(list)
 		request_free(&req)
-		return {}, {}, "", "", nil, {}, false
+		return {}, {}, "", "", nil, {}, {}, false
 	}
-	return Event_Kind(k), ui.Toast_Kind(t), title, text, list, req, true
+	return Event_Kind(k), ui.Toast_Kind(t), title, text, list, req, rows, true
 }

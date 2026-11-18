@@ -176,6 +176,7 @@ run_turn :: proc(r: ^Run, m: Message) {
 	case .View_Event: view_event(r, m)
 	case .Setting:    setting_message(r, m)
 	case .Answer:     broker_answer(r, m)
+	case .Rows:       rows_message(r, m)
 	case .Test_Crash:
 		// (what an engine's bug does to a process: it ends here, and only here)
 		panic("plugins.test_crash: this plugin's process was asked to crash")

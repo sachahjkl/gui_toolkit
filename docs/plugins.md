@@ -48,6 +48,7 @@ plugins.host_close(&app.plugins)
 | `stop(h, id)` | Stops a plugin's runtime; its process is killed when it has not ended 1 s later. The plugin is `Ready` again when its process has ended. |
 | `grant(h, id)`, `revoke(h, id)` | Grants a plugin what its manifest asks and turns it on (the grant dialog's Allow); takes back its permissions and the files it was given. |
 | `path_resolve(path, data_dir, granted, picked)`, `net_allowed(granted, url)`, `permission_parse(word)`, `origin_of(url)`, `host_is_private(host)`, `url_join(base, location)` | The broker's checks, for a test or a program's own page. |
+| `list_info(h, plugin_id, view_id, key)`, `list_scroll_to(h, plugin_id, view_id, key, row)` | What the host knows of a view's lazy list (its rows built, its asks, the answers dropped); scrolls it to a row. For a test or a program's own page. |
 | `restart(h, id)` | A `Failed` plugin is `Ready` again: its next use starts a new process. A failed view's Restart calls it. |
 | `test_crash(h, id)`, `test_hang(h, id)` | A test's hooks: the plugin's process panics at its next turn, or waits there where no interrupt reaches it. |
 | `reload(h)` | Stops every runtime and reads the folder again. |
@@ -173,6 +174,21 @@ export function activate() {
   since the change the plugin last heard of. A field without `value` keeps its own text. Check boxes (`checked`) and
   switches (`on`) follow the same rule.
 - `views.update(id)` renders a view again after a command or a promise.
+- A `list` node (API level 5) shows `count` rows and asks the plugin only for those in view and a margin, as the person
+  scrolls. `row(i)` returns row `i`'s node; a row not answered yet shows a placeholder. Change `version` when what the
+  rows show changes: the rows are asked again.
+
+```js
+let items = [], version = 0;
+views.register("main", () => ({ kind: "list", key: "items", count: items.length, version, rowHeight: 2,
+	row: (i) => ({ kind: "row", children: [
+		{ kind: "text", text: items[i].name },
+		{ kind: "button", key: "open", label: "Open", onClick: () => open(items[i]) },
+	] }),
+}));
+```
+
+- A key in a row is that row's: `key: "open"` in each row is fine. A list inside a row of a list is dropped.
 - When the plugin stops, the view keeps its last list and says why: Not responding (with Stop), Stopped (with Start),
   or the failure.
 

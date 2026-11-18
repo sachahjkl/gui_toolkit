@@ -18,6 +18,7 @@ Run_View :: struct {
 	said:       bool,                  // "no render" was said for this opening
 	handlers:   map[string]js.Value,   // the last render's, by "<key>\x1f<event>" (retained; keys owned)
 	seen:       map[string]u64,        // the person's last change of each key the plugin heard of (keys owned)
+	lists:      map[string]^Run_Rows,  // its lazy lists' rows' handlers, by the list's key (keys owned; lazy_list_run.odin)
 }
 
 @(private)
@@ -25,6 +26,13 @@ run_view_free :: proc(rv: ^Run_View) {
 	// (the values go with the runtime: engine_free; only the keys are the heap's)
 	for k in rv.handlers { delete(k) }
 	delete(rv.handlers)
+	for k, rl in rv.lists {
+		for hk in rl.handlers { delete(hk) }
+		delete(rl.handlers)
+		free(rl)
+		delete(k)
+	}
+	delete(rv.lists)
 	for k in rv.seen { delete(k) }
 	delete(rv.seen)
 	free(rv)
@@ -58,7 +66,10 @@ view_event :: proc(r: ^Run, m: Message) {
 		if _, had := rv.seen[m.key]; had { rv.seen[m.key] = m.serial } else { rv.seen[strings.clone(m.key)] = m.serial }
 	}
 	names := [View_Event]string{.onClick = "onClick", .onChange = "onChange", .onSubmit = "onSubmit"}
-	f, ok := rv.handlers[handler_key(m.key, names[m.event])]
+	hk := handler_key(m.key, names[m.event])
+	f, ok := rv.handlers[hk]
+	// (a node of a lazy list's row: its handler came with its row, not with the render)
+	if !ok { for _, rl in rv.lists { if g, has := rl.handlers[hk]; has { f, ok = g, true; break } } }
 	if !ok { return }
 	arg: js.Value
 	switch {
@@ -107,16 +118,7 @@ render :: proc(r: ^Run, id: string, rv: ^Run_View) {
 	js.retain(r.rt, tree)
 	defer js.release(r.rt, tree)
 	s := Render_Sink{rv = rv, rt = r.rt, handlers = make(map[string]js.Value)}
-	sink := plugin_api.List_Sink{
-		user = &s,
-		seen = proc(user: rawptr, key: string) -> u64 { return (^Render_Sink)(user).rv.seen[key] or_else 0 },
-		handler = proc(user: rawptr, key: string, event: string, f: js.Value) {
-			s := (^Render_Sink)(user)
-			// (the plugin's thread's context: the heap, which run_view_free gives the keys back to)
-			s.handlers[handler_key(key, event, context.allocator)] = js.retain(s.rt, f)
-		},
-	}
-	list, ok := plugin_api.list_write(r.ctx, tree, sink)
+	list, ok := plugin_api.list_write(r.ctx, tree, render_sink(&s))
 	if !ok {
 		handlers_release(r.rt, &s.handlers)
 		delete(s.handlers)
@@ -127,7 +129,22 @@ render :: proc(r: ^Run, id: string, rv: ^Run_View) {
 	handlers_release(r.rt, &rv.handlers)
 	delete(rv.handlers)
 	rv.handlers = s.handlers
+	rows_forget(r, rv)
 	event_post(r.p, r.serial, .List, title = id, list = list)
+}
+
+// What a list's writer gives back to a render (or to a lazy list's rows): the changes heard of, the handlers.
+@(private)
+render_sink :: proc(s: ^Render_Sink) -> plugin_api.List_Sink {
+	return plugin_api.List_Sink{
+		user = s,
+		seen = proc(user: rawptr, key: string) -> u64 { return (^Render_Sink)(user).rv.seen[key] or_else 0 },
+		handler = proc(user: rawptr, key: string, event: string, f: js.Value) {
+			s := (^Render_Sink)(user)
+			// (the plugin's thread's context: the heap, which run_view_free gives the keys back to)
+			s.handlers[handler_key(key, event, context.allocator)] = js.retain(s.rt, f)
+		},
+	}
 }
 
 @(private)

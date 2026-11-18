@@ -65,6 +65,47 @@ Writer :: struct {
 	sink:  List_Sink,
 	keys:  map[string]bool,
 	full:  bool,
+	// a lazy list's row being written ("": a view's render): its own keys go under it, so that two rows never share
+	// one and the program knows each row's nodes (list_write_rows)
+	row:   string,
+}
+
+// The most rows one ask of a lazy list gets (the program asks for no more).
+ROWS_MAX_PER_ASK :: 200
+
+// The rows `from ..< to` of a lazy list whose key is `list_key`, each the result of `row(i)`. Each row is one column
+// node keyed `<list_key>~<i>` (the program builds its own row box in its place, and takes its children), with the
+// row's node as its one child, or none when `row(i)` gave null. A row's keys are under its column's: its place
+// (`<list_key>~<i>/0/2`) or its own key (`<list_key>~<i>~<own>`). False: a row threw, or is not a node; the
+// exception is pending and no list is made.
+list_write_rows :: proc(ctx: ^js.Context, row: js.Value, list_key: string, from, to: int, sink: List_Sink) -> (l: ^List, ok: bool) {
+	l = new(List, runtime.heap_allocator())
+	w := Writer{ctx = ctx, list = l, sink = sink}
+	if virtual.arena_init_growing(&l.arena) != nil {
+		free(l, runtime.heap_allocator())
+		js.throw_error(ctx, .internal, "no memory for the list's rows")
+		return nil, false
+	}
+	w.al = virtual.arena_allocator(&l.arena)
+	l.nodes = make([dynamic]List_Node, w.al)
+	l.problems = make([dynamic]string, w.al)
+	w.keys = make(map[string]bool, context.temp_allocator)
+	column := type_info_of(Column_Node)
+	for i in from ..< to {
+		w.row = fmt.tprintf("%s~%d", list_key, i)
+		tree := js.call_function(ctx, row, js.UNDEFINED, {js.new_number(f64(i))})
+		if js.is_exception(tree) { list_free(l); return nil, false }
+		js.root(ctx.rt, tree)
+		// (the row's column is written whatever the bound of nodes: the program counts on one per row)
+		props, _ := mem.alloc(column.size, column.align, w.al)
+		at := len(l.nodes)
+		append(&l.nodes, List_Node{kind = .Column, key = strings.clone(w.row, w.al), props = props})
+		if js.is_null(tree) || js.is_undefined(tree) { continue }
+		wrote, good := write_node(&w, tree, w.row, 0, 1)
+		if !good { list_free(l); return nil, false }
+		if wrote { l.nodes[at].children = 1 }
+	}
+	return l, true
 }
 
 // The list of `tree`, a render's result. False: a node is not what a node must be; a TypeError is pending and no list
@@ -117,11 +158,17 @@ write_node :: proc(w: ^Writer, v: js.Value, parent_key: string, index, depth: in
 	if js.is_exception(key_v) { return false, false }
 	if js.is_string(key_v) || js.is_number(key_v) {
 		own, _ := js.to_utf8(ctx, key_v, context.temp_allocator)
-		if own == "" || strings.contains(own, "#") || strings.has_prefix(own, "/") {
-			problem(w, fmt.tprintf("the key \"%s\" is not a key (empty, '#', or a leading '/'): the node is keyed by its place", own))
+		// ('~' is a lazy list's: its rows' keys are `<list>~<row>`, which a key of the plugin's must never be)
+		if own == "" || strings.contains_any(own, "#~") || strings.has_prefix(own, "/") {
+			problem(w, fmt.tprintf("the key \"%s\" is not a key (empty, '#', '~', or a leading '/'): the node is keyed by its place", own))
 		} else {
-			key = own
+			key = w.row != "" ? fmt.tprintf("%s~%s", w.row, own) : own
 		}
+	}
+	// (a list in a list's row: the rows of the inner one would be asked for each row of the outer, unbounded)
+	if d.kind == .List && w.row != "" {
+		problem(w, fmt.tprintf("the list \"%s\" is in a row of a list: it is dropped", key))
+		return false, true
 	}
 	if key in w.keys {
 		problem(w, fmt.tprintf("the key \"%s\" is twice in the view: the second %s is dropped", key, d.name))

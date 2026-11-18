@@ -1,4 +1,4 @@
-// The module "gt" of a plugin, level 4. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
+// The module "gt" of a plugin, level 5. Made by `odin run tools/tk -- plugin_api` from src/plugin_api/api.odin: do not edit.
 declare module "gt" {
 	/** How a toast looks. */
 	export type Toast_Kind = "info" | "good" | "warn" | "bad";
@@ -134,6 +134,23 @@ declare module "gt" {
 		key?: string | number;
 	}
 
+	/** A list of `count` rows that the program asks for by range, only those in view and a margin: a list of a million rows costs what its screen shows. A row not answered yet shows a placeholder. Change `version` when the rows' content changes: the rows kept are dropped and asked again (an answer for an older version is dropped). */
+	export interface Lazy_List_Node {
+		kind: "list";
+		/** Unique in the view: what the host knows the node by between two renders. */
+		key?: string | number;
+		/** How many rows it has (1 000 000 at most). */
+		count: number;
+		/** Its rows' content: rows kept for another version are dropped. */
+		version?: number;
+		/** A row's height in lines of text, before its rows are measured (2 when absent). */
+		rowHeight?: number;
+		/** How many rows high the list is (10 when absent). */
+		visibleRows?: number;
+		/** Each row's node. */
+		row: (index: number) => Node;
+	}
+
 	/** What the system's dialog of files.pick offers. */
 	export interface Files_Pick_Options {
 		/** A folder, not a file. */
@@ -163,7 +180,7 @@ declare module "gt" {
 	}
 
 	/** A node of a view: what a render returns, and a container's children. */
-	export type Node = Text_Node | Heading_Node | Button_Node | Row_Node | Column_Node | Card_Node | Space_Node | Field_Node | Check_Node | Switch_Node | Separator_Node;
+	export type Node = Text_Node | Heading_Node | Button_Node | Row_Node | Column_Node | Card_Node | Space_Node | Field_Node | Check_Node | Switch_Node | Separator_Node | Lazy_List_Node;
 
 	export const commands: {
 		/** Registers the handler of one of the manifest's commands: choosing the command in the palette calls it. A second call for the same command replaces the handler. (level 1) */

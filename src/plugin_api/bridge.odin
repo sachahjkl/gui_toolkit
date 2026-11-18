@@ -161,7 +161,7 @@ promise_rejected :: proc(ctx: ^js.Context, reason: js.Value) -> js.Value {
 
 // A function of the plugin: Handler, Text_Handler, Flag_Handler, Render (each a distinct js.Value).
 is_function_type :: proc(id: typeid) -> bool {
-	return id == typeid_of(Handler) || id == typeid_of(Text_Handler) || id == typeid_of(Flag_Handler) || id == typeid_of(Render) || id == typeid_of(Setting_Handler)
+	return id == typeid_of(Handler) || id == typeid_of(Text_Handler) || id == typeid_of(Flag_Handler) || id == typeid_of(Render) || id == typeid_of(Setting_Handler) || id == typeid_of(Row_Render)
 }
 
 @(private)

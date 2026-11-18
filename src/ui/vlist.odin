@@ -61,7 +61,12 @@ Virtual_List :: struct {
 	offsets_made: int,             // the builds that made the offsets again (an unchanged list makes none)
 }
 
-Vlist_Rows :: struct { first, last: int }
+// The rows built. `guessed`: the list was not laid out yet (its first build), so the view's height is the window's
+// and the rows are more than it shows: a caller that fetches rows waits for the next build.
+Vlist_Rows :: struct {
+	first, last: int,
+	guessed:     bool,
+}
 
 vlist_destroy :: proc(st: ^Virtual_List) {
 	list_state_destroy(&st.list)
@@ -272,7 +277,9 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 	append(&s.list_stack, &st.list)
 	push_parent(b)
 	spacer(px(st.offsets[st.first]), exact = true)
-	return {st.first, st.last}, true
+	guessed := b.size.y <= 0
+	if guessed { s.anim_busy = true }   // (the next build has the list's height: its rows are the real ones)
+	return {st.first, st.last, guessed}, true
 }
 
 @(private)
