@@ -5,6 +5,22 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.328.2] - 2026-11-19 16:02
+
+### Added
+- **gt:pdf signs: a program's own fonts and a pen's ink.** `pdf.font_add` gives the engine a TrueType or OpenType font; a stamp with that `face` is written with the font embedded as a subset of the glyphs it uses, its text copyable. A stamp also takes the effects of a signature: a `tilt`, a heavier pen (`weight`), a `flourish` under it and a `caption` line (the place and the date). The shape `Outline` fills closed contours: a pen's ink whose width changes along the stroke.
+- **`gt:ink`: pen strokes turned into ink.** `ink.outline` turns a pointer's samples into a line whose width follows the speed (or a stylus's pressure): quick flourishes thin, slow strokes and corners full, ends tapered or round. Round, chisel (a fountain pen's broad nib) and brush nibs, and the presets `PEN_BALLPOINT`, `PEN_FOUNTAIN`, `PEN_FELT` and `PEN_BRUSH`; `ink.polygon` and `ink.triangles` give the ink to a path filler or to a renderer of triangles.
+- **`toolbox.Project.thumbnailer`**: the package of a program's thumbnail provider. On Windows `build_native` builds it last as `thumbnailer_path(p)` (`<name>_thumbnails.dll`, optimised for a release: `build_native(p, release)`), every odin command of the program embeds it (`-define:GT_THUMBNAIL_DLL=<file>`), and `check_windows` checks it.
+- **`desktop.Part.Thumbnails`**: the file managers show a program's `document_types` as thumbnails the program draws (`Integration_Options.thumbnails`). On Windows the install writes the program's provider DLL beside the executable (`thumbnail_dll_file`, the bytes the build embedded or `thumbnail_dll`) and registers it in HKCU under `thumbnail_clsid`; an update's next start rewrites it, and a DLL Explorer holds is renamed aside and reported to the uninstall. On Linux a `.thumbnailer` in `$XDG_DATA_HOME/thumbnailers` (`thumbnailers_dir`, `<prefix>THUMBNAILERS_DIR`) runs the program itself with `thumbnail_arguments` (default `--thumbnail %i %o %s`). A setup `Choice` ties a box to `{.Thumbnails}`.
+- **`shell_thumbnail`**: a program's own thumbnail provider for Windows Explorer. The program's small DLL package gives its render of a document's first page to `set(clsid, render)` and exports `dll_get_class_object` and `dll_can_unload_now`; the package does the COM plumbing (the class factory, the document read whole from the shell's stream up to 256 MB, an opaque top-down bitmap). See docs/shell-thumbnail.md.
+- **`gt:pdf`: shapes on a page.** `Page.shapes`: rectangles and ellipses (filled, outlined), lines, arrows and free lines, written into the page's content under its stamps; a colour less than opaque multiplies with the page, as a highlighter's ink, so the words under it stay readable.
+
+### Fixed
+- **An empty state's note stays in a narrow pane**: in the file browser's preview, a source's message wraps inside the
+pane instead of running over the list beside it.
+- **The system's file dialog no longer crashes on Windows.** It runs on a thread of its own, in a single-threaded apartment it opens and closes. Before, it closed its apartment at once (a `defer` in a block) and ran in the caller's thread, which was in the multithreaded apartment as soon as another thread of the process made one (UI Automation, a decoder): the dialog's Explorer view then corrupted the heap while it listed the files.
+- **A DLL that links the native library links on Windows.** Every package that links `gt_native.lib` also names `Synchronization.lib`: Rust's standard library waits with `WaitOnAddress`, which a program got from elsewhere and a DLL (a thumbnail provider) did not.
+
 ## [0.328.1] - 2026-11-19 03:06
 
 ### Fixed
@@ -4609,6 +4625,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.328.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.328.2
 [0.328.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.328.1
 [0.328.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.328.0
 [0.327.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.327.0

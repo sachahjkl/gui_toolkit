@@ -1,3 +1,0 @@
-type: Added
-
-**`desktop.Part.Thumbnails`**: the file managers show a program's `document_types` as thumbnails the program draws (`Integration_Options.thumbnails`). On Windows the install writes the program's provider DLL beside the executable (`thumbnail_dll_file`, the bytes the build embedded or `thumbnail_dll`) and registers it in HKCU under `thumbnail_clsid`; an update's next start rewrites it, and a DLL Explorer holds is renamed aside and reported to the uninstall. On Linux a `.thumbnailer` in `$XDG_DATA_HOME/thumbnailers` (`thumbnailers_dir`, `<prefix>THUMBNAILERS_DIR`) runs the program itself with `thumbnail_arguments` (default `--thumbnail %i %o %s`). A setup `Choice` ties a box to `{.Thumbnails}`.
