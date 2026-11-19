@@ -76,6 +76,7 @@ Platform and system
   timefmt.md          timefmt: times as people read them
   instance.md         instance: one running copy
   winrt.md            winrt: Windows Runtime APIs
+  shell-thumbnail.md  shell_thumbnail: thumbnails in Explorer
   setup.md            setup: a program installs itself
   update.md           update: signed updates
   licence.md          licence: a paid licence

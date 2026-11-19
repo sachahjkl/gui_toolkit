@@ -897,6 +897,111 @@ windows_documents :: proc(t: ^testing.T) {
 	testing.expect_value(t, v, "OtherPDF")
 }
 
+@(private = "file") THUMBNAIL_CLSID :: "{0b6a3f3e-2d1c-4b8e-9a7f-5c4d3e2f1a0b}"
+@(private = "file") THUMBNAIL_SLOT :: "ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}"   // (written out: the test checks the backend's constant)
+
+// The Thumbnails part: the DLL beside the executable, its CLSID and server, the slot of each type and of its ProgID; to
+// repair when an update brings other bytes; a type taken out of the list goes at the next install; the option off and
+// remove take it all away, the DLL too, and leave another program's handler. (A scratch registry root and folder.)
+@(test)
+windows_thumbnails :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	o.register_browser = false
+	o.document_types = DOCUMENT_TYPES[:]
+	o.open_documents = true
+	o.thumbnails = true
+	o.thumbnail_clsid = THUMBNAIL_CLSID
+	o.thumbnail_dll = transmute([]byte)string("MZ thumbnails v1")
+	classes := fmt.tprintf("%s\\Classes", s.root)
+	clsid := fmt.tprintf("%s\\CLSID\\%s", classes, THUMBNAIL_CLSID)
+	dll := fmt.tprintf("%s\\v1\\sample_thumbnails.dll", s.dir)
+	other_slot := fmt.tprintf("%s\\.fdf\\%s", classes, THUMBNAIL_SLOT)
+
+	// without a CLSID: refused
+	o.thumbnail_clsid = ""
+	testing.expect_value(t, install(o).error, Error.Bad_Options)
+	o.thumbnail_clsid = THUMBNAIL_CLSID
+
+	testing.expect_value(t, install(o).error, Error.None)
+	get :: proc(t: ^testing.T, path, name, want: string, loc := #caller_location) {
+		v, ok := reg_get(path, name)
+		testing.expectf(t, ok && v == want, "%s [%s] = %q (found %v), want %q", path, name, v, ok, want, loc = loc)
+	}
+	testing.expect_value(t, read_file(dll), "MZ thumbnails v1")
+	get(t, clsid, "", "Sample thumbnails")
+	get(t, fmt.tprintf("%s\\InprocServer32", clsid), "", dll)
+	get(t, fmt.tprintf("%s\\InprocServer32", clsid), "ThreadingModel", "Apartment")
+	get(t, fmt.tprintf("%s\\.pdf\\%s", classes, THUMBNAIL_SLOT), "", THUMBNAIL_CLSID)
+	get(t, other_slot, "", THUMBNAIL_CLSID)
+	get(t, fmt.tprintf("%s\\GuiToolkitTest.Sample.pdf\\%s", classes, THUMBNAIL_SLOT), "", THUMBNAIL_CLSID)
+	state, st := state_of(o)
+	testing.expect_value(t, state, State.Installed)
+	testing.expect(t, st.parts[.Thumbnails].present && !st.parts[.Thumbnails].partial && !st.parts[.Thumbnails].stale, "the part is there")
+
+	// an update: other bytes, to repair, then the new DLL in place and nothing left beside it
+	o.thumbnail_dll = transmute([]byte)string("MZ thumbnails, version 2")
+	_, st = state_of(o)
+	testing.expect(t, st.parts[.Thumbnails].partial, "the DLL is another version's")
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect_value(t, read_file(dll), "MZ thumbnails, version 2")
+	testing.expect(t, !os.exists(fmt.tprintf("%s.old", dll)) && !os.exists(fmt.tprintf("%s.new", dll)), "no .old / .new left")
+
+	// the program moved: stale, and it names the old executable
+	moved := o^
+	moved.exe = s.exe2
+	_, st = state_of(&moved)
+	testing.expect(t, st.parts[.Thumbnails].stale, "it serves the old program's DLL")
+	testing.expect(t, same_path(st.parts[.Thumbnails].target, s.exe), st.parts[.Thumbnails].target)
+
+	// a type taken out of the list goes at the next install
+	o.document_types = DOCUMENT_TYPES[:1]
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, !reg_key_exists(other_slot), "the old type's slot")
+	testing.expect(t, !reg_key_exists(fmt.tprintf("%s\\.fdf", classes)), "its extension's keys, left empty")
+
+	// the option off: the keys and the DLL go; another program's handler of a type stays
+	testing.expect(t, reg_set(other_slot, "", "{11111111-2222-3333-4444-555555555555}"), "another program's handler")
+	o.document_types = DOCUMENT_TYPES[:]
+	o.thumbnails = false
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect(t, !reg_key_exists(clsid), "the CLSID")
+	testing.expect(t, !reg_key_exists(fmt.tprintf("%s\\.pdf\\ShellEx", classes)), "the slot")
+	testing.expect(t, !os.exists(dll), "the DLL")
+	get(t, other_slot, "", "{11111111-2222-3333-4444-555555555555}")
+	_, st = state_of(o)
+	testing.expect(t, !st.parts[.Thumbnails].present, "taken out with the option")
+
+	// remove: the same
+	o.thumbnails = true
+	testing.expect_value(t, install(o).error, Error.None)
+	testing.expect_value(t, remove(o).error, Error.None)
+	testing.expect(t, !reg_key_exists(clsid) && !os.exists(dll), "removed")
+	_, st = state_of(o)
+	testing.expect(t, !st.parts[.Thumbnails].present, "removed")
+
+	// a build without a provider has no part to want: never to repair for it
+	o.thumbnail_dll = nil
+	when BUILT_THUMBNAIL_DLL_FILE == "" {
+		testing.expect(t, !thumbnails_wanted(o), "no DLL, no part")
+	}
+}
+
+// The uninstall takes the provider with the files it placed, though the manifest does not name it.
+@(test)
+windows_thumbnail_dll_goes_with_the_install_folder :: proc(t: ^testing.T) {
+	tr := tree_make()
+	defer tree_destroy(&tr)
+	testing.expect_value(t, files_install(plan_of(&tr)).error, Error.None)
+	dll := fmt.tprintf("%s\\sample_thumbnails.dll", tr.dst)
+	testing.expect(t, os.write_entire_file(dll, "MZ thumbnails") == nil, "the provider install wrote")
+	r := files_remove(&tr.opts, tr.dst)
+	testing.expect_value(t, len(r.leftovers), 0)
+	testing.expect(t, !os.exists(dll), "gone")
+	testing.expect(t, r.folder && !os.exists(tr.dst), "so is the folder")
+}
+
 // The File_Manager part: Win+E's new window and the default verb of folders and drives run the program; to repair when
 // a piece goes; taken out with the option and by remove, the system's default verb back and another program's left.
 // (A scratch registry root: the user's own Classes are never touched.)

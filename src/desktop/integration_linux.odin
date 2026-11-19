@@ -18,6 +18,8 @@ package tk_desktop
 //                                                    without the Launcher the entry stays, NoDisplay=true
 //   $XDG_CONFIG_HOME/mimeapps.list                   the Default_Documents part: <mime>=<slug>.desktop for each of them,
 //                                                    as the File_Manager part does for folders
+//   $XDG_DATA_HOME/thumbnailers/<slug>.thumbnailer   the Thumbnails part: the program draws its documents' thumbnails
+//                                                    (thumbnail_provider_linux.odin)
 //
 // $XDG_DATA_HOME defaults to ~/.local/share (and must be an absolute path, as the specification says). After a change
 // `update-desktop-database <applications>` rebuilds the MIME cache when that tool is installed.
@@ -36,7 +38,7 @@ import "../platform"
 @(private = "file")
 LINUX_BACKEND := Backend{
 	name = "linux",
-	parts = {.Launcher, .Desktop_Shortcut, .Icons, .Path, .Autostart, .File_Manager, .Documents, .Default_Documents},
+	parts = {.Launcher, .Desktop_Shortcut, .Icons, .Path, .Autostart, .File_Manager, .Documents, .Default_Documents, .Thumbnails},
 	status = linux_status,
 	install = linux_install,
 	remove = linux_remove,
@@ -217,6 +219,7 @@ linux_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) -> S
 			}
 		}
 	}
+	s.parts[.Thumbnails] = thumbnailer_status(o, allocator)
 	return s
 }
 
@@ -393,6 +396,8 @@ linux_install :: proc(o: ^Integration_Options) -> Result {
 	if r := defaults_set(o, {DIRECTORY_MIME}, o.default_file_manager); r.error != .None { return r }
 	// Default_Documents: the same for each document type
 	if r := defaults_set(o, document_mimes(o), o.default_documents); r.error != .None { return r }
+	// Thumbnails: the .thumbnailer written with the option, ours taken out without it
+	if r := thumbnailer_apply(o); r.error != .None { return r }
 
 	// (the icon theme's cache is checked against the directories' times: there is nothing to run for the icons)
 	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }
@@ -448,6 +453,7 @@ linux_remove :: proc(o: ^Integration_Options) -> Result {
 	if r := defaults_set(o, {DIRECTORY_MIME}, false); r.error != .None && res.error == .None { res = r }
 	// Default_Documents: the entry's id goes from the lines of the document types
 	if r := defaults_set(o, document_mimes(o), false); r.error != .None && res.error == .None { res = r }
+	if r := thumbnailer_remove(o); r.error != .None && res.error == .None { res = r }
 	if o.notify_system { run_tool("update-desktop-database", {l.applications}) }
 	return res
 }

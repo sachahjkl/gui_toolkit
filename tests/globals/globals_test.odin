@@ -32,7 +32,7 @@ GLOBALS_LIST :: ROOT + "/tools/globals_allowed.txt"
 GLOBALS_DIRS :: [?]string{
 	"arena", "ascii", "base", "cdp", "changelog", "config", "crash", "dbus", "desktop", "devtools", "draw", "flate", "font", "fsx", "http", "i18n", "instance",
 	"js", "js/bigint", "js/datetime", "js/frontend", "js/numconv", "js/regexp", "js/unicode",
-	"json", "log", "ocr", "paint", "platform", "plugin_api", "plugins", "png", "process", "qr", "render", "site", "term", "timefmt", "toolbox", "update",
+	"json", "log", "ocr", "paint", "platform", "plugin_api", "plugins", "png", "process", "qr", "render", "shell_thumbnail", "site", "term", "timefmt", "toolbox", "update",
 	"testkit", "testkit/session", "ui",
 }
 GLOBAL_CLASSES :: [?]string{"const", "process", "thread", "test"}

@@ -43,6 +43,15 @@ build_launcher :: proc(p: Project) -> bool {
 	return true
 }
 
+// The program's thumbnail provider, thumbnailer_path(p), built from Project.thumbnailer (thumbnailer_command) before any
+// odin command of the program, which embeds it. Built each time: it imports the program's renderer and the toolkit, so
+// a stamp of its own sources would miss a change. Nothing for a program without one.
+build_thumbnailer :: proc(p: Project, release: bool) -> bool {
+	if p.thumbnailer == "" { return true }
+	_ = os.make_directory_all(dir_of(thumbnailer_path(p)))
+	return run(thumbnailer_command(p, release), {echo = true})
+}
+
 // Beside a release build: the executable carries its icon (resource 1, exe_has_icon), and the launcher gives the
 // program's output and exit code through: `<launcher> --version` says "<name> <version>", and an unknown command ends
 // with Launcher.refuses_exit when it is set.

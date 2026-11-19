@@ -106,7 +106,7 @@ check_run :: proc(args: []string, user: rawptr) -> cli.Exit { return ended(progr
 // (build_mode_of). With Build_Options.fresh, built beside it, then swapped in. Each step says why it fails.
 program_build :: proc(o: Build_Options, release := false, debug := false) -> bool {
 	mode := release ? Build_Mode.Release : debug ? Build_Mode.Debug : o.iterate
-	if !program_prepare(o) { return false }
+	if !program_prepare(o, mode == .Release) { return false }
 	if !run(build_line(o, mode), {echo = true}) { return false }
 	if o.fresh {
 		fresh, old := fresh_paths(o.project)
@@ -284,12 +284,12 @@ catalogues_check :: proc(c: I18n_Catalogues) -> bool {
 }
 
 // The pinned Odin, build_native, the program's own part, the build folder: what an odin build or test of the program
-// needs first.
+// needs first (`release`: what is built for it is optimised too, the thumbnail provider).
 @(private = "file")
-program_prepare :: proc(o: Build_Options) -> bool {
+program_prepare :: proc(o: Build_Options, release := false) -> bool {
 	// (first: a wrong Odin fails later in a way that does not name it)
 	if o.pinned_odin && !odin_is_pinned() { return false }
-	if !build_native(o.project) { return false }
+	if !build_native(o.project, release) { return false }
 	if o.prepare != nil && !o.prepare(o.project) { return false }
 	// (odin makes no folder for its output)
 	_ = os.make_directory_all(BUILD_DIR)

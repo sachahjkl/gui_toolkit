@@ -358,6 +358,7 @@ that are not flags; a lone `-` is plain).
 | `linux_defines` | what every odin command of the program gets on Linux |
 | `link` | what the linker gets beyond the toolkit's own, a `Link`: `static_vcruntime` (Windows: the C runtime linked in, no `vcruntime140.dll` to ship), `strip` (Linux: a release build has no symbol table) |
 | `launcher` | Windows: the rules of its console launcher, a `Launcher` (below) |
+| `thumbnailer` | its thumbnail provider's package, a folder of the program's tree (`""`: none): Windows builds it as a DLL the program embeds (below) |
 | `licence` | its licence, for its notices (`""`: MIT) |
 | `features` | what it takes of the toolkit beyond the core, a `Features` (below) |
 | `crates` | its own Rust libraries, for its notices: their `Cargo.toml`, relative to its root (`rust/core/Cargo.toml`) |
@@ -389,17 +390,26 @@ returned, then `check` read freed lists and crashed).
   `link.strip`, `-s`; on Windows `WINDOWS_STATIC_VCRUNTIME` with `link.static_vcruntime`. `check` gets none.
 - `windows_flags(p, linked)` is what `build_windows` made, for a Windows odin command: the console launcher
   (`-define:GT_CONSOLE_LAUNCHER=<file>` and `GT_CONSOLE_LAUNCHER_MARK`: gt:desktop embeds it and writes it with the PATH
-  entry), `-define:GT_AUMID=<project_aumid(p)>` (gt:platform declares it before the first window) and, when `linked`, the resource.
+  entry), the thumbnail provider with `thumbnailer` (`-define:GT_THUMBNAIL_DLL=<file>`: gt:desktop embeds it and writes
+  it with the Thumbnails part), `-define:GT_AUMID=<project_aumid(p)>` (gt:platform declares it before the first window) and, when `linked`, the resource.
   A file not made yet is left out: a check from Linux builds without them. A tool that builds the program with its own odin
   command (opencode native's) runs `build_windows` and appends these.
 - `build_native(p)` builds what the program needs before an odin command: on Windows `build_windows(p)` (the resource and
   the console launcher), then the toolkit's native library with `native_parts(p, ODIN_OS)` (`tk build_native
   -features:...`), by the toolkit's own tool in the project's checkout of it (nothing when the library is up to date or
-  there is no part), and the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)).
+  there is no part), the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)), and last, on
+  Windows, the thumbnail provider (`build_thumbnailer(p, release)`). `build_native(p, release = true)`: what it builds
+  is optimised too (`program_build` passes it for a release).
 - `native_parts(p, target)` is the parts of the toolkit's native library a program built for `target` links: `text`
   off Windows, or with `Native_Text`; `a11y` on Windows with `Accessibility`; `mermaid` with `Mermaid`; `webp` with
   `Webp`; `pdf` with `Pdf`. None with `native_carried`: the program's own Rust library carries them, and
   `build_native` makes only the resource, the launcher and the Lucide subset.
+- `thumbnailer_path(p)` is the provider, `<name>_thumbnails.dll` beside `program` (the name gt:desktop gives it beside
+  the installed executable). `thumbnailer_command(p, release)` is `odin build <thumbnailer> -build-mode:dll` with the
+  collections and the features' defines, `-o:speed` for a release, else `-debug -o:none`; not `windows_flags`: the DLL
+  embeds nothing. `build_thumbnailer` runs it each time (it imports the program's renderer and the toolkit: a stamp of
+  its own sources would miss a change). Elsewhere it does nothing: Linux's file managers run the program itself.
+  `check_windows(p)` also checks the provider's package for Windows (`-no-entry-point`).
 
 ### Features
 

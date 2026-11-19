@@ -36,6 +36,8 @@ Project :: struct {
 	linux_defines: []string,      // what every odin command of the program gets on Linux ("-define:FONT_BACKEND=native")
 	link:          Link,          // what the linker gets beyond the toolkit's own (linker_flag)
 	launcher:      Launcher,      // Windows: the rules of its console launcher, <name>.com beside the program
+	thumbnailer:   string,        // its thumbnail provider's package ("src/thumbnailer"; "": none): Windows builds it as
+	                              // thumbnailer_path(p), a DLL the program embeds (GT_THUMBNAIL_DLL, gt:shell_thumbnail)
 	licence:       string,        // the program's licence, for its notices ("": "MIT")
 	features:      Features,      // what it takes of the toolkit beyond the core: its defines, native builds and crates
 	crates:        []string,      // its own Rust libraries, for its notices: their Cargo.toml, relative to its root
@@ -108,6 +110,10 @@ project_aumid :: proc(p: Project) -> string {
 
 // The console launcher of the program: <name>.com beside its build ("build/classeur.com").
 launcher_path :: proc(p: Project) -> string { return fmt.tprintf("%s/%s.com", dir_of(p.program), p.name) }
+
+// The program's thumbnail provider: <name>_thumbnails.dll beside its build ("build/feuille_thumbnails.dll"), the name
+// desktop.thumbnail_dll_file gives it beside the installed executable.
+thumbnailer_path :: proc(p: Project) -> string { return fmt.tprintf("%s/%s_thumbnails.dll", dir_of(p.program), p.name) }
 
 // What the launcher carries, by which desktop.install tells it from another file: "(<name> console launcher)". Installed
 // launchers carry it: a program keeps its name.
@@ -194,13 +200,17 @@ linker_flag :: proc(p: Project, target: runtime.Odin_OS_Type, verb: string, rele
 
 // What an odin command of the program gets on Windows from what build_windows made: the console launcher it embeds
 // (-define:GT_CONSOLE_LAUNCHER=<file>, GT_CONSOLE_LAUNCHER_MARK: desktop.install writes it beside the program with the
-// PATH entry), the AppUserModelID of its windows (GT_AUMID) and, for the program's executable (`linked`), its resource.
+// PATH entry), its thumbnail provider (-define:GT_THUMBNAIL_DLL=<file>, build_thumbnailer: desktop.install writes it with
+// the Thumbnails part), the AppUserModelID of its windows (GT_AUMID) and, for the program's executable (`linked`), its resource.
 // A file not made yet is not given: a check from Linux has none, and builds without them. Public for a tool that builds
 // the program with its own odin command: opencode native's ocntools, until it builds through the toolbox's commands.
 windows_flags :: proc(p: Project, linked: bool) -> []string {
 	out := make([dynamic]string, context.temp_allocator)
 	if launcher := absolute_slashed(launcher_path(p)); launcher != "" {
 		append(&out, fmt.tprintf("-define:GT_CONSOLE_LAUNCHER=%s", launcher), fmt.tprintf("-define:GT_CONSOLE_LAUNCHER_MARK=%s", launcher_mark(p)))
+	}
+	if p.thumbnailer != "" {
+		if dll := absolute_slashed(thumbnailer_path(p)); dll != "" { append(&out, fmt.tprintf("-define:GT_THUMBNAIL_DLL=%s", dll)) }
 	}
 	if aumid := project_aumid(p); aumid != "" { append(&out, fmt.tprintf("-define:GT_AUMID=%s", aumid)) }
 	if linked && os.exists(windows_resource_path(p)) { append(&out, fmt.tprintf("-resource:%s", windows_resource_path(p))) }
@@ -252,8 +262,9 @@ project_src :: proc(p: Project) -> string { return p.src != "" ? p.src : "src" }
 
 // What the program needs built before an odin command of it: on Windows its resource and console launcher
 // (build_windows); the toolkit's native library with native_parts, by the toolkit's own tool in the project's checkout
-// of it (nothing when it is up to date, or with no part); and the Lucide subset (lucide_subset).
-build_native :: proc(p: Project) -> bool {
+// of it (nothing when it is up to date, or with no part); the Lucide subset (lucide_subset); last, on Windows, its
+// thumbnail provider (build_thumbnailer: it links the native library), optimised for a `release`.
+build_native :: proc(p: Project, release := false) -> bool {
 	if !build_windows(p) { return false }
 	gt := toolkit_dir(p)
 	parts := native_parts(p, ODIN_OS)
@@ -269,7 +280,21 @@ build_native :: proc(p: Project) -> bool {
 	if .Lucide_Subset in p.features {
 		if _, why := lucide_subset(p); why != "" { fmt.eprintln(why); return false }
 	}
-	return true
+	return build_thumbnailer(p, release)   // (project_windows.odin; nothing elsewhere: Linux runs the program itself)
+}
+
+// The odin command that builds the program's thumbnail provider: its package as a DLL, with the collections and the
+// defines of the program's features (it renders as the program does), optimised for a `release`, else the fastest.
+// Not the program's own flags (windows_flags): the DLL embeds nothing and has no resource.
+thumbnailer_command :: proc(p: Project, release: bool) -> []string {
+	cmd := make([dynamic]string, context.temp_allocator)
+	append(&cmd, "odin", "build", p.thumbnailer)
+	collection_flags(p, &cmd)
+	append(&cmd, ..feature_defines(p.features, .Windows, ""))
+	append(&cmd, ..p.defines)
+	append(&cmd, "-build-mode:dll", fmt.tprintf("-out:%s", thumbnailer_path(p)))
+	if release { append(&cmd, "-o:speed") } else { append(&cmd, "-debug", "-o:none") }
+	return cmd[:]
 }
 
 // The parts of the toolkit's native library (tk build_native -features:) a program built for `target` links: the text
@@ -301,7 +326,14 @@ check_other :: proc(p: Project, target: string) -> bool {
 	ordered_remove(&extra, len(extra) - 1)   // (odin_check passes -vet itself)
 	// (a define changes what compiles: the other system's check sees the program's)
 	append(&extra, ..p.defines)
-	return odin_check(project_src(p), target, extra[:], o = {echo = true})
+	if !odin_check(project_src(p), target, extra[:], o = {echo = true}) { return false }
+	// (the thumbnail provider is built for Windows alone; a DLL has no main: -no-entry-point)
+	if p.thumbnailer != "" && strings.has_prefix(target, "windows") {
+		append(&extra, ..feature_defines(p.features, .Windows, ""))
+		append(&extra, "-no-entry-point")
+		return odin_check(p.thumbnailer, target, extra[:], o = {echo = true})
+	}
+	return true
 }
 
 @(private)

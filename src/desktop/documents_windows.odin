@@ -48,8 +48,8 @@ documents_layout :: proc(o: ^Integration_Options) -> (l: Documents_Layout) {
 }
 
 // The ProgID of a type: <vendor_key>.<key>.<ext without its dot> ("FromentSoftware.Feuille.pdf"; validate keeps each
-// piece letters and digits, as a ProgID wants).
-@(private = "file")
+// piece letters and digits, as a ProgID wants). (The Thumbnails part names its provider there too.)
+@(private)
 document_progid :: proc(o: ^Integration_Options, ext: string) -> string {
 	return strings.concatenate({o.identity.vendor_key, ".", o.identity.key, ".", ext[1:]}, context.temp_allocator)
 }

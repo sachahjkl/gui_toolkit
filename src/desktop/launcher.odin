@@ -65,6 +65,15 @@ launcher_write :: proc(o: ^Integration_Options) -> Result {
 		}
 		if same, err := os.read_entire_file(path, context.temp_allocator); err == nil && string(same) == string(bytes) { return {} }
 	}
+	return write_in_use(path, bytes)
+}
+
+// `path` gets `bytes`, even while a running program holds the file there (a launcher, a loaded DLL): Windows lets such a
+// file be renamed, not overwritten. The new bytes go to `<path>.new`, the old file to `<path>.old`, the new one in its
+// place; the `.old` is deleted at once unless it is held, and the next write or removal gets it.
+@(private)
+write_in_use :: proc(path: string, bytes: []byte) -> Result {
+	had := os.exists(path)
 	fresh := strings.concatenate({path, ".new"}, context.temp_allocator)
 	old := strings.concatenate({path, OLD_SUFFIX}, context.temp_allocator)
 	if err := os.write_entire_file(fresh, bytes); err != nil {
@@ -83,7 +92,7 @@ launcher_write :: proc(o: ^Integration_Options) -> Result {
 		if had { _ = os.rename(old, path) }
 		return {.Io, strings.concatenate({"cannot write ", path}, context.temp_allocator)}
 	}
-	if had { _ = os.remove(old) }   // (a running launcher holds it: the next write or removal gets it)
+	if had { _ = os.remove(old) }
 	return {}
 }
 

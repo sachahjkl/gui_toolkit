@@ -96,6 +96,13 @@ desktop/com_windows.odin PKEY_AppUserModel_ID const  # a property key (a variabl
 desktop/desktop_entry.odin CONTENT_TYPES const  # a table: the web documents' extensions and MIME types
 desktop/thumbnail_linux.odin thumbnailer_cache process  # the thumbnailers read last, by every worker that asks a thumbnail (locked: thumbnailer_cache.mutex)
 desktop/thumbnail_windows.odin IID_IShellItemImageFactory const  # a COM interface id (a variable: the call takes its address)
+desktop/thumbnail_provider_test.odin PDF_TYPE test
+shell_thumbnail/shell_thumbnail.odin provider_config process  # the DLL's CLSID and render: written once by its @(init) (set), before any COM call reads it
+shell_thumbnail/shell_thumbnail_windows.odin module_count process  # the COM objects alive and the locks held, for DllCanUnloadNow (atomic)
+shell_thumbnail/shell_thumbnail_windows.odin FACTORY_VTBL const  # a COM vtable (passed by address)
+shell_thumbnail/shell_thumbnail_windows.odin THUMBNAIL_VTBL const  # a COM vtable (passed by address)
+shell_thumbnail/shell_thumbnail_windows.odin INIT_VTBL const  # a COM vtable (passed by address)
+shell_thumbnail/shell_thumbnail_windows.odin the_factory const  # the class factory's COM object: its vtable only (its references are module_count's)
 desktop/open_with_linux.odin mime_cache process  # the XDG MIME database read last, for every window of the process (locked: mime_cache.mutex)
 desktop/desktop_entry_test.odin BROWSER_SCHEMES test
 desktop/desktop_entry_test.odin PDF_TYPES test

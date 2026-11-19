@@ -136,6 +136,7 @@ STEPS := []Step{
 	{name = "overlay", oses = EVERYWHERE},   // (the pure parts: no window opens)
 	{name = "notify", one = true, oses = EVERYWHERE},   // (Linux: a bus and a notification server of its own)
 	{name = "winrt", path = "src/winrt", oses = EVERYWHERE},
+	{name = "shell_thumbnail", path = "src/shell_thumbnail", oses = EVERYWHERE},   // (Windows: the COM path the shell takes, in this process)
 	{name = "console_launcher", path = "src/console_launcher", oses = EVERYWHERE},
 	{name = "key_repeat", oses = EVERYWHERE},
 	{name = "pacing", oses = EVERYWHERE},

@@ -351,6 +351,11 @@ files_remove :: proc(o: ^Integration_Options, dir: string) -> Remove_Files_Resul
 	if lf := launcher_file(fsx.path_join(dir, exe_name_of(o.identity))); launcher_is_ours(o, lf) {
 		append(&names, lf[len(strings.trim_right(dir, "\\/")) + 1:])
 	}
+	// nor is the thumbnail provider (the Thumbnails part writes it): named after the executable, the program's own
+	// name, and the file Explorer's surrogate may hold, so it is reported as a leftover too
+	if df := thumbnail_dll_file(fsx.path_join(dir, exe_name_of(o.identity))); df != "" {
+		append(&names, df[len(strings.trim_right(dir, "\\/")) + 1:])
+	}
 
 	dirs := make(map[string]bool, 8, context.temp_allocator)
 	for f in names {

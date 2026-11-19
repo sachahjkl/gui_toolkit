@@ -27,6 +27,8 @@ package tk_desktop
 //                         Drive\shell\<key>.open\command, Drive\shell      (the same for a drive, `%1` unquoted)
 //                       Removal puts back what the system had: the keys go, and a default verb that names ours.
 //   Documents           (open_documents) a ProgID per document type and the lists that name it (documents_windows.odin)
+//   Thumbnails          (thumbnails) the program's thumbnail provider, a COM DLL beside the executable, and the keys
+//                       that make Explorer ask it for the document types (thumbnail_provider_windows.odin)
 //
 // Marks: the shortcut carries the AppUserModelID; the keys carry `Identity.registry_mark` (set to the AppUserModelID)
 // or run the executable. Removal deletes what has a mark and nothing else.
@@ -42,7 +44,7 @@ import ascii "../ascii"
 WINDOWS_BACKEND := Backend{
 	name = "windows",
 	// (no Default_Documents: Windows keeps the default in a UserChoice that only the shell may write)
-	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart, .File_Manager, .Documents},
+	parts = {.Launcher, .Desktop_Shortcut, .Registration, .Path, .Autostart, .File_Manager, .Documents, .Thumbnails},
 	status = windows_status,
 	install = windows_install,
 	remove = windows_remove,
@@ -197,6 +199,7 @@ windows_status :: proc(o: ^Integration_Options, allocator: runtime.Allocator) ->
 
 	s.parts[.File_Manager] = file_manager_status(o, l, allocator)
 	s.parts[.Documents] = documents_status(o, allocator)
+	s.parts[.Thumbnails] = thumbnails_status(o, allocator)
 	return s
 }
 
@@ -315,6 +318,11 @@ windows_install :: proc(o: ^Integration_Options) -> Result {
 	if opens_documents(o) {
 		if r := documents_write(o); r.error != .None { return r }
 	} else if r := documents_remove(o); r.error != .None { return r }
+
+	// (after the Documents part: the provider goes under the ProgIDs that part made)
+	if thumbnails_wanted(o) {
+		if r := thumbnails_write(o); r.error != .None { return r }
+	} else if r := thumbnails_remove(o); r.error != .None { return r }
 
 	path_changed := false
 	if dir := exe_dir(o.exe); dir != "" {
@@ -526,6 +534,7 @@ windows_remove :: proc(o: ^Integration_Options) -> Result {
 	if r := remove_registration(o, l); r.error != .None && res.error == .None { res = r }
 	if r := remove_file_manager(o, l); r.error != .None && res.error == .None { res = r }
 	if r := documents_remove(o); r.error != .None && res.error == .None { res = r }
+	if r := thumbnails_remove(o); r.error != .None && res.error == .None { res = r }
 	path_changed := false
 	if dir := exe_dir(o.exe); dir != "" {
 		had := path_contains(o, dir)

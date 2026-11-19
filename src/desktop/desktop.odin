@@ -108,6 +108,13 @@ Integration_Options :: struct {
 	open_documents:    bool,   // the program is in "Open with" of each type (Part.Documents)
 	default_documents: bool,   // and their default (Part.Default_Documents, Linux; Windows: install opens Settings at the program's page); implies open_documents
 
+	// The file managers show the documents of `document_types` as thumbnails the program draws (Part.Thumbnails,
+	// src/md/features/shell-thumbnails.md, thumbnail_provider.odin).
+	thumbnails:          bool,
+	thumbnail_clsid:     string,   // Windows: the CLSID of the program's thumbnail provider, "{xxxxxxxx-...}" (its constant)
+	thumbnail_dll:       []byte,   // Windows: the provider, written as thumbnail_dll_file(exe); none: the one the build embedded, if any
+	thumbnail_arguments: string,   // Linux: what the file managers run the program with ("": THUMBNAIL_ARGUMENTS_DEFAULT)
+
 	// What an installation of these options has (`install` writes the parts that are on and takes away the ones that are
 	// off: that is what "Modify" does; `remove` takes away all of them).
 	start_menu:       bool,       // the launcher in the application menu (options_make: on)
@@ -130,6 +137,7 @@ Integration_Options :: struct {
 	bin_dir:          string,     // Linux: ~/.local/bin, where the PATH part puts its link
 	autostart_dir:    string,     // Linux: $XDG_CONFIG_HOME/autostart
 	config_dir:       string,     // Linux: $XDG_CONFIG_HOME, where mimeapps.list names the default file manager
+	thumbnailers_dir: string,     // Linux: $XDG_DATA_HOME/thumbnailers, where the Thumbnails part puts its .thumbnailer
 	icons:            []Icon,     // Linux: the PNGs to install (the program embeds them; Windows uses the executable's own icon)
 	notify_system:    bool,       // tell the system once done (SHChangeNotify, update-desktop-database); off for scratch roots
 }
@@ -145,6 +153,7 @@ Part :: enum u8 {
 	File_Manager,       // the program opens folders (Linux: the default of inode/directory; Windows: folders, drives and Win+E)
 	Documents,          // the program is in "Open with" of its document types (Linux: the entry's MimeType; Windows: a ProgID each)
 	Default_Documents,  // the program is the default of its document types (Linux: mimeapps.list; Windows has no such part)
+	Thumbnails,         // the file managers show its documents as thumbnails it draws (Linux: a .thumbnailer; Windows: its COM DLL)
 }
 Parts :: bit_set[Part]
 
@@ -251,6 +260,7 @@ options_clone :: proc(o: Integration_Options, allocator := context.allocator) ->
 	c.bin_dir = clone_or_empty(o.bin_dir, allocator)
 	c.autostart_dir = clone_or_empty(o.autostart_dir, allocator)
 	c.config_dir = clone_or_empty(o.config_dir, allocator)
+	c.thumbnailers_dir = clone_or_empty(o.thumbnailers_dir, allocator)
 	types := make([]string, len(o.file_types), allocator)
 	for ft, i in o.file_types { types[i] = strings.clone(ft, allocator) }
 	c.file_types = types
@@ -261,7 +271,7 @@ options_destroy :: proc(o: ^Integration_Options, allocator := context.allocator)
 	delete(o.exe, allocator); delete(o.menu_dir, allocator); delete(o.registry_root, allocator)
 	delete(o.desktop_dir, allocator); delete(o.environment_root, allocator); delete(o.install_dir, allocator)
 	delete(o.applications_dir, allocator); delete(o.icons_dir, allocator); delete(o.bin_dir, allocator)
-	delete(o.autostart_dir, allocator); delete(o.config_dir, allocator)
+	delete(o.autostart_dir, allocator); delete(o.config_dir, allocator); delete(o.thumbnailers_dir, allocator)
 	for ft in o.file_types { delete(ft, allocator) }
 	delete(o.file_types, allocator)
 	o^ = {}
@@ -285,6 +295,7 @@ parts_wanted :: proc(b: ^Backend, o: ^Integration_Options) -> Parts {
 	if !o.register_browser { w -= {.Registration} }
 	if !opens_documents(o) { w -= {.Documents} }
 	if !o.default_documents || len(o.document_types) == 0 { w -= {.Default_Documents} }
+	if !thumbnails_wanted(o) { w -= {.Thumbnails} }
 	if len(o.icons) == 0 { w -= {.Icons} }   // nothing to install: nothing to miss
 	return w
 }
@@ -390,6 +401,8 @@ validate :: proc(o: ^Integration_Options, need_exe: bool) -> Result {
 		if strings.contains_any(d.description, "\n\r\t\x00") { return {.Bad_Options, "a document type's description is one line"} }
 	}
 	if len(launcher_bytes(o)) > 0 && launcher_mark_of(id) == "" { return {.Bad_Options, "a launcher needs identity.launcher_mark"} }
+	if o.thumbnail_clsid != "" && !clsid_valid(o.thumbnail_clsid) { return {.Bad_Options, "thumbnail_clsid is a CLSID (\"{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}\")"} }
+	if strings.contains_any(o.thumbnail_arguments, "\n\r\x00") { return {.Bad_Options, "thumbnail_arguments is one line"} }
 	if o.exe == "" { o.exe = process.executable_path() }
 	if need_exe {
 		if o.exe == "" { return {.No_Executable, error_text(.No_Executable)} }

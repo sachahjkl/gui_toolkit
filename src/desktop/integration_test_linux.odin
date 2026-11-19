@@ -36,6 +36,7 @@ scratch_make :: proc() -> Scratch {
 		applications_dir = fmt.aprintf("%s/share/applications", s.dir), icons_dir = fmt.aprintf("%s/share/icons/hicolor", s.dir),
 		bin_dir = fmt.aprintf("%s/bin", s.dir), autostart_dir = fmt.aprintf("%s/config/autostart", s.dir), notify_system = false,
 		config_dir = fmt.aprintf("%s/config", s.dir),
+		thumbnailers_dir = fmt.aprintf("%s/share/thumbnailers", s.dir),
 		desktop_dir = fmt.aprintf("%s/Desktop", s.dir),   // (never the user's: remove takes out a copy that is the program's)
 	}
 	delete(tmp)
@@ -47,7 +48,7 @@ scratch_make :: proc() -> Scratch {
 scratch_destroy :: proc(s: ^Scratch) {
 	_ = os.remove_all(s.dir)
 	delete(s.dir); delete(s.exe); delete(s.exe2); delete(s.opts.applications_dir); delete(s.opts.icons_dir); delete(s.opts.bin_dir); delete(s.opts.autostart_dir); delete(s.opts.desktop_dir)
-	delete(s.opts.config_dir)
+	delete(s.opts.config_dir); delete(s.opts.thumbnailers_dir)
 }
 
 @(private = "file")
@@ -397,6 +398,73 @@ linux_documents :: proc(t: ^testing.T) {
 	testing.expect_value(t, string(text), person)
 	st = status(o, context.temp_allocator)
 	testing.expect_value(t, st.state, State.Absent)
+}
+
+// The Thumbnails part: a .thumbnailer that runs the program itself for the document types, which the toolkit's own
+// reader of thumbnailers finds; repaired when the arguments change; taken out with the option and by remove; another
+// program's file of that name stays.
+@(test)
+linux_thumbnails :: proc(t: ^testing.T) {
+	s := scratch_make()
+	defer scratch_destroy(&s)
+	o := &s.opts
+	o.register_browser = false
+	o.document_types = PDF[:]
+	file := fmt.tprintf("%s/sample.thumbnailer", o.thumbnailers_dir)
+
+	// no types: nothing to draw, nothing written
+	o.thumbnails = true
+	o.document_types = nil
+	expect_ok(t, install(o))
+	testing.expect(t, !os.exists(file), "no document type, no thumbnailer")
+	o.document_types = PDF[:]
+
+	expect_ok(t, install(o))
+	text, err := os.read_entire_file(file, context.temp_allocator)
+	testing.expect(t, err == nil, "the .thumbnailer")
+	content := string(text)
+	testing.expect_value(t, content, thumbnailer_text(o))
+	GROUP :: "[Thumbnailer Entry]"
+	exec, _ := group_value(content, GROUP, "Exec")
+	try_exec, _ := group_value(content, GROUP, "TryExec")
+	mime, _ := group_value(content, GROUP, "MimeType")
+	testing.expect_value(t, exec_program(exec), s.exe)
+	testing.expect_value(t, try_exec, s.exe)
+	testing.expect_value(t, mime, "application/pdf;")
+	args, valid := thumbnailer_command(exec, "/d/a.pdf", "file:///d/a.pdf", "/c/out.png", 256)
+	testing.expect(t, valid, "a command the file managers run")
+	testing.expectf(t, valid && len(args) == 5 && args[0] == s.exe && args[1] == "--thumbnail" && args[2] == "/d/a.pdf" && args[3] == "/c/out.png" && args[4] == "256", "%v", args)
+	st := status(o, context.temp_allocator)
+	testing.expect_value(t, st.state, State.Installed)
+	testing.expect(t, st.parts[.Thumbnails].present && !st.parts[.Thumbnails].partial && !st.parts[.Thumbnails].stale, "the part is there")
+
+	// other arguments: to repair, then repaired
+	o.thumbnail_arguments = "--thumb %i %o %s"
+	testing.expect(t, status(o, context.temp_allocator).parts[.Thumbnails].partial, "other arguments")
+	expect_ok(t, install(o))
+	testing.expect_value(t, status(o, context.temp_allocator).state, State.Installed)
+
+	// the program moved: stale
+	moved := o^
+	moved.exe = s.exe2
+	testing.expect(t, status(&moved, context.temp_allocator).parts[.Thumbnails].stale, "it runs the old program")
+
+	// the option off: the file goes
+	o.thumbnails = false
+	expect_ok(t, install(o))
+	testing.expect(t, !os.exists(file), "taken out with the option")
+
+	// remove takes it out; another program's file of that name stays, and install says so
+	o.thumbnails = true
+	expect_ok(t, install(o))
+	expect_ok(t, remove(o))
+	testing.expect(t, !os.exists(file), "removed")
+	other := "[Thumbnailer Entry]\nTryExec=/usr/bin/other\nExec=/usr/bin/other %i %o\nMimeType=application/pdf;\n"
+	_ = os.write_entire_file(file, other)
+	testing.expect(t, install(o).error != .None, "another program's file: not replaced")
+	expect_ok(t, remove(o))
+	text, _ = os.read_entire_file(file, context.temp_allocator)
+	testing.expect_value(t, string(text), other)
 }
 
 // What the settings ask (apply): the launcher, then the start with the session alone (the launcher goes), then nothing.

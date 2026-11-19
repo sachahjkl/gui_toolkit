@@ -80,7 +80,7 @@ s := desktop.status(&o)               // .Absent, .Installed or .Repair, part by
 defer desktop.status_destroy(&s)
 ```
 
-`Integration_Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `autostart` with its `autostart_arguments` (a program of the notification area starts hidden), `default_file_manager` (the program opens folders in place of the system's file manager, [below](#the-default-file-manager)), `open_documents` and `default_documents` with the `document_types` (the program in "Open with" of its documents and their default, [below](#a-handler-of-document-types)), `register_browser` with its
+`Integration_Options` holds what an installation has (`start_menu`, `desktop_shortcut`, `add_to_path`, `autostart` with its `autostart_arguments` (a program of the notification area starts hidden), `default_file_manager` (the program opens folders in place of the system's file manager, [below](#the-default-file-manager)), `open_documents` and `default_documents` with the `document_types` (the program in "Open with" of its documents and their default, [below](#a-handler-of-document-types)), `thumbnails` (the file managers show those documents as thumbnails the program draws, [below](#thumbnails-in-the-file-managers)), `register_browser` with its
 `file_types`, the `launcher` bytes, the `icons`) and where everything goes. `install` writes the parts that are on and takes
 away the ones that are off: applying a change of options is the same call. `status` says `Repair` when a wanted part is
 missing or incomplete, or when a part runs another executable (`stale_exe`: the program was moved). `describe` says it in one
@@ -118,6 +118,7 @@ if r := desktop.apply(&o); r.error != .None { report(r.detail) }
 | `Registration` | only with `register_browser`: `Software\Clients\StartMenuInternet\<key>`, `Software\RegisteredApplications`, the ProgID `Software\Classes\<key>HTML`, the http and https URL associations, the file types, and `Software\Classes\<scheme>` for each of `url_schemes` |
 | `File_Manager` | with `default_file_manager`: in `Software\Classes`, `CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\opennewwindow\command` (`"<exe>"`, `DelegateExecute` empty: Win+E), the verb `Directory\shell\<key>.open` (`"<exe>" "%1"`) and `Drive\shell\<key>.open` (`"<exe>" %1`: a quoted `"C:\"` reads as `C:"`), each the default of its `shell` key |
 | `Documents` | with `open_documents` (or `default_documents`): in `Software\Classes`, the ProgID `<vendor_key>.<key>.<ext>` of each type (its description, `DefaultIcon`, `shell\open\command` `"<exe>" "%1"`, `AppUserModelID`), an empty value `<ProgID>` in `<ext>\OpenWithProgids`, `Applications\<exe name>` with `SupportedTypes\<ext>`; `Software\<vendor_key>\<key>\Capabilities` with `FileAssociations\<ext>` = the ProgID; the value `<key>.Documents` of `Software\RegisteredApplications` |
+| `Thumbnails` | with `thumbnails`: the program's provider `<stem>_thumbnails.dll` beside `<stem>.exe`; in `Software\Classes`, `CLSID\<thumbnail_clsid>` with its `InprocServer32`, and `<ext>\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}` (and under the type's ProgID with the Documents part) = the CLSID ([below](#thumbnails-in-the-file-managers)) |
 
 The installed copy goes to `%LOCALAPPDATA%\Programs\<vendor_key>\<name>` (Linux: `~/.local/opt/<vendor_key>/<name>`) unless `install_dir` says otherwise. `record_install` writes
 `Software\Microsoft\Windows\CurrentVersion\Uninstall\<key>`, which Settings > Apps lists and `install_target` reads back
@@ -154,6 +155,7 @@ all. `--cli` anywhere makes the launcher wait, and the program never sees it. A 
 | `File_Manager` | with `default_file_manager`: `inode/directory=<slug>.desktop;` first in `[Default Applications]` of `$XDG_CONFIG_HOME/mimeapps.list`; the entry then has `inode/directory;` in `MimeType=` and `%F` in `Exec` |
 | `Documents` | with `open_documents` (or `default_documents`): the MIME type of each of `document_types` in the entry's `MimeType=`, and `%f` in `Exec`; without `start_menu` the entry stays with `NoDisplay=true` |
 | `Default_Documents` | with `default_documents`: `<mime>=<slug>.desktop;` first in the line of each type in `[Default Applications]` of `$XDG_CONFIG_HOME/mimeapps.list` |
+| `Thumbnails` | with `thumbnails`: `$XDG_DATA_HOME/thumbnailers/<slug>.thumbnailer`, the program itself with `thumbnail_arguments` for the document types ([below](#thumbnails-in-the-file-managers)) |
 
 The entry has `MimeType=` with `register_browser` (http, https, the URL schemes and the file types), `default_file_manager`
 (`inode/directory`) and the Documents part (the document types). `Exec` takes `%U` when the program is a browser or has
@@ -237,6 +239,47 @@ to know what to take away.
 A setup `Choice` ties a box to each part ([setup.md](setup.md#the-programs-options)). Offer the default's box only
 where `supported_parts()` has `Default_Documents`. On Windows a box of no part sets `default_documents`: each Install
 then opens Settings while a type's default is another program's.
+
+## Thumbnails in the file managers
+
+A program that draws its documents makes the file managers show them as thumbnails: a PDF's first page in Explorer, in
+Nautilus, Dolphin or Thunar. Everything comes from the program itself: nothing of another vendor, nothing shipped
+beside it. The part is `Part.Thumbnails`, for the types of `document_types`
+([src/md/features/shell-thumbnails.md](../src/md/features/shell-thumbnails.md) keeps the reasons).
+
+```odin
+o := desktop.options_make(IDENTITY)
+o.document_types = PDF[:]
+o.thumbnails = true
+o.thumbnail_clsid = "{0b6a3f3e-2d1c-4b8e-9a7f-5c4d3e2f1a0b}"   // Windows: the program's own provider, its constant
+// o.thumbnail_arguments = "--thumbnail %i %o %s"            // Linux: the default
+```
+
+| Field | What it is |
+|---|---|
+| `thumbnails` | the part is asked (with no document type there is nothing to draw: no part) |
+| `thumbnail_clsid` | Windows: the CLSID of the program's provider, `"{8-4-4-4-12}"`, the one its DLL gives to `shell_thumbnail.set`; required on Windows, checked everywhere (`clsid_valid`) |
+| `thumbnail_dll` | Windows: the provider's bytes; none: the ones the build embedded (`-define:GT_THUMBNAIL_DLL=<file>`, `thumbnail_dll_bytes`) |
+| `thumbnail_arguments` | Linux: what the file managers run the program with; `""`: `THUMBNAIL_ARGUMENTS_DEFAULT`, `--thumbnail %i %o %s` |
+| `thumbnailers_dir` | Linux: where the `.thumbnailer` goes (default `$XDG_DATA_HOME/thumbnailers`; `<prefix>THUMBNAILERS_DIR`) |
+
+- Windows: Explorer loads a thumbnail provider only from an in-process COM DLL. The program has its own, a small Odin
+  package built as a DLL around `gt:shell_thumbnail` ([shell-thumbnail.md](shell-thumbnail.md)); its `Project` names
+  it (`thumbnailer`), and its tool builds it and embeds it ([toolbox.md](toolbox.md)). `install` writes it beside the
+  executable as `thumbnail_dll_file(exe)` (`feuille.exe`: `feuille_thumbnails.dll`) and registers it in `HKCU` (the
+  table above). The part is partial while the DLL is not the embedded bytes: after an update, the installed copy's
+  `apply` writes the new one. A DLL that Explorer's surrogate holds is renamed to `.old` and replaced; removal renames
+  it the same way, and the uninstall's deferred deletion gets it (`files_remove` names it). The `ShellEx` slot of a
+  type is ours while it names the CLSID: another program's handler stays on removal. A build without a provider (a
+  check from Linux) has no part to want (`thumbnails_wanted`).
+- Linux: the Thumbnail Managing Standard's `.thumbnailer` (`thumbnailer_text`): `TryExec` the executable, `Exec` the
+  executable and `thumbnail_arguments`, `MimeType` the types, and the identity's `entry_marker` line, which removal
+  looks for. The program answers its arguments: it writes a PNG of the document (`%i`) at most `%s` pixels on its
+  longer side to `%o`, and ends with 0. `thumbnail` and `thumbnail_cached` of this package read the file as any file
+  manager does.
+- Elsewhere: no such part (`supported_parts`).
+
+A setup `Choice` ties a box to `{.Thumbnails}` ([setup.md](setup.md#the-programs-options)).
 
 ## Open with
 
@@ -372,7 +415,7 @@ A program's install command line is gt:setup's (`--install`, `--uninstall`, `--s
 ## The tests' scratch roots
 
 Every place is a field of `Integration_Options`: `menu_dir`, `desktop_dir`, `environment_root` and `registry_root` (keys under
-HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `config_dir` (`$XDG_CONFIG_HOME`, where `mimeapps.list` is), `install_dir`. A test points them at a scratch folder and a
+HKEY_CURRENT_USER), `applications_dir`, `icons_dir`, `bin_dir`, `autostart_dir`, `config_dir` (`$XDG_CONFIG_HOME`, where `mimeapps.list` is), `thumbnailers_dir`, `install_dir`. A test points them at a scratch folder and a
 scratch key, and turns `notify_system` off. `roots_from_env` reads them from `<env_prefix>MENU_DIR`, `<env_prefix>BIN_DIR`...
 (`ROOT_NAMES`), so a program's own end-to-end tests run it on scratch places; any of them set turns the notification off.
 `delete_scratch_root` deletes a scratch registry key, and only one under the identity's `scratch_roots`.

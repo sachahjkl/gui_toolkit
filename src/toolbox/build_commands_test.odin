@@ -226,6 +226,31 @@ test_lines_per_package :: proc(t: ^testing.T) {
 	testing.expect(t, slice.contains(named[0], "-define:ODIN_TEST_THREADS=1"))
 }
 
+// The thumbnail provider: a DLL of the program's package beside the build, with the features' defines, optimised for a
+// release; the program embeds it once it is there, and not without a thumbnailer.
+@(test)
+thumbnailer_build_and_define :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "thumbnailer")
+	p := Project{name = "sample", program = fmt.tprintf("%s/sample%s", dir, EXE_SUFFIX), thumbnailer = "src/thumbnailer", features = {.Pdf}}
+	testing.expect_value(t, thumbnailer_path(p), fmt.tprintf("%s/sample_thumbnails.dll", dir))
+	debug, release := thumbnailer_command(p, false), thumbnailer_command(p, true)
+	testing.expect(t, debug[1] == "build" && debug[2] == "src/thumbnailer", "its package, built")
+	testing.expect(t, slice.contains(debug, "-build-mode:dll") && slice.contains(debug, fmt.tprintf("-out:%s/sample_thumbnails.dll", dir)))
+	testing.expect(t, slice.contains(debug, "-define:GT_PDF=true"), "it renders as the program does")
+	testing.expect(t, slice.contains(debug, "-o:none") && slice.contains(release, "-o:speed") && !slice.contains(release, "-debug"))
+	testing.expect(t, !strings.contains(strings.join(debug, " ", context.temp_allocator), "GT_THUMBNAIL_DLL"), "the DLL embeds nothing")
+
+	has_define :: proc(p: Project) -> bool {
+		for f in windows_flags(p, false) { if strings.has_prefix(f, "-define:GT_THUMBNAIL_DLL=") { return true } }
+		return false
+	}
+	testing.expect(t, !has_define(p), "not built yet: no define")
+	testing.expect(t, os.write_entire_file(thumbnailer_path(p), "MZ") == nil)
+	testing.expect(t, has_define(p), "built: embedded")
+	p.thumbnailer = ""
+	testing.expect(t, !has_define(p), "no thumbnailer: nothing embedded")
+}
+
 // The tool's package is tools/<name>tool unless named.
 @(test)
 tool_package_default :: proc(t: ^testing.T) {
