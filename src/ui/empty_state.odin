@@ -47,7 +47,9 @@ empty_state :: proc(id: string, e: Empty_State) -> (clicked: int) {
 		label(fmt.tprintf("%s###empty_title", text_shown(e.title)))
 		if e.note != "" {
 			if tags("weak") {
-				next({width = px(em * EMPTY_STATE_NOTE_EM), text_align = .Center})
+				// (its measure at most: in a narrower pane, the file browser's preview, it shrinks and wraps there instead
+				// of running past both edges)
+				next({width = px(em * EMPTY_STATE_NOTE_EM, 0), text_align = .Center})
 				paragraph(fmt.tprintf("%s###empty_note", text_shown(e.note)))
 			}
 		}
