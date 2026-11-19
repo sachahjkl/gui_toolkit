@@ -870,6 +870,22 @@ an_empty_state_offers_its_actions :: proc(t: ^testing.T) { unwatched.run(t, proc
 	testing.expect_value(t, r.clicked, 1)
 }) }
 
+// An empty state narrower than its note's measure: the note wraps inside it, never past its edges (the file browser's
+// preview pane, narrow, showed a source's message running over the list beside it).
+@(test)
+an_empty_state_s_note_stays_in_a_narrow_pane :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = WINDOW, no_renderer = true, build = proc(s: ^session.Session) {
+		ui.next({fixed_x = 40, fixed_y = 0, width = ui.px(160), height = ui.px(300)})
+		if ui.parent(ui.build_box({.Clip}, "###pane")) {
+			_ = ui.empty_state("empty", {icon = "x", title = "strip.png", note = "Only the files of the session's folder are shown here."})
+		}
+	}})
+	session.frames(s, 2)
+	pane, note := session.find(s, "pane"), session.find(s, "empty_note")
+	if !testing.expect(t, pane != nil && note != nil, "the pane and the note") { return }
+	testing.expectf(t, note.rect.min.x >= pane.rect.min.x && note.rect.max.x <= pane.rect.max.x, "the note %v inside the pane %v", note.rect, pane.rect)
+}) }
+
 // key_take: the frame's first key press not taken yet, with its modifiers; a key a build took already is not given.
 @(test)
 the_first_key_not_taken_is_given :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
