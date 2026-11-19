@@ -27,7 +27,9 @@ file: classeur made them first (its `thumbs.odin`); the toolkit's file browser a
 - **The local work is public: `file_thumbnail_make(path, side, system, allocator)`.** The local source calls it on the
   chores; a program with its own pool of workers (classeur) calls it there, so the rules above are written once.
   `system` false never reads nor writes the system's cache and never runs its thumbnailer: a test, or a program
-  headless, leaves the person's cache alone. It does disk work: never on the interface's thread.
+  headless, leaves the person's cache alone. It does disk work: never on the interface's thread. It answers a
+  `File_Thumbnail` with the picture's own size beside the pixels, so an inspector that shows that size decodes once;
+  `file_thumbnail_decodes` is the extensions it decodes, so a program keeps no copy of the list.
 - **`thumb_cache_clear` forgets what was made** (Ready and Failed): the cards shown ask again (a command "Clear
   thumbnails", a thumbnailer installed since). The asks waiting and in flight stay: an ask out holds one of the `asks`
   slots until its answer, so forgetting it would let more than `asks` run at once; its answer lands as any answer (its

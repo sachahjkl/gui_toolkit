@@ -201,20 +201,23 @@ a_png_makes_its_thumbnail_without_the_system :: proc(t: ^testing.T) {
 	path := fmt.tprintf("%s/red.png", dir)
 	testing.expect(t, os.write_entire_file(path, data) == nil)
 	// larger than the side: reduced, its ratio kept, its colour kept (a box filter of one colour)
-	rgba, tw, th, ok := ui.file_thumbnail_make(path, 10, system = false)
-	defer delete(rgba)
+	small, ok := ui.file_thumbnail_make(path, 10, system = false)
+	defer delete(small.rgba)
 	testing.expect(t, ok, "a PNG is made without the system")
-	testing.expect_value(t, tw, 10)
-	testing.expect_value(t, th, 5)
-	testing.expect_value(t, len(rgba), 10 * 5 * 4)
-	if len(rgba) >= 4 { testing.expectf(t, rgba[0] >= 198 && rgba[0] <= 202 && rgba[3] == 255, "the colour kept: %v", rgba[:4]) }
+	testing.expect_value(t, small.width, 10)
+	testing.expect_value(t, small.height, 5)
+	testing.expect_value(t, small.picture, [2]int{w, h})   // (the picture's own size: an inspector shows it)
+	testing.expect_value(t, len(small.rgba), 10 * 5 * 4)
+	if len(small.rgba) >= 4 { testing.expectf(t, small.rgba[0] >= 198 && small.rgba[0] <= 202 && small.rgba[3] == 255, "the colour kept: %v", small.rgba[:4]) }
 	// smaller than the side: as it is
-	full, fw, fh, full_ok := ui.file_thumbnail_make(path, 256, system = false)
-	defer delete(full)
-	testing.expect(t, full_ok && fw == w && fh == h, "a small picture as it is")
+	full, full_ok := ui.file_thumbnail_make(path, 256, system = false)
+	defer delete(full.rgba)
+	testing.expect(t, full_ok && full.width == w && full.height == h && full.picture == {w, h}, "a small picture as it is")
 	// a file gt:image cannot read, the system not asked: none
 	text := fmt.tprintf("%s/notes.txt", dir)
 	testing.expect(t, os.write_entire_file(text, transmute([]u8)string("words")) == nil)
-	_, _, _, text_ok := ui.file_thumbnail_make(text, 64, system = false)
+	_, text_ok := ui.file_thumbnail_make(text, 64, system = false)
 	testing.expect(t, !text_ok, "another type without the system: none")
+	testing.expect(t, ui.file_thumbnail_decodes("a.PNG") == ui.file_thumbnail_decodes("a.png"), "by the extension, its case aside")
+	testing.expect(t, ui.file_thumbnail_decodes("photo.jpg") && !ui.file_thumbnail_decodes("notes.txt"))
 }

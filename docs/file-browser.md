@@ -209,8 +209,10 @@ kept there once made (`desktop.thumbnail_store`, Linux); another type, a picture
 (64 MiB), or a picture `gt:image` fails to decode (a WebP in a program built without `IMAGE_WEBP`), gets the system's
 thumbnail (`desktop.thumbnail`: its cache, else its thumbnailer).
 
-That work is `file_thumbnail_make(path, side, system, allocator) -> (rgba, w, h, ok)`, for a program that makes
-thumbnails on its own workers: straight RGBA8 at most `side` pixels on its longer side, in `allocator`. `system` false
+That work is `file_thumbnail_make(path, side, system, allocator) -> (File_Thumbnail, ok)`, for a program that makes
+thumbnails on its own workers: `rgba`, straight RGBA8, `width` by `height`, at most `side` pixels on its longer side, in
+`allocator`; `picture`, the size of the picture it was made from (`{0, 0}` when the system made it: an inspector shows
+the size it knows). `file_thumbnail_decodes(name)` says whether the toolkit decodes a file of that name. `system` false
 neither reads nor writes the system's cache and never runs its thumbnailer (a test, a program headless). It reads the
 disk and may wait for a thumbnailer: call it off the interface's thread.
 
