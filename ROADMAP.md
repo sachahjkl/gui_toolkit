@@ -28,9 +28,9 @@
   (`Standard_Targets.pacer`, since 0.269), and its own text backend, emoji and renderer settings. (The
   desktop's and the motion's are the standard `Session` and `Appearance` sets; the window's place and the rows' look are
   the toolkit's since 0.265; an FPS display is opencode native's alone, so it stays its own.)
-- **papier's list and Wren's devtools fold by the toolkit's rule.** papier's list beside its preview and Wren's
-  Network split become a `ui.Side_Panel`: they fold to a rail when the content would get less than its least, as the
-  settings and the views do. Intent: [src/md/features/side-panels.md](src/md/features/side-panels.md).
+- **Wren's devtools fold by the toolkit's rule.** Wren's Network split becomes a `ui.Side_Panel`: it folds to a rail
+  when the content would get less than its least, as papier's list, the settings and the views do. Intent:
+  [src/md/features/side-panels.md](src/md/features/side-panels.md).
 - **opencode native on the toolkit's pieces.** Its branch `toolkit-0.266` takes the toolkit's JSON, rich paste
   (`ui.paste_answer`: its menu's Paste attaches an image as Ctrl+V does), kept zooms (`store.Kept`), context menus
   (`ui.context_take`), window place and standard folders in place of its own; it waits for its merge and release.
