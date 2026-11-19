@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::shape::Shape;
 use crate::stamp::Stamp;
 use hayro::hayro_syntax::object::dict::keys::{
     COLORSPACE, CONTENTS, CROP_BOX, DECODE_PARMS, DP, EXT_G_STATE, FILTER, FONT, LENGTH, MEDIA_BOX, PAGES, PARENT,
@@ -23,6 +24,7 @@ pub struct PageSpec<'a> {
     pub turns: u8,
     pub size: (f32, f32),
     pub stamps: Vec<Stamp>,
+    pub shapes: Vec<Shape>,
 }
 
 type Key = (u32, ObjectIdentifier);
@@ -167,7 +169,7 @@ impl<'a> Writer<'a> {
     fn page(&mut self, chunk: &mut Chunk, spec: &PageSpec<'_>, r: Ref, tree: Ref) {
         let page: Option<(u32, &Page<'_>)> =
             spec.source.and_then(|(id, pdf)| pdf.pages().get(spec.index).map(|p| (id, p)));
-        let stamped = !spec.stamps.is_empty();
+        let stamped = !spec.stamps.is_empty() || !spec.shapes.is_empty();
         let (pre, post) = if stamped { (Some(self.alloc()), Some(self.alloc())) } else { (None, None) };
         let mut fonts: Vec<(String, &'static str)> = Vec::new();
         for st in &spec.stamps {
@@ -176,6 +178,9 @@ impl<'a> Writer<'a> {
                 fonts.push((format!("GtStamp{}", fonts.len()), base));
             }
         }
+        let mut alphas: Vec<u8> = spec.shapes.iter().flat_map(|s| s.alphas()).collect();
+        alphas.sort_unstable();
+        alphas.dedup();
         let to_user;
         {
             let mut d = chunk.indirect(r).dict();
@@ -210,8 +215,12 @@ impl<'a> Writer<'a> {
                 let mut res = d.insert(Name(RESOURCES)).dict();
                 if let Some((src, p)) = page {
                     let r = p.resources();
+                    if !r.ext_g_states.is_empty() || !alphas.is_empty() {
+                        let mut out = res.insert(Name(EXT_G_STATE)).dict();
+                        self.entries(src, &r.ext_g_states, &mut out, &[]);
+                        alpha_states(&mut out, &alphas);
+                    }
                     for (key, sub) in [
-                        (EXT_G_STATE, &r.ext_g_states),
                         (SHADING, &r.shadings),
                         (PATTERN, &r.patterns),
                         (XOBJECT, &r.x_objects),
@@ -228,9 +237,15 @@ impl<'a> Writer<'a> {
                         self.entries(src, &r.fonts, &mut out, &[]);
                         stamp_fonts(&mut out, &fonts);
                     }
-                } else if !fonts.is_empty() {
-                    let mut out = res.insert(Name(FONT)).dict();
-                    stamp_fonts(&mut out, &fonts);
+                } else {
+                    if !fonts.is_empty() {
+                        let mut out = res.insert(Name(FONT)).dict();
+                        stamp_fonts(&mut out, &fonts);
+                    }
+                    if !alphas.is_empty() {
+                        let mut out = res.insert(Name(EXT_G_STATE)).dict();
+                        alpha_states(&mut out, &alphas);
+                    }
                 }
             }
             if let (Some(pre), Some(post)) = (pre, post) {
@@ -272,12 +287,33 @@ impl<'a> Writer<'a> {
             if page.is_some() {
                 content.restore_state();
             }
+            // (the shapes first, the words over them: a text written in a rectangle stays readable)
+            for sh in &spec.shapes {
+                sh.draw(&mut content, to_user, &alpha_name);
+            }
             for st in &spec.stamps {
                 let name = &fonts.iter().find(|(_, b)| *b == st.font.base_name()).unwrap().0;
                 st.draw(&mut content, to_user, Name(name.as_bytes()));
             }
             chunk.stream(post, &content.finish());
         }
+    }
+}
+
+// The graphics state of a shape's alpha: a name no page uses.
+fn alpha_name(alpha: u8) -> String {
+    format!("GtAlpha{alpha}")
+}
+
+// Each alpha the shapes use, as a graphics state: the alpha of fills and strokes, laid over the page by multiplication
+// (a highlighter's ink darkens what is under it and leaves the words readable).
+fn alpha_states(out: &mut pdf_writer::Dict<'_>, alphas: &[u8]) {
+    for a in alphas {
+        let mut g = out.insert(Name(alpha_name(*a).as_bytes())).dict();
+        g.pair(Name(b"Type"), Name(b"ExtGState"));
+        g.pair(Name(b"ca"), *a as f32 / 255.0);
+        g.pair(Name(b"CA"), *a as f32 / 255.0);
+        g.pair(Name(b"BM"), Name(b"Multiply"));
     }
 }
 

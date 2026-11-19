@@ -66,6 +66,22 @@ box := pdf.stamp_size(stamp)            // its size before its turns, margins in
 - `turns`: the text's own quarter turns about its corner. A stamp placed while the page is shown turned by `k` takes
   `(4 - k) % 4`, so that it reads upright where it was put; it then turns with its page.
 
+## Shapes
+
+```odin
+frame := pdf.Shape{kind = .Rect, points = {{70, 60}, {300, 110}}, stroke = {220, 30, 30, 255}, width = 2}
+mark  := pdf.Shape{kind = .Rect, points = {{72, 200}, {400, 214}}, fill = {255, 230, 0, 110}}   // a highlight
+arrow := pdf.Shape{kind = .Arrow, points = {{50, 300}, {120, 260}}, stroke = {0, 0, 0, 255}, width = 2}
+pen   := pdf.Shape{kind = .Ink, points = drawn[:], stroke = {29, 78, 216, 255}, width = 1.5}
+page.shapes = {frame, mark, arrow, pen}
+```
+
+- `Rect` and `Ellipse` fill and outline the box of their two corners; `Line` and `Arrow` go from their first point to
+  their second (the arrow's head there); `Ink` follows its points.
+- Points are in points, in the page as its source shows it (before `turns`), y down, as a stamp's `at`.
+- `stroke` and `fill`: alpha 0 for none. A colour less than opaque multiplies with the page, as a highlighter.
+- The shapes are drawn under the stamps.
+
 ## Threads
 
 Every procedure may run on any thread; none belongs on the interface's thread (a large file takes time to open,

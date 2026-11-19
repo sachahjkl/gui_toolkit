@@ -4,6 +4,7 @@
 
 mod afm;
 mod render;
+mod shape;
 mod stamp;
 mod write;
 
@@ -13,6 +14,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use afm::Font;
 use hayro::hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
+use shape::{Kind, Shape};
 use stamp::Stamp;
 use write::PageSpec;
 
@@ -66,6 +68,43 @@ pub struct GtPdfPage {
     pub height: f32,
     pub stamps: *const GtPdfStamp,
     pub stamp_count: usize,
+    pub shapes: *const GtPdfShape,
+    pub shape_count: usize,
+}
+
+/// A shape as the C API gives it (src/pdf/pdf.odin's Shape).
+#[repr(C)]
+pub struct GtPdfShape {
+    /// 0 rectangle, 1 ellipse, 2 line, 3 arrow, 4 free line.
+    pub kind: u32,
+    /// 0xRRGGBBAA; alpha 0: none.
+    pub stroke: u32,
+    pub fill: u32,
+    pub width: f32,
+    /// x, y pairs.
+    pub points: *const f32,
+    pub point_count: usize,
+}
+
+// A page's data read from the C API, its source still to be found.
+struct Page_ {
+    source: u32,
+    index: usize,
+    turns: u8,
+    size: (f32, f32),
+    stamps: Vec<Stamp>,
+    shapes: Vec<Shape>,
+}
+
+unsafe fn shape_of(s: &GtPdfShape) -> Option<Shape> {
+    let rgba = |v: u32| [(v >> 24) as u8, (v >> 16) as u8, (v >> 8) as u8, v as u8];
+    let kind = Kind::from_code(s.kind)?;
+    let flat = if s.points.is_null() || s.point_count == 0 { &[][..] } else { std::slice::from_raw_parts(s.points, s.point_count * 2) };
+    let points: Vec<(f32, f32)> = flat.chunks_exact(2).map(|c| (c[0], c[1])).collect();
+    if points.is_empty() {
+        return None;
+    }
+    Some(Shape { kind, points, stroke: rgba(s.stroke), fill: rgba(s.fill), width: s.width })
 }
 
 unsafe fn bytes<'a>(p: *const u8, n: usize) -> &'a [u8] {
@@ -91,7 +130,7 @@ unsafe fn stamp_of(s: &GtPdfStamp) -> Stamp {
 }
 
 // The C pages with their sources held for as long as the work lasts.
-unsafe fn pages_of(pages: *const GtPdfPage, count: usize) -> Option<(Vec<Arc<Pdf>>, Vec<(u32, usize, u8, (f32, f32), Vec<Stamp>)>)> {
+unsafe fn pages_of(pages: *const GtPdfPage, count: usize) -> Option<(Vec<Arc<Pdf>>, Vec<Page_>)> {
     if pages.is_null() && count > 0 {
         return None;
     }
@@ -107,24 +146,29 @@ unsafe fn pages_of(pages: *const GtPdfPage, count: usize) -> Option<(Vec<Arc<Pdf
         } else {
             std::slice::from_raw_parts(p.stamps, p.stamp_count).iter().map(|s| stamp_of(s)).collect()
         };
-        out.push((p.source, p.index as usize, (p.turns % 4) as u8, (p.width, p.height), stamps));
+        let shapes = if p.shapes.is_null() || p.shape_count == 0 {
+            Vec::new()
+        } else {
+            std::slice::from_raw_parts(p.shapes, p.shape_count).iter().filter_map(|s| shape_of(s)).collect()
+        };
+        out.push(Page_ { source: p.source, index: p.index as usize, turns: (p.turns % 4) as u8, size: (p.width, p.height), stamps, shapes });
     }
     Some((held, out))
 }
 
-fn specs<'a>(held: &'a [Arc<Pdf>], pages: Vec<(u32, usize, u8, (f32, f32), Vec<Stamp>)>) -> Vec<PageSpec<'a>> {
+fn specs<'a>(held: &'a [Arc<Pdf>], pages: Vec<Page_>) -> Vec<PageSpec<'a>> {
     let mut next = 0;
     pages
         .into_iter()
-        .map(|(src, index, turns, size, stamps)| {
-            let source = if src != 0 {
+        .map(|p| {
+            let source = if p.source != 0 {
                 let pdf = &*held[next];
                 next += 1;
-                Some((src, pdf))
+                Some((p.source, pdf))
             } else {
                 None
             };
-            PageSpec { source, index, turns, size, stamps }
+            PageSpec { source, index: p.index, turns: p.turns, size: p.size, stamps: p.stamps, shapes: p.shapes }
         })
         .collect()
 }

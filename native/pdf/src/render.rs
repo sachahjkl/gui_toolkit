@@ -16,7 +16,7 @@ pub fn page_size(page: &Page<'_>) -> (f32, f32) {
     page.render_dimensions()
 }
 
-/// Renders `spec` into `out` (width * height * 4 bytes). A page with stamps, or a blank one, is written alone first
+/// Renders `spec` into `out` (width * height * 4 bytes). A page with stamps or shapes, or a blank one, is written alone first
 /// and that file rendered: the picture is what the save writes.
 pub fn render(spec: &PageSpec<'_>, width: u32, height: u32, layer: bool, out: &mut [u8]) -> bool {
     if width == 0 || height == 0 || width > u16::MAX as u32 || height > u16::MAX as u32 {
@@ -25,13 +25,20 @@ pub fn render(spec: &PageSpec<'_>, width: u32, height: u32, layer: bool, out: &m
     if out.len() != (width * height * 4) as usize {
         return false;
     }
-    if spec.stamps.is_empty() {
+    if spec.stamps.is_empty() && spec.shapes.is_empty() {
         if let Some((_, pdf)) = spec.source {
             let Some(page) = pdf.pages().get(spec.index) else { return false };
             return render_page(page, spec.turns, width, height, layer, out);
         }
     }
-    let alone = PageSpec { source: spec.source, index: spec.index, turns: spec.turns, size: spec.size, stamps: spec.stamps.clone() };
+    let alone = PageSpec {
+        source: spec.source,
+        index: spec.index,
+        turns: spec.turns,
+        size: spec.size,
+        stamps: spec.stamps.clone(),
+        shapes: spec.shapes.clone(),
+    };
     let bytes = write(std::slice::from_ref(&alone), None);
     let Ok(pdf) = Pdf::new(bytes) else { return false };
     let Some(page) = pdf.pages().first() else { return false };

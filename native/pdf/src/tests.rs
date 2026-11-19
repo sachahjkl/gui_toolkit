@@ -58,7 +58,7 @@ fn write_pages(pages: &[GtPdfPage], base: u32) -> Vec<u8> {
 }
 
 fn page(source: u32, index: u32, turns: u32) -> GtPdfPage {
-    GtPdfPage { source, index, turns, width: 0.0, height: 0.0, stamps: std::ptr::null(), stamp_count: 0 }
+    GtPdfPage { source, index, turns, width: 0.0, height: 0.0, stamps: std::ptr::null(), stamp_count: 0, shapes: std::ptr::null(), shape_count: 0 }
 }
 
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
@@ -108,13 +108,43 @@ fn a_stamp_is_drawn_where_it_was_put_on_a_blank_page() {
     let (mut w, mut h) = (0.0, 0.0);
     unsafe { gt_pdf_stamp_measure(&stamp, &mut w, &mut h) };
     assert!(w > 40.0 && h > 20.0, "{w} x {h}");
-    let p = GtPdfPage { source: 0, index: 0, turns: 0, width: 200.0, height: 100.0, stamps: &stamp, stamp_count: 1 };
+    let p = GtPdfPage { source: 0, index: 0, turns: 0, width: 200.0, height: 100.0, stamps: &stamp, stamp_count: 1, shapes: std::ptr::null(), shape_count: 0 };
     let mut px = vec![0u8; 200 * 100 * 4];
     assert!(unsafe { gt_pdf_render(&p, 200, 100, false, px.as_mut_ptr()) });
     let at = |x: usize, y: usize| { let i = (y * 200 + x) * 4; [px[i], px[i + 1], px[i + 2]] };
     assert_eq!(at(5, 5), [255, 255, 255], "the paper is white");
     assert_eq!(at(22, 32), [0, 0, 0], "the stamp's background starts at its corner, y down");
     assert_eq!(at((20.0 + w) as usize + 3, 32), [255, 255, 255], "and ends at its measured width");
+}
+
+// Shapes on a blank page, y down: a red rectangle filled, then a black bar under a yellow highlight. The highlight
+// multiplies: over black it stays black, over white it is yellow. The written file names its graphics state.
+#[test]
+fn shapes_are_drawn_and_a_highlight_multiplies() {
+    let red = [10.0f32, 10.0, 60.0, 40.0];
+    let bar = [100.0f32, 20.0, 180.0, 30.0];
+    let mark = [90.0f32, 15.0, 190.0, 50.0];
+    let shapes = [
+        GtPdfShape { kind: 0, stroke: 0, fill: 0xFF0000FF, width: 1.0, points: red.as_ptr(), point_count: 2 },
+        GtPdfShape { kind: 0, stroke: 0, fill: 0x000000FF, width: 1.0, points: bar.as_ptr(), point_count: 2 },
+        GtPdfShape { kind: 0, stroke: 0, fill: 0xFFFF0080, width: 1.0, points: mark.as_ptr(), point_count: 2 },
+    ];
+    let p = GtPdfPage { source: 0, index: 0, turns: 0, width: 200.0, height: 100.0, stamps: std::ptr::null(), stamp_count: 0, shapes: shapes.as_ptr(), shape_count: shapes.len() };
+    let mut px = vec![0u8; 200 * 100 * 4];
+    assert!(unsafe { gt_pdf_render(&p, 200, 100, false, px.as_mut_ptr()) });
+    let at = |x: usize, y: usize| { let i = (y * 200 + x) * 4; [px[i], px[i + 1], px[i + 2]] };
+    assert_eq!(at(30, 25), [255, 0, 0], "the rectangle is filled, where it was put");
+    assert_eq!(at(5, 60), [255, 255, 255], "the paper around stays white");
+    let under = at(140, 25);
+    assert!(under[0] < 40 && under[2] < 40, "black under the highlight stays black: {under:?}");
+    let over = at(140, 45);
+    assert!(over[0] > 230 && over[1] > 230 && over[2] < 180, "white under the highlight turns yellow: {over:?}");
+
+    let mut out: *mut u8 = std::ptr::null_mut();
+    let n = unsafe { gt_pdf_write(&p, 1, 0, &mut out) };
+    let file = unsafe { std::slice::from_raw_parts(out, n).to_vec() };
+    unsafe { gt_pdf_free(out, n) };
+    assert!(contains(&file, b"/GtAlpha128") && contains(&file, b"/Multiply"), "the highlight's state is in the file");
 }
 
 #[test]

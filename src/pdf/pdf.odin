@@ -85,6 +85,22 @@ Stamp :: struct {
 	text:       string,
 }
 
+// What a shape is.
+Shape_Kind :: enum u8 { Rect, Ellipse, Line, Arrow, Ink }
+
+// A shape drawn on a page: its points in points, in the page as its source shows it (before the page's turns), y down:
+// two corners (Rect, Ellipse: the box it fills), two ends (Line; Arrow: from, then to, where its head is), or the
+// free line's points (Ink). `stroke` and `fill`: alpha 0 for none; a colour less than opaque is laid over the page by
+// multiplication, as a highlighter's ink (the words under it stay readable). `fill` is for Rect and Ellipse. `width`:
+// the stroke's, in points. Shapes are drawn under the page's stamps.
+Shape :: struct {
+	kind:   Shape_Kind,
+	points: [][2]f32,
+	stroke: [4]u8,
+	fill:   [4]u8,
+	width:  f32,
+}
+
 // A page of the program's list: page `index` of `source`, or a blank page of `size` points when `source` is 0.
 // `turns`: quarter turns clockwise, added to the page's own rotation.
 Page :: struct {
@@ -93,6 +109,7 @@ Page :: struct {
 	turns:  int,
 	size:   [2]f32,
 	stamps: []Stamp,
+	shapes: []Shape,
 }
 
 @(private)
@@ -105,11 +122,22 @@ C_Stamp :: struct {
 }
 
 @(private)
+C_Shape :: struct {
+	kind:          u32,
+	stroke, fill:  u32,
+	width:         f32,
+	points:        [^]f32,
+	point_count:   uint,
+}
+
+@(private)
 C_Page :: struct {
 	source, index, turns: u32,
 	width, height:        f32,
 	stamps:               [^]C_Stamp,
 	stamp_count:          uint,
+	shapes:               [^]C_Shape,
+	shape_count:          uint,
 }
 
 // Whether this program has the engine (built with -define:GT_PDF=true).
@@ -178,11 +206,27 @@ c_stamps :: proc(stamps: []Stamp, allocator := context.temp_allocator) -> []C_St
 }
 
 @(private)
+c_shapes :: proc(shapes: []Shape, allocator := context.temp_allocator) -> []C_Shape {
+	out := make([]C_Shape, len(shapes), allocator)
+	rgba :: proc(c: [4]u8) -> u32 { return u32(c[0]) << 24 | u32(c[1]) << 16 | u32(c[2]) << 8 | u32(c[3]) }
+	for s, i in shapes {
+		// ([2]f32 is two f32 in a row: the engine reads the points as x, y pairs)
+		out[i] = C_Shape{
+			kind = u32(s.kind), stroke = rgba(s.stroke), fill = rgba(s.fill), width = s.width,
+			points = cast([^]f32)raw_data(s.points), point_count = uint(len(s.points)),
+		}
+	}
+	return out
+}
+
+@(private)
 c_page :: proc(p: Page) -> C_Page {
 	stamps := c_stamps(p.stamps)
+	shapes := c_shapes(p.shapes)
 	return C_Page{
 		source = u32(p.source), index = u32(max(p.index, 0)), turns = u32(((p.turns % 4) + 4) % 4),
 		width = p.size.x, height = p.size.y, stamps = raw_data(stamps), stamp_count = uint(len(stamps)),
+		shapes = raw_data(shapes), shape_count = uint(len(shapes)),
 	}
 }
 

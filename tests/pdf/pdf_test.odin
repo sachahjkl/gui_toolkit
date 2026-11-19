@@ -46,6 +46,19 @@ a_written_page_opens_renders_and_writes_again :: proc(t: ^testing.T) {
 	testing.expect_value(t, pdf.shown_size({source = again, index = 1, turns = 3}), [2]f32{100, 200})
 }
 
+// A shape through the Odin side: an ellipse's ring where it was put, its middle left as the page is.
+@(test)
+a_shape_is_drawn_where_it_was_put :: proc(t: ^testing.T) {
+	ring := pdf.Shape{kind = .Ellipse, points = {{20, 20}, {120, 80}}, stroke = {200, 0, 0, 255}, width = 4}
+	px := pdf.render({size = {200, 100}, shapes = {ring}}, 200, 100)
+	defer delete(px)
+	testing.expect(t, px != nil, "the page renders")
+	at :: proc(px: []u8, x, y: int) -> [3]u8 { i := (y * 200 + x) * 4; return {px[i], px[i + 1], px[i + 2]} }
+	left := at(px, 20, 50)
+	testing.expectf(t, left[0] > 150 && left[1] < 80, "the ring passes at its left end (%v)", left)
+	testing.expect_value(t, at(px, 70, 50), [3]u8{255, 255, 255})
+}
+
 @(test)
 what_is_not_a_pdf_is_refused :: proc(t: ^testing.T) {
 	src, err := pdf.open(transmute([]u8)string("not a pdf"))

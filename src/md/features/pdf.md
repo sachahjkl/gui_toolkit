@@ -74,6 +74,21 @@ changed does not move them. Their font resources take names no page uses (`GtSta
 
 A page with stamps is rendered by writing it alone as a PDF and rendering that: the same writer, the same picture.
 
+## Shapes
+
+A shape is a mark on a page: a rectangle or an ellipse (a box, filled or outlined: to frame, to circle), a line, an
+arrow, a free line (a pen). Like a stamp, it is part of its page's value, in the page as its source shows it, and it
+turns with its page. The writer draws the shapes in the same added stream as the stamps, under them: a text written
+in a box stays readable.
+
+A colour less than opaque is laid over the page by multiplication (`/BM /Multiply`, the alpha in `/ca` and `/CA`):
+a highlighter. Over black it stays black, over white it is its colour, so the words under it stay readable; an
+ordinary blend would grey them. One graphics state per alpha used, named `GtAlpha<alpha>`.
+
+Refused: annotations (`/Square`, `/Ink`, `/Highlight`). Readers draw them differently, some not at all when printing,
+and a program that hides the annotation layer (feuille) would hide its own marks; and a person's mark is meant to be
+part of the page.
+
 ## The layer
 
 The render draws the page's own content. `layer` adds its annotations (form widgets, signatures' appearances, notes):
