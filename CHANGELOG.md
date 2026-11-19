@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.329.0] - 2026-11-19 16:42
+
+### Added
+- **The file browser's views**: a button at the end of its bar opens a menu of the list's views (details, names, columns, cards of four sizes); Ctrl+wheel over the list and Ctrl+= / Ctrl+- in it step them. A card shows the file's thumbnail (the computer's pictures, the system's thumbnails of other files, a program's source through `File_Source.thumbnail`) or its kind's icon, and its size. Several files are selected with a rectangle. Each dialog remembers its view by its `remember_id`; the preview is the same in every view.
+- **Thumbnails of files**: `File_Source.thumbnail` asks a source for a picture of a file, answered with pixels by `file_reply_thumbnail`, so a server's source can make its own. `local_files()` decodes the pictures `gt:image` reads (a large one read from, and kept in, the system's cache) and gives the system's thumbnail for the other files. `Thumb_Cache` keeps them as textures under a count and a byte budget: only the cards built ask, the newest first and a few at a time, an ask whose card scrolled away is dropped, and what is on screen is never evicted (`thumb_cache_get`, `thumb_cache_frame`, `thumb_picture`, `thumb_key`).
+- **A table's views (`Table.zoom`)**: the same rows as details, as names alone, as names in columns scrolled sideways, or as cards at four sizes (a picture, the name cut in its middle with its extension kept, a weak line), the filter, the sort and the selection the same in every view. In the grid the arrows move by card and by row, in the columns view by name and by column. `Table.zoom_keys` gives Ctrl+wheel and the zoom keys to the table (`Table_Events.zoomed`), `Table.rubber_band` selects the items a rectangle covers (Escape gives the selection back). `table_zoom_step`, `table_set_zoom`, `table_set_view`, `table_zoom_label`, `table_zoom_icon`, `table_zoom_key`; for a program's own view of items, `item_move_target` and `Item_Band`. A table starts in Details, as before.
+
 ## [0.328.2] - 2026-11-19 16:02
 
 ### Added
@@ -4625,6 +4632,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.329.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.329.0
 [0.328.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.328.2
 [0.328.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.328.1
 [0.328.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.328.0
