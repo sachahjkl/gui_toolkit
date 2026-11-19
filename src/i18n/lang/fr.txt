@@ -2326,6 +2326,21 @@ fr Colonnes
 en Default columns
 fr Colonnes par défaut
 
+en Names
+fr Noms
+
+en Small cards
+fr Petites cartes
+
+en Cards
+fr Cartes
+
+en Large cards
+fr Grandes cartes
+
+en Huge cards
+fr Très grandes cartes
+
 en More tools
 fr Plus d'outils
 

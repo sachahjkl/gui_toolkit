@@ -239,6 +239,50 @@ goes before the first cell's text, `size` high (an icon; in a taller row, a thum
 `lead_user` is the caller's. `Table.lead_em` is the room before the first title and the first cell (0: 0.6 em).
 `Table.row_em` is a row's height in ems (0: `TABLE_ROW_EM`): taller rows for a lead that shows a picture. `Table.header_bg` is the header's background (nil: none).
 
+### A table's views (`src/ui/table_views.odin`)
+
+The same rows show in four views: `Details` (the header and the columns), `List` (the first column alone), `Columns`
+(the names column by column, scrolled sideways) and `Grid` (cards: a picture, the name, a weak line). `Table.zoom` is one
+index over seven steps, from the densest: Details, List, Columns, then cards of 8.5, 11.5, 15 and 20 ems. A table starts
+in Details. The filter, the sort and the selection are the same in every view: `vl.sel`, `list_selected_ids(&t.vl)` and
+`table_selected` read the items whatever the view, and `vl.key` is the box of the view that has the keyboard.
+
+```odin
+view.table.zoom_keys = true                // Ctrl+wheel and Ctrl+= / Ctrl+- / Ctrl+0 over the table step its zoom
+view.table.rubber_band = true              // multi: a press on the empty part and a drag select a rectangle
+view.table.card_line = SIZE_COLUMN         // a card's weak line
+view.table.picture = file_thumbnail        // a card's picture (else the lead at the card's size)
+if z, ok := ui.table_zoom_from_key(saved); ok { view.table.zoom = z }
+
+ev := ui.table_build("###files", &view.table, &view.data, empty)
+if ev.zoomed { save(ui.table_zoom_key(view.table.zoom)) }
+```
+
+| Procedure | |
+|---|---|
+| `table_zoom_step(i)` | step `i`'s `Table_Zoom`: its view and its cards' width in ems (`TABLE_ZOOMS` steps; `TABLE_ZOOM_CARDS`: the cards of `table_set_view(.Grid)`) |
+| `table_view(t)` | the view of the table's step |
+| `table_set_zoom(t, i)`, `table_set_view(t, view)` | another step, the cursor's item brought into view; whether it changed |
+| `table_zoom_label(i)`, `table_zoom_icon(i)` | a step's words in the language in use and its icon, for a program's control |
+| `table_zoom_key(i)`, `table_zoom_from_key(key)` | a step's stable name, to save it, and back |
+| `table_card_name(name, width, lines)` | a name in at most `lines` lines of `width` pixels at the style's font: cut in its middle, its extension kept |
+| `table_band_cancel(t)` | Escape during a rectangle: the selection there was; false when none runs (a program that reads Escape before the table asks it first) |
+
+The keys in Grid: Left and Right move by a card, Up and Down by a row of cards, Page Up and Page Down by a page of rows;
+in Columns: Up and Down by a name, Left, Right, Page Up and Page Down by a column. Home and End go to the ends. Shift,
+Ctrl and Ctrl+Shift do what they do in a list (`item_selection_move`). `table_keys`, with the keyboard in a filter, moves
+by a row of cards or by a name; Left and Right stay the field's. `Table_Events.zoomed` says a zoom key or the wheel
+changed the step. `Table.line_items` is the cards in a row or the names in a column at the last build.
+
+A program's own view of items uses the parts:
+
+| Procedure | |
+|---|---|
+| `item_move_target(key, at, n, per, flow, page)` | the item a key takes the cursor to among `n` items in lines (`Item_Flow.Lines`) or columns (`.Columns`) of `per` |
+| `item_band_update(band, sel, rows, box, layout, pressed_item, pressed_empty)` | after the items of `box`: a rectangle starts on a press on the empty part, selects the items it touches (`Item_Band_Layout`: rows of a virtual list, a grid of cards on one, columns), ends with the press |
+| `item_band_begin(band, box, sel, removing)` | Ctrl and a press on an item: a rectangle from there |
+| `item_band_cancel(band, sel, rows)` | Escape: the selection there was |
+
 ## Type to filter (`src/ui/type_to_field.odin`)
 
 `type_to_field(field)` gives the keyboard to one field (a filter, a search box) when a printable character was typed in

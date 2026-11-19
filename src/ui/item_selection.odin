@@ -196,6 +196,48 @@ item_selection_move :: proc(sel: ^Item_Selection, rows: Item_Rows, to: int, mods
 	}
 }
 
+// How a view lays its items out for the keys (src/md/features/view-modes.md): in lines of `per` items, left to right
+// then down (a list when `per` is 1, a grid of cards), or in columns of `per` items, down then right (names column by
+// column).
+Item_Flow :: enum u8 { Lines, Columns }
+
+// The item the key `key` takes the cursor to from `at` (-1: none yet, any move goes to the first), among `n` items laid
+// out in `flow` by `per`: Lines: Up and Down by a line, Left and Right by an item (when `per` > 1), Page Up and Page
+// Down by `page` lines; Columns: Up and Down by an item, Left, Right, Page Up and Page Down by a column; Home and End to
+// the ends. `ok` false: the key is no move there. What the move does to the selection is item_selection_move's.
+item_move_target :: proc(key: platform.Key, at, n, per_given: int, flow: Item_Flow, page := 1) -> (to: int, ok: bool) {
+	if n <= 0 { return -1, false }
+	per := max(per_given, 1)
+	ok = true
+	switch flow {
+	case .Lines:
+		#partial switch key {
+		case .Down:      to = at + per
+		case .Up:        to = at - per
+		case .Right:     to = at + 1; ok = per > 1
+		case .Left:      to = at - 1; ok = per > 1
+		case .Page_Down: to = at + max(page, 1) * per
+		case .Page_Up:   to = at - max(page, 1) * per
+		case .Home:      to = 0
+		case .End:       to = n - 1
+		case:            ok = false
+		}
+	case .Columns:
+		#partial switch key {
+		case .Down:                 to = at + 1
+		case .Up:                   to = at - 1
+		case .Right, .Page_Down:    to = at + per
+		case .Left, .Page_Up:       to = at - per
+		case .Home:                 to = 0
+		case .End:                  to = n - 1
+		case:                       ok = false
+		}
+	}
+	if !ok { return -1, false }
+	if at < 0 && key != .End { to = 0 }
+	return clamp(to, 0, n - 1), true
+}
+
 // Every row that can be selected (multi); the base is then all of them.
 item_selection_all :: proc(sel: ^Item_Selection, rows: Item_Rows) {
 	if !sel.multi { return }

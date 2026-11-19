@@ -21,6 +21,7 @@ package ui
 //                 for the row's menu
 //   table_build:  the header and the rows; a cut cell shows its whole text in a tooltip; the selection is drawn strong
 //                 while the window is the user's, whatever has the keyboard
+//   Table.zoom:   the same rows as details, names, names in columns or cards (table_views.odin)
 //
 // Sizes are in ems of the font size. Colours come from the theme: the "weak" tag for weak columns and dim rows, "bad" for
 // rows in fault, "accent" and "border" for the rules.
@@ -680,6 +681,23 @@ Table :: struct {
 	lead_em:   f32,             // the room before the first title and the first cell (0: 0.6)
 	row_em:    f32,             // a row's height in ems (0: TABLE_ROW_EM): taller rows for a lead that shows a thumbnail
 	header_bg: Maybe(Color),    // the header's background (nil: none)
+	// The views (table_views.odin, src/md/features/view-modes.md): the same rows as details, names, columns or cards.
+	zoom:      int,             // the step of table_zoom_step: its view and its cards' size (0: Details)
+	zoom_keys: bool,            // Ctrl+wheel over the table and the zoom keys in it step `zoom` (else they zoom the window)
+	rubber_band: bool,          // multi: a press on the empty part and a drag select the items the rectangle touches
+	// Builds a card's picture in a row `size` high (a thumbnail; it may fill the row's width); nil: the lead at `size`.
+	picture:   proc(t: ^Table, row: int, size: f32),
+	card_line: int,             // the column whose text is a card's second line, weak (a size); 0: none
+	line_items: int,            // Grid: the cards in a row; Columns: the names in a column (the last build's; else 1)
+	band:      Item_Band,
+	grid:      Virtual_List,    // Grid: the rows of cards (not a selection: the items' is `vl`'s)
+	grid_ids:  [dynamic]u64,
+	grid_ids_version: u64,
+	grid_from: [3]u64,          // what grid_ids was made of: the ids' version, the cards in a row, the step
+	cols_key:  Key,             // Columns: the box that scrolls sideways
+	zone:      Zoom_Zone,       // zoom_keys: where the zoom keys and Ctrl+wheel come to
+	zone_seen: u64,
+	zoom_rest: f32,             // the steps of the zone not taken yet (a touchpad's fractions add up)
 }
 
 table_init :: proc(t: ^Table, columns: []Table_Column, sort := 0, descending := false) {
@@ -693,7 +711,12 @@ table_destroy :: proc(t: ^Table) {
 	delete(t.ids)
 	delete(t.query)
 	vlist_destroy(&t.vl)
-	t.rows, t.ids, t.query = nil, nil, ""
+	vlist_destroy(&t.grid)
+	delete(t.grid_ids)
+	item_band_destroy(&t.band)
+	zoom_zone_destroy(&t.zone)
+	t.rows, t.ids, t.query, t.grid_ids = nil, nil, "", nil
+	t.grid_from = {}
 }
 
 // The data row selected, -1 for none.
@@ -720,6 +743,9 @@ table_apply :: proc(t: ^Table, d: ^Table_Data, query: string) {
 		if q != "" {
 			has_keep = false
 			vlist_scroll_to(&t.vl, 0)
+			// (the other views' boxes: the grid's rows, the columns scrolled sideways)
+			vlist_scroll_to(&t.grid, 0)
+			if b := box_from_key(t.cols_key); b != nil { view_jump(b, 0, .X) }
 		}
 	}
 	clear(&t.rows)
@@ -817,6 +843,7 @@ Table_Events :: struct {
 	resized:   bool,   // a column's rule was let go (save the layout)
 	moved:     bool,   // a title was dragged to another place (save the layout)
 	columns:   bool,   // a right click on the header: the columns' menu at the pointer (table_column_items)
+	zoomed:    bool,   // zoom_keys: a zoom key or Ctrl+wheel changed `zoom`, its view or its cards' size (save it)
 }
 
 // The keys of the table while the keyboard is elsewhere in the window (a filter field): call it when no menu or dialog
@@ -826,24 +853,19 @@ table_keys :: proc(t: ^Table) -> (ev: Table_Events) {
 	if n == 0 { return }
 	// (this build's rows: a table_apply since the last build changed them, the list's copy is still the old one)
 	rows := Item_Rows{count = n, ids = t.ids[:]}
-	page := max(t.vl.page_rows - 1, 1)
+	// (by the view: a row of cards in Grid, a name of its column in Columns; Left and Right stay the field's)
+	per, flow, page := table_item_flow(t)
 	// alone, the row the keys go to is selected alone; with Shift (multi), the range from the anchor
 	for mods in ([2]platform.Modifiers{{}, {.Shift}}) {
 		if mods != {} && !t.vl.multi { break }
-		at := t.vl.sel
-		to, moved := at, true
-		switch {
-		case key_press(.Down, mods):              to = at + 1
-		case key_press(.Up, mods):                to = at < 0 ? 0 : at - 1
-		case key_press(.Page_Down, mods):         to = at + page
-		case key_press(.Page_Up, mods):           to = at - page
-		case key_press(.Home, mods + {.Ctrl}):    to = 0
-		case key_press(.End, mods + {.Ctrl}):     to = n - 1
-		case:                                     moved = false
+		Move :: struct { key: platform.Key, mods: platform.Modifiers }
+		for m in ([6]Move{{.Down, mods}, {.Up, mods}, {.Page_Down, mods}, {.Page_Up, mods}, {.Home, mods + {.Ctrl}}, {.End, mods + {.Ctrl}}}) {
+			if !key_press(m.key, m.mods) { continue }
+			to, ok := item_move_target(m.key, t.vl.sel, n, per, flow, page)
+			if !ok { continue }
+			item_selection_move(&t.vl.selection, rows, to, mods)
+			t.vl.reveal = LIST_REVEAL_FRAMES
 		}
-		if !moved { continue }
-		item_selection_move(&t.vl.selection, rows, clamp(to, 0, n - 1), mods)
-		t.vl.reveal = LIST_REVEAL_FRAMES
 	}
 	if t.vl.sel >= 0 {
 		if key_press(.Return) { ev.activated = true }
@@ -855,8 +877,9 @@ table_keys :: proc(t: ^Table) -> (ev: Table_Events) {
 	return
 }
 
-// The header and the rows, in the room `next` gives (else all that is left). `empty`: what the table says when it has
-// no row to show (the caller's words: nothing read yet, nothing matches the filter).
+// The header and the rows, in the room `next` gives (else all that is left), in the view `t.zoom` picks
+// (table_views.odin). `empty`: what the table says when it has no row to show (the caller's words: nothing read yet,
+// nothing matches the filter).
 table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev: Table_Events) {
 	s := gs()
 	em := font_size()
@@ -866,48 +889,106 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 	if m.width == nil { m.width = fill() }
 	if m.height == nil { m.height = fill() }
 	m.axis = .Y
+	// (a view changed in this build builds another box: the keyboard goes to it when the old one had it)
+	key_before := t.vl.key
+	had_keyboard := key_before != 0 && s.focus_key == key_before
+	// (Escape ends a rectangle before the list's keys take it)
+	if t.band.active && key_press(.Escape) { table_band_cancel(t) }
+	if t.zoom_keys {
+		_ = zoom_zone(&t.zone)
+		ev.zoomed = table_zoom_follow(s, t)
+	}
 	next(m)
 	if column(id = id) {
-		if t.header_bg != nil { next({bg = t.header_bg}) }
-		h := table_header("###header", &t.layout, lead_em)
-		ev.sorted, ev.resized, ev.moved, ev.columns = h.sorted, h.resized, h.moved, h.menu
-		row_h := dense(em * (t.row_em > 0 ? t.row_em : TABLE_ROW_EM))
-		least := table_min_width(&t.layout)
-		next({width = fill(), height = fill(), flags = {.View_Scroll_X, .Allow_Overflow_X}})
-		if rows, ok := vlist("###rows", &t.vl, t.ids[:], ids_version = t.ids_version); ok {
-			// (vlist says whether the list has the keyboard; the line below makes `focused` the selection's look)
-			list_keys := t.vl.focused
-			// (the keyboard may be in a filter field, yet the selection is the window's: strong while the window is the user's)
-			t.vl.focused = !inactive()
-			for i in rows.first ..< rows.last {
-				r := t.rows[i]
-				next({width = fill_least(least), height = px(row_h)})
-				row := list_row(&t.vl, i, table_label(d, r))
-				tip := ""
-				if parent(row.box) { tip = table_cells(t, d, r, em, lead_em, row_h) }
-				table_cell_tip(row, tip)
-				if i == t.vl.sel { t.sel_rect = row.box.rect }
-				if row.double_clicked { ev.activated = true }
-				// (list_row made the row the selection, or kept the selection it is in)
-				if row.right_clicked { ev.menu, ev.menu_at = true, mouse_pos() }
-			}
-			// (the Menu key while the list has the keyboard: table_keys only takes it while the keyboard is elsewhere)
-			if list_keys && t.vl.sel >= 0 && (key_press(.Menu) || key_press(.F10, {.Shift})) {
-				ev.menu, ev.keyboard = true, true
-				ev.menu_at = {t.sel_rect.min.x + font_size() * TABLE_MENU_INSET_EM, t.sel_rect.max.y}
-			}
-			if len(t.ids) == 0 && empty != "" {
-				if tags("weak") {
-					next({width = fill(), height = px(em * 5)})
-					if style({text_align = .Center}) { label(fmt.tprintf("%s###empty", text_shown(empty))) }
-				}
-			}
+		switch table_view(t) {
+		case .Details: table_rows_build(t, d, empty, em, lead_em, false, &ev)
+		case .List:    table_rows_build(t, d, empty, em, lead_em, true, &ev)
+		case .Columns: table_columns_build(s, t, d, empty, em, lead_em, &ev)
+		case .Grid:    table_grid_build(s, t, d, empty, em, lead_em, &ev)
 		}
 		if t.vl.activated { ev.activated = true }
-		table_scroll_sync(&t.layout, h.view, &t.vl)
 	}
+	if had_keyboard && t.vl.key != key_before && s.focus_key == key_before { s.focus_key = t.vl.key }
 	return
 }
+
+// Details (the header and the rows of every column shown) or List (`names`: the first cell alone, no header).
+@(private = "file")
+table_rows_build :: proc(t: ^Table, d: ^Table_Data, empty: string, em, lead_em: f32, names: bool, ev: ^Table_Events) {
+	h: Table_Header_Events
+	least: f32
+	if !names {
+		if t.header_bg != nil { next({bg = t.header_bg}) }
+		h = table_header("###header", &t.layout, lead_em)
+		ev.sorted, ev.resized, ev.moved, ev.columns = h.sorted, h.resized, h.moved, h.menu
+		least = table_min_width(&t.layout)
+		next({width = fill(), height = fill(), flags = {.View_Scroll_X, .Allow_Overflow_X}})
+	} else {
+		next({width = fill(), height = fill()})
+	}
+	row_h := dense(em * (t.row_em > 0 ? t.row_em : TABLE_ROW_EM))
+	if rows, ok := vlist("###rows", &t.vl, t.ids[:], ids_version = t.ids_version); ok {
+		// (vlist says whether the list has the keyboard; the line below makes `focused` the selection's look)
+		list_keys := t.vl.focused
+		// (the keyboard may be in a filter field, yet the selection is the window's: strong while the window is the user's)
+		t.vl.focused = !inactive()
+		pressed_row := false
+		for i in rows.first ..< rows.last {
+			r := t.rows[i]
+			next({width = names ? fill() : fill_least(least), height = px(row_h)})
+			row := list_row(&t.vl, i, table_label(d, r))
+			tip := ""
+			if parent(row.box) {
+				if names {
+					table_tone_push(d.tones[r])
+					tip = table_first_cell(t, d, r, em, lead_em, row_h, fill())
+					table_tone_pop(d.tones[r])
+				} else {
+					tip = table_cells(t, d, r, em, lead_em, row_h)
+				}
+			}
+			table_cell_tip(row, tip)
+			if i == t.vl.sel { t.sel_rect = row.box.rect }
+			if row.double_clicked { ev.activated = true }
+			// (list_row made the row the selection, or kept the selection it is in)
+			if row.right_clicked { ev.menu, ev.menu_at = true, mouse_pos() }
+			if row.pressed || row.right_clicked { pressed_row = true }
+		}
+		// (the Menu key while the list has the keyboard: table_keys only takes it while the keyboard is elsewhere)
+		if list_keys { table_menu_key(t, ev) }
+		table_empty(t, empty, em)
+		if t.rubber_band { _ = item_band_update(&t.band, &t.vl.selection, list_rows(&t.vl), parent_box(), {kind = .Rows, vl = &t.vl}, pressed_row) }
+	}
+	if !names { table_scroll_sync(&t.layout, h.view, &t.vl) }
+}
+
+// The Menu key or Shift+F10 on the selected row: its menu, under it.
+@(private)
+table_menu_key :: proc(t: ^Table, ev: ^Table_Events) {
+	if t.vl.sel < 0 || !(key_press(.Menu) || key_press(.F10, {.Shift})) { return }
+	ev.menu, ev.keyboard = true, true
+	ev.menu_at = {t.sel_rect.min.x + font_size() * TABLE_MENU_INSET_EM, t.sel_rect.max.y}
+}
+
+// What the table says when it has no row to show.
+@(private)
+table_empty :: proc(t: ^Table, empty: string, em: f32) {
+	if len(t.ids) > 0 || empty == "" { return }
+	if tags("weak") {
+		next({width = fill(), height = px(em * 5)})
+		if style({text_align = .Center}) { label(fmt.tprintf("%s###empty", text_shown(empty))) }
+	}
+}
+
+// A row's tone: quiet rows in the weak colour, rows in fault in the bad one (table_tone_pop after its cells).
+@(private)
+table_tone_push :: proc(tone: Table_Tone) {
+	if tone == .Dim { push_tags("weak") }
+	if tone == .Bad { push_tags("bad") }
+}
+
+@(private)
+table_tone_pop :: proc(tone: Table_Tone) { if tone != .Normal { pop_tags() } }
 
 // What a screen reader says of a row: its first two cells.
 table_label :: proc(d: ^Table_Data, r: int) -> string {
@@ -919,37 +1000,14 @@ table_label :: proc(d: ^Table_Data, r: int) -> string {
 @(private = "file")
 table_cells :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em, row_h: f32) -> (tip: string) {
 	tone := d.tones[r]
-	if tone == .Dim { push_tags("weak") }
-	if tone == .Bad { push_tags("bad") }
-	defer if tone != .Normal { pop_tags() }
+	table_tone_push(tone)
+	defer table_tone_pop(tone)
 	for k in t.order {
 		if !t.shown[k] { continue }
 		c := t.columns[k]
 		text := table_data_text(d, r, k)
 		if k == 0 {
-			// the first column: the lead (an icon), then the text
-			next({width = table_width(&t.layout, 0), height = pct(1), axis = .X, cross = .Center})
-			if row(id = "###c_first") {
-				spacer(px(em * lead_em * 0.8))
-				if t.lead != nil {
-					// (an icon at the default height; a taller row's lead fills it, less a margin above and below)
-					t.lead(t, r, t.row_em > 0 ? row_h - em * 0.5 : em * 1.5)
-					spacer(px(em * 0.4))
-				}
-				if ranges := table_ranges(&t.layout, text); len(ranges) > 0 {
-					next({width = fill(), height = pct(1), axis = .X, cross = .Center})
-					b := build_box({.Clip}, fmt.tprintf("%s###c0", text_shown(text)))
-					if parent(b) {
-						next({width = fill(), text_pad = 0})
-						table_matched_line(text, ranges)
-					}
-					if text_cut_under_mouse(b, text, 0) { tip = text }
-				} else {
-					next({width = fill(), height = pct(1), text_pad = 0})
-					b := build_box({.Draw_Text, .Clip}, fmt.tprintf("%s###c0", text_shown(text)))
-					if text_cut_under_mouse(b, text, 0) { tip = text }
-				}
-			}
+			if cut := table_first_cell(t, d, r, em, lead_em, row_h, table_width(&t.layout, 0)); cut != "" { tip = cut }
 			continue
 		}
 		if c.weak && tone == .Normal { push_tags("weak") }
@@ -957,5 +1015,35 @@ table_cells :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em, row_h: f32) 
 		if c.weak && tone == .Normal { pop_tags() }
 	}
 	table_row_end()
+	return
+}
+
+// The first cell of data row `r`, `width` wide: the lead (an icon), then the text, what matches the filter lit. Returns
+// its text when the pointer is on it and it is cut. (Details, the names alone, a line of the columns view.)
+@(private)
+table_first_cell :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em, row_h: f32, width: Size) -> (tip: string) {
+	text := table_data_text(d, r, 0)
+	next({width = width, height = pct(1), axis = .X, cross = .Center})
+	if row(id = "###c_first") {
+		spacer(px(em * lead_em * 0.8))
+		if t.lead != nil {
+			// (an icon at the default height; a taller row's lead fills it, less a margin above and below)
+			t.lead(t, r, t.row_em > 0 ? row_h - em * 0.5 : em * 1.5)
+			spacer(px(em * 0.4))
+		}
+		if ranges := table_ranges(&t.layout, text); len(ranges) > 0 {
+			next({width = fill(), height = pct(1), axis = .X, cross = .Center})
+			b := build_box({.Clip}, fmt.tprintf("%s###c0", text_shown(text)))
+			if parent(b) {
+				next({width = fill(), text_pad = 0})
+				table_matched_line(text, ranges)
+			}
+			if text_cut_under_mouse(b, text, 0) { tip = text }
+		} else {
+			next({width = fill(), height = pct(1), text_pad = 0})
+			b := build_box({.Draw_Text, .Clip}, fmt.tprintf("%s###c0", text_shown(text)))
+			if text_cut_under_mouse(b, text, 0) { tip = text }
+		}
+	}
 	return
 }
