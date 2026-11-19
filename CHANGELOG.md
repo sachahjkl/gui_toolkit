@@ -5,6 +5,16 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.330.0] - 2026-11-19 18:18
+
+### Added
+- **The view pieces for a program's own views**: what classeur needed to drop its own code around them.
+  - `Item_Band` leaves the rows that cannot be selected (`Item_Rows.selectable`) as they are and never puts the cursor on one.
+  - `Item_Band.changed` (with `Item_Band.user`) is told each row the band puts in or takes out of the selection, at the press, during the drag and at Escape: a program keeps a sum over the selection row by row.
+  - `thumb_cache_clear` forgets every thumbnail made; the asks out stay and their answers land; safe in a build.
+  - `file_thumbnail_make(path, side, system, allocator)` is the local source's thumbnail work, public for a program's own workers; `system` false leaves the system's cache and thumbnailers alone.
+  - The local source asks the system's thumbnailer for a picture it fails to decode: a WebP in a program built without `IMAGE_WEBP` gets a picture again.
+
 ## [0.329.0] - 2026-11-19 16:42
 
 ### Added
@@ -4632,6 +4642,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.330.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.330.0
 [0.329.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.329.0
 [0.328.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.328.2
 [0.328.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.328.1
