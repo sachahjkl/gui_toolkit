@@ -65,8 +65,8 @@ Check_Step :: enum u8 {
 	Catalogues,      // every catalogue of Build_Options.catalogues
 	Notices,         // NOTICES_FILE up to date
 	Odin_Check,      // odin check of the program for this system
-	Check_Windows,   // the same for Windows, from another system
-	Check_Darwin,    // the same for macOS, from another system
+	Check_Windows,   // the same for Windows, from another system, when the program is built for it (Project.systems)
+	Check_Darwin,    // the same for macOS, from another system, when the program is built for it
 	Tool,            // odin check of the tool (-vet)
 	Tests,           // program_test
 	Release_Build,   // program_build, release
@@ -204,16 +204,18 @@ program_check :: proc(o: Build_Options) -> bool {
 	return true
 }
 
-// The steps of a program's check on `system`.
+// The steps of a program's check on `system`: another system's check only for a system the program is built for
+// (project_systems).
 check_steps :: proc(o: Build_Options, system: runtime.Odin_OS_Type) -> Check_Steps {
 	steps := Check_Steps{.Changelog, .Scopes, .Odin_Check, .Tool, .Tests, .Release_Build}
 	if len(o.checks) > 0 { steps += {.Checks} }
 	if o.catalogues.folder != "" { steps += {.Catalogues} }
 	if o.notices { steps += {.Notices} }
 	// (another system's check runs on an Odin root of links, odin_check: Windows makes none without privileges)
+	systems := project_systems(o.project)
 	if system != .Windows {
-		steps += {.Check_Windows}
-		if system != .Darwin { steps += {.Check_Darwin} }
+		if .Windows in systems { steps += {.Check_Windows} }
+		if system != .Darwin && .Darwin in systems { steps += {.Check_Darwin} }
 	}
 	// (only a Windows build has a launcher and a resource to check)
 	if system == .Windows { steps += {.Launcher} }

@@ -8,7 +8,3 @@ EXE_SUFFIX :: ""
 build_windows :: proc(p: Project) -> bool { return true }
 build_launcher :: proc(p: Project) -> bool { return true }
 check_launcher :: proc(p: Project) -> bool { return true }
-
-// The parts of the native library this system links: the text backend (no DirectWrite here).
-@(private)
-system_native_parts :: proc(p: Project, parts: ^[dynamic]string) { append(parts, "text") }

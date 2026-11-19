@@ -18,8 +18,9 @@ commands from the program's `Project` and a `Build_Options`; the program keeps o
   given (`test pkg.test_a,pkg.test_b`): those tests of the program's package alone, in that order, on one thread.
 - `check`, in this order, cheapest first, so a fault in a fragment is said in a second and not after a release build:
   the changelog and the roadmap, the scopes, the program's own checks, every catalogue, the notices, `odin check` for
-  this system, for the other systems (from Linux: Windows and macOS; from macOS: Windows), of the tool (`-vet`), the
-  tests, a release build, and on Windows its launcher (`check_launcher`: off Windows it has nothing to check).
+  this system, for the other systems of the program (`Project.systems`; from Linux: Windows and macOS; from macOS:
+  Windows), of the tool (`-vet`), the tests, a release build, and on Windows its launcher (`check_launcher`: off Windows
+  it has nothing to check).
 
 The check's steps are a set (`check_steps(o, system)`), not code in a sequence: the test reads them for each system
 without building anything, so a drift such as "this program does not check macOS" fails a test of the toolkit, not a
@@ -75,6 +76,37 @@ papier, classeur, inspecteur and cliche build as they did.
   (the linker flags would overwrite each other, and the toolkit could not test what each option gives); the swap on
   every program by default (it changes what is in `build/` for programs that did not ask); a `strip` step after the
   link (a second program to run and to find, where the linker's `-s` does the same).
+
+## The systems and the native library of a program
+
+opencode native's check could not use these commands: it checked macOS, for which it has no code, and `build_native`
+built the toolkit's Rust library (`native/gt`) that it does not link. Its own Rust library (`ocn_native`) carries the
+toolkit's crates (text on Linux, Mermaid, WebP), so the toolkit's library was two uncached minutes in its CI for
+nothing, and failed in the Nix sandbox: `native/gt`'s `Cargo.lock` wants crates that the program's vendored set lacks.
+
+- **`Project.systems`**: the systems the program is built for, a `Systems` (`bit_set` of `runtime.Odin_OS_Type`).
+  Empty is `SYSTEMS_DEFAULT` (Windows, Linux, macOS): the programs that do not set it check what they checked.
+  `check_steps` reads it through `project_systems(p)`: the check of another system is a step only for a system in the
+  set. The check of this system does not read it: a check on a system the program does not name fails at its first
+  odin step, which says so better than a skip.
+- **`Project.native_carried`**: the program's own Rust library (one of `crates`) carries the toolkit's native crates.
+  `build_native` then builds no part of the toolkit's library; it still makes what the program needs from the toolkit
+  apart from Rust: on Windows the resource and the console launcher (`build_windows`), and the Lucide subset.
+  `native_parts(p, target)` is the list of parts, a pure procedure: the test reads it for each system and each option,
+  with no build.
+- **One switch, not a set of carried parts.** The program's library carries every toolkit crate it links, or none: no
+  program links a part from each. A set would be a second list to keep in step with the program's `Cargo.toml`.
+- **The defines stay the program's.** A program that carries a crate builds with its `*_NATIVE_LINK=false` define
+  (`FONT_NATIVE_LINK`, `MERMAID_NATIVE_LINK`, `IMAGE_WEBP_NATIVE_LINK`) in `Project.defines`. `native_carried` does not
+  derive them from `features`: the program's `Cargo.toml` decides what its library carries (opencode native carries
+  WebP through its own defines, not through `Feature.Webp`), and the toolkit cannot read that choice.
+- **The notices read the program's manifests only.** With `native_carried`, the notices skip the toolkit's
+  `native_crates(features)`: the program's library walks the same crates through its own `Cargo.toml` (`crates`), and
+  the toolkit's lock files want crates the program's vendoring does not have (`cargo metadata --locked` failed in
+  opencode native's Nix sandbox, as its build did).
+- Refused: a `build_native` per program (the second routine again); macOS removed from the default set (papier,
+  classeur, inspecteur and cliche check it today); `systems` read from the sources' file suffixes (a program's `_other`
+  files say nothing of which systems it ships for).
 
 ## One file writer
 
