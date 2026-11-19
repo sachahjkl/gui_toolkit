@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.328.0] - 2026-11-19 02:08
+
+### Added
+- **`Project.native_carried` and `Project.systems`**: a program whose own Rust library carries the toolkit's native crates
+sets `native_carried`, and `build_native` then builds none of the toolkit's library (`native_parts`): only the Windows
+resource, the console launcher and the Lucide subset. `systems` names the systems the program is built for (`{}`:
+Windows, Linux and macOS, as before): `check` checks only those other systems (`project_systems`).
+
 ## [0.327.0] - 2026-11-18 23:51
 
 ### Changed
@@ -4595,6 +4603,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.328.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.328.0
 [0.327.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.327.0
 [0.326.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.326.0
 [0.325.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.325.0

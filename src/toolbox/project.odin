@@ -41,6 +41,10 @@ Project :: struct {
 	crates:        []string,      // its own Rust libraries, for its notices: their Cargo.toml, relative to its root
 	                              // ("native/ocn_native/Cargo.toml")
 	works:         []Project_Work,// what else it links or embeds, for its notices (libghostty-vt)
+	// one of its own Rust libraries carries the toolkit's native crates: build_native builds none of the toolkit's
+	// (native_parts); the program's defines say which crates it carries (FONT_NATIVE_LINK=false...)
+	native_carried: bool,
+	systems:       Systems,       // the systems it is built for ({}: SYSTEMS_DEFAULT): the check of each other one
 
 	// What Windows shows of the program: its resource (windows_resource.odin) and the group of its windows.
 	title:         string,        // the program as people read it ("Papier"; "": name): the file's description, which
@@ -66,6 +70,14 @@ Feature :: enum u8 {
 	Pdf,                // PDF files opened, rendered and written (GT_PDF=true, native/pdf): gt:pdf, hayro built into the program
 }
 Features :: bit_set[Feature; u8]
+
+// The systems a program is built for (Project.systems).
+Systems :: bit_set[runtime.Odin_OS_Type]
+// What a program that names none is built for: what every program checked before Project.systems.
+SYSTEMS_DEFAULT :: Systems{.Windows, .Linux, .Darwin}
+
+// The systems the program is built for: Project.systems, else SYSTEMS_DEFAULT.
+project_systems :: proc(p: Project) -> Systems { return card(p.systems) > 0 ? p.systems : SYSTEMS_DEFAULT }
 
 // What the linker gets beyond the toolkit's own flags. Every field is off by default.
 Link :: struct {
@@ -239,30 +251,40 @@ native_crates :: proc(features: Features) -> []string {
 project_src :: proc(p: Project) -> string { return p.src != "" ? p.src : "src" }
 
 // What the program needs built before an odin command of it: on Windows its resource and console launcher
-// (build_windows); the toolkit's native library with the parts this system links (the text backend on Linux, or with
-// Native_Text; AccessKit on Windows; Mermaid; WebP), by the toolkit's own tool in the project's checkout of it (nothing
-// when it is up to date); and the Lucide subset (lucide_subset).
+// (build_windows); the toolkit's native library with native_parts, by the toolkit's own tool in the project's checkout
+// of it (nothing when it is up to date, or with no part); and the Lucide subset (lucide_subset).
 build_native :: proc(p: Project) -> bool {
 	if !build_windows(p) { return false }
 	gt := toolkit_dir(p)
-	parts := make([dynamic]string, context.temp_allocator)
-	system_native_parts(p, &parts)   // (project_windows.odin, project_unix.odin)
-	if .Mermaid in p.features { append(&parts, "mermaid") }
-	if .Webp in p.features { append(&parts, "webp") }
-	if .Pdf in p.features { append(&parts, "pdf") }
+	parts := native_parts(p, ODIN_OS)
 	if len(parts) > 0 {
 		_ = os.make_directory_all(fmt.tprintf("%s/build", gt))   // (a fresh checkout has none: the linker writes tk there)
 		root, err := os.get_absolute_path(gt, context.temp_allocator)
 		if err != nil { fmt.eprintfln("%s: no such folder", gt); return false }
 		tk := fmt.tprintf("%s/build/tk%s", root, EXE_SUFFIX)
 		if !run({"odin", "build", "tools/tk", fmt.tprintf("-out:%s", tk)}, {dir = gt, echo = true}) { return false }
-		features := fmt.tprintf("-features:%s", strings.join(parts[:], ",", context.temp_allocator))
+		features := fmt.tprintf("-features:%s", strings.join(parts, ",", context.temp_allocator))
 		if !run({tk, "build_native", features}, {dir = gt, echo = true}) { return false }
 	}
 	if .Lucide_Subset in p.features {
 		if _, why := lucide_subset(p); why != "" { fmt.eprintln(why); return false }
 	}
 	return true
+}
+
+// The parts of the toolkit's native library (tk build_native -features:) a program built for `target` links: the text
+// backend (on Windows only with Native_Text: DirectWrite is the default there), AccessKit on Windows, Mermaid, WebP, PDF.
+// None with Project.native_carried: the program's own Rust library carries them. A procedure of the target, not of
+// ODIN_OS: the test reads every system's from one.
+native_parts :: proc(p: Project, target: runtime.Odin_OS_Type) -> []string {
+	parts := make([dynamic]string, context.temp_allocator)
+	if p.native_carried { return parts[:] }
+	if target != .Windows || .Native_Text in p.features { append(&parts, "text") }
+	if target == .Windows && .Accessibility in p.features { append(&parts, "a11y") }
+	if .Mermaid in p.features { append(&parts, "mermaid") }
+	if .Webp in p.features { append(&parts, "webp") }
+	if .Pdf in p.features { append(&parts, "pdf") }
+	return parts[:]
 }
 
 // `odin check` of the program for Windows, from any system (odin_check: from Linux, on an Odin root whose wgpu needs

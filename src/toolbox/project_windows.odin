@@ -72,10 +72,3 @@ check_launcher :: proc(p: Project) -> bool {
 system_odin_flags :: proc(p: Project, verb, pkg: string, cmd: ^[dynamic]string) {
 	append(cmd, ..windows_flags(p, (verb == "build" || verb == "run") && pkg == ""))
 }
-
-// The parts of the native library this system links: the text backend when asked (DirectWrite is the default), AccessKit.
-@(private)
-system_native_parts :: proc(p: Project, parts: ^[dynamic]string) {
-	if .Native_Text in p.features { append(parts, "text") }
-	if .Accessibility in p.features { append(parts, "a11y") }
-}
