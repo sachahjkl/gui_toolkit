@@ -155,6 +155,8 @@ File_Browser :: struct {
 
 	preview:      File_Preview,
 	memory:       File_Memories,
+	// the cards' pictures (thumbnails.odin): kept from one dialog to the next, freed with the browser
+	thumbs:       Thumb_Cache,
 }
 
 // The browser of `s`, made at its first use.
@@ -185,6 +187,7 @@ file_browser_of :: proc(s: ^State) -> ^File_Browser {
 	fb.table.lead_em = 0.4
 	fb.table.lead_user = fb
 	fb.table.vl.no_typeahead = true   // (what is typed goes to the filter)
+	thumb_cache_init(&fb.thumbs)
 	s.files = fb
 	return fb
 }
@@ -214,6 +217,7 @@ file_browser_destroy :: proc(s: ^State) {
 	file_find_stop(fb)
 	file_find_stop_release(fb.find_stop)
 	file_preview_destroy(fb)
+	thumb_cache_destroy(&fb.thumbs)
 	delete(fb.instance, a)
 	free(fb, a)
 	s.files = nil
@@ -544,6 +548,7 @@ file_browser_failed :: proc(fb: ^File_Browser, kind: File_Reply_Kind, ticket: u6
 		file_preview_failed(fb, ticket, message)
 	case .Find:
 		_ = remote.answer(&fb.finding, ticket, refused ? .Refused : .Failed, message)
+	case .Thumbnail:   // (file_reply_failed gives it to the thumbnails)
 	}
 }
 

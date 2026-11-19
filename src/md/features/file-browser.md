@@ -91,6 +91,8 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   dialog stays open).
 - **`start_known` is the source's to answer** (`File_Source.known`), after `start_dir` and the dialog's memory: only
   the computer's source has a Downloads folder, and it reads it with its places, on the chores (downloads.md).
+- **A thumbnail is a call of the source, kept in the browser's `Thumb_Cache`** ([thumbnails.md](thumbnails.md)). Its
+  answer is the only one not dropped by the dialog's serial: a file's picture is good for the next dialog too.
 - **A picture's texture is made at the first draw.** The build has no renderer; the draw callback has it.
 - **`dialog_test_hook` still answers for the computer's files.** The end-to-end tests of programs set it.
 - **The memory is in memory for the run; a file only when the program gives one** (`file_dialog_memory`). The toolkit

@@ -39,6 +39,7 @@ local_files :: proc() -> File_Source {
 		places      = local_places,
 		start       = local_start,
 		known       = local_known,
+		thumbnail   = local_thumbnail,
 	}
 }
 

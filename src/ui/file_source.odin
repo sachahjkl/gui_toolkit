@@ -34,7 +34,7 @@ File_Entry :: struct {
 }
 
 // What a reply answers.
-File_Reply_Kind :: enum u8 { List, Read, Make, Find }
+File_Reply_Kind :: enum u8 { List, Read, Make, Find, Thumbnail }
 
 // The way back of one call of a source: give it to the file_reply_ procedure that answers, on the interface's thread.
 // It is a value: keep it as long as the work takes (it holds no memory).
@@ -68,6 +68,10 @@ File_Source :: struct {
 	// `allocator`; "": none, or not known yet. nil: a source with no such folders (a server's); the dialog starts as if
 	// start_known were None.
 	known:       proc(src: ^File_Source, folder: platform.Known_Folder, allocator: mem.Allocator) -> string,
+	// A picture of the file `path`, at most `px` pixels on its longer side, for a card of the grid
+	// (file_reply_thumbnail; none: file_reply_failed). Answer every call: an ask without an answer holds a slot of the
+	// browser's thumbnails. nil: the cards show the kind's icon.
+	thumbnail:   proc(src: ^File_Source, path: string, px: int, reply: File_Reply),
 }
 
 // The entries of the folder asked. They are copied: the source frees its own after the call.
@@ -93,10 +97,21 @@ file_reply_found :: proc(reply: File_Reply, entries: []File_Entry) {
 	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Find { file_browser_found(fb, reply.ticket, entries) }
 }
 
+// The thumbnail asked: `rgba` (straight RGBA8, row by row, `width` * `height` * 4 bytes) is copied. It goes to the
+// browser's thumbnails whatever dialog asked: a file's picture is good for the next dialog too.
+file_reply_thumbnail :: proc(reply: File_Reply, rgba: []u8, width, height: int) {
+	if reply.kind != .Thumbnail || reply.state == nil || reply.state.files == nil { return }
+	thumb_cache_answer(&reply.state.files.thumbs, reply.ticket, rgba, width, height)
+}
+
 // The call did not end well: `message` is what the person reads (the source's words, in the language in use).
 // `refused`: the source said no (no right to read it); `missing`: what was asked is not there (a folder deleted since: the
-// browser goes up to the nearest one that is).
+// browser goes up to the nearest one that is). A thumbnail's: the card keeps its icon (the message is not shown).
 file_reply_failed :: proc(reply: File_Reply, message: string, refused := false, missing := false) {
+	if reply.kind == .Thumbnail {
+		if reply.state != nil && reply.state.files != nil { thumb_cache_failed(&reply.state.files.thumbs, reply.ticket) }
+		return
+	}
 	fb := file_reply_browser(reply)
 	if fb == nil { return }
 	if reply.bar { file_browser_bar_failed(fb, reply.ticket, message) } else { file_browser_failed(fb, reply.kind, reply.ticket, message, refused, missing) }

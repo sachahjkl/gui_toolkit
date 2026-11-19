@@ -152,6 +152,7 @@ File_Source :: struct {
 	places:      proc(src: ^File_Source, allocator: mem.Allocator) -> []platform.File_Place,  // cheap: what it knows already
 	start:       proc(src: ^File_Source, allocator: mem.Allocator) -> string,        // where a dialog starts with no folder known ("": the source's first place)
 	known:       proc(src: ^File_Source, folder: platform.Known_Folder, allocator: mem.Allocator) -> string,  // a dialog's start_known ("": none; nil: no such folders)
+	thumbnail:   proc(src: ^File_Source, path: string, px: int, reply: File_Reply),  // a card's picture (nil: the kind's icon)
 }
 ```
 
@@ -185,6 +186,30 @@ come on the interface's thread).
 
 `examples/showcase/files.odin` is a whole source in memory, one table of folders and files that answers each call at
 once: a start for a program's own source.
+
+### Thumbnails
+
+`thumbnail` (nil: the cards show the kind's icon) answers `file_reply_thumbnail(reply, rgba, width, height)` with a
+picture of the file at most `px` pixels on its longer side: straight RGBA8, row by row, copied by the browser. With no
+picture, it answers `file_reply_failed(reply, "")`: the card keeps its icon. Answer every call: an ask without an answer
+holds one of the browser's slots. A thumbnail's answer counts whatever dialog asked (a file's picture is good for the
+next one too).
+
+`local_files()`'s, on the chores: PNG, JPEG, BMP, WebP and a GIF's first frame are decoded (`gt:image`) and reduced; a
+picture over `FILE_THUMB_CACHED_BYTES` (2 MiB) is read from the system's cache first (`desktop.thumbnail_cached`) and
+kept there once made (`desktop.thumbnail_store`, Linux); another type, or a picture over `FILE_THUMB_DECODE_BYTES`
+(64 MiB), gets the system's thumbnail (`desktop.thumbnail`: its cache, else its thumbnailer).
+
+The browser keeps them in a `Thumb_Cache` (`src/ui/thumbnails.odin`), which any view of items can use:
+
+| Procedure | |
+|---|---|
+| `thumb_cache_init(c, Thumb_Options{side, most_count, most_bytes, asks})`, `thumb_cache_destroy(c)` | 0: the defaults (256 px, 400 entries, 48 MiB, 2 asks out at a time) |
+| `thumb_key(path, size, modified)` | a file's key: a file changed gets another thumbnail |
+| `thumb_cache_get(c, key, path)` | in each card built: the entry (`Waiting`, `Asked`, `Ready`, `Failed`), marked used; a new one waits for its ask |
+| `thumb_cache_frame(c, ask, user)` | after the cards: the waiting asks sent newest first while fewer than `asks` are out (a card not built for `THUMB_STALE_FRAMES` builds is dropped instead); over the budget, the least used go, never one used in the last `THUMB_KEEP_FRAMES` builds |
+| `thumb_cache_answer(c, ticket, rgba, w, h)`, `thumb_cache_failed(c, ticket)` | the answer of an ask (an unknown ticket is ignored) |
+| `thumb_picture(id, t, radius)` | a `Ready` entry in the box `next` gives: fitted, centred, never enlarged; its texture made at its first draw |
 
 The paths of any separator are read by `file_path_root`, `file_path_parent`, `file_path_name`, `file_path_clean`,
 `file_path_parts`, `file_path_within`, and joined by `fsx.path_join` (docs/fsx.md); `file_entry_hidden`, `file_entry_look` and `file_look_icon`
