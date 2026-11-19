@@ -46,8 +46,10 @@
 - **Colours by intent in opencode native.** Its 85 `HEX_*` constants become the theme's intents and hues, so a theme
   changes them all, as cliche's graph colours do since its 0.8.
 - **No test that crashes by chance on Linux.** Two CI runs stopped on an illegal instruction (an assertion or a bounds
-  check) that no local run made again: once in `plugins`, once in `process` (`each_signal_is_its_own`). A crashed
-  package's log now has its crash reports and the runtime's words before the trap: the next one names its place.
+  check) that no local run made again: once in `plugins`, twice in `process` (`each_signal_is_its_own`, each time
+  while another test of the package started a child). `process` now runs one test at a time, as `os.process_start` is
+  not safe from two threads; the plugins' starts were serialized already. Left: on Linux a crash's log still has no
+  report of its place (the crash handler is installed on Windows only, as on Linux it caught `fail_now`'s trap).
 
 ## Later
 
