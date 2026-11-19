@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.331.1] - 2026-11-19 22:09
+
+### Fixed
+- **Smooth animations on Wayland**: an animation (a palette that opens, a view that changes, a switch's move) goes on at
+each refresh of the screen with no input, at its own speed. It moved only while the pointer moved, or a few pictures a
+second: a 300 ms animation took four seconds.
+
 ## [0.331.0] - 2026-11-19 19:15
 
 ### Changed
@@ -4649,6 +4656,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.331.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.331.1
 [0.331.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.331.0
 [0.330.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.330.0
 [0.329.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.329.0
