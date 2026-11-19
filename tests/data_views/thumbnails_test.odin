@@ -1,12 +1,16 @@
 // The thumbnails' cache (ui.Thumb_Cache, src/md/features/thumbnails.md): only the cards built ask, the newest first, a
 // few at a time; an ask whose card is no longer built is dropped; an answer makes the entry Ready, a failure Failed and
-// not asked again; over the count, the least used go, never one built now.
+// not asked again; over the count, the least used go, never one built now; a clear drops what was made and keeps the
+// asks out. The local work (file_thumbnail_make) reduces a real PNG without the system.
 //   odin test tests/data_views -collection:gt=src -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 package data_views_test
 
 import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:testing"
+import "gt:png"
+import "gt:testkit"
 import "gt:testkit/session"
 import "gt:ui"
 
@@ -19,6 +23,7 @@ Thumbs_App :: struct {
 	first, last: int,               // the cards built
 	asked:       [dynamic]Asked,    // what the cache sent, in order (paths owned)
 	ready:       int,               // the cards built whose entry is Ready (last build)
+	clear:       bool,              // the next build clears the cache after its cards
 }
 
 @(private = "file")
@@ -39,6 +44,10 @@ thumbs_build :: proc(s: ^session.Session) {
 			ui.next({width = ui.px(64), height = ui.px(64)})
 			ui.thumb_picture(fmt.tprintf("###thumb%d", i), t)
 		}
+	}
+	if app.clear {
+		ui.thumb_cache_clear(&app.c)
+		app.clear = false
 	}
 	ui.thumb_cache_frame(&app.c, thumbs_ask, app)
 }
@@ -135,4 +144,77 @@ over_the_count_the_least_used_go_never_one_shown :: proc(t: ^testing.T) {
 		e, ok := app.c.entries[key]
 		testing.expectf(t, ok && e.state == .Ready, "card %d shown: kept", i)
 	}
+}
+
+@(test)
+a_clear_drops_what_was_made_and_keeps_the_asks_out :: proc(t: ^testing.T) {
+	app := Thumbs_App{first = 0, last = 2}
+	ui.thumb_cache_init(&app.c, {asks = 2})
+	defer thumbs_destroy(&app)
+	s := session.start(t, {build = thumbs_build, user = &app, no_renderer = true})
+	session.frame(s)
+	testing.expect_value(t, len(app.asked), 2)
+	if len(app.asked) < 2 { return }
+	// f1 answered, f0 still out
+	px := [16]u8{}
+	ui.thumb_cache_answer(&app.c, app.asked[0].ticket, px[:], 2, 2)
+	session.frame(s)
+	testing.expect_value(t, app.ready, 1)
+	// a clear between two builds: gone at the next build's first card
+	ui.thumb_cache_clear(&app.c)
+	session.frame(s)
+	testing.expect_value(t, app.ready, 0)
+	testing.expect_value(t, app.c.held, 0)
+	f0 := ui.thumb_key("/pictures/f0.png", 100, 7)
+	e, ok := app.c.entries[f0]
+	testing.expect(t, ok && e.state == .Asked, "the ask out kept")
+	// (f1 asked again; f0's ask still holds its slot: two out, not three)
+	testing.expect_value(t, len(app.asked), 3)
+	testing.expect_value(t, len(app.c.by_ticket), 2)
+	if len(app.asked) < 3 { return }
+	testing.expect_value(t, app.asked[2].path, "/pictures/f1.png")
+	// the answer of the ask sent before the clear lands
+	ui.thumb_cache_answer(&app.c, app.asked[1].ticket, px[:], 2, 2)
+	session.frame(s)
+	testing.expect_value(t, app.ready, 1)
+	// a clear in a build, after its cards: the entry its draw reads stays for this frame, goes at the next build
+	app.clear = true
+	session.frame(s)
+	e, ok = app.c.entries[f0]
+	testing.expect(t, ok && e.state == .Ready, "kept for the draw of the build that cleared")
+	session.frame(s)
+	testing.expect_value(t, app.ready, 0)
+	testing.expect_value(t, len(app.asked), 4)
+	if len(app.asked) < 4 { return }
+	testing.expect_value(t, app.asked[3].path, "/pictures/f0.png")
+}
+
+@(test)
+a_png_makes_its_thumbnail_without_the_system :: proc(t: ^testing.T) {
+	dir := testkit.temp_folder(t, "thumbnail")   // (freed by its cleanup)
+	w, h := 40, 20
+	pixels := make([]u8, w * h * 4)
+	defer delete(pixels)
+	for i in 0 ..< w * h { pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2], pixels[i * 4 + 3] = 200, 10, 10, 255 }
+	data := png.encode(pixels, w, h)
+	defer delete(data)
+	path := fmt.tprintf("%s/red.png", dir)
+	testing.expect(t, os.write_entire_file(path, data) == nil)
+	// larger than the side: reduced, its ratio kept, its colour kept (a box filter of one colour)
+	rgba, tw, th, ok := ui.file_thumbnail_make(path, 10, system = false)
+	defer delete(rgba)
+	testing.expect(t, ok, "a PNG is made without the system")
+	testing.expect_value(t, tw, 10)
+	testing.expect_value(t, th, 5)
+	testing.expect_value(t, len(rgba), 10 * 5 * 4)
+	if len(rgba) >= 4 { testing.expectf(t, rgba[0] >= 198 && rgba[0] <= 202 && rgba[3] == 255, "the colour kept: %v", rgba[:4]) }
+	// smaller than the side: as it is
+	full, fw, fh, full_ok := ui.file_thumbnail_make(path, 256, system = false)
+	defer delete(full)
+	testing.expect(t, full_ok && fw == w && fh == h, "a small picture as it is")
+	// a file gt:image cannot read, the system not asked: none
+	text := fmt.tprintf("%s/notes.txt", dir)
+	testing.expect(t, os.write_entire_file(text, transmute([]u8)string("words")) == nil)
+	_, _, _, text_ok := ui.file_thumbnail_make(text, 64, system = false)
+	testing.expect(t, !text_ok, "another type without the system: none")
 }

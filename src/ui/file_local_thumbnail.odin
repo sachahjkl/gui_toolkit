@@ -1,8 +1,9 @@
 package ui
 
 // The local source's thumbnails (src/md/features/thumbnails.md), on the chores: a picture gt:image reads is decoded and
-// reduced (a large one read from the system's cache first, and kept there once made); any other file gets the
-// system's thumbnail (its cache, else its thumbnailer).
+// reduced (a large one read from the system's cache first, and kept there once made); any other file, or a picture it
+// fails to decode, gets the system's thumbnail (its cache, else its thumbnailer). file_thumbnail_make is that work,
+// public: a program with workers of its own makes its thumbnails by the same rules.
 
 import "base:runtime"
 import "core:os"
@@ -34,7 +35,8 @@ local_thumbnail :: proc(src: ^File_Source, path: string, px: int, reply: File_Re
 	task(reply.state, local_thumb_work, local_thumb_done, j, local_thumb_lost)
 }
 
-// Whether gt:image reads a file of this name (by its extension).
+// Whether gt:image reads a file of this name (by its extension). (A WebP in a program built without IMAGE_WEBP is
+// listed too: its decode fails and the system is asked, as for a damaged file.)
 @(private = "file")
 local_thumb_decodes :: proc(name: string) -> bool {
 	switch file_extension(name) {
@@ -43,59 +45,73 @@ local_thumb_decodes :: proc(name: string) -> bool {
 	return false
 }
 
-@(private = "file")
-local_thumb_work :: proc(d: rawptr) {
-	j := (^Local_Thumb)(d)
+// The thumbnail of the file at `path`, at most `side` pixels on its longer side, its ratio kept: straight RGBA8, row by
+// row, in `allocator`. `system` false: neither the system's cache nor its thumbnailer (a test, a program headless: the
+// person's cache left alone), so only what gt:image decodes. Disk work, and the thumbnailer may take seconds: never on
+// the interface's thread.
+file_thumbnail_make :: proc(path: string, side: int, system: bool, allocator := context.allocator) -> (rgba: []u8, w, h: int, ok: bool) {
+	px := max(side, 1)
+	// (the heap's, freed here: a worker's temporary memory is not freed between its jobs)
 	a := runtime.heap_allocator()
-	info, err := os.stat(j.path, a)
+	info, err := os.stat(path, a)
 	if err != nil { return }
 	size := info.size
 	is_file := info.type == .Regular
 	os.file_info_delete(info, a)
 	if !is_file || size <= 0 { return }
-	if !local_thumb_decodes(j.path) || size > FILE_THUMB_DECODE_BYTES {
-		local_thumb_system(j, false)
+	if !local_thumb_decodes(path) || size > FILE_THUMB_DECODE_BYTES {
+		if system { return file_thumb_system(path, px, false, allocator) }
 		return
 	}
 	// (a large picture: decoding it again costs more than reading the system's copy)
-	large := size > FILE_THUMB_CACHED_BYTES
-	if large && local_thumb_system(j, true) { return }
-	bytes, read_err := os.read_entire_file(j.path, a)
+	large := system && size > FILE_THUMB_CACHED_BYTES
+	if large {
+		rgba, w, h, ok = file_thumb_system(path, px, true, allocator)
+		if ok { return }
+	}
+	bytes, read_err := os.read_entire_file(path, a)
 	if read_err != nil { return }
 	defer delete(bytes, a)
-	pic, _, ok := img.decode(bytes, a)
-	if !ok { return }
-	defer delete(pic.pixels, a)
-	// at most `side` on its longer side, its ratio kept (a smaller one as it is)
-	w, h := pic.width, pic.height
-	if max(w, h) > j.side {
-		k := f32(j.side) / f32(max(w, h))
-		w, h = max(1, int(f32(w) * k + 0.5)), max(1, int(f32(h) * k + 0.5))
-		small := img.resize(pic, w, h, .Box, a)
-		j.rgba, j.width, j.height = small.pixels, small.width, small.height
-	} else {
-		j.rgba = make([]u8, len(pic.pixels), a)
-		copy(j.rgba, pic.pixels)
-		j.width, j.height = w, h
+	pic, _, decoded := img.decode(bytes, a)
+	if !decoded {
+		// (a WebP in a program built without its decoder, a picture gt:image cannot read: the system may)
+		if system { return file_thumb_system(path, px, false, allocator) }
+		return
 	}
-	if large { _ = desktop.thumbnail_store(j.path, j.rgba, j.width, j.height) }
+	defer delete(pic.pixels, a)
+	w, h = pic.width, pic.height
+	if max(w, h) > px {
+		k := f32(px) / f32(max(w, h))
+		w, h = max(1, int(f32(w) * k + 0.5)), max(1, int(f32(h) * k + 0.5))
+		small := img.resize(pic, w, h, .Box, allocator)
+		rgba, w, h = small.pixels, small.width, small.height
+	} else {
+		rgba = make([]u8, len(pic.pixels), allocator)
+		copy(rgba, pic.pixels)
+	}
+	if large { _ = desktop.thumbnail_store(path, rgba, w, h) }
+	return rgba, w, h, true
 }
 
-// The system's thumbnail of the job's file: from its cache only (`cached`), or made by its thumbnailer on a miss (this
-// chore waits for it). False: it has none.
+// The system's thumbnail of `path`: from its cache only (`cached`), or made by its thumbnailer on a miss (the caller's
+// thread waits for it).
 @(private = "file")
-local_thumb_system :: proc(j: ^Local_Thumb, cached: bool) -> bool {
-	a := runtime.heap_allocator()
+file_thumb_system :: proc(path: string, side: int, cached: bool, allocator: runtime.Allocator) -> (rgba: []u8, w, h: int, ok: bool) {
 	th: desktop.Thumbnail
-	ok: bool
 	if cached {
-		th, ok = desktop.thumbnail_cached(j.path, j.side, a)
+		th, ok = desktop.thumbnail_cached(path, side, allocator)
 	} else {
-		th, ok = desktop.thumbnail(j.path, j.side, a)
+		th, ok = desktop.thumbnail(path, side, allocator)
 	}
-	if !ok { return false }
-	j.rgba, j.width, j.height = th.rgba, th.size.x, th.size.y
-	return true
+	if !ok { return }
+	return th.rgba, th.size.x, th.size.y, true
+}
+
+@(private = "file")
+local_thumb_work :: proc(d: rawptr) {
+	j := (^Local_Thumb)(d)
+	rgba, w, h, ok := file_thumbnail_make(j.path, j.side, true, runtime.heap_allocator())
+	if ok { j.rgba, j.width, j.height = rgba, w, h }
 }
 
 // The answer, on the interface's thread: the pixels, or none (the card keeps its icon).

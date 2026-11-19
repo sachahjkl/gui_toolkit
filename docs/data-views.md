@@ -283,6 +283,12 @@ A program's own view of items uses the parts:
 | `item_band_begin(band, box, sel, removing)` | Ctrl and a press on an item: a rectangle from there |
 | `item_band_cancel(band, sel, rows)` | Escape: the selection there was |
 
+The band leaves the rows that cannot be selected (`Item_Rows.selectable`) as they are, and never puts the cursor on one.
+A program that keeps a sum over the selection (bytes, a count by kind) sets `Item_Band.changed` and `Item_Band.user`
+once: `changed(user, row, now_selected)` is called for each row the band puts in or takes out of the selection, as it
+does, at the press (the selection there was cleared, without Ctrl), during the drag and at Escape. A table's band is
+`Table.band`.
+
 ## Type to filter (`src/ui/type_to_field.odin`)
 
 `type_to_field(field)` gives the keyboard to one field (a filter, a search box) when a printable character was typed in

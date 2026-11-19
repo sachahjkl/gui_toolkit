@@ -205,8 +205,14 @@ next one too).
 
 `local_files()`'s, on the chores: PNG, JPEG, BMP, WebP and a GIF's first frame are decoded (`gt:image`) and reduced; a
 picture over `FILE_THUMB_CACHED_BYTES` (2 MiB) is read from the system's cache first (`desktop.thumbnail_cached`) and
-kept there once made (`desktop.thumbnail_store`, Linux); another type, or a picture over `FILE_THUMB_DECODE_BYTES`
-(64 MiB), gets the system's thumbnail (`desktop.thumbnail`: its cache, else its thumbnailer).
+kept there once made (`desktop.thumbnail_store`, Linux); another type, a picture over `FILE_THUMB_DECODE_BYTES`
+(64 MiB), or a picture `gt:image` fails to decode (a WebP in a program built without `IMAGE_WEBP`), gets the system's
+thumbnail (`desktop.thumbnail`: its cache, else its thumbnailer).
+
+That work is `file_thumbnail_make(path, side, system, allocator) -> (rgba, w, h, ok)`, for a program that makes
+thumbnails on its own workers: straight RGBA8 at most `side` pixels on its longer side, in `allocator`. `system` false
+neither reads nor writes the system's cache and never runs its thumbnailer (a test, a program headless). It reads the
+disk and may wait for a thumbnailer: call it off the interface's thread.
 
 The browser keeps them in a `Thumb_Cache` (`src/ui/thumbnails.odin`), which any view of items can use:
 
@@ -217,6 +223,7 @@ The browser keeps them in a `Thumb_Cache` (`src/ui/thumbnails.odin`), which any 
 | `thumb_cache_get(c, key, path)` | in each card built: the entry (`Waiting`, `Asked`, `Ready`, `Failed`), marked used; a new one waits for its ask |
 | `thumb_cache_frame(c, ask, user)` | after the cards: the waiting asks sent newest first while fewer than `asks` are out (a card not built for `THUMB_STALE_FRAMES` builds is dropped instead); over the budget, the least used go, never one used in the last `THUMB_KEEP_FRAMES` builds |
 | `thumb_cache_answer(c, ticket, rgba, w, h)`, `thumb_cache_failed(c, ticket)` | the answer of an ask (an unknown ticket is ignored) |
+| `thumb_cache_clear(c)` | every thumbnail made (`Ready`, `Failed`) forgotten: the cards shown ask again. The asks out stay and their answers land. Safe in a build: the entries go once no draw reads them |
 | `thumb_picture(id, t, radius)` | a `Ready` entry in the box `next` gives: fitted, centred, never enlarged; its texture made at its first draw |
 
 The paths of any separator are read by `file_path_root`, `file_path_parent`, `file_path_name`, `file_path_clean`,

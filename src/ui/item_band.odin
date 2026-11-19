@@ -7,7 +7,8 @@ package ui
 // view's content (it scrolls with the items) and drawn over them in a floating box.
 //
 // Any view of items uses it: a Table in each of its views, a program's own grid. It reads where the items are from an
-// Item_Band_Layout and changes an Item_Selection over Item_Rows; it tests only the items the rectangle may touch.
+// Item_Band_Layout and changes an Item_Selection over Item_Rows; it tests only the items the rectangle may touch. It
+// leaves the rows that cannot be selected (Item_Rows.selectable) as they are, and tells `changed` each row it changes.
 
 import "core:math"
 
@@ -28,7 +29,13 @@ Item_Band_Layout :: struct {
 	row_h:  f32,
 }
 
+// A row went in (`now_selected`) or out of the selection by the band: called once per change, as it happens.
+Item_Band_Changed :: #type proc(user: rawptr, row: int, now_selected: bool)
+
 Item_Band :: struct {
+	// the program's: told each row the band changes (nil: none), for a sum it keeps over the selection
+	changed:  Item_Band_Changed,
+	user:     rawptr,
 	active:   bool,
 	start:    Vec2,                // where it started, in the box's content
 	base:     map[u64]struct{},    // the selection at the press, by identity (Ctrl adds to it; Escape gives it back)
@@ -42,6 +49,14 @@ Item_Band :: struct {
 item_band_destroy :: proc(b: ^Item_Band) {
 	delete(b.base)
 	b^ = {}
+}
+
+// Row `i` in the selection or not, the program told when it changed.
+@(private = "file")
+item_band_set :: proc(b: ^Item_Band, sel: ^Item_Selection, rows: Item_Rows, i: int, on: bool) {
+	if item_selection_has(sel, rows, i) == on { return }
+	item_selection_set(sel, rows, i, on)
+	if b.changed != nil { b.changed(b.user, i, on) }
 }
 
 // Ctrl and a press on an item of `box`: a band from there, its items taken out of the selection when that item was in
@@ -70,7 +85,13 @@ item_band_update :: proc(b: ^Item_Band, sel: ^Item_Selection, rows: Item_Rows, b
 	if (sig.pressed || pressed_empty) && !pressed_item && !b.active {
 		b.active, b.start, b.removing, b.keeping, b.lo, b.hi = true, content, false, .Ctrl in gs().mods, 0, 0
 		item_band_keep_base(b, sel)
-		if !b.keeping { item_selection_clear(sel) }
+		if !b.keeping {
+			if b.changed != nil && len(sel.selected) > 0 {
+				// (row by row, so the program is told each: one pass over the rows, once per gesture)
+				for i in 0 ..< rows.count { item_band_set(b, sel, rows, i, false) }
+			}
+			item_selection_clear(sel)
+		}
 	}
 	if !b.active { return }
 	// (the press let go: the band ends; a Shift range after it starts from the cursor, over what the band selected)
@@ -87,10 +108,12 @@ item_band_update :: proc(b: ^Item_Band, sel: ^Item_Selection, rows: Item_Rows, b
 	if b.lo == b.hi { from, to = lo, hi }
 	b.lo, b.hi = lo, hi
 	for i in from ..< to {
+		// (a row that cannot be selected is not an item, a folded group's title: the band leaves it as it is)
+		if !item_rows_selectable(rows, i) { continue }
 		touched := item_band_touches(layout, i, x0, x1, y0, y1)
 		was := b.keeping && item_rows_id(rows, i) in b.base
 		on := b.removing ? was && !touched : was || touched
-		item_selection_set(sel, rows, i, on)
+		item_band_set(b, sel, rows, i, on)
 		if touched && sel.sel != i {
 			sel.sel = i
 			sel.version += 1
@@ -113,7 +136,7 @@ item_band_cancel :: proc(b: ^Item_Band, sel: ^Item_Selection, rows: Item_Rows) -
 	if !b.active { return false }
 	b.active = false
 	// (by identity: the items the band's frames touched or not stay right)
-	for i in 0 ..< rows.count { item_selection_set(sel, rows, i, item_rows_id(rows, i) in b.base) }
+	for i in 0 ..< rows.count { item_band_set(b, sel, rows, i, item_rows_id(rows, i) in b.base) }
 	return true
 }
 

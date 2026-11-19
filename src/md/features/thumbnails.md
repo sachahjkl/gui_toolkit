@@ -21,7 +21,20 @@ file: classeur made them first (its `thumbs.odin`); the toolkit's file browser a
   system's cache first (`desktop.thumbnail_cached`) and kept there once decoded (`desktop.thumbnail_store`): decoding
   it again costs more than reading the cached one. Another type, or a picture larger than `FILE_THUMB_DECODE_BYTES`,
   gets the system's thumbnail (`desktop.thumbnail`: its cache, else its thumbnailer). The key of a file's thumbnail is
-  its path, its size and its date: a file changed gets a new one.
+  its path, its size and its date: a file changed gets a new one. A picture `gt:image` fails to decode (a WebP in a
+  program built without `IMAGE_WEBP`, a damaged file) asks the system's thumbnailer too: listing WebP by the build
+  was refused, a damaged file needs the same way out.
+- **The local work is public: `file_thumbnail_make(path, side, system, allocator)`.** The local source calls it on the
+  chores; a program with its own pool of workers (classeur) calls it there, so the rules above are written once.
+  `system` false never reads nor writes the system's cache and never runs its thumbnailer: a test, or a program
+  headless, leaves the person's cache alone. It does disk work: never on the interface's thread.
+- **`thumb_cache_clear` forgets what was made** (Ready and Failed): the cards shown ask again (a command "Clear
+  thumbnails", a thumbnailer installed since). The asks waiting and in flight stay: an ask out holds one of the `asks`
+  slots until its answer, so forgetting it would let more than `asks` run at once; its answer lands as any answer (its
+  work started after the file was as it is now). The entries go at the cache's next `thumb_cache_get` or
+  `thumb_cache_frame`, not at the call; when a card took an entry in the build of the call, at the first of a later
+  build: the draw of this frame may still read it (the rule of the trim). Refused: destroy and init (it loses the asks
+  in flight, and an answer then finds an entry asked after it).
 - **`ui` imports `gt:desktop`** for that. `desktop` imports neither `ui` nor what imports it, so there is no cycle;
   its install code is not reached from the browser.
 - **The cache is in `ui` (`Thumb_Cache`), not `gt:pictures`.** `gt:pictures` imports `ui` (its answers come through

@@ -57,6 +57,17 @@ shape with one gesture (Ctrl+wheel, Ctrl+= and Ctrl+-, a control of the program)
   list's tops (O(log n)), and those it touched at the last frame (the items it left go back to the base). The rectangle
   is kept in the content: it scrolls with the items, and a drag near an edge scrolls the view (`drag_autoscroll`).
   `Item_Band` takes `Item_Rows` and a layout: a program that builds its own grid uses it too.
+- **The band leaves the rows that cannot be selected as they are** (`Item_Rows.selectable`): it neither selects nor
+  unselects them, and the cursor never lands on one. A row that cannot be selected is not an item (a folded group's
+  title): taking it would act on what is not shown. Escape restores every row from the base, those too: they were in
+  the base only if they were selected before.
+- **The band says each row it changes** (`Item_Band.changed`, with `Item_Band.user`): called once per row that goes in
+  or out of the selection, at the moment it does, by the update, the press that clears the selection and Escape. A
+  program that keeps a sum of the selection (classeur's bytes) follows it row by row, without the band's internals.
+  Refused: a list of the rows changed returned by `item_band_update` (it needs an owner and a lifetime, and Escape and
+  the press would need lists of their own); a diff of the selection by the program (a pass over the rows per frame).
+  A press without Ctrl clears the selection row by row (a pass over the rows, once per gesture) only when `changed` is
+  set; without it, one `item_selection_clear`.
 - **The step's card size moves smoothly** (`anim`): the cards grow between the steps, as in a file manager.
 
 ## Refused

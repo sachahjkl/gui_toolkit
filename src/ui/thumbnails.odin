@@ -9,8 +9,8 @@ package ui
 //   ...after the cards:
 //   thumb_cache_frame(&c, ask, user)        // the asks sent, newest first; the least used dropped over the budget
 //
-// and gives each answer back: thumb_cache_answer(&c, ticket, rgba, w, h) or thumb_cache_failed(&c, ticket). All of it
-// on the interface's thread. A texture is made at the first draw of its picture (the draw has the renderer).
+// and gives each answer back: thumb_cache_answer(&c, ticket, rgba, w, h) or thumb_cache_failed(&c, ticket);
+// thumb_cache_clear(&c) forgets what was made. All of it on the interface's thread. A texture is made at the first draw of its picture (the draw has the renderer).
 
 import "base:runtime"
 import "core:fmt"
@@ -38,7 +38,8 @@ Thumb_State :: enum u8 {
 	Failed,    // none: the card keeps its icon
 }
 
-// One file's thumbnail. The pointer is valid until the cache drops it in thumb_cache_frame: take it again each build.
+// One file's thumbnail. The pointer is valid until the cache drops it (thumb_cache_frame, or a clear applied at a later
+// build's first thumb_cache_get): take it again each build.
 Thumb :: struct {
 	state:    Thumb_State,
 	key:      string,             // (owned) the cache's key: thumb_key
@@ -75,6 +76,12 @@ Thumb_Cache :: struct {
 	by_ticket: map[u64]^Thumb,      // the asks out
 	waiting:   [dynamic]^Thumb,     // not sent yet, the last asked at the end
 	held:      int,                 // the bytes of every Ready entry
+	// thumb_cache_clear was called; when a card had taken an entry in that build (`clear_waits`), its draw may read it:
+	// the entries go once the cache's frame is past `clear_frame`
+	clear_due:   bool,
+	clear_waits: bool,
+	clear_frame: u64,
+	got:         bool,              // a thumb_cache_get since the last thumb_cache_frame
 	// what a test reads: the asks sent, and the waiting ones dropped as stale
 	sent:      int,
 	skipped:   int,
@@ -109,6 +116,8 @@ thumb_cache_destroy :: proc(c: ^Thumb_Cache) {
 // thumb_cache_frame, newest first). `path` is what the ask names (copied the first time). Marks it used in this build.
 thumb_cache_get :: proc(c: ^Thumb_Cache, key, path: string) -> ^Thumb {
 	if !c.made { thumb_cache_init(c) }
+	thumb_cache_cleared(c)
+	c.got = true
 	// (a waiting entry asked again keeps its place in the stack: moving it would be a search per card per build; the
 	// stale ones above it are dropped when their turn comes)
 	if t, ok := c.entries[key]; ok {
@@ -155,6 +164,7 @@ thumb_cache_failed :: proc(c: ^Thumb_Cache, ticket: u64) {
 // The cache's frame moves on.
 thumb_cache_frame :: proc(c: ^Thumb_Cache, ask: Thumb_Ask, user: rawptr) {
 	if !c.made { thumb_cache_init(c) }
+	thumb_cache_cleared(c)
 	for len(c.waiting) > 0 && len(c.by_ticket) < c.o.asks {
 		t := pop(&c.waiting)
 		if t.used + THUMB_STALE_FRAMES < c.frame {
@@ -173,6 +183,32 @@ thumb_cache_frame :: proc(c: ^Thumb_Cache, ask: Thumb_Ask, user: rawptr) {
 	}
 	if len(c.entries) > c.o.most_count || c.held > c.o.most_bytes { thumb_cache_trim(c) }
 	c.frame += 1
+	c.got = false
+}
+
+// Every thumbnail made forgotten (Ready and Failed): the cards shown ask for theirs again. The asks waiting and in
+// flight stay: an ask out holds one of the `asks` slots until its answer, which lands as any answer. Safe in a build:
+// the entries go at the cache's next thumb_cache_get or thumb_cache_frame, or, when a card took one in this build, at
+// the first of a later build (after the draw of this frame, which may still read it).
+thumb_cache_clear :: proc(c: ^Thumb_Cache) {
+	if !c.made { return }
+	c.clear_due, c.clear_waits, c.clear_frame = true, c.got, c.frame
+	// (a later build must come: the cards ask again in it)
+	if s := current; s != nil { s.anim_busy = true }
+}
+
+// A clear asked, once no draw to come reads an entry: the Ready and Failed entries freed, their textures with them.
+@(private = "file")
+thumb_cache_cleared :: proc(c: ^Thumb_Cache) {
+	if !c.clear_due || (c.clear_waits && c.frame <= c.clear_frame) { return }
+	c.clear_due = false
+	gone := make([dynamic]^Thumb, context.temp_allocator)
+	for _, t in c.entries { if t.state == .Ready || t.state == .Failed { append(&gone, t) } }
+	for t in gone {
+		delete_key(&c.entries, t.key)
+		c.held -= thumb_bytes(t)
+		thumb_free(t)
+	}
 }
 
 // The entries used least lately dropped, down to three quarters of the limits; never one used in the last
