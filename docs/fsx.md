@@ -58,6 +58,8 @@ rename never crosses a disk; its name ends with `.part`, which tells a person wh
 - `writer_abort(&w)`: closes and removes the part. It does nothing for a writer that holds nothing, so a program may
   call it at the end of every path (after a commit too).
 - One thread uses a writer at a time. Every call blocks on the disk: call them off the interface's thread.
+- Another thread may remove the part (`delete_file(w.temp)`) while the writer holds it open, at the program's end for
+  example: the remove succeeds on every system, and the file goes when the writer closes it.
 
 ## Pieces of a file
 

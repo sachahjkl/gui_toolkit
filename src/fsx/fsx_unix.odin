@@ -12,6 +12,14 @@ import base "../base"
 
 @(private = "file") NS_PER_SECOND :: 1_000_000_000
 
+// A Writer's temporary file, made anew. (An open file can be removed here: it goes when its last handle closes.)
+@(private)
+writer_temp_open :: proc(path: string, private: bool) -> (^os.File, bool) {
+	perm := private ? os.Permissions{.Read_User, .Write_User} : os.Permissions_Default_File
+	f, err := os.open(path, {.Write, .Create, .Trunc}, perm)
+	return f, err == nil
+}
+
 @(private = "file")
 cpath :: proc(s: string) -> cstring { return strings.clone_to_cstring(s, context.temp_allocator) }
 

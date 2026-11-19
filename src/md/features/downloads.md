@@ -67,6 +67,11 @@ each useful alone. The API is in [docs/http.md](../../../docs/http.md) (`http.re
   `writer_append`. The temporary file is `<target>.<pid>.<thread>.part`: beside the target (a rename never crosses a
   disk), and its name says what it is to a person who finds it after a crash. Commit closes it, then `replace` (its
   tries on Windows) renames it over the target; abort closes and deletes it. A writer is used by one thread at a time.
+- **Its part can be removed from another thread.** A download waiting for data holds the part open when the program
+  ends, and the program's end removes the parts it knows. On Windows the part is opened with `FILE_SHARE_DELETE`
+  (`CreateFileW`, not `os.open`), so the remove marks it deleted and it goes when the writer's handle closes; before,
+  the remove failed and the part stayed (opencode native's CI). POSIX removes an open file already. Refused: an abort
+  safe from another thread, which would make the writer's every call take a lock for the one call at the end.
 
 ## Refused
 

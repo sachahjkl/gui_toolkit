@@ -34,9 +34,9 @@ writer_open :: proc(w: ^Writer, target: string, private := false, loc := #caller
 	// (the writer's address tells two live writers of one process apart, the pid two processes; a leftover of a crash
 	// with the same name is a part nobody reads, truncated)
 	temp := fmt.aprintf("%s.%d.%x.part", target, os.get_pid(), uintptr(w), allocator = a)
-	perm := private ? os.Permissions{.Read_User, .Write_User} : os.Permissions_Default_File
-	f, err := os.open(temp, {.Write, .Create, .Trunc}, perm)
-	if err != nil {
+	// (another thread may remove it while it is open: the program's end, a download still waiting for data)
+	f, made := writer_temp_open(temp, private)
+	if !made {
 		delete(temp, a)
 		w^ = {}
 		return false

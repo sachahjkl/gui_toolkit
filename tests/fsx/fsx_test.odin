@@ -130,6 +130,28 @@ a_writer_aborted_leaves_the_target_alone :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(fsx.list_files(root)), 1)
 }
 
+// Another thread removes a writer's temporary file while the writer still holds it open (the program's end, a
+// download waiting for data): the remove succeeds, and once the writer closes, no part is left. On Windows the file
+// was opened without sharing its deletion, and the part stayed (opencode native's the_end_removes_the_temps).
+@(test)
+a_writer_s_temp_is_removed_from_another_thread :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_writer_remove")
+	defer fsx.remove_tree(root)
+	path := fmt.tprintf("%s/download.bin", root)
+	w: fsx.Writer
+	if !testing.expect(t, fsx.writer_open(&w, path)) { return }
+	testing.expect(t, fsx.writer_append(&w, transmute([]byte)string("the first part")))
+	Remove :: struct { temp: string, ok: bool }
+	r := Remove{temp = w.temp}
+	th := thread.create_and_start_with_poly_data(&r, proc(r: ^Remove) { r.ok = fsx.delete_file(r.temp) })
+	thread.join(th)
+	thread.destroy(th)
+	testing.expect(t, r.ok, "the remove from another thread succeeds while the writer holds the file")
+	fsx.writer_abort(&w)
+	testing.expect_value(t, len(fsx.list_files(root)), 0)
+	testing.expect_value(t, fsx.path_kind(path), fsx.Path_Kind.Absent)
+}
+
 @(private = "file")
 Rewriter :: struct { path: string, stop: bool }
 

@@ -30,6 +30,16 @@ write_parts :: proc(path: string, parts: [][]byte, flush: bool, private := false
 	return ok
 }
 
+// A Writer's temporary file, made anew. Shared for deletion: a thread that removes it while the writer's thread still
+// holds it open (a download cut at the program's end) marks it deleted, and it goes when that handle closes; without it
+// the remove failed and the part stayed. (`private`: the folder's access list, as any file.)
+@(private)
+writer_temp_open :: proc(path: string, private: bool) -> (^os.File, bool) {
+	h := win.CreateFileW(wide(path), win.GENERIC_WRITE, win.FILE_SHARE_READ | win.FILE_SHARE_DELETE, nil, win.CREATE_ALWAYS, win.FILE_ATTRIBUTE_NORMAL, nil)
+	if h == win.INVALID_HANDLE_VALUE { return nil, false }
+	return os.new_file(uintptr(h), path), true
+}
+
 replace :: proc(from, to: string, durable: bool) -> bool {
 	flags: win.DWORD = win.MOVEFILE_REPLACE_EXISTING
 	if durable { flags |= win.MOVEFILE_WRITE_THROUGH }
