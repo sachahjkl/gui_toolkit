@@ -9,6 +9,7 @@ import "core:hash"
 import "core:os"
 import "core:sync"
 import "core:strings"
+import "core:thread"
 import win "core:sys/windows"
 import base "../base"
 import i18n "../i18n"
@@ -143,11 +144,48 @@ file_dialog_call :: proc(kind: int, d: File_Dialog, allocator := context.temp_al
 	return c
 }
 
+// The system's file dialog runs on a thread of its own, in a single-threaded apartment it opens and closes. The
+// dialog hosts an Explorer view, which works only there. The caller's thread is often a pool's: it may already be in
+// the multithreaded apartment, or in no apartment at all while another thread of the process made the multithreaded
+// one (UI Automation, a media decoder), and then it is in it implicitly. In either, the dialog's view corrupts the
+// heap while it lists the files.
 @(private = "file")
 file_dialog_show :: proc(kind: int, d: File_Dialog, allocator := context.allocator) -> Dialog_Result {
+	Job :: struct { kind: int, d: File_Dialog, allocator: runtime.Allocator, res: Dialog_Result }
+	job := Job{kind = kind, d = d, allocator = allocator}
+	t := thread.create_and_start_with_data(&job, proc(data: rawptr) {
+		j := (^Job)(data)
+		defer free_all(context.temp_allocator)
+		j.res = file_dialog_in_apartment(j.kind, j.d, j.allocator)
+	})
+	if t == nil { return {status = .Failed} }
+	thread.join(t)
+	thread.destroy(t)
+	return job.res
+}
+
+// The apartment the dialog's thread opens, for the test: what CoInitializeEx answered there.
+@(private)
+dialog_thread_apartment :: proc() -> win.HRESULT {
+	hr: win.HRESULT
+	t := thread.create_and_start_with_data(&hr, proc(data: rawptr) {
+		r := (^win.HRESULT)(data)
+		r^ = win.CoInitializeEx(nil, .APARTMENTTHREADED)
+		if r^ >= 0 { win.CoUninitialize() }
+	})
+	if t == nil { return -1 }
+	thread.join(t)
+	thread.destroy(t)
+	return hr
+}
+
+@(private = "file")
+file_dialog_in_apartment :: proc(kind: int, d: File_Dialog, allocator: runtime.Allocator) -> Dialog_Result {
 	res := Dialog_Result{status = .Failed}
 	hr := win.CoInitializeEx(nil, .APARTMENTTHREADED)
-	if hr >= 0 { defer win.CoUninitialize() }   // (another mode already on this thread: the dialog works in it too)
+	// (a new thread: S_OK; the apartment closes with the dialog, at the end of this procedure, not of a block)
+	if hr < 0 { return res }
+	defer win.CoUninitialize()
 	call := file_dialog_call(kind, d)
 	dlg: ^win.IFileDialog
 	if kind == DIALOG_SAVE {
