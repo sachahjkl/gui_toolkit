@@ -145,7 +145,10 @@ third_party_notices :: proc(p: Project, out: string, check_only := false) -> (wh
 	// The libraries as the file names them, and their manifests.
 	libraries := make([dynamic]string, context.temp_allocator)
 	manifests := make([dynamic]string, context.temp_allocator)
+	// (a program whose own library carries the toolkit's crates names them in its own manifests, p.crates: the toolkit's
+	// are not built, and their lock files want crates its vendoring does not have)
 	for dir in native_crates(p.features) {
+		if p.native_carried { break }
 		append(&libraries, fmt.tprintf("gui_toolkit's %s", dir))
 		append(&manifests, fmt.tprintf("%s/%s/Cargo.toml", gt, dir))
 	}

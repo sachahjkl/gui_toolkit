@@ -361,9 +361,17 @@ that are not flags; a lone `-` is plain).
 | `licence` | its licence, for its notices (`""`: MIT) |
 | `features` | what it takes of the toolkit beyond the core, a `Features` (below) |
 | `crates` | its own Rust libraries, for its notices: their `Cargo.toml`, relative to its root (`rust/core/Cargo.toml`) |
+| `native_carried` | one of its own Rust libraries carries the toolkit's native crates: `build_native` builds none of the toolkit's (`native_parts`), and the notices read only the program's `crates`; its `defines` say which it carries (`FONT_NATIVE_LINK=false`, `MERMAID_NATIVE_LINK=false`...) |
+| `systems` | the systems it is built for, a `Systems` (`bit_set` of `runtime.Odin_OS_Type`; `{}`: `SYSTEMS_DEFAULT`, Windows, Linux and macOS): its check checks each other one |
 | `works` | what else it links or embeds, for its notices: `Project_Work`s (Third-party notices, below) |
 | `title`, `description`, `publisher`, `copyright`, `icon` | what Windows shows of it: its resource (above) |
 
+A program's tool keeps its `Project` in a package variable (`PROJECT := toolbox.Project{...}`), not a constant
+(`PROJECT :: toolbox.Project{...}`): a constant composite is made anew at each use, its lists (`crates`, `works`,
+`defines`) on the stack of the procedure that uses it, and they dangle once that procedure returns (`build_options`
+returned, then `check` read freed lists and crashed).
+
+- `project_systems(p)` is `systems`, else `SYSTEMS_DEFAULT`.
 - `version_of(source, line)` is the version in quotes after `line` (`""`: no such line); `version_set(source, line, version)`
   is the source with it replaced (ok = false: no such line). `project_version(p)` reads it from `version_file`.
 - `toolkit_dir(p)` is the toolkit's checkout.
@@ -385,10 +393,13 @@ that are not flags; a lone `-` is plain).
   A file not made yet is left out: a check from Linux builds without them. A tool that builds the program with its own odin
   command (opencode native's) runs `build_windows` and appends these.
 - `build_native(p)` builds what the program needs before an odin command: on Windows `build_windows(p)` (the resource and
-  the console launcher), then the toolkit's native library with the parts this system links (`tk build_native
-  -features:...`: `text` on Linux or with `Native_Text`, `a11y` on Windows with `Accessibility`, `mermaid` with
-  `Mermaid`, `webp` with `Webp`), by the toolkit's own tool in the project's checkout of it (nothing when the library is
-  up to date), and the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)).
+  the console launcher), then the toolkit's native library with `native_parts(p, ODIN_OS)` (`tk build_native
+  -features:...`), by the toolkit's own tool in the project's checkout of it (nothing when the library is up to date or
+  there is no part), and the Lucide subset with `Lucide_Subset` (`lucide_subset`, [lucide.md](lucide.md)).
+- `native_parts(p, target)` is the parts of the toolkit's native library a program built for `target` links: `text`
+  off Windows, or with `Native_Text`; `a11y` on Windows with `Accessibility`; `mermaid` with `Mermaid`; `webp` with
+  `Webp`; `pdf` with `Pdf`. None with `native_carried`: the program's own Rust library carries them, and
+  `build_native` makes only the resource, the launcher and the Lucide subset.
 
 ### Features
 
@@ -455,7 +466,8 @@ A `Build_Mode` is how the program is compiled:
 - `program_test(o, names = "") -> bool`: each test package to `build/test_<path>`; `names`
   (`pkg.test_a,pkg.test_b`): those tests of the program's package alone, in that order, on one thread.
 - `program_check(o) -> bool`: the steps of `check_steps(o, ODIN_OS)` in the order of `Check_Step`: `Changelog`, `Scopes`,
-  `Checks`, `Catalogues`, `Notices`, `Odin_Check`, `Check_Windows` and `Check_Darwin` (from another system),
+  `Checks`, `Catalogues`, `Notices`, `Odin_Check`, `Check_Windows` and `Check_Darwin` (from another system, when
+  `project_systems` holds it),
   `Tool`, `Tests`, `Release_Build`, `Launcher` (Windows). The first that fails ends it.
 
 A tool's other commands call them (`live` builds with `program_build(build_options())`), and `release.commands` takes

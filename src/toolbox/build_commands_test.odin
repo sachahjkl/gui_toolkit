@@ -1,5 +1,6 @@
 package tk_toolbox
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:slice"
@@ -22,6 +23,45 @@ check_steps_have_every_system :: proc(t: ^testing.T) {
 	testing.expect_value(t, linux, always + Check_Steps{.Check_Windows, .Check_Darwin})
 	testing.expect_value(t, check_steps(o, .Darwin), always + Check_Steps{.Check_Windows})
 	testing.expect_value(t, check_steps(o, .Windows), always + Check_Steps{.Launcher})
+}
+
+// Project.systems: another system is checked only when the program is built for it; empty is every system of before.
+@(test)
+check_steps_follow_the_systems :: proc(t: ^testing.T) {
+	o := sample_options()
+	testing.expect_value(t, project_systems(o.project), SYSTEMS_DEFAULT)
+	o.systems = {.Windows, .Linux}
+	testing.expect(t, .Check_Windows in check_steps(o, .Linux) && .Check_Darwin not_in check_steps(o, .Linux), "no macOS: no check of it")
+	testing.expect(t, .Launcher in check_steps(o, .Windows) && .Check_Windows not_in check_steps(o, .Windows))
+	o.systems = {.Linux}
+	others := Check_Steps{.Check_Windows, .Check_Darwin}
+	testing.expect(t, check_steps(o, .Linux) & others == Check_Steps{}, "Linux alone: no other system")
+	o.systems = {.Linux, .Darwin}
+	testing.expect(t, .Check_Darwin in check_steps(o, .Linux) && .Check_Windows not_in check_steps(o, .Linux))
+	testing.expect(t, check_steps(o, .Darwin) & others == Check_Steps{}, "from macOS: itself is Odin_Check")
+}
+
+// The parts of the toolkit's native library for each system and each feature; none when the program's own library
+// carries them, and build_native then builds only what is not Rust (the resource, the launcher, the Lucide subset).
+@(test)
+native_parts_per_option :: proc(t: ^testing.T) {
+	p := sample_options().project
+	testing.expect(t, slice.equal(native_parts(p, .Linux), []string{"text"}), "Linux: the text backend always")
+	testing.expect(t, slice.equal(native_parts(p, .Darwin), []string{"text"}))
+	testing.expect_value(t, len(native_parts(p, .Windows)), 0)
+
+	p.features = {.Native_Text, .Accessibility, .Mermaid, .Webp, .Pdf, .Lucide_Subset}
+	testing.expect(t, slice.equal(native_parts(p, .Windows), []string{"text", "a11y", "mermaid", "webp", "pdf"}))
+	testing.expect(t, slice.equal(native_parts(p, .Linux), []string{"text", "mermaid", "webp", "pdf"}), "no AccessKit off Windows")
+
+	// (opencode native: ocn_native links text and Mermaid itself)
+	p.features = {.Mermaid, .Devtools, .Lucide_Subset}
+	p.native_carried = true
+	for target in ([]runtime.Odin_OS_Type{.Windows, .Linux, .Darwin}) {
+		testing.expectf(t, len(native_parts(p, target)) == 0, "%v: nothing of the toolkit's library", target)
+	}
+	// (the defines stay the program's: the features give theirs as before)
+	testing.expect(t, slice.equal(feature_defines(p.features, .Linux, ""), []string{"-define:TOOLKIT_DEVTOOLS=true"}))
 }
 
 // The options add their steps, and only theirs.
