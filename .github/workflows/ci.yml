@@ -72,7 +72,8 @@ jobs:
   tests:
     name: Tests (no window; pixel tests on WARP)
     runs-on: windows-2025
-    timeout-minutes: 45
+    # (a cold native build, 30, and the tests, 20, fit)
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -112,8 +113,9 @@ jobs:
           ./build/tk.exe build_native
           if ($LASTEXITCODE) { exit 1 }
 
+      # (20: on the WARP machine the tests took 13 of their 14 minutes by November 2026, and one run went past them)
       - name: Tests (tools/run_tests)
-        timeout-minutes: 14
+        timeout-minutes: 20
         run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/run_tests -vet -out:build/run_tests.exe
 
       # the timelines of src/cdp against examples/whatsnew as a program of its own, over a real socket

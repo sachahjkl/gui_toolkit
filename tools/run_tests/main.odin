@@ -78,7 +78,9 @@ STEPS := []Step{
 	{name = "paint", path = "src/paint", oses = EVERYWHERE},
 	{name = "png", path = "src/png", oses = EVERYWHERE},
 	{name = "qr", path = "src/qr", oses = EVERYWHERE},
-	{name = "process", path = "src/process", oses = EVERYWHERE},
+	// (one at a time: several of its tests start children, and os.process_start is not safe from two threads at once,
+	// as the plugins' starts know; each_signal_is_its_own twice stopped on an illegal instruction beside another start)
+	{name = "process", path = "src/process", oses = EVERYWHERE, one = true},
 	{name = "http", path = "src/http", oses = EVERYWHERE},
 	{name = "secrets", path = "src/secrets", oses = EVERYWHERE},   // (Linux: the round trip only where a Secret Service answers)
 	{name = "toolbox", path = "src/toolbox", oses = EVERYWHERE},
