@@ -3,6 +3,7 @@
 //! entry point catches panics, so a page that fails is a page not drawn, never a dead program.
 
 mod afm;
+mod face;
 mod render;
 mod shape;
 mod stamp;
@@ -13,6 +14,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use afm::Font;
+use face::Face;
 use hayro::hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
 use shape::{Kind, Shape};
 use stamp::Stamp;
@@ -56,6 +58,17 @@ pub struct GtPdfStamp {
     pub background: u32,
     pub text: *const u8,
     pub text_len: usize,
+    /// A font `gt_pdf_font_add` gave (0: the standard `font`).
+    pub face: u32,
+    /// Degrees the text rises to the right.
+    pub tilt: f32,
+    /// The pen's weight, in thousandths of the size.
+    pub weight: f32,
+    /// 1: a flourish under the text.
+    pub flags: u32,
+    /// A line under it, in Helvetica, smaller (UTF-8; empty: none).
+    pub caption: *const u8,
+    pub caption_len: usize,
 }
 
 /// A page as the C API gives it: a page of source `source` (0: a blank page of `width` by `height` points).
@@ -75,7 +88,7 @@ pub struct GtPdfPage {
 /// A shape as the C API gives it (src/pdf/pdf.odin's Shape).
 #[repr(C)]
 pub struct GtPdfShape {
-    /// 0 rectangle, 1 ellipse, 2 line, 3 arrow, 4 free line.
+    /// 0 rectangle, 1 ellipse, 2 line, 3 arrow, 4 free line, 5 filled outlines (NaN x: the next one).
     pub kind: u32,
     /// 0xRRGGBBAA; alpha 0: none.
     pub stroke: u32,
@@ -126,7 +139,39 @@ unsafe fn stamp_of(s: &GtPdfStamp) -> Stamp {
         color: rgb(s.color),
         background: if s.background & 0xFF == 0 { None } else { Some(rgb(s.background >> 8)) },
         text: String::from_utf8_lossy(bytes(s.text, s.text_len)).into_owned(),
+        face: if s.face == 0 { None } else { face(s.face).map(|f| (s.face, f)) },
+        tilt: if s.tilt.is_finite() { s.tilt.clamp(-45.0, 45.0) } else { 0.0 },
+        weight: if s.weight.is_finite() { s.weight.clamp(0.0, 200.0) } else { 0.0 },
+        underline: s.flags & 1 != 0,
+        caption: String::from_utf8_lossy(bytes(s.caption, s.caption_len)).into_owned(),
     }
+}
+
+// The fonts the program gave, by id (0 is never one: the standard fonts). Kept for the process's life: a font is a
+// program's few files, given once.
+fn faces() -> &'static Mutex<HashMap<u32, Arc<Face>>> {
+    static FACES: OnceLock<Mutex<HashMap<u32, Arc<Face>>>> = OnceLock::new();
+    FACES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn face(id: u32) -> Option<Arc<Face>> {
+    faces().lock().ok()?.get(&id).cloned()
+}
+
+/// Reads a TrueType or OpenType font in `data` (copied) for stamps to use; its id in `out`. False: not a font.
+#[no_mangle]
+pub unsafe extern "C" fn gt_pdf_font_add(data: *const u8, len: usize, out: *mut u32) -> bool {
+    catch_unwind(AssertUnwindSafe(|| {
+        let Some(f) = Face::new(bytes(data, len).to_vec()) else { return false };
+        let Ok(mut all) = faces().lock() else { return false };
+        let id = all.len() as u32 + 1;
+        all.insert(id, Arc::new(f));
+        if !out.is_null() {
+            *out = id;
+        }
+        true
+    }))
+    .unwrap_or(false)
 }
 
 // The C pages with their sources held for as long as the work lasts.

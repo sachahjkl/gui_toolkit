@@ -24,6 +24,11 @@ pub struct Font {
 }
 
 impl Font {
+    /// Helvetica: a caption's font.
+    pub fn helvetica() -> Self {
+        Font { family: Family::Sans, bold: false, italic: false }
+    }
+
     /// From the C API's number: the family (0 sans, 1 serif, 2 mono), plus 4 when bold, plus 8 when italic.
     pub fn from_code(code: u32) -> Self {
         let family = match code & 3 {

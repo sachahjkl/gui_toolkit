@@ -66,6 +66,23 @@ box := pdf.stamp_size(stamp)            // its size before its turns, margins in
 - `turns`: the text's own quarter turns about its corner. A stamp placed while the page is shown turned by `k` takes
   `(4 - k) % 4`, so that it reads upright where it was put; it then turns with its page.
 
+A signature in a font the program gives:
+
+```odin
+script, ok := pdf.font_add(#load("fonts/GreatVibes-Regular.ttf"))   // once, at the start; any thread
+sig := pdf.Stamp{
+	at = {360, 700}, face = script, size = 28, color = {20, 40, 140},
+	text = "Camille Dupré",
+	tilt = 4,                          // degrees, rising to the right
+	weight = 25,                       // the outline stroked too, thousandths of the size: a heavier pen
+	flourish = true,                   // a pen's stroke under it
+	caption = "Paris, 19/11/2026",     // a smaller Helvetica line under it
+}
+```
+
+- The file embeds the glyphs the stamps use (a subset) and their text stays copyable.
+- `font_add` keeps the font for the process's life: give each file once.
+
 ## Shapes
 
 ```odin
@@ -78,6 +95,8 @@ page.shapes = {frame, mark, arrow, pen}
 
 - `Rect` and `Ellipse` fill and outline the box of their two corners; `Line` and `Arrow` go from their first point to
   their second (the arrow's head there); `Ink` follows its points.
+- `Outline` fills closed contours with its `fill`: a pen's ink from `gt:ink` (`ink.polygon`), its width changing along
+  the stroke. A point `{NaN, NaN}` starts the next contour.
 - Points are in points, in the page as its source shows it (before `turns`), y down, as a stamp's `at`.
 - `stroke` and `fill`: alpha 0 for none. A colour less than opaque multiplies with the page, as a highlighter.
 - The shapes are drawn under the stamps.

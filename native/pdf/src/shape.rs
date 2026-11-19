@@ -10,6 +10,9 @@ pub enum Kind {
     Line,
     Arrow,
     Ink,
+    /// Closed outlines filled with the non-zero rule: a pen's ink as gt:ink gives it, its width changing along the
+    /// stroke. A point whose x is NaN starts the next outline (a signature's strokes are one shape).
+    Outline,
 }
 
 impl Kind {
@@ -20,6 +23,7 @@ impl Kind {
             2 => Kind::Line,
             3 => Kind::Arrow,
             4 => Kind::Ink,
+            5 => Kind::Outline,
             _ => return None,
         })
     }
@@ -66,11 +70,11 @@ impl Shape {
         content.set_line_width(self.width.max(0.1));
         content.set_line_cap(pdf_writer::types::LineCapStyle::RoundCap);
         content.set_line_join(pdf_writer::types::LineJoinStyle::RoundJoin);
-        let filled = self.fill[3] > 0 && matches!(self.kind, Kind::Rect | Kind::Ellipse);
+        let filled = self.fill[3] > 0 && matches!(self.kind, Kind::Rect | Kind::Ellipse | Kind::Outline);
         if filled {
             self.paint(content, state, true);
         }
-        if self.stroke[3] > 0 {
+        if self.stroke[3] > 0 && self.kind != Kind::Outline {
             self.paint(content, state, false);
         }
         content.restore_state();
@@ -93,6 +97,15 @@ impl Shape {
         let p = &self.points;
         let (a, b) = (p[0], *p.get(1).unwrap_or(&p[0]));
         match self.kind {
+            Kind::Outline => {
+                for contour in p.split(|q| q.0.is_nan()).filter(|c| c.len() >= 3) {
+                    content.move_to(contour[0].0, contour[0].1);
+                    for q in &contour[1..] {
+                        content.line_to(q.0, q.1);
+                    }
+                    content.close_path();
+                }
+            }
             Kind::Rect => {
                 let (x0, y0, x1, y1) = (a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1));
                 content.rect(x0, y0, x1 - x0, y1 - y0);

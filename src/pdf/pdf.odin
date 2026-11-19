@@ -47,6 +47,7 @@ when GT_PDF {
 		gt_pdf_write :: proc(pages: [^]C_Page, count: uint, base: u32, out: ^[^]u8) -> uint ---
 		gt_pdf_free :: proc(ptr: [^]u8, len: uint) ---
 		gt_pdf_stamp_measure :: proc(stamp: ^C_Stamp, width, height: ^f32) ---
+		gt_pdf_font_add :: proc(data: [^]u8, len: uint, out: ^u32) -> bool ---
 	}
 }
 
@@ -72,28 +73,45 @@ Font :: struct {
 	italic: bool,
 }
 
+// A font the program gave (font_add); 0 is none: the stamp's standard `font`.
+Face :: distinct u32
+
 // Text on a page. `at`: its top-left corner in points, in the page as its source shows it (before the page's turns),
 // y down. `turns`: quarter turns clockwise of the text about that corner; a stamp placed on a page shown turned by k
-// takes (4 - k) % 4 to read upright. `background`: alpha 0 for none (any other alpha: opaque). Its characters are
-// written in WinAnsi (the Western European ones); another is written as "?".
+// takes (4 - k) % 4 to read upright. `background`: alpha 0 for none (any other alpha: opaque).
+//
+// In a standard `font`, its characters are written in WinAnsi (the Western European ones); another is written as "?".
+// With a `face`, the file embeds that font's glyphs the stamps use (a subset), the text copyable; a character the
+// font lacks is its empty glyph.
+//
+// The effects of a signature: `tilt`, degrees the text rises to the right (-45..45), about its box's centre;
+// `weight`, the glyphs' outline stroked too, in thousandths of the size (0..200: a heavier pen); `flourish`, a pen's
+// stroke under the text; `caption`, one line under it in Helvetica, smaller ("Paris, 19/11/2026"). Each grows the box
+// stamp_size gives.
 Stamp :: struct {
 	at:         [2]f32,
 	turns:      int,
 	font:       Font,
+	face:       Face,
 	size:       f32,
 	color:      [3]u8,
 	background: [4]u8,
 	text:       string,
+	tilt:       f32,
+	weight:     f32,
+	flourish:   bool,
+	caption:    string,
 }
 
 // What a shape is.
-Shape_Kind :: enum u8 { Rect, Ellipse, Line, Arrow, Ink }
+Shape_Kind :: enum u8 { Rect, Ellipse, Line, Arrow, Ink, Outline }
 
 // A shape drawn on a page: its points in points, in the page as its source shows it (before the page's turns), y down:
-// two corners (Rect, Ellipse: the box it fills), two ends (Line; Arrow: from, then to, where its head is), or the
-// free line's points (Ink). `stroke` and `fill`: alpha 0 for none; a colour less than opaque is laid over the page by
-// multiplication, as a highlighter's ink (the words under it stay readable). `fill` is for Rect and Ellipse. `width`:
-// the stroke's, in points. Shapes are drawn under the page's stamps.
+// two corners (Rect, Ellipse: the box it fills), two ends (Line; Arrow: from, then to, where its head is), the free
+// line's points (Ink), or closed outlines filled with the non-zero rule (Outline: a pen's ink as gt:ink gives it, a
+// point whose x is NaN starts the next outline). `stroke` and `fill`: alpha 0 for none; a colour less than opaque is
+// laid over the page by multiplication, as a highlighter's ink (the words under it stay readable). `fill` is for Rect,
+// Ellipse and Outline. `width`: the stroke's, in points. Shapes are drawn under the page's stamps.
 Shape :: struct {
 	kind:   Shape_Kind,
 	points: [][2]f32,
@@ -120,6 +138,11 @@ C_Stamp :: struct {
 	color, background: u32,
 	text:              [^]u8,
 	text_len:          uint,
+	face:              u32,
+	tilt, weight:      f32,
+	flags:             u32,
+	caption:           [^]u8,
+	caption_len:       uint,
 }
 
 @(private)
@@ -201,6 +224,8 @@ c_stamps :: proc(stamps: []Stamp, allocator := context.temp_allocator) -> []C_St
 			color = u32(s.color[0]) << 16 | u32(s.color[1]) << 8 | u32(s.color[2]),
 			background = u32(s.background[0]) << 24 | u32(s.background[1]) << 16 | u32(s.background[2]) << 8 | u32(s.background[3]),
 			text = raw_data(s.text), text_len = uint(len(s.text)),
+			face = u32(s.face), tilt = s.tilt, weight = s.weight, flags = s.flourish ? 1 : 0,
+			caption = raw_data(s.caption), caption_len = uint(len(s.caption)),
 		}
 	}
 	return out
@@ -263,6 +288,18 @@ write :: proc(pages: []Page, base: Source = 0, allocator := context.allocator) -
 		return slice.clone(out[:n], allocator), true   // (the engine's memory goes back to it)
 	} else {
 		return
+	}
+}
+
+// Reads a TrueType or OpenType font (the engine keeps its own copy) for stamps to name in their `face`. The engine
+// keeps it for the process's life: give each font once (a program's script fonts at its start). 0, false: not a font.
+font_add :: proc(bytes: []u8) -> (face: Face, ok: bool) {
+	when GT_PDF {
+		id: u32
+		if !gt_pdf_font_add(raw_data(bytes), uint(len(bytes)), &id) { return 0, false }
+		return Face(id), true
+	} else {
+		return 0, false
 	}
 }
 

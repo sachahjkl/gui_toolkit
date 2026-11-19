@@ -104,7 +104,7 @@ fn pages_move_turn_and_come_from_two_files() {
 #[test]
 fn a_stamp_is_drawn_where_it_was_put_on_a_blank_page() {
     let text = b"Hello";
-    let stamp = GtPdfStamp { x: 20.0, y: 30.0, size: 20.0, turns: 0, font: 0, color: 0xFFFFFF, background: 0x000000FF, text: text.as_ptr(), text_len: text.len() };
+    let stamp = GtPdfStamp { color: 0xFFFFFF, background: 0x000000FF, ..stamp_of_text(20.0, 30.0, 20.0, text) };
     let (mut w, mut h) = (0.0, 0.0);
     unsafe { gt_pdf_stamp_measure(&stamp, &mut w, &mut h) };
     assert!(w > 40.0 && h > 20.0, "{w} x {h}");
@@ -156,6 +156,81 @@ fn a_turned_page_renders_turned() {
     let dark_top = (0..100).flat_map(|x| (0..60).map(move |y| (x, y))).any(|(x, y)| px[(y * 100 + x) * 4] < 128);
     assert!(dark_top, "the words are at the top");
     gt_pdf_close(id);
+}
+
+fn stamp_of_text(x: f32, y: f32, size: f32, text: &[u8]) -> GtPdfStamp {
+    GtPdfStamp {
+        x,
+        y,
+        size,
+        turns: 0,
+        font: 0,
+        color: 0,
+        background: 0,
+        text: text.as_ptr(),
+        text_len: text.len(),
+        face: 0,
+        tilt: 0.0,
+        weight: 0.0,
+        flags: 0,
+        caption: std::ptr::null(),
+        caption_len: 0,
+    }
+}
+
+fn dark(px: &[u8], w: usize, x0: usize, y0: usize, x1: usize, y1: usize) -> usize {
+    (y0..y1).flat_map(|y| (x0..x1).map(move |x| (x, y))).filter(|(x, y)| px[(y * w + x) * 4] < 128).count()
+}
+
+// A font the program gives: embedded as a subset (a fraction of the file), its text copyable (ToUnicode), drawn. The
+// caption under it is in Helvetica, and the flourish and tilt widen the box.
+#[test]
+fn a_given_font_is_embedded_as_a_subset_and_drawn() {
+    let ttf = include_bytes!("../../../src/font/data/Roboto-Regular.ttf");
+    let mut face = 0;
+    assert!(unsafe { gt_pdf_font_add(ttf.as_ptr(), ttf.len(), &mut face) });
+    assert!(face != 0);
+    let junk = b"not a font";
+    let mut none = 0;
+    assert!(!unsafe { gt_pdf_font_add(junk.as_ptr(), junk.len(), &mut none) }, "what is not a font is refused");
+
+    let text = "Camille Dupré".as_bytes();
+    let caption = b"Paris, 19/11/2026";
+    let plain = GtPdfStamp { face, ..stamp_of_text(10.0, 10.0, 30.0, text) };
+    let signed = GtPdfStamp { flags: 1, tilt: 6.0, weight: 30.0, caption: caption.as_ptr(), caption_len: caption.len(), ..plain };
+    let (mut pw, mut ph, mut sw, mut sh) = (0.0, 0.0, 0.0, 0.0);
+    unsafe {
+        gt_pdf_stamp_measure(&plain, &mut pw, &mut ph);
+        gt_pdf_stamp_measure(&signed, &mut sw, &mut sh);
+    }
+    assert!(pw > 100.0 && sh > ph && sw > pw, "{pw}x{ph} then {sw}x{sh}");
+
+    let p = GtPdfPage { source: 0, index: 0, turns: 0, width: 300.0, height: 150.0, stamps: &signed, stamp_count: 1, shapes: std::ptr::null(), shape_count: 0 };
+    let file = write_pages(std::slice::from_ref(&p), 0);
+    assert!(file.len() < ttf.len() / 2, "a subset, not the whole font: {} of {}", file.len(), ttf.len());
+    assert!(contains(&file, b"/FontFile2") && contains(&file, b"/ToUnicode") && contains(&file, b"/Identity-H"));
+    assert!(contains(&file, b"+Roboto-Regular"), "the subset's name has its tag");
+    assert!(contains(&file, b"/Helvetica"), "the caption's font");
+    assert!(Pdf::new(file).is_ok(), "the written file opens");
+
+    let mut px = vec![0u8; 300 * 150 * 4];
+    assert!(unsafe { gt_pdf_render(&p, 300, 150, false, px.as_mut_ptr()) });
+    assert!(dark(&px, 300, 10, 10, (10.0 + sw) as usize, (10.0 + sh) as usize) > 300, "the letters are drawn in the stamp's box");
+    assert_eq!(dark(&px, 300, (10.0 + sw) as usize + 2, 0, 300, 150), 0, "nothing past its measured width");
+}
+
+// A pen's ink: two outlines in one shape, filled, the gap between them white.
+#[test]
+fn outlines_are_filled_each_on_its_own() {
+    let n = f32::NAN;
+    let pts = [10.0f32, 10.0, 40.0, 10.0, 40.0, 40.0, 10.0, 40.0, n, n, 60.0, 10.0, 90.0, 10.0, 90.0, 40.0, 60.0, 40.0];
+    let shape = GtPdfShape { kind: 5, stroke: 0, fill: 0x000000FF, width: 1.0, points: pts.as_ptr(), point_count: pts.len() / 2 };
+    let p = GtPdfPage { source: 0, index: 0, turns: 0, width: 100.0, height: 50.0, stamps: std::ptr::null(), stamp_count: 0, shapes: &shape, shape_count: 1 };
+    let mut px = vec![0u8; 100 * 50 * 4];
+    assert!(unsafe { gt_pdf_render(&p, 100, 50, false, px.as_mut_ptr()) });
+    assert_eq!(dark(&px, 100, 15, 15, 35, 35), 400, "the first outline is filled");
+    assert_eq!(dark(&px, 100, 65, 15, 85, 35), 400, "the second too");
+    assert_eq!(dark(&px, 100, 45, 15, 55, 35), 0, "not the gap between them");
 }
 
 #[test]

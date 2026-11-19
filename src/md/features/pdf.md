@@ -66,8 +66,20 @@ Every reader has them, nothing is embedded, the file grows by a few hundred byte
 characters of Western European languages; another character is written as `?`. The widths are Adobe's metrics
 (`native/pdf/src/metrics.rs`, from hayro-font, MIT): `measure` and the writer use the same ones.
 
-Refused for now: embedding a font of the system (any script). It needs subsetting and a Type 0 font with its
-`ToUnicode`; it is the next step if a person asks for a script outside WinAnsi.
+A program can also give its own fonts (`font_add`: a signature's script fonts). The engine keeps each for the
+process's life, by id: a program gives a few files once, and a page value names one by a number, cheap to copy. The
+writer gathers the glyphs of every stamp of every page first, then embeds each font once as a subset of them
+(`subsetter`, typst's), a Type 0 font with Identity-H codes (each code is its glyph's new id) and its `ToUnicode`, so
+the text stays copyable. The subset's name has its tag of six capitals, from the glyphs it holds.
+
+Refused: embedding the whole font (a script font is 50 to 450 kB, a signature uses twenty glyphs), and shaping
+(ligatures, contextual forms): the stamp maps each character to its glyph. The script fonts a signature takes join
+their letters by design without it.
+
+The effects of a signature are a stamp's too: a tilt about its box's centre, a weight (the glyphs' outline stroked
+over their fill, round joins: a heavier pen), a flourish (one cubic stroke under the text) and a caption (a smaller
+Helvetica line: the place and the date). They are part of the stamp, not separate marks, so the signature moves,
+turns and measures as one thing; `measure` gives the box with the tilt inside it.
 
 The page's content is wrapped: `q`, its streams, `Q`, then the stamps, so a page that leaves its graphics state
 changed does not move them. Their font resources take names no page uses (`GtStamp…`).
@@ -84,6 +96,11 @@ in a box stays readable.
 A colour less than opaque is laid over the page by multiplication (`/BM /Multiply`, the alpha in `/ca` and `/CA`):
 a highlighter. Over black it stays black, over white it is its colour, so the words under it stay readable; an
 ordinary blend would grey them. One graphics state per alpha used, named `GtAlpha<alpha>`.
+
+An outline is a pen's ink drawn as its shape, not as a stroke: closed contours filled with the non-zero rule, as
+gt:ink computes them from the pointer's samples (its width changes with speed or pressure, its ends taper). A stroke
+of PDF has one width, so it cannot draw a nib. A NaN point starts the next contour, so a signature's strokes are one
+shape that moves as one.
 
 Refused: annotations (`/Square`, `/Ink`, `/Highlight`). Readers draw them differently, some not at all when printing,
 and a program that hides the annotation layer (feuille) would hide its own marks; and a person's mark is meant to be
