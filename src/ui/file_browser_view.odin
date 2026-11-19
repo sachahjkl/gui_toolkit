@@ -193,6 +193,7 @@ file_browser_keys :: proc(fb: ^File_Browser) -> (act: File_Action) {
 	// (the path bar's field has its own: its dropdown closes, then the breadcrumb comes back)
 	if !path_bar_editing(&fb.bar) && key_press(.Escape) {
 		switch {
+		case table_band_cancel(&fb.table):   // (a rectangle being drawn: the selection there was)
 		case line_edit_string(&fb.filter) != "":
 			line_edit_clear(&fb.filter)
 			fb.focus_list = true
@@ -267,7 +268,29 @@ file_browser_bar :: proc(fb: ^File_Browser, act: ^File_Action) {
 			spacer(px(em * 0.5))
 			_ = checkbox("###fb_deep", fmt.tprintf("%s###fb_deep_text", i18n.tr("In subfolders")), &fb.deep)
 		}
+		spacer(px(em * 0.5))
+		file_browser_view_button(fb, h)
 		spacer(px(em * DIALOG_MARGIN_EM))
+	}
+}
+
+// The menu of the list's views (FILE_VIEW_MENU).
+FILE_VIEW_MENU :: "###fb_view_menu"
+
+// The list's view: a button of the step's icon, whose menu lists the seven steps (the one shown checked). Ctrl+wheel
+// and the zoom keys step them too (Table.zoom_keys).
+@(private = "file")
+file_browser_view_button :: proc(fb: ^File_Browser, h: f32) {
+	next({width = px(h), height = px(h)})
+	b := button("fb_view", icon = table_zoom_icon(fb.table.zoom), o = {icon_font = lucide_icons(), tip = i18n.tr("View (Ctrl+wheel, Ctrl+= and Ctrl+-)")})
+	if b.clicked && b.box != nil { menu_open(FILE_VIEW_MENU, b.box.rect, search = false, align = .End) }
+	if menu(FILE_VIEW_MENU) {
+		menu_heading(i18n.tr("View"))
+		for i in 0 ..< TABLE_ZOOMS {
+			if menu_item(fmt.tprintf("%s###fb_view_%d", table_zoom_label(i), i), checked = fb.table.zoom == i, icon = table_zoom_icon(i), icon_font = lucide_icons()).clicked {
+				_ = table_set_zoom(&fb.table, i)
+			}
+		}
 	}
 }
 
@@ -421,9 +444,12 @@ file_browser_table :: proc(fb: ^File_Browser, act: ^File_Action, empty: string) 
 	s := gs()   // (the State it is built in: its owner's, or its own window's)
 	fb.table.lead = file_row_lead
 	fb.table.lead_user = fb
+	fb.table.picture = file_card_picture
 	next({width = fill(), height = fill()})
 	a11y({name = i18n.tr("Files"), multiselectable = fb.table.vl.multi})
 	ev := table_build("###fb_table", &fb.table, &fb.data, empty)
+	// (after the cards: the thumbnails they asked go to the source, the newest first; the old ones go over the budget)
+	thumb_cache_frame(&fb.thumbs, file_thumb_ask, fb)
 	if ev.sorted { file_browser_rows(fb, true) }
 	if ev.activated && act.kind == .None { act^ = {kind = .Activate, double = s.double_key != 0} }
 	file_browser_row_menu(fb, ev)
@@ -529,6 +555,41 @@ file_row_lead :: proc(t: ^Table, row: int, size: f32) {
 	tint: Maybe(Color)
 	if look == .Folder { tint = color("accent") }
 	icon(file_look_icon(look), size, tint, lucide_icons())
+}
+
+// A card's picture (Grid): the file's thumbnail once the source gave it, else the kind's icon (a folder's always; a
+// source without thumbnails: always). Each card built asks for its own (thumb_cache_get); the asks go after the cards.
+@(private = "file")
+file_card_picture :: proc(t: ^Table, row: int, size: f32) {
+	fb := (^File_Browser)(t.lead_user)
+	e := file_row_entry(fb, row)
+	if e == nil { return }
+	if e.kind == .File && fb.source.thumbnail != nil {
+		path := fsx.path_join(fb.folder, e.name, fb.sep, context.temp_allocator)
+		// (the source's in the key: a server's "/a.png" is not the computer's)
+		key := fmt.tprintf("%p|%s", fb.source.user, thumb_key(path, e.size, e.modified))
+		th := thumb_cache_get(&fb.thumbs, key, path)
+		if th.state == .Ready && !th.refused {
+			next({width = fill(), height = pct(1)})
+			_ = thumb_picture("###thumb", th, font_size() * shape_of(.Row))
+			return
+		}
+	}
+	spacer(fill())
+	file_row_lead(t, row, size)
+	spacer(fill())
+}
+
+// An ask of the thumbnails' cache, to the source (its answer: file_reply_thumbnail, file_reply_failed).
+@(private = "file")
+file_thumb_ask :: proc(user: rawptr, path: string, side: int, ticket: u64) {
+	fb := (^File_Browser)(user)
+	// (an ask that waited from a dialog of another source: none to answer it, the slot is given back)
+	if fb.source.thumbnail == nil {
+		thumb_cache_failed(&fb.thumbs, ticket)
+		return
+	}
+	fb.source.thumbnail(&fb.source, path, side, {state = fb.state, dialog = fb.serial, ticket = ticket, kind = .Thumbnail})
 }
 
 // The row of a new folder: its name, being typed; Enter makes it, Escape gives it up.

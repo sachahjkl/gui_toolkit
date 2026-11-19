@@ -32,6 +32,7 @@ File_Memory :: struct {
 	sort_set:   bool,
 	hidden:     bool,
 	recent:     [dynamic]string,
+	zoom:       int,     // the list's step (table_zoom_step): its view, its cards' size
 }
 
 @(private)
@@ -139,6 +140,7 @@ file_memory_remember :: proc(fb: ^File_Browser, chosen: string) {
 	if fb.folder != "" { delete(e.folder, a); e.folder = strings.clone(fb.folder, a) }
 	e.size, e.split, e.hidden = fb.size, fb.split, fb.hidden
 	e.sort, e.descending, e.sort_set = fb.table.sort, fb.table.descending, true
+	e.zoom = fb.table.zoom
 	if chosen != "" && !file_memory_bad(chosen) {
 		for r, i in e.recent {
 			if r == chosen { delete(r, a); ordered_remove(&e.recent, i); break }
@@ -154,7 +156,8 @@ file_memory_remember :: proc(fb: ^File_Browser, chosen: string) {
 file_memory_bad :: proc(s: string) -> bool { return strings.index_any(s, "\t\r\n\x1f") >= 0 }
 
 // The file: its header, then a line per dialog,
-// `id <tab> folder <tab> width <tab> height <tab> split <tab> sort <tab> descending <tab> hidden <tab> recent...`.
+// `id <tab> folder <tab> width <tab> height <tab> split <tab> sort <tab> descending <tab> hidden <tab> recent... <tab> view`
+// (the view: the step's stable name, table_zoom_key; a line without it is in Details).
 @(private)
 file_memories_text :: proc(m: ^File_Memories, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
@@ -168,6 +171,8 @@ file_memories_text :: proc(m: ^File_Memories, allocator := context.temp_allocato
 			if i > 0 { strings.write_string(&b, FILE_MEMORY_LIST_SEP) }
 			strings.write_string(&b, r)
 		}
+		strings.write_byte(&b, '\t')
+		strings.write_string(&b, table_zoom_key(e.zoom))
 		strings.write_byte(&b, '\n')
 	}
 	return strings.to_string(b)
@@ -196,6 +201,7 @@ file_memories_merge :: proc(m: ^File_Memories, text: string) {
 		sort, sort_ok := strconv.parse_int(f[5], 10)
 		if !w_ok || !h_ok || !split_ok || !sort_ok || sort < TABLE_UNSORTED || sort > FILE_COLUMN_KIND { continue }
 		e := File_Memory{folder = strings.clone(f[1], a), size = {w, h}, split = split, sort = sort, descending = f[6] == "1", sort_set = true, hidden = f[7] == "1"}
+		if len(f) >= 10 { e.zoom, _ = table_zoom_from_key(f[9]) }
 		e.recent = make([dynamic]string, a)
 		list := f[8]
 		for p in strings.split_iterator(&list, FILE_MEMORY_LIST_SEP) {

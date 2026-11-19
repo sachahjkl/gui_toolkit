@@ -15,6 +15,7 @@ import "core:testing"
 import "core:time"
 import "gt:fsx"
 import "gt:platform"
+import png "gt:png"
 import "gt:testkit/session"
 import "gt:ui"
 
@@ -53,6 +54,7 @@ Fake :: struct {
 	at_once: bool,   // answers in the call
 	made:    [dynamic]string,
 	finds:   [dynamic]Asked_Find,
+	thumbs:  [dynamic]Asked,   // the thumbnails asked (answered when the test says)
 }
 
 @(private = "file")
@@ -68,6 +70,11 @@ fake_source :: proc(f: ^Fake, caps := ui.File_Caps{.Size, .Modified}, finds := f
 			f := (^Fake)(src.user)
 			append(&f.made, strings.clone(path, runtime.heap_allocator()))
 			ui.file_reply_made(reply)
+		},
+		// (asked only by the cards of the grid: the other tests' details ask nothing)
+		thumbnail = proc(src: ^ui.File_Source, path: string, px: int, reply: ui.File_Reply) {
+			f := (^Fake)(src.user)
+			append(&f.thumbs, Asked{path = strings.clone(path, runtime.heap_allocator()), reply = reply})
 		},
 	}
 	if finds {
@@ -94,6 +101,8 @@ fake_destroy :: proc(f: ^Fake) {
 	for a in f.asked { delete(a.path, runtime.heap_allocator()) }
 	for m in f.made { delete(m, runtime.heap_allocator()) }
 	for x in f.finds { delete(x.folder, runtime.heap_allocator()); delete(x.query, runtime.heap_allocator()) }
+	for x in f.thumbs { delete(x.path, runtime.heap_allocator()) }
+	delete(f.thumbs)
 	delete(f.asked)
 	delete(f.made)
 	delete(f.finds)
@@ -956,4 +965,89 @@ the_browser_keeps_the_keyboard :: proc(t: ^testing.T) {
 	testing.expect_value(t, app.escapes, 1)
 	session.type_text(s, "q")
 	testing.expect_value(t, app.typed_q, 1)
+}
+
+////////////////////////////////
+// The views and the thumbnails (src/md/features/view-modes.md, thumbnails.md)
+
+// The view's menu in the bar.
+@(private = "file")
+pick_view :: proc(s: ^session.Session, step: int) {
+	session.click(s, "fb_view")
+	// (a menu item's box is named mi_<its rank>_<its id>)
+	session.click(s, fmt.tprintf("mi_%d_fb_view_%d", step, step))
+}
+
+// The view chosen in the bar's menu, and Ctrl+wheel over the list, are remembered by the dialog's remember_id: the
+// next dialog of that id opens on them; another id in Details.
+@(test)
+the_dialog_remembers_its_view :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/p"] = []ui.File_Entry{F("a.png"), F("b.png")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/p", remember_id = "pictures"})
+	testing.expect_value(t, counts(s).zoom, 0)
+	pick_view(s, ui.TABLE_ZOOM_CARDS)
+	testing.expect_value(t, counts(s).zoom, ui.TABLE_ZOOM_CARDS)
+	testing.expect(t, session.find(s, "item0") != nil, "the cards")
+	// a notch of Ctrl+wheel up over the list: the next step
+	session.wheel(s, session.center(session.get(s, "fb_table")), {0, -1}, {.Ctrl})
+	testing.expect_value(t, counts(s).zoom, ui.TABLE_ZOOM_CARDS + 1)
+	session.click(s, "fb_cancel")
+	open(s, &app, .Open, {start_dir = "/p", remember_id = "pictures"})
+	testing.expect_value(t, counts(s).zoom, ui.TABLE_ZOOM_CARDS + 1)
+	session.click(s, "fb_cancel")
+	open(s, &app, .Open, {start_dir = "/p", remember_id = "other"})
+	testing.expect_value(t, counts(s).zoom, 0)
+}
+
+// The cards ask their thumbnails of the source (the details none, a folder none); an answer shows the picture in its
+// card (file_reply_thumbnail into the browser's cache), a failure keeps the icon.
+@(test)
+the_cards_ask_thumbnails_of_the_source :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/p"] = []ui.File_Entry{F("sub", .Folder), F("a.png"), F("b.png")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/p"})
+	session.frames(s, 3)
+	testing.expect_value(t, len(app.fake.thumbs), 0)   // (the details: no card)
+	pick_view(s, ui.TABLE_ZOOM_CARDS)
+	session.frames(s, 3)
+	testing.expect_value(t, len(app.fake.thumbs), 2)
+	testing.expect_value(t, counts(s).thumbs_asked, 2)
+	for a in app.fake.thumbs { testing.expect(t, a.path == "/p/a.png" || a.path == "/p/b.png", "a file's path, not the folder's") }
+	if len(app.fake.thumbs) < 2 { return }
+	px := [16]u8{0xff, 0, 0, 0xff, 0xff, 0, 0, 0xff, 0xff, 0, 0, 0xff, 0xff, 0, 0, 0xff}
+	ui.file_reply_thumbnail(app.fake.thumbs[0].reply, px[:], 2, 2)
+	ui.file_reply_failed(app.fake.thumbs[1].reply, "")
+	session.frames(s, 3)
+	testing.expect_value(t, counts(s).thumbs_ready, 1)
+	testing.expect(t, session.find(s, "thumb") != nil, "the picture in its card")
+	testing.expect_value(t, len(app.fake.thumbs), 2)   // (each asked once: the failure is not asked again)
+}
+
+// The computer's files: a real PNG's thumbnail is decoded on the chores and comes to its card.
+@(test)
+the_local_source_makes_a_pictures_thumbnail :: proc(t: ^testing.T) {
+	root := fmt.tprintf("%s/gui_toolkit_file_thumbs_%d", fsx.temp_dir(context.temp_allocator), os.get_pid())
+	fsx.remove_tree(root)
+	fsx.make_dirs(root)
+	defer fsx.remove_tree(root)
+	W, H :: 600, 300
+	rgba := make([]u8, W * H * 4, context.temp_allocator)
+	for i in 0 ..< W * H { rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2], rgba[i * 4 + 3] = u8(i % 251), 0x80, u8(i % 7 * 30), 0xff }
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/wide.png", root), png.encode(rgba, W, H, allocator = context.temp_allocator)) == nil)
+	app: App
+	defer app_destroy(&app)
+	app.local = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = root})
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).rows_shown == 1 }, "the picture's row", BOUND)
+	pick_view(s, ui.TABLE_ZOOM_CARDS)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).thumbs_ready == 1 }, "its thumbnail", BOUND)
+	testing.expect(t, session.find(s, "thumb") != nil, "the picture in its card")
 }

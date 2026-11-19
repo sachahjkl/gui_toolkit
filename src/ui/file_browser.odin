@@ -187,6 +187,11 @@ file_browser_of :: proc(s: ^State) -> ^File_Browser {
 	fb.table.lead_em = 0.4
 	fb.table.lead_user = fb
 	fb.table.vl.no_typeahead = true   // (what is typed goes to the filter)
+	// the views (view-modes.md): Ctrl+wheel and the zoom keys step them, a rectangle selects (several files), a card's
+	// weak line is the size, its picture the file's thumbnail
+	fb.table.zoom_keys = true
+	fb.table.rubber_band = true
+	fb.table.card_line = FILE_COLUMN_SIZE
 	thumb_cache_init(&fb.thumbs)
 	s.files = fb
 	return fb
@@ -236,14 +241,20 @@ File_Browser_Counts :: struct {
 	deep:         bool,  // "In subfolders" is on
 	found:        int,   // the entries of the last find's answer
 	found_shown:  bool,  // the rows are the find's
+	zoom:         int,   // the list's step (table_zoom_step)
+	thumbs_asked: int,   // the thumbnails asked of the source
+	thumbs_ready: int,   // ... and kept, Ready
 }
 
 file_browser_counts :: proc(s: ^State) -> File_Browser_Counts {
 	fb := s.files
 	if fb == nil { return {} }
+	ready := 0
+	for _, t in fb.thumbs.entries { if t.state == .Ready { ready += 1 } }   // (a test's question: not per frame)
 	return {open = fb.open, folder = fb.folder, rows_made = fb.rows_made, rows_applied = fb.rows_applied,
 		rows_shown = len(fb.table.rows), entries = len(fb.entries), list_layouts = fb.table.vl.offsets_made,
-		deep = fb.deep, found = len(fb.found), found_shown = fb.made && fb.made_for.found}
+		deep = fb.deep, found = len(fb.found), found_shown = fb.made && fb.made_for.found,
+		zoom = fb.table.zoom, thumbs_asked = fb.thumbs.sent, thumbs_ready = ready}
 }
 
 // Whether the toolkit's file browser is open (ui.file_dialog shows it until it answers): a program that counts what
@@ -287,6 +298,9 @@ file_browser_open :: proc(s: ^State, kind: File_Dialog_Kind, d: platform.File_Di
 	table_layout_reset(&fb.table.layout)
 	fb.table.sort, fb.table.descending = FILE_COLUMN_NAME, false
 	if m != nil && m.sort_set { fb.table.sort, fb.table.descending = m.sort, m.descending }
+	// (its view: a dialog for pictures opens on its cards again)
+	fb.table.zoom = 0
+	if m != nil { fb.table.zoom = m.zoom }
 	fb.table.shown[FILE_COLUMN_SIZE] = .Size in fb.source.caps
 	fb.table.shown[FILE_COLUMN_MODIFIED] = .Modified in fb.source.caps
 	file_local_warm(s)   // (the computer's places)

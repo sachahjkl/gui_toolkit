@@ -91,6 +91,14 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   dialog stays open).
 - **`start_known` is the source's to answer** (`File_Source.known`), after `start_dir` and the dialog's memory: only
   the computer's source has a Downloads folder, and it reads it with its places, on the chores (downloads.md).
+- **The list has the table's views** ([view-modes.md](view-modes.md)): details, names, columns, cards. One button in the
+  bar shows the view's icon and opens a menu of the seven steps; Ctrl+wheel over the list and the zoom keys in it step
+  them (`Table.zoom_keys`: the window's zoom stays the window's elsewhere). Refused: four buttons for four views (the
+  card sizes are steps too, and the bar has no room for seven), and classeur's slider (a control of its own for one
+  setting a menu says). The step is part of the dialog's memory (by its stable name, `table_zoom_key`): a dialog for
+  pictures opens on its cards again. A card's picture is the file's thumbnail when the source gives one, else the
+  kind's icon; a folder has its icon. A card's weak line is the size. The rubber band works in a dialog of
+  several files. The preview pane is the same in every view.
 - **A thumbnail is a call of the source, kept in the browser's `Thumb_Cache`** ([thumbnails.md](thumbnails.md)). Its
   answer is the only one not dropped by the dialog's serial: a file's picture is good for the next dialog too.
 - **A picture's texture is made at the first draw.** The build has no renderer; the draw callback has it.
@@ -111,8 +119,8 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   (`.git`, `.config`) are the clutter Hidden files is for, and every source keeps the same rule.
 - A hidden link is skipped before it is followed: the walk stats no link it does not show.
 - A program's source must not answer after `ui.destroy`: the reply holds the State.
-- Escape is taken by the browser before its fields and its list: the filter, then the new folder's row, then the
-  dialog. While the path bar is typed in, Escape is the bar's (its dropdown, then the breadcrumb).
+- Escape is taken by the browser before its fields and its list: a rectangle being drawn, then the filter, then the new
+  folder's row, then the dialog. While the path bar is typed in, Escape is the bar's (its dropdown, then the breadcrumb).
 - The browser takes the keyboard from the build after it opened: the build that opens it gave its keys to the program
   already.
 - Its body reads the State it is built in (`gs()`), not `fb.state`: in a window of its own, that is the window's.

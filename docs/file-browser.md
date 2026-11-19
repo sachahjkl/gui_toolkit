@@ -52,6 +52,12 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
   file chosen in Open mode and named in Save mode). Tab takes the row highlighted, a folder with its separator. Escape
   closes the dropdown, then gives the breadcrumb back, and so does the keyboard leaving the field. The search in
   subfolders stays the filter's (the toggle below): the bar lists one folder at a time.
+- **The view**: the button at the end of the bar shows the list's view and opens its menu: Details, Names, Columns,
+  then cards of four sizes (`Table.zoom`, docs/data-views.md "A table's views"). A card shows the file's thumbnail
+  when the source gives one (`File_Source.thumbnail`, "Thumbnails" below), else its kind's icon, its name cut in its
+  middle with its extension kept, and its size. With several files (Open with `multiple`), a press on the empty part
+  and a drag select a rectangle; Escape gives the selection there was back. The view is remembered with the dialog's
+  `remember_id`, in its memory file too (the last field of its line: the step's name, `table_zoom_key`).
 - **Places**, at the left: what the source gives (local: Home, Desktop, Documents, Downloads, Pictures, Music, Videos
   that exist, then the drives on Windows, `/` elsewhere: read once per State on the chores, `file_local.odin`), then the
   program's own places (`File_Dialog.places`: for ocn, the folders of the latest sessions), then the recent folders of
@@ -122,6 +128,8 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 | Escape | the path field's while it has the keyboard (its dropdown, then the breadcrumb); else clears the filter, then the new folder's row, then cancels |
 | F5 | reads the folder again |
 | Shift+Ctrl+N | New folder |
+| Ctrl+= / Ctrl+-, Ctrl+wheel over the list | the next or the previous view (the keyboard in the list); Ctrl+0: the details |
+| ←→ (cards, columns) | the next or the previous card; in the columns, the next or the previous column |
 
 While the browser is open it holds the keyboard, as an open menu does: from the build after it opened until it
 closes, the program's `key_press`, `key_take`, `key_pressed_peek` and typed text get nothing (whatever

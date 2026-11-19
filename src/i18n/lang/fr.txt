@@ -2341,6 +2341,12 @@ fr Grandes cartes
 en Huge cards
 fr Très grandes cartes
 
+en View
+fr Vue
+
+en View (Ctrl+wheel, Ctrl+= and Ctrl+-)
+fr Vue (Ctrl+molette, Ctrl+= et Ctrl+-)
+
 en More tools
 fr Plus d'outils
 
