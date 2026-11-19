@@ -134,6 +134,9 @@ Host :: struct {
 	failure: Open_Failure, // why the last host_open failed (open_error)
 	frames:  Frame_Ring,   // the last pictures' times, in every build (frame_stats)
 	slept:   bool,     // the loop slept before this frame (hosts_wait)
+	// a frame is due but waits for the compositor's word that the last picture is shown (hosts_due): the loop's wait for
+	// it is no rest, so the frame keeps its real dt
+	word_due: bool,
 	rested:  bool,     // this frame comes after a sleep: its dt is one refresh (host_picture)
 	times:   Host_Times,   // the last picture's steps
 	shown:   [2]int,   // the size of the last picture
@@ -610,13 +613,20 @@ hosts_due :: proc(hosts: []^Host) -> (now: bool, wake_ms: int) {
 	// (the windows of their views count too: their frames come after their owners')
 	all := host_with_views(hosts)
 	for h in all {
+		h.word_due = false   // (as of this look: an early answer below leaves no stale one)
 		if host_done(h) { continue }
 		if host_close_waits(h) || platform.events_waiting(h.win) { return true, 0 }
 		// (its last picture not shown yet: what moves or settles waits for the compositor's word, which wakes the loop; a
 		// timer still wakes it: the word may never come, on a hidden workspace or an output with nothing else to draw,
 		// and the program's own work (a sample) goes on, its picture held)
 		pending := platform.frame_shown_pending(h.win)
-		if !pending && (h.settle > 0 || ui.needs_frame(&h.state)) { return true, 0 }
+		due := h.settle > 0 || ui.needs_frame(&h.state)
+		if !pending && due { return true, 0 }
+		h.word_due = pending && due
+		// (the word asks for the next picture only when one waits for it: what moves waits for it here, before any
+		// host_frame, so the word must know. Without this, an animation on Wayland moved only with input, or at the
+		// patience's pace, four pictures a second)
+		if h.word_due { platform.frame_shown_held(h.win) }
 		if w := ui.wake_in_ms(&h.state); w > 0 && (wake_ms == 0 || w < wake_ms) { wake_ms = w }
 		// (and when the word is given up, if it does not come: host_frame)
 		if pending && (h.settle > 0 || ui.needs_frame(&h.state)) && host_present_free(h) {
@@ -635,7 +645,9 @@ hosts_wait :: proc(hosts: []^Host) {
 	for h in hosts {
 		if platform.is_closed(h.win) { continue }
 		platform.wait_event(h.win, wake)
-		for o in hosts { o.slept = true }
+		// (a window that waited for the compositor's word with a frame due did not rest: its next dt is the real one, not
+		// one refresh, else every frame of an animation on Wayland counted as after a rest and moved by 1/60 s)
+		for o in hosts { o.slept = !o.word_due }
 		return
 	}
 }

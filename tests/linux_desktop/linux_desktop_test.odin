@@ -552,6 +552,51 @@ a_host_hides_and_comes_back :: proc(t: ^testing.T) {
 	}
 }
 
+@(private = "file")
+Moving :: struct { value: f32, builds: int }
+
+@(private = "file")
+moving_build :: proc(h: ^host.Host, size: host.Vec2) {
+	m := (^Moving)(h.user)
+	m.builds += 1
+	m.value = ui.tween(ui.key_from_string(0, "moving"), 1, MOVE_MS, initial = f32(0))
+	ui.label("moving###l")
+}
+
+@(private = "file") MOVE_MS :: 300
+
+// An animation with no input, through the loop a program runs (hosts_wait, host_frame): it ends in about its time, a
+// picture at each refresh. On Wayland the compositor's word that the last picture was shown did not ask for the next
+// one, and each frame counted as after a rest (dt 1/60 s): an animation moved only with input, or four pictures a
+// second, and a 300 ms tween took seconds.
+@(test)
+an_animation_moves_with_no_input :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	m: Moving
+	sh: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	if !host.host_open(h, &sh, {title = "an animation", size = {320, 200}}, moving_build, &m) {
+		testing.expect(t, false, "the renderer starts (Vulkan: lavapipe on the virtual desktop)")
+		return
+	}
+	defer host.host_close(h)
+	host.host_show(h)
+	// (shown and settled first: the tween starts at the first build and runs from there)
+	for i := 0; i < 50 && m.builds == 0; i += 1 { host.hosts_wait({h}); host.host_frame(h) }
+	start, builds := time.tick_now(), m.builds
+	for m.value < 1 && time.duration_milliseconds(time.tick_since(start)) < 5000 {
+		host.hosts_wait({h})
+		host.host_frame(h)
+	}
+	took := time.duration_milliseconds(time.tick_since(start))
+	testing.expectf(t, m.value >= 1, "%s: the animation ended (at %.2f after %.0f ms)", desktop(), m.value, took)
+	// (its time, and room for a slow virtual desktop: the fault took seconds)
+	testing.expectf(t, took < 3 * MOVE_MS, "%s: in about its time: %.0f ms for %d ms", desktop(), took, MOVE_MS)
+	testing.expectf(t, m.builds - builds >= 6, "%s: a picture at each refresh, not a few: %d builds", desktop(), m.builds - builds)
+}
+
 // An event read from the socket behind a reply is queued inside xcb: poll(2) does not see it, a wait must not sleep over it.
 @(test)
 a_wait_does_not_sleep_over_what_xcb_read :: proc(t: ^testing.T) {

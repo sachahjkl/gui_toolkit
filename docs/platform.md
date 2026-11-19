@@ -194,8 +194,10 @@ has none keeps the shared stubs (neither Windows nor Linux), which answer "not s
 - **A window not shown.** Wayland's compositor tells when it shows a window's picture (`wl_surface.frame`), and a present
   in Fifo waits for that word about the last one: a window it does not show (covered whole, minimized, on another
   workspace) never gets it. `frame_shown_ask(w)`, just before a picture is presented, asks for it; `frame_shown_pending(w)`
-  says it has not come; `frame_shown_forget(w)` drops it when no picture was presented after all. `host` presents no picture while it is pending (the input is still read and built), and the word
-  asks for a repaint. False and nothing elsewhere. A compositor may also keep the word for a window it shows (ShojiWM,
+  says it has not come; `frame_shown_forget(w)` drops it when no picture was presented after all. `host` presents no picture while it is pending (the input is still read and built). The word
+  asks for a repaint only when a picture waits for it (`frame_shown_held(w)`): `host` says so when it holds a picture,
+  and when the loop finds a frame due (an animation) while the word is pending, so an animation goes on at each
+  refresh with no input; a window at rest is not drawn again at each refresh. False and nothing elsewhere. A compositor may also keep the word for a window it shows (ShojiWM,
   counting a window on the wrong output, sent it once a second, and a Fifo barrier held the commit for good): on Wayland
   the renderer presents in a mailbox when the driver offers one (`render.present_may_block` false), and then `host` waits
   for the word at most `FRAME_SHOWN_PATIENCE_MS` (250 ms) when it has a picture to show, and not at all after the user's
