@@ -23,6 +23,7 @@ Drawing and text
   rendering.md        Rendering backends
   webgpu.md           WebGPU
   paint.md            paint: vector pictures
+  ink.md              ink: pen strokes as ink
   diagrams.md         Diagrams: svg and mermaid
   pictures.md         pictures: a cache of decoded pictures
 
