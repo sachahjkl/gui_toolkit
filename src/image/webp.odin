@@ -26,6 +26,7 @@ when IMAGE_WEBP {
 			"system:advapi32.lib",
 			"system:kernel32.lib",
 			"system:dbghelp.lib",
+			"system:Synchronization.lib",   // (WaitOnAddress: Rust's standard library locks with it)
 		}
 	} else {
 		foreign import gt_webp {

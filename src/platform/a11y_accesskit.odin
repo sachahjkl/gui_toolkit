@@ -29,6 +29,7 @@ when !A11Y_NATIVE_LINK {
 		"system:advapi32.lib",
 		"system:kernel32.lib",
 		"system:dbghelp.lib",
+		"system:Synchronization.lib",   // (WaitOnAddress: Rust's standard library locks with it)
 		"system:ole32.lib",
 		"system:oleaut32.lib",
 		"system:uiautomationcore.lib",
