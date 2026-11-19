@@ -13,6 +13,10 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
+- **The screen's refresh on Linux.** Linux measures no refresh (no vblank timing): the first frame after a rest moves
+  an animation by 1/60 s even on a 144 Hz screen, and the pacer has no grid to count shown and missed frames. And on
+  Wayland the rate read is the first output's, not that of the output the window is on. Intent:
+  [src/md/infrastructure/frame-loop.md](src/md/infrastructure/frame-loop.md).
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).
