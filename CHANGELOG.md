@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.332.1] - 2026-11-20 06:51
+
+### Fixed
+- **A Wayland window takes the refresh rate of the monitor it is on** (`platform.display_info`): it read the first monitor's, and a window on a 144 Hz monitor beside a 60 Hz one was held to 60 frames a second by its pacer. The rate is now that of the outputs the window is on (the highest when it spans several), and the pacer replans when the window moves to another monitor. The first frame after a rest moves an animation by one refresh of that monitor, not by 1/60 s, wherever the renderer measures no refresh (Linux); `host.DT_RESTED_S` is gone.
+
 ## [0.332.0] - 2026-11-20 06:29
 
 ### Added
@@ -4664,6 +4669,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.332.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.332.1
 [0.332.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.332.0
 [0.331.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.331.1
 [0.331.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.331.0
