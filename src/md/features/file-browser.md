@@ -88,7 +88,40 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   of each folder for the attributes alone (two readings that can disagree).
 - **`File_Place` is in `platform`.** `platform.File_Dialog` stays the one options struct, with `places`, and with
   `row_actions`: a program's acts in a row's context menu (downloads.md says why data of the options and why the
-  dialog stays open).
+  dialog stays open), and `row_actions_off`.
+- **A row's context menu always opens: the toolkit's acts, then the program's.** In this order, each one only when the
+  source can do it: Copy path, Copy name, Copy relative path (any source: a server's path is worth copying too); Open and
+  Show in folder (the computer's source only: the system's programs read only its files); Rename and Move to the trash
+  (a source that has `File_Source.rename` / `.trash`; the computer's has them); a separator, then
+  `File_Dialog.row_actions`. A program removes the toolkit's own with `File_Dialog.row_actions_off` (a
+  `bit_set[File_Row_Builtin]`, empty by default: every program gets them without a line of code). What the source
+  cannot do is absent with no setting: a menu that offers an act and fails it is worse than no item.
+- **Each act takes what its meaning allows.** The copies take every entry chosen, one line each, in the entries' order
+  (a list pasted in a terminal or a mail); a relative path is relative to the folder the dialog was opened in
+  (`start`: its first folder), so that a find's results and a walk into subfolders give `docs/a.md`, and a path outside
+  it stays whole. Open, Show in folder and Rename take one entry: three hundred windows from a Ctrl+A, or a rename of
+  several in one field, is never what was meant. Move to the trash takes them all, in one call of the source.
+- **Rename and trash are calls with replies, as a listing** (`File_Reply_Kind.Rename`, `.Trash`, `.Restore`). The
+  interface's thread does no file operation; the computer's source runs them on the chores, a server's answers from its
+  callbacks. Done, the folder is read again (its listing is the truth: a rename may have been refused, a trash partly
+  done). Refused: the browser changing its entries itself before the answer (an entry shown that the disk does not have).
+- **Rename edits the name in its row or its card** (`Table.editing`, `edit_id`, `edit`: a hook of the table, so every
+  table can edit a name in place). The name is selected without its extension, as Save's suggested name. Enter asks
+  the source; Escape, a press elsewhere or a change of folder gives it up. The same name, or an empty one, asks
+  nothing. A name with a separator is refused before the source is asked, as New folder's. Refused: a dialog that asks
+  the new name (the name is where the eyes are; classeur and every file manager edit it in place).
+- **The trash's undo is a toast, and only for the dialog that trashed.** The answer says what went to the trash and
+  how each comes back (`File_Trashed`: the path, and the source's token for it, the computer's: its path in the trash);
+  a click on the toast asks `File_Source.restore` with them. A source without `restore` gets a toast without undo. Only
+  the last trash can be undone, and only while its dialog is open: another dialog may have another source, whose
+  `user` the program may have freed. A toast's `user` is the trash's serial, not a pointer: an old toast finds its
+  serial is not the last one and does nothing.
+- **The system's trash is `platform.move_to_trash` and `platform.put_back`**, beside `reveal_in_folder`: what every
+  program that deletes a file wants. Linux: the freedesktop.org trash (the home trash, or `.Trash-<uid>` at the top of
+  another volume, its `.trashinfo` written first with `O_EXCL`, the file renamed, never copied). Windows: the Recycle Bin
+  through `IFileOperation`, which says the `$R` path it made, so `put_back` renames it back and removes its `$I`
+  record. `put_back` never goes over a name that is taken again. Refused: a deletion for good, even confirmed (a picker
+  is no place to lose a file), and `SHFileOperationW` (it does not say where the item went: no undo).
 - **`start_known` is the source's to answer** (`File_Source.known`), after `start_dir` and the dialog's memory: only
   the computer's source has a Downloads folder, and it reads it with its places, on the chores (downloads.md).
 - **The list has the table's views** ([view-modes.md](view-modes.md)): details, names, columns, cards. One button in the
@@ -128,5 +161,11 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
 - `ui.destroy` closes the browser before the views end: its view goes as the program's close, `done` is not called.
 - A result of a find is named by its path relative to the folder shown. Its row's identity is the hash of that path:
   `select_name`, the preview and the act join it to the folder as they join a name.
+- A rename's field takes the keyboard: F2, Delete, Backspace and the typed letters are its own, and Escape gives the
+  rename up before it clears the filter. A rename is given up when the rows are made again: the row it edits may be
+  gone.
+- A rename on its way and a new name: the folder read again selects the new name (`select_name`), as a new folder's.
+- The computer's rename refuses a name that is taken (`os.rename` replaces on POSIX); a change of case alone is let
+  through (on Windows the "other" name is the same file).
 - The find's rows replace the folder's rows while the toggle is on and the query is not empty. The folder's entries stay
   as they are: clearing the query shows them again without a new listing.

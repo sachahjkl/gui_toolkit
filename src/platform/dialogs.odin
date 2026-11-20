@@ -8,6 +8,7 @@ package platform
 //     window is disabled meanwhile, as the system does.
 //   * open_url, open_path and reveal_in_folder hand a URL or a file to the system (its browser, the application of the
 //     file's type, the file manager with the file selected).
+//   * move_to_trash and put_back (trash.odin) move a file to the system's trash and back.
 //
 // Filters are pure data (`File_Filter`: a name and patterns such as "*.png"); filter_patterns, filter_matches and
 // filters_from_accept are the logic every implementation shares, tested without a desktop.
@@ -44,6 +45,19 @@ File_Dialog :: struct {
 	find_deep:      bool,           // the toolkit's file browser: its filter starts searching the subfolders too
 	act:            string,         // the toolkit's file browser: the act button's word ("": the mode's, Open, Choose, Save)
 	row_actions:    []File_Row_Action,   // the toolkit's file browser: the program's acts in an entry's context menu
+	row_actions_off: bit_set[File_Row_Builtin; u8],   // the toolkit's file browser: its own acts this dialog does not offer
+}
+
+// The toolkit's own acts in an entry's context menu of its file browser, before the program's (File_Row_Action). Each is
+// offered when the dialog's source can do it; File_Dialog.row_actions_off removes the ones a program does not want.
+File_Row_Builtin :: enum u8 {
+	Copy_Path,            // every source
+	Copy_Name,
+	Copy_Relative_Path,   // relative to the folder the dialog started in
+	Open,                 // the computer's files: with the system's program
+	Reveal,               // the computer's files: shown selected in the system's file manager
+	Rename,               // a source with File_Source.rename
+	Trash,                // a source with File_Source.trash
 }
 
 // A program's act on an entry of the toolkit's file browser (File_Dialog.row_actions), in the entry's context menu

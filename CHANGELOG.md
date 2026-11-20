@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.334.0] - 2026-11-20 09:01
+
+### Added
+- **The file browser's row menu has the toolkit's own acts**, before the program's `row_actions`, so it always opens: Copy path, Copy name and Copy relative path on every source (one line per entry chosen); Open with its program and Show in folder on the computer's files; Rename (F2, the name edited in its row or its card) and Move to the trash (Delete, a toast whose click puts the entries back) on a source that has the new `File_Source.rename`, `.trash` and `.restore` (answered by `file_reply_renamed`, `file_reply_trashed`, `file_reply_restored`; the computer's source has them). `File_Dialog.row_actions_off` (a `bit_set[platform.File_Row_Builtin]`) removes the ones a program does not want. Also new: `platform.move_to_trash` and `platform.put_back` (the freedesktop.org trash on Linux, the Recycle Bin on Windows), and `Table.editing`, `edit_id` and `edit`, a name edited in place in any table.
+- **A program's flake builds from GitHub.** `nix run github:owner/program` fetches a tarball without the toolkit's submodule; a program's flake now takes the toolkit from a `gui_toolkit` input pinned to the submodule's commit (docs/toolbox.md, "The flake's toolkit"), and the check's new step `Flake_Toolkit` holds `flake.lock`'s pin equal to the submodule's commit. A program without that input is not checked.
+
 ## [0.333.0] - 2026-11-20 06:58
 
 ### Added
@@ -4674,6 +4680,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.334.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.334.0
 [0.333.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.333.0
 [0.332.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.332.1
 [0.332.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.332.0

@@ -26,12 +26,15 @@ if r.status == .Chosen { for p in r.paths { ... } }
 | `open_url(url)` | the system's handler of the URL (default browser, mail client) |
 | `open_path(path)` | the application of the file's type (a folder: the file manager) |
 | `reveal_in_folder(path)` | the file manager on the file's folder, with the file selected |
+| `move_to_trash(path) -> (in_trash, ok)` | the system's trash (Linux: freedesktop.org's, with its `.trashinfo`; Windows: the Recycle Bin). `in_trash`: where it went ("" on a Windows drive without a Recycle Bin: deleted for good) |
+| `put_back(in_trash, to) -> bool` | what `move_to_trash` moved, back at `to`, its record removed; false when something is at `to` again (never over it) |
 
 `File_Dialog`: `owner` (disabled while the dialog is up), `title`, `filters` (`File_Filter`: a name and patterns
 `"*.ext"`; a bare `"ext"` or `".ext"` is accepted), `all_files` (a last "All files" line), `filter_index`, `start_dir`
 (an explicit folder) or `start_known` (a default), `remember_id` (the system keeps the last folder per id),
 `suggested_name`, `default_ext`, `multiple`, `overwrite_prompt`. The toolkit's file browser honours `start_known` too
-and reads `places`, `find_deep`, `act` and `row_actions` (a program's acts in a row's context menu), which the system's
+and reads `places`, `find_deep`, `act`, `row_actions` (a program's acts in a row's context menu) and `row_actions_off`
+(the toolkit's own acts there that a program removes, `File_Row_Builtin`), which the system's
 dialogs ignore ([file-browser.md](file-browser.md)). `Dialog_Result`: `status` (`Chosen`, `Cancelled`,
 `Unsupported`, `Failed`), `paths`, `filter` (the type line selected).
 

@@ -238,6 +238,9 @@ Enter), `sorted`, `resized`, `columns` (a right click on the header). `Table.lea
 goes before the first cell's text, `size` high (an icon; in a taller row, a thumbnail whose width the lead chooses);
 `lead_user` is the caller's. `Table.lead_em` is the room before the first title and the first cell (0: 0.6 em).
 `Table.row_em` is a row's height in ems (0: `TABLE_ROW_EM`): taller rows for a lead that shows a picture. `Table.header_bg` is the header's background (nil: none).
+A name edited in place (a rename): while `Table.editing`, the row of identity `Table.edit_id` has, in place of its first
+cell's text (or its card's name, in every view), what `Table.edit(t, row)` builds: a `line_edit` the caller owns, which
+takes the keyboard and reads Enter itself. The caller ends it (`editing = false`); the file browser's Rename does so.
 
 ### A table's views (`src/ui/table_views.odin`)
 

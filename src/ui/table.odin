@@ -681,6 +681,11 @@ Table :: struct {
 	lead_em:   f32,             // the room before the first title and the first cell (0: 0.6)
 	row_em:    f32,             // a row's height in ems (0: TABLE_ROW_EM): taller rows for a lead that shows a thumbnail
 	header_bg: Maybe(Color),    // the header's background (nil: none)
+	// A name edited in place (a rename): while `editing`, the row of identity `edit_id` has, in place of its first cell's
+	// text (or its card's name), what `edit` builds (a line_edit, as wide as the text was). The program ends it.
+	editing:   bool,
+	edit_id:   u64,
+	edit:      proc(t: ^Table, row: int),
 	// The views (table_views.odin, src/md/features/view-modes.md): the same rows as details, names, columns or cards.
 	zoom:      int,             // the step of table_zoom_step: its view and its cards' size (0: Details)
 	zoom_keys: bool,            // Ctrl+wheel over the table and the zoom keys in it step `zoom` (else they zoom the window)
@@ -971,6 +976,12 @@ table_menu_key :: proc(t: ^Table, ev: ^Table_Events) {
 	ev.menu_at = {t.sel_rect.min.x + font_size() * TABLE_MENU_INSET_EM, t.sel_rect.max.y}
 }
 
+// Whether data row `r`'s name is the one edited in place (Table.editing).
+@(private)
+table_edits :: proc(t: ^Table, d: ^Table_Data, r: int) -> bool {
+	return t.editing && t.edit != nil && r >= 0 && r < len(d.ids) && d.ids[r] == t.edit_id
+}
+
 // What the table says when it has no row to show.
 @(private)
 table_empty :: proc(t: ^Table, empty: string, em: f32) {
@@ -1032,7 +1043,10 @@ table_first_cell :: proc(t: ^Table, d: ^Table_Data, r: int, em, lead_em, row_h: 
 			t.lead(t, r, t.row_em > 0 ? row_h - em * 0.5 : em * 1.5)
 			spacer(px(em * 0.4))
 		}
-		if ranges := table_ranges(&t.layout, text); len(ranges) > 0 {
+		if table_edits(t, d, r) {
+			next({width = fill(), height = pct(1), axis = .X, cross = .Center})
+			if row(id = "###c0_edit") { t.edit(t, r) }
+		} else if ranges := table_ranges(&t.layout, text); len(ranges) > 0 {
 			next({width = fill(), height = pct(1), axis = .X, cross = .Center})
 			b := build_box({.Clip}, fmt.tprintf("%s###c0", text_shown(text)))
 			if parent(b) {

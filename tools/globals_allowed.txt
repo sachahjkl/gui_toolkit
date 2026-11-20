@@ -273,6 +273,10 @@ platform/dragdrop_win32.odin CLSID_DragDropHelper const  # a COM interface id (p
 platform/dragdrop_win32.odin IID_IDropTargetHelper const  # a COM interface id (passed by address)
 platform/dragdrop_win32.odin IID_IDragSourceHelper const  # a COM interface id (passed by address)
 platform/dragdrop_win32.odin drop_target_vtable const  # a COM vtable (passed by address)
+platform/trash_windows.odin TRASH_CLSID_FILE_OPERATION const  # a COM class id (passed by address)
+platform/trash_windows.odin TRASH_IID_FILE_OPERATION const  # a COM interface id (passed by address)
+platform/trash_windows.odin TRASH_IID_PROGRESS_SINK const  # a COM interface id (passed by address)
+platform/trash_windows.odin trash_sink_vtbl const  # a COM vtable (passed by address)
 platform/dragdrop_x11_linux.odin x11_image thread  # a library and what was made with it on this thread's connection
 platform/frame_gate.odin thread_gate thread  # the frame gate of the thread's loop
 platform/ime_wl_linux.odin text_input_listener const  # a listener table (passed by address to libwayland)

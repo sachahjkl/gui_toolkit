@@ -93,18 +93,30 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
   word with `File_Dialog.act`: "Start here"). The act is
   disabled while nothing can be chosen (Open with no file selected; Folder mode chooses the selected folder, or the
   folder shown when none is).
-- **The program's acts on a row** (`File_Dialog.row_actions`): a right click on a row (it is selected), or the Menu key
-  (Shift+F10) on the rows selected, opens their context menu with the program's acts, each a `File_Row_Action`:
-  `label`, `icon` (a Lucide glyph), `folders` (offered on a folder too; by default on files only), `act(user, path)`.
-  An act runs on the interface's thread, once per entry chosen that it takes (a multiple selection gives each, in the
-  folder's order), with the entry's path in the source's form (valid during the call). The dialog stays open: an act is
-  no answer of the dialog. It must not block: ocn's Download starts a task (`http.receive`, docs/http.md). No menu
-  opens when no act takes the rows chosen. The system's dialogs do not show them.
+- **A row's menu**: a right click on a row (it is selected), or the Menu key (Shift+F10) on the rows selected, opens
+  their context menu. The toolkit's acts come first, each only when the source can do it (`platform.File_Row_Builtin`):
+
+  | Act | Source | Entries |
+  |---|---|---|
+  | Copy path, Copy name, Copy relative path | every source | all chosen: one line each, in the folder's order; relative to the folder the dialog started in (a path outside it stays whole) |
+  | Open with its program, Show in folder | the computer's (`local_files`) | one (`ui.open`, `.Path` / `.Reveal`, on the chores) |
+  | Rename (F2) | one with `rename` | one: its name becomes a field in its row or its card, selected without its extension; Enter asks the source, Escape or a press elsewhere gives it up |
+  | Move to the trash (Delete) | one with `trash` | all chosen, in one call; a toast says what went, and a click on it puts them back (`restore`) while the dialog is open |
+
+  Then, after a separator, the program's acts (`File_Dialog.row_actions`), each a `File_Row_Action`: `label`, `icon` (a
+  Lucide glyph), `folders` (offered on a folder too; by default on files only), `act(user, path)`. An act runs on the
+  interface's thread, once per entry chosen that it takes (a multiple selection gives each, in the folder's order), with
+  the entry's path in the source's form (valid during the call). The dialog stays open: an act is no answer of the
+  dialog. It must not block: ocn's Download starts a task (`http.receive`, docs/http.md). The system's dialogs do not
+  show them.
+
+  A program removes the toolkit's acts it does not want with `File_Dialog.row_actions_off`, a
+  `bit_set[platform.File_Row_Builtin]` (empty: all of them). The menu opens when one act at least is offered.
 
   ```odin
   download :: proc(user: rawptr, path: string) { app_download_start((^App)(user), path) }
   acts := []platform.File_Row_Action{{label = "Download", icon = lucide.DOWNLOAD, act = download, user = app}}
-  ui.file_dialog(&app.ui, .Open, {row_actions = acts}, done, app, source = &app.server_files)
+  ui.file_dialog(&app.ui, .Open, {row_actions = acts, row_actions_off = {.Copy_Relative_Path}}, done, app, source = &app.server_files)
   ```
 - **The first folder**: `start_dir`; else the folder this `remember_id` was left in; else `start_known`, the system's
   folder of that name (`.Downloads`), asked of the source (`File_Source.known`; the computer's source answers it from
@@ -125,7 +137,10 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 | Ctrl+H | hidden files |
 | Ctrl + click, Shift+↑↓, Ctrl+A | several files (Open with `multiple`) |
 | a letter | the filter |
-| Escape | the path field's while it has the keyboard (its dropdown, then the breadcrumb); else clears the filter, then the new folder's row, then cancels |
+| Escape | the path field's while it has the keyboard (its dropdown, then the breadcrumb); else gives a rename up, then clears the filter, then the new folder's row, then cancels |
+| Menu, Shift+F10 | the menu of the rows selected |
+| F2 (out of a field) | renames the row selected (a source with `rename`) |
+| Delete (out of a field) | moves the rows selected to the trash (a source with `trash`) |
 | F5 | reads the folder again |
 | Shift+Ctrl+N | New folder |
 | Ctrl+= / Ctrl+-, Ctrl+wheel over the list | the next or the previous view (the keyboard in the list); Ctrl+0: the details |
@@ -162,13 +177,29 @@ File_Source :: struct {
 	start:       proc(src: ^File_Source, allocator: mem.Allocator) -> string,        // where a dialog starts with no folder known ("": the source's first place)
 	known:       proc(src: ^File_Source, folder: platform.Known_Folder, allocator: mem.Allocator) -> string,  // a dialog's start_known ("": none; nil: no such folders)
 	thumbnail:   proc(src: ^File_Source, path: string, px: int, reply: File_Reply),  // a card's picture (nil: the kind's icon)
+	rename:      proc(src: ^File_Source, path, name: string, reply: File_Reply),      // nil: no Rename
+	trash:       proc(src: ^File_Source, paths: []string, reply: File_Reply),        // nil: no Move to the trash
+	restore:     proc(src: ^File_Source, items: []File_Trashed, reply: File_Reply),  // nil: a trash without undo
 }
 ```
 
 A call starts the work and returns at once: it never blocks the interface's thread. The source answers later (or in
 the call), on the interface's thread, through the reply: `file_reply_listed(reply, entries)`,
-`file_reply_read(reply, bytes, size)`, `file_reply_made(reply)`, `file_reply_found(reply, entries)`, or
+`file_reply_read(reply, bytes, size)`, `file_reply_made(reply)`, `file_reply_found(reply, entries)`,
+`file_reply_renamed(reply)`, `file_reply_trashed(reply, items, message = "")`, `file_reply_restored(reply)`, or
 `file_reply_failed(reply, message, refused = false, missing = false)`.
+
+`rename` gives the entry `path` the name `name` in its folder; it must refuse a name taken (`file_reply_failed`, the
+source's words in a toast; the field stays to correct it). `trash` moves every path given to the source's trash and
+answers `file_reply_trashed` with a `File_Trashed` per entry moved: its `path`, and the `token` that names it in the
+trash ("": it cannot come back); `message` says what went wrong with the others ("": none). `restore` gets those items
+back, from a click on the trash's toast, and answers `file_reply_restored`. Done, the browser reads the folder again: the
+listing is the truth. A remote source that has none of them shows neither Rename nor Move to the trash.
+
+The computer's source renames on the chores (a name taken refused: `os.rename` replaces on POSIX), and trashes with
+`platform.move_to_trash(path) -> (in_trash, ok)` and `platform.put_back(in_trash, to) -> bool`: the freedesktop.org
+trash on Linux (`.trashinfo` written, the desktop's trash can put it back), the Recycle Bin on Windows
+(`IFileOperation`); `put_back` never goes over a name taken again. Both ask the disk: call them from a task.
 
 `find` (nil: no search in subfolders) answers `file_reply_found` with the entries under `folder`, at any depth, that
 match `query`, best first, at most `limit`: each entry's `name` is its path relative to `folder`, with the source's
@@ -276,5 +307,7 @@ a reading under way; the keyboard (Enter, Backspace, typing, Escape's order, Shi
 program's places; New folder; the search in subfolders (a file three folders deep, a hidden folder, a late answer of an
 older query, no request per frame); the program's `key_press` and typed text while the browser is open; the path bar
 (Ctrl+L and a path typed, Tab and its own reading beside the list, a part clicked, Escape's order); the program's acts
-on a row (a right click on a file and on a folder, the Menu key on several files, no menu without acts); `start_known`
+on a row (a right click on a file and on a folder, the Menu key on several files); the toolkit's acts (the menu with no
+program act, Copy path of two entries, a source without rename nor trash, `row_actions_off`, Rename in place, Move to
+the trash and its toast's undo, Open and Show in folder on the computer's source only); `start_known`
 (a source that knows the folder, `start_dir` first, the computer's Downloads named by a `user-dirs.dirs` of the test's).

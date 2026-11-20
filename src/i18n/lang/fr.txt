@@ -1915,6 +1915,53 @@ fr Sélectionnez un fichier pour le voir ici.
 en Reading…
 fr Lecture…
 
+en Copy path
+fr Copier le chemin
+
+en Copy name
+fr Copier le nom
+
+en Copy relative path
+fr Copier le chemin relatif
+
+en Open with its program
+fr Ouvrir avec son programme
+
+en Show in folder
+fr Afficher dans le dossier
+
+en Rename
+fr Renommer
+
+en Move to the trash
+fr Mettre à la corbeille
+
+en The new name
+fr Le nouveau nom
+
+en A name has no separator in it.
+fr Un nom ne contient pas de séparateur.
+
+en Nothing was moved to the trash
+fr Rien n'a été mis à la corbeille
+
+en %s moved to the trash
+fr %s mis à la corbeille
+
+en %d item moved to the trash
+en+ %d items moved to the trash
+fr %d élément mis à la corbeille
+fr+ %d éléments mis à la corbeille
+
+en Click to undo.
+fr Cliquez pour annuler.
+
+en The name was not changed
+fr Le nom n'a pas été changé
+
+en Not everything was put back
+fr Tout n'a pas été remis en place
+
 en Replace %s?
 fr Remplacer %s ?
 
@@ -1956,6 +2003,12 @@ fr Filtrer
 
 en In subfolders
 fr Dans les sous-dossiers
+
+en View (Ctrl+wheel, Ctrl+= and Ctrl+-)
+fr Vue (Ctrl+molette, Ctrl+= et Ctrl+-)
+
+en View
+fr Vue
 
 en Preview
 fr Aperçu
@@ -2043,6 +2096,19 @@ fr Le fichier n'a pas pu être lu : %s.
 
 en The folder could not be made: %s.
 fr Le dossier n'a pas pu être créé : %s.
+
+en It could not be renamed: %s.
+fr Il n'a pas pu être renommé : %s.
+
+en %d item could not be moved to the trash.
+en+ %d items could not be moved to the trash.
+fr %d élément n'a pas pu être mis à la corbeille.
+fr+ %d éléments n'ont pas pu être mis à la corbeille.
+
+en %d item could not be put back.
+en+ %d items could not be put back.
+fr %d élément n'a pas pu être remis en place.
+fr+ %d éléments n'ont pas pu être remis en place.
 
 en Find
 fr Rechercher
@@ -2340,12 +2406,6 @@ fr Grandes cartes
 
 en Huge cards
 fr Très grandes cartes
-
-en View
-fr Vue
-
-en View (Ctrl+wheel, Ctrl+= and Ctrl+-)
-fr Vue (Ctrl+molette, Ctrl+= et Ctrl+-)
 
 en More tools
 fr Plus d'outils
