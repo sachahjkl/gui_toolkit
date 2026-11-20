@@ -16,6 +16,7 @@ Wl_Output_Info :: struct {
 	xdg:          Wl_Proxy,   // its zxdg_output_v1 (nil: no xdg-output manager)
 	position:     [2]i32,     // wl_output.geometry: compositor space, with no fractional scale in it
 	mode:         [2]i32,     // the current mode's pixels
+	refresh_mhz:  i32,        // the current mode's refresh (millihertz; 0 until it says it)
 	scale:        i32,
 	transform:    i32,
 	logical_pos:  [2]i32,     // zxdg_output_v1's
@@ -64,9 +65,11 @@ wl_xdg_output_of :: proc(o: ^Wl_Output_Info) {
 	if o.xdg != nil { wl.proxy_add_listener(o.xdg, &xdg_output_listener, o) }
 }
 
-// An output went (unplugged, turned off). The first one's proxy stays: the windows' scale and rate read it.
+// An output went (unplugged, turned off). The first one's proxy stays: the windows' scale reads it. A window that was on
+// it is no more (the compositor may send no leave for an output it removes): its rate is read again.
 @(private)
 wl_output_remove :: proc(name: u32) {
+	for w in wlc.windows { wl_output_left(w, name) }
 	for o, i in wlc.outputs {
 		if o.name != name { continue }
 		if o.xdg != nil { wl.proxy_marshal_flags(o.xdg, ZXDG_OUTPUT_DESTROY, nil, wl.proxy_get_version(o.xdg), WL_MARSHAL_FLAG_DESTROY) }

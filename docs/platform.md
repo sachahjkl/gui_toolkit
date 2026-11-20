@@ -93,7 +93,11 @@ no), asked at run time.
 notification area icon calls it before it shows its window. Windows; elsewhere the system places what it shows.
 
 **Display** — `display_info`, `display_invalidate`, `display_live_hz`, `monitor_size` (the window's monitor in pixels,
-for a screen-sized fixed surface).
+for a screen-sized fixed surface). `display_info` is the rate of the monitor the window is on, read again when it moves
+to another one or its mode changes (its `serial` changes, and `render.pace_frame` replans): Windows the window's monitor,
+X11 the RandR monitor under the window's middle, Wayland the outputs the surface entered (`wl_surface.enter`), the
+highest rate when it is on several, the first output's before it is on any. A frame after a rest takes one refresh of
+that rate as its dt (`host`) when the renderer measures none (Linux).
 
 **Cursors** — `set_cursor`, `set_cursor_custom`, `cursor_info`, `cursor_source`, `cursor_scheme`, `cursor_size_px`,
 `cursor_render`, `shown_cursor`, `cursor_handle_of`, `custom_cursor_create` / `_release` / `_valid` / `_stats` /

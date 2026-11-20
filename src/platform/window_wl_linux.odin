@@ -15,6 +15,7 @@ package platform
 
 import "base:runtime"
 import "core:fmt"
+import "core:slice"
 import "core:time"
 import "core:strings"
 import "core:unicode/utf8"
@@ -98,7 +99,6 @@ Wl_Conn :: struct {
 	// the serials the requests need: the pointer's last enter (set_cursor), its last button (a drag start, a selection)
 	enter_serial:  u32,
 	button_serial: u32,
-	output_refresh_mhz: i32,      // the wl_output mode's refresh
 	// an offer being described (its offer events) before data_offer / enter / selection say what it is for
 	pending_offer:       Wl_Proxy,
 	pending_offer_mimes: [dynamic]string,
@@ -111,6 +111,9 @@ Wl_Conn :: struct {
 // This thread's connection: each thread that opens windows has its own (its event queue, its seat's focus and serials), as its
 // windows' calls and the listeners all run on it.
 @(private, thread_local) wlc: Wl_Conn
+
+// The outputs a surface can be on at once that count for its rate (a window across more monitors than this is unheard of).
+@(private) WL_ENTERED_MAX :: 8
 
 @(private)
 Wl_Window_State :: struct {
@@ -142,6 +145,7 @@ Wl_Window_State :: struct {
 	presented:   bool,
 	drawn:       [2]int,           // w.size at the last picture's commit: another size is a step of a resize no picture shows yet
 	output:      u32,              // the registry name of the output the surface entered last (wl_surface.enter); 0: none yet
+	entered:     [WL_ENTERED_MAX]u32,   // the registry names of every output the surface is on now (enter minus leave); 0: a free place
 	activate_pending: bool,        // raise_window asked the focus before the first picture
 	activate_token:   string,      // raise_window_token did (owned)
 	outside:     Wl_Outside_Bands, // the resize bands around the window (outside_bands_wl_linux.odin)
@@ -332,18 +336,19 @@ output_geometry :: proc "c" (data: rawptr, o: Wl_Proxy, x, y, pw, ph, subpixel: 
 @(private)
 output_mode :: proc "c" (data: rawptr, o: Wl_Proxy, flags: u32, w, h, refresh: i32) {
 	if flags & 1 == 0 { return }
-	if info := (^Wl_Output_Info)(data); info != nil { info.mode = {w, h} }
-	if o == wlc.output { wlc.output_refresh_mhz = refresh; wlc.output_px = {w, h} }
+	if info := (^Wl_Output_Info)(data); info != nil { info.mode, info.refresh_mhz = {w, h}, refresh }
+	if o == wlc.output { wlc.output_px = {w, h} }
 }
-// A change of the output is complete: the windows' rate and monitor are read again, and a window without a fractional
-// scale follows the output's integer one. So does a window with one that the compositor has given no scale yet: it
-// sends one when the surface enters an output or gets its role, not to a surface that was never shown.
+// A change of an output is complete: the windows' rate is read again (any window may be on it; the reading is of
+// memory, no request). On the first output, a window without a fractional scale also follows its integer one. So does
+// a window with one that the compositor has given no scale yet: it sends one when the surface enters an output or gets
+// its role, not to a surface that was never shown.
 @(private)
 output_done :: proc "c" (data: rawptr, o: Wl_Proxy) {
 	context = wl_ctx_real()
+	for w in wlc.windows { w.display_stale = true }
 	if o != wlc.output { return }
 	for w in wlc.windows {
-		w.display_stale = true
 		st := wl_state(w)
 		// (an overlay's scale is its own output's: wl_open_overlay, fractional_preferred)
 		if st.overlay || st.scale_given || w.dpi_scale == f32(wlc.output_scale) { continue }
@@ -862,6 +867,8 @@ wl_open :: proc(w: ^Window, title: string, size: [2]int, transparent: bool) -> b
 @(private)
 wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State, role: bool) -> bool {
 	st.presented, st.output = false, 0
+	st.entered = {}
+	w.display_stale = true   // (a new surface is on no output until its enter)
 	st.surface = wl.proxy_marshal_flags(wlc.compositor, WL_COMPOSITOR_CREATE_SURFACE, wl.surface_interface, wl.proxy_get_version(wlc.compositor), 0, nil)
 	if st.surface == nil { return false }
 	wl.proxy_add_listener(st.surface, &surface_listener, st)   // (also its user data: st)
@@ -909,13 +916,58 @@ Wl_Surface_Listener :: struct {
 
 @(private)
 wl_surface_enter :: proc "c" (data: rawptr, s: Wl_Proxy, output: Wl_Proxy) {
+	context = wl_ctx_real()
 	st := (^Wl_Window_State)(data)
-	for o in wlc.outputs { if o.proxy == output { st.output = o.name } }
+	for o in wlc.outputs {
+		if o.proxy != output { continue }
+		st.output = o.name
+		if !slice.contains(st.entered[:], o.name) {
+			// (more outputs at once than places: the extra ones are not counted, the rate is that of the others)
+			if i, found := slice.linear_search(st.entered[:], 0); found { st.entered[i] = o.name }
+		}
+		// (the rate of the window is that of its outputs: the next frame reads it, the pacer replans)
+		if st.win != nil { st.win.display_stale = true }
+	}
 }
 @(private)
 wl_surface_leave :: proc "c" (data: rawptr, s: Wl_Proxy, output: Wl_Proxy) {
+	context = wl_ctx_real()
 	st := (^Wl_Window_State)(data)
-	for o in wlc.outputs { if o.proxy == output && st.output == o.name { st.output = 0 } }
+	for o in wlc.outputs { if o.proxy == output && st.win != nil { wl_output_left(st.win, o.name) } }
+}
+
+// The window's surface is no more on the output of that registry name (its leave, or the output went).
+@(private)
+wl_output_left :: proc(w: ^Window, name: u32) {
+	st := wl_state(w)
+	if st == nil { return }
+	if i, found := slice.linear_search(st.entered[:], name); found {
+		st.entered[i] = 0
+		w.display_stale = true
+	}
+	// (a window still on another output is on that one: window_output_name says it rather than nothing)
+	if st.output == name {
+		st.output = 0
+		for other in st.entered { if other != 0 { st.output = other; break } }
+	}
+}
+
+// The refresh (millihertz) a window's frames are paced by: the highest of the outputs its surface is on. The pacer's plan
+// is a cap: too high, the slower screen still paces the frames; too low, it holds back the faster one (a 144 Hz window
+// with a 60 Hz plan made 60 frames a second). On no output yet (never shown, between a leave and an enter): the first
+// output's, until the first enter. 0: no output said its mode.
+@(private)
+wl_window_refresh_mhz :: proc(w: ^Window) -> i32 {
+	top: i32
+	if st := wl_state(w); st != nil {
+		for name in st.entered {
+			if name == 0 { continue }
+			for o in wlc.outputs { if o.name == name { top = max(top, o.refresh_mhz) } }
+		}
+	}
+	if top > 0 { return top }
+	for o in wlc.outputs { if o.proxy == wlc.output { return o.refresh_mhz } }
+	return 0
 }
 // (the scale comes from wp_fractional_scale; the transform is the output's)
 @(private) wl_surface_buffer_scale :: proc "c" (data: rawptr, s: Wl_Proxy, factor: i32) {}

@@ -2,8 +2,8 @@
 package platform
 
 // The refresh rate of the monitor a window is on (display_info), for frame pacing. On Wayland it comes from the
-// wl_output mode's `refresh` (millihertz: 60000, 143998...); on X11 from RandR, the mode of the monitor under the
-// window (x11_ext_linux.odin), else 60. Cheap to call every frame (cached; re-read only when stale). The exact present timing comes from
+// wl_output mode's `refresh` (millihertz: 60000, 143998...) of the outputs the surface entered, the highest of them
+// (wl_window_refresh_mhz); on X11 from RandR, the mode of the monitor under the window (x11_ext_linux.odin), else 60. Cheap to call every frame (cached; re-read only when stale). The exact present timing comes from
 // the renderer's own statistics (render.measured_refresh_hz) as on Windows; this feeds the rate a page reads
 // (screen.refresh) and the pacer's starting point.
 
@@ -61,10 +61,10 @@ query_display_linux :: proc(w: ^Window) -> (d: Display_Info) {
 	d.numerator, d.denominator = DISPLAY_FALLBACK_HZ, 1
 	switch w.backend {
 	case .Wayland:
-		if wlc.output_refresh_mhz > WL_MILLIHERTZ_PER_HZ {
-			hz := f64(wlc.output_refresh_mhz) / WL_MILLIHERTZ_PER_HZ
+		if mhz := wl_window_refresh_mhz(w); mhz > WL_MILLIHERTZ_PER_HZ {
+			hz := f64(mhz) / WL_MILLIHERTZ_PER_HZ
 			d.hz, d.max_hz, d.source = hz, hz, .Mode
-			d.numerator, d.denominator = u32(wlc.output_refresh_mhz), WL_MILLIHERTZ_PER_HZ
+			d.numerator, d.denominator = u32(mhz), WL_MILLIHERTZ_PER_HZ
 		}
 	case .X11:
 		if num, den, top, ok := x11_randr_rate(w); ok {

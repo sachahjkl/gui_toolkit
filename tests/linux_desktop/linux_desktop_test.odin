@@ -662,6 +662,70 @@ each_monitor_has_its_rate :: proc(t: ^testing.T) {
 	testing.expect(t, abs(platform.display_info(w).hz - 60) < 0.01, "the new mode of its monitor")
 }
 
+@(private = "file")
+rate_build :: proc(h: ^host.Host, size: host.Vec2) {
+	ui.label("rate###l")
+	ui.wake_within(&h.state, 10)   // (a frame every 10 ms with no input: each reads the display and may replan)
+}
+
+// Runs the host's loop until its window reads `hz` and its pacer's slots are one period of it apart; false after `ms`.
+@(private = "file")
+frames_until_rate :: proc(h: ^host.Host, ms: int, hz: f64) -> bool {
+	start := time.tick_now()
+	for time.duration_milliseconds(time.tick_since(start)) < f64(ms) {
+		host.hosts_wait({h})
+		host.host_frame(h)
+		read := platform.display_info(h.win).hz
+		period := f64(h.pacer.cadence.slots.period_ns)
+		if abs(read - hz) < 0.5 && abs(period - 1e9 / hz) < 1e5 { return true }
+	}
+	return false
+}
+
+// Wayland, two outputs of 60 and 144 Hz (sway makes the second, headless): a window moved to the second one takes its
+// rate, and its pacer's slots follow it. The rate read was the first output's: on the 144 Hz output the pacer kept a
+// 60 Hz plan, and its slots held the frames to 60 a second.
+@(test)
+a_window_takes_the_rate_of_its_output :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	TITLE :: "rate of its output"
+	shared: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	if !host.host_open(h, &shared, {title = TITLE, size = {320, 200}}, rate_build) {
+		testing.expect(t, false, "the renderer starts (Vulkan: lavapipe on the virtual desktop)")
+		return
+	}
+	defer host.host_close(h)
+	host.host_show(h)
+	testing.expect(t, frames_until_rate(h, 3000, 60), "on the first output (60 Hz): its rate, a plan of 60 Hz")
+	first := strings.clone(platform.window_output_name(h.win))
+	defer delete(first)
+
+	// the second output: its name is the one get_outputs did not list before
+	reset_files()
+	names :: `swaymsg -t get_outputs -r | grep -o '"name": *"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/' | sort`
+	sh(names, " > /tmp/gt_before; swaymsg -q create_output; sleep 0.3; ", names, " | comm -13 /tmp/gt_before - | head -n 1 > /tmp/gt_out")
+	data, err := os.read_entire_file("/tmp/gt_out", context.temp_allocator)
+	// (cloned: the host's frames free the temporary memory the file was read in, and the name is read after them)
+	second := strings.clone(strings.trim_space(string(data)))
+	defer delete(second)
+	if !testing.expect(t, err == nil && second != "", "sway makes a second output") { return }
+	// (unplugged after: the other tests count on one output)
+	defer sh("swaymsg -q output ", second, " unplug || swaymsg -q output ", second, " disable")
+	sh("swaymsg -q output ", second, " mode 1280x1024@144Hz pos 1280 0")
+	sh(`swaymsg -q '[title="^`, TITLE, `$"] move container to output `, second, "'")
+	testing.expectf(t, frames_until_rate(h, 3000, 144), "moved to %s (144 Hz): its rate %.2f Hz, slots %d ns apart",
+		second, platform.display_info(h.win).hz, h.pacer.cadence.slots.period_ns)
+	testing.expect_value(t, platform.window_output_name(h.win), second)
+
+	// and back: the rate of the first again
+	if first == "" { return }   // (no xdg-output: the first output has no name to move to)
+	sh(`swaymsg -q '[title="^`, TITLE, `$"] move container to output `, first, "'")
+	testing.expectf(t, frames_until_rate(h, 3000, 60), "back on %s (60 Hz): its rate %.2f Hz", first, platform.display_info(h.win).hz)
+}
+
 @(test)
 a_modes_timing_gives_its_rate :: proc(t: ^testing.T) {
 	check :: proc(t: ^testing.T, dot: u32, h, v: u16, flags: u32, want: f64) {
