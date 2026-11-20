@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.332.0] - 2026-11-20 06:29
+
+### Added
+- **`File_Source.generation`**: the version of what a source's paths name. The file browser keeps a thumbnail by the source's `user`, its `generation` and the file; another value asks the thumbnails again at the next dialog. A source whose listing has no size nor date gets a picture changed since, and one source object that reaches another server no longer shows the last server's thumbnails. A source that leaves it at 0 is unchanged.
+
+### Fixed
+- **A card's icon follows the card's size**: in the Cards views, a row with no picture (a folder, a file without a thumbnail, a table without `Table.picture`) shows its kind's icon at half the picture's height at every card size, not at the rows' font size in the middle of the card. `ui.table_card_icon_size(size)` gives that size to a program's `picture` callback that falls back to an icon.
+
 ## [0.331.1] - 2026-11-19 22:09
 
 ### Fixed
@@ -4656,6 +4664,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.332.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.332.0
 [0.331.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.331.1
 [0.331.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.331.0
 [0.330.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.330.0
