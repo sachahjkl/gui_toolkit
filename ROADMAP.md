@@ -2,9 +2,6 @@
 
 ## Now
 
-- **Every program's flake builds from GitHub.** papier, classeur, inspecteur, cliche, atelier, opencode native and
-  Wren take the toolkit from a `gui_toolkit` input pinned to their submodule's commit, as feuille does, so
-  `nix run github:sachahjkl/<program>` works. Their check then holds the pin (docs/toolbox.md, "The flake's toolkit").
 - **Wren on the toolkit's licence card.** Wren shows `ui.licence_card` and the shop's thank-you page, as every other
   program does since this toolkit version, and drops its `about_card*.odin` and its card shaders: one card. Intent:
   [src/md/features/licence-card.md](src/md/features/licence-card.md).
