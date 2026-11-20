@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.335.0] - 2026-11-20 09:50
+
+### Added
+- **A frame starts just in time**: in an animation, a scroll or a drag, `render.pace_frame` starts each frame as late as it can and still present it before the deadline of its refresh, so its input is read as close to the screen as possible. It times the frame from the screen's vblanks, the deadline the compositor keeps before each one (learned from its answers: `Vblank_Timing.lead_ns`) and the 90th percentile of the recent frames' cost (`platform.Frame_Cost`, `jit_start`, `Frame_Decision.just_in_time`). A frame later than that goes at once, a key or a button ends the wait, and the first frame after a rest is not delayed.
+- **Vblank timing on X11**: the Present extension's answers (`PresentCompleteNotify`) say when each picture reached the screen, as Wayland's presentation answers do (`platform.vblank_timing`), when the Vulkan driver presents with Present (a software one draws with PutImage: no answer). The answers end no wait of the loop.
+- **Vblank timing on Wayland** (`platform.vblank_timing`, `platform.vblank_ask`, `Vblank_Timing`): the compositor's presentation answers (`wp_presentation`) say when each picture reached the screen. `render.measured_refresh_hz` and `render.vblank_grid` now answer on Wayland, a frame after a rest takes the measured refresh as its dt, and `render.present_totals` counts the pictures the compositor showed, not the presents.
+
 ## [0.334.0] - 2026-11-20 09:01
 
 ### Added
@@ -4680,6 +4687,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.335.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.335.0
 [0.334.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.334.0
 [0.333.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.333.0
 [0.332.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.332.1
