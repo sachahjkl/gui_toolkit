@@ -20,8 +20,8 @@ frame due waits for it (`frame_shown_pending`): a picture presented before it wo
   its dt, since the time slept is not time the animation lived; Linux measures no refresh (no vblank timing), so that
   dt was 1/60 s, and every frame of an animation on Wayland moved by 1/60 s whatever time passed.
 - **The refresh of a frame after a rest is the measured one, else the window's screen's** (`display_info(w).hz`).
-  Linux measures none: a fixed 1/60 s moved an animation on a 144 Hz screen by more than two refreshes in its first
-  frame.
+  A fixed 1/60 s moved an animation on a 144 Hz screen by more than two refreshes in its first frame. Wayland measures
+  it from the compositor's presentation-time answers ([vblank.md](vblank.md)); X11 measures none yet.
 
 ## The rate of the output the window is on
 

@@ -38,10 +38,12 @@ wgpu_latency_wait :: proc(r: ^Renderer, timeout_ms: int) -> bool {
 	return l.timer == nil || win.WaitForSingleObject(l.timer, u32(max(timeout_ms, 0))) == win.WAIT_OBJECT_0
 }
 
-// The compositor's timing: the last vblank (QPC, refresh counter) and the period, into `p`; its refresh counter, and
-// whether it was read.
+// The compositor's timing: the last vblank (QPC, refresh counter) and the period, into the present state; its refresh
+// counter, and whether it was read. DWM does not say which frames of ours it showed (`counted` false): the present
+// estimates it.
 @(private)
-wgpu_compositor_timing :: proc(p: ^Present_State) -> (refresh: u64, ok: bool) {
+wgpu_compositor_timing :: proc(r: ^Renderer) -> (refresh: u64, ok, counted: bool) {
+	p := &r.present
 	info := DWM_TIMING_INFO{cbSize = size_of(DWM_TIMING_INFO)}
 	ok = hr_ok(DwmGetCompositionTimingInfo(nil, &info)) && info.qpcRefreshPeriod > 0
 	p.stats_ok = ok
@@ -51,7 +53,7 @@ wgpu_compositor_timing :: proc(p: ^Present_State) -> (refresh: u64, ok: bool) {
 	p.period_ns = f64(info.qpcRefreshPeriod) * 1e9 / f64(freq)
 	p.sync_tick = qpc_to_tick(i64(info.qpcVBlank))
 	p.sync_count = u32(info.cRefresh)
-	return info.cRefresh, true
+	return info.cRefresh, true, false
 }
 
 @(private)

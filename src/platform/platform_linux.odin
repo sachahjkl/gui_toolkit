@@ -717,6 +717,23 @@ frame_shown_forget :: proc(w: ^Window) {
 	wl_frame_shown_forget(w)
 }
 
+// Asks when the next present of the surface `h` reaches the screen: the renderer calls it just before each present.
+// Wayland with wp_presentation; nothing elsewhere. The answer is read by vblank_timing.
+vblank_ask :: proc(h: Surface_Handles) {
+	if h.backend != .Wayland { return }
+	if st := wl_state_of_surface(h.surface); st != nil { wl_presentation_ask(st) }
+}
+
+// What the compositor said of the pictures of the window whose surface is `h`: its last vblank, the period, the
+// pictures shown and discarded (Vblank_Timing). ok false: no such window of this thread, or not Wayland (X11 has none
+// yet). Zeros until the first answer, and for good on a compositor without wp_presentation.
+vblank_timing :: proc(h: Surface_Handles) -> (v: Vblank_Timing, ok: bool) {
+	if h.backend != .Wayland { return }
+	st := wl_state_of_surface(h.surface)
+	if st == nil { return }
+	return st.vblank, true
+}
+
 // Whether the loop has something to do without a new message: an event not handed out, a repaint asked for.
 @(private)
 wait_is_over :: proc(w: ^Window) -> bool {

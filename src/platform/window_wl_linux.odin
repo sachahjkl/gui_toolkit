@@ -50,6 +50,8 @@ Wl_Conn :: struct {
 	toplevel_manager: Wl_Proxy,   // zwlr_foreign_toplevel_manager_v1 (optional): the session's windows (toplevels)
 	layer_shell: Wl_Proxy,        // zwlr_layer_shell_v1 (optional): overlay windows (overlay_wl_linux.odin)
 	xdg_output_manager: Wl_Proxy, // zxdg_output_manager_v1 (optional): the outputs' logical places
+	presentation: Wl_Proxy,       // wp_presentation (optional): when each picture reached the screen (Vblank_Timing)
+	presentation_clock: u32,      // the clock of its timestamps (its clock_id; CLOCK_MONOTONIC until it says)
 	outputs:    [dynamic]^Wl_Output_Info,   // every wl_output (`output` is the first one's proxy)
 	toplevels:  [dynamic]Wl_Toplevel,
 	toplevel_serial: u64,         // the last toplevel's id
@@ -114,6 +116,9 @@ Wl_Conn :: struct {
 
 // The outputs a surface can be on at once that count for its rate (a window across more monitors than this is unheard of).
 @(private) WL_ENTERED_MAX :: 8
+// Pictures whose presentation answer is awaited at once. The compositor answers each at its next repaint, so one or two
+// wait; more means it keeps them (a hidden window): the oldest is given up for the newest.
+@(private) WL_FEEDBACKS_MAX :: 4
 
 @(private)
 Wl_Window_State :: struct {
@@ -140,6 +145,10 @@ Wl_Window_State :: struct {
 	frame_cb:    Wl_Proxy,         // wl_surface.frame asked with the last picture, until the compositor says it showed it
 	frame_held:  bool,             // a picture waited for that word (wl_frame_shown_held): its coming asks for a repaint
 	frame_asked: time.Tick,        // when frame_cb was asked (wl_frame_shown_waited_ms)
+	// the wp_presentation_feedback of each committed picture not answered yet, oldest first (nil: a free place), and what
+	// the answers said (kept across a hide: the window's, not its surface's)
+	feedbacks:   [WL_FEEDBACKS_MAX]Wl_Proxy,
+	vblank:      Vblank_Timing,
 	// a picture of this surface was presented (its first frame_shown_ask): until then the compositor has not mapped it,
 	// and an activation would name a window it does not know yet (ShojiWM drops it): it waits in activate_*
 	presented:   bool,
@@ -214,6 +223,7 @@ wl_connect_now :: proc() -> bool {
 	sigpipe_ignore()   // (a data source's reader may close its pipe while it is written)
 	wlc.fd = l.display_get_fd(wlc.display)
 	wlc.output_scale = 1
+	wlc.presentation_clock = WL_CLOCK_MONOTONIC
 	// the registry, and bind the globals it advertises
 	wlc.registry = l.proxy_marshal_flags(Wl_Proxy(wlc.display), 1 /*get_registry*/, l.registry_interface, l.proxy_get_version(Wl_Proxy(wlc.display)), 0, nil)
 	if wlc.registry == nil { return false }
@@ -294,6 +304,9 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "wp_viewporter": wlc.viewporter = bind(name, &wp_viewporter_iface, 1, version)
 	case "xdg_activation_v1": wlc.activation = bind(name, &xdg_activation_iface, 1, version)
 	case "zwp_virtual_keyboard_manager_v1": wlc.virtual_keyboards = bind(name, &vk_manager_iface, 1, version)
+	case "wp_presentation":
+		wlc.presentation = bind(name, &wp_presentation_iface, WP_PRESENTATION_VERSION, version)
+		if wlc.presentation != nil { wl.proxy_add_listener(wlc.presentation, &presentation_listener, nil) }
 	case "zwlr_foreign_toplevel_manager_v1":
 		wlc.toplevel_manager = bind(name, &ftl_manager_iface, 3, version)
 		wl.proxy_add_listener(wlc.toplevel_manager, &ftl_manager_listener, nil)
@@ -901,6 +914,8 @@ wl_surface_destroy :: proc(st: ^Wl_Window_State) {
 	if st.viewport != nil { wl.proxy_marshal_flags(st.viewport, WP_VIEWPORT_DESTROY, nil, wl.proxy_get_version(st.viewport), WL_MARSHAL_FLAG_DESTROY) }
 	if st.surface != nil { wl.proxy_marshal_flags(st.surface, WL_SURFACE_DESTROY, nil, wl.proxy_get_version(st.surface), WL_MARSHAL_FLAG_DESTROY) }
 	if st.frame_cb != nil { wl.proxy_destroy(st.frame_cb) }
+	// (their listeners' data is `st`, which a closed window frees: no answer may reach them after)
+	for &f in st.feedbacks { if f != nil { wl.proxy_destroy(f); f = nil } }
 	st.fractional, st.viewport, st.surface, st.frame_cb = nil, nil, nil, nil
 }
 
@@ -1032,6 +1047,116 @@ wl_frame_shown_forget :: proc(w: ^Window) {
 	if st == nil || st.frame_cb == nil { return }
 	wl.proxy_destroy(st.frame_cb)
 	st.frame_cb = nil
+}
+
+// When each picture reached the screen: a wp_presentation_feedback the renderer asks just before each present
+// (vblank_ask), answered once. Not with frame_shown_ask: that word is also given up while its picture is on its way (the
+// host's patience), and a picture asked for and not presented would leave its feedback to the next commit, counted twice.
+// The answer is kept as numbers in the window (Vblank_Timing) and ends no wait: it changes nothing on the screen, and a
+// window at rest gets one answer for its last picture, then nothing (src/md/infrastructure/vblank.md).
+@(private)
+Wl_Presentation_Listener :: struct { clock_id: proc "c" (data: rawptr, p: Wl_Proxy, clk_id: u32) }
+@(private) presentation_listener := Wl_Presentation_Listener{wl_presentation_clock}
+
+@(private)
+Wl_Feedback_Listener :: struct {
+	sync_output: proc "c" (data: rawptr, f: Wl_Proxy, output: Wl_Proxy),
+	presented:   proc "c" (data: rawptr, f: Wl_Proxy, tv_sec_hi, tv_sec_lo, tv_nsec, refresh, seq_hi, seq_lo, flags: u32),
+	discarded:   proc "c" (data: rawptr, f: Wl_Proxy),
+}
+@(private) feedback_listener := Wl_Feedback_Listener{wl_feedback_sync_output, wl_feedback_presented, wl_feedback_discarded}
+
+// (Linux's clock ids, as the protocol passes them: clock_gettime's)
+@(private) WL_CLOCK_MONOTONIC :: 1
+@(private) WL_CLOCK_MONOTONIC_RAW :: 4
+
+@(private)
+wl_presentation_clock :: proc "c" (data: rawptr, p: Wl_Proxy, clk_id: u32) { wlc.presentation_clock = clk_id }
+
+// (the output it was shown on: the rate is already the surface's outputs', wl_window_refresh_mhz)
+@(private)
+wl_feedback_sync_output :: proc "c" (data: rawptr, f: Wl_Proxy, output: Wl_Proxy) {}
+
+@(private)
+wl_feedback_presented :: proc "c" (data: rawptr, f: Wl_Proxy, tv_sec_hi, tv_sec_lo, tv_nsec, refresh, seq_hi, seq_lo, flags: u32) {
+	context = wl_ctx_real()
+	st := (^Wl_Window_State)(data)
+	if !wl_feedback_done(st, f) { return }
+	at := wl_presentation_tick(u64(tv_sec_hi) << 32 | u64(tv_sec_lo), tv_nsec)
+	if at == 0 { return }
+	// (the mode's period of the outputs it is on: the first guess when the compositor gives neither period nor counter)
+	mhz := st.win != nil ? wl_window_refresh_mhz(st.win) : 0
+	vblank_presented(&st.vblank, at, u64(seq_hi) << 32 | u64(seq_lo), refresh, mhz > 0 ? 1e12 / f64(mhz) : 0)
+}
+
+@(private)
+wl_feedback_discarded :: proc "c" (data: rawptr, f: Wl_Proxy) {
+	context = wl_ctx_real()
+	st := (^Wl_Window_State)(data)
+	if wl_feedback_done(st, f) { vblank_discarded(&st.vblank) }
+}
+
+// The feedback `f` answered: it goes (both events are its destructor), and its place with it. False: not one of the
+// window's (given up: wl_presentation_ask).
+@(private)
+wl_feedback_done :: proc(st: ^Wl_Window_State, f: Wl_Proxy) -> bool {
+	wl.proxy_destroy(f)
+	for x, i in st.feedbacks {
+		if x != f { continue }
+		copy(st.feedbacks[i:], st.feedbacks[i + 1:])
+		st.feedbacks[len(st.feedbacks) - 1] = nil
+		return true
+	}
+	return false
+}
+
+// Asks when the window's next commit reaches the screen. Nothing without the protocol: the numbers stay 0.
+@(private)
+wl_presentation_ask :: proc(st: ^Wl_Window_State) {
+	if wlc.presentation == nil || st.surface == nil { return }
+	n := 0
+	for f in st.feedbacks { if f != nil { n += 1 } }
+	if n == len(st.feedbacks) {
+		// (the compositor keeps them: the oldest is given up, its answer goes to a proxy that is gone)
+		wl.proxy_destroy(st.feedbacks[0])
+		copy(st.feedbacks[:], st.feedbacks[1:])
+		n -= 1
+		st.feedbacks[n] = nil
+	}
+	f := wl.proxy_marshal_flags(wlc.presentation, WP_PRESENTATION_FEEDBACK, &wp_presentation_feedback_iface, wl.proxy_get_version(wlc.presentation), 0, st.surface, nil)
+	if f == nil { return }
+	wl.proxy_add_listener(f, &feedback_listener, st)
+	st.feedbacks[n] = f
+}
+
+// A presentation timestamp (`sec`, `nsec`, on the clock the compositor announced) on core:time's tick clock
+// (CLOCK_MONOTONIC_RAW), which the pacer and the frame statistics use. 0: the clock cannot be read.
+@(private)
+wl_presentation_tick :: proc(sec: u64, nsec: u32) -> i64 {
+	t := i64(sec) * 1e9 + i64(nsec)
+	clk := wlc.presentation_clock
+	if clk == WL_CLOCK_MONOTONIC_RAW { return t }
+	// (moved by the distance of the two clocks now; they drift by parts per million, nothing over the frames that use it.
+	// libc's clock_gettime is the vDSO's: no call into the kernel)
+	read :: proc(id: u32) -> (i64, bool) {
+		ts: posix.timespec
+		if posix.clock_gettime(posix.Clock(id), &ts) != .OK { return 0, false }
+		return i64(ts.tv_sec) * 1e9 + i64(ts.tv_nsec), true
+	}
+	theirs, ok1 := read(clk)
+	ours, ok2 := read(WL_CLOCK_MONOTONIC_RAW)
+	if !ok1 || !ok2 { return 0 }
+	return t - theirs + ours
+}
+
+// The state of this thread's window whose surface is `surface` (nil: none).
+@(private)
+wl_state_of_surface :: proc(surface: rawptr) -> ^Wl_Window_State {
+	if surface == nil { return nil }
+	for w in wlc.windows {
+		if st := wl_state(w); st != nil && rawptr(st.surface) == surface { return st }
+	}
+	return nil
 }
 
 // How long the word asked has been waited for, in ms (-1: none is asked).

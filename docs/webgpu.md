@@ -70,7 +70,10 @@ time since the trigger); `render.trace_on()` says whether the switch is on. A la
 * No `SetSourceSize` in wgpu: a resize configures the surface again (2 to 3 ms), the resize slack is not used.
 * On Windows, frame statistics (`take_displayed`, `vblank_grid`) are estimated from `DwmGetCompositionTimingInfo`: a frame is "shown" at the first
   vblank after its present; a frame the GPU finished late is not seen. The frame latency object (`frame_waitable`) is a waitable
-  timer armed on that vblank. On Linux there are neither ([rendering.md](rendering.md)).
+  timer armed on that vblank. On Wayland the compositor's presentation answers (`wp_presentation`) give the vblanks, the
+  period and the pictures shown (`platform.vblank_timing`: [platform.md](platform.md)); `take_displayed` still estimates
+  each frame's vblank from them at its present. Linux has no frame latency object, and X11 no frame statistics yet
+  ([rendering.md](rendering.md)).
 * No border address mode: the transparent border of reduced filter results is applied in the shader.
 * The detailed GPU profile (every draw call) is not available; the per-step one is.
 * Sync intervals above 1 (`set_sync_interval`) are not available (Fifo presents every refresh).

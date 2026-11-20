@@ -315,6 +315,8 @@ platform/window_wl_linux.odin activation_token_listener const  # a listener tabl
 platform/window_wl_linux.odin fractional_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin data_device_listener const  # a listener table (passed by address to libwayland)
 platform/window_wl_linux.odin frame_shown_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin presentation_listener const  # a listener table (passed by address to libwayland)
+platform/window_wl_linux.odin feedback_listener const  # a listener table (passed by address to libwayland)
 platform/window_x11_linux.odin x11c thread  # this thread's X11 connection: its events, its windows, its selections
 platform/wl_protocol_linux.odin zwp_ti_manager_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin zwp_ti_iface const  # a protocol table, built once (wayland_lib), then read
@@ -353,6 +355,13 @@ platform/wl_protocol_linux.odin wp_vr_methods const  # a protocol table, built o
 platform/wl_protocol_linux.odin wp_v_methods const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin t_fm_get const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin t_vr_get const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_presentation_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wp_presentation_feedback_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wpp_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wpp_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin wppf_events const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_wpp_feedback const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_wppf_sync_output const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin xdg_wm_base_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin xdg_surface_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin xdg_toplevel_iface const  # a protocol table, built once (wayland_lib), then read

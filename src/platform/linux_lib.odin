@@ -163,6 +163,7 @@ wayland_lib :: proc() -> ^Wayland_Lib {
 		wp_scale_build_tables()
 		xdg_activation_build_tables()
 		virtual_keyboard_build_tables()
+		presentation_build_tables()
 		foreign_toplevel_build_tables()
 		overlay_build_tables()
 	})

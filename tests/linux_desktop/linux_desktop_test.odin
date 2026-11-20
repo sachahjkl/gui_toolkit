@@ -726,6 +726,55 @@ a_window_takes_the_rate_of_its_output :: proc(t: ^testing.T) {
 	testing.expectf(t, frames_until_rate(h, 3000, 60), "back on %s (60 Hz): its rate %.2f Hz", first, platform.display_info(h.win).hz)
 }
 
+// The renderer's measured rate and its count of pictures shown, on the host's window.
+@(private = "file")
+host_shown :: proc(h: ^host.Host) -> (hz: f64, shown: u64) {
+	render.surface_scope(&h.shared.r, &h.surface)
+	_, shown, _ = render.present_totals(&h.shared.r)
+	return render.measured_refresh_hz(&h.shared.r), shown
+}
+
+// Wayland: the compositor says when each picture reached the screen (wp_presentation). After some pictures the
+// renderer's measured rate is the output's, and its count of pictures shown grows with the pictures. Linux measured
+// nothing: the rate was 0, and every present counted as shown.
+@(test)
+the_compositor_says_when_pictures_are_shown :: proc(t: ^testing.T) {
+	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	shared: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	if !host.host_open(h, &shared, {title = "presented", size = {320, 200}}, rate_build) {
+		testing.expect(t, false, "the renderer starts (Vulkan: lavapipe on the virtual desktop)")
+		return
+	}
+	defer host.host_close(h)
+	host.host_show(h)
+	hz: f64
+	shown: u64
+	start := time.tick_now()
+	for time.duration_milliseconds(time.tick_since(start)) < 3000 {
+		host.hosts_wait({h})
+		host.host_frame(h)
+		hz, shown = host_shown(h)
+		if shown >= 30 && abs(hz - platform.display_info(h.win).hz) < 1 { break }
+	}
+	v, ok := platform.vblank_timing(platform.native_surface_handles(h.win))
+	if !testing.expectf(t, ok && v.shown > 0, "the compositor answers presentation-time (shown %d, discarded %d)", v.shown, v.discarded) { return }
+	output := platform.display_info(h.win).hz
+	testing.expectf(t, abs(hz - output) < 1, "measured %.2f Hz, the output's mode %.2f Hz (timing %v)", hz, output, v)
+	testing.expectf(t, v.last_ns != 0 && v.last_ns <= time.tick_now()._nsec, "the last vblank on the toolkit's clock, in the past: %d", v.last_ns)
+	// the count follows the pictures
+	before := shown
+	again := time.tick_now()
+	for time.duration_milliseconds(time.tick_since(again)) < 300 {
+		host.hosts_wait({h})
+		host.host_frame(h)
+	}
+	_, after := host_shown(h)
+	testing.expectf(t, after > before, "pictures shown: %d, then %d", before, after)
+}
+
 @(test)
 a_modes_timing_gives_its_rate :: proc(t: ^testing.T) {
 	check :: proc(t: ^testing.T, dot: u32, h, v: u16, flags: u32, want: f64) {

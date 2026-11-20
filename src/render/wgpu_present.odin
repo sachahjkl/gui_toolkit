@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:time"
 import win "core:sys/windows"
 import "vendor:wgpu"
+import "../platform"
 
 // WebGPU backend: presentation. wgpu-native exposes neither the swap chain's frame latency object nor its frame
 // statistics, so what Direct3D 11 got from DXGI is rebuilt from the compositor's timing (DwmGetCompositionTimingInfo).
@@ -18,13 +19,19 @@ import "vendor:wgpu"
 //
 // The frame statistics: a frame is "shown" at the first vblank after its present returned; vblanks come from the
 // compositor's timing (the refresh counter and the time of the last one). The frames the screen did not take (missed refreshes)
-// are the ones the app presented late; a frame the GPU finished late is not seen.
+// are the ones the app presented late; a frame the GPU finished late is not seen. On Wayland the compositor says itself
+// which pictures it showed and at which refresh (wp_presentation, platform.vblank_timing): the counts are its own.
 
 Wgpu_Latency :: struct {
 	timer:      win.HANDLE,   // the frame latency object (frame_waitable)
 	last_index: u64,          // the vblank the previous frame was shown at (compositor's refresh counter)
 	have_index: bool,
 	lag_ns:     f64,          // how much later than the next vblank the swap chain really takes a new frame (learned from the acquires that had to wait)
+	// the compositor's own counts (Wayland): the pictures it said it showed, and the refresh counter of the last one, when
+	// last read; `have_seen` false: no run to compare the next answer to
+	seen_shown: u64,
+	seen_msc:   u64,
+	have_seen:  bool,
 }
 
 // Frames the surface may queue without LOW_LATENCY.
@@ -132,6 +139,8 @@ wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {
 		r.present.slot_unused = true
 		return
 	}
+	// (asked before the present, which commits the surface: the answer is this picture's)
+	platform.vblank_ask(r.surface_handles)
 	t_pre := time.tick_now()
 	r.present.call = t_pre
 	ps := profile_present_begin(r)
@@ -166,6 +175,7 @@ wgpu_present_sync :: proc(asked: u32, mode: wgpu.PresentMode) -> u32 {
 present_reset_wgpu :: proc(r: ^Renderer) {
 	r.present.slot_unused = false
 	r.wg.latency.have_index = false
+	r.wg.latency.have_seen = false
 }
 
 // Most frames the surface may queue (api.set_max_frame_latency): the wgpu backend has no equivalent here.
@@ -180,10 +190,10 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	p.presents += 1
 	if p.interval == 0 { p.interval = 1 }
 	sync := wgpu_present_sync(present_call(p.mode, p.tearing_ok, p.interval, vsync).sync, r.wg.present_mode)
-	// the compositor's timing: the last vblank (QPC, refresh counter) and the period. DWM is Windows only; on Linux
-	// there is no portable per-present timing here, so the frame statistics (shown / missed refreshes) stay off and
-	// the FIFO present paces the frames.
-	refresh, ok := wgpu_compositor_timing(p)
+	// the compositor's timing: the last vblank (refresh counter, time) and the period. Windows: DWM's. Wayland: the
+	// presentation answers, which also count the pictures shown and the refreshes missed (`counted`). X11: none yet,
+	// the frame statistics stay off.
+	refresh, ok, counted := wgpu_compositor_timing(r)
 	shown := now
 	index: u64
 	if ok && sync > 0 && p.period_ns > 0 {
@@ -200,14 +210,17 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	if sync > 0 && l.lag_ns >= 0.5 * p.period_ns { shown._nsec += i64(l.lag_ns / p.period_ns + 0.5) * i64(p.period_ns) }
 	if wgpu_trace() { fmt.eprintfln("wgpu: present done: shown in %.2f ms, interval %d, lag %.2f ms, period %.2f ms, dwm ok %v", f64(time.tick_diff(now, shown)) / 1e6, sync, l.lag_ns / 1e6, p.period_ns / 1e6, ok) }
 	d := Displayed_Frame{present = u32(p.presents), input = p.input, read = p.read, drawn = p.drawn, call = p.call, presented = now, shown = shown}
-	if ok && sync > 0 && l.have_index && index > l.last_index && index - l.last_index < RUN_MAX_REFRESH_JUMP && p.continuous {
+	// (counted by the compositor: its totals are the true ones, the estimate here would count each present as shown)
+	if !counted && ok && sync > 0 && l.have_index && index > l.last_index && index - l.last_index < RUN_MAX_REFRESH_JUMP && p.continuous {
 		d.refreshes = u32(index - l.last_index)
 		allowed := u32(p.expected > 0 ? p.expected + EXPECTED_REFRESHES_CEIL : f64(sync))
 		if d.refreshes > max(allowed, 1) { d.missed = d.refreshes - max(allowed, 1) }
 	}
 	l.last_index, l.have_index = index, ok && sync > 0
-	p.displayed += 1
-	p.missed += u64(d.missed)
+	if !counted {
+		p.displayed += 1
+		p.missed += u64(d.missed)
+	}
 	p.input, p.read = {}, {}
 	present_publish(p, d)
 	when RENDER_PROBE { present_probe(r, now) }

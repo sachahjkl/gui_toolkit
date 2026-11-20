@@ -46,6 +46,8 @@ frame_shown_forget :: proc(w: ^Window) {}
 frame_shown_held :: proc(w: ^Window) {}
 frame_shown_pending :: proc(w: ^Window) -> bool { return false }
 frame_shown_waited_ms :: proc(w: ^Window) -> int { return -1 }
+vblank_ask :: proc(h: Surface_Handles) {}
+vblank_timing :: proc(h: Surface_Handles) -> (v: Vblank_Timing, ok: bool) { return }
 
 is_closed :: proc(w: ^Window) -> bool { return w.closed }
 is_offscreen :: proc(w: ^Window) -> bool { return w.offscreen }

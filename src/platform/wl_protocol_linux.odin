@@ -422,6 +422,33 @@ overlay_build_tables :: proc() {
 	zxdg_output_iface = {"zxdg_output_v1", ZXDG_OUTPUT_MANAGER_VERSION, 1, &xo_methods[0], 5, &xo_events[0]}
 }
 
+// wp_presentation (presentation-time, stable): for one commit of a surface, the time its picture reached the screen,
+// the output's refresh counter and period (`presented`), or that it never did (`discarded`). The global announces its
+// clock first (`clock_id`). Version 2 only lets `refresh` be 0 on a variable refresh output: the same events.
+@(private) WP_PRESENTATION_FEEDBACK :: 1
+@(private) WP_PRESENTATION_VERSION :: 2
+@(private) wp_presentation_iface: Wl_Interface
+@(private) wp_presentation_feedback_iface: Wl_Interface
+@(private = "file") wpp_methods: [2]Wl_Message
+@(private = "file") wpp_events: [1]Wl_Message
+@(private = "file") wppf_events: [3]Wl_Message
+@(private = "file") t_wpp_feedback: [2]^Wl_Interface
+@(private = "file") t_wppf_sync_output: [1]^Wl_Interface
+
+@(private)
+presentation_build_tables :: proc() {
+	wpp_methods[0] = {"destroy", "", nil}
+	t_wpp_feedback[0], t_wpp_feedback[1] = wl.surface_interface, &wp_presentation_feedback_iface
+	wpp_methods[1] = {"feedback", "on", raw_types(t_wpp_feedback[:])}
+	wpp_events[0] = {"clock_id", "u", nil}
+	wp_presentation_iface = {"wp_presentation", WP_PRESENTATION_VERSION, 2, &wpp_methods[0], 1, &wpp_events[0]}
+	t_wppf_sync_output[0] = wl.output_interface
+	wppf_events[0] = {"sync_output", "o", raw_types(t_wppf_sync_output[:])}
+	wppf_events[1] = {"presented", "uuuuuuu", nil}
+	wppf_events[2] = {"discarded", "", nil}
+	wp_presentation_feedback_iface = {"wp_presentation_feedback", WP_PRESENTATION_VERSION, 0, nil, 3, &wppf_events[0]}
+}
+
 // zwp_virtual_keyboard_unstable_v1: a client types as a keyboard of the seat would, to whatever has the keyboard (another
 // program's window): its keymap (an xkb keymap in a file), then keys and modifiers (send_hotkey).
 @(private) VK_MANAGER_CREATE :: 0

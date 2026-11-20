@@ -671,6 +671,10 @@ frame_shown_waited_ms :: proc(w: ^Window) -> int { return -1 }
 frame_shown_ask :: proc(w: ^Window) {}
 frame_shown_forget :: proc(w: ^Window) {}
 frame_shown_held :: proc(w: ^Window) {}
+// Wayland's presentation answers (platform_linux.odin): the renderer reads the compositor's timing itself on Windows
+// (DwmGetCompositionTimingInfo, DXGI's frame statistics).
+vblank_ask :: proc(h: Surface_Handles) {}
+vblank_timing :: proc(h: Surface_Handles) -> (v: Vblank_Timing, ok: bool) { return }
 
 // Request a repaint-free wake up (used by timers/animations when the loop is waiting).
 wake :: proc(w: ^Window) {

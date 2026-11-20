@@ -276,6 +276,51 @@ the_frame_clock_advances_by_whole_periods :: proc(t: ^testing.T) {
 	testing.expect_value(t, platform.vblank_at_or_before(42, 0, 0), 42)
 }
 
+// The compositor's answers (Wayland's wp_presentation) as Vblank_Timing: the period it gives, else the one its refresh
+// counter measures; a rest is no sample; shown and discarded pictures counted apart.
+@(test)
+the_vblank_timing_follows_the_compositors_answers :: proc(t: ^testing.T) {
+	// a period given: taken as it is
+	v: platform.Vblank_Timing
+	platform.vblank_presented(&v, 1000 * MS, 10, 6_944_444)
+	testing.expect_value(t, v.period_ns, 6_944_444)
+	testing.expect_value(t, v.last_ns, 1000 * MS)
+	testing.expect_value(t, v.msc, 10)
+	// none given (a variable refresh): measured from the counter, a picture every other refresh at 60 Hz
+	w: platform.Vblank_Timing
+	at: i64 = 5000 * MS
+	for i in 0 ..< 20 {
+		platform.vblank_presented(&w, at, u64(100 + 2 * i), 0)
+		at += 2 * 16_666_667
+	}
+	testing.expectf(t, abs(w.period_ns - 16_666_667) < 1000, "measured %.0f ns", w.period_ns)
+	testing.expect_value(t, w.shown, 20)
+	// a rest of a minute: the counter's jump measures nothing
+	before := w.period_ns
+	platform.vblank_presented(&w, at + 60_000 * MS, w.msc + 3600, 0)
+	testing.expect_value(t, w.period_ns, before)
+	// a counter that goes back (another output): no sample either
+	platform.vblank_presented(&w, w.last_ns + 16 * MS, 5, 0)
+	testing.expect_value(t, w.period_ns, before)
+	// a picture never shown: its own count, not a shown one
+	platform.vblank_discarded(&w)
+	testing.expect_value(t, w.discarded, 1)
+	testing.expect_value(t, w.shown, 22)
+	// neither period nor counter (sway's headless output): the gaps are whole refreshes of a 144 Hz screen, one or two,
+	// counted against the mode's 60 Hz first: it settles on 144 Hz, and a rest's gap measures nothing
+	n: platform.Vblank_Timing
+	p :: 6_944_444
+	at = 9000 * MS
+	for i in 0 ..< 200 {
+		platform.vblank_presented(&n, at, 0, 0, hint_ns = p)
+		at += i % 3 == 0 ? 2 * p : p
+	}
+	testing.expectf(t, abs(n.period_ns - p) < 2000, "measured with no counter %.0f ns", n.period_ns)
+	settled := n.period_ns
+	platform.vblank_presented(&n, at + 5000 * MS, 0, 0, hint_ns = p)
+	testing.expect_value(t, n.period_ns, settled)
+}
+
 ////////////////////////////////
 // Simulated runs
 

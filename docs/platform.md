@@ -97,7 +97,17 @@ for a screen-sized fixed surface). `display_info` is the rate of the monitor the
 to another one or its mode changes (its `serial` changes, and `render.pace_frame` replans): Windows the window's monitor,
 X11 the RandR monitor under the window's middle, Wayland the outputs the surface entered (`wl_surface.enter`), the
 highest rate when it is on several, the first output's before it is on any. A frame after a rest takes one refresh of
-that rate as its dt (`host`) when the renderer measures none (Linux).
+that rate as its dt (`host`) when the renderer measures none (X11).
+
+**Vblank timing** (`vblank.odin`) — `vblank_timing(handles)` says what the compositor said of a window's pictures
+(`Vblank_Timing`): the vblank the last one shown reached the screen at (on `core:time`'s tick clock), the output's
+refresh counter there, the period (the compositor's, else measured), and the pictures shown and discarded. The
+renderer asks for it just before each present (`vblank_ask`) and reads it at the next one: `render.measured_refresh_hz`,
+`render.vblank_grid` and `render.present_totals` (shown, missed) take the compositor's numbers. Wayland with
+`wp_presentation`; zeros on a compositor without it. Windows reads its compositor itself (the procedures answer
+nothing there); X11 has none yet. A discarded picture is not a missed refresh: a window that presents faster than the
+screen has some by design. `vblank_presented` and `vblank_discarded` are the pure updates, for a test. The answers end
+no wait of the loop. Design: [src/md/infrastructure/vblank.md](../src/md/infrastructure/vblank.md).
 
 **Cursors** — `set_cursor`, `set_cursor_custom`, `cursor_info`, `cursor_source`, `cursor_scheme`, `cursor_size_px`,
 `cursor_render`, `shown_cursor`, `cursor_handle_of`, `custom_cursor_create` / `_release` / `_valid` / `_stats` /
