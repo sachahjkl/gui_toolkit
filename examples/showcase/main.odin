@@ -31,13 +31,14 @@ import "gt:render"
 import "gt:ui"
 import "gt:ascii"
 
-Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views, Files, Steppers, Values }
+Scene :: enum { Intents, Controls, Palette, Menus, Dialog, Confirm, Prompt, Settings, Graph, Toasts, Themes, Toolbar, Views, Files, Steppers, Values, Wheels }
 
 // The scenes' names on the command line (--scene=), and their titles in the sidebar.
 SCENE_NAMES := [Scene]string{
 	.Intents = "intents", .Controls = "controls", .Palette = "palette", .Menus = "menus", .Dialog = "dialog",
 	.Confirm = "confirm", .Prompt = "prompt", .Settings = "settings", .Graph = "graph", .Toasts = "toasts", .Themes = "themes",
 	.Toolbar = "toolbar", .Views = "views", .Files = "files", .Steppers = "steppers", .Values = "values",
+	.Wheels = "wheels",
 }
 
 WINDOW_SIZE :: [2]int{1280, 800}
@@ -67,6 +68,13 @@ App :: struct {
 	radio:    int,
 	bold, italic: bool,
 	view:     int,
+
+	// the wheels: a delay (seconds), an alarm's hour and minute, a date (day, month, year), a size
+	delay:    int,
+	delay_open: bool,
+	alarm_h, alarm_m: int,
+	day, month, year: int,
+	size:     int,
 
 	// the tool bars: the tool chosen, the colour, the width, bold, the dashes; the "…" menu opened at the start
 	bar_tool, bar_colour, bar_dash: int,
@@ -245,6 +253,8 @@ values_reset :: proc(app: ^App) {
 	app.quality, app.width, app.copies = 82, 12.5, 3
 	app.from, app.to = 9, 17
 	app.volume = 0.64
+	app.delay, app.alarm_h, app.alarm_m = 90 * 60, 7, 30
+	app.day, app.month, app.year, app.size = 13, 10, 2026, 1
 	app.bar_tool, app.bar_colour, app.bar_width, app.bar_bold, app.bar_dash = 1, 4, 4, true, 0
 	app.views_hue, app.views_sat, app.views_val, app.views_keep_meta = 205, 0.45, 0.55, true
 	app.format = 2
