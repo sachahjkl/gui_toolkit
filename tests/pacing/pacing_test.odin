@@ -476,6 +476,35 @@ a_run_reads_its_input_just_in_time :: proc(t: ^testing.T) {
 	testing.expectf(t, timed >= 40 - 1 - platform.FRAME_COST_MIN, "frames timed just in time: %d", timed)
 }
 
+// A window that opens: a resize, then its burst (its frames shown at once), then an animation. The burst's frames are
+// not counted early by the grid: it stays loose and the animation's frames start just in time. They counted, eight of
+// them made the grid strict for good, and no frame was ever timed (the virtual desktop: 0 of 98).
+@(test)
+a_resize_burst_leaves_the_start_just_in_time :: proc(t: ^testing.T) {
+	LEAD :: 3 * MS
+	COST :: 2 * MS
+	c: platform.Cadence
+	platform.cadence_adopt(&c, platform.cadence_plan({hz = 60, max_hz = 60}, {}))
+	vblank := i64(30_000) * MS
+	now := vblank + 1 * MS
+	timed := 0
+	for i in 0 ..< 60 {
+		// (the window's first presented frame is a resize; the next ones fall in its burst, quick frames shown at once)
+		d := platform.frame_decision(&c, {now_ns = now, presented = i > 0, resized = i == 1, vblank_ns = vblank, period_ns = P60, lead_ns = LEAD})
+		now += d.wait_ns
+		platform.cadence_started(&c, now)
+		if d.just_in_time { timed += 1 }
+		now += COST
+		platform.cadence_presented(&c, now)
+		shown := vblank
+		for shown - LEAD < now { shown += P60 }
+		vblank = shown
+		now += i < 12 ? 1 * MS : 100_000   // (the burst's frames come quickly, then an animation's)
+	}
+	testing.expectf(t, !c.slots.escalated, "the burst left the grid loose")
+	testing.expectf(t, timed >= 30, "the animation after the burst is timed just in time: %d of 60 frames", timed)
+}
+
 ////////////////////////////////
 // Simulated runs
 

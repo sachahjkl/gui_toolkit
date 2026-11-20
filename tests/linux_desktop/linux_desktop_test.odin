@@ -780,7 +780,13 @@ an_animation_starts_its_frames_just_in_time :: proc(t: ^testing.T) {
 		desktop(), builds, jit, late, shown, missed)
 	// (timed, whatever the machine: a fast one delays its frames to their start; a slow one, a software renderer on a
 	// loaded CI whose frame costs more than the room before its refresh, finds them late and sends them at once)
-	testing.expectf(t, (jit + late) * 4 >= u64(builds), "a run's frames are timed just in time: %d delayed and %d late of %d frames", jit, late, builds)
+	// (on a failure, each condition of cadence_times_just_in_time: the CI once timed none of 99 frames, with no late one)
+	c := &h.pacer.cadence
+	_, grid_period, grid_ok := render.vblank_grid(&h.shared.r)
+	testing.expectf(t, (jit + late) * 4 >= u64(builds),
+		"a run's frames are timed just in time: %d delayed and %d late of %d frames (strict %v, escalated %v, uncapped %v, above %v, interval %d, vblanks known %v at %.0f ns, present %d, cost %d ns, states %v)",
+		jit, late, builds, c.slots.strict, c.slots.escalated, c.uncapped, c.above, c.interval, grid_ok, grid_period, c.present_ns,
+		platform.frame_cost_estimate(&c.cost), c.counts)
 }
 
 @(test)

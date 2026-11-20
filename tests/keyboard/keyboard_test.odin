@@ -174,11 +174,13 @@ menu_pointer_over_a_disabled_row_selects_nothing :: proc(t: ^testing.T) {
 	r := Menu_Run{key = "menu_4321"}
 	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true) }, &r)
 	for _ in 0 ..< 3 { frame(&f, nil, build_menu, &r) }
-	rect, sel, ok := ui.menu_rect(0)
+	_, sel, ok := ui.menu_rect(0)
 	testing.expect(t, ok)
 	testing.expect_value(t, sel, 1)   // "Forward", the first enabled row, from the keyboard
-	// the first row, "Back", is disabled
-	over := platform.Event{kind = .Mouse_Move, pos = {rect.min.x + 30, rect.min.y + 15}}
+	// the first row, "Back", is disabled (aimed at by its own rect: the menu's filter field is above it)
+	back, back_ok := ui.menu_item_rect(0, 0)
+	testing.expect(t, back_ok, "the first row's rect")
+	over := platform.Event{kind = .Mouse_Move, pos = {back.min.x + 30, (back.min.y + back.max.y) / 2}}
 	for _ in 0 ..< 3 { frame(&f, {over}, build_menu, &r); over.pos.x += 1 }
 	_, sel, _ = ui.menu_rect(0)
 	testing.expect_value(t, sel, -1)

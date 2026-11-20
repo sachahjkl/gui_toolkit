@@ -137,7 +137,12 @@ frame_decision :: proc(c: ^Cadence, in_: Cadence_Inputs) -> (d: Frame_Decision) 
 	d.present_at_once = cadence_at_once(c)
 	d.latency = d.present_at_once ? 2 : 1
 	escalated := c.slots.escalated   // (before this frame's slot: the start just in time reads what was found before it)
+	escalated_before := c.slots.escalated
 	d.wait_ns, d.slot_ns = frame_slot_wait(&c.slots, in_.now_ns, in_.idled, step || answer)
+	// (a resize's burst waits for its slots, as it should, but its delays are its own pacing, not a screen that paces
+	// nothing: they do not count toward a strict grid. They counted, eight of them at a window's opening made the grid
+	// strict for good, and a strict grid turns the start just in time off)
+	if burst { c.slots.delayed, c.slots.escalated = 0, escalated_before }
 	d.wait_until_ns = in_.now_ns + d.wait_ns
 	d.wait_swap_chain = !step && !answer && in_.presented && !in_.slot_held
 	if c.above { d.wait_swap_chain, d.present_at_once, d.latency = false, true, 2 }
