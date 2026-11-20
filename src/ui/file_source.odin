@@ -3,7 +3,8 @@ package ui
 // What the file browser reads its folders through (docs/file-browser.md): the computer's own files (local_files) or any
 // other file system a program reaches (a server's, an archive's). A source's calls start the work and return at once;
 // the source answers later, on the interface's thread, through the reply it was given (file_reply_listed,
-// file_reply_read, file_reply_made, file_reply_found, file_reply_failed). An answer of a reading given up (another folder asked since,
+// file_reply_read, file_reply_made, file_reply_found, file_reply_renamed, file_reply_trashed, file_reply_restored,
+// file_reply_failed). An answer of a reading given up (another folder asked since,
 // another file selected, the dialog closed) changes nothing: the reply carries its ticket (remote) and its dialog.
 //
 // The paths are the source's: absolute, its separator between their parts. The helpers below read them for any
@@ -34,7 +35,14 @@ File_Entry :: struct {
 }
 
 // What a reply answers.
-File_Reply_Kind :: enum u8 { List, Read, Make, Find, Thumbnail }
+File_Reply_Kind :: enum u8 { List, Read, Make, Find, Thumbnail, Rename, Trash, Restore }
+
+// An entry a trash moved: where it was, and how the source names it in its trash (restore's argument: the computer's
+// source gives its path in the trash; "": it cannot come back).
+File_Trashed :: struct {
+	path:  string,
+	token: string,
+}
 
 // The way back of one call of a source: give it to the file_reply_ procedure that answers, on the interface's thread.
 // It is a value: keep it as long as the work takes (it holds no memory).
@@ -76,6 +84,13 @@ File_Source :: struct {
 	// (file_reply_thumbnail; none: file_reply_failed). Answer every call: an ask without an answer holds a slot of the
 	// browser's thumbnails. nil: the cards show the kind's icon.
 	thumbnail:   proc(src: ^File_Source, path: string, px: int, reply: File_Reply),
+	// Gives the entry `path` the name `name` in its folder (file_reply_renamed). It must not go over an entry of that
+	// name: refuse it (file_reply_failed). nil: no Rename in a row's menu.
+	rename:      proc(src: ^File_Source, path, name: string, reply: File_Reply),
+	// Moves the entries `paths` to the source's trash, in one call (file_reply_trashed). nil: no Move to the trash.
+	trash:       proc(src: ^File_Source, paths: []string, reply: File_Reply),
+	// Puts back entries its trash answered (file_reply_restored): the undo of a trash's toast. nil: no undo.
+	restore:     proc(src: ^File_Source, items: []File_Trashed, reply: File_Reply),
 }
 
 // The entries of the folder asked. They are copied: the source frees its own after the call.
@@ -106,6 +121,22 @@ file_reply_found :: proc(reply: File_Reply, entries: []File_Entry) {
 file_reply_thumbnail :: proc(reply: File_Reply, rgba: []u8, width, height: int) {
 	if reply.kind != .Thumbnail || reply.state == nil || reply.state.files == nil { return }
 	thumb_cache_answer(&reply.state.files.thumbs, reply.ticket, rgba, width, height)
+}
+
+// The entry asked was renamed.
+file_reply_renamed :: proc(reply: File_Reply) {
+	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Rename { file_browser_renamed(fb, reply.ticket) }
+}
+
+// What the trash asked moved: one item per entry moved (copied: the source frees its own after the call). `message`:
+// "" when every entry moved, else what the person reads of the others (the source's words).
+file_reply_trashed :: proc(reply: File_Reply, items: []File_Trashed, message := "") {
+	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Trash { file_browser_trashed(fb, reply.ticket, items, message) }
+}
+
+// The entries asked are back.
+file_reply_restored :: proc(reply: File_Reply) {
+	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Restore { file_browser_restored(fb, reply.ticket) }
 }
 
 // The call did not end well: `message` is what the person reads (the source's words, in the language in use).

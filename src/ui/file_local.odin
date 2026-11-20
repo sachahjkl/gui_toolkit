@@ -40,8 +40,15 @@ local_files :: proc() -> File_Source {
 		start       = local_start,
 		known       = local_known,
 		thumbnail   = local_thumbnail,
+		rename      = local_rename,
+		trash       = local_trash,
+		restore     = local_restore,
 	}
 }
+
+// Whether `src` reads the computer's files (local_files): the system's programs open them, its file manager shows them.
+@(private)
+file_source_is_local :: proc(src: ^File_Source) -> bool { return src.list == local_list }
 
 // What the local source reads once per State: its places, its first folder and the person's folders.
 @(private)
@@ -166,6 +173,7 @@ Local_Job :: struct {
 	refused:  bool,
 	missing:  bool,
 	message:  string,                // (in the heap)
+	to:       string,                // a rename's new path (in the heap)
 }
 
 @(private = "file")
@@ -193,6 +201,7 @@ local_job_free_fields :: proc(j: ^Local_Job) {
 	delete(j.bytes, a)
 	delete(j.message, a)
 	delete(j.path, a)
+	delete(j.to, a)
 }
 
 // The answer, on the interface's thread.
@@ -204,6 +213,7 @@ local_job_done :: proc(d: rawptr, _: u64) {
 	case j.reply.kind == .List: file_reply_listed(j.reply, j.entries[:])
 	case j.reply.kind == .Read: file_reply_read(j.reply, j.bytes, j.size)
 	case j.reply.kind == .Make: file_reply_made(j.reply)
+	case j.reply.kind == .Rename: file_reply_renamed(j.reply)
 	}
 	local_job_free(j)
 }
@@ -457,4 +467,101 @@ local_make_folder :: proc(src: ^File_Source, path: string, reply: File_Reply) {
 		if err := os.make_directory(j.path); err != nil { local_fail(j, err, i18n.tr("The folder could not be made: %s.")) }
 	}
 	task(reply.state, work, local_job_done, local_job(path, 0, reply), local_job_free)
+}
+
+////////////////////////////////
+// Rename, trash, restore
+
+// (os.rename replaces a file on POSIX: a name taken is refused first; a change of its case alone is let through, on
+// Windows the "other" name is the same file)
+@(private = "file")
+local_rename :: proc(src: ^File_Source, path, name: string, reply: File_Reply) {
+	work :: proc(d: rawptr) {
+		j := (^Local_Job)(d)
+		if !file_name_case_only(file_path_name(j.path, LOCAL_SEPARATOR), file_path_name(j.to, LOCAL_SEPARATOR)) && fsx.path_kind(j.to) != .Absent {
+			local_fail(j, os.General_Error.Exist, "")
+			return
+		}
+		if err := os.rename(j.path, j.to); err != nil { local_fail(j, err, i18n.tr("It could not be renamed: %s.")) }
+	}
+	j := local_job(path, 0, reply)
+	j.to = fsx.path_join(file_path_parent(path, LOCAL_SEPARATOR), name, LOCAL_SEPARATOR, runtime.heap_allocator())
+	task(reply.state, work, local_job_done, j, local_job_free)
+}
+
+// One trash or restore of the local source: its items and how many of them did not move.
+@(private = "file")
+Local_Trash :: struct {
+	reply:  File_Reply,
+	items:  [dynamic]File_Trashed,   // (strings in the heap)
+	moved:  [dynamic]bool,
+	failed: int,
+}
+
+@(private = "file")
+local_trash_job :: proc(reply: File_Reply, items: []File_Trashed) -> ^Local_Trash {
+	a := runtime.heap_allocator()
+	j := new(Local_Trash, a)
+	j.reply = reply
+	j.items = make([dynamic]File_Trashed, 0, len(items), a)
+	j.moved = make([dynamic]bool, len(items), a)
+	for it in items { append(&j.items, File_Trashed{path = strings.clone(it.path, a), token = strings.clone(it.token, a)}) }
+	return j
+}
+
+@(private = "file")
+local_trash_free :: proc(d: rawptr) {
+	j := (^Local_Trash)(d)
+	a := runtime.heap_allocator()
+	for it in j.items { delete(it.path, a); delete(it.token, a) }
+	delete(j.items)
+	delete(j.moved)
+	free(j, a)
+}
+
+// Each path to the system's trash (platform.move_to_trash); the answer has the ones that moved, each with its path in
+// the trash (what local_restore puts back).
+@(private = "file")
+local_trash :: proc(src: ^File_Source, paths: []string, reply: File_Reply) {
+	items := make([]File_Trashed, len(paths), context.temp_allocator)
+	for p, i in paths { items[i].path = p }
+	work :: proc(d: rawptr) {
+		j := (^Local_Trash)(d)
+		a := runtime.heap_allocator()
+		for &it, i in j.items {
+			in_trash, ok := platform.move_to_trash(it.path, a)
+			if !ok { j.failed += 1; continue }
+			delete(it.token, a)
+			it.token, j.moved[i] = in_trash, true
+		}
+	}
+	done :: proc(d: rawptr, _: u64) {
+		j := (^Local_Trash)(d)
+		moved := make([dynamic]File_Trashed, context.temp_allocator)
+		for it, i in j.items { if j.moved[i] { append(&moved, it) } }
+		message := j.failed == 0 ? "" : fmt.tprintf(i18n.tr(j.failed, "%d item could not be moved to the trash.", "%d items could not be moved to the trash."), j.failed)
+		if len(moved) == 0 { file_reply_failed(j.reply, message) } else { file_reply_trashed(j.reply, moved[:], message) }
+		local_trash_free(j)
+	}
+	task(reply.state, work, done, local_trash_job(reply, items), local_trash_free)
+}
+
+// Each item back where it was (platform.put_back: never over a name taken again). Some that failed: said, and the
+// browser reads the folder again for the others.
+@(private = "file")
+local_restore :: proc(src: ^File_Source, items: []File_Trashed, reply: File_Reply) {
+	work :: proc(d: rawptr) {
+		j := (^Local_Trash)(d)
+		for it in j.items { if !platform.put_back(it.token, it.path) { j.failed += 1 } }
+	}
+	done :: proc(d: rawptr, _: u64) {
+		j := (^Local_Trash)(d)
+		if j.failed == 0 {
+			file_reply_restored(j.reply)
+		} else {
+			file_reply_failed(j.reply, fmt.tprintf(i18n.tr(j.failed, "%d item could not be put back.", "%d items could not be put back."), j.failed))
+		}
+		local_trash_free(j)
+	}
+	task(reply.state, work, done, local_trash_job(reply, items), local_trash_free)
 }

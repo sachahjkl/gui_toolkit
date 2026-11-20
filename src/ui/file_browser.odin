@@ -3,7 +3,8 @@ package ui
 // The file browser (docs/file-browser.md): the dialog ui.file_dialog shows, drawn by the toolkit, reading its folders
 // through a File_Source (file_source.odin). One per State (State.files), a ready-made view ("file_dialog", one instance
 // per owner window) built by the views while it is open: a program calls nothing per frame. This file holds its state and what it does; file_browser_view.odin builds it,
-// file_browser_preview.odin reads and shows the preview, file_browser_memory.odin keeps what each dialog remembers.
+// file_browser_preview.odin reads and shows the preview, file_browser_memory.odin keeps what each dialog remembers,
+// file_browser_row_menu.odin has the rows' menu (copy, open, rename, trash and its undo).
 //
 // Its machines, each a remote.Remote (an answer of a reading given up is dropped by its ticket; every answer of a closed
 // dialog by its serial):
@@ -153,6 +154,22 @@ File_Browser :: struct {
 	kept_sort:    int,
 	kept_descending: bool,
 
+	// the rows' menu (file_browser_row_menu.odin)
+	start:        string,     // the first folder this dialog showed: Copy relative path is relative to it
+	renaming:     bool,       // a row's name is edited in place (Table.editing)
+	rename_name:  string,     // ... the entry's name, as its row has it
+	rename_edit:  Line_Edit,
+	rename_key:   Key,        // ... its field (0: it takes the keyboard when it is built)
+	rename_commit: bool,      // ... Enter in it: the source is asked after the build
+	rename_call:  remote.Remote,
+	rename_to:    string,     // the new name asked (selected in the folder read again)
+	trash_call:   remote.Remote,
+	restore_call: remote.Remote,
+	undo:         [dynamic]File_Trashed,   // the last trash's items that can come back
+	undo_serial:  u64,        // ... its toast's (0: none, or undone)
+	undo_dialog:  u64,        // ... the dialog it was in
+	trash_serial: u64,        // counts the trashes
+
 	preview:      File_Preview,
 	memory:       File_Memories,
 	// the cards' pictures (thumbnails.odin): kept from one dialog to the next, freed with the browser
@@ -173,6 +190,7 @@ file_browser_of :: proc(s: ^State) -> ^File_Browser {
 	fb.rows = make([dynamic]int, a)
 	fb.by_id = make(map[u64]int, a)
 	fb.source_places = make([dynamic]platform.File_Place, a)
+	fb.undo = make([dynamic]File_Trashed, a)
 	// (in the order of FILE_COLUMN_NAME, _SIZE, _MODIFIED, _KIND)
 	fb.columns = {
 		{title = i18n.later("Name"), width = 0},
@@ -211,6 +229,10 @@ file_browser_destroy :: proc(s: ^State) {
 	table_data_destroy(&fb.data)
 	delete(fb.back); delete(fb.forward); delete(fb.entries); delete(fb.found); delete(fb.rows); delete(fb.by_id)
 	delete(fb.source_places)
+	file_trashed_clear(&fb.undo)
+	delete(fb.undo)
+	line_edit_destroy(&fb.rename_edit)
+	remote.destroy(&fb.rename_call); remote.destroy(&fb.trash_call); remote.destroy(&fb.restore_call)
 	virtual.arena_destroy(&fb.entries_arena)
 	virtual.arena_destroy(&fb.found_arena)
 	virtual.arena_destroy(&fb.places_arena)
@@ -355,9 +377,16 @@ file_browser_close :: proc(fb: ^File_Browser) {
 	a := runtime.heap_allocator()
 	file_browser_view_close(fb)   // (its view, and the question over it, go: the program's close, no answer)
 	if fb.asked && fb.views != nil { view_close(fb.views, FILE_REPLACE_VIEW, fb.instance) }
+	file_browser_rename_end(fb)
 	fb.open, fb.asking, fb.asked = false, false, false
 	fb.serial += 1   // (a reply still on its way is of no dialog now)
 	file_dialog_options_free(&fb.d, a)
+	delete(fb.start, a); fb.start = ""
+	// (a trash's undo is its dialog's: the next one may read another source)
+	file_trashed_clear(&fb.undo)
+	fb.undo_serial = 0
+	remote.reset(&fb.trash_call)
+	remote.reset(&fb.restore_call)
 	file_browser_find_drop(fb)
 	delete(fb.find_seen, a); fb.find_seen = ""
 	file_strings_clear(&fb.back)
@@ -428,7 +457,9 @@ file_entries_clear :: proc(fb: ^File_Browser) {
 file_browser_go :: proc(fb: ^File_Browser, path: string, move := File_Move.New) {
 	a := runtime.heap_allocator()
 	target := strings.clone(path, context.temp_allocator)   // (`path` may be a slice of what changes below)
+	if fb.start == "" { fb.start = strings.clone(target, a) }
 	if target != fb.folder {
+		file_browser_rename_end(fb)   // (its row is of the folder left)
 		switch move {
 		case .New:
 			if fb.folder != "" { append(&fb.back, strings.clone(fb.folder, a)) }
@@ -562,6 +593,8 @@ file_browser_failed :: proc(fb: ^File_Browser, kind: File_Reply_Kind, ticket: u6
 		file_preview_failed(fb, ticket, message)
 	case .Find:
 		_ = remote.answer(&fb.finding, ticket, refused ? .Refused : .Failed, message)
+	case .Rename, .Trash, .Restore:
+		file_browser_row_failed(fb, kind, ticket, message, refused)
 	case .Thumbnail:   // (file_reply_failed gives it to the thumbnails)
 	}
 }
@@ -708,6 +741,8 @@ file_browser_rows :: proc(fb: ^File_Browser, sorted: bool) {
 		fb.made, remade = true, true
 		fb.rows_made += 1
 		if found { vlist_scroll_to(&fb.table.vl, 0) }
+		// (the row a rename edits may be gone; one on its way ends with its answer)
+		if fb.renaming && fb.rename_call.state != .Loading { file_browser_rename_end(fb) }
 	}
 	q := line_edit_string(&fb.filter)
 	if remade || sorted || q != fb.applied_query {

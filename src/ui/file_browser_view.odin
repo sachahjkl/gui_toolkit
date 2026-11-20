@@ -26,7 +26,7 @@ FILE_PLACES_EM :: 12
 
 // What a control of the dialog asked in this build, done after it (file_browser_do).
 @(private)
-File_Action_Kind :: enum u8 { None, Go, Up, Back, Forward, Again, Activate, Act, Cancel, Path, New_Folder, Make }
+File_Action_Kind :: enum u8 { None, Go, Up, Back, Forward, Again, Activate, Act, Cancel, Path, New_Folder, Make, Rename, Trash }
 
 @(private)
 File_Action :: struct {
@@ -115,6 +115,7 @@ file_dialog_view :: proc(v: ^View, fb: ^File_Browser) {
 	}
 	act := file_browser_body(fb)
 	file_browser_do(fb, act)
+	if fb.open { file_browser_rename_follow(fb) }
 	if fb.open && fb.asking && !fb.asked { file_browser_ask(fb) }
 }
 
@@ -134,6 +135,8 @@ file_browser_do :: proc(fb: ^File_Browser, a: File_Action) {
 	case .Path:       file_browser_path_typed(fb, a.path)
 	case .New_Folder: file_browser_new_folder(fb)
 	case .Make:       file_browser_make(fb)
+	case .Rename:     file_browser_rename_start(fb)
+	case .Trash:      file_browser_trash(fb)
 	}
 }
 
@@ -194,6 +197,8 @@ file_browser_keys :: proc(fb: ^File_Browser) -> (act: File_Action) {
 	if !path_bar_editing(&fb.bar) && key_press(.Escape) {
 		switch {
 		case table_band_cancel(&fb.table):   // (a rectangle being drawn: the selection there was)
+		case fb.renaming:
+			file_browser_rename_end(fb)   // (the name as it was; the list takes the keyboard)
 		case line_edit_string(&fb.filter) != "":
 			line_edit_clear(&fb.filter)
 			fb.focus_list = true
@@ -213,6 +218,11 @@ file_browser_keys :: proc(fb: ^File_Browser) -> (act: File_Action) {
 	if key_press(.Left, {.Alt}) { act.kind = .Back }
 	if key_press(.Right, {.Alt}) { act.kind = .Forward }
 	if !in_field && key_press(.Backspace) { act.kind = .Up }
+	// (the rows' menu's keys: on the entries chosen, as the menu's items; a field keeps its own F2 and Delete)
+	if !in_field && !fb.renaming {
+		if key_press(.F2) { act.kind = .Rename }
+		if key_press(.Delete) { act.kind = .Trash }
+	}
 	// (the keyboard in the filter: the arrows and Enter are the list's still)
 	if s.focus_key == fb.filter_key && s.focus_key != 0 {
 		if ev := table_keys(&fb.table); ev.activated { act.kind = .Activate }
@@ -452,56 +462,12 @@ file_browser_table :: proc(fb: ^File_Browser, act: ^File_Action, empty: string) 
 	thumb_cache_frame(&fb.thumbs, file_thumb_ask, fb)
 	if ev.sorted { file_browser_rows(fb, true) }
 	if ev.activated && act.kind == .None { act^ = {kind = .Activate, double = s.double_key != 0} }
-	file_browser_row_menu(fb, ev)
+	file_browser_row_menu(fb, ev, act)
 	// the keyboard is the list's when the dialog shows (Save: the name's)
 	if fb.focus_list && s.focus_key == 0 {
 		if fb.kind == .Save && fb.name_key != 0 { s.focus_key = fb.name_key } else { s.focus_key = fb.table.vl.key }
 		fb.focus_list = false
 	}
-}
-
-// The menu of the program's acts on the rows chosen (File_Dialog.row_actions).
-FILE_ROW_MENU :: "###fb_row_menu"
-
-// Whether the act `x` takes the entry `e`: a file, or a folder when it says so.
-@(private = "file")
-file_row_action_takes :: proc(x: platform.File_Row_Action, e: File_Entry) -> bool {
-	return x.act != nil && (e.kind == .File || x.folders)
-}
-
-// The program's acts on the rows chosen, in their context menu: a right click on a row (it is then selected) or the
-// Menu key opens it, when an act takes one of them. An act runs once per entry it takes, with the entry's path; the
-// dialog stays open (an act is no answer of the dialog).
-@(private = "file")
-file_browser_row_menu :: proc(fb: ^File_Browser, ev: Table_Events) {
-	if len(fb.d.row_actions) == 0 { return }
-	list := file_rows_entries(fb)
-	chosen := file_browser_chosen(fb)
-	if ev.menu {
-		offered := false
-		for x in fb.d.row_actions {
-			for k in chosen { if file_row_action_takes(x, list[k]) { offered = true } }
-		}
-		if offered { menu_open(FILE_ROW_MENU, ev.menu_at, from_keyboard = ev.keyboard, search = false) }
-	}
-	picked := -1
-	if menu(FILE_ROW_MENU) {
-		for x, i in fb.d.row_actions {
-			takes := false
-			for k in chosen { if file_row_action_takes(x, list[k]) { takes = true; break } }
-			if !takes { continue }
-			if menu_item(fmt.tprintf("%s###fb_row_act_%d", x.label, i), icon = x.icon, icon_font = lucide_icons()).clicked { picked = i }
-		}
-	}
-	// (after the menu's block: an act runs once the menu is done)
-	if picked < 0 { return }
-	// (the paths and the act copied first: an act may ask for another dialog, which frees these options and rows)
-	x := fb.d.row_actions[picked]
-	paths := make([dynamic]string, context.temp_allocator)
-	for k in chosen {
-		if file_row_action_takes(x, list[k]) { append(&paths, fsx.path_join(fb.folder, list[k].name, fb.sep, context.temp_allocator)) }
-	}
-	for p in paths { x.act(x.user, p) }
 }
 
 // The find's rows (the toggle on and a query typed): what it found, best first, its path relative to the folder in the

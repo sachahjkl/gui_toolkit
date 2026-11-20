@@ -375,9 +375,16 @@ table_card_body :: proc(t: ^Table, d: ^Table_Data, r: int, w, h, em: f32, lit: b
 	pad := top_style().text_pad
 	name := table_card_name(text, w - 2 * pad - 1, lines)
 	if name != text { tip = text }   // (shown by table_cell_tip while the pointer rests on the card)
-	next({width = fill(), height = px(math.round(em * (lines == 2 ? TABLE_CARD_LINE_EM * 2 : 1.5))), text_align = .Center})
-	// (a card's name is the card's: its press selects it; not text to select)
-	paragraph(fmt.tprintf("%s###n", text_shown(name)), selectable = false)
+	if table_edits(t, d, r) {
+		// (the name being renamed: one line, the field's height)
+		tip = ""
+		next({width = fill(), height = px(math.round(em * 1.6)), axis = .X, cross = .Center})
+		if row(id = "###n_edit") { t.edit(t, r) }
+	} else {
+		next({width = fill(), height = px(math.round(em * (lines == 2 ? TABLE_CARD_LINE_EM * 2 : 1.5))), text_align = .Center})
+		// (a card's name is the card's: its press selects it; not text to select)
+		paragraph(fmt.tprintf("%s###n", text_shown(name)), selectable = false)
+	}
 	if t.card_line > 0 && t.card_line < d.cols {
 		if !lit { push_tags("weak") }
 		next({width = fill(), height = px(math.round(em * TABLE_CARD_LINE_EM)), text_align = .Center, font_size = em * TABLE_CARD_LINE_FONT})

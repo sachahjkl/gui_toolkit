@@ -2,7 +2,7 @@
 // late, never, refused, at once), and on the computer's files in a folder made in the temporary directory. What breaks
 // first: a slow folder answering after the next one was asked; 100 000 entries; names of every kind of character;
 // Save over a file; the dialog closed with a reading under way; an older search's late answer; the program's keys while
-// the browser is open.
+// the browser is open; a row's menu on a source that cannot rename nor trash, a rename and a trash's undo.
 //   odin test tests/file_browser -collection:gt=src -vet -define:ODIN_TEST_THREADS=1 (Linux: -define:FONT_BACKEND=native)
 //   -define:FILE_BROWSER_TIMING=true: a build of 100 000 entries is timed too (FILE_BROWSER_BUILD_BUDGET_MS)
 package file_browser_test
@@ -55,6 +55,13 @@ Fake :: struct {
 	made:    [dynamic]string,
 	finds:   [dynamic]Asked_Find,
 	thumbs:  [dynamic]Asked,   // the thumbnails asked (answered when the test says)
+	// a source that writes (fake_writes): its folder "/f", what it was asked, what its trash holds
+	live:     [dynamic]ui.File_Entry,
+	bin:      [dynamic]ui.File_Entry,
+	names:    [dynamic]string,      // the names and tokens it made (freed with it)
+	renamed:  [dynamic][2]string,   // (path, name)
+	trashed:  [dynamic]string,
+	restored: [dynamic]string,      // the tokens put back
 }
 
 @(private = "file")
@@ -103,6 +110,12 @@ fake_destroy :: proc(f: ^Fake) {
 	for x in f.finds { delete(x.folder, runtime.heap_allocator()); delete(x.query, runtime.heap_allocator()) }
 	for x in f.thumbs { delete(x.path, runtime.heap_allocator()) }
 	delete(f.thumbs)
+	a := runtime.heap_allocator()
+	for x in f.names { delete(x, a) }
+	for x in f.renamed { delete(x[0], a); delete(x[1], a) }
+	for x in f.trashed { delete(x, a) }
+	for x in f.restored { delete(x, a) }
+	delete(f.live); delete(f.bin); delete(f.names); delete(f.renamed); delete(f.trashed); delete(f.restored)
 	delete(f.asked)
 	delete(f.made)
 	delete(f.finds)
@@ -726,10 +739,11 @@ a_programs_act_on_a_row :: proc(t: ^testing.T) {
 	if testing.expect_value(t, len(acts.revealed), 1) { testing.expect_value(t, acts.revealed[0], "/f/docs") }
 	testing.expect_value(t, len(acts.downloaded), 1)
 
-	// without acts, a right click opens no menu
+	// without the program's acts, the menu has the toolkit's alone
 	open(s, &app, .Open, {start_dir = "/f"})
 	session.click_text(s, "a.txt", .Right)
 	testing.expect(t, session.find_text(s, "Download") == nil && session.find_text(s, "Reveal") == nil)
+	testing.expect(t, session.find_text(s, "Copy path") != nil, "the toolkit's acts")
 }
 
 // Several files selected: the Menu key opens their menu, and an act runs once per file, in the folder's order.
@@ -754,6 +768,204 @@ a_programs_act_on_several_rows :: proc(t: ^testing.T) {
 		testing.expect_value(t, acts.downloaded[2], "/f/c.txt")
 	}
 	testing.expect(t, counts(s).open)
+}
+
+////////////////////////////////
+// The toolkit's acts on a row (src/md/features/file-browser.md)
+
+// The fake source's folder "/f" as a source that renames, trashes and puts back, answering at once (Fake.live).
+@(private = "file")
+fake_writes :: proc(app: ^App, entries: []ui.File_Entry) {
+	f := &app.fake
+	for e in entries { append(&f.live, e) }
+	f.folders["/f"] = f.live[:]
+	app.source.rename = proc(src: ^ui.File_Source, path, name: string, reply: ui.File_Reply) {
+		f := (^Fake)(src.user)
+		a := runtime.heap_allocator()
+		append(&f.renamed, [2]string{strings.clone(path, a), strings.clone(name, a)})
+		for &e in f.live {
+			if strings.concatenate({"/f/", e.name}, context.temp_allocator) != path { continue }
+			e.name = strings.clone(name, a)
+			append(&f.names, e.name)
+		}
+		f.folders["/f"] = f.live[:]
+		ui.file_reply_renamed(reply)
+	}
+	app.source.trash = proc(src: ^ui.File_Source, paths: []string, reply: ui.File_Reply) {
+		f := (^Fake)(src.user)
+		a := runtime.heap_allocator()
+		items := make([dynamic]ui.File_Trashed, context.temp_allocator)
+		for p in paths {
+			append(&f.trashed, strings.clone(p, a))
+			for e, i in f.live {
+				if strings.concatenate({"/f/", e.name}, context.temp_allocator) != p { continue }
+				append(&f.bin, e)
+				ordered_remove(&f.live, i)
+				token := strings.concatenate({"bin:", p}, a)
+				append(&f.names, token)
+				append(&items, ui.File_Trashed{path = p, token = token})
+				break
+			}
+		}
+		f.folders["/f"] = f.live[:]
+		ui.file_reply_trashed(reply, items[:])
+	}
+	app.source.restore = proc(src: ^ui.File_Source, items: []ui.File_Trashed, reply: ui.File_Reply) {
+		f := (^Fake)(src.user)
+		for it in items { append(&f.restored, strings.clone(it.token, runtime.heap_allocator())) }
+		for e in f.bin { append(&f.live, e) }
+		clear(&f.bin)
+		f.folders["/f"] = f.live[:]
+		ui.file_reply_restored(reply)
+	}
+}
+
+// With no act of the program, a right click opens the toolkit's menu; Copy path of one entry, then of two selected,
+// gives one line per entry; Copy name and Copy relative path (the dialog started in "/f") too.
+@(test)
+the_toolkits_menu_copies :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("a.txt"), F("b.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/f", multiple = true})
+	session.click_text(s, "a.txt", .Right)
+	if !testing.expect(t, session.find_text(s, "Copy path") != nil, "the menu opens with no program act") { return }
+	session.click_text(s, "Copy path")
+	testing.expect_value(t, session.clipboard(s), "/f/a.txt")
+	session.click(s, "lrow_0")
+	session.key(s, .A, {.Ctrl})
+	session.key(s, .Menu)
+	session.click_text(s, "Copy path")
+	testing.expect_value(t, session.clipboard(s), "/f/a.txt\n/f/b.txt")
+	session.key(s, .Menu)
+	session.click_text(s, "Copy name")
+	testing.expect_value(t, session.clipboard(s), "a.txt\nb.txt")
+	session.key(s, .Menu)
+	session.click_text(s, "Copy relative path")
+	testing.expect_value(t, session.clipboard(s), "a.txt\nb.txt")
+	testing.expect(t, counts(s).open, "a copy is no answer")
+}
+
+// A source without rename nor trash (a server's) shows neither; nor Open or Show in folder (not the computer's files).
+@(test)
+a_remote_source_offers_what_it_can :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("a.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/f"})
+	session.click_text(s, "a.txt", .Right)
+	if !testing.expect(t, session.find_text(s, "Copy name") != nil, "the copies on every source") { return }
+	testing.expect(t, session.find_text(s, "Rename") == nil, "no rename on a source without it")
+	testing.expect(t, session.find_text(s, "Move to the trash") == nil, "no trash on a source without it")
+	testing.expect(t, session.find_text(s, "Open with its program") == nil, "the system's programs: the computer's files only")
+	testing.expect(t, session.find_text(s, "Show in folder") == nil)
+	session.key(s, .Escape)
+	session.key(s, .F2)
+	session.key(s, .Delete)
+	testing.expect(t, session.find(s, "fb_rename") == nil, "F2 does nothing either")
+	testing.expect_value(t, counts(s).entries, 1)
+}
+
+// A program's off set removes those acts; all of them off and no act of its own: no menu.
+@(test)
+a_programs_off_set_removes_acts :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.at_once = true
+	s := start(t, &app)
+	fake_writes(&app, {F("a.txt")})
+	open(s, &app, .Open, {start_dir = "/f", row_actions_off = {.Copy_Name, .Trash}})
+	session.click_text(s, "a.txt", .Right)
+	if !testing.expect(t, session.find_text(s, "Copy path") != nil) { return }
+	testing.expect(t, session.find_text(s, "Rename") != nil, "the source renames")
+	testing.expect(t, session.find_text(s, "Copy name") == nil, "turned off")
+	testing.expect(t, session.find_text(s, "Move to the trash") == nil, "turned off")
+	session.key(s, .Escape)
+	session.key(s, .Delete)
+	testing.expect_value(t, len(app.fake.trashed), 0)   // (its key is off too)
+	open(s, &app, .Open, {start_dir = "/f", row_actions_off = {.Copy_Path, .Copy_Name, .Copy_Relative_Path, .Open, .Reveal, .Rename, .Trash}})
+	session.click_text(s, "a.txt", .Right)
+	testing.expect(t, session.find_text(s, "Copy path") == nil && session.find_text(s, "Rename") == nil, "no menu")
+}
+
+// Rename: a field in the row, the name selected without its extension; Enter asks the source with the new name, the
+// folder is read again with it. F2 then Escape asks nothing.
+@(test)
+rename_edits_the_name_in_place :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.at_once = true
+	s := start(t, &app)
+	fake_writes(&app, {F("alpha.txt"), F("other.txt")})
+	open(s, &app, .Open, {start_dir = "/f"})
+	session.click_text(s, "alpha.txt", .Right)
+	session.click_text(s, "Rename")
+	if !testing.expect_value(t, session.focused_name(s), "fb_rename") { return }
+	session.type_text(s, "beta")
+	session.key(s, .Return)
+	if testing.expect_value(t, len(app.fake.renamed), 1) {
+		testing.expect_value(t, app.fake.renamed[0][0], "/f/alpha.txt")
+		testing.expect_value(t, app.fake.renamed[0][1], "beta.txt")
+	}
+	testing.expect(t, session.find(s, "fb_rename") == nil, "the field went")
+	testing.expect(t, session.find_text(s, "beta.txt") != nil, "the folder read again")
+	testing.expect(t, session.find_text(s, "alpha.txt") == nil)
+	// F2 on the row selected (the new name), then Escape: nothing asked
+	session.key(s, .F2)
+	testing.expect_value(t, session.focused_name(s), "fb_rename")
+	session.type_text(s, "gamma")
+	session.key(s, .Escape)
+	testing.expect(t, session.find(s, "fb_rename") == nil)
+	testing.expect_value(t, len(app.fake.renamed), 1)
+	testing.expect(t, counts(s).open, "Escape gave the rename up, not the dialog")
+}
+
+// Move to the trash asks the source with the entries chosen; its toast's click asks restore with the source's tokens.
+@(test)
+trash_and_its_undo :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.at_once = true
+	s := start(t, &app)
+	fake_writes(&app, {F("gone.txt"), F("keep.txt")})
+	open(s, &app, .Open, {start_dir = "/f"})
+	session.click_text(s, "gone.txt", .Right)
+	session.click_text(s, "Move to the trash")
+	if testing.expect_value(t, len(app.fake.trashed), 1) { testing.expect_value(t, app.fake.trashed[0], "/f/gone.txt") }
+	testing.expect_value(t, counts(s).entries, 1)
+	testing.expect(t, session.find_text(s, "gone.txt moved to the trash") != nil, "the toast says it")
+	session.click_text(s, "Click to undo.")
+	if testing.expect_value(t, len(app.fake.restored), 1) { testing.expect_value(t, app.fake.restored[0], "bin:/f/gone.txt") }
+	testing.expect_value(t, counts(s).entries, 2)
+	// (once: the toast went with the click)
+	testing.expect(t, session.find_text(s, "Click to undo.") == nil)
+}
+
+// The computer's files: Open with its program and Show in folder are offered (not clicked: they launch the system's
+// programs), and the computer's source renames and trashes.
+@(test)
+open_and_show_in_folder_on_the_computers_files :: proc(t: ^testing.T) {
+	root := fmt.tprintf("%s/gui_toolkit_file_rowmenu_%d", fsx.temp_dir(context.temp_allocator), os.get_pid())
+	fsx.remove_tree(root)
+	defer fsx.remove_tree(root)
+	fsx.make_dirs(root)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/here.txt", root), transmute([]byte)string("x")) == nil)
+	app: App
+	defer app_destroy(&app)
+	app.local = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = root})
+	session.wait_text(s, "here.txt", BOUND)
+	session.click_text(s, "here.txt", .Right)
+	testing.expect(t, session.find_text(s, "Open with its program") != nil)
+	testing.expect(t, session.find_text(s, "Show in folder") != nil)
+	testing.expect(t, session.find_text(s, "Rename") != nil)
+	testing.expect(t, session.find_text(s, "Move to the trash") != nil)
+	session.key(s, .Escape)
 }
 
 // start_known: a source that knows the folder starts there (after start_dir and the dialog's memory); a source that
