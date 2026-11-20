@@ -296,15 +296,24 @@ subscribe_html :: proc(repository: string) -> string {
 	return strings.to_string(b)
 }
 
+// (the arrows are drawn with two borders, not a character: a font's ⌄ or ▸ sat low and read as a "v"; a release's
+// arrow is here, for every program's site, not in each one's style.css)
 @(private = "file")
 SUBSCRIBE_STYLE :: `<style>
   .changelog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .release > summary::-webkit-details-marker { display: none; }
+  .release > summary::before { content: ""; flex: none; align-self: center; width: 0.38em; height: 0.38em; margin: 0 0.2em 0 0.1em;
+    border-right: 1.5px solid var(--faint, currentColor); border-bottom: 1.5px solid var(--faint, currentColor);
+    transform: rotate(-45deg); transition: transform 0.15s; }
+  .release[open] > summary::before { transform: rotate(45deg); }
   .subscribe { position: relative; margin: 48px 0 8px; }
   .subscribe > summary { list-style: none; cursor: pointer; padding: 8px 14px; border: 1px solid var(--edge); border-radius: 6px;
     background: var(--bg2); color: var(--text); font: 500 1rem var(--sans); user-select: none; }
   .subscribe > summary::-webkit-details-marker { display: none; }
-  .subscribe > summary::after { content: "⌄"; display: inline-block; margin-left: 8px; color: var(--weak); }
-  .subscribe[open] > summary::after { transform: rotate(180deg); }
+  .subscribe > summary::after { content: ""; display: inline-block; width: 0.42em; height: 0.42em; margin: 0 2px 0.22em 10px;
+    border-right: 1.5px solid var(--weak); border-bottom: 1.5px solid var(--weak); transform: rotate(45deg);
+    transition: transform 0.15s; vertical-align: middle; }
+  .subscribe[open] > summary::after { transform: translateY(0.22em) rotate(-135deg); }
   .subscribe > summary:hover, .subscribe[open] > summary { background: var(--bg3); }
   .subscribe ul { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; margin: 0; padding: 6px; list-style: none;
     min-width: max-content; background: var(--bg1); border: 1px solid var(--edge); border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
