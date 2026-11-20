@@ -13,9 +13,9 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
-- **The screen's vblank timing on Linux.** Linux measures no refresh (no vblank timing): the pacer has no grid to
-  count shown and missed frames, and the frame clock takes the mode's rate (a dynamic refresh screen's live rate is
-  unknown). Intent: [src/md/infrastructure/frame-loop.md](src/md/infrastructure/frame-loop.md).
+- **X11's vblank timing seen on a real screen.** The Present extension's answers are read, but the virtual desktop's
+  software renderer draws with PutImage and never answers: run the desktop test on an X11 session with a GPU to see
+  frames start just in time there too. Intent: [src/md/infrastructure/vblank.md](src/md/infrastructure/vblank.md).
 - **Wren's profile in its vendor's folder.** As papier, classeur, inspecteur, cliche, atelier and opencode native
   do, Wren keeps its profile in `<config>/FromentSoftware/Wren` (today `<config>/Wren`), its old folder moved once
   (`user_dirs_move`). Intent: [src/md/features/folders.md](src/md/features/folders.md).
