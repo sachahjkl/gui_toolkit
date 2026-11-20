@@ -476,9 +476,39 @@ A `Build_Mode` is how the program is compiled:
 - `program_test(o, names = "") -> bool`: each test package to `build/test_<path>`; `names`
   (`pkg.test_a,pkg.test_b`): those tests of the program's package alone, in that order, on one thread.
 - `program_check(o) -> bool`: the steps of `check_steps(o, ODIN_OS)` in the order of `Check_Step`: `Changelog`, `Scopes`,
-  `Checks`, `Catalogues`, `Notices`, `Odin_Check`, `Check_Windows` and `Check_Darwin` (from another system, when
-  `project_systems` holds it),
+  `Checks`, `Catalogues`, `Notices`, `Flake_Toolkit` (below), `Odin_Check`, `Check_Windows` and `Check_Darwin` (from
+  another system, when `project_systems` holds it),
   `Tool`, `Tests`, `Release_Build`, `Launcher` (Windows). The first that fails ends it.
+
+### The flake's toolkit
+
+`nix run github:owner/program` fetches the program as a tarball: a tarball holds no submodule, whatever
+`inputs.self.submodules` says, and `ext/gui_toolkit` is empty. The package of a program's flake therefore takes the
+toolkit from an input, pinned to the submodule's commit:
+
+```nix
+inputs.gui_toolkit = {
+  url = "github:sachahjkl/gui_toolkit/<the submodule's commit>";
+  flake = false;
+};
+# in the package: the program's tree without ext/gui_toolkit, the input copied there
+postUnpack = ''
+  cp -r ${gui_toolkit} $sourceRoot/ext/gui_toolkit
+  chmod -R u+w $sourceRoot/ext/gui_toolkit
+'';
+cargoDeps = pkgs.rustPlatform.importCargoLock {lockFile = "${gui_toolkit}/native/gt/Cargo.lock";};
+```
+
+The commit is then said twice. `Flake_Toolkit` holds them equal: `flake.lock`'s `nodes.gui_toolkit.locked.rev` must be
+the commit checked out in the toolkit's folder (`toolkit_dir`), else the check says which url to set. A bump of the
+submodule sets the input's url too, then `nix flake lock`. A program whose `flake.lock` has no `gui_toolkit` node, or a
+tool pointed at another checkout (`$GT`), passes.
+
+- `flake_toolkit_pin(lock_text) -> (rev, ok)`: the commit `flake.lock` pins the toolkit to.
+- `checkout_head(dir) -> (rev, ok)`: the commit checked out in a git checkout, a submodule's included (its `.git` file,
+  its HEAD, a branch in its refs or `packed-refs`). Files only: no git process.
+- `flake_toolkit_says(pin, head) -> string`: `""` when they agree, else why and what to do.
+- `flake_toolkit_check(p, root = ".") -> bool`: the step.
 
 A tool's other commands call them (`live` builds with `program_build(build_options())`), and `release.commands` takes
 the check: `check = proc() -> cli.Exit { return toolbox.ended(toolbox.program_check(build_options())) }`.

@@ -18,7 +18,7 @@ sample_options :: proc() -> Build_Options {
 @(test)
 check_steps_have_every_system :: proc(t: ^testing.T) {
 	o := sample_options()
-	always := Check_Steps{.Changelog, .Scopes, .Odin_Check, .Tool, .Tests, .Release_Build}
+	always := Check_Steps{.Changelog, .Scopes, .Flake_Toolkit, .Odin_Check, .Tool, .Tests, .Release_Build}
 	linux := check_steps(o, .Linux)
 	testing.expect_value(t, linux, always + Check_Steps{.Check_Windows, .Check_Darwin})
 	testing.expect_value(t, check_steps(o, .Darwin), always + Check_Steps{.Check_Windows})

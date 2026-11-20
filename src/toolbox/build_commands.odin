@@ -64,6 +64,7 @@ Check_Step :: enum u8 {
 	Checks,          // the program's own (Build_Options.checks)
 	Catalogues,      // every catalogue of Build_Options.catalogues
 	Notices,         // NOTICES_FILE up to date
+	Flake_Toolkit,   // flake.lock's toolkit is the submodule's commit (flake_toolkit.odin; nothing to check without one)
 	Odin_Check,      // odin check of the program for this system
 	Check_Windows,   // the same for Windows, from another system, when the program is built for it (Project.systems)
 	Check_Darwin,    // the same for macOS, from another system, when the program is built for it
@@ -207,7 +208,7 @@ program_check :: proc(o: Build_Options) -> bool {
 // The steps of a program's check on `system`: another system's check only for a system the program is built for
 // (project_systems).
 check_steps :: proc(o: Build_Options, system: runtime.Odin_OS_Type) -> Check_Steps {
-	steps := Check_Steps{.Changelog, .Scopes, .Odin_Check, .Tool, .Tests, .Release_Build}
+	steps := Check_Steps{.Changelog, .Scopes, .Flake_Toolkit, .Odin_Check, .Tool, .Tests, .Release_Build}
 	if len(o.checks) > 0 { steps += {.Checks} }
 	if o.catalogues.folder != "" { steps += {.Catalogues} }
 	if o.notices { steps += {.Notices} }
@@ -244,6 +245,8 @@ check_step :: proc(o: Build_Options, step: Check_Step) -> bool {
 	case .Notices:
 		if why := third_party_notices(p, NOTICES_FILE, check_only = true); why != "" { fmt.eprintfln("check: %s", why); return false }
 		return true
+	case .Flake_Toolkit:
+		return flake_toolkit_check(p)
 	case .Odin_Check:
 		return run(odin_command(p, "check"), {echo = true})
 	case .Check_Windows:
