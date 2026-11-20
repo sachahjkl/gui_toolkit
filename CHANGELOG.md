@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.335.1] - 2026-11-20 10:32
+
+### Fixed
+- **Drawn arrows on the sites**: the changelog's Subscribe button, each version and the docs' groups show a chevron
+drawn on the page, not a character of the font that sat low and read as a "v". A program's site gets its versions'
+arrow from the toolkit and keeps no rule of its own.
+
 ## [0.335.0] - 2026-11-20 09:50
 
 ### Added
@@ -4687,6 +4694,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.335.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.335.1
 [0.335.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.335.0
 [0.334.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.334.0
 [0.333.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.333.0
