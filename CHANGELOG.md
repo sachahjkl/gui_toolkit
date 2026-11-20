@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.333.0] - 2026-11-20 06:58
+
+### Added
+- **`tk_site.Meta.docs`**: a site with a Docs section (`build_docs`) says so, and the home page's nav links it as "Docs", after Features; the classic pages link the same.
+
 ## [0.332.1] - 2026-11-20 06:51
 
 ### Fixed
@@ -4669,6 +4674,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.333.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.333.0
 [0.332.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.332.1
 [0.332.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.332.0
 [0.331.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.331.1
