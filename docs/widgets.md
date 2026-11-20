@@ -540,6 +540,50 @@ A screen reader hears one progress indicator: its value says the step in words (
 node draws. `Stepper_Result` gives the box, each step's look of this build, and the step whose node is under the
 pointer (`hovered`, -1: none).
 
+## Durations, times and wheels
+
+![A duration field with its drums open, a time of day, a date of three drums, a lone drum of words (examples/showcase --scene=wheels)](screenshots/showcase_wheels.webp)
+
+A value of a few parts (a duration, a time of day, a date) is a field: each part is typed or stepped on its own, and a
+click opens the parts' drums below it (`src/ui/parts_field.odin`, `src/ui/wheel_picker.odin`; their design:
+[src/md/features/wheel-picker.md](../src/md/features/wheel-picker.md)).
+
+```odin
+duration_field :: proc(id: string, seconds: ^int, units := Duration_Units{.Hours, .Minutes}, least := 0, most := 0, minute_step := 1, o := Parts_Field_Options{}) -> (changed: bool)
+parts_field :: proc(id: string, parts: []Field_Part, values: []int, o := Parts_Field_Options{}) -> (changed: bool)
+wheel :: proc(id: string, labels: []string, index: ^int, o := Wheel_Options{}) -> (changed: bool)
+wheel_number :: proc(id: string, value: ^int, lo, hi: int, step := 1, format := "%d", o := Wheel_Options{}) -> (changed: bool)
+wheels :: proc(id: string, rows := 0) -> bool   // if ui.wheels(id) { drums side by side, one band }
+```
+
+```odin
+ui.duration_field("###lock", &app.lock_seconds, least = 60)   // "0 h 05 min"
+
+parts := [2]ui.Field_Part{{hi = 23, format = "%02d", wrap = true}, {hi = 59, format = "%02d", before = ":", wrap = true}}
+values := [2]int{app.hour, app.minute}
+if ui.parts_field("###alarm", parts[:], values[:]) { app.hour, app.minute = values[0], values[1] }
+```
+
+The field, with the keyboard: Left and Right choose a part, Up and Down step it (Page Up and Page Down ten steps, Home
+and End its ends), digits typed replace it and go on to the next part once no more digit fits ("1", "3", "0": 13 h
+then 0 min), a label's first letters choose it, Alt+Down or F4 open the drums. The wheel over a part steps it once the
+field has the keyboard. A click opens the drums on the part clicked; a press outside, Escape, Enter or Alt+Up close
+them. While a drum turns, its part shows the row at its band. `Parts_Field_Options.open` lets the program own whether
+the drums are shown.
+
+`Field_Part`: `lo`, `hi`, `step` (0: 1), `format` ("": `%d`) or `labels` (the value is then an index), `unit` after it
+("h"), `before` it (":"), `wrap` (past its end comes its start: minutes). `duration_field` makes the parts of
+`units` (hours from 0 to `most`'s, 23 without; minutes and seconds that wrap) and keeps the total between `least` and
+`most`.
+
+A drum: the wheel turns it a row a notch (a touchpad's fractions add up), a drag follows the hand and a throw glides on,
+a click on a row turns to it, Up and Down, Page Up and Page Down, Home and End, and the first letters of a label typed
+move it. It rests on a row with a small detent, and returns `true` once, at rest, with the row it rests on. A value the
+program sets turns it there, with no change returned. A bounded drum stretches past its ends; `wrap` loops it.
+`Wheel_Options`: `rows` (its height, `WHEEL_ROWS` by default; in `ui.wheels`, the group's), `wrap`, `unit` (a word at
+the band, "min"), `wheel_when_focused` (in a long page that scrolls: the wheel turns it only once it has the keyboard),
+`disabled`. A screen reader sees a spin button, and the field a combo box.
+
 ## A secret's memory
 
 `ui.line_edit_wipe(&f)` empties a `Line_Edit` and leaves nothing of its text in memory: its buffer (all its capacity) and
