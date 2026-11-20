@@ -702,14 +702,14 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 	if p == .External {
 		if view_window_integrated(r) {
 			// (the system drags the caption: the menu opens on a right click of its empty part)
-			if at, ok := caption_right_clicked(); ok { menu_open(view_menu_id(r), at, hb.key, search = false) }
+			if at, ok := caption_right_clicked(); ok { menu_open(view_menu_id(r), at, hb.key) }
 			view_header_menu(vs, r, p)
 			return
 		}
 		// (its own drag: the window of the system follows the pointer, where the system tells positions)
 		sig := signal(hb)
 		view_window_header_drag(vs, r, hb, sig, em)
-		if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), hb.key, search = false) }
+		if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), hb.key) }
 		view_header_menu(vs, r, p)
 		return
 	}
@@ -778,7 +778,7 @@ view_header_end :: proc(vs: ^Views, r: ^View_Record, p: View_Presentation) {
 			}
 		}
 	}
-	if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), hb.key, search = false) }
+	if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), hb.key) }
 	view_header_menu(vs, r, p)
 }
 

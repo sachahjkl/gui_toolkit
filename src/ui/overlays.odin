@@ -713,9 +713,9 @@ menu_bar_button :: proc(id: string) -> string {
 	a11y_default(b, {role = .Menu_Item, popup = .Menu, expanded = open})
 	sig := signal(b)
 	if sig.clicked {
-		if open { menu_close() } else { menu_open(menu_id, b.rect, b.key, search = false) }
+		if open { menu_close() } else { menu_open(menu_id, b.rect, b.key) }
 	} else if sig.hovering && bar_active && !open {
-		menu_open(menu_id, b.rect, b.key, search = false)
+		menu_open(menu_id, b.rect, b.key)
 	}
 	return menu_id
 }

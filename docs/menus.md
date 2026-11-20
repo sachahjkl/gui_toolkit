@@ -26,11 +26,25 @@ if ui.context_take(card) { app.menu_for = card_id; ui.menu_open("card_menu", ui.
 |---|---|
 | ![A context menu: icons, words, keys, two submenus, a check, a row disabled](screenshots/showcase_menus.webp) | ![The menu searched: its band shows what is typed, a submenu's row comes up](screenshots/showcase_menu_search.webp) |
 
+## What is typed filters it
+
+Every menu filters what is typed: the context menus, a menu bar's, a tool bar's, a drop-down's list, a field's menu.
+A field at its top (`search_band`, as the palette's) shows the letters. The items that do not have them in order go,
+a submenu's items come up into the menu, and the first match is selected: Enter chooses it.
+
+- A letter typed while a submenu is open closes the submenu and goes to its menu's field. A nested menu has its own field.
+- Until something is typed, Space chooses the selected item, and Left, Right, Home and End move in the menu.
+- A drop-down's list opens on its current value: Enter keeps it while nothing is typed.
+- A panel opened as a menu with no item (a slider's) has no field: it has nothing to filter.
+
+There is no mode where a typed letter selects the next item that starts with it: the filter's first match gives the
+same, and one way to type in every menu is one thing to learn.
+
 ## Its procedures
 
 | Procedure | What it does |
 |---|---|
-| `menu_open(id, at, anchor = 0, from_keyboard = false, search = true, nested = false, align = .Start)` | opens the menu `id` at `at`, a `Menu_At`: a point (`Vec2`, its top-left corner) or a rect (`Rect`: below it, above it when there is no room). It replaces any open menu. `anchor`: the box that opens it (a press on it is not a press outside: the widget toggles the menu). `from_keyboard`: its first item starts selected. `search`: what is typed filters the items (off: a typed letter selects the next item that starts with it; a menu of a few fixed choices, a drop-down's list). `nested`: in the block of an open menu, the menu opens over it and that menu stays open behind it. `align` (`Menu_Align`): below a rect, the edge the menu lines up with, `.Start` its left, `.End` its right (a button at the end of a toolbar: the toolkit knows the menu's width) |
+| `menu_open(id, at, anchor = 0, from_keyboard = false, nested = false, align = .Start)` | opens the menu `id` at `at`, a `Menu_At`: a point (`Vec2`, its top-left corner) or a rect (`Rect`: below it, above it when there is no room). It replaces any open menu. `anchor`: the box that opens it (a press on it is not a press outside: the widget toggles the menu). `from_keyboard`: its first item starts selected. `nested`: in the block of an open menu, the menu opens over it and that menu stays open behind it. `align` (`Menu_Align`): below a rect, the edge the menu lines up with, `.Start` its left, `.End` its right (a button at the end of a toolbar: the toolkit knows the menu's width) |
 | `menu(id, width = 0)` | `if menu(id) { ... }` builds the menu while it is open, a nested one in the block of the menu that opened it. A tool bar's tool with a `menu`, folded into its "…" menu, opens `id` as a submenu of its row: the same block builds it there |
 | `menu_item(text, shortcut, checked, icon, disabled, keep_open, icon_font)` | one row; `disabled` (or a `disabled` scope): muted, skipped by the keyboard |
 | `menu_submenu(text, icon, disabled)` | `if menu_submenu("Open with") { ... }` a row that opens a submenu |
@@ -60,7 +74,7 @@ label cut.
 ## The menu of a text field
 
 `edit_menu(id, target, owner, kind)` builds the menu of a text field, `id` its menu: Undo, Redo, Cut, Copy,
-Paste, Delete and Select all, each with its keys and its Lucide icon, and the search band of every context menu (`search_band`, as the palette's: [widgets](widgets.md)). `target`
+Paste, Delete and Select all, each with its keys and its Lucide icon, and the field of every menu (`search_band`, as the palette's: [widgets](widgets.md)). `target`
 is an `Edit_Target`: a `line_edit`'s `^Line_Edit` or a `text_edit`'s `^Text_Edit`; each edit goes through its own edit
 history, as its keys do. `owner` is the field's widget, which a paste's text comes to (`edit_paste`). `kind`
 (`Line_Edit_Kind`): a `.Secret` is neither copied nor cut; a `.Read_Only` field is only copied and selected.

@@ -293,7 +293,7 @@ FILE_VIEW_MENU :: "###fb_view_menu"
 file_browser_view_button :: proc(fb: ^File_Browser, h: f32) {
 	next({width = px(h), height = px(h)})
 	b := button("fb_view", icon = table_zoom_icon(fb.table.zoom), o = {icon_font = lucide_icons(), tip = i18n.tr("View (Ctrl+wheel, Ctrl+= and Ctrl+-)")})
-	if b.clicked && b.box != nil { menu_open(FILE_VIEW_MENU, b.box.rect, search = false, align = .End) }
+	if b.clicked && b.box != nil { menu_open(FILE_VIEW_MENU, b.box.rect, align = .End) }
 	if menu(FILE_VIEW_MENU) {
 		menu_heading(i18n.tr("View"))
 		for i in 0 ..< TABLE_ZOOMS {

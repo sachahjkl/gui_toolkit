@@ -223,7 +223,7 @@ open_menu_over_resize_bands_and_later_boxes :: proc(t: ^testing.T) {
 			ui.spacer(ui.fill())
 			ui.next({width = ui.px(40), height = ui.pct(1)})
 			b := ui.button("burger", "=")
-			if b.clicked { ui.menu_open(MENU, b.box.rect, b.box.key, search = false) }
+			if b.clicked { ui.menu_open(MENU, b.box.rect, b.box.key) }
 			_, _ = ui.window_buttons()
 		}
 		if ui.menu(MENU, 300) {

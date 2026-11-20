@@ -730,7 +730,7 @@ nav_more :: proc(p: ^Page, o: Page_Options, em: f32) {
 	MENU :: "###prefs_more_menu"
 	sig := rail_button("###prefs_more", lucide.ELLIPSIS, ui.lucide_icons(), i18n.tr("More"), ui.menu_is_open(MENU), em)
 	if sig.clicked && sig.box != nil {
-		if ui.menu_is_open(MENU) { ui.menu_close() } else { ui.menu_open(MENU, sig.box.rect, sig.box.key, search = false) }
+		if ui.menu_is_open(MENU) { ui.menu_close() } else { ui.menu_open(MENU, sig.box.rect, sig.box.key) }
 	}
 	if ui.menu(MENU) {
 		if o.version != "" { ui.menu_heading(o.version) }

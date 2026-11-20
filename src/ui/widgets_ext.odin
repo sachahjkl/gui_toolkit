@@ -866,7 +866,7 @@ number_of :: proc(id: string, value: ^$T, lo, hi: Maybe(T), step: T, unit: strin
 				// (a default: the field's menu sets it again; a right press while typing keeps the text's own menu out)
 				if d, has := default.?; has && !disabled {
 					menu_id := fmt.tprintf("###number_menu_%d", u64(fkey))
-					if fsig.right_clicked { menu_open(menu_id, mouse_pos(), fkey, search = false) }
+					if fsig.right_clicked { menu_open(menu_id, mouse_pos(), fkey) }
 					if menu(menu_id) {
 						if menu_item(fmt.tprintf(i18n.tr("Reset to %s"), number_text(d, step)), disabled = value^ == d).clicked {
 							number_set(value, f64(d), lo, hi, step)
@@ -1525,7 +1525,7 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 	kb := sig.focused && !open && (key_press(.Down, {.Alt}) || key_press(.Down) || key_press(.F4))
 	if sig.clicked || kb {
 		if open { menu_close() } else {
-			menu_open(menu_id, btn.rect, btn.key, from_keyboard = kb, search = false)
+			menu_open(menu_id, btn.rect, btn.key, from_keyboard = kb)
 			menu_select(selected^)   // keyboard starts from the current value
 		}
 	}

@@ -390,7 +390,7 @@ a_text_area_has_the_field_menu :: proc(t: ^testing.T) { unwatched.run(t, proc(t:
 	session.click(s, "area", .Right)
 	session.frames(s, 2)
 	testing.expect(t, ui.menu_any_open(), "a right click opens it")
-	testing.expect(t, session.find(s, "menu_search") != nil, "it searches, as every context menu")
+	testing.expect(t, session.find(s, "menu_search") != nil, "it filters, as every menu")
 	icons := 0
 	for i := 0; session.find(s, "ico", i) != nil; i += 1 { icons += 1 }
 	testing.expectf(t, icons == 7, "an icon on each item: %d", icons)

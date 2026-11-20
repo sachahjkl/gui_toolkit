@@ -78,10 +78,6 @@ Toolbar_Tool :: struct {
 	// the id of a menu the program builds as always (`if ui.menu(id) { ... }`, outside the bar): the tool opens it, under
 	// itself in the bar (lit while it is open), as its submenu when it is a row of the "…" menu ("": an act)
 	menu:      string,
-	// whether typing searches its menu, opened from the bar (menu_open's `search`; nil: its default, every menu can be
-	// filtered). false: a menu of a few fixed choices, where a typed letter selects (a zoom's steps). A submenu never
-	// searches.
-	menu_search: Maybe(bool),
 	// its tooltip in the bar, whatever it shows ("": the command's tooltip when it has a command, else its label and its
 	// shortcut for a glyph, or for words with a shortcut; words alone have none)
 	tip:       string,
@@ -220,7 +216,7 @@ toolbar_menu_show :: proc(id: string) -> bool {
 	more := s.boxes[mem.more] or_else nil
 	if more == nil || more.first_build == s.build_index || more.rect.max.x <= more.rect.min.x { return false }
 	name := toolbar_menu_name(id)
-	if !menu_is_open(name) { menu_open(name, more.rect, anchor = more.key, search = false) }
+	if !menu_is_open(name) { menu_open(name, more.rect, anchor = more.key) }
 	return true
 }
 
@@ -614,7 +610,7 @@ toolbar_tool_button :: proc(id: string, t: Toolbar_Tool, label, icon, shortcut: 
 	if t.menu == "" || sig.box == nil { return clicked }
 	if sig.box.a11y != nil { sig.box.a11y.popup = .Menu; sig.box.a11y.expanded = open }
 	if clicked {
-		if open { menu_close() } else { menu_open(t.menu, sig.box.rect, anchor = sig.box.key, search = t.menu_search.? or_else true) }
+		if open { menu_close() } else { menu_open(t.menu, sig.box.rect, anchor = sig.box.key) }
 	}
 	return false
 }
@@ -731,7 +727,7 @@ toolbar_more :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f3
 	mem.more = sig.box != nil ? sig.box.key : 0
 	if sig.box != nil && sig.box.a11y != nil { sig.box.a11y.popup = .Menu; sig.box.a11y.expanded = open }
 	if sig.clicked && sig.box != nil {
-		if open { menu_close() } else { menu_open(tb.menu_name, sig.box.rect, anchor = sig.box.key, search = false) }
+		if open { menu_close() } else { menu_open(tb.menu_name, sig.box.rect, anchor = sig.box.key) }
 	}
 }
 

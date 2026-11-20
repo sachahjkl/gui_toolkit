@@ -59,7 +59,7 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
 - It is a toolkit menu (`menu_open`, `menu`), not a panel. A folded group is a section: its title as a heading, a
   separator between two sections. A tool is a `menu_item` row. A control is a `menu_control` row: its label in a left
   column, its widget in a right column, the columns aligned over every control row of the menu. The keyboard works as
-  in every menu: arrows move between the tools, Enter runs one, Escape closes, a typed letter selects.
+  in every menu: arrows move between the tools, Enter runs one, Escape closes, what is typed filters the tools and the controls.
 - **Refused: the panel that rebuilt the bar's controls in rows.** Each folded group became a row of the bar's own
   glyph buttons: unlabelled icons, ragged rows, no shortcut, no keyboard. The user called it a "soupe moche". A tool
   has a name and often a key; a menu row says both, a glyph alone says neither.
@@ -83,9 +83,11 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
   anchor: a second click closes it) and is lit while it is open. Folded, the tool is a submenu row of the "…" menu, and
   the same `ui.menu(id)` block builds that submenu (`menu_submenu_of`: `menu` finds its id open as a level over another
   menu's row). Such a tool never returns true: what is chosen is in its menu's block.
-- Its menu searches, as every menu (`menu_open`'s default), unless the tool says `menu_search = false`: whether a menu is
-  a few fixed choices (a zoom's steps, where a typed letter selects) is the program's knowledge, not the toolkit's; at
-  `menu_open` the toolkit does not know the items yet, so no rule by length can decide it before the menu shows.
+- Its menu filters what is typed, as every menu ([menus.md](menus.md)), a zoom's few steps too. Folded, it is a
+  submenu of the "…" menu: a letter typed there goes to the "…" menu's field, where the tool's items do not come up
+  (they are not that menu's to filter).
+- **Refused: `menu_search = false`, a tool's menu without the filter**, where a typed letter selected the next item
+  starting with it. The person expects the filter in every menu, and its first match gives what the letter gave.
 - A tool's `tip` is its tooltip whatever it shows: words like "100 %" do not say what the tool is.
 - **Refused: a control that holds a button and opens the menu itself** (what cliche did first). Folded, the button sat
   in a menu row with no anchor that the program could use, and the menu opened over the "…" menu, not beside its row.

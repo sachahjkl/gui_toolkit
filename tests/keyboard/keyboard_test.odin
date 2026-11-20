@@ -110,9 +110,8 @@ build_menu :: proc(f: ^Fx, user: rawptr) {
 @(private = "file")
 nothing :: proc(f: ^Fx, user: rawptr) {}
 
-// These menus open without search (search = false): the classic menu, whose typed letter selects the next row that
-// starts with it and which turns to the other side of its point at a window's edge. A menu that searches (the default
-// of menu_open) has its tests in tests/scenarios/widgets_test.odin.
+// Every menu filters what is typed: its field's own tests (fuzzy, a field's keys, its place held) are in
+// tests/scenarios/widgets_test.odin; these check the keys that move, choose and close, and a letter typed in a submenu.
 
 // The tests drive the toolkit's global UI state: the test runner's threads take turns (no -define:ODIN_TEST_THREADS=1
 // needed).
@@ -127,7 +126,7 @@ menu_keyboard :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r := Menu_Run{key = "menu_1234"}
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true, search = false) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true) }, &r)
 	frame(&f, nil, build_menu, &r)
 	frame(&f, nil, build_menu, &r)
 	_, sel, ok := ui.menu_rect(0)
@@ -149,10 +148,13 @@ menu_keyboard :: proc(t: ^testing.T) {
 	_, sel, _ = ui.menu_rect(0)
 	testing.expect_value(t, sel, 5)
 
-	// a typed letter selects the next item starting with it
-	frame(&f, {typed('r')}, build_menu, &r)
+	// what is typed filters: "rel" keeps Reload alone, and its first match is selected (no letter selects the next
+	// item starting with it: the filter does that)
+	frame(&f, {typed('r'), typed('e'), typed('l')}, build_menu, &r)
 	_, sel, _ = ui.menu_rect(0)
-	testing.expect_value(t, sel, 2)
+	testing.expect_value(t, sel, 0)
+	_, gone := ui.menu_item_rect(0, 1)
+	testing.expect(t, !gone, "one item left")
 
 	// Enter chooses and closes
 	frame(&f, {key(.Return)}, build_menu, &r)
@@ -170,7 +172,7 @@ menu_pointer_over_a_disabled_row_selects_nothing :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r := Menu_Run{key = "menu_4321"}
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true, search = false) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true) }, &r)
 	for _ in 0 ..< 3 { frame(&f, nil, build_menu, &r) }
 	rect, sel, ok := ui.menu_rect(0)
 	testing.expect(t, ok)
@@ -196,7 +198,7 @@ build_choose :: proc(f: ^Fx, user: rawptr) {
 	if ui.menu(r.key) {
 		if ui.menu_item("A").clicked {
 			r.open_after = ui.menu_any_open()
-			if r.open_other { ui.menu_open(r.other, ui.Vec2{50, 50}, search = false) }
+			if r.open_other { ui.menu_open(r.other, ui.Vec2{50, 50}) }
 		}
 		for label in ([?]string{"B", "C"}) {
 			ui.menu_item(label)
@@ -216,7 +218,7 @@ menu_closes_at_the_end_of_its_block :: proc(t: ^testing.T) {
 		f: Fx
 		if !testing.expect(t, open(&f), "fonts") { return }
 		r := Choose_Run{key = "menu_1234", other = "menu_5678", open_other = open_other}
-		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Choose_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true, search = false) }, &r)
+		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Choose_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true) }, &r)
 		frame(&f, nil, build_choose, &r)
 		frame(&f, nil, build_choose, &r)
 		frame(&f, {key(.Return)}, build_choose, &r)
@@ -240,9 +242,9 @@ menu_submenus :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r := Menu_Run{key = "menu_777"}
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true, search = false) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true) }, &r)
 	frame(&f, nil, build_menu, &r)
-	frame(&f, {typed('s')}, build_menu, &r)   // "Search with" (Save as... is disabled)
+	frame(&f, {key(.Down), key(.Down)}, build_menu, &r)   // "Search with", from "Forward"
 	frame(&f, {key(.Right)}, build_menu, &r)
 	frame(&f, nil, build_menu, &r)
 	testing.expect(t, r.sub_open, "Right opens the submenu")
@@ -262,9 +264,9 @@ menu_submenus :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.menu_any_open(), "choosing in a submenu closes the whole menu")
 
 	// Escape closes level by level
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true, search = false) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true) }, &r)
 	frame(&f, nil, build_menu, &r)
-	frame(&f, {typed('s'), key(.Return)}, build_menu, &r)
+	frame(&f, {key(.Down), key(.Down), key(.Return)}, build_menu, &r)
 	frame(&f, nil, build_menu, &r)
 	testing.expect_value(t, ui.menu_depth(), 2)
 	frame(&f, {key(.Escape)}, build_menu, &r)
@@ -272,6 +274,39 @@ menu_submenus :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.menu_depth(), 1)
 	frame(&f, {key(.Escape)}, build_menu, &r)
 	testing.expect(t, !ui.menu_any_open(), "the second Escape closes the menu")
+}
+
+// A letter typed while a submenu is open closes the submenu and goes to its menu's field: the submenu has no field of
+// its own, and its items come up into the menu's filter. A space chooses in the submenu, as before anything is typed.
+@(test)
+menu_letter_in_a_submenu_filters_its_menu :: proc(t: ^testing.T) {
+	sync.mutex_lock(&ui_state_lock)
+	defer sync.mutex_unlock(&ui_state_lock)
+	f: Fx
+	if !testing.expect(t, open(&f), "fonts") { return }
+	defer close(&f)
+	r := Menu_Run{key = "menu_778"}
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true) }, &r)
+	frame(&f, nil, build_menu, &r)
+	frame(&f, {key(.Down), key(.Down), key(.Right)}, build_menu, &r)
+	frame(&f, nil, build_menu, &r)
+	testing.expect_value(t, ui.menu_depth(), 2)
+	frame(&f, {typed('l'), typed('p')}, build_menu, &r)   // "lp": Alpha alone
+	frame(&f, nil, build_menu, &r)
+	testing.expect_value(t, ui.menu_depth(), 1)
+	_, sel, _ := ui.menu_rect(0)
+	testing.expect_value(t, sel, 0)
+	frame(&f, {key(.Return)}, build_menu, &r)
+	testing.expect_value(t, r.chosen, "alpha")
+
+	r.chosen = ""
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true) }, &r)
+	frame(&f, nil, build_menu, &r)
+	frame(&f, {key(.Down), key(.Down), key(.Right)}, build_menu, &r)
+	frame(&f, nil, build_menu, &r)
+	frame(&f, {key(.Space), typed(' ')}, build_menu, &r)
+	testing.expect_value(t, r.chosen, "alpha")
+	testing.expect(t, !ui.menu_any_open(), "Space chose in the submenu")
 }
 
 Nested_Run :: struct {
@@ -289,7 +324,7 @@ build_nested :: proc(f: ^Fx, user: rawptr) {
 		r.row = ui.button("row", "A row").box
 		ui.next({width = ui.px(300), height = ui.px(30)})
 		ui.button("row2", "Another row")
-		if r.open_at != {} { ui.menu_open(r.nested, r.open_at, nested = true, search = false); r.open_at = {} }
+		if r.open_at != {} { ui.menu_open(r.nested, r.open_at, nested = true); r.open_at = {} }
 		if ui.menu(r.nested) {
 			if ui.menu_item("Open").clicked { r.chosen = "open" }
 			if ui.menu_item("Remove").clicked { r.chosen = "remove" }
@@ -313,7 +348,7 @@ nested_menu_levels :: proc(t: ^testing.T) {
 		frame(f, nil, build_nested, r)
 		frame(f, nil, build_nested, r)
 	}
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Nested_Run)(user).key, ui.Vec2{100, 100}, search = false) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Nested_Run)(user).key, ui.Vec2{100, 100}) }, &r)
 	frame(&f, nil, build_nested, &r)
 	frame(&f, nil, build_nested, &r)
 	reopen(&f, &r)
@@ -341,12 +376,12 @@ nested_menu_levels :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.menu_any_open(), "the second Escape closes the outer menu")
 
 	// a press outside both closes both; choosing an item closes both
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Nested_Run)(user).key, ui.Vec2{100, 100}, search = false) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Nested_Run)(user).key, ui.Vec2{100, 100}) }, &r)
 	frame(&f, nil, build_nested, &r)
 	reopen(&f, &r)
 	frame(&f, {{kind = .Mouse_Press, button = .Left, pos = {outer.max.x + 100, 10}}}, build_nested, &r)
 	testing.expect(t, !ui.menu_any_open(), "a press outside every level closes the menu")
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Nested_Run)(user).key, ui.Vec2{100, 100}, search = false) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Nested_Run)(user).key, ui.Vec2{100, 100}) }, &r)
 	frame(&f, nil, build_nested, &r)
 	reopen(&f, &r)
 	frame(&f, {key(.Down), key(.Down), key(.Return)}, build_nested, &r)
@@ -362,7 +397,7 @@ menu_stays_on_screen :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r := Menu_Run{key = "menu_999"}
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{790, 590}, search = false) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, ui.Vec2{790, 590}) }, &r)
 	for _ in 0 ..< 3 { frame(&f, nil, build_menu, &r) }
 	rect, _, ok := ui.menu_rect(0)
 	testing.expect(t, ok, "laid out")
@@ -410,7 +445,7 @@ menu_rows_follow_the_density :: proc(t: ^testing.T) {
 	r := Long_Run{key = "menu_d1"}
 	for c in ([?][2]f32{{1, 29}, {ui.DENSITY_COMPACT, 22}, {ui.DENSITY_MAX, 34}}) {
 		ui.set_density(&f.s, c[0])
-		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Long_Run)(user).key, ui.Vec2{100, 100}, search = false) }, &r)
+		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Long_Run)(user).key, ui.Vec2{100, 100}) }, &r)
 		for _ in 0 ..< 2 { frame(&f, nil, build_long, &r) }
 		row, _ := ui.menu_item_rect(0, 0)
 		testing.expect_value(t, row.max.y - row.min.y, c[1])
@@ -419,7 +454,7 @@ menu_rows_follow_the_density :: proc(t: ^testing.T) {
 }
 
 // A menu taller than the window is as tall as the window and scrolls: the keyboard's selection comes into view (Down to the
-// last row, a typed letter of a hidden row, Home), the wheel scrolls it. A menu that then fits a taller window is whole.
+// last row, Home, End), the wheel scrolls it. A menu that then fits a taller window is whole.
 @(test)
 menu_taller_than_the_window_scrolls :: proc(t: ^testing.T) {
 	sync.mutex_lock(&ui_state_lock)
@@ -428,7 +463,7 @@ menu_taller_than_the_window_scrolls :: proc(t: ^testing.T) {
 	if !testing.expect(t, open(&f), "fonts") { return }
 	defer close(&f)
 	r := Long_Run{key = "menu_d2"}
-	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Long_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true, search = false) }, &r)
+	frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Long_Run)(user).key, ui.Vec2{100, 100}, from_keyboard = true) }, &r)
 	for _ in 0 ..< 3 { frame(&f, nil, build_long, &r) }
 	panel, sel, ok := ui.menu_rect(0)
 	testing.expect(t, ok, "laid out")
@@ -450,11 +485,11 @@ menu_taller_than_the_window_scrolls :: proc(t: ^testing.T) {
 	panel, sel, _ = ui.menu_rect(0)
 	testing.expect_value(t, sel, 0)
 	testing.expect(t, row_shown(0) && !row_shown(LAST_ROW), "Home scrolls back to the top")
-	frame(&f, {typed('z')}, build_long, &r)
+	frame(&f, {key(.End)}, build_long, &r)
 	frame(&f, nil, build_long, &r)
 	panel, sel, _ = ui.menu_rect(0)
 	testing.expect_value(t, sel, LAST_ROW)
-	testing.expect(t, row_shown(LAST_ROW), "type-ahead reaches a hidden row and shows it")
+	testing.expect(t, row_shown(LAST_ROW), "End reaches a hidden row and shows it")
 
 	mid := [2]f32{(panel.min.x + panel.max.x) * 0.5, (panel.min.y + panel.max.y) * 0.5}
 	last, _ := ui.menu_item_rect(0, LAST_ROW)
@@ -499,7 +534,7 @@ menu_takes_the_wheel_over_it :: proc(t: ^testing.T) {
 	}
 	for long in ([?]bool{true, false}) {
 		r := Wheel_Run{key = "menu_d4", long = long}
-		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Wheel_Run)(user).key, ui.Vec2{100, 50}, search = false) }, &r)
+		frame(&f, nil, proc(f: ^Fx, user: rawptr) { ui.menu_open((^Wheel_Run)(user).key, ui.Vec2{100, 50}) }, &r)
 		for _ in 0 ..< 3 { frame(&f, nil, build_menu_over_scroller, &r) }
 		testing.expect(t, ui.menu_at(at), "the point is on the menu")
 		first, _ := ui.menu_item_rect(0, 0)
@@ -532,7 +567,7 @@ menu_near_the_bottom_flips_or_shifts :: proc(t: ^testing.T) {
 	r := Menu_Run{key = "menu_d3"}
 	@(static) anchor: ui.Rect
 	anchor = {{100, 550}, {140, 580}}
-	open_under :: proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, anchor, 0, search = false) }
+	open_under :: proc(f: ^Fx, user: rawptr) { ui.menu_open((^Menu_Run)(user).key, anchor, 0) }
 	frame(&f, nil, open_under, &r)
 	for _ in 0 ..< 3 { frame(&f, nil, build_menu, &r) }
 	rect, _, ok := ui.menu_rect(0)

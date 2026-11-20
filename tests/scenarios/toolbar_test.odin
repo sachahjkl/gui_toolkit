@@ -295,7 +295,7 @@ a_folding_bar_of_segmented_controls_never_runs_past_its_end :: proc(t: ^testing.
 				}
 				// (cliche's last group: icon tools, one with a menu, one on, one folded first, one the palette's command)
 				if ui.toolbar_group("window", {title = "Fenêtre", priority = 3}) {
-					_ = ui.toolbar_tool("period", {label = "Par date…", icon = "", menu = "###period_menu", menu_search = false})
+					_ = ui.toolbar_tool("period", {label = "Par date…", icon = "", menu = "###period_menu"})
 					_ = ui.toolbar_tool("preview", {label = "Aperçu", icon = "", on = true})
 					_ = ui.toolbar_tool("folder", {label = "Dossier", icon = "", priority = 0})
 					_ = ui.toolbar_tool("workflows", {label = "Workflows", icon = ""})
@@ -320,14 +320,14 @@ a_folding_bar_of_segmented_controls_never_runs_past_its_end :: proc(t: ^testing.
 }) }
 
 // A tool's `tip` is its tooltip whatever it shows (a zoom's words "100 %" say "Zoom" under the pointer); a tool's menu
-// opens with a search by default, without one when the tool says `menu_search = false` (a typed letter selects there).
+// filters what is typed, as every menu, a zoom's few steps too.
 @(test)
-a_toolbar_tool_has_its_tip_and_its_menu_search :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+a_toolbar_tool_has_its_tip_and_its_menu_filters :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = {900, 400}, no_renderer = true, build = proc(s: ^session.Session) {
 		ui.next({width = ui.fill(), height = ui.px(40)})
 		if ui.toolbar("tbar", {overflow = .Wrap}) {
 			if ui.toolbar_group("view") {
-				_ = ui.toolbar_tool("zoom", {label = "100 %", words = true, tip = "Zoom", menu = "zoom_menu", menu_search = false})
+				_ = ui.toolbar_tool("zoom", {label = "100 %", words = true, tip = "Zoom", menu = "zoom_menu"})
 				_ = ui.toolbar_tool("insert", {label = "Insérer", words = true, menu = "insert_menu"})
 				_ = ui.toolbar_tool("plain", {label = "Sans bulle", words = true})
 			}
@@ -347,12 +347,15 @@ a_toolbar_tool_has_its_tip_and_its_menu_search :: proc(t: ^testing.T) { unwatche
 	testing.expect(t, session.find_text(s, "Zoom") == nil, "words with no tip and no shortcut: no tooltip")
 	session.click(s, "zoom")
 	session.wait_text(s, "200 %")
-	testing.expect(t, session.find(s, "menu_search") == nil, "menu_search = false: no search field")
+	testing.expect(t, session.find(s, "menu_search") != nil, "the zoom's menu has its field")
+	session.type_text(s, "2")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "200 %") != nil && session.find_text(s, "50 %") == nil, "\"2\" keeps 200 %")
 	session.key(s, .Escape)
 	session.frames(s, 2)
 	session.click(s, "insert")
 	session.wait_text(s, "Rectangle")
-	testing.expect(t, session.find(s, "menu_search") != nil, "by default its menu searches")
+	testing.expect(t, session.find(s, "menu_search") != nil, "its menu filters")
 }) }
 
 // A slider in a control has its width: its track and its value, not the knob alone, with no width given and with one

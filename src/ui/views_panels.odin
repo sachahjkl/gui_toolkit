@@ -737,7 +737,7 @@ view_stack_tab_input :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, k: int, 
 		}
 		if minimised { view_stack_minimise(vs, sp, e, false) }
 	}
-	if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), tb.key, search = false) }
+	if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), tb.key) }
 	if sig.dragging { view_panel_drag(vs, r, tb.key, sig, em) }
 }
 
@@ -867,7 +867,7 @@ view_fold_button :: proc(v: ^View) -> Signal {
 		sp.max_edge = nil
 		view_stack_minimise(vs, sp, e, !collapsed)
 	}
-	if sig.right_clicked && sig.box != nil { menu_open(view_menu_id(r), mouse_pos(), sig.box.key, search = false) }
+	if sig.right_clicked && sig.box != nil { menu_open(view_menu_id(r), mouse_pos(), sig.box.key) }
 	return sig
 }
 
@@ -910,7 +910,7 @@ view_panel_menu_press :: proc(r: ^View_Record, stack: ^Box, top: f32) {
 	p := s.press_pos[.Right]
 	if p.y >= stack.rect.min.y + top { return }
 	if !context_take(stack) { return }
-	menu_open(view_menu_id(r), p, stack.key, search = false)
+	menu_open(view_menu_id(r), p, stack.key)
 }
 
 // One of a narrow stack's own buttons: a small icon, as the fold button ("###id": its key, as the caption button it
@@ -952,7 +952,7 @@ view_zone_rail :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 				sp.active[e][k] = strings.clone(r.modal_name, vs.allocator)
 				view_stack_minimise(vs, sp, e, false)
 			}
-			if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), b.key, search = false) }
+			if sig.right_clicked { menu_open(view_menu_id(r), mouse_pos(), b.key) }
 		}
 	}
 	for k in 0 ..< n { for r in z[k] { view_header_menu(vs, r, .Panel) } }

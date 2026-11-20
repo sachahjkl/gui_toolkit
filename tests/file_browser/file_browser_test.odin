@@ -848,6 +848,29 @@ the_toolkits_menu_copies :: proc(t: ^testing.T) {
 	testing.expect(t, counts(s).open, "a copy is no answer")
 }
 
+// The row's menu filters what is typed, as every menu: its field shows the letters, the acts that do not match go, the
+// first match is selected and Enter does it.
+@(test)
+the_row_menu_filters_what_is_typed :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("a.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/f"})
+	session.click_text(s, "a.txt", .Right)
+	if !testing.expect(t, session.find_text(s, "Copy path") != nil, "the menu opens") { return }
+	testing.expect(t, session.find(s, "menu_search") != nil, "its field")
+	session.type_text(s, "cpn")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "cpn") != nil, "the field shows what is typed")
+	testing.expect(t, session.find_text(s, "Copy name") != nil, "the match stays")
+	testing.expect(t, session.find_text(s, "Copy path") == nil && session.find_text(s, "Copy relative path") == nil, "the others went")
+	session.key(s, .Return)
+	testing.expect_value(t, session.clipboard(s), "a.txt")
+	testing.expect(t, counts(s).open, "the dialog stays")
+}
+
 // A source without rename nor trash (a server's) shows neither; nor Open or Show in folder (not the computer's files).
 @(test)
 a_remote_source_offers_what_it_can :: proc(t: ^testing.T) {

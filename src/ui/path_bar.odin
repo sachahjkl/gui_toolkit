@@ -275,7 +275,7 @@ path_bar_crumbs :: proc(st: ^Path_Bar, frame: ^Box, path: string, sep: u8, o: Pa
 		menu_id := fmt.tprintf("###path_bar_more_%x", u64(frame.key))
 		next({width = px(inner), height = px(inner)})
 		sig := button("pb_more", icon = lucide.ELLIPSIS, o = {icon_font = lucide_icons(), tip = i18n.tr("The folders above")})
-		if sig.clicked { menu_open(menu_id, sig.box.rect, sig.box.key, search = false) }
+		if sig.clicked { menu_open(menu_id, sig.box.rect, sig.box.key) }
 		if menu(menu_id) {
 			#reverse for p, i in parts[:first] {
 				if menu_item(fmt.tprintf("%s###pb_more_%d", text_shown(p.name), i), icon = lucide.FOLDER, icon_font = lucide_icons()).clicked {

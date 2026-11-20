@@ -967,6 +967,28 @@ the_menu_docks_a_dialog :: proc(t: ^testing.T) {
 	testing.expect(t, built(s, "view_panel_view_ask") == nil, "the panel went")
 }
 
+// The header's menu, opened by a right click, filters what is typed as every menu: "dkr" keeps Dock right, Enter docks.
+@(test)
+a_views_right_click_menu_filters :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "ask")
+	if wait_built(s, "modal_view_ask") == nil { return }
+	header := built(s, "view_header")
+	if header == nil { testing.expect(t, false, "the dialog's header"); return }
+	session.click_at(s, {header.rect.min.x + 10, (header.rect.min.y + header.rect.max.y) * 0.5}, .Right)
+	if wait_built(s, "menu_search") == nil { return }
+	testing.expect(t, session.find_text(s, "Dock left") != nil, "every item before anything is typed")
+	session.type_text(s, "dkr")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Dock right") != nil, "the match stays")
+	testing.expect(t, session.find_text(s, "Dock left") == nil && session.find_text(s, "Dock bottom") == nil, "the others went")
+	session.key(s, .Return)
+	if wait_built(s, "view_panel_view_ask") == nil { return }
+	testing.expect_value(t, ui.view_presentation(&r.views, "ask"), ui.View_Presentation.Panel)
+	testing.expect(t, built(s, "view_zone_Right") != nil, "in the right zone")
+}
+
 // An internal window's header menu docks it at the left.
 @(test)
 the_menu_docks_an_internal_window :: proc(t: ^testing.T) {

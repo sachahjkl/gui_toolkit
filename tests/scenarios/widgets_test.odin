@@ -635,6 +635,40 @@ a_menu_that_searches :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.
 	testing.expect_value(t, r.chosen, "date")
 }) }
 
+// A dropdown's list filters what is typed as every menu, and opens on its current value while nothing is typed: Enter
+// there keeps it; a letter keeps the items that have it, the first match selected.
+@(test)
+a_dropdown_filters_and_opens_on_its_value :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Run :: struct { sel: int, changed: int }
+	r := Run{sel = 2}
+	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		items := []string{"Apple", "Banana", "Cherry", "Date"}
+		if ui.dropdown("###dd", items, &r.sel) { r.changed += 1 }
+	}})
+	session.frames(s, 2)
+	session.click(s, "dd")
+	session.frames(s, 3)
+	_, sel, ok := ui.menu_rect(0)
+	testing.expect(t, ok, "the list is open")
+	testing.expect_value(t, sel, 2)   // Cherry, the current value
+	testing.expect(t, session.find(s, "menu_search") != nil, "its field")
+	session.key(s, .Return)
+	session.frames(s, 2)
+	testing.expect_value(t, r.sel, 2)
+	testing.expect(t, !ui.menu_any_open(), "Enter chose")
+
+	session.click(s, "dd")
+	session.frames(s, 3)
+	session.type_text(s, "b")
+	session.frames(s, 2)
+	testing.expect(t, session.find_text(s, "Banana") != nil, "the match stays")
+	testing.expect(t, session.find_text(s, "Apple") == nil && session.find_text(s, "Date") == nil, "the others went")
+	session.key(s, .Return)
+	session.frames(s, 2)
+	testing.expect_value(t, r.sel, 1)
+}) }
+
 // Escape with the pointer resting on a submenu's row closes the submenu and keeps it closed (the row waits for the
 // pointer to move before it opens it again); a second Escape closes the menu. It reopened at once, and Escape seemed to
 // do nothing.
@@ -721,7 +755,7 @@ a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) { unwatche
 	s := session.start(t, {size = WINDOW, user = &r, no_renderer = true, build = proc(s: ^session.Session) {
 		r := (^Run)(s.user)
 		key := "panel"
-		if s.frames == 1 { ui.menu_open(key, ui.Rect{{40, 20}, {80, 40}}, search = false) }
+		if s.frames == 1 { ui.menu_open(key, ui.Rect{{40, 20}, {80, 40}}) }
 		if ui.menu(key) {
 			ui.next({width = ui.px(200), height = ui.px(30)})
 			_ = ui.line_edit("###panel_search", &r.field, {placeholder = "Search"})
@@ -743,7 +777,7 @@ a_field_in_a_menu_takes_the_click_and_the_keys :: proc(t: ^testing.T) { unwatche
 a_menu_at_the_right_edge_shows_in_its_place :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = {800, 600}, no_renderer = true, build = proc(s: ^session.Session) {
 		key := "burger"
-		if s.frames == 2 { ui.menu_open(key, ui.Rect{{760, 10}, {790, 40}}, search = false) }
+		if s.frames == 2 { ui.menu_open(key, ui.Rect{{760, 10}, {790, 40}}) }
 		if ui.menu(key) {
 			_ = ui.menu_item("New tab", "Ctrl+T")
 			_ = ui.menu_item("New window with a long name", "Ctrl+N")
@@ -769,7 +803,7 @@ a_menu_at_the_right_edge_shows_in_its_place :: proc(t: ^testing.T) { unwatched.r
 a_menu_aligned_at_the_end_has_the_buttons_right_edge :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
 	s := session.start(t, {size = {800, 600}, no_renderer = true, build = proc(s: ^session.Session) {
 		key := "tools"
-		if s.frames == 2 { ui.menu_open(key, ui.Rect{{600, 10}, {640, 40}}, search = false, align = .End) }
+		if s.frames == 2 { ui.menu_open(key, ui.Rect{{600, 10}, {640, 40}}, align = .End) }
 		if ui.menu(key) {
 			_ = ui.menu_item("Downloads")
 			_ = ui.menu_item("A panel with a long name")

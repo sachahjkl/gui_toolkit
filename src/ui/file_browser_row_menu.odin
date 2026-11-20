@@ -75,7 +75,7 @@ file_browser_row_menu :: proc(fb: ^File_Browser, ev: Table_Events, act: ^File_Ac
 			for k in chosen { if file_row_action_takes(x, list[k]) { programs = true } }
 		}
 		// (no `card` here: ui's card, the widget, hides the builtin)
-		if offered != {} || programs { menu_open(FILE_ROW_MENU, ev.menu_at, from_keyboard = ev.keyboard, search = false) }
+		if offered != {} || programs { menu_open(FILE_ROW_MENU, ev.menu_at, from_keyboard = ev.keyboard) }
 	}
 	picked_builtin: Maybe(platform.File_Row_Builtin)
 	picked := -1
