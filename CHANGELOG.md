@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.337.0] - 2026-11-20 11:34
+
+### Changed
+- **Every menu filters what is typed**: a menu bar's, a tool bar's, a drop-down's list, a view's menu, the file browser's row menu and a number field's menu now show the field at their top, as the context menus did: the items that do not match go, the first match is selected and Enter chooses it. A letter typed in an open submenu closes it and filters its menu. A drop-down still opens on its current value. Until something is typed, Space chooses the selected item. A panel opened as a menu with no item (a slider) has no field. No menu selects the next item starting with a typed letter any more: the filter's first match does it. For a program's author:
+  - `menu_open` has no `search` parameter: remove `search = false` and `search = true`.
+  - `Toolbar_Tool` has no `menu_search` field: remove `menu_search = false`.
+
+### Fixed
+- **Frames just in time after a window opens**: the frames of a resize at a window's opening no longer turn the start
+just in time off for the rest of the run; an animation reads its input as late as it can from its first frames.
+
 ## [0.336.0] - 2026-11-20 10:41
 
 ### Added
@@ -4699,6 +4710,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.337.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.337.0
 [0.336.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.336.0
 [0.335.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.335.1
 [0.335.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.335.0
