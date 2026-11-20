@@ -44,6 +44,7 @@ Meta :: struct {
 	licence:        string,       // the code's licence, as the footer names it ("MIT": "MIT License"; "": not said)
 	footer_note:    string,       // HTML, one more part of the footer's last line ("": none)
 	shop:           Maybe(Shop),  // the licence the site sells: its pages are made (licence_pages), the nav and the footer link them
+	docs:           bool,         // the site has a Docs section (build_docs, at DOCS_ROOT): the nav links it, after Features
 }
 
 // The changelog's address in the site.

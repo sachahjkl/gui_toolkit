@@ -33,13 +33,17 @@ NAV_BUY_CLASS :: "btn accent nav-buy"
 
 // The word of the source's link, in the bar and in every footer.
 SOURCE_LABEL :: "GitHub"
+DOCS_LABEL   :: "Docs"
 
 // The home page's nav: the sections every home page has (#features, #download), the changelog, the repository, and last
 // the pricing page as a button ("Buy license") when the site sells a licence.
 nav_html :: proc(m: Meta) -> string {
 	b := strings.builder_make(context.temp_allocator)
 	put(&b, "<nav id=\"nav\">\n",
-		"    <a href=\"#", FEATURES_ID, "\">Features</a>\n",
+		"    <a href=\"#", FEATURES_ID, "\">Features</a>\n")
+	// (relative, as the changelog's: the pages' links are made relative to each page; DOCS_ROOT without its first "/")
+	if m.docs { put(&b, "    <a href=\"", DOCS_ROOT[1:], "\">", DOCS_LABEL, "</a>\n") }
+	put(&b,
 		"    <a href=\"#", DOWNLOAD_ID, "\">Download</a>\n",
 		"    <a href=\"", CHANGELOG_ADDRESS, "\">Changelog</a>\n",
 		"    <a href=\"", esc(m.repository), "\">", SOURCE_LABEL, "</a>\n")

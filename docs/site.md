@@ -44,7 +44,7 @@ Every program's site has the same bar and the same footer: the home page holds t
 what `Changelog_Options.meta` says (`with_frame`). A program declares data, not HTML.
 
 - `<!-- site-nav -->` in the bar (after its brand and its menu button) becomes the `nav#nav`: Features (`#features`),
-  Download (`#download`, `DOWNLOAD_ID`), Changelog (`changelog/`), GitHub (`Meta.repository`), and last, with `Meta.shop`,
+  with `Meta.docs` Docs (`docs/`: the site's Docs section, made by `build_docs` below), Download (`#download`, `DOWNLOAD_ID`), Changelog (`changelog/`), GitHub (`Meta.repository`), and last, with `Meta.shop`,
   "Buy license" (`BUY_LABEL`, to `pricing/`), drawn as the site's small accent button (`NAV_BUY_CLASS`: `btn accent
   nav-buy`; the site's style.css makes `.nav-buy` small), as Wren's nav. The home page has the sections those anchors name.
 - `<!-- site-footer -->` becomes the `footer`: "By" the publisher (`Meta.publisher`, `Meta.author_url`, its mark

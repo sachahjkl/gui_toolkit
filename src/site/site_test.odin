@@ -450,6 +450,14 @@ the_nav_and_the_footer_are_the_metas :: proc(t: ^testing.T) {
 	plain, why := with_frame(page, m)
 	testing.expect_value(t, why, "")
 	testing.expect(t, strings.contains(plain, `<a href="changelog/">Changelog</a>`) && !strings.contains(plain, "Pricing") && !strings.contains(plain, BUY_LABEL), "no shop, no pricing")
+	testing.expect(t, !strings.contains(plain, ">Docs<"), "no Docs section, no Docs link")
+	m.docs = true
+	documented, _ := with_frame(page, m)
+	docs_nav := between(documented, `<nav id="nav">`, "</nav>")
+	features, docs, download := strings.index(docs_nav, ">Features<"), strings.index(docs_nav, `<a href="docs/">Docs</a>`), strings.index(docs_nav, ">Download<")
+	testing.expect(t, features < docs && docs < download, "Docs, after Features, before Download")
+	testing.expect_value(t, classic_link("docs/"), "/docs/")   // (the classic pages link the same Docs)
+	m.docs = false
 	m.shop = Shop{name = "Thing", home = "../"}
 	framed, _ := with_frame(page, m)
 	nav := between(framed, `<nav id="nav">`, "</nav>")
