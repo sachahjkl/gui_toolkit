@@ -38,6 +38,7 @@ Pacer :: struct {
 	presented:      bool,     // a frame reached the swap chain
 	slot_held:      bool,     // the swap chain's slot was waited for, no present since
 	just_in_time:   u64,      // frames started just in time (a test, the diagnostics: whether it runs on this screen)
+	just_in_time_late: u64,   // frames timed just in time whose start was past (a frame dearer than the refresh): at once
 }
 
 // Before a frame reads its input: the cadence's decision executed (the screen's plan adopted when the display changed,
@@ -65,6 +66,7 @@ pace_frame :: proc(p: ^Pacer, r: ^Renderer, w: ^platform.Window, idled := false,
 		d := platform.frame_decision(&p.cadence, in_)
 		at_once, latency = d.present_at_once, d.latency
 		if d.just_in_time { p.just_in_time += 1 }
+		if d.just_in_time_late { p.just_in_time_late += 1 }
 		if d.wait_swap_chain && !p.slot_held { p.slot_held = wait_for_frame(r) }
 		// No frame before its slot: on a screen that does not hold the app back, a 1 kHz mouse made 430 frames a second. After
 		// the swap chain, and only what is left: the decision is made just after the last present, always early, and a screen

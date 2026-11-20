@@ -88,6 +88,7 @@ Frame_Decision :: struct {
 	present_at_once: bool,   // Present without waiting for a refresh (the frame may tear on a fixed refresh screen)
 	latency:         int,    // frames the swap chain may queue (1, or 2 for a frame shown at once)
 	just_in_time:    bool,   // the wait is the start just in time's, later than the slot's
+	just_in_time_late: bool, // timed just in time, but its start was already past: late for its refresh, it goes at once
 }
 
 // The model's memory of one window, from frame to frame.
@@ -143,7 +144,10 @@ frame_decision :: proc(c: ^Cadence, in_: Cadence_Inputs) -> (d: Frame_Decision) 
 	if c.uncapped { d.wait_ns, d.wait_until_ns, d.wait_swap_chain, d.present_at_once, d.latency = 0, in_.now_ns, false, true, 2 }
 	// (later than the slot only: the slot stays the cap; earlier than now, the frame is late and goes at once)
 	if cost := frame_cost_estimate(&c.cost); cost > 0 && cadence_times_just_in_time(c, in_, d, escalated) {
-		if start := jit_start(c.present_ns, in_.vblank_ns, in_.period_ns, in_.lead_ns, cost); start > d.wait_until_ns {
+		start := jit_start(c.present_ns, in_.vblank_ns, in_.period_ns, in_.lead_ns, cost)
+		// (a start already past: the frame is late for its refresh, and goes now, latency first)
+		d.just_in_time_late = start <= d.wait_until_ns
+		if start > d.wait_until_ns {
 			d.wait_until_ns, d.wait_ns, d.just_in_time = start, start - in_.now_ns, true
 			// (the screen's deadlines pace the frames, not the slot's grid: a slot behind the start proves nothing,
 			// and its delays would make the grid strict. The next slot counts from this start)
