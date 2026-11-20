@@ -97,7 +97,7 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   card sizes are steps too, and the bar has no room for seven), and classeur's slider (a control of its own for one
   setting a menu says). The step is part of the dialog's memory (by its stable name, `table_zoom_key`): a dialog for
   pictures opens on its cards again. A card's picture is the file's thumbnail when the source gives one, else the
-  kind's icon; a folder has its icon. A card's weak line is the size. The rubber band works in a dialog of
+  kind's icon at the card's share (`table_card_icon_size`); a folder has its icon. A card's weak line is the size. The rubber band works in a dialog of
   several files. The preview pane is the same in every view.
 - **A thumbnail is a call of the source, kept in the browser's `Thumb_Cache`** ([thumbnails.md](thumbnails.md)). Its
   answer is the only one not dropped by the dialog's serial: a file's picture is good for the next dialog too.

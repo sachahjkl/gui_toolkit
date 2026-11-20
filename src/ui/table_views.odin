@@ -42,6 +42,8 @@ TABLE_ZOOM_CARDS :: 4
 TABLE_CARD_HEIGHT :: 1.2
 TABLE_CARD_PICTURE :: 0.72
 TABLE_CARD_LINE_EM :: 1.3
+// The icon of a card without a picture, of its picture's height (the picture's shorter side at every step).
+TABLE_CARD_ICON :: 0.5
 // A column of the Columns view, in ems.
 TABLE_COLUMN_EM :: 20
 // The room between cards and around them, in ems (a step of the spacing scale).
@@ -177,6 +179,10 @@ table_item_flow :: proc(t: ^Table) -> (per: int, flow: Item_Flow, page: int) {
 table_band_cancel :: proc(t: ^Table) -> bool {
 	return item_band_cancel(&t.band, &t.vl.selection, Item_Rows{count = len(t.ids), ids = t.ids[:]})
 }
+
+// The font size of the icon a card shows in its picture's place, `picture` the picture's height (Table.picture's
+// `size`): it follows the card through the steps.
+table_card_icon_size :: proc(picture: f32) -> f32 { return max(1, math.round(picture * TABLE_CARD_ICON)) }
 
 // A name in at most `lines` lines of `width` pixels at the style's font (wrapped at its spaces, as a card's paragraph
 // wraps it): too long, it is cut in its middle, its end kept (the extension and a few letters before it say what the
@@ -354,8 +360,10 @@ table_card_body :: proc(t: ^Table, d: ^Table_Data, r: int, w, h, em: f32, lit: b
 		if t.picture != nil {
 			t.picture(t, r, pic)
 		} else if t.lead != nil {
+			// (the lead draws its icon at the style's font size: at the card's share, not the rows' size)
+			sz := table_card_icon_size(pic)
 			spacer(fill())
-			t.lead(t, r, pic)
+			if style({font_size = sz}) { t.lead(t, r, sz) }
 			spacer(fill())
 		}
 		space(TABLE_CARD_GAP)

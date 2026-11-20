@@ -1051,3 +1051,113 @@ the_local_source_makes_a_pictures_thumbnail :: proc(t: ^testing.T) {
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).thumbs_ready == 1 }, "its thumbnail", BOUND)
 	testing.expect(t, session.find(s, "thumb") != nil, "the picture in its card")
 }
+
+// The picture's place of card `item` and the icon in it (the box that draws text), nil when there is none.
+@(private = "file")
+card_icon :: proc(s: ^session.Session, item: string) -> (pic, glyph: ^ui.Box) {
+	card := session.find(s, item)
+	if card == nil { return }
+	pic = session.find(s, "pic", within = card)
+	if pic == nil { return }
+	for c := pic.first; c != nil; c = c.next { if .Draw_Text in c.flags { glyph = c } }
+	return
+}
+
+// A card with no thumbnail (a folder; a file whose thumbnail is not answered) has its kind's icon at half its picture's
+// height, at a small and at the largest step: not at the rows' font size, a dot in a large card.
+@(test)
+a_cards_icon_follows_the_cards_size :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/p"] = []ui.File_Entry{F("sub", .Folder), F("README.md")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/p"})
+	sizes: [2]f32
+	steps := [2]int{ui.TABLE_ZOOM_CARDS - 1, ui.TABLE_ZOOMS - 1}
+	items := [2]string{"item0", "item1"}
+	for step, k in steps {
+		pick_view(s, step)
+		// (the cards grow to their step's size: anim)
+		session.wait_idle(s, BOUND)
+		for item in items {
+			pic, glyph := card_icon(s, item)
+			testing.expectf(t, glyph != nil, "%s at step %d: its icon", item, step)
+			if glyph == nil { return }
+			want := ui.table_card_icon_size(pic.rect.max.y - pic.rect.min.y)
+			testing.expectf(t, glyph.font_size == want, "%s at step %d: icon %v, want %v", item, step, glyph.font_size, want)
+			// (the card's name is at the rows' font size)
+			if name := session.find(s, "n", within = session.find(s, item)); name != nil {
+				testing.expectf(t, glyph.font_size >= 2 * name.font_size, "%s at step %d: icon %v, name %v", item, step, glyph.font_size, name.font_size)
+			}
+			sizes[k] = glyph.font_size
+		}
+	}
+	testing.expectf(t, sizes[1] > sizes[0], "the icon grows with the card: %v", sizes)
+}
+
+// One thumbnail answered, then the dialog opened again: the same generation shows it without an ask; another
+// generation (a server reached again, its picture changed: its listing has no date to tell) asks the source again.
+@(test)
+a_new_generation_asks_the_thumbnails_again :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/p"] = []ui.File_Entry{F("a.png")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	d := platform.File_Dialog{start_dir = "/p", remember_id = "pictures"}
+	open(s, &app, .Open, d)
+	pick_view(s, ui.TABLE_ZOOM_CARDS)
+	session.frames(s, 3)
+	testing.expect_value(t, len(app.fake.thumbs), 1)
+	if len(app.fake.thumbs) < 1 { return }
+	px := [16]u8{0xff, 0, 0, 0xff, 0xff, 0, 0, 0xff, 0xff, 0, 0, 0xff, 0xff, 0, 0, 0xff}
+	ui.file_reply_thumbnail(app.fake.thumbs[0].reply, px[:], 2, 2)
+	session.frames(s, 3)
+	testing.expect_value(t, counts(s).thumbs_ready, 1)
+	session.click(s, "fb_cancel")
+	open(s, &app, .Open, d)
+	session.frames(s, 3)
+	testing.expect_value(t, len(app.fake.thumbs), 1)
+	testing.expect(t, session.find(s, "thumb") != nil, "the same generation: the thumbnail kept")
+	session.click(s, "fb_cancel")
+	app.source.generation += 1
+	open(s, &app, .Open, d)
+	session.frames(s, 3)
+	testing.expect_value(t, len(app.fake.thumbs), 2)
+	if len(app.fake.thumbs) == 2 { testing.expect_value(t, app.fake.thumbs[1].path, "/p/a.png") }
+	testing.expect(t, session.find(s, "thumb") == nil, "another generation: the old thumbnail is not shown")
+}
+
+// Two sources with the same paths (two servers): the second one's card does not show the first one's thumbnail, it
+// asks its own source.
+@(test)
+two_sources_with_the_same_paths_do_not_share_thumbnails :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	other: Fake
+	defer fake_destroy(&other)
+	app.fake.folders["/p"] = []ui.File_Entry{F("a.png")}
+	other.folders["/p"] = []ui.File_Entry{F("a.png")}
+	app.fake.at_once, other.at_once = true, true
+	s := start(t, &app)
+	d := platform.File_Dialog{start_dir = "/p", remember_id = "pictures"}
+	open(s, &app, .Open, d)
+	pick_view(s, ui.TABLE_ZOOM_CARDS)
+	session.frames(s, 3)
+	testing.expect_value(t, len(app.fake.thumbs), 1)
+	if len(app.fake.thumbs) < 1 { return }
+	px := [16]u8{0xff, 0, 0, 0xff, 0xff, 0, 0, 0xff, 0xff, 0, 0, 0xff, 0xff, 0, 0, 0xff}
+	ui.file_reply_thumbnail(app.fake.thumbs[0].reply, px[:], 2, 2)
+	session.frames(s, 3)
+	testing.expect_value(t, counts(s).thumbs_ready, 1)
+	session.click(s, "fb_cancel")
+	app.source = fake_source(&other)
+	open(s, &app, .Open, d)
+	session.frames(s, 3)
+	testing.expect_value(t, len(other.thumbs), 1)
+	testing.expect_value(t, len(app.fake.thumbs), 1)
+	testing.expect(t, session.find(s, "thumb") == nil, "the other source's card: not the first one's thumbnail")
+	// (closed while `other` lives: the dialog holds a copy of its source)
+	session.click(s, "fb_cancel")
+}

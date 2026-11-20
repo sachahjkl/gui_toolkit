@@ -251,7 +251,7 @@ in Details. The filter, the sort and the selection are the same in every view: `
 view.table.zoom_keys = true                // Ctrl+wheel and Ctrl+= / Ctrl+- / Ctrl+0 over the table step its zoom
 view.table.rubber_band = true              // multi: a press on the empty part and a drag select a rectangle
 view.table.card_line = SIZE_COLUMN         // a card's weak line
-view.table.picture = file_thumbnail        // a card's picture (else the lead at the card's size)
+view.table.picture = file_thumbnail        // a card's picture (else the lead, its font at table_card_icon_size)
 if z, ok := ui.table_zoom_from_key(saved); ok { view.table.zoom = z }
 
 ev := ui.table_build("###files", &view.table, &view.data, empty)
@@ -266,6 +266,7 @@ if ev.zoomed { save(ui.table_zoom_key(view.table.zoom)) }
 | `table_zoom_label(i)`, `table_zoom_icon(i)` | a step's words in the language in use and its icon, for a program's control |
 | `table_zoom_key(i)`, `table_zoom_from_key(key)` | a step's stable name, to save it, and back |
 | `table_card_name(name, width, lines)` | a name in at most `lines` lines of `width` pixels at the style's font: cut in its middle, its extension kept |
+| `table_card_icon_size(size)` | the font size of an icon in a card's picture `size` high (`TABLE_CARD_ICON`, half of it): the lead of a table without `picture` is built under it; a `picture` callback that falls back to an icon uses it too |
 | `table_band_cancel(t)` | Escape during a rectangle: the selection there was; false when none runs (a program that reads Escape before the table asks it first) |
 
 The keys in Grid: Left and Right move by a card, Up and Down by a row of cards, Page Up and Page Down by a page of rows;

@@ -151,6 +151,7 @@ of the one shown enters it.
 ```odin
 File_Source :: struct {
 	user:        rawptr,
+	generation:  u64,                       // the version of what its paths name: another value asks the thumbnails again
 	caps:        File_Caps,                 // what it knows and does: .Size, .Modified, .Read, .Make_Folder
 	separator:   u8,                        // '/' or '\\': how its paths are joined
 	list:        proc(src: ^File_Source, path: string, reply: File_Reply),           // the entries of a folder
@@ -202,6 +203,20 @@ picture of the file at most `px` pixels on its longer side: straight RGBA8, row 
 picture, it answers `file_reply_failed(reply, "")`: the card keeps its icon. Answer every call: an ask without an answer
 holds one of the browser's slots. A thumbnail's answer counts whatever dialog asked (a file's picture is good for the
 next one too).
+
+The browser keeps a thumbnail by the source's `user` and `generation` and by the file's path, size and date. A source
+whose listing gives no size nor date, or one object that reaches several places (a server's address that changes),
+gives another `generation` when what its paths name may have changed: a reconnection, another server, a refresh the
+program offers. The cards then ask again; the old thumbnails are no longer shown and go under the budget. The browser
+reads it when a dialog opens. A source that leaves it at 0 is keyed as before.
+
+```odin
+app.source.generation += 1   // another server behind the same source: its "/a.png" is not the last one's
+ui.file_dialog(s, .Open, d, done, app, source = &app.source)
+```
+
+A card without a thumbnail (a folder, a file the source has none of) shows its kind's icon at half the picture's
+height (`table_card_icon_size`), at every card size.
 
 `local_files()`'s, on the chores: PNG, JPEG, BMP, WebP and a GIF's first frame are decoded (`gt:image`) and reduced; a
 picture over `FILE_THUMB_CACHED_BYTES` (2 MiB) is read from the system's cache first (`desktop.thumbnail_cached`) and
