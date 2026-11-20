@@ -190,10 +190,12 @@ wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	p.presents += 1
 	if p.interval == 0 { p.interval = 1 }
 	sync := wgpu_present_sync(present_call(p.mode, p.tearing_ok, p.interval, vsync).sync, r.wg.present_mode)
-	// the compositor's timing: the last vblank (refresh counter, time) and the period. Windows: DWM's. Wayland: the
-	// presentation answers, which also count the pictures shown and the refreshes missed (`counted`). X11: none yet,
-	// the frame statistics stay off.
+	// the compositor's timing: the last vblank (refresh counter, time) and the period. Windows: DWM's. Linux: the
+	// display server's answers (Wayland's presentation, X11's Present), which also count the pictures shown and the
+	// refreshes missed (`counted`), and teach the lead.
 	refresh, ok, counted := wgpu_compositor_timing(r)
+	// (no answer per picture here: the lead is the model this present is estimated with, the GPU's margin and the lag)
+	if ok && !counted { p.lead_ns = PRESENT_GPU_MARGIN_NS + l.lag_ns }
 	shown := now
 	index: u64
 	if ok && sync > 0 && p.period_ns > 0 {

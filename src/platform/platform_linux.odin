@@ -718,20 +718,35 @@ frame_shown_forget :: proc(w: ^Window) {
 }
 
 // Asks when the next present of the surface `h` reaches the screen: the renderer calls it just before each present.
-// Wayland with wp_presentation; nothing elsewhere. The answer is read by vblank_timing.
+// Wayland with wp_presentation: a feedback for this commit. X11 with Present: the present's time, which the answer is
+// matched with (the selection is the window's, made once). The answer is read by vblank_timing.
 vblank_ask :: proc(h: Surface_Handles) {
-	if h.backend != .Wayland { return }
-	if st := wl_state_of_surface(h.surface); st != nil { wl_presentation_ask(st) }
+	switch h.backend {
+	case .Wayland:
+		if st := wl_state_of_surface(h.surface); st != nil { wl_presentation_ask(st) }
+	case .X11:
+		for w in x11c.windows {
+			if st := x11_state(w); st != nil && u64(st.id) == h.window { x11_present_note(st, time.tick_now()._nsec); return }
+		}
+	case .None, .Windows:
+	}
 }
 
-// What the compositor said of the pictures of the window whose surface is `h`: its last vblank, the period, the
-// pictures shown and discarded (Vblank_Timing). ok false: no such window of this thread, or not Wayland (X11 has none
-// yet). Zeros until the first answer, and for good on a compositor without wp_presentation.
+// What the display server said of the pictures of the window whose surface is `h`: its last vblank, the period, the
+// pictures shown and discarded (Vblank_Timing). ok false: no such window of this thread. Zeros until the first answer,
+// and for good without the protocol: a compositor without wp_presentation, an X server without Present, or a WSI that
+// does not present with it (a software one draws with PutImage).
 vblank_timing :: proc(h: Surface_Handles) -> (v: Vblank_Timing, ok: bool) {
-	if h.backend != .Wayland { return }
-	st := wl_state_of_surface(h.surface)
-	if st == nil { return }
-	return st.vblank, true
+	switch h.backend {
+	case .Wayland:
+		if st := wl_state_of_surface(h.surface); st != nil { return st.vblank, true }
+	case .X11:
+		for w in x11c.windows {
+			if st := x11_state(w); st != nil && u64(st.id) == h.window { return st.vblank, true }
+		}
+	case .None, .Windows:
+	}
+	return
 }
 
 // Whether the loop has something to do without a new message: an event not handed out, a repaint asked for.

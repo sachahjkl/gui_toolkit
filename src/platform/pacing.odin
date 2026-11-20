@@ -41,8 +41,15 @@ package platform
 //
 // Cadence.uncapped lifts all of it: whatever the state, no wait and every frame shown at once. Frames are still only made when
 // there is one to make: a window at rest stays at rest.
+//
+// The start just in time (src/md/infrastructure/vblank.md): where the screen paces the frames and its vblanks are known
+// (Cadence_Inputs.vblank_ns, period_ns, lead_ns), a frame of a run (Continuous, Drag) starts as late as it can and still
+// be presented before the deadline of the refresh after the previous picture's: its input is read as close to the screen
+// as possible. Its cost is learned from the frames before it (cadence_started, cadence_presented). A frame later than its
+// start goes at once.
 
 import "core:math"
+import "core:slice"
 
 CADENCE_INPUT_REST_PERIODS :: 1.5            // input after this many periods without a present starts an answer (shown at once)
 CADENCE_RESIZE_HOLD_NS     :: 120_000_000    // the frames this long after a size change are part of its burst
@@ -64,6 +71,11 @@ Cadence_Inputs :: struct {
 	resized:   bool,   // the window's size is not the one of the last frame
 	dragging:  bool,   // a pointer drags something inside the window
 	slot_held: bool,   // the swap chain's slot was waited for and no frame was presented since
+	// the screen's vblanks, for the start just in time (0: not known): the last one a picture was shown at (on now_ns's
+	// clock), the period, and how long before a vblank a present must be made to be shown at it
+	vblank_ns: i64,
+	period_ns: f64,
+	lead_ns:   f64,
 }
 
 // What the frame does: the caller executes it.
@@ -75,6 +87,7 @@ Frame_Decision :: struct {
 	wait_swap_chain: bool,   // then wait for the swap chain to take a frame
 	present_at_once: bool,   // Present without waiting for a refresh (the frame may tear on a fixed refresh screen)
 	latency:         int,    // frames the swap chain may queue (1, or 2 for a frame shown at once)
+	just_in_time:    bool,   // the wait is the start just in time's, later than the slot's
 }
 
 // The model's memory of one window, from frame to frame.
@@ -88,6 +101,9 @@ Cadence :: struct {
 	resize_ns:    i64,           // the last size change seen (0: none)
 	present_ns:   i64,           // the last present (cadence_presented)
 	counts:       [Cadence_State]int,   // frames decided in each state (statistics)
+	interval:     int,           // vsync refreshes per frame (Cadence_Plan.interval): the start just in time aims at every refresh only
+	cost:         Frame_Cost,    // how long a frame takes from its start to its present
+	started_ns:   i64,           // the start of the frame under way, its waits done (cadence_started; 0: none)
 }
 
 // Whether `now_ns` is within the hold after the last size change (`last_ns`, 0: none).
@@ -119,12 +135,34 @@ frame_decision :: proc(c: ^Cadence, in_: Cadence_Inputs) -> (d: Frame_Decision) 
 	c.counts[d.state] += 1
 	d.present_at_once = cadence_at_once(c)
 	d.latency = d.present_at_once ? 2 : 1
+	escalated := c.slots.escalated   // (before this frame's slot: the start just in time reads what was found before it)
 	d.wait_ns, d.slot_ns = frame_slot_wait(&c.slots, in_.now_ns, in_.idled, step || answer)
 	d.wait_until_ns = in_.now_ns + d.wait_ns
 	d.wait_swap_chain = !step && !answer && in_.presented && !in_.slot_held
 	if c.above { d.wait_swap_chain, d.present_at_once, d.latency = false, true, 2 }
 	if c.uncapped { d.wait_ns, d.wait_until_ns, d.wait_swap_chain, d.present_at_once, d.latency = 0, in_.now_ns, false, true, 2 }
+	// (later than the slot only: the slot stays the cap; earlier than now, the frame is late and goes at once)
+	if cost := frame_cost_estimate(&c.cost); cost > 0 && cadence_times_just_in_time(c, in_, d, escalated) {
+		if start := jit_start(c.present_ns, in_.vblank_ns, in_.period_ns, in_.lead_ns, cost); start > d.wait_until_ns {
+			d.wait_until_ns, d.wait_ns, d.just_in_time = start, start - in_.now_ns, true
+			// (the screen's deadlines pace the frames, not the slot's grid: a slot behind the start proves nothing,
+			// and its delays would make the grid strict. The next slot counts from this start)
+			c.slots.delayed, c.slots.escalated = 0, false
+			c.slots.next_ns = start + frame_slot_gap(&c.slots)
+		}
+	}
 	return
+}
+
+// Whether the frame decided is timed just in time: a frame of a run (not the first after a rest, not a resize's, not
+// shown at once), on a screen that paces the frames at every refresh, whose vblanks are known, after a present.
+// `escalated`: the grid had found nothing else pacing the frames before this frame.
+@(private = "file")
+cadence_times_just_in_time :: proc(c: ^Cadence, in_: Cadence_Inputs, d: Frame_Decision, escalated: bool) -> bool {
+	run := d.state == .Continuous || d.state == .Drag
+	paced := !c.slots.strict && !escalated && !c.uncapped && !c.above && c.interval <= 1
+	known := in_.vblank_ns != 0 && in_.period_ns > 0 && c.present_ns != 0 && in_.presented
+	return run && paced && known && !d.present_at_once
 }
 
 // A frame made inside another one's work or a loop of the system (a frame of the interface alone): it has no slot of its
@@ -132,6 +170,7 @@ frame_decision :: proc(c: ^Cadence, in_: Cadence_Inputs) -> (d: Frame_Decision) 
 // frame around it stays: a frame of the chrome inside it is part of that answer.) Returns whether it is shown at once.
 cadence_inner_frame :: proc(c: ^Cadence, resized, presented: bool, now_ns: i64) -> (at_once: bool) {
 	if resized { c.resize_ns = now_ns }
+	c.started_ns = 0   // (inside another frame's work: neither frame's cost is measured)
 	switch {
 	case resized && presented: c.state = .Resize_Step
 	case c.state == .Resize_Step || c.state == .Resize_Burst: c.state = .Continuous
@@ -149,13 +188,65 @@ cadence_adopt :: proc(c: ^Cadence, p: Cadence_Plan) {
 	c.slots = p.slots
 	c.variable = p.variable
 	c.above = p.above
+	c.interval = p.interval
 }
 
 // Whether the last decided frame belongs to a resize (its step or its burst).
 cadence_resizing :: proc(c: ^Cadence) -> bool { return c.state == .Resize_Step || c.state == .Resize_Burst }
 
-// A frame was presented at `now_ns`.
-cadence_presented :: proc(c: ^Cadence, now_ns: i64) { c.present_ns = now_ns }
+// A frame was presented at `now_ns`: its cost is measured from its start (cadence_started).
+cadence_presented :: proc(c: ^Cadence, now_ns: i64) {
+	c.present_ns = now_ns
+	if c.started_ns != 0 { frame_cost_add(&c.cost, now_ns - c.started_ns) }
+	c.started_ns = 0
+}
+
+// The frame decided starts at `now_ns`: its waits are done, its input is about to be read.
+cadence_started :: proc(c: ^Cadence, now_ns: i64) { c.started_ns = now_ns }
+
+////////////////////////////////
+// The start just in time
+
+// What the cost of a frame is learned from: the last FRAME_COST_SAMPLES frames, and its estimate the
+// FRAME_COST_PERCENTILE of them (not the mean: half the frames of a mean would miss their refresh).
+FRAME_COST_SAMPLES    :: 32
+FRAME_COST_MIN        :: 8          // frames measured before the estimate says anything
+FRAME_COST_PERCENTILE :: 0.9
+// What the cost does not see: the GPU after the present call, the scheduler's wake.
+JIT_MARGIN_NS         :: 1_000_000
+
+// How long a frame takes from its start to its present: the recent ones, a ring.
+Frame_Cost :: struct {
+	samples: [FRAME_COST_SAMPLES]i64,
+	count:   int,   // samples added since the start (the ring holds the last FRAME_COST_SAMPLES)
+}
+
+frame_cost_add :: proc(c: ^Frame_Cost, ns: i64) {
+	if ns <= 0 { return }
+	c.samples[c.count % FRAME_COST_SAMPLES] = ns
+	c.count += 1
+}
+
+// The FRAME_COST_PERCENTILE of the recent frames' costs; 0 before FRAME_COST_MIN of them. (A sort of 32 numbers a frame:
+// bounded, whatever the program.)
+frame_cost_estimate :: proc(c: ^Frame_Cost) -> i64 {
+	n := min(c.count, FRAME_COST_SAMPLES)
+	if n < FRAME_COST_MIN { return 0 }
+	s := c.samples
+	slice.sort(s[:n])
+	return s[max(int(math.ceil(f64(n) * FRAME_COST_PERCENTILE)) - 1, 0)]
+}
+
+// The start of a frame that follows a picture presented at `prev_present_ns`: the latest that still presents it before
+// the deadline of the refresh after that picture's. The grid: the vblank `vblank_ns`, one every `period_ns`; a present
+// reaches a vblank when it is made `lead_ns` before it or earlier. `cost_ns`: how long the frame takes to its present.
+// Pure; the caller starts at once when the result is past.
+jit_start :: proc(prev_present_ns, vblank_ns: i64, period_ns, lead_ns: f64, cost_ns: i64) -> i64 {
+	// (the previous picture's vblank: the first whose deadline its present made; relative to the grid's vblank, for the
+	// precision of f64)
+	k := math.ceil((f64(prev_present_ns - vblank_ns) + lead_ns) / period_ns)
+	return vblank_ns + i64((k + 1) * period_ns - lead_ns) - cost_ns - JIT_MARGIN_NS
+}
 
 // A frame of a resize's burst that would only show the step's picture again: not a step (`step`: this frame is at a size not
 // drawn yet), nothing came (`events`, `tasks`), nothing waits for a frame (`wants`). The caller does not make it.

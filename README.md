@@ -198,7 +198,8 @@ the version when one is published ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - **Frame pacing**: `platform.display_info` gives the exact refresh rate of the window's monitor (followed across
   monitors and mode changes); `render.set_present_mode` (vsync, or tearing for variable refresh), `set_sync_interval`;
   `render.take_displayed` reports every frame that reached the screen (vblank time, input latency, missed refreshes),
-  `measured_refresh_hz` and `vblank_grid` the measured vblank interval and phase. `render.set_latency_probe(r, true)`
+  `measured_refresh_hz` and `vblank_grid` the measured vblank interval and phase; `render.pace_frame` starts a frame of
+  an animation just in time for its refresh, its input read as late as it can be. `render.set_latency_probe(r, true)`
   splits the input -> screen time into wait / work / Present / scan-out (`latency_summary`: p50 / p95 / max, in ms and
   in refreshes); see `src/render/latency.odin`.
   On a dynamic or variable refresh display the reported rate is the one the screen rests at: `Display_Info.max_hz` is the

@@ -734,12 +734,55 @@ host_shown :: proc(h: ^host.Host) -> (hz: f64, shown: u64) {
 	return render.measured_refresh_hz(&h.shared.r), shown
 }
 
-// Wayland: the compositor says when each picture reached the screen (wp_presentation). After some pictures the
-// renderer's measured rate is the output's, and its count of pictures shown grows with the pictures. Linux measured
-// nothing: the rate was 0, and every present counted as shown.
+// The display server says when each picture reached the screen: Wayland's wp_presentation, X11's Present. After some
+// pictures the renderer's measured rate is the screen's, and its count of pictures shown grows with the pictures. Linux
+// measured nothing: the rate was 0, and every present counted as shown. On X11 the pictures reach Present only through a
+// WSI that presents with it: lavapipe's draws with PutImage, and then no answer comes (said, not failed).
+@(private = "file")
+Swinging :: struct { to: f32 }
+
+// A value that goes back and forth for ever: frames of a run, as an animation that lasts.
+@(private = "file")
+swinging_build :: proc(h: ^host.Host, size: host.Vec2) {
+	s := (^Swinging)(h.user)
+	v := ui.tween(ui.key_from_string(0, "swing"), s.to, 200, initial = f32(0))
+	if v == s.to { s.to = 1 - s.to }
+	ui.label("swinging###l")
+}
+
+// Wayland, an animation that lasts: once the compositor's vblanks, its deadline and the frames' cost are known, the
+// frames start just in time (their input read as late as they can be), not at the start of their period.
 @(test)
-the_compositor_says_when_pictures_are_shown :: proc(t: ^testing.T) {
+an_animation_starts_its_frames_just_in_time :: proc(t: ^testing.T) {
 	if !wayland() { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	s := Swinging{to = 1}
+	shared: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	if !host.host_open(h, &shared, {title = "just in time", size = {320, 200}}, swinging_build, &s) {
+		testing.expect(t, false, "the renderer starts (Vulkan: lavapipe on the virtual desktop)")
+		return
+	}
+	defer host.host_close(h)
+	host.host_show(h)
+	builds := 0
+	start := time.tick_now()
+	for time.duration_milliseconds(time.tick_since(start)) < 2000 {
+		host.hosts_wait({h})
+		host.host_frame(h)
+		builds += 1
+	}
+	jit := h.pacer.just_in_time
+	render.surface_scope(&h.shared.r, &h.surface)
+	_, shown, missed := render.present_totals(&h.shared.r)
+	log.infof("%s: %d of %d frames started just in time; %d pictures shown, %d refreshes missed", desktop(), jit, builds, shown, missed)
+	testing.expectf(t, jit * 4 >= u64(builds), "a run's frames start just in time: %d of %d frames", jit, builds)
+}
+
+@(test)
+the_display_server_says_when_pictures_are_shown :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
 	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
 	shared: host.Shared
 	h := new(host.Host)
@@ -760,7 +803,12 @@ the_compositor_says_when_pictures_are_shown :: proc(t: ^testing.T) {
 		if shown >= 30 && abs(hz - platform.display_info(h.win).hz) < 1 { break }
 	}
 	v, ok := platform.vblank_timing(platform.native_surface_handles(h.win))
-	if !testing.expectf(t, ok && v.shown > 0, "the compositor answers presentation-time (shown %d, discarded %d)", v.shown, v.discarded) { return }
+	testing.expect(t, ok, "the window's timing is found from its surface")
+	if x11() && v.shown == 0 && v.discarded == 0 {
+		log.infof("x11: no Present answer in 3 s: the server has no Present, or the WSI does not present with it (a software one draws with PutImage)")
+		return
+	}
+	if !testing.expectf(t, v.shown > 0, "%s answers when pictures are shown (shown %d, discarded %d)", desktop(), v.shown, v.discarded) { return }
 	output := platform.display_info(h.win).hz
 	testing.expectf(t, abs(hz - output) < 1, "measured %.2f Hz, the output's mode %.2f Hz (timing %v)", hz, output, v)
 	testing.expectf(t, v.last_ns != 0 && v.last_ns <= time.tick_now()._nsec, "the last vblank on the toolkit's clock, in the past: %d", v.last_ns)

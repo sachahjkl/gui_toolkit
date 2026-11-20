@@ -42,6 +42,8 @@ X11_Conn :: struct {
 	clip_text:   string,
 	windows:     [dynamic]^Window,   // this process's windows: an event goes to the one it names
 	xfixes_event, randr_event: u8,   // the extension's first event (x11_ext_linux.odin), 0 without it
+	present_opcode: u8,              // the Present extension's major opcode, its generic events' mark (0: none)
+	loud:        u64,                // events other than our own Present answers, handled since the connection opened (x11_wait)
 	incr_sends:  [dynamic]X11_Incr_Send,   // INCR transfers we are sending (clipboard_x11_linux.odin)
 	foreign_formats: X11_Foreign_Formats,      // what another client's CLIPBOARD offers, as last read
 	dnd_target:  X11_Dnd_Target,           // drag and drop (dragdrop_x11_linux.odin)
@@ -65,7 +67,15 @@ X11_Window_State :: struct {
 	// the reads of a selection (clipboard_x11_linux.odin): the waiting one of x11_selection_read, and clipboard_request's
 	paste:     X11_Selection_Read,
 	request:   X11_Selection_Read,
+	vblank:    Vblank_Timing,         // what the Present extension said of its pictures (x11_present_event)
+	// the times of the presents not answered yet, oldest first (vblank_ask): each Pixmap answer takes the oldest (the lead)
+	presents:  [X11_PRESENTS_MAX]i64,
+	presents_n: int,
 }
+
+// Presents whose answer is awaited at once: one or two; more means the answers do not come (a software WSI's PutImage),
+// and the oldest is forgotten.
+@(private) X11_PRESENTS_MAX :: 4
 
 // A read of a selection: what was asked, how far it is, the bytes that came. `property` is where the owner puts them: each
 // read has its own, so that one never takes the other's answer.
@@ -608,7 +618,11 @@ x11_drain :: proc(w: ^Window) -> (any: bool) {
 		ev := xcb.poll_for_event(x11c.c)
 		if ev == nil { break }
 		any = true
-		x11_handle_event(w, ev)
+		// (a Present answer is taken here and counts for nothing else: x11_wait sleeps on)
+		if !x11_present_event(ev) {
+			x11c.loud += 1
+			x11_handle_event(w, ev)
+		}
 		posix.free(ev)
 	}
 	x11_check_link()
@@ -623,12 +637,29 @@ x11_check_link :: proc() {
 	display_lost(x11c.windows[:])
 }
 
+// Until an event comes, a wake, a bus, or the time. Not the Present answers of the pictures shown (x11_present_event), nor
+// the traffic the WSI reads in its own queue: they come at each refresh after a picture, and a wait that ended there
+// drew a frame at each refresh, for ever (as on Wayland, wl_wait). Any other event ends it, as before.
 @(private)
 x11_wait :: proc(w: ^Window, timeout_ms: int) {
 	x11_drain(w)   // (what xcb has read already: poll(2) would not see it; kept for the next poll_events)
 	if wait_is_over(w) { return }
-	xcb.flush(x11c.c)
-	poll_sources(w, x11_fd(w), timeout_ms > 0 ? timeout_ms : -1)
+	deadline := time.tick_add(time.tick_now(), time.Duration(timeout_ms) * time.Millisecond)
+	for {
+		xcb.flush(x11c.c)
+		left := -1
+		if timeout_ms > 0 {
+			// (rounded up: a part of a millisecond left is a millisecond of sleep, not a spin until the deadline)
+			rest := time.tick_diff(time.tick_now(), deadline)
+			if rest <= 0 { return }
+			left = int((rest + time.Millisecond - 1) / time.Millisecond)
+		}
+		r := poll_sources(w, x11_fd(w), left)
+		if !r.conn || r.other { return }   // (the time, or another source)
+		loud := x11c.loud
+		x11_drain(w)
+		if x11c.loud != loud || wait_is_over(w) || x11c.link != .Connected { return }
+	}
 }
 
 // Takes only keyboard and pointer events now (wait_handle), queuing them time-stamped; leaves the rest for poll_events.

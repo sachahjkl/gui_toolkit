@@ -5,6 +5,7 @@ import "core:math"
 import "core:time"
 import win "core:sys/windows"
 import "vendor:directx/dxgi"
+import "../platform"
 
 // Presentation: how frames reach the screen and what became of them.
 //
@@ -87,6 +88,7 @@ Present_State :: struct {
 	sync_count:    u32,                    // last (vblank number, time) pair: the refresh period
 	sync_tick:     time.Tick,
 	period_ns:     f64,                    // measured vblank interval (0: not yet)
+	lead_ns:       f64,                    // how long before a vblank a present must be made to be shown at it (the start just in time)
 	stats_ok:      bool,                   // the swap chain answers GetFrameStatistics
 	stats_fails:   int,
 	out:           [dynamic]Displayed_Frame,
@@ -272,6 +274,8 @@ present_collect :: proc(r: ^Renderer) {
 		shown._nsec -= i64(f64(st.SyncRefreshCount - st.PresentRefreshCount) * p.period_ns)
 	}
 	d := Displayed_Frame{present = st.PresentCount, input = slot.input, read = slot.read, drawn = slot.drawn, call = slot.call, presented = slot.presented, shown = shown}
+	// (the deadline before a vblank, from the frame's present and the vblank DXGI says it reached)
+	if slot.call._nsec != 0 { platform.vblank_lead_learn(&p.lead_ns, slot.call._nsec, shown._nsec, p.period_ns) }
 	// counters that go back or jump far (the swap chain was out of view, the display mode changed): no run to compare to
 	run := p.have_seen && st.PresentCount > p.seen_present && st.PresentCount - p.seen_present < PRESENT_RING &&
 	       st.PresentRefreshCount > p.seen_refresh && st.PresentRefreshCount - p.seen_refresh <= (st.PresentCount - p.seen_present) * slot.interval + RUN_MAX_REFRESH_JUMP

@@ -93,14 +93,28 @@ plan := platform.cadence_plan(platform.display_info(w), {target_hz = 0, max_hz =
 platform.cadence_adopt(&c, plan)           // its slots and its screen (again when the monitor or its rate changes: Display_Info.serial)
 
 d := platform.frame_decision(&c, {now_ns = now, idled = idled, input = input_waits, presented = shown_once,
-                                  resized = size != last_size, dragging = dragging, slot_held = slot_held})
+                                  resized = size != last_size, dragging = dragging, slot_held = slot_held,
+                                  vblank_ns = last_vblank, period_ns = period, lead_ns = lead})   // (0: not known)
 // if d.wait_swap_chain, wait for the swap chain's latency object; then wait what is left until d.wait_until_ns, taking input
 // meanwhile (in this order: the decision comes just after a present, and on a screen that paces the app the swap chain goes past
 // the slot; the slot's wait first and the two add up, 40 frames a second at 60 Hz);
+platform.cadence_started(&c, now)          // the waits done: the frame's cost runs from here
 // set the swap chain's maximum latency to d.latency; make the frame;
 // Present with no wait for a refresh when d.present_at_once
 platform.cadence_presented(&c, now)
 ```
+
+**The start just in time.** Where the screen paces the frames at every refresh and its vblanks are known (the last one a
+picture was shown at, the period, and the lead: how long before a vblank a present must be made to be shown at it), a
+frame of a run (`Continuous`, `Drag`) waits until the latest start that still presents it before the deadline of the
+refresh after the previous picture's (`jit_start`): its input is read as late as it can be. Its cost is the 90th
+percentile of the last 32 frames, from `cadence_started` to `cadence_presented` (`Frame_Cost`, `frame_cost_estimate`),
+plus `JIT_MARGIN_NS`. A frame later than its start goes at once. The first frame after a rest, a resize's frames, the
+frames shown at once, a screen that does not pace the frames (`Frame_Slots.strict`) and a frame every n-th refresh are
+not timed so; nor is a frame whose timing or cost is not known yet (8 frames measured). The decision says it
+(`Frame_Decision.just_in_time`); the wait is the slot's (`wait_until_ns`), which a key or a button ends. `render.pace_frame`
+feeds it from `render.vblank_grid` and the renderer's lead (Wayland's and X11's answers, DXGI's statistics, the WebGPU
+backend's model on Windows). Design: [src/md/infrastructure/vblank.md](../src/md/infrastructure/vblank.md).
 
 - `cadence_inner_frame(c, resized, presented)`: a frame made inside another one's work or a loop of the system (an
   interface-only frame): no slot of its own, only a new size changes its state; returns whether it is shown at once.

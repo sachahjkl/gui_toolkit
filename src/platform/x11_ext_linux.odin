@@ -5,8 +5,8 @@ import "core:sys/posix"
 
 // The X extensions the X11 backend asks of the server, by dlopen as the rest (each its own library, each optional):
 // XFIXES tells when any program takes the clipboard (and cuts a window out of the pointer's way, for a drag image); RandR
-// gives the refresh rate of the monitor a window is on. Without them: no change signal between two other programs, and
-// DISPLAY_FALLBACK_HZ. XTEST turns the wheel as the user would (send_wheel), loaded on its first use only: most programs
+// gives the refresh rate of the monitor a window is on; Present says when each picture reached the screen (Vblank_Timing).
+// Without them: no change signal between two other programs, DISPLAY_FALLBACK_HZ, no vblank timing. XTEST turns the wheel as the user would (send_wheel), loaded on its first use only: most programs
 // never send input.
 
 @(private = "file") XFIXES_VERSION_MAJOR :: 5
@@ -79,6 +79,108 @@ Xtest_Lib :: struct {
 // (of this thread: with its connection, x11c)
 @(private = "file", thread_local) xtest: Xtest_Lib
 
+// Present: when each picture of a window reached the screen (PresentCompleteNotify), the X11 side of Vblank_Timing
+// (src/md/infrastructure/vblank.md). Vulkan's WSI presents with it on our own connection and reads its answers under its
+// own event id (xcb_register_for_special_xge): the server sends a CompleteNotify to every selection on the window,
+// whoever presented (xserver's present_send_complete_notify), so a selection of ours, under an id of ours, gets the WSI's
+// pictures too, in the connection's general queue. A software WSI (lavapipe) draws with PutImage, not Present: then
+// nothing comes.
+@(private = "file")
+Present_Lib :: struct {
+	id:                  rawptr,   // xcb_present_id
+	query_version:       proc "c" (c: Xcb_Connection, major, minor: u32) -> Xcb_Cookie,
+	query_version_reply: proc "c" (c: Xcb_Connection, cookie: Xcb_Cookie, e: rawptr) -> rawptr,
+	select_input:        proc "c" (c: Xcb_Connection, eid: u32, window: Xcb_Window, mask: u32) -> Xcb_Void_Cookie,
+}
+// (of this thread: with its connection, x11c)
+@(private = "file", thread_local) present: Present_Lib
+
+@(private = "file") PRESENT_EVENT_MASK_COMPLETE_NOTIFY :: 2
+@(private = "file") PRESENT_EVENT_COMPLETE_NOTIFY :: 1
+@(private = "file") PRESENT_COMPLETE_KIND_PIXMAP :: 0   // (NotifyMSC: an answer to a wait for a refresh, no picture)
+@(private = "file") PRESENT_COMPLETE_MODE_SKIP :: 2     // (Copy, Flip, SuboptimalCopy: shown)
+// An X Generic Event (XGE): Present's events all are.
+@(private) XCB_GE_GENERIC :: 35
+
+// xcb_present_complete_notify_event_t (packed): xcb puts the full sequence at byte 32, after the 32 bytes of the wire's
+// header, and the rest of the event after it.
+@(private = "file")
+Present_Complete_Notify :: struct #packed {
+	response_type, extension: u8,
+	sequence:      u16,
+	length:        u32,
+	event_type:    u16,
+	kind, mode:    u8,
+	event:         u32,
+	window:        Xcb_Window,
+	serial:        u32,
+	ust:           u64,   // µs, CLOCK_MONOTONIC
+	full_sequence: u32,
+	msc:           u64,
+}
+#assert(size_of(Present_Complete_Notify) == 44)
+
+// The major opcode of an extension (its generic events carry it), 0 when the server does not have it.
+@(private = "file")
+x11_extension_opcode :: proc(id: rawptr) -> u8 {
+	if xcb.get_extension_data == nil || id == nil { return 0 }
+	r := (^Xcb_Extension_Reply)(xcb.get_extension_data(x11c.c, id))
+	return r != nil && r.present != 0 ? r.major_opcode : 0
+}
+
+// Asks for the window's CompleteNotify, under an event id of ours. Nothing without the extension.
+@(private)
+x11_present_select :: proc(id: Xcb_Window) {
+	if x11c.present_opcode == 0 { return }
+	present.select_input(x11c.c, xcb.generate_id(x11c.c), id, PRESENT_EVENT_MASK_COMPLETE_NOTIFY)
+}
+
+// Whether `raw` is a Present answer, and then what it said of one of our windows (its Vblank_Timing). The answers end no
+// wait (x11_wait): they change nothing on the screen.
+@(private)
+x11_present_event :: proc(raw: ^Xcb_Generic_Event) -> bool {
+	if x11c.present_opcode == 0 || (raw.response_type & X11_RESPONSE_TYPE_MASK) != XCB_GE_GENERIC { return false }
+	e := (^Present_Complete_Notify)(raw)
+	if e.extension != x11c.present_opcode { return false }
+	if e.event_type != PRESENT_EVENT_COMPLETE_NOTIFY || e.kind != PRESENT_COMPLETE_KIND_PIXMAP { return true }
+	for w in x11c.windows {
+		st := x11_state(w)
+		if st == nil || st.id != e.window { continue }
+		asked: i64
+		if st.presents_n > 0 {
+			asked = st.presents[0]
+			copy(st.presents[:], st.presents[1:])
+			st.presents_n -= 1
+		}
+		if e.mode == PRESENT_COMPLETE_MODE_SKIP {
+			vblank_discarded(&st.vblank)
+			return true
+		}
+		// (ust 0: a server with no clock for it, Xvfb's fake screen may say nothing)
+		if e.ust == 0 { return true }
+		at := clock_to_tick_ns(i64(e.ust) * 1000, CLOCK_ID_MONOTONIC)
+		if at == 0 { return true }
+		// (the rate read last, RandR's: the first guess when the counter says nothing. Not display_info, which may ask the
+		// server and wait for its answer)
+		hint := w.display.hz > 0 ? 1e9 / w.display.hz : 0
+		vblank_presented(&st.vblank, at, e.msc, 0, hint, asked)
+		return true
+	}
+	return true
+}
+
+// The time of a present of the window, for the answer that comes for it (x11_present_event). Nothing without Present.
+@(private)
+x11_present_note :: proc(st: ^X11_Window_State, at_ns: i64) {
+	if x11c.present_opcode == 0 { return }
+	if st.presents_n == len(st.presents) {
+		copy(st.presents[:], st.presents[1:])
+		st.presents_n -= 1
+	}
+	st.presents[st.presents_n] = at_ns
+	st.presents_n += 1
+}
+
 // The X buttons of a wheel's notch (as window_x11_linux.odin reads them).
 @(private = "file") XTEST_WHEEL_UP :: 4
 @(private = "file") XTEST_WHEEL_DOWN :: 5
@@ -119,7 +221,7 @@ x11_extension_first_event :: proc(id: rawptr) -> u8 {
 	return r != nil && r.present != 0 ? r.first_event : 0
 }
 
-// Binds both extensions (x11_connect). x11c.xfixes_event / randr_event stay 0 without them.
+// Binds the extensions (x11_connect). x11c.xfixes_event / randr_event / present_opcode stay 0 without them.
 @(private)
 x11_extensions_init :: proc() {
 	if h := lib_open({"libxcb-xfixes.so.0", "libxcb-xfixes.so"}); h != nil {
@@ -170,6 +272,21 @@ x11_extensions_init :: proc() {
 			}
 		}
 	}
+	if h := lib_open({"libxcb-present.so.0", "libxcb-present.so"}); h != nil {
+		present.id                  = lib_sym(h, "xcb_present_id")
+		present.query_version       = auto_cast lib_sym(h, "xcb_present_query_version")
+		present.query_version_reply = auto_cast lib_sym(h, "xcb_present_query_version_reply")
+		present.select_input        = auto_cast lib_sym(h, "xcb_present_select_input")
+		if present.query_version != nil && present.query_version_reply != nil && present.select_input != nil {
+			if op := x11_extension_opcode(present.id); op != 0 {
+				// (the server answers an extension's requests only after this exchange)
+				if reply := present.query_version_reply(x11c.c, present.query_version(x11c.c, 1, 0), nil); reply != nil {
+					free_c(reply)
+					x11c.present_opcode = op
+				}
+			}
+		}
+	}
 }
 
 // What a new window asks of the extensions: a notice when CLIPBOARD changes hands, when the screen's modes change.
@@ -177,6 +294,7 @@ x11_extensions_init :: proc() {
 x11_extensions_select :: proc(id: Xcb_Window) {
 	if x11c.xfixes_event != 0 { xfixes.select_selection(x11c.c, id, x11c.clipboard, XFIXES_SELECTION_EVENT_MASK_SET_OWNER) }
 	if x11c.randr_event != 0 && randr.select_input != nil { randr.select_input(x11c.c, id, RANDR_NOTIFY_MASK_SCREEN_CHANGE) }
+	x11_present_select(id)
 }
 
 // Lets the pointer through a window (a drag's image: the window under it is the target). False without XFIXES.

@@ -6,8 +6,9 @@ import "core:time"
 import "../platform"
 
 // No frame latency object here: the present mode (FIFO by default) paces the frames at the vblank, and
-// platform.wait_handle(w, wgpu_waitable(r) == nil) returns at once. The compositor's timing is Wayland's presentation
-// answers (platform.vblank_timing); X11 gives none yet, and the frame statistics (shown, missed refreshes) stay off there.
+// platform.wait_handle(w, wgpu_waitable(r) == nil) returns at once. The compositor's timing is the display server's
+// answers (platform.vblank_timing: Wayland's wp_presentation, X11's Present); without them the frame statistics (shown,
+// missed refreshes) stay off.
 
 @(private) wgpu_latency_start :: proc(r: ^Renderer) {}
 @(private) wgpu_latency_stop :: proc(r: ^Renderer) {}
@@ -43,6 +44,7 @@ wgpu_compositor_timing :: proc(r: ^Renderer) -> (refresh: u64, ok, counted: bool
 	if !p.continuous { l.have_seen = false }
 	if v.period_ns <= 0 { p.stats_ok = false; return }
 	p.period_ns = v.period_ns
+	p.lead_ns = v.lead_ns
 	p.sync_tick = time.Tick{_nsec = v.last_ns}
 	p.sync_count = u32(v.msc)
 	p.stats_ok = true

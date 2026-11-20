@@ -129,7 +129,8 @@ made, Direct3D's come from the device's adapter object. The settings' Diagnostic
 - **Present pacing.** Direct3D uses a DXGI waitable swap chain (a frame-latency object) and DWM timing for the frame
   statistics (shown / missed refreshes). wgpu on Linux has no frame-latency object: the present mode paces frames at
   the vblank, and `render.wait_for_frame` just acquires the next surface texture. The statistics come from the
-  compositor on Wayland (`wp_presentation`: [platform.md](platform.md), "Vblank timing"); on X11 they stay off. Tearing (`set_present_mode`) maps to wgpu's `Immediate` where the surface offers it. Both backends take the decision from `render.present_call(mode, tearing_ok, interval, vsync)`: the sync interval (0: at once), the tearing flag (only with no wait, only where the system and the swap chain allow it) and the mode the frame is presented in; `src/render/present_test.odin` checks it as data.
+  display server (Wayland's `wp_presentation`, X11's Present: [platform.md](platform.md), "Vblank timing"); without its
+  answers they stay off. Tearing (`set_present_mode`) maps to wgpu's `Immediate` where the surface offers it. Both backends take the decision from `render.present_call(mode, tearing_ok, interval, vsync)`: the sync interval (0: at once), the tearing flag (only with no wait, only where the system and the swap chain allow it) and the mode the frame is presented in; `src/render/present_test.odin` checks it as data.
 - **Translucency.** A translucent window (`transparent`) goes through DirectComposition on Windows (premultiplied
   alpha). On Linux the compositor blends the alpha surface directly — there is no extra effect to turn on. The frame's
   clear decides whether the alpha is read: a frame cleared with an alpha of 1 (`render.frame_begin`, an opaque theme's

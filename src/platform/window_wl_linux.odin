@@ -148,6 +148,7 @@ Wl_Window_State :: struct {
 	// the wp_presentation_feedback of each committed picture not answered yet, oldest first (nil: a free place), and what
 	// the answers said (kept across a hide: the window's, not its surface's)
 	feedbacks:   [WL_FEEDBACKS_MAX]Wl_Proxy,
+	feedback_at: [WL_FEEDBACKS_MAX]i64,   // when each was asked: its picture's present, on core:time's clock (the lead)
 	vblank:      Vblank_Timing,
 	// a picture of this surface was presented (its first frame_shown_ask): until then the compositor has not mapped it,
 	// and an activation would name a window it does not know yet (ShojiWM drops it): it waits in activate_*
@@ -223,7 +224,7 @@ wl_connect_now :: proc() -> bool {
 	sigpipe_ignore()   // (a data source's reader may close its pipe while it is written)
 	wlc.fd = l.display_get_fd(wlc.display)
 	wlc.output_scale = 1
-	wlc.presentation_clock = WL_CLOCK_MONOTONIC
+	wlc.presentation_clock = CLOCK_ID_MONOTONIC
 	// the registry, and bind the globals it advertises
 	wlc.registry = l.proxy_marshal_flags(Wl_Proxy(wlc.display), 1 /*get_registry*/, l.registry_interface, l.proxy_get_version(Wl_Proxy(wlc.display)), 0, nil)
 	if wlc.registry == nil { return false }
@@ -1066,10 +1067,6 @@ Wl_Feedback_Listener :: struct {
 }
 @(private) feedback_listener := Wl_Feedback_Listener{wl_feedback_sync_output, wl_feedback_presented, wl_feedback_discarded}
 
-// (Linux's clock ids, as the protocol passes them: clock_gettime's)
-@(private) WL_CLOCK_MONOTONIC :: 1
-@(private) WL_CLOCK_MONOTONIC_RAW :: 4
-
 @(private)
 wl_presentation_clock :: proc "c" (data: rawptr, p: Wl_Proxy, clk_id: u32) { wlc.presentation_clock = clk_id }
 
@@ -1081,33 +1078,37 @@ wl_feedback_sync_output :: proc "c" (data: rawptr, f: Wl_Proxy, output: Wl_Proxy
 wl_feedback_presented :: proc "c" (data: rawptr, f: Wl_Proxy, tv_sec_hi, tv_sec_lo, tv_nsec, refresh, seq_hi, seq_lo, flags: u32) {
 	context = wl_ctx_real()
 	st := (^Wl_Window_State)(data)
-	if !wl_feedback_done(st, f) { return }
-	at := wl_presentation_tick(u64(tv_sec_hi) << 32 | u64(tv_sec_lo), tv_nsec)
+	asked, ours := wl_feedback_done(st, f)
+	if !ours { return }
+	at := clock_to_tick_ns(i64(u64(tv_sec_hi) << 32 | u64(tv_sec_lo)) * 1e9 + i64(tv_nsec), wlc.presentation_clock)
 	if at == 0 { return }
 	// (the mode's period of the outputs it is on: the first guess when the compositor gives neither period nor counter)
 	mhz := st.win != nil ? wl_window_refresh_mhz(st.win) : 0
-	vblank_presented(&st.vblank, at, u64(seq_hi) << 32 | u64(seq_lo), refresh, mhz > 0 ? 1e12 / f64(mhz) : 0)
+	vblank_presented(&st.vblank, at, u64(seq_hi) << 32 | u64(seq_lo), refresh, mhz > 0 ? 1e12 / f64(mhz) : 0, asked)
 }
 
 @(private)
 wl_feedback_discarded :: proc "c" (data: rawptr, f: Wl_Proxy) {
 	context = wl_ctx_real()
 	st := (^Wl_Window_State)(data)
-	if wl_feedback_done(st, f) { vblank_discarded(&st.vblank) }
+	if _, ours := wl_feedback_done(st, f); ours { vblank_discarded(&st.vblank) }
 }
 
-// The feedback `f` answered: it goes (both events are its destructor), and its place with it. False: not one of the
-// window's (given up: wl_presentation_ask).
+// The feedback `f` answered: it goes (both events are its destructor), and its place with it; when it was asked. False:
+// not one of the window's (given up: wl_presentation_ask).
 @(private)
-wl_feedback_done :: proc(st: ^Wl_Window_State, f: Wl_Proxy) -> bool {
+wl_feedback_done :: proc(st: ^Wl_Window_State, f: Wl_Proxy) -> (asked: i64, ours: bool) {
 	wl.proxy_destroy(f)
 	for x, i in st.feedbacks {
 		if x != f { continue }
+		asked = st.feedback_at[i]
 		copy(st.feedbacks[i:], st.feedbacks[i + 1:])
+		copy(st.feedback_at[i:], st.feedback_at[i + 1:])
 		st.feedbacks[len(st.feedbacks) - 1] = nil
-		return true
+		st.feedback_at[len(st.feedback_at) - 1] = 0
+		return asked, true
 	}
-	return false
+	return 0, false
 }
 
 // Asks when the window's next commit reaches the screen. Nothing without the protocol: the numbers stay 0.
@@ -1120,6 +1121,7 @@ wl_presentation_ask :: proc(st: ^Wl_Window_State) {
 		// (the compositor keeps them: the oldest is given up, its answer goes to a proxy that is gone)
 		wl.proxy_destroy(st.feedbacks[0])
 		copy(st.feedbacks[:], st.feedbacks[1:])
+		copy(st.feedback_at[:], st.feedback_at[1:])
 		n -= 1
 		st.feedbacks[n] = nil
 	}
@@ -1127,27 +1129,10 @@ wl_presentation_ask :: proc(st: ^Wl_Window_State) {
 	if f == nil { return }
 	wl.proxy_add_listener(f, &feedback_listener, st)
 	st.feedbacks[n] = f
+	// (asked just before the present: its time is the present's, to a few µs)
+	st.feedback_at[n] = time.tick_now()._nsec
 }
 
-// A presentation timestamp (`sec`, `nsec`, on the clock the compositor announced) on core:time's tick clock
-// (CLOCK_MONOTONIC_RAW), which the pacer and the frame statistics use. 0: the clock cannot be read.
-@(private)
-wl_presentation_tick :: proc(sec: u64, nsec: u32) -> i64 {
-	t := i64(sec) * 1e9 + i64(nsec)
-	clk := wlc.presentation_clock
-	if clk == WL_CLOCK_MONOTONIC_RAW { return t }
-	// (moved by the distance of the two clocks now; they drift by parts per million, nothing over the frames that use it.
-	// libc's clock_gettime is the vDSO's: no call into the kernel)
-	read :: proc(id: u32) -> (i64, bool) {
-		ts: posix.timespec
-		if posix.clock_gettime(posix.Clock(id), &ts) != .OK { return 0, false }
-		return i64(ts.tv_sec) * 1e9 + i64(ts.tv_nsec), true
-	}
-	theirs, ok1 := read(clk)
-	ours, ok2 := read(WL_CLOCK_MONOTONIC_RAW)
-	if !ok1 || !ok2 { return 0 }
-	return t - theirs + ours
-}
 
 // The state of this thread's window whose surface is `surface` (nil: none).
 @(private)

@@ -322,6 +322,161 @@ the_vblank_timing_follows_the_compositors_answers :: proc(t: ^testing.T) {
 }
 
 ////////////////////////////////
+// The start just in time
+
+@(private = "file") P60 :: 16_666_667
+
+// The lead (how long before a vblank a present must be made to be shown at it) is learned from the pictures: one shown a
+// refresh late raises it past the bound it proves, one shown early lowers it to what it took, two refreshes late is no
+// sample. A compositor that composes at the vblank before (sway: a deadline a period ahead) is learned in a few frames,
+// then missed only once in a long while (the lead probes later).
+@(test)
+the_lead_is_learned_from_the_pictures :: proc(t: ^testing.T) {
+	lead: f64
+	// on time: nothing to raise (and nothing under 0)
+	platform.vblank_lead_learn(&lead, 1000 * MS, 1002 * MS, P60)
+	testing.expect_value(t, lead, 0)
+	// a refresh late: the deadline was before the present, the lead jumps past it
+	platform.vblank_lead_learn(&lead, 1000 * MS, 1000 * MS + 2 * MS + P60, P60)
+	testing.expectf(t, abs(lead - 2_500_000) < 1, "past the bound, plus half a millisecond: %.0f", lead)
+	// earlier than predicted: the deadline was later, the lead drops to what the picture took
+	lead = 10 * MS
+	platform.vblank_lead_learn(&lead, 1000 * MS, 1003 * MS, P60)
+	testing.expect_value(t, lead, 3 * MS)
+	// two refreshes late: a hiccup, no sample
+	platform.vblank_lead_learn(&lead, 1000 * MS, 1000 * MS + 3 * MS + 2 * P60, P60)
+	testing.expect_value(t, lead, 3 * MS)
+
+	// a compositor whose deadline is a period before the vblank, frames presented a millisecond before the deadline the
+	// lead predicts
+	TRUE_LEAD :: P60
+	lead = 0
+	vblank := i64(5000) * MS
+	misses_late := 0
+	for i in 0 ..< 300 {
+		target := vblank + P60
+		present := target - i64(lead) - MS
+		shown := present <= target - TRUE_LEAD ? target : target + P60
+		if shown != target && i >= 200 { misses_late += 1 }
+		platform.vblank_lead_learn(&lead, present, shown, P60)
+		vblank = shown
+	}
+	testing.expectf(t, lead >= TRUE_LEAD - 1.5 * MS && lead <= TRUE_LEAD + MS, "learned %.2f ms for a deadline %.2f ms ahead", lead / 1e6, f64(TRUE_LEAD) / 1e6)
+	testing.expectf(t, misses_late <= 1, "%d pictures late in the last 100", misses_late)
+}
+
+// The cost of a frame is a high percentile of the recent ones, not their mean; nothing before enough frames.
+@(test)
+the_cost_of_a_frame_is_a_high_percentile :: proc(t: ^testing.T) {
+	c: platform.Frame_Cost
+	for _ in 0 ..< platform.FRAME_COST_MIN - 1 { platform.frame_cost_add(&c, 2 * MS) }
+	testing.expect_value(t, platform.frame_cost_estimate(&c), 0)
+	c = {}
+	for i in 1 ..= 32 { platform.frame_cost_add(&c, i64(i) * MS) }
+	testing.expect_value(t, platform.frame_cost_estimate(&c), 29 * MS)   // (the mean would be 16.5 ms)
+	// the ring keeps the last 32: a run of light frames after heavy ones
+	for _ in 0 ..< 32 { platform.frame_cost_add(&c, 3 * MS) }
+	testing.expect_value(t, platform.frame_cost_estimate(&c), 3 * MS)
+}
+
+// A 60 Hz cadence whose frames cost 2 ms, eight of them measured.
+@(private = "file")
+measured_cadence :: proc() -> platform.Cadence {
+	c: platform.Cadence
+	platform.cadence_adopt(&c, platform.cadence_plan({hz = 60, max_hz = 60}, {}))
+	for _ in 0 ..< platform.FRAME_COST_MIN { platform.frame_cost_add(&c.cost, 2 * MS) }
+	return c
+}
+
+// A frame of a run starts at the deadline of the refresh after the previous picture's, minus its cost and the margin; a
+// frame later than that goes at once; the first frame after a rest and a frame with no timing are not delayed.
+@(test)
+a_frame_starts_just_in_time :: proc(t: ^testing.T) {
+	v0 := i64(10_000) * MS                 // the vblank the previous picture reaches
+	grid := v0 - 3 * P60                   // the last vblank the server said (three refreshes before)
+	lead := f64(1 * MS)
+	prev := v0 - 5 * MS                    // the previous present, before v0's deadline
+	start := v0 + P60 - 1 * MS - 2 * MS - platform.JIT_MARGIN_NS
+	testing.expect_value(t, platform.jit_start(prev, grid, P60, lead, 2 * MS), start)
+
+	// decided just after the previous present (as on Windows, before the vblank that shows it): it waits for its start
+	c := measured_cadence()
+	c.present_ns = prev
+	d := platform.frame_decision(&c, {now_ns = prev + MS / 2, presented = true, vblank_ns = grid, period_ns = P60, lead_ns = lead})
+	testing.expect_value(t, d.state, platform.Cadence_State.Continuous)
+	testing.expect(t, d.just_in_time, "timed just in time")
+	testing.expect_value(t, d.wait_until_ns, start)
+	testing.expect_value(t, d.wait_ns, start - (prev + MS / 2))
+
+	// later than its start: at once, never held to the next deadline
+	c = measured_cadence()
+	c.present_ns = prev
+	d = platform.frame_decision(&c, {now_ns = start + MS, presented = true, vblank_ns = grid, period_ns = P60, lead_ns = lead})
+	testing.expect(t, !d.just_in_time, "late: not timed")
+	testing.expect_value(t, d.wait_ns, 0)
+
+	// the first frame after a rest: at once
+	c = measured_cadence()
+	c.present_ns = prev
+	d = platform.frame_decision(&c, {now_ns = prev + MS / 2, idled = true, presented = true, vblank_ns = grid, period_ns = P60, lead_ns = lead})
+	testing.expect_value(t, d.state, platform.Cadence_State.Rest)
+	testing.expect(t, !d.just_in_time && d.wait_ns == 0, "a rest's first frame goes at once")
+
+	// no timing, or no cost measured yet: the slot alone
+	c = measured_cadence()
+	c.present_ns = prev
+	d = platform.frame_decision(&c, {now_ns = prev + MS / 2, presented = true})
+	testing.expect(t, !d.just_in_time && d.wait_ns == 0, "no vblanks known")
+	c = {}
+	platform.cadence_adopt(&c, platform.cadence_plan({hz = 60, max_hz = 60}, {}))
+	c.present_ns = prev
+	d = platform.frame_decision(&c, {now_ns = prev + MS / 2, presented = true, vblank_ns = grid, period_ns = P60, lead_ns = lead})
+	testing.expect(t, !d.just_in_time, "no cost measured")
+
+	// a screen that does not pace the frames (variable refresh): its slots, no start just in time
+	c = measured_cadence()
+	platform.cadence_adopt(&c, platform.cadence_plan({hz = 60, max_hz = 144}, {}))
+	c.present_ns = prev
+	d = platform.frame_decision(&c, {now_ns = prev + MS / 2, presented = true, vblank_ns = grid, period_ns = P60, lead_ns = lead})
+	testing.expect(t, !d.just_in_time, "variable refresh")
+}
+
+// A run of frames on a 60 Hz screen whose compositor keeps a 3 ms deadline: after the frames that measure the cost, each
+// starts at its refresh's deadline minus its cost and the margin, is presented before that deadline, and one picture
+// reaches each refresh. The cost is learned through cadence_started and cadence_presented.
+@(test)
+a_run_reads_its_input_just_in_time :: proc(t: ^testing.T) {
+	LEAD :: 3 * MS
+	COST :: 2 * MS
+	c: platform.Cadence
+	platform.cadence_adopt(&c, platform.cadence_plan({hz = 60, max_hz = 60}, {}))
+	vblank := i64(20_000) * MS   // the last vblank a picture reached
+	now := vblank + 1 * MS
+	shown_prev: i64
+	timed := 0
+	for i in 0 ..< 40 {
+		d := platform.frame_decision(&c, {now_ns = now, idled = i == 0, presented = i > 0, vblank_ns = vblank, period_ns = P60, lead_ns = LEAD})
+		now += d.wait_ns
+		platform.cadence_started(&c, now)
+		if d.just_in_time {
+			timed += 1
+			// the refresh after the previous picture's, its deadline, the frame's cost and the margin before it
+			testing.expectf(t, now == shown_prev + P60 - LEAD - COST - platform.JIT_MARGIN_NS, "frame %d starts at %d, its refresh at %d", i, now, shown_prev + P60)
+		}
+		now += COST
+		platform.cadence_presented(&c, now)
+		// the screen: the first vblank whose deadline the present made
+		shown := vblank
+		for shown - LEAD < now { shown += P60 }
+		if d.just_in_time { testing.expectf(t, shown == shown_prev + P60, "frame %d: one picture a refresh", i) }
+		shown_prev, vblank = shown, shown
+		// (the program asks the next frame at once: an animation)
+		now += 100_000
+	}
+	testing.expectf(t, timed >= 40 - 1 - platform.FRAME_COST_MIN, "frames timed just in time: %d", timed)
+}
+
+////////////////////////////////
 // Simulated runs
 
 // A screen: `refresh_ns` 0 releases the swap chain's slot at once (variable refresh, tearing, a compositor that takes every
