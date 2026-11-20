@@ -49,6 +49,10 @@ File_Reply :: struct {
 
 File_Source :: struct {
 	user:        rawptr,
+	// The version of what its paths name: the browser's thumbnails are kept by `user`, `generation` and the file, so
+	// another value asks them again. Change it when the files may have changed and their listing cannot tell (no size
+	// nor date), or when the same source reaches another place (a server's address). Read when a dialog opens.
+	generation:  u64,
 	caps:        File_Caps,
 	separator:   u8,   // '/' or '\\': how its paths are joined
 	// The entries of the folder `path` (file_reply_listed).

@@ -566,8 +566,9 @@ file_card_picture :: proc(t: ^Table, row: int, size: f32) {
 	if e == nil { return }
 	if e.kind == .File && fb.source.thumbnail != nil {
 		path := fsx.path_join(fb.folder, e.name, fb.sep, context.temp_allocator)
-		// (the source's in the key: a server's "/a.png" is not the computer's)
-		key := fmt.tprintf("%p|%s", fb.source.user, thumb_key(path, e.size, e.modified))
+		// (the source's identity and generation in the key: a server's "/a.png" is not the computer's, nor another
+		// server's behind the same source, nor its own picture changed since; thumbnails.md)
+		key := fmt.tprintf("%p|%d|%s", fb.source.user, fb.source.generation, thumb_key(path, e.size, e.modified))
 		th := thumb_cache_get(&fb.thumbs, key, path)
 		if th.state == .Ready && !th.refused {
 			next({width = fill(), height = pct(1)})
@@ -575,8 +576,10 @@ file_card_picture :: proc(t: ^Table, row: int, size: f32) {
 			return
 		}
 	}
+	// (the icon at the card's share, as the table's own cards: at the rows' font size it is a dot in a large card)
+	sz := table_card_icon_size(size)
 	spacer(fill())
-	file_row_lead(t, row, size)
+	if style({font_size = sz}) { file_row_lead(t, row, sz) }
 	spacer(fill())
 }
 

@@ -50,6 +50,14 @@ shape with one gesture (Ctrl+wheel, Ctrl+= and Ctrl+-, a control of the program)
   (the row's icon) at that size. The name takes two lines where the card has room, else one; too long, it is cut in its
   middle with its extension kept (`table_card_name`): the end of a file's name says what it is. The weak line is the
   text of `Table.card_line` (a size).
+- **A card's icon is half its picture's height** (`TABLE_CARD_ICON`, `table_card_icon_size`). A row with no picture (a
+  folder, a file the source has no thumbnail of, a table without `Table.picture`) shows its kind's icon in the picture's
+  place; at the font's size it was a dot in the middle of a large card. The picture's height is its shorter side at
+  every step (the card is 0.72 of its width high, its width less two gaps), so one share of the height scales it with
+  the card. Half leaves the icon a margin that reads as a frame, as the file managers show it. The table draws the lead
+  under a style of that font size; a program's `picture` callback that falls back to an icon calls
+  `table_card_icon_size(size)` for the same size. Refused: an icon of fixed ems per step (a new step, or a change of
+  `TABLE_CARD_PICTURE`, would need its own number; the anim between steps would jump).
 - **The rubber band is the table's** (`Table.rubber_band`, `Item_Band`), for a multi table in every view. A press on the
   empty part of the view and a drag select every item the rectangle touches; with Ctrl, they are added to the selection
   there was; Ctrl and a press on a card start it from that card, taking items out when the card was selected. Escape

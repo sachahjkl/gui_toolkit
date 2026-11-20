@@ -37,6 +37,18 @@ file: classeur made them first (its `thumbs.odin`); the toolkit's file browser a
   `thumb_cache_frame`, not at the call; when a card took an entry in the build of the call, at the first of a later
   build: the draw of this frame may still read it (the rule of the trim). Refused: destroy and init (it loses the asks
   in flight, and an answer then finds an entry asked after it).
+- **A source's thumbnails are keyed by its `user` and its `generation`** (`File_Source.generation`, 0 by default),
+  then the file's key. `user` alone failed a program with one source object for several servers (opencode native: one
+  connection, the server's address changes): two servers with the same paths showed each other's thumbnails, and the
+  program made one `user` per address only to split them. A remote listing may give no size nor date either, so a
+  picture changed on the server kept its old thumbnail for the whole run. One number answers both: the program gives
+  another `generation` when what the paths name may have changed (another server, a reconnection, a refresh it
+  offers); the old entries are no longer asked for and age out under the budget. A source that never sets it keeps
+  generation 0 and the keys it had. The browser copies the source when a dialog opens: a new generation counts from
+  the next dialog. Refused: a public clear of the browser's cache (it forgets every source's thumbnails, the
+  computer's too, for a change of one source, and the asks in flight of the old server would land as the new one's);
+  an identity string beside `user` (a second field for what a number already separates); the browser forgetting a
+  folder's thumbnails at F5 (a local file's key has its size and date already; F5 reads the folder, not the pictures).
 - **`ui` imports `gt:desktop`** for that. `desktop` imports neither `ui` nor what imports it, so there is no cycle;
   its install code is not reached from the browser.
 - **The cache is in `ui` (`Thumb_Cache`), not `gt:pictures`.** `gt:pictures` imports `ui` (its answers come through

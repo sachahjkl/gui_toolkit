@@ -685,7 +685,8 @@ Table :: struct {
 	zoom:      int,             // the step of table_zoom_step: its view and its cards' size (0: Details)
 	zoom_keys: bool,            // Ctrl+wheel over the table and the zoom keys in it step `zoom` (else they zoom the window)
 	rubber_band: bool,          // multi: a press on the empty part and a drag select the items the rectangle touches
-	// Builds a card's picture in a row `size` high (a thumbnail; it may fill the row's width); nil: the lead at `size`.
+	// Builds a card's picture in a row `size` high (a thumbnail; it may fill the row's width; an icon at
+	// table_card_icon_size(size)); nil: the lead, its size and font size table_card_icon_size(size).
 	picture:   proc(t: ^Table, row: int, size: f32),
 	card_line: int,             // the column whose text is a card's second line, weak (a size); 0: none
 	line_items: int,            // Grid: the cards in a row; Columns: the names in a column (the last build's; else 1)
