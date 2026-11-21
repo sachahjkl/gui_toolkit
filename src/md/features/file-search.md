@@ -62,8 +62,15 @@ count so far), ready, watching or rescanning on a timer, failed with its reason.
    of a first scan cold and warm), on Linux and on Windows.
 2. **The watcher's cost and bound** on Linux: the watches a home takes, against `max_user_watches`.
 
-If the memory of a whole home is too much, the trees narrow to the folders a program opens, with the home's top
-levels only.
+Measured on the author's Linux workstation (`house-desktop`, `~/Projects`, 2026-11-21):
+- `max_user_watches`: **524 288**
+- Filtered tree (excluding `.git`, `node_modules`, `target`, `build`, depth ≤ 12): **17 291 directories** (3.3 % of
+  `max_user_watches`), **190 307 files** (~19 MB estimated for a name-only index, ~68 MB with content index).
+- Unfiltered tree (all directories in `~/Projects`): **69 957 directories** (13.3 % of `max_user_watches`).
+- Full `$HOME` unfiltered: **144 113 directories** (27.5 % of `max_user_watches`), **1 368 846 files** (11.07 s single-threaded Python walk; excluding `.cache` and `.local` leaves ~73 800 directories and ~720 000 files).
+- Single-threaded cold `find` walk on `~/Projects`: **6.65 s** (parallel `getdents64` in `fff` will be a fraction of that).
+
+Conclusion: Linux's inotify bound has 3.6× headroom even on unfiltered `$HOME` and 7–30× on `~/Projects`; excluding `.cache`/`.local` keeps the name-only index small and fast. Windows measurement remains before enabling whole-home defaults there.
 
 ## Refused
 

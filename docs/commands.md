@@ -321,7 +321,23 @@ ui.fuzzy_cache_keep(&app.search, 3 * len(items))
 ```
 
 The fold of a text goes 16 bytes at a time over its ASCII runs (`ascii.lower_run`) and a rune at a time past them, with
-the same bytes as `unicode.to_lower`.
+the same bytes as `unicode.to_lower`. `fuzzy_score` runs a portable `#simd[16]u8` vector fast path over ASCII texts up
+to 128 bytes and queries up to 64 bytes, producing the exact same score and ranges as the scalar path.
+
+### Frecency
+
+`ui.Frecency` ranks frequently and recently used names without reading a clock (decay is by count of uses: each use
+decays kept entries by `ceil(score / 32)` and adds `FRECENCY_USE_WEIGHT` = 1024 to up to `FRECENCY_NAMES_PER_USE` = 16
+distinct non-empty names, clamped below `FRECENCY_SCORE_LIMIT` = 32768; up to `FRECENCY_CAPACITY` = 64 entries sorted by
+64-bit FNV-1a key).
+
+| Procedure | Result |
+|---|---|
+| `frecency_key(name) -> u64` | 64-bit FNV-1a hash of `name` (0 mapped to 1) |
+| `frecency_note_use(&f, names)` | decays kept entries and records one use of `names` |
+| `frecency_score(&f, name) -> u32` | current decayed score (0 if absent) |
+| `frecency_bonus(&f, name) -> int` | ranking bonus `0..FRECENCY_BONUS_LIMIT` (8), strictly below structural `fuzzy_score` bonuses |
+| `frecency_encode(&f, buf) -> []u8`, `frecency_decode(data) -> (Frecency, bool)` | compact binary format (`FRECENCY_BYTES_MAX` = 776 bytes) for persisting in a file or store |
 
 A program's settings go in its palette too: the settings source, `prefs_page.palette_settings_add` ([palette.md](palette.md)).
 

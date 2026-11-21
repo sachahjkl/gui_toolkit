@@ -220,13 +220,13 @@ label_fuzzy :: proc(text: string, ranges: []Fuzzy_Range) -> Signal {
 }
 
 // fuzzy_score: what a matched character earns, by where it is; what a gap (capped) and the text's length cost.
-@(private = "file") FUZZY_SCORE_CHAR :: 16
-@(private = "file") FUZZY_SCORE_TEXT_START :: 20
-@(private = "file") FUZZY_SCORE_WORD_START :: 18
-@(private = "file") FUZZY_SCORE_CAMEL_START :: 14
-@(private = "file") FUZZY_SCORE_ADJACENT :: 24
-@(private = "file") FUZZY_GAP_PENALTY_MAX :: 12
-@(private = "file") FUZZY_BYTES_PER_LENGTH_POINT :: 8
+@(private) FUZZY_SCORE_CHAR :: 16
+@(private) FUZZY_SCORE_TEXT_START :: 20
+@(private) FUZZY_SCORE_WORD_START :: 18
+@(private) FUZZY_SCORE_CAMEL_START :: 14
+@(private) FUZZY_SCORE_ADJACENT :: 24
+@(private) FUZZY_GAP_PENALTY_MAX :: 12
+@(private) FUZZY_BYTES_PER_LENGTH_POINT :: 8
 
 // The bytes the rune at `i` takes in the text (an invalid byte matches U+FFFD, which would take three).
 @(private = "file")
@@ -248,6 +248,11 @@ fuzzy_score_strings :: proc(needle, hay: string, allocator := context.temp_alloc
 }
 
 fuzzy_score_folded :: proc(needle: Fuzzy_Needle, h: Fuzzy_Text, allocator := context.temp_allocator) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
+	return fuzzy_score_vectors(needle, h, allocator)
+}
+
+@(private)
+fuzzy_score_scalar :: proc(needle: Fuzzy_Needle, h: Fuzzy_Text, allocator := context.temp_allocator) -> (score: int, ranges: []Fuzzy_Range, ok: bool) {
 	want := needle.runes
 	if len(want) == 0 { return 0, nil, true }
 	hay, low := h.text, h.low

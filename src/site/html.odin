@@ -7,13 +7,13 @@ package tk_site
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:unicode/utf8"
+import tk_utf8 "../utf8"
 
 // The text of a file, which must be UTF-8: JS would have turned the rest into U+FFFD without a word.
 read_utf8 :: proc(path: string) -> (text: string, ok: bool) {
 	data, err := os.read_entire_file(path, context.temp_allocator)
 	if err != nil { fmt.eprintfln("site: %s: %v", path, err); return "", false }
-	if !utf8.valid_string(string(data)) { fmt.eprintfln("site: %s is not UTF-8", path); return "", false }
+	if !tk_utf8.valid(data) { fmt.eprintfln("site: %s is not UTF-8", path); return "", false }
 	return string(data), true
 }
 

@@ -74,6 +74,7 @@ Platform and system
   diff.md             diff: a unified diff, read and shown
   remote.md           remote: a value read from a server
   ascii.md            ascii: the case of names
+  utf8.md             utf8: portable SIMD UTF-8 validation
   base.md             base: what every package stands on
   timefmt.md          timefmt: times as people read them
   instance.md         instance: one running copy
