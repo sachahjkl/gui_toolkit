@@ -28,6 +28,18 @@ Pen :: struct {
 	taper_end:   f32, // >= 0: the same at the end; 0: a round end
 	nib_angle:   f32, // degrees (Chisel): the nib's edge, counter-clockwise from +x as seen with y down; 30 rises to the right
 	min_width:   f32, // 0..1: a share of width under which the line never goes (before the tapers), so it never breaks
+	ink:         Ink, // how the ink lies on the paper (`lay`); all zero: solid opaque ink
+}
+
+// How a pen's ink lies on the paper, read by `lay`. Every field is 0..1, and every length is a share of Pen.width, so
+// `scaled` keeps the look. All zero: a solid opaque ink, the outline's.
+Ink :: struct {
+	opacity:  f32, // 0..1, 0 means 1: one layer's alpha; under 1 the ink is translucent and darkens where strokes cross
+	dwell:    f32, // 0..1: how much a fast hand lightens the ink (the time spent per length: slow turns and stops darken)
+	pool:     f32, // 0..1: blobs of ink where the nib rests (each end, long stops); 0: none
+	skip:     f32, // 0..1: a ballpoint's starvation: faint passages, rare gaps, a ball that keeps one edge
+	grain:    f32, // 0..1: the paper's grain: rough edges and streaks along the stroke
+	pressure: f32, // 0..1: how much a light stylus pressure lightens the ink (no effect without pressure)
 }
 
 // The ink of one stroke: its two edges, the same count, from the start to the end. `left` is on the side of
@@ -41,14 +53,27 @@ Outline :: struct {
 // The points of a round cap strictly between its two edge points (a half circle): `polygon` adds them per round end.
 CAP_POINTS :: 7
 
-// A ballpoint: a thin round line, a little thinner when fast, round ends.
-PEN_BALLPOINT :: Pen{nib = .Round, width = 2, thinning = 0.35, smoothing = 0.5, min_width = 0.35}
-// A fountain pen: a broad nib at 30°, some speed thinning, tapered ends.
-PEN_FOUNTAIN :: Pen{nib = .Chisel, width = 3, thinning = 0.3, smoothing = 0.5, taper_start = 3, taper_end = 8, nib_angle = 30, min_width = 0.08}
-// A felt pen: a round line of almost constant width, round ends.
-PEN_FELT :: Pen{nib = .Round, width = 3, thinning = 0.1, smoothing = 0.5, min_width = 0.6}
-// A brush: strong speed thinning, long soft tapers.
-PEN_BRUSH :: Pen{nib = .Brush, width = 6, thinning = 0.8, smoothing = 0.6, taper_start = 12, taper_end = 24, min_width = 0.05}
+// A ballpoint: a thin round line, a little thinner when fast, round ends; its ink skips where the hand is fast.
+PEN_BALLPOINT :: Pen {
+	nib = .Round, width = 2, thinning = 0.35, smoothing = 0.5, min_width = 0.35,
+	ink = {skip = 0.8, dwell = 0.2, pressure = 0.4},
+}
+// A fountain pen: a broad nib at 30°, some speed thinning, tapered ends; a translucent ink that pools where the nib
+// rests.
+PEN_FOUNTAIN :: Pen {
+	nib = .Chisel, width = 3, thinning = 0.3, smoothing = 0.5, taper_start = 3, taper_end = 8, nib_angle = 30, min_width = 0.08,
+	ink = {opacity = 0.84, pool = 0.5, dwell = 0.3, pressure = 0.3},
+}
+// A felt pen: a round line of almost constant width, round ends; a translucent ink with a little grain.
+PEN_FELT :: Pen {
+	nib = .Round, width = 3, thinning = 0.1, smoothing = 0.5, min_width = 0.6,
+	ink = {opacity = 0.85, grain = 0.5, dwell = 0.2},
+}
+// A brush: strong speed thinning, long soft tapers; a strong grain, pools, and a hand's pace in its ink.
+PEN_BRUSH :: Pen {
+	nib = .Brush, width = 6, thinning = 0.8, smoothing = 0.6, taper_start = 12, taper_end = 24, min_width = 0.05,
+	ink = {opacity = 0.88, grain = 0.7, pool = 0.3, dwell = 0.4, pressure = 0.5},
+}
 
 // The speed, in widths per millisecond, at which a Round nib with thinning 1 draws half its width. A hand signs at
 // about 0.1 to 1 px/ms; with a width of 2 to 3 px, this puts slow strokes near full width and flourishes well under.
@@ -79,16 +104,28 @@ Point :: struct {
 // The ink of a stroke. No sample gives an empty outline; one sample (or samples all at one place) gives a dot.
 // The result is allocated with `allocator` (and so are the intermediate arrays, freed before the return).
 outline :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> Outline {
-	if len(samples) == 0 || !(pen.width > 0) { return {} }
+	o, pts := trace(samples, pen, allocator)
+	delete(pts, allocator)
+	return o
+}
+
+// The outline and, for each of its points, what the ink model reads there: the arc length, the speed (< 0 unknown)
+// and the pressure (0 unknown). Both are allocated with `allocator`.
+@(private)
+trace :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> (Outline, []Point) {
+	if len(samples) == 0 || !(pen.width > 0) { return {}, nil }
 	width := pen.width
 	thinning := clamp(pen.thinning, 0, 1)
 	min_width := clamp(pen.min_width, 0, 1) * width
 	has_pressure := false
 	for s in samples { if s.pressure > 0 { has_pressure = true; break } }
 
+	// Measured even under a stylus: the width follows the pressure, but the ink's dwell still follows the speed.
 	speeds := make([]f32, len(samples), allocator)
 	defer delete(speeds, allocator)
-	timed := !has_pressure && sample_speeds(samples, speeds, allocator)
+	measured := sample_speeds(samples, speeds, allocator)
+	if !measured { for &v in speeds { v = -1 } }
+	timed := !has_pressure && measured
 
 	// Points closer than this are one: a zero-length segment has no direction.
 	eps := max(width * 1e-3, 1e-6)
@@ -109,14 +146,15 @@ outline :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> 
 
 	if len(line) < 2 {
 		f: f32 = has_pressure ? pressure_factor(line[0].pressure, thinning) : 1
-		return dot(line[0].at, max(width * f, min_width), allocator)
+		one := make([]Point, 1, allocator)
+		one[0] = line[0]
+		return dot(line[0].at, max(width * f, min_width), allocator), one
 	}
 
 	// Resampled along a spline at a fixed spacing: the width and the edges then change by even steps whatever the
 	// pointer's rate, and a curve drawn with few samples stays round.
 	spacing := width * 0.3
 	pts := make([dynamic]Point, 0, 64, allocator)
-	defer delete(pts)
 	resample(line[:], spacing, &pts)
 	n := len(pts)
 	total := pts[n - 1].s
@@ -175,7 +213,7 @@ outline :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> 
 		o.left[i] = p.at + side
 		o.right[i] = p.at - side
 	}
-	return o
+	return o, pts[:]
 }
 
 // Frees what `outline` allocated; give the same allocator.
