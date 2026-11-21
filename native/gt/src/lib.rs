@@ -11,3 +11,5 @@ pub extern crate gt_a11y;
 pub extern crate gt_webp;
 #[cfg(feature = "pdf")]
 pub extern crate gt_pdf;
+#[cfg(feature = "filesearch")]
+pub extern crate gt_filesearch;

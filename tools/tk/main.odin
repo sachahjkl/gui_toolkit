@@ -1,7 +1,7 @@
 // tk: the toolkit's tools that build, fetch and draw what the code needs, one program with a command each.
 //   odin run tools/tk -- <command> [flags]        (or odin build tools/tk -out:build/tk.exe once, then build/tk <command>)
 //
-//   build_native [-features:text,mermaid,a11y,webp,pdf] [-force]
+//   build_native [-features:text,mermaid,a11y,webp,pdf,filesearch] [-force]
 //                                             the native library (native/gt, cargo) with the parts asked (none named: all of this
 //                                             system's) -> build/native/gt_native.lib (libgt_native.a); nothing to do when
 //                                             build/native/STAMP is the hash of its crates' sources, their Cargo.lock, the parts
@@ -91,7 +91,7 @@ import "core:strings"
 import toolbox "../../src/toolbox"
 
 COMMANDS := []toolbox.Command {
-	{name = "build_native", usage = "[-features:text,mermaid,a11y,webp,pdf] [-force]: the native library (native/gt) with the parts asked (none named: all of this system's) -> build/native, unless its stamp says it is up to date", checked = true, flags = {"features:", "force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build_native(args)) }},
+	{name = "build_native", usage = "[-features:text,mermaid,a11y,webp,pdf,filesearch] [-force]: the native library (native/gt) with the parts asked (none named: all of this system's) -> build/native, unless its stamp says it is up to date", checked = true, flags = {"features:", "force"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build_native(args)) }},
 	{name = "build_naga", usage = ": the WGSL to HLSL translator (tools/wgsl2hlsl) -> build/naga/wgsl2hlsl.exe, its Cargo.lock pinned", checked = true, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build_naga(args)) }},
 	{name = "fetch_emoji", usage = "[-dest:dir] [-unicode]: Noto Color Emoji COLR v1 and OFL.txt -> build/emoji; -unicode: Unicode's emoji files too", checked = true, flags = {"dest:", "unicode"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_fetch_emoji(args)) }},
 	{name = "fetch_wgpu", usage = "[-dest:dir] [-no-dxc] [-odin:exe]: wgpu-native as pinned (Windows: its DLL and DXC's; Linux: Odin's vendor library)", checked = true, flags = {"dest:", "no-dxc", "odin:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_fetch_wgpu(args)) }},
