@@ -48,19 +48,38 @@ const HEAD_MIN: f32 = 8.0;
 /// The ellipse's control distance, as a share of its radius (four Bézier arcs).
 const KAPPA: f32 = 0.552_284_8;
 
+/// How a translucent colour is laid over what is under it.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Blend {
+    Normal,
+    Multiply,
+}
+
 fn channel(v: u8) -> f32 {
     v as f32 / 255.0
 }
 
 impl Shape {
-    /// The alphas it needs a graphics state for (its fill's, its stroke's), those under 255.
-    pub fn alphas(&self) -> impl Iterator<Item = u8> + '_ {
-        [self.fill[3], self.stroke[3]].into_iter().filter(|a| *a > 0 && *a < 255)
+    /// The blending of its translucent colours: a pen's ink (Outline) is laid over what is under it as ink over ink,
+    /// so its stacked levels compose to the density gt:ink gives (multiplied, they came out darker); a highlighter's
+    /// colour multiplies, so the words under it stay readable.
+    pub fn blend(&self) -> Blend {
+        if self.kind == Kind::Outline {
+            Blend::Normal
+        } else {
+            Blend::Multiply
+        }
+    }
+
+    /// The graphics states it needs (its fill's alpha, its stroke's, those under 255, with its blending).
+    pub fn alphas(&self) -> impl Iterator<Item = (u8, Blend)> + '_ {
+        let blend = self.blend();
+        [self.fill[3], self.stroke[3]].into_iter().filter(|a| *a > 0 && *a < 255).map(move |a| (a, blend))
     }
 
     /// Draws the shape in `content`; `to_user` maps the page as its source shows it (points, y down) to the page's user
-    /// space; `state` names the graphics state of an alpha (an ExtGState with /ca, /CA and /BM /Multiply).
-    pub fn draw(&self, content: &mut Content, to_user: Affine, state: &dyn Fn(u8) -> String) {
+    /// space; `state` names the graphics state of an alpha and a blending (an ExtGState with /ca, /CA and /BM).
+    pub fn draw(&self, content: &mut Content, to_user: Affine, state: &dyn Fn(u8, Blend) -> String) {
         if self.points.is_empty() || (self.stroke[3] == 0 && self.fill[3] == 0) {
             return;
         }
@@ -80,11 +99,11 @@ impl Shape {
         content.restore_state();
     }
 
-    fn paint(&self, content: &mut Content, state: &dyn Fn(u8) -> String, fill: bool) {
+    fn paint(&self, content: &mut Content, state: &dyn Fn(u8, Blend) -> String, fill: bool) {
         let colour = if fill { self.fill } else { self.stroke };
         content.save_state();
         if colour[3] < 255 {
-            let name = state(colour[3]);
+            let name = state(colour[3], self.blend());
             content.set_parameters(Name(name.as_bytes()));
         }
         if fill {

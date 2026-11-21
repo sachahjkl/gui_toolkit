@@ -42,8 +42,8 @@ for l in ls {
 
 Draw each stroke as its own fills, the levels in order: two strokes in one path would merge and not darken where they
 cross. The levels are stacked (each holds the ones above it), their alphas chosen for source over, as
-`draw.path_fill` lays them. A PDF that lays an alpha under 1 with multiply blending gets a translucent ink about a
-fifth darker; an opaque ink's top level has alpha 1 and stays exact.
+`draw.path_fill` lays them. gt:pdf lays an Outline's alpha the same way (normal blending), so a PDF's ink is the
+program's; a renderer that multiplies would make a translucent ink about a fifth darker.
 
 ## Types
 

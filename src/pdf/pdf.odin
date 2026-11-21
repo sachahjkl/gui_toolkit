@@ -110,7 +110,8 @@ Shape_Kind :: enum u8 { Rect, Ellipse, Line, Arrow, Ink, Outline }
 // two corners (Rect, Ellipse: the box it fills), two ends (Line; Arrow: from, then to, where its head is), the free
 // line's points (Ink), or closed outlines filled with the non-zero rule (Outline: a pen's ink as gt:ink gives it, a
 // point whose x is NaN starts the next outline). `stroke` and `fill`: alpha 0 for none; a colour less than opaque is
-// laid over the page by multiplication, as a highlighter's ink (the words under it stay readable). `fill` is for Rect,
+// laid over the page by multiplication, as a highlighter's ink (the words under it stay readable), except an
+// Outline's, laid normally (gt:ink's levels are computed for it). `fill` is for Rect,
 // Ellipse and Outline. `width`: the stroke's, in points. Shapes are drawn under the page's stamps.
 Shape :: struct {
 	kind:   Shape_Kind,

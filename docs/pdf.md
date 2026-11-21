@@ -98,7 +98,8 @@ page.shapes = {frame, mark, arrow, pen}
 - `Outline` fills closed contours with its `fill`: a pen's ink from `gt:ink` (`ink.polygon`), its width changing along
   the stroke. A point `{NaN, NaN}` starts the next contour.
 - Points are in points, in the page as its source shows it (before `turns`), y down, as a stamp's `at`.
-- `stroke` and `fill`: alpha 0 for none. A colour less than opaque multiplies with the page, as a highlighter.
+- `stroke` and `fill`: alpha 0 for none. A colour less than opaque multiplies with the page, as a highlighter;
+  an `Outline`'s is laid normally, as `gt:ink`'s levels expect.
 - The shapes are drawn under the stamps.
 
 ## Threads

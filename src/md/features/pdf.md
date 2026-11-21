@@ -97,6 +97,11 @@ A colour less than opaque is laid over the page by multiplication (`/BM /Multipl
 a highlighter. Over black it stays black, over white it is its colour, so the words under it stay readable; an
 ordinary blend would grey them. One graphics state per alpha used, named `GtAlpha<alpha>`.
 
+A pen's ink (an Outline) is the exception: it is laid normally (`/BM /Normal`, `GtInk<alpha>`). gt:ink draws a
+stroke as stacked levels whose alphas are computed for source over; multiplied, the levels came out a fifth darker,
+and the PDF differed from the program's own drawing of the same ink. A translucent ink over printed words covers
+them a little, as real ink does.
+
 An outline is a pen's ink drawn as its shape, not as a stroke: closed contours filled with the non-zero rule, as
 gt:ink computes them from the pointer's samples (its width changes with speed or pressure, its ends taper). A stroke
 of PDF has one width, so it cannot draw a nib. A NaN point starts the next contour, so a signature's strokes are one
