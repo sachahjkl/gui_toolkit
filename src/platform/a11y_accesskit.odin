@@ -34,6 +34,11 @@ when !A11Y_NATIVE_LINK {
 		"system:oleaut32.lib",
 		"system:uiautomationcore.lib",
 		"system:user32.lib",
+		"system:rpcrt4.lib",
+		"system:shell32.lib",
+		"system:winhttp.lib",
+		"system:crypt32.lib",
+		"system:secur32.lib",
 	}
 }
 
