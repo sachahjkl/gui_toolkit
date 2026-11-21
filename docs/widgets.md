@@ -474,8 +474,36 @@ ui.text_edit("###notes", &app.notes, {placeholder = "Notes", wrap = true, auto_h
 | `tooltip_beside(at)` | a tooltip to the right of the pointer (to its left with no room), for a list's rows; `at`: beside that box instead, its middle, for a row the keyboard reached or a rail's mark the card must not cover. `if ui.tooltip_beside(sig.box.rect) { ... }` |
 | `focus_by_keys(key)` / `keyboard_focused(sig)` | a list's own Up and Down: the focus moves to `key` as from the keyboard (its ring shows, its scroll boxes bring it into view by its last layout); `keyboard_focused`: the box has the focus and the keyboard put it there, so what a hover shows (a tooltip) shows then too |
 | `morph_label(text)` | a label whose text changes without a blink (a count, a state, an address another source replaces): what stays the same stays still, the rest flips through glyphs of its kind and settles left to right in `MORPH_MS`; its width is the new text's at once; with the animations off, the new text at once |
+| `morph_text(from, to, elapsed, duration, allocator) -> string` | what a change from `from` to `to` shows `elapsed` ms into `duration`: always as many characters as `to`; the characters both share (their longest common subsequence; by index above 128 runes either side) at once, wherever they moved; the others flip through glyphs of their kind and settle left to right, the last at `duration`. `morph_label` and a swap's words use it; a program's own drawing can |
 | `stat_row(id, label, value, Stat_Row_Options{...})` | a label and its value on one line: the label weak and filling, the value right-aligned in monospace (a measure, a legend with `swatch`, a `tone`); with `key_width`, a column of labels and the values after them, left-aligned (a list of properties). `width` (its parent's by default), `height`, `label_size`, `proportional`, `value_color`, `selectable` (content: copied), `inset` (ems at its sides) |
 | `pill(id, text, icon, color, {mono})` | a short label of a colour, as wide as its words, rounded at its ends: a light wash of the colour, a line of it around, an icon (Lucide's, "": none) and the words in the colour lightened; a version, a kind of change, a state. A tile (`tile`) is a block of full colour; a pill is a mark on the page |
+| `progress(id, t, indeterminate, lively)` | a bar of `t` (0..1), its size from `next` or the style; `indeterminate`: a sweep, for a work of no known length. `lively`: drawn as `progress_fill` draws it, for what the user watches come (a download) |
+| `progress_fill(b, t, from)` | box `b` shows a fill of `t` under its words, the green of a success button lit at its top in a darker border; the words change ink where the green is under them. The share reaches a new `t` in 600 ms (`tween`, `.Out`). `from` (0..1): where it starts the first time; -1: at `t`. Its well is the box's background (`.Custom_Ground`): in a swap, the shape that morphs |
+
+## Transitions
+
+A value or a place that changes from one state to another in a set time (design: [src/md/features/transitions.md](../src/md/features/transitions.md)).
+With the animations off, both take the new state at once.
+
+| Procedure | What it is |
+|---|---|
+| `tween(key, target, ms, ease, initial) -> f32` | the value goes from where it is to `target` in `ms` along `ease` (`.Linear`; cubic `.Out` and `.In_Out`; `.Sine`, gentler in its middle; `.Emphasized`, cubic-bezier(0.2, 0, 0, 1), a quick start and a long soft landing). A new target sets off from the value shown. The first call shows `target` (or `initial`). While it moves it asks for frames. `anim` eases without an end (what follows the pointer); `tween` has one |
+| `ease_at(ease, p)` | where a curve is at `p` (0..1) |
+| `swap(id, face, {ms, axis, align}) -> bool` | `if ui.swap(...) { ... }`: a place sized by what is built in it, whose content changes face. Its face is the first box built in it: that box's shape (rect, corners, colour, border) and its content (its words, its children). When `face` changes, over `SWAP_MS` (600, `.Emphasized`): its size glides from the last face's to the new one's and the face is drawn at that size (its round ends, border and relief right at every frame, its words and children at their natural places); one shape carries the old face's colour to the new one's; the old content (a picture of its last frame) fades out as the new face fades in; the main words (the widest text of each face) roll character by character, as an odometer: the old ones rise out of their slots, the new ones come up into theirs, left to right. What is in it keeps its own size, held at the place's start (`align`: `.Start`, `.Center`, `.End`): never squeezed or wrapped. During the change the contents are clipped to the morphing shape: words wider than it are revealed as it grows. Only the face built now takes input |
+| `box_bare(b) -> bool` | while drawing: `b` is a swap's face drawn as content only. A custom draw that paints its own ground (flag `.Custom_Ground`, its ground given as its background) skips it then |
+
+```odin
+// "Install" morphs into the download's bar, which shows its share from its first frame
+if ui.swap("###update", downloading ? "bar" : "button") {
+	if downloading {
+		ui.next({width = ui.text_size(em * 0.6), height = ui.fill()})
+		bar := ui.label("Downloading…###bar").box
+		ui.progress_fill(bar, share)
+	} else if ui.button("install", "Install", "", {intent = .Success}).clicked {
+		start_download()
+	}
+}
+```
 
 ## Steppers
 

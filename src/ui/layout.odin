@@ -131,6 +131,8 @@ layout_downward :: proc(b: ^Box, axis: Axis) {
 			}
 			v += content_pad(b, axis) + stack_gaps(b, axis)
 		}
+		// (a swap whose face changed shows a size on its way from the last face's to this one: its neighbours move with it)
+		if b.swap != nil { v = swap_glide(b.swap, axis, v) }
 		b.size[ai] = max(v, b.pref[axis].least)
 	}
 	// (a strip's view: its least is its choices' sizes of this layout, so it holds from the first layout it is in)
@@ -172,6 +174,9 @@ layout_least :: proc(b: ^Box) -> f32 {
 		v = math.ceil(2 * b.text_pad + word)
 	case p.kind == .Pixels || p.kind == .Text:
 		v = box_scrolls(b, .X) ? 0 : b.size.x * p.strictness
+	case b.swap != nil:
+		// (what is in it is never shrunk to it: it needs the size it shows, gliding or not)
+		v = b.size.x * p.strictness
 	case b.first == nil, .Allow_Overflow_X in b.flags, .Fits_Width in b.flags, box_scrolls(b, .X):
 	case:
 		for c := b.first; c != nil; c = c.next {
@@ -208,7 +213,8 @@ wrap_height :: proc(b: ^Box) -> f32 {
 @(private)
 layout_violations :: proc(b: ^Box, axis: Axis) {
 	ai := int(axis)
-	overflow := axis == .X ? .Allow_Overflow_X in b.flags : .Allow_Overflow_Y in b.flags
+	// (a swap smaller than its face for a few frames lets it stand past its edges: a face squeezed would cut or wrap its words)
+	overflow := b.swap != nil || (axis == .X ? .Allow_Overflow_X in b.flags : .Allow_Overflow_Y in b.flags)
 	// (a percentage is of the box's size now, the violations above it done: the upward pass gave it the box's size
 	// before an ancestor shrank, and a box that lets its children overflow kept them that large)
 	if overflow && b.pref[axis].kind != .Children_Sum {
@@ -421,7 +427,7 @@ wrap_room :: proc(b: ^Box) -> f32 {
 		if b.pref[.X].kind != .Text { return 0 }
 		return max(0, b.size.x - b.least_x)
 	}
-	if b.first == nil || .Allow_Overflow_X in b.flags || .View_Scroll_X in b.flags { return 0 }
+	if b.first == nil || b.swap != nil || .Allow_Overflow_X in b.flags || .View_Scroll_X in b.flags { return 0 }
 	inner := b.size.x - content_pad(b, .X)
 	room: f32
 	switch {
@@ -487,6 +493,20 @@ layout_positions :: proc(b: ^Box, axis: Axis) {
 		return
 	}
 	gap := b.gap[ai]
+	if b.swap != nil {
+		// (what is in a swap keeps its own size, held at its start, centre or end (Swap_Options.align): it stands past the
+		// swap while the swap is smaller)
+		b.swap.shown[ai] = b.size[ai]
+		if axis == b.layout_axis {
+			total := stack_gaps(b, axis)
+			for c := b.first; c != nil; c = c.next { if !is_floating(c, axis) { total += c.size[ai] } }
+			free_room := b.size[ai] - lead - trail - total
+			#partial switch b.swap.align {
+			case .Center: cursor += free_room * 0.5
+			case .End:    cursor += free_room
+			}
+		}
+	}
 	placed := false
 	for c := b.first; c != nil; c = c.next {
 		if is_floating(c, axis) {
@@ -513,6 +533,15 @@ layout_positions :: proc(b: ^Box, axis: Axis) {
 	// (the room at the end counts: the content's end scrolls clear of the bar across it)
 	b.view_bounds[ai] = extent + trail
 	for c := b.first; c != nil; c = c.next { layout_positions(c, axis) }
+	// (a running swap draws its face at its own glided size: the face's rounded ends, border and relief right at every
+	// frame. Its rect alone, after what is in it was placed at its natural size: laid out at the glided size, its words
+	// wrapped and its spacers took the room. A face with others beside it keeps its rect)
+	if b.swap != nil && b.swap.running && axis == b.layout_axis {
+		if face := b.first; face != nil && face.next == nil && !is_floating(face, axis) {
+			face.rect.min[ai] = math.round(b.rect.min[ai] + lead)
+			face.rect.max[ai] = math.round(b.rect.max[ai] - trail)
+		}
+	}
 }
 
 // .Wrap boxes. X pass: place items left to right and start a new line when the next one does not fit.

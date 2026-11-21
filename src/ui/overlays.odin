@@ -526,13 +526,13 @@ modal_begin :: proc(s: ^State, id: string, open: ^bool, at, wh: Vec2, sized, qui
 		// by this frame: the build that shows it draws it, not the next one)
 		if a, ok := s.anims[fade_key]; !ok || a.to != 1 {
 			_ = tween(fade_key, 0, 0)
-			_ = tween(fade_key, 1, fade_ms)
+			_ = tween(fade_key, 1, fade_ms, .In_Out)
 		}
-		shown = tween(fade_key, 1, fade_ms, step_max_ms = MODAL_FADE_STEP_MAX_MS)
+		shown = tween(fade_key, 1, fade_ms, .In_Out, step_max_ms = MODAL_FADE_STEP_MAX_MS)
 	} else {
 		// (from nothing while unseen: the fade starts here each frame, and moves from the first frame that shows it)
 		_ = tween(fade_key, 0, 0)
-		_ = tween(fade_key, 1, fade_ms, step_max_ms = MODAL_FADE_STEP_MAX_MS)
+		_ = tween(fade_key, 1, fade_ms, .In_Out, step_max_ms = MODAL_FADE_STEP_MAX_MS)
 		s.anim_busy = true   // (the next frame at once)
 	}
 	push_parent(s.root)

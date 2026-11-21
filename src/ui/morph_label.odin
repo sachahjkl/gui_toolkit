@@ -1,8 +1,8 @@
 package ui
 
 // A label whose text changes without a blink (a count, a state, an address that another source replaces: opencode native's
-// server switch): the characters that stay the same stay still; the others flip through a few glyphs of their kind (a digit
-// through digits, a letter through letters) and settle on the new text from left to right, in MORPH_MS. Its width is the
+// server switch): the characters that stay the same stay still; the others flip through a few glyphs of their kind (a
+// digit through digits, a letter through letters) and settle on the new text from left to right, in MORPH_MS. Its width is the
 // new text's at once: the layout around it never jumps. With the animations off, the new text shows at once.
 //
 //	ui.morph_label(fmt.tprintf("%d running · %d sessions###status", running, total))
@@ -45,7 +45,7 @@ morph_label :: proc(text: string) -> Signal {
 	m.seen = s.build_index
 	elapsed := s.time_ms - m.began
 	if m.from != "" && s.anim_rate > 0 && elapsed < MORPH_MS {
-		b.text = morph_text(m.from, m.to, elapsed, frame_allocator())
+		b.text = morph_text(m.from, m.to, elapsed, MORPH_MS, frame_allocator())
 		s.anim_busy = true
 	} else if m.from != "" {
 		delete(m.from, s.morphs.allocator)
@@ -54,18 +54,24 @@ morph_label :: proc(text: string) -> Signal {
 	return signal(b)
 }
 
-// What a change from `from` to `to` shows `elapsed` ms after it began: each character that differs settles on its new
-// glyph at its time along the text (left first), and until then flips through glyphs of its kind.
-@(private)
-morph_text :: proc(from, to: string, elapsed: f64, allocator := context.allocator) -> string {
+// Above this many runes on either side, morph_text pairs characters by index: the table of their longest common
+// subsequence grows as the product of the two lengths, and is made at every frame of a change.
+@(private = "file") MORPH_LCS_MAX_RUNES :: 128
+
+// What a change from `from` to `to` shows `elapsed` ms after it began, of `duration` ms: always as many characters as
+// `to`. The characters `to` shares with `from` (their longest common subsequence: "0.42.0" in "Install 0.42.0" and
+// "Downloading 0.42.0…") show at once, wherever they moved; each other one settles on its glyph at its time along the
+// text (left first, the last at `duration`), and until then flips through glyphs of its kind. morph_label uses it; a
+// program's own drawing can.
+morph_text :: proc(from, to: string, elapsed, duration: f64, allocator := context.allocator) -> string {
 	a := utf8.string_to_runes(from, context.temp_allocator)
 	z := utf8.string_to_runes(to, context.temp_allocator)
+	src := morph_pairs(a, z)
 	b := strings.builder_make(allocator)
 	n := len(z)
 	for r, i in z {
-		old := i < len(a) ? a[i] : ' '
-		settle := MORPH_MS * f64(i + 1) / f64(max(n, 1))
-		if r == old || elapsed >= settle || r == ' ' {
+		settle := duration * f64(i + 1) / f64(max(n, 1))
+		if src[i] >= 0 || elapsed >= settle || r == ' ' {
 			strings.write_rune(&b, r)
 			continue
 		}
@@ -75,6 +81,36 @@ morph_text :: proc(from, to: string, elapsed: f64, allocator := context.allocato
 		strings.write_byte(&b, set[(i * 7 + flip * 13 + int(r)) % len(set)])
 	}
 	return strings.to_string(b)
+}
+
+// For each character of `z`, the index of the character of `a` it is (their longest common subsequence: a table of
+// its lengths, read back from its start), or -1 for one `a` does not give; above MORPH_LCS_MAX_RUNES either side, the
+// same character at the same index. morph_text keeps the paired characters; a swap's words slide them to their new
+// place. Temp memory.
+@(private)
+morph_pairs :: proc(a, z: []rune) -> []int {
+	src := make([]int, len(z), context.temp_allocator)
+	for &x in src { x = -1 }
+	if len(a) > MORPH_LCS_MAX_RUNES || len(z) > MORPH_LCS_MAX_RUNES {
+		for r, i in z { if i < len(a) && a[i] == r { src[i] = i } }
+		return src
+	}
+	// (lcs[i][j]: the length of the longest common subsequence of a[i:] and z[j:])
+	w := len(z) + 1
+	lcs := make([]u16, (len(a) + 1) * w, context.temp_allocator)
+	for i := len(a) - 1; i >= 0; i -= 1 {
+		for j := len(z) - 1; j >= 0; j -= 1 {
+			lcs[i * w + j] = a[i] == z[j] ? lcs[(i + 1) * w + j + 1] + 1 : max(lcs[(i + 1) * w + j], lcs[i * w + j + 1])
+		}
+	}
+	for i, j := 0, 0; i < len(a) && j < len(z); {
+		switch {
+		case a[i] == z[j]:                               src[j] = i; i += 1; j += 1
+		case lcs[(i + 1) * w + j] >= lcs[i * w + j + 1]: i += 1
+		case:                                            j += 1
+		}
+	}
+	return src
 }
 
 // The labels this build did not build.

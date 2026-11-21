@@ -577,6 +577,145 @@ the_version_shows :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Sample 1.2.3") != nil)
 }
 
+// A download under way: the badge is the button it was, filled to its share, its words only the version; the Updates
+// line says the sizes and has its bar. With UPDATE_SHOTS=1, a picture of both in the session's folder.
+@(test)
+a_download_shows_how_far_it_is :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	// (an updater's state set by hand, no thread: the download held at 12 of 28 MB)
+	u := new(update.Updater)
+	defer free(u)
+	u.phase = .Downloading
+	u.offer = {version = "0.42.0", size = 28 << 20}
+	u.received = 12 << 20
+	app.updater = u
+	app.prefs = config.prefs_make()
+	config.register(&app.prefs, DEFS[:])
+	Look :: struct { name: string, palette: string, finish: ui.Finish, light: bool }
+	looks := [?]Look{{"machined", "Midnight", .Machined, false}, {"flat", "Midnight", .Flat, false}, {"light", "Midnight", .Machined, true}}
+	for look in looks {
+	p := ui.palette_of(look.palette, look.light)
+	p.finish = look.finish
+	prefs_page.focus_search(&app.page)
+	s := session.start(t, {size = {900, 420}, user = &app, palette = p, build = proc(s: ^session.Session) {
+		app := (^App)(s.user)
+		em := ui.font_size()
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if ui.column() {
+			ui.next({width = ui.fill(), height = ui.px(em * 2.2)})
+			if ui.row(.Center) {
+				ui.space(ui.SPACE_3)
+				ui.next({height = ui.px(em * 1.75)})
+				_ = prefs_page.update_badge(app.updater, nil, nil)
+				// (beside it, the button it was: its green is the fill's)
+				ui.space(ui.CONTROL_GAP)
+				ui.next({height = ui.px(em * 1.75), font_size = em * 0.88})
+				ui.button("install_beside", "Install 0.42.0", "", {intent = .Success})
+			}
+			ui.next({width = ui.fill(), height = ui.fill()})
+			prefs_page.build(&app.page, &app.prefs, {user = app, version = "Sample 1.2.3", pages = PAGES[:], updater = app.updater, update_pref = "net.cache"})
+		}
+	}})
+	session.type_text(s, "cache")
+	session.frames(s, 30)   // (the fill's animation to its share)
+	badge := session.find(s, "update_badge")
+	testing.expect(t, badge != nil, "the badge")
+	testing.expect(t, session.find_text(s, "Downloading 0.42.0…") != nil, "its words: the version, not the share")
+	testing.expect(t, session.find(s, "update_progress") != nil, "the Updates line's bar")
+	words := update.status_words(update.status(u))
+	testing.expect(t, strings.contains(words, "12") && strings.contains(words, "28"), words)
+	testing.expect(t, session.find_text(s, words) != nil, "the sizes said on the Updates line")
+	if v, _ := os.lookup_env("UPDATE_SHOTS", context.temp_allocator); v == "1" { session.save_png(s, fmt.tprintf("download_%s.png", look.name)) }
+	// (the next look's page starts empty: its search typed again)
+	prefs_page.destroy(&app.page)
+	app.page = {}
+	}
+}
+
+// The badge passes from one face to the next in one place: the button "Install" morphs into the bar, which starts empty
+// and fills as the program comes; the bar morphs into "Restart". Its width glides between the faces' (halfway through the run, between the
+// two), and ends at the new face's; each face is drawn at the place's size while it glides, its words morphing by
+// character. With UPDATE_SHOTS=1, every frame in the session's folder.
+@(test)
+the_badge_passes_from_one_face_to_the_next :: proc(t: ^testing.T) {
+	u := new(update.Updater)
+	defer free(u)
+	u.phase = .Available
+	u.offer = {version = "0.42.0", size = 28 << 20}
+	p := ui.palette_of("Midnight")
+	p.finish = .Machined
+	s := session.start(t, {size = {420, 60}, user = u, palette = p, animations = true, build = proc(s: ^session.Session) {
+		em := ui.font_size()
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if ui.row(.Center) {
+			ui.space(ui.SPACE_3)
+			ui.next({height = ui.px(em * 1.75)})
+			_ = prefs_page.update_badge((^update.Updater)(s.user), nil, nil)
+		}
+	}})
+	// (with UPDATE_SHOTS=1, every frame is kept: a film of the run, frame_0000.png on)
+	Film :: struct { on: bool, n: int }
+	film := Film{}
+	if v, _ := os.lookup_env("UPDATE_SHOTS", context.temp_allocator); v == "1" { film.on = true }
+	run :: proc(s: ^session.Session, film: ^Film, frames: int) {
+		for _ in 0 ..< frames {
+			session.frame(s)
+			if film.on { session.save_png(s, fmt.tprintf("frame_%04d.png", film.n)) }
+			film.n += 1
+		}
+	}
+	width :: proc(s: ^session.Session) -> f32 {
+		b := session.find(s, "update_badge_slot")
+		return b == nil ? 0 : b.rect.max.x - b.rect.min.x
+	}
+	run(s, &film, 40)
+	install := width(s)
+	// the download starts: the bar, at nothing yet. The frame of the change shows the size it had (its run starts there)
+	u.phase = .Downloading
+	run(s, &film, 1)
+	testing.expect_value(t, width(s), install)
+	// the bar starts empty: its fill is the share, 0 (one that started full said "done" before anything came)
+	fill :: proc(s: ^session.Session) -> f32 {
+		b := session.find(s, "update_badge")
+		if b == nil { return -1 }
+		a, ok := s.state.anims[ui.key_from_string(b.key, "lively")]
+		return ok ? a.value : -1
+	}
+	testing.expectf(t, fill(s) >= 0 && fill(s) <= 0.01, "the bar's fill at its first frame: %v", fill(s))
+	// the program comes in two and a half seconds from the frame after the click, as a real download: the morph and the
+	// first bytes overlap, and the button comes the frame the program is in place. (A film that waited at 0 after the
+	// morph and at 100 % before the button showed steps, one thing then another, that a program never shows)
+	DOWNLOAD_FRAMES :: 150
+	got := 0
+	come :: proc(u: ^update.Updater, got: ^int) {
+		got^ += 1
+		u.received = u.offer.size * i64(min(got^, DOWNLOAD_FRAMES)) / DOWNLOAD_FRAMES
+	}
+	// (halfway through its run)
+	half_run := int(f64(ui.SWAP_MS) / 2 / session.FRAME_MS)
+	for _ in 0 ..< half_run { come(u, &got); run(s, &film, 1) }
+	testing.expectf(t, fill(s) > 0.01, "the bar fills during the morph, not after it: %v", fill(s))
+	midway := width(s)
+	// (the bar is drawn at the place's size while it glides: its round ends and its rim right at every frame)
+	if b, slot := session.find(s, "update_badge"), session.find(s, "update_badge_slot"); b != nil && slot != nil {
+		testing.expect_value(t, b.rect, slot.rect)
+	}
+	for _ in 0 ..< 30 { come(u, &got); run(s, &film, 1) }
+	bar := width(s)
+	testing.expectf(t, bar != install, "the bar's width is its own: %v", bar)
+	testing.expectf(t, min(install, bar) < midway && midway < max(install, bar), "halfway, between the two: %v, %v, %v", install, midway, bar)
+	if b := session.find(s, "update_badge"); b != nil { testing.expect_value(t, b.rect.max.x - b.rect.min.x, bar) }
+	for got < DOWNLOAD_FRAMES { come(u, &got); run(s, &film, 1) }
+	// in place: the full bar becomes the button, the frame it is there
+	u.phase = .Installed
+	u.version = "0.42.0"
+	run(s, &film, 60)
+	restart := width(s)
+	testing.expectf(t, restart > bar, "Restart's words are the longest: %v after %v", restart, bar)
+	testing.expect(t, session.find_text(s, "Restart to update to 0.42.0") != nil, "the button")
+}
+
 // The badge of the status bar shows nothing when the updater has nothing to do.
 @(test)
 no_badge_with_nothing_to_do :: proc(t: ^testing.T) {

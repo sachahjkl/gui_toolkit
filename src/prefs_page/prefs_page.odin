@@ -1195,6 +1195,11 @@ updater_under :: proc(o: Page_Options, em: f32) {
 		ui.next({width = ui.fill(), font_size = math.round(em * 0.86), text_pad = 0})
 		ui.paragraph(fmt.tprintf("%s###update_state", update.status_words(st)))
 	}
+	if st.phase == .Downloading {
+		ui.space(ui.LINE_GAP)
+		ui.next({width = ui.fill(), height = ui.px(ui.dense(em * 0.6))})
+		ui.progress("###update_progress", update.progress(st), lively = true)
+	}
 	if st.phase == .Managed { return }
 	ui.space(ui.LINE_GAP)
 	// (a width of its own: a row that takes the program's base width, text_size() of no text, is a few pixels wide,
@@ -1223,7 +1228,11 @@ updater_under :: proc(o: Page_Options, em: f32) {
 // (`restart`: the program starts again). It is the one place of a program's window that shows the phase: the program's
 // status line or toasts say only update.notice. Nothing when there is nothing to do; else its box, whose rect (the last
 // layout's) is the room it takes, for a bar that fits its other parts beside it. Its height is the caller's (`next`), its
-// width its words', never cut.
+// width its words'.
+//
+// One place, three faces, one passing into the next: the button "Install" becomes the bar, which fills from its share as
+// the program comes (the button's own green, ui.progress_fill); the bar becomes the button "Restart". The place is a
+// ui.swap: its width glides, the button's shape morphs into the bar's well and back, and the words cross.
 update_badge :: proc(u: ^update.Updater, restart: proc(user: rawptr), user: rawptr) -> ^ui.Box {
 	if u == nil { return nil }
 	em := ui.font_size()
@@ -1235,15 +1244,27 @@ update_badge :: proc(u: ^update.Updater, restart: proc(user: rawptr), user: rawp
 	case .Installed:   words, glyph = fmt.tprintf(i18n.tr("Restart to update to %s"), st.version), lucide.POWER
 	case:              return nil
 	}
-	if st.phase == .Downloading {
-		ui.next_merge({width = ui.text_size(em * 0.6), font_size = math.round(em * 0.88), text_align = .Center})
-		if ui.tags("weak") { return ui.label(fmt.tprintf("%s###update_badge", words)).box }
-		return nil
+	fs := math.round(em * 0.88)
+	face_name := st.phase == .Downloading ? "downloading" : st.phase == .Available ? "install" : "restart"
+	slot: ^ui.Box
+	if ui.swap("###update_badge_slot", face_name) {
+		slot = ui.parent_box()
+		if st.phase == .Downloading {
+			// (as wide as its words with the button's room around them: each face its own width. The share is the fill's:
+			// the words do not say it again. It shows the share from its first frame: a bar that started full said "done"
+			// before anything came)
+			ui.next({width = ui.text_size(em * 0.6), height = ui.fill(), radius = em * ui.shape_of(.Control), font_size = fs, text_align = .Center})
+			face := ui.label(fmt.tprintf("%s###update_badge", words)).box
+			ui.progress_fill(face, update.progress(st))
+		} else {
+			natural: f32
+			if ui.style({font_size = fs}) { natural = ui.button_width(words, glyph != "") }
+			ui.next({width = ui.px(natural), height = ui.fill(), font_size = fs})
+			sig := ui.button("update_badge", words, glyph, {icon_font = ui.lucide_icons(), intent = .Success})
+			if sig.clicked {
+				if st.phase == .Available { update.install_now(u) } else if restart != nil { restart(user) }
+			}
+		}
 	}
-	ui.next_merge({font_size = math.round(em * 0.88)})
-	sig := ui.button("update_badge", words, glyph, {icon_font = ui.lucide_icons(), intent = .Success})
-	if sig.clicked {
-		if st.phase == .Available { update.install_now(u) } else if restart != nil { restart(user) }
-	}
-	return sig.box
+	return slot
 }

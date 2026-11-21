@@ -49,6 +49,7 @@ init :: proc(s: ^State, fonts: ^font.State, theme: ^Theme) {
 	_ = virtual.arena_init_growing(&s.arena)
 	s.boxes = make(map[Key]^Box)
 	s.anims = make(map[Key]Animation)
+	s.swaps = make(map[Key]^Swap_Memory)
 	s.timers = make(map[Key]Timer)
 	s.tag_sets = make(map[Key][]string)
 	s.qr_codes = make(map[Key]Qr_Cached)
@@ -146,6 +147,7 @@ destroy :: proc(s: ^State) {
 	delete(s.lazy_columns)
 	qr_destroy(s)
 	morph_destroy(s)
+	swap_destroy(s)
 	delete(s.wheels)
 	delete(s.parts_fields)
 	licence_card_destroy(s)
@@ -431,6 +433,7 @@ end_build :: proc() {
 	clear(&dead)
 	for k, a in s.anims { if a.last_build + 1 < s.build_index { append(&dead, k) } }
 	for k in dead { delete_key(&s.anims, k) }
+	swap_trim(s)
 	// timers nobody asked about for a long while (their widget is gone), and scrollbars of scroll boxes that are gone
 	clear(&dead)
 	for k, t in s.timers { if t.last_build + TIMER_KEEP_BUILDS < s.build_index { append(&dead, k) } }
@@ -662,6 +665,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.hit_outset = 0
 	b.gap_step = 0
 	b.plate = nil
+	b.swap = nil
 	b.a11y = nil
 	if s.a11y.has_next {
 		b.a11y = new_clone(s.a11y.next, frame_allocator())
@@ -917,11 +921,63 @@ anim :: proc(key: Key, target: f32, rate: f32 = ANIM_RATE_DEFAULT, initial: Mayb
 	return a.value
 }
 
-// Goes to `target` in `ms`, leaving and arriving gently (a smoothstep): for what the eye follows from end to end, where anim's first
-// step, its largest, looks like a jolt. A new target sets off from where the value is, for the whole time. It asks for frames while it
-// moves; 0 ms, or animations off: at once. `step_max_ms` bounds what one frame adds to it: a short tween (a dialog's fade)
-// that a late frame would move by a third.
-tween :: proc(key: Key, target: f32, ms: f32, initial: Maybe(f32) = nil, step_max_ms: f32 = 0) -> f32 {
+// The curve a tween follows from its start (0) to its end (1): src/md/features/transitions.md.
+Ease :: enum u8 {
+	Linear,
+	Out,      // cubic: quick at first, a soft landing (what appears or grows)
+	In_Out,   // cubic: gentle at both ends (a place that moves from one rest to another)
+	// sine: gentle at both ends, its middle half as steep as In_Out's (a morph the eye follows whole: In_Out put most of a
+	// colour's change in a third of the run, and the person saw it as a jump)
+	Sine,
+	// cubic-bezier(0.2, 0, 0, 1), Material 3's emphasized: a quick start, a long soft landing (a swap's morph: the
+	// symmetric curves read as "too linear")
+	Emphasized,
+}
+
+// Where curve `e` is at `p` (0..1, clamped).
+ease_at :: proc(e: Ease, t: f32) -> f32 {
+	p := clamp(t, 0, 1)
+	switch e {
+	case .Linear: return p
+	case .Out:    q := 1 - p; return 1 - q * q * q
+	case .In_Out:
+		if p < 0.5 { return 4 * p * p * p }
+		q := -2 * p + 2
+		return 1 - q * q * q / 2
+	case .Sine:   return 0.5 - 0.5 * math.cos(p * math.PI)
+	case .Emphasized: return cubic_bezier(0.2, 0, 0, 1, p)
+	}
+	return p
+}
+
+// The bezier ease from (0,0) to (1,1) with control points (x1, y1), (x2, y2), as CSS's cubic-bezier(): the y of the
+// curve where its x is `p`. x(t) = p is solved for t by Newton's steps, and by bisection when a step leaves the bracket
+// or the slope is flat (x1 or x2 at 0 flattens it at an end).
+@(private)
+cubic_bezier :: proc(x1, y1, x2, y2, p: f32) -> f32 {
+	if p <= 0 { return 0 }
+	if p >= 1 { return 1 }
+	at :: proc(a1, a2, t: f64) -> f64 { u := 1 - t; return 3 * u * u * t * a1 + 3 * u * t * t * a2 + t * t * t }
+	slope :: proc(a1, a2, t: f64) -> f64 { u := 1 - t; return 3 * u * u * a1 + 6 * u * t * (a2 - a1) + 3 * t * t * (1 - a2) }
+	X1, X2, x := f64(x1), f64(x2), f64(p)
+	lo, hi, t := 0.0, 1.0, x
+	for _ in 0 ..< 32 {
+		e := at(X1, X2, t) - x
+		if abs(e) < 1e-7 { break }
+		if e > 0 { hi = t } else { lo = t }
+		d := slope(X1, X2, t)
+		n := t - e / d
+		t = abs(d) > 1e-6 && n > lo && n < hi ? n : (lo + hi) / 2
+	}
+	return f32(at(f64(y1), f64(y2), t))
+}
+
+// Goes to `target` in `ms` along `ease`: for a change with a beginning and an end, where anim's long tail arrives after the eye
+// saw the move end. A new target sets off from where the value is, for the whole time. The first call shows `target` (or
+// `initial`). It asks for frames while it moves; 0 ms, or animations off: at once. The frame that starts a run from rest moves
+// nothing: the time since the last frame is not part of it. `step_max_ms` bounds what one frame adds to it: a short tween (a dialog's
+// fade) that a late frame would move by a third.
+tween :: proc(key: Key, target: f32, ms: f32, ease: Ease = .Out, initial: Maybe(f32) = nil, step_max_ms: f32 = 0) -> f32 {
 	s := gs()
 	a, found := s.anims[key]
 	if !found {
@@ -931,14 +987,17 @@ tween :: proc(key: Key, target: f32, ms: f32, initial: Maybe(f32) = nil, step_ma
 	a.last_build = s.build_index
 	if s.anim_rate == 0 || ms <= 0 {
 		a.value, a.from, a.to = target, target, target
-	} else if target != a.to {
-		a.from, a.to, a.elapsed_s = a.value, target, 0   // (this frame is its start: the time since the last one is not part of it)
+	} else if target != a.to && a.value == a.to {
+		a.from, a.to, a.elapsed_s = a.value, target, 0   // (from rest, this frame is its start: the rest before it is not part of it)
 		s.anim_busy = true
-	} else if a.value != a.to {
+	} else if a.value != a.to || target != a.to {
+		// (turned during a run: a new run from where it is, and this frame moves it. A target that changes at every frame,
+		// a download's share, never moved when each frame was a start)
+		if target != a.to { a.from, a.to, a.elapsed_s = a.value, target, 0 }
 		// (`step_max_ms`: a late frame moves it by that much at most, not by its whole dt)
 		a.elapsed_s += step_max_ms > 0 ? min(s.dt, step_max_ms / 1000) : s.dt
 		p := min(a.elapsed_s * 1000 / ms, 1)
-		a.value = p >= 1 ? a.to : a.from + (a.to - a.from) * p * p * (3 - 2 * p)
+		a.value = p >= 1 ? a.to : a.from + (a.to - a.from) * ease_at(ease, p)
 		s.anim_busy = true
 	}
 	s.anims[key] = a

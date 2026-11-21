@@ -76,6 +76,9 @@ what a check finds is downloaded and put in place at once. The phases:
 interface's thread and reads `status` there. `Status.serial` grows at each change, so a program says each result once;
 `Status.asked` says the result answers `check_now` or `install_now`, which a program says even when it is "up to date";
 `Status.install` says the result is an install's, not a check's (`result` is then the reason of a failure).
+While `Downloading`, `Status.received` and `Status.size` say how far it is (the size is the signed manifest's, always
+known), and `progress(st)` gives the share, 0..1. The program is told at each whole percent, a hundred times at most;
+a new download starts with no earlier result, so a failed install is not said again at each percent.
 
 ### Where the state is shown
 
@@ -83,8 +86,8 @@ One place shows the phase, the same way in every program:
 
 | Where | What |
 |---|---|
-| the program's bar | `prefs_page.update_badge`: "Install 0.16.0", "Downloading 0.16.0…", "Restart to update to 0.16.0" |
-| the Updates page | `status_words(st)`: the whole state in a sentence, with Check now, Install, Restart now |
+| the program's bar | `prefs_page.update_badge`: "Install 0.16.0", then the download's bar "Downloading 0.16.0…" filling in the button's green, then "Restart to update to 0.16.0", one morphing into the next in one place (`ui.swap`) |
+| the Updates page | `status_words(st)`: the whole state in a sentence ("Downloading version 0.16.0: 12 MB of 28 MB."), with its bar while it downloads, and Check now, Install, Restart now |
 | the status line or a toast | `notice(st)` only, once per `serial` |
 
 `notice(st) -> (words, bad)` is what the badge cannot say: a failed install, asked or not ("The update failed: …"),
