@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.341.1] - 2026-11-21 17:52
+
+### Fixed
+- **Input on secondary windows on Wayland**: pointer, keyboard and other events arriving on any shown window other than
+the first now wake `host.hosts_wait` (`wl_wait`) at once instead of piling up until the first window receives an event.
+- **Readable details and search highlights on selected rows**: secondary (`weak`, `faint`, `soft`) and coloured text inside
+a selected row now adapt their ink to the selection's background (at least 4.5:1 contrast at rest and hovered, in every
+theme), matched letters in a selected row (`match_runs`, `label_fuzzy`, palette) are underlined in the row's ink instead
+of tinted with `match_bg`, and find-bar matches switch their text ink to black or white when a theme's tint over a
+selection would leave `find_text` hard to read.
+
 ## [0.341.0] - 2026-11-21 17:22
 
 ### Changed
@@ -4788,6 +4799,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.341.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.341.1
 [0.341.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.341.0
 [0.340.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.340.0
 [0.339.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.339.1
