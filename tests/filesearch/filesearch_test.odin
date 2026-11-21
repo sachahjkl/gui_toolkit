@@ -7,6 +7,8 @@ import "core:testing"
 import "core:time"
 import filesearch "gt:filesearch"
 import "gt:fsx"
+import "gt:testkit/session"
+import "gt:ui"
 
 @(private = "file")
 make_tree :: proc(t: ^testing.T, tag: string) -> string {
@@ -120,4 +122,66 @@ invalid_root_and_safe_close :: proc(t: ^testing.T) {
 	testing.expect_value(t, idx, filesearch.Index(0))
 	filesearch.close(0)
 	filesearch.close(filesearch.Index(999999))
+}
+
+@(test)
+palette_files_source_searches_and_records_open :: proc(t: ^testing.T) {
+	dir := make_tree(t, "pal")
+	frec_dir := strings.concatenate({dir, "_frec"})
+	defer { _ = fsx.remove_tree(dir); _ = fsx.remove_tree(frec_dir); delete(dir); delete(frec_dir) }
+
+	idx, err := filesearch.open({root = dir, frecency_dir = frec_dir, watch = false})
+	testing.expect_value(t, err, filesearch.Error.None)
+	if err != .None { return }
+	defer filesearch.close(idx)
+	testing.expect(t, filesearch.wait_ready(idx, 10_000), "scan ready")
+
+	App :: struct {
+		views:    ui.Views,
+		pal:      ui.Command_Palette,
+		files:    ui.Palette_Files,
+		init:     bool,
+		open_now: bool,
+	}
+	app: App
+	defer {
+		ui.palette_destroy(&app.pal)
+		ui.palette_files_destroy(&app.files)
+		ui.views_destroy(&app.views)
+	}
+
+	build :: proc(s: ^session.Session) {
+		app := (^App)(s.user)
+		ui.set_views(s.state, &app.views)
+		if !app.init {
+			app.init = true
+			ui.palette_files_add(&app.pal, &app.files, {dirs = true, limit = 20})
+		}
+		if app.open_now {
+			app.open_now = false
+			ui.palette_open(&app.pal, "/shcema")
+		}
+		_, _ = ui.palette_chosen(&app.pal)
+	}
+
+	s := session.start(t, {build = build, user = &app, no_renderer = true, size = {800, 600}})
+	session.frames(s, 2)
+	ui.palette_files_set(&app.files, idx)
+	app.open_now = true
+	session.frames(s, 2)
+
+	// Bounded wait for async chore search + palette ranking to finish
+	deadline := time.time_add(time.now(), 5 * time.Second)
+	for (!ui.palette_ranked_for(&app.pal, "/shcema") || ui.palette_row_count(&app.pal) == 0) && time.diff(time.now(), deadline) > 0 {
+		session.frames(s, 1)
+		time.sleep(10 * time.Millisecond)
+	}
+	testing.expect(t, ui.palette_row_count(&app.pal) >= 1, "palette shows typo-matched file")
+	if ui.palette_row_count(&app.pal) >= 1 {
+		src, id, ok := ui.palette_row(&app.pal, 0)
+		testing.expect(t, ok && src == &app.files.source, "top row comes from Palette_Files")
+		testing.expect(t, strings.has_suffix(id, "schema.odin"), "typo /shcema resolves to schema.odin")
+		ui.palette_files_opened(s.state, idx, id)
+	}
+	session.frames(s, 3)
 }

@@ -4,7 +4,7 @@
 coming first. classeur searches a folder and what is under it with it; the palette gets a source of files; a launcher
 (ROADMAP.md) gets files for nothing. Content search (grep) comes after names, on the same index.
 
-Status: built (`native/filesearch`, `src/filesearch`, `tests/filesearch`, `toolbox.Feature.Filesearch`). Linux measurements recorded below; classeur integration and Windows measurement next.
+Status: built (`native/filesearch`, `src/filesearch`, `ui.Palette_Files` in `src/ui/palette_files.odin`, `tests/filesearch`, `toolbox.Feature.Filesearch`). Linux measurements recorded below; classeur integration and Windows measurement next.
 
 ## The engine: fff
 

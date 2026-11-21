@@ -13,9 +13,9 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
-- **Wire `gt:filesearch` into classeur and the palette.** `gt:filesearch` (backed by `fff-search` in `native/filesearch`) is
-  built and tested; next wire it into classeur's search and the palette's file source, and take the Windows home
-  measurement before enabling whole-home defaults there. Intent: [src/md/features/file-search.md](src/md/features/file-search.md).
+- **Wire `gt:filesearch` into classeur and measure Windows home indexing.** `gt:filesearch` and `ui.Palette_Files` are
+  built and tested; next wire them into classeur's search and palette, and take the Windows home measurement before
+  enabling whole-home defaults there. Intent: [src/md/features/file-search.md](src/md/features/file-search.md).
 - **X11's vblank timing seen on a real screen.** The Present extension's answers are read, but the virtual desktop's
   software renderer draws with PutImage and never answers: run the desktop test on an X11 session with a GPU to see
   frames start just in time there too. Intent: [src/md/infrastructure/vblank.md](src/md/infrastructure/vblank.md).

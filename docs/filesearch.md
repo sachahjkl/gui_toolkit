@@ -35,4 +35,11 @@ if err == .None {
 | `filesearch.page_destroy(p, allocator)` | frees a `Page` returned by `search` |
 | `filesearch.note_opened(idx, path)` | records a file open in the LMDB frecency store and updates the live index |
 
+## Command palette source (`ui.Palette_Files`)
+
+`ui.palette_files_add(&p, &pf, o)` registers a `filesearch.Index` as a searching `/` (`Palette_Prefix.Paths`) source
+on `ui.Command_Palette` (`Palette_Files_Options`, `PALETTE_FILES_LIMIT_DEFAULT`). Both search and frecency updates
+(`ui.palette_files_opened`) run on background chores so the interface thread never touches disk or LMDB. Update the
+active index with `ui.palette_files_set(&pf, idx, root)` and free owned state with `ui.palette_files_destroy(&pf)`.
+
 Design and platform measurements: [src/md/features/file-search.md](../src/md/features/file-search.md).

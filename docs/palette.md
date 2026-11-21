@@ -249,6 +249,7 @@ hint row does not say it), and Shift+Enter there does what Enter does.
 | `palette_add(&p, &src)`, `palette_has(&p, &src)`, `palette_remove(&p, &src)` | a source of the program's: added (a second add does nothing), added or not, removed. A removal drops its answer, its question and the ranking in flight |
 | `palette_memory_open(&p, s, path)` | the usage memory's file (`Command_Palette.memory`), read on the chores. One memory per file for the process (`choice_memory_acquire`): the palettes of a program's windows that give one path share it, and the file holds every window's choices. The palette notes each choice of a source with `remember`; the last palette to go writes it. A choice made before the file was read is not lost at a quick quit |
 | `palette_row_count(&p)`, `palette_row(&p, i)`, `palette_selected(&p)`, `palette_busy(&p)`, `palette_ranked_for(&p, text)` | what a test reads: the rows in view, the source and the id of one, a ranking or a read in flight, whether the list shown was ranked for the field's text `text` (none in flight) |
+| `palette_files_add(&p, &pf, o)`, `palette_files_set(&pf, idx, root)`, `palette_files_opened(s, idx, path)`, `palette_files_destroy(&pf)` | ready-made `/` (`Paths`) source backed by `gt:filesearch` (`Palette_Files`, `Palette_Files_Options`); searches and records frecency on chores ([docs/filesearch.md](filesearch.md)) |
 | `palette_destroy(&p)` | before `ui.destroy` of its window |
 
 `Command_Palette.asks`, `.rankings` and `.dropped` count the questions asked, the rankings started and the answers and
