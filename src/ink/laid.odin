@@ -76,7 +76,7 @@ JOIN_POINTS :: 16
 POOL_STOP_MS :: 150
 // A contour of less area than this (in the caller's units squared) is a point or a line: `levels` leaves it out.
 @(private)
-AREA_EPSILON :: 1e-9
+AREA_EPSILON :: 1e-6
 // The points of a blob's circle in `levels`.
 @(private)
 BLOB_POINTS :: 18
@@ -243,6 +243,11 @@ laid_destroy :: proc(l: ^Laid, allocator := context.allocator) {
 // stacked: each is ink laid on the line), so a blob lies over the line and darkens it. Fill each level as one path with
 // the non-zero rule, in order, the ink's colour at the level's alpha. Free with `levels_destroy`.
 levels :: proc(laid: Laid, level_count: int, allocator := context.allocator) -> []Level {
+	// (each contour grown a little about its centre, `overlap`: two neighbouring pieces of a level overlap instead of
+	// meeting on an edge. A renderer that smooths every edge it is near, as gt:draw's path fill, measures distance to
+	// edges where the fill changes; two pieces that only touch put two opposite edges on one line, each of which looks
+	// like a boundary on its own, and the seam showed as a hatching across the stroke. Overlapping, each such edge lies
+	// inside the other piece. The union, the PDF's fill, grows by LEVEL_OVERLAP of a piece: nothing seen.)
 	count := max(level_count, 1)
 	out := make([dynamic]Level, 0, 2 * count, allocator)
 	sizes := make([]int, 2 * count, allocator)
@@ -298,6 +303,7 @@ levels :: proc(laid: Laid, level_count: int, allocator := context.allocator) -> 
 				lens: [2]int
 				k := piece_contours(p.quad, &buf, &lens)
 				for j in 0 ..< k {
+					overlap(buf[j][:lens[j]])
 					copy(lv.points[at:], buf[j][:lens[j]])
 					lv.contours[c] = lv.points[at:at + lens[j]]
 					at += lens[j]
@@ -324,6 +330,19 @@ levels :: proc(laid: Laid, level_count: int, allocator := context.allocator) -> 
 }
 
 // Frees what `levels` allocated; give the same allocator.
+// How much `levels` grows each contour about its centre: a share of its size.
+@(private)
+LEVEL_OVERLAP :: 0.06
+
+@(private)
+overlap :: proc(c: [][2]f32) {
+	if len(c) == 0 { return }
+	mid: [2]f32
+	for q in c { mid += q }
+	mid /= f32(len(c))
+	for &q in c { q = mid + (q - mid) * (1 + LEVEL_OVERLAP) }
+}
+
 levels_destroy :: proc(ls: []Level, allocator := context.allocator) {
 	for l in ls {
 		delete(l.points, allocator)
@@ -376,8 +395,11 @@ cross :: proc(a, b: [2]f32) -> f32 { return a.x * b.y - a.y * b.x }
 // The shoelace area: positive when counter-clockwise in a y-up frame.
 @(private)
 signed_area :: proc(p: [][2]f32) -> f32 {
+	if len(p) == 0 { return 0 }
+	// (about the first point: far from the origin, f32's products would lose a small piece's area)
+	o := p[0]
 	sum: f32 = 0
-	for i in 0 ..< len(p) { sum += cross(p[i], p[(i + 1) % len(p)]) }
+	for i in 0 ..< len(p) { sum += cross(p[i] - o, p[(i + 1) % len(p)] - o) }
 	return sum * 0.5
 }
 

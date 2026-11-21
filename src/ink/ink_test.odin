@@ -202,7 +202,8 @@ plain_ink_is_the_polygon :: proc(t: ^testing.T) {
 		ls := levels(laid, 5)
 		defer levels_destroy(ls)
 		testing.expectf(t, len(ls) == 1 && ls[0].alpha == 1, "%v: %d levels", pen.nib, len(ls))
-		got, want := level_area(ls), shoelace(poly)
+		// (each contour grown about its centre by LEVEL_OVERLAP: its area by the square)
+		got, want := level_area(ls), shoelace(poly) * (1 + LEVEL_OVERLAP) * (1 + LEVEL_OVERLAP)
 		testing.expectf(t, abs(got - want) < want * 0.03, "%v: levels %v, polygon %v", pen.nib, got, want)
 	}
 }
@@ -368,10 +369,16 @@ levels_stack_to_the_density :: proc(t: ^testing.T) {
 	laid := Laid{pieces = pieces, opacity = 0.84}
 	ls := levels(laid, 6)
 	defer levels_destroy(ls)
-	for p in pieces {
+	centre :: proc(c: [][2]f32) -> (m: [2]f32) {
+		for q in c { m += q }
+		return m / f32(len(c))
+	}
+	for &p in pieces {
 		bare: f32 = 1
+		mid := centre(p.quad[:])
 		for l in ls {
-			for c in l.contours { if len(c) == 4 && c[0] == p.quad[0] { bare *= 1 - l.alpha } }
+			// (a piece's contour is grown about its centre: found by it)
+			for c in l.contours { if len(c) == 4 && abs(centre(c).x - mid.x) < 1e-3 && abs(centre(c).y - mid.y) < 1e-3 { bare *= 1 - l.alpha } }
 		}
 		testing.expectf(t, abs((1 - bare) - 0.84 * p.density) < 0.02, "density %v: stacked %v, want %v", p.density, 1 - bare, 0.84 * p.density)
 	}

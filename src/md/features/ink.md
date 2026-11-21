@@ -128,6 +128,11 @@ a slow hand leaves more ink than a fast one. The person who signs wants their pe
 - Where the stroke turns tighter than its half width, the inner edge folds back: those triangles overlap and the
   polygon there has a small loop. Opaque ink hides both; a translucent ink must be drawn into a layer (or as the
   polygon with the non-zero rule) so it is not laid twice.
+- `levels` grows each contour by `LEVEL_OVERLAP` about its centre, so two neighbouring pieces of a level overlap
+  instead of sharing an edge. A renderer that smooths each edge near a pixel (gt:draw's polygon fill) sees two
+  opposite edges on one line as two boundaries, and the stroke showed a hatching. The union grows by a few per cent of
+  a piece: nothing seen. The levels of a grained or skipping ink hold hundreds of contours: draw them with a renderer
+  made for many shapes (a PDF's, a canvas), not gt:draw's polygon fill, which keeps 4096 points a fill.
 - The presets' lengths suit a width of a few pixels at 1:1. `scaled` multiplies the width and the tapers together;
   scaling only the width changes the look of the tapers.
 
