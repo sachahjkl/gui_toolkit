@@ -1,9 +1,16 @@
 package platform
 
 // Fingers and pens (Pointer_* events, Event.pointer), independent of the system (pointer_win32.odin reads WM_POINTER;
-// other systems have none yet). The mouse keeps its Mouse_* events; the system's mouse emulation of a finger or a pen
-// still comes, marked `emulated`, so an app that only knows the mouse goes on working and one that follows pointers
-// skips those.
+// tablet_wl_linux.odin reads Wayland's tablet tools; X11 has none). The mouse keeps its Mouse_* events; the mouse
+// emulation of a finger or a pen still comes, marked `emulated`, so an app that only knows the mouse goes on working
+// and one that follows pointers skips those. Windows emulates the mouse itself; on Wayland a client that takes the
+// tablet gets no wl_pointer events for it, so the backend makes them.
+
+// A device's raw pressure, on 0..full, as 0..1 (Windows: 0..1024; Wayland's tablet: 0..65535).
+pressure_of :: proc(raw, full: u32) -> f32 {
+	if full == 0 { return 0 }
+	return clamp(f32(raw) / f32(full), 0, 1)
+}
 
 // Pointer Events' `buttons` of a finger or a pen: bit 1 = in contact (the pen's tip or a finger), 2 = the pen's barrel
 // button, 32 = the eraser (which replaces bit 1).

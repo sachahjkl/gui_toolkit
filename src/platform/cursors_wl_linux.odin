@@ -153,6 +153,7 @@ wl_custom_cursor :: proc(w: ^Window, e: ^Custom_Entry) -> bool {
 
 @(private)
 wl_apply_cursor :: proc(w: ^Window) {
+	wl_tablet_apply_cursor(w)
 	// (one pointer for the seat: another window's cursor is sent when the pointer enters it, with that enter's serial)
 	if wlc.pointer == nil || wlc.pointer_focus != w { return }
 	c, band := cursor_shown(w)

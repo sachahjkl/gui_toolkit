@@ -143,14 +143,16 @@ t_ti_enter_types :: proc() -> []^Wl_Interface { t_ti_surface[0] = wl.surface_int
 // makes a device from a wl_pointer; set_shape(serial, shape) names one of the CSS-like shapes. Tables by hand.
 @(private) WP_CURSOR_SHAPE_MANAGER_DESTROY :: 0
 @(private) WP_CURSOR_SHAPE_MANAGER_GET_POINTER :: 1
+@(private) WP_CURSOR_SHAPE_MANAGER_GET_TABLET_TOOL :: 2
 @(private) WP_CURSOR_SHAPE_DEVICE_DESTROY :: 0
 @(private) WP_CURSOR_SHAPE_DEVICE_SET_SHAPE :: 1
 
 @(private) wp_cursor_shape_manager_iface: Wl_Interface
 @(private) wp_cursor_shape_device_iface: Wl_Interface
-@(private) wp_csm_methods: [2]Wl_Message
+@(private) wp_csm_methods: [3]Wl_Message
 @(private) wp_csd_methods: [2]Wl_Message
 @(private) t_csm_get_pointer: [2]^Wl_Interface
+@(private) t_csm_get_tablet_tool: [2]^Wl_Interface
 
 @(private)
 wp_cursor_shape_build_tables :: proc() {
@@ -158,7 +160,9 @@ wp_cursor_shape_build_tables :: proc() {
 	t_csm_get_pointer[0] = &wp_cursor_shape_device_iface
 	t_csm_get_pointer[1] = wl.pointer_interface
 	wp_csm_methods[1] = {"get_pointer", "no", raw_types(t_csm_get_pointer[:])}
-	wp_cursor_shape_manager_iface = {"wp_cursor_shape_manager_v1", 1, 2, &wp_csm_methods[0], 0, nil}
+	t_csm_get_tablet_tool[0], t_csm_get_tablet_tool[1] = &wp_cursor_shape_device_iface, &zwp_tablet_tool_iface
+	wp_csm_methods[2] = {"get_tablet_tool_v2", "no", raw_types(t_csm_get_tablet_tool[:])}
+	wp_cursor_shape_manager_iface = {"wp_cursor_shape_manager_v1", 1, 3, &wp_csm_methods[0], 0, nil}
 	wp_csd_methods[0] = {"destroy", "", nil}
 	wp_csd_methods[1] = {"set_shape", "uu", nil}
 	wp_cursor_shape_device_iface = {"wp_cursor_shape_device_v1", 1, 2, &wp_csd_methods[0], 0, nil}

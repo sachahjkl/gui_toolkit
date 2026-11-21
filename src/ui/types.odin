@@ -553,6 +553,7 @@ State :: struct {
 	hover_since_ms:  f64,
 	hover_key:       Key,
 	mouse_moved:     bool,            // the pointer moved this frame
+	pointer:         platform.Pointer_Info,   // the device that moved the pointer last (pointer_device)
 	list_stack:      [dynamic]^List_State,  // lists being built (list.odin)
 	strip_stack:     [dynamic]Strip_Build,  // strips being built (strip.odin)
 	card_stack:      [dynamic]^Box,         // the .Plate boxes of the cards being built, innermost last (card_box)

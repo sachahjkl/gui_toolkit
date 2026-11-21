@@ -85,7 +85,7 @@ pointer_message :: proc(w: ^Window, msg: win.UINT, wparam: win.WPARAM) {
 		pen: win.POINTER_PEN_INFO
 		if !win.GetPointerPenInfo(id, &pen) { pointer_gone(w, msg, id); return }
 		info = pen.pointerInfo
-		if .pressure in pen.penMask { measured = f32(pen.pressure) / POINTER_PRESSURE_RANGE }
+		if .pressure in pen.penMask { measured = pressure_of(pen.pressure, POINTER_PRESSURE_RANGE) }
 		if .tiltX in pen.penMask { pi.tilt.x = f32(pen.tiltX) }
 		if .tiltY in pen.penMask { pi.tilt.y = f32(pen.tiltY) }
 		if .rotation in pen.penMask { pi.twist = f32(pen.rotation) }
@@ -95,12 +95,13 @@ pointer_message :: proc(w: ^Window, msg: win.UINT, wparam: win.WPARAM) {
 		touch: POINTER_TOUCH_INFO
 		if !GetPointerTouchInfo(id, &touch) { pointer_gone(w, msg, id); return }
 		info = touch.pointerInfo
-		if touch.touchMask & TOUCH_MASK_PRESSURE != 0 { measured = f32(touch.pressure) / POINTER_PRESSURE_RANGE }
+		if touch.touchMask & TOUCH_MASK_PRESSURE != 0 { measured = pressure_of(touch.pressure, POINTER_PRESSURE_RANGE) }
 		if touch.touchMask & TOUCH_MASK_CONTACT != 0 { pi.contact = {f32(touch.rcContact.right - touch.rcContact.left), f32(touch.rcContact.bottom - touch.rcContact.top)} }
 	}
 	pi.primary = .primary in info.pointerFlags
 	contact := .in_contact in info.pointerFlags
 	pi.pressure = pointer_pressure(measured, contact)
+	_, pi.measured = measured.?
 	pt := info.ptPixelLocation
 	win.ScreenToClient(w.hwnd, &pt)
 	e := Event{pos = {f32(pt.x), f32(pt.y)}, mods = current_mods(), pointer = pi, stamp = time.tick_now()}

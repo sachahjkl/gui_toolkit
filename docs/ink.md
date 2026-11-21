@@ -5,8 +5,8 @@ turns the pointer's samples of one stroke into ink whose width follows the speed
 the tapers, as a signature written with a pen. The design is in [src/md/features/ink.md](../src/md/features/ink.md).
 
 ```odin
-samples: [dynamic]tk_ink.Sample          // one per pointer event while the button is down
-append(&samples, tk_ink.Sample{at = pointer, time = now_ms, pressure = 0})   // 0: no pressure (a mouse)
+samples: [dynamic]tk_ink.Sample          // one per build while the button is down
+append(&samples, tk_ink.Sample{at = pointer, time = now_ms, pressure = ui.pointer_pressure()})   // 0: no pressure (a mouse)
 
 pen := tk_ink.scaled(tk_ink.PEN_FOUNTAIN, zoom)
 o := tk_ink.outline(samples[:], pen)      // context.allocator
@@ -25,6 +25,8 @@ defer delete(poly)
 `Sample` is `{at: [2]f32, time: f64, pressure: f32}`: the position in the caller's units, the time in milliseconds
 (any origin, not decreasing), the pressure from 0 to 1 (0: unknown). If one sample has a pressure, the width follows
 the pressure; else it follows the speed. Samples without time (all at the same time) give a constant width.
+A program in `gt:ui` takes the pressure from `ui.pointer_pressure()`: a pen's on Windows and on Wayland, 0 for a mouse,
+on X11, and for a device that measures none ([dragdrop.md](dragdrop.md), "Fingers and pens").
 
 `Pen`:
 
