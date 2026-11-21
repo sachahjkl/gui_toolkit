@@ -508,12 +508,24 @@ fn point_at(ret: bool, k: u32) -> float2 {
 	return points[k];
 }
 
+fn winding_inside(winding: i32, evenodd: bool) -> bool {
+	if (evenodd) { return (winding & 1) != 0; }
+	return winding != 0;
+}
+
 // Signed distance to a polygon (negative inside), with the nonzero or even-odd rule. A point past POLYGON_BREAK ends a contour: the
 // next one starts at the point after it, with no edge between them (a shape with holes).
+// The distance counts only the edges where the fill changes: an edge inside the filled region (a path over itself, two
+// contours that overlap) would otherwise give the pixels along it a partial coverage, a light seam through the fill. Hence two
+// passes: p's winding, then the distance to the edges whose other side is filled differently. Crossing an edge from the side
+// where `side` > 0 to the other takes one from the winding (and the reverse adds one), whatever the edge's direction: the
+// ray count below then no longer meets, or newly meets, that edge. Even-odd flips at every edge, so every edge counts there
+// (two coincident edges, which cancel, still draw their line: the case is left). Where an edge stops being a boundary half
+// way (it enters another contour) the distance near that crossing is to the rest of the boundary only: a concave corner of the
+// union, whose pixels are nearly full anyway.
 fn polygon_sdf(p: float2, first: u32, count0: u32, evenodd: bool, ret: bool) -> f32 {
 	let count = min(count0, MAX_POLYGON_POINTS);
 	if (count < 3u) { return 1e9; }
-	var d = 1e30;
 	var winding = 0;
 	var a = point_at(ret, first + count - 1u);
 	var starts = a.x > POLYGON_BREAK;
@@ -523,8 +535,6 @@ fn polygon_sdf(p: float2, first: u32, count0: u32, evenodd: bool, ret: bool) -> 
 		if (starts) { a = b; starts = false; continue; }
 		let e = b - a;
 		let w = p - a;
-		let q = w - e * saturate(dot(w, e) / max(dot(e, e), 1e-12));
-		d = min(d, dot(q, q));
 		let side = e.x * w.y - e.y * w.x;
 		if (a.y <= p.y) {
 			if (b.y > p.y && side > 0.0) { winding++; }
@@ -533,8 +543,27 @@ fn polygon_sdf(p: float2, first: u32, count0: u32, evenodd: bool, ret: bool) -> 
 		}
 		a = b;
 	}
-	var inside = winding != 0;
-	if (evenodd) { inside = (winding & 1) != 0; }
+	let inside = winding_inside(winding, evenodd);
+	var d = 1e30;
+	a = point_at(ret, first + count - 1u);
+	starts = a.x > POLYGON_BREAK;
+	for (var i = 0u; i < count; i++) {
+		let b = point_at(ret, first + i);
+		if (b.x > POLYGON_BREAK) { starts = true; continue; }
+		if (starts) { a = b; starts = false; continue; }
+		let e = b - a;
+		let w = p - a;
+		// on the edge's line, the side the count above put p on: its ties (a.y <= p.y, side strictly signed) count p as moved
+		// right a little, and down much less
+		var side = e.x * w.y - e.y * w.x;
+		if (side == 0.0) { side = -e.y; }
+		if (side == 0.0) { side = e.x; }
+		if (winding_inside(winding - select(-1, 1, side > 0.0), evenodd) != inside) {
+			let q = w - e * saturate(dot(w, e) / max(dot(e, e), 1e-12));
+			d = min(d, dot(q, q));
+		}
+		a = b;
+	}
 	if (inside) { return -sqrt(d); }
 	return sqrt(d);
 }

@@ -90,8 +90,11 @@ Sharpness: the caller picks `raster_scale`: the most screen pixels per plane uni
   (up to `render.MAX_CLIP_DEPTH` = 8 deep). The scissor is the shape's bounds, so pixels outside cost nothing.
 - `push_clip_ellipse(dc, center, radii)`: an ellipse (a circle with equal radii), current local space, antialiased.
 - `push_clip_polygon(dc, points, evenodd = false)`: a polygon with the nonzero or even-odd fill rule, antialiased by
-  its exact signed distance. The vertices go into a per-frame table (`render.Frame_Data.points`, t4); the cost per
-  pixel inside its bounds is proportional to the vertex count.
+  its exact signed distance to the edges where the fill changes. An edge inside the filled region (a polygon over
+  itself, two contours that overlap) leaves no seam: with the nonzero rule an edge counts only where the winding on
+  one of its sides is 0. Even-odd counts every edge, so two coincident edges, which cancel, still show a line. The
+  vertices go into a per-frame table (`render.Frame_Data.points`, t4); the cost per pixel inside its bounds is
+  proportional to the vertex count (two passes over the vertices).
 - `pop_clip(dc)` pops any kind. `current_clip(dc)` returns the scissor rect.
 
 ## Paths: lines and curves
@@ -120,7 +123,7 @@ dotted := draw.path_dash(&p, {0, 2 * w}, allocator = context.temp_allocator)    
 draw.path_stroke(dc, &dashed, w, color)
 ```
 
-A contour wound the other way is a hole. A path is built once and drawn at every frame: the curves are not worked out again. `draw.bezier` strokes one cubic curve in a call; `bezier_cubic_at` and `bezier_quad_at` give a point of a curve, for what moves along one.
+A contour wound the other way is a hole. A filled path has no seam where it overlaps itself: a pen's ink crossing its own line, two contours wound the same way over each other. A path is built once and drawn at every frame: the curves are not worked out again. `draw.bezier` strokes one cubic curve in a call; `bezier_cubic_at` and `bezier_quad_at` give a point of a curve, for what moves along one.
 
 A filled path is a polygon clip: a pixel's cost grows with its points, up to 4096 points in all. It is for icons, charts and shapes of an interface. A drawing of thousands of shapes belongs on a canvas (`render.canvas_*`, [canvas.md](canvas.md)).
 

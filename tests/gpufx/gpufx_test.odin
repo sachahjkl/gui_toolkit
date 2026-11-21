@@ -610,3 +610,80 @@ paths_fill_and_stroke_curves :: proc(t: ^testing.T) {
 	a, b := cov(img, 50, 80), cov(img, 80, 80)
 	testing.expectf(t, math.abs(a - b) < 0.02, "the same along it and at a joint: %v, %v", a, b)
 }
+
+// A path over itself has no seam where its edges cross its own fill (two contours that overlap, a contour that crosses
+// itself); its outer edges stay soft. The edges lie half way across pixels (x.5), so a pixel centre sits on them.
+@(test)
+path_fill_overlaps_have_no_seams :: proc(t: ^testing.T) {
+	current_space, current_format = .Srgb, .Unorm8
+	f: Fx
+	if !open(&f) { testing.fail_now(t, "no D3D11 device (WARP)") }
+	defer close(&f)
+
+	// two squares wound the same way, the second over the first's lower right quarter
+	img := frame(&f, proc(dc: ^draw.Context) {
+		p := draw.path_make(allocator = context.temp_allocator)
+		for o in ([?]f32{30.5, 60.5}) {
+			draw.path_move_to(&p, {o, o})
+			draw.path_line_to(&p, {o + 60, o})
+			draw.path_line_to(&p, {o + 60, o + 60})
+			draw.path_line_to(&p, {o, o + 60})
+			draw.path_close(&p)
+		}
+		draw.path_fill(dc, &p, {1, 1, 1, 1})
+	})
+	lightest: f32 = 1
+	for k in 63 ..< 88 {
+		// the first square's right and bottom edges inside the second, the second's left and top edges inside the first
+		lightest = min(lightest, cov(img, 90, k), cov(img, k, 90), cov(img, 60, k), cov(img, k, 60))
+	}
+	testing.expectf(t, lightest >= 0.95, "the overlap's inner edges are as full as the fill: %v", lightest)
+	outer := cov(img, 30, 45)
+	testing.expectf(t, outer > 0.3 && outer < 0.7, "an outer edge half across a pixel covers half of it: %v", outer)
+
+	// a pentagram: one contour crossing itself, its centre wound twice (nonzero: filled)
+	img = frame(&f, proc(dc: ^draw.Context) { draw.path_fill(dc, pentagram(), {1, 1, 1, 1}) })
+	lightest = 1
+	pts := pentagram_points()
+	for i in 0 ..< 5 {
+		a, b := pts[i], pts[(i + 2) % 5]
+		// the middle of each line is the inner pentagon's side (0.382 to 0.618 of it): inside the fill on both sides
+		for s in 0 ..= 20 {
+			at := a + (b - a) * (0.40 + 0.01 * f32(s))
+			lightest = min(lightest, cov(img, int(at.x), int(at.y)))
+		}
+	}
+	testing.expectf(t, lightest >= 0.95, "the crossing lines are as full as the fill: %v", lightest)
+	testing.expectf(t, cov(img, 80, 80) > 0.99, "its centre is filled: %v", cov(img, 80, 80))
+
+	// even-odd: the centre is a hole, and its edges are soft again
+	img = frame(&f, proc(dc: ^draw.Context) { draw.path_fill(dc, pentagram(), {1, 1, 1, 1}, evenodd = true) })
+	testing.expectf(t, cov(img, 80, 80) < 0.01, "even-odd leaves its centre empty: %v", cov(img, 80, 80))
+	soft := 0
+	for s in 0 ..= 20 {
+		at := pts[0] + (pts[2] - pts[0]) * (0.40 + 0.01 * f32(s))
+		if v := cov(img, int(at.x), int(at.y)); v > 0.1 && v < 0.9 { soft += 1 }
+	}
+	testing.expectf(t, soft > 0, "the hole's edge is soft")
+}
+
+@(private = "file")
+pentagram_points :: proc() -> [5]draw.Vec2 {
+	pts: [5]draw.Vec2
+	for i in 0 ..< 5 {
+		an := -math.PI / 2 + f32(i) * 2 * math.PI / 5
+		pts[i] = {80.3 + 60 * math.cos(an), 80.3 + 60 * math.sin(an)}
+	}
+	return pts
+}
+
+@(private = "file")
+pentagram :: proc() -> ^draw.Path {
+	pts := pentagram_points()
+	p := new(draw.Path, context.temp_allocator)
+	p^ = draw.path_make(allocator = context.temp_allocator)
+	draw.path_move_to(p, pts[0])
+	for i in 1 ..< 5 { draw.path_line_to(p, pts[(i * 2) % 5]) }
+	draw.path_close(p)
+	return p
+}
