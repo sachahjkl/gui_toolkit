@@ -60,6 +60,9 @@
 
 ## Later
 
+- **System shell context menu in `ui.file_dialog` and Windows shell icons.** Show `desktop.Context_Menu` actions in the
+  toolkit's own file browser dialog too, and extract bitmap icons for Windows `IContextMenu` items. Intent:
+  [src/md/features/context-menu.md](src/md/features/context-menu.md).
 - **A launcher, a program of the suite.** One key, anywhere, opens a palette: a program, a file (`gt:filesearch`), a
   sum, a command of the suite's programs, papier's history; the first result in a few milliseconds and the keyboard
   never lost. It is worth doing only very well, so its design comes first, and a system each: the global key and the
