@@ -116,6 +116,8 @@ lay :: proc(samples: []Sample, pen: Pen, seed: u32, allocator := context.allocat
 			d *= 1 - dwell * DWELL_RANGE * pace(p.speed, width)
 		}
 		if p.pressure > 0 { d *= 1 - press * PRESSURE_RANGE * (1 - clamp(p.pressure, 0, 1)) }
+		// A leaned felt or brush lays its side, broader (the outline) and lighter. A chisel's corners stay on the paper.
+		if pen.nib != .Chisel { d *= 1 - TILT_LIGHT * clamp(pen.tilt, 0, 1) * length(p.lean) }
 		ink_at[i] = d
 	}
 

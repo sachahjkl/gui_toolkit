@@ -449,3 +449,123 @@ the_ink_model_makes_no_nan :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+// `samples` with every tilt set to `tilt`.
+@(private = "file")
+tilted :: proc(samples: []Sample, tilt: [2]f32) -> []Sample {
+	for &s in samples { s.tilt = tilt }
+	return samples
+}
+
+@(test)
+upright_tilt_changes_nothing :: proc(t: ^testing.T) {
+	for preset in PRESETS {
+		with, without := preset, preset
+		with.tilt = 1
+		without.tilt = 0
+		a := outline(arc_stroke(), with)
+		b := outline(arc_stroke(), without)
+		defer outline_destroy(&a)
+		defer outline_destroy(&b)
+		testing.expect(t, len(a.left) == len(b.left))
+		for i in 0 ..< min(len(a.left), len(b.left)) {
+			testing.expectf(t, a.left[i] == b.left[i] && a.right[i] == b.right[i], "%v: point %d moved", preset.nib, i)
+		}
+		la := lay(arc_stroke(), with, 5)
+		lb := lay(arc_stroke(), without, 5)
+		defer laid_destroy(&la)
+		defer laid_destroy(&lb)
+		testing.expect(t, len(la.pieces) == len(lb.pieces) && len(la.blobs) == len(lb.blobs))
+		for i in 0 ..< min(len(la.pieces), len(lb.pieces)) {
+			testing.expectf(t, la.pieces[i] == lb.pieces[i], "%v: piece %d changed", preset.nib, i)
+		}
+	}
+}
+
+@(test)
+a_leaned_felt_lays_broader_and_lighter :: proc(t: ^testing.T) {
+	pen := PEN_FELT
+	pen.ink.grain = 0   // one piece per segment: their densities compare directly
+	up := straight(50, 2, 8)
+	leaned := tilted(straight(50, 2, 8), {50, 40})   // a strong lean, to the lower right
+	a := outline(up, pen)
+	b := outline(leaned, pen)
+	defer outline_destroy(&a)
+	defer outline_destroy(&b)
+	up_lo, _ := middle_width(a)
+	lean_lo, lean_hi := middle_width(b)
+	testing.expectf(t, lean_lo > up_lo * 1.3, "leaned %v, upright %v", lean_lo, up_lo)
+	testing.expectf(t, lean_hi < up_lo * (1 + TILT_WIDEN), "leaned %v: wider than a pen on its side", lean_hi)
+
+	mean :: proc(l: Laid) -> f32 {
+		sum: f32 = 0
+		for p in l.pieces { sum += p.density }
+		return sum / f32(len(l.pieces))
+	}
+	la := lay(up, pen, 3)
+	lb := lay(leaned, pen, 3)
+	defer laid_destroy(&la)
+	defer laid_destroy(&lb)
+	testing.expectf(t, mean(lb) < mean(la) * 0.85, "leaned %v, upright %v", mean(lb), mean(la))
+	testing.expectf(t, mean(lb) > mean(la) * (1 - TILT_LIGHT) - 0.01, "leaned %v: lighter than its side", mean(lb))
+}
+
+@(test)
+a_chisel_turns_with_the_pen :: proc(t: ^testing.T) {
+	// The fixed nib at 30° would lay both strokes below at about half and 0.87 of the width: only the lean decides here.
+	pen := Pen{nib = .Chisel, width = 4, nib_angle = 30, tilt = 1}
+	// Leaned to the right: the shaft lies along +x, the edge is square to it.
+	along := outline(tilted(straight(40, 2, 4, {1, 0}), {60, 0}), pen)
+	across := outline(tilted(straight(40, 2, 4, {0, 1}), {60, 0}), pen)
+	defer outline_destroy(&along)
+	defer outline_destroy(&across)
+	along_lo, _ := middle_width(along)
+	_, across_hi := middle_width(across)
+	testing.expectf(t, along_lo > 3.9, "along the shaft: %v", along_lo)
+	testing.expectf(t, across_hi < 4 * (CHISEL_EDGE + 0.01), "across the shaft: %v", across_hi)
+
+	// Leaned to the lower right (a right hand's hold), the azimuth at 45° with y down.
+	r: f32 = 1 / math.SQRT_TWO
+	down := outline(tilted(straight(40, 2, 4, {r, r}), {40, 40}), pen)
+	up := outline(tilted(straight(40, 2, 4, {r, -r}), {40, 40}), pen)
+	defer outline_destroy(&down)
+	defer outline_destroy(&up)
+	down_lo, _ := middle_width(down)
+	_, up_hi := middle_width(up)
+	testing.expectf(t, down_lo > 3.9, "a downstroke along the shaft: %v", down_lo)
+	testing.expectf(t, up_hi < 4 * (CHISEL_EDGE + 0.01), "an upstroke across it: %v", up_hi)
+
+	// Half the tilt: the edge halfway (on the doubled angle) between the nib's 30° and the shaft's square, 90°.
+	pen.tilt = 0.5
+	half := outline(tilted(straight(40, 2, 4, {1, 0}), {60, 0}), pen)
+	defer outline_destroy(&half)
+	half_lo, half_hi := middle_width(half)
+	want := 4 * math.sin(f32(60) * math.RAD_PER_DEG)
+	testing.expectf(t, abs(half_lo - want) < 0.1 && abs(half_hi - want) < 0.1, "half the turn: %v..%v, want %v", half_lo, half_hi, want)
+}
+
+@(test)
+any_tilt_makes_no_nan :: proc(t: ^testing.T) {
+	tilts := [][2]f32 {
+		{90, 90}, {-90, -90}, {90, -90}, {90, 0}, {0, -90}, {89.99, 89.99}, {1000, -1000},
+		{math.nan_f32(), 0}, {0, math.inf_f32(1)}, {0.001, 0}, {45, -45},
+	}
+	for tilt in tilts {
+		for preset in PRESETS {
+			pen := preset
+			pen.tilt = 1
+			for samples in ([][]Sample{tilted(arc_stroke(), tilt), tilted(straight(1, 1, 1), tilt)}) {
+				o := outline(samples, pen)
+				for p in o.left { testing.expectf(t, finite(p), "%v at %v: %v", pen.nib, tilt, p) }
+				for p in o.right { testing.expectf(t, finite(p), "%v at %v: %v", pen.nib, tilt, p) }
+				outline_destroy(&o)
+				laid := lay(samples, pen, 2)
+				for p in laid.pieces {
+					testing.expect(t, !math.is_nan(p.density))
+					for q in p.quad { testing.expectf(t, finite(q), "%v at %v: %v", pen.nib, tilt, q) }
+				}
+				laid_destroy(&laid)
+			}
+		}
+	}
+}

@@ -10,6 +10,7 @@ Sample :: struct {
 	at:       [2]f32, // the position, in the caller's units (the same as Pen.width)
 	time:     f64,    // milliseconds, any origin, not decreasing along the stroke
 	pressure: f32,    // 0..1; 0: unknown (a mouse, a touch pad): the width then follows the speed
+	tilt:     [2]f32, // degrees, -90..90, as platform.Pointer_Info's (x towards the right, y towards the user); {0, 0}: upright or unknown
 }
 
 Nib :: enum u8 {
@@ -28,6 +29,7 @@ Pen :: struct {
 	taper_end:   f32, // >= 0: the same at the end; 0: a round end
 	nib_angle:   f32, // degrees (Chisel): the nib's edge, counter-clockwise from +x as seen with y down; 30 rises to the right
 	min_width:   f32, // 0..1: a share of width under which the line never goes (before the tapers), so it never breaks
+	tilt:        f32, // 0..1: how much a stylus's lean changes the mark (Round, Brush: wider, lighter; Chisel: the nib turns with the pen)
 	ink:         Ink, // how the ink lies on the paper (`lay`); all zero: solid opaque ink
 }
 
@@ -53,25 +55,29 @@ Outline :: struct {
 // The points of a round cap strictly between its two edge points (a half circle): `polygon` adds them per round end.
 CAP_POINTS :: 7
 
-// A ballpoint: a thin round line, a little thinner when fast, round ends; its ink skips where the hand is fast.
+// A ballpoint: a thin round line, a little thinner when fast, round ends; its ink skips where the hand is fast. No
+// tilt: a ball rolls the same at any lean.
 PEN_BALLPOINT :: Pen {
 	nib = .Round, width = 2, thinning = 0.35, smoothing = 0.5, min_width = 0.35,
 	ink = {skip = 0.8, dwell = 0.2, pressure = 0.4},
 }
 // A fountain pen: a broad nib at 30°, some speed thinning, tapered ends; a translucent ink that pools where the nib
-// rests.
+// rests. With a stylus's tilt, the nib mostly follows how the pen is held.
 PEN_FOUNTAIN :: Pen {
 	nib = .Chisel, width = 3, thinning = 0.3, smoothing = 0.5, taper_start = 3, taper_end = 8, nib_angle = 30, min_width = 0.08,
+	tilt = 0.7,
 	ink = {opacity = 0.84, pool = 0.5, dwell = 0.3, pressure = 0.3},
 }
-// A felt pen: a round line of almost constant width, round ends; a translucent ink with a little grain.
+// A felt pen: a round line of almost constant width, round ends; a translucent ink with a little grain. Leaned, its
+// side lays a broader, lighter line.
 PEN_FELT :: Pen {
-	nib = .Round, width = 3, thinning = 0.1, smoothing = 0.5, min_width = 0.6,
+	nib = .Round, width = 3, thinning = 0.1, smoothing = 0.5, min_width = 0.6, tilt = 0.8,
 	ink = {opacity = 0.85, grain = 0.5, dwell = 0.2},
 }
-// A brush: strong speed thinning, long soft tapers; a strong grain, pools, and a hand's pace in its ink.
+// A brush: strong speed thinning, long soft tapers; a strong grain, pools, and a hand's pace in its ink. Leaned, its
+// hairs lie down: the broadest and lightest response to tilt.
 PEN_BRUSH :: Pen {
-	nib = .Brush, width = 6, thinning = 0.8, smoothing = 0.6, taper_start = 12, taper_end = 24, min_width = 0.05,
+	nib = .Brush, width = 6, thinning = 0.8, smoothing = 0.6, taper_start = 12, taper_end = 24, min_width = 0.05, tilt = 1,
 	ink = {opacity = 0.88, grain = 0.7, pool = 0.3, dwell = 0.4, pressure = 0.5},
 }
 
@@ -82,6 +88,19 @@ SPEED_REFERENCE :: 0.2
 SPEED_WINDOW_MS :: 16
 // A broad nib's thickness, as a share of its width: the line along the nib's edge is never thinner.
 CHISEL_EDGE :: 0.12
+// How much a full lean (on its side) widens a Round or Brush nib's line at Pen.tilt 1: a felt's or a brush's side.
+TILT_WIDEN :: 0.6
+// How much a full lean lightens a Round or Brush nib's ink at Pen.tilt 1, read by `lay`: the side carries less ink.
+TILT_LIGHT :: 0.35
+// The largest tilt angle read, degrees: at 90 the tangent is infinite and the lean has no vertical left.
+@(private)
+TILT_MAX :: 89
+// The lean (sin of the angle from upright) over which a chisel's azimuth is trusted, from none to full: near upright
+// the azimuth is the sensor's noise.
+@(private)
+TILT_AZIMUTH_LO :: 0.1
+@(private)
+TILT_AZIMUTH_HI :: 0.35
 
 // `pen` with its lengths (width and tapers) multiplied by `k`: the presets at another scale.
 scaled :: proc(pen: Pen, k: f32) -> Pen {
@@ -99,6 +118,43 @@ Point :: struct {
 	speed:    f32, // caller's units per millisecond; < 0: unknown
 	s:        f32, // the arc length from the start
 	factor:   f32, // the width's share from speed or pressure
+	lean:     [2]f32, // the pen's axis on the paper (`lean_of`): its length is sin of the angle from upright
+}
+
+// A sample's tilt as the pen's axis projected on the paper, in the frame of `at` (y down, as the tilt's y towards the
+// user): its direction is the azimuth, its length sin of the angle from upright. A vector, so it can be interpolated
+// and smoothed where an angle would wrap. {0, 0} (or not a number) is upright.
+@(private)
+lean_of :: proc(tilt: [2]f32) -> [2]f32 {
+	if tilt == {} || math.is_nan(tilt.x) || math.is_nan(tilt.y) { return {} }
+	x := math.tan(clamp(tilt.x, -TILT_MAX, TILT_MAX) * math.RAD_PER_DEG)
+	y := math.tan(clamp(tilt.y, -TILT_MAX, TILT_MAX) * math.RAD_PER_DEG)
+	return [2]f32{x, y} / math.sqrt(1 + x * x + y * y)
+}
+
+// A Round or Brush nib's width at a lean: its side on the paper. Exactly 1 upright.
+@(private)
+tilt_widen :: proc(pen: Pen, lean: [2]f32) -> f32 {
+	if pen.nib == .Chisel { return 1 }
+	return 1 + TILT_WIDEN * clamp(pen.tilt, 0, 1) * length(lean)
+}
+
+// The nib's edge (a unit vector, y down) at a lean: the fixed edge `nib` turned toward the one square to the shaft, by
+// the pen's tilt and the azimuth's certainty. Blended on the doubled angle: an edge and its opposite are one edge.
+@(private)
+chisel_edge :: proc(nib: [2]f32, lean: [2]f32, tilt: f32) -> [2]f32 {
+	m := length(lean)
+	k := clamp(tilt, 0, 1) * smoothstep(TILT_AZIMUTH_LO, TILT_AZIMUTH_HI, m)
+	if !(k > 0) { return nib }
+	a := lean / m
+	e := [2]f32{a.y, -a.x}
+	d0 := [2]f32{nib.x * nib.x - nib.y * nib.y, 2 * nib.x * nib.y}
+	d1 := [2]f32{e.x * e.x - e.y * e.y, 2 * e.x * e.y}
+	d := d0 + (d1 - d0) * k
+	// Opposite edges at an even blend cancel: no direction, the fixed nib stays.
+	if length(d) < 1e-4 { return nib }
+	h := 0.5 * math.atan2(d.y, d.x)
+	return {math.cos(h), math.sin(h)}
 }
 
 // The ink of a stroke. No sample gives an empty outline; one sample (or samples all at one place) gives a dot.
@@ -136,19 +192,19 @@ trace :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> (O
 	line := make([dynamic]Point, 0, len(samples) + 1, allocator)
 	defer delete(line)
 	at := samples[0].at
-	append(&line, Point{at = at, pressure = samples[0].pressure, speed = speeds[0]})
+	append(&line, Point{at = at, pressure = samples[0].pressure, speed = speeds[0], lean = lean_of(samples[0].tilt)})
 	for i in 1 ..< len(samples) {
 		at += (samples[i].at - at) * follow
-		keep(&line, Point{at = at, pressure = samples[i].pressure, speed = speeds[i]}, eps)
+		keep(&line, Point{at = at, pressure = samples[i].pressure, speed = speeds[i], lean = lean_of(samples[i].tilt)}, eps)
 	}
 	last := len(samples) - 1
-	keep(&line, Point{at = samples[last].at, pressure = samples[last].pressure, speed = speeds[last]}, eps)
+	keep(&line, Point{at = samples[last].at, pressure = samples[last].pressure, speed = speeds[last], lean = lean_of(samples[last].tilt)}, eps)
 
 	if len(line) < 2 {
 		f: f32 = has_pressure ? pressure_factor(line[0].pressure, thinning) : 1
 		one := make([]Point, 1, allocator)
 		one[0] = line[0]
-		return dot(line[0].at, max(width * f, min_width), allocator), one
+		return dot(line[0].at, max(width * f * tilt_widen(pen, line[0].lean), min_width), allocator), one
 	}
 
 	// Resampled along a spline at a fixed spacing: the width and the edges then change by even steps whatever the
@@ -171,15 +227,18 @@ trace :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> (O
 		}
 	}
 	// Smoothed both ways over the arc length: one way would shift the thinning after the speed that caused it; the
-	// length (and not the index) keeps the result the same at any spacing.
+	// length (and not the index) keeps the result the same at any spacing. The lean alike: a stylus's tilt jitters, and
+	// the width and the nib's turn it drives must not flicker.
 	reach := width * 1.5
 	for i in 1 ..< n {
 		a := 1 - math.exp(-(pts[i].s - pts[i - 1].s) / reach)
 		pts[i].factor = pts[i - 1].factor + (pts[i].factor - pts[i - 1].factor) * a
+		pts[i].lean = pts[i - 1].lean + (pts[i].lean - pts[i - 1].lean) * a
 	}
 	for i := n - 2; i >= 0; i -= 1 {
 		a := 1 - math.exp(-(pts[i + 1].s - pts[i].s) / reach)
 		pts[i].factor = pts[i + 1].factor + (pts[i].factor - pts[i + 1].factor) * a
+		pts[i].lean = pts[i + 1].lean + (pts[i].lean - pts[i + 1].lean) * a
 	}
 
 	// A stroke shorter than its two tapers keeps their ratio: a lens, never a taper cut short.
@@ -202,9 +261,10 @@ trace :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> (O
 	dir := [2]f32{1, 0}
 	for p, i in pts {
 		dir = tangent(pts[:], i, dir)
-		w := width * p.factor
+		w := width * p.factor * tilt_widen(pen, p.lean)
 		if pen.nib == .Chisel {
-			w *= max(abs(dir.x * nib.y - dir.y * nib.x), CHISEL_EDGE)
+			e := chisel_edge(nib, p.lean, pen.tilt)
+			w *= max(abs(dir.x * e.y - dir.y * e.x), CHISEL_EDGE)
 		}
 		w = max(w, min_width)
 		if taper_start > 0 { w *= ease(p.s / taper_start, pen.nib) }
@@ -347,6 +407,7 @@ resample :: proc(line: []Point, spacing: f32, out: ^[dynamic]Point) {
 					at       = prev + (q - prev) * f,
 					pressure = math.lerp(line[i].pressure, line[i + 1].pressure, w),
 					speed    = math.lerp(line[i].speed, line[i + 1].speed, w),
+					lean     = math.lerp(line[i].lean, line[i + 1].lean, w),
 					s        = next,
 				})
 				next += spacing
