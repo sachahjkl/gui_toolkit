@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.339.1] - 2026-11-21 16:27
+
+### Fixed
+- **Linux `platform.open_path` opens files with the default application**: `open_path` (and `open_url` on `file:` URIs) calls `xdg-open` directly instead of sending `file://` to `org.freedesktop.portal.OpenURI.OpenURI`, which rejects `file:` URIs while `call_noreply` hid the rejection.
+
 ## [0.339.0] - 2026-11-21 11:05
 
 ### Changed
@@ -4762,6 +4767,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.339.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.339.1
 [0.339.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.339.0
 [0.338.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.338.0
 [0.337.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.337.0
