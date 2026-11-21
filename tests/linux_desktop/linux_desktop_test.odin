@@ -366,6 +366,48 @@ the_pointer_reaches_a_second_free_window :: proc(t: ^testing.T) {
 	}
 }
 
+// A multi-window loop sleeps on its first window (host.hosts_wait -> platform.wait_event(a, ...)): pointer motion that
+// arrives on a second shown window while a waits must end the wait at once, not pile up until a gets an event (cliche's
+// multi-monitor overlay on Wayland).
+@(test)
+input_on_a_second_window_ends_a_wait_on_the_first :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()
+	a := open_free("wait a", {40, 60})
+	b := open_free("wait b", {600, 60})
+	testing.expect(t, a != nil && b != nil, "both open")
+	if a == nil || b == nil { return }
+	defer platform.destroy_window(a)
+	defer platform.destroy_window(b)
+	// place the pointer inside b first, then drain both windows so a is completely idle and b already has pointer focus
+	if wayland() {
+		sh("swaymsg -q seat seat0 cursor set 700 150")
+	} else {
+		sh("xdotool mousemove 700 150")
+	}
+	pump_for(a, 250)
+	pump_for(b, 250)
+	_ = platform.poll_events(a, false)
+	_ = platform.poll_events(b, false)
+	// move the pointer inside b only, while sleeping on a
+	if wayland() {
+		sh("(sleep 0.15; swaymsg -q seat seat0 cursor set 715 165) >/dev/null 2>&1 &")
+	} else {
+		sh("(sleep 0.15; xdotool mousemove 715 165) >/dev/null 2>&1 &")
+	}
+	// Loop wait_event(a) bounded to 2 s: a stray compositor event may wake a once before the 150 ms move, whereas the
+	// bug made wait_event(a, 2500) sleep the full 2500 ms after b received the motion.
+	saw_move := false
+	start := time.tick_now()
+	for !saw_move && time.duration_milliseconds(time.tick_since(start)) < 2000 {
+		platform.wait_event(a, 2500)
+		for e in platform.poll_events(b, false) { if e.kind == .Mouse_Move { saw_move = true } }
+		_ = platform.poll_events(a, false)
+	}
+	waited_ms := time.duration_milliseconds(time.tick_since(start))
+	testing.expectf(t, saw_move && waited_ms < 2000, "motion on the second window ended the wait on the first (saw=%v in %.0f ms)", saw_move, waited_ms)
+}
+
 // How long the host's loop is watched at rest, and the wakes it may have in that time (the last wait's end included).
 // A loop that does not sleep wakes hundreds to thousands of times; the CI's desktop sends late events of its own,
 // whose number varies from run to run (6, 7 and 16 were seen there; 1 on a desktop, run after run). The bound is the

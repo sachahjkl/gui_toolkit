@@ -1501,10 +1501,13 @@ wl_check_link :: proc() {
 wl_wait :: proc(w: ^Window, timeout_ms: int) {
 	deadline := time.tick_add(time.tick_now(), time.Duration(timeout_ms) * time.Millisecond)
 	clip_was := clipboard_sequence()
+	events_was := wl_shown_events()
 	for {
 		// (what a roundtrip read: poll(2) would not see it; kept for the next poll_events)
 		wl_read_available()
-		if wl_wait_over(w) || clipboard_sequence() != clip_was { return }
+		// (any new event on any shown window ends the wait, as x11c.loud does on X11 and WaitMessage on Windows; stale
+		// unread events on a window the loop does not frame leave the count unchanged, so the loop never spins on them)
+		if wl_wait_over(w) || wl_shown_events() != events_was || clipboard_sequence() != clip_was { return }
 		wl.display_flush(wlc.display)
 		left := -1
 		if timeout_ms > 0 {
@@ -1522,13 +1525,23 @@ wl_wait :: proc(w: ^Window, timeout_ms: int) {
 // Whether the wait of `w` is over. A loop sleeps for all the windows of its thread at once, on one of them (host.hosts_wait
 // waits on the first shown), and one connection brings the events of all: a configure of another shown window (the size
 // a tiling compositor gives it, at its mapping or later) asks that window's repaint, which must end the wait too. Else the
-// window kept its last size until something came for the one waited on. (Its input stays out: a window the loop does
-// not frame could hold some for ever; a hidden window's repaint waits for its show, as wait_is_over says.)
+// window kept its last size until something came for the one waited on. (Input for another shown window ends wl_wait when
+// it arrives during the wait, through wl_shown_events, so stale unread events on an unpolled window never cause a spin;
+// a hidden window's repaint waits for its show, as wait_is_over says.)
 @(private)
 wl_wait_over :: proc(w: ^Window) -> bool {
 	if wait_is_over(w) { return true }
 	for x in wlc.windows { if x != w && x.paint_requested && x.show != .Hidden { return true } }
 	return false
+}
+
+// Total events queued across every shown window of the connection: wl_wait compares it across wl_read_available so any
+// new event on another shown window (pointer, key, focus, drop, close) ends the wait without spinning on stale events.
+@(private = "file")
+wl_shown_events :: proc() -> int {
+	n := 0
+	for x in wlc.windows { if x.show != .Hidden { n += len(x.events) } }
+	return n
 }
 
 // Whether another window of the thread has a step of a resize to show now: a size its last picture does not have, and the
