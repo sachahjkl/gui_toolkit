@@ -100,7 +100,9 @@ build), `input` (events the interface does not see), `builds` (several builds in
 close or the compositor's: the window stays, the program hides it or asks first; a window that has it gets its frame even
 when the close was read in another window's frame, as on Wayland). A window hidden with
 `host.host_hide` gets no `host_frame` until `host.host_show` (the program waits on it with `platform.wait_event` and
-reads it with `poll_events`); the first frame after the show makes the renderer's surface again. Another window is another
+reads it with `poll_events`); the first frame after the show makes the renderer's surface again. A program that quits
+when its window is closed calls `host.host_hide` first: the window stays on the screen until `host_close`, and the
+person would watch the program's last work (its workers stopped, its files written). Another window is another
 `host_open` with the same `Shared`: a surface on the same renderer, built in turn, `hosts_wait({&a, &b})` for both
 (`hosts_frame` makes a frame of each). The steps above are all public: a program may make its frames by hand, as
 `examples/fidget` does, or mix both. The windows of views (a view detached into a window of its own, docs/views.md) are

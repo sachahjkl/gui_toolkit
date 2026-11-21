@@ -552,6 +552,35 @@ a_host_hides_and_comes_back :: proc(t: ^testing.T) {
 	}
 }
 
+// A window whose close was asked, by a program that quits on it: host_hide takes it off the screen at once, before the
+// program's last work and host_close. (is_window_visible says no once the close is asked: the hide must not believe it.)
+@(test)
+a_closing_host_hides :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	context.allocator = runtime.heap_allocator()   // (the connection's state outlives a test)
+	title :: "host hides as it closes"
+	builds := 0
+	sh: host.Shared
+	h := new(host.Host)
+	defer free(h)
+	if !host.host_open(h, &sh, {title = title, size = {320, 200}}, host_build, &builds) {
+		testing.expect(t, false, "the renderer starts (Vulkan: lavapipe on the virtual desktop)")
+		return
+	}
+	defer host.host_close(h)
+	host.host_show(h)
+	for _ in 0 ..< 5 { h.settle = max(h.settle, 1); host.host_frame(h); pump_for(h.win, 20) }
+	testing.expect(t, on_screen(h.win, title), "shown")
+	platform.inject_event(h.win, {kind = .Close})
+	pump_for(h.win, 50)
+	if !testing.expect(t, platform.is_closed(h.win), "the close is asked") { return }
+	testing.expect(t, on_screen(h.win, title), "a close asked leaves the window on the screen")
+	host.host_hide(h)
+	pump_for(h.win, 200)
+	testing.expect(t, !on_screen(h.win, title), "hidden as it closes")
+	host.host_hide(h)   // (twice: nothing more)
+}
+
 @(private = "file")
 Moving :: struct { value: f32, builds: int }
 
