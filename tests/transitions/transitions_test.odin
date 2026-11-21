@@ -1,7 +1,8 @@
-package scenarios_test
+package transitions_test
 
 // ui.tween and ui.swap (src/md/features/transitions.md): a value that reaches its target on a curve in a set time, and a
-// place whose size glides from one face's to the next's while what is in it keeps its own size.
+// place whose size glides from one face's to the next's while what is in it keeps its own size. A process of its own:
+// its runs draw many frames, and with them the scenarios' passed 420 s on WebGPU's CPU driver.
 
 import "core:strings"
 import "core:testing"
