@@ -322,6 +322,27 @@ returns `ok = false` for a line the specification refuses:
 
 The deprecated codes (`%d`, `%D`, `%n`, `%N`, `%v`, `%m`) are dropped. A line with no file code gets the path at its end.
 
+## System context menu
+
+`Context_Menu` queries and invokes the system shell's third-party context-menu actions asynchronously on a dedicated
+worker thread so opening a file menu never blocks the interface thread ([context-menu.md](../src/md/features/context-menu.md)).
+
+- `context_menu_query(m, target, on_ready, user) -> serial` queues a query for `Context_Target` (`paths`, `background`
+  for a folder's empty area, and `exclude_verbs` to omit verbs the program already provides such as `"open"`, `"cut"`,
+  `"copy"`, `"paste"`, `"delete"`, `"rename"`, `"properties"`). A newer query supersedes any older queued query. When
+  ready, `on_ready(user, serial, items)` runs on the worker thread with a plain `[]Context_Item` tree (allocated from
+  the heap; free with `context_items_destroy`).
+- `context_menu_invoke(m, serial, id, win)` invokes the chosen item on the worker thread if `serial` still matches the
+  active session.
+- `context_menu_clear(m)` releases the held native session when the menu closes; `context_menu_destroy(m)` stops and
+  joins the worker.
+
+| System | Where the items come from |
+|---|---|
+| Windows | Dedicated COM STA worker: `IShellFolder::GetUIObjectOf` (selected items) or `CreateViewObject` (folder background) -> `IContextMenu` / `IContextMenu2` / `IContextMenu3`, `QueryContextMenu`, `HandleMenuMsg(WM_INITMENUPOPUP)` for dynamic submenus (7-Zip, Git, Send to), `GetCommandString(GCS_VERBW)` for verb filtering, and `InvokeCommand` on click. |
+| Linux | Declarative file-manager extensions read on the worker using `xdg_roots()` and the MIME cache: KIO service menus (`kio/servicemenus/*.desktop`, `kservices5/ServiceMenus/*.desktop`), Nemo actions (`nemo/actions/*.nemo_action`), and Thunar custom actions (`Thunar/uca.xml`). Invoked via `platform.launch_detached`. |
+| Other systems | Empty list. |
+
 ## Icons of files
 
 `file_icon(path, folder, size, choose)` gives the icon the system shows for a file or a folder, about `size` pixels square, as
