@@ -17,9 +17,10 @@ hotkey_field.odin, split.odin). "gen." is the rule every box has: a tooltip is t
 | `checkbox` | — | Space | yes | check box | program's | gen. | gen. | — | — | — |
 | `radio` | — | Space, arrows, Home, End | the chosen one | radio | program's | gen. | gen. | — | — | — |
 | `toggle` | — | Space | yes | switch | program's | gen. | gen. | — | — | — |
-| `segmented` | — | Space, arrows, Home, End | the chosen one | radio group | program's | gen. | `tips` | — | — | — |
+| `segmented` | a step (D1) | Space, arrows, Home, End | the chosen one | radio group | program's | gen. | `tips` | — | — | — |
 | `tabs` | its strip | Space, Left, Right, Home, End | the chosen one | tab list | program's | gen. | gen. | — | — | — |
-| `dropdown` | — (D1) | Down, Alt+Down, F4 open | yes | combo box | program's | gen. | gen. | — | — | — |
+| `dropdown` | a step (D1) | Down, Alt+Down, F4 open | yes | combo box | program's | gen. | gen. | — | — | — |
+| `font_picker` | a step (D1) | Down, Alt+Down, F4 open | yes | combo box | program's | gen. | gen. | — | — | — |
 | `slider` | a step | arrows, Home, End, Page | yes | slider | program's | gen. | gen. | yes | — (D2) | `default`: double click |
 | `range_slider` | a step, active thumb | arrows, Home, End, Page | yes, each thumb | two sliders | program's | gen. | gen. | yes | — (D2) | `default`: double click, both ends |
 | `number` | a step | Up, Down, Page; Ctrl, Alt | the field | spin button | Reset (with `default`) | `disabled`, gen. | gen. | yes | yes | `default`: menu, track |
@@ -46,8 +47,22 @@ hotkey_field.odin, split.odin). "gen." is the rule every box has: a tooltip is t
 
 ## Decisions
 
-- **D1, no wheel over a closed drop-down.** A page that scrolls under the pointer would change the choice it passes
-  over. The open list scrolls; the closed one waits for a press or the keys.
+- **D1, the wheel on every control with a previous and a next value.** `dropdown` (closed), `segmented` (both looks),
+  `font_picker` (closed), and `prefs_page`'s numeric fields (`Size`, unbounded `Int` and `Float`, plus Up/Down keys) all
+  step on the wheel through `wheel_steps(b, focused)`, just as `slider`, `range_slider`, `number` and `parts_field` do.
+  An earlier decision refused the wheel on a closed drop-down because scrolling a page would change controls passed
+  under the pointer; `wheel_steps` already solves that by requiring focus inside any scrolling view (and accepting hover
+  outside one). Wheel down steps to the next choice (down the list), wheel up to the previous choice; on a numeric field
+  wheel up increases the value and Shift multiplies by `feel.step_shift`. On a `Size` field (`4 MiB`), one step is one
+  unit of the shown binary unit (`5 MiB`), dropping one unit down when stepping below 1 of that unit (down to the stored
+  unit).
+- **D3, `.Row` buttons stay one sleek line; collapsed rail icons show tooltips immediately; wrapped buttons keep vertical
+  padding.** A navigation or list row (`face = .Row`) stays one line, truncates with `…` when narrower than its label,
+  and shows the full label in a tooltip on hover (in addition to `text_reveal` on clicking the `…`). An icon-only `.Row`
+  button (a collapsed sidebar rail item, or a folded view-zone rail item) shows its tooltip with zero delay on hover,
+  since the tooltip is its only label (`Button_Options.tip_now` exposes the same for any other button). Non-`.Row`
+  buttons that wrap in a narrow dialog keep single-line vertical padding (`pad_y`) above and below their lines, so
+  wrapped text never sits flush against the pill's top and bottom edges.
 - **D2, a slider types no value.** A slider is the track alone, the lowest widget; `number` with `slider = true` is
   the track with a typed field. One widget types a number, not two.
 - **The context menu of a value is the program's** (from `prev_box`'s signal), but for the text fields, whose edit

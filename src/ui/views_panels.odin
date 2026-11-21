@@ -946,7 +946,8 @@ view_zone_rail :: proc(vs: ^Views, sp: ^View_Space, e: View_Edge, z: ^View_Zone_
 			pop_tags()
 			a11y_default(b, {role = .Button, name = title})
 			sig := signal(b)
-			if hovered_for(sig) { if tooltip() { tooltip_text(title) } }
+			// (in a folded rail the tooltip is the icon's only label: show it with zero delay)
+			if sig.hovering { if tooltip() { tooltip_text(title) } }
 			if sig.clicked {
 				delete(sp.active[e][k], vs.allocator)
 				sp.active[e][k] = strings.clone(r.modal_name, vs.allocator)

@@ -195,6 +195,7 @@ Button_Options :: struct {
 	// stays, a click does nothing, a screen reader hears it busy. Not faded: it is not unavailable, it is working
 	busy:      bool,
 	tip:       string,               // a tooltip when the pointer rests on it ("" none), its description for a screen reader
+	tip_now:   bool,                 // show `tip` immediately on hover with no delay (always on for icon-only .Row rail buttons)
 	icon_font: font.Font_Id,         // the glyph's font (0: State.icon_font; lucide_icons() for Lucide's)
 	icon_color: Maybe(Color),        // the glyph's own colour (a mode it shows: a shield red in one mode); nil: the words'
 }
@@ -286,7 +287,7 @@ button_glyph :: proc(id, icon: string, face: Button_Face, o: Button_Options) -> 
 		}
 		button_a11y(b, face, o.tip != "" ? o.tip : hash_part(id), o.tip, o.busy)
 		sig := signal(b)
-		button_tip(sig, o.tip)
+		button_tip(sig, o.tip, immediate = o.tip_now || face == .Row)
 		return sig
 	}
 	return {}
@@ -367,16 +368,18 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 	if face != .Row && !o.busy { b.squish = press_squish(b) }
 	sig = signal(b)
 	button_a11y(b, face, "", o.tip, o.busy)
-	button_tip(sig, o.tip)
+	button_tip(sig, o.tip, immediate = o.tip_now || (face == .Row && text == "" && icon != ""))
 	// (a secondary act's words: weak until the pointer is over it, unless they say an intent)
 	weak := o.quiet && o.intent == .Neutral && !sig.hovering && !o.lit
 	if parent(b) {
 		if weak { push_tags("weak") }
 		defer if weak { pop_tags() }
 		wide := w != {}   // (wider than what is in it: that goes where it is aligned)
-		// (the padding stays in a width too small: the words wrap, they are never against the edge)
+		row_elide := face == .Row   // (a navigation or list row stays one sleek line: elides with "…" + tooltip)
+		label_fills := row_elide && wide && (align == .Left || (icon == "" && !o.busy))
+		// (the padding stays in a width too small: the words wrap or elide, they are never against the edge)
 		if pad > 0 { spacer(px(pad)) }
-		if wide && align != .Left { spacer(fill()) }
+		if wide && !label_fills && align != .Left { spacer(fill()) }
 		glyph_w: f32 = 0
 		if o.busy {
 			// (the spinner in the glyph's cell: the words do not move when the act starts or ends)
@@ -392,17 +395,37 @@ button_row :: proc(id, text, icon: string, face: Button_Face, o: Button_Options)
 			next({width = px(glyph_w), height = glyph_h, font = o.icon_font != 0 ? o.icon_font : s.icon_font, text_align = .Center, fg = o.icon_color != nil ? o.icon_color : ink})
 			build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon))
 		}
-		// The words are never cut: as wide as they are on one line, and when the button is given less room than that (a
-		// dialog, a row too narrow), they wrap onto more lines (the layout's wrap_room) and the button grows taller.
-		next({fg = fg, font = m.font, font_size = words_size, text_pad = m.text_pad, text_align = align, width = text_size(), height = words_text_h ? text_size() : pct(1)})
-		label := build_box({.Draw_Text, .Text_Wrap, .No_Text_Trunc}, fmt.tprintf("%s###t", text_shown(text)))
-		// (its lines alone, not its text_pad above and below: the row's line is the button's height)
-		if words_text_h { label.pref[.Y] = text_size(-label.text_pad) }
-		if wide && align != .Right { spacer(fill()) }
+		// Non-row buttons never cut their words: they grow, or wrap onto more lines when narrow, keeping single-line
+		// vertical padding so wrapped text never sits flush against the pill edges. A .Row stays one sleek line and
+		// truncates with "…", showing its full words in a tooltip on hover (plus text_reveal on clicking "…").
+		lw := label_fills ? fill() : (row_elide ? text_size(0, 0) : text_size())
+		label_flags := row_elide ? Box_Flags{.Draw_Text} : Box_Flags{.Draw_Text, .Text_Wrap, .No_Text_Trunc}
+		label: ^Box
+		// Non-row buttons that wrap keep their single-line vertical breathing room via spacers around the label so
+		// wrapped text never sits flush against the pill edges, while 1-line buttons keep their exact height.
+		pad_y := !row_elide && words_text_h ? max(f32(0), math.floor((line - lh - 2 * max(1, math.round(s.scale))) * 0.5)) : 0
+		if pad_y > 0 {
+			next({width = children_sum(), height = children_sum(), axis = .Y})
+			if column() {
+				spacer(px(pad_y))
+				next({fg = fg, font = m.font, font_size = words_size, text_pad = m.text_pad, text_align = align, width = lw, height = text_size()})
+				label = build_box(label_flags, fmt.tprintf("%s###t", text_shown(text)))
+				label.pref[.Y] = text_size(-label.text_pad)
+				spacer(px(pad_y))
+			}
+		} else {
+			next({fg = fg, font = m.font, font_size = words_size, text_pad = m.text_pad, text_align = align, width = lw, height = words_text_h ? text_size() : pct(1)})
+			label = build_box(label_flags, fmt.tprintf("%s###t", text_shown(text)))
+			if words_text_h { label.pref[.Y] = text_size(-label.text_pad) }
+		}
+		if row_elide && o.tip == "" && label.ellipsis != {} && hovered_for(sig) {
+			if tooltip() { tooltip_text(text_shown(text)) }
+		}
+		if wide && !label_fills && align != .Right { spacer(fill()) }
 		if pad > 0 { spacer(px(pad)) }
 		// A width given in pixels is a least: the button grows to its words on one line when they need more. (A share of
-		// the row (fill) gives way to what is beside it; its words wrap then.)
-		if w.kind == .Pixels {
+		// the row (fill) gives way to what is beside it; its words wrap or elide then.)
+		if w.kind == .Pixels && !row_elide {
 			border := 2 * max(1, math.round(s.scale))
 			b.pref[.X].value = max(w.value, math.ceil(2 * pad + glyph_w + label.text_dim.x + 2 * label.text_pad + border))
 		}
@@ -495,10 +518,12 @@ text_align_given :: proc() -> bool {
 	return top_style().text_aligned || (s.has_next && s.next_mod.text_align != nil)
 }
 
-// The tooltip of a button (`tip`, "" none), once the pointer has rested on it for Feel.tooltip_delay_ms.
+// The tooltip of a button (`tip`, "" none): immediately on hover when `immediate` (a collapsed icon rail whose tip is
+// its only label), else once the pointer has rested on it for Feel.tooltip_delay_ms.
 @(private)
-button_tip :: proc(sig: Signal, tip: string) {
-	if tip != "" && hovered_for(sig) { if tooltip() { tooltip_text(tip) } }
+button_tip :: proc(sig: Signal, tip: string, immediate := false) {
+	if tip == "" { return }
+	if immediate ? sig.hovering : hovered_for(sig) { if tooltip() { tooltip_text(tip) } }
 }
 
 // A button's node for a screen reader: `name` ("" its words), `tip` its description, pressed while Toggled.

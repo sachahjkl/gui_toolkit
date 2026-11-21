@@ -41,6 +41,87 @@ a_button_grows_to_its_words_or_wraps_them :: proc(t: ^testing.T) { unwatched.run
 	testing.expectf(t, wraps.size.x <= col.size.x + 1, "within the column: %v in %v", wraps.size.x, col.size.x)
 	testing.expectf(t, wraps.size.y > session.get(s, "plain").size.y, "taller: its words on more lines (%v)", wraps.size.y)
 	testing.expect(t, holds(wraps, session.get(s, "t", within = wraps)), "its words inside it")
+	// wrapped buttons keep vertical breathing room above and below their lines (never flush with the pill edges)
+	wt := session.get(s, "t", within = wraps)
+	testing.expectf(t, wraps.size.y > wt.text_dim.y + 4, "vertical breathing room around wrapped lines: button %v vs lines %v", wraps.size.y, wt.text_dim.y)
+}) }
+
+// A .Row button (sidebar nav item, list row) stays one sleek line and truncates with "…" when narrower than its label,
+// instead of wrapping onto two cramped lines.
+@(test)
+a_row_button_stays_one_line_and_truncates :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {400, 200}, build = proc(s: ^session.Session) {
+		ui.next({width = ui.px(110), height = ui.children_sum(), axis = .Y})
+		if ui.column(id = "###side") {
+			ui.button("nav_long", "Numbers and ranges", "", {face = .Row, width = ui.fill(), left = true})
+			ui.button("nav_short", "Menus", "", {face = .Row, width = ui.fill(), left = true})
+		}
+	}})
+	session.frames(s, 2)
+	long_b := session.get(s, "nav_long")
+	short_b := session.get(s, "nav_short")
+	testing.expectf(t, abs(long_b.size.y - short_b.size.y) <= 1, "one line tall as a short row: %v vs %v", long_b.size.y, short_b.size.y)
+	lbl := session.get(s, "t", within = long_b)
+	testing.expect(t, lbl.ellipsis != {}, "truncated with an ellipsis")
+}) }
+
+// Every choice control with a next and previous value (dropdown, segmented pills and text) steps on the wheel: on hover
+// outside a scrolling view, and only once focused inside one.
+@(test)
+the_wheel_steps_dropdown_and_segmented :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	Run :: struct { dd, seg, seg_txt, in_scroll: int }
+	r := Run{dd = 1, seg = 1, seg_txt = 1, in_scroll = 1}
+	s := session.start(t, {size = {500, 320}, no_renderer = true, user = &r, build = proc(s: ^session.Session) {
+		r := (^Run)(s.user)
+		items := []string{"One", "Two", "Three"}
+		ui.next({width = ui.fill(), height = ui.fill()})
+		if ui.column(id = "###root") {
+			ui.dropdown("dd", items, &r.dd)
+			ui.segmented("seg", items, &r.seg)
+			ui.segmented("seg_txt", items, &r.seg_txt, look = .Text)
+			ui.next({width = ui.px(300), height = ui.px(120)})
+			if ui.scroll_y("###sc") {
+				ui.dropdown("dd_sc", items, &r.in_scroll)
+				ui.spacer(ui.px(300))
+			}
+		}
+	}})
+	session.frames(s, 2)
+	// outside a scroll view: hover + wheel steps immediately (down = next, up = previous)
+	session.wheel(s, session.center(session.get(s, "dd")), {0, 1})
+	testing.expect_value(t, r.dd, 2)
+	session.wheel(s, session.center(session.get(s, "dd")), {0, -1})
+	testing.expect_value(t, r.dd, 1)
+	session.wheel(s, session.center(session.get(s, "seg")), {0, 1})
+	testing.expect_value(t, r.seg, 2)
+	session.wheel(s, session.center(session.get(s, "seg")), {0, -1})
+	testing.expect_value(t, r.seg, 1)
+	session.wheel(s, session.center(session.get(s, "seg_txt")), {0, 1})
+	testing.expect_value(t, r.seg_txt, 2)
+	// inside a scroll view: unfocused wheel scrolls the view (up at top keeps dd_sc in view), never changes the dropdown
+	session.wheel(s, session.center(session.get(s, "dd_sc")), {0, -1})
+	testing.expect_value(t, r.in_scroll, 1)
+	// focused inside a scroll view: wheel steps the dropdown
+	ui.use(s.state)
+	ui.set_focus(session.get(s, "dd_sc").key)
+	session.frame(s)
+	dd_sc := session.get(s, "dd_sc")
+	session.wheel(s, session.center(dd_sc), {0, 1})
+	testing.expectf(t, r.in_scroll == 2, "expected 2, got %d (sc.rect=%v dd.rect=%v)", r.in_scroll, session.get(s, "sc").rect, dd_sc.rect)
+}) }
+
+// An icon-only .Row button (a collapsed sidebar rail item) shows its tooltip on hover with zero delay, because the
+// tooltip is its only label.
+@(test)
+a_collapsed_rail_button_shows_its_tooltip_immediately :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {300, 120}, no_renderer = true, build = proc(s: ^session.Session) {
+		ui.next({width = ui.px(32), height = ui.px(32)})
+		ui.button("rail_item", "", "*", {face = .Row, width = ui.px(32), height = 32, tip = "Numbers and ranges"})
+	}})
+	session.frames(s, 2)
+	session.move(s, session.center(session.get(s, "rail_item")))
+	// zero extra time waited: tooltip is already visible on the hover frame
+	testing.expect(t, session.find_text(s, "Numbers and ranges") != nil, "rail tooltip shown immediately with no delay")
 }) }
 
 // A word wider than the room is never split ("Vérifie / r / maint / enant"): the button grows past the column, its lines

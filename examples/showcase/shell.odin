@@ -91,7 +91,7 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 				ui.next({width = ui.fill(), height = ui.fill(), axis = .Y})
 				if ui.column(id = "###settings") { settings_build(app, em) }
 			} else {
-				sidebar(app, em)
+				sidebar(app, size.x, em)
 				scene_build(app, page_of(app.scene), em)
 			}
 		}
@@ -131,7 +131,7 @@ top_bar :: proc(app: ^App, em: f32) {
 			light := app.shown.light
 			ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2), radius = em * 0.45})
 			if ui.button("mode", icon = light ? lucide.MOON : lucide.SUN, o = {tip = light ? "Dark" : "Light"}).clicked {
-				app.choice.mode = light ? .Dark : .Light
+				set_mode(app, !light)
 			}
 			ui.spacer(ui.px(em * 0.2))
 			ui.next({width = ui.px(em * 2.2), height = ui.px(em * 2.2), radius = em * 0.45})
@@ -158,58 +158,88 @@ top_bar :: proc(app: ^App, em: f32) {
 }
 
 @(private = "file")
-sidebar :: proc(app: ^App, em: f32) {
+sidebar :: proc(app: ^App, room, em: f32) {
 	shown := page_of(app.scene)
+	opts := ui.Side_Panel_Options{
+		unit = em, default_width = 16, min_width = 9, max_width = 24,
+		rail = 3.1, content_min = 34, line_at = .End,
+	}
+	w, folded, _ := ui.side_panel_begin(&app.nav, room, opts)
 	if ui.tags("bar") {
-		ui.next({width = ui.px(em * 14), height = ui.fill(), axis = .Y, radius = 0})
-		if ui.column(flags = {.Draw_Background, .Draw_Side_Right}, id = "###nav") {
+		ui.next({width = ui.px(w), height = ui.fill(), axis = .Y, radius = 0})
+		if ui.column(flags = {.Draw_Background}, id = "###nav") {
+			// the fold button, kept at one x whether open or folded to its rail
+			ui.spacer(ui.px(em * 0.5))
+			ui.next({width = ui.fill(), height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM)), axis = .X, cross = .Center})
+			if ui.row(id = "###nav_head") {
+				ui.spacer(ui.px(em * 0.55))
+				if ui.side_fold_button("###nav_fold", folded, false, "Hide navigation", "Show navigation").clicked { ui.side_fold_set(&app.nav.fold, !folded) }
+			}
 			// the scenes and the overlays: a column of choices on a vertical strip, with up and down arrows when the
 			// window is too short for them (docs/strip.md)
 			ui.next({width = ui.fill(), height = ui.fill()})
 			if ui.strip("###nav_strip", {axes = {.Y}}) {
-				ui.spacer(ui.px(em * 0.9))
+				ui.spacer(ui.px(em * 0.4))
 				for s in NAV {
 					if s == .Settings { continue }
-					ui.next({width = ui.fill(), height = ui.px(em * 2.3), axis = .X})
+					ui.next({width = ui.fill(), height = ui.px(em * 2.3), axis = .X, cross = .Center})
 					if ui.row(id = fmt.tprintf("###navrow%v", s)) {
-						// (a row's face is inset in it: its face stands 0.6 em from the sidebar's sides)
-						ui.spacer(ui.px(em * (0.6 - ui.ROW_FACE_INSET_EM)))
-						sig := ui.button(fmt.tprintf("###nav%v", s), SCENE_TITLES[s], SCENE_ICONS[s], {face = .Row, selected = s == shown, width = ui.fill(), left = true})
-						if s == shown { ui.strip_reveal(sig.box) }
-						if sig.clicked { app.scene = s }
-						ui.spacer(ui.px(em * (0.6 - ui.ROW_FACE_INSET_EM)))
+						if folded {
+							ui.spacer(ui.fill())
+							side := math.round(em * 2.1)
+							sig := ui.button(fmt.tprintf("###nav%v", s), "", SCENE_ICONS[s], {face = .Row, selected = s == shown, width = ui.px(side), height = side, tip = SCENE_TITLES[s]})
+							if s == shown { ui.strip_reveal(sig.box) }
+							if sig.clicked { app.scene = s }
+							ui.spacer(ui.fill())
+						} else {
+							// (a row's face is inset in it: its face stands 0.6 em from the sidebar's sides)
+							ui.spacer(ui.px(em * (0.6 - ui.ROW_FACE_INSET_EM)))
+							sig := ui.button(fmt.tprintf("###nav%v", s), SCENE_TITLES[s], SCENE_ICONS[s], {face = .Row, selected = s == shown, width = ui.fill(), left = true})
+							if s == shown { ui.strip_reveal(sig.box) }
+							if sig.clicked { app.scene = s }
+							ui.spacer(ui.px(em * (0.6 - ui.ROW_FACE_INSET_EM)))
+						}
 					}
 					ui.spacer(ui.px(em * 0.1))
 				}
-				ui.spacer(ui.px(em * 0.6))
-				ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
-				if ui.row(id = "###navline") {
-					ui.spacer(ui.px(em * 0.9))
-					ui.hline(ui.fill())
-					ui.spacer(ui.px(em * 0.9))
+				if !folded {
+					ui.spacer(ui.px(em * 0.6))
+					ui.next({width = ui.fill(), height = ui.children_sum(), axis = .X})
+					if ui.row(id = "###navline") {
+						ui.spacer(ui.px(em * 0.9))
+						ui.hline(ui.fill())
+						ui.spacer(ui.px(em * 0.9))
+					}
+					ui.spacer(ui.px(em * 0.6))
+					// the overlays, opened from here as a program would
+					overlay_link(app, "###open_palette", lucide.COMMAND, "Command palette", .Palette, em)
+					overlay_link(app, "###open_dialog", lucide.DOWNLOAD, "Export dialog", .Dialog, em)
+					overlay_link(app, "###open_confirm", lucide.TRASH_2, "Delete for good…", .Confirm, em)
+					overlay_link(app, "###open_prompt", lucide.KEY_ROUND, "Unlock the key…", .Prompt, em)
+					overlay_link(app, "###open_files", lucide.FOLDER_OPEN, "Open a file…", .Files, em)
+					overlay_link(app, "###open_toasts", lucide.BELL, "Say what was done", .Toasts, em)
 				}
-				ui.spacer(ui.px(em * 0.6))
-				// the overlays, opened from here as a program would
-				overlay_link(app, "###open_palette", lucide.COMMAND, "Command palette", .Palette, em)
-				overlay_link(app, "###open_dialog", lucide.DOWNLOAD, "Export dialog", .Dialog, em)
-				overlay_link(app, "###open_confirm", lucide.TRASH_2, "Delete for good…", .Confirm, em)
-				overlay_link(app, "###open_prompt", lucide.KEY_ROUND, "Unlock the key…", .Prompt, em)
-				overlay_link(app, "###open_files", lucide.FOLDER_OPEN, "Open a file…", .Files, em)
-				overlay_link(app, "###open_toasts", lucide.BELL, "Say what was done", .Toasts, em)
 			}
 			ui.next({width = ui.fill(), height = ui.px(em * 2), axis = .X, cross = .Center})
 			if ui.row(id = "###health") {
-				ui.spacer(ui.px(em * 1.1))
-				ui.dot("###health_dot", em * 0.55, .Success)
-				ui.spacer(ui.px(em * 0.6))
-				if ui.tags("weak") {
-					ui.next({width = ui.fill(), height = ui.pct(1), text_pad = 0, font_size = math.round(em * 0.9)})
-					ui.label("Every service answers###health_words")
+				if folded {
+					ui.spacer(ui.fill())
+					ui.dot("###health_dot", em * 0.55, .Success)
+					ui.spacer(ui.fill())
+				} else {
+					ui.spacer(ui.px(em * 1.1))
+					ui.dot("###health_dot", em * 0.55, .Success)
+					ui.spacer(ui.px(em * 0.6))
+					if ui.tags("weak") {
+						ui.next({width = ui.fill(), height = ui.pct(1), text_pad = 0, font_size = math.round(em * 0.9)})
+						ui.label("Every service answers###health_words")
+					}
 				}
 			}
 			ui.spacer(ui.px(em * 0.6))
 		}
 	}
+	_ = ui.side_panel_handle("###nav_split", &app.nav, room, opts)
 }
 
 // A line of the sidebar that opens an overlay: a button of the Link face, words that do what they say.
@@ -219,6 +249,32 @@ overlay_link :: proc(app: ^App, id, glyph, words: string, s: Scene, em: f32) {
 	if ui.row(id = fmt.tprintf("%s_row", id)) {
 		ui.spacer(ui.px(em * 1.1))
 		if ui.button(id, words, glyph, {face = .Link, icon_font = ui.lucide_icons(), intent = app.scene == s ? .Primary : .Neutral}).clicked { scene_open(app, s) }
+	}
+}
+
+// Switches between Light and Dark: if the current theme has only one version (Graphite is Dark_Only, Aero is
+// Light_Only), moves to a theme that has the requested version and remembers the previous one to restore when toggled back.
+set_mode :: proc(app: ^App, want_light: bool) {
+	app.choice.mode = want_light ? .Light : .Dark
+	has := want_light ? app.shown.def.versions != .Dark_Only : app.shown.def.versions != .Light_Only
+	if has {
+		if app.other_theme != "" {
+			for t in app.themes {
+				if t.name == app.other_theme && (want_light ? t.versions != .Dark_Only : t.versions != .Light_Only) {
+					app.choice.name = t.name
+					app.other_theme = ""
+					return
+				}
+			}
+		}
+		return
+	}
+	app.other_theme = app.shown.def.name
+	for t in app.themes {
+		if want_light ? t.versions != .Dark_Only : t.versions != .Light_Only {
+			app.choice.name = t.name
+			return
+		}
 	}
 }
 
@@ -272,7 +328,7 @@ palette_chosen :: proc(app: ^App) {
 		at := 0
 		for t, k in app.themes { if t.name == app.choice.name { at = k } }
 		app.choice.name = app.themes[(at + 1) % len(app.themes)].name
-	case "theme.mode":        app.choice.mode = app.shown.light ? .Dark : .Light
+	case "theme.mode":        set_mode(app, !app.shown.light)
 	case "finish.machined":   app.choice.finish = .Machined
 	case "settings":          app.scene = .Settings
 	case "zoom.in", "zoom.out", "graph.fit", "shortcuts", "theme.file", "window.new", "open", "save", "export":

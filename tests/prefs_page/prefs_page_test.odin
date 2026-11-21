@@ -716,6 +716,46 @@ the_badge_passes_from_one_face_to_the_next :: proc(t: ^testing.T) {
 	testing.expect(t, session.find_text(s, "Restart to update to 0.42.0") != nil, "the button")
 }
 
+// A numeric preference field (a Size like "4 MiB", or an unbounded number) steps on the wheel and Up/Down keys: inside
+// the scrolling settings page, only once the field has the keyboard, so scrolling the page passes over it safely.
+@(test)
+the_wheel_and_arrows_step_a_size_field :: proc(t: ^testing.T) {
+	app: App
+	defer app_end(&app)
+	s := app_start(t, &app, "max_body")
+	// 4 MiB stored in KiB (4096)
+	_ = config.set_int(&app.prefs, "net.max_body", 4096)
+	session.frames(s, 2)
+	fld := session.get(s, "field")
+	testing.expect(t, fld != nil, "the size field")
+	if fld == nil { return }
+	// unfocused inside the scrolling settings page: wheel scrolls the page, never changes the size
+	session.wheel(s, session.center(fld), {0, -1})
+	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 4096)
+	// focused: wheel up steps by 1 MiB (4 MiB -> 5 MiB), wheel down returns to 4 MiB
+	session.click(s, "field")
+	session.wheel(s, session.center(session.get(s, "field")), {0, -1})
+	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 5120)
+	session.wheel(s, session.center(session.get(s, "field")), {0, 1})
+	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 4096)
+	// Up and Down keys step the same way
+	session.key(s, .Up)
+	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 5120)
+	session.key(s, .Down)
+	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 4096)
+	// At 1 MiB, stepping down drops into KiB (1023 KiB), and stepping up returns cleanly to 1 MiB
+	session.key(s, .Escape)
+	ui.use(s.state)
+	ui.set_focus(0)
+	_ = config.set_int(&app.prefs, "net.max_body", 1024)
+	session.frames(s, 2)
+	session.click(s, "field")
+	session.wheel(s, session.center(session.get(s, "field")), {0, 1})
+	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 1023)
+	session.wheel(s, session.center(session.get(s, "field")), {0, -1})
+	testing.expect_value(t, config.int_of(&app.prefs, "net.max_body"), 1024)
+}
+
 // The badge of the status bar shows nothing when the updater has nothing to do.
 @(test)
 no_badge_with_nothing_to_do :: proc(t: ^testing.T) {

@@ -10,6 +10,8 @@ import "core:strings"
 import "../draw"
 import "../flowgraph"
 import "../font"
+import i18n "../i18n"
+import lucide "../lucide"
 import "../render"
 
 // The grid: its step in graph units, doubled while it is closer than GRAPH_GRID_LEAST_PX on the screen; a line in
@@ -239,10 +241,19 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 			b := node_graph_local(f, band.to)
 			od.band = {{min(a.x, b.x), min(a.y, b.y)}, {max(a.x, b.x), max(a.y, b.y)}}
 		}
+		mm_rect_local: Rect
 		if f.o.minimap {
-			if mm, ok := node_graph_minimap(f, area_rect); ok {
+			mm: Node_Graph_Minimap
+			mm_ok: bool
+			if mg, dragging_mm := view.gesture.(Graph_Gesture_Minimap); dragging_mm && mg.k > 0 {
+				mm, mm_ok = {rect = mg.rect, lo = mg.lo, pad = mg.pad, k = mg.k}, true
+			} else {
+				mm, mm_ok = node_graph_minimap(f, area_rect)
+			}
+			if mm_ok {
 				od.minimap = true
 				od.map_rect = {mm.rect.min - view.origin, mm.rect.max - view.origin}
+				mm_rect_local = od.map_rect
 				od.map_nodes = make([]Rect, len(f.nodes), frame_allocator())
 				od.map_selected = make([]bool, len(f.nodes), frame_allocator())
 				for g, i in f.geo {
@@ -256,6 +267,27 @@ node_graph_build :: proc(f: ^Node_Graph_Frame) {
 		}
 		next({fixed_x = 0, fixed_y = 0, width = pct(1), height = pct(1)})
 		custom("###graph_over", node_graph_over_draw, od)
+		// When the graph has nodes and none intersect the current viewport, offer a one-click return above the minimap
+		// (or in the bottom-right corner) so the user is never stranded in empty space.
+		if len(f.nodes) > 0 && view.size.x > 0 && view.size.y > 0 {
+			vrect := Rect{graph_from_screen(view, area_rect.min), graph_from_screen(view, area_rect.max)}
+			any_visible := false
+			for g in f.geo {
+				if node_graph_overlaps(g.rect, vrect) { any_visible = true; break }
+			}
+			if !any_visible {
+				label_text := i18n.tr("Back to content")
+				bw := button_width(label_text, glyph = true)
+				bh := math.round(dense(font_size() * CONTROL_HEIGHT_EM))
+				margin := GRAPH_MINIMAP_MARGIN * f.sc
+				bx := max(margin, view.size.x - margin - bw)
+				by := od.minimap ? max(margin, mm_rect_local.min.y - margin * 0.6 - bh) : max(margin, view.size.y - margin - bh)
+				next({fixed_x = bx, fixed_y = by, width = px(bw), height = px(bh)})
+				if button("###graph_back", label_text, lucide.MAXIMIZE_2, {icon_font = lucide_icons(), intent = .Primary, tip = i18n.tr("Fit the graph in view (F)")}).clicked {
+					graph_fit(view, f.nodes, view.size / f.sc)
+				}
+			}
+		}
 	}
 	// a running node's bar moves: frames while one shows, none at rest
 	if running { keep_animating() }
@@ -269,23 +301,35 @@ node_graph_area_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Node_Graph_Area_Draw)(user)
 	r := b.rect
 	machined_well(dc, r, 0, d.colors.well)
-	// the grid: lines every step, a major one every GRAPH_GRID_MAJOR, from the graph's origin
-	step := f32(GRAPH_GRID)
-	for step * d.k < GRAPH_GRID_LEAST_PX * d.sc { step *= 2 }
-	sp := step * d.k
-	px := max(1, math.round(d.sc))
-	minor, major := d.colors.border, d.colors.border
-	minor.a *= GRAPH_GRID_MINOR_ALPHA
-	major.a *= GRAPH_GRID_MAJOR_ALPHA
-	o := r.min + d.offset
-	first := [2]f32{math.floor((r.min.x - o.x) / sp), math.floor((r.min.y - o.y) / sp)}
-	for i := first.x; o.x + i * sp < r.max.x; i += 1 {
-		x := math.round(o.x + i * sp)
-		draw.rect(dc, {{x, r.min.y}, {x + px, r.max.y}}, int(i) % GRAPH_GRID_MAJOR == 0 ? major : minor)
-	}
-	for i := first.y; o.y + i * sp < r.max.y; i += 1 {
-		y := math.round(o.y + i * sp)
-		draw.rect(dc, {{r.min.x, y}, {r.max.x, y + px}}, int(i) % GRAPH_GRID_MAJOR == 0 ? major : minor)
+	// the grid: lines every step, a major one every GRAPH_GRID_MAJOR, from the graph's origin.
+	// Computed in f64 with a bounded integer step count: an f32 loop `i += 1` stalled forever once |offset/sp| >= 2^24.
+	if d.k > 0 && !math.is_nan(d.k) && !math.is_inf(d.k, 0) && !math.is_nan(d.offset.x) && !math.is_nan(d.offset.y) && !math.is_inf(d.offset.x, 0) && !math.is_inf(d.offset.y, 0) {
+		step := f32(GRAPH_GRID)
+		for step * d.k < GRAPH_GRID_LEAST_PX * d.sc { step *= 2 }
+		sp := f64(step) * f64(d.k)
+		if sp >= 1 {
+			px := max(1, math.round(d.sc))
+			minor, major := d.colors.border, d.colors.border
+			minor.a *= GRAPH_GRID_MINOR_ALPHA
+			major.a *= GRAPH_GRID_MAJOR_ALPHA
+			ox, oy := f64(r.min.x) + f64(d.offset.x), f64(r.min.y) + f64(d.offset.y)
+			first_x := i64(math.floor((f64(r.min.x) - ox) / sp))
+			count_x := int(math.ceil(f64(r.max.x - r.min.x) / sp)) + 2
+			for k in 0 ..< count_x {
+				idx := first_x + i64(k)
+				x := f32(math.round(ox + f64(idx) * sp))
+				if x >= r.max.x { break }
+				if x + px > r.min.x { draw.rect(dc, {{x, r.min.y}, {x + px, r.max.y}}, idx % GRAPH_GRID_MAJOR == 0 ? major : minor) }
+			}
+			first_y := i64(math.floor((f64(r.min.y) - oy) / sp))
+			count_y := int(math.ceil(f64(r.max.y - r.min.y) / sp)) + 2
+			for k in 0 ..< count_y {
+				idx := first_y + i64(k)
+				y := f32(math.round(oy + f64(idx) * sp))
+				if y >= r.max.y { break }
+				if y + px > r.min.y { draw.rect(dc, {{r.min.x, y}, {r.max.x, y + px}}, idx % GRAPH_GRID_MAJOR == 0 ? major : minor) }
+			}
+		}
 	}
 	for l in d.links {
 		a, e := r.min + l.a, r.min + l.b
