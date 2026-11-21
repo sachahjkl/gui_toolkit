@@ -610,5 +610,6 @@ dump_shows_sweep_angles :: proc(t: ^testing.T) {
 	testing.expect(t, c != nil)
 	defer font.colr_destroy(c)
 	s := font.colr_dump(c, 1, context.temp_allocator)
-	testing.expectf(t, strings.contains(s, "180.0..360.0"), "%s", s)
+	// (the font's half turns 1.0 and 2.0 of its F2DOT14 bias: half a turn to a whole one, in turns)
+	testing.expectf(t, strings.contains(s, "0.500..1.000 turns"), "%s", s)
 }

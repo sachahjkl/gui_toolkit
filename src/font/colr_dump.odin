@@ -55,7 +55,8 @@ dump_paint :: proc(c: ^Colr, r: ^Rd, sb: ^strings.Builder, off, depth: int, line
 		switch g.kind {
 		case .Linear: fmt.sbprintf(sb, "  p0 (%.0f,%.0f) p1 (%.0f,%.0f) p2 (%.0f,%.0f)", g.p0.x, g.p0.y, g.p1.x, g.p1.y, g.p2.x, g.p2.y)
 		case .Radial: fmt.sbprintf(sb, "  c0 (%.0f,%.0f) r0 %.0f c1 (%.0f,%.0f) r1 %.0f", g.p0.x, g.p0.y, g.r0, g.p1.x, g.p1.y, g.r1)
-		case .Sweep: fmt.sbprintf(sb, "  c (%.0f,%.0f) %.1f..%.1f", g.p0.x, g.p0.y, g.a0, g.a1)
+		// (turns, three places: an eighth of a turn is 0.125, which one place showed as 0.1)
+		case .Sweep: fmt.sbprintf(sb, "  c (%.0f,%.0f) %.3f..%.3f turns", g.p0.x, g.p0.y, g.a0, g.a1)
 		}
 		fmt.sbprintf(sb, "\n")
 	case .Glyph:
