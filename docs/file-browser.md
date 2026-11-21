@@ -289,6 +289,13 @@ ui.file_dialog_memory(&app.ui, path)   // read on the chores; written by a store
 
 The interface's thread never touches the file. What a dialog remembered before the file came wins over the file's.
 
+## System shell actions
+
+When the browser shows local files inside a real window, its row context menu queries system shell extensions
+asynchronously through `ui.Shell_Menu` (`shell_menu_query`, `shell_menu_items`, `shell_menu_clear`,
+`shell_menu_destroy`, with `SHELL_MENU_DEFAULT_EXCLUDE`) and appends third-party items and their icons as soon as
+they arrive without delaying menu open. Any program's own `ui.menu` can embed `ui.Shell_Menu` the same way.
+
 ## For tests
 
 `ui.file_browser_counts(s)`: whether a dialog is open, its folder, its entries and rows shown, and how many times its rows

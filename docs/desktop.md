@@ -339,8 +339,8 @@ worker thread so opening a file menu never blocks the interface thread ([context
 
 | System | Where the items come from |
 |---|---|
-| Windows | Dedicated COM STA worker: `IShellFolder::GetUIObjectOf` (selected items) or `CreateViewObject` (folder background) -> `IContextMenu` / `IContextMenu2` / `IContextMenu3`, `QueryContextMenu`, `HandleMenuMsg(WM_INITMENUPOPUP)` for dynamic submenus (7-Zip, Git, Send to), `GetCommandString(GCS_VERBW)` for verb filtering, and `InvokeCommand` on click. |
-| Linux | Declarative file-manager extensions read on the worker using `xdg_roots()` and the MIME cache: KIO service menus (`kio/servicemenus/*.desktop`, `kservices5/ServiceMenus/*.desktop`), Nemo actions (`nemo/actions/*.nemo_action`), and Thunar custom actions (`Thunar/uca.xml`). Invoked via `platform.launch_detached`. |
+| Windows | Dedicated COM STA worker: `IShellFolder::GetUIObjectOf` (selected items) or `CreateViewObject` (folder background) -> `IContextMenu` / `IContextMenu2` / `IContextMenu3`, `QueryContextMenu`, `HandleMenuMsg(WM_INITMENUPOPUP)` for dynamic submenus (7-Zip, Git, Send to), `GetCommandString(GCS_VERBW)` for verb filtering, `MIIM_BITMAP` icon extraction to `Context_Item.icon` (`File_Icon`, converted via `context_menu_bgra_to_rgba`), and `InvokeCommand` on click. |
+| Linux | Declarative file-manager extensions read on the worker using `xdg_roots()` and the MIME cache: KIO service menus (`kio/servicemenus/*.desktop`, `kservices5/ServiceMenus/*.desktop`), Nemo actions (`nemo/actions/*.nemo_action`), and Thunar custom actions (`Thunar/uca.xml`), with declared icons loaded into `Context_Item.icon` via `theme_icon`. Invoked via `platform.launch_detached`. |
 | Other systems | Empty list. |
 
 ## Icons of files

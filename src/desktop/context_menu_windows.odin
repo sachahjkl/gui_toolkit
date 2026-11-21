@@ -26,6 +26,7 @@ import "../ascii"
 @(private = "file") MIIM_SUBMENU         :: u32(0x00000004)
 @(private = "file") MIIM_FTYPE           :: u32(0x00000100)
 @(private = "file") MIIM_STRING          :: u32(0x00000040)
+@(private = "file") MIIM_BITMAP          :: u32(0x00000080)
 @(private = "file") MFT_SEPARATOR        :: u32(0x00000800)
 @(private = "file") MFS_DISABLED         :: u32(0x00000003)
 
@@ -284,7 +285,7 @@ walk_hmenu :: proc(ns: ^Context_Menu_Native, hmenu: win.HMENU, depth: int, alloc
 	for i := u32(0); i < u32(count); i += 1 {
 		mii := MENUITEMINFOW{
 			cbSize     = size_of(MENUITEMINFOW),
-			fMask      = MIIM_FTYPE | MIIM_STATE | MIIM_ID | MIIM_SUBMENU | MIIM_STRING,
+			fMask      = MIIM_FTYPE | MIIM_STATE | MIIM_ID | MIIM_SUBMENU | MIIM_STRING | MIIM_BITMAP,
 			dwTypeData = raw_data(text_buf[:]),
 			cch        = u32(len(text_buf)),
 		}
@@ -302,13 +303,15 @@ walk_hmenu :: proc(ns: ^Context_Menu_Native, hmenu: win.HMENU, depth: int, alloc
 			init_submenu(ns, mii.hSubMenu, i)
 			kids := walk_hmenu(ns, mii.hSubMenu, depth + 1, allocator)
 			if len(kids) > 0 && label != "" {
-				append(&out, Context_Item{label = label, disabled = disabled, children = kids})
+				icon := hbitmap_to_icon(mii.hbmpItem, allocator)
+				append(&out, Context_Item{label = label, disabled = disabled, icon = icon, children = kids})
 			}
 			continue
 		}
 		if mii.wID < SHELL_CMD_FIRST || mii.wID > SHELL_CMD_LAST || label == "" { continue }
 		verb := query_verb(ns.cm, mii.wID - SHELL_CMD_FIRST, allocator)
-		append(&out, Context_Item{id = mii.wID, label = label, verb = verb, disabled = disabled})
+		icon := hbitmap_to_icon(mii.hbmpItem, allocator)
+		append(&out, Context_Item{id = mii.wID, label = label, verb = verb, disabled = disabled, icon = icon})
 	}
 	return out[:]
 }
@@ -328,4 +331,34 @@ query_verb :: proc(cm: ^IContextMenu, offset: u32, allocator: runtime.Allocator)
 	buf: [SHELL_MENU_TEXT_MAX]u16
 	if cm->GetCommandString(uintptr(offset), GCS_VERBW, nil, raw_data(buf[:]), u32(len(buf))) < 0 { return "" }
 	return narrow(buf[:], allocator)
+}
+
+// Reads a menu item's HBITMAP into straight RGBA8. Skips nil and Win32 HBMMENU_* sentinel handles (<= 11 or -1).
+@(private = "file")
+hbitmap_to_icon :: proc(hbmp: win.HBITMAP, allocator: runtime.Allocator) -> File_Icon {
+	raw := uintptr(hbmp)
+	if raw == 0 || raw <= 11 || int(raw) < 0 { return {} }
+	bm: win.BITMAP
+	if win.GetObjectW(win.HANDLE(hbmp), size_of(bm), &bm) == 0 { return {} }
+	w, h := int(bm.bmWidth), int(bm.bmHeight)
+	if w <= 0 || h <= 0 || w > 256 || h > 256 { return {} }
+	bi := win.BITMAPINFO{
+		bmiHeader = {
+			biSize        = size_of(win.BITMAPINFOHEADER),
+			biWidth       = i32(w),
+			biHeight      = -i32(h),
+			biPlanes      = 1,
+			biBitCount    = 32,
+			biCompression = win.BI_RGB,
+		},
+	}
+	px := make([]u8, w * h * 4, allocator)
+	dc := win.CreateCompatibleDC(nil)
+	defer win.DeleteDC(dc)
+	if win.GetDIBits(dc, hbmp, 0, u32(h), raw_data(px), &bi, win.DIB_RGB_COLORS) == 0 {
+		delete(px, allocator)
+		return {}
+	}
+	context_menu_bgra_to_rgba(px)
+	return File_Icon{rgba = px, size = {w, h}}
 }

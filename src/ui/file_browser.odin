@@ -169,6 +169,8 @@ File_Browser :: struct {
 	undo_serial:  u64,        // ... its toast's (0: none, or undone)
 	undo_dialog:  u64,        // ... the dialog it was in
 	trash_serial: u64,        // counts the trashes
+	shell:        Shell_Menu, // asynchronous system shell context-menu actions for local files
+	shell_was_open: bool,
 
 	preview:      File_Preview,
 	memory:       File_Memories,
@@ -243,6 +245,7 @@ file_browser_destroy :: proc(s: ^State) {
 	// (a walk still on its way holds the stop: it stops, and the last of them frees it)
 	file_find_stop(fb)
 	file_find_stop_release(fb.find_stop)
+	shell_menu_destroy(&fb.shell)
 	file_preview_destroy(fb)
 	thumb_cache_destroy(&fb.thumbs)
 	delete(fb.instance, a)
@@ -411,6 +414,8 @@ file_browser_close :: proc(fb: ^File_Browser) {
 	fb.table.highlight = fb.table.query
 	fb.made = false
 	fb.new_folder = false
+	shell_menu_clear(&fb.shell)
+	fb.shell_was_open = false
 	file_preview_clear(fb)
 	virtual.arena_free_all(&fb.places_arena)
 	clear(&fb.source_places)

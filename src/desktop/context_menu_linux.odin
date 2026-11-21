@@ -48,7 +48,7 @@ context_menu_native_query :: proc(ns: ^Context_Menu_Native, req: Context_Query_R
 	roots := xdg_roots()
 	sync.mutex_guard(&mime_cache.mutex)
 	db := mime_cache_get(&mime_cache, roots)
-	return linux_context_query(ns, db, roots, req, allocator)
+	return linux_context_query(ns, db, roots, req, allocator, resolve_icons = true)
 }
 
 @(private)
@@ -72,19 +72,38 @@ Target_Info :: struct {
 	mimes:      [][]string,   // per path: its MIME family (mime_family)
 }
 
+@(private = "file")
+Linux_Icon_Cache :: struct {
+	resolve: bool,
+	entries: map[string]File_Icon,
+}
+
+@(private = "file")
+linux_icon_lookup :: proc(cache: ^Linux_Icon_Cache, name: string) -> File_Icon {
+	if !cache.resolve || name == "" { return {} }
+	if existing, ok := cache.entries[name]; ok { return existing }
+	ic, ok := theme_icon_native(name, 16, context.temp_allocator)
+	if !ok { ic = {} }
+	cache.entries[name] = ic
+	return ic
+}
+
 @(private)
-linux_context_query :: proc(ns: ^Context_Menu_Native, db: ^Mime_Database, roots: Xdg_Roots, req: Context_Query_Req, allocator: runtime.Allocator) -> []Context_Item {
+linux_context_query :: proc(ns: ^Context_Menu_Native, db: ^Mime_Database, roots: Xdg_Roots, req: Context_Query_Req, allocator: runtime.Allocator, resolve_icons := false) -> []Context_Item {
 	if len(req.paths) == 0 { return nil }
 	info := target_info_build(db, req.paths, req.background)
 
 	raw := make([dynamic]Context_Item, context.temp_allocator)
 	submenus := make(map[string][dynamic]Context_Item, context.temp_allocator)
+	submenu_icons := make(map[string]File_Icon, context.temp_allocator)
 	submenu_order := make([dynamic]string, context.temp_allocator)
+	icon_cache := Linux_Icon_Cache{resolve = resolve_icons, entries = make(map[string]File_Icon, context.temp_allocator)}
 	next_id := u32(1)
 	ns.commands = make(map[u32][]string, 16, runtime.heap_allocator())
 
 	add_action :: proc(ns: ^Context_Menu_Native, raw: ^[dynamic]Context_Item, submenus: ^map[string][dynamic]Context_Item,
-		submenu_order: ^[dynamic]string, next_id: ^u32, label, submenu, verb: string, argv: []string) {
+		submenu_icons: ^map[string]File_Icon, submenu_order: ^[dynamic]string, icons: ^Linux_Icon_Cache,
+		next_id: ^u32, label, submenu, verb, icon_name, sub_icon_name: string, argv: []string) {
 		if label == "" || len(argv) == 0 { return }
 		id := next_id^
 		next_id^ += 1
@@ -92,11 +111,14 @@ linux_context_query :: proc(ns: ^Context_Menu_Native, db: ^Mime_Database, roots:
 		copied := make([]string, len(argv), a)
 		for s, i in argv { copied[i] = strings.clone(s, a) }
 		ns.commands[id] = copied
-		it := Context_Item{id = id, label = label, verb = verb}
+		it := Context_Item{id = id, label = label, verb = verb, icon = linux_icon_lookup(icons, icon_name)}
 		if submenu != "" {
 			if submenu not_in submenus {
 				submenus[submenu] = make([dynamic]Context_Item, context.temp_allocator)
 				append(submenu_order, submenu)
+			}
+			if sub_icon_name != "" && submenu not_in submenu_icons {
+				submenu_icons[submenu] = linux_icon_lookup(icons, sub_icon_name)
 			}
 			append(&submenus[submenu], it)
 		} else {
@@ -117,7 +139,7 @@ linux_context_query :: proc(ns: ^Context_Menu_Native, db: ^Mime_Database, roots:
 				seen_kio[fi.name] = true
 				text, rerr := os.read_entire_file(fi.fullpath, context.temp_allocator)
 				if rerr != nil { continue }
-				kio_parse(string(text), fi.fullpath, info, ns, &raw, &submenus, &submenu_order, &next_id, add_action)
+				kio_parse(string(text), fi.fullpath, info, ns, &raw, &submenus, &submenu_icons, &submenu_order, &icon_cache, &next_id, add_action)
 			}
 		}
 	}
@@ -134,7 +156,7 @@ linux_context_query :: proc(ns: ^Context_Menu_Native, db: ^Mime_Database, roots:
 			seen_nemo[fi.name] = true
 			text, rerr := os.read_entire_file(fi.fullpath, context.temp_allocator)
 			if rerr != nil { continue }
-			nemo_parse(string(text), info, ns, &raw, &submenus, &submenu_order, &next_id, add_action)
+			nemo_parse(string(text), info, ns, &raw, &submenus, &submenu_icons, &submenu_order, &icon_cache, &next_id, add_action)
 		}
 	}
 
@@ -143,13 +165,13 @@ linux_context_query :: proc(ns: ^Context_Menu_Native, db: ^Mime_Database, roots:
 		path := strings.concatenate({root, "/Thunar/uca.xml"}, context.temp_allocator)
 		text, rerr := os.read_entire_file(path, context.temp_allocator)
 		if rerr != nil { continue }
-		thunar_uca_parse(string(text), info, ns, &raw, &submenus, &submenu_order, &next_id, add_action)
+		thunar_uca_parse(string(text), info, ns, &raw, &submenus, &submenu_icons, &submenu_order, &icon_cache, &next_id, add_action)
 		break
 	}
 
 	for name in submenu_order {
 		kids := submenus[name]
-		if len(kids) > 0 { append(&raw, Context_Item{label = name, children = kids[:]}) }
+		if len(kids) > 0 { append(&raw, Context_Item{label = name, icon = submenu_icons[name], children = kids[:]}) }
 	}
 	return context_items_prune(raw[:], req.exclude_verbs, allocator)
 }
@@ -207,9 +229,12 @@ mimes_match_all :: proc(info: Target_Info, patterns: []string) -> bool {
 // KIO service menus (*.desktop)
 
 @(private = "file")
+Linux_Add_Action :: proc(^Context_Menu_Native, ^[dynamic]Context_Item, ^map[string][dynamic]Context_Item, ^map[string]File_Icon, ^[dynamic]string, ^Linux_Icon_Cache, ^u32, string, string, string, string, string, []string)
+
+@(private = "file")
 kio_parse :: proc(text, file: string, info: Target_Info, ns: ^Context_Menu_Native,
-	raw: ^[dynamic]Context_Item, submenus: ^map[string][dynamic]Context_Item, submenu_order: ^[dynamic]string, next_id: ^u32,
-	add: proc(^Context_Menu_Native, ^[dynamic]Context_Item, ^map[string][dynamic]Context_Item, ^[dynamic]string, ^u32, string, string, string, []string)) {
+	raw: ^[dynamic]Context_Item, submenus: ^map[string][dynamic]Context_Item, submenu_icons: ^map[string]File_Icon, submenu_order: ^[dynamic]string, icons: ^Linux_Icon_Cache, next_id: ^u32,
+	add: Linux_Add_Action) {
 
 	if info.background { return }
 	if v, ok := entry_value(text, "Hidden"); ok && ascii.equal_fold(v, "true") { return }
@@ -228,13 +253,16 @@ kio_parse :: proc(text, file: string, info: Target_Info, ns: ^Context_Menu_Nativ
 
 	submenu, _ := entry_value(text, "X-KDE-Submenu")
 	submenu = unescape_value(submenu)
+	sub_icon, _ := entry_value(text, "X-KDE-Submenu-Icon")
+	if sub_icon == "" { sub_icon, _ = entry_value(text, "Icon") }
 	for act in split_list(actions_raw, context.temp_allocator) {
 		section := strings.concatenate({"[Desktop Action ", act, "]"}, context.temp_allocator)
 		name := unescape_value(section_value(text, section, "Name"))
 		exec := section_value(text, section, "Exec")
+		icon_name := section_value(text, section, "Icon")
 		if name == "" || exec == "" { continue }
 		if argv, ok := expand_action_command(exec, info.paths, name, file); ok {
-			add(ns, raw, submenus, submenu_order, next_id, name, submenu, act, argv)
+			add(ns, raw, submenus, submenu_icons, submenu_order, icons, next_id, name, submenu, act, icon_name, sub_icon, argv)
 		}
 	}
 }
@@ -244,8 +272,8 @@ kio_parse :: proc(text, file: string, info: Target_Info, ns: ^Context_Menu_Nativ
 
 @(private = "file")
 nemo_parse :: proc(text: string, info: Target_Info, ns: ^Context_Menu_Native,
-	raw: ^[dynamic]Context_Item, submenus: ^map[string][dynamic]Context_Item, submenu_order: ^[dynamic]string, next_id: ^u32,
-	add: proc(^Context_Menu_Native, ^[dynamic]Context_Item, ^map[string][dynamic]Context_Item, ^[dynamic]string, ^u32, string, string, string, []string)) {
+	raw: ^[dynamic]Context_Item, submenus: ^map[string][dynamic]Context_Item, submenu_icons: ^map[string]File_Icon, submenu_order: ^[dynamic]string, icons: ^Linux_Icon_Cache, next_id: ^u32,
+	add: Linux_Add_Action) {
 
 	sec :: "[Nemo Action]"
 	if active := section_value(text, sec, "Active"); active != "" && ascii.equal_fold(active, "false") { return }
@@ -271,8 +299,9 @@ nemo_parse :: proc(text: string, info: Target_Info, ns: ^Context_Menu_Native,
 		if !mimes_match_all(info, split_list(mimes_raw, context.temp_allocator)) { return }
 	}
 
+	icon_name := section_value(text, sec, "Icon-Name")
 	if argv, ok := expand_action_command(exec, info.paths, name, ""); ok {
-		add(ns, raw, submenus, submenu_order, next_id, name, "", "", argv)
+		add(ns, raw, submenus, submenu_icons, submenu_order, icons, next_id, name, "", "", icon_name, "", argv)
 	}
 }
 
@@ -302,8 +331,8 @@ nemo_extensions_match :: proc(info: Target_Info, exts: []string) -> bool {
 
 @(private = "file")
 thunar_uca_parse :: proc(xml: string, info: Target_Info, ns: ^Context_Menu_Native,
-	raw: ^[dynamic]Context_Item, submenus: ^map[string][dynamic]Context_Item, submenu_order: ^[dynamic]string, next_id: ^u32,
-	add: proc(^Context_Menu_Native, ^[dynamic]Context_Item, ^map[string][dynamic]Context_Item, ^[dynamic]string, ^u32, string, string, string, []string)) {
+	raw: ^[dynamic]Context_Item, submenus: ^map[string][dynamic]Context_Item, submenu_icons: ^map[string]File_Icon, submenu_order: ^[dynamic]string, icons: ^Linux_Icon_Cache, next_id: ^u32,
+	add: Linux_Add_Action) {
 
 	rest := xml
 	for {
@@ -318,6 +347,7 @@ thunar_uca_parse :: proc(xml: string, info: Target_Info, ns: ^Context_Menu_Nativ
 		name := xml_tag_text(block, "name")
 		cmd := xml_tag_text(block, "command")
 		submenu := xml_tag_text(block, "submenu")
+		icon_name := xml_tag_text(block, "icon")
 		patterns_raw := xml_tag_text(block, "patterns")
 		if name == "" || cmd == "" { continue }
 
@@ -332,7 +362,7 @@ thunar_uca_parse :: proc(xml: string, info: Target_Info, ns: ^Context_Menu_Nativ
 		if !thunar_patterns_match(info, patterns_raw) { continue }
 
 		if argv, ok := expand_action_command(cmd, info.paths, name, ""); ok {
-			add(ns, raw, submenus, submenu_order, next_id, name, submenu, "", argv)
+			add(ns, raw, submenus, submenu_icons, submenu_order, icons, next_id, name, submenu, "", icon_name, "", argv)
 		}
 	}
 }

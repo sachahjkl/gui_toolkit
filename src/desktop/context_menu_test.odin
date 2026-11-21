@@ -99,3 +99,50 @@ context_menu_worker_lifecycle :: proc(t: ^testing.T) {
 	testing.expect_value(t, got_serial, serial)
 	context_menu_clear(&m)
 }
+
+@(test)
+context_menu_bgra_to_rgba_modes :: proc(t: ^testing.T) {
+	// 1. Opaque GDI bitmap (all alpha bytes 0): swaps B/R and sets alpha = 255.
+	opaque := [8]u8{10, 20, 30, 0, 40, 50, 60, 0}
+	context_menu_bgra_to_rgba(opaque[:])
+	testing.expect_value(t, opaque, [8]u8{30, 20, 10, 255, 60, 50, 40, 255})
+
+	// 2. Premultiplied PARGB bitmap (Vista+ shell menu icon): swaps B/R and un-premultiplies to straight RGBA.
+	pargb := [8]u8{64, 32, 128, 128, 0, 0, 0, 0}
+	context_menu_bgra_to_rgba(pargb[:])
+	testing.expect_value(t, pargb[0], u8(255))
+	testing.expect_value(t, pargb[1], u8(64))
+	testing.expect_value(t, pargb[2], u8(128))
+	testing.expect_value(t, pargb[3], u8(128))
+	testing.expect_value(t, pargb[7], u8(0))
+
+	// 3. Straight ARGB (channel > alpha): swaps B/R and leaves RGB intact.
+	straight := [4]u8{20, 40, 200, 100}
+	context_menu_bgra_to_rgba(straight[:])
+	testing.expect_value(t, straight, [4]u8{200, 40, 20, 100})
+}
+
+@(test)
+context_items_preserve_and_free_icons :: proc(t: ^testing.T) {
+	px1 := [4]u8{255, 0, 0, 255}
+	px2 := [4]u8{0, 255, 0, 255}
+	kids := [?]Context_Item{
+		{id = 2, label = "Child", icon = {rgba = px2[:], size = {1, 1}}},
+	}
+	raw := [?]Context_Item{
+		{id = 1, label = "Leaf", icon = {rgba = px1[:], size = {1, 1}}},
+		{label = "Sub", icon = {rgba = px1[:], size = {1, 1}}, children = kids[:]},
+	}
+	cloned := context_items_clone(raw[:], context.allocator)
+	defer context_items_destroy(cloned, context.allocator)
+	testing.expect_value(t, cloned[0].icon.size, [2]int{1, 1})
+	testing.expect_value(t, cloned[0].icon.rgba[0], u8(255))
+	testing.expect_value(t, cloned[1].icon.size, [2]int{1, 1})
+	testing.expect_value(t, cloned[1].children[0].icon.rgba[1], u8(255))
+
+	pruned := context_items_prune(raw[:], nil, context.allocator)
+	defer context_items_destroy(pruned, context.allocator)
+	testing.expect_value(t, len(pruned), 2)
+	testing.expect_value(t, pruned[0].icon.size, [2]int{1, 1})
+	testing.expect_value(t, pruned[1].children[0].icon.rgba[1], u8(255))
+}

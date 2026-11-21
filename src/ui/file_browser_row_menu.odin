@@ -75,7 +75,23 @@ file_browser_row_menu :: proc(fb: ^File_Browser, ev: Table_Events, act: ^File_Ac
 			for k in chosen { if file_row_action_takes(x, list[k]) { programs = true } }
 		}
 		// (no `card` here: ui's card, the widget, hides the builtin)
-		if offered != {} || programs { menu_open(FILE_ROW_MENU, ev.menu_at, from_keyboard = ev.keyboard) }
+		if offered != {} || programs {
+			menu_open(FILE_ROW_MENU, ev.menu_at, from_keyboard = ev.keyboard)
+			if file_source_is_local(&fb.source) && fb.state != nil && fb.state.window != nil {
+				paths := make([dynamic]string, 0, len(chosen), context.temp_allocator)
+				for k in chosen { append(&paths, fsx.path_join(fb.folder, list[k].name, fb.sep, context.temp_allocator)) }
+				excluded := SHELL_MENU_DEFAULT_EXCLUDE
+				shell_menu_query(&fb.shell, fb.state, {paths = paths[:], exclude_verbs = excluded[:]})
+				fb.shell_was_open = true
+			} else {
+				shell_menu_clear(&fb.shell)
+				fb.shell_was_open = false
+			}
+		}
+	}
+	if fb.shell_was_open && !menu_is_open(FILE_ROW_MENU) {
+		shell_menu_clear(&fb.shell)
+		fb.shell_was_open = false
 	}
 	picked_builtin: Maybe(platform.File_Row_Builtin)
 	picked := -1
@@ -105,6 +121,7 @@ file_browser_row_menu :: proc(fb: ^File_Browser, ev: Table_Events, act: ^File_Ac
 			if shown && !separated { menu_separator(); separated = true }
 			if menu_item(fmt.tprintf("%s###fb_row_act_%d", x.label, i), icon = x.icon, icon_font = lucide_icons()).clicked { picked = i }
 		}
+		shell_menu_items(&fb.shell, "fb_shell", separator = shown || separated)
 	}
 	// (after the menu's block: an act runs once the menu is done)
 	if b, ok := picked_builtin.?; ok {

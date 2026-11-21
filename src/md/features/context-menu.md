@@ -37,15 +37,27 @@ A `desktop.Context_Menu` owns one lazy-started background worker thread (STA on 
 - **Windows (`context_menu_windows.odin`)**: `SHParseDisplayName` + `SHBindToParent` + `IShellFolder::GetUIObjectOf`
   for selected items (or `SHBindToObject` + `CreateViewObject` for folder background), `CreatePopupMenu`,
   `QueryContextMenu`, `IContextMenu2/3::HandleMenuMsg(WM_INITMENUPOPUP)` before walking submenus (bounded by
-  `CONTEXT_MENU_MAX_DEPTH`), `GetCommandString(GCS_VERBW)` for canonical verb filtering, and `InvokeCommand` on click.
+  `CONTEXT_MENU_MAX_DEPTH`), `GetCommandString(GCS_VERBW)` for canonical verb filtering, `MIIM_BITMAP` icon extraction
+  via `GetDIBits` (converted from top-down BGRA/PARGB to straight RGBA `File_Icon`, skipping `HBMMENU_*` sentinels),
+  and `InvokeCommand` on click.
 - **Linux (`context_menu_linux.odin`)**: reads declarative file-manager action files on the worker using `xdg_roots()`
   and `mime_cache`:
   - KIO service menus (`<data>/kio/servicemenus/*.desktop` and `<data>/kservices5/ServiceMenus/*.desktop`),
   - Nemo actions (`<data>/nemo/actions/*.nemo_action`),
   - Thunar custom actions (`<config>/Thunar/uca.xml`).
-  Matching actions are expanded into `[]string` command lines stored per item id in the active session and launched via
-  `platform.launch_detached` on invoke.
+  Matching actions expand their command lines, resolve declared `Icon` / `Icon-Name` / `<icon>` entries at 16 px via
+  `theme_icon` (cached per query), and launch via `platform.launch_detached` on invoke.
 - **Other systems (`context_menu_other.odin`)**: returns an empty slice immediately.
+
+## Toolkit widget (`ui.Shell_Menu`) and `ui.file_dialog`
+
+`ui.Shell_Menu` wraps `desktop.Context_Menu` for any `ui.menu`: it queues queries, delivers results to the interface
+thread through `ui.post` guarded by an atomic refcounted gate (so destroying the owner while a post is queued never
+dereferences freed memory), lazily uploads `Context_Item.icon` bitmaps to GPU textures on first draw (freeing them on
+replace, clear, or destroy), and renders items and recursive submenus with `ui.shell_menu_items`.
+
+`ui.file_dialog` embeds a `Shell_Menu` in `File_Browser` so every program's local file browser shows system shell
+actions in its row context menu without blocking menu open.
 
 ## Refused alternatives
 

@@ -751,7 +751,7 @@ menu_row_width :: proc(st: ^Style, label, shortcut: string, submenu: bool) -> f3
 
 // One row: check mark or icon, label, shortcut (weak), submenu arrow. Returns the row's signal.
 @(private)
-menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checked, enabled, submenu, highlight: bool, icon_font: font.Font_Id = 0) -> Signal {
+menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checked, enabled, submenu, highlight: bool, icon_font: font.Font_Id = 0, icon_draw: Custom_Draw = nil, icon_user: rawptr = nil) -> Signal {
 	s := gs()
 	em := font_size()
 	label := display_part(text)
@@ -787,6 +787,8 @@ menu_row :: proc(lv: ^Menu_Level, idx: int, text, shortcut, icon: string, checke
 				next({width = px(em * MENU_ICON_EM), height = pct(1)})
 				if checked && widget_icons() != 0 {
 					if style({font = widget_icons(), text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###chk", ICON_CHECK)) }
+				} else if icon_draw != nil {
+					custom("###ico_img", icon_draw, icon_user)
 				} else if face := icon_font != 0 ? icon_font : (s.menu_icon_font != 0 ? s.menu_icon_font : s.icon_font); icon != "" && face != 0 {
 					if style({font = face, text_align = .Center}) { build_box({.Draw_Text, .No_Text_Trunc}, fmt.tprintf("%s###ico", icon)) }
 				} else {
@@ -857,6 +859,11 @@ menu_hover_due :: proc(lv: ^Menu_Level, idx: int) -> bool {
 // scope) is shown muted and skipped by the keyboard. `icon` is a character of `icon_font` (0: State.icon_font, the
 // program's icons; a menu of the toolkit's own gives lucide_icons()).
 menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", disabled := false, keep_open := false, icon_font: font.Font_Id = 0) -> Signal {
+	return menu_item_ex(text, shortcut, checked, icon, disabled, keep_open, icon_font, nil, nil)
+}
+
+@(private)
+menu_item_ex :: proc(text: string, shortcut := "", checked := false, icon := "", disabled := false, keep_open := false, icon_font: font.Font_Id = 0, icon_draw: Custom_Draw = nil, icon_user: rawptr = nil) -> Signal {
 	s := gs()
 	lv, depth := menu_current()
 	if lv == nil {
@@ -868,7 +875,7 @@ menu_item :: proc(text: string, shortcut := "", checked := false, icon := "", di
 	idx := len(lv.items)
 	append(&lv.items, Menu_Item_Info{enabled = en})
 	if lv.pick_first && en { lv.sel, lv.pick_first, lv.reveal = idx, false, true }
-	sig := menu_row(lv, idx, text, shortcut, icon, checked, en, false, idx == lv.sel, icon_font)
+	sig := menu_row(lv, idx, text, shortcut, icon, checked, en, false, idx == lv.sel, icon_font, icon_draw, icon_user)
 	// resting on another item than the open submenu's closes that submenu (a nested menu stays: a press closes it)
 	if sig.hovering && len(s.menus) > depth + 1 && !s.menus[depth + 1].nested && menu_hover_due(lv, idx) { menu_pop_to(depth + 1) }
 	clicked := en && (sig.clicked || (idx == lv.sel && lv.activate))
@@ -955,6 +962,11 @@ menu_control_end :: proc(built: bool) {
 // submenu's items while it is open.
 @(require_results, deferred_none = menu_end)
 menu_submenu :: proc(text: string, icon := "", disabled := false) -> bool {
+	return menu_submenu_ex(text, icon, disabled, nil, nil)
+}
+
+@(private, require_results, deferred_none = menu_end)
+menu_submenu_ex :: proc(text: string, icon := "", disabled := false, icon_draw: Custom_Draw = nil, icon_user: rawptr = nil) -> bool {
 	s := gs()
 	lv, depth := menu_current()
 	if lv == nil { append(&s.popup_stack, false); return false }
@@ -963,7 +975,7 @@ menu_submenu :: proc(text: string, icon := "", disabled := false) -> bool {
 		append(&s.popup_stack, false)
 		return !disabled && s.disabled_depth == 0
 	}
-	if !menu_submenu_row(lv, depth, text, icon, !disabled && s.disabled_depth == 0, key_from_string(lv.key, hash_part(text))) {
+	if !menu_submenu_row(lv, depth, text, icon, !disabled && s.disabled_depth == 0, key_from_string(lv.key, hash_part(text)), 0, icon_draw, icon_user) {
 		append(&s.popup_stack, false)
 		return false
 	}
@@ -973,12 +985,12 @@ menu_submenu :: proc(text: string, icon := "", disabled := false) -> bool {
 // The row of a submenu in the level being built, the submenu's level `sub_key` opened over it when it is clicked, rested
 // on, or chosen with Right / Enter / Space. True: the submenu is open.
 @(private = "file")
-menu_submenu_row :: proc(lv: ^Menu_Level, depth: int, text, icon: string, en: bool, sub_key: Key, icon_font: font.Font_Id = 0) -> bool {
+menu_submenu_row :: proc(lv: ^Menu_Level, depth: int, text, icon: string, en: bool, sub_key: Key, icon_font: font.Font_Id = 0, icon_draw: Custom_Draw = nil, icon_user: rawptr = nil) -> bool {
 	s := gs()
 	idx := len(lv.items)
 	append(&lv.items, Menu_Item_Info{enabled = en, submenu = true})
 	open := len(s.menus) > depth + 1 && s.menus[depth + 1].key == sub_key
-	sig := menu_row(lv, idx, text, "", icon, false, en, true, idx == lv.sel || open, icon_font)
+	sig := menu_row(lv, idx, text, "", icon, false, en, true, idx == lv.sel || open, icon_font, icon_draw, icon_user)
 	want, kb := false, false
 	if en {
 		if sig.clicked { want = true }

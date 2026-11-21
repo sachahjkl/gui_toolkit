@@ -27,6 +27,7 @@ Context_Item :: struct {
 	verb:      string,         // canonical shell verb when known ("7-Zip", "open", ""; optional)
 	separator: bool,           // visual divider
 	disabled:  bool,
+	icon:      File_Icon,      // optional straight RGBA8 bitmap (Windows HBITMAP / Linux theme icon); empty when absent
 	children:  []Context_Item, // non-empty for a submenu
 }
 
@@ -164,12 +165,21 @@ context_menu_destroy :: proc(m: ^Context_Menu) {
 
 // Frees a tree of Context_Item allocated by `allocator` (items from on_ready use runtime.heap_allocator()).
 context_items_destroy :: proc(items: []Context_Item, allocator := context.allocator) {
-	for it in items {
+	for &it in items {
 		delete(it.label, allocator)
 		delete(it.verb, allocator)
+		file_icon_destroy(&it.icon, allocator)
 		if len(it.children) > 0 { context_items_destroy(it.children, allocator) }
 	}
 	delete(items, allocator)
+}
+
+@(private = "file")
+clone_file_icon :: proc(ic: File_Icon, allocator: runtime.Allocator) -> File_Icon {
+	if len(ic.rgba) == 0 || ic.size.x <= 0 || ic.size.y <= 0 { return {} }
+	px := make([]u8, len(ic.rgba), allocator)
+	copy(px, ic.rgba)
+	return File_Icon{rgba = px, size = ic.size}
 }
 
 // Deep copy of a Context_Item slice into `allocator`.
@@ -183,10 +193,38 @@ context_items_clone :: proc(items: []Context_Item, allocator := context.allocato
 			verb      = clone_or_empty(it.verb, allocator),
 			separator = it.separator,
 			disabled  = it.disabled,
+			icon      = clone_file_icon(it.icon, allocator),
 			children  = context_items_clone(it.children, allocator),
 		}
 	}
 	return out
+}
+
+// Converts a 32-bit BGRA bitmap buffer in place into straight RGBA8: swaps B and R, sets alpha to 255 when every
+// pixel has alpha 0 (opaque GDI bitmap), and un-premultiplies RGB when alpha is present and every pixel is within
+// premultiplied bounds (standard Vista+ PARGB menu bitmaps).
+context_menu_bgra_to_rgba :: proc(px: []u8) {
+	n := (len(px) / 4) * 4
+	any_alpha := false
+	premultiplied := true
+	for i := 0; i < n; i += 4 {
+		b, g, r, a := px[i], px[i + 1], px[i + 2], px[i + 3]
+		px[i], px[i + 2] = r, b
+		if a != 0 { any_alpha = true }
+		if r > a || g > a || b > a { premultiplied = false }
+	}
+	if !any_alpha {
+		for i := 3; i < n; i += 4 { px[i] = 255 }
+		return
+	}
+	if !premultiplied { return }
+	for i := 0; i < n; i += 4 {
+		a := u32(px[i + 3])
+		if a == 0 || a == 255 { continue }
+		px[i]     = u8(min(u32(255), (u32(px[i])     * 255 + a / 2) / a))
+		px[i + 1] = u8(min(u32(255), (u32(px[i + 1]) * 255 + a / 2) / a))
+		px[i + 2] = u8(min(u32(255), (u32(px[i + 2]) * 255 + a / 2) / a))
+	}
 }
 
 ////////////////////////////////
@@ -241,6 +279,7 @@ context_items_prune :: proc(items: []Context_Item, excluded: []string, allocator
 				label    = clone_or_empty(it.label, allocator),
 				verb     = clone_or_empty(it.verb, allocator),
 				disabled = it.disabled,
+				icon     = clone_file_icon(it.icon, allocator),
 				children = kids,
 			})
 			continue
@@ -251,6 +290,7 @@ context_items_prune :: proc(items: []Context_Item, excluded: []string, allocator
 			label    = clone_or_empty(it.label, allocator),
 			verb     = clone_or_empty(it.verb, allocator),
 			disabled = it.disabled,
+			icon     = clone_file_icon(it.icon, allocator),
 		})
 	}
 	for len(out) > 0 && out[len(out) - 1].separator { pop(&out) }
