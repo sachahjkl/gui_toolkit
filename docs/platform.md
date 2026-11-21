@@ -336,7 +336,7 @@ are made on the window's thread.
 
 `portal_linux.odin` adds the **XDG portals**: `org.freedesktop.portal.FileChooser` (OpenFile / SaveFile / a folder,
 filters, multiple, suggested name; the result arrives on a `Response` signal), `org.freedesktop.portal.OpenURI`
-(`open_url` / `open_path`), and `org.freedesktop.portal.Settings` for **live light / dark** — `dark_mode_preferred`
+(`open_url`, except `file:` URIs which `OpenURI` forbids; `open_path` and `reveal_in_folder` use `xdg-open`), and `org.freedesktop.portal.Settings` for **live light / dark** — `dark_mode_preferred`
 reads `org.freedesktop.appearance color-scheme` and `watch_color_scheme(cb)` fires `cb` on the `SettingChanged` signal.
 `dialogs_linux.odin` tries the portal first, then zenity / kdialog; `theme_linux.odin` falls back to the GTK settings.
 

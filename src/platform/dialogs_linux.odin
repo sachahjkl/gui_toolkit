@@ -4,7 +4,8 @@ package platform
 // File dialogs and shell actions on Linux (dialogs.odin has the API and the pure filter logic). The first choice is the
 // FileChooser portal (org.freedesktop.portal.FileChooser over D-Bus, portal_linux.odin), which works under a sandbox and
 // matches the user's desktop; without one, zenity (GNOME) or kdialog (KDE) spawned as a child, its chosen paths read from
-// its stdout. open_url / open_path go through the portal's OpenURI, else xdg-open; reveal_in_folder through xdg-open.
+// its stdout. open_url goes through the portal's OpenURI (except file: URIs, which OpenURI forbids), else xdg-open;
+// open_path and reveal_in_folder go through xdg-open.
 //
 // A dialog blocks until the user closes it: call it from a worker of the app's blocking pool, never from the frame loop
 // (dialogs.odin says so). The child's stdout is captured through a pipe with posix_spawn file actions.
@@ -12,6 +13,7 @@ package platform
 import "base:runtime"
 import "core:strings"
 import "core:sys/posix"
+import "../ascii"
 import base "../base"
 import i18n "../i18n"
 
@@ -35,13 +37,13 @@ pick_folder_dialog :: proc(d: File_Dialog, allocator := context.allocator, loc :
 
 open_url :: proc(url: string, loc := #caller_location) -> bool {
 	base.blocking("platform.open_url", loc)
-	if portal_open_uri(url) { return true }   // the portal (OpenURI) first; xdg-open otherwise
+	// org.freedesktop.portal.OpenURI.OpenURI forbids file: URIs (local files require OpenFile with a file descriptor).
+	if !ascii.has_prefix_fold(url, "file:") && portal_open_uri(url) { return true }
 	return launch_detached({"xdg-open", url})
 }
 open_path :: proc(path: string, loc := #caller_location) -> bool {
 	base.blocking("platform.open_path", loc)
-	uri := strings.concatenate({"file://", path}, context.temp_allocator)
-	if portal_open_uri(uri) { return true }
+	// org.freedesktop.portal.OpenURI.OpenURI forbids file: URIs, so calling it with call_noreply silently drops the open.
 	return launch_detached({"xdg-open", path})
 }
 
