@@ -7,17 +7,21 @@ import "core:math"
 
 // A piece of the ink: four corners and its density (0..1, multiplying the ink's opacity). A segment's piece runs along
 // the left edge, then back along the right edge: {left i, left i+1, right i+1, right i}; a cap's or a join's: its
-// centre, then three points of its arc. Its turn is not fixed: `levels` orients it.
+// centre, then three points of its arc; a broad nib's footprint: its rectangle. Its turn is not fixed: `levels`
+// orients it.
 Piece :: struct {
 	quad:    [4][2]f32,
 	density: f32,
 }
 
-// A pool of ink where the nib rested: a disc, laid over the line (its density adds to the line's where they overlap).
+// A pool of ink where the nib rested: a drop about `center`, laid over the line (its density adds to the line's where
+// they overlap). `levels` draws its shape: the radius modulated around it, and at an end drawn out into the stroke.
 Blob :: struct {
-	center:  [2]f32,
-	radius:  f32,
-	density: f32,
+	center:    [2]f32, // where the nib rested
+	radius:    f32,
+	density:   f32,
+	direction: [2]f32, // a unit vector into the stroke from this end; {0, 0}: none (a stop, a dot), no stretch
+	seed:      u32,    // the drop's shape: the same seed, the same drop
 }
 
 // One stroke's ink. `opacity` is the pen's (Ink.opacity, 0 read as 1). The slices belong to the caller: free them with
@@ -77,12 +81,13 @@ POOL_STOP_MS :: 150
 // A contour of less area than this (in the caller's units squared) is a point or a line: `levels` leaves it out.
 @(private)
 AREA_EPSILON :: 1e-6
-// The points of a blob's circle in `levels`.
+// The points of a blob's outline in `levels`: more than a disc's, for the harmonics and the teardrop's tip.
 @(private)
-BLOB_POINTS :: 18
+BLOB_POINTS :: 32
 
 // The ink of one stroke, as pieces and blobs. `seed` picks the noises (skip, grain): the same seed lays the same ink,
-// so a drawing looks the same at every render. All Ink fields zero: the pieces cover the outline's polygon, density 1.
+// so a drawing looks the same at every render. All Ink fields zero: the pieces cover the outline's polygon, density 1;
+// a Chisel's cover the nib's sweep, of which its polygon is an approximation.
 lay :: proc(samples: []Sample, pen: Pen, seed: u32, allocator := context.allocator) -> Laid {
 	o, pts := trace(samples, pen, allocator)
 	defer outline_destroy(&o, allocator)
@@ -104,6 +109,18 @@ lay :: proc(samples: []Sample, pen: Pen, seed: u32, allocator := context.allocat
 	defer delete(right, allocator)
 	copy(left, o.left)
 	copy(right, o.right)
+	// A broad nib's ink is its sweep: the nib's two corners at each point, not the outline's offset square to the path,
+	// whose lobes reach past the nib in a turn tighter than it and leave a notch between them. Each segment's piece is
+	// then the nib swept from one point to the next; where the stroke runs along the nib's edge the two corners' paths
+	// meet or cross, and `levels` turns or splits the piece. The grain and the skip below act on these edges as on any.
+	chisel := pen.nib == .Chisel
+	if chisel {
+		for p, i in pts {
+			h := p.edge * (p.span * 0.5)
+			left[i] = p.at + h
+			right[i] = p.at - h
+		}
+	}
 
 	// The ink a point carries from the hand's pace and pressure; the skip and the grain then act per piece.
 	ink_at := make([]f32, n, allocator)
@@ -176,6 +193,29 @@ lay :: proc(samples: []Sample, pen: Pen, seed: u32, allocator := context.allocat
 		if a <= 0 { continue }
 		q := [4][2]f32{left[i], left[i + 1], right[i + 1], right[i]}
 		d := (ink_at[i] + ink_at[i + 1]) * 0.5 * a
+		if chisel {
+			m0, m1 := thickness(pts[i]), thickness(pts[i + 1])
+			if grain <= 0 {
+				// The nib is a rectangle, and a convex shape swept along a step is itself at both ends and, between
+				// them, its chord between the two corners furthest out on either side of the step swept along it: here
+				// the diagonal most square to the step. The rectangles are laid at each point below. Refused: the
+				// nib's length swept alone, with its thickness swept along the path (the hairline then rose as a bump
+				// over its flat side, short of the nib's corners); the hull of the two rectangles cut in a fan (each
+				// fan's quads grown about their own centres by `levels` pushed a shared corner two ways, and the edge
+				// showed ticks).
+				step := pts[i + 1].at - pts[i].at
+				h0 := (left[i] - right[i]) * 0.5
+				sh: f32 = cross(step, h0) >= 0 ? 1 : -1
+				sm: f32 = cross(step, m0) >= 0 ? 1 : -1
+				c0, c1 := (left[i] + right[i]) * 0.5, (left[i + 1] + right[i + 1]) * 0.5
+				v0 := sh * h0 + sm * m0
+				v1 := sh * (left[i + 1] - right[i + 1]) * 0.5 + sm * m1
+				append(&pieces, Piece{{c0 + v0, c1 + v1, c1 - v1, c0 - v0}, d})
+				continue
+			}
+			// Grained: the lanes below need the length's quad; the thickness swept along the path gives the hairline.
+			append(&pieces, Piece{{pts[i].at + m0, pts[i + 1].at + m1, pts[i + 1].at - m1, pts[i].at - m0}, d})
+		}
 		if grain <= 0 {
 			append(&pieces, Piece{q, d})
 			continue
@@ -196,20 +236,29 @@ lay :: proc(samples: []Sample, pen: Pen, seed: u32, allocator := context.allocat
 	}
 
 	// The round ends, as the polygon's caps: a fan cut into quads (the centre and three points of the arc each).
-	// A cap carries its segment's ink; a skipped segment leaves its cap out too.
-	if o.round_end {
+	// A cap carries its segment's ink; a skipped segment leaves its cap out too. A broad nib has no round end: its
+	// sweep ends with the nib itself. Its rectangle is laid at every point (the sweep's other part, above), at the
+	// ends only when grained (the lanes would be covered), and a dot is the nib alone.
+	if chisel {
+		for i in 0 ..< n {
+			if grain > 0 && i != 0 && i != n - 1 { continue }
+			a: f32 = 1
+			if segs > 0 { a = max(amount[max(i - 1, 0)], amount[min(i, segs - 1)]) }
+			if a > 0 { footprint(&pieces, left[i], right[i], thickness(pts[i]), ink_at[i] * a) }
+		}
+	} else if o.round_end {
 		a: f32 = segs > 0 ? amount[segs - 1] : 1
 		if a > 0 { cap_pieces(&pieces, left[n - 1], right[n - 1], ink_at[n - 1] * a) }
 	}
-	if o.round_start {
+	if !chisel && o.round_start {
 		a: f32 = segs > 0 ? amount[0] : 1
 		if a > 0 { cap_pieces(&pieces, right[0], left[0], ink_at[0] * a) }
 	}
 
-	// A round nib at a tight turn: the outline's points are 0.3 width apart along the path, so where the path turns
-	// sharply its outer edge jumps by a large angle and shows corners (and its inner edge folds). A disc of the local
-	// width at each such point is what a round nib sweeps there: the turn reads as a rounded bulge. A broad nib has no
-	// round sweep, so it keeps its outline.
+	// A round nib at a cusp: the resampling keeps turns under RESAMPLE_TURN but for its minimum step, so where the path
+	// turns sharper than that at one point its outer edge jumps and shows a corner (and its inner edge folds). A disc
+	// of the local width at each such point is what a round nib sweeps there: the cusp reads as a rounded bulge. A broad
+	// nib's ink is already its sweep.
 	if pen.nib != .Chisel {
 		for i in 1 ..< n - 1 {
 			d0 := pts[i].at - pts[i - 1].at
@@ -226,7 +275,7 @@ lay :: proc(samples: []Sample, pen: Pen, seed: u32, allocator := context.allocat
 		}
 	}
 
-	if ink.pool > 0 { pools(&blobs, samples, pen, n == 1) }
+	if ink.pool > 0 { pools(&blobs, samples, pen, n == 1, seed) }
 
 	return Laid{pieces = pieces[:], blobs = blobs[:], opacity = opacity}
 }
@@ -316,11 +365,7 @@ levels :: proc(laid: Laid, level_count: int, allocator := context.allocator) -> 
 			for bl in laid.blobs {
 				if bucket(bl.density, count) != b - count || !(bl.radius > 0) { continue }
 				ring := lv.points[at:at + BLOB_POINTS]
-				for j in 0 ..< BLOB_POINTS {
-					// Increasing angles: counter-clockwise in a y-up frame.
-					a := 2 * math.PI * f32(j) / BLOB_POINTS
-					ring[j] = bl.center + [2]f32{math.cos(a), math.sin(a)} * bl.radius
-				}
+				drop(bl, ring)
 				lv.contours[c] = ring
 				at += BLOB_POINTS
 				c += 1
@@ -526,16 +571,44 @@ join_pieces :: proc(out: ^[dynamic]Piece, c: [2]f32, r, density: f32) {
 	}
 }
 
-// The pools: a blob at each end of the stroke (one for a dot) and at each stop inside it, larger the longer the nib
-// rested.
+// Half a broad nib's thickness at a point, square to its edge.
 @(private)
-pools :: proc(out: ^[dynamic]Blob, samples: []Sample, pen: Pen, dot: bool) {
+thickness :: proc(p: Point) -> [2]f32 { return [2]f32{-p.edge.y, p.edge.x} * (p.thick * 0.5) }
+
+// A broad nib's footprint as one piece: its rectangle, from its corner `l` to its corner `r` along its edge and `m`
+// each way across.
+@(private)
+footprint :: proc(out: ^[dynamic]Piece, l, r, m: [2]f32, density: f32) {
+	if !(density > 0) || !(length(l - r) > 1e-6) { return }
+	append(out, Piece{{l - m, r - m, r + m, l + m}, density})
+}
+
+// The pools: a blob at each end of the stroke (one for a dot) and at each stop inside it, larger the longer the nib
+// rested. Each has its own seed, from the stroke's and its index: every drop of a stroke is another shape.
+@(private)
+pools :: proc(out: ^[dynamic]Blob, samples: []Sample, pen: Pen, dot: bool, seed: u32) {
 	pool := clamp(pen.ink.pool, 0, 1)
 	radius := pen.width * (0.22 + 0.25 * pool)
 	density := 0.55 + 0.45 * pool
 	grow :: proc(ms: f64) -> f32 { return 1 + 0.5 * f32(clamp(ms / 600, 0, 1)) }
 	n := len(samples)
 	reach := pen.width * 0.5
+	count := 0
+	blob :: proc(out: ^[dynamic]Blob, count: ^int, at: [2]f32, radius, density: f32, direction: [2]f32, seed: u32) {
+		append(out, Blob{at, radius, density, direction, seed * 2654435761 + u32(count^) * 40503 + 17})
+		count^ += 1
+	}
+	// From an end into the stroke: toward the first sample more than `reach` away (the last one if none is).
+	into :: proc(samples: []Sample, from, step: int, reach, eps: f32) -> [2]f32 {
+		far: [2]f32
+		for j := from + step; j >= 0 && j < len(samples); j += step {
+			far = samples[j].at - samples[from].at
+			if length(far) > reach { break }
+		}
+		l := length(far)
+		return l > eps ? far / l : {}
+	}
+	eps := pen.width * 1e-3
 	start_ms, end_ms: f64
 	a := 0
 	for a < n {
@@ -550,13 +623,48 @@ pools :: proc(out: ^[dynamic]Blob, samples: []Sample, pen: Pen, dot: bool) {
 		case a == 0: start_ms = ms
 		case b == n: end_ms = ms
 		case ms >= POOL_STOP_MS:
-			append(out, Blob{sum / f32(b - a), radius * grow(ms), density})
+			blob(out, &count, sum / f32(b - a), radius * grow(ms), density, {}, seed)
 		}
 		if a == 0 && b == n { end_ms = ms }
 		a = b
 	}
-	append(out, Blob{samples[0].at, radius * grow(start_ms), density})
-	if !dot { append(out, Blob{samples[n - 1].at, radius * grow(end_ms), density}) }
+	start_dir: [2]f32 = dot ? {} : into(samples, 0, 1, reach, eps)
+	blob(out, &count, samples[0].at, radius * grow(start_ms), density, start_dir, seed)
+	if !dot { blob(out, &count, samples[n - 1].at, radius * grow(end_ms), density, into(samples, n - 1, -1, reach, eps), seed) }
+}
+
+// A pool's outline in `ring`, counter-clockwise in a y-up frame: a circle whose radius is modulated by its 2nd and 3rd
+// harmonics, and with a direction a teardrop drawn out into the stroke, its centre moved a fifth of the radius in.
+// Star-shaped about its centre (the radius stays above 0.7 of it), so it never crosses itself.
+@(private)
+drop :: proc(b: Blob, ring: [][2]f32) {
+	a2 := 0.08 + 0.06 * hash(1, b.seed)
+	a3 := 0.04 + 0.04 * hash(2, b.seed)
+	p2 := 2 * math.PI * hash(3, b.seed)
+	p3 := 2 * math.PI * hash(4, b.seed)
+	t := [2]f32{1, 0}
+	stretch: f32 = 1
+	c := b.center
+	if l := length(b.direction); l > 1e-6 {
+		t = b.direction / l
+		stretch = 1.2 + 0.3 * hash(5, b.seed)
+		c += t * (b.radius * 0.2)
+		// The 2nd harmonic is an elongation of its own: within ±45° of the stroke, never across it, where it would
+		// cancel the teardrop and leave a drop lying across the line.
+		p2 = (hash(3, b.seed) - 0.5) * math.PI
+	}
+	// Narrowed across so the teardrop's area stays near the disc's: its two halves average (1 + stretch) / 2 along.
+	across := 1 / math.sqrt((1 + stretch) * 0.5)
+	nrm := [2]f32{-t.y, t.x}   // (t, nrm) keeps the frame's turn: the ring stays counter-clockwise
+	for j in 0 ..< len(ring) {
+		phi := 2 * math.PI * f32(j) / f32(len(ring))
+		r := b.radius * (1 + a2 * math.cos(2 * phi + p2) + a3 * math.cos(3 * phi + p3))
+		x := r * math.cos(phi)
+		y := r * math.sin(phi) * across
+		// Only the half toward the stroke is drawn out: at phi = ±90° x is 0, so the two halves meet smoothly.
+		if x > 0 { x *= stretch }
+		ring[j] = c + t * x + nrm * y
+	}
 }
 
 // Smooth value noise, 0..1: a cosine between hashed values at whole steps. Not periodic: every step has its own value.

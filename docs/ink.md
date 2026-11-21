@@ -86,14 +86,17 @@ stroke over 1.5 widths as the width is:
 |---|---|
 | `opacity` | one layer's alpha (0 means 1). Under 1 the ink is translucent: it darkens where strokes cross and under its blobs. |
 | `dwell` | how much a fast hand lightens the ink: the density follows the time spent per length, full at rest, `1 - 0.6 * dwell` at an infinite speed. Slow turns and stops are the darkest. |
-| `pool` | blobs where the nib rests: at each end and at each stop of 150 ms or more inside the stroke (samples within half a width). Radius `width * (0.22 + 0.25 * pool)`, up to 1.5 times larger after a long rest; density `0.55 + 0.45 * pool`. |
+| `pool` | blobs where the nib rests: at each end and at each stop of 150 ms or more inside the stroke (samples within half a width). Radius `width * (0.22 + 0.25 * pool)`, up to 1.5 times larger after a long rest; density `0.55 + 0.45 * pool`. Each is a drop, not a disc: its radius varies around it by about ±15 to 20 %, and at an end it is drawn out into the stroke (a teardrop 1.2 to 1.5 times longer on the stroke's side). Its shape follows the stroke's seed: the same seed, the same drops. |
 | `skip` | a ballpoint's starvation: bursts of faint ink and short gaps, more where the hand is fast, on upstrokes (y down) and in the first 4.5 widths (priming). Where starved, the ball keeps one edge: the line narrows from the other side, easing in and out. A stroke is never laid empty. |
 | `grain` | the paper's grain: the edges move by up to `0.14 * grain` of the local width, and each piece is cut into lanes along the stroke (3 up to 0.5, 5 above), their boundaries wandering across the width. Inner lanes streak lighter where the pen runs dry (fast passages, toward the stroke's end), never under 0.55 of the ink. Above 0.5, the outer lanes may bare the paper where the brush is fast or near its end. |
 | `pressure` | how much a light stylus pressure lightens the ink: `1 - 0.6 * pressure * (1 - sample pressure)`. No effect without pressure. |
 
 `Piece` is `{quad: [4][2]f32, density: f32}`: the ink between two outline points (or a lane of it, a quarter of a
-round end, or an eighth of a join: the disc a round nib sweeps at a tight turn), its density 0..1 multiplying the
-opacity. `Blob` is `{center, radius, density}`: a pool. `Laid` is
+round end, an eighth of a join: the disc a round nib sweeps at a cusp; for a Chisel, the nib's rectangle at a point or
+its sweep over a step), its density 0..1 multiplying the
+opacity. `Blob` is `{center, radius, density, direction, seed}`: a pool where the nib rested at `center`; `direction`
+is a unit vector into the stroke from its end ({0, 0} for a stop or a dot); `seed` picks its shape. `levels` draws it
+as a contour of 32 points. `Laid` is
 `{pieces: []Piece, blobs: []Blob, opacity: f32}`. `Level` is `{alpha: f32, contours: [][][2]f32, points: [][2]f32}`:
 one fill; `points` holds the contours' points.
 
@@ -109,7 +112,7 @@ the start to the end. `left` is on the side of `(-dy, dx)` of the direction of t
 | `polygon(o, allocator) -> [][2]f32` | one closed polygon (the last point joins the first): the left edge forward, the end cap, the right edge backward, the start cap. `2 * n` points plus `CAP_POINTS` (7) per round end. Fill it with the non-zero rule. Free with `delete`. |
 | `triangles(o, allocator) -> [][3][2]f32` | the same ink as triangles, counter-clockwise in a y-up frame: 2 per segment, `CAP_POINTS + 1` per round end. Free with `delete`. |
 | `scaled(pen, k) -> Pen` | `pen` with its width and tapers multiplied by `k`. |
-| `lay(samples, pen, seed, allocator) -> Laid` | the stroke's ink as pieces and blobs. The same seed gives the same pieces; give each stroke its own seed and keep it with the drawing. All `Ink` fields zero: the pieces cover the polygon, density 1, no blob. |
+| `lay(samples, pen, seed, allocator) -> Laid` | the stroke's ink as pieces and blobs. The same seed gives the same pieces; give each stroke its own seed and keep it with the drawing. All `Ink` fields zero: the pieces cover the polygon, density 1, no blob. A Chisel's pieces are the nib's true sweep instead (below). |
 | `laid_destroy(&laid, allocator)` | frees the pieces and blobs; the same allocator as `lay`. |
 | `levels(laid, count, allocator) -> []Level` | the ink as stacked fills. The densities are quantized to `count` steps; each step that holds a piece gives a level holding every piece at that step or above (the first: the whole ink). Alphas: `T_k = opacity * (k + 1) / count` is the coverage wanted, the first level's alpha is its `T`, each next one's `1 - (1 - T_k) / (1 - T_prev)`, so the stack gives each piece its density. Then the blobs in levels of their own, alpha `T`, so they lie over the line. Every contour is counter-clockwise in a y-up frame (a positive shoelace area): within a level nothing cancels under the non-zero rule. A solid ink is one level of alpha 1. |
 | `levels_destroy(levels, allocator)` | frees what `levels` allocated. |
@@ -134,5 +137,12 @@ a brush's hairs lie down, +52% and -30% (1). A fountain pen's nib mostly follows
 - Where the stroke crosses itself or turns tighter than its half width, triangles overlap. Draw an opaque ink, or a
   translucent one into a layer (or as the polygon with the non-zero rule), so it is not laid twice.
 - One stroke is one outline: a signature is a list of strokes, one per press of the button.
-- `lay` adds a disc (a join) where a round nib's path turns sharply, so its pieces cover a little more than the
-  polygon there: the polygon shows a corner where a round nib sweeps a curve.
+- The outline's points are 0.3 width apart on a straight run and closer in a turn: an edge turns by about 8° at most
+  between two points, so a tight loop stays round. Points never come closer than 0.02 width, so at a cusp (the pen
+  turning back on itself) the edge still turns at once. There `lay` adds a disc (a join) for a round nib, so its
+  pieces cover a little more than the polygon: the polygon shows a corner where a round nib sweeps a curve.
+- A Chisel's `lay` is what the nib touches: its rectangle (its width along its edge, `CHISEL_EDGE` of it thick)
+  swept along the stroke, with no round end. Its `outline`, `polygon` and `triangles` are an approximation, the path
+  offset square to itself by the `|sin|` width: good for drawing the stroke under way, but in a loop tighter than the
+  nib the polygon bulges on either side of the hairline where the ink is the nib's flat side. Draw the finished ink
+  with `lay` and `levels`.

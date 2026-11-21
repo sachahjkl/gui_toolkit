@@ -119,6 +119,12 @@ Point :: struct {
 	s:        f32, // the arc length from the start
 	factor:   f32, // the width's share from speed or pressure
 	lean:     [2]f32, // the pen's axis on the paper (`lean_of`): its length is sin of the angle from upright
+	dir:      [2]f32, // the unit direction of travel: the spline's, where `resample` laid the point
+	// A chisel's nib here, for `lay`'s sweep: its edge (a unit vector), its length and its thickness, each with the
+	// speed or pressure, min_width and the tapers applied as to the outline's width.
+	edge:     [2]f32,
+	span:     f32,
+	thick:    f32,
 }
 
 // A sample's tilt as the pen's axis projected on the paper, in the frame of `at` (y down, as the tilt's y towards the
@@ -137,6 +143,14 @@ lean_of :: proc(tilt: [2]f32) -> [2]f32 {
 tilt_widen :: proc(pen: Pen, lean: [2]f32) -> f32 {
 	if pen.nib == .Chisel { return 1 }
 	return 1 + TILT_WIDEN * clamp(pen.tilt, 0, 1) * length(lean)
+}
+
+// A broad nib's width as a share of its full width, from `sin` of the angle between the direction and its edge: 1
+// across the edge, CHISEL_EDGE along it. A smooth floor, `sqrt(sin² (1 - E²) + E²)`: `max(|sin|, E)` met its floor
+// at an angle, and the outline's edges turned there by 10° or more at once, a corner where the hairline begins.
+@(private)
+chisel_share :: proc(sin: f32) -> f32 {
+	return math.sqrt(sin * sin * (1 - CHISEL_EDGE * CHISEL_EDGE) + CHISEL_EDGE * CHISEL_EDGE)
 }
 
 // The nib's edge (a unit vector, y down) at a lean: the fixed edge `nib` turned toward the one square to the shaft, by
@@ -204,14 +218,19 @@ trace :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> (O
 		f: f32 = has_pressure ? pressure_factor(line[0].pressure, thinning) : 1
 		one := make([]Point, 1, allocator)
 		one[0] = line[0]
+		if pen.nib == .Chisel {
+			angle := pen.nib_angle * math.RAD_PER_DEG
+			one[0].edge = chisel_edge({math.cos(angle), -math.sin(angle)}, line[0].lean, pen.tilt)
+			one[0].span = max(width * f, min_width)
+			one[0].thick = max(width * f * CHISEL_EDGE, min_width)
+		}
 		return dot(line[0].at, max(width * f * tilt_widen(pen, line[0].lean), min_width), allocator), one
 	}
 
-	// Resampled along a spline at a fixed spacing: the width and the edges then change by even steps whatever the
-	// pointer's rate, and a curve drawn with few samples stays round.
-	spacing := width * 0.3
+	// Resampled along a spline at a bounded spacing: the width and the edges then change by even steps whatever the
+	// pointer's rate, and a curve drawn with few samples stays round. Closer in turns, so no edge shows a corner.
 	pts := make([dynamic]Point, 0, 64, allocator)
-	resample(line[:], spacing, &pts)
+	resample(line[:], pen, &pts)
 	n := len(pts)
 	total := pts[n - 1].s
 
@@ -258,17 +277,20 @@ trace :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> (O
 		round_start = taper_start <= 0,
 		round_end   = taper_end <= 0,
 	}
-	dir := [2]f32{1, 0}
 	for p, i in pts {
-		dir = tangent(pts[:], i, dir)
+		dir := p.dir
 		w := width * p.factor * tilt_widen(pen, p.lean)
+		ends: f32 = 1
+		if taper_start > 0 { ends *= ease(p.s / taper_start, pen.nib) }
+		if taper_end > 0 { ends *= ease((total - p.s) / taper_end, pen.nib) }
 		if pen.nib == .Chisel {
 			e := chisel_edge(nib, p.lean, pen.tilt)
-			w *= max(abs(dir.x * e.y - dir.y * e.x), CHISEL_EDGE)
+			pts[i].edge = e
+			pts[i].span = max(w, min_width) * ends
+			pts[i].thick = max(w * CHISEL_EDGE, min_width) * ends
+			w *= chisel_share(dir.x * e.y - dir.y * e.x)
 		}
-		w = max(w, min_width)
-		if taper_start > 0 { w *= ease(p.s / taper_start, pen.nib) }
-		if taper_end > 0 { w *= ease((total - p.s) / taper_end, pen.nib) }
+		w = max(w, min_width) * ends
 		side := [2]f32{-dir.y, dir.x} * (w * 0.5)
 		o.left[i] = p.at + side
 		o.right[i] = p.at - side
@@ -380,61 +402,122 @@ catmull_rom :: proc(p0, p1, p2, p3: [2]f32, u: f32) -> [2]f32 {
 	return (b1 * (t2 - t) + b2 * (t - t1)) / (t2 - t1)
 }
 
-// Points every `spacing` of arc length along the spline through `line` (at least 2 distinct points), the first and the
-// last included. The last is moved to the stroke's end rather than followed by a sliver of a segment.
+// The most the outer edge of a turn turns between two resampled points, so a turn reads as a curve and not as a
+// polygon's corners.
 @(private)
-resample :: proc(line: []Point, spacing: f32, out: ^[dynamic]Point) {
+RESAMPLE_TURN :: 8 * math.RAD_PER_DEG
+// The closest two resampled points come in a turn, as a share of the width: a cusp reverses the direction in one
+// step, and without a floor it would add a point at every step of the walk.
+@(private)
+RESAMPLE_MIN_STEP :: 0.02
+// The largest spacing of the resampled points, as a share of the width: where the path runs straight.
+@(private)
+RESAMPLE_SPACING :: 0.3
+
+// Points along the spline through `line` (at least 2 distinct points), the first and the last included: every
+// RESAMPLE_SPACING widths of arc length at most, and wherever an edge has turned by RESAMPLE_TURN since the last
+// point, but never closer than RESAMPLE_MIN_STEP widths. The last is moved to the stroke's end rather than followed by
+// a sliver of a segment. Each point keeps the spline's direction there: the edges are then the ones the walk checked.
+//
+// The walk follows the edges as the nib lays them (a chisel's width by its direction), not the path alone: a chisel's
+// edges turn about twice as much as its path, and most where its hairline begins. The width's other causes (the
+// speed, the tapers) change slowly along the stroke and are left out.
+@(private)
+resample :: proc(line: []Point, pen: Pen, out: ^[dynamic]Point) {
 	k := len(line)
 	first := line[0]
 	first.s = 0
 	append(out, first)
+	spacing := pen.width * RESAMPLE_SPACING
+	min_step := pen.width * RESAMPLE_MIN_STEP
+	half := pen.width * 0.5
+	angle := pen.nib_angle * math.RAD_PER_DEG
+	nib := [2]f32{math.cos(angle), -math.sin(angle)}
 	acc: f32 = 0
-	next := spacing
+	last: f32 = 0   // the arc length of the last point laid
+	cos_turn := math.cos(f32(RESAMPLE_TURN))
+	// The walk's step: half the closest two points come, so a turn is found within a fraction of RESAMPLE_TURN.
+	walk := min(spacing * 0.25, min_step * 0.5)
+	// At the walk's previous vertex: the direction that reached it and the two edges there ({0, 0}: not yet).
+	prev_dir: [2]f32
+	edges: [2][2]f32
+	// Each edge's direction where the last point was laid; {0, 0} until the walk has one.
+	heading: [2][2]f32
 	for i in 0 ..< k - 1 {
 		p1, p2 := line[i].at, line[i + 1].at
 		p0 := i > 0 ? line[i - 1].at : 2 * p1 - p2
 		p3 := i + 2 < k ? line[i + 2].at : 2 * p2 - p1
-		steps := clamp(int(math.ceil(length(p2 - p1) / (spacing * 0.25))), 1, 1024)
+		steps := clamp(int(math.ceil(length(p2 - p1) / walk)), 1, 4096)
+		at_w :: proc(line: []Point, i: int, at, dir: [2]f32, s, w: f32) -> Point {
+			return Point {
+				at       = at,
+				pressure = math.lerp(line[i].pressure, line[i + 1].pressure, w),
+				speed    = math.lerp(line[i].speed, line[i + 1].speed, w),
+				lean     = math.lerp(line[i].lean, line[i + 1].lean, w),
+				s        = s,
+				dir      = dir,
+			}
+		}
 		prev := p1
 		for j in 1 ..= steps {
 			u := f32(j) / f32(steps)
-			q := j == steps ? p2 : catmull_rom(p0, p1, p2, p3, u)
+			// About p1: far from the origin, f32's rounding would turn the walk's short steps by a degree or more.
+			q := j == steps ? p2 : p1 + catmull_rom(p0 - p1, {}, p2 - p1, p3 - p1, u)
 			d := length(q - prev)
-			for d > 0 && next <= acc + d {
-				f := (next - acc) / d
-				w := (f32(j - 1) + f) / f32(steps)
-				append(out, Point {
-					at       = prev + (q - prev) * f,
-					pressure = math.lerp(line[i].pressure, line[i + 1].pressure, w),
-					speed    = math.lerp(line[i].speed, line[i + 1].speed, w),
-					lean     = math.lerp(line[i].lean, line[i + 1].lean, w),
-					s        = next,
-				})
-				next += spacing
+			if !(d > 0) { continue }
+			dir := (q - prev) / d
+			h := half
+			if pen.nib == .Chisel {
+				lean := math.lerp(line[i].lean, line[i + 1].lean, (f32(j) - 0.5) / f32(steps))
+				e := chisel_edge(nib, lean, pen.tilt)
+				h *= chisel_share(dir.x * e.y - dir.y * e.x)
+			}
+			side := [2]f32{-dir.y, dir.x} * h
+			if prev_dir == {} {
+				prev_dir = dir
+				edges = {prev + side, prev - side}
+				out[0].dir = dir
+			}
+			step_dir: [2][2]f32
+			next_edges := [2][2]f32{q + side, q - side}
+			bent := false
+			for e in 0 ..< 2 {
+				v := next_edges[e] - edges[e]
+				l := length(v)
+				if l > 1e-12 { step_dir[e] = v / l }
+				if heading[e] == {} { heading[e] = step_dir[e] }
+				// An edge that moves less than half the path folds back (the inner edge of a turn tighter than the
+				// half width): its turns are not seen, and following them would lay a point at every minimum step.
+				if l < d * 0.5 { continue }
+				if step_dir[e].x * heading[e].x + step_dir[e].y * heading[e].y < cos_turn { bent = true }
+			}
+			// Bent too far since the last point: one at the start of this step, where the turn was still in bound.
+			// (its direction the one that reached the vertex: the walk's edges there were laid with it)
+			if bent && acc - last >= min_step {
+				append(out, at_w(line, i, prev, prev_dir, acc, f32(j - 1) / f32(steps)))
+				last = acc
+				heading = step_dir
+			}
+			for last + spacing <= acc + d {
+				f := (last + spacing - acc) / d
+				append(out, at_w(line, i, prev + (q - prev) * f, dir, last + spacing, (f32(j - 1) + f) / f32(steps)))
+				last += spacing
+				heading = step_dir
 			}
 			acc += d
 			prev = q
+			prev_dir = dir
+			edges = next_edges
 		}
 	}
 	end := line[k - 1]
 	end.s = acc
-	if len(out) > 1 && acc - out[len(out) - 1].s < spacing * 0.25 {
+	end.dir = prev_dir
+	if len(out) > 1 && acc - out[len(out) - 1].s < min(spacing * 0.25, min_step) {
 		out[len(out) - 1] = end
 	} else {
 		append(out, end)
 	}
-}
-
-// The unit direction of travel at point i; `fallback` (the previous one) where the neighbours coincide.
-@(private)
-tangent :: proc(pts: []Point, i: int, fallback: [2]f32) -> [2]f32 {
-	n := len(pts)
-	d := pts[min(i + 1, n - 1)].at - pts[max(i - 1, 0)].at
-	if l := length(d); l > 1e-12 { return d / l }
-	// A hairpin whose neighbours meet: the segment ahead still has a direction.
-	d = pts[min(i + 1, n - 1)].at - pts[i].at
-	if l := length(d); l > 1e-12 { return d / l }
-	return fallback
 }
 
 @(private)
