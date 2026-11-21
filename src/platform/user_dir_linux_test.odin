@@ -9,8 +9,8 @@ import "core:sys/posix"
 import "core:testing"
 import fsx "../fsx"
 
-// The tests of this file change the process's environment: the runner's threads take turns on it.
-@(private = "file") env_lock: sync.Mutex
+// The tests of this package that change the process's environment take turns on it.
+@(private) env_lock: sync.Mutex
 
 // A program's folders on Linux: each kind's XDG variable when it is an absolute path, its default under the home when it is not
 // there or is relative (the specification ignores a relative one), the program's folder in it.
