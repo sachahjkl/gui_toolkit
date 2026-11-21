@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::afm::{self, Font};
 use crate::face::Face;
-use crate::shape::Shape;
+use crate::shape::{Blend, Shape};
 use crate::stamp::Stamp;
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo, UnicodeCmap};
 use subsetter::GlyphRemapper;
@@ -289,7 +289,7 @@ impl<'a> Writer<'a> {
             }
         }
         let has_fonts = !fonts.is_empty() || !faces.is_empty();
-        let mut alphas: Vec<u8> = spec.shapes.iter().flat_map(|s| s.alphas()).collect();
+        let mut alphas: Vec<(u8, Blend)> = spec.shapes.iter().flat_map(|s| s.alphas()).collect();
         alphas.sort_unstable();
         alphas.dedup();
         let to_user;
@@ -426,20 +426,23 @@ impl<'a> Writer<'a> {
     }
 }
 
-// The graphics state of a shape's alpha: a name no page uses.
-fn alpha_name(alpha: u8) -> String {
-    format!("GtAlpha{alpha}")
+// The graphics state of a shape's alpha and blending: a name no page uses.
+fn alpha_name(alpha: u8, blend: Blend) -> String {
+    match blend {
+        Blend::Multiply => format!("GtAlpha{alpha}"),
+        Blend::Normal => format!("GtInk{alpha}"),
+    }
 }
 
 // Each alpha the shapes use, as a graphics state: the alpha of fills and strokes, laid over the page by multiplication
-// (a highlighter's ink darkens what is under it and leaves the words readable).
-fn alpha_states(out: &mut pdf_writer::Dict<'_>, alphas: &[u8]) {
-    for a in alphas {
-        let mut g = out.insert(Name(alpha_name(*a).as_bytes())).dict();
+// (a highlighter's ink darkens what is under it and leaves the words readable) or normally (a pen's ink: Shape::blend).
+fn alpha_states(out: &mut pdf_writer::Dict<'_>, alphas: &[(u8, Blend)]) {
+    for (a, blend) in alphas {
+        let mut g = out.insert(Name(alpha_name(*a, *blend).as_bytes())).dict();
         g.pair(Name(b"Type"), Name(b"ExtGState"));
         g.pair(Name(b"ca"), *a as f32 / 255.0);
         g.pair(Name(b"CA"), *a as f32 / 255.0);
-        g.pair(Name(b"BM"), Name(b"Multiply"));
+        g.pair(Name(b"BM"), Name(if *blend == Blend::Multiply { b"Multiply" } else { b"Normal" }));
     }
 }
 

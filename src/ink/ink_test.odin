@@ -172,4 +172,273 @@ repeated_samples_make_no_nan :: proc(t: ^testing.T) {
 no_sample_no_ink :: proc(t: ^testing.T) {
 	o := outline(nil, PEN_BALLPOINT)
 	testing.expect(t, o.left == nil && polygon(o) == nil && triangles(o) == nil)
+	laid := lay(nil, PEN_BALLPOINT, 1)
+	testing.expect(t, laid.pieces == nil && laid.blobs == nil)
+}
+
+// The ink model (lay, levels).
+
+@(private = "file")
+PRESETS :: [4]Pen{PEN_BALLPOINT, PEN_FOUNTAIN, PEN_FELT, PEN_BRUSH}
+
+@(private = "file")
+level_area :: proc(ls: []Level) -> f32 {
+	sum: f32 = 0
+	for l in ls { for c in l.contours { sum += signed_area(c) } }
+	return sum
+}
+
+@(test)
+plain_ink_is_the_polygon :: proc(t: ^testing.T) {
+	// Every Ink field zero, round ends and tapered ones: one opaque level, the polygon's area.
+	for pen in ([]Pen{{nib = .Round, width = 4, thinning = 0.5}, {nib = .Chisel, width = 5, taper_start = 6, taper_end = 10, nib_angle = 30}}) {
+		o := outline(arc_stroke(), pen)
+		defer outline_destroy(&o)
+		poly := polygon(o)
+		defer delete(poly)
+		laid := lay(arc_stroke(), pen, 1)
+		defer laid_destroy(&laid)
+		testing.expect(t, len(laid.blobs) == 0)
+		ls := levels(laid, 5)
+		defer levels_destroy(ls)
+		testing.expectf(t, len(ls) == 1 && ls[0].alpha == 1, "%v: %d levels", pen.nib, len(ls))
+		got, want := level_area(ls), shoelace(poly)
+		testing.expectf(t, abs(got - want) < want * 0.03, "%v: levels %v, polygon %v", pen.nib, got, want)
+	}
+}
+
+@(test)
+a_seed_lays_the_same_ink :: proc(t: ^testing.T) {
+	for pen in ([]Pen{scaled(PEN_BALLPOINT, 2.6), scaled(PEN_FELT, 2.6), scaled(PEN_BRUSH, 2.6)}) {
+		s := straight(200, 3, 1)
+		a := lay(s, pen, 7)
+		b := lay(s, pen, 7)
+		c := lay(s, pen, 8)
+		defer laid_destroy(&a)
+		defer laid_destroy(&b)
+		defer laid_destroy(&c)
+		same := len(a.pieces) == len(b.pieces)
+		if same { for p, i in a.pieces { if p != b.pieces[i] { same = false; break } } }
+		testing.expectf(t, same, "%v: the same seed laid other pieces", pen.nib)
+		differs := len(a.pieces) != len(c.pieces)
+		if !differs { for p, i in a.pieces { if p != c.pieces[i] { differs = true; break } } }
+		testing.expectf(t, differs, "%v: another seed laid the same pieces", pen.nib)
+	}
+}
+
+// Whether the pieces of a stroke along +x leave a stretch of it bare: the span between the first and the last piece,
+// in bins of a quarter unit, each covered or not by a piece's extent in x.
+@(private = "file")
+has_gap :: proc(pieces: []Piece) -> bool {
+	lo, hi := max(f32), min(f32)
+	for p in pieces { for q in p.quad { lo = min(lo, q.x); hi = max(hi, q.x) } }
+	bins := make([]bool, int((hi - lo) * 4) + 1, context.temp_allocator)
+	for p in pieces {
+		a, b := max(f32), min(f32)
+		for q in p.quad { a = min(a, q.x); b = max(b, q.x) }
+		for k in int((a - lo) * 4) ..= min(int((b - lo) * 4), len(bins) - 1) { bins[k] = true }
+	}
+	for covered in bins { if !covered { return true } }
+	return false
+}
+
+@(test)
+skip_thins_and_breaks_but_never_empties :: proc(t: ^testing.T) {
+	pen := Pen{nib = .Round, width = 4, ink = {skip = 1}}
+	gaps, faint := 0, 0
+	for seed in u32(0) ..< 20 {
+		laid := lay(straight(300, 3, 1), pen, seed)   // 3 units/ms: fast for a width of 4
+		defer laid_destroy(&laid)
+		testing.expect(t, len(laid.pieces) > 0)
+		for p in laid.pieces { if p.density < 0.7 { faint += 1; break } }
+		if has_gap(laid.pieces) { gaps += 1 }
+	}
+	testing.expectf(t, faint >= 15, "faint passages in %d strokes of 20", faint)
+	testing.expectf(t, gaps >= 5, "gaps in %d strokes of 20", gaps)
+	// Short, fast and all priming: still some ink.
+	for seed in u32(0) ..< 200 {
+		laid := lay(straight(6, 3, 1, {0, -1}), pen, seed)
+		defer laid_destroy(&laid)
+		testing.expectf(t, len(laid.pieces) > 0, "seed %d: an empty stroke", seed)
+	}
+}
+
+@(test)
+a_slow_hand_lays_more_ink :: proc(t: ^testing.T) {
+	// 40 samples at 0.1 unit/ms, then 40 at 2 units/ms.
+	s := make([]Sample, 80, context.temp_allocator)
+	time: f64 = 0
+	for i in 0 ..< 80 {
+		s[i] = {at = {2 * f32(i), 0}, time = time}
+		time += i < 40 ? 20 : 1
+	}
+	laid := lay(s, Pen{nib = .Round, width = 4, ink = {dwell = 1}}, 1)
+	defer laid_destroy(&laid)
+	slow, fast: f32
+	ns, nf: int
+	for p in laid.pieces {
+		x := (p.quad[0].x + p.quad[2].x) * 0.5
+		if x > 10 && x < 60 { slow += p.density; ns += 1 }
+		if x > 100 && x < 150 { fast += p.density; nf += 1 }
+	}
+	testing.expect(t, ns > 0 && nf > 0)
+	testing.expectf(t, slow / f32(ns) > fast / f32(nf) + 0.2, "slow %v, fast %v", slow / f32(ns), fast / f32(nf))
+}
+
+@(test)
+the_nib_pools_where_it_rests :: proc(t: ^testing.T) {
+	pen := Pen{nib = .Round, width = 4, ink = {pool = 1}}
+	s := straight(40, 2, 4)
+	laid := lay(s, pen, 1)
+	defer laid_destroy(&laid)
+	testing.expect_value(t, len(laid.blobs), 2)
+	if len(laid.blobs) == 2 {
+		testing.expect(t, length(laid.blobs[0].center - s[0].at) < 1e-3)
+		testing.expect(t, length(laid.blobs[1].center - s[39].at) < 1e-3)
+		for b in laid.blobs { testing.expect(t, b.density >= 0.9 && b.radius > 0) }
+	}
+	// The blobs come after the line, in levels of their own, so they lie over it.
+	ls := levels(laid, 4)
+	defer levels_destroy(ls)
+	testing.expect(t, len(ls) == 2 && len(ls[1].contours) == 2 && len(ls[1].contours[0]) == BLOB_POINTS)
+
+	// A stop in the middle, 300 ms in one place: a third blob there.
+	stop := make([]Sample, 60, context.temp_allocator)
+	time: f64 = 0
+	for i in 0 ..< 60 {
+		x := f32(min(i, 20) + max(i - 40, 0)) * 2
+		stop[i] = {at = {x, 0}, time = time}
+		time += 15
+	}
+	laid2 := lay(stop, pen, 1)
+	defer laid_destroy(&laid2)
+	testing.expect_value(t, len(laid2.blobs), 3)
+	if len(laid2.blobs) == 3 { testing.expect(t, length(laid2.blobs[0].center - [2]f32{40, 0}) < 0.5) }
+}
+
+@(test)
+grain_roughens_the_edges_and_streaks :: proc(t: ^testing.T) {
+	s := straight(60, 2, 4)
+	plain := Pen{nib = .Round, width = 4}
+	grained := plain
+	grained.ink.grain = 1
+	o := outline(s, plain)
+	defer outline_destroy(&o)
+	laid := lay(s, grained, 3)
+	defer laid_destroy(&laid)
+	segs := len(o.left) - 1
+	testing.expectf(t, len(laid.pieces) > 2 * segs, "%d pieces for %d segments: no lanes", len(laid.pieces), segs)
+	// A lane is a fifth of the width, not the whole.
+	narrow := 0
+	for p in laid.pieces { if length(p.quad[0] - p.quad[3]) < 4 * 0.3 { narrow += 1 } }
+	testing.expect(t, narrow > segs)
+	moved := 0
+	for e in o.left {
+		found := false
+		for p in laid.pieces { for q in p.quad { if length(q - e) < 1e-4 { found = true } } }
+		if !found { moved += 1 }
+	}
+	testing.expectf(t, moved > len(o.left) / 2, "%d of %d edge points moved", moved, len(o.left))
+}
+
+@(test)
+levels_stack_to_the_density :: proc(t: ^testing.T) {
+	// The first level is the whole ink: every piece with ink, in contours as piece_contours gives them.
+	for pen in PRESETS {
+		laid := lay(arc_stroke(), scaled(pen, 2.6), 4)
+		defer laid_destroy(&laid)
+		ls := levels(laid, 6)
+		defer levels_destroy(ls)
+		want := 0
+		for p in laid.pieces {
+			if !(p.density > 0) { continue }
+			buf: [2][4][2]f32
+			lens: [2]int
+			want += piece_contours(p.quad, &buf, &lens)
+		}
+		testing.expectf(t, len(ls) > 0 && len(ls[0].contours) == want, "%v: level 0 holds %d contours, want %d", pen.nib, len(ls[0].contours), want)
+	}
+	// Disjoint pieces at a few densities: the levels that hold each one, stacked, give the opacity times its density.
+	densities := []f32{1.0 / 6, 0.5, 4.0 / 6, 1}
+	pieces := make([]Piece, len(densities), context.temp_allocator)
+	for d, i in densities {
+		x := f32(i) * 10
+		pieces[i] = {{{x, 0}, {x + 4, 0}, {x + 4, 4}, {x, 4}}, d}
+	}
+	laid := Laid{pieces = pieces, opacity = 0.84}
+	ls := levels(laid, 6)
+	defer levels_destroy(ls)
+	for p in pieces {
+		bare: f32 = 1
+		for l in ls {
+			for c in l.contours { if len(c) == 4 && c[0] == p.quad[0] { bare *= 1 - l.alpha } }
+		}
+		testing.expectf(t, abs((1 - bare) - 0.84 * p.density) < 0.02, "density %v: stacked %v, want %v", p.density, 1 - bare, 0.84 * p.density)
+	}
+}
+
+@(test)
+a_felt_streaks_but_never_bares_the_paper :: proc(t: ^testing.T) {
+	pen := scaled(PEN_FELT, 2.6)
+	s := straight(120, 3, 1)   // fast: the driest a felt gets
+	o := outline(s, pen)
+	defer outline_destroy(&o)
+	laid := lay(s, pen, 11)
+	defer laid_destroy(&laid)
+	strip := 3 * (len(o.left) - 1)
+	testing.expectf(t, len(laid.pieces) >= strip, "%d pieces, want every one of the %d lanes", len(laid.pieces), strip)
+	light := 0
+	for p in laid.pieces[:strip] {
+		testing.expect(t, p.density >= GRAIN_LIGHT * (1 - DWELL_RANGE) - 1e-4)
+		if p.density < 0.9 * (1 - DWELL_RANGE * pen.ink.dwell) { light += 1 }
+	}
+	testing.expectf(t, light > 0, "no light streak")
+}
+
+@(test)
+every_contour_turns_counter_clockwise :: proc(t: ^testing.T) {
+	strokes := [][]Sample{arc_stroke(), straight(120, 3, 1, {0.6, -0.8}), straight(50, 2, 8, {-1, 0})}
+	for pen in PRESETS {
+		for s, k in strokes {
+			laid := lay(s, scaled(pen, 2.6), u32(k))
+			defer laid_destroy(&laid)
+			ls := levels(laid, 6)
+			defer levels_destroy(ls)
+			testing.expect(t, len(ls) > 0)
+			for l in ls {
+				testing.expect(t, l.alpha > 0 && l.alpha <= 1)
+				for c in l.contours { testing.expectf(t, signed_area(c) > 0, "%v: a contour of area %v", pen.nib, signed_area(c)) }
+			}
+		}
+	}
+}
+
+@(test)
+the_ink_model_makes_no_nan :: proc(t: ^testing.T) {
+	same := []Sample{{at = {1, 1}}, {at = {1, 1}}, {at = {1, 1}, time = 5}, {at = {1, 1}, time = 5}}
+	one := []Sample{{at = {5, 7}, time = 3, pressure = 0.4}}
+	stalls := []Sample {
+		{at = {0, 0}}, {at = {0, 0}}, {at = {0, 0}, time = 4},
+		{at = {3, 0}, time = 4}, {at = {3, 0}, time = 4}, {at = {3, 0}, time = 300},
+		{at = {3, 4}, time = 301}, {at = {0, 0}, time = 301}, {at = {0, 0}, time = 301},
+	}
+	pressed := []Sample{{at = {0, 0}, time = 0, pressure = 0.2}, {at = {10, 0}, time = 8, pressure = 0.9}, {at = {20, 5}, time = 12, pressure = 0.5}}
+	everything := Ink{opacity = 0.5, dwell = 1, pool = 1, skip = 1, grain = 1, pressure = 1}
+	for samples in ([][]Sample{same, one, stalls, pressed}) {
+		for preset in PRESETS {
+			for pen in ([]Pen{preset, {nib = preset.nib, width = preset.width, ink = everything}}) {
+				laid := lay(samples, pen, 9)
+				defer laid_destroy(&laid)
+				testing.expect(t, len(laid.pieces) > 0)
+				for p in laid.pieces {
+					testing.expect(t, !math.is_nan(p.density))
+					for q in p.quad { testing.expectf(t, finite(q), "%v: %v", pen.nib, q) }
+				}
+				for b in laid.blobs { testing.expect(t, finite(b.center) && !math.is_nan(b.radius)) }
+				ls := levels(laid, 6)
+				defer levels_destroy(ls)
+				for l in ls { for q in l.points { testing.expect(t, finite(q)) } }
+			}
+		}
+	}
 }

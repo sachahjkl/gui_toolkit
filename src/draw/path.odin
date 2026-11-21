@@ -164,7 +164,12 @@ path_fill :: proc(c: ^Context, p: ^Path, color: Color, evenodd := false) {
 		append(&outline, p.points[k.first], Vec2{render.POLYGON_BREAK * 2, 0})
 	}
 	push_clip_polygon(c, outline[:], evenodd)
-	rect(c, path_bounds(p), color)
+	// The rect reaches a screen pixel past the bounds: its own soft edge would otherwise fall on the outline's edges that
+	// lie on the bounds and soften them twice. |det| / norm bounds the transform's smallest scale from below.
+	m := c.xforms[len(c.xforms) - 1].m
+	det := abs(affine_determinant(m))
+	pad: f32 = det > 0 ? math.sqrt(m.a * m.a + m.b * m.b + m.c * m.c + m.d * m.d) / det : 0
+	rect(c, rect_pad(path_bounds(p), pad), color)
 	pop_clip(c)
 }
 

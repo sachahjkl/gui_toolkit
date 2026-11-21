@@ -6,8 +6,8 @@ A signature drawn with a mouse or a stylus is a list of pointer samples. Stroked
 looks like a plotter's line: no thick and thin, no pointed ends, the pointer's steps visible on every curve. A
 signature written with a pen thins where the hand goes fast and thickens where it slows (the corners, the starts), and
 a fountain pen's broad nib is thin along its edge and full across it. `gt:ink` turns the samples into that ink, as
-geometry: two edges, a polygon or triangles. Drawing it is the program's (feuille's signature pad first; any program
-with freehand marks next).
+geometry: two edges, a polygon or triangles, and the pen's ink as pieces of varying density (below). Drawing it is the
+program's (feuille's signature pad first; any program with freehand marks next).
 
 ## Decisions
 
@@ -56,9 +56,75 @@ with freehand marks next).
   from the same allocator and are freed before it returns, not from `context.temp_allocator`: a temporary guard would
   free a result allocated with that same allocator.
 
+## The ink model (`lay`, `levels`)
+
+The outline gives the ink's shape; real ink is not one flat colour. A fountain pen's ink is translucent and darkens
+where strokes cross and where the nib rests; a ballpoint starves and skips; a felt or a brush streaks on grained paper;
+a slow hand leaves more ink than a fast one. The person who signs wants their pen's ink, not a plotter's fill.
+
+- **Pieces with a density, drawn as a few fills.** `lay` cuts the outline into pieces (a quad per segment, a lane of
+  it, a quarter of a round end, an eighth of a join) with a density 0..1, and blobs for the pools. `levels` quantizes
+  the densities into a few fills, each one path of one alpha. Refused: a gradient or a per-vertex alpha: a PDF path
+  has one colour, and a renderer of triangles with vertex colours is not what every program has. A handful of fills
+  is what a PDF page and `draw.path_fill` both draw, and six levels read as continuous at a signature's size.
+- **The levels are stacked, not a partition.** Level k holds every piece at step k or above: the first level is the
+  stroke's whole ink as one union, each next one darkens over it. Its alpha is `1 - (1 - T_k) / (1 - T_prev)`, with
+  `T` the opacity times the step: stacked source over, the levels give each piece its target. Refused: a partition
+  (each piece in the level of its step only): two neighbours of different density sit in two fills, and their shared
+  edge, antialiased in each at half coverage, leaves a light seam of paper. Stacked, an upper level's edge lies over
+  ink and only darkens. A step that holds no piece gives no level, so a solid ink is one level of alpha 1.
+- **Stacked for source over; a PDF multiplies.** A PDF page lays an alpha under 1 with multiply blending, which
+  composes darker than source over (with a blue ink of (29, 64, 175) and six levels, a felt's full ink comes out about
+  a fifth darker in each channel). A program that wants the exact shade lays a stroke's levels normally (in a
+  transparency group it then multiplies as a whole). The top level of an opaque ink has alpha 1 and is laid normally, so an opaque ink is exact.
+- **Within a level nothing cancels.** Every contour is turned positive (counter-clockwise in a y-up frame), so the
+  non-zero rule makes their union: neighbours sharing an edge leave no seam, a fold laid twice in one level is laid
+  once. A quad whose corners turn both ways (a fold at a tight turn) is cut into the two triangles `triangles` uses:
+  turned as a whole, its negative lobe would cut a hole in its neighbours.
+- **Joins at tight turns.** The outline's points are 0.3 width apart along the path; where it turns by more than
+  `JOIN_TURN`, its outer edge jumps by a large angle and reads as a polygon's corner, and its inner edge folds. A round
+  nib sweeps a disc there: `lay` adds a disc of the local width at each such point, so a slow tight turn (dark from the
+  dwell) reads as a rounded bulge of ink. A chisel sweeps a line, not a disc: it keeps its outline.
+- **Blobs in levels of their own, after the line.** A pool is ink on ink: its fill must lie over the line's to darken
+  it. In the line's level it would merge into it and add nothing.
+- **One stroke, its own fills.** Two strokes in one path would merge where they cross; a translucent ink must darken
+  there. The program fills each stroke's levels in turn (a PDF with multiply blending).
+- **Every Ink field zero is the outline.** One level, alpha 1, the polygon's area: a program that adopts `lay` changes
+  nothing until a pen has ink. The fields are shares of the width and of the reference speed, never lengths, so
+  `scaled` keeps the look.
+- **A seed per stroke, no randomness.** The noises are value noise from a hash of an integer and the seed: the same
+  samples and seed lay the same pieces at every render, on every machine. Value noise has no period (every step has its
+  own value); the skip's octaves have wavelengths whose ratios are not whole and run along a length warped by a slower
+  noise, so the lengths of good and bad runs vary.
+- **Dwell from the time per length.** The density is `1 - 0.6 * dwell * v / (1 + v)` of the normalised speed `v`: the
+  width's own response, so a slow turn is both wider and darker. Measured even under a stylus, whose width follows
+  the pressure.
+- **The skip comes in bursts.** A risk (a fast hand, an upstroke with y down: a lighter hand, the first 4.5 widths: the
+  ball priming, and a slow noise) decides where the ball starves; under a threshold the line is solid. The burst is
+  computed per point and smoothed over the arc length (1.2 widths), so it eases in and out. Inside a burst a flicker
+  of a width or so decides each piece: faint (never under `SKIP_FAINT`), or a gap where it falls under `SKIP_HOLE`; a
+  flicker at the pieces' own spacing stepped at every piece and read as blocks. The bench's first models thinned
+  evenly (a grey line, not a ballpoint) or cut holes by width alone (periodic dashes).
+- **The scratch is continuous.** Where starved, the ball keeps one edge: each outline point's edges move in by
+  `SKIP_SCRATCH` times the smoothed burst, shared between the sides by a smooth function of the arc length (through a
+  centred thin line when it changes side). Both pieces at a point see the same edges, so a scratch tapers into the full
+  line. Refused: narrowing each piece on its own, which drew a row of small rectangles.
+- **Grain: lanes that wander, lighter ink, rarely paper.** Each piece is cut into lanes along the stroke: 3 for a grain
+  up to 0.5 (a felt's broad streaks), 5 above (a brush's hairs). Each boundary between lanes wanders across the width
+  by its own smooth noise of the arc length, so the streaks are never parallel rails. A streak is lighter ink, never
+  under `GRAIN_LIGHT` (0.55) of the piece: a felt never bares the paper. Streaks fall in the inner lanes; a long light
+  outer lane read as a second line beside the stroke. Only a grain above 0.5 leaves the paper bare, and only in the
+  outer lanes where the brush runs fast or near its end: a dry brush's tail. The stacked levels make a lane's
+  continuous shade safe: its steps lie over ink. The edges move by a noise of about a width, a share of the local
+  width, so a taper still ends in a point and the edges never cross; a finer noise turned the edge into kinks.
+- **Pools from the samples.** An end is where the pen touched or lifted; a stop is samples within half a width for
+  150 ms or more. Both are read on the raw samples (the outline has dropped the repeated points and their time).
+
 ## Subtle points
 
 - The polygon's fill is the ink only with the non-zero rule: where the stroke crosses itself the polygon does too.
+- Where a translucent stroke folds, the pieces of one level make a union: the fold is not laid twice. A join's disc
+  covers the fold of a round nib.
 - Where the stroke turns tighter than its half width, the inner edge folds back: those triangles overlap and the
   polygon there has a small loop. Opaque ink hides both; a translucent ink must be drawn into a layer (or as the
   polygon with the non-zero rule) so it is not laid twice.

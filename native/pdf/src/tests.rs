@@ -233,6 +233,26 @@ fn outlines_are_filled_each_on_its_own() {
     assert_eq!(dark(&px, 100, 45, 15, 55, 35), 0, "not the gap between them");
 }
 
+// A pen's translucent ink is laid normally, not multiplied: two levels of it stack as source over (what gt:ink's
+// levels are computed for), and the file names a normal graphics state for it.
+#[test]
+fn a_translucent_ink_is_laid_normally() {
+    let sq = [10.0f32, 10.0, 40.0, 10.0, 40.0, 40.0, 10.0, 40.0];
+    let shapes = [
+        GtPdfShape { kind: 5, stroke: 0, fill: 0x0000FF80, width: 1.0, points: sq.as_ptr(), point_count: 4 },
+        GtPdfShape { kind: 5, stroke: 0, fill: 0x0000FF80, width: 1.0, points: sq.as_ptr(), point_count: 4 },
+    ];
+    let p = GtPdfPage { source: 0, index: 0, turns: 0, width: 50.0, height: 50.0, stamps: std::ptr::null(), stamp_count: 0, shapes: shapes.as_ptr(), shape_count: 2 };
+    let file = write_pages(std::slice::from_ref(&p), 0);
+    assert!(contains(&file, b"/GtInk128") && contains(&file, b"/Normal"), "the ink's state is normal");
+    assert!(!contains(&file, b"/GtAlpha128"), "no multiplied state for it");
+    let mut px = vec![0u8; 50 * 50 * 4];
+    assert!(unsafe { gt_pdf_render(&p, 50, 50, false, px.as_mut_ptr()) });
+    let i = (25 * 50 + 25) * 4;
+    // (two layers of alpha 0.5 over white: 0.75 of blue, so red and green at a quarter of white)
+    assert!((55..=75).contains(&px[i]) && px[i + 2] > 240, "source over: {:?}", &px[i..i + 3]);
+}
+
 #[test]
 fn what_is_not_a_pdf_is_refused() {
     let junk = b"not a pdf at all";

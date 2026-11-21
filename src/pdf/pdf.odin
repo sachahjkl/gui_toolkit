@@ -88,6 +88,9 @@ Face :: distinct u32
 // `weight`, the glyphs' outline stroked too, in thousandths of the size (0..200: a heavier pen); `flourish`, a pen's
 // stroke under the text; `caption`, one line under it in Helvetica, smaller ("Paris, 19/11/2026"). Each grows the box
 // stamp_size gives.
+//
+// `group`: the program's (the engine ignores it): stamps and shapes of a page with the same non-zero group are one
+// mark for the person (a signature's ink, its mention and its caption move and go together). 0: on its own.
 Stamp :: struct {
 	at:         [2]f32,
 	turns:      int,
@@ -101,6 +104,7 @@ Stamp :: struct {
 	weight:     f32,
 	flourish:   bool,
 	caption:    string,
+	group:      u32,
 }
 
 // What a shape is.
@@ -110,14 +114,17 @@ Shape_Kind :: enum u8 { Rect, Ellipse, Line, Arrow, Ink, Outline }
 // two corners (Rect, Ellipse: the box it fills), two ends (Line; Arrow: from, then to, where its head is), the free
 // line's points (Ink), or closed outlines filled with the non-zero rule (Outline: a pen's ink as gt:ink gives it, a
 // point whose x is NaN starts the next outline). `stroke` and `fill`: alpha 0 for none; a colour less than opaque is
-// laid over the page by multiplication, as a highlighter's ink (the words under it stay readable). `fill` is for Rect,
-// Ellipse and Outline. `width`: the stroke's, in points. Shapes are drawn under the page's stamps.
+// laid over the page by multiplication, as a highlighter's ink (the words under it stay readable), except an
+// Outline's, laid normally (gt:ink's levels are computed for it). `fill` is for Rect,
+// Ellipse and Outline. `width`: the stroke's, in points. Shapes are drawn under the page's stamps. `group`: as a
+// stamp's (the program's: shapes and stamps that are one mark).
 Shape :: struct {
 	kind:   Shape_Kind,
 	points: [][2]f32,
 	stroke: [4]u8,
 	fill:   [4]u8,
 	width:  f32,
+	group:  u32,
 }
 
 // A page of the program's list: page `index` of `source`, or a blank page of `size` points when `source` is 0.
