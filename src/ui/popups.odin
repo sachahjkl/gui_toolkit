@@ -962,11 +962,16 @@ menu_control_end :: proc(built: bool) {
 // submenu's items while it is open.
 @(require_results, deferred_none = menu_end)
 menu_submenu :: proc(text: string, icon := "", disabled := false) -> bool {
-	return menu_submenu_ex(text, icon, disabled, nil, nil)
+	return menu_submenu_begin(text, icon, disabled, nil, nil)
 }
 
 @(private, require_results, deferred_none = menu_end)
 menu_submenu_ex :: proc(text: string, icon := "", disabled := false, icon_draw: Custom_Draw = nil, icon_user: rawptr = nil) -> bool {
+	return menu_submenu_begin(text, icon, disabled, icon_draw, icon_user)
+}
+
+@(private = "file")
+menu_submenu_begin :: proc(text: string, icon: string, disabled: bool, icon_draw: Custom_Draw, icon_user: rawptr) -> bool {
 	s := gs()
 	lv, depth := menu_current()
 	if lv == nil { append(&s.popup_stack, false); return false }
