@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.340.0] - 2026-11-21 16:58
+
+### Added
+- **Asynchronous system shell context menu (`gt:desktop`)**: `Context_Menu` (`context_menu_query`, `context_menu_invoke`, `context_menu_clear`, `context_menu_destroy`) queries and invokes third-party shell actions off the interface thread (Windows `IContextMenu` / `IContextMenu2` / `IContextMenu3` on a dedicated COM STA worker; Linux KIO service menus, Nemo actions, and Thunar `uca.xml`), with caller-supplied `exclude_verbs`, mnemonic stripping, and submenu/separator pruning.
+
 ## [0.339.1] - 2026-11-21 16:27
 
 ### Fixed
@@ -4767,6 +4772,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.340.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.340.0
 [0.339.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.339.1
 [0.339.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.339.0
 [0.338.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.338.0
