@@ -26,6 +26,7 @@ import "core:time"
 import http "../http"
 import i18n "../i18n"
 import process "../process"
+import timefmt "../timefmt"
 
 CHECK_EVERY :: 24 * time.Hour
 RETRY_AFTER :: time.Hour
@@ -78,6 +79,15 @@ Status :: struct {
 	asked:   bool,     // that result answers check_now or install_now: the program says it, even "up to date"
 	install: bool,     // that result is an install's (install_now, or the mode Install), not a check's
 	serial:  int,      // grows at each change: a program says each result once
+	// Downloading: the bytes come so far, of the program's signed size (the manifest's: always known). The serial grows
+	// at each whole percent, so a program redraws its bar a hundred times at most.
+	received, size: i64,
+}
+
+// How far the download is, 0..1 (0 out of Downloading).
+progress :: proc(st: Status) -> f32 {
+	if st.phase != .Downloading || st.size <= 0 { return 0 }
+	return f32(clamp(f64(st.received) / f64(st.size), 0, 1))
 }
 
 Updater :: struct {
@@ -92,6 +102,8 @@ Updater :: struct {
 	asked:     bool,
 	install:   bool,              // the result is an install's
 	serial:    int,
+	received:  i64,               // Downloading: the bytes come so far
+	percent:   int,               // Downloading: the whole percent last told
 	auto:      Auto_Mode,
 	want_check, want_install: bool,
 	want_asked: bool,             // the check or install wanted was asked by the user
@@ -204,7 +216,9 @@ latest_release_folder :: proc(repository: string, allocator := context.allocator
 status :: proc(u: ^Updater, allocator := context.temp_allocator) -> Status {
 	sync.guard(&u.mutex)
 	version := u.phase == .Installed ? u.version : (u.phase == .Available || u.phase == .Downloading) ? u.offer.version : ""
-	return {u.phase, strings.clone(version, allocator), strings.clone(u.result, allocator), u.failed, u.asked, u.install, u.serial}
+	size := u.phase == .Downloading ? u.offer.size : 0
+	received := u.phase == .Downloading ? u.received : 0
+	return {u.phase, strings.clone(version, allocator), strings.clone(u.result, allocator), u.failed, u.asked, u.install, u.serial, received, size}
 }
 
 // The state in a sentence, for the Updates page (prefs_page): the one place that says the whole state. A program's bar
@@ -213,7 +227,9 @@ status_words :: proc(st: Status, allocator := context.temp_allocator) -> string 
 	switch st.phase {
 	case .Managed:     return i18n.tr("A package manager updates this copy.")
 	case .Checking:    return i18n.tr("Checking for a newer version…")
-	case .Downloading: return fmt.aprintf(i18n.tr("Downloading version %s…"), st.version, allocator = allocator)
+	case .Downloading:
+		// (the sizes, which the bar under it does not say; its share is the bar's)
+		return fmt.aprintf(i18n.tr("Downloading version %s: %s of %s."), st.version, timefmt.size(st.received), timefmt.size(st.size), allocator = allocator)
 	case .Available:
 		if st.failed && st.install { return fmt.aprintf(i18n.tr("Version %s is available. The update failed: %s."), st.version, st.result, allocator = allocator) }
 		return fmt.aprintf(i18n.tr("Version %s is available."), st.version, allocator = allocator)
@@ -369,24 +385,31 @@ updater_check :: proc(u: ^Updater, asked: bool) {
 @(private = "file")
 updater_install :: proc(u: ^Updater, asked: bool) {
 	u.phase = .Downloading
+	u.received, u.percent = 0, 0
+	// (an earlier install's failure is not this one's: kept, a program's notice would say it again at each percent)
+	u.result, u.failed = replace(u.result, ""), false
 	tell(u)
 	o := u.options
 	m := u.offer   // (stays u's: only this thread changes the offer)
 	sync.unlock(&u.mutex)
 	why := ""
+	// (in chunks, not http.get: each one says how far it is, for the program's bar)
+	d := Download{u = u, data = make([dynamic]u8, 0, int(m.size), heap())}
 	// (the folder of the channel the offer came from, whatever the channel followed is by now)
-	status, data, err := http.get(strings.concatenate({folder_of(o, m.channel), m.file}, context.temp_allocator), {max_bytes = int(m.size), user_agent = o.user_agent}, heap())
+	res, err := http.receive("GET", strings.concatenate({folder_of(o, m.channel), m.file}, context.temp_allocator),
+		{max_bytes = int(m.size), user_agent = o.user_agent}, download_part, &d, allocator = context.temp_allocator)
 	switch {
 	case err != .None: why = http.error_text(err)
-	case status != 200: why = fmt.tprintf(i18n.tr("the server answered %d for %s"), status, m.file)
+	case res.status != 200: why = fmt.tprintf(i18n.tr("the server answered %d for %s"), res.status, m.file)
 	}
+	data := d.data[:]
 	sync.lock(&u.mutex)
 	if why == "" && !u.stopped {
 		if e := place(o.exe, data, m); e != .None { why = error_text(e) }
 	} else if why == "" {
 		why = i18n.tr("stopped")
 	}
-	delete(data, heap())
+	delete(d.data)
 	u.asked, u.install = asked, true
 	if why != "" {
 		// (the reason alone: status_words and notice put it in their sentence)
@@ -403,6 +426,30 @@ updater_install :: proc(u: ^Updater, asked: bool) {
 		u.phase = .Installed
 	}
 	tell(u)
+}
+
+@(private = "file")
+Download :: struct {
+	u:    ^Updater,
+	data: [dynamic]u8,   // (the heap's)
+}
+
+// A chunk of the program (the updater's thread, unlocked): kept, and the program told at each whole percent. A stop
+// ends the transfer at once; nothing is put in place after it.
+@(private = "file")
+download_part :: proc(user: rawptr, part: http.Body_Part) -> http.Keep_Going {
+	d := (^Download)(user)
+	append(&d.data, ..part.bytes)
+	u := d.u
+	sync.guard(&u.mutex)
+	u.received = part.received
+	if u.offer.size > 0 {
+		if pct := int(part.received * 100 / u.offer.size); pct != u.percent {
+			u.percent = pct
+			tell(u)
+		}
+	}
+	return u.stopped ? .Stop : .Continue
 }
 
 // The release's manifest and signature, checked. why: a failure; nothing_new: no newer version (or none for this system).

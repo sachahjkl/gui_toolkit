@@ -20,6 +20,11 @@ Release_Server :: struct {
 	stop:    bool,
 	served:  int,   // (atomic)
 	thread:  ^thread.Thread,
+	// `hold` (before a request): the first half of `held`'s body is sent, the rest when the test sets `go` (atomic), so a
+	// test sees a download midway
+	held:    string,
+	hold:    bool,
+	go:      bool,
 }
 
 @(private = "file")
@@ -42,6 +47,12 @@ release_serve :: proc(t: ^testing.T, files: map[string][]byte) -> ^Release_Serve
 			if body, ok := s.files[name]; ok {
 				head := fmt.tprintf("HTTP/1.1 200 OK\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", len(body))
 				net.send_tcp(client, transmute([]u8)head)
+				if sync.atomic_load(&s.hold) && name == s.held {
+					net.send_tcp(client, body[:len(body) / 2])
+					deadline := time.time_add(time.now(), 10 * time.Second)
+					for !sync.atomic_load(&s.go) && !sync.atomic_load(&s.stop) && time.diff(time.now(), deadline) > 0 { time.sleep(time.Millisecond) }
+					body = body[len(body) / 2:]
+				}
 				net.send_tcp(client, body)
 			} else {
 				net.send_tcp(client, transmute([]u8)string("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
@@ -162,6 +173,45 @@ an_update_found_then_installed :: proc(t: ^testing.T) {
 	back, _ = os.read_entire_file_from_path(exe, context.temp_allocator)
 	testing.expect(t, string(back) == string(program), "the new program in place")
 	testing.expect(t, sync.atomic_load(&news.count) >= 4, "each change heard")
+}
+
+// A download says how far it is: midway, its bytes of the signed size, the program told; once in place, nothing.
+@(test)
+a_download_says_how_far_it_is :: proc(t: ^testing.T) {
+	if PLATFORM == "" { return }
+	dir, exe := program_folder("progress")
+	defer fsx.remove_tree(dir)
+	program := program_bytes(5)
+	files := release_files("3.0.0", program)
+	s := release_serve(t, files)
+	defer release_end(s)
+	for name in files { if strings.has_suffix(name, ".json") || strings.has_suffix(name, ".sig") { continue }; s.held = name }
+	sync.atomic_store(&s.hold, true)
+	news: News
+	u := updater_start({product = updater_product(), folder = fmt.tprintf("http://127.0.0.1:%d/", s.port), current = "1.0.0", exe = exe, news = on_news, user = &news})
+	defer updater_stop(u)
+	check_now(u)
+	_ = wait_phase(u, .Available)
+	heard := sync.atomic_load(&news.count)
+	install_now(u)
+	// (the server holds the second half: the download waits midway)
+	deadline := time.time_add(time.now(), 10 * time.Second)
+	st := status(u)
+	for (st.phase != .Downloading || st.received < i64(len(program) / 2)) && time.diff(time.now(), deadline) > 0 {
+		time.sleep(5 * time.Millisecond)
+		st = status(u)
+	}
+	testing.expect_value(t, st.phase, Phase.Downloading)
+	testing.expect_value(t, st.size, i64(len(program)))
+	testing.expect_value(t, st.received, i64(len(program) / 2))
+	testing.expectf(t, abs(progress(st) - 0.5) < 0.001, "midway: %v", progress(st))
+	testing.expect(t, !st.failed && st.result == "", "no earlier result while it comes")
+	testing.expectf(t, sync.atomic_load(&news.count) - heard >= 2, "told as it comes: %d news", sync.atomic_load(&news.count) - heard)
+	testing.expect(t, strings.contains(status_words(st), "of"), "the words say the sizes")
+	sync.atomic_store(&s.go, true)
+	st = wait_phase(u, .Installed)
+	testing.expect_value(t, st.phase, Phase.Installed)
+	testing.expect(t, st.received == 0 && st.size == 0 && progress(st) == 0, "nothing comes once in place")
 }
 
 // Automatic: a while after the start it checks and installs by itself, and says nothing was asked.

@@ -1381,10 +1381,17 @@ bar_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 }
 
-// Determinate (t in 0..1) or indeterminate bar. Size from the style stack or `next`.
-progress :: proc(id: string, t: f32, indeterminate := false) {
+// Determinate (t in 0..1) or indeterminate bar. Size from the style stack or `next`. `lively`: a determinate bar drawn
+// as progress_fill draws it (a primary-green gradient in its border), for what the user watches come (a download).
+progress :: proc(id: string, t: f32, indeterminate := false, lively := false) {
 	s := gs()
 	b := build_box({}, id)
+	if lively && !indeterminate {
+		progress_fill(b, t)
+		a11y_default(b, {role = .Progress_Indicator, numeric = f64(clamp(t, 0, 1) * 100), min = 0, max = 100, read_only = true,
+			value = i18n.percent(f64(clamp(t, 0, 1)), allocator = frame_allocator())})
+		return
+	}
 	d := frame_new(Bar_Draw)
 	d.t = anim(key_from_string(b.key, "t"), t, PROGRESS_RATE, t)
 	d.indeterminate = indeterminate

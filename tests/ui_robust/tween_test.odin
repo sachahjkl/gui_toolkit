@@ -1,6 +1,6 @@
 package ui_robust_test
 
-// ui.tween: a set time, gentle at both ends, the first step not the largest, and no frames asked for once it is there.
+// ui.tween (.In_Out): a set time, gentle at both ends, the first step not the largest, and no frames asked for once it is there.
 
 import "core:testing"
 import "gt:ui"
@@ -12,7 +12,7 @@ import "gt:ui"
 @(private = "file")
 step :: proc(f: ^Fx, target: f32, ms: f32 = TWEEN_MS, dt: f32 = TWEEN_DT, animations := true) -> f32 {
 	ui.begin_build(&f.s, {window_size = {800, 600}, dt = dt, animations = animations, dpi_scale = 1, base = ui.Style{font = f.base_font, font_size = 15}})
-	v := ui.tween(ui.key_from_string(0, "###tween"), target, ms)
+	v := ui.tween(ui.key_from_string(0, "###tween"), target, ms, .In_Out)
 	ui.end_build()
 	return v
 }

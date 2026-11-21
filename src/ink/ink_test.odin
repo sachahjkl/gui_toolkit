@@ -169,6 +169,180 @@ repeated_samples_make_no_nan :: proc(t: ^testing.T) {
 	}
 }
 
+// A signature's tight loops: a prolate cycloid, `loops` turns of radius about 2.5 times `scale`, drawn faster on the
+// straights than in the turns.
+@(private = "file")
+loop_stroke :: proc(scale: f32, loops: int, allocator := context.temp_allocator) -> []Sample {
+	count := 60 * loops
+	s := make([]Sample, count + 1, allocator)
+	time: f64 = 0
+	for i in 0 ..= count {
+		a := f32(i) / f32(count) * 2 * math.PI * f32(loops)
+		s[i] = {at = scale * [2]f32{1.4 * a - 2.5 * math.sin(a), -2.5 * math.cos(a)}, time = time}
+		time += 3 + 2 * f64(math.cos(a))
+	}
+	return s
+}
+
+// The largest turn, in degrees, of the outer edge of a turn between two consecutive segments, away from the ends and
+// the tapers (whose edges close to a point by design).
+@(private = "file")
+outer_turn :: proc(o: Outline, pen: Pen) -> f32 {
+	n := len(o.left)
+	along := make([]f32, n, context.temp_allocator)
+	for i in 1 ..< n { along[i] = along[i - 1] + length((o.left[i] + o.right[i] - o.left[i - 1] - o.right[i - 1]) * 0.5) }
+	worst: f32 = 0
+	for i in 2 ..< n - 2 {
+		if along[i] < pen.taper_start || along[n - 1] - along[i] < pen.taper_end { continue }
+		c0 := (o.left[i - 1] + o.right[i - 1]) * 0.5
+		c1 := (o.left[i] + o.right[i]) * 0.5
+		c2 := (o.left[i + 1] + o.right[i + 1]) * 0.5
+		// The path turning toward the left edge leaves the right one outside.
+		turn_left := cross(c1 - c0, c2 - c1) > 0
+		e := turn_left ? o.right : o.left
+		a, b := e[i] - e[i - 1], e[i + 1] - e[i]
+		la, lb := length(a), length(b)
+		if !(la > 1e-4 && lb > 1e-4) { continue }
+		worst = max(worst, math.acos(clamp((a.x * b.x + a.y * b.y) / (la * lb), -1, 1)) * math.DEG_PER_RAD)
+	}
+	return worst
+}
+
+@(test)
+tight_turns_have_no_corners :: proc(t: ^testing.T) {
+	for preset in PRESETS {
+		for k in ([]f32{1, 2.6}) {
+			pen := scaled(preset, k)
+			o := outline(loop_stroke(pen.width, 4), pen)
+			defer outline_destroy(&o)
+			for p in o.left { testing.expect(t, finite(p)) }
+			for p in o.right { testing.expect(t, finite(p)) }
+			// RESAMPLE_TURN (8°) and the walk's step make a little over it; 13°: a chisel's hairline in a loop tighter
+			// than its width, where its width is least and changes fastest, reaches 12.9° on an edge 0.03 width long.
+			worst := outer_turn(o, pen)
+			testing.expectf(t, worst <= 13, "%v at %v: an outer edge turns by %v° at a point", preset.nib, k, worst)
+		}
+	}
+	// A cusp (the hand goes and comes back on itself) adds one point, not one per step of the walk: the count stays
+	// near the length over the largest spacing.
+	back := make([]Sample, 41, context.temp_allocator)
+	for i in 0 ..= 40 { back[i] = {at = {f32(20 - abs(i - 20)) * 2, 0}, time = f64(i) * 4} }
+	pen := Pen{nib = .Round, width = 4}
+	o := outline(back, pen)
+	defer outline_destroy(&o)
+	most := int(80 / (pen.width * 0.3)) + 20
+	testing.expectf(t, len(o.left) <= most, "a cusp: %d points, want at most %d", len(o.left), most)
+}
+
+// The distance from `p` to the triangle abc (0 inside).
+@(private = "file")
+triangle_distance :: proc(p, a, b, c: [2]f32) -> f32 {
+	s0, s1, s2 := cross(b - a, p - a), cross(c - b, p - b), cross(a - c, p - c)
+	if (s0 >= 0 && s1 >= 0 && s2 >= 0) || (s0 <= 0 && s1 <= 0 && s2 <= 0) { return 0 }
+	edge :: proc(p, a, b: [2]f32) -> f32 {
+		d := b - a
+		l := d.x * d.x + d.y * d.y
+		u: f32 = l > 0 ? clamp(((p - a).x * d.x + (p - a).y * d.y) / l, 0, 1) : 0
+		return length(p - (a + d * u))
+	}
+	return min(edge(p, a, b), edge(p, b, c), edge(p, c, a))
+}
+
+// How far `p` lies outside a broad nib's sweep along `pts`, computed here from the nib at each point and not from
+// `lay`: per step, the nib's segment swept from one point to the next (two triangles, so a folded one counts too),
+// grown by half the nib's thickness, and each nib's own rectangle.
+@(private = "file")
+outside_sweep :: proc(p: [2]f32, pts: []Point) -> f32 {
+	best := max(f32)
+	for i in 0 ..< len(pts) {
+		a := pts[i]
+		ha := a.edge * (a.span * 0.5)
+		// The nib's rectangle at this point.
+		x := (p - a.at).x * a.edge.x + (p - a.at).y * a.edge.y
+		y := cross(a.edge, p - a.at)
+		dx, dy := max(abs(x) - a.span * 0.5, 0), max(abs(y) - a.thick * 0.5, 0)
+		best = min(best, length([2]f32{dx, dy}))
+		if i + 1 == len(pts) { continue }
+		b := pts[i + 1]
+		hb := b.edge * (b.span * 0.5)
+		grown := max(a.thick, b.thick) * 0.5
+		d := min(triangle_distance(p, a.at + ha, b.at + hb, b.at - hb), triangle_distance(p, a.at + ha, b.at - hb, a.at - ha),
+			triangle_distance(p, a.at + ha, b.at + hb, a.at - ha), triangle_distance(p, b.at + hb, b.at - hb, a.at - ha))
+		best = min(best, max(d - grown, 0))
+	}
+	return best
+}
+
+// Whether `p` lies in one of `pieces` (as `levels` cuts them into positive contours), within `eps`.
+@(private = "file")
+in_pieces :: proc(p: [2]f32, pieces: []Piece, eps: f32) -> bool {
+	for pc in pieces {
+		buf: [2][4][2]f32
+		lens: [2]int
+		k := piece_contours(pc.quad, &buf, &lens)
+		for j in 0 ..< k {
+			c := buf[j][:lens[j]]
+			inside := true
+			for v in 0 ..< len(c) {
+				e := c[(v + 1) % len(c)] - c[v]
+				l := length(e)
+				// Positive contours: inside is on the left of every edge.
+				if l > 0 && cross(e, p - c[v]) / l < -eps { inside = false; break }
+			}
+			if inside { return true }
+		}
+	}
+	return false
+}
+
+@(test)
+a_chisel_lays_its_sweep :: proc(t: ^testing.T) {
+	// Plain ink, loops whose radius at the top is under the nib's width: where the offset outline notched.
+	pen := Pen{nib = .Chisel, width = 4, nib_angle = 1.0 / 12, taper_start = 3, taper_end = 3, thinning = 0.3}
+	for k in ([]f32{1, 2.6}) {
+		p := scaled(pen, k)
+		tight := loop_stroke(k, 3)
+		o, pts := trace(tight, p)
+		defer outline_destroy(&o)
+		defer delete(pts)
+		laid := lay(tight, p, 1)
+		defer laid_destroy(&laid)
+		tol := p.width * 1e-3
+		// Nothing past the nib: every corner of the ink lies in the nib's sweep.
+		worst: f32 = 0
+		for pc in laid.pieces { for q in pc.quad { worst = max(worst, outside_sweep(q, pts)) } }
+		testing.expectf(t, worst <= tol, "at %v: the ink reaches %v past the nib's sweep", k, worst)
+		// No gap: every nib on the way is covered, all its rectangle (its corners too: where the stroke runs along the
+		// nib's edge, they make the hairline's flat side).
+		gaps := 0
+		for pt in pts {
+			for j in 0 ..= 8 {
+				u := f32(j) / 4 - 1
+				for side in ([]f32{-0.45, 0, 0.45}) {
+					q := pt.at + pt.edge * (u * pt.span * 0.5) + [2]f32{-pt.edge.y, pt.edge.x} * (side * pt.thick)
+					if !in_pieces(q, laid.pieces, tol) { gaps += 1 }
+				}
+			}
+		}
+		testing.expectf(t, gaps == 0, "at %v: %d points of the nib's way uncovered", k, gaps)
+		// The day-one test of the old ink: the offset outline's lobes reach past the nib at the loop tops (the notch
+		// between them).
+		poly := polygon(o)
+		defer delete(poly)
+		reach: f32 = 0
+		for q in poly { reach = max(reach, outside_sweep(q, pts)) }
+		testing.expectf(t, reach > p.width * 0.05, "at %v: the offset outline stays in the sweep (%v): the loop is not tight", k, reach)
+	}
+	// A dot is the nib itself.
+	dot := lay([]Sample{{at = {5, 7}}}, pen, 1)
+	defer laid_destroy(&dot)
+	testing.expect_value(t, len(dot.pieces), 1)
+	if len(dot.pieces) == 1 {
+		q := dot.pieces[0].quad
+		testing.expectf(t, abs(length(q[1] - q[0]) - 4) < 1e-3 && abs(length(q[3] - q[0]) - 4 * CHISEL_EDGE) < 1e-3, "a dot %v", q)
+	}
+}
+
 @(test)
 no_sample_no_ink :: proc(t: ^testing.T) {
 	o := outline(nil, PEN_BALLPOINT)
@@ -191,8 +365,9 @@ level_area :: proc(ls: []Level) -> f32 {
 
 @(test)
 plain_ink_is_the_polygon :: proc(t: ^testing.T) {
-	// Every Ink field zero, round ends and tapered ones: one opaque level, the polygon's area.
-	for pen in ([]Pen{{nib = .Round, width = 4, thinning = 0.5}, {nib = .Chisel, width = 5, taper_start = 6, taper_end = 10, nib_angle = 1.0 / 12}}) {
+	// Every Ink field zero, round ends and tapered ones: one opaque level, the polygon's area. Round and Brush only: a
+	// chisel's ink is its sweep, of which its polygon is an approximation (a_chisel_lays_its_sweep).
+	for pen in ([]Pen{{nib = .Round, width = 4, thinning = 0.5}, {nib = .Brush, width = 5, taper_start = 6, taper_end = 10}}) {
 		o := outline(arc_stroke(), pen)
 		defer outline_destroy(&o)
 		poly := polygon(o)
@@ -316,6 +491,66 @@ the_nib_pools_where_it_rests :: proc(t: ^testing.T) {
 	defer laid_destroy(&laid2)
 	testing.expect_value(t, len(laid2.blobs), 3)
 	if len(laid2.blobs) == 3 { testing.expect(t, length(laid2.blobs[0].center - [2]f32{40, 0}) < 0.5) }
+}
+
+@(test)
+a_pool_is_a_drop :: proc(t: ^testing.T) {
+	pen := Pen{nib = .Round, width = 4, ink = {pool = 1}}
+	laid := lay(straight(40, 2, 4), pen, 1)
+	defer laid_destroy(&laid)
+	testing.expect_value(t, len(laid.blobs), 2)
+	if len(laid.blobs) != 2 { return }
+	// Into the stroke from each end: +x from its start, -x from its end.
+	testing.expectf(t, length(laid.blobs[0].direction - {1, 0}) < 1e-3, "start: %v", laid.blobs[0].direction)
+	testing.expectf(t, length(laid.blobs[1].direction - {-1, 0}) < 1e-3, "end: %v", laid.blobs[1].direction)
+	testing.expect(t, laid.blobs[0].seed != laid.blobs[1].seed)
+
+	// The stroke's two drops, a stop's (no direction), and many seeds at one end: every shape the hash gives must hold.
+	drops := make([dynamic]Blob, 0, 300, context.temp_allocator)
+	append(&drops, laid.blobs[0], laid.blobs[1], Blob{center = {3, 4}, radius = 2, density = 1, seed = 5})
+	r: f32 = 1 / math.SQRT_TWO
+	for seed in u32(0) ..< 200 { append(&drops, Blob{center = {-7, 2}, radius = 1.5, density = 1, direction = {r, -r}, seed = seed}) }
+	for b in drops {
+		ring: [BLOB_POINTS][2]f32
+		drop(b, ring[:])
+		for p in ring { testing.expect(t, finite(p)) }
+		testing.expectf(t, signed_area(ring[:]) > 0, "a drop of area %v", signed_area(ring[:]))
+		// Not a circle: the distances from where the nib rested spread by a tenth or more.
+		lo, hi := max(f32), f32(0)
+		for p in ring {
+			d := length(p - b.center)
+			lo, hi = min(lo, d), max(hi, d)
+		}
+		testing.expectf(t, (hi - lo) / hi >= 0.1, "a drop's radius spreads %v..%v", lo, hi)
+		if b.direction == {} { continue }
+		// Drawn out along the stroke: longer along its direction than across it, and reaching further in than out.
+		nrm := [2]f32{-b.direction.y, b.direction.x}
+		along_lo, along_hi, across_lo, across_hi := max(f32), min(f32), max(f32), min(f32)
+		for p in ring {
+			x := (p.x - b.center.x) * b.direction.x + (p.y - b.center.y) * b.direction.y
+			y := (p.x - b.center.x) * nrm.x + (p.y - b.center.y) * nrm.y
+			along_lo, along_hi = min(along_lo, x), max(along_hi, x)
+			across_lo, across_hi = min(across_lo, y), max(across_hi, y)
+		}
+		testing.expectf(t, along_hi - along_lo > across_hi - across_lo, "along %v, across %v", along_hi - along_lo, across_hi - across_lo)
+		testing.expectf(t, along_hi > -along_lo, "into the stroke %v, out of it %v", along_hi, -along_lo)
+	}
+
+	// The same seed draws the same drop; another seed another.
+	a, b, c: [BLOB_POINTS][2]f32
+	drop(laid.blobs[0], a[:])
+	drop(laid.blobs[0], b[:])
+	other := laid.blobs[0]
+	other.seed += 1
+	drop(other, c[:])
+	testing.expect(t, a == b)
+	testing.expect(t, a != c)
+	again := lay(straight(40, 2, 4), pen, 1)
+	defer laid_destroy(&again)
+	testing.expect(t, len(again.blobs) == 2 && again.blobs[0] == laid.blobs[0] && again.blobs[1] == laid.blobs[1])
+	elsewhere := lay(straight(40, 2, 4), pen, 2)
+	defer laid_destroy(&elsewhere)
+	testing.expect(t, len(elsewhere.blobs) == 2 && elsewhere.blobs[0].seed != laid.blobs[0].seed)
 }
 
 @(test)

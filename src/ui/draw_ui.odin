@@ -179,6 +179,8 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 	// (wholly transparent, it and what is in it show nothing: not drawn, it has no part for the partial redraw. Drawn at
 	// alpha 0, a dialog's scrim still unseen was a part the size of the window, and redrew all of it: views.md 3.4)
 	if b.transparency >= 1 { return }
+	// (a swap draws its faces crossing, then itself through here again: swap.odin)
+	if b.swap != nil && !b.swap.drawing && children { swap_draw(s, dc, b, scale); return }
 	// what the box draws, its children apart, is compared with its last frame's (set_partial_redraw)
 	draw.damage_span_begin(dc, u64(b.key))
 	defer draw.damage_span_end(dc)
@@ -191,15 +193,21 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 	if fade { draw.push_alpha(dc, math.lerp(f32(1), s.disabled_keep, b.disabled_t)) }
 	squished := b.squish > DRAW_INVISIBLE_EPS
 	if squished { draw.push_scale(dc, draw.rect_center(r), 1 - b.squish) }
+	// (a swap's face drawn as content only: its shape is the swap's morph, swap.odin)
+	bare := box_bare(b)
+	if bare { flags -= {.Draw_Shadow, .Draw_Focus_Ring, .Draw_Border, .Draw_Side_Top, .Draw_Side_Bottom, .Draw_Side_Left, .Draw_Side_Right, .Row} }
+	// (its ground is its custom draw's: the background is read as its face, never painted here)
+	ground := !bare && .Custom_Ground not_in flags
 
 	if .Draw_Shadow in flags {
 		sc := tuned(color_from_tags(s, b.tags_key, "drop_shadow"))
 		draw.rect_corners(dc, draw.rect_shift(draw.rect_pad(r, DROP_SHADOW_SPREAD_PX * scale), {DROP_SHADOW_OFFSET_PX * scale, DROP_SHADOW_OFFSET_PX * scale}), colors4(sc), radii, 0, DROP_SHADOW_SOFT_PX * scale)
 	}
-	keyboard_focus := s.focus_visible && b.key == s.focus_key
+	keyboard_focus := !bare && s.focus_visible && b.key == s.focus_key
 	focus_ring := (.Draw_Focus_Ring in flags && b.focus_t > FOCUS_T_EPS) || keyboard_focus
 	// the machined finish draws its reliefs itself (machined.odin): the face, and for a well or a bevel its edge and focus
-	machined_face, machined_whole := machined_box(s, dc, b, r, radii, keyboard_focus)
+	machined_face, machined_whole: bool
+	if ground { machined_face, machined_whole = machined_box(s, dc, b, r, radii, keyboard_focus) }
 	if machined_whole { focus_ring = false }
 	// (a row's ring goes round its face, what the user sees of it, not round its box)
 	ring, ring_radii := r, radii
@@ -216,7 +224,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 	// rounded inside it, over its square ground (row_face.odin)
 	if .Row in flags {
 		row_draw(s, dc, b)
-	} else if !machined_face {
+	} else if !machined_face && ground {
 		draw_face(s, dc, r, radii, box_face(s, b))
 	}
 	// (a rich paragraph paints both itself, between its runs' backgrounds and its text)
@@ -242,7 +250,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 	if .Clip in flags { draw.pop_clip(dc) }
 	if .View_Scroll_Y in flags { draw_scrollbar(s, dc, b) }
 	if .View_Scroll_X in flags { draw_scrollbar(s, dc, b, .X) }
-	machined_plate_over(s, dc, b, r, radii)
+	if !bare { machined_plate_over(s, dc, b, r, radii) }
 
 	// (a row's border would frame its box, not its inset face: a row has none)
 	if .Draw_Border in flags && b.border.a > BORDER_ALPHA_EPS && !machined_whole && .Row not_in flags {
@@ -265,7 +273,7 @@ draw_box :: proc(s: ^State, dc: ^draw.Context, b: ^Box, scale: f32, children := 
 		draw.rect(dc, {{r.min.x, 0}, {r.max.x, 1}}, color_from_tags(s, b.tags_key, "border"))
 	}
 	if focus_ring { focus_mark(s, dc, b, ring, ring_radii, keyboard_focus, scale) }
-	if s.act_light.key != 0 && s.act_light.key == b.key { act_light_draw(s, dc, b, radii) }
+	if !bare && s.act_light.key != 0 && s.act_light.key == b.key { act_light_draw(s, dc, b, radii) }
 	if squished { draw.pop_xform(dc) }
 	if fade { draw.pop_alpha(dc) }
 	if b.transparency != 0 { draw.pop_alpha(dc) }

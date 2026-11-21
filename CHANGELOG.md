@@ -5,6 +5,40 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.338.0] - 2026-11-21 09:27
+
+### Added
+- **`ink.Sample.tilt`, `ink.Pen.tilt`**: a stylus's lean changes the ink as a real pen's does. A leaned felt or brush
+lays its side, a broader and lighter line (up to +60% width and -35% ink at `Pen.tilt` 1); a fountain pen's broad nib
+turns with the pen, so its thick and thin strokes follow how the person holds it. The presets lean: ballpoint 0,
+fountain 0.7, felt 0.8, brush 1. An upright pen, or a device without tilt, lays the same ink as before.
+- **Marks that are one.** `pdf.Stamp` and `pdf.Shape` have a `group`: the engine ignores it, and a program reads the stamps and shapes of a page with the same non-zero group as one mark (a signature's ink, its mention and its caption move and go together).
+- **`ink.lay`, `ink.levels`**: a pen's ink as ink, not a flat fill: `Pen.ink` (`Ink`: opacity, dwell, pool, skip, grain, pressure) lays a stroke as pieces of varying density and pools (`Laid`), the same for a given seed, and `levels` groups them into a few fills of one alpha each, every contour counter-clockwise. A translucent ink darkens where strokes cross and under its pools, a slow hand lays more ink, a ballpoint skips in bursts and keeps one edge where it starves, a felt or a brush streaks. The presets carry an ink each; every `Ink` field zero is the solid ink of before.
+- **A pen's pressure reaches a program**: `ui.pointer_pressure()` gives the pressure of the pen on the screen (0..1, 0 for a mouse or a device that measures none), as `gt:ink`'s samples take it, and `ui.pointer_device()` the device that moved the pointer last (pen, finger or mouse, its tilt and eraser). Wayland now gives a tablet's pens (`Pointer_*` events with their pressure, and their mouse emulation), as Windows did; `Pointer_Info.measured` says whether the device measured the pressure. A test draws with a pen through `session.pen_drag`, `pen_press`, `pen_move`, `pen_hover` and `pen_release`. X11 has no pen pressure.
+- **Transitions**: a value and a place that change in a set time, and the update badge that morphs from one face to the next.
+  - `ui.tween` takes a curve (`ui.Ease`: `.Linear`, `.Out`, `.In_Out`, `.Sine`, `.Emphasized`; `.Out` by default, was a smoothstep). A target that changes at every frame moves at every frame.
+  - `ui.swap(id, face)`: a place whose content changes face. Its size glides from the last face's to the new one's, the face is drawn at that size with its round ends, its colour morphs, and its words roll character by character. What is in it keeps its own size, never wrapped.
+  - `ui.morph_text` and `ui.morph_label` keep the characters two texts share (their longest common subsequence) where the new text has them, instead of only those at the same place.
+  - The update badge (`prefs_page.update_badge`) morphs from the "Install" button to its download's bar, which fills from nothing, then to "Restart", in one place. The Updates page says the sizes ("12 MB of 28 MB") above its own bar.
+  - The updater says how far a download is: `update.Status.received` and `.size`, and `update.progress(st)`.
+  - `ui.progress(..., lively = true)` and `ui.progress_fill`: a bar in a success button's green, for what the user watches come.
+
+### Changed
+- **`ink.lay`**: a broad nib (`.Chisel`, the fountain pen) lays what the nib touches: its rectangle swept along the
+stroke. The top of a tight loop is the nib's flat side, as a broad pen writes it, where it showed a notch between two
+lobes. `outline` and `polygon` stay the approximation used to draw the stroke under way.
+- **`ink.Blob`**: a pool of ink is a drop, not a disc. Its edge varies by about ±15 to 20 % of its radius, and at an
+end of the stroke it is drawn out into the line, as the ink a nib leaves when it lands or lifts. Each pool of a stroke
+has its own shape, the same at every render for the same seed. `Blob` gains `direction` (into the stroke from its end)
+and `seed`; `levels` draws each pool as 32 points instead of 18.
+- **A pen's translucent ink is laid normally in a PDF.** gt:pdf lays an `Outline`'s alpha with normal blending (`GtInk<alpha>`), as gt:ink's stacked levels are computed for; multiplied, a felt's or a brush's ink came out a fifth darker than the program draws it. Other shapes' translucent colours still multiply, as a highlighter.
+
+### Fixed
+- **`ink.outline`, `ink.lay`**: a tight loop is round, not a polygon. The outline's points come closer where the stroke
+turns, so an edge turns by about 8° at most between two of them, where it turned by 30° or more and read as a near
+right angle (most visible with a fountain pen's broad nib). A broad nib's hairline also begins without a corner.
+- **A filled path has no seam where it overlaps itself.** `draw.path_fill` and `draw.push_clip_polygon` soften only the edges where the fill changes: a pen's ink crossing its own line, or two contours over each other, no longer show a light line through the fill. A path's edges on its bounding box are no longer softened twice.
+
 ## [0.337.0] - 2026-11-20 11:34
 
 ### Changed
@@ -4710,6 +4744,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.338.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.338.0
 [0.337.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.337.0
 [0.336.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.336.0
 [0.335.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.335.1

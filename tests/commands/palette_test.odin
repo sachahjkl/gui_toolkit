@@ -1127,7 +1127,8 @@ a_late_frame_moves_the_fade_by_a_bounded_step :: proc(t: ^testing.T) {
 		if time.tick_since(start) > SETTLE_BOUND { testing.fail_now(t, "the palette never showed") }
 	}
 	// (its first frame shown is one frame, 1 ms, into the quick fade, 70 ms)
-	smooth :: proc(ms: f32) -> f32 { p := min(ms / 70, 1); return p * p * (3 - 2 * p) }
+	// (the fade's own curve: ui.tween along .In_Out)
+	smooth :: proc(ms: f32) -> f32 { return ui.ease_at(.In_Out, ms / 70) }
 	first := dialog_shown(&f)
 	testing.expectf(t, abs(first - smooth(1)) < 1e-3, "one frame in: %v", first)
 	f.dt = 0.050

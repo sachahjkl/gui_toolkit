@@ -104,6 +104,7 @@ Box_Flag :: enum u8 {
 	Chosen,              // a .Row that is selected: its background is its face, joined to the selected rows it touches
 	Gap,                 // a spacer: room between boxes (Box.gap_step: its step of the spacing scale, when space made it)
 	Fits_Width,          // it fits what it shows to its width itself (a tool bar that folds): what is in it asks its parent for no width (layout_least)
+	Custom_Ground,       // its custom draw paints its ground (progress_fill's well): its background is its face for box_face and a swap's shape, never painted by draw_box
 }
 Box_Flags :: bit_set[Box_Flag; u64]
 
@@ -166,6 +167,7 @@ Box :: struct {
 	hit_outset:  f32,              // frame pixels its hit area reaches past its rect on each side: a thin handle grabbed wider than it is drawn (reset each build)
 	gap_step:    f32,              // a .Gap made by space: its step of the spacing scale (0: a gap off the scale; reset each build)
 	plate:       ^Plate_Look,      // a .Plate box's own face and frame (nil: the theme's, from its background; this build's arena; reset each build)
+	swap:        ^Swap_Memory,     // a swap's memory (swap.odin): its layout glides and its drawing crosses faces (State.swaps; reset each build)
 
 	// colors: targets from the theme, and the animated values actually drawn
 	target_bg, target_border, target_text: Color,
@@ -426,6 +428,8 @@ State :: struct {
 	lazy_columns:    map[Key]Lazy_Column,
 	qr_codes:        map[Key]Qr_Cached,   // qr_code: each box's encoded text, kept while the box is built
 	morphs:          map[Key]Morph_Memory,   // morph_label: each label's text changing, kept while the label is built
+	swaps:           map[Key]^Swap_Memory,   // swap: each place's face, its glide and its records (heap: the draw context keeps ^Picture of them)
+	bare_key:        Key,                    // while drawing: the box drawn without its shape (a swap's face, box_bare; 0: none)
 	wheels:          map[Key]Wheel_Memory,   // wheel: each drum's turn, kept while the drum is built
 	parts_fields:    map[Key]Parts_Memory,   // parts_field: each field's active part, what was typed, its drums shown
 	licence_cards:   map[Key]^Licence_Card_Memory,   // licence_card: each card's motion, kept while it is built (the heap's)
