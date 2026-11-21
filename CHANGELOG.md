@@ -5,6 +5,22 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.341.0] - 2026-11-21 17:22
+
+### Changed
+- **Scroll wheel on every steppable control and sleeker sidebar rows**:
+  - Numeric preference fields (including `Size` fields such as "4 MiB" and unbounded numbers) now step with the mouse wheel and Up/Down/Page keys (focus required inside scrolling views, Shift multiplies by `feel.step_shift`).
+  - Closed `ui.dropdown`, `ui.segmented` (both looks) and closed `ui.font_picker` now step to their previous/next choice on the mouse wheel (`wheel_steps`).
+  - `.Row` navigation buttons stay on one line, truncate cleanly with `…` and show a hover tooltip when narrow; non-`.Row` buttons that wrap onto multiple lines keep vertical padding above and below their text.
+  - Collapsed sidebar icon rails (icon-only `.Row` buttons and folded view-zone rails) show their tooltip immediately on hover with zero delay (`Button_Options.tip_now` is also available on any button).
+  - The showcase sidebar is now a resizable, foldable `ui.Side_Panel`, and its Light/Dark toggle now switches to a theme with the requested version when the current theme is single-mode (such as Graphite).
+
+### Fixed
+- **Node graph minimap freeze and Back to content**: dragging near or past the edge of a node graph's minimap no longer
+accelerates the view exponentially into a float32 grid-loop freeze (the minimap transform freezes during the drag and the
+grid loop is bounded in `f64`), and panning all nodes off-screen now shows a "Back to content" button above the minimap
+to fit the graph back into view.
+
 ## [0.340.0] - 2026-11-21 16:58
 
 ### Added
@@ -4772,6 +4788,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.341.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.341.0
 [0.340.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.340.0
 [0.339.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.339.1
 [0.339.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.339.0
