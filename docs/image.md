@@ -15,7 +15,7 @@ round := image.round_corners(small, 12)
 defer image.destroy(&round)
 framed := image.drop_shadow(round, {0, 8}, 24, {0, 0, 0, 120})
 defer image.destroy(&framed)
-pretty := image.background(framed, 48, {from = image.hex(0x6A5ACD), to = image.hex(0xF08080), angle = 135})
+pretty := image.background(framed, 48, {from = image.hex(0x6A5ACD), to = image.hex(0xF08080), angle = 0.375})
 ```
 
 ## Pictures
@@ -41,7 +41,7 @@ pretty := image.background(framed, 48, {from = image.hex(0x6A5ACD), to = image.h
 | `crop(img, x, y, w, h)` | the part in the rectangle, cut to the picture |
 | `resize(img, w, h, filter)` | the picture at another size |
 | `scale(img, factor, filter)` | `resize` by a factor, rounded to whole pixels |
-| `rotate(img, quarter_turns)` | turned clockwise by quarters (negative: counterclockwise) |
+| `rotate(img, quarters)` | turned clockwise by quarters (negative: counterclockwise) |
 | `flip(img, horizontal)` | mirrored left to right, or top to bottom |
 | `pad(img, left, top, right, bottom, color)` | a margin around it |
 | `cut_out(img, at, size, columns)` | without a band of columns (or rows), the two sides joined |
@@ -66,7 +66,7 @@ transparent pixel gives no colour, and a half transparent flat picture keeps its
 | `drop_shadow(img, offset, radius, color)` | the picture over its blurred shadow; it grows to hold the shadow |
 | `background(img, margin, fill)` | the picture on a margin of a colour or a gradient |
 
-`Fill` is two colours and an angle: a linear gradient as CSS draws it (0 upward, 90 to the right, its ends at the two
+`Fill` is two colours and an angle in turns: a linear gradient as CSS draws it (0 upward, 0.25 to the right, its ends at the two
 corners farthest along it). `solid(color)` is a flat fill.
 
 ## Colour
@@ -79,7 +79,7 @@ All in place; alpha stays.
 | `invert(img)` | each colour 255 minus itself |
 | `brightness_contrast(img, b, c)` | `b` from -1 to 1 added; `c` from -1 (flat grey) to 1 spreads from the middle grey |
 | `saturation(img, amount)` | 0 grey, 1 unchanged, more is more vivid (CSS's `saturate()`) |
-| `hue_rotate(img, degrees)` | hues turned, luminance kept (CSS's `hue-rotate()`) |
+| `hue_rotate(img, turns)` | hues turned (0.5: the opposite hue), luminance kept (CSS's `hue-rotate()`) |
 | `sepia(img)` | CSS's `sepia(1)` |
 | `threshold(img, level)` | white where the luma is `level` or more, else black |
 

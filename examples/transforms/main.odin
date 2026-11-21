@@ -174,7 +174,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 	{
 		r := panel(app, cell(0, cols, m, top, cw, ch), "rotate()", s)
 		c := draw.rect_center(r)
-		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(t * 0.5), c))
+		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(t * 0.08), c))
 		card(app, c, s, "Rotated card", app.logo)
 		draw.pop_transform(dc)
 	}
@@ -182,7 +182,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 	{
 		r := panel(app, cell(1, cols, m, top, cw, ch), "skew()", s)
 		c := draw.rect_center(r)
-		draw.push_transform(dc, draw.affine_around(draw.affine_skew(math.sin(t * 0.9) * 0.5, 0), c))
+		draw.push_transform(dc, draw.affine_around(draw.affine_skew(math.sin(t * 0.9) * 0.08, 0), c))
 		card(app, c, s, "Skewed card", app.checker)
 		draw.pop_transform(dc)
 	}
@@ -202,7 +202,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 		r := panel(app, cell(3, cols, m, top, cw, ch), "image, mipmapped", s)
 		c := draw.rect_center(r)
 		k := 0.25 + 0.75 * (0.5 + 0.5 * math.sin(t * 0.6))
-		draw.push_transform(dc, draw.affine_around(draw.affine_mul(draw.affine_rotate(-t * 0.3), draw.affine_scale({k, k})), c))
+		draw.push_transform(dc, draw.affine_around(draw.affine_mul(draw.affine_rotate(-t * 0.048), draw.affine_scale({k, k})), c))
 		half := min(draw.rect_size(r).x, draw.rect_size(r).y) * 0.3
 		draw.image(dc, app.photo, {c - half, c + half}, {}, draw.WHITE, 28 * s)
 		draw.pop_transform(dc)
@@ -214,7 +214,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 		inner.min.y += 4 * s
 		draw.push_clip_rounded(dc, inner, {24 * s, 24 * s, 24 * s, 24 * s})
 		c := draw.rect_center(inner)
-		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.35), c))
+		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.056), c))
 		big := draw.rect_pad(inner, draw.rect_size(inner).x * 0.4)
 		off := draw.Vec2{t * 30 * s, t * 12 * s}
 		tile := draw.Rect{c + off, c + off + {48 * s, 48 * s}}
@@ -226,12 +226,12 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 	{
 		r := panel(app, cell(5, cols, m, top, cw, ch), "push_clip_rounded", s)
 		c := draw.rect_center(r)
-		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(-0.25 + 0.15 * math.sin(t * 0.5)), c))
+		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(-0.04 + 0.024 * math.sin(t * 0.5)), c))
 		box := draw.Rect{c - {95 * s, 95 * s}, c + {95 * s, 95 * s}}
 		rad := [4]f32{60 * s, 12 * s, 12 * s, 60 * s}
 		draw.rect_corners(dc, draw.rect_pad(box, 6 * s), {draw.hex(0x000000a0), draw.hex(0x000000a0), draw.hex(0x000000a0), draw.hex(0x000000a0)}, rad + 6 * s, 0, 6 * s)
 		draw.push_clip_rounded(dc, box, rad)
-		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(t), c))
+		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(t * 0.16), c))
 		draw.image(dc, app.photo, draw.rect_pad(box, 40 * s))
 		draw.text(dc, app.ui, 20 * s, {c.x - 60 * s, c.y + 7 * s}, draw.hex(0x000000ff), "clipped text")
 		draw.pop_transform(dc)
@@ -246,14 +246,14 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 		draw.rect(dc, {c - 30 * s, c + 30 * s}, draw.hex(0xffb020ff), 30 * s)
 		draw.rect(dc, {c - 46 * s, c + 46 * s}, draw.hex(0xffb02060), 46 * s, 0, 14 * s)
 		draw.rect(dc, {c - 100 * s, c + 100 * s}, draw.hex(0xffffff30), 100 * s, 1.2 * s)
-		draw.push_transform(dc, draw.affine_mul(draw.affine_translate(c), draw.affine_rotate(t * 0.8)))
-		draw.push_transform(dc, draw.affine_mul(draw.affine_translate({100 * s, 0}), draw.affine_rotate(t * 2)))
+		draw.push_transform(dc, draw.affine_mul(draw.affine_translate(c), draw.affine_rotate(t * 0.127)))
+		draw.push_transform(dc, draw.affine_mul(draw.affine_translate({100 * s, 0}), draw.affine_rotate(t * 0.318)))
 		// the planet and its moon fade as one group: the ring does not show through the planet
 		draw.push_layer(dc, {-50 * s, 50 * s}, 0.55 + 0.45 * math.sin(t * 1.3))
 		draw.rect(dc, {-14 * s, 14 * s}, draw.hex(0x4ade80ff), 5 * s)
 		draw.rect(dc, {-14 * s, 14 * s}, draw.hex(0x0b3d1cff), 5 * s, 1.5 * s)
 		draw.rect(dc, {-36 * s, 36 * s}, draw.hex(0xffffff30), 36 * s, 1 * s)
-		draw.push_transform(dc, draw.affine_mul(draw.affine_translate({36 * s, 0}), draw.affine_rotate(-t * 4)))
+		draw.push_transform(dc, draw.affine_mul(draw.affine_translate({36 * s, 0}), draw.affine_rotate(-t * 0.637)))
 		draw.image(dc, app.sticker, {-10 * s, 10 * s})
 		draw.pop_transform(dc)
 		draw.pop_layer(dc)
@@ -268,7 +268,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 		draw.push_transform(dc, draw.affine_mul(draw.affine_translate(p + {0, 28 * s}), draw.affine_scale({2.5, 2.5})))
 		draw.text(dc, app.ui, 15 * s, {0, 15 * s}, draw.hex(0xe6e9f5ff), "Big 2.5x")
 		draw.pop_transform(dc)
-		draw.push_transform(dc, draw.affine_mul(draw.affine_translate({r.max.x - 20 * s, r.max.y - 16 * s}), draw.affine_rotate(-math.PI / 2)))
+		draw.push_transform(dc, draw.affine_mul(draw.affine_translate({r.max.x - 20 * s, r.max.y - 16 * s}), draw.affine_rotate(-0.25)))
 		draw.text(dc, app.ui, 15 * s, {0, 0}, draw.hex(0xe6e9f5ff), "vertical text")
 		draw.pop_transform(dc)
 		sq := draw.Rect{{r.min.x + 14 * s, r.max.y - 120 * s}, {r.min.x + 120 * s, r.max.y - 14 * s}}
@@ -285,7 +285,7 @@ stress :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 	ch := cw * 0.6
 	center :: proc(i, cols: int, cw, ch: f32) -> draw.Vec2 { return {(f32(i % cols) + 0.5) * cw, (f32(i / cols) + 0.5) * ch} }
 	spin :: proc(app: ^App, i: int, c: draw.Vec2, t: f32) -> draw.Affine {
-		return app.flat ? draw.AFFINE_IDENTITY : draw.affine_around(draw.affine_rotate(t + f32(i) * 0.1), c)
+		return app.flat ? draw.AFFINE_IDENTITY : draw.affine_around(draw.affine_rotate(t * 0.16 + f32(i) * 0.016), c)
 	}
 	if app.retained {
 		// recorded once (and when the window changes size); each frame only the cards' slots change

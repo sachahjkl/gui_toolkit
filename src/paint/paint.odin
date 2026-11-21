@@ -9,6 +9,7 @@ package tk_paint
 
 import "base:runtime"
 import "core:math"
+import turn "../turn"
 
 // A colour, not premultiplied: red, green, blue and alpha, from 0 to 1.
 Color :: [4]f32
@@ -54,10 +55,9 @@ translate :: proc(m: Matrix, dx, dy: f32) -> Matrix { return multiply({xx = 1, y
 
 scale :: proc(m: Matrix, sx, sy: f32) -> Matrix { return multiply({xx = sx, yy = sy}, m) }
 
-// A rotation by `degrees` about (cx, cy); a positive angle turns clockwise on a canvas, whose y axis points down.
-rotate_at :: proc(m: Matrix, degrees, cx, cy: f32) -> Matrix {
-	a := math.to_radians(degrees)
-	s, c := math.sin(a), math.cos(a)
+// A rotation by `turns` about (cx, cy); a positive angle turns clockwise on a canvas, whose y axis points down.
+rotate_at :: proc(m: Matrix, turns, cx, cy: f32) -> Matrix {
+	s, c := turn.sincos(turns)
 	r := Matrix{xx = c, yx = s, xy = -s, yy = c}
 	r.x = cx - (c * cx - s * cy)
 	r.y = cy - (s * cx + c * cy)

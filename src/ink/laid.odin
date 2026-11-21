@@ -4,6 +4,7 @@
 package tk_ink
 
 import "core:math"
+import turn "../turn"
 
 // A piece of the ink: four corners and its density (0..1, multiplying the ink's opacity). A segment's piece runs along
 // the left edge, then back along the right edge: {left i, left i+1, right i+1, right i}; a cap's or a join's: its
@@ -64,10 +65,10 @@ GRAIN_LIGHT :: 0.55
 // Over this grain the outer lanes may run bare: a dry brush's tail.
 @(private)
 GRAIN_DRY :: 0.5
-// A turn sharper than this (radians, between consecutive pieces) gets a join: the outline's outer edge would show a
+// A turn sharper than this (turns, between consecutive pieces) gets a join: the outline's outer edge would show a
 // corner there.
 @(private)
-JOIN_TURN :: 0.3
+JOIN_TURN :: 0.0477
 // The points of a join's circle (a multiple of 2, for its quads).
 @(private)
 JOIN_POINTS :: 16
@@ -216,8 +217,8 @@ lay :: proc(samples: []Sample, pen: Pen, seed: u32, allocator := context.allocat
 			d1 := pts[i + 1].at - pts[i].at
 			l0, l1 := length(d0), length(d1)
 			if !(l0 > 1e-6 && l1 > 1e-6) { continue }
-			turn := math.acos(clamp((d0.x * d1.x + d0.y * d1.y) / (l0 * l1), -1, 1))
-			if turn < JOIN_TURN { continue }
+			bend := turn.acos(clamp((d0.x * d1.x + d0.y * d1.y) / (l0 * l1), -1, 1))
+			if bend < JOIN_TURN { continue }
 			a := max(amount[i - 1], amount[i])
 			if a <= 0 { continue }
 			// The width as laid (a scratch's narrowing included): the disc must not fill what the skip left bare.
@@ -318,8 +319,8 @@ levels :: proc(laid: Laid, level_count: int, allocator := context.allocator) -> 
 				ring := lv.points[at:at + BLOB_POINTS]
 				for j in 0 ..< BLOB_POINTS {
 					// Increasing angles: counter-clockwise in a y-up frame.
-					a := 2 * math.PI * f32(j) / BLOB_POINTS
-					ring[j] = bl.center + [2]f32{math.cos(a), math.sin(a)} * bl.radius
+					sn, cs := turn.sincos(f32(j) / BLOB_POINTS)
+					ring[j] = bl.center + [2]f32{cs, sn} * bl.radius
 				}
 				lv.contours[c] = ring
 				at += BLOB_POINTS
@@ -518,8 +519,8 @@ join_pieces :: proc(out: ^[dynamic]Piece, c: [2]f32, r, density: f32) {
 	if !(density > 0) || !(r > 1e-6) { return }
 	ring: [JOIN_POINTS + 1][2]f32
 	for j in 0 ..= JOIN_POINTS {
-		a := 2 * math.PI * f32(j) / JOIN_POINTS
-		ring[j] = c + [2]f32{math.cos(a), math.sin(a)} * r
+		s, k := turn.sincos(f32(j) / JOIN_POINTS)
+		ring[j] = c + [2]f32{k, s} * r
 	}
 	for j := 0; j + 2 <= JOIN_POINTS; j += 2 {
 		append(out, Piece{{c, ring[j], ring[j + 1], ring[j + 2]}, density})
@@ -565,7 +566,7 @@ vnoise :: proc(x: f32, seed: u32) -> f32 {
 	fl := math.floor(x)
 	i := i32(fl)
 	f := x - fl
-	k := (1 - math.cos(f * math.PI)) * 0.5
+	k := (1 - turn.cos(f * 0.5)) * 0.5
 	return hash(i, seed) * (1 - k) + hash(i + 1, seed) * k
 }
 

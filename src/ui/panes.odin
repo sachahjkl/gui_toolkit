@@ -191,7 +191,7 @@ pane_split :: proc(id: string, axis: Axis, p: ^Pane, o := Pane_Options{}) -> (re
 	d.hot = res.sig.hovering || res.dragging || (res.sig.focused && s.focus_visible)
 	d.split = {hot = d.hot, color = d.hot ? color("accent") : color("border"), line = max(math.round(s.scale), 1)}
 	d.collapsed, d.axis, d.side = p.collapsed, axis, o.side
-	d.chevron = {t = pane_chevron_turns(axis, o.side, false), color = d.hot ? color("accent") : color("text")}
+	d.chevron = {t = pane_chevron_quarters(axis, o.side, false), color = d.hot ? color("accent") : color("text")}
 	d.bg = color_from_tags(s, b.tags_key, "background")
 	d.hover = state_fill(b, "hover_fill", d.bg)
 	b.custom, b.custom_user = pane_draw, d
@@ -224,7 +224,7 @@ pane_toggle :: proc(id: string, axis: Axis, p: ^Pane, o := Pane_Options{}) -> bo
 		if o.on_save != nil { o.on_save(o.user, p) }
 	}
 	d := frame_new(Chevron_Draw)
-	d.t = pane_chevron_turns(axis, o.side, !p.collapsed)
+	d.t = pane_chevron_quarters(axis, o.side, !p.collapsed)
 	d.color = sig.hovering ? color("accent") : color("text")
 	b.custom, b.custom_user = proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		c := draw.rect_center(b.rect)
@@ -300,7 +300,7 @@ pane_parse :: proc(text: string) -> (p: Pane, ok: bool) {
 
 // Quarter turns of the chevron (">" at 0) that points where the pane goes when it folds (`folding`) or comes back.
 @(private)
-pane_chevron_turns :: proc(axis: Axis, side: Pane_Side, folding: bool) -> f32 {
+pane_chevron_quarters :: proc(axis: Axis, side: Pane_Side, folding: bool) -> f32 {
 	// folding a pane after the handle points away from the handle: right (0) or down (1); one before it, left (2) or up (3)
 	t: f32 = axis == .X ? 0 : 1
 	if side == .Before { t += 2 }

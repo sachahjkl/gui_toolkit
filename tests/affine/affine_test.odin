@@ -20,9 +20,9 @@ convention_matches_css :: proc(t: ^testing.T) {
 	testing.expect(t, near(draw.affine_apply(m, {10, 100}), {1 * 10 + 3 * 100 + 5, 2 * 10 + 4 * 100 + 6}))
 	testing.expect(t, near(draw.affine_apply_vector(m, {10, 100}), {1 * 10 + 3 * 100, 2 * 10 + 4 * 100}))
 	// rotate(90deg) turns +x into +y (clockwise on a y-down screen), like CSS
-	testing.expect(t, near(draw.affine_apply(draw.affine_rotate(math.PI / 2), {1, 0}), {0, 1}))
+	testing.expect(t, near(draw.affine_apply(draw.affine_rotate(0.25), {1, 0}), {0, 1}))
 	// skew(45deg, 0): x' = x + y
-	testing.expect(t, near(draw.affine_apply(draw.affine_skew(math.PI / 4), {0, 2}), {2, 2}))
+	testing.expect(t, near(draw.affine_apply(draw.affine_skew(0.125), {0, 2}), {2, 2}))
 }
 
 @(test)
@@ -35,7 +35,7 @@ composition_order :: proc(t: ^testing.T) {
 	testing.expect(t, near(draw.affine_apply(draw.affine_mul(tr, sc), p), {12, 3}))
 	testing.expect(t, near(draw.affine_apply(draw.affine_mul(sc, tr), p), {22, 3}))
 	// associativity
-	r := draw.affine_rotate(0.7)
+	r := draw.affine_rotate(0.111)
 	testing.expect(t, near_m(draw.affine_mul(draw.affine_mul(tr, sc), r), draw.affine_mul(tr, draw.affine_mul(sc, r))))
 	// identity
 	testing.expect(t, near_m(draw.affine_mul(draw.AFFINE_IDENTITY, r), r))
@@ -44,7 +44,7 @@ composition_order :: proc(t: ^testing.T) {
 
 @(test)
 around_origin :: proc(t: ^testing.T) {
-	m := draw.affine_around(draw.affine_rotate(1.234), {50, 70})
+	m := draw.affine_around(draw.affine_rotate(0.196), {50, 70})
 	testing.expect(t, near(draw.affine_apply(m, {50, 70}), {50, 70}))   // the origin stays put
 	s := draw.affine_around(draw.affine_scale({2, 2}), {10, 10})
 	testing.expect(t, near(draw.affine_apply(s, {20, 10}), {30, 10}))
@@ -52,7 +52,7 @@ around_origin :: proc(t: ^testing.T) {
 
 @(test)
 inverse :: proc(t: ^testing.T) {
-	m := draw.affine_mul(draw.affine_translate({30, -7}), draw.affine_mul(draw.affine_rotate(0.4), draw.affine_mul(draw.affine_skew(0.3, -0.2), draw.affine_scale({2, 0.5}))))
+	m := draw.affine_mul(draw.affine_translate({30, -7}), draw.affine_mul(draw.affine_rotate(0.064), draw.affine_mul(draw.affine_skew(0.048, -0.032), draw.affine_scale({2, 0.5}))))
 	inv, ok := draw.affine_inverse(m)
 	testing.expect(t, ok)
 	testing.expect(t, near_m(draw.affine_mul(m, inv), draw.AFFINE_IDENTITY))
@@ -69,11 +69,11 @@ bounds :: proc(t: ^testing.T) {
 	b := draw.affine_bounds(draw.affine_translate({5, 5}), r)
 	testing.expect(t, near(b.min, {5, 5}) && near(b.max, {15, 25}))
 	// 90 degrees: (x, y) -> (-y, x)
-	b = draw.affine_bounds(draw.affine_rotate(math.PI / 2), r)
+	b = draw.affine_bounds(draw.affine_rotate(0.25), r)
 	testing.expect(t, near(b.min, {-20, 0}) && near(b.max, {0, 10}))
 	// 45 degrees around the center of a 10 x 10 square: the bounds grow to the diagonal
 	sq := draw.Rect{{0, 0}, {10, 10}}
-	b = draw.affine_bounds(draw.affine_around(draw.affine_rotate(math.PI / 4), {5, 5}), sq)
+	b = draw.affine_bounds(draw.affine_around(draw.affine_rotate(0.125), {5, 5}), sq)
 	h := f32(5 * math.SQRT_TWO)
 	testing.expect(t, near(b.min, {5 - h, 5 - h}) && near(b.max, {5 + h, 5 + h}))
 }
@@ -82,8 +82,8 @@ bounds :: proc(t: ^testing.T) {
 scale_classification :: proc(t: ^testing.T) {
 	testing.expect(t, draw.affine_is_scale_translate(draw.affine_mul(draw.affine_translate({3, 4}), draw.affine_scale({2, 2}))))
 	testing.expect(t, !draw.affine_is_scale_translate(draw.affine_scale({2, 1})))
-	testing.expect(t, !draw.affine_is_scale_translate(draw.affine_rotate(0.1)))
-	testing.expect(t, abs(draw.affine_scale_factor(draw.affine_rotate(0.8)) - 1) < EPS)
+	testing.expect(t, !draw.affine_is_scale_translate(draw.affine_rotate(0.016)))
+	testing.expect(t, abs(draw.affine_scale_factor(draw.affine_rotate(0.127)) - 1) < EPS)
 	testing.expect(t, abs(draw.affine_scale_factor(draw.affine_scale({2, 8})) - 4) < EPS)
 	// push_scale's legacy Xform maps the same way
 	x := draw.Xform{scale = 1.5, offset = {10, 20}}

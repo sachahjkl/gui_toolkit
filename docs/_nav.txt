@@ -15,6 +15,7 @@ Plugins
 
 Drawing and text
   draw.md             Drawing
+  turn.md             turn: angles in turns
   canvas.md           The 2D canvas
   text.md             Text
   font-backend.md     Text backends

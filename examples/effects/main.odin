@@ -112,7 +112,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 		names := [?]string{"blur", "grayscale", "sepia", "hue-rotate", "invert", "saturate", "contrast", "brightness"}
 		fs := [?]draw.Filter{
 			draw.filter_blur((2 + 2 * math.sin(t)) * s), draw.filter_grayscale(1), draw.filter_sepia(1),
-			draw.filter_hue_rotate(t), draw.filter_invert(1), draw.filter_saturate(3), draw.filter_contrast(2), draw.filter_brightness(1.5),
+			draw.filter_hue_rotate(t * 0.16), draw.filter_invert(1), draw.filter_saturate(3), draw.filter_contrast(2), draw.filter_brightness(1.5),
 		}
 		tw := (draw.rect_size(r).x - 3 * 8 * s) / 4
 		th := (draw.rect_size(r).y - 8 * s) / 2 - 18 * s
@@ -134,7 +134,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 		draw.push_clip_rounded(dc, r, {10 * s, 10 * s, 10 * s, 10 * s})
 		blobs(dc, r, t, s)
 		c := draw.rect_center(r)
-		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.08 * math.sin(t * 0.5)), c))
+		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.0127 * math.sin(t * 0.5)), c))
 		glass := draw.Rect{c - {draw.rect_size(r).x * 0.3, draw.rect_size(r).y * 0.3}, c + {draw.rect_size(r).x * 0.3, draw.rect_size(r).y * 0.3}}
 		rad := [4]f32{22 * s, 22 * s, 22 * s, 22 * s}
 		bf := [2]draw.Filter{draw.filter_blur(12 * s), draw.filter_saturate(1.6)}
@@ -184,7 +184,7 @@ demo :: proc(app: ^App, size: draw.Vec2, t: f32, s: f32) {
 		for k in 0 ..< 3 {
 			c := r.min + {sz.x * (f32(k) + 0.5) / 3, sz.y * 0.5}
 			rad := min(sz.x / 6, sz.y / 2) * 0.9
-			draw.push_transform(dc, draw.affine_around(draw.affine_rotate(t * 0.4 * f32(k - 1)), c))
+			draw.push_transform(dc, draw.affine_around(draw.affine_rotate(t * 0.064 * f32(k - 1)), c))
 			if k == 0 {
 				draw.push_clip_ellipse(dc, c, {rad, rad * 0.6})
 			} else {

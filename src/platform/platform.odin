@@ -81,8 +81,8 @@ Pointer_Info :: struct {
 	primary:  bool,      // the first finger of a gesture, or the pen
 	pressure: f32,       // 0..1 (0.5 for a contact that does not measure it, 0 when not in contact)
 	measured: bool,      // the device measures its pressure: `pressure` is its own, not the 0.5 of a contact
-	tilt:     [2]f32,    // pen: degrees, -90..90 (x towards the right, y towards the user)
-	twist:    f32,       // pen: degrees clockwise, 0..359
+	tilt:     [2]f32,    // pen: turns, -0.25..0.25 (x towards the right, y towards the user); 0: upright
+	twist:    f32,       // pen: turns clockwise, 0..1
 	contact:  [2]f32,    // touch: the contact's width and height (client pixels), 0 = unknown
 	barrel:   bool,      // pen: the barrel button is held (Pointer Events: buttons bit 2)
 	eraser:   bool,      // pen: the eraser end (Pointer Events: buttons bit 32)

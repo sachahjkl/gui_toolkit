@@ -12,6 +12,7 @@ import "core:testing"
 import "gt:qr"
 import "gt:render"
 import "gt:testkit/session"
+import turn "gt:turn"
 import "gt:ui"
 
 @(private = "file") LOGO :: #load("../../site/img/logo.png")
@@ -141,12 +142,12 @@ the_tilt_follows_the_pointer_and_comes_back :: proc(t: ^testing.T) {
 	session.move(s, b.rect.min + {2, 2})
 	session.frames(s, 2)
 	l := look(s)
-	testing.expectf(t, l.rx > 12 && l.rx <= 14, "rotateX towards the top: %v", l.rx)
-	testing.expectf(t, l.ry < -16 && l.ry >= -18, "rotateY towards the left: %v", l.ry)
+	testing.expectf(t, l.rx > 12.0 / 360 && l.rx <= 14.0 / 360, "rotateX towards the top: %v", l.rx)
+	testing.expectf(t, l.ry < -16.0 / 360 && l.ry >= -18.0 / 360, "rotateY towards the left: %v", l.ry)
 	session.leave(s)
 	session.advance(s, 700)
 	l = look(s)
-	testing.expectf(t, abs(l.rx) < 1e-3 && abs(l.ry) < 1e-3, "back to zero: %v, %v", l.rx, l.ry)
+	testing.expectf(t, abs(l.rx) < 1e-3 / 360 && abs(l.ry) < 1e-3 / 360, "back to zero: %v, %v", l.rx, l.ry)
 	// (the pointer's coming set off a sweep: at rest once it has passed)
 	session.advance(s, 3200)
 	testing.expect(t, !look(s).moving, "at rest")
@@ -180,11 +181,11 @@ turned_over_it_shows_its_back_and_escape_brings_it_home :: proc(t: ^testing.T) {
 	testing.expect(t, look(s).turned, "the card is free")
 	b := session.get(s, "licence_card")
 	from := [2]f32{b.rect.min.x + 10, (b.rect.min.y + b.rect.max.y) * 0.5}
-	// (180 degrees at DRAG_DEG_PER_PX = 0.45 a logical pixel: 400 pixels)
+	// (half a turn at DRAG_TURNS_PER_PX = 0.45 / 360 a logical pixel: 400 pixels)
 	drag(s, from, from + {400, 0})
 	l := look(s)
-	half := math.mod(abs(l.ry), 360)
-	testing.expectf(t, abs(half - 180) < 3, "half a turn: %v", l.ry)
+	half := math.mod(abs(l.ry), 1)
+	testing.expectf(t, abs(half - 0.5) < 3.0 / 360, "half a turn: %v", l.ry)
 	testing.expect(t, l.back, "the back shows")
 	session.key(s, .Escape)
 	testing.expect(t, !look(s).turned, "Escape ends the free mode")
@@ -192,7 +193,7 @@ turned_over_it_shows_its_back_and_escape_brings_it_home :: proc(t: ^testing.T) {
 	session.leave(s)
 	session.advance(s, 900)
 	l = look(s)
-	testing.expectf(t, abs(l.rx) < 1e-3 && abs(l.ry) < 1e-3, "home: %v, %v", l.rx, l.ry)
+	testing.expectf(t, abs(l.rx) < 1e-3 / 360 && abs(l.ry) < 1e-3 / 360, "home: %v, %v", l.rx, l.ry)
 	testing.expect(t, !l.back, "the front shows again")
 }
 
@@ -264,7 +265,8 @@ the_engraved_code_reads_the_hunts_address :: proc(t: ^testing.T) {
 // holds it there), part of the way between, none far from it (the opposite tilt, the front's side).
 @(test)
 the_code_shows_at_its_turn_alone :: proc(t: ^testing.T) {
-	reveal :: ui.licence_card_seal_reveal
+	// (the angles below in degrees, as a person reads them)
+	reveal :: proc(rx, ry: f32) -> f32 { return ui.licence_card_seal_reveal(turn.from_degrees(rx), turn.from_degrees(ry)) }
 	testing.expectf(t, reveal(0, 180) < 0.01, "straight on: %v", reveal(0, 180))
 	testing.expectf(t, reveal(-11, 191) > 0.99, "at its turn: %v", reveal(-11, 191))
 	testing.expectf(t, reveal(-11, -169) > 0.99, "at its turn, a whole turn less: %v", reveal(-11, -169))
@@ -292,7 +294,7 @@ the_engraved_code_scans_at_its_angle_alone :: proc(t: ^testing.T) {
 	session.click(s, "licence_turn")
 	b := session.get(s, "licence_card")
 	mid := (b.rect.min + b.rect.max) * 0.5
-	// (DRAG_DEG_PER_PX = 0.45 a logical pixel: 400 for half a turn)
+	// (DRAG_TURNS_PER_PX = 0.45 / 360 a logical pixel: 400 for half a turn)
 	from := [2]f32{b.rect.min.x + 10 * scale, mid.y}
 	drag(s, from, from + [2]f32{400, 0} * scale)
 	wait_settled(s)
@@ -301,8 +303,8 @@ the_engraved_code_scans_at_its_angle_alone :: proc(t: ^testing.T) {
 	_, err := read_corner(s, lo, hi)
 	testing.expect(t, err != .None, "straight on, the code does not read")
 
-	turn := f32(11) / 0.45
-	drag(s, mid, mid + [2]f32{turn, turn} * scale)
+	step := f32(11) / 0.45
+	drag(s, mid, mid + [2]f32{step, step} * scale)
 	l := look(s)
 	testing.expectf(t, ui.licence_card_seal_reveal(l.rx, l.ry) > 0.99, "at the code's turn: %v, %v", l.rx, l.ry)
 	address, err2 := read_corner(s, lo, hi)

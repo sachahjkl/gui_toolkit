@@ -576,7 +576,7 @@ marks_magnifier_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	c := Vec2{(r.min.x + r.max.x) * 0.5 - k * 0.3, (r.min.y + r.max.y) * 0.5 - k * 0.3}
 	stroke := max(1, h * 0.065)
 	p := draw.path_make(allocator = context.temp_allocator)
-	draw.path_arc(&p, c, {k, k}, 0, 2 * math.PI)
+	draw.path_arc(&p, c, {k, k}, 0, 1)
 	ink := (^Color)(user)^
 	draw.path_stroke(dc, &p, stroke, ink)
 	d := k * 0.7071

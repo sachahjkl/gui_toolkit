@@ -75,8 +75,9 @@ win32_wait_until_gone :: proc(steps: Win32_Wait_Steps, limit_ms, poll_ms: i64) -
 Win32_Rotation :: enum i32 { Unspecified = 0, Identity = 1, Rotate90 = 2, Rotate180 = 3, Rotate270 = 4 }
 
 // Where pixel (x, y) of an output's picture, upright and `w` x `h`, is in the duplicated surface, which Desktop
-// Duplication gives in the monitor's own orientation (not rotated: `h` x `w` for 90 and 270 degrees). Rotate90 means the
-// desktop is turned 90 degrees clockwise onto the surface: its top-left pixel is the surface's top-right one.
+// Duplication gives in the monitor's own orientation (not rotated: `h` x `w` for a quarter or three quarters of a turn).
+// Rotate90 means the desktop is turned a quarter turn clockwise onto the surface: its top-left pixel is the surface's
+// top-right one.
 win32_rotated_source :: proc(rotation: Win32_Rotation, x, y, w, h: i32) -> (sx, sy: i32) {
 	switch rotation {
 	case .Rotate90:            return h - 1 - y, x

@@ -52,15 +52,15 @@ scene_titles :: proc(c: ^draw.Context, ui, mono: font.Font_Id) {
 }
 
 scene_transforms :: proc(c: ^draw.Context, ui, mono: font.Font_Id) {
-	draw.push_transform(c, draw.affine_around(draw.affine_rotate(0.21), {160, 100}))
+	draw.push_transform(c, draw.affine_around(draw.affine_rotate(0.033), {160, 100}))
 	draw.text(c, ui, 14, {20, 40}, INK, "Rotated 12 degrees, 14 px: sharp?")
 	draw.text(c, ui, 22, {20, 80}, INK, "Rotated, 22 px sans")
 	draw.text(c, mono, 13, {20, 110}, INK, "monospace rotated 13 px")
 	draw.pop_transform(c)
-	draw.push_transform(c, draw.affine_mul(draw.affine_translate({20, 240}), draw.affine_mul(draw.affine_skew(-0.3), draw.affine_scale({1.4, 0.8}))))
+	draw.push_transform(c, draw.affine_mul(draw.affine_translate({20, 240}), draw.affine_mul(draw.affine_skew(-0.048), draw.affine_scale({1.4, 0.8}))))
 	draw.text(c, ui, 18, {0, 0}, INK, "Skewed and squeezed text")
 	draw.pop_transform(c)
-	draw.push_transform(c, draw.affine_around(draw.affine_rotate(-1.5708), {300, 200}))
+	draw.push_transform(c, draw.affine_around(draw.affine_rotate(-0.25), {300, 200}))
 	draw.text(c, ui, 16, {220, 200}, LINK, "Quarter turn")
 	draw.pop_transform(c)
 }

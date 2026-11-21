@@ -163,7 +163,7 @@ wgpu_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool
 	case .PQ: flags |= VIDEO_FLAG_PQ
 	case .HLG: flags |= VIDEO_FLAG_HLG
 	}
-	rot := ((p.rotation % 360) + 360) % 360
+	rot := video_quarters(p) * 90   // (video.wgsl takes clockwise degrees)
 	vc := Video_Constants{
 		crop = {f32(p.crop_origin.x), f32(p.crop_origin.y), f32(p.crop_origin.x + p.crop_size.x), f32(p.crop_origin.y + p.crop_size.y)},
 		dim = {f32(max(w, 1)), f32(max(h, 1))},

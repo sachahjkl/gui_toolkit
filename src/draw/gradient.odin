@@ -1,6 +1,7 @@
 package draw
 
 import "core:math"
+import turn "../turn"
 import "../font"
 import "../render"
 
@@ -41,7 +42,7 @@ Gradient :: struct {
 	start, end: Vec2,                  // Linear: t = 0 at start, 1 at end, constant across
 	center:    Vec2,                   // Radial, Conic
 	radii:     Vec2,                   // Radial: t = 1 on the ellipse of these radii
-	angle:     f32,                    // Conic: where t = 0, radians clockwise from up
+	angle:     f32,                    // Conic: where t = 0, turns clockwise from up
 	stops:     []Gradient_Stop,
 	tile:      Rect,                   // one copy of the gradient (CSS: background positioning area and size); zero:
 	                                   // the drawn rect, not repeated
@@ -87,7 +88,8 @@ gradient :: proc(c: ^Context, r: Rect, g: Gradient, radii: [4]f32 = {}, tint: Co
 		geom = {cc.x, cc.y, g.radii.x * s, g.radii.y * s}
 	case .Conic:
 		cc := pt(g.center, s, {})
-		geom = {cc.x, cc.y, g.angle, 0}
+		// (the shaders take the start in radians: render.odin's gradient table, compiled HLSL that only Windows rebuilds)
+		geom = {cc.x, cc.y, turn.to_radians(g.angle), 0}
 	}
 	append(&c.grads, geom)
 	to := pt(origin, s, off)
@@ -229,12 +231,12 @@ linear_to_lab :: proc(c: [3]f32) -> [3]f32 {
 	return {116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)}
 }
 
-// (L, a, b) to (L, C, h degrees); h is NaN (powerless) under `achromatic` chroma.
+// (L, a, b) to (L, C, h); h is NaN (powerless) under `achromatic` chroma. The hue is in degrees, 0 .. 360: the shaders'
+// encoding of a polar space (as srgb_to_hsl's), and fix_hues works in it.
 @(private)
 to_polar :: proc(v: [3]f32, achromatic: f32) -> [3]f32 {
 	ch := math.sqrt(v.y * v.y + v.z * v.z)
-	h := math.atan2(v.z, v.y) * 180 / math.PI
-	if h < 0 { h += 360 }
+	h := turn.to_degrees(turn.wrap(turn.atan2(v.z, v.y)))
 	if ch < achromatic { h = math.nan_f32() }
 	return {v.x, ch, h}
 }

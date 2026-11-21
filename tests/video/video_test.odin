@@ -145,10 +145,10 @@ crop_and_rotation :: proc(t: ^testing.T) {
 	p := render.Video_Picture{format = .NV12, size = {W, H + 16}, crop_size = {W, H}, coeffs = .BT709, planes = {y, uv, nil}, strides = {W, W, 0}}
 	expect_quad(t, &f, convert_and_draw(&f, p), "cropped")
 	close(&f)
-	// rotated by 90 degrees clockwise: 32 x 64; the top left corner of the result is the bottom left of the picture (blue)
+	// rotated by a quarter turn clockwise: 32 x 64; the top left corner of the result is the bottom left of the picture (blue)
 	if !open(&f, .Srgb, {H, W}) { testing.fail_now(t, "no D3D11 device (WARP)") }
 	defer close(&f)
-	p.rotation = 90
+	p.rotation = 0.25
 	img := convert_and_draw(&f, p)
 	if !testing.expect(t, img != nil, "rotated picture") { return }
 	testing.expectf(t, near(px(&f, img, H / 4, W / 4), 0, 0, 255), "90: top left is blue: %v", px(&f, img, H / 4, W / 4))

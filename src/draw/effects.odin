@@ -1,6 +1,7 @@
 package draw
 
 import "core:math"
+import turn "../turn"
 import "../render"
 
 // Effects drawn through offscreen layers: group opacity, filters (CSS Filter Effects 1: color matrices, gaussian
@@ -75,9 +76,9 @@ filter_saturate :: proc(s: f32) -> Filter {
 	})
 }
 
-// CSS hue-rotate() (radians).
-filter_hue_rotate :: proc(radians: f32) -> Filter {
-	c, s := math.cos(radians), math.sin(radians)
+// CSS hue-rotate(), by `turns` (0.5: the opposite hue).
+filter_hue_rotate :: proc(turns: f32) -> Filter {
+	s, c := turn.sincos(turns)
 	return filter_matrix({
 		0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928, 0, 0,
 		0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.140, 0.072 - c * 0.072 - s * 0.283, 0, 0,

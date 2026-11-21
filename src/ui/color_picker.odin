@@ -18,7 +18,7 @@ import i18n "../i18n"
 // No eyedropper: the platform layer reads no pixel of the screen.
 
 Color_Pick :: struct {
-	hue, sat, val, alpha: f32,   // the colour in the picker's coordinates (sRGB HSV: a grey keeps its hue)
+	hue, sat, val, alpha: f32,   // the colour in the picker's coordinates (sRGB HSV, the hue in turns: a grey keeps its hue)
 	style:  Color_Style,         // how the text writes it
 	old:    Srgba,               // the colour it was opened with
 	field:  Line_Edit,

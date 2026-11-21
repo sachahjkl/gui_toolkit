@@ -52,7 +52,7 @@ program's; a renderer that multiplies would make a translucent ink about a fifth
 the pressure; else it follows the speed. Samples without time (all at the same time) give a constant width.
 A program in `gt:ui` takes the pressure from `ui.pointer_pressure()`: a pen's on Windows and on Wayland, 0 for a mouse,
 on X11, and for a device that measures none ([dragdrop.md](dragdrop.md), "Fingers and pens").
-`Sample.tilt` is the pen's lean in degrees, as `platform.Pointer_Info.tilt` gives it (-90..90, x towards the right, y
+`Sample.tilt` is the pen's lean in turns, as `platform.Pointer_Info.tilt` gives it (-0.25..0.25, x towards the right, y
 towards the user); {0, 0}, a mouse's, is upright and changes nothing. It acts by `Pen.tilt`.
 
 `Pen`:
@@ -64,7 +64,7 @@ towards the user); {0, 0}, a mouse's, is upright and changes nothing. It acts by
 | `thinning` | 0..1 | how much speed (or a light pressure) thins the line; 0: constant |
 | `smoothing` | 0..1 | how much the path is smoothed; 0: through every sample |
 | `taper_start`, `taper_end` | caller's units, >= 0 | the length over which an end narrows to a point; 0: a round end |
-| `nib_angle` | degrees | Chisel: the nib's edge, counter-clockwise as seen with y down (30 rises to the right); in a y-up frame, pass the negative |
+| `nib_angle` | turns | Chisel: the nib's edge, counter-clockwise as seen with y down (1.0 / 12, 30°, rises to the right); in a y-up frame, pass the negative |
 | `min_width` | 0..1 | a share of `width` under which the line never goes (before the tapers) |
 | `tilt` | 0..1 | how much a stylus's lean changes the mark (below); 0: none |
 | `ink` | `Ink` | how the ink lies on the paper, read by `lay`; all zero: solid opaque ink |

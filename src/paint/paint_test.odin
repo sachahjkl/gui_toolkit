@@ -98,7 +98,7 @@ a_transform_moves_paths_and_gradients :: proc(t: ^testing.T) {
 matrices_compose_in_the_order_of_the_calls :: proc(t: ^testing.T) {
 	m := translate(scale(translate(IDENTITY, 10, 0), 2, 2), 1, 0)   // +1, then x2, then +10
 	testing.expect_value(t, apply(m, {0, 0}), [2]f32{12, 0})
-	r := rotate_at(IDENTITY, 90, 5, 5)
+	r := rotate_at(IDENTITY, 0.25, 5, 5)
 	testing.expect(t, length(apply(r, {5, 5}) - {5, 5}) < 1e-5, "the centre stays")
 	testing.expect(t, length(apply(r, {6, 5}) - {5, 6}) < 1e-5, "clockwise on a canvas: right goes down")
 	i := invert(m)
@@ -147,7 +147,7 @@ a_join_after_a_rounding_is_on_the_outside :: proc(t: ^testing.T) {
 	move_to(&p, 0, 20)
 	line_to(&p, 20, 20)
 	line_to(&p, 20, 19.999996)
-	arc(&p, 20, 10, 20, 20, 180, -180)
+	arc(&p, 20, 10, 20, 20, 0.5, -0.5)
 	stroke(&c, p, {width = 4}, solid(hex(0)))
 	testing.expect_value(t, alpha_at(c, 20, 18), 1)
 	testing.expect(t, alpha_at(c, 21, 19) > 0.9, "the corner")   // (the arc's first segment leans a little)

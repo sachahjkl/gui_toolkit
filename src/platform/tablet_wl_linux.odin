@@ -10,6 +10,7 @@ package platform
 // ring, strip), but nothing of them is read. Without wp_cursor_shape_v1 the pen shows the compositor's default cursor.
 
 import "base:runtime"
+import turn "../turn"
 
 @(private = "file") TABLET_MANAGER_GET_TABLET_SEAT :: 0
 @(private = "file") TABLET_TOOL_SET_CURSOR :: 0
@@ -324,9 +325,12 @@ Tablet_Tool_Listener :: struct {
 	pressure = proc "c" (data: rawptr, p: Wl_Proxy, pressure: u32) { (^Wl_Tablet_Tool)(data).tool.pressure = pressure },
 	distance = proc "c" (data: rawptr, p: Wl_Proxy, distance: u32) {},
 	tilt = proc "c" (data: rawptr, p: Wl_Proxy, x, y: Wl_Fixed) {
-		(^Wl_Tablet_Tool)(data).tool.tilt = {f32(wl_fixed_to_f64(x)), f32(wl_fixed_to_f64(y))}
+		// (the protocol's angles are degrees: turns from here on)
+		(^Wl_Tablet_Tool)(data).tool.tilt = {f32(turn.from_degrees(wl_fixed_to_f64(x))), f32(turn.from_degrees(wl_fixed_to_f64(y)))}
 	},
-	rotation = proc "c" (data: rawptr, p: Wl_Proxy, degrees: Wl_Fixed) { (^Wl_Tablet_Tool)(data).tool.twist = f32(wl_fixed_to_f64(degrees)) },
+	rotation = proc "c" (data: rawptr, p: Wl_Proxy, degrees: Wl_Fixed) {
+		(^Wl_Tablet_Tool)(data).tool.twist = f32(turn.from_degrees(wl_fixed_to_f64(degrees)))
+	},
 	slider = proc "c" (data: rawptr, p: Wl_Proxy, position: i32) {},
 	wheel = proc "c" (data: rawptr, p: Wl_Proxy, degrees: Wl_Fixed, clicks: i32) {},
 	button = proc "c" (data: rawptr, p: Wl_Proxy, serial, button, state: u32) {

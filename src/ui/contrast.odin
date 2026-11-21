@@ -19,7 +19,7 @@ contrast :: proc(a, b: draw.Color) -> f32 {
 	return max(la, lb) / min(la, lb)
 }
 
-// A linear colour in OKLCH (L 0..1, chroma, hue degrees).
+// A linear colour in OKLCH (L 0..1, chroma, hue in turns 0..1).
 to_oklch :: proc(c: draw.Color) -> [3]f64 { return srgb_to_oklch({srgb_encoded(c.r), srgb_encoded(c.g), srgb_encoded(c.b)}) }
 
 // An OKLCH colour as a linear one (out of the sRGB gamut: clipped).

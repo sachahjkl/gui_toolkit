@@ -29,8 +29,8 @@ Tablet_Tool :: struct {
 	contact:   bool,         // the tip is down
 	pos:       [2]f32,       // the window's pixels
 	pressure:  u32,          // 0..TABLET_PRESSURE_FULL
-	tilt:      [2]f32,
-	twist:     f32,
+	tilt:      [2]f32,       // turns, as Pointer_Info's
+	twist:     f32,          // turns, as Pointer_Info's
 	barrel:    bool,
 	// what came since the last frame
 	came, moved, went_down, went_up, went_out: bool,

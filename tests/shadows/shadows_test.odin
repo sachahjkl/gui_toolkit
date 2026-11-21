@@ -196,7 +196,7 @@ shadows_follow_transforms :: proc(t: ^testing.T) {
 	// a quarter turn around the center: the same symmetric shadow
 	rot := shoot(&f, proc(dc: ^draw.Context, data: rawptr) {
 		c := (^Case)(data)
-		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(math.PI / 2), {48, 48}))
+		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.25), {48, 48}))
 		draw.box_shadow(dc, c.s.r, c.s.radii, c.sigma, {0, 0, 0, 1})
 		draw.pop_transform(dc)
 	}, &c)

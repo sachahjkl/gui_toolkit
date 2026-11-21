@@ -1,6 +1,7 @@
 package tk_image
 
 import "core:math"
+import turn "../turn"
 
 // `img` with a frame of `color`, `width` pixels thick: around it (the picture grows), or over its outer pixels when
 // `inside` (the size stays).
@@ -77,8 +78,8 @@ drop_shadow :: proc(img: Image, offset: [2]int, radius: f32, color: Color, alloc
 	return out
 }
 
-// What background paints: a linear gradient from `from` to `to`, its direction `angle` degrees as CSS's (0 upward, 90
-// to the right). The same colour twice is a flat fill: solid(color).
+// What background paints: a linear gradient from `from` to `to`, its direction `angle` in turns, clockwise from up as
+// CSS's (0 upward, 0.25 to the right). The same colour twice is a flat fill: solid(color).
 Fill :: struct {
 	from, to: Color,
 	angle:    f32,
@@ -112,8 +113,8 @@ paint_fill :: proc(img: Image, fill: Fill) #no_bounds_check {
 		for k in 0 ..< 4 { c[k] = u8(math.lerp(f32(fill.from[k]), f32(fill.to[k]), t) + 0.5) }
 		v = word_of(c)
 	}
-	a := math.to_radians(fill.angle)
-	dx, dy := math.sin(a), -math.cos(a)
+	s, c := turn.sincos(fill.angle)
+	dx, dy := s, -c
 	w, h := f32(img.width), f32(img.height)
 	length := abs(w * dx) + abs(h * dy)
 	px := words(img)

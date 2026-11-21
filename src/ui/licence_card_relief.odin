@@ -1,6 +1,7 @@
 package ui
 
 import "core:math"
+import turn "../turn"
 
 // The relief of the licence card (licence_card.odin, licence_card.wgsl): a height field engraved like a banknote, turned into a
 // NORMAL MAP the shader lights. Made on a chore (ui.task: the costly part of the card), uploaded to a texture of the renderer;
@@ -124,8 +125,9 @@ height_at :: proc(word: []int, x, y: int) -> f32 {
 	ring :: proc(u, v, cx, cy, rings, wobble, lobes, phase: f32) -> (h, w: f32) {
 		dx, dy := u - cx, v - cy
 		r := math.sqrt(dx * dx + dy * dy)
-		a := math.atan2(dy, dx)
-		h = math.sin(2 * math.PI * rings * r + wobble * math.sin(lobes * a + phase))
+		// (`wobble` and `phase` are radians: the pattern's numbers as designed)
+		a := turn.atan2(dy, dx)
+		h = turn.sin(rings * r + turn.from_radians(wobble * turn.sin(lobes * a + turn.from_radians(phase))))
 		w = math.exp(-r * r / 0.30)
 		return
 	}

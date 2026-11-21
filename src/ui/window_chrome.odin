@@ -278,7 +278,7 @@ caption_shape :: proc(dc: ^draw.Context, d: ^Caption_Draw, c: Vec2, size: f32, c
 	case .Close:
 		len := size * math.SQRT_TWO
 		bar := Rect{{cx - len * 0.5, cy - t * 0.5}, {cx + len * 0.5, cy + t * 0.5}}
-		for angle in ([2]f32{math.PI / 4, -math.PI / 4}) {
+		for angle in ([2]f32{0.125, -0.125}) {
 			draw.push_transform(dc, draw.affine_around(draw.affine_rotate(angle), {cx, cy}))
 			draw.rect(dc, bar, color)
 			draw.pop_transform(dc)

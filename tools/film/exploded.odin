@@ -3,6 +3,7 @@ package film_tool
 import "core:math"
 import "../../examples/showcase"
 import "gt:film"
+import turn "gt:turn"
 import "gt:ui"
 
 // The exploded view over five scenes. Each act: the flat page, the way out into its planes, two beats where the planes
@@ -38,7 +39,7 @@ Pose :: struct {
 	scene: showcase.Scene,
 	t:     f64,
 	mode:  ui.Exploded_Mode,
-	yaw, pitch, spread, fit: f64,
+	yaw, pitch, spread, fit: f64,   // the angles in degrees: the film's poses read so
 }
 
 @(private = "file")
@@ -73,7 +74,7 @@ exploded_each :: proc(r: ^film.Recorder, user: rawptr) {
 	v.on = tt > 0
 	v.t = tt > 0 && tt < 1 ? max(tt - step, 0) : tt
 	v.mode = p.mode
-	v.yaw, v.pitch, v.spread, v.fit = f32(p.yaw), f32(p.pitch), f32(p.spread), f32(p.fit)
+	v.yaw, v.pitch, v.spread, v.fit = f32(turn.from_degrees(p.yaw)), f32(turn.from_degrees(p.pitch)), f32(p.spread), f32(p.fit)
 	app.main.state.anim_busy = true
 }
 

@@ -8,6 +8,7 @@ package ui
 //     (no frame at rest); Enter / Space on the focused header toggle it. The open state is the app's.
 
 import "core:math"
+import turn "../turn"
 import "../draw"
 import "../platform"
 
@@ -244,12 +245,12 @@ chevron_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	c := draw.rect_center(b.rect)
 	a := (b.rect.max.x - b.rect.min.x) * ACCORDION_CHEVRON_ARM_FRACTION
 	th := max(math.round(gs().scale * ACCORDION_CHEVRON_STROKE_PX), 1)
-	draw.push_transform(dc, draw.affine_around(draw.affine_rotate(d.t * math.PI * 0.5), c))
+	draw.push_transform(dc, draw.affine_around(draw.affine_rotate(d.t * 0.25), c))
 	bar :: proc(dc: ^draw.Context, p0, p1: Vec2, th: f32, col: Color) {
 		mid := (p0 + p1) * 0.5
 		v := p1 - p0
 		l := math.sqrt(v.x * v.x + v.y * v.y) + th
-		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(math.atan2(v.y, v.x)), mid))
+		draw.push_transform(dc, draw.affine_around(draw.affine_rotate(turn.atan2(v.y, v.x)), mid))
 		draw.rect(dc, {{mid.x - l * 0.5, mid.y - th * 0.5}, {mid.x + l * 0.5, mid.y + th * 0.5}}, col, th * 0.5)
 		draw.pop_transform(dc)
 	}

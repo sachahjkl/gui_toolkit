@@ -1,5 +1,6 @@
 package render
 
+import "core:math"
 @(require) import win "core:sys/windows"
 import "vendor:directx/d3d11"
 import "vendor:directx/dxgi"
@@ -31,7 +32,7 @@ Video_Picture :: struct {
 	size:        [2]int,
 	crop_origin: [2]int,
 	crop_size:   [2]int,
-	rotation:    int,          // degrees clockwise: 0, 90, 180, 270
+	rotation:    f32,          // turns clockwise: 0, 0.25, 0.5, 0.75
 	coeffs:      Video_Matrix,
 	full_range:  bool,
 	transfer:    Video_Transfer,
@@ -47,9 +48,13 @@ Video_Picture :: struct {
 
 // The size of the texture a picture converts to (rotation swaps the sides).
 video_target_size :: proc(p: Video_Picture) -> [2]int {
-	if p.rotation == 90 || p.rotation == 270 { return {p.crop_size.y, p.crop_size.x} }
+	if video_quarters(p) % 2 == 1 { return {p.crop_size.y, p.crop_size.x} }
 	return p.crop_size
 }
+
+// The picture's rotation as whole quarter turns, 0..3 (a rotation between two quarters goes to the nearest).
+@(private)
+video_quarters :: proc(p: Video_Picture) -> int { return int(math.round(p.rotation * 4)) %% 4 }
 
 // An RGBA texture to convert pictures into, of the visible size (video_target_size). 0: the device refused it.
 create_video_target :: proc(r: ^Renderer, w, h: int) -> Texture {
@@ -349,7 +354,7 @@ d3d_video_convert :: proc(r: ^Renderer, dst: Texture, p: Video_Picture) -> bool 
 	case .PQ: flags |= VIDEO_FLAG_PQ
 	case .HLG: flags |= VIDEO_FLAG_HLG
 	}
-	rot := ((p.rotation % 360) + 360) % 360
+	rot := video_quarters(p) * 90   // (video.wgsl takes clockwise degrees)
 	vc := Video_Constants{
 		crop = {f32(p.crop_origin.x), f32(p.crop_origin.y), f32(p.crop_origin.x + p.crop_size.x), f32(p.crop_origin.y + p.crop_size.y)},
 		dim = {f32(max(p.size.x, 1)), f32(max(p.size.y, 1))},

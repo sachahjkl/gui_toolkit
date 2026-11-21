@@ -3,6 +3,7 @@ package ui
 import "base:runtime"
 import "core:math"
 import "../font"
+import turn "../turn"
 
 // The certification seal of the licence card, in relief: a medal of 88 units that the shader (licence_card.wgsl, seal_shade)
 // lights with the card's own lights. Both of its textures are LICENCE_SEAL_TEX x LICENCE_SEAL_TEX texels (4 to a unit):
@@ -47,22 +48,22 @@ smooth :: proc(a, b, x: f32) -> f32 {
 rib :: proc(r, c, w, h: f32) -> f32 {
 	d := abs(r - c) / (w * 0.5)
 	if d >= 1 { return 0 }
-	k := math.cos(d * math.PI * 0.5)
+	k := turn.cos(d * 0.25)
 	return h * k * k
 }
 
-// The height of the medal (units) at `r` from its centre and `a` radians round it, and how gold the point is (0 .. 1).
+// The height of the medal (units) at `r` from its centre and `a` turns round it, and how gold the point is (0 .. 1).
 @(private = "file")
 seal_height :: proc(r, a: f32) -> (h, gold: f32) {
 	if r >= 44 { return 0, 1 }
 	// the reeded edge: flutes from 38 out, the outer rim falling away in the last unit
-	flute := 0.5 + 0.5 * math.cos(SEAL_FLUTES * a)
+	flute := 0.5 + 0.5 * turn.cos(SEAL_FLUTES * a)
 	edge := (1.3 + 0.55 * flute) * (1 - smooth(42.6, 44.0, r)) * smooth(37.0, 38.4, r)
 	// the lip, standing above the edge's valleys
 	lip := rib(r, 36.0, 3.4, 2.3)
 	// the face: a dome that rises above its rim, and fine rings that fade in from the middle and out towards the rib
 	dome := 0.4 + 11.0 * max(1 - (r / 34.4) * (r / 34.4), 0)
-	fine := 0.14 * math.cos(2 * math.PI * r / 2.0) * smooth(2.0, 7.0, r) * (1 - smooth(27.5, 29.0, r))
+	fine := 0.14 * turn.cos(r / 2.0) * smooth(2.0, 7.0, r) * (1 - smooth(27.5, 29.0, r))
 	face := (dome + fine) * (1 - smooth(33.8, 34.8, r))
 	h = max(max(edge, lip), face) + rib(r, 31.2, 2.0, 0.9)
 	gold = max(max(smooth(37.0, 38.0, r), clamp(rib(r, 36.0, 3.4, 1) * 1.6, 0, 1)), clamp(rib(r, 31.2, 2.0, 1) * 1.7, 0, 1))
@@ -82,7 +83,7 @@ seal_normal_map :: proc() -> []u8 {
 	for y in 0 ..< N {
 		for x in 0 ..< N {
 			px, py := (f32(x) + 0.5) / SEAL_SCALE - LICENCE_SEAL_DESIGN / 2, (f32(y) + 0.5) / SEAL_SCALE - LICENCE_SEAL_DESIGN / 2
-			hf[y * N + x], gold[y * N + x] = seal_height(math.sqrt(px * px + py * py), math.atan2(py, px))
+			hf[y * N + x], gold[y * N + x] = seal_height(math.sqrt(px * px + py * py), turn.atan2(py, px))
 		}
 	}
 	// the cavity: how far the point lies below its surroundings (a box of 9 x 9 texels, twice)

@@ -7,8 +7,9 @@ import i18n "../i18n"
 import "../platform"
 
 // Color pickers: a saturation/value square, a hue bar and an alpha bar. They edit values owned by the caller (hue, sat, val,
-// alpha all in 0..1) and return true when the user changed something. Each is a Tab stop: the arrows move it by a hundredth
-// (Shift: a tenth; the hue by a degree, Shift: ten), Home / End go to the ends of a bar; screen readers see sliders.
+// alpha all in 0..1, the hue in turns) and return true when the user changed something. Each is a Tab stop: the arrows move it by a hundredth
+// (Shift: a tenth; the hue by 1/360 of a turn, Shift: 1/36), Home / End go to the ends of a bar; screen readers see sliders
+// (the hue in degrees: what a person reads).
 
 Picker_Draw :: struct { hue, sat, val, alpha: f32, horizontal: bool }
 

@@ -4,13 +4,14 @@
 package tk_ink
 
 import "core:math"
+import turn "../turn"
 
 // One sample of the pointer.
 Sample :: struct {
 	at:       [2]f32, // the position, in the caller's units (the same as Pen.width)
 	time:     f64,    // milliseconds, any origin, not decreasing along the stroke
 	pressure: f32,    // 0..1; 0: unknown (a mouse, a touch pad): the width then follows the speed
-	tilt:     [2]f32, // degrees, -90..90, as platform.Pointer_Info's (x towards the right, y towards the user); {0, 0}: upright or unknown
+	tilt:     [2]f32, // turns, -0.25..0.25, as platform.Pointer_Info's (x towards the right, y towards the user); {0, 0}: upright or unknown
 }
 
 Nib :: enum u8 {
@@ -27,7 +28,7 @@ Pen :: struct {
 	smoothing:   f32, // 0..1: how much the pointer's path is smoothed; 0: the line passes through every sample
 	taper_start: f32, // >= 0: the length over which the start narrows to a point; 0: a round start
 	taper_end:   f32, // >= 0: the same at the end; 0: a round end
-	nib_angle:   f32, // degrees (Chisel): the nib's edge, counter-clockwise from +x as seen with y down; 30 rises to the right
+	nib_angle:   f32, // turns (Chisel): the nib's edge, counter-clockwise from +x as seen with y down; 1.0 / 12 rises to the right
 	min_width:   f32, // 0..1: a share of width under which the line never goes (before the tapers), so it never breaks
 	tilt:        f32, // 0..1: how much a stylus's lean changes the mark (Round, Brush: wider, lighter; Chisel: the nib turns with the pen)
 	ink:         Ink, // how the ink lies on the paper (`lay`); all zero: solid opaque ink
@@ -61,10 +62,10 @@ PEN_BALLPOINT :: Pen {
 	nib = .Round, width = 2, thinning = 0.35, smoothing = 0.5, min_width = 0.35,
 	ink = {skip = 0.8, dwell = 0.2, pressure = 0.4},
 }
-// A fountain pen: a broad nib at 30°, some speed thinning, tapered ends; a translucent ink that pools where the nib
-// rests. With a stylus's tilt, the nib mostly follows how the pen is held.
+// A fountain pen: a broad nib at a twelfth of a turn, some speed thinning, tapered ends; a translucent ink that pools
+// where the nib rests. With a stylus's tilt, the nib mostly follows how the pen is held.
 PEN_FOUNTAIN :: Pen {
-	nib = .Chisel, width = 3, thinning = 0.3, smoothing = 0.5, taper_start = 3, taper_end = 8, nib_angle = 30, min_width = 0.08,
+	nib = .Chisel, width = 3, thinning = 0.3, smoothing = 0.5, taper_start = 3, taper_end = 8, nib_angle = 1.0 / 12, min_width = 0.08,
 	tilt = 0.7,
 	ink = {opacity = 0.84, pool = 0.5, dwell = 0.3, pressure = 0.3},
 }
@@ -92,9 +93,9 @@ CHISEL_EDGE :: 0.12
 TILT_WIDEN :: 0.6
 // How much a full lean lightens a Round or Brush nib's ink at Pen.tilt 1, read by `lay`: the side carries less ink.
 TILT_LIGHT :: 0.35
-// The largest tilt angle read, degrees: at 90 the tangent is infinite and the lean has no vertical left.
+// The largest tilt angle read (turns): at a quarter turn the tangent is infinite and the lean has no vertical left.
 @(private)
-TILT_MAX :: 89
+TILT_MAX :: 89.0 / 360
 // The lean (sin of the angle from upright) over which a chisel's azimuth is trusted, from none to full: near upright
 // the azimuth is the sensor's noise.
 @(private)
@@ -127,8 +128,8 @@ Point :: struct {
 @(private)
 lean_of :: proc(tilt: [2]f32) -> [2]f32 {
 	if tilt == {} || math.is_nan(tilt.x) || math.is_nan(tilt.y) { return {} }
-	x := math.tan(clamp(tilt.x, -TILT_MAX, TILT_MAX) * math.RAD_PER_DEG)
-	y := math.tan(clamp(tilt.y, -TILT_MAX, TILT_MAX) * math.RAD_PER_DEG)
+	x := turn.tan(clamp(tilt.x, -TILT_MAX, TILT_MAX))
+	y := turn.tan(clamp(tilt.y, -TILT_MAX, TILT_MAX))
 	return [2]f32{x, y} / math.sqrt(1 + x * x + y * y)
 }
 
@@ -153,8 +154,8 @@ chisel_edge :: proc(nib: [2]f32, lean: [2]f32, tilt: f32) -> [2]f32 {
 	d := d0 + (d1 - d0) * k
 	// Opposite edges at an even blend cancel: no direction, the fixed nib stays.
 	if length(d) < 1e-4 { return nib }
-	h := 0.5 * math.atan2(d.y, d.x)
-	return {math.cos(h), math.sin(h)}
+	s, c := turn.sincos(0.5 * turn.atan2(d.y, d.x))
+	return {c, s}
 }
 
 // The ink of a stroke. No sample gives an empty outline; one sample (or samples all at one place) gives a dot.
@@ -249,8 +250,8 @@ trace :: proc(samples: []Sample, pen: Pen, allocator := context.allocator) -> (O
 		taper_start *= k
 		taper_end *= k
 	}
-	angle := pen.nib_angle * math.RAD_PER_DEG
-	nib := [2]f32{math.cos(angle), -math.sin(angle)}
+	ns, nc := turn.sincos(pen.nib_angle)
+	nib := [2]f32{nc, -ns}
 
 	o := Outline {
 		left        = make([][2]f32, n, allocator),
@@ -329,7 +330,7 @@ pressure_factor :: proc(pressure: f32, thinning: f32) -> f32 {
 @(private)
 ease :: proc(t: f32, nib: Nib) -> f32 {
 	x := clamp(t, 0, 1)
-	if nib == .Brush { return (1 - math.cos(x * math.PI)) * 0.5 }
+	if nib == .Brush { return (1 - turn.cos(x * 0.5)) * 0.5 }
 	return x * (2 - x)
 }
 
@@ -458,10 +459,10 @@ arc :: proc(out: [][2]f32, from, to: [2]f32) -> int {
 	c := (from + to) * 0.5
 	v := from - c
 	r := length(v)
-	a0 := math.atan2(v.y, v.x)
+	a0 := turn.atan2(v.y, v.x)
 	for i in 1 ..= CAP_POINTS {
-		a := a0 - math.PI * f32(i) / f32(CAP_POINTS + 1)
-		out[i - 1] = c + [2]f32{math.cos(a), math.sin(a)} * r
+		s, k := turn.sincos(a0 - 0.5 * f32(i) / f32(CAP_POINTS + 1))
+		out[i - 1] = c + [2]f32{k, s} * r
 	}
 	return CAP_POINTS
 }

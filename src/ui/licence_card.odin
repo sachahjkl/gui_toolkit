@@ -10,6 +10,7 @@ import i18n "../i18n"
 import lucide "../lucide"
 import "../platform"
 import "../render"
+import turn "../turn"
 
 // The licence card (src/md/features/licence-card.md, docs/widgets.md): a registered licence shown as an object, the same in
 // every program. A dark foil engraved like a banknote, iridescent, a light that sweeps across it, the person's name raised in
@@ -57,7 +58,7 @@ Licence_Card_Look :: struct {
 	plain_text: bool,    // its last draw drew the text plain (flat, or the lettering could not be raised)
 	turned:     bool,    // the free mode is on
 	back:       bool,    // its last draw showed the back
-	rx, ry:     f32,     // the turn now, degrees (rotateX, rotateY)
+	rx, ry:     f32,     // the turn now, turns (rotateX, rotateY)
 	sweeping:   bool,    // the sweep is on its way
 	moving:     bool,    // something moves: the card asks for frames
 }
@@ -68,16 +69,16 @@ LICENCE_CARD_WIDTH_EM :: 440.0 / 15
 @(private = "file") DESIGN_H :: DESIGN_W / f32(LICENCE_CARD_ASPECT)
 // The room above and below the card for its tilt, units.
 @(private = "file") PAD :: 12
-// The corner radius, the thickness (a bank card's rim: 8 shows from a tilt of 18 degrees), the facets of a corner of the rim.
+// The corner radius, the thickness (a bank card's rim: 8 shows from a tilt of 0.05 turns), the facets of a corner of the rim.
 @(private = "file") RADIUS :: 14
 @(private = "file") THICKNESS :: 8
 @(private = "file") FACETS :: 4
 // The eye's distance (CSS perspective), and the depth the card turns about (the middle of its thickness).
 @(private = "file") PERSPECTIVE :: 900
 @(private = "file") ORIGIN_Z :: -THICKNESS / 2
-// The tilt at the card's edges, degrees (rotateX, rotateY).
-@(private = "file") TILT_X :: 14
-@(private = "file") TILT_Y :: 18
+// The tilt at the card's edges, turns (rotateX, rotateY).
+@(private = "file") TILT_X :: 14.0 / 360
+@(private = "file") TILT_Y :: 18.0 / 360
 // The eases (CSS transitions): their curve, and how long each takes, ms.
 @(private = "file") EASE :: [4]f32{0.2, 0.7, 0.2, 1}
 @(private = "file") EASE_BACK_MS :: 550   // the pointer gone: back to rest
@@ -91,14 +92,14 @@ LICENCE_CARD_WIDTH_EM :: 440.0 / 15
 @(private = "file") SWEEP_MS :: 2800
 @(private = "file") SWEEP_CURVE :: [4]f32{0.45, 0, 0.35, 1}
 @(private = "file") SWEEP_STILL :: 0.42
-// The free mode: degrees per pixel of a drag; a release later than this after the last move flings nothing; a fling's least
-// speed (degrees per ms, both axes), how far its speed takes it (ms of it), at most (degrees); an arrow's step (degrees).
-@(private = "file") DRAG_DEG_PER_PX :: 0.45
+// The free mode: turns per pixel of a drag; a release later than this after the last move flings nothing; a fling's least
+// speed (turns per ms, both axes), how far its speed takes it (ms of it), at most (turns); an arrow's step (turns).
+@(private = "file") DRAG_TURNS_PER_PX :: 0.45 / 360
 @(private = "file") FLING_LATE_MS :: 90
-@(private = "file") FLING_LEAST :: 0.03
+@(private = "file") FLING_LEAST :: 0.03 / 360
 @(private = "file") FLING_GAIN :: 380
-@(private = "file") FLING_MOST :: 300
-@(private = "file") ARROW_STEP :: 30
+@(private = "file") FLING_MOST :: 300.0 / 360
+@(private = "file") ARROW_STEP :: 1.0 / 12
 // The seal: its middle and diameter on the design, how high it stands, the facets of its edge, its edge's radius (a hair
 // under the face's, which the perspective enlarges).
 @(private = "file") SEAL_X :: 380
@@ -178,10 +179,10 @@ Licence_Card_Memory :: struct {
 	turn:        bool,     // the free mode (Turn over)
 	drag:        bool,     // a drag of the free mode is on
 	live:        bool,     // the pointer is on the card
-	from, to:    [4]f32,   // the ease of (rx, ry, light x, light y): degrees, and 0 .. 1 on the card
+	from, to:    [4]f32,   // the ease of (rx, ry, light x, light y): turns, and 0 .. 1 on the card
 	ease_t0:     f64,
 	ease_ms:     f32,
-	va, vb:      f32,      // the turn's speed while dragged, degrees per ms
+	va, vb:      f32,      // the turn's speed while dragged, turns per ms
 	last_at:     Vec2,
 	last_ms:     f64,
 	sweep_t0:    f64,      // the sweep's start (0: none yet)
@@ -343,7 +344,7 @@ card_motion :: proc(s: ^State, m: ^Licence_Card_Memory, b: ^Box, sig: Signal, ho
 	}
 	if m.drag && sig.dragging {
 		d := (s.mouse - m.last_at) / scale
-		da, db := -d.y * DRAG_DEG_PER_PX, d.x * DRAG_DEG_PER_PX
+		da, db := -d.y * DRAG_TURNS_PER_PX, d.x * DRAG_TURNS_PER_PX
 		if d != {} {
 			dt := f32(max(1, now - m.last_ms))
 			m.va, m.vb = 0.6 * da / dt + 0.4 * m.va, 0.6 * db / dt + 0.4 * m.vb
@@ -380,8 +381,8 @@ card_motion :: proc(s: ^State, m: ^Licence_Card_Memory, b: ^Box, sig: Signal, ho
 @(private = "file")
 card_home :: proc(m: ^Licence_Card_Memory, cur: [4]f32, now: f64) {
 	from := cur
-	from[0] -= 360 * math.round(from[0] / 360)
-	from[1] -= 360 * math.round(from[1] / 360)
+	from[0] -= math.round(from[0])
+	from[1] -= math.round(from[1])
 	m.turn, m.drag, m.live = false, false, false
 	card_ease(m, from, REST, HOME_MS, now)
 }
@@ -665,7 +666,7 @@ licence_card_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	// a soft shadow on the page under the card: it lies on the page, it does not turn with the card
 	draw.box_shadow(dc, draw.rect_shift(card, {0, 6 * k}), {RADIUS * k, RADIUS * k, RADIUS * k, RADIUS * k}, 10 * k, {0, 0, 0, 0.28})
 	rx, ry := d.turn[0], d.turn[1]
-	flat_on_screen := abs(rx) < 0.01 && abs(ry) < 0.01
+	flat_on_screen := abs(rx) < 0.01 / 360 && abs(ry) < 0.01 / 360
 	if flat_on_screen || dc.rec != nil {
 		// at rest the planes would be drawn straight: drawn so at once, with no layer
 		m.back = false
@@ -699,7 +700,7 @@ licence_card_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.pop_plane_draw(dc, draw.mat4_mul(vw, local), 1, {cull_back = true})
 	} else {
 		// the back: laid on the card's other side, turned half a turn about the vertical axis
-		local := draw.mat4_mul(m4_translate(0, 0, -THICKNESS), draw.mat4_mul(m4_rot_y(180), m4_translate(-DESIGN_W / 2, -DESIGN_H / 2, 0)))
+		local := draw.mat4_mul(m4_translate(0, 0, -THICKNESS), draw.mat4_mul(m4_rot_y(0.5), m4_translate(-DESIGN_W / 2, -DESIGN_H / 2, 0)))
 		draw.push_plane(dc, {{0, 0}, {DESIGN_W, DESIGN_H}}, k)
 		card_back(dc, d, &t)
 		draw.pop_plane_draw(dc, draw.mat4_mul(vw, local), 1, {cull_back = true})
@@ -729,16 +730,14 @@ m4_translate :: proc(x, y, z: f32) -> draw.Mat4 { return {1, 0, 0, 0, 0, 1, 0, 0
 m4_scale :: proc(x, y, z: f32) -> draw.Mat4 { return {x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1} }
 
 @(private = "file")
-m4_rot_x :: proc(deg: f32) -> draw.Mat4 {
-	a := deg * math.PI / 180
-	c, s := math.cos(a), math.sin(a)
+m4_rot_x :: proc(turns: f32) -> draw.Mat4 {
+	s, c := turn.sincos(turns)
 	return {1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1}
 }
 
 @(private = "file")
-m4_rot_y :: proc(deg: f32) -> draw.Mat4 {
-	a := deg * math.PI / 180
-	c, s := math.cos(a), math.sin(a)
+m4_rot_y :: proc(turns: f32) -> draw.Mat4 {
+	s, c := turn.sincos(turns)
 	return {c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1}
 }
 
@@ -797,10 +796,10 @@ card_rim :: proc(dc: ^draw.Context, vw, world: draw.Mat4) {
 	// the corners clockwise from the top left (y down): their centres, and the angle each arc starts at
 	centres := [4]Vec2{{-hw + RADIUS, -hh + RADIUS}, {hw - RADIUS, -hh + RADIUS}, {hw - RADIUS, hh - RADIUS}, {-hw + RADIUS, hh - RADIUS}}
 	for c, i in centres {
-		a0 := math.PI * (1 + 0.5 * f32(i))
+		a0 := 0.5 + 0.25 * f32(i)
 		for f in 0 ..= FACETS {
-			a := a0 + f32(f) * (0.5 * math.PI / FACETS)
-			append(&pts, c + Vec2{math.cos(a), math.sin(a)} * RADIUS)
+			s, k := turn.sincos(a0 + f32(f) * (0.25 / FACETS))
+			append(&pts, c + Vec2{k, s} * RADIUS)
 		}
 	}
 	dark, light := [3]f32{22, 26, 42}, [3]f32{176, 186, 222}
@@ -819,12 +818,12 @@ card_seal_edge :: proc(dc: ^draw.Context, vw, world: draw.Mat4) {
 	c := Vec2{SEAL_X - DESIGN_W / 2, SEAL_Y - DESIGN_H / 2}
 	dark, light := [3]f32{96, 66, 14}, [3]f32{222, 182, 78}
 	for i in 0 ..< SEAL_SIDES {
-		a0 := f32(i) * (2 * math.PI / SEAL_SIDES)
-		a1 := f32(i + 1) * (2 * math.PI / SEAL_SIDES)
-		am := (a0 + a1) * 0.5
-		p0 := c + Vec2{math.cos(a0), math.sin(a0)} * SEAL_EDGE_R
-		p1 := c + Vec2{math.cos(a1), math.sin(a1)} * SEAL_EDGE_R
-		card_facet(dc, vw, world, p0, p1, 0, SEAL_Z, {math.cos(am), math.sin(am)}, dark, light)
+		s0, c0 := turn.sincos(f32(i) / SEAL_SIDES)
+		s1, c1 := turn.sincos(f32(i + 1) / SEAL_SIDES)
+		sm, cm := turn.sincos((f32(i) + 0.5) / SEAL_SIDES)
+		p0 := c + Vec2{c0, s0} * SEAL_EDGE_R
+		p1 := c + Vec2{c1, s1} * SEAL_EDGE_R
+		card_facet(dc, vw, world, p0, p1, 0, SEAL_Z, {cm, sm}, dark, light)
 	}
 }
 
@@ -837,19 +836,21 @@ card_params :: proc(d: ^Card_Draw, size: Vec2, k: f32, pass: int, engrave: f32, 
 		{size.x, size.y, k, d.motion ? 0 : 1},
 		{f32(pass), 0, 0, 0},
 		{d.sweep, d.turn[2], d.turn[3], d.live},
-		{1, engrave, mode, d.turn[0]},
-		{d.turn[1], 0, 0, 0},
+		// (the shader takes the turn in degrees: its compiled form is rebuilt on Windows only)
+		{1, engrave, mode, turn.to_degrees(d.turn[0])},
+		{turn.to_degrees(d.turn[1]), 0, 0, 0},
 	}
 }
 
 // The dark gradient of the card's ground (CSS: linear-gradient(<angle>, #232a40, #151926 58 %, #1c2132)) and its edge.
 @(private = "file")
-card_ground :: proc(dc: ^draw.Context, angle_deg: f32) {
+card_ground :: proc(dc: ^draw.Context, angle: f32) {
 	r := draw.Rect{{0, 0}, {DESIGN_W, DESIGN_H}}
 	radii := [4]f32{RADIUS, RADIUS, RADIUS, RADIUS}
 	draw.rect(dc, r, draw.hex(0x161a26ff), RADIUS)
-	a := angle_deg * math.PI / 180
-	dir := Vec2{math.sin(a), -math.cos(a)}
+	// (`angle` in turns, clockwise from up as CSS's)
+	s, c := turn.sincos(angle)
+	dir := Vec2{s, -c}
 	half := (abs(DESIGN_W * dir.x) + abs(DESIGN_H * dir.y)) * 0.5
 	mid := Vec2{DESIGN_W, DESIGN_H} * 0.5
 	stops := [3]draw.Gradient_Stop{{color = draw.hex(0x232a40ff), pos = 0}, {color = draw.hex(0x151926ff), pos = 0.58}, {color = draw.hex(0x1c2132ff), pos = 1}}
@@ -875,7 +876,7 @@ card_text :: proc(dc: ^draw.Context, face: font.Font_Id, size: f32, at: [2]f32, 
 // text plain where it is not raised.
 @(private = "file")
 card_front :: proc(dc: ^draw.Context, d: ^Card_Draw, t: ^Card_Textures, k: f32) {
-	card_ground(dc, 150)
+	card_ground(dc, 150.0 / 360)
 	size := Vec2{DESIGN_W, DESIGN_H}
 	r := draw.Rect{{0, 0}, size}
 	radii := [4]f32{RADIUS, RADIUS, RADIUS, RADIUS}
@@ -981,7 +982,7 @@ card_medal :: proc(dc: ^draw.Context, d: ^Card_Draw) {
 // the code engraved (or, flat, the logo and the code faint), the line along the bottom.
 @(private = "file")
 card_back :: proc(dc: ^draw.Context, d: ^Card_Draw, t: ^Card_Textures) {
-	card_ground(dc, 210)
+	card_ground(dc, 210.0 / 360)
 	size := Vec2{DESIGN_W, DESIGN_H}
 	engrave: f32 = t.back_lettering != 0 ? 1 : 0
 	if t.back {

@@ -13,6 +13,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import turn "../turn"
 import "core:strings"
 import "../ascii"
 import "../draw"
@@ -231,7 +232,7 @@ wheel_of :: proc(id: string, r: Wheel_Rows, widest: f32, right: bool, index: ^in
 	now := s.time_ms
 	h := f32(band.rows) * row_h
 	R := h * 0.5
-	step := f64(row_h / R)   // the angle between two rows
+	step := turn.from_radians(f64(row_h / R))   // the angle between two rows (turns): a row's height along the drum
 
 	// the program chose another row: the drum turns to it, nothing is given back
 	if want != m.rest && !m.held {
@@ -277,7 +278,7 @@ wheel_of :: proc(id: string, r: Wheel_Rows, widest: f32, right: bool, index: ^in
 			} else {
 				// (the row under the pointer, through the cylinder: its angle from the band)
 				y := clamp((s.mouse.y - (b.rect.min.y + R)) / R, -0.999, 0.999)
-				d := math.asin(f64(y)) / step
+				d := turn.asin(f64(y)) / step
 				wheel_aim(m, wheel_bound(math.round(m.target + d), n, o.wrap), WHEEL_SNAP_OMEGA, WHEEL_SNAP_DAMPING)
 			}
 		}
@@ -361,13 +362,13 @@ wheel_of :: proc(id: string, r: Wheel_Rows, widest: f32, right: bool, index: ^in
 	d.weak = color("text")
 	pop_tags()
 	d.on_band = color("text")
-	reach := int(math.ceil(math.PI * 0.5 / step))
+	reach := int(math.ceil(0.25 / step))
 	rows := make([dynamic]Wheel_Row, 0, 2 * reach + 2, frame_allocator())
 	first := int(math.floor(m.pos))
 	for i in first - reach ..= first + reach + 1 {
 		if !o.wrap && (i < 0 || i >= n) { continue }
 		off := f64(i) - m.pos
-		if abs(off * step) >= math.PI * 0.5 { continue }
+		if abs(off * step) >= 0.25 { continue }
 		append(&rows, Wheel_Row{f32(off), wheel_label(r, wheel_index(f64(i), n, o.wrap))})
 	}
 	d.rows = rows[:]
@@ -525,7 +526,7 @@ wheel_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	}
 	cy := math.round((r.min.y + r.max.y) * 0.5)
 	R := (r.max.y - r.min.y) * 0.5
-	step := d.row_h / R
+	step := turn.from_radians(d.row_h / R)
 	half := math.round(d.row_h * 0.5)
 	m := font.metrics(gs().fonts, d.font, d.size)
 	base := (m.ascent - m.descent) * 0.5
@@ -537,10 +538,9 @@ wheel_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		ink := k == 2 ? d.on_band : d.weak
 		draw.push_clip(dc, part)
 		for row in d.rows {
-			a := row.d * step
-			c := math.cos(a)
+			sn, c := turn.sincos(row.d * step)
 			if c <= 0 { continue }
-			y := cy + R * math.sin(a)
+			y := cy + R * sn
 			w := text_width(d.font, d.size, row.text)
 			x := r.min.x + d.pad + (d.right ? d.label_w - w : (d.label_w - w) * 0.5)
 			at := Vec2{math.round(x), y + base * c}

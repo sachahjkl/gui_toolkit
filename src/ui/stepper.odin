@@ -498,7 +498,7 @@ stepper_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	prev := draw.set_circular_corners(dc, true)
 	defer draw.set_circular_corners(dc, prev)
 	if l.ring { draw.rect(dc, {c - R, c + R}, d.ring, R, d.ring_size) }
-	if l.arc { arc_dots(dc, c, R - d.ring_size * 0.5, d.ring_size, d.phase * math.TAU - math.PI * 0.5, STEPPER_ARC, d.arc) }
+	if l.arc { arc_dots(dc, c, R - d.ring_size * 0.5, d.ring_size, d.phase - 0.25, STEPPER_ARC, d.arc) }
 	if l.disc > 0 {
 		rr := R * l.disc
 		disc := Rect{c - rr, c + rr}

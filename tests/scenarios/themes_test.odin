@@ -418,7 +418,7 @@ an_intent_button_is_a_soft_pair_of_its_hue :: proc(t: ^testing.T) { unwatched.ru
 		hue := ui.theme_lookup(&th, {pair[1]}, "text")
 		testing.expectf(t, ui.luminance(fill) < ui.luminance(hue) && ui.luminance(fill) <= ui.luminance(page) + 0.05, "%s: a deep fill of its hue", pair[0])
 		testing.expectf(t, ui.contrast(words, fill) >= 4.5, "%s: its words read on it (%.2f)", pair[0], ui.contrast(words, fill))
-		testing.expectf(t, abs(ui.to_oklch(words)[2] - ui.to_oklch(hue)[2]) < 12, "%s: its words are of its hue", pair[0])
+		testing.expectf(t, abs(ui.to_oklch(words)[2] - ui.to_oklch(hue)[2]) < 12.0 / 360, "%s: its words are of its hue", pair[0])
 	}
 }) }
 

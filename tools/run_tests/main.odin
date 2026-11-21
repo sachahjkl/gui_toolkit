@@ -129,6 +129,8 @@ STEPS := []Step{
 	{name = "shortcuts", oses = EVERYWHERE},
 	{name = "ocr", oses = EVERYWHERE},   // (the engine's test passes with a log line where none is installed)
 	{name = "globals", oses = EVERYWHERE},
+	{name = "turn", oses = EVERYWHERE},
+	{name = "angles", oses = EVERYWHERE},
 	{name = "unicode_case", oses = EVERYWHERE},
 	{name = "i18n", oses = EVERYWHERE, one = true},   // (the language in use is one for the process)
 	{name = "ime", oses = EVERYWHERE},

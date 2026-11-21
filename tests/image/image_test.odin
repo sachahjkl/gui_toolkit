@@ -366,7 +366,7 @@ looks_have_their_shape :: proc(t: ^testing.T) {
 	testing.expect_value(t, pixel(back, 0, 0), BLUE)
 	testing.expect_value(t, pixel(back, 25, 20), RED)
 
-	gradient := image.background(img, 20, {from = image.BLACK, to = image.WHITE, angle = 90}, a)
+	gradient := image.background(img, 20, {from = image.BLACK, to = image.WHITE, angle = 0.25}, a)
 	l, r := pixel(gradient, 0, 0), pixel(gradient, gradient.width - 1, 0)
 	testing.expectf(t, l[0] < 10 && r[0] > 245, "left to right: %v %v", l, r)
 	testing.expect_value(t, pixel(gradient, 2, 0), pixel(gradient, 2, gradient.height - 1))

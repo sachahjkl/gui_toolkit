@@ -5,6 +5,7 @@ import "core:math"
 import "core:strconv"
 import "core:strings"
 import "../ascii"
+import turn "../turn"
 
 // Colours as CSS writes them, for the colour picker's text field and for apps that edit colours in their own text (a style
 // sheet): `color_parse` reads hex (#rgb, #rgba, #rrggbb, #rrggbbaa), rgb() / rgba(), hsl() / hsla() and oklch() (spaces or the
@@ -25,8 +26,8 @@ Color_Style :: struct {
 @(private = "file") BYTE_MAX :: 255
 @(private = "file") NIBBLE :: 17           // a short hex digit times this is its byte (f -> ff)
 @(private = "file") PERCENT :: 100
-@(private = "file") DEGREES :: 360
-@(private = "file") GRAD_DEGREES :: 0.9
+// CSS's grad: 400 to a turn.
+@(private = "file") GRADS :: 400
 // oklch(): 100 % of chroma is 0.4 (CSS Color 4).
 @(private = "file") OKLCH_CHROMA_FULL :: 0.4
 // What the text keeps: alpha and oklch's lightness and chroma to 3 decimals, hsl and the hue of oklch to 1.
@@ -117,14 +118,15 @@ color_text :: proc(c: Srgba, style: Color_Style) -> string {
 		return opaque ? fmt.tprintf("rgb(%d %d %d)", r, g, b) : fmt.tprintf("rgb(%d %d %d / %s)", r, g, b, num_text(f64(a), ALPHA_DECIMALS))
 	case .Hsl:
 		hsl := srgb_to_hsl(c.rgb)
-		h, s, l := num_text(hsl[0], HSL_DECIMALS), num_text(hsl[1] * PERCENT, HSL_DECIMALS), num_text(hsl[2] * PERCENT, HSL_DECIMALS)
+		// (CSS writes a bare hue in degrees)
+		h, s, l := num_text(turn.to_degrees(hsl[0]), HSL_DECIMALS), num_text(hsl[1] * PERCENT, HSL_DECIMALS), num_text(hsl[2] * PERCENT, HSL_DECIMALS)
 		if style.legacy {
 			return opaque ? fmt.tprintf("hsl(%s, %s%%, %s%%)", h, s, l) : fmt.tprintf("hsla(%s, %s%%, %s%%, %s)", h, s, l, num_text(f64(a), ALPHA_DECIMALS))
 		}
 		return opaque ? fmt.tprintf("hsl(%s %s%% %s%%)", h, s, l) : fmt.tprintf("hsl(%s %s%% %s%% / %s)", h, s, l, num_text(f64(a), ALPHA_DECIMALS))
 	case .Oklch:
 		lch := srgb_to_oklch(c.rgb)
-		l, ch, h := num_text(lch[0], OKLCH_DECIMALS), num_text(lch[1], OKLCH_DECIMALS), num_text(lch[2], HUE_DECIMALS)
+		l, ch, h := num_text(lch[0], OKLCH_DECIMALS), num_text(lch[1], OKLCH_DECIMALS), num_text(turn.to_degrees(lch[2]), HUE_DECIMALS)
 		return opaque ? fmt.tprintf("oklch(%s %s %s)", l, ch, h) : fmt.tprintf("oklch(%s %s %s / %s)", l, ch, h, num_text(f64(a), ALPHA_DECIMALS))
 	}
 	return ""
@@ -174,25 +176,27 @@ hsv_to_srgb :: proc(h, s, v: f32) -> [3]f32 {
 	return {v, p, q}
 }
 
-// (hue degrees, saturation 0..1, lightness 0..1)
+// (hue in turns 0..1, saturation 0..1, lightness 0..1)
 srgb_to_hsl :: proc(c: [3]f32) -> [3]f64 {
 	h, _, _ := srgb_to_hsv(c)
 	mx, mn := f64(max(c.r, c.g, c.b)), f64(min(c.r, c.g, c.b))
 	l := (mx + mn) * 0.5
 	s := (l <= 0 || l >= 1) ? 0 : (mx - l) / min(l, 1 - l)
-	return {f64(h) * DEGREES, s, l}
+	return {f64(h), s, l}
 }
 
+// The hue `h` in turns, saturation and lightness 0..1.
 hsl_to_srgb :: proc(h, s, l: f64) -> [3]f32 {
 	f :: proc(n, h, s, l: f64) -> f32 {
-		k := math.mod(n + h / 30, 12)
+		// (CSS Color 4's formula: a twelfth of a turn per step)
+		k := math.mod(n + h * 12, 12)
 		a := s * min(l, 1 - l)
 		return f32(l - a * max(-1, min(k - 3, min(9 - k, 1))))
 	}
 	return {f(0, h, s, l), f(8, h, s, l), f(4, h, s, l)}
 }
 
-// (L 0..1, chroma, hue degrees)
+// (L 0..1, chroma, hue in turns 0..1)
 srgb_to_oklch :: proc(c: [3]f32) -> [3]f64 {
 	r, g, b := decode(c.r), decode(c.g), decode(c.b)
 	l := math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
@@ -202,13 +206,14 @@ srgb_to_oklch :: proc(c: [3]f32) -> [3]f64 {
 	A := 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s
 	B := 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
 	ch := math.sqrt(A * A + B * B)
-	h := ch < OKLCH_ACHROMATIC ? 0 : math.atan2(B, A) * 180 / math.PI
-	if h < 0 { h += DEGREES }
+	h := ch < OKLCH_ACHROMATIC ? 0 : turn.wrap(turn.atan2(B, A))
 	return {L, ch, h}
 }
 
+// L 0..1, chroma, the hue `h` in turns.
 oklch_to_srgb :: proc(L, ch, h: f64) -> [3]f32 {
-	A, B := ch * math.cos(h * math.PI / 180), ch * math.sin(h * math.PI / 180)
+	sn, cs := turn.sincos(h)
+	A, B := ch * cs, ch * sn
 	l := L + 0.3963377774 * A + 0.2158037573 * B
 	m := L - 0.1055613458 * A - 0.0638541728 * B
 	s := L - 0.0894841775 * A - 1.2914855480 * B
@@ -267,19 +272,17 @@ number_of :: proc(s: string) -> (v: f64, unit: string, ok: bool) {
 	return v, s[end:], ok
 }
 
-// A hue in degrees, from a number (degrees) or an angle.
+// A CSS hue as turns 0..1: the text gives a bare number (degrees) or an angle with its unit.
 @(private = "file")
-hue_of :: proc(s: string) -> (deg: f64, ok: bool) {
+hue_of :: proc(s: string) -> (turns: f64, ok: bool) {
 	v, unit, good := number_of(s)
 	if !good { return }
 	switch unit {
-	case "", "deg": deg = v
-	case "rad":     deg = v * 180 / math.PI
-	case "grad":    deg = v * GRAD_DEGREES
-	case "turn":    deg = v * DEGREES
+	case "", "deg": turns = turn.from_degrees(v)
+	case "rad":     turns = turn.from_radians(v)
+	case "grad":    turns = v / GRADS
+	case "turn":    turns = v
 	case: return
 	}
-	deg = math.mod(deg, DEGREES)
-	if deg < 0 { deg += DEGREES }
-	return deg, true
+	return turn.wrap(turns), true
 }

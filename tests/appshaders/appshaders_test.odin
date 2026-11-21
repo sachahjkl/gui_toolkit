@@ -226,7 +226,7 @@ rotated_rect_gets_its_local_size_and_scale :: proc(t: ^testing.T) {
 	if !open(&f, .Linear) { testing.fail_now(t, "no D3D11 device (WARP) or the app shader was refused") }
 	defer close(&f)
 	begin(&f)
-	m := draw.affine_mul(draw.affine_translate({32, 32}), draw.affine_mul(draw.affine_rotate(math.PI / 2), draw.affine_scale({1.5, 1.5})))
+	m := draw.affine_mul(draw.affine_translate({32, 32}), draw.affine_mul(draw.affine_rotate(0.25), draw.affine_scale({1.5, 1.5})))
 	draw.push_transform(&f.dc, m)
 	draw.app_shader(&f.dc, f.shader, {{-10, -15}, {10, 15}}, {{3, 0, 0, 0}})   // 20 x 30 local units, 1.5 pixels each
 	draw.pop_transform(&f.dc)

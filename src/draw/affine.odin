@@ -1,6 +1,7 @@
 package draw
 
 import "core:math"
+import turn "../turn"
 
 // A determinant below this has no usable inverse.
 @(private) AFFINE_SINGULAR_DET :: 1e-12
@@ -29,13 +30,14 @@ affine_mul :: proc(m, n: Affine) -> Affine {
 
 affine_translate :: proc(t: Vec2) -> Affine { return {a = 1, d = 1, e = t.x, f = t.y} }
 affine_scale :: proc(s: Vec2) -> Affine { return {a = s.x, d = s.y} }
-// Clockwise on screen for a positive angle (radians), like CSS rotate().
-affine_rotate :: proc(radians: f32) -> Affine {
-	s, c := math.sin(radians), math.cos(radians)
+// A rotation by `turns` (a whole circle is 1), clockwise on screen for a positive angle, like CSS rotate(). A quarter
+// turn gives an exact matrix (0 and ±1).
+affine_rotate :: proc(turns: f32) -> Affine {
+	s, c := turn.sincos(turns)
 	return {a = c, b = s, c = -s, d = c}
 }
-// CSS skew(ax, ay) (radians): x' = x + tan(ax)*y, y' = y + tan(ay)*x.
-affine_skew :: proc(ax: f32, ay: f32 = 0) -> Affine { return {a = 1, b = math.tan(ay), c = math.tan(ax), d = 1} }
+// CSS skew(ax, ay), the angles in turns: x' = x + tan(ax)*y, y' = y + tan(ay)*x.
+affine_skew :: proc(ax: f32, ay: f32 = 0) -> Affine { return {a = 1, b = turn.tan(ay), c = turn.tan(ax), d = 1} }
 
 // `m` applied around `origin` instead of (0, 0) (CSS transform-origin): translate(origin) * m * translate(-origin).
 affine_around :: proc(m: Affine, origin: Vec2) -> Affine {

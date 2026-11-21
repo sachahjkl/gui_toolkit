@@ -4,6 +4,7 @@ package tk_ink
 
 import "core:math"
 import "core:testing"
+import turn "../turn"
 
 // A stroke along `dir` from the origin: `count` samples `step` apart, `dt` milliseconds apart.
 @(private = "file")
@@ -60,10 +61,10 @@ faster_is_thinner :: proc(t: ^testing.T) {
 
 @(test)
 chisel_follows_the_nib :: proc(t: ^testing.T) {
-	pen := Pen{nib = .Chisel, width = 4, nib_angle = 30}
-	a: f32 = 30 * math.RAD_PER_DEG
-	along := outline(straight(40, 2, 4, {math.cos(a), -math.sin(a)}), pen)   // rising to the right, with y down
-	across := outline(straight(40, 2, 4, {math.sin(a), math.cos(a)}), pen)
+	pen := Pen{nib = .Chisel, width = 4, nib_angle = 1.0 / 12}
+	s, c := turn.sincos(f32(1.0 / 12))
+	along := outline(straight(40, 2, 4, {c, -s}), pen)   // rising to the right, with y down
+	across := outline(straight(40, 2, 4, {s, c}), pen)
 	defer outline_destroy(&along)
 	defer outline_destroy(&across)
 	_, along_hi := middle_width(along)
@@ -90,8 +91,8 @@ arc_stroke :: proc(allocator := context.temp_allocator) -> []Sample {
 	s := make([]Sample, 60, allocator)
 	time: f64 = 0
 	for i in 0 ..< 60 {
-		a := f32(i) / 59 * math.PI / 2
-		s[i] = {at = {100 * math.cos(a), 100 * math.sin(a)}, time = time}
+		sn, cs := turn.sincos(f32(i) / 59 * 0.25)
+		s[i] = {at = {100 * cs, 100 * sn}, time = time}
 		time += 2 + f64(i % 7)
 	}
 	return s
@@ -191,7 +192,7 @@ level_area :: proc(ls: []Level) -> f32 {
 @(test)
 plain_ink_is_the_polygon :: proc(t: ^testing.T) {
 	// Every Ink field zero, round ends and tapered ones: one opaque level, the polygon's area.
-	for pen in ([]Pen{{nib = .Round, width = 4, thinning = 0.5}, {nib = .Chisel, width = 5, taper_start = 6, taper_end = 10, nib_angle = 30}}) {
+	for pen in ([]Pen{{nib = .Round, width = 4, thinning = 0.5}, {nib = .Chisel, width = 5, taper_start = 6, taper_end = 10, nib_angle = 1.0 / 12}}) {
 		o := outline(arc_stroke(), pen)
 		defer outline_destroy(&o)
 		poly := polygon(o)
@@ -487,7 +488,7 @@ a_leaned_felt_lays_broader_and_lighter :: proc(t: ^testing.T) {
 	pen := PEN_FELT
 	pen.ink.grain = 0   // one piece per segment: their densities compare directly
 	up := straight(50, 2, 8)
-	leaned := tilted(straight(50, 2, 8), {50, 40})   // a strong lean, to the lower right
+	leaned := tilted(straight(50, 2, 8), {50.0 / 360, 40.0 / 360})   // a strong lean, to the lower right
 	a := outline(up, pen)
 	b := outline(leaned, pen)
 	defer outline_destroy(&a)
@@ -513,10 +514,10 @@ a_leaned_felt_lays_broader_and_lighter :: proc(t: ^testing.T) {
 @(test)
 a_chisel_turns_with_the_pen :: proc(t: ^testing.T) {
 	// The fixed nib at 30° would lay both strokes below at about half and 0.87 of the width: only the lean decides here.
-	pen := Pen{nib = .Chisel, width = 4, nib_angle = 30, tilt = 1}
+	pen := Pen{nib = .Chisel, width = 4, nib_angle = 1.0 / 12, tilt = 1}
 	// Leaned to the right: the shaft lies along +x, the edge is square to it.
-	along := outline(tilted(straight(40, 2, 4, {1, 0}), {60, 0}), pen)
-	across := outline(tilted(straight(40, 2, 4, {0, 1}), {60, 0}), pen)
+	along := outline(tilted(straight(40, 2, 4, {1, 0}), {60.0 / 360, 0}), pen)
+	across := outline(tilted(straight(40, 2, 4, {0, 1}), {60.0 / 360, 0}), pen)
 	defer outline_destroy(&along)
 	defer outline_destroy(&across)
 	along_lo, _ := middle_width(along)
@@ -526,8 +527,8 @@ a_chisel_turns_with_the_pen :: proc(t: ^testing.T) {
 
 	// Leaned to the lower right (a right hand's hold), the azimuth at 45° with y down.
 	r: f32 = 1 / math.SQRT_TWO
-	down := outline(tilted(straight(40, 2, 4, {r, r}), {40, 40}), pen)
-	up := outline(tilted(straight(40, 2, 4, {r, -r}), {40, 40}), pen)
+	down := outline(tilted(straight(40, 2, 4, {r, r}), {40.0 / 360, 40.0 / 360}), pen)
+	up := outline(tilted(straight(40, 2, 4, {r, -r}), {40.0 / 360, 40.0 / 360}), pen)
 	defer outline_destroy(&down)
 	defer outline_destroy(&up)
 	down_lo, _ := middle_width(down)
@@ -537,18 +538,18 @@ a_chisel_turns_with_the_pen :: proc(t: ^testing.T) {
 
 	// Half the tilt: the edge halfway (on the doubled angle) between the nib's 30° and the shaft's square, 90°.
 	pen.tilt = 0.5
-	half := outline(tilted(straight(40, 2, 4, {1, 0}), {60, 0}), pen)
+	half := outline(tilted(straight(40, 2, 4, {1, 0}), {60.0 / 360, 0}), pen)
 	defer outline_destroy(&half)
 	half_lo, half_hi := middle_width(half)
-	want := 4 * math.sin(f32(60) * math.RAD_PER_DEG)
+	want := 4 * turn.sin(f32(1.0 / 6))
 	testing.expectf(t, abs(half_lo - want) < 0.1 && abs(half_hi - want) < 0.1, "half the turn: %v..%v, want %v", half_lo, half_hi, want)
 }
 
 @(test)
 any_tilt_makes_no_nan :: proc(t: ^testing.T) {
 	tilts := [][2]f32 {
-		{90, 90}, {-90, -90}, {90, -90}, {90, 0}, {0, -90}, {89.99, 89.99}, {1000, -1000},
-		{math.nan_f32(), 0}, {0, math.inf_f32(1)}, {0.001, 0}, {45, -45},
+		{0.25, 0.25}, {-0.25, -0.25}, {0.25, -0.25}, {0.25, 0}, {0, -0.25}, {0.24997, 0.24997}, {3, -3},
+		{math.nan_f32(), 0}, {0, math.inf_f32(1)}, {3e-6, 0}, {0.125, -0.125},
 	}
 	for tilt in tilts {
 		for preset in PRESETS {

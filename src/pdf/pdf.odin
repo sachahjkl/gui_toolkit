@@ -12,6 +12,7 @@
 package tk_pdf
 
 @(require) import "core:slice"   // (used only with GT_PDF)
+@(require) import turn "../turn"   // (used only with GT_PDF)
 
 GT_PDF :: #config(GT_PDF, false)
 
@@ -76,15 +77,15 @@ Font :: struct {
 // A font the program gave (font_add); 0 is none: the stamp's standard `font`.
 Face :: distinct u32
 
-// Text on a page. `at`: its top-left corner in points, in the page as its source shows it (before the page's turns),
-// y down. `turns`: quarter turns clockwise of the text about that corner; a stamp placed on a page shown turned by k
+// Text on a page. `at`: its top-left corner in points, in the page as its source shows it (before the page's quarters),
+// y down. `quarters`: quarter turns clockwise of the text about that corner; a stamp placed on a page shown turned by k
 // takes (4 - k) % 4 to read upright. `background`: alpha 0 for none (any other alpha: opaque).
 //
 // In a standard `font`, its characters are written in WinAnsi (the Western European ones); another is written as "?".
 // With a `face`, the file embeds that font's glyphs the stamps use (a subset), the text copyable; a character the
 // font lacks is its empty glyph.
 //
-// The effects of a signature: `tilt`, degrees the text rises to the right (-45..45), about its box's centre;
+// The effects of a signature: `tilt`, turns the text rises to the right (-0.125..0.125), about its box's centre;
 // `weight`, the glyphs' outline stroked too, in thousandths of the size (0..200: a heavier pen); `flourish`, a pen's
 // stroke under the text; `caption`, one line under it in Helvetica, smaller ("Paris, 19/11/2026"). Each grows the box
 // stamp_size gives.
@@ -93,7 +94,7 @@ Face :: distinct u32
 // mark for the person (a signature's ink, its mention and its caption move and go together). 0: on its own.
 Stamp :: struct {
 	at:         [2]f32,
-	turns:      int,
+	quarters:   int,
 	font:       Font,
 	face:       Face,
 	size:       f32,
@@ -110,7 +111,7 @@ Stamp :: struct {
 // What a shape is.
 Shape_Kind :: enum u8 { Rect, Ellipse, Line, Arrow, Ink, Outline }
 
-// A shape drawn on a page: its points in points, in the page as its source shows it (before the page's turns), y down:
+// A shape drawn on a page: its points in points, in the page as its source shows it (before the page's quarters), y down:
 // two corners (Rect, Ellipse: the box it fills), two ends (Line; Arrow: from, then to, where its head is), the free
 // line's points (Ink), or closed outlines filled with the non-zero rule (Outline: a pen's ink as gt:ink gives it, a
 // point whose x is NaN starts the next outline). `stroke` and `fill`: alpha 0 for none; a colour less than opaque is
@@ -128,20 +129,20 @@ Shape :: struct {
 }
 
 // A page of the program's list: page `index` of `source`, or a blank page of `size` points when `source` is 0.
-// `turns`: quarter turns clockwise, added to the page's own rotation.
+// `quarters`: quarter turns clockwise, added to the page's own rotation.
 Page :: struct {
-	source: Source,
-	index:  int,
-	turns:  int,
-	size:   [2]f32,
-	stamps: []Stamp,
-	shapes: []Shape,
+	source:   Source,
+	index:    int,
+	quarters: int,
+	size:     [2]f32,
+	stamps:   []Stamp,
+	shapes:   []Shape,
 }
 
 @(private)
 C_Stamp :: struct {
 	x, y, size:        f32,
-	turns, font:       u32,
+	quarters, font:    u32,
 	color, background: u32,
 	text:              [^]u8,
 	text_len:          uint,
@@ -163,7 +164,7 @@ C_Shape :: struct {
 
 @(private)
 C_Page :: struct {
-	source, index, turns: u32,
+	source, index, quarters: u32,
 	width, height:        f32,
 	stamps:               [^]C_Stamp,
 	stamp_count:          uint,
@@ -201,7 +202,7 @@ page_count :: proc(source: Source) -> int {
 	when GT_PDF { return max(int(gt_pdf_page_count(u32(source))), 0) } else { return 0 }
 }
 
-// A page's size in points as its source shows it: its own rotation applied, before a program's turns.
+// A page's size in points as its source shows it: its own rotation applied, before a program's quarter turns.
 page_size :: proc(source: Source, index: int) -> (size: [2]f32, ok: bool) {
 	when GT_PDF {
 		if index < 0 { return }
@@ -213,11 +214,11 @@ page_size :: proc(source: Source, index: int) -> (size: [2]f32, ok: bool) {
 }
 
 // The size a page of the list is shown at, in points: its source's (or its own when blank), its sides swapped by an
-// odd number of turns.
+// odd number of quarter turns.
 shown_size :: proc(page: Page) -> [2]f32 {
 	size := page.size
 	if page.source != 0 { size, _ = page_size(page.source, page.index) }
-	if ((page.turns % 4) + 4) % 4 % 2 == 1 { size = {size.y, size.x} }
+	if page.quarters %% 2 == 1 { size = {size.y, size.x} }
 	return size
 }
 
@@ -227,11 +228,12 @@ c_stamps :: proc(stamps: []Stamp, allocator := context.temp_allocator) -> []C_St
 	for s, i in stamps {
 		code := u32(s.font.family) + (s.font.bold ? 4 : 0) + (s.font.italic ? 8 : 0)
 		out[i] = C_Stamp{
-			x = s.at.x, y = s.at.y, size = s.size, turns = u32(((s.turns % 4) + 4) % 4), font = code,
+			x = s.at.x, y = s.at.y, size = s.size, quarters = u32(s.quarters %% 4), font = code,
 			color = u32(s.color[0]) << 16 | u32(s.color[1]) << 8 | u32(s.color[2]),
 			background = u32(s.background[0]) << 24 | u32(s.background[1]) << 16 | u32(s.background[2]) << 8 | u32(s.background[3]),
 			text = raw_data(s.text), text_len = uint(len(s.text)),
-			face = u32(s.face), tilt = s.tilt, weight = s.weight, flags = s.flourish ? 1 : 0,
+			// (the engine takes the tilt in degrees)
+			face = u32(s.face), tilt = turn.to_degrees(s.tilt), weight = s.weight, flags = s.flourish ? 1 : 0,
 			caption = raw_data(s.caption), caption_len = uint(len(s.caption)),
 		}
 	}
@@ -257,7 +259,7 @@ c_page :: proc(p: Page) -> C_Page {
 	stamps := c_stamps(p.stamps)
 	shapes := c_shapes(p.shapes)
 	return C_Page{
-		source = u32(p.source), index = u32(max(p.index, 0)), turns = u32(((p.turns % 4) + 4) % 4),
+		source = u32(p.source), index = u32(max(p.index, 0)), quarters = u32(p.quarters %% 4),
 		width = p.size.x, height = p.size.y, stamps = raw_data(stamps), stamp_count = uint(len(stamps)),
 		shapes = raw_data(shapes), shape_count = uint(len(shapes)),
 	}
@@ -310,7 +312,7 @@ font_add :: proc(bytes: []u8) -> (face: Face, ok: bool) {
 	}
 }
 
-// A stamp's box in points, before its turns: its lines with their margin.
+// A stamp's box in points, before its quarter turns: its lines with their margin.
 stamp_size :: proc(stamp: Stamp) -> (size: [2]f32) {
 	when GT_PDF {
 		cs := c_stamps({stamp})

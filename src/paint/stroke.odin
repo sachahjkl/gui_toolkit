@@ -1,6 +1,7 @@
 package tk_paint
 
 import "core:math"
+import turn "../turn"
 
 Join :: enum u8 {
 	Miter,   // the outer edges met in a point; a bevel past the miter limit (GDI+'s LineJoin.Miter, its default)
@@ -141,12 +142,12 @@ cap_end :: proc(out: ^Path, p, d: [2]f32, hw: f32, kind: Cap, tolerance: f32) {
 disc :: proc(out: ^Path, c: [2]f32, r, tolerance: f32) {
 	if r <= 0 { return }
 	// the step whose chord strays `tolerance` from the circle
-	step := 2 * math.acos(clamp(1 - tolerance / r, -1, 1))
-	n := max(8, int(math.ceil(math.TAU / max(step, 1e-3))))
+	step := 2 * turn.acos(clamp(1 - tolerance / r, -1, 1))
+	n := max(8, int(math.ceil(1 / max(step, 1.6e-4))))   // (1.6e-4 turns: a milliradian)
 	pts := make([][2]f32, n, context.temp_allocator)
 	for i in 0 ..< n {
-		a := math.TAU * f32(i) / f32(n)
-		pts[i] = c + [2]f32{math.cos(a), math.sin(a)} * r
+		s, k := turn.sincos(f32(i) / f32(n))
+		pts[i] = c + [2]f32{k, s} * r
 	}
 	piece(out, pts)
 }

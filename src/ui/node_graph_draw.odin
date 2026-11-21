@@ -5,6 +5,7 @@ package ui
 // drawn, the band and the minimap. Everything is placed relative to the area's top-left, laid out this frame.
 
 import "core:math"
+import turn "../turn"
 import "core:strings"
 import "../draw"
 import "../flowgraph"
@@ -353,7 +354,7 @@ node_graph_node_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 		draw.rect(dc, {mark - e, mark + e}, c.weak, e, w)
 		draw.line(dc, mark + {-e * 0.7, e * 0.7}, mark + {e * 0.7, -e * 0.7}, w, c.weak)
 	case .Running:
-		machined_lamp(dc, mark, d.em * 0.55, c.accent, 1, 0.5 + 0.5 * math.sin(d.phase * 2 * math.PI))
+		machined_lamp(dc, mark, d.em * 0.55, c.accent, 1, 0.5 + 0.5 * turn.sin(d.phase))
 		// a bar that crosses the header's bottom edge: the node is at work
 		w := (header.max.x - header.min.x) * GRAPH_RUN_BAR
 		bx := header.min.x - w + (header.max.x - header.min.x + w) * d.phase

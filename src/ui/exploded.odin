@@ -2,6 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import turn "../turn"
 import "../draw"
 import "../platform"
 
@@ -21,7 +22,7 @@ import "../platform"
 //   Outlines the depths' planes, each box only its outline in its plane's colour
 Exploded_Mode :: enum u8 { Layers, Depths, Outlines }
 
-// What the view keeps between frames. `yaw` and `pitch` in degrees; `spread` in logical pixels between two planes;
+// What the view keeps between frames. `yaw` and `pitch` in turns; `spread` in logical pixels between two planes;
 // `fit` the share of the window the stack is shrunk to. `t` goes from 0 (the page, flat) to 1 (the view, open) while
 // `on`, and back while not: the picture is the view's while t > 0.
 Exploded_View :: struct {
@@ -88,13 +89,13 @@ exploded_reset :: proc(v: ^Exploded_View) {
 }
 
 // The view's first angles and spread, and their bounds.
-@(private = "file") EXPLODED_YAW :: -30
-@(private = "file") EXPLODED_PITCH :: 20
+@(private = "file") EXPLODED_YAW :: -1.0 / 12
+@(private = "file") EXPLODED_PITCH :: 1.0 / 18
 @(private = "file") EXPLODED_SPREAD :: 40
 @(private = "file") EXPLODED_SPREAD_MIN :: 4
 @(private = "file") EXPLODED_SPREAD_MAX :: 400
-@(private = "file") EXPLODED_PITCH_MAX :: 85
-@(private = "file") EXPLODED_YAW_MAX :: 180
+@(private = "file") EXPLODED_PITCH_MAX :: 85.0 / 360
+@(private = "file") EXPLODED_YAW_MAX :: 0.5
 @(private = "file") EXPLODED_FIT_MIN :: 0.3
 @(private = "file") EXPLODED_FIT_MAX :: 1.2
 // The way from the page to the view, and back. A frame's step is held under a few frames' worth: a frame that comes
@@ -107,8 +108,8 @@ exploded_reset :: proc(v: ^Exploded_View) {
 // The panel: its first width (floating or docked), the column of its sliders' names.
 @(private = "file") EXPLODED_PANEL_EM :: 16
 @(private = "file") EXPLODED_LABEL_EM :: 4.5
-// Degrees per pixel of a drag; the factor of the spread per wheel notch.
-@(private = "file") EXPLODED_TURN_PER_PX :: 0.4
+// Turns per pixel of a drag; the factor of the spread per wheel notch.
+@(private = "file") EXPLODED_TURN_PER_PX :: 0.4 / 360
 @(private = "file") EXPLODED_SPREAD_STEP :: 1.15
 // The stack is first shrunk to this share of the window (the panel's zoom), so that turned it stays in view; the eye is this many window sizes
 // from it; the stack's depth is held under this share of the eye's distance (nothing passes behind the eye).
@@ -121,8 +122,8 @@ exploded_reset :: proc(v: ^Exploded_View) {
 @(private = "file") EXPLODED_GROUND_TOP :: Color{0.09, 0.12, 0.22, 1}
 @(private = "file") EXPLODED_GROUND_FOOT :: Color{0.02, 0.02, 0.04, 1}
 @(private = "file") EXPLODED_VIGNETTE :: Color{0, 0, 0, 0.55}
-// A plane's colour: its hue turns by this many degrees from one plane to the next (a golden angle: neighbours differ).
-@(private = "file") EXPLODED_HUE_STEP :: 137.5
+// A plane's colour: its hue moves this far (turns) from one plane to the next (a golden angle: neighbours differ).
+@(private = "file") EXPLODED_HUE_STEP :: 137.5 / 360
 @(private = "file") EXPLODED_TINT :: 0.10      // how much of its colour a plane's boxes wear (Depths)
 @(private = "file") EXPLODED_EDGE :: 0.9       // the outline's opacity
 
@@ -174,8 +175,8 @@ exploded_events :: proc(s: ^State, events: []platform.Event) -> []platform.Event
 		case .Mouse_Move:
 			if v.dragging {
 				d := e.pos - v.at
-				// (held in -180..180, the panel's slider's range: a turn past it comes round the other side)
-				v.yaw = math.mod(v.yaw + d.x * EXPLODED_TURN_PER_PX + 540, 360) - 180
+				// (held in -0.5..0.5, the panel's slider's range: a turn past it comes round the other side)
+				v.yaw = math.mod(v.yaw + d.x * EXPLODED_TURN_PER_PX + 1.5, 1) - 0.5
 				v.pitch = clamp(v.pitch - d.y * EXPLODED_TURN_PER_PX, -EXPLODED_PITCH_MAX, EXPLODED_PITCH_MAX)
 				v.at = e.pos
 				s.anim_busy = true
@@ -277,9 +278,15 @@ exploded_view_build :: proc(view: ^View, v: ^Exploded_View) {
 			next({width = fill()})
 			if segmented("###exploded_mode", words, &mode) { v.mode = Exploded_Mode(mode) }
 			space(ITEM_GAP)
-			exploded_slider_row("Yaw", "###exploded_yaw", &v.yaw, -EXPLODED_YAW_MAX, EXPLODED_YAW_MAX, 1, "%.0f°", EXPLODED_YAW, em)
+			// (a person reads the angles in degrees: the sliders show them so, the view keeps turns)
+			yaw, pitch := turn.to_degrees(v.yaw), turn.to_degrees(v.pitch)
+			if exploded_slider_row("Yaw", "###exploded_yaw", &yaw, turn.to_degrees(f32(-EXPLODED_YAW_MAX)), turn.to_degrees(f32(EXPLODED_YAW_MAX)), 1, "%.0f°", turn.to_degrees(f32(EXPLODED_YAW)), em) {
+				v.yaw = turn.from_degrees(yaw)
+			}
 			space(LINE_GAP)
-			exploded_slider_row("Pitch", "###exploded_pitch", &v.pitch, -EXPLODED_PITCH_MAX, EXPLODED_PITCH_MAX, 1, "%.0f°", EXPLODED_PITCH, em)
+			if exploded_slider_row("Pitch", "###exploded_pitch", &pitch, turn.to_degrees(f32(-EXPLODED_PITCH_MAX)), turn.to_degrees(f32(EXPLODED_PITCH_MAX)), 1, "%.0f°", turn.to_degrees(f32(EXPLODED_PITCH)), em) {
+				v.pitch = turn.from_degrees(pitch)
+			}
 			space(LINE_GAP)
 			exploded_slider_row("Spread", "###exploded_spread", &v.spread, EXPLODED_SPREAD_MIN, EXPLODED_SPREAD_MAX, 1, "%.0f", EXPLODED_SPREAD, em)
 			space(LINE_GAP)
@@ -300,14 +307,15 @@ exploded_view_build :: proc(view: ^View, v: ^Exploded_View) {
 
 // A slider's row: its name in a column of its own at the left, the slider and its value after it.
 @(private = "file")
-exploded_slider_row :: proc(name, id: string, value: ^f32, lo, hi, step: f32, format: string, default: f32, em: f32) {
+exploded_slider_row :: proc(name, id: string, value: ^f32, lo, hi, step: f32, format: string, default: f32, em: f32) -> (changed: bool) {
 	next({width = fill(), height = children_sum(), axis = .X})
 	if row(.Center) {
 		next({width = px(math.round(em * EXPLODED_LABEL_EM)), height = px(dense(em * 2))})
 		build_box({.Draw_Text}, name)
 		next({width = fill(), height = px(dense(em * 2))})
-		_ = slider(id, value, lo, hi, step, format, default)
+		changed = slider(id, value, lo, hi, step, format, default)
 	}
+	return
 }
 
 @(private = "file")
@@ -363,12 +371,12 @@ exploded_draw :: proc(s: ^State, dc: ^draw.Context) {
 	fit := math.lerp(f32(1), v.fit, e)
 	// (the stack's half depth, shrunk by the fit, stays in front of the eye)
 	spread := e * min(v.spread * s.scale, EXPLODED_DEPTH_SHARE * 2 * eye / (f32(n) * fit))
-	turn := exploded_turn(e * v.yaw, e * v.pitch, fit, eye)
+	turned := exploded_turn(e * v.yaw, e * v.pitch, fit, eye)
 	line := max(1, math.round(s.scale))
 
 	items := make([]draw.Plane_Item, n, context.temp_allocator)
 	for level, d in levels {
-		hue := draw.hsv(f32(d) * EXPLODED_HUE_STEP / 360, 0.65, 1, EXPLODED_EDGE * e)
+		hue := draw.hsv(f32(d) * EXPLODED_HUE_STEP, 0.65, 1, EXPLODED_EDGE * e)
 		draw.push_plane(dc, win, 1, {mips = true})
 		// (the root's plane is the page's ground: the theme's background under its boxes; Outlines: it fades out with
 		// the boxes)
@@ -403,7 +411,7 @@ exploded_draw :: proc(s: ^State, dc: ^draw.Context) {
 		z := (f32(d) - f32(n - 1) * 0.5) * spread
 		at := draw.Mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -mid.x, -mid.y, z, 1}
 		back := draw.Mat4{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, mid.x, mid.y, 0, 1}
-		items[d] = draw.plane_item(layer, draw.mat4_mul(back, draw.mat4_mul(turn, at)))
+		items[d] = draw.plane_item(layer, draw.mat4_mul(back, draw.mat4_mul(turned, at)))
 	}
 	draw.draw_planes(dc, items)
 	// (flat, over the planes: real widgets, read as the page's)
@@ -440,9 +448,8 @@ exploded_ground :: proc(dc: ^draw.Context, win: Rect) {
 // perspective of an eye `eye` pixels in front (+z comes toward the eye: the deeper boxes, in front of their parents).
 @(private = "file")
 exploded_turn :: proc(yaw, pitch, k, eye: f32) -> draw.Mat4 {
-	ya, pa := yaw * math.PI / 180, pitch * math.PI / 180
-	cy, sy := math.cos(ya), math.sin(ya)
-	cp, sp := math.cos(pa), math.sin(pa)
+	sy, cy := turn.sincos(yaw)
+	sp, cp := turn.sincos(pitch)
 	ry := draw.Mat4{cy, 0, -sy, 0, 0, 1, 0, 0, sy, 0, cy, 0, 0, 0, 0, 1}
 	rx := draw.Mat4{1, 0, 0, 0, 0, cp, sp, 0, 0, -sp, cp, 0, 0, 0, 0, 1}
 	fit := draw.Mat4{k, 0, 0, 0, 0, k, 0, 0, 0, 0, k, 0, 0, 0, 0, 1}

@@ -81,7 +81,7 @@ each `Drop_*` (it returns the effect, and handles the `Drop` inside the call), s
 ## Fingers and pens
 
 `Pointer_Down`, `Pointer_Move`, `Pointer_Up`, `Pointer_Cancel` carry `Event.pointer` (`Pointer_Info`: `id`, `kind`
-touch or pen, `primary`, `pressure` 0..1, `measured`, pen `tilt` / `twist` / `barrel` / `eraser`, touch `contact` size).
+touch or pen, `primary`, `pressure` 0..1, `measured`, pen `tilt` / `twist` (turns) / `barrel` / `eraser`, touch `contact` size).
 `pressure` follows Pointer Events: 0 out of contact, 0.5 in contact for a device that measures none; `measured` says the
 device gave it. The mouse keeps `Mouse_*`, which now also carry `buttons` (the buttons held after the event). The
 emulation of the mouse for a finger or a pen still arrives, marked `emulated`: an app that only knows the mouse works

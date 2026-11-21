@@ -2,6 +2,7 @@ package font
 
 import "base:runtime"
 import "core:math"
+import turn "../turn"
 import "core:mem/virtual"
 import "core:slice"
 
@@ -570,8 +571,8 @@ decode_paint :: proc(r: ^Rd, off: int) -> (p: Paint) {
 		p.gradient = Gradient{kind = .Radial, p0 = point(r, off + 4), r0 = f32(rd_u16(r, off + 8)), p1 = point(r, off + 10), r1 = f32(rd_u16(r, off + 14))}
 	case 8, 9:   // PaintSweepGradient
 		p.kind, p.line, p.var = .Gradient, sub(r, off, 1), p.format == 9
-		// sweep angles carry a bias of 1.0 (+180 degrees), so that +360 can be written
-		p.gradient = Gradient{kind = .Sweep, p0 = point(r, off + 4), a0 = (rd_f2(r, off + 8) + 1) * 180, a1 = (rd_f2(r, off + 10) + 1) * 180}
+		// the font's sweep angles are half turns with a bias of 1.0 (half a turn), so that a whole turn can be written
+		p.gradient = Gradient{kind = .Sweep, p0 = point(r, off + 4), a0 = (rd_f2(r, off + 8) + 1) * 0.5, a1 = (rd_f2(r, off + 10) + 1) * 0.5}
 	case 10:   // PaintGlyph
 		p.kind, p.child, p.gid = .Glyph, sub(r, off, 1), u16(rd_u16(r, off + 4))
 	case 11:   // PaintColrGlyph
@@ -672,17 +673,17 @@ walk_paint :: proc(w: ^Walk, off: int) {
 	}
 }
 
-// F2Dot14 angle in half turns, counter-clockwise (y up).
+// The font's F2Dot14 angle, in half turns, counter-clockwise (y up).
 @(private)
-rotation :: proc(a: f32) -> Mat {
-	s, c := math.sincos(a * math.PI)
+rotation :: proc(half_turns: f32) -> Mat {
+	s, c := turn.sincos(half_turns * 0.5)
 	return {c, s, -s, c, 0, 0}
 }
 
-// The paint spec: x' = x - tan(xSkew) y, y' = y + tan(ySkew) x (angles counter-clockwise).
+// The paint spec: x' = x - tan(xSkew) y, y' = y + tan(ySkew) x (the font's angles: half turns, counter-clockwise).
 @(private)
 skew :: proc(ax, ay: f32) -> Mat {
-	return {1, math.tan(ay * math.PI), -math.tan(ax * math.PI), 1, 0, 0}
+	return {1, turn.tan(ay * 0.5), -turn.tan(ax * 0.5), 1, 0, 0}
 }
 
 // The paint at `at` clipped to a box (font units, in the current transform).
@@ -836,7 +837,7 @@ Gradient :: struct {
 	kind:       Gradient_Kind,
 	p0, p1, p2: [2]f32,
 	r0, r1:     f32,
-	a0, a1:     f32,   // sweep: degrees
+	a0, a1:     f32,   // sweep: turns, counter-clockwise from +x (y up)
 	extend:     int,   // 0 pad, 1 repeat, 2 reflect
 	empty:      bool,  // paints nothing
 	stops:      [dynamic]Stop,
@@ -966,9 +967,8 @@ fill_gradient :: proc(w: ^Walk, g: ^Gradient) {
 				}
 				t = s0
 			case .Sweep:
-				// counter-clockwise from +x, 0 <= angle < 360: the only angles the gradient is sampled at
-				ang := math.atan2(p.y - g.p0.y, p.x - g.p0.x) * (180 / math.PI)
-				if ang < 0 { ang += 360 }
+				// counter-clockwise from +x, 0 <= angle < 1: the only angles the gradient is sampled at
+				ang := turn.wrap(turn.atan2(p.y - g.p0.y, p.x - g.p0.x))
 				switch {
 				case g.a1 != g.a0: t = (ang - g.a0) / (g.a1 - g.a0)
 				case ang >= g.a0: t = 2   // start = end with pad: a step

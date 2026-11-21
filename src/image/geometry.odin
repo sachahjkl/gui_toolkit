@@ -16,15 +16,15 @@ crop :: proc(img: Image, x, y, w, h: int, allocator := context.allocator) -> Ima
 @(private = "file")
 TILE :: 64
 
-// `img` turned by `quarter_turns` quarters of a turn, clockwise (negative: counterclockwise).
-rotate :: proc(img: Image, quarter_turns: int, allocator := context.allocator) -> Image #no_bounds_check {
+// `img` turned by `quarters` quarter turns, clockwise (negative: counterclockwise).
+rotate :: proc(img: Image, quarters: int, allocator := context.allocator) -> Image #no_bounds_check {
 	if !valid(img) { return {} }
-	turns := ((quarter_turns % 4) + 4) % 4
-	if turns == 0 { return clone(img, allocator) }
+	q := quarters %% 4
+	if q == 0 { return clone(img, allocator) }
 	w, h := img.width, img.height
-	out := turns == 2 ? create(w, h, allocator = allocator) : create(h, w, allocator = allocator)
+	out := q == 2 ? create(w, h, allocator = allocator) : create(h, w, allocator = allocator)
 	src, dst := words(img), words(out)
-	if turns == 2 {
+	if q == 2 {
 		n := w * h
 		for i in 0 ..< n { dst[n - 1 - i] = src[i] }
 		return out
@@ -34,7 +34,7 @@ rotate :: proc(img: Image, quarter_turns: int, allocator := context.allocator) -
 		for tx := 0; tx < w; tx += TILE {
 			for y in ty ..< min(ty + TILE, h) {
 				row := src[y * w:]
-				if turns == 1 {
+				if q == 1 {
 					for x in tx ..< min(tx + TILE, w) { dst[x * h + (h - 1 - y)] = row[x] }
 				} else {
 					for x in tx ..< min(tx + TILE, w) { dst[(w - 1 - x) * h + y] = row[x] }

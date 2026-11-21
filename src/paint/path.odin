@@ -1,6 +1,7 @@
 package tk_paint
 
 import "core:math"
+import turn "../turn"
 
 Verb :: enum u8 {
 	Move,    // one point: a new figure
@@ -69,56 +70,60 @@ last_point :: proc(p: Path) -> [2]f32 {
 	return len(p.points) > 0 ? p.points[len(p.points) - 1] : {}
 }
 
-// An arc of the ellipse in the box (x, y, w, h), from `start` degrees, `sweep` degrees long (positive: clockwise on a canvas).
-// The angles are those of GDI+'s AddArc: the direction from the centre, not the ellipse's parameter. A begun figure gets a
-// line to the arc's start; else the arc begins one.
+// An arc of the ellipse in the box (x, y, w, h), from `start`, `sweep` long, both in turns from +x (positive: clockwise on
+// a canvas; 1: the whole ellipse). The angles are directions from the centre as GDI+'s AddArc takes them, not the
+// ellipse's parameter. A begun figure gets a line to the arc's start; else the arc begins one.
 arc :: proc(p: ^Path, x, y, w, h, start, sweep: f32) {
 	rx, ry := w / 2, h / 2
 	cx, cy := x + rx, y + ry
-	t0 := parameter(math.to_radians(start), rx, ry)
+	t0 := parameter(start, rx, ry)
 	t1: f32
-	if abs(sweep) >= 360 {
-		t1 = t0 + math.to_radians(sweep)
+	if abs(sweep) >= 1 {
+		t1 = t0 + sweep
 	} else {
-		d := parameter(math.to_radians(start + sweep), rx, ry) - t0
-		for sweep > 0 && d <= 0 { d += math.TAU }
-		for sweep < 0 && d >= 0 { d -= math.TAU }
+		d := parameter(start + sweep, rx, ry) - t0
+		for sweep > 0 && d <= 0 { d += 1 }
+		for sweep < 0 && d >= 0 { d -= 1 }
 		if sweep == 0 { d = 0 }
 		t1 = t0 + d
 	}
-	on :: proc(cx, cy, rx, ry, t: f32) -> [2]f32 { return {cx + rx * math.cos(t), cy + ry * math.sin(t)} }
+	on :: proc(cx, cy, rx, ry, t: f32) -> [2]f32 { s, c := turn.sincos(t); return {cx + rx * c, cy + ry * s} }
 	s := on(cx, cy, rx, ry, t0)
 	line_to(p, s.x, s.y)
 	// at most a quarter turn per Bézier
-	n := max(1, int(math.ceil(abs(t1 - t0) / (math.PI / 2) - 1e-4)))
+	n := max(1, int(math.ceil(abs(t1 - t0) / 0.25 - 1e-4)))
 	step := (t1 - t0) / f32(n)
-	k := 4.0 / 3 * math.tan(step / 4)
+	// (the Bézier's handle for an arc of `step` turns: 4/3 tan(θ/4))
+	k := 4.0 / 3 * turn.tan(step / 4)
 	for i in 0 ..< n {
 		a := t0 + step * f32(i)
 		b := a + step
 		pa, pb := on(cx, cy, rx, ry, a), on(cx, cy, rx, ry, b)
-		da := [2]f32{-rx * math.sin(a), ry * math.cos(a)}
-		db := [2]f32{-rx * math.sin(b), ry * math.cos(b)}
+		sa, ca := turn.sincos(a)
+		sb, cb := turn.sincos(b)
+		da := [2]f32{-rx * sa, ry * ca}
+		db := [2]f32{-rx * sb, ry * cb}
 		c1, c2 := pa + da * k, pb - db * k
 		cubic_to(p, c1.x, c1.y, c2.x, c2.y, pb.x, pb.y)
 	}
 }
 
-// The ellipse's parameter for the direction `angle` from its centre.
+// The ellipse's parameter (turns) for the direction `angle` (turns) from its centre, in the same turn as `angle`.
 @(private = "file")
 parameter :: proc(angle, rx, ry: f32) -> f32 {
 	if rx == ry { return angle }
-	return math.atan2(rx * math.sin(angle), ry * math.cos(angle)) + math.floor((angle + math.PI) / math.TAU) * math.TAU
+	s, c := turn.sincos(angle)
+	return turn.atan2(rx * s, ry * c) + math.floor(angle + 0.5)
 }
 
 // A rectangle with corners of radius r, clockwise from the top left corner's arc, as a closed figure of its own.
 round_rect :: proc(p: ^Path, x, y, w, h, r: f32) {
 	start_figure(p)
 	d := 2 * r
-	arc(p, x, y, d, d, 180, 90)
-	arc(p, x + w - d, y, d, d, 270, 90)
-	arc(p, x + w - d, y + h - d, d, d, 0, 90)
-	arc(p, x, y + h - d, d, d, 90, 90)
+	arc(p, x, y, d, d, 0.5, 0.25)
+	arc(p, x + w - d, y, d, d, 0.75, 0.25)
+	arc(p, x + w - d, y + h - d, d, d, 0, 0.25)
+	arc(p, x, y + h - d, d, d, 0.25, 0.25)
 	close(p)
 }
 
@@ -138,7 +143,7 @@ start_figure :: proc(p: ^Path) { p.open = false }
 // The ellipse in the box (x, y, w, h), as a closed figure of four Béziers of its own (GDI+'s AddEllipse).
 ellipse :: proc(p: ^Path, x, y, w, h: f32) {
 	start_figure(p)
-	arc(p, x, y, w, h, 0, 360)
+	arc(p, x, y, w, h, 0, 1)
 	close(p)
 }
 

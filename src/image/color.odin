@@ -1,6 +1,7 @@
 package tk_image
 
 import "core:math"
+import turn "../turn"
 
 // Colour adjustments, in place. Alpha stays. Each is a table of 256 values or a 3 x 3 matrix in fixed point: no
 // floating point per pixel.
@@ -32,11 +33,11 @@ invert :: proc(img: Image) #no_bounds_check {
 }
 
 // `brightness` from -1 (black) to 1 (white) is added; `contrast` from -1 (flat grey) to 1 (black and white) spreads the
-// colours from the middle grey (GIMP's: the slope is tan((contrast + 1) * pi / 4)). 0 and 0 change nothing.
+// colours from the middle grey (GIMP's: the slope is the tangent of (contrast + 1) eighths of a turn). 0 and 0 change nothing.
 brightness_contrast :: proc(img: Image, brightness, contrast: f32) {
 	if !valid(img) { return }
 	c := clamp(contrast, -1, 0.999)
-	slope := math.tan((c + 1) * math.PI / 4)
+	slope := turn.tan((c + 1) / 8)
 	table: [256]u8
 	for &v, i in table {
 		x := (f32(i) - 127.5) * slope + 127.5 + clamp(brightness, -1, 1) * 255
@@ -67,10 +68,9 @@ saturation :: proc(img: Image, amount: f32) {
 	apply_matrix(img, m)
 }
 
-// Hues turned by `degrees` around the colour wheel, their luminance kept (CSS's hue-rotate()).
-hue_rotate :: proc(img: Image, degrees: f32) {
-	a := math.to_radians(degrees)
-	c, s := math.cos(a), math.sin(a)
+// Hues turned by `turns` around the colour wheel (0.5: the opposite hue), their luminance kept (CSS's hue-rotate()).
+hue_rotate :: proc(img: Image, turns: f32) {
+	s, c := turn.sincos(turns)
 	m := [3][3]f32 {
 		{0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928},
 		{0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.140, 0.072 - c * 0.072 - s * 0.283},

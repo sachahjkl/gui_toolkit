@@ -155,7 +155,7 @@ turned_text_has_no_stripes :: proc(t: ^testing.T) {
 	a, b := pair(t)
 	defer unpair(a, b)
 	turned :: proc(f: ^Fx) {
-		draw.push_transform(&f.dc, draw.affine_around(draw.affine_rotate(0.4), {120, 45}))
+		draw.push_transform(&f.dc, draw.affine_around(draw.affine_rotate(0.064), {120, 45}))
 		draw.text(&f.dc, f.ui, 20, {40, 50}, BLACK, "Rotated text")
 		draw.pop_transform(&f.dc)
 	}
@@ -223,7 +223,7 @@ pictures_keep_their_stripes :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expectf(t, worst <= 2, "the replay differs by %d of 255", worst)
-	turned := frame(a, proc(f: ^Fx) { draw.replay(&f.dc, &pic, draw.affine_around(draw.affine_rotate(0.1), {120, 45})) })
+	turned := frame(a, proc(f: ^Fx) { draw.replay(&f.dc, &pic, draw.affine_around(draw.affine_rotate(0.016), {120, 45})) })
 	testing.expect_value(t, tinted(turned), 0)
 	r := ink(turned) / ink(direct)
 	testing.expectf(t, r > 0.7 && r < 1.3, "turned, the ink is %.3f of the direct text's", r)

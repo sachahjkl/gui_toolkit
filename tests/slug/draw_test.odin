@@ -119,7 +119,7 @@ slug_order_clip_and_rotation :: proc(t: ^testing.T) {
 		draw.push_clip_rounded(&f.dc, {{120, 4}, {150, 40}}, {10, 10, 10, 10})
 		draw.text(&f.dc, f.ui, 40, {110, 36}, BLACK, "HHHH")
 		draw.pop_clip(&f.dc)
-		draw.push_transform(&f.dc, draw.affine_around(draw.affine_rotate(0.5), {60, 70}))
+		draw.push_transform(&f.dc, draw.affine_around(draw.affine_rotate(0.08), {60, 70}))
 		draw.text(&f.dc, f.ui, 20, {20, 70}, BLACK, "Rotated")
 		draw.pop_transform(&f.dc)
 	})

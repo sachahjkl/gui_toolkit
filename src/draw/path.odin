@@ -1,6 +1,7 @@
 package draw
 
 import "core:math"
+import turn "../turn"
 import "../render"
 
 // Paths: lines, Bézier curves and arcs, flattened as they are added, then filled or stroked with antialiased edges.
@@ -96,14 +97,14 @@ path_cubic_to :: proc(p: ^Path, control_a, control_b, at: Vec2) {
 	for i in 1 ..= pieces { path_add(p, bezier_cubic_at(from, control_a, control_b, at, f32(i) / f32(pieces))) }
 }
 
-// An arc of the ellipse around `center`, from angle `from` to `to` (radians, clockwise on screen when `to` is greater), a line first from where the path stands.
+// An arc of the ellipse around `center`, from angle `from` to `to` (turns from +x, clockwise on screen when `to` is greater; 1: the whole ellipse), a line first from where the path stands.
 path_arc :: proc(p: ^Path, center, radii: Vec2, from, to: f32) {
-	at :: proc(center, radii: Vec2, a: f32) -> Vec2 { return center + radii * Vec2{math.cos(a), math.sin(a)} }
+	at :: proc(center, radii: Vec2, a: f32) -> Vec2 { s, c := turn.sincos(a); return center + radii * Vec2{c, s} }
 	start := at(center, radii, from)
 	if path_contour(p) == nil { path_move_to(p, start) } else { path_add(p, start) }
 	r := max(radii.x, radii.y)
-	step := 2 * math.acos(max(1 - path_tolerance(p) / max(r, path_tolerance(p)), -1))
-	pieces := clamp(int(math.ceil(abs(to - from) / max(step, 1e-3))), 1, PATH_CURVE_PIECES_MOST)
+	step := 2 * turn.acos(max(1 - path_tolerance(p) / max(r, path_tolerance(p)), -1))
+	pieces := clamp(int(math.ceil(abs(to - from) / max(step, 1.6e-4))), 1, PATH_CURVE_PIECES_MOST)   // (1.6e-4 turns: a milliradian)
 	for i in 1 ..= pieces { path_add(p, at(center, radii, from + (to - from) * f32(i) / f32(pieces))) }
 }
 

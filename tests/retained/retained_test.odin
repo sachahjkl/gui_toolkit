@@ -70,7 +70,7 @@ scene :: proc(f: ^Fx) {
 	draw.box_shadow(dc, {{12, 84}, {40, 108}}, {4, 4, 4, 4}, 3, draw.hex(0x000000a0), {{10, 80}, {38, 104}}, {4, 4, 4, 4})
 	draw.push_clip(dc, {{50, 80}, {124, 124}})
 	draw.push_clip_rounded(dc, {{52, 82}, {122, 122}}, {12, 12, 12, 12})
-	draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.4), {87, 102}))
+	draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.064), {87, 102}))
 	draw.rect(dc, {{60, 90}, {114, 114}}, draw.hex(0x2f9e44ff), 4)
 	draw.push_clip_ellipse(dc, {87, 102}, {20, 10})
 	draw.rect(dc, {{60, 90}, {114, 114}}, draw.hex(0xe03131ff))
@@ -173,8 +173,8 @@ replay_is_identical_to_direct_drawing :: proc(t: ^testing.T) {
 			{"integer translation", draw.affine_translate({7, -5}), 1, false, true},
 			{"alpha", draw.AFFINE_IDENTITY, 0.5, false, true},
 			{"inside a rounded clip", draw.affine_translate({3, 2}), 1, true, true},
-			{"rotated", draw.affine_around(draw.affine_rotate(0.3), {64, 64}), 1, false, false},
-			{"skewed", draw.affine_skew(0.2, 0.1), 1, false, false},
+			{"rotated", draw.affine_around(draw.affine_rotate(0.048), {64, 64}), 1, false, false},
+			{"skewed", draw.affine_skew(0.032, 0.016), 1, false, false},
 		}
 		for c in cases {
 			a := frame(&f, nil, .Direct, c.m, c.alpha, c.clip)
@@ -317,7 +317,7 @@ slots_move_content_without_recording :: proc(t: ^testing.T) {
 				draw.pop_transform(dc)
 			}
 		}
-		state := Cards{f = &f, angle = {0.1, 0.2, 0.3, 0.4}}
+		state := Cards{f = &f, angle = {0.016, 0.032, 0.048, 0.064}}
 		pic: draw.Picture
 		defer draw.picture_destroy(&pic)
 		slots: [4]u32
@@ -326,7 +326,7 @@ slots_move_content_without_recording :: proc(t: ^testing.T) {
 		draw.picture_end(&f.dc)
 		version := pic.version
 		for step in 0 ..< 3 {
-			for i in 0 ..< 4 { state.angle[i] += 0.37 * f32(step + i) }
+			for i in 0 ..< 4 { state.angle[i] += 0.059 * f32(step + i) }
 			for i in 0 ..< 4 {
 				center := draw.Vec2{32 + f32(i % 2) * 64, 32 + f32(i / 2) * 64}
 				draw.picture_set_slot(&pic, slots[i], draw.affine_around(draw.affine_rotate(state.angle[i]), center))

@@ -42,10 +42,10 @@ program's (feuille's signature pad first; any program with freehand marks next).
   `CHISEL_EDGE` (a real broad nib has a thickness). The edges stay perpendicular to the direction, as for a round
   nib. Refused: the nib's two corners as the edges (the true swept segment): the edges then cross wherever the
   direction crosses the nib's angle, the outline is a bow tie, and the strip's triangles turn over.
-- **The nib's angle is counter-clockwise as seen with y down** (a screen, a page in pixels): 30° rises to the right,
+- **The nib's angle is counter-clockwise as seen with y down** (a screen, a page in pixels): 30° (`nib_angle` 1.0 / 12 turn) rises to the right,
   the classical italic hand, so `PEN_FOUNTAIN`'s upstrokes are thin. A program in a y-up frame passes the negative.
 - **A stylus's tilt lays the side of the tip.** `Sample.tilt` is the pen's lean as `Pointer_Info` gives it (two
-  angles in degrees, x towards the right, y towards the user); `Pen.tilt` (0..1) says how much it changes the mark.
+  angles in turns, x towards the right, y towards the user); `Pen.tilt` (0..1) says how much it changes the mark.
   Each sample's tilt becomes the lean vector: the pen's axis projected on the paper, `(tan x, tan y)` normalised with
   the vertical, so its length is `sin` of the angle from upright and its direction is the azimuth, in the same frame as
   `at` (y down). The vector, not two angles, is resampled and smoothed (both ways, 1.5 widths, as the width): an

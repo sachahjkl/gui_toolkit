@@ -76,7 +76,7 @@ that is missing or stale is refused, and the card is drawn flat.
 ui.licence_card_look(state, "licence")   // found, settled, shaded, plain_text, turned, back, rx, ry, sweeping, moving
 ui.set_licence_card_flat(state, true)     // every card of the State drawn flat
 ui.licence_card_seal_module(x, y)         // whether module (x, y) of the back's code is dark (LICENCE_CARD_SEAL_MODULES a side)
-ui.licence_card_seal_reveal(rx, ry)       // 0 .. 1: how much of the code's contrast the back shows at that turn (degrees)
+ui.licence_card_seal_reveal(rx, ry)       // 0 .. 1: how much of the code's contrast the back shows at that turn (turns)
 ```
 
 `tests/licence_card`: a picture per finish on a dark and a light theme (the foil and the flat card), no frame due at rest

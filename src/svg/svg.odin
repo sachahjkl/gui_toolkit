@@ -16,6 +16,7 @@ import "core:mem/virtual"
 import "core:strconv"
 import "core:strings"
 import ascii "../ascii"
+import turn "../turn"
 
 Vec2 :: [2]f32
 Color :: [4]f32   // straight RGBA, 0..1
@@ -328,14 +329,14 @@ transform_of :: proc(s: string) -> Affine {
 			if len(v) >= 1 { t[0], t[3] = v[0], v[0] }
 			if len(v) >= 2 { t[3] = v[1] }
 		case "rotate":
+			// (the file's angles are degrees)
 			if len(v) >= 1 {
-				r := v[0] * math.PI / 180
-				cs, sn := math.cos(r), math.sin(r)
+				sn, cs := turn.sincos(turn.from_degrees(v[0]))
 				t = {cs, sn, -sn, cs, 0, 0}
 				if len(v) >= 3 { t = mul(mul({1, 0, 0, 1, v[1], v[2]}, t), {1, 0, 0, 1, -v[1], -v[2]}) }
 			}
-		case "skewX": if len(v) >= 1 { t[2] = math.tan(v[0] * math.PI / 180) }
-		case "skewY": if len(v) >= 1 { t[1] = math.tan(v[0] * math.PI / 180) }
+		case "skewX": if len(v) >= 1 { t[2] = turn.tan(turn.from_degrees(v[0])) }
+		case "skewY": if len(v) >= 1 { t[1] = turn.tan(turn.from_degrees(v[0])) }
 		case "matrix": if len(v) >= 6 { t = {v[0], v[1], v[2], v[3], v[4], v[5]} }
 		}
 		m = mul(m, t)
@@ -685,9 +686,9 @@ markers_add :: proc(p: ^Parser, n: ^Node, segs: []Seg, m: Affine, st: Style) {
 		angle: f32 = 0
 		orient, _ := attr(mk, "orient")
 		switch orient {
-		case "auto":               angle = math.atan2(dir.y, dir.x)
-		case "auto-start-reverse": angle = math.atan2(dir.y, dir.x) + (start ? math.PI : 0)
-		case:                      if a, is := strconv.parse_f32(orient); is { angle = a * math.PI / 180 }
+		case "auto":               angle = turn.atan2(dir.y, dir.x)
+		case "auto-start-reverse": angle = turn.atan2(dir.y, dir.x) + (start ? 0.5 : 0)
+		case:                      if a, is := strconv.parse_f32(orient); is { angle = turn.from_degrees(a) }   // (the file's degrees)
 		}
 		mw, hw := length(attr(mk, "markerWidth"))
 		mh, hh := length(attr(mk, "markerHeight"))
@@ -700,7 +701,7 @@ markers_add :: proc(p: ^Parser, n: ^Node, segs: []Seg, m: Affine, st: Style) {
 		if vb[2] > 0 && vb[3] > 0 { sx, sy = mw / vb[2], mh / vb[3]; s := min(sx, sy); sx, sy = s, s }
 		units, _ := attr(mk, "markerUnits")
 		k: f32 = units == "userSpaceOnUse" ? 1 : st.stroke_width
-		cs, sn := math.cos(angle), math.sin(angle)
+		sn, cs := turn.sincos(angle)
 		t := mul(m, Affine{1, 0, 0, 1, at.x, at.y})
 		t = mul(t, Affine{cs, sn, -sn, cs, 0, 0})
 		t = mul(t, Affine{k * sx, 0, 0, k * sy, 0, 0})
@@ -852,7 +853,7 @@ path_of :: proc(d: string) -> []Seg {
 			last_ctrl, cur = c1, p
 		case 'a':
 			p := base + {v[5], v[6]}
-			arc_add(&segs, cur, abs(v[0]), abs(v[1]), v[2], v[3] != 0, v[4] != 0, p)
+			arc_add(&segs, cur, abs(v[0]), abs(v[1]), turn.from_degrees(v[2]), v[3] != 0, v[4] != 0, p)   // (the file's degrees)
 			cur = p
 		}
 		last_cmd = cmd
@@ -860,14 +861,13 @@ path_of :: proc(d: string) -> []Seg {
 	return segs[:]
 }
 
-// SVG's arc from `from` to `to` (radii, x-axis rotation in degrees, flags) as cubics: the endpoint form to the centre form
+// SVG's arc from `from` to `to` (radii, x-axis rotation in turns, flags) as cubics: the endpoint form to the centre form
 // (SVG 1.1, F.6.5), then quarter turns or less.
 @(private)
-arc_add :: proc(segs: ^[dynamic]Seg, from: Vec2, rx_, ry_, rot_deg: f32, large, sweep: bool, to: Vec2) {
+arc_add :: proc(segs: ^[dynamic]Seg, from: Vec2, rx_, ry_, rot: f32, large, sweep: bool, to: Vec2) {
 	rx, ry := rx_, ry_
 	if rx == 0 || ry == 0 || from == to { append(segs, Seg{kind = .Line, p = to}); return }
-	phi := rot_deg * math.PI / 180
-	cs, sn := math.cos(phi), math.sin(phi)
+	sn, cs := turn.sincos(rot)
 	d := (from - to) * 0.5
 	x1 := cs * d.x + sn * d.y
 	y1 := -sn * d.x + cs * d.y
@@ -880,23 +880,23 @@ arc_add :: proc(segs: ^[dynamic]Seg, from: Vec2, rx_, ry_, rot_deg: f32, large, 
 	cxp, cyp := k * rx * y1 / ry, -k * ry * x1 / rx
 	mid := (from + to) * 0.5
 	c := Vec2{cs * cxp - sn * cyp + mid.x, sn * cxp + cs * cyp + mid.y}
-	angle :: proc(u, v: Vec2) -> f32 {
-		a := math.atan2(u.x * v.y - u.y * v.x, u.x * v.x + u.y * v.y)
-		return a
-	}
+	// (the angles below are turns)
+	angle :: proc(u, v: Vec2) -> f32 { return turn.atan2(u.x * v.y - u.y * v.x, u.x * v.x + u.y * v.y) }
 	t1 := angle({1, 0}, {(x1 - cxp) / rx, (y1 - cyp) / ry})
 	dt := angle({(x1 - cxp) / rx, (y1 - cyp) / ry}, {(-x1 - cxp) / rx, (-y1 - cyp) / ry})
-	if !sweep && dt > 0 { dt -= 2 * math.PI }
-	if sweep && dt < 0 { dt += 2 * math.PI }
-	n := max(int(math.ceil(abs(dt) / (math.PI / 2))), 1)
+	if !sweep && dt > 0 { dt -= 1 }
+	if sweep && dt < 0 { dt += 1 }
+	n := max(int(math.ceil(abs(dt) / 0.25)), 1)
 	step := dt / f32(n)
-	kk := 4.0 / 3.0 * math.tan(step / 4)
+	kk := 4.0 / 3.0 * turn.tan(step / 4)
 	point :: proc(c: Vec2, rx, ry, cs, sn, t: f32) -> Vec2 {
-		x, y := rx * math.cos(t), ry * math.sin(t)
+		s, k := turn.sincos(t)
+		x, y := rx * k, ry * s
 		return {c.x + cs * x - sn * y, c.y + sn * x + cs * y}
 	}
 	deriv :: proc(rx, ry, cs, sn, t: f32) -> Vec2 {
-		x, y := -rx * math.sin(t), ry * math.cos(t)
+		s, k := turn.sincos(t)
+		x, y := -rx * s, ry * k
 		return {cs * x - sn * y, sn * x + cs * y}
 	}
 	t := t1

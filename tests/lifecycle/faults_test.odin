@@ -41,7 +41,7 @@ rich_frame :: proc(f: ^Ffx) -> []u8 {
 	draw.begin_frame(&f.dc, {f32(FSIZE.x), f32(FSIZE.y)})
 	draw.rect(&f.dc, WHOLE, {1, 0, 0, 1})
 	draw.push_clip_ellipse(&f.dc, {4, 4}, {3, 3})
-	draw.push_transform(&f.dc, draw.affine_rotate(0.1))
+	draw.push_transform(&f.dc, draw.affine_rotate(0.016))
 	draw.rect(&f.dc, {{0, 0}, {2, 2}}, {0, 1, 0, 1})
 	draw.pop_transform(&f.dc)
 	draw.pop_clip(&f.dc)

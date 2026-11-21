@@ -109,14 +109,14 @@ layers_nest_and_follow_transforms_and_clips :: proc(t: ^testing.T) {
 		if !open(&f, space) { testing.fail_now(t, "no D3D11 device (WARP)") }
 		defer { draw.destroy(&f.dc); render.destroy(&f.r) }
 		ref := frame(&f, proc(dc: ^draw.Context) {
-			draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.5), {32, 32}))
+			draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.08), {32, 32}))
 			draw.push_clip_rounded(dc, {{12, 12}, {52, 52}}, {10, 10, 10, 10})
 			draw.rect(dc, {{0, 0}, {64, 64}}, RED)
 			draw.pop_clip(dc)
 			draw.pop_transform(dc)
 		})
 		lay := frame(&f, proc(dc: ^draw.Context) {
-			draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.5), {32, 32}))
+			draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.08), {32, 32}))
 			draw.push_layer(dc, {{12, 12}, {52, 52}}, 1)
 			draw.push_layer(dc, {{0, 0}, {64, 64}}, 1)   // nested
 			draw.push_clip_rounded(dc, {{12, 12}, {52, 52}}, {10, 10, 10, 10})

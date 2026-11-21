@@ -8,7 +8,7 @@ added, imported, moved, with text stamped on top. feuille is its first program; 
 A document is not a mutable PDF. It is a list of pages, each a value:
 
 - `source` and `index`: a page of an open file (a source), or a blank page of a given size (source 0).
-- `turns`: quarter turns clockwise, added to the page's own `/Rotate`.
+- `quarters`: quarter turns clockwise, added to the page's own `/Rotate`.
 - `stamps`: text placed on the page (see Stamps).
 
 A source is immutable: the bytes of a file, parsed once. Every edit is a change of the list, done by the program in
@@ -49,7 +49,7 @@ decrypted: a written file has no encryption and no restrictions.
 - A reference to a page resolves to that page's new object when the list has it, and to `null` when it does not
   (an outline entry to a removed page goes nowhere; it does not bring the page back).
 - Each page dictionary is written anew: its own keys, then the inherited ones made explicit (`/Resources`,
-  `/MediaBox`, `/CropBox`), `/Rotate` with the turns, `/Parent` the new tree. Its annotations keep their `/P`, which
+  `/MediaBox`, `/CropBox`), `/Rotate` with the quarters, `/Parent` the new tree. Its annotations keep their `/P`, which
   now names the new page.
 - Without a base (an extract, a new file), the catalog is new: the pages and their annotations, nothing of the
   documents they came from.
@@ -57,8 +57,8 @@ decrypted: a written file has no encryption and no restrictions.
 
 ## Stamps
 
-A stamp is text on a page: its top-left corner in points, in the page as its source shows it (before the turns), its
-lines, a font, a size, a colour, a background (transparent or a colour), and its own turns so that it reads upright
+A stamp is text on a page: its top-left corner in points, in the page as its source shows it (before the page's quarter turns), its
+lines, a font, a size, a colour, a background (transparent or a colour), and its own quarters (quarter turns) so that it reads upright
 where it was placed. It turns with its page.
 
 The fonts are the standard fonts of PDF: Helvetica, Times and Courier, each regular, bold, italic and bold italic.

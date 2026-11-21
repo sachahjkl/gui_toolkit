@@ -35,7 +35,7 @@ a_written_page_opens_renders_and_writes_again :: proc(t: ^testing.T) {
 	testing.expect(t, !dark(px, 200, 5, 5), "the paper is white")
 	testing.expect(t, dark(px, 200, 22, 32), "the stamp's background is at its corner")
 
-	twice, written := pdf.write({{source = src, index = 0, turns = 1}, {source = src, index = 0}}, base = src)
+	twice, written := pdf.write({{source = src, index = 0, quarters = 1}, {source = src, index = 0}}, base = src)
 	defer delete(twice)
 	testing.expect(t, written, "a list of the same page twice is written")
 	again, err2 := pdf.open(twice)
@@ -43,7 +43,7 @@ a_written_page_opens_renders_and_writes_again :: proc(t: ^testing.T) {
 	testing.expect(t, err2 == .None && pdf.page_count(again) == 2, "it has the two pages")
 	first, _ := pdf.page_size(again, 0)
 	testing.expectf(t, first == {100, 200}, "the turned one is turned (%v)", first)
-	testing.expect_value(t, pdf.shown_size({source = again, index = 1, turns = 3}), [2]f32{100, 200})
+	testing.expect_value(t, pdf.shown_size({source = again, index = 1, quarters = 3}), [2]f32{100, 200})
 }
 
 // A shape through the Odin side: an ellipse's ring where it was put, its middle left as the page is.

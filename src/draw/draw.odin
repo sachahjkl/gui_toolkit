@@ -37,7 +37,7 @@ srgb :: proc(r, g, b: f32, a: f32 = 1) -> Color {
 	return {render.srgb_decode(r), render.srgb_decode(g), render.srgb_decode(b), a}
 }
 
-// HSV (all 0..1, hue wraps) to a linear color
+// HSV (all 0..1, the hue in turns: it wraps) to a linear color
 hsv :: proc(h, s, v: f32, a: f32 = 1) -> Color {
 	hh := (h - math.floor(h)) * 6
 	i := int(hh)

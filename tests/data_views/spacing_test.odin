@@ -91,7 +91,7 @@ the_exploded_view_turns_and_takes_the_pointer :: proc(t: ^testing.T) {
 	slider := session.get(s, "exploded_yaw")
 	testing.expectf(t, slider.rect.max.x > 400, "the panel floats at the right: its slider at %v", slider.rect)
 	session.drag(s, session.center(slider), {slider.rect.min.x + 1, session.center(slider).y})
-	testing.expect_value(t, s.state.exploded.yaw, -180)
+	testing.expect_value(t, s.state.exploded.yaw, -0.5)
 	session.save_png(s, "exploded.png")
 	session.key(s, .Escape)
 	testing.expect(t, !ui.exploded(s.state), "Escape turns it off")

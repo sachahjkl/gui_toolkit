@@ -177,7 +177,7 @@ kept_layers_match_drawn_ones :: proc(t: ^testing.T) {
 		testing.expectf(t, max_diff(moved, want_moved) <= 1, "moved kept result = drawn moved: %d", max_diff(moved, want_moved))
 
 		// the trailing color matrix is the composite's: another one reuses the kept result
-		scene_filters = []draw.Filter{base[0], base[1], draw.filter_hue_rotate(1.2)}
+		scene_filters = []draw.Filter{base[0], base[1], draw.filter_hue_rotate(0.191)}
 		scene_cache = false
 		want_hue := frame(f, card)
 		scene_cache = true
@@ -370,7 +370,7 @@ masked_card :: proc(dc: ^draw.Context) {
 @(test)
 kept_masked_layers_match_drawn_ones :: proc(t: ^testing.T) {
 	each_config(t, proc(t: ^testing.T, f: ^Fx) {
-		scene_filters = []draw.Filter{draw.filter_blur(2), draw.filter_hue_rotate(0.8), draw.filter_opacity(0.8)}
+		scene_filters = []draw.Filter{draw.filter_blur(2), draw.filter_hue_rotate(0.127), draw.filter_opacity(0.8)}
 		scene_key, mask_key, mask_on, scene_shift = 1, 0, true, {}
 		scene_cache = false
 		want := frame(f, masked_card)
@@ -391,7 +391,7 @@ kept_masked_layers_match_drawn_ones :: proc(t: ^testing.T) {
 		testing.expectf(t, drawn == 0 && max_diff(moved, want_moved) <= 1, "moved kept masked result = drawn (drawn %d, diff %d)", drawn, max_diff(moved, want_moved))
 
 		// another trailing hue: still the kept result (hue commutes with the mask)
-		scene_filters = []draw.Filter{draw.filter_blur(2), draw.filter_hue_rotate(2), draw.filter_opacity(0.8)}
+		scene_filters = []draw.Filter{draw.filter_blur(2), draw.filter_hue_rotate(0.318), draw.filter_opacity(0.8)}
 		scene_cache = false
 		want_hue := frame(f, masked_card)
 		scene_cache = true
@@ -588,9 +588,9 @@ paths_fill_and_stroke_curves :: proc(t: ^testing.T) {
 	// a ring: outside, the ring, the hole, and the two contours' starts are not joined
 	img = frame(&f, proc(dc: ^draw.Context) {
 		p := draw.path_make(allocator = context.temp_allocator)
-		draw.path_arc(&p, {80, 80}, {60, 60}, 0, math.TAU)
+		draw.path_arc(&p, {80, 80}, {60, 60}, 0, 1)
 		draw.path_close(&p)
-		draw.path_arc(&p, {80, 80}, {30, 30}, math.TAU, 0)
+		draw.path_arc(&p, {80, 80}, {30, 30}, 1, 0)
 		draw.path_close(&p)
 		draw.path_fill(dc, &p, {1, 1, 1, 1})
 	})

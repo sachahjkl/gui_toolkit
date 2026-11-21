@@ -31,7 +31,7 @@ readable_moves_a_colour_only_as_far_as_it_must :: proc(t: ^testing.T) { unwatche
 	orange := draw.hex(0xc8622aff)
 	lit := ui.readable(orange, draw.hex(0x101010ff), 7)
 	h0, h1 := ui.to_oklch(orange)[2], ui.to_oklch(lit)[2]
-	testing.expectf(t, math.abs(h0 - h1) < 6, "its hue: %.1f, then %.1f", h0, h1)
+	testing.expectf(t, math.abs(h0 - h1) < 6.0 / 360, "its hue: %.4f, then %.4f", h0, h1)
 	// out of reach: white, or black
 	testing.expect_value(t, ui.readable(grey, draw.hex(0x808080ff), 21), draw.Color{0, 0, 0, 1})
 }) }
@@ -57,7 +57,7 @@ shades_go_from_tint_to_deep :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^t
 		testing.expectf(t, lch[0] < prev, "%v is darker than the shade before it", s)
 		prev = lch[0]
 		if s >= .S300 && s <= .S800 {
-			testing.expectf(t, math.abs(lch[2] - ui.to_oklch(blue)[2]) < 8, "%v keeps the hue: %.1f", s, lch[2])
+			testing.expectf(t, math.abs(lch[2] - ui.to_oklch(blue)[2]) < 8.0 / 360, "%v keeps the hue: %.4f", s, lch[2])
 		}
 	}
 	for ground in ([]u32{0xffffffff, 0x101010ff, 0xdbeafeff, 0x1e3a8aff}) {

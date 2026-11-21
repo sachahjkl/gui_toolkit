@@ -98,13 +98,13 @@ color_filters_match_the_spec :: proc(t: ^testing.T) {
 			{"sepia(1)", {draw.filter_sepia(1)}},
 			{"saturate(2.5)", {draw.filter_saturate(2.5)}},
 			{"saturate(0)", {draw.filter_saturate(0)}},
-			{"hue-rotate(90deg)", {draw.filter_hue_rotate(math.PI / 2)}},
-			{"hue-rotate(200deg)", {draw.filter_hue_rotate(200 * math.PI / 180)}},
+			{"hue-rotate(90deg)", {draw.filter_hue_rotate(0.25)}},
+			{"hue-rotate(200deg)", {draw.filter_hue_rotate(200.0 / 360)}},
 			{"invert(1)", {draw.filter_invert(1)}},
 			{"invert(0.3)", {draw.filter_invert(0.3)}},
 			// clamped between steps: brightness(3) saturates, brightness(0.5) then halves the clamped value
 			{"brightness(3) brightness(0.5)", {draw.filter_brightness(3), draw.filter_brightness(0.5)}},
-			{"sepia(1) hue-rotate(180deg) contrast(1.2)", {draw.filter_sepia(1), draw.filter_hue_rotate(math.PI), draw.filter_contrast(1.2)}},
+			{"sepia(1) hue-rotate(180deg) contrast(1.2)", {draw.filter_sepia(1), draw.filter_hue_rotate(0.5), draw.filter_contrast(1.2)}},
 		}
 		base := [4]f32{f32(BASE.r) / 255, f32(BASE.g) / 255, f32(BASE.b) / 255, 1}
 		for cs in cases {
@@ -417,7 +417,7 @@ backdrops_filter_what_is_behind :: proc(t: ^testing.T) {
 			scene(dc)
 			draw.push_layer(dc, {{0, 0}, {128, 128}}, 1)
 			draw.rect(dc, {{0, 0}, {128, 128}}, draw.Color{0, 1, 0, 1})
-			draw.push_transform(dc, draw.affine_around(draw.affine_rotate(math.PI / 4), {64, 64}))
+			draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.125), {64, 64}))
 			draw.backdrop(dc, {{44, 44}, {84, 84}}, {}, current_filters)
 			draw.pop_transform(dc)
 			draw.pop_layer(dc)

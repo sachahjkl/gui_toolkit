@@ -34,14 +34,14 @@ file is written (`png_encode`, `dib_encode`, `to_rgba8`). Pixel `(i, j)` covers 
 |---|---|
 | `move_to`, `line_to`, `quad_to`, `cubic_to`, `close` | a figure, as in any vector API; `line_to` with no figure begun starts one |
 | `start_figure` | ends the figure without closing it (GDI+'s `StartFigure`) |
-| `arc(x, y, w, h, start, sweep)` | an arc of the ellipse in the box, angles in degrees, clockwise on a canvas; a begun figure gets a line to its start (GDI+'s `AddArc`) |
+| `arc(x, y, w, h, start, sweep)` | an arc of the ellipse in the box, angles in turns from +x, clockwise on a canvas; a begun figure gets a line to its start (GDI+'s `AddArc`) |
 | `rect`, `round_rect`, `ellipse`, `polygon` | a closed figure of its own |
 | `path_transform(&p, m)`, `path_clone` | every point through a `Matrix`; a copy |
 
 Curves are cubic Béziers. Arcs and ellipses become cubics of a quarter turn at most. A fill flattens them into lines that
 stray at most 0.05 pixels from the curve.
 
-`Matrix` is affine. `translate`, `scale` and `rotate_at` put their step before the matrix they get, so a chain built from
+`Matrix` is affine. `translate`, `scale` and `rotate_at` (its angle in turns, clockwise) put their step before the matrix they get, so a chain built from
 `IDENTITY` reads in the order of GDI+'s `Matrix` calls. `multiply(first, then)`, `apply`, `invert`.
 
 ## Filling and stroking

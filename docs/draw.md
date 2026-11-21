@@ -18,14 +18,14 @@ Affine :: struct { a, b, c, d, e, f: f32 }
 ```
 
 The convention is the one of CSS `matrix(a, b, c, d, e, f)`, canvas `setTransform` and SVG, so a CSS matrix goes in
-as is: `draw.Affine{a, b, c, d, e, f}`. Screen space is y-down: a positive angle turns clockwise on screen, as CSS
+as is: `draw.Affine{a, b, c, d, e, f}`. Angles are in turns (a whole circle is 1, [turn.md](turn.md)). Screen space is y-down: a positive angle turns clockwise on screen, as CSS
 `rotate()` does.
 
 | Proc | Meaning |
 |---|---|
 | `AFFINE_IDENTITY` | identity |
 | `affine_mul(m, n)` | `m` after `n`: `apply(mul(m, n), p) == apply(m, apply(n, p))`. CSS `transform: t1 t2` is `mul(t1, t2)` |
-| `affine_translate(t)`, `affine_scale(s: Vec2)`, `affine_rotate(radians)`, `affine_skew(ax, ay = 0)` | constructors (CSS `translate`, `scale`, `rotate`, `skew`) |
+| `affine_translate(t)`, `affine_scale(s: Vec2)`, `affine_rotate(turns)`, `affine_skew(ax, ay = 0)` (turns) | constructors (CSS `translate`, `scale`, `rotate`, `skew`) |
 | `affine_around(m, origin)` | `m` around `origin` (CSS `transform-origin`) |
 | `affine_apply(m, p)`, `affine_apply_vector(m, v)` | point / direction |
 | `affine_inverse(m) -> (Affine, ok)` | inverse; `ok = false` when singular (zero scale) |
@@ -35,7 +35,7 @@ as is: `draw.Affine{a, b, c, d, e, f}`. Screen space is y-down: a positive angle
 ### The transform stack
 
 ```odin
-draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.3), draw.rect_center(card)))
+draw.push_transform(dc, draw.affine_around(draw.affine_rotate(0.05), draw.rect_center(card)))
 draw.rect(dc, card, color, 12)            // rounded corners, border, shadow: all rotate
 draw.text(dc, font_id, 15, pos, white, "Rotated")
 draw.image(dc, tex, icon_rect, radius = 6)
@@ -197,7 +197,7 @@ the blend with what is already drawn. `push_layer(dc, bounds, alpha)` is `push_e
 |---|---|---|
 | `filter_blur(sigma)` | `blur()` | gaussian, standard deviation in local units (follows the transform) |
 | `filter_drop_shadow(offset, sigma, color)` | `drop-shadow()` | the blurred alpha of what is drawn, moved, in `color`, under it. CSS gives a blur radius: sigma = radius / 2 |
-| `filter_brightness`, `filter_contrast`, `filter_grayscale`, `filter_sepia`, `filter_saturate`, `filter_hue_rotate` (radians), `filter_invert`, `filter_opacity` | the functions of the same name | 4 x 5 color matrices of Filter Effects 1 §13 |
+| `filter_brightness`, `filter_contrast`, `filter_grayscale`, `filter_sepia`, `filter_saturate`, `filter_hue_rotate` (turns), `filter_invert`, `filter_opacity` | the functions of the same name | 4 x 5 color matrices of Filter Effects 1 §13 |
 | `filter_matrix(m)` | `feColorMatrix` | any `Color_Matrix` (row-major 4 x 5 on straight values) |
 
 - Colors are filtered **in sRGB**, on straight values for the matrices (each result clamped, so
@@ -450,7 +450,7 @@ One instance (`render.KIND_GRADIENT`) per gradient, filled into a rounded rect l
 clips and pictures); the color is evaluated per pixel from an entry of the frame's (or the picture's) gradient table.
 
 - **Kinds**: `Linear` (t = 0 at `start`, 1 at `end`), `Radial` (t = 1 on the ellipse of `radii` around `center`),
-  `Conic` (t = 0 at `angle`, radians clockwise from up, one turn = 1). `repeating` repeats the stops from the first
+  `Conic` (t = 0 at `angle`, turns clockwise from up; t goes from 0 to 1 over one turn). `repeating` repeats the stops from the first
   position to the last (a period of zero paints the average color, CSS Images 4 §3.6).
 - **Stops**: linear colors with straight alpha, positions in t (any value, never decreasing), and a transition hint to
   the next stop (`has_hint`, `hint` = where in the interval the colors mix half and half: CSS's hint exponent).

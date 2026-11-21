@@ -1,0 +1,7 @@
+# The files of src that are boundaries of the angles (src/md/infrastructure/angles.md): every angle of the toolkit is in
+# turns, and these files speak of radians or degrees because a system, a file format, a shader or a formula outside the
+# toolkit does. tests/angles fails on a file that speaks of them and is not here, and on a file here that no longer does.
+# "<dir>/<file>  # why"
+image/resize.odin  # the Lanczos kernel's π (sin(πx) / πx): a formula, not an angle
+js/b_number.odin  # JavaScript's Math.PI: the language's constant
+render/render.odin  # the gradient table the shaders read: a conic's start in radians (the HLSL is compiled, and rebuilt on Windows only)

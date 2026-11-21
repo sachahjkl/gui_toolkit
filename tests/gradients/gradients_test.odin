@@ -153,7 +153,7 @@ repeating_radial_conic :: proc(t: ^testing.T) {
 	testing.expectf(t, near(below, {127, 0, 128}, 4), "conic: half turn %v", below)
 	testing.expectf(t, near(left, {64, 0, 191}, 4), "conic: three quarters %v", left)
 	// a start angle of a quarter turn moves everything by 90 degrees
-	con2 := shoot(&f, draw.Gradient{kind = .Conic, center = {100, 20}, angle = math.PI / 2,
+	con2 := shoot(&f, draw.Gradient{kind = .Conic, center = {100, 20}, angle = 0.25,
 		stops = {{color = c8(255, 0, 0), pos = 0}, {color = c8(0, 0, 255), pos = 1}}})
 	testing.expectf(t, near(px(con2, 100, 39), {191, 0, 64}, 4), "conic from 90deg: a quarter at the bottom %v", px(con2, 100, 39))
 }
@@ -260,7 +260,7 @@ linear_blend_space_and_transform :: proc(t: ^testing.T) {
 	// under a transform (scale 2 around the origin, rotation 180 degrees about the center): same colors, moved
 	draw.begin_frame(&f.dc, {W, H})
 	render.frame_begin(&f.r, {1, 1, 1, 1})
-	draw.push_transform(&f.dc, draw.affine_around(draw.affine_rotate(math.PI), {W / 2, H / 2}))
+	draw.push_transform(&f.dc, draw.affine_around(draw.affine_rotate(0.5), {W / 2, H / 2}))
 	draw.gradient(&f.dc, {{0, 0}, {W, H}}, across(stops))
 	draw.pop_transform(&f.dc)
 	draw.end_frame(&f.dc)

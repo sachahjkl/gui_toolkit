@@ -5,6 +5,7 @@ import "core:math"
 import "../draw"
 import "../font"
 import "../qr"
+import turn "../turn"
 
 // The back of the licence card: what the card shows when it is turned over. It is the same foil as the front, struck from the
 // other side:
@@ -121,13 +122,13 @@ LICENCE_CARD_SEAL_MODULES :: 33
 @(private = "file") SEAL_RING_R :: 1.0
 @(private = "file") SEAL_HOLE_R :: 0.5
 @(private = "file") SEAL_CENTRE_R :: 0.5
-// The turn that reveals the code (rotateX, rotateY, degrees): the back turned about 11 degrees on each axis, its top left
-// corner towards the eye. Within SEAL_WHOLE_DEG of that turn's eye the code shows whole; past SEAL_GONE_DEG not at all.
-// Straight on, the eye is 15 degrees from it.
-@(private) LICENCE_SEAL_RX :: -11.0
-@(private) LICENCE_SEAL_RY :: 191.0
-@(private = "file") SEAL_WHOLE_DEG :: 3.0
-@(private = "file") SEAL_GONE_DEG :: 7.0
+// The turn that reveals the code (rotateX, rotateY, turns): the back turned about 0.03 turns (11°) on each axis, its top left
+// corner towards the eye. Within SEAL_WHOLE of that turn's eye the code shows whole; past SEAL_GONE not at all (turns).
+// Straight on, the eye is 0.042 turns (15°) from it.
+@(private) LICENCE_SEAL_RX :: -11.0 / 360
+@(private) LICENCE_SEAL_RY :: 191.0 / 360
+@(private = "file") SEAL_WHOLE :: 3.0 / 360
+@(private = "file") SEAL_GONE :: 7.0 / 360
 // The matrix in the shader's parameters: 24 modules a float (an f32 holds an integer of 24 bits exactly), four floats a slot.
 // The back's draw gives LICENCE_SEAL_HEAD slots of place, ramp and shapes, then these.
 @(private) LICENCE_SEAL_WORDS :: (LICENCE_CARD_SEAL_MODULES * LICENCE_CARD_SEAL_MODULES + 23) / 24
@@ -177,21 +178,22 @@ licence_card_seal_module :: proc(x, y: int) -> bool {
 	return seal_dark(kept_seal(), x, y)
 }
 
-// The eye's direction in the frame of the back turned by rotateX(rx) rotateY(ry), degrees: x right, y down, z out of the
+// The eye's direction in the frame of the back turned by rotateX(rx) rotateY(ry), turns: x right, y down, z out of the
 // face (licence_card.wgsl: to_face with `back`, of the eye (0, 0, 1)).
 @(private = "file")
 seal_eye :: proc(rx, ry: f32) -> [3]f32 {
-	ax, ay := rx * math.PI / 180, ry * math.PI / 180
-	return {math.sin(ay) * math.cos(ax), math.sin(ax), -math.cos(ay) * math.cos(ax)}
+	sx, cx := turn.sincos(rx)
+	sy, cy := turn.sincos(ry)
+	return {sy * cx, sx, -cy * cx}
 }
 
 // The cosines of the angles where the code is whole and where it is gone.
 @(private = "file")
 seal_cosines :: proc() -> (whole, gone: f32) {
-	return math.cos(f32(SEAL_WHOLE_DEG) * math.PI / 180), math.cos(f32(SEAL_GONE_DEG) * math.PI / 180)
+	return turn.cos(f32(SEAL_WHOLE)), turn.cos(f32(SEAL_GONE))
 }
 
-// How much of the code's contrast the back shows turned by rotateX(rx) rotateY(ry), degrees: 0, the foil alone; 1, its
+// How much of the code's contrast the back shows turned by rotateX(rx) rotateY(ry), turns: 0, the foil alone; 1, its
 // light modules polished silver on a brushed plate and its dark ones the foil's dark tone. The shader computes the same
 // ramp from what seal_params gives it. For a test or a tool.
 licence_card_seal_reveal :: proc(rx, ry: f32) -> f32 {

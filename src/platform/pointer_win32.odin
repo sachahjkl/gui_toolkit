@@ -7,6 +7,7 @@ package platform
 
 import "core:time"
 import win "core:sys/windows"
+import turn "../turn"
 
 @(private) POINTER_TOUCH_INFO :: struct {
 	pointerInfo:  win.POINTER_INFO,
@@ -86,9 +87,10 @@ pointer_message :: proc(w: ^Window, msg: win.UINT, wparam: win.WPARAM) {
 		if !win.GetPointerPenInfo(id, &pen) { pointer_gone(w, msg, id); return }
 		info = pen.pointerInfo
 		if .pressure in pen.penMask { measured = pressure_of(pen.pressure, POINTER_PRESSURE_RANGE) }
-		if .tiltX in pen.penMask { pi.tilt.x = f32(pen.tiltX) }
-		if .tiltY in pen.penMask { pi.tilt.y = f32(pen.tiltY) }
-		if .rotation in pen.penMask { pi.twist = f32(pen.rotation) }
+		// (the system's angles are whole degrees: turns from here on)
+		if .tiltX in pen.penMask { pi.tilt.x = turn.from_degrees(f32(pen.tiltX)) }
+		if .tiltY in pen.penMask { pi.tilt.y = turn.from_degrees(f32(pen.tiltY)) }
+		if .rotation in pen.penMask { pi.twist = turn.from_degrees(f32(pen.rotation)) }
 		pi.barrel = .barrel in pen.penFlags
 		pi.eraser = .eraser in pen.penFlags || .inverted in pen.penFlags
 	} else {

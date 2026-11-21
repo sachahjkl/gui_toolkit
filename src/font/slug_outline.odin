@@ -54,7 +54,7 @@ outline_quad :: proc(o: ^Outline, a, c, b: [2]f32) {
 @(private) CUBIC_PIECES_MAX :: 32
 @(private) CUBIC_TOL_MIN_EM :: 1e-9
 
-// A cubic Bézier as quadratics within `tol` (em units). A cubic that is a quadratic raised in degree (what DirectWrite
+// A cubic Bézier as quadratics within `tol` (em units). A cubic that is a quadratic written as a cubic (what DirectWrite
 // hands out for TrueType glyphs) comes back as that same quadratic, exactly; a true cubic (CFF) is cut into as few
 // equal pieces as keep each piece's quadratic within `tol` of it (error bound sqrt(3)/36 * |p3 - 3 c2 + 3 c1 - p0| / n^3).
 outline_cubic :: proc(o: ^Outline, p0, c1, c2, p3: [2]f32, tol: f32) {

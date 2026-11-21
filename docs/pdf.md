@@ -21,7 +21,7 @@ src, err := pdf.open(bytes, password)          // .Password: ask for one and ope
 pages := make([dynamic]pdf.Page)
 for i in 0 ..< pdf.page_count(src) { append(&pages, pdf.Page{source = src, index = i}) }
 
-pages[0].turns += 1                             // a quarter turn clockwise
+pages[0].quarters += 1                          // a quarter turn clockwise
 ordered_remove(&pages, 2)                       // the undo keeps the value
 inject_at(&pages, 1, pdf.Page{size = {595, 842}})   // a blank A4 page
 
@@ -29,7 +29,7 @@ bytes, ok := pdf.write(pages[:], base = src)   // the file: outlines, form and m
 ```
 
 - `Page{source, index}`: page `index` of an open file. `Page{size}` with source 0: a blank page of `size` points.
-- `turns`: quarter turns clockwise added to the page's own rotation. `shown_size(page)` gives the size it is shown at.
+- `quarters`: quarter turns clockwise added to the page's own rotation. `shown_size(page)` gives the size it is shown at.
 - `stamps`: text on the page (below).
 - `write(pages, base)`: with `base`, the catalog of that source is kept (outlines, named destinations, the form, the
   structure tree, the page labels, the metadata); a reference to a page the list does not hold names nothing, so a
@@ -58,12 +58,12 @@ stamp := pdf.Stamp{
 	background = {255, 240, 150, 255},   // alpha 0: none
 	text = "Approved\n17 November",
 }
-box := pdf.stamp_size(stamp)            // its size before its turns, margins included
+box := pdf.stamp_size(stamp)            // its size before its quarter turns, margins included
 ```
 
 - The fonts are PDF's standard fonts (Helvetica, Times and Courier, each with bold and italic): every reader has
   them and nothing is embedded. Characters outside WinAnsi (Western European) are written as `?`.
-- `turns`: the text's own quarter turns about its corner. A stamp placed while the page is shown turned by `k` takes
+- `quarters`: the text's own quarter turns about its corner. A stamp placed while the page is shown turned by `k` takes
   `(4 - k) % 4`, so that it reads upright where it was put; it then turns with its page.
 
 A signature in a font the program gives:
@@ -73,7 +73,7 @@ script, ok := pdf.font_add(#load("fonts/GreatVibes-Regular.ttf"))   // once, at 
 sig := pdf.Stamp{
 	at = {360, 700}, face = script, size = 28, color = {20, 40, 140},
 	text = "Camille Dupré",
-	tilt = 4,                          // degrees, rising to the right
+	tilt = 0.011,                      // turns (about 4 degrees), rising to the right
 	weight = 25,                       // the outline stroked too, thousandths of the size: a heavier pen
 	flourish = true,                   // a pen's stroke under it
 	caption = "Paris, 19/11/2026",     // a smaller Helvetica line under it
@@ -97,7 +97,7 @@ page.shapes = {frame, mark, arrow, pen}
   their second (the arrow's head there); `Ink` follows its points.
 - `Outline` fills closed contours with its `fill`: a pen's ink from `gt:ink` (`ink.polygon`), its width changing along
   the stroke. A point `{NaN, NaN}` starts the next contour.
-- Points are in points, in the page as its source shows it (before `turns`), y down, as a stamp's `at`.
+- Points are in points, in the page as its source shows it (before `quarters`), y down, as a stamp's `at`.
 - `stroke` and `fill`: alpha 0 for none. A colour less than opaque multiplies with the page, as a highlighter;
   an `Outline`'s is laid normally, as `gt:ink`'s levels expect.
 - The shapes are drawn under the stamps.
