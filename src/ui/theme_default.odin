@@ -22,12 +22,16 @@ Palette :: struct {
 // How far a palette without its own faint text takes weak toward the page, and soft text weak toward text (sRGB steps).
 FAINT_STEP :: 0.4
 SOFT_STEP :: 0.7
+// The accent's share in the tint behind what a search found (match_bg), mixed in linear light.
+MATCH_TINT :: 0.18
 
 // Slots a theme entry can point at.
 @(private)
 Slot :: enum { Bg, Bg_Solid, Panel, Panel2, Text, Weak, Faint, Soft, Bright, Border, Accent, Accent_Text, Good, Warn, Bad, White, Black, Hover, Bar, Well, Blue, Purple, Cyan, Rose,
 	// an intent's soft pair (soft_pair_on of its hue on the page): its fill, its words
-	Accent_Soft, Accent_Ink, Info_Soft, Info_Ink, Good_Soft, Good_Ink, Warn_Soft, Warn_Ink, Bad_Soft, Bad_Ink }
+	Accent_Soft, Accent_Ink, Info_Soft, Info_Ink, Good_Soft, Good_Ink, Warn_Soft, Warn_Ink, Bad_Soft, Bad_Ink,
+	// the text readable on the tint of what a search found (match_bg over the page)
+	Match_Ink }
 
 @(private)
 Entry :: struct { tags: string, slot: Slot, alpha: f32 }
@@ -48,8 +52,8 @@ entries := [?]Entry{
 	{"find_match background", .Warn, 0.62}, {"find_current background", .Warn, 0.85}, {"find_text", .Black, 1},
 	{"link", .Accent, 1}, {"code_bg", .Panel2, 1},   // rich_paragraph: links, inline code
 	// what a search found in a line (match.odin): the text's own colour on a tint of the accent (the accent's own colour on
-	// its tint read badly: two shades of one hue)
-	{"match", .Text, 1}, {"match_bg", .Accent, 0.18},
+	// its tint read badly: two shades of one hue), made readable on that tint (a bright accent lifts a dark page)
+	{"match", .Match_Ink, 1}, {"match_bg", .Accent, MATCH_TINT},
 	// source code's classes (code.odin, tk_syntax): keywords, strings, comments, calls and directives, types and numbers
 	{"code_keyword", .Purple, 1}, {"code_string", .Good, 1}, {"code_comment", .Weak, 1}, {"code_func", .Blue, 1}, {"code_type", .Cyan, 1},
 	// a diff (tk_diff, under the tag "diff"): a line added or removed on a tint, what changed in it on a stronger one. (Those of a
@@ -174,7 +178,7 @@ slot_color :: proc(p: Palette, s: Slot) -> u32 {
 	case .Purple: return p.purple != 0 ? p.purple : p.accent
 	case .Cyan: return p.cyan != 0 ? p.cyan : p.accent
 	case .Rose: return p.rose != 0 ? p.rose : p.accent
-	case .Accent_Soft, .Accent_Ink, .Info_Soft, .Info_Ink, .Good_Soft, .Good_Ink, .Warn_Soft, .Warn_Ink, .Bad_Soft, .Bad_Ink:
+	case .Accent_Soft, .Accent_Ink, .Info_Soft, .Info_Ink, .Good_Soft, .Good_Ink, .Warn_Soft, .Warn_Ink, .Bad_Soft, .Bad_Ink, .Match_Ink:
 		return 0xff00ffff   // (computed colours: slot_rgba)
 	}
 	return 0xff00ffff
@@ -202,6 +206,10 @@ slot_rgba :: proc(p: Palette, s: Slot) -> draw.Color {
 		if p.faint != 0 { return draw.hex(p.faint) }
 		return srgb_step(draw.hex(p.weak), draw.hex(slot_color(p, .Bg_Solid)), FAINT_STEP)
 	case .Soft:        return srgb_step(draw.hex(p.weak), draw.hex(p.text), SOFT_STEP)
+	case .Match_Ink:
+		// (the tint as drawn: its alpha is made to look in any blend space as it does mixed in linear light)
+		page := draw.hex(slot_color(p, .Bg_Solid))
+		return readable(draw.hex(p.text), draw.mix(page, draw.hex(p.accent | 0xff), MATCH_TINT), 4.5)
 	}
 	return draw.hex(slot_color(p, s))
 }

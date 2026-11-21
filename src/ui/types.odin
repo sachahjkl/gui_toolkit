@@ -173,8 +173,10 @@ Box :: struct {
 	target_bg, target_border, target_text: Color,
 	bg, border, text_color:                Color,
 	// the text colour this box gives what is built in it, down to a box with a face of its own: a selected row's ink
-	// (Theme_Selection.ink; alpha 0: none; set each build)
-	ink:                                   Color,
+	// (Theme_Selection.ink, else the text, readable on the selection: selection_ink.odin; alpha 0: none; set each build).
+	// `ink_weak`: the weak words' (alpha 0: the ink); `ink_ground`, `ink_hot`: the selection's face at rest and in its
+	// state, what a colour of its own is made readable on (alpha 0: none, a caption's band gives the ink alone)
+	ink, ink_weak, ink_ground, ink_hot:    Color,
 
 	// layout results
 	size:        Vec2,           // computed size
@@ -413,6 +415,7 @@ State :: struct {
 	tag_bases:    [dynamic]int,       // the tag_base to restore at each pop_tags_isolated
 	tag_sets:     map[Key][]string,   // per-frame: tag stack contents by key, for theme lookups while drawing
 	color_memo:   map[[2]u64]Color,   // per-frame: (tags key, name hash) -> resolved color
+	selection_inks: Selection_Inks,   // the words' colours on a selection, per theme (selection_ink.odin)
 	next_mod:     Style_Mod,
 	has_next:     bool,
 	next_zoom_zone: ^Zoom_Zone,       // zoom_zone: the zone the next box is (zoom_zone.odin)

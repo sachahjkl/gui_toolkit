@@ -167,14 +167,15 @@ a_selected_rows_text_is_the_themes_ink :: proc(t: ^testing.T) {
 	testing.expectf(t, session.get(s, "key_1").text_color == text, "a box with its own face keeps its text: %v", session.get(s, "key_1").text_color)
 }
 
-// A theme that gives no selection: a selected row's label has the text of every other label (the old look).
+// A theme that gives no ink: the row's ink is its text, which reads on Midnight's selection, so a selected row's label
+// has the text of every other label (the selection's words: src/md/features/selection-contrast.md).
 @(test)
-no_ink_keeps_the_text :: proc(t: ^testing.T) {
+no_ink_keeps_the_text_that_reads :: proc(t: ^testing.T) {
 	r: Rows
 	defer ui.list_state_destroy(&r.list)
 	s := rows_selected(t, ui.palette_of("Midnight"), &r)
 	testing.expect_value(t, session.get(s, "lbl_1").text_color, session.get(s, "lbl_0").text_color)
-	testing.expect_value(t, session.get(s, "lrow_1").ink.a, 0)
+	testing.expect_value(t, session.get(s, "lrow_1").ink, session.get(s, "lbl_0").text_color)
 }
 
 // The text's selection role sets the entries the selected text is drawn with.

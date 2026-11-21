@@ -56,7 +56,9 @@ if res.scrolled { app.follow_bottom = false }   // the find moved the view to a 
   rows (a terminal) brings that row in itself.
 - `ui.find_count()`, `ui.find_index()` (the current match, -1 none), `ui.find_pending()` (rows not counted yet),
   `ui.find_needle()` (the field's text), `ui.find_matches()` (what the last layout lit: box, window rect, ordinal),
-  `ui.find_row_matches(row)` (a row's byte ranges), `ui.find_ticks(view)` (the ticks' places on the bar, for tests).
+  `ui.find_row_matches(row)` (a row's byte ranges), `ui.find_ticks(view)` (the ticks' places on the bar, for tests),
+  `ui.find_match_ink(ink, ground)` (the text ink used in a match: `find_text` when it reads at 4.5:1 on the composite
+  match colour, else black or white).
 
 ## A view that builds all of its content
 

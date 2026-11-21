@@ -338,7 +338,9 @@ Tests: `tests/data_views` (the table, type to filter, a segment's tooltip).
 
 ### What a search found
 
-A list filtered by what is typed lights the parts of each line that match: the theme's `match` colour on its `match_bg`.
+A list filtered by what is typed lights the parts of each line that match: the theme's `match` colour (made readable
+on the tint) on its `match_bg`. Inside a selected row, where an accent tint disappears against the selection, `match_runs`
+and `label_fuzzy` drop the tint and underline the matched letters in the row's ink instead.
 The palette, a menu that searches, and a settings page's search do it; a program's own list too:
 
 ```odin

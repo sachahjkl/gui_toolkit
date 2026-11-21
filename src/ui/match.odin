@@ -52,11 +52,17 @@ word_ranges :: proc(text, query: string, allocator := context.temp_allocator) ->
 }
 
 // `text` as runs of `style`, the ranges in the theme's "match" colour on its "match_bg" (the ranges in order, inside the
-// text; the text's own bytes, no copy).
+// text; the text's own bytes, no copy). In a selected row (the box built in has an ink) the ranges are underlined in the
+// row's ink instead: a tint of the accent on a selection that is itself a tint of the accent is not seen
+// (selection-contrast.md).
 match_runs :: proc(text: string, ranges: []Fuzzy_Range, style: Rich_Style, runs: ^[dynamic]Rich_Run) {
 	lit := style
-	lit.color = color("match")
-	lit.background = color("match_bg")
+	if match_on_selection() {
+		lit.underline = true
+	} else {
+		lit.color = color("match")
+		lit.background = color("match_bg")
+	}
 	at := 0
 	for r in ranges {
 		from, to := clamp(r[0], at, len(text)), clamp(r[1], at, len(text))
@@ -77,6 +83,10 @@ matched_label :: proc(id, text: string, ranges: []Fuzzy_Range) -> ^Box {
 	// (a row's name: the row's press and its list's Ctrl+A, not a selection: text-selection.md)
 	return rich_paragraph(id, runs[:], max_lines = 1, selectable = false).box
 }
+
+// Whether what is built now is on a selection: its parent gives an ink (a selected row's, down to a face of its own).
+@(private)
+match_on_selection :: proc() -> bool { return parent_box().ink.a > 0 }
 
 // `text` shown, `id` its key ("###k"): the label's own id-string.
 @(private = "file")

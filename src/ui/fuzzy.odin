@@ -1,6 +1,7 @@
 package ui
 
 import "base:runtime"
+import "core:math"
 import "core:mem/virtual"
 import "core:strings"
 import "core:unicode"
@@ -176,7 +177,7 @@ fuzzy_find_folded :: proc(needle: Fuzzy_Needle, hay: Fuzzy_Text, allocator := co
 	return out[:], true
 }
 
-Fuzzy_Draw :: struct { ranges: []Fuzzy_Range, text: string, color: Color }
+Fuzzy_Draw :: struct { ranges: []Fuzzy_Range, text: string, color: Color, underline: bool }
 
 @(private)
 fuzzy_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
@@ -188,20 +189,30 @@ fuzzy_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	for r in d.ranges {
 		x0 := origin.x + font.text_width(s.fonts, b.font, b.font_size, d.text[:r[0]])
 		x1 := origin.x + font.text_width(s.fonts, b.font, b.font_size, d.text[:r[1]])
+		if d.underline {
+			// (under the baseline text_origin gives, as a rich run's underline: the face's own offset and thickness)
+			th := max(1, math.round(m.underline_thickness))
+			y := math.round(origin.y + m.underline_offset)
+			draw.rect(dc, {{x0, y}, {x1, y + th}}, b.text_color)
+			continue
+		}
 		cy := (b.rect.min.y + b.rect.max.y) * 0.5
 		draw.rect(dc, {{x0, cy - m.line_height * 0.5}, {x1, cy + m.line_height * 0.5}}, d.color, 2 * s.scale)
 	}
 }
 
 // A label whose matched ranges (from `fuzzy_find`) are lit on the theme's "match_bg", as a list's matches are (match.odin): a
-// heavier tint of the accent (30 %, blended in linear light) left the text on it hard to read.
+// heavier tint of the accent (30 %, blended in linear light) left the text on it hard to read. In a selected row they
+// are underlined in the row's ink, as match_runs does.
 label_fuzzy :: proc(text: string, ranges: []Fuzzy_Range) -> Signal {
+	on_selection := match_on_selection()
 	b := build_box({.Draw_Text}, text)
 	if len(ranges) > 0 {
 		d := frame_new(Fuzzy_Draw)
 		d.ranges = make([]Fuzzy_Range, len(ranges), frame_allocator())
 		copy(d.ranges, ranges)
 		d.text = b.text
+		d.underline = on_selection
 		d.color = color("match_bg")
 		b.custom, b.custom_user = fuzzy_draw, d
 	}

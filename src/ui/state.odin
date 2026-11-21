@@ -352,7 +352,7 @@ begin_build :: proc(s: ^State, p: Build_Params) {
 	key := key_from_string(0, "root")
 	root := touch_box(s, key)
 	root.flags = {}
-	root.ink = {}   // (what is built at the root takes no ink: build_box)
+	root.ink, root.ink_weak, root.ink_ground, root.ink_hot = {}, {}, {}, {}   // (what is built at the root takes no ink: build_box)
 	root.pref = {.X = px(p.window_size.x), .Y = px(p.window_size.y)}
 	root.layout_axis = .Y
 	root.text = ""
@@ -704,12 +704,12 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	// a selected row's ink (Theme_Selection.ink): the text of what is built in it, down to a box with a face of its own,
 	// after `next`'s colours (its background says whether it has one, its `fg` wins). (Not the row's "selected" tag kept
 	// over its children: the selected entries, its border and its sheen, would reach them too: theme-design.md, layer 2)
-	b.ink = {}
+	b.ink, b.ink_weak, b.ink_ground, b.ink_hot = {}, {}, {}, {}
 	if .Chosen in b.flags {
-		b.ink = color("ink")
+		chosen_inks(s, b, parent, has_mod && mod.fg != nil)
 	} else if parent.ink.a > 0 && !(.Draw_Background in b.flags && b.target_bg.a >= 0.5) {
-		b.ink = parent.ink
-		if !has_mod || mod.fg == nil { b.target_text = parent.ink }
+		b.ink, b.ink_weak, b.ink_ground, b.ink_hot = parent.ink, parent.ink_weak, parent.ink_ground, parent.ink_hot
+		if !has_mod || mod.fg == nil { b.target_text = ink_for(s, parent, b.target_text) }
 	}
 	if .Disabled in b.flags {
 		// neutral look: an accent or danger fill would keep its colour while its text faded away

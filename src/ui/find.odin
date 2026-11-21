@@ -832,11 +832,29 @@ find_paint_text :: proc(s: ^State, dc: ^draw.Context, b: ^Box, paint: proc(s: ^S
 		i = j
 	}
 	clipped(s, dc, b, {{area.min.x, y}, area.max}, paint)
-	// in them
+	// in them: each match's ink checked against its own tint over what is under the box
 	saved := b.text_color
 	defer b.text_color = saved
-	b.text_color = color_from_tags(s, b.tags_key, "find_text")
+	ink := color_from_tags(s, b.tags_key, "find_text")
+	all := color_from_tags(s, b.tags_key, "find_match background")
+	cur := color_from_tags(s, b.tags_key, "find_current background")
+	under := b.ink_ground.a > 0 ? b.ink_ground : box_under(b)
+	if under.a <= 0 { under = theme_lookup(s.theme, nil, "background"); under.a = 1 }
+	all_ink := find_match_ink(ink, face_over(all, under, s.space))
+	cur_ink := find_match_ink(ink, face_over(cur, under, s.space))
 	s.find.in_match = true
 	defer s.find.in_match = false
-	for m in matches { clipped(s, dc, b, find_match_rect(s, m), paint) }
+	for m in matches {
+		b.text_color = m.index >= 0 && m.index == s.find.current ? cur_ink : all_ink
+		clipped(s, dc, b, find_match_rect(s, m), paint)
+	}
+}
+
+// The ink of text in a find match (`ground`: the match's tint over what is under the box): the theme's `find_text` when
+// it reads there, else black or white (whichever reads better on `ground`: one of them always reaches 4.58:1). Old Head's
+// olive warn over its navy selection is dark enough that black dropped to 3.6:1 while white reads above 4.7:1.
+find_match_ink :: proc(ink, ground: Color) -> Color {
+	if contrast(ink, ground) >= SELECTION_INK_RATIO { return ink }
+	black, white := Color{0, 0, 0, ink.a}, Color{1, 1, 1, ink.a}
+	return contrast(white, ground) > contrast(black, ground) ? white : black
 }
