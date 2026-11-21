@@ -200,8 +200,9 @@ STEPS := []Step{
 	{name = "theme_look", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (a theme's look beside its colours: its values reach the drawing)
 	{name = "system_title", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (the system's title bar: a process of its own, the scenarios' is full)
 	{name = "resize_grip", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},   // (a dialog's grips and corner control: a process of its own, the scenarios' is full)
-	// (ui.tween and ui.swap: a process of its own, on another runner: the scenarios took 400 s of their 420 on ci1 with them)
-	{name = "transitions", one = true, wgpu = .Ci4, oses = EVERYWHERE, text = true},
+	// (ui.tween and ui.swap: a process of its own, on another runner: the scenarios took 400 s of their 420 on ci1 with
+	// them. ci2: ci4 already runs the FXC packages after its own)
+	{name = "transitions", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
 	// (automatic partial redraw: every partial frame drawn whole on the side too, and compared)
 	{name = "partial_redraw", one = true, wgpu = .Ci2, oses = EVERYWHERE, text = true},
 	// (what covers a change: a process of its own, on another runner; with the scenes above it passed 420 s on WARP. Its

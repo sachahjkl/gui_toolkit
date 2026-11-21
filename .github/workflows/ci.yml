@@ -215,7 +215,7 @@ jobs:
   wgpu:
     name: WebGPU (${{ matrix.group }})
     runs-on: windows-2025
-    timeout-minutes: 15
+    timeout-minutes: 22
     strategy:
       fail-fast: false
       matrix:
@@ -262,10 +262,12 @@ jobs:
           odin build examples/smoke -vet -collection:gt=src -define:TOOLKIT_RENDER=wgpu -out:build/smoke_wgpu.exe -subsystem:windows
           if ($LASTEXITCODE) { exit 1 }
 
+      # (the same group takes twice as long from one run to the next on these shared runners: ci4 336 s then 660 s, ci2 264 s
+      # then 522 s. The bounds leave that room; a package that hangs still ends at its 600 s)
       - name: Tests, WebGPU backend (wgpu-native over Direct3D 12 on WARP, one test at a time)
         shell: pwsh
-        timeout-minutes: 11
-        run: New-Item -ItemType Directory -Force build | Out-Null; odin build tools/run_tests -vet -out:build/run_tests.exe; if ($LASTEXITCODE) { exit 1 }; ./build/run_tests.exe -backend:wgpu -group:${{ matrix.group }} -timeout:420
+        timeout-minutes: 16
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin build tools/run_tests -vet -out:build/run_tests.exe; if ($LASTEXITCODE) { exit 1 }; ./build/run_tests.exe -backend:wgpu -group:${{ matrix.group }} -timeout:600
 
       - name: Tests, WebGPU backend with FXC (no DXC)
         if: matrix.group == 'ci4'
