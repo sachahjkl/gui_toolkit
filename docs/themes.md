@@ -51,7 +51,7 @@ its focus, its motion, its font. `{}` is the toolkit's look; each part says only
 | Part | Its zero value | What a theme gives |
 |---|---|---|
 | `shape: Maybe(Theme_Shape)` | `SHAPE_DEFAULT` | the radius of each `Shape_Role` |
-| `selections: [Selection_Role]Theme_Selection` | the accent's tint, the text kept | each selection's `fill` and `ink` (0xRRGGBBAA); every word on a selected row (title, `weak`/`faint`/`soft`, errors) is kept at `SELECTION_INK_RATIO` (4.5:1) against the row's rest and hover faces (`ui.selection_ink` -> `ui.Selection_Ink`) |
+| `selections: [Selection_Role]Theme_Selection` | the accent's tint, the text kept | each selection's `fill` and `ink` (0xRRGGBBAA); every word on a selected row (title, `weak`/`faint`/`soft`, errors) is kept at `SELECTION_INK_RATIO` (4.5:1) against the row's rest and hover faces (`ui.selection_ink` -> `ui.Selection_Ink`, `ui.ink_for(row, fg)`) |
 | `focus: Theme_Focus` | a ring and its glow | `style`, `width`, `inset`, `color` |
 | `still: bool` | false | no motion in its look |
 | `font: Theme_Font` | the program's | `family`, `size` (a factor) |

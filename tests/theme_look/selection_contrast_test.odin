@@ -143,3 +143,37 @@ selection_ink_keeps_the_themes_step :: proc(t: ^testing.T) {
 	ink = ui.selection_ink(brown, lifted, grey, 1)
 	testing.expectf(t, weakest(ink.text, {brown, lifted}) >= TEXT_RATIO, "made readable on both faces (%.2f)", weakest(ink.text, {brown, lifted}))
 }
+
+// A custom-drawn .Chosen row (without .Draw_Background, e.g. opencode native's sidebar rows under Old Head) still uses
+// its theme selection fill as the ground, and ui.ink_for(row, fg) maps text, weak and custom colours without flattening
+// them all to the title colour.
+@(test)
+custom_chosen_row_and_ink_for :: proc(t: ^testing.T) {
+	Res :: struct { title, weak, custom, plain: ui.Color }
+	res: Res
+	s := session.start(t, {size = {400, 120}, no_renderer = true, user = &res, build = proc(s: ^session.Session) {
+		r := (^Res)(s.user)
+		ui.next({width = ui.px(300), height = ui.px(30)})
+		plain := ui.build_box({}, "###plain")
+		r.plain = ui.ink_for(plain, ui.color("weak text"))
+		// custom-drawn .Chosen row with "selected" tag pushed, no .Draw_Background
+		if ui.tags("list_row", "selected") {
+			ui.next({width = ui.px(300), height = ui.px(30)})
+			row := ui.build_box({.Clickable, .Chosen}, "###custom_sel")
+			r.title = ui.ink_for(row, ui.color("text"))
+			r.weak = ui.ink_for(row, ui.color("weak text"))
+			r.custom = ui.ink_for(row, draw.hex(0xc02020ff))
+		}
+	}})
+	ui.use(s.state)
+	ui.apply_palette(s.state.theme, ui.palette_of("Old Head", light = true), s.state.space)
+	session.frames(s, 2)
+	ui.use(s.state)
+	navy := draw.hex(0x000080ff)
+	// Old Head's selection is navy (#000080) with white ink; without .Draw_Background it used to pick black against #c0c0c0
+	testing.expectf(t, ui.contrast(res.title, navy) >= TEXT_RATIO && ui.luminance(res.title) > 0.8, "white ink on navy: %v (%.2f)", res.title, ui.contrast(res.title, navy))
+	testing.expectf(t, ui.contrast(res.weak, navy) >= TEXT_RATIO && res.weak != res.title, "weak ink distinct and readable: %v (%.2f)", res.weak, ui.contrast(res.weak, navy))
+	testing.expectf(t, ui.contrast(res.custom, navy) >= TEXT_RATIO && res.custom != res.title, "custom colour keeps hue and reads: %v (%.2f)", res.custom, ui.contrast(res.custom, navy))
+	testing.expect_value(t, res.plain, ui.theme_lookup(s.state.theme, nil, "weak text"))
+	testing.expect_value(t, ui.ink_for(nil, draw.hex(0x123456ff)), draw.hex(0x123456ff))
+}

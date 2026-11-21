@@ -72,8 +72,9 @@ selection_ink :: proc(ground, hot, fg: Color, share: f32) -> (ink: Selection_Ink
 chosen_inks :: proc(s: ^State, b, parent: ^Box, own_fg: bool) {
 	under := box_under(parent)
 	if under.a <= 0 { under = theme_lookup(s.theme, nil, "background"); under.a = 1 }   // (no frame drawn yet: no backdrop)
-	ground := under
-	if .Draw_Background in b.flags { ground = face_over(b.target_bg, under, s.space) }
+	// (do not gate on .Draw_Background: a program's custom-drawn .Chosen row omits .Draw_Background while still
+	// carrying the theme's selection fill in b.target_bg; when b.target_bg.a == 0, face_over returns `under`)
+	ground := face_over(b.target_bg, under, s.space)
 	hot := ground
 	if .Draw_Hot_Effects in b.flags {
 		hover := color_from_tags(s, b.tags_key, "hover_fill")
@@ -84,14 +85,23 @@ chosen_inks :: proc(s: ^State, b, parent: ^Box, own_fg: bool) {
 	ink := selection_ink_of(s, ground, hot, {src.r, src.g, src.b, 1})
 	b.ink, b.ink_weak, b.ink_ground, b.ink_hot = ink.text, ink.weak, ground, hot
 	// (its own words, a sidebar's page drawn as a row, are on the same ground)
-	if !own_fg { b.target_text = ink_for(s, b, b.target_text) }
+	if !own_fg { b.target_text = ink_for_state(s, b, b.target_text) }
+}
+
+// The colour of words `fg` drawn inside `row` (a selected/.Chosen row or any ancestor carrying a selection ink):
+// returns `fg` unchanged when `row == nil` or `row.ink.a <= 0`; otherwise maps theme text to `row.ink`, quiet text
+// (weak, faint, soft) to `row.ink_weak`, and any other colour (a badge, a fault's red) to its hue made readable on
+// `row`'s ground. For a program that sets an explicit `next({fg = ...})` inside a selected row.
+ink_for :: proc(row: ^Box, fg: Color) -> Color {
+	if row == nil || row.ink.a <= 0 { return fg }
+	return ink_for_state(gs(), row, fg)
 }
 
 // The colour of words `fg` built in `parent`, which has an ink: the text takes the ink, a quiet text the weak ink, a
 // colour of its own (a fault's red) keeps its hue made readable on the selection; under an ink with no ground (a
 // caption's band) everything takes the ink.
 @(private)
-ink_for :: proc(s: ^State, parent: ^Box, fg: Color) -> Color {
+ink_for_state :: proc(s: ^State, parent: ^Box, fg: Color) -> Color {
 	if parent.ink_ground.a <= 0 { return parent.ink }
 	switch ink_kind(s, fg) {
 	case .Text:  return parent.ink

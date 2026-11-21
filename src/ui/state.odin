@@ -709,7 +709,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 		chosen_inks(s, b, parent, has_mod && mod.fg != nil)
 	} else if parent.ink.a > 0 && !(.Draw_Background in b.flags && b.target_bg.a >= 0.5) {
 		b.ink, b.ink_weak, b.ink_ground, b.ink_hot = parent.ink, parent.ink_weak, parent.ink_ground, parent.ink_hot
-		if !has_mod || mod.fg == nil { b.target_text = ink_for(s, parent, b.target_text) }
+		if !has_mod || mod.fg == nil { b.target_text = ink_for_state(s, parent, b.target_text) }
 	}
 	if .Disabled in b.flags {
 		// neutral look: an accent or danger fill would keep its colour while its text faded away

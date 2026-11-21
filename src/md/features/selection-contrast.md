@@ -29,9 +29,13 @@ matches (`.Warn`, olive `#808000`, at 0.62 and 0.85) over its navy selection (`#
     `max(4.5, worst(text) * share)`, where `share` is the theme's own weak-to-text contrast ratio on the page. Where a
     deep ground has room, secondary text stays visibly quieter than the title; on a mid ground like Ember's brown, it
     stays readable at 4.5:1.
-- **Inherited down to a box with its own face**: `Box.ink`, `ink_weak`, `ink_ground` and `ink_hot` ride down the subtree
-  in `build_box` (`ink_for`). Plain and bright text take `ink`; `weak`, `faint` and `soft` take `ink_weak`; any other
-  colour (a fault's red, a badge) keeps its hue pushed to 4.5:1 against the selection's ground and hover face.
+- **Inherited down to a box with its own face (and public `ui.ink_for`)**: `Box.ink`, `ink_weak`, `ink_ground` and
+  `ink_hot` ride down the subtree in `build_box`. `chosen_inks` always composites `b.target_bg` over `under` (without
+  requiring `.Draw_Background`), so custom-drawn `.Chosen` rows with the `selected` tag pushed still resolve their inks
+  against the theme's selection fill. Plain and bright text take `ink`; `weak`, `faint` and `soft` take `ink_weak`; any
+  other colour (a fault's red, a badge) keeps its hue pushed to 4.5:1 against the selection's ground and hover face.
+  `ui.ink_for(row, fg)` exposes the same mapping for programs that pass an explicit `next({fg = ...})` inside a selected
+  row (returning `fg` unchanged when `row == nil` or not chosen).
 - **Memoized per window and theme**: `State.selection_inks` caches up to 32 `(ground, hot, fg, share)` entries and resets
   when `theme.serial` changes. No work proportional to row count per frame.
 - **Underline for matched letters on a selection** (`match_runs` and `label_fuzzy`): off a selection, matches keep their
