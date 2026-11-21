@@ -44,6 +44,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 	s.mouse_moved = false
 
 	for e in events {
+		pointer_device_follow(s, e)
 		#partial switch e.kind {
 		case .Mouse_Move:
 			if e.pos != s.mouse { s.mouse_moved = true }
@@ -395,6 +396,34 @@ context_take :: proc(b: ^Box) -> bool {
 }
 
 mouse_pos :: proc() -> Vec2 { return gs().mouse }
+
+// The device that moved the pointer last, as of this build: a mouse (`kind` .Mouse, id 1), else the pen or the finger
+// with its pressure, tilt, eraser and barrel button (platform.Pointer_Info). Several moves in one frame: the last one's.
+pointer_device :: proc() -> platform.Pointer_Info { return gs().pointer }
+
+// The pressure of the pen or the finger on the screen, 0..1, as gt:ink's Sample.pressure takes it: 0 when it is
+// unknown (a mouse, a device that does not measure it) or nothing is in contact.
+pointer_pressure :: proc() -> f32 {
+	p := gs().pointer
+	return p.measured ? p.pressure : 0
+}
+
+// The pen's or the finger's own events say what it is; its emulated mouse events carry less and change nothing; the
+// mouse's own make the mouse the device again.
+@(private)
+pointer_device_follow :: proc(s: ^State, e: platform.Event) {
+	#partial switch e.kind {
+	case .Pointer_Down, .Pointer_Move, .Pointer_Up:
+		s.pointer = e.pointer
+	case .Pointer_Cancel:
+		// (Windows' cancel of a pointer the system no longer knows carries only its id)
+		if e.pointer.id == s.pointer.id { s.pointer.pressure = 0 }
+	case .Mouse_Move, .Mouse_Press, .Mouse_Release, .Scroll:
+		if !e.emulated { s.pointer = MOUSE_DEVICE }
+	}
+}
+
+@(private) MOUSE_DEVICE :: platform.Pointer_Info{id = 1, kind = .Mouse, primary = true}
 // A press of `button` happened in this frame, on anything or on nothing (a popup the app closes on a press outside it).
 mouse_pressed :: proc(button := platform.Mouse_Button.Left) -> bool { return gs().pressed_any[button] }
 hot_key :: proc() -> Key { return gs().hot_key }

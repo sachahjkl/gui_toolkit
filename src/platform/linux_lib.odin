@@ -159,6 +159,7 @@ wayland_lib :: proc() -> ^Wayland_Lib {
 		// once for the process, before any thread connects
 		xdg_build_tables()
 		zwp_ti_build_tables()
+		tablet_build_tables()
 		wp_cursor_shape_build_tables()
 		wp_scale_build_tables()
 		xdg_activation_build_tables()

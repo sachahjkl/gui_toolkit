@@ -98,6 +98,57 @@ drag :: proc(s: ^Session, from, to: [2]f32, steps := DRAG_STEPS, button := platf
 	release(s, to, button)
 }
 
+// A pen, as the system gives it: its own event (Pointer_*, with its pressure 0..1), then the mouse's emulation of it
+// (Mouse_*, `emulated`), at one place. A pen's pressure reaches the build as ui.pointer_pressure.
+PEN_ID :: 2   // Pointer_Info.id of the session's pen (the mouse is 1)
+
+@(private)
+pen_event :: proc(s: ^Session, pointer: platform.Event_Kind, mouse: platform.Event_Kind, at: [2]f32, pressure: f32, contact: bool) {
+	pi := platform.Pointer_Info{id = PEN_ID, kind = .Pen, primary = true, measured = true, pressure = contact ? pressure : 0}
+	s.pointer = at
+	event(s, {kind = pointer, pos = at, pointer = pi})
+	event(s, {kind = mouse, button = .Left, pos = at, pointer = pi, emulated = true})
+}
+
+// The pen's tip touches at `at`.
+pen_press :: proc(s: ^Session, at: [2]f32, pressure: f32) {
+	if at != s.pointer { pen_hover(s, at) }
+	s.buttons += {.Left}
+	pen_event(s, .Pointer_Down, .Mouse_Press, at, pressure, true)
+	frames(s, INPUT_FRAMES)
+}
+
+// The pen moves to `at`: on the screen when its tip is down (a press before), above it else.
+pen_move :: proc(s: ^Session, at: [2]f32, pressure: f32) {
+	pen_event(s, .Pointer_Move, .Mouse_Move, at, pressure, .Left in s.buttons)
+	frames(s, INPUT_FRAMES)
+}
+
+// The pen comes above `at`, its tip up.
+pen_hover :: proc(s: ^Session, at: [2]f32) {
+	pen_event(s, .Pointer_Move, .Mouse_Move, at, 0, false)
+	frames(s, INPUT_FRAMES)
+}
+
+// The pen's tip lifts at `at` (its last move's place: a lift does not move it).
+pen_release :: proc(s: ^Session, at: [2]f32) {
+	s.buttons -= {.Left}
+	pen_event(s, .Pointer_Up, .Mouse_Release, at, 0, false)
+	frames(s, INPUT_FRAMES)
+}
+
+// A stroke of the pen: down at `from`, `steps` moves, up at `to`; the pressure goes from `pressure[0]` to
+// `pressure[1]` along it, one move a frame.
+pen_drag :: proc(s: ^Session, from, to: [2]f32, pressure := [2]f32{0.2, 0.9}, steps := DRAG_STEPS) {
+	pen_press(s, from, pressure[0])
+	for i in 1 ..= steps {
+		k := f32(i) / f32(steps)
+		pen_event(s, .Pointer_Move, .Mouse_Move, from + (to - from) * k, pressure[0] + (pressure[1] - pressure[0]) * k, true)
+		frame(s)
+	}
+	pen_release(s, to)
+}
+
 // The wheel at a point: `notches` as Event.delta says (+y scrolls the content down).
 wheel :: proc(s: ^Session, at: [2]f32, notches: [2]f32, mods: platform.Modifiers = {}) {
 	if at != s.pointer { move(s, at) }

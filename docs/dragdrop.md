@@ -3,7 +3,8 @@
 The API is the same on every system (`src/platform/dragdrop.odin`, `src/platform/pointer.odin`). Windows implements it
 (`dragdrop_win32.odin`: OLE; `pointer_win32.odin`: `WM_POINTER`), Linux too (`dragdrop_linux.odin`: `wl_data_device`, XDND).
 Other systems build with `dragdrop_stub.odin`, which answers "not supported" (`drop_target_enable` returns false,
-`drag_start` returns `ok = false`). `Pointer_*` events come on Windows only.
+`drag_start` returns `ok = false`). `Pointer_*` events come on Windows (fingers and pens) and on Wayland (the pens of
+a tablet, `tablet_wl_linux.odin`); X11 gives none.
 
 ## Receiving drops
 
@@ -80,11 +81,29 @@ each `Drop_*` (it returns the effect, and handles the `Drop` inside the call), s
 ## Fingers and pens
 
 `Pointer_Down`, `Pointer_Move`, `Pointer_Up`, `Pointer_Cancel` carry `Event.pointer` (`Pointer_Info`: `id`, `kind`
-touch or pen, `primary`, `pressure` 0..1, pen `tilt` / `twist` / `barrel` / `eraser`, touch `contact` size). The mouse
-keeps `Mouse_*`, which now also carry `buttons` (the buttons held after the event). The system's emulation of the mouse
-for a finger or a pen still arrives, marked `emulated`: an app that only knows the mouse works unchanged, one that
-follows pointers skips those (`Event.pointer.kind` says whether a finger or a pen is emulated). `pointer_buttons` and
-`pointer_pressure` give the Pointer Events values.
+touch or pen, `primary`, `pressure` 0..1, `measured`, pen `tilt` / `twist` / `barrel` / `eraser`, touch `contact` size).
+`pressure` follows Pointer Events: 0 out of contact, 0.5 in contact for a device that measures none; `measured` says the
+device gave it. The mouse keeps `Mouse_*`, which now also carry `buttons` (the buttons held after the event). The
+emulation of the mouse for a finger or a pen still arrives, marked `emulated`: an app that only knows the mouse works
+unchanged, one that follows pointers skips those (`Event.pointer.kind` says whether a finger or a pen is emulated).
+Windows emulates the mouse itself; on Wayland a client that takes the tablet gets no mouse events for the pen, so the
+backend makes them (the tip is the left button, its press on the title bar moves the window). `pointer_buttons` and
+`pointer_pressure` give the Pointer Events values; `pressure_of(raw, full)` scales a device's raw pressure to 0..1.
+
+On Wayland the pen shows the window's cursor through `wp_cursor_shape_v1` (without it, the compositor's own); a
+custom cursor's picture shows as its fallback shape. The pads of a tablet (their buttons, rings and strips) are not read.
+
+In `gt:ui`, `ui.pointer_device()` is the `Pointer_Info` of the device that moved the pointer last in this build (a
+mouse: `kind` `.Mouse`, id 1), and `ui.pointer_pressure()` its pressure as `gt:ink` takes it: the measured pressure
+while the tip or the finger is down, else 0. Several moves in one frame: the last one's.
+
+```odin
+if drawing { append(&stroke, ink.Sample{at = ui.mouse_pos(), time = now_ms, pressure = ui.pointer_pressure()}) }
+```
+
+A test draws with a pen through its session: `session.pen_press(s, at, pressure)`, `pen_move`, `pen_hover`,
+`pen_release`, and `pen_drag(s, from, to, {0.2, 0.9})` (the pressure goes from the first to the second along the
+stroke). Each gives the pen's `Pointer_*` event and its emulated mouse event, as Windows does.
 
 `input_devices()` (mouse, pen, touch points), `touch_max_points()`, `primary_pointer` / `any_pointer`: what the
 computer has, as the CSS media features `pointer` / `any-pointer` / `hover` / `any-hover` describe it.

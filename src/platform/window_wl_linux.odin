@@ -98,6 +98,11 @@ Wl_Conn :: struct {
 	cursor_shape_device:  Wl_Proxy,
 	cursor_sent:    u64,          // what was last sent (cursor_on_screen)
 	cursor_surface: Wl_Proxy,     // the surface our cursor images are on
+	// pens of a tablet (tablet_wl_linux.odin): zwp_tablet_manager_v2 (optional), the seat's tablet seat, its tools
+	tablet_manager: Wl_Proxy,
+	tablet_seat:    Wl_Proxy,
+	tablet_tools:   [dynamic]^Wl_Tablet_Tool,
+	tablet_tool_ids: u32,         // the last tool's Pointer_Info.id
 	// the serials the requests need: the pointer's last enter (set_cursor), its last button (a drag start, a selection)
 	enter_serial:  u32,
 	button_serial: u32,
@@ -205,6 +210,7 @@ wl_connection_forget :: proc() {
 	delete(wlc.outputs)
 	delete(wlc.windows)
 	delete(wlc.toplevels)
+	wl_tablet_tools_free()
 	delete(wlc.clip_text, runtime.heap_allocator())   // (clipboard_linux.odin makes it there)
 	for list in ([]^[dynamic]string{&wlc.offer_mimes, &wlc.dnd_mimes, &wlc.pending_offer_mimes}) {
 		wl_free_mimes(list)
@@ -243,6 +249,7 @@ wl_connect_now :: proc() -> bool {
 			&zwp_ti_iface, wl.proxy_get_version(wlc.ti_manager), 0, nil, wlc.seat)
 		if wlc.text_input != nil { l.proxy_add_listener(wlc.text_input, &text_input_listener, nil) }
 	}
+	wl_tablet_seat_make()
 	return wlc.xdg_wm_base != nil && wlc.compositor != nil
 }
 
@@ -300,6 +307,7 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "zxdg_decoration_manager_v1": wlc.decoration_manager = bind(name, &zxdg_decoration_manager_iface, 1, version)
 	case "zwp_text_input_manager_v3": wlc.ti_manager = bind(name, &zwp_ti_manager_iface, 1, version)
 	case "wp_cursor_shape_manager_v1": wlc.cursor_shape_manager = bind(name, &wp_cursor_shape_manager_iface, 1, version)
+	case "zwp_tablet_manager_v2": wlc.tablet_manager = bind(name, &zwp_tablet_manager_iface, 1, version)
 	case "wp_fractional_scale_manager_v1": wlc.fractional_manager = bind(name, &wp_fractional_manager_iface, 1, version)
 	case "wl_subcompositor": if wl.subcompositor_interface != nil { wlc.subcompositor = bind(name, wl.subcompositor_interface, 1, version) }
 	case "wp_viewporter": wlc.viewporter = bind(name, &wp_viewporter_iface, 1, version)
@@ -507,7 +515,7 @@ ptr_button :: proc "c" (data: rawptr, p: Wl_Proxy, serial, time, button, state: 
 	case: return
 	}
 	press := state == 1
-	if press && wl_frame_press(w, btn, serial, time) {
+	if press && wl_frame_press(w, btn, wlc.pointer_pos, serial, time) {
 		wl_push(w, {kind = .Frame_Press, button = btn, pos = wlc.pointer_pos, mods = wl_mods(), buttons = w.buttons_down})
 		return
 	}
@@ -518,10 +526,10 @@ ptr_button :: proc "c" (data: rawptr, p: Wl_Proxy, serial, time, button, state: 
 // A press on the frame of an integrated title bar (frame_linux.odin): the compositor moves or resizes the window, a
 // double click on the caption maximizes it, a right click there opens the compositor's window menu (unless the app takes
 // it: set_caption_menu_app). True when it was
-// the frame's: the app does not get the press.
+// the frame's: the app does not get the press. `pos`: where the mouse or the pen's tip is; `serial`: its press's.
 @(private)
-wl_frame_press :: proc(w: ^Window, btn: Mouse_Button, serial, time: u32) -> bool {
-	h := frame_hit(w, wlc.pointer_pos)
+wl_frame_press :: proc(w: ^Window, btn: Mouse_Button, pos: [2]f32, serial, time: u32) -> bool {
+	h := frame_hit(w, pos)
 	if !hit_is_frame(h) || wlc.seat == nil { return false }
 	st := wl_state(w)
 	if st.xdg_toplevel == nil { return false }   // (hidden)
@@ -529,7 +537,7 @@ wl_frame_press :: proc(w: ^Window, btn: Mouse_Button, serial, time: u32) -> bool
 	#partial switch btn {
 	case .Left:
 		if h == .Caption {
-			if caption_double_click(w, wlc.pointer_pos, time) { toggle_maximize(w); return true }
+			if caption_double_click(w, pos, time) { toggle_maximize(w); return true }
 			wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_MOVE, nil, ver, 0, wlc.seat, serial)
 		} else {
 			wl.proxy_marshal_flags(st.xdg_toplevel, XDG_TOPLEVEL_RESIZE, nil, ver, 0, wlc.seat, serial, wl_resize_edges(h))
@@ -538,7 +546,7 @@ wl_frame_press :: proc(w: ^Window, btn: Mouse_Button, serial, time: u32) -> bool
 		return true
 	case .Right:
 		if h != .Caption || w.caption_menu_app { return false }   // (the app's: set_caption_menu_app)
-		wl_show_window_menu(w, wlc.pointer_pos)
+		wl_show_window_menu(w, pos)
 		return true
 	}
 	return false
@@ -1213,6 +1221,7 @@ wl_hide :: proc(w: ^Window) {
 	if st == nil || st.surface == nil { return }
 	// what the seat keeps of the window: its leave may name a surface that is gone
 	if wlc.pointer_focus == w { wlc.pointer_focus = nil }
+	wl_tablet_forget_window(w)
 	if wlc.keyboard_focus == w { wlc.keyboard_focus = nil; wlc.key_repeat.held = false }
 	window_focus(w, false, {})
 	wl_role_destroy(st)
@@ -1228,6 +1237,7 @@ wl_destroy :: proc(w: ^Window) {
 	for x, i in wlc.windows { if x == w { ordered_remove(&wlc.windows, i); break } }
 	// what the seat keeps of the window: the compositor's leave for it may still be on its way
 	if wlc.pointer_focus == w { wlc.pointer_focus = nil }
+	wl_tablet_forget_window(w)
 	if wlc.keyboard_focus == w { wlc.keyboard_focus = nil; wlc.key_repeat.held = false }
 	if wlc.dnd_window == w { wlc.dnd_window = nil }
 	if wlc.ti_window == w { wlc.ti_window = nil }

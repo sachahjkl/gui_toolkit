@@ -149,6 +149,39 @@ a_frame_looks_like_its_reference :: proc(t: ^testing.T) {
 	testing.expect_value(t, session.count_different(session.capture(s), want), 50 * 50)
 }
 
+// A pen's stroke: its pressure reaches the build at each move (as a signature pad samples it), its emulated mouse
+// drives the widgets, and the mouse after it is the device again, with no pressure.
+@(test)
+a_pen_s_pressure_reaches_the_build :: proc(t: ^testing.T) {
+	Pad :: struct { clicks: int, pressures: [dynamic]f32, now: f32, kind: platform.Pointer_Kind }
+	pad: Pad
+	defer delete(pad.pressures)
+	s := session.start(t, {user = &pad, no_renderer = true, build = proc(s: ^session.Session) {
+		pad := (^Pad)(s.user)
+		if ui.button("add", "Add").clicked { pad.clicks += 1 }
+		pad.now = ui.pointer_pressure()
+		if pad.now > 0 { append(&pad.pressures, pad.now) }
+		pad.kind = ui.pointer_device().kind
+	}})
+	session.pen_drag(s, {200, 200}, {300, 220}, {0.2, 0.9})
+	testing.expect(t, len(pad.pressures) >= session.DRAG_STEPS, "a pressure at each move")
+	if len(pad.pressures) > 0 {
+		testing.expect(t, abs(pad.pressures[0] - 0.2) < 0.01, "the press's pressure first")
+		testing.expect(t, abs(pad.pressures[len(pad.pressures) - 1] - 0.9) < 0.01, "the last move's last")
+	}
+	testing.expect_value(t, pad.now, 0)   // (the tip is up)
+	testing.expect_value(t, pad.kind, platform.Pointer_Kind.Pen)
+
+	add := session.center(session.get(s, "add"))
+	session.pen_press(s, add, 0.5)
+	session.pen_release(s, add)
+	testing.expect_value(t, pad.clicks, 1)   // (the pen's emulated mouse clicks)
+
+	session.move(s, {10, 10})
+	testing.expect_value(t, pad.kind, platform.Pointer_Kind.Mouse)
+	testing.expect_value(t, pad.now, 0)
+}
+
 @(test)
 a_wait_ends_when_the_state_holds :: proc(t: ^testing.T) {
 	Later :: struct { show: bool }

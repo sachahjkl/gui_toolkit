@@ -361,11 +361,15 @@ reads `org.freedesktop.appearance color-scheme` and `watch_color_scheme(cb)` fir
   from the interface's thread (`base.blocking` says so in a debug build).
 - **Cursors** (`cursors_wl_linux.odin`): Wayland names a shape to the compositor through `wp_cursor_shape_v1`, so the
   pointer matches the user's theme with no pixel upload.
+- **Pens** (`tablet_wl_linux.odin`, `tablet_tool.odin`): Wayland's tablet protocol (`zwp_tablet_manager_v2`, version 1)
+  gives a tablet's pens as `Pointer_*` events with their pressure, tilt and eraser, and their emulated `Mouse_*`
+  ([dragdrop.md](dragdrop.md), "Fingers and pens"). A seat with no tablet announces no tool.
 
 ### Known gaps
 
 - **AT-SPI** is a minimal bridge (root tree, names, DoAction) that answers calls but does not register with the
   desktop: a screen reader such as Orca does not find the window yet. The full surface (registration, Text ranges,
   Collection, per-node objects at their own paths) is what AccessKit's `accesskit_unix` adapter would give.
-- **Input**: no dead keys or Compose sequences on X11, no touch on Wayland.
+- **Input**: no dead keys or Compose sequences on X11, no touch on Wayland. X11 has no pen: the toolkit does not use
+  XInput 2, so a pen there is the mouse the X server makes of it, with no pressure.
 
