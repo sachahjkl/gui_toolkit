@@ -5,6 +5,13 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.344.0] - 2026-11-21 22:54
+
+### Added
+- **Fast file search (`gt:filesearch`)**: new optional native package backed by `fff-search` (`native/filesearch`,
+`toolbox.Feature.Filesearch`, `-define:GT_FILESEARCH=true`) with typo-tolerant name search, match byte ranges, mixed
+file and folder search, pagination, live filesystem watching, and shared LMDB frecency ranking (`note_opened`).
+
 ## [0.343.0] - 2026-11-21 20:49
 
 ### Added
@@ -4820,6 +4827,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.344.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.344.0
 [0.343.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.343.0
 [0.342.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.342.0
 [0.341.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.341.1
