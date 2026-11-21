@@ -13,6 +13,10 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
+- **Finding a file by its name as one types (`gt:filesearch`).** classeur finds a file under a folder in a few keys,
+  typos forgiven, the files the person opens most first; the palette and a launcher get the same. fff is the engine; a
+  backend per system. First the two measures of the intent (memory and scan time on a real home, inotify's bound),
+  then the crate and the package, then classeur. Intent: [src/md/features/file-search.md](src/md/features/file-search.md).
 - **X11's vblank timing seen on a real screen.** The Present extension's answers are read, but the virtual desktop's
   software renderer draws with PutImage and never answers: run the desktop test on an X11 session with a GPU to see
   frames start just in time there too. Intent: [src/md/infrastructure/vblank.md](src/md/infrastructure/vblank.md).
@@ -56,6 +60,17 @@
 
 ## Later
 
+- **A launcher, a program of the suite.** One key, anywhere, opens a palette: a program, a file (`gt:filesearch`), a
+  sum, a command of the suite's programs, papier's history; the first result in a few milliseconds and the keyboard
+  never lost. It is worth doing only very well, so its design comes first, and a system each: the global key and the
+  list of programs come from the Start menu on Windows, from `.desktop` files and the compositor on Linux (Wayland and
+  X11 differ), from `/Applications` on macOS. Its intent comes after `gt:filesearch`.
+- **An image viewer, a program of the suite.** A picture opens at once and the folder's others follow with the arrows;
+  crop, turn and mark it. `gt:image`'s decoders, the thumbnails and the picture cache are there; it sits between cliche
+  (capturing) and classeur (filing). After the launcher.
+- **Archives as folders in classeur.** A zip, a tar or a 7z is browsed as a folder, its files copied out by a drag: an
+  archive is one more file source of the file browser (`ui.File_Source`), so every program's file dialog gets it too.
+  Intent to write: which formats, read only or written, a library for each.
 - **A pen's pressure on X11.** A person who signs or draws with a pen on X11 gets the width of their pressure, as on
   Windows and Wayland: XInput 2's pen devices and their pressure valuator give `Pointer_*` events. Intent:
   [src/md/features/pen-input.md](src/md/features/pen-input.md), "X11".
@@ -87,5 +102,9 @@
 
 ## Maybe
 
+- **A whole-disk file index on Windows.** What Everything does: NTFS's master file table read once and its change
+  journal followed, every file of every disk found in milliseconds. It needs a privileged reader, a service installed
+  with the program; it waits for a decision on whether the suite installs a service at all, and for `gt:filesearch` on
+  trees to be in use. Intent: [src/md/features/file-search.md](src/md/features/file-search.md), "Windows".
 - **A reduced wgpu-native, only if it comes ready-made.** Studied and declined: WGSL and Vulkan only save about 1 MB for
   a harder build. Revisit only if gfx-rs publishes a reduced build.
