@@ -6,7 +6,7 @@ the tapers, as a signature written with a pen. The design is in [src/md/features
 
 ```odin
 samples: [dynamic]tk_ink.Sample          // one per build while the button is down
-append(&samples, tk_ink.Sample{at = pointer, time = now_ms, pressure = ui.pointer_pressure()})   // 0: no pressure (a mouse)
+append(&samples, tk_ink.Sample{at = pointer, time = now_ms, pressure = ui.pointer_pressure(), tilt = ui.pointer_device().tilt})   // 0: a mouse's
 
 pen := tk_ink.scaled(tk_ink.PEN_FOUNTAIN, zoom)
 o := tk_ink.outline(samples[:], pen)      // context.allocator
@@ -52,6 +52,8 @@ program's; a renderer that multiplies would make a translucent ink about a fifth
 the pressure; else it follows the speed. Samples without time (all at the same time) give a constant width.
 A program in `gt:ui` takes the pressure from `ui.pointer_pressure()`: a pen's on Windows and on Wayland, 0 for a mouse,
 on X11, and for a device that measures none ([dragdrop.md](dragdrop.md), "Fingers and pens").
+`Sample.tilt` is the pen's lean in degrees, as `platform.Pointer_Info.tilt` gives it (-90..90, x towards the right, y
+towards the user); {0, 0}, a mouse's, is upright and changes nothing. It acts by `Pen.tilt`.
 
 `Pen`:
 
@@ -64,9 +66,19 @@ on X11, and for a device that measures none ([dragdrop.md](dragdrop.md), "Finger
 | `taper_start`, `taper_end` | caller's units, >= 0 | the length over which an end narrows to a point; 0: a round end |
 | `nib_angle` | degrees | Chisel: the nib's edge, counter-clockwise as seen with y down (30 rises to the right); in a y-up frame, pass the negative |
 | `min_width` | 0..1 | a share of `width` under which the line never goes (before the tapers) |
+| `tilt` | 0..1 | how much a stylus's lean changes the mark (below); 0: none |
 | `ink` | `Ink` | how the ink lies on the paper, read by `lay`; all zero: solid opaque ink |
 
 At the speed of `SPEED_REFERENCE` widths per millisecond (0.2), a Round nib with thinning 1 draws half its width.
+
+The tilt's effect, with `lean` the sine of the angle from upright (0 upright, 1 on its side), smoothed along the
+stroke over 1.5 widths as the width is:
+
+- Round and Brush lay the side of the tip: the width is multiplied by `1 + TILT_WIDEN * tilt * lean` (0.6, before
+  `min_width` and the tapers), and `lay`'s density by `1 - TILT_LIGHT * tilt * lean` (0.35).
+- Chisel turns with the pen: its edge, square to the shaft, blends from `nib_angle` toward the azimuth's by `tilt`
+  (fully once the lean passes about 20°; under 6° the azimuth is not read). A stroke along the shaft is full, across it
+  thin. Its width and ink do not change.
 
 `Ink`: every field is 0..1; its lengths are shares of `Pen.width`, so `scaled` keeps the look.
 
@@ -106,12 +118,16 @@ the start to the end. `left` is on the side of `(-dy, dx)` of the direction of t
 
 Their lengths suit a width of a few pixels at 1:1; `scaled` sets another scale.
 
-| Preset | nib | width | thinning | tapers | min_width | ink |
-|---|---|---|---|---|---|---|
-| `PEN_BALLPOINT` | Round | 2 | 0.35 | round | 0.35 | skip 0.8, dwell 0.2, pressure 0.4 |
-| `PEN_FOUNTAIN` | Chisel, 30° | 3 | 0.3 | 3, 8 | 0.08 | opacity 0.84, pool 0.5, dwell 0.3, pressure 0.3 |
-| `PEN_FELT` | Round | 3 | 0.1 | round | 0.6 | opacity 0.85, grain 0.5, dwell 0.2 |
-| `PEN_BRUSH` | Brush | 6 | 0.8 | 12, 24 | 0.05 | opacity 0.88, grain 0.7, pool 0.3, dwell 0.4, pressure 0.5 |
+| Preset | nib | width | thinning | tapers | min_width | tilt | ink |
+|---|---|---|---|---|---|---|---|
+| `PEN_BALLPOINT` | Round | 2 | 0.35 | round | 0.35 | 0 | skip 0.8, dwell 0.2, pressure 0.4 |
+| `PEN_FOUNTAIN` | Chisel, 30° | 3 | 0.3 | 3, 8 | 0.08 | 0.7 | opacity 0.84, pool 0.5, dwell 0.3, pressure 0.3 |
+| `PEN_FELT` | Round | 3 | 0.1 | round | 0.6 | 0.8 | opacity 0.85, grain 0.5, dwell 0.2 |
+| `PEN_BRUSH` | Brush | 6 | 0.8 | 12, 24 | 0.05 | 1 | opacity 0.88, grain 0.7, pool 0.3, dwell 0.4, pressure 0.5 |
+
+The tilts: a ball rolls the same at any lean (0). A felt's side at a 60° lean lays about +42% width and -24% ink (0.8);
+a brush's hairs lie down, +52% and -30% (1). A fountain pen's nib mostly follows the hold, a little of the 30° kept
+(0.7).
 
 ## Limits
 

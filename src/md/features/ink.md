@@ -44,6 +44,25 @@ program's (feuille's signature pad first; any program with freehand marks next).
   direction crosses the nib's angle, the outline is a bow tie, and the strip's triangles turn over.
 - **The nib's angle is counter-clockwise as seen with y down** (a screen, a page in pixels): 30° rises to the right,
   the classical italic hand, so `PEN_FOUNTAIN`'s upstrokes are thin. A program in a y-up frame passes the negative.
+- **A stylus's tilt lays the side of the tip.** `Sample.tilt` is the pen's lean as `Pointer_Info` gives it (two
+  angles in degrees, x towards the right, y towards the user); `Pen.tilt` (0..1) says how much it changes the mark.
+  Each sample's tilt becomes the lean vector: the pen's axis projected on the paper, `(tan x, tan y)` normalised with
+  the vertical, so its length is `sin` of the angle from upright and its direction is the azimuth, in the same frame as
+  `at` (y down). The vector, not two angles, is resampled and smoothed (both ways, 1.5 widths, as the width): an
+  azimuth's angle wraps at 180°, and a vector passing through upright fades instead of jumping. The two angles are
+  clamped to ±89°: at 90 the tangent is infinite and two 90s have no vertical left to normalise by.
+  - A Round or Brush nib lays its side: the width grows by `1 + 0.6 * tilt * lean` and `lay`'s density falls by
+    `1 - 0.35 * tilt * lean` (the side of a felt or of hairs is broad and carries less ink). The growth applies before
+    `min_width` and the tapers, so a tapered end still ends in a point.
+  - A Chisel nib turns with the pen: a broad nib's edge is square to the shaft, so the edge from the azimuth `(a.y,
+    -a.x)` blends with `nib_angle`'s by `tilt` times a certainty that rises from a lean of 6° to 20° (under it the
+    azimuth is noise). A stroke along the azimuth (pulled towards the shaft) is full, a stroke across it is thin: a
+    right hand's pen, its top to the lower right, gives the italic 30° by itself. The blend is on the doubled angle
+    (an edge has no sign); where the two edges cancel there, `nib_angle` stays. A chisel's lean does not widen it nor
+    lighten its ink: the nib's corners stay on the paper.
+  - A tilt of {0, 0} (upright, or a device without tilt) changes nothing, to the bit: a lean of 0 gives factors of
+    exactly 1 and leaves `nib_angle` alone. Refused: tilt as an `Ink` field, read by `lay` only: the width and the nib's angle are the
+    outline's.
 - **`min_width` applies before the tapers.** It keeps a fast line from breaking; the tapers then narrow the ends to 0
   as they must. A stroke shorter than its two tapers scales them by the same factor: a lens, not a taper cut short.
 - **The taper's ease.** A pen widens fast and holds (`t (2 - t)`); a brush's tip is a soft S (half a cosine), longer
@@ -128,6 +147,11 @@ a slow hand leaves more ink than a fast one. The person who signs wants their pe
 - Where the stroke turns tighter than its half width, the inner edge folds back: those triangles overlap and the
   polygon there has a small loop. Opaque ink hides both; a translucent ink must be drawn into a layer (or as the
   polygon with the non-zero rule) so it is not laid twice.
+- `levels` grows each contour by `LEVEL_OVERLAP` about its centre, so two neighbouring pieces of a level overlap
+  instead of sharing an edge. A renderer that smooths each edge near a pixel (gt:draw's polygon fill) sees two
+  opposite edges on one line as two boundaries, and the stroke showed a hatching. The union grows by a few per cent of
+  a piece: nothing seen. The levels of a grained or skipping ink hold hundreds of contours: draw them with a renderer
+  made for many shapes (a PDF's, a canvas), not gt:draw's polygon fill, which keeps 4096 points a fill.
 - The presets' lengths suit a width of a few pixels at 1:1. `scaled` multiplies the width and the tapers together;
   scaling only the width changes the look of the tapers.
 
