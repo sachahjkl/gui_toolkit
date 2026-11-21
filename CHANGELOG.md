@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.345.0] - 2026-11-21 23:48
+
+### Added
+- **Command palette file source (`ui.Palette_Files`)**: plugs a `gt:filesearch` index into `ui.Command_Palette` under
+the `/` (`Paths`) prefix (`palette_files_add`, `palette_files_set`, `palette_files_opened`,
+`palette_files_destroy`) with background search and asynchronous LMDB frecency recording.
+- **System shell context menus with icons (`ui.Shell_Menu`, `ui.file_dialog`, `desktop.Context_Item.icon`)**:
+`desktop.Context_Item` now carries optional RGBA icons extracted from Windows `IContextMenu` bitmaps (`MIIM_BITMAP`)
+and Linux KIO/Nemo/Thunar icon names; `ui.Shell_Menu` renders async shell menus with bitmap icons inside any
+`ui.menu`, and `ui.file_dialog` now shows system shell actions for local files without delaying menu open.
+
 ## [0.344.0] - 2026-11-21 22:54
 
 ### Added
@@ -4827,6 +4838,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.345.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.345.0
 [0.344.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.344.0
 [0.343.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.343.0
 [0.342.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.342.0
