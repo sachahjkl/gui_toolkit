@@ -137,7 +137,14 @@ Graph_Gesture_Band :: struct {
 }
 
 // The view follows the pointer over the minimap.
-Graph_Gesture_Minimap :: struct {}
+// The view jumps to where the pointer is in the minimap, using the minimap transform frozen at press so dragging near
+// or past the minimap's edge cannot grow its bounds in an exponential feedback loop.
+Graph_Gesture_Minimap :: struct {
+	rect: Rect,     // frame px
+	lo:   [2]f32,   // graph units
+	pad:  [2]f32,   // frame px
+	k:    f32,      // frame px per graph unit
+}
 
 Graph_Options :: struct {
 	user:        rawptr,

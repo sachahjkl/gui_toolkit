@@ -23,6 +23,7 @@ Run :: struct {
 	linked:   int,
 	dropped:  int,   // Graph_Dropped_Link
 	deleted:  int,
+	minimap:  bool,
 	last_delta: [2]f32,
 }
 
@@ -55,7 +56,7 @@ index_of :: proc(r: ^Run, id: u64) -> int {
 @(private = "file")
 build :: proc(s: ^session.Session) {
 	r := (^Run)(s.user)
-	events := ui.node_graph("###graph", &r.view, r.nodes[:], r.links[:], r.selected[:], {})
+	events := ui.node_graph("###graph", &r.view, r.nodes[:], r.links[:], r.selected[:], {minimap = r.minimap})
 	for e in events {
 		switch v in e {
 		case ui.Graph_Moved:
@@ -219,4 +220,34 @@ fit_shows_every_node :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.
 		testing.expect(t, lo.x >= 0 && lo.y >= 0 && hi.x <= f32(WINDOW.x) && hi.y <= f32(WINDOW.y), "a node in view")
 	}
 	testing.expect(t, r.view.zoom <= 1 && !math.is_nan(r.view.zoom), "no closer than 1")
+}) }
+
+// Dragging the minimap near or past its edge freezes the minimap transform so the offset never runs away exponentially;
+// drawing the grid at an extreme offset finishes immediately without hanging; panning all nodes off-screen shows a
+// "Back to content" button that fits the graph back into view.
+@(test)
+minimap_drag_stays_bounded_and_back_to_content_fits :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	r := run_make()
+	defer run_destroy(&r)
+	r.minimap = true
+	s := session.start(t, {size = WINDOW, user = &r, build = build})
+	session.frames(s, 2)
+	// press inside the minimap (bottom-right corner of the 800x600 area) and drag far past its right/bottom edge for 30 frames
+	mm_pt := [2]f32{f32(WINDOW.x) - 40, f32(WINDOW.y) - 40}
+	session.press(s, mm_pt)
+	for _ in 0 ..< 30 { session.move(s, mm_pt + {400, 400}) }
+	session.release(s, mm_pt + {400, 400})
+	testing.expectf(t, abs(r.view.offset.x) < 1e5 && abs(r.view.offset.y) < 1e5, "minimap drag stayed bounded: %v", r.view.offset)
+	// extreme offset must never hang the background grid draw
+	r.view.offset = {-1e12, 1e12}
+	session.frames(s, 2)
+	// with all nodes off-screen, the "Back to content" button appears and brings every node back into view
+	back := session.find(s, "graph_back")
+	testing.expect(t, back != nil, "Back to content button shown when all nodes are off-screen")
+	if back != nil {
+		session.click(s, "graph_back")
+		session.frames(s, 2)
+		testing.expect(t, session.find(s, "graph_back") == nil, "button hides once nodes are back in view")
+		testing.expectf(t, abs(r.view.offset.x) < 1e4 && abs(r.view.offset.y) < 1e4, "view returned to nodes: %v", r.view.offset)
+	}
 }) }

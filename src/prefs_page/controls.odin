@@ -389,6 +389,36 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 	ui.a11y({name = config.title_of(e.def)})
 	res := ui.line_edit("###field", &f.text)
 	f.box = res.box.key
+	// (a numeric field — Size like "4 MiB", unbounded Int or Float — steps on the wheel and Up/Down/Page keys, as
+	// ui.number does: wheel_steps requires focus inside the scrolling settings page)
+	if numeric {
+		delta := f64(ui.wheel_steps(res.box, res.focused))
+		if res.focused && delta == 0 {
+			feel := ui.feel(ui.current_state())
+			if ui.key_press(.Up) { delta = 1 } else if ui.key_press(.Down) { delta = -1 }
+			if ui.key_press(.Page_Up) { delta = feel.step_page } else if ui.key_press(.Page_Down) { delta = -feel.step_page }
+		}
+		if delta != 0 {
+			s := ui.current_state()
+			mult: f64 = .Shift in s.mods ? f64(s.feel.step_shift) : 1
+			base := e.def.kind == .Int ? f64(e.value.i) : e.value.f
+			// (start from what the person typed if it parses, so typing "8 MiB" then scrolling up gives "9 MiB")
+			if parsed, perr := config.parse_shown(e.def, ui.line_edit_string(&f.text)); perr == .None {
+				base = e.def.kind == .Int ? f64(parsed.i) : parsed.f
+			}
+			next := field_step(e.def, base, delta * mult)
+			raw := e.def.kind == .Int ? fmt.tprintf("%d", i64(math.round(next))) : fmt.tprintf("%v", next)
+			err := apply(p, prefs, o, name, raw)
+			delete(f.error)
+			f.error = err
+			if err == "" {
+				shown := config.value_string(prefs, r)
+				if e.def.value_kind == .Size { shown = config.shown_text(e.def, e.value) } else { shown = i18n.decimal_marks(shown) }
+				ui.line_edit_set(&f.text, shown)
+				delete(f.synced); f.synced = strings.clone(shown)
+			}
+		}
+	}
 	left := !res.focused && typing   // (the keyboard went elsewhere this frame)
 	if res.committed || (left && ui.line_edit_string(&f.text) != current) {
 		err := apply(p, prefs, o, name, ui.line_edit_string(&f.text))
@@ -404,6 +434,45 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 			ui.label(fmt.tprintf("%s###unit", sym))
 		}
 	}
+}
+
+// Next value of a numeric preference field after `steps` notches/keys (in the preference's stored unit). For a Size
+// ("4 MiB"), steps by 1 of the binary unit shown (5 MiB, 3 MiB), stepping down into the next smaller binary unit at
+// 1 MiB (down to the stored unit) so going down from 1 MiB to 1023 KiB and back up is reversible.
+@(private)
+field_step :: proc(d: config.Def, current, steps: f64) -> f64 {
+	next: f64
+	if d.value_kind == .Size {
+		unit_scale := config.UNITS[config.unit_of(d)].scale
+		if unit_scale <= 0 { unit_scale = 1 }
+		bytes := current * unit_scale
+		shown_u := size_shown_unit(bytes, unit_scale)
+		if steps < 0 && abs(bytes) <= shown_u && shown_u >= 1024 && shown_u > unit_scale { shown_u /= 1024 }
+		step_bytes := max(shown_u, unit_scale)
+		next = (bytes + steps * step_bytes) / unit_scale
+	} else if d.kind == .Int {
+		next = current + steps
+	} else {
+		k: f64 = d.value_kind == .Fraction || d.value_kind == .Factor ? 0.1 : 1
+		next = current + steps * k
+	}
+	if d.kind == .Int { next = math.round(next) }
+	if d.bounded { next = clamp(next, d.min, d.max) }
+	return next
+}
+
+// The binary unit (bytes: 1, 1024, 1024^2...) at which `bytes` is displayed by config.shown_text, or `fallback` at 0.
+@(private = "file")
+size_shown_unit :: proc(bytes, fallback: f64) -> f64 {
+	if bytes == 0 { return fallback }
+	CENTS :: 100
+	for k := 4; k > 0; k -= 1 {
+		u := math.pow(1024, f64(k))
+		if abs(bytes) < u { continue }
+		x := bytes / u
+		if math.round(x * CENTS) / CENTS * u == bytes { return u }
+	}
+	return 1
 }
 
 // Opens the control of preference `name` at its next build, as a click would: a family's list, a colour's picker. A

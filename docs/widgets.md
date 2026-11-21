@@ -122,7 +122,10 @@ pointer. A press shows at once and eases out on release; a hover eases in and ou
   short bar of the accent at its leading edge (theme: `row_mark`). A zebra stripe or a row's `tint` stays square, from
   edge to edge, under the face. Square rows: `rounding` 0, the edged finish, or `next({radius = 0})` before the row.
 - A sidebar's page is a button of face `.Row`, `selected` on the page shown: `ui.button(id, title, glyph, {face =
-  .Row, selected = shown, width = ui.fill(), left = true})`.
+  .Row, selected = shown, width = ui.fill(), left = true})`. A `.Row` button stays on one line, truncates with `…` when
+  narrower than its words, and shows its full words in a tooltip on hover. An icon-only `.Row` button (a collapsed
+  sidebar rail) shows its `tip` immediately on hover with zero delay (`Button_Options.tip_now` requests the same on any
+  button). Non-`.Row` buttons wrap when narrow, keeping vertical padding above and below their lines.
 
 A custom draw paints its own states with the same parts:
 
@@ -408,6 +411,8 @@ on to the next lines, the row as tall as they are, the box or the switch on the 
 
 `dropdown(id, items, &selected)` takes the width `next` gives it; without one, it is as wide as its widest item, its
 padding and its arrow (`dropdown_width(items)`), so a header's tools or any row as wide as its children shows it whole.
+When closed, the scroll wheel steps to the next or previous item (`wheel_steps`: on hover outside a scrolling view, once
+focused inside one); `segmented` and `font_picker` do the same.
 
 A `segmented` control with no width from `next` asks for its labels' width and gives way down to a dropdown's. In a row
 that cannot hold its labels it is a dropdown of the same choices, at the room the row has; when the row holds them

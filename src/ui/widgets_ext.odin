@@ -1256,6 +1256,16 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 				items[to].flags += {.Focusable}
 				set_focus(items[to].key)
 			}
+			// (the wheel steps through the choices: in a scrolling view, only once focused, wheel_steps)
+			if n := wheel_steps(b, on_one); n != 0 && len(labels) > 0 {
+				to := clamp(chosen - int(n), 0, len(labels) - 1)
+				if to != chosen {
+					selected^, changed = to, true
+					items[chosen].flags -= {.Focusable}
+					items[to].flags += {.Focusable}
+					if on_one { set_focus(items[to].key) }
+				}
+			}
 			// (the item clicked this frame is the selected one: the earlier items said otherwise)
 			if changed { for c in items { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
 		}
@@ -1331,6 +1341,15 @@ segmented_text :: proc(id: string, labels: []string, selected: ^int, tips: []str
 			items[chosen].flags -= {.Focusable}
 			items[to].flags += {.Focusable}
 			set_focus(items[to].key)
+		}
+		if n := wheel_steps(b, on_one); n != 0 && len(labels) > 0 {
+			to := clamp(chosen - int(n), 0, len(labels) - 1)
+			if to != chosen {
+				selected^, changed = to, true
+				items[chosen].flags -= {.Focusable}
+				items[to].flags += {.Focusable}
+				if on_one { set_focus(items[to].key) }
+			}
 		}
 		if changed { for c := b.first; c != nil; c = c.next { if c.a11y != nil && c.a11y.position > 0 { c.a11y.toggled = c.a11y.position == selected^ + 1 ? .True : .False } } }
 	}
@@ -1536,6 +1555,13 @@ dropdown :: proc(id: string, items: []string, selected: ^int) -> (changed: bool)
 		if open { menu_close() } else {
 			menu_open(menu_id, btn.rect, btn.key, from_keyboard = kb)
 			menu_select(selected^)   // keyboard starts from the current value
+		}
+	}
+	// (the wheel over a closed dropdown steps to the previous or next item: in a scrolling view, only once focused)
+	if !open && len(items) > 0 {
+		if n := wheel_steps(btn, sig.focused); n != 0 {
+			to := clamp(selected^ - int(n), 0, len(items) - 1)
+			if to != selected^ { selected^ = to; changed = true }
 		}
 	}
 	if menu(menu_id, max(btn.size.x, em * MENU_MIN_WIDTH_EM)) {

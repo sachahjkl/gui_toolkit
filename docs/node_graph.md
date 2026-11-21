@@ -97,7 +97,9 @@ temp allocator too.
   (0.5), they, the port names and the thumbnail are not shown.
 - `icon_font`: the font of `Graph_Node.icon`.
 - `snap`: the grid that moves snap to, in graph units (0: none).
-- `minimap`: a map of the graph in the bottom-right corner.
+- `minimap`: a map of the graph in the bottom-right corner (its transform freezes while dragging so moving past its edge
+  cannot run away). When all nodes are panned off-screen, a floating "Back to content" button appears above it to call
+  `graph_fit`.
 
 ## The view
 

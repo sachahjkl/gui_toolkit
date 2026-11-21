@@ -2245,6 +2245,12 @@ fr Étapes
 en Add
 fr Ajouter
 
+en Back to content
+fr Retour au contenu
+
+en Fit the graph in view (F)
+fr Ajuster le graphe à la vue (F)
+
 en Graph
 fr Graphe
 

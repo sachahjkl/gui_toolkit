@@ -300,6 +300,20 @@ font_picker :: proc(id: string, st: ^Font_Picker, fam: ^Font_Families, value: st
 	if sig.clicked || kb {
 		if st.open { font_picker_close(st) } else { font_picker_open(st, fam) }
 	}
+	// (the wheel over a closed picker steps through Default and the loaded families: in a scrolling view, only once focused)
+	if !st.open {
+		if n := wheel_steps(btn, sig.focused); n != 0 {
+			font_families_read(fam)
+			if len(fam.list) > 0 {
+				cur := 0
+				if value != "" {
+					for f, i in fam.list { if f.name == value { cur = i + 1; break } }
+				}
+				to := clamp(cur - int(n), 0, len(fam.list))
+				if to != cur { chosen = to == 0 ? "" : fam.list[to - 1].name }
+			}
+		}
+	}
 	if st.open {
 		chosen = font_picker_drop(st, fam, drop_id, btn, value, default_label, default_face, o)
 	}

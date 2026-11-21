@@ -49,12 +49,14 @@ App :: struct {
 	devtools: ^devtools.Server,   // TOOLKIT_DEVTOOLS=<port>: driven with the Chrome DevTools Protocol (tk screenshots)
 	scene:    Scene,
 	builds:   int,                // the builds made: what a scene does once (opens its menu, says its toasts)
+	nav:      ui.Side_Panel,      // the showcase sidebar: resizable and foldable to its icon rail
 
 	// the look
 	themes:   [dynamic]ui.Theme_Def,   // ui.THEMES, then the user's own (THEMES_OF_THE_USER)
 	users:    [dynamic]ui.Theme_Def,   // the user's own, as themes_read made them (owned)
 	choice:   ui.Theme_Choice,
 	shown:    ui.Theme_Shown,
+	other_theme: string,          // remembered single-mode theme when switching Light/Dark (e.g. Graphite <-> Midnight)
 
 	// the controls
 	quality:  int,

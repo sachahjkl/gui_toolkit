@@ -390,8 +390,10 @@ node_graph_press :: proc(f: ^Node_Graph_Frame, s: ^State, sig: Signal) {
 	h := node_graph_hit(f, at)
 	switch h.kind {
 	case .Minimap:
-		view.gesture = Graph_Gesture_Minimap{}
-		if mm, ok := node_graph_minimap(f, {view.origin, view.origin + view.size}); ok { node_graph_center_on(f, node_graph_minimap_to_graph(mm, at)) }
+		if mm, ok := node_graph_minimap(f, {view.origin, view.origin + view.size}); ok {
+			view.gesture = Graph_Gesture_Minimap{rect = mm.rect, lo = mm.lo, pad = mm.pad, k = mm.k}
+			node_graph_center_on(f, node_graph_minimap_to_graph(mm, at))
+		}
 	case .Port:
 		view.link = nil
 		wire := Graph_Gesture_Wire{from = h.port, at = graph_from_screen(view, at)}
@@ -495,8 +497,12 @@ node_graph_follow :: proc(f: ^Node_Graph_Frame, s: ^State, sig: Signal) {
 		}
 		view.gesture = nil
 	case Graph_Gesture_Minimap:
-		if !held { view.gesture = nil; break }
-		if mm, ok := node_graph_minimap(f, {view.origin, view.origin + view.size}); ok { node_graph_center_on(f, node_graph_minimap_to_graph(mm, s.mouse)) }
+		if !held || g.k <= 0 { view.gesture = nil; break }
+		// (frozen minimap transform and clamped pointer: prevents dragging near the edge from feeding back into
+		// node_graph_minimap's bounds and flinging the view out to f32 overflow)
+		mm := Node_Graph_Minimap{rect = g.rect, lo = g.lo, pad = g.pad, k = g.k}
+		p := [2]f32{clamp(s.mouse.x, g.rect.min.x, g.rect.max.x), clamp(s.mouse.y, g.rect.min.y, g.rect.max.y)}
+		node_graph_center_on(f, node_graph_minimap_to_graph(mm, p))
 	}
 	if view.gesture != nil { wake_within(gs(), 1) }
 }

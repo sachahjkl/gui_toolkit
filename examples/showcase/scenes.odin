@@ -427,9 +427,9 @@ themes_build :: proc(app: ^App, em: f32) {
 		}
 		if look_group("Version", em) {
 			modes := [2]string{"Dark", "Light"}
-			m := app.choice.mode == .Light ? 1 : 0
+			m := app.shown.light ? 1 : 0
 			ui.next({height = ui.px(ui.control_height())})
-			if ui.segmented("###mode", modes[:], &m) { app.choice.mode = m == 1 ? .Light : .Dark }
+			if ui.segmented("###mode", modes[:], &m) { set_mode(app, m == 1) }
 		}
 		// (the corners are the theme's too: the standard appearance.rounding, 0 square to 2 round, every widget at once)
 		if look_group("Corners", em) {
