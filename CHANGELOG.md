@@ -5,6 +5,17 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.343.0] - 2026-11-21 20:49
+
+### Added
+- **Portable SIMD UTF-8 validation (`gt:utf8`), SIMD `ui.fuzzy_score` and `ui.Frecency`**:
+  - `gt:utf8` validates UTF-8 16 bytes at a time (`#simd[16]u8`, `base:intrinsics` only, optional `reject_controls`),
+    verified against a scalar reference across 400 000 fuzz inputs and boundary windows; `gt:site` now uses it.
+  - `ui.fuzzy_score` runs a portable `#simd[16]u8` fast path on ASCII candidates up to 128 bytes with bit-exact results
+    verified over 200 000 fuzz inputs.
+  - `ui.Frecency` adds a storage-independent frecency ranking table (`frecency_note_use`, `frecency_score`,
+    `frecency_bonus`, `frecency_encode`/`frecency_decode`), sharing modus's exact decay and bonus model.
+
 ## [0.342.0] - 2026-11-21 18:48
 
 ### Added
@@ -4809,6 +4820,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.343.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.343.0
 [0.342.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.342.0
 [0.341.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.341.1
 [0.341.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.341.0
