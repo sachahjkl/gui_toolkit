@@ -20,12 +20,12 @@ NATIVE_CRATE :: "native/gt"
 NATIVE_OUT :: "build/native"
 NATIVE_SYMBOL :: "gt_native_rust_eh_personality"
 // The crates it is made of: a change in any builds it again.
-@(rodata) NATIVE_CRATES := [?]string{"native/gt", "native/text", "native/mermaid", "native/a11y", "native/webp", "native/pdf"}
+@(rodata) NATIVE_CRATES := [?]string{"native/gt", "native/text", "native/mermaid", "native/a11y", "native/webp", "native/pdf", "native/filesearch"}
 // Its parts, each a cargo feature; a11y is AccessKit's Windows adapter; webp is libwebp, built from its C sources; pdf
 // is the PDF engine (hayro).
-@(rodata) NATIVE_FEATURES := [?]string{"text", "mermaid", "a11y", "webp", "pdf"}
+@(rodata) NATIVE_FEATURES := [?]string{"text", "mermaid", "a11y", "webp", "pdf", "filesearch"}
 // What `build_native` builds when no feature is named: every part this system has.
-NATIVE_DEFAULT :: "text,mermaid,a11y,webp,pdf" when ODIN_OS == .Windows else "text,mermaid,webp,pdf"
+NATIVE_DEFAULT :: "text,mermaid,a11y,webp,pdf,filesearch" when ODIN_OS == .Windows else "text,mermaid,webp,pdf,filesearch"
 
 RUST_TARGET :: "x86_64-pc-windows-msvc"
 // The hash of what a library is built from, beside it.

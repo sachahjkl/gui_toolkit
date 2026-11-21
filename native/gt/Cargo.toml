@@ -19,6 +19,7 @@ mermaid = ["dep:gt_mermaid"]
 a11y = ["dep:gt_a11y"]
 webp = ["dep:gt_webp"]
 pdf = ["dep:gt_pdf"]
+filesearch = ["dep:gt_filesearch"]
 
 [dependencies]
 gt_text = { path = "../text", optional = true }
@@ -26,6 +27,7 @@ gt_mermaid = { path = "../mermaid", optional = true }
 gt_a11y = { path = "../a11y", optional = true }
 gt_webp = { path = "../webp", optional = true }
 gt_pdf = { path = "../pdf", optional = true }
+gt_filesearch = { path = "../filesearch", optional = true }
 
 [profile.release]
 opt-level = 3

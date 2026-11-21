@@ -1,0 +1,19 @@
+# The toolkit's file search engine (src/filesearch): fff-search indexes directory trees on background threads,
+# watches changes, ranks by frecency (LMDB), and matches file names with typo tolerance. A part of the one native
+# library (native/gt, feature filesearch: tools/tk build_native -features:filesearch). Versions pinned here and by
+# Cargo.lock; the build runs with --locked. See src/md/features/file-search.md.
+[package]
+name = "gt_filesearch"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+fff-search = "=0.11.1-nightly.f9760ac"
+# Force stock zlib to compile statically into libgt_native.a/gt_native.lib so programs never need system -lz.
+libz-sys = { version = "=1.1.33", features = ["static"] }

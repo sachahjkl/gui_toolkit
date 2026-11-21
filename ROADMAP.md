@@ -13,10 +13,9 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
-- **Finding a file by its name as one types (`gt:filesearch`).** classeur finds a file under a folder in a few keys,
-  typos forgiven, the files the person opens most first; the palette and a launcher get the same. fff is the engine; a
-  backend per system. First the two measures of the intent (memory and scan time on a real home, inotify's bound),
-  then the crate and the package, then classeur. Intent: [src/md/features/file-search.md](src/md/features/file-search.md).
+- **Wire `gt:filesearch` into classeur and the palette.** `gt:filesearch` (backed by `fff-search` in `native/filesearch`) is
+  built and tested; next wire it into classeur's search and the palette's file source, and take the Windows home
+  measurement before enabling whole-home defaults there. Intent: [src/md/features/file-search.md](src/md/features/file-search.md).
 - **X11's vblank timing seen on a real screen.** The Present extension's answers are read, but the virtual desktop's
   software renderer draws with PutImage and never answers: run the desktop test on an X11 session with a GPU to see
   frames start just in time there too. Intent: [src/md/infrastructure/vblank.md](src/md/infrastructure/vblank.md).

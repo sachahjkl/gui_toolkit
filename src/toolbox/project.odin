@@ -70,8 +70,9 @@ Feature :: enum u8 {
 	No_Fallback_Fonts,  // no Roboto or Inconsolata compiled in (FONT_EMBED_FALLBACK=false): the system's fonts only
 	Webp,               // WebP read and written (IMAGE_WEBP=true, native/webp): libwebp built into the program, every system
 	Pdf,                // PDF files opened, rendered and written (GT_PDF=true, native/pdf): gt:pdf, hayro built into the program
+	Filesearch,         // fast file search over directory trees (GT_FILESEARCH=true, native/filesearch): gt:filesearch, fff-search built in
 }
-Features :: bit_set[Feature; u8]
+Features :: bit_set[Feature; u16]
 
 // The systems a program is built for (Project.systems).
 Systems :: bit_set[runtime.Odin_OS_Type]
@@ -228,6 +229,7 @@ feature_defines :: proc(features: Features, target: runtime.Odin_OS_Type, lucide
 	if .No_Fallback_Fonts in features { append(&out, "-define:FONT_EMBED_FALLBACK=false") }
 	if .Webp in features { append(&out, "-define:IMAGE_WEBP=true") }
 	if .Pdf in features { append(&out, "-define:GT_PDF=true") }
+	if .Filesearch in features { append(&out, "-define:GT_FILESEARCH=true") }
 	return out[:]
 }
 
@@ -254,6 +256,7 @@ native_crates :: proc(features: Features) -> []string {
 	if .Mermaid in features { append(&out, "native/mermaid") }
 	if .Webp in features { append(&out, "native/webp") }
 	if .Pdf in features { append(&out, "native/pdf") }
+	if .Filesearch in features { append(&out, "native/filesearch") }
 	return out[:]
 }
 
@@ -309,6 +312,7 @@ native_parts :: proc(p: Project, target: runtime.Odin_OS_Type) -> []string {
 	if .Mermaid in p.features { append(&parts, "mermaid") }
 	if .Webp in p.features { append(&parts, "webp") }
 	if .Pdf in p.features { append(&parts, "pdf") }
+	if .Filesearch in p.features { append(&parts, "filesearch") }
 	return parts[:]
 }
 

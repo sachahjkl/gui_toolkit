@@ -50,9 +50,9 @@ native_parts_per_option :: proc(t: ^testing.T) {
 	testing.expect(t, slice.equal(native_parts(p, .Darwin), []string{"text"}))
 	testing.expect_value(t, len(native_parts(p, .Windows)), 0)
 
-	p.features = {.Native_Text, .Accessibility, .Mermaid, .Webp, .Pdf, .Lucide_Subset}
-	testing.expect(t, slice.equal(native_parts(p, .Windows), []string{"text", "a11y", "mermaid", "webp", "pdf"}))
-	testing.expect(t, slice.equal(native_parts(p, .Linux), []string{"text", "mermaid", "webp", "pdf"}), "no AccessKit off Windows")
+	p.features = {.Native_Text, .Accessibility, .Mermaid, .Webp, .Pdf, .Filesearch, .Lucide_Subset}
+	testing.expect(t, slice.equal(native_parts(p, .Windows), []string{"text", "a11y", "mermaid", "webp", "pdf", "filesearch"}))
+	testing.expect(t, slice.equal(native_parts(p, .Linux), []string{"text", "mermaid", "webp", "pdf", "filesearch"}), "no AccessKit off Windows")
 
 	// (opencode native: ocn_native links text and Mermaid itself)
 	p.features = {.Mermaid, .Devtools, .Lucide_Subset}

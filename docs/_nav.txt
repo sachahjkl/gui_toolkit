@@ -113,7 +113,8 @@ Frames and threads
   png.md              png: the PNG codec
   gif.md              gif: animated GIF encoder
   image.md            image: transformations of pictures
-  pdf.md              pdf: open, render and write PDF files
+  pdf.md
+filesearch.md              pdf: open, render and write PDF files
   h264.md             h264: H.264 with the system's encoders
   mux.md              mux: MP4 and WebM files
   qr.md               qr: QR Codes, written and read

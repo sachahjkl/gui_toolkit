@@ -30,6 +30,12 @@ when !FONT_NATIVE_LINK {
 		"system:kernel32.lib",
 		"system:dbghelp.lib",
 		"system:Synchronization.lib",   // (WaitOnAddress: Rust's standard library locks with it)
+		"system:ole32.lib",
+		"system:rpcrt4.lib",
+		"system:shell32.lib",
+		"system:winhttp.lib",
+		"system:crypt32.lib",
+		"system:secur32.lib",
 	}
 } else {
 	foreign import gt_text {
