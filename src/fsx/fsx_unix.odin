@@ -193,3 +193,15 @@ path_kind :: proc(path: string, loc := #caller_location) -> Path_Kind {
 	if posix.S_ISLNK(st.st_mode) { return .Link }
 	return posix.S_ISDIR(st.st_mode) ? .Directory : .File
 }
+
+// What `path` reaches, links followed: .Directory (size 0), .File (its size), or .Absent.
+stat_follow :: proc(path: string, loc := #caller_location) -> (kind: Path_Kind, size: i64) {
+	base.blocking("fsx.stat_follow", loc)
+	if path == "" { return .Absent, 0 }
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	st: posix.stat_t
+	if posix.stat(cpath(path), &st) != .OK { return .Absent, 0 }
+	if posix.S_ISDIR(st.st_mode) { return .Directory, 0 }
+	if posix.S_ISREG(st.st_mode) { return .File, i64(st.st_size) }
+	return .Absent, 0
+}

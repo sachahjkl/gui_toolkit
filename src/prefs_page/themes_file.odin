@@ -17,7 +17,6 @@ package tk_prefs_page
 import "base:runtime"
 import "core:os"
 import "core:strings"
-import "core:time"
 import "../ascii"
 import "../fsx"
 import i18n "../i18n"
@@ -173,11 +172,7 @@ themes_file_poll :: proc(tf: ^Themes_File, s: ^ui.State) -> (changed: bool) {
 	work :: proc(d: rawptr) {
 		j := (^Theme_Read_Job)(d)
 		a := runtime.heap_allocator()
-		fi, err := os.stat(j.path, a)
-		if err == nil {
-			j.stamp = time.to_unix_nanoseconds(fi.modification_time)
-			os.file_info_delete(fi, a)
-		}
+		_, j.stamp, _ = fsx.stat(j.path)
 		if j.stamp == j.known { return }
 		j.read = true
 		if j.stamp == 0 { return }

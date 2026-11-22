@@ -244,3 +244,33 @@ path_kind :: proc(path: string, loc := #caller_location) -> Path_Kind {
 	if attrs & win.FILE_ATTRIBUTE_REPARSE_POINT != 0 { return .Link }
 	return attrs & win.FILE_ATTRIBUTE_DIRECTORY != 0 ? .Directory : .File
 }
+
+// What `path` reaches, links followed: .Directory (size 0), .File (its size), or .Absent. Never calls core:os's
+// os.stat, which aliases the caller's path string in File_Info.fullpath for every reparse point (junctions, symlinks,
+// cloud files), making os.file_info_delete free the caller's path.
+stat_follow :: proc(path: string, loc := #caller_location) -> (kind: Path_Kind, size: i64) {
+	base.blocking("fsx.stat_follow", loc)
+	if path == "" { return .Absent, 0 }
+	runtime.DEFAULT_TEMP_ALLOCATOR_TEMP_GUARD()
+	w := wide(long_path(path))
+	data: win.WIN32_FILE_ATTRIBUTE_DATA
+	ok := bool(win.GetFileAttributesExW(w, win.GetFileExInfoStandard, &data))
+	if ok && data.dwFileAttributes & win.FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+		if data.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY != 0 { return .Directory, 0 }
+		return .File, i64(data.nFileSizeHigh) << 32 | i64(data.nFileSizeLow)
+	}
+	h := win.CreateFileW(w, 0, win.FILE_SHARE_READ | win.FILE_SHARE_WRITE | win.FILE_SHARE_DELETE, nil, win.OPEN_EXISTING, win.FILE_FLAG_BACKUP_SEMANTICS, nil)
+	if h == win.INVALID_HANDLE_VALUE {
+		e := win.GetLastError()
+		if ok && (e == win.ERROR_ACCESS_DENIED || e == win.ERROR_SHARING_VIOLATION) {
+			if data.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY != 0 { return .Directory, 0 }
+			return .File, i64(data.nFileSizeHigh) << 32 | i64(data.nFileSizeLow)
+		}
+		return .Absent, 0
+	}
+	defer win.CloseHandle(h)
+	d: win.BY_HANDLE_FILE_INFORMATION
+	if !win.GetFileInformationByHandle(h, &d) { return .Absent, 0 }
+	if d.dwFileAttributes & win.FILE_ATTRIBUTE_DIRECTORY != 0 { return .Directory, 0 }
+	return .File, i64(d.nFileSizeHigh) << 32 | i64(d.nFileSizeLow)
+}

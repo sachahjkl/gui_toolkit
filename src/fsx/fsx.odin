@@ -24,6 +24,7 @@
 //	               system's hidden mark, all from the directory's own reading (Windows: FindFirstFileW's attributes,
 //	               no call per entry)
 //	path_kind      what a path names, links never followed: a junction / symlink to a directory is a Link
+//	stat_follow    what a path reaches, links followed (.File with its size, .Directory, or .Absent; no heap allocation)
 //	remove_tree    a file, or a directory with everything in it, one entry at a time
 //	temp_dir       the directory for temporary files
 //	path_join      a name in a folder, by this system's separator or a given one (text only: no system call)

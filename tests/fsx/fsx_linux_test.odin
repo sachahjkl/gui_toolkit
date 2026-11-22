@@ -101,3 +101,29 @@ read_folder_hides_dot_names_and_keeps_links :: proc(t: ^testing.T) {
 		testing.expect(t, !l.hidden, "not hidden")
 	}
 }
+
+@(test)
+stat_follow_follows_links_and_reports_broken_ones :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_stat_follow")
+	defer fsx.remove_tree(root)
+	file := fmt.tprintf("%s/five.txt", root)
+	dir := fmt.tprintf("%s/sub", root)
+	testing.expect(t, os.write_entire_file(file, transmute([]byte)string("12345")) == nil)
+	testing.expect(t, fsx.make_dirs(dir))
+	file_link := fmt.tprintf("%s/file_link", root)
+	dir_link := fmt.tprintf("%s/dir_link", root)
+	broken := fmt.tprintf("%s/broken", root)
+	testing.expect_value(t, posix.symlink("five.txt", strings.clone_to_cstring(file_link, context.temp_allocator)), posix.result.OK)
+	testing.expect_value(t, posix.symlink("sub", strings.clone_to_cstring(dir_link, context.temp_allocator)), posix.result.OK)
+	testing.expect_value(t, posix.symlink("gone", strings.clone_to_cstring(broken, context.temp_allocator)), posix.result.OK)
+	kind, size := fsx.stat_follow(file_link)
+	testing.expect_value(t, kind, fsx.Path_Kind.File)
+	testing.expect_value(t, size, 5)
+	kind, size = fsx.stat_follow(dir_link)
+	testing.expect_value(t, kind, fsx.Path_Kind.Directory)
+	testing.expect_value(t, size, 0)
+	kind, _ = fsx.stat_follow(broken)
+	testing.expect_value(t, kind, fsx.Path_Kind.Absent)
+	kind, _ = fsx.stat_follow(fmt.tprintf("%s/missing", root))
+	testing.expect_value(t, kind, fsx.Path_Kind.Absent)
+}

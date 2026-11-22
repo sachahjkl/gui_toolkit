@@ -246,10 +246,9 @@ local_entry :: proc(f: fsx.Folder_Entry, dir: string, sep: u8, allocator: mem.Al
 		e.link = true
 		full := fsx.path_join(dir, f.name, sep, allocator)
 		defer delete(full, allocator)
-		if to, to_err := os.stat(full, allocator); to_err == nil {
-			if to.type == .Directory { e.kind = .Folder }
-			e.size = to.size
-			os.file_info_delete(to, allocator)
+		if kind, size := fsx.stat_follow(full); kind != .Absent {
+			if kind == .Directory { e.kind = .Folder }
+			e.size = size
 		}
 	case .File, .Absent:
 	}

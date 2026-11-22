@@ -39,3 +39,26 @@ read_folder_reads_the_hidden_attribute :: proc(t: ^testing.T) {
 		testing.expect(t, e.hidden, "hidden")
 	}
 }
+
+// A junction is a .Link to path_kind and a .Directory to stat_follow, with no heap allocation.
+@(test)
+stat_follow_follows_a_junction :: proc(t: ^testing.T) {
+	root := fresh_dir("gui_toolkit_fsx_stat_follow_windows")
+	defer fsx.remove_tree(root)
+	file := fmt.tprintf("%s\\five.txt", root)
+	target := fmt.tprintf("%s\\real_dir", root)
+	link := fmt.tprintf("%s\\junction_dir", root)
+	testing.expect(t, os.write_entire_file(file, transmute([]byte)string("12345")) == nil)
+	testing.expect(t, fsx.make_dirs(target))
+	state, _, _, err := os.process_exec(os.Process_Desc{command = {"cmd.exe", "/c", "mklink", "/J", link, target}}, context.temp_allocator)
+	if !testing.expect(t, err == nil && state.exit_code == 0, "mklink /J") { return }
+	testing.expect_value(t, fsx.path_kind(link), fsx.Path_Kind.Link)
+	kind, size := fsx.stat_follow(link)
+	testing.expect_value(t, kind, fsx.Path_Kind.Directory)
+	testing.expect_value(t, size, 0)
+	kind, size = fsx.stat_follow(file)
+	testing.expect_value(t, kind, fsx.Path_Kind.File)
+	testing.expect_value(t, size, 5)
+	kind, _ = fsx.stat_follow(fmt.tprintf("%s\\missing", root))
+	testing.expect_value(t, kind, fsx.Path_Kind.Absent)
+}

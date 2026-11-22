@@ -505,6 +505,30 @@ the_local_source_lists_a_real_folder :: proc(t: ^testing.T) {
 	if testing.expect_value(t, len(app.paths), 1) { testing.expect_value(t, app.paths[0], fmt.tprintf("%s%sfive.txt", root, ODIN_OS == .Windows ? "\\" : "/")) }
 }
 
+// A folder with a link to another folder (an NTFS junction on Windows, a symlink on Unix): before fsx.stat_follow,
+// Odin's os.stat aliased the path string on Windows reparse points and os.file_info_delete + defer delete double-freed
+// it (0xC0000374 in RtlFreeHeap).
+@(test)
+the_local_source_lists_a_folder_with_a_link :: proc(t: ^testing.T) {
+	sep := ODIN_OS == .Windows ? "\\" : "/"
+	root := fmt.tprintf("%s%sgui_toolkit_file_browser_link_%d", fsx.temp_dir(context.temp_allocator), sep, os.get_pid())
+	fsx.remove_tree(root)
+	real_dir := fmt.tprintf("%s%sreal_dir", root, sep)
+	linked_dir := fmt.tprintf("%s%slinked_dir", root, sep)
+	fsx.make_dirs(real_dir)
+	defer fsx.remove_tree(root)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s%sinside.txt", real_dir, sep), transmute([]byte)string("ok")) == nil)
+	if !testing.expect(t, make_folder_link(linked_dir, real_dir), "folder link made") { return }
+	app: App
+	defer app_destroy(&app)
+	app.local = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = root})
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).rows_shown == 2 }, "both folders shown", BOUND)
+	testing.expect(t, session.find_text(s, "real_dir") != nil)
+	testing.expect(t, session.find_text(s, "linked_dir") != nil)
+}
+
 ////////////////////////////////
 // Search in subfolders
 

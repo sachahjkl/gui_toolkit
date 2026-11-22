@@ -9,6 +9,7 @@ import "base:runtime"
 import "core:os"
 import "core:strings"
 import desktop "../desktop"
+import fsx "../fsx"
 import img "../image"
 
 // A larger picture is not decoded here: the system's thumbnail, if it has one.
@@ -61,12 +62,8 @@ file_thumbnail_make :: proc(path: string, side: int, system: bool, allocator := 
 	px := max(side, 1)
 	// (the heap's, freed here: a worker's temporary memory is not freed between its jobs)
 	a := runtime.heap_allocator()
-	info, err := os.stat(path, a)
-	if err != nil { return }
-	size := info.size
-	is_file := info.type == .Regular
-	os.file_info_delete(info, a)
-	if !is_file || size <= 0 { return }
+	kind, size := fsx.stat_follow(path)
+	if kind != .File || size <= 0 { return }
 	if !file_thumbnail_decodes(path) || size > FILE_THUMB_DECODE_BYTES {
 		if system { return file_thumb_system(path, px, false, allocator) }
 		return

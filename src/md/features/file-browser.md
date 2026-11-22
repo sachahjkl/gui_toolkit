@@ -77,6 +77,12 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   as the views do (the focus in it). The modal's own rule
   (`keys_held_by_dialog`) is not enough: a program may set `keys_behind_dialogs`, and typed text, `key_pressed_peek`
   and a program's own reading of the events went around it.
+- **A local link's target and a thumbnail's file are statted through `fsx.stat_follow`, never `core:os`'s `os.stat`.**
+  On Windows, `core:os`'s `_file_info_from_get_file_information_by_handle` sets `File_Info.fullpath = name` without
+  cloning the caller's string for every reparse point (a junction such as `My Documents` or `Application Data`, a
+  symbolic link, a OneDrive cloud file); `os.file_info_delete` then freed the caller's path string, and the caller's own
+  `delete` freed it a second time (`0xC0000374` heap corruption in `RtlFreeHeap` when opening a folder). `fsx.stat_follow`
+  returns the target's `Path_Kind` and size with no heap allocation.
 - **A local entry is hidden as the system says, by one rule for the listing and the search.** `fsx.read_folder` gives
   the system's mark with each entry; `file_entry_hidden` (that mark, or a name that starts with ".") decides in the
   folder and in the walk. On Windows the mark is `FILE_ATTRIBUTE_HIDDEN` alone: Explorer's Hidden items shows those, and

@@ -82,6 +82,7 @@ fsx.make_dirs(dir)                                // the directory and every mis
 ok := fsx.private_dir(dir)                        // the same, the directory its user's alone (false: another's, a link)
 files := fsx.list_files(dir)                      // the plain files (no subdirectory, no link to one): name and size
 kind := fsx.path_kind(path)                       // .Absent / .File / .Directory / .Link (links never followed)
+target, size := fsx.stat_follow(path)             // .Absent / .File / .Directory and a file's size (links followed, no allocation)
 entries, err := fsx.read_folder(dir)               // every entry: name, size, modified, kind, hidden (os.Error on failure)
 fsx.folder_entries_delete(entries)                 // frees them (same allocator)
 ok := fsx.remove_tree(path)                        // a file, or a directory with everything in it, one entry at a time
