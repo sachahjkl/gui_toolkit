@@ -43,6 +43,10 @@ X11_Conn :: struct {
 	windows:     [dynamic]^Window,   // this process's windows: an event goes to the one it names
 	xfixes_event, randr_event: u8,   // the extension's first event (x11_ext_linux.odin), 0 without it
 	present_opcode: u8,              // the Present extension's major opcode, its generic events' mark (0: none)
+	xi_opcode:      u8,              // the XInput 2 extension's major opcode (x11_pen_linux.odin; 0: none)
+	xi_atoms:       Xi_Atoms,        // Abs Pressure, Abs Tilt X, Abs Tilt Y
+	xi_pens:        []Xi_Pen_Device, // attached pen/eraser slave devices (heap)
+	xi_selected:    bool,            // whether windows currently hold an XI2 pointer mask
 	loud:        u64,                // events other than our own Present answers, handled since the connection opened (x11_wait)
 	incr_sends:  [dynamic]X11_Incr_Send,   // INCR transfers we are sending (clipboard_x11_linux.odin)
 	foreign_formats: X11_Foreign_Formats,      // what another client's CLIPBOARD offers, as last read
@@ -720,6 +724,7 @@ x11_key_is_escape :: proc(keycode: u8) -> bool {
 x11_handle_event :: proc(polling: ^Window, raw: ^Xcb_Generic_Event) {
 	b := ([^]u8)(raw)
 	type := raw.response_type & X11_RESPONSE_TYPE_MASK
+	if type == XCB_GE_GENERIC && x11_xi_event(raw) { return }
 	if type == XCB_DESTROY_NOTIFY {   // (xcb_destroy_notify_event_t: window at [8])
 		x11_dnd_source_gone(Xcb_Window(get_u32(b[8:])))
 		x11_incr_give_up(Xcb_Window(get_u32(b[8:])))

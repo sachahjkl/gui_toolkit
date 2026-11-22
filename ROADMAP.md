@@ -70,10 +70,6 @@
 - **Archives as folders in classeur.** A zip, a tar or a 7z is browsed as a folder, its files copied out by a drag: an
   archive is one more file source of the file browser (`ui.File_Source`), so every program's file dialog gets it too.
   Intent to write: which formats, read only or written, a library for each.
-- **A pen's pressure on X11.** A person who signs or draws with a pen on X11 gets the width of their pressure, as on
-  Windows and Wayland: XInput 2's pen devices and their pressure valuator give `Pointer_*` events. Intent:
-  [src/md/features/pen-input.md](src/md/features/pen-input.md), "X11".
-
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link
   dropped in the void) is the toolkit's already.

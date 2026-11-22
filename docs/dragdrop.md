@@ -4,7 +4,7 @@ The API is the same on every system (`src/platform/dragdrop.odin`, `src/platform
 (`dragdrop_win32.odin`: OLE; `pointer_win32.odin`: `WM_POINTER`), Linux too (`dragdrop_linux.odin`: `wl_data_device`, XDND).
 Other systems build with `dragdrop_stub.odin`, which answers "not supported" (`drop_target_enable` returns false,
 `drag_start` returns `ok = false`). `Pointer_*` events come on Windows (fingers and pens) and on Wayland (the pens of
-a tablet, `tablet_wl_linux.odin`); X11 gives none.
+a tablet, `tablet_wl_linux.odin`; on X11, XInput 2 via `libxcb-xinput.so.0`, `x11_pen_linux.odin`).
 
 ## Receiving drops
 

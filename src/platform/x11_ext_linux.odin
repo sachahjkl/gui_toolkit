@@ -121,7 +121,7 @@ Present_Complete_Notify :: struct #packed {
 #assert(size_of(Present_Complete_Notify) == 44)
 
 // The major opcode of an extension (its generic events carry it), 0 when the server does not have it.
-@(private = "file")
+@(private)
 x11_extension_opcode :: proc(id: rawptr) -> u8 {
 	if xcb.get_extension_data == nil || id == nil { return 0 }
 	r := (^Xcb_Extension_Reply)(xcb.get_extension_data(x11c.c, id))
@@ -287,6 +287,7 @@ x11_extensions_init :: proc() {
 			}
 		}
 	}
+	x11_xi_init()
 }
 
 // What a new window asks of the extensions: a notice when CLIPBOARD changes hands, when the screen's modes change.
@@ -295,6 +296,7 @@ x11_extensions_select :: proc(id: Xcb_Window) {
 	if x11c.xfixes_event != 0 { xfixes.select_selection(x11c.c, id, x11c.clipboard, XFIXES_SELECTION_EVENT_MASK_SET_OWNER) }
 	if x11c.randr_event != 0 && randr.select_input != nil { randr.select_input(x11c.c, id, RANDR_NOTIFY_MASK_SCREEN_CHANGE) }
 	x11_present_select(id)
+	x11_xi_select(id)
 }
 
 // Lets the pointer through a window (a drag's image: the window under it is the target). False without XFIXES.

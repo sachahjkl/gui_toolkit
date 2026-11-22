@@ -43,6 +43,17 @@ width, which is worse than the speed. So `Pointer_Info.measured` says whether th
 
 ## X11
 
-The toolkit's X11 backend uses no XInput 2. A pen there is the core pointer that the server makes of it, with no
-pressure. XI2 for one valuator was refused for now: it takes a new extension's setup, device listing and event
-selection. See [ROADMAP.md](../../../ROADMAP.md).
+The X11 backend loads `libxcb-xinput.so.0` optionally by `dlopen` (`x11_pen_linux.odin`) and negotiates XInput 2.0.
+Device parsing and event decoding live in pure, system-free code (`x11_pen.odin`, tested in `x11_pen_test.odin`):
+
+- **Pen detection**: `XIQueryDevice(XIAllDevices)` keeps enabled slave pointers that expose an `Abs Pressure`
+  valuator (`max > min`), have no `XITouchClass`, and are not named `touchpad`/`trackpad`. Devices whose name
+  contains `eraser` set `Pointer_Info.eraser = true`. `Abs Tilt X` and `Abs Tilt Y` valuators are converted from
+  degrees to turns (`turn.from_degrees`).
+- **Zero cost without a pen**: the backend always watches `XI_HierarchyChanged` on the root window for hot-plug, but
+  only selects `XI_ButtonPress | XI_ButtonRelease | XI_Motion | XI_Leave` on `XIAllMasterDevices` for its windows
+  when at least one pen device is present. When no pen is connected, windows stay on core X11 pointer events untouched.
+- **Unified event shape**: when XI2 is active on a window, events whose `sourceid` is a pen emit `Pointer_Move` /
+  `Pointer_Down` / `Pointer_Up` (with `measured = true`, normalized pressure, tilt, barrel, eraser) followed by an
+  `emulated = true` `Mouse_*` event, matching Windows and Wayland. Events from non-pen devices (mice, touchpads) emit
+  plain `Mouse_*` and `Scroll` events (`emulated = false`).
