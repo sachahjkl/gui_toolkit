@@ -420,6 +420,10 @@ again it is a segmented control again. The size it asks is the same in both form
 frame to the next. Seven kinds of value in a narrow window, or the five finishes on a narrow themes page, need no choice
 of the program's.
 
+The chosen label of a pill `segmented` always reads on its key (WCAG AA, 4.5): when the theme's `accent_text` does not,
+it takes the page's or the text's colour made readable there. `segmented_key_color()` gives the key's colour in the
+style in effect (the accent; machined, the page's face a step toward it).
+
 A group of choices, `segmented` (pills or words), `tabs` and the `radio` buttons of one `selected`, is one Tab stop: the
 chosen one. While it has the
 keyboard, the arrows change the choice and the keyboard follows: Left and Right (and Up and Down in a segmented

@@ -1138,6 +1138,15 @@ seg_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	paint_rect(dc, pill, d.accent, d.key_radius)
 }
 
+// The colour of a segmented control's key in the style in effect, opaque: the accent, or machined the page's face a
+// step toward it (seg_draw). The chosen label is made to read on it.
+segmented_key_color :: proc() -> Color {
+	accent := color("accent")
+	key := machined() ? draw.mix(color("background"), accent, SEG_KEY_ACCENT) : accent
+	key.a = 1
+	return key
+}
+
 // The corners of a segmented control's key (seg_draw), as drawn. Flat: concentric with the track's, `pad` inside it.
 // Machined: a radius of its own, near the slot's curve: at 0 its lit rim and its edge met in a notch at the corners.
 @(private = "file")
@@ -1152,6 +1161,8 @@ Segmented_Look :: enum u8 { Pills, Text }
 
 // A segment's room beside its label's padding, in ems: the key's rounded ends never touch the words.
 @(private = "file") SEGMENT_ROOM_EM :: 0.8
+// The least contrast of the chosen label on its pill (WCAG AA for text).
+@(private = "file") SEGMENT_TEXT_RATIO :: 4.5
 
 // The width a pill segmented control takes with no width given, in the style in effect: every segment as wide as the
 // widest label with its padding (the segments are equal: seg_draw divides the track), and the track's padding. A
@@ -1195,6 +1206,9 @@ segmented :: proc(id: string, labels: []string, selected: ^int, tips: []string =
 	// the theme made to read on it)
 	text_on = color("accent_text")
 	if mach { text_on = color("text") } else if tags(intent_tag(.Primary)) { text_on = color("text") }
+	// (on the pill the chosen label must read whatever the theme or the program set as accent_text: a light accent with
+	// a light accent_text left the word unreadable. Below AA, the page's or the text's colour, made readable there)
+	if ground := segmented_key_color(); contrast(text_on, ground) < SEGMENT_TEXT_RATIO { text_on = ink_on(ground) }
 	if tags("weak") { text_off = color("text") }
 	if tags("button") {
 		set_next_axis(.X)
