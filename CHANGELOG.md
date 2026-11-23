@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.347.0] - 2026-11-23 20:52
+
+### Added
+- **A test's crash names its place on Linux (`gt:testkit/crashsite`)**: `session.start`, `unwatched.run` and
+`testkit.temp_folder` chain a handler after the test runner's: a `SIGSEGV`, `SIGILL`, `SIGFPE` or `SIGBUS` writes
+its module, offset and nearest symbol to the log, and a fault on a thread the runner does not stop ends the run at once
+instead of spinning until the CI's time limit.
+
 ## [0.346.1] - 2026-11-23 20:20
 
 ### Fixed
@@ -4853,6 +4861,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.347.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.347.0
 [0.346.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.346.1
 [0.346.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.346.0
 [0.345.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.345.0
