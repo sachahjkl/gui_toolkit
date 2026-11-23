@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.346.1] - 2026-11-23 20:20
+
+### Fixed
+- **A segmented control's chosen label always reads on its pill**: when a theme's or a program's `accent_text` does not
+reach WCAG AA (4.5) on the accent, the label takes the page's or the text's colour made readable there, so a light
+accent no longer leaves the chosen word unreadable.
+- **Opening the file browser on Windows no longer crashes with `0xC0000374` (`RtlFreeHeap`).** Odin's `os.stat` aliases the caller's path string inside `File_Info.fullpath` whenever `FILE_ATTRIBUTE_REPARSE_POINT` is set (NTFS junctions in a user's folder such as `My Documents` or `Application Data`, symbolic links, and OneDrive cloud files), so `os.file_info_delete` freed the path a first time and the caller freed it a second time. `fsx.stat_follow` now resolves links and file sizes directly from the OS without heap allocation in the file browser, thumbnail loader, and themes watcher.
+
 ## [0.346.0] - 2026-11-22 06:25
 
 ### Added
@@ -4845,6 +4853,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.346.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.346.1
 [0.346.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.346.0
 [0.345.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.345.0
 [0.344.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.344.0
