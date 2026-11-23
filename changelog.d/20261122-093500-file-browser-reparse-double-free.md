@@ -1,3 +1,0 @@
-type: Fixed
-
-**Opening the file browser on Windows no longer crashes with `0xC0000374` (`RtlFreeHeap`).** Odin's `os.stat` aliases the caller's path string inside `File_Info.fullpath` whenever `FILE_ATTRIBUTE_REPARSE_POINT` is set (NTFS junctions in a user's folder such as `My Documents` or `Application Data`, symbolic links, and OneDrive cloud files), so `os.file_info_delete` freed the path a first time and the caller freed it a second time. `fsx.stat_follow` now resolves links and file sizes directly from the OS without heap allocation in the file browser, thumbnail loader, and themes watcher.
