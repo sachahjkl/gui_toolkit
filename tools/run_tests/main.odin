@@ -64,6 +64,7 @@ STEPS := []Step{
 	{name = "ascii", path = "src/ascii", oses = EVERYWHERE},
 	{name = "utf8", path = "src/utf8", oses = EVERYWHERE},
 	{name = "fuzzy", oses = EVERYWHERE},
+	{name = "crashsite", oses = EVERYWHERE},   // (a test's crash names its place on Linux: a child faults)
 	{name = "timefmt", path = "src/timefmt", oses = EVERYWHERE},
 	{name = "undo", path = "src/undo", oses = EVERYWHERE},
 	{name = "flowgraph", path = "src/flowgraph", oses = EVERYWHERE},

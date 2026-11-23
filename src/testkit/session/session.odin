@@ -43,6 +43,7 @@ import "../../platform"
 import "../../render"
 import "../../ui"
 import base "../../base"
+import crashsite "../crashsite"
 
 // What a test may take in all before the runner stops it (a barrier's bound comes first).
 TEST_LIMIT :: 5 * time.Minute
@@ -150,6 +151,7 @@ Own :: struct {
 
 // An application around `o.build`, offscreen, with the embedded fonts and the offscreen renderer. It ends with the test.
 start :: proc(t: ^testing.T, o: Session_Options, loc := #caller_location) -> ^Session {
+	crashsite.arm()   // (after the runner's main: a crash names its place, src/md/infrastructure/test-crash-site.md)
 	s := session_new(t, loc)
 	s.user = o.user
 	own := new(Own)

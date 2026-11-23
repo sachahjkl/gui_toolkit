@@ -6,9 +6,11 @@ import "core:strings"
 import "core:sync"
 import "core:testing"
 import "core:time"
+import crashsite "crashsite"
 
 // A folder for this test, in the system's temporary folder, gone at its end. `what` shows in its name.
 temp_folder :: proc(t: ^testing.T, what := "dir", allocator := context.allocator) -> string {
+	crashsite.arm()   // (most tests make a folder: a crash names its place, src/md/infrastructure/test-crash-site.md)
 	tmp, _ := os.temp_directory(context.temp_allocator)
 	@(static) serial: int
 	dir := strings.clone(fmt.tprintf("%s/gui_toolkit-%s-%d-%d-%d", tmp, what, os.get_pid(), time.tick_now()._nsec, sync.atomic_add(&serial, 1)), allocator)

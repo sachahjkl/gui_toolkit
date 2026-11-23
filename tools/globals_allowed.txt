@@ -476,6 +476,9 @@ render/wgpu_dcomp.odin IID_ISwapChainPanelNative const  # a COM interface id (pa
 render/wgpu_dcomp.odin IID_IUnknown_ const  # a COM interface id (passed by address)
 site/command.odin IMAGES_KEEP_DEFAULT const  # the PNGs most sites keep, a table (images_default's slice)
 site/command.odin IMAGES_WIDTHS_DEFAULT const  # the narrower copies most sites want, a table (images_default's slice)
+testkit/crashsite/crashsite_linux.odin replaced test  # the signal handlers replaced, read by the crash handler
+testkit/crashsite/crashsite_linux.odin lock test  # arm runs once per handler
+testkit/crashsite/crashsite_linux.odin last_pc thread  # this thread's last fault: the same one again ends the process
 testkit/folders.odin temp_folder.serial test  # the test folders' names (atomic)
 testkit/session/session.odin current test  # the session a test runs (one test at a time: owner_thread checks it)
 testkit/session/session.odin owner_thread test  # the session a test runs (one test at a time: owner_thread checks it)
