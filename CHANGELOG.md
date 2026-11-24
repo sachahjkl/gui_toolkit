@@ -5,6 +5,21 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.350.0] - 2026-11-24 07:04
+
+### Added
+- **`ui.Mark_Editor`, `ui.mark_editor_dialog` and `gt:marks`**: a person draws on a picture before it is sent: boxes,
+ellipses, arrows, lines, ink through `gt:ink` (pressure, smoothing), a highlighter, text, pixelated and blurred parts, a
+crop; selection, handles, order, zoom and pan, undo and redo, keyboard shortcuts. The program chooses the tools, their
+first styles and the colours. Done gives the picture with its marks as RGBA, flattened on the chores. The editor goes
+in any box, or in a dialog with one call ([docs/mark-editor.md](docs/mark-editor.md)).
+
+## [0.349.1] - 2026-11-24 06:41
+
+### Fixed
+- **`gt-file-picker` shows WebP pictures on Linux**: its thumbnails and its preview decode WebP files (the toolkit's
+decoder), as they decode PNG and JPEG, instead of showing their icon when the system has no thumbnail of them.
+
 ## [0.349.0] - 2026-11-24 06:17
 
 ### Added
@@ -4890,6 +4905,8 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.350.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.350.0
+[0.349.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.349.1
 [0.349.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.349.0
 [0.348.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.348.0
 [0.347.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.347.0
