@@ -5,6 +5,7 @@
 package mark_editor_test
 
 import "base:runtime"
+import "core:fmt"
 import "core:testing"
 import "gt:marks"
 import "gt:testkit/session"
@@ -252,3 +253,40 @@ the_canvas_shows_the_marks :: proc(t: ^testing.T) {
 	k := session.pixel(img, int(ink.x), int(ink.y))
 	testing.expect(t, k[0] > 150 && k[1] < 120)   // (the pen's red)
 }
+
+// Every control of the style line has a place of its own, at every width of the editor: none is drawn over another
+// (rows of swatches measured at nothing put the labels, the sliders and the line's choice over the swatches).
+@(private = "file")
+style_line_apart :: proc(t: ^testing.T, width: int) {
+	app: App
+	defer ui.mark_editor_destroy(&app.editor)
+	pic := white(PICTURE)
+	testing.expect(t, ui.mark_editor_init(&app.editor, pic, PICTURE.x, PICTURE.y, {tool = marks.Tool.Rectangle}))
+	delete(pic)
+	s := session.start(t, {build = build, user = &app, no_renderer = true, size = {width, 700}})
+	session.frames(s, SHOW_FRAMES)
+	names := make([dynamic]string, context.temp_allocator)
+	for i in 0 ..< len(app.editor.colors) {
+		append(&names, fmt.tprintf("mark_color_%d", i), fmt.tprintf("mark_fill_%d", i))
+	}
+	append(&names, "mark_fill_none", "mark_width", "mark_radius", "mark_dash")
+	rects := make([dynamic]ui.Rect, context.temp_allocator)
+	found := make([dynamic]string, context.temp_allocator)
+	for n in names {
+		if b := session.find(s, n); b != nil && b.rect.max.x > b.rect.min.x { append(&rects, b.rect); append(&found, n) }
+	}
+	testing.expectf(t, len(found) == len(names), "%d px: the style line's controls are built (%d of %d)", width, len(found), len(names))
+	for a in 0 ..< len(rects) {
+		for b in a + 1 ..< len(rects) {
+			r, q := rects[a], rects[b]
+			// (touching is not overlapping: half a pixel of rounding is allowed)
+			over := min(r.max.x, q.max.x) - max(r.min.x, q.min.x) > 0.5 && min(r.max.y, q.max.y) - max(r.min.y, q.min.y) > 0.5
+			testing.expectf(t, !over, "%d px: %s %v over %s %v", width, found[a], r, found[b], q)
+		}
+	}
+}
+
+@(test) the_style_line_is_apart_wide :: proc(t: ^testing.T) { style_line_apart(t, 1400) }
+@(test) the_style_line_is_apart_at_1000 :: proc(t: ^testing.T) { style_line_apart(t, 1000) }
+@(test) the_style_line_is_apart_at_700 :: proc(t: ^testing.T) { style_line_apart(t, 700) }
+@(test) the_style_line_is_apart_narrow :: proc(t: ^testing.T) { style_line_apart(t, 480) }

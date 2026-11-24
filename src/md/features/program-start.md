@@ -28,6 +28,30 @@ pass the path to a run procedure first. `program_start` gives the path (`last_cr
 - `quiet`: cliche echoes its log on standard error only in a debug build.
 - `dir`: a test's folder, so the test runs the real sequence in a child process without touching the user's folders.
 
+## Restart after exit
+
+"Restart now" after an update starts the new copy of the program once this one has ended. Six programs kept a
+`launch_after` field and called `setup.launch` at their end, each in its own place. `host.restart_after_exit(&p, args)`
+asks for it, and `program_end` does it.
+
+- **The path is read at the start.** `program_start` keeps `process.executable_path()` in `Program_Start.executable`.
+  An update moves the running file to `<exe>.old` and puts the new program at `<exe>`. On Linux `/proc/self/exe`
+  then names `<exe>.old`: a path read at the restart starts the old program again.
+- **`program_end` owns it, not `host_close`.** Only `program_end` runs after the program let go of its single
+  instance and after `prefs_page.install_launch`. A copy started earlier finds this one still running and hands
+  itself over to it. `host_close` runs once per window (classeur closes several), and the instance is released after
+  the last one, by the program.
+- **The order in `program_end`.** The session ends, then the program starts again, then the log closes. A new process
+  that started before the session ended could read this one's open session as a crash. A failed start is logged, so
+  the log closes last.
+- **The program still quits by itself.** The toolkit cannot end a program's loop. "Restart now"
+  (`Page_Options.restart`, `update_badge`) stays the program's procedure: it calls `restart_after_exit`, then quits as
+  on any quit. A `Updates_Options` field that does both was refused: it would need the program's quit as a procedure
+  too, for one line less.
+- **`Program_Start_Options.launch`** replaces `setup.launch` for a test. `tests/host` records the path and the args of
+  an end in the test's process, and starts a real program again in a child to see the order: the new process reports
+  no crash.
+
 ## Frames after a change
 
 `Host.after_input` was 0 by default and every program set it to its own `FRAMES_AFTER_INPUT :: 3`, then wrote

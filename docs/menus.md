@@ -56,6 +56,31 @@ same, and one way to type in every menu is one thing to learn.
 A menu's id is the window's, not that of where it is built: two menus of one id are one menu. A menu of each row puts the
 row in its id (`fmt.tprintf("row_menu_%d", row.id)`).
 
+## Open with
+
+`ui.Open_With` lists the applications that open a file, with their icons, inside a program's submenu, and opens the file
+with the one chosen:
+
+```odin
+ow: ui.Open_With                                   // one per menu that offers it; zero is ready
+ui.open_with_ask(&ow, s, path)                      // when the menu opens: a chore reads the handlers and their icons
+if ui.menu_submenu(i18n.tr("Open with")) {
+	if ui.open_with_items(&ow, "ow") { ui.open_with_run(&ow) }
+}
+ui.open_with_destroy(&ow)
+```
+
+| Procedure | What it does |
+|---|---|
+| `open_with_ask(ow, s, path)` | reads the handlers of the file at `path` (`desktop.handlers_for_file`) and each one's icon (`desktop.handler_icon`, `OPEN_WITH_ICON_PX`) on a chore; the answer comes to `s`. What was read before goes |
+| `open_with_items(ow, id_prefix = "ow") -> (chosen: bool)` | the items, in the block of a `menu_submenu`: "Reading…" while they are read, "No application" when there is none, else each application with its icon (the default first, "Name (default)"). True in the build where one is clicked. The items are named `<id_prefix>_<index>` |
+| `open_with_chosen(ow) -> (h: desktop.Handler, ok: bool)` | the handler clicked last: a program that prepares the file first runs `desktop.open_with` itself, on its worker |
+| `open_with_run(ow, path = "")` | opens the file (`path` "": the one asked) with the handler chosen, on a chore; a toast says when it does not start |
+| `open_with_destroy(ow)` | frees the list, its icons and their textures; an answer on its way is dropped |
+
+`Open_With.state` is `.Idle`, `.Reading` or `.Ready`. The hooks `handlers_of`, `icon_of` and `open` replace the
+system's calls (nil: the desktop's); a test gives a fixed list. They run on a chore.
+
 ## Its width
 
 A menu is as wide as its widest row: the icon column, the label, the shortcut or a submenu's arrow, and their padding. One

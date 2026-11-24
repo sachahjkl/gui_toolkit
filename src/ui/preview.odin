@@ -46,6 +46,7 @@ Preview_Options :: struct {
 	radius:   f32,      // the content's corners (an image's)
 	no_keys:  bool,     // its keys are the program's
 	wheel_pans: bool,   // the wheel moves the content (Shift: across); Ctrl with it (a touchpad's pinch) zooms, not the interface
+	shift_wheel_free: bool,   // the wheel with Shift is the program's (ui.wheel_free), neither a zoom nor a pan
 }
 
 Preview_Result :: struct {
@@ -115,7 +116,10 @@ preview :: proc(id: string, p: ^Preview, content: Vec2, fn: Preview_Draw_Proc, u
 	if p.zoom <= 0 { p.zoom = 1 }
 	if !s.has_next || s.next_mod.width == nil { next_merge({width = fill()}) }
 	if s.next_mod.height == nil { next_merge({height = fill()}) }
-	b := build_box({.Clickable, .Focusable, .Scroll_Self, .Clip} | (o.wheel_pans ? Box_Flags{.Ctrl_Wheel} : Box_Flags{}), id)
+	flags := Box_Flags{.Clickable, .Focusable, .Scroll_Self, .Clip}
+	if o.wheel_pans { flags += {.Ctrl_Wheel} }
+	if o.shift_wheel_free { flags += {.Shift_Wheel_Free} }
+	b := build_box(flags, id)
 	res.box = b
 	view := b.rect.max - b.rect.min   // (last frame's: the box keeps its key)
 	fit := preview_fit(content, view, o.grow)

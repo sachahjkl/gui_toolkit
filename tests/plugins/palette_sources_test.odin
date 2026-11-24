@@ -68,10 +68,11 @@ a_late_answer_for_an_older_query_is_dropped :: proc(t: ^testing.T) {
 	session.type_text(s, "b")
 	session.wait_text(s, "[ab]", WAIT)
 	testing.expect(t, session.find_text(s, "[a]") == nil, "the row of the older query is shown")
-	// (the row of "ab" can show before the host counts its answer: the CI once read 1 there. Waited for, bounded)
-	session.wait_until(s, fx, proc(s: ^session.Session, fx: ^Fx) -> bool { return info_of(fx).answered >= 2 }, "the second answer counted", WAIT)
+	// (both answers came, taken or dropped: on a slow runner "a" passes the bound, is answered "not responding", and
+	// its late answer is dropped; the Windows CI read answered 1, dropped 1 there)
+	session.wait_until(s, fx, proc(s: ^session.Session, fx: ^Fx) -> bool { i := info_of(fx); return i.answered + i.dropped >= 2 }, "the two answers", WAIT)
 	info := info_of(fx)
-	testing.expectf(t, info.asks == 2 && info.answered == 2, "asks %d, answered %d: the plugin was asked more than the two queries", info.asks, info.answered)
+	testing.expectf(t, info.asks == 2 && info.answered + info.dropped == 2, "asks %d, answered %d, dropped %d: the plugin was asked more than the two queries", info.asks, info.answered, info.dropped)
 }
 
 @(test)

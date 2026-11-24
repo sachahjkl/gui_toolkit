@@ -43,6 +43,7 @@ local_files :: proc() -> File_Source {
 		rename      = local_rename,
 		trash       = local_trash,
 		restore     = local_restore,
+		watch       = local_watch,
 	}
 }
 

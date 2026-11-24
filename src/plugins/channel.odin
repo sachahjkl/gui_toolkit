@@ -26,9 +26,6 @@ STOP_BOUND_MS :: 1000
 // The crashes of one plugin's process in one run of the program, after which it is Suspended.
 CRASHES_TO_SUSPEND :: 3
 
-// os.process_start changes the inheritance of handles, and is not safe on two threads at once.
-@(private) start_lock: sync.Mutex
-
 // One process of a plugin, from its start to the read of its end. Counted: the sender's, the reader's, a kill's.
 @(private)
 Channel :: struct {
@@ -110,19 +107,15 @@ channel_send :: proc(p: ^Plugin, ch: ^Channel) {
 channel_open :: proc(p: ^Plugin, ch: ^Channel) -> string {
 	exe := process.executable_path()
 	if exe == "" { return "its process cannot start: the program's executable is not known" }
-	// (the pipes are made under the start's lock too: on Windows the child's ends are inheritable until they are closed
-	// below, and another plugin's process started meanwhile took them, so this child's end never came)
-	sync.lock(&start_lock)
-	in_r, in_w, e1 := os.pipe()
-	if e1 != nil { sync.unlock(&start_lock); return fmt.tprintf("its process cannot start: no pipe (%v)", e1) }
-	out_r, out_w, e2 := os.pipe()
+	// (process.pipe: no end is inheritable outside process.start, so another plugin's process started meanwhile never
+	// holds this child's ends, and the end of a child that died is seen)
+	in_r, in_w, e1 := process.pipe()
+	if e1 != nil { return fmt.tprintf("its process cannot start: no pipe (%v)", e1) }
+	out_r, out_w, e2 := process.pipe()
 	if e2 != nil {
-		sync.unlock(&start_lock)
 		os.close(in_r); os.close(in_w)
 		return fmt.tprintf("its process cannot start: no pipe (%v)", e2)
 	}
-	pipe_not_inherited(in_w)
-	pipe_not_inherited(out_r)
 	// (a process that dies leaves its input closed: the sender's next write must be an error, not the program's end)
 	platform.sigpipe_ignore()
 	child, err := sandbox_spawn(exe, in_r, out_w)
@@ -130,7 +123,6 @@ channel_open :: proc(p: ^Plugin, ch: ^Channel) -> string {
 	// child's goes)
 	os.close(in_r)
 	os.close(out_w)
-	sync.unlock(&start_lock)
 	if err != nil {
 		os.close(in_w); os.close(out_r)
 		return fmt.tprintf("its process cannot start (%v)", err)

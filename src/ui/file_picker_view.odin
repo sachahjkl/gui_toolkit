@@ -57,6 +57,7 @@ file_picker :: proc(id: string, fp: ^File_Picker) -> (ev: File_Picker_Events) {
 		case .None:
 		}
 	}
+	file_picker_reread(fp)
 	act := file_picker_body(id, fp)
 	file_picker_do(fp, act)
 	if fp.open { file_picker_rename_follow(fp) }

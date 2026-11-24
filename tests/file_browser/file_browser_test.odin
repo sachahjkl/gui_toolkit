@@ -13,6 +13,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "core:time"
+import desktop "gt:desktop"
 import "gt:fsx"
 import "gt:platform"
 import png "gt:png"
@@ -527,6 +528,95 @@ the_local_source_lists_a_folder_with_a_link :: proc(t: ^testing.T) {
 	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_picker_counts(ui.file_dialog_picker(s.state)).rows_shown == 2 }, "both folders shown", BOUND)
 	testing.expect(t, session.find_text(s, "real_dir") != nil)
 	testing.expect(t, session.find_text(s, "linked_dir") != nil)
+}
+
+// The computer's folder shown is followed: a file made in it shows with no F5, and the entry selected stays selected.
+// (A file made before the system watched the folder is not told: the test makes one more until a change is told.)
+@(test)
+the_local_source_shows_a_new_file_without_a_reload :: proc(t: ^testing.T) {
+	root := fmt.tprintf("%s/gui_toolkit_file_watch_%d", fsx.temp_dir(context.temp_allocator), os.get_pid())
+	fsx.remove_tree(root)
+	fsx.make_dirs(root)
+	defer fsx.remove_tree(root)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/first.txt", root), transmute([]byte)string("x")) == nil)
+	app: App
+	defer app_destroy(&app)
+	app.local = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = root})
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return counts(s).rows_shown == 1 }, "the folder's one file", BOUND)
+	session.click_text(s, "first.txt")
+	Made :: struct { root: string, n: int, last: time.Tick }
+	made := Made{root = root, last = time.tick_now()}
+	_ = os.write_entire_file(fmt.tprintf("%s/new_0.txt", root), transmute([]byte)string("x"))
+	session.wait_until(s, &made, proc(s: ^session.Session, m: ^Made) -> bool {
+		if counts(s).rows_shown > 1 { return true }
+		if time.tick_since(m.last) > 250 * time.Millisecond {
+			m.n += 1
+			m.last = time.tick_now()
+			_ = os.write_entire_file(fmt.tprintf("%s/new_%d.txt", m.root, m.n), transmute([]byte)string("x"))
+		}
+		return false
+	}, "the new file shown with no reload", BOUND)
+	testing.expect(t, session.find_text(s, "new_0.txt") != nil, "the new file")
+	selected := ui.file_picker_selected(ui.file_dialog_picker(s.state))
+	if testing.expect_value(t, len(selected), 1) {
+		testing.expect_value(t, selected[0], fmt.tprintf("%s%sfirst.txt", root, ODIN_OS == .Windows ? "\\" : "/"))
+	}
+}
+
+// The row of a menu whose id is `id` (a row is named mi_<its rank>_<its id>), nil when none is built.
+@(private = "file")
+menu_row :: proc(s: ^session.Session, id: string) -> ^ui.Box {
+	for rank in 0 ..< 32 {
+		if b := session.find(s, fmt.tprintf("mi_%d_%s", rank, id)); b != nil { return b }
+	}
+	return nil
+}
+
+// "Open with" of a computer's file: the submenu lists the handlers the system gives (here a fake list, with an icon for
+// one), the default first with its word, and the one chosen opens the file (here: it writes a file beside it).
+@(test)
+open_with_lists_the_handlers_and_runs_the_one_chosen :: proc(t: ^testing.T) {
+	root := fmt.tprintf("%s/gui_toolkit_file_open_with_%d", fsx.temp_dir(context.temp_allocator), os.get_pid())
+	fsx.remove_tree(root)
+	fsx.make_dirs(root)
+	defer fsx.remove_tree(root)
+	file := fmt.tprintf("%s%shere.txt", root, ODIN_OS == .Windows ? "\\" : "/")
+	testing.expect(t, os.write_entire_file(file, transmute([]byte)string("x")) == nil)
+	app: App
+	defer app_destroy(&app)
+	app.local = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = root})
+	session.wait_text(s, "here.txt", BOUND)
+	ow := &ui.file_dialog_picker(s.state).open_with
+	ow.handlers_of = proc(path: string, allocator: runtime.Allocator) -> []desktop.Handler {
+		out := make([]desktop.Handler, 2, allocator)
+		out[0] = {id = strings.clone("editor.desktop", allocator), name = strings.clone("Editor", allocator), icon = strings.clone("editor", allocator), default = true}
+		out[1] = {id = strings.clone("viewer.desktop", allocator), name = strings.clone("Viewer", allocator)}
+		return out
+	}
+	ow.icon_of = proc(h: desktop.Handler, size: int, allocator: runtime.Allocator) -> (desktop.File_Icon, bool) {
+		if h.icon == "" { return {}, false }
+		return {rgba = make([]u8, 4 * 4 * 4, allocator), size = {4, 4}}, true
+	}
+	ow.open = proc(path, id: string) -> bool {
+		return os.write_entire_file(fmt.tprintf("%s.%s.opened", path, id), transmute([]byte)string("x")) == nil
+	}
+	session.click_text(s, "here.txt", .Right)
+	// (by its id: a text would also match "Open with its program", which starts the system's program)
+	if !testing.expect(t, menu_row(s, "fb_row_open_with") != nil, "the submenu's row") { return }
+	session.click_at(s, session.center(menu_row(s, "fb_row_open_with")))
+	session.wait_text(s, "Editor (default)", BOUND)
+	testing.expect(t, session.find_text(s, "Viewer") != nil, "the other handler")
+	if !testing.expect(t, menu_row(s, "fb_ow_1") != nil, "the second handler's row") { return }
+	session.click_at(s, session.center(menu_row(s, "fb_ow_1")))
+	Opened :: struct { path: string }
+	session.wait_until(s, Opened{fmt.tprintf("%s.viewer.desktop.opened", file)}, proc(s: ^session.Session, o: Opened) -> bool {
+		return os.exists(o.path)
+	}, "the file opened with the one chosen", BOUND)
+	testing.expect(t, !os.exists(fmt.tprintf("%s.editor.desktop.opened", file)), "not with the other")
 }
 
 ////////////////////////////////

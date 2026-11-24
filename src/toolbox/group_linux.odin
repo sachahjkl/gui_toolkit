@@ -7,6 +7,7 @@ package tk_toolbox
 import "core:os"
 import "core:sys/posix"
 import "core:time"
+import tk_process "../process"
 
 // What stop_group gives a group to end on SIGTERM, before SIGKILL.
 GROUP_STOP_WAIT :: 3 * time.Second
@@ -25,7 +26,7 @@ start_group :: proc(command: []string, env: []string = nil, out: ^os.File = nil)
 	cmd := make([dynamic]string, 0, len(command) + 1, context.temp_allocator)
 	append(&cmd, "setsid")
 	append(&cmd, ..command)
-	p = os.process_start({command = cmd[:], env = env, stdout = out, stderr = out}) or_return
+	p = tk_process.start({command = cmd[:], env = env, stdout = out, stderr = out}) or_return
 	if running_count < GROUPS_MAX {
 		running_groups[running_count] = posix.pid_t(p.pid)
 		running_count += 1

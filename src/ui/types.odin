@@ -97,6 +97,7 @@ Box_Flag :: enum u8 {
 	Focus_Within,        // focused (focus_t, its .Draw_Focus_Ring) also while a box inside it has the keyboard focus (`input_frame`)
 	Press_Stop,          // .Clickable only so that what is under it gets no press (a dialog's panel): a press on it is a press on nothing, and selectable text in it takes its own
 	Ctrl_Wheel,          // a .Scroll_Self box that zooms with Ctrl+wheel itself (a node graph, a map): over it, the wheel with Ctrl is its own, not the interface's zoom
+	Shift_Wheel_Free,    // the wheel with Shift is not its own: it goes to what is around it, else to the program (wheel_free)
 	Held,                // drawn pressed in, as while the button is held on it (a toggled button: the option chosen)
 	Lit,                 // drawn as under the pointer (a button whose menu is open)
 	Selection_Block,     // a .Selectable box that starts a block of a document: a copy puts a blank line before it, as the source (Markdown's blocks)
@@ -478,6 +479,8 @@ State :: struct {
 	press_kept:   map[Press_Data_Key]Press_Data, // press_data: what each gesture keeps on its press
 	scroll_delta: Vec2,
 	scroll_key:   Key,
+	swipe_delta:  Vec2,   // the part of scroll_delta that fingers on a touchpad made (swipe_step)
+	swipe_end:    bool,   // the fingers left the touchpad in this build's events
 	last_click_key:  Key,
 	last_click_ms:   f64,
 	last_click_pos:  Vec2,   // (a double click is two presses close in time AND in place)

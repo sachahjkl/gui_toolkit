@@ -13,11 +13,12 @@ import "core:strconv"
 import "core:strings"
 import "core:sys/linux"
 import "../fsx"
+import "../process"
 
 // The program starts the child as before: Linux's sandbox is the child's own to set (sandbox_enter).
 @(private)
 sandbox_spawn :: proc(exe: string, stdin, stdout: ^os.File) -> (os.Process, os.Error) {
-	return os.process_start({command = {exe, CHILD_ARG}, stdin = stdin, stdout = stdout, stderr = os.stderr})
+	return process.start({command = {exe, CHILD_ARG}, stdin = stdin, stdout = stdout, stderr = os.stderr})
 }
 
 // Whether this system can isolate a plugin's process, and why not (for a test that must skip, or a program's page).

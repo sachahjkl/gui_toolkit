@@ -285,8 +285,14 @@ A setup `Choice` ties a box to `{.Thumbnails}` ([setup.md](setup.md#the-programs
 
 `handlers_for_file(path)` lists the applications the system knows for the type of the file at `path` (the file need not
 exist: its name says its type). The default comes first (`Handler.default`), then the others by name. Each `Handler` has
-an `id` and a `name` for a menu; free the list with `handlers_destroy`. `open_with(path, id)` opens the file with one of
-them. The system's default application is `platform.open_path`.
+an `id` and a `name` for a menu, and `icon`, where its icon is; free the list with `handlers_destroy`.
+`open_with(path, id)` opens the file with one of them. The system's default application is `platform.open_path`.
+`ui.Open_With` builds the submenu ([menus.md](menus.md#open-with)).
+
+`handler_icon(h, size)` reads a handler's icon, about `size` pixels square: on Linux the desktop entry's `Icon` key in
+the person's icon theme (`theme_icon`), on Windows the shell's icon location of the handler
+(`IAssocHandler.GetIconLocation`, "file,index", drawn by `SHDefExtractIconW`). ok is false when it has none, and
+elsewhere. It reads files: call it on a worker.
 
 `type_name(name)` is what the system calls the type of a file of that name ("Plain text document", "PNG image"): on
 Linux the English `<comment>` of `mime/<type>.xml` for the type shared-mime-info's globs give the name, on Windows the

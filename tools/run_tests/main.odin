@@ -140,7 +140,7 @@ STEPS := []Step{
 	{name = "unicode_case", oses = EVERYWHERE},
 	{name = "i18n", oses = EVERYWHERE, one = true},   // (the language in use is one for the process)
 	{name = "ime", oses = EVERYWHERE},
-	{name = "instance"},
+	{name = "instance", oses = EVERYWHERE},   // (the launch message's encoding is every system's)
 	{name = "hotkey", oses = EVERYWHERE},
 	{name = "overlay", oses = EVERYWHERE},   // (the pure parts: no window opens)
 	{name = "notify", one = true, oses = EVERYWHERE},   // (Linux: a bus and a notification server of its own)
@@ -177,6 +177,7 @@ STEPS := []Step{
 	{name = "commands", one = true, oses = EVERYWHERE, text = true},
 	{name = "keymap", one = true, oses = EVERYWHERE, text = true},   // (the person's keys: one language for the process)
 	{name = "status", one = true, wgpu = .Ci1},
+	{name = "status_line", one = true, oses = EVERYWHERE, text = true},   // (ui.Status_Line on the session's clock)
 	{name = "states", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "stepper", one = true, oses = EVERYWHERE, text = true},
 	{name = "chrome", wgpu = .Ci1},

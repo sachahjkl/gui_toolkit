@@ -12,7 +12,7 @@ import "core:time"
 // found, and found no more. A path no process runs finds none, and the test itself is never found.
 @(test)
 a_process_is_found_by_the_path_of_its_file :: proc(t: ^testing.T) {
-	child, err := os.process_start({command = {"sleep", "30"}})
+	child, err := start({command = {"sleep", "30"}})
 	if !testing.expect(t, err == nil, "sleep starts") { return }
 	defer { _ = os.process_kill(child); _, _ = os.process_wait(child, TEST_WAIT) }
 	pid := i32(child.pid)

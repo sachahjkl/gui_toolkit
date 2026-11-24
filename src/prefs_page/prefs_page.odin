@@ -85,7 +85,8 @@ Page_Options :: struct {
 	page_foot: proc(user: rawptr, category: string, em: f32),
 	custom:    proc(user: rawptr, name: string, em: f32),
 	// the program's Updater (gt:update): under the line of update_pref ("": update.auto), its state and its buttons
-	// (Check now; Install when a version is on offer; Restart now, by `restart`, when one is installed)
+	// (Check now; Install when a version is on offer; Restart now, by `restart`, when one is installed: the program's
+	// procedure calls host.restart_after_exit, then quits)
 	updater:     ^update.Updater,
 	update_pref: string,
 	restart:     proc(user: rawptr),
