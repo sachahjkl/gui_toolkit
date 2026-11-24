@@ -707,8 +707,12 @@ mark_properties :: proc(e: ^Mark_Editor, side: f32) {
 	if toolbar_group("style", {title = i18n.tr("Style"), separator = true}) {
 		if .Color in props {
 			if toolbar_control("mark_color", {label = i18n.tr("Colour")}) {
+				// (as wide as its swatches: a row with no width of its own is measured at nothing by the bar, which then
+				// put the next controls over it)
+				next({width = children_sum(), height = children_sum()})
 				if row(cross = .Center, id = "###mark_colors") {
 					for rgb, i in e.colors {
+						if i > 0 { spacer(px(math.round(side * MARK_SWATCH_GAP))) }
 						if mark_swatch(fmt.tprintf("###mark_color_%d", i), rgb, style.color == rgb, side) { style.color = rgb }
 					}
 				}
@@ -716,11 +720,13 @@ mark_properties :: proc(e: ^Mark_Editor, side: f32) {
 		}
 		if .Fill in props {
 			if toolbar_control("mark_fill", {label = i18n.tr("Fill"), labelled = true}) {
+				next({width = children_sum(), height = children_sum()})
 				if row(cross = .Center, id = "###mark_fills") {
 					_, filled := marks.fill_of(style)
-					next({width = px(side * 0.7), height = px(side * 0.7)})
+					next({width = px(math.round(side * 0.7)), height = px(math.round(side * 0.7))})
 					if button("mark_fill_none", icon = lucide.BAN, o = {tip = i18n.tr("No fill"), face = !filled ? .Toggled : .Ghost}).clicked { style.fill_color = 0 }
 					for rgb, i in e.colors {
+						spacer(px(math.round(side * MARK_SWATCH_GAP)))
 						if mark_swatch(fmt.tprintf("###mark_fill_%d", i), rgb, filled && style.fill_color & 0xFFFFFF == rgb, side) { style.fill_color = marks.OPAQUE | rgb }
 					}
 				}
@@ -728,13 +734,13 @@ mark_properties :: proc(e: ^Mark_Editor, side: f32) {
 		}
 		if .Width in props {
 			if toolbar_control("mark_width", {label = i18n.tr("Width"), labelled = true}) {
-				next({width = px(side * 4)})
+				next({width = px(math.round(side * 4)), height = px(side)})
 				slider("###mark_width", &style.width, marks.WIDTH_MIN, marks.WIDTH_MAX, 1, "%.0f")
 			}
 		}
 		if .Radius in props {
 			if toolbar_control("mark_radius", {label = i18n.tr("Corners"), labelled = true}) {
-				next({width = px(side * 4)})
+				next({width = px(math.round(side * 4)), height = px(side)})
 				slider("###mark_radius", &style.radius, 0, marks.RADIUS_MAX, 1, "%.0f")
 			}
 		}
@@ -795,6 +801,9 @@ mark_choices :: proc(id: string, values: []f32, value: ^f32) {
 	}
 	if segmented(id, labels, &i) && i >= 0 { value^ = values[i] }
 }
+
+// Between two swatches, of the bar's side: discs that touch read as one strip.
+@(private = "file") MARK_SWATCH_GAP :: 0.15
 
 // A colour to choose: a disc of it, ringed when it is the one chosen.
 @(private = "file")
