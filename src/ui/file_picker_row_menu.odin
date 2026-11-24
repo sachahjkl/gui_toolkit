@@ -39,6 +39,12 @@ file_row_builtins :: proc(fp: ^File_Picker, chosen: int) -> (out: bit_set[platfo
 	return out - fp.d.row_actions_off
 }
 
+// Whether the row menu offers "Open with": one file of the computer's, and Open offered.
+@(private = "file")
+file_row_opens_with :: proc(fp: ^File_Picker, offered: bit_set[platform.File_Row_Builtin; u8], chosen: []int) -> bool {
+	return .Open in offered && len(chosen) == 1 && file_rows_entries(fp)[chosen[0]].kind == .File
+}
+
 // What an act says in the menu: its words, its icon, its key.
 @(private = "file")
 file_row_builtin_words :: proc(b: platform.File_Row_Builtin) -> (text, glyph, shortcut: string) {
@@ -88,6 +94,9 @@ file_picker_row_menu :: proc(fp: ^File_Picker, ev: Table_Events, act: ^File_Acti
 				shell_menu_clear(&fp.shell)
 				fp.shell_was_open = false
 			}
+			if file_row_opens_with(fp, offered, chosen) {
+				open_with_ask(&fp.open_with, fp.state, fsx.path_join(fp.folder, list[chosen[0]].name, fp.sep, context.temp_allocator))
+			}
 		}
 	}
 	if fp.shell_was_open && !menu_is_open(file_row_menu(fp)) {
@@ -96,6 +105,7 @@ file_picker_row_menu :: proc(fp: ^File_Picker, ev: Table_Events, act: ^File_Acti
 	}
 	picked_builtin: Maybe(platform.File_Row_Builtin)
 	picked := -1
+	picked_with := false
 	if menu(file_row_menu(fp)) {
 		// (the groups, in their order: a separator between two that show)
 		groups := [3]bit_set[platform.File_Row_Builtin; u8]{
@@ -112,6 +122,12 @@ file_picker_row_menu :: proc(fp: ^File_Picker, ev: Table_Events, act: ^File_Acti
 				if b not_in group || b not_in offered { continue }
 				text, glyph, shortcut := file_row_builtin_words(b)
 				if menu_item(fmt.tprintf("%s###fb_row_%v", text, b), shortcut, icon = glyph, icon_font = lucide_icons()).clicked { picked_builtin = b }
+				// (beside Open: the applications of the file, read when the menu opened)
+				if b == .Open && file_row_opens_with(fp, offered, chosen) {
+					if menu_submenu(fmt.tprintf("%s###fb_row_open_with", i18n.tr("Open with")), lucide.APP_WINDOW) {
+						if open_with_items(&fp.open_with, "fb_ow") { picked_with = true }
+					}
+				}
 			}
 		}
 		separated := false
@@ -125,6 +141,10 @@ file_picker_row_menu :: proc(fp: ^File_Picker, ev: Table_Events, act: ^File_Acti
 		shell_menu_items(&fp.shell, "fb_shell", separator = shown || separated)
 	}
 	// (after the menu's block: an act runs once the menu is done)
+	if picked_with {
+		open_with_run(&fp.open_with)
+		return
+	}
 	if b, ok := picked_builtin.?; ok {
 		switch b {
 		case .Copy_Path, .Copy_Name, .Copy_Relative_Path: file_picker_copy(fp, b, chosen)

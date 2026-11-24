@@ -33,7 +33,9 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
 - **The controls ask, the picker acts after the dialog is built** (`File_Action`). An act can close the dialog and
   free its rows; a navigation clears the entries. The rows built in a build stay valid until its end.
 - **Another folder starts empty.** Old entries under a new path let a press act on the wrong folder. A reading of the
-  same folder again (F5, a new folder made) keeps its entries until the answer.
+  same folder again (F5, a new folder made, a change its source told) keeps its entries until the answer.
+- **The folder shown is followed** when the source can (`File_Source.watch`): a file added or removed shows with no F5,
+  the selection kept ([folder-watch.md](folder-watch.md)).
 - **A missing folder goes up** (`file_reply_failed(missing = true)`). A remembered folder that was deleted must not
   end on an error.
 - **The path field reads the parent, then looks for the last part in its entries.** One mechanism finds a folder to

@@ -83,6 +83,7 @@ File_Pickers :: struct {
 	live:         map[u64]^File_Picker,
 	next_id:      u64,
 	local:        File_Local,      // the computer's places (file_local.odin)
+	watch:        ^File_Local_Watch,   // the computer's folders the pickers show, followed (file_local_watch.odin; nil: none yet)
 	memory:       File_Memories,   // file_picker_memory.odin
 	trash_serial: u64,             // counts the trashes of every picker: a toast's undo finds its own
 	dialog:       File_Dialog_Host,   // file_dialog.odin
@@ -125,6 +126,8 @@ File_Picker :: struct {
 	entries_version: u64,
 	pending:      string,     // an entry to find in the next listing (the path field's last part)
 	pending_act:  bool,       // ... entered or chosen; else selected
+	follow:       u64,        // counts the follows asked of the source (File_Source.watch): a change of an older one is dropped
+	stale:        bool,       // the source said the folder changed: read again at the next build that can
 
 	// the list
 	columns:      [4]Table_Column,
@@ -197,6 +200,7 @@ File_Picker :: struct {
 	undo_serial:  u64,        // ... its toast's (0: none, or undone)
 	undo_dialog:  u64,        // ... the dialog it was in
 	shell:        Shell_Menu, // asynchronous system shell context-menu actions for local files
+	open_with:    Open_With,  // "Open with" of a local file's row (asked when its menu opens)
 	shell_was_open: bool,
 
 	preview:      File_Preview,
@@ -229,6 +233,7 @@ file_pickers_destroy :: proc(s: ^State) {
 		if fp.open { file_picker_stop(fp) }
 		fp.id = 0
 	}
+	local_watch_end(h)   // (after the pickers: each stop ended its follow)
 	delete(h.live)
 	file_memories_close(&h.memory)
 	file_local_destroy(&h.local)
@@ -317,6 +322,7 @@ file_picker_destroy :: proc(fp: ^File_Picker) {
 	file_find_stop(fp)
 	file_find_stop_release(fp.find_stop)
 	shell_menu_destroy(&fp.shell)
+	open_with_destroy(&fp.open_with)
 	file_preview_destroy(fp)
 	thumb_cache_destroy(&fp.thumbs)
 	delete(fp.instance, a)
@@ -487,6 +493,8 @@ file_picker_stop :: proc(fp: ^File_Picker) {
 	// (the question over it goes: no answer)
 	if fp.asked && fp.ask_views != nil { view_close(fp.ask_views, FILE_REPLACE_VIEW, fp.instance) }
 	file_picker_rename_end(fp)
+	file_picker_follow(fp, "")
+	fp.stale = false
 	fp.open, fp.asking, fp.asked = false, false, false
 	fp.ask_views = nil
 	fp.serial += 1   // (a reply still on its way is of no request now)
@@ -526,6 +534,7 @@ file_picker_stop :: proc(fp: ^File_Picker) {
 	fp.new_folder = false
 	shell_menu_clear(&fp.shell)
 	fp.shell_was_open = false
+	open_with_clear(&fp.open_with)
 	file_preview_clear(fp)
 	virtual.arena_free_all(&fp.places_arena)
 	clear(&fp.source_places)
@@ -602,7 +611,9 @@ file_picker_go :: proc(fp: ^File_Picker, path: string, move := File_Move.New) {
 		list_selection_clear(&fp.table.vl)
 		fp.table.vl.sel = -1
 		vlist_scroll_to(&fp.table.vl, 0)
+		file_picker_follow(fp, fp.folder)
 	}
+	fp.stale = false   // (this reading sees what changed)
 	ticket := remote.begin(&fp.listing)
 	fp.listing_ms = clock_ms(fp.state)
 	reply := File_Reply{state = fp.state, picker = fp.id, serial = fp.serial, ticket = ticket, kind = .List}
@@ -611,6 +622,30 @@ file_picker_go :: proc(fp: ^File_Picker, path: string, move := File_Move.New) {
 		return
 	}
 	fp.source.list(&fp.source, strings.clone(fp.folder, context.temp_allocator), reply)
+}
+
+// The source follows `folder` for the picker ("": none). Asked before the folder's reading: a change between the reading
+// and the follow is then told, not lost.
+@(private)
+file_picker_follow :: proc(fp: ^File_Picker, folder: string) {
+	if fp.source.watch == nil { return }
+	fp.follow += 1
+	fp.source.watch(&fp.source, folder, {state = fp.state, picker = fp.id, serial = fp.serial, ticket = fp.follow, kind = .Watch})
+}
+
+// The folder followed changed: read again at the next build (file_picker_reread), its selection kept by the rows'
+// identities. Not here: a reply runs before the build, and a rename's field must not lose its row.
+@(private)
+file_picker_changed :: proc(fp: ^File_Picker, ticket: u64) {
+	if ticket == fp.follow { fp.stale = true }
+}
+
+// The folder read again when the source said it changed, once nothing waits on its rows: no reading on its way (it
+// is read again after it), no name edited in a row.
+@(private)
+file_picker_reread :: proc(fp: ^File_Picker) {
+	if !fp.stale || fp.folder == "" || fp.renaming || fp.listing.state == .Loading { return }
+	file_picker_go(fp, fp.folder, .Again)
 }
 
 @(private)
@@ -726,6 +761,7 @@ file_picker_failed :: proc(fp: ^File_Picker, kind: File_Reply_Kind, ticket: u64,
 		_ = remote.answer(&fp.finding, ticket, refused ? .Refused : .Failed, message)
 	case .Rename, .Trash, .Restore:
 		file_picker_row_failed(fp, kind, ticket, message, refused)
+	case .Watch:       // (a follow that fails ends: the folder is read again on F5)
 	case .Thumbnail:   // (file_reply_failed gives it to the thumbnails)
 	}
 }

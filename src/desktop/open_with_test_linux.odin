@@ -67,7 +67,7 @@ the_handlers_of_a_file :: proc(t: ^testing.T) {
 		MIME_FILES[0], MIME_FILES[1],
 		{"sysdata/applications/editor.desktop", entry("Editor", "editor --new %F", "text/plain;")},
 		{"sysdata/applications/ide/code.desktop", entry("An IDE", `"/opt/my ide/ide" %u`, "text/x-csrc;")},
-		{"sysdata/applications/viewer.desktop", entry("Viewer", "viewer", "image/png;")},
+		{"sysdata/applications/viewer.desktop", entry("Viewer", "viewer", "image/png;", "Icon=viewer-icon\n")},
 		{"sysdata/applications/vim.desktop", entry("Vim", "vim %F", "text/plain;", "Terminal=true\n")},
 		{"sysdata/applications/shell.desktop", entry("Shell", `sh -c "cat %f"`, "text/plain;")},
 		{"config/mimeapps.list", "[Default Applications]\ntext/plain=editor.desktop;\n[Added Associations]\nimage/png=editor.desktop;\n[Removed Associations]\n"},
@@ -82,7 +82,12 @@ the_handlers_of_a_file :: proc(t: ^testing.T) {
 	hs := handlers_of(&db, "/x/a.png", context.allocator)
 	defer handlers_destroy(hs)
 	testing.expect_value(t, ids_of(hs), "editor.desktop*|viewer.desktop")
-	if len(hs) == 2 { testing.expect(t, hs[0].name == "Editor" && hs[1].name == "Viewer", "the names") }
+	if len(hs) == 2 {
+		testing.expect(t, hs[0].name == "Editor" && hs[1].name == "Viewer", "the names")
+		testing.expect(t, hs[0].icon == "" && hs[1].icon == "viewer-icon", "the icons: the entries' Icon key")
+	}
+	_, has_icon := handler_icon(hs[0], 16)
+	testing.expect(t, !has_icon, "a handler with no Icon key has no icon")
 }
 
 // mimeapps.list as the MIME Applications specification orders it: a level removes only for the levels after it, a

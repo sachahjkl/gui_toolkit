@@ -4,7 +4,7 @@ package ui
 // other file system a program reaches (a server's, an archive's). A source's calls start the work and return at once;
 // the source answers later, on the interface's thread, through the reply it was given (file_reply_listed,
 // file_reply_read, file_reply_made, file_reply_found, file_reply_renamed, file_reply_trashed, file_reply_restored,
-// file_reply_failed). An answer of a reading given up (another folder asked since,
+// file_reply_failed, and file_reply_changed for a folder followed). An answer of a reading given up (another folder asked since,
 // another file selected, the dialog closed) changes nothing: the reply carries its ticket (remote) and its dialog.
 //
 // The paths are the source's: absolute, its separator between their parts. The helpers below read them for any
@@ -35,7 +35,7 @@ File_Entry :: struct {
 }
 
 // What a reply answers.
-File_Reply_Kind :: enum u8 { List, Read, Make, Find, Thumbnail, Rename, Trash, Restore }
+File_Reply_Kind :: enum u8 { List, Read, Make, Find, Thumbnail, Rename, Trash, Restore, Watch }
 
 // An entry a trash moved: where it was, and how the source names it in its trash (restore's argument: the computer's
 // source gives its path in the trash; "": it cannot come back).
@@ -92,6 +92,10 @@ File_Source :: struct {
 	trash:       proc(src: ^File_Source, paths: []string, reply: File_Reply),
 	// Puts back entries its trash answered (file_reply_restored): the undo of a trash's toast. nil: no undo.
 	restore:     proc(src: ^File_Source, items: []File_Trashed, reply: File_Reply),
+	// Follows the folder `path` while the picker shows it: file_reply_changed(reply) each time its entries change, as
+	// many times as they do. The next call for the same picker (reply.picker) ends the follow of the last folder; `path`
+	// "" ends it with none after it (the picker stopped). nil: no follow; the person reads the folder again (F5).
+	watch:       proc(src: ^File_Source, path: string, reply: File_Reply),
 }
 
 // The entries of the folder asked. They are copied: the source frees its own after the call.
@@ -138,6 +142,12 @@ file_reply_trashed :: proc(reply: File_Reply, items: []File_Trashed, message := 
 // The entries asked are back.
 file_reply_restored :: proc(reply: File_Reply) {
 	if fp := file_reply_picker(reply); fp != nil && reply.kind == .Restore { file_picker_restored(fp, reply.ticket) }
+}
+
+// The folder followed changed (File_Source.watch): the picker reads it again, with its selection kept. A follow ended
+// since changes nothing.
+file_reply_changed :: proc(reply: File_Reply) {
+	if fp := file_reply_picker(reply); fp != nil && reply.kind == .Watch { file_picker_changed(fp, reply.ticket) }
 }
 
 // The call did not end well: `message` is what the person reads (the source's words, in the language in use).

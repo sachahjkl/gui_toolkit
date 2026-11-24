@@ -126,6 +126,12 @@ handlers_for_file_native :: proc(path: string, allocator: runtime.Allocator) -> 
 	return handlers_of(mime_cache_get(&mime_cache, xdg_roots()), path, allocator)
 }
 
+// (a desktop entry's Icon key: a name in the icon theme, or a file)
+@(private)
+handler_icon_native :: proc(icon: string, size: int, allocator: runtime.Allocator) -> (File_Icon, bool) {
+	return theme_icon_native(icon, size, allocator)
+}
+
 @(private)
 open_with_native :: proc(path: string, id: string) -> bool {
 	args: []string
@@ -383,12 +389,12 @@ handlers_of :: proc(db: ^Mime_Database, path: string, allocator: runtime.Allocat
 	}
 	if default != "" {
 		e := db.apps[default]
-		append(&out, handler_clone(e.id, e.name, true, allocator))
+		append(&out, handler_clone(e.id, e.name, e.icon, true, allocator))
 	}
 	slice.sort_by(rest[:], proc(a, b: App_Entry) -> bool { return ascii.lower(a.name, context.temp_allocator) < ascii.lower(b.name, context.temp_allocator) })
 	for e in rest {
 		if e.id == default || !e.usable { continue }
-		append(&out, handler_clone(e.id, e.name, false, allocator))
+		append(&out, handler_clone(e.id, e.name, e.icon, false, allocator))
 	}
 	return out[:]
 }
