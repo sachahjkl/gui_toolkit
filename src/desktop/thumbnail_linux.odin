@@ -27,6 +27,7 @@ import "core:sync"
 import "core:time"
 import "../platform"
 import "../png"
+import "../process"
 
 // What the thumbnails written here say made them (Software), and the name of their folder of failures.
 THUMBNAIL_SOFTWARE :: "gui_toolkit"
@@ -355,7 +356,7 @@ thumbnailer_command :: proc(exec, path, uri, out: string, size: int) -> (args: [
 // Runs a thumbnailer and waits for it, at most THUMBNAILER_LIMIT. True when it exited with 0.
 @(private = "file")
 thumbnailer_run :: proc(args: []string) -> bool {
-	p, err := os.process_start({command = args})
+	p, err := process.start({command = args})
 	if err != nil { return false }
 	state, werr := os.process_wait(p, THUMBNAILER_LIMIT)
 	if werr != nil {

@@ -8,10 +8,11 @@ package tk_plugins
 
 import "core:os"
 import "../fsx"
+import "../process"
 
 @(private)
 sandbox_spawn :: proc(exe: string, stdin, stdout: ^os.File) -> (os.Process, os.Error) {
-	return os.process_start({command = {exe, CHILD_ARG}, stdin = stdin, stdout = stdout, stderr = os.stderr})
+	return process.start({command = {exe, CHILD_ARG}, stdin = stdin, stdout = stdout, stderr = os.stderr})
 }
 
 // Whether this system can isolate a plugin's process, and why not.

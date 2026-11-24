@@ -227,6 +227,7 @@ File_Source :: struct {
 	rename:      proc(src: ^File_Source, path, name: string, reply: File_Reply),      // nil: no Rename
 	trash:       proc(src: ^File_Source, paths: []string, reply: File_Reply),        // nil: no Move to the trash
 	restore:     proc(src: ^File_Source, items: []File_Trashed, reply: File_Reply),  // nil: a trash without undo
+	watch:       proc(src: ^File_Source, path: string, reply: File_Reply),           // follows the folder shown (nil: F5 only)
 }
 ```
 
@@ -235,6 +236,12 @@ the call), on the interface's thread, through the reply: `file_reply_listed(repl
 `file_reply_read(reply, bytes, size)`, `file_reply_made(reply)`, `file_reply_found(reply, entries)`,
 `file_reply_renamed(reply)`, `file_reply_trashed(reply, items, message = "")`, `file_reply_restored(reply)`, or
 `file_reply_failed(reply, message, refused = false, missing = false)`.
+
+`watch` follows the folder a picker shows: the picker calls it with each new folder, and with `""` when it stops
+(`reply.picker` says which picker). The source calls `file_reply_changed(reply)` each time the folder's entries change.
+The picker then reads the folder again at its next build, as F5 does: the entries stay until the answer, and the
+selection stays on its names. The computer's source follows with `fsx.Watch` (one thread per State, started at the
+first follow); a server's source can push its own changes.
 
 `rename` gives the entry `path` the name `name` in its folder; it must refuse a name taken (`file_reply_failed`, the
 source's words in a toast; the field stays to correct it). `trash` moves every path given to the source's trash and
@@ -337,6 +344,10 @@ ui.file_dialog_memory(&app.ui, path)   // read on the chores; written by a store
 The interface's thread never touches the file. What a dialog remembered before the file came wins over the file's.
 
 ## System shell actions
+
+The row menu of one local file has an "Open with" submenu beside "Open with its program": the applications the system
+knows for the file, with their icons, the default first (`ui.Open_With`, [menus.md](menus.md#open-with)). It goes with
+`.Open`: `row_actions_off = {.Open}` removes both.
 
 When the picker shows local files inside a real window, its row context menu queries system shell extensions
 asynchronously through `ui.Shell_Menu` (`shell_menu_query`, `shell_menu_items`, `shell_menu_clear`,

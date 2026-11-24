@@ -116,7 +116,7 @@ icon_of_path_native :: proc(path: string, folder: bool, size, choose: int, alloc
 }
 
 // An icon's pixels: its colour bitmap as RGBA; with no alpha in it, the alpha from its mask (black there: shown).
-@(private = "file")
+@(private)
 icon_pixels :: proc(hicon: win.HICON, allocator: runtime.Allocator) -> (icon: File_Icon, ok: bool) {
 	ii: win.ICONINFO
 	if !GetIconInfo(hicon, &ii) { return }

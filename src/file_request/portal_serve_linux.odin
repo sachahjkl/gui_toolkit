@@ -17,6 +17,7 @@ import "core:sys/posix"
 import "core:thread"
 import "../dbus"
 import "../platform"
+import tk_process "../process"
 
 // RequestName's flag: fail when another process owns the name, rather than wait in its queue.
 @(private = "file") NAME_DO_NOT_QUEUE :: 4
@@ -140,11 +141,10 @@ portal_on_call :: proc(user: rawptr, c: ^dbus.Conn, msg: ^dbus.Message) -> bool 
 	p.sender = strings.clone(msg.sender, pa)
 	p.serial = msg.serial
 	p.json = request_json(call.request, pa)
-	// (started on this thread: os.process_start is not safe while another thread starts one)
-	in_r, in_w, err1 := os.pipe()
-	out_r, out_w, err2 := os.pipe()
+	in_r, in_w, err1 := tk_process.pipe()
+	out_r, out_w, err2 := tk_process.pipe()
 	if err1 == nil && err2 == nil {
-		proc_, err := os.process_start({command = s.child, stdin = in_r, stdout = out_w, stderr = os.stderr})
+		proc_, err := tk_process.start({command = s.child, stdin = in_r, stdout = out_w, stderr = os.stderr})
 		if err == nil { p.process, p.started = proc_, true }
 	}
 	if in_r != nil { os.close(in_r) }

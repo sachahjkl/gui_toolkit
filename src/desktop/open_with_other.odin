@@ -14,3 +14,6 @@ handlers_for_file_native :: proc(path: string, allocator: runtime.Allocator) -> 
 
 @(private)
 open_with_native :: proc(path: string, id: string) -> bool { return false }
+
+@(private)
+handler_icon_native :: proc(icon: string, size: int, allocator: runtime.Allocator) -> (File_Icon, bool) { return {}, false }

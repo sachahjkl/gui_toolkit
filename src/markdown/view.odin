@@ -53,8 +53,11 @@ View_Options :: struct {
 	user:        rawptr,         // what the procedures below are given
 	// a link clicked or chosen with Enter; its target is as written (nil: links open nothing)
 	link:  proc(user: rawptr, url: string),
-	// a fenced block, built in its place, `id` its box's (nil: code_block)
+	// a fenced block, built in its place, `id` its box's (nil: diagram_block for a mermaid block when `diagrams` is set,
+	// else code_block)
 	code:  proc(user: rawptr, id: string, c: Code),
+	// the diagrams of the closed ```mermaid blocks, laid out on a chore, their text shown meanwhile (nil: their text)
+	diagrams: ^Diagrams,
 	// paints `b`, the box a table or a code block sits in (b.custom...); nil: its colour (Colors), rounded
 	frame: proc(user: rawptr, b: ^ui.Box, kind: Frame_Kind),
 	// a rule ("---"), built in its place (nil: ui.hline)
@@ -99,7 +102,11 @@ view :: proc(d: ^Doc, id: string, src: string, o: View_Options, size: f32 = 0) {
 			code := Code{lang = bl.lang, text = block_text(d, n), runs = code_runs(d, n, {font = mono, color = c.code_text}), closed = bl.closed,
 				version = len(lines) > 0 ? source_version(lines[0], lines[len(lines) - 1], em) : 0, fence = fence}
 			fence += 1
-			if o.code != nil { o.code(o.user, bid, code) } else { code_block(bid, code, o) }
+			switch {
+			case o.code != nil:                         o.code(o.user, bid, code)
+			case o.diagrams != nil && is_mermaid(bl.lang): diagram_block(bid, code, o)
+			case:                                       code_block(bid, code, o)
+			}
 		case .Table:
 			table_block(bid, d, n, &o, c, fs)
 		case .Heading:

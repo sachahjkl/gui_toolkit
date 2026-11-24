@@ -79,6 +79,7 @@ destroy :: proc(s: ^State) {
 	// (the file browser first: its view is closed as the program's close, its `done` not called; then the other views
 	// end with VIEW_CANCELLED and their Views forget it)
 	file_pickers_destroy(s)
+	mark_dialog_destroy(s)
 	views_state_gone(s)
 	box_edits_clear(s)
 	delete(s.edits)
@@ -157,6 +158,7 @@ destroy :: proc(s: ^State) {
 	selection_destroy(s)
 	a11y_destroy(s)
 	delete(s.mouse_events)
+	delete(s.pointer_samples)
 	delete(s.acts)
 	delete(s.acts_next)
 	delete(s.last_events)

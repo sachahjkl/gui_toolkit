@@ -11,7 +11,6 @@
 package tk_setup
 
 import "core:fmt"
-import "core:os"
 import "core:path/filepath"
 import "core:strconv"
 import "core:strings"
@@ -235,7 +234,7 @@ launch :: proc(exe: string, args: []string = nil) -> bool {
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, exe)
 	append(&cmd, ..args)
-	p, err := os.process_start({command = cmd[:], working_dir = filepath.dir(exe)})
+	p, err := process.start({command = cmd[:], working_dir = filepath.dir(exe)})
 	if err != nil { return false }
 	// (Windows: this process had the user's last input, the click on Restart, but its window is gone: without this grant
 	// the new window would open behind the others, its taskbar button flashing)

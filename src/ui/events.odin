@@ -41,12 +41,14 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 	clear(&s.typed)
 	s.typed_mods = {}
 	clear(&s.mouse_events)
+	clear(&s.pointer_samples)
 	s.mouse_moved = false
 
 	for e in events {
 		pointer_device_follow(s, e)
 		#partial switch e.kind {
 		case .Mouse_Move:
+			pointer_sample_add(s, e)
 			if e.pos != s.mouse { s.mouse_moved = true }
 			s.mouse = e.pos
 			s.mouse_valid = true
@@ -58,6 +60,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			// the click that ends a latched autoscroll does nothing else
 			if !s.auto_off && autoscroll_click(&s.auto) { continue }
 			append(&s.mouse_events, e)
+			pointer_sample_add(s, e)
 			s.mods = e.mods
 			hot := hit_test(s, e.pos)
 			when #config(UI_PROBE, false) {
@@ -95,6 +98,7 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 			}
 		case .Mouse_Release:
 			append(&s.mouse_events, e)
+			pointer_sample_add(s, e)
 			s.mouse = e.pos
 			s.mods = e.mods
 			hot := hit_test(s, e.pos)
@@ -425,6 +429,21 @@ pointer_device_follow :: proc(s: ^State, e: platform.Event) {
 	case .Mouse_Move, .Mouse_Press, .Mouse_Release, .Scroll:
 		if !e.emulated { s.pointer = MOUSE_DEVICE }
 	}
+}
+
+// A move, a press or a release of this build, with the pen's pressure (0: unknown) and tilt as they were then: the
+// pen's own events come before the mouse events the system makes of them.
+@(private)
+Pointer_Sample :: struct {
+	event:    platform.Event,
+	pressure: f32,
+	tilt:     [2]f32,
+}
+
+@(private)
+pointer_sample_add :: proc(s: ^State, e: platform.Event) {
+	p := s.pointer
+	append(&s.pointer_samples, Pointer_Sample{event = e, pressure = p.measured ? p.pressure : 0, tilt = p.tilt})
 }
 
 @(private) MOUSE_DEVICE :: platform.Pointer_Info{id = 1, kind = .Mouse, primary = true}

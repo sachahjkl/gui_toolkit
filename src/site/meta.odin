@@ -13,6 +13,7 @@ import "core:slice"
 import "core:strings"
 import "core:unicode/utf8"
 import "../ascii"
+import tk_process "../process"
 
 // What a project says of itself: the one place for its address, names and colours.
 Meta :: struct {
@@ -123,9 +124,9 @@ draw_card :: proc(m: Meta, site: string) -> bool {
 	page := cat(dir, "/card.html")
 	picture := cat(dir, "/out.png")
 	if !write_text(page, card_html(m, file_url(m.logo_file))) { return false }
-	state, _, _, run_err := os.process_exec({command = {browser, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--allow-file-access-from-files", cat("--user-data-dir=", dir, "/profile"),
-		"--virtual-time-budget=5000", "--force-device-scale-factor=1", "--window-size=1200,630", cat("--screenshot=", picture), file_url(page)}}, context.temp_allocator)
-	if run_err != nil || !state.exited || state.exit_code != 0 || !os.exists(picture) { fmt.eprintfln("site: %s drew nothing", browser); return false }
+	ran := tk_process.run({browser, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--allow-file-access-from-files", cat("--user-data-dir=", dir, "/profile"),
+		"--virtual-time-budget=5000", "--force-device-scale-factor=1", "--window-size=1200,630", cat("--screenshot=", picture), file_url(page)}, {}, context.temp_allocator)
+	if !ran.ok || !os.exists(picture) { fmt.eprintfln("site: %s drew nothing", browser); return false }
 	to := cat(site, "/", m.card)
 	if copy_err := os.copy_file(to, picture); copy_err != nil { fmt.eprintfln("site: %s: %v", to, copy_err); return false }
 	fmt.println(to)

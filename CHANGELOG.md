@@ -5,6 +5,53 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.353.0] - 2026-11-24 10:59
+
+### Added
+- **Mermaid diagrams in Markdown (`markdown.Diagrams`, `View_Options.diagrams`)**: a closed ```` ```mermaid ```` block shows its diagram, laid out on a chore (`mermaid.layout`) and kept by its text and the theme's lightness, its text shown until then; `markdown.diagram_block` for a program's own code blocks and `markdown.diagram_view` for a diagram zoomed and moved in a preview.
+- **`prefs_page.program_files`, `prefs_page.prefs_open`**: a program's standard files (preferences, themes, views, the palette's and the file dialogs' memory) in one value, empty in memory for a test; and the start of its preferences in one call: the standard ones, the program's, What's new's version, the file, then `--pref`.
+- **`host.instance_serve`, `host.instance_serve_stop`**: a program's single instance served for its window: PING answered, QUIT and each second start's launch handed to the window's thread, the window raised with the launch's token. A post that fails at the window's end loses nothing.
+- **`instance.Launch`, `instance.launch_encode`, `instance.launch_decode`**: one message for a program's second start: the launcher's activation token and a list of words (paths, or a command's words), each word kept whole whatever bytes it holds; a PING, a QUIT or broken bytes are no launch.
+
+## [0.352.0] - 2026-11-24 10:33
+
+### Added
+- **`desktop.handler_icon` and `Handler.icon`**: an "Open with" application's icon, from its desktop entry on Linux and from the shell on Windows.
+- **`ui.Open_With`: the "Open with" submenu** (`open_with_ask`, `open_with_items`, `open_with_chosen`, `open_with_run`, `open_with_destroy`): the applications that open a file, with their icons, the default first, read on a chore; the file opened with the one chosen. The file picker's row menu of a local file has it.
+- **The file picker shows a folder's changes with no F5**: a file added or removed in the folder shown appears or goes, the selection kept. A source follows the folder with `File_Source.watch` and says a change with `file_reply_changed`; the computer's source does it with `fsx.Watch`.
+- **`fsx.Watch`: folders followed** (`watch_open`, `watch_set`, `watch_wait`, `watch_stop`, `watch_close`): a thread waits until a folder of the set changes and gets their paths, close changes told as one (`WATCH_QUIET_MS`, `WATCH_MAX_MS`). inotify on Linux, change notifications on Windows.
+
+## [0.351.0] - 2026-11-24 10:00
+
+### Added
+- **`ui.Status_Line`**: a status bar's message that goes by itself. `status_say(&s, format, ..args, shown_ms = STATUS_SHOWN_MS)`, `status_text(&s)` ("" once its time is past; the window wakes then), `status_clear`, `status_destroy`.
+- **`ascii.compare_natural`**: names in the order a person reads them: "file 2" before "file 10", "a1" before "a01", case ignored, digit runs of any length.
+- **`host.restart_after_exit(&p, args)`**: "Restart now" after an update. `program_end` ends the session, then starts the executable `program_start` read (`Program_Start.executable`: the new copy, not `<exe>.old`), then closes the log. `Program_Start_Options.launch` replaces the start in a test.
+- **`process.start`, `process.run`, `process.pipe`**: a child started under one lock of the process, held around the spawn only, never around the wait. `run(command, Run_Options{dir, env, input})` waits for the child and gives `Ran{started, ok, code, stdout, stderr}`, its output and error read at once and its input written on a thread. A pipe's ends are inheritable on Windows only while their own child starts. The toolkit's own children (the desktop's tools, the thumbnailers, NixOS's patch, the file picker's portal, the plugins, the film's ffmpeg, `setup.launch`, the tools) start through them.
+
+### Changed
+- **Natural order in the tables and the file picker**: every text column of `ui.Table`, the file picker's path bar and the settings' path completion sort names with `ascii.compare_natural`: "file 2" comes before "file 10".
+
+## [0.350.1] - 2026-11-24 09:30
+
+### Fixed
+- **The annotation editor's style line no longer stacks its controls.** The colour swatches, the "No fill" button, the Width and Corners sliders and the line choice each keep their own place at every width of the editor; the bar wraps onto more lines when it lacks room.
+
+## [0.350.0] - 2026-11-24 07:04
+
+### Added
+- **`ui.Mark_Editor`, `ui.mark_editor_dialog` and `gt:marks`**: a person draws on a picture before it is sent: boxes,
+ellipses, arrows, lines, ink through `gt:ink` (pressure, smoothing), a highlighter, text, pixelated and blurred parts, a
+crop; selection, handles, order, zoom and pan, undo and redo, keyboard shortcuts. The program chooses the tools, their
+first styles and the colours. Done gives the picture with its marks as RGBA, flattened on the chores. The editor goes
+in any box, or in a dialog with one call ([docs/mark-editor.md](docs/mark-editor.md)).
+
+## [0.349.1] - 2026-11-24 06:41
+
+### Fixed
+- **`gt-file-picker` shows WebP pictures on Linux**: its thumbnails and its preview decode WebP files (the toolkit's
+decoder), as they decode PNG and JPEG, instead of showing their icon when the system has no thumbnail of them.
+
 ## [0.349.0] - 2026-11-24 06:17
 
 ### Added
@@ -4890,6 +4937,12 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.353.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.353.0
+[0.352.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.352.0
+[0.351.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.351.0
+[0.350.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.350.1
+[0.350.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.350.0
+[0.349.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.349.1
 [0.349.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.349.0
 [0.348.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.348.0
 [0.347.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.347.0

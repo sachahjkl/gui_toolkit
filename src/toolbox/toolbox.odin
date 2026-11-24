@@ -42,6 +42,7 @@ import "core:os"
 import "core:strings"
 import "core:time"
 import "../ascii"
+import tk_process "../process"
 
 // How a command runs. The zero value: in this process's folder and environment, its output on this process's, no time limit.
 Run_Options :: struct {
@@ -70,7 +71,7 @@ run :: proc(command: []string, o := Run_Options{}) -> bool {
 		desc.stdin, desc.stdout, desc.stderr = os.stdin, os.stdout, os.stderr
 	}
 	defer if log != nil { os.close(log) }
-	p, err := os.process_start(desc)
+	p, err := tk_process.start(desc)
 	if err != nil {
 		say_error(o.log, fmt.tprintfln("%s cannot start: %v", command[0], err))
 		return false
@@ -94,14 +95,10 @@ run :: proc(command: []string, o := Run_Options{}) -> bool {
 // do not.
 capture :: proc(command: []string, o := Run_Options{}, allocator := context.temp_allocator) -> (out: string, code: int) {
 	if len(command) == 0 { return "", -1 }
-	state, stdout, stderr, err := os.process_exec({command = command, working_dir = o.dir, env = o.env}, allocator)
-	defer delete(stderr, allocator)
-	if err != nil {
-		delete(stdout, allocator)
-		return "", -1
-	}
-	if !succeeded(state) && len(stderr) > 0 { fmt.eprint(string(stderr)) }
-	return string(stdout), exit_code(state)
+	r := tk_process.run(command, {dir = o.dir, env = o.env}, allocator)
+	defer delete(r.stderr, allocator)
+	if !r.ok && len(r.stderr) > 0 { fmt.eprint(r.stderr) }
+	return r.stdout, r.code
 }
 
 // (exit_code(state): the exit code of a finished process, -1 when it did not exit: system_windows.odin, system_other.odin)
