@@ -5,6 +5,19 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.354.0] - 2026-11-24 11:28
+
+### Added
+- **`Preview_Options.shift_wheel_free`**: Shift+wheel over a preview is the program's, neither a zoom nor a pan.
+`ui.wheel_free` gives the program the wheel that no box took, with its modifiers. A box leaves Shift+wheel to what is
+around it with `.Shift_Wheel_Free`.
+- **`ui.swipe_step`**: a horizontal swipe of the fingers on a touchpad gives one step, +1 or -1, per gesture (`ui.Swipe`).
+A gesture ends when the fingers lift or after 150 ms with no scroll. A wheel's notches never count.
+  - `platform.Event.scroll_source` says whether fingers or a wheel made a scroll, and `scroll_end` that the fingers
+    left the touchpad. Wayland says both; Windows counts a delta that is not a whole notch as fingers; X11 gives notches only.
+  - On Wayland, the axis events of one pointer frame now come as one Scroll event.
+  - `session.finger_scroll` and `session.finger_lift` drive it in a test.
+
 ## [0.353.0] - 2026-11-24 10:59
 
 ### Added
@@ -4937,6 +4950,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.354.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.354.0
 [0.353.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.353.0
 [0.352.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.352.0
 [0.351.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.351.0
