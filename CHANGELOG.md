@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.356.1] - 2026-11-24 13:40
+
+### Fixed
+- **A program that imports `gt:process` no longer runs a test's code at its start.** The child mode of `gt:process`'s own test (an `@(init)` that read an environment variable) was built into every program that imports the package; that test is now a test package of its own, and the toolkit's checks refuse an `@(init)` in a test file of the library.
+
 ## [0.356.0] - 2026-11-24 13:08
 
 ### Added
@@ -4968,6 +4973,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.356.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.1
 [0.356.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.0
 [0.355.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.355.0
 [0.354.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.354.0
