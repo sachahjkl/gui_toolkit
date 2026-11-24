@@ -66,3 +66,7 @@ Apply these to every task, before you write code:
 - Automation is a command of `tools/tk`, never a shell, batch, PowerShell, Python or Node script.
 - Comments and commit messages are in English. Comments say why.
 - Commits: author and committer `sachahjkl <sacha@sacha.house>`, no attribution trailer, no session link.
+- Work goes straight to `master`: commit, rebase on `origin/master`, push. The push's CI and Pages are the check. No
+  branch for a change, no merge commit, no dispatched CI run. A newer push makes the older push's run useless: cancel
+  it. Changes that come together go out in one push and one release.
+- `tk release` follows a push whose CI and Pages are green. Never release over a red run.
