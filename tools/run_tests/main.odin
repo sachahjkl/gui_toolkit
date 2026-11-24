@@ -119,6 +119,7 @@ STEPS := []Step{
 	{name = "fsx", oses = EVERYWHERE},
 	{name = "store", oses = EVERYWHERE},
 	{name = "json", oses = EVERYWHERE},
+	{name = "file_request", oses = EVERYWHERE},
 	{name = "crash", oses = EVERYWHERE},   // (the crashing process is the test program itself, started again)
 	{name = "log", oses = EVERYWHERE},
 	{name = "notices", oses = EVERYWHERE},

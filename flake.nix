@@ -119,7 +119,8 @@
       # (dbus: dbus-daemon, the notifications' tests start a session bus of their own; curl: the shell's own, a system's curl
       # loads the shell's glibc through LD_LIBRARY_PATH and stops)
       # (libwebp: cwebp, which tk screenshots and tk site_build make the site's pictures light with)
-      packages = [odin] ++ (with pkgs; [cargo rustc dbus curl libwebp]) ++ desktops ++ preCommitCheck.enabledPackages;
+      # (patchelf: tk file_picker_package gives the Linux release's binary the system's interpreter)
+      packages = [odin] ++ (with pkgs; [cargo rustc dbus curl libwebp patchelf]) ++ desktops ++ preCommitCheck.enabledPackages;
       buildInputs = [pkgs.fontconfig];
       # (nix develop clears LD_LIBRARY_PATH when it is an attribute)
       shellHook =

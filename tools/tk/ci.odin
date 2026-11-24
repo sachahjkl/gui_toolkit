@@ -102,19 +102,23 @@ build_example :: proc(root, example: string, debug: bool, devtools := true) -> s
 }
 
 // The programs the toolkit ships (apps/<name>), built as an example is: gt-runtime, which runs one plugin as an
-// application (src/md/features/plugins.md). Without the devtools endpoint unless asked: a person runs them.
-APPS :: [?]string{"gt-runtime"}
+// application (src/md/features/plugins.md), and file-picker, the file picker any program calls (gt-file-picker,
+// src/md/features/file-picker.md). Without the devtools endpoint unless asked: a person runs them.
+APPS :: [?]string{"gt-runtime", "file-picker"}
+
+// The executable of a program of apps/ (its folder's name, else what its users call).
+app_exe :: proc(app: string) -> string { return app == "file-picker" ? "gt-file-picker" : app }
 
 build_app :: proc(root, app: string, debug: bool, devtools := false) -> string {
-	return build_program(root, "apps", app, debug, devtools)
+	return build_program(root, "apps", app, debug, devtools, app_exe(app))
 }
 
-// A program of `folder` (examples, apps) -> build/<name>[.exe].
-build_program :: proc(root, folder, name: string, debug: bool, devtools: bool) -> string {
+// A program of `folder` (examples, apps) -> build/<exe>[.exe] (`exe` "": its name).
+build_program :: proc(root, folder, name: string, debug: bool, devtools: bool, exe := "") -> string {
 	when ODIN_OS != .Windows {
 		if why := build_native_default(root); why != "" { return why }
 	}
-	out := join({root, "build", fmt.tprintf("%s%s", name, EXE)})
+	out := join({root, "build", fmt.tprintf("%s%s", exe != "" ? exe : name, EXE)})
 	_ = os.make_directory_all(join({root, "build"}))
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "build", join({root, folder, name}), fmt.tprintf("-out:%s", out), "-vet", debug ? "-debug" : "-o:speed", fmt.tprintf("-define:TOOLKIT_DEVTOOLS=%v", devtools), gt_collection(root))

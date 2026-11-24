@@ -27,6 +27,30 @@ File_Filter :: struct {
 	patterns: []string,   // "*.ext" (or "*" / "*.*" for anything); an extension without "*." is accepted too
 }
 
+// What a file dialog asks: files to open, a name to save under, a folder.
+File_Dialog_Kind :: enum u8 { Open, Save, Folder }
+
+// A question beside the files (the XDG portal's "choices": an encoding, "Open read-only"): a list of options, or a check
+// box when it has none. The toolkit's file picker shows them; the system's dialogs do not.
+File_Choice :: struct {
+	id:      string,
+	label:   string,
+	options: []File_Choice_Option,   // empty: a check box
+	initial: string,                 // the option chosen first (its id; "": the first); a check box: "true" or "false"
+}
+
+File_Choice_Option :: struct { id, label: string }
+
+// A choice's value in the answer: an option's id, or "true" or "false" for a check box.
+File_Choice_Answer :: struct { id, value: string }
+
+// A request for a file picker as a plain value, apart from any interface: what a host serves (the toolkit's picker,
+// the system's dialog, a program that answers the XDG portal or a command line). The answer is a Dialog_Result.
+File_Request :: struct {
+	kind:   File_Dialog_Kind,
+	dialog: File_Dialog,
+}
+
 File_Dialog :: struct {
 	owner:          ^Window,        // nil: no owner
 	title:          string,         // "" : the system's
@@ -46,6 +70,69 @@ File_Dialog :: struct {
 	act:            string,         // the toolkit's file browser: the act button's word ("": the mode's, Open, Choose, Save)
 	row_actions:    []File_Row_Action,   // the toolkit's file browser: the program's acts in an entry's context menu
 	row_actions_off: bit_set[File_Row_Builtin; u8],   // the toolkit's file browser: its own acts this dialog does not offer
+	choices:        []File_Choice,  // the toolkit's file picker: questions beside the files, answered in Dialog_Result.choices
+}
+
+// A copy of `d`, every string and slice in `allocator` (the owner window and the row actions' procedures are the
+// caller's). file_dialog_free frees it.
+file_dialog_clone :: proc(d: File_Dialog, allocator := context.allocator) -> File_Dialog {
+	a := allocator
+	c := d
+	c.title = strings.clone(d.title, a)
+	c.start_dir = strings.clone(d.start_dir, a)
+	c.remember_id = strings.clone(d.remember_id, a)
+	c.suggested_name = strings.clone(d.suggested_name, a)
+	c.default_ext = strings.clone(d.default_ext, a)
+	c.act = strings.clone(d.act, a)
+	filters := make([]File_Filter, len(d.filters), a)
+	for f, i in d.filters {
+		patterns := make([]string, len(f.patterns), a)
+		for x, k in f.patterns { patterns[k] = strings.clone(x, a) }
+		filters[i] = File_Filter{name = strings.clone(f.name, a), patterns = patterns}
+	}
+	c.filters = filters
+	places := make([]File_Place, len(d.places), a)
+	for p, i in d.places { places[i] = {name = strings.clone(p.name, a), path = strings.clone(p.path, a), icon = strings.clone(p.icon, a)} }
+	c.places = places
+	actions := make([]File_Row_Action, len(d.row_actions), a)
+	for x, i in d.row_actions {
+		actions[i] = x
+		actions[i].label = strings.clone(x.label, a)
+		actions[i].icon = strings.clone(x.icon, a)
+	}
+	c.row_actions = actions
+	choices := make([]File_Choice, len(d.choices), a)
+	for ch, i in d.choices {
+		options := make([]File_Choice_Option, len(ch.options), a)
+		for o, k in ch.options { options[k] = {id = strings.clone(o.id, a), label = strings.clone(o.label, a)} }
+		choices[i] = {id = strings.clone(ch.id, a), label = strings.clone(ch.label, a), options = options, initial = strings.clone(ch.initial, a)}
+	}
+	c.choices = choices
+	return c
+}
+
+// Frees what file_dialog_clone made (in the same allocator), and zeroes `d`.
+file_dialog_free :: proc(d: ^File_Dialog, allocator := context.allocator) {
+	a := allocator
+	delete(d.title, a); delete(d.start_dir, a); delete(d.remember_id, a)
+	delete(d.suggested_name, a); delete(d.default_ext, a); delete(d.act, a)
+	for f in d.filters {
+		delete(f.name, a)
+		for x in f.patterns { delete(x, a) }
+		delete(f.patterns, a)
+	}
+	delete(d.filters, a)
+	for p in d.places { delete(p.name, a); delete(p.path, a); delete(p.icon, a) }
+	delete(d.places, a)
+	for x in d.row_actions { delete(x.label, a); delete(x.icon, a) }
+	delete(d.row_actions, a)
+	for ch in d.choices {
+		delete(ch.id, a); delete(ch.label, a); delete(ch.initial, a)
+		for o in ch.options { delete(o.id, a); delete(o.label, a) }
+		delete(ch.options, a)
+	}
+	delete(d.choices, a)
+	d^ = {}
 }
 
 // The toolkit's own acts in an entry's context menu of its file browser, before the program's (File_Row_Action). Each is
@@ -83,15 +170,28 @@ Dialog_Status :: enum u8 { Chosen, Cancelled, Unsupported, Failed }
 
 // What the dialog gave: the chosen paths (allocated with the allocator given; dialog_result_destroy frees them).
 Dialog_Result :: struct {
-	status: Dialog_Status,
-	paths:  []string,
-	filter: int,          // the type line selected when the user closed it
+	status:  Dialog_Status,
+	paths:   []string,
+	filter:  int,                    // the type line selected when the user closed it
+	choices: []File_Choice_Answer,   // per File_Dialog.choices, in their order (the system's dialogs: none)
 }
 
 dialog_result_destroy :: proc(r: ^Dialog_Result, allocator := context.allocator) {
 	for p in r.paths { delete(p, allocator) }
 	delete(r.paths, allocator)
+	for c in r.choices { delete(c.id, allocator); delete(c.value, allocator) }
+	delete(r.choices, allocator)
 	r^ = {}
+}
+
+// A copy of `r` in `allocator` (dialog_result_destroy frees it).
+dialog_result_clone :: proc(r: Dialog_Result, allocator := context.allocator) -> Dialog_Result {
+	c := r
+	c.paths = make([]string, len(r.paths), allocator)
+	for p, i in r.paths { c.paths[i] = strings.clone(p, allocator) }
+	c.choices = make([]File_Choice_Answer, len(r.choices), allocator)
+	for x, i in r.choices { c.choices[i] = {id = strings.clone(x.id, allocator), value = strings.clone(x.value, allocator)} }
+	return c
 }
 
 // The patterns of a filter joined as the systems want them ("*.png;*.jpg"); a bare extension ("png", ".png") becomes

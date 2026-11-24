@@ -56,7 +56,7 @@ thread through `ui.post` guarded by an atomic refcounted gate (so destroying the
 dereferences freed memory), lazily uploads `Context_Item.icon` bitmaps to GPU textures on first draw (freeing them on
 replace, clear, or destroy), and renders items and recursive submenus with `ui.shell_menu_items`.
 
-`ui.file_dialog` embeds a `Shell_Menu` in `File_Browser` so every program's local file browser shows system shell
+`ui.file_dialog` embeds a `Shell_Menu` in `File_Picker` so every program's local file browser shows system shell
 actions in its row context menu without blocking menu open.
 
 ## Refused alternatives

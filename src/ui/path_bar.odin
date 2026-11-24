@@ -97,6 +97,7 @@ Path_Bar :: struct {
 	field_key:  Key,         // the field's box (0: it takes the keyboard when it is built)
 	fresh:      bool,        // the path as it came, not edited yet: what is typed replaces it, so nothing filters
 	open:       bool,        // the dropdown shows
+	drop_key:   Key,         // the dropdown's panel at its last build (0: not built)
 	sel:        int,         // the row highlighted, an index of rows (-1: none)
 	reveal:     bool,        // the keyboard moved the highlight: its row is scrolled into view
 	sep:        u8,          // the separator of the last build
@@ -146,6 +147,14 @@ path_bar_edit :: proc(st: ^Path_Bar) { st.edit_asked = true }
 
 // Whether the bar is in its address mode (its field has the keyboard, Escape is its own).
 path_bar_editing :: proc(st: ^Path_Bar) -> bool { return st.editing || st.edit_asked }
+
+// Whether the pointer is on the bar's dropdown, built in this build (pointer_on). The dropdown is a popover of the
+// window, outside the bar's parent: a program that reads a press on its own part asks this too.
+path_bar_pointer_on :: proc(st: ^Path_Bar) -> bool {
+	if !st.editing || !st.open || st.drop_key == 0 { return false }
+	b := box_from_key(st.drop_key)
+	return box_current(gs(), b) && pointer_on(b)
+}
 
 // The children of `folder`, which `wants` asked: the dropdown lists them. An answer for another folder than the one
 // wanted now (typed since, or the address mode left) is dropped. Copied: the program frees its own after the call.
@@ -598,6 +607,7 @@ path_bar_dropdown :: proc(st: ^Path_Bar, drop_id: string, frame, field: ^Box, se
 	chosen := -1
 	if popover(drop_id, frame.rect, w, .Below, align_right = false) {
 		panel := parent_box()
+		st.drop_key = panel.key
 		inner := max(w - 2 * border_inset(panel), 0)
 		pad := math.round(em * 0.25)
 		spacer(px(pad))

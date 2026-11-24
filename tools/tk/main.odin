@@ -42,6 +42,9 @@
 //                                             step-th emoji of emoji-test.txt and a few hard ones -> <out-dir>/side.png and the numbers
 //   build [example] [-debug]                 an example (default fidget) -> build/<example>[.exe], optimized or with debug
 //                                             information; Windows: no console, its .rc; Linux: the native text backend first
+//   file_picker_package [-out:dir]            gt-file-picker (apps/file-picker) packed for this system (file_picker_package.odin):
+//                                             <dir>/gt-file-picker-windows-x64.zip, or gt-file-picker-linux-x64.tar.gz with the
+//                                             portal's files and the binary's interpreter set to the system's (default build/release)
 //   demos [-out:dir]                          Windows: the demo examples (demos.odin) built as build builds them, each alone in
 //                                             <dir>/<example>-windows-x64.zip (default build/demos), gt-runtime's zip and
 //                                             gt-skills.zip (skills.odin): what the Release workflow attaches
@@ -109,6 +112,7 @@ COMMANDS := []toolbox.Command {
 	{name = "release", usage = "<patch|minor|major|x.y.z> [-summary:text] [-no-push]: publishes a version of the toolkit (release.odin)", checked = true, flags = {"summary:", "no-push"}, positionals = 1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_release(args)) }},
 	{name = "build", usage = "[example] [-debug]: an example (default fidget) -> build/<example>, optimized or with debug information", checked = true, flags = {"debug"}, positionals = -1, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_build(args)) }},
 	{name = "demos", usage = "[-out:dir]: Windows: the demo examples, each in <dir>/<example>-windows-x64.zip (default build/demos)", checked = true, flags = {"out:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_demos(args)) }},
+	{name = "file_picker_package", usage = "[-out:dir]: gt-file-picker packed for this system: gt-file-picker-windows-x64.zip or gt-file-picker-linux-x64.tar.gz (default build/release)", checked = true, flags = {"out:"}, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_file_picker_package(args)) }},
 	{name = "site_docs", usage = "<site> <out>: every docs/*.md as a page of <out>/docs, docs/_nav.txt the menu", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_docs(args)) }},
 	{name = "site_build", usage = "<site> <out>: the site as published (site_changelog, the plugin API's explorer, site_meta, site_docs), then its links", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_build(args)) }},
 	{name = "site_changelog", usage = "<site> <out>: a copy of <site> with the history from CHANGELOG.md and the classic pages", checked = true, positionals = 2, run = proc(args: []string) -> cli.Exit { return toolbox.done(run_site_changelog(args)) }},

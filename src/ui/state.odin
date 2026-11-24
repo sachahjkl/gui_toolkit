@@ -78,7 +78,7 @@ FONT_JOBS_BOUND :: 5 * time.Second
 destroy :: proc(s: ^State) {
 	// (the file browser first: its view is closed as the program's close, its `done` not called; then the other views
 	// end with VIEW_CANCELLED and their Views forget it)
-	file_browser_destroy(s)
+	file_pickers_destroy(s)
 	views_state_gone(s)
 	box_edits_clear(s)
 	delete(s.edits)
@@ -384,7 +384,7 @@ end_build :: proc() {
 	views_build(s)   // (the views shown as dialogs, the file browser among them: over the page, under the toasts and the menus)
 	assert(len(s.parent_stack) == 0 && len(s.popup_stack) == 0 && len(s.modal_stack) == 0, "ui: a view's build left a scope open")
 	// (keys held for the file browser that no build of it took, a browser that closed or moved: the frame ends with them)
-	overlay_release_keys(s, .File_Browser)
+	overlay_release_keys(s, .File_Dialog)
 	text_reveal_build(s)   // (over the page and its dialogs, under the toasts and the menus)
 	toasts_build()   // (over everything the program built, under its menus)
 	keymap_end_build(s)   // (every reader of keys is past: the pending chord ends or shows its bubble)

@@ -97,7 +97,7 @@ files_children :: proc(app: ^App, folder: string) {
 }
 
 @(private = "file")
-files_dialog :: proc(app: ^App, kind: ui.File_Dialog_Kind) {
+files_dialog :: proc(app: ^App, kind: platform.File_Dialog_Kind) {
 	d := platform.File_Dialog{owner = app.win, remember_id = "fidget_files"}
 	filters := []platform.File_Filter{{name = "Text", patterns = {"*.txt", "*.md"}}, {name = "Images", patterns = {"*.png", "*.jpg", "*.webp"}}}
 	switch kind {

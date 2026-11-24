@@ -69,7 +69,7 @@ the program.
 | `examples/fidget/settings_ui.odin:107`, `shell.odin:270`, `:340`, `:390` | the settings, a palette, a confirmation, About | `app.*_open` | mutates | `top` 0.10, 0.11, 0.16 |
 | `examples/showcase/shell.odin:247`, `:255`, `:262`, `scenes.odin:418` | the palette, `confirm`, `prompt`, a resizable dialog (export) | `app.*_open` | as in the toolkit | `app.dialog_size` |
 | `examples/docking`, `examples/panes` | the dock and the panes | their own | none | their own |
-| `src/ui/file_browser_view.odin` `file_dialog_view` (merged from 0.255–0.259 as a modal of its own) | the toolkit's file browser: the path bar, the places, the list, the preview, Save's question | `^File_Browser` (`State.files`), opened by `ui.file_dialog` | `done(Dialog_Result)`, once; the person's close is Cancel (`View_Kind.on_end`) | resizable `FILE_BROWSER_WIDTH_EM`×`FILE_BROWSER_HEIGHT_EM`, also kept per `remember_id` |
+| `src/ui/file_dialog.odin` `file_dialog_view` (merged from 0.255–0.259 as a modal of its own) | the toolkit's file picker (`ui.file_picker`): the path bar, the places, the list, the preview, Save's question | `^File_Dialog_Host` (`State.files.dialog`), opened by `ui.file_dialog` | `done(Dialog_Result)`, once; the person's close is Cancel (`View_Kind.on_end`) | resizable `FILE_DIALOG_WIDTH_EM`×`FILE_DIALOG_HEIGHT_EM`, also kept per `remember_id` |
 
 Now a view: `"file_dialog"`, one instance per owner window, built by the views (no pass of its own in `end_build`),
 its header the views' (title, icon), its Save question a confirmation over it (`confirm_open` with the browser's

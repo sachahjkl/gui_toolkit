@@ -1,7 +1,7 @@
 package ui
 
 // What each file dialog remembers, by its remember_id: the folder it was left in, its size, its split, its sort,
-// Hidden files, the recent folders (FILE_BROWSER_RECENT). It is kept in memory for the run; a program that gives a file
+// Hidden files, the recent folders (FILE_PICKER_RECENT). It is kept in memory for the run; a program that gives a file
 // (file_dialog_memory) has it read on the chores and written by a store.Writer (its own thread, atomic) each time a
 // dialog closes: the interface's thread never touches the file.
 //
@@ -53,11 +53,11 @@ File_Memory_Read :: struct {
 	refs:  int,        // (atomic)
 }
 
-// Keeps what the file dialogs of `s` remember in the file at `path`, from now on: what it holds is read on the chores
-// and merged at a next build (what a dialog remembered meanwhile wins). Call it once, on the interface's thread.
+// Keeps what the file pickers of `s` remember (its dialogs' and the program's) in the file at `path`, from now on: what
+// it holds is read on the chores and merged at a next build (what a picker remembered meanwhile wins). Call it once, on
+// the interface's thread.
 file_dialog_memory :: proc(s: ^State, path: string) {
-	fb := file_browser_of(s)
-	m := &fb.memory
+	m := &file_pickers_of(s).memory
 	if m.saving || path == "" { return }
 	a := runtime.heap_allocator()
 	store.writer_open(&m.writer, path, wait_ms = FILE_MEMORY_SAVE_WAIT_MS, most_ms = FILE_MEMORY_SAVE_MOST_MS, allocator = a)
@@ -127,26 +127,26 @@ file_memory_of :: proc(m: ^File_Memories, id: string) -> ^File_Memory {
 // The dialog closes: what it is now is remembered (`chosen`: the folder of what it chose, first of the recent ones; ""
 // for none), and written when a file keeps it.
 @(private)
-file_memory_remember :: proc(fb: ^File_Browser, chosen: string) {
+file_memory_remember :: proc(fp: ^File_Picker, chosen: string) {
 	a := runtime.heap_allocator()
-	m := &fb.memory
+	m := &fp.state.files.memory
 	if m.by_id == nil { m.by_id = make(map[string]File_Memory, a) }
-	id := fb.d.remember_id
+	id := fp.d.remember_id
 	e := file_memory_of(m, id)
 	if e == nil {
 		m.by_id[strings.clone(id, a)] = {recent = make([dynamic]string, a)}
 		e = file_memory_of(m, id)
 	}
-	if fb.folder != "" { delete(e.folder, a); e.folder = strings.clone(fb.folder, a) }
-	e.size, e.split, e.hidden = fb.size, fb.split, fb.hidden
-	e.sort, e.descending, e.sort_set = fb.table.sort, fb.table.descending, true
-	e.zoom = fb.table.zoom
+	if fp.folder != "" { delete(e.folder, a); e.folder = strings.clone(fp.folder, a) }
+	e.size, e.split, e.hidden = fp.size, fp.split, fp.hidden
+	e.sort, e.descending, e.sort_set = fp.table.sort, fp.table.descending, true
+	e.zoom = fp.table.zoom
 	if chosen != "" && !file_memory_bad(chosen) {
 		for r, i in e.recent {
 			if r == chosen { delete(r, a); ordered_remove(&e.recent, i); break }
 		}
 		inject_at(&e.recent, 0, strings.clone(chosen, a))
-		for len(e.recent) > FILE_BROWSER_RECENT { delete(pop(&e.recent), a) }
+		for len(e.recent) > FILE_PICKER_RECENT { delete(pop(&e.recent), a) }
 	}
 	if m.saving { store.writer_put(&m.writer, transmute([]byte)file_memories_text(m)) }
 }
@@ -205,7 +205,7 @@ file_memories_merge :: proc(m: ^File_Memories, text: string) {
 		e.recent = make([dynamic]string, a)
 		list := f[8]
 		for p in strings.split_iterator(&list, FILE_MEMORY_LIST_SEP) {
-			if p != "" && len(e.recent) < FILE_BROWSER_RECENT { append(&e.recent, strings.clone(p, a)) }
+			if p != "" && len(e.recent) < FILE_PICKER_RECENT { append(&e.recent, strings.clone(p, a)) }
 		}
 		m.by_id[strings.clone(f[0], a)] = e
 	}

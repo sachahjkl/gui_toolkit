@@ -1,6 +1,6 @@
 package ui
 
-// What the file browser reads its folders through (docs/file-browser.md): the computer's own files (local_files) or any
+// What the file picker reads its folders through (docs/file-browser.md): the computer's own files (local_files) or any
 // other file system a program reaches (a server's, an archive's). A source's calls start the work and return at once;
 // the source answers later, on the interface's thread, through the reply it was given (file_reply_listed,
 // file_reply_read, file_reply_made, file_reply_found, file_reply_renamed, file_reply_trashed, file_reply_restored,
@@ -24,7 +24,7 @@ File_Kind :: enum u8 { File, Folder }
 File_Cap :: enum u8 { Size, Modified, Read, Make_Folder }
 File_Caps :: bit_set[File_Cap; u8]
 
-// One entry of a folder, as a source lists it. The browser copies what it keeps.
+// One entry of a folder, as a source lists it. The picker copies what it keeps.
 File_Entry :: struct {
 	name:     string,
 	kind:     File_Kind,   // a link's: what it points to
@@ -48,7 +48,8 @@ File_Trashed :: struct {
 // It is a value: keep it as long as the work takes (it holds no memory).
 File_Reply :: struct {
 	state:  ^State,
-	dialog: u64,     // the dialog that asked (an answer after it closed is dropped)
+	picker: u64,     // the picker that asked (an answer after it is destroyed is dropped)
+	serial: u64,     // ... and its request (an answer after it stopped, or started again, is dropped)
 	ticket: u64,     // the reading (an answer of a reading given up is dropped)
 	kind:   File_Reply_Kind,
 	hidden: bool,    // .Find: Hidden files is on; else the hidden entries, and what is in hidden folders, are not found
@@ -57,7 +58,7 @@ File_Reply :: struct {
 
 File_Source :: struct {
 	user:        rawptr,
-	// The version of what its paths name: the browser's thumbnails are kept by `user`, `generation` and the file, so
+	// The version of what its paths name: the picker's thumbnails are kept by `user`, `generation` and the file, so
 	// another value asks them again. Change it when the files may have changed and their listing cannot tell (no size
 	// nor date), or when the same source reaches another place (a server's address). Read when a dialog opens.
 	generation:  u64,
@@ -70,7 +71,7 @@ File_Source :: struct {
 	// Makes the folder `path` (file_reply_made). nil: no New folder.
 	make_folder: proc(src: ^File_Source, path: string, reply: File_Reply),
 	// The entries under `folder`, at any depth, that match `query`, best first, at most `limit` (file_reply_found);
-	// `reply.hidden`: hidden ones too. nil: the source cannot, the browser offers no search in subfolders.
+	// `reply.hidden`: hidden ones too. nil: the source cannot, the picker offers no search in subfolders.
 	find:        proc(src: ^File_Source, folder, query: string, limit: int, reply: File_Reply),
 	// The places it knows already, at once (cheap: no reading), in `allocator`. nil: none.
 	places:      proc(src: ^File_Source, allocator: mem.Allocator) -> []platform.File_Place,
@@ -82,7 +83,7 @@ File_Source :: struct {
 	known:       proc(src: ^File_Source, folder: platform.Known_Folder, allocator: mem.Allocator) -> string,
 	// A picture of the file `path`, at most `px` pixels on its longer side, for a card of the grid
 	// (file_reply_thumbnail; none: file_reply_failed). Answer every call: an ask without an answer holds a slot of the
-	// browser's thumbnails. nil: the cards show the kind's icon.
+	// picker's thumbnails. nil: the cards show the kind's icon.
 	thumbnail:   proc(src: ^File_Source, path: string, px: int, reply: File_Reply),
 	// Gives the entry `path` the name `name` in its folder (file_reply_renamed). It must not go over an entry of that
 	// name: refuse it (file_reply_failed). nil: no Rename in a row's menu.
@@ -95,70 +96,72 @@ File_Source :: struct {
 
 // The entries of the folder asked. They are copied: the source frees its own after the call.
 file_reply_listed :: proc(reply: File_Reply, entries: []File_Entry) {
-	fb := file_reply_browser(reply)
-	if fb == nil || reply.kind != .List { return }
-	if reply.bar { file_browser_bar_listed(fb, reply.ticket, entries) } else { file_browser_listed(fb, reply.ticket, entries) }
+	fp := file_reply_picker(reply)
+	if fp == nil || reply.kind != .List { return }
+	if reply.bar { file_picker_bar_listed(fp, reply.ticket, entries) } else { file_picker_listed(fp, reply.ticket, entries) }
 }
 
 // The start of the file asked (`bytes`, copied) and its whole size (-1: not known).
 file_reply_read :: proc(reply: File_Reply, bytes: []u8, size: i64) {
-	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Read { file_browser_read(fb, reply.ticket, bytes, size) }
+	if fp := file_reply_picker(reply); fp != nil && reply.kind == .Read { file_picker_read(fp, reply.ticket, bytes, size) }
 }
 
 // The folder asked was made.
 file_reply_made :: proc(reply: File_Reply) {
-	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Make { file_browser_made(fb, reply.ticket) }
+	if fp := file_reply_picker(reply); fp != nil && reply.kind == .Make { file_picker_made(fp, reply.ticket) }
 }
 
 // What a find found, best first: each entry's `name` is its path relative to the folder asked, with the source's
 // separator ("docs/notes.md"). They are copied: the source frees its own after the call.
 file_reply_found :: proc(reply: File_Reply, entries: []File_Entry) {
-	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Find { file_browser_found(fb, reply.ticket, entries) }
+	if fp := file_reply_picker(reply); fp != nil && reply.kind == .Find { file_picker_found(fp, reply.ticket, entries) }
 }
 
 // The thumbnail asked: `rgba` (straight RGBA8, row by row, `width` * `height` * 4 bytes) is copied. It goes to the
-// browser's thumbnails whatever dialog asked: a file's picture is good for the next dialog too.
+// picker's thumbnails whatever dialog asked: a file's picture is good for the next dialog too.
 file_reply_thumbnail :: proc(reply: File_Reply, rgba: []u8, width, height: int) {
-	if reply.kind != .Thumbnail || reply.state == nil || reply.state.files == nil { return }
-	thumb_cache_answer(&reply.state.files.thumbs, reply.ticket, rgba, width, height)
+	if reply.kind != .Thumbnail { return }
+	if fp := file_reply_thumbs(reply); fp != nil { thumb_cache_answer(&fp.thumbs, reply.ticket, rgba, width, height) }
 }
 
 // The entry asked was renamed.
 file_reply_renamed :: proc(reply: File_Reply) {
-	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Rename { file_browser_renamed(fb, reply.ticket) }
+	if fp := file_reply_picker(reply); fp != nil && reply.kind == .Rename { file_picker_renamed(fp, reply.ticket) }
 }
 
 // What the trash asked moved: one item per entry moved (copied: the source frees its own after the call). `message`:
 // "" when every entry moved, else what the person reads of the others (the source's words).
 file_reply_trashed :: proc(reply: File_Reply, items: []File_Trashed, message := "") {
-	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Trash { file_browser_trashed(fb, reply.ticket, items, message) }
+	if fp := file_reply_picker(reply); fp != nil && reply.kind == .Trash { file_picker_trashed(fp, reply.ticket, items, message) }
 }
 
 // The entries asked are back.
 file_reply_restored :: proc(reply: File_Reply) {
-	if fb := file_reply_browser(reply); fb != nil && reply.kind == .Restore { file_browser_restored(fb, reply.ticket) }
+	if fp := file_reply_picker(reply); fp != nil && reply.kind == .Restore { file_picker_restored(fp, reply.ticket) }
 }
 
 // The call did not end well: `message` is what the person reads (the source's words, in the language in use).
 // `refused`: the source said no (no right to read it); `missing`: what was asked is not there (a folder deleted since: the
-// browser goes up to the nearest one that is). A thumbnail's: the card keeps its icon (the message is not shown).
+// picker goes up to the nearest one that is). A thumbnail's: the card keeps its icon (the message is not shown).
 file_reply_failed :: proc(reply: File_Reply, message: string, refused := false, missing := false) {
 	if reply.kind == .Thumbnail {
-		if reply.state != nil && reply.state.files != nil { thumb_cache_failed(&reply.state.files.thumbs, reply.ticket) }
+		if fp := file_reply_thumbs(reply); fp != nil { thumb_cache_failed(&fp.thumbs, reply.ticket) }
 		return
 	}
-	fb := file_reply_browser(reply)
-	if fb == nil { return }
-	if reply.bar { file_browser_bar_failed(fb, reply.ticket, message) } else { file_browser_failed(fb, reply.kind, reply.ticket, message, refused, missing) }
+	fp := file_reply_picker(reply)
+	if fp == nil { return }
+	if reply.bar { file_picker_bar_failed(fp, reply.ticket, message) } else { file_picker_failed(fp, reply.kind, reply.ticket, message, refused, missing) }
 }
 
-// The browser a reply is for, nil when its dialog closed (or another one opened since).
+// The picker a reply is for, nil when it is destroyed, stopped or started again since.
 @(private = "file")
-file_reply_browser :: proc(reply: File_Reply) -> ^File_Browser {
-	if reply.state == nil { return nil }
-	fb := reply.state.files
-	if fb == nil || !fb.open || fb.serial != reply.dialog { return nil }
-	return fb
+file_reply_picker :: proc(reply: File_Reply) -> ^File_Picker { return file_picker_by_id(reply.state, reply.picker, reply.serial) }
+
+// The picker whose thumbnails a reply answers, whatever request asked: a file's picture is good for the next one too.
+@(private = "file")
+file_reply_thumbs :: proc(reply: File_Reply) -> ^File_Picker {
+	if reply.state == nil || reply.state.files == nil { return nil }
+	return reply.state.files.live[reply.picker] or_else nil
 }
 
 ////////////////////////////////

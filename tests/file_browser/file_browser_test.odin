@@ -130,7 +130,7 @@ App :: struct {
 	fake:     Fake,
 	source:   ui.File_Source,
 	local:    bool,                 // the computer's files (no source given)
-	kind:     ui.File_Dialog_Kind,
+	kind:     platform.File_Dialog_Kind,
 	d:        platform.File_Dialog,
 	ask:      bool,                 // the next build asks for the dialog
 	answers:  int,
@@ -176,13 +176,13 @@ app_destroy :: proc(app: ^App) {
 
 // The dialog asked and shown.
 @(private = "file")
-open :: proc(s: ^session.Session, app: ^App, kind: ui.File_Dialog_Kind, d: platform.File_Dialog) {
+open :: proc(s: ^session.Session, app: ^App, kind: platform.File_Dialog_Kind, d: platform.File_Dialog) {
 	app.kind, app.d, app.ask = kind, d, true
 	session.frames(s, SHOW_FRAMES)
 }
 
 @(private = "file")
-counts :: proc(s: ^session.Session) -> ui.File_Browser_Counts { return ui.file_browser_counts(s.state) }
+counts :: proc(s: ^session.Session) -> ui.File_Picker_Counts { return ui.file_picker_counts(ui.file_dialog_picker(s.state)) }
 
 @(private = "file")
 start :: proc(t: ^testing.T, app: ^App) -> ^session.Session {
@@ -244,7 +244,7 @@ a_folder_that_never_answers :: proc(t: ^testing.T) {
 	s := start(t, &app)
 	open(s, &app, .Open, {start_dir = "/slow"})
 	testing.expect(t, session.find_text(s, "Reading this folder") == nil, "not before FILE_BROWSER_SLOW_MS")
-	session.advance(s, ui.FILE_BROWSER_SLOW_MS + 50)
+	session.advance(s, ui.FILE_PICKER_SLOW_MS + 50)
 	testing.expect(t, session.find_text(s, "Reading this folder") != nil)
 	session.click(s, "fb_cancel")
 	testing.expect_value(t, app.answers, 1)
@@ -316,7 +316,7 @@ a_hundred_thousand_entries :: proc(t: ^testing.T) {
 	testing.expect_value(t, after.rows_made, before.rows_made)
 	testing.expect_value(t, after.rows_applied, before.rows_applied)
 	testing.expect_value(t, after.list_layouts, before.list_layouts)
-	when FILE_BROWSER_TIMING { testing.expectf(t, slowest < ui.FILE_BROWSER_BUILD_BUDGET_MS, "a build took %.1f ms", slowest) }
+	when FILE_BROWSER_TIMING { testing.expectf(t, slowest < ui.FILE_PICKER_BUILD_BUDGET_MS, "a build took %.1f ms", slowest) }
 	// the filter makes them again, once
 	session.type_text(s, "042")
 	testing.expect_value(t, counts(s).rows_applied, after.rows_applied + 1)
@@ -496,7 +496,7 @@ the_local_source_lists_a_real_folder :: proc(t: ^testing.T) {
 	app.local = true
 	s := start(t, &app)
 	open(s, &app, .Open, {start_dir = root})
-	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).rows_shown == 2 }, "the folder's two entries", BOUND)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_picker_counts(ui.file_dialog_picker(s.state)).rows_shown == 2 }, "the folder's two entries", BOUND)
 	testing.expect(t, session.find_text(s, "sub folder") != nil)
 	testing.expect(t, session.find_text(s, "five.txt") != nil)
 	testing.expect(t, session.find_text(s, "5 B") != nil, "the file's size")
@@ -524,7 +524,7 @@ the_local_source_lists_a_folder_with_a_link :: proc(t: ^testing.T) {
 	app.local = true
 	s := start(t, &app)
 	open(s, &app, .Open, {start_dir = root})
-	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).rows_shown == 2 }, "both folders shown", BOUND)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_picker_counts(ui.file_dialog_picker(s.state)).rows_shown == 2 }, "both folders shown", BOUND)
 	testing.expect(t, session.find_text(s, "real_dir") != nil)
 	testing.expect(t, session.find_text(s, "linked_dir") != nil)
 }
@@ -554,10 +554,10 @@ the_local_source_finds_in_subfolders :: proc(t: ^testing.T) {
 	s := start(t, &app)
 	open(s, &app, .Open, {start_dir = root, find_deep = true})
 	testing.expect(t, counts(s).deep, "find_deep: on at open")
-	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).entries == 2 }, "the folder's entries", BOUND)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_picker_counts(ui.file_dialog_picker(s.state)).entries == 2 }, "the folder's entries", BOUND)
 	// (the letters in order, across the path's parts)
 	session.type_text(s, "ndlrep")
-	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).found > 0 }, "the find's answer", BOUND)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_picker_counts(ui.file_dialog_picker(s.state)).found > 0 }, "the find's answer", BOUND)
 	testing.expect(t, counts(s).found_shown, "the rows are the find's")
 	deep := fmt.tprintf("alpha%sbeta%sgamma%sneedle_report.txt", sep, sep, sep)
 	testing.expect(t, session.find_text(s, deep) != nil, "the file three folders deep, by its relative path")
@@ -565,7 +565,7 @@ the_local_source_finds_in_subfolders :: proc(t: ^testing.T) {
 	if testing.expect_value(t, len(app.paths), 1) { testing.expect_value(t, app.paths[0], fmt.tprintf("%s%s%s", root, sep, deep)) }
 	// a hidden folder: not entered while Hidden files is off
 	open(s, &app, .Open, {start_dir = root, find_deep = true})
-	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).entries == 2 }, "the folder's entries", BOUND)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_picker_counts(ui.file_dialog_picker(s.state)).entries == 2 }, "the folder's entries", BOUND)
 	session.type_text(s, "hddnrep")
 	session.wait_text(s, "Nothing found.", BOUND)
 	session.key(s, .H, {.Ctrl})
@@ -1076,7 +1076,7 @@ the_local_source_starts_in_downloads :: proc(t: ^testing.T) {
 	app.local = true
 	s := start(t, &app)
 	open(s, &app, .Save, {start_known = .Downloads, suggested_name = "file.bin"})
-	session.wait_until(s, expected, proc(s: ^session.Session, want: string) -> bool { return ui.file_browser_counts(s.state).folder == want }, "the Downloads folder", BOUND)
+	session.wait_until(s, expected, proc(s: ^session.Session, want: string) -> bool { return ui.file_picker_counts(ui.file_dialog_picker(s.state)).folder == want }, "the Downloads folder", BOUND)
 	when ODIN_OS == .Linux {
 		session.wait_text(s, "arrived.bin", BOUND)
 	}
@@ -1162,6 +1162,42 @@ escape_in_the_path_field :: proc(t: ^testing.T) {
 	session.key(s, .Escape)
 	testing.expect(t, !counts(s).open)
 	testing.expect_value(t, app.status, platform.Dialog_Status.Cancelled)
+}
+
+// The mouse's side buttons go back and forward in the history, with the pointer on the dialog, on the path bar's
+// dropdown, and while a field has the keyboard; off the dialog they do nothing.
+@(test)
+the_side_buttons_go_back_and_forward :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/a"] = []ui.File_Entry{F("docs", .Folder), F("top.txt")}
+	app.fake.folders["/a/docs"] = []ui.File_Entry{F("in.txt")}
+	app.fake.at_once = true
+	s := start(t, &app)
+	open(s, &app, .Open, {start_dir = "/a"})
+	session.key(s, .Down)
+	session.key(s, .Return)
+	testing.expect_value(t, counts(s).folder, "/a/docs")
+	on_list := session.center(session.get(s, "fb_table"))
+	session.click_at(s, on_list, .Back)
+	testing.expect_value(t, counts(s).folder, "/a")
+	session.click_at(s, on_list, .Forward)
+	testing.expect_value(t, counts(s).folder, "/a/docs")
+	// (off the dialog: the window's corner, under no view)
+	session.click_at(s, {2, 2}, .Back)
+	testing.expect_value(t, counts(s).folder, "/a/docs")
+	testing.expect(t, counts(s).open)
+	// (the filter has the keyboard)
+	session.click(s, "fb_filter")
+	session.type_text(s, "in")
+	session.click_at(s, on_list, .Back)
+	testing.expect_value(t, counts(s).folder, "/a")
+	// (on the path bar's dropdown, its field typed in)
+	session.key(s, .L, {.Ctrl})
+	session.type_text(s, "/a/")
+	drop := session.get(s, "pb_list")
+	session.click_at(s, session.center(drop), .Forward)
+	testing.expect_value(t, counts(s).folder, "/a/docs")
 }
 
 ////////////////////////////////
@@ -1305,9 +1341,9 @@ the_local_source_makes_a_pictures_thumbnail :: proc(t: ^testing.T) {
 	app.local = true
 	s := start(t, &app)
 	open(s, &app, .Open, {start_dir = root})
-	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).rows_shown == 1 }, "the picture's row", BOUND)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_picker_counts(ui.file_dialog_picker(s.state)).rows_shown == 1 }, "the picture's row", BOUND)
 	pick_view(s, ui.TABLE_ZOOM_CARDS)
-	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_browser_counts(s.state).thumbs_ready == 1 }, "its thumbnail", BOUND)
+	session.wait_until(s, proc(s: ^session.Session) -> bool { return ui.file_picker_counts(ui.file_dialog_picker(s.state)).thumbs_ready == 1 }, "its thumbnail", BOUND)
 	testing.expect(t, session.find(s, "thumb") != nil, "the picture in its card")
 }
 
@@ -1419,4 +1455,125 @@ two_sources_with_the_same_paths_do_not_share_thumbnails :: proc(t: ^testing.T) {
 	testing.expect(t, session.find(s, "thumb") == nil, "the other source's card: not the first one's thumbnail")
 	// (closed while `other` lives: the dialog holds a copy of its source)
 	session.click(s, "fb_cancel")
+}
+////////////////////////////////
+// Save's type, Alt+Home
+
+// Save: another type chosen changes the extension of the name typed; Alt+Home goes to the source's start.
+@(test)
+save_follows_the_type_and_alt_home_goes_home :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/f"] = []ui.File_Entry{F("sub", .Folder)}
+	app.fake.folders["/f/sub"] = []ui.File_Entry{}
+	app.fake.at_once = true
+	app.source = fake_source(&app.fake)
+	app.source.start = proc(src: ^ui.File_Source, allocator: runtime.Allocator) -> string { return strings.clone("/f", allocator) }
+	s := session.start(t, {build = build, user = &app, no_renderer = true, size = {1200, 800}})
+	app.kind, app.d, app.ask = .Save, {start_dir = "/f/sub", suggested_name = "report.txt", filters = {{name = "Text", patterns = {"*.txt"}}, {name = "Markdown", patterns = {"*.md"}}}}, true
+	session.frames(s, SHOW_FRAMES)
+	testing.expect_value(t, counts(s).folder, "/f/sub")
+	session.click(s, "fb_type")
+	session.click_text(s, "Markdown")
+	testing.expect_value(t, ui.line_edit_string(&ui.file_dialog_picker(s.state).name), "report.md")
+	session.key(s, .Home, {.Alt})
+	testing.expect_value(t, counts(s).folder, "/f")
+	session.click(s, "fb_act")
+	testing.expect_value(t, app.answers, 1)
+	if len(app.paths) == 1 { testing.expect_value(t, app.paths[0], "/f/report.md") }
+}
+
+////////////////////////////////
+// Pickers in a program's layout
+
+// Two pickers of the program side by side, each on its own folder: the one with the focus reads the keys, the other
+// none; each says its folder changed and its answer in its own events. A picker destroyed with a reading on its way
+// drops the late answer.
+@(private = "file")
+Two :: struct {
+	fake:     Fake,
+	source:   ui.File_Source,
+	a, b:     ui.File_Picker,
+	ready:    bool,
+	moved:    [2]int,      // folder_changed, per picker
+	answered: [2]int,
+	chosen:   string,      // (heap) a's last path chosen
+	gone:     bool,        // b destroyed: not built
+}
+
+@(private = "file")
+two_build :: proc(s: ^session.Session) {
+	app := (^Two)(s.user)
+	if !app.ready {
+		app.ready = true
+		ui.file_picker_init(&app.a, s.state, .Open, {start_dir = "/a"}, &app.source)
+		ui.file_picker_init(&app.b, s.state, .Open, {start_dir = "/b"}, &app.source)
+	}
+	ui.next({width = ui.fill(), height = ui.fill(), axis = .X})
+	if ui.row() {
+		ui.next({width = ui.px(580), height = ui.fill()})
+		ea := ui.file_picker("###pick_a", &app.a)
+		if ea.folder_changed { app.moved[0] += 1 }
+		if ea.answered {
+			app.answered[0] += 1
+			if len(ea.result.paths) == 1 {
+				delete(app.chosen, runtime.heap_allocator())
+				app.chosen = strings.clone(ea.result.paths[0], runtime.heap_allocator())
+			}
+		}
+		if !app.gone {
+			ui.next({width = ui.px(580), height = ui.fill()})
+			eb := ui.file_picker("###pick_b", &app.b)
+			if eb.folder_changed { app.moved[1] += 1 }
+			if eb.answered { app.answered[1] += 1 }
+		}
+	}
+}
+
+@(test)
+two_pickers_in_a_programs_layout :: proc(t: ^testing.T) {
+	app: Two
+	defer {
+		ui.file_picker_destroy(&app.a)
+		ui.file_picker_destroy(&app.b)
+		fake_destroy(&app.fake)
+		delete(app.chosen, runtime.heap_allocator())
+	}
+	app.fake.folders["/a"] = []ui.File_Entry{F("docs", .Folder), F("a.txt")}
+	app.fake.folders["/a/docs"] = []ui.File_Entry{F("in.txt")}
+	app.fake.folders["/b"] = []ui.File_Entry{F("b.txt")}
+	app.fake.at_once = true
+	app.source = fake_source(&app.fake)
+	s := session.start(t, {build = two_build, user = &app, no_renderer = true, size = {1200, 700}})
+	session.frames(s, SHOW_FRAMES)
+	testing.expect_value(t, ui.file_picker_folder(&app.a), "/a")
+	testing.expect_value(t, ui.file_picker_folder(&app.b), "/b")
+	// (the first built took the keyboard: a; b reads none)
+	session.key(s, .Down)
+	session.key(s, .Return)
+	testing.expect_value(t, ui.file_picker_folder(&app.a), "/a/docs")
+	testing.expect_value(t, ui.file_picker_folder(&app.b), "/b")
+	testing.expect(t, app.moved[0] >= 2 && app.moved[1] == 1, "each says its own folder changed")
+	// (a's answer, in a's events; the picker stays open)
+	session.key(s, .Down)
+	session.key(s, .Return)
+	testing.expect_value(t, app.answered, [2]int{1, 0})
+	testing.expect_value(t, app.chosen, "/a/docs/in.txt")
+	testing.expect(t, ui.file_picker_counts(&app.a).open)
+	// (a click in b: the keys are b's)
+	session.click_text(s, "b.txt")
+	session.key(s, .Escape)
+	testing.expect_value(t, app.answered, [2]int{1, 1})
+	session.key(s, .Backspace)
+	testing.expect_value(t, ui.file_picker_folder(&app.a), "/a/docs")
+	// b destroyed with a reading on its way: its late answer finds no picker
+	app.fake.at_once = false
+	asked := len(app.fake.asked)
+	session.key(s, .F5)
+	testing.expect_value(t, len(app.fake.asked), asked + 1)
+	app.gone = true
+	ui.file_picker_destroy(&app.b)
+	fake_answer(&app.fake, asked)
+	session.frames(s, 3)
+	testing.expect_value(t, ui.file_picker_folder(&app.a), "/a/docs")
 }

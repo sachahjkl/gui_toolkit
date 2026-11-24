@@ -298,7 +298,7 @@ menus_destroy :: proc(s: ^State) {
 Key_Owner :: enum u8 {
 	Program,        // nothing: the frame's keys are where they are
 	Menu,           // an open menu: its innermost level reads the queue itself (menu_level_begin)
-	File_Browser,   // the file browser open as a dialog: its view's build gets the queue back (overlay_release_keys)
+	File_Dialog,   // ui.file_dialog's picker shown as a dialog: its view's build gets the queue back (overlay_release_keys)
 	Text_Reveal,    // a cut text's whole text open in its bubble (text_reveal_build gets the queue back)
 }
 
@@ -318,10 +318,10 @@ overlay_capture_keys :: proc(s: ^State, events: []platform.Event) {
 		// what was typed in the field went nowhere)
 		if f := s.boxes[s.focus_key] or_else nil; f != nil && .Text_Input in f.flags && menu_holds(s, s.focus_key) { return }
 		s.key_owner = .Menu
-	case file_browser_holds_keys(s):
+	case file_dialog_holds_keys(s):
 		// (open as a dialog of this window; as a floating window, a panel or a window of its own, it takes keys as
 		// views do)
-		s.key_owner = .File_Browser
+		s.key_owner = .File_Dialog
 	case s.reveal.open:
 		s.key_owner = .Text_Reveal
 	case:

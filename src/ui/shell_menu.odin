@@ -276,11 +276,13 @@ shell_menu_clear :: proc(m: ^Shell_Menu) {
 
 // Stops the worker thread, frees items and GPU icon textures, and detaches any queued ui.post callback.
 shell_menu_destroy :: proc(m: ^Shell_Menu) {
-	// Detach the gate first so any already-queued ui.post callback drops its items instead of touching `m`.
+	// The worker first: a query on its way holds the gate without a reference of its own, and its answer locks it. Freed
+	// before the join, that lock read freed memory and the join waited for ever (a right click, then the dialog closed).
+	desktop.context_menu_destroy(&m.native)
+	// Then detach the gate so any already-queued ui.post callback drops its items instead of touching `m`.
 	g := m.gate
 	m.gate = nil
 	gate_release(g, true)
-	desktop.context_menu_destroy(&m.native)
 	shell_menu_icons_free(m)
 	delete(m.icons)
 	desktop.context_items_destroy(m.items, runtime.heap_allocator())

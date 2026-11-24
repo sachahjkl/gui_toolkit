@@ -82,9 +82,9 @@ Local_Warm :: struct {
 // Asks for the places of `s` once (nothing when they are read or on their way).
 @(private)
 file_local_warm :: proc(s: ^State) {
-	fb := file_browser_of(s)
-	if fb.local.ready || fb.local.asked { return }
-	fb.local.asked = true
+	h := file_pickers_of(s)
+	if h.local.ready || h.local.asked { return }
+	h.local.asked = true
 	w := new(Local_Warm, runtime.heap_allocator())
 	w.state = s
 	w.places = make([dynamic]platform.File_Place, runtime.heap_allocator())
@@ -114,14 +114,17 @@ file_local_warm :: proc(s: ^State) {
 	}
 	done :: proc(d: rawptr, _: u64) {
 		w := (^Local_Warm)(d)
-		if fb := w.state.files; fb != nil {
-			file_local_destroy(&fb.local)
-			fb.local = {ready = true, places = w.places, home = w.home, known = w.known}
-			file_browser_local_ready(fb)
+		if h := w.state.files; h != nil {
+			file_local_destroy(&h.local)
+			h.local = {ready = true, places = w.places, home = w.home, known = w.known}
 			free(w, runtime.heap_allocator())
+			// (every picker of the State: a list first, a picker that answers at once may start another)
+			waiting := make([dynamic]^File_Picker, context.temp_allocator)
+			for _, fp in h.live { append(&waiting, fp) }
+			for fp in waiting { file_picker_local_ready(fp) }
 			return
 		}
-		local_warm_free(w)   // (the browser went meanwhile: nothing holds what was read)
+		local_warm_free(w)   // (the pickers went meanwhile: nothing holds what was read)
 	}
 	lost :: proc(d: rawptr) { local_warm_free((^Local_Warm)(d)) }
 	task(s, work, done, w, lost)
@@ -234,7 +237,7 @@ local_fail :: proc(j: ^Local_Job, err: os.Error, what: string) {
 	}
 }
 
-// The browser's entry for one entry of folder `dir`, its name `f.name`'s (not cloned). Its `hidden` is the system's mark
+// The picker's entry for one entry of folder `dir`, its name `f.name`'s (not cloned). Its `hidden` is the system's mark
 // (fsx.read_folder: Windows' attribute, read with the folder), so file_entry_hidden is the one rule of the listing and
 // of the search. A link is what it points to: a folder to enter, a file to choose.
 @(private = "file")
@@ -280,19 +283,19 @@ local_list :: proc(src: ^File_Source, path: string, reply: File_Reply) {
 ////////////////////////////////
 // Search in subfolders
 
-// The stop of a browser's local walks: a newer find, another folder, the toggle off and the dialog closing bump
-// `generation`; a walk that sees another value than its own stops. Shared by the browser and its walks, counted: a
-// walk may end after ui.destroy freed the browser.
+// The stop of a picker's local walks: a newer find, another folder, the toggle off and the dialog closing bump
+// `generation`; a walk that sees another value than its own stops. Shared by the picker and its walks, counted: a
+// walk may end after ui.destroy freed the picker.
 @(private)
 File_Find_Stop :: struct {
 	generation: u64,   // (atomic)
-	refs:       int,   // (atomic) the browser's and each walk's
+	refs:       int,   // (atomic) the picker's and each walk's
 }
 
 // The walks on their way stop (nothing when none was started).
 @(private)
-file_find_stop :: proc(fb: ^File_Browser) {
-	if fb.find_stop != nil { sync.atomic_add(&fb.find_stop.generation, 1) }
+file_find_stop :: proc(fp: ^File_Picker) {
+	if fp.find_stop != nil { sync.atomic_add(&fp.find_stop.generation, 1) }
 }
 
 @(private)
@@ -322,19 +325,20 @@ Local_Find :: struct {
 
 @(private = "file")
 local_find :: proc(src: ^File_Source, folder, query: string, limit: int, reply: File_Reply) {
-	fb := reply.state != nil ? reply.state.files : nil
-	if fb == nil { return }
+	// (the picker's stop: its own finds stop each other, another picker's go on)
+	fp := file_picker_by_id(reply.state, reply.picker, reply.serial)
+	if fp == nil { return }
 	a := runtime.heap_allocator()
-	if fb.find_stop == nil {
-		fb.find_stop = new(File_Find_Stop, a)
-		fb.find_stop.refs = 1
+	if fp.find_stop == nil {
+		fp.find_stop = new(File_Find_Stop, a)
+		fp.find_stop.refs = 1
 	}
 	j := new(Local_Find, a)
 	j.job = {reply = reply, path = strings.clone(folder, a), size = -1, entries = make([dynamic]File_Entry, a)}
 	j.query, j.limit, j.sep = strings.clone(query, a), max(limit, 1), src.separator != 0 ? src.separator : '/'
 	j.found = make([dynamic]Local_Found, a)
 	// (a newer find stops the older one: its own generation from here)
-	j.stop = fb.find_stop
+	j.stop = fp.find_stop
 	j.generation = sync.atomic_add(&j.stop.generation, 1) + 1
 	sync.atomic_add(&j.stop.refs, 1)
 	task(reply.state, local_find_work, local_find_done, j, local_find_free)
@@ -546,7 +550,7 @@ local_trash :: proc(src: ^File_Source, paths: []string, reply: File_Reply) {
 }
 
 // Each item back where it was (platform.put_back: never over a name taken again). Some that failed: said, and the
-// browser reads the folder again for the others.
+// picker reads the folder again for the others.
 @(private = "file")
 local_restore :: proc(src: ^File_Source, items: []File_Trashed, reply: File_Reply) {
 	work :: proc(d: rawptr) {

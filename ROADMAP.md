@@ -13,6 +13,14 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
+- **gt-file-picker as a Nix package.** The flake builds the compiler and the test fonts, no program of the
+  repository: a package of gt-file-picker needs the native library's crates vendored (`importCargoLock`) and the
+  portal's files installed with its store path in their `Exec=`. Then NixOS's portal configuration names it with no
+  hand edit. Intent: [src/md/features/file-picker.md](src/md/features/file-picker.md).
+- **The file picker's window a child of the asking program's.** The portal gives the caller's window (`x11:<id>`,
+  `wayland:<handle>`); the picker's window then stays over it and moves with it. It needs `xdg-foreign` on Wayland
+  and `WM_TRANSIENT_FOR` on X11 in the platform layer, and a `--parent` option of gt-file-picker. Intent:
+  [src/md/features/file-picker.md](src/md/features/file-picker.md).
 - **Wire `gt:filesearch` into classeur and measure Windows home indexing.** `gt:filesearch` and `ui.Palette_Files` are
   built and tested; next wire them into classeur's search and palette, and take the Windows home measurement before
   enabling whole-home defaults there. Intent: [src/md/features/file-search.md](src/md/features/file-search.md).

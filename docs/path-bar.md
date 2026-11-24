@@ -45,6 +45,9 @@ if ui.key_press(.L, {.Ctrl}) { ui.path_bar_edit(&app.bar) }
   An answer for another folder than the one wanted now is dropped. The entries are copied.
 - `path_bar_suggestions(&st, groups)`: the program's own rows (places, recent folders, a search's answer), under each
   group's title, after the children. Set them when they change, not each frame; they are copied.
+- `path_bar_pointer_on(&st)`: whether the pointer is on the dropdown built in this build. The dropdown is a popover of
+  the window, outside the bar's parent: a program that reads a press on its own part (the file picker's side buttons)
+  asks this too.
 - `path_bar_edit(&st)`: the address mode at the next build. `path_bar_editing(&st)`: whether the bar is in it (its field
   has the keyboard, Escape is its own).
 - `Path_Bar_Entry`: `name`, `icon` (a Lucide glyph; "": a folder), `detail` (weak, at the row's right), `branch` (it can

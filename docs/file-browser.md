@@ -1,18 +1,27 @@
-# The file browser (`src/ui/file_browser*.odin`, `src/ui/file_source.odin`, `src/ui/file_local.odin`)
+# The file picker (`src/ui/file_picker*.odin`, `src/ui/file_dialog.odin`, `src/ui/file_source.odin`, `src/ui/file_local.odin`)
 
 One file picker for every program, drawn by the toolkit with its own widgets: open one or more files, choose a folder,
 save under a name. It reads its folders through a *source*: the computer's own files (the toolkit's local source), or
 any other file system a program reaches (a server's, an archive's). It looks and behaves the same for all of them, and
-in every theme.
+in every theme. Its layers are in [src/md/features/file-picker.md](../src/md/features/file-picker.md).
 
-`ui.file_dialog` shows it. It is a view, `"file_dialog"` ([views.md](views.md)), one per window: the toolkit builds it
+A program uses it in three ways:
+
+- **A dialog**: `ui.file_dialog`, one call and a `done` callback (below).
+- **In its own layout**: a `ui.File_Picker` it owns and builds at each build ("A picker in a program's layout").
+- **From outside the toolkit**: `gt-file-picker`, a program any other calls by its command line or through the XDG
+  desktop portal ([apps/file-picker/README.md](../apps/file-picker/README.md)); its request and answer are values
+  (`platform.File_Request`, `platform.Dialog_Result`) that `gt:file_request` reads and writes ("The request as a
+  value").
+
+`ui.file_dialog` shows it in a view, `"file_dialog"` ([views.md](views.md)), one per window: the toolkit builds it
 while it is open, a program calls nothing per frame. As every dialog, the person may float it, dock it or open it in a
 window of its own (its header's menu); the views remember that, and its size per `remember_id` too. The system's dialog stays available: a person who prefers it sets `general.file_dialog` to `system`
 (a preference of the toolkit, on the settings' General page of every program; `prefs_page.standard_apply` calls
-`ui.set_file_dialogs(s, .System)`). A program's own source always gets the browser: the system's dialog cannot read it.
+`ui.set_file_dialogs(s, .System)`). A program's own source always gets the toolkit's picker: the system's dialog cannot read it.
 
 ```odin
-// The computer's files, as before: the same call, the toolkit's browser.
+// The computer's files, as before: the same call, the toolkit's picker.
 ui.file_dialog(&app.ui, .Open, {owner = win, title = "Open an image", filters = {{"Images", {"*.png", "*.jpg"}}}, multiple = true, remember_id = "images"}, done, app)
 
 // A server's files: the program's source, and places of its own.
@@ -24,6 +33,35 @@ ui.file_dialog(&app.ui, .Folder, {title = "Start a session in", remember_id = "n
 Escape, the close button, a press outside the dialog). The paths are the source's (absolute, with its separators as it
 gave them). A dialog asked while another one shows cancels that one. With `platform.dialog_test_hook` set (a program's
 end-to-end test) the hook answers for the computer's files, as it did for the system's dialogs.
+
+## A picker in a program's layout
+
+```odin
+App :: struct { picker: ui.File_Picker, ... }
+
+ui.file_picker_init(&app.picker, &app.ui, .Open, {multiple = true, remember_id = "side"})   // once (source: nil, the computer's)
+defer ui.file_picker_destroy(&app.picker)                                                  // before ui.destroy
+
+// at each build, where it shows: the size `next` gives
+ui.next({width = ui.px(em * 30), height = ui.fill()})
+ev := ui.file_picker("###side_files", &app.picker)
+if ev.answered && ev.result.status == .Chosen { open_files(app, ev.result.paths) }   // (the frame's memory)
+if ev.selection_changed { show_details(app, ui.file_picker_selected(&app.picker)) }
+```
+
+- `file_picker_init(p, s, kind, d, source = nil)`: `p` set up in State `s` (its replies, its clock, its tasks: the
+  State it is built in, or the owner's of the window its view is in), asked `kind` and `d` (copied). Its address must
+  not change until `file_picker_destroy(p)`, which comes before `ui.destroy(s)`.
+- `file_picker(id, p) -> File_Picker_Events`: builds it. `answered`: the person chose (Open, Enter, a double click)
+  or cancelled (Cancel, Escape); `result` is the answer (paths, type line, choices), said once. `folder_changed` and
+  `selection_changed`: another folder, other entries selected, since the last build. After an answer the picker stays
+  open: the program hides it, stops it or asks again.
+- `file_picker_start(p, kind, d, source = nil)` asks it another request; `file_picker_stop(p)` ends one with no answer.
+- `file_picker_folder(p)`, `file_picker_selected(p, allocator)` (the paths selected), `file_picker_focus(p)` (the list
+  takes the keyboard at the next build).
+- Several pickers live at once, each with its own folder, history, menus and thumbnails. They share the State's places
+  and the memory per `remember_id`. A picker reads the keyboard only while the focus is in it: a picker beside the
+  program's editor takes none of its keys. The dialog's picker holds every key of its window.
 
 ## What it shows
 
@@ -76,7 +114,7 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
   any depth: their path relative to the folder in the Name column, the matched letters lit, folders and files as found,
   best first (a click on a column sorts them). The search is asked when the query changed and then stayed the same
   `FILE_FIND_QUIET_MS`; at most `FILE_FIND_LIMIT` entries; the answer of an older query is dropped. "Searching…" shows
-  after `FILE_BROWSER_SLOW_MS`, "Nothing found." when the answer is empty. A folder found is entered (the query
+  after `FILE_PICKER_SLOW_MS`, "Nothing found." when the answer is empty. A folder found is entered (the query
   cleared); a file found is chosen, previewed and named as one of the folder (`fsx.path_join(folder, relative, sep)`).
   With the toggle off, the filter is the folder's only.
 - **The preview**, at the right (a split the person resizes, `splitter`; hidden when the dialog is narrower than
@@ -86,6 +124,10 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
   size and its date. Read through the source and made ready on the chores, the latest selection only (a ticket: an older
   reading answers nothing). A picture's texture is made at the first draw that shows it, and freed when another file is
   selected or the dialog closes.
+- **The choices**: the request's `File_Dialog.choices` (`platform.File_Choice`: `id`, `label`, `options`,
+  `initial`), in a row over the buttons: a drop-down for a choice with options, a check box for one without. Their
+  values come back in `Dialog_Result.choices` (`File_Choice_Answer`: `id`, `value`, an option's id or `"true"` /
+  `"false"`). The system's dialogs do not show them.
 - **The bottom**: in Save mode the name field (the suggested name selected without its extension) and the type list;
   in Open mode the type list when there is more than one line; New folder (when the source can make one: an inline row
   at the top of the list, its name typed in it, Enter makes it, the folder is read again with the new one selected; the
@@ -121,7 +163,7 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 - **The first folder**: `start_dir`; else the folder this `remember_id` was left in; else `start_known`, the system's
   folder of that name (`.Downloads`), asked of the source (`File_Source.known`; the computer's source answers it from
   its places, read once per State: a folder the person never made is none); else the source's start, its first place.
-- **States**: reading (a line that says so, after `FILE_BROWSER_SLOW_MS` only: a fast folder does not flash), empty
+- **States**: reading (a line that says so, after `FILE_PICKER_SLOW_MS` only: a fast folder does not flash), empty
   folder, refused or failed (the source's words, and Try again), a folder that no longer exists (the source says
   `missing`: it goes up to the nearest one that does).
 
@@ -132,7 +174,8 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 | ↑ ↓, Page Up/Down, Home, End | the selection (in the list, and while the keyboard is in the filter) |
 | Enter | a folder: enter it; a file: choose it (Open), name it (Save) |
 | Backspace (out of a field), Alt+↑ | up, the folder left selected |
-| Alt+← / Alt+→ | back / forward |
+| Alt+Home | the source's start (the computer's: the home folder) |
+| Alt+← / Alt+→, the mouse's side buttons | back / forward (the buttons with the pointer on the picker or its path bar's dropdown) |
 | Ctrl+L | the path as a field, with its dropdown (↓ ↑, Tab, Enter, Escape: [path-bar.md](path-bar.md)) |
 | Ctrl+H | hidden files |
 | Ctrl + click, Shift+↑↓, Ctrl+A | several files (Open with `multiple`) |
@@ -146,9 +189,10 @@ end-to-end test) the hook answers for the computer's files, as it did for the sy
 | Ctrl+= / Ctrl+-, Ctrl+wheel over the list | the next or the previous view (the keyboard in the list); Ctrl+0: the details |
 | ←→ (cards, columns) | the next or the previous card; in the columns, the next or the previous column |
 
-While the browser is open it holds the keyboard, as an open menu does: from the build after it opened until it
+While the dialog is open it holds the keyboard, as an open menu does: from the build after it opened until it
 closes, the program's `key_press`, `key_take`, `key_pressed_peek` and typed text get nothing (whatever
-`set_keys_behind_dialogs` says), and the browser gets every key. `ui.file_dialog_shown(s)` says whether it is open.
+`set_keys_behind_dialogs` says), and the dialog gets every key. `ui.file_dialog_shown(s)` says whether it is open. A
+picker in a program's layout reads the keys only while the focus is in it.
 
 A double click enters a folder or chooses a file (in Save mode: names it and saves). Every control has its role and its
 name for a screen reader (the places are links, the one marked the current location; the list is a list box with its
@@ -157,7 +201,8 @@ rows' count).
 ## Save mode
 
 The name typed is joined to the folder shown. With no extension typed, the type's is added (its first `*.ext` pattern),
-else `default_ext`. With `overwrite_prompt` and a file of that name in the folder, a `ui.confirm` asks before it answers.
+else `default_ext`. Another type chosen changes the name's extension to its own (`report.txt` becomes `report.md`),
+the stem selected. With `overwrite_prompt` and a file of that name in the folder, a `ui.confirm` asks before it answers.
 A name with a separator in it goes to that path (`../x.txt`, `/tmp/x.txt`: its `.` and `..` walked). The name of a folder
 of the one shown enters it.
 
@@ -193,7 +238,7 @@ the call), on the interface's thread, through the reply: `file_reply_listed(repl
 source's words in a toast; the field stays to correct it). `trash` moves every path given to the source's trash and
 answers `file_reply_trashed` with a `File_Trashed` per entry moved: its `path`, and the `token` that names it in the
 trash ("": it cannot come back); `message` says what went wrong with the others ("": none). `restore` gets those items
-back, from a click on the trash's toast, and answers `file_reply_restored`. Done, the browser reads the folder again: the
+back, from a click on the trash's toast, and answers `file_reply_restored`. Done, the picker reads the folder again: the
 listing is the truth. A remote source that has none of them shows neither Rename nor Move to the trash.
 
 The computer's source renames on the chores (a name taken refused: `os.rename` replaces on POSIX), and trashes with
@@ -204,10 +249,10 @@ trash on Linux (`.trashinfo` written, the desktop's trash can put it back), the 
 `find` (nil: no search in subfolders) answers `file_reply_found` with the entries under `folder`, at any depth, that
 match `query`, best first, at most `limit`: each entry's `name` is its path relative to `folder`, with the source's
 separator (`notes/todo.md`). `reply.hidden` is Hidden files: off, the hidden entries and what is in hidden folders are
-not found. The browser shows them in the order given. A reply's `bar` says a listing is the path bar's (its dropdown's
+not found. The picker shows them in the order given. A reply's `bar` says a listing is the path bar's (its dropdown's
 children), not the folder shown's: a source passes the reply back as it is given. A reply carries the ticket of its reading
-(`remote`) and its dialog: the answer of a folder left, of a file no longer selected, or of a dialog closed changes
-nothing. The entries and bytes are copied by the browser: the source frees its own after the call. A source answers
+(`remote`), its picker (`picker`, an id the State knows while the picker lives) and its request (`serial`): the answer
+of a folder left, of a file no longer selected, of a picker stopped or destroyed changes nothing. The entries and bytes are copied by the picker: the source frees its own after the call. A source answers
 while the State lives (a program's source stops answering at `ui.destroy`).
 
 `File_Entry`: `name`, `kind` (`.File`, `.Folder`), `link` (a link, to what `kind` says), `size` (-1: unknown),
@@ -230,15 +275,15 @@ once: a start for a program's own source.
 ### Thumbnails
 
 `thumbnail` (nil: the cards show the kind's icon) answers `file_reply_thumbnail(reply, rgba, width, height)` with a
-picture of the file at most `px` pixels on its longer side: straight RGBA8, row by row, copied by the browser. With no
+picture of the file at most `px` pixels on its longer side: straight RGBA8, row by row, copied by the picker. With no
 picture, it answers `file_reply_failed(reply, "")`: the card keeps its icon. Answer every call: an ask without an answer
-holds one of the browser's slots. A thumbnail's answer counts whatever dialog asked (a file's picture is good for the
+holds one of the picker's slots. A thumbnail's answer counts whatever dialog asked (a file's picture is good for the
 next one too).
 
-The browser keeps a thumbnail by the source's `user` and `generation` and by the file's path, size and date. A source
+The picker keeps a thumbnail by the source's `user` and `generation` and by the file's path, size and date. A source
 whose listing gives no size nor date, or one object that reaches several places (a server's address that changes),
 gives another `generation` when what its paths name may have changed: a reconnection, another server, a refresh the
-program offers. The cards then ask again; the old thumbnails are no longer shown and go under the budget. The browser
+program offers. The cards then ask again; the old thumbnails are no longer shown and go under the budget. The picker
 reads it when a dialog opens. A source that leaves it at 0 is keyed as before.
 
 ```odin
@@ -262,7 +307,7 @@ the size it knows). `file_thumbnail_decodes(name)` says whether the toolkit deco
 neither reads nor writes the system's cache and never runs its thumbnailer (a test, a program headless). It reads the
 disk and may wait for a thumbnailer: call it off the interface's thread.
 
-The browser keeps them in a `Thumb_Cache` (`src/ui/thumbnails.odin`), which any view of items can use:
+The picker keeps them in a `Thumb_Cache` (`src/ui/thumbnails.odin`), which any view of items can use:
 
 | Procedure | |
 |---|---|
@@ -281,7 +326,7 @@ say what an entry is.
 ## State kept
 
 Per `remember_id`, for the run: the last folder, the dialog's size, the split's width, the sort, Hidden files, the recent
-folders (`FILE_BROWSER_RECENT`). A program that keeps them between runs gives their file once, at its start:
+folders (`FILE_PICKER_RECENT`). A program that keeps them between runs gives their file once, at its start:
 
 ```odin
 ui.file_dialog_memory(&app.ui, path)   // read on the chores; written by a store.Writer each time a dialog closes
@@ -291,14 +336,37 @@ The interface's thread never touches the file. What a dialog remembered before t
 
 ## System shell actions
 
-When the browser shows local files inside a real window, its row context menu queries system shell extensions
+When the picker shows local files inside a real window, its row context menu queries system shell extensions
 asynchronously through `ui.Shell_Menu` (`shell_menu_query`, `shell_menu_items`, `shell_menu_clear`,
 `shell_menu_destroy`, with `SHELL_MENU_DEFAULT_EXCLUDE`) and appends third-party items and their icons as soon as
 they arrive without delaying menu open. Any program's own `ui.menu` can embed `ui.Shell_Menu` the same way.
 
+## The request as a value
+
+A request is `platform.File_Request`: `kind` (`platform.File_Dialog_Kind`: `.Open`, `.Save`, `.Folder`) and
+`dialog` (`platform.File_Dialog`). Its answer is `platform.Dialog_Result`. `platform.file_dialog_clone` and
+`file_dialog_free` copy and free the options; `dialog_result_clone` and `dialog_result_destroy` an answer.
+
+`gt:file_request` reads and writes them as text, with no file, process or bus:
+
+| Procedure | |
+|---|---|
+| `parse_args(args, allocator) -> (Command, why)` | a command line (`open --multiple --filter "Images:*.png"`): `Command.mode` (`.Pick`, `.Portal`, `.Help`), `request`, `stdin` (the request is JSON on stdin), `json` (answer as JSON) |
+| `parse_filter(text)` | `"Images:*.png;*.jpg"` as a `File_Filter` |
+| `parse_request_json(text, allocator)`, `request_json(r, allocator)` | a request as JSON, both ways (apps/file-picker/README.md gives its fields) |
+| `answer_text(r, allocator)`, `answer_json(r, why, allocator)`, `parse_answer_json(text, allocator)` | an answer: one path per line, or JSON |
+| `exit_code(r)` | `EXIT_CHOSEN` 0, `EXIT_CANCELLED` 1, `EXIT_ERROR` 2 |
+| `portal_read_call(member, reader, allocator) -> (Portal_Call, ok)` | an `OpenFile`, `SaveFile` or `SaveFiles` call of `org.freedesktop.impl.portal.FileChooser` as a request (filters by glob, MIME types by `mime_extensions`, choices, `current_folder`, `current_file`, `files`) |
+| `portal_write_reply(writer, call, answer)` | its reply: `response` (`portal_response`) and `uris` (`file_uri`), `choices`, `current_filter` |
+
+On Linux, `Portal_Server` is the portal's backend: `portal_open(s, child, address)` owns `PORTAL_BUS_NAME` and serves
+`PORTAL_OBJECT`, `portal_run(s)` drives the bus on its thread, `portal_stop(s)` ends it from any thread,
+`portal_close(s)` frees it. Each call runs `child` (gt-file-picker's `--json`) with the request on its stdin and
+replies with what it prints; `Close` on the call's Request object ends that process.
+
 ## For tests
 
-`ui.file_browser_counts(s)`: whether a dialog is open, its folder, its entries and rows shown, and how many times its rows
+`ui.file_picker_counts(p)` (the dialog's: `ui.file_picker_counts(ui.file_dialog_picker(s))`): whether it is open, its folder, its entries and rows shown, and how many times its rows
 were made (new entries, Hidden files, the type), filtered or sorted, and placed by the list: a build that changed none of
 them does no work in proportion to the entries. Also whether In subfolders is on (`deep`), the entries of the last find
 (`found`) and whether the rows are the find's (`found_shown`).
@@ -309,10 +377,10 @@ them does no work in proportion to the entries. Also whether In subfolders is on
 a real local folder made in the test's temp directory for the local source, waited for with a bounded condition. What
 breaks first: a slow folder answering after the next one was asked; a folder with 100 000 entries (nothing proportional
 to the entries runs in a frame that did not change them; `-define:FILE_BROWSER_TIMING=true` times a build against
-`FILE_BROWSER_BUILD_BUDGET_MS`); a name with every kind of character; Save over an existing file; the dialog closed with
+`FILE_PICKER_BUILD_BUDGET_MS`); a name with every kind of character; Save over an existing file; the dialog closed with
 a reading under way; the keyboard (Enter, Backspace, typing, Escape's order, Shift+↓, Ctrl+A); Folder mode; the
 program's places; New folder; the search in subfolders (a file three folders deep, a hidden folder, a late answer of an
-older query, no request per frame); the program's `key_press` and typed text while the browser is open; the path bar
+older query, no request per frame); the program's `key_press` and typed text while the picker is open; the path bar
 (Ctrl+L and a path typed, Tab and its own reading beside the list, a part clicked, Escape's order); the program's acts
 on a row (a right click on a file and on a folder, the Menu key on several files); the toolkit's acts (the menu with no
 program act, Copy path of two entries, a source without rename nor trash, `row_actions_off`, Rename in place, Move to

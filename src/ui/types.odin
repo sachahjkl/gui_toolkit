@@ -616,7 +616,7 @@ State :: struct {
 	task_box:        ^Task_Box,   // where ui.task's results are posted, shut at ui.destroy (nil: no task asked yet)
 	// the file browser ui.file_dialog shows, built at the end of each build while it is open (file_browser.odin; nil:
 	// never asked), and which dialog file_dialog shows (set_file_dialogs)
-	files:           ^File_Browser,
+	files:           ^File_Pickers,   // the file pickers of this State and what they share (file_picker.odin)
 	file_dialogs:    File_Dialogs,
 	// accessibility: the tree screen readers read, the requests they made (a11y.odin)
 	a11y:            A11y_Data,
