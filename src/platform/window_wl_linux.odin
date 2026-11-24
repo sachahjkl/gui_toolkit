@@ -69,6 +69,11 @@ Wl_Conn :: struct {
 	key_repeat:     Key_Repeat,   // the compositor leaves the repeat of a held key to the client
 	key_repeat_told: bool,        // the compositor gave its rate and delay (kb_repeat): input_defaults' no more
 	pointer_pos:    [2]f32,
+	// the axis events of the pointer's frame (wl_pointer.frame): its source comes beside them, in any order
+	axis_delta:     [2]f32,
+	axis_pending:   bool,
+	axis_source:    u32,
+	axis_stop:      bool,
 	// the clipboard text another client offered, and the fd/offer plumbing (clipboard_linux.odin uses the richer parts)
 	clip_text:  string,
 	offer:      Wl_Proxy,
@@ -568,20 +573,34 @@ wl_resize_edges :: proc(h: Hit) -> u32 {
 	return 0
 }
 
+@(private = "file") WL_POINTER_FRAME_SINCE :: 5          // the pointer's version that groups its events in frames
+@(private = "file") WL_POINTER_AXIS_SOURCE_FINGER :: 1   // wl_pointer.axis_source: fingers on a touchpad
+
 @(private)
 ptr_axis :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, axis: u32, value: Wl_Fixed) {
 	context = wl_ctx_real()
-	w := wlc.pointer_focus
-	if w == nil { return }
 	// axis 0 vertical, 1 horizontal; value is in surface units (a notch ~= 10). Our delta is in notches (+y = down).
 	v := f32(wl_fixed_to_f64(value)) / WL_AXIS_UNITS_PER_NOTCH
-	e := Event{kind = .Scroll, pos = wlc.pointer_pos, mods = wl_mods()}
-	if axis == 0 { e.delta.y = v } else { e.delta.x = v }
-	wl_push(w, e)
+	if axis == 0 { wlc.axis_delta.y += v } else { wlc.axis_delta.x += v }
+	wlc.axis_pending = true
+	// (the frame says its source, maybe after the axis: one event per frame. An older pointer has no frame.)
+	if wl.proxy_get_version(p) < WL_POINTER_FRAME_SINCE { wl_axis_flush() }
 }
-@(private) ptr_frame :: proc "c" (data: rawptr, p: Wl_Proxy) {}
-@(private) ptr_axis_src :: proc "c" (data: rawptr, p: Wl_Proxy, source: u32) {}
-@(private) ptr_axis_stop :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, axis: u32) {}
+@(private) ptr_frame :: proc "c" (data: rawptr, p: Wl_Proxy) { context = wl_ctx_real(); wl_axis_flush() }
+@(private) ptr_axis_src :: proc "c" (data: rawptr, p: Wl_Proxy, source: u32) { wlc.axis_source = source }
+@(private) ptr_axis_stop :: proc "c" (data: rawptr, p: Wl_Proxy, time: u32, axis: u32) { wlc.axis_stop, wlc.axis_pending = true, true }
+
+// The axis events of a frame as one Scroll: its deltas, its source, and whether the fingers left the touchpad.
+@(private = "file")
+wl_axis_flush :: proc() {
+	if !wlc.axis_pending { return }
+	if w := wlc.pointer_focus; w != nil {
+		e := Event{kind = .Scroll, pos = wlc.pointer_pos, mods = wl_mods(), delta = wlc.axis_delta, scroll_end = wlc.axis_stop}
+		if wlc.axis_source == WL_POINTER_AXIS_SOURCE_FINGER { e.scroll_source = .Finger }
+		wl_push(w, e)
+	}
+	wlc.axis_delta, wlc.axis_pending, wlc.axis_source, wlc.axis_stop = {}, false, 0, false
+}
 @(private) ptr_axis_discrete :: proc "c" (data: rawptr, p: Wl_Proxy, axis: u32, discrete: i32) {}
 @(private) ptr_axis_v120 :: proc "c" (data: rawptr, p: Wl_Proxy, axis: u32, value120: i32) {}
 @(private) ptr_axis_dir :: proc "c" (data: rawptr, p: Wl_Proxy, axis: u32, direction: u32) {}

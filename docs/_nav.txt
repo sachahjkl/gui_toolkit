@@ -40,6 +40,7 @@ Widgets and layout
   commands.md         Commands, keys
   palette.md          Command palette
   autoscroll.md       Middle-click autoscroll
+  wheel.md            The wheel and the touchpad
   scroll-bar.md       The scroll bar
   strip.md            Strips: rows of choices that scroll
   scroll-marks.md     Marks on a scroll bar

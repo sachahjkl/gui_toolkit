@@ -15,9 +15,18 @@ There are two layers:
 
 ## The toolkit's scroll regions
 
-On by default: every scroll region of every program takes the wheel's click. A program whose middle button does
-something else in a scroll region turns it off once after `init` (a box that handles the middle button itself,
-`.Middle_Click` such as a tab that closes, keeps it anyway):
+On by default: every scroll region of every program takes the wheel's click. A box that handles the middle button
+itself keeps it: give it `.Middle_Click` (a link that opens in a new tab, a tab that closes). A middle press on it, or
+on a box inside it, starts no autoscroll, and `signal(b).middle_clicked` is true at the release. A middle press
+elsewhere (on text, on the background, on a clickable box without the flag) starts autoscroll. The design:
+[src/md/features/middle-press.md](../src/md/features/middle-press.md).
+
+```odin
+link := ui.build_box({.Clickable, .Middle_Click}, "###link")
+if ui.signal(link).middle_clicked { open_in_new_tab(url) }
+```
+
+A program whose middle button does something else everywhere in a scroll region turns autoscroll off once after `init`:
 
 ```odin
 ui.set_autoscroll_enabled(&s, false)

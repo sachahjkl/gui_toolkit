@@ -448,6 +448,7 @@ end_build :: proc() {
 
 	// per-frame input state is consumed
 	s.scroll_delta = {}
+	s.swipe_delta, s.swipe_end = {}, false
 	s.focus_field_next = false   // (asked in a build, for that build's fields only)
 	// (a claim lasts while its widget is built: the next build's commands, read before the widget, see this one)
 	s.keys_claim, s.keys_claim_next = s.keys_claim_next, {}

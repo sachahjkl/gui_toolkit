@@ -126,3 +126,47 @@ the_wheel_pans_and_ctrl_zooms :: proc(t: ^testing.T) {
 	session.frame(s)
 	testing.expect(t, r.p.pan.x < before.x, "with Shift, across")
 }
+
+@(private = "file")
+Free_Run :: struct { p: ui.Preview, res: ui.Preview_Result, free: bool, wheel: ui.Vec2, shift: bool }
+
+@(private = "file")
+start_free :: proc(t: ^testing.T, r: ^Free_Run) -> ^session.Session {
+	r.p = {zoom = 1}
+	return session.start(t, {size = {600, 400}, user = r, no_renderer = true, build = proc(s: ^session.Session) {
+		r := (^Free_Run)(s.user)
+		ui.next({width = ui.px(400), height = ui.px(300)})
+		r.res = ui.preview("###pv", &r.p, {800, 600}, proc(dc: ^draw.Context, dst: ui.Rect, user: rawptr) {}, nil, {shift_wheel_free = r.free})
+		if d, mods := ui.wheel_free(); d != {} { r.wheel += d; r.shift = .Shift in mods }
+	}})
+}
+
+// With shift_wheel_free, Shift+wheel is the program's (ui.wheel_free) and does not zoom; without it, it zooms.
+@(test)
+shift_wheel_free_leaves_it_to_the_program :: proc(t: ^testing.T) {
+	r := Free_Run{free = true}
+	s := start_free(t, &r)
+	session.frames(s, 2)
+	c := session.center(r.res.box)
+	session.wheel(s, c, {0, -2}, {.Shift})
+	session.frame(s)
+	testing.expect_value(t, r.p.zoom, f32(1))
+	testing.expect_value(t, r.wheel, ui.Vec2{0, -2})
+	testing.expect(t, r.shift, "the program reads Shift with it")
+	// the wheel alone still zooms, and the program gets none of it
+	session.wheel(s, c, {0, -2})
+	session.frame(s)
+	testing.expect(t, r.p.zoom > 1.5, "the wheel zooms")
+	testing.expect_value(t, r.wheel, ui.Vec2{0, -2})
+}
+
+@(test)
+shift_wheel_zooms_by_default :: proc(t: ^testing.T) {
+	r: Free_Run
+	s := start_free(t, &r)
+	session.frames(s, 2)
+	session.wheel(s, session.center(r.res.box), {0, -2}, {.Shift})
+	session.frame(s)
+	testing.expect(t, r.p.zoom > 1.5, "without the option, Shift+wheel zooms")
+	testing.expect_value(t, r.wheel, ui.Vec2{})
+}

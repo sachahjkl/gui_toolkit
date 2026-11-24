@@ -156,6 +156,20 @@ wheel :: proc(s: ^Session, at: [2]f32, notches: [2]f32, mods: platform.Modifiers
 	frames(s, INPUT_FRAMES)
 }
 
+// Fingers on a touchpad scroll at a point: `delta` in notches as Event.delta, its source .Finger (a wheel's is not).
+// The next one within ui.SWIPE_PAUSE_MS is the same gesture: this one takes INPUT_FRAMES.
+finger_scroll :: proc(s: ^Session, at: [2]f32, delta: [2]f32, mods: platform.Modifiers = {}) {
+	if at != s.pointer { move(s, at) }
+	event(s, {kind = .Scroll, pos = at, delta = delta, mods = mods, scroll_source = .Finger})
+	frames(s, INPUT_FRAMES)
+}
+
+// The fingers leave the touchpad where the pointer is: the gesture ends (Wayland's axis_stop).
+finger_lift :: proc(s: ^Session) {
+	event(s, {kind = .Scroll, pos = s.pointer, scroll_source = .Finger, scroll_end = true})
+	frames(s, INPUT_FRAMES)
+}
+
 ////////////////////////////////
 // The keyboard
 
