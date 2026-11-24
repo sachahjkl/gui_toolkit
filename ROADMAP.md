@@ -101,6 +101,9 @@
 
 ## Later
 
+- **Natural order that folds Latin accents.** Names sort as a French reader expects ("été" before "Étude"): a
+  sibling of `ascii.compare_natural` folds Latin-1 and Latin Extended-A for display order, and classeur drops its own
+  `fs.name_compare`. It needs an entry in `tools/unicode_case_allowed.txt`.
 - **A launcher, a program of the suite.** One key, anywhere, opens a palette: a program, a file (`gt:filesearch`), a
   sum, a command of the suite's programs, papier's history; the first result in a few milliseconds and the keyboard
   never lost. It is worth doing only very well, so its design comes first, and a system each: the global key and the
