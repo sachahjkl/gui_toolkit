@@ -8,6 +8,7 @@ package file_request
 import "core:encoding/json"
 import "core:strconv"
 import "core:strings"
+import "../ascii"
 import gjson "../json"
 import "../platform"
 
@@ -128,7 +129,7 @@ parse_theme :: proc(text: string) -> (name, mode: string, ok: bool) {
 	name = text
 	if colon := strings.index_byte(text, ':'); colon >= 0 { name, mode = text[:colon], text[colon + 1:] }
 	if name == "" { return "", "", false }
-	switch strings.to_lower(mode, context.temp_allocator) {
+	switch ascii.lower(mode, context.temp_allocator) {   // (a word of the command line: ASCII)
 	case "", "light", "dark", "system": return name, mode, true
 	}
 	return "", "", false
