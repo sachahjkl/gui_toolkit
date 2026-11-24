@@ -34,12 +34,13 @@ jobs:
       - name: The demos (tk demos)
         shell: pwsh
         timeout-minutes: 12
-        run: New-Item -ItemType Directory -Force build | Out-Null; odin run tools/tk -vet -out:build/tk.exe -- demos -out:build/demos
+        # (odin build, not odin run: run deletes the executable it made, and the next step runs it again)
+        run: New-Item -ItemType Directory -Force build | Out-Null; odin build tools/tk -vet -out:build/tk.exe; if ($LASTEXITCODE) { exit 1 }; ./build/tk.exe demos -out:build/demos
 
       - name: gt-file-picker (tk file_picker_package)
         shell: pwsh
         timeout-minutes: 5
-        run: build/tk.exe file_picker_package -out:build/demos
+        run: ./build/tk.exe file_picker_package -out:build/demos
 
       - name: Attach them to the release
         shell: pwsh
@@ -73,7 +74,8 @@ jobs:
           nix develop --command sh -c '
             set -e
             mkdir -p build
-            odin run tools/tk -vet -out:build/tk -- fetch_wgpu
+            odin build tools/tk -vet -out:build/tk
+            build/tk fetch_wgpu
             build/tk file_picker_package -out:build/release
           '
 
