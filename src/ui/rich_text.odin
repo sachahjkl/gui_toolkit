@@ -440,11 +440,19 @@ rich_range_rects :: proc(l: ^Rich_Layout, fonts: ^font.State, runs: []Rich_Run, 
 // The link run under point `p` (paragraph coordinates), -1 for none.
 rich_link_at :: proc(l: ^Rich_Layout, runs: []Rich_Run, p: Vec2) -> int {
 	if len(l.links) == 0 { return -1 }
+	k := rich_frag_at(l, p)
+	if k >= 0 && runs[l.frags[k].run].link != "" { return l.frags[k].run }
+	return -1
+}
+
+// The fragment under point `p` (paragraph coordinates), -1 for none.
+@(private)
+rich_frag_at :: proc(l: ^Rich_Layout, p: Vec2) -> int {
 	for li in l.lines {
 		if p.y < li.y || p.y >= li.y + li.height { continue }
 		for k in li.first ..< li.first + li.count {
 			f := l.frags[k]
-			if runs[f.run].link != "" && p.x >= f.x && p.x < f.x + f.width { return f.run }
+			if p.x >= f.x && p.x < f.x + f.width { return k }
 		}
 	}
 	return -1
@@ -523,12 +531,19 @@ rich_layout_fits :: proc(l: ^Rich_Layout, runs: []Rich_Run) -> bool {
 // `version` (not 0): the caller's name for this content (rich_paragraph's: the box and its version), looked up instead of
 // a hash of every run's text and style each time.
 rich_layout_cached :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines := 0, align := Text_Align.Left, version: u64 = 0) -> ^Rich_Layout {
+	l, _ := rich_layout_keyed(runs, c, width, max_lines, align, version)
+	return l
+}
+
+// rich_layout_cached, and the layout's key in the cache: what outlives the build's memory (Rich_Hit).
+@(private)
+rich_layout_keyed :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_lines := 0, align := Text_Align.Left, version: u64 = 0) -> (^Rich_Layout, u64) {
 	s := gs()
 	k := version != 0 ? rich_hash_version(version, c, width, max_lines, align) : rich_hash(runs, c, width, max_lines, align)
 	if e, ok := &s.rich_cache[k]; ok {
 		if rich_layout_fits(e.layout, runs) {
 			e.last_build = s.build_index
-			return e.layout
+			return e.layout, k
 		}
 		// two contents with one hash, or a version given again for shorter runs: its ranges are not in these runs
 		rich_layout_destroy(e.layout)
@@ -538,7 +553,7 @@ rich_layout_cached :: proc(runs: []Rich_Run, c: Rich_Context, width: f32, max_li
 	l := new(Rich_Layout, runtime.heap_allocator())
 	l^ = rich_layout(runs, c, width, max_lines, align, runtime.heap_allocator())
 	s.rich_cache[k] = {layout = l, last_build = s.build_index}
-	return l
+	return l, k
 }
 
 @(private)
@@ -566,6 +581,7 @@ rich_cache_destroy :: proc(s: ^State) {
 	delete(s.rich_cache)
 	delete(s.families)
 	delete(s.rich_link)
+	delete(s.rich_hits)
 }
 
 // Layouts kept (tests, statistics).
@@ -578,7 +594,8 @@ Rich_Result :: struct {
 	using signal: Signal,
 	link_hovered: int,      // the run of the link under the pointer, -1
 	link_clicked: int,      // the run of the link clicked or chosen with Enter this build, -1
-	link:         string,   // its target
+	link_middle_clicked: int,   // the run of the link middle-clicked this build (a new tab), -1: no autoscroll starts on a link
+	link:         string,   // the target of the link clicked or middle-clicked
 	link_focused: int,      // the link the keyboard is on (Tab moves through the links), -1
 }
 
@@ -609,6 +626,30 @@ rich_inset :: proc(b: ^Box, d: ^Rich_Draw, l: ^Rich_Layout) -> Vec2 {
 rich_ctx :: proc(b: ^Box) -> Rich_Context {
 	s := gs()
 	return {fonts = s.fonts, base_font = b.font, base_size = b.font_size, mono = state_text_face(s, .Mono), faces = state_families(s)}
+}
+
+// What a paragraph with links leaves for a middle press. The press is read before the next build, when the last
+// build's memory (its runs, Box.custom_user) is gone: the layout stays in the cache, found again by its key.
+@(private)
+Rich_Hit :: struct {
+	layout: u64,    // its key in State.rich_cache
+	inset:  Vec2,   // where the text starts in the box (rich_inset)
+}
+
+// Box.middle_at of a paragraph with links: the point (window coordinates) is on a link, in the layout the box was
+// last drawn with (the one the pointer sees). A layout gone from the cache (set_family) knows no link: autoscroll.
+@(private)
+rich_middle_at :: proc(b: ^Box, p: Vec2) -> bool {
+	s := gs()
+	h, ok := s.rich_hits[b.key]
+	if !ok { return false }
+	e, found := s.rich_cache[h.layout]
+	if !found { return false }
+	k := rich_frag_at(e.layout, p - b.rect.min - h.inset)
+	if k < 0 { return false }
+	run := e.layout.frags[k].run
+	for r in e.layout.links { if r == run { return true } }   // (the runs are gone: the layout's list of links says)
+	return false
 }
 
 @(private)
@@ -711,7 +752,7 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 	if has_links { flags += {.Clickable, .Focusable} }
 	b := build_box(flags, id)
 	b.text = ""
-	res.link_hovered, res.link_clicked, res.link_focused = -1, -1, -1
+	res.link_hovered, res.link_clicked, res.link_middle_clicked, res.link_focused = -1, -1, -1, -1
 
 	// a copy of the runs for drawing (frame memory: thousands of runs cost one allocation each for runs and strings)
 	d := frame_new(Rich_Draw)
@@ -748,11 +789,12 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 	res.signal = signal(b)
 	if !has_links {
 		if len(s.rich_link) > 0 { delete_key(&s.rich_link, b.key) }   // (it had some: the link it was on went with them)
+		if len(s.rich_hits) > 0 { delete_key(&s.rich_hits, b.key) }
 		if s.a11y.wanted { a11y_default(b, {role = .Label, name = all}) }
 		return
 	}
 	// links: under the pointer (last frame's layout at the box's width), clicked, chosen with the keyboard
-	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, max_lines, b.text_align, d.version)
+	l, layout_key := rich_layout_keyed(d.runs, d.ctx, b.size.x - 2 * b.text_pad, max_lines, b.text_align, d.version)
 	// to screen readers: the text between the links, and the links (whose clicks and focus they may ask for)
 	part_run: []int
 	parts: [dynamic]A11y_Part
@@ -787,9 +829,15 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 		res.link_hovered = rich_link_at(l, d.runs, res.mouse - rich_inset(b, d, l))
 		if res.link_hovered >= 0 { s.cursor_request = .Hand }
 	}
+	// a middle press on a link is the link's (a new tab); on the plain text it starts autoscroll (middle-press.md)
+	b.middle_at = rich_middle_at
+	s.rich_hits[b.key] = {layout = layout_key, inset = rich_inset(b, d, l)}
 	cur, known := s.rich_link[b.key]
 	if res.pointer_clicked {
 		if k := rich_link_at(l, d.runs, res.mouse - rich_inset(b, d, l)); k >= 0 { res.link_clicked = k }
+	}
+	if res.middle_clicked {
+		res.link_middle_clicked = rich_link_at(l, d.runs, res.mouse - rich_inset(b, d, l))
 	}
 	if res.focused {
 		pos := -1
@@ -810,7 +858,11 @@ rich_paragraph :: proc(id: string, runs: []Rich_Run, max_lines := 0, version: u6
 	} else if known {
 		delete_key(&s.rich_link, b.key)
 	}
-	if res.link_clicked >= 0 { res.link = runs[res.link_clicked].link }
+	if res.link_clicked >= 0 {
+		res.link = runs[res.link_clicked].link
+	} else if res.link_middle_clicked >= 0 {
+		res.link = runs[res.link_middle_clicked].link
+	}
 	d.focused = s.focus_visible ? res.link_focused : -1
 	if s.a11y.wanted {
 		for &p, k in parts { p.focused = p.role == .Link && part_run[k] == res.link_focused }

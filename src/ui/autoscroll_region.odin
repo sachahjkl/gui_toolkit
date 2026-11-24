@@ -232,13 +232,15 @@ autoscroll_chevron :: proc(dc: ^draw.Context, tip: Vec2, dir: Chevron_Dir, scale
 	}
 }
 
-// Whether the pointer is over a box that handles the middle button itself (`.Middle_Click`: a tab, which closes): the
-// press goes to it, not to the autoscroll of the region around it.
+// Whether the pointer is over a box that handles the middle button itself (`.Middle_Click`: a tab, which closes), or over
+// a part of a box that does (`middle_at`: a rich paragraph's link): the press goes to it, not to the autoscroll of the
+// region around it.
 @(private)
 middle_click_under :: proc(b: ^Box, p: Vec2) -> bool {
 	if b == nil || !draw.rect_contains(b.rect, p) { return false }
 	for c := b.last; c != nil; c = c.prev {
 		if middle_click_under(c, p) { return true }
 	}
-	return .Middle_Click in b.flags && .Disabled not_in b.flags
+	if .Disabled in b.flags { return false }
+	return .Middle_Click in b.flags || (b.middle_at != nil && b.middle_at(b, p))
 }

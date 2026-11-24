@@ -164,6 +164,7 @@ Box :: struct {
 	custom:      Custom_Draw,
 	custom_user: rawptr,
 	measure_y:   proc(b: ^Box) -> f32,   // a .Text height that depends on the width the X pass gave (rich_paragraph)
+	middle_at:   proc(b: ^Box, p: Vec2) -> bool,   // the parts that take the middle button (window point): no autoscroll starts on them; a rich paragraph's links (middle-press.md; reset each build)
 	slant:       platform.Slant,   // a Clickable box whose sides lean (a trapezoid tab): only that shape is hit (reset each build)
 	hit_outset:  f32,              // frame pixels its hit area reaches past its rect on each side: a thin handle grabbed wider than it is drawn (reset each build)
 	gap_step:    f32,              // a .Gap made by space: its step of the spacing scale (0: a gap off the scale; reset each build)
@@ -604,6 +605,7 @@ State :: struct {
 	rich_cache:      map[u64]Rich_Cache_Entry,
 	families:      map[font.Font_Id][4]font.Font_Id,
 	rich_link:       map[Key]int,
+	rich_hits:       map[Key]Rich_Hit,   // each paragraph with links: what its middle_at reads at the next press (dropped with its box)
 	// find in page: the needle, the matches of the last layout (find.odin)
 	find:            Find_State,
 	// selection of text outside fields (selection.odin), and this build's mouse presses / releases it reads

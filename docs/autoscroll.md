@@ -26,6 +26,18 @@ link := ui.build_box({.Clickable, .Middle_Click}, "###link")
 if ui.signal(link).middle_clicked { open_in_new_tab(url) }
 ```
 
+A box of which only a part takes the middle button sets `Box.middle_at` after `build_box` (it is reset each build): the
+region asks it at a middle press, with the point in window coordinates. It runs before the next build, when the last
+build's frame memory is gone (`Box.text`, `Box.custom_user`): it reads the box's rect and what its widget keeps across
+builds. A `rich_paragraph` with links sets it: a middle
+press on a link is the link's (`Rich_Result.link_middle_clicked` at the release), a middle press on its plain text starts
+autoscroll.
+
+```odin
+row := ui.build_box({.Clickable}, "###row")
+row.middle_at = proc(b: ^ui.Box, p: ui.Vec2) -> bool { return p.x > b.rect.max.x - 40 }   // (its right end only)
+```
+
 A program whose middle button does something else everywhere in a scroll region turns autoscroll off once after `init`:
 
 ```odin

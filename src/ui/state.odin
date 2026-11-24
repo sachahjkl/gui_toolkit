@@ -432,6 +432,7 @@ end_build :: proc() {
 	for k in dead {
 		append(&s.free_boxes, s.boxes[k])
 		delete_key(&s.boxes, k)
+		if len(s.rich_hits) > 0 { delete_key(&s.rich_hits, k) }
 	}
 	clear(&dead)
 	for k, a in s.anims { if a.last_build + 1 < s.build_index { append(&dead, k) } }
@@ -665,6 +666,7 @@ build_box :: proc(flags: Box_Flags, id: string = "") -> ^Box {
 	b.custom = nil
 	b.custom_user = nil
 	b.measure_y = nil
+	b.middle_at = nil
 	b.slant = {}
 	b.hit_outset = 0
 	b.gap_step = 0

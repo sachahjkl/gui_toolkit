@@ -125,8 +125,10 @@ colour, background, `underline`, `strike`, `link`). Lines break at the backend's
 text, so a word whose style changes in the middle is not broken there; "\n" always breaks; a word wider than the line is
 cut between grapheme clusters; `max_lines` ends the last line with "…"; the box's `text_align` aligns the lines. The box
 is full width and as tall as its lines (`Box.measure_y`: its height follows the width the layout gave it). Links: the
-result's `link_hovered`, `link_clicked`, `link` and `link_focused` (the paragraph is a Tab stop; Tab / Shift+Tab go
-through its links, Enter / Space choose one; the pointer is a hand over them). `ui.rich_links(text, style, &runs)` turns
+result's `link_hovered`, `link_clicked`, `link_middle_clicked`, `link` and `link_focused` (the paragraph is a Tab stop; Tab / Shift+Tab go
+through its links, Enter / Space choose one; the pointer is a hand over them). A middle click on a link is
+`link_middle_clicked` (a new tab), with `link` its target: a middle press on a link starts no autoscroll, a middle press
+on the paragraph's plain text does ([autoscroll.md](autoscroll.md)). `ui.rich_links(text, style, &runs)` turns
 plain text into runs whose web addresses (`http://`, `https://`) are links, without the sentence's closing marks
 (`web_address_len` finds one). `ui.link_words_set(prefixes)`, once at the start, makes the program's own words links
 too: a word that starts with one of the prefixes ("ses_abc"), its target the word (`link_len` finds either; Markdown
