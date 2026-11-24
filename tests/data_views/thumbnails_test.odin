@@ -15,7 +15,7 @@ import "gt:testkit/session"
 import "gt:ui"
 
 @(private = "file")
-Asked :: struct { path: string, ticket: u64 }
+Asked :: struct { path: string, ticket: u64, side: int }
 
 @(private = "file")
 Thumbs_App :: struct {
@@ -24,12 +24,13 @@ Thumbs_App :: struct {
 	asked:       [dynamic]Asked,    // what the cache sent, in order (paths owned)
 	ready:       int,               // the cards built whose entry is Ready (last build)
 	clear:       bool,              // the next build clears the cache after its cards
+	px:          f32,               // the cards' picture's side (0: the cache's)
 }
 
 @(private = "file")
 thumbs_ask :: proc(user: rawptr, path: string, side: int, ticket: u64) {
 	app := (^Thumbs_App)(user)
-	append(&app.asked, Asked{strings.clone(path), ticket})
+	append(&app.asked, Asked{strings.clone(path), ticket, side})
 }
 
 @(private = "file")
@@ -38,7 +39,7 @@ thumbs_build :: proc(s: ^session.Session) {
 	app.ready = 0
 	for i in app.first ..< app.last {
 		path := fmt.tprintf("/pictures/f%d.png", i)
-		t := ui.thumb_cache_get(&app.c, ui.thumb_key(path, 100, 7), path)
+		t := ui.thumb_cache_get(&app.c, ui.thumb_key(path, 100, 7), path, app.px)
 		if t.state == .Ready {
 			app.ready += 1
 			ui.next({width = ui.px(64), height = ui.px(64)})
@@ -64,6 +65,47 @@ answer_all :: proc(app: ^Thumbs_App, from: int) {
 	px := [16]u8{}
 	// (bounded: fewer asks than the test expects fail its expects, not a slice)
 	for a in app.asked[min(from, len(app.asked)):] { ui.thumb_cache_answer(&app.c, a.ticket, px[:], 2, 2) }
+}
+
+// A card's size picks the side asked (the step at or above it); a card that grows asks again at the larger step while the
+// smaller pixels stay shown; a larger ask that fails keeps them, and is not made again.
+@(test)
+a_card_that_grows_asks_a_larger_thumbnail :: proc(t: ^testing.T) {
+	app := Thumbs_App{first = 0, last = 1, px = 200}
+	ui.thumb_cache_init(&app.c, {asks = 2})
+	defer thumbs_destroy(&app)
+	testing.expect_value(t, ui.thumb_side_step(100), 128)
+	testing.expect_value(t, ui.thumb_side_step(600), 1024)
+	testing.expect_value(t, ui.thumb_side_step(5000), 1024)
+	s := session.start(t, {build = thumbs_build, user = &app, no_renderer = true})
+	session.frame(s)
+	if !testing.expect_value(t, len(app.asked), 1) { return }
+	testing.expect_value(t, app.asked[0].side, 256)
+	small := [4 * 4]u8{}
+	ui.thumb_cache_answer(&app.c, app.asked[0].ticket, small[:], 2, 2)
+	session.frame(s)
+	testing.expect_value(t, app.ready, 1)
+	// (the card grows: the larger step is asked, the entry stays Ready meanwhile)
+	app.px = 480
+	session.frames(s, 2)
+	if !testing.expect_value(t, len(app.asked), 2) { return }
+	testing.expect_value(t, app.asked[1].side, 512)
+	testing.expect_value(t, app.ready, 1)
+	big := make([]u8, 8 * 8 * 4)
+	defer delete(big)
+	ui.thumb_cache_answer(&app.c, app.asked[1].ticket, big, 8, 8)
+	path := "/pictures/f0.png"
+	got := ui.thumb_cache_get(&app.c, ui.thumb_key(path, 100, 7), path, app.px)
+	testing.expect_value(t, got.size, [2]int{8, 8})
+	testing.expect_value(t, got.side, 512)
+	// (larger still, and that ask fails: the 512 pixels stay, and it is not asked again)
+	app.px = 900
+	session.frames(s, 2)
+	if !testing.expect_value(t, len(app.asked), 3) { return }
+	ui.thumb_cache_failed(&app.c, app.asked[2].ticket)
+	session.frames(s, 3)
+	testing.expect_value(t, len(app.asked), 3)
+	testing.expect_value(t, app.ready, 1)
 }
 
 @(test)

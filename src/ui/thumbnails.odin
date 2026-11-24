@@ -19,6 +19,9 @@ import "core:strings"
 import "../draw"
 import "../render"
 
+// The sides a thumbnail is asked at, in pixels: a card's size goes up to the next (the freedesktop cache's folders:
+// normal, large, x-large, xx-large), so a card that grows a little asks nothing again.
+THUMB_SIDE_STEPS :: [4]int{128, 256, 512, 1024}
 // The defaults of Thumb_Options.
 THUMB_SIDE_DEFAULT :: 256
 THUMB_COUNT_DEFAULT :: 400
@@ -51,6 +54,9 @@ Thumb :: struct {
 	texture:  render.Texture,
 	renderer: ^render.Renderer,   // the texture's
 	refused:  bool,               // no texture could be made of it: it is not drawn
+	side:     int,                // the side its pixels were asked at (Ready), or are being asked at
+	want:     int,                // a card asks a larger side: asked while the smaller pixels stay shown (0: none)
+	better:   bool,               // `want` is waiting or asked: the entry stays Ready meanwhile
 }
 
 // 0 for a field: its default.
@@ -112,21 +118,37 @@ thumb_cache_destroy :: proc(c: ^Thumb_Cache) {
 	c^ = {}
 }
 
+// The side a card of `px` pixels asks: the step at or above it (THUMB_SIDE_STEPS), the largest at most.
+thumb_side_step :: proc(px: f32) -> int {
+	steps := THUMB_SIDE_STEPS
+	for s in steps { if f32(s) >= px { return s } }
+	return steps[len(steps) - 1]
+}
+
 // The entry of `key` (thumb_key) for a card built now: Ready, Failed, or on its way (asked at the next
-// thumb_cache_frame, newest first). `path` is what the ask names (copied the first time). Marks it used in this build.
-thumb_cache_get :: proc(c: ^Thumb_Cache, key, path: string) -> ^Thumb {
+// thumb_cache_frame, newest first). `path` is what the ask names (copied the first time). `px`: the card's picture's
+// longer side in pixels (0: the cache's side); a Ready entry asked at a smaller step is asked again at the card's, its
+// pixels shown until the new ones come. Marks it used in this build.
+thumb_cache_get :: proc(c: ^Thumb_Cache, key, path: string, px: f32 = 0) -> ^Thumb {
 	if !c.made { thumb_cache_init(c) }
 	thumb_cache_cleared(c)
 	c.got = true
+	side := px > 0 ? thumb_side_step(px) : c.o.side
 	// (a waiting entry asked again keeps its place in the stack: moving it would be a search per card per build; the
 	// stale ones above it are dropped when their turn comes)
 	if t, ok := c.entries[key]; ok {
 		t.used = c.frame
+		if t.state == .Ready && !t.better && side > t.side {
+			t.want, t.better = side, true
+			append(&c.waiting, t)
+		} else if t.state == .Waiting && side > t.side {
+			t.side = side   // (not sent yet: it goes at the larger side)
+		}
 		return t
 	}
 	a := runtime.heap_allocator()
 	t := new(Thumb, a)
-	t^ = {state = .Waiting, key = strings.clone(key, a), path = strings.clone(path, a), used = c.frame}
+	t^ = {state = .Waiting, key = strings.clone(key, a), path = strings.clone(path, a), used = c.frame, side = side}
 	c.entries[t.key] = t
 	append(&c.waiting, t)
 	return t
@@ -139,10 +161,20 @@ thumb_cache_answer :: proc(c: ^Thumb_Cache, ticket: u64, rgba: []u8, w, h: int) 
 	if !ok { return }
 	delete_key(&c.by_ticket, ticket)
 	if w <= 0 || h <= 0 || len(rgba) < w * h * THUMB_PIXEL_BYTES {
+		if t.better { thumb_better_end(t); return }   // (the smaller pixels stay)
 		t.state = .Failed
 		return
 	}
 	a := runtime.heap_allocator()
+	if t.better {
+		// (the larger pixels take the smaller ones' place; the texture is made again at the next draw)
+		c.held -= thumb_bytes(t)
+		if t.texture != 0 && t.renderer != nil { render.destroy_texture(t.renderer, t.texture) }
+		t.texture, t.renderer, t.refused = 0, nil, false
+		delete(t.pixels, a)
+		t.side = t.want
+		thumb_better_end(t)
+	}
 	t.pixels = make([]u8, w * h * THUMB_PIXEL_BYTES, a)
 	copy(t.pixels, rgba)
 	t.size, t.state = {w, h}, .Ready
@@ -156,8 +188,18 @@ thumb_cache_failed :: proc(c: ^Thumb_Cache, ticket: u64) {
 	t, ok := c.by_ticket[ticket]
 	if !ok { return }
 	delete_key(&c.by_ticket, ticket)
+	if t.better {
+		// (no larger one: the smaller one stays, and it is not asked again at that side)
+		t.side = t.want
+		thumb_better_end(t)
+		return
+	}
 	t.state = .Failed
 }
+
+// A larger ask of a Ready entry is over (answered or not).
+@(private = "file")
+thumb_better_end :: proc(t: ^Thumb) { t.want, t.better, t.ticket = 0, false, 0 }
 
 // After the cards of a build: the waiting asks sent, the newest first, while fewer than `asks` are out (a waiting one
 // whose card was not built lately is dropped instead); then, over the budget, the entries used least lately dropped.
@@ -167,6 +209,16 @@ thumb_cache_frame :: proc(c: ^Thumb_Cache, ask: Thumb_Ask, user: rawptr) {
 	thumb_cache_cleared(c)
 	for len(c.waiting) > 0 && len(c.by_ticket) < c.o.asks {
 		t := pop(&c.waiting)
+		if t.better {
+			// (a larger side for a Ready entry: it stays Ready, its ticket maps it while the ask is out)
+			if t.used + THUMB_STALE_FRAMES < c.frame { thumb_better_end(t); continue }
+			c.serial += 1
+			t.ticket = c.serial
+			c.by_ticket[t.ticket] = t
+			c.sent += 1
+			ask(user, strings.clone(t.path, context.temp_allocator), t.want, t.ticket)
+			continue
+		}
 		if t.used + THUMB_STALE_FRAMES < c.frame {
 			// (scrolled past: its card asks again if it comes back)
 			delete_key(&c.entries, t.key)
@@ -179,7 +231,7 @@ thumb_cache_frame :: proc(c: ^Thumb_Cache, ask: Thumb_Ask, user: rawptr) {
 		c.by_ticket[t.ticket] = t
 		c.sent += 1
 		// (the path copied: an answer at once may not find the entry as it was)
-		ask(user, strings.clone(t.path, context.temp_allocator), c.o.side, t.ticket)
+		ask(user, strings.clone(t.path, context.temp_allocator), t.side, t.ticket)
 	}
 	if len(c.entries) > c.o.most_count || c.held > c.o.most_bytes { thumb_cache_trim(c) }
 	c.frame += 1
@@ -205,6 +257,11 @@ thumb_cache_cleared :: proc(c: ^Thumb_Cache) {
 	gone := make([dynamic]^Thumb, context.temp_allocator)
 	for _, t in c.entries { if t.state == .Ready || t.state == .Failed { append(&gone, t) } }
 	for t in gone {
+		if t.better {
+			// (its larger ask, waiting or out, goes with it: its answer finds no ticket)
+			if t.ticket != 0 { delete_key(&c.by_ticket, t.ticket) }
+			for w, i in c.waiting { if w == t { ordered_remove(&c.waiting, i); break } }
+		}
 		delete_key(&c.entries, t.key)
 		c.held -= thumb_bytes(t)
 		thumb_free(t)
@@ -217,7 +274,7 @@ thumb_cache_cleared :: proc(c: ^Thumb_Cache) {
 thumb_cache_trim :: proc(c: ^Thumb_Cache) {
 	old := make([dynamic]^Thumb, context.temp_allocator)
 	for _, t in c.entries {
-		if t.state == .Waiting || t.state == .Asked || t.used + THUMB_KEEP_FRAMES > c.frame { continue }
+		if t.state == .Waiting || t.state == .Asked || t.better || t.used + THUMB_KEEP_FRAMES > c.frame { continue }
 		append(&old, t)
 	}
 	slice.sort_by(old[:], proc(x, y: ^Thumb) -> bool { return x.used < y.used })
@@ -250,7 +307,8 @@ Thumb_Draw :: struct {
 	radius: f32,
 }
 
-// A Ready thumbnail in the box `next` gives (else all the room): fitted, centred, never larger than it is; `radius`:
+// A Ready thumbnail in the box `next` gives (else all the room): fitted, centred; larger than its pixels only when they
+// filled the side asked (a small picture keeps its size); `radius`:
 // its corners.
 thumb_picture :: proc(id: string, t: ^Thumb, radius: f32 = 0) -> ^Box {
 	d := frame_new(Thumb_Draw)
@@ -284,7 +342,10 @@ thumb_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	room := r.max - r.min
 	size := Vec2{f32(t.size.x), f32(t.size.y)}
 	if room.x <= 0 || room.y <= 0 { return }
-	k := min(room.x / size.x, room.y / size.y, 1)
+	// (pixels that filled the side asked came from a larger picture: they fill the card; a picture smaller than that is
+	// never blown up)
+	k := min(room.x / size.x, room.y / size.y)
+	if max(t.size.x, t.size.y) < t.side { k = min(k, 1) }
 	sz := size * k
 	at := r.min + (room - sz) * 0.5
 	draw.image(dc, t.texture, {at, at + sz}, radius = d.radius)

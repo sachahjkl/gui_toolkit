@@ -549,7 +549,8 @@ file_card_picture :: proc(t: ^Table, row: int, size: f32) {
 		// (the source's identity and generation in the key: a server's "/a.png" is not the computer's, nor another
 		// server's behind the same source, nor its own picture changed since; thumbnails.md)
 		key := fmt.tprintf("%p|%d|%s", fp.source.user, fp.source.generation, thumb_key(path, e.size, e.modified))
-		th := thumb_cache_get(&fp.thumbs, key, path)
+		// (the card's picture's longer side: its width, the height `size` being TABLE_CARD_PICTURE of it)
+		th := thumb_cache_get(&fp.thumbs, key, path, size / TABLE_CARD_PICTURE)
 		if th.state == .Ready && !th.refused {
 			next({width = fill(), height = pct(1)})
 			_ = thumb_picture("###thumb", th, font_size() * shape_of(.Row))
