@@ -5,6 +5,18 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.356.0] - 2026-11-24 13:08
+
+### Added
+- **`Rich_Result.link_middle_clicked`**: a middle click on a link of a `rich_paragraph` reports that link, with `link` its target (a new tab). A middle press on a link starts no autoscroll; a middle press on the paragraph's plain text still starts it. `Box.middle_at` lets any box say which of its points take the middle button.
+
+### Removed
+- **`render.frame_waitable`**: a program that waits for the swap chain itself calls `render.wait_frame_slot(&r, win, timeout_ms, until_press)`. It takes the window's input while it waits, as `platform.wait_handle` did; a `timeout_ms` of 0 only asks whether the swap chain can take a frame now. The renderer must see every wait to keep the frame latency object exact.
+
+### Fixed
+- **The toolkit's French catalogue is complete again.** The "Open with" submenu ("No application", "%s did not start.") and the annotation editor's tools and style row show in French, not in English.
+- **A resize spam no longer leaves the window behind** (Direct3D 11): after many quick resizes from a corner, every later resize showed the content about half a second behind the window, until the window closed. Each frame shown at once during a resize left one frame more in the queue of the swap chain; the renderer now counts those frames and takes them back, and the window stays as responsive as before the spam.
+
 ## [0.355.0] - 2026-11-24 11:53
 
 ### Fixed
@@ -4956,6 +4968,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.356.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.0
 [0.355.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.355.0
 [0.354.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.354.0
 [0.353.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.353.0
