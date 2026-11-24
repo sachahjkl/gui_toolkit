@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.353.0] - 2026-11-24 10:59
+
+### Added
+- **Mermaid diagrams in Markdown (`markdown.Diagrams`, `View_Options.diagrams`)**: a closed ```` ```mermaid ```` block shows its diagram, laid out on a chore (`mermaid.layout`) and kept by its text and the theme's lightness, its text shown until then; `markdown.diagram_block` for a program's own code blocks and `markdown.diagram_view` for a diagram zoomed and moved in a preview.
+- **`prefs_page.program_files`, `prefs_page.prefs_open`**: a program's standard files (preferences, themes, views, the palette's and the file dialogs' memory) in one value, empty in memory for a test; and the start of its preferences in one call: the standard ones, the program's, What's new's version, the file, then `--pref`.
+- **`host.instance_serve`, `host.instance_serve_stop`**: a program's single instance served for its window: PING answered, QUIT and each second start's launch handed to the window's thread, the window raised with the launch's token. A post that fails at the window's end loses nothing.
+- **`instance.Launch`, `instance.launch_encode`, `instance.launch_decode`**: one message for a program's second start: the launcher's activation token and a list of words (paths, or a command's words), each word kept whole whatever bytes it holds; a PING, a QUIT or broken bytes are no launch.
+
 ## [0.352.0] - 2026-11-24 10:33
 
 ### Added
@@ -4929,6 +4937,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.353.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.353.0
 [0.352.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.352.0
 [0.351.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.351.0
 [0.350.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.350.1
