@@ -11,7 +11,7 @@ import "../platform"
 //
 // The frame latency object: DXGI's is released when the frame presented before has reached the screen (at most one frame
 // is queued). wgpu waits on it inside SurfaceGetCurrentTexture, but the app has to wait for that moment *before* it reads
-// input (platform.wait_handle takes the window's input meanwhile), so `frame_waitable` is a waitable timer set after each
+// input (wait_frame_slot takes the window's input meanwhile), so the backend's latency object is a waitable timer set after each
 // present to the vblank that shows it (at once when presenting with tearing). It only wakes the app: if it is early,
 // SurfaceGetCurrentTexture still waits for the real object. (An acquire made ahead of time by a helper thread was
 // the first design: a texture acquired and never presented loses its slot for good, and the next acquire after a
@@ -23,7 +23,7 @@ import "../platform"
 // which pictures it showed and at which refresh (wp_presentation, platform.vblank_timing): the counts are its own.
 
 Wgpu_Latency :: struct {
-	timer:      win.HANDLE,   // the frame latency object (frame_waitable)
+	timer:      win.HANDLE,   // the frame latency object (wait_frame_slot)
 	last_index: u64,          // the vblank the previous frame was shown at (compositor's refresh counter)
 	have_index: bool,
 	lag_ns:     f64,          // how much later than the next vblank the swap chain really takes a new frame (learned from the acquires that had to wait)
@@ -52,12 +52,8 @@ wgpu_frame_latency :: proc(r: ^Renderer) -> u32 {
 	when LOW_LATENCY { return 1 } else { return WGPU_FRAME_LATENCY_DEFAULT }
 }
 
-// (wgpu_latency_start, wgpu_latency_stop, wgpu_latency_arm, wgpu_latency_wait, wgpu_compositor_timing: the frame
-// latency object and the compositor's timing, wgpu_latency_windows.odin; elsewhere none, wgpu_latency_other.odin)
-
-// The frame latency object (nil without LOW_LATENCY or offscreen).
-@(private)
-wgpu_waitable :: proc(r: ^Renderer) -> rawptr { return rawptr(r.wg.latency.timer) }
+// (wgpu_latency_start, wgpu_latency_stop, wgpu_latency_arm, wgpu_compositor_timing: the frame latency object and the
+// compositor's timing, wgpu_latency_windows.odin; elsewhere none, wgpu_latency_other.odin. Its wait: latency_take)
 
 @(private)
 wgpu_acquire :: proc(r: ^Renderer) -> wgpu.SurfaceTexture {
@@ -79,7 +75,7 @@ wgpu_acquire :: proc(r: ^Renderer) -> wgpu.SurfaceTexture {
 // there is no latency object; the FIFO present paces instead, and this just acquires the frame.
 @(private)
 wgpu_wait_frame :: proc(r: ^Renderer, timeout_ms: int) -> bool {
-	if !r.present.slot_unused && !wgpu_latency_wait(r, timeout_ms) { return false }
+	if !latency_take(&r.present, r.wg.latency.timer, timeout_ms) { return false }
 	return wgpu_ensure_frame(r)
 }
 
@@ -136,8 +132,7 @@ wgpu_frame_end :: proc(r: ^Renderer, vsync := true) {
 		return
 	}
 	if r.damage.skip_present {   // a region of nothing: the window keeps what it shows, and the texture stays acquired
-		r.present.slot_unused = true
-		return
+		return   // (slot_taken stays: the timer's signal waited for is the next present's)
 	}
 	// (asked before the present, which commits the surface: the answer is this picture's)
 	platform.vblank_ask(r.surface_handles)
@@ -173,7 +168,7 @@ wgpu_present_sync :: proc(asked: u32, mode: wgpu.PresentMode) -> u32 {
 // A surface configured: what was counted of the one before says nothing about it (present_reset, on Direct3D 11).
 @(private)
 present_reset_wgpu :: proc(r: ^Renderer) {
-	r.present.slot_unused = false
+	r.present.slot_taken = false
 	r.wg.latency.have_index = false
 	r.wg.latency.have_seen = false
 }
@@ -186,7 +181,7 @@ wgpu_set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool { return false 
 wgpu_present_done :: proc(r: ^Renderer, now: time.Tick, vsync: bool) {
 	p := &r.present
 	l := &r.wg.latency
-	p.slot_unused = false
+	p.slot_taken = false   // (a timer holds no count: a present with no wait leaves nothing owed)
 	p.presents += 1
 	if p.interval == 0 { p.interval = 1 }
 	sync := wgpu_present_sync(present_call(p.mode, p.tearing_ok, p.interval, vsync).sync, r.wg.present_mode)

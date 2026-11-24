@@ -6,14 +6,13 @@ import "core:time"
 import "../platform"
 
 // No frame latency object here: the present mode (FIFO by default) paces the frames at the vblank, and
-// platform.wait_handle(w, wgpu_waitable(r) == nil) returns at once. The compositor's timing is the display server's
+// wait_frame_slot returns at once. The compositor's timing is the display server's
 // answers (platform.vblank_timing: Wayland's wp_presentation, X11's Present); without them the frame statistics (shown,
 // missed refreshes) stay off.
 
 @(private) wgpu_latency_start :: proc(r: ^Renderer) {}
 @(private) wgpu_latency_stop :: proc(r: ^Renderer) {}
 @(private) wgpu_latency_arm :: proc(r: ^Renderer, ns: i64) {}
-@(private) wgpu_latency_wait :: proc(r: ^Renderer, timeout_ms: int) -> bool { return true }
 
 // The compositor's timing, as Windows' (wgpu_latency_windows.odin): the last vblank, its refresh counter and the
 // period into the present state. The compositor also says which pictures it showed (`counted`): the totals take them

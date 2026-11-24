@@ -69,7 +69,7 @@ time since the trigger); `render.trace_on()` says whether the switch is on. A la
 
 * No `SetSourceSize` in wgpu: a resize configures the surface again (2 to 3 ms), the resize slack is not used.
 * On Windows, frame statistics (`take_displayed`, `vblank_grid`) are estimated from `DwmGetCompositionTimingInfo`: a frame is "shown" at the first
-  vblank after its present; a frame the GPU finished late is not seen. The frame latency object (`frame_waitable`) is a waitable
+  vblank after its present; a frame the GPU finished late is not seen. The frame latency object (`wait_frame_slot`) is a waitable
   timer armed on that vblank. On Linux the display server's answers (Wayland's `wp_presentation`, X11's Present) give
   the vblanks, the period and the pictures shown (`platform.vblank_timing`: [platform.md](platform.md));
   `take_displayed` still estimates each frame's vblank from them at its present. Linux has no frame latency object
@@ -109,8 +109,8 @@ render.frame_end(r)
 The region is the union of the rectangles, with near ones merged so the list stays bounded (`MAX_DAMAGE_RECTS`); they
 never overlap. The renderer draws every frame-target batch once per rectangle it touches (a batch that touches none is
 skipped) and clears only the region; layers and filter passes run whole (they are intermediate images composed back
-into the frame). A frame that opens a region and marks nothing presents nothing (`wait_for_frame` then does not wait again; a
-program that waits on `frame_waitable` itself sees no new signal). Not calling `damage_begin` means the whole frame is
+into the frame). A frame that opens a region and marks nothing presents nothing (`wait_for_frame` and `wait_frame_slot` then do
+not wait again: the frame keeps its slot). Not calling `damage_begin` means the whole frame is
 damaged, exactly as before: the default is lossless.
 
 Three frames with a region are drawn whole all the same: the first one, one after a frame without a region (or with nothing

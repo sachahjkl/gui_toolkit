@@ -176,7 +176,7 @@ is_offscreen :: proc(r: ^Renderer) -> bool {
 // Most frames the swap chain may queue: 1 (the default) keeps the time from input to screen at one frame; 2 or more let
 // a frame be presented while the previous one is still on its way to the screen (a resize, a burst of frames), at the
 // cost of input latency. False: the backend cannot (or has no window). It can be raised and lowered again at will: the surplus
-// the system leaves in the latency object when it is lowered is taken back (frame_waitable, wait_for_frame).
+// the system leaves in the latency object when it is lowered is taken back (wait_frame_slot, wait_for_frame).
 set_max_frame_latency :: proc(r: ^Renderer, n: int) -> bool {
 	when USE_WGPU { return wgpu_set_max_frame_latency(r, n) } else { return d3d_set_max_frame_latency(r, n) }
 }
@@ -244,6 +244,18 @@ present_may_block :: proc(r: ^Renderer) -> bool {
 
 wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> bool {
 	when USE_WGPU { return wgpu_wait_for_frame(r, timeout_ms) } else { return d3d_wait_for_frame(r, timeout_ms) }
+}
+
+// Waits until the swap chain can take the next frame, `timeout_ms` at most, taking the window's keyboard and mouse input
+// meanwhile (platform.wait_handle; `until_press`: a key or a button ends the wait). 0: no wait, only whether it can now.
+// True: the frame holds its slot until its present (a frame that presents nothing keeps it for the next one). Call it before
+// the frame reads its input. Without a latency object (Linux, offscreen, no LOW_LATENCY) it returns true at once.
+// The renderer counts the slots taken here: a present without one leaves a count in Direct3D's latency object, which the
+// next wait takes back (src/md/infrastructure/frame-latency-object.md). A wait the renderer does not see would break that
+// count, so the object's handle is not given out.
+wait_frame_slot :: proc(r: ^Renderer, w: ^platform.Window, timeout_ms := FRAME_WAIT_TIMEOUT_MS, until_press := false) -> bool {
+	when USE_WGPU { h := r.wg.latency.timer } else { h := r.latency_handle }
+	return latency_take(&r.present, h, timeout_ms, w, until_press)
 }
 
 frame_submit :: proc(r: ^Renderer, f: Frame_Data) {

@@ -38,6 +38,14 @@ Each frame is in the first state that applies:
 Nothing waits for the swap chain before the first present (a swap chain never shown releases nothing), nor when the frame
 already holds its slot (`slot_held`: a wake that made no frame).
 
+The wait for the swap chain is `render.wait_for_frame(&r, timeout_ms)` (`render.pace_frame` makes it), or
+`render.wait_frame_slot(&r, win, timeout_ms, until_press)` for a loop that paces its own frames: it takes the window's input
+while it waits, and a `timeout_ms` of 0 only asks whether the swap chain can take a frame now. Every wait goes through one of
+them: the renderer counts the slots taken, and a frame presented without one (a resize step, an input answer, a timeout)
+leaves a count in Direct3D's latency object that the next wait takes back. Without that count the swap chain queued one
+frame deeper for each such frame, for the rest of the session
+([src/md/infrastructure/frame-latency-object.md](../src/md/infrastructure/frame-latency-object.md)).
+
 Why each one:
 - **Resize step**: the composer would stretch the last frame, drawn for the old size, over the new one until a frame at the
   new size reaches the screen.

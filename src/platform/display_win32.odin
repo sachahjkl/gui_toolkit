@@ -232,7 +232,7 @@ wide_equal :: proc(a, b: []u16) -> bool {
 // Waits until `handle` is signaled or `timeout_ms` passed (0: no limit), taking the window's keyboard and mouse
 // messages as they arrive: they are time-stamped when they come (Event.stamp) and kept for the next poll_events. Other
 // messages (paint, size, timers...) stay queued for poll_events. Returns true when the handle was signaled.
-// For the swap chain's frame latency object (render.frame_waitable): the frame then starts on the fresh input.
+// For the swap chain's frame latency object (render.wait_frame_slot): the frame then starts on the fresh input.
 // `until_press`: a key or a button taken ends the wait (wait_slot).
 wait_handle :: proc(w: ^Window, handle: rawptr, timeout_ms := 0, until_press := false) -> bool {
 	if handle == nil { return true }
