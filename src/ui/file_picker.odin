@@ -150,6 +150,7 @@ File_Picker :: struct {
 	bar_listing:  remote.Remote,   // the bar's reading of the folder it wants (not the folder shown's)
 	bar_folder:   string,     // ... that folder
 	hidden:       bool,
+	preview_off:  bool,       // the person closed the preview (Alt+P, its button): shown again only when they open it
 	type_index:   int,        // the type line chosen (len(d.filters): "All files")
 	new_folder:   bool,       // the inline row of a new folder's name
 	new_name:     Line_Edit,
@@ -416,6 +417,7 @@ file_picker_start :: proc(fp: ^File_Picker, kind: platform.File_Dialog_Kind, d: 
 	fp.size = m != nil ? m.size : Vec2{}
 	fp.split = m != nil && m.split > 0 ? m.split : FILE_PREVIEW_DEFAULT_EM
 	fp.hidden = m != nil && m.hidden
+	fp.preview_off = m != nil && m.preview_off
 	table_layout_reset(&fp.table.layout)
 	fp.table.sort, fp.table.descending = FILE_COLUMN_NAME, false
 	if m != nil && m.sort_set { fp.table.sort, fp.table.descending = m.sort, m.descending }

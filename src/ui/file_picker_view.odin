@@ -209,6 +209,7 @@ file_picker_keys :: proc(fp: ^File_Picker) -> (act: File_Action) {
 	}
 	if key_press(.L, {.Ctrl}) { path_bar_edit(&fp.bar) }
 	if key_press(.H, {.Ctrl}) { fp.hidden = !fp.hidden }
+	if key_press(.P, {.Alt}) { fp.preview_off = !fp.preview_off }   // (Windows Explorer's key for its preview pane)
 	if key_press(.F5) { act.kind = .Again }
 	if key_press(.N, {.Ctrl, .Shift}) { act.kind = .New_Folder }
 	if key_press(.Up, {.Alt}) { act.kind = .Up }
@@ -278,6 +279,14 @@ file_picker_bar :: proc(fp: ^File_Picker, act: ^File_Action) {
 		}
 		spacer(px(em * 0.5))
 		file_picker_view_button(fp, h)
+		// (only where the preview has room: a button that changes nothing is not shown)
+		if file_picker_preview_room(fp, em) {
+			spacer(px(em * 0.25))
+			next({width = px(h), height = px(h)})
+			glyph := fp.preview_off ? lucide.PANEL_RIGHT_OPEN : lucide.PANEL_RIGHT_CLOSE
+			tip := fp.preview_off ? i18n.tr("Show the preview (Alt+P)") : i18n.tr("Hide the preview (Alt+P)")
+			if button("fb_preview_toggle", icon = glyph, o = {icon_font = lucide_icons(), tip = tip}).clicked { fp.preview_off = !fp.preview_off }
+		}
 		spacer(px(em * DIALOG_MARGIN_EM))
 	}
 }
@@ -303,6 +312,12 @@ file_picker_view_button :: proc(fp: ^File_Picker, h: f32) {
 	}
 }
 
+// Whether the preview can show: the source reads files and the picker is wide enough. (Whether it does: preview_off.)
+@(private = "file")
+file_picker_preview_room :: proc(fp: ^File_Picker, em: f32) -> bool {
+	return .Read in fp.source.caps && fp.source.read != nil && fp.main_width >= em * (FILE_PREVIEW_SHOWN_EM + FILE_PLACES_EM)
+}
+
 // The places, the list and the preview.
 @(private = "file")
 file_picker_main :: proc(fp: ^File_Picker, act: ^File_Action) {
@@ -313,7 +328,7 @@ file_picker_main :: proc(fp: ^File_Picker, act: ^File_Action) {
 		spacer(px(em * DIALOG_MARGIN_EM))
 		file_picker_places(fp, act)
 		spacer(px(em * 0.6))
-		shown := .Read in fp.source.caps && fp.source.read != nil && fp.main_width >= em * (FILE_PREVIEW_SHOWN_EM + FILE_PLACES_EM)
+		shown := file_picker_preview_room(fp, em) && !fp.preview_off
 		next({width = fill(), height = fill(), axis = .Y})
 		if column(id = "###fb_list") { file_picker_list(fp, act) }
 		file_preview_follow(fp, shown)

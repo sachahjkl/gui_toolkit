@@ -28,6 +28,7 @@ Command :: struct {
 	request: platform.File_Request,   // Pick: what the words gave (stdin: none yet)
 	stdin:   bool,                    // Pick: the request is JSON on stdin (--json with no kind)
 	json:    bool,                    // Pick: the answer as JSON
+	theme:   string,                  // --theme: "NAME" or "NAME:light|dark|system" ("": the program's default)
 }
 
 // The usage, as --help prints it.
@@ -46,6 +47,8 @@ Options:
   --all-files             a last line "All files"
   --accept WORD           the act button's word
   --remember ID           where it starts next time: the folder left with this ID
+  --theme NAME[:MODE]     the look: a theme of the toolkit (Ember by default) and light, dark or system
+                          (system by default: it follows the desktop's light or dark setting)
   --json                  the answer as JSON
 
 The chosen paths go to stdout, one per line. Exit code: 0 chosen, 1 cancelled, 2 an error.
@@ -82,6 +85,11 @@ parse_args :: proc(args: []string, allocator := context.allocator) -> (c: Comman
 		case "--json":      c.json = true
 		case "--portal":    c.mode = .Portal
 		case "--help", "-h": c.mode = .Help
+		case "--theme":
+			v, ok := value(args, &i, inline)
+			if !ok { return c, "--theme needs a value" }
+			if _, _, tok := parse_theme(v); !tok { return c, strings.concatenate({"a theme is NAME or NAME:light, NAME:dark, NAME:system (", v, ")"}) }
+			c.theme = strings.clone(v)
 		case "--title", "--folder", "--filter", "--name", "--accept", "--remember":
 			v, ok := value(args, &i, inline)
 			if !ok { return c, strings.concatenate({name, " needs a value"}) }
@@ -112,6 +120,18 @@ parse_args :: proc(args: []string, allocator := context.allocator) -> (c: Comman
 	if c.request.dialog.multiple && c.request.kind != .Open { return c, "--multiple is for open" }
 	c.request.dialog.overwrite_prompt = c.request.kind == .Save
 	return c, ""
+}
+
+// A theme as --theme writes it: "Ember", "Ember:dark". mode is "" (the default), "light", "dark" or "system" (ASCII case
+// ignored). Whether NAME is a theme is the program's to check: this package knows no themes.
+parse_theme :: proc(text: string) -> (name, mode: string, ok: bool) {
+	name = text
+	if colon := strings.index_byte(text, ':'); colon >= 0 { name, mode = text[:colon], text[colon + 1:] }
+	if name == "" { return "", "", false }
+	switch strings.to_lower(mode, context.temp_allocator) {
+	case "", "light", "dark", "system": return name, mode, true
+	}
+	return "", "", false
 }
 
 // A filter as a command line writes it: "Images:*.png;*.jpg", or the patterns alone (then they are its name). In the

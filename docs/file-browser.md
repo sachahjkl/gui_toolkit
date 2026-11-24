@@ -117,7 +117,8 @@ if ev.selection_changed { show_details(app, ui.file_picker_selected(&app.picker)
   after `FILE_PICKER_SLOW_MS`, "Nothing found." when the answer is empty. A folder found is entered (the query
   cleared); a file found is chosen, previewed and named as one of the folder (`fsx.path_join(folder, relative, sep)`).
   With the toggle off, the filter is the folder's only.
-- **The preview**, at the right (a split the person resizes, `splitter`; hidden when the dialog is narrower than
+- **The preview**, at the right (a split the person resizes, `splitter`; closed by the person with its button or
+  Alt+P, which the dialog's `remember_id` keeps; hidden when the dialog is narrower than
   `FILE_PREVIEW_SHOWN_EM` beside the places, and when the source cannot read): the selected file's text, coloured by its
   kind (`syntax`), its first `FILE_PREVIEW_BYTES` and `FILE_PREVIEW_LINES` lines; a picture (PNG, JPEG, BMP, WebP:
   `gt:image`, at most `FILE_PREVIEW_IMAGE_BYTES`) fitted and zoomable (`ui.preview`); otherwise its icon, its name, its
@@ -178,6 +179,7 @@ if ev.selection_changed { show_details(app, ui.file_picker_selected(&app.picker)
 | Alt+← / Alt+→, the mouse's side buttons | back / forward (the buttons with the pointer on the picker or its path bar's dropdown) |
 | Ctrl+L | the path as a field, with its dropdown (↓ ↑, Tab, Enter, Escape: [path-bar.md](path-bar.md)) |
 | Ctrl+H | hidden files |
+| Alt+P | the preview, shown or hidden (its button at the right of the bar; remembered with `remember_id`) |
 | Ctrl + click, Shift+↑↓, Ctrl+A | several files (Open with `multiple`) |
 | a letter | the filter |
 | Escape | the path field's while it has the keyboard (its dropdown, then the breadcrumb); else gives a rename up, then clears the filter, then the new folder's row, then cancels |

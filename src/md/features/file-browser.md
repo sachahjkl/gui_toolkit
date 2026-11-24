@@ -140,7 +140,8 @@ modal loop) or depend on the desktop (portal, zenity, kdialog). They stay one se
   setting a menu says). The step is part of the dialog's memory (by its stable name, `table_zoom_key`): a dialog for
   pictures opens on its cards again. A card's picture is the file's thumbnail when the source gives one, else the
   kind's icon at the card's share (`table_card_icon_size`); a folder has its icon. A card's weak line is the size. The rubber band works in a dialog of
-  several files. The preview pane is the same in every view.
+  several files. The preview pane is the same in every view. The person can close it (its button, Alt+P, as
+  Windows Explorer's preview pane); it stays closed for that `remember_id`, and a closed preview reads no file.
 - **A thumbnail is a call of the source, kept in the picker's `Thumb_Cache`** ([thumbnails.md](thumbnails.md)). Its
   answer is the only one not dropped by the request's serial (only by the picker's id): a file's picture is good for the
   next request too.

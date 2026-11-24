@@ -44,6 +44,7 @@ gt-file-picker --portal                        the XDG portal's FileChooser back
 | `--name NAME` | `save`: the name suggested |
 | `--accept WORD` | the act button's word |
 | `--remember ID` | the picker starts in the folder that this ID was left in |
+| `--theme NAME[:MODE]` | the look: one of the toolkit's themes (`Ember` by default) and `light`, `dark` or `system` (by default: the desktop's light or dark setting, followed while the picker is open) |
 | `--json` | the answer as JSON |
 
 The chosen paths go to stdout, one per line. A path with a line break in it is only safe with `--json`.

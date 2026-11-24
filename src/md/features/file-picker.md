@@ -85,6 +85,11 @@ asks the person to choose a file. One picker serves the three, with the same loo
   one picker ends one request, not the service; the server is the same code path as the command line. `Close` on the
   request's object ends its process and answers "cancelled". Refused: windows in the server's process (a second loop
   beside the bus's, and a crash takes every request with it).
+- **Its look: Ember, light or dark as the desktop is.** A picker that other programs call has no settings of its own:
+  it shows the toolkit's Ember theme, in the version the desktop asks (the appearance portal on Linux, the system's
+  setting on Windows), and follows a change while it is open. `--theme NAME[:light|dark|system]` lets a caller keep
+  its own look. Refused: a settings file of the picker (a person would set it in one more place), the caller's theme
+  through the portal (the portal does not carry it).
 - **The parent window is not followed yet.** The portal gives the caller's window (`x11:<id>`, `wayland:<handle>`).
   Making the picker's window a child of it needs `xdg-foreign` on Wayland and `WM_TRANSIENT_FOR` on X11 in the
   platform layer: a later work (ROADMAP.md).

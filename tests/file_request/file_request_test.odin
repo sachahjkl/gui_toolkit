@@ -38,6 +38,25 @@ a_command_line_reads :: proc(t: ^testing.T) {
 	}
 }
 
+// --theme takes a name and, after a colon, light, dark or system; parse_theme splits it.
+@(test)
+a_theme_reads :: proc(t: ^testing.T) {
+	name, mode, ok := req.parse_theme("Ember")
+	testing.expect(t, ok && name == "Ember" && mode == "")
+	name, mode, ok = req.parse_theme("Nord:Dark")
+	testing.expect(t, ok && name == "Nord" && mode == "Dark")
+	_, _, ok = req.parse_theme("Nord:dim")
+	testing.expect(t, !ok, "a mode that is none of the three")
+	_, _, ok = req.parse_theme(":dark")
+	testing.expect(t, !ok, "no name")
+	a: virtual.Arena
+	defer virtual.arena_destroy(&a)
+	c, why := req.parse_args({"open", "--theme", "Ember:light"}, virtual.arena_allocator(&a))
+	testing.expect(t, why == "" && c.theme == "Ember:light", why)
+	_, why = req.parse_args({"open", "--theme=Ember:dim"}, virtual.arena_allocator(&a))
+	testing.expect(t, why != "", "a theme that does not read is said")
+}
+
 @(test)
 a_command_line_that_does_not_read :: proc(t: ^testing.T) {
 	a: virtual.Arena
