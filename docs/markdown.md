@@ -52,6 +52,7 @@ Every field may stay zero.
 | `user` | what the procedures are given |
 | `link(user, url)` | a link clicked or chosen with Enter (nil: links open nothing). The target is as written: a program checks it before it hands it to the system |
 | `code(user, id, c: Code)` | a fenced block, built in its place: its language, text, highlighted runs, whether its fence closed, a version for `rich_paragraph`, its number among the fenced blocks (`fence`: a diagram laid out ahead is found by it) (a diagram, a header with a copy button). nil: `code_block` |
+| `diagrams` | `^Diagrams`: a closed ```` ```mermaid ```` block shows its diagram (below). nil: its text |
 | `frame(user, box, kind)` | paints the box a table or a code block sits in (nil: its colour, rounded) |
 | `rule(user, id)` | a rule (nil: `ui.hline`) |
 | `table_corner(user, table, source, size)` | built in a table's top right corner while the pointer is on it, over its rows: a copy button (`table_html`, `source` its lines) |
@@ -69,3 +70,28 @@ fade on the side that hides more).
 A list item's marker sits in a column as wide as the widest of its list and level, so the items' text stays in one
 column. A code block that is still being written (no closing fence yet) is shown as it grows; `Code.closed` says when it
 is done (a program draws a diagram only then).
+
+## Mermaid diagrams
+
+A program that gives `View_Options.diagrams` sees each closed ```` ```mermaid ```` block as its diagram
+([src/md/features/markdown-diagrams.md](../src/md/features/markdown-diagrams.md)). The block shows its text until the
+layout answers; a block still being written and a text that is no diagram stay text.
+
+```odin
+app.diagrams = markdown.Diagrams{layout = mermaid.layout}   // kept by the program: it does not move once used
+markdown.view(&doc, "note", text, {diagrams = &app.diagrams})
+markdown.diagrams_destroy(&app.diagrams)                    // at the end; a layout still running is dropped
+```
+
+- **`Diagrams`**: `layout` (a `Diagram_Layout`: `proc(text, dark) -> (svg.Document, why)`, run on a chore, never on
+  the interface's thread; `mermaid.layout` is gt:mermaid's), `kept` (the bound, 0: `DIAGRAMS_KEPT`, 32). One entry per
+  text and theme lightness (`ui.Theme.dark`); at the bound the one drawn least recently goes. `markdown` does not
+  import `gt:mermaid`: a program links the native library only when it gives `mermaid.layout`.
+- **`diagram_of(ds, text) -> ^Diagram`**: during a build, the entry of `text` in the theme's lightness, its layout asked
+  of the chores the first time. `Diagram.pending`: not laid out yet; `Diagram.why`: why it is no diagram; else
+  `Diagram.doc`. nil: no layout, or outside a build.
+- **`diagram_block(id, c, o)`**: a mermaid block as `view` builds it: its diagram at the text's size (`DIAGRAM_FONT_PX`),
+  no wider than the column and centred, else `code_block`. A program's own `View_Options.code` calls it for its mermaid
+  blocks (`is_mermaid(c.lang)`).
+- **`diagram_view(id, preview, d, face = 0, o = {})`**: a laid-out diagram in a `ui.preview`: fitted to its box, then
+  zoomed and moved. Its unit at 100 % is its size beside the text.

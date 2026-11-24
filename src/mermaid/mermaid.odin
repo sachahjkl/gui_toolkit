@@ -80,6 +80,10 @@ diagram :: proc(text: string, dark := false, font_size: f64 = 0, direction := Di
 	return d, ""
 }
 
+// The diagram as its text says, for markdown.Diagrams.layout (a markdown.Diagram_Layout): on a chore, never the
+// interface's thread.
+layout :: proc(text: string, dark: bool) -> (doc: svg.Document, why: string) { return diagram(text, dark) }
+
 // The way a diagram's graph runs: mermaid's text says it ("flowchart LR", or "direction LR" in a class, state, ER or
 // requirement diagram), and the same layout lays it out the other ways. .Text: as the text says.
 Direction :: enum u8 { Text, Top_Down, Left_Right, Bottom_Top, Right_Left }

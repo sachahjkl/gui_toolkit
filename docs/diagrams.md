@@ -54,3 +54,9 @@ mermaid-svg has one layout (layered, Sugiyama): `flowchart-elk` and `layout: elk
 
 A layout takes time in proportion to the diagram: a program that lays one out again while it shows it (a viewer where the
 person picks the direction) does it in a task (`ui.task`) and keeps the result.
+
+### In Markdown
+
+`mermaid.layout(text, dark)` is `diagram` as `markdown.Diagrams.layout` takes it: a program gives it, and every closed
+```` ```mermaid ```` block of the Markdown it shows becomes its diagram, laid out on a chore and kept
+([markdown.md](markdown.md), "Mermaid diagrams").

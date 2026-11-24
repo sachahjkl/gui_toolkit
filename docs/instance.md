@@ -90,6 +90,55 @@ server := instance.serve_start(owner, proc(user: rawptr, message: []byte) {
 instance.serve_stop(server)
 ```
 
+## The launch message
+
+`instance.Launch{token, args}` is the message every program's second start sends. `token` is the launcher's activation
+token (`platform.activation_token_from_env`; "" when there is none). `args` is a list of words: absolute paths for a
+program that opens files, the words of a command (`{"copy", "12"}`) for a program that takes commands. Each word stays
+one word, whatever bytes it holds: a space, a newline, a NUL.
+
+```odin
+message := instance.launch_encode({token = platform.activation_token_from_env(context.temp_allocator), args = paths})
+outcome, owner := instance.acquire({name = name}, message)
+
+l, ok := instance.launch_decode(message)   // in the handler: ok = false for a PING, a QUIT, broken bytes
+```
+
+| Procedure | What |
+|---|---|
+| `launch_encode(l, allocator)` | the message's bytes: `LAUNCH_MARK`, then the token, the count of words and each word, each with its length |
+| `launch_decode(message, allocator)` | the launch; its strings point into `message`, its list is in `allocator`. `ok = false` for anything else, a message cut short or with bytes after its last word |
+
+## Served for a window: host.instance_serve
+
+A program on `gt:host` gives its window and two procedures; the host does the rest: it answers PING, hands QUIT and each
+launch to the window's thread, and raises the window with the launch's token
+([src/md/features/second-start.md](../src/md/features/second-start.md)).
+
+```odin
+app_launch :: proc(h: ^host.Host, l: instance.Launch) -> (raise: bool) {
+    app := (^App)(h.user)
+    for path in l.args { open_file(app, path) }   // (the strings are valid only during the call: copy what you keep)
+    return true                                    // the window comes to the front with l.token
+}
+
+outcome, owner := instance.acquire({name = name}, instance.launch_encode({token = token, args = paths}))
+if outcome == .Forwarded { return }
+// ... the window is open ...
+if outcome == .First { host.instance_serve(&app.service, &app.main, owner, app_launch) }
+// ... the loop ...
+host.instance_serve_stop(&app.service)   // before host.host_close
+```
+
+- **`instance_serve(service, h, owner, on_launch, on_quit = nil) -> bool`** serves the Owner on a thread of its own.
+  `on_launch` runs on the window's thread; true raises the window (`platform.raise_window_token`) and settles a few
+  frames. nil: each launch raises the window. `on_quit` nil: QUIT closes the window as its title bar does
+  (`platform.request_close`). false: it could not be served.
+- **`instance_serve_stop(service)`** ends the Owner and drops the launches not yet handed over. Call it on the window's
+  thread, before `host_close`.
+- **`host.Instance_Service`** is the caller's memory, kept beside its Host: a call posted to the window points to it.
+  A post that fails at the window's end loses nothing; a call that runs after the stop does nothing.
+
 ## Pinging without owning
 
 ```odin
