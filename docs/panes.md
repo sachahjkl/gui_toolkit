@@ -147,9 +147,9 @@ for a split inside a program's own layout. Tests: `tests/panes/pane_split_test.o
 folding by a drag, a double click, Enter and the button, the strip's click and pull, the keyboard, the save callback,
 the text, the place, what the strip draws).
 
-## A side panel that folds (`src/ui/side_panel.odin`)
+## A side panel that folds
 
-One mechanism for every side panel beside a content that folds to a rail: the views' side zones, the settings'
+`src/ui/side_panel.odin`. One mechanism for every side panel beside a content that folds to a rail: the views' side zones, the settings'
 sidebar, a program's own split (a list beside its preview). Its intent: `src/md/features/side-panels.md`.
 
 **The rule.** Open at its width, the panel folds when it leaves the content less than the content's least; it opens again
