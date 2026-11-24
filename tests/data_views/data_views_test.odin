@@ -136,6 +136,30 @@ a_table_sorts_filters_and_keeps_its_selection :: proc(t: ^testing.T) {
 	testing.expect_value(t, ui.line_edit_string(&app.search), "BRo")
 }
 
+// A text column sorts in natural order: "file 2" before "file 10" (ascii.compare_natural), case ignored.
+@(test)
+a_text_column_sorts_numbers_by_their_value :: proc(t: ^testing.T) {
+	tab: ui.Table
+	data: ui.Table_Data
+	ui.table_init(&tab, COLUMNS[:])
+	defer ui.table_destroy(&tab)
+	ui.table_data_reset(&data, len(COLUMNS))
+	defer ui.table_data_destroy(&data)
+	for name, i in ([]string{"file 10", "File 1", "file 2", "file 01"}) {
+		ui.table_data_row(&data, u64(i + 1), name)
+		ui.table_data_cell(&data, name)
+		ui.table_data_cell(&data, "n", 0)
+		ui.table_data_cell(&data, "")
+		ui.table_data_cell(&data, "i", f64(i))
+	}
+	tab.sort, tab.descending = 0, false
+	ui.table_apply(&tab, &data, "")
+	want := []string{"File 1", "file 01", "file 2", "file 10"}
+	if testing.expect_value(t, len(tab.rows), len(want)) {
+		for w, i in want { testing.expect_value(t, ui.table_data_text(&data, tab.rows[i], 0), w) }
+	}
+}
+
 @(test)
 a_table_column_is_resized_and_a_cut_cell_shows_its_text :: proc(t: ^testing.T) {
 	app: App

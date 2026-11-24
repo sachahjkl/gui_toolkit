@@ -34,6 +34,7 @@ import "core:strconv"
 import "core:strings"
 import "../fsx"
 import "../platform"
+import "../process"
 
 @(private = "file")
 LINUX_BACKEND := Backend{
@@ -483,7 +484,7 @@ run_tool :: proc(tool: string, args: []string) -> bool {
 	command := make([dynamic]string, context.temp_allocator)
 	append(&command, path)
 	for a in args { append(&command, a) }
-	p, err := os.process_start(os.Process_Desc{command = command[:]})
+	p, err := process.start(os.Process_Desc{command = command[:]})
 	if err != nil { return false }
 	state, werr := os.process_wait(p)
 	return werr == nil && state.success

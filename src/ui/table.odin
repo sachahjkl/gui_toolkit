@@ -797,7 +797,8 @@ table_apply :: proc(t: ^Table, d: ^Table_Data, query: string) {
 	if t.vl.sel < 0 && q != "" && len(t.ids) > 0 { list_select(&t.vl, 0) }
 }
 
-// The rows shown, by the sort's column (its number or its text, case ignored), ties by the first column, then as read.
+// The rows shown, by the sort's column (its number, or its text in natural order: ascii.compare_natural), ties by the
+// first column, then as read.
 @(private = "file")
 table_sort_rows :: proc(t: ^Table, d: ^Table_Data) {
 	Sort_Ctx :: struct { d: ^Table_Data, col: int, number: bool, grouped: bool }
@@ -810,11 +811,11 @@ table_sort_rows :: proc(t: ^Table, d: ^Table_Data) {
 			na, nb := x.d.nums[a * x.d.cols + x.col], x.d.nums[b * x.d.cols + x.col]
 			if na != nb { return na < nb }
 		} else {
-			c := ascii.compare_fold(table_data_text(x.d, a, x.col), table_data_text(x.d, b, x.col))
+			c := ascii.compare_natural(table_data_text(x.d, a, x.col), table_data_text(x.d, b, x.col))
 			if c != 0 { return c < 0 }
 		}
 		// ties: by the first column, then as read
-		c := ascii.compare_fold(table_data_text(x.d, a, 0), table_data_text(x.d, b, 0))
+		c := ascii.compare_natural(table_data_text(x.d, a, 0), table_data_text(x.d, b, 0))
 		if c != 0 { return c < 0 }
 		return a < b
 	})

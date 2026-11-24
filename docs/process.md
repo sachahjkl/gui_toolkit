@@ -18,6 +18,37 @@ A Windows program with a window has no console of its own. `console_write` write
 it one (a redirection to a file, a pipe), else to the console of the process that started it, attached once. A redirection
 is never bypassed.
 
+## Children
+
+```odin
+r := process.run({"git", "status", "--porcelain"}, {dir = repo}, context.temp_allocator)   // waits for its end
+if r.ok { use(r.stdout) } else { log.errorf("git: %s", r.stderr) }
+r = process.run({"pkexec", "tee", path}, {input = text})                                  // its standard input
+p, err := process.start({command = {"ffmpeg", ...}, stdin = read})                        // the child, to wait for later
+```
+
+Starting a process is not safe from two threads at once (Linux's fork, Windows' inheritable handles). `start`, `run` and
+`pipe` hold one lock of the package, around the spawn only: a long child never holds up another start. Use them for
+every child; do not call `os.process_start`, `os.process_exec` or `os.pipe` for a child. Each is a blocking call
+(`base.blocking`): run it on a worker, never on the interface's thread.
+
+| Procedure | |
+|---|---|
+| `start(desc) -> (os.Process, os.Error)` | starts a child. On Windows the ends in `desc.stdin`, `stdout` and `stderr` are inheritable during the spawn only, then as they were |
+| `run(command, Run_Options{dir, env, input}, allocator) -> Ran` | starts it and waits for its end. Its standard output and error are read at once (neither blocks the other) and `input` is written on a thread of its own, then closed ("": the null device). `env` is its whole environment (nil: this process's) |
+| `ran_destroy(&r, allocator)` | frees `r.stdout` and `r.stderr` |
+| `pipe() -> (r, w: ^os.File, os.Error)` | a pipe whose ends no child inherits until `start` gives one to a child |
+
+| `Ran` | |
+|---|---|
+| `started` | the child started; false: `stderr` says why |
+| `ok` | it started and exited with 0 |
+| `code` | its exit code; -1 when it did not start or did not exit (a signal) |
+| `stdout`, `stderr` | what it wrote, in the allocator given |
+
+A child that ends before it read its input makes the write fail; `SIGPIPE` is ignored for that, unless the program set
+a handler of its own. For a time limit, use `start` and `os.process_wait(p, limit)`, then `os.process_kill`.
+
 ## Other processes
 
 A process is named by its pid and its start time: the system gives a pid again once its process ends, so a pid alone can

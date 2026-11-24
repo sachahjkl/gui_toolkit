@@ -82,6 +82,7 @@ STEPS := []Step{
 	{name = "png", path = "src/png", oses = EVERYWHERE},
 	{name = "qr", path = "src/qr", oses = EVERYWHERE},
 	{name = "ink", path = "src/ink", oses = EVERYWHERE},
+	{name = "marks", path = "src/marks", oses = EVERYWHERE},
 	// (one at a time: several of its tests start children, and os.process_start is not safe from two threads at once,
 	// as the plugins' starts know; each_signal_is_its_own twice stopped on an illegal instruction beside another start)
 	{name = "process", path = "src/process", oses = EVERYWHERE, one = true},
@@ -176,6 +177,7 @@ STEPS := []Step{
 	{name = "commands", one = true, oses = EVERYWHERE, text = true},
 	{name = "keymap", one = true, oses = EVERYWHERE, text = true},   // (the person's keys: one language for the process)
 	{name = "status", one = true, wgpu = .Ci1},
+	{name = "status_line", one = true, oses = EVERYWHERE, text = true},   // (ui.Status_Line on the session's clock)
 	{name = "states", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "stepper", one = true, oses = EVERYWHERE, text = true},
 	{name = "chrome", wgpu = .Ci1},
@@ -192,6 +194,7 @@ STEPS := []Step{
 	{name = "data_views", one = true, oses = EVERYWHERE, text = true},
 	{name = "file_browser", one = true, oses = EVERYWHERE, text = true},
 	{name = "path_bar", one = true, oses = EVERYWHERE, text = true},
+	{name = "mark_editor", one = true, oses = EVERYWHERE, text = true},
 	{name = "font_picker", one = true, oses = EVERYWHERE, text = true},
 	{name = "diff", one = true, oses = EVERYWHERE, text = true},
 	{name = "prefs_page", one = true, oses = EVERYWHERE, text = true},

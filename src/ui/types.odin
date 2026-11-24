@@ -607,6 +607,9 @@ State :: struct {
 	sel:             Selection,
 	sel_painting:    bool,   // paint_selected: the text is painted again over the selection, in its colour (run colours give way)
 	mouse_events:    [dynamic]platform.Event,
+	// this build's pointer moves, presses and releases in their order, each with the pen as it was then: a drawing reads
+	// every move, not the last one of the frame (Pointer_Sample)
+	pointer_samples: [dynamic]Pointer_Sample,
 	// calls posted from other threads (post.odin)
 	posts:           Post_Queue,
 	post_budget:     int,                   // calls a build runs at most
@@ -616,6 +619,7 @@ State :: struct {
 	task_box:        ^Task_Box,   // where ui.task's results are posted, shut at ui.destroy (nil: no task asked yet)
 	// the file browser ui.file_dialog shows, built at the end of each build while it is open (file_browser.odin; nil:
 	// never asked), and which dialog file_dialog shows (set_file_dialogs)
+	mark_dialog:     ^Mark_Dialog_Host,   // the mark editor's dialog of this State (mark_editor_dialog.odin)
 	files:           ^File_Pickers,   // the file pickers of this State and what they share (file_picker.odin)
 	file_dialogs:    File_Dialogs,
 	// accessibility: the tree screen readers read, the requests they made (a11y.odin)

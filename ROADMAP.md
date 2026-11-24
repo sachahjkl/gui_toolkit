@@ -13,6 +13,13 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
+- **cliche and opencode native draw with `ui.Mark_Editor`.** cliche drops its editor's model, painter and canvas for
+  the toolkit's and keeps its window, its words and its outputs; opencode native opens the editor on a picture of its
+  viewer or of its composer, and the result replaces the attachment. Intent:
+  [src/md/features/mark-editor.md](src/md/features/mark-editor.md).
+- **The rest of cliche's marks in `gt:marks`.** Speech balloons, step numbers, the magnifier, stickers, shadows and the
+  picture's own operations (turn, mirror, resize, margins, cut out a band), each with its figures and its tests, when a
+  program needs it. Intent: [src/md/features/mark-editor.md](src/md/features/mark-editor.md).
 - **gt-file-picker as a Nix package.** The flake builds the compiler and the test fonts, no program of the
   repository: a package of gt-file-picker needs the native library's crates vendored (`importCargoLock`) and the
   portal's files installed with its store path in their `Exec=`. Then NixOS's portal configuration names it with no
@@ -21,9 +28,9 @@
   `wayland:<handle>`); the picker's window then stays over it and moves with it. It needs `xdg-foreign` on Wayland
   and `WM_TRANSIENT_FOR` on X11 in the platform layer, and a `--parent` option of gt-file-picker. Intent:
   [src/md/features/file-picker.md](src/md/features/file-picker.md).
-- **Wire `gt:filesearch` into classeur and measure Windows home indexing.** `gt:filesearch` and `ui.Palette_Files` are
-  built and tested; next wire them into classeur's search and palette, and take the Windows home measurement before
-  enabling whole-home defaults there. Intent: [src/md/features/file-search.md](src/md/features/file-search.md).
+- **Measure `gt:filesearch` on a Windows home folder.** classeur's search and palette use `gt:filesearch` and
+  `ui.Palette_Files` already. Left: the time and the memory of an index of a whole Windows home, before a whole home
+  is the default there. Intent: [src/md/features/file-search.md](src/md/features/file-search.md).
 - **X11's vblank timing seen on a real screen.** The Present extension's answers are read, but the virtual desktop's
   software renderer draws with PutImage and never answers: run the desktop test on an X11 session with a GPU to see
   frames start just in time there too. Intent: [src/md/infrastructure/vblank.md](src/md/infrastructure/vblank.md).
@@ -61,9 +68,48 @@
   changes them all, as cliche's graph colours do since its 0.8.
 - **No test that crashes by chance on Linux.** Two CI runs stopped on an illegal instruction (an assertion or a bounds
   check) that no local run made again: once in `plugins`, twice in `process` (`each_signal_is_its_own`, each time
-  while another test of the package started a child). `process` now runs one test at a time, as `os.process_start` is
-  not safe from two threads; the plugins' starts were serialized already. A crash now names its place on Linux too
+  while another test of the package started a child). Every start of the toolkit now goes through `process.start`'s
+  one lock ([src/md/features/child-processes.md](src/md/features/child-processes.md)). A crash now names its place on Linux too
   (`gt:testkit/crashsite`); left: the next such run's report read and its cause fixed.
+
+- **The programs on the shared start, restart, order and status pieces.** Each program replaces its own copy:
+  `process.run` and `process.start` for its children (socle, atelier, inspecteur, classeur), `host.restart_after_exit`
+  for its `launch_after`, `ui.Status_Line` for its `say`, and `ascii.compare_natural` for classeur's
+  `name_compare`. Intent: [src/md/features/child-processes.md](src/md/features/child-processes.md),
+  [src/md/features/program-start.md](src/md/features/program-start.md).
+- **One second-start message and instance handler.** A second start opens its files in the running window and brings
+  it to the front, and `--status` and `--quit` work the same in every program. `gt:instance` encodes a launch (an
+  activation token and arguments), and `host.instance_serve` answers PING, posts QUIT and the launch to the interface's
+  thread and raises the window; seven programs drop their own. Intent:
+  [src/md/features/quit.md](src/md/features/quit.md).
+- **classeur moves to the trash with `platform.move_to_trash`.** Its `fs/trash_linux.odin` repeats the toolkit's
+  `volume_top`, `url_path` and local time word for word; a fix in one then reaches both. It keeps its trash listing
+  and its Recycle Bin records, or these move into `platform` too.
+- **An "Open with" submenu.** A file's menu lists the applications that open it, with their icons, in every program.
+  A state in `ui` asks `desktop.handlers_for_file` on a chore, builds the items in a `menu_submenu` and opens the
+  choice; papier, classeur and feuille drop their own, and the file picker's row menu gets it.
+- **A program's standard files and `prefs_open`.** Every program keeps its settings, themes, views, palette memory and
+  file dialogs' memory at the same paths. `prefs_page.program_files(folder)` gives the paths, and `prefs_open`
+  registers, loads and applies the settings in the one order; six programs drop their own sequence. Intent:
+  [src/md/features/folders.md](src/md/features/folders.md).
+- **Mermaid blocks in Markdown.** A ```mermaid fence shows its diagram, not its text, in any Markdown a program
+  shows. `gt:markdown` lays it out on a chore, per theme lightness, keeps it in a cache and draws it with `gt:svg`;
+  papier and opencode native drop their own.
+- **A folder watcher.** A folder shown changes on screen when its files change, and a document changed on disk is
+  noticed. classeur's debounced watcher (inotify, `ReadDirectoryChangesW`) moves to `gt:fsx`; the file picker's
+  local source and feuille use it.
+- **papier's size words from `timefmt.size`.** papier's `size_text` gives way to the toolkit's words, so a size reads
+  the same in every program.
+- **A free file name.** A saved or downloaded file never overwrites another, and its number looks the same in every
+  program. A procedure of `gt:fsx` creates the file with the next free number in one step (`O_EXCL`, `CREATE_NEW`); classeur, cliche,
+  opencode native, Wren and the toolkit's trash drop their three styles.
+- **One report for the live tests.** (Developer) `toolbox.Checks` and `check` give every program's live test the
+  same report and exit code; papier, inspecteur, atelier and opencode native drop their own.
+- **A trackpad swipe reader.** A two-finger swipe goes back and forward in any program, as it does in opencode native.
+- **`ui.preview` leaves Shift+wheel to the program.** A program that scrolls sideways with Shift+wheel over a picture
+  keeps it.
+- **A middle click on a link opens it in a scroll area.** A clickable box (a link) wins the middle click over the
+  scroll area's autoscroll.
 
 ## Later
 
@@ -75,9 +121,43 @@
 - **An image viewer, a program of the suite.** A picture opens at once and the folder's others follow with the arrows;
   crop, turn and mark it. `gt:image`'s decoders, the thumbnails and the picture cache are there; it sits between cliche
   (capturing) and classeur (filing). After the launcher.
-- **Archives as folders in classeur.** A zip, a tar or a 7z is browsed as a folder, its files copied out by a drag: an
-  archive is one more file source of the file browser (`ui.File_Source`), so every program's file dialog gets it too.
-  Intent to write: which formats, read only or written, a library for each.
+- **An archive as a file source.** A zip or a tar opens as a folder in every program's file dialog, and its files are
+  copied out. classeur already browses zip, tar and tar.gz read-only over `gt:archive` (`fs/archive.odin`); the
+  toolkit side is a `ui.File_Source` wrapper over another source, its reads off the interface's thread. Intent to
+  write: the formats, read only or written, the index of a large archive.
+- **Tab tear-off and a tab dropped on another window.** A tab dragged out of its row opens in a new window; dropped on
+  another window's row, it moves there. `ui/reorder.odin` says when a drag leaves the row and where it lands; where
+  positions are not known (Wayland), a system drag carries the tab. classeur and Wren drop their own.
+- **Places, volumes and network locations in the file picker.** The places column shows the drives with their free
+  space and the mounted shares, and the path bar opens `smb://`, `sftp://` and `trash:///`. classeur's volumes,
+  locations and mDNS reader move to `gt:platform` and `gt:fsx`.
+- **An application catalog.** The programs found from the desktop's menu entries, with their icons, and a process tied
+  to its application. inspecteur's reader moves to `gt:desktop` (`apps`, `app_of`); the launcher uses it.
+- **A picture view.** A picture or a diagram opens in a view fitted to the window, zoomed, panned, copied or saved.
+  A view of `ui` over `ui.preview_image`; opencode native, papier, cliche and classeur drop their own wrappers.
+- **A log view.** Entries with their time, level and source, a filter by level with counts, follow, search and copy.
+  One view of `ui` for inspecteur's journal, Wren's console, socle's apply log and the toolkit's Diagnostics.
+- **Name patterns.** A file name made from a pattern ({name}, {ext}, {n:3}, {date}, {time}) the same way in cliche's
+  saves, classeur's batch rename, papier's Save as and feuille's page extracts.
+- **A recent list.** Recent documents and folders: the newest first, capped, a removed item forgotten. `store.Recent`
+  over `store.Kept` for feuille, classeur, the file picker and cliche's tray.
+- **Wren's crash stacks and poison allocator for every program.** A crash report with a named stack in every program,
+  and freed memory caught in the checks. Wren's `crashtrace` and `poison.odin` move to `gt:crash` and `gt:testkit`.
+- **socle's disk size words from `timefmt.size`.** Its `size_words` gives way to the toolkit's, with a rounding
+  option if socle's "512 GB" needs one.
+- **papier's thumbnails on `ui.Thumb_Cache`.** papier keys a thumbnail by its content's hash: the cache takes a key
+  that is not a path, and papier drops `thumbs.odin`.
+- **cliche's history grid on the table's cards.** Its grid and thumbnails become a `ui.Table` card view and
+  `ui.Thumb_Cache`.
+- **feuille's marks on `gt:marks`.** Once the mark editor is in, feuille's text and shapes on a page use it, in page
+  points, and its PDF writer stamps them.
+- **Wren on the toolkit's lints, test scheduler and DevTools server.** Wren drops its globals and case lints, its test
+  scheduler and its CDP server for `tests/globals`, `tools/run_tests` and `gt:devtools`.
+- **classeur's tab reorder on `ui/reorder.odin`.** Its own slot and drag code goes; its drop onto another panel stays,
+  with the tear-off above.
+- **inspecteur's duration words from `timefmt`.** Its `duration_words` and `bits_text` give way to
+  `timefmt.duration` and `timefmt.rate`, with a style for "3 days, 4 h 12 min" if `timefmt` lacks it.
+
 - **Image nodes for a second program.** cliche's node catalogue of image transformations moves next to `gt:flowgraph`
   when papier or classeur gets workflows of its own; the graph's add palette (`ui.flow_palette`, a right click, a link
   dropped in the void) is the toolkit's already.
@@ -109,5 +189,9 @@
   journal followed, every file of every disk found in milliseconds. It needs a privileged reader, a service installed
   with the program; it waits for a decision on whether the suite installs a service at all, and for `gt:filesearch` on
   trees to be in use. Intent: [src/md/features/file-search.md](src/md/features/file-search.md), "Windows".
+- **A video and audio player inside a program.** A program plays a video or a sound in place, not in the system's
+  program. The way open: decode with the system (Media Foundation on Windows, VA-API on Linux) into
+  `render/video.odin`'s frames. It waits for a very light player, a library or a design, on Windows and Linux, that
+  adds almost nothing to a program's size.
 - **A reduced wgpu-native, only if it comes ready-made.** Studied and declined: WGSL and Vulkan only save about 1 MB for
   a harder build. Revisit only if gfx-rs publishes a reduced build.
