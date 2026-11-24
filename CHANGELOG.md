@@ -5,6 +5,22 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.348.0] - 2026-11-24 05:25
+
+### Added
+- **`ui.path_bar_pointer_on`**: whether the pointer is on a path bar's dropdown, a popover outside the bar's parent: a press on a program's part counts it too.
+- **gt-file-picker**: a file picker any program calls, on Windows and Linux: `gt-file-picker open|save|folder` prints the paths chosen (or JSON with `--json`), exit code 0 chosen, 1 cancelled, 2 an error; `--portal` makes it the desktop's file chooser through the XDG desktop portal (Linux). Each release ships `gt-file-picker-windows-x64.zip` and `gt-file-picker-linux-x64.tar.gz` (`tk file_picker_package`).
+- **`gt:file_request`**: a picker's request and answer as text: a command line (`parse_args`), JSON both ways (`parse_request_json`, `request_json`, `answer_json`, `parse_answer_json`), the exit codes, and the XDG desktop portal's FileChooser calls (`portal_read_call`, `portal_write_reply`); on Linux, the portal's backend that answers each call with a process (`Portal_Server`, `portal_open`, `portal_run`).
+- **A file picker's request as a value**: `platform.File_Request` (a kind and a `File_Dialog`), choices beside the files (`File_Dialog.choices`, `File_Choice`; their values in `Dialog_Result.choices`, shown by the toolkit's picker as check boxes and drop-downs), `platform.file_dialog_clone`, `file_dialog_free` and `dialog_result_clone`.
+- **`ui.File_Picker`**: the file picker as a component a program builds in its own layout (a side panel, an "Open" page, a docked view): `file_picker_init`, `file_picker(id, &p)` at each build, `file_picker_destroy`. A build returns `File_Picker_Events` (the answer, another folder, another selection); `file_picker_folder`, `file_picker_selected`, `file_picker_focus`, `file_picker_start` and `file_picker_stop` complete it. Several live at once; each reads the keyboard only with the focus in it.
+
+### Changed
+- **`ui.file_dialog` is a picker in a view**: the same call and the same `done`, rebuilt over `ui.File_Picker`. `File_Dialog_Kind` moved to `platform`; `file_browser_counts(s)` is `file_picker_counts(file_dialog_picker(s))`; the `FILE_BROWSER_*` constants are `FILE_PICKER_*`, and the dialog's sizes `FILE_DIALOG_*_EM`; a source's `File_Reply` names its picker and its request (`picker`, `serial`) in place of `dialog`.
+
+### Fixed
+- **A window that closed after a right click on a file no longer hangs**: `ui.shell_menu_destroy` stops the system menu's worker before it lets its answer's gate go; the answer of a query still on its way read freed memory, and the close waited for ever.
+- **The file picker's side buttons**: the mouse's Back and Forward buttons go back and forward in its history, as Alt+Left and Alt+Right, with the pointer on the picker or on its path bar's dropdown, a field with the keyboard or not.
+
 ## [0.347.0] - 2026-11-23 20:52
 
 ### Added
@@ -4861,6 +4877,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.348.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.348.0
 [0.347.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.347.0
 [0.346.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.346.1
 [0.346.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.346.0
