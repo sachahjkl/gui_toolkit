@@ -33,6 +33,9 @@ handler :: proc "system" (info: ^win32.EXCEPTION_POINTERS) -> win32.LONG {
 	code := u32(info.ExceptionRecord.ExceptionCode)
 	// (below 0x8000_0000: informational codes, which the runner lets pass too)
 	if job == nil || code < 0x8000_0000 || code == MSVC_CXX_EXCEPTION { return win32.EXCEPTION_CONTINUE_SEARCH }
+	context = job.ctx
+	// (testing.fail_now: a stop the body asked for, its message said, its state whole: as end_body)
+	if job.t._fail_now_called { body_exit(job) }
 	job.code = code
 	address := info.ExceptionRecord.ExceptionAddress
 	m: win32.HMODULE
@@ -61,6 +64,8 @@ module_name :: proc(w: []u16) -> string {
 Job :: struct {
 	t:      ^testing.T,
 	body:   proc(t: ^testing.T),
+	ctx:    runtime.Context,   // the body's (the handler has none of its own)
+	first:  int,       // the first of t.cleanups that the body made
 	code:   u32,       // the exception that ended the body, 0 when it returned
 	module: [260]u16,  // where it was raised
 	offset: uintptr,
@@ -72,28 +77,50 @@ current: ^Job
 // Calls body(t) on a thread of its own and waits for it (unwatched.odin says why).
 run :: proc(t: ^testing.T, body: proc(t: ^testing.T), loc := #caller_location) { run_unwatched(t, body, loc) }
 
+// Ends the body here when this is its thread (unwatched.odin says why): its cleanups are done, the thread ends, and run
+// returns on the test's thread. Elsewhere it does nothing: the caller ends the test its own way.
+end_body :: proc(t: ^testing.T) {
+	if job := current; job != nil && job.t == t { body_exit(job) }
+}
+
+// The body ends as if it returned, but here: its deferred statements do not run (as with testing.fail_now).
+@(private)
+body_exit :: proc(job: ^Job) -> ! {
+	current = nil
+	body_cleanups(job)
+	// (what the thread's entry does after its procedure returns, which ExitThread skips)
+	runtime.run_thread_local_cleaners()
+	ExitThread(1)
+}
+
+// The body's own cleanups, last first, on its thread: what it made is this thread's.
+@(private)
+body_cleanups :: proc(job: ^Job) {
+	t := job.t
+	for i := len(t.cleanups) - 1; i >= job.first; i -= 1 {
+		c := t.cleanups[i]
+		context = c.ctx
+		c.procedure(c.user_data)
+	}
+	resize(&t.cleanups, job.first)
+}
+
 // The body on a thread of its own; its exception, when it ends by one, fails the test.
 @(private)
 run_unwatched :: proc(t: ^testing.T, body: proc(t: ^testing.T), loc: runtime.Source_Code_Location) {
-	job := Job{t = t, body = body}
+	job := Job{t = t, body = body, ctx = context, first = len(t.cleanups)}
 	th := thread.create_and_start_with_data(&job, proc(data: rawptr) {
-		current = (^Job)(data)
-		t := current.t
-		first := len(t.cleanups)
-		current.body(t)
+		job := (^Job)(data)
+		current = job
+		job.body(job.t)
 		current = nil
-		// (the body's own cleanups, here: what it made is this thread's)
-		for i := len(t.cleanups) - 1; i >= first; i -= 1 {
-			c := t.cleanups[i]
-			context = c.ctx
-			c.procedure(c.user_data)
-		}
-		resize(&t.cleanups, first)
+		body_cleanups(job)
 	}, init_context = context)
+	// (the thread ends in every case: the body returns, end_body or fail_now, an exception; so this join returns and
+	// the Thread is freed)
 	thread.join(th)
 	thread.destroy(th)
-	// (testing.fail_now ends the body with a trap too, after saying why)
-	if job.code != 0 && !t._fail_now_called {
+	if job.code != 0 {
 		module := module_name(job.module[:])
 		testing.expectf(t, false, "exception 0x%08X at %s+0x%X in %s", job.code, module, job.offset, loc.procedure, loc = loc)
 		fmt.eprintfln("unwatched: exception 0x%08X at %s+0x%X in %s", job.code, module, job.offset, loc.procedure)

@@ -17,7 +17,13 @@
 // What the body leaves to testing.cleanup is done on its thread when it returns, last first, as the runner does: a window,
 // a renderer or a testkit session made in the body ends on the thread that made it (a window answers only there). A body
 // ended by an exception leaves them to the runner.
+//
+// A failure the body asks for (testing.fail_now, a session's action that fails: end_body) ends the body there: its
+// cleanups are done on its thread, the thread ends, and run returns on the test's thread with the test failed. The
+// runner's own way to end a test on Windows (a time limit of 0) ends only the test's thread: the body's thread slept for
+// ever, and the Thread that run made leaked (src/md/infrastructure/test-unwatched.md).
 package unwatched
 
 // run(t, body): calls body(t) on a thread of its own and waits for it (unwatched_windows.odin); elsewhere directly
 // (unwatched_other.odin).
+// end_body(t): on the body's thread, ends the body there (unwatched_windows.odin); elsewhere it does nothing.

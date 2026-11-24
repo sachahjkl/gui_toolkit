@@ -74,3 +74,8 @@ a_window_test :: proc(t: ^testing.T) {
 
 What the body leaves to `testing.cleanup` is done on its thread when it returns: a window or a session made in the body
 ends on the thread that made it. Off Windows the body runs on the test's own thread.
+
+A failure in the body ends it there: `testing.fail_now`, or a session's action that fails. Its cleanups run on its
+thread, the thread ends, and `run` returns on the test's thread with the test failed. `unwatched.end_body(t)` does
+this for other code that stops a test: it ends the body when called on the body's thread, and does nothing elsewhere.
+Off Windows it does nothing.

@@ -418,7 +418,7 @@ view_register_raw :: proc(vs: ^Views, id: string, build: View_Build, type: typei
 // Whether `id` is registered.
 view_registered :: proc(vs: ^Views, id: string) -> bool { return id in vs.kinds }
 
-// Opens the view. One already open comes forward (a dialog goes on top). It opens in its last presentation (the
+// Opens the view. One already open comes forward: a dialog goes on top, a docked view's tab is shown and gets the focus. It opens in its last presentation (the
 // memory), else `first`, else its home. `data` must stay valid until the view is closed: the program owns it. The
 // owner is the State being built; outside a build, `owner` names it. An answer not taken from a former opening is
 // dropped.
@@ -808,6 +808,12 @@ view_apply :: proc(vs: ^Views, r: ^View_Record, e: View_Event) {
 	if .Keep_Focus in fx && r.owner != nil { r.focus_back = r.owner.focus_key }
 	if (.Show in fx || .Raise in fx) && next.state != .Opening && view_built_as(next.as) == .Internal {
 		view_raise(vs, r)
+		r.focus_in = true
+	}
+	// (a docked view opened again: its tab is shown and the focus goes into it at its next build, as a click on its tab
+	// and an internal window's raise do; the order of the tabs stays)
+	if .Raise in fx && next.state == .Shown && view_built_as(next.as) == .Panel {
+		view_tab_show(vs, r)
 		r.focus_in = true
 	}
 	if next.state == .Closed && was_internal && r.owner != nil && view_focus_inside(r.owner, r.iframe) {
