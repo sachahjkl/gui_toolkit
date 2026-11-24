@@ -5,6 +5,19 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.349.0] - 2026-11-24 06:17
+
+### Added
+- **`gt-file-picker` looks like the desktop**: it shows the Ember theme in the desktop's light or dark version, follows a
+change while it is open, and `--theme NAME[:light|dark|system]` lets a caller choose another look.
+- **The file picker's preview can be closed**: a button at the right of the path bar and Alt+P show or hide it, and each
+dialog's `remember_id` keeps the choice. A closed preview reads no file.
+
+### Fixed
+- **A card's thumbnail fills its card**: thumbnails are asked at the card's size (128, 256, 512 or 1024 pixels), so the
+large views of the file picker no longer show a small picture in a large card; a card that grows keeps its picture
+while the larger one comes. `thumb_cache_get` takes the card's size.
+
 ## [0.348.0] - 2026-11-24 05:25
 
 ### Added
@@ -4877,6 +4890,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.349.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.349.0
 [0.348.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.348.0
 [0.347.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.347.0
 [0.346.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.346.1
