@@ -12,8 +12,9 @@ import "../platform"
 //   * set_present_mode: Vsync (each frame waits for a refresh, `sync_interval` refreshes per frame) or Tearing (shown at
 //     once: on a variable refresh display (G-Sync, FreeSync) the refresh follows the frames, the app paces them itself).
 //     Tearing needs the system's support (tearing_supported); without it frames are presented with vsync.
-//   * frame_waitable: the swap chain's latency object, signaled when it can take the next frame (LOW_LATENCY: at most one
-//     frame queued). Wait on it at the start of a frame, before reading input (platform.wait_handle takes input meanwhile).
+//   * wait_frame_slot (api.odin): waits for the swap chain's latency object, signaled when it can take the next frame
+//     (LOW_LATENCY: at most one frame queued), taking the window's input meanwhile. Call it at the start of a frame, before
+//     reading input. Every wait goes through the renderer: it keeps the object's count exact (latency_presented).
 //   * After each present the swap chain's frame statistics say which frame was on screen at which vblank: each frame
 //     comes back once as a Displayed_Frame (take_displayed) with the time it reached the screen, the input it was built
 //     from (set_frame_input / mark_input) and, in a continuous run of frames, the refreshes it came late for (`missed`).
@@ -95,8 +96,8 @@ Present_State :: struct {
 	presents, displayed, missed: u64,      // totals
 	probe_tick:    time.Tick,
 	max_latency:   int,                    // the swap chain's MaximumFrameLatency (0: not set yet = 1)
-	latency_debt:  int,                    // counts the latency object holds beyond max_latency since it was lowered (see latency_lowered)
-	slot_unused:   bool,                   // the last frame presented nothing (a region of nothing): the next wait does not take another count
+	latency_debt:  int,                    // counts the latency object holds beyond what the frames in flight justify (latency_presented, latency_lowered)
+	slot_taken:    bool,                   // a wait took a count of the latency object and no present used it (a frame that presented nothing keeps it)
 }
 
 // Vsync (default) or Tearing (see the package comment). Tearing without system support stays Vsync.
@@ -116,14 +117,6 @@ set_sync_interval :: proc(r: ^Renderer, n: int) { r.present.interval = u32(clamp
 // Refreshes each frame is expected to stay on screen when the app times its frames itself (e.g. 1.33 for 45 frames per
 // second on a 60 Hz display): a frame that stays longer missed refreshes. 0 = the sync interval.
 set_expected_refreshes :: proc(r: ^Renderer, refreshes: f64) { r.present.expected = max(refreshes, 0) }
-
-// The swap chain's frame latency object (nil without LOW_LATENCY or offscreen). Signaled when a frame can be queued.
-frame_waitable :: proc(r: ^Renderer) -> rawptr {
-	when USE_WGPU { return wgpu_waitable(r) } else {
-		latency_drain(&r.present, r.latency_handle)
-		return rawptr(r.latency_handle)
-	}
-}
 
 // The earliest input the next frame is built from (its event time): Displayed_Frame.input, for input latency.
 set_frame_input :: proc(r: ^Renderer, t: time.Tick) { r.present.input = t }
@@ -196,7 +189,7 @@ present_reset :: proc(r: ^Renderer) {
 	p.sync_count, p.sync_tick = 0, {}
 	p.stats_ok, p.stats_fails = false, 0
 	p.max_latency, p.latency_debt = 1, 0   // (create_swapchain sets 1)
-	p.slot_unused = false
+	p.slot_taken = false
 }
 
 // The latency object is a semaphore the system raises by the difference when MaximumFrameLatency is raised and does NOT take
@@ -210,7 +203,17 @@ latency_lowered :: proc(p: ^Present_State, to: int) {
 	p.max_latency = to
 }
 
-// (latency_drain(p, handle): the surplus taken from the latency object, present_windows.odin, present_other.odin)
+// A frame was presented. Without a count taken before it, the frame releases a count at its retirement that no wait took:
+// it stays in the object for good, and each one lets the swap chain queue one frame deeper (a resize spam of frames shown at
+// once left the window half a second behind for the rest of the session: src/md/infrastructure/frame-latency-object.md).
+@(private)
+latency_presented :: proc(p: ^Present_State) {
+	if !p.slot_taken { p.latency_debt += 1 }
+	p.slot_taken = false
+}
+
+// (latency_drain(p, handle): the surplus taken from the latency object; latency_take(p, handle, ...): one count taken for the
+// next present, the surplus first. present_windows.odin, present_other.odin)
 
 @(private)
 present_destroy :: proc(r: ^Renderer) { delete(r.present.out); delete(r.present.probe.samples) }
@@ -230,7 +233,7 @@ present_frame :: proc(r: ^Renderer, vsync: bool) -> win.HRESULT {
 	profile_present_end(r, ps)
 	now := time.tick_now()
 	if hr_failed(hr) { return hr }
-	p.slot_unused = false
+	if r.latency_handle != nil { latency_presented(p) } else { p.slot_taken = false }
 	p.presents += 1
 	id: u32
 	if hr_ok(r.swapchain->GetLastPresentCount(&id)) {

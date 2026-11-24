@@ -81,7 +81,7 @@ same size are told apart by it, where a window's size cannot. "" before then, an
 **An offscreen window's machine** (`virtual.odin`) — `virtual_screen_set`, `virtual_screen`: the screen `monitor_size` and `display_info` answer for it; its input comes through `inject_event`, its cursor is `w.cursor`, its clipboard the process's store: nothing of the machine it runs on is read or written.
 
 **Loop** — `poll_events` (re-entrancy safe; drops what the last call returned, keeps what came since), `wait_event`,
-`wait_handle` (waits on a render frame-latency handle while taking input), `take_paint_request`, `pump_stats`, `wake`,
+`wait_handle` (waits on a handle while taking input; `render.wait_frame_slot` uses it for the frame-latency object), `take_paint_request`, `pump_stats`, `wake`,
 `wake_handle` / `wake_signal` (a thread-safe wake handle for offscreen windows), `inject_event`.
 
 **Placement** — `outer_rect`, `client_origin`, `move_window`, `get_placement`, `set_placement`. `positions_known(w)`:

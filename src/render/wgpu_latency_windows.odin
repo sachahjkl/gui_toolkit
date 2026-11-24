@@ -31,13 +31,6 @@ wgpu_latency_arm :: proc(r: ^Renderer, ns: i64) {
 	win.SetWaitableTimerEx(l.timer, &due, 0, nil, nil, nil, 0)
 }
 
-// Waits for the frame latency object, `timeout_ms` at most; false when it did not come.
-@(private)
-wgpu_latency_wait :: proc(r: ^Renderer, timeout_ms: int) -> bool {
-	l := &r.wg.latency
-	return l.timer == nil || win.WaitForSingleObject(l.timer, u32(max(timeout_ms, 0))) == win.WAIT_OBJECT_0
-}
-
 // The compositor's timing: the last vblank (QPC, refresh counter) and the period, into the present state; its refresh
 // counter, and whether it was read. DWM does not say which frames of ours it showed (`counted` false): the present
 // estimates it.

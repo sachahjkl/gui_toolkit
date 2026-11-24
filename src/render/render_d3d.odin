@@ -110,12 +110,14 @@ swapchain_latency :: proc(r: ^Renderer, frames: int) {
 			r.present.max_latency = clamp(frames, 1, FRAME_LATENCY_MAX)
 			r.latency_handle = sc2->GetFrameLatencyWaitableObject()
 			sc2->Release()
-			// One of the object's counts is taken for good (latency_drain, as soon as the object has it to give): with it,
-			// a wait returns while the last frame still waits for its refresh, the next one queues behind it and the
-			// screen shows input a frame later. Without it, a frame starts when the last one is on screen. Measured in
-			// opencode native (RENDER_PROBE, a fast hand over a list, six runs each): 48 ms from input to screen with
-			// the count, 30 without. The price: a frame that takes longer than a refresh waits for the next one.
-			if r.latency_handle != nil { r.present.latency_debt = 1 }
+			// A new object owes nothing and holds no count of ours. Its first present usually comes with no wait (nothing
+			// shown yet to wait for): latency_presented then owes the count that present leaves, and the drain takes it for
+			// good. With it, a wait returned while the last frame still waited for its refresh, the next one queued behind
+			// it and the screen showed input a frame later. Measured in opencode native (RENDER_PROBE, a fast hand over a
+			// list, six runs each): 48 ms from input to screen with the count, 30 without. The price: a frame that takes
+			// longer than a refresh waits for the next one. (A fixed debt of one here, as before, was one too many for a
+			// chain made again whose first frame waits: that wait timed out once.)
+			r.present.latency_debt, r.present.slot_taken = 0, false
 		}
 	}
 }
@@ -791,9 +793,7 @@ d3d_destroy_texture :: proc(r: ^Renderer, t: Texture) {
 // Blocks until the swap chain can take a new frame (returns at once when nothing is queued). Call it BEFORE
 // polling input and building the UI: then the frame you build is the next one shown.
 d3d_wait_for_frame :: proc(r: ^Renderer, timeout_ms := FRAME_WAIT_TIMEOUT_MS) -> bool {
-	if r.latency_handle == nil || r.present.slot_unused { return true }
-	latency_drain(&r.present, r.latency_handle)
-	return win.WaitForSingleObjectEx(r.latency_handle, u32(max(timeout_ms, 0)), true) == win.WAIT_OBJECT_0
+	return latency_take(&r.present, r.latency_handle, timeout_ms)
 }
 
 // Clears the frame to `clear`: linear, premultiplied (the same thing for an opaque color), whatever the blend space.
@@ -897,7 +897,7 @@ d3d_frame_end :: proc(r: ^Renderer, vsync := true) {
 	// a region of nothing: the window keeps what it shows, and the slot waited for stays free. (Not a chain just made: it has
 	// to be presented before the visual shows it; the kept target was copied whole into it.)
 	if r.damage.skip_present && r.swap_retired == nil {
-		r.present.slot_unused = true
+		// (slot_taken stays: the count waited for is the next present's)
 		if is_device_loss(r.device->GetDeviceRemovedReason()) { r.lost = true }
 		return
 	}
