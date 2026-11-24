@@ -5,6 +5,12 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.355.0] - 2026-11-24 11:53
+
+### Fixed
+- **A failure in an `unwatched.run` body ends the test at once on Windows**: a session's action that fails, or `testing.fail_now`, ends the body there, its cleanups run on its thread, and `run` returns. Before, the test blocked until its time limit and leaked the body's thread. `unwatched.end_body(t)` ends the body for other code that stops a test.
+- **`ui.view_open` on a docked view that is already open shows its tab**: the view becomes the tab shown in its stack, a minimised zone is restored, and the focus goes to its first stop. The order of the tabs stays.
+
 ## [0.354.0] - 2026-11-24 11:28
 
 ### Added
@@ -4950,6 +4956,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.355.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.355.0
 [0.354.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.354.0
 [0.353.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.353.0
 [0.352.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.352.0
