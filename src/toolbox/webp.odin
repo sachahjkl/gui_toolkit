@@ -5,8 +5,8 @@ package tk_toolbox
 // fetched once and pinned (webp_encoder_windows.odin).
 
 import "core:fmt"
-import "core:os"
 import "core:strings"
+import tk_process "../process"
 
 // With -preset text: the small text of a screenshot stays as sharp as in the PNG.
 WEBP_QUALITY :: 90
@@ -19,13 +19,13 @@ webp_encode :: proc(encoder, src, dst: string, width := 0, quality := WEBP_QUALI
 	append(&command, encoder, "-preset", "text", "-q", fmt.tprintf("%d", quality), "-metadata", "none", "-quiet")
 	if width > 0 { append(&command, "-resize", fmt.tprintf("%d", width), "0") }
 	append(&command, src, "-o", dst)
-	state, _, stderr, err := os.process_exec({command = command[:]}, context.temp_allocator)
-	if err != nil {
+	r := tk_process.run(command[:], {}, context.temp_allocator)
+	if !r.started {
 		fmt.eprintfln("webp: %s did not start (libwebp's encoder: nix libwebp, Debian webp)", encoder)
 		return false
 	}
-	if !state.exited || state.exit_code != 0 {
-		fmt.eprintfln("webp: %s: %s", src, strings.trim_space(string(stderr)))
+	if !r.ok {
+		fmt.eprintfln("webp: %s: %s", src, strings.trim_space(r.stderr))
 		return false
 	}
 	return true

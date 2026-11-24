@@ -1,0 +1,3 @@
+type: Added
+
+**`process.start`, `process.run`, `process.pipe`**: a child started under one lock of the process, held around the spawn only, never around the wait. `run(command, Run_Options{dir, env, input})` waits for the child and gives `Ran{started, ok, code, stdout, stderr}`, its output and error read at once and its input written on a thread. A pipe's ends are inheritable on Windows only while their own child starts. The toolkit's own children (the desktop's tools, the thumbnailers, NixOS's patch, the file picker's portal, the plugins, the film's ffmpeg, `setup.launch`, the tools) start through them.

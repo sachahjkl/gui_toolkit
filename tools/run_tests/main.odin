@@ -176,6 +176,7 @@ STEPS := []Step{
 	{name = "commands", one = true, oses = EVERYWHERE, text = true},
 	{name = "keymap", one = true, oses = EVERYWHERE, text = true},   // (the person's keys: one language for the process)
 	{name = "status", one = true, wgpu = .Ci1},
+	{name = "status_line", one = true, oses = EVERYWHERE, text = true},   // (ui.Status_Line on the session's clock)
 	{name = "states", one = true, wgpu = .Ci1, oses = EVERYWHERE, text = true},
 	{name = "stepper", one = true, oses = EVERYWHERE, text = true},
 	{name = "chrome", wgpu = .Ci1},

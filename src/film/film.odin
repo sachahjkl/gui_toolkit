@@ -15,6 +15,7 @@ import "core:os"
 import "core:strings"
 import "core:thread"
 import "../platform"
+import "../process"
 import "../render"
 import "../ui"
 
@@ -107,7 +108,7 @@ start :: proc(r: ^Recorder, app: App, o: Options) -> string {
 	ui.set_clock(app.state, &r.clock)
 	encoder := r.o.encoder
 	if encoder == .Auto { encoder = nvenc_works() ? .Nvenc : .X264 }
-	read, write, err := os.pipe()
+	read, write, err := process.pipe()
 	if err != nil { return fmt.tprintf("no pipe: %v", err) }
 	size := fmt.tprintf("%dx%d", r.o.size.x, r.o.size.y)
 	fps := fmt.tprintf("%d", r.o.fps)
@@ -123,7 +124,7 @@ start :: proc(r: ^Recorder, app: App, o: Options) -> string {
 		append(&cmd, "-c:v", "libx264", "-preset", "veryfast", "-crf", q, "-pix_fmt", "yuv420p")
 	}
 	append(&cmd, "-movflags", "+faststart", r.o.out)
-	p, perr := os.process_start({command = cmd[:], stdin = read, stderr = os.stderr})
+	p, perr := process.start({command = cmd[:], stdin = read, stderr = os.stderr})
 	os.close(read)
 	if perr != nil {
 		os.close(write)
@@ -237,10 +238,7 @@ blend :: proc(px, from: []u8, k: f32) {
 
 // Whether ffmpeg encodes with NVENC here: a short encode of nothing (an NVIDIA card and its driver; ffmpeg built with it).
 nvenc_works :: proc() -> bool {
-	state, out, errs, err := os.process_exec({command = {"ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=s=256x256:d=0.1",
-		"-c:v", "h264_nvenc", "-f", "null", "-"}}, context.temp_allocator)
-	_, _ = out, errs
-	return err == nil && state.exit_code == 0
+	return process.run({"ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=s=256x256:d=0.1", "-c:v", "h264_nvenc", "-f", "null", "-"}, {}, context.temp_allocator).ok
 }
 
 ////////////////////////////////

@@ -150,11 +150,11 @@ path_read :: proc(c: ^Path_Completion, dir: string) {
 		j := (^Path_Read)(data)
 		entries, err := fsx.read_folder(j.read_at, context.temp_allocator)
 		if err != nil { j.failed = true; return }
-		// (folders first: the next Tab goes on inside one; each group by name, case folded)
+		// (folders first: the next Tab goes on inside one; each group by name, as the file picker orders them)
 		slice.sort_by(entries, proc(a, b: fsx.Folder_Entry) -> bool {
 			fa, fb := a.kind == .Directory, b.kind == .Directory
 			if fa != fb { return fa }
-			return ascii.compare_fold(a.name, b.name) < 0
+			return ascii.compare_natural(a.name, b.name) < 0
 		})
 		for e in entries {
 			append(&j.names, strings.clone(e.name))

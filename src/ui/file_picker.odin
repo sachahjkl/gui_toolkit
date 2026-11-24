@@ -1201,7 +1201,7 @@ file_picker_bar_children :: proc(fp: ^File_Picker, entries: []File_Entry) -> []P
 	}
 	slice.sort_by(out[:], proc(a, b: Path_Bar_Entry) -> bool {
 		if a.branch != b.branch { return a.branch }
-		return ascii.compare_fold(a.name, b.name) < 0
+		return ascii.compare_natural(a.name, b.name) < 0
 	})
 	return out[:]
 }

@@ -18,6 +18,7 @@ package tk_desktop
 import "core:os"
 import "core:strings"
 import "../fsx"
+import "../process"
 
 NIX_RUNTIME_NAME :: "nix-runtime"
 
@@ -60,10 +61,10 @@ nixos_adapt :: proc(id: Identity, dir, exe_name: string, files: ^[dynamic]string
 	patchelf := fsx.path_join(runtime, "bin/patchelf")
 	// the runtime's folder first: its libc must be the one of its loader. Then the program's own search path (the release's
 	// is $ORIGIN), unless an earlier install put the runtime there already.
-	state, out, _, perr := os.process_exec(os.Process_Desc{command = {patchelf, "--print-rpath", patched}}, context.temp_allocator)
+	said := process.run({patchelf, "--print-rpath", patched}, {}, context.temp_allocator)
 	rpath := lib
-	if perr == nil && state.success {
-		if old := strings.trim_space(string(out)); old != "" {
+	if said.ok {
+		if old := strings.trim_space(said.stdout); old != "" {
 			rpath = strings.has_prefix(old, lib) ? old : strings.concatenate({lib, ":", old}, context.temp_allocator)
 		}
 	}
@@ -76,9 +77,9 @@ nixos_adapt :: proc(id: Identity, dir, exe_name: string, files: ^[dynamic]string
 // Runs `command` and waits; a failure carries the end of what it wrote on stderr.
 @(private = "file")
 run_checked :: proc(command: []string) -> Result {
-	state, _, stderr, err := os.process_exec(os.Process_Desc{command = command}, context.temp_allocator)
-	if err == nil && state.success { return {} }
-	said := strings.trim_space(string(stderr))
+	ran := process.run(command, {}, context.temp_allocator)
+	if ran.ok { return {} }
+	said := strings.trim_space(ran.stderr)
 	if len(said) > 400 { said = said[len(said) - 400:] }
 	return {.System, strings.concatenate({"NixOS: ", command[0], " failed: ", said}, context.temp_allocator)}
 }

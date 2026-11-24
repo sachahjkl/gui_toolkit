@@ -60,6 +60,42 @@ compare_fold :: proc "contextless" (a, b: string) -> int {
 	return 0
 }
 
+// Orders two names as a person reads them: a run of digits compares by its value ("file 2" before "file 10"), the
+// other bytes as compare_fold does (ASCII case ignored). Two names equal so far: the run with fewer leading zeros first
+// ("a1" before "a01"), then compare_fold. 0 only when the bytes are the same. A run is never made a number: a run of any
+// length compares, without its leading zeros by its length, then digit by digit.
+compare_natural :: proc "contextless" (a, b: string) -> int {
+	is_digit :: #force_inline proc "contextless" (c: u8) -> bool { return c >= '0' && c <= '9' }
+	i, j := 0, 0
+	zeros := 0   // (the first run whose leading zeros differ: decides only when all else is the same)
+	for i < len(a) && j < len(b) {
+		x, y := a[i], b[j]
+		if is_digit(x) && is_digit(y) {
+			ia, ib := i, j
+			for ia < len(a) && a[ia] == '0' { ia += 1 }
+			for ib < len(b) && b[ib] == '0' { ib += 1 }
+			ea, eb := ia, ib
+			for ea < len(a) && is_digit(a[ea]) { ea += 1 }
+			for eb < len(b) && is_digit(b[eb]) { eb += 1 }
+			if ea - ia != eb - ib { return (ea - ia) - (eb - ib) }
+			for k in 0 ..< ea - ia {
+				if a[ia + k] != b[ib + k] { return int(a[ia + k]) - int(b[ib + k]) }
+			}
+			if zeros == 0 { zeros = (ia - i) - (ib - j) }
+			i, j = ea, eb
+			continue
+		}
+		lx, ly := lower_byte(x), lower_byte(y)
+		if lx != ly { return int(lx) - int(ly) }
+		i += 1
+		j += 1
+	}
+	if i < len(a) { return 1 }
+	if j < len(b) { return -1 }
+	if zeros != 0 { return zeros }
+	return compare_fold(a, b)
+}
+
 // What the vector paths read at once: one SSE2 or NEON register (x86-64's baseline: no other is assumed).
 @(private) LANES :: 16
 @(private) Bytes :: #simd[LANES]u8

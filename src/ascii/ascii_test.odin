@@ -18,6 +18,44 @@ ascii_case_leaves_other_letters :: proc(t: ^testing.T) {
 	testing.expect(t, !contains_fold("Dar\u212A", "dark") && !contains_fold("da", "dark"))
 }
 
+// compare_natural: digit runs by their value, the case ignored, fewer leading zeros first, a prefix first, 0 only for
+// the same bytes, and runs longer than any integer.
+@(test)
+compare_natural_orders_names :: proc(t: ^testing.T) {
+	testing.expect(t, compare_natural("file 2", "file 10") < 0)
+	testing.expect(t, compare_natural("file 10", "file 2") > 0)
+	testing.expect(t, compare_natural("file 10", "file 9b") > 0)
+	testing.expect(t, compare_natural("a1", "a01") < 0)
+	testing.expect(t, compare_natural("a01", "a1") > 0)
+	testing.expect(t, compare_natural("a01b", "a1c") < 0)    // (the letters decide before the zeros)
+	testing.expect(t, compare_natural("a0", "a00") < 0)
+	testing.expect(t, compare_natural("Photo 3", "photo 12") < 0)
+	testing.expect(t, compare_natural("Chrome", "chrome") < 0) // (the same but for case: as compare_fold)
+	testing.expect(t, compare_natural("chrome", "Chrome") > 0)
+	testing.expect_value(t, compare_natural("v1.10.2", "v1.10.2"), 0)
+	testing.expect(t, compare_natural("v1.9.0", "v1.10.0") < 0)
+	testing.expect_value(t, compare_natural("", ""), 0)
+	testing.expect(t, compare_natural("", "a") < 0)
+	testing.expect(t, compare_natural("1", "") > 0)
+	testing.expect(t, compare_natural("file", "file 1") < 0)
+	testing.expect(t, compare_natural("9", "a") < 0)            // (digits before letters, as their bytes)
+	long_a := strings.concatenate({"x", strings.repeat("9", 100, context.temp_allocator)}, context.temp_allocator)
+	long_b := strings.concatenate({"x1", strings.repeat("0", 100, context.temp_allocator)}, context.temp_allocator)
+	testing.expect(t, compare_natural(long_a, long_b) < 0)     // (100 nines before 1 and 100 zeros: no overflow)
+	testing.expect(t, compare_natural(long_b, long_a) > 0)
+	long_c := strings.concatenate({long_a, "1"}, context.temp_allocator)
+	testing.expect(t, compare_natural(long_a, long_c) < 0)
+
+	names := []string{"file 10", "File 1", "file 2", "file 01", "file 1", "file", "a10", "A9"}
+	sorted := []string{"A9", "a10", "file", "File 1", "file 1", "file 01", "file 2", "file 10"}
+	for i in 0 ..< len(names) {
+		for k in i + 1 ..< len(names) {
+			if compare_natural(names[k], names[i]) < 0 { names[i], names[k] = names[k], names[i] }
+		}
+	}
+	for n, i in names { testing.expect_value(t, n, sorted[i]) }
+}
+
 // compare_fold: the case ignored first, then the bytes; a prefix comes first.
 @(test)
 compare_fold_orders_names :: proc(t: ^testing.T) {

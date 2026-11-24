@@ -10,6 +10,8 @@ package tk_host
 //	defer host.program_end(&p)
 //	...
 //	crash_bar.init(&app.crash_bar, p.last_crash)   // "" leaves the bar empty
+//	...
+//	host.restart_after_exit(&p)   // "Restart now" after an update: program_end starts the program again
 //
 // It reads and writes the report folder on the calling thread: call it in main, before the interface's loop.
 
@@ -19,6 +21,8 @@ import "core:path/filepath"
 import "core:strings"
 import crash "../crash"
 import tk_log "../log"
+import process "../process"
+import setup "../setup"
 
 Program_Start_Options :: struct {
 	name:    string,   // the technical name: the log's file and the reports' "program" line
@@ -32,6 +36,8 @@ Program_Start_Options :: struct {
 	// a process that is not the program's session (a torn-off window's own process, whose end is its tab's): no session
 	// mark, and no last report read (the main process says it)
 	no_session: bool,
+	// what starts the program again at program_end after restart_after_exit (nil: setup.launch); a test's records it
+	launch: proc(exe: string, args: []string) -> bool,
 }
 
 // What program_start made: the log, as the caller's context.logger, and the report of the last session when it did not
@@ -40,11 +46,19 @@ Program_Start :: struct {
 	logger:     runtime.Logger,
 	last_crash: string,   // owned ("": none)
 	session:    bool,     // a session began: program_end ends it
+	// the running executable, read at the start: after an update the running file can be <exe>.old, and the new
+	// program is at the path the program started from (owned; "": the system could not say)
+	executable: string,
+	restart:    bool,       // restart_after_exit was asked: program_end starts `executable` again
+	restart_args: []string, // owned, each string too
+	launch:     proc(exe: string, args: []string) -> bool,
 	allocator:  runtime.Allocator,
 }
 
 program_start :: proc(o: Program_Start_Options, allocator := context.allocator) -> (p: Program_Start) {
 	p.allocator = allocator
+	p.executable = strings.clone(process.executable_path(), allocator)
+	p.launch = o.launch
 	log_dir, report_dir: string
 	if o.dir != "" {
 		log_dir, _ = filepath.join({o.dir, "logs"}, context.temp_allocator)
@@ -66,11 +80,39 @@ program_start :: proc(o: Program_Start_Options, allocator := context.allocator) 
 	return
 }
 
-// The clean end: the session's mark goes (the next start says no crash), then the log is written out and closed. Last,
-// on every way out of the program that is not a crash. The caller's context.logger is no longer valid after it.
+// The clean end: the session's mark goes (the next start says no crash), then the program starts again when
+// restart_after_exit asked it, then the log is written out and closed. Last, on every way out of the program that is
+// not a crash, after the program let go of its single instance and after prefs_page.install_launch: a program started
+// earlier finds this one still running and hands itself over to it. The caller's context.logger is no longer valid
+// after it.
 program_end :: proc(p: ^Program_Start) {
 	if p.session { crash.end_session() }
-	tk_log.close(p.logger)
+	if p.restart {
+		launch := p.launch != nil ? p.launch : proc(exe: string, args: []string) -> bool { return setup.launch(exe, args) }
+		if p.executable == "" || !launch(p.executable, p.restart_args) { log.errorf("the program does not start again: %q", p.executable) }
+	}
+	if p.logger.data != nil { tk_log.close(p.logger) }
 	delete(p.last_crash, p.allocator)
+	delete(p.executable, p.allocator)
+	restart_args_free(p)
 	p^ = {}
+}
+
+// The program starts again once it ended: program_end starts the executable this process started from, with `args`
+// (copied; nil: none), once the session ended. The program then ends itself as it does on a quit. Asked again, the last
+// args win. "Restart now" after an update calls it (prefs_page's Page_Options.restart and update_badge are the
+// program's procedure: it calls this, then quits).
+restart_after_exit :: proc(p: ^Program_Start, args: []string = nil) {
+	restart_args_free(p)
+	p.restart = true
+	if len(args) == 0 { return }
+	p.restart_args = make([]string, len(args), p.allocator)
+	for a, i in args { p.restart_args[i] = strings.clone(a, p.allocator) }
+}
+
+@(private = "file")
+restart_args_free :: proc(p: ^Program_Start) {
+	for a in p.restart_args { delete(a, p.allocator) }
+	delete(p.restart_args, p.allocator)
+	p.restart_args = nil
 }
