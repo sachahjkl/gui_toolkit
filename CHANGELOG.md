@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.352.0] - 2026-11-24 10:33
+
+### Added
+- **`desktop.handler_icon` and `Handler.icon`**: an "Open with" application's icon, from its desktop entry on Linux and from the shell on Windows.
+- **`ui.Open_With`: the "Open with" submenu** (`open_with_ask`, `open_with_items`, `open_with_chosen`, `open_with_run`, `open_with_destroy`): the applications that open a file, with their icons, the default first, read on a chore; the file opened with the one chosen. The file picker's row menu of a local file has it.
+- **The file picker shows a folder's changes with no F5**: a file added or removed in the folder shown appears or goes, the selection kept. A source follows the folder with `File_Source.watch` and says a change with `file_reply_changed`; the computer's source does it with `fsx.Watch`.
+- **`fsx.Watch`: folders followed** (`watch_open`, `watch_set`, `watch_wait`, `watch_stop`, `watch_close`): a thread waits until a folder of the set changes and gets their paths, close changes told as one (`WATCH_QUIET_MS`, `WATCH_MAX_MS`). inotify on Linux, change notifications on Windows.
+
 ## [0.351.0] - 2026-11-24 10:00
 
 ### Added
@@ -4921,6 +4929,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.352.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.352.0
 [0.351.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.351.0
 [0.350.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.350.1
 [0.350.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.350.0
