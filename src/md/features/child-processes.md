@@ -56,7 +56,9 @@ On Linux `os.pipe` sets close-on-exec, and the child gets only what is put in it
 
 ## The test that breaks it
 
-`src/process/start_test.odin`: twelve threads run six children each at once, the test program itself started again.
+`tests/process_start`: twelve threads run six children each at once, the test program itself started again. A
+package of tests/, not a test file of `src/process`: its `@(init)` (the child's mode) would run in every program that
+imports `gt:process`. `tests/globals` refuses an `@(init)` in a test file of `src`.
 Each child writes its own argument and input on its standard output and error and exits with its own code. Every
 result must be its own child's, no memory is left (a tracking allocator per thread), and on Linux no descriptor is
 left open. A second test runs a child that waits on another thread, and a quick child must start and end meanwhile.

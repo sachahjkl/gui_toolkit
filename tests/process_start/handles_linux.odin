@@ -1,5 +1,5 @@
 #+build linux
-package tk_process
+package process_start_test
 
 import "core:os"
 

@@ -243,3 +243,42 @@ every_global_is_listed_with_its_class :: proc(t: ^testing.T) {
 	}
 	fmt.println(strings.to_string(out))
 }
+
+// A test file of src that runs code at a program's start or end: Odin builds a package's _test files into every program
+// that imports it, so an @(init) there ran in each of them (gt:process's child mode did, until Wren's lint found it). A
+// test that needs one is a package of tests/.
+@(test)
+no_test_file_of_src_runs_at_start_or_end :: proc(t: ^testing.T) {
+	arena: vmem.Arena
+	_ = vmem.arena_init_growing(&arena)
+	defer vmem.arena_destroy(&arena)
+	context.allocator = vmem.arena_allocator(&arena)
+	files := 0
+	test_files_in(t, ROOT + "/src", &files)
+	testing.expect(t, files > 0, "the test files of src are found next to this file")
+}
+
+@(private = "file")
+test_files_in :: proc(t: ^testing.T, dir: string, files: ^int) {
+	entries, err := os.read_all_directory_by_path(dir, context.allocator)
+	if err != nil { return }
+	for e in entries {
+		if e.type == .Directory { test_files_in(t, e.fullpath, files); continue }
+		if !strings.has_suffix(e.name, "_test.odin") { continue }
+		data, rerr := os.read_entire_file(e.fullpath, context.allocator)
+		if rerr != nil { continue }
+		files^ += 1
+		file := ast.File{src = string(data), fullpath = e.fullpath}
+		p := parser.default_parser({.Optional_Semicolons})
+		p.err = proc(pos: tokenizer.Pos, format: string, args: ..any) {}
+		p.warn = proc(pos: tokenizer.Pos, format: string, args: ..any) {}
+		if !parser.parse_file(&p, &file) { continue }
+		for decl in file.decls {
+			d, is_decl := decl.derived_stmt.(^ast.Value_Decl)
+			if !is_decl { continue }
+			for word in ([]string{"init", "fini"}) {
+				testing.expectf(t, !has_attribute(d, word), "%s: an @(%s) in a test file of src runs in every program that imports its package: move the test to a package of tests/", e.fullpath, word)
+			}
+		}
+	}
+}

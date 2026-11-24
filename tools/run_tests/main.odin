@@ -141,6 +141,7 @@ STEPS := []Step{
 	{name = "i18n", oses = EVERYWHERE, one = true},   // (the language in use is one for the process)
 	{name = "ime", oses = EVERYWHERE},
 	{name = "instance", oses = EVERYWHERE},   // (the launch message's encoding is every system's)
+	{name = "process_start", oses = EVERYWHERE},   // (gt:process's children: this test program started again)
 	{name = "hotkey", oses = EVERYWHERE},
 	{name = "overlay", oses = EVERYWHERE},   // (the pure parts: no window opens)
 	{name = "notify", one = true, oses = EVERYWHERE},   // (Linux: a bus and a notification server of its own)

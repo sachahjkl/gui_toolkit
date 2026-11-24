@@ -1,8 +1,9 @@
-package tk_process
-
-// start and run: children started from many threads at once, each with its own input, output, error and exit code.
-// The children are this test program, started again with CHILD_ENV set: its @(init) acts and ends before the test
-// runner starts.
+// gt:process's start and run: children started from many threads at once, each with its own input, output, error and
+// exit code. The children are this test program, started again with CHILD_ENV set: its @(init) acts and ends before the
+// test runner starts. (A test package of its own, not src/process: Odin builds a package's _test files into every
+// program that imports it, and this @(init) would then run at each program's start.)
+//   odin run tools/run_tests -- process_start
+package process_start_test
 
 import "base:runtime"
 import "core:fmt"
@@ -14,6 +15,7 @@ import "core:sync"
 import "core:testing"
 import "core:thread"
 import "core:time"
+import "gt:process"
 
 @(private = "file") CHILD_ENV :: "GT_PROCESS_TEST_CHILD"
 @(private = "file") THREADS :: 12
@@ -61,7 +63,7 @@ child_env :: proc(mode: string) -> []string {
 children_run_from_many_threads_at_once :: proc(t: ^testing.T) {
 	testing.set_fail_timeout(t, BOUND)
 	Shared :: struct { exe: string, env: []string, wrong: int, leaked: int, said: string }
-	sh := Shared{exe = executable_path(), env = child_env("echo")}
+	sh := Shared{exe = process.executable_path(), env = child_env("echo")}
 	if !testing.expect(t, sh.exe != "", "the test program's path") { return }
 	handles := open_handles()
 
@@ -76,13 +78,13 @@ children_run_from_many_threads_at_once :: proc(t: ^testing.T) {
 				n := j.index * RUNS + k
 				arg := fmt.tprintf("%d", n)
 				input := k % 2 == 0 ? fmt.tprintf("input %d", n) : ""
-				r := run({j.sh.exe, arg}, {env = j.sh.env, input = input})
+				r := process.run({j.sh.exe, arg}, {env = j.sh.env, input = input})
 				want_out := fmt.tprintf("out:%s:%s", arg, input)
 				want_err := fmt.tprintf("err:%s", arg)
 				if !r.started || r.stdout != want_out || r.stderr != want_err || r.code != n % 5 || r.ok != (n % 5 == 0) {
 					sync.atomic_add(&j.sh.wrong, 1)
 				}
-				ran_destroy(&r)
+				process.ran_destroy(&r)
 				free_all(context.temp_allocator)
 			}
 			if len(tracker.allocation_map) > 0 { sync.atomic_add(&j.sh.leaked, 1) }
@@ -107,16 +109,16 @@ a_running_child_holds_up_no_start :: proc(t: ^testing.T) {
 	if !testing.expect(t, derr == nil, "a temporary folder") { return }
 	defer os.remove_all(dir)
 	flag := fmt.tprintf("%s/go", dir)
-	exe := executable_path()
+	exe := process.executable_path()
 
-	Long :: struct { exe: string, env: []string, r: Ran }
+	Long :: struct { exe: string, env: []string, r: process.Ran }
 	long := Long{exe = exe, env = child_env(fmt.tprintf("wait:%s", flag))}
 	th := thread.create_and_start_with_poly_data(&long, proc(l: ^Long) {
-		l.r = run({l.exe}, {env = l.env}, context.temp_allocator)
+		l.r = process.run({l.exe}, {env = l.env}, context.temp_allocator)
 	})
 	if !testing.expect(t, th != nil, "a thread") { return }
 	// (the long child runs, waiting for the flag; a quick one starts and ends meanwhile)
-	quick := run({exe, "10"}, {env = child_env("echo"), input = "x"}, context.temp_allocator)
+	quick := process.run({exe, "10"}, {env = child_env("echo"), input = "x"}, context.temp_allocator)
 	testing.expect_value(t, quick.stdout, "out:10:x")
 	testing.expect_value(t, quick.code, 0)
 	testing.expect(t, quick.ok)
@@ -129,10 +131,10 @@ a_running_child_holds_up_no_start :: proc(t: ^testing.T) {
 // A command that does not start: no Ran.ok, code -1, and why.
 @(test)
 a_command_that_does_not_start_says_why :: proc(t: ^testing.T) {
-	r := run({"/no/such/program-gt"}, {}, context.temp_allocator)
+	r := process.run({"/no/such/program-gt"}, {}, context.temp_allocator)
 	testing.expect(t, !r.ok && !r.started)
 	testing.expect_value(t, r.code, -1)
 	testing.expect(t, strings.contains(r.stderr, "/no/such/program-gt"), r.stderr)
-	none := run({}, {}, context.temp_allocator)
+	none := process.run({}, {}, context.temp_allocator)
 	testing.expect(t, !none.ok && none.code == -1 && none.stderr != "")
 }
