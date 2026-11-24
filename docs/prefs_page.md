@@ -28,6 +28,36 @@ prefs_page.build(&page, &prefs, {
 
 ![The Appearance page: the themes as cards with two of the user's own, light or dark, the finish, the glow (examples/showcase)](screenshots/showcase_settings.webp)
 
+## A program's files and its preferences' start
+
+`prefs_page.program_files(folder, memory = false)` gives the paths every program keeps
+([src/md/features/program-files.md](../src/md/features/program-files.md)):
+
+| Field | File | Folder |
+|---|---|---|
+| `prefs` | `prefs` (`PREFS_FILE`) | config |
+| `themes` | `themes.txt` (`THEMES_FILE`): `themes_file_init` | config |
+| `views` | `views.txt` (`VIEWS_FILE`): `ui.views_init` | state |
+| `palette_choices` | `palette_choices.txt` (`PALETTE_CHOICES_FILE`): the palette's memory | state |
+| `file_dialogs` | `file_dialogs.txt` (`FILE_DIALOGS_FILE`): `ui.file_dialog_memory` | state |
+
+`config_dir` and `state_dir` are the folders. With `memory = true`, every path is "": nothing is read or written (a
+test, a headless run). A test that keeps one file sets that field afterwards, in `files.allocator`.
+`program_files_destroy(&files)` frees them.
+
+`prefs_open(p, files, sets, defaults, defs, args, descriptions)` makes the registry: the standard preferences
+(`standard_register`), the program's own (`defs`, a list of tables), the version for What's new
+(`changelog_register`), the file `files.prefs` ("": none), then `--pref` in `args`. It gives the arguments that are
+not preferences and the problems (the file's first). It reads a file: call it at the start, before the loop.
+
+```odin
+app.files = prefs_page.program_files(APP_FOLDER, memory = headless)
+rest, problems := prefs_page.prefs_open(&app.prefs, app.files, prefs_page.STANDARD_ALL, standard_defaults(), {PREF_DEFS[:]}, os.args[1:])
+for p in problems { log.warn(p) }
+ui.views_init(&app.views, {path = app.files.views})
+prefs_page.themes_file_init(&app.themes_file, app.files.themes, ui.THEMES[:])
+```
+
 ## The standard settings
 
 Every program has the same look, the same text, the same hand and the same place on the desktop: the toolkit declares

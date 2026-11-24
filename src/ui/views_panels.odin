@@ -345,6 +345,21 @@ view_space_activate :: proc(vs: ^Views, r: ^View_Record) {
 	sp.active[e][k] = strings.clone(r.modal_name)
 }
 
+// `r`, docked and opened again, is the tab shown in its stack, its zone restored when it was minimised: what a click on
+// its tab (or its rail's button) does. Unlike view_space_activate, its place among the tabs stays: the user ordered them.
+@(private)
+view_tab_show :: proc(vs: ^Views, r: ^View_Record) {
+	context.allocator = vs.allocator
+	sp := view_space_of(vs, r.machine.place.space)
+	e, k := r.machine.place.edge, clamp(r.machine.place.stack, 0, VIEW_STACKS_MAX - 1)
+	if sp.active[e][k] != r.modal_name {
+		delete(sp.active[e][k])
+		sp.active[e][k] = strings.clone(r.modal_name)
+	}
+	if view_zone_collapsed(sp, e) { view_stack_minimise(vs, sp, e, false) }
+	if sp.state != nil { sp.state.anim_busy = true }
+}
+
 // The ranks of a zone's stacks made 0, 1, 2...: a stack that emptied leaves no hole. The places of the views that move
 // down are written to the memory; the shares and the tabs shown move with them.
 @(private = "file")
@@ -990,7 +1005,15 @@ view_panel_build :: proc(vs: ^Views, sp: ^View_Space, r: ^View_Record, rail := f
 	k.build(&v, r.data)
 	s.view_keys_root = keys_root
 	pop_parent()
-	if view_focus_inside(s, body.key) && r.flag && r.ending == nil {
+	inside := view_focus_inside(s, body.key)
+	// (opened again: the focus to its first stop, unless it is in it already; view_apply)
+	if r.focus_in {
+		r.focus_in = false
+		if !inside {
+			if first := view_first_stop(body); first != 0 { s.focus_key, inside = first, true }
+		}
+	}
+	if inside && r.flag && r.ending == nil {
 		if key_press(.W, {.Ctrl}) {
 			r.flag = false
 		} else if key_press(.Escape) {

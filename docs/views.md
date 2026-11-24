@@ -99,7 +99,7 @@ again.
 | `set_views(s, vs)` | `s` builds its views from the program's `vs` (shared by its windows) |
 | `views_init(vs, o)`, `views_destroy(vs)` | optional for a program's Views: `o.path`, the memory file ("": memory only); `o.labels`, the header's words |
 | `view_register(vs, id, build, o)`, `view_registered(vs, id)` | |
-| `view_open(vs, id, data, instance = "", owner = nil)` | one already open comes forward (a dialog goes on top) |
+| `view_open(vs, id, data, instance = "", owner = nil)` | one already open comes forward: a dialog goes on top, a window is raised, a docked view's tab is shown (its zone restored) and the focus goes into it |
 | `view_close(vs, id, instance)`, `view_is_open(vs, id, instance)` | |
 | `view_ended(vs, id, instance) -> (code, ok)` | |
 | `view_present(vs, id, p, place, instance)`, `view_reattach(vs, id, instance)` | moves it; the choice is remembered |

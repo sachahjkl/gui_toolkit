@@ -1230,7 +1230,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		return 1
 
 	case win.WM_MOUSEWHEEL, win.WM_MOUSEHWHEEL:
-		notches := f32(i16(win.HIWORD(u32(wparam)))) / WHEEL_NOTCH_UNITS
+		units := i16(win.HIWORD(u32(wparam)))
+		notches := f32(units) / WHEEL_NOTCH_UNITS
 		pt := win.POINT{win.GET_X_LPARAM(lparam), win.GET_Y_LPARAM(lparam)}
 		win.ScreenToClient(hwnd, &pt)
 		// modifiers as they were when the wheel moved (the MK_* flags travel with the message)
@@ -1239,6 +1240,8 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		if (wparam & MK_SHIFT) != 0 { mods += {.Shift} }
 		if win.GetKeyState(win.VK_MENU) < 0 { mods += {.Alt} }
 		e := Event{kind = .Scroll, pos = {f32(pt.x), f32(pt.y)}, mods = mods}
+		// (Windows does not say what made it: a precision touchpad sends parts of a notch, a plain wheel whole ones)
+		if units % WHEEL_NOTCH_UNITS != 0 { e.scroll_source = .Finger }
 		if msg == win.WM_MOUSEWHEEL { e.delta.y = -notches } else { e.delta.x = notches }
 		push(w, e)
 

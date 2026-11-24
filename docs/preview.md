@@ -16,6 +16,7 @@ r = ui.preview("###doc", &app.pv, {doc_w, doc_h}, draw_doc, doc, {buttons = true
 |---|---|
 | the wheel | zooms by `PREVIEW_ZOOM_STEP` a notch, around the pointer; with `wheel_pans`, moves the content (Shift: across) |
 | Ctrl and the wheel | with `wheel_pans`: zooms around the pointer (a touchpad's pinch, which Windows sends as Ctrl and the wheel); the interface keeps its own zoom (`.Ctrl_Wheel`) |
+| Shift and the wheel | as the wheel (with `wheel_pans`: across); with `shift_wheel_free`, the program's (`ui.wheel_free`, [wheel.md](wheel.md)) |
 | a drag | moves the content, when it is larger than the box (the pointer is a hand); never past its edges |
 | a double click | from what fits to the content's pixels (twice them when it fits at its pixels), and back |
 | +, −, 0, the arrows | with the keyboard on it (a click gives it): zoom in, out, fit, move by `PREVIEW_KEY_PAN` of the box |
@@ -25,7 +26,7 @@ The content's unit is a device pixel at 100 %: an image's pixel. Fitted, it is n
 (a small picture is not blown up). `Preview_Options`: `buttons`, `grow`, `zoom_min` (of what fits, `PREVIEW_ZOOM_MIN`
 by default), `zoom_max` (device pixels per unit, `PREVIEW_NATIVE_MAX`), `radius` (an image's corners), `no_keys` (the
 keys are the program's), `wheel_pans` (the wheel moves, Ctrl and the wheel zoom: a diagram or a document larger than its
-box, read by moving through it). `preview_fit`, `preview_zoom_to` and `preview_pan_clamp` are its steps, for a view of a
+box, read by moving through it), `shift_wheel_free` (Shift+wheel is the program's: a viewer's next picture). `preview_fit`, `preview_zoom_to` and `preview_pan_clamp` are its steps, for a view of a
 program's own. `tests/preview` tests them, and the gestures in a session.
 
 The keys need the keyboard on the preview. A dialog that is all preview gives it at once: `ui.set_focus(r.box.key)` in

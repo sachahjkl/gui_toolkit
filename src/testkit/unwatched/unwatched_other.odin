@@ -10,3 +10,6 @@ run :: proc(t: ^testing.T, body: proc(t: ^testing.T), loc := #caller_location) {
 	crashsite.arm()
 	body(t)
 }
+
+// The body is the test's own: testing.fail_now ends it, with the test.
+end_body :: proc(t: ^testing.T) {}

@@ -21,7 +21,7 @@ Win32 or Wayland. It opens a window, polls events, draws, and asks for services,
   `chrome`, `user`, `on_frame`.
 - **`Event`** (`Event_Kind`: `Key_Press`/`Release`, `Text`, `Mouse_*`, `Scroll`, `Close`, `Activate`, `Pointer_*`,
   `Drop_*`, `Accessibility`, `Hotkey`, `Notification_*`, `Clipboard_Data`), with `pos` in client pixels, `delta` in wheel notches (`+y` scrolls content down),
-  `mods`, `buttons`, `stamp`, `pointer`, `injected`.
+  `scroll_source` (`Scroll_Source`: `.Wheel` or `.Finger`, fingers on a touchpad) and `scroll_end` (the fingers left it) ([wheel.md](wheel.md)), `mods`, `buttons`, `stamp`, `pointer`, `injected`.
 - **`Key`**, **`Mouse_Button`**, **`Modifier`**, **`Cursor`** (named after the CSS keywords), **`Display_Info`**
   (refresh rate for pacing), **`Chrome_Regions`** (the integrated title bar's regions, hit-tested by
   `hit_test_chrome`), **`Placement`** (outer rect + maximized).

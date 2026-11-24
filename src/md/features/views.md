@@ -826,7 +826,7 @@ returns the machine unchanged and no effect.
 |---|---|---|---|
 | Closed | `Open` (program) | Opening (memory, else `first`, else home) | answer dropped; the focus kept to give back; External: open the window, hidden |
 | Opening | `Settled` (two layouts agree, or six builds) | Shown | Dialog: fade in. External: draw, then show. Internal, Panel: show. The focus goes to the view. |
-| any but Closed | `Open` again | the same state | raise the window, show the panel's tab, bring the internal window to the front, or focus the dialog |
+| any but Closed | `Open` again | the same state | raise the window, show the panel's tab (its zone restored, the focus into it; section 6.4), bring the internal window to the front, or focus the dialog |
 | Shown | `Present(q, place)` (a button, the Dock menu, `view_present`) | Moving (`from` = current, `as` = q) | remember q; External: open the window, hidden |
 | Shown (not home) | `Reattach` (the button, `view_reattach`, External's system close) | Moving (`as` = home, `place` = home place) | remember home |
 | Moving | `Settled` | Shown (`as`) | the old presentation goes; the focus moves (section 3.5); box state carried (section 4.4); `moved` called |
@@ -1371,6 +1371,12 @@ A view docked in a space can be dragged to another space or to the frame's edges
   first, `tabs_always`; section 2.5, rule 2b for what it holds). The tab shown is the last
   one opened, docked or clicked. A tab dragged past `DOCK_DRAG_EM` leaves the zone as an internal window under the
   pointer.
+- `view_open` of a docked view that is already open does what a click on its tab does. Its tab becomes the tab shown
+  and a minimised zone is restored. The focus goes to its first stop at its next build, as an internal window's raise
+  gives it. The order of the tabs stays: the user set it. A program's command that shows a panel (opencode native's
+  media command, its statistics toggle) needs this. Refused: a separate `view_raise` call. `view_open` already means
+  "come forward" for the three other presentations, and a program that calls it must not know where the user put the
+  view.
 - A lone panel moves by its title when the program marks its title box (`view_drag_handle(v, box)`); one without shows
   no grip and moves by its strip on hover (rule 2), its menu or the palette (rule 4).
 

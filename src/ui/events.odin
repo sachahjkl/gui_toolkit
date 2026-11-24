@@ -123,7 +123,10 @@ process_events :: proc(s: ^State, events: []platform.Event, zoom_keys, left_wind
 				}
 			} else {
 				s.scroll_delta += e.delta
+				// (Ctrl with fingers is Windows' pinch: a zoom, no swipe)
+				if e.scroll_source == .Finger && .Ctrl not_in e.mods { s.swipe_delta += e.delta }
 			}
+			if e.scroll_end { s.swipe_end = true }
 		case .Text:
 			append(&s.typed, e.text)
 		case .Key_Release:
@@ -291,18 +294,18 @@ scroll_view_delta :: proc(s: ^State) -> Vec2 {
 @(private)
 scroll_hit_test :: proc(s: ^State, p: Vec2, d: Vec2) -> Key {
 	if s.root == nil { return 0 }
-	return scroll_hit_box(s.root, p, s.root.rect, abs(d.x) > abs(d.y), .Ctrl in s.mods)
+	return scroll_hit_box(s.root, p, s.root.rect, abs(d.x) > abs(d.y), .Ctrl in s.mods, .Shift in s.mods)
 }
 
 @(private)
-scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways, ctrl: bool) -> Key {
+scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways, ctrl, shift: bool) -> Key {
 	if !(p.x >= clip.min.x && p.x < clip.max.x && p.y >= clip.min.y && p.y < clip.max.y) { return 0 }
 	child_clip := clip
 	if .Clip in b.flags {
 		child_clip = Rect{{max(clip.min.x, b.rect.min.x), max(clip.min.y, b.rect.min.y)}, {min(clip.max.x, b.rect.max.x), min(clip.max.y, b.rect.max.y)}}
 	}
 	for c := b.last; c != nil; c = c.prev {
-		if k := scroll_hit_box(c, p, child_clip, sideways, ctrl); k != 0 { return k }
+		if k := scroll_hit_box(c, p, child_clip, sideways, ctrl, shift); k != 0 { return k }
 	}
 	takes: bool
 	if .Strip_Wheel in b.flags {
@@ -317,6 +320,7 @@ scroll_hit_box :: proc(b: ^Box, p: Vec2, clip: Rect, sideways, ctrl: bool) -> Ke
 	} else {
 		takes = .Scroll_Self in b.flags || (sideways ? .View_Scroll_X in b.flags : .View_Scroll_Y in b.flags)
 	}
+	if shift && .Shift_Wheel_Free in b.flags { takes = false }
 	if takes && draw.rect_contains(b.rect, p) { return b.key }
 	return 0
 }
@@ -449,6 +453,15 @@ hot_key :: proc() -> Key { return gs().hot_key }
 // The wheel of this build went to the interface: to a box that scrolls under the pointer, or to an open menu's level
 // (one that fits takes it too, and scrolls nothing). What the app draws under it gets none of it.
 wheel_consumed :: proc() -> bool { return gs().scroll_key != 0 }
+
+// The wheel of this build that no box took, in notches as platform.Event.delta (+y scrolls the content down), and the
+// modifiers held with it: {} when a box took it (wheel_consumed). A program reads it for its own use of the wheel
+// (Shift+wheel over a preview with shift_wheel_free: the next picture).
+wheel_free :: proc() -> (delta: Vec2, mods: platform.Modifiers) {
+	s := gs()
+	if s.scroll_key != 0 || !s.mouse_valid { return }
+	return s.scroll_delta, s.mods
+}
 
 // Is the pointer on box `key` or on a clickable box inside it (by the last frame's tree)? For a row that shows its
 // buttons while the pointer is anywhere on it.

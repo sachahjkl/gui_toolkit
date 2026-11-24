@@ -948,6 +948,32 @@ two_panels_in_a_zone_are_tabs :: proc(t: ^testing.T) {
 	testing.expect(t, built(s, "view_panel_view_side2") == nil, "one shown at a time")
 }
 
+// view_open of a docked view already open, in a tab not shown: its tab is shown, the focus goes into it, and the tabs
+// keep their order (opencode native's media command and its statistics toggle).
+@(test)
+view_open_shows_a_docked_view_s_tab :: proc(t: ^testing.T) {
+	r: Dock
+	defer dock_end(&r)
+	s := dock_start(t, &r, "side", "side2")
+	wait_built(s, "view_tabs")
+	if built(s, "view_panel_view_side2") == nil {
+		testing.expect(t, false, "the last docked shown")
+		return
+	}
+	first := session.find(s, "view_tab_view_side")
+	second := session.find(s, "view_tab_view_side2")
+	if first == nil || second == nil { testing.expect(t, false, "a tab each"); return }
+	left_first := first.rect.min.x < second.rect.min.x
+	if !click_named(s, "content_button") { return }
+	append(&r.want, "side")
+	if wait_built(s, "view_panel_view_side") == nil { return }
+	testing.expect(t, built(s, "view_panel_view_side2") == nil, "one shown at a time")
+	testing.expect_value(t, session.focused_name(s), "side_field")
+	testing.expect(t, ui.view_has_focus(&r.views, "side"), "the panel has the focus")
+	first, second = session.find(s, "view_tab_view_side"), session.find(s, "view_tab_view_side2")
+	testing.expect(t, first != nil && second != nil && (first.rect.min.x < second.rect.min.x) == left_first, "the tabs keep their order")
+}
+
 // The header's menu docks a dialog at the right; re-attach brings it back a dialog.
 @(test)
 the_menu_docks_a_dialog :: proc(t: ^testing.T) {

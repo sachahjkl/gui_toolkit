@@ -77,27 +77,15 @@
   for its `launch_after`, `ui.Status_Line` for its `say`, and `ascii.compare_natural` for classeur's
   `name_compare`. Intent: [src/md/features/child-processes.md](src/md/features/child-processes.md),
   [src/md/features/program-start.md](src/md/features/program-start.md).
-- **One second-start message and instance handler.** A second start opens its files in the running window and brings
-  it to the front, and `--status` and `--quit` work the same in every program. `gt:instance` encodes a launch (an
-  activation token and arguments), and `host.instance_serve` answers PING, posts QUIT and the launch to the interface's
-  thread and raises the window; seven programs drop their own. Intent:
-  [src/md/features/quit.md](src/md/features/quit.md).
+- **The programs on the shared second start, files, Mermaid, "Open with" and watcher.** Each program drops its own
+  copy: `instance.Launch` and `host.instance_serve` for its second start (seven programs),
+  `prefs_page.program_files` and `prefs_open` for its settings' start (six), `gt:markdown`'s Mermaid (papier,
+  opencode native), `ui.Open_With` for its file menu (papier, classeur, feuille) and `fsx.Watch` for its folders
+  (classeur, feuille). Intent: [src/md/features/second-start.md](src/md/features/second-start.md),
+  [src/md/features/program-files.md](src/md/features/program-files.md).
 - **classeur moves to the trash with `platform.move_to_trash`.** Its `fs/trash_linux.odin` repeats the toolkit's
   `volume_top`, `url_path` and local time word for word; a fix in one then reaches both. It keeps its trash listing
   and its Recycle Bin records, or these move into `platform` too.
-- **An "Open with" submenu.** A file's menu lists the applications that open it, with their icons, in every program.
-  A state in `ui` asks `desktop.handlers_for_file` on a chore, builds the items in a `menu_submenu` and opens the
-  choice; papier, classeur and feuille drop their own, and the file picker's row menu gets it.
-- **A program's standard files and `prefs_open`.** Every program keeps its settings, themes, views, palette memory and
-  file dialogs' memory at the same paths. `prefs_page.program_files(folder)` gives the paths, and `prefs_open`
-  registers, loads and applies the settings in the one order; six programs drop their own sequence. Intent:
-  [src/md/features/folders.md](src/md/features/folders.md).
-- **Mermaid blocks in Markdown.** A ```mermaid fence shows its diagram, not its text, in any Markdown a program
-  shows. `gt:markdown` lays it out on a chore, per theme lightness, keeps it in a cache and draws it with `gt:svg`;
-  papier and opencode native drop their own.
-- **A folder watcher.** A folder shown changes on screen when its files change, and a document changed on disk is
-  noticed. classeur's debounced watcher (inotify, `ReadDirectoryChangesW`) moves to `gt:fsx`; the file picker's
-  local source and feuille use it.
 - **papier's size words from `timefmt.size`.** papier's `size_text` gives way to the toolkit's words, so a size reads
   the same in every program.
 - **A free file name.** A saved or downloaded file never overwrites another, and its number looks the same in every
