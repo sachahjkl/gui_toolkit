@@ -117,7 +117,8 @@ if ev.selection_changed { show_details(app, ui.file_picker_selected(&app.picker)
   after `FILE_PICKER_SLOW_MS`, "Nothing found." when the answer is empty. A folder found is entered (the query
   cleared); a file found is chosen, previewed and named as one of the folder (`fsx.path_join(folder, relative, sep)`).
   With the toggle off, the filter is the folder's only.
-- **The preview**, at the right (a split the person resizes, `splitter`; hidden when the dialog is narrower than
+- **The preview**, at the right (a split the person resizes, `splitter`; closed by the person with its button or
+  Alt+P, which the dialog's `remember_id` keeps; hidden when the dialog is narrower than
   `FILE_PREVIEW_SHOWN_EM` beside the places, and when the source cannot read): the selected file's text, coloured by its
   kind (`syntax`), its first `FILE_PREVIEW_BYTES` and `FILE_PREVIEW_LINES` lines; a picture (PNG, JPEG, BMP, WebP:
   `gt:image`, at most `FILE_PREVIEW_IMAGE_BYTES`) fitted and zoomable (`ui.preview`); otherwise its icon, its name, its
@@ -178,6 +179,7 @@ if ev.selection_changed { show_details(app, ui.file_picker_selected(&app.picker)
 | Alt+← / Alt+→, the mouse's side buttons | back / forward (the buttons with the pointer on the picker or its path bar's dropdown) |
 | Ctrl+L | the path as a field, with its dropdown (↓ ↑, Tab, Enter, Escape: [path-bar.md](path-bar.md)) |
 | Ctrl+H | hidden files |
+| Alt+P | the preview, shown or hidden (its button at the right of the bar; remembered with `remember_id`) |
 | Ctrl + click, Shift+↑↓, Ctrl+A | several files (Open with `multiple`) |
 | a letter | the filter |
 | Escape | the path field's while it has the keyboard (its dropdown, then the breadcrumb); else gives a rename up, then clears the filter, then the new folder's row, then cancels |
@@ -313,7 +315,7 @@ The picker keeps them in a `Thumb_Cache` (`src/ui/thumbnails.odin`), which any v
 |---|---|
 | `thumb_cache_init(c, Thumb_Options{side, most_count, most_bytes, asks})`, `thumb_cache_destroy(c)` | 0: the defaults (256 px, 400 entries, 48 MiB, 2 asks out at a time) |
 | `thumb_key(path, size, modified)` | a file's key: a file changed gets another thumbnail |
-| `thumb_cache_get(c, key, path)` | in each card built: the entry (`Waiting`, `Asked`, `Ready`, `Failed`), marked used; a new one waits for its ask |
+| `thumb_cache_get(c, key, path, px = 0)` | in each card built: the entry (`Waiting`, `Asked`, `Ready`, `Failed`), marked used; a new one waits for its ask. `px`: the card's picture's longer side in pixels; it is asked at the step at or above it (`thumb_side_step`: 128, 256, 512, 1024), and a Ready entry of a smaller step is asked again at the larger one, its pixels shown until the new ones come (`0`: the cache's side) |
 | `thumb_cache_frame(c, ask, user)` | after the cards: the waiting asks sent newest first while fewer than `asks` are out (a card not built for `THUMB_STALE_FRAMES` builds is dropped instead); over the budget, the least used go, never one used in the last `THUMB_KEEP_FRAMES` builds |
 | `thumb_cache_answer(c, ticket, rgba, w, h)`, `thumb_cache_failed(c, ticket)` | the answer of an ask (an unknown ticket is ignored) |
 | `thumb_cache_clear(c)` | every thumbnail made (`Ready`, `Failed`) forgotten: the cards shown ask again. The asks out stay and their answers land. Safe in a build: the entries go once no draw reads them |

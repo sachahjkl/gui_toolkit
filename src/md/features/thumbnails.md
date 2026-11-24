@@ -6,6 +6,13 @@ file: classeur made them first (its `thumbs.odin`); the toolkit's file browser a
 
 ## Decisions
 
+- **A thumbnail is asked at the card's size, by steps.** A card asks the side of its picture, rounded up to 128, 256,
+  512 or 1024 pixels (the freedesktop cache's folders, so the system's thumbnails are read as they are). A card that
+  grows (a larger view, a larger window) asks the larger step again while its smaller pixels stay shown; an ask of a
+  larger step that fails keeps them, and is not made again. Pixels that filled the side asked are drawn to fill the card;
+  a picture smaller than that keeps its own size. Refused: one side for every card (256: a 500-pixel card showed half
+  its room), the larger step's entry kept beside the smaller one (twice the memory for one file).
+
 - **A thumbnail is a call of the source** (`File_Source.thumbnail`, answered by `file_reply_thumbnail` with RGBA
   pixels). A server's source makes its pictures where the files are and sends small pixels; the browser does not read
   a whole photo over the network to shrink it. The answer is pixels, not a file: the source chooses how it makes them

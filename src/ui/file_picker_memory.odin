@@ -31,6 +31,7 @@ File_Memory :: struct {
 	descending: bool,
 	sort_set:   bool,
 	hidden:     bool,
+	preview_off: bool,   // the preview closed by the person
 	recent:     [dynamic]string,
 	zoom:       int,     // the list's step (table_zoom_step): its view, its cards' size
 }
@@ -138,7 +139,7 @@ file_memory_remember :: proc(fp: ^File_Picker, chosen: string) {
 		e = file_memory_of(m, id)
 	}
 	if fp.folder != "" { delete(e.folder, a); e.folder = strings.clone(fp.folder, a) }
-	e.size, e.split, e.hidden = fp.size, fp.split, fp.hidden
+	e.size, e.split, e.hidden, e.preview_off = fp.size, fp.split, fp.hidden, fp.preview_off
 	e.sort, e.descending, e.sort_set = fp.table.sort, fp.table.descending, true
 	e.zoom = fp.table.zoom
 	if chosen != "" && !file_memory_bad(chosen) {
@@ -156,8 +157,9 @@ file_memory_remember :: proc(fp: ^File_Picker, chosen: string) {
 file_memory_bad :: proc(s: string) -> bool { return strings.index_any(s, "\t\r\n\x1f") >= 0 }
 
 // The file: its header, then a line per dialog,
-// `id <tab> folder <tab> width <tab> height <tab> split <tab> sort <tab> descending <tab> hidden <tab> recent... <tab> view`
-// (the view: the step's stable name, table_zoom_key; a line without it is in Details).
+// `id <tab> folder <tab> width <tab> height <tab> split <tab> sort <tab> descending <tab> hidden <tab> recent... <tab> view
+// <tab> preview` (the view: the step's stable name, table_zoom_key; a line without it is in Details. The preview: 0 shown,
+// 1 closed; a line without it shows it).
 @(private)
 file_memories_text :: proc(m: ^File_Memories, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
@@ -173,6 +175,7 @@ file_memories_text :: proc(m: ^File_Memories, allocator := context.temp_allocato
 		}
 		strings.write_byte(&b, '\t')
 		strings.write_string(&b, table_zoom_key(e.zoom))
+		strings.write_string(&b, e.preview_off ? "\t1" : "\t0")
 		strings.write_byte(&b, '\n')
 	}
 	return strings.to_string(b)
@@ -202,6 +205,7 @@ file_memories_merge :: proc(m: ^File_Memories, text: string) {
 		if !w_ok || !h_ok || !split_ok || !sort_ok || sort < TABLE_UNSORTED || sort > FILE_COLUMN_KIND { continue }
 		e := File_Memory{folder = strings.clone(f[1], a), size = {w, h}, split = split, sort = sort, descending = f[6] == "1", sort_set = true, hidden = f[7] == "1"}
 		if len(f) >= 10 { e.zoom, _ = table_zoom_from_key(f[9]) }
+		if len(f) >= 11 { e.preview_off = f[10] == "1" }
 		e.recent = make([dynamic]string, a)
 		list := f[8]
 		for p in strings.split_iterator(&list, FILE_MEMORY_LIST_SEP) {

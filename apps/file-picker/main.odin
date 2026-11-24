@@ -19,6 +19,8 @@ import "gt:ui"
 
 // The window's size at first, in pixels at a scale of 1.
 WINDOW_SIZE :: [2]int{1000, 640}
+// The look when --theme says nothing: Ember, light or dark as the desktop is.
+DEFAULT_THEME :: "Ember"
 
 main :: proc() { os.exit(run()) }
 
@@ -47,7 +49,9 @@ run :: proc() -> int {
 		request, why = req.parse_request_json(text, a)
 		if why != "" { return answer_error(cmd, why, a) }
 	}
-	answer, failure := pick(request)
+	look, look_ok := look_of(cmd.theme)
+	if !look_ok { return answer_error(cmd, strings.concatenate({"no theme named ", cmd.theme, " (", theme_list(a), ")"}, a), a) }
+	answer, failure := pick(request, look)
 	defer platform.dialog_result_destroy(&answer, runtime.heap_allocator())
 	if failure != "" { return answer_error(cmd, failure, a) }
 	process.console_write(cmd.json ? req.answer_json(answer, allocator = a) : req.answer_text(answer, a))
@@ -69,7 +73,38 @@ read_stdin :: proc(a: runtime.Allocator) -> (string, bool) {
 	return string(data), err == nil
 }
 
+// The theme shown and how its version is chosen.
+Look :: struct {
+	theme: ui.Theme_Def,
+	mode:  ui.Theme_Mode,
+}
+
+// The look --theme asks ("": Ember, following the desktop). ok false: no theme of that name.
+look_of :: proc(text: string) -> (l: Look, ok: bool) {
+	name, mode := DEFAULT_THEME, ""
+	if text != "" { name, mode, _ = req.parse_theme(text) }   // (parse_args checked its form)
+	t, _, found := ui.theme_find(ui.THEMES[:], name)
+	if !found { return {}, false }
+	return {theme = t, mode = ui.theme_mode_of(mode)}, true
+}
+
+// The themes' names, for an error's text.
+theme_list :: proc(a: runtime.Allocator) -> string {
+	names := make([dynamic]string, a)
+	for t in ui.THEMES { append(&names, t.name) }
+	return strings.join(names[:], ", ", a)
+}
+
+// Applies the look's version for now (System: the desktop's light or dark) to the window's theme.
+look_apply :: proc(app: ^App) {
+	ui.apply_palette(&app.shared.theme, ui.theme_palette(app.look.theme, ui.theme_wants_light(app.look.mode)))
+	app.main.background = ui.theme_lookup(&app.shared.theme, {}, "background")
+	app.scheme = platform.color_scheme_serial()
+}
+
 App :: struct {
+	look:   Look,
+	scheme: u32,   // platform.color_scheme_serial when the look was applied: another one, the desktop changed
 	shared: host.Shared,
 	main:   host.Host,
 	picker: ui.File_Picker,
@@ -90,8 +125,9 @@ build :: proc(h: ^host.Host, size: host.Vec2) {
 
 // Serves `r` in a window of its own: the person's answer, or Cancelled when they close the window. `failure`: no
 // window could open (no display, no graphics device).
-pick :: proc(r: platform.File_Request) -> (answer: platform.Dialog_Result, failure: string) {
+pick :: proc(r: platform.File_Request, look: Look) -> (answer: platform.Dialog_Result, failure: string) {
 	app := new(App)
+	app.look = look
 	defer free(app)
 	title := r.dialog.title
 	if title == "" {
@@ -105,13 +141,18 @@ pick :: proc(r: platform.File_Request) -> (answer: platform.Dialog_Result, failu
 		return {status = .Failed}, host.open_error(&app.main)
 	}
 	defer host.host_close(&app.main)
-	app.main.background = ui.theme_lookup(&app.shared.theme, {}, "background")
+	look_apply(app)
 	ui.file_picker_init(&app.picker, &app.main.state, r.kind, r.dialog)
 	ui.file_picker_focus(&app.picker)
 	defer ui.file_picker_destroy(&app.picker)
 	platform.show_window(app.main.win)
 	for !app.done && !platform.is_closed(app.main.win) {
 		host.hosts_wait({&app.main})
+		// (the desktop went light or dark while the picker was open: it follows)
+		if app.look.mode == .System && platform.color_scheme_serial() != app.scheme {
+			look_apply(app)
+			app.main.win.paint_requested = true
+		}
 		host.host_frame(&app.main)
 	}
 	if !app.done { return {status = .Cancelled}, "" }

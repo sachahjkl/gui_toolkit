@@ -1229,6 +1229,33 @@ the_preview_text_selects_and_copies :: proc(t: ^testing.T) {
 	testing.expect_value(t, session.clipboard(s), got)
 }
 
+// The preview closes and opens again (its button, Alt+P), and the picker remembers it per remember_id.
+@(test)
+the_preview_closes_and_is_remembered :: proc(t: ^testing.T) {
+	app: App
+	defer app_destroy(&app)
+	app.fake.folders["/p"] = []ui.File_Entry{F("notes.txt")}
+	app.fake.at_once = true
+	app.source = fake_source(&app.fake, {.Size, .Modified, .Read})
+	app.source.read = proc(src: ^ui.File_Source, path: string, max: int, reply: ui.File_Reply) {
+		text := "a line\n"
+		ui.file_reply_read(reply, transmute([]u8)text, i64(len(text)))
+	}
+	s := session.start(t, {build = build, user = &app, no_renderer = true, size = {1200, 800}})
+	d := platform.File_Dialog{start_dir = "/p", remember_id = "preview"}
+	open(s, &app, .Open, d)
+	testing.expect(t, session.find(s, "fb_preview") != nil, "the preview shows at first")
+	session.click(s, "fb_preview_toggle")
+	testing.expect(t, session.find(s, "fb_preview") == nil, "its button closes it")
+	session.key(s, .P, {.Alt})
+	testing.expect(t, session.find(s, "fb_preview") != nil, "Alt+P opens it again")
+	session.key(s, .P, {.Alt})
+	session.click(s, "fb_cancel")
+	open(s, &app, .Open, d)
+	testing.expect(t, session.find(s, "fb_preview") == nil, "closed, it stays closed with its remember_id")
+	session.click(s, "fb_cancel")
+}
+
 ////////////////////////////////
 // The keyboard is the browser's
 

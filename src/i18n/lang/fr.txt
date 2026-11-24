@@ -1989,6 +1989,12 @@ fr Choisir
 en Back (Alt+Left)
 fr Précédent (Alt+Gauche)
 
+en Show the preview (Alt+P)
+fr Afficher l’aperçu (Alt+P)
+
+en Hide the preview (Alt+P)
+fr Masquer l’aperçu (Alt+P)
+
 en Forward (Alt+Right)
 fr Suivant (Alt+Droite)
 
