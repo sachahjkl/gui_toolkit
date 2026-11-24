@@ -128,6 +128,9 @@ build_program :: proc(root, folder, name: string, debug: bool, devtools: bool, e
 		if os.exists(rc) { append(&cmd, fmt.tprintf("-resource:%s", rc)) }
 	} else {
 		append(&cmd, toolbox.LINUX_LINK_FLAG)   // (the examples link the native text backend themselves)
+		// (the picker shows WebP thumbnails and previews: the native library has the part webp here; on Windows the
+		// system's thumbnailer reads WebP, and the release builds no native library there)
+		if name == "file-picker" { append(&cmd, "-define:IMAGE_WEBP=true") }
 	}
 	if !toolbox.run(cmd[:]) { return fmt.tprintf("building %s/%s failed", folder, name) }
 	fmt.printfln("built %s", out)

@@ -489,6 +489,26 @@ ui.text_edit("###notes", &app.notes, {placeholder = "Notes", wrap = true, auto_h
 | `progress(id, t, indeterminate, lively)` | a bar of `t` (0..1), its size from `next` or the style; `indeterminate`: a sweep, for a work of no known length. `lively`: drawn as `progress_fill` draws it, for what the user watches come (a download) |
 | `progress_fill(b, t, from)` | box `b` shows a fill of `t` under its words, the green of a success button lit at its top in a darker border; the words change ink where the green is under them. The share reaches a new `t` in 600 ms (`tween`, `.Out`). `from` (0..1): where it starts the first time; -1: at `t`. Its well is the box's background (`.Custom_Ground`): in a swap, the shape that morphs |
 
+## A status message
+
+`Status_Line` holds a short message for a status bar ("Copied", "Saved") and the time it goes, on the interface's clock
+(`now_ms`: a test's `session.advance` moves it). It draws nothing: the bar's layout and words stay the program's.
+
+```odin
+ui.status_say(&app.status, "Saved %s", name)          // shown STATUS_SHOWN_MS (3000 ms)
+ui.status_say(&app.status, "Copied", shown_ms = 5000)  // a time of its own
+// in the status bar's build
+if msg := ui.status_text(&app.status); msg != "" { ui.label(msg) } else { ui.label(usual_words) }
+ui.status_destroy(&app.status)                         // at the end
+```
+
+| Procedure | |
+|---|---|
+| `status_say(s, format, ..args, shown_ms = STATUS_SHOWN_MS)` | the message, in place of the one shown. In a build, the window wakes when it goes; outside a build, make a frame (`host_settle`) as for any change |
+| `status_text(s) -> string` | the message while it shows, "" once its time is past. In a build, the window wakes when it goes |
+| `status_clear(s)` | the message goes now |
+| `status_destroy(s)` | frees the message |
+
 ## Transitions
 
 A value or a place that changes from one state to another in a set time (design: [src/md/features/transitions.md](../src/md/features/transitions.md)).

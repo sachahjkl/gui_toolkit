@@ -7,12 +7,9 @@ package ui
 
 import "base:runtime"
 import "core:fmt"
-import "core:math"
 import "core:sync"
 import desktop "../desktop"
-import draw "../draw"
 import "../platform"
-import "../render"
 
 // Standard built-in verbs excluded by default in file browsers that already offer Open, Cut, Copy, Paste, Delete,
 // Rename, and Properties.
@@ -35,15 +32,6 @@ Shell_Menu_Ready :: struct {
 	items:  []desktop.Context_Item,
 }
 
-@(private = "file")
-Shell_Menu_Icon :: struct {
-	rgba:     []u8, // borrows Context_Item.icon.rgba while items live
-	size:     [2]int,
-	texture:  render.Texture,
-	renderer: ^render.Renderer,
-	failed:   bool,
-}
-
 // Asynchronous system shell context-menu controller for one ui.menu owner (for example ui.file_dialog or a file
 // manager). Zero-initialized; call shell_menu_destroy when the owner goes away.
 Shell_Menu :: struct {
@@ -53,7 +41,7 @@ Shell_Menu :: struct {
 	serial:   u64,
 	items:    []desktop.Context_Item, // owned (runtime.heap_allocator)
 	ready:    bool,
-	icons:    [dynamic]Shell_Menu_Icon, // one per item with an icon, aligned by tree walk order
+	icons:    [dynamic]Menu_Icon, // one per item with an icon, aligned by tree walk order (borrows the items' pixels)
 	// (invoked id on last click; cleared on next query/clear, useful in tests)
 	invoked:  u32,
 }
@@ -82,11 +70,7 @@ gate_release :: proc(g: ^Shell_Menu_Gate, detach_owner: bool) {
 
 @(private = "file")
 shell_menu_icons_free :: proc(m: ^Shell_Menu) {
-	for &ic in m.icons {
-		if ic.texture != 0 && ic.renderer != nil {
-			render.destroy_texture(ic.renderer, ic.texture)
-		}
-	}
+	for &ic in m.icons { menu_icon_release(&ic) }
 	clear(&m.icons)
 }
 
@@ -94,7 +78,7 @@ shell_menu_icons_free :: proc(m: ^Shell_Menu) {
 shell_menu_icons_collect :: proc(m: ^Shell_Menu, items: []desktop.Context_Item) {
 	for it in items {
 		if len(it.icon.rgba) > 0 && it.icon.size.x > 0 && it.icon.size.y > 0 {
-			append(&m.icons, Shell_Menu_Icon{rgba = it.icon.rgba, size = it.icon.size})
+			append(&m.icons, Menu_Icon{rgba = it.icon.rgba, size = it.icon.size})
 		}
 		if len(it.children) > 0 { shell_menu_icons_collect(m, it.children) }
 	}
@@ -169,38 +153,10 @@ shell_menu_apply :: proc(m: ^Shell_Menu, serial: u64, items: []desktop.Context_I
 	m.items = items
 	m.ready = true
 	if m.icons.allocator.procedure == nil {
-		m.icons = make([dynamic]Shell_Menu_Icon, 0, 8, a)
+		m.icons = make([dynamic]Menu_Icon, 0, 8, a)
 	}
 	shell_menu_icons_collect(m, m.items)
 	// ui.post already wakes the window; shell_menu_apply runs inside begin_build before widgets build.
-}
-
-@(private = "file")
-shell_menu_draw_icon :: proc(box: ^Box, user: rawptr, dc: ^draw.Context) {
-	ic := (^Shell_Menu_Icon)(user)
-	if ic == nil || dc == nil || dc.renderer == nil || len(ic.rgba) == 0 { return }
-	if ic.texture == 0 && !ic.failed {
-		w, h := ic.size.x, ic.size.y
-		most := render.max_texture_size(dc.renderer)
-		if w <= 0 || h <= 0 || w > most || h > most || len(ic.rgba) < w * h * 4 {
-			ic.failed = true
-			return
-		}
-		ic.texture = render.create_texture_rgba(dc.renderer, w, h)
-		if ic.texture == 0 {
-			ic.failed = true
-			return
-		}
-		ic.renderer = dc.renderer
-		render.update_texture_rgba(dc.renderer, ic.texture, 0, 0, w, h, ic.rgba)
-	}
-	if ic.texture == 0 { return }
-	r := box.rect
-	side := math.floor(min(r.max.x - r.min.x, r.max.y - r.min.y, font_size() * 1.05))
-	if side < 2 { return }
-	ox := math.floor(r.min.x + ((r.max.x - r.min.x) - side) * 0.5)
-	oy := math.floor(r.min.y + ((r.max.y - r.min.y) - side) * 0.5)
-	draw.image(dc, ic.texture, {{ox, oy}, {ox + side, oy + side}})
 }
 
 @(private = "file")
@@ -213,7 +169,7 @@ shell_menu_build_list :: proc(m: ^Shell_Menu, items: []desktop.Context_Item, pre
 			idx := icon_idx^
 			icon_idx^ += 1
 			if idx < len(m.icons) {
-				icon_draw = shell_menu_draw_icon
+				icon_draw = menu_icon_draw
 				icon_user = &m.icons[idx]
 			}
 		}

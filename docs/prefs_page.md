@@ -264,7 +264,8 @@ A program that updates itself (`update.Updater`, `docs/update.md`) gives it in `
 preference whose line shows it ("": the standard `update.auto`). Under that line: the state in words (`update.status_words`:
 up to date, a version available, downloading, installed, the last check's failure, or that a package manager updates this
 copy), a **Check now** button, **Install <version>** when one is on offer, and **Restart now** when one is installed and the
-program gives `Page_Options.restart`.
+program gives `Page_Options.restart`. That procedure calls `host.restart_after_exit(&program)` and quits
+([getting-started.md](getting-started.md), "A restart after the end").
 
 ## Changes
 
@@ -537,7 +538,7 @@ prefs_page.updates_start(&app.updates, {
 if changed, st := prefs_page.updates_follow(&app.updates); changed {
     host.host_settle(&app.main)                                    // the badge and the settings show the new state
     if words, bad := update.notice(st); words != "" { say(app, bad, words) }
-    if st.phase == .Installed && !app.visible { restart(app) }    // the program's own restart
+    if st.phase == .Installed && !app.visible { restart(app) }    // host.restart_after_exit(&p), then quit
 }
 prefs_page.updates_stop(&app.updates)   // at the end, before the windows go
 ```

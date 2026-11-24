@@ -23,6 +23,7 @@ import "core:thread"
 import "core:time"
 import cdp "../cdp"
 import tk_json "../json"
+import tk_process "../process"
 
 CHECK_CLASSIC      :: CLASSIC + "/"
 CHECK_MADE_TEMP     :: "tk_site_check_pages_*"
@@ -319,7 +320,7 @@ site_gone :: proc(s: ^Check) -> bool {
 @(private = "file")
 site_browser_start :: proc(s: ^Check, program, profile: string) -> bool {
 	cmd := []string{program, "--headless=new", "--remote-debugging-port=0", fmt.tprintf("--user-data-dir=%s", profile), fmt.tprintf("--window-size=%d,%d", CHECK_DESKTOP.width, CHECK_DESKTOP.height), "--no-first-run", "about:blank"}
-	p, err := os.process_start({command = cmd})
+	p, err := tk_process.start({command = cmd})
 	if err != nil { fmt.eprintfln("site check: %s: %v", program, err); return false }
 	s.browser, s.started = p, true
 	begun := time.now()
@@ -725,5 +726,5 @@ read_text :: proc(path: string) -> string {
 
 @(private)
 run_quiet :: proc(command: []string) {
-	_, _, _, _ = os.process_exec({command = command}, context.temp_allocator)
+	_ = tk_process.run(command, {}, context.temp_allocator)
 }

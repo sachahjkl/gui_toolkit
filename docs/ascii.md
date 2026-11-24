@@ -14,6 +14,7 @@ User text (a search, type-ahead) folds by Unicode with `strings.to_lower`; `test
 | `equal_fold(a, b)` | the same text, case ignored |
 | `has_prefix_fold(s, prefix)`, `contains_fold(hay, needle)` | the same tests, case ignored |
 | `compare_fold(a, b)` | the order of two names: case ignored first, then the bytes. Less than 0 when `a` comes first, 0 when the bytes are the same. A prefix comes first |
+| `compare_natural(a, b)` | the order a person reads: a run of digits by its value ("file 2" before "file 10"), the rest as `compare_fold`. Equal so far: fewer leading zeros first ("a1" before "a01"), then `compare_fold`. 0 only for the same bytes. A run is never made a number: any length compares. `ui.Table`'s text columns and the file picker sort by it |
 | `lower_run(dst, s) -> int` | lowers the ASCII run at the start of `s` into `dst` and returns its length: it stops at the first byte >= 0x80 (where a Unicode fold takes over: `ui.fuzzy_text`) or at the end of the shorter of the two |
 | `index_any_byte(s, set, below = 0, non_ascii = false) -> int` | the index of the first byte of `s` that is in `set`, below `below` (0x20: the control characters) or, with `non_ascii`, >= 0x80; -1 when none is |
 
@@ -35,4 +36,6 @@ for len(rest) > 0 {
 ```odin
 slice.sort_by(names, proc(a, b: string) -> bool { return ascii.compare_fold(a, b) < 0 })
 // "bash", "Chrome", "chrome", "firefox"
+slice.sort_by(files, proc(a, b: string) -> bool { return ascii.compare_natural(a, b) < 0 })
+// "file 1", "file 01", "file 2", "file 10"
 ```

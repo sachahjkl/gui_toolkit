@@ -5,7 +5,9 @@ package tk_desktop
 // the file's data object. The default is the handler whose program is the extension's (AssocQueryStringW).
 
 import "base:runtime"
+import "core:fmt"
 import "core:path/filepath"
+import "core:strconv"
 import "core:slice"
 import "core:strings"
 import win "core:sys/windows"
@@ -27,7 +29,7 @@ IAssocHandler_Vtbl :: struct {
 	Release:         proc "system" (this: ^IAssocHandler) -> u32,
 	GetName:         proc "system" (this: ^IAssocHandler, name: ^win.LPWSTR) -> win.HRESULT,
 	GetUIName:       proc "system" (this: ^IAssocHandler, name: ^win.LPWSTR) -> win.HRESULT,
-	GetIconLocation: rawptr,
+	GetIconLocation: proc "system" (this: ^IAssocHandler, path: ^win.LPWSTR, index: ^i32) -> win.HRESULT,
 	IsRecommended:   rawptr,
 	MakeDefault:     rawptr,
 	Invoke:          proc "system" (this: ^IAssocHandler, data: rawptr) -> win.HRESULT,
@@ -48,12 +50,29 @@ foreign import shell32_assoc "system:Shell32.lib"
 @(default_calling_convention = "system", private)
 foreign shell32_assoc {
 	SHAssocEnumHandlers :: proc(extension: cstring16, filter: i32, out: ^^IEnumAssocHandlers) -> win.HRESULT ---
+	SHDefExtractIconW :: proc(file: cstring16, index: i32, flags: u32, large: ^win.HICON, small: ^win.HICON, sizes: u32) -> win.HRESULT ---
+}
+
+// The icon at the shell's location "file,index" (GetIconLocation's), drawn at `size`.
+@(private)
+handler_icon_native :: proc(icon: string, size: int, allocator: runtime.Allocator) -> (File_Icon, bool) {
+	file, index := icon, i32(0)
+	if comma := strings.last_index_byte(icon, ','); comma > 0 {
+		if n, ok := strconv.parse_int(strings.trim_space(icon[comma + 1:])); ok { file, index = icon[:comma], i32(n) }
+	}
+	if file == "" { return {}, false }
+	com_thread_start()
+	large: win.HICON
+	px := u32(clamp(size, 1, 256))
+	if SHDefExtractIconW(wide(file), index, 0, &large, nil, px) < 0 || large == nil { return {}, false }
+	defer win.DestroyIcon(large)
+	return icon_pixels(large, allocator)
 }
 
 // Each handler of the extension of `path`, in the shell's order; `visit` returns false to stop (the handler is released
 // after it). COM is entered for the call.
 @(private = "file")
-each_handler :: proc(path: string, visit: proc(h: ^IAssocHandler, name, ui_name: string, user: rawptr) -> bool, user: rawptr) {
+each_handler :: proc(path: string, visit: proc(h: ^IAssocHandler, name, ui_name, icon: string, user: rawptr) -> bool, user: rawptr) {
 	ext := filepath.ext(path)
 	if ext == "" { return }
 	c := com_enter()
@@ -72,7 +91,16 @@ each_handler :: proc(path: string, visit: proc(h: ^IAssocHandler, name, ui_name:
 		u := ui_name != nil ? win.wstring_to_utf8(cstring16(ui_name), -1, context.temp_allocator) or_else "" : ""
 		if name != nil { win.CoTaskMemFree(name) }
 		if ui_name != nil { win.CoTaskMemFree(ui_name) }
-		go_on := visit(h, n, u, user)
+		// (the shell's form of a location: "file,index", what handler_icon_native reads)
+		icon := ""
+		icon_path: win.LPWSTR
+		icon_index: i32
+		if h->GetIconLocation(&icon_path, &icon_index) >= 0 && icon_path != nil {
+			file := win.wstring_to_utf8(cstring16(icon_path), -1, context.temp_allocator) or_else ""
+			if file != "" { icon = strings.concatenate({file, ",", fmt.tprint(icon_index)}, context.temp_allocator) }
+			win.CoTaskMemFree(icon_path)
+		}
+		go_on := visit(h, n, u, icon, user)
 		h->Release()
 		if !go_on { return }
 	}
@@ -93,11 +121,11 @@ default_program :: proc(path: string) -> string {
 handlers_for_file_native :: proc(path: string, allocator: runtime.Allocator) -> []Handler {
 	Found :: struct { list: [dynamic]Handler, default: string, allocator: runtime.Allocator }
 	f := Found{list = make([dynamic]Handler, allocator), default = default_program(path), allocator = allocator}
-	each_handler(path, proc(h: ^IAssocHandler, name, ui_name: string, user: rawptr) -> bool {
+	each_handler(path, proc(h: ^IAssocHandler, name, ui_name, icon: string, user: rawptr) -> bool {
 		f := (^Found)(user)
 		if name == "" || ui_name == "" { return true }
 		for x in f.list { if ascii.equal_fold(x.id, name) { return true } }
-		append(&f.list, handler_clone(name, ui_name, f.default != "" && ascii.equal_fold(name, f.default), f.allocator))
+		append(&f.list, handler_clone(name, ui_name, icon, f.default != "" && ascii.equal_fold(name, f.default), f.allocator))
 		return true
 	}, &f)
 	// the default first, then by name
@@ -112,7 +140,7 @@ handlers_for_file_native :: proc(path: string, allocator: runtime.Allocator) -> 
 open_with_native :: proc(path: string, id: string) -> bool {
 	Run :: struct { path, id: string, done: bool }
 	r := Run{path = path, id = id}
-	each_handler(path, proc(h: ^IAssocHandler, name, ui_name: string, user: rawptr) -> bool {
+	each_handler(path, proc(h: ^IAssocHandler, name, ui_name, icon: string, user: rawptr) -> bool {
 		r := (^Run)(user)
 		if !ascii.equal_fold(name, r.id) { return true }
 		item: ^win.IShellItem

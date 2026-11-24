@@ -131,11 +131,18 @@ crash_bar.init(&app.crash_bar, p.last_crash)     // the last session's report, "
 | `quiet` | the log's lines are not echoed on standard error |
 | `settings` | a `crash.Source`: the settings that differ from their default |
 | `no_session` | a process that is not the program's session (a torn-off window's): no session mark, no last report |
+| `launch` | what starts the program again at `program_end` (nil: `setup.launch`); a test's records it |
 
 `program_start` installs the log, then the crash handler with the log's tail, begins the session, then reads the last
 report: `begin_session` is what turns a session that ended with no report (a kill) into the report `last_report` gives.
 It logs a warning with the report's path. `Program_Start.last_crash` is owned; `program_end` frees it, ends the session and
 closes the log; the caller's `context.logger` must not log after it.
+
+**A restart after the end.** "Restart now" after an update: `host.restart_after_exit(&p, args)` (args: nil, or
+`{"--hidden"}`), then the program quits as on any quit. `program_end` ends the session, then starts the executable that
+`program_start` read (`Program_Start.executable`: after an update the running file can be `<exe>.old`), then closes
+the log. `program_end` runs last, after the single instance is released and after `prefs_page.install_launch`: a copy
+started earlier would hand itself over to this one. Asked again, the last args win.
 
 `Open_Options.headless` opens a window of no system, drawn into an image (a test, a picture, a film of the interface).
 Its first window draws on the software renderer: the same pixels on every machine. With `headless_gpu` it draws on the

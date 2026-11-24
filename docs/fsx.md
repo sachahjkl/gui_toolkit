@@ -117,6 +117,27 @@ does not survive being called from a process under AddressSanitizer. A junction 
 `temp_dir` reads `TEMP` first: a test harness points it at a throwaway folder (on every system) so that tests do not
 leave files in the real temporary directory.
 
+## Folders followed
+
+```odin
+w: fsx.Watch                                      // zero: not opened; its memory is the heap's
+fsx.watch_set(&w, folders)                         // the folders to follow from now on (any thread; kept before watch_open)
+ok := fsx.watch_open(&w)                           // false: no watcher on this system (macOS), or the system refused
+changed, closed := fsx.watch_wait(&w)              // the waiting thread: the folders that changed, or closed
+fsx.watch_stop(&w)                                 // any thread: the wait returns closed = true
+fsx.watch_close(&w)                                // once the waiting thread ended
+```
+
+One thread loops on `watch_wait` until it returns `closed`. Each return names the folders that changed, as
+`watch_set` gave them. Changes close together come as one: after the first, the wait goes on until none came for
+`WATCH_QUIET_MS` (120 ms), at most `WATCH_MAX_MS` (600 ms) after the first. `watch_open` can run on the waiting thread
+itself: the system is then never called from the interface's thread.
+
+A folder is followed, not its subfolders: its entries made, removed, renamed, written, and their attributes. To follow a
+file, follow its folder and compare the file's `stat`. Linux uses inotify; Windows a change notification per folder
+(63 folders at most). Elsewhere `watch_open` fails, and `watch_wait` returns `closed`. The file picker follows its
+folder with it ([file-browser.md](file-browser.md#sources)).
+
 ## Names
 
 ```odin

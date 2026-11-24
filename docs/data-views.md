@@ -69,7 +69,7 @@ direction. A program saves it and reads it back.
 |---|---|
 | `title` | the header's text |
 | `width` | in ems; 0: the room the other columns leave (one column has it) |
-| `number` | right-aligned; sorted by the row's number; the first click sorts the largest first |
+| `number` | right-aligned; sorted by the row's number; the first click sorts the largest first. A text column sorts in natural order (`ascii.compare_natural`: "file 2" before "file 10", case ignored), and so do the ties by the first column |
 | `low_first` | a number that the first click sorts from the lowest (an id) |
 | `weak` | its text in the weak colour (details beside the name) |
 | `hidden` | not shown until the user asks for it |

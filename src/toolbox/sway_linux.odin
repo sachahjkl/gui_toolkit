@@ -6,6 +6,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:time"
+import tk_process "../process"
 
 // Starts sway in `dir` (made anew) and waits, at most `o.wait`, until it answers on its socket. why: "" when it runs;
 // else what failed (sway_stop still cleans up).
@@ -75,8 +76,7 @@ sway_start :: proc(s: ^Sway, dir: string, o := Sway_Options{}) -> (why: string) 
 
 	// (the socket is there before sway reads its config: it answers once its outputs are made)
 	for {
-		state, _, _, err := os.process_exec({command = {"swaymsg", "-t", "get_outputs"}, env = s.env}, context.temp_allocator)
-		if err == nil && succeeded(state) { return "" }
+		if tk_process.run({"swaymsg", "-t", "get_outputs"}, {env = s.env}, context.temp_allocator).ok { return "" }
 		if time.tick_diff(time.tick_now(), deadline) <= 0 { return fmt.tprintf("sway does not answer in %v (%s/sway.log)", wait, s.dir) }
 		time.sleep(SWAY_POLL)
 	}

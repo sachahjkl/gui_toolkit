@@ -12,6 +12,8 @@ import base "../base"
 Handler :: struct {
 	id:      string,   // what open_with takes: Linux, the desktop file id ("org.gnome.TextEditor.desktop"); Windows, the handler's name
 	name:    string,   // what a menu shows
+	icon:    string,   // where its icon is (handler_icon): Linux, the desktop entry's Icon key (a theme's name or a file);
+	                   // Windows, the shell's location "file,index"; "": none
 	default: bool,     // the system opens the file with it
 }
 
@@ -25,6 +27,7 @@ handlers_destroy :: proc(hs: []Handler, allocator := context.allocator) {
 	for h in hs {
 		delete(h.id, allocator)
 		delete(h.name, allocator)
+		delete(h.icon, allocator)
 	}
 	delete(hs, allocator)
 }
@@ -43,7 +46,16 @@ open_with :: proc(path: string, id: string, loc := #caller_location) -> bool {
 	return open_with_native(path, id)
 }
 
+// The icon of the handler `h`, about `size` pixels square: Linux, its name in the person's icon theme (theme_icon);
+// Windows, the icon the shell gives for it. ok is false when it has none. It reads files: call it on a worker, once
+// per handler and size.
+handler_icon :: proc(h: Handler, size: int, allocator := context.allocator, loc := #caller_location) -> (icon: File_Icon, ok: bool) {
+	base.blocking("desktop.handler_icon", loc)
+	if h.icon == "" { return }
+	return handler_icon_native(h.icon, size, allocator)
+}
+
 @(private)
-handler_clone :: proc(id, name: string, default: bool, allocator: runtime.Allocator) -> Handler {
-	return {clone_or_empty(id, allocator), clone_or_empty(name, allocator), default}
+handler_clone :: proc(id, name, icon: string, default: bool, allocator: runtime.Allocator) -> Handler {
+	return {id = clone_or_empty(id, allocator), name = clone_or_empty(name, allocator), icon = clone_or_empty(icon, allocator), default = default}
 }
