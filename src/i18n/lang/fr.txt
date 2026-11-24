@@ -1858,6 +1858,58 @@ fr Ouvrir dans une fenêtre
 en floating panel
 fr panneau flottant
 
+en Home
+fr Dossier personnel
+
+en Desktop
+fr Bureau
+
+en Documents
+fr Documents
+
+en Downloads
+fr Téléchargements
+
+en Pictures
+fr Images
+
+en Music
+fr Musique
+
+en Videos
+fr Vidéos
+
+en You are not allowed to read it.
+fr Vous n'avez pas le droit de le lire.
+
+en It is not there any more.
+fr Il n'existe plus.
+
+en Something of this name is there already.
+fr Un élément de ce nom existe déjà.
+
+en The folder could not be read: %s.
+fr Le dossier n'a pas pu être lu : %s.
+
+en The file could not be read: %s.
+fr Le fichier n'a pas pu être lu : %s.
+
+en The folder could not be made: %s.
+fr Le dossier n'a pas pu être créé : %s.
+
+en It could not be renamed: %s.
+fr Il n'a pas pu être renommé : %s.
+
+en %d item could not be moved to the trash.
+en+ %d items could not be moved to the trash.
+fr %d élément n'a pas pu être mis à la corbeille.
+fr+ %d éléments n'ont pas pu être mis à la corbeille.
+
+en %d item could not be put back.
+en+ %d items could not be put back.
+fr %d élément n'a pas pu être remis en place.
+fr+ %d éléments n'ont pas pu être remis en place.
+
 en Name
 fr Nom
 
@@ -1936,6 +1988,9 @@ fr Renommer
 en Move to the trash
 fr Mettre à la corbeille
 
+en Open with
+fr Ouvrir avec
+
 en The new name
 fr Le nouveau nom
 
@@ -1989,12 +2044,6 @@ fr Choisir
 en Back (Alt+Left)
 fr Précédent (Alt+Gauche)
 
-en Show the preview (Alt+P)
-fr Afficher l’aperçu (Alt+P)
-
-en Hide the preview (Alt+P)
-fr Masquer l’aperçu (Alt+P)
-
 en Forward (Alt+Right)
 fr Suivant (Alt+Droite)
 
@@ -2009,6 +2058,12 @@ fr Filtrer
 
 en In subfolders
 fr Dans les sous-dossiers
+
+en Show the preview (Alt+P)
+fr Afficher l’aperçu (Alt+P)
+
+en Hide the preview (Alt+P)
+fr Masquer l’aperçu (Alt+P)
 
 en View (Ctrl+wheel, Ctrl+= and Ctrl+-)
 fr Vue (Ctrl+molette, Ctrl+= et Ctrl+-)
@@ -2063,58 +2118,6 @@ fr Maj+Ctrl+N
 
 en Hidden files
 fr Fichiers cachés
-
-en Home
-fr Dossier personnel
-
-en Desktop
-fr Bureau
-
-en Documents
-fr Documents
-
-en Downloads
-fr Téléchargements
-
-en Pictures
-fr Images
-
-en Music
-fr Musique
-
-en Videos
-fr Vidéos
-
-en You are not allowed to read it.
-fr Vous n'avez pas le droit de le lire.
-
-en It is not there any more.
-fr Il n'existe plus.
-
-en Something of this name is there already.
-fr Un élément de ce nom existe déjà.
-
-en The folder could not be read: %s.
-fr Le dossier n'a pas pu être lu : %s.
-
-en The file could not be read: %s.
-fr Le fichier n'a pas pu être lu : %s.
-
-en The folder could not be made: %s.
-fr Le dossier n'a pas pu être créé : %s.
-
-en It could not be renamed: %s.
-fr Il n'a pas pu être renommé : %s.
-
-en %d item could not be moved to the trash.
-en+ %d items could not be moved to the trash.
-fr %d élément n'a pas pu être mis à la corbeille.
-fr+ %d éléments n'ont pas pu être mis à la corbeille.
-
-en %d item could not be put back.
-en+ %d items could not be put back.
-fr %d élément n'a pas pu être remis en place.
-fr+ %d éléments n'ont pas pu être remis en place.
 
 en Find
 fr Rechercher
@@ -2245,6 +2248,129 @@ fr Afficher le mot de passe
 en Clear
 fr Effacer
 
+en Tools
+fr Outils
+
+en Select and move
+fr Sélectionner et déplacer
+
+en Rectangle
+fr Rectangle
+
+en Ellipse
+fr Ellipse
+
+en Arrow
+fr Flèche
+
+en Line
+fr Trait
+
+en Pen
+fr Stylo
+
+en Highlighter
+fr Surligneur
+
+en Pixelate
+fr Pixeliser
+
+en Blur
+fr Flouter
+
+en Crop
+fr Recadrer
+
+en Edit
+fr Édition
+
+en Delete the selection
+fr Supprimer la sélection
+
+en Select every mark
+fr Tout sélectionner
+
+en Duplicate the selection
+fr Dupliquer la sélection
+
+en Bring to front
+fr Mettre au premier plan
+
+en Bring forward
+fr Avancer
+
+en Send backward
+fr Reculer
+
+en Send to back
+fr Mettre à l’arrière-plan
+
+en Remove the crop
+fr Annuler le recadrage
+
+en Zoom in
+fr Zoom avant
+
+en Zoom out
+fr Zoom arrière
+
+en Fit the picture
+fr Ajuster l’image
+
+en Actual size
+fr Taille réelle
+
+en Style
+fr Style
+
+en Fill
+fr Remplissage
+
+en No fill
+fr Sans remplissage
+
+en Width
+fr Épaisseur
+
+en Corners
+fr Coins
+
+en Solid
+fr Plein
+
+en Dashed
+fr Tirets
+
+en Dotted
+fr Pointillés
+
+en Heads
+fr Pointes
+
+en End
+fr Fin
+
+en Both
+fr Les deux
+
+en Bold
+fr Gras
+
+en Look
+fr Aspect
+
+en Plain
+fr Simple
+
+en Outline
+fr Contour
+
+en Box
+fr Encadré
+
+en Cells
+fr Cases
+
 en Steps
 fr Étapes
 
@@ -2268,6 +2394,12 @@ fr Aucun raccourci
 
 en The default
 fr Par défaut
+
+en No application
+fr Aucune application
+
+en %s did not start.
+fr %s n’a pas démarré.
 
 en Commands
 fr Commandes
@@ -2346,15 +2478,6 @@ fr Opacité
 
 en Fit
 fr Ajuster
-
-en Zoom out
-fr Zoom arrière
-
-en Zoom in
-fr Zoom avant
-
-en Actual size
-fr Taille réelle
 
 en QR code: %s
 fr Code QR : %s
