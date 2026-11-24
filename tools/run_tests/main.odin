@@ -82,6 +82,7 @@ STEPS := []Step{
 	{name = "png", path = "src/png", oses = EVERYWHERE},
 	{name = "qr", path = "src/qr", oses = EVERYWHERE},
 	{name = "ink", path = "src/ink", oses = EVERYWHERE},
+	{name = "marks", path = "src/marks", oses = EVERYWHERE},
 	// (one at a time: several of its tests start children, and os.process_start is not safe from two threads at once,
 	// as the plugins' starts know; each_signal_is_its_own twice stopped on an illegal instruction beside another start)
 	{name = "process", path = "src/process", oses = EVERYWHERE, one = true},
@@ -192,6 +193,7 @@ STEPS := []Step{
 	{name = "data_views", one = true, oses = EVERYWHERE, text = true},
 	{name = "file_browser", one = true, oses = EVERYWHERE, text = true},
 	{name = "path_bar", one = true, oses = EVERYWHERE, text = true},
+	{name = "mark_editor", one = true, oses = EVERYWHERE, text = true},
 	{name = "font_picker", one = true, oses = EVERYWHERE, text = true},
 	{name = "diff", one = true, oses = EVERYWHERE, text = true},
 	{name = "prefs_page", one = true, oses = EVERYWHERE, text = true},

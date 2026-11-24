@@ -13,6 +13,13 @@
   release tools. The smallest first; each session has the list with its files.
 
 ## Next
+- **cliche and opencode native draw with `ui.Mark_Editor`.** cliche drops its editor's model, painter and canvas for
+  the toolkit's and keeps its window, its words and its outputs; opencode native opens the editor on a picture of its
+  viewer or of its composer, and the result replaces the attachment. Intent:
+  [src/md/features/mark-editor.md](src/md/features/mark-editor.md).
+- **The rest of cliche's marks in `gt:marks`.** Speech balloons, step numbers, the magnifier, stickers, shadows and the
+  picture's own operations (turn, mirror, resize, margins, cut out a band), each with its figures and its tests, when a
+  program needs it. Intent: [src/md/features/mark-editor.md](src/md/features/mark-editor.md).
 - **gt-file-picker as a Nix package.** The flake builds the compiler and the test fonts, no program of the
   repository: a package of gt-file-picker needs the native library's crates vendored (`importCargoLock`) and the
   portal's files installed with its store path in their `Exec=`. Then NixOS's portal configuration names it with no

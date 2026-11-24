@@ -508,6 +508,8 @@ ui/commands.odin ZOOM_RESET_KEYS const  # a table
 ui/choices.odin choice_shared_lock process  # guards choice_shared
 ui/choices.odin choice_shared process  # the usage memories of the process by their file, shared by the palettes of its windows (locked: choice_shared_lock)
 ui/color_text.odin COLOR_FORMAT_NAMES const  # a table
+ui/mark_editor.odin mark_tool_command.keys const  # the mark editor's tools' keys, read only memory
+ui/mark_editor.odin mark_command.keys const  # the mark editor's actions' keys, read only memory
 ui/licence_card_kept.odin kept thread  # the licence card's textures and shader, of this interface thread's renderer (its chores' answers come on this thread)
 ui/licence_card_relief.odin MICRO_GLYPHS const  # the microprint's 5 x 7 face, a table
 ui/overlays.odin toast_position_names const  # a table

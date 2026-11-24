@@ -47,6 +47,7 @@ Widgets and layout
   data-views.md       Tables, graphs and meters
   term.md             term: a terminal's grid
   preview.md          Preview: zoom and pan
+  mark-editor.md      Mark editor: draw on a picture
   licence-card.md     The licence card
   node_graph.md       Node graph
   flowgraph.md        flowgraph: graphs a person edits and runs
