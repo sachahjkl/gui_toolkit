@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.350.1] - 2026-11-24 09:30
+
+### Fixed
+- **The annotation editor's style line no longer stacks its controls.** The colour swatches, the "No fill" button, the Width and Corners sliders and the line choice each keep their own place at every width of the editor; the bar wraps onto more lines when it lacks room.
+
 ## [0.350.0] - 2026-11-24 07:04
 
 ### Added
@@ -4905,6 +4910,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.350.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.350.1
 [0.350.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.350.0
 [0.349.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.349.1
 [0.349.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.349.0
