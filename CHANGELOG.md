@@ -5,6 +5,26 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.357.0] - 2026-11-25 11:32
+
+### Added
+- **`config.bind`**: binds a typed settings struct to a preference prefix in one call (optional `defs` registration,
+initial read, automatic refresh with optional `destroy` for owned fields, optional `on_change` callback, and automatic
+cleanup in `prefs_destroy` or `unwatch`).
+- **A drag carries a window on Wayland (`platform.Drag_Carry`, `drag_carry_supported`)**: `drag_start` takes a window
+that the compositor moves with the pointer while the drag runs (`xdg-toplevel-drag-v1`), with `grab` scaled to logical
+surface coordinates and `Drag_Carry.frame` called while the drag holds the thread. Without compositor support it falls
+back to a normal drag.
+
+### Changed
+- **Native text backend (`gt_text`) uses ICU4X's LSTM line segmenter**: switches `icu_segmenter` from the 1.01 MiB
+dictionary data to the 303 KiB LSTM model for Thai, Lao, Khmer, and Myanmar line breaking, trimming ~725 KiB of
+`.rodata` from every binary that links `gt_text`.
+
+### Fixed
+- **`ui.THEMES` no longer emits an Odin large non-constant initializer warning**: Old Head's relief is assigned once at
+startup so the 15 KiB theme table compiles as static data.
+
 ## [0.356.2] - 2026-11-25 09:21
 
 ### Fixed
@@ -4978,6 +4998,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.357.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.357.0
 [0.356.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.2
 [0.356.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.1
 [0.356.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.0
