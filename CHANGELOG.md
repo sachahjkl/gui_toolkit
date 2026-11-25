@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.359.0] - 2026-11-25 22:09
+
+### Added
+- **A selection rectangle starts from the empty part of a row**: in a `ui.Table` of several with `rubber_band`, in Details and List, a drag from after the text or between the cells draws the rectangle; a click there selects when the button is let go, and the list keeps half a row of room at its end. Ctrl and a drag from a row's text start it too. A program with rows of its own takes `ui.List_State.pressed_empty` (or `ui.row_content_at`), `ui.item_band_row_press`, the `row_press` of `ui.item_band_update` and `ui.Virtual_List.end_space`.
+
+### Fixed
+- **The selection rectangle shows wherever the view is scrolled**: `ui.item_band_update` builds it in the view's own box, at its scroll, so it is no longer drawn out of a scrolled list or of Columns. A drag started with Ctrl on an item goes on when that item scrolls out, the rows repaint at once, and a band whose view was hidden does not follow a later press.
+
 ## [0.358.2] - 2026-11-25 16:32
 
 ### Changed
@@ -5020,6 +5028,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.359.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.359.0
 [0.358.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.2
 [0.358.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.1
 [0.358.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.0
