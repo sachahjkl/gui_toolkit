@@ -45,6 +45,8 @@ const FLAG_SCALED: u32 = 0x10000u;
 const FLAG_MATRIX: u32 = 0x20000u;
 const FLAG_PROJECT: u32 = 0x40000u;
 const FLAG_LCD: u32 = 0x80000u;
+const FLAG_IMAGE_PIXELATED: u32 = 0x100000u;
+const FLAG_IMAGE_NEAREST: u32 = 0x200000u;
 const BLEND_SHIFT: u32 = 8u;
 const SPACE_LINEAR: u32 = 0u;
 const SPACE_SRGB: u32 = 1u;
@@ -1140,6 +1142,20 @@ var<private> lcd_weight: float3 = float3(1.0, 1.0, 1.0);
 				let lt = layer_texel(i, screen, tex_space);
 				texel = lt.t;
 				tex_space = lt.space;
+			} else if ((i.extra.z & FLAG_IMAGE_NEAREST) != 0u || ((i.extra.z & FLAG_IMAGE_PIXELATED) != 0u && max(dot(duvx, duvx), dot(duvy, duvy)) <= 1.001)) {
+				// nearest neighbour without extra samplers (works on GL without splitting batches); pixelated switches back to trilinear when minifying
+				let idim = vec2<i32>(dim);
+				let max_tc = max(idim - vec2<i32>(1), vec2<i32>(0));
+				var tc: vec2<i32>;
+				if ((i.extra.z & FLAG_TILE) != 0u) {
+					let wrapped = i.uv - floor(i.uv / dim) * dim;
+					tc = clamp(vec2<i32>(floor(wrapped)), vec2<i32>(0), max_tc);
+				} else {
+					let lo = clamp(vec2<i32>(floor(min(i.src.xy, i.src.zw))), vec2<i32>(0), max_tc);
+					let hi = clamp(vec2<i32>(ceil(max(i.src.xy, i.src.zw))) - vec2<i32>(1), lo, max_tc);
+					tc = clamp(vec2<i32>(floor(i.uv)), lo, hi);
+				}
+				texel = textureLoad(image, tc, 0);
 			} else if ((i.extra.z & FLAG_TILE) != 0u) {
 				texel = textureSampleGrad(image, samp_wrap, uv, duvx / dim, duvy / dim);
 			} else {

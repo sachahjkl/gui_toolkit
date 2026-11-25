@@ -88,6 +88,13 @@ Interpolation :: enum u8 {
 	Linear,   // linear light (CSS `in srgb-linear`)
 }
 
+// How images drawn from now on (image, image_corners, image_cover, image_tiled) are sampled.
+Image_Filter :: enum u8 {
+	Smooth,     // trilinear with mips (the default)
+	Pixelated,  // nearest neighbour when magnifying, trilinear when minifying (CSS image-rendering: pixelated)
+	Nearest,    // nearest neighbour at every scale (CSS image-rendering: crisp-edges)
+}
+
 // The alpha that makes `color` over `over` look, blended in `space`, as it does at `alpha` blended in linear light
 // (luminance match; colors linear). For colors tuned for one space (a theme's translucent hover, a selection tint)
 // drawn in the other one. Identity in Linear, or when color and backdrop have the same luminance.
@@ -156,6 +163,7 @@ Context :: struct {
 	target:   int,                             // where new batches draw: 0 = the frame, else a layer id
 	circular: bool,                            // set_circular_corners
 	interp:   Interpolation,                   // set_interpolation
+	image_filter: Image_Filter,                // set_image_filter
 	size:     Vec2,
 	grads:    [dynamic][4]f32,                 // gradient table of this frame (or of the picture being recorded)
 	replays:  [dynamic]render.Replay,          // pictures drawn this frame
@@ -299,6 +307,7 @@ begin_frame :: proc(c: ^Context, size: Vec2) {
 	c.target = 0
 	c.circular = false
 	c.interp = .Target
+	c.image_filter = .Smooth
 	c.size = size
 	text_begin_frame(c)
 	append(&c.clips, Clip{rect = {{0, 0}, size}})
@@ -464,6 +473,14 @@ set_circular_corners :: proc(c: ^Context, on: bool) -> (previous: bool) {
 set_interpolation :: proc(c: ^Context, interp: Interpolation) -> (previous: Interpolation) {
 	previous = c.interp
 	c.interp = interp
+	return
+}
+
+// How images drawn from now on (image, image_corners, image_cover, image_tiled) are sampled. Returns the previous
+// setting. begin_frame resets it to .Smooth.
+set_image_filter :: proc(c: ^Context, filter: Image_Filter) -> (previous: Image_Filter) {
+	previous = c.image_filter
+	c.image_filter = filter
 	return
 }
 
@@ -636,13 +653,24 @@ image_corners :: proc(c: ^Context, tex: render.Texture, dst: Rect, src: Rect, ti
 	if ts.x == 0 { return }
 	s := src
 	if s == {} { s = {{0, 0}, {f32(ts.x), f32(ts.y)}} }
-	image_inst(c, tex, dst, {s.min.x, s.min.y, s.max.x, s.max.y}, tint, radii, texture_flags(c, tex))
+	image_inst(c, tex, dst, {s.min.x, s.min.y, s.max.x, s.max.y}, tint, radii, texture_flags(c, tex) | image_filter_flags(c))
 }
 
 // FLAG_TEX_SRGB for an RGBA texture stored in sRGB (render.texture_space).
 @(private)
 texture_flags :: proc(c: ^Context, tex: render.Texture) -> u32 {
 	return render.texture_space(c.renderer, tex) == .Srgb ? render.FLAG_TEX_SRGB : 0
+}
+
+// FLAG_IMAGE_* for the active Image_Filter (applied to image primitives, never to internal layer composites).
+@(private)
+image_filter_flags :: proc(c: ^Context) -> u32 {
+	switch c.image_filter {
+	case .Smooth:    return 0
+	case .Pixelated: return render.FLAG_IMAGE_PIXELATED
+	case .Nearest:   return render.FLAG_IMAGE_NEAREST
+	}
+	return 0
 }
 
 // Repeats the whole texture (CSS background-repeat): one copy lands on `tile` (local coords, may be smaller or larger
@@ -656,7 +684,7 @@ image_tiled :: proc(c: ^Context, tex: render.Texture, dst: Rect, tile: Rect, tin
 	k := Vec2{f32(ts.x), f32(ts.y)} / tsz   // texels per local unit
 	uv0 := (dst.min - tile.min) * k
 	uv1 := (dst.max - tile.min) * k
-	image_inst(c, tex, dst, {uv0.x, uv0.y, uv1.x, uv1.y}, tint, radii, render.FLAG_TILE | texture_flags(c, tex))
+	image_inst(c, tex, dst, {uv0.x, uv0.y, uv1.x, uv1.y}, tint, radii, render.FLAG_TILE | texture_flags(c, tex) | image_filter_flags(c))
 }
 
 @(private)

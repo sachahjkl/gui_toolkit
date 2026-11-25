@@ -152,3 +152,179 @@ mips_follow_an_opaque_upload :: proc(t: ^testing.T) {
 		render.destroy_texture(&f.r, tex)
 	}
 }
+
+// Upscaling a 2x2 checkerboard: Smooth blends across the middle; Pixelated and Nearest keep hard texel boundaries.
+@(test)
+image_filter_upscale_pixelated_and_nearest :: proc(t: ^testing.T) {
+	checker := [2 * 2 * 4]u8{
+		255, 0, 0, 255,   0, 0, 255, 255,
+		0, 0, 255, 255,   255, 0, 0, 255,
+	}
+	for space in render.Blend_Space {
+		f: Fx
+		if !open(&f, space) { testing.fail_now(t, "no offscreen renderer") }
+		defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+		tex := render.create_texture_rgba(&f.r, 2, 2, mips = false)
+		defer render.destroy_texture(&f.r, tex)
+		render.update_texture_rgba(&f.r, tex, 0, 0, 2, 2, checker[:])
+
+		draw_with :: proc(f: ^Fx, tex: render.Texture, filter: draw.Image_Filter) -> []u8 {
+			draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+			render.frame_begin(&f.r, {1, 1, 1, 1})
+			prev := draw.set_image_filter(&f.dc, filter)
+			draw.image(&f.dc, tex, {{8, 8}, {48, 48}})
+			draw.set_image_filter(&f.dc, prev)
+			draw.end_frame(&f.dc)
+			render.frame_end(&f.r)
+			return render.read_pixels(&f.r, context.temp_allocator)
+		}
+
+		// Smooth blends between red and blue at the vertical boundary (x = 27, 28)
+		smooth := draw_with(&f, tex, .Smooth)
+		sm_l, sm_r := px(smooth, 27, 18), px(smooth, 28, 18)
+		testing.expectf(t, sm_l[0] > 30 && sm_l[2] > 30 && sm_r[0] > 30 && sm_r[2] > 30,
+			"%v: smooth upscale blends across boundary: %v %v", space, sm_l, sm_r)
+
+		for filter in ([?]draw.Image_Filter{.Pixelated, .Nearest}) {
+			img := draw_with(&f, tex, filter)
+			testing.expectf(t, close_px(px(img, 27, 18), {255, 0, 0, 255}, 1), "%v %v: left of seam is pure red: %v", space, filter, px(img, 27, 18))
+			testing.expectf(t, close_px(px(img, 28, 18), {0, 0, 255, 255}, 1), "%v %v: right of seam is pure blue: %v", space, filter, px(img, 28, 18))
+			testing.expectf(t, close_px(px(img, 27, 27), {255, 0, 0, 255}, 1), "%v %v: top-left corner of center: %v", space, filter, px(img, 27, 27))
+			testing.expectf(t, close_px(px(img, 27, 28), {0, 0, 255, 255}, 1), "%v %v: bottom-left corner of center: %v", space, filter, px(img, 27, 28))
+			testing.expectf(t, close_px(px(img, 28, 28), {255, 0, 0, 255}, 1), "%v %v: bottom-right corner of center: %v", space, filter, px(img, 28, 28))
+		}
+
+		// begin_frame resets image_filter back to .Smooth
+		draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+		prev := draw.set_image_filter(&f.dc, .Pixelated)
+		testing.expect_value(t, prev, draw.Image_Filter.Smooth)
+		draw.end_frame(&f.dc)
+		draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+		testing.expect_value(t, draw.set_image_filter(&f.dc, .Smooth), draw.Image_Filter.Smooth)
+		draw.end_frame(&f.dc)
+	}
+}
+
+// Downscaling a 4x4 red/blue checkerboard to 2x2: Pixelated falls back to smooth mip filtering, Nearest stays hard.
+@(test)
+image_filter_downscale_pixelated_vs_nearest :: proc(t: ^testing.T) {
+	src: [4 * 4 * 4]u8
+	for y in 0 ..< 4 {
+		for x in 0 ..< 4 {
+			o := (y * 4 + x) * 4
+			if (x + y) & 1 == 0 {
+				src[o], src[o + 1], src[o + 2], src[o + 3] = 255, 0, 0, 255
+			} else {
+				src[o], src[o + 1], src[o + 2], src[o + 3] = 0, 0, 255, 255
+			}
+		}
+	}
+	for space in render.Blend_Space {
+		f: Fx
+		if !open(&f, space) { testing.fail_now(t, "no offscreen renderer") }
+		defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+		tex := render.create_texture_rgba(&f.r, 4, 4, mips = true)
+		defer render.destroy_texture(&f.r, tex)
+		render.update_texture_rgba(&f.r, tex, 0, 0, 4, 4, src[:])
+
+		draw_down :: proc(f: ^Fx, tex: render.Texture, filter: draw.Image_Filter) -> [4]int {
+			draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+			render.frame_begin(&f.r, {1, 1, 1, 1})
+			draw.set_image_filter(&f.dc, filter)
+			draw.image(&f.dc, tex, {{8, 8}, {10, 10}})
+			draw.end_frame(&f.dc)
+			render.frame_end(&f.r)
+			img := render.read_pixels(&f.r, context.temp_allocator)
+			return px(img, 8, 8)
+		}
+
+		pix := draw_down(&f, tex, .Pixelated)
+		testing.expectf(t, pix[0] >= 80 && pix[2] >= 80, "%v: pixelated downscale blends smoothly: %v", space, pix)
+
+		near := draw_down(&f, tex, .Nearest)
+		pure := (near[0] >= 250 && near[2] <= 5) || (near[2] >= 250 && near[0] <= 5)
+		testing.expectf(t, pure, "%v: nearest downscale picks an unblended texel: %v", space, near)
+	}
+}
+
+// Sprite-sheet sub-rect clamping, tiled image wrapping, and retained draw.Picture replay with Pixelated.
+@(test)
+image_filter_subrect_tiled_and_picture :: proc(t: ^testing.T) {
+	f: Fx
+	if !open(&f, .Srgb) { testing.fail_now(t, "no offscreen renderer") }
+	defer { draw.destroy(&f.dc); render.destroy(&f.r) }
+
+	// 4x4 texture with green outer ring and 2x2 red/blue inner sprite
+	atlas: [4 * 4 * 4]u8
+	for y in 0 ..< 4 {
+		for x in 0 ..< 4 {
+			o := (y * 4 + x) * 4
+			if x >= 1 && x <= 2 && y >= 1 && y <= 2 {
+				if (x + y) & 1 == 0 {
+					atlas[o], atlas[o + 1], atlas[o + 2], atlas[o + 3] = 255, 0, 0, 255
+				} else {
+					atlas[o], atlas[o + 1], atlas[o + 2], atlas[o + 3] = 0, 0, 255, 255
+				}
+			} else {
+				atlas[o], atlas[o + 1], atlas[o + 2], atlas[o + 3] = 0, 255, 0, 255
+			}
+		}
+	}
+	tex_atlas := render.create_texture_rgba(&f.r, 4, 4, mips = false)
+	defer render.destroy_texture(&f.r, tex_atlas)
+	render.update_texture_rgba(&f.r, tex_atlas, 0, 0, 4, 4, atlas[:])
+
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	draw.set_image_filter(&f.dc, .Pixelated)
+	draw.image(&f.dc, tex_atlas, {{4, 4}, {44, 44}}, src = {{1, 1}, {3, 3}})
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	sub_img := render.read_pixels(&f.r, context.temp_allocator)
+	for y in 4 ..< 44 {
+		for x in 4 ..< 44 {
+			c := px(sub_img, x, y)
+			testing.expectf(t, c[1] == 0, "sub-rect (%d,%d) must not bleed green border: %v", x, y, c)
+		}
+	}
+	testing.expectf(t, close_px(px(sub_img, 23, 14), {255, 0, 0, 255}, 1), "sub-rect left of seam: %v", px(sub_img, 23, 14))
+	testing.expectf(t, close_px(px(sub_img, 24, 14), {0, 0, 255, 255}, 1), "sub-rect right of seam: %v", px(sub_img, 24, 14))
+
+	// Tiled 2x2 red/blue texture repeated across 32x32 with 16x16 tiles (offset so negative UVs also wrap)
+	checker := [2 * 2 * 4]u8{
+		255, 0, 0, 255,   0, 0, 255, 255,
+		0, 0, 255, 255,   255, 0, 0, 255,
+	}
+	tex_tile := render.create_texture_rgba(&f.r, 2, 2, mips = false)
+	defer render.destroy_texture(&f.r, tex_tile)
+	render.update_texture_rgba(&f.r, tex_tile, 0, 0, 2, 2, checker[:])
+
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	draw.set_image_filter(&f.dc, .Pixelated)
+	draw.image_tiled(&f.dc, tex_tile, {{0, 0}, {32, 32}}, {{16, 16}, {32, 32}})
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	tile_img := render.read_pixels(&f.r, context.temp_allocator)
+	testing.expectf(t, close_px(px(tile_img, 7, 4), {255, 0, 0, 255}, 1), "wrapped tile (-1) left: %v", px(tile_img, 7, 4))
+	testing.expectf(t, close_px(px(tile_img, 8, 4), {0, 0, 255, 255}, 1), "wrapped tile (-1) right: %v", px(tile_img, 8, 4))
+	testing.expectf(t, close_px(px(tile_img, 15, 4), {0, 0, 255, 255}, 1), "tile seam left: %v", px(tile_img, 15, 4))
+	testing.expectf(t, close_px(px(tile_img, 16, 4), {255, 0, 0, 255}, 1), "tile seam right: %v", px(tile_img, 16, 4))
+
+	// Retained picture preserves Pixelated flag even when replayed under Smooth
+	pic: draw.Picture
+	defer draw.picture_destroy(&pic)
+	draw.begin_frame(&f.dc, {f32(SIZE.x), f32(SIZE.y)})
+	render.frame_begin(&f.r, {1, 1, 1, 1})
+	draw.picture_begin(&f.dc, &pic)
+	draw.set_image_filter(&f.dc, .Pixelated)
+	draw.image(&f.dc, tex_tile, {{8, 8}, {48, 48}})
+	draw.set_image_filter(&f.dc, .Smooth)
+	draw.picture_end(&f.dc)
+	draw.replay(&f.dc, &pic, draw.AFFINE_IDENTITY)
+	draw.end_frame(&f.dc)
+	render.frame_end(&f.r)
+	pic_img := render.read_pixels(&f.r, context.temp_allocator)
+	testing.expectf(t, close_px(px(pic_img, 27, 18), {255, 0, 0, 255}, 1), "picture replay left: %v", px(pic_img, 27, 18))
+	testing.expectf(t, close_px(px(pic_img, 28, 18), {0, 0, 255, 255}, 1), "picture replay right: %v", px(pic_img, 28, 18))
+}

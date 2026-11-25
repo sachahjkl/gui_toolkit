@@ -92,6 +92,8 @@ FLAG_SCALED :: 0x10000 // the texture holds the image reduced (a large blur): sa
 FLAG_MATRIX :: 0x20000 // color matrices applied to the texel (straight sRGB values, each result clamped), as a Color
                        // pass would: `aux` is their entry in the frame's gradient table (see Color_Matrix_Entry)
 FLAG_LCD :: 0x80000 // glyph: three coverages per pixel side by side in the atlas (font.Glyph_Image.lcd); `src` is three times as wide as `dst`
+FLAG_IMAGE_PIXELATED :: 0x100000 // image: nearest neighbour when magnifying, trilinear when minifying (CSS image-rendering: pixelated)
+FLAG_IMAGE_NEAREST :: 0x200000   // image: nearest neighbour at every scale (CSS image-rendering: crisp-edges)
 FLAG_PROJECT :: 0x40000 // image: a layer drawn through a homography (draw.draw_plane). `xform` is the first of two
                         // entries of the transform table that hold the 3x3 matrix mapping layer texels to homogeneous screen
                         // pixels, then ceil(cuts / 2) entries of cuts (half-planes a x + b y + c >= 0 of the layer's texel space,

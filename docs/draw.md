@@ -532,6 +532,7 @@ render.destroy_texture(&r, tex)
 | `draw.image(dc, tex, dst, src: Rect = {}, tint: Color = WHITE, radius: f32 = 0)` | `src` in texels, zero = whole texture |
 | `draw.image_corners(dc, tex, dst, src, tint, radii: [4]f32)` | |
 | `draw.image_tiled(dc, tex, dst, tile: Rect, tint = WHITE, radii = {})` | one copy of the whole texture on `tile`, repeated, cropped to `dst` |
+| `draw.set_image_filter(dc, filter: Image_Filter) -> Image_Filter` | `.Smooth` (default), `.Pixelated` (nearest when magnifying, trilinear when minifying), `.Nearest` (nearest at every scale); reset by `begin_frame` |
 
 - **Color**: pixels are sRGB and not premultiplied (what PNG / JPEG decoders and the web produce). The upload
   premultiplies them in the texture's blend space (see Blend spaces): in linear light, stored as
@@ -539,8 +540,10 @@ render.destroy_texture(&r, tex)
   or on the sRGB values, stored as `R8G8B8A8_UNORM` (filtering and mips on sRGB values, as browsers). Either way the
   values are premultiplied: no dark fringes around transparent pixels. `tint` is a linear color with straight alpha,
   like every other color in `draw`; the alpha stack applies.
-- **Filtering**: trilinear. Mips are regenerated (`GenerateMips`) before the first frame that follows an update.
-  Without tiling, sampling never reads outside `src` (sprite sheets do not bleed).
+- **Filtering**: trilinear by default (`.Smooth`). Mips are regenerated (`GenerateMips`) before the first frame that
+  follows an update. `draw.set_image_filter(dc, .Pixelated)` uses nearest-neighbour texel fetches when magnifying and
+  keeps trilinear filtering when minifying (CSS `image-rendering: pixelated`); `.Nearest` uses nearest-neighbour at
+  every scale (`crisp-edges`). Without tiling, sampling never reads outside `src` (sprite sheets do not bleed).
 - **Tiling** uses the hardware wrap mode on the whole texture: seamless, one instance, the tile can be any size and
   offset (scrolling backgrounds). For one-axis repeat make `dst` one tile tall or wide. Repeating a sub-rectangle of a
   texture is not supported in one draw: draw one `image` per tile.
