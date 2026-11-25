@@ -55,6 +55,7 @@ Virtual_List :: struct {
 	heights:     Fenwick([2]f64),
 	est:         f32,              // height of a row never measured
 	overscan:    f32,              // px built beyond each edge of the view (0: half a view)
+	end_space:   f32,              // empty space kept after the last row (px): leaves room to start a band in a full list
 	first, last: int,              // rows built this build
 	prev_ids:    [dynamic]u64,     // identities of the rows built last build [prev_first, ...), to measure them
 	prev_first:  int,
@@ -240,7 +241,8 @@ vlist :: proc(id: string, st: ^Virtual_List, ids: []u64, labels: []string = nil,
 
 	// 3. the view stays on the row it showed, wherever that row is now
 	view_h := b.size.y > 0 ? b.size.y : s.window_size.y
-	limit := max(0, total - view_h)   // (not view_limit: the bounds are last build's, these rows' are known)
+	tail := n > 0 ? max(st.end_space, 0) : 0
+	limit := max(0, total + tail - view_h)   // (not view_limit: the bounds are last build's, these rows' are known)
 	dragging := scrollbar_thumb_held(s, b)
 	if st.has_anchor && !dragging && n > 0 {
 		at := -1
@@ -344,7 +346,8 @@ vlist_end :: proc(rows: Vlist_Rows, ok: bool) {
 	s.virtual_depth -= 1
 	st := (^Virtual_List)(pop(&s.list_stack))
 	n := len(st.ids)
-	spacer(px(vlist_total(st) - vlist_row_top(st, st.last)), exact = true)
+	tail := n > 0 ? max(st.end_space, 0) : 0
+	spacer(px(vlist_total(st) - vlist_row_top(st, st.last) + tail), exact = true)
 	// (only the rows in view are built: the set's size tells a screen reader how many there are)
 	b := parent_box()
 	a11y_default(b, {role = .List_Box, multiselectable = st.multi, active_descendant = st.sel >= 0 ? vlist_row_key(b.key, st.sel) : 0})

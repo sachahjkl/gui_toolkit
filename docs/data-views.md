@@ -168,6 +168,7 @@ selected: neither is then read per row. `offsets_made` counts the builds that pl
 | `vlist_total(st)` | the content's height |
 | `vlist_row_extent(st, i)` | the top and the height of row `i` |
 | `vlist_row_at(st, y)` | the row at content position `y`: the last whose top is at or above `y` |
+| `Virtual_List.end_space` | empty space in pixels kept after the last row (in the scroll limit and trailing spacer, not in `vlist_total`), so a full list always keeps room to start a rectangle selection |
 
 A program that builds its rows itself (its own look, no `list_row`) names each row `vlist_row_name(i)`: the list measures
 the rows under that name. `list_select(&st.list, i)` makes a row active and brings it into view, for a list whose keys
@@ -283,15 +284,28 @@ A program's own view of items uses the parts:
 | Procedure | |
 |---|---|
 | `item_move_target(key, at, n, per, flow, page)` | the item a key takes the cursor to among `n` items in lines (`Item_Flow.Lines`) or columns (`.Columns`) of `per` |
-| `item_band_update(band, sel, rows, box, layout, pressed_item, pressed_empty)` | after the items of `box`: a rectangle starts on a press on the empty part, selects the items it touches (`Item_Band_Layout`: rows of a virtual list, a grid of cards on one, columns), ends with the press |
-| `item_band_begin(band, box, sel, removing)` | Ctrl and a press on an item: a rectangle from there |
-| `item_band_cancel(band, sel, rows)` | Escape: the selection there was |
+| `item_band_update(band, sel, rows, box, layout, pressed_item, pressed_empty, id, row_press)` | after the items of `box`: handles a pending empty-part row press (`row_press`), starts a rectangle on empty space, draws the rectangle inside `box`, selects touched items (`Item_Band_Layout`: rows of a virtual list, a grid of cards on one, columns), and ends on release |
+| `item_band_begin(band, box, sel, removing)` | Ctrl and a press on an item: starts a rectangle from there and transfers press ownership to `box` |
+| `item_band_cancel(band, sel, rows)` | Escape: restores the prior selection or cancels a pending empty-part row press |
+| `item_band_row_press(row, sig, selected, empty)` | builds an `Item_Band_Press` for a left pointer press on the empty part of `row` (excluding double clicks) |
+| `row_content_at(row, p)` | whether window point `p` hits interactive or visible content inside `row` (icon, text, control, visual leaf) rather than empty row space; it reads the last layout and measures nothing; call it before the build makes `row` again |
+
+In multi-select `Details` and `List` views with `Table.rubber_band`, pressing the empty part of a row (right of the name
+text, cell padding, empty cells, or the narrow right margin) and dragging past `platform.drag_threshold` starts the
+rectangle selection, even on an already-selected row. Pressing row content (icon, name text, cell text, or a control)
+keeps the drag free for item drag. Releasing without reaching the drag threshold selects the row as a normal click (with
+Ctrl and Shift). Multi-select band tables also keep half a row of `Virtual_List.end_space` below the last row.
+
+Programs that build their own full-width rows with `list_row` read `List_State.pressed_empty` (computed before
+`build_box` on the pointer-pressed row only; set `List_State.defer_empty_press` when `List_State` owns the selection),
+pass `item_band_row_press(row, sig, selected, empty)` to `item_band_update`, and guard item drags with
+`band.active || band.pending` (and, in the build of the press, with the row's own `Item_Band_Press.active`). `item_band_update` selects the row when the press ends with no drag.
 
 The band leaves the rows that cannot be selected (`Item_Rows.selectable`) as they are, and never puts the cursor on one.
 A program that keeps a sum over the selection (bytes, a count by kind) sets `Item_Band.changed` and `Item_Band.user`
 once: `changed(user, row, now_selected)` is called for each row the band puts in or takes out of the selection, as it
-does, at the press (the selection there was cleared, without Ctrl), during the drag and at Escape. A table's band is
-`Table.band`.
+does, at the press (the selection there was cleared, without Ctrl), during the drag, on a deferred click, and at Escape.
+A table's band is `Table.band`.
 
 ## Type to filter (`src/ui/type_to_field.odin`)
 

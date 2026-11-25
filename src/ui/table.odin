@@ -899,8 +899,8 @@ table_build :: proc(id: string, t: ^Table, d: ^Table_Data, empty: string) -> (ev
 	// (a view changed in this build builds another box: the keyboard goes to it when the old one had it)
 	key_before := t.vl.key
 	had_keyboard := key_before != 0 && s.focus_key == key_before
-	// (Escape ends a rectangle before the list's keys take it)
-	if t.band.active && key_press(.Escape) { table_band_cancel(t) }
+	// (Escape ends an active rectangle or pending row press before the list's keys take it)
+	if (t.band.active || t.band.pending) && key_press(.Escape) { table_band_cancel(t) }
 	if t.zoom_keys {
 		_ = zoom_zone(&t.zone)
 		ev.zoomed = table_zoom_follow(s, t)
@@ -934,14 +934,20 @@ table_rows_build :: proc(t: ^Table, d: ^Table_Data, empty: string, em, lead_em: 
 		next({width = fill(), height = fill()})
 	}
 	row_h := dense(em * (t.row_em > 0 ? t.row_em : TABLE_ROW_EM))
+	band_on := t.rubber_band && t.vl.multi
+	// Keep half a row of empty space below the last row in multi-select band lists so full lists stay band-selectable.
+	t.vl.end_space = band_on ? math.round(row_h * 0.5) : 0
+	t.vl.defer_empty_press = band_on
 	if rows, ok := vlist("###rows", &t.vl, t.ids[:], ids_version = t.ids_version); ok {
 		// (vlist says whether the list has the keyboard; the line below makes `focused` the selection's look)
 		list_keys := t.vl.focused
 		// (the keyboard may be in a filter field, yet the selection is the window's: strong while the window is the user's)
 		t.vl.focused = !inactive()
 		pressed_row := false
+		row_press: Item_Band_Press
 		for i in rows.first ..< rows.last {
 			r := t.rows[i]
+			was_selected := band_on && list_is_selected(&t.vl, i)
 			next({width = names ? fill() : fill_least(least), height = px(row_h)})
 			row := list_row(&t.vl, i, table_label(d, r))
 			tip := ""
@@ -950,6 +956,8 @@ table_rows_build :: proc(t: ^Table, d: ^Table_Data, empty: string, em, lead_em: 
 					table_tone_push(d.tones[r])
 					tip = table_first_cell(t, d, r, em, lead_em, row_h, fill())
 					table_tone_pop(d.tones[r])
+					// Narrow empty right margin so truncated names still leave room to start a band.
+					if band_on { table_row_end() }
 				} else {
 					tip = table_cells(t, d, r, em, lead_em, row_h)
 				}
@@ -959,12 +967,26 @@ table_rows_build :: proc(t: ^Table, d: ^Table_Data, empty: string, em, lead_em: 
 			if row.double_clicked { ev.activated = true }
 			// (list_row made the row the selection, or kept the selection it is in)
 			if row.right_clicked { ev.menu, ev.menu_at = true, mouse_pos() }
+			if band_on && row.pointer_pressed && !row.double_clicked {
+				if t.vl.pressed_empty {
+					row_press = item_band_row_press(i, row, was_selected, true)
+				} else if .Ctrl in row.mods && .Shift not_in row.mods {
+					// list_row already toggled row `i`: restore row `i`'s pre-toggle membership in the band's base.
+					item_band_begin(&t.band, parent_box(), &t.vl.selection, was_selected)
+					id := list_row_id(&t.vl, i)
+					if was_selected { t.band.base[id] = {} } else { delete_key(&t.band.base, id) }
+				}
+			}
 			if row.pressed || row.right_clicked { pressed_row = true }
 		}
 		// (the Menu key while the list has the keyboard: table_keys only takes it while the keyboard is elsewhere)
 		if list_keys { table_menu_key(t, ev) }
 		table_empty(t, empty, em)
-		if t.rubber_band { _ = item_band_update(&t.band, &t.vl.selection, list_rows(&t.vl), parent_box(), {kind = .Rows, vl = &t.vl}, pressed_row) }
+		if t.rubber_band {
+			sel_before := t.vl.sel
+			_ = item_band_update(&t.band, &t.vl.selection, list_rows(&t.vl), parent_box(), {kind = .Rows, vl = &t.vl}, pressed_row, row_press = row_press)
+			if t.vl.sel != sel_before { t.vl.changed = true }
+		}
 	}
 	if !names { table_scroll_sync(&t.layout, h.view, &t.vl) }
 }

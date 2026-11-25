@@ -186,6 +186,7 @@ Box :: struct {
 	rel_pos:     Vec2,           // position relative to the parent's origin
 	rect:        Rect,           // final screen rect
 	text_dim:    Vec2,           // measured size of `text` (without padding)
+	rich_width:  f32,            // a rich paragraph's widest line as last laid out or drawn (text_dim is the layout's own there)
 	ellipsis:    Rect,           // where the last draw cut its text: the ellipsis, a target (text_reveal.odin); {}: not cut
 	view_off:    Vec2,           // scroll offset, animated
 	view_target: Vec2,           // scroll offset target

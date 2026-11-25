@@ -656,6 +656,7 @@ rich_middle_at :: proc(b: ^Box, p: Vec2) -> bool {
 rich_measure_y :: proc(b: ^Box) -> f32 {
 	d := (^Rich_Draw)(b.custom_user)
 	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
+	b.rich_width = l.size.x
 	return l.size.y
 }
 
@@ -668,6 +669,7 @@ rich_draw :: proc(b: ^Box, user: rawptr, dc: ^draw.Context) {
 	d := (^Rich_Draw)(user)
 	s := gs()
 	l := rich_layout_cached(d.runs, d.ctx, b.size.x - 2 * b.text_pad, d.max_lines, b.text_align, d.version)
+	b.rich_width = l.size.x   // (a paragraph given its height is not measured by the layout)
 	o := b.rect.min + rich_inset(b, d, l)
 	clip := draw.current_clip(dc)
 	// the runs' backgrounds first: the selection and the matches go over them, under the text (draw_box leaves both to here)

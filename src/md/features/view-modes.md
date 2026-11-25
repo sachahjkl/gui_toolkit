@@ -60,31 +60,75 @@ shape with one gesture (Ctrl+wheel, Ctrl+= and Ctrl+-, a control of the program)
   `TABLE_CARD_PICTURE`, would need its own number; the anim between steps would jump).
 - **The rubber band is the table's** (`Table.rubber_band`, `Item_Band`), for a multi table in every view. A press on the
   empty part of the view and a drag select every item the rectangle touches; with Ctrl, they are added to the selection
-  there was; Ctrl and a press on a card start it from that card, taking items out when the card was selected. Escape
-  gives the selection there was back. A frame tests only the items the rectangle may touch, found by halves in the
+  there was; Ctrl and a press on an item start it from that item, taking items out when the item was selected. Escape
+  gives the selection there was back. A frame tests only the items the rectangle touches, found by halves in the
   list's tops (O(log n)), and those it touched at the last frame (the items it left go back to the base). The rectangle
   is kept in the content: it scrolls with the items, and a drag near an edge scrolls the view (`drag_autoscroll`).
-  `Item_Band` takes `Item_Rows` and a layout: a program that builds its own grid uses it too.
+  `Item_Band` takes `Item_Rows` and a layout: a program that builds its own view uses it too.
+- **The band box belongs to `box` and compensates its scroll offset.** `item_band_update` pushes `box` as parent when
+  `parent_box() != box`, builds the floating rectangle box after the items, clamps it to `box`'s inner content area
+  (inside `border_inset` and `bar_room_ends`), and sets `fixed_pos = r.min - box.rect.min + off` where `off` is `view_off`
+  on axes where `box` scrolls (`box_scrolls`). Because `layout_positions` subtracts `off` from floating children too,
+  adding `off` keeps the rectangle on screen at every scroll offset and during `drag_autoscroll`. Building inside `box`
+  clips the rectangle to `box`, draws it above every item and below `box`'s scroll bars and border, and insulates it
+  from any outer scrolling parent. Its fill uses `tuned` so linear and sRGB blend spaces match.
+- **Press ownership transfers to `box` when a band starts.** When a band starts from a press on a virtualized row or
+  card (Ctrl+press, grid row gap, or empty part of a row), `item_band_begin` and `item_band_update` call `press_hand` to
+  move the active press to `box.key`. Because `box` stays built while rows leave the virtualized range, `boxes_gone`
+  does not end the drag during edge autoscroll. A band whose box no longer holds the press is over: a view hidden when
+  its press was let go does not follow a later press. Whenever `item_band_update` or `item_band_cancel` changes
+  `Item_Selection.version`, it sets `anim_busy` so rows built earlier in the frame repaint on the next frame.
+- **Full list views start a band from the empty part of a row.** In Details and List views (and in custom full-width
+  lists), rows take the full width and a full list leaves no open background. A pointer press on the empty part of a
+  selectable row enters `Item_Band`'s pending state (`Item_Band_Press`, `item_band_row_press`) without changing the
+  selection yet:
+  - If the pointer moves past `platform.drag_threshold` while held, the pending press promotes to an active band
+    anchored at the press point (`keeping = .Ctrl in mods`, `removing = .Ctrl in mods && .Shift not_in mods && selected`)
+    and hands the active press to `box.key`. Starting on an already-selected row's empty part works the same way, and
+    Escape restores the pre-press selection.
+  - If the button releases cleanly before the drag threshold, `item_band_update` applies the deferred click
+    (`item_selection_click`, calling `changed` for each row that changed).
+  - A lost release (focus loss or touch cancel) or Escape clears the pending state without changing the selection.
+  - Screen reader clicks (`!pointer_pressed`), double clicks, right clicks, in-place rename (`line_edit` is clickable),
+    keyboard navigation, and single-select tables stay unchanged.
+- **Content hit classification costs O(cells of one pressed row) and re-measures no text.** Inside `list_row`, before
+  `build_box` clears the previous frame's child links, `row_content_at` walks the children of the single pointer-pressed
+  row only (zero work on non-press frames). Clickable controls, fixed-width icons, visual leaves, and the rendered text
+  spans of `.Draw_Text` and `rich_paragraph` boxes (`text_dim`, `rich_width`: a paragraph's `text_dim` stays the
+  layout's) count as content; space past text, column padding, empty cells, spacers, and the row's own background or custom draw count as
+  empty. Programs that build their own full-width rows read `List_State.pressed_empty` (or call `row_content_at`) and
+  pass `item_band_row_press` to `item_band_update`, guarding item drag with `band.active || band.pending`.
+- **Full lists always keep a bottom strip and a right margin.** `Virtual_List.end_space` adds empty space below the last
+  row (half a row in multi-select band tables) in the scroll limit and trailing spacer without changing `vlist_total` or
+  `vlist_row_top`. `table_row_end` (the room of the last rule's grip, which Details rows have) on the List rows of a band
+  table keeps a narrow empty margin at the right even when long names truncate. Refused: a wider end on every table.
 - **The band leaves the rows that cannot be selected as they are** (`Item_Rows.selectable`): it neither selects nor
   unselects them, and the cursor never lands on one. A row that cannot be selected is not an item (a folded group's
-  title): taking it would act on what is not shown. Escape restores every row from the base, those too: they were in
+  title): taking it acts on what is not shown. Escape restores every row from the base, those too: they were in
   the base only if they were selected before.
 - **The band says each row it changes** (`Item_Band.changed`, with `Item_Band.user`): called once per row that goes in
-  or out of the selection, at the moment it does, by the update, the press that clears the selection and Escape. A
-  program that keeps a sum of the selection (classeur's bytes) follows it row by row, without the band's internals.
+  or out of the selection, at the moment it does, by the update, the press that clears the selection, a deferred click,
+  and Escape. A program that keeps a sum of the selection follows it row by row, without the band's internals.
   Refused: a list of the rows changed returned by `item_band_update` (it needs an owner and a lifetime, and Escape and
-  the press would need lists of their own); a diff of the selection by the program (a pass over the rows per frame).
+  the press need lists of their own); a diff of the selection by the program (a pass over the rows per frame).
   A press without Ctrl clears the selection row by row (a pass over the rows, once per gesture) only when `changed` is
   set; without it, one `item_selection_clear`.
 - **The step's card size moves smoothly** (`anim`): the cards grow between the steps, as in a file manager.
 
 ## Refused
 
-- A view as a separate widget beside `Table` (a grid widget, a columns widget): each would need the filter, the sort,
+- A view as a separate widget beside `Table` (a grid widget, a columns widget): each needs the filter, the sort,
   the selection, the keys and the empty text again.
 - Cards of free sizes (a slider of pixels): the steps keep the layout stable and the keys simple; four sizes cover a
   list of names to a photo's preview.
 - The band in a single table: the band selects several items.
+- Re-measuring cell text per frame or per press to find empty row space: duplicates layout work when `Box.text_dim`
+  already holds the measured text width.
+- Selecting immediately on an empty-part press and reverting on drag: loses pre-press multi-selection on Escape and
+  flashes the selection before the drag threshold.
+- Wrapping `list_row` in an outer container to create empty margins: breaks joined selection pills (`row_face.odin`) and
+  accessibility tree geometry.
+- Adding `end_space` to `vlist_total`: shifts row-extent calculations and breaks `item_band_touches`.
 
 ## Subtle points
 

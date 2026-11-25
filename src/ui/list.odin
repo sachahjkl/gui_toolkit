@@ -61,8 +61,13 @@ List_State :: struct {
 	row_ids:     []u64,   // (a Virtual_List's ids, this build)
 	// The look of the rows (list_row): `zebra` gives every second row the theme's "list_row zebra background" (a table
 	// of numbers reads along its lines), `rules` a hairline under each row ("rule border").
-	zebra:       bool,
-	rules:       bool,
+	zebra:             bool,
+	rules:             bool,
+	// When true on a multi-select list, list_row defers selection on a left pointer press that hits the empty part of a
+	// row so item_band_update can start a band on drag or select on release.
+	defer_empty_press: bool,
+	// Set by each list_row call: true when that row received a left pointer press on its empty part (not on content).
+	pressed_empty:     bool,
 }
 
 list_state_destroy :: proc(st: ^List_State) {
@@ -285,23 +290,36 @@ list_row :: proc(st: ^List_State, i: int, label: string, selectable := true, tin
 		s.next_mod = m
 	}
 	if st.rules { flags += {.Draw_Side_Bottom}; push_tags("rule") }
-	b := build_box(flags, vlist_row_name(i))
+	row_name := vlist_row_name(i)
+	// Read before build_box, which takes the last build's children off the row: only in a build with a press.
+	pressed_empty := false
+	if selectable && s.pressed_key[.Left] != 0 {
+		row_key := key_from_string(parent_box().key, row_name)
+		if prev := box_from_key(row_key); s.pressed_key[.Left] == row_key && s.a11y.pressed != row_key && prev != nil && prev.last_build + 1 == s.build_index {
+			pressed_empty = !row_content_at(prev, s.press_pos[.Left])
+		}
+	}
+	b := build_box(flags, row_name)
 	if st.rules { pop_tags() }
 	if zebra { pop_tags() }
 	if m.cursor == nil { b.cursor = .Arrow }   // (a row that opens something: `next({cursor = .Hand})`)
 	if selectable { pop_tags() }
 	if lit { pop_tags() }
 	sig := signal(b)
+	st.pressed_empty = pressed_empty
+	defer_click := st.defer_empty_press && st.multi && sig.pointer_pressed && pressed_empty && !sig.double_clicked
 	if selectable && (sig.pressed || sig.right_clicked) {
-		if st.sel != i { st.changed = true }
-		// (the rows are this build's for a Virtual_List; a `list` counts the row built now, past its last count)
-		rows := list_rows(st)
-		rows.count = max(rows.count, i + 1)
-		if sig.pressed {
-			// (a screen reader's press has no modifiers of its own: the row alone)
-			item_selection_click(&st.selection, rows, i, sig.pointer_pressed ? sig.mods : {})
-		} else {
-			item_selection_context(&st.selection, rows, i)
+		if !defer_click {
+			if st.sel != i { st.changed = true }
+			// (the rows are this build's for a Virtual_List; a `list` counts the row built now, past its last count)
+			rows := list_rows(st)
+			rows.count = max(rows.count, i + 1)
+			if sig.pressed {
+				// (a screen reader's press has no modifiers of its own: the row alone)
+				item_selection_click(&st.selection, rows, i, sig.pointer_pressed ? sig.mods : {})
+			} else {
+				item_selection_context(&st.selection, rows, i)
+			}
 		}
 		s.focus_key = st.key
 		s.focus_visible = false
