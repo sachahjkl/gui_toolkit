@@ -200,27 +200,37 @@ portal_open_uri :: proc(uri: string) -> bool {
 ////////////////////////////////
 // Settings (appearance: live light / dark)
 
-// Reads org.freedesktop.appearance color-scheme (0 no preference, 1 dark, 2 light). ok = false when the portal or the
-// key is absent.
+// Reads org.freedesktop.appearance color-scheme (0 no preference, 1 dark, 2 light). Uses ReadOne and falls back to
+// Read on older portals that lack ReadOne. ok = false when the portal, key, or value is absent or malformed.
 @(private)
 portal_read_color_scheme :: proc(conn: ^dbus.Conn) -> (dark: bool, ok: bool) {
 	w := dbus.body_writer()
 	dbus.w_string(&w, "org.freedesktop.appearance")
 	dbus.w_string(&w, "color-scheme")
 	msg, got := dbus.call(conn, PORTAL_SERVICE, PORTAL_PATH, SETTINGS_IFACE, "ReadOne", "ss", w.buf[:], DBUS_QUICK_CALL_MS)
+	if !got && msg.type == .Error && msg.error_name == "org.freedesktop.DBus.Error.UnknownMethod" {
+		msg, got = dbus.call(conn, PORTAL_SERVICE, PORTAL_PATH, SETTINGS_IFACE, "Read", "ss", w.buf[:], DBUS_QUICK_CALL_MS)
+	}
 	if !got || msg.type != .Method_Return { return false, false }
-	r := dbus.msg_reader(&msg)
-	// the reply is a variant holding a u (some portals double-wrap it: v(v(u))); read one variant, then a u
-	scheme := dbus.read_variant_u32_nested(&r)
+	return portal_parse_color_scheme_msg(&msg)
+}
+
+// Parses a ReadOne (v(u)) or Read (v(v(u))) reply body for org.freedesktop.appearance color-scheme.
+@(private)
+portal_parse_color_scheme_msg :: proc(msg: ^dbus.Message) -> (dark: bool, ok: bool) {
+	r := dbus.msg_reader(msg)
+	scheme, parsed := dbus.read_variant_u32_nested_ok(&r)
+	if !parsed { return false, false }
 	return color_scheme_of(scheme)
 }
 
-// The portal's color-scheme: 1 dark, 2 light; 0 is no preference, which says nothing (ok = false): the desktop's other
-// settings decide then (a session whose portal has no backend for it answers 0, its GTK theme dark all the same).
+// The portal's color-scheme (org.freedesktop.appearance): 0 no preference (light, matching GNOME, Chromium, Firefox,
+// GTK 4, and SettingChanged), 1 prefer dark, 2 prefer light. Any other value is unknown (ok = false) and leaves the
+// GTK settings fallback to decide.
 color_scheme_of :: proc(scheme: u32) -> (dark: bool, ok: bool) {
 	switch scheme {
-	case 1: return true, true
-	case 2: return false, true
+	case 0, 2: return false, true
+	case 1:    return true, true
 	}
 	return false, false
 }
@@ -252,16 +262,27 @@ portal_dark_mode :: proc() -> (dark: bool, ok: bool) {
 	return portal_read_color_scheme(conn)
 }
 
-// Subscribes to SettingChanged so an app learns when the user flips light / dark at run time. `cb` runs from the bus
-// dispatch (the UI thread, as the window loop pumps the bus). Call once; the toolkit's ui wires the repaint.
-watch_color_scheme :: proc(cb: proc(dark: bool)) -> bool {
+// Subscribes this thread's session bus to the Settings portal's SettingChanged signal, once.
+@(private)
+portal_ensure_settings_watch :: proc() -> bool {
+	if session.theme_sub != 0 { return true }
 	conn := session_bus()
 	if conn == nil { return false }
-	session.theme_changed = cb
-	if session.theme_sub == 0 {
-		session.theme_sub = dbus.subscribe(conn, PORTAL_SERVICE, PORTAL_PATH, SETTINGS_IFACE, "SettingChanged", portal_setting_changed, nil)
-	}
+	session.theme_sub = dbus.subscribe(conn, PORTAL_SERVICE, PORTAL_PATH, SETTINGS_IFACE, "SettingChanged", portal_setting_changed, nil)
 	return session.theme_sub != 0
+}
+
+// Subscribes to SettingChanged so an app learns when the user flips light / dark at run time. `cb` runs from the bus
+// dispatch (the UI thread, as the window loop pumps the bus), after dark_mode_preferred and color_scheme_serial have
+// been updated. Passing nil clears the app callback without stopping the platform's own tracking.
+watch_color_scheme :: proc(cb: proc(dark: bool)) -> bool {
+	if cb == nil {
+		session.theme_changed = nil
+		return session.theme_sub != 0
+	}
+	if !portal_ensure_settings_watch() { return false }
+	session.theme_changed = cb
+	return true
 }
 
 @(private)
@@ -271,12 +292,18 @@ portal_setting_changed :: proc(user: rawptr, msg: ^dbus.Message) {
 	ns := dbus.r_string(&r)
 	key := dbus.r_string(&r)
 	if ns == "org.gnome.desktop.interface" && key == "enable-animations" {
-		animations_set(dbus.read_variant_u32_nested(&r) != 0)   // (os_animations_enabled: no file read on this thread)
+		if v, ok := dbus.read_variant_u32_nested_ok(&r); ok {
+			animations_set(v != 0)   // (os_animations_enabled: no file read on this thread)
+		}
 		return
 	}
 	if ns == "org.freedesktop.appearance" && key == "color-scheme" {
-		scheme := dbus.read_variant_u32_nested(&r)
-		if session.theme_changed != nil { session.theme_changed(scheme == 1) }
+		if scheme, ok := dbus.read_variant_u32_nested_ok(&r); ok {
+			if dark, known := color_scheme_of(scheme); known {
+				color_scheme_apply(dark)
+				if session.theme_changed != nil { session.theme_changed(dark) }
+			}
+		}
 	}
 }
 

@@ -42,15 +42,17 @@ a_monitor_followed_by_its_name :: proc(t: ^testing.T) {
 	testing.expect(t, !ok)
 }
 
-// The portal's color-scheme: dark, light, or no preference, which says nothing (the desktop's other settings decide).
+// The portal's color-scheme: 0 (no preference) and 2 (prefer light) are light, 1 is dark, and unknown values fall back.
 @(test)
-a_color_scheme_of_no_preference_says_nothing :: proc(t: ^testing.T) {
+a_color_scheme_of_no_preference_is_light :: proc(t: ^testing.T) {
 	when ODIN_OS == .Linux {
-		dark, ok := platform.color_scheme_of(1)
-		testing.expect(t, ok && dark)
+		dark, ok := platform.color_scheme_of(0)
+		testing.expect(t, ok && !dark, "no preference is light")
+		dark, ok = platform.color_scheme_of(1)
+		testing.expect(t, ok && dark, "1 is dark")
 		dark, ok = platform.color_scheme_of(2)
-		testing.expect(t, ok && !dark)
-		_, ok = platform.color_scheme_of(0)
-		testing.expect(t, !ok, "no preference: the GTK theme decides")
+		testing.expect(t, ok && !dark, "2 is light")
+		_, ok = platform.color_scheme_of(3)
+		testing.expect(t, !ok, "unknown value falls back")
 	}
 }

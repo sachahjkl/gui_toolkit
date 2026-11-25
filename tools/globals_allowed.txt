@@ -536,8 +536,8 @@ ui/views_memory.odin VIEW_EDGE_NAMES const  # a table of names, read only
 ui/theme_default.odin entries const  # a table
 ui/theme_default.odin state_entries const  # a table
 platform/platform.odin scheme_serial process  # the system's light / dark choice, bumped as it may change (atomic): one system, whatever the number of apps
-platform/theme_linux.odin scheme_watched process  # the portal's SettingChanged subscribed once for the process (the main thread's)
 platform/theme_linux.odin scheme_dark process  # the light / dark preference last read or told by the portal (atomic)
+platform/theme_linux_test.odin cb_state test
 platform/platform.odin animations_off process  # the system's animations choice, kept (atomic): asked at every build, read once and set again on the system's change
 platform/platform_linux.odin animations_watched process  # its first read started once for the process (a thread reads the GTK settings file)
 platform/platform_win32.odin animations_watched process  # its first read done once for the process (then WM_SETTINGCHANGE sets it)

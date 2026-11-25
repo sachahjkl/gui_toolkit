@@ -24,18 +24,30 @@ arg_dict_entry :: proc(w: ^Writer, key: string) { w_struct(w); w_string(w, key) 
 read_string :: proc(r: ^Reader) -> string { return r_string(r) }
 
 // Reads a variant and unwraps nested variants until a basic value, returning it as a u32 (portals sometimes wrap a
+// value in v(v(u))). ok = false when the inner value is not an integer or the reader failed.
+read_variant_u32_nested_ok :: proc(r: ^Reader) -> (u32, bool) {
+	vs := r_variant_sig(r)
+	for vs == "v" && !r.err { vs = r_variant_sig(r) }
+	if r.err { return 0, false }
+	v: u32
+	switch vs {
+	case "u", "i", "b": v = r_u32(r)   // (a boolean is marshalled as a u32)
+	case "y":           v = u32(r_u8(r))
+	case "q", "n":      v = u32(r_u16(r))
+	case "t", "x":      v = u32(r_u64(r))
+	case:
+		r_skip(r, vs)
+		return 0, false
+	}
+	if r.err { return 0, false }
+	return v, true
+}
+
+// Reads a variant and unwraps nested variants until a basic value, returning it as a u32 (portals sometimes wrap a
 // value in v(v(u))). 0 when not an integer.
 read_variant_u32_nested :: proc(r: ^Reader) -> u32 {
-	vs := r_variant_sig(r)
-	for vs == "v" { vs = r_variant_sig(r) }
-	switch vs {
-	case "u", "i", "b": return r_u32(r)   // (a boolean is marshalled as a u32)
-	case "y":      return u32(r_u8(r))
-	case "q", "n": return u32(r_u16(r))
-	case "t", "x": return u32(r_u64(r))
-	}
-	r_skip(r, vs)
-	return 0
+	v, _ := read_variant_u32_nested_ok(r)
+	return v
 }
 
 // Reads and discards one variant value (its signature then the value).

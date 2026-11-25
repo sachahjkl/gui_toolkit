@@ -41,7 +41,7 @@ dark_mode_preferred :: proc(loc := #caller_location) -> bool {
 dark_mode_read :: proc() -> bool {
 	if dark, ok := portal_dark_mode(); ok { return dark }
 	if v, ok := gtk_setting("gtk-application-prefer-dark-theme"); ok && (v == "1" || v == "true") { return true }
-	if t := posix.getenv("GTK_THEME"); t != nil && strings.contains(string(t), "dark") { return true }
+	if t := posix.getenv("GTK_THEME"); t != nil && ascii.contains_fold(string(t), "dark") { return true }
 	if v, ok := gtk_setting("gtk-theme-name"); ok && ascii.contains_fold(v, "dark") { return true }
 	return false
 }
@@ -52,17 +52,17 @@ dark_mode_read :: proc() -> bool {
 @(private = "file") SCHEME_LIGHT :: 2
 @(private) scheme_dark: i32
 
-// The portal's SettingChanged, once: it keeps the new value and bumps color_scheme_serial.
-@(private) scheme_watched: bool
+// Records a live color-scheme change from the portal and bumps color_scheme_serial.
+@(private)
+color_scheme_apply :: proc(dark: bool) {
+	sync.atomic_store(&scheme_dark, dark ? SCHEME_DARK : SCHEME_LIGHT)
+	color_scheme_bump()
+}
 
+// Ensures the portal's SettingChanged signal is watched on this thread without overwriting an app's watch_color_scheme callback.
 @(private)
 color_scheme_watch :: proc() {
-	if scheme_watched { return }
-	scheme_watched = true
-	watch_color_scheme(proc(dark: bool) {
-		sync.atomic_store(&scheme_dark, dark ? SCHEME_DARK : SCHEME_LIGHT)
-		color_scheme_bump()
-	})
+	_ = portal_ensure_settings_watch()
 }
 
 // A value from the GTK 3 settings.ini ($XDG_CONFIG_HOME/gtk-3.0/settings.ini), under [Settings]. Cheap and widely set

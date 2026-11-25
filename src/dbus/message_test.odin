@@ -75,3 +75,49 @@ a_reply_outlives_its_message :: proc(t: ^testing.T) {
 	testing.expect_value(t, r_string(&r), "the body")
 	testing.expect_value(t, kept.destination, ":1.1")
 }
+
+// Nested variants unwrap integers and distinguish a valid 0 from a wrong type or truncated body.
+@(test)
+a_nested_variant_reads_integer_or_fails :: proc(t: ^testing.T) {
+	// v(u 0) and v(u 1): ReadOne reply shape
+	for want in ([?]u32{0, 1, 2}) {
+		w := writer_make(context.temp_allocator)
+		w_signature(&w, "u")
+		w_u32(&w, want)
+		r := reader_make(w.buf[:])
+		got, ok := read_variant_u32_nested_ok(&r)
+		testing.expectf(t, ok && got == want, "v(u %d) -> (%d, %v)", want, got, ok)
+	}
+	// v(v(u 0)) and v(v(u 2)): Read reply shape
+	for want in ([?]u32{0, 2}) {
+		w := writer_make(context.temp_allocator)
+		w_signature(&w, "v")
+		w_signature(&w, "u")
+		w_u32(&w, want)
+		r := reader_make(w.buf[:])
+		got, ok := read_variant_u32_nested_ok(&r)
+		testing.expectf(t, ok && got == want, "v(v(u %d)) -> (%d, %v)", want, got, ok)
+	}
+	// v(b true)
+	{
+		w := writer_make(context.temp_allocator)
+		arg_variant_bool(&w, true)
+		r := reader_make(w.buf[:])
+		got, ok := read_variant_u32_nested_ok(&r)
+		testing.expect(t, ok && got == 1)
+	}
+	// v(s "dark"): not an integer
+	{
+		w := writer_make(context.temp_allocator)
+		arg_variant_string(&w, "dark")
+		r := reader_make(w.buf[:])
+		got, ok := read_variant_u32_nested_ok(&r)
+		testing.expect(t, !ok && got == 0)
+	}
+	// truncated variant
+	{
+		r := reader_make([]u8{1, 'u', 0})
+		got, ok := read_variant_u32_nested_ok(&r)
+		testing.expect(t, !ok && got == 0)
+	}
+}
