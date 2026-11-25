@@ -64,6 +64,7 @@ Write_Job :: struct {
 // foot of the sidebar (Page.note). The page's state must be built once (build) before.
 export_to :: proc(p: ^Page, path: string, format: config.Export_Format) {
 	if p.state == nil || p.prefs == nil { return }
+	flush(p)
 	a := runtime.heap_allocator()
 	j := new(Write_Job, a)
 	j^ = {page = p, path = strings.clone(path, a), text = config.export(p.prefs, format, allocator = a)}

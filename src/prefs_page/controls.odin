@@ -360,6 +360,100 @@ number :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, e: ^config.Entry
 	}
 }
 
+// The stored value formatted for a free field (temp allocator): a size in its largest exact unit, a number with the
+// language's decimal mark, a string as it is.
+@(private)
+field_current_text :: proc(prefs: ^config.Prefs, r: config.Ref, e: ^config.Entry) -> string {
+	current := config.value_string(prefs, r)
+	if e.def.value_kind == .Size {
+		return config.shown_text(e.def, e.value)
+	}
+	if e.def.kind != .String {
+		return i18n.decimal_marks(current)
+	}
+	return current
+}
+
+// Loads `shown` into `f` and marks it clean and synced (even when `shown` is "").
+@(private)
+field_sync :: proc(f: ^Field, shown: string) {
+	if ui.line_edit_string(&f.text) != shown { ui.line_edit_set(&f.text, shown) }
+	delete(f.synced)
+	f.synced = strings.clone(shown)
+	f.synced_valid = true
+	f.dirty = false
+}
+
+// Discards any pending edit and forces the next build to reload the field from the registry.
+@(private)
+field_invalidate :: proc(f: ^Field) {
+	delete(f.synced)
+	f.synced = ""
+	f.synced_valid = false
+	f.was_focused = false
+	f.dirty = false
+	delete(f.error)
+	f.error = ""
+}
+
+// Applies the text in `f` to the registry; on success, resyncs `f` to the normalized display text.
+@(private)
+field_commit :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e: ^config.Entry, f: ^Field) {
+	err := apply(p, prefs, o, e.def.name, ui.line_edit_string(&f.text))
+	delete(f.error)
+	f.error = err
+	f.dirty = false
+	if err == "" { field_sync(f, field_current_text(prefs, r, e)) }
+}
+
+// Commits `f` when it holds a pending edit and clears its prior-frame focus flag.
+@(private)
+flush_field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string, f: ^Field) {
+	if !f.dirty {
+		f.was_focused = false
+		return
+	}
+	r := config.ref_of(prefs, name)
+	if r == config.NO_REF {
+		f.dirty = false
+		f.was_focused = false
+		return
+	}
+	e := config.entry(prefs, r)
+	if e.source == .Policy || e.source == .Command_Line {
+		field_sync(f, field_current_text(prefs, r, e))
+		f.was_focused = false
+		return
+	}
+	current := field_current_text(prefs, r, e)
+	if ui.line_edit_string(&f.text) != current {
+		field_commit(p, prefs, o, r, e, f)
+	} else {
+		f.dirty = false
+		delete(f.error)
+		f.error = ""
+	}
+	f.was_focused = false
+}
+
+// Commits every free field with a pending edit.
+@(private)
+flush_all :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
+	if prefs == nil { return }
+	for name, f in p.fields { flush_field(p, prefs, o, name, f) }
+}
+
+// Commits any free field that was not built in `build_index` (hidden by a page switch, search filter or folded section).
+@(private)
+flush_unseen :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, build_index: u64) {
+	if prefs == nil { return }
+	for name, f in p.fields {
+		if f.seen_build != build_index && (f.dirty || f.was_focused) {
+			flush_field(p, prefs, o, name, f)
+		}
+	}
+}
+
 // A free field, its unit after it: Enter or leaving it applies the text; a refused one says why under the line. A
 // size shows in its largest exact unit ("4 MiB"); a path and an address in the monospace face.
 @(private = "file")
@@ -372,14 +466,13 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 	}
 	numeric := e.def.kind != .String
 	// (a number as the language writes it: "1,5" in French; apply reads either mark)
-	current := config.value_string(prefs, r)
-	if e.def.value_kind == .Size {
-		current = config.shown_text(e.def, e.value)
-	} else if numeric {
-		current = i18n.decimal_marks(current)
+	current := field_current_text(prefs, r, e)
+	focused_now := f.box != 0 && ui.focus_key() == f.box
+	if !f.synced_valid || (f.synced != current && !focused_now && !f.was_focused && !f.dirty) {
+		field_sync(f, current)
+		delete(f.error)
+		f.error = ""
 	}
-	typing := f.box != 0 && ui.focus_key() == f.box
-	if f.synced != current && !typing { ui.line_edit_set(&f.text, current); delete(f.synced); f.synced = strings.clone(current) }
 	// (a number's field: its width less its unit's, which follows it)
 	sym := field_unit(e.def)
 	fw := width
@@ -387,8 +480,11 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 	mono := e.def.value_kind == .Path || e.def.value_kind == .Address
 	ui.next({width = fw, height = ui.px(math.round(em * ui.CONTROL_HEIGHT_EM)), font = mono ? ui.mono_font() : ui.top_style().font})
 	ui.a11y({name = config.title_of(e.def)})
+	before_edit := strings.clone(ui.line_edit_string(&f.text), context.temp_allocator)
 	res := ui.line_edit("###field", &f.text)
 	f.box = res.box.key
+	f.seen_build = ui.current_state().build_index
+	if res.changed || ui.line_edit_string(&f.text) != before_edit { f.dirty = true }
 	// (a numeric field — Size like "4 MiB", unbounded Int or Float — steps on the wheel and Up/Down/Page keys, as
 	// ui.number does: wheel_steps requires focus inside the scrolling settings page)
 	if numeric {
@@ -412,21 +508,38 @@ field :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, r: config.Ref, e:
 			delete(f.error)
 			f.error = err
 			if err == "" {
-				shown := config.value_string(prefs, r)
-				if e.def.value_kind == .Size { shown = config.shown_text(e.def, e.value) } else { shown = i18n.decimal_marks(shown) }
-				ui.line_edit_set(&f.text, shown)
-				delete(f.synced); f.synced = strings.clone(shown)
+				current = field_current_text(prefs, r, e)
+				field_sync(f, current)
 			}
 		}
 	}
-	left := !res.focused && typing   // (the keyboard went elsewhere this frame)
-	if res.committed || (left && ui.line_edit_string(&f.text) != current) {
-		err := apply(p, prefs, o, name, ui.line_edit_string(&f.text))
+	left := !res.focused && f.was_focused   // (the keyboard went elsewhere since the last build)
+	if res.cancelled {
+		field_sync(f, current)
 		delete(f.error)
-		f.error = err
-		delete(f.synced); f.synced = ""
+		f.error = ""
+		f.was_focused = false
+	} else if res.committed {
+		field_commit(p, prefs, o, r, e, f)
+		f.was_focused = res.focused
+	} else if left {
+		if f.dirty && ui.line_edit_string(&f.text) != current {
+			field_commit(p, prefs, o, r, e, f)
+		} else {
+			f.dirty = false
+			if f.synced != current {
+				field_sync(f, current)
+				delete(f.error)
+				f.error = ""
+			} else if ui.line_edit_string(&f.text) == current {
+				delete(f.error)
+				f.error = ""
+			}
+		}
+		f.was_focused = false
+	} else {
+		f.was_focused = res.focused
 	}
-	if res.cancelled { delete(f.synced); f.synced = ""; delete(f.error); f.error = "" }
 	if sym != "" {
 		ui.space(ui.CONTROL_GAP)
 		if ui.tags("weak") {

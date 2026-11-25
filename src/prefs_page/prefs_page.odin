@@ -175,10 +175,21 @@ Page :: struct {
 
 @(private)
 Field :: struct {
-	text:   ui.Line_Edit,
-	box:    ui.Key,   // the field's box (last frame)
-	synced: string,   // the value the field shows (owned)
-	error:  string,   // why the last text was refused (owned)
+	text:         ui.Line_Edit,
+	box:          ui.Key,   // the field's box (last frame)
+	synced:       string,   // the value the field was synced to (owned)
+	synced_valid: bool,     // false before first sync or after invalidation (Reset)
+	was_focused:  bool,     // whether the field had focus at the end of its last build
+	dirty:        bool,     // the user edited `text` since the last sync, commit or cancel
+	seen_build:   u64,      // ui.State.build_index at the field's last build
+	error:        string,   // why the last text was refused (owned)
+}
+
+// Commits any free field with pending edited text to the registry the page was last built with (and notifies
+// Page_Options.changed). Call before hiding, saving, closing or destroying the page while `prefs` and `user` are alive.
+flush :: proc(p: ^Page) {
+	if p == nil || p.prefs == nil { return }
+	flush_all(p, p.prefs, {user = p.user, changed = p.changed})
 }
 
 destroy :: proc(p: ^Page) {
@@ -224,7 +235,9 @@ editing :: proc(p: ^Page) -> bool {
 // preference has the keyboard (that Escape is the editor's). A program with its own dialogs open asks only when none is.
 escape_leaves :: proc(p: ^Page) -> bool {
 	// (editing first: an editor's Escape is left for it, not taken here)
-	return !editing(p) && ui.key_press(.Escape)
+	leave := !editing(p) && ui.key_press(.Escape)
+	if leave { flush(p) }
+	return leave
 }
 
 // A bar above the page shown in place of the main view: a back arrow (Lucide's in Page_Options.icon_font, else the word),
@@ -250,6 +263,7 @@ back_bar :: proc(p: ^Page, o: Page_Options, title, back_tip: string, em: f32) ->
 			}
 		}
 		back = sig.clicked
+		if back { flush(p) }
 		ui.space(ui.ICON_GAP)
 		ui.next({width = ui.fill(), height = ui.pct(1), font_size = math.round(em * 1.05), text_pad = 0})
 		ui.label(fmt.tprintf("%s###prefs_back_title", title))
@@ -374,6 +388,8 @@ build :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options) {
 	// (the sidebar's width is the page's own preference: registered at its first build)
 	if config.ref_of(prefs, SIDEBAR_PREF) == config.NO_REF { config.register(prefs, SIDEBAR_DEFS[:]) }
 	p.prefs, p.state, p.changed, p.user = prefs, ui.current_state(), o.changed, o.user
+	now := p.state.build_index
+	defer flush_unseen(p, prefs, o, now)
 	p.diagnostics.source, p.diagnostics.version = o.diagnostics, o.version
 	p.number_typed, p.rule_before = false, false
 	placed_drop(p)
@@ -678,6 +694,7 @@ nav :: proc(p: ^Page, prefs: ^config.Prefs, pages: []Page_Info, cur: int, o: Pag
 // A page chosen in the sidebar: shown, and the search done.
 @(private = "file")
 page_choose :: proc(p: ^Page, pg: Page_Info) {
+	flush(p)
 	delete(p.current)
 	p.current = strings.clone(pg.category)
 	ui.line_edit_set(&p.query, "")
@@ -1097,7 +1114,7 @@ apply :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name, text: strin
 @(private)
 reset :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
 	config.reset(prefs, name)
-	if f, ok := p.fields[name]; ok { delete(f.synced); f.synced = ""; delete(f.error); f.error = "" }
+	if f, ok := p.fields[name]; ok { field_invalidate(f) }
 	if o.changed != nil { o.changed(o.user, name) }
 }
 

@@ -159,6 +159,7 @@ settings_reach :: proc(p: ^ui.Command_Palette, src: ^ui.Palette_Source, id: stri
 	if !go { return true }
 	o := s.options(s.user)
 	pg := s.page
+	flush_all(pg, s.prefs, o)
 	for page in pages_of(s.prefs, o) {
 		for n in page_names(s.prefs, page) {
 			if n != id { continue }
@@ -196,6 +197,7 @@ settings_act :: proc(p: ^ui.Command_Palette, src: ^ui.Palette_Source, c: ui.Pale
 // page, the search cleared. The search is for this visit: once the settings close (a build without the page), the next
 // opening shows the page the person had, the search empty, unless the person changed the search meanwhile.
 show :: proc(p: ^Page, prefs: ^config.Prefs, o: Page_Options, name: string) {
+	flush_all(p, prefs, o)
 	// (a page's category, from its own item: the page, the search cleared)
 	for pg in pages_of(prefs, o) {
 		if pg.category != name { continue }

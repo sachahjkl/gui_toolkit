@@ -270,8 +270,10 @@ program gives `Page_Options.restart`. That procedure calls `host.restart_after_e
 ## Changes
 
 A value goes through `config.set_from_string` at the `User` layer: every observer of the registry runs. A field applies
-its text on Enter or when it loses the keyboard; a refused value stays as it was, and the reason shows under the line
-("out of range: 1 to 64 KB"). A number applies a key, a click, a notch of the wheel, a button or what is typed at once;
+its text on Enter, when it loses the keyboard, or when its line is hidden by a page switch, search filter or fold; a
+refused value stays as it was, and the reason shows under the line ("out of range: 1 to 64 KB"). `flush(&page)` commits
+any pending field edits before the caller saves, hides, closes or destroys the page (`back_bar`, `escape_leaves` and
+`export_to` call it too; `destroy` only frees memory). A number applies a key, a click, a notch of the wheel, a button or what is typed at once;
 a drag of its slider when it is let go. While the slider is held, `Page_Options.preview(user, name, value)` gets each value
 it moves to, for the program to show at once (a rounding, a size) without writing it. `Page_Options.changed` runs after each
 value set or reset: apply the change from there (or let `standard_watch` do it); the loop's `config.user_writer_save`
