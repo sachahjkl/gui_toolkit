@@ -115,10 +115,24 @@ prev_box :: proc(id: string) -> ^Box { return box_from_key(key_from_string(paren
 @(private = "file") MARK_PRESS_STEP :: 0.15
 @(private = "file") MARK_WELL_PRESS :: 0.25
 @(private = "file") MARK_WELL_PRESS_DIM :: 0.7
+// The least contrast of a check box's check on its accent fill (WCAG AA).
+@(private = "file") MARK_CHECK_RATIO :: 4.5
 
 // A check box's or a radio's mark: `t` how far it is checked, `row` its row (the row is the target, the mark is what
 // reacts: its states are read when the mark is drawn, end_build having stepped them), its colours.
-Mark_Draw :: struct { t: f32, row: ^Box, accent, ring: Color, size: f32, radio: bool }
+Mark_Draw :: struct { t: f32, row: ^Box, accent, check, ring: Color, size: f32, radio: bool }
+
+// Foreground colour of a check box's check on its accent fill: the theme's `accent_text`, else `ink_on(accent)` when
+// that does not reach WCAG AA (4.5), so a bright accent on a dark theme never draws a white check on white.
+@(private = "file")
+mark_check_color :: proc(accent: Color) -> Color {
+	ink := color("accent_text")
+	ink.a = 1
+	ground := accent
+	ground.a = 1
+	if contrast(ink, ground) < MARK_CHECK_RATIO { return ink_on(ground) }
+	return ink
+}
 
 // The colours of a mark in its state: `inside` the box's face inside its ring (alpha 0: none at rest), `ring` its ring,
 // `fill` its accent face (checked). `under` the surface the box is carved in, `tint` the theme's (state_tint). Pure: the
@@ -197,7 +211,9 @@ mark_check :: proc(s: ^State, dc: ^draw.Context, r: Rect, d: ^Mark_Draw) {
 	m := font.metrics(s.fonts, marks, size)
 	dim := font.text_width(s.fonts, marks, size, ICON_CHECK)
 	c := draw.rect_center(r)
-	draw.text(dc, marks, size, {math.round(c.x - dim * 0.5), math.round(c.y + (m.ascent - m.descent) * 0.5)}, {1, 1, 1, d.t}, ICON_CHECK)
+	ink := d.check
+	ink.a = d.t
+	draw.text(dc, marks, size, {math.round(c.x - dim * 0.5), math.round(c.y + (m.ascent - m.descent) * 0.5)}, ink, ICON_CHECK)
 }
 
 // A width for a row of controls whose text is a child of it (check boxes, radios, switches): as wide as its children
@@ -255,6 +271,7 @@ mark_row :: proc(id, text: string, on, radio: bool, wrap := false) -> Signal {
 		d := frame_new(Mark_Draw)
 		d.t = t
 		d.accent = color("accent")
+		d.check = mark_check_color(d.accent)
 		d.row = row_box
 		d.ring = color("text")
 		d.ring.a = MARK_RING_ALPHA
@@ -467,6 +484,7 @@ toggle :: proc(id: string, text: string, value: ^bool, wrap := false) -> (change
 			_ = widget_icons()   // (the check is drawn in it: loaded before the draw)
 			m := frame_new(Mark_Draw)
 			m.row, m.accent = row_box, d.accent
+			m.check = mark_check_color(d.accent)
 			m.ring = color("text")
 			m.ring.a = MARK_RING_ALPHA
 			m.ring = tuned(m.ring)
