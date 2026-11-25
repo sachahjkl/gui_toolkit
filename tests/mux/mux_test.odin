@@ -39,7 +39,7 @@ put_ue :: proc(w: ^Bits, v: u32) {
 }
 
 // An SPS of `width_mbs` x `height_units` macroblocks (progressive), cropped by `crop_bottom` chroma rows at the bottom.
-@(private = "file")
+@(private)
 make_sps :: proc(profile: u8, width_mbs, height_units: u32, crop_bottom: u32 = 0) -> []u8 {
 	w := Bits{bytes = make([dynamic]u8, context.temp_allocator)}
 	put_bits(&w, 0x67, 8)   // nal_ref_idc 3, type 7
@@ -205,7 +205,7 @@ root :: proc(data: []u8) -> Box { return {"root", 0, len(data), 0} }
 ////////////////////////////////
 // What the tests mux
 
-@(private = "file")
+@(private)
 Frame :: struct {
 	data:      []u8,
 	timestamp: f64,
@@ -214,7 +214,7 @@ Frame :: struct {
 }
 
 // `count` frames at `fps`, a key frame (SPS, PPS, IDR) every `gop`, in Annex B.
-@(private = "file")
+@(private)
 frames_annex_b :: proc(count, gop: int, fps: f64, sps: []u8) -> []Frame {
 	out := make([]Frame, count, context.temp_allocator)
 	for i in 0 ..< count {
@@ -227,7 +227,7 @@ frames_annex_b :: proc(count, gop: int, fps: f64, sps: []u8) -> []Frame {
 	return out
 }
 
-@(private = "file")
+@(private)
 mux_frames :: proc(t: ^testing.T, m: ^mux.Muxer, frames: []Frame, fps: f64, width := 64, height := 48) -> []u8 {
 	track, err := mux.add_video_track(m, {codec = .AVC, width = width, height = height, frame_rate = fps})
 	testing.expect_value(t, err, mux.Error.None)
@@ -241,7 +241,7 @@ mux_frames :: proc(t: ^testing.T, m: ^mux.Muxer, frames: []Frame, fps: f64, widt
 }
 
 // A stream that keeps the file, and whether each write went where the last one ended (patches counted).
-@(private = "file")
+@(private)
 Stream :: struct {
 	file:     [dynamic]u8,
 	end:      i64,
@@ -249,7 +249,7 @@ Stream :: struct {
 	fail:     bool,
 }
 
-@(private = "file")
+@(private)
 stream_write :: proc(user: rawptr, data: []u8, position: i64) -> bool {
 	s := (^Stream)(user)
 	if s.fail { return false }

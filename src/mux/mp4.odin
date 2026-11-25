@@ -55,7 +55,7 @@ Mp4_Track :: struct {
 	composition_offsets: [dynamic]Ctts_Entry,
 	last_units:          f64,
 	has_last_units:      bool,
-	last_sample:         ^Sample,
+	last_sample:         ^Sample,                   // the last one timed (not owned); nil: none, or freed with its fragment
 	start_offset:        f64,
 	has_start_offset:    bool,
 	chunks:              [dynamic]^Chunk,           // finalized (not fragmented)
@@ -297,7 +297,8 @@ process_timestamps :: proc(m: ^Muxer, t: ^Track_State, next: ^Sample = nil) {
 			units := s.decode_timestamp * f64(tr.timescale)
 			delta := i64(js_round(units - tr.last_units))
 			tr.last_units += f64(delta)
-			tr.last_sample.units_to_next = delta
+			// (nil: freed with its fragment, whose trun went out with the units it had)
+			if tr.last_sample != nil { tr.last_sample.units_to_next = delta }
 
 			if !fragmented {
 				last := len(tr.time_to_sample) - 1
@@ -537,6 +538,8 @@ finalize_fragment :: proc(m: ^Muxer, flush: bool) {
 			append(&tr.random_access, Tfra_Entry{into_timescale(s.timestamp, tr.timescale), c.moof_offset, i + 1, k + 1})
 			break
 		}
+		// (the last sample timed may wait in the queue for another track: it is forgotten only when it goes)
+		for s in c.samples { if s == tr.last_sample { tr.last_sample = nil } }
 		free_chunk(c, true)
 		tr.current_chunk = nil
 	}

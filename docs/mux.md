@@ -58,4 +58,4 @@ Left out: QuickTime (`.mov`), CMAF, fast start "reserve", subtitles, PCM, metada
 
 Tests: `odin test tests/mux -collection:gt=src -vet` (synthetic H.264 access units muxed and the files walked back: an MP4 in memory, one
 without fast start through a stream, a fragmented one, the composition offsets of B-frames, AAC and Opus tracks; WebM in
-memory and append only; the errors).
+memory and append only; the errors; no write into a sample already freed, with an allocator that keeps what is freed).
