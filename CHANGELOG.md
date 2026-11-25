@@ -5,6 +5,15 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.358.2] - 2026-11-25 16:32
+
+### Changed
+- **`h264.to_nv12` and `h264.to_i420` SIMD acceleration**: BGRA and RGBA conversion to BT.709 limited-range NV12 and I420 now runs on portable 128-bit SIMD with a runtime-checked AVX2 path on amd64, cutting 2560x1440 and 3840x2160 conversion time by 6x to 11x with byte-identical output.
+
+### Fixed
+- **`platform.drag_start` with no window answers that it could not start on Windows too**: it crashed there; Linux already said so.
+- **`gt:mux`: a fragmented MP4 no longer corrupts the heap**: from the second fragment on, the muxer wrote into a sample it had freed, so a program crashed later in an unrelated allocation (a screen recording with `fast_start = .Fragmented`).
+
 ## [0.358.1] - 2026-11-25 15:20
 
 ### Fixed
@@ -5011,6 +5020,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.358.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.2
 [0.358.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.1
 [0.358.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.0
 [0.357.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.357.0
