@@ -502,6 +502,7 @@ dragdrop_thread_init :: proc() -> bool { return ole_ready() }
 // `image` follows the pointer, over every application, with its hot spot under the pointer (none: the system's
 // default picture of the data). `carry` is Wayland's (Drag_Carry): here the program moves its window itself.
 drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil, carry := Drag_Carry{}) -> (effect: Maybe(Drop_Effect), ok: bool) {
+	if w == nil { return nil, false }
 	d := dnd_state(w)
 	steps := d.script   // (this drag's, however it ends)
 	d.script = {}
