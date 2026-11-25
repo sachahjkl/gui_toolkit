@@ -26,12 +26,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-24.04
     container: debian:bookworm   # (deb.debian.org, not the runner's Ubuntu mirrors)
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Debian's packages
         run: apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates curl clang lld zstd webp >/dev/null
@@ -52,5 +49,15 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+
+  # A job of its own: the list of a run's artifacts can be late, and a deployment in the step after the upload found none.
+  # It can also run again alone.
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
