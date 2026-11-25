@@ -5,6 +5,14 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.358.0] - 2026-11-25 12:04
+
+### Added
+- **Nearest-neighbour and pixelated image filtering (`draw.set_image_filter`, `render.FLAG_IMAGE_PIXELATED`, `render.FLAG_IMAGE_NEAREST`)**: `draw.set_image_filter(dc, .Smooth | .Pixelated | .Nearest)` sets per-instance image sampling for `image`, `image_corners`, `image_cover`, `image_tiled`, and retained `draw.Picture` recordings without adding extra GPU samplers or splitting GL batches. `.Pixelated` fetches nearest texels when magnifying and falls back to trilinear filtering with mips when minifying; `.Nearest` fetches nearest texels at every scale.
+
+### Fixed
+- **Linux desktop light/dark detection (`platform.dark_mode_preferred`, `platform.watch_color_scheme`)**: treat an XDG Settings portal `org.freedesktop.appearance` `color-scheme` of `0` (no preference, which GNOME and `xdg-desktop-portal-gtk` report for light mode) as light instead of falling through to stale GTK 3 settings, fall back to `Read` when `ReadOne` is unavailable, reject malformed non-integer portal replies, and keep internal `color_scheme_serial` tracking independent from an application's `watch_color_scheme` callback so neither overwrites the other.
+
 ## [0.357.0] - 2026-11-25 11:32
 
 ### Added
@@ -4998,6 +5006,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.358.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.0
 [0.357.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.357.0
 [0.356.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.2
 [0.356.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.1
