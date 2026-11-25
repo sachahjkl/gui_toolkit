@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.358.1] - 2026-11-25 15:20
+
+### Fixed
+- **`ui.checkbox` checkmark contrast and Ember Light accent**: checkmarks now use the theme's `accent_text` (falling back to `ui.ink_on` to keep WCAG AA contrast >= 4.5:1) instead of hardcoded white, fixing unreadable checks on bright dark-theme accents; Ember Light's accent deepens to `#b8521d` so light ink reads at >= 4.5:1 WCAG AA on it.
+
 ## [0.358.0] - 2026-11-25 12:04
 
 ### Added
@@ -5006,6 +5011,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.358.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.1
 [0.358.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.0
 [0.357.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.357.0
 [0.356.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.2
