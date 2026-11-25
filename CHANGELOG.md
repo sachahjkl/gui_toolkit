@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.356.2] - 2026-11-25 09:21
+
+### Fixed
+- **`prefs_page` free fields**: commit edits on focus loss (click or Tab), resync empty-string defaults on Reset, Escape or external updates, and flush pending edits on page switch, search filter change, `back_bar`, `escape_leaves`, `export_to` and `prefs_page.flush`.
+
 ## [0.356.1] - 2026-11-24 13:40
 
 ### Fixed
@@ -4973,6 +4978,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.356.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.2
 [0.356.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.1
 [0.356.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.356.0
 [0.355.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.355.0
