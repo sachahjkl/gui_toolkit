@@ -529,3 +529,87 @@ the_writer_tells_a_failed_write :: proc(t: ^testing.T) {
 	set_from_string(&p, "net.max_conns", "9", .User)
 	testing.expect(t, !user_writer_stop(&wr, &p), "stop tells the failure")
 }
+
+@(test)
+bind_registers_reads_updates_and_notifies :: proc(t: ^testing.T) {
+	Net_Cfg :: struct { max_conns: i64, enabled: bool }
+	read_net :: proc(p: ^Prefs) -> Net_Cfg {
+		return {max_conns = int_of(p, "net.max_conns"), enabled = bool_of(p, "net.enabled")}
+	}
+	State :: struct { cfg: Net_Cfg, calls: int, last_name: string, seen_conns: i64 }
+
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	st: State
+	bind(&p, "net.", &st.cfg, read_net, defs = DEFS[:], on_change = proc(u: rawptr, name: string, _: ^Prefs) {
+		s := (^State)(u)
+		s.calls += 1
+		s.last_name = name
+		s.seen_conns = s.cfg.max_conns
+	}, user = &st)
+
+	// Initial read populated cfg without firing on_change.
+	testing.expect_value(t, st.cfg.max_conns, i64(6))
+	testing.expect_value(t, st.cfg.enabled, true)
+	testing.expect_value(t, st.calls, 0)
+
+	// Matching write refreshes target before on_change runs.
+	testing.expect_value(t, set_int(&p, "net.max_conns", 12), Set_Error.None)
+	testing.expect_value(t, st.cfg.max_conns, i64(12))
+	testing.expect_value(t, st.calls, 1)
+	testing.expect_value(t, st.last_name, "net.max_conns")
+	testing.expect_value(t, st.seen_conns, i64(12))
+
+	// Unrelated prefix does not trigger the binding.
+	testing.expect_value(t, set_float(&p, "ui.scale", 1.5), Set_Error.None)
+	testing.expect_value(t, st.calls, 1)
+
+	// Reset reverts target to default and fires on_change.
+	testing.expect_value(t, reset(&p, "net.max_conns"), Set_Error.None)
+	testing.expect_value(t, st.cfg.max_conns, i64(6))
+	testing.expect_value(t, st.calls, 2)
+}
+
+@(test)
+bind_destroys_owned_values_and_unwatches_cleanly :: proc(t: ^testing.T) {
+	Owned_Cfg :: struct { agent: string }
+	read_owned :: proc(p: ^Prefs) -> Owned_Cfg {
+		return {agent = strings.clone(string_of(p, "net.agent"))}
+	}
+	destroy_owned :: proc(v: ^Owned_Cfg) { delete(v.agent); v.agent = "" }
+
+	p := prefs_make()
+	defer prefs_destroy(&p)
+	register(&p, DEFS[:])
+
+	cfg: Owned_Cfg
+	defer destroy_owned(&cfg)
+	id := bind(&p, "net.", &cfg, read_owned, destroy = destroy_owned)
+	testing.expect_value(t, cfg.agent, "wb/1")
+
+	testing.expect_value(t, set_string(&p, "net.agent", "one"), Set_Error.None)
+	testing.expect_value(t, cfg.agent, "one")
+	testing.expect_value(t, set_string(&p, "net.agent", "two"), Set_Error.None)
+	testing.expect_value(t, cfg.agent, "two")
+
+	// Early unwatch frees the binding and stops updates.
+	unwatch(&p, id)
+	testing.expect_value(t, set_string(&p, "net.agent", "three"), Set_Error.None)
+	testing.expect_value(t, cfg.agent, "two")
+
+	// Re-entrant unwatch from inside on_change frees cleanly without use-after-free.
+	Self_Unwatch :: struct { cfg: Owned_Cfg, id: int, calls: int }
+	su: Self_Unwatch
+	defer destroy_owned(&su.cfg)
+	su.id = bind(&p, "net.", &su.cfg, read_owned, destroy = destroy_owned, on_change = proc(u: rawptr, _: string, p: ^Prefs) {
+		s := (^Self_Unwatch)(u)
+		s.calls += 1
+		unwatch(p, s.id)
+	}, user = &su)
+	testing.expect_value(t, set_string(&p, "net.agent", "four"), Set_Error.None)
+	testing.expect_value(t, su.cfg.agent, "four")
+	testing.expect_value(t, su.calls, 1)
+	testing.expect_value(t, set_string(&p, "net.agent", "five"), Set_Error.None)
+	testing.expect_value(t, su.cfg.agent, "four")
+	testing.expect_value(t, su.calls, 1)
+}

@@ -87,6 +87,7 @@ Observer :: struct {
 	prefix: string,   // owned
 	fn:     proc(user: rawptr, name: string, p: ^Prefs),
 	user:   rawptr,
+	drop:   proc(user: rawptr, allocator: runtime.Allocator),   // optional: frees `user` on unwatch or prefs_destroy
 	id:     int,
 }
 
@@ -147,7 +148,10 @@ prefs_destroy :: proc(p: ^Prefs) {
 	delete(p.index)
 	for k, v in p.pending { delete(k, a); for s in v.value { delete(s, a) } }
 	delete(p.pending)
-	for o in p.observers { delete(o.prefix, a) }
+	for o in p.observers {
+		delete(o.prefix, a)
+		if o.drop != nil { o.drop(o.user, a) }
+	}
 	delete(p.observers)
 	for k, g in p.groups { delete(k, a); delete(g.title, a) }
 	delete(p.groups)
@@ -397,8 +401,60 @@ watch :: proc(p: ^Prefs, prefix: string, fn: proc(user: rawptr, name: string, p:
 
 unwatch :: proc(p: ^Prefs, id: int) {
 	for o, i in p.observers {
-		if o.id == id { delete(o.prefix, p.allocator); ordered_remove(&p.observers, i); return }
+		if o.id == id {
+			delete(o.prefix, p.allocator)
+			if o.drop != nil { o.drop(o.user, p.allocator) }
+			ordered_remove(&p.observers, i)
+			return
+		}
 	}
+}
+
+@(private = "file")
+Binding :: struct($T: typeid) {
+	target:    ^T,
+	read:      proc(p: ^Prefs) -> T,
+	destroy:   proc(v: ^T),
+	on_change: proc(user: rawptr, name: string, p: ^Prefs),
+	user:      rawptr,
+}
+
+// Binds `target` to every preference whose name starts with `prefix`: registers `defs` when given, reads the current
+// values into `target^` with `read` (without firing `on_change`), and watches `prefix` so each later change refreshes
+// `target^` (calling `destroy` on the previous value first when given) and invokes `on_change` when set. Returns the
+// observer id for `unwatch`; callers that bind for the registry's lifetime need not keep it, because `prefs_destroy`
+// frees every binding (the caller still owns `target^` itself).
+bind :: proc(
+	p:         ^Prefs,
+	prefix:    string,
+	target:    ^$T,
+	read:      proc(p: ^Prefs) -> T,
+	defs:      []Def = nil,
+	on_change: proc(user: rawptr, name: string, p: ^Prefs) = nil,
+	user:      rawptr = nil,
+	destroy:   proc(v: ^T) = nil,
+) -> int {
+	assert(target != nil && read != nil)
+	if len(defs) > 0 { register(p, defs) }
+	target^ = read(p)
+	b := new(Binding(T), p.allocator)
+	b^ = {target = target, read = read, destroy = destroy, on_change = on_change, user = user}
+	on_pref :: proc(raw: rawptr, name: string, p: ^Prefs) {
+		b := (^Binding(T))(raw)
+		if b.destroy != nil { b.destroy(b.target) }
+		b.target^ = b.read(p)
+		if fn := b.on_change; fn != nil { fn(b.user, name, p) }
+	}
+	drop :: proc(raw: rawptr, allocator: runtime.Allocator) { free(raw, allocator) }
+	p.next_observer += 1
+	append(&p.observers, Observer{
+		prefix = strings.clone(prefix, p.allocator),
+		fn = on_pref,
+		user = b,
+		drop = drop,
+		id = p.next_observer,
+	})
+	return p.next_observer
 }
 
 @(private)

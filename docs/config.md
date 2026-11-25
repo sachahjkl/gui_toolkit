@@ -147,6 +147,18 @@ config.unwatch(&p, id)
 
 `fn` runs synchronously, on the changing thread, after any preference whose name starts with `prefix` changes.
 
+To keep a typed settings struct in step with a prefix without tracking observer ids manually, use `bind`:
+
+```odin
+config.bind(&p, "net.", &app.net_cfg, net_settings_from_prefs,
+    defs = NET_DEFS[:], on_change = on_net_change, user = app)
+```
+
+`bind` registers `defs` when given, performs the initial read into `target^` (without calling `on_change`), and watches
+`prefix` so every later change refreshes `target^` (calling `destroy` on the previous value first when given) and then
+invokes `on_change`. It returns the observer id for an early `unwatch`, and `prefs_destroy` frees every binding
+automatically (the caller still owns `target^` itself).
+
 ## Groups and their titles
 
 The name is the one source of where a preference goes. Its segments but the last are its groups, from the top:
