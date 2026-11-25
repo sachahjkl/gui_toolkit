@@ -500,8 +500,8 @@ dragdrop_thread_init :: proc() -> bool { return ole_ready() }
 // Runs a drag of the system from the window with `data` until it is dropped (the effect the target chose) or given up
 // (nil). Blocks while the user drags. ok = false when the system could not start it (no OLE on this thread, no data).
 // `image` follows the pointer, over every application, with its hot spot under the pointer (none: the system's
-// default picture of the data).
-drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil) -> (effect: Maybe(Drop_Effect), ok: bool) {
+// default picture of the data). `carry` is Wayland's (Drag_Carry): here the program moves its window itself.
+drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil, carry := Drag_Carry{}) -> (effect: Maybe(Drop_Effect), ok: bool) {
 	d := dnd_state(w)
 	steps := d.script   // (this drag's, however it ends)
 	d.script = {}
@@ -622,6 +622,9 @@ keys_from_mods :: proc(m: Modifiers) -> (keys: u32) {
 	if .Alt in m { keys |= MK_ALT }
 	return
 }
+
+// Whether drag_start can carry a window (Drag_Carry): Wayland's alone.
+drag_carry_supported :: proc(w: ^Window) -> bool { return false }
 
 // How far the pointer moves with a button held before a press becomes a drag (the system's setting), in pixels.
 drag_threshold :: proc(w: ^Window) -> [2]f32 {

@@ -724,6 +724,17 @@ frames_until_rate :: proc(h: ^host.Host, ms: int, hz: f64) -> bool {
 	return false
 }
 
+// A drag that carries a window (Drag_Carry, src/md/features/window-drag.md): sway offers no xdg-toplevel-drag-v1, so
+// drag_carry_supported is false there and on X11. (The wire protocol itself is checked in platform's unit tests.)
+@(test)
+a_drag_carries_a_window_only_where_offered :: proc(t: ^testing.T) {
+	if desktop() == "" { return }
+	w := open("carry source", {200, 120})
+	if !testing.expect(t, w != nil, "a window opens") { return }
+	defer platform.destroy_window(w)
+	testing.expect(t, !platform.drag_carry_supported(w), "no compositor of the virtual desktops moves a window with a drag")
+}
+
 // Wayland, two outputs of 60 and 144 Hz (sway makes the second, headless): a window moved to the second one takes its
 // rate, and its pacer's slots follow it. The rate read was the first output's: on the 144 Hz output the pacer kept a
 // 60 Hz plan, and its slots held the frames to 60 a second.

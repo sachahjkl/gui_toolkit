@@ -40,6 +40,7 @@ Wl_Conn :: struct {
 	data_device: Wl_Proxy,
 	xdg_wm_base: Wl_Proxy,
 	decoration_manager: Wl_Proxy,
+	toplevel_drag_manager: Wl_Proxy, // xdg_toplevel_drag_manager_v1 (optional): a drag carries a window (Drag_Carry)
 	fractional_manager: Wl_Proxy, // wp_fractional_scale_manager_v1 (optional)
 	viewporter: Wl_Proxy,         // wp_viewporter (optional; fractional scaling needs both)
 	activation: Wl_Proxy,         // xdg_activation_v1 (optional): raise_window asks the focus with it
@@ -89,6 +90,7 @@ Wl_Conn :: struct {
 	dnd_enter_serial: u32,
 	dnd_x, dnd_y:  f32,
 	dnd_source:    Wl_Proxy,      // our wl_data_source while we drag from this app
+	dnd_toplevel_drag: Wl_Proxy,  // our xdg_toplevel_drag_v1 while a drag carries a window (destroyed before dnd_source)
 	offer_actions: u32,           // what the source of the last offer allows (wl_data_offer.source_actions)
 	dnd_told_action: u32,         // the action last asked for on the offer over the window
 	// IME (ime_wl_linux.odin): the text-input manager and the per-seat text-input object
@@ -312,6 +314,7 @@ registry_global :: proc "c" (data: rawptr, registry: Wl_Proxy, name: u32, iface:
 	case "zxdg_decoration_manager_v1": wlc.decoration_manager = bind(name, &zxdg_decoration_manager_iface, 1, version)
 	case "zwp_text_input_manager_v3": wlc.ti_manager = bind(name, &zwp_ti_manager_iface, 1, version)
 	case "wp_cursor_shape_manager_v1": wlc.cursor_shape_manager = bind(name, &wp_cursor_shape_manager_iface, 1, version)
+	case "xdg_toplevel_drag_manager_v1": wlc.toplevel_drag_manager = bind(name, &xdg_toplevel_drag_manager_iface, 1, version)
 	case "zwp_tablet_manager_v2": wlc.tablet_manager = bind(name, &zwp_tablet_manager_iface, 1, version)
 	case "wp_fractional_scale_manager_v1": wlc.fractional_manager = bind(name, &wp_fractional_manager_iface, 1, version)
 	case "wl_subcompositor": if wl.subcompositor_interface != nil { wlc.subcompositor = bind(name, wl.subcompositor_interface, 1, version) }

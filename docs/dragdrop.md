@@ -60,6 +60,27 @@ which a decoder library joining the multithreaded one first would make impossibl
 After `drag_start`, `drag_image_held(win)` gives the size and hot spot the system holds (what it draws over every
 application).
 
+### A window that follows the drag (tearing off a tab)
+
+On Windows and X11 a program moves a torn-off window itself (`move_window`, from the pointer's screen position). On
+Wayland a client can neither move a window nor know the pointer's screen position: `drag_start(..., carry =
+Drag_Carry{window, grab, frame, user})` asks the compositor to move `window` with the pointer, held at `grab` (window
+pixels from its top left, scaled to logical surface units), while the drag runs (`xdg-toplevel-drag-v1`).
+`drag_carry_supported(win)` says whether the compositor offers it; without it `carry` is ignored, and the program makes
+the window at the drop instead. Both a newly detached window and the source window itself (`carry.window == win`, for a
+single-tab window) can be carried.
+
+```odin
+if platform.drag_carry_supported(src.win) {
+	torn := open_window_for(tab)   // one of this thread's windows, opened before the drag (hidden or shown)
+	effect, ok := platform.drag_start(src.win, data, {.Move}, carry = {window = torn.win, grab = {60, 16}, frame = draw_all, user = app})
+}
+```
+
+The carried window never receives the drag's `Drop_*` events (the compositor leaves it out of the target's choice). A
+drag that ends cancelled: the program closes the window it made, as the protocol asks. `frame` is called right after the
+drag starts and while it runs, so the program draws its windows, the carried one too: the drag holds the thread.
+
 ### The app's own drag coming back
 
 `drag_start` blocks: an app that drags in its own window then hands the drag to the system when the pointer leaves

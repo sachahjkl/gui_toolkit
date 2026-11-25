@@ -15,7 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 harfrust = "=0.15.0"
-icu_segmenter = { version = "=2.4.0", default-features = false, features = ["compiled_data", "auto"] }
+icu_segmenter = { version = "=2.4.0", default-features = false, features = ["compiled_data", "lstm"] }
 icu_properties = { version = "=2.4.0", default-features = false, features = ["compiled_data", "unicode_bidi"] }
 unicode-bidi = { version = "=0.3.18", default-features = false, features = ["hardcoded-data"] }
 memmap2 = "=0.9.8"

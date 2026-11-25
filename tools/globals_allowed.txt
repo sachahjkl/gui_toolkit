@@ -330,6 +330,12 @@ platform/wl_protocol_linux.odin t_ti_get const  # a protocol table, built once (
 platform/wl_protocol_linux.odin t_ti_surface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin wp_cursor_shape_manager_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin wp_cursor_shape_device_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_toplevel_drag_manager_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xdg_toplevel_drag_iface const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xtd_manager_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin xtd_methods const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_xtd_get const  # a protocol table, built once (wayland_lib), then read
+platform/wl_protocol_linux.odin t_xtd_attach const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin wp_csm_methods const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin vk_manager_iface const  # a protocol table, built once (wayland_lib), then read
 platform/wl_protocol_linux.odin vk_iface const  # a protocol table, built once (wayland_lib), then read

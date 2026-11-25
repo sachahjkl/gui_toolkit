@@ -161,6 +161,7 @@ wayland_lib :: proc() -> ^Wayland_Lib {
 		zwp_ti_build_tables()
 		tablet_build_tables()
 		wp_cursor_shape_build_tables()
+		xdg_toplevel_drag_build_tables()
 		wp_scale_build_tables()
 		xdg_activation_build_tables()
 		virtual_keyboard_build_tables()

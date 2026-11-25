@@ -1,5 +1,5 @@
 //! The toolkit's native text backend: faces (read-fonts' font model: Fontations), shaping (HarfRust), line breaks
-//! (ICU4X's segmenter, with its dictionaries for Thai, Lao, Khmer and Myanmar) and bidi levels (unicode-bidi on
+//! (ICU4X's segmenter, with its LSTM model for Thai, Lao, Khmer and Myanmar) and bidi levels (unicode-bidi on
 //! ICU4X's property data), behind a C ABI called by font/backend_native.odin.
 //!
 //! Calls take whole runs (one shape call per run of one face, script and direction) and fill caller buffers; a call
@@ -519,10 +519,10 @@ pub unsafe extern "C" fn gt_bidi_levels(text_ptr: *const u8, text_len: usize, ba
 
 fn segmenter() -> &'static icu_segmenter::LineSegmenterBorrowed<'static> {
     static SEG: std::sync::OnceLock<icu_segmenter::LineSegmenterBorrowed<'static>> = std::sync::OnceLock::new();
-    SEG.get_or_init(|| icu_segmenter::LineSegmenter::new_dictionary(Default::default()))
+    SEG.get_or_init(|| icu_segmenter::LineSegmenter::new_lstm(Default::default()))
 }
 
-/// UAX #14 line break opportunities of UTF-8 `text` (dictionaries for Thai, Lao, Khmer, Myanmar): byte offsets
+/// UAX #14 line break opportunities of UTF-8 `text` (LSTM model for Thai, Lao, Khmer, Myanmar): byte offsets
 /// before which a line may break, without 0 and the end; bit 31 set for a mandatory break. Returns the count (more than
 /// `cap`: call again).
 #[no_mangle]
@@ -604,5 +604,24 @@ mod tests {
         assert_eq!(runs("  "), vec![(0, 2, Script::COMMON.tag())]);
         let greek = Script::GREEK.tag();
         assert_eq!(runs("1 a \u{3b1}"), vec![(0, 4, latin), (4, 6, greek)]);
+    }
+
+    #[test]
+    fn lstm_line_breaks_latin_and_thai() {
+        let mut buf = [0u32; 32];
+        let latin = "hello world\nnext";
+        let n = unsafe { gt_line_breaks(latin.as_ptr(), latin.len(), buf.as_mut_ptr(), buf.len()) };
+        assert_eq!(n, 2);
+        assert_eq!(buf[0], 6); // after "hello "
+        assert_eq!(buf[1], 12 | (1 << 31)); // mandatory break after "\n"
+
+        // Thai has no spaces: the LSTM model must still find internal word boundaries.
+        let thai = "ภาษาไทยทดสอบ";
+        let nt = unsafe { gt_line_breaks(thai.as_ptr(), thai.len(), buf.as_mut_ptr(), buf.len()) };
+        assert!(nt >= 2, "expected Thai word boundaries from LSTM segmenter, got {nt}");
+        for &b in &buf[..nt] {
+            let idx = (b & 0x7FFF_FFFF) as usize;
+            assert!(idx > 0 && idx < thai.len() && thai.is_char_boundary(idx));
+        }
     }
 }

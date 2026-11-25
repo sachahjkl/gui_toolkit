@@ -81,6 +81,20 @@ clone_string :: proc(s: string, allocator := context.allocator) -> string {
 	return string(b)
 }
 
+// A window a drag carries (drag_start's `carry`): the system moves it with the pointer while the drag runs, held at
+// `grab` (window pixels from its top left, scaled to logical coordinates on Wayland). Wayland only, where a client
+// cannot move a window itself (xdg-toplevel-drag-v1; drag_carry_supported says whether the compositor offers it).
+// Elsewhere it is ignored: the program moves the window itself (move_window). The window is one of this thread's,
+// opened before the drag (including the source window itself for a single-tab drag); hidden, it is shown before
+// attach. `frame`, when set, is called right after the drag starts and while it runs so the program draws its windows,
+// the carried one too: the drag blocks the thread. It must not start another drag.
+Drag_Carry :: struct {
+	window: ^Window,
+	grab:   [2]int,
+	frame:  proc(user: rawptr),
+	user:   rawptr,
+}
+
 // A picture for a drag (drag_start): straight (not premultiplied) RGBA pixels, `size` in pixels, `offset` = where the
 // pointer is in it (its hot spot; may lie outside the picture, as a web page's setDragImage allows).
 Drag_Image :: struct {

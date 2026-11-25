@@ -411,7 +411,8 @@ THEMES := [?]Theme_Def{
 			},
 			focus = {style = .Dotted, inset = 4, color = 0x000000ff},
 			still = true,
-			relief = RELIEF_BEVEL,
+			// relief = RELIEF_BEVEL is set in init_themes: an inline Maybe(Relief) holds an array of structs
+			// and makes Odin treat the whole 15 KiB THEMES table as a non-constant initializer.
 			scroll_bar = {form = .Keys},
 			// (Windows 98's caption: navy to blue, grey to light grey behind; Windows 95's was the first stop alone)
 			caption = {active = {0x000080ff, 0x1084d0ff}, inactive = {0x808080ff, 0xb5b5b5ff}, ink = 0xffffffff, bold = true, buttons = .Keys},
@@ -522,6 +523,17 @@ THEMES := [?]Theme_Def{
 			{0x268bd2ff, 0x268bd2ff, 0x6c71c4ff, 0x859900ff, 0xb58900ff, 0xdc322fff, 0x2aa198ff, 0xd33682ff}},
 		{{0xeee8d5ff, 0xfdf6e3ff, 0xf5efdcff, 0xfffbeeff, 0xffffffff, 0xddd6c1ff}, {0x93a1a1ff, 0x657b83ff, 0x073642ff, 0x002b36ff},
 			{0x268bd2ff, 0x268bd2ff, 0x6c71c4ff, 0x859900ff, 0xb58900ff, 0xdc322fff, 0x2aa198ff, 0xd33682ff}}, .Both, nil, false, 0, {}},
+}
+
+// Populate Old Head's relief once at startup so THEMES compiles as static data with no 15 KiB runtime initializer.
+@(private = "file", init)
+init_themes :: proc "contextless" () {
+	for &t in THEMES {
+		if t.name == "Old Head" {
+			t.look.relief = RELIEF_BEVEL
+			break
+		}
+	}
 }
 
 // The finishes by their names, for settings.

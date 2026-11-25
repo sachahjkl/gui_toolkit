@@ -80,12 +80,16 @@ drop_target_enabled :: proc(w: ^Window) -> bool { return w.dnd != nil && w.dnd.e
 // Prepares the calling thread for drag and drop. Nothing to do on Linux (no apartment model); always true.
 dragdrop_thread_init :: proc() -> bool { return true }
 
+// Whether drag_start can carry a window (Drag_Carry): a Wayland window whose compositor offers xdg-toplevel-drag-v1.
+drag_carry_supported :: proc(w: ^Window) -> bool { return w != nil && w.backend == .Wayland && wl_toplevel_drag_offered() }
+
 drag_threshold :: proc(w: ^Window) -> [2]f32 { return {DRAG_THRESHOLD_PX, DRAG_THRESHOLD_PX} }   // no system setting we read; the common default
 
 // Runs a drag of the system from the window. Wayland: wl_data_device.start_drag with a wl_data_source; X11: the XDND
 // source loop. Blocks until the drop or cancel; returns the chosen effect. ok = false when the backend could not start
-// it (no data, no serial).
-drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil) -> (effect: Maybe(Drop_Effect), ok: bool) {
+// it (no data, no serial). `carry` (Drag_Carry): on Wayland, a window the compositor moves with the pointer when
+// drag_carry_supported.
+drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil, carry := Drag_Carry{}) -> (effect: Maybe(Drop_Effect), ok: bool) {
 	if w == nil { return nil, false }
 	d := dnd_state(w)
 	steps := d.script   // (this drag's, however it ends)
@@ -98,7 +102,7 @@ drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Ma
 	defer d.sending = false
 	if len(steps) > 0 { return drag_run_script(w, data, allowed, steps[:]), true }
 	switch w.backend {
-	case .Wayland: return wl_drag_start(w, data, allowed, image)
+	case .Wayland: return wl_drag_start(w, data, allowed, image, carry)
 	case .X11:     return x11_drag_start(w, data, allowed, image)
 	case .None:
 	}

@@ -347,3 +347,10 @@ drag_image_fit_of_a_large_picture :: proc(t: ^testing.T) {
 	testing.expect_value(t, small.size, [2]int{2, 2})
 	for v in small.rgba { testing.expect_value(t, v, u8(255)) }
 }
+
+@(test)
+drag_carry_defaults :: proc(t: ^testing.T) {
+	testing.expect(t, !platform.drag_carry_supported(nil))
+	eff, ok := platform.drag_start(nil, platform.Drag_Data{text = "x"}, {.Move}, carry = platform.Drag_Carry{grab = {60, 16}})
+	testing.expect(t, !ok && eff == nil)
+}

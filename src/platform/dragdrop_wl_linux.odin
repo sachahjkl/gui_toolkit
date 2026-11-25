@@ -10,6 +10,7 @@ package platform
 // then the app reads drop_data(window).
 
 import "base:runtime"
+import "core:math"
 import "core:strings"
 import "core:time"
 
@@ -206,10 +207,37 @@ wl_drag_uris :: proc() -> string {
 	return strings.to_string(b)
 }
 
+// Whether the compositor moves a window with a drag of ours (xdg_toplevel_drag_manager_v1).
+@(private)
+wl_toplevel_drag_offered :: proc() -> bool { return wlc.toplevel_drag_manager != nil }
+
+// Converts a window-pixel grab point into the surface-local logical coordinates xdg_toplevel_drag_v1.attach takes.
+@(private)
+wl_toplevel_drag_offset :: proc(grab: [2]int, dpi_scale: f32) -> [2]i32 {
+	scale := dpi_scale > 0 ? dpi_scale : 1
+	return {i32(math.round(f32(grab.x) / scale)), i32(math.round(f32(grab.y) / scale))}
+}
+
+// Destroys the active xdg_toplevel_drag_v1 once the drag ended (dnd_drop_performed or cancelled), before wl_data_source
+// is destroyed: destroying it earlier raises ongoing_drag, and destroying wl_data_source first is undefined.
+@(private)
+wl_toplevel_drag_destroy :: proc "contextless" () {
+	td := wlc.dnd_toplevel_drag
+	if td == nil { return }
+	wlc.dnd_toplevel_drag = nil
+	if wlc.link == .Connected {
+		wl.proxy_marshal_flags(td, XDG_TOPLEVEL_DRAG_DESTROY, nil, wl.proxy_get_version(td), WL_MARSHAL_FLAG_DESTROY)
+	} else {
+		wl.proxy_destroy(td)
+	}
+}
+
 // Runs a drag from `w`. Makes a wl_data_source offering the data's flavours, start_drag with the last button serial,
 // and pumps the display until the source is cancelled or the drop completes. Returns the effect the target chose.
+// With `carry` and the compositor's xdg-toplevel-drag-v1: the window is attached to the drag before it starts (shown
+// first when hidden: attach needs its toplevel), and the compositor moves it with the pointer.
 @(private)
-wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image)) -> (effect: Maybe(Drop_Effect), ok: bool) {
+wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image), carry: Drag_Carry) -> (effect: Maybe(Drop_Effect), ok: bool) {
 	st := wl_state(w)
 	if st == nil || wlc.data_device == nil || wlc.data_device_manager == nil { return nil, false }
 	src := wl.proxy_marshal_flags(wlc.data_device_manager, WL_DATA_DEVICE_MANAGER_CREATE_DATA_SOURCE,
@@ -223,6 +251,7 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 	wlc.drag.phase = .Tracking
 	wlc.dnd_source_action = 0
 	wlc.dnd_source = src
+	wlc.dnd_toplevel_drag = nil
 	wl.proxy_add_listener(src, &data_source_listener, nil)
 	for m in drag_data_mimes(data) { wl_source_offer(src, m) }
 	if wl.proxy_get_version(src) >= WL_DND_ACTIONS_SINCE {
@@ -242,9 +271,25 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 		}
 	}
 	defer {
+		wl_toplevel_drag_destroy()
 		if icon != nil { wl.proxy_marshal_flags(icon, WL_SURFACE_DESTROY, nil, wl.proxy_get_version(icon), WL_MARSHAL_FLAG_DESTROY) }
 		if icon_buffer != nil { wl.proxy_marshal_flags(icon_buffer, WL_BUFFER_DESTROY, nil, wl.proxy_get_version(icon_buffer), WL_MARSHAL_FLAG_DESTROY) }
-		wl.display_flush(wlc.display)
+		if wlc.link == .Connected { wl.display_flush(wlc.display) }
+	}
+	if carry.window != nil && carry.window.backend == .Wayland && wlc.toplevel_drag_manager != nil {
+		if cst := wl_state(carry.window); cst != nil && !cst.overlay {
+			if cst.xdg_toplevel == nil { wl_show(carry.window) }
+			if cst.xdg_toplevel != nil {
+				td := wl.proxy_marshal_flags(wlc.toplevel_drag_manager, XDG_TOPLEVEL_DRAG_MANAGER_GET, &xdg_toplevel_drag_iface,
+					wl.proxy_get_version(wlc.toplevel_drag_manager), 0, nil, src)
+				if td != nil {
+					wlc.dnd_toplevel_drag = td
+					off := wl_toplevel_drag_offset(carry.grab, carry.window.dpi_scale)
+					wl.proxy_marshal_flags(td, XDG_TOPLEVEL_DRAG_ATTACH, nil, wl.proxy_get_version(td), 0,
+						cst.xdg_toplevel, off.x, off.y)
+				}
+			}
+		}
 	}
 	wl.proxy_marshal_flags(wlc.data_device, WL_DATA_DEVICE_START_DRAG, nil, wl.proxy_get_version(wlc.data_device), 0,
 		src, st.surface, icon, wlc.button_serial)
@@ -253,6 +298,8 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 		wl.proxy_marshal_flags(icon, WL_SURFACE_COMMIT, nil, wl.proxy_get_version(icon), 0)
 	}
 	wl.display_flush(wlc.display)
+	// draw once right after start_drag so a newly shown carried window commits its first buffer without waiting for a poll
+	if carry.frame != nil && drag_runs(wlc.drag.phase) { carry.frame(carry.user) }
 	// pump until the source is cancelled or finished. The compositor drives it, however long the user holds the button:
 	// the limit is the target's, once it has the drop
 	dropped_at: time.Tick
@@ -264,6 +311,8 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 		if wlc.link != .Connected { wl_drag_given_up(); break }
 		poll_fd_wait(wlc.fd, WL_DND_POLL_MS)
 		wl_read_available()
+		// (the thread is the drag's until it ends: the program draws its windows here, the carried one moving)
+		if carry.frame != nil && drag_runs(wlc.drag.phase) { carry.frame(carry.user) }
 	}
 	wlc.drag.phase = .Idle
 	// the compositor keeps the pointer during a drag: the release of the press that began it never comes to the window
@@ -276,7 +325,11 @@ wl_drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image:
 
 @(private = "file")
 wl_drag_given_up :: proc() {
-	if wlc.dnd_source != nil { wl_data_source_destroy(wlc.dnd_source); wlc.dnd_source = nil }
+	wl_toplevel_drag_destroy()
+	if wlc.dnd_source != nil {
+		if wlc.link == .Connected { wl_data_source_destroy(wlc.dnd_source) } else { wl.proxy_destroy(wlc.dnd_source) }
+		wlc.dnd_source = nil
+	}
 	wlc.dnd_source_action = 0
 	wlc.drag.phase = .Abandoned
 }

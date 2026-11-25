@@ -19,7 +19,8 @@ drop_inject :: proc(w: ^Window, kind: Event_Kind, pos: [2]f32, data: ^Drag_Data 
 drop_sync_set :: proc(w: ^Window, handler: Drop_Sync, user: rawptr) {}
 drag_script :: proc(w: ^Window, steps: []Drag_Step) -> bool { return false }
 drag_image_held :: proc(w: ^Window) -> (size, offset: [2]int, ok: bool) { return }
-drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil) -> (effect: Maybe(Drop_Effect), ok: bool) { return nil, false }
+drag_start :: proc(w: ^Window, data: Drag_Data, allowed: Drop_Effects, image: Maybe(Drag_Image) = nil, carry := Drag_Carry{}) -> (effect: Maybe(Drop_Effect), ok: bool) { return nil, false }
+drag_carry_supported :: proc(w: ^Window) -> bool { return false }
 drag_threshold :: proc(w: ^Window) -> [2]f32 { return {4, 4} }
 drag_sending :: proc(w: ^Window) -> bool { return false }
 drop_self_test :: proc(w: ^Window, data: Drag_Data, pos: [2]f32, allowed: Drop_Effects) -> bool { return false }

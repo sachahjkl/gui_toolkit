@@ -68,6 +68,8 @@ ds_cancelled :: proc "c" (data: rawptr, src: Wl_Proxy) {
 		wlc.data_source = nil
 		clip_note_changed()
 	} else if src == wlc.dnd_source {
+		// xdg-toplevel-drag-v1 requires destroying the toplevel drag once the drag ended, before destroying wl_data_source
+		wl_toplevel_drag_destroy()
 		wl_data_source_destroy(src)
 		wlc.dnd_source = nil
 		wlc.drag.phase = .Abandoned
@@ -76,12 +78,20 @@ ds_cancelled :: proc "c" (data: rawptr, src: Wl_Proxy) {
 }
 @(private)
 ds_dnd_drop :: proc "c" (data: rawptr, src: Wl_Proxy) {
-	if src == wlc.dnd_source { wlc.drag.phase = .Dropped }
+	if src == wlc.dnd_source {
+		wl_toplevel_drag_destroy()
+		wlc.drag.phase = .Dropped
+	}
 }
 @(private)
 ds_dnd_finished :: proc "c" (data: rawptr, src: Wl_Proxy) {
 	context = wl_ctx_real()
-	if src == wlc.dnd_source { wl_data_source_destroy(src); wlc.dnd_source = nil; wlc.drag.phase = .Finished }
+	if src == wlc.dnd_source {
+		wl_toplevel_drag_destroy()
+		wl_data_source_destroy(src)
+		wlc.dnd_source = nil
+		wlc.drag.phase = .Finished
+	}
 }
 @(private) ds_action :: proc "c" (data: rawptr, src: Wl_Proxy, action: u32) { wlc.dnd_source_action = action }
 

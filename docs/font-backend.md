@@ -6,7 +6,7 @@ installed fonts through the **platform**. Everything else in the package is the 
 | Backend  | What it is                                                                 | Build                               |
 |----------|----------------------------------------------------------------------------|-------------------------------------|
 | `dwrite` | DirectWrite: `IDWriteTextAnalyzer` (GetGlyphs / GetGlyphPlacements, AnalyzeScript, AnalyzeBidi, AnalyzeLineBreakpoints), `IDWriteFontFace` | the default on Windows; Windows only |
-| `native` | Fontations (`read-fonts` font model: faces, cmap, metrics, outlines, variations, COLR / CPAL), HarfRust (shaping), ICU4X (`icu_segmenter` line breaks with dictionaries, `icu_properties` data for `unicode-bidi`) in a static Rust library `native/text` | the default elsewhere; `-define:FONT_BACKEND=native` on Windows |
+| `native` | Fontations (`read-fonts` font model: faces, cmap, metrics, outlines, variations, COLR / CPAL), HarfRust (shaping), ICU4X (`icu_segmenter` line breaks with the LSTM model, `icu_properties` data for `unicode-bidi`) in a static Rust library `native/text` | the default elsewhere; `-define:FONT_BACKEND=native` on Windows |
 
 `FONT_BACKEND` is `dwrite` on Windows and `native` everywhere else (there is no DirectWrite there: a build without the
 native backend had no text). `native` links `build/native/gt_native.lib` (built by `tools/tk build_native`, its part `text`) and makes it the
@@ -114,7 +114,7 @@ clusters and advances in 17 samples, the same bidi levels and the same design me
   shape_dump`: `gid 2932 adv 1078 xoff -50`; with `-kern`: `adv 1128 xoff 0`); DirectWrite's GetGlyphPlacements
   applies the advance but returns no offset for these glyphs (its advanceOffset is 0), so the glyph moves 50 units
   toward the letter before it and the pair it should kern does not close. The native backend is the right one here.
-- **Line breaks in Thai, Lao, Khmer, Myanmar**: ICU4X's dictionaries and Windows' differ (one Thai word boundary);
+- **Line breaks in Thai, Lao, Khmer, Myanmar**: ICU4X's LSTM model and Windows' dictionaries differ on some word boundaries;
   Windows finds no break at all inside Lao, Khmer and Myanmar text, ICU4X does.
 - DirectWrite simulates bold and oblique (`with_simulations`); Fontations does not: such faces shape with the regular
   face's advances under `native`.

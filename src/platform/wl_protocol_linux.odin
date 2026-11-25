@@ -168,6 +168,31 @@ wp_cursor_shape_build_tables :: proc() {
 	wp_cursor_shape_device_iface = {"wp_cursor_shape_device_v1", 1, 2, &wp_csd_methods[0], 0, nil}
 }
 
+// xdg-toplevel-drag-v1: a window the compositor moves with a drag of ours (Drag_Carry). Tables by hand.
+@(private) XDG_TOPLEVEL_DRAG_MANAGER_DESTROY :: 0
+@(private) XDG_TOPLEVEL_DRAG_MANAGER_GET :: 1
+@(private) XDG_TOPLEVEL_DRAG_DESTROY :: 0
+@(private) XDG_TOPLEVEL_DRAG_ATTACH :: 1
+
+@(private) xdg_toplevel_drag_manager_iface: Wl_Interface
+@(private) xdg_toplevel_drag_iface: Wl_Interface
+@(private) xtd_manager_methods: [2]Wl_Message
+@(private) xtd_methods: [2]Wl_Message
+@(private) t_xtd_get: [2]^Wl_Interface
+@(private) t_xtd_attach: [3]^Wl_Interface
+
+@(private)
+xdg_toplevel_drag_build_tables :: proc() {
+	xtd_manager_methods[0] = {"destroy", "", nil}
+	t_xtd_get[0], t_xtd_get[1] = &xdg_toplevel_drag_iface, wl.data_source_interface
+	xtd_manager_methods[1] = {"get_xdg_toplevel_drag", "no", raw_types(t_xtd_get[:])}
+	xdg_toplevel_drag_manager_iface = {"xdg_toplevel_drag_manager_v1", 1, 2, &xtd_manager_methods[0], 0, nil}
+	xtd_methods[0] = {"destroy", "", nil}
+	t_xtd_attach[0] = &xdg_toplevel_iface
+	xtd_methods[1] = {"attach", "oii", raw_types(t_xtd_attach[:])}
+	xdg_toplevel_drag_iface = {"xdg_toplevel_drag_v1", 1, 2, &xtd_methods[0], 0, nil}
+}
+
 // wp_fractional_scale_v1 (the scale the compositor would like the surface drawn at, in 120ths) and wp_viewporter (the
 // surface's size on the output, whatever its buffer's).
 @(private) WP_FRACTIONAL_MANAGER_GET :: 1
