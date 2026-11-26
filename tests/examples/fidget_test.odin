@@ -290,3 +290,14 @@ fidget_palette_and_about :: proc(t: ^testing.T) {
 	session.click(s, "sw1")
 	testing.expect(t, app.sw[1] != was, "it still answers")
 }
+
+// The Tool bars card, as a person sees it (fidget_toolbars.png in the test's folder): the composer's bar has its tools
+// in words with no face at rest, Send raised, its end group before Send.
+@(test)
+fidget_toolbars_picture :: proc(t: ^testing.T) {
+	s, _ := start_fidget(t, []string{"--anim=off", "--size=1180x1600"})
+	session.frames(s, 4)
+	session.save_png(s, "fidget_toolbars.png")
+	send, agents := session.get(s, "send"), session.get(s, "agents")
+	testing.expect(t, agents.rect.max.x <= send.rect.min.x, "the end group before Send")
+}

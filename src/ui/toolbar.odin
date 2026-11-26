@@ -30,7 +30,8 @@ import lucide "../lucide"
 //     separator between two), a tool a menu row (icon, label, shortcut), a control a row with its label at the left and
 //     its widget at the right.
 // An item's call answers the same wherever it is shown: a tool returns true when clicked, a control's block builds its
-// widget. The bar puts its pinned groups at its end itself: build no spacer in it.
+// widget. The bar puts its `end` and pinned groups at its end itself: build no spacer in it. A tool has no face until
+// the pointer is over it, but a tool in words of intent .Primary (Done, Send): its `face` says otherwise.
 
 Toolbar_Overflow :: enum u8 {
 	Fold,   // one line; what does not fit goes into the "…" button's menu
@@ -56,10 +57,14 @@ Toolbar_Options :: struct {
 }
 
 // What a group of a tool bar is.
+// The groups are built in this order: the others, then the `end` ones, then the pinned ones.
 Toolbar_Group_Options :: struct {
 	title:     string,   // its section's heading in the "…" menu, its name to a screen reader ("" none)
 	priority:  int,      // .Fold: the lower folds first
 	pinned:    bool,     // at the bar's end; never folds, never wraps away from the end (Cancel, Done)
+	// at the bar's end, before the "…" button and the pinned groups (a terminal, a stop beside Send); .Fold folds it as
+	// any group, .Wrap keeps it with the pinned groups at the end of the last line
+	end:       bool,
 	separator: bool,     // a line before it in the bar (a separator between sections in the menu, whatever this says)
 }
 
@@ -71,10 +76,21 @@ Toolbar_Tool :: struct {
 	command:   Command,        // a command: its label, icon and first key, for what the fields above leave ""
 	priority:  Maybe(int),     // .Fold: its own priority (nil: its group's)
 	words:     bool,           // in the bar, a button with its words (and its icon), not its icon alone
+	// its words in the bar when they are shorter than `label` ("high" for "Thinking: high"; "": `label`): `label` stays
+	// the menu row's, the tooltip's and a screen reader's
+	bar_label: string,
 	on:        bool,           // the tool chosen, a mode that is on: held down in the bar, checked in the menu
 	disabled:  bool,
 	intent:    Intent,         // what the act means (Done: Primary)
+	// how it sits in the bar: .Ghost, .Raised or .Link (nil: .Ghost, no face until the pointer is over it; .Raised for
+	// words of intent .Primary, the act the bar exists for). `on` holds it down whatever this says
+	face:      Maybe(Button_Face),
+	lit:       bool,           // its face shown, as under the pointer (a picker it opened, not a `menu`, is open)
 	icon_font: font.Font_Id,   // 0: State.icon_font
+	icon_intent: Maybe(Intent), // its glyph in that intent's hue, in the bar (a mode it shows: a shield yellow); nil: its words'
+	badge:     int,            // a count on its corner in the bar (ui.badge: running work); 0 none
+	dot:       Badge_Dot,      // a dot on its corner in the bar (ui.badge_dot), when it has no count
+	badge_intent: Intent,      // the count's and the dot's hue (Neutral: the accent's)
 	// the id of a menu the program builds as always (`if ui.menu(id) { ... }`, outside the bar): the tool opens it, under
 	// itself in the bar (lit while it is open), as its submenu when it is a row of the "…" menu ("": an act)
 	menu:      string,
@@ -141,7 +157,8 @@ Toolbar_Build :: struct {
 	side:       f32,      // a tool's side, the "…" button's
 	labels:     Toolbar_Labels,
 	folded:     bool,     // .Fold: a part is folded in this build
-	ended:      bool,     // the bar's end began: the pinned groups follow
+	ended:      bool,     // the bar's end began: the `end` and pinned groups follow
+	ends:       int,      // the `end` groups built so far
 	pinned:     int,      // the pinned groups built so far
 	more:       ^Box,     // the "…" button, once built
 	menu_name:  string,
@@ -188,6 +205,9 @@ Toolbar_Line :: struct {
 // has no room and no line before it. Each is a horizontal gap of the density (dense): a dense window's bars tighten as
 // its lists do.
 @(private = "file") TOOLBAR_MORE_GAP_EM :: 0.3
+// The room beside a ghost tool's words, in ems: two tools in words stand as far apart as two glyph tools' glyphs
+// (a raised button's room, 0.95 em, spread the words of a bar once their boxes were gone).
+@(private = "file") TOOLBAR_WORDS_PAD_EM :: 0.7
 @(private = "file") TOOLBAR_ITEM_GAP_EM :: 0.2
 @(private = "file") TOOLBAR_CONTROL_PAD_EM :: 0.15
 @(private = "file") TOOLBAR_LABEL_GAP_EM :: 0.4
@@ -363,12 +383,19 @@ toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 	// Never before the bar's first group, nor before .Fold's first pinned one (the spacer and the "…" button stand there);
 	// in .Wrap's flow the flow's gap is that room (only between two groups of one line); .Wrap's pinned groups follow
 	// the flow's last line)
-	in_flow := tb.overflow == .Wrap && !o.pinned
+	at_end := o.pinned || o.end
+	assert(!o.end || tb.pinned == 0, "toolbar_group: an end group after a pinned one")
+	assert(at_end || !tb.ended, "toolbar_group: a group after the bar's end or pinned groups")
+	in_flow := tb.overflow == .Wrap && !at_end
 	leads: bool
 	switch {
-	case in_flow:  leads = false
-	case o.pinned: leads = tb.pinned > 0 || tb.overflow == .Wrap
-	case:          leads = tb.order > 0
+	case in_flow:               leads = false
+	case tb.overflow == .Wrap:  leads = true   // (after the flow, at the end of its last line)
+	// (.Fold: the first end group stands after the spacer; the first pinned one after the "…" button, else after the
+	// end groups, which it must not touch)
+	case o.pinned:              leads = tb.pinned > 0 || tb.ends > 0
+	case o.end:                 leads = tb.ends > 0
+	case:                       leads = tb.order > 0
 	}
 	room: f32 = leads ? toolbar_separator_width(em) : 0
 	tb.order += 1
@@ -376,10 +403,12 @@ toolbar_group :: proc(id: string, o := Toolbar_Group_Options{}) -> bool {
 	g.priority, g.pinned, g.seen = o.priority, o.pinned, s.build_index
 	g.lead = room
 	tb.group, tb.items, tb.group_title, tb.group_section = idx, 0, o.title, false
+	if at_end && !tb.ended { toolbar_end_begins(tb) }
 	if o.pinned {
-		if !tb.ended { toolbar_end_begins(s, tb, mem, em) }
+		if tb.overflow == .Fold { toolbar_more_once(s, tb, mem, em) }
 		tb.pinned += 1
 	}
+	if o.end { tb.ends += 1 }
 	if tb.overflow == .Wrap || !g.folded {
 		tb.group_where = .Bar
 		next({width = children_sum(), height = tb.overflow == .Fold ? pct(1) : children_sum(), axis = .X, cross = .Center})
@@ -433,18 +462,21 @@ toolbar_group_end :: proc(built: bool) {
 	tb.inner, tb.group_where = nil, .None
 }
 
-// The bar's end begins (at its first pinned group, or at its end): in .Wrap the flow closes, the pinned groups follow it
-// at the end of its last line; in .Fold a spacer pushes them to the bar's end, the "…" button before them.
+// The bar's end begins (at its first `end` or pinned group): in .Wrap the flow closes, those groups follow it at the end
+// of its last line; in .Fold a spacer pushes them to the bar's end.
 @(private = "file")
-toolbar_end_begins :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f32) {
+toolbar_end_begins :: proc(tb: ^Toolbar_Build) {
 	tb.ended = true
 	switch tb.overflow {
-	case .Wrap:
-		pop_parent()   // the flow (the first pinned group's room follows it)
-	case .Fold:
-		spacer(fill())
-		if tb.folded { toolbar_more(s, tb, mem, em) }
+	case .Wrap: pop_parent()   // the flow (the first end group's room follows it)
+	case .Fold: spacer(fill())
 	}
+}
+
+// .Fold: the "…" button, once, when a part is folded: before the pinned groups, else at the bar's end.
+@(private = "file")
+toolbar_more_once :: proc(s: ^State, tb: ^Toolbar_Build, mem: ^Toolbar_Memory, em: f32) {
+	if tb.folded && tb.more == nil { toolbar_more(s, tb, mem, em) }
 }
 
 // The end of a tool bar: the "…" button when no pinned group took it, what is not a group measured, the groups no longer
@@ -460,9 +492,9 @@ toolbar_end :: proc() {
 		case .Wrap: pop_parent()   // the flow
 		case .Fold:
 			if tb.align == .Center { spacer(fill()) }   // (the other end of the room the groups are centred in)
-			if tb.folded { toolbar_more(s, tb, mem, em) }
 		}
 	}
+	if tb.overflow == .Fold { toolbar_more_once(s, tb, mem, em) }
 	pop_parent()   // the bar
 	for i := len(mem.groups) - 1; i >= 0; i -= 1 {
 		if mem.groups[i].seen != s.build_index {
@@ -575,33 +607,55 @@ toolbar_tool :: proc(id: string, t: Toolbar_Tool) -> bool {
 	return clicked
 }
 
-// A tool's look in the bar: its glyph alone (a tool among many), or its words beside it (`words`, or no glyph). A tool
-// with a menu toggles it, under its own box, and is lit while it is open.
+// A tool's look in the bar: its glyph alone (a tool among many), or its words beside it (`words`, or no glyph). No face
+// at rest but the bar's main act's (toolbar_tool_face). A tool with a menu toggles it, under its own box, and is lit
+// while it is open.
 @(private = "file")
 toolbar_tool_button :: proc(id: string, t: Toolbar_Tool, label, icon, shortcut: string) -> bool {
 	side := gs().toolbar.side
 	words := t.words || icon == ""
+	shown := t.bar_label != "" ? t.bar_label : label
 	tip := t.tip
 	if tip == "" {
 		switch {
 		case t.command.label != "": tip = command_tip(t.command)
 		case shortcut != "": tip = fmt.tprintf("%s (%s)", label, shortcut)
-		case !words: tip = label
+		// (the bar's words are not all of it: the tooltip says the rest)
+		case !words || shown != label: tip = label
 		}
 	}
 	open := t.menu != "" && menu_is_open(t.menu)
+	rest := toolbar_tool_face(t, words)
+	o := Button_Options{face = t.on ? .Toggled : rest, intent = t.on ? .Primary : t.intent, disabled = t.disabled, icon_font = t.icon_font, lit = open || t.lit, tip = tip}
+	if it, ok := t.icon_intent.?; ok { o.icon_color = button_ink(it) }
 	sig: Signal
 	if words {
-		o := Button_Options{intent = t.intent, disabled = t.disabled, icon_font = t.icon_font, lit = open, tip = tip}
-		if t.on {
-			o.face = Button_Face.Toggled
-			o.intent = .Primary
-		}
-		sig = button(id, label, icon, o)
+		// (no face at rest: the room beside its words is a ghost glyph's, not a raised button's, or the words of a bar
+		// stand apart as if their boxes were still there. Of its face at rest, not of `on`: a mode turned on keeps its
+		// width, the bar does not shift)
+		if rest == .Ghost { next({width = text_size(math.round(font_size() * TOOLBAR_WORDS_PAD_EM)), text_pad = 0}) }
+		sig = button(id, shown, icon, o)
 	} else {
 		next({width = px(side), height = px(side), radius = math.round(side * 0.22), font_size = math.round(side * 0.5)})
-		o := Button_Options{tip = tip, face = t.on ? .Toggled : .Ghost, intent = t.on ? .Primary : t.intent, disabled = t.disabled, icon_font = t.icon_font, lit = open}
 		sig = button(id, icon = icon, o = o)
+	}
+	if sig.box != nil {
+		if a := sig.box.a11y; a != nil {
+			// (a screen reader hears the whole name, as the menu row says it, and not twice: the tooltip is that name)
+			if shown != label {
+				a.name = label
+				if a.description == label { a.description = "" }
+			}
+			// (the count, which ui.badge gives a box with no description, after the description it has)
+			if t.badge > 0 && a.description != "" { a.description = fmt.tprintf("%s, %s", a.description, badge_text(t.badge)) }
+			// (the picker it opened is open)
+			if t.lit { a.expanded = true }
+		}
+		if t.badge > 0 {
+			badge(sig.box, t.badge, t.badge_intent)
+		} else if t.dot != .None {
+			badge_dot(sig.box, t.badge_intent, t.dot)
+		}
 	}
 	// (a tool of a command is where the palette's Shift+Enter goes for it: every program's bar names its commands, none
 	// writes it)
@@ -613,6 +667,14 @@ toolbar_tool_button :: proc(id: string, t: Toolbar_Tool, label, icon, shortcut: 
 		if open { menu_close() } else { menu_open(t.menu, sig.box.rect, anchor = sig.box.key) }
 	}
 	return false
+}
+
+// A tool's face in the bar at rest (`on` holds it down whatever this says): its own; else no face at rest (a bar is one surface, a raised box
+// per word is heavy), but the act the bar exists for, in words of intent .Primary (Done, Send).
+@(private = "file")
+toolbar_tool_face :: proc(t: Toolbar_Tool, words: bool) -> Button_Face {
+	if f, ok := t.face.?; ok { return f }
+	return words && t.intent == .Primary ? .Raised : .Ghost
 }
 
 // `if toolbar_control(id, c) { ...a widget... }`, in a toolbar_group's block: a property whose widget the block builds,

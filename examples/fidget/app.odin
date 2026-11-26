@@ -207,6 +207,7 @@ App :: struct {
 	bar_color: int,
 	bar_width: f32,
 	bar_grid:  bool,
+	bar_effort: int,   // the composer's bar: the thinking level
 
 	// inputs page
 	name, email, number, search, tag_input, bio, filter: ui.Line_Edit,

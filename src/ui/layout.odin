@@ -70,7 +70,10 @@ layout_standalone :: proc(b: ^Box, axis: Axis) {
 @(private)
 layout_upward :: proc(b: ^Box, axis: Axis) {
 	ai := int(axis)
-	if b.pref[axis].kind == .Percent {
+	// (a floating box of a parent sized by its children: its percentage is of that parent, once its sum is known
+	// (layout_downward); it takes no part in that sum)
+	floats_on_sum := is_floating(b, axis) && b.parent != nil && b.parent.pref[axis].kind == .Children_Sum
+	if b.pref[axis].kind == .Percent && !floats_on_sum {
 		a := b.parent
 		for a != nil && a.pref[axis].kind == .Children_Sum { a = a.parent }
 		b.size[ai] = a != nil ? max(0, a.size[ai] - content_pad(a, axis)) * b.pref[axis].value : 0
@@ -134,6 +137,14 @@ layout_downward :: proc(b: ^Box, axis: Axis) {
 		// (a swap whose face changed shows a size on its way from the last face's to this one: its neighbours move with it)
 		if b.swap != nil { v = swap_glide(b.swap, axis, v) }
 		b.size[ai] = max(v, b.pref[axis].least)
+		// (a badge over a button sized by its words: its floating box is a share of the button, not of a distant
+		// ancestor; what is in it is laid out again in that size)
+		for c := b.first; c != nil; c = c.next {
+			if !is_floating(c, axis) || c.pref[axis].kind != .Percent { continue }
+			c.size[ai] = max(max(0, b.size[ai] - content_pad(b, axis)) * c.pref[axis].value, c.pref[axis].least)
+			for g := c.first; g != nil; g = g.next { layout_upward(g, axis) }
+			for g := c.first; g != nil; g = g.next { layout_downward(g, axis) }
+		}
 	}
 	// (a strip's view: its least is its choices' sizes of this layout, so it holds from the first layout it is in)
 	if b.strip_arrow > 0 && box_scrolls(b, axis) { strip_least(b, axis) }

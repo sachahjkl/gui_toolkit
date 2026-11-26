@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import "gt:draw"
+import lucide "gt:lucide"
 import "gt:ui"
 
 seg_labels := [?]string{"Day", "Week", "Month"}
@@ -27,7 +28,7 @@ reset_values :: proc(app: ^App) {
 	app.dd = {0, 1}
 	app.rating = 3
 	app.progress, app.progress_run = 0.35, false
-	app.bar_tool, app.bar_color, app.bar_width, app.bar_grid = 0, 0, 4, false
+	app.bar_tool, app.bar_color, app.bar_width, app.bar_grid, app.bar_effort = 0, 0, 4, false, 0
 	ui.line_edit_set(&app.name, "Ada Lovelace")
 	ui.line_edit_set(&app.email, "ada@example.com")
 	ui.line_edit_set(&app.number, "42")
@@ -172,6 +173,10 @@ page_controls :: proc(app: ^App) {
 					if ui.tags("weak") { ui.next({height = ui.text_size()}); ui.label("Fold: what does not fit goes into the \"…\" menu, by section.") }
 					ui.spacer(ui.px(em * 0.3))
 					demo_toolbar(app, "demo_fold", .Fold)
+					ui.spacer(ui.px(em * 0.6))
+					if ui.tags("weak") { ui.next({height = ui.text_size()}); ui.label("A composer: words with no face at rest, acts at the end that fold too.") }
+					ui.spacer(ui.px(em * 0.3))
+					demo_composer_bar(app)
 				}
 			}
 			ui.spacer(ui.px(em))
@@ -280,6 +285,34 @@ demo_toolbar :: proc(app: ^App, id: string, overflow: ui.Toolbar_Overflow) {
 		if ui.toolbar_group("end", {pinned = true}) {
 			if ui.toolbar_tool("cancel", {label = "Cancel", words = true}) { ui.announce(&app.announcer, .Info, "Cancel") }
 			if ui.toolbar_tool("done", {label = "Done", words = true, intent = .Primary}) { ui.announce(&app.announcer, .Good, "Done") }
+		}
+	}
+}
+
+BAR_EFFORTS :: [?]string{"low", "medium", "high"}
+
+// A composer's bar: tools in words that show no face at rest, the act it exists for raised, a group at the end that folds.
+@(private)
+demo_composer_bar :: proc(app: ^App) {
+	icons := ui.lucide_icons()
+	efforts := BAR_EFFORTS
+	ui.next({width = ui.fill(), height = ui.px(math.round(ui.font_size() * 2.6))})
+	if ui.toolbar("demo_composer", {overflow = .Fold}) {
+		if ui.toolbar_group("run", {title = "Run", priority = 1}) {
+			_ = ui.toolbar_tool("agent", {label = "Agent: plan", bar_label = "plan", icon = lucide.BOT, icon_font = icons, words = true})
+			_ = ui.toolbar_tool("model", {label = "Model: Opus 5.5", bar_label = "Opus 5.5", icon = lucide.CPU, icon_font = icons, words = true})
+			effort := efforts[app.bar_effort]
+			if ui.toolbar_tool("effort", {label = fmt.tprintf("Thinking: %s", effort), bar_label = effort, icon = lucide.GAUGE, icon_font = icons, words = true}) {
+				app.bar_effort = (app.bar_effort + 1) % len(efforts)
+			}
+			_ = ui.toolbar_tool("approval", {label = "Approval: all", bar_label = "all", icon = lucide.SHIELD, icon_font = icons, icon_intent = .Warning, words = true})
+		}
+		if ui.toolbar_group("side", {title = "Panels", end = true}) {
+			_ = ui.toolbar_tool("agents", {label = "Subagents", icon = lucide.BOT, icon_font = icons, badge = 2})
+			_ = ui.toolbar_tool("terminal", {label = "Terminal", icon = lucide.TERMINAL, icon_font = icons, dot = .Still})
+		}
+		if ui.toolbar_group("send", {pinned = true}) {
+			if ui.toolbar_tool("send", {label = "Send", icon = lucide.SEND, icon_font = icons, words = true, intent = .Primary}) { ui.announce(&app.announcer, .Good, "Sent") }
 		}
 	}
 }

@@ -40,3 +40,19 @@ a_badge_shows_its_count_on_the_corner :: proc(t: ^testing.T) { unwatched.run(t, 
 	testing.expect(t, session.find(s, "badge_count") == nil, "no badge at 0")
 	testing.expect(t, session.find(s, "badge") == nil)
 }) }
+
+// On a button sized by its words, the count is at that button's corner, not at a distant ancestor's: the layout sizes the
+// badge's floating box from the button once the button's words are measured.
+@(test)
+a_badge_on_words_sits_on_their_button :: proc(t: ^testing.T) { unwatched.run(t, proc(t: ^testing.T) {
+	s := session.start(t, {size = {400, 300}, no_renderer = true, build = proc(s: ^session.Session) {
+		ui.next({fixed_x = 100, fixed_y = 100})
+		sig := ui.button("inbox", "Inbox")
+		ui.badge(sig.box, 5)
+	}})
+	session.frames(s, 2)
+	button := session.get(s, "inbox")
+	pill := session.get(s, "badge_count")
+	// (inside its border)
+	testing.expectf(t, pill.rect.max.x <= button.rect.max.x && button.rect.max.x - pill.rect.max.x <= 3 && pill.rect.min.y >= button.rect.min.y && pill.rect.min.y - button.rect.min.y <= 3, "at the button's top right corner: %v in %v", pill.rect, button.rect)
+}) }

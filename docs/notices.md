@@ -110,6 +110,22 @@ ui.badge(sig.box, app.log.counts[.New])
 The pill floats over the box and takes no click: the press goes to the button. A screen reader reads the count as the
 button's description, unless the program gave one.
 
+## ui.badge_dot: a dot on a button
+
+`ui.badge_dot(box, intent = .Primary, dot = .Still)` draws a disc of the intent's hue in the top right corner of `box`,
+inside its face: a state with no count (something new, work under way). `.Pulse` makes it breathe while it is built:
+it asks for a frame every `BADGE_PULSE_STEP_MS` (50 ms), not one per refresh of the display, and none once it is no
+longer built. With the animations off, it is still. `.None` draws nothing.
+
+```odin
+sig := ui.button("agents", icon = ICON_BOT, o = {tip = "2 subagents running"})
+ui.badge_dot(sig.box, .Primary, .Pulse)
+```
+
+The dot floats over the box and takes no click. Its colour says nothing to a screen reader: say the state in the
+button's tooltip or description. A tool of a tool bar has both as fields (`Toolbar_Tool.badge`, `dot`).
+
 ## Tests
 
-`odin run tools/run_tests -- notices` tests the log. `tests/scenarios/badge_test.odin` tests `ui.badge`.
+`odin run tools/run_tests -- notices` tests the log. `tests/scenarios/badge_test.odin` tests `ui.badge`,
+`tests/scenarios/toolbar_faces_test.odin` `ui.badge_dot`.

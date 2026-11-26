@@ -45,6 +45,13 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
   around it. In `.Wrap` each line is centred, the last one too (the flow's cross alignment, `layout_wrap_positions`). In
   `.Fold` the groups left in the bar are centred in the room before the "…" button and the pinned groups: an empty
   `fill()` spacer at each end shares that room, and a spacer measures nothing, so the fold reads the same widths.
+- **An `end` group stands at the bar's end too, and folds** (a composer's terminal and stop beside its Send): after the
+  fill spacer, before the "…" button and the pinned groups. In `.Fold` it folds as any group, by its priority; at equal
+  priority it folds first, as the later group. In `.Wrap` it stays with the pinned groups at the end of the last line:
+  a group at the end that wrapped into the flow would leave the end. The groups are built in that order: the groups,
+  then the `end` groups, then the pinned ones.
+- **Refused: `Toolbar_Align.End`.** It moves every group to the end; a composer needs its tools at the start and its
+  acts at the end in one bar. A bar of only end tools gives each group `end`.
 - **The pinned groups stay at the bar's end**, in both alignments. In `.Wrap` they are at the end of the last line,
   outside the flow, and the lines are centred in the flow's room: the bar less the pinned groups. Refused: a line of
   their own at the right, which would centre the lines in the whole bar but cost a line in every bar, even one that
@@ -95,11 +102,42 @@ program declares each tool once. The toolkit shows it in the bar, or elsewhere w
   place in the build, in the bar or in the "…" menu; a program's menu is built once, where it always is, and a menu that
   closes no longer depends on whether its tool is folded.
 
+## A tool's look
+
+- **A tool has no face at rest; its face shows under the pointer, pressed and focused** (`Button_Face.Ghost`). A bar
+  is one surface: a raised box around each word made a composer's bar a row of boxes ("plan", "Opus 5.5", "low", "all"
+  each raised), heavy where one look reads. A glyph tool was a ghost already; a tool in words is one now too.
+- **The act the bar exists for keeps its raised face**: a tool in words of intent `.Primary` (Done, Send). One raised
+  face in a bar says which act ends the work. `Toolbar_Tool.face` chooses another: `.Raised` (a Cancel beside Done
+  in a dialog's bar), `.Link` (no face even under the pointer: a hint that acts), `.Ghost` (a `.Primary` tool with
+  no face). A tool `on` is held down whatever its face: a mode that is on must show it. Its room beside its words is
+  that of its face at rest: a mode turned on keeps its width, and the bar does not shift.
+- **The keyboard focus draws its ring on a ghost tool** as on every focused box: a face that shows only under the
+  pointer must not hide where the keyboard is.
+- **Refused: Ghost for every tool, the program raises its Done.** Every program's Done went flat at once (cliche's and
+  the mark editor's), and the one act that ends the work no longer stood out; the default is the one each bar wants.
+- **`lit`: the face of an open picker** (a model's, an agent's): the program opens something that is not a menu of
+  the bar's (a palette, a panel); `lit` keeps the tool's face shown while it is open, as a tool's `menu` does,
+  and a screen reader hears it expanded.
+- **Two words: the bar's and the menu's.** `bar_label` is what the bar shows ("high"); `label` is what the menu row,
+  the tooltip and a screen reader say ("Thinking: high"). A short word in the bar is clear beside its glyph, and alone
+  in a menu row it says nothing. With `bar_label` the tooltip is `label` (and the shortcut): the bar's words are not
+  all of it. A screen reader hears `label` once: the description that repeats it is dropped.
+- **`icon_intent`: the glyph says a mode by its colour** (a shield yellow when every act is allowed). An intent, not a
+  colour: the theme gives the hue, and every theme keeps it legible. In the "…" menu the row's words say the mode.
+- **A count or a dot on the tool's corner** (`badge`, `dot`, `badge_intent`): `ui.badge` and `ui.badge_dot`,
+  the toolkit's, on the button's box. `.Pulse` breathes, through the toolkit's clock: a wake every
+  `BADGE_PULSE_STEP_MS`, not a frame each refresh, and none once the dot is gone or the animations are off (then the
+  dot is still). In the "…" menu the row carries neither: the bar's corner is where a glance looks. A screen reader
+  hears the count after the tool's description; a dot says nothing, its state goes in `tip`.
+
 ## Spacing
 
 - The gaps are measured between what a person sees, and are the same for every program. A tool is a ghost button a
   line wide around a glyph half as tall: its face shows only under the pointer, so its glyph already stands a quarter of
   the line from its edge. Between two tools the gap is small (0.2 em): it only keeps two lit faces apart.
+- A ghost tool in words has 0.7 em of room beside its words, not a raised button's 0.95 em: with no box to see, a
+  raised button's room spread a bar's words apart, and the words stand as far apart as two glyph tools' glyphs.
 - A control's widget (a track, a swatch, a field's frame) is seen to its edge. It carries 0.15 em of its own on each
   side, so two controls stand 0.5 em apart (cliche's spacing between properties), and a control stands a little further
   from a tool than two tools do from each other. One rule, item gap plus what each item carries, reads well for a bar of
