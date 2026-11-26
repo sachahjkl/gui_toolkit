@@ -107,11 +107,11 @@ check_run :: proc(args: []string, user: rawptr) -> cli.Exit { return ended(progr
 // (build_mode_of). With Build_Options.fresh, built beside it, then swapped in. Each step says why it fails.
 program_build :: proc(o: Build_Options, release := false, debug := false) -> bool {
 	mode := release ? Build_Mode.Release : debug ? Build_Mode.Debug : o.iterate
-	line := build_line(o, mode)
-	if mode == .Release {
-		if why := release_line_refused(line); why != "" { fmt.eprintfln("build: %s", why); return false }
-	}
+	// (the line after what program_prepare makes: the Lucide subset's define names a file that must be there, and a line
+	// made before it in a fresh tree, Nix's or the CI's, left it out: the whole font, 860 KB, went into the program)
 	if !program_prepare(o, mode == .Release) { return false }
+	line := build_line(o, mode)
+	if why := build_line_refused(o, line, mode); why != "" { fmt.eprintfln("build: %s", why); return false }
 	if !run(line, {echo = true}) { return false }
 	if o.fresh {
 		fresh, old := fresh_paths(o.project)
@@ -307,6 +307,20 @@ program_prepare :: proc(o: Build_Options, release := false) -> bool {
 // Why a release's odin line is refused ("": it is not). A release never carries GT_ELEVATED_UNRESTRICTED: elevated,
 // the program would start, install and load what a user can change (src/md/features/elevated-process.md).
 @(private)
+// Why the line of a build of `o` in `mode` must not run (""): a release with the define that lifts an elevated program's
+// restriction, or a project with the Lucide subset whose line does not name it (its file not made).
+build_line_refused :: proc(o: Build_Options, line: []string, mode: Build_Mode) -> string {
+	if mode == .Release {
+		if why := release_line_refused(line); why != "" { return why }
+	}
+	if .Lucide_Subset in o.features {
+		named := false
+		for arg in line { if strings.has_prefix(arg, "-define:LUCIDE_SUBSET=") { named = true } }
+		if !named { return fmt.tprintf("the Lucide subset (%s) is not there: the whole font would be built in", LUCIDE_SUBSET_FILE) }
+	}
+	return ""
+}
+
 release_line_refused :: proc(line: []string) -> string {
 	for arg in line {
 		if strings.contains(arg, "GT_ELEVATED_UNRESTRICTED") { return "a release never carries GT_ELEVATED_UNRESTRICTED (an elevated program would run what a user can change)" }

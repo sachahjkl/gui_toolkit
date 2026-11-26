@@ -298,3 +298,17 @@ a_release_refuses_the_unrestricted_define :: proc(t: ^testing.T) {
 	testing.expect(t, release_line_refused(build_line(o, .Release)) != "", "the project's define")
 	testing.expect(t, release_line_refused({"odin", "build", "src", "-define:GT_ELEVATED_UNRESTRICTED=true"}) != "", "a define on the line")
 }
+
+// A project with the Lucide subset never builds without it: a line made before the subset's file (a fresh tree) left the
+// define out, and the whole font went into the program.
+@(test)
+a_build_refuses_a_line_without_the_lucide_subset :: proc(t: ^testing.T) {
+	o := sample_options()
+	o.features = {.Lucide_Subset}
+	for mode in Build_Mode {
+		testing.expectf(t, build_line_refused(o, {"odin", "build", "src"}, mode) != "", "%v: the subset is missing", mode)
+		testing.expectf(t, build_line_refused(o, {"odin", "build", "src", "-define:LUCIDE_SUBSET=/x/lucide_subset.ttf"}, mode) == "", "%v: named", mode)
+	}
+	plain := sample_options()
+	testing.expect_value(t, build_line_refused(plain, {"odin", "build", "src"}, .Release), "")
+}
