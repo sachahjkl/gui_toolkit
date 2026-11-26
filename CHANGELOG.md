@@ -5,6 +5,24 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.360.0] - 2026-11-26 10:29
+
+### Added
+- **`desktop.Part.Task_Manager`**: on Windows, a program can take the place of Task Manager (Ctrl+Shift+Esc, the taskbar, Ctrl+Alt+Del) with `Integration_Options.task_manager`, offered as a setup box tied to the part.
+  - The Debugger of `taskmgr.exe` runs a copy of the program in Program Files, which only an administrator can write: the image of the elevated process itself, held open while it is copied. That copy hands over to the person's own install when it is not elevated (`setup.task_manager_start`), so updates need no administrator.
+  - Install and Uninstall ask Windows for an administrator (`--task-manager on|off` with `runas`), and only when a person asked (`ask_administrator`); the box says why. Off gives back the Debugger that was there before, exactly.
+  - An Uninstall gives Task Manager back only when this account put it, and first: declined or failed, nothing is uninstalled.
+  - Linux has no such part.
+
+### Fixed
+- **`--install`**: an install from the command line keeps the parts that the system has for each box (`choices_from_facts`), as the dialog does: it no longer takes away a default file manager that an earlier Install put.
+- **Default file manager on Windows**: a folder or a drive that another program opens with the verb `open` or `explore` (`ShellExecute`, Python's `os.startfile`, most "Open folder" buttons) now opens in the program, not in File Explorer. An install made before gets the part "to repair" until Install runs again.
+
+### Security
+- **Library search on Windows**: `host.program_start` (and setup's command line) first limits where a library loaded by name is found to the program's folder and System32 (`base.dll_search_restrict`). A library of that name in the working folder or on the PATH is no longer loaded.
+- **`gt:instance` on Windows**: an elevated program no longer accepts the messages of a program of lower integrity (a second start, a link): any program of the user could make it open a section, a file or a URL with the administrator's rights. Such a start now runs on its own.
+- **Elevated programs run nothing that a user can change** (`base.restricted`): a program that runs as administrator or as root no longer starts a program outside the system's and Program Files' folders (`process.start`), opens URLs, files, folders, terminals, "Open with" or the items of the shell's context menu, installs, uninstalls or updates itself, runs plugins or a devtools server. A toast, or its Installation and Updates pages, say why, in that system's words ("as administrator", "as root"), and on Windows its window's title says "(Administrator)". A token that cannot be read counts as elevated. Command-line tools made with the toolkit are not restricted: they run what the person typed.
+
 ## [0.359.0] - 2026-11-25 22:09
 
 ### Added
@@ -5028,6 +5046,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.360.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.360.0
 [0.359.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.359.0
 [0.358.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.2
 [0.358.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.1
