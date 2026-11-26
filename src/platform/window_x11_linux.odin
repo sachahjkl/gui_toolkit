@@ -30,7 +30,7 @@ X11_Conn :: struct {
 	// atoms interned once
 	wm_protocols, wm_delete_window, net_wm_name, utf8_string, net_wm_state,
 	net_wm_state_fullscreen, net_wm_state_maximized_horz, net_wm_state_maximized_vert,
-	net_wm_state_hidden, net_wm_moveresize, motif_wm_hints, clipboard, primary, targets, wren_selection, request_selection,
+	net_wm_state_hidden, net_wm_state_demands_attention, net_wm_moveresize, motif_wm_hints, clipboard, primary, targets, wren_selection, request_selection,
 	net_wm_window_type, net_wm_window_type_normal, net_active_window, resource_manager, net_frame_extents,
 	// the rich-clipboard target atoms (clipboard_x11_linux.odin): the MIME types and the protocol atoms
 	mime_text_html, mime_image_png, mime_uri_list, mime_gnome_files, mime_kde_cut, atom_incr, atom_multiple, atom_timestamp, atom_text, atom_pair: Xcb_Atom,
@@ -154,6 +154,7 @@ x11_intern_atoms :: proc() {
 	x11c.net_wm_state_maximized_horz = x11_atom("_NET_WM_STATE_MAXIMIZED_HORZ")
 	x11c.net_wm_state_maximized_vert = x11_atom("_NET_WM_STATE_MAXIMIZED_VERT")
 	x11c.net_wm_state_hidden = x11_atom("_NET_WM_STATE_HIDDEN")
+	x11c.net_wm_state_demands_attention = x11_atom("_NET_WM_STATE_DEMANDS_ATTENTION")
 	x11c.net_wm_moveresize = x11_atom("_NET_WM_MOVERESIZE")
 	x11c.motif_wm_hints = x11_atom("_MOTIF_WM_HINTS")
 	x11c.clipboard = x11_atom("CLIPBOARD")

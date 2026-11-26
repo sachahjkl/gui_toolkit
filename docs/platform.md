@@ -188,8 +188,54 @@ read one wheel message as one step. Windows: `SendInput` (`MOUSEEVENTF_WHEEL`, `
 lets a client drive the seat's pointer, only the RemoteDesktop portal (libei), which asks the person each session.
 `0` notches sends nothing: the answer says whether the wheel can be turned there.
 
+**Taskbar button** (`taskbar.odin`): [Taskbar button](#taskbar-button).
+
 **Drag and drop** (`dragdrop.odin`), **tray** (`tray.odin`), **accessibility** (`a11y.odin`): optional; a backend that
 has none keeps the shared stubs (neither Windows nor Linux), which answer "not supported".
+
+## Taskbar button
+
+A window says three things on its button in the task bar or the dock (`taskbar.odin`; the reasons:
+[src/md/features/taskbar.md](../src/md/features/taskbar.md)). Each call sets one part and answers whether it changed: a call
+with the values the button shows already asks nothing of the system, so a program calls it where its state changes, or
+at each build. Nothing waits: Windows' calls are messages to Explorer, Linux's is a D-Bus signal.
+
+- `taskbar_progress(w, state, fraction = 0)`: `Taskbar_Progress` `.None`, `.Normal`, `.Paused`, `.Error` or
+  `.Indeterminate`; `fraction` (0 to 1, kept in thousandths) counts for the three with a bar.
+- `taskbar_badge(w, count, words = "", accent = TASKBAR_BADGE_RED)`: a count (0 takes it away). `words` is what a screen
+  reader says of it ("3 sessions are waiting for you"; "": the toolkit's "3 waiting", translated). `accent` (0xRRGGBB) is
+  the disc where the toolkit draws it. `ui.taskbar_badge(w, count, words)` gives the theme's accent: the badge takes a new
+  theme at the next call.
+- `taskbar_attention(w, on, flashes = 0)`: asks the person to look at the window. It ends when the window becomes active;
+  a window that is active already gets no attention (false). `flashes` (Windows): that many flashes, then the button
+  stays lit; 0 flashes until the window is active.
+- `taskbar_state(w)`: what the button shows (`Taskbar_State`). `taskbar_badge_pixels(count, size, accent)` is the
+  count's picture (RGBA, straight alpha), `launcher_entry_body(uri, state)` the Linux signal's body and
+  `wayland_attention_marks(current_desktop)` whether Wayland's token is asked: pure, for a test.
+  `taskbar_offscreen_entry(w, on)`: an offscreen window's calls go to the bus (Linux), for a test.
+
+```odin
+platform.taskbar_progress(app.window, running > 0 ? .Indeterminate : .None)
+ui.taskbar_badge(app.window, waiting, fmt.tprintf(i18n.tr(waiting, "%d session is waiting for you", "%d sessions are waiting for you"), waiting))
+if asked { platform.taskbar_attention(app.window, true) }
+```
+
+| | Windows | Linux, Wayland | Linux, X11 | macOS |
+|---|---|---|---|---|
+| Progress | `ITaskbarList3`: green, paused yellow, error red, indeterminate | the Unity launcher entry's `progress`: paused and error as normal, indeterminate not shown | as Wayland | none yet |
+| Count | an overlay icon the toolkit draws (a disc in the accent, the number), its words spoken | the entry's `count`, drawn by the dock | as Wayland | none yet |
+| Attention | `FlashWindowEx` | on KDE, GNOME and sway an `xdg_activation_v1` token with no serial (the compositor marks the window), and the entry's `urgent` | `UrgencyHint` and `_NET_WM_STATE_DEMANDS_ATTENTION`, and `urgent` | none yet |
+
+- **Windows** asks the taskbar only once Explorer sent the window `TaskbarButtonCreated` (at its first show), and again
+  with the whole state when Explorer restarts. A hidden window has no button; it gets the state when it is shown.
+  `taskbar_inject_button_created`, `taskbar_button_known` and `taskbar_overlay_shown` are for tests.
+- **Linux**'s entry is the program's, not a window's: it names `application://<app id>.desktop` (`set_app_id`), and the
+  window that changed last decides it. Its end clears the entry. KDE Plasma, Dash to Dock, Dash to Panel, Plank, Latte
+  and ShojiWM's task bar read it; GNOME's own dash does not. An offscreen window sends nothing, so a program's tests do
+  not reach the developer's dock; `taskbar_offscreen_entry(w, true)` sends it, for a test on a bus of its own.
+- **Wayland** asks the token only when `XDG_CURRENT_DESKTOP` names KDE, GNOME or sway, whose compositors mark the
+  window: another compositor can grant it and take the focus. The attention cannot be taken back: the compositor ends
+  it when the window is focused. A notification (`notify`) is the program's choice, not this API's.
 
 ## Differences the app should know
 

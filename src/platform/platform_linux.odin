@@ -262,6 +262,7 @@ destroy_window :: proc(w: ^Window) {
 	idle_release_window(w)
 	tray_destroy_all(w)
 	notify_detach(w)
+	taskbar_end(w)
 	dnd_destroy(w)
 	a11y_detach(w)
 	switch w.backend {
@@ -768,7 +769,7 @@ window_focus :: proc(w: ^Window, on: bool, mods: Modifiers) {
 	if w.active == on { return }
 	w.focused, w.active = on, on
 	append(&w.events, Event{kind = .Activate, stamp = time.tick_now()})
-	if !on { keys_released(w, mods) }
+	if on { taskbar_focused(w) } else { keys_released(w, mods) }
 }
 @(default_calling_convention = "c", private)
 foreign libc {

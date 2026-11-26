@@ -150,6 +150,7 @@ Wl_Window_State :: struct {
 	viewport:    Wl_Proxy,         // `logical` on the output (nil: an integer buffer scale)
 	logical:     [2]int,           // the surface's size, in the compositor's units
 	activation_token: Wl_Proxy,    // an xdg_activation_token_v1 waiting for its `done` (wl_activate)
+	attention_token:  Wl_Proxy,    // one with no serial, for the attention (taskbar_linux.odin)
 	wanted:      Show_State,       // maximized or full screen, asked while there was no role: the next role asks it once
 	minimize_wanted: bool,         // minimized, asked while there was no role: the next show asks it once its role is configured
 	scale_given: bool,             // a preferred_scale came: until then the scale follows the output's integer one
@@ -939,6 +940,7 @@ wl_surface_make :: proc(w: ^Window, st: ^Wl_Window_State, role: bool) -> bool {
 @(private)
 wl_surface_destroy :: proc(st: ^Wl_Window_State) {
 	wl_activation_drop(st)
+	wl_attention_drop(st)
 	wl_outside_bands_destroy(st)
 	if st.win != nil { st.win.outside_band = 0 }
 	if st.fractional != nil { wl.proxy_marshal_flags(st.fractional, WP_FRACTIONAL_DESTROY, nil, wl.proxy_get_version(st.fractional), WL_MARSHAL_FLAG_DESTROY) }

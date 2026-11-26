@@ -388,6 +388,11 @@ fr Impr. écran
 en (Administrator)
 fr (Administrateur)
 
+en %d waiting
+en+ %d waiting
+fr %d en attente
+fr+ %d en attente
+
 en Permissions
 fr Autorisations
 

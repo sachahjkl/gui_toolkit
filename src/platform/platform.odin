@@ -295,6 +295,8 @@ Window :: struct {
 	destroy_hook_user: rawptr,
 	shown_again:  u32,   // counts the show_window calls that brought back a hidden window (the host remakes its swap chain then)
 	clip_request_id: u64,   // the id of the last clipboard_request
+	taskbar:      Taskbar_State,   // what its taskbar button shows (taskbar.odin)
+	taskbar_offscreen_entry: bool, // an offscreen window's launcher entry goes to the bus (taskbar_offscreen_entry: tests)
 }
 
 // `fn(w, user)` runs when `w` is destroyed, before it is freed (nil: nothing). One per window: returns what was there. For

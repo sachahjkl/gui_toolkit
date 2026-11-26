@@ -46,6 +46,7 @@ set_offscreen_active :: proc(w: ^Window, on: bool) {
 	if !w.offscreen || w.active == on { return }
 	w.focused, w.active = on, on
 	inject_event(w, {kind = .Activate})
+	if on { taskbar_focused(w) }
 }
 
 @(private)

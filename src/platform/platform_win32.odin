@@ -46,6 +46,9 @@ Native_Window :: struct {
 	pointers:       Pointer_State,  // fingers and pens (pointer_win32.odin)
 	trays:          [dynamic]^Tray, // icons of the notification area this window receives (tray_win32.odin)
 	notify:         Notify_State,   // the toasts it showed (notify_windows.odin)
+	taskbar_list:   ^win.ITaskbarList3,   // its taskbar button's, once Explorer said the button exists (taskbar_windows.odin)
+	taskbar_icon:   win.HICON,      // the count's overlay icon
+	taskbar_com:    bool,           // the taskbar joined COM on the window's thread: its end leaves it
 	clip_watch:     bool,           // clipboard_watch: the window hears WM_CLIPBOARDUPDATE
 	clip_seen:      u32,            // clipboard_changed: the clipboard's sequence number last told
 	a11y:           rawptr,         // the accessibility adapter (a11y_accesskit.odin), nil when not compiled in
@@ -142,6 +145,7 @@ open_window :: proc(title: string, size: [2]int, user: rawptr = nil, on_frame: p
 		free(w)
 		return nil
 	}
+	taskbar_listen(w)
 	return open_window_sized(w, size)
 }
 
@@ -577,6 +581,7 @@ destroy_window :: proc(w: ^Window) {
 	dnd_destroy(w)   // (revoked while the window exists)
 	tray_destroy_all(w)
 	notify_detach(w)
+	taskbar_end(w)   // (while the window exists: the overlay and the progress go with its button)
 	if w.clip_watch { clipboard_watch(w, false) }
 	pointer_state_destroy(&w.pointers)
 	a11y_detach(w)
@@ -940,6 +945,7 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 		notify_window_message(w)
 		return 0
 	}
+	if msg >= win.WM_APP && taskbar_window_message(w, msg) { return 0 }   // (TaskbarButtonCreated is >= 0xC000)
 	if msg >= win.WM_APP && tray_window_message(w, msg, wparam, lparam) { return 0 }   // (TaskbarCreated is >= 0xC000)
 
 	push :: proc(w: ^Window, e: Event) {
@@ -984,7 +990,11 @@ window_proc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 
 	case win.WM_ACTIVATE:
 		active := win.LOWORD(u32(wparam)) != win.WA_INACTIVE
-		if active != w.active { w.active = active; push(w, {kind = .Activate}) }
+		if active != w.active {
+			w.active = active
+			push(w, {kind = .Activate})
+			if active { taskbar_focused(w) }
+		}
 
 	case win.WM_NCACTIVATE:
 		// lParam -1: no repaint of a frame the client area covers (it would flash the system's title bar)

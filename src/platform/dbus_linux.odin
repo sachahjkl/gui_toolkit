@@ -31,6 +31,7 @@ Session_Bus :: struct {
 	idle_next:     u64,
 	notify_caps:   Notify_Caps,       // the notification server's (notify_linux.odin)
 	notify_caps_known: bool,
+	launcher_owner: ^Window,          // the window whose state the launcher entry shows (taskbar_linux.odin)
 }
 
 @(private, thread_local) session: Session_Bus
