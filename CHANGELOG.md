@@ -5,6 +5,11 @@ project follows [semantic versioning](https://semver.org); while the version is 
 is also available in code as `ui.VERSION`. What is not released yet is in `changelog.d/`, not under "Unreleased": two branches never
 conflict on this file.
 
+## [0.360.1] - 2026-11-26 16:07
+
+### Fixed
+- **Programs are 860 KB smaller again**: since 0.360.0 a build in a fresh tree (a Nix package, the CI's release) put the whole Lucide icon font in the program instead of the icons it uses; a project with the Lucide subset now never builds without it.
+
 ## [0.360.0] - 2026-11-26 10:29
 
 ### Added
@@ -5046,6 +5051,7 @@ First release.
 - `build.bat`, embedded exe icons, scripted interaction tests (`tools/fidget_test.ps1`, `tools/ui_test.ps1`),
   screenshot generator (`tools/screenshots.ps1`), icon generator (`tools/make_icon.ps1`).
 
+[0.360.1]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.360.1
 [0.360.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.360.0
 [0.359.0]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.359.0
 [0.358.2]: https://github.com/sachahjkl/gui_toolkit/releases/tag/v0.358.2
