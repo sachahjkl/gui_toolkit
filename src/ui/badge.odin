@@ -2,6 +2,7 @@ package ui
 
 import "core:fmt"
 import "core:math"
+import turn "../turn"
 
 // The badge's text past this: "99+" (wider says nothing more at a glance).
 BADGE_MOST :: 99
@@ -69,7 +70,7 @@ badge_dot :: proc(b: ^Box, intent := Intent.Primary, dot := Badge_Dot.Still) {
 	ground.a = 1
 	if dot == .Pulse && s.anim_rate != 0 {
 		phase := math.mod(s.time_ms, BADGE_PULSE_MS) / BADGE_PULSE_MS
-		ground.a = f32(0.65 + 0.35 * math.cos(phase * 2 * math.PI))
+		ground.a = f32(0.65 + 0.35 * turn.cos(phase))
 		wake_within(s, BADGE_PULSE_STEP_MS)
 	}
 	if parent(b) {
